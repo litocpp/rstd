@@ -37,6 +37,8 @@ target_sources(
          FILES
          src/mod.cppm
          src/core.cppm
+         src/convert.cppm
+         src/clone.cppm
          src/fmt.cppm
          src/error.cppm)
 

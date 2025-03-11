@@ -36,7 +36,7 @@ concept formattable_impl = parsable_with<Tp, Context> && formattable_with<Tp, Co
 template<typename Tp, typename CharT>
 concept formattable = detail::formattable_impl<std::remove_reference_t<Tp>, CharT>;
 
-export template<typename T>
+export template<typename Self>
 struct Display {};
 
 } // namespace rstd::fmt

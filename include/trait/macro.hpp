@@ -2,7 +2,7 @@
 
 #define TRAIT(name, ...)                       \
 private:                                       \
-    using M = rstd::TraitMeta<name, T>;        \
+    using M = rstd::TraitMeta<name, Self>;     \
     friend M;                                  \
     template<typename F>                       \
     static consteval auto collect() {          \

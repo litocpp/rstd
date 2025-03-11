@@ -74,6 +74,12 @@ consteval auto to_impl(TraitApi<Api...> in) {
 
 } // namespace detail
 
+export template<template<typename, typename...> class T, typename... Args>
+struct TTrait {
+    template<typename U>
+    using type = T<U, Args...>;
+};
+
 class TraitPtr {
     void const* const p;
 
@@ -117,6 +123,12 @@ export enum class ConstNess { Mutable, Const };
 
 export template<template<typename> class T, ConstNess Cn = ConstNess::Mutable>
 struct Dyn;
+
+export template<typename T>
+struct Def {};
+
+export template<template<typename> class T, typename F>
+using DefImpl = Impl<T, Def<F>>;
 
 export template<template<typename> class T, typename A>
 struct TraitMeta {

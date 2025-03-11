@@ -7,8 +7,8 @@ import :fmt;
 
 namespace rstd::error
 {
-export template<typename T>
-    requires Implemented<T, fmt::Display>
+export template<typename Self>
+    requires Implemented<Self, fmt::Display>
 struct Error {
     auto source() -> Dyn<Error>* { return M::template call<0>(this); }
     // auto   provide(request: &mut Request) { ... }
