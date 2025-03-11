@@ -136,7 +136,7 @@ struct TraitMeta {
     static auto call(const T<A>* self, Args&&... args) {
         if constexpr (std::same_as<A, DynImpl<T>>) {
             auto dyn = static_cast<const Dyn<T>*>(self);
-            return dyn->apis.template get<I>()(dyn->self, std::forward<Args>(args)...);
+            return dyn->apis->template get<I>()(dyn->self, std::forward<Args>(args)...);
         } else {
             return apis.template get<I>()(TraitPtr(self), std::forward<Args>(args)...);
         }
@@ -158,11 +158,11 @@ class Dyn : public Tr<DynImpl<Tr>> {
     friend auto make_dyn(T* t);
     using ptr_t = std::conditional_t<Cn == ConstNess::Const, const TraitPtr, TraitPtr>;
 
-    decltype(M::apis) apis;
-    ptr_t             self;
+    const decltype(M::apis)* const apis;
+    ptr_t                          self;
 
     template<typename T>
-    Dyn(T* p) noexcept: apis(TraitMeta<Tr, std::remove_cv_t<T>>::apis), self(p) {}
+    Dyn(T* p) noexcept: apis(&TraitMeta<Tr, std::remove_cv_t<T>>::apis), self(p) {}
 
 public:
     Dyn(const Dyn&) noexcept = default;
