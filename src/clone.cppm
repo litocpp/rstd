@@ -22,6 +22,8 @@ namespace rstd
 {
 export template<typename Self>
 struct Impl<clone::Clone, Def<Self>> {
-    static void clone_from(TraitPtr self, Self& source) {}
+    static void clone_from(TraitPtr self, Self& source) {
+        self.as_ref<Self>() = Impl<clone::Clone, Self>::clone(source);
+    }
 };
 } // namespace rstd
