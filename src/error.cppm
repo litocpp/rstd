@@ -14,4 +14,5 @@ struct Error {
     // auto   provide(request: &mut Request) { ... }
     TRAIT(Error, &F::source)
 };
+
 } // namespace rstd::traits

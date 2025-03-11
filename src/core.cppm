@@ -107,21 +107,8 @@ public:
 export template<template<typename> class T, typename A>
 struct Impl;
 
-namespace detail
-{
-export template<template<typename> class T, typename A, typename = void>
-struct is_implemented {
-    using type = void;
-};
-
-template<template<typename> class T, typename A>
-struct is_implemented<T, A, std::void_t<decltype(Impl<T, A> {})>> {
-    using type = A;
-};
-} // namespace detail
-
 export template<typename A, template<typename> class... T>
-concept Implemented = ((! std::same_as<void, typename detail::is_implemented<T, A>::type>) && ...);
+concept Implemented = (std::semiregular<Impl<T, A>> && ...);
 
 template<template<typename> class T>
 struct DynImpl {};

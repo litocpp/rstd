@@ -47,4 +47,6 @@ export template<template<typename> class T, typename A>
     requires std::same_as<T<A>, fmt::Display<A>> && fmt::formattable<A, char>
 struct Impl<T, A> {};
 
+static_assert(Implemented<int, fmt::Display>);
+
 } // namespace rstd
