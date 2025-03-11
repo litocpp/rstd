@@ -1,9 +1,9 @@
 module;
 #include <format>
-#include "trait/macro.hpp"
-export module rstd.trait:error;
-import :core;
-import :fmt;
+#include "rstd/trait_macro.hpp"
+export module rstd.error;
+export import rstd.core;
+export import rstd.fmt;
 
 namespace rstd::error
 {

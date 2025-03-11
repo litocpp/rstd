@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.28)
 project(
-  trait
+  rstd
   VERSION 0.1.0
-  DESCRIPTION "rust like trait for c++"
+  DESCRIPTION "Rust-like std for C++"
   LANGUAGES CXX)
 
 if(PROJECT_IS_TOP_LEVEL)
@@ -12,31 +12,22 @@ endif()
 
 option(RC_BUILD_TESTS "Build tests" ${PROJECT_IS_TOP_LEVEL})
 
-add_library(trait)
-add_library(rstd::trait ALIAS trait)
-target_compile_features(trait PUBLIC cxx_std_20)
-target_include_directories(trait PUBLIC include)
+add_subdirectory(src/core)
+
+add_library(rstd)
+add_library(rstd::rstd ALIAS rstd)
+target_compile_features(rstd PUBLIC cxx_std_20)
+target_link_libraries(rstd PUBLIC rstd.core)
 target_sources(
-  trait
+  rstd
   PUBLIC FILE_SET
-         headers
-         TYPE
-         HEADERS
-         BASE_DIRS
-         include
-         FILES
-         include/trait/macro.hpp)
-target_sources(
-  trait
-  PUBLIC FILE_SET
-         all
+         modules
          TYPE
          CXX_MODULES
          BASE_DIRS
          src
          FILES
          src/mod.cppm
-         src/core.cppm
          src/convert.cppm
          src/clone.cppm
          src/fmt.cppm
@@ -46,7 +37,7 @@ target_sources(
 if(PROJECT_IS_TOP_LEVEL)
   include(GNUInstallDirs)
   install(
-    TARGETS trait
+    TARGETS rstd
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
 endif()

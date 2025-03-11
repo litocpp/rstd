@@ -13,7 +13,7 @@ endif()
 
 add_executable(trait_test test.cpp example.cpp)
 
-target_link_libraries(trait_test PRIVATE rstd::trait GTest::gtest_main)
+target_link_libraries(trait_test PRIVATE rstd::rstd GTest::gtest_main)
 
 include(GoogleTest)
 gtest_discover_tests(trait_test)

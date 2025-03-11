@@ -1,6 +1,6 @@
 module;
 #include <tuple>
-export module rstd.trait:core;
+export module rstd.core:trait;
 
 namespace rstd
 {

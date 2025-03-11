@@ -1,8 +1,8 @@
 module;
-#include "trait/macro.hpp"
-export module rstd.trait:clone;
+#include "rstd/trait_macro.hpp"
+export module rstd.clone;
 
-import :core;
+export import rstd.core;
 
 namespace rstd::clone
 {

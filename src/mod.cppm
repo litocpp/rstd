@@ -1,5 +1,5 @@
-export module rstd.trait;
-export import :core;
-export import :convert;
-export import :fmt;
-export import :error;
+export module rstd;
+export import rstd.core;
+export import rstd.error;
+export import rstd.fmt;
+export import rstd.convert;

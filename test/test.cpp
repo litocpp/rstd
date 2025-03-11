@@ -3,7 +3,7 @@
 #include <string>
 #include <any>
 
-import rstd.trait;
+import rstd;
 
 // Example traits for testing
 template<typename T>

@@ -3,7 +3,7 @@
 #include <string>
 #include <any>
 
-import rstd.trait;
+import rstd;
 
 // Define a trait
 template<typename T>

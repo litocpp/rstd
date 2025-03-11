@@ -1,8 +1,8 @@
 module;
 #include <format>
-#include "trait/macro.hpp"
-export module rstd.trait:fmt;
-import :core;
+#include "rstd/trait_macro.hpp"
+export module rstd.fmt;
+export import rstd.core;
 
 namespace rstd::fmt
 {
