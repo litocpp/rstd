@@ -13,11 +13,12 @@ endif()
 option(RC_BUILD_TESTS "Build tests" ${PROJECT_IS_TOP_LEVEL})
 
 add_subdirectory(src/core)
+add_subdirectory(src/rc)
 
 add_library(rstd)
 add_library(rstd::rstd ALIAS rstd)
 target_compile_features(rstd PUBLIC cxx_std_20)
-target_link_libraries(rstd PUBLIC rstd.core)
+target_link_libraries(rstd PUBLIC rstd.core rstd.rc)
 target_sources(
   rstd
   PUBLIC FILE_SET

@@ -11,9 +11,9 @@ if(NOT GTest_FOUND)
   FetchContent_MakeAvailable(googletest)
 endif()
 
-add_executable(trait_test test.cpp example.cpp)
+add_executable(rstd_test test.cpp example.cpp rc.cpp)
 
-target_link_libraries(trait_test PRIVATE rstd::rstd GTest::gtest_main)
+target_link_libraries(rstd_test PRIVATE rstd::rstd GTest::gtest_main)
 
 include(GoogleTest)
-gtest_discover_tests(trait_test)
+gtest_discover_tests(rstd_test)
