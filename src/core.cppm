@@ -1,6 +1,6 @@
 module;
 #include <tuple>
-export module rstd.trait;
+export module rstd.trait:core;
 
 namespace rstd
 {
@@ -105,9 +105,23 @@ public:
 };
 
 export template<template<typename> class T, typename A>
-struct Impl {
-    static_assert(false);
+struct Impl;
+
+namespace detail
+{
+export template<template<typename> class T, typename A, typename = void>
+struct is_implemented {
+    using type = void;
 };
+
+template<template<typename> class T, typename A>
+struct is_implemented<T, A, std::void_t<decltype(Impl<T, A> {})>> {
+    using type = A;
+};
+} // namespace detail
+
+export template<typename A, template<typename> class... T>
+concept Implemented = ((! std::same_as<void, typename detail::is_implemented<T, A>::type>) && ...);
 
 template<template<typename> class T>
 struct DynImpl {};
@@ -130,6 +144,7 @@ struct TraitMeta {
         }
     }
     static constexpr auto apis { collect() };
+
     template<int I, typename... Args>
     static auto call(const T<A>* self, Args&&... args) {
         if constexpr (std::same_as<A, DynImpl<T>>) {
@@ -139,7 +154,10 @@ struct TraitMeta {
             return apis.template get<I>()(TraitPtr(self), std::forward<Args>(args)...);
         }
     }
-    static auto call(int i, T<A>* self) { return 1; }
+    template<int I, typename... Args>
+    static auto call_static(Args&&... args) {
+        return apis.template get<I>()(std::forward<Args>(args)...);
+    }
 };
 
 export template<template<typename> class Tr, typename T>
@@ -180,7 +198,6 @@ auto make_dyn(T& t) {
 }
 
 export template<typename Derived, template<typename> class... Traits>
-struct WithTrait : public Traits<Derived>... {
-};
+struct WithTrait : public Traits<Derived>... {};
 
 } // namespace rstd

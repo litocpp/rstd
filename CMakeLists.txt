@@ -5,14 +5,27 @@ project(
   DESCRIPTION "rust like trait for c++"
   LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
+if(PROJECT_IS_TOP_LEVEL)
+  set(CMAKE_CXX_STANDARD_REQUIRED ON)
+  set(CMAKE_CXX_EXTENSIONS OFF)
+endif()
 
 option(RC_BUILD_TESTS "Build tests" ${PROJECT_IS_TOP_LEVEL})
 
 add_library(trait)
 add_library(rstd::trait ALIAS trait)
+target_compile_features(trait PUBLIC cxx_std_20)
+target_include_directories(trait PUBLIC include)
+target_sources(
+  trait
+  PUBLIC FILE_SET
+         headers
+         TYPE
+         HEADERS
+         BASE_DIRS
+         include
+         FILES
+         include/trait/macro.hpp)
 target_sources(
   trait
   PUBLIC FILE_SET
@@ -22,7 +35,10 @@ target_sources(
          BASE_DIRS
          src
          FILES
-         src/trait.cppm)
+         src/mod.cppm
+         src/core.cppm
+         src/fmt.cppm
+         src/error.cppm)
 
 # Add installation rules
 if(PROJECT_IS_TOP_LEVEL)
