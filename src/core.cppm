@@ -161,10 +161,11 @@ class Dyn : public Tr<DynImpl<Tr>> {
     const decltype(M::apis)* const apis;
     ptr_t                          self;
 
+public:
     template<typename T>
+        requires(Cn == ConstNess::Const || ! std::is_const_v<T>)
     Dyn(T* p) noexcept: apis(&TraitMeta<Tr, std::remove_cv_t<T>>::apis), self(p) {}
 
-public:
     Dyn(const Dyn&) noexcept = default;
     Dyn(Dyn&&) noexcept      = default;
 
