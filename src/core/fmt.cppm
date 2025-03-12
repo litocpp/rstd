@@ -52,8 +52,14 @@ static_assert(Implemented<int, fmt::Display>);
 export void panic_raw(std::string_view msg, const source_location = source_location::current());
 
 export template<typename... T>
-void panic(std::format_string<T...> fmt, T&&... args) {
-    panic_raw(std::vformat(fmt.get(), std::make_format_args(args...)));
-}
+struct panic {
+    panic(std::format_string<T...> fmt, T&&... args,
+          const source_location = source_location::current()) {
+        panic_raw(std::vformat(fmt.get(), std::make_format_args(args...)));
+    }
+};
+
+template<typename... Ts>
+panic(std::format_string<Ts...>, Ts&&...) -> panic<Ts...>;
 
 } // namespace rstd
