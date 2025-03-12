@@ -1,6 +1,8 @@
 module;
 #include <tuple>
 export module rstd.core:trait;
+export import :basic;
+export import :meta;
 
 namespace rstd
 {
@@ -113,8 +115,29 @@ public:
 export template<template<typename> class T, typename A>
 struct Impl;
 
+namespace detail
+{
+template<typename T>
+struct impl_helper;
+template<template<typename...> class T, typename A, typename... Args>
+struct impl_helper<T<A, Args...>> {
+    using type = Impl<TTrait<T, Args...>::template type, A>;
+    using Self = A;
+
+    template<template<typename...> class F>
+    using to = F<A, Args...>;
+};
+
+} // namespace detail
+
+export template<typename T>
+using ImplT = typename detail::impl_helper<T>::type;
+
 export template<typename A, template<typename> class... T>
 concept Implemented = (std::semiregular<Impl<T, A>> && ...);
+
+export template<typename... T>
+concept ImplementedT = (std::semiregular<ImplT<T>> && ...);
 
 template<template<typename> class T>
 struct DynImpl {};
@@ -123,6 +146,12 @@ export enum class ConstNess { Mutable, Const };
 
 export template<template<typename> class T, ConstNess Cn = ConstNess::Mutable>
 struct Dyn;
+
+export template<template<typename...> class T, typename... Args>
+using DynT = Dyn<TTrait<T, Args...>::template type, ConstNess::Mutable>;
+
+export template<template<typename...> class T, typename... Args>
+using DynTCont = Dyn<TTrait<T, Args...>::template type, ConstNess::Const>;
 
 export template<typename T>
 struct Def {};
@@ -198,6 +227,7 @@ auto make_dyn(T& t) {
 }
 
 export template<typename Derived, template<typename> class... Traits>
-struct WithTrait : public Traits<Derived>... {};
+struct WithTrait
+    : public meta::conditional_t<Implemented<Derived, Traits>, Traits<Derived>, Empty>... {};
 
 } // namespace rstd

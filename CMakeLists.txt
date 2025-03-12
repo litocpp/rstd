@@ -30,8 +30,6 @@ target_sources(
          FILES
          src/mod.cppm
          src/convert.cppm
-         src/clone.cppm
-         src/fmt.cppm
          src/error.cppm)
 
 # Add installation rules

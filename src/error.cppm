@@ -3,7 +3,6 @@ module;
 #include "rstd/trait_macro.hpp"
 export module rstd.error;
 export import rstd.core;
-export import rstd.fmt;
 
 namespace rstd::error
 {

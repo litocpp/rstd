@@ -18,6 +18,8 @@ target_sources(
          include
          FILES
          include/rstd/trait_macro.hpp)
+
+target_sources(rstd.core PRIVATE core.cpp)
 target_sources(
   rstd.core
   PUBLIC FILE_SET
@@ -25,5 +27,14 @@ target_sources(
          TYPE
          CXX_MODULES
          FILES
+         mod.cppm
          core.cppm
-         trait.cppm)
+         meta.cppm
+         trait.cppm
+         clone.cppm
+         option.cppm
+         result.cppm
+         fmt.cppm
+         ops/mod.cppm
+         ops/function.cppm
+         )

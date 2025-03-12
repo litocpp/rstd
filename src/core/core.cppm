@@ -1,8 +1,9 @@
 module;
 #include <cstdint>
 #include <cstddef>
-export module rstd.core;
-export import :trait;
+#include <source_location>
+#include <string_view>
+export module rstd.core:basic;
 
 namespace rstd
 {
@@ -23,5 +24,27 @@ export using isize       = std::ptrdiff_t;
 export using byte        = std::byte;
 export using voidp       = void*;
 export using const_voidp = const void*;
+
+export using source_location = std::source_location;
+
+export struct Empty {};
+
+export template<typename>
+struct EmptyT {};
+
+export using str = const std::string_view;
+
+export void rstd_assert(bool, const source_location = source_location::current());
+
+export [[noreturn]] inline void unreachable() {
+    // Uses compiler specific extensions if possible.
+    // Even if no extension is used, undefined behavior is still raised by
+    // an empty function body and the noreturn attribute.
+#if defined(_MSC_VER) && ! defined(__clang__) // MSVC
+    __assume(false);
+#else // GCC, Clang
+    __builtin_unreachable();
+#endif
+}
 
 } // namespace rstd

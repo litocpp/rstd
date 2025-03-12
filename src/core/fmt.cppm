@@ -1,8 +1,8 @@
 module;
 #include <format>
 #include "rstd/trait_macro.hpp"
-export module rstd.fmt;
-export import rstd.core;
+export module rstd.core:fmt;
+export import :trait;
 
 namespace rstd::fmt
 {
@@ -33,7 +33,7 @@ template<typename Tp, typename CharT,
 concept formattable_impl = parsable_with<Tp, Context> && formattable_with<Tp, Context>;
 } // namespace detail
 
-template<typename Tp, typename CharT>
+template<typename Tp, typename CharT = char>
 concept formattable = detail::formattable_impl<std::remove_reference_t<Tp>, CharT>;
 
 export template<typename Self>
@@ -48,5 +48,12 @@ export template<template<typename> class T, typename A>
 struct Impl<T, A> {};
 
 static_assert(Implemented<int, fmt::Display>);
+
+export void panic_raw(std::string_view msg, const source_location = source_location::current());
+
+export template<typename... T>
+void panic(std::format_string<T...> fmt, T&&... args) {
+    panic_raw(std::vformat(fmt.get(), std::make_format_args(args...)));
+}
 
 } // namespace rstd
