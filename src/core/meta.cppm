@@ -76,4 +76,24 @@ using is_arithmetic = std::is_arithmetic<T>;
 export template<typename T>
 inline constexpr bool is_arithmetic_v = std::is_arithmetic_v<T>;
 
+export template<typename T>
+using is_reference = std::is_reference<T>;
+export template<typename T>
+inline constexpr bool is_reference_v = std::is_reference_v<T>;
+
+export template<typename T>
+using is_pointer = std::is_pointer<T>;
+export template<typename T>
+inline constexpr bool is_pointer_v = std::is_pointer_v<T>;
+
+export template<class T>
+using add_pointer = std::add_pointer<T>;
+export template<class T>
+using add_pointer_t = std::add_pointer<T>::type;
+
+export template<class T>
+using remove_reference = std::remove_reference<T>;
+export template<class T>
+using remove_reference_t = std::remove_reference<T>::type;
+
 } // namespace rstd::meta

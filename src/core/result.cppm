@@ -553,9 +553,15 @@ class Result : public detail::result_impl<T, E>, public WithTrait<Result<T, E>, 
     template<template<typename> class, typename>
     friend class rstd::Impl;
 
+    using union_value_t =
+        meta::conditional_t<meta::is_reference_v<T>,
+                            meta::add_pointer_t<meta::remove_reference_t<T>>, std::remove_cv_t<T>>;
+    using union_error_t = meta::conditional_t<meta::is_reference_v<E>,
+                                              meta::add_pointer_t<meta::remove_reference_t<E>>, E>;
+
     union {
-        std::remove_cv_t<T> m_val;
-        E                   m_err;
+        union_value_t m_val;
+        union_error_t m_err;
     };
     bool m_has_val;
 
@@ -570,26 +576,24 @@ public:
         requires std::is_default_constructible_v<T>
         : m_val(), m_has_val(true) {}
 
-    Result(Ok<T>&& ok): m_val(std::move(ok).m_val), m_has_val(true) {}
+    Result(Ok<T>&& ok)
+        requires(! meta::is_reference_v<T>)
+        : m_val(std::move(ok).m_val), m_has_val(true) {}
 
-    Result(Err<E>&& err): m_err(std::move(err).m_val), m_has_val(false) {}
+    Result(Err<E>&& err)
+        requires(! meta::is_reference_v<E>)
+        : m_err(std::move(err).m_val), m_has_val(false) {}
 
-    Result(const Result&) = default;
+    Result(Ok<T> ok)
+        requires(meta::is_reference_v<T>)
+        : m_val(&ok.m_val), m_has_val(true) {}
 
-    constexpr Result(const Result& o) noexcept(
-        meta::conjunction_v<std::is_nothrow_copy_constructible<T>,
-                            std::is_nothrow_copy_constructible<E>>)
-        requires std::is_copy_constructible_v<T> && std::is_copy_constructible_v<E> &&
-                 (! std::is_trivially_copy_constructible_v<T> ||
-                  ! std::is_trivially_copy_constructible_v<E>)
-        : m_has_val(o.m_has_val) {
-        if (m_has_val)
-            std::construct_at(&m_val, o.m_val);
-        else
-            std::construct_at(&m_err, o.m_err);
-    }
+    Result(Err<E> err)
+        requires(meta::is_reference_v<E>)
+        : m_err(&err.m_val), m_has_val(false) {}
 
-    Result(Result&&) = default;
+    Result(const Result&)     = default;
+    Result(Result&&) noexcept = default;
 
     constexpr Result(Result&& o) noexcept(
         meta::conjunction_v<std::is_nothrow_move_constructible<T>,
@@ -609,29 +613,18 @@ public:
     constexpr ~Result()
         requires(! std::is_trivially_destructible_v<T>) || (! std::is_trivially_destructible_v<E>)
     {
-        if (m_has_val)
-            std::destroy_at(&(m_val));
-        else
-            std::destroy_at(&(m_err));
+        if (m_has_val) {
+            if constexpr (std::is_trivially_destructible_v<T>) {
+                std::destroy_at(&(m_val));
+            }
+        } else {
+            if constexpr (std::is_trivially_destructible_v<E>) {
+                std::destroy_at(&(m_err));
+            }
+        }
     }
 
     Result& operator=(const Result&) = delete;
-
-    constexpr Result& operator=(const Result& o) noexcept(
-        meta::conjunction_v<std::is_nothrow_copy_constructible<T>,
-                            std::is_nothrow_copy_constructible<E>,
-                            std::is_nothrow_copy_assignable<T>, std::is_nothrow_copy_assignable<E>>)
-        requires std::is_copy_assignable_v<T> && std::is_copy_constructible_v<T> &&
-                 std::is_copy_assignable_v<E> && std::is_copy_constructible_v<E> &&
-                 (std::is_nothrow_move_constructible_v<T> ||
-                  std::is_nothrow_move_constructible_v<E>)
-    {
-        if (o.m_has_val)
-            this->assign_val(o.m_val);
-        else
-            this->assign_err(o.m_err);
-        return *this;
-    }
 
     constexpr Result& operator=(Result&& o) noexcept(
         meta::conjunction_v<std::is_nothrow_move_constructible<T>,

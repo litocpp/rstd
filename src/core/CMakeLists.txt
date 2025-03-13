@@ -31,6 +31,7 @@ target_sources(
          core.cppm
          meta.cppm
          trait.cppm
+         marker.cppm
          clone.cppm
          option.cppm
          result.cppm

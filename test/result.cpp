@@ -19,7 +19,7 @@ TEST(ResultTest, Test) {
     EXPECT_EQ(up.unwrap().get(), nullptr);
 
     up = Ok(std::make_unique<int>(3));
-    auto up_ref = up.as_ref();
+    // auto up_ref = up.as_ref();
 
     EXPECT_EQ(n.map([](auto t) -> int {
         return t + 100;
