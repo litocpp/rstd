@@ -38,4 +38,6 @@ target_sources(
          fmt.cppm
          ops/mod.cppm
          ops/function.cppm
-         )
+         mem/mod.cppm
+         mem/manually_drop.cppm
+         mem/maybe_uninit.cppm)
