@@ -50,40 +50,34 @@ struct result_traits<Result<T, E>> {
 
     using ret_value_t = T;
     using ret_error_t = E;
+
+    using union_value_t =
+        meta::conditional_t<meta::is_reference_v<T>,
+                            meta::add_pointer_t<meta::remove_reference_t<T>>, std::remove_cv_t<T>>;
+    using union_error_t = meta::conditional_t<meta::is_reference_v<E>,
+                                              meta::add_pointer_t<meta::remove_reference_t<E>>, E>;
 };
 
 template<typename T, typename E>
-struct result_traits<Result<T, E>&&> {
-    using value_type = T;
-    using error_type = E;
-
+struct result_traits<Result<T, E>&&> : result_traits<Result<T, E>> {
     using ret_value_t = T&&;
     using ret_error_t = E&&;
 };
 
 template<typename T, typename E>
-struct result_traits<Result<T, E>&> {
-    using value_type = T;
-    using error_type = E;
-
+struct result_traits<Result<T, E>&> : result_traits<Result<T, E>> {
     using ret_value_t = T&;
     using ret_error_t = E&;
 };
 
 template<typename T, typename E>
-struct result_traits<const Result<T, E>&> {
-    using value_type = T;
-    using error_type = E;
-
+struct result_traits<const Result<T, E>&> : result_traits<Result<T, E>> {
     using ret_value_t = meta::add_const_t<T>&;
     using ret_error_t = meta::add_const_t<E>&;
 };
 
 template<typename T, typename E>
-struct result_traits<const Result<T, E>&&> {
-    using value_type = T;
-    using error_type = E;
-
+struct result_traits<const Result<T, E>&&> : result_traits<Result<T, E>> {
     using ret_value_t = meta::add_const_t<T>&&;
     using ret_error_t = meta::add_const_t<E>&&;
 };
@@ -103,18 +97,46 @@ using Err = result::Err<T>;
 export template<template<typename> class T, typename Self>
     requires meta::is_specialization_of_v<T<Self>, clone::Clone> &&
              meta::is_specialization_of_v<Self, rstd::result::Result> &&
-             Implemented<typename result::detail::result_traits<Self>::value_type, clone::Clone> &&
-             Implemented<typename result::detail::result_traits<Self>::error_type, clone::Clone>
-struct Impl<T, Self> : DefImpl<T, Self> {
-    static auto clone(TraitPtr self) -> Self {
-        using v_t = typename result::detail::result_traits<Self>::value_type;
-        using e_t = typename result::detail::result_traits<Self>::error_type;
+             Implemented<typename result::detail::result_traits<Self>::union_value_t,
+                         clone::Clone> &&
+             Implemented<typename result::detail::result_traits<Self>::union_error_t, clone::Clone>
+struct Impl<T, Self> {
+    using traits = result::detail::result_traits<Self>;
+    using v_t    = typename traits::value_type;
+    using e_t    = typename traits::error_type;
+    using uv_t   = typename traits::union_value_t;
+    using ue_t   = typename traits::union_error_t;
 
+    static auto clone(TraitPtr self) -> Self {
         auto& r = self.as_ref<Self>();
         if (r.is_ok()) {
-            return Ok(Impl<clone::Clone, v_t>::clone(&r.m_val));
+            if constexpr (meta::is_reference_v<v_t>) {
+                return Ok(*Impl<clone::Clone, uv_t>::clone(&r.m_val));
+            } else {
+                return Ok(Impl<clone::Clone, uv_t>::clone(&r.m_val));
+            }
         } else {
-            return Err(Impl<clone::Clone, e_t>::clone(&r.m_err));
+            if constexpr (meta::is_reference_v<e_t>) {
+                return Err(*Impl<clone::Clone, ue_t>::clone(&r.m_err));
+            } else {
+                return Err(Impl<clone::Clone, ue_t>::clone(&r.m_err));
+            }
+        }
+    }
+
+    static void clone_from(TraitPtr self, Self& source) {
+        if (source.is_ok()) {
+            if constexpr (meta::is_reference_v<v_t>) {
+                self.as_ref<Self>().assign_val(source.template _get<0>());
+            } else {
+                self.as_ref<Self>().assign_val(Impl<clone::Clone, ue_t>::clone(&source.m_val));
+            }
+        } else {
+            if constexpr (meta::is_reference_v<e_t>) {
+                self.as_ref<Self>().assign_err(source.template _get<1>());
+            } else {
+                self.as_ref<Self>().assign_err(Impl<clone::Clone, ue_t>::clone(&source.m_err));
+            }
         }
     }
 };
@@ -209,7 +231,7 @@ protected:
     template<typename V>
     constexpr void assign_val(V&& v) {
         auto& self = cast_self();
-        if constexpr (meta::is_reference_v<V>) {
+        if constexpr (meta::is_reference_v<T>) {
             if (self.m_has_val)
                 self.m_val = std::addressof(v);
             else {
@@ -231,13 +253,13 @@ protected:
     template<typename V>
     constexpr void assign_err(V&& v) {
         auto& self = cast_self();
-        if constexpr (meta::is_reference_v<V>) {
+        if constexpr (meta::is_reference_v<E>) {
             if (self.m_has_val) {
                 detail::reinit(
-                    std::addressof(self.m_err), std::addressof(self.m_val), std::addressof<V>(v));
+                    std::addressof(self.m_err), std::addressof(self.m_val), std::addressof(v));
                 self.m_has_val = false;
             } else
-                self.m_err = std::addressof<V>(v);
+                self.m_err = std::addressof(v);
         } else {
             if (self.m_has_val) {
                 detail::reinit(
@@ -570,15 +592,6 @@ struct result_impl<Result<T, E>, E> : result_base<Result<T, E>, E> {
     }
 };
 
-template<typename T, typename E>
-struct result_helper {
-    using union_val_t =
-        meta::conditional_t<meta::is_reference_v<T>,
-                            meta::add_pointer_t<meta::remove_reference_t<T>>, std::remove_cv_t<T>>;
-    using union_err_t = meta::conditional_t<meta::is_reference_v<E>,
-                                            meta::add_pointer_t<meta::remove_reference_t<E>>, E>;
-};
-
 } // namespace detail
 
 template<typename T, typename E>
@@ -588,10 +601,10 @@ class Result : public detail::result_impl<T, E> {
     template<template<typename> class, typename>
     friend class rstd::Impl;
 
-    using helper = detail::result_helper<T, E>;
+    using traits = detail::result_traits<Result<T, E>>;
     union {
-        helper::union_val_t m_val;
-        helper::union_err_t m_err;
+        traits::union_value_t m_val;
+        traits::union_error_t m_err;
     };
     bool m_has_val;
 

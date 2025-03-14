@@ -43,6 +43,9 @@ TEST(ResultTest, Test) {
                             }),
               103);
 
+    auto up_ref_clone = up_ref.clone();
+    EXPECT_EQ(*up_ref_clone.unwrap(), 3);
+
     EXPECT_EQ(n.map([](auto t) -> int {
         return t + 100;
     }),

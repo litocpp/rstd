@@ -27,10 +27,8 @@ struct Impl<clone::Clone, Def<Self>> {
 };
 
 export template<typename Self>
-    requires meta::is_arithmetic_v<Self>
-struct Impl<clone::Clone, Self> :  DefImpl<clone::Clone, Self> {
-    static auto clone(TraitPtr self) -> Self {
-        return self.as_ref<Self>();
-    }
+    requires meta::is_arithmetic_v<Self> || meta::is_pointer_v<Self>
+struct Impl<clone::Clone, Self> : DefImpl<clone::Clone, Self> {
+    static auto clone(TraitPtr self) -> Self { return self.as_ref<Self>(); }
 };
 } // namespace rstd
