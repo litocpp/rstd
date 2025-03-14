@@ -707,14 +707,12 @@ public:
                     { e == e2 } -> meta::convertible_to<bool>;
                 }
     friend constexpr bool operator==(const Result& x, const Result<U, E2>& y) noexcept(
-        noexcept(bool(Result::template _get<0>(x) == Result<U, E2>::template _get<0>(y))) &&
-        noexcept(bool(Result::template _get<1>(x) == Result<U, E2>::template _get<1>(y)))) {
+        noexcept(bool(x.template _get<0>() == y.template _get<0>())) &&
+        noexcept(bool(x.template _get<1>() == y.template _get<1>()))) {
         if (x.is_ok())
-            return y.is_ok() &&
-                   bool(Result::template _get<0>(x) == Result<U, E2>::template _get<0>(y));
+            return y.is_ok() && bool(x.template _get<0>() == y.template _get<0>());
         else
-            return ! y.is_ok() &&
-                   bool(Result::template _get<1>(x) == Result<U, E2>::template _get<1>(y));
+            return ! y.is_ok() && bool(x.template _get<1>() == y.template _get<1>());
     }
 };
 
