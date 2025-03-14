@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <cstdio>
 #include <memory>
 
 import rstd;
@@ -18,8 +19,29 @@ TEST(ResultTest, Test) {
     // moved, up is now nullptr
     EXPECT_EQ(up.unwrap().get(), nullptr);
 
-    up = Ok(std::make_unique<int>(3));
-    // auto up_ref = up.as_ref();
+    up          = Ok(std::make_unique<int>(3));
+    auto up_ref = up.as_ref();
+
+    EXPECT_EQ(*up_ref.unwrap(), 3);
+    // moved ref not destroyed
+    EXPECT_EQ(*up_ref.unwrap(), 3);
+
+    EXPECT_EQ(up_ref.map([](auto& t) -> int {
+        return *t + 100;
+    }),
+              Ok(103));
+
+    EXPECT_EQ(up_ref.map_or(4,
+                            [](auto& t) -> int {
+                                return *t + 100;
+                            }),
+              103);
+
+    EXPECT_EQ(up_ref.map_or(4,
+                            [](auto& t) -> int {
+                                return *t + 100;
+                            }),
+              103);
 
     EXPECT_EQ(n.map([](auto t) -> int {
         return t + 100;

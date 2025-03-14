@@ -82,9 +82,19 @@ export template<typename T>
 inline constexpr bool is_reference_v = std::is_reference_v<T>;
 
 export template<typename T>
+using is_rvalue_reference = std::is_rvalue_reference<T>;
+export template<typename T>
+inline constexpr bool is_rvalue_reference_v = std::is_rvalue_reference_v<T>;
+
+export template<typename T>
 using is_pointer = std::is_pointer<T>;
 export template<typename T>
 inline constexpr bool is_pointer_v = std::is_pointer_v<T>;
+
+export template<class T>
+using add_const = std::add_const<T>;
+export template<class T>
+using add_const_t = std::add_const<T>::type;
 
 export template<class T>
 using add_pointer = std::add_pointer<T>;
@@ -92,8 +102,122 @@ export template<class T>
 using add_pointer_t = std::add_pointer<T>::type;
 
 export template<class T>
+using add_lvalue_reference = std::add_lvalue_reference<T>;
+export template<class T>
+using add_lvalue_reference_t = std::add_lvalue_reference_t<T>;
+export template<class T>
+using add_rvalue_reference = std::add_rvalue_reference<T>;
+export template<class T>
+using add_rvalue_reference_t = std::add_rvalue_reference_t<T>;
+
+export template<class T>
 using remove_reference = std::remove_reference<T>;
 export template<class T>
 using remove_reference_t = std::remove_reference<T>::type;
+
+export template<class T>
+concept nothrow_destructible = std::is_nothrow_destructible_v<T>;
+
+export template<typename T, typename... Args>
+inline constexpr bool is_constructible_v = std::is_constructible_v<T, Args...>;
+
+export template<typename T>
+inline constexpr bool is_default_constructible_v = std::is_default_constructible_v<T>;
+export template<typename T, typename... Args>
+concept constructible_from = nothrow_destructible<T> && is_constructible_v<T, Args...>;
+
+export template<typename T, typename... Args>
+concept nothrow_constructible = std::is_nothrow_constructible_v<T, Args...>;
+
+// copy
+export template<class T>
+using is_copy_constructible = std::is_copy_constructible<T>;
+export template<class T>
+using is_trivially_copy_constructible = std::is_trivially_copy_constructible<T>;
+export template<class T>
+using is_nothrow_copy_constructible = std::is_nothrow_copy_constructible<T>;
+export template<class T>
+inline constexpr bool is_copy_constructible_v = std::is_copy_constructible_v<T>;
+export template<class T>
+inline constexpr bool is_trivially_copy_constructible_v = std::is_trivially_copy_constructible_v<T>;
+export template<class T>
+inline constexpr bool is_nothrow_copy_constructible_v = std::is_nothrow_copy_constructible_v<T>;
+
+export template<typename T>
+concept nothrow_copy_constructible = is_nothrow_copy_constructible_v<T>;
+
+export template<typename T>
+concept custom_copy_constructible =
+    (is_copy_constructible_v<T> && ! is_trivially_copy_constructible_v<T>);
+
+// move
+export template<class T>
+using is_move_constructible = std::is_move_constructible<T>;
+export template<class T>
+using is_trivially_move_constructible = std::is_trivially_move_constructible<T>;
+export template<class T>
+using is_nothrow_move_constructible = std::is_nothrow_move_constructible<T>;
+export template<class T>
+inline constexpr bool is_move_constructible_v = std::is_move_constructible_v<T>;
+export template<class T>
+inline constexpr bool is_trivially_move_constructible_v = std::is_trivially_move_constructible_v<T>;
+export template<class T>
+inline constexpr bool is_nothrow_move_constructible_v = std::is_nothrow_move_constructible_v<T>;
+
+export template<typename T>
+concept nothrow_move_constructible = is_nothrow_move_constructible_v<T>;
+export template<typename T>
+concept custom_move_constructible =
+    (is_move_constructible_v<T> && ! is_trivially_move_constructible_v<T>);
+
+export template<class T>
+using is_nothrow_copy_assignable = std::is_nothrow_copy_assignable<T>;
+export template<class T>
+inline constexpr bool is_nothrow_copy_assignable_v = std::is_nothrow_copy_assignable_v<T>;
+export template<class T>
+using is_trivially_copy_assignable = std::is_trivially_copy_assignable<T>;
+export template<class T>
+inline constexpr bool is_trivially_copy_assignable_v = std::is_trivially_copy_assignable_v<T>;
+export template<class T>
+using is_copy_assignable = std::is_copy_assignable<T>;
+export template<class T>
+inline constexpr bool is_copy_assignable_v = std::is_copy_assignable_v<T>;
+
+export template<typename T>
+concept nothrow_copy_assignable = is_nothrow_copy_assignable_v<T>;
+export template<typename T>
+concept custom_copy_assignable = (is_copy_assignable_v<T> && ! is_trivially_copy_assignable_v<T>);
+
+export template<class T>
+using is_nothrow_move_assignable = std::is_nothrow_move_assignable<T>;
+export template<class T>
+inline constexpr bool is_nothrow_move_assignable_v = std::is_nothrow_move_assignable_v<T>;
+export template<class T>
+using is_trivially_move_assignable = std::is_trivially_move_assignable<T>;
+export template<class T>
+inline constexpr bool is_trivially_move_assignable_v = std::is_trivially_move_assignable_v<T>;
+export template<class T>
+using is_move_assignable = std::is_move_assignable<T>;
+export template<class T>
+inline constexpr bool is_move_assignable_v = std::is_move_assignable_v<T>;
+
+export template<typename T>
+concept nothrow_move_assignable = is_nothrow_move_assignable_v<T>;
+export template<typename T>
+concept custom_move_assignable = (is_move_assignable_v<T> && ! is_trivially_move_assignable_v<T>);
+
+template<class T>
+using remove_cvref = std::remove_cvref<T>;
+template<class T>
+using remove_cvref_t = std::remove_cvref_t<T>;
+
+template<class T>
+using is_void = std::is_void<T>;
+template<class T>
+inline constexpr bool is_void_v = std::is_void_v<T>;
+
+template<class From, class To>
+concept convertible_to =
+    std::is_convertible_v<From, To> && requires { static_cast<To>(std::declval<From>()); };
 
 } // namespace rstd::meta

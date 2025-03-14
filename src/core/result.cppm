@@ -1,5 +1,6 @@
 module;
 #include <optional>
+#include <memory>
 export module rstd.core:result;
 export import :basic;
 export import :meta;
@@ -13,51 +14,13 @@ namespace rstd::result
 export template<typename T, typename E>
 class Result;
 
-template<typename T = Empty>
-class Ok {
-    T m_val;
-    template<typename, typename>
-    friend class Result;
+struct None {};
 
-public:
-    constexpr Ok(const Ok&) = default;
-    constexpr Ok(Ok&&)      = default;
+export template<typename T>
+using Ok = Result<T, None>;
 
-    template<typename F = T>
-        requires std::is_constructible_v<F, T>
-    constexpr explicit Ok(F&& ok) noexcept(std::is_nothrow_constructible_v<F, T>)
-        : m_val(std::forward<F>(ok)) {}
-
-    constexpr Ok& operator=(const Ok&) = default;
-    constexpr Ok& operator=(Ok&&)      = default;
-};
-
-// CTAD
-template<typename T>
-Ok(T) -> Ok<T>;
-
-template<typename E = Empty>
-class Err {
-    E m_val;
-    template<typename, typename>
-    friend class Result;
-
-public:
-    constexpr Err(const Err&) = default;
-    constexpr Err(Err&&)      = default;
-
-    template<typename Er = E>
-        requires std::is_constructible_v<E, Er>
-    constexpr explicit Err(Er&& e) noexcept(std::is_nothrow_constructible_v<E, Er>)
-        : m_val(std::forward<Er>(e)) {}
-
-    constexpr Err& operator=(const Err&) = default;
-    constexpr Err& operator=(Err&&)      = default;
-};
-
-// CTAD
-template<typename E>
-Err(E) -> Err<E>;
+export template<typename T>
+using Err = Result<None, T>;
 
 namespace detail
 {
@@ -78,13 +41,53 @@ constexpr void reinit(T* newval, U* oldval,
 }
 
 template<typename T>
-struct result_helper;
+struct result_traits {};
 
-template<typename T, typename F>
-struct result_helper<Result<T, F>> {
+template<typename T, typename E>
+struct result_traits<Result<T, E>> {
     using value_type = T;
-    using error_type = F;
+    using error_type = E;
+
+    using ret_value_t = T;
+    using ret_error_t = E;
 };
+
+template<typename T, typename E>
+struct result_traits<Result<T, E>&&> {
+    using value_type = T;
+    using error_type = E;
+
+    using ret_value_t = T&&;
+    using ret_error_t = E&&;
+};
+
+template<typename T, typename E>
+struct result_traits<Result<T, E>&> {
+    using value_type = T;
+    using error_type = E;
+
+    using ret_value_t = T&;
+    using ret_error_t = E&;
+};
+
+template<typename T, typename E>
+struct result_traits<const Result<T, E>&> {
+    using value_type = T;
+    using error_type = E;
+
+    using ret_value_t = meta::add_const_t<T>&;
+    using ret_error_t = meta::add_const_t<E>&;
+};
+
+template<typename T, typename E>
+struct result_traits<const Result<T, E>&&> {
+    using value_type = T;
+    using error_type = E;
+
+    using ret_value_t = meta::add_const_t<T>&&;
+    using ret_error_t = meta::add_const_t<E>&&;
+};
+
 } // namespace detail
 } // namespace rstd::result
 
@@ -100,12 +103,12 @@ using Err = result::Err<T>;
 export template<template<typename> class T, typename Self>
     requires meta::is_specialization_of_v<T<Self>, clone::Clone> &&
              meta::is_specialization_of_v<Self, rstd::result::Result> &&
-             Implemented<typename result::detail::result_helper<Self>::value_type, clone::Clone> &&
-             Implemented<typename result::detail::result_helper<Self>::error_type, clone::Clone>
+             Implemented<typename result::detail::result_traits<Self>::value_type, clone::Clone> &&
+             Implemented<typename result::detail::result_traits<Self>::error_type, clone::Clone>
 struct Impl<T, Self> : DefImpl<T, Self> {
     static auto clone(TraitPtr self) -> Self {
-        using v_t = typename result::detail::result_helper<Self>::value_type;
-        using e_t = typename result::detail::result_helper<Self>::error_type;
+        using v_t = typename result::detail::result_traits<Self>::value_type;
+        using e_t = typename result::detail::result_traits<Self>::error_type;
 
         auto& r = self.as_ref<Self>();
         if (r.is_ok()) {
@@ -129,64 +132,119 @@ namespace detail
 {
 
 template<typename T, typename E>
-struct result_base {
+struct result_base : WithTrait<Result<T, E>, clone::Clone> {
+    template<typename, typename>
+    friend class result::Result;
+
 protected:
     constexpr auto cast_self() -> Result<T, E>& { return static_cast<Result<T, E>&>(*this); }
     constexpr auto cast_self() const -> const Result<T, E>& {
         return static_cast<const Result<T, E>&>(*this);
     }
 
+    template<i32 I, typename U>
+        requires meta::same_as<meta::remove_cvref_t<U>, Result<T, E>>
+    static constexpr decltype(auto) _get(U&& self) {
+        using traits = detail::result_traits<decltype(self)>;
+        if constexpr (I == 0) {
+            if constexpr (std::is_reference_v<T>) {
+                return static_cast<traits::ret_value_t>(*(self.m_val));
+            } else {
+                return static_cast<traits::ret_value_t>(self.m_val);
+            }
+        } else {
+            if constexpr (std::is_reference_v<E>) {
+                return static_cast<traits::ret_error_t>(*(self.m_err));
+            } else {
+                return static_cast<traits::ret_error_t>(self.m_err);
+            }
+        }
+    }
+
+    template<i32 I>
+    constexpr decltype(auto) _get() & {
+        return result_base::template _get<I>(static_cast<Result<T, E>&>(*this));
+    }
+
+    template<i32 I>
+    constexpr decltype(auto) _get() && {
+        return result_base::template _get<I>(static_cast<Result<T, E>&&>(*this));
+    }
+
+    template<i32 I>
+    constexpr decltype(auto) _get() const& {
+        return result_base::template _get<I>(static_cast<const Result<T, E>&>(*this));
+    }
+    template<i32 I>
+    constexpr decltype(auto) _get() const&& {
+        return result_base::template _get<I>(static_cast<const Result<T, E>&&>(*this));
+    }
+
+    template<i32 I, typename U>
+    constexpr decltype(auto) _self_get(U&& self) const {
+        return result_base::template _get<I>(std::forward<U>(self));
+    }
+
+    template<typename V>
+    constexpr void construct_val(V&& val) {
+        auto& self     = cast_self();
+        self.m_has_val = true;
+        if constexpr (meta::is_reference_v<T>) {
+            self.m_val = std::addressof(val);
+        } else {
+            std::construct_at(std::addressof(self.m_val), std::forward<V>(val));
+        }
+    }
+    template<typename V>
+    constexpr void construct_err(V&& err) {
+        auto& self     = cast_self();
+        self.m_has_val = false;
+        if constexpr (meta::is_reference_v<E>) {
+            self.m_err = std::addressof(err);
+        } else {
+            std::construct_at(std::addressof(self.m_err), std::forward<V>(err));
+        }
+    }
+
     template<typename V>
     constexpr void assign_val(V&& v) {
         auto& self = cast_self();
-        if (self.m_has_val)
-            self.m_val = std::forward<V>(v);
-        else {
-            detail::reinit(&(self.m_val), &(self.m_err), std::forward<V>(v));
-            self.m_has_val = true;
+        if constexpr (meta::is_reference_v<V>) {
+            if (self.m_has_val)
+                self.m_val = std::addressof(v);
+            else {
+                detail::reinit(
+                    std::addressof(self.m_val), std::addressof(self.m_err), std::addressof(v));
+                self.m_has_val = true;
+            }
+        } else {
+            if (self.m_has_val)
+                self.m_val = std::forward<V>(v);
+            else {
+                detail::reinit(
+                    std::addressof(self.m_val), std::addressof(self.m_err), std::forward<V>(v));
+                self.m_has_val = true;
+            }
         }
     }
 
     template<typename V>
     constexpr void assign_err(V&& v) {
         auto& self = cast_self();
-        if (self.m_has_val) {
-            detail::reinit(&(self.m_err), &(self.m_val), std::forward<V>(v));
-            self.m_has_val = false;
-        } else
-            self.m_err = std::forward<V>(v);
-    }
-
-    constexpr auto _val() const {
-        auto& self = cast_self();
-        if constexpr (std::is_reference_v<T>) {
-            return *(self.m_val);
+        if constexpr (meta::is_reference_v<V>) {
+            if (self.m_has_val) {
+                detail::reinit(
+                    std::addressof(self.m_err), std::addressof(self.m_val), std::addressof<V>(v));
+                self.m_has_val = false;
+            } else
+                self.m_err = std::addressof<V>(v);
         } else {
-            return self.m_val;
-        }
-    }
-    constexpr auto _val() {
-        auto& self = cast_self();
-        if constexpr (std::is_reference_v<T>) {
-            return *(self.m_val);
-        } else {
-            return self.m_val;
-        }
-    }
-    constexpr auto _err() const {
-        auto& self = cast_self();
-        if constexpr (std::is_reference_v<E>) {
-            return *(self.m_err);
-        } else {
-            return self.m_err;
-        }
-    }
-    constexpr auto _err() {
-        auto& self = cast_self();
-        if constexpr (std::is_reference_v<E>) {
-            return *(self.m_err);
-        } else {
-            return self.m_err;
+            if (self.m_has_val) {
+                detail::reinit(
+                    std::addressof(self.m_err), std::addressof(self.m_val), std::forward<V>(v));
+                self.m_has_val = false;
+            } else
+                self.m_err = std::forward<V>(v);
         }
     }
 
@@ -203,9 +261,8 @@ public:
     template<typename F>
         requires ImplementedT<FnOnce<F, bool(T)>>
     auto is_ok_and(F&& f) -> bool {
-        auto& self = cast_self();
-        if (self.is_ok()) {
-            return std::move(f)(std::move(self.m_val));
+        if (is_ok()) {
+            return std::move(f)(std::move(_get<0>()));
         } else
             return false;
     }
@@ -213,25 +270,22 @@ public:
     template<typename F>
         requires ImplementedT<FnOnce<F, bool(E)>>
     auto is_err_and(F&& f) -> bool {
-        auto& self = cast_self();
         if (is_err()) {
-            return std::move(f)(std::move(self.m_err));
+            return std::move(f)(std::move(_get<1>()));
         } else
             return false;
     }
 
     auto ok() -> std::optional<T> {
-        auto& self = cast_self();
-        if (self.is_ok()) {
-            return std::move(self.m_val);
+        if (is_ok()) {
+            return std::move(_get<0>());
         } else
             return std::nullopt;
     }
 
     auto err() -> std::optional<E> {
-        auto& self = cast_self();
-        if (self.is_err()) {
-            return std::move(self.m_err);
+        if (is_err()) {
+            return std::move(_get<1>());
         } else
             return std::nullopt;
     }
@@ -239,20 +293,18 @@ public:
     template<typename F, typename U = std::invoke_result_t<F, T>>
         requires ImplementedT<FnOnce<F, U(T)>>
     auto map(F&& op) -> Result<U, E> {
-        auto& self = cast_self();
-        if (self.is_ok()) {
-            return Ok(std::move(op)(std::move(self.m_val)));
+        if (is_ok()) {
+            return Ok(std::move(op)(std::move(_get<0>())));
         } else {
-            return Err(self.m_err);
+            return Err(_get<1>());
         }
     }
 
     template<typename U, typename F>
         requires ImplementedT<FnOnce<F, U(T)>>
     auto map_or(U&& def, F&& op) -> U {
-        auto& self = cast_self();
-        if (self.is_ok()) {
-            return std::move(op)(std::move(self.m_val));
+        if (is_ok()) {
+            return std::move(op)(std::move(_get<0>()));
         } else {
             return def;
         }
@@ -261,72 +313,69 @@ public:
     template<typename U, typename D, typename F>
         requires ImplementedT<FnOnce<D, U(E)>, FnOnce<F, U(T)>>
     auto map_or_else(D&& def, F&& f) -> U {
-        auto& self = cast_self();
-        if (self.is_ok()) {
-            return std::move(f)(std::move(self.m_val));
+        if (is_ok()) {
+            return std::move(f)(std::move(_get<0>()));
         } else {
-            return std::move(def)(std::move(self.m_err));
+            return std::move(def)(std::move(_get<1>()));
         }
     }
     template<typename F, typename O>
         requires ImplementedT<FnOnce<O, F(E)>>
     auto map_err(O&& op) -> Result<T, F> {
-        auto& self = cast_self();
-        if (self.is_ok()) {
-            return Ok(std::move(self.m_val));
+        if (is_ok()) {
+            return Ok(std::move(_get<0>()));
         } else {
-            return Err(std::move(op)(std::move(self.m_err)));
+            return Err(std::move(op)(std::move(_get<1>())));
         }
     }
 
     template<typename F>
         requires ImplementedT<FnOnce<F, void(T&)>>
     auto inspect(F&& f) -> Result<T, E> {
-        auto& self = cast_self();
-        if (self.is_ok()) {
-            std::move(f)(self.m_val);
+        if (is_ok()) {
+            std::move(f)(_get<0>());
         }
+        auto& self = cast_self();
         return std::move(self);
     }
 
     template<typename F>
         requires ImplementedT<FnOnce<F, void(E&)>>
     auto inspect_err(F&& f) -> Result<T, E> {
-        auto& self = cast_self();
-        if (self.is_err()) {
-            std::move(f)(self.m_err);
+        if (is_err()) {
+            std::move(f)(_get<0>());
         }
+        auto& self = cast_self();
         return std::move(self);
     }
 
     auto expect(str& msg) -> T
         requires fmt::formattable<E>
     {
-        auto& self = cast_self();
-        if (self.is_ok()) {
-            return std::move(self.m_val);
+        if (is_ok()) {
+            return std::move(_get<0>());
         } else {
-            unwrap_failed(msg, self.m_err);
-            return {};
+            unwrap_failed(msg, _get<1>());
+            rstd::unreachable();
         }
     }
 
     auto unwrap() -> T
         requires fmt::formattable<E>
     {
-        auto& self = cast_self();
-        if (self.is_ok()) {
-            return std::move(self.m_val);
+        if (is_ok()) {
+            return std::move(_get<0>());
         } else {
-            unwrap_failed("called `Result::unwrap()` on an `Err` value", self.m_err);
-            return {};
+            unwrap_failed("called `Result::unwrap()` on an `Err` value", _get<1>());
+            rstd::unreachable();
         }
     }
 
-    auto unwrap_or_default() -> T {
-        auto& self = cast_self();
-        if (self.is_ok()) {
-            return std::move(self.m_val);
+    auto unwrap_or_default() -> T
+        requires meta::is_default_constructible_v<T>
+    {
+        if (is_ok()) {
+            return std::move(_get<0>());
         } else {
             return {};
         }
@@ -335,44 +384,41 @@ public:
     auto expect_err(str& msg) -> E
         requires fmt::formattable<T>
     {
-        auto& self = cast_self();
-        if (self.is_ok()) {
-            unwrap_failed(msg, self.m_val);
-            return {};
+        if (is_ok()) {
+            unwrap_failed(msg, _get<0>());
+            rstd::unreachable();
         } else {
-            return std::move(self.m_err);
+            return std::move(_get<1>());
         }
     }
 
     auto unwrap_err() -> E
         requires fmt::formattable<T>
     {
-        auto& self = cast_self();
-        if (self.is_err()) {
-            return std::move(self.m_err);
+        if (is_err()) {
+            return std::move(_get<0>());
         } else {
-            unwrap_failed("called `Result::unwrap_err()` on an `Ok` value", self.m_val);
-            return {};
+            unwrap_failed("called `Result::unwrap_err()` on an `Ok` value", _get<1>());
+            rstd::unreachable();
         }
     }
 
     template<typename U, typename F>
         requires ImplementedT<FnOnce<F, Result<U, E>(T)>>
     auto and_then(F&& op) -> Result<U, E> {
-        auto& self = cast_self();
-        if (self.is_ok()) {
-            return std::move(op)(std::move(self.m_val));
+        if (is_ok()) {
+            return std::move(op)(std::move(_get<0>()));
         } else {
-            return Err(std::move(self.m_err));
+            return Err(std::move(_get<1>()));
         }
     }
 
     template<typename F>
     auto or_(Result<T, F>&& res) -> Result<T, F> {
-        auto& self = cast_self();
-        if (self.is_ok()) {
-            return Ok(std::move(self.m_val));
+        if (is_ok()) {
+            return Ok(std::move(_get<0>()));
         } else {
+            auto& self = cast_self();
             return std::move(res);
         }
     }
@@ -380,18 +426,16 @@ public:
     template<typename F, typename O>
         requires ImplementedT<FnOnce<O, Result<T, F>(E)>>
     auto or_else(O&& op) -> Result<T, F> {
-        auto& self = cast_self();
-        if (self.is_ok()) {
-            return Ok(std::move(self.m_val));
+        if (is_ok()) {
+            return Ok(std::move(_get<0>()));
         } else {
-            return std::move(op)(std::move(self.m_err));
+            return std::move(op)(std::move(_get<1>()));
         }
     }
 
     auto unwrap_or(T&& def) -> T {
-        auto& self = cast_self();
-        if (self.is_ok()) {
-            return std::move(self.m_val);
+        if (is_ok()) {
+            return std::move(_get<0>());
         } else {
             return std::move(def);
         }
@@ -400,27 +444,24 @@ public:
     template<typename F>
         requires ImplementedT<FnOnce<F, T(E)>>
     auto unwrap_or_else(F&& op) -> T {
-        auto& self = cast_self();
-        if (self.is_ok()) {
-            return std::move(self.m_val);
+        if (is_ok()) {
+            return std::move(_get<0>());
         } else {
-            return std::move(op)(std::move(self.m_err));
+            return std::move(op)(std::move(_get<1>()));
         }
     }
 
     auto unwrap_unchecked() -> T {
-        auto& self = cast_self();
-        if (self.is_ok()) {
-            return std::move(self.m_val);
+        if (is_ok()) {
+            return std::move(_get<0>());
         } else {
             rstd::unreachable();
         }
     }
 
     auto unwrap_err_unchecked() -> E {
-        auto& self = cast_self();
-        if (self.is_err()) {
-            return std::move(self.m_err);
+        if (is_err()) {
+            return std::move(_get<1>());
         } else {
             rstd::unreachable();
         }
@@ -428,60 +469,52 @@ public:
 
     constexpr auto as_ref() const -> Result<std::add_lvalue_reference_t<std::add_const_t<T>>,
                                             std::add_lvalue_reference_t<std::add_const_t<E>>> {
-        auto& self = cast_self();
-        if (self.is_ok()) {
-            return Ok(self.m_val);
+        if (is_ok()) {
+            return Ok(_get<0>());
         } else {
-            return Err(self.m_err);
+            return Err(_get<1>());
         }
     }
 
     [[nodiscard]]
-    constexpr const T* operator->() const noexcept {
-        auto& self = cast_self();
-        rstd_assert(self.m_has_val);
-        return &(self.m_val);
+    constexpr const meta::remove_reference_t<T>* operator->() const noexcept {
+        rstd_assert(is_ok());
+        return std::addressof(_get<0>());
     }
 
     [[nodiscard]]
-    constexpr T* operator->() noexcept {
-        auto& self = cast_self();
-        rstd_assert(self.m_has_val);
-        return &(self.m_val);
+    constexpr meta::remove_reference_t<T>* operator->() noexcept {
+        rstd_assert(is_ok());
+        return std::addressof(_get<0>());
     }
 
     [[nodiscard]]
     constexpr const T& operator*() const& noexcept {
-        auto& self = cast_self();
-        rstd_assert(self.m_has_val);
-        return self.m_val;
+        rstd_assert(is_ok());
+        return _get<0>();
     }
 
     [[nodiscard]]
     constexpr T& operator*() & noexcept {
-        auto& self = cast_self();
-        rstd_assert(self.m_has_val);
-        return self.m_val;
+        rstd_assert(is_ok());
+        return _get<0>();
     }
 
     [[nodiscard]]
     constexpr const T&& operator*() const&& noexcept {
-        auto& self = cast_self();
-        rstd_assert(self.m_has_val);
-        return std::move(self.m_val);
+        rstd_assert(is_ok());
+        return std::move(_get<0>());
     }
 
     [[nodiscard]]
     constexpr T&& operator*() && noexcept {
-        auto& self = cast_self();
-        rstd_assert(self.m_has_val);
-        return std::move(self.m_val);
+        rstd_assert(is_ok());
+        return std::move(_get<0>());
     }
 
     [[nodiscard]]
     constexpr explicit operator bool() const noexcept {
-        auto& self = cast_self();
-        return self.m_has_val;
+        return is_ok();
     }
 };
 
@@ -491,19 +524,17 @@ struct result_impl : result_base<T, E> {};
 template<typename T, typename E>
 struct result_impl<const T&, E> : result_base<const T&, E> {
     constexpr auto copied() -> Result<T, E> {
-        auto& self = this->cast_self();
-        if (self.m_has_val) {
-            return Result<T, E>::Ok(self.m_val);
+        if (this->is_ok()) {
+            return Ok(T(this->template _self_get<0>()));
         } else {
-            return Result<T, E>::Err(self.m_err);
+            return Err(E(this->template _self_get<1>()));
         }
     }
 
     auto cloned() -> Result<T, E>
         requires Implemented<T, clone::Clone>
     {
-        auto& self = this->cast_self();
-        return self.map([](auto t) {
+        return this->map([](auto t) {
             return Impl<clone::Clone, T>::clone(t);
         });
     }
@@ -512,19 +543,17 @@ struct result_impl<const T&, E> : result_base<const T&, E> {
 template<typename T, typename E>
 struct result_impl<T&, E> : result_base<T&, E> {
     constexpr auto copied() -> Result<T, E> {
-        auto& self = this->cast_self();
-        if (self.m_has_val) {
-            return Result<T, E>::Ok(self.m_val);
+        if (this->is_ok()) {
+            return Ok(T(this->template _self_get<0>()));
         } else {
-            return Result<T, E>::Err(self.m_err);
+            return Err(E(this->template _self_get<1>()));
         }
     }
 
     auto cloned() -> Result<T, E>
         requires Implemented<T, clone::Clone>
     {
-        auto& self = this->cast_self();
-        return self.map([](auto t) {
+        return this->map([](auto t) {
             return Impl<clone::Clone, T>::clone(t);
         });
     }
@@ -533,35 +562,36 @@ struct result_impl<T&, E> : result_base<T&, E> {
 template<typename T, typename E>
 struct result_impl<Result<T, E>, E> : result_base<Result<T, E>, E> {
     constexpr auto flatten() -> Result<T, E> {
-        auto& self = this->cast_self();
-        if (self.is_ok()) {
-            return self.m_val;
+        if (this->is_ok()) {
+            return this->template _self_get<0>();
         } else {
-            return Err(self.m_err);
+            return Err(this->template _self_get<1>());
         }
     }
+};
+
+template<typename T, typename E>
+struct result_helper {
+    using union_val_t =
+        meta::conditional_t<meta::is_reference_v<T>,
+                            meta::add_pointer_t<meta::remove_reference_t<T>>, std::remove_cv_t<T>>;
+    using union_err_t = meta::conditional_t<meta::is_reference_v<E>,
+                                            meta::add_pointer_t<meta::remove_reference_t<E>>, E>;
 };
 
 } // namespace detail
 
 template<typename T, typename E>
-class Result : public detail::result_impl<T, E>, public WithTrait<Result<T, E>, clone::Clone> {
+class Result : public detail::result_impl<T, E> {
     template<typename, typename>
     friend class detail::result_base;
-    template<typename, typename>
-    friend class detail::result_impl;
     template<template<typename> class, typename>
     friend class rstd::Impl;
 
-    using union_value_t =
-        meta::conditional_t<meta::is_reference_v<T>,
-                            meta::add_pointer_t<meta::remove_reference_t<T>>, std::remove_cv_t<T>>;
-    using union_error_t = meta::conditional_t<meta::is_reference_v<E>,
-                                              meta::add_pointer_t<meta::remove_reference_t<E>>, E>;
-
+    using helper = detail::result_helper<T, E>;
     union {
-        union_value_t m_val;
-        union_error_t m_err;
+        helper::union_val_t m_val;
+        helper::union_err_t m_err;
     };
     bool m_has_val;
 
@@ -576,36 +606,53 @@ public:
         requires std::is_default_constructible_v<T>
         : m_val(), m_has_val(true) {}
 
-    Result(Ok<T>&& ok)
-        requires(! meta::is_reference_v<T>)
-        : m_val(std::move(ok).m_val), m_has_val(true) {}
+    // Ok ctor
+    Result(T&& val) noexcept(meta::nothrow_constructible<T, T>)
+        requires meta::same_as<E, None>
+    {
+        this->construct_val(std::forward<T>(val));
+    }
 
-    Result(Err<E>&& err)
-        requires(! meta::is_reference_v<E>)
-        : m_err(std::move(err).m_val), m_has_val(false) {}
+    // Err ctor
+    Result(E&& err) noexcept(meta::nothrow_constructible<E, E>)
+        requires meta::same_as<T, None>
+    {
+        this->construct_err(std::forward<E>(err));
+    }
 
-    Result(Ok<T> ok)
-        requires(meta::is_reference_v<T>)
-        : m_val(&ok.m_val), m_has_val(true) {}
+    // from Ok
+    template<typename U>
+    Result(U&& o) noexcept(
+        meta::nothrow_constructible<T, typename detail::result_traits<U>::value_type>)
+        requires meta::constructible_from<None, typename detail::result_traits<U>::error_type> &&
+                 meta::constructible_from<T, typename detail::result_traits<U>::value_type>
+    {
+        this->construct_val(meta::remove_cvref_t<U>::template _get<0>(std::forward<U>(o)));
+    }
 
-    Result(Err<E> err)
-        requires(meta::is_reference_v<E>)
-        : m_err(&err.m_val), m_has_val(false) {}
+    // from Err
+    template<typename U>
+    Result(U&& o) noexcept(
+        meta::nothrow_constructible<E, typename detail::result_traits<U>::error_type>)
+        requires meta::constructible_from<None, typename detail::result_traits<U>::value_type> &&
+                 meta::constructible_from<E, typename detail::result_traits<U>::error_type>
+    {
+        this->construct_err(meta::remove_cvref_t<U>::template _get<1>(std::forward<U>(o)));
+    }
 
     Result(const Result&)     = default;
     Result(Result&&) noexcept = default;
 
     constexpr Result(Result&& o) noexcept(
-        meta::conjunction_v<std::is_nothrow_move_constructible<T>,
-                            std::is_nothrow_move_constructible<E>>)
-        requires std::is_move_constructible_v<T> && std::is_move_constructible_v<E> &&
-                 (! std::is_trivially_move_constructible_v<T> ||
-                  ! std::is_trivially_move_constructible_v<E>)
-        : m_has_val(o.m_has_val) {
-        if (m_has_val)
-            std::construct_at(&m_val, std::move(o).m_val);
-        else
-            std::construct_at(&m_err, std::move(o).m_err);
+        meta::conjunction_v<meta::is_nothrow_move_constructible<T>,
+                            meta::is_nothrow_move_constructible<E>>)
+        requires meta::custom_move_constructible<T> && meta::custom_move_constructible<E>
+    {
+        if (o.m_has_val) {
+            this->construct_val(Result::template _get<0>(std::move(o)));
+        } else {
+            this->construct_err(Result::template _get<1>(std::move(o)));
+        }
     }
 
     constexpr ~Result() = default;
@@ -614,12 +661,12 @@ public:
         requires(! std::is_trivially_destructible_v<T>) || (! std::is_trivially_destructible_v<E>)
     {
         if (m_has_val) {
-            if constexpr (std::is_trivially_destructible_v<T>) {
-                std::destroy_at(&(m_val));
+            if constexpr (! std::is_trivially_destructible_v<T>) {
+                std::destroy_at(std::addressof(m_val));
             }
         } else {
-            if constexpr (std::is_trivially_destructible_v<E>) {
-                std::destroy_at(&(m_err));
+            if constexpr (! std::is_trivially_destructible_v<E>) {
+                std::destroy_at(std::addressof(m_err));
             }
         }
     }
@@ -627,27 +674,42 @@ public:
     Result& operator=(const Result&) = delete;
 
     constexpr Result& operator=(Result&& o) noexcept(
-        meta::conjunction_v<std::is_nothrow_move_constructible<T>,
-                            std::is_nothrow_move_constructible<E>,
-                            std::is_nothrow_move_assignable<T>, std::is_nothrow_move_assignable<E>>)
-        requires std::is_move_assignable_v<T> && std::is_move_constructible_v<T> &&
-                 std::is_move_assignable_v<E> && std::is_move_constructible_v<E> &&
-                 (std::is_nothrow_move_constructible_v<T> ||
-                  std::is_nothrow_move_constructible_v<E>)
+        meta::conjunction_v<
+            meta::is_nothrow_move_constructible<T>, meta::is_nothrow_move_constructible<E>,
+            meta::is_nothrow_move_assignable<T>, meta::is_nothrow_move_assignable<E>>)
+        requires meta::is_move_assignable_v<T> && meta::is_move_constructible_v<T> &&
+                 meta::is_move_assignable_v<E> && meta::is_move_constructible_v<E>
     {
         if (o.m_has_val)
-            this->assign_val(std::move(o.m_val));
+            this->assign_val(Result::template _get<0>(std::move(o)));
         else
-            this->assign_err(std::move(o.m_err));
+            this->assign_err(Result::template _get<1>(std::move(o)));
         return *this;
     }
 
-    constexpr bool operator==(const Ok<T>& ok) const noexcept {
-        return this->is_ok() && ok.m_val == m_val;
-    }
-    constexpr bool operator==(const Err<E>& err) const noexcept {
-        return this->is_err() && err.m_err == m_err;
+    template<typename U, typename E2>
+        requires(! meta::is_void_v<U>) &&
+                requires(const T& t, const U& u, const E& e, const E2& e2) {
+                    { t == u } -> meta::convertible_to<bool>;
+                    { e == e2 } -> meta::convertible_to<bool>;
+                }
+    friend constexpr bool operator==(const Result& x, const Result<U, E2>& y) noexcept(
+        noexcept(bool(Result::template _get<0>(x) == Result<U, E2>::template _get<0>(y))) &&
+        noexcept(bool(Result::template _get<1>(x) == Result<U, E2>::template _get<1>(y)))) {
+        if (x.is_ok())
+            return y.is_ok() &&
+                   bool(Result::template _get<0>(x) == Result<U, E2>::template _get<0>(y));
+        else
+            return ! y.is_ok() &&
+                   bool(Result::template _get<1>(x) == Result<U, E2>::template _get<1>(y));
     }
 };
 
+// Ok
+template<typename T>
+Result(T&) -> Result<T&, None>;
+
+// Err
+template<typename T>
+Result(T&) -> Result<None, T&>;
 } // namespace rstd::result
