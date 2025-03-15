@@ -659,7 +659,7 @@ public:
     constexpr Result(Result&& o) noexcept(
         meta::conjunction_v<meta::is_nothrow_move_constructible<T>,
                             meta::is_nothrow_move_constructible<E>>)
-        requires meta::custom_move_constructible<T> && meta::custom_move_constructible<E>
+        requires meta::custom_move_constructible<T> || meta::custom_move_constructible<E>
     {
         if (o.m_has_val) {
             this->construct_val(Result::template _get<0>(std::move(o)));
