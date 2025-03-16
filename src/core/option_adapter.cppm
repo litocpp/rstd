@@ -19,7 +19,7 @@ struct option_adapter : option_adapter_base<T> {
     auto ok_or(E err) -> Result<T, E> {
         auto self = static_cast<Option<T>&>(*this);
         if (self.is_some()) {
-            return Ok(std::move(self._get()));
+            return Ok(self._get_move());
         } else {
             return Err(err);
         }
@@ -30,7 +30,7 @@ struct option_adapter : option_adapter_base<T> {
     auto ok_or_else(F&& err) -> Result<T, E> {
         auto self = static_cast<Option<T>&>(*this);
         if (self.is_some()) {
-            return Ok(std::move(self._get()));
+            return Ok(self._get_move());
         } else {
             return Err(std::move(err)());
         }
@@ -55,7 +55,7 @@ private:
     template<typename U>
     static constexpr auto _flatten(Option<T>&& self) -> Option<U> {
         if (self.is_some()) {
-            return std::move(self._get());
+            return self._get_move();
         } else {
             return None();
         }
