@@ -35,9 +35,11 @@ target_sources(
          clone.cppm
          option.cppm
          result.cppm
+         option_adapter.cppm
          fmt.cppm
          ops/mod.cppm
          ops/function.cppm
          mem/mod.cppm
          mem/manually_drop.cppm
-         mem/maybe_uninit.cppm)
+         mem/maybe_uninit.cppm
+         )

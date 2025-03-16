@@ -14,13 +14,18 @@ namespace rstd::result
 export template<typename T, typename E>
 class Result;
 
-struct Unknown {};
+struct UnknownOk {
+    constexpr bool operator==(const UnknownOk&) const noexcept { return true; }
+};
+struct UnknownErr {
+    constexpr bool operator==(const UnknownErr&) const noexcept { return true; }
+};
 
 export template<typename T>
-using Ok = Result<T, Unknown>;
+using Ok = Result<T, UnknownErr>;
 
 export template<typename T>
-using Err = Result<Unknown, T>;
+using Err = Result<UnknownOk, T>;
 
 namespace detail
 {
@@ -302,14 +307,14 @@ public:
         if (is_ok()) {
             return std::move(_get<0>());
         } else
-            return option::None();
+            return rstd::None();
     }
 
     auto err() -> Option<E> {
         if (is_err()) {
             return std::move(_get<1>());
         } else
-            return option::None();
+            return rstd::None();
     }
 
     template<typename F, typename U = std::invoke_result_t<F, T>>
@@ -621,14 +626,14 @@ public:
 
     // Ok ctor
     Result(T&& val) noexcept(meta::nothrow_constructible<T, T>)
-        requires meta::same_as<E, Unknown>
+        requires meta::same_as<E, UnknownErr>
     {
         this->construct_val(std::forward<T>(val));
     }
 
     // Err ctor
     Result(E&& err) noexcept(meta::nothrow_constructible<E, E>)
-        requires meta::same_as<T, Unknown>
+        requires meta::same_as<T, UnknownOk>
     {
         this->construct_err(std::forward<E>(err));
     }
@@ -637,7 +642,8 @@ public:
     template<typename U>
     Result(U&& o) noexcept(
         meta::nothrow_constructible<T, typename detail::result_traits<U>::value_type>)
-        requires meta::constructible_from<Unknown, typename detail::result_traits<U>::error_type> &&
+        requires meta::constructible_from<UnknownErr,
+                                          typename detail::result_traits<U>::error_type> &&
                  meta::constructible_from<T, typename detail::result_traits<U>::value_type>
     {
         this->construct_val(meta::remove_cvref_t<U>::template _get<0>(std::forward<U>(o)));
@@ -647,7 +653,8 @@ public:
     template<typename U>
     Result(U&& o) noexcept(
         meta::nothrow_constructible<E, typename detail::result_traits<U>::error_type>)
-        requires meta::constructible_from<Unknown, typename detail::result_traits<U>::value_type> &&
+        requires meta::constructible_from<UnknownOk,
+                                          typename detail::result_traits<U>::value_type> &&
                  meta::constructible_from<E, typename detail::result_traits<U>::error_type>
     {
         this->construct_err(meta::remove_cvref_t<U>::template _get<1>(std::forward<U>(o)));
@@ -718,9 +725,9 @@ public:
 
 // Ok
 template<typename T>
-Result(T&) -> Result<T&, Unknown>;
+Result(T&) -> Result<T&, UnknownErr>;
 
 // Err
 template<typename T>
-Result(T&) -> Result<Unknown, T&>;
+Result(T&) -> Result<UnknownOk, T&>;
 } // namespace rstd::result

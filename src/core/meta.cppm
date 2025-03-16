@@ -206,18 +206,26 @@ concept nothrow_move_assignable = is_nothrow_move_assignable_v<T>;
 export template<typename T>
 concept custom_move_assignable = (is_move_assignable_v<T> && ! is_trivially_move_assignable_v<T>);
 
-template<class T>
+export template<class T>
+concept trivially_value = is_trivially_copy_constructible_v<T> && ! is_reference_v<T>;
+
+export template<class T>
 using remove_cvref = std::remove_cvref<T>;
-template<class T>
+export template<class T>
 using remove_cvref_t = std::remove_cvref_t<T>;
 
-template<class T>
+export template<class T>
 using is_void = std::is_void<T>;
-template<class T>
+export template<class T>
 inline constexpr bool is_void_v = std::is_void_v<T>;
 
-template<class From, class To>
+export template<class From, class To>
 concept convertible_to =
     std::is_convertible_v<From, To> && requires { static_cast<To>(std::declval<From>()); };
 
+export template<class F, class... ArgTypes>
+using invoke_result = std::invoke_result<F, ArgTypes...>;
+
+export template<class F, class... ArgTypes>
+using invoke_result_t = std::invoke_result_t<F, ArgTypes...>;
 } // namespace rstd::meta

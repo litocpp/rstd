@@ -13,10 +13,40 @@ namespace rstd::option
 export template<typename T>
 class Option;
 
-export template<typename T>
-using Some = Option<T>;
+struct Unknown {};
 
-export struct None {};
+export template<>
+class Option<void> {
+public:
+    Option()  = delete;
+    ~Option() = delete;
+
+    template<typename U = void, typename T>
+    static constexpr auto Some(T&& val) {
+        if constexpr (meta::same_as<U, void>) {
+            if constexpr (meta::trivially_value<meta::remove_reference_t<T>>) {
+                return Option<meta::remove_reference_t<T>>(std::move(val));
+            } else {
+                return Option<T>(std::forward<T>(val));
+            }
+        } else {
+            return Option<U>(std::forward<T>(val));
+        }
+    }
+
+    template<typename U = void, typename T = Unknown>
+    static constexpr auto None(T&& = {}) {
+        if constexpr (meta::same_as<U, void>) {
+            if constexpr (meta::same_as<Unknown, T>) {
+                return Unknown();
+            } else {
+                return Option<T>();
+            }
+        } else {
+            return Option<U>();
+        }
+    }
+};
 
 namespace detail
 {
@@ -198,13 +228,21 @@ public:
         return std::move(f)();
     }
 
+    constexpr auto unwrap_unchecked() -> T {
+        if (this->is_some()) {
+            return std::move(_get());
+        } else {
+            rstd::unreachable();
+        }
+    }
+
     template<typename F, typename U = std::invoke_result_t<F, T>>
         requires ImplementedT<FnOnce<F, U(T)>>
     auto map(F&& f) -> Option<U> {
         if (this->is_some()) {
-            return Option<U>(std::move(f)(std::move(*cast_self())));
+            return Option<void>::Some(std::move(f)(std::move(*cast_self())));
         }
-        return Option<U>();
+        return Option<void>::None<U>();
     }
 
     [[nodiscard]]
@@ -237,6 +275,9 @@ public:
     }
 };
 
+template<typename T>
+struct option_adapter;
+
 } // namespace detail
 } // namespace rstd::option
 
@@ -245,10 +286,15 @@ namespace rstd
 export template<typename T>
 using Option = option::Option<T>;
 
-export template<typename T>
-using Some = option::Some<T>;
+export template<typename U = void, typename T>
+constexpr auto Some(T&& val) {
+    return Option<void>::Some<U>(std::forward<T>(val));
+}
 
-export using None = option::None;
+export template<typename U = void, typename T = option::Unknown>
+constexpr auto None(T&& t = {}) {
+    return Option<void>::None<U>(std::move(t));
+}
 
 export template<template<typename> class T, typename Self>
     requires meta::is_specialization_of_v<T<Self>, clone::Clone> &&
@@ -262,7 +308,7 @@ struct Impl<T, Self> {
         if (o.is_some()) {
             return Some(Impl<clone::Clone, uv_t>::clone(o._ptr()));
         }
-        return None();
+        return option::Unknown();
     }
 
     static void clone_from(TraitPtr self, Self& source) {
@@ -283,11 +329,15 @@ namespace rstd::option
 {
 
 template<typename T>
-class Option : public detail::option_base<T> {
+class Option : public detail::option_base<T>, public detail::option_adapter<T> {
     template<typename>
     friend class detail::option_base;
+    template<typename>
+    friend class detail::option_adapter;
     template<template<typename> class, typename>
     friend class rstd::Impl;
+
+    friend class Option<void>;
 
     using traits        = detail::option_base<T>::traits;
     using union_value_t = detail::option_store<T>::union_value_t;
@@ -296,17 +346,7 @@ public:
     using value_type = T;
 
     constexpr Option() noexcept = default;
-    constexpr Option(None) noexcept: Option() {}
-
-    constexpr Option(T&& val) noexcept(meta::nothrow_constructible<T, T>) {
-        this->_construct_val(std::forward<T>(val));
-    }
-
-    constexpr Option(meta::remove_reference_t<T>* ptr) noexcept
-        requires meta::is_reference_v<T>
-    {
-        this->_construct_val(*ptr);
-    }
+    constexpr Option(Unknown) noexcept: Option() {}
 
     Option(const Option&)
         requires meta::is_trivially_copy_constructible_v<union_value_t>
@@ -351,6 +391,29 @@ public:
             this->_assign_none();
         }
         return *this;
+    }
+
+    template<typename U>
+        requires(! meta::is_void_v<U>) && requires(const T& t, const U& u) {
+            { t == u } -> meta::convertible_to<bool>;
+        }
+    friend constexpr bool
+    operator==(const Option& x, const Option<U>& y) noexcept(noexcept(bool(x._get() == y._get()))) {
+        if (x.is_some())
+            return y.is_some() && bool(x._get() == y._get());
+        else
+            return ! y.is_some();
+    }
+
+private:
+    constexpr Option(T&& val) noexcept(meta::nothrow_constructible<T, T>) {
+        this->_construct_val(std::forward<T>(val));
+    }
+
+    constexpr Option(meta::remove_reference_t<T>* ptr) noexcept
+        requires meta::is_reference_v<T>
+    {
+        this->_construct_val(*ptr);
     }
 };
 

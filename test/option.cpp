@@ -2,6 +2,10 @@
 import rstd.core;
 using namespace rstd;
 
+static_assert(meta::same_as<decltype(Some(Some<int>(1))), Option<Option<int>>>);
+static_assert(meta::same_as<decltype(Some(None<int>())), Option<Option<int>>>);
+static_assert(meta::same_as<decltype(None(None<int>())), Option<Option<int>>>);
+
 TEST(Option, Basic) {
     Option<int> none;
     EXPECT_TRUE(none.is_none());
@@ -14,8 +18,16 @@ TEST(Option, Basic) {
 }
 
 TEST(Option, Reference) {
-    int          value = 42;
-    Option<int&> ref(value);
+    int  value = 42;
+    auto ref   = Some<int&>(value);
+    static_assert(meta::same_as<decltype(ref), option::Option<int&>>);
+    static_assert(meta::same_as<decltype(Some(value)), option::Option<int>>);
+    {
+        std::unique_ptr<int> ptr;
+        static_assert(meta::same_as<decltype(Some(ptr)), option::Option<std::unique_ptr<int>&>>);
+        static_assert(
+            meta::same_as<decltype(Some(std::move(ptr))), option::Option<std::unique_ptr<int>>>);
+    }
     EXPECT_TRUE(ref.is_some());
     EXPECT_EQ(*ref, 42);
 
@@ -39,15 +51,15 @@ auto rstd::Impl<clone::Clone, CloneType>::clone(TraitPtr self) -> CloneType {
 }
 
 TEST(Option, Clone) {
-    Option<CloneType> original(CloneType { 42 });
-    auto              cloned = original.clone();
+    auto original = Some(CloneType { 42 });
+    auto cloned   = original.clone();
     EXPECT_TRUE(cloned.is_some());
     EXPECT_EQ((*cloned).value, 42);
 }
 
 TEST(Option, Map) {
-    Option<int> some(42);
-    auto        mapped = some.map([](int x) {
+    auto some   = Some(42);
+    auto mapped = some.map([](int x) {
         return x * 2;
     });
     EXPECT_TRUE(mapped.is_some());
@@ -61,21 +73,21 @@ TEST(Option, Map) {
 }
 
 TEST(Option, UnwrapOr) {
-    Option<int> some(42);
+    auto some = Some(42);
     EXPECT_EQ(some.unwrap_or(0), 42);
 
-    Option<int> none;
+    auto none = None<int>();
     EXPECT_EQ(none.unwrap_or(0), 0);
 }
 
 TEST(Option, UnwrapOrElse) {
-    Option<int> some(42);
+    auto some = Some(42);
     EXPECT_EQ(some.unwrap_or_else([]() {
         return 0;
     }),
               42);
 
-    Option<int> none;
+    auto none = None<int>();
     EXPECT_EQ(none.unwrap_or_else([]() {
         return 0;
     }),
@@ -83,7 +95,7 @@ TEST(Option, UnwrapOrElse) {
 }
 
 TEST(Option, IsSomeAnd) {
-    Option<int> some(42);
+    auto some = Some(42);
     EXPECT_TRUE(some.is_some_and([](int x) {
         return x > 40;
     }));
@@ -91,14 +103,14 @@ TEST(Option, IsSomeAnd) {
         return x < 40;
     }));
 
-    Option<int> none;
+    auto none = None<int>();
     EXPECT_FALSE(none.is_some_and([](int x) {
         return x > 40;
     }));
 }
 
 TEST(Option, MoveSemantics) {
-    Option<std::unique_ptr<int>> some(std::make_unique<int>(42));
+    auto some = Some<std::unique_ptr<int>>(std::make_unique<int>(42));
     EXPECT_TRUE(some.is_some());
 
     auto moved = std::move(some);
@@ -107,11 +119,33 @@ TEST(Option, MoveSemantics) {
 }
 
 TEST(Option, ExpectUnwrap) {
-    Option<int> some(42);
+    auto some = Some(42);
     EXPECT_EQ(some.unwrap(), 42);
     EXPECT_EQ(some.expect("shouldn't fail"), 42);
 
-    Option<int> none;
+    auto none = None<int>();
     EXPECT_DEATH(none.unwrap(), "");
     EXPECT_DEATH(none.expect("failed"), "failed");
+}
+
+TEST(Option, OkOr) {
+    auto some = Some(42);
+    auto none = None<int>();
+    EXPECT_EQ(some.ok_or(1), Ok(42));
+    EXPECT_EQ(none.ok_or(1), Err(1));
+
+    EXPECT_EQ(none.ok_or_else([] {
+        return 1;
+    }),
+              Err(1));
+}
+
+TEST(Option, Transpose) {
+    auto opt = Some(Ok(42));
+    EXPECT_EQ(opt.transpose(), Ok(Some(42)));
+}
+
+TEST(Option, Flatten) {
+    auto opt = Some(Some(42));
+    EXPECT_EQ(opt.flatten(), Some(42));
 }

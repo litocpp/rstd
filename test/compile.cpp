@@ -1,7 +1,30 @@
+#include <utility>
 namespace
 {
 
+// trivially
 struct A {};
+// non-trivially
+struct B {
+    B() {}
+    ~B() {}
+    B(const B&) {}
+    B(B&&) noexcept {}
+    B& operator=(const B&) { return *this; }
+    B& operator=(B&&) noexcept { return *this; }
+
+private:
+    A a;
+};
+
+struct NoCopyMove {
+    NoCopyMove() {}
+    NoCopyMove(const NoCopyMove&)                = delete;
+    NoCopyMove(NoCopyMove&&)                     = delete;
+    NoCopyMove& operator=(const NoCopyMove&)     = delete;
+    NoCopyMove& operator=(NoCopyMove&&) noexcept = delete;
+};
+
 static A i {};
 
 template<int I>
@@ -64,7 +87,16 @@ static decltype(auto) _dt_auto_check() {
     }
 }
 
+template<typename T>
+T _forward(T&&) {}
+
+template<typename T>
+T _tcall(T) {}
+
 static void _do() {
+    A          a;
+    B          b;
+    NoCopyMove n;
     A (*x)();
     A& (*x_left)();
     A && (*x_right)();
@@ -91,6 +123,18 @@ static void _do() {
     x_left  = _dt_auto_check<2>;
     x_right = _dt_auto_check<3>;
     x       = _dt_auto_check<4>;
+
+    static_assert(std::same_as<decltype(_forward(a)), A&>);
+    static_assert(std::same_as<decltype(_forward(A {})), A>);
+
+    static_assert(std::same_as<decltype(_tcall(b)), B>);
+    static_assert(std::same_as<decltype(_tcall(static_cast<B&&>(b))), B>);
+    static_assert(std::same_as<decltype(_tcall(B {})), B>);
+
+    static_assert(std::is_trivially_copy_constructible_v<A&>);
+    static_assert(std::is_trivially_copy_constructible_v<B&>);
+    static_assert(std::is_trivially_copy_constructible_v<A>);
+    static_assert(! std::is_trivially_copy_constructible_v<B>);
 }
 
 } // namespace
