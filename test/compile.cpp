@@ -135,6 +135,8 @@ static void _do() {
     static_assert(std::is_trivially_copy_constructible_v<B&>);
     static_assert(std::is_trivially_copy_constructible_v<A>);
     static_assert(! std::is_trivially_copy_constructible_v<B>);
+
+    static_assert(std::same_as<std::add_rvalue_reference_t<B&>, B&>);
 }
 
 } // namespace

@@ -207,6 +207,11 @@ protected:
         return result_base::template _get<I>(static_cast<const Result<T, E>&&>(*this));
     }
 
+    template<i32 I>
+    constexpr decltype(auto) _get_move() {
+        return result_base::template _get<I>(static_cast<Result<T, E>&&>(*this));
+    }
+
     template<i32 I, typename U>
     constexpr decltype(auto) _self_get(U&& self) const {
         return result_base::template _get<I>(std::forward<U>(self));
@@ -289,7 +294,7 @@ public:
         requires ImplementedT<FnOnce<F, bool(T)>>
     auto is_ok_and(F&& f) -> bool {
         if (is_ok()) {
-            return std::move(f)(std::move(_get<0>()));
+            return std::move(f)(_get_move<0>());
         } else
             return false;
     }
@@ -298,21 +303,21 @@ public:
         requires ImplementedT<FnOnce<F, bool(E)>>
     auto is_err_and(F&& f) -> bool {
         if (is_err()) {
-            return std::move(f)(std::move(_get<1>()));
+            return std::move(f)(_get_move<1>());
         } else
             return false;
     }
 
     auto ok() -> Option<T> {
         if (is_ok()) {
-            return std::move(_get<0>());
+            return _get_move<0>();
         } else
             return rstd::None();
     }
 
     auto err() -> Option<E> {
         if (is_err()) {
-            return std::move(_get<1>());
+            return _get_move<1>();
         } else
             return rstd::None();
     }
@@ -321,7 +326,7 @@ public:
         requires ImplementedT<FnOnce<F, U(T)>>
     auto map(F&& op) -> Result<U, E> {
         if (is_ok()) {
-            return Ok(std::move(op)(std::move(_get<0>())));
+            return Ok(std::move(op)(_get_move<0>()));
         } else {
             return Err(_get<1>());
         }
@@ -331,7 +336,7 @@ public:
         requires ImplementedT<FnOnce<F, U(T)>>
     auto map_or(U&& def, F&& op) -> U {
         if (is_ok()) {
-            return std::move(op)(std::move(_get<0>()));
+            return std::move(op)(_get_move<0>());
         } else {
             return def;
         }
@@ -341,18 +346,18 @@ public:
         requires ImplementedT<FnOnce<D, U(E)>, FnOnce<F, U(T)>>
     auto map_or_else(D&& def, F&& f) -> U {
         if (is_ok()) {
-            return std::move(f)(std::move(_get<0>()));
+            return std::move(f)(_get_move<0>());
         } else {
-            return std::move(def)(std::move(_get<1>()));
+            return std::move(def)(_get_move<1>());
         }
     }
     template<typename F, typename O>
         requires ImplementedT<FnOnce<O, F(E)>>
     auto map_err(O&& op) -> Result<T, F> {
         if (is_ok()) {
-            return Ok(std::move(_get<0>()));
+            return Ok(_get_move<0>());
         } else {
-            return Err(std::move(op)(std::move(_get<1>())));
+            return Err(std::move(op)(_get_move<1>()));
         }
     }
 
@@ -380,7 +385,7 @@ public:
         requires fmt::formattable<E>
     {
         if (is_ok()) {
-            return std::move(_get<0>());
+            return _get_move<0>();
         } else {
             unwrap_failed(msg, _get<1>());
             rstd::unreachable();
@@ -391,7 +396,7 @@ public:
         requires fmt::formattable<E>
     {
         if (is_ok()) {
-            return std::move(_get<0>());
+            return _get_move<0>();
         } else {
             unwrap_failed("called `Result::unwrap()` on an `Err` value", _get<1>());
             rstd::unreachable();
@@ -402,7 +407,7 @@ public:
         requires meta::is_default_constructible_v<T>
     {
         if (is_ok()) {
-            return std::move(_get<0>());
+            return _get_move<0>();
         } else {
             return {};
         }
@@ -415,7 +420,7 @@ public:
             unwrap_failed(msg, _get<0>());
             rstd::unreachable();
         } else {
-            return std::move(_get<1>());
+            return _get_move<1>();
         }
     }
 
@@ -423,7 +428,7 @@ public:
         requires fmt::formattable<T>
     {
         if (is_err()) {
-            return std::move(_get<0>());
+            return _get_move<0>();
         } else {
             unwrap_failed("called `Result::unwrap_err()` on an `Ok` value", _get<1>());
             rstd::unreachable();
@@ -434,16 +439,16 @@ public:
         requires ImplementedT<FnOnce<F, Result<U, E>(T)>>
     auto and_then(F&& op) -> Result<U, E> {
         if (is_ok()) {
-            return std::move(op)(std::move(_get<0>()));
+            return std::move(op)(_get_move<0>());
         } else {
-            return Err(std::move(_get<1>()));
+            return Err(_get_move<1>());
         }
     }
 
     template<typename F>
     auto or_(Result<T, F>&& res) -> Result<T, F> {
         if (is_ok()) {
-            return Ok(std::move(_get<0>()));
+            return Ok(_get_move<0>());
         } else {
             auto& self = _cast();
             return std::move(res);
@@ -454,15 +459,15 @@ public:
         requires ImplementedT<FnOnce<O, Result<T, F>(E)>>
     auto or_else(O&& op) -> Result<T, F> {
         if (is_ok()) {
-            return Ok(std::move(_get<0>()));
+            return Ok(_get_move<0>());
         } else {
-            return std::move(op)(std::move(_get<1>()));
+            return std::move(op)(_get_move<1>());
         }
     }
 
     auto unwrap_or(T&& def) -> T {
         if (is_ok()) {
-            return std::move(_get<0>());
+            return _get_move<0>();
         } else {
             return std::move(def);
         }
@@ -472,15 +477,15 @@ public:
         requires ImplementedT<FnOnce<F, T(E)>>
     auto unwrap_or_else(F&& op) -> T {
         if (is_ok()) {
-            return std::move(_get<0>());
+            return _get_move<0>();
         } else {
-            return std::move(op)(std::move(_get<1>()));
+            return std::move(op)(_get_move<1>());
         }
     }
 
     auto unwrap_unchecked() -> T {
         if (is_ok()) {
-            return std::move(_get<0>());
+            return _get_move<0>();
         } else {
             rstd::unreachable();
         }
@@ -488,7 +493,7 @@ public:
 
     auto unwrap_err_unchecked() -> E {
         if (is_err()) {
-            return std::move(_get<1>());
+            return _get_move<1>();
         } else {
             rstd::unreachable();
         }
@@ -530,13 +535,13 @@ public:
     [[nodiscard]]
     constexpr const T&& operator*() const&& noexcept {
         rstd_assert(is_ok());
-        return std::move(_get<0>());
+        return _get<0>();
     }
 
     [[nodiscard]]
     constexpr T&& operator*() && noexcept {
         rstd_assert(is_ok());
-        return std::move(_get<0>());
+        return _get<0>();
     }
 
     [[nodiscard]]

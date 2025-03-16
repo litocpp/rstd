@@ -161,9 +161,9 @@ struct option_base : option_store<T>, WithTrait<Option<T>, clone::Clone> {
     using traits = detail::option_traits<Option<T>>;
 
 protected:
-    constexpr auto cast_self() -> Option<T>& { return static_cast<Option<T>&>(*this); }
+    constexpr auto _cast() -> Option<T>& { return static_cast<Option<T>&>(*this); }
 
-    constexpr auto cast_self() const -> const Option<T>& {
+    constexpr auto _cast() const -> const Option<T>& {
         return static_cast<const Option<T>&>(*this);
     }
 
@@ -182,6 +182,7 @@ protected:
     constexpr decltype(auto) _get() const&& { return _get(static_cast<const Option<T>&&>(*this)); }
     constexpr decltype(auto) _get() & { return _get(static_cast<Option<T>&>(*this)); }
     constexpr decltype(auto) _get() && { return _get(static_cast<Option<T>&&>(*this)); }
+    constexpr decltype(auto) _get_move() { return _get(static_cast<Option<T>&&>(*this)); }
 
 public:
     constexpr auto is_none() const noexcept -> bool { return ! this->is_some(); }
@@ -190,14 +191,14 @@ public:
         requires ImplementedT<FnOnce<F, bool(T)>>
     auto is_some_and(F&& f) -> bool {
         if (this->is_some()) {
-            return std::move(f)(std::move(*cast_self()));
+            return std::move(f)(_get_move());
         }
         return false;
     }
 
     auto expect(str& msg) -> T {
         if (this->is_some()) {
-            return std::move(*cast_self());
+            return _get_move();
         }
         rstd::panic("{}", msg);
         rstd::unreachable();
@@ -205,7 +206,7 @@ public:
 
     auto unwrap() -> T {
         if (this->is_some()) {
-            return std::move(*cast_self());
+            return _get_move();
         }
         rstd::panic("called `Option::unwrap()` on a `None` value");
         rstd::unreachable();
@@ -214,7 +215,7 @@ public:
     template<typename U>
     auto unwrap_or(U&& default_value) -> T {
         if (this->is_some()) {
-            return std::move(_get());
+            return _get_move();
         }
         return std::forward<U>(default_value);
     }
@@ -223,14 +224,14 @@ public:
         requires ImplementedT<FnOnce<F, T()>>
     auto unwrap_or_else(F&& f) -> T {
         if (this->is_some()) {
-            return std::move(_get());
+            return _get_move();
         }
         return std::move(f)();
     }
 
     constexpr auto unwrap_unchecked() -> T {
         if (this->is_some()) {
-            return std::move(_get());
+            return _get_move();
         } else {
             rstd::unreachable();
         }
@@ -240,7 +241,7 @@ public:
         requires ImplementedT<FnOnce<F, U(T)>>
     auto map(F&& f) -> Option<U> {
         if (this->is_some()) {
-            return Option<void>::Some(std::move(f)(std::move(*cast_self())));
+            return Option<void>::Some(std::move(f)(_get_move()));
         }
         return Option<void>::None<U>();
     }
