@@ -435,9 +435,11 @@ public:
         }
     }
 
-    template<typename U, typename F>
-        requires ImplementedT<FnOnce<F, Result<U, E>(T)>>
-    auto and_then(F&& op) -> Result<U, E> {
+    template<typename U  = void, typename F,
+             typename U2 = typename meta::invoke_result_t<F, T>::value_type>
+        requires ImplementedT<
+            FnOnce<F, Result<meta::conditional_t<meta::is_void_v<U>, U2, U>, E>(T)>>
+    auto and_then(F&& op) -> Result<meta::conditional_t<meta::is_void_v<U>, U2, U>, E> {
         if (is_ok()) {
             return std::move(op)(_get_move<0>());
         } else {
