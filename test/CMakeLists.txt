@@ -1,5 +1,4 @@
 
-
 set(gtest_force_shared_crt ON)
 find_package(GTest QUIET)
 if(NOT GTest_FOUND)
@@ -11,7 +10,8 @@ if(NOT GTest_FOUND)
   FetchContent_MakeAvailable(googletest)
 endif()
 
-add_executable(rstd_test test.cpp example.cpp rc.cpp result.cpp t1.cpp compile.cpp option.cpp)
+add_executable(rstd_test trait.cpp example.cpp rc.cpp result.cpp compile.cpp
+                         option.cpp)
 
 target_link_libraries(rstd_test PRIVATE rstd::rstd GTest::gtest_main)
 

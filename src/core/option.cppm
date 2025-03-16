@@ -13,7 +13,7 @@ namespace rstd::option
 export template<typename T>
 class Option;
 
-struct Unknown {};
+export struct Unknown {};
 
 export template<>
 class Option<void> {

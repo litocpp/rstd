@@ -132,15 +132,15 @@ struct Impl<T, Self> {
     static void clone_from(TraitPtr self, Self& source) {
         if (source.is_ok()) {
             if constexpr (meta::is_reference_v<v_t>) {
-                self.as_ref<Self>().assign_val(source.template _get<0>());
+                self.as_ref<Self>()._assign_val(source.template _get<0>());
             } else {
-                self.as_ref<Self>().assign_val(Impl<clone::Clone, ue_t>::clone(&source.m_val));
+                self.as_ref<Self>()._assign_val(Impl<clone::Clone, ue_t>::clone(&source.m_val));
             }
         } else {
             if constexpr (meta::is_reference_v<e_t>) {
-                self.as_ref<Self>().assign_err(source.template _get<1>());
+                self.as_ref<Self>()._assign_err(source.template _get<1>());
             } else {
-                self.as_ref<Self>().assign_err(Impl<clone::Clone, ue_t>::clone(&source.m_err));
+                self.as_ref<Self>()._assign_err(Impl<clone::Clone, ue_t>::clone(&source.m_err));
             }
         }
     }
@@ -164,8 +164,8 @@ struct result_base : WithTrait<Result<T, E>, clone::Clone> {
     friend class result::Result;
 
 protected:
-    constexpr auto cast_self() -> Result<T, E>& { return static_cast<Result<T, E>&>(*this); }
-    constexpr auto cast_self() const -> const Result<T, E>& {
+    constexpr auto _cast() -> Result<T, E>& { return static_cast<Result<T, E>&>(*this); }
+    constexpr auto _cast() const -> const Result<T, E>& {
         return static_cast<const Result<T, E>&>(*this);
     }
 
@@ -213,8 +213,8 @@ protected:
     }
 
     template<typename V>
-    constexpr void construct_val(V&& val) {
-        auto& self     = cast_self();
+    constexpr void _construct_val(V&& val) {
+        auto& self     = _cast();
         self.m_has_val = true;
         if constexpr (meta::is_reference_v<T>) {
             self.m_val = std::addressof(val);
@@ -223,8 +223,8 @@ protected:
         }
     }
     template<typename V>
-    constexpr void construct_err(V&& err) {
-        auto& self     = cast_self();
+    constexpr void _construct_err(V&& err) {
+        auto& self     = _cast();
         self.m_has_val = false;
         if constexpr (meta::is_reference_v<E>) {
             self.m_err = std::addressof(err);
@@ -234,8 +234,8 @@ protected:
     }
 
     template<typename V>
-    constexpr void assign_val(V&& v) {
-        auto& self = cast_self();
+    constexpr void _assign_val(V&& v) {
+        auto& self = _cast();
         if constexpr (meta::is_reference_v<T>) {
             if (self.m_has_val)
                 self.m_val = std::addressof(v);
@@ -256,8 +256,8 @@ protected:
     }
 
     template<typename V>
-    constexpr void assign_err(V&& v) {
-        auto& self = cast_self();
+    constexpr void _assign_err(V&& v) {
+        auto& self = _cast();
         if constexpr (meta::is_reference_v<E>) {
             if (self.m_has_val) {
                 detail::reinit(
@@ -277,11 +277,11 @@ protected:
 
 public:
     constexpr auto is_ok() const noexcept -> bool {
-        auto& self = cast_self();
+        auto& self = _cast();
         return self.m_has_val;
     }
     constexpr auto is_err() const noexcept -> bool {
-        auto& self = cast_self();
+        auto& self = _cast();
         return ! self.m_has_val;
     }
 
@@ -362,7 +362,7 @@ public:
         if (is_ok()) {
             std::move(f)(_get<0>());
         }
-        auto& self = cast_self();
+        auto& self = _cast();
         return std::move(self);
     }
 
@@ -372,7 +372,7 @@ public:
         if (is_err()) {
             std::move(f)(_get<0>());
         }
-        auto& self = cast_self();
+        auto& self = _cast();
         return std::move(self);
     }
 
@@ -445,7 +445,7 @@ public:
         if (is_ok()) {
             return Ok(std::move(_get<0>()));
         } else {
-            auto& self = cast_self();
+            auto& self = _cast();
             return std::move(res);
         }
     }
@@ -628,14 +628,14 @@ public:
     Result(T&& val) noexcept(meta::nothrow_constructible<T, T>)
         requires meta::same_as<E, UnknownErr>
     {
-        this->construct_val(std::forward<T>(val));
+        this->_construct_val(std::forward<T>(val));
     }
 
     // Err ctor
     Result(E&& err) noexcept(meta::nothrow_constructible<E, E>)
         requires meta::same_as<T, UnknownOk>
     {
-        this->construct_err(std::forward<E>(err));
+        this->_construct_err(std::forward<E>(err));
     }
 
     // from Ok
@@ -646,7 +646,7 @@ public:
                                           typename detail::result_traits<U>::error_type> &&
                  meta::constructible_from<T, typename detail::result_traits<U>::value_type>
     {
-        this->construct_val(meta::remove_cvref_t<U>::template _get<0>(std::forward<U>(o)));
+        this->_construct_val(meta::remove_cvref_t<U>::template _get<0>(std::forward<U>(o)));
     }
 
     // from Err
@@ -657,7 +657,7 @@ public:
                                           typename detail::result_traits<U>::value_type> &&
                  meta::constructible_from<E, typename detail::result_traits<U>::error_type>
     {
-        this->construct_err(meta::remove_cvref_t<U>::template _get<1>(std::forward<U>(o)));
+        this->_construct_err(meta::remove_cvref_t<U>::template _get<1>(std::forward<U>(o)));
     }
 
     Result(const Result&)     = default;
@@ -669,9 +669,9 @@ public:
         requires meta::custom_move_constructible<T> || meta::custom_move_constructible<E>
     {
         if (o.m_has_val) {
-            this->construct_val(Result::template _get<0>(std::move(o)));
+            this->_construct_val(Result::template _get<0>(std::move(o)));
         } else {
-            this->construct_err(Result::template _get<1>(std::move(o)));
+            this->_construct_err(Result::template _get<1>(std::move(o)));
         }
     }
 
@@ -701,9 +701,9 @@ public:
                  meta::is_move_assignable_v<E> && meta::is_move_constructible_v<E>
     {
         if (o.m_has_val)
-            this->assign_val(Result::template _get<0>(std::move(o)));
+            this->_assign_val(Result::template _get<0>(std::move(o)));
         else
-            this->assign_err(Result::template _get<1>(std::move(o)));
+            this->_assign_err(Result::template _get<1>(std::move(o)));
         return *this;
     }
 
