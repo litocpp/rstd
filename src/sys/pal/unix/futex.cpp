@@ -14,7 +14,8 @@ module;
 #    elif defined(__FreeBSD__)
 #        include <sys/umtx.h>
 #    endif
-module pal.unix.futex;
+module rstd.sys;
+import :pal.unix.futex;
 
 namespace pal
 {

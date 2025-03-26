@@ -1,7 +1,8 @@
 #ifdef _WIN32
 module;
 #include <windows.h>
-module pal.windows.futex;
+module rstd.sys;
+import :pal.windows.futex;
 
 
 bool wait_on_address(const void* address, const void* compare, size_t size, DWORD timeout) {

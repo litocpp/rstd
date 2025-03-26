@@ -6,7 +6,7 @@ module;
 #    include <chrono>
 #    include <cstdint>
 #    include <optional>
-export module pal.unix.futex;
+export module rstd.sys:pal.unix.futex;
 
 namespace pal
 {

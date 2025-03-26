@@ -13,6 +13,7 @@ endif()
 option(RC_BUILD_TESTS "Build tests" ${PROJECT_IS_TOP_LEVEL})
 
 add_subdirectory(src/core)
+add_subdirectory(src/sys)
 add_subdirectory(src/rc)
 
 add_library(rstd)

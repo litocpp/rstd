@@ -3,8 +3,8 @@ module;
 #include <chrono>
 #include <limits>
 
-export module parking.futex;
-import pal.futex;
+export module rstd.sys:sync.thread_parking.futex;
+import :pal;
 
 namespace parking::futex
 {

@@ -1,5 +1,5 @@
 #ifndef _WIN32
-export module pal.windows.futex;
+export module rstd.sys:pal.windows.futex;
 #else
 module;
 #include <atomic>
