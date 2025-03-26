@@ -6,7 +6,7 @@ module;
 
 export module rstd.sys:sync.thread_parking.pthread;
 
-namespace parking::pthread
+namespace rstd::sync::thread_parking::pthread
 {
 export class Parker {
 private:

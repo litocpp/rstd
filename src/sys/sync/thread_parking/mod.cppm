@@ -6,7 +6,7 @@ import :sync.thread_parking.futex;
 import :sync.thread_parking.pthread;
 #endif
 
-namespace parking
+namespace rstd::sync::thread_parking
 {
 #if defined(__linux__) || defined(_WIN32)
 export using Parker = futex::Parker;

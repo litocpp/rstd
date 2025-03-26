@@ -17,12 +17,12 @@ module;
 module rstd.sys;
 import :pal.unix.futex;
 
-namespace pal
+namespace rstd::pal::unix
 {
 
 #    if defined(__linux__) || defined(__ANDROID__)
 
-bool futex_wait(Futex* futex, Primitive expected, std::optional<Duration> timeout) {
+bool futex_wait(Futex* futex, Primitive expected, Option<Duration> timeout) {
     std::optional<std::timespec> ts;
     if (timeout) {
         ts.emplace();

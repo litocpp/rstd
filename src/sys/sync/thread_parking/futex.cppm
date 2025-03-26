@@ -6,7 +6,7 @@ module;
 export module rstd.sys:sync.thread_parking.futex;
 import :pal;
 
-namespace parking::futex
+namespace rstd::sync::thread_parking::futex
 {
 using Futex = pal::SmallFutex;
 using State = pal::SmallPrimitive;
@@ -25,4 +25,4 @@ public:
     void park_timeout(std::chrono::duration<double> timeout);
     void unpark();
 };
-} // namespace futex
+} // namespace rstd::sync::thread_parking

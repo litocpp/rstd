@@ -92,22 +92,22 @@ public:
     TraitPtr(T* t) noexcept: p(t) {}
 
     template<typename T>
-    auto cast() noexcept -> T* {
+    constexpr auto cast() noexcept -> T* {
         return static_cast<T*>(p);
     }
 
     template<typename T>
-    auto cast() const noexcept -> const T* {
+    constexpr auto cast() const noexcept -> const T* {
         return static_cast<const T*>(p);
     }
 
     template<typename T>
-    auto as_ref() noexcept -> T& {
+    constexpr auto as_ref() noexcept -> T& {
         return *static_cast<T*>(const_cast<void*>(p));
     }
 
     template<typename T>
-    auto as_ref() const noexcept -> const T& {
+    constexpr auto as_ref() const noexcept -> const T& {
         return *static_cast<const T*>(p);
     }
 };

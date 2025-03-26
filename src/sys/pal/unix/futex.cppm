@@ -1,5 +1,5 @@
 #ifndef __unix__
-export module pal.windows.futex;
+export module rstd.sys:pal.unix.futex;
 #else
 module;
 #    include <atomic>
@@ -7,8 +7,9 @@ module;
 #    include <cstdint>
 #    include <optional>
 export module rstd.sys:pal.unix.futex;
+export import rstd.core;
 
-namespace pal
+namespace rstd::pal::unix
 {
 
 export using Duration = std::chrono::duration<double>;
@@ -20,7 +21,7 @@ export using SmallFutex = std::atomic_uint32_t;
 /// Must be the underlying type of SmallFutex
 export using SmallPrimitive = std::uint32_t;
 
-export bool futex_wait(Futex* futex, Primitive expected, std::optional<Duration> timeout);
+export bool futex_wait(Futex* futex, Primitive expected, Option<Duration> timeout);
 export bool futex_wake(Futex* futex);
 export void futex_wake_all(Futex* futex);
 
