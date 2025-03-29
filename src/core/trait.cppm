@@ -196,11 +196,11 @@ concept IsTraitApi = requires() {
 export template<typename T>
 struct Dyn;
 
-export template<typename T>
+template<typename T>
 struct Def {};
 
 export template<typename T, typename A>
-using DefImpl = Impl<T, Def<A>>;
+using ImplDefault = Impl<T, Def<A>>;
 
 export template<typename T, typename A>
 struct ImplInClass;

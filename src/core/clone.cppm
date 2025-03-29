@@ -31,14 +31,14 @@ struct Impl<clone::Clone, Def<Self>> : ImplBase<Self> {
 export template<typename Self>
     requires meta::is_arithmetic_v<Self> || meta::is_pointer_v<Self> ||
              meta::is_copy_constructible_v<Self>
-struct Impl<clone::Clone, Self> : DefImpl<clone::Clone, Self> {
+struct Impl<clone::Clone, Self> : ImplDefault<clone::Clone, Self> {
     auto clone() const -> Self { return this->self(); }
 };
 
 export template<typename Self>
     requires meta::is_specialization_of_v<Self, std::tuple> &&
              (! meta::is_copy_constructible_v<Self>)
-struct Impl<clone::Clone, Self> : DefImpl<clone::Clone, Self> {
+struct Impl<clone::Clone, Self> : ImplDefault<clone::Clone, Self> {
     auto clone() const -> Self {
         auto& self = this->self();
         return std::apply(
