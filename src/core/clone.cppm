@@ -6,13 +6,17 @@ export import :trait;
 namespace rstd::clone
 {
 
-export template<typename Self>
-struct Clone {
-    auto clone() const -> Self { return M::template call<0>(this); }
+export struct Clone {
+    template<typename Self>
+    struct Api {
+        using Trait = Clone;
+        auto clone() const -> Self { return trait_call<0>(this); }
 
-    void clone_from(Self& source) { return M::template call<1>(this, source); }
+        void clone_from(Self& source) { return trait_call<1>(this, source); }
+    };
 
-    TRAIT(Clone, &F::clone, &F::clone_from)
+    template<class T>
+    using TCollect = TraitCollect<&T::clone, &T::clone_from>;
 };
 
 } // namespace rstd::clone

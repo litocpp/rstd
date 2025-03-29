@@ -6,73 +6,61 @@
 import rstd;
 
 // Example traits for testing
-template<typename T>
 struct CloneTrait {
-    T clone() const { return M::template call<0>(this); }
+    template<typename T>
+    struct Api {
+        using Trait = CloneTrait;
+        T clone() const { return rstd::trait_call<0>(this); }
+    };
 
-private:
-    using M = rstd::TraitMeta<CloneTrait, T>;
-    friend M;
-    template<typename F>
-    static consteval auto collect() {
-        return rstd::TraitApi { &F::clone };
-    }
+    template<typename T>
+    using TCollect = rstd::TraitCollect<&T::clone>;
 };
 
-template<typename T>
 struct DisplayTrait {
-    void display(std::ostream& os) const { M::template call<0>(this, os); }
+    template<typename T>
+    struct Api {
+        using Trait = DisplayTrait;
+        void display(std::ostream& os) const { return rstd::trait_call<0>(this, os); }
+    };
 
-private:
-    using M = rstd::TraitMeta<DisplayTrait, T>;
-    friend M;
-    template<typename F>
-    static consteval auto collect() {
-        return rstd::TraitApi { &F::display };
-    }
+    template<typename T>
+    using TCollect = rstd::TraitCollect<&T::display>;
 };
 
-// Add new traits for testing
-template<typename T>
 struct AddableTrait {
-    T add(const T& other) const { return M::template call<0>(this, other); }
+    template<typename T>
+    struct Api {
+        using Trait = AddableTrait;
+        T add(const T& other) const { return rstd::trait_call<0>(this, other); }
+    };
 
-private:
-    using M = rstd::TraitMeta<AddableTrait, T>;
-    friend M;
-    template<typename F>
-    static consteval auto collect() {
-        return rstd::TraitApi { &F::add };
-    }
+    template<typename T>
+    using TCollect = rstd::TraitCollect<&T::add>;
 };
 
-template<typename T>
 struct MultiplyableTrait {
-    T multiply(int factor) const { return M::template call<0>(this, factor); }
+    template<typename T>
+    struct Api {
+        using Trait = MultiplyableTrait;
+        T multiply(int factor) const { return rstd::trait_call<0>(this, factor); }
+    };
 
-private:
-    using M = rstd::TraitMeta<MultiplyableTrait, T>;
-    friend M;
-    template<typename F>
-    static consteval auto collect() {
-        return rstd::TraitApi { &F::multiply };
-    }
+    template<typename T>
+    using TCollect = rstd::TraitCollect<&T::multiply>;
 };
 
-// Add StringConverter trait before struct TestClass declaration
-template<typename T>
 struct StringConverterTrait {
-    std::string to_string() const { return M::template call<0>(this); }
-    std::string to_hex() const { return M::template call<1>(this); }
-    std::string to_binary() const { return M::template call<2>(this); }
+    template<typename T>
+    struct Api {
+        using Trait = StringConverterTrait;
+        std::string to_string() const { return rstd::trait_call<0>(this); }
+        std::string to_hex() const { return rstd::trait_call<1>(this); }
+        std::string to_binary() const { return rstd::trait_call<2>(this); }
+    };
 
-private:
-    using M = rstd::TraitMeta<StringConverterTrait, T>;
-    friend M;
-    template<typename F>
-    static consteval auto collect() {
-        return rstd::TraitApi { &F::to_string, &F::to_hex, &F::to_binary };
-    }
+    template<typename T>
+    using TCollect = rstd::TraitCollect<&T::to_string, &T::to_hex, &T::to_binary>;
 };
 
 // Base structure for fields
@@ -112,10 +100,9 @@ struct rstd::Impl<StringConverterTrait, TestClass> {
     static std::string to_binary(const rstd::TraitPtr self);
 };
 
-struct TestClass
-    : public TestClassFields,
-      public rstd::WithTrait<TestClass, CloneTrait, DisplayTrait, AddableTrait, 
-                            MultiplyableTrait, StringConverterTrait> {
+struct TestClass : public TestClassFields,
+                   public rstd::WithTrait<TestClass, CloneTrait, DisplayTrait, AddableTrait,
+                                          MultiplyableTrait, StringConverterTrait> {
     using TestClassFields::TestClassFields;
 };
 
@@ -154,8 +141,7 @@ std::string rstd::Impl<StringConverterTrait, TestClass>::to_binary(const rstd::T
     if (value == 0) return "0b0";
     std::string result = "0b";
     for (int i = sizeof(int) * 8 - 1; i >= 0; --i) {
-        if (result.length() > 2 || (value & (1 << i)))
-            result += (value & (1 << i)) ? '1' : '0';
+        if (result.length() > 2 || (value & (1 << i))) result += (value & (1 << i)) ? '1' : '0';
     }
     return result;
 }
@@ -175,8 +161,8 @@ TEST(TraitTest, DisplayTraitTest) {
 }
 
 TEST(TraitTest, DynamicDispatchTest) {
-    TestClass obj(42);
-    auto dyn = rstd::make_dyn<DisplayTrait>(obj);
+    TestClass          obj(42);
+    auto               dyn = rstd::Dyn<DisplayTrait>(obj);
     std::ostringstream oss;
     dyn.display(oss);
     EXPECT_EQ(oss.str(), "TestClass(42)");
@@ -200,14 +186,14 @@ TEST(TraitTest, ComplexTraitTest) {
 // Add new test at the end
 TEST(TraitTest, StringConverterTraitTest) {
     TestClass obj(42);
-    
+
     // Test direct trait usage
     EXPECT_EQ(obj.to_string(), "42");
     EXPECT_EQ(obj.to_hex(), "0x2a");
     EXPECT_EQ(obj.to_binary(), "0b101010");
 
     // Test dynamic dispatch
-    auto converter = rstd::make_dyn<StringConverterTrait>(obj);
+    auto converter = rstd::Dyn<StringConverterTrait>(obj);
     EXPECT_EQ(converter.to_string(), "42");
     EXPECT_EQ(converter.to_hex(), "0x2a");
     EXPECT_EQ(converter.to_binary(), "0b101010");
@@ -215,15 +201,15 @@ TEST(TraitTest, StringConverterTraitTest) {
 
 TEST(TraitTest, StringConverterDynTest) {
     TestClass obj(255);
-    
+
     // Test dynamic dispatch through pointer
-    auto dyn1 = rstd::make_dyn<StringConverterTrait>(&obj);
+    auto dyn1 = rstd::Dyn<StringConverterTrait>(&obj);
     EXPECT_EQ(dyn1.to_string(), "255");
     EXPECT_EQ(dyn1.to_hex(), "0xff");
     EXPECT_EQ(dyn1.to_binary(), "0b11111111");
 
     // Test dynamic dispatch through reference
-    auto dyn2 = rstd::make_dyn<StringConverterTrait>(obj);
+    auto dyn2 = rstd::Dyn<StringConverterTrait>(obj);
     EXPECT_EQ(dyn2.to_string(), "255");
     EXPECT_EQ(dyn2.to_hex(), "0xff");
 
@@ -233,33 +219,33 @@ TEST(TraitTest, StringConverterDynTest) {
 
     // Test const reference
     const TestClass& const_ref = obj;
-    auto dyn4 = rstd::make_dyn<StringConverterTrait>(const_ref);
+    auto             dyn4      = rstd::make_dyn<StringConverterTrait>(const_ref);
     EXPECT_EQ(dyn4.to_string(), "255");
 }
 
 TEST(TraitTest, ConstDynTest) {
     const TestClass obj(42);
-    
+
     // Test const dynamic dispatch
-    auto dyn = rstd::make_dyn<DisplayTrait>(obj);
+    auto               dyn = rstd::make_dyn<DisplayTrait>(obj);
     std::ostringstream oss;
     dyn.display(oss);
     EXPECT_EQ(oss.str(), "TestClass(42)");
-    
+
     // Test const dynamic dispatch with multiple traits
     auto str_dyn = rstd::make_dyn<StringConverterTrait>(obj);
     EXPECT_EQ(str_dyn.to_string(), "42");
     EXPECT_EQ(str_dyn.to_hex(), "0x2a");
     EXPECT_EQ(str_dyn.to_binary(), "0b101010");
-    
+
     // Test const pointer with dynamic dispatch
-    const TestClass* ptr = &obj;
-    auto ptr_dyn = rstd::make_dyn<StringConverterTrait>(ptr);
+    const TestClass* ptr     = &obj;
+    auto             ptr_dyn = rstd::make_dyn<StringConverterTrait>(ptr);
     EXPECT_EQ(ptr_dyn.to_string(), "42");
-    
+
     // Verify that the type system prevents modification
-    static_assert(std::is_same_v<decltype(dyn), rstd::Dyn<DisplayTrait, rstd::ConstNess::Const>>,
-                 "Should be const Dyn type");
-    static_assert(std::is_same_v<decltype(str_dyn), rstd::Dyn<StringConverterTrait, rstd::ConstNess::Const>>,
-                 "Should be const Dyn type");
+    static_assert(std::is_same_v<decltype(dyn), rstd::Dyn<const DisplayTrait>>,
+                  "Should be const Dyn type");
+    static_assert(std::is_same_v<decltype(str_dyn), rstd::Dyn<const StringConverterTrait>>,
+                  "Should be const Dyn type");
 }

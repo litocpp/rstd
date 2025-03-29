@@ -99,12 +99,11 @@ using Ok = result::Ok<T>;
 export template<typename T = Empty>
 using Err = result::Err<T>;
 
-export template<template<typename> class T, typename Self>
-    requires meta::is_specialization_of_v<T<Self>, clone::Clone> &&
+export template<typename T, typename Self>
+    requires meta::same_as<T, clone::Clone> &&
              meta::is_specialization_of_v<Self, rstd::result::Result> &&
-             Implemented<typename result::detail::result_traits<Self>::union_value_t,
-                         clone::Clone> &&
-             Implemented<typename result::detail::result_traits<Self>::union_error_t, clone::Clone>
+             Impled<typename result::detail::result_traits<Self>::union_value_t, clone::Clone> &&
+             Impled<typename result::detail::result_traits<Self>::union_error_t, clone::Clone>
 struct Impl<T, Self> {
     using traits = result::detail::result_traits<Self>;
     using v_t    = typename traits::value_type;
@@ -291,7 +290,7 @@ public:
     }
 
     template<typename F>
-        requires ImplementedT<FnOnce<F, bool(T)>>
+    // requires ImpledT<FnOnce<F, bool(T)>>
     auto is_ok_and(F&& f) -> bool {
         if (is_ok()) {
             return std::move(f)(_get_move<0>());
@@ -300,7 +299,7 @@ public:
     }
 
     template<typename F>
-        requires ImplementedT<FnOnce<F, bool(E)>>
+    // requires ImpledT<FnOnce<F, bool(E)>>
     auto is_err_and(F&& f) -> bool {
         if (is_err()) {
             return std::move(f)(_get_move<1>());
@@ -323,7 +322,7 @@ public:
     }
 
     template<typename F, typename U = std::invoke_result_t<F, T>>
-        requires ImplementedT<FnOnce<F, U(T)>>
+    // requires ImpledT<FnOnce<F, U(T)>>
     auto map(F&& op) -> Result<U, E> {
         if (is_ok()) {
             return Ok(std::move(op)(_get_move<0>()));
@@ -333,7 +332,7 @@ public:
     }
 
     template<typename U, typename F>
-        requires ImplementedT<FnOnce<F, U(T)>>
+    // requires ImpledT<FnOnce<F, U(T)>>
     auto map_or(U&& def, F&& op) -> U {
         if (is_ok()) {
             return std::move(op)(_get_move<0>());
@@ -343,7 +342,7 @@ public:
     }
 
     template<typename U, typename D, typename F>
-        requires ImplementedT<FnOnce<D, U(E)>, FnOnce<F, U(T)>>
+    // requires ImpledT<FnOnce<D, U(E)>, FnOnce<F, U(T)>>
     auto map_or_else(D&& def, F&& f) -> U {
         if (is_ok()) {
             return std::move(f)(_get_move<0>());
@@ -352,7 +351,7 @@ public:
         }
     }
     template<typename F, typename O>
-        requires ImplementedT<FnOnce<O, F(E)>>
+    // requires ImpledT<FnOnce<O, F(E)>>
     auto map_err(O&& op) -> Result<T, F> {
         if (is_ok()) {
             return Ok(_get_move<0>());
@@ -362,7 +361,7 @@ public:
     }
 
     template<typename F>
-        requires ImplementedT<FnOnce<F, void(T&)>>
+    // requires ImpledT<FnOnce<F, void(T&)>>
     auto inspect(F&& f) -> Result<T, E> {
         if (is_ok()) {
             std::move(f)(_get<0>());
@@ -372,7 +371,7 @@ public:
     }
 
     template<typename F>
-        requires ImplementedT<FnOnce<F, void(E&)>>
+    // requires ImpledT<FnOnce<F, void(E&)>>
     auto inspect_err(F&& f) -> Result<T, E> {
         if (is_err()) {
             std::move(f)(_get<0>());
@@ -437,8 +436,7 @@ public:
 
     template<typename U  = void, typename F,
              typename U2 = typename meta::invoke_result_t<F, T>::value_type>
-        requires ImplementedT<
-            FnOnce<F, Result<meta::conditional_t<meta::is_void_v<U>, U2, U>, E>(T)>>
+    // requires ImpledT<FnOnce<F, Result<meta::conditional_t<meta::is_void_v<U>, U2, U>, E>(T)>>
     auto and_then(F&& op) -> Result<meta::conditional_t<meta::is_void_v<U>, U2, U>, E> {
         if (is_ok()) {
             return std::move(op)(_get_move<0>());
@@ -458,7 +456,7 @@ public:
     }
 
     template<typename F, typename O>
-        requires ImplementedT<FnOnce<O, Result<T, F>(E)>>
+    // requires ImpledT<FnOnce<O, Result<T, F>(E)>>
     auto or_else(O&& op) -> Result<T, F> {
         if (is_ok()) {
             return Ok(_get_move<0>());
@@ -476,7 +474,7 @@ public:
     }
 
     template<typename F>
-        requires ImplementedT<FnOnce<F, T(E)>>
+    // requires ImpledT<FnOnce<F, T(E)>>
     auto unwrap_or_else(F&& op) -> T {
         if (is_ok()) {
             return _get_move<0>();
@@ -566,7 +564,7 @@ struct result_impl<const T&, E> : result_base<const T&, E> {
     }
 
     auto cloned() -> Result<T, E>
-        requires Implemented<T, clone::Clone>
+        requires Impled<T, clone::Clone>
     {
         return this->map([](auto t) {
             return Impl<clone::Clone, T>::clone(t);
@@ -585,7 +583,7 @@ struct result_impl<T&, E> : result_base<T&, E> {
     }
 
     auto cloned() -> Result<T, E>
-        requires Implemented<T, clone::Clone>
+        requires Impled<T, clone::Clone>
     {
         return this->map([](auto t) {
             return Impl<clone::Clone, T>::clone(t);
@@ -610,7 +608,7 @@ template<typename T, typename E>
 class Result : public detail::result_impl<T, E> {
     template<typename, typename>
     friend class detail::result_base;
-    template<template<typename> class, typename>
+    template<typename, typename>
     friend class rstd::Impl;
 
     using traits = detail::result_traits<Result<T, E>>;

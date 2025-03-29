@@ -26,7 +26,7 @@ struct option_adapter : option_adapter_base<T> {
     }
 
     template<typename F, typename E = meta::invoke_result_t<F>>
-        requires ImplementedT<FnOnce<F, E(void)>>
+    // requires ImpledT<FnOnce<F, E(void)>>
     auto ok_or_else(F&& err) -> Result<T, E> {
         auto& self = static_cast<Option<T>&>(*this);
         if (self.is_some()) {

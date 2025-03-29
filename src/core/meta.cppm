@@ -116,6 +116,16 @@ export template<class T>
 using remove_reference_t = std::remove_reference<T>::type;
 
 export template<class T>
+using remove_cv = std::remove_cv<T>;
+export template<class T>
+using remove_cv_t = std::remove_cv<T>::type;
+
+export template<class T>
+using is_const = std::is_const<T>;
+export template<class T>
+inline constexpr bool is_const_v = std::is_const_v<T>;
+
+export template<class T>
 concept nothrow_destructible = std::is_nothrow_destructible_v<T>;
 
 export template<typename T, typename... Args>

@@ -23,7 +23,7 @@ export using usize       = std::size_t;
 export using isize       = std::ptrdiff_t;
 export using byte        = std::byte;
 export using voidp       = void*;
-export using const_voidp = const void*;
+export using const_voidp = void const*;
 
 export using source_location = std::source_location;
 

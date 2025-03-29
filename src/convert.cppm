@@ -8,32 +8,32 @@ export import rstd.core;
 namespace rstd::convert
 {
 
-export template<typename Self, typename TF>
+export template<typename TF>
 struct From {
     using from_t = TF;
-    static auto from(from_t value) -> Self { M::template call_static<0>(value); }
-
+    template<typename Self>
+    struct Api {
+        static auto from(from_t value) -> Self { trait_call_static<0, From<TF>, Self>(value); }
+    };
     template<typename T>
-    using TFrom = From<T, TF>;
-
-    TRAIT(TFrom, &F::from)
+    using TCollect = TraitCollect<&T::from>;
 };
 
-export template<typename Self, typename TF>
+export template<typename TF>
 struct Into {
     using into_t = TF;
-
-    auto into() -> into_t { return M::template call<0>(this); }
+    template<typename Self>
+    struct Api {
+        auto into() -> into_t { return trait_call<0>(this); }
+    };
 
     template<typename T>
-    using TInto = Into<T, TF>;
-
-    TRAIT(TInto, &F::into)
+    using TCollect = TraitCollect<&T::into>;
 };
 
 export template<typename T, typename F>
 auto into(F&& val) -> T {
-    return Impl<TTrait<Into, T>::template type, std::remove_reference_t<F>>::into(val);
+    return Impl<Into<T>, std::remove_reference_t<F>>::into(val);
 }
 
 } // namespace rstd::convert
@@ -41,13 +41,11 @@ auto into(F&& val) -> T {
 namespace rstd
 {
 
-export template<template<typename> class T, typename Self>
-    requires std::same_as<T<Self>, convert::Into<Self, typename T<Self>::into_t>> &&
-             Implemented<typename T<Self>::into_t, TTrait<convert::From, Self>::template type>
+export template<typename T, typename Self>
+    requires std::same_as<T, convert::Into<typename T::into_t>> &&
+             Impled<typename T::into_t, typename convert::From<Self>::from_t>
 struct Impl<T, Self> {
-    using into_t = typename T<Self>::into_t;
-    static auto into(TraitPtr self) -> typename T<Self>::into_t {
-        return Impl<TTrait<convert::From, Self>::template type, into_t>::from(self.as_ref<Self>());
-    }
+    using into_t = typename T::into_t;
+    static auto into(Self* self) -> into_t { return Impl<convert::From<Self>, into_t>::from(self); }
 };
 } // namespace rstd

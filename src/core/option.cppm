@@ -188,7 +188,7 @@ public:
     constexpr auto is_none() const noexcept -> bool { return ! this->is_some(); }
 
     template<typename F>
-        requires ImplementedT<FnOnce<F, bool(T)>>
+    // requires ImpledT<FnOnce<F, bool(T)>>
     auto is_some_and(F&& f) -> bool {
         if (this->is_some()) {
             return std::move(f)(_get_move());
@@ -221,7 +221,7 @@ public:
     }
 
     template<typename F>
-        requires ImplementedT<FnOnce<F, T()>>
+    // requires ImpledT<FnOnce<F, T()>>
     auto unwrap_or_else(F&& f) -> T {
         if (this->is_some()) {
             return _get_move();
@@ -238,7 +238,7 @@ public:
     }
 
     template<typename F, typename U = std::invoke_result_t<F, T>>
-        requires ImplementedT<FnOnce<F, U(T)>>
+    // requires ImpledT<FnOnce<F, U(T)>>
     auto map(F&& f) -> Option<U> {
         if (this->is_some()) {
             return Option<void>::Some(std::move(f)(_get_move()));
@@ -297,10 +297,10 @@ constexpr auto None(T&& t = {}) {
     return Option<void>::None<U>(std::move(t));
 }
 
-export template<template<typename> class T, typename Self>
-    requires meta::is_specialization_of_v<T<Self>, clone::Clone> &&
+export template<typename T, typename Self>
+    requires meta::same_as<T, clone::Clone> &&
              meta::is_specialization_of_v<Self, rstd::option::Option> &&
-             Implemented<typename option::detail::option_traits<Self>::union_value_t, clone::Clone>
+             Impled<typename option::detail::option_traits<Self>::union_value_t, clone::Clone>
 struct Impl<T, Self> {
     using uv_t = typename option::detail::option_traits<Self>::union_value_t;
     using v_t  = typename option::detail::option_traits<Self>::value_type;
@@ -335,7 +335,7 @@ class Option : public detail::option_base<T>, public detail::option_adapter<T> {
     friend class detail::option_base;
     template<typename>
     friend class detail::option_adapter;
-    template<template<typename> class, typename>
+    template<typename, typename>
     friend class rstd::Impl;
 
     friend class Option<void>;

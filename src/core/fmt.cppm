@@ -36,18 +36,20 @@ concept formattable_impl = parsable_with<Tp, Context> && formattable_with<Tp, Co
 template<typename Tp, typename CharT = char>
 concept formattable = detail::formattable_impl<std::remove_reference_t<Tp>, CharT>;
 
-export template<typename Self>
-struct Display {};
+export struct Display {
+    template<typename Self>
+    struct Api {};
+};
 
 } // namespace rstd::fmt
 
 namespace rstd
 {
-export template<template<typename> class T, typename A>
-    requires std::same_as<T<A>, fmt::Display<A>> && fmt::formattable<A, char>
+export template<typename T, typename A>
+    requires std::same_as<T, fmt::Display> && fmt::formattable<A, char>
 struct Impl<T, A> {};
 
-static_assert(Implemented<int, fmt::Display>);
+static_assert(Impled<int, fmt::Display>);
 
 export void panic_raw(std::string_view msg, const source_location = source_location::current());
 
