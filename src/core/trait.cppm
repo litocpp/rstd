@@ -42,14 +42,16 @@ struct FromCollect<TraitCollect<Api...>> {
 template<typename T>
 struct ApiInner;
 
-template<template<typename> class T, typename A>
-struct ApiInner<T<A>> {
-    using type = A;
+template<template<typename, typename> class T, typename A, typename B>
+struct ApiInner<T<A, B>> {
+    using type          = A;
+    using delegate_type = B;
 };
 
-template<template<typename> class T, typename A>
-struct ApiInner<const T<A>> {
-    using type = A;
+template<template<typename, typename> class T, typename A, typename B>
+struct ApiInner<const T<A, B>> {
+    using type          = A;
+    using delegate_type = B;
 };
 
 template<typename T>
@@ -164,43 +166,6 @@ consteval auto to_dyn(Apis<Api...> in) {
 
 } // namespace detail
 
-export template<template<typename, typename...> class T, typename... Args>
-struct TTrait {
-    template<typename U>
-    using type = T<U, Args...>;
-};
-
-class TraitPtr {
-    void const* const p;
-
-public:
-    constexpr TraitPtr(const TraitPtr& o) noexcept: p(o.p) {}
-    template<typename T>
-    constexpr TraitPtr(T* t) noexcept: p(t) {}
-    template<typename T>
-    constexpr TraitPtr(T& t) noexcept: p(std::addressof(t)) {}
-
-    template<typename T>
-    constexpr auto cast() noexcept -> T* {
-        return static_cast<T*>(p);
-    }
-
-    template<typename T>
-    constexpr auto cast() const noexcept -> const T* {
-        return static_cast<const T*>(p);
-    }
-
-    template<typename T>
-    constexpr auto as_ref() noexcept -> T& {
-        return *static_cast<T*>(const_cast<void*>(p));
-    }
-
-    template<typename T>
-    constexpr auto as_ref() const noexcept -> const T& {
-        return *static_cast<const T*>(p);
-    }
-};
-
 export template<typename T, typename A>
 struct Impl;
 
@@ -238,8 +203,11 @@ export template<typename T, typename A>
 using DefImpl = Impl<T, Def<A>>;
 
 export template<typename T, typename A>
+struct ImplInClass;
+
+export template<typename T, typename A, typename Delegate = void>
 struct TraitMeta {
-    using Api = typename T::template Api<A>;
+    using Api = typename T::template Api<A, Delegate>;
     template<typename F>
     using TCollect = typename T::template TCollect<F>;
 
@@ -249,9 +217,9 @@ struct TraitMeta {
             // delegate for dyn
             constexpr auto apis = detail::to_dyn(req_apis);
             return apis;
-        } else if constexpr (meta::special_of<A, in_class_tag>) {
+        } else if constexpr (meta::special_of<Delegate, in_class_tag>) {
             // delegate for ImplInClass
-            using inner_t       = typename A::type;
+            using inner_t       = typename Delegate::type;
             constexpr auto apis = detail::FromCollect<TCollect<inner_t>>::get();
             detail::check_apis<Api, decltype(req_apis), decltype(apis)>();
             return apis;
@@ -271,10 +239,9 @@ struct TraitMeta {
             // delegate for dyn
             auto dyn = static_cast<const Dyn<T>*>(self);
             return dyn->apis->template get<I>()(dyn->self, std::forward<Args>(args)...);
-        } else if constexpr (meta::special_of<A, in_class_tag>) {
+        } else if constexpr (meta::special_of<Delegate, in_class_tag>) {
             // delegate for ImplInClass
-            using inner_t = typename A::type;
-            auto self_    = static_cast<const inner_t&>(self);
+            auto self_ = static_cast<ImplInClass<T, A> const*>(self)->_self;
             return std::invoke(apis.template get<I>(), self_, std::forward<Args>(args)...);
         } else {
             // delegate for Impl
@@ -289,9 +256,9 @@ struct TraitMeta {
             // delegate for dyn
             auto dyn = static_cast<const Dyn<T>*>(self);
             return dyn->apis->template get<I>()(dyn->self, std::forward<Args>(args)...);
-        } else if constexpr (meta::special_of<A, in_class_tag>) {
-            using inner_t = typename A::type;
-            auto self_    = static_cast<inner_t&>(self);
+        } else if constexpr (meta::special_of<Delegate, in_class_tag>) {
+            // delegate for ImplInClass
+            auto self_ = const_cast<A*>(static_cast<ImplInClass<T, A>*>(self)->_self);
             return std::invoke(apis.template get<I>(), self_, std::forward<Args>(args)...);
         } else {
             // delegate for Impl
@@ -309,15 +276,21 @@ struct TraitMeta {
 export template<usize I, typename TApi, typename... Args>
     requires IsTraitApi<TApi>
 constexpr decltype(auto) trait_call(TApi* self, Args&&... args) {
-    return TraitMeta<typename TApi::Trait, typename detail::ApiInner<TApi>::type>::template call<I>(
-        self, std::forward<Args>(args)...);
+    return TraitMeta<
+        typename TApi::Trait,
+        typename detail::ApiInner<TApi>::type,
+        typename detail::ApiInner<TApi>::delegate_type>::template call<I>(self,
+                                                                          std::forward<Args>(
+                                                                              args)...);
 }
 
 export template<usize I, typename TApi, typename... Args>
     requires IsTraitApi<TApi>
 constexpr decltype(auto) trait_static_call(Args&&... args) {
-    return TraitMeta<typename TApi::Trait, typename detail::ApiInner<TApi>::type>::template call<I>(
-        std::forward<Args>(args)...);
+    return TraitMeta<typename TApi::Trait,
+                     typename detail::ApiInner<TApi>::type,
+                     typename detail::ApiInner<TApi>::delegate_type>::
+        template call<I>(std::forward<Args>(args)...);
 }
 
 template<typename T>
@@ -385,9 +358,20 @@ auto make_dyn(A& t) {
     return make_dyn<T, A>(std::addressof(t));
 }
 
+template<typename T, typename A>
+struct ImplInClass : meta::remove_cv_t<T>::template Api<A, in_class_tag<A>> {
+    A const* _self;
+
+protected:
+    auto self() -> A& { return *const_cast<A*>(_self); }
+    auto self() const -> A const& { return *_self; }
+};
+
 export template<typename T, typename A>
 auto as(A& t) {
-    return Impl<T, meta::remove_cv_t<A>> { std::addressof(t) };
+    Impl<T, meta::remove_cv_t<A>> i {};
+    i._self = std::addressof(t);
+    return i;
 }
 
 export template<typename Self, typename... Traits>

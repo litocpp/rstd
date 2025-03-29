@@ -7,7 +7,7 @@ export import rstd.core;
 namespace rstd::error
 {
 export struct Error {
-    template<typename Self>
+    template<typename Self, typename = void>
         requires Impled<Self, fmt::Display>
     struct Api {
         using Trait = Error;

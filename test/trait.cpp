@@ -7,7 +7,7 @@ import rstd;
 
 // Example traits for testing
 struct CloneTrait {
-    template<typename T>
+    template<typename T, typename = void>
     struct Api {
         using Trait = CloneTrait;
         T clone() const { return rstd::trait_call<0>(this); }
@@ -18,7 +18,8 @@ struct CloneTrait {
 };
 
 struct DisplayTrait {
-    template<typename T>
+    template<typename T, typename = void>
+
     struct Api {
         using Trait = DisplayTrait;
         void display(std::ostream& os) const { return rstd::trait_call<0>(this, os); }
@@ -29,7 +30,7 @@ struct DisplayTrait {
 };
 
 struct AddableTrait {
-    template<typename T>
+    template<typename T, typename = void>
     struct Api {
         using Trait = AddableTrait;
         T add(const T& other) const { return rstd::trait_call<0>(this, other); }
@@ -40,7 +41,7 @@ struct AddableTrait {
 };
 
 struct MultiplyableTrait {
-    template<typename T>
+    template<typename T, typename = void>
     struct Api {
         using Trait = MultiplyableTrait;
         T multiply(int factor) const { return rstd::trait_call<0>(this, factor); }
@@ -51,7 +52,7 @@ struct MultiplyableTrait {
 };
 
 struct StringConverterTrait {
-    template<typename T>
+    template<typename T, typename = void>
     struct Api {
         using Trait = StringConverterTrait;
         std::string to_string() const { return rstd::trait_call<0>(this); }
@@ -107,21 +108,17 @@ struct TestClass : public TestClassFields,
 };
 
 // Trait implementations definitions
-TestClass rstd::Impl<CloneTrait, TestClass>::clone() const {
-    return TestClass(self().value);
-}
+TestClass rstd::Impl<CloneTrait, TestClass>::clone() const { return TestClass(self().value); }
 
 void rstd::Impl<DisplayTrait, TestClass>::display(std::ostream& os) const {
     os << "TestClass(" << self().value << ")";
 }
 
-TestClass rstd::Impl<AddableTrait, TestClass>::add(
-                                                   const TestClass&     other) const {
+TestClass rstd::Impl<AddableTrait, TestClass>::add(const TestClass& other) const {
     return TestClass(self().value + other.value);
 }
 
-TestClass rstd::Impl<MultiplyableTrait, TestClass>::multiply(
-                                                             int                  factor) const {
+TestClass rstd::Impl<MultiplyableTrait, TestClass>::multiply(int factor) const {
     return TestClass(self().value * factor);
 }
 
@@ -247,4 +244,19 @@ TEST(TraitTest, ConstDynTest) {
                   "Should be const Dyn type");
     static_assert(std::is_same_v<decltype(str_dyn), rstd::Dyn<const StringConverterTrait>>,
                   "Should be const Dyn type");
+}
+
+struct InClass {
+    int  a;
+    auto clone() const -> InClass { return { a }; }
+    void clone_from(InClass&) {}
+};
+
+template<>
+struct rstd::Impl<rstd::clone::Clone, InClass> : rstd::ImplInClass<rstd::clone::Clone, InClass> {};
+
+TEST(TraitTest, InClass) {
+    InClass m { 100 };
+    auto    n = rstd::as<rstd::clone::Clone>(m).clone();
+    EXPECT_EQ(m.a, 100);
 }
