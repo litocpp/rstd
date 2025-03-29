@@ -274,9 +274,13 @@ TEST(TraitTest, InClass) {
         EXPECT_EQ(m.a, 100);
     }
     {
-        InClassDef m;
-        m.a    = 100;
-        auto n = rstd::as<rstd::clone::Clone>(m).clone();
-        EXPECT_EQ(m.a, 100);
+        InClassDef m, n;
+        m.a = 100;
+        n.a = 1000;
+        rstd::as<rstd::clone::Clone>(m).clone_from(n);
+        EXPECT_EQ(n.a, 1000);
+        m.a = 888;
+        n.clone_from(m);
+        EXPECT_EQ(n.a, m.a);
     }
 }
