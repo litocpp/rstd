@@ -7,9 +7,6 @@ export import :meta;
 
 namespace rstd
 {
-
-export class TraitPtr;
-
 export template<auto... Api>
 struct TraitCollect {};
 
