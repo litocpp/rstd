@@ -37,8 +37,8 @@ TEST(Option, Reference) {
 
 struct CloneType;
 template<>
-struct rstd::Impl<clone::Clone, CloneType> {
-    static auto clone(TraitPtr self) -> CloneType;
+struct rstd::Impl<clone::Clone, CloneType> : ImplBase<CloneType> {
+    auto clone() const -> CloneType;
 };
 
 struct CloneType : WithTrait<CloneType, clone::Clone> {
@@ -46,8 +46,8 @@ struct CloneType : WithTrait<CloneType, clone::Clone> {
     explicit CloneType(int v): value(v) {}
 };
 
-auto rstd::Impl<clone::Clone, CloneType>::clone(TraitPtr self) -> CloneType {
-    return CloneType { self.as_ref<CloneType>().value };
+auto rstd::Impl<clone::Clone, CloneType>::clone() const -> CloneType {
+    return CloneType { self().value };
 }
 
 TEST(Option, Clone) {

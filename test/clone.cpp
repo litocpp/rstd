@@ -17,6 +17,6 @@ TEST(Clone, Auto) {
 
 TEST(Clone, tuple) {
     std::tuple t { 1, 1.5, B { 11 } };
-    auto       t2 = rstd::Impl<rstd::clone::Clone, decltype(t)>::clone(&t);
+    auto       t2 = rstd::Impl<rstd::clone::Clone, decltype(t)>{&t}.clone();
     EXPECT_EQ(std::get<2>(t2), B { 11 });
 }

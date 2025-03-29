@@ -37,7 +37,7 @@ template<typename Tp, typename CharT = char>
 concept formattable = detail::formattable_impl<std::remove_reference_t<Tp>, CharT>;
 
 export struct Display {
-    template<typename Self>
+    template<typename Self, typename = void>
     struct Api {};
 };
 

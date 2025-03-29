@@ -301,26 +301,27 @@ export template<typename T, typename Self>
     requires meta::same_as<T, clone::Clone> &&
              meta::is_specialization_of_v<Self, rstd::option::Option> &&
              Impled<typename option::detail::option_traits<Self>::union_value_t, clone::Clone>
-struct Impl<T, Self> {
+struct Impl<T, Self> : ImplBase<Self> {
     using uv_t = typename option::detail::option_traits<Self>::union_value_t;
     using v_t  = typename option::detail::option_traits<Self>::value_type;
-    static auto clone(TraitPtr self) -> Self {
-        auto& o = self.as_ref<Self>();
+    auto clone() const -> Self {
+        auto& o = this->self();
         if (o.is_some()) {
-            return Some(Impl<clone::Clone, uv_t>::clone(o._ptr()));
+            return Some(Impl<clone::Clone, uv_t> { o._ptr() }.clone());
         }
         return option::Unknown();
     }
 
-    static void clone_from(TraitPtr self, Self& source) {
+    void clone_from(Self& source) {
+        auto& self = this->self();
         if (source.is_some()) {
             if constexpr (meta::is_reference_v<v_t>) {
-                self.as_ref<Self>()._assign_val(source._get());
+                self._assign_val(source._get());
             } else {
-                self.as_ref<Self>()._assign_val(Impl<clone::Clone, uv_t>::clone(source._ptr()));
+                self._assign_val(Impl<clone::Clone, uv_t> { source._ptr() }.clone());
             }
         } else {
-            self.as_ref<Self>()._assign_none();
+            self._assign_none();
         }
     }
 };

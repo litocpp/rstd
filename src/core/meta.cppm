@@ -61,6 +61,9 @@ struct is_specialization_of<Primary<Args...>, Primary> : true_type {};
 export template<class T, template<class...> class Primary>
 inline constexpr bool is_specialization_of_v = is_specialization_of<T, Primary>::value;
 
+export template<class T, template<class...> class Primary>
+concept special_of = is_specialization_of<T, Primary>::value;
+
 export template<typename T>
 using is_integral = std::is_integral<T>;
 export template<typename T>
@@ -81,6 +84,10 @@ using is_reference = std::is_reference<T>;
 export template<typename T>
 inline constexpr bool is_reference_v = std::is_reference_v<T>;
 
+export template<class T>
+using is_lvalue_reference = std::is_lvalue_reference<T>;
+export template<class T>
+inline constexpr bool is_lvalue_reference_v = std::is_lvalue_reference_v<T>;
 export template<typename T>
 using is_rvalue_reference = std::is_rvalue_reference<T>;
 export template<typename T>

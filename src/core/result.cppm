@@ -104,15 +104,15 @@ export template<typename T, typename Self>
              meta::is_specialization_of_v<Self, rstd::result::Result> &&
              Impled<typename result::detail::result_traits<Self>::union_value_t, clone::Clone> &&
              Impled<typename result::detail::result_traits<Self>::union_error_t, clone::Clone>
-struct Impl<T, Self> {
+struct Impl<T, Self> : ImplBase<Self> {
     using traits = result::detail::result_traits<Self>;
     using v_t    = typename traits::value_type;
     using e_t    = typename traits::error_type;
     using uv_t   = typename traits::union_value_t;
     using ue_t   = typename traits::union_error_t;
 
-    static auto clone(TraitPtr self) -> Self {
-        auto& r = self.as_ref<Self>();
+    auto clone() const -> Self {
+        auto& r = this->self();
         if (r.is_ok()) {
             if constexpr (meta::is_reference_v<v_t>) {
                 return Ok(*Impl<clone::Clone, uv_t>::clone(&r.m_val));
@@ -121,25 +121,26 @@ struct Impl<T, Self> {
             }
         } else {
             if constexpr (meta::is_reference_v<e_t>) {
-                return Err(*Impl<clone::Clone, ue_t>::clone(&r.m_err));
+                return Err(*Impl<clone::Clone, ue_t> { &r.m_err }.clone());
             } else {
-                return Err(Impl<clone::Clone, ue_t>::clone(&r.m_err));
+                return Err(Impl<clone::Clone, ue_t> { &r.m_err }.clone());
             }
         }
     }
 
-    static void clone_from(TraitPtr self, Self& source) {
+    void clone_from(Self& source) {
+        auto& self = this->self();
         if (source.is_ok()) {
             if constexpr (meta::is_reference_v<v_t>) {
-                self.as_ref<Self>()._assign_val(source.template _get<0>());
+                self._assign_val(source.template _get<0>());
             } else {
-                self.as_ref<Self>()._assign_val(Impl<clone::Clone, ue_t>::clone(&source.m_val));
+                self._assign_val(Impl<clone::Clone, ue_t> { &source.m_val }.clone());
             }
         } else {
             if constexpr (meta::is_reference_v<e_t>) {
-                self.as_ref<Self>()._assign_err(source.template _get<1>());
+                self._assign_err(source.template _get<1>());
             } else {
-                self.as_ref<Self>()._assign_err(Impl<clone::Clone, ue_t>::clone(&source.m_err));
+                self._assign_err(Impl<clone::Clone, ue_t> { &source.m_err }.clone());
             }
         }
     }

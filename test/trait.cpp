@@ -73,31 +73,31 @@ struct TestClass;
 
 // Trait implementations declarations
 template<>
-struct rstd::Impl<CloneTrait, TestClass> {
-    static TestClass clone(const rstd::TraitPtr self);
+struct rstd::Impl<CloneTrait, TestClass> : rstd::ImplBase<TestClass> {
+    TestClass clone() const;
 };
 
 template<>
-struct rstd::Impl<DisplayTrait, TestClass> {
-    static void display(const rstd::TraitPtr self, std::ostream& os);
+struct rstd::Impl<DisplayTrait, TestClass> : rstd::ImplBase<TestClass> {
+    void display(std::ostream& os) const;
 };
 
 template<>
-struct rstd::Impl<AddableTrait, TestClass> {
-    static TestClass add(const rstd::TraitPtr self, const TestClass& other);
+struct rstd::Impl<AddableTrait, TestClass> : rstd::ImplBase<TestClass> {
+    TestClass add(const TestClass& other) const;
 };
 
 template<>
-struct rstd::Impl<MultiplyableTrait, TestClass> {
-    static TestClass multiply(const rstd::TraitPtr self, int factor);
+struct rstd::Impl<MultiplyableTrait, TestClass> : rstd::ImplBase<TestClass> {
+    TestClass multiply(int factor) const;
 };
 
 // Add trait implementation declaration
 template<>
-struct rstd::Impl<StringConverterTrait, TestClass> {
-    static std::string to_string(const rstd::TraitPtr self);
-    static std::string to_hex(const rstd::TraitPtr self);
-    static std::string to_binary(const rstd::TraitPtr self);
+struct rstd::Impl<StringConverterTrait, TestClass> : rstd::ImplBase<TestClass> {
+    std::string to_string() const;
+    std::string to_hex() const;
+    std::string to_binary() const;
 };
 
 struct TestClass : public TestClassFields,
@@ -107,37 +107,37 @@ struct TestClass : public TestClassFields,
 };
 
 // Trait implementations definitions
-TestClass rstd::Impl<CloneTrait, TestClass>::clone(const rstd::TraitPtr self) {
-    return TestClass(self.as_ref<TestClass>().value);
+TestClass rstd::Impl<CloneTrait, TestClass>::clone() const {
+    return TestClass(self().value);
 }
 
-void rstd::Impl<DisplayTrait, TestClass>::display(const rstd::TraitPtr self, std::ostream& os) {
-    os << "TestClass(" << self.as_ref<TestClass>().value << ")";
+void rstd::Impl<DisplayTrait, TestClass>::display(std::ostream& os) const {
+    os << "TestClass(" << self().value << ")";
 }
 
-TestClass rstd::Impl<AddableTrait, TestClass>::add(const rstd::TraitPtr self,
-                                                   const TestClass&     other) {
-    return TestClass(self.as_ref<TestClass>().value + other.value);
+TestClass rstd::Impl<AddableTrait, TestClass>::add(
+                                                   const TestClass&     other) const {
+    return TestClass(self().value + other.value);
 }
 
-TestClass rstd::Impl<MultiplyableTrait, TestClass>::multiply(const rstd::TraitPtr self,
-                                                             int                  factor) {
-    return TestClass(self.as_ref<TestClass>().value * factor);
+TestClass rstd::Impl<MultiplyableTrait, TestClass>::multiply(
+                                                             int                  factor) const {
+    return TestClass(self().value * factor);
 }
 
 // Add implementations before the tests
-std::string rstd::Impl<StringConverterTrait, TestClass>::to_string(const rstd::TraitPtr self) {
-    return std::to_string(self.as_ref<TestClass>().value);
+std::string rstd::Impl<StringConverterTrait, TestClass>::to_string() const {
+    return std::to_string(self().value);
 }
 
-std::string rstd::Impl<StringConverterTrait, TestClass>::to_hex(const rstd::TraitPtr self) {
+std::string rstd::Impl<StringConverterTrait, TestClass>::to_hex() const {
     std::stringstream ss;
-    ss << "0x" << std::hex << self.as_ref<TestClass>().value;
+    ss << "0x" << std::hex << self().value;
     return ss.str();
 }
 
-std::string rstd::Impl<StringConverterTrait, TestClass>::to_binary(const rstd::TraitPtr self) {
-    int value = self.as_ref<TestClass>().value;
+std::string rstd::Impl<StringConverterTrait, TestClass>::to_binary() const {
+    int value = self().value;
     if (value == 0) return "0b0";
     std::string result = "0b";
     for (int i = sizeof(int) * 8 - 1; i >= 0; --i) {

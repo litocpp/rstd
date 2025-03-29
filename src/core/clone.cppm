@@ -1,5 +1,4 @@
 module;
-#include "rstd/trait_macro.hpp"
 #include <tuple>
 export module rstd.core:clone;
 export import :trait;
@@ -8,7 +7,7 @@ namespace rstd::clone
 {
 
 export struct Clone {
-    template<typename Self>
+    template<typename Self, typename = void>
     struct Api {
         using Trait = Clone;
         auto clone() const -> Self { return trait_call<0>(this); }
@@ -25,25 +24,23 @@ export struct Clone {
 namespace rstd
 {
 export template<typename Self>
-struct Impl<clone::Clone, Def<Self>> {
-    static void clone_from(TraitPtr self, Self& source) {
-        self.as_ref<Self>() = Impl<clone::Clone, Self>::clone(&source);
-    }
+struct Impl<clone::Clone, Def<Self>> : ImplBase<Self> {
+    void clone_from(Self& source) { this->self() = Impl<clone::Clone, Self> { &source }.clone(); }
 };
 
 export template<typename Self>
     requires meta::is_arithmetic_v<Self> || meta::is_pointer_v<Self> ||
              meta::is_copy_constructible_v<Self>
 struct Impl<clone::Clone, Self> : DefImpl<clone::Clone, Self> {
-    static auto clone(TraitPtr self) -> Self { return self.as_ref<Self>(); }
+    auto clone() const -> Self { return this->self(); }
 };
 
 export template<typename Self>
     requires meta::is_specialization_of_v<Self, std::tuple> &&
              (! meta::is_copy_constructible_v<Self>)
 struct Impl<clone::Clone, Self> : DefImpl<clone::Clone, Self> {
-    static auto clone(TraitPtr ptr) -> Self {
-        auto& self = ptr.as_ref<Self>();
+    auto clone() const -> Self {
+        auto& self = this->self();
         return std::apply(
             [](const auto&... elements) -> Self {
                 return { rstd::Impl<rstd::clone::Clone, std::decay_t<decltype(elements)>>::clone(
