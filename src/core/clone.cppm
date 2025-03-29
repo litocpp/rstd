@@ -1,5 +1,6 @@
 module;
 #include "rstd/trait_macro.hpp"
+#include <tuple>
 export module rstd.core:clone;
 export import :trait;
 
@@ -35,6 +36,21 @@ export template<typename Self>
              meta::is_copy_constructible_v<Self>
 struct Impl<clone::Clone, Self> : DefImpl<clone::Clone, Self> {
     static auto clone(TraitPtr self) -> Self { return self.as_ref<Self>(); }
+};
+
+export template<typename Self>
+    requires meta::is_specialization_of_v<Self, std::tuple> &&
+             (! meta::is_copy_constructible_v<Self>)
+struct Impl<clone::Clone, Self> : DefImpl<clone::Clone, Self> {
+    static auto clone(TraitPtr ptr) -> Self {
+        auto& self = ptr.as_ref<Self>();
+        return std::apply(
+            [](const auto&... elements) -> Self {
+                return { rstd::Impl<rstd::clone::Clone, std::decay_t<decltype(elements)>>::clone(
+                    &elements)... };
+            },
+            self);
+    }
 };
 
 } // namespace rstd

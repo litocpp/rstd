@@ -109,10 +109,11 @@ class TraitPtr {
     void const* const p;
 
 public:
+    constexpr TraitPtr(const TraitPtr& o) noexcept: p(o.p) {}
     template<typename T>
-    TraitPtr(const TraitPtr& o) noexcept: p(o.p) {}
+    constexpr TraitPtr(T* t) noexcept: p(t) {}
     template<typename T>
-    TraitPtr(T* t) noexcept: p(t) {}
+    constexpr TraitPtr(T& t) noexcept: p(std::addressof(t)) {}
 
     template<typename T>
     constexpr auto cast() noexcept -> T* {
@@ -138,21 +139,6 @@ public:
 export template<typename T, typename A>
 struct Impl;
 
-// namespace detail
-// {
-// template<typename T>
-// struct impl_helper;
-// template<template<typename...> class T, typename A, typename... Args>
-// struct impl_helper<T<A, Args...>> {
-//     using type = Impl<TTrait<T, Args...>::template type, A>;
-//     using Self = A;
-//
-//     template<template<typename...> class F>
-//     using to = F<A, Args...>;
-// };
-//
-// } // namespace detail
-
 struct DynImpl {};
 
 export template<typename A, typename... T>
@@ -163,8 +149,6 @@ concept IsTraitApi = requires() {
     typename T::Trait;
     typename detail::ApiInner<T>::type;
 };
-
-export enum class ConstNess { Mutable, Const };
 
 export template<typename T>
 struct Dyn;
@@ -273,10 +257,14 @@ auto make_dyn(A& t) {
 }
 
 export template<typename Self, typename... Traits>
-struct WithTrait : public Traits::template Api<Self>... {};
+struct WithTrait : public Traits::template Api<Self>... {
+    constexpr bool operator==(const WithTrait) const { return true; }
+};
 
 export template<typename Self, typename... Traits>
 struct MayWithTrait : public meta::conditional_t<Impled<Traits, Self>,
-                                                 typename Traits::template Api<Self>, Empty>... {};
+                                                 typename Traits::template Api<Self>, Empty>... {
+    constexpr bool operator==(const MayWithTrait) const { return true; }
+};
 
 } // namespace rstd
