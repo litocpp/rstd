@@ -2,6 +2,7 @@ export module rstd.core;
 export import :basic;
 export import :trait;
 export import :fmt;
+export import :convert;
 
 export import :ops;
 

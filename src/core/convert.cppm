@@ -2,8 +2,8 @@ module;
 #include <concepts>
 #include <utility>
 #include "rstd/trait_macro.hpp"
-export module rstd.convert;
-export import rstd.core;
+export module rstd.core:convert;
+export import :trait;
 
 namespace rstd::convert
 {

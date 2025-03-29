@@ -36,7 +36,6 @@ target_sources(
          src
          FILES
          src/mod.cppm
-         src/convert.cppm
          src/error.cppm
          ${SYNC_MODULE_FILES})
 
