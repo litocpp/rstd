@@ -175,6 +175,31 @@ protected:
     auto self() const -> A const& { return *_self; }
 };
 
+enum class DefPolicy
+{
+    InClass,
+    Normal
+};
+
+export template<typename T, DefPolicy P = DefPolicy::Normal>
+struct Def {};
+
+export template<typename T, typename A>
+struct ImplDefaultBase;
+
+export template<typename T, typename A>
+struct ImplDefaultBase<T, Def<A, DefPolicy::InClass>> {
+    template<typename, typename>
+    friend struct Impl;
+
+private:
+    auto self() -> A& { return *static_cast<A*>(this); }
+    auto self() const -> A const& { return *static_cast<A const*>(this); }
+};
+
+export template<typename T, typename A>
+struct ImplDefaultBase<T, Def<A, DefPolicy::Normal>> : ImplBase<A> {};
+
 struct dyn_tag {};
 template<typename T>
 struct in_class_tag {
@@ -193,11 +218,8 @@ concept IsTraitApi = requires() {
 export template<typename T>
 struct Dyn;
 
-template<typename T>
-struct Def {};
-
-export template<typename T, typename A>
-using ImplDefault = Impl<T, Def<A>>;
+export template<typename T, typename A, DefPolicy P = DefPolicy::Normal>
+using ImplDefault = Impl<T, Def<A, P>>;
 
 export template<typename T, typename A>
 struct ImplInClass;
@@ -372,13 +394,18 @@ auto as(A& t) {
 }
 
 export template<typename Self, typename... Traits>
-struct WithTrait : public Traits::template Api<Self>... {
+struct WithTrait : Traits::template Api<Self>... {
     constexpr bool operator==(const WithTrait) const { return true; }
 };
 
 export template<typename Self, typename... Traits>
-struct MayWithTrait : public meta::conditional_t<Impled<Traits, Self>,
-                                                 typename Traits::template Api<Self>, Empty>... {
+struct WithTraitDefault : ImplDefault<Traits, Self, DefPolicy::InClass>... {
+    constexpr bool operator==(const WithTraitDefault) const { return true; }
+};
+
+export template<typename Self, typename... Traits>
+struct MayWithTrait
+    : meta::conditional_t<Impled<Traits, Self>, typename Traits::template Api<Self>, Empty>... {
     constexpr bool operator==(const MayWithTrait) const { return true; }
 };
 

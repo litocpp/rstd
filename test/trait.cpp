@@ -252,11 +252,31 @@ struct InClass {
     void clone_from(InClass&) {}
 };
 
+struct InClassDef : rstd::WithTraitDefault<InClassDef, rstd::clone::Clone> {
+    int  a;
+    auto clone() const -> InClassDef {
+        InClassDef o {};
+        o.a = a;
+        return o;
+    }
+};
+
 template<>
 struct rstd::Impl<rstd::clone::Clone, InClass> : rstd::ImplInClass<rstd::clone::Clone, InClass> {};
+template<>
+struct rstd::Impl<rstd::clone::Clone, InClassDef>
+    : rstd::ImplInClass<rstd::clone::Clone, InClassDef> {};
 
 TEST(TraitTest, InClass) {
-    InClass m { 100 };
-    auto    n = rstd::as<rstd::clone::Clone>(m).clone();
-    EXPECT_EQ(m.a, 100);
+    {
+        InClass m { 100 };
+        auto    n = rstd::as<rstd::clone::Clone>(m).clone();
+        EXPECT_EQ(m.a, 100);
+    }
+    {
+        InClassDef m;
+        m.a    = 100;
+        auto n = rstd::as<rstd::clone::Clone>(m).clone();
+        EXPECT_EQ(m.a, 100);
+    }
 }

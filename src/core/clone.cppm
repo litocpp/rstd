@@ -23,9 +23,9 @@ export struct Clone {
 
 namespace rstd
 {
-export template<typename Self>
-struct Impl<clone::Clone, Def<Self>> : ImplBase<Self> {
-    void clone_from(Self& source) { this->self() = Impl<clone::Clone, Self> { &source }.clone(); }
+export template<typename Self, auto P>
+struct Impl<clone::Clone, Def<Self, P>> : ImplDefaultBase<clone::Clone, Def<Self, P>> {
+    void clone_from(Self& source) { this->self() = as<clone::Clone>(source).clone(); }
 };
 
 export template<typename Self>
