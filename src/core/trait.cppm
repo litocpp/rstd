@@ -385,6 +385,11 @@ auto make_dyn(A& t) {
     return make_dyn<T, A>(std::addressof(t));
 }
 
+export template<typename T, typename A>
+auto as(A& t) {
+    return Impl<T, meta::remove_cv_t<A>> { std::addressof(t) };
+}
+
 export template<typename Self, typename... Traits>
 struct WithTrait : public Traits::template Api<Self>... {
     constexpr bool operator==(const WithTrait) const { return true; }

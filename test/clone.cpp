@@ -12,7 +12,10 @@ struct B : rstd::WithTrait<B, rstd::clone::Clone> {
 TEST(Clone, Auto) {
     B    b { 1 };
     auto b2 = b.clone();
+
+    auto b3 = rstd::as<rstd::clone::Clone>(b2).clone();
     EXPECT_EQ(b2.a, 1);
+    EXPECT_EQ(b3.a, 1);
 }
 
 TEST(Clone, tuple) {
