@@ -43,8 +43,7 @@ struct Impl<clone::Clone, Self> : ImplDefault<clone::Clone, Self> {
         auto& self = this->self();
         return std::apply(
             [](const auto&... elements) -> Self {
-                return { rstd::Impl<rstd::clone::Clone, std::decay_t<decltype(elements)>>::clone(
-                    &elements)... };
+                return { rstd::as<rstd::clone::Clone>(elements).clone()... };
             },
             self);
     }
