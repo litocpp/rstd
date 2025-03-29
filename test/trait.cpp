@@ -177,7 +177,6 @@ TEST(TraitTest, ComplexTraitTest) {
 
     auto product = sum.multiply(2);
     EXPECT_EQ(product.value, 30);
-
     std::ostringstream oss;
     product.display(oss);
     EXPECT_EQ(oss.str(), "TestClass(30)");

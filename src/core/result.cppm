@@ -698,12 +698,22 @@ public:
 
     Result& operator=(const Result&) = delete;
 
+    Result& operator=(Result&&)
+        requires meta::is_trivially_move_assignable_v<typename traits::union_value_t> &&
+                     meta::is_trivially_move_assignable_v<typename traits::union_error_t>
+    = default;
+
     constexpr Result& operator=(Result&& o) noexcept(
-        meta::conjunction_v<
-            meta::is_nothrow_move_constructible<T>, meta::is_nothrow_move_constructible<E>,
-            meta::is_nothrow_move_assignable<T>, meta::is_nothrow_move_assignable<E>>)
-        requires meta::is_move_assignable_v<T> && meta::is_move_constructible_v<T> &&
-                 meta::is_move_assignable_v<E> && meta::is_move_constructible_v<E>
+        meta::conjunction_v<meta::is_nothrow_move_constructible<typename traits::union_value_t>,
+                            meta::is_nothrow_move_constructible<typename traits::union_value_t>,
+                            meta::is_nothrow_move_assignable<typename traits::union_error_t>,
+                            meta::is_nothrow_move_assignable<typename traits::union_error_t>>)
+        requires(! (meta::is_trivially_move_assignable_v<typename traits::union_value_t> &&
+                    meta::is_trivially_move_assignable_v<typename traits::union_error_t>)) &&
+                (meta::is_move_assignable_v<typename traits::union_value_t> &&
+                 meta::is_move_constructible_v<typename traits::union_value_t> &&
+                 meta::is_move_assignable_v<typename traits::union_error_t> &&
+                 meta::is_move_constructible_v<typename traits::union_error_t>)
     {
         if (o.m_has_val)
             this->_assign_val(Result::template _get<0>(std::move(o)));
