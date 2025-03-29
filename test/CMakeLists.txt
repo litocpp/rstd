@@ -9,7 +9,7 @@ if(NOT GTest_FOUND)
   FetchContent_MakeAvailable(googletest)
 endif()
 
-add_executable(rstd_test trait.cpp rc.cpp result.cpp compile.cpp option.cpp clone.cpp)
+add_executable(rstd_test trait.cpp rc.cpp result.cpp compile.cpp option.cpp clone.cpp convert.cpp)
 
 target_link_libraries(rstd_test PRIVATE rstd::rstd GTest::gtest_main)
 
