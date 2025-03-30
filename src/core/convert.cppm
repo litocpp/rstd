@@ -71,11 +71,4 @@ export template<typename T>
 auto into(T t) -> IntoWrapper<meta::remove_reference_t<T>> {
     return { std::move(t) };
 }
-
-export template<typename T>
-    requires(! meta::is_const_v<T> && ! meta::is_lvalue_reference_v<T>)
-auto into(T&& t) -> IntoWrapper<meta::remove_reference_t<T>> {
-    return { std::move(t) };
-}
-
 } // namespace rstd
