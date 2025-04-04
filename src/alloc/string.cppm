@@ -34,9 +34,15 @@ inline String format(format_string<Args...> fmt, Args&&... args) {
     return std::vformat(fmt.get(), std::make_format_args(args...));
 }
 
-template<meta::same_as<string::ToString> T, Impled<fmt::Display> A>
+export template<meta::same_as<string::ToString> T, Impled<fmt::Display> A>
 struct Impl<T, A> : ImplBase<A> {
     auto to_string() const -> string::String { return format("{}", this->self()); }
 };
+
+export template<Impled<string::ToString> A>
+auto to_string(A&& a) {
+    // use lvalue
+    return as<string::ToString>(a).to_string();
+}
 
 } // namespace rstd

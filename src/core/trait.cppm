@@ -207,7 +207,8 @@ struct in_class_tag {
 };
 
 export template<typename A, typename... T>
-concept Impled = (std::semiregular<Impl<T, A>> && ...) || meta::same_as<A, dyn_tag>;
+concept Impled = (std::semiregular<Impl<T, meta::remove_cvref_t<A>>> && ...) ||
+                 meta::same_as<meta::remove_cvref_t<A>, dyn_tag>;
 
 export template<typename T>
 concept IsTraitApi = requires() {
@@ -386,9 +387,14 @@ protected:
     auto self() const -> A const& { return *_self; }
 };
 
+///
+/// @brief as a triat
+// only accept lvalue for no stack-use-after-scope
+// requires Impled<T, meta::remove_cvref_t<A>>, maybe used in impldef which not satisfy
 export template<typename T, typename A>
 auto as(A& t) {
-    Impl<T, meta::remove_cv_t<A>> i {};
+    using impl_t = Impl<T, meta::remove_cvref_t<A>>;
+    meta::conditional_t<meta::is_const_v<A>, meta::add_const_t<impl_t>, impl_t> i {};
     i._self = std::addressof(t);
     return i;
 }
