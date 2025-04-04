@@ -8,7 +8,7 @@ module;
 #include <new>
 #include <cassert>
 
-export module rstd.rc:rc;
+export module rstd.rc;
 
 namespace rstd::rc
 {
@@ -161,9 +161,9 @@ struct RcInnerImpl<T[], StoragePolicy::Separate> : RcInnerArrayImpl<T[]> {
             for (std::size_t i = 0; i < this->size; i++) {
                 (ptr + i)->~value_t();
             }
-            ::operator delete(ptr,
-                              sizeof(value_t) * this->size,
-                              std::align_val_t { std::alignment_of_v<value_t> });
+            ::operator delete[](ptr,
+                                sizeof(value_t) * this->size,
+                                std::align_val_t { std::alignment_of_v<value_t> });
             self->value = nullptr;
         } else {
             delete self;
