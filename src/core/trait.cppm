@@ -394,9 +394,10 @@ protected:
 export template<typename T, typename A>
 auto as(A& t) {
     using impl_t = Impl<T, meta::remove_cvref_t<A>>;
-    meta::conditional_t<meta::is_const_v<A>, meta::add_const_t<impl_t>, impl_t> i {};
+    using ret_t  = meta::conditional_t<meta::is_const_v<A>, meta::add_const_t<impl_t>, impl_t>;
+    impl_t i {};
     i._self = std::addressof(t);
-    return i;
+    return ret_t { i };
 }
 
 export template<typename Self, typename... Traits>
