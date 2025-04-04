@@ -24,6 +24,7 @@ add_executable(
   clone.cpp
   convert.cpp
   alloc/rc.cpp
+  alloc/str.cpp
   alloc/string.cpp)
 
 target_link_libraries(rstd_test PRIVATE rstd::rstd GTest::gtest_main)

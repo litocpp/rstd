@@ -5,6 +5,7 @@ export import :basic;
 export import :meta;
 export import :clone;
 export import :fmt;
+export import :slice;
 export import :ops.function;
 
 namespace rstd::option
@@ -196,7 +197,7 @@ public:
         return false;
     }
 
-    auto expect(str& msg) -> T {
+    auto expect(ref_str msg) -> T {
         if (this->is_some()) {
             return _get_move();
         }

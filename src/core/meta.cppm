@@ -245,4 +245,11 @@ using invoke_result = std::invoke_result<F, ArgTypes...>;
 
 export template<class F, class... ArgTypes>
 using invoke_result_t = std::invoke_result_t<F, ArgTypes...>;
+
+export template<class T>
+struct type_identity {
+    using type = T;
+};
+export template<class T>
+using type_identity_t = type_identity<T>::type;
 } // namespace rstd::meta

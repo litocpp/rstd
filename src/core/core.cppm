@@ -32,8 +32,6 @@ export struct Empty {};
 export template<typename>
 struct EmptyT {};
 
-export using str = const std::string_view;
-
 export void rstd_assert(bool, const source_location = source_location::current());
 
 export [[noreturn]] inline void unreachable() {
