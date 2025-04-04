@@ -197,6 +197,14 @@ public:
         return false;
     }
 
+    constexpr auto as_ref() const -> Option<std::add_lvalue_reference_t<std::add_const_t<T>>> {
+        if (this->is_some()) {
+            return Option<void>::Some(_get());
+        } else {
+            return Option<void>::None();
+        }
+    }
+
     auto expect(ref_str msg) -> T {
         if (this->is_some()) {
             return _get_move();

@@ -72,6 +72,15 @@ TEST(Option, Map) {
     EXPECT_TRUE(mapped_none.is_none());
 }
 
+TEST(Option, AsRef) {
+    Option<std::unique_ptr<int>> up     = Some(std::make_unique<int>(3));
+    auto                         up_ref = up.as_ref();
+
+    EXPECT_EQ(*up_ref.unwrap(), 3);
+    // Verify reference doesn't destroy original
+    EXPECT_EQ(*up_ref.unwrap(), 3);
+}
+
 TEST(Option, AndThen) {
     auto some   = Some(42);
     auto mapped = some.and_then([](int x) {
