@@ -64,7 +64,7 @@ public:
 
     template<typename U>
         requires requires(U& r) {
-            { r.data() } -> meta::same_as<T>;
+            { r.data() } -> meta::convertible_to<pointer>;
             r.size();
         }
     constexpr Slice(U& range): m_ptr(range.data()), m_size(range.size()) {}

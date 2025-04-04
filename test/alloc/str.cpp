@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <charconv>
+#include <string>
 
 import rstd;
 
@@ -21,6 +22,9 @@ struct Impl<str::FromStr, int> {
 };
 
 TEST(Str, FromStr) {
+    std::string name = "ttt";
+    auto        x    = name;
+
     EXPECT_EQ(from_str<int>("asdlkf").unwrap_err(), "failed");
     EXPECT_EQ(10, from_str<int>("10").unwrap());
 }
