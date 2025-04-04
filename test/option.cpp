@@ -72,6 +72,15 @@ TEST(Option, Map) {
     EXPECT_TRUE(mapped_none.is_none());
 }
 
+TEST(Option, AndThen) {
+    auto some   = Some(42);
+    auto mapped = some.and_then([](int x) {
+        return Some(x * 2.0);
+    });
+    EXPECT_TRUE(mapped.is_some());
+    EXPECT_EQ(*mapped, 84.0);
+}
+
 TEST(Option, UnwrapOr) {
     auto some = Some(42);
     EXPECT_EQ(some.unwrap_or(0), 42);

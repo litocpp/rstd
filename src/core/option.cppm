@@ -192,7 +192,7 @@ public:
     // requires ImpledT<FnOnce<F, bool(T)>>
     auto is_some_and(F&& f) -> bool {
         if (this->is_some()) {
-            return std::move(f)(_get_move());
+            return std::forward<F>(f)(_get_move());
         }
         return false;
     }
@@ -227,7 +227,7 @@ public:
         if (this->is_some()) {
             return _get_move();
         }
-        return std::move(f)();
+        return std::forward<F>(f)();
     }
 
     constexpr auto unwrap_unchecked() -> T {
@@ -242,9 +242,18 @@ public:
     // requires ImpledT<FnOnce<F, U(T)>>
     auto map(F&& f) -> Option<U> {
         if (this->is_some()) {
-            return Option<void>::Some(std::move(f)(_get_move()));
+            return Option<void>::Some(std::forward<F>(f)(_get_move()));
         }
         return Option<void>::None<U>();
+    }
+
+    template<typename F, typename U = std::invoke_result_t<F, T>>
+        requires meta::special_of<U, Option>
+    auto and_then(F&& f) -> U {
+        if (this->is_some()) {
+            return std::forward<F>(f)(_get_move());
+        }
+        return Option<void>::None();
     }
 
     [[nodiscard]]
