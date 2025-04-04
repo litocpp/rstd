@@ -21,10 +21,14 @@ struct Impl<str::FromStr, int> {
     }
 };
 
+static auto call(ref_str s) { return s[1]; }
+
 TEST(Str, FromStr) {
-    std::string name = "ttt";
-    auto        x    = name;
+    std::string name = "name";
+    ref_str     x    = name;
 
     EXPECT_EQ(from_str<int>("asdlkf").unwrap_err(), "failed");
+    EXPECT_EQ(from_str<int>(name).unwrap_err(), "failed");
+    EXPECT_EQ(call(std::move(name)), 'a');
     EXPECT_EQ(10, from_str<int>("10").unwrap());
 }

@@ -67,7 +67,7 @@ public:
             { r.data() } -> meta::convertible_to<pointer>;
             r.size();
         }
-    constexpr Slice(U& range): m_ptr(range.data()), m_size(range.size()) {}
+    constexpr Slice(U&& range): m_ptr(range.data()), m_size(range.size()) {}
 
     constexpr auto      data() const -> pointer { return m_ptr; }
     constexpr auto      size() const -> size_type { return m_size; }
