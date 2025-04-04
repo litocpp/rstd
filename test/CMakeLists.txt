@@ -18,12 +18,13 @@ add_link_options(-fsanitize=address -fsanitize=undefined
 add_executable(
   rstd_test
   trait.cpp
-  rc.cpp
   result.cpp
   compile.cpp
   option.cpp
   clone.cpp
-  convert.cpp)
+  convert.cpp
+  alloc/rc.cpp
+  alloc/string.cpp)
 
 target_link_libraries(rstd_test PRIVATE rstd::rstd GTest::gtest_main)
 
