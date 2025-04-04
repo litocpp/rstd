@@ -38,6 +38,7 @@ target_sources(
          result.cppm
          option_adapter.cppm
          fmt.cppm
+         slice.cppm
          ops/mod.cppm
          ops/function.cppm
          mem/mod.cppm
