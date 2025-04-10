@@ -129,7 +129,10 @@ private:
 
 template<typename T>
 struct option_store<T&> {
-    constexpr auto is_some() const noexcept -> bool { return _ptr() != nullptr; }
+    constexpr auto is_some() const noexcept -> bool {
+        auto* p = *_ptr();
+        return p != nullptr;
+    }
 
 protected:
     using union_value_t       = T*;

@@ -351,7 +351,7 @@ public:
             return std::move(def)(_get_move<1>());
         }
     }
-    template<typename F, typename O>
+    template<typename O, typename F = meta::invoke_result_t<O, E>>
     // requires ImpledT<FnOnce<O, F(E)>>
     auto map_err(O&& op) -> Result<T, F> {
         if (is_ok()) {
@@ -375,7 +375,7 @@ public:
     // requires ImpledT<FnOnce<F, void(E&)>>
     auto inspect_err(F&& f) -> Result<T, E> {
         if (is_err()) {
-            std::move(f)(_get<0>());
+            std::move(f)(_get<1>());
         }
         auto& self = _cast();
         return std::move(self);
