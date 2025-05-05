@@ -506,7 +506,7 @@ public:
 
 template<typename T>
 class Rc final : public RcAdaptor<T> {
-    friend class RcMakeHelper;
+    friend struct RcMakeHelper;
     using inner_t = RcBase<T>::inner_t;
     explicit Rc(inner_t* p) noexcept: RcAdaptor<T>(p) {}
 

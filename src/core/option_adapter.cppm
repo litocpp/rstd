@@ -37,7 +37,7 @@ struct option_adapter : option_adapter_base<T> {
     }
 
 private:
-    friend class option_adapter_base<T>;
+    friend struct option_adapter_base<T>;
     template<typename U, typename E>
     static constexpr auto _transpose(Option<T>&& self) -> Result<Option<U>, E> {
         if (self.is_some()) {

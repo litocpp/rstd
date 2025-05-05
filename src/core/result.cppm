@@ -608,9 +608,9 @@ struct result_impl<Result<T, E>, E> : result_base<Result<T, E>, E> {
 template<typename T, typename E>
 class Result : public detail::result_impl<T, E> {
     template<typename, typename>
-    friend class detail::result_base;
+    friend struct detail::result_base;
     template<typename, typename>
-    friend class rstd::Impl;
+    friend struct rstd::Impl;
 
     using traits = detail::result_traits<Result<T, E>>;
     union {

@@ -9,7 +9,7 @@ import :fmt;
 
 namespace rstd
 {
-void rstd_assert(bool ok, const source_location loc) {
+void rstd_assert(bool ok, const source_location) {
     // TODO: print
     if (! ok) std::abort();
 }

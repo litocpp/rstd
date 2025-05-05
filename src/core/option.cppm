@@ -354,11 +354,11 @@ namespace rstd::option
 template<typename T>
 class Option : public detail::option_base<T>, public detail::option_adapter<T> {
     template<typename>
-    friend class detail::option_base;
+    friend struct detail::option_base;
     template<typename>
-    friend class detail::option_adapter;
+    friend struct detail::option_adapter;
     template<typename, typename>
-    friend class rstd::Impl;
+    friend struct rstd::Impl;
 
     friend class Option<void>;
 

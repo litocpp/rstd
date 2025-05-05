@@ -217,7 +217,7 @@ concept IsTraitApi = requires() {
 };
 
 export template<typename T>
-struct Dyn;
+class Dyn;
 
 export template<typename T, typename A, DefPolicy P = DefPolicy::Normal>
 using ImplDefault = Impl<T, Def<A, P>>;
