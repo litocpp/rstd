@@ -13,7 +13,9 @@ endif()
 option(RC_BUILD_TESTS "Build tests" ${PROJECT_IS_TOP_LEVEL})
 
 set(WARN_OPTS -Wall -Wextra -Wpedantic -Werror=mismatched-tags)
-add_compile_options("$<$<COMPILE_LANG_AND_ID:CXX,Clang,GNU>:${WARN_OPTS}>")
+add_compile_options(
+  "$<$<COMPILE_LANG_AND_ID:CXX,Clang,GNU>:${WARN_OPTS}>"
+)
 
 set(SYNC_SOURCE_FILES)
 set(SYNC_MODULE_FILES)
