@@ -70,8 +70,7 @@ struct alignas(std::size_t) RcInner {
     value_t*    value { nullptr };
 
     RcInner() noexcept {}
-    // not need virtual here
-    ~RcInner() = default;
+    virtual ~RcInner() = default;
 
     virtual void do_delete(detail::DeleteType t) {
         auto self = this;

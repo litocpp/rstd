@@ -157,7 +157,7 @@ struct FuncTraits<Ret (T::*)(Args...) const && noexcept(Ne)> {
 };
 
 template<typename... Api>
-consteval auto to_dyn(Apis<Api...> in) {
+consteval auto to_dyn(Apis<Api...>) {
     return Apis { (typename FuncTraits<Api>::to_dyn)(nullptr)... };
 }
 
