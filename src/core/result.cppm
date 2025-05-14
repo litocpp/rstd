@@ -500,8 +500,8 @@ public:
         }
     }
 
-    constexpr auto as_ref() const -> Result<std::add_lvalue_reference_t<std::add_const_t<T>>,
-                                            std::add_lvalue_reference_t<std::add_const_t<E>>> {
+    constexpr auto as_ref() const -> Result<meta::add_lvalue_reference_t<meta::add_const_t<T>>,
+                                            meta::add_lvalue_reference_t<meta::add_const_t<E>>> {
         if (is_ok()) {
             return Ok(_get<0>());
         } else {

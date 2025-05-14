@@ -200,7 +200,7 @@ public:
         return false;
     }
 
-    constexpr auto as_ref() const -> Option<std::add_lvalue_reference_t<std::add_const_t<T>>> {
+    constexpr auto as_ref() const -> Option<meta::add_lvalue_reference_t<meta::add_const_t<T>>> {
         if (this->is_some()) {
             return Option<void>::Some(_get());
         } else {

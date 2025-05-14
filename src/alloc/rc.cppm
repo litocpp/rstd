@@ -7,6 +7,9 @@ module;
 #include <limits>
 #include <new>
 #include <cassert>
+#include <stdexcept>
+#include <algorithm>
+
 
 export module rstd.rc;
 

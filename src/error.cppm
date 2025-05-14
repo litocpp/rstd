@@ -11,11 +11,11 @@ export struct Error {
         requires Impled<Self, fmt::Display>
     struct Api {
         using Trait = Error;
-        auto source() -> Dyn<Error> { return trait_call<0>(this); }
+        //auto source() -> Dyn<Error> { return trait_call<0>(this); }
         // auto   provide(request: &mut Request) { ... }
     };
-    template<typename T>
-    using TCollect = TraitCollect<&T::source>;
+    // template<typename T>
+    // using TCollect = TraitCollect<&T::source>;
 };
 
 } // namespace rstd::error
