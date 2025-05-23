@@ -43,7 +43,7 @@ void Once::wait(bool ignore_poisoning) {
                     continue;
                 }
             }
-            pal::futex_wait(&this->state_and_queued, state_and_queued, None());
+            pal::futex_wait(&this->state_and_queued, state_and_queued, rstd::None());
             state_and_queued = this->state_and_queued.load(std::memory_order_acquire);
             break;
         }

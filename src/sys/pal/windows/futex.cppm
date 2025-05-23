@@ -6,18 +6,20 @@ module;
 #    include <chrono>
 #    include <cstdint>
 export module rstd.sys:pal.windows.futex;
+export import rstd.core;
+
 namespace rstd::pal::windows
 {
 export {
     // Basic futex types
+    using Duration       = std::chrono::duration<double>;
     using Futex          = std::atomic_uint32_t;
     using Primitive      = std::uint32_t;
     using SmallFutex     = std::atomic_uint8_t;
     using SmallPrimitive = std::uint8_t;
 
     template<typename T>
-    bool futex_wait(const std::atomic<T>* futex, T expected,
-                    std::chrono::milliseconds timeout = std::chrono::milliseconds::max());
+    bool futex_wait(const std::atomic<T>* futex, T expected, Option<Duration> timeout);
 
     template<typename T>
     bool futex_wake(const std::atomic<T>* futex);

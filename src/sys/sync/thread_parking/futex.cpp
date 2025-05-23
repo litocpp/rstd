@@ -36,7 +36,7 @@ void Parker::park_timeout(std::chrono::duration<double> timeout) {
     }
 
     // Wait with timeout
-    pal::futex_wait(&state, PARKED, Some(timeout));
+    pal::futex_wait(&state, PARKED, rstd::Some(timeout));
 
     // Try to detect if we were notified or just timed out
     int32_t old = state.exchange(EMPTY, std::memory_order_acquire);
