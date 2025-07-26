@@ -1,8 +1,6 @@
-module;
-#include <tuple>
-#include <functional>
 export module rstd.core:trait;
 export import :basic;
+export import :std;
 export import :meta;
 
 namespace rstd
@@ -14,20 +12,20 @@ namespace detail
 {
 template<typename... Api>
 struct Apis {
-    std::tuple<Api...> apis;
+    cppstd::tuple<Api...> apis;
 
     constexpr Apis(Api... api) noexcept: apis(api...) {}
 
-    template<std::size_t I>
+    template<usize I>
     constexpr auto get() const noexcept {
-        return std::get<I>(apis);
+        return cppstd::get<I>(apis);
     }
-    template<std::size_t I>
-    using type_at = std::tuple_element_t<I, decltype(apis)>;
+    template<usize I>
+    using type_at = cppstd::tuple_element_t<I, decltype(apis)>;
 
-    using to_tuple_t = std::tuple<Api...>;
+    using to_tuple_t = cppstd::tuple<Api...>;
 
-    consteval static auto size() noexcept { return std::tuple_size<decltype(apis)> {}; }
+    consteval static auto size() noexcept { return cppstd::tuple_size<decltype(apis)> {}; }
 };
 template<typename T>
 struct FromCollect;
@@ -54,7 +52,7 @@ struct ApiInner<const T<A, B>> {
 template<typename T>
 struct FuncTraits;
 
-template<typename Self, typename TApi, typename TApiB, std::size_t Index = 0>
+template<typename Self, typename TApi, typename TApiB, usize Index = 0>
 consteval void check_apis() {
     if constexpr (Index == 0) {
         static_assert(TApi::size() == TApiB::size(), "Please implement all Trait api");
@@ -207,7 +205,7 @@ struct in_class_tag {
 };
 
 export template<typename A, typename... T>
-concept Impled = (std::semiregular<Impl<T, meta::remove_cvref_t<A>>> && ...) ||
+concept Impled = (meta::semiregular<Impl<T, meta::remove_cvref_t<A>>> && ...) ||
                  meta::same_as<meta::remove_cvref_t<A>, dyn_tag>;
 
 export template<typename T>
@@ -258,38 +256,38 @@ struct TraitMeta {
         if constexpr (meta::same_as<A, dyn_tag>) {
             // delegate for dyn
             auto dyn = static_cast<const Dyn<T>*>(self);
-            return dyn->apis->template get<I>()(dyn->self, std::forward<Args>(args)...);
+            return dyn->apis->template get<I>()(dyn->self, rstd::forward<Args>(args)...);
         } else if constexpr (meta::special_of<Delegate, in_class_tag>) {
             // delegate for ImplInClass
             auto self_ = static_cast<ImplInClass<T, A> const*>(self)->_self;
-            return std::invoke(apis.template get<I>(), self_, std::forward<Args>(args)...);
+            return cppstd::invoke(apis.template get<I>(), self_, rstd::forward<Args>(args)...);
         } else {
             // delegate for Impl
             Impl<T, A> self_ { static_cast<const A*>(self) };
-            return std::invoke(apis.template get<I>(), self_, std::forward<Args>(args)...);
+            return cppstd::invoke(apis.template get<I>(), self_, rstd::forward<Args>(args)...);
         }
     }
 
     template<usize I, typename... Args>
     static constexpr decltype(auto) call(Api* self, Args&&... args) {
-        if constexpr (std::same_as<A, dyn_tag>) {
+        if constexpr (meta::same_as<A, dyn_tag>) {
             // delegate for dyn
             auto dyn = static_cast<const Dyn<T>*>(self);
-            return dyn->apis->template get<I>()(dyn->self, std::forward<Args>(args)...);
+            return dyn->apis->template get<I>()(dyn->self, rstd::forward<Args>(args)...);
         } else if constexpr (meta::special_of<Delegate, in_class_tag>) {
             // delegate for ImplInClass
             auto self_ = const_cast<A*>(static_cast<ImplInClass<T, A>*>(self)->_self);
-            return std::invoke(apis.template get<I>(), self_, std::forward<Args>(args)...);
+            return cppstd::invoke(apis.template get<I>(), self_, rstd::forward<Args>(args)...);
         } else {
             // delegate for Impl
             Impl<T, A> self_ { static_cast<const A*>(self) };
-            return std::invoke(apis.template get<I>(), self_, std::forward<Args>(args)...);
+            return cppstd::invoke(apis.template get<I>(), self_, rstd::forward<Args>(args)...);
         }
     }
 
     template<usize I, typename... Args>
     static constexpr decltype(auto) call_static(Args&&... args) {
-        return apis.template get<I>()(std::forward<Args>(args)...);
+        return apis.template get<I>()(rstd::forward<Args>(args)...);
     }
 };
 
@@ -300,17 +298,16 @@ constexpr decltype(auto) trait_call(TApi* self, Args&&... args) {
         typename TApi::Trait,
         typename detail::ApiInner<TApi>::type,
         typename detail::ApiInner<TApi>::delegate_type>::template call<I>(self,
-                                                                          std::forward<Args>(
-                                                                              args)...);
+                                                                          rstd::forward<Args>(args)...);
 }
 
 export template<usize I, typename TApi, typename... Args>
     requires IsTraitApi<TApi>
 constexpr decltype(auto) trait_static_call(Args&&... args) {
-    return TraitMeta<typename TApi::Trait,
-                     typename detail::ApiInner<TApi>::type,
-                     typename detail::ApiInner<TApi>::delegate_type>::
-        template call<I>(std::forward<Args>(args)...);
+    return TraitMeta<
+        typename TApi::Trait,
+        typename detail::ApiInner<TApi>::type,
+        typename detail::ApiInner<TApi>::delegate_type>::template call<I>(rstd::forward<Args>(args)...);
 }
 
 template<typename T>
@@ -318,7 +315,7 @@ class Dyn : public meta::remove_cv_t<T>::template Api<dyn_tag> {
     using raw_t = meta::remove_cv_t<T>;
     using M     = TraitMeta<raw_t, dyn_tag>;
     friend M;
-    using ptr_t = std::conditional_t<meta::is_const_v<T>, const_voidp, voidp>;
+    using ptr_t = meta::conditional_t<meta::is_const_v<T>, const_voidp, voidp>;
 
     const decltype(M::apis)* const apis;
     ptr_t                          self;
@@ -337,28 +334,27 @@ class Dyn : public meta::remove_cv_t<T>::template Api<dyn_tag> {
             consteval static auto get() {
                 return [](voidp p, Args... args) {
                     Impl<meta::remove_cv_t<T>, U> self { static_cast<const U*>(p) };
-                    return std::invoke(
-                        UM::apis.template get<I>(), self, std::forward<Args>(args)...);
+                    return cppstd::invoke(UM::apis.template get<I>(), self, rstd::forward<Args>(args)...);
                 };
             }
         };
 
-        template<std::size_t... Is>
-        consteval static auto convert(std::index_sequence<Is...>) {
+        template<usize... Is>
+        consteval static auto convert(cppstd::index_sequence<Is...>) {
             return decltype(M::apis) { (Wrap<Is, decltype(M::apis.template get<Is>())>::get())... };
         }
 
         constexpr static decltype(M::apis) apis { convert(
-            std::make_index_sequence<decltype(M::apis)::size()> {}) };
+            cppstd::make_index_sequence<decltype(M::apis)::size()> {}) };
     };
 
 public:
     template<typename U>
-    Dyn(U* p) noexcept: apis(&Convert<std::remove_cv_t<U>>::apis), self(static_cast<ptr_t>(p)) {}
+    Dyn(U* p) noexcept: apis(&Convert<meta::remove_cv_t<U>>::apis), self(static_cast<ptr_t>(p)) {}
 
     template<typename U>
     Dyn(U& p) noexcept
-        : apis(&Convert<std::remove_cv_t<U>>::apis), self(static_cast<ptr_t>(std::addressof(p))) {}
+        : apis(&Convert<meta::remove_cv_t<U>>::apis), self(static_cast<ptr_t>(addressof(p))) {}
 
     Dyn(const Dyn&) noexcept = default;
     Dyn(Dyn&&) noexcept      = default;
@@ -369,13 +365,13 @@ public:
 
 export template<typename T, typename A>
 auto make_dyn(A* t) {
-    using dyn_t = std::conditional_t<std::is_const_v<A>, Dyn<const T>, Dyn<T>>;
+    using dyn_t = meta::conditional_t<meta::is_const_v<A>, Dyn<const T>, Dyn<T>>;
     return dyn_t(t);
 }
 
 export template<typename T, typename A>
 auto make_dyn(A& t) {
-    return make_dyn<T, A>(std::addressof(t));
+    return make_dyn<T, A>(addressof(t));
 }
 
 template<typename T, typename A>
@@ -396,7 +392,7 @@ auto as(A& t) {
     using impl_t = Impl<T, meta::remove_cvref_t<A>>;
     using ret_t  = meta::conditional_t<meta::is_const_v<A>, meta::add_const_t<impl_t>, impl_t>;
     impl_t i {};
-    i._self = std::addressof(t);
+    i._self = rstd::addressof(t);
     return ret_t { i };
 }
 

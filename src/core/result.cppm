@@ -1,8 +1,4 @@
-module;
-#include <memory>
 export module rstd.core:result;
-export import :basic;
-export import :meta;
 export import :clone;
 export import :fmt;
 export import :ops.function;
@@ -31,17 +27,17 @@ namespace detail
 {
 template<typename T, typename U, typename V>
 constexpr void reinit(T* newval, U* oldval,
-                      V&& arg) noexcept(std::is_nothrow_constructible_v<T, V>) {
-    if constexpr (std::is_nothrow_constructible_v<T, V>) {
-        std::destroy_at(oldval);
-        std::construct_at(newval, std::forward<V>(arg));
-    } else if constexpr (std::is_nothrow_move_constructible_v<T>) {
-        T tmp(std::forward<V>(arg)); // might throw
-        std::destroy_at(oldval);
-        std::construct_at(newval, std::move(tmp));
+                      V&& arg) noexcept(meta::is_nothrow_constructible_v<T, V>) {
+    if constexpr (meta::is_nothrow_constructible_v<T, V>) {
+        rstd::destroy_at(oldval);
+        rstd::construct_at(newval, rstd::forward<V>(arg));
+    } else if constexpr (meta::is_nothrow_move_constructible_v<T>) {
+        T tmp(rstd::forward<V>(arg)); // might throw
+        rstd::destroy_at(oldval);
+        rstd::construct_at(newval, rstd::move(tmp));
     } else {
         // Guard
-        std::construct_at(newval, std::forward<V>(arg)); // might throw
+        rstd::construct_at(newval, rstd::forward<V>(arg)); // might throw
     }
 }
 
@@ -58,7 +54,7 @@ struct result_traits<Result<T, E>> {
 
     using union_value_t =
         meta::conditional_t<meta::is_reference_v<T>,
-                            meta::add_pointer_t<meta::remove_reference_t<T>>, std::remove_cv_t<T>>;
+                            meta::add_pointer_t<meta::remove_reference_t<T>>, meta::remove_cv_t<T>>;
     using union_error_t = meta::conditional_t<meta::is_reference_v<E>,
                                               meta::add_pointer_t<meta::remove_reference_t<E>>, E>;
 };
@@ -174,13 +170,13 @@ protected:
     static constexpr decltype(auto) _get(U&& self) {
         using traits = detail::result_traits<decltype(self)>;
         if constexpr (I == 0) {
-            if constexpr (std::is_reference_v<T>) {
+            if constexpr (meta::is_reference_v<T>) {
                 return static_cast<traits::ret_value_t>(*(self.m_val));
             } else {
                 return static_cast<traits::ret_value_t>(self.m_val);
             }
         } else {
-            if constexpr (std::is_reference_v<E>) {
+            if constexpr (meta::is_reference_v<E>) {
                 return static_cast<traits::ret_error_t>(*(self.m_err));
             } else {
                 return static_cast<traits::ret_error_t>(self.m_err);
@@ -214,7 +210,7 @@ protected:
 
     template<i32 I, typename U>
     constexpr decltype(auto) _self_get(U&& self) const {
-        return result_base::template _get<I>(std::forward<U>(self));
+        return result_base::template _get<I>(rstd::forward<U>(self));
     }
 
     template<typename V>
@@ -222,9 +218,9 @@ protected:
         auto& self     = _cast();
         self.m_has_val = true;
         if constexpr (meta::is_reference_v<T>) {
-            self.m_val = std::addressof(val);
+            self.m_val = rstd::addressof(val);
         } else {
-            std::construct_at(std::addressof(self.m_val), std::forward<V>(val));
+            rstd::construct_at(rstd::addressof(self.m_val), rstd::forward<V>(val));
         }
     }
     template<typename V>
@@ -232,9 +228,9 @@ protected:
         auto& self     = _cast();
         self.m_has_val = false;
         if constexpr (meta::is_reference_v<E>) {
-            self.m_err = std::addressof(err);
+            self.m_err = rstd::addressof(err);
         } else {
-            std::construct_at(std::addressof(self.m_err), std::forward<V>(err));
+            rstd::construct_at(rstd::addressof(self.m_err), rstd::forward<V>(err));
         }
     }
 
@@ -243,18 +239,18 @@ protected:
         auto& self = _cast();
         if constexpr (meta::is_reference_v<T>) {
             if (self.m_has_val)
-                self.m_val = std::addressof(v);
+                self.m_val = rstd::addressof(v);
             else {
                 detail::reinit(
-                    std::addressof(self.m_val), std::addressof(self.m_err), std::addressof(v));
+                    rstd::addressof(self.m_val), rstd::addressof(self.m_err), rstd::addressof(v));
                 self.m_has_val = true;
             }
         } else {
             if (self.m_has_val)
-                self.m_val = std::forward<V>(v);
+                self.m_val = rstd::forward<V>(v);
             else {
                 detail::reinit(
-                    std::addressof(self.m_val), std::addressof(self.m_err), std::forward<V>(v));
+                    rstd::addressof(self.m_val), rstd::addressof(self.m_err), rstd::forward<V>(v));
                 self.m_has_val = true;
             }
         }
@@ -266,17 +262,17 @@ protected:
         if constexpr (meta::is_reference_v<E>) {
             if (self.m_has_val) {
                 detail::reinit(
-                    std::addressof(self.m_err), std::addressof(self.m_val), std::addressof(v));
+                    rstd::addressof(self.m_err), rstd::addressof(self.m_val), rstd::addressof(v));
                 self.m_has_val = false;
             } else
-                self.m_err = std::addressof(v);
+                self.m_err = rstd::addressof(v);
         } else {
             if (self.m_has_val) {
                 detail::reinit(
-                    std::addressof(self.m_err), std::addressof(self.m_val), std::forward<V>(v));
+                    rstd::addressof(self.m_err), rstd::addressof(self.m_val), rstd::forward<V>(v));
                 self.m_has_val = false;
             } else
-                self.m_err = std::forward<V>(v);
+                self.m_err = rstd::forward<V>(v);
         }
     }
 
@@ -294,7 +290,7 @@ public:
     // requires ImpledT<FnOnce<F, bool(T)>>
     auto is_ok_and(F&& f) -> bool {
         if (is_ok()) {
-            return std::move(f)(_get_move<0>());
+            return rstd::move(f)(_get_move<0>());
         } else
             return false;
     }
@@ -303,7 +299,7 @@ public:
     // requires ImpledT<FnOnce<F, bool(E)>>
     auto is_err_and(F&& f) -> bool {
         if (is_err()) {
-            return std::move(f)(_get_move<1>());
+            return rstd::move(f)(_get_move<1>());
         } else
             return false;
     }
@@ -322,11 +318,11 @@ public:
             return rstd::None();
     }
 
-    template<typename F, typename U = std::invoke_result_t<F, T>>
+    template<typename F, typename U = meta::invoke_result_t<F, T>>
     // requires ImpledT<FnOnce<F, U(T)>>
     auto map(F&& op) -> Result<U, E> {
         if (is_ok()) {
-            return Ok(std::move(op)(_get_move<0>()));
+            return Ok(rstd::move(op)(_get_move<0>()));
         } else {
             return Err(_get<1>());
         }
@@ -336,7 +332,7 @@ public:
     // requires ImpledT<FnOnce<F, U(T)>>
     auto map_or(U&& def, F&& op) -> U {
         if (is_ok()) {
-            return std::move(op)(_get_move<0>());
+            return rstd::move(op)(_get_move<0>());
         } else {
             return def;
         }
@@ -346,9 +342,9 @@ public:
     // requires ImpledT<FnOnce<D, U(E)>, FnOnce<F, U(T)>>
     auto map_or_else(D&& def, F&& f) -> U {
         if (is_ok()) {
-            return std::move(f)(_get_move<0>());
+            return rstd::move(f)(_get_move<0>());
         } else {
-            return std::move(def)(_get_move<1>());
+            return rstd::move(def)(_get_move<1>());
         }
     }
     template<typename O, typename F = meta::invoke_result_t<O, E>>
@@ -357,7 +353,7 @@ public:
         if (is_ok()) {
             return Ok(_get_move<0>());
         } else {
-            return Err(std::move(op)(_get_move<1>()));
+            return Err(rstd::move(op)(_get_move<1>()));
         }
     }
 
@@ -365,20 +361,20 @@ public:
     // requires ImpledT<FnOnce<F, void(T&)>>
     auto inspect(F&& f) -> Result<T, E> {
         if (is_ok()) {
-            std::move(f)(_get<0>());
+            rstd::move(f)(_get<0>());
         }
         auto& self = _cast();
-        return std::move(self);
+        return rstd::move(self);
     }
 
     template<typename F>
     // requires ImpledT<FnOnce<F, void(E&)>>
     auto inspect_err(F&& f) -> Result<T, E> {
         if (is_err()) {
-            std::move(f)(_get<1>());
+            rstd::move(f)(_get<1>());
         }
         auto& self = _cast();
-        return std::move(self);
+        return rstd::move(self);
     }
 
     auto expect(ref_str msg) -> T
@@ -440,7 +436,7 @@ public:
     // requires ImpledT<FnOnce<F, Result<meta::conditional_t<meta::is_void_v<U>, U2, U>, E>(T)>>
     auto and_then(F&& op) -> Result<meta::conditional_t<meta::is_void_v<U>, U2, U>, E> {
         if (is_ok()) {
-            return std::move(op)(_get_move<0>());
+            return rstd::move(op)(_get_move<0>());
         } else {
             return Err(_get_move<1>());
         }
@@ -452,7 +448,7 @@ public:
             return Ok(_get_move<0>());
         } else {
             auto& self = _cast();
-            return std::move(res);
+            return rstd::move(res);
         }
     }
 
@@ -462,7 +458,7 @@ public:
         if (is_ok()) {
             return Ok(_get_move<0>());
         } else {
-            return std::move(op)(_get_move<1>());
+            return rstd::move(op)(_get_move<1>());
         }
     }
 
@@ -470,7 +466,7 @@ public:
         if (is_ok()) {
             return _get_move<0>();
         } else {
-            return std::move(def);
+            return rstd::move(def);
         }
     }
 
@@ -480,7 +476,7 @@ public:
         if (is_ok()) {
             return _get_move<0>();
         } else {
-            return std::move(op)(_get_move<1>());
+            return rstd::move(op)(_get_move<1>());
         }
     }
 
@@ -512,13 +508,13 @@ public:
     [[nodiscard]]
     constexpr const meta::remove_reference_t<T>* operator->() const noexcept {
         rstd_assert(is_ok());
-        return std::addressof(_get<0>());
+        return rstd::addressof(_get<0>());
     }
 
     [[nodiscard]]
     constexpr meta::remove_reference_t<T>* operator->() noexcept {
         rstd_assert(is_ok());
-        return std::addressof(_get<0>());
+        return rstd::addressof(_get<0>());
     }
 
     [[nodiscard]]
@@ -626,22 +622,22 @@ public:
     template<typename U>
     using rebind = Result<U, error_type>;
 
-    constexpr Result() noexcept(std::is_nothrow_default_constructible_v<T>)
-        requires std::is_default_constructible_v<T>
+    constexpr Result() noexcept(meta::is_nothrow_default_constructible_v<T>)
+        requires meta::is_default_constructible_v<T>
         : m_val(), m_has_val(true) {}
 
     // Ok ctor
     Result(T&& val) noexcept(meta::nothrow_constructible<T, T>)
         requires meta::same_as<E, UnknownErr>
     {
-        this->_construct_val(std::forward<T>(val));
+        this->_construct_val(rstd::forward<T>(val));
     }
 
     // Err ctor
     Result(E&& err) noexcept(meta::nothrow_constructible<E, E>)
         requires meta::same_as<T, UnknownOk>
     {
-        this->_construct_err(std::forward<E>(err));
+        this->_construct_err(rstd::forward<E>(err));
     }
 
     // from Ok
@@ -652,7 +648,7 @@ public:
                                           typename detail::result_traits<U>::error_type> &&
                  meta::constructible_from<T, typename detail::result_traits<U>::value_type>
     {
-        this->_construct_val(meta::remove_cvref_t<U>::template _get<0>(std::forward<U>(o)));
+        this->_construct_val(meta::remove_cvref_t<U>::template _get<0>(rstd::forward<U>(o)));
     }
 
     // from Err
@@ -663,7 +659,7 @@ public:
                                           typename detail::result_traits<U>::value_type> &&
                  meta::constructible_from<E, typename detail::result_traits<U>::error_type>
     {
-        this->_construct_err(meta::remove_cvref_t<U>::template _get<1>(std::forward<U>(o)));
+        this->_construct_err(meta::remove_cvref_t<U>::template _get<1>(rstd::forward<U>(o)));
     }
 
     Result(const Result&)     = default;
@@ -675,24 +671,24 @@ public:
         requires meta::custom_move_constructible<T> || meta::custom_move_constructible<E>
     {
         if (o.m_has_val) {
-            this->_construct_val(Result::template _get<0>(std::move(o)));
+            this->_construct_val(Result::template _get<0>(rstd::move(o)));
         } else {
-            this->_construct_err(Result::template _get<1>(std::move(o)));
+            this->_construct_err(Result::template _get<1>(rstd::move(o)));
         }
     }
 
     constexpr ~Result() = default;
 
     constexpr ~Result()
-        requires(! std::is_trivially_destructible_v<T>) || (! std::is_trivially_destructible_v<E>)
+        requires(! meta::is_trivially_destructible_v<T>) || (! meta::is_trivially_destructible_v<E>)
     {
         if (m_has_val) {
-            if constexpr (! std::is_trivially_destructible_v<T>) {
-                std::destroy_at(std::addressof(m_val));
+            if constexpr (! meta::is_trivially_destructible_v<T>) {
+                rstd::destroy_at(rstd::addressof(m_val));
             }
         } else {
-            if constexpr (! std::is_trivially_destructible_v<E>) {
-                std::destroy_at(std::addressof(m_err));
+            if constexpr (! meta::is_trivially_destructible_v<E>) {
+                rstd::destroy_at(rstd::addressof(m_err));
             }
         }
     }
@@ -717,9 +713,9 @@ public:
                  meta::is_move_constructible_v<typename traits::union_error_t>)
     {
         if (o.m_has_val)
-            this->_assign_val(Result::template _get<0>(std::move(o)));
+            this->_assign_val(Result::template _get<0>(rstd::move(o)));
         else
-            this->_assign_err(Result::template _get<1>(std::move(o)));
+            this->_assign_err(Result::template _get<1>(rstd::move(o)));
         return *this;
     }
 

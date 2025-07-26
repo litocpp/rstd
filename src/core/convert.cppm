@@ -1,7 +1,3 @@
-module;
-#include <concepts>
-#include <utility>
-#include "rstd/trait_macro.hpp"
 export module rstd.core:convert;
 export import :trait;
 
@@ -33,7 +29,7 @@ struct Into {
 
 export template<typename T, typename F>
 auto into(F&& val) -> T {
-    return Impl<Into<T>, std::remove_reference_t<F>>::into(val);
+    return Impl<Into<T>, meta::remove_reference_t<F>>::into(val);
 }
 
 } // namespace rstd::convert
@@ -42,12 +38,12 @@ namespace rstd
 {
 
 export template<typename T, typename Self>
-    requires std::same_as<T, convert::Into<typename T::into_t>> &&
+    requires meta::same_as<T, convert::Into<typename T::into_t>> &&
              Impled<typename T::into_t, typename convert::From<Self>>
 struct Impl<T, Self> : ImplBase<Self> {
     using into_t = typename T::into_t;
     auto into() -> into_t {
-        return Impl<convert::From<Self>, into_t>::from(std::move(this->self()));
+        return Impl<convert::From<Self>, into_t>::from(rstd::move(this->self()));
     }
 };
 
@@ -57,10 +53,10 @@ struct IntoWrapper {
     template<typename U>
         requires Impled<meta::remove_cv_t<U>, convert::From<T>>
     operator U() {
-        return Impl<convert::From<T>, meta::remove_cv_t<U>>::from(std::move(self));
+        return Impl<convert::From<T>, meta::remove_cv_t<U>>::from(rstd::move(self));
     }
 
-    IntoWrapper(T&& t): self(std::move(t)) {}
+    IntoWrapper(T&& t): self(rstd::move(t)) {}
     IntoWrapper(const IntoWrapper&)            = delete;
     IntoWrapper& operator=(const IntoWrapper&) = delete;
     IntoWrapper(IntoWrapper&&)                 = default;
@@ -69,6 +65,6 @@ struct IntoWrapper {
 
 export template<typename T>
 auto into(T t) -> IntoWrapper<meta::remove_reference_t<T>> {
-    return { std::move(t) };
+    return { rstd::move(t) };
 }
 } // namespace rstd

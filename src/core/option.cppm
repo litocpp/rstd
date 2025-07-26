@@ -1,8 +1,4 @@
-module;
-#include <memory>
 export module rstd.core:option;
-export import :basic;
-export import :meta;
 export import :clone;
 export import :fmt;
 export import :slice;
@@ -26,12 +22,12 @@ public:
     static constexpr auto Some(T&& val) {
         if constexpr (meta::same_as<U, void>) {
             if constexpr (meta::trivially_value<meta::remove_reference_t<T>>) {
-                return Option<meta::remove_reference_t<T>>(std::move(val));
+                return Option<meta::remove_reference_t<T>>(rstd::move(val));
             } else {
-                return Option<T>(std::forward<T>(val));
+                return Option<T>(rstd::forward<T>(val));
             }
         } else {
-            return Option<U>(std::forward<T>(val));
+            return Option<U>(rstd::forward<T>(val));
         }
     }
 
@@ -92,32 +88,32 @@ protected:
     constexpr auto _ptr() noexcept { return reinterpret_cast<T*>(m_storage); }
     template<typename V>
     constexpr void _construct_val(V&& val) {
-        std::construct_at(_ptr(), std::forward<V>(val));
+        rstd::construct_at(_ptr(), rstd::forward<V>(val));
         m_has_val = true;
     }
     template<typename V>
     constexpr void _assign_val(V&& val) {
         auto ptr = _ptr();
         if (is_some()) {
-            if constexpr (std::is_nothrow_constructible_v<T, V>) {
-                std::destroy_at(ptr);
-                std::construct_at(ptr, std::forward<V>(val));
-            } else if constexpr (std::is_nothrow_move_constructible_v<T>) {
-                T tmp(std::forward<V>(val));
-                std::destroy_at(ptr);
-                std::construct_at(ptr, std::move(tmp));
+            if constexpr (meta::is_nothrow_constructible_v<T, V>) {
+                rstd::destroy_at(ptr);
+                rstd::construct_at(ptr, rstd::forward<V>(val));
+            } else if constexpr (meta::is_nothrow_move_constructible_v<T>) {
+                T tmp(rstd::forward<V>(val));
+                rstd::destroy_at(ptr);
+                rstd::construct_at(ptr, rstd::move(tmp));
             } else {
-                std::destroy_at(ptr);
-                std::construct_at(ptr, std::forward<V>(val));
+                rstd::destroy_at(ptr);
+                rstd::construct_at(ptr, rstd::forward<V>(val));
             }
         } else {
-            _construct_val(std::forward<V>(val));
+            _construct_val(rstd::forward<V>(val));
             m_has_val = true;
         }
     }
     constexpr void _assign_none() {
         if (is_some()) {
-            std::destroy_at(_ptr());
+            rstd::destroy_at(_ptr());
             m_has_val = false;
         }
     }
@@ -144,11 +140,11 @@ protected:
     constexpr auto _ptr() noexcept { return reinterpret_cast<T**>(m_storage); }
     template<typename V>
     constexpr void _construct_val(V&& val) {
-        std::construct_at(_ptr(), std::addressof(val));
+        rstd::construct_at(_ptr(), rstd::addressof(val));
     }
     template<typename V>
     constexpr void _assign_val(V&& val) {
-        std::construct_at(_ptr(), std::addressof(val));
+        rstd::construct_at(_ptr(), rstd::addressof(val));
     }
     constexpr void _assign_none() {
         if (is_some()) {
@@ -195,7 +191,7 @@ public:
     // requires ImpledT<FnOnce<F, bool(T)>>
     auto is_some_and(F&& f) -> bool {
         if (this->is_some()) {
-            return std::forward<F>(f)(_get_move());
+            return rstd::forward<F>(f)(_get_move());
         }
         return false;
     }
@@ -229,7 +225,7 @@ public:
         if (this->is_some()) {
             return _get_move();
         }
-        return std::forward<U>(default_value);
+        return rstd::forward<U>(default_value);
     }
 
     template<typename F>
@@ -238,7 +234,7 @@ public:
         if (this->is_some()) {
             return _get_move();
         }
-        return std::forward<F>(f)();
+        return rstd::forward<F>(f)();
     }
 
     constexpr auto unwrap_unchecked() -> T {
@@ -249,20 +245,20 @@ public:
         }
     }
 
-    template<typename F, typename U = std::invoke_result_t<F, T>>
+    template<typename F, typename U = meta::invoke_result_t<F, T>>
     // requires ImpledT<FnOnce<F, U(T)>>
     auto map(F&& f) -> Option<U> {
         if (this->is_some()) {
-            return Option<void>::Some(std::forward<F>(f)(_get_move()));
+            return Option<void>::Some(rstd::forward<F>(f)(_get_move()));
         }
         return Option<void>::None<U>();
     }
 
-    template<typename F, typename U = std::invoke_result_t<F, T>>
+    template<typename F, typename U = meta::invoke_result_t<F, T>>
         requires meta::special_of<U, Option>
     auto and_then(F&& f) -> U {
         if (this->is_some()) {
-            return std::forward<F>(f)(_get_move());
+            return rstd::forward<F>(f)(_get_move());
         }
         return Option<void>::None();
     }
@@ -282,13 +278,13 @@ public:
     [[nodiscard]]
     constexpr const meta::remove_reference_t<T>* operator->() const& noexcept {
         rstd_assert(this->is_some());
-        return std::addressof(_get());
+        return rstd::addressof(_get());
     }
 
     [[nodiscard]]
     constexpr meta::remove_reference_t<T>* operator->() & noexcept {
         rstd_assert(this->is_some());
-        return std::addressof(_get());
+        return rstd::addressof(_get());
     }
 
     [[nodiscard]]
@@ -310,12 +306,12 @@ using Option = option::Option<T>;
 
 export template<typename U = void, typename T>
 constexpr auto Some(T&& val) {
-    return Option<void>::Some<U>(std::forward<T>(val));
+    return Option<void>::Some<U>(rstd::forward<T>(val));
 }
 
 export template<typename U = void, typename T = option::Unknown>
 constexpr auto None(T&& t = {}) {
-    return Option<void>::None<U>(std::move(t));
+    return Option<void>::None<U>(rstd::move(t));
 }
 
 export template<typename T, typename Self>
@@ -382,7 +378,7 @@ public:
         requires meta::custom_move_constructible<union_value_t>
     {
         if (o.is_some()) {
-            this->_construct_val(std::move(o)._get());
+            this->_construct_val(rstd::move(o)._get());
         } else {
             this->_assign_none();
         }
@@ -391,10 +387,10 @@ public:
     ~Option() = default;
 
     constexpr ~Option()
-        requires(! std::is_trivially_destructible_v<T>)
+        requires(! meta::is_trivially_destructible_v<T>)
     {
         if (this->is_some()) {
-            std::destroy_at(this->_ptr());
+            rstd::destroy_at(this->_ptr());
         }
     }
 
@@ -409,7 +405,7 @@ public:
         requires meta::custom_move_assignable<union_value_t>
     {
         if (v.is_some()) {
-            this->_assign_val(std::move(v._get()));
+            this->_assign_val(rstd::move(v._get()));
         } else {
             this->_assign_none();
         }
@@ -430,7 +426,7 @@ public:
 
 private:
     constexpr Option(T&& val) noexcept(meta::nothrow_constructible<T, T>) {
-        this->_construct_val(std::forward<T>(val));
+        this->_construct_val(rstd::forward<T>(val));
     }
 
     constexpr Option(meta::remove_reference_t<T>* ptr) noexcept

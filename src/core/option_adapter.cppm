@@ -1,5 +1,3 @@
-module;
-#include <utility>
 export module rstd.core:option_adapter;
 export import :option;
 export import :result;
@@ -32,7 +30,7 @@ struct option_adapter : option_adapter_base<T> {
         if (self.is_some()) {
             return Ok(self._get_move());
         } else {
-            return Err(std::move(err)());
+            return Err(rstd::move(err)());
         }
     }
 
@@ -43,9 +41,9 @@ private:
         if (self.is_some()) {
             auto&& t = self.unwrap_unchecked();
             if (t.is_ok()) {
-                return Ok(Some(std::move(t.unwrap_unchecked())));
+                return Ok(Some(rstd::move(t.unwrap_unchecked())));
             } else {
-                return Err(std::move(t.unwrap_err_unchecked()));
+                return Err(rstd::move(t.unwrap_err_unchecked()));
             }
         } else {
             return Ok<Option<U>>(None());

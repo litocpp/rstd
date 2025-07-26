@@ -1,5 +1,6 @@
 module;
 #include <type_traits>
+#include <concepts>
 export module rstd.core:meta;
 
 namespace rstd::meta
@@ -146,6 +147,9 @@ concept constructible_from = nothrow_destructible<T> && is_constructible_v<T, Ar
 export template<typename T, typename... Args>
 concept nothrow_constructible = std::is_nothrow_constructible_v<T, Args...>;
 
+export template<typename T, typename... Args>
+inline constexpr bool is_nothrow_constructible_v = std::is_nothrow_constructible_v<T, Args...>;
+
 // copy
 export template<class T>
 using is_copy_constructible = std::is_copy_constructible<T>;
@@ -232,6 +236,9 @@ export template<class T>
 using remove_cvref_t = std::remove_cvref_t<T>;
 
 export template<class T>
+using remove_const_t = std::remove_const_t<T>;
+
+export template<class T>
 using is_void = std::is_void<T>;
 export template<class T>
 inline constexpr bool is_void_v = std::is_void_v<T>;
@@ -252,4 +259,15 @@ struct type_identity {
 };
 export template<class T>
 using type_identity_t = type_identity<T>::type;
+
+export template<typename T>
+concept semiregular = std::semiregular<T>;
+
+export template<typename T>
+inline constexpr bool is_trivially_destructible_v = std::is_trivially_destructible_v<T>;
+export template<typename T>
+inline constexpr bool is_nothrow_default_constructible_v =
+    std::is_nothrow_default_constructible_v<T>;
+;
+
 } // namespace rstd::meta

@@ -1,5 +1,6 @@
 export module rstd.core;
 export import :basic;
+export import :std;
 export import :trait;
 export import :fmt;
 export import :convert;

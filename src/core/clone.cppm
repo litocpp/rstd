@@ -1,5 +1,3 @@
-module;
-#include <tuple>
 export module rstd.core:clone;
 export import :trait;
 
@@ -36,12 +34,12 @@ struct Impl<clone::Clone, Self> : ImplDefault<clone::Clone, Self> {
 };
 
 export template<typename Self>
-    requires meta::is_specialization_of_v<Self, std::tuple> &&
+    requires meta::is_specialization_of_v<Self, cppstd::tuple> &&
              (! meta::is_copy_constructible_v<Self>)
 struct Impl<clone::Clone, Self> : ImplDefault<clone::Clone, Self> {
     auto clone() const -> Self {
         auto& self = this->self();
-        return std::apply(
+        return cppstd::apply(
             [](const auto&... elements) -> Self {
                 return { rstd::as<rstd::clone::Clone>(elements).clone()... };
             },

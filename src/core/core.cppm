@@ -2,7 +2,6 @@ module;
 #include <cstdint>
 #include <cstddef>
 #include <source_location>
-#include <string_view>
 export module rstd.core:basic;
 
 namespace rstd

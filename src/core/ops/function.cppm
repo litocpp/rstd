@@ -1,6 +1,3 @@
-module;
-#include <utility>
-#include "rstd/trait_macro.hpp"
 export module rstd.core:ops.function;
 export import :trait;
 
