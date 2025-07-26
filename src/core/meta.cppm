@@ -1,6 +1,7 @@
 module;
 #include <type_traits>
 #include <concepts>
+#include <tuple>
 export module rstd.core:meta;
 
 namespace rstd::meta
@@ -268,6 +269,14 @@ inline constexpr bool is_trivially_destructible_v = std::is_trivially_destructib
 export template<typename T>
 inline constexpr bool is_nothrow_default_constructible_v =
     std::is_nothrow_default_constructible_v<T>;
-;
+
+// custom
+template<typename>
+struct is_tuple : std::false_type {};
+template<typename... T>
+struct is_tuple<std::tuple<T...>> : std::true_type {};
+
+template<typename T>
+concept is_tuple_v = is_tuple<T>::value;
 
 } // namespace rstd::meta

@@ -34,8 +34,7 @@ struct Impl<clone::Clone, Self> : ImplDefault<clone::Clone, Self> {
 };
 
 export template<typename Self>
-    requires meta::is_specialization_of_v<Self, cppstd::tuple> &&
-             (! meta::is_copy_constructible_v<Self>)
+    requires meta::is_tuple_v<Self> && (! meta::is_copy_constructible_v<Self>)
 struct Impl<clone::Clone, Self> : ImplDefault<clone::Clone, Self> {
     auto clone() const -> Self {
         auto& self = this->self();
