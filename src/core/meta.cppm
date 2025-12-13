@@ -43,6 +43,16 @@ using is_union = std::is_union<T>;
 export template<typename T>
 inline constexpr bool is_union_v = is_union<T>::value;
 
+template<typename T>
+using is_enum = std::is_enum<T>;
+export template<typename T>
+inline constexpr bool is_enum_v = is_enum<T>::value;
+
+template<typename T>
+using underlying_type = std::underlying_type<T>;
+template<typename T>
+using underlying_type_t = std::underlying_type<T>::type;
+
 export template<class T>
 using is_class = std::is_class<T>;
 export template<typename T>

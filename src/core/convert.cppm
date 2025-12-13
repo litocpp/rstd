@@ -47,6 +47,13 @@ struct Impl<T, Self> : ImplBase<Self> {
     }
 };
 
+export template<typename T, typename Self>
+    requires meta::same_as<T, convert::From<meta::underlying_type_t<Self>>> && meta::is_enum_v<Self>
+struct Impl<T, Self> : ImplBase<Self> {
+    using from_t = typename T::from_t;
+    static auto from(from_t value) -> Self { return static_cast<Self>(value); }
+};
+
 template<typename T>
 struct IntoWrapper {
     T self;
