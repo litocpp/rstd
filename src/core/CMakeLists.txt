@@ -44,6 +44,7 @@ target_sources(
          slice.cppm
          log.cppm
          std.cppm
+         enum.cppm
          ops/mod.cppm
          ops/function.cppm
          mem/mod.cppm
