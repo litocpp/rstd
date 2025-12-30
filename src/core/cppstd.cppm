@@ -26,7 +26,8 @@ module;
 #include <algorithm>
 
 #define ALWAYS_INLINE [[gnu::always_inline]]
-export module rstd.core:std;
+
+export module rstd.core:cppstd;
 
 export namespace rstd::cppstd
 {

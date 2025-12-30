@@ -1,6 +1,6 @@
 export module rstd.core:fmt;
 export import :meta;
-export import :std;
+export import :cppstd;
 export import :trait;
 
 namespace rstd::fmt

@@ -43,7 +43,7 @@ target_sources(
          fmt.cppm
          slice.cppm
          log.cppm
-         std.cppm
+         cppstd.cppm
          enum.cppm
          ops/mod.cppm
          ops/function.cppm
