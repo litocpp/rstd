@@ -1,9 +1,6 @@
-module;
-#include <memory>
-#include <utility>
 export module rstd.core:mem.manually_drop;
-import :basic;
-import :meta;
+export import :basic;
+export import :meta;
 
 namespace rstd::mem
 {
@@ -14,7 +11,7 @@ class ManuallyDrop {
     alignas(T) rstd::byte storage[sizeof(T)];
 
 public:
-    ManuallyDrop(T&& v) { std::construct_at(storage, std::forward<T>(v)); }
+    ManuallyDrop(T&& v) { rstd::construct_at(storage, rstd::forward<T>(v)); }
     ~ManuallyDrop() = default;
     constexpr T*       operator->() noexcept { return reinterpret_cast<T*>(storage); }
     constexpr const T* operator->() const noexcept { return reinterpret_cast<const T*>(storage); }
@@ -30,21 +27,21 @@ class ManuallyDrop<T> {
 
 public:
     ManuallyDrop(T&& v) noexcept(meta::is_nothrow_copy_constructible_v<T>) {
-        std::construct_at(storage, std::forward<T>(v));
+        rstd::construct_at(storage, rstd::forward<T>(v));
     }
     ManuallyDrop(const ManuallyDrop& o) noexcept(meta::is_nothrow_copy_constructible_v<T>) {
-        std::construct_at(storage, *o);
+        rstd::construct_at(storage, *o);
     }
     ManuallyDrop(ManuallyDrop&& o) noexcept(meta::is_nothrow_move_constructible_v<T>) {
-        std::construct_at(storage, std::move(*o));
+        rstd::construct_at(storage, rstd::move(*o));
     }
     ManuallyDrop& operator=(const ManuallyDrop& o) noexcept(meta::is_nothrow_copy_assignable_v<T>) {
-        std::destroy_at(std::addressof(*this));
-        std::construct_at(storage, std::move(*o));
+        rstd::destroy_at(rstd::addressof(*this));
+        rstd::construct_at(storage, rstd::move(*o));
     }
     ManuallyDrop& operator=(ManuallyDrop&& o) noexcept(meta::is_nothrow_move_assignable_v<T>) {
-        std::destroy_at(std::addressof(*this));
-        std::construct_at(storage, std::move(*o));
+        rstd::destroy_at(rstd::addressof(*this));
+        rstd::construct_at(storage, rstd::move(*o));
     }
     ~ManuallyDrop() = default;
 
@@ -59,7 +56,7 @@ class ManuallyDrop<void> {
 public:
     template<typename T>
     static void drop(ManuallyDrop<T>&& d) {
-        std::destroy_at(std::addressof(*d));
+        rstd::destroy_at(rstd::addressof(*d));
     }
 };
 

@@ -1,6 +1,3 @@
-module;
-#include <format>
-#include "rstd/trait_macro.hpp"
 export module rstd.error;
 export import rstd.core;
 
