@@ -21,6 +21,7 @@ export using byte        = cppstd::byte;
 export using voidp       = void*;
 export using const_voidp = void const*;
 
+export using cppstd::atomic;
 export using cppstd::numeric_limits;
 export using cppstd::allocator_traits;
 export using cppstd::source_location;

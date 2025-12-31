@@ -40,10 +40,22 @@ export struct Display {
     struct Api {};
 };
 
+export using cppstd::basic_format_context;
+export using cppstd::basic_format_parse_context;
+export using cppstd::basic_format_string;
+export using cppstd::formatter;
+export using cppstd::format_string;
+export using cppstd::make_format_args;
+export using cppstd::vformat;
+export using cppstd::format;
+
 } // namespace rstd::fmt
 
 namespace rstd
 {
+export using cppstd::vformat;
+export using cppstd::format;
+export using cppstd::format_string;
 export template<typename T, typename A>
     requires meta::same_as<T, fmt::Display> && fmt::formattable<A, char>
 struct Impl<T, A> {};

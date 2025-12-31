@@ -14,9 +14,14 @@ module;
 #include <string_view>
 #include <string>
 #include <format>
+#include <atomic>
+
+#include <mutex>
+#include <shared_mutex>
 
 #include <iterator>
 #include <tuple>
+#include <variant>
 #include <functional>
 #include <memory>
 #include <utility>
@@ -25,9 +30,18 @@ module;
 #include <stdexcept>
 #include <algorithm>
 
+#include <memory_resource>
+#include <coroutine>
+
 #define ALWAYS_INLINE [[gnu::always_inline]]
 
 export module rstd.core:cppstd;
+
+namespace std
+{
+export using std::coroutine_handle;
+export using std::coroutine_traits;
+}
 
 export namespace rstd::cppstd
 {
@@ -43,6 +57,7 @@ using std::uint32_t;
 using std::uint64_t;
 using std::uint8_t;
 
+using std::atomic;
 using std::byte;
 using std::ptrdiff_t;
 using std::size_t;
@@ -51,7 +66,9 @@ using std::size_t;
 using std::basic_format_context;
 using std::basic_format_parse_context;
 using std::basic_format_string;
+using std::format;
 using std::format_string;
+using std::formatter;
 using std::make_format_args;
 using std::vformat;
 
@@ -60,6 +77,9 @@ using std::basic_string;
 using std::basic_string_view;
 using std::string;
 using std::string_view;
+
+using std::span;
+using std::vector;
 
 // source_location
 using std::source_location;
@@ -76,10 +96,23 @@ using std::tuple_element;
 using std::tuple_element_t;
 using std::tuple_size;
 
+using std::enable_shared_from_this;
+using std::make_shared;
+using std::make_unique;
+using std::shared_ptr;
+using std::unique_ptr;
+using std::variant;
+using std::visit;
+
+using std::lock_guard;
+using std::mutex;
+using std::shared_mutex;
+using std::unique_lock;
+
 // optional
-using std::optional;
 using std::nullopt;
 using std::nullopt_t;
+using std::optional;
 
 template<std::size_t... Ints>
 using index_sequence = std::integer_sequence<std::size_t, Ints...>;
@@ -87,17 +120,19 @@ template<std::size_t N>
 using make_index_sequence = std::make_integer_sequence<std::size_t, N>;
 
 using std::align_val_t;
-using std::numeric_limits;
 using std::allocator_traits;
+using std::numeric_limits;
 
 using std::abort;
 using std::apply;
 using std::get;
+using std::get_if;
 using std::invoke;
 using std::runtime_error;
 
 using std::addressof;
 using std::construct_at;
+using std::copy;
 using std::declval;
 using std::destroy_at;
 using std::forward;
@@ -113,6 +148,12 @@ using std::fwrite;
 using ::stderr;
 using ::stdout;
 
+namespace pmr
+{
+using std::pmr::memory_resource;
+using std::pmr::polymorphic_allocator;
+} // namespace pmr
+
 } // namespace rstd::cppstd
 
 export namespace rstd
@@ -121,8 +162,12 @@ export namespace rstd
 using std::max;
 using std::min;
 
+using std::get;
+using std::get_if;
+
 using std::addressof;
 using std::construct_at;
+using std::copy;
 using std::declval;
 using std::destroy_at;
 using std::forward;
@@ -162,6 +207,8 @@ using std::underlying_type_t;
 
 using std::is_arithmetic;
 using std::is_arithmetic_v;
+using std::is_array;
+using std::is_array_v;
 using std::is_base_of;
 using std::is_base_of_v;
 using std::is_class;
@@ -182,8 +229,6 @@ using std::is_rvalue_reference;
 using std::is_rvalue_reference_v;
 using std::is_union;
 using std::is_union_v;
-using std::is_array;
-using std::is_array_v;
 
 using std::add_const;
 using std::add_const_t;
