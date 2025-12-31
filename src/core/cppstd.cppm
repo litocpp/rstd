@@ -4,12 +4,15 @@ module;
 #include <cstddef>
 #include <cstdlib>
 #include <cstdio>
+#include <cstring>
 #include <cassert>
 #include <source_location>
 
 #include <type_traits>
 #include <limits>
 #include <new>
+
+#include <future>
 
 #include <string_view>
 #include <string>
@@ -21,6 +24,7 @@ module;
 
 #include <iterator>
 #include <tuple>
+#include <deque>
 #include <variant>
 #include <functional>
 #include <memory>
@@ -29,6 +33,9 @@ module;
 #include <optional>
 #include <stdexcept>
 #include <algorithm>
+
+#include <chrono>
+#include <filesystem>
 
 #include <memory_resource>
 #include <coroutine>
@@ -41,7 +48,8 @@ namespace std
 {
 export using std::coroutine_handle;
 export using std::coroutine_traits;
-}
+export using std::is_error_code_enum;
+} // namespace std
 
 export namespace rstd::cppstd
 {
@@ -87,6 +95,13 @@ using std::source_location;
 // iterator
 using std::back_insert_iterator;
 
+// function
+using std::function;
+
+// future
+using std::future;
+using std::promise;
+
 // tuple
 using std::integer_sequence;
 using std::make_integer_sequence;
@@ -121,7 +136,23 @@ using make_index_sequence = std::make_integer_sequence<std::size_t, N>;
 
 using std::align_val_t;
 using std::allocator_traits;
+using std::max_align_t;
 using std::numeric_limits;
+
+using std::error_category;
+using std::error_code;
+
+namespace chrono
+{
+using std::chrono::duration;
+using std::chrono::microseconds;
+using std::chrono::milliseconds;
+} // namespace chrono
+
+namespace filesystem
+{
+using std::filesystem::path;
+}
 
 using std::abort;
 using std::apply;
@@ -133,6 +164,7 @@ using std::runtime_error;
 using std::addressof;
 using std::construct_at;
 using std::copy;
+using std::copy_n;
 using std::declval;
 using std::destroy_at;
 using std::forward;
@@ -141,17 +173,30 @@ using std::swap;
 
 using std::max;
 using std::min;
+
+using std::from_chars;
+using std::find_if;
+using std::find;
+
 // c stdio
 using std::fflush;
 using std::fwrite;
+
+using std::memcpy;
+using std::memset;
+using std::strlen;
 
 using ::stderr;
 using ::stdout;
 
 namespace pmr
 {
+using std::pmr::deque;
+using std::pmr::get_default_resource;
 using std::pmr::memory_resource;
 using std::pmr::polymorphic_allocator;
+using std::pmr::vector;
+
 } // namespace pmr
 
 } // namespace rstd::cppstd
@@ -168,11 +213,16 @@ using std::get_if;
 using std::addressof;
 using std::construct_at;
 using std::copy;
+using std::copy_n;
 using std::declval;
 using std::destroy_at;
 using std::forward;
 using std::move;
 using std::swap;
+
+using std::memcpy;
+using std::memset;
+using std::strlen;
 
 using ::stderr;
 using ::stdout;
@@ -306,5 +356,8 @@ using std::type_identity_t;
 
 using std::alignment_of_v;
 using std::default_delete;
+
+using std::decay;
+using std::decay_t;
 
 } // namespace rstd::meta
