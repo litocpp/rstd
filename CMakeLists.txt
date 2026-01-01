@@ -13,9 +13,7 @@ endif()
 option(RC_BUILD_TESTS "Build tests" ${PROJECT_IS_TOP_LEVEL})
 
 set(WARN_OPTS -Wall -Wextra -Wpedantic -Werror=mismatched-tags)
-add_compile_options(
-  "$<$<COMPILE_LANG_AND_ID:CXX,Clang,GNU>:${WARN_OPTS}>"
-)
+add_compile_options("$<$<COMPILE_LANG_AND_ID:CXX,Clang,GNU>:${WARN_OPTS}>")
 
 set(SYNC_SOURCE_FILES)
 set(SYNC_MODULE_FILES)
@@ -30,7 +28,7 @@ add_subdirectory(src/sync)
 add_library(rstd)
 add_library(rstd::rstd ALIAS rstd)
 target_compile_features(rstd PUBLIC cxx_std_20)
-target_link_libraries(rstd PUBLIC rstd.core)
+target_link_libraries(rstd PUBLIC rstd.core rstd.alloc)
 
 target_sources(rstd PRIVATE ${ALLOC_SOURCE_FILES})
 target_sources(
@@ -44,8 +42,7 @@ target_sources(
          FILES
          src/mod.cppm
          src/error.cppm
-         ${SYNC_MODULE_FILES}
-         ${ALLOC_MODULE_FILES})
+         ${SYNC_MODULE_FILES})
 
 # Add installation rules
 if(PROJECT_IS_TOP_LEVEL)

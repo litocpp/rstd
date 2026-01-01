@@ -65,10 +65,17 @@ using std::uint32_t;
 using std::uint64_t;
 using std::uint8_t;
 
-using std::atomic;
+
 using std::byte;
 using std::ptrdiff_t;
 using std::size_t;
+
+using std::atomic;
+using std::memory_order;
+
+
+using std::allocator;
+using std::allocator_traits;
 
 // format
 using std::basic_format_context;
@@ -174,9 +181,9 @@ using std::swap;
 using std::max;
 using std::min;
 
-using std::from_chars;
-using std::find_if;
 using std::find;
+using std::find_if;
+using std::from_chars;
 
 // c stdio
 using std::fflush;
@@ -305,6 +312,7 @@ using std::is_default_constructible_v;
 using std::is_nothrow_constructible;
 using std::is_nothrow_constructible_v;
 using std::is_nothrow_destructible;
+using std::is_nothrow_destructible_v;
 
 // copy
 using std::is_copy_constructible;

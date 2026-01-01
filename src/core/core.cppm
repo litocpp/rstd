@@ -23,7 +23,9 @@ export using const_voidp = void const*;
 
 export using cppstd::error_code;
 export using cppstd::atomic;
+export using cppstd::memory_order;
 export using cppstd::numeric_limits;
+export using cppstd::allocator;
 export using cppstd::allocator_traits;
 export using cppstd::source_location;
 export using cppstd::align_val_t;

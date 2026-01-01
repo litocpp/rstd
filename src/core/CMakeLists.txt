@@ -45,6 +45,7 @@ target_sources(
          log.cppm
          cppstd.cppm
          enum.cppm
+         pin.cppm
          ops/mod.cppm
          ops/function.cppm
          mem/mod.cppm

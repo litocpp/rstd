@@ -1,7 +1,7 @@
 add_library(rstd.sys)
 add_library(rstd::sys ALIAS rstd.sys)
 target_compile_features(rstd.sys PUBLIC cxx_std_20)
-target_link_libraries(rstd.sys PUBLIC rstd.core)
+target_link_libraries(rstd.sys PUBLIC rstd.core rstd.alloc)
 target_sources(
   rstd.sys
   PRIVATE pal/unix/futex.cpp pal/windows/futex.cpp sync/once/futex.cpp
@@ -17,6 +17,9 @@ target_sources(
          pal/mod.cppm
          pal/unix/futex.cppm
          pal/windows/futex.cppm
+         sync/once_box.cppm
+         sync/mutex/mod.cppm
+         sync/mutex/pthread.cppm
          sync/once/mod.cppm
          sync/once/futex.cppm
          sync/thread_parking/mod.cppm
