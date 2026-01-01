@@ -12,12 +12,21 @@ template<typename T>
 class OnceBox {
     rstd::atomic<T*> m_ptr;
 
-    constexpr OnceBox() noexcept = delete;
+    constexpr OnceBox(T* p) noexcept: m_ptr(p) {}
 
 public:
     ~OnceBox() { take(); }
     constexpr OnceBox(const OnceBox&) noexcept            = delete;
     constexpr OnceBox& operator=(const OnceBox&) noexcept = delete;
+    OnceBox(OnceBox&& other) noexcept
+        : m_ptr(other.m_ptr.exchange(nullptr, rstd::memory_order::acq_rel)) {}
+
+    OnceBox& operator=(OnceBox&& other) noexcept {
+        if (this != &other) {
+            m_ptr.store(other.m_ptr.exchange(nullptr), rstd::memory_order::release);
+        }
+        return *this;
+    }
 
     static OnceBox make() noexcept { return { nullptr }; }
 

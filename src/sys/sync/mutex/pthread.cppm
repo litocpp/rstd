@@ -1,5 +1,3 @@
-module;
-#include <pthread.h>
 export module rstd.sys:sync.mutex.pthread;
 export import :sync.once_box;
 export import :pal;
@@ -16,9 +14,11 @@ namespace rstd::sys::sync::mutex::pthread
 export class Mutex {
     OnceBox<pal::Mutex> pal;
 
-    constexpr Mutex() noexcept = delete;
+    Mutex() noexcept: pal(OnceBox<pal::Mutex>::make()) {}
 
 public:
+    static auto make() -> Mutex { return {}; }
+
     void lock() { get()->lock(); }
 
     bool try_lock() { return get()->try_lock(); }
