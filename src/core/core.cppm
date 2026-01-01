@@ -42,7 +42,7 @@ using param_ref_t = meta::conditional_t<meta::is_trivially_copy_constructible_v<
 
 export template<typename T>
 [[nodiscard, gnu::always_inline]]
-auto param_forward(param_ref_t<T> t) {
+param_t<T> param_forward(param_ref_t<T> t) {
     if constexpr (meta::is_trivially_copy_constructible_v<T>) {
         return t;
     } else {
@@ -53,7 +53,7 @@ auto param_forward(param_ref_t<T> t) {
 static_assert(meta::is_trivially_copy_constructible_v<i32>);
 static_assert(meta::is_trivially_copy_constructible_v<i32&>);
 
-export void rstd_assert(bool, const source_location = source_location::current());
+export void assert(bool, const source_location = source_location::current());
 
 export [[noreturn]] inline void unreachable() {
     // Uses compiler specific extensions if possible.

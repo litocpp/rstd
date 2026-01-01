@@ -1,6 +1,6 @@
 export module rstd.core:option;
 export import :clone;
-export import :fmt;
+export import :panic;
 export import :slice;
 export import :ops.function;
 
@@ -265,25 +265,25 @@ public:
 
     [[nodiscard]]
     constexpr const T& operator*() const& noexcept {
-        rstd_assert(this->is_some());
+        assert(this->is_some());
         return _get();
     }
 
     [[nodiscard]]
     constexpr T& operator*() & noexcept {
-        rstd_assert(this->is_some());
+        assert(this->is_some());
         return _get();
     }
 
     [[nodiscard]]
     constexpr const meta::remove_reference_t<T>* operator->() const& noexcept {
-        rstd_assert(this->is_some());
+        assert(this->is_some());
         return rstd::addressof(_get());
     }
 
     [[nodiscard]]
     constexpr meta::remove_reference_t<T>* operator->() & noexcept {
-        rstd_assert(this->is_some());
+        assert(this->is_some());
         return rstd::addressof(_get());
     }
 

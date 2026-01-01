@@ -1,6 +1,7 @@
 export module rstd.boxed;
 export import rstd.core;
 
+using rstd::pin::Pin;
 namespace rstd::boxed
 {
 
@@ -12,8 +13,8 @@ class Box {
 
 public:
     ~Box() noexcept(noexcept(rstd::declval<Box>().reset())) { reset(); }
-    Box(const Box&)            = delete;
-    Box& operator=(const Box&) = delete;
+    Box(const Box&) noexcept            = delete;
+    Box& operator=(const Box&) noexcept = delete;
 
     Box(Box&& o) noexcept: m_ptr(o.m_ptr) { o.m_ptr = nullptr; }
     Box& operator=(Box&& o) noexcept(noexcept(rstd::declval<Box>().reset())) {
@@ -25,10 +26,14 @@ public:
         return *this;
     }
 
-    static Box make(T&& in) {
+    static Box make(param_t<T> in) {
         Box b;
-        b.m_ptr = new T(rstd::forward<T>(in));
+        b.m_ptr = new T(rstd::param_forward<T>(in));
         return b;
+    }
+
+    static Pin<Box> pin(param_t<T> in) {
+        return Pin<Box>::make_unchecked(make(rstd::param_forward<T>(in)));
     }
 
     // Construct from a raw pointer (takes ownership)
@@ -38,7 +43,13 @@ public:
         return b;
     }
 
-    T* get() const noexcept { return m_ptr; }
+    auto get() const noexcept -> T* { return m_ptr; }
+    auto into_raw() noexcept -> T* {
+        auto ptr = m_ptr;
+        // take
+        m_ptr = nullptr;
+        return ptr;
+    }
 
     // Access
     T&       operator*() noexcept { return *m_ptr; }

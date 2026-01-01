@@ -14,3 +14,4 @@ export import :result;
 export import :option_adapter;
 
 export import :pin;
+export import :panic;

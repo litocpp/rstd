@@ -14,6 +14,8 @@ target_sources(
          CXX_MODULES
          FILES
          mod.cppm
+         lib/mod.cppm
+         lib/pthread.cppm
          pal/mod.cppm
          pal/unix/mod.cppm
          pal/unix/futex.cppm

@@ -29,7 +29,9 @@ public:
     template<typename F>
     auto get_or_init(F&& f) -> Pin<T&> {
         T* p = m_ptr.load(rstd::memory_order::acquire);
-        if (p) return *p;
+        if (p) {
+            return Pin<T&>::make_unchecked(*p);
+        }
         return initialize(rstd::forward<F>(f));
     }
 
@@ -41,10 +43,13 @@ public:
         return {};
     }
 
+    constexpr explicit operator bool() const noexcept { return m_ptr != nullptr; }
+    T*                 operator->() { return m_ptr.load(rstd::memory_order::relaxed); }
+
 private:
     template<typename F>
     auto initialize(F&& f) -> Pin<T&> {
-        T* raw      = f();
+        T* raw      = f().get_unchecked_mut().into_raw();
         T* expected = nullptr;
         if (m_ptr.compare_exchange_strong(
                 expected, raw, rstd::memory_order::release, rstd::memory_order::acquire)) {

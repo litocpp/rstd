@@ -41,6 +41,7 @@ target_sources(
          result.cppm
          option_adapter.cppm
          fmt.cppm
+         panic.cppm
          slice.cppm
          log.cppm
          cppstd.cppm

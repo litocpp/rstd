@@ -507,37 +507,37 @@ public:
 
     [[nodiscard]]
     constexpr const meta::remove_reference_t<T>* operator->() const noexcept {
-        rstd_assert(is_ok());
+        assert(is_ok());
         return rstd::addressof(_get<0>());
     }
 
     [[nodiscard]]
     constexpr meta::remove_reference_t<T>* operator->() noexcept {
-        rstd_assert(is_ok());
+        assert(is_ok());
         return rstd::addressof(_get<0>());
     }
 
     [[nodiscard]]
     constexpr const T& operator*() const& noexcept {
-        rstd_assert(is_ok());
+        assert(is_ok());
         return _get<0>();
     }
 
     [[nodiscard]]
     constexpr T& operator*() & noexcept {
-        rstd_assert(is_ok());
+        assert(is_ok());
         return _get<0>();
     }
 
     [[nodiscard]]
     constexpr const T&& operator*() const&& noexcept {
-        rstd_assert(is_ok());
+        assert(is_ok());
         return _get<0>();
     }
 
     [[nodiscard]]
     constexpr T&& operator*() && noexcept {
-        rstd_assert(is_ok());
+        assert(is_ok());
         return _get<0>();
     }
 

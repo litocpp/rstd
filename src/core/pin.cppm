@@ -14,34 +14,36 @@ class Pin {
         : pointer(rstd::param_forward<Ptr>(p)) {}
 
 public:
-    constexpr explicit Pin(const Pin& p) noexcept: pointer(p.pointer) {}
-    constexpr explicit Pin(Pin&& p) noexcept(meta::is_nothrow_move_constructible_v<Ptr>)
+    constexpr Pin(const Pin& p) noexcept
+        requires(meta::is_trivially_copy_constructible_v<Ptr>)
+        : pointer(p.pointer) {}
+    constexpr Pin(Pin&& p) noexcept(meta::is_nothrow_move_constructible_v<Ptr>)
         : pointer(rstd::move(p.pointer)) {}
 
-    static constexpr Pin make(Ptr p) noexcept(meta::is_nothrow_move_constructible_v<Ptr> ||
-                                              meta::is_trivially_copy_constructible_v<Ptr>) {
+    static Pin make(Ptr p) noexcept(meta::is_nothrow_move_constructible_v<Ptr> ||
+                                    meta::is_trivially_copy_constructible_v<Ptr>) {
         return Pin { p };
     }
 
     // Construct a Pin without checking pinning guarantees (unsafe in Rust).
     static constexpr Pin
-    make_unchecked(Ptr p) noexcept(meta::is_nothrow_move_constructible_v<Ptr>) {
+    make_unchecked(Ptr p) noexcept(meta::is_nothrow_move_constructible_v<Ptr> ||
+                                   meta::is_trivially_copy_constructible_v<Ptr>) {
         return Pin { p };
     }
 
     // Unwrap the Pin and return the inner pointer (unsafe in Rust).
     static constexpr Ptr
     into_inner_unchecked(Pin p) noexcept(meta::is_nothrow_move_constructible_v<Ptr>) {
-        return p.pointer;
+        return rstd::param_forward<Ptr>(p.pointer);
     }
 
-    // Helpers to access the pointee. These assume Ptr is pointer-like and defines operator*.
-    using pointee_ref_t = decltype(*rstd::declval<Ptr&>());
-    using pointee_t     = meta::remove_reference_t<pointee_ref_t>;
+    const Ptr& get_ref() const noexcept { return pointer; }
+    Ptr&       get_mut() noexcept { return pointer; }
+    Ptr&       get_unchecked_mut() noexcept { return pointer; }
 
-    const pointee_t* get_ref() const noexcept { return rstd::addressof(*pointer); }
-    pointee_t*       get_mut() noexcept { return rstd::addressof(*pointer); }
-    pointee_t*       get_unchecked_mut() noexcept { return rstd::addressof(*pointer); }
+    using pointee_ptr_t = meta::add_pointer_t<meta::remove_reference_t<Ptr>>;
+    pointee_ptr_t operator->() { return rstd::addressof(get_unchecked_mut()); }
 };
 
 } // namespace rstd::pin
