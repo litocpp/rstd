@@ -35,6 +35,24 @@ export struct Empty {};
 export template<typename>
 struct EmptyT {};
 
+export template<typename T>
+using param_t = meta::conditional_t<meta::is_trivially_copy_constructible_v<T>, T, T&&>;
+export template<typename T>
+using param_ref_t = meta::conditional_t<meta::is_trivially_copy_constructible_v<T>, T, T&>;
+
+export template<typename T>
+[[nodiscard, gnu::always_inline]]
+auto param_forward(param_ref_t<T> t) {
+    if constexpr (meta::is_trivially_copy_constructible_v<T>) {
+        return t;
+    } else {
+        return static_cast<T&&>(t);
+    }
+}
+
+static_assert(meta::is_trivially_copy_constructible_v<i32>);
+static_assert(meta::is_trivially_copy_constructible_v<i32&>);
+
 export void rstd_assert(bool, const source_location = source_location::current());
 
 export [[noreturn]] inline void unreachable() {

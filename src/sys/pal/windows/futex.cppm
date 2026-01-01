@@ -8,7 +8,7 @@ module;
 export module rstd.sys:pal.windows.futex;
 export import rstd.core;
 
-namespace rstd::pal::windows
+namespace rstd::sys::pal::windows
 {
 export {
     // Basic futex types

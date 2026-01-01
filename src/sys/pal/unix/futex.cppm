@@ -1,15 +1,16 @@
-#ifndef __unix__
-export module rstd.sys:pal.unix.futex;
-#else
 module;
+#ifdef __unix__
 #    include <atomic>
 #    include <chrono>
 #    include <cstdint>
 #    include <optional>
+#endif
 export module rstd.sys:pal.unix.futex;
+
+#ifdef __unix__
 export import rstd.core;
 
-namespace rstd::pal::unix
+namespace rstd::sys::pal::unix
 {
 
 export using Duration = std::chrono::duration<double>;
@@ -25,5 +26,5 @@ export bool futex_wait(Futex* futex, Primitive expected, Option<Duration> timeou
 export bool futex_wake(Futex* futex);
 export void futex_wake_all(Futex* futex);
 
-} // namespace pal
+} // namespace rstd::pal::unix
 #endif

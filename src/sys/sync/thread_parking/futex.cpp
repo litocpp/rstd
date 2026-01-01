@@ -6,7 +6,7 @@ import :sync.thread_parking.futex;
 
 
 
-namespace rstd::sync::thread_parking::futex
+namespace rstd::sys::sync::thread_parking::futex
 {
 
 Parker::Parker(): state(EMPTY) {}

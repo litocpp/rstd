@@ -8,7 +8,7 @@ module;
 module rstd.sys;
 import :sync.thread_parking.pthread;
 
-namespace rstd::sync::thread_parking::pthread
+namespace rstd::sys::sync::thread_parking::pthread
 {
 Parker::Parker(): state(EMPTY) {}
 

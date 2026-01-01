@@ -2,7 +2,7 @@ export module rstd.sys:sync.once.futex;
 import :pal;
 import rstd.core;
 
-namespace rstd
+namespace rstd::sys::sync::once::futex
 {
 using Primitive = pal::Primitive;
 using Futex     = pal::Futex;

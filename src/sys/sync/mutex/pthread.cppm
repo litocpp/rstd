@@ -5,13 +5,19 @@ module;
 #include <new>
 
 export module rstd.sys:sync.mutex.pthread;
+export import :sync.once_box;
+export import :pal;
+
+using rstd::sys::sync::OnceBox;
 
 namespace rstd::sys::sync
 {
 
 export class Mutex {
+    OnceBox<pal::Mutex> pal;
+
+    constexpr Mutex() noexcept = delete;
 public:
-    constexpr Mutex() noexcept = default;
 
     void lock() { pthread_mutex_lock(get()); }
 

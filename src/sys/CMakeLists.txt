@@ -15,7 +15,11 @@ target_sources(
          FILES
          mod.cppm
          pal/mod.cppm
+         pal/unix/mod.cppm
          pal/unix/futex.cppm
+         pal/unix/sync/mutex.cppm
+         pal/unix/sync/mod.cppm
+         pal/windows/mod.cppm
          pal/windows/futex.cppm
          sync/once_box.cppm
          sync/mutex/mod.cppm

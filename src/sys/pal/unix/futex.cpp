@@ -1,6 +1,6 @@
-#ifdef __unix__
 module;
 
+#ifdef __unix__
 #    include <cerrno>
 #    include <chrono>
 #    include <cstdio>
@@ -14,10 +14,13 @@ module;
 #    elif defined(__FreeBSD__)
 #        include <sys/umtx.h>
 #    endif
+#endif
+
 module rstd.sys;
 import :pal.unix.futex;
 
-namespace rstd::pal::unix
+#ifdef __unix__
+namespace rstd::sys::pal::unix
 {
 
 #    if defined(__linux__) || defined(__ANDROID__)
@@ -71,5 +74,5 @@ void futex_wake_all(Futex* futex) {
 // ...existing FreeBSD specific code converted to C++...
 #    endif
 
-} // namespace pal
+} // namespace rstd::sys::pal::unix
 #endif

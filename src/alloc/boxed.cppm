@@ -11,12 +11,12 @@ class Box {
     Box() noexcept = default;
 
 public:
-    ~Box() noexcept(rstd::declval<Box>().reset()) { reset(); }
+    ~Box() noexcept(noexcept(rstd::declval<Box>().reset())) { reset(); }
     Box(const Box&)            = delete;
     Box& operator=(const Box&) = delete;
 
     Box(Box&& o) noexcept: m_ptr(o.m_ptr) { o.m_ptr = nullptr; }
-    Box& operator=(Box&& o) noexcept(rstd::declval<Box>().reset()) {
+    Box& operator=(Box&& o) noexcept(noexcept(rstd::declval<Box>().reset())) {
         if (this != &o) {
             reset();
             m_ptr   = o.m_ptr;

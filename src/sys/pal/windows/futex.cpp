@@ -5,7 +5,7 @@ module;
 module rstd.sys;
 import :pal.windows.futex;
 
-namespace rstd::pal::windows
+namespace rstd::sys::pal::windows
 {
 bool wait_on_address(const void* address, const void* compare, size_t size, DWORD timeout) {
     return WaitOnAddress(const_cast<void*>(address), const_cast<void*>(compare), size, timeout) ==

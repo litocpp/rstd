@@ -6,7 +6,7 @@ module;
 export module rstd.sys:sync.thread_parking.futex;
 import :pal;
 
-namespace rstd::sync::thread_parking::futex
+namespace rstd::sys::sync::thread_parking::futex
 {
 using Futex = pal::SmallFutex;
 using State = pal::SmallPrimitive;

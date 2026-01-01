@@ -6,7 +6,7 @@ module;
 
 export module rstd.sys:sync.thread_parking.pthread;
 
-namespace rstd::sync::thread_parking::pthread
+namespace rstd::sys::sync::thread_parking::pthread
 {
 export class Parker {
 private:
@@ -24,4 +24,4 @@ public:
     void park_timeout(const std::chrono::duration<double>& dur);
     void unpark();
 };
-} // namespace parking. pthread
+} // namespace rstd::sys::sync::thread_parking::pthread

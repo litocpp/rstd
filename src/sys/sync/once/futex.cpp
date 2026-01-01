@@ -1,16 +1,13 @@
-
-module;
-#include <atomic>
 module rstd.sys;
 import :sync.once.futex;
 
-namespace rstd
+namespace rstd::sys::sync::once::futex
 {
 CompletionGuard::CompletionGuard(Futex* state_and_queued, Primitive set_state_on_drop_to)
     : state_and_queued(state_and_queued), set_state_on_drop_to(set_state_on_drop_to) {}
 
 CompletionGuard::~CompletionGuard() {
-    if (state_and_queued->exchange(set_state_on_drop_to, std::memory_order_release) & QUEUED) {
+    if (state_and_queued->exchange(set_state_on_drop_to, rstd::memory_order::release) & QUEUED) {
         pal::futex_wake_all(state_and_queued);
     }
 }
@@ -18,11 +15,11 @@ CompletionGuard::~CompletionGuard() {
 Once::Once(): state_and_queued(INCOMPLETE) {}
 
 bool Once::is_completed() const {
-    return state_and_queued.load(std::memory_order_acquire) == COMPLETE;
+    return state_and_queued.load(rstd::memory_order::acquire) == COMPLETE;
 }
 
 void Once::wait(bool ignore_poisoning) {
-    Primitive state_and_queued = this->state_and_queued.load(std::memory_order_acquire);
+    Primitive state_and_queued = this->state_and_queued.load(rstd::memory_order::acquire);
     while (true) {
         Primitive state  = state_and_queued & STATE_MASK;
         bool      queued = state_and_queued & QUEUED;
@@ -38,13 +35,13 @@ void Once::wait(bool ignore_poisoning) {
                 state_and_queued += QUEUED;
                 if (this->state_and_queued.compare_exchange_weak(state,
                                                                  state_and_queued,
-                                                                 std::memory_order_relaxed,
-                                                                 std::memory_order_acquire)) {
+                                                                 rstd::memory_order::relaxed,
+                                                                 rstd::memory_order::acquire)) {
                     continue;
                 }
             }
             pal::futex_wait(&this->state_and_queued, state_and_queued, rstd::None());
-            state_and_queued = this->state_and_queued.load(std::memory_order_acquire);
+            state_and_queued = this->state_and_queued.load(rstd::memory_order::acquire);
             break;
         }
     }
@@ -93,4 +90,4 @@ void Once::call(bool ignore_poisoning, Dyn<FnMut, void(OnceState&)> f) {
     }
 }
     */
-} // namespace rstd
+} // namespace rstd::sys::sync::once

@@ -1,4 +1,5 @@
 export module rstd.core:pin;
+export import :basic;
 export import :meta;
 
 namespace rstd::pin
@@ -9,13 +10,16 @@ class Pin {
     Ptr pointer;
 
     constexpr Pin() noexcept = default;
+    constexpr explicit Pin(rstd::param_ref_t<Ptr> p) noexcept
+        : pointer(rstd::param_forward<Ptr>(p)) {}
 
 public:
-    constexpr explicit Pin(const Pin& p) noexcept(meta::is_nothrow_move_constructible_v<Ptr>)
-        : pointer(p.pointer) {}
+    constexpr explicit Pin(const Pin& p) noexcept: pointer(p.pointer) {}
+    constexpr explicit Pin(Pin&& p) noexcept(meta::is_nothrow_move_constructible_v<Ptr>)
+        : pointer(rstd::move(p.pointer)) {}
 
-    template<typename T>
-    static constexpr Pin make(T p) noexcept(meta::is_nothrow_move_constructible_v<Ptr>) {
+    static constexpr Pin make(Ptr p) noexcept(meta::is_nothrow_move_constructible_v<Ptr> ||
+                                              meta::is_trivially_copy_constructible_v<Ptr>) {
         return Pin { p };
     }
 
