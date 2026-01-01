@@ -1,0 +1,68 @@
+name: CTest
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-test:
+    name: Linux ${{ matrix.arch }} (clang-${{ matrix.clang }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runs_on: ubuntu-24.04
+            clang: 21
+          - arch: aarch64
+            runs_on: ubuntu-24.04-arm
+            clang: 21
+
+    runs-on: ${{ matrix.runs_on }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install base deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ca-certificates gnupg wget \
+            cmake ninja-build pkg-config \
+            make
+
+      - name: Install LLVM/Clang ${{ matrix.clang }}
+        shell: bash
+        run: |
+          set -euxo pipefail
+          # Add apt.llvm.org key
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key \
+            | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc > /dev/null
+
+          # Ubuntu 24.04 = noble
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-${{ matrix.clang }} main" \
+            | sudo tee /etc/apt/sources.list.d/llvm.list
+
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang-${{ matrix.clang }} lld-${{ matrix.clang }}
+
+          echo "CC=clang-${{ matrix.clang }}"  >> $GITHUB_ENV
+          echo "CXX=clang++-${{ matrix.clang }}" >> $GITHUB_ENV
+
+      - name: Configure (CMake)
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER="${CC}" \
+            -DCMAKE_CXX_COMPILER="${CXX}"
+
+      - name: Build
+        run: |
+          cmake --build build --config Release --parallel
+
+      - name: Test (ctest)
+        working-directory: build
+        run: |
+          ctest --output-on-failure --test-dir . -C Release
