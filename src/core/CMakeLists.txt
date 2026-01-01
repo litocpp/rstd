@@ -47,6 +47,7 @@ target_sources(
          cppstd.cppm
          enum.cppm
          pin.cppm
+         hint.cppm
          ops/mod.cppm
          ops/function.cppm
          mem/mod.cppm
