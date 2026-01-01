@@ -1,7 +1,6 @@
 export module rstd.sys:sync.mutex.futex;
 export import :pal;
 
-
 namespace rstd::sys::sync::mutex::futex
 {
 
@@ -15,11 +14,13 @@ constexpr State CONTENDED = 2; // locked, and other threads waiting (contended)
 export class Mutex {
     Futex m_futex;
 
-public:
     constexpr Mutex() noexcept: m_futex(UNLOCKED) {}
 
+public:
     Mutex(const Mutex&)            = delete;
     Mutex& operator=(const Mutex&) = delete;
+
+    static auto make() noexcept -> Mutex { return {}; }
 
     [[nodiscard]] bool try_lock() noexcept {
         State expected = UNLOCKED;
@@ -44,14 +45,14 @@ public:
     }
 
 private:
-    // “cold” 仅作提示：可按你工程习惯换成 [[gnu::cold]] / [[msvc::noinline]] 等
+    [[gnu::cold]]
     void lock_contended() noexcept {
         // Spin first to speed things up if the lock is released quickly.
         State state = spin();
 
         // If it's unlocked now, attempt to take the lock without marking contended.
         if (state == UNLOCKED) {
-        State expected = UNLOCKED;
+            State expected = UNLOCKED;
             if (m_futex.compare_exchange_strong(
                     expected, LOCKED, rstd::memory_order::acquire, rstd::memory_order::relaxed)) {
                 return; // Locked!

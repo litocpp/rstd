@@ -26,6 +26,7 @@ add_executable(
   alloc/rc.cpp
   alloc/str.cpp
   alloc/string.cpp
+  sys/sync/mutex/futex.cpp
   sys/sync/mutex/pthread.cpp)
 
 target_link_libraries(rstd_test PRIVATE rstd::rstd GTest::gtest_main)
