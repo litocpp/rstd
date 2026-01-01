@@ -1,30 +1,23 @@
-module;
-#ifdef __unix__
-#    include <atomic>
-#    include <chrono>
-#    include <cstdint>
-#    include <optional>
-#endif
 export module rstd.sys:pal.unix.futex;
 
 #ifdef __unix__
 export import rstd.core;
 
-namespace rstd::sys::pal::unix
+namespace rstd::sys::pal::unix::futex
 {
 
-export using Duration = std::chrono::duration<double>;
-export using Futex    = std::atomic_uint32_t;
+export using Duration = cppstd::chrono::duration<double>;
 /// Must be the underlying type of Futex
-export using Primitive = std::uint32_t;
-/// An atomic for use as a futex that is at least 8-bits but may be larger.
-export using SmallFutex = std::atomic_uint32_t;
+export using Primitive = u32;
+export using Futex     = rstd::atomic<Primitive>;
 /// Must be the underlying type of SmallFutex
-export using SmallPrimitive = std::uint32_t;
+export using SmallPrimitive = u32;
+/// An atomic for use as a futex that is at least 8-bits but may be larger.
+export using SmallFutex = rstd::atomic<SmallPrimitive>;
 
 export bool futex_wait(Futex* futex, Primitive expected, Option<Duration> timeout);
 export bool futex_wake(Futex* futex);
 export void futex_wake_all(Futex* futex);
 
-} // namespace rstd::pal::unix
+} // namespace rstd::sys::pal::unix
 #endif

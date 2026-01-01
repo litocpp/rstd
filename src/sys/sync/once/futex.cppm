@@ -4,8 +4,8 @@ import rstd.core;
 
 namespace rstd::sys::sync::once::futex
 {
-using Primitive = pal::Primitive;
-using Futex     = pal::Futex;
+using Primitive = pal::futex::Primitive;
+using Futex     = pal::futex::Futex;
 
 constexpr Primitive INCOMPLETE = 0;
 constexpr Primitive POISONED   = 1;

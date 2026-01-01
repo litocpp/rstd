@@ -2,9 +2,6 @@ module;
 
 #ifdef __unix__
 #    include <cerrno>
-#    include <chrono>
-#    include <cstdio>
-#    include <atomic>
 #    include <ctime>
 
 #    if defined(__linux__) || defined(__ANDROID__)
@@ -20,25 +17,26 @@ module rstd.sys;
 import :pal.unix.futex;
 
 #ifdef __unix__
-namespace rstd::sys::pal::unix
+namespace rstd::sys::pal::unix::futex
 {
 
 #    if defined(__linux__) || defined(__ANDROID__)
 
 bool futex_wait(Futex* futex, Primitive expected, Option<Duration> timeout) {
-    std::optional<std::timespec> ts;
+    Option<std::timespec> ts;
     if (timeout) {
-        ts.emplace();
-        clock_gettime(CLOCK_MONOTONIC, &ts.value());
-        auto secs  = std::chrono::duration_cast<std::chrono::seconds>(*timeout);
-        auto nsecs = std::chrono::duration_cast<std::chrono::nanoseconds>(*timeout - secs);
+        ts = Some(std::timespec {});
+        clock_gettime(CLOCK_MONOTONIC, &*ts);
+        auto secs  = cppstd::chrono::duration_cast<cppstd::chrono::seconds>(*timeout);
+        auto nsecs = cppstd::chrono::duration_cast<cppstd::chrono::nanoseconds>(
+            cppstd::chrono::operator-(*timeout, secs));
         ts->tv_sec += secs.count();
         ts->tv_nsec += nsecs.count();
     }
-    auto pts = ts ? &ts.value() : nullptr;
+    auto pts = ts ? &*ts : nullptr;
 
     for (;;) {
-        if (futex->load(std::memory_order::relaxed) != expected) {
+        if (futex->load(rstd::memory_order::relaxed) != expected) {
             return true;
         }
         auto r = syscall(SYS_futex,
@@ -66,7 +64,7 @@ bool futex_wake(Futex* futex) {
 }
 
 void futex_wake_all(Futex* futex) {
-    syscall(SYS_futex, futex, FUTEX_WAKE | FUTEX_PRIVATE_FLAG, INT32_MAX);
+    syscall(SYS_futex, futex, FUTEX_WAKE | FUTEX_PRIVATE_FLAG, rstd::numeric_limits<i32>::max());
 }
 
 #    elif defined(__FreeBSD__)
@@ -74,5 +72,5 @@ void futex_wake_all(Futex* futex) {
 // ...existing FreeBSD specific code converted to C++...
 #    endif
 
-} // namespace rstd::sys::pal::unix
+} // namespace rstd::sys::pal::unix::futex
 #endif

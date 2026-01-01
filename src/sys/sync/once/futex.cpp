@@ -8,7 +8,7 @@ CompletionGuard::CompletionGuard(Futex* state_and_queued, Primitive set_state_on
 
 CompletionGuard::~CompletionGuard() {
     if (state_and_queued->exchange(set_state_on_drop_to, rstd::memory_order::release) & QUEUED) {
-        pal::futex_wake_all(state_and_queued);
+        pal::futex::futex_wake_all(state_and_queued);
     }
 }
 
@@ -40,7 +40,7 @@ void Once::wait(bool ignore_poisoning) {
                     continue;
                 }
             }
-            pal::futex_wait(&this->state_and_queued, state_and_queued, rstd::None());
+            pal::futex::futex_wait(&this->state_and_queued, state_and_queued, rstd::None());
             state_and_queued = this->state_and_queued.load(rstd::memory_order::acquire);
             break;
         }

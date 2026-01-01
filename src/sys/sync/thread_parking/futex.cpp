@@ -17,7 +17,7 @@ void Parker::park() {
     }
 
     while (true) {
-        pal::futex_wait(&state, PARKED, {});
+        pal::futex::futex_wait(&state, PARKED, {});
 
         // Try to change NOTIFIED=>EMPTY and return if successful
         auto expected = NOTIFIED;
@@ -36,7 +36,7 @@ void Parker::park_timeout(std::chrono::duration<double> timeout) {
     }
 
     // Wait with timeout
-    pal::futex_wait(&state, PARKED, rstd::Some(timeout));
+    pal::futex::futex_wait(&state, PARKED, rstd::Some(timeout));
 
     // Try to detect if we were notified or just timed out
     int32_t old = state.exchange(EMPTY, std::memory_order_acquire);
@@ -46,7 +46,7 @@ void Parker::park_timeout(std::chrono::duration<double> timeout) {
 void Parker::unpark() {
     // Change PARKED=>NOTIFIED, EMPTY=>NOTIFIED, or NOTIFIED=>NOTIFIED
     if (state.exchange(NOTIFIED, std::memory_order_release) == PARKED) {
-        pal::futex_wake(&state);
+        pal::futex::futex_wake(&state);
     }
 }
 

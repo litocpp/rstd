@@ -25,6 +25,7 @@ target_sources(
          pal/windows/futex.cppm
          sync/once_box.cppm
          sync/mutex/mod.cppm
+         sync/mutex/futex.cppm
          sync/mutex/pthread.cppm
          sync/once/mod.cppm
          sync/once/futex.cppm

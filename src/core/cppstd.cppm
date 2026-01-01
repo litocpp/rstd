@@ -151,9 +151,13 @@ using std::error_code;
 
 namespace chrono
 {
+using std::chrono::operator-;
 using std::chrono::duration;
+using std::chrono::seconds;
 using std::chrono::microseconds;
 using std::chrono::milliseconds;
+using std::chrono::nanoseconds;
+using std::chrono::duration_cast;
 } // namespace chrono
 
 namespace filesystem

@@ -1,31 +1,26 @@
-#ifndef _WIN32
-export module rstd.sys:pal.windows.futex;
-#else
 module;
-#    include <atomic>
-#    include <chrono>
-#    include <cstdint>
 export module rstd.sys:pal.windows.futex;
 export import rstd.core;
 
-namespace rstd::sys::pal::windows
+#ifndef _WIN32
+namespace rstd::sys::pal::windows::futex
 {
 export {
     // Basic futex types
-    using Duration       = std::chrono::duration<double>;
-    using Futex          = std::atomic_uint32_t;
-    using Primitive      = std::uint32_t;
-    using SmallFutex     = std::atomic_uint8_t;
-    using SmallPrimitive = std::uint8_t;
+    using Duration       = cppstd::chrono::duration<double>;
+    using Primitive      = u32;
+    using Futex          = rstd::atomic<Primitive>;
+    using SmallPrimitive = u8;
+    using SmallFutex     = rstd::atomic<SmallPrimitive>;
 
     template<typename T>
-    bool futex_wait(const std::atomic<T>* futex, T expected, Option<Duration> timeout);
+    bool futex_wait(const rstd::atomic<T>* futex, T expected, Option<Duration> timeout);
 
     template<typename T>
-    bool futex_wake(const std::atomic<T>* futex);
+    bool futex_wake(const rstd::atomic<T>* futex);
 
     template<typename T>
-    void futex_wake_all(const std::atomic<T>* futex);
+    void futex_wake_all(const rstd::atomic<T>* futex);
 }
-} // namespace rstd::pal::windows
+} // namespace rstd::sys::pal::windows
 #endif

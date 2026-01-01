@@ -8,8 +8,8 @@ import :pal;
 
 namespace rstd::sys::sync::thread_parking::futex
 {
-using Futex = pal::SmallFutex;
-using State = pal::SmallPrimitive;
+using Futex = pal::futex::SmallFutex;
+using State = pal::futex::SmallPrimitive;
 
 export class Parker {
 private:

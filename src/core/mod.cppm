@@ -15,3 +15,4 @@ export import :option_adapter;
 
 export import :pin;
 export import :panic;
+export import :hint;
