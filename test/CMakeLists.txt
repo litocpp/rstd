@@ -9,11 +9,13 @@ if(NOT GTest_FOUND)
   FetchContent_MakeAvailable(googletest)
 endif()
 
-add_compile_options(-g -fsanitize=address -fsanitize=undefined
-                    -fsanitize-recover=address)
+if(RSTD_USE_ASAN)
+  add_compile_options(-g -fsanitize=address -fsanitize=undefined
+                      -fsanitize-recover=address)
 
-add_link_options(-fsanitize=address -fsanitize=undefined
-                 -fsanitize-recover=address)
+  add_link_options(-fsanitize=address -fsanitize=undefined
+                   -fsanitize-recover=address)
+endif()
 
 add_executable(
   rstd_test

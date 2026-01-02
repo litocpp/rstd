@@ -10,7 +10,8 @@ if(PROJECT_IS_TOP_LEVEL)
   set(CMAKE_CXX_EXTENSIONS OFF)
 endif()
 
-option(RC_BUILD_TESTS "Build tests" ${PROJECT_IS_TOP_LEVEL})
+option(RSTD_BUILD_TESTS "Build tests" ${PROJECT_IS_TOP_LEVEL})
+option(RSTD_USE_ASAN "asan" OFF)
 
 set(WARN_OPTS -Wall -Wextra -Wpedantic -Werror=mismatched-tags)
 add_compile_options("$<$<COMPILE_LANG_AND_ID:CXX,Clang,GNU>:${WARN_OPTS}>")
@@ -54,7 +55,7 @@ if(PROJECT_IS_TOP_LEVEL)
 endif()
 
 # Testing configuration
-if(RC_BUILD_TESTS)
+if(RSTD_BUILD_TESTS)
   include(CTest)
   enable_testing()
   add_subdirectory(test)
