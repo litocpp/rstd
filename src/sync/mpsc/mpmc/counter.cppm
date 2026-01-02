@@ -3,9 +3,9 @@ module;
 #include <atomic>
 #include <memory>
 
-export module mpmc:counter;
+export module rstd.sync.mpsc:mpmc.counter;
 
-namespace mpmc::counter
+namespace rstd::sync::mpsc::mpmc::counter
 {
 template<typename C>
 struct Counter {
@@ -67,4 +67,4 @@ auto create(C&& chan) -> std::tuple<Sender<C>, Receiver<C>> {
     return { Sender { &counter }, Receiver { &counter } };
 }
 
-} // namespace mpmc::counter
+} // namespace rstd::sync::mpsc::mpmc::counter

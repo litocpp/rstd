@@ -1,6 +1,6 @@
-export module mpmc:cache_padded;
+export module rstd.sync.mpsc:mpmc.utils;
 
-namespace mpmc::utils
+namespace rstd::sync::mpsc::mpmc::utils
 {
 
 consteval auto align_size() -> int {
@@ -21,4 +21,4 @@ struct alignas(align_size()) CachePadded {
     auto operator*() -> T& { return value; }
 };
 
-} // namespace mpmc::utils
+} // namespace rstd::sync::mpsc::mpmc::utils

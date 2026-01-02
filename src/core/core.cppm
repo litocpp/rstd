@@ -21,6 +21,9 @@ export using byte        = cppstd::byte;
 export using voidp       = void*;
 export using const_voidp = void const*;
 
+export template<typename T>
+using Atomic = cppstd::atomic<T>;
+
 export using cppstd::error_code;
 export using cppstd::atomic;
 export using cppstd::memory_order;

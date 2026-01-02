@@ -1,10 +1,11 @@
-#include <gtest/gtest.h>
+#if defined(__unix__) && ! defined(_WIN32)
 
+#include <gtest/gtest.h>
 import rstd;
 using rstd::sys::sync::mutex::pthread::Mutex;
 
-#define RSTD_TEST_GROUP MutexPthread
-#include "common.hpp"
+#    define RSTD_TEST_GROUP MutexPthread
+#    include "common.hpp"
 
 TEST(MutexPthread, DestructorDoesNotHangIfLockedElsewhere) {
     // Purpose of this test:
@@ -48,3 +49,4 @@ TEST(MutexPthread, DestructorDoesNotHangIfLockedElsewhere) {
     delete t;
     SUCCEED();
 }
+#endif

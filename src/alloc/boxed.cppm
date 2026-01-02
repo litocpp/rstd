@@ -66,4 +66,8 @@ public:
     }
 };
 
+export template<typename T>
+class Box<T[]> {
+};
+
 } // namespace rstd::boxed

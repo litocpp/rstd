@@ -4,20 +4,33 @@ module;
 #include <memory>
 #include <optional>
 
-export module mpmc:array;
-export import :cache_padded;
+export module rstd.sync.mpsc:mpmc.array;
+export import :mpmc.utils;
+export import rstd.core;
+export import rstd.alloc;
 
-namespace mpmc::array
+using rstd::boxed::Box;
+using rstd::sync::mpsc::mpmc::utils::CachePadded;
+
+namespace rstd::sync::mpsc::mpmc::array
 {
 
 template<typename T>
 struct Slot {
     /// The current stamp.
-    std::atomic_size_t stamp;
+    Atomic<usize> stamp;
 
     /// The message in this slot. Either read out in `read` or dropped through
     /// `discard_all_messages`.
-    std::optional<T> msg;
+    Option<T> msg;
+};
+
+struct ArrayToken {
+    /// Slot to read from or write to.
+    const u8* slot;
+
+    /// Stamp to store into the slot after reading or writing.
+    usize stamp;
 };
 
 export template<typename T>
@@ -29,7 +42,7 @@ struct Channel {
     /// represent the lap. The mark bit in the head is always zero.
     ///
     /// Messages are popped from the head of the channel.
-    utils::CachePadded<std::atomic_size_t> head;
+    CachePadded<Atomic<usize>> head;
 
     /// The tail of the channel.
     ///
@@ -38,19 +51,19 @@ struct Channel {
     /// represent the lap. The mark bit indicates that the channel is disconnected.
     ///
     /// Messages are pushed into the tail of the channel.
-    utils::CachePadded<std::atomic_size_t> tail;
+    CachePadded<Atomic<usize>> tail;
 
     /// The buffer holding slots.
-    std::unique_ptr<Slot<T>> buffer;
+    Box<Slot<T>[]> buffer;
 
     /// The channel capacity.
-    std::size_t cap;
+    usize cap;
 
     /// A stamp with the value of `{ lap: 1, mark: 0, index: 0 }`.
-    std::size_t one_lap;
+    usize one_lap;
 
     /// If this bit is set in the tail, that means the channel is disconnected.
-    std::size_t mark_bit;
+    usize mark_bit;
 
     /// Senders waiting while the channel is full.
     //    senders: SyncWaker,
@@ -59,4 +72,4 @@ struct Channel {
     //    receivers: SyncWaker,
 };
 
-} // namespace mpmc::array
+} // namespace rstd::sync::mpsc::mpmc::array

@@ -1,4 +1,7 @@
 export module rstd.sys:sync.mutex.pthread;
+
+#if defined(__unix__) && ! defined(_WIN32)
+
 export import :sync.once_box;
 export import :pal;
 export import :lib.pthread;
@@ -49,3 +52,4 @@ private:
 };
 
 } // namespace rstd::sys::sync::mutex::pthread
+#endif

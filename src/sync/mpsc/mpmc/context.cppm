@@ -1,19 +1,13 @@
-module;
-#include <atomic>
-#include <memory>
-#include <concepts>
-#include <optional>
-#include <variant>
-#include <thread>
-export module mpmc:context;
+export module rstd::sync::mpsc::mpmc.context;
+export import rstd.core;
 
-namespace mpmc
+namespace rstd::sync::mpsc::mpmc::context
 {
-auto current_thread_id() -> std::size_t {
+auto current_thread_id() -> usize {
     // `u8` is not drop so this variable will be available during thread destruction,
     // whereas `thread::current()` would not be
     thread_local char DUMMY { 0 };
-    return reinterpret_cast<std::size_t>(&DUMMY);
+    return reinterpret_cast<usize>(&DUMMY);
 }
 
 enum class Operation
@@ -37,27 +31,27 @@ struct EnumSelected {
 
     /// An operation became ready because a message can be sent or received.
     struct Operation {
-        constexpr       operator int() { return 3; }
-        mpmc::Operation oper;
+        constexpr          operator int() { return 3; }
+        context::Operation oper;
     };
 
-    using type = std::variant<Waiting, Aborted, Disconnected, Operation>;
+    using type = cppstd::variant<Waiting, Aborted, Disconnected, Operation>;
 };
 
 using Selected = EnumSelected::type;
 
 struct Inner {
     /// Selected operation.
-    std::atomic_size_t select;
+    Atomic<usize> select;
 
     /// A slot into which another thread may store a pointer to its `Packet`.
-    std::atomic<void*> packet;
+    Atomic<void*> packet;
 
     /// Thread handle.
     std::thread thread;
 
     /// Thread id.
-    std::size_t thread_id;
+    usize thread_id;
 };
 export struct Context {
     std::shared_ptr<Inner> inner;
@@ -86,4 +80,4 @@ export struct Context {
     } // namespace mpmc
 };
 
-} // namespace mpmc
+} // namespace rstd::sync::mpsc::mpmc::context

@@ -1,8 +1,4 @@
-module;
-#include <mutex>
-#include <atomic>
-
-export module mpmc:waker;
+export module rstd::sync::mpsc::mpmc.waker;
 export import :context;
 
 namespace mpmc
