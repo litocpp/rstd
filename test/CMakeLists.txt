@@ -27,6 +27,7 @@ add_executable(
   convert.cpp
   alloc/rc.cpp
   alloc/str.cpp
+  #alloc/sync.cpp
   alloc/string.cpp
   sys/sync/mutex/futex.cpp
   sys/sync/mutex/pthread.cpp)
