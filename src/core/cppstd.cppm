@@ -110,6 +110,8 @@ using std::function;
 using std::future;
 using std::promise;
 
+using std::hash;
+
 // tuple
 using std::integer_sequence;
 using std::make_integer_sequence;
@@ -126,6 +128,7 @@ using std::shared_ptr;
 using std::unique_ptr;
 using std::variant;
 using std::visit;
+using std::invoke;
 
 using std::lock_guard;
 using std::mutex;
@@ -135,6 +138,7 @@ using std::unique_lock;
 // optional
 using std::nullopt;
 using std::nullopt_t;
+using std::nullptr_t;
 using std::optional;
 
 template<std::size_t... Ints>
