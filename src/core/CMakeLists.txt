@@ -8,9 +8,8 @@ add_library(rstd.core)
 add_library(rstd::core ALIAS rstd.core)
 target_compile_features(rstd.core PUBLIC cxx_std_20)
 target_include_directories(rstd.core PUBLIC include)
-target_compile_options(rstd.core PUBLIC 
-  "$<$<COMPILE_LANG_AND_ID:CXX,Clang>:-fsized-deallocation>"
-)
+target_compile_options(
+  rstd.core PUBLIC "$<$<COMPILE_LANG_AND_ID:CXX,Clang>:-fsized-deallocation>")
 target_sources(
   rstd.core
   PUBLIC FILE_SET
@@ -42,15 +41,21 @@ target_sources(
          option_adapter.cppm
          fmt.cppm
          panic.cppm
-         slice.cppm
          log.cppm
          cppstd.cppm
          enum.cppm
          pin.cppm
          hint.cppm
+         assert.cppm
+         num/mod.cppm
+         num/nonzero.cppm
+         slice/mod.cppm
+         str/mod.cppm
+         ptr/mod.cppm
+         ptr/non_null.cppm
+         ptr/unique.cppm
          ops/mod.cppm
          ops/function.cppm
          mem/mod.cppm
          mem/manually_drop.cppm
-         mem/maybe_uninit.cppm
-         )
+         mem/maybe_uninit.cppm)
