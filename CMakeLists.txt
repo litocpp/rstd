@@ -10,7 +10,7 @@ if(PROJECT_IS_TOP_LEVEL)
   set(CMAKE_CXX_EXTENSIONS OFF)
 endif()
 
-option(RSTD_BUILD_TESTS "Build tests" ${PROJECT_IS_TOP_LEVEL})
+option(RSTD_BUILD_TESTING "Build tests" ${PROJECT_IS_TOP_LEVEL})
 option(RSTD_USE_ASAN "asan" OFF)
 
 set(WARN_OPTS -Wall -Wextra -Wpedantic -Werror=mismatched-tags)
@@ -55,8 +55,10 @@ if(PROJECT_IS_TOP_LEVEL)
 endif()
 
 # Testing configuration
-if(RSTD_BUILD_TESTS)
+if(RSTD_BUILD_TESTING)
   include(CTest)
-  enable_testing()
-  add_subdirectory(test)
+
+  if(BUILD_TESTING)
+    add_subdirectory(test)
+  endif()
 endif()
