@@ -7,7 +7,7 @@ import rstd;
 using namespace rstd;
 
 template<>
-struct Impl<str::FromStr, int> {
+struct Impl<str_::FromStr, int> {
     using Err  = ref_str;
     using Self = int;
     static auto from_str(ref_str str) -> Result<Self, Err> {

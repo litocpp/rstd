@@ -1,4 +1,4 @@
-export module rstd.core:basic;
+export module rstd.core:core;
 export import :cppstd;
 
 namespace rstd
@@ -24,6 +24,7 @@ export using const_voidp = void const*;
 export template<typename T>
 using Atomic = cppstd::atomic<T>;
 
+export using cppstd::nullptr_t;
 export using cppstd::error_code;
 export using cppstd::atomic;
 export using cppstd::memory_order;
@@ -34,6 +35,7 @@ export using cppstd::allocator_traits;
 export using cppstd::source_location;
 export using cppstd::align_val_t;
 
+export using cppstd::invoke;
 export using cppstd::max;
 export using cppstd::min;
 export using cppstd::get;
@@ -52,7 +54,14 @@ export using cppstd::memcpy;
 export using cppstd::memset;
 export using cppstd::strlen;
 
-
+export template<typename T>
+struct ref {
+    T& p;
+};
+export template<typename T>
+struct ptr {
+    T* p;
+};
 export struct Empty {};
 
 export template<typename>
@@ -75,8 +84,6 @@ param_t<T> param_forward(param_ref_t<T> t) {
 
 static_assert(meta::is_trivially_copy_constructible_v<i32>);
 static_assert(meta::is_trivially_copy_constructible_v<i32&>);
-
-export void assert(bool, const source_location = source_location::current());
 
 export [[noreturn]] inline void unreachable() {
     // Uses compiler specific extensions if possible.
