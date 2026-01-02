@@ -32,15 +32,21 @@ public:
         : m_ptr((u8 const*)t.data()), m_length(t.size()) {};
 
     template<auto N>
-    constexpr ref(char const (&ptr)[N]) noexcept
-        : m_ptr(reinterpret_cast<u8 const*>(ptr)), m_length(N) {}
+    constexpr ref(char const (&ptr)[N]) noexcept: m_ptr((u8 const*)(ptr)), m_length(N) {}
     template<auto N>
     constexpr ref(u8 const (&ptr)[N]) noexcept: m_ptr(ptr), m_length(N) {}
+    constexpr ref(u8 const* begin, u8 const* end) noexcept: m_ptr(begin), m_length(end - begin) {}
+
+    constexpr ref(char const* c_str) noexcept
+        : m_ptr((u8 const*)(c_str)), m_length(char_traits<char>::length(c_str)) {}
 
     constexpr auto size() const { return m_length; }
     constexpr auto data() const { return m_ptr; }
+    constexpr auto begin() const { return m_ptr; }
+    constexpr auto end() const { return m_ptr + m_length; }
+    constexpr      operator bool() const { return m_length > 0 && m_ptr != nullptr; }
 
-    constexpr operator bool() const { return m_length > 0 && m_ptr != nullptr; }
+    constexpr auto operator[](usize i) const -> u8 const& { return *(m_ptr + i); }
 };
 
 export template<>

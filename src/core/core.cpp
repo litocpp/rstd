@@ -5,12 +5,31 @@ import :assert;
 
 namespace rstd
 {
+
+namespace
+{
+constexpr auto extract_last(ref<str> path, usize count) -> ref<str> {
+    auto size = path.size();
+    while (size != 0) {
+        if (path[size - 1] == '/' || path[size - 1] == '\\') {
+            --count;
+        }
+        if (count != 0) {
+            --size;
+        } else {
+            break;
+        }
+    }
+    return ref<str> { path.begin() + size, path.end() };
+}
+} // namespace
+
 void assert_raw(ref<str> expr_str, ref<str> msg, const source_location loc) {
-    auto out = rstd::format("{}:{}: {}: Assertion `{}` failed.{}{}\n",
-                            loc.file_name(),
+    auto out = rstd::format("Assertion `{}` failed, on {}({}):{}{}{}\n",
+                            expr_str,
+                            extract_last(loc.file_name(), 2),
                             loc.line(),
                             loc.function_name(),
-                            expr_str,
                             msg ? "" : "\n",
                             msg);
 

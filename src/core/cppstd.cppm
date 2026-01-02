@@ -70,6 +70,8 @@ using std::byte;
 using std::ptrdiff_t;
 using std::size_t;
 
+using std::char_traits;
+
 using std::atomic;
 using std::memory_order;
 using std::atomic_thread_fence;
