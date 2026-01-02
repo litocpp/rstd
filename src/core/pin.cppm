@@ -1,5 +1,5 @@
 export module rstd.core:pin;
-export import :basic;
+export import :core;
 export import :meta;
 
 namespace rstd::pin

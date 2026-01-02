@@ -1,5 +1,5 @@
 export module rstd.core;
-export import :basic;
+export import :core;
 export import :cppstd;
 export import :trait;
 export import :fmt;
@@ -16,3 +16,5 @@ export import :option_adapter;
 export import :pin;
 export import :panic;
 export import :hint;
+export import :str;
+export import :assert;
