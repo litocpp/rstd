@@ -1,8 +1,11 @@
+module;
+#include <rstd/assert.hpp>
 export module rstd.core:option;
 export import :clone;
 export import :panic;
 export import :slice;
 export import :ops.function;
+export import :assert;
 
 namespace rstd::option
 {
