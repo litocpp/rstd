@@ -13,4 +13,6 @@ target_sources(
          rc.cppm
          string.cppm
          str.cppm
-         boxed.cppm)
+         boxed.cppm
+         sync.cppm
+         )

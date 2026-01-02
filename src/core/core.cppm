@@ -27,11 +27,31 @@ using Atomic = cppstd::atomic<T>;
 export using cppstd::error_code;
 export using cppstd::atomic;
 export using cppstd::memory_order;
+export using cppstd::atomic_thread_fence;
 export using cppstd::numeric_limits;
 export using cppstd::allocator;
 export using cppstd::allocator_traits;
 export using cppstd::source_location;
 export using cppstd::align_val_t;
+
+export using cppstd::max;
+export using cppstd::min;
+export using cppstd::get;
+export using cppstd::get_if;
+export using cppstd::addressof;
+export using cppstd::construct_at;
+export using cppstd::copy;
+export using cppstd::copy_n;
+export using cppstd::exchange;
+export using cppstd::declval;
+export using cppstd::destroy_at;
+export using cppstd::forward;
+export using cppstd::move;
+export using cppstd::swap;
+export using cppstd::memcpy;
+export using cppstd::memset;
+export using cppstd::strlen;
+
 
 export struct Empty {};
 

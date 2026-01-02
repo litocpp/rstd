@@ -72,6 +72,7 @@ using std::size_t;
 
 using std::atomic;
 using std::memory_order;
+using std::atomic_thread_fence;
 
 
 using std::allocator;
@@ -165,6 +166,7 @@ namespace filesystem
 using std::filesystem::path;
 }
 
+using std::terminate;
 using std::abort;
 using std::apply;
 using std::get;
@@ -176,6 +178,7 @@ using std::addressof;
 using std::construct_at;
 using std::copy;
 using std::copy_n;
+using std::exchange;
 using std::declval;
 using std::destroy_at;
 using std::forward;
@@ -188,6 +191,7 @@ using std::min;
 using std::find;
 using std::find_if;
 using std::from_chars;
+
 
 // c stdio
 using std::fflush;
@@ -214,26 +218,6 @@ using std::pmr::vector;
 
 export namespace rstd
 {
-
-using std::max;
-using std::min;
-
-using std::get;
-using std::get_if;
-
-using std::addressof;
-using std::construct_at;
-using std::copy;
-using std::copy_n;
-using std::declval;
-using std::destroy_at;
-using std::forward;
-using std::move;
-using std::swap;
-
-using std::memcpy;
-using std::memset;
-using std::strlen;
 
 using ::stderr;
 using ::stdout;

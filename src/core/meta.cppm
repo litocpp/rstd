@@ -1,5 +1,5 @@
 export module rstd.core:meta;
-export import :cppstd;
+export import :basic;
 
 export namespace rstd::meta
 {
