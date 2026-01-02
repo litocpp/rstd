@@ -56,3 +56,13 @@ export using str = str_::Str;
 
 static_assert(meta::is_constructible_v<ref<str>, u8 const[3]>);
 } // namespace rstd
+
+export template<>
+struct rstd::cppstd::formatter<rstd::ref<rstd::str>>
+    : rstd::cppstd::formatter<rstd::cppstd::string_view> {
+    template<class FmtContext>
+    FmtContext::iterator format(rstd::ref<rstd::str> str, FmtContext& ctx) const {
+        return rstd::cppstd::formatter<rstd::cppstd::string_view>::format(
+            { reinterpret_cast<char const*>(str.data()), str.size() }, ctx);
+    }
+};

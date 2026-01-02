@@ -5,11 +5,16 @@ import :assert;
 
 namespace rstd
 {
-void assert_raw(ref<str> expr_str, ref<str> msg, const source_location) {
-    cppstd::fwrite(expr_str.data(), expr_str.size(), 1, stderr);
-    if (msg) {
-        cppstd::fwrite(msg.data(), msg.size(), 1, stderr);
-    }
+void assert_raw(ref<str> expr_str, ref<str> msg, const source_location loc) {
+    auto out = rstd::format("{}:{}: {}: Assertion `{}` failed.{}{}\n",
+                            loc.file_name(),
+                            loc.line(),
+                            loc.function_name(),
+                            expr_str,
+                            msg ? "" : "\n",
+                            msg);
+
+    cppstd::fwrite(out.data(), out.size(), 1, stderr);
     cppstd::fflush(stderr);
     cppstd::abort();
 }
