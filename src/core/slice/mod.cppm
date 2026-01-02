@@ -4,7 +4,7 @@ module;
 #include <cstring>
 export module rstd.core:slice;
 
-export import :basic;
+export import :core;
 export import :meta;
 
 namespace rstd
