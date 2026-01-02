@@ -53,6 +53,7 @@ export using cppstd::swap;
 export using cppstd::memcpy;
 export using cppstd::memset;
 export using cppstd::strlen;
+export using cppstd::strncmp;
 export using cppstd::char_traits;
 
 export template<typename T>

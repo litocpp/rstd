@@ -49,6 +49,14 @@ public:
     constexpr auto operator[](usize i) const -> u8 const& { return *(m_ptr + i); }
 };
 
+export using str = str_::Str;
+
+export [[nodiscard]]
+constexpr bool operator==(ref<str> a, meta::type_identity_t<ref<str>> b) noexcept {
+    return a.size() == b.size() &&
+           strncmp((char const*)a.data(), (char* const)b.data(), a.size()) == 0;
+}
+
 export template<>
 struct ptr<str_::Str> {
 private:
@@ -56,9 +64,21 @@ private:
     usize     m_length;
 
 public:
-};
+    constexpr ptr() noexcept = default;
 
-export using str = str_::Str;
+    template<typename T>
+        requires str_::ViewableStr<T>
+    constexpr ptr(const T& t) noexcept(noexcept(rstd::declval<T>().data()))
+        : m_ptr((u8 const*)t.data()), m_length(t.size()) {};
+
+    constexpr auto size() const { return m_length; }
+    constexpr auto data() const { return m_ptr; }
+    constexpr auto begin() const { return m_ptr; }
+    constexpr auto end() const { return m_ptr + m_length; }
+    constexpr      operator bool() const { return m_length > 0 && m_ptr != nullptr; }
+
+    constexpr auto operator[](usize i) const -> u8 const& { return *(m_ptr + i); }
+};
 
 static_assert(meta::is_constructible_v<ref<str>, u8 const[3]>);
 } // namespace rstd

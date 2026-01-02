@@ -206,6 +206,7 @@ using std::fwrite;
 using std::memcpy;
 using std::memset;
 using std::strlen;
+using std::strncmp;
 
 using ::stderr;
 using ::stdout;
