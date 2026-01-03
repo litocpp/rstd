@@ -34,23 +34,18 @@ public:
 private:
     pointer_t m_ptr;
 
-    struct unchecked_tag {};
-    constexpr NonNull(pointer_t p, unchecked_tag) noexcept: m_ptr(p) {}
+    constexpr NonNull(pointer_t p) noexcept: m_ptr(p) {}
     constexpr NonNull() = delete;
 
 public:
     /// Creates a `NonNull` if `p` is not null.
     static constexpr auto make(pointer_t p) noexcept -> Option<NonNull> {
         if (p == nullptr) return {};
-        return Some(NonNull(p, unchecked_tag {}));
+        return Some(NonNull(p));
     }
 
     /// Creates a `NonNull` without checking for null.
-    /// # Safety: caller must ensure `p != nullptr`.
-    static constexpr NonNull make_unchecked(pointer_t p) noexcept {
-        assert(p != nullptr);
-        return NonNull(p, unchecked_tag {});
-    }
+    static constexpr NonNull make_unchecked(pointer_t p) noexcept { return NonNull(p); }
 
     constexpr pointer_t as_ptr() const noexcept { return m_ptr; }
     constexpr pointer_t get() const noexcept { return m_ptr; }
