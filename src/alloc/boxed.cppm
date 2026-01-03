@@ -43,15 +43,12 @@ public:
     // Construct from a raw pointer (takes ownership)
     static Box from_raw(ptr<T> raw) noexcept { return { Unique<T>::make_unchecked(raw) }; }
 
-    auto get() const noexcept -> T* { return m_ptr; }
+    auto get() const noexcept -> ptr<T>::value_type* { return m_ptr.as_ptr(); }
     auto into_raw() noexcept -> ptr<T> {
         auto b = ManuallyDrop<>::make(rstd::move(*this));
         return b->m_ptr.as_ptr();
     }
 
-    // Access
-    // T&       operator*() noexcept { return *m_ptr.as_ptr(); }
-    // const T& operator*() const noexcept { return *m_ptr.as_ptr(); }
     auto     operator->() noexcept { return m_ptr.as_ptr(); }
     auto     operator->() const noexcept { return m_ptr.as_ptr(); }
     explicit operator bool() const noexcept { return m_ptr != nullptr; }

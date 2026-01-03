@@ -30,7 +30,7 @@ public:
         return { NonNull<T>::make_unchecked(p) };
     }
 
-    constexpr auto as_ptr() -> ptr<T> { return pointer.as_ptr(); }
+    constexpr auto as_ptr() const -> ptr<T> { return pointer.as_ptr(); }
 
     constexpr bool operator==(ptr<T> in) const noexcept { return pointer == in; }
     constexpr bool operator==(nullptr_t in) const noexcept { return pointer == in; }
