@@ -62,10 +62,22 @@ struct ref {
 };
 export template<typename T>
 struct ptr {
-    T* p;
-};
-export struct Empty {};
+    T* p { nullptr };
 
+    using value_type = T;
+
+    constexpr ptr() noexcept = default;
+    constexpr ptr(T* p) noexcept: p(p) {}
+    constexpr ptr(nullptr_t) noexcept {}
+
+    constexpr T*   operator->() const noexcept { return p; }
+    constexpr T&   operator*() const noexcept { return *p; }
+    constexpr bool operator==(T* in) const noexcept { return in == p; }
+    constexpr auto data() const noexcept { return p; }
+    constexpr      operator T*() const noexcept { return p; }
+};
+
+export struct Empty {};
 export template<typename>
 struct EmptyT {};
 

@@ -52,23 +52,9 @@ public:
         return NonNull(p, unchecked_tag {});
     }
 
-    /// Returns a "dangling" non-null pointer, suitable for use as a sentinel.
-    /// This must never be dereferenced.
-    ///
-    /// Matches Rust's behavior of using alignment as a non-null address.
-    static constexpr NonNull dangling() noexcept {
-        // alignof(T) requires T to be complete in standard C++.
-        // If T is incomplete, this will be ill-formed; that's acceptable for now.
-        auto addr = static_cast<rstd::nullptr_t>(alignof(T));
-        return NonNull(reinterpret_cast<pointer_t>(addr), unchecked_tag {});
-    }
-
-    // ==== observers ====
     constexpr pointer_t as_ptr() const noexcept { return m_ptr; }
-
     constexpr pointer_t get() const noexcept { return m_ptr; }
-
-    constexpr explicit operator bool() const noexcept { return m_ptr != nullptr; }
+    constexpr explicit  operator bool() const noexcept { return m_ptr != nullptr; }
 
     // Deref helpers (debug-only checking; caller must uphold validity)
     constexpr T& as_ref() const noexcept {
@@ -138,12 +124,10 @@ public:
     }
 
     // ==== comparisons ====
+    friend constexpr bool operator<=>(NonNull a, NonNull b) noexcept { return a.m_ptr <=> b.m_ptr; }
     friend constexpr bool operator==(NonNull a, NonNull b) noexcept { return a.m_ptr == b.m_ptr; }
-    friend constexpr bool operator!=(NonNull a, NonNull b) noexcept { return a.m_ptr != b.m_ptr; }
-    friend constexpr bool operator<(NonNull a, NonNull b) noexcept { return a.m_ptr < b.m_ptr; }
-    friend constexpr bool operator<=(NonNull a, NonNull b) noexcept { return a.m_ptr <= b.m_ptr; }
-    friend constexpr bool operator>(NonNull a, NonNull b) noexcept { return a.m_ptr > b.m_ptr; }
-    friend constexpr bool operator>=(NonNull a, NonNull b) noexcept { return a.m_ptr >= b.m_ptr; }
+    constexpr bool        operator==(pointer_t p) noexcept { return m_ptr == p; }
+    constexpr bool        operator==(nullptr_t in) const noexcept { return m_ptr == in; }
 
     // ==== hashing ====
     struct Hasher {

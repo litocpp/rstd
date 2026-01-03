@@ -18,7 +18,7 @@ export struct Sized {};
 export namespace rstd
 {
 template<typename T>
-    requires meta::semiregular<T>
+    requires meta::destructible<T>
 struct Impl<Sized, T> {};
 
 template<typename T>

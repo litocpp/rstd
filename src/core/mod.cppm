@@ -18,3 +18,5 @@ export import :panic;
 export import :hint;
 export import :str;
 export import :assert;
+export import :ptr;
+export import :mem;

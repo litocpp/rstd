@@ -308,6 +308,7 @@ using std::is_nothrow_constructible;
 using std::is_nothrow_constructible_v;
 using std::is_nothrow_destructible;
 using std::is_nothrow_destructible_v;
+using std::destructible;
 
 // copy
 using std::is_copy_constructible;

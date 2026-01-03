@@ -64,6 +64,7 @@ private:
     usize     m_length;
 
 public:
+    using value_type = u8;
     constexpr ptr() noexcept = default;
 
     template<typename T>
