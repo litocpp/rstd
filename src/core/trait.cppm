@@ -205,7 +205,7 @@ struct in_class_tag {
 };
 
 export template<typename A, typename... T>
-concept Impled = (meta::semiregular<Impl<T, meta::remove_cvref_t<A>>> && ...) ||
+concept Impled = (meta::destructible<Impl<T, meta::remove_cvref_t<A>>> && ...) ||
                  meta::same_as<meta::remove_cvref_t<A>, dyn_tag>;
 
 export template<typename T>
@@ -298,16 +298,17 @@ constexpr decltype(auto) trait_call(TApi* self, Args&&... args) {
         typename TApi::Trait,
         typename detail::ApiInner<TApi>::type,
         typename detail::ApiInner<TApi>::delegate_type>::template call<I>(self,
-                                                                          rstd::forward<Args>(args)...);
+                                                                          rstd::forward<Args>(
+                                                                              args)...);
 }
 
 export template<usize I, typename TApi, typename... Args>
     requires IsTraitApi<TApi>
 constexpr decltype(auto) trait_static_call(Args&&... args) {
-    return TraitMeta<
-        typename TApi::Trait,
-        typename detail::ApiInner<TApi>::type,
-        typename detail::ApiInner<TApi>::delegate_type>::template call<I>(rstd::forward<Args>(args)...);
+    return TraitMeta<typename TApi::Trait,
+                     typename detail::ApiInner<TApi>::type,
+                     typename detail::ApiInner<TApi>::delegate_type>::
+        template call<I>(rstd::forward<Args>(args)...);
 }
 
 template<typename T>
@@ -334,7 +335,8 @@ class Dyn : public meta::remove_cv_t<T>::template Api<dyn_tag> {
             consteval static auto get() {
                 return [](voidp p, Args... args) {
                     Impl<meta::remove_cv_t<T>, U> self { static_cast<const U*>(p) };
-                    return cppstd::invoke(UM::apis.template get<I>(), self, rstd::forward<Args>(args)...);
+                    return cppstd::invoke(
+                        UM::apis.template get<I>(), self, rstd::forward<Args>(args)...);
                 };
             }
         };
