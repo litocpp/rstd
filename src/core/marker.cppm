@@ -17,6 +17,12 @@ export struct Sized {};
 
 export namespace rstd
 {
+
+template<typename T>
+struct Impl<Sized, T[]> {
+    ~Impl() = delete;
+};
+
 template<typename T>
     requires meta::destructible<T>
 struct Impl<Sized, T> {};
@@ -24,4 +30,8 @@ struct Impl<Sized, T> {};
 template<typename T>
     requires meta::is_trivially_copy_constructible_v<T> && meta::is_trivially_copy_assignable_v<T>
 struct Impl<Copy, T> {};
+
+static_assert(Impled<i32, Sized>);
+static_assert(! Impled<i32[], Sized>);
+
 } // namespace rstd

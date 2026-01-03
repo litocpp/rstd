@@ -110,4 +110,16 @@ export [[noreturn]] inline void unreachable() {
 #endif
 }
 
+export template<typename T>
+struct ref<T[]> : ref<T> {
+    usize length { 0 };
+};
+
+export template<typename T>
+struct ptr<T[]> : ptr<T> {
+    usize length { 0 };
+
+    constexpr auto size() const noexcept { return length; }
+};
+
 } // namespace rstd
