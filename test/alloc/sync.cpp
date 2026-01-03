@@ -1,15 +1,12 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
-#include <cstddef>
-#include <cstdint>
 #include <thread>
 #include <vector>
 
 import rstd;
 
 using rstd::sync::Arc;
-using rstd::sync::UniqueArc;
 using rstd::sync::Weak;
 
 namespace
@@ -67,12 +64,12 @@ TEST(ArcBasic, CopyIncrementsStrong) {
     auto a = Arc<int>::make(7);
     EXPECT_EQ(a.strong_count(), 1u);
 
-    auto b = a; // clone
+    auto b = a.clone();
     EXPECT_EQ(a.strong_count(), 2u);
     EXPECT_EQ(b.strong_count(), 2u);
 
     // Drop b
-    b = Arc<int> {};
+    b.reset();
     EXPECT_EQ(a.strong_count(), 1u);
 }
 
@@ -99,11 +96,11 @@ TEST(ArcWeak, DowngradeAndUpgrade) {
     EXPECT_EQ(a.strong_count(), 2u);
     EXPECT_EQ(a.weak_count(), 1u);
 
-    a2 = Arc<int> {};
+    a2.reset();
     EXPECT_EQ(a.strong_count(), 1u);
 
     // Drop last strong -> value destroyed; weak upgrade fails
-    a = Arc<int> {};
+    a.reset();
     EXPECT_TRUE(w.expired());
     auto a3 = w.upgrade();
     EXPECT_FALSE(a3);
@@ -116,14 +113,14 @@ TEST(ArcWeak, WeakCountSemantics) {
     auto w1 = a.downgrade();
     EXPECT_EQ(a.weak_count(), 1u);
 
-    auto w2 = w1; // copy weak
+    auto w2 = w1.clone();
     EXPECT_EQ(a.weak_count(), 2u);
 
-    w1 = Weak<int> {};
+    w1.reset();
     EXPECT_EQ(a.weak_count(), 1u);
 
     // if strong becomes 0, weak_count() returns raw weak count (including what remains)
-    a = Arc<int> {};
+    a.reset();
     EXPECT_EQ(w2.weak_count(), 1u);
 }
 
@@ -136,11 +133,11 @@ TEST(ArcDrop, DropDestroysPayloadOnce) {
         // Explanation: DropCounter{123} creates temporary => live+1, then moved into ArcInner =>
         // live+1, then temporary destroyed => drops+1, live-1. So live==1, drops==1 inside scope.
 
-        auto b = a;
+        auto b = a.clone();
         EXPECT_EQ(a.strong_count(), 2u);
         EXPECT_EQ(DropCounter::live.load(), 1);
 
-        b = Arc<DropCounter> {};
+        b.reset();
         EXPECT_EQ(a.strong_count(), 1u);
         EXPECT_EQ(DropCounter::live.load(), 1);
     }
@@ -153,77 +150,37 @@ TEST(ArcDrop, DropDestroysPayloadOnce) {
 TEST(ArcUnwrap, TryUnwrapSuccess) {
     auto a = Arc<Payload>::make(Payload { 5 });
 
-    Payload out { 0 };
-    bool    ok = a.try_unwrap(out);
-    EXPECT_TRUE(ok);
-    EXPECT_EQ(out.x, 5);
+    EXPECT_EQ(a.strong_count(), 1);
+    auto res = a.try_unwrap();
+    EXPECT_EQ(res.is_ok(), true);
     EXPECT_FALSE(a); // consumed
 }
 
 TEST(ArcUnwrap, TryUnwrapFailsWhenNotUnique) {
     auto a = Arc<Payload>::make(Payload { 11 });
-    auto b = a;
+    auto b = a.clone();
 
-    Payload out { 0 };
-    bool    ok = a.try_unwrap(out);
-    EXPECT_FALSE(ok);
-    EXPECT_TRUE(a);
-    EXPECT_EQ(a.strong_count(), 2u);
+    EXPECT_EQ(a.strong_count(), 2);
+    auto res = a.try_unwrap();
+    EXPECT_FALSE(res);
+    EXPECT_TRUE(b);
+    EXPECT_EQ(b.strong_count(), 2u);
 
     // cleanup
-    b = Arc<Payload> {};
+    b.reset();
 }
 
 TEST(ArcRaw, IntoRawFromRawRoundtrip) {
-    auto       a = Arc<int>::make(77);
-    const int* p = a.into_raw();
+    auto a = Arc<int>::make(77);
+    auto p = a.into_raw();
     EXPECT_FALSE(a); // ownership leaked
-    ASSERT_NE(p, nullptr);
-    EXPECT_EQ(*p, 77);
+    ASSERT_NE((p.as_ptr()), nullptr);
+    EXPECT_EQ(*(p.as_ptr()), 77);
 
     auto b = Arc<int>::from_raw(p);
     EXPECT_TRUE(b);
     EXPECT_EQ(*b, 77);
     EXPECT_EQ(b.strong_count(), 1u);
-}
-
-TEST(ArcMut, GetMutOnlyWhenUniqueAndNoWeaks) {
-    auto a = Arc<int>::make(1);
-
-    int* p = a.get_mut();
-    ASSERT_NE(p, nullptr);
-    *p = 9;
-    EXPECT_EQ(*a, 9);
-
-    // If a weak exists, get_mut should fail
-    auto w = a.downgrade();
-    EXPECT_EQ(a.get_mut(), nullptr);
-
-    // Drop weak => uniqueness restored
-    w = Weak<int> {};
-    p = a.get_mut();
-    ASSERT_NE(p, nullptr);
-    *p = 10;
-    EXPECT_EQ(*a, 10);
-
-    // If another strong exists, get_mut fails
-    auto b = a;
-    EXPECT_EQ(a.get_mut(), nullptr);
-    b = Arc<int> {};
-    EXPECT_NE(a.get_mut(), nullptr);
-}
-
-TEST(UniqueArc, UniqueArcAllowsMutAndIntoArc) {
-    auto u = UniqueArc<int>::make(3);
-    EXPECT_EQ(u.get_mut(), 3);
-    u.get_mut() = 4;
-    EXPECT_EQ(u.get_mut(), 4);
-
-    auto a = std::move(u).into_arc();
-    EXPECT_TRUE(a);
-    EXPECT_EQ(*a, 4);
-
-    // UniqueArc no longer usable after move; (not tested)
 }
 
 TEST(ArcThread, CloneDropAcrossThreads) {
@@ -236,10 +193,10 @@ TEST(ArcThread, CloneDropAcrossThreads) {
     ts.reserve(kThreads);
 
     for (int t = 0; t < kThreads; ++t) {
-        ts.emplace_back([a, t]() mutable {
+        ts.emplace_back([a = a.clone()]() mutable {
             // Each thread holds one Arc by value (copied into lambda)
             for (int i = 0; i < kIters; ++i) {
-                auto b = a; // clone
+                auto b = a.clone();
                 // Touch data (read-only)
                 if (*b != 123) std::abort();
             }

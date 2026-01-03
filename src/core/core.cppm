@@ -49,7 +49,6 @@ export using cppstd::declval;
 export using cppstd::destroy_at;
 export using cppstd::forward;
 export using cppstd::move;
-export using cppstd::swap;
 export using cppstd::memcpy;
 export using cppstd::memset;
 export using cppstd::strlen;
@@ -57,25 +56,11 @@ export using cppstd::strncmp;
 export using cppstd::char_traits;
 
 export template<typename T>
-struct ref {
-    T& p;
-};
-export template<typename T>
-struct ptr {
-    T* p { nullptr };
-
-    using value_type = T;
-
-    constexpr ptr() noexcept = default;
-    constexpr ptr(T* p) noexcept: p(p) {}
-    constexpr ptr(nullptr_t) noexcept {}
-
-    constexpr T*   operator->() const noexcept { return p; }
-    constexpr T&   operator*() const noexcept { return *p; }
-    constexpr bool operator==(T* in) const noexcept { return in == p; }
-    constexpr auto data() const noexcept { return p; }
-    constexpr      operator T*() const noexcept { return p; }
-};
+void swap(T& a, T& b) noexcept(meta::is_nothrow_copy_constructible_v<T>) {
+    T t(a);
+    a = b;
+    b = t;
+}
 
 export struct Empty {};
 export template<typename>
@@ -109,6 +94,37 @@ export [[noreturn]] inline void unreachable() {
     __builtin_unreachable();
 #endif
 }
+
+export template<typename T>
+struct ref {
+    T& p;
+
+    constexpr ref() noexcept = delete;
+    constexpr ref(T& p) noexcept: p(p) {}
+    constexpr ref(const ref& o) noexcept: p(o.p) {}
+    constexpr ref(ref&& o) noexcept: p(o.p) {}
+
+    constexpr T*   operator->() const noexcept { return &p; }
+    constexpr T&   operator*() const noexcept { return p; }
+    constexpr bool operator==(param_ref_t<T> in) const noexcept { return in == p; }
+};
+export template<typename T>
+struct ptr {
+    T* p { nullptr };
+
+    using value_type = T;
+
+    constexpr ptr() noexcept = default;
+    constexpr ptr(T* p) noexcept: p(p) {}
+    constexpr ptr(nullptr_t) noexcept {}
+
+    constexpr T*   operator->() const noexcept { return p; }
+    constexpr T&   operator*() const noexcept { return *p; }
+    constexpr bool operator==(T* in) const noexcept { return in == p; }
+    constexpr      operator T*() const noexcept { return p; }
+    constexpr auto data() const noexcept { return p; }
+    constexpr auto to_ref() const noexcept { return ref<T> { *p }; }
+};
 
 export template<typename T>
 struct ref<T[]> : ref<T> {
