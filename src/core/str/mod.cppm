@@ -52,7 +52,7 @@ public:
 export using str = str_::Str;
 
 export [[nodiscard]]
-constexpr bool operator==(ref<str> a, meta::type_identity_t<ref<str>> b) noexcept {
+constexpr bool operator==(ref<str> a, ref<str> b) noexcept {
     return a.size() == b.size() &&
            strncmp((char const*)a.data(), (char* const)b.data(), a.size()) == 0;
 }

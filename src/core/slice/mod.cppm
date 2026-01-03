@@ -81,12 +81,6 @@ private:
 };
 
 export using ref_str = Slice<const char>;
-
-export [[nodiscard]]
-constexpr bool operator==(ref_str a, meta::type_identity_t<rstd::ref_str> b) noexcept {
-    return a.size() == b.size() && strncmp(a.data(), b.data(), a.size()) == 0;
-}
-
 } // namespace rstd
 
 export template<>
