@@ -1,3 +1,5 @@
+module;
+#include <rstd/assert.hpp>
 export module rstd.core:result;
 export import :clone;
 export import :fmt;
