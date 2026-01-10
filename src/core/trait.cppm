@@ -178,7 +178,10 @@ struct TraitMeta {
 
     static consteval bool check() {
         using L1 = TCollect<Api>;
-        if constexpr (meta::same_as<A, dyn_tag>) {
+
+        if constexpr (L1::size() == 0) {
+            return true;
+        } else if constexpr (meta::same_as<A, dyn_tag>) {
             // delegate for dyn
             return true;
         } else if constexpr (meta::same_as<Delegate, in_class_tag>) {
@@ -250,12 +253,12 @@ constexpr decltype(auto) trait_static_call(Args&&... args) {
 
 template<typename T>
 class Dyn : public meta::remove_cv_t<T>::template Api<dyn_tag> {
-    using raw_t = meta::remove_cv_t<T>;
-    using M     = TraitMeta<raw_t, dyn_tag>;
-    friend M;
-
+    using raw_t  = meta::remove_cv_t<T>;
+    using M      = TraitMeta<raw_t, dyn_tag>;
     using ptr_t  = meta::conditional_t<meta::is_const_v<T>, const_voidp, voidp>;
     using apis_t = M::template dyn_apis_t<cppstd::tuple>;
+
+    friend M;
 
     const apis_t* const apis;
     ptr_t               self;
@@ -291,11 +294,16 @@ class Dyn : public meta::remove_cv_t<T>::template Api<dyn_tag> {
 
 public:
     template<typename U>
-    Dyn(U* p) noexcept: apis(&Convert<meta::remove_cv_t<U>>::apis), self(static_cast<ptr_t>(p)) {}
+    constexpr Dyn(U* p) noexcept
+        : apis(&Convert<meta::remove_cv_t<U>>::apis), self(static_cast<ptr_t>(p)) {}
 
     template<typename U>
-    Dyn(U& p) noexcept
-        : apis(&Convert<meta::remove_cv_t<U>>::apis), self(static_cast<ptr_t>(addressof(p))) {}
+    constexpr Dyn(U& p) noexcept: Dyn(&p) {}
+
+    template<typename U>
+    constexpr static auto make(U* p) noexcept -> Dyn {
+        return { p };
+    }
 
     Dyn(const Dyn&) noexcept = default;
     Dyn(Dyn&&) noexcept      = default;
@@ -305,13 +313,13 @@ public:
 };
 
 export template<typename T, typename A>
-auto make_dyn(A* t) {
+constexpr auto make_dyn(A* t) noexcept {
     using dyn_t = meta::conditional_t<meta::is_const_v<A>, Dyn<const T>, Dyn<T>>;
-    return dyn_t(t);
+    return dyn_t::make(t);
 }
 
 export template<typename T, typename A>
-auto make_dyn(A& t) {
+constexpr auto make_dyn(A& t) noexcept {
     return make_dyn<T, A>(addressof(t));
 }
 
@@ -323,11 +331,11 @@ struct ImplInClass : detail::ImplWithPtr<A>, meta::remove_cv_t<T>::template Api<
 // only accept lvalue for no stack-use-after-scope
 // requires Impled<T, meta::remove_cvref_t<A>>, maybe used in impldef which not satisfy
 export template<typename T, typename A>
-auto as(A& t) {
+[[gnu::always_inline]]
+constexpr auto as(A& t) noexcept {
     using impl_t = Impl<T, meta::remove_cvref_t<A>>;
     using ret_t  = meta::conditional_t<meta::is_const_v<A>, meta::add_const_t<impl_t>, impl_t>;
-    impl_t i { rstd::addressof(t) };
-    return ret_t { i };
+    return ret_t { rstd::addressof(t) };
 }
 
 export template<typename Self, typename... Traits>
