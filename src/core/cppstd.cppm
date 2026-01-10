@@ -64,6 +64,7 @@ using std::uint16_t;
 using std::uint32_t;
 using std::uint64_t;
 using std::uint8_t;
+using std::uintptr_t;
 
 
 using std::byte;
@@ -71,6 +72,8 @@ using std::ptrdiff_t;
 using std::size_t;
 
 using std::char_traits;
+using std::make_unsigned_t;
+using std::bit_cast;
 
 using std::atomic;
 using std::memory_order;
@@ -122,6 +125,7 @@ using std::tuple;
 using std::tuple_element;
 using std::tuple_element_t;
 using std::tuple_size;
+using std::tuple_size_v;
 
 using std::enable_shared_from_this;
 using std::make_shared;

@@ -8,30 +8,46 @@ namespace rstd
 export template<auto... Api>
 struct TraitCollect {};
 
+template<typename T, typename A, typename Delegate = void>
+struct TraitMeta;
+
 namespace detail
 {
-template<typename... Api>
-struct Apis {
-    cppstd::tuple<Api...> apis;
 
-    constexpr Apis(Api... api) noexcept: apis(api...) {}
-
-    template<usize I>
-    constexpr auto get() const noexcept {
-        return cppstd::get<I>(apis);
-    }
-    template<usize I>
-    using type_at = cppstd::tuple_element_t<I, decltype(apis)>;
-
-    using to_tuple_t = cppstd::tuple<Api...>;
-
-    consteval static auto size() noexcept { return cppstd::tuple_size<decltype(apis)> {}; }
-};
 template<typename T>
-struct FromCollect;
+struct TraitCollectInner;
+
 template<auto... Api>
-struct FromCollect<TraitCollect<Api...>> {
-    consteval static auto get() { return Apis { Api... }; }
+struct TraitCollectInner<TraitCollect<Api...>> {
+    template<template<class...> typename T>
+    consteval static auto make() {
+        return T { Api... };
+    }
+
+    template<usize I>
+    consteval static auto get() {
+        return meta::get_auto<I, Api...>();
+    }
+
+    consteval static auto size() { return sizeof...(Api); }
+
+    template<usize I>
+    using type_at = decltype(get<I>());
+};
+
+template<typename T>
+struct ImplWithPtr {
+    usizeptr ptr_;
+
+    template<typename, typename, typename>
+    friend struct rstd::TraitMeta;
+
+    template<typename P>
+    constexpr ImplWithPtr(P* p) noexcept: ptr_(rstd::bit_cast<usizeptr>(p)) {}
+
+protected:
+    constexpr auto self() noexcept -> T& { return *rstd::bit_cast<T*>(ptr_); }
+    constexpr auto self() const noexcept -> T const& { return *rstd::bit_cast<T const*>(ptr_); }
 };
 
 template<typename T>
@@ -43,17 +59,8 @@ struct ApiInner<T<A, B>> {
     using delegate_type = B;
 };
 
-template<template<typename, typename> class T, typename A, typename B>
-struct ApiInner<const T<A, B>> {
-    using type          = A;
-    using delegate_type = B;
-};
-
-template<typename T>
-struct FuncTraits;
-
 template<typename Self, typename TApi, typename TApiB, usize Index = 0>
-consteval void check_apis() {
+consteval bool check_apis() {
     if constexpr (Index == 0) {
         static_assert(TApi::size() == TApiB::size(), "Please implement all Trait api");
     }
@@ -62,8 +69,8 @@ consteval void check_apis() {
         using T1 = TApi::template type_at<Index>;
         using T2 = TApiB::template type_at<Index>;
 
-        using F1 = FuncTraits<T1>;
-        using F2 = FuncTraits<T2>;
+        using F1 = meta::FuncTraits<T1>;
+        using F2 = meta::FuncTraits<T2>;
         using P1 = typename F1::primary;
         using P2 = typename F2::primary;
 
@@ -78,85 +85,14 @@ consteval void check_apis() {
             // not member func, full compare
             static_assert(meta::same_as<T1, T2>, "Trait api not satisfy");
         }
-        check_apis<Self, TApi, TApiB, Index + 1>();
+        return check_apis<Self, TApi, TApiB, Index + 1>();
     }
+    return true;
 }
 
-template<typename T, typename Ret, typename... Args, bool Ne>
-struct FuncTraits<Ret (*)(T, Args...) noexcept(Ne)> {
-    static constexpr bool is_member = false;
-
-    using primary = meta::conditional_t<meta::is_pointer_v<T>, void, T>;
-
-    using to_dyn = Ret (*)(voidp, Args...) noexcept(Ne);
-};
-
-template<typename Ret, bool Ne>
-struct FuncTraits<Ret (*)(void) noexcept(Ne)> {
-    static constexpr bool is_member = false;
-
-    using primary = void;
-
-    using to_dyn = Ret (*)(void) noexcept(Ne);
-};
-
-template<typename T, typename Ret, typename... Args, bool Ne>
-struct FuncTraits<Ret (T::*)(Args...) noexcept(Ne)> {
-    static constexpr bool is_member = true;
-
-    using primary = T&;
-
-    using to_dyn = Ret (*)(voidp, Args...) noexcept(Ne);
-};
-
-template<typename T, typename Ret, typename... Args, bool Ne>
-struct FuncTraits<Ret (T::*)(Args...) & noexcept(Ne)> {
-    static constexpr bool is_member = true;
-
-    using primary = T&;
-
-    using to_dyn = Ret (*)(voidp, Args...) noexcept(Ne);
-};
-
-template<typename T, typename Ret, typename... Args, bool Ne>
-struct FuncTraits<Ret (T::*)(Args...) && noexcept(Ne)> {
-    static constexpr bool is_member = true;
-
-    using primary = T&&;
-
-    using to_dyn = Ret (*)(voidp, Args...) noexcept(Ne);
-};
-
-template<typename T, typename Ret, typename... Args, bool Ne>
-struct FuncTraits<Ret (T::*)(Args...) const noexcept(Ne)> {
-    static constexpr bool is_member = true;
-
-    using primary = const T&;
-
-    using to_dyn = Ret (*)(voidp, Args...) noexcept(Ne);
-};
-
-template<typename T, typename Ret, typename... Args, bool Ne>
-struct FuncTraits<Ret (T::*)(Args...) const & noexcept(Ne)> {
-    static constexpr bool is_member = true;
-
-    using primary = const T&;
-
-    using to_dyn = Ret (*)(voidp, Args...) noexcept(Ne);
-};
-
-template<typename T, typename Ret, typename... Args, bool Ne>
-struct FuncTraits<Ret (T::*)(Args...) const && noexcept(Ne)> {
-    static constexpr bool is_member = true;
-
-    using primary = const T&&;
-
-    using to_dyn = Ret (*)(voidp, Args...) noexcept(Ne);
-};
-
-template<typename... Api>
-consteval auto to_dyn(Apis<Api...>) {
-    return Apis { (typename FuncTraits<Api>::to_dyn)(nullptr)... };
+template<typename... Api, template<class...> typename Tuple>
+consteval auto to_dyn(Tuple<Api...>) {
+    return Tuple { (typename meta::FuncTraits<Api>::to_dyn)(nullptr)... };
 }
 
 } // namespace detail
@@ -165,13 +101,7 @@ export template<typename T, typename A>
 struct Impl;
 
 export template<typename A>
-struct ImplBase {
-    A const* _self;
-
-protected:
-    auto self() -> A& { return *const_cast<A*>(_self); }
-    auto self() const -> A const& { return *_self; }
-};
+struct ImplBase : detail::ImplWithPtr<A> {};
 
 enum class DefPolicy
 {
@@ -199,10 +129,7 @@ export template<typename T, typename A>
 struct ImplDefaultBase<T, Def<A, DefPolicy::Normal>> : ImplBase<A> {};
 
 struct dyn_tag {};
-template<typename T>
-struct in_class_tag {
-    using type = T;
-};
+struct in_class_tag {};
 
 export template<typename A, typename... T>
 concept Impled = (meta::destructible<Impl<T, meta::remove_cvref_t<A>>> && ...) ||
@@ -223,92 +150,102 @@ using ImplDefault = Impl<T, Def<A, P>>;
 export template<typename T, typename A>
 struct ImplInClass;
 
-export template<typename T, typename A, typename Delegate = void>
+template<typename T, typename A, typename Delegate>
 struct TraitMeta {
     using Api = typename T::template Api<A, Delegate>;
     template<typename F>
-    using TCollect = typename T::template TCollect<F>;
+    using TCollect = detail::TraitCollectInner<typename T::template TCollect<F>>;
 
-    static consteval auto collect() {
-        constexpr auto req_apis = detail::FromCollect<TCollect<Api>>::get();
+    template<template<class...> typename Tuple>
+    using dyn_apis_t = decltype(detail::to_dyn(TCollect<Api>::template make<Tuple>()));
+
+    template<typename TSelf, typename TDst>
+    using call_cast_t = meta::conditional_t<meta::is_const_v<TSelf>, meta::add_const_t<TDst>, TDst>;
+
+    template<usize I>
+    static consteval auto get() {
         if constexpr (meta::same_as<A, dyn_tag>) {
             // delegate for dyn
-            constexpr auto apis = detail::to_dyn(req_apis);
-            return apis;
-        } else if constexpr (meta::special_of<Delegate, in_class_tag>) {
+            return TCollect<Api>::template get<I>();
+        } else if constexpr (meta::same_as<Delegate, in_class_tag>) {
             // delegate for ImplInClass
-            using inner_t       = typename Delegate::type;
-            constexpr auto apis = detail::FromCollect<TCollect<inner_t>>::get();
-            detail::check_apis<Api, decltype(req_apis), decltype(apis)>();
-            return apis;
+            return TCollect<A>::template get<I>();
         } else {
             // delegate for Impl
-            constexpr auto apis = detail::FromCollect<TCollect<Impl<T, A>>>::get();
-            detail::check_apis<Api, decltype(req_apis), decltype(apis)>();
-            return apis;
+            return TCollect<Impl<T, A>>::template get<I>();
         }
     }
 
-    static constexpr auto apis { collect() };
-
-    template<usize I, typename... Args>
-    static constexpr decltype(auto) call(const Api* self, Args&&... args) {
+    static consteval bool check() {
+        using L1 = TCollect<Api>;
         if constexpr (meta::same_as<A, dyn_tag>) {
             // delegate for dyn
-            auto dyn = static_cast<const Dyn<T>*>(self);
-            return dyn->apis->template get<I>()(dyn->self, rstd::forward<Args>(args)...);
-        } else if constexpr (meta::special_of<Delegate, in_class_tag>) {
+            return true;
+        } else if constexpr (meta::same_as<Delegate, in_class_tag>) {
             // delegate for ImplInClass
-            auto self_ = static_cast<ImplInClass<T, A> const*>(self)->_self;
-            return cppstd::invoke(apis.template get<I>(), self_, rstd::forward<Args>(args)...);
+            using L2 = TCollect<A>;
+            return detail::check_apis<Api, L1, L2>();
         } else {
             // delegate for Impl
-            Impl<T, A> self_ { static_cast<const A*>(self) };
-            return cppstd::invoke(apis.template get<I>(), self_, rstd::forward<Args>(args)...);
+            using L2 = TCollect<Impl<T, A>>;
+            return detail::check_apis<Api, L1, L2>();
+        }
+    }
+
+    static_assert(check());
+    template<usize I, typename TSelf, typename... Args>
+    [[gnu::always_inline]]
+    static constexpr decltype(auto) call(TSelf* self, Args&&... args) {
+        if constexpr (meta::same_as<A, dyn_tag>) {
+            // delegate for dyn
+            auto dyn = static_cast<call_cast_t<TSelf, Dyn<T>>*>(self);
+            return rstd::get<I>(*dyn->apis)(dyn->self, rstd::forward<Args>(args)...);
+        } else if constexpr (meta::same_as<Delegate, in_class_tag>) {
+            // delegate for ImplInClass
+            constexpr auto api { get<I>() };
+
+            auto self_ = rstd::addressof(
+                (static_cast<call_cast_t<TSelf, ImplInClass<T, A>>*>(self)->self()));
+            return cppstd::invoke(api, self_, rstd::forward<Args>(args)...);
+        } else {
+            // delegate for Impl
+            constexpr const auto api { get<I>() };
+
+            Impl<T, A> self_ { static_cast<call_cast_t<TSelf, A>*>(self) };
+            return cppstd::invoke(api, self_, rstd::forward<Args>(args)...);
         }
     }
 
     template<usize I, typename... Args>
-    static constexpr decltype(auto) call(Api* self, Args&&... args) {
-        if constexpr (meta::same_as<A, dyn_tag>) {
-            // delegate for dyn
-            auto dyn = static_cast<const Dyn<T>*>(self);
-            return dyn->apis->template get<I>()(dyn->self, rstd::forward<Args>(args)...);
-        } else if constexpr (meta::special_of<Delegate, in_class_tag>) {
-            // delegate for ImplInClass
-            auto self_ = const_cast<A*>(static_cast<ImplInClass<T, A>*>(self)->_self);
-            return cppstd::invoke(apis.template get<I>(), self_, rstd::forward<Args>(args)...);
-        } else {
-            // delegate for Impl
-            Impl<T, A> self_ { static_cast<const A*>(self) };
-            return cppstd::invoke(apis.template get<I>(), self_, rstd::forward<Args>(args)...);
-        }
-    }
-
-    template<usize I, typename... Args>
+    [[gnu::always_inline]]
     static constexpr decltype(auto) call_static(Args&&... args) {
-        return apis.template get<I>()(rstd::forward<Args>(args)...);
+        constexpr const auto api { get<I>() };
+        return api(rstd::forward<Args>(args)...);
     }
 };
 
 export template<usize I, typename TApi, typename... Args>
-    requires IsTraitApi<TApi>
+    requires IsTraitApi<meta::remove_cv_t<TApi>>
+[[gnu::always_inline]]
 constexpr decltype(auto) trait_call(TApi* self, Args&&... args) {
-    return TraitMeta<
-        typename TApi::Trait,
-        typename detail::ApiInner<TApi>::type,
-        typename detail::ApiInner<TApi>::delegate_type>::template call<I>(self,
-                                                                          rstd::forward<Args>(
-                                                                              args)...);
+    using TApi_ = meta::remove_cv_t<TApi>;
+    return TraitMeta<typename TApi_::Trait,
+                     typename detail::ApiInner<TApi_>::type,
+                     typename detail::ApiInner<TApi_>::delegate_type>::template call<I,
+                                                                                     TApi>(
+        self, rstd::forward<Args>(args)...);
 }
 
 export template<usize I, typename TApi, typename... Args>
-    requires IsTraitApi<TApi>
+    requires IsTraitApi<meta::remove_cv_t<TApi>>
+[[gnu::always_inline]]
 constexpr decltype(auto) trait_static_call(Args&&... args) {
-    return TraitMeta<typename TApi::Trait,
-                     typename detail::ApiInner<TApi>::type,
-                     typename detail::ApiInner<TApi>::delegate_type>::
-        template call<I>(rstd::forward<Args>(args)...);
+    using TApi_ = meta::remove_cv_t<TApi>;
+    return TraitMeta<typename TApi_::Trait,
+                     typename detail::ApiInner<TApi_>::type,
+                     typename detail::ApiInner<TApi_>::delegate_type>::template call<I,
+                                                                                     TApi>(
+        rstd::forward<Args>(args)...);
 }
 
 template<typename T>
@@ -316,10 +253,12 @@ class Dyn : public meta::remove_cv_t<T>::template Api<dyn_tag> {
     using raw_t = meta::remove_cv_t<T>;
     using M     = TraitMeta<raw_t, dyn_tag>;
     friend M;
-    using ptr_t = meta::conditional_t<meta::is_const_v<T>, const_voidp, voidp>;
 
-    const decltype(M::apis)* const apis;
-    ptr_t                          self;
+    using ptr_t  = meta::conditional_t<meta::is_const_v<T>, const_voidp, voidp>;
+    using apis_t = M::template dyn_apis_t<cppstd::tuple>;
+
+    const apis_t* const apis;
+    ptr_t               self;
 
     template<typename U>
     struct Convert {
@@ -328,26 +267,26 @@ class Dyn : public meta::remove_cv_t<T>::template Api<dyn_tag> {
         struct Wrap;
         template<usize I, typename Ret, bool Ne, typename... Args>
         struct Wrap<I, Ret (*)(Args...) noexcept(Ne)> {
-            consteval static auto get() { return UM::apis.template get<I>(); }
+            consteval static auto get() { return UM::template get<I>(); }
         };
         template<usize I, typename Ret, bool Ne, typename... Args>
         struct Wrap<I, Ret (*)(voidp, Args...) noexcept(Ne)> {
             consteval static auto get() {
                 return [](voidp p, Args... args) {
                     Impl<meta::remove_cv_t<T>, U> self { static_cast<const U*>(p) };
-                    return cppstd::invoke(
-                        UM::apis.template get<I>(), self, rstd::forward<Args>(args)...);
+                    constexpr const auto          api { UM::template get<I>() };
+                    return cppstd::invoke(api, self, rstd::forward<Args>(args)...);
                 };
             }
         };
 
         template<usize... Is>
         consteval static auto convert(cppstd::index_sequence<Is...>) {
-            return decltype(M::apis) { (Wrap<Is, decltype(M::apis.template get<Is>())>::get())... };
+            return apis_t { (Wrap<Is, cppstd::tuple_element_t<Is, apis_t>>::get())... };
         }
 
-        constexpr static decltype(M::apis) apis { convert(
-            cppstd::make_index_sequence<decltype(M::apis)::size()> {}) };
+        constexpr static apis_t apis { convert(
+            cppstd::make_index_sequence<cppstd::tuple_size_v<apis_t>> {}) };
     };
 
 public:
@@ -377,13 +316,7 @@ auto make_dyn(A& t) {
 }
 
 template<typename T, typename A>
-struct ImplInClass : meta::remove_cv_t<T>::template Api<A, in_class_tag<A>> {
-    A const* _self;
-
-protected:
-    auto self() -> A& { return *const_cast<A*>(_self); }
-    auto self() const -> A const& { return *_self; }
-};
+struct ImplInClass : detail::ImplWithPtr<A>, meta::remove_cv_t<T>::template Api<A, in_class_tag> {};
 
 ///
 /// @brief as a triat
@@ -393,8 +326,7 @@ export template<typename T, typename A>
 auto as(A& t) {
     using impl_t = Impl<T, meta::remove_cvref_t<A>>;
     using ret_t  = meta::conditional_t<meta::is_const_v<A>, meta::add_const_t<impl_t>, impl_t>;
-    impl_t i {};
-    i._self = rstd::addressof(t);
+    impl_t i { rstd::addressof(t) };
     return ret_t { i };
 }
 

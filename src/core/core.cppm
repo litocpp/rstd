@@ -20,6 +20,7 @@ export using isize       = cppstd::ptrdiff_t;
 export using byte        = cppstd::byte;
 export using voidp       = void*;
 export using const_voidp = void const*;
+export using usizeptr    = cppstd::uintptr_t;
 
 export template<typename T>
 using Atomic = cppstd::atomic<T>;
@@ -54,6 +55,8 @@ export using cppstd::memset;
 export using cppstd::strlen;
 export using cppstd::strncmp;
 export using cppstd::char_traits;
+export using cppstd::make_unsigned_t;
+export using cppstd::bit_cast;
 
 export template<typename T>
 void swap(T& a, T& b) noexcept(meta::is_nothrow_copy_constructible_v<T>) {

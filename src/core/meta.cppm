@@ -58,4 +58,101 @@ inline constexpr bool is_specialization_of_v = is_specialization_of<T, Primary>:
 template<class T, template<class...> class Primary>
 concept special_of = is_specialization_of<T, Primary>::value;
 
+template<typename T>
+struct FuncTraits;
+
+template<typename T, typename Ret, typename... Args, bool Ne>
+struct FuncTraits<Ret (*)(T, Args...) noexcept(Ne)> {
+    static constexpr bool is_member = false;
+
+    using primary = meta::conditional_t<meta::is_pointer_v<T>, void, T>;
+
+    using to_dyn = Ret (*)(voidp, Args...) noexcept(Ne);
+};
+
+template<typename Ret, bool Ne>
+struct FuncTraits<Ret (*)(void) noexcept(Ne)> {
+    static constexpr bool is_member = false;
+
+    using primary = void;
+
+    using to_dyn = Ret (*)(void) noexcept(Ne);
+};
+
+template<typename T, typename Ret, typename... Args, bool Ne>
+struct FuncTraits<Ret (T::*)(Args...) noexcept(Ne)> {
+    static constexpr bool is_member = true;
+
+    using primary = T&;
+
+    using to_dyn = Ret (*)(voidp, Args...) noexcept(Ne);
+};
+
+template<typename T, typename Ret, typename... Args, bool Ne>
+struct FuncTraits<Ret (T::*)(Args...) & noexcept(Ne)> {
+    static constexpr bool is_member = true;
+
+    using primary = T&;
+
+    using to_dyn = Ret (*)(voidp, Args...) noexcept(Ne);
+};
+
+template<typename T, typename Ret, typename... Args, bool Ne>
+struct FuncTraits<Ret (T::*)(Args...) && noexcept(Ne)> {
+    static constexpr bool is_member = true;
+
+    using primary = T&&;
+
+    using to_dyn = Ret (*)(voidp, Args...) noexcept(Ne);
+};
+
+template<typename T, typename Ret, typename... Args, bool Ne>
+struct FuncTraits<Ret (T::*)(Args...) const noexcept(Ne)> {
+    static constexpr bool is_member = true;
+
+    using primary = const T&;
+
+    using to_dyn = Ret (*)(voidp, Args...) noexcept(Ne);
+};
+
+template<typename T, typename Ret, typename... Args, bool Ne>
+struct FuncTraits<Ret (T::*)(Args...) const & noexcept(Ne)> {
+    static constexpr bool is_member = true;
+
+    using primary = const T&;
+
+    using to_dyn = Ret (*)(voidp, Args...) noexcept(Ne);
+};
+
+template<typename T, typename Ret, typename... Args, bool Ne>
+struct FuncTraits<Ret (T::*)(Args...) const && noexcept(Ne)> {
+    static constexpr bool is_member = true;
+
+    using primary = const T&&;
+
+    using to_dyn = Ret (*)(voidp, Args...) noexcept(Ne);
+};
+
+} // namespace rstd::meta
+
+namespace rstd::meta
+{
+
+template<usize I, auto First, auto... Rest>
+consteval auto get_auto_impl() {
+    if constexpr (I == 0) {
+        return First;
+    } else if constexpr (sizeof...(Rest) == 0) {
+        static_assert(false, "out of range");
+    } else {
+        return get_auto_impl<I - 1, Rest...>();
+    }
+}
+
+export template<usize I, auto... Vals>
+consteval auto get_auto() {
+    static_assert(I < sizeof...(Vals), "out of range");
+    return get_auto_impl<I, Vals...>();
+}
+
 } // namespace rstd::meta
