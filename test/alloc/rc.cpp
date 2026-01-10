@@ -194,4 +194,5 @@ TEST(RcTest, Constness) {
     auto        val       = make_rc<int>(42);
     const auto& const_val = val;
     int         x         = *const_val;
+    (void)x;
 }

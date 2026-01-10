@@ -1,3 +1,4 @@
+#include <gtest/gtest.h>
 #include <utility>
 namespace
 {
@@ -12,9 +13,6 @@ struct B {
     B(B&&) noexcept {}
     B& operator=(const B&) { return *this; }
     B& operator=(B&&) noexcept { return *this; }
-
-private:
-    A a;
 };
 
 struct NoCopyMove {
@@ -68,7 +66,8 @@ static auto&& _auto_rr_check() {
     } else if constexpr (I == 3) {
         return static_cast<A&&>(i);
     } else {
-        return (A {});
+        static A a {};
+        return (std::move(a));
     }
 }
 
@@ -124,6 +123,10 @@ static void _do() {
     x_right = _dt_auto_check<3>;
     x       = _dt_auto_check<4>;
 
+    (void)x;
+    (void)x_left;
+    (void)x_right;
+
     static_assert(std::same_as<decltype(_forward(a)), A&>);
     static_assert(std::same_as<decltype(_forward(A {})), A>);
 
@@ -140,3 +143,5 @@ static void _do() {
 }
 
 } // namespace
+
+TEST(Compile, Test) { _do(); }
