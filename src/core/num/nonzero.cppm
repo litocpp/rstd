@@ -1,7 +1,17 @@
 module;
-#define ImplNonZero(T) \
-    template<>         \
-    struct NonZero<T> : NonZeroBase<T> {}
+
+#define ImplNonZero(T)                                                          \
+    template<>                                                                  \
+    struct NonZero<T> : NonZeroBase<T> {                                        \
+        constexpr static auto make(T t) -> NonZero<T> { return { t }; }         \
+        constexpr auto        unwrap() const -> T { return v; }                 \
+        friend constexpr bool operator==(NonZero<T> a, NonZero<T> b) noexcept { \
+            return a.v == b.v;                                                  \
+        }                                                                       \
+    }
+
+#define impl_zeroable_primitive(T)
+
 export module rstd.core:num.nonzero;
 export import :core;
 
@@ -13,7 +23,14 @@ struct NonZeroBase {
     auto get() const noexcept -> T { return v; }
 };
 
+export struct ZeroablePrimitive {};
+
 } // namespace rstd::num
+
+export namespace rstd
+{
+
+};
 
 export namespace rstd::num
 {

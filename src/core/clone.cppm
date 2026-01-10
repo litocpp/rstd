@@ -10,7 +10,7 @@ export struct Clone {
         using Trait = Clone;
         auto clone() const -> Self { return trait_call<0>(this); }
 
-        void clone_from(Self& source) { return trait_call<1>(this, source); }
+        void clone_from(Self& source) { return trait_call<1, Api>(this, source); }
     };
 
     template<class T>

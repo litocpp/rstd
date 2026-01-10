@@ -47,8 +47,10 @@ target_sources(
          pin.cppm
          hint.cppm
          assert.cppm
+         hash/mod.cppm
          num/mod.cppm
          num/nonzero.cppm
+         num/niche_types.cppm
          slice/mod.cppm
          str/mod.cppm
          ptr/mod.cppm
