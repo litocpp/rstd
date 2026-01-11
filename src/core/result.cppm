@@ -9,21 +9,12 @@ export import :option;
 namespace rstd::result
 {
 
-export template<typename T, typename E>
-class Result;
-
 struct UnknownOk {
     constexpr bool operator==(const UnknownOk&) const noexcept { return true; }
 };
 struct UnknownErr {
     constexpr bool operator==(const UnknownErr&) const noexcept { return true; }
 };
-
-export template<typename T>
-using Ok = Result<T, UnknownErr>;
-
-export template<typename T>
-using Err = Result<UnknownOk, T>;
 
 namespace detail
 {
@@ -90,12 +81,9 @@ struct result_traits<const Result<T, E>&&> : result_traits<Result<T, E>> {
 
 namespace rstd
 {
-export template<typename T, typename E>
-using Result = result::Result<T, E>;
-export template<typename T = Empty>
-using Ok = result::Ok<T>;
-export template<typename T = Empty>
-using Err = result::Err<T>;
+export using result::Result;
+export using result::Ok;
+export using result::Err;
 
 export template<typename T, typename Self>
     requires meta::same_as<T, clone::Clone> &&
@@ -745,3 +733,45 @@ Result(T&) -> Result<T&, UnknownErr>;
 template<typename T>
 Result(T&) -> Result<UnknownOk, T&>;
 } // namespace rstd::result
+
+namespace rstd::option::detail
+{
+export template<typename T, typename E>
+struct option_adapter_l1<result::Result<T, E>> {
+    constexpr auto transpose() -> result::Result<Option<T>, E> {
+        auto&& self = static_cast<Option<result::Result<T, E>>&&>(*this);
+        if (self.is_some()) {
+            auto&& t = self.unwrap_unchecked();
+            if (t.is_ok()) {
+                return Ok(Some(rstd::move(t.unwrap_unchecked())));
+            } else {
+                return Err(rstd::move(t.unwrap_err_unchecked()));
+            }
+        } else {
+            return Ok<Option<T>>(None());
+        }
+    }
+};
+
+// {
+//     auto& self = static_cast<Option<T>&>(*this);
+//     if (self.is_some()) {
+//         return Ok(self._get_move());
+//     } else {
+//         return Err(err);
+//     }
+// }
+
+// template<typename F, typename E = meta::invoke_result_t<F>>
+// auto ok_or_else(F&& err) -> result::Result<T, E>;
+//   {
+//      auto& self = static_cast<Option<T>&>(*this);
+//      if (self.is_some()) {
+//          return Ok(self._get_move());
+//      } else {
+//          return Err(rstd::move(err)());
+//      }
+//  }
+// };
+
+} // namespace rstd::option::detail

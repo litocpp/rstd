@@ -6,6 +6,7 @@ export import :panic;
 export import :slice;
 export import :ops.function;
 export import :assert;
+export import :forward;
 
 namespace rstd::option
 {
@@ -45,6 +46,9 @@ constexpr auto None(T&& = {}) {
 
 namespace detail
 {
+template<typename T>
+struct option_adapter_l1 {};
+
 template<typename T>
 struct option_traits {};
 
@@ -342,6 +346,8 @@ class Option : public detail::option_base<T>, public detail::option_adapter<T> {
     friend struct detail::option_base;
     template<typename>
     friend struct detail::option_adapter;
+    template<typename>
+    friend struct detail::option_adapter_l1;
     template<typename, typename>
     friend struct rstd::Impl;
 
@@ -428,5 +434,50 @@ private:
         this->_construct_val(*ptr);
     }
 };
+
+} // namespace rstd::option
+
+namespace rstd::option
+{
+
+namespace detail
+{
+
+template<typename T>
+struct option_adapter : option_adapter_l1<T> {
+    template<typename E>
+    auto ok_or(E err) -> result::Result<T, E> {
+        auto& self = static_cast<Option<T>&>(*this);
+        if (self.is_some()) {
+            return result::Ok(self._get_move());
+        } else {
+            return result::Err(err);
+        }
+    }
+
+    template<typename F, typename E = meta::invoke_result_t<F>>
+    auto ok_or_else(F&& err) -> result::Result<T, E> {
+        auto& self = static_cast<Option<T>&>(*this);
+        if (self.is_some()) {
+            return result::Ok(self._get_move());
+        } else {
+            return result::Err(rstd::move(err)());
+        }
+    }
+};
+
+template<typename T>
+struct option_adapter_l1<Option<T>> {
+    constexpr auto flatten() -> Option<T> {
+        auto&& self = static_cast<Option<Option<T>>&&>(*this);
+        if (self.is_some()) {
+            return self._get_move();
+        } else {
+            return None();
+        }
+    }
+};
+
+} // namespace detail
 
 } // namespace rstd::option
