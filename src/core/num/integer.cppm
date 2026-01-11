@@ -1,14 +1,19 @@
-export module rstd.core:num.u32;
+module;
+#define INT_IMPL(T) \
+    template<>      \
+    struct Impl<T, T> : IntImpl<T> {}
+
+export module rstd.core:num.integer;
 export import :option;
 export import :trait;
 export import :intrinsics;
 
 namespace rstd
 {
-template<>
-struct Impl<u32, u32> : ImplBase<u32> {
-    using Self = u32;
-    auto checked_add(Self rhs) const noexcept -> Option<u32> {
+template<typename T>
+struct IntImpl : ImplBase<T> {
+    using Self = T;
+    auto checked_add(Self rhs) const noexcept -> Option<Self> {
         auto [a, b] = overflowing_add(rhs);
         if (b) [[unlikely]] {
             return None();
@@ -18,7 +23,11 @@ struct Impl<u32, u32> : ImplBase<u32> {
     }
 
     auto overflowing_add(Self rhs) const noexcept -> cppstd::tuple<Self, bool> {
-        return intrinsics::add_with_overflow(self(), rhs);
+        return intrinsics::add_with_overflow(this->self(), rhs);
     }
 };
+
+INT_IMPL(u32);
+INT_IMPL(u64);
+
 } // namespace rstd

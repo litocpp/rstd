@@ -52,7 +52,7 @@ target_sources(
          num/mod.cppm
          num/nonzero.cppm
          num/niche_types.cppm
-         num/u32.cppm
+         num/integer.cppm
          slice/mod.cppm
          str/mod.cppm
          ptr/mod.cppm

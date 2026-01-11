@@ -29,9 +29,7 @@ public:
     }
 
     /// Unstable in Rust: `thread_id_value`
-    [[nodiscard]] constexpr NonZero<value_type> as_u64() const noexcept { return m_v; }
-
-    // ---- internal APIs (mirror Rust visibility) ----
+    [[nodiscard]] constexpr auto as_u64() const noexcept { return m_v; }
 
     // Generate a new unique thread ID.
     // Rust uses cfg_select! to pick a fast atomic path; here we always use an atomic counter.
@@ -46,38 +44,24 @@ public:
         static auto COUNTER = Atomic<u64>(0);
         auto        last    = COUNTER.load(Ordering::Relaxed);
         for (;;) {
-            // let Some(id) = last.checked_add(1) else {
-            //     exhausted();
-            // };
-
-            // match COUNTER.compare_exchange_weak(last, id, Ordering::Relaxed, Ordering::Relaxed) {
-            //     Ok(_) => return ThreadId(NonZero::new(id).unwrap()),
-            //     Err(id) => last = id,
-            // }
+            if (auto id_ = as<u64>(last).checked_add(1)) {
+                const auto id = id_.unwrap_unchecked();
+                if (COUNTER.compare_exchange_weak(last, id, Ordering::Relaxed, Ordering::Relaxed)) {
+                    return { NonZero<u64>::make(id).unwrap() };
+                } else {
+                    last = id;
+                }
+            } else {
+                exhausted();
+            }
         }
     }
-    //     // NOTE: Rust counter starts at 0 and returns counter+1 (so never zero).
-    //     // We detect wrap to 0 and panic; here we terminate similarly.
-    //     // If you have your own panic infra, replace `panic_exhausted()`.
-    //     static Atomic<value_type> COUNTER { 0 };
 
-    //     value_type prev = COUNTER.fetch_add(1, rstd::memory_order::relaxed);
-    //     value_type id   = prev + 1;
-
-    //     if (id == 0) {
-    //         panic("thread id is zero");
-    //     }
-
-    //     return { NonZero<value_type>::make(id) };
-    // }
-
-    // // Rust: #[cfg(any(not(target_thread_local), target_has_atomic = "64"))]
-    // // internal helper for TLS init paths; always available here.
-    // static Option<ThreadId> from_u64(value_type v) noexcept {
-    //     auto nz = NonZero<value_type>::make(v);
-    //     // if (! nz) return {};
-    //     return Some(ThreadId(nz));
-    // }
+    static constexpr auto from_u64(value_type v) noexcept -> Option<ThreadId> {
+        return NonZero<value_type>::make(v).map([](auto n) {
+            return ThreadId { n };
+        });
+    }
 };
 
 } // namespace rstd::thread
