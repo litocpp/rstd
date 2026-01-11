@@ -46,6 +46,8 @@ target_sources(
          pin.cppm
          hint.cppm
          assert.cppm
+         intrinsics.cppm
+         tuple.cppm
          hash/mod.cppm
          num/mod.cppm
          num/nonzero.cppm

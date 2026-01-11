@@ -49,6 +49,11 @@ namespace std
 export using std::coroutine_handle;
 export using std::coroutine_traits;
 export using std::is_error_code_enum;
+// export for struct binding
+export using std::tuple_size;
+export using std::tuple_element;
+export using std::get;
+export using std::get_if;
 } // namespace std
 
 export namespace rstd::cppstd

@@ -20,3 +20,4 @@ export import :assert;
 export import :ptr;
 export import :mem;
 export import :sync;
+export import :intrinsics;
