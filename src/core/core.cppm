@@ -22,15 +22,10 @@ export using voidp       = void*;
 export using const_voidp = void const*;
 export using usizeptr    = cppstd::uintptr_t;
 
-export template<typename T>
-using Atomic = cppstd::atomic<T>;
-
 export using cppstd::strong_ordering;
 export using cppstd::nullptr_t;
 export using cppstd::error_code;
-export using cppstd::atomic;
 export using cppstd::memory_order;
-export using cppstd::atomic_thread_fence;
 export using cppstd::numeric_limits;
 export using cppstd::allocator;
 export using cppstd::allocator_traits;
