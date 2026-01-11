@@ -19,7 +19,7 @@ template<typename T>
     requires Impled<T, Sized>
 struct SizedNonNull<T> {
     /// Creates a pointer with the given address
-    static auto without_provenance(num::NonZero<usize> addr) noexcept -> NonNull<T>;
+    static auto without_provenance(num::nonzero::NonZero<usize> addr) noexcept -> NonNull<T>;
 
     /// Creates a new `NonNull` that is dangling, but well-aligned.
     static auto dangling() noexcept -> NonNull<T>;
@@ -132,7 +132,7 @@ public:
 
 template<typename T>
     requires Impled<T, Sized>
-auto SizedNonNull<T>::without_provenance(num::NonZero<usize> addr) noexcept -> NonNull<T> {
+auto SizedNonNull<T>::without_provenance(num::nonzero::NonZero<usize> addr) noexcept -> NonNull<T> {
     T* t = reinterpret_cast<T*>(addr);
     return { t };
 }

@@ -15,38 +15,33 @@ class Option;
 
 export struct Unknown {};
 
-export template<>
-class Option<void> {
-public:
-    Option()  = delete;
-    ~Option() = delete;
-
-    template<typename U = void, typename T>
-    static constexpr auto Some(T&& val) {
-        if constexpr (meta::same_as<U, void>) {
-            if constexpr (meta::trivially_value<meta::remove_reference_t<T>>) {
-                return Option<meta::remove_reference_t<T>>(rstd::move(val));
-            } else {
-                return Option<T>(rstd::forward<T>(val));
-            }
+export template<typename U = void, typename T>
+[[gnu::always_inline]]
+constexpr auto Some(T&& val) {
+    if constexpr (meta::same_as<U, void>) {
+        if constexpr (meta::trivially_value<meta::remove_reference_t<T>>) {
+            return Option<meta::remove_reference_t<T>>(rstd::move(val));
         } else {
-            return Option<U>(rstd::forward<T>(val));
+            return Option<T>(rstd::forward<T>(val));
         }
+    } else {
+        return Option<U>(rstd::forward<T>(val));
     }
+}
 
-    template<typename U = void, typename T = Unknown>
-    static constexpr auto None(T&& = {}) {
-        if constexpr (meta::same_as<U, void>) {
-            if constexpr (meta::same_as<Unknown, T>) {
-                return Unknown();
-            } else {
-                return Option<T>();
-            }
+export template<typename U = void, typename T = Unknown>
+[[gnu::always_inline]]
+constexpr auto None(T&& = {}) {
+    if constexpr (meta::same_as<U, void>) {
+        if constexpr (meta::same_as<Unknown, T>) {
+            return Unknown();
         } else {
-            return Option<U>();
+            return Option<T>();
         }
+    } else {
+        return Option<U>();
     }
-};
+}
 
 namespace detail
 {
@@ -81,7 +76,7 @@ struct option_traits<const Option<T>&&> : option_traits<Option<T>> {
     using ret_value_t = meta::add_rvalue_reference_t<meta::add_const_t<T>>;
 };
 
-template<typename T>
+export template<typename T>
 struct option_store {
     constexpr auto is_some() const noexcept -> bool { return m_has_val; }
 
@@ -126,7 +121,7 @@ private:
     bool m_has_val { false };
 };
 
-template<typename T>
+export template<typename T>
 struct option_store<T&> {
     constexpr auto is_some() const noexcept -> bool {
         auto* p = *_ptr();
@@ -140,7 +135,7 @@ protected:
     constexpr auto _ptr() const noexcept {
         return reinterpret_cast<const union_const_value_t*>(m_storage);
     }
-    constexpr auto _ptr() noexcept { return reinterpret_cast<T**>(m_storage); }
+    constexpr auto _ptr() noexcept { return reinterpret_cast<union_value_t*>(m_storage); }
     template<typename V>
     constexpr void _construct_val(V&& val) {
         rstd::construct_at(_ptr(), rstd::addressof(val));
@@ -201,9 +196,9 @@ public:
 
     constexpr auto as_ref() const -> Option<meta::add_lvalue_reference_t<meta::add_const_t<T>>> {
         if (this->is_some()) {
-            return Option<void>::Some(_get());
+            return option::Some(_get());
         } else {
-            return Option<void>::None();
+            return option::None();
         }
     }
 
@@ -252,9 +247,9 @@ public:
     // requires ImpledT<FnOnce<F, U(T)>>
     auto map(F&& f) -> Option<U> {
         if (this->is_some()) {
-            return Option<void>::Some(rstd::forward<F>(f)(_get_move()));
+            return option::Some(rstd::forward<F>(f)(_get_move()));
         }
-        return Option<void>::None<U>();
+        return option::None<U>();
     }
 
     template<typename F, typename U = meta::invoke_result_t<F, T>>
@@ -263,7 +258,7 @@ public:
         if (this->is_some()) {
             return rstd::forward<F>(f)(_get_move());
         }
-        return Option<void>::None();
+        return option::None();
     }
 
     [[nodiscard]]
@@ -304,18 +299,9 @@ struct option_adapter;
 
 namespace rstd
 {
-export template<typename T>
-using Option = option::Option<T>;
-
-export template<typename U = void, typename T>
-constexpr auto Some(T&& val) {
-    return Option<void>::Some<U>(rstd::forward<T>(val));
-}
-
-export template<typename U = void, typename T = option::Unknown>
-constexpr auto None(T&& t = {}) {
-    return Option<void>::None<U>(rstd::move(t));
-}
+export using option::Option;
+export using option::Some;
+export using option::None;
 
 export template<typename T, typename Self>
     requires meta::same_as<T, clone::Clone> &&
@@ -359,7 +345,10 @@ class Option : public detail::option_base<T>, public detail::option_adapter<T> {
     template<typename, typename>
     friend struct rstd::Impl;
 
-    friend class Option<void>;
+    template<typename, typename T_>
+    friend constexpr auto rstd::option::Some(T_&& val);
+    template<typename, typename T_>
+    friend constexpr auto rstd::option::None(T_&& val);
 
     using traits        = detail::option_base<T>::traits;
     using union_value_t = detail::option_store<T>::union_value_t;
@@ -370,14 +359,14 @@ public:
     constexpr Option() noexcept = default;
     constexpr Option(Unknown) noexcept: Option() {}
 
-    Option(const Option&)
+    constexpr Option(const Option&)
         requires meta::is_trivially_copy_constructible_v<union_value_t>
     = default;
-    Option(Option&&)
+    constexpr Option(Option&&)
         requires meta::is_trivially_move_constructible_v<union_value_t>
     = default;
 
-    Option(Option&& o) noexcept(meta::is_nothrow_move_constructible_v<union_value_t>)
+    constexpr Option(Option&& o) noexcept(meta::is_nothrow_move_constructible_v<union_value_t>)
         requires meta::custom_move_constructible<union_value_t>
     {
         if (o.is_some()) {
@@ -397,14 +386,15 @@ public:
         }
     }
 
-    Option& operator=(const Option&)
+    constexpr Option& operator=(const Option&)
         requires meta::is_trivially_copy_assignable_v<union_value_t>
     = default;
-    Option& operator=(Option&&)
+    constexpr Option& operator=(Option&&)
         requires meta::is_trivially_move_assignable_v<union_value_t>
     = default;
 
-    Option& operator=(Option&& v) noexcept(meta::is_nothrow_move_assignable_v<union_value_t>)
+    constexpr Option&
+    operator=(Option&& v) noexcept(meta::is_nothrow_move_assignable_v<union_value_t>)
         requires meta::custom_move_assignable<union_value_t>
     {
         if (v.is_some()) {

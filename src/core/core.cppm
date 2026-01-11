@@ -25,6 +25,7 @@ export using usizeptr    = cppstd::uintptr_t;
 export template<typename T>
 using Atomic = cppstd::atomic<T>;
 
+export using cppstd::strong_ordering;
 export using cppstd::nullptr_t;
 export using cppstd::error_code;
 export using cppstd::atomic;
@@ -51,6 +52,7 @@ export using cppstd::destroy_at;
 export using cppstd::forward;
 export using cppstd::move;
 export using cppstd::memcpy;
+export using cppstd::memcmp;
 export using cppstd::memset;
 export using cppstd::strlen;
 export using cppstd::strncmp;

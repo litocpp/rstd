@@ -70,6 +70,8 @@ using std::uintptr_t;
 using std::byte;
 using std::ptrdiff_t;
 using std::size_t;
+using std::strong_ordering;
+using std::weak_ordering;
 
 using std::char_traits;
 using std::make_unsigned_t;
@@ -208,6 +210,7 @@ using std::fflush;
 using std::fwrite;
 
 using std::memcpy;
+using std::memcmp;
 using std::memset;
 using std::strlen;
 using std::strncmp;

@@ -1,22 +1,26 @@
 module;
-#define DEFINE_VALID_RANGE_TYPE(name, T, UT, low, high)                    \
-    namespace rstd::num::niche_types                                       \
-    {                                                                      \
-    export struct name : NonZeroBase<T> {                                  \
-    public:                                                                \
-        using Self = name;                                                 \
-        auto make(T in) const noexcept -> Option<Self> {                   \
-            constexpr const UT _low { low };                               \
-            constexpr const UT _high { high };                             \
-            const UT           _in { static_cast<UT>(in) };                \
-            if (_in >= _low && _in <= _high) {                             \
-                return Some(Self { in });                                  \
-            } else {                                                       \
-                return None();                                             \
-            }                                                              \
-        }                                                                  \
-        auto new_unchecked(T in) const noexcept -> Self { return { in }; } \
-    };                                                                     \
+#define DEFINE_VALID_RANGE_TYPE(name, T, UT, low, high)                                      \
+    namespace rstd::num::niche_types                                                         \
+    {                                                                                        \
+    export struct name : NonZeroBase<T> {                                                    \
+    public:                                                                                  \
+        using Self = name;                                                                   \
+        static auto make(T in) noexcept -> Option<Self> {                                    \
+            constexpr const UT _low { low };                                                 \
+            constexpr const UT _high { high };                                               \
+            const UT           _in { static_cast<UT>(in) };                                  \
+            if (_in >= _low && _in <= _high) {                                               \
+                return Some(Self { in });                                                    \
+            } else {                                                                         \
+                return None();                                                               \
+            }                                                                                \
+        }                                                                                    \
+        static constexpr auto make_unchecked(T in) noexcept -> Self { return { in }; }       \
+        friend constexpr bool operator==(name a, name b) noexcept { return a.val == b.val; } \
+        friend constexpr strong_ordering operator<=>(name a, name b) noexcept {              \
+            return a.val <=> b.val;                                                          \
+        }                                                                                    \
+    };                                                                                       \
     }
 
 export module rstd.core:num.niche_types;
@@ -59,3 +63,8 @@ DEFINE_VALID_RANGE_TYPE(U32NotAllOnes, u32, u32, 0, 0xfffffffe)
 DEFINE_VALID_RANGE_TYPE(I32NotAllOnes, i32, u32, 0, 0xfffffffe)
 DEFINE_VALID_RANGE_TYPE(U64NotAllOnes, u64, u64, 0, 0xfffffffffffffffe)
 DEFINE_VALID_RANGE_TYPE(I64NotAllOnes, i64, u64, 0, 0xfffffffffffffffe)
+
+namespace rstd::num::niche_types
+{
+static_assert(NonZeroU32Inner::make_unchecked(1) == NonZeroU32Inner::make_unchecked(1));
+}

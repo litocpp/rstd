@@ -1,38 +1,28 @@
 module;
 
-#define ImplNonZero(T)                                                          \
-    template<>                                                                  \
-    struct NonZero<T> : NonZeroBase<T> {                                        \
-        constexpr static auto make(T t) -> NonZero<T> { return { t }; }         \
-        constexpr auto        unwrap() const -> T { return v; }                 \
-        friend constexpr bool operator==(NonZero<T> a, NonZero<T> b) noexcept { \
-            return a.v == b.v;                                                  \
-        }                                                                       \
+#define ImplNonZero(Inner, T)                               \
+    namespace rstd::num::nonzero                            \
+    {                                                       \
+    }                                                       \
+    namespace rstd                                          \
+    {                                                       \
+    template<>                                              \
+    struct Impl<rstd::num::nonzero::ZeroablePrimitive, T> { \
+        using NonZeroInner = rstd::num::niche_types::Inner; \
+    };                                                      \
     }
-
-#define impl_zeroable_primitive(T)
 
 export module rstd.core:num.nonzero;
 export import :core;
+export import :num.niche_types;
 
-namespace rstd::num
+namespace rstd::num::nonzero
 {
-template<typename T>
-struct NonZeroBase {
-    T    v;
-    auto get() const noexcept -> T { return v; }
-};
+struct ZeroablePrimitive {};
 
-export struct ZeroablePrimitive {};
+} // namespace rstd::num::nonzero
 
-} // namespace rstd::num
-
-export namespace rstd
-{
-
-};
-
-export namespace rstd::num
+export namespace rstd::num::nonzero
 {
 
 /// A value that is known not to equal zero.
@@ -43,14 +33,85 @@ template<typename T>
 struct NonZero {
     static_assert(false);
 };
+} // namespace rstd::num::nonzero
 
-ImplNonZero(i8);
-ImplNonZero(i16);
-ImplNonZero(i32);
-ImplNonZero(i64);
-ImplNonZero(u8);
-ImplNonZero(u16);
-ImplNonZero(u32);
-ImplNonZero(u64);
+namespace rstd::option::detail
+{
 
-} // namespace rstd::num
+export template<typename T>
+struct option_store<num::nonzero::NonZero<T>> {
+    constexpr auto is_some() const noexcept -> bool {
+        for (usize i = 0; i < sizeof(T); i++) {
+            if (m_storage[i] != rstd::byte(0)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+protected:
+    using union_value_t       = num::nonzero::NonZero<T>*;
+    using union_const_value_t = num::nonzero::NonZero<T> const*;
+
+    constexpr auto _ptr() const noexcept {
+        return reinterpret_cast<const union_const_value_t*>(m_storage);
+    }
+    constexpr auto _ptr() noexcept { return reinterpret_cast<union_value_t*>(m_storage); }
+    template<typename V>
+    constexpr void _construct_val(V&& val) {
+        rstd::construct_at(_ptr(), rstd::addressof(val));
+    }
+    template<typename V>
+    constexpr void _assign_val(V&& val) {
+        rstd::construct_at(_ptr(), rstd::addressof(val));
+    }
+    constexpr void _assign_none() {
+        if (is_some()) {
+            m_storage = {};
+        }
+    }
+
+private:
+    alignas(T) rstd::byte m_storage[sizeof(T)] {};
+};
+
+} // namespace rstd::option::detail
+
+namespace rstd::num::nonzero
+{
+
+template<typename T>
+    requires Impled<T, ZeroablePrimitive>
+struct NonZero<T> {
+    using Self = NonZero;
+    Impl<ZeroablePrimitive, T>::NonZeroInner val;
+
+    constexpr static auto make(T n) noexcept -> Option<Self> {
+        return rstd::bit_cast<Option<Self>>(n);
+    }
+
+    constexpr static auto make_unchecked(T n) -> Self {
+        if (auto opt = make(n)) {
+            return *opt;
+        } else {
+            unreachable();
+        }
+    }
+
+    constexpr auto get() const noexcept -> T {
+        static_assert(sizeof(T) == sizeof(Self));
+        return rstd::bit_cast<T>(*this);
+    }
+    friend constexpr bool operator==(NonZero<T> a, NonZero<T> b) noexcept { return a.val == b.val; }
+};
+} // namespace rstd::num::nonzero
+
+ImplNonZero(NonZeroI8Inner, i8);
+ImplNonZero(NonZeroI16Inner, i16);
+ImplNonZero(NonZeroI32Inner, i32);
+ImplNonZero(NonZeroI64Inner, i64);
+
+ImplNonZero(NonZeroU8Inner, u8);
+ImplNonZero(NonZeroU16Inner, u16);
+ImplNonZero(NonZeroU32Inner, u32);
+ImplNonZero(NonZeroU64Inner, u64);
