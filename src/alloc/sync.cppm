@@ -3,6 +3,9 @@ module;
 export module rstd.alloc.sync;
 export import rstd.core;
 
+using rstd::sync::atomic::Atomic;
+using rstd::sync::atomic::atomic_thread_fence;
+
 namespace rstd::sync
 {
 
@@ -59,13 +62,13 @@ struct ArcInner {
         // If we were the last strong, destroy T and release the implicit weak.
         if (strong.fetch_sub(1, rstd::memory_order::acq_rel) == 1) {
             // Synchronize with readers of T through acquire on last release.
-            rstd::atomic_thread_fence(rstd::memory_order::acquire);
+            atomic_thread_fence(rstd::memory_order::acquire);
 
             do_delete(detail::DeleteType::Value);
 
             // release the implicit weak held by strong pointers
             if (weak.fetch_sub(1, rstd::memory_order::acq_rel) == 1) {
-                rstd::atomic_thread_fence(rstd::memory_order::acquire);
+                atomic_thread_fence(rstd::memory_order::acquire);
                 do_delete(detail::DeleteType::Self);
             }
         }
@@ -73,7 +76,7 @@ struct ArcInner {
 
     void drop_weak() noexcept {
         if (weak.fetch_sub(1, rstd::memory_order::acq_rel) == 1) {
-            rstd::atomic_thread_fence(rstd::memory_order::acquire);
+            atomic_thread_fence(rstd::memory_order::acquire);
             do_delete(detail::DeleteType::Self);
         }
     }
@@ -238,7 +241,7 @@ public:
                     expected, 0, rstd::memory_order::relaxed, rstd::memory_order::relaxed)) {
                 break;
             }
-            rstd::atomic_thread_fence(rstd::memory_order::acquire);
+            atomic_thread_fence(rstd::memory_order::acquire);
             auto w = Weak<T> { self };
             self   = {};
             return Ok(rstd::move(*(w.self.inner->data())));

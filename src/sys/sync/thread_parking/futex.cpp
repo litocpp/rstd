@@ -4,8 +4,6 @@ module;
 module rstd.sys;
 import :sync.thread_parking.futex;
 
-
-
 namespace rstd::sys::sync::thread_parking::futex
 {
 
@@ -41,6 +39,8 @@ void Parker::park_timeout(std::chrono::duration<double> timeout) {
     // Try to detect if we were notified or just timed out
     int32_t old = state.exchange(EMPTY, std::memory_order_acquire);
     // Note: We don't differentiate between timeout and notification in this impl
+    // TODO
+    (void)old;
 }
 
 void Parker::unpark() {
@@ -50,4 +50,4 @@ void Parker::unpark() {
     }
 }
 
-} // namespace futex
+} // namespace rstd::sys::sync::thread_parking::futex

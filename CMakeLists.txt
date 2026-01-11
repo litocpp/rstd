@@ -16,14 +16,10 @@ option(RSTD_USE_ASAN "asan" OFF)
 set(WARN_OPTS -Wall -Wextra -Wpedantic -Werror=mismatched-tags)
 add_compile_options("$<$<COMPILE_LANG_AND_ID:CXX,Clang,GNU>:${WARN_OPTS}>")
 
-set(SYNC_SOURCE_FILES)
-set(SYNC_MODULE_FILES)
-set(ALLOC_SOURCE_FILES)
-set(ALLOC_MODULE_FILES)
-
 add_subdirectory(src/core)
 add_subdirectory(src/sys)
 add_subdirectory(src/alloc)
+add_subdirectory(src/thread)
 add_subdirectory(src/sync)
 
 add_library(rstd)
@@ -42,8 +38,7 @@ target_sources(
          src
          FILES
          src/mod.cppm
-         src/error.cppm
-         ${SYNC_MODULE_FILES})
+         src/error.cppm)
 
 # Add installation rules
 if(PROJECT_IS_TOP_LEVEL)

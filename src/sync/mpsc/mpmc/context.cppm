@@ -1,4 +1,4 @@
-export module rstd::sync::mpsc::mpmc.context;
+export module rstd.sync:mpsc.mpmc.context;
 export import rstd.core;
 
 namespace rstd::sync::mpsc::mpmc::context

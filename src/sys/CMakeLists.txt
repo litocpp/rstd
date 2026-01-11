@@ -31,4 +31,5 @@ target_sources(
          sync/once/futex.cppm
          sync/thread_parking/mod.cppm
          sync/thread_parking/futex.cppm
-         sync/thread_parking/pthread.cppm)
+         sync/thread_parking/pthread.cppm
+         thread/mod.cppm)

@@ -4,13 +4,14 @@ export import rstd.boxed;
 
 using rstd::boxed::Box;
 using rstd::pin::Pin;
+using rstd::sync::atomic::Atomic;
 
 export namespace rstd::sys::sync
 {
 
 template<typename T>
 class OnceBox {
-    rstd::atomic<T*> m_ptr;
+    Atomic<T*> m_ptr;
 
     constexpr OnceBox(T* p) noexcept: m_ptr(p) {}
 

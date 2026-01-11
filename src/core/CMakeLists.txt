@@ -38,7 +38,6 @@ target_sources(
          clone.cppm
          option.cppm
          result.cppm
-         option_adapter.cppm
          fmt.cppm
          panic.cppm
          log.cppm
@@ -51,6 +50,7 @@ target_sources(
          num/mod.cppm
          num/nonzero.cppm
          num/niche_types.cppm
+         num/u32.cppm
          slice/mod.cppm
          str/mod.cppm
          ptr/mod.cppm
@@ -60,4 +60,8 @@ target_sources(
          ops/function.cppm
          mem/mod.cppm
          mem/manually_drop.cppm
-         mem/maybe_uninit.cppm)
+         mem/maybe_uninit.cppm
+         sync/mod.cppm
+         sync/atomic.cppm
+         forward/mod.cppm
+         )
