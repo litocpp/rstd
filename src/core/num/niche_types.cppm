@@ -24,7 +24,7 @@ module;
     }
 
 export module rstd.core:num.niche_types;
-export import :option_adapter;
+export import :option;
 
 namespace rstd::num::niche_types
 {
