@@ -48,6 +48,8 @@ target_sources(
          assert.cppm
          intrinsics.cppm
          tuple.cppm
+         ffi/mod.cppm
+         ffi/c_str.cppm
          hash/mod.cppm
          num/mod.cppm
          num/nonzero.cppm

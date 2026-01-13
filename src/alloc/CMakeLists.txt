@@ -15,4 +15,6 @@ target_sources(
          str.cppm
          boxed.cppm
          sync.cppm
+         ffi/mod.cppm
+         ffi/c_str.cppm
          )

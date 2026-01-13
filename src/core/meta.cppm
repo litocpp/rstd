@@ -31,12 +31,16 @@ concept nothrow_move_assignable = is_nothrow_move_assignable_v<T>;
 template<typename T>
 concept custom_move_assignable = (is_move_assignable_v<T> && ! is_trivially_move_assignable_v<T>);
 
-template<class T>
+template<typename T>
 concept trivially_value = is_trivially_copy_constructible_v<T> && ! is_reference_v<T>;
 
-template<class From, class To>
+template<typename From, typename To>
 concept convertible_to =
     is_convertible_v<From, To> && requires { static_cast<To>(rstd::declval<From>()); };
+
+template<typename S, typename T>
+concept transparent =
+    sizeof(S) == sizeof(T) && alignof(S) == alignof(T) && meta::is_standard_layout_v<S>;
 
 template<typename>
 struct is_tuple : false_type {};

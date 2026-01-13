@@ -372,6 +372,7 @@ using std::type_identity_t;
 
 using std::alignment_of_v;
 using std::default_delete;
+using std::is_standard_layout_v;
 
 using std::decay;
 using std::decay_t;

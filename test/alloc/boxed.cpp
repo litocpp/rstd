@@ -1,8 +1,8 @@
 #include <gtest/gtest.h>
 
-import rstd.boxed;
+import rstd.alloc;
 
-using rstd::boxed::Box;
+using rstd::alloc::boxed::Box;
 
 namespace {
 
