@@ -7,7 +7,7 @@ export import :pal;
 export import :lib.pthread;
 export import rstd.alloc;
 
-using rstd::boxed::Box;
+using rstd::alloc::boxed::Box;
 using rstd::sys::sync::OnceBox;
 using namespace rstd::sys::lib::pthread;
 

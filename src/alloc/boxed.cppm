@@ -1,10 +1,10 @@
-export module rstd.boxed;
+export module rstd.alloc:boxed;
 export import rstd.core;
 
 using rstd::mem::manually_drop::ManuallyDrop;
 using rstd::pin::Pin;
 using rstd::ptr_::unique::Unique;
-namespace rstd::boxed
+namespace rstd::alloc::boxed
 {
 
 export template<typename T>
