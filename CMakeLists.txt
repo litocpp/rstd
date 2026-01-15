@@ -5,16 +5,21 @@ project(
   DESCRIPTION "Rust-like std for C++"
   LANGUAGES CXX)
 
-if(PROJECT_IS_TOP_LEVEL)
-  set(CMAKE_CXX_STANDARD_REQUIRED ON)
-  set(CMAKE_CXX_EXTENSIONS OFF)
-endif()
-
 option(RSTD_BUILD_TESTING "Build tests" ${PROJECT_IS_TOP_LEVEL})
 option(RSTD_USE_ASAN "asan" OFF)
 
-set(WARN_OPTS -Wall -Wextra -Wpedantic -Werror=mismatched-tags)
-add_compile_options("$<$<COMPILE_LANG_AND_ID:CXX,Clang,GNU>:${WARN_OPTS}>")
+set(WARN_OPTS 
+  -Wall 
+  -Wpedantic 
+  -Werror
+  -Wno-gnu-statement-expression
+)
+
+if(PROJECT_IS_TOP_LEVEL)
+  set(CMAKE_CXX_STANDARD_REQUIRED ON)
+  set(CMAKE_CXX_EXTENSIONS OFF)
+  add_compile_options("$<$<COMPILE_LANG_AND_ID:CXX,Clang,GNU>:${WARN_OPTS}>")
+endif()
 
 add_subdirectory(src/core)
 add_subdirectory(src/sys)
