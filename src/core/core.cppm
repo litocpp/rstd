@@ -1,26 +1,8 @@
 export module rstd.core:core;
-export import :cppstd;
+export import :meta;
 
 namespace rstd
 {
-
-export using i8  = cppstd::int8_t;
-export using i16 = cppstd::int16_t;
-export using i32 = cppstd::int32_t;
-export using i64 = cppstd::int64_t;
-
-export using u8  = cppstd::uint8_t;
-export using u16 = cppstd::uint16_t;
-export using u32 = cppstd::uint32_t;
-export using u64 = cppstd::uint64_t;
-
-export using idx         = cppstd::ptrdiff_t;
-export using usize       = cppstd::size_t;
-export using isize       = cppstd::ptrdiff_t;
-export using byte        = cppstd::byte;
-export using voidp       = void*;
-export using const_voidp = void const*;
-export using usizeptr    = cppstd::uintptr_t;
 
 export using cppstd::strong_ordering;
 export using cppstd::nullptr_t;
@@ -42,7 +24,6 @@ export using cppstd::construct_at;
 export using cppstd::copy;
 export using cppstd::copy_n;
 export using cppstd::exchange;
-export using cppstd::declval;
 export using cppstd::destroy_at;
 export using cppstd::forward;
 export using cppstd::move;
@@ -54,6 +35,9 @@ export using cppstd::strncmp;
 export using cppstd::char_traits;
 export using cppstd::make_unsigned_t;
 export using cppstd::bit_cast;
+export using cppstd::default_delete;
+
+export using meta::declval;
 
 export template<typename T>
 void swap(T& a, T& b) noexcept(meta::is_nothrow_copy_constructible_v<T>) {
@@ -128,11 +112,15 @@ struct ptr {
 
 export template<typename T>
 struct ref<T[]> : ref<T> {
+    using ref<T>::ref;
+
     usize length { 0 };
 };
 
 export template<typename T>
 struct ptr<T[]> : ptr<T> {
+    using ptr<T>::ptr;
+
     usize length { 0 };
 
     constexpr auto size() const noexcept { return length; }

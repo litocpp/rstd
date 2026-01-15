@@ -55,10 +55,10 @@ public:
 
     void reset() noexcept(meta::nothrow_destructible<T>) {
         if (m_ptr != nullptr) {
-            T* t = m_ptr.as_ptr();
-            delete t;
+            ptr<T> t = m_ptr.as_ptr();
+            rstd::default_delete<T> {}(t.data());
             m_ptr = Unique<T>::make_unchecked(nullptr);
         }
     }
 };
-} // namespace rstd::boxed
+} // namespace rstd::alloc::boxed
