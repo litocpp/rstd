@@ -1,5 +1,5 @@
 export module rstd.core:meta;
-export import :core;
+export import :literal;
 
 export namespace rstd::meta
 {
@@ -36,7 +36,7 @@ concept trivially_value = is_trivially_copy_constructible_v<T> && ! is_reference
 
 template<typename From, typename To>
 concept convertible_to =
-    is_convertible_v<From, To> && requires { static_cast<To>(rstd::declval<From>()); };
+    is_convertible_v<From, To> && requires { static_cast<To>(meta::declval<From>()); };
 
 template<typename S, typename T>
 concept transparent =

@@ -89,6 +89,7 @@ using std::atomic_thread_fence;
 
 using std::allocator;
 using std::allocator_traits;
+using std::default_delete;
 
 // format
 using std::basic_format_context;
@@ -376,5 +377,7 @@ using std::is_standard_layout_v;
 
 using std::decay;
 using std::decay_t;
+
+using std::declval;
 
 } // namespace rstd::meta

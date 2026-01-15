@@ -1,5 +1,7 @@
 export module rstd.core;
+export import :literal;
 export import :core;
+export import :meta;
 export import :cppstd;
 export import :trait;
 export import :fmt;
@@ -21,3 +23,4 @@ export import :ptr;
 export import :mem;
 export import :sync;
 export import :intrinsics;
+export import :ffi;

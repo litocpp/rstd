@@ -19,7 +19,9 @@ target_sources(
          BASE_DIRS
          include
          FILES
-         include/rstd/trait_macro.hpp)
+         include/rstd/trait.hpp
+         include/rstd/assert.hpp
+         )
 
 target_sources(rstd.core PRIVATE core.cpp)
 target_sources(
@@ -30,6 +32,7 @@ target_sources(
          CXX_MODULES
          FILES
          mod.cppm
+         literal.cppm
          core.cppm
          meta.cppm
          trait.cppm
