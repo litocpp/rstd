@@ -39,11 +39,13 @@ module;
 
 #include <memory_resource>
 #include <coroutine>
+#include <new>
 
-#define ALWAYS_INLINE [[gnu::always_inline]]
+#define ALWAYS_INLINE [[gnu::always_inline]] inline
 
 export module rstd.core:cppstd;
 
+export using ::operator new;
 namespace std
 {
 export using std::coroutine_handle;
@@ -54,6 +56,9 @@ export using std::tuple_size;
 export using std::tuple_element;
 export using std::get;
 export using std::get_if;
+
+export using std::strong_ordering;
+export using std::weak_ordering;
 } // namespace std
 
 export namespace rstd::cppstd
@@ -71,21 +76,19 @@ using std::uint64_t;
 using std::uint8_t;
 using std::uintptr_t;
 
-
 using std::byte;
 using std::ptrdiff_t;
 using std::size_t;
 using std::strong_ordering;
 using std::weak_ordering;
 
+using std::bit_cast;
 using std::char_traits;
 using std::make_unsigned_t;
-using std::bit_cast;
 
 using std::atomic;
-using std::memory_order;
 using std::atomic_thread_fence;
-
+using std::memory_order;
 
 using std::allocator;
 using std::allocator_traits;
@@ -136,13 +139,13 @@ using std::tuple_size;
 using std::tuple_size_v;
 
 using std::enable_shared_from_this;
+using std::invoke;
 using std::make_shared;
 using std::make_unique;
 using std::shared_ptr;
 using std::unique_ptr;
 using std::variant;
 using std::visit;
-using std::invoke;
 
 using std::lock_guard;
 using std::mutex;
@@ -172,11 +175,11 @@ namespace chrono
 {
 using std::chrono::operator-;
 using std::chrono::duration;
-using std::chrono::seconds;
+using std::chrono::duration_cast;
 using std::chrono::microseconds;
 using std::chrono::milliseconds;
 using std::chrono::nanoseconds;
-using std::chrono::duration_cast;
+using std::chrono::seconds;
 } // namespace chrono
 
 namespace filesystem
@@ -184,21 +187,21 @@ namespace filesystem
 using std::filesystem::path;
 }
 
-using std::terminate;
 using std::abort;
 using std::apply;
 using std::get;
 using std::get_if;
 using std::invoke;
 using std::runtime_error;
+using std::terminate;
 
 using std::addressof;
 using std::construct_at;
 using std::copy;
 using std::copy_n;
-using std::exchange;
 using std::declval;
 using std::destroy_at;
+using std::exchange;
 using std::forward;
 using std::move;
 using std::swap;
@@ -210,13 +213,12 @@ using std::find;
 using std::find_if;
 using std::from_chars;
 
-
 // c stdio
 using std::fflush;
 using std::fwrite;
 
-using std::memcpy;
 using std::memcmp;
+using std::memcpy;
 using std::memset;
 using std::strlen;
 using std::strncmp;
@@ -313,6 +315,7 @@ using std::remove_cv;
 using std::remove_cv_t;
 
 using std::constructible_from;
+using std::destructible;
 using std::is_const;
 using std::is_const_v;
 using std::is_constructible_v;
@@ -321,7 +324,6 @@ using std::is_nothrow_constructible;
 using std::is_nothrow_constructible_v;
 using std::is_nothrow_destructible;
 using std::is_nothrow_destructible_v;
-using std::destructible;
 
 // copy
 using std::is_copy_constructible;

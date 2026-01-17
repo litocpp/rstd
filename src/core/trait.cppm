@@ -115,7 +115,7 @@ struct Def {};
 export template<typename T, typename A>
 struct ImplDefaultBase;
 
-export template<typename T, typename A>
+template<typename T, typename A>
 struct ImplDefaultBase<T, Def<A, DefPolicy::InClass>> {
     template<typename, typename>
     friend struct Impl;
@@ -125,7 +125,7 @@ private:
     auto self() const -> A const& { return *static_cast<A const*>(this); }
 };
 
-export template<typename T, typename A>
+template<typename T, typename A>
 struct ImplDefaultBase<T, Def<A, DefPolicy::Normal>> : ImplBase<A> {};
 
 struct dyn_tag {};
@@ -197,8 +197,8 @@ struct TraitMeta {
 
     static_assert(check());
     template<usize I, typename TSelf, typename... Args>
-    [[gnu::always_inline]]
-    static constexpr decltype(auto) call(TSelf* self, Args&&... args) {
+    [[gnu::always_inline]] inline static constexpr decltype(auto) call(TSelf* self,
+                                                                       Args&&... args) {
         if constexpr (meta::same_as<A, dyn_tag>) {
             // delegate for dyn
             auto dyn = static_cast<call_cast_t<TSelf, Dyn<T>>*>(self);
@@ -220,8 +220,7 @@ struct TraitMeta {
     }
 
     template<usize I, typename... Args>
-    [[gnu::always_inline]]
-    static constexpr decltype(auto) call_static(Args&&... args) {
+    [[gnu::always_inline]] inline static constexpr decltype(auto) call_static(Args&&... args) {
         constexpr const auto api { get<I>() };
         return api(rstd::forward<Args>(args)...);
     }
@@ -229,8 +228,7 @@ struct TraitMeta {
 
 export template<usize I, typename TApi, typename... Args>
     requires IsTraitApi<meta::remove_cv_t<TApi>>
-[[gnu::always_inline]]
-constexpr decltype(auto) trait_call(TApi* self, Args&&... args) {
+[[gnu::always_inline]] inline constexpr decltype(auto) trait_call(TApi* self, Args&&... args) {
     using TApi_ = meta::remove_cv_t<TApi>;
     return TraitMeta<typename TApi_::Trait,
                      typename detail::ApiInner<TApi_>::type,
@@ -241,8 +239,7 @@ constexpr decltype(auto) trait_call(TApi* self, Args&&... args) {
 
 export template<usize I, typename TApi, typename... Args>
     requires IsTraitApi<meta::remove_cv_t<TApi>>
-[[gnu::always_inline]]
-constexpr decltype(auto) trait_static_call(Args&&... args) {
+[[gnu::always_inline]] inline constexpr decltype(auto) trait_static_call(Args&&... args) {
     using TApi_ = meta::remove_cv_t<TApi>;
     return TraitMeta<typename TApi_::Trait,
                      typename detail::ApiInner<TApi_>::type,
@@ -331,8 +328,7 @@ struct ImplInClass : detail::ImplWithPtr<A>, meta::remove_cv_t<T>::template Api<
 // only accept lvalue for no stack-use-after-scope
 // requires Impled<T, meta::remove_cvref_t<A>>, maybe used in impldef which not satisfy
 export template<typename T, typename A>
-[[gnu::always_inline]]
-constexpr auto as(A& t) noexcept {
+[[gnu::always_inline]] inline constexpr auto as(A& t) noexcept {
     using impl_t = Impl<T, meta::remove_cvref_t<A>>;
     using ret_t  = meta::conditional_t<meta::is_const_v<A>, meta::add_const_t<impl_t>, impl_t>;
     return ret_t { rstd::addressof(t) };

@@ -3,5 +3,4 @@ export import :pal.unix.sync.mutex;
 
 namespace rstd::sys::pal::unix::sync
 {
-export using mutex::Mutex;
 }

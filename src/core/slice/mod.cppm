@@ -83,7 +83,7 @@ private:
 export using ref_str = Slice<const char>;
 } // namespace rstd
 
-export template<>
+template<>
 struct std::formatter<rstd::ref_str> : std::formatter<std::string_view> {
     template<class FmtContext>
     FmtContext::iterator format(rstd::ref_str str, FmtContext& ctx) const {

@@ -127,13 +127,13 @@ class Weak;
 
 namespace rstd
 {
-export template<typename T, typename Self>
+template<typename T, typename Self>
     requires meta::same_as<T, clone::Clone> && meta::special_of<Self, rstd::sync::Arc>
 struct Impl<T, Self> : Impl<T, Def<Self>> {
     auto clone() const -> Self;
 };
 
-export template<typename T, typename Self>
+template<typename T, typename Self>
     requires meta::same_as<T, clone::Clone> && meta::special_of<Self, rstd::sync::Weak>
 struct Impl<T, Self> : Impl<T, Def<Self>> {
     auto clone() const -> Self;

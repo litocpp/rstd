@@ -17,7 +17,7 @@ concept ViewableStr = requires(T t) {
 
 namespace rstd
 {
-export template<>
+template<>
 struct ref<str_::Str> {
 private:
     u8 const* m_ptr { nullptr };
@@ -38,7 +38,7 @@ public:
     constexpr ref(u8 const* begin, u8 const* end) noexcept: m_ptr(begin), m_length(end - begin) {}
 
     constexpr ref(char const* c_str) noexcept
-        : m_ptr((u8 const*)(c_str)), m_length(char_traits<char>::length(c_str)) {}
+        : m_ptr(rstd::bit_cast<u8 const*>(c_str)), m_length(char_traits<char>::length(c_str)) {}
 
     constexpr auto size() const { return m_length; }
     constexpr auto data() const { return m_ptr; }
@@ -57,14 +57,14 @@ constexpr bool operator==(ref<str> a, ref<str> b) noexcept {
            strncmp((char const*)a.data(), (char* const)b.data(), a.size()) == 0;
 }
 
-export template<>
+template<>
 struct ptr<str_::Str> {
 private:
     u8 const* m_ptr;
     usize     m_length;
 
 public:
-    using value_type = u8;
+    using value_type         = u8;
     constexpr ptr() noexcept = default;
 
     template<typename T>
@@ -84,7 +84,7 @@ public:
 static_assert(meta::is_constructible_v<ref<str>, u8 const[3]>);
 } // namespace rstd
 
-export template<>
+template<>
 struct rstd::cppstd::formatter<rstd::ref<rstd::str>>
     : rstd::cppstd::formatter<rstd::cppstd::string_view> {
     template<class FmtContext>

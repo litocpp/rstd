@@ -85,7 +85,7 @@ export using result::Result;
 export using result::Ok;
 export using result::Err;
 
-export template<typename T, typename Self>
+template<typename T, typename Self>
     requires meta::same_as<T, clone::Clone> &&
              meta::is_specialization_of_v<Self, rstd::result::Result> &&
              Impled<typename result::detail::result_traits<Self>::union_value_t, clone::Clone> &&
@@ -736,7 +736,7 @@ Result(T&) -> Result<UnknownOk, T&>;
 
 namespace rstd::option::detail
 {
-export template<typename T, typename E>
+template<typename T, typename E>
 struct option_adapter_l1<result::Result<T, E>> {
     constexpr auto transpose() -> result::Result<Option<T>, E> {
         auto&& self = static_cast<Option<result::Result<T, E>>&&>(*this);

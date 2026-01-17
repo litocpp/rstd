@@ -33,7 +33,7 @@ public:
     constexpr const T& operator*() const noexcept { return *self.storage_loc(); }
 };
 
-export template<typename T>
+template<typename T>
     requires(! meta::is_trivially_copy_constructible_v<T>)
 class ManuallyDrop<T> {
     friend class ManuallyDrop<void>;
@@ -73,7 +73,7 @@ public:
     constexpr const T& operator*() const noexcept { return *self.storage_loc(); }
 };
 
-export template<>
+template<>
 class ManuallyDrop<void> {
 public:
     template<typename T>

@@ -26,7 +26,7 @@ void Parker::park() {
             expected, PARKED, std::memory_order_relaxed, std::memory_order_relaxed)) {
         if (expected == NOTIFIED) {
             // Must read here for synchronization, see Rust comments
-            size_t old = state.exchange(EMPTY, std::memory_order_acquire);
+            [[maybe_unused]] size_t old = state.exchange(EMPTY, std::memory_order_acquire);
             assert(old == NOTIFIED && "park state changed unexpectedly");
             return;
         }
@@ -55,7 +55,7 @@ void Parker::park_timeout(const std::chrono::duration<double>& dur) {
     if (! state.compare_exchange_strong(
             expected, PARKED, std::memory_order_relaxed, std::memory_order_relaxed)) {
         if (expected == NOTIFIED) {
-            size_t old = state.exchange(EMPTY, std::memory_order_acquire);
+            [[maybe_unused]] size_t old = state.exchange(EMPTY, std::memory_order_acquire);
             assert(old == NOTIFIED && "park state changed unexpectedly");
             return;
         }
@@ -86,4 +86,4 @@ void Parker::unpark() {
     cvar.notify_one();
 }
 
-} // namespace parking. pthread
+} // namespace rstd::sys::sync::thread_parking::pthread

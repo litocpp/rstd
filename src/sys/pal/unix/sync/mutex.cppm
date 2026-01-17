@@ -42,7 +42,7 @@ public:
     auto try_lock() noexcept -> bool { return pthread_mutex_trylock(raw()) == 0; }
 
     void unlock() noexcept {
-        auto r = pthread_mutex_unlock(raw());
+        [[maybe_unused]] auto r = pthread_mutex_unlock(raw());
         debug_assert_eq(r, 0);
     }
 };

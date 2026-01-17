@@ -3,13 +3,14 @@ export module rstd.sys:pal;
 export import :pal.unix;
 export import :pal.windows;
 
-namespace rstd::sys::pal
+export namespace rstd::sys::pal
 {
-
 #ifdef __unix__
-using namespace pal::unix;
+namespace futex = pal::unix::futex;
+using unix::Mutex;
 #elif defined(_WIN32)
-using namespace pal::windows;
+namespace futex = pal::windows::futex;
+using windows::Mutex;
 #endif
 
 } // namespace rstd::sys::pal

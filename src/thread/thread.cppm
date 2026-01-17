@@ -1,7 +1,7 @@
 export module rstd.thread:thread;
-export import rstd.alloc;
-
 export import :id;
+
+export import rstd.alloc;
 // export import :thread.main_thread;
 
 namespace rstd::sys::thread

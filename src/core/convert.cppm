@@ -37,7 +37,7 @@ auto into(F&& val) -> T {
 namespace rstd
 {
 
-export template<typename T, typename Self>
+template<typename T, typename Self>
     requires meta::same_as<T, convert::Into<typename T::into_t>> &&
              Impled<typename T::into_t, typename convert::From<Self>>
 struct Impl<T, Self> : ImplBase<Self> {
@@ -47,7 +47,7 @@ struct Impl<T, Self> : ImplBase<Self> {
     }
 };
 
-export template<typename T, typename Self>
+template<typename T, typename Self>
     requires meta::same_as<T, convert::From<meta::underlying_type_t<Self>>> && meta::is_enum_v<Self>
 struct Impl<T, Self> : ImplBase<Self> {
     using from_t = typename T::from_t;

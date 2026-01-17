@@ -6,7 +6,7 @@ namespace rstd
 export template<typename T>
 struct FnOnce;
 
-export template<typename R, typename... Args>
+template<typename R, typename... Args>
 struct FnOnce<R(Args...)> {
     using Output = R;
     template<typename Self>
@@ -20,7 +20,7 @@ struct FnOnce<R(Args...)> {
 export template<typename T>
 struct FnMut;
 
-export template<typename R, typename... Args>
+template<typename R, typename... Args>
 struct FnMut<R(Args...)> {
     template<typename Self>
         requires Impled<Self, FnOnce<R(Args...)>>
@@ -34,7 +34,7 @@ struct FnMut<R(Args...)> {
 export template<typename T>
 struct Fn;
 
-export template<typename R, typename... Args>
+template<typename R, typename... Args>
 struct Fn<R(Args...)> {
     template<typename Self>
         requires Impled<Self, FnMut<R(Args...)>>

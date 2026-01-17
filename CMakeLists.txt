@@ -8,17 +8,14 @@ project(
 option(RSTD_BUILD_TESTING "Build tests" ${PROJECT_IS_TOP_LEVEL})
 option(RSTD_USE_ASAN "asan" OFF)
 
-set(WARN_OPTS 
-  -Wall 
-  -Wpedantic 
-  -Werror
-  -Wno-gnu-statement-expression
-)
+set(WARN_OPTS -Wall -Wpedantic -Werror)
+set(WARN_CLANG_OPTS -Wno-gnu-statement-expression)
 
 if(PROJECT_IS_TOP_LEVEL)
   set(CMAKE_CXX_STANDARD_REQUIRED ON)
   set(CMAKE_CXX_EXTENSIONS OFF)
   add_compile_options("$<$<COMPILE_LANG_AND_ID:CXX,Clang,GNU>:${WARN_OPTS}>")
+  add_compile_options("$<$<COMPILE_LANG_AND_ID:CXX,Clang>:${WANR_CLANG_OPTS}>")
 endif()
 
 add_subdirectory(src/core)

@@ -56,7 +56,7 @@ namespace rstd
 export using cppstd::vformat;
 export using cppstd::format;
 export using cppstd::format_string;
-export template<typename T, typename A>
+template<typename T, typename A>
     requires meta::same_as<T, fmt::Display> && fmt::formattable<A, char>
 struct Impl<T, A> {};
 

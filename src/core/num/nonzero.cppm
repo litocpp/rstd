@@ -38,7 +38,7 @@ struct NonZero {
 namespace rstd::option::detail
 {
 
-export template<typename T>
+template<typename T>
 struct option_store<num::nonzero::NonZero<T>> {
     constexpr auto is_some() const noexcept -> bool {
         for (usize i = 0; i < sizeof(T); i++) {
@@ -50,11 +50,11 @@ struct option_store<num::nonzero::NonZero<T>> {
     }
 
 protected:
-    using union_value_t       = num::nonzero::NonZero<T>*;
-    using union_const_value_t = num::nonzero::NonZero<T> const*;
+    using union_value_t       = num::nonzero::NonZero<T>;
+    using union_const_value_t = num::nonzero::NonZero<T> const;
 
     constexpr auto _ptr() const noexcept {
-        return reinterpret_cast<const union_const_value_t*>(m_storage);
+        return reinterpret_cast<union_const_value_t*>(m_storage);
     }
     constexpr auto _ptr() noexcept { return reinterpret_cast<union_value_t*>(m_storage); }
     template<typename V>

@@ -20,7 +20,7 @@ namespace rstd
 {
 
 export using String = string::String;
-export template<meta::same_as<string::ToString> T, Impled<fmt::Display> A>
+template<meta::same_as<string::ToString> T, Impled<fmt::Display> A>
 struct Impl<T, A> : ImplBase<A> {
     auto to_string() const -> string::String { return format("{}", this->self()); }
 };

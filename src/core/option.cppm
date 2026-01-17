@@ -17,8 +17,7 @@ class Option;
 export struct Unknown {};
 
 export template<typename U = void, typename T>
-[[gnu::always_inline]]
-constexpr auto Some(T&& val) {
+[[gnu::always_inline]] inline constexpr auto Some(T&& val) {
     if constexpr (meta::same_as<U, void>) {
         if constexpr (meta::trivially_value<meta::remove_reference_t<T>>) {
             return Option<meta::remove_reference_t<T>>(rstd::move(val));
@@ -31,7 +30,7 @@ constexpr auto Some(T&& val) {
 }
 
 export template<typename U = void, typename T = Unknown>
-[[gnu::always_inline]]
+[[gnu::always_inline]] inline
 constexpr auto None(T&& = {}) {
     if constexpr (meta::same_as<U, void>) {
         if constexpr (meta::same_as<Unknown, T>) {
@@ -125,7 +124,7 @@ private:
     bool m_has_val { false };
 };
 
-export template<typename T>
+template<typename T>
 struct option_store<T&> {
     constexpr auto is_some() const noexcept -> bool {
         auto* p = *_ptr();
@@ -174,9 +173,9 @@ protected:
     static constexpr decltype(auto) _get(U&& self) {
         using traits = detail::option_traits<decltype(self)>;
         if constexpr (meta::is_reference_v<T>) {
-            return reinterpret_cast<traits::ret_value_t>(**(self._ptr()));
+            return static_cast<traits::ret_value_t>(**(self._ptr()));
         } else {
-            return reinterpret_cast<traits::ret_value_t>(*(self._ptr()));
+            return static_cast<traits::ret_value_t>(*(self._ptr()));
         }
     }
 
@@ -249,7 +248,7 @@ public:
 
     template<typename F, typename U = meta::invoke_result_t<F, T>>
     // requires ImpledT<FnOnce<F, U(T)>>
-    auto map(F&& f) -> Option<U> {
+    constexpr auto map(F&& f) -> Option<U> {
         if (this->is_some()) {
             return option::Some(rstd::forward<F>(f)(_get_move()));
         }
@@ -258,7 +257,7 @@ public:
 
     template<typename F, typename U = meta::invoke_result_t<F, T>>
         requires meta::special_of<U, Option>
-    auto and_then(F&& f) -> U {
+    constexpr auto and_then(F&& f) -> U {
         if (this->is_some()) {
             return rstd::forward<F>(f)(_get_move());
         }
@@ -307,7 +306,7 @@ export using option::Option;
 export using option::Some;
 export using option::None;
 
-export template<typename T, typename Self>
+template<typename T, typename Self>
     requires meta::same_as<T, clone::Clone> &&
              meta::is_specialization_of_v<Self, rstd::option::Option> &&
              Impled<typename option::detail::option_traits<Self>::union_value_t, clone::Clone>

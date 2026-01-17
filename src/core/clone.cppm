@@ -21,19 +21,19 @@ export struct Clone {
 
 namespace rstd
 {
-export template<typename Self, auto P>
+template<typename Self, auto P>
 struct Impl<clone::Clone, Def<Self, P>> : ImplDefaultBase<clone::Clone, Def<Self, P>> {
     void clone_from(Self& source) { this->self() = as<clone::Clone>(source).clone(); }
 };
 
-export template<typename Self>
+template<typename Self>
     requires meta::is_arithmetic_v<Self> || meta::is_pointer_v<Self> ||
              meta::is_copy_constructible_v<Self>
 struct Impl<clone::Clone, Self> : ImplDefault<clone::Clone, Self> {
     auto clone() const -> Self { return this->self(); }
 };
 
-export template<typename Self>
+template<typename Self>
     requires meta::is_tuple_v<Self> && (! meta::is_copy_constructible_v<Self>)
 struct Impl<clone::Clone, Self> : ImplDefault<clone::Clone, Self> {
     auto clone() const -> Self {

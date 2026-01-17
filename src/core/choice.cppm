@@ -12,10 +12,9 @@ enum class XX
 struct XXData {
     template<auto>
     struct d;
-
-    template<>
-    struct d<XX::x1> {};
 };
+template<>
+struct XXData::d<XX::x1> {};
 consteval auto data(XX x) -> XXData;
 
 } // namespace rstd

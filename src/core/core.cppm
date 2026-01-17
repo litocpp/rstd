@@ -56,8 +56,7 @@ export template<typename T>
 using param_ref_t = meta::conditional_t<meta::is_trivially_copy_constructible_v<T>, T, T&>;
 
 export template<typename T>
-[[nodiscard, gnu::always_inline]]
-param_t<T> param_forward(param_ref_t<T> t) {
+[[nodiscard, gnu::always_inline]] inline param_t<T> param_forward(param_ref_t<T> t) {
     if constexpr (meta::is_trivially_copy_constructible_v<T>) {
         return t;
     } else {
@@ -110,7 +109,7 @@ struct ptr {
     constexpr auto to_ref() const noexcept { return ref<T> { *p }; }
 };
 
-export template<typename T>
+template<typename T>
 struct ref<T[]> : ref<T> {
     using ref<T>::ref;
 
@@ -120,7 +119,7 @@ struct ref<T[]> : ref<T> {
     constexpr auto len() const noexcept { return length; }
 };
 
-export template<typename T>
+template<typename T>
 struct ptr<T[]> : ptr<T> {
     using ptr<T>::ptr;
 
