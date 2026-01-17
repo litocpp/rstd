@@ -22,11 +22,7 @@ jobs:
           - arch: x64
             runs_on: ubuntu-24.04
             compiler: gcc
-            version: 14
-          - arch: aarch64
-            runs_on: ubuntu-24.04-arm
-            compiler: gcc
-            version: 14
+            version: 15
 
     runs-on: ${{ matrix.runs_on }}
 
@@ -65,11 +61,10 @@ jobs:
       - name: Install GCC ${{ matrix.version }}
         if: ${{ matrix.compiler == 'gcc' }}
         run: |
-          sudo apt-get install -y --no-install-recommends \
-            gcc-${{ matrix.version }} g++-${{ matrix.version }}
-
-          echo "CC=gcc-${{ matrix.version }}"  >> $GITHUB_ENV
-          echo "CXX=g++-${{ matrix.version }}" >> $GITHUB_ENV
+          conda install conda-forge::gcc=${{ matrix.version }}.* \
+            conda-forge::gxx=${{ matrix.version }}.*
+          echo "CC=${CONDA}/bin/gcc"  >> $GITHUB_ENV
+          echo "CXX=${CONDA}/bin/g++" >> $GITHUB_ENV
 
       - name: Configure (CMake)
         run: |
