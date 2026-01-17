@@ -46,6 +46,7 @@ module;
 export module rstd.core:cppstd;
 
 export using ::operator new;
+export using ::operator delete;
 namespace std
 {
 export using std::coroutine_handle;
