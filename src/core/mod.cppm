@@ -1,4 +1,5 @@
 export module rstd.core;
+export import :choice;
 export import :literal;
 export import :core;
 export import :meta;

@@ -45,7 +45,7 @@ target_sources(
          panic.cppm
          log.cppm
          cppstd.cppm
-         enum.cppm
+         choice.cppm
          pin.cppm
          hint.cppm
          assert.cppm

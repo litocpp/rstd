@@ -4,37 +4,41 @@ export import rstd.alloc;
 export import :id;
 // export import :thread.main_thread;
 
+namespace rstd::sys::thread
+{
 
-namespace rstd::sys::thread {
-
-namespace thread_name_string {
+namespace thread_name_string
+{
 
 // Like a `String` it's guaranteed UTF-8 and like a `CString` it's null terminated.
 // (C++ side we assume std::string is UTF-8 by convention, and CString validates no interior '\0')
 struct ThreadNameString {
-    ffi::CString inner;
+    alloc::ffi::CString inner;
 
     ThreadNameString() = delete;
 
-    static ThreadNameString from(std::string s) {
-        ThreadNameString out{ ffi::CString::new_(std::move(s)) }; // expect: rejects interior '\0'
-        return out;
-    }
+    // static ThreadNameString from(String s) {
+    //     // ThreadNameString out { ffi::CString::new_(std::move(s)) }; // expect: rejects interior
+    //     // '\0' return out;
+    // }
 
-    const ffi::CStr& as_cstr() const noexcept { return inner.as_cstr(); }
+    // const ffi::CStr& as_cstr() const noexcept { 
+    //     // return inner.as_cstr();
+    // }
 
-    std::string_view as_str() const noexcept {
-        // SAFETY mirror: guaranteed UTF-8 by construction convention
-        return inner.to_string_view_bytes(); // expect: view excluding trailing '\0'
-    }
+    // ref<str> as_str() const noexcept {
+    //     // SAFETY mirror: guaranteed UTF-8 by construction convention
+    //     // return inner.to_string_view_bytes(); // expect: view excluding trailing '\0'
+    // }
 
 private:
-    explicit ThreadNameString(ffi::CString c) : inner(std::move(c)) {}
+    explicit ThreadNameString(alloc::ffi::CString c): inner(rstd::move(c)) {}
 };
 
 } // namespace thread_name_string
 
 using thread_name_string::ThreadNameString;
+/*
 
 // The internal representation of a `Thread` handle
 //
@@ -49,8 +53,8 @@ struct alignas(8) Inner {
 
     Pin<const sys::sync::Parker&> parker_pin(Pin<const Inner&> self) const noexcept {
         // Mirror `Pin::map_unchecked`
-        return Pin<const sys::sync::Parker&>::map_unchecked(self, [](const Inner& in) -> const sys::sync::Parker& {
-            return in.parker;
+        return Pin<const sys::sync::Parker&>::map_unchecked(self, [](const Inner& in) -> const
+sys::sync::Parker& { return in.parker;
         });
     }
 };
@@ -74,7 +78,8 @@ public:
             auto* ptr = sync::Arc<Inner, alloc::System>::get_mut_unchecked(arc).as_mut_ptr();
 
             // write fields
-            ::new (static_cast<void*>(std::addressof(ptr->name))) decltype(ptr->name)(std::move(tn));
+            ::new (static_cast<void*>(std::addressof(ptr->name)))
+decltype(ptr->name)(std::move(tn));
             ::new (static_cast<void*>(std::addressof(ptr->id)))   ThreadId(id);
 
             // in-place parker
@@ -105,7 +110,8 @@ public:
             return std::addressof(inner_.get().name->as_cstr());
         }
         if (main_thread::get() == std::optional<ThreadId>(inner_.get().id)) {
-            return std::addressof(ffi::CStr::from_literal("main")); // expect helper; otherwise store a static
+            return std::addressof(ffi::CStr::from_literal("main")); // expect helper; otherwise
+store a static
         }
         return std::nullopt;
     }
@@ -114,13 +120,15 @@ public:
     // Opaque raw pointer; keeps Pin invariant by only exposing Inner address.
     const void* into_raw() && noexcept {
         auto arc = Pin<sync::Arc<Inner, alloc::System>>::into_inner_unchecked(std::move(inner_));
-        return static_cast<const void*>(sync::Arc<Inner, alloc::System>::into_raw_with_allocator(std::move(arc)).first);
+        return static_cast<const void*>(sync::Arc<Inner,
+alloc::System>::into_raw_with_allocator(std::move(arc)).first);
     }
 
     static Thread from_raw(const void* p) noexcept {
         // SAFETY: caller upholds provenance + refcount rules, like Rust contract.
-        auto arc = sync::Arc<Inner, alloc::System>::from_raw_in(static_cast<const Inner*>(p), alloc::System{});
-        return Thread(Pin<sync::Arc<Inner, alloc::System>>::new_unchecked(std::move(arc)));
+        auto arc = sync::Arc<Inner, alloc::System>::from_raw_in(static_cast<const Inner*>(p),
+alloc::System{}); return Thread(Pin<sync::Arc<Inner,
+alloc::System>>::new_unchecked(std::move(arc)));
     }
 
 private:
@@ -136,5 +144,6 @@ export inline void debug_fmt(fmt::Formatter& f, const Thread& t) {
         .field("name", t.name())
         .finish_non_exhaustive();
 }
+        */
 
 } // namespace rstd::sys::thread

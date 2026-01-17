@@ -115,6 +115,9 @@ struct ref<T[]> : ref<T> {
     using ref<T>::ref;
 
     usize length { 0 };
+
+    constexpr auto size() const noexcept { return length; }
+    constexpr auto len() const noexcept { return length; }
 };
 
 export template<typename T>
@@ -124,6 +127,10 @@ struct ptr<T[]> : ptr<T> {
     usize length { 0 };
 
     constexpr auto size() const noexcept { return length; }
+    constexpr auto len() const noexcept { return length; }
 };
+
+export template<typename T>
+using slice = ref<meta::add_const_t<T>[]>;
 
 } // namespace rstd

@@ -11,5 +11,5 @@ target_sources(
          FILES
          mod.cppm
          id.cppm
-         #thread.cppm
+         thread.cppm
          )
