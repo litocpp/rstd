@@ -4,7 +4,31 @@ export import rstd.core;
 namespace rstd::string
 {
 
-export using String = cppstd::string;
+export class String {
+    cppstd::vector<u8> vec;
+
+    template<typename, typename>
+    friend struct rstd::Impl;
+
+public:
+    using value_type                 = u8;
+    constexpr String()               = default;
+    constexpr String(const String&)  = default;
+    String& operator=(const String&) = default;
+
+    template<usize N>
+    constexpr String(const char (&s)[N]): vec { s, s + N } {}
+
+    friend constexpr auto operator<=>(const String& a, const String& b) noexcept {
+        return cppstd::lexicographical_compare_three_way(
+            a.vec.begin(), a.vec.end(), b.vec.begin(), b.vec.end());
+    }
+    friend constexpr bool operator==(const String&, const String&) = default;
+
+    void push_back(char c) { vec.push_back(static_cast<u8>(c)); }
+    void push_back(u8 c) { vec.push_back(c); }
+};
+
 export struct ToString {
     template<typename T, typename = void>
     struct Api {
@@ -22,7 +46,11 @@ namespace rstd
 export using String = string::String;
 template<meta::same_as<string::ToString> T, Impled<fmt::Display> A>
 struct Impl<T, A> : ImplBase<A> {
-    auto to_string() const -> string::String { return format("{}", this->self()); }
+    auto to_string() const -> string::String {
+        string::String out;
+        fmt::format_to(cppstd::back_inserter(out), "{}", this->self());
+        return out;
+    }
 };
 
 export template<Impled<string::ToString> A>

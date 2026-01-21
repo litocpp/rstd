@@ -25,7 +25,7 @@ constexpr auto extract_last(ref<str> path, usize count) -> ref<str> {
 } // namespace
 
 void assert_raw(ref<str> expr_str, ref<str> msg, const source_location loc) {
-    auto out = rstd::format("Assertion `{}` failed, on {}({}):{}{}{}\n",
+    auto out = cppstd::format("Assertion `{}` failed, on {}({}):{}{}{}\n",
                             expr_str,
                             extract_last(loc.file_name(), 2),
                             loc.line(),

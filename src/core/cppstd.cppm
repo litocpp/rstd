@@ -91,6 +91,8 @@ using std::atomic;
 using std::atomic_thread_fence;
 using std::memory_order;
 
+using std::back_inserter;
+
 using std::allocator;
 using std::allocator_traits;
 using std::default_delete;
@@ -104,6 +106,10 @@ using std::format_string;
 using std::formatter;
 using std::make_format_args;
 using std::vformat;
+using std::format_to;
+using std::format_to_n;
+using std::formatted_size;
+using std::vformat_to;
 
 // string
 using std::basic_string;
@@ -223,6 +229,8 @@ using std::memcpy;
 using std::memset;
 using std::strlen;
 using std::strncmp;
+
+using std::lexicographical_compare_three_way;
 
 using ::stderr;
 using ::stdout;
