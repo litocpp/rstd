@@ -51,6 +51,7 @@ export using cppstd::basic_format_string;
 export using cppstd::formatter;
 export using cppstd::format_string;
 export using cppstd::make_format_args;
+export using cppstd::format_args;
 export using cppstd::vformat;
 export using cppstd::format;
 export using cppstd::format_to;

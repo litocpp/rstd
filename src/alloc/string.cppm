@@ -16,8 +16,7 @@ public:
     constexpr String(const String&)  = default;
     String& operator=(const String&) = default;
 
-    template<usize N>
-    constexpr String(const char (&s)[N]): vec { s, s + N } {}
+    String(char const* cstr): vec(cstr, cstr + cppstd::strlen(cstr)) {}
 
     friend constexpr auto operator<=>(const String& a, const String& b) noexcept {
         return cppstd::lexicographical_compare_three_way(
@@ -58,5 +57,23 @@ auto to_string(A&& a) {
     // use lvalue
     return as<string::ToString>(a).to_string();
 }
+
+namespace fmt
+{
+export template<typename... Args>
+auto format(fmt::format_string<Args...> fmt, Args&&... args) -> string::String {
+    return vformat(fmt.get(), fmt::make_format_args(args...));
+}
+
+export auto vformat(ref<str> fmt, fmt::format_args args) -> string::String {
+    string::String buf;
+    fmt::vformat_to(cppstd::back_inserter(buf), { (char const*)fmt.data(), fmt.size() }, args);
+    return buf;
+}
+
+} // namespace fmt
+
+export using fmt::format;
+export using fmt::vformat;
 
 } // namespace rstd
