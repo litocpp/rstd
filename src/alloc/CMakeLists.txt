@@ -17,4 +17,5 @@ target_sources(
          sync.cppm
          ffi/mod.cppm
          ffi/c_str.cppm
+         vec/mod.cppm
          )

@@ -18,6 +18,7 @@ module;
 #include <string>
 #include <format>
 #include <atomic>
+#include <vector>
 
 #include <mutex>
 #include <shared_mutex>
@@ -60,7 +61,20 @@ export using std::get_if;
 
 export using std::strong_ordering;
 export using std::weak_ordering;
+
+export using std::iterator;
+export using std::back_insert_iterator;
 } // namespace std
+
+#ifdef __GNUC__
+namespace __gnu_cxx
+{
+export using __gnu_cxx::__normal_iterator;
+export using __gnu_cxx::operator==;
+export using __gnu_cxx::operator-;
+export using __gnu_cxx::operator+;
+} // namespace __gnu_cxx
+#endif
 
 export namespace rstd::cppstd
 {

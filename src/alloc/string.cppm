@@ -22,7 +22,9 @@ public:
         return cppstd::lexicographical_compare_three_way(
             a.vec.begin(), a.vec.end(), b.vec.begin(), b.vec.end());
     }
-    friend constexpr bool operator==(const String&, const String&) = default;
+    friend constexpr bool operator==(const String& a, const String& b) noexcept {
+        return a.vec == b.vec;
+    }
 
     void push_back(char c) { vec.push_back(static_cast<u8>(c)); }
     void push_back(u8 c) { vec.push_back(c); }
