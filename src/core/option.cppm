@@ -7,6 +7,7 @@ export import :slice;
 export import :ops.function;
 export import :assert;
 export import :forward;
+export import :cmp;
 
 namespace rstd::option
 {
@@ -30,8 +31,7 @@ export template<typename U = void, typename T>
 }
 
 export template<typename U = void, typename T = Unknown>
-[[gnu::always_inline]] inline
-constexpr auto None(T&& = {}) {
+[[gnu::always_inline]] inline constexpr auto None(T&& = {}) {
     if constexpr (meta::same_as<U, void>) {
         if constexpr (meta::same_as<Unknown, T>) {
             return Unknown();
@@ -347,8 +347,6 @@ class Option : public detail::option_base<T>, public detail::option_adapter<T> {
     friend struct detail::option_adapter;
     template<typename>
     friend struct detail::option_adapter_l1;
-    template<typename, typename>
-    friend struct rstd::Impl;
 
     template<typename, typename T_>
     friend constexpr auto rstd::option::Some(T_&& val);
@@ -359,6 +357,8 @@ class Option : public detail::option_base<T>, public detail::option_adapter<T> {
     using union_value_t = detail::option_store<T>::union_value_t;
 
 public:
+    USE_TRAIT(Option)
+
     using value_type = T;
 
     constexpr Option() noexcept = default;
@@ -408,18 +408,6 @@ public:
             this->_assign_none();
         }
         return *this;
-    }
-
-    template<typename U>
-        requires(! meta::is_void_v<U>) && requires(const T& t, const U& u) {
-            { t == u } -> meta::convertible_to<bool>;
-        }
-    friend constexpr bool
-    operator==(const Option& x, const Option<U>& y) noexcept(noexcept(bool(x._get() == y._get()))) {
-        if (x.is_some())
-            return y.is_some() && bool(x._get() == y._get());
-        else
-            return ! y.is_some();
     }
 
 private:
@@ -480,3 +468,20 @@ struct option_adapter_l1<Option<T>> {
 } // namespace detail
 
 } // namespace rstd::option
+
+namespace rstd
+{
+
+template<typename U, typename A>
+    requires meta::equalable<U, A>
+struct Impl<cmp::PartialEq<option::Option<U>>, Option<A>> : ImplBase<Option<A>> {
+    auto eq(const Option<U>& other) const noexcept -> bool {
+        auto& self = this->self();
+        if (self.is_some())
+            return other.is_some() && (self._get() == other._get());
+        else
+            return ! other.is_some();
+    }
+};
+
+} // namespace rstd
