@@ -4,25 +4,27 @@ export import :id;
 export import rstd.alloc;
 // export import :thread.main_thread;
 
-namespace rstd::sys::thread
+namespace rstd
 {
 
-namespace thread_name_string
+namespace sys::thread::thread_name_string
 {
 
 // Like a `String` it's guaranteed UTF-8 and like a `CString` it's null terminated.
 // (C++ side we assume std::string is UTF-8 by convention, and CString validates no interior '\0')
-struct ThreadNameString {
+class ThreadNameString {
     alloc::ffi::CString inner;
 
     ThreadNameString() = delete;
+    explicit ThreadNameString(alloc::ffi::CString c): inner(rstd::move(c)) {}
 
+public:
     // static ThreadNameString from(String s) {
     //     // ThreadNameString out { ffi::CString::new_(std::move(s)) }; // expect: rejects interior
     //     // '\0' return out;
     // }
 
-    // const ffi::CStr& as_cstr() const noexcept { 
+    // const ffi::CStr& as_cstr() const noexcept {
     //     // return inner.as_cstr();
     // }
 
@@ -30,14 +32,16 @@ struct ThreadNameString {
     //     // SAFETY mirror: guaranteed UTF-8 by construction convention
     //     // return inner.to_string_view_bytes(); // expect: view excluding trailing '\0'
     // }
-
-private:
-    explicit ThreadNameString(alloc::ffi::CString c): inner(rstd::move(c)) {}
 };
 
-} // namespace thread_name_string
+} // namespace sys::thread::thread_name_string
 
-using thread_name_string::ThreadNameString;
+template<>
+struct Impl<convert::From<String>, sys::thread::thread_name_string::ThreadNameString> {
+    using Self = sys::thread::thread_name_string::ThreadNameString;
+    static auto from(String s) {}
+};
+
 /*
 
 // The internal representation of a `Thread` handle
@@ -146,4 +150,4 @@ export inline void debug_fmt(fmt::Formatter& f, const Thread& t) {
 }
         */
 
-} // namespace rstd::sys::thread
+} // namespace rstd

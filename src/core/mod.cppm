@@ -25,3 +25,4 @@ export import :mem;
 export import :sync;
 export import :intrinsics;
 export import :ffi;
+export import :memchr;

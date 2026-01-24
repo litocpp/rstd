@@ -51,6 +51,7 @@ target_sources(
          assert.cppm
          intrinsics.cppm
          tuple.cppm
+         memchr.cppm
          ffi/mod.cppm
          ffi/c_str.cppm
          hash/mod.cppm

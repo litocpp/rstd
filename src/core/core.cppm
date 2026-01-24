@@ -115,6 +115,7 @@ struct ref<T[]> : ref<T> {
 
     usize length { 0 };
 
+    constexpr auto operator[](usize i) const noexcept { return this->p + i; }
     constexpr auto size() const noexcept { return length; }
     constexpr auto len() const noexcept { return length; }
 };

@@ -652,8 +652,8 @@ public:
         this->_construct_err(meta::remove_cvref_t<U>::template _get<1>(rstd::forward<U>(o)));
     }
 
-    Result(const Result&)     = default;
-    Result(Result&&) noexcept = default;
+    Result(const Result&) = default;
+    Result(Result&&)      = default;
 
     constexpr Result(Result&& o) noexcept(
         meta::conjunction_v<meta::is_nothrow_move_constructible<T>,
@@ -753,25 +753,5 @@ struct option_adapter_l1<result::Result<T, E>> {
     }
 };
 
-// {
-//     auto& self = static_cast<Option<T>&>(*this);
-//     if (self.is_some()) {
-//         return Ok(self._get_move());
-//     } else {
-//         return Err(err);
-//     }
-// }
-
-// template<typename F, typename E = meta::invoke_result_t<F>>
-// auto ok_or_else(F&& err) -> result::Result<T, E>;
-//   {
-//      auto& self = static_cast<Option<T>&>(*this);
-//      if (self.is_some()) {
-//          return Ok(self._get_move());
-//      } else {
-//          return Err(rstd::move(err)());
-//      }
-//  }
-// };
 
 } // namespace rstd::option::detail

@@ -53,7 +53,7 @@ public:
     auto     operator->() const noexcept { return m_ptr.as_ptr(); }
     explicit operator bool() const noexcept { return m_ptr != nullptr; }
 
-    void reset() noexcept(meta::nothrow_destructible<T>) {
+    void reset() noexcept(meta::destructible<T> || meta::is_array_v<T>) {
         if (m_ptr != nullptr) {
             ptr<T> t = m_ptr.as_ptr();
             rstd::default_delete<T> {}(t.data());
