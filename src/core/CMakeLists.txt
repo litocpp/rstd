@@ -19,8 +19,7 @@ target_sources(
          BASE_DIRS
          include
          FILES
-         include/rstd/trait.hpp
-         include/rstd/assert.hpp
+         include/rstd/macro.hpp
          )
 
 target_sources(rstd.core PRIVATE core.cpp)
@@ -52,6 +51,7 @@ target_sources(
          intrinsics.cppm
          tuple.cppm
          memchr.cppm
+         cmp.cppm
          ffi/mod.cppm
          ffi/c_str.cppm
          hash/mod.cppm
