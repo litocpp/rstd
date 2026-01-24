@@ -22,7 +22,7 @@ export struct Clone {
 namespace rstd
 {
 template<typename Self, auto P>
-struct Impl<clone::Clone, Def<Self, P>> : ImplDefaultBase<clone::Clone, Def<Self, P>> {
+struct Impl<clone::Clone, default_tag<Self, P>> : ImplBase<default_tag<Self, P>> {
     void clone_from(Self& source) { this->self() = as<clone::Clone>(source).clone(); }
 };
 
