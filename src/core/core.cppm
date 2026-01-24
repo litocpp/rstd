@@ -180,4 +180,13 @@ auto as_cast(ref<T> p) noexcept -> ref<U> {
     }
 }
 
+export template<typename U>
+[[gnu::always_inline]] inline auto as_cast(u8* s) noexcept -> U {
+    return reinterpret_cast<U>(s);
+}
+export template<typename U>
+[[gnu::always_inline]] inline auto as_cast(u8 const* s) noexcept -> U {
+    return reinterpret_cast<U>(s);
+}
+
 } // namespace rstd

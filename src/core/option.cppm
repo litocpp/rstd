@@ -205,7 +205,7 @@ public:
         }
     }
 
-    auto expect(ref_str msg) -> T {
+    auto expect(ref<str> msg) -> T {
         if (this->is_some()) {
             return _get_move();
         }

@@ -31,14 +31,17 @@ public:
     constexpr ref(const T& t) noexcept(noexcept(rstd::declval<T>().data()))
         : m_ptr((u8 const*)t.data()), m_length(t.size()) {};
 
-    template<auto N>
-    constexpr ref(char const (&ptr)[N]) noexcept: m_ptr((u8 const*)(ptr)), m_length(N) {}
-    template<auto N>
-    constexpr ref(u8 const (&ptr)[N]) noexcept: m_ptr(ptr), m_length(N) {}
     constexpr ref(u8 const* begin, u8 const* end) noexcept: m_ptr(begin), m_length(end - begin) {}
 
     constexpr ref(char const* c_str) noexcept
         : m_ptr(rstd::bit_cast<u8 const*>(c_str)), m_length(char_traits<char>::length(c_str)) {}
+
+    static constexpr auto from_raw(u8 const* p, usize length) noexcept -> ref<str_::Str> {
+        auto r     = ref<str_::Str> {};
+        r.m_ptr    = p;
+        r.m_length = length;
+        return r;
+    }
 
     constexpr auto size() const { return m_length; }
     constexpr auto data() const { return m_ptr; }
@@ -81,7 +84,6 @@ public:
     constexpr auto operator[](usize i) const -> u8 const& { return *(m_ptr + i); }
 };
 
-static_assert(meta::is_constructible_v<ref<str>, u8 const[3]>);
 } // namespace rstd
 
 template<>

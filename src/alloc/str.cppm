@@ -8,7 +8,7 @@ export struct FromStr {
     template<typename Self, typename = void>
     struct Api {
         using Err = typename Impl<FromStr, Self>::Err;
-        static auto from_str(ref_str str) -> Result<Self, Err> {
+        static auto from_str(ref<str> str) -> Result<Self, Err> {
             return rstd::trait_static_call<FromStr, Self>(str);
         }
     };
@@ -21,7 +21,7 @@ export struct FromStr {
 namespace rstd
 {
 export template<typename T>
-auto from_str(ref_str str) {
+auto from_str(ref<str> str) {
     return Impl<str_::FromStr, meta::remove_cvref_t<T>>::from_str(str);
 }
 } // namespace rstd

@@ -40,8 +40,10 @@ public:
     void push_back(u8 c) { vec.push_back(c); }
 
     friend bool operator==(char const* b, const String& a) noexcept {
-        return cppstd::lexicographical_compare_three_way(
-                   cppstd::ranges::begin(a), cppstd::ranges::end(a), b, b + cppstd::strlen(b)) ==
+        return cppstd::lexicographical_compare_three_way(cppstd::ranges::begin(a),
+                                                         cppstd::ranges::end(a),
+                                                         b,
+                                                         b + char_traits<char>::length(b)) ==
                cppstd::strong_ordering::equal;
     }
 
@@ -96,7 +98,7 @@ struct Impl<T, A> : ImplBase<default_tag<A>> {
         auto& a = this->self();
         auto& b = other;
         return cppstd::lexicographical_compare_three_way(
-                   a.vec.begin(), a.vec.end(), b, b + cppstd::strlen(b)) ==
+                   a.vec.begin(), a.vec.end(), b, b + char_traits<char>::length(b)) ==
                std::strong_ordering::equal;
     }
 };

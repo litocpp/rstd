@@ -48,7 +48,7 @@ public:
     }
 
     static auto from_raw(char* p) -> CString {
-        auto len   = rstd::strlen(p) + 1;
+        auto len   = char_traits<char>::length(p) + 1;
         auto boxed = boxed::Box<u8[]>::from_raw(ptr<u8[]>::from_raw(reinterpret_cast<u8*>(p), len));
         return CString { rstd::move(boxed) };
     }

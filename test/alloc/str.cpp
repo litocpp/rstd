@@ -5,25 +5,27 @@
 import rstd;
 
 using namespace rstd;
+using rstd::str;
 namespace rstd
 {
 template<>
 struct Impl<str_::FromStr, int> {
-    using Err  = ref_str;
+    using Err  = ref<str>;
     using Self = int;
-    static auto from_str(ref_str str) -> Result<Self, Err> {
-        int num        = 0;
-        auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.size(), num);
+    static auto from_str(ref<str> str_) -> Result<Self, Err> {
+        int  num       = 0;
+        auto p         = as_cast<const char*>(str_.data());
+        auto [ptr, ec] = std::from_chars(p, p + str_.size(), num);
         if (ec == std::errc()) {
             return Ok(num);
         } else {
-            return rstd::Err(ref_str { "failed" });
+            return rstd::Err(ref<str> { "failed" });
         }
     }
 };
 } // namespace rstd
 
-static auto call(ref_str s) { return s[1]; }
+static auto call(ref<str> s) { return s[1]; }
 
 TEST(Str, FromStr) {
     std::string name = "name";

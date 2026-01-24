@@ -137,7 +137,7 @@ namespace rstd::result
 {
 
 template<fmt::formattable E>
-auto unwrap_failed(ref_str msg, E& e) {
+auto unwrap_failed(ref<str> msg, E& e) {
     rstd::panic("{}: {}", msg, e);
 }
 
@@ -367,7 +367,7 @@ public:
         return rstd::move(self);
     }
 
-    auto expect(ref_str msg) -> T
+    auto expect(ref<str> msg) -> T
         requires fmt::formattable<E>
     {
         if (is_ok()) {
@@ -399,7 +399,7 @@ public:
         }
     }
 
-    auto expect_err(ref_str msg) -> E
+    auto expect_err(ref<str> msg) -> E
         requires fmt::formattable<T>
     {
         if (is_ok()) {
