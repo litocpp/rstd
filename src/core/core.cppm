@@ -141,7 +141,7 @@ struct ref<T[]> : ref_base<ref<T[]>, T[]> {
     usize length;
 
     auto constexpr as_ptr() const noexcept -> ptr<T[]> {
-        return ptr<T[]>::from_raw(&(this->p), length);
+        return ptr<T[]>::from_raw(this->p, length);
     }
 };
 

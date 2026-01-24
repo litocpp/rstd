@@ -67,6 +67,12 @@ using follow_const_t =
     meta::conditional_t<meta::is_const_v<T>, meta::add_const_t<meta::remove_const_t<U>>,
                         meta::remove_const_t<U>>;
 
+template<typename T, typename U>
+concept equalable = requires(const T& a, const U& b) {
+    { a == b } -> meta::convertible_to<bool>;
+    { a != b } -> meta::convertible_to<bool>;
+};
+
 template<typename T>
 struct FuncTraits;
 

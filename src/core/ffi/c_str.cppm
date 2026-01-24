@@ -49,4 +49,13 @@ struct ref<const CStr> : ptr_base<ref<const CStr>, CStr[]> {
     usize       length { 1 };
 };
 
+export template<typename T>
+auto as_cast(CStr* p) -> T {
+    return reinterpret_cast<T>(p);
+}
+export template<typename T>
+auto as_cast(CStr const* p) -> T {
+    return reinterpret_cast<T>(p);
+}
+
 } // namespace rstd

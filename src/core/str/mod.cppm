@@ -32,6 +32,7 @@ public:
         : m_ptr((u8 const*)t.data()), m_length(t.size()) {};
 
     constexpr ref(u8 const* begin, u8 const* end) noexcept: m_ptr(begin), m_length(end - begin) {}
+    constexpr ref(slice<const u8> p) noexcept: m_ptr(p.p), m_length(p.length) {}
 
     constexpr ref(char const* c_str) noexcept
         : m_ptr(rstd::bit_cast<u8 const*>(c_str)), m_length(char_traits<char>::length(c_str)) {}

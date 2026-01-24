@@ -10,6 +10,7 @@ export template<typename T>
 class Vec {
     cppstd::vector<T> inner;
 
+    constexpr Vec(cppstd::vector<T> inner): inner(inner) {}
     static_assert(Impled<T, Sized>);
 
 public:
@@ -20,12 +21,12 @@ public:
     constexpr Vec(const Self&)            = delete;
     constexpr Vec& operator=(const Self&) = delete;
 
-    constexpr Vec(Self&&) noexcept {}
-    constexpr Vec& operator=(Self&&) noexcept {}
+    constexpr Vec(Self&&) noexcept            = default;
+    constexpr Vec& operator=(Self&&) noexcept = default;
 
     static constexpr auto make() -> Self { return {}; }
     static constexpr auto with_capacity(usize capacity) -> Self {
-        return { .inner = cppstd::vector<T>(capacity) };
+        return { cppstd::vector<T>(capacity) };
     }
 
     constexpr auto as_slice() const noexcept -> slice<const T> {
@@ -48,6 +49,15 @@ public:
     }
 
     constexpr void push(T&& value) { inner.emplace_back(rstd::move(value)); }
+    constexpr auto pop() -> Option<T> {
+        if (inner.empty()) {
+            return None();
+        } else {
+            T value = rstd::move(inner.back());
+            inner.pop_back();
+            return Some(value);
+        }
+    }
 
     constexpr void push_back(const T& value) { inner.push_back(value); }
     constexpr void pop_back() { inner.pop_back(); }
@@ -73,6 +83,20 @@ template<typename U, meta::same_as<cmp::PartialEq<Vec<U>>> T>
 struct Impl<T, Vec<U>> : ImplBase<default_tag<Vec<U>>> {
     auto eq(const Vec<U>& other) const noexcept -> bool {
         return this->self().inner == other.inner;
+    }
+};
+
+template<typename A, meta::same_as<convert::From<alloc::boxed::Box<A[]>>> T>
+struct Impl<T, Vec<A>> : ImplBase<Vec<A>> {
+    static auto from(alloc::boxed::Box<A[]> b) -> Vec<A> {
+        auto ptr = b.as_ptr();
+        auto len = ptr.len();
+        auto vec = Vec<A>::with_capacity(len);
+        // TODO: Use memcpy if T is trivially relocatable
+        for (usize i = 0; i != len; ++i) {
+            vec.push(rstd::move(ptr[i]));
+        }
+        return vec;
     }
 };
 

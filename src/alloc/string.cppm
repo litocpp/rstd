@@ -12,17 +12,28 @@ namespace rstd::alloc::string
 export class String {
     Vec<u8> vec;
 
+    constexpr String() = default;
+    String(Vec<u8>&& p): vec(rstd::move(p)) {}
+
 public:
     USE_TRAIT(String)
+    constexpr String(Self&&) noexcept            = default;
+    constexpr String& operator=(Self&&) noexcept = default;
 
     using value_type = u8;
 
     constexpr static auto make() -> String { return {}; }
+    static auto           from_utf8_unchecked(Vec<u8>&& bytes) -> String {
+        return String { rstd::move(bytes) };
+    }
 
     auto as_ref() const noexcept -> ref<const ffi::CStr> {
         auto p = reinterpret_cast<ffi::CStr const*>(&*vec.as_ptr());
         return { .p = p, .length = vec.len() };
     }
+
+    void push_back(char c) { vec.push_back(static_cast<u8>(c)); }
+    void push_back(u8 c) { vec.push_back(c); }
 
     friend constexpr auto operator<=>(const String& a, const String& b) noexcept {
         return cppstd::lexicographical_compare_three_way(cppstd::ranges::begin(a),
@@ -35,10 +46,6 @@ public:
         return cppstd::lexicographical_compare_three_way(
             cppstd::ranges::begin(a), cppstd::ranges::end(a), ptr, ptr + b.len());
     }
-
-    void push_back(char c) { vec.push_back(static_cast<u8>(c)); }
-    void push_back(u8 c) { vec.push_back(c); }
-
     friend bool operator==(char const* b, const String& a) noexcept {
         return cppstd::lexicographical_compare_three_way(cppstd::ranges::begin(a),
                                                          cppstd::ranges::end(a),
