@@ -62,6 +62,11 @@ inline constexpr bool is_specialization_of_v = is_specialization_of<T, Primary>:
 template<class T, template<class...> class Primary>
 concept special_of = is_specialization_of<T, Primary>::value;
 
+template<typename T, typename U>
+using follow_const_t =
+    meta::conditional_t<meta::is_const_v<T>, meta::add_const_t<meta::remove_const_t<U>>,
+                        meta::remove_const_t<U>>;
+
 template<typename T>
 struct FuncTraits;
 

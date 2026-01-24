@@ -23,6 +23,7 @@ module;
 #include <mutex>
 #include <shared_mutex>
 
+#include <ranges>
 #include <iterator>
 #include <tuple>
 #include <deque>
@@ -116,14 +117,14 @@ using std::basic_format_context;
 using std::basic_format_parse_context;
 using std::basic_format_string;
 using std::format;
-using std::format_string;
-using std::formatter;
-using std::make_format_args;
 using std::format_args;
-using std::vformat;
+using std::format_string;
 using std::format_to;
 using std::format_to_n;
 using std::formatted_size;
+using std::formatter;
+using std::make_format_args;
+using std::vformat;
 using std::vformat_to;
 
 // string
@@ -149,6 +150,18 @@ using std::future;
 using std::promise;
 
 using std::hash;
+
+using std::begin;
+using std::end;
+
+namespace ranges
+{
+using std::ranges::begin;
+using std::ranges::data;
+using std::ranges::distance;
+using std::ranges::end;
+using std::ranges::size;
+} // namespace ranges
 
 // tuple
 using std::integer_sequence;
@@ -320,6 +333,8 @@ using std::is_rvalue_reference;
 using std::is_rvalue_reference_v;
 using std::is_union;
 using std::is_union_v;
+using std::is_aggregate;
+using std::is_aggregate_v;
 
 using std::add_const;
 using std::add_const_t;

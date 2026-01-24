@@ -1,2 +1,2 @@
-export module rstd.alloc:ffi;
-export import :ffi.c_str;
+export module rstd.alloc.ffi;
+export import :c_str;

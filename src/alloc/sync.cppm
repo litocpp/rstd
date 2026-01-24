@@ -1,5 +1,5 @@
 module;
-#include <rstd/assert.hpp>
+#include <rstd/macro.hpp>
 export module rstd.alloc.sync;
 export import rstd.core;
 
@@ -93,7 +93,9 @@ struct ArcInnerImpl<T, ArcStoragePolicy::Embed> : ArcInner<T> {
 
     alignas(T) rstd::byte storage[sizeof(T)];
 
-    auto data() noexcept -> ptr<T> override { return reinterpret_cast<T*>(&storage); }
+    auto data() noexcept -> ptr<T> override {
+        return ptr<T>::from_raw(reinterpret_cast<T*>(&storage));
+    }
     void do_delete(detail::DeleteType t) override {
         if (t == detail::DeleteType::Value) {
             rstd::destroy_at(reinterpret_cast<T*>(&storage));
@@ -129,13 +131,13 @@ namespace rstd
 {
 template<typename T, typename Self>
     requires meta::same_as<T, clone::Clone> && meta::special_of<Self, rstd::sync::Arc>
-struct Impl<T, Self> : Impl<T, Def<Self>> {
+struct Impl<T, Self> : Impl<T, default_tag<Self>> {
     auto clone() const -> Self;
 };
 
 template<typename T, typename Self>
     requires meta::same_as<T, clone::Clone> && meta::special_of<Self, rstd::sync::Weak>
-struct Impl<T, Self> : Impl<T, Def<Self>> {
+struct Impl<T, Self> : Impl<T, default_tag<Self>> {
     auto clone() const -> Self;
 };
 } // namespace rstd
@@ -203,7 +205,7 @@ public:
     static Arc from_raw(ArcRaw<T> r) noexcept { return { ArcData<T> { .inner = r.inner } }; }
 
     // ===== Observers =====
-    ref<T>       operator*() noexcept { return self.inner->data().to_ref(); }
+    ref<T>       operator*() noexcept { return self.inner->data().as_ref(); }
     ref<const T> operator*() const noexcept { return self.inner->data().to_ref(); }
 
     auto     operator->() noexcept { return self.inner->data(); }

@@ -100,23 +100,23 @@ consteval auto to_dyn(Tuple<Api...>) {
 export template<typename T, typename A>
 struct Impl;
 
-export template<typename A>
-struct ImplBase : detail::ImplWithPtr<A> {};
-
-enum class DefPolicy
+enum class TraitDefaultPolicy
 {
     InClass,
     Normal
 };
 
-export template<typename T, DefPolicy P = DefPolicy::Normal>
-struct Def {};
+export template<typename A>
+struct ImplBase : detail::ImplWithPtr<A> {};
 
-export template<typename T, typename A>
-struct ImplDefaultBase;
+export template<typename T, TraitDefaultPolicy P = TraitDefaultPolicy::Normal>
+struct default_tag {};
 
-template<typename T, typename A>
-struct ImplDefaultBase<T, Def<A, DefPolicy::InClass>> {
+struct in_class_tag {};
+
+struct dyn_tag {};
+template<typename A>
+struct ImplBase<default_tag<A, TraitDefaultPolicy::InClass>> {
     template<typename, typename>
     friend struct Impl;
 
@@ -125,11 +125,8 @@ private:
     auto self() const -> A const& { return *static_cast<A const*>(this); }
 };
 
-template<typename T, typename A>
-struct ImplDefaultBase<T, Def<A, DefPolicy::Normal>> : ImplBase<A> {};
-
-struct dyn_tag {};
-struct in_class_tag {};
+template<typename A>
+struct ImplBase<default_tag<A, TraitDefaultPolicy::Normal>> : ImplBase<A> {};
 
 export template<typename A, typename... T>
 concept Impled = (meta::destructible<Impl<T, meta::remove_cvref_t<A>>> && ...) ||
@@ -144,11 +141,11 @@ concept IsTraitApi = requires() {
 export template<typename T>
 class Dyn;
 
-export template<typename T, typename A, DefPolicy P = DefPolicy::Normal>
-using ImplDefault = Impl<T, Def<A, P>>;
+export template<typename T, typename A, TraitDefaultPolicy P = TraitDefaultPolicy::Normal>
+using ImplDefault = Impl<T, default_tag<A, P>>;
 
 export template<typename T, typename A>
-struct ImplInClass;
+struct ImplInClass : detail::ImplWithPtr<A>, meta::remove_cv_t<T>::template Api<A, in_class_tag> {};
 
 template<typename T, typename A, typename Delegate>
 struct TraitMeta {
@@ -320,8 +317,6 @@ constexpr auto make_dyn(A& t) noexcept {
     return make_dyn<T, A>(addressof(t));
 }
 
-template<typename T, typename A>
-struct ImplInClass : detail::ImplWithPtr<A>, meta::remove_cv_t<T>::template Api<A, in_class_tag> {};
 
 ///
 /// @brief as a triat
@@ -340,7 +335,7 @@ struct WithTrait : Traits::template Api<Self>... {
 };
 
 export template<typename Self, typename... Traits>
-struct WithTraitDefault : ImplDefault<Traits, Self, DefPolicy::InClass>... {
+struct WithTraitDefault : ImplDefault<Traits, Self, TraitDefaultPolicy::InClass>... {
     constexpr bool operator==(const WithTraitDefault) const { return true; }
 };
 

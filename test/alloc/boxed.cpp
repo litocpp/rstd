@@ -4,20 +4,21 @@ import rstd.alloc;
 
 using rstd::alloc::boxed::Box;
 
-namespace {
+namespace
+{
 
 struct Counter {
     static inline int alive = 0;
 
     int v = 0;
 
-    Counter() : v(0) { ++alive; }
-    explicit Counter(int x) : v(x) { ++alive; }
+    Counter(): v(0) { ++alive; }
+    explicit Counter(int x): v(x) { ++alive; }
 
-    Counter(const Counter& o) : v(o.v) { ++alive; }
-    Counter(Counter&& o) noexcept : v(o.v) { ++alive; }
+    Counter(const Counter& o): v(o.v) { ++alive; }
+    Counter(Counter&& o) noexcept: v(o.v) { ++alive; }
 
-    Counter& operator=(const Counter&) = default;
+    Counter& operator=(const Counter&)     = default;
     Counter& operator=(Counter&&) noexcept = default;
 
     ~Counter() { --alive; }
@@ -34,7 +35,7 @@ TEST(BoxTest, MakeAndAccess) {
     // Counter 版本：确保构造/析构生命周期正确
     EXPECT_EQ(Counter::alive, 0);
     {
-        auto b = Box<Counter>::make(Counter{7});
+        auto b = Box<Counter>::make(Counter { 7 });
         ASSERT_TRUE(b);
         EXPECT_EQ(b->v, 7);
         EXPECT_EQ(Counter::alive, 1);
@@ -45,7 +46,7 @@ TEST(BoxTest, MakeAndAccess) {
 TEST(BoxTest, MoveCtorTransfersOwnership) {
     EXPECT_EQ(Counter::alive, 0);
     {
-        auto b1 = Box<Counter>::make(Counter{1});
+        auto  b1 = Box<Counter>::make(Counter { 1 });
         auto* p1 = b1.get();
         ASSERT_NE(p1, nullptr);
         EXPECT_EQ(Counter::alive, 1);
@@ -61,8 +62,8 @@ TEST(BoxTest, MoveCtorTransfersOwnership) {
 TEST(BoxTest, MoveAssignResetsOldAndTakesNew) {
     EXPECT_EQ(Counter::alive, 0);
     {
-        auto b1 = Box<Counter>::make(Counter{11});
-        auto b2 = Box<Counter>::make(Counter{22});
+        auto b1 = Box<Counter>::make(Counter { 11 });
+        auto b2 = Box<Counter>::make(Counter { 22 });
         EXPECT_EQ(Counter::alive, 2);
 
         auto* p1 = b1.get();
@@ -81,7 +82,7 @@ TEST(BoxTest, MoveAssignResetsOldAndTakesNew) {
 TEST(BoxTest, ResetDeletesAndNulls) {
     EXPECT_EQ(Counter::alive, 0);
     {
-        auto b = Box<Counter>::make(Counter{5});
+        auto b = Box<Counter>::make(Counter { 5 });
         EXPECT_EQ(Counter::alive, 1);
 
         b.reset();
@@ -99,7 +100,7 @@ TEST(BoxTest, FromRawTakesOwnership) {
         EXPECT_EQ(Counter::alive, 1);
 
         {
-            auto b = Box<Counter>::from_raw(raw);
+            auto b = Box<Counter>::from_raw(rstd::ptr<Counter>::from_raw(raw));
             EXPECT_TRUE(b);
             EXPECT_EQ(b->v, 99);
         } // should delete raw here
@@ -113,10 +114,10 @@ TEST(BoxTest, IntoRawReleasesOwnership) {
     Counter* raw = nullptr;
 
     {
-        auto b = Box<Counter>::make(Counter{123});
+        auto b = Box<Counter>::make(Counter { 123 });
         EXPECT_EQ(Counter::alive, 1);
 
-        raw = b.into_raw();           // ownership released to caller
+        raw = b.into_raw(); // ownership released to caller
         ASSERT_NE(raw, nullptr);
         EXPECT_EQ(raw->v, 123);
         // b is moved-from; its destructor should NOT delete raw

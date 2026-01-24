@@ -5,6 +5,7 @@ export import :core;
 export import :meta;
 export import :cppstd;
 export import :trait;
+export import :cmp;
 export import :fmt;
 export import :convert;
 export import :slice;

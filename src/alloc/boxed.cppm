@@ -1,4 +1,6 @@
-export module rstd.alloc:boxed;
+module;
+#include <rstd/macro.hpp>
+export module rstd.alloc.boxed;
 export import rstd.core;
 
 using rstd::mem::manually_drop::ManuallyDrop;
@@ -31,7 +33,7 @@ public:
         requires Impled<T, Sized>
     {
         auto t = new T(rstd::param_forward<T>(in));
-        return from_raw(t);
+        return from_raw(ptr<T>::from_raw(t));
     }
 
     static auto pin(param_t<T> in) -> Pin<Box>
@@ -43,22 +45,45 @@ public:
     // Construct from a raw pointer (takes ownership)
     static Box from_raw(ptr<T> raw) noexcept { return { Unique<T>::make_unchecked(raw) }; }
 
-    auto get() const noexcept -> ptr<T>::value_type* { return m_ptr.as_ptr(); }
+    auto get() noexcept -> ptr<T>::value_type* { return m_ptr.as_mut_ptr(); }
     auto into_raw() noexcept -> ptr<T> {
         auto b = ManuallyDrop<>::make(rstd::move(*this));
-        return b->m_ptr.as_ptr();
+        return b->m_ptr.as_mut_ptr();
     }
 
-    auto     operator->() noexcept { return m_ptr.as_ptr(); }
+    auto     operator->() noexcept { return m_ptr.as_mut_ptr(); }
     auto     operator->() const noexcept { return m_ptr.as_ptr(); }
     explicit operator bool() const noexcept { return m_ptr != nullptr; }
 
     void reset() noexcept(meta::destructible<T> || meta::is_array_v<T>) {
         if (m_ptr != nullptr) {
-            ptr<T> t = m_ptr.as_ptr();
-            rstd::default_delete<T> {}(t.data());
-            m_ptr = Unique<T>::make_unchecked(nullptr);
+            ptr<T> t = m_ptr.as_mut_ptr();
+            rstd::default_delete<T> {}(&*t);
+            m_ptr = Unique<T>::make_unchecked({ .p = nullptr });
         }
+    }
+
+    auto as_ref() const noexcept -> ref<const T> {
+        debug_assert(m_ptr != nullptr);
+        return ref<const T>::from_raw(m_ptr.as_ptr());
+    }
+
+    auto as_ptr() const noexcept -> ptr<const T> {
+        debug_assert(m_ptr != nullptr);
+        return m_ptr.as_ptr();
+    }
+    auto as_mut_ptr() noexcept -> ptr<T> {
+        debug_assert(m_ptr != nullptr);
+        return m_ptr.as_mut_ptr();
     }
 };
 } // namespace rstd::alloc::boxed
+
+using rstd::alloc::boxed::Box;
+namespace rstd
+{
+
+template<typename A, meta::same_as<convert::AsRef<const A>> T>
+struct Impl<T, Box<A>> : ImplInClass<T, Box<A>> {};
+
+} // namespace rstd

@@ -1,8 +1,12 @@
+module;
+#include "rstd/macro.hpp"
 export module rstd.thread:thread;
 export import :id;
 
 export import rstd.alloc;
 // export import :thread.main_thread;
+
+using rstd::alloc::string::String;
 
 namespace rstd
 {
@@ -13,20 +17,22 @@ namespace sys::thread::thread_name_string
 // Like a `String` it's guaranteed UTF-8 and like a `CString` it's null terminated.
 // (C++ side we assume std::string is UTF-8 by convention, and CString validates no interior '\0')
 class ThreadNameString {
-    alloc::ffi::CString inner;
+    ffi::CString inner;
 
-    ThreadNameString() = delete;
     explicit ThreadNameString(alloc::ffi::CString c): inner(rstd::move(c)) {}
 
 public:
-    // static ThreadNameString from(String s) {
-    //     // ThreadNameString out { ffi::CString::new_(std::move(s)) }; // expect: rejects interior
-    //     // '\0' return out;
-    // }
+    USE_TRAIT(ThreadNameString)
 
-    // const ffi::CStr& as_cstr() const noexcept {
-    //     // return inner.as_cstr();
-    // }
+    ThreadNameString(Self&&) noexcept            = default;
+    ThreadNameString& operator=(Self&&) noexcept = default;
+
+    static auto from(String s) -> Self {
+        return Self { ffi::CString::make(rstd::move(s))
+                          .expect("thread name may not contain interior null bytes") };
+    }
+
+    auto as_cstr() const noexcept { return inner.as_ref(); }
 
     // ref<str> as_str() const noexcept {
     //     // SAFETY mirror: guaranteed UTF-8 by construction convention
@@ -36,11 +42,12 @@ public:
 
 } // namespace sys::thread::thread_name_string
 
+using rstd::alloc::string::String;
+using sys::thread::thread_name_string::ThreadNameString;
+
 template<>
-struct Impl<convert::From<String>, sys::thread::thread_name_string::ThreadNameString> {
-    using Self = sys::thread::thread_name_string::ThreadNameString;
-    static auto from(String s) {}
-};
+struct Impl<convert::From<String>, ThreadNameString>
+    : ImplInClass<convert::From<String>, ThreadNameString> {};
 
 /*
 

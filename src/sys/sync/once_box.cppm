@@ -48,7 +48,7 @@ public:
     auto take() noexcept -> Option<Pin<Box<T>>> {
         T* p = m_ptr.exchange(nullptr, rstd::memory_order::relaxed);
         if (p) {
-            return rstd::Some(Pin<Box<T>>::make_unchecked(Box<T>::from_raw(p)));
+            return rstd::Some(Pin<Box<T>>::make_unchecked(Box<T>::from_raw(ptr<T>::from_raw(p))));
         }
         return {};
     }

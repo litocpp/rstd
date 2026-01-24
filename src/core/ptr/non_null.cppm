@@ -1,8 +1,9 @@
 module;
-#include <rstd/assert.hpp>
+#include <rstd/macro.hpp>
 export module rstd.core:ptr.non_null;
 export import :marker;
 export import :num;
+export import :cmp;
 export import :option;
 export import :assert;
 
@@ -28,8 +29,9 @@ struct SizedNonNull<T> {
 export template<typename T>
 class NonNull : public SizedNonNull<T> {
 public:
-    using element_type = T;
-    using pointer_t    = ptr<T>;
+    using element_type    = T;
+    using pointer_t       = ptr<T>;
+    using const_pointer_t = ptr<const T>;
 
 private:
     pointer_t m_ptr;
@@ -38,20 +40,20 @@ private:
     constexpr NonNull() = delete;
 
 public:
-    /// Creates a `NonNull` if `p` is not null.
+    USE_TRAIT(NonNull)
+
     static constexpr auto make(pointer_t p) noexcept -> Option<NonNull> {
         if (p == nullptr) return {};
         return Some(NonNull(p));
     }
 
-    /// Creates a `NonNull` without checking for null.
     static constexpr NonNull make_unchecked(pointer_t p) noexcept { return NonNull(p); }
 
-    constexpr pointer_t as_ptr() const noexcept { return m_ptr; }
-    constexpr pointer_t get() const noexcept { return m_ptr; }
-    constexpr explicit  operator bool() const noexcept { return m_ptr != nullptr; }
+    constexpr auto as_ptr() const noexcept -> const_pointer_t { return as_cast<const T>(m_ptr); }
+    constexpr auto as_mut_ptr() noexcept -> pointer_t { return m_ptr; }
 
-    // Deref helpers (debug-only checking; caller must uphold validity)
+    constexpr explicit operator bool() const noexcept { return m_ptr != nullptr; }
+
     constexpr T& as_ref() const noexcept {
         assert(m_ptr != nullptr);
         return *m_ptr;
@@ -62,7 +64,6 @@ public:
         return *m_ptr;
     }
 
-    // ==== casts ====
     template<class U>
     constexpr NonNull<U> cast() const noexcept {
         static_assert(meta::convertible_to<pointer_t, U*> || meta::convertible_to<U*, pointer_t>,
@@ -70,14 +71,12 @@ public:
         return NonNull<U>::new_unchecked(reinterpret_cast<U*>(m_ptr));
     }
 
-    // Converting constructor for pointer upcasts (e.g. Derived -> Base)
     template<class U>
         requires(meta::convertible_to<U*, T*>)
     constexpr NonNull(const NonNull<U>& other) noexcept: m_ptr(other.as_ptr()) {
         assert(m_ptr != nullptr);
     }
 
-    // ==== pointer arithmetic (element-wise) ====
     constexpr NonNull add(usize count) const noexcept {
         assert(m_ptr != nullptr);
         return NonNull::make_unchecked(m_ptr + count);
@@ -93,7 +92,6 @@ public:
         return NonNull::make_unchecked(m_ptr + count);
     }
 
-    // ==== byte-wise arithmetic ====
     constexpr NonNull byte_add(usize bytes) const noexcept {
         assert(m_ptr != nullptr);
         auto* p = reinterpret_cast<byte*>(m_ptr) + bytes;
@@ -106,9 +104,6 @@ public:
         return NonNull::make_unchecked(reinterpret_cast<pointer_t>(p));
     }
 
-    // ==== address mapping (approximation) ====
-    // Rust has `map_addr` on raw pointers to transform the address part.
-    // In C++ this is best-effort and should be used with care.
     template<class F>
     constexpr NonNull map_addr(F&& f) const noexcept {
         assert(m_ptr != nullptr);
@@ -118,13 +113,11 @@ public:
         return NonNull::make_unchecked(reinterpret_cast<pointer_t>(new_addr));
     }
 
-    // ==== comparisons ====
     friend constexpr bool operator<=>(NonNull a, NonNull b) noexcept { return a.m_ptr <=> b.m_ptr; }
     friend constexpr bool operator==(NonNull a, NonNull b) noexcept { return a.m_ptr == b.m_ptr; }
     constexpr bool        operator==(pointer_t p) noexcept { return m_ptr == p; }
     constexpr bool        operator==(nullptr_t in) const noexcept { return m_ptr == in; }
 
-    // ==== hashing ====
     struct Hasher {
         usize operator()(NonNull p) const noexcept { return cppstd::hash<pointer_t> {}(p.m_ptr); }
     };

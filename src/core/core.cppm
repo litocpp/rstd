@@ -1,44 +1,9 @@
 export module rstd.core:core;
+export import :basic;
 export import :meta;
 
 namespace rstd
 {
-
-export using cppstd::strong_ordering;
-export using cppstd::nullptr_t;
-export using cppstd::error_code;
-export using cppstd::memory_order;
-export using cppstd::numeric_limits;
-export using cppstd::allocator;
-export using cppstd::allocator_traits;
-export using cppstd::source_location;
-export using cppstd::align_val_t;
-
-export using cppstd::invoke;
-export using cppstd::max;
-export using cppstd::min;
-export using cppstd::get;
-export using cppstd::get_if;
-export using cppstd::addressof;
-export using cppstd::construct_at;
-export using cppstd::copy;
-export using cppstd::copy_n;
-export using cppstd::exchange;
-export using cppstd::destroy_at;
-export using cppstd::forward;
-export using cppstd::move;
-export using cppstd::memcpy;
-export using cppstd::memcmp;
-export using cppstd::memset;
-export using cppstd::strlen;
-export using cppstd::strncmp;
-export using cppstd::char_traits;
-export using cppstd::make_unsigned_t;
-export using cppstd::bit_cast;
-export using cppstd::default_delete;
-
-export using meta::declval;
-
 export template<typename T>
 void swap(T& a, T& b) noexcept(meta::is_nothrow_copy_constructible_v<T>) {
     T t(a);
@@ -78,59 +43,141 @@ export [[noreturn]] inline void unreachable() {
 #endif
 }
 
-export template<typename T>
-struct ref {
-    T& p;
-
-    constexpr ref() noexcept = delete;
-    constexpr ref(T& p) noexcept: p(p) {}
-    constexpr ref(const ref& o) noexcept: p(o.p) {}
-    constexpr ref(ref&& o) noexcept: p(o.p) {}
-
-    constexpr T*   operator->() const noexcept { return &p; }
-    constexpr T&   operator*() const noexcept { return p; }
-    constexpr bool operator==(param_ref_t<T> in) const noexcept { return in == p; }
-};
-export template<typename T>
-struct ptr {
-    T* p { nullptr };
-
+export template<typename Self, typename T>
+struct ref_base {
     using value_type = T;
 
-    constexpr ptr() noexcept = default;
-    constexpr ptr(T* p) noexcept: p(p) {}
-    constexpr ptr(nullptr_t) noexcept {}
+    constexpr T* operator->() const noexcept { return static_cast<Self const*>(this)->p; }
+    constexpr T& operator*() const noexcept { return *(static_cast<Self const*>(this)->p); }
 
-    constexpr T*   operator->() const noexcept { return p; }
-    constexpr T&   operator*() const noexcept { return *p; }
-    constexpr bool operator==(T* in) const noexcept { return in == p; }
-    constexpr      operator T*() const noexcept { return p; }
-    constexpr auto data() const noexcept { return p; }
-    constexpr auto to_ref() const noexcept { return ref<T> { *p }; }
+    constexpr rstd::strong_ordering operator<=>(const ref_base& o) const noexcept = default;
+
+    constexpr bool operator==(const T& other) const noexcept {
+        return *(static_cast<Self const*>(this)->p) == other;
+    }
+
+    static constexpr auto from_raw(T& p) noexcept -> Self { return { .p = rstd::addressof(p) }; }
+};
+template<typename Self, typename T>
+struct ref_base<Self, T[]> : ref_base<Self, T> {
+    using value_type = T;
+
+    constexpr auto operator[](usize i) const noexcept {
+        return *(static_cast<Self const*>(this)->p + i);
+    }
+    constexpr auto len() const noexcept { return static_cast<Self const*>(this)->length; }
+
+    static constexpr auto from_raw(T& p, usize length) noexcept -> Self {
+        return { .p = rstd::addressof(p), .length = length };
+    }
 };
 
-template<typename T>
-struct ref<T[]> : ref<T> {
-    using ref<T>::ref;
+export template<typename Self, typename T>
+struct ptr_base {
+    using value_type = T;
 
-    usize length { 0 };
+    static constexpr auto from_raw(T* p) noexcept -> Self { return { .p = p }; }
 
-    constexpr auto operator[](usize i) const noexcept { return this->p + i; }
-    constexpr auto size() const noexcept { return length; }
-    constexpr auto len() const noexcept { return length; }
+    constexpr T* operator->() const noexcept { return static_cast<Self const*>(this)->p; }
+    constexpr T& operator*() const noexcept { return *(static_cast<Self const*>(this)->p); }
+
+    constexpr rstd::strong_ordering operator<=>(const ptr_base& o) const noexcept = default;
+
+    constexpr bool operator==(T* other) const noexcept {
+        return static_cast<Self const*>(this)->p == other;
+    }
+    constexpr bool operator==(rstd::nullptr_t) const noexcept {
+        return static_cast<Self const*>(this)->p == nullptr;
+    }
 };
 
-template<typename T>
-struct ptr<T[]> : ptr<T> {
-    using ptr<T>::ptr;
+template<typename Self, typename T>
+struct ptr_base<Self, T[]> : ptr_base<Self, T> {
+    using value_type = T;
 
-    usize length { 0 };
+    static constexpr auto from_raw(T* p, usize length) noexcept -> Self {
+        return { .p = p, .length = length };
+    }
 
-    constexpr auto size() const noexcept { return length; }
-    constexpr auto len() const noexcept { return length; }
+    constexpr auto operator[](usize i) const noexcept {
+        return *(static_cast<Self const*>(this)->p + i);
+    }
+    constexpr auto len() const noexcept { return static_cast<Self const*>(this)->length; }
 };
 
 export template<typename T>
-using slice = ref<meta::add_const_t<T>[]>;
+struct ptr;
+
+export template<typename T>
+struct ref : ref_base<ref<T>, T> {
+    static_assert(meta::destructible<T>);
+
+    T* p { nullptr };
+
+    using Self = ref;
+    constexpr auto as_ptr() const noexcept -> ptr<T>;
+};
+
+export template<typename T>
+struct ptr : ptr_base<ptr<T>, T> {
+    static_assert(meta::destructible<T>);
+
+    T* p { nullptr };
+
+    using Self = ptr;
+
+    constexpr      operator T*() const noexcept { return this->p; }
+    constexpr auto as_ref() const noexcept { return ref<T> { .p = this->p }; }
+};
+
+template<typename T>
+auto constexpr ref<T>::as_ptr() const noexcept -> ptr<T> {
+    return ptr<T> { this->p };
+}
+
+template<typename T>
+struct ref<T[]> : ref_base<ref<T[]>, T[]> {
+    T*    p { nullptr };
+    usize length;
+
+    auto constexpr as_ptr() const noexcept -> ptr<T[]> {
+        return ptr<T[]>::from_raw(&(this->p), length);
+    }
+};
+
+template<typename T>
+struct ptr<T[]> : ptr_base<ptr<T[]>, T[]> {
+    T*    p { nullptr };
+    usize length;
+
+    auto constexpr as_ref() const noexcept -> ref<T[]> {
+        return ref<T[]>::from_raw(this->p, length);
+    }
+};
+
+export template<typename T>
+using slice = ref<T[]>;
+
+export template<typename U, typename T>
+auto as_cast(ptr<T> p) noexcept -> ptr<U> {
+    auto addr = p.p;
+    if constexpr (meta::is_array_v<U>) {
+        return ptr<U>::from_raw(static_cast<meta::add_pointer_t<meta::remove_extent_t<U>>>(addr),
+                                p.len());
+    } else {
+        return ptr<U>::from_raw(static_cast<U*>(addr));
+    }
+}
+
+export template<typename U, typename T>
+auto as_cast(ref<T> p) noexcept -> ref<U> {
+    auto addr = p.p;
+    if constexpr (meta::is_array_v<U>) {
+        return ref<U>::from_raw(static_cast<meta::add_pointer_t<meta::remove_extent_t<U>>>(addr),
+                                p.len());
+    } else {
+        return ref<U>::from_raw(static_cast<meta::add_pointer_t<U>>(addr));
+    }
+}
 
 } // namespace rstd

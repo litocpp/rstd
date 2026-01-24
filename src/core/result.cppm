@@ -1,5 +1,5 @@
 module;
-#include <rstd/assert.hpp>
+#include <rstd/macro.hpp>
 export module rstd.core:result;
 export import :clone;
 export import :fmt;

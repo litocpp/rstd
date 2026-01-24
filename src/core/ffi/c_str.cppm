@@ -1,5 +1,5 @@
 export module rstd.core:ffi.c_str;
-export import :core;
+export import :marker;
 
 namespace rstd::ffi
 {
@@ -22,9 +22,31 @@ public:
         return *rstd::bit_cast<CStr const*>(ptr);
     }
     static auto from_bytes_until_nul(slice<u8> in) noexcept -> CStr const& {
-        return *rstd::bit_cast<CStr const*>(&in.p);
+        return *rstd::bit_cast<CStr const*>(in.p);
     }
 };
 static_assert(meta::transparent<CStr*, char*>);
 
 } // namespace rstd::ffi
+using rstd::ffi::CStr;
+namespace rstd
+{
+
+template<>
+struct Impl<Sized, CStr> {
+    ~Impl() = delete;
+};
+
+template<>
+struct ref<CStr> : ptr_base<ref<CStr>, CStr[]> {
+    CStr* p { nullptr };
+    usize length { 1 };
+};
+
+template<>
+struct ref<const CStr> : ptr_base<ref<const CStr>, CStr[]> {
+    CStr const* p { nullptr };
+    usize       length { 1 };
+};
+
+} // namespace rstd
