@@ -60,8 +60,8 @@ public:
     }
 
     auto into_bytes() -> Vec<u8> {
-        Vec<u8> vec = rstd::into(rstd::move(inner));
-        auto    nul = vec.pop(); // remove trailing null byte
+        Vec<u8>               vec = rstd::into(rstd::move(inner));
+        [[maybe_unused]] auto nul = vec.pop(); // remove trailing null byte
         debug_assert_eq(nul, Some(0));
         return vec;
     }
