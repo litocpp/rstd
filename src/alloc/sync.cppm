@@ -291,8 +291,8 @@ public:
     ref<T>       operator*() noexcept { return self.inner->data().as_ref(); }
     ref<const T> operator*() const noexcept { return self.inner->data().to_ref(); }
 
-    auto     operator->() noexcept { return self.inner->data(); }
-    auto     operator->() const noexcept { return self.inner->data(); }
+    T*       operator->() noexcept { return self.inner->data(); }
+    T*       operator->() const noexcept { return self.inner->data(); }
     explicit operator bool() const noexcept { return self.inner != nullptr; }
 
     usize strong_count() const noexcept {

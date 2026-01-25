@@ -47,9 +47,11 @@ public:
         }
     }
 
-    static auto from_raw(char* p) -> CString {
-        auto len   = char_traits<char>::length(p) + 1;
-        auto boxed = boxed::Box<u8[]>::from_raw(ptr<u8[]>::from_raw(reinterpret_cast<u8*>(p), len));
+    static auto from_raw(char const* p) -> CString {
+        auto len = char_traits<char>::length(p) + 1;
+        auto raw = new u8[len];
+        rstd::memcpy(raw, p, len);
+        auto boxed = boxed::Box<u8[]>::from_raw(ptr<u8[]>::from_raw(raw, len));
         return CString { rstd::move(boxed) };
     }
 
@@ -84,6 +86,11 @@ using rstd::alloc::ffi::NulError;
 
 namespace rstd
 {
+
+template<>
+struct Impl<clone::Clone, CString> : ImplDefault<clone::Clone, CString> {
+    auto clone() -> CString { return CString { this->self().inner.clone() }; }
+};
 
 template<meta::same_as<convert::AsRef<ffi::CStr>> T, meta::same_as<CString> A>
 struct Impl<T, A> {};

@@ -16,9 +16,22 @@ class Box {
     Box(Unique<T>&& ptr) noexcept: m_ptr(rstd::move(ptr)) {}
 
 public:
+    USE_TRAIT(Box)
+
     ~Box() noexcept(noexcept(rstd::declval<Box>().reset())) { reset(); }
     Box(const Box&) noexcept            = delete;
     Box& operator=(const Box&) noexcept = delete;
+
+    auto clone() -> Self
+        requires Impled<T, clone::Clone, Sized>
+    {
+        return make(as<clone::Clone>(as_ptr()).clone());
+    }
+    void clone_from(Self& source)
+        requires requires(Box b) { b.clone(); }
+    {
+        *this = source.clone();
+    }
 
     Box(Box&& o) noexcept: m_ptr(rstd::move(o.m_ptr)) {}
     Box& operator=(Box&& o) noexcept(noexcept(rstd::declval<Box>().reset())) {
@@ -76,6 +89,17 @@ public:
         debug_assert(m_ptr != nullptr);
         return m_ptr.as_mut_ptr();
     }
+
+    // for T[]
+    auto clone() -> Self
+        requires meta::is_array_v<T>
+    {
+        using V = meta::remove_extent_t<T>;
+        // auto old = as_ptr();
+        // TODO
+        auto p = ptr<T>::from_raw(new V[3] {}, 3);
+        return from_raw(p);
+    }
 };
 } // namespace rstd::alloc::boxed
 
@@ -84,6 +108,10 @@ namespace rstd
 {
 
 template<typename A, meta::same_as<convert::AsRef<const A>> T>
+struct Impl<T, Box<A>> : ImplInClass<T, Box<A>> {};
+
+template<typename A, meta::same_as<clone::Clone> T>
+    requires requires(Box<A> b) { b.clone(); }
 struct Impl<T, Box<A>> : ImplInClass<T, Box<A>> {};
 
 } // namespace rstd
