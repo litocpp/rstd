@@ -242,7 +242,10 @@ class Dyn : public meta::remove_cv_t<T>::template Api<dyn_tag> {
         using ApiHelper = detail::TraitApiHelper<trait_t, impl_t>;
 
         template<usize I, typename Fn>
-        struct Wrap;
+        struct Wrap {
+            static_assert(false);
+        };
+
         template<usize I, typename Ret, bool Ne, typename... Args>
         struct Wrap<I, Ret (*)(voidp, Args...) noexcept(Ne)> {
             static auto func(voidp p, Args... args) noexcept(Ne) {
@@ -257,15 +260,19 @@ class Dyn : public meta::remove_cv_t<T>::template Api<dyn_tag> {
             // get api from Impl
             using FT = meta::func_traits<meta::remove_cv_t<decltype(ApiHelper::template get<I>())>>;
             if constexpr (FT::is_member) {
-                return Wrap<I, typename FT::to_dyn>::func;
+                return &Wrap<I, typename FT::to_dyn>::func;
             } else {
                 return ApiHelper::template get<I>();
             }
         }
 
-        constexpr static apis_t apis { []<usize... Is>(cppstd::index_sequence<Is...>) {
-            return apis_t { convert<Is>()... };
-        }(cppstd::make_index_sequence<cppstd::tuple_size_v<apis_t>> {}) };
+        template<usize... Is>
+        consteval static auto convert_all(cppstd::index_sequence<Is...>) {
+            return apis_t { (convert<Is>())... };
+        }
+
+        constexpr static apis_t apis { convert_all(
+            cppstd::make_index_sequence<cppstd::tuple_size_v<apis_t>> {}) };
     };
 
     template<typename U>

@@ -63,12 +63,12 @@ struct ArcInner {
     static void embed_deconstruct(voidp p) { rstd::destroy_at(static_cast<T*>(p)); }
 
     void inc_strong() {
-        auto old = strong.fetch_add(1, rstd::memory_order::relaxed);
+        [[maybe_unused]] auto old = strong.fetch_add(1, rstd::memory_order::relaxed);
         debug_assert(old < detail::MAX_REFCOUNT);
     }
 
     void inc_weak() {
-        auto old = weak.fetch_add(1, rstd::memory_order::relaxed);
+        [[maybe_unused]] auto old = weak.fetch_add(1, rstd::memory_order::relaxed);
         debug_assert(old < detail::MAX_REFCOUNT);
     }
 
