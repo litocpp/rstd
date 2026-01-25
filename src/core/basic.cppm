@@ -21,6 +21,7 @@ export using cppstd::get;
 export using cppstd::get_if;
 export using cppstd::addressof;
 export using cppstd::construct_at;
+export using cppstd::launder;
 export using cppstd::copy;
 export using cppstd::copy_n;
 export using cppstd::exchange;

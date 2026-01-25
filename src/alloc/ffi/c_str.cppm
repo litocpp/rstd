@@ -1,5 +1,5 @@
 module;
-#include "rstd/macro.hpp"
+#include <rstd/macro.hpp>
 export module rstd.alloc.ffi:c_str;
 export import rstd.alloc.boxed;
 export import rstd.alloc.vec;

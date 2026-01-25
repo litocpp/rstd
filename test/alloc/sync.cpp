@@ -209,3 +209,59 @@ TEST(ArcThread, CloneDropAcrossThreads) {
     EXPECT_EQ(a.strong_count(), 1u);
     EXPECT_EQ(*a, 123);
 }
+
+TEST(ArcGetMut, UniqueAccessAndMutation) {
+    auto a = Arc<int>::make(10);
+    auto m = Arc<int>::get_mut(a);
+    ASSERT_TRUE(m.is_some());
+    *m.unwrap() = 42;
+    EXPECT_EQ(*a, 42);
+
+    auto w = a.downgrade();
+    EXPECT_FALSE(Arc<int>::get_mut(a).is_some());
+
+    w.reset();
+    auto m2 = Arc<int>::get_mut(a);
+    ASSERT_TRUE(m2.is_some());
+    *m2.unwrap() = 99;
+    EXPECT_EQ(*a, 99);
+}
+
+TEST(ArcUnique, IsUniqueTracksStrongAndWeak) {
+    auto a = Arc<int>::make(1);
+    EXPECT_TRUE(Arc<int>::is_unique(a));
+
+    auto w = a.downgrade();
+    EXPECT_FALSE(Arc<int>::is_unique(a));
+
+    w.reset();
+    EXPECT_TRUE(Arc<int>::is_unique(a));
+
+    auto b = a.clone();
+    EXPECT_FALSE(Arc<int>::is_unique(a));
+    EXPECT_FALSE(Arc<int>::is_unique(b));
+    b.reset();
+    EXPECT_TRUE(Arc<int>::is_unique(a));
+}
+
+TEST(ArcPtrEq, ClonesShareAllocation) {
+    auto a = Arc<int>::make(5);
+    auto b = a.clone();
+    auto c = Arc<int>::make(5);
+
+    EXPECT_TRUE(Arc<int>::ptr_eq(a, b));
+    EXPECT_FALSE(Arc<int>::ptr_eq(a, c));
+
+    // EXPECT_EQ(a.as_ptr().as_ptr(), b.as_ptr().as_ptr());
+    // EXPECT_NE(a.as_ptr().as_ptr(), c.as_ptr().as_ptr());
+}
+
+TEST(WeakBasic, EmptyWeakIsExpired) {
+    auto w = Weak<int>::make();
+    EXPECT_TRUE(w.expired());
+    EXPECT_EQ(w.strong_count(), 0u);
+    EXPECT_EQ(w.weak_count(), 0u);
+
+    auto a = w.upgrade();
+    EXPECT_FALSE(a);
+}

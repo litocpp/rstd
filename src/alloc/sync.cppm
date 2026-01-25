@@ -3,6 +3,9 @@ module;
 export module rstd.alloc.sync;
 export import rstd.core;
 
+using rstd::mem::maybe_uninit::maybe_uninit_traits;
+using rstd::mem::maybe_uninit::MaybeUninit;
+using rstd::pin::Pin;
 using rstd::sync::atomic::Atomic;
 using rstd::sync::atomic::atomic_thread_fence;
 
@@ -19,6 +22,20 @@ enum class DeleteType
     Self,
 };
 
+using EmbedDeconstructor = void (*)(voidp);
+
+struct ArcImplTrait {
+    template<typename Self, typename = void>
+    struct Api {
+        using Trait = ArcImplTrait;
+        auto data() noexcept -> voidp { return trait_call<0>(this); }
+        void do_delete(DeleteType t, EmbedDeconstructor d) { trait_call<1>(this, t, d); }
+    };
+
+    template<typename F>
+    using TCollect = TraitCollect<&F::data, &F::do_delete>;
+};
+
 } // namespace detail
 enum class ArcStoragePolicy : u32
 {
@@ -32,24 +49,33 @@ struct ArcInner {
     Atomic<usize> strong { 1 };
     Atomic<usize> weak { 1 };
 
-    virtual ~ArcInner()                            = default;
-    virtual ptr<T> data() noexcept                 = 0;
-    virtual void   do_delete(detail::DeleteType t) = 0;
+    Dyn<detail::ArcImplTrait> impl;
+
+    ArcInner(Dyn<detail::ArcImplTrait> i): impl(i) {}
+
+    auto data() noexcept -> ptr<T> {
+        return ptr<T>::from_raw(rstd::launder(static_cast<T*>(impl.data())));
+    }
+    void do_delete(detail::DeleteType t, detail::EmbedDeconstructor de) {
+        return impl.do_delete(t, de);
+    }
+
+    static void embed_deconstruct(voidp p) { rstd::destroy_at(static_cast<T*>(p)); }
 
     void inc_strong() {
         auto old = strong.fetch_add(1, rstd::memory_order::relaxed);
-        assert(old < detail::MAX_REFCOUNT);
+        debug_assert(old < detail::MAX_REFCOUNT);
     }
 
     void inc_weak() {
         auto old = weak.fetch_add(1, rstd::memory_order::relaxed);
-        assert(old < detail::MAX_REFCOUNT);
+        debug_assert(old < detail::MAX_REFCOUNT);
     }
 
     bool try_inc_strong() {
         usize cur = strong.load(rstd::memory_order::acquire);
         while (cur != 0) {
-            assert(cur < detail::MAX_REFCOUNT);
+            debug_assert(cur < detail::MAX_REFCOUNT);
             if (strong.compare_exchange_weak(
                     cur, cur + 1, rstd::memory_order::acq_rel, rstd::memory_order::acquire)) {
                 return true;
@@ -64,12 +90,12 @@ struct ArcInner {
             // Synchronize with readers of T through acquire on last release.
             atomic_thread_fence(rstd::memory_order::acquire);
 
-            do_delete(detail::DeleteType::Value);
+            do_delete(detail::DeleteType::Value, &embed_deconstruct);
 
             // release the implicit weak held by strong pointers
             if (weak.fetch_sub(1, rstd::memory_order::acq_rel) == 1) {
                 atomic_thread_fence(rstd::memory_order::acquire);
-                do_delete(detail::DeleteType::Self);
+                do_delete(detail::DeleteType::Self, &embed_deconstruct);
             }
         }
     }
@@ -77,7 +103,7 @@ struct ArcInner {
     void drop_weak() noexcept {
         if (weak.fetch_sub(1, rstd::memory_order::acq_rel) == 1) {
             atomic_thread_fence(rstd::memory_order::acquire);
-            do_delete(detail::DeleteType::Self);
+            do_delete(detail::DeleteType::Self, &embed_deconstruct);
         }
     }
 };
@@ -93,12 +119,12 @@ struct ArcInnerImpl<T, ArcStoragePolicy::Embed> : ArcInner<T> {
 
     alignas(T) rstd::byte storage[sizeof(T)];
 
-    auto data() noexcept -> ptr<T> override {
-        return ptr<T>::from_raw(reinterpret_cast<T*>(&storage));
-    }
-    void do_delete(detail::DeleteType t) override {
+    ArcInnerImpl();
+
+    auto data() noexcept -> voidp { return &storage; }
+    void do_delete(detail::DeleteType t, detail::EmbedDeconstructor deconstruct) {
         if (t == detail::DeleteType::Value) {
-            rstd::destroy_at(reinterpret_cast<T*>(&storage));
+            deconstruct(&storage);
         } else {
             delete this;
         }
@@ -109,10 +135,12 @@ template<typename T>
 struct ArcInnerImpl<T, ArcStoragePolicy::Separate> : ArcInner<T> {
     ptr<T> p;
 
-    auto data() noexcept -> ptr<T> override { return p; }
-    void do_delete(detail::DeleteType t) override {
+    ArcInnerImpl();
+
+    auto data() noexcept -> voidp { return p; }
+    void do_delete(detail::DeleteType t, detail::EmbedDeconstructor) {
         if (t == detail::DeleteType::Value) {
-            delete &*p;
+            delete rstd::addressof(*p);
         } else {
             delete this;
         }
@@ -140,6 +168,17 @@ template<typename T, typename Self>
 struct Impl<T, Self> : Impl<T, default_tag<Self>> {
     auto clone() const -> Self;
 };
+
+template<meta::same_as<sync::detail::ArcImplTrait> T, typename A, sync::ArcStoragePolicy P>
+struct Impl<T, sync::ArcInnerImpl<A, P>> : ImplInClass<T, sync::ArcInnerImpl<A, P>> {};
+
+template<typename T>
+sync::ArcInnerImpl<T, sync::ArcStoragePolicy::Embed>::ArcInnerImpl()
+    : ArcInner<T>(rstd::make_dyn<detail::ArcImplTrait>(this)) {}
+template<typename T>
+sync::ArcInnerImpl<T, sync::ArcStoragePolicy::Separate>::ArcInnerImpl()
+    : ArcInner<T>(rstd::make_dyn<detail::ArcImplTrait>(this)) {}
+
 } // namespace rstd
 
 namespace rstd::sync
@@ -166,7 +205,12 @@ class Arc : public WithTrait<Arc<T>, clone::Clone> {
 
     template<typename, typename>
     friend struct rstd::Impl;
-    friend class Weak<T>;
+
+    template<typename>
+    friend class Weak;
+
+    template<typename>
+    friend class Arc;
 
     constexpr Arc(ArcData<T> s): self(s) {}
 
@@ -196,15 +240,54 @@ public:
         }
     }
 
+    /// Constructs a new `Arc<T>`.
+    ///
+    /// This is the primary way to create an Arc. The value is moved into
+    /// a new heap allocation and wrapped in an Arc.
     static auto make(param_t<T> value) -> Arc {
         auto inner = new ArcInnerImpl<T, ArcStoragePolicy::Embed>;
         rstd::construct_at(reinterpret_cast<T*>(&(inner->storage)), rstd::param_forward<T>(value));
         return { ArcData<T> { .inner = inner } };
     }
 
+    /// Creates a new `Arc` containing an uninitialized value.
+    ///
+    /// The returned Arc contains a `MaybeUninit<T>` that must be initialized
+    /// before calling `assume_init()` to convert to `Arc<T>`.
+    ///
+    /// # Example
+    /// ```cpp
+    /// auto arc = Arc<int>::make_uninit();
+    /// // Initialize the value
+    /// Arc::get_mut(arc).unwrap().write(42);
+    /// auto initialized = arc.assume_init();
+    /// ```
+    static auto make_uninit() -> Arc<MaybeUninit<T>>
+        requires Impled<T, Sized>
+    {
+        return Arc<MaybeUninit<T>>::make(MaybeUninit<T>::uninit());
+    }
+
+    /// Creates a new `Pin<Arc<T>>`. If `T` does not implement `Unpin`, then
+    /// the value will be pinned in memory and unable to be moved.
+    ///
+    /// This is useful for types that must not be moved after creation,
+    /// such as self-referential structures.
+    static auto pin(param_t<T> value) -> Pin<Arc<T>> {
+        return Pin<Arc<T>>::make_unchecked(Arc::make(rstd::param_forward<T>(value)));
+    }
+
     static Arc from_raw(ArcRaw<T> r) noexcept { return { ArcData<T> { .inner = r.inner } }; }
 
-    // ===== Observers =====
+    auto assume_init()
+        requires(! meta::same_as<typename maybe_uninit_traits<T>::value_type, void>)
+    {
+        using V    = maybe_uninit_traits<T>::value_type;
+        auto inner = rstd::launder(reinterpret_cast<ArcInner<V>*>(self.inner));
+        self.inner = nullptr;
+        return Arc<V> { { .inner = inner } };
+    }
+
     ref<T>       operator*() noexcept { return self.inner->data().as_ref(); }
     ref<const T> operator*() const noexcept { return self.inner->data().to_ref(); }
 
@@ -230,6 +313,25 @@ public:
 
     // Rust: Arc::as_ptr (raw pointer to T)
     auto as_ptr() const noexcept { return self.inner->data(); }
+
+    /// Returns true if the two `Arc`s point to the same allocation
+    /// (not just values that compare as equal).
+    static bool ptr_eq(const Arc& a, const Arc& b) noexcept { return a.self.inner == b.self.inner; }
+
+    /// Returns true if this is the only `Arc` or `Weak` pointer to the allocation.
+    static bool is_unique(const Arc& arc) noexcept {
+        return arc.self.inner && arc.self.inner->strong.load(rstd::memory_order::acquire) == 1 &&
+               arc.self.inner->weak.load(rstd::memory_order::acquire) == 1;
+    }
+
+    /// Returns a mutable reference to the inner value if there are no other
+    /// `Arc` or `Weak` pointers to the same allocation.
+    static auto get_mut(Arc& arc) noexcept -> Option<ref<T>> {
+        if (is_unique(arc)) {
+            return Some(arc.self.inner->data().as_ref());
+        }
+        return None();
+    }
 
     // Rust: Arc::try_unwrap / into_inner style
     auto try_unwrap() -> Result<T, Arc>
@@ -288,6 +390,12 @@ public:
     }
 
     ~Weak() { reset(); }
+
+    /// Constructs a new `Weak<T>`, without allocating any memory.
+    /// Calling `upgrade()` on the return value always gives `None`.
+    static constexpr auto make() noexcept -> Weak {
+        return Weak { ArcData<T> { .inner = nullptr } };
+    }
 
     void reset() {
         if (self.inner) {

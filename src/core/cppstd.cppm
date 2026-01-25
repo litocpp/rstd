@@ -232,6 +232,7 @@ using std::terminate;
 
 using std::addressof;
 using std::construct_at;
+using std::launder;
 using std::copy;
 using std::copy_n;
 using std::declval;

@@ -1,7 +1,7 @@
 add_library(rstd.thread)
 add_library(rstd::thread ALIAS rstd.thread)
 target_compile_features(rstd.thread PUBLIC cxx_std_20)
-target_link_libraries(rstd.thread PUBLIC rstd.core rstd.alloc)
+target_link_libraries(rstd.thread PUBLIC rstd.core rstd.alloc rstd.sys)
 target_sources(
   rstd.thread
   PUBLIC FILE_SET

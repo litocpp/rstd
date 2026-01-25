@@ -6,6 +6,11 @@ export import :mem.manually_drop;
 namespace rstd::mem::maybe_uninit
 {
 
+export template<typename T>
+struct maybe_uninit_traits {
+    using value_type = void;
+};
+
 /// A wrapper type to construct uninitialized instances of `T`.
 ///
 /// This is useful for constructing uninitialized data that is later
@@ -24,10 +29,12 @@ class MaybeUninit {
         rstd::construct_at(ptr(), rstd::forward<T>(val));
     }
 
-    constexpr T* ptr() noexcept { return reinterpret_cast<T*>(rstd::addressof(storage)); }
+    constexpr T* ptr() noexcept {
+        return rstd::launder(reinterpret_cast<T*>(rstd::addressof(storage)));
+    }
 
     constexpr const T* ptr() const noexcept {
-        return reinterpret_cast<const T*>(rstd::addressof(storage));
+        return rstd::launder(reinterpret_cast<const T*>(rstd::addressof(storage)));
     }
 
 public:
@@ -137,6 +144,11 @@ public:
     /// in an initialized state. Calling this when the content is not yet fully
     /// initialized causes undefined behavior.
     constexpr void assume_init_drop() noexcept { rstd::destroy_at(ptr()); }
+};
+
+template<typename T>
+struct maybe_uninit_traits<MaybeUninit<T>> {
+    using value_type = T;
 };
 
 } // namespace rstd::mem::maybe_uninit

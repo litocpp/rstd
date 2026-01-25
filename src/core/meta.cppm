@@ -73,11 +73,18 @@ concept equalable = requires(const T& a, const U& b) {
     { a != b } -> meta::convertible_to<bool>;
 };
 
-template<typename T>
-struct FuncTraits;
+} // namespace rstd::meta
+
+namespace rstd::meta
+{
+
+export template<typename T>
+struct func_traits {
+    static_assert(false);
+};
 
 template<typename T, typename Ret, typename... Args, bool Ne>
-struct FuncTraits<Ret (*)(T, Args...) noexcept(Ne)> {
+struct func_traits<Ret (*)(T, Args...) noexcept(Ne)> {
     static constexpr bool is_member = false;
 
     using primary = meta::conditional_t<meta::is_pointer_v<T>, void, T>;
@@ -86,7 +93,7 @@ struct FuncTraits<Ret (*)(T, Args...) noexcept(Ne)> {
 };
 
 template<typename Ret, bool Ne>
-struct FuncTraits<Ret (*)(void) noexcept(Ne)> {
+struct func_traits<Ret (*)(void) noexcept(Ne)> {
     static constexpr bool is_member = false;
 
     using primary = void;
@@ -95,7 +102,7 @@ struct FuncTraits<Ret (*)(void) noexcept(Ne)> {
 };
 
 template<typename T, typename Ret, typename... Args, bool Ne>
-struct FuncTraits<Ret (T::*)(Args...) noexcept(Ne)> {
+struct func_traits<Ret (T::*)(Args...) noexcept(Ne)> {
     static constexpr bool is_member = true;
 
     using primary = T&;
@@ -104,7 +111,7 @@ struct FuncTraits<Ret (T::*)(Args...) noexcept(Ne)> {
 };
 
 template<typename T, typename Ret, typename... Args, bool Ne>
-struct FuncTraits<Ret (T::*)(Args...) & noexcept(Ne)> {
+struct func_traits<Ret (T::*)(Args...) & noexcept(Ne)> {
     static constexpr bool is_member = true;
 
     using primary = T&;
@@ -113,7 +120,7 @@ struct FuncTraits<Ret (T::*)(Args...) & noexcept(Ne)> {
 };
 
 template<typename T, typename Ret, typename... Args, bool Ne>
-struct FuncTraits<Ret (T::*)(Args...) && noexcept(Ne)> {
+struct func_traits<Ret (T::*)(Args...) && noexcept(Ne)> {
     static constexpr bool is_member = true;
 
     using primary = T&&;
@@ -122,7 +129,7 @@ struct FuncTraits<Ret (T::*)(Args...) && noexcept(Ne)> {
 };
 
 template<typename T, typename Ret, typename... Args, bool Ne>
-struct FuncTraits<Ret (T::*)(Args...) const noexcept(Ne)> {
+struct func_traits<Ret (T::*)(Args...) const noexcept(Ne)> {
     static constexpr bool is_member = true;
 
     using primary = const T&;
@@ -131,7 +138,7 @@ struct FuncTraits<Ret (T::*)(Args...) const noexcept(Ne)> {
 };
 
 template<typename T, typename Ret, typename... Args, bool Ne>
-struct FuncTraits<Ret (T::*)(Args...) const & noexcept(Ne)> {
+struct func_traits<Ret (T::*)(Args...) const & noexcept(Ne)> {
     static constexpr bool is_member = true;
 
     using primary = const T&;
@@ -140,7 +147,7 @@ struct FuncTraits<Ret (T::*)(Args...) const & noexcept(Ne)> {
 };
 
 template<typename T, typename Ret, typename... Args, bool Ne>
-struct FuncTraits<Ret (T::*)(Args...) const && noexcept(Ne)> {
+struct func_traits<Ret (T::*)(Args...) const && noexcept(Ne)> {
     static constexpr bool is_member = true;
 
     using primary = const T&&;
