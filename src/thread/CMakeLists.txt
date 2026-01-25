@@ -12,4 +12,5 @@ target_sources(
          mod.cppm
          id.cppm
          thread.cppm
+         main_thread.cppm
          )

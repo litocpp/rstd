@@ -2,6 +2,7 @@ module;
 #include <rstd/macro.hpp>
 export module rstd.thread:thread;
 export import :id;
+export import :main_thread;
 
 export import rstd.alloc;
 export import rstd.sys;
@@ -22,10 +23,10 @@ namespace sys::thread::thread_name_string
 class ThreadNameString {
     ffi::CString inner;
 
-    explicit ThreadNameString(alloc::ffi::CString c): inner(rstd::move(c)) {}
-
 public:
     USE_TRAIT(ThreadNameString)
+
+    explicit ThreadNameString(alloc::ffi::CString c): inner(rstd::move(c)) {}
 
     ThreadNameString(Self&&) noexcept            = default;
     ThreadNameString& operator=(Self&&) noexcept = default;
@@ -48,6 +49,13 @@ using sys::thread::thread_name_string::ThreadNameString;
 template<>
 struct Impl<convert::From<String>, ThreadNameString>
     : ImplInClass<convert::From<String>, ThreadNameString> {};
+
+template<>
+struct Impl<clone::Clone, ThreadNameString> : ImplDefault<clone::Clone, ThreadNameString> {
+    auto clone() -> ThreadNameString {
+        return ThreadNameString { as<clone::Clone>(this->self().inner).clone() };
+    }
+};
 
 namespace thread
 {
@@ -90,11 +98,14 @@ public:
 
     /// Gets the thread's name as a string reference if available.
     /// Returns None if no name was set.
-    /// TODO: Return "main" for the main thread if no name was set
     auto name() const -> Option<ThreadNameString> {
-        // For now, return None since we can't easily return references
-        // TODO: implement proper name() that returns string reference
-        return None();
+        if (auto& name = inner->as_ptr()->name; name) {
+            return name.clone();
+        } else if (main_thread::get() == Some(id())) {
+            return Some(ThreadNameString { ffi::CString::from_raw("main") });
+        } else {
+            return None();
+        }
     }
 
     /// Atomically makes the handle's token available if it is not already.
@@ -102,33 +113,20 @@ public:
     /// Every thread is equipped with some basic low-level blocking support, via
     /// the park() function and the unpark() method. These can be used as a more
     /// CPU-efficient implementation of a spinlock.
-    /// TODO: Implement with Parker
-    void unpark() const noexcept {
-        // TODO: implement with Parker
-        // auto& parker_uninit = const_cast<MaybeUninit<Parker>&>(inner.as_ref()->parker);
-        // parker_uninit.assume_init_mut().unpark();
-    }
+    void unpark() const noexcept { inner->as_ptr()->parker.unpark(); }
 
     /// Like the public park, but callable on any handle.
     ///
     /// # Safety
     /// May only be called from the thread to which this handle belongs.
-    /// TODO: Implement with Parker
-    void park() const {
-        // TODO: implement with Parker
-        // auto& parker_uninit = const_cast<MaybeUninit<Parker>&>(inner.as_ref()->parker);
-        // parker_uninit.assume_init_mut().park();
-    }
+    void park() const { inner->as_ptr()->parker.park(); }
 
     /// Like the public park_timeout, but callable on any handle.
     ///
     /// # Safety
     /// May only be called from the thread to which this handle belongs.
-    /// TODO: Implement with Parker
-    void park_timeout([[maybe_unused]] cppstd::chrono::duration<double> timeout) const {
-        // TODO: implement with Parker
-        // auto& parker_uninit = const_cast<MaybeUninit<Parker>&>(inner.as_ref()->parker);
-        // parker_uninit.assume_init_mut().park_timeout(timeout);
+    void park_timeout(cppstd::chrono::duration<double> timeout) const {
+        inner->as_ptr()->parker.park_timeout(timeout);
     }
 
     /// Gets the C string representation of the thread name, if available.

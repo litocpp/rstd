@@ -44,6 +44,7 @@ public:
 
     using pointee_ptr_t = meta::add_pointer_t<meta::remove_reference_t<Ptr>>;
     pointee_ptr_t operator->() { return rstd::addressof(get_unchecked_mut()); }
+    auto          operator->() const { return rstd::addressof(get_ref()); }
 };
 
 } // namespace rstd::pin
