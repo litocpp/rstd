@@ -101,9 +101,10 @@ template<>
 struct rstd::fmt::formatter<CString> : rstd::fmt::formatter<rstd::ref<rstd::str>> {
     template<typename FmtContext>
     auto format(const CString& cstr, FmtContext& ctx) const -> FmtContext::iterator {
-        // auto sv = cstr.to_string_view_bytes();
-        // return rstd::fmt::formatter<rstd::ref<rstd::str>>::format(sv, ctx);
-        return rstd::fmt::formatter<rstd::ref<rstd::str>>::format("", ctx);
+        using namespace rstd;
+        auto str_ref = cstr.as_ref();
+        ref<str>::from_raw((u8 const*)str_ref.p, str_ref.length);
+        return fmt::formatter<ref<str>>::format("", ctx);
     }
 };
 
@@ -111,6 +112,7 @@ template<>
 struct rstd::fmt::formatter<NulError> : rstd::fmt::formatter<rstd::ref<rstd::str>> {
     template<typename FmtContext>
     auto format(const NulError& cstr, FmtContext& ctx) const -> FmtContext::iterator {
-        return rstd::fmt::formatter<rstd::ref<rstd::str>>::format("", ctx);
+        using namespace rstd;
+        return fmt::formatter<ref<str>>::format("NulError", ctx);
     }
 };

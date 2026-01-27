@@ -67,7 +67,7 @@ struct ref_base<Self, T[]> : ref_base<Self, T> {
     }
     constexpr auto len() const noexcept { return static_cast<Self const*>(this)->length; }
 
-    static constexpr auto from_raw(T& p, usize length) noexcept -> Self {
+    static constexpr auto from_raw(T& p, usize length) noexcept -> Self requires meta::is_aggregate_v<Self>  {
         return { .p = rstd::addressof(p), .length = length };
     }
 };

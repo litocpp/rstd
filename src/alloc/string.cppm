@@ -143,3 +143,11 @@ export using fmt::format;
 export using fmt::vformat;
 
 } // namespace rstd
+
+template<>
+struct rstd::fmt::formatter<String> : rstd::fmt::formatter<rstd::ref<rstd::str>> {
+    template<typename FmtContext>
+    auto format(const String& str, FmtContext& ctx) const -> FmtContext::iterator {
+        return rstd::fmt::formatter<rstd::ref<rstd::str>>::format(str, ctx);
+    }
+};
