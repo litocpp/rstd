@@ -18,6 +18,11 @@ if(PROJECT_IS_TOP_LEVEL)
   add_compile_options("$<$<COMPILE_LANG_AND_ID:CXX,Clang>:${WANR_CLANG_OPTS}>")
 endif()
 
+if(OFF)
+add_compile_options(-nostdlib++)
+add_link_options(-nostdlib++)
+endif()
+
 add_subdirectory(src/core)
 add_subdirectory(src/sys)
 add_subdirectory(src/alloc)

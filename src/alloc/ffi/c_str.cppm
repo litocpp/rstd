@@ -47,15 +47,15 @@ public:
         }
     }
 
-    static auto from_raw(char const* p) -> CString {
+    static auto from_raw_parts(char const* p) -> CString {
         auto len = char_traits<char>::length(p) + 1;
         auto raw = new u8[len];
         rstd::memcpy(raw, p, len);
-        auto boxed = boxed::Box<u8[]>::from_raw(ptr<u8[]>::from_raw(raw, len));
+        auto boxed = boxed::Box<u8[]>::from_raw(mut_ptr<u8[]>::from_raw_parts(raw, len));
         return CString { rstd::move(boxed) };
     }
 
-    auto as_ref() const -> ref<const CStr> {
+    auto as_ref() const -> ref<CStr> {
         auto ptr = inner.as_ptr();
         auto p   = reinterpret_cast<CStr const*>(&*ptr);
         return { .p = p, .length = ptr.len() - 1 };
@@ -68,14 +68,14 @@ public:
         return vec;
     }
 
-    auto to_bytes() const -> slice<const u8> {
+    auto to_bytes() const -> slice<u8> {
         auto bytes = to_bytes_with_nul();
-        return slice<const u8>::from_raw(*bytes, bytes.len() - 1);
+        return slice<u8>::from_raw_parts(bytes.p, bytes.len() - 1);
     }
 
-    auto to_bytes_with_nul() const -> slice<const u8> {
+    auto to_bytes_with_nul() const -> slice<u8> {
         auto cstr = as_ref();
-        return slice<const u8>::from_raw(*as_cast<const u8*>(cstr.p), cstr.length);
+        return slice<u8>::from_raw_parts(as_cast<const u8*>(cstr.p), cstr.length);
     }
 };
 
@@ -103,7 +103,7 @@ struct rstd::fmt::formatter<CString> : rstd::fmt::formatter<rstd::ref<rstd::str>
     auto format(const CString& cstr, FmtContext& ctx) const -> FmtContext::iterator {
         using namespace rstd;
         auto str_ref = cstr.as_ref();
-        ref<str>::from_raw((u8 const*)str_ref.p, str_ref.length);
+        ref<str>::from_raw_parts((u8 const*)str_ref.p, str_ref.length);
         return fmt::formatter<ref<str>>::format("", ctx);
     }
 };

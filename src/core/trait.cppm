@@ -1,6 +1,5 @@
 export module rstd.core:trait;
-export import :core;
-export import :cppstd;
+export import :basic;
 export import :meta;
 
 namespace rstd

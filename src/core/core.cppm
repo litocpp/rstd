@@ -1,19 +1,8 @@
 export module rstd.core:core;
-export import :basic;
-export import :meta;
+export import :ptr.metadata;
 
 namespace rstd
 {
-export template<typename T>
-void swap(T& a, T& b) noexcept(meta::is_nothrow_copy_constructible_v<T>) {
-    T t(a);
-    a = b;
-    b = t;
-}
-
-export struct Empty {};
-export template<typename>
-struct EmptyT {};
 
 export template<typename T>
 using param_t = meta::conditional_t<meta::is_trivially_copy_constructible_v<T>, T, T&&>;
@@ -32,161 +21,282 @@ export template<typename T>
 static_assert(meta::is_trivially_copy_constructible_v<i32>);
 static_assert(meta::is_trivially_copy_constructible_v<i32&>);
 
-export [[noreturn]] inline void unreachable() {
-    // Uses compiler specific extensions if possible.
-    // Even if no extension is used, undefined behavior is still raised by
-    // an empty function body and the noreturn attribute.
-#if defined(_MSC_VER) && ! defined(__clang__) // MSVC
-    __assume(false);
-#else // GCC, Clang
-    __builtin_unreachable();
-#endif
+template<typename T, typename U>
+auto from_raw_parts(U* self) noexcept -> T {
+    if constexpr (requires { T::from_raw_parts(self->p, self->length); }) {
+        return T::from_raw_parts(self->p, self->length);
+    } else {
+        return T::from_raw_parts(self->p);
+    }
 }
 
-export template<typename Self, typename T>
-struct ref_base {
-    using value_type = T;
+template<typename T, typename U, typename P>
+auto from_raw_parts_override(U* self, P ptr) noexcept -> T {
+    if constexpr (requires { T::from_raw_parts(ptr, self->length); }) {
+        return T::from_raw_parts(ptr, self->length);
+    } else {
+        return T::from_raw_parts(ptr);
+    }
+}
 
-    constexpr T* operator->() const noexcept { return static_cast<Self const*>(this)->p; }
-    constexpr T& operator*() const noexcept { return *(static_cast<Self const*>(this)->p); }
+export template<typename T>
+struct ptr;
+export template<typename T>
+struct mut_ptr;
+export template<typename T>
+struct ref;
+export template<typename T>
+struct mut_ref;
+
+export template<typename Self, typename T, bool Mutable>
+struct ref_base {
+    /// we only process T[] for vlaue_type
+    using value_type = meta::conditional_t<Mutable, meta::remove_extent_t<T>,
+                                           meta::add_const_t<meta::remove_extent_t<T>>>;
+
+    constexpr value_type* operator->() const noexcept { return static_cast<Self const*>(this)->p; }
+    constexpr value_type& operator*() const noexcept {
+        return *(static_cast<Self const*>(this)->p);
+    }
 
     constexpr rstd::strong_ordering operator<=>(const ref_base& o) const noexcept = default;
 
-    constexpr bool operator==(const T& other) const noexcept {
+    constexpr bool operator==(const value_type& other) const noexcept {
         return *(static_cast<Self const*>(this)->p) == other;
     }
 
-    static constexpr auto from_raw(T& p) noexcept -> Self { return { .p = rstd::addressof(p) }; }
-};
-template<typename Self, typename T>
-struct ref_base<Self, T[]> : ref_base<Self, T> {
-    using value_type = T;
+    constexpr auto as_ref() const noexcept -> ref<T>
+        requires Mutable
+    {
+        return rstd::from_raw_parts<ref<T>>(static_cast<Self const*>(this));
+    }
 
-    constexpr auto operator[](usize i) const noexcept {
+    constexpr auto as_ptr() const noexcept -> ptr<T> {
+        return rstd::from_raw_parts<ptr<T>>(static_cast<Self const*>(this));
+    }
+    constexpr auto as_mut_ptr() const noexcept -> mut_ptr<T>
+        requires Mutable
+    {
+        return rstd::from_raw_parts<mut_ptr<T>>(static_cast<Self const*>(this));
+    }
+
+    /// \name Normal
+    /// @{
+    static constexpr auto from_raw_parts(value_type* p) noexcept -> Self
+        requires(! meta::DST<T>)
+    {
+        return { .p = p };
+    }
+    /// @}
+
+    /// \name Requires: DSTArray
+    /// @{
+    constexpr auto operator[](usize i) const noexcept
+        requires meta::DSTArray<T>
+    {
         return *(static_cast<Self const*>(this)->p + i);
     }
-    constexpr auto len() const noexcept { return static_cast<Self const*>(this)->length; }
 
-    static constexpr auto from_raw(T& p, usize length) noexcept -> Self requires meta::is_aggregate_v<Self>  {
-        return { .p = rstd::addressof(p), .length = length };
+    constexpr auto len() const noexcept
+        requires meta::DSTArray<T>
+    {
+        return static_cast<Self const*>(this)->length;
     }
+
+    static constexpr auto from_raw_parts(value_type* p, usize length) noexcept -> Self
+        requires meta::DSTArray<T> && meta::is_aggregate_v<Self>
+    {
+        return { .p = p, .length = length };
+    }
+    /// @}
 };
 
-export template<typename Self, typename T>
+export template<typename Self, typename T, bool Mutable>
 struct ptr_base {
-    using value_type = T;
+    /// we only process T[] for vlaue_type
+    using value_type = meta::conditional_t<Mutable, meta::remove_extent_t<T>,
+                                           meta::add_const_t<meta::remove_extent_t<T>>>;
 
-    static constexpr auto from_raw(T* p) noexcept -> Self { return { .p = p }; }
-
-    constexpr T* operator->() const noexcept { return static_cast<Self const*>(this)->p; }
-    constexpr T& operator*() const noexcept { return *(static_cast<Self const*>(this)->p); }
+    constexpr value_type* operator->() const noexcept { return static_cast<Self const*>(this)->p; }
+    constexpr value_type& operator*() const noexcept {
+        return *(static_cast<Self const*>(this)->p);
+    }
 
     constexpr rstd::strong_ordering operator<=>(const ptr_base& o) const noexcept = default;
 
-    constexpr bool operator==(T* other) const noexcept {
-        return static_cast<Self const*>(this)->p == other;
+    constexpr bool operator==(const value_type& other) const noexcept {
+        return *(static_cast<Self const*>(this)->p) == other;
     }
     constexpr bool operator==(rstd::nullptr_t) const noexcept {
         return static_cast<Self const*>(this)->p == nullptr;
     }
-};
 
-template<typename Self, typename T>
-struct ptr_base<Self, T[]> : ptr_base<Self, T> {
-    using value_type = T;
-
-    static constexpr auto from_raw(T* p, usize length) noexcept -> Self {
-        return { .p = p, .length = length };
+    constexpr auto as_ptr() const noexcept -> ptr<T>
+        requires Mutable
+    {
+        return rstd::from_raw_parts<ptr<T>>(static_cast<Self const*>(this));
     }
 
-    constexpr auto operator[](usize i) const noexcept {
+    constexpr auto as_ref() const noexcept -> ref<T> {
+        return rstd::from_raw_parts<ref<T>>(static_cast<Self const*>(this));
+    }
+
+    constexpr auto as_mut_ref() const noexcept -> mut_ref<T>
+        requires Mutable
+    {
+        return rstd::from_raw_parts<mut_ref<T>>(static_cast<Self const*>(this));
+    }
+
+    constexpr operator value_type*() const noexcept { return static_cast<Self const*>(this)->p; }
+
+    /// \name Normal
+    /// @{
+    static constexpr auto from_raw_parts(value_type* p) noexcept -> Self
+        requires(! meta::DST<T>) && meta::is_aggregate_v<Self>
+    {
+        return { .p = p };
+    }
+    /// @}
+
+    /// \name Requires: DSTArray
+    /// @{
+    constexpr auto operator[](usize i) const noexcept
+        requires meta::DSTArray<T>
+    {
         return *(static_cast<Self const*>(this)->p + i);
     }
-    constexpr auto len() const noexcept { return static_cast<Self const*>(this)->length; }
+
+    constexpr auto len() const noexcept
+        requires meta::DSTArray<T>
+    {
+        return static_cast<Self const*>(this)->length;
+    }
+
+    static constexpr auto from_raw_parts(value_type* p, usize length) noexcept -> Self
+        requires meta::DSTArray<T> && meta::is_aggregate_v<Self>
+    {
+        return { .p = p, .length = length };
+    }
+    /// @}
 };
 
-export template<typename T>
-struct ptr;
+template<typename T>
+struct ref : ref_base<ref<T>, T, false> {
+    static_assert(! meta::is_const_v<T>);
 
-export template<typename T>
-struct ref : ref_base<ref<T>, T> {
-    static_assert(meta::destructible<T>);
-
-    T* p { nullptr };
+    T const* p { nullptr };
 
     using Self = ref;
-    constexpr auto as_ptr() const noexcept -> ptr<T>;
 };
 
-export template<typename T>
-struct ptr : ptr_base<ptr<T>, T> {
-    static_assert(meta::destructible<T>);
+template<meta::DSTArray T>
+struct ref<T> : ref_base<ref<T>, T, false> {
+    static_assert(! meta::is_const_v<T>);
+    using value_type    = meta::remove_extent_t<T>;
+    using metadata_type = usize;
+
+    value_type const* p { nullptr };
+    metadata_type     length;
+
+    using Self = ref;
+};
+
+template<typename T>
+struct mut_ref : ref_base<mut_ref<T>, T, true> {
+    static_assert(! meta::is_const_v<T>);
+    using Self = mut_ref;
 
     T* p { nullptr };
+};
 
+template<meta::DSTArray T>
+struct mut_ref<T> : ref_base<mut_ref<T>, T, true> {
+    static_assert(! meta::is_const_v<T>);
+    using value_type = meta::remove_extent_t<T>;
+    using Self       = mut_ref;
+
+    value_type* p { nullptr };
+    usize       length;
+};
+
+template<typename T>
+struct ptr : ptr_base<ptr<T>, T, false> {
+    static_assert(! meta::is_const_v<T>);
     using Self = ptr;
 
-    constexpr      operator T*() const noexcept { return this->p; }
-    constexpr auto as_ref() const noexcept { return ref<T> { .p = this->p }; }
+    T const* p { nullptr };
+};
+
+template<meta::DSTArray T>
+struct ptr<T> : ptr_base<ptr<T>, T, false> {
+    static_assert(! meta::is_const_v<T>);
+    using value_type = meta::remove_extent_t<T>;
+    using Self       = ptr;
+
+    value_type const* p { nullptr };
+    usize             length;
 };
 
 template<typename T>
-auto constexpr ref<T>::as_ptr() const noexcept -> ptr<T> {
-    return ptr<T> { this->p };
-}
+struct mut_ptr : ptr_base<mut_ptr<T>, T, true> {
+    static_assert(! meta::is_const_v<T>);
+    using Self = mut_ptr;
 
-template<typename T>
-struct ref<T[]> : ref_base<ref<T[]>, T[]> {
-    T*    p { nullptr };
-    usize length;
-
-    auto constexpr as_ptr() const noexcept -> ptr<T[]> {
-        return ptr<T[]>::from_raw(this->p, length);
-    }
+    T* p { nullptr };
 };
 
-template<typename T>
-struct ptr<T[]> : ptr_base<ptr<T[]>, T[]> {
-    T*    p { nullptr };
-    usize length;
+template<meta::DSTArray T>
+struct mut_ptr<T> : ptr_base<mut_ptr<T>, T, true> {
+    static_assert(! meta::is_const_v<T>);
+    using value_type = meta::remove_extent_t<T>;
+    using Self       = mut_ptr;
 
-    auto constexpr as_ref() const noexcept -> ref<T[]> {
-        return ref<T[]>::from_raw(this->p, length);
-    }
+    value_type* p { nullptr };
+    usize       length;
 };
 
 export template<typename T>
 using slice = ref<T[]>;
 
-export template<typename U, typename T>
-auto as_cast(ptr<T> p) noexcept -> ptr<U> {
-    auto addr = p.p;
-    if constexpr (meta::is_array_v<U>) {
-        return ptr<U>::from_raw(static_cast<meta::add_pointer_t<meta::remove_extent_t<U>>>(addr),
-                                p.len());
-    } else {
-        return ptr<U>::from_raw(static_cast<U*>(addr));
-    }
+export template<typename To, typename From>
+struct AsCast {
+    static_assert(false);
+};
+
+export template<typename To, typename From>
+    requires requires() { typename AsCast<To, meta::remove_reference_t<From>>; }
+[[gnu::always_inline]] inline constexpr auto as_cast(From&& from) noexcept -> To {
+    return AsCast<To, meta::remove_reference_t<From>>::cast(rstd::forward<From>(from));
 }
 
-export template<typename U, typename T>
-auto as_cast(ref<T> p) noexcept -> ref<U> {
-    auto addr = p.p;
-    if constexpr (meta::is_array_v<U>) {
-        return ref<U>::from_raw(static_cast<meta::add_pointer_t<meta::remove_extent_t<U>>>(addr),
-                                p.len());
-    } else {
-        return ref<U>::from_raw(static_cast<meta::add_pointer_t<U>>(addr));
+template<typename T>
+struct AsCast<mut_ptr<T>, ptr<T>> {
+    static constexpr auto cast(auto&& from) noexcept -> mut_ptr<T> {
+        return rstd::from_raw_parts_override<mut_ptr<T>>(
+            &from, const_cast<meta::remove_extent_t<T>*>(from.p));
     }
-}
+};
 
-export template<typename U>
-[[gnu::always_inline]] inline auto as_cast(u8* s) noexcept -> U {
-    return reinterpret_cast<U>(s);
-}
-export template<typename U>
-[[gnu::always_inline]] inline auto as_cast(u8 const* s) noexcept -> U {
-    return reinterpret_cast<U>(s);
-}
+template<typename To>
+struct AsCast<To*, u8*> {
+    static constexpr auto cast(u8* from) noexcept -> To* { return reinterpret_cast<To*>(from); }
+};
+template<typename To>
+struct AsCast<To*, u8 const*> {
+    static constexpr auto cast(u8 const* from) noexcept -> To* {
+        return reinterpret_cast<To*>(from);
+    }
+};
+
+template<typename From>
+struct AsCast<u8*, From*> {
+    static constexpr auto cast(u8* from) noexcept -> u8* { return reinterpret_cast<u8*>(from); }
+};
+template<typename From>
+struct AsCast<u8 const*, From*> {
+    static constexpr auto cast(From* from) noexcept -> u8 const* {
+        return reinterpret_cast<u8 const*>(from);
+    }
+};
 
 } // namespace rstd

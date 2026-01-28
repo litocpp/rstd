@@ -30,13 +30,13 @@ export template<typename T>
 class NonNull : public SizedNonNull<T> {
 public:
     using element_type    = T;
-    using pointer_t       = ptr<T>;
-    using const_pointer_t = ptr<const T>;
+    using pointer_t       = mut_ptr<T>;
+    using const_pointer_t = ptr<T>;
 
 private:
-    pointer_t m_ptr;
+    const_pointer_t m_ptr;
 
-    constexpr NonNull(pointer_t p) noexcept: m_ptr(p) {}
+    constexpr NonNull(const_pointer_t p) noexcept: m_ptr(p) {}
     constexpr NonNull() = delete;
 
 public:
@@ -47,10 +47,10 @@ public:
         return Some(NonNull(p));
     }
 
-    static constexpr NonNull make_unchecked(pointer_t p) noexcept { return NonNull(p); }
+    static constexpr NonNull make_unchecked(pointer_t p) noexcept { return NonNull(p.as_ptr()); }
 
-    constexpr auto as_ptr() const noexcept -> const_pointer_t { return as_cast<const T>(m_ptr); }
-    constexpr auto as_mut_ptr() noexcept -> pointer_t { return m_ptr; }
+    constexpr auto as_ptr() const noexcept -> const_pointer_t { return m_ptr; }
+    constexpr auto as_mut_ptr() noexcept -> pointer_t { return as_cast<pointer_t>(m_ptr); }
 
     constexpr explicit operator bool() const noexcept { return m_ptr != nullptr; }
 

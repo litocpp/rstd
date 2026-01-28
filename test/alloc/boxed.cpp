@@ -100,7 +100,7 @@ TEST(BoxTest, FromRawTakesOwnership) {
         EXPECT_EQ(Counter::alive, 1);
 
         {
-            auto b = Box<Counter>::from_raw(rstd::ptr<Counter>::from_raw(raw));
+            auto b = Box<Counter>::from_raw(rstd::mut_ptr<Counter>::from_raw_parts(raw));
             EXPECT_TRUE(b);
             EXPECT_EQ(b->v, 99);
         } // should delete raw here

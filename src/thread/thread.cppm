@@ -102,7 +102,7 @@ public:
         if (auto& name = inner->as_ptr()->name; name) {
             return name.clone();
         } else if (main_thread::get() == Some(id())) {
-            return Some(ThreadNameString { ffi::CString::from_raw("main") });
+            return Some(ThreadNameString { ffi::CString::from_raw_parts("main") });
         } else {
             return None();
         }
@@ -130,7 +130,7 @@ public:
     }
 
     /// Gets the C string representation of the thread name, if available.
-    auto cname() const noexcept -> Option<ref<const ffi::CStr>> {
+    auto cname() const noexcept -> Option<ref<ffi::CStr>> {
         if (inner.get_ref()->name.is_some()) {
             return Some(inner.get_ref()->name.as_ref().unwrap().as_cstr());
         }

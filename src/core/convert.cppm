@@ -1,5 +1,6 @@
 export module rstd.core:convert;
 export import :trait;
+export import :core;
 
 namespace rstd::convert
 {

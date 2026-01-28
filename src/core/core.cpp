@@ -20,7 +20,7 @@ constexpr auto extract_last(ref<str> path, usize count) -> ref<str> {
             break;
         }
     }
-    return ref<str> { path.begin() + size, path.end() };
+    return ref<str>::from_raw_parts(path.begin() + size,  path.end() - path.begin());
 }
 } // namespace
 

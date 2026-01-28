@@ -46,7 +46,7 @@ public:
         requires Impled<T, Sized>
     {
         auto t = new T(rstd::param_forward<T>(in));
-        return from_raw(ptr<T>::from_raw(t));
+        return from_raw(mut_ptr<T>::from_raw_parts(t));
     }
 
     static auto pin(param_t<T> in) -> Pin<Box>
@@ -56,10 +56,10 @@ public:
     }
 
     // Construct from a raw pointer (takes ownership)
-    static Box from_raw(ptr<T> raw) noexcept { return { Unique<T>::make_unchecked(raw) }; }
+    static Box from_raw(mut_ptr<T> raw) noexcept { return { Unique<T>::make_unchecked(raw) }; }
 
-    auto get() noexcept -> ptr<T>::value_type* { return m_ptr.as_mut_ptr(); }
-    auto into_raw() noexcept -> ptr<T> {
+    auto get() noexcept -> mut_ptr<T>::value_type* { return m_ptr.as_mut_ptr(); }
+    auto into_raw() noexcept -> mut_ptr<T> {
         auto b = ManuallyDrop<>::make(rstd::move(*this));
         return b->m_ptr.as_mut_ptr();
     }
@@ -70,7 +70,7 @@ public:
 
     void reset() noexcept(meta::destructible<T> || meta::is_array_v<T>) {
         if (m_ptr != nullptr) {
-            ptr<T> t = m_ptr.as_mut_ptr();
+            mut_ptr<T> t = m_ptr.as_mut_ptr();
             rstd::default_delete<T> {}(&*t);
             m_ptr = Unique<T>::make_unchecked({ .p = nullptr });
         }
@@ -78,10 +78,10 @@ public:
 
     auto as_ref() const noexcept -> ref<const T> {
         debug_assert(m_ptr != nullptr);
-        return ref<const T>::from_raw(m_ptr.as_ptr());
+        return ref<const T>::from_raw_parts(m_ptr.as_ptr());
     }
 
-    auto as_ptr() const noexcept -> ptr<const T> {
+    auto as_ptr() const noexcept -> ptr<T> {
         debug_assert(m_ptr != nullptr);
         return m_ptr.as_ptr();
     }
@@ -97,7 +97,7 @@ public:
         using V = meta::remove_extent_t<T>;
         // auto old = as_ptr();
         // TODO
-        auto p = ptr<T>::from_raw(new V[3] {}, 3);
+        auto p = mut_ptr<T>::from_raw_parts(new V[3] {}, 3);
         return from_raw(p);
     }
 };

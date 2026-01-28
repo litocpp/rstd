@@ -22,4 +22,8 @@ export using voidp       = void*;
 export using const_voidp = void const*;
 export using usizeptr    = cppstd::uintptr_t;
 
-}
+export struct Empty {};
+export template<typename>
+struct EmptyT {};
+
+} // namespace rstd

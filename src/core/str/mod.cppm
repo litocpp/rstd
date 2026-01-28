@@ -18,7 +18,7 @@ concept ViewableStr = requires(T t) {
 namespace rstd
 {
 template<>
-struct ref<str_::Str> : ref_base<ref<str_::Str>, u8 const[]> {
+struct ref<str_::Str> : ref_base<ref<str_::Str>, u8[], false> {
 public:
     u8 const* p { nullptr };
     usize     length { 0 };
@@ -30,13 +30,12 @@ public:
     constexpr ref(const T& t) noexcept(noexcept(rstd::declval<T>().data()))
         : p((u8 const*)t.data()), length(t.size()) {};
 
-    constexpr ref(u8 const* begin, u8 const* end) noexcept: p(begin), length(end - begin) {}
-    constexpr ref(slice<const u8> p) noexcept: p(p.p), length(p.length) {}
+    constexpr ref(slice<u8> p) noexcept: p(p.p), length(p.length) {}
 
     constexpr ref(char const* c_str) noexcept
         : p(rstd::bit_cast<u8 const*>(c_str)), length(char_traits<char>::length(c_str)) {}
 
-    static constexpr auto from_raw(u8 const* p, usize length) -> ref {
+    static constexpr auto from_raw_parts(u8 const* p, usize length) -> ref {
         auto out   = ref();
         out.p      = p;
         out.length = length;

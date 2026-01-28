@@ -33,8 +33,8 @@ public:
     void lock() noexcept {
         auto r = pthread_mutex_lock(raw());
         if (r != 0) {
-            // TODO: from_raw_os_error
-            // error = Error::from_raw_os_error(r);
+            // TODO: from_raw_parts_os_error
+            // error = Error::from_raw_parts_os_error(r);
             panic("failed to lock mutex");
         }
     }

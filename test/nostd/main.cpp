@@ -1,0 +1,3 @@
+import rstd;
+
+int main() {}

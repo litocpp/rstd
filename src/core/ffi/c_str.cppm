@@ -1,5 +1,6 @@
 export module rstd.core:ffi.c_str;
 export import :marker;
+export import :core;
 
 namespace rstd::ffi
 {
@@ -38,24 +39,15 @@ struct Impl<Sized, CStr> {
 };
 
 template<>
-struct ref<CStr> : ptr_base<ref<CStr>, CStr[]> {
-    CStr* p { nullptr };
-    usize length { 1 };
-};
-
-template<>
-struct ref<const CStr> : ptr_base<ref<const CStr>, CStr[]> {
+struct ref<CStr> : ref_base<ref<CStr>, CStr[], false> {
     CStr const* p { nullptr };
     usize       length { 1 };
 };
 
-export template<typename T>
-auto as_cast(CStr* p) -> T {
-    return reinterpret_cast<T>(p);
-}
-export template<typename T>
-auto as_cast(CStr const* p) -> T {
-    return reinterpret_cast<T>(p);
-}
+template<>
+struct mut_ref<CStr> : ref_base<ref<CStr>, CStr[], true> {
+    CStr* p { nullptr };
+    usize length { 1 };
+};
 
 } // namespace rstd

@@ -3,6 +3,28 @@ export import :literal;
 
 export namespace rstd::meta
 {
+// traits
+
+template<typename T>
+struct func_traits {
+    static_assert(false);
+};
+
+// concepts
+
+template<typename From, typename To>
+concept convertible_to =
+    is_convertible_v<From, To> && requires { static_cast<To>(meta::declval<From>()); };
+
+template<typename T, typename U>
+concept equalable = requires(const T& a, const U& b) {
+    { a == b } -> meta::convertible_to<bool>;
+    { a != b } -> meta::convertible_to<bool>;
+};
+
+template<typename S, typename T>
+concept transparent =
+    sizeof(S) == sizeof(T) && alignof(S) == alignof(T) && meta::is_standard_layout_v<S>;
 
 // custom
 template<typename T, typename... Args>
@@ -34,14 +56,6 @@ concept custom_move_assignable = (is_move_assignable_v<T> && ! is_trivially_move
 template<typename T>
 concept trivially_value = is_trivially_copy_constructible_v<T> && ! is_reference_v<T>;
 
-template<typename From, typename To>
-concept convertible_to =
-    is_convertible_v<From, To> && requires { static_cast<To>(meta::declval<From>()); };
-
-template<typename S, typename T>
-concept transparent =
-    sizeof(S) == sizeof(T) && alignof(S) == alignof(T) && meta::is_standard_layout_v<S>;
-
 template<typename>
 struct is_tuple : false_type {};
 template<typename... T>
@@ -67,21 +81,10 @@ using follow_const_t =
     meta::conditional_t<meta::is_const_v<T>, meta::add_const_t<meta::remove_const_t<U>>,
                         meta::remove_const_t<U>>;
 
-template<typename T, typename U>
-concept equalable = requires(const T& a, const U& b) {
-    { a == b } -> meta::convertible_to<bool>;
-    { a != b } -> meta::convertible_to<bool>;
-};
-
 } // namespace rstd::meta
 
 namespace rstd::meta
 {
-
-export template<typename T>
-struct func_traits {
-    static_assert(false);
-};
 
 template<typename T, typename Ret, typename... Args, bool Ne>
 struct func_traits<Ret (*)(T, Args...) noexcept(Ne)> {

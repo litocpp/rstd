@@ -53,8 +53,8 @@ struct ArcInner {
 
     ArcInner(Dyn<detail::ArcImplTrait> i): impl(i) {}
 
-    auto data() noexcept -> ptr<T> {
-        return ptr<T>::from_raw(rstd::launder(static_cast<T*>(impl.data())));
+    auto data() noexcept -> mut_ptr<T> {
+        return mut_ptr<T>::from_raw_parts(rstd::launder(static_cast<T*>(impl.data())));
     }
     void do_delete(detail::DeleteType t, detail::EmbedDeconstructor de) {
         return impl.do_delete(t, de);
@@ -326,9 +326,9 @@ public:
 
     /// Returns a mutable reference to the inner value if there are no other
     /// `Arc` or `Weak` pointers to the same allocation.
-    static auto get_mut(Arc& arc) noexcept -> Option<ref<T>> {
+    static auto get_mut(Arc& arc) noexcept -> Option<mut_ref<T>> {
         if (is_unique(arc)) {
-            return Some(arc.self.inner->data().as_ref());
+            return Some(arc.self.inner->data().as_mut_ref());
         }
         return None();
     }
@@ -353,7 +353,7 @@ public:
         return Err(rstd::move(*this));
     }
 
-    // ===== Raw interop (Rust: into_raw / from_raw) =====
+    // ===== Raw interop (Rust: into_raw / from_raw_parts) =====
     // These are intentionally low-level; the pointer must come from into_raw().
     auto into_raw() noexcept {
         auto inner = self.inner;

@@ -27,9 +27,13 @@ public:
         return String { rstd::move(bytes) };
     }
 
-    auto as_ref() const noexcept -> ref<const ffi::CStr> {
-        auto p = reinterpret_cast<ffi::CStr const*>(&*vec.as_ptr());
-        return { .p = p, .length = vec.len() };
+    auto as_ref() const noexcept -> ref<ffi::CStr> {
+        auto p = as_cast<ffi::CStr const*>(&*vec.as_ptr());
+        return ref<ffi::CStr>::from_raw_parts(p, vec.len());
+    }
+
+    constexpr operator ref<str>() const {
+        return ref<str>::from_raw_parts(&*vec.as_ptr(), vec.len());
     }
 
     void push_back(char c) { vec.push_back(static_cast<u8>(c)); }
@@ -126,15 +130,15 @@ auto to_string(A&& a) {
 
 namespace fmt
 {
-export template<typename... Args>
-auto format(fmt::format_string<Args...> fmt, Args&&... args) -> String {
-    return vformat(fmt.get(), fmt::make_format_args(args...));
-}
 
 export auto vformat(ref<str> fmt, fmt::format_args args) -> String {
     auto buf = String::make();
     fmt::vformat_to(cppstd::back_inserter(buf), { (char const*)fmt.data(), fmt.size() }, args);
     return buf;
+}
+export template<typename... Args>
+auto format(fmt::format_string<Args...> fmt, Args&&... args) -> String {
+    return fmt::vformat(fmt.get(), fmt::make_format_args(args...));
 }
 
 } // namespace fmt

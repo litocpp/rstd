@@ -29,12 +29,12 @@ public:
         return { cppstd::vector<T>(capacity) };
     }
 
-    constexpr auto as_slice() const noexcept -> slice<const T> {
-        return slice<const T>::from_raw(*inner.data(), inner.size());
+    constexpr auto as_slice() const noexcept -> slice<T> {
+        return slice<T>::from_raw_parts(inner.data(), inner.size());
     }
 
-    constexpr auto as_ptr() const noexcept -> ptr<const T> {
-        return ptr<const T>::from_raw(inner.data());
+    constexpr auto as_ptr() const noexcept -> ptr<T> {
+        return ptr<T>::from_raw_parts(inner.data());
     }
 
     auto into_boxed_slice() noexcept -> boxed::Box<T[]> {
@@ -43,7 +43,7 @@ public:
         for (usize i = 0; i != inner.size(); ++i) {
             raw[i] = rstd::move(inner[i]);
         }
-        auto b = boxed::Box<T[]>::from_raw(ptr<T[]>::from_raw(raw, inner.size()));
+        auto b = boxed::Box<T[]>::from_raw(mut_ptr<T[]>::from_raw_parts(raw, inner.size()));
         inner.clear();
         return b;
     }
