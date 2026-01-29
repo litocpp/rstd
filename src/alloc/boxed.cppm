@@ -58,7 +58,13 @@ public:
     // Construct from a raw pointer (takes ownership)
     static Box from_raw(mut_ptr<T> raw) noexcept { return { Unique<T>::make_unchecked(raw) }; }
 
-    auto get() noexcept -> mut_ptr<T>::value_type* { return m_ptr.as_mut_ptr(); }
+    auto get() noexcept -> mut_ptr<T>::value_type* {
+        if (m_ptr) {
+            return m_ptr.as_mut_ptr();
+        } else {
+            return nullptr;
+        }
+    }
     auto into_raw() noexcept -> mut_ptr<T> {
         auto b = ManuallyDrop<>::make(rstd::move(*this));
         return b->m_ptr.as_mut_ptr();

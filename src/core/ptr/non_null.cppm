@@ -9,25 +9,60 @@ export import :assert;
 
 namespace rstd::ptr_::non_null
 {
-
 export template<typename T>
 class NonNull;
+}
+
+namespace rstd::option::detail
+{
 
 template<typename T>
-struct SizedNonNull {};
+struct option_store<ptr_::non_null::NonNull<T>> {
+protected:
+    using union_value_t       = ptr_::non_null::NonNull<T>;
+    using union_const_value_t = ptr_::non_null::NonNull<T> const;
 
-template<typename T>
-    requires Impled<T, Sized>
-struct SizedNonNull<T> {
-    /// Creates a pointer with the given address
-    static auto without_provenance(num::nonzero::NonZero<usize> addr) noexcept -> NonNull<T>;
+    constexpr auto _ptr() const noexcept {
+        return reinterpret_cast<union_const_value_t*>(m_storage);
+    }
+    constexpr auto _ptr() noexcept { return reinterpret_cast<union_value_t*>(m_storage); }
 
-    /// Creates a new `NonNull` that is dangling, but well-aligned.
-    static auto dangling() noexcept -> NonNull<T>;
+    template<typename V>
+    constexpr void _construct_val(V&& val) {
+        rstd::construct_at(_ptr(), rstd::forward<V>(val));
+    }
+    template<typename V>
+    constexpr void _assign_val(V&& val) {
+        rstd::construct_at(_ptr(), rstd::forward<V>(val));
+    }
+    constexpr void _assign_none() {
+        if (is_some()) {
+            rstd::destroy_at(_ptr());
+            m_storage = {};
+        }
+    }
+
+public:
+    constexpr auto is_some() const noexcept -> bool {
+        for (usize i = 0; i < sizeof(union_value_t); i++) {
+            if (m_storage[i] != rstd::byte(0)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+private:
+    alignas(union_value_t) rstd::byte m_storage[sizeof(union_value_t)] {};
 };
 
-export template<typename T>
-class NonNull : public SizedNonNull<T> {
+} // namespace rstd::option::detail
+
+namespace rstd::ptr_::non_null
+{
+
+template<typename T>
+class NonNull {
 public:
     using element_type    = T;
     using pointer_t       = mut_ptr<T>;
@@ -40,29 +75,48 @@ private:
     constexpr NonNull() = delete;
 
 public:
+    friend struct rstd::option::detail::option_store<NonNull>;
+
     USE_TRAIT(NonNull)
 
+    /// \name T: Sized
+    /// @{
+    /// Creates a pointer with the given address
+    static auto without_provenance(num::nonzero::NonZero<usize> addr) noexcept -> NonNull<T>
+        requires Impled<T, Sized>
+    {
+        T* t = reinterpret_cast<T*>(addr);
+        return { t };
+    }
+
+    /// Creates a new `NonNull` that is dangling, but well-aligned.
+    static auto dangling() noexcept -> NonNull<T>
+        requires Impled<T, Sized>
+    {
+        return { nullptr };
+    }
+    /// @}
+
+    /// \name T: ?Sized
+    /// @{
     static constexpr auto make(pointer_t p) noexcept -> Option<NonNull> {
         if (p == nullptr) return {};
         return Some(NonNull(p));
     }
 
-    static constexpr NonNull make_unchecked(pointer_t p) noexcept { return NonNull(p.as_ptr()); }
+    static constexpr auto make_unchecked(pointer_t p) noexcept -> NonNull {
+        return NonNull(p.as_ptr());
+    }
 
     constexpr auto as_ptr() const noexcept -> const_pointer_t { return m_ptr; }
     constexpr auto as_mut_ptr() noexcept -> pointer_t { return as_cast<pointer_t>(m_ptr); }
 
     constexpr explicit operator bool() const noexcept { return m_ptr != nullptr; }
 
-    constexpr T& as_ref() const noexcept {
-        assert(m_ptr != nullptr);
-        return *m_ptr;
-    }
+    constexpr auto as_ref() const noexcept { return m_ptr.as_ref(); }
 
-    constexpr T& as_mut() const noexcept {
-        assert(m_ptr != nullptr);
-        return *m_ptr;
-    }
+    constexpr auto as_mut() const noexcept { return m_ptr.as_mut_ref(); }
+    /// @}
 
     template<class U>
     constexpr NonNull<U> cast() const noexcept {
@@ -73,43 +127,34 @@ public:
 
     template<class U>
         requires(meta::convertible_to<U*, T*>)
-    constexpr NonNull(const NonNull<U>& other) noexcept: m_ptr(other.as_ptr()) {
-        assert(m_ptr != nullptr);
-    }
+    constexpr NonNull(const NonNull<U>& other) noexcept: m_ptr(other.as_ptr()) {}
 
     constexpr NonNull add(usize count) const noexcept {
-        assert(m_ptr != nullptr);
         return NonNull::make_unchecked(m_ptr + count);
     }
 
     constexpr NonNull sub(usize count) const noexcept {
-        assert(m_ptr != nullptr);
         return NonNull::make_unchecked(m_ptr - count);
     }
 
     constexpr NonNull offset(isize count) const noexcept {
-        assert(m_ptr != nullptr);
         return NonNull::make_unchecked(m_ptr + count);
     }
 
     constexpr NonNull byte_add(usize bytes) const noexcept {
-        assert(m_ptr != nullptr);
         auto* p = reinterpret_cast<byte*>(m_ptr) + bytes;
         return NonNull::make_unchecked(reinterpret_cast<pointer_t>(p));
     }
 
     constexpr NonNull byte_sub(usize bytes) const noexcept {
-        assert(m_ptr != nullptr);
         auto* p = reinterpret_cast<byte*>(m_ptr) - bytes;
         return NonNull::make_unchecked(reinterpret_cast<pointer_t>(p));
     }
 
     template<class F>
     constexpr NonNull map_addr(F&& f) const noexcept {
-        assert(m_ptr != nullptr);
         auto addr     = reinterpret_cast<rstd::nullptr_t>(m_ptr);
         auto new_addr = static_cast<rstd::nullptr_t>(rstd::invoke(rstd::forward<F>(f), addr));
-        assert(new_addr != 0);
         return NonNull::make_unchecked(reinterpret_cast<pointer_t>(new_addr));
     }
 
@@ -122,18 +167,5 @@ public:
         usize operator()(NonNull p) const noexcept { return cppstd::hash<pointer_t> {}(p.m_ptr); }
     };
 };
-
-template<typename T>
-    requires Impled<T, Sized>
-auto SizedNonNull<T>::without_provenance(num::nonzero::NonZero<usize> addr) noexcept -> NonNull<T> {
-    T* t = reinterpret_cast<T*>(addr);
-    return { t };
-}
-
-template<typename T>
-    requires Impled<T, Sized>
-auto SizedNonNull<T>::dangling() noexcept -> NonNull<T> {
-    return { nullptr };
-}
 
 } // namespace rstd::ptr_::non_null

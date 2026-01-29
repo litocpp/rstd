@@ -149,6 +149,14 @@ struct ptr_base {
 
     constexpr operator value_type*() const noexcept { return static_cast<Self const*>(this)->p; }
 
+    constexpr void reset() noexcept {
+        auto self = static_cast<Self const*>(this);
+        self->p   = nullptr;
+        if constexpr (meta::DSTArray<T>) {
+            self->length = 0;
+        }
+    }
+
     /// \name Normal
     /// @{
     static constexpr auto from_raw_parts(value_type* p) noexcept -> Self
