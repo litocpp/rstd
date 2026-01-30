@@ -14,7 +14,7 @@ struct CloneTrait {
     };
 
     template<typename T>
-    using TCollect = rstd::TraitCollect<&T::clone>;
+    using Funcs = rstd::TraitFuncs<&T::clone>;
 };
 
 struct DisplayTrait {
@@ -26,7 +26,7 @@ struct DisplayTrait {
     };
 
     template<typename T>
-    using TCollect = rstd::TraitCollect<&T::display>;
+    using Funcs = rstd::TraitFuncs<&T::display>;
 };
 
 struct AddableTrait {
@@ -37,7 +37,7 @@ struct AddableTrait {
     };
 
     template<typename T>
-    using TCollect = rstd::TraitCollect<&T::add>;
+    using Funcs = rstd::TraitFuncs<&T::add>;
 };
 
 struct MultiplyableTrait {
@@ -48,7 +48,7 @@ struct MultiplyableTrait {
     };
 
     template<typename T>
-    using TCollect = rstd::TraitCollect<&T::multiply>;
+    using Funcs = rstd::TraitFuncs<&T::multiply>;
 };
 
 struct StringConverterTrait {
@@ -61,7 +61,7 @@ struct StringConverterTrait {
     };
 
     template<typename T>
-    using TCollect = rstd::TraitCollect<&T::to_string, &T::to_hex, &T::to_binary>;
+    using Funcs = rstd::TraitFuncs<&T::to_string, &T::to_hex, &T::to_binary>;
 };
 
 // Base structure for fields

@@ -14,7 +14,7 @@ export struct Clone {
     };
 
     template<class T>
-    using TCollect = TraitCollect<&T::clone, &T::clone_from>;
+    using Funcs = TraitFuncs<&T::clone, &T::clone_from>;
 };
 
 } // namespace rstd::clone

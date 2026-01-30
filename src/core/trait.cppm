@@ -5,7 +5,7 @@ export import :meta;
 namespace rstd
 {
 export template<auto... Api>
-struct TraitCollect {};
+struct TraitFuncs {};
 
 namespace detail
 {
@@ -13,10 +13,10 @@ namespace detail
 struct ImplHelper;
 
 template<typename T>
-struct TraitCollectInner;
+struct TraitFuncsInner;
 
 template<auto... Api>
-struct TraitCollectInner<TraitCollect<Api...>> {
+struct TraitFuncsInner<TraitFuncs<Api...>> {
     template<template<class...> typename T>
     consteval static auto make() {
         return T { Api... };
@@ -93,10 +93,10 @@ consteval auto to_dyn(Tuple<Api...>) {
 }
 
 template<typename Trait, typename T>
-using TCollect = typename Trait::template TCollect<T>;
+using Funcs = typename Trait::template Funcs<T>;
 
 template<typename Trait, typename T>
-using TraitApiHelper = TraitCollectInner<TCollect<Trait, T>>;
+using TraitApiHelper = TraitFuncsInner<Funcs<Trait, T>>;
 
 struct DynHelper {
     template<typename TDyn>

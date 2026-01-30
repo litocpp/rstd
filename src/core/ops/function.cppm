@@ -14,7 +14,7 @@ struct FnOnce<R(Args...)> {
         auto call_once(Args... args) -> R;
     };
     template<typename T>
-    using TCollect = TraitCollect<&T::call_once>;
+    using Funcs = TraitFuncs<&T::call_once>;
 };
 
 export template<typename T>
@@ -28,7 +28,7 @@ struct FnMut<R(Args...)> {
         auto call_mut(Args... args) -> R;
     };
     template<typename T>
-    using TCollect = TraitCollect<&T::call_mut>;
+    using Funcs = TraitFuncs<&T::call_mut>;
 };
 
 export template<typename T>
@@ -42,7 +42,7 @@ struct Fn<R(Args...)> {
         auto call(Args... args) const -> R;
     };
     template<typename T>
-    using TCollect = TraitCollect<&T::call>;
+    using Funcs = TraitFuncs<&T::call>;
 };
 
 } // namespace rstd

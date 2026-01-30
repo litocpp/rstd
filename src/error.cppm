@@ -12,7 +12,7 @@ export struct Error {
         // auto   provide(request: &mut Request) { ... }
     };
     // template<typename T>
-    // using TCollect = TraitCollect<&T::source>;
+    // using Funcs = TraitFuncs<&T::source>;
 };
 
 } // namespace rstd::error

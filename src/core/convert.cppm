@@ -13,7 +13,7 @@ struct From {
         static auto from(from_t value) -> Self { trait_call_static<0, From<TF>, Self>(value); }
     };
     template<typename T>
-    using TCollect = TraitCollect<&T::from>;
+    using Funcs = TraitFuncs<&T::from>;
 };
 
 export template<typename TF>
@@ -25,7 +25,7 @@ struct Into {
     };
 
     template<typename T>
-    using TCollect = TraitCollect<&T::into>;
+    using Funcs = TraitFuncs<&T::into>;
 };
 
 export template<typename T>
@@ -36,7 +36,7 @@ struct AsRef {
     };
 
     template<typename F>
-    using TCollect = TraitCollect<&F::as_ref>;
+    using Funcs = TraitFuncs<&F::as_ref>;
 };
 
 export template<typename T>
@@ -47,7 +47,7 @@ struct AsMut {
     };
 
     template<typename F>
-    using TCollect = TraitCollect<&F::as_mut>;
+    using Funcs = TraitFuncs<&F::as_mut>;
 };
 
 export template<typename T, typename F>

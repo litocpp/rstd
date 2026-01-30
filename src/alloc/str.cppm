@@ -14,7 +14,7 @@ export struct FromStr {
     };
 
     template<typename T>
-    using TCollect = TraitCollect<&T::from_str>;
+    using Funcs = TraitFuncs<&T::from_str>;
 };
 } // namespace rstd::str_
 

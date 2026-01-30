@@ -33,7 +33,7 @@ struct ArcImplTrait {
     };
 
     template<typename F>
-    using TCollect = TraitCollect<&F::data, &F::do_delete>;
+    using Funcs = TraitFuncs<&F::data, &F::do_delete>;
 };
 
 } // namespace detail

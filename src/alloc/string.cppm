@@ -74,7 +74,7 @@ export struct ToString {
     };
 
     template<typename T>
-    using TCollect = TraitCollect<&T::to_string>;
+    using Funcs = TraitFuncs<&T::to_string>;
 };
 
 } // namespace rstd::alloc::string
