@@ -15,14 +15,22 @@ namespace rstd::option
 export template<typename T>
 class Option;
 
-export struct Unknown {};
+export struct Unknown {
+    template<typename T>
+    constexpr operator Option<T>() {
+        return {};
+    }
+};
 
 export template<typename U = void, typename T>
 [[gnu::always_inline]] inline constexpr auto Some(T&& val) {
     if constexpr (meta::same_as<U, void>) {
-        if constexpr (meta::trivially_value<meta::remove_reference_t<T>>) {
-            return Option<meta::remove_reference_t<T>>(rstd::move(val));
+        using val_t = meta::remove_reference_t<T>;
+        if constexpr (meta::trivially_value<val_t>) {
+            return Option<val_t>(rstd::move(val));
         } else {
+            // use T here, as lvalue is Option<T&>
+            // only move is Option<T>
             return Option<T>(rstd::forward<T>(val));
         }
     } else {
@@ -362,7 +370,6 @@ public:
     using value_type = T;
 
     constexpr Option() noexcept = default;
-    constexpr Option(Unknown) noexcept: Option() {}
 
     constexpr Option(const Option&)
         requires meta::is_trivially_copy_constructible_v<union_value_t>
@@ -411,11 +418,13 @@ public:
     }
 
 private:
-    constexpr Option(T&& val) noexcept(meta::nothrow_constructible<T, T>) {
-        this->_construct_val(rstd::forward<T>(val));
+    template<typename U>
+        requires meta::constructible_from<T, U>
+    explicit constexpr Option(U&& val) noexcept(meta::nothrow_constructible<T, U>) {
+        this->_construct_val(rstd::forward<U>(val));
     }
 
-    constexpr Option(meta::remove_reference_t<T>* ptr) noexcept
+    explicit constexpr Option(meta::remove_reference_t<T>* ptr) noexcept
         requires meta::is_reference_v<T>
     {
         this->_construct_val(*ptr);

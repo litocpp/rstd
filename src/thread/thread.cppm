@@ -134,7 +134,9 @@ public:
         if (inner.get_ref()->name.is_some()) {
             return Some(inner.get_ref()->name.as_ref().unwrap().as_cstr());
         }
-        // TODO: Check if this is the main thread
+        if (main_thread::get() == Some(id())) {
+            return Some(ffi::CStr::from_ptr("main"));
+        }
         return None();
     }
 };

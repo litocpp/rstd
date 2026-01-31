@@ -1,6 +1,6 @@
 add_library(rstd.sys)
 add_library(rstd::sys ALIAS rstd.sys)
-target_compile_features(rstd.sys PUBLIC cxx_std_20)
+target_compile_features(rstd.sys PUBLIC cxx_std_23)
 target_link_libraries(rstd.sys PUBLIC rstd.core rstd.alloc)
 target_sources(
   rstd.sys

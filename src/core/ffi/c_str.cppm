@@ -14,21 +14,10 @@ namespace rstd::ffi
 //     NotNulTerminated,
 // }
 
-export class CStr {
-public:
-    CStr()  = delete;
-    ~CStr() = delete;
-
-    static auto from_ptr(char const* ptr) noexcept -> CStr const& {
-        return *rstd::bit_cast<CStr const*>(ptr);
-    }
-    static auto from_bytes_until_nul(slice<u8> in) noexcept -> CStr const& {
-        return *rstd::bit_cast<CStr const*>(in.p);
-    }
-};
-static_assert(meta::transparent<CStr*, char*>);
+export class CStr;
 
 } // namespace rstd::ffi
+
 using rstd::ffi::CStr;
 namespace rstd
 {
@@ -39,15 +28,44 @@ struct Impl<Sized, CStr> {
 };
 
 template<>
-struct ref<CStr> : ref_base<ref<CStr>, CStr[], false> {
-    CStr const* p { nullptr };
-    usize       length { 1 };
+struct Impl<ptr_::Pointee, CStr> {
+    using Metadata = usize;
 };
 
 template<>
-struct mut_ref<CStr> : ref_base<ref<CStr>, CStr[], true> {
+struct ref<CStr> : ref_base<ref<CStr>, CStr, false> {
+    CStr const* p { nullptr };
+    usize       length { 1 };
+
+    auto count_bytes() const noexcept { return length; }
+    auto is_empty() const noexcept { return length == 0; }
+    auto to_bytes() const noexcept -> slice<u8> {
+        return slice<u8>::from_raw_parts(reinterpret_cast<u8 const*>(p), length);
+    }
+};
+
+template<>
+struct mut_ref<CStr> : ref_base<ref<CStr>, CStr, true> {
     CStr* p { nullptr };
     usize length { 1 };
+
+    auto count_bytes() const noexcept { return length; }
+    auto is_empty() const noexcept { return length == 0; }
 };
+
+namespace ffi
+{
+class CStr {
+public:
+    CStr()  = delete;
+    ~CStr() = delete;
+
+    static auto from_ptr(char const* p) noexcept -> ref<CStr> {
+        return ref<CStr>::from_raw_parts(reinterpret_cast<CStr const*>(p),
+                                         char_traits<char>::length(p));
+    }
+};
+
+} // namespace ffi
 
 } // namespace rstd
