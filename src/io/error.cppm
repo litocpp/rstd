@@ -240,6 +240,8 @@ struct ErrorKind {
 
 struct Error {
     u64 repr;
+
+    using enum ErrorKind::Entity;
 };
 
 template<typename T>

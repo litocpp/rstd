@@ -3,18 +3,15 @@ export module rstd.core:choice;
 namespace rstd
 {
 
-enum class XX
-{
-    x1,
-    x2
-};
+export template<auto V>
+struct value_type {};
 
-struct XXData {
-    template<auto>
-    struct d;
+export template<typename Enum, typename Data>
+struct Choice {
+    using Entity = Enum;
+    Entity entity;
+
+
 };
-template<>
-struct XXData::d<XX::x1> {};
-consteval auto data(XX x) -> XXData;
 
 } // namespace rstd
