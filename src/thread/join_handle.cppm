@@ -1,0 +1,1 @@
+export module rstd.thread:join_handle;

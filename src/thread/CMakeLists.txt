@@ -15,4 +15,7 @@ target_sources(
          main_thread.cppm
          builder.cppm
          functions.cppm
+         join_handle.cppm
+         lifecycle.cppm
+         scoped.cppm
          )

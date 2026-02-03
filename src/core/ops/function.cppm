@@ -4,42 +4,48 @@ export import :trait;
 namespace rstd
 {
 export template<typename T>
-struct FnOnce;
+struct FnOnce {
+    static_assert(false);
+};
 
-template<typename R, typename... Args>
-struct FnOnce<R(Args...)> {
+template<typename R, bool NoEx, typename... Args>
+struct FnOnce<R(Args...) noexcept(NoEx)> {
     using Output = R;
     template<typename Self>
     struct Api {
-        auto call_once(Args... args) -> R;
+        auto call_once(this Api self, Args... args) noexcept(NoEx) -> R;
     };
     template<typename T>
     using Funcs = TraitFuncs<&T::call_once>;
 };
 
 export template<typename T>
-struct FnMut;
+struct FnMut {
+    static_assert(false);
+};
 
-template<typename R, typename... Args>
-struct FnMut<R(Args...)> {
+template<typename R, bool NoEx, typename... Args>
+struct FnMut<R(Args...) noexcept(NoEx)> {
     template<typename Self>
-        requires Impled<Self, FnOnce<R(Args...)>>
+        requires Impled<Self, FnOnce<R(Args...) noexcept(NoEx)>>
     struct Api {
-        auto call_mut(Args... args) -> R;
+        auto call_mut(this Api& self, Args... args) noexcept(NoEx) -> R;
     };
     template<typename T>
     using Funcs = TraitFuncs<&T::call_mut>;
 };
 
 export template<typename T>
-struct Fn;
+struct Fn {
+    static_assert(false);
+};
 
-template<typename R, typename... Args>
-struct Fn<R(Args...)> {
+template<typename R, bool NoEx, typename... Args>
+struct Fn<R(Args...) noexcept(NoEx)> {
     template<typename Self>
-        requires Impled<Self, FnMut<R(Args...)>>
+        requires Impled<Self, FnMut<R(Args...) noexcept(NoEx)>>
     struct Api {
-        auto call(Args... args) const -> R;
+        auto call(this const Api& self, Args... args) noexcept(NoEx) -> R;
     };
     template<typename T>
     using Funcs = TraitFuncs<&T::call>;

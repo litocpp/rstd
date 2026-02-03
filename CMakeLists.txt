@@ -25,6 +25,7 @@ endif()
 
 add_subdirectory(src/core)
 add_subdirectory(src/sys)
+add_subdirectory(src/io)
 add_subdirectory(src/alloc)
 add_subdirectory(src/thread)
 add_subdirectory(src/sync)
