@@ -18,4 +18,5 @@ target_sources(
          join_handle.cppm
          lifecycle.cppm
          scoped.cppm
+         forward.cppm
          )

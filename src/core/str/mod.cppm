@@ -1,6 +1,6 @@
 export module rstd.core:str;
 export import :core;
-export import :meta;
+export import :fmt;
 
 namespace rstd::str_
 {
@@ -86,11 +86,11 @@ public:
 } // namespace rstd
 
 template<>
-struct rstd::cppstd::formatter<rstd::ref<rstd::str>>
-    : rstd::cppstd::formatter<rstd::cppstd::string_view> {
+struct rstd::fmt::formatter<rstd::ref<rstd::str>>
+    : rstd::fmt::formatter<rstd::cppstd::string_view> {
     template<class FmtContext>
     FmtContext::iterator format(rstd::ref<rstd::str> str, FmtContext& ctx) const {
-        return rstd::cppstd::formatter<rstd::cppstd::string_view>::format(
+        return rstd::fmt::formatter<rstd::cppstd::string_view>::format(
             { reinterpret_cast<char const*>(str.data()), str.size() }, ctx);
     }
 };

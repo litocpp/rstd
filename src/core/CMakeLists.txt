@@ -65,6 +65,7 @@ target_sources(
          ptr/mod.cppm
          ptr/non_null.cppm
          ptr/unique.cppm
+         ptr/dyn.cppm
          ptr/metadata.cppm
          ops/mod.cppm
          ops/function.cppm

@@ -159,9 +159,9 @@ TEST(TraitTest, DisplayTraitTest) {
 
 TEST(TraitTest, DynamicDispatchTest) {
     TestClass          obj(42);
-    auto               dyn = rstd::Dyn<DisplayTrait>::make(obj);
+    auto               dyn = rstd::dyn<DisplayTrait>::from_ref(obj);
     std::ostringstream oss;
-    dyn.display(oss);
+    dyn->display(oss);
     EXPECT_EQ(oss.str(), "TestClass(42)");
 }
 
@@ -189,60 +189,60 @@ TEST(TraitTest, StringConverterTraitTest) {
     EXPECT_EQ(obj.to_binary(), "0b101010");
 
     // Test dynamic dispatch
-    auto converter = rstd::Dyn<StringConverterTrait>::make(obj);
-    EXPECT_EQ(converter.to_string(), "42");
-    EXPECT_EQ(converter.to_hex(), "0x2a");
-    EXPECT_EQ(converter.to_binary(), "0b101010");
+    auto converter = rstd::dyn<StringConverterTrait>::from_ref(obj);
+    EXPECT_EQ(converter->to_string(), "42");
+    EXPECT_EQ(converter->to_hex(), "0x2a");
+    EXPECT_EQ(converter->to_binary(), "0b101010");
 }
 
 TEST(TraitTest, StringConverterDynTest) {
     TestClass obj(255);
 
     // Test dynamic dispatch through pointer
-    auto dyn1 = rstd::Dyn<StringConverterTrait>::make(&obj);
-    EXPECT_EQ(dyn1.to_string(), "255");
-    EXPECT_EQ(dyn1.to_hex(), "0xff");
-    EXPECT_EQ(dyn1.to_binary(), "0b11111111");
+    auto dyn1 = rstd::dyn<StringConverterTrait>::from_ptr(&obj);
+    EXPECT_EQ(dyn1->to_string(), "255");
+    EXPECT_EQ(dyn1->to_hex(), "0xff");
+    EXPECT_EQ(dyn1->to_binary(), "0b11111111");
 
     // Test dynamic dispatch through reference
-    auto dyn2 = rstd::Dyn<StringConverterTrait>::make(obj);
-    EXPECT_EQ(dyn2.to_string(), "255");
-    EXPECT_EQ(dyn2.to_hex(), "0xff");
+    auto dyn2 = rstd::dyn<StringConverterTrait>::from_ref(obj);
+    EXPECT_EQ(dyn2->to_string(), "255");
+    EXPECT_EQ(dyn2->to_hex(), "0xff");
 
     // Test moving Dyn object
     auto dyn3 = std::move(dyn1);
-    EXPECT_EQ(dyn3.to_binary(), "0b11111111");
+    EXPECT_EQ(dyn3->to_binary(), "0b11111111");
 
     // Test const reference
     const TestClass& const_ref = obj;
-    auto             dyn4      = rstd::make_dyn<StringConverterTrait>(const_ref);
-    EXPECT_EQ(dyn4.to_string(), "255");
+    auto             dyn4      = rstd::dyn<StringConverterTrait>::from_ref(const_ref);
+    EXPECT_EQ(dyn4->to_string(), "255");
 }
 
 TEST(TraitTest, ConstDynTest) {
     const TestClass obj(42);
 
     // Test const dynamic dispatch
-    auto               dyn = rstd::make_dyn<DisplayTrait>(obj);
+    auto               dyn = rstd::dyn<DisplayTrait>::from_ref(obj);
     std::ostringstream oss;
-    dyn.display(oss);
+    dyn->display(oss);
     EXPECT_EQ(oss.str(), "TestClass(42)");
 
     // Test const dynamic dispatch with multiple traits
-    auto str_dyn = rstd::make_dyn<StringConverterTrait>(obj);
-    EXPECT_EQ(str_dyn.to_string(), "42");
-    EXPECT_EQ(str_dyn.to_hex(), "0x2a");
-    EXPECT_EQ(str_dyn.to_binary(), "0b101010");
+    auto str_dyn = rstd::dyn<StringConverterTrait>::from_ref(obj);
+    EXPECT_EQ(str_dyn->to_string(), "42");
+    EXPECT_EQ(str_dyn->to_hex(), "0x2a");
+    EXPECT_EQ(str_dyn->to_binary(), "0b101010");
 
     // Test const pointer with dynamic dispatch
     const TestClass* ptr     = &obj;
-    auto             ptr_dyn = rstd::make_dyn<StringConverterTrait>(ptr);
-    EXPECT_EQ(ptr_dyn.to_string(), "42");
+    auto             ptr_dyn = rstd::dyn<StringConverterTrait>::from_ptr(ptr);
+    EXPECT_EQ(ptr_dyn->to_string(), "42");
 
     // Verify that the type system prevents modification
-    static_assert(std::is_same_v<decltype(dyn), rstd::Dyn<const DisplayTrait>>,
+    static_assert(std::is_same_v<decltype(dyn), rstd::ref<rstd::dyn<DisplayTrait>>>,
                   "Should be const Dyn type");
-    static_assert(std::is_same_v<decltype(str_dyn), rstd::Dyn<const StringConverterTrait>>,
+    static_assert(std::is_same_v<decltype(str_dyn), rstd::ref<rstd::dyn<StringConverterTrait>>>,
                   "Should be const Dyn type");
 }
 

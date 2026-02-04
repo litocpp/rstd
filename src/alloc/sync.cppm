@@ -49,15 +49,15 @@ struct ArcInner {
     Atomic<usize> strong { 1 };
     Atomic<usize> weak { 1 };
 
-    Dyn<detail::ArcImplTrait> impl;
+    mut_ptr<dyn<detail::ArcImplTrait>> impl;
 
-    ArcInner(Dyn<detail::ArcImplTrait> i): impl(i) {}
+    ArcInner(mut_ptr<dyn<detail::ArcImplTrait>> i): impl(i) {}
 
     auto data() noexcept -> mut_ptr<T> {
-        return mut_ptr<T>::from_raw_parts(rstd::launder(static_cast<T*>(impl.data())));
+        return mut_ptr<T>::from_raw_parts(rstd::launder(static_cast<T*>(impl->data())));
     }
     void do_delete(detail::DeleteType t, detail::EmbedDeconstructor de) {
-        return impl.do_delete(t, de);
+        return impl->do_delete(t, de);
     }
 
     static void embed_deconstruct(voidp p) { rstd::destroy_at(static_cast<T*>(p)); }
@@ -174,10 +174,10 @@ struct Impl<T, sync::ArcInnerImpl<A, P>> : ImplInClass<T, sync::ArcInnerImpl<A, 
 
 template<typename T>
 sync::ArcInnerImpl<T, sync::ArcStoragePolicy::Embed>::ArcInnerImpl()
-    : ArcInner<T>(rstd::make_dyn<detail::ArcImplTrait>(this)) {}
+    : ArcInner<T>(dyn<detail::ArcImplTrait>::from_ptr(this)) {}
 template<typename T>
 sync::ArcInnerImpl<T, sync::ArcStoragePolicy::Separate>::ArcInnerImpl()
-    : ArcInner<T>(rstd::make_dyn<detail::ArcImplTrait>(this)) {}
+    : ArcInner<T>(dyn<detail::ArcImplTrait>::from_ptr(this)) {}
 
 } // namespace rstd
 

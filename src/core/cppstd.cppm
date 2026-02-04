@@ -228,7 +228,6 @@ using std::get;
 using std::get_if;
 using std::invoke;
 using std::runtime_error;
-using std::terminate;
 
 using std::addressof;
 using std::construct_at;

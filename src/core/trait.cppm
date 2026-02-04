@@ -7,6 +7,12 @@ namespace rstd
 export template<auto... Api>
 struct TraitFuncs {};
 
+namespace ptr_
+{
+export template<typename T>
+class dyn_delegate;
+}
+
 namespace detail
 {
 
@@ -163,9 +169,6 @@ concept IsTraitApi = requires() {
     typename detail::ApiInner<T>::type;
 };
 
-export template<typename T>
-class Dyn;
-
 export template<typename T, typename A, TraitDefaultPolicy P = TraitDefaultPolicy::Normal>
 using ImplDefault = Impl<T, default_tag<A, P>>;
 
@@ -183,7 +186,7 @@ export template<usize I, typename TApi, typename... Args>
 
     if constexpr (meta::same_as<TClass, dyn_tag>) {
         // delegate for dyn
-        auto dyn = static_cast<meta::follow_const_t<TApi, Dyn<Trait>>*>(self);
+        auto dyn = static_cast<meta::follow_const_t<TApi, ptr_::dyn_delegate<Trait>>*>(self);
         return rstd::get<I>(*detail::DynHelper::get_apis(dyn))(detail::DynHelper::get_self(dyn),
                                                                rstd::forward<Args>(args)...);
     } else if constexpr (meta::same_as<Delegate, in_class_tag>) {
@@ -216,95 +219,6 @@ export template<usize I, typename TApi, typename... Args>
 
     constexpr const auto api { detail::TraitApiHelper<Trait, TImpl>::template get<I>() };
     return cppstd::invoke(api, rstd::forward<Args>(args)...);
-}
-
-template<typename T>
-class Dyn : public meta::remove_cv_t<T>::template Api<dyn_tag> {
-    friend struct detail::DynHelper;
-
-    using trait_t     = meta::remove_cv_t<T>;
-    using trait_api_t = trait_t::template Api<dyn_tag>;
-
-    template<template<class...> typename Tuple>
-    using dyn_apis_t = decltype(detail::to_dyn(
-        detail::TraitApiHelper<trait_t, trait_api_t>::template make<Tuple>()));
-
-    using ptr_t  = meta::conditional_t<meta::is_const_v<T>, const_voidp, voidp>;
-    using apis_t = dyn_apis_t<cppstd::tuple>;
-
-    const apis_t* const apis;
-    ptr_t               self;
-
-    template<typename U>
-    struct VTable {
-        using impl_t    = Impl<trait_t, U>;
-        using ApiHelper = detail::TraitApiHelper<trait_t, impl_t>;
-
-        template<usize I, typename Fn>
-        struct Wrap {
-            static_assert(false);
-        };
-
-        template<usize I, typename Ret, bool Ne, typename... Args>
-        struct Wrap<I, Ret (*)(voidp, Args...) noexcept(Ne)> {
-            static auto func(voidp p, Args... args) noexcept(Ne) {
-                impl_t               self { static_cast<const U*>(p) };
-                constexpr const auto api { ApiHelper::template get<I>() };
-                return cppstd::invoke(api, self, rstd::forward<Args>(args)...);
-            };
-        };
-
-        template<usize I>
-        consteval static auto convert() {
-            // get api from Impl
-            using FT = meta::func_traits<meta::remove_cv_t<decltype(ApiHelper::template get<I>())>>;
-            if constexpr (FT::is_member) {
-                return &Wrap<I, typename FT::to_dyn>::func;
-            } else {
-                return ApiHelper::template get<I>();
-            }
-        }
-
-        template<usize... Is>
-        consteval static auto convert_all(cppstd::index_sequence<Is...>) {
-            return apis_t { (convert<Is>())... };
-        }
-
-        constexpr static apis_t apis { convert_all(
-            cppstd::make_index_sequence<cppstd::tuple_size_v<apis_t>> {}) };
-    };
-
-    template<typename U>
-    constexpr Dyn(U* p) noexcept
-        : apis(&VTable<meta::remove_cv_t<U>>::apis), self(static_cast<ptr_t>(p)) {}
-
-public:
-    template<typename U>
-    constexpr static auto make(U* p) noexcept -> Dyn {
-        return { p };
-    }
-    template<typename U>
-    constexpr static auto make(U& p) noexcept -> Dyn {
-        return { rstd::addressof(p) };
-    }
-
-    constexpr Dyn(const Dyn&) noexcept = default;
-    constexpr Dyn(Dyn&&) noexcept      = default;
-
-    constexpr Dyn& operator=(const Dyn&) noexcept = default;
-    constexpr Dyn& operator=(Dyn&&) noexcept      = default;
-};
-
-export template<typename T, typename A>
-constexpr auto make_dyn(A* t) noexcept {
-    using dyn_t = meta::conditional_t<meta::is_const_v<A>, Dyn<const T>, Dyn<T>>;
-    return dyn_t::make(t);
-}
-
-export template<typename T, typename A>
-constexpr auto make_dyn(A& t) noexcept {
-    using dyn_t = meta::conditional_t<meta::is_const_v<A>, Dyn<const T>, Dyn<T>>;
-    return dyn_t::make(t);
 }
 
 ///
