@@ -1,14 +1,5 @@
-add_library(rstd.sync)
-add_library(rstd::sync ALIAS rstd.sync)
-target_compile_features(rstd.sync PUBLIC cxx_std_23)
-target_link_libraries(rstd.sync PUBLIC rstd.alloc)
-target_sources(
-  rstd.sync
-  PUBLIC FILE_SET
-         modules
-         TYPE
-         CXX_MODULES
-         FILES
+list(
+APPEND RSTD_SYNC_SOURCES
          mod.cppm
          poison/mod.cppm
          poison/once.cppm

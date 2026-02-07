@@ -8,7 +8,7 @@ namespace rstd::io::error
 ///
 /// This list is intended to grow over time and it is not recommended to
 /// exhaustively match against it.
-struct ErrorKind {
+export struct ErrorKind {
     enum Entity
     {
         /// An entity was not found, often a file.
@@ -238,13 +238,13 @@ struct ErrorKind {
     }
 };
 
-struct Error {
+export struct Error {
     u64 repr;
 
     using enum ErrorKind::Entity;
 };
 
-template<typename T>
+export template<typename T>
 using Result = result::Result<T, Error>;
 
 } // namespace rstd::io::error

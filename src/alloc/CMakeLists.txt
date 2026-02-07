@@ -1,21 +1,13 @@
-add_library(rstd.alloc)
-add_library(rstd::alloc ALIAS rstd.sys)
-target_compile_features(rstd.alloc PUBLIC cxx_std_23)
-target_link_libraries(rstd.alloc PUBLIC rstd.core)
-target_sources(
-  rstd.alloc
-  PUBLIC FILE_SET
-         modules
-         TYPE
-         CXX_MODULES
-         FILES
-         mod.cppm
-         rc.cppm
-         string.cppm
-         str.cppm
-         boxed.cppm
-         sync.cppm
-         ffi/mod.cppm
-         ffi/c_str.cppm
-         vec/mod.cppm
+set(RSTD_ALLOC_SOURCES
+         alloc/mod.cppm
+         alloc/rc.cppm
+         alloc/string.cppm
+         alloc/str.cppm
+         alloc/boxed.cppm
+         alloc/sync.cppm
+         alloc/ffi/mod.cppm
+         alloc/ffi/c_str.cppm
+         alloc/vec/mod.cppm
+         PARENT_SCOPE
          )
+

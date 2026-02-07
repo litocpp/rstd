@@ -23,30 +23,7 @@ add_compile_options(-nostdlib++)
 add_link_options(-nostdlib++)
 endif()
 
-add_subdirectory(src/core)
-add_subdirectory(src/sys)
-add_subdirectory(src/io)
-add_subdirectory(src/alloc)
-add_subdirectory(src/thread)
-add_subdirectory(src/sync)
-
-add_library(rstd)
-add_library(rstd::rstd ALIAS rstd)
-target_compile_features(rstd PUBLIC cxx_std_23)
-target_link_libraries(rstd PUBLIC rstd.core rstd.alloc rstd.sys)
-
-target_sources(rstd PRIVATE ${ALLOC_SOURCE_FILES})
-target_sources(
-  rstd
-  PUBLIC FILE_SET
-         modules
-         TYPE
-         CXX_MODULES
-         BASE_DIRS
-         src
-         FILES
-         src/mod.cppm
-         src/error.cppm)
+add_subdirectory(src)
 
 # Add installation rules
 if(PROJECT_IS_TOP_LEVEL)

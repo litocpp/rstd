@@ -1,35 +1,28 @@
-add_library(rstd.sys)
-add_library(rstd::sys ALIAS rstd.sys)
-target_compile_features(rstd.sys PUBLIC cxx_std_23)
-target_link_libraries(rstd.sys PUBLIC rstd.core rstd.alloc)
-target_sources(
-  rstd.sys
-  PRIVATE pal/unix/futex.cpp pal/windows/futex.cpp sync/once/futex.cpp
-          sync/thread_parking/futex.cpp sync/thread_parking/pthread.cpp)
-target_sources(
-  rstd.sys
-  PUBLIC FILE_SET
-         modules
-         TYPE
-         CXX_MODULES
-         FILES
-         mod.cppm
-         lib/mod.cppm
-         lib/pthread.cppm
-         pal/mod.cppm
-         pal/unix/mod.cppm
-         pal/unix/futex.cppm
-         pal/unix/sync/mutex.cppm
-         pal/unix/sync/mod.cppm
-         pal/windows/mod.cppm
-         pal/windows/futex.cppm
-         sync/once_box.cppm
-         sync/mutex/mod.cppm
-         sync/mutex/futex.cppm
-         sync/mutex/pthread.cppm
-         sync/once/mod.cppm
-         sync/once/futex.cppm
-         sync/thread_parking/mod.cppm
-         sync/thread_parking/futex.cppm
-         sync/thread_parking/pthread.cppm
-         thread/mod.cppm)
+set(RSTD_SYS_PRIVATE_SOURCES
+    sys/pal/unix/futex.cpp sys/pal/windows/futex.cpp sys/sync/once/futex.cpp
+    sys/sync/thread_parking/futex.cpp sys/sync/thread_parking/pthread.cpp
+    PARENT_SCOPE)
+set(RSTD_SYS_SOURCES
+    sys/mod.cppm
+    sys/lib/mod.cppm
+    sys/lib/pthread.cppm
+    sys/pal/mod.cppm
+    sys/pal/unix/mod.cppm
+    sys/pal/unix/futex.cppm
+    sys/pal/unix/sync/mutex.cppm
+    sys/pal/unix/sync/mod.cppm
+    sys/pal/windows/mod.cppm
+    sys/pal/windows/futex.cppm
+    sys/sync/once_box.cppm
+    sys/sync/mutex/mod.cppm
+    sys/sync/mutex/futex.cppm
+    sys/sync/mutex/pthread.cppm
+    sys/sync/once/mod.cppm
+    sys/sync/once/futex.cppm
+    sys/sync/thread_parking/mod.cppm
+    sys/sync/thread_parking/futex.cppm
+    sys/sync/thread_parking/pthread.cppm
+    sys/thread/mod.cppm
+    sys/thread/unix.cppm
+    sys/thread/windows.cppm
+    PARENT_SCOPE)

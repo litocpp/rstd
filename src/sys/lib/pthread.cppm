@@ -10,6 +10,9 @@ using ::pthread_mutex_t;
 using ::pthread_mutex_trylock;
 using ::pthread_mutex_unlock;
 
+
+using ::pthread_t;
+
 constexpr auto pthread_mutex_initializer() noexcept -> pthread_mutex_t {
     return PTHREAD_MUTEX_INITIALIZER;
 }
