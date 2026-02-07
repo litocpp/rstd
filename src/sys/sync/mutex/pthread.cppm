@@ -4,12 +4,12 @@ export module rstd:sys.sync.mutex.pthread;
 
 export import :sys.sync.once_box;
 export import :sys.pal;
-export import :sys.lib.pthread;
+export import :sys.libc.pthread;
 export import :alloc;
 
 using rstd::alloc::boxed::Box;
 using rstd::sys::sync::OnceBox;
-using namespace rstd::sys::lib::pthread;
+using namespace rstd::sys::libc;
 
 namespace rstd::sys::sync::mutex::pthread
 {

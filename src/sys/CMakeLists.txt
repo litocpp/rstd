@@ -4,12 +4,15 @@ set(RSTD_SYS_PRIVATE_SOURCES
     PARENT_SCOPE)
 set(RSTD_SYS_SOURCES
     sys/mod.cppm
-    sys/lib/mod.cppm
-    sys/lib/pthread.cppm
+    sys/libc/mod.cppm
+    sys/libc/pthread.cppm
+    sys/libc/unix.cppm
+    sys/libc/libc.cppm
     sys/pal/mod.cppm
     sys/pal/unix/mod.cppm
     sys/pal/unix/futex.cppm
     sys/pal/unix/sync/mutex.cppm
+    sys/pal/unix/sync/condvar.cppm
     sys/pal/unix/sync/mod.cppm
     sys/pal/windows/mod.cppm
     sys/pal/windows/futex.cppm

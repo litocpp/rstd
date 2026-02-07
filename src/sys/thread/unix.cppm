@@ -1,18 +1,18 @@
 export module rstd:sys.thread.unix;
-export import :sys.lib.pthread;
+export import :sys.libc.pthread;
 export import :io;
 export import :alloc;
 
 #ifdef __linux__
 
-using namespace rstd::sys::lib;
+using namespace rstd::sys::libc;
 using rstd::alloc::boxed::Box;
 
 namespace rstd::sys::thread::unix
 {
 
 export struct Thread {
-    pthread::pthread_t id;
+    pthread_t id;
 
     // auto make(usize stack, Box<ThreadInit> init) -> io::Result<Thread> {
     //  let     data                                          = init;

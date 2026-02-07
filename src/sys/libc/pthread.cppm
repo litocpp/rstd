@@ -1,8 +1,8 @@
 module;
 #include <pthread.h>
-export module rstd:sys.lib.pthread;
+export module rstd:sys.libc.pthread;
 
-export namespace rstd::sys::lib::pthread
+export namespace rstd::sys::libc
 {
 using ::pthread_mutex_destroy;
 using ::pthread_mutex_lock;
