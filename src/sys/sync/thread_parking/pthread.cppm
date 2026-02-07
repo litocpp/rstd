@@ -4,7 +4,7 @@ module;
 #include <mutex>
 #include <chrono>
 
-export module rstd.sys:sync.thread_parking.pthread;
+export module rstd:sys.sync.thread_parking.pthread;
 
 namespace rstd::sys::sync::thread_parking::pthread
 {

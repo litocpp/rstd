@@ -1,2 +1,2 @@
-export module rstd.io;
-export import :error;
+export module rstd:io;
+export import :io.error;

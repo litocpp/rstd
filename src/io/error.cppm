@@ -1,4 +1,4 @@
-export module rstd.io:error;
+export module rstd:io.error;
 export import rstd.core;
 
 namespace rstd::io::error

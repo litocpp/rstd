@@ -1,11 +1,11 @@
 module;
 #include <rstd/macro.hpp>
-export module rstd.thread:thread;
-export import :id;
-export import :main_thread;
+export module rstd:thread.thread;
+export import :thread.id;
+export import :thread.main_thread;
 
-export import rstd.alloc;
-export import rstd.sys;
+export import :alloc;
+export import :sys;
 
 using rstd::alloc::string::String;
 using rstd::pin::Pin;

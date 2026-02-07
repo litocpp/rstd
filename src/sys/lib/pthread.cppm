@@ -1,6 +1,6 @@
 module;
 #include <pthread.h>
-export module rstd.sys:lib.pthread;
+export module rstd:sys.lib.pthread;
 
 export namespace rstd::sys::lib::pthread
 {

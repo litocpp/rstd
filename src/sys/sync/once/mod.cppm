@@ -1,1 +1,1 @@
-export module rstd.sys:sync.once;
+export module rstd:sys.sync.once;

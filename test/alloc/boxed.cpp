@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-import rstd.alloc;
+import rstd;
 
 using rstd::alloc::boxed::Box;
 

@@ -1,5 +1,5 @@
-export module rstd.thread:main_thread;
-export import :id;
+export module rstd:thread.main_thread;
+export import :thread.id;
 
 using rstd::sync::atomic::Atomic;
 using rstd::sync::atomic::Ordering;

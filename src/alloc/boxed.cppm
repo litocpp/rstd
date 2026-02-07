@@ -1,6 +1,6 @@
 module;
 #include <rstd/macro.hpp>
-export module rstd.alloc.boxed;
+export module rstd:alloc.boxed;
 export import rstd.core;
 
 using rstd::mem::manually_drop::ManuallyDrop;

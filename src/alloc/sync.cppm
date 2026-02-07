@@ -1,6 +1,6 @@
 module;
 #include <rstd/macro.hpp>
-export module rstd.alloc.sync;
+export module rstd:alloc.sync;
 export import rstd.core;
 
 using rstd::mem::maybe_uninit::maybe_uninit_traits;

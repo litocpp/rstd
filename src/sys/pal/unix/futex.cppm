@@ -1,4 +1,4 @@
-export module rstd.sys:pal.unix.futex;
+export module rstd:sys.pal.unix.futex;
 
 #ifdef __unix__
 export import rstd.core;

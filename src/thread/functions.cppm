@@ -1,1 +1,1 @@
-export module rstd.thread:functions;
+export module rstd:thread.functions;

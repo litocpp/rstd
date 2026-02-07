@@ -1,6 +1,6 @@
-export module rstd.sys:pal.unix;
-export import :pal.unix.futex;
-export import :pal.unix.sync;
+export module rstd:sys.pal.unix;
+export import :sys.pal.unix.futex;
+export import :sys.pal.unix.sync;
 
 namespace rstd::sys::pal::unix
 {

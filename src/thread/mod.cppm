@@ -1,3 +1,3 @@
-export module rstd.thread;
-export import :id;
-export import :thread;
+export module rstd:thread;
+export import :thread.id;
+export import :thread.thread;

@@ -1,7 +1,7 @@
-export module rstd.sys:pal;
+export module rstd:sys.pal;
 
-export import :pal.unix;
-export import :pal.windows;
+export import :sys.pal.unix;
+export import :sys.pal.windows;
 
 export namespace rstd::sys::pal
 {

@@ -1,1 +1,1 @@
-export module rstd.thread:join_handle;
+export module rstd:thread.join_handle;

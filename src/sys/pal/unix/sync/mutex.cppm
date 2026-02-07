@@ -1,7 +1,7 @@
 module;
 #include <rstd/macro.hpp>
-export module rstd.sys:pal.unix.sync.mutex;
-export import :lib.pthread;
+export module rstd:sys.pal.unix.sync.mutex;
+export import :sys.lib.pthread;
 export import rstd.core;
 
 using namespace rstd::sys::lib::pthread;

@@ -1,8 +1,8 @@
 module;
 #include <rstd/macro.hpp>
-export module rstd.alloc.ffi:c_str;
-export import rstd.alloc.boxed;
-export import rstd.alloc.vec;
+export module rstd:alloc.ffi.c_str;
+export import :alloc.boxed;
+export import :alloc.vec;
 
 using rstd::alloc::vec::Vec;
 using rstd::ffi::CStr;

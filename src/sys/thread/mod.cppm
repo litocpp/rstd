@@ -1,4 +1,4 @@
-export module rstd.sys:thread;
+export module rstd:sys.thread;
 
 namespace rstd::sys::thread
 {

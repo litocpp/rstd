@@ -1,11 +1,11 @@
-export module rstd.sys:sync.mutex.pthread;
+export module rstd:sys.sync.mutex.pthread;
 
 #if defined(__unix__) && ! defined(_WIN32)
 
-export import :sync.once_box;
-export import :pal;
-export import :lib.pthread;
-export import rstd.alloc;
+export import :sys.sync.once_box;
+export import :sys.pal;
+export import :sys.lib.pthread;
+export import :alloc;
 
 using rstd::alloc::boxed::Box;
 using rstd::sys::sync::OnceBox;

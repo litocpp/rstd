@@ -1,3 +1,3 @@
-export module rstd.sys:pal.windows;
-export import :pal.windows.futex;
+export module rstd:sys.pal.windows;
+export import :sys.pal.windows.futex;
 

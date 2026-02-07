@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include <string>
 
-import rstd.rc;
+import rstd;
 
 using namespace rstd::rc;
 

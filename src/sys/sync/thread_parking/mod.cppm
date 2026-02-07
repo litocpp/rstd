@@ -1,9 +1,9 @@
-export module rstd.sys:sync.thread_parking;
+export module rstd:sys.sync.thread_parking;
 
 #if defined(__linux__) || defined(_WIN32)
-export import :sync.thread_parking.futex;
+export import :sys.sync.thread_parking.futex;
 #else
-export import :sync.thread_parking.pthread;
+export import :sys.sync.thread_parking.pthread;
 #endif
 
 namespace rstd::sys::sync::thread_parking

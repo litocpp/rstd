@@ -1,7 +1,7 @@
 module;
 #include <rstd/macro.hpp>
-export module rstd.alloc.string;
-export import rstd.alloc.vec;
+export module rstd:alloc.string;
+export import :alloc.vec;
 export import rstd.core;
 
 using rstd::alloc::vec::Vec;

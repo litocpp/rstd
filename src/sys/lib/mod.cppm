@@ -1,2 +1,2 @@
-export module rstd.sys:lib;
-export import :lib.pthread;
+export module rstd:sys.lib;
+export import :sys.lib.pthread;

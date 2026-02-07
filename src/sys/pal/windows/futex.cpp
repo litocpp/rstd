@@ -1,5 +1,5 @@
-module rstd.sys;
-import :pal.windows.futex;
+module rstd;
+import :sys.pal.windows.futex;
 
 #ifdef _WIN32
 namespace rstd::sys::pal::windows::futex

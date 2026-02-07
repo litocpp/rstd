@@ -1,4 +1,4 @@
-export module rstd.rc;
+export module rstd:alloc.rc;
 export import rstd.core;
 
 namespace rstd::rc

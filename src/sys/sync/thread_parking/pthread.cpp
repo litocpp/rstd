@@ -5,8 +5,8 @@ module;
 #include <chrono>
 #include <cassert>
 
-module rstd.sys;
-import :sync.thread_parking.pthread;
+module rstd;
+import :sys.sync.thread_parking.pthread;
 
 namespace rstd::sys::sync::thread_parking::pthread
 {

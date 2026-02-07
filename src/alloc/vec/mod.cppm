@@ -1,7 +1,7 @@
 module;
 #include <rstd/macro.hpp>
-export module rstd.alloc.vec;
-export import rstd.alloc.boxed;
+export module rstd:alloc.vec;
+export import :alloc.boxed;
 export import rstd.core;
 
 namespace rstd::alloc::vec

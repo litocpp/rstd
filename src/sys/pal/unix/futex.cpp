@@ -13,8 +13,8 @@ module;
 #    endif
 #endif
 
-module rstd.sys;
-import :pal.unix.futex;
+module rstd;
+import :sys.pal.unix.futex;
 
 #ifdef __unix__
 namespace rstd::sys::pal::unix::futex

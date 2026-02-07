@@ -1,5 +1,5 @@
-module rstd.sys;
-import :sync.thread_parking.futex;
+module rstd;
+import :sys.sync.thread_parking.futex;
 
 using rstd::sync::atomic::Ordering;
 

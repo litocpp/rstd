@@ -1,5 +1,5 @@
 module;
-export module rstd.sys:pal.windows.futex;
+export module rstd:sys.pal.windows.futex;
 export import rstd.core;
 
 #ifndef _WIN32

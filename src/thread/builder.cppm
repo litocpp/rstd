@@ -1,7 +1,7 @@
 module;
 #include <rstd/macro.hpp>
-export module rstd.thread:builder;
-export import rstd.alloc;
+export module rstd:thread.builder;
+export import :alloc;
 
 using rstd::alloc::string::String;
 

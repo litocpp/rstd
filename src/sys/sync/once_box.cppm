@@ -1,6 +1,6 @@
-export module rstd.sys:sync.once_box;
+export module rstd:sys.sync.once_box;
+export import :alloc;
 export import rstd.core;
-export import rstd.alloc;
 
 using rstd::alloc::boxed::Box;
 using rstd::pin::Pin;

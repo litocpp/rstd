@@ -1,6 +1,5 @@
-module;
-export module rstd.sys:sync.thread_parking.futex;
-import :pal;
+export module rstd:sys.sync.thread_parking.futex;
+import :sys.pal;
 
 namespace rstd::sys::sync::thread_parking::futex
 {

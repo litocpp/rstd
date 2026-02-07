@@ -1,5 +1,5 @@
-export module rstd.thread:scoped;
-export import :thread;
+export module rstd:thread.scoped;
+export import :thread.thread;
 export import rstd.core;
 
 using rstd::sync::atomic::Atomic;

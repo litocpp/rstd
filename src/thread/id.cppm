@@ -1,4 +1,4 @@
-export module rstd.thread:id;
+export module rstd:thread.id;
 export import rstd.core;
 
 using rstd::num::nonzero::NonZero;

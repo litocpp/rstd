@@ -1,7 +1,7 @@
-export module rstd.sys:thread.unix;
-export import :lib.pthread;
-export import rstd.io;
-export import rstd.alloc;
+export module rstd:sys.thread.unix;
+export import :sys.lib.pthread;
+export import :io;
+export import :alloc;
 
 #ifdef __linux__
 

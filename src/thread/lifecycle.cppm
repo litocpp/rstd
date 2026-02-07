@@ -1,10 +1,10 @@
 module;
 #include <rstd/macro.hpp>
-export module rstd.thread:lifecycle;
-export import :thread;
-export import :scoped;
-export import :forward;
-export import rstd.sys;
+export module rstd:thread.lifecycle;
+export import :thread.thread;
+export import :thread.scoped;
+export import :thread.forward;
+export import :sys;
 
 using rstd::thread::scoped::ScopeData;
 namespace imp = rstd::sys::thread;
