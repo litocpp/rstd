@@ -72,6 +72,7 @@ target_sources(
          mem/mod.cppm
          mem/manually_drop.cppm
          mem/maybe_uninit.cppm
+         mem/drop_guard.cppm
          sync/mod.cppm
          sync/atomic.cppm
          forward/mod.cppm
