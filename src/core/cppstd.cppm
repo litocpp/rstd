@@ -181,6 +181,7 @@ using std::make_shared;
 using std::make_unique;
 using std::shared_ptr;
 using std::unique_ptr;
+using std::weak_ptr;
 using std::variant;
 using std::monostate;
 using std::visit;
