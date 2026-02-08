@@ -6,7 +6,7 @@ namespace rstd::mem::manually_drop
 {
 template<typename T = void>
 struct ManuallyDropData {
-    alignas(T) rstd::byte storage[sizeof(T)];
+    alignas(T) rstd::byte storage[sizeof(T)] {};
 
     constexpr auto storage_loc() noexcept { return reinterpret_cast<T*>(rstd::addressof(storage)); }
     constexpr auto storage_loc() const noexcept {
@@ -25,7 +25,10 @@ class ManuallyDrop {
 
 public:
     ~ManuallyDrop() = default;
-    constexpr static auto make(T&& v) noexcept -> ManuallyDrop { return { rstd::forward<T>(v) }; }
+    [[nodiscard]]
+    constexpr static auto make(T&& v) noexcept -> ManuallyDrop {
+        return { rstd::forward<T>(v) };
+    }
 
     constexpr T*       operator->() noexcept { return d.storage_loc(); }
     constexpr const T* operator->() const noexcept { return d.storage_loc(); }
