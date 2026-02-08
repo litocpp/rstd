@@ -6,6 +6,7 @@ module;
 #include <cstdio>
 #include <cstring>
 #include <cassert>
+#include <cmath>
 #include <source_location>
 
 #include <type_traits>
@@ -141,6 +142,7 @@ using std::source_location;
 
 // iterator
 using std::back_insert_iterator;
+using std::iter_value_t;
 
 // function
 using std::function;
@@ -180,6 +182,7 @@ using std::make_unique;
 using std::shared_ptr;
 using std::unique_ptr;
 using std::variant;
+using std::monostate;
 using std::visit;
 
 using std::lock_guard;
@@ -243,6 +246,7 @@ using std::swap;
 
 using std::max;
 using std::min;
+using std::fabs;
 
 using std::find;
 using std::find_if;
@@ -365,6 +369,8 @@ using std::is_nothrow_destructible;
 using std::is_nothrow_destructible_v;
 
 // copy
+using std::is_trivially_copyable;
+using std::is_trivially_copyable_v;
 using std::is_copy_constructible;
 using std::is_copy_constructible_v;
 using std::is_nothrow_copy_constructible;
@@ -394,6 +400,9 @@ using std::is_nothrow_move_assignable_v;
 using std::is_trivially_move_assignable;
 using std::is_trivially_move_assignable_v;
 
+using std::is_nothrow_assignable;
+using std::is_nothrow_assignable_v;
+
 using std::is_convertible_v;
 
 using std::remove_const_t;
@@ -401,6 +410,7 @@ using std::remove_cvref;
 using std::remove_cvref_t;
 using std::remove_extent_t;
 
+using std::integral;
 using std::is_void;
 using std::is_void_v;
 
