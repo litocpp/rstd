@@ -10,10 +10,25 @@ using ::pthread_mutex_t;
 using ::pthread_mutex_trylock;
 using ::pthread_mutex_unlock;
 
+using ::pthread_cond_broadcast;
+using ::pthread_cond_destroy;
+using ::pthread_cond_init;
+using ::pthread_cond_signal;
+using ::pthread_cond_t;
+using ::pthread_cond_timedwait;
+using ::pthread_cond_wait;
+using ::pthread_condattr_destroy;
+using ::pthread_condattr_init;
+using ::pthread_condattr_setclock;
+using ::pthread_condattr_t;
 
 using ::pthread_t;
 
 constexpr auto pthread_mutex_initializer() noexcept -> pthread_mutex_t {
     return PTHREAD_MUTEX_INITIALIZER;
+}
+
+constexpr auto pthread_cond_initializer() noexcept -> pthread_cond_t {
+    return PTHREAD_COND_INITIALIZER;
 }
 } // namespace rstd::sys::lib::pthread

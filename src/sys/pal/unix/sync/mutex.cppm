@@ -20,8 +20,8 @@ public:
         // only valid when destroy on not used mutex
         pthread_mutex_destroy(&inner);
     }
-    Mutex(Mutex&& o) noexcept: inner(o.inner) {}
 
+    Mutex(Mutex&& o) noexcept: inner(o.inner) {}
     Mutex(const Mutex&)            = delete;
     Mutex& operator=(const Mutex&) = delete;
     Mutex& operator=(Mutex&&)      = delete;

@@ -1,27 +1,27 @@
-module;
-#include <atomic>
-#include <condition_variable>
-#include <mutex>
-#include <chrono>
-
 export module rstd:sys.sync.thread_parking.pthread;
+export import :sys.pal;
+export import rstd.core;
+
+using rstd::sync::atomic::Atomic;
+using rstd::sys::pal::Mutex;
+using rstd::sys::pal::Condvar;
 
 namespace rstd::sys::sync::thread_parking::pthread
 {
 export class Parker {
 private:
-    static constexpr std::size_t EMPTY    = 0;
-    static constexpr std::size_t PARKED   = 1;
-    static constexpr std::size_t NOTIFIED = 2;
+    static constexpr usize EMPTY    = 0;
+    static constexpr usize PARKED   = 1;
+    static constexpr usize NOTIFIED = 2;
 
-    std::atomic_size_t      state;
-    std::mutex              lock;
-    std::condition_variable cvar;
+    Atomic<usize> state;
+    Mutex         lock;
+    Condvar       cvar;
 
 public:
     Parker();
     void park();
-    void park_timeout(const std::chrono::duration<double>& dur);
+    void park_timeout(const cppstd::chrono::duration<double>& dur);
     void unpark();
 };
 } // namespace rstd::sys::sync::thread_parking::pthread

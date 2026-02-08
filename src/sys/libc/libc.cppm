@@ -1,6 +1,6 @@
 module;
-#include <cerrno>
-#include <ctime>
+#include <errno.h>
+#include <time.h>
 export module rstd:sys.libc.std;
 
 export namespace rstd::sys::libc

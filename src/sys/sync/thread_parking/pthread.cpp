@@ -1,88 +1,83 @@
 module;
-#include <atomic>
-#include <condition_variable>
-#include <mutex>
-#include <chrono>
-#include <cassert>
-
+#include <rstd/macro.hpp>
 module rstd;
 import :sys.sync.thread_parking.pthread;
 
+using rstd::sync::atomic::Ordering;
+
 namespace rstd::sys::sync::thread_parking::pthread
 {
-Parker::Parker(): state(EMPTY) {}
+Parker::Parker(): state(EMPTY), lock(Mutex::make()), cvar(Condvar::make()) {}
 
 void Parker::park() {
     // Try fast path for already-notified state
-    size_t expected = NOTIFIED;
-    if (state.compare_exchange_strong(
-            expected, EMPTY, std::memory_order_acquire, std::memory_order_relaxed)) {
+    usize expected = NOTIFIED;
+    if (state.compare_exchange_strong(expected, EMPTY, Ordering::Acquire, Ordering::Relaxed)) {
         return;
     }
 
-    std::unique_lock<std::mutex> guard(lock);
+    lock.lock();
+
     expected = EMPTY;
-    if (! state.compare_exchange_strong(
-            expected, PARKED, std::memory_order_relaxed, std::memory_order_relaxed)) {
+    if (! state.compare_exchange_strong(expected, PARKED, Ordering::Relaxed, Ordering::Relaxed)) {
         if (expected == NOTIFIED) {
             // Must read here for synchronization, see Rust comments
-            [[maybe_unused]] size_t old = state.exchange(EMPTY, std::memory_order_acquire);
-            assert(old == NOTIFIED && "park state changed unexpectedly");
+            [[maybe_unused]] usize old = state.exchange(EMPTY, Ordering::Acquire);
+            assert(old == NOTIFIED, "park state changed unexpectedly");
             return;
         }
-        throw std::runtime_error("inconsistent park state");
+        panic("inconsistent park state");
     }
 
     while (true) {
-        cvar.wait(guard);
+        cvar.wait(lock);
+
         expected = NOTIFIED;
-        if (state.compare_exchange_strong(
-                expected, EMPTY, std::memory_order_acquire, std::memory_order_relaxed)) {
+        if (state.compare_exchange_strong(expected, EMPTY, Ordering::Acquire, Ordering::Relaxed)) {
             break;
         }
     }
 }
 
-void Parker::park_timeout(const std::chrono::duration<double>& dur) {
-    size_t expected = NOTIFIED;
-    if (state.compare_exchange_strong(
-            expected, EMPTY, std::memory_order_acquire, std::memory_order_relaxed)) {
+void Parker::park_timeout(const cppstd::chrono::duration<double>& dur) {
+    usize expected = NOTIFIED;
+    if (state.compare_exchange_strong(expected, EMPTY, Ordering::Acquire, Ordering::Relaxed)) {
         return;
     }
 
-    std::unique_lock<std::mutex> guard(lock);
+    lock.lock();
     expected = EMPTY;
-    if (! state.compare_exchange_strong(
-            expected, PARKED, std::memory_order_relaxed, std::memory_order_relaxed)) {
+    if (! state.compare_exchange_strong(expected, PARKED, Ordering::Acquire, Ordering::Relaxed)) {
         if (expected == NOTIFIED) {
-            [[maybe_unused]] size_t old = state.exchange(EMPTY, std::memory_order_acquire);
+            [[maybe_unused]] usize old = state.exchange(EMPTY, Ordering::Acquire);
             assert(old == NOTIFIED && "park state changed unexpectedly");
             return;
         }
-        throw std::runtime_error("inconsistent park_timeout state");
+        throw panic("inconsistent park_timeout state");
     }
 
-    cvar.wait_for(guard, dur);
+    cvar.wait_timeout(lock,
+                      cppstd::chrono::duration_cast<cppstd::chrono::nanoseconds>(dur).count());
 
-    size_t old = state.exchange(EMPTY, std::memory_order_acquire);
+    usize old = state.exchange(EMPTY, Ordering::Acquire);
     if (old != NOTIFIED && old != PARKED) {
-        throw std::runtime_error("inconsistent park_timeout state: " + std::to_string(old));
+        throw panic("inconsistent park_timeout state: {}", old);
     }
 }
 
 void Parker::unpark() {
-    size_t prev = state.exchange(NOTIFIED, std::memory_order_release);
+    usize prev = state.exchange(NOTIFIED, Ordering::Relaxed);
 
     switch (prev) {
     case EMPTY:
     case NOTIFIED: return;
     case PARKED: break;
-    default: throw std::runtime_error("inconsistent state in unpark");
+    default: panic("inconsistent state in unpark");
     }
 
     // Lock to ensure proper synchronization with the parking thread
-    std::unique_lock<std::mutex> guard(lock);
-    guard.unlock();
+    lock.lock();
+    lock.unlock();
     cvar.notify_one();
 }
 
