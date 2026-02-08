@@ -1,8 +1,11 @@
 export module rstd:io.error;
+export import :sys.io;
 export import rstd.core;
 
 namespace rstd::io::error
 {
+
+export using rstd::sys::io::RawOsError;
 
 /// A list specifying general categories of I/O error.
 ///
@@ -242,6 +245,10 @@ export struct Error {
     u64 repr;
 
     using enum ErrorKind::Entity;
+
+    static auto from_raw_os_error(RawOsError code) -> Error {
+        return { .repr = static_cast<u64>(code) };
+    }
 };
 
 } // namespace rstd::io::error

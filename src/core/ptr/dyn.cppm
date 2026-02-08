@@ -82,14 +82,18 @@ public:
 
     constexpr dyn_delegate& operator=(const dyn_delegate&) noexcept = default;
     constexpr dyn_delegate& operator=(dyn_delegate&&) noexcept      = default;
+
+    auto operator==(rstd::nullptr_t) const noexcept -> bool { return self == nullptr; }
 };
 
 template<typename A, bool Mutable>
 struct dyn_ptr_base {
+    using value_type = A;
     using delegate_t = meta::conditional_t<Mutable, dyn_delegate<A>, const dyn_delegate<A const>>;
     delegate_t d;
 
     auto operator->() noexcept { return &d; }
+    auto operator==(rstd::nullptr_t) const noexcept -> bool { return d == nullptr; }
 };
 
 } // namespace ptr_

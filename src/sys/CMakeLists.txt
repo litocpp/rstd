@@ -4,6 +4,7 @@ set(RSTD_SYS_PRIVATE_SOURCES
     PARENT_SCOPE)
 set(RSTD_SYS_SOURCES
     sys/mod.cppm
+    sys/io/mod.cppm
     sys/libc/mod.cppm
     sys/libc/pthread.cppm
     sys/libc/unix.cppm
