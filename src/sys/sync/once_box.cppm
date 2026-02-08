@@ -60,7 +60,7 @@ public:
 private:
     template<typename F>
     auto initialize(F&& f) -> Pin<T&> {
-        T* raw      = f().get_unchecked_mut().into_raw();
+        T* raw      = rstd::move(f().get_unchecked_mut()).into_raw();
         T* expected = nullptr;
         if (m_ptr.compare_exchange_strong(
                 expected, raw, rstd::memory_order::release, rstd::memory_order::acquire)) {

@@ -117,7 +117,7 @@ TEST(BoxTest, IntoRawReleasesOwnership) {
         auto b = Box<Counter>::make(Counter { 123 });
         EXPECT_EQ(Counter::alive, 1);
 
-        raw = b.into_raw(); // ownership released to caller
+        raw = rstd::move(b).into_raw(); // ownership released to caller
         ASSERT_NE(raw, nullptr);
         EXPECT_EQ(raw->v, 123);
         // b is moved-from; its destructor should NOT delete raw

@@ -244,7 +244,11 @@ export struct Error {
     using enum ErrorKind::Entity;
 };
 
-export template<typename T>
-using Result = result::Result<T, Error>;
-
 } // namespace rstd::io::error
+
+namespace rstd::io
+{
+export template<typename T>
+using Result = result::Result<T, error::Error>;
+
+}

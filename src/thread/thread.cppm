@@ -5,7 +5,7 @@ export import :thread.id;
 export import :thread.main_thread;
 
 export import :alloc;
-export import :sys;
+export import :sys.sync.thread_parking;
 
 using rstd::alloc::string::String;
 using rstd::pin::Pin;
@@ -139,6 +139,11 @@ public:
         }
         return None();
     }
+};
+
+export struct ThreadInit {
+    Thread handle;
+    // Box<dyn FnOnce() + Send> rust_start;
 };
 
 } // namespace thread

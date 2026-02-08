@@ -36,7 +36,7 @@ public:
                 p->unlock();
             } else {
                 // Locked: leak the underlying pthread_mutex_t to mirror Rust behavior.
-                auto leaked = p.into_raw();
+                auto leaked = rstd::move(p).into_raw();
                 (void)leaked;
             }
         }

@@ -11,10 +11,6 @@ namespace imp = rstd::sys::thread;
 
 namespace rstd::thread::lifecycle
 {
-export struct ThreadInit {
-    Thread handle;
-    // Box<dyn FnOnce() + Send> rust_start;
-};
 
 template<typename T>
 struct Packet {
