@@ -38,7 +38,7 @@ protected:
     constexpr void _assign_none() {
         if (is_some()) {
             rstd::destroy_at(_ptr());
-            m_storage = {};
+            rstd::memset(m_storage, 0, sizeof(union_value_t));
         }
     }
 
@@ -76,6 +76,10 @@ private:
 
 public:
     friend struct rstd::option::detail::option_store<NonNull>;
+    constexpr NonNull(const NonNull&) noexcept            = default;
+    constexpr NonNull& operator=(const NonNull&) noexcept = default;
+    constexpr NonNull(NonNull&&) noexcept                 = default;
+    constexpr NonNull& operator=(NonNull&&) noexcept      = default;
 
     USE_TRAIT(NonNull)
 

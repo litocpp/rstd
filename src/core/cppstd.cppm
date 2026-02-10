@@ -410,6 +410,7 @@ using std::remove_const_t;
 using std::remove_cvref;
 using std::remove_cvref_t;
 using std::remove_extent_t;
+using std::remove_pointer_t;
 
 using std::integral;
 using std::is_void;

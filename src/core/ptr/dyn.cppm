@@ -12,88 +12,136 @@ export template<typename A>
 struct dyn;
 
 template<typename T>
-class dyn_delegate : public meta::remove_cv_t<T>::template Api<dyn_tag> {
+struct VTable {
+    static_assert(! meta::is_const_v<T>);
+    using trait_api_t = T::template Api<dyn_tag>;
+
+    template<template<class...> typename Tuple>
+    using api_tuple_t =
+        decltype(detail::to_dyn(detail::TraitApiHelper<T, trait_api_t>::template make<Tuple>()));
+
+    using apis_t   = api_tuple_t<cppstd::tuple>;
+    using delete_t = void (*)(voidp);
+
+    delete_t deleter;
+    apis_t   apis;
+    usize    size;
+    usize    align;
+};
+
+template<typename T, typename U>
+struct VTableStaticStorage {
+    using vtable_t  = VTable<T>;
+    using impl_t    = Impl<T, U>;
+    using ApiHelper = detail::TraitApiHelper<T, impl_t>;
+    using apis_t    = vtable_t::apis_t;
+
+    template<usize I, typename Fn>
+    struct Wrap {
+        static_assert(false);
+    };
+
+    template<usize I, typename Ret, bool Ne, typename... Args>
+    struct Wrap<I, Ret (*)(voidp, Args...) noexcept(Ne)> {
+        static auto func(voidp p, Args... args) noexcept(Ne) {
+            impl_t               self { static_cast<const U*>(p) };
+            constexpr const auto api { ApiHelper::template get<I>() };
+            return cppstd::invoke(api, self, rstd::forward<Args>(args)...);
+        };
+    };
+
+    template<usize I>
+    consteval static auto convert() {
+        // get api from Impl
+        using FT = meta::func_traits<meta::remove_cv_t<decltype(ApiHelper::template get<I>())>>;
+        if constexpr (FT::is_member) {
+            return &Wrap<I, typename FT::to_dyn>::func;
+        } else {
+            return ApiHelper::template get<I>();
+        }
+    }
+
+    template<usize... Is>
+    consteval static auto convert_all(cppstd::index_sequence<Is...>) {
+        return apis_t { (convert<Is>())... };
+    }
+
+    static constexpr const VTable<T> vtable {
+        .deleter =
+            [](voidp p) {
+                // static_cast<U*>(p)->~U();
+                delete static_cast<U*>(p);
+            },
+        .apis  = convert_all(cppstd::make_index_sequence<cppstd::tuple_size_v<apis_t>> {}),
+        .size  = sizeof(U),
+        .align = alignof(U),
+    };
+};
+
+template<typename T>
+struct dyn_delegate : public meta::remove_cv_t<T>::template Api<dyn_tag> {
     friend struct detail::DynHelper;
 
     template<typename>
     friend struct dyn;
 
-    using trait_t     = meta::remove_cv_t<T>;
-    using trait_api_t = trait_t::template Api<dyn_tag>;
+    using trait_t  = meta::remove_cv_t<T>;
+    using vtable_t = VTable<trait_t>;
+    using ptr_t    = meta::add_pointer_t<meta::follow_const_t<T, void>>;
 
-    template<template<class...> typename Tuple>
-    using dyn_vtable_t = decltype(detail::to_dyn(
-        detail::TraitApiHelper<trait_t, trait_api_t>::template make<Tuple>()));
-
-public:
-    using vtable_t = dyn_vtable_t<cppstd::tuple>;
-
-private:
-    using ptr_t = meta::add_pointer_t<meta::follow_const_t<T, void>>;
-    const vtable_t* const apis;
-    ptr_t                 self;
+    ptr_t           p;
+    vtable_t const* vtable;
 
     template<typename U>
-    struct VTable {
-        using impl_t    = Impl<trait_t, U>;
-        using ApiHelper = detail::TraitApiHelper<trait_t, impl_t>;
+    static auto from_raw_ptr(U* p) noexcept -> dyn_delegate {
+        return { .p = static_cast<ptr_t>(p),
+                 .vtable =
+                     rstd::addressof(VTableStaticStorage<trait_t, meta::remove_cv_t<U>>::vtable) };
+    }
 
-        template<usize I, typename Fn>
-        struct Wrap {
-            static_assert(false);
-        };
-
-        template<usize I, typename Ret, bool Ne, typename... Args>
-        struct Wrap<I, Ret (*)(voidp, Args...) noexcept(Ne)> {
-            static auto func(voidp p, Args... args) noexcept(Ne) {
-                impl_t               self { static_cast<const U*>(p) };
-                constexpr const auto api { ApiHelper::template get<I>() };
-                return cppstd::invoke(api, self, rstd::forward<Args>(args)...);
-            };
-        };
-
-        template<usize I>
-        consteval static auto convert() {
-            // get api from Impl
-            using FT = meta::func_traits<meta::remove_cv_t<decltype(ApiHelper::template get<I>())>>;
-            if constexpr (FT::is_member) {
-                return &Wrap<I, typename FT::to_dyn>::func;
-            } else {
-                return ApiHelper::template get<I>();
-            }
-        }
-
-        template<usize... Is>
-        consteval static auto convert_all(cppstd::index_sequence<Is...>) {
-            return vtable_t { (convert<Is>())... };
-        }
-
-        constexpr static vtable_t apis { convert_all(
-            cppstd::make_index_sequence<cppstd::tuple_size_v<vtable_t>> {}) };
-    };
-
-    template<typename U>
-    constexpr dyn_delegate(U* p) noexcept
-        : apis(&VTable<meta::remove_cv_t<U>>::apis), self(static_cast<ptr_t>(p)) {}
-
-public:
-    constexpr dyn_delegate(const dyn_delegate&) noexcept = default;
-    constexpr dyn_delegate(dyn_delegate&&) noexcept      = default;
-
-    constexpr dyn_delegate& operator=(const dyn_delegate&) noexcept = default;
-    constexpr dyn_delegate& operator=(dyn_delegate&&) noexcept      = default;
-
-    auto operator==(rstd::nullptr_t) const noexcept -> bool { return self == nullptr; }
+    auto operator==(rstd::nullptr_t) const noexcept -> bool { return p == nullptr; }
 };
 
-template<typename A, bool Mutable>
+template<typename A>
 struct dyn_ptr_base {
     using value_type = A;
-    using delegate_t = meta::conditional_t<Mutable, dyn_delegate<A>, const dyn_delegate<A const>>;
-    delegate_t d;
+    using delegate_t = meta::follow_const_t<A, dyn_delegate<A>>;
 
-    auto operator->() noexcept { return &d; }
-    auto operator==(rstd::nullptr_t) const noexcept -> bool { return d == nullptr; }
+private:
+    dyn_delegate<A> d;
+
+public:
+    constexpr dyn_ptr_base(dyn_delegate<A> d) noexcept: d(d) {}
+    constexpr dyn_ptr_base(const dyn_ptr_base&)            = default;
+    constexpr dyn_ptr_base(dyn_ptr_base&&)                 = default;
+    constexpr dyn_ptr_base& operator=(const dyn_ptr_base&) = default;
+    constexpr dyn_ptr_base& operator=(dyn_ptr_base&&)      = default;
+
+    constexpr auto operator->() noexcept -> delegate_t* { return rstd::addressof(d); }
+    constexpr auto operator*() noexcept -> delegate_t& { return d; }
+
+    constexpr auto operator==(const dyn_ptr_base& o) const noexcept -> bool { return d.p == o.d.p; }
+    constexpr auto operator==(rstd::nullptr_t) const noexcept -> bool { return d == nullptr; }
+
+    constexpr auto as_ptr() const noexcept -> ptr<dyn<A>>
+        requires(! meta::is_const_v<A>)
+    {
+        return ptr<dyn<A>> { *this };
+    }
+
+    constexpr auto as_ref() const noexcept -> ref<dyn<A>> { return ref<dyn<A>> { *this }; }
+
+    constexpr auto as_mut_ref() const noexcept -> mut_ref<dyn<A>>
+        requires(! meta::is_const_v<A>)
+    {
+        return mut_ref<dyn<A>> { *this };
+    }
+
+    constexpr void reset() noexcept { d.p = nullptr; }
+
+    constexpr auto* as_raw_ptr() const noexcept { return d.p; }
+
+    constexpr auto* metadata() const noexcept { return d.vtable; }
 };
 
 } // namespace ptr_
@@ -101,14 +149,34 @@ struct dyn_ptr_base {
 export using ptr_::dyn;
 
 template<typename A>
-struct ref<dyn<A>> : ptr_::dyn_ptr_base<A, false> {};
+struct ref<dyn<A>> : ptr_::dyn_ptr_base<A const> {
+    using delegate_t = ptr_::dyn_delegate<A const>;
+    static auto from_raw_parts(delegate_t::ptr_t p, delegate_t::vtable_t const* v) -> ref {
+        return { { { .p = p, .vtable = v } } };
+    }
+};
 template<typename A>
-struct ptr<dyn<A>> : ptr_::dyn_ptr_base<A, false> {};
+struct ptr<dyn<A>> : ptr_::dyn_ptr_base<A const> {
+    using delegate_t = ptr_::dyn_delegate<A const>;
+    static auto from_raw_parts(delegate_t::ptr_t p, delegate_t::vtable_t const* v) -> ptr {
+        return { { { .p = p, .vtable = v } } };
+    }
+};
 
 template<typename A>
-struct mut_ref<dyn<A>> : ptr_::dyn_ptr_base<A, true> {};
+struct mut_ref<dyn<A>> : ptr_::dyn_ptr_base<A> {
+    using delegate_t = ptr_::dyn_delegate<A>;
+    static auto from_raw_parts(delegate_t::ptr_t p, delegate_t::vtable_t const* v) -> mut_ref {
+        return { { { .p = p, .vtable = v } } };
+    }
+};
 template<typename A>
-struct mut_ptr<dyn<A>> : ptr_::dyn_ptr_base<A, true> {};
+struct mut_ptr<dyn<A>> : ptr_::dyn_ptr_base<A> {
+    using delegate_t = ptr_::dyn_delegate<A>;
+    static auto from_raw_parts(delegate_t::ptr_t p, delegate_t::vtable_t const* v) -> mut_ptr {
+        return { { { .p = p, .vtable = v } } };
+    }
+};
 
 template<meta::same_as<ptr_::Pointee> T, typename A>
 struct Impl<T, dyn<A>> {
@@ -129,13 +197,13 @@ struct dyn {
     template<typename T>
     static auto from_ptr(T* in) noexcept {
         using ptr_t = meta::conditional_t<meta::is_const_v<T>, ptr<dyn>, mut_ptr<dyn>>;
-        return ptr_t { { .d { in } } };
+        return ptr_t { { { ptr_t::delegate_t::from_raw_ptr(in) } } };
     }
 
     template<typename T>
     static auto from_ref(T& in) noexcept {
         using ref_t = meta::conditional_t<meta::is_const_v<T>, ref<dyn>, mut_ref<dyn>>;
-        return ref_t { { .d { rstd::addressof(in) } } };
+        return ref_t { { { ref_t::delegate_t::from_raw_ptr(rstd::addressof(in)) } } };
     }
 };
 } // namespace ptr_

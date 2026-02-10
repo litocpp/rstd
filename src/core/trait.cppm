@@ -10,7 +10,7 @@ struct TraitFuncs {};
 namespace ptr_
 {
 export template<typename T>
-class dyn_delegate;
+struct dyn_delegate;
 }
 
 namespace detail
@@ -107,12 +107,12 @@ using TraitApiHelper = TraitFuncsInner<Funcs<Trait, T>>;
 struct DynHelper {
     template<typename TDyn>
     static auto get_self(TDyn* t) noexcept {
-        return t->self;
+        return t->p;
     }
 
     template<typename TDyn>
     static auto get_apis(TDyn* t) noexcept {
-        return t->apis;
+        return rstd::addressof(t->vtable->apis);
     }
 };
 

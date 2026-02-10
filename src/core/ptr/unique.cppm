@@ -33,6 +33,8 @@ public:
     constexpr bool operator==(nullptr_t in) const noexcept { return ! pointer || *pointer == in; }
     constexpr      operator bool() const noexcept { return pointer.is_some(); }
 
+    void reset() noexcept { pointer = {}; }
+
     /// \name ?Sized
     /// @{
     static constexpr auto make_unchecked(mut_ptr<T> p) -> Unique {

@@ -76,9 +76,13 @@ public:
 
     void reset() noexcept(meta::destructible<T> || meta::is_array_v<T>) {
         if (m_ptr != nullptr) {
-            mut_ptr<T> t = m_ptr.as_mut_ptr();
-            rstd::default_delete<T> {}(&*t);
-            m_ptr = Unique<T>::make_unchecked({ .p = nullptr });
+            auto mptr = m_ptr.as_mut_ptr();
+            if constexpr (requires { mptr.metadata()->deleter(mptr.as_raw_ptr()); }) {
+                mptr.metadata()->deleter(mptr.as_raw_ptr());
+            } else {
+                rstd::default_delete<T> {}(mptr.as_raw_ptr());
+            }
+            m_ptr.reset();
         }
     }
 
