@@ -144,7 +144,7 @@ public:
 
 export struct ThreadInit {
     Thread                   handle;
-    // Box<dyn<FnOnce<void()>>> start;
+    Box<dyn<FnOnce<void()>>> start;
 };
 
 } // namespace thread

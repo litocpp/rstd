@@ -144,20 +144,20 @@ std::string rstd::Impl<StringConverterTrait, TestClass>::to_binary() const {
 }
 
 // Add new tests
-TEST(TraitTest, CloneTraitTest) {
+TEST(Trait, CloneTrait) {
     TestClass original(42);
     auto      cloned = std::any_cast<TestClass>(original.clone());
     EXPECT_EQ(cloned.value, 42);
 }
 
-TEST(TraitTest, DisplayTraitTest) {
+TEST(Trait, DisplayTrait) {
     TestClass          obj(42);
     std::ostringstream oss;
     obj.display(oss);
     EXPECT_EQ(oss.str(), "TestClass(42)");
 }
 
-TEST(TraitTest, DynamicDispatchTest) {
+TEST(Trait, DynamicDispatchTest) {
     TestClass          obj(42);
     auto               dyn = rstd::dyn<DisplayTrait>::from_ref(obj);
     std::ostringstream oss;
@@ -165,7 +165,7 @@ TEST(TraitTest, DynamicDispatchTest) {
     EXPECT_EQ(oss.str(), "TestClass(42)");
 }
 
-TEST(TraitTest, ComplexTraitTest) {
+TEST(Trait, ComplexTrait) {
     TestClass a(10);
     TestClass b(5);
 
@@ -180,7 +180,7 @@ TEST(TraitTest, ComplexTraitTest) {
 }
 
 // Add new test at the end
-TEST(TraitTest, StringConverterTraitTest) {
+TEST(Trait, StringConverterTrait) {
     TestClass obj(42);
 
     // Test direct trait usage
@@ -195,7 +195,7 @@ TEST(TraitTest, StringConverterTraitTest) {
     EXPECT_EQ(converter->to_binary(), "0b101010");
 }
 
-TEST(TraitTest, StringConverterDynTest) {
+TEST(Trait, StringConverterDynTest) {
     TestClass obj(255);
 
     // Test dynamic dispatch through pointer
@@ -219,7 +219,7 @@ TEST(TraitTest, StringConverterDynTest) {
     EXPECT_EQ(dyn4->to_string(), "255");
 }
 
-TEST(TraitTest, ConstDynTest) {
+TEST(Trait, ConstDynTest) {
     const TestClass obj(42);
 
     // Test const dynamic dispatch
@@ -267,7 +267,7 @@ template<>
 struct rstd::Impl<rstd::clone::Clone, InClassDef>
     : rstd::ImplInClass<rstd::clone::Clone, InClassDef> {};
 
-TEST(TraitTest, InClass) {
+TEST(Trait, InClass) {
     {
         InClass m { 100 };
         auto    mm = rstd::as<rstd::clone::Clone>(m);
@@ -286,4 +286,13 @@ TEST(TraitTest, InClass) {
         // n.clone_from(m);
         // EXPECT_EQ(n.a, m.a);
     }
+}
+
+using rstd::alloc::boxed::Box;
+TEST(Trait, Dyn) {
+    using namespace rstd;
+    auto b = Box<dyn<DisplayTrait>>::from_raw(dyn<DisplayTrait>::from_ptr(new TestClass { 42 }));
+    std::ostringstream oss;
+    b->display(oss);
+    EXPECT_EQ(oss.str(), "TestClass(42)");
 }

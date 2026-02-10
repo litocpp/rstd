@@ -33,6 +33,7 @@ add_executable(
   sys/sync/mutex/futex.cpp
   sys/sync/mutex/pthread.cpp
   num/nonzero.cpp
+  thread.cpp
   )
 
 target_link_libraries(rstd_test PRIVATE rstd::rstd GTest::gtest_main)

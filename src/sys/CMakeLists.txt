@@ -1,7 +1,16 @@
-set(RSTD_SYS_PRIVATE_SOURCES
-    sys/pal/unix/futex.cpp sys/pal/windows/futex.cpp sys/sync/once/futex.cpp
-    sys/sync/thread_parking/futex.cpp sys/sync/thread_parking/pthread.cpp
+list(
+  APPEND
+  RSTD_PRIVATE_SOURCES
+  sys/pal/unix/futex.cpp
+  sys/pal/windows/futex.cpp
+  sys/sync/once/futex.cpp
+  sys/sync/thread_parking/futex.cpp
+  sys/sync/thread_parking/pthread.cpp)
+
+set(RSTD_PRIVATE_SOURCES
+    ${RSTD_PRIVATE_SOURCES}
     PARENT_SCOPE)
+
 set(RSTD_SYS_SOURCES
     sys/mod.cppm
     sys/io/mod.cppm

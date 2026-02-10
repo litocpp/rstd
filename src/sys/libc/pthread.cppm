@@ -24,9 +24,14 @@ using ::pthread_condattr_t;
 
 using ::pthread_attr_init;
 using ::pthread_attr_destroy;
+using ::pthread_attr_setstacksize;
 using ::pthread_attr_t;
 
 using ::pthread_create;
+using ::pthread_join;
+using ::pthread_detach;
+using ::pthread_self;
+using ::pthread_equal;
 using ::pthread_t;
 
 constexpr auto pthread_mutex_initializer() noexcept -> pthread_mutex_t {

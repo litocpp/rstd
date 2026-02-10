@@ -10,3 +10,9 @@ set(RSTD_THREAD_SOURCES
     thread/scoped.cppm
     thread/forward.cppm
     PARENT_SCOPE)
+
+list(APPEND RSTD_PRIVATE_SOURCES thread/thread.cpp)
+
+set(RSTD_PRIVATE_SOURCES
+    ${RSTD_PRIVATE_SOURCES}
+    PARENT_SCOPE)

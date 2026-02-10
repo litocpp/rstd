@@ -1,7 +1,7 @@
 add_subdirectory(core)
 
+set(RSTD_PRIVATE_SOURCES)
 set(RSTD_SYS_SOURCES)
-set(RSTD_SYS_PRIVATE_SOURCES)
 set(RSTD_IO_SOURCES)
 set(RSTD_ALLOC_SOURCES)
 set(RSTD_THREAD_SOURCES)
@@ -34,4 +34,4 @@ target_sources(
          ${RSTD_THREAD_SOURCES}
          ${RSTD_SYNC_SOURCES})
 
-target_sources(rstd PRIVATE ${RSTD_SYS_PRIVATE_SOURCES})
+target_sources(rstd PRIVATE ${RSTD_PRIVATE_SOURCES})

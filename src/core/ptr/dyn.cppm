@@ -104,8 +104,12 @@ struct dyn_delegate : public meta::remove_cv_t<T>::template Api<dyn_tag> {
 
 template<typename A>
 struct dyn_ptr_base {
-    using value_type = A;
-    using delegate_t = meta::follow_const_t<A, dyn_delegate<A>>;
+    using value_type              = A;
+    using trait_t                 = meta::remove_const_t<A>;
+    using delegate_t              = meta::follow_const_t<A, dyn_delegate<A>>;
+    static constexpr bool Mutable = (! meta::is_const_v<A>);
+
+    friend struct dyn_ptr_base<const trait_t>;
 
 private:
     dyn_delegate<A> d;
@@ -117,24 +121,30 @@ public:
     constexpr dyn_ptr_base& operator=(const dyn_ptr_base&) = default;
     constexpr dyn_ptr_base& operator=(dyn_ptr_base&&)      = default;
 
+    constexpr dyn_ptr_base(const dyn_ptr_base<trait_t>& v)
+        requires(! Mutable)
+        : d({ .p = v.d.p, .vtable = v.d.vtable }) {}
+
     constexpr auto operator->() noexcept -> delegate_t* { return rstd::addressof(d); }
     constexpr auto operator*() noexcept -> delegate_t& { return d; }
 
     constexpr auto operator==(const dyn_ptr_base& o) const noexcept -> bool { return d.p == o.d.p; }
     constexpr auto operator==(rstd::nullptr_t) const noexcept -> bool { return d == nullptr; }
 
-    constexpr auto as_ptr() const noexcept -> ptr<dyn<A>>
-        requires(! meta::is_const_v<A>)
+    constexpr auto as_ptr() const noexcept -> ptr<dyn<trait_t>>
+        requires Mutable
     {
-        return ptr<dyn<A>> { *this };
+        return ptr<dyn<trait_t>> { *this };
     }
 
-    constexpr auto as_ref() const noexcept -> ref<dyn<A>> { return ref<dyn<A>> { *this }; }
+    constexpr auto as_ref() const noexcept -> ref<dyn<trait_t>> {
+        return ref<dyn<trait_t>> { *this };
+    }
 
-    constexpr auto as_mut_ref() const noexcept -> mut_ref<dyn<A>>
-        requires(! meta::is_const_v<A>)
+    constexpr auto as_mut_ref() const noexcept -> mut_ref<dyn<trait_t>>
+        requires Mutable
     {
-        return mut_ref<dyn<A>> { *this };
+        return mut_ref<dyn<trait_t>> { *this };
     }
 
     constexpr void reset() noexcept { d.p = nullptr; }
