@@ -44,9 +44,14 @@ struct VTableStaticStorage {
     template<usize I, typename Ret, bool Ne, typename... Args>
     struct Wrap<I, Ret (*)(voidp, Args...) noexcept(Ne)> {
         static auto func(voidp p, Args... args) noexcept(Ne) {
-            impl_t               self { static_cast<const U*>(p) };
             constexpr const auto api { ApiHelper::template get<I>() };
-            return cppstd::invoke(api, self, rstd::forward<Args>(args)...);
+            if constexpr (meta::is_direct_trait<T>) {
+                auto self { static_cast<U*>(p) };
+                return (self->*api)(rstd::forward<Args>(args)...);
+            } else {
+                impl_t self { static_cast<U*>(p) };
+                return (self.*api)(rstd::forward<Args>(args)...);
+            }
         };
     };
 
@@ -205,13 +210,13 @@ struct dyn {
     ~dyn() = delete;
 
     template<typename T>
-    static auto from_ptr(T* in) noexcept {
+    static constexpr auto from_ptr(T* in) noexcept {
         using ptr_t = meta::conditional_t<meta::is_const_v<T>, ptr<dyn>, mut_ptr<dyn>>;
         return ptr_t { { { ptr_t::delegate_t::from_raw_ptr(in) } } };
     }
 
     template<typename T>
-    static auto from_ref(T& in) noexcept {
+    static constexpr auto from_ref(T& in) noexcept {
         using ref_t = meta::conditional_t<meta::is_const_v<T>, ref<dyn>, mut_ref<dyn>>;
         return ref_t { { { ref_t::delegate_t::from_raw_ptr(rstd::addressof(in)) } } };
     }

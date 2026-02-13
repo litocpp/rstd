@@ -12,6 +12,9 @@ struct PartialEq {
 
         auto ne(const Rhs& other) noexcept -> bool { return trait_call<1>(this, other); }
     };
+
+    template<typename T>
+    using Funcs = TraitFuncs<&T::eq, &T::ne>;
 };
 
 } // namespace rstd::cmp
