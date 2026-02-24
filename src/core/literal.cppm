@@ -16,7 +16,7 @@ export using u64 = cppstd::uint64_t;
 
 export using idx         = cppstd::ptrdiff_t;
 export using usize       = cppstd::size_t;
-export using isize       = cppstd::ptrdiff_t;
+export using isize       = cppstd::intptr_t;
 export using byte        = cppstd::byte;
 export using voidp       = void*;
 export using const_voidp = void const*;

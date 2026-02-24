@@ -95,6 +95,7 @@ using std::uintptr_t;
 
 using std::byte;
 using std::ptrdiff_t;
+using std::intptr_t;
 using std::size_t;
 using std::strong_ordering;
 using std::weak_ordering;
