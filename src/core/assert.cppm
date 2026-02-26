@@ -7,8 +7,12 @@ namespace rstd
 export void assert_raw(ref<str> expr_str, ref<str> message,
                        const source_location = source_location::current());
 
+export void assert_fmt(ref<str> expr_str, const source_location loc = source_location::current()) {
+    assert_raw(expr_str, {}, loc);
+}
+
 export template<typename... T>
-void assert_fmt(ref<str> expr_str, rstd::format_string<T...> fmt = "", T&&... args,
+void assert_fmt(ref<str> expr_str, rstd::format_string<T...> fmt, T&&... args,
                 const source_location loc = source_location::current()) {
     assert_raw(expr_str, cppstd::vformat(fmt.get(), rstd::fmt::make_format_args(args...)), loc);
 }

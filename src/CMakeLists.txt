@@ -18,7 +18,6 @@ add_library(rstd::rstd ALIAS rstd)
 target_compile_features(rstd PUBLIC cxx_std_23)
 target_link_libraries(rstd PUBLIC rstd.core)
 
-target_sources(rstd PRIVATE ${ALLOC_SOURCE_FILES})
 target_sources(
   rstd
   PUBLIC FILE_SET

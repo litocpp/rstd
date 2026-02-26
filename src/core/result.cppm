@@ -724,12 +724,12 @@ public:
     }
 };
 
-template<typename T, typename TErr = UnknownErr>
+template<typename T, typename TErr>
 constexpr auto Ok(T&& val) -> Result<T, TErr> {
     return { rstd::forward<T>(val), detail::ok_tag {} };
 }
 
-template<typename TErr, typename T = UnknownOk>
+template<typename TErr, typename T>
 constexpr auto Err(TErr&& val) -> Result<T, TErr> {
     return { rstd::forward<TErr>(val), detail::err_tag {} };
 }

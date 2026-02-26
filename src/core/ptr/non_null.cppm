@@ -69,9 +69,9 @@ public:
     using const_pointer_t = ptr<T>;
 
 private:
-    const_pointer_t m_ptr;
+    pointer_t m_ptr;
 
-    constexpr NonNull(const_pointer_t p) noexcept: m_ptr(p) {}
+    explicit constexpr NonNull(pointer_t p) noexcept: m_ptr(p) {}
     constexpr NonNull() = delete;
 
 public:
@@ -109,17 +109,18 @@ public:
     }
 
     static constexpr auto make_unchecked(pointer_t p) noexcept -> NonNull {
-        return NonNull(p.as_ptr());
+        return NonNull(p);
     }
 
-    constexpr auto as_ptr() const noexcept -> const_pointer_t { return m_ptr; }
-    constexpr auto as_mut_ptr() noexcept -> pointer_t { return as_cast<pointer_t>(m_ptr); }
+    constexpr auto as_ptr() const noexcept -> const_pointer_t { return m_ptr.as_ptr(); }
+    constexpr auto as_mut_ptr() noexcept -> pointer_t { return m_ptr; }
 
     constexpr explicit operator bool() const noexcept { return m_ptr != nullptr; }
 
     constexpr auto as_ref() const noexcept { return m_ptr.as_ref(); }
 
     constexpr auto as_mut() const noexcept { return m_ptr.as_mut_ref(); }
+    constexpr void test() {}
     /// @}
 
     template<class U>

@@ -70,9 +70,9 @@ public:
         }
     }
 
-    auto     operator->() noexcept { return m_ptr.as_mut_ptr(); }
-    auto     operator->() const noexcept { return m_ptr.as_ptr(); }
-    explicit operator bool() const noexcept { return m_ptr != nullptr; }
+    constexpr auto     operator->() noexcept { return m_ptr.as_mut_ptr(); }
+    constexpr auto     operator->() const noexcept { return m_ptr.as_ptr(); }
+    explicit constexpr operator bool() const noexcept { return m_ptr != nullptr; }
 
     void reset() noexcept(meta::destructible<T> || meta::is_array_v<T>) {
         if (m_ptr != nullptr) {

@@ -13,7 +13,7 @@ using namespace rstd::sys::libc;
 using rstd::alloc::boxed::Box;
 using rstd::thread::ThreadInit;
 
-extern "C" void* thread_start(void* data);
+extern "C" void* rstd_thread_start(void* data);
 
 namespace rstd::sys::thread::unix
 {
@@ -32,7 +32,7 @@ export struct Thread {
         auto raw = rstd::move(init).into_raw();
 
         auto native = libc::pthread_t {};
-        auto ret    = libc::pthread_create(&native, &attr, thread_start, raw.p);
+        auto ret    = libc::pthread_create(&native, &attr, rstd_thread_start, raw.p);
         if (ret == 0) {
             assert_eq(libc::pthread_attr_destroy(&attr), 0);
             return Ok(Thread { .id = native });

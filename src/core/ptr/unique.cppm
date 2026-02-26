@@ -29,8 +29,10 @@ public:
         o.pointer = {};
         return *this;
     }
-    constexpr bool operator==(ptr<T> in) const noexcept { return pointer && *pointer == in; }
-    constexpr bool operator==(nullptr_t in) const noexcept { return ! pointer || *pointer == in; }
+    constexpr bool operator==(ptr<T> in) const noexcept {
+        return pointer.is_some() && *pointer == in;
+    }
+    constexpr bool operator==(nullptr_t in) const noexcept { return (! pointer.is_some()); }
     constexpr      operator bool() const noexcept { return pointer.is_some(); }
 
     void reset() noexcept { pointer = {}; }

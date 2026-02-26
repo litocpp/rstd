@@ -93,8 +93,10 @@ struct option_store {
 
 protected:
     using union_value_t = T;
-    constexpr auto _ptr() const noexcept { return reinterpret_cast<const T*>(m_storage); }
-    constexpr auto _ptr() noexcept { return reinterpret_cast<T*>(m_storage); }
+    constexpr auto _ptr() const noexcept {
+        return rstd::launder(reinterpret_cast<const T*>(m_storage));
+    }
+    constexpr auto _ptr() noexcept { return rstd::launder(reinterpret_cast<T*>(m_storage)); }
     template<typename V>
     constexpr void _construct_val(V&& val) {
         rstd::construct_at(_ptr(), rstd::forward<V>(val));
@@ -144,9 +146,11 @@ protected:
     using union_const_value_t = T const*;
 
     constexpr auto _ptr() const noexcept {
-        return reinterpret_cast<const union_const_value_t*>(m_storage);
+        return rstd::launder(reinterpret_cast<const union_const_value_t*>(m_storage));
     }
-    constexpr auto _ptr() noexcept { return reinterpret_cast<union_value_t*>(m_storage); }
+    constexpr auto _ptr() noexcept {
+        return rstd::launder(reinterpret_cast<union_value_t*>(m_storage));
+    }
     template<typename V>
     constexpr void _construct_val(V&& val) {
         rstd::construct_at(_ptr(), rstd::addressof(val));
@@ -177,21 +181,26 @@ protected:
     }
 
     template<typename U>
-        requires meta::same_as<meta::remove_cvref_t<U>, Option<T>>
-    static constexpr decltype(auto) _get(U&& self) {
-        using traits = detail::option_traits<decltype(self)>;
+    [[gnu::always_inline]] inline constexpr auto* _ptr_wrapper(this U&& self) noexcept {
         if constexpr (meta::is_reference_v<T>) {
-            return static_cast<traits::ret_value_t>(**(self._ptr()));
+            return *self._ptr();
         } else {
-            return static_cast<traits::ret_value_t>(*(self._ptr()));
+            return self._ptr();
         }
     }
 
-    constexpr decltype(auto) _get() const& { return _get(static_cast<const Option<T>&>(*this)); }
-    constexpr decltype(auto) _get() const&& { return _get(static_cast<const Option<T>&&>(*this)); }
-    constexpr decltype(auto) _get() & { return _get(static_cast<Option<T>&>(*this)); }
-    constexpr decltype(auto) _get() && { return _get(static_cast<Option<T>&&>(*this)); }
-    constexpr decltype(auto) _get_move() { return _get(static_cast<Option<T>&&>(*this)); }
+    template<typename U>
+    [[gnu::always_inline]] inline constexpr auto&& _get(this U&& self) noexcept {
+        auto* ptr = self._ptr_wrapper();
+
+        using value_t = meta::remove_reference_t<decltype(*ptr)>;
+        if constexpr (meta::is_lvalue_reference_v<U>)
+            return static_cast<meta::add_lvalue_reference_t<value_t>>(*ptr);
+        else
+            return static_cast<meta::add_rvalue_reference_t<value_t>>(*ptr);
+    }
+
+    constexpr auto&& _get_move() noexcept { return static_cast<Option<T>&&>(*this)._get(); }
 
 public:
     constexpr auto is_none() const noexcept -> bool { return ! this->is_some(); }
@@ -274,28 +283,18 @@ public:
 
     constexpr auto take() -> Option<T> { return rstd::exchange(_cast(), option::None()); }
 
+    template<typename U>
     [[nodiscard]]
-    constexpr const T& operator*() const& noexcept {
-        assert(this->is_some());
-        return _get();
+    constexpr auto& operator*(this U&& self) noexcept {
+        assert(self.is_some());
+        return rstd::forward<U>(self)._get();
     }
 
+    template<typename U>
     [[nodiscard]]
-    constexpr T& operator*() & noexcept {
-        assert(this->is_some());
-        return _get();
-    }
-
-    [[nodiscard]]
-    constexpr const meta::remove_reference_t<T>* operator->() const& noexcept {
-        assert(this->is_some());
-        return rstd::addressof(_get());
-    }
-
-    [[nodiscard]]
-    constexpr meta::remove_reference_t<T>* operator->() & noexcept {
-        assert(this->is_some());
-        return rstd::addressof(_get());
+    constexpr auto* operator->(this U&& self) noexcept {
+        assert(self.is_some());
+        return rstd::forward<U>(self)._ptr_wrapper();
     }
 
     [[nodiscard]]
