@@ -21,7 +21,7 @@ namespace rstd::sys::thread::unix
 export struct Thread {
     pthread_t id;
 
-    auto make(usize stack, Box<ThreadInit>&& init) -> rstd::io::Result<Thread> {
+    static auto make(usize stack, Box<ThreadInit>&& init) -> rstd::io::Result<Thread> {
         libc::pthread_attr_t attr {};
         assert_eq(libc::pthread_attr_init(&attr), 0);
 
@@ -32,7 +32,7 @@ export struct Thread {
         auto raw = rstd::move(init).into_raw();
 
         auto native = libc::pthread_t {};
-        auto ret    = libc::pthread_create(&native, &attr, thread_start, &raw);
+        auto ret    = libc::pthread_create(&native, &attr, thread_start, raw.p);
         if (ret == 0) {
             assert_eq(libc::pthread_attr_destroy(&attr), 0);
             return Ok(Thread { .id = native });

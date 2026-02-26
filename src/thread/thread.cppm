@@ -143,8 +143,8 @@ public:
 };
 
 export struct ThreadInit {
-    Thread                   handle;
-    Box<dyn<FnOnce<void()>>> start;
+    Thread                             handle;
+    cppstd::move_only_function<void()> start;
 };
 
 } // namespace thread

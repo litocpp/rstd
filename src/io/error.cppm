@@ -259,3 +259,12 @@ export template<typename T>
 using Result = result::Result<T, error::Error>;
 
 }
+
+template<>
+struct rstd::fmt::formatter<rstd::io::error::Error>
+    : rstd::fmt::formatter<rstd::cppstd::string_view> {
+    template<class FmtContext>
+    FmtContext::iterator format(rstd::io::error::Error const& err, FmtContext& ctx) const {
+        return rstd::fmt::formatter<rstd::cppstd::string_view>::format("", ctx);
+    }
+};

@@ -272,6 +272,8 @@ public:
         return option::None();
     }
 
+    constexpr auto take() -> Option<T> { return rstd::exchange(_cast(), option::None()); }
+
     [[nodiscard]]
     constexpr const T& operator*() const& noexcept {
         assert(this->is_some());

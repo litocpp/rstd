@@ -589,6 +589,9 @@ struct result_impl<Result<T, E>, E> : result_base<Result<T, E>, E> {
     }
 };
 
+struct ok_tag {};
+struct err_tag {};
+
 } // namespace detail
 
 template<typename T, typename E>
@@ -617,22 +620,18 @@ public:
         : m_val(), m_has_val(true) {}
 
     // Ok ctor
-    Result(T&& val) noexcept(meta::nothrow_constructible<T, T>)
-        requires meta::same_as<E, UnknownErr>
-    {
+    constexpr Result(T&& val, detail::ok_tag) noexcept(meta::nothrow_constructible<T, T>) {
         this->_construct_val(rstd::forward<T>(val));
     }
 
     // Err ctor
-    Result(E&& err) noexcept(meta::nothrow_constructible<E, E>)
-        requires meta::same_as<T, UnknownOk>
-    {
+    constexpr Result(E&& err, detail::err_tag) noexcept(meta::nothrow_constructible<E, E>) {
         this->_construct_err(rstd::forward<E>(err));
     }
 
     // from Ok
     template<typename U>
-    Result(U&& o) noexcept(
+    constexpr Result(U&& o) noexcept(
         meta::nothrow_constructible<T, typename detail::result_traits<U>::value_type>)
         requires meta::constructible_from<UnknownErr,
                                           typename detail::result_traits<U>::error_type> &&
@@ -643,7 +642,7 @@ public:
 
     // from Err
     template<typename U>
-    Result(U&& o) noexcept(
+    constexpr Result(U&& o) noexcept(
         meta::nothrow_constructible<E, typename detail::result_traits<U>::error_type>)
         requires meta::constructible_from<UnknownOk,
                                           typename detail::result_traits<U>::value_type> &&
@@ -652,8 +651,8 @@ public:
         this->_construct_err(meta::remove_cvref_t<U>::template _get<1>(rstd::forward<U>(o)));
     }
 
-    Result(const Result&) = default;
-    Result(Result&&)      = default;
+    constexpr Result(const Result&) = default;
+    constexpr Result(Result&&)      = default;
 
     constexpr Result(Result&& o) noexcept(
         meta::conjunction_v<meta::is_nothrow_move_constructible<T>,
@@ -685,7 +684,7 @@ public:
 
     Result& operator=(const Result&) = delete;
 
-    Result& operator=(Result&&)
+    constexpr Result& operator=(Result&&)
         requires meta::is_trivially_move_assignable_v<typename traits::union_value_t> &&
                      meta::is_trivially_move_assignable_v<typename traits::union_error_t>
     = default;
@@ -725,13 +724,15 @@ public:
     }
 };
 
-// Ok
-template<typename T>
-Result(T&) -> Result<T&, UnknownErr>;
+template<typename T, typename TErr = UnknownErr>
+constexpr auto Ok(T&& val) -> Result<T, TErr> {
+    return { rstd::forward<T>(val), detail::ok_tag {} };
+}
 
-// Err
-template<typename T>
-Result(T&) -> Result<UnknownOk, T&>;
+template<typename TErr, typename T = UnknownOk>
+constexpr auto Err(TErr&& val) -> Result<T, TErr> {
+    return { rstd::forward<TErr>(val), detail::err_tag {} };
+}
 } // namespace rstd::result
 
 namespace rstd::option::detail
@@ -752,6 +753,5 @@ struct option_adapter_l1<result::Result<T, E>> {
         }
     }
 };
-
 
 } // namespace rstd::option::detail

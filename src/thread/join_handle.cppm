@@ -17,26 +17,19 @@ class JoinHandle {
 public:
     USE_TRAIT(JoinHandle)
 
+    using ret_t = meta::void_empty_t<T>;
+
     JoinHandle() = delete;
 
-    auto thread() const -> Thread {
-        return inner.thread();
-    }
+    static auto make(lifecycle::JoinInner<T> inner) -> Self { return Self { rstd::move(inner) }; }
 
-    auto join() -> Result<T> {
-        return inner.join();
-    }
+    auto thread(this Self const& self) -> Thread { return self.inner.thread(); }
 
-    auto is_finished() const -> bool {
-        return inner.is_finished();
-    }
+    auto join(this Self&& self) -> Result<ret_t> { return rstd::move(self).inner.join(); }
+
+    auto is_finished(this Self const& self) -> bool { return self.inner.is_finished(); }
 
     friend struct lifecycle::JoinInner<T>;
 };
-
-export template<typename T>
-auto make_join_handle(lifecycle::JoinInner<T> inner) -> JoinHandle<T> {
-    return JoinHandle<T>(rstd::move(inner));
-}
 
 } // namespace rstd::thread

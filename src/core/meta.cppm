@@ -27,6 +27,10 @@ concept transparent =
     sizeof(S) == sizeof(T) && alignof(S) == alignof(T) && meta::is_standard_layout_v<S>;
 
 // custom
+
+template<typename T>
+using void_empty_t = conditional_t<is_void_v<T>, empty, T>;
+
 template<typename T, typename... Args>
 concept nothrow_constructible = is_nothrow_constructible_v<T, Args...>;
 template<typename T>

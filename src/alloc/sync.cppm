@@ -326,9 +326,9 @@ public:
 
     /// Returns a mutable reference to the inner value if there are no other
     /// `Arc` or `Weak` pointers to the same allocation.
-    static auto get_mut(Arc& arc) noexcept -> Option<mut_ref<T>> {
-        if (is_unique(arc)) {
-            return Some(arc.self.inner->data().as_mut_ref());
+    auto get_mut(this Arc& self) noexcept -> Option<mut_ref<T>> {
+        if (is_unique(self)) {
+            return Some(self.self.inner->data().as_mut_ref());
         }
         return None();
     }

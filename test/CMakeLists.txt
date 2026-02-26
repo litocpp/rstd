@@ -32,6 +32,7 @@ add_executable(
   alloc/string.cpp
   sys/sync/mutex/futex.cpp
   sys/sync/mutex/pthread.cpp
+  thread/thread.cpp
   num/nonzero.cpp
   thread.cpp
   )

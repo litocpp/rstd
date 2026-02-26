@@ -212,16 +212,17 @@ TEST(ArcThread, CloneDropAcrossThreads) {
 
 TEST(ArcGetMut, UniqueAccessAndMutation) {
     auto a = Arc<int>::make(10);
-    auto m = Arc<int>::get_mut(a);
+
+    auto m = a.get_mut();
     ASSERT_TRUE(m.is_some());
     *m.unwrap() = 42;
     EXPECT_EQ(*a, 42);
 
     auto w = a.downgrade();
-    EXPECT_FALSE(Arc<int>::get_mut(a).is_some());
+    EXPECT_FALSE(a.get_mut().is_some());
 
     w.reset();
-    auto m2 = Arc<int>::get_mut(a);
+    auto m2 = a.get_mut();
     ASSERT_TRUE(m2.is_some());
     *m2.unwrap() = 99;
     EXPECT_EQ(*a, 99);

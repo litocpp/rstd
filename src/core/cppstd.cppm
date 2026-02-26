@@ -147,6 +147,7 @@ using std::iter_value_t;
 
 // function
 using std::function;
+using std::move_only_function;
 
 // future
 using std::future;

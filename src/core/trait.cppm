@@ -293,7 +293,7 @@ struct WithTraitDefault : ImplDefault<Traits, Self, TraitDefaultPolicy::InClass>
 
 export template<typename Self, typename... Traits>
 struct MayWithTrait
-    : meta::conditional_t<Impled<Traits, Self>, typename Traits::template Api<Self>, Empty>... {
+    : meta::conditional_t<Impled<Traits, Self>, typename Traits::template Api<Self>, empty>... {
     constexpr bool operator==(const MayWithTrait) const { return true; }
 };
 

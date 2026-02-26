@@ -31,10 +31,10 @@ export struct Builder {
 
     static auto make() -> Builder {
         return { .d = {
-            .name {},
-            .stack_size {},
-            .no_hooks = false,
-        } };
+                     .name {},
+                     .stack_size {},
+                     .no_hooks = false,
+                 } };
     }
 
     auto name(this Self self, String name) -> Builder {
@@ -52,42 +52,20 @@ export struct Builder {
         return self;
     }
 
-    /// Spawns a new thread, and returns a JoinHandle for it.
     template<typename F>
-    auto spawn(F&& f) -> io::Result<JoinHandle<void>>
-        requires Impled<meta::remove_cvref_t<F>, FnOnce<void()>>
-    {
-        auto stack_size = d.stack_size.unwrap_or(0);
-
-        using namespace rstd::thread::lifecycle;
-        using namespace rstd::alloc::boxed;
-
-        auto inner =
-            spawn_unchecked<void>(rstd::move(d.name), stack_size, None(), rstd::forward<F>(f));
-
-        if (inner.is_ok()) {
-            return Ok(make_join_handle(inner.unwrap()));
-        } else {
-            return Err(inner.unwrap_err());
-        }
-    }
-
-    template<typename F, typename T>
-    auto spawn(F&& f) -> io::Result<JoinHandle<T>>
+    auto spawn(F&& f) -> io::Result<JoinHandle<meta::invoke_result_t<F>>>
     // requires Impled<meta::remove_cvref_t<F>, FnOnce<void()>> &&
     // meta::same_as<meta::remove_cvref_t<F>, Box<dyn<FnOnce<void()>>>
     {
         auto stack_size = d.stack_size.unwrap_or(0);
 
-        using namespace rstd::thread::lifecycle;
-
         auto inner =
-            spawn_unchecked<T>(rstd::move(d.name), stack_size, None(), rstd::forward<F>(f));
+            lifecycle::spawn_unchecked(rstd::move(d.name), stack_size, None(), rstd::forward<F>(f));
 
         if (inner.is_ok()) {
-            return Ok(make_join_handle(inner.unwrap()));
+            return Ok(JoinHandle<meta::invoke_result_t<F>>::make(inner.unwrap_unchecked()));
         } else {
-            return Err(inner.unwrap_err());
+            return Err(inner.unwrap_err_unchecked());
         }
     }
 };
