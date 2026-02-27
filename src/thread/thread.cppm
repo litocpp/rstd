@@ -140,11 +140,15 @@ public:
         }
         return None();
     }
+
+    auto into_raw() { return inner->into_raw().inner; }
 };
 
 export struct ThreadInit {
     Thread                             handle;
     cppstd::move_only_function<void()> start;
+
+    void init(this ThreadInit const& self);
 };
 
 } // namespace thread

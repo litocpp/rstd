@@ -3,6 +3,7 @@ module;
 export module rstd:thread.lifecycle;
 export import :thread.thread;
 export import :thread.scoped;
+export import :thread.current;
 export import :thread.forward;
 export import :sys;
 export import rstd.core;
@@ -92,3 +93,17 @@ auto spawn_unchecked(Option<String> name, usize stack_size, Option<Arc<ScopeData
 }
 
 } // namespace rstd::thread::lifecycle
+
+namespace rstd::thread
+{
+void ThreadInit::init(this ThreadInit const& self) {
+    // if let Err(_thread) = set_current(self.handle.clone()) {
+    //     // The current thread should not have set yet. Use an abort to save binary size (see
+    //     #123356). rtabort!("current thread handle already set during thread spawn");
+    // }
+
+    if (auto name = self.handle.cname()) {
+        imp::Thread::set_name(*name);
+    }
+}
+} // namespace rstd::thread

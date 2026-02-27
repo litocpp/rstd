@@ -34,6 +34,8 @@ using ::pthread_self;
 using ::pthread_equal;
 using ::pthread_t;
 
+using ::pthread_setname_np;
+
 constexpr auto pthread_mutex_initializer() noexcept -> pthread_mutex_t {
     return PTHREAD_MUTEX_INITIALIZER;
 }

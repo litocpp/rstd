@@ -65,6 +65,10 @@ export struct Thread {
     auto operator==(const Thread& other) const -> bool {
         return libc::pthread_equal(id, other.id) != 0;
     }
+
+    static void set_name(ref<ffi::CStr> name) {
+        libc::pthread_setname_np(current().id, (char const*)name.p);
+    }
 };
 
 }; // namespace rstd::sys::thread::unix

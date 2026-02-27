@@ -9,6 +9,7 @@ set(RSTD_THREAD_SOURCES
     thread/lifecycle.cppm
     thread/scoped.cppm
     thread/forward.cppm
+    thread/current.cppm
     PARENT_SCOPE)
 
 list(APPEND RSTD_PRIVATE_SOURCES thread/thread.cpp)

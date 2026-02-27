@@ -189,13 +189,12 @@ struct ArcData {
 };
 
 export template<typename T>
-class ArcRaw {
+struct ArcRaw {
     ArcInner<T>* inner;
 
     friend class Arc<T>;
     ArcRaw(auto t): inner(t) {}
 
-public:
     auto as_ptr() const { return inner->data(); };
 };
 
