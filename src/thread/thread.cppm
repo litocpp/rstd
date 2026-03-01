@@ -158,7 +158,7 @@ export struct ThreadInit {
     void init(this ThreadInit const& self);
 };
 
-static_assert(meta::destructible<ThreadInit>);
+static_assert(mtp::destructible<ThreadInit>);
 
 } // namespace thread
 } // namespace rstd

@@ -41,34 +41,34 @@ public:
 };
 
 template<typename T>
-    requires(! meta::is_trivially_copy_constructible_v<T>)
+    requires(! mtp::is_trivially_copy_constructible_v<T>)
 class ManuallyDrop<T> {
     friend class ManuallyDrop<void>;
     ManuallyDropData<T> d;
 
-    constexpr ManuallyDrop(T&& v) noexcept(meta::is_nothrow_move_constructible_v<T>) {
+    constexpr ManuallyDrop(T&& v) noexcept(mtp::is_nothrow_move_constructible_v<T>) {
         rstd::construct_at(d.storage_loc(), rstd::forward<T>(v));
     }
 
 public:
-    constexpr static auto make(T&& v) noexcept(meta::is_nothrow_move_constructible_v<T>)
+    constexpr static auto make(T&& v) noexcept(mtp::is_nothrow_move_constructible_v<T>)
         -> ManuallyDrop {
         return { rstd::forward<T>(v) };
     }
     constexpr ManuallyDrop(const ManuallyDrop& o) noexcept(
-        meta::is_nothrow_copy_constructible_v<T>) {
+        mtp::is_nothrow_copy_constructible_v<T>) {
         rstd::construct_at(d.storage_loc(), *o);
     }
-    constexpr ManuallyDrop(ManuallyDrop&& o) noexcept(meta::is_nothrow_move_constructible_v<T>) {
+    constexpr ManuallyDrop(ManuallyDrop&& o) noexcept(mtp::is_nothrow_move_constructible_v<T>) {
         rstd::construct_at(d.storage_loc(), rstd::move(*o));
     }
     constexpr ManuallyDrop&
-    operator=(const ManuallyDrop& o) noexcept(meta::is_nothrow_copy_assignable_v<T>) {
+    operator=(const ManuallyDrop& o) noexcept(mtp::is_nothrow_copy_assignable_v<T>) {
         rstd::destroy_at(d.storage_loc());
         rstd::construct_at(d.storage_loc(), rstd::move(*o));
     }
     constexpr ManuallyDrop&
-    operator=(ManuallyDrop&& o) noexcept(meta::is_nothrow_move_assignable_v<T>) {
+    operator=(ManuallyDrop&& o) noexcept(mtp::is_nothrow_move_assignable_v<T>) {
         rstd::destroy_at(d.storage_loc());
         rstd::construct_at(d.storage_loc(), rstd::move(*o));
     }
@@ -89,7 +89,7 @@ class ManuallyDrop<void> {
 public:
     template<typename T>
     static auto make(T&& d) {
-        static_assert(! meta::is_reference_v<T>);
+        static_assert(! mtp::is_reference_v<T>);
         return ManuallyDrop<T>::make(rstd::forward<T>(d));
     }
 

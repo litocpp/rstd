@@ -84,7 +84,7 @@ using ToString = rstd::alloc::string::ToString;
 namespace rstd
 {
 
-template<meta::same_as<ToString> T, Impled<fmt::Display> A>
+template<mtp::same_as<ToString> T, Impled<fmt::Display> A>
 struct Impl<T, A> : ImplBase<A> {
     auto to_string() const -> String {
         auto out = String::make();
@@ -93,7 +93,7 @@ struct Impl<T, A> : ImplBase<A> {
     }
 };
 
-template<meta::same_as<cmp::PartialEq<String>> T, meta::same_as<String> A>
+template<mtp::same_as<cmp::PartialEq<String>> T, mtp::same_as<String> A>
 struct Impl<T, A> : ImplBase<default_tag<A>> {
     auto eq(const String& other) const noexcept -> bool {
         auto& a = this->self();
@@ -102,7 +102,7 @@ struct Impl<T, A> : ImplBase<default_tag<A>> {
     }
 };
 
-template<meta::same_as<cmp::PartialEq<char const*>> T, meta::same_as<String> A>
+template<mtp::same_as<cmp::PartialEq<char const*>> T, mtp::same_as<String> A>
 struct Impl<T, A> : ImplBase<default_tag<A>> {
     using Rhs = char const*;
     auto eq(const Rhs& other) const noexcept -> bool {
@@ -114,7 +114,7 @@ struct Impl<T, A> : ImplBase<default_tag<A>> {
     }
 };
 
-template<meta::same_as<convert::Into<Vec<u8>>> T, meta::same_as<String> A>
+template<mtp::same_as<convert::Into<Vec<u8>>> T, mtp::same_as<String> A>
 struct Impl<T, A> : ImplBase<A> {
     auto into() -> Vec<u8> {
         auto& a = this->self();

@@ -55,7 +55,7 @@ public:
 
     template<typename U>
     static auto make(U&& in) -> Box
-        requires(! Impled<T, Sized> && meta::dyn_traits<T>::template Impled<U>)
+        requires(! Impled<T, Sized> && mtp::dyn_traits<T>::template Impled<U>)
     {
         auto t = new U(rstd::forward<U>(in));
         return from_raw(T::from_ptr(t));
@@ -86,7 +86,7 @@ public:
     constexpr auto     operator->() const noexcept { return m_ptr.as_ptr(); }
     explicit constexpr operator bool() const noexcept { return m_ptr != nullptr; }
 
-    void reset() noexcept(meta::destructible<T> || meta::is_array_v<T>) {
+    void reset() noexcept(mtp::destructible<T> || mtp::is_array_v<T>) {
         if (m_ptr != nullptr) {
             auto mptr = m_ptr.as_mut_ptr();
             if constexpr (requires { mptr.metadata()->deleter(mptr.as_raw_ptr()); }) {
@@ -114,9 +114,9 @@ public:
 
     // for T[]
     auto clone() -> Self
-        requires meta::is_array_v<T>
+        requires mtp::is_array_v<T>
     {
-        using V = meta::remove_extent_t<T>;
+        using V = mtp::remove_extent_t<T>;
         // auto old = as_ptr();
         // TODO
         auto p = mut_ptr<T>::from_raw_parts(new V[3] {}, 3);
@@ -129,10 +129,10 @@ using rstd::alloc::boxed::Box;
 namespace rstd
 {
 
-template<typename A, meta::same_as<convert::AsRef<const A>> T>
+template<typename A, mtp::same_as<convert::AsRef<const A>> T>
 struct Impl<T, Box<A>> : ImplInClass<T, Box<A>> {};
 
-template<typename A, meta::same_as<clone::Clone> T>
+template<typename A, mtp::same_as<clone::Clone> T>
     requires requires(Box<A> b) { b.clone(); }
 struct Impl<T, Box<A>> : ImplInClass<T, Box<A>> {};
 

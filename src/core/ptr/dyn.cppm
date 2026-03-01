@@ -13,12 +13,12 @@ struct dyn;
 
 template<typename T>
 struct VTable {
-    static_assert(! meta::is_const_v<T>);
+    static_assert(! mtp::is_const_v<T>);
     using trait_api_t = T::template Api<dyn_tag>;
 
     template<template<class...> typename Tuple>
     using api_tuple_t =
-        decltype(meta::to_dyn(meta::TraitApiHelper<T, trait_api_t>::template make<Tuple>()));
+        decltype(mtp::to_dyn(mtp::TraitApiHelper<T, trait_api_t>::template make<Tuple>()));
 
     using apis_t   = api_tuple_t<cppstd::tuple>;
     using delete_t = void (*)(voidp);
@@ -34,7 +34,7 @@ struct VTableStaticStorage {
     using vtable_t = VTable<T>;
     using impl_t   = Impl<T, U>;
     using ApiHelper =
-        meta::TraitApiHelper<T, meta::conditional_t<meta::is_direct_trait<T>, U, impl_t>>;
+        mtp::TraitApiHelper<T, mtp::conditional_t<mtp::is_direct_trait<T>, U, impl_t>>;
     using apis_t = vtable_t::apis_t;
 
     template<usize I, typename Fn>
@@ -46,7 +46,7 @@ struct VTableStaticStorage {
     struct Wrap<I, Ret (*)(voidp, Args...) noexcept(Ne)> {
         static auto func(voidp p, Args... args) noexcept(Ne) {
             constexpr const auto api { ApiHelper::template get<I>() };
-            if constexpr (meta::is_direct_trait<T>) {
+            if constexpr (mtp::is_direct_trait<T>) {
                 auto self { static_cast<U*>(p) };
                 return (self->*api)(rstd::forward<Args>(args)...);
             } else {
@@ -59,7 +59,7 @@ struct VTableStaticStorage {
     template<usize I>
     consteval static auto convert() {
         // get api from Impl
-        using FT = meta::func_traits<meta::remove_cv_t<decltype(ApiHelper::template get<I>())>>;
+        using FT = mtp::func_traits<mtp::remove_cv_t<decltype(ApiHelper::template get<I>())>>;
         if constexpr (FT::is_member) {
             return &Wrap<I, typename FT::to_dyn>::func;
         } else {
@@ -85,15 +85,15 @@ struct VTableStaticStorage {
 };
 
 template<typename T>
-struct dyn_delegate : public meta::remove_cv_t<T>::template Api<dyn_tag> {
-    friend struct meta::DynHelper;
+struct dyn_delegate : public mtp::remove_cv_t<T>::template Api<dyn_tag> {
+    friend struct mtp::DynHelper;
 
     template<typename>
     friend struct dyn;
 
-    using trait_t  = meta::remove_cv_t<T>;
+    using trait_t  = mtp::remove_cv_t<T>;
     using vtable_t = VTable<trait_t>;
-    using ptr_t    = meta::add_pointer_t<meta::follow_const_t<T, void>>;
+    using ptr_t    = mtp::add_pointer_t<mtp::follow_const_t<T, void>>;
 
     ptr_t           p;
     vtable_t const* vtable;
@@ -102,7 +102,7 @@ struct dyn_delegate : public meta::remove_cv_t<T>::template Api<dyn_tag> {
     static auto from_raw_ptr(U* p) noexcept -> dyn_delegate {
         return { .p = static_cast<ptr_t>(p),
                  .vtable =
-                     rstd::addressof(VTableStaticStorage<trait_t, meta::remove_cv_t<U>>::vtable) };
+                     rstd::addressof(VTableStaticStorage<trait_t, mtp::remove_cv_t<U>>::vtable) };
     }
 
     auto operator==(rstd::nullptr_t) const noexcept -> bool { return p == nullptr; }
@@ -111,9 +111,9 @@ struct dyn_delegate : public meta::remove_cv_t<T>::template Api<dyn_tag> {
 template<typename A>
 struct dyn_ptr_base {
     using value_type              = A;
-    using trait_t                 = meta::remove_const_t<A>;
-    using delegate_t              = meta::follow_const_t<A, dyn_delegate<A>>;
-    static constexpr bool Mutable = (! meta::is_const_v<A>);
+    using trait_t                 = mtp::remove_const_t<A>;
+    using delegate_t              = mtp::follow_const_t<A, dyn_delegate<A>>;
+    static constexpr bool Mutable = (! mtp::is_const_v<A>);
 
     friend struct dyn_ptr_base<const trait_t>;
 
@@ -194,9 +194,9 @@ struct mut_ptr<dyn<A>> : ptr_::dyn_ptr_base<A> {
     }
 };
 
-template<meta::same_as<ptr_::Pointee> T, typename A>
+template<mtp::same_as<ptr_::Pointee> T, typename A>
 struct Impl<T, dyn<A>> {
-    using Metadata = meta::add_pointer_t<typename ptr_::dyn_delegate<A>::vtable_t>;
+    using Metadata = mtp::add_pointer_t<typename ptr_::dyn_delegate<A>::vtable_t>;
 };
 
 template<typename A>
@@ -212,19 +212,19 @@ struct dyn {
 
     template<typename T>
     static constexpr auto from_ptr(T* in) noexcept {
-        using ptr_t = meta::conditional_t<meta::is_const_v<T>, ptr<dyn>, mut_ptr<dyn>>;
+        using ptr_t = mtp::conditional_t<mtp::is_const_v<T>, ptr<dyn>, mut_ptr<dyn>>;
         return ptr_t { { { ptr_t::delegate_t::from_raw_ptr(in) } } };
     }
 
     template<typename T>
     static constexpr auto from_ref(T& in) noexcept {
-        using ref_t = meta::conditional_t<meta::is_const_v<T>, ref<dyn>, mut_ref<dyn>>;
+        using ref_t = mtp::conditional_t<mtp::is_const_v<T>, ref<dyn>, mut_ref<dyn>>;
         return ref_t { { { ref_t::delegate_t::from_raw_ptr(rstd::addressof(in)) } } };
     }
 };
 } // namespace ptr_
 
-namespace meta
+namespace mtp
 {
 export template<typename T>
 struct dyn_traits {
@@ -236,6 +236,6 @@ struct dyn_traits<dyn<T>> {
     template<typename A>
     static constexpr bool Impled = rstd::Impled<A, T>;
 };
-} // namespace meta
+} // namespace mtp
 
 }; // namespace rstd

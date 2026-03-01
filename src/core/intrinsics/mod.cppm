@@ -7,7 +7,7 @@ export namespace rstd::intrinsics
 [[gnu::always_inline]] [[noreturn]] inline void abort() noexcept { __builtin_trap(); }
 
 template<class T>
-    requires(meta::is_integral_v<T>)
+    requires(mtp::is_integral_v<T>)
 [[gnu::always_inline]] inline constexpr auto add_with_overflow(T a, T b) noexcept
     -> cppstd::tuple<T, bool> {
     T    r {};

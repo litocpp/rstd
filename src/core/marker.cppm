@@ -24,11 +24,11 @@ struct Impl<Sized, T[]> {
 };
 
 template<typename T>
-    requires meta::destructible<T>
+    requires mtp::destructible<T>
 struct Impl<Sized, T> {};
 
 template<typename T>
-    requires meta::is_trivially_copy_constructible_v<T> && meta::is_trivially_copy_assignable_v<T>
+    requires mtp::is_trivially_copy_constructible_v<T> && mtp::is_trivially_copy_assignable_v<T>
 struct Impl<Copy, T> {};
 
 static_assert(Impled<i32, Sized>);

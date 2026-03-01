@@ -92,7 +92,7 @@ struct Impl<clone::Clone, CString> : ImplDefault<clone::Clone, CString> {
     auto clone() -> CString { return CString { this->self().inner.clone() }; }
 };
 
-template<meta::same_as<convert::AsRef<ffi::CStr>> T, meta::same_as<CString> A>
+template<mtp::same_as<convert::AsRef<ffi::CStr>> T, mtp::same_as<CString> A>
 struct Impl<T, A> {};
 
 } // namespace rstd

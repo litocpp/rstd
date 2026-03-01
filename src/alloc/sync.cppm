@@ -158,18 +158,18 @@ class Weak;
 namespace rstd
 {
 template<typename T, typename Self>
-    requires meta::same_as<T, clone::Clone> && meta::special_of<Self, rstd::sync::Arc>
+    requires mtp::same_as<T, clone::Clone> && mtp::special_of<Self, rstd::sync::Arc>
 struct Impl<T, Self> : Impl<T, default_tag<Self>> {
     auto clone() const -> Self;
 };
 
 template<typename T, typename Self>
-    requires meta::same_as<T, clone::Clone> && meta::special_of<Self, rstd::sync::Weak>
+    requires mtp::same_as<T, clone::Clone> && mtp::special_of<Self, rstd::sync::Weak>
 struct Impl<T, Self> : Impl<T, default_tag<Self>> {
     auto clone() const -> Self;
 };
 
-template<meta::same_as<sync::detail::ArcImplTrait> T, typename A, sync::ArcStoragePolicy P>
+template<mtp::same_as<sync::detail::ArcImplTrait> T, typename A, sync::ArcStoragePolicy P>
 struct Impl<T, sync::ArcInnerImpl<A, P>> : ImplInClass<T, sync::ArcInnerImpl<A, P>> {};
 
 template<typename T>
@@ -283,7 +283,7 @@ public:
     static Arc from_raw(ArcRaw<T> r) noexcept { return { ArcData<T> { .inner = r.inner } }; }
 
     auto assume_init()
-        requires(! meta::same_as<typename maybe_uninit_traits<T>::value_type, void>)
+        requires(! mtp::same_as<typename maybe_uninit_traits<T>::value_type, void>)
     {
         using V    = maybe_uninit_traits<T>::value_type;
         auto inner = rstd::launder(reinterpret_cast<ArcInner<V>*>(self.inner));
@@ -441,7 +441,7 @@ auto Arc<T>::downgrade() const noexcept -> Weak<T> {
 namespace rstd
 {
 template<typename T, typename Self>
-    requires meta::same_as<T, clone::Clone> && meta::special_of<Self, rstd::sync::Arc>
+    requires mtp::same_as<T, clone::Clone> && mtp::special_of<Self, rstd::sync::Arc>
 auto Impl<T, Self>::clone() const -> Self {
     auto& s = this->self();
     if (s.self.inner) {
@@ -451,7 +451,7 @@ auto Impl<T, Self>::clone() const -> Self {
 }
 
 template<typename T, typename Self>
-    requires meta::same_as<T, clone::Clone> && meta::special_of<Self, rstd::sync::Weak>
+    requires mtp::same_as<T, clone::Clone> && mtp::special_of<Self, rstd::sync::Weak>
 auto Impl<T, Self>::clone() const -> Self {
     auto& s = this->self();
     if (s.self.inner) {

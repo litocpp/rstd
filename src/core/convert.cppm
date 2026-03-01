@@ -52,19 +52,19 @@ struct AsMut {
 
 export template<typename T, typename F>
 auto into(F&& val) -> T {
-    return Impl<Into<T>, meta::remove_reference_t<F>>::into(val);
+    return Impl<Into<T>, mtp::remove_reference_t<F>>::into(val);
 }
 
 template<typename T>
 struct IntoWrapper {
     T&& self;
     template<typename U>
-        requires Impled<T, convert::Into<meta::remove_cv_t<U>>>
+        requires Impled<T, convert::Into<mtp::remove_cv_t<U>>>
     operator U() {
-        if constexpr (Impled<meta::remove_cv_t<U>, convert::From<T>>) {
-            return Impl<convert::From<T>, meta::remove_cv_t<U>>::from(rstd::move(self));
+        if constexpr (Impled<mtp::remove_cv_t<U>, convert::From<T>>) {
+            return Impl<convert::From<T>, mtp::remove_cv_t<U>>::from(rstd::move(self));
         } else {
-            return as<convert::Into<meta::remove_cv_t<U>>>(self).into();
+            return as<convert::Into<mtp::remove_cv_t<U>>>(self).into();
         }
     }
 
@@ -76,18 +76,18 @@ struct IntoWrapper {
 };
 
 export template<typename T>
-auto into(T&& t) -> IntoWrapper<meta::remove_reference_t<T>> {
+auto into(T&& t) -> IntoWrapper<mtp::remove_reference_t<T>> {
     return { rstd::move(t) };
 }
 
 export template<typename T, typename F>
 auto as_ref(F& r) noexcept {
-    return Impl<AsRef<T>, meta::remove_reference_t<F>>::as_ref(r);
+    return Impl<AsRef<T>, mtp::remove_reference_t<F>>::as_ref(r);
 }
 
 export template<typename T, typename F>
 auto as_mut(F& r) noexcept {
-    return Impl<AsMut<T>, meta::remove_reference_t<F>>::as_mut(r);
+    return Impl<AsMut<T>, mtp::remove_reference_t<F>>::as_mut(r);
 }
 } // namespace rstd::convert
 
@@ -95,7 +95,7 @@ namespace rstd
 {
 
 template<typename T, typename Self>
-    requires meta::same_as<T, convert::Into<typename T::into_t>> &&
+    requires mtp::same_as<T, convert::Into<typename T::into_t>> &&
              Impled<typename T::into_t, typename convert::From<Self>>
 struct Impl<T, Self> : ImplBase<Self> {
     using into_t = typename T::into_t;
@@ -105,7 +105,7 @@ struct Impl<T, Self> : ImplBase<Self> {
 };
 
 template<typename T, typename Self>
-    requires meta::same_as<T, convert::From<meta::underlying_type_t<Self>>> && meta::is_enum_v<Self>
+    requires mtp::same_as<T, convert::From<mtp::underlying_type_t<Self>>> && mtp::is_enum_v<Self>
 struct Impl<T, Self> : ImplBase<Self> {
     using from_t = typename T::from_t;
     static auto from(from_t value) -> Self { return static_cast<Self>(value); }

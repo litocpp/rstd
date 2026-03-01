@@ -25,7 +25,7 @@ class MaybeUninit {
 
     constexpr MaybeUninit() noexcept = default;
 
-    constexpr explicit MaybeUninit(T&& val) noexcept(meta::is_nothrow_move_constructible_v<T>) {
+    constexpr explicit MaybeUninit(T&& val) noexcept(mtp::is_nothrow_move_constructible_v<T>) {
         rstd::construct_at(ptr(), rstd::forward<T>(val));
     }
 
@@ -46,7 +46,7 @@ public:
     ///
     /// Note that dropping a `MaybeUninit<T>` will never call `T`'s destructor.
     /// It is your responsibility to make sure `T` gets destroyed if it got initialized.
-    constexpr static auto make(T&& val) noexcept(meta::is_nothrow_move_constructible_v<T>)
+    constexpr static auto make(T&& val) noexcept(mtp::is_nothrow_move_constructible_v<T>)
         -> MaybeUninit {
         return MaybeUninit(rstd::forward<T>(val));
     }
@@ -76,7 +76,7 @@ public:
     /// not to use this twice unless you want to skip running the destructor.
     /// For your convenience, this also returns a mutable reference to the
     /// (now safely initialized) contents.
-    constexpr auto write(T&& val) noexcept(meta::is_nothrow_move_constructible_v<T>) -> T& {
+    constexpr auto write(T&& val) noexcept(mtp::is_nothrow_move_constructible_v<T>) -> T& {
         rstd::construct_at(ptr(), rstd::forward<T>(val));
         return *ptr();
     }
@@ -99,7 +99,7 @@ public:
     /// initialized state. Calling this when the content is not yet fully initialized
     /// causes undefined behavior.
     constexpr auto assume_init() && noexcept -> T
-        requires(meta::is_move_constructible_v<T>)
+        requires(mtp::is_move_constructible_v<T>)
     {
         T result = rstd::move(*ptr());
         return result;
@@ -113,7 +113,7 @@ public:
     /// initialized state. Calling this when the content is not yet fully initialized
     /// causes undefined behavior.
     constexpr auto assume_init_read() const noexcept -> T
-        requires(meta::is_copy_constructible_v<T>)
+        requires(mtp::is_copy_constructible_v<T>)
     {
         return *ptr();
     }

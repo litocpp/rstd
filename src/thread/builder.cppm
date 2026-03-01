@@ -53,9 +53,9 @@ export struct Builder {
     }
 
     template<typename F>
-    auto spawn(F&& f) -> io::Result<JoinHandle<meta::invoke_result_t<F>>>
-    // requires Impled<meta::remove_cvref_t<F>, FnOnce<void()>> &&
-    // meta::same_as<meta::remove_cvref_t<F>, Box<dyn<FnOnce<void()>>>
+    auto spawn(F&& f) -> io::Result<JoinHandle<mtp::invoke_result_t<F>>>
+    // requires Impled<mtp::remove_cvref_t<F>, FnOnce<void()>> &&
+    // mtp::same_as<mtp::remove_cvref_t<F>, Box<dyn<FnOnce<void()>>>
     {
         auto stack_size = d.stack_size.unwrap_or(0);
 
@@ -63,7 +63,7 @@ export struct Builder {
             lifecycle::spawn_unchecked(rstd::move(d.name), stack_size, None(), rstd::forward<F>(f));
 
         if (inner.is_ok()) {
-            return Ok(JoinHandle<meta::invoke_result_t<F>>::make(inner.unwrap_unchecked()));
+            return Ok(JoinHandle<mtp::invoke_result_t<F>>::make(inner.unwrap_unchecked()));
         } else {
             return Err(inner.unwrap_err_unchecked());
         }

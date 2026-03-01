@@ -38,7 +38,7 @@ export using cppstd::make_unsigned_t;
 export using cppstd::bit_cast;
 export using cppstd::default_delete;
 
-export using meta::declval;
+export using mtp::declval;
 
 export [[noreturn]] inline void unreachable() {
     // Uses compiler specific extensions if possible.
@@ -52,7 +52,7 @@ export [[noreturn]] inline void unreachable() {
 }
 
 export template<typename T>
-void swap(T& a, T& b) noexcept(meta::is_nothrow_copy_constructible_v<T>) {
+void swap(T& a, T& b) noexcept(mtp::is_nothrow_copy_constructible_v<T>) {
     T t(a);
     a = b;
     b = t;

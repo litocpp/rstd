@@ -290,7 +290,7 @@ using ::stdout;
 
 } // namespace rstd
 
-export namespace rstd::meta
+export namespace rstd::mtp
 {
 
 using std::false_type;
@@ -435,4 +435,4 @@ using std::decay_t;
 
 using std::declval;
 
-} // namespace rstd::meta
+} // namespace rstd::mtp

@@ -13,20 +13,20 @@ struct Pointee {
 };
 } // namespace ptr_
 
-template<meta::same_as<ptr_::Pointee> T, typename A>
+template<mtp::same_as<ptr_::Pointee> T, typename A>
 struct Impl<T, A[]> {
     using Metadata = usize;
 };
 
-namespace meta
+namespace mtp
 {
 
 template<typename T>
-concept DST = meta::destructible<Impl<ptr_::Pointee, T>>;
+concept DST = mtp::destructible<Impl<ptr_::Pointee, T>>;
 
 template<typename T>
-concept DSTArray = meta::same_as<typename Impl<ptr_::Pointee, T>::Metadata, usize>;
+concept DSTArray = mtp::same_as<typename Impl<ptr_::Pointee, T>::Metadata, usize>;
 
-} // namespace meta
+} // namespace mtp
 
 } // namespace rstd

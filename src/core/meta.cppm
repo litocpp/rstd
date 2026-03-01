@@ -1,7 +1,7 @@
 export module rstd.core:meta;
 export import :literal;
 
-export namespace rstd::meta
+export namespace rstd::mtp
 {
 // traits
 
@@ -14,17 +14,17 @@ struct func_traits {
 
 template<typename From, typename To>
 concept convertible_to =
-    is_convertible_v<From, To> && requires { static_cast<To>(meta::declval<From>()); };
+    is_convertible_v<From, To> && requires { static_cast<To>(mtp::declval<From>()); };
 
 template<typename T, typename U>
 concept equalable = requires(const T& a, const U& b) {
-    { a == b } -> meta::convertible_to<bool>;
-    { a != b } -> meta::convertible_to<bool>;
+    { a == b } -> mtp::convertible_to<bool>;
+    { a != b } -> mtp::convertible_to<bool>;
 };
 
 template<typename S, typename T>
 concept transparent =
-    sizeof(S) == sizeof(T) && alignof(S) == alignof(T) && meta::is_standard_layout_v<S>;
+    sizeof(S) == sizeof(T) && alignof(S) == alignof(T) && mtp::is_standard_layout_v<S>;
 
 // custom
 
@@ -82,19 +82,19 @@ concept special_of = is_specialization_of<T, Primary>::value;
 
 template<typename T, typename U>
 using follow_const_t =
-    meta::conditional_t<meta::is_const_v<T>, meta::add_const_t<meta::remove_const_t<U>>,
-                        meta::remove_const_t<U>>;
+    mtp::conditional_t<mtp::is_const_v<T>, mtp::add_const_t<mtp::remove_const_t<U>>,
+                        mtp::remove_const_t<U>>;
 
-} // namespace rstd::meta
+} // namespace rstd::mtp
 
-namespace rstd::meta
+namespace rstd::mtp
 {
 
 template<typename T, typename Ret, typename... Args, bool Ne>
 struct func_traits<Ret (*)(T, Args...) noexcept(Ne)> {
     static constexpr bool is_member = false;
 
-    using primary = meta::conditional_t<meta::is_pointer_v<T>, void, T>;
+    using primary = mtp::conditional_t<mtp::is_pointer_v<T>, void, T>;
 
     using to_dyn = Ret (*)(voidp, Args...) noexcept(Ne);
 };
@@ -162,9 +162,9 @@ struct func_traits<Ret (T::*)(Args...) const && noexcept(Ne)> {
     using to_dyn = Ret (*)(voidp, Args...) noexcept(Ne);
 };
 
-} // namespace rstd::meta
+} // namespace rstd::mtp
 
-namespace rstd::meta
+namespace rstd::mtp
 {
 
 template<usize I, auto First, auto... Rest>
@@ -184,4 +184,4 @@ consteval auto get_auto() {
     return get_auto_impl<I, Vals...>();
 }
 
-} // namespace rstd::meta
+} // namespace rstd::mtp

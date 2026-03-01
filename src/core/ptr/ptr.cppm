@@ -33,8 +33,8 @@ auto from_raw_parts_override(U* self, P ptr) noexcept -> T {
 export template<typename Self, typename T, bool Mutable>
 struct ref_base {
     /// we only process T[] for value_type
-    using value_type = meta::conditional_t<Mutable, meta::remove_extent_t<T>,
-                                           meta::add_const_t<meta::remove_extent_t<T>>>;
+    using value_type = mtp::conditional_t<Mutable, mtp::remove_extent_t<T>,
+                                           mtp::add_const_t<mtp::remove_extent_t<T>>>;
 
     constexpr value_type* operator->() const noexcept { return static_cast<Self const*>(this)->p; }
     constexpr value_type& operator*() const noexcept {
@@ -67,7 +67,7 @@ struct ref_base {
     /// \name Normal
     /// @{
     static constexpr auto from_raw_parts(value_type* p) noexcept -> Self
-        requires(! meta::DST<T>)
+        requires(! mtp::DST<T>)
     {
         return { .p = p };
     }
@@ -76,25 +76,25 @@ struct ref_base {
     /// \name Requires: DSTArray
     /// @{
     constexpr auto operator[](usize i) const noexcept
-        requires meta::DSTArray<T>
+        requires mtp::DSTArray<T>
     {
         return *(static_cast<Self const*>(this)->p + i);
     }
 
     constexpr auto len() const noexcept
-        requires meta::DSTArray<T>
+        requires mtp::DSTArray<T>
     {
         return static_cast<Self const*>(this)->length;
     }
 
     static constexpr auto from_raw_parts(value_type* p, usize length) noexcept -> Self
-        requires meta::DSTArray<T> && meta::is_aggregate_v<Self>
+        requires mtp::DSTArray<T> && mtp::is_aggregate_v<Self>
     {
         return { .p = p, .length = length };
     }
 
     constexpr auto metadata() const noexcept
-        requires meta::DSTArray<T>
+        requires mtp::DSTArray<T>
     {
         return len();
     }
@@ -104,8 +104,8 @@ struct ref_base {
 export template<typename Self, typename T, bool Mutable>
 struct ptr_base {
     /// we only process T[] for value_type
-    using value_type = meta::conditional_t<Mutable, meta::remove_extent_t<T>,
-                                           meta::add_const_t<meta::remove_extent_t<T>>>;
+    using value_type = mtp::conditional_t<Mutable, mtp::remove_extent_t<T>,
+                                           mtp::add_const_t<mtp::remove_extent_t<T>>>;
 
     constexpr value_type* operator->() const noexcept { return static_cast<Self const*>(this)->p; }
     constexpr value_type& operator*() const noexcept {
@@ -142,7 +142,7 @@ struct ptr_base {
     constexpr void reset() noexcept {
         auto self = static_cast<Self const*>(this);
         self->p   = nullptr;
-        if constexpr (meta::DSTArray<T>) {
+        if constexpr (mtp::DSTArray<T>) {
             self->length = 0;
         }
     }
@@ -152,7 +152,7 @@ struct ptr_base {
     /// \name Normal
     /// @{
     static constexpr auto from_raw_parts(value_type* p) noexcept -> Self
-        requires(! meta::DST<T>) && meta::is_aggregate_v<Self>
+        requires(! mtp::DST<T>) && mtp::is_aggregate_v<Self>
     {
         return { .p = p };
     }
@@ -161,25 +161,25 @@ struct ptr_base {
     /// \name Requires: DSTArray
     /// @{
     constexpr auto operator[](usize i) const noexcept
-        requires meta::DSTArray<T>
+        requires mtp::DSTArray<T>
     {
         return *(static_cast<Self const*>(this)->p + i);
     }
 
     constexpr auto len() const noexcept
-        requires meta::DSTArray<T>
+        requires mtp::DSTArray<T>
     {
         return static_cast<Self const*>(this)->length;
     }
 
     static constexpr auto from_raw_parts(value_type* p, usize length) noexcept -> Self
-        requires meta::DSTArray<T> && meta::is_aggregate_v<Self>
+        requires mtp::DSTArray<T> && mtp::is_aggregate_v<Self>
     {
         return { .p = p, .length = length };
     }
 
     constexpr auto metadata() const noexcept
-        requires meta::DSTArray<T>
+        requires mtp::DSTArray<T>
     {
         return len();
     }
@@ -188,17 +188,17 @@ struct ptr_base {
 
 template<typename T>
 struct ref : ref_base<ref<T>, T, false> {
-    static_assert(! meta::is_const_v<T>);
+    static_assert(! mtp::is_const_v<T>);
 
     T const* p { nullptr };
 
     using Self = ref;
 };
 
-template<meta::DSTArray T>
+template<mtp::DSTArray T>
 struct ref<T> : ref_base<ref<T>, T, false> {
-    static_assert(! meta::is_const_v<T>);
-    using value_type    = meta::remove_extent_t<T>;
+    static_assert(! mtp::is_const_v<T>);
+    using value_type    = mtp::remove_extent_t<T>;
     using metadata_type = usize;
 
     value_type const* p { nullptr };
@@ -209,16 +209,16 @@ struct ref<T> : ref_base<ref<T>, T, false> {
 
 template<typename T>
 struct mut_ref : ref_base<mut_ref<T>, T, true> {
-    static_assert(! meta::is_const_v<T>);
+    static_assert(! mtp::is_const_v<T>);
     using Self = mut_ref;
 
     T* p { nullptr };
 };
 
-template<meta::DSTArray T>
+template<mtp::DSTArray T>
 struct mut_ref<T> : ref_base<mut_ref<T>, T, true> {
-    static_assert(! meta::is_const_v<T>);
-    using value_type = meta::remove_extent_t<T>;
+    static_assert(! mtp::is_const_v<T>);
+    using value_type = mtp::remove_extent_t<T>;
     using Self       = mut_ref;
 
     value_type* p { nullptr };
@@ -227,16 +227,16 @@ struct mut_ref<T> : ref_base<mut_ref<T>, T, true> {
 
 template<typename T>
 struct ptr : ptr_base<ptr<T>, T, false> {
-    static_assert(! meta::is_const_v<T>);
+    static_assert(! mtp::is_const_v<T>);
     using Self = ptr;
 
     T const* p { nullptr };
 };
 
-template<meta::DSTArray T>
+template<mtp::DSTArray T>
 struct ptr<T> : ptr_base<ptr<T>, T, false> {
-    static_assert(! meta::is_const_v<T>);
-    using value_type = meta::remove_extent_t<T>;
+    static_assert(! mtp::is_const_v<T>);
+    using value_type = mtp::remove_extent_t<T>;
     using Self       = ptr;
 
     value_type const* p { nullptr };
@@ -245,16 +245,16 @@ struct ptr<T> : ptr_base<ptr<T>, T, false> {
 
 template<typename T>
 struct mut_ptr : ptr_base<mut_ptr<T>, T, true> {
-    static_assert(! meta::is_const_v<T>);
+    static_assert(! mtp::is_const_v<T>);
     using Self = mut_ptr;
 
     T* p { nullptr };
 };
 
-template<meta::DSTArray T>
+template<mtp::DSTArray T>
 struct mut_ptr<T> : ptr_base<mut_ptr<T>, T, true> {
-    static_assert(! meta::is_const_v<T>);
-    using value_type = meta::remove_extent_t<T>;
+    static_assert(! mtp::is_const_v<T>);
+    using value_type = mtp::remove_extent_t<T>;
     using Self       = mut_ptr;
 
     value_type* p { nullptr };

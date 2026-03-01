@@ -2,9 +2,9 @@
 import rstd.core;
 using namespace rstd;
 
-static_assert(meta::same_as<decltype(Some(Some<int>(1))), Option<Option<int>>>);
-static_assert(meta::same_as<decltype(Some(None<int>())), Option<Option<int>>>);
-static_assert(meta::same_as<decltype(None(None<int>())), Option<Option<int>>>);
+static_assert(mtp::same_as<decltype(Some(Some<int>(1))), Option<Option<int>>>);
+static_assert(mtp::same_as<decltype(Some(None<int>())), Option<Option<int>>>);
+static_assert(mtp::same_as<decltype(None(None<int>())), Option<Option<int>>>);
 
 TEST(Option, Basic) {
     Option<int> none;
@@ -20,13 +20,13 @@ TEST(Option, Basic) {
 TEST(Option, Reference) {
     int  value = 42;
     auto ref   = Some<int&>(value);
-    static_assert(meta::same_as<decltype(ref), option::Option<int&>>);
-    static_assert(meta::same_as<decltype(Some(value)), option::Option<int>>);
+    static_assert(mtp::same_as<decltype(ref), option::Option<int&>>);
+    static_assert(mtp::same_as<decltype(Some(value)), option::Option<int>>);
     {
         std::unique_ptr<int> ptr;
-        static_assert(meta::same_as<decltype(Some(ptr)), option::Option<std::unique_ptr<int>&>>);
+        static_assert(mtp::same_as<decltype(Some(ptr)), option::Option<std::unique_ptr<int>&>>);
         static_assert(
-            meta::same_as<decltype(Some(std::move(ptr))), option::Option<std::unique_ptr<int>>>);
+            mtp::same_as<decltype(Some(std::move(ptr))), option::Option<std::unique_ptr<int>>>);
     }
     EXPECT_TRUE(ref.is_some());
     EXPECT_EQ(*ref, 42);

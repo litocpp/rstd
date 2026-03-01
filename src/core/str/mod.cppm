@@ -11,11 +11,11 @@ export struct Str {
 
 template<typename T>
 concept ViewableStr = requires(T t) {
-    { t.data() } -> meta::convertible_to<char const*>;
-    { t.size() } -> meta::same_as<usize>;
+    { t.data() } -> mtp::convertible_to<char const*>;
+    { t.size() } -> mtp::same_as<usize>;
 } || requires(T t) {
-    { t.data() } -> meta::convertible_to<u8 const*>;
-    { t.size() } -> meta::same_as<usize>;
+    { t.data() } -> mtp::convertible_to<u8 const*>;
+    { t.size() } -> mtp::same_as<usize>;
 };
 
 } // namespace rstd::str_

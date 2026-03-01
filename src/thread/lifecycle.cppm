@@ -29,7 +29,7 @@ struct Packet<void> {
 
 template<typename T>
 struct JoinInner {
-    using ret_t = meta::void_empty_t<T>;
+    using ret_t = mtp::void_empty_t<T>;
 
     Thread         thread_;
     Arc<Packet<T>> packet;
@@ -53,12 +53,12 @@ struct JoinInner {
 
 template<typename F>
 auto spawn_unchecked(Option<String> name, usize stack_size, Option<Arc<ScopeData>> scope_data,
-                     F&& f) -> io::Result<JoinInner<meta::invoke_result_t<F>>>
-// requires Impled<F, FnOnce<void()>> && meta::special_of<meta::remove_cvref_t<F>,
+                     F&& f) -> io::Result<JoinInner<mtp::invoke_result_t<F>>>
+// requires Impled<F, FnOnce<void()>> && mtp::special_of<mtp::remove_cvref_t<F>,
 // rstd::alloc::boxed::Box>
 {
     using namespace rstd::alloc::boxed;
-    using ret_t = meta::invoke_result_t<F>;
+    using ret_t = mtp::invoke_result_t<F>;
 
     auto id     = ThreadId::make();
     auto thread = Thread::make(id, rstd::move(name));
@@ -72,7 +72,7 @@ auto spawn_unchecked(Option<String> name, usize stack_size, Option<Arc<ScopeData
     auto their_packet = my_packet.clone();
 
     auto start = [f = rstd::move(f), p = my_packet.clone()] mutable {
-        if constexpr (meta::same_as<ret_t, void>) {
+        if constexpr (mtp::same_as<ret_t, void>) {
             f();
             p->result = Some(Ok<empty, int>(empty {}));
         } else {

@@ -9,18 +9,18 @@ namespace rstd::fmt
 namespace detail
 {
 template<typename Tp, typename Context,
-         typename Formatter = typename Context::template formatter_type<meta::remove_const_t<Tp>>,
+         typename Formatter = typename Context::template formatter_type<mtp::remove_const_t<Tp>>,
          typename ParseContext = cppstd::basic_format_parse_context<typename Context::char_type>>
-concept parsable_with = meta::semiregular<Formatter> && requires(Formatter f, ParseContext pc) {
-    { f.parse(pc) } -> meta::same_as<typename ParseContext::iterator>;
+concept parsable_with = mtp::semiregular<Formatter> && requires(Formatter f, ParseContext pc) {
+    { f.parse(pc) } -> mtp::same_as<typename ParseContext::iterator>;
 };
 
 template<typename Tp, typename Context,
-         typename Formatter = typename Context::template formatter_type<meta::remove_const_t<Tp>>,
+         typename Formatter = typename Context::template formatter_type<mtp::remove_const_t<Tp>>,
          typename ParseContext = cppstd::basic_format_parse_context<typename Context::char_type>>
 concept formattable_with =
-    meta::semiregular<Formatter> && requires(const Formatter cf, Tp&& t, Context fc) {
-        { cf.format(t, fc) } -> meta::same_as<typename Context::iterator>;
+    mtp::semiregular<Formatter> && requires(const Formatter cf, Tp&& t, Context fc) {
+        { cf.format(t, fc) } -> mtp::same_as<typename Context::iterator>;
     };
 
 // An unspecified output iterator type used in the `formattable` concept.
@@ -33,7 +33,7 @@ concept formattable_impl = parsable_with<Tp, Context> && formattable_with<Tp, Co
 } // namespace detail
 
 template<typename Tp, typename CharT = char>
-concept formattable = detail::formattable_impl<meta::remove_reference_t<Tp>, CharT>;
+concept formattable = detail::formattable_impl<mtp::remove_reference_t<Tp>, CharT>;
 
 export struct Display {
     template<typename Self, typename = void>
@@ -65,7 +65,7 @@ namespace rstd
 export using cppstd::format_string;
 
 template<typename T, typename A>
-    requires meta::same_as<T, fmt::Display> && fmt::formattable<A, char>
+    requires mtp::same_as<T, fmt::Display> && fmt::formattable<A, char>
 struct Impl<T, A> {};
 
 static_assert(Impled<int, fmt::Display>);

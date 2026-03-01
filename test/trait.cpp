@@ -271,7 +271,7 @@ TEST(Trait, InClass) {
     {
         InClass m { 100 };
         auto    mm = rstd::as<rstd::clone::Clone>(m);
-        static_assert(! rstd::meta::is_const_v<decltype(mm)>);
+        static_assert(! rstd::mtp::is_const_v<decltype(mm)>);
         auto n = mm.clone();
         (void)n;
         EXPECT_EQ(m.a, 100);

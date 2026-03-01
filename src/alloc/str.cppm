@@ -22,6 +22,6 @@ namespace rstd
 {
 export template<typename T>
 auto from_str(ref<str> str) {
-    return Impl<str_::FromStr, meta::remove_cvref_t<T>>::from_str(str);
+    return Impl<str_::FromStr, mtp::remove_cvref_t<T>>::from_str(str);
 }
 } // namespace rstd

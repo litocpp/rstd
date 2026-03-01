@@ -125,13 +125,13 @@ public:
 
     template<class U>
     constexpr NonNull<U> cast() const noexcept {
-        static_assert(meta::convertible_to<pointer_t, U*> || meta::convertible_to<U*, pointer_t>,
+        static_assert(mtp::convertible_to<pointer_t, U*> || mtp::convertible_to<U*, pointer_t>,
                       "NonNull::cast: unsupported cast between pointer types");
         return NonNull<U>::new_unchecked(reinterpret_cast<U*>(m_ptr));
     }
 
     template<class U>
-        requires(meta::convertible_to<U*, T*>)
+        requires(mtp::convertible_to<U*, T*>)
     constexpr NonNull(const NonNull<U>& other) noexcept: m_ptr(other.as_ptr()) {}
 
     constexpr NonNull add(usize count) const noexcept {

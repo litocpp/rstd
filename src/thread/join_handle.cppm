@@ -17,7 +17,7 @@ class JoinHandle {
 public:
     USE_TRAIT(JoinHandle)
 
-    using ret_t = meta::void_empty_t<T>;
+    using ret_t = mtp::void_empty_t<T>;
 
     JoinHandle() = delete;
 

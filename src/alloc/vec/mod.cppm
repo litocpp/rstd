@@ -79,14 +79,14 @@ public:
 using rstd::alloc::vec::Vec;
 namespace rstd
 {
-template<typename U, meta::same_as<cmp::PartialEq<Vec<U>>> T>
+template<typename U, mtp::same_as<cmp::PartialEq<Vec<U>>> T>
 struct Impl<T, Vec<U>> : ImplBase<default_tag<Vec<U>>> {
     auto eq(const Vec<U>& other) const noexcept -> bool {
         return this->self().inner == other.inner;
     }
 };
 
-template<typename A, meta::same_as<convert::From<alloc::boxed::Box<A[]>>> T>
+template<typename A, mtp::same_as<convert::From<alloc::boxed::Box<A[]>>> T>
 struct Impl<T, Vec<A>> : ImplBase<Vec<A>> {
     static auto from(alloc::boxed::Box<A[]> b) -> Vec<A> {
         auto ptr = b.as_ptr();

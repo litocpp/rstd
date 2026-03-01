@@ -24,9 +24,9 @@ export struct Unknown {
 
 export template<typename U = void, typename T>
 [[gnu::always_inline]] inline constexpr auto Some(T&& val) {
-    if constexpr (meta::same_as<U, void>) {
-        using val_t = meta::remove_reference_t<T>;
-        if constexpr (meta::trivially_value<val_t>) {
+    if constexpr (mtp::same_as<U, void>) {
+        using val_t = mtp::remove_reference_t<T>;
+        if constexpr (mtp::trivially_value<val_t>) {
             return Option<val_t>(rstd::move(val));
         } else {
             // use T here, as lvalue is Option<T&>
@@ -40,8 +40,8 @@ export template<typename U = void, typename T>
 
 export template<typename U = void, typename T = Unknown>
 [[gnu::always_inline]] inline constexpr auto None(T&& = {}) {
-    if constexpr (meta::same_as<U, void>) {
-        if constexpr (meta::same_as<Unknown, T>) {
+    if constexpr (mtp::same_as<U, void>) {
+        if constexpr (mtp::same_as<Unknown, T>) {
             return Unknown();
         } else {
             return Option<T>();
@@ -63,28 +63,28 @@ template<typename T>
 struct option_traits<Option<T>> {
     using value_type    = T;
     using ret_value_t   = T;
-    using union_value_t = meta::conditional_t<meta::is_reference_v<T>,
-                                              meta::add_pointer_t<meta::remove_reference_t<T>>, T>;
+    using union_value_t = mtp::conditional_t<mtp::is_reference_v<T>,
+                                              mtp::add_pointer_t<mtp::remove_reference_t<T>>, T>;
 };
 
 template<typename T>
 struct option_traits<Option<T>&&> : option_traits<Option<T>> {
-    using ret_value_t = meta::add_rvalue_reference_t<T>;
+    using ret_value_t = mtp::add_rvalue_reference_t<T>;
 };
 
 template<typename T>
 struct option_traits<Option<T>&> : option_traits<Option<T>> {
-    using ret_value_t = meta::add_lvalue_reference_t<T>;
+    using ret_value_t = mtp::add_lvalue_reference_t<T>;
 };
 
 template<typename T>
 struct option_traits<const Option<T>&> : option_traits<Option<T>> {
-    using ret_value_t = meta::add_lvalue_reference_t<meta::add_const_t<T>>;
+    using ret_value_t = mtp::add_lvalue_reference_t<mtp::add_const_t<T>>;
 };
 
 template<typename T>
 struct option_traits<const Option<T>&&> : option_traits<Option<T>> {
-    using ret_value_t = meta::add_rvalue_reference_t<meta::add_const_t<T>>;
+    using ret_value_t = mtp::add_rvalue_reference_t<mtp::add_const_t<T>>;
 };
 
 export template<typename T>
@@ -106,10 +106,10 @@ protected:
     constexpr void _assign_val(V&& val) {
         auto ptr = _ptr();
         if (is_some()) {
-            if constexpr (meta::is_nothrow_constructible_v<T, V>) {
+            if constexpr (mtp::is_nothrow_constructible_v<T, V>) {
                 rstd::destroy_at(ptr);
                 rstd::construct_at(ptr, rstd::forward<V>(val));
-            } else if constexpr (meta::is_nothrow_move_constructible_v<T>) {
+            } else if constexpr (mtp::is_nothrow_move_constructible_v<T>) {
                 T tmp(rstd::forward<V>(val));
                 rstd::destroy_at(ptr);
                 rstd::construct_at(ptr, rstd::move(tmp));
@@ -182,7 +182,7 @@ protected:
 
     template<typename U>
     [[gnu::always_inline]] inline constexpr auto* _ptr_wrapper(this U&& self) noexcept {
-        if constexpr (meta::is_reference_v<T>) {
+        if constexpr (mtp::is_reference_v<T>) {
             return *self._ptr();
         } else {
             return self._ptr();
@@ -193,11 +193,11 @@ protected:
     [[gnu::always_inline]] inline constexpr auto&& _get(this U&& self) noexcept {
         auto* ptr = self._ptr_wrapper();
 
-        using value_t = meta::remove_reference_t<decltype(*ptr)>;
-        if constexpr (meta::is_lvalue_reference_v<U>)
-            return static_cast<meta::add_lvalue_reference_t<value_t>>(*ptr);
+        using value_t = mtp::remove_reference_t<decltype(*ptr)>;
+        if constexpr (mtp::is_lvalue_reference_v<U>)
+            return static_cast<mtp::add_lvalue_reference_t<value_t>>(*ptr);
         else
-            return static_cast<meta::add_rvalue_reference_t<value_t>>(*ptr);
+            return static_cast<mtp::add_rvalue_reference_t<value_t>>(*ptr);
     }
 
     constexpr auto&& _get_move() noexcept { return static_cast<Option<T>&&>(*this)._get(); }
@@ -214,7 +214,7 @@ public:
         return false;
     }
 
-    constexpr auto as_ref() const -> Option<meta::add_lvalue_reference_t<meta::add_const_t<T>>> {
+    constexpr auto as_ref() const -> Option<mtp::add_lvalue_reference_t<mtp::add_const_t<T>>> {
         if (this->is_some()) {
             return option::Some(_get());
         } else {
@@ -261,7 +261,7 @@ public:
         }
     }
 
-    template<typename F, typename U = meta::invoke_result_t<F, T>>
+    template<typename F, typename U = mtp::invoke_result_t<F, T>>
     // requires ImpledT<FnOnce<F, U(T)>>
     constexpr auto map(F&& f) -> Option<U> {
         if (this->is_some()) {
@@ -270,8 +270,8 @@ public:
         return option::None<U>();
     }
 
-    template<typename F, typename U = meta::invoke_result_t<F, T>>
-        requires meta::special_of<U, Option>
+    template<typename F, typename U = mtp::invoke_result_t<F, T>>
+        requires mtp::special_of<U, Option>
     constexpr auto and_then(F&& f) -> U {
         if (this->is_some()) {
             return rstd::forward<F>(f)(_get_move());
@@ -314,8 +314,8 @@ export using option::Some;
 export using option::None;
 
 template<typename T, typename Self>
-    requires meta::same_as<T, clone::Clone> &&
-             meta::is_specialization_of_v<Self, rstd::option::Option> &&
+    requires mtp::same_as<T, clone::Clone> &&
+             mtp::is_specialization_of_v<Self, rstd::option::Option> &&
              Impled<typename option::detail::option_traits<Self>::union_value_t, clone::Clone>
 struct Impl<T, Self> : ImplBase<Self> {
     using uv_t = typename option::detail::option_traits<Self>::union_value_t;
@@ -331,7 +331,7 @@ struct Impl<T, Self> : ImplBase<Self> {
     void clone_from(Self& source) {
         auto& self = this->self();
         if (source.is_some()) {
-            if constexpr (meta::is_reference_v<v_t>) {
+            if constexpr (mtp::is_reference_v<v_t>) {
                 self._assign_val(source._get());
             } else {
                 self._assign_val(Impl<clone::Clone, uv_t> { source._ptr() }.clone());
@@ -371,14 +371,14 @@ public:
     constexpr Option() noexcept = default;
 
     constexpr Option(const Option&)
-        requires meta::is_trivially_copy_constructible_v<union_value_t>
+        requires mtp::is_trivially_copy_constructible_v<union_value_t>
     = default;
     constexpr Option(Option&&)
-        requires meta::is_trivially_move_constructible_v<union_value_t>
+        requires mtp::is_trivially_move_constructible_v<union_value_t>
     = default;
 
-    constexpr Option(Option&& o) noexcept(meta::is_nothrow_move_constructible_v<union_value_t>)
-        requires meta::custom_move_constructible<union_value_t>
+    constexpr Option(Option&& o) noexcept(mtp::is_nothrow_move_constructible_v<union_value_t>)
+        requires mtp::custom_move_constructible<union_value_t>
     {
         if (o.is_some()) {
             this->_construct_val(rstd::move(o)._get());
@@ -390,7 +390,7 @@ public:
     ~Option() = default;
 
     constexpr ~Option()
-        requires(! meta::is_trivially_destructible_v<T>)
+        requires(! mtp::is_trivially_destructible_v<T>)
     {
         if (this->is_some()) {
             rstd::destroy_at(this->_ptr());
@@ -398,15 +398,15 @@ public:
     }
 
     constexpr Option& operator=(const Option&)
-        requires meta::is_trivially_copy_assignable_v<union_value_t>
+        requires mtp::is_trivially_copy_assignable_v<union_value_t>
     = default;
     constexpr Option& operator=(Option&&)
-        requires meta::is_trivially_move_assignable_v<union_value_t>
+        requires mtp::is_trivially_move_assignable_v<union_value_t>
     = default;
 
     constexpr Option&
-    operator=(Option&& v) noexcept(meta::is_nothrow_move_assignable_v<union_value_t>)
-        requires meta::custom_move_assignable<union_value_t>
+    operator=(Option&& v) noexcept(mtp::is_nothrow_move_assignable_v<union_value_t>)
+        requires mtp::custom_move_assignable<union_value_t>
     {
         if (v.is_some()) {
             this->_assign_val(rstd::move(v._get()));
@@ -418,13 +418,13 @@ public:
 
 private:
     template<typename U>
-        requires meta::constructible_from<T, U>
-    explicit constexpr Option(U&& val) noexcept(meta::nothrow_constructible<T, U>) {
+        requires mtp::constructible_from<T, U>
+    explicit constexpr Option(U&& val) noexcept(mtp::nothrow_constructible<T, U>) {
         this->_construct_val(rstd::forward<U>(val));
     }
 
-    explicit constexpr Option(meta::remove_reference_t<T>* ptr) noexcept
-        requires meta::is_reference_v<T>
+    explicit constexpr Option(mtp::remove_reference_t<T>* ptr) noexcept
+        requires mtp::is_reference_v<T>
     {
         this->_construct_val(*ptr);
     }
@@ -450,7 +450,7 @@ struct option_adapter : option_adapter_l1<T> {
         }
     }
 
-    template<typename F, typename E = meta::invoke_result_t<F>>
+    template<typename F, typename E = mtp::invoke_result_t<F>>
     auto ok_or_else(F&& err) -> result::Result<T, E> {
         auto& self = static_cast<Option<T>&>(*this);
         if (self.is_some()) {
@@ -481,7 +481,7 @@ namespace rstd
 {
 
 template<typename U, typename A>
-    requires meta::equalable<U, A>
+    requires mtp::equalable<U, A>
 struct Impl<cmp::PartialEq<option::Option<U>>, Option<A>> : ImplBase<Option<A>> {
     auto eq(const Option<U>& other) const noexcept -> bool {
         auto& self = this->self();
