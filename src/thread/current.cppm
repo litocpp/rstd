@@ -6,6 +6,10 @@ namespace rstd::thread
 
 thread_local voidp CURRENT { nullptr };
 
+constexpr voidp    NONE { ptr_::null_mut<void>() };
+static const voidp BUSY { ptr_::without_provenance_mut<void>(1) };
+static const voidp DESTROYED { ptr_::without_provenance_mut<void>(2) };
+
 namespace id
 {
 
@@ -35,6 +39,14 @@ export auto set_current(Thread thread) -> Result<empty, Thread> {
     // crate::sys::thread_local ::guard::enable();
     CURRENT = thread.into_raw();
     return Ok(empty {});
+}
+
+void drop_current() {
+    auto current = CURRENT;
+    if (current > DESTROYED) {
+        CURRENT = DESTROYED;
+        Thread::from_raw(current);
+    }
 }
 
 } // namespace rstd::thread

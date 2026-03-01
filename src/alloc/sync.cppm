@@ -189,13 +189,17 @@ struct ArcData {
 };
 
 export template<typename T>
-struct ArcRaw {
+class ArcRaw {
     ArcInner<T>* inner;
 
     friend class Arc<T>;
     ArcRaw(auto t): inner(t) {}
 
+public:
     auto as_ptr() const { return inner->data(); };
+    auto into_raw() -> voidp { return rstd::exchange(inner, nullptr); }
+
+    static auto from_raw(voidp p) -> ArcRaw { return { static_cast<ArcInner<T>*>(p) }; }
 };
 
 export template<typename T>

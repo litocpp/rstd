@@ -11,6 +11,7 @@ using rstd::alloc::boxed::Box;
 using rstd::alloc::string::String;
 using rstd::pin::Pin;
 using rstd::sync::Arc;
+using rstd::sync::ArcRaw;
 using rstd::sys::sync::thread_parking::Parker;
 
 namespace rstd
@@ -141,7 +142,12 @@ public:
         return None();
     }
 
-    auto into_raw() { return inner->into_raw().inner; }
+    auto into_raw() { return inner->into_raw().into_raw(); }
+
+    static auto from_raw(voidp p) -> Thread {
+        return Thread { Pin<Arc<Inner>>::make_unchecked(
+            Arc<Inner>::from_raw(ArcRaw<Inner>::from_raw(p))) };
+    }
 };
 
 export struct ThreadInit {
