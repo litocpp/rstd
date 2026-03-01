@@ -152,10 +152,13 @@ public:
 
 export struct ThreadInit {
     Thread                             handle;
-    cppstd::move_only_function<void()> start;
+    // cppstd::move_only_function<void()> start;
+    Box<dyn<FnMut<void()>>>            start;
 
     void init(this ThreadInit const& self);
 };
+
+static_assert(meta::destructible<ThreadInit>);
 
 } // namespace thread
 } // namespace rstd

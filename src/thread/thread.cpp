@@ -20,7 +20,7 @@ extern "C" void* rstd_thread_start(void* data) {
         init->init();
 
         // Run the closure
-        init->start();
+        init->start->operator()();
     }
 
     return {};

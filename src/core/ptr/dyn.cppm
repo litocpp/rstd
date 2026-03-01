@@ -18,7 +18,7 @@ struct VTable {
 
     template<template<class...> typename Tuple>
     using api_tuple_t =
-        decltype(detail::to_dyn(detail::TraitApiHelper<T, trait_api_t>::template make<Tuple>()));
+        decltype(meta::to_dyn(meta::TraitApiHelper<T, trait_api_t>::template make<Tuple>()));
 
     using apis_t   = api_tuple_t<cppstd::tuple>;
     using delete_t = void (*)(voidp);
@@ -31,10 +31,11 @@ struct VTable {
 
 template<typename T, typename U>
 struct VTableStaticStorage {
-    using vtable_t  = VTable<T>;
-    using impl_t    = Impl<T, U>;
-    using ApiHelper = detail::TraitApiHelper<T, impl_t>;
-    using apis_t    = vtable_t::apis_t;
+    using vtable_t = VTable<T>;
+    using impl_t   = Impl<T, U>;
+    using ApiHelper =
+        meta::TraitApiHelper<T, meta::conditional_t<meta::is_direct_trait<T>, U, impl_t>>;
+    using apis_t = vtable_t::apis_t;
 
     template<usize I, typename Fn>
     struct Wrap {
@@ -85,7 +86,7 @@ struct VTableStaticStorage {
 
 template<typename T>
 struct dyn_delegate : public meta::remove_cv_t<T>::template Api<dyn_tag> {
-    friend struct detail::DynHelper;
+    friend struct meta::DynHelper;
 
     template<typename>
     friend struct dyn;
@@ -222,5 +223,19 @@ struct dyn {
     }
 };
 } // namespace ptr_
+
+namespace meta
+{
+export template<typename T>
+struct dyn_traits {
+    static_assert(false);
+};
+
+template<typename T>
+struct dyn_traits<dyn<T>> {
+    template<typename A>
+    static constexpr bool Impled = rstd::Impled<A, T>;
+};
+} // namespace meta
 
 }; // namespace rstd

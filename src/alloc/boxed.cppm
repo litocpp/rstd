@@ -18,7 +18,11 @@ class Box {
 public:
     USE_TRAIT(Box)
 
-    ~Box() noexcept(noexcept(rstd::declval<Box>().reset())) { reset(); }
+    ~Box()
+    // noexcept(noexcept(rstd::declval<Box>().reset()))
+    {
+        reset();
+    }
     Box(const Box&) noexcept            = delete;
     Box& operator=(const Box&) noexcept = delete;
 
@@ -47,6 +51,14 @@ public:
     {
         auto t = new T(rstd::param_forward<T>(in));
         return from_raw(mut_ptr<T>::from_raw_parts(t));
+    }
+
+    template<typename U>
+    static auto make(U&& in) -> Box
+        requires(! Impled<T, Sized> && meta::dyn_traits<T>::template Impled<U>)
+    {
+        auto t = new U(rstd::forward<U>(in));
+        return from_raw(T::from_ptr(t));
     }
 
     static auto pin(param_t<T> in) -> Pin<Box>
@@ -86,9 +98,9 @@ public:
         }
     }
 
-    auto as_ref() const noexcept -> ref<const T> {
+    auto as_ref() const noexcept -> ref<T> {
         debug_assert(m_ptr != nullptr);
-        return ref<const T>::from_raw_parts(m_ptr.as_ptr());
+        return m_ptr.as_ptr().as_ref();
     }
 
     auto as_ptr() const noexcept -> ptr<T> {
