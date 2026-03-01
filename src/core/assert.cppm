@@ -1,19 +1,33 @@
 export module rstd.core:assert;
 export import :str;
 export import :fmt;
+export import :panicking;
 
 namespace rstd
 {
-export void assert_raw(ref<str> expr_str, ref<str> message,
-                       const source_location = source_location::current());
-
-export void assert_fmt(ref<str> expr_str, const source_location loc = source_location::current()) {
-    assert_raw(expr_str, {}, loc);
+#ifdef __GNUC__
+export [[noreturn]]
+void assert_fmt(ref<str> expr_str) {
+    panic_fmt(cppstd::format("Assertion `{}` failed", expr_str));
 }
 
 export template<typename... T>
+[[noreturn]]
+void assert_fmt(ref<str> expr_str, rstd::format_string<T...> fmt, T&&... args) {
+    panic_fmt(cppstd::format("Assertion `{}` failed: {}", expr_str, cppstd::vformat(fmt.get(), rstd::fmt::make_format_args(args...))));
+}
+#else
+export [[noreturn]]
+void assert_fmt(ref<str> expr_str, const source_location& loc = source_location::current()) {
+    panic_fmt(cppstd::format("Assertion `{}` failed", expr_str), loc);
+}
+
+export [[noreturn]]
+template<typename... T>
 void assert_fmt(ref<str> expr_str, rstd::format_string<T...> fmt, T&&... args,
                 const source_location loc = source_location::current()) {
-    assert_raw(expr_str, cppstd::vformat(fmt.get(), rstd::fmt::make_format_args(args...)), loc);
+    panic_fmt(cppstd::format("Assertion `{}` failed: {}", expr_str, cppstd::vformat(fmt.get(), rstd::fmt::make_format_args(args...)), loc);
 }
+#endif
+
 } // namespace rstd

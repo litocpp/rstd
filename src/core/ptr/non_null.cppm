@@ -25,7 +25,9 @@ protected:
     constexpr auto _ptr() const noexcept {
         return reinterpret_cast<union_const_value_t*>(m_storage);
     }
-    constexpr auto _ptr() noexcept { return reinterpret_cast<union_value_t*>(m_storage); }
+    constexpr auto _ptr() noexcept -> union_value_t* {
+        return reinterpret_cast<union_value_t*>(m_storage);
+    }
 
     template<typename V>
     constexpr void _construct_val(V&& val) {
@@ -108,9 +110,7 @@ public:
         return Some(NonNull(p));
     }
 
-    static constexpr auto make_unchecked(pointer_t p) noexcept -> NonNull {
-        return NonNull(p);
-    }
+    static constexpr auto make_unchecked(pointer_t p) noexcept -> NonNull { return NonNull(p); }
 
     constexpr auto as_ptr() const noexcept -> const_pointer_t { return m_ptr.as_ptr(); }
     constexpr auto as_mut_ptr() noexcept -> pointer_t { return m_ptr; }

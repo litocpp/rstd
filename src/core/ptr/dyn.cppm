@@ -155,9 +155,9 @@ public:
 
     constexpr void reset() noexcept { d.p = nullptr; }
 
-    constexpr auto* as_raw_ptr() const noexcept { return d.p; }
+    constexpr auto as_raw_ptr() const noexcept -> delegate_t::ptr_t { return d.p; }
 
-    constexpr auto* metadata() const noexcept { return d.vtable; }
+    constexpr auto metadata() const noexcept -> delegate_t::vtable_t const* { return d.vtable; }
 };
 
 } // namespace ptr_
