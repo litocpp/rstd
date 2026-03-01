@@ -1,6 +1,7 @@
 export module rstd.core:convert;
 export import :trait;
 export import :core;
+export import :clone;
 
 namespace rstd::convert
 {
@@ -64,7 +65,18 @@ struct IntoWrapper {
         if constexpr (Impled<mtp::remove_cv_t<U>, convert::From<T>>) {
             return Impl<convert::From<T>, mtp::remove_cv_t<U>>::from(rstd::move(self));
         } else {
-            return as<convert::Into<mtp::remove_cv_t<U>>>(self).into();
+            using Trait = convert::Into<mtp::remove_cv_t<U>>;
+            if constexpr (mtp::is_const_v<T>) {
+                if constexpr (Impled<clone::Clone, mtp::remove_cv_t<U>>) {
+                    auto tmp = as<clone::Clone>(self).clone();
+                    return as<Trait>(tmp).into();
+                } else {
+                    auto tmp = self;
+                    return as<Trait>(tmp).into();
+                }
+            } else {
+                return as<Trait>(self).into();
+            }
         }
     }
 
