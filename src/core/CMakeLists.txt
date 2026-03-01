@@ -22,7 +22,7 @@ target_sources(
          include/rstd/macro.hpp
          )
 
-target_sources(rstd.core PRIVATE core.cpp)
+target_sources(rstd.core PRIVATE mod.cpp)
 target_sources(
   rstd.core
   PUBLIC FILE_SET
@@ -43,16 +43,18 @@ target_sources(
          result.cppm
          fmt.cppm
          panic.cppm
+         panicking.cppm
          log.cppm
          cppstd.cppm
          choice.cppm
          pin.cppm
          hint.cppm
          assert.cppm
-         intrinsics.cppm
          tuple.cppm
          memchr.cppm
          cmp.cppm
+         panic/panic_info.cppm
+         intrinsics/mod.cppm
          ffi/mod.cppm
          ffi/c_str.cppm
          hash/mod.cppm

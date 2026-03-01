@@ -115,3 +115,21 @@ struct rstd::fmt::formatter<rstd::ref<rstd::str>>
             { reinterpret_cast<char const*>(str.data()), str.size() }, ctx);
     }
 };
+
+namespace rstd::str_
+{
+export constexpr auto extract_last(ref<str> path, usize count) -> ref<str> {
+    auto size = path.size();
+    while (size != 0) {
+        if (path[size - 1] == '/' || path[size - 1] == '\\') {
+            --count;
+        }
+        if (count != 0) {
+            --size;
+        } else {
+            break;
+        }
+    }
+    return ref<str>::from_raw_parts(path.begin() + size, path.end() - path.begin());
+}
+} // namespace rstd::str_

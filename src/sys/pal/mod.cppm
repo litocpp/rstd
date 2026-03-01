@@ -9,7 +9,10 @@ export namespace rstd::sys::pal
 namespace futex = pal::unix::futex;
 using unix::Mutex;
 using unix::Condvar;
+using unix::abort_internal;
+
 #elif defined(_WIN32)
+
 namespace futex = pal::windows::futex;
 using windows::Mutex;
 #endif

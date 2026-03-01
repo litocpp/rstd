@@ -13,13 +13,13 @@ add_subdirectory(io)
 add_subdirectory(thread)
 add_subdirectory(sync)
 
-add_library(rstd)
-add_library(rstd::rstd ALIAS rstd)
-target_compile_features(rstd PUBLIC cxx_std_23)
-target_link_libraries(rstd PUBLIC rstd.core)
+add_library(rstd_)
+target_compile_features(rstd_ PUBLIC cxx_std_23)
+target_link_libraries(rstd_ PUBLIC rstd.core)
+set_target_properties(rstd_ PROPERTIES OUTPUT_NAME rstd)
 
 target_sources(
-  rstd
+  rstd_
   PUBLIC FILE_SET
          modules
          TYPE
@@ -27,10 +27,16 @@ target_sources(
          FILES
          mod.cppm
          error.cppm
+         panicking.cppm
+         process.cppm
          ${RSTD_SYS_SOURCES}
          ${RSTD_ALLOC_SOURCES}
          ${RSTD_IO_SOURCES}
          ${RSTD_THREAD_SOURCES}
          ${RSTD_SYNC_SOURCES})
 
-target_sources(rstd PRIVATE ${RSTD_PRIVATE_SOURCES})
+target_sources(rstd_ PRIVATE ${RSTD_PRIVATE_SOURCES} mod.cpp)
+
+add_library(rstd INTERFACE)
+add_library(rstd::rstd ALIAS rstd)
+target_link_libraries(rstd INTERFACE $<LINK_GROUP:RESCAN,rstd.core,rstd_>)

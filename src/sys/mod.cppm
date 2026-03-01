@@ -4,6 +4,9 @@ export import :sys.sync.mutex;
 export import :sys.thread;
 export import :sys.pal;
 
-namespace rstd::sys
+export namespace rstd::sys
 {
+
+using pal::abort_internal;
+
 }

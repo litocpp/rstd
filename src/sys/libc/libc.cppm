@@ -1,6 +1,7 @@
 module;
 #include <errno.h>
 #include <time.h>
+#include <stdlib.h>
 export module rstd:sys.libc.std;
 
 export namespace rstd::sys::libc
@@ -10,6 +11,8 @@ using ::timespec;
 constexpr auto M_CLOCK_MONOTONIC = CLOCK_MONOTONIC;
 constexpr auto M_ETIMEDOUT       = ETIMEDOUT;
 constexpr auto M_EINTR           = EINTR;
+
+using ::abort;
 
 #undef errno
 [[gnu::always_inline]]

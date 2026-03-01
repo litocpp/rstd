@@ -2,7 +2,7 @@ module;
 #include <rstd/macro.hpp>
 export module rstd.core:option;
 export import :clone;
-export import :panic;
+export import :panicking;
 export import :slice;
 export import :ops.function;
 export import :assert;
@@ -227,7 +227,6 @@ public:
             return _get_move();
         }
         rstd::panic("{}", msg);
-        rstd::unreachable();
     }
 
     auto unwrap() -> T {
@@ -235,7 +234,6 @@ public:
             return _get_move();
         }
         rstd::panic("called `Option::unwrap()` on a `None` value");
-        rstd::unreachable();
     }
 
     template<typename U>

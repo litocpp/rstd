@@ -17,7 +17,7 @@ export import :option;
 export import :result;
 
 export import :pin;
-export import :panic;
+export import :panicking;
 export import :hint;
 export import :str;
 export import :assert;

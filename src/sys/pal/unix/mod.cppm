@@ -6,4 +6,9 @@ namespace rstd::sys::pal::unix
 {
 export using pal::unix::sync::mutex::Mutex;
 export using pal::unix::sync::condvar::Condvar;
+
+export [[noreturn]]
+void abort_internal() {
+    libc::abort();
 }
+} // namespace rstd::sys::pal::unix
