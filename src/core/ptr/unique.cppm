@@ -44,7 +44,7 @@ public:
     }
 
     constexpr auto as_ptr() const -> ptr<T> { return pointer->as_ptr(); }
-    constexpr auto as_mut_ptr() -> mut_ptr<T> { return pointer->as_mut_ptr(); }
+    constexpr auto as_mut_ptr() const -> mut_ptr<T> { return pointer->as_mut_ptr(); }
     /// @}
 
     /// \name Sized

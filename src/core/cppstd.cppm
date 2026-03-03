@@ -20,6 +20,9 @@ module;
 #include <format>
 #include <atomic>
 #include <vector>
+#include <deque>
+#include <map>
+#include <unordered_set>
 
 #include <mutex>
 #include <shared_mutex>
@@ -94,8 +97,8 @@ using std::uint8_t;
 using std::uintptr_t;
 
 using std::byte;
-using std::ptrdiff_t;
 using std::intptr_t;
+using std::ptrdiff_t;
 using std::size_t;
 using std::strong_ordering;
 using std::weak_ordering;
@@ -135,8 +138,13 @@ using std::basic_string_view;
 using std::string;
 using std::string_view;
 
+using std::deque;
+using std::map;
 using std::span;
+using std::unordered_set;
 using std::vector;
+
+using std::thread;
 
 // source_location
 using std::source_location;
@@ -177,16 +185,22 @@ using std::tuple_element_t;
 using std::tuple_size;
 using std::tuple_size_v;
 
+using std::bind;
 using std::enable_shared_from_this;
 using std::invoke;
 using std::make_shared;
 using std::make_unique;
-using std::shared_ptr;
-using std::unique_ptr;
-using std::weak_ptr;
-using std::variant;
 using std::monostate;
+using std::shared_ptr;
+using std::transform;
+using std::unique_ptr;
+using std::variant;
 using std::visit;
+using std::weak_ptr;
+
+using std::exception;
+using std::exception_ptr;
+using std::rethrow_exception;
 
 using std::lock_guard;
 using std::mutex;
@@ -214,19 +228,29 @@ using std::error_code;
 
 namespace chrono
 {
-using std::chrono::operator-;
 using std::chrono::duration;
 using std::chrono::duration_cast;
 using std::chrono::microseconds;
 using std::chrono::milliseconds;
 using std::chrono::nanoseconds;
 using std::chrono::seconds;
+using std::chrono::steady_clock;
+using std::chrono::system_clock;
+using std::chrono::time_point;
+using std::chrono::operator-;
+using std::chrono::operator>;
+using std::chrono::operator<;
+using std::chrono::operator<=;
+using std::chrono::operator>=;
 } // namespace chrono
 
 namespace filesystem
 {
+using std::filesystem::create_directories;
+using std::filesystem::exists;
 using std::filesystem::path;
-}
+using std::filesystem::remove;
+} // namespace filesystem
 
 using std::abort;
 using std::apply;
@@ -237,19 +261,19 @@ using std::runtime_error;
 
 using std::addressof;
 using std::construct_at;
-using std::launder;
 using std::copy;
 using std::copy_n;
 using std::declval;
 using std::destroy_at;
 using std::exchange;
 using std::forward;
+using std::launder;
 using std::move;
 using std::swap;
 
+using std::fabs;
 using std::max;
 using std::min;
-using std::fabs;
 
 using std::find;
 using std::find_if;
@@ -265,6 +289,7 @@ using std::memset;
 using std::strlen;
 using std::strncmp;
 
+using std::less;
 using std::lexicographical_compare_three_way;
 
 using ::stderr;
@@ -279,6 +304,11 @@ using std::pmr::polymorphic_allocator;
 using std::pmr::vector;
 
 } // namespace pmr
+
+namespace views
+{
+using std::views::transform;
+}
 
 } // namespace rstd::cppstd
 
@@ -316,6 +346,8 @@ using std::same_as;
 using std::underlying_type;
 using std::underlying_type_t;
 
+using std::is_aggregate;
+using std::is_aggregate_v;
 using std::is_arithmetic;
 using std::is_arithmetic_v;
 using std::is_array;
@@ -340,8 +372,6 @@ using std::is_rvalue_reference;
 using std::is_rvalue_reference_v;
 using std::is_union;
 using std::is_union_v;
-using std::is_aggregate;
-using std::is_aggregate_v;
 
 using std::add_const;
 using std::add_const_t;
@@ -372,14 +402,14 @@ using std::is_nothrow_destructible;
 using std::is_nothrow_destructible_v;
 
 // copy
-using std::is_trivially_copyable;
-using std::is_trivially_copyable_v;
 using std::is_copy_constructible;
 using std::is_copy_constructible_v;
 using std::is_nothrow_copy_constructible;
 using std::is_nothrow_copy_constructible_v;
 using std::is_trivially_copy_constructible;
 using std::is_trivially_copy_constructible_v;
+using std::is_trivially_copyable;
+using std::is_trivially_copyable_v;
 
 // move
 using std::is_move_constructible;
@@ -407,6 +437,8 @@ using std::is_nothrow_assignable;
 using std::is_nothrow_assignable_v;
 
 using std::is_convertible_v;
+using std::is_invocable;
+using std::is_invocable_v;
 
 using std::remove_const_t;
 using std::remove_cvref;

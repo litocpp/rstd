@@ -46,10 +46,11 @@ public:
         return *this;
     }
 
-    static auto make(param_t<T> in) -> Box
+    template<typename... Args>
+    static auto make(Args&&... args) -> Box
         requires Impled<T, Sized>
     {
-        auto t = new T(rstd::param_forward<T>(in));
+        auto t = new T(rstd::forward<Args>(args)...);
         return from_raw(mut_ptr<T>::from_raw_parts(t));
     }
 
@@ -61,10 +62,10 @@ public:
         return from_raw(T::from_ptr(t));
     }
 
-    static auto pin(param_t<T> in) -> Pin<Box>
+    static auto pin(T&& in) -> Pin<Box>
         requires Impled<T, Sized>
     {
-        return Pin<Box>::make_unchecked(make(rstd::param_forward<T>(in)));
+        return Pin<Box>::make_unchecked(make(rstd::forward<T>(in)));
     }
 
     // Construct from a raw pointer (takes ownership)
@@ -107,7 +108,7 @@ public:
         debug_assert(m_ptr != nullptr);
         return m_ptr.as_ptr();
     }
-    auto as_mut_ptr() noexcept -> ptr<T> {
+    auto as_mut_ptr() const noexcept -> mut_ptr<T> {
         debug_assert(m_ptr != nullptr);
         return m_ptr.as_mut_ptr();
     }

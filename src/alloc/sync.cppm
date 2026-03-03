@@ -63,12 +63,14 @@ struct ArcInner {
     static void embed_deconstruct(voidp p) { rstd::destroy_at(static_cast<T*>(p)); }
 
     void inc_strong() {
-        [[maybe_unused]] auto old = strong.fetch_add(1, rstd::memory_order::relaxed);
+        [[maybe_unused]]
+        auto old = strong.fetch_add(1, rstd::memory_order::relaxed);
         debug_assert(old < detail::MAX_REFCOUNT);
     }
 
     void inc_weak() {
-        [[maybe_unused]] auto old = weak.fetch_add(1, rstd::memory_order::relaxed);
+        [[maybe_unused]]
+        auto old = weak.fetch_add(1, rstd::memory_order::relaxed);
         debug_assert(old < detail::MAX_REFCOUNT);
     }
 
@@ -244,12 +246,10 @@ public:
     }
 
     /// Constructs a new `Arc<T>`.
-    ///
-    /// This is the primary way to create an Arc. The value is moved into
-    /// a new heap allocation and wrapped in an Arc.
-    static auto make(param_t<T> value) -> Arc {
+    template<typename... Args>
+    static auto make(Args&&... args) -> Arc {
         auto inner = new ArcInnerImpl<T, ArcStoragePolicy::Embed>;
-        rstd::construct_at(reinterpret_cast<T*>(&(inner->storage)), rstd::param_forward<T>(value));
+        rstd::construct_at(reinterpret_cast<T*>(&(inner->storage)), rstd::forward<Args>(args)...);
         return { ArcData<T> { .inner = inner } };
     }
 

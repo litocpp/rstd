@@ -113,7 +113,7 @@ public:
     static constexpr auto make_unchecked(pointer_t p) noexcept -> NonNull { return NonNull(p); }
 
     constexpr auto as_ptr() const noexcept -> const_pointer_t { return m_ptr.as_ptr(); }
-    constexpr auto as_mut_ptr() noexcept -> pointer_t { return m_ptr; }
+    constexpr auto as_mut_ptr() const noexcept -> pointer_t { return m_ptr; }
 
     constexpr explicit operator bool() const noexcept { return m_ptr != nullptr; }
 
