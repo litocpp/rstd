@@ -17,11 +17,15 @@ module;
 
 #include <string_view>
 #include <string>
+#include <fstream>
+#include <iostream>
+
 #include <format>
 #include <atomic>
 #include <vector>
 #include <deque>
 #include <map>
+#include <set>
 #include <unordered_set>
 
 #include <mutex>
@@ -117,6 +121,27 @@ using std::allocator;
 using std::allocator_traits;
 using std::default_delete;
 
+using std::decay;
+using std::decay_t;
+
+// stream
+using std::fstream;
+
+namespace ios_base
+{
+constexpr auto app    = std::ios_base::app;
+constexpr auto binary = std::ios_base::binary;
+constexpr auto in     = std::ios_base::in;
+constexpr auto out    = std::ios_base::out;
+constexpr auto trunc  = std::ios_base::trunc;
+constexpr auto ate    = std::ios_base::ate;
+
+constexpr auto failbit = std::ios_base::failbit;
+constexpr auto badbit  = std::ios_base::badbit;
+constexpr auto eofbit  = std::ios_base::eofbit;
+constexpr auto goodbit = std::ios_base::goodbit;
+} // namespace ios_base
+
 // format
 using std::basic_format_context;
 using std::basic_format_parse_context;
@@ -131,6 +156,7 @@ using std::formatter;
 using std::make_format_args;
 using std::vformat;
 using std::vformat_to;
+using std::formattable;
 
 // string
 using std::basic_string;
@@ -140,6 +166,7 @@ using std::string_view;
 
 using std::deque;
 using std::map;
+using std::set;
 using std::span;
 using std::unordered_set;
 using std::vector;
@@ -172,6 +199,8 @@ using std::ranges::begin;
 using std::ranges::data;
 using std::ranges::distance;
 using std::ranges::end;
+using std::ranges::range;
+using std::ranges::range_value_t;
 using std::ranges::size;
 } // namespace ranges
 
@@ -301,6 +330,7 @@ using std::pmr::deque;
 using std::pmr::get_default_resource;
 using std::pmr::memory_resource;
 using std::pmr::polymorphic_allocator;
+using std::pmr::synchronized_pool_resource;
 using std::pmr::vector;
 
 } // namespace pmr
