@@ -108,10 +108,10 @@ public:
 
 template<>
 struct rstd::fmt::formatter<rstd::ref<rstd::str>>
-    : rstd::fmt::formatter<rstd::cppstd::string_view> {
+    : rstd::fmt::formatter<cppstd::string_view> {
     template<class FmtContext>
     FmtContext::iterator format(rstd::ref<rstd::str> str, FmtContext& ctx) const {
-        return rstd::fmt::formatter<rstd::cppstd::string_view>::format(
+        return rstd::fmt::formatter<cppstd::string_view>::format(
             { reinterpret_cast<char const*>(str.data()), str.size() }, ctx);
     }
 };

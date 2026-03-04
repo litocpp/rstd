@@ -85,7 +85,7 @@ export using __gnu_cxx::operator+;
 } // namespace __gnu_cxx
 #endif
 
-export namespace rstd::cppstd
+export namespace cppstd
 {
 
 // basic type
@@ -340,7 +340,7 @@ namespace views
 using std::views::transform;
 }
 
-} // namespace rstd::cppstd
+} // namespace cppstd
 
 export namespace rstd
 {
