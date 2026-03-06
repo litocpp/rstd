@@ -7,6 +7,7 @@ namespace rstd::sys::sync::thread_parking::futex
 {
 
 Parker::Parker(): state(EMPTY) {}
+Parker::~Parker() {}
 
 void Parker::park() {
     if (state.fetch_sub(1, Ordering::Acquire) == NOTIFIED) {
@@ -35,7 +36,8 @@ void Parker::park_timeout(cppstd::chrono::duration<double> timeout) {
     pal::futex::futex_wait(&state, PARKED, rstd::Some(timeout));
 
     // Try to detect if we were notified or just timed out
-    [[maybe_unused]] i32 old = state.exchange(EMPTY, Ordering::Acquire);
+    [[maybe_unused]]
+    i32 old = state.exchange(EMPTY, Ordering::Acquire);
     // Note: We don't differentiate between timeout and notification in this impl
     // TODO
 }

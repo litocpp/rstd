@@ -4,7 +4,10 @@ export module rstd.alloc:vec;
 export import :boxed;
 export import rstd.core;
 
-namespace rstd::alloc::vec
+using namespace rstd;
+using alloc::boxed::Box;
+
+namespace alloc::vec
 {
 export template<typename T>
 class Vec {
@@ -87,8 +90,8 @@ public:
     }
     friend constexpr auto size(const Self& self) noexcept -> usize { return self.len(); }
 };
-} // namespace rstd::alloc::vec
-using rstd::alloc::vec::Vec;
+} // namespace alloc::vec
+using alloc::vec::Vec;
 namespace rstd
 {
 template<typename U, mtp::same_as<cmp::PartialEq<Vec<U>>> T>
@@ -98,9 +101,9 @@ struct Impl<T, Vec<U>> : ImplBase<default_tag<Vec<U>>> {
     }
 };
 
-template<typename A, mtp::same_as<convert::From<alloc::boxed::Box<A[]>>> T>
+template<typename A, mtp::same_as<convert::From<Box<A[]>>> T>
 struct Impl<T, Vec<A>> : ImplBase<Vec<A>> {
-    static auto from(alloc::boxed::Box<A[]> b) -> Vec<A> {
+    static auto from(Box<A[]> b) -> Vec<A> {
         auto ptr = b.as_mut_ptr();
         auto len = ptr.len();
         auto vec = Vec<A>::with_capacity(len);

@@ -4,10 +4,11 @@ export module rstd.alloc:ffi.c_str;
 export import :boxed;
 export import :vec;
 
-using rstd::alloc::vec::Vec;
+using namespace rstd;
+using alloc::vec::Vec;
 using rstd::ffi::CStr;
 
-namespace rstd::alloc::ffi
+namespace alloc::ffi
 {
 struct NulError {
     usize   size;
@@ -15,18 +16,10 @@ struct NulError {
 };
 
 export class CString {
+public:
     boxed::Box<u8[]> inner;
 
-    CString() = delete;
-    explicit CString(boxed::Box<u8[]>&& b) noexcept: inner(rstd::move(b)) {}
-
-public:
     USE_TRAIT(CString)
-
-    CString(const CString&)                = delete;
-    CString(CString&&) noexcept            = default;
-    CString& operator=(CString&&) noexcept = default;
-    ~CString() noexcept                    = default;
 
     static auto from_vec_unchecked(Vec<u8>&& v) -> Self {
         debug_assert(memchr::memchr(0, v.as_slice()).is_none());
@@ -62,8 +55,9 @@ public:
     }
 
     auto into_bytes() -> Vec<u8> {
-        Vec<u8>               vec = rstd::into(rstd::move(inner));
-        [[maybe_unused]] auto nul = vec.pop(); // remove trailing null byte
+        Vec<u8> vec = rstd::into(rstd::move(inner));
+        [[maybe_unused]]
+        auto nul = vec.pop(); // remove trailing null byte
         debug_assert_eq(nul, Some(0));
         return vec;
     }
@@ -79,10 +73,10 @@ public:
     }
 };
 
-} // namespace rstd::alloc::ffi
+} // namespace alloc::ffi
 
-using rstd::alloc::ffi::CString;
-using rstd::alloc::ffi::NulError;
+using alloc::ffi::CString;
+using alloc::ffi::NulError;
 
 namespace rstd
 {

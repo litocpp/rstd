@@ -64,6 +64,8 @@ target_sources(
          num/integer.cppm
          slice/mod.cppm
          str/mod.cppm
+         str/str.cppm
+         str/traits.cppm
          ptr/mod.cppm
          ptr/non_null.cppm
          ptr/unique.cppm

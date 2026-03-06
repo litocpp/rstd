@@ -7,9 +7,9 @@ export module rstd:sys.sync.mutex.pthread;
 export import :sys.sync.once_box;
 export import :sys.pal;
 export import :sys.libc.pthread;
-export import rstd.alloc;
+import :forward;
 
-using rstd::alloc::boxed::Box;
+using rstd_alloc::boxed::Box;
 using rstd::sys::sync::OnceBox;
 using namespace rstd::sys::libc;
 

@@ -1,13 +1,13 @@
 module;
 #include <rstd/macro.hpp>
 export module rstd:thread.builder;
-export import rstd.alloc;
+import :forward;
 export import :thread.join_handle;
 export import :thread.lifecycle;
 export import :sys;
 export import rstd.core;
 
-using rstd::alloc::string::String;
+using rstd_alloc::string::String;
 namespace imp = rstd::sys::thread;
 
 namespace rstd::thread::builder

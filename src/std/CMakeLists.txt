@@ -22,9 +22,11 @@ target_sources(
          CXX_MODULES
          FILES
          mod.cppm
+         forward.cppm
          error.cppm
          panicking.cppm
          process.cppm
+         ffi/mod.cppm
          ${RSTD_SYS_SOURCES}
          ${RSTD_IO_SOURCES}
          ${RSTD_THREAD_SOURCES}

@@ -4,5 +4,5 @@ export import :sys.sync.mutex.pthread;
 
 namespace rstd::sys::sync::mutex
 {
-using namespace mutex::futex;
+export using mutex::futex::Mutex;
 }

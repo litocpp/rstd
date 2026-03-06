@@ -1,10 +1,10 @@
 module;
 #include <rstd/macro.hpp>
 export module rstd:sync.mpsc.mpmc.counter;
-export import rstd.alloc;
+import :forward;
 export import rstd.core;
 
-using rstd::alloc::boxed::Box;
+using rstd::boxed::Box;
 using rstd::sync::atomic::Atomic;
 using rstd::sync::atomic::Ordering;
 

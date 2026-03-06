@@ -4,20 +4,21 @@ module;
 export module rstd:sync.mpsc.mpmc.context;
 export import :sync.mpsc.mpmc.select;
 export import rstd.core;
-export import rstd.alloc;
 export import :thread;
+import :forward;
+import rstd.alloc;
 
-using rstd::alloc::boxed::Box;
+using alloc::sync::Arc;
+using rstd::boxed::Box;
 using rstd::sync::atomic::Atomic;
 using rstd::sync::atomic::Ordering;
-using rstd::sync::Arc;
 
 namespace rstd::sync::mpsc::mpmc
 {
 
 // Forward declare for ThreadId
-using thread::ThreadId;
 using thread::Thread;
+using thread::ThreadId;
 
 struct Inner {
     /// Selected operation.
@@ -33,20 +34,17 @@ struct Inner {
     ThreadId thread_id;
 
     Inner(ThreadId id, Thread t)
-        : select(Selected::Waiting().val)
-        , packet(nullptr)
-        , thread(rstd::move(t))
-        , thread_id(id) {}
+        : select(Selected::Waiting().val), packet(nullptr), thread(rstd::move(t)), thread_id(id) {}
 };
 
 export class Context {
     Arc<Inner> inner;
 
-    Context(Arc<Inner> inner) : inner(rstd::move(inner)) {}
+    Context(Arc<Inner> inner): inner(rstd::move(inner)) {}
 
 public:
     USE_TRAIT(Context)
-    Context(const Context& other) : inner(other.inner.clone()) {}
+    Context(const Context& other): inner(other.inner.clone()) {}
     Context(Context&&) noexcept = default;
     Context& operator=(const Context& other) {
         if (this != &other) {
@@ -69,7 +67,7 @@ public:
     /// Attempts to select an operation.
     auto try_select(Selected select) const -> Result<empty, Selected> {
         auto expected = Selected::Waiting().val;
-        auto result = inner->select.compare_exchange_weak(
+        auto result   = inner->select.compare_exchange_weak(
             expected, select.val, Ordering::AcqRel, Ordering::Acquire);
         if (result) {
             return Ok(empty {});
@@ -100,7 +98,8 @@ public:
                 auto now = cppstd::chrono::steady_clock::now();
 
                 if (now < end) {
-                    inner->thread.park_timeout(cppstd::chrono::duration_cast<cppstd::chrono::duration<double>>(end - now));
+                    inner->thread.park_timeout(
+                        cppstd::chrono::duration_cast<cppstd::chrono::duration<double>>(end - now));
                 } else {
                     // The deadline has been reached. Try aborting select.
                     auto res = try_select(Selected::Aborted());
@@ -117,14 +116,10 @@ public:
     }
 
     /// Unparks the thread this context belongs to.
-    void unpark() const {
-        inner->thread.unpark();
-    }
+    void unpark() const { inner->thread.unpark(); }
 
     /// Returns the id of the thread this context belongs to.
-    auto thread_id() const -> ThreadId {
-        return inner->thread_id;
-    }
+    auto thread_id() const -> ThreadId { return inner->thread_id; }
 };
 
 } // namespace rstd::sync::mpsc::mpmc

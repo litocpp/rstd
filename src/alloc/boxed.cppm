@@ -6,7 +6,8 @@ export import rstd.core;
 using rstd::mem::manually_drop::ManuallyDrop;
 using rstd::pin::Pin;
 using rstd::ptr_::unique::Unique;
-namespace rstd::alloc::boxed
+using namespace rstd;
+namespace alloc::boxed
 {
 
 export template<typename T>
@@ -128,9 +129,9 @@ public:
         return from_raw(p);
     }
 };
-} // namespace rstd::alloc::boxed
+} // namespace alloc::boxed
 
-using rstd::alloc::boxed::Box;
+using alloc::boxed::Box;
 namespace rstd
 {
 

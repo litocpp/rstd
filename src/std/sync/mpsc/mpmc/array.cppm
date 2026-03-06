@@ -5,10 +5,10 @@ export import :sync.mpsc.mpmc.context;
 export import :sync.mpsc.mpmc.select;
 export import :sync.mpsc.mpmc.utils;
 export import :sync.mpsc.mpmc.waker;
-export import rstd.alloc;
 export import rstd.core;
+import :forward;
 
-using rstd::alloc::boxed::Box;
+using rstd_alloc::boxed::Box;
 using rstd::mem::maybe_uninit::MaybeUninit;
 using rstd::sync::atomic::Atomic;
 using rstd::sync::atomic::Ordering;

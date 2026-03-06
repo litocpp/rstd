@@ -2,7 +2,7 @@
 
 import rstd;
 
-using rstd::alloc::boxed::Box;
+using rstd::boxed::Box;
 
 namespace
 {

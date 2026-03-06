@@ -288,7 +288,7 @@ TEST(Trait, InClass) {
     }
 }
 
-using rstd::alloc::boxed::Box;
+using rstd::boxed::Box;
 TEST(Trait, Dyn) {
     using namespace rstd;
     auto b = Box<dyn<DisplayTrait>>::from_raw(dyn<DisplayTrait>::from_ptr(new TestClass { 42 }));

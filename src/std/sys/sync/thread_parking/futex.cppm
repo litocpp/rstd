@@ -16,6 +16,7 @@ private:
 
 public:
     Parker();
+    ~Parker();
     void park();
     void park_timeout(cppstd::chrono::duration<double> timeout);
     void unpark();

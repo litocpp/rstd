@@ -3,6 +3,7 @@
 
 import rstd;
 
+using namespace rstd;
 using namespace rstd::rc;
 
 struct TestStruct {

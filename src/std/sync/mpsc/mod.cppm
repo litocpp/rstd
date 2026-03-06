@@ -105,7 +105,7 @@ public:
     Sender(mpmc::Sender<Box<mpmc::ListChannel<T>>> i) : inner(rstd::move(i)) {}
 
     auto send(T msg) -> Result<empty, T> {
-        mpmc::ListToken token;
+        mpmc::ListToken token {};
         if (inner->start_send(token)) {
             return inner->write(token, rstd::move(msg));
         }

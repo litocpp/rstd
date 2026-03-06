@@ -4,9 +4,10 @@ export module rstd.alloc:string;
 export import :vec;
 export import rstd.core;
 
-using rstd::alloc::vec::Vec;
+using namespace rstd;
+using alloc::vec::Vec;
 
-namespace rstd::alloc::string
+namespace alloc::string
 {
 
 export class String {
@@ -77,10 +78,10 @@ export struct ToString {
     using Funcs = TraitFuncs<&T::to_string>;
 };
 
-} // namespace rstd::alloc::string
+} // namespace alloc::string
 
-using String   = rstd::alloc::string::String;
-using ToString = rstd::alloc::string::ToString;
+using String   = alloc::string::String;
+using ToString = alloc::string::ToString;
 namespace rstd
 {
 

@@ -1,5 +1,5 @@
 export module rstd.core:panic_info;
-export import :str;
+export import :str.str;
 
 namespace rstd::panic_
 {

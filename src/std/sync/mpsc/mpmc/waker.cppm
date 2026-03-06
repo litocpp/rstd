@@ -4,10 +4,10 @@ export module rstd:sync.mpsc.mpmc.waker;
 export import :sync.mpsc.mpmc.context;
 export import :sync.mpsc.mpmc.select;
 export import :sync.mutex;
-export import rstd.alloc;
+import :forward;
 export import rstd.core;
 
-using rstd::alloc::vec::Vec;
+using rstd_alloc::vec::Vec;
 using rstd::sync::atomic::Atomic;
 using rstd::sync::atomic::Ordering;
 using rstd::sync::Mutex;

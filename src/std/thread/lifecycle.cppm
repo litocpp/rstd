@@ -7,8 +7,9 @@ export import :thread.current;
 export import :thread.forward;
 export import :sys;
 export import rstd.core;
+export import rstd.alloc;
 
-using rstd::sync::Arc;
+using alloc::sync::Arc;
 using rstd::thread::scoped::ScopeData;
 namespace imp = rstd::sys::thread;
 
@@ -17,13 +18,13 @@ namespace rstd::thread::lifecycle
 
 template<typename T>
 struct Packet {
-    Option<rstd::sync::Arc<ScopeData>> scope;
+    Option<Arc<ScopeData>> scope;
     Option<Result<T>>                  result;
 };
 
 template<>
 struct Packet<void> {
-    Option<rstd::sync::Arc<ScopeData>> scope;
+    Option<Arc<ScopeData>> scope;
     Option<Result<empty>>              result;
 };
 
@@ -55,9 +56,9 @@ template<typename F>
 auto spawn_unchecked(Option<String> name, usize stack_size, Option<Arc<ScopeData>> scope_data,
                      F&& f) -> io::Result<JoinInner<mtp::invoke_result_t<F>>>
 // requires Impled<F, FnOnce<void()>> && mtp::special_of<mtp::remove_cvref_t<F>,
-// rstd::alloc::boxed::Box>
+// rstd_alloc::boxed::Box>
 {
-    using namespace rstd::alloc::boxed;
+    using namespace rstd_alloc::boxed;
     using ret_t = mtp::invoke_result_t<F>;
 
     auto id     = ThreadId::make();

@@ -21,9 +21,9 @@
     template<typename, typename>                                            \
     friend struct rstd::Impl;                                               \
     template<typename _USE_TRAIT_T>                                         \
-        requires Impled<Self, cmp::PartialEq<_USE_TRAIT_T>>                 \
+        requires rstd::Impled<Self, rstd::cmp::PartialEq<_USE_TRAIT_T>>     \
     friend bool operator==(const Self& a, const _USE_TRAIT_T& b) noexcept { \
-        return as<cmp::PartialEq<_USE_TRAIT_T>>(a).eq(b);                   \
+        return as<rstd::cmp::PartialEq<_USE_TRAIT_T>>(a).eq(b);             \
     }
 
 #ifdef NDEBUG

@@ -8,12 +8,11 @@ using rstd::mem::maybe_uninit::MaybeUninit;
 using rstd::pin::Pin;
 using rstd::sync::atomic::Atomic;
 using rstd::sync::atomic::fence;
+using namespace rstd;
 
-namespace rstd::sync
+namespace alloc::sync
 {
 
-namespace detail
-{
 constexpr usize MAX_REFCOUNT = (rstd::numeric_limits<usize>::max)() / 2;
 
 enum class DeleteType
@@ -36,7 +35,6 @@ struct ArcImplTrait {
     using Funcs = TraitFuncs<&F::data, &F::do_delete>;
 };
 
-} // namespace detail
 enum class ArcStoragePolicy : u32
 {
     Embed = 0,
@@ -49,37 +47,37 @@ struct ArcInner {
     Atomic<usize> strong { 1 };
     Atomic<usize> weak { 1 };
 
-    mut_ptr<dyn<detail::ArcImplTrait>> impl;
+    mut_ptr<dyn<ArcImplTrait>> impl;
 
-    ArcInner(mut_ptr<dyn<detail::ArcImplTrait>> i): impl(i) {}
+    ArcInner(mut_ptr<dyn<ArcImplTrait>> i): impl(i) {}
 
     auto data() noexcept -> mut_ptr<T> {
         return mut_ptr<T>::from_raw_parts(rstd::launder(static_cast<T*>(impl->data())));
     }
-    void do_delete(detail::DeleteType t, detail::EmbedDeconstructor de) {
-        return impl->do_delete(t, de);
-    }
+    void do_delete(DeleteType t, EmbedDeconstructor de) { return impl->do_delete(t, de); }
 
     static void embed_deconstruct(voidp p) { rstd::destroy_at(static_cast<T*>(p)); }
 
     void inc_strong() {
         [[maybe_unused]]
         auto old = strong.fetch_add(1, rstd::sync::atomic::Ordering::Relaxed);
-        debug_assert(old < detail::MAX_REFCOUNT);
+        debug_assert(old < MAX_REFCOUNT);
     }
 
     void inc_weak() {
         [[maybe_unused]]
         auto old = weak.fetch_add(1, rstd::sync::atomic::Ordering::Relaxed);
-        debug_assert(old < detail::MAX_REFCOUNT);
+        debug_assert(old < MAX_REFCOUNT);
     }
 
     bool try_inc_strong() {
         usize cur = strong.load(rstd::sync::atomic::Ordering::Acquire);
         while (cur != 0) {
-            debug_assert(cur < detail::MAX_REFCOUNT);
-            if (strong.compare_exchange_weak(
-                    cur, cur + 1, rstd::sync::atomic::Ordering::AcqRel, rstd::sync::atomic::Ordering::Acquire)) {
+            debug_assert(cur < MAX_REFCOUNT);
+            if (strong.compare_exchange_weak(cur,
+                                             cur + 1,
+                                             rstd::sync::atomic::Ordering::AcqRel,
+                                             rstd::sync::atomic::Ordering::Acquire)) {
                 return true;
             }
         }
@@ -92,12 +90,12 @@ struct ArcInner {
             // Synchronize with readers of T through acquire on last release.
             rstd::sync::atomic::fence(rstd::sync::atomic::Ordering::Acquire);
 
-            do_delete(detail::DeleteType::Value, &embed_deconstruct);
+            do_delete(DeleteType::Value, &embed_deconstruct);
 
             // release the implicit weak held by strong pointers
             if (weak.fetch_sub(1, rstd::sync::atomic::Ordering::AcqRel) == 1) {
                 rstd::sync::atomic::fence(rstd::sync::atomic::Ordering::Acquire);
-                do_delete(detail::DeleteType::Self, &embed_deconstruct);
+                do_delete(DeleteType::Self, &embed_deconstruct);
             }
         }
     }
@@ -105,7 +103,7 @@ struct ArcInner {
     void drop_weak() noexcept {
         if (weak.fetch_sub(1, rstd::sync::atomic::Ordering::AcqRel) == 1) {
             rstd::sync::atomic::fence(rstd::sync::atomic::Ordering::Acquire);
-            do_delete(detail::DeleteType::Self, &embed_deconstruct);
+            do_delete(DeleteType::Self, &embed_deconstruct);
         }
     }
 };
@@ -124,8 +122,8 @@ struct ArcInnerImpl<T, ArcStoragePolicy::Embed> : ArcInner<T> {
     ArcInnerImpl();
 
     auto data() noexcept -> voidp { return &storage; }
-    void do_delete(detail::DeleteType t, detail::EmbedDeconstructor deconstruct) {
-        if (t == detail::DeleteType::Value) {
+    void do_delete(DeleteType t, EmbedDeconstructor deconstruct) {
+        if (t == DeleteType::Value) {
             deconstruct(&storage);
         } else {
             delete this;
@@ -140,8 +138,8 @@ struct ArcInnerImpl<T, ArcStoragePolicy::Separate> : ArcInner<T> {
     ArcInnerImpl();
 
     auto data() noexcept -> voidp { return p; }
-    void do_delete(detail::DeleteType t, detail::EmbedDeconstructor) {
-        if (t == detail::DeleteType::Value) {
+    void do_delete(DeleteType t, EmbedDeconstructor) {
+        if (t == DeleteType::Value) {
             delete rstd::addressof(*p);
         } else {
             delete this;
@@ -155,35 +153,41 @@ class Arc;
 export template<typename T>
 class Weak;
 
-} // namespace rstd::sync
+} // namespace alloc::sync
+
+using namespace alloc::sync;
 
 namespace rstd
 {
 template<typename T, typename Self>
-    requires mtp::same_as<T, clone::Clone> && mtp::special_of<Self, rstd::sync::Arc>
+    requires mtp::same_as<T, clone::Clone> && mtp::special_of<Self, Arc>
 struct Impl<T, Self> : Impl<T, default_tag<Self>> {
     auto clone() const -> Self;
 };
 
 template<typename T, typename Self>
-    requires mtp::same_as<T, clone::Clone> && mtp::special_of<Self, rstd::sync::Weak>
+    requires mtp::same_as<T, clone::Clone> && mtp::special_of<Self, Weak>
 struct Impl<T, Self> : Impl<T, default_tag<Self>> {
     auto clone() const -> Self;
 };
 
-template<mtp::same_as<sync::detail::ArcImplTrait> T, typename A, sync::ArcStoragePolicy P>
-struct Impl<T, sync::ArcInnerImpl<A, P>> : ImplInClass<T, sync::ArcInnerImpl<A, P>> {};
-
-template<typename T>
-sync::ArcInnerImpl<T, sync::ArcStoragePolicy::Embed>::ArcInnerImpl()
-    : ArcInner<T>(dyn<detail::ArcImplTrait>::from_ptr(this)) {}
-template<typename T>
-sync::ArcInnerImpl<T, sync::ArcStoragePolicy::Separate>::ArcInnerImpl()
-    : ArcInner<T>(dyn<detail::ArcImplTrait>::from_ptr(this)) {}
+template<mtp::same_as<ArcImplTrait> T, typename A, ArcStoragePolicy P>
+struct Impl<T, ArcInnerImpl<A, P>> : ImplInClass<T, ArcInnerImpl<A, P>> {};
 
 } // namespace rstd
 
-namespace rstd::sync
+namespace alloc
+{
+template<typename T>
+sync::ArcInnerImpl<T, ArcStoragePolicy::Embed>::ArcInnerImpl()
+    : ArcInner<T>(dyn<ArcImplTrait>::from_ptr(this)) {}
+template<typename T>
+sync::ArcInnerImpl<T, ArcStoragePolicy::Separate>::ArcInnerImpl()
+    : ArcInner<T>(dyn<ArcImplTrait>::from_ptr(this)) {}
+
+} // namespace alloc
+
+namespace alloc::sync
 {
 template<typename T>
 struct ArcData {
@@ -316,7 +320,7 @@ public:
 
     // Rust: Arc::as_ptr (raw pointer to T)
     auto as_ptr() const noexcept {
-        if (!self.inner) [[unlikely]] {
+        if (! self.inner) [[unlikely]] {
             rstd::panic("Arc::as_ptr called on an empty Arc");
         }
         return self.inner->data();
@@ -328,7 +332,8 @@ public:
 
     /// Returns true if this is the only `Arc` or `Weak` pointer to the allocation.
     static bool is_unique(const Arc& arc) noexcept {
-        return arc.self.inner && arc.self.inner->strong.load(rstd::sync::atomic::Ordering::Acquire) == 1 &&
+        return arc.self.inner &&
+               arc.self.inner->strong.load(rstd::sync::atomic::Ordering::Acquire) == 1 &&
                arc.self.inner->weak.load(rstd::sync::atomic::Ordering::Acquire) == 1;
     }
 
@@ -350,7 +355,10 @@ public:
             // Attempt to drop strong to 0 with CAS to avoid races.
             usize expected = 1;
             if (! self.inner->strong.compare_exchange_strong(
-                    expected, 0, rstd::sync::atomic::Ordering::Relaxed, rstd::sync::atomic::Ordering::Relaxed)) {
+                    expected,
+                    0,
+                    rstd::sync::atomic::Ordering::Relaxed,
+                    rstd::sync::atomic::Ordering::Relaxed)) {
                 break;
             }
             rstd::sync::atomic::fence(rstd::sync::atomic::Ordering::Acquire);
@@ -441,12 +449,12 @@ auto Arc<T>::downgrade() const noexcept -> Weak<T> {
     return out;
 }
 
-} // namespace rstd::sync
+} // namespace alloc::sync
 
 namespace rstd
 {
 template<typename T, typename Self>
-    requires mtp::same_as<T, clone::Clone> && mtp::special_of<Self, rstd::sync::Arc>
+    requires mtp::same_as<T, clone::Clone> && mtp::special_of<Self, Arc>
 auto Impl<T, Self>::clone() const -> Self {
     auto& s = this->self();
     if (s.self.inner) {
@@ -456,7 +464,7 @@ auto Impl<T, Self>::clone() const -> Self {
 }
 
 template<typename T, typename Self>
-    requires mtp::same_as<T, clone::Clone> && mtp::special_of<Self, rstd::sync::Weak>
+    requires mtp::same_as<T, clone::Clone> && mtp::special_of<Self, Weak>
 auto Impl<T, Self>::clone() const -> Self {
     auto& s = this->self();
     if (s.self.inner) {

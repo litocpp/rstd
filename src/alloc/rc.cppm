@@ -1,11 +1,11 @@
 export module rstd.alloc:rc;
 export import rstd.core;
 
-namespace rstd::rc
+using namespace rstd;
+
+namespace alloc::rc
 {
 
-namespace detail
-{
 template<typename Allocator, typename T>
 using rebind_alloc = typename rstd::allocator_traits<Allocator>::template rebind_alloc<T>;
 
@@ -24,13 +24,15 @@ constexpr auto compute_alignment() -> usize {
 }
 
 template<typename T>
-[[nodiscard]] constexpr auto layout_for_value(usize align) -> usize {
+[[nodiscard]]
+constexpr auto layout_for_value(usize align) -> usize {
     const auto size = sizeof(T);
     return (size + align - 1) & ~(align - 1);
 }
 
 template<typename T>
-[[nodiscard]] constexpr auto layout_for_value() -> usize {
+[[nodiscard]]
+constexpr auto layout_for_value() -> usize {
     return layout_for_value<T>(alignof(T));
 }
 
@@ -39,8 +41,6 @@ enum class DeleteType
     Value = 0,
     Self,
 };
-
-} // namespace detail
 
 enum class StoragePolicy : u32
 {
@@ -60,22 +60,20 @@ struct alignas(usize) RcInner {
     RcInner() noexcept {}
     virtual ~RcInner() = default;
 
-    virtual void do_delete(detail::DeleteType t) {
+    virtual void do_delete(DeleteType t) {
         auto self = this;
-        if (t == detail::DeleteType::Value) {
+        if (t == DeleteType::Value) {
             delete self->value;
         } else {
             delete self;
         }
     }
 
-    void inc_strong() { detail::increase_count(strong); }
+    void inc_strong() { increase_count(strong); }
     void dec_strong() { --strong; }
-    void inc_weak() { detail::increase_count(weak); }
+    void inc_weak() { increase_count(weak); }
     void dec_weak() { --weak; }
 };
-namespace detail
-{
 
 template<typename T>
 using RcInnerConst = RcInner<mtp::add_const_t<T>>;
@@ -93,9 +91,9 @@ struct RcInnerImpl<T, StoragePolicy::Embed> : RcInnerConst<T> {
 
     RcInnerImpl() noexcept: RcInnerConst<T>() {}
 
-    void do_delete(detail::DeleteType t) override {
+    void do_delete(DeleteType t) override {
         auto self = this;
-        if (t == detail::DeleteType::Value) {
+        if (t == DeleteType::Value) {
             self->value->~T();
             self->value = nullptr;
         } else {
@@ -114,9 +112,9 @@ template<typename T>
 struct RcInnerImpl<T, StoragePolicy::Separate> : RcInnerConst<T> {
     RcInnerImpl() noexcept: RcInnerConst<T>() {}
 
-    void do_delete(detail::DeleteType t) override {
+    void do_delete(DeleteType t) override {
         auto self = this;
-        if (t == detail::DeleteType::Value) {
+        if (t == DeleteType::Value) {
             delete self->value;
             self->value = nullptr;
         } else {
@@ -144,9 +142,9 @@ struct RcInnerImpl<T[], StoragePolicy::Separate> : RcInnerArrayImpl<T[]> {
 
     RcInnerImpl(usize n) noexcept: RcInnerArrayImpl<T[]>(n) {}
 
-    void do_delete(detail::DeleteType t) override {
+    void do_delete(DeleteType t) override {
         auto self = this;
-        if (t == detail::DeleteType::Value) {
+        if (t == DeleteType::Value) {
             auto ptr = const_cast<mtp::remove_const_t<value_t>*>(self->value);
             for (usize i = 0; i < this->size; i++) {
                 (ptr + i)->~value_t();
@@ -179,10 +177,10 @@ struct RcInnerImpl<T, StoragePolicy::SeparateWithDeleter, ValueDeleter> : RcInne
         this->value = p;
     }
 
-    void do_delete(detail::DeleteType t) override {
+    void do_delete(DeleteType t) override {
         auto self = this;
 
-        if (t == detail::DeleteType::Value) {
+        if (t == DeleteType::Value) {
             self->value_deletor(const_cast<mtp::remove_cv_t<T>*>(self->value));
             self->value = nullptr;
         } else {
@@ -202,15 +200,14 @@ struct RcInnerAllocImpl<T, Allocator, StoragePolicy::Embed> : RcInnerImpl<T, Sto
     Allocator allocator;
 
     RcInnerAllocImpl(Allocator a): base_t(), allocator(a) {}
-    void do_delete(detail::DeleteType t) override {
+    void do_delete(DeleteType t) override {
         auto self = this;
-        if (t == detail::DeleteType::Value) {
+        if (t == DeleteType::Value) {
             self->value->~T();
             self->value     = nullptr;
             self->has_value = false;
         } else {
-            auto self_allocator =
-                detail::rebind_alloc<Allocator, RcInnerAllocImpl>(self->allocator);
+            auto self_allocator = rebind_alloc<Allocator, RcInnerAllocImpl>(self->allocator);
             self_allocator.deallocate(self, 1);
         }
     }
@@ -229,15 +226,14 @@ struct RcInnerAllocImpl<T, Allocator, StoragePolicy::Separate>
     Allocator allocator;
 
     RcInnerAllocImpl(Allocator a): base_t(), allocator(a) {}
-    void do_delete(detail::DeleteType t) override {
+    void do_delete(DeleteType t) override {
         auto self = this;
-        if (t == detail::DeleteType::Value) {
+        if (t == DeleteType::Value) {
             self->value->~T();
             self->allocator.deallocate(const_cast<mtp::remove_cv_t<T>*>(self->value), 1);
             self->value = nullptr;
         } else {
-            auto self_allocator =
-                detail::rebind_alloc<Allocator, RcInnerAllocImpl>(self->allocator);
+            auto self_allocator = rebind_alloc<Allocator, RcInnerAllocImpl>(self->allocator);
             self_allocator.deallocate(self, 1);
         }
     }
@@ -258,9 +254,9 @@ struct RcInnerAllocImpl<T[], Allocator, StoragePolicy::Separate>
     Allocator allocator;
 
     RcInnerAllocImpl(Allocator a, usize n): base_t(n), allocator(a) {}
-    void do_delete(detail::DeleteType t) override {
+    void do_delete(DeleteType t) override {
         auto self = this;
-        if (t == detail::DeleteType::Value) {
+        if (t == DeleteType::Value) {
             auto n = base_t::size;
             for (usize i = 0; i < n; i++) {
                 (self->value + i)->~value_t();
@@ -269,8 +265,7 @@ struct RcInnerAllocImpl<T[], Allocator, StoragePolicy::Separate>
             self->allocator.deallocate(p, n);
             self->value = nullptr;
         } else {
-            auto self_allocator =
-                detail::rebind_alloc<Allocator, RcInnerAllocImpl>(self->allocator);
+            auto self_allocator = rebind_alloc<Allocator, RcInnerAllocImpl>(self->allocator);
             self_allocator.deallocate(self, 1);
         }
     }
@@ -294,21 +289,18 @@ struct RcInnerAllocImpl<T, Allocator, StoragePolicy::SeparateWithDeleter, ValueD
 
     RcInnerAllocImpl(Allocator a, T* p, ValueDeleter d): base_t(p, rstd::move(d)), allocator(a) {}
 
-    void do_delete(detail::DeleteType t) override {
+    void do_delete(DeleteType t) override {
         auto self = this;
 
-        if (t == detail::DeleteType::Value) {
+        if (t == DeleteType::Value) {
             base_t::value_deletor(self->value);
             self->value = nullptr;
         } else {
-            auto self_allocator =
-                detail::rebind_alloc<Allocator, RcInnerAllocImpl>(self->allocator);
+            auto self_allocator = rebind_alloc<Allocator, RcInnerAllocImpl>(self->allocator);
             self_allocator.deallocate(self, 1);
         }
     }
 };
-
-} // namespace detail
 
 export template<typename T>
 class Rc;
@@ -339,7 +331,7 @@ public:
         if (m_ptr) {
             m_ptr->dec_weak();
             if (m_ptr->weak == 0) {
-                m_ptr->do_delete(detail::DeleteType::Self);
+                m_ptr->do_delete(DeleteType::Self);
             }
         }
     }
@@ -375,10 +367,10 @@ protected:
         if (m_ptr) {
             m_ptr->dec_strong();
             if (m_ptr->strong == 0) {
-                m_ptr->do_delete(detail::DeleteType::Value);
+                m_ptr->do_delete(DeleteType::Value);
                 m_ptr->dec_weak();
                 if (m_ptr->weak == 0) {
-                    m_ptr->do_delete(detail::DeleteType::Self);
+                    m_ptr->do_delete(DeleteType::Self);
                 }
             }
         }
@@ -386,15 +378,13 @@ protected:
 
     template<typename Deleter>
     static auto allocate_inner(T* p, Deleter&& d) -> inner_t* {
-        return new detail::RcInnerImpl<T, StoragePolicy::SeparateWithDeleter, Deleter>(
-            p, rstd::move(d));
+        return new RcInnerImpl<T, StoragePolicy::SeparateWithDeleter, Deleter>(p, rstd::move(d));
     }
 
     template<typename Deleter, typename Allocator>
     static auto allocate_inner(T* p, Allocator alloc, Deleter&& d) -> inner_t* {
-        using inner_t =
-            detail::RcInnerAllocImpl<T, Allocator, StoragePolicy::SeparateWithDeleter, Deleter>;
-        auto self_allocator = detail::rebind_alloc<Allocator, inner_t>(alloc);
+        using inner_t = RcInnerAllocImpl<T, Allocator, StoragePolicy::SeparateWithDeleter, Deleter>;
+        auto self_allocator = rebind_alloc<Allocator, inner_t>(alloc);
         auto mem            = (rstd::byte*)self_allocator.allocate(1);
         return new (mem) inner_t(alloc, p, rstd::move(d));
     }
@@ -412,7 +402,7 @@ public:
     auto size() const -> usize {
         if (m_ptr) {
             if constexpr (mtp::is_array_v<T>) {
-                auto p = static_cast<const detail::RcInnerArrayImpl<T>*>(m_ptr);
+                auto p = static_cast<const RcInnerArrayImpl<T>*>(m_ptr);
                 return p->size;
             } else {
                 return 1;
@@ -494,7 +484,7 @@ public:
     auto operator->() const noexcept -> const_value_t* { return get(); }
 };
 
-template<typename T>
+export template<typename T>
 class Rc final : public RcAdaptor<T> {
     friend struct RcMakeHelper;
     using inner_t = RcBase<T>::inner_t;
@@ -504,8 +494,8 @@ public:
     Rc(): Rc((inner_t*)nullptr) {}
     ~Rc() { RcBase<T>::drop(); }
 
-    Rc(const Rc& other) noexcept(detail::noexp): Rc(other.clone()) {}
-    Rc& operator=(const Rc& other) noexcept(detail::noexp) {
+    Rc(const Rc& other) noexcept(noexp): Rc(other.clone()) {}
+    Rc& operator=(const Rc& other) noexcept(noexp) {
         if (this != &other) {
             Rc(other.clone()).swap(*this);
         }
@@ -527,13 +517,14 @@ public:
     Rc(T* p, Deleter&& d): Rc(RcBase<T>::allocate_inner(p, rstd::move(d))) {}
 
     template<typename Deleter, typename Allocator>
-    Rc(T* p, Deleter&& d, Allocator alloc): Rc(RcBase<T>::allocate_inner(p, alloc, rstd::move(d))) {}
+    Rc(T* p, Deleter&& d, Allocator alloc)
+        : Rc(RcBase<T>::allocate_inner(p, alloc, rstd::move(d))) {}
 
     auto downgrade() const -> Weak<T> {
         this->m_ptr->inc_weak();
         return Weak<T>(this->m_ptr);
     }
-    auto clone() const noexcept(detail::noexp) -> Rc {
+    auto clone() const noexcept(noexp) -> Rc {
         if (this->m_ptr) this->m_ptr->inc_strong();
         return Rc(this->m_ptr);
     }
@@ -544,7 +535,7 @@ public:
 export template<typename T, StoragePolicy Sp = StoragePolicy::Separate, typename... Args>
     requires(! mtp::is_array_v<T>)
 auto make_rc(Args&&... args) -> Rc<T> {
-    auto inner = new detail::RcInnerImpl<T, Sp>();
+    auto inner = new RcInnerImpl<T, Sp>();
     inner->allocate_value(rstd::forward<Args>(args)...);
     return RcMakeHelper::make_rc<T>(inner);
 }
@@ -552,7 +543,7 @@ auto make_rc(Args&&... args) -> Rc<T> {
 export template<typename T, StoragePolicy Sp = StoragePolicy::Separate, typename... Args>
     requires mtp::is_array_v<T>
 auto make_rc(usize n, const typename Rc<T>::const_value_t& init) -> Rc<T> {
-    auto inner = new detail::RcInnerImpl<T, Sp>(n);
+    auto inner = new RcInnerImpl<T, Sp>(n);
     inner->allocate_value(init);
     return RcMakeHelper::make_rc<T>(inner);
 }
@@ -561,8 +552,8 @@ export template<typename T, StoragePolicy Sp = StoragePolicy::Separate, typename
                 typename... Args>
     requires(! mtp::is_array_v<T>)
 auto allocate_make_rc(const Allocator& alloc, Args&&... args) -> Rc<T> {
-    using inner_t       = detail::RcInnerAllocImpl<T, Allocator, Sp>;
-    auto self_allocator = detail::rebind_alloc<Allocator, inner_t>(alloc);
+    using inner_t       = RcInnerAllocImpl<T, Allocator, Sp>;
+    auto self_allocator = rebind_alloc<Allocator, inner_t>(alloc);
 
     auto mem   = (rstd::byte*)self_allocator.allocate(1);
     auto inner = new (mem) inner_t(alloc);
@@ -572,8 +563,8 @@ auto allocate_make_rc(const Allocator& alloc, Args&&... args) -> Rc<T> {
 export template<typename T, StoragePolicy Sp = StoragePolicy::Separate, typename Allocator>
     requires mtp::is_array_v<T>
 auto allocate_make_rc(const Allocator& alloc, usize n, typename Rc<T>::const_value_t& t) -> Rc<T> {
-    using inner_t       = detail::RcInnerAllocImpl<T, Allocator, Sp>;
-    auto self_allocator = detail::rebind_alloc<Allocator, inner_t>(alloc);
+    using inner_t       = RcInnerAllocImpl<T, Allocator, Sp>;
+    auto self_allocator = rebind_alloc<Allocator, inner_t>(alloc);
 
     auto mem   = (rstd::byte*)self_allocator.allocate(1);
     auto inner = new (mem) inner_t(alloc, n);
@@ -586,10 +577,4 @@ export template<typename T>
 void swap(Rc<T>& lhs, Rc<T>& rhs) noexcept {
     lhs.swap(rhs);
 }
-} // namespace rstd::rc
-
-namespace rstd
-{
-export template<typename T>
-using Rc = rc::Rc<T>;
-}
+} // namespace alloc::rc

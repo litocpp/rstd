@@ -4,8 +4,8 @@ import rstd;
 
 using rstd::as;
 using rstd::to_string;
-using rstd::alloc::string::String;
-using rstd::alloc::string::ToString;
+using rstd::string::String;
+using rstd::string::ToString;
 
 TEST(String, ToString) {
     int a = 10;

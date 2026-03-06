@@ -3,14 +3,14 @@ module;
 export module rstd:sys.thread.unix;
 export import :sys.libc;
 export import :io;
-export import rstd.alloc;
+import :forward;
 export import :thread.thread;
 export import rstd.core;
 
 #if RSTD_OS_LINUX
 
 using namespace rstd::sys::libc;
-using rstd::alloc::boxed::Box;
+using rstd_alloc::boxed::Box;
 using rstd::thread::ThreadInit;
 
 extern "C" void* rstd_thread_start(void* data);

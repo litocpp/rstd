@@ -6,7 +6,7 @@ import :thread.thread;
 import rstd.core;
 
 using rstd::mut_ptr;
-using rstd::alloc::boxed::Box;
+using rstd_alloc::boxed::Box;
 
 extern "C" void* rstd_thread_start(void* data) {
     auto init = Box<ThreadInit>::from_raw(

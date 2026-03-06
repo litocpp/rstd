@@ -4,14 +4,15 @@ export module rstd:thread.thread;
 export import :thread.id;
 export import :thread.main_thread;
 export import :sys.sync.thread_parking;
+export import :ffi;
+import :forward;
+import rstd.alloc;
 
-export import rstd.alloc;
-
-using rstd::alloc::boxed::Box;
-using rstd::alloc::string::String;
+using alloc::sync::Arc;
+using alloc::sync::ArcRaw;
+using rstd::boxed::Box;
 using rstd::pin::Pin;
-using rstd::sync::Arc;
-using rstd::sync::ArcRaw;
+using rstd::string::String;
 using rstd::sys::sync::thread_parking::Parker;
 
 namespace rstd
@@ -28,7 +29,7 @@ class ThreadNameString {
 public:
     USE_TRAIT(ThreadNameString)
 
-    explicit ThreadNameString(alloc::ffi::CString c): inner(rstd::move(c)) {}
+    explicit ThreadNameString(ffi::CString c): inner(rstd::move(c)) {}
 
     ThreadNameString(Self&&) noexcept            = default;
     ThreadNameString& operator=(Self&&) noexcept = default;
@@ -45,7 +46,7 @@ public:
 
 } // namespace sys::thread::thread_name_string
 
-using rstd::alloc::string::String;
+using rstd_alloc::string::String;
 using sys::thread::thread_name_string::ThreadNameString;
 
 template<>
@@ -80,10 +81,11 @@ public:
 
     Thread(const Thread& other) noexcept
         : inner(Pin<Arc<Inner>>::make_unchecked(as<clone::Clone>(other.inner.get_ref()).clone())) {}
-    Thread(Thread&&) noexcept            = default;
+    Thread(Thread&&) noexcept = default;
     Thread& operator=(const Thread& other) noexcept {
         if (this != &other) {
-            inner = Pin<Arc<Inner>>::make_unchecked(as<clone::Clone>(other.inner.get_ref()).clone());
+            inner =
+                Pin<Arc<Inner>>::make_unchecked(as<clone::Clone>(other.inner.get_ref()).clone());
         }
         return *this;
     }
@@ -112,7 +114,7 @@ public:
     /// Gets the thread's name as a string reference if available.
     /// Returns None if no name was set.
     auto name() const -> Option<ThreadNameString> {
-        if (!inner.get_ref()) {
+        if (! inner.get_ref()) {
             rstd::panic("Thread::name() called with null Arc in Pin");
         }
         if (auto& name = inner->as_ptr()->name; name) {
@@ -176,7 +178,7 @@ struct Impl<clone::Clone, thread::Thread> : ImplDefault<clone::Clone, thread::Th
     }
 
     void clone_from(thread::Thread& source) {
-        auto arc = as<clone::Clone>(source.inner.get_ref()).clone();
+        auto arc           = as<clone::Clone>(source.inner.get_ref()).clone();
         this->self().inner = Pin<Arc<thread::Inner>>::make_unchecked(rstd::move(arc));
     }
 };
@@ -185,9 +187,9 @@ namespace thread
 {
 
 export struct ThreadInit {
-    Thread                             handle;
+    Thread handle;
     // cppstd::move_only_function<void()> start;
-    Box<dyn<FnMut<void()>>>            start;
+    Box<dyn<FnMut<void()>>> start;
 
     void init(this ThreadInit const& self);
 };

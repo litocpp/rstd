@@ -1,5 +1,5 @@
 export module rstd.core:assert;
-export import :str;
+export import :str.str;
 export import :fmt;
 export import :panicking;
 

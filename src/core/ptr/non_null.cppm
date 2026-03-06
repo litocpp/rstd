@@ -22,7 +22,7 @@ protected:
     using union_value_t       = ptr_::non_null::NonNull<T>;
     using union_const_value_t = ptr_::non_null::NonNull<T> const;
 
-    constexpr auto _ptr() const noexcept {
+    constexpr auto _ptr() const noexcept -> union_const_value_t* {
         return reinterpret_cast<union_const_value_t*>(m_storage);
     }
     constexpr auto _ptr() noexcept -> union_value_t* {
