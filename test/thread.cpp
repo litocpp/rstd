@@ -60,7 +60,7 @@ TEST(Thread, Sleep) {
     EXPECT_GE(elapsed.count(), 0.1);
 }
 
-#ifndef RSTD_USE_ASAN
+#if !__has_feature(address_sanitizer)
 TEST(Thread, MultipleThreads) {
     using namespace cppstd::chrono;
 

@@ -7,6 +7,7 @@ using rstd::sys::sync::mutex::pthread::Mutex;
 #    define RSTD_TEST_GROUP MutexPthread
 #    include "common.hpp"
 
+#if !__has_feature(address_sanitizer)
 TEST(MutexPthread, DestructorDoesNotHangIfLockedElsewhere) {
     // Purpose of this test:
     // - When Mutex is destroyed while the underlying pthread_mutex_t is locked,
@@ -49,4 +50,5 @@ TEST(MutexPthread, DestructorDoesNotHangIfLockedElsewhere) {
     delete t;
     SUCCEED();
 }
+#endif // !__has_feature(address_sanitizer)
 #endif

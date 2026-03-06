@@ -28,7 +28,7 @@ bool futex_wait(Futex* futex, Primitive expected, Option<Duration> timeout) {
     auto pts = ts ? &*ts : nullptr;
 
     for (;;) {
-        if (futex->load(rstd::memory_order::relaxed) != expected) {
+        if (futex->load(rstd::sync::atomic::Ordering::Relaxed) != expected) {
             return true;
         }
         auto r = syscall(M_SYS_futex,

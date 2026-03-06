@@ -7,7 +7,7 @@ using rstd::mem::maybe_uninit::maybe_uninit_traits;
 using rstd::mem::maybe_uninit::MaybeUninit;
 using rstd::pin::Pin;
 using rstd::sync::atomic::Atomic;
-using rstd::sync::atomic::atomic_thread_fence;
+using rstd::sync::atomic::fence;
 
 namespace rstd::sync
 {
@@ -64,22 +64,22 @@ struct ArcInner {
 
     void inc_strong() {
         [[maybe_unused]]
-        auto old = strong.fetch_add(1, rstd::memory_order::relaxed);
+        auto old = strong.fetch_add(1, rstd::sync::atomic::Ordering::Relaxed);
         debug_assert(old < detail::MAX_REFCOUNT);
     }
 
     void inc_weak() {
         [[maybe_unused]]
-        auto old = weak.fetch_add(1, rstd::memory_order::relaxed);
+        auto old = weak.fetch_add(1, rstd::sync::atomic::Ordering::Relaxed);
         debug_assert(old < detail::MAX_REFCOUNT);
     }
 
     bool try_inc_strong() {
-        usize cur = strong.load(rstd::memory_order::acquire);
+        usize cur = strong.load(rstd::sync::atomic::Ordering::Acquire);
         while (cur != 0) {
             debug_assert(cur < detail::MAX_REFCOUNT);
             if (strong.compare_exchange_weak(
-                    cur, cur + 1, rstd::memory_order::acq_rel, rstd::memory_order::acquire)) {
+                    cur, cur + 1, rstd::sync::atomic::Ordering::AcqRel, rstd::sync::atomic::Ordering::Acquire)) {
                 return true;
             }
         }
@@ -88,23 +88,23 @@ struct ArcInner {
 
     void drop_strong() noexcept {
         // If we were the last strong, destroy T and release the implicit weak.
-        if (strong.fetch_sub(1, rstd::memory_order::acq_rel) == 1) {
+        if (strong.fetch_sub(1, rstd::sync::atomic::Ordering::AcqRel) == 1) {
             // Synchronize with readers of T through acquire on last release.
-            atomic_thread_fence(rstd::memory_order::acquire);
+            rstd::sync::atomic::fence(rstd::sync::atomic::Ordering::Acquire);
 
             do_delete(detail::DeleteType::Value, &embed_deconstruct);
 
             // release the implicit weak held by strong pointers
-            if (weak.fetch_sub(1, rstd::memory_order::acq_rel) == 1) {
-                atomic_thread_fence(rstd::memory_order::acquire);
+            if (weak.fetch_sub(1, rstd::sync::atomic::Ordering::AcqRel) == 1) {
+                rstd::sync::atomic::fence(rstd::sync::atomic::Ordering::Acquire);
                 do_delete(detail::DeleteType::Self, &embed_deconstruct);
             }
         }
     }
 
     void drop_weak() noexcept {
-        if (weak.fetch_sub(1, rstd::memory_order::acq_rel) == 1) {
-            atomic_thread_fence(rstd::memory_order::acquire);
+        if (weak.fetch_sub(1, rstd::sync::atomic::Ordering::AcqRel) == 1) {
+            rstd::sync::atomic::fence(rstd::sync::atomic::Ordering::Acquire);
             do_delete(detail::DeleteType::Self, &embed_deconstruct);
         }
     }
@@ -299,14 +299,14 @@ public:
     explicit operator bool() const noexcept { return self.inner != nullptr; }
 
     usize strong_count() const noexcept {
-        return self.inner ? self.inner->strong.load(rstd::memory_order::acquire) : 0;
+        return self.inner ? self.inner->strong.load(rstd::sync::atomic::Ordering::Acquire) : 0;
     }
 
     usize weak_count() const noexcept {
         // Rust's Arc::weak_count excludes the implicit weak if strong>0.
         if (! self.inner) return 0;
-        auto w = self.inner->weak.load(rstd::memory_order::acquire);
-        auto s = self.inner->strong.load(rstd::memory_order::acquire);
+        auto w = self.inner->weak.load(rstd::sync::atomic::Ordering::Acquire);
+        auto s = self.inner->strong.load(rstd::sync::atomic::Ordering::Acquire);
         if (s == 0) return w;
         return w > 0 ? (w - 1) : 0;
     }
@@ -328,8 +328,8 @@ public:
 
     /// Returns true if this is the only `Arc` or `Weak` pointer to the allocation.
     static bool is_unique(const Arc& arc) noexcept {
-        return arc.self.inner && arc.self.inner->strong.load(rstd::memory_order::acquire) == 1 &&
-               arc.self.inner->weak.load(rstd::memory_order::acquire) == 1;
+        return arc.self.inner && arc.self.inner->strong.load(rstd::sync::atomic::Ordering::Acquire) == 1 &&
+               arc.self.inner->weak.load(rstd::sync::atomic::Ordering::Acquire) == 1;
     }
 
     /// Returns a mutable reference to the inner value if there are no other
@@ -350,10 +350,10 @@ public:
             // Attempt to drop strong to 0 with CAS to avoid races.
             usize expected = 1;
             if (! self.inner->strong.compare_exchange_strong(
-                    expected, 0, rstd::memory_order::relaxed, rstd::memory_order::relaxed)) {
+                    expected, 0, rstd::sync::atomic::Ordering::Relaxed, rstd::sync::atomic::Ordering::Relaxed)) {
                 break;
             }
-            atomic_thread_fence(rstd::memory_order::acquire);
+            rstd::sync::atomic::fence(rstd::sync::atomic::Ordering::Acquire);
             auto w = Weak<T> { self };
             self   = {};
             return Ok(rstd::move(*(w.self.inner->data())));
@@ -420,11 +420,11 @@ public:
     }
 
     auto strong_count() const noexcept -> usize {
-        return self.inner ? self.inner->strong.load(rstd::memory_order::acquire) : 0;
+        return self.inner ? self.inner->strong.load(rstd::sync::atomic::Ordering::Acquire) : 0;
     }
 
     auto weak_count() const noexcept -> usize {
-        return self.inner ? self.inner->weak.load(rstd::memory_order::acquire) : 0;
+        return self.inner ? self.inner->weak.load(rstd::sync::atomic::Ordering::Acquire) : 0;
     }
 
     bool expired() const noexcept { return strong_count() == 0; }

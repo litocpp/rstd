@@ -20,7 +20,7 @@ public:
 
     bool is_poisoned() const { return poisoned; }
 
-    void poison() { set_state_to = POISONED; }
+    void poison() { set_state_to.store(POISONED, rstd::sync::atomic::Ordering::Relaxed); }
 
 private:
     bool  poisoned;

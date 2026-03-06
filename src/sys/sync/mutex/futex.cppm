@@ -26,20 +26,20 @@ public:
         State expected = UNLOCKED;
         // Acquire on success, Relaxed on failure (match Rust)
         return m_futex.compare_exchange_strong(
-            expected, LOCKED, rstd::memory_order::acquire, rstd::memory_order::relaxed);
+            expected, LOCKED, rstd::sync::atomic::Ordering::Acquire, rstd::sync::atomic::Ordering::Relaxed);
     }
 
     void lock() noexcept {
         State expected = UNLOCKED;
         if (! m_futex.compare_exchange_strong(
-                expected, LOCKED, rstd::memory_order::acquire, rstd::memory_order::relaxed)) {
+                expected, LOCKED, rstd::sync::atomic::Ordering::Acquire, rstd::sync::atomic::Ordering::Relaxed)) {
             lock_contended();
         }
     }
 
     void unlock() noexcept {
         // Release, and if it was contended, wake one waiter
-        if (m_futex.exchange(UNLOCKED, rstd::memory_order::release) == CONTENDED) {
+        if (m_futex.exchange(UNLOCKED, rstd::sync::atomic::Ordering::Release) == CONTENDED) {
             wake();
         }
     }
@@ -54,17 +54,17 @@ private:
         if (state == UNLOCKED) {
             State expected = UNLOCKED;
             if (m_futex.compare_exchange_strong(
-                    expected, LOCKED, rstd::memory_order::acquire, rstd::memory_order::relaxed)) {
+                    expected, LOCKED, rstd::sync::atomic::Ordering::Acquire, rstd::sync::atomic::Ordering::Relaxed)) {
                 return; // Locked!
             }
-            state = m_futex.load(rstd::memory_order::relaxed);
+            state = m_futex.load(rstd::sync::atomic::Ordering::Relaxed);
         }
 
         for (;;) {
             // Put the lock in contended state.
             // Avoid unnecessary write if already CONTENDED.
             if (state != CONTENDED &&
-                m_futex.exchange(CONTENDED, rstd::memory_order::acquire) == UNLOCKED) {
+                m_futex.exchange(CONTENDED, rstd::sync::atomic::Ordering::Acquire) == UNLOCKED) {
                 // UNLOCKED -> CONTENDED, so we successfully locked it.
                 return;
             }
@@ -82,7 +82,7 @@ private:
         int spin_count = 100;
         for (;;) {
             // Use load while spinning to be cache-friendly.
-            const State state = m_futex.load(rstd::memory_order::relaxed);
+            const State state = m_futex.load(rstd::sync::atomic::Ordering::Relaxed);
 
             // Stop spinning when UNLOCKED, but also when CONTENDED.
             if (state != LOCKED || spin_count == 0) {
