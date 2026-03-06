@@ -1,5 +1,5 @@
 export module rstd:sys.sync.once_box;
-export import :alloc;
+export import rstd.alloc;
 export import rstd.core;
 
 using rstd::alloc::boxed::Box;

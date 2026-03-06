@@ -4,7 +4,7 @@ module;
 export module rstd:sync.mpsc.mpmc.context;
 export import :sync.mpsc.mpmc.select;
 export import rstd.core;
-export import :alloc;
+export import rstd.alloc;
 export import :thread;
 
 using rstd::alloc::boxed::Box;

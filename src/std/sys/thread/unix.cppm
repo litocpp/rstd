@@ -3,7 +3,7 @@ module;
 export module rstd:sys.thread.unix;
 export import :sys.libc;
 export import :io;
-export import :alloc;
+export import rstd.alloc;
 export import :thread.thread;
 export import rstd.core;
 

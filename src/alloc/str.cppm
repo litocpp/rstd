@@ -1,5 +1,5 @@
 module;
-export module rstd:alloc.str;
+export module rstd.alloc:str;
 export import rstd.core;
 
 namespace rstd::str_

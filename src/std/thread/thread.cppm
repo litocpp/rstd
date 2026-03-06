@@ -3,9 +3,9 @@ module;
 export module rstd:thread.thread;
 export import :thread.id;
 export import :thread.main_thread;
-
-export import :alloc;
 export import :sys.sync.thread_parking;
+
+export import rstd.alloc;
 
 using rstd::alloc::boxed::Box;
 using rstd::alloc::string::String;

@@ -3,9 +3,9 @@ module;
 export module rstd:sync.mpsc.mpmc.waker;
 export import :sync.mpsc.mpmc.context;
 export import :sync.mpsc.mpmc.select;
-export import :alloc;
-export import rstd.core;
 export import :sync.mutex;
+export import rstd.alloc;
+export import rstd.core;
 
 using rstd::alloc::vec::Vec;
 using rstd::sync::atomic::Atomic;

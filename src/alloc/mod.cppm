@@ -1,11 +1,11 @@
-export module rstd:alloc;
+export module rstd.alloc;
 
-export import :alloc.rc;
-export import :alloc.str;
-export import :alloc.boxed;
-export import :alloc.ffi;
-export import :alloc.string;
-export import :alloc.sync;
+export import :rc;
+export import :str;
+export import :boxed;
+export import :ffi;
+export import :string;
+export import :sync;
 
 namespace rstd
 {

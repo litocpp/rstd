@@ -1,7 +1,7 @@
 module;
 #include <rstd/macro.hpp>
 export module rstd:thread.builder;
-export import :alloc;
+export import rstd.alloc;
 export import :thread.join_handle;
 export import :thread.lifecycle;
 export import :sys;

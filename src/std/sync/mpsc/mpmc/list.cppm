@@ -5,7 +5,7 @@ export import :sync.mpsc.mpmc.context;
 export import :sync.mpsc.mpmc.select;
 export import :sync.mpsc.mpmc.utils;
 export import :sync.mpsc.mpmc.waker;
-export import :alloc;
+export import rstd.alloc;
 export import rstd.core;
 
 using rstd::alloc::boxed::Box;

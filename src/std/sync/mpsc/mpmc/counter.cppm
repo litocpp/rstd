@@ -1,7 +1,7 @@
 module;
 #include <rstd/macro.hpp>
 export module rstd:sync.mpsc.mpmc.counter;
-export import :alloc;
+export import rstd.alloc;
 export import rstd.core;
 
 using rstd::alloc::boxed::Box;
