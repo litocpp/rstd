@@ -65,7 +65,19 @@ public:
     constexpr T&       at(usize index) { return inner.at(index); }
     constexpr const T& at(usize index) const { return inner.at(index); }
 
+    constexpr T&       operator[](usize index) { return inner[index]; }
+    constexpr const T& operator[](usize index) const { return inner[index]; }
+
     constexpr usize len() const { return inner.size(); }
+    constexpr bool  is_empty() const { return inner.empty(); }
+
+    constexpr void clear() { inner.clear(); }
+
+    constexpr T remove(usize index) {
+        T value = rstd::move(inner[index]);
+        inner.erase(inner.begin() + index);
+        return value;
+    }
 
     friend constexpr auto begin(const Self& self) noexcept -> cppstd::vector<T>::const_iterator {
         return cppstd::ranges::begin(self.inner);
@@ -89,7 +101,7 @@ struct Impl<T, Vec<U>> : ImplBase<default_tag<Vec<U>>> {
 template<typename A, mtp::same_as<convert::From<alloc::boxed::Box<A[]>>> T>
 struct Impl<T, Vec<A>> : ImplBase<Vec<A>> {
     static auto from(alloc::boxed::Box<A[]> b) -> Vec<A> {
-        auto ptr = b.as_ptr();
+        auto ptr = b.as_mut_ptr();
         auto len = ptr.len();
         auto vec = Vec<A>::with_capacity(len);
         // TODO: Use memcpy if T is trivially relocatable

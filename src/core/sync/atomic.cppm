@@ -7,9 +7,16 @@ namespace rstd::sync::atomic
 export template<typename T>
 using Atomic = cppstd::atomic<T>;
 
-export using cppstd::atomic_thread_fence;
-
 using cppstd::memory_order;
+
+export inline void fence(memory_order order) noexcept {
+    cppstd::atomic_thread_fence(order);
+}
+
+export inline void atomic_thread_fence(memory_order order) noexcept {
+    cppstd::atomic_thread_fence(order);
+}
+
 export struct Ordering {
     static constexpr memory_order Relaxed = memory_order::relaxed;
     static constexpr memory_order Consume = memory_order::consume;

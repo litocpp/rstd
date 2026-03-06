@@ -1,3 +1,4 @@
-export module rstd.sync;
-export import rstd.sync.poison;
-// export import rstd.sync.mpsc;
+export module rstd:sync;
+export import :sync.poison;
+export import :sync.mutex;
+export import :sync.mpsc;

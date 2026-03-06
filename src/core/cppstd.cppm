@@ -46,6 +46,7 @@ module;
 
 #include <chrono>
 #include <filesystem>
+#include <bit>
 
 #include <memory_resource>
 #include <coroutine>
@@ -108,6 +109,7 @@ using std::strong_ordering;
 using std::weak_ordering;
 
 using std::bit_cast;
+using std::bit_ceil;
 using std::char_traits;
 using std::make_unsigned_t;
 

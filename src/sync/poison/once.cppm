@@ -1,1 +1,1 @@
-export module rstd.sync.poison:once;
+export module rstd:sync.poison.once;

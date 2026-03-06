@@ -7,7 +7,7 @@ using rstd::sync::atomic::Ordering;
 
 namespace rstd::sys::sync::thread_parking::pthread
 {
-Parker::Parker(): state(EMPTY), lock(Mutex::make()), cvar(Condvar::make()) {}
+Parker::Parker(): state(EMPTY), lock(sys::pal::Mutex::make()), cvar(Condvar::make()) {}
 
 void Parker::park() {
     // Try fast path for already-notified state

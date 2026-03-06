@@ -23,8 +23,10 @@ export template<typename T = void>
 class MaybeUninit {
     alignas(T) rstd::byte storage[sizeof(T)];
 
+public:
     constexpr MaybeUninit() noexcept = default;
 
+private:
     constexpr explicit MaybeUninit(T&& val) noexcept(mtp::is_nothrow_move_constructible_v<T>) {
         rstd::construct_at(ptr(), rstd::forward<T>(val));
     }

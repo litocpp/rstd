@@ -1,8 +1,15 @@
-list(
-APPEND RSTD_SYNC_SOURCES
-         mod.cppm
-         poison/mod.cppm
-         poison/once.cppm
-         # mpsc/mod.cppm mpsc/mpmc/mod.cppm mpsc/mpmc/counter.cppm
-         # mpsc/mpmc/array.cppm mpsc/mpmc/utils.cppm mpsc/mpmc/context.cppm
-)
+set(RSTD_SYNC_SOURCES
+    sync/mod.cppm
+    sync/mutex.cppm
+    sync/poison/mod.cppm
+    sync/poison/once.cppm
+    sync/mpsc/mod.cppm
+    sync/mpsc/mpmc/mod.cppm
+    sync/mpsc/mpmc/counter.cppm
+    sync/mpsc/mpmc/array.cppm
+    sync/mpsc/mpmc/list.cppm
+    sync/mpsc/mpmc/utils.cppm
+    sync/mpsc/mpmc/context.cppm
+    sync/mpsc/mpmc/waker.cppm
+    sync/mpsc/mpmc/select.cppm
+    PARENT_SCOPE)

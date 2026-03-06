@@ -75,7 +75,7 @@ struct ref_base {
 
     /// \name Requires: DSTArray
     /// @{
-    constexpr auto operator[](usize i) const noexcept
+    constexpr decltype(auto) operator[](usize i) const noexcept
         requires mtp::DSTArray<T>
     {
         return *(static_cast<Self const*>(this)->p + i);
@@ -160,7 +160,7 @@ struct ptr_base {
 
     /// \name Requires: DSTArray
     /// @{
-    constexpr auto operator[](usize i) const noexcept
+    constexpr decltype(auto) operator[](usize i) const noexcept
         requires mtp::DSTArray<T>
     {
         return *(static_cast<Self const*>(this)->p + i);
