@@ -1,7 +1,7 @@
 module;
 #include <rstd/macro.hpp>
 export module rstd:sys.thread.unix;
-export import :sys.libc.pthread;
+export import :sys.libc;
 export import :io;
 export import :alloc;
 export import :thread.thread;
@@ -69,6 +69,16 @@ export struct Thread {
     static void set_name(ref<ffi::CStr> name) {
         libc::pthread_setname_np(current().id, (char const*)name.p);
     }
+
+    static void sleep(cppstd::chrono::duration<double> dur) {
+        auto total_secs = dur.count();
+        auto s          = static_cast<long>(total_secs);
+        auto ns         = static_cast<long>((total_secs - static_cast<double>(s)) * 1e9);
+        libc::timespec ts { .tv_sec = s, .tv_nsec = ns };
+        libc::nanosleep(&ts, nullptr);
+    }
+
+    static void yield_now() { libc::sched_yield(); }
 };
 
 }; // namespace rstd::sys::thread::unix

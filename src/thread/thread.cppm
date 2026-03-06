@@ -78,6 +78,17 @@ export class Thread : public WithTrait<Thread, clone::Clone> {
 public:
     USE_TRAIT(Thread)
 
+    Thread(const Thread& other) noexcept
+        : inner(Pin<Arc<Inner>>::make_unchecked(as<clone::Clone>(other.inner.get_ref()).clone())) {}
+    Thread(Thread&&) noexcept            = default;
+    Thread& operator=(const Thread& other) noexcept {
+        if (this != &other) {
+            inner = Pin<Arc<Inner>>::make_unchecked(as<clone::Clone>(other.inner.get_ref()).clone());
+        }
+        return *this;
+    }
+    Thread& operator=(Thread&&) noexcept = default;
+
     /// Creates a new thread handle.
     static auto make(ThreadId id, Option<String> name) -> Thread {
         // Convert String to ThreadNameString if present
@@ -101,6 +112,9 @@ public:
     /// Gets the thread's name as a string reference if available.
     /// Returns None if no name was set.
     auto name() const -> Option<ThreadNameString> {
+        if (!inner.get_ref()) {
+            rstd::panic("Thread::name() called with null Arc in Pin");
+        }
         if (auto& name = inner->as_ptr()->name; name) {
             return name.clone();
         } else if (main_thread::get() == Some(id())) {
@@ -148,7 +162,27 @@ public:
         return Thread { Pin<Arc<Inner>>::make_unchecked(
             Arc<Inner>::from_raw(ArcRaw<Inner>::from_raw(p))) };
     }
+
+    auto set_current(this Thread self) -> Result<empty, Thread>;
 };
+
+} // namespace thread
+
+template<>
+struct Impl<clone::Clone, thread::Thread> : ImplDefault<clone::Clone, thread::Thread> {
+    auto clone() const -> thread::Thread {
+        auto arc = as<clone::Clone>(this->self().inner.get_ref()).clone();
+        return thread::Thread { Pin<Arc<thread::Inner>>::make_unchecked(rstd::move(arc)) };
+    }
+
+    void clone_from(thread::Thread& source) {
+        auto arc = as<clone::Clone>(source.inner.get_ref()).clone();
+        this->self().inner = Pin<Arc<thread::Inner>>::make_unchecked(rstd::move(arc));
+    }
+};
+
+namespace thread
+{
 
 export struct ThreadInit {
     Thread                             handle;

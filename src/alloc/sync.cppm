@@ -315,7 +315,12 @@ public:
     Weak<T> downgrade() const noexcept;
 
     // Rust: Arc::as_ptr (raw pointer to T)
-    auto as_ptr() const noexcept { return self.inner->data(); }
+    auto as_ptr() const noexcept {
+        if (!self.inner) [[unlikely]] {
+            rstd::panic("Arc::as_ptr called on an empty Arc");
+        }
+        return self.inner->data();
+    }
 
     /// Returns true if the two `Arc`s point to the same allocation
     /// (not just values that compare as equal).

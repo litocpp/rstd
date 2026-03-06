@@ -20,6 +20,11 @@ public:
     constexpr Pin(Pin&& p) noexcept(mtp::is_nothrow_move_constructible_v<Ptr>)
         : pointer(rstd::move(p.pointer)) {}
 
+    constexpr Pin& operator=(Pin&& p) noexcept(mtp::is_nothrow_move_assignable_v<Ptr>) {
+        pointer = rstd::move(p.pointer);
+        return *this;
+    }
+
     static Pin make(Ptr p) noexcept(mtp::is_nothrow_move_constructible_v<Ptr> ||
                                     mtp::is_trivially_copy_constructible_v<Ptr>) {
         return Pin { p };

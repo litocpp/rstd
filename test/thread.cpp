@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 import rstd;
 using namespace rstd;
-/*
+
 TEST(Thread, BasicSpawn) {
     auto result = thread::spawn([] {
         // Do some work
@@ -9,7 +9,7 @@ TEST(Thread, BasicSpawn) {
 
     ASSERT_TRUE(result.is_ok());
     auto handle      = result.unwrap();
-    auto join_result = handle.join();
+    auto join_result = rstd::move(handle).join();
     ASSERT_TRUE(join_result.is_ok());
 }
 
@@ -20,15 +20,16 @@ TEST(Thread, SpawnWithValue) {
 
     ASSERT_TRUE(result.is_ok());
     auto handle      = result.unwrap();
-    auto join_result = handle.join();
+    auto join_result = rstd::move(handle).join();
     ASSERT_TRUE(join_result.is_ok());
-    // For now just check that join succeeds
 }
 
 TEST(Thread, BuilderWithName) {
-    auto result = thread::Builder::make().name("test-thread").spawn([] {
-        // Do some work
-    });
+    auto result = thread::builder::Builder::make()
+        .name(rstd::format("{}", "test-thread"))
+        .spawn([] {
+            // Do some work
+        });
 
     ASSERT_TRUE(result.is_ok());
     auto handle        = result.unwrap();
@@ -47,57 +48,55 @@ TEST(Thread, Current) {
     auto current = thread::current();
     auto id      = current.id();
 
-    EXPECT_GT(id.as_u64(), 0);
+    EXPECT_GT(id.as_u64().get(), 0);
 }
 
 TEST(Thread, Sleep) {
-    using namespace std::chrono;
+    auto start = cppstd::chrono::steady_clock::now();
+    thread::sleep(cppstd::chrono::duration<double>(0.1));
+    auto end = cppstd::chrono::steady_clock::now();
 
-    auto start = steady_clock::now();
-    thread::sleep(duration<double>(0.1));
-    auto end = steady_clock::now();
-
-    auto elapsed = duration_cast<duration<double>>(end - start);
+    auto elapsed = cppstd::chrono::duration_cast<cppstd::chrono::duration<double>>(end - start);
     EXPECT_GE(elapsed.count(), 0.1);
 }
 
+#ifndef RSTD_USE_ASAN
 TEST(Thread, MultipleThreads) {
-    using namespace std::chrono;
+    using namespace cppstd::chrono;
 
-    // auto counter = 0;
-    // {
-    //     auto handle1 = thread::spawn([&counter] {
-    //                        thread::sleep(duration<double>(0.05));
-    //                        counter++;
-    //                    }).unwrap();
+    auto counter = std::atomic<int>(0);
+    {
+        auto handle1 = thread::spawn([&counter] {
+                           thread::sleep(duration<double>(0.05));
+                           counter++;
+                       }).unwrap();
 
-    //     auto handle2 = thread::spawn([&counter] {
-    //                        thread::sleep(duration<double>(0.03));
-    //                        counter++;
-    //                    }).unwrap();
+        auto handle2 = thread::spawn([&counter] {
+                           thread::sleep(duration<double>(0.03));
+                           counter++;
+                       }).unwrap();
 
-    //     auto handle3 = thread::spawn([&counter] {
-    //                        thread::sleep(duration<double>(0.01));
-    //                        counter++;
-    //                    }).unwrap();
+        auto handle3 = thread::spawn([&counter] {
+                           thread::sleep(duration<double>(0.01));
+                           counter++;
+                       }).unwrap();
 
-    //     handle1.join().unwrap();
-    //     handle2.join().unwrap();
-    //     handle3.join().unwrap();
-    // }
+        rstd::move(handle1).join().unwrap_unchecked();
+        rstd::move(handle2).join().unwrap_unchecked();
+        rstd::move(handle3).join().unwrap_unchecked();
+    }
 
-    // EXPECT_EQ(counter, 3);
+    EXPECT_EQ(counter.load(), 3);
 }
+#endif
 
 TEST(Thread, ThreadHandleId) {
-    // auto result = thread::spawn([] {
-    //     return thread::current().id();
-    // });
+    auto result = thread::spawn([] {
+        return thread::current().id();
+    });
 
-    // ASSERT_TRUE(result.is_ok());
-    // auto handle      = result.unwrap();
-    // auto join_result = handle.join();
-    // ASSERT_TRUE(join_result.is_ok());
+    ASSERT_TRUE(result.is_ok());
+    auto handle      = result.unwrap();
+    auto join_result = rstd::move(handle).join();
+    ASSERT_TRUE(join_result.is_ok());
 }
-
-*/

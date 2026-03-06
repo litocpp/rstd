@@ -81,7 +81,7 @@ auto spawn_unchecked(Option<String> name, usize stack_size, Option<Arc<ScopeData
     };
 
     auto&& init = Box<ThreadInit>::make(ThreadInit {
-        .handle = rstd::move(thread), .start = Box<dyn<FnMut<void()>>>::make(rstd::move(start)) });
+        .handle = thread.clone(), .start = Box<dyn<FnMut<void()>>>::make(rstd::move(start)) });
 
     return imp::Thread::make(stack_size, rstd::move(init)).map([&](auto&& native) {
         return JoinInner<ret_t> {
@@ -97,10 +97,9 @@ auto spawn_unchecked(Option<String> name, usize stack_size, Option<Arc<ScopeData
 namespace rstd::thread
 {
 void ThreadInit::init(this ThreadInit const& self) {
-    // if let Err(_thread) = set_current(self.handle.clone()) {
-    //     // The current thread should not have set yet. Use an abort to save binary size (see
-    //     #123356). rtabort!("current thread handle already set during thread spawn");
-    // }
+    if (set_current(self.handle.clone()).is_err()) {
+        panic("current thread handle already set during thread spawn");
+    }
 
     if (auto name = self.handle.cname()) {
         imp::Thread::set_name(*name);

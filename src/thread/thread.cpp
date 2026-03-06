@@ -25,3 +25,10 @@ extern "C" void* rstd_thread_start(void* data) {
 
     return {};
 }
+
+namespace rstd::thread
+{
+auto Thread::set_current(this Thread self) -> rstd::Result<empty, Thread> {
+    return ::rstd::thread::set_current(rstd::move(self));
+}
+} // namespace rstd::thread

@@ -2,12 +2,15 @@ module;
 #include <errno.h>
 #include <time.h>
 #include <stdlib.h>
+#include <sched.h>
 export module rstd:sys.libc.std;
 
 export namespace rstd::sys::libc
 {
 using ::clock_gettime;
 using ::timespec;
+using ::nanosleep;
+using ::sched_yield;
 constexpr auto M_CLOCK_MONOTONIC = CLOCK_MONOTONIC;
 constexpr auto M_ETIMEDOUT       = ETIMEDOUT;
 constexpr auto M_EINTR           = EINTR;

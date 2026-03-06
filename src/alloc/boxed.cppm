@@ -117,10 +117,14 @@ public:
     auto clone() -> Self
         requires mtp::is_array_v<T>
     {
-        using V = mtp::remove_extent_t<T>;
-        // auto old = as_ptr();
-        // TODO
-        auto p = mut_ptr<T>::from_raw_parts(new V[3] {}, 3);
+        using V     = mtp::remove_extent_t<T>;
+        auto old    = as_ptr();
+        auto length = old.len();
+        auto raw    = new V[length];
+        for (usize i = 0; i < length; ++i) {
+            raw[i] = old[i];
+        }
+        auto p = mut_ptr<T>::from_raw_parts(raw, length);
         return from_raw(p);
     }
 };
