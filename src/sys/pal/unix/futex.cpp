@@ -1,18 +1,19 @@
 module;
+#include <rstd/macro.hpp>
 module rstd;
 import :sys.pal.unix.futex;
 import :sys.libc.std;
-#ifdef __unix__
+#if RSTD_OS_UNIX
 import :sys.libc.unix;
 #endif
 using namespace rstd::sys::libc;
 
 
-#ifdef __unix__
+#if RSTD_OS_UNIX
 namespace rstd::sys::pal::unix::futex
 {
 
-#    if defined(__linux__) || defined(__ANDROID__)
+#    if RSTD_OS_LINUX
 
 bool futex_wait(Futex* futex, Primitive expected, Option<Duration> timeout) {
     Option<libc::timespec> ts;

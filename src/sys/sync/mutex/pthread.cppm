@@ -1,6 +1,8 @@
+module;
+#include <rstd/macro.hpp>
 export module rstd:sys.sync.mutex.pthread;
 
-#if defined(__unix__) && ! defined(_WIN32)
+#if RSTD_OS_UNIX && ! RSTD_OS_WINDOWS
 
 export import :sys.sync.once_box;
 export import :sys.pal;

@@ -7,7 +7,7 @@ export import :alloc;
 export import :thread.thread;
 export import rstd.core;
 
-#ifdef __linux__
+#if RSTD_OS_LINUX
 
 using namespace rstd::sys::libc;
 using rstd::alloc::boxed::Box;

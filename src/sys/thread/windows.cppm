@@ -1,4 +1,7 @@
+module;
+#include <rstd/macro.hpp>
 export module rstd:sys.thread.windows;
-#ifdef _WIN32
+
+#if RSTD_OS_WINDOWS
 
 #endif

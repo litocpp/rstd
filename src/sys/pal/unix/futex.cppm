@@ -1,6 +1,8 @@
+module;
+#include <rstd/macro.hpp>
 export module rstd:sys.pal.unix.futex;
 
-#ifdef __unix__
+#if RSTD_OS_UNIX
 export import rstd.core;
 using rstd::sync::atomic::Atomic;
 

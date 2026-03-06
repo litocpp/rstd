@@ -1,7 +1,9 @@
+module;
+#include <rstd/macro.hpp>
 module rstd;
 import :sys.pal.windows.futex;
 
-#ifdef _WIN32
+#if RSTD_OS_WINDOWS
 namespace rstd::sys::pal::windows::futex
 {
 bool wait_on_address(const void* address, const void* compare, size_t size, DWORD timeout) {

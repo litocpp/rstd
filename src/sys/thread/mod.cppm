@@ -1,12 +1,14 @@
+module;
+#include <rstd/macro.hpp>
 export module rstd:sys.thread;
 
-#ifdef __linux__
+#if RSTD_OS_LINUX
 export import :sys.thread.unix;
 #endif
 
 namespace rstd::sys::thread
 {
-#ifdef __linux__
+#if RSTD_OS_LINUX
 using unix::Thread;
 #endif
 } // namespace rstd::sys::thread

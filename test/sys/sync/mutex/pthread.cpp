@@ -1,4 +1,5 @@
-#if defined(__unix__) && ! defined(_WIN32)
+#include <rstd/macro.hpp>
+#if RSTD_OS_UNIX && ! RSTD_OS_WINDOWS
 
 #include <gtest/gtest.h>
 import rstd;

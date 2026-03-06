@@ -1,8 +1,9 @@
 module;
+#include <rstd/macro.hpp>
 export module rstd:sys.pal.windows.futex;
 export import rstd.core;
 
-#ifndef _WIN32
+#if RSTD_OS_WINDOWS
 
 using rstd::sync::atomic::Atomic;
 namespace rstd::sys::pal::windows::futex

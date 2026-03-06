@@ -1,5 +1,21 @@
 #pragma once
 
+#if defined(_WIN32)
+#    define RSTD_OS_WINDOWS 1
+#endif
+
+#if defined(__linux__)
+#    define RSTD_OS_LINUX 1
+#endif
+
+#if defined(__APPLE__)
+#    define RSTD_OS_APPLE 1
+#endif
+
+#if defined(__unix__) || defined(__APPLE__)
+#    define RSTD_OS_UNIX 1
+#endif
+
 #define USE_TRAIT(Class)                                                    \
     using Self = Class;                                                     \
     template<typename, typename>                                            \
