@@ -3,13 +3,22 @@ export import :ptr.metadata;
 export import :core;
 export import :marker;
 
-namespace rstd
-{
+namespace mtp = rstd::mtp;
+using rstd::dyn_tag;
+using rstd::Impl;
+using namespace rstd::prelude;
 
-namespace ptr_
+namespace rstd::ptr_
 {
 export template<typename A>
 struct dyn;
+
+export template<typename T>
+struct dyn_delegate;
+} // namespace rstd::ptr_
+
+using rstd::ptr_::dyn;
+using rstd::ptr_::dyn_delegate;
 
 template<typename T>
 struct VTable {
@@ -85,7 +94,7 @@ struct VTableStaticStorage {
 };
 
 template<typename T>
-struct dyn_delegate : public mtp::remove_cv_t<T>::template Api<dyn_tag> {
+struct rstd::ptr_::dyn_delegate : public mtp::remove_cv_t<T>::template Api<dyn_tag> {
     friend struct mtp::DynHelper;
 
     template<typename>
@@ -137,20 +146,20 @@ public:
     constexpr auto operator==(const dyn_ptr_base& o) const noexcept -> bool { return d.p == o.d.p; }
     constexpr auto operator==(rstd::nullptr_t) const noexcept -> bool { return d == nullptr; }
 
-    constexpr auto as_ptr() const noexcept -> ptr<dyn<trait_t>>
+    constexpr auto as_ptr() const noexcept -> rstd::ptr<dyn<trait_t>>
         requires Mutable
     {
-        return ptr<dyn<trait_t>> { *this };
+        return rstd::ptr<dyn<trait_t>> { *this };
     }
 
-    constexpr auto as_ref() const noexcept -> ref<dyn<trait_t>> {
-        return ref<dyn<trait_t>> { *this };
+    constexpr auto as_ref() const noexcept -> rstd::ref<dyn<trait_t>> {
+        return rstd::ref<dyn<trait_t>> { *this };
     }
 
-    constexpr auto as_mut_ref() const noexcept -> mut_ref<dyn<trait_t>>
+    constexpr auto as_mut_ref() const noexcept -> rstd::mut_ref<dyn<trait_t>>
         requires Mutable
     {
-        return mut_ref<dyn<trait_t>> { *this };
+        return rstd::mut_ref<dyn<trait_t>> { *this };
     }
 
     constexpr void reset() noexcept { d.p = nullptr; }
@@ -160,35 +169,36 @@ public:
     constexpr auto metadata() const noexcept -> delegate_t::vtable_t const* { return d.vtable; }
 };
 
-} // namespace ptr_
+namespace rstd
+{
 
 export using ptr_::dyn;
 
 template<typename A>
-struct ref<dyn<A>> : ptr_::dyn_ptr_base<A const> {
-    using delegate_t = ptr_::dyn_delegate<A const>;
+struct ref<dyn<A>> : dyn_ptr_base<A const> {
+    using delegate_t = dyn_delegate<A const>;
     static auto from_raw_parts(delegate_t::ptr_t p, delegate_t::vtable_t const* v) -> ref {
         return { { { .p = p, .vtable = v } } };
     }
 };
 template<typename A>
-struct ptr<dyn<A>> : ptr_::dyn_ptr_base<A const> {
-    using delegate_t = ptr_::dyn_delegate<A const>;
+struct ptr<dyn<A>> : dyn_ptr_base<A const> {
+    using delegate_t = dyn_delegate<A const>;
     static auto from_raw_parts(delegate_t::ptr_t p, delegate_t::vtable_t const* v) -> ptr {
         return { { { .p = p, .vtable = v } } };
     }
 };
 
 template<typename A>
-struct mut_ref<dyn<A>> : ptr_::dyn_ptr_base<A> {
-    using delegate_t = ptr_::dyn_delegate<A>;
+struct mut_ref<dyn<A>> : dyn_ptr_base<A> {
+    using delegate_t = dyn_delegate<A>;
     static auto from_raw_parts(delegate_t::ptr_t p, delegate_t::vtable_t const* v) -> mut_ref {
         return { { { .p = p, .vtable = v } } };
     }
 };
 template<typename A>
-struct mut_ptr<dyn<A>> : ptr_::dyn_ptr_base<A> {
-    using delegate_t = ptr_::dyn_delegate<A>;
+struct mut_ptr<dyn<A>> : dyn_ptr_base<A> {
+    using delegate_t = dyn_delegate<A>;
     static auto from_raw_parts(delegate_t::ptr_t p, delegate_t::vtable_t const* v) -> mut_ptr {
         return { { { .p = p, .vtable = v } } };
     }
@@ -196,7 +206,7 @@ struct mut_ptr<dyn<A>> : ptr_::dyn_ptr_base<A> {
 
 template<mtp::same_as<ptr_::Pointee> T, typename A>
 struct Impl<T, dyn<A>> {
-    using Metadata = mtp::add_pointer_t<typename ptr_::dyn_delegate<A>::vtable_t>;
+    using Metadata = mtp::add_pointer_t<typename dyn_delegate<A>::vtable_t>;
 };
 
 template<typename A>
