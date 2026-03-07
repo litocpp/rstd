@@ -1,6 +1,7 @@
 export module rstd.core;
 export import :choice;
 export import :core;
+export import :prelude;
 export import :trait;
 export import :cmp;
 export import :fmt;

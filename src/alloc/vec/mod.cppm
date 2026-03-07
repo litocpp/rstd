@@ -13,7 +13,7 @@ using rstd::alloc::Layout;
 using rstd::ptr_::non_null::NonNull;
 using rstd::ptr_::unique::Unique;
 
-using namespace rstd;
+using namespace rstd::prelude;
 
 namespace alloc::vec
 {
@@ -176,12 +176,12 @@ public:
     }
 
     constexpr void push_back(const T& value)
-        requires Impled<T, clone::Clone>
+        requires Impled<T, Clone>
     {
         if (m_len == buf.cap) {
             buf.grow(buf.cap == 0 ? 4 : buf.cap * 2);
         }
-        new (buf.ptr.as_mut_ptr().as_raw_ptr() + m_len) T(as<clone::Clone>(value).clone());
+        new (buf.ptr.as_mut_ptr().as_raw_ptr() + m_len) T(as<Clone>(value).clone());
         m_len++;
     }
 
@@ -249,7 +249,7 @@ struct Impl<T, ::alloc::vec::Vec<U>> : ImplBase<default_tag<::alloc::vec::Vec<U>
     }
 };
 
-template<typename A, mtp::same_as<convert::From<::alloc::boxed::Box<A[]>>> T>
+template<typename A, mtp::same_as<From<::alloc::boxed::Box<A[]>>> T>
 struct Impl<T, ::alloc::vec::Vec<A>> : ImplBase<::alloc::vec::Vec<A>> {
     static auto from(::alloc::boxed::Box<A[]> b) -> ::alloc::vec::Vec<A> {
         auto ptr = b.as_mut_ptr();

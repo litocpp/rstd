@@ -1,7 +1,8 @@
 export module rstd.alloc:rc;
 export import rstd.core;
 
-using namespace rstd;
+using namespace rstd::prelude;
+namespace mtp = rstd::mtp;
 
 namespace alloc::rc
 {

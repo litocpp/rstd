@@ -8,7 +8,7 @@ target_sources(
          CXX_MODULES
          FILES
          mod.cppm
-         literal.cppm
+         prelude.cppm
          basic.cppm
          meta.cppm
          cppstd.cppm)

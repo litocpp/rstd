@@ -1,7 +1,7 @@
 module;
 #include <stdint.h>
 #include <stddef.h>
-export module rstd.basic:literal;
+export module rstd.basic:prelude;
 export import :cppstd;
 
 namespace rstd
@@ -31,7 +31,7 @@ export {
 }
 
 // used for using namespace
-export namespace literal
+export namespace prelude
 {
 using i8  = ::int8_t;
 using i16 = ::int16_t;

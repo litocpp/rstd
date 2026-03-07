@@ -12,7 +12,8 @@ using rstd::mem::manually_drop::ManuallyDrop;
 using rstd::pin::Pin;
 using rstd::ptr_::non_null::NonNull;
 using rstd::ptr_::unique::Unique;
-using namespace rstd;
+namespace mtp = rstd::mtp;
+using namespace rstd::prelude;
 
 namespace alloc::boxed
 {
@@ -31,9 +32,9 @@ public:
     Box& operator=(const Box&) noexcept = delete;
 
     auto clone() -> Self
-        requires Impled<T, clone::Clone, Sized>
+        requires Impled<T, Clone, Sized>
     {
-        return make(as<clone::Clone>(as_ptr()).clone());
+        return make(as<Clone>(as_ptr()).clone());
     }
     void clone_from(Self& source)
         requires requires(Box b) { b.clone(); }
@@ -160,10 +161,10 @@ using ::alloc::boxed::Box;
 namespace rstd
 {
 
-template<typename A, mtp::same_as<convert::AsRef<const A>> T>
+template<typename A, mtp::same_as<AsRef<const A>> T>
 struct Impl<T, ::alloc::boxed::Box<A>> : ImplInClass<T, ::alloc::boxed::Box<A>> {};
 
-template<typename A, mtp::same_as<clone::Clone> T>
+template<typename A, mtp::same_as<Clone> T>
     requires requires(::alloc::boxed::Box<A> b) { b.clone(); }
 struct Impl<T, ::alloc::boxed::Box<A>> : ImplInClass<T, ::alloc::boxed::Box<A>> {};
 

@@ -4,7 +4,7 @@ module;
 export module rstd.alloc:alloc;
 export import rstd.core;
 
-using namespace rstd::literal;
+using namespace rstd::prelude;
 using rstd::mut_ptr;
 using rstd::TraitFuncs;
 using rstd::alloc::Layout;

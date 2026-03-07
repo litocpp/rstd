@@ -31,6 +31,7 @@ target_sources(
          CXX_MODULES
          FILES
          mod.cppm
+         prelude.cppm
          core.cppm
          trait.cppm
          marker.cppm

@@ -6,7 +6,8 @@ export import rstd.core;
 
 using ::alloc::vec::Vec;
 
-using namespace rstd;
+namespace ffi = rstd::ffi;
+using namespace rstd::prelude;
 
 namespace alloc::string
 {
@@ -52,7 +53,7 @@ public:
     }
     friend bool operator==(char const* b, const String& a) noexcept {
         return cppstd::lexicographical_compare_three_way(
-                   a.vec.begin(), a.vec.end(), b, b + char_traits<char>::length(b)) ==
+                   a.vec.begin(), a.vec.end(), b, b + rstd::char_traits<char>::length(b)) ==
                cppstd::strong_ordering::equal;
     }
 
@@ -105,7 +106,7 @@ struct Impl<T, A> : ImplBase<default_tag<A>> {
     }
 };
 
-template<mtp::same_as<convert::Into<::alloc::vec::Vec<u8>>> T,
+template<mtp::same_as<Into<::alloc::vec::Vec<u8>>> T,
          mtp::same_as<::alloc::string::String>              A>
 struct Impl<T, A> : ImplBase<A> {
     auto into() -> ::alloc::vec::Vec<u8> {

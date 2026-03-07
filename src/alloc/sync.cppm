@@ -8,7 +8,8 @@ using rstd::mem::maybe_uninit::MaybeUninit;
 using rstd::pin::Pin;
 using rstd::sync::atomic::Atomic;
 using rstd::sync::atomic::fence;
-using namespace rstd;
+namespace mtp = rstd::mtp;
+using namespace rstd::prelude;
 
 namespace alloc::sync
 {
@@ -160,13 +161,13 @@ using namespace ::alloc::sync;
 namespace rstd
 {
 template<typename T, typename Self>
-    requires mtp::same_as<T, clone::Clone> && mtp::special_of<Self, Arc>
+    requires mtp::same_as<T, Clone> && mtp::special_of<Self, Arc>
 struct Impl<T, Self> : Impl<T, default_tag<Self>> {
     auto clone() const -> Self;
 };
 
 template<typename T, typename Self>
-    requires mtp::same_as<T, clone::Clone> && mtp::special_of<Self, Weak>
+    requires mtp::same_as<T, Clone> && mtp::special_of<Self, Weak>
 struct Impl<T, Self> : Impl<T, default_tag<Self>> {
     auto clone() const -> Self;
 };
@@ -209,7 +210,7 @@ public:
 };
 
 export template<typename T>
-class Arc : public WithTrait<Arc<T>, clone::Clone> {
+class Arc : public WithTrait<Arc<T>, Clone> {
     ArcData<T> self;
 
     template<typename, typename>
@@ -280,7 +281,7 @@ public:
     ///
     /// This is useful for types that must not be moved after creation,
     /// such as self-referential structures.
-    static auto pin(param_t<T> value) -> Pin<Arc<T>> {
+    static auto pin(rstd::param_t<T> value) -> Pin<Arc<T>> {
         return Pin<Arc<T>>::make_unchecked(Arc::make(rstd::param_forward<T>(value)));
     }
 
@@ -379,7 +380,7 @@ public:
 };
 
 export template<class T>
-class Weak : public WithTrait<Weak<T>, clone::Clone> {
+class Weak : public WithTrait<Weak<T>, Clone> {
     ArcData<T> self;
 
     template<typename, typename>
@@ -454,7 +455,7 @@ auto Arc<T>::downgrade() const noexcept -> Weak<T> {
 namespace rstd
 {
 template<typename T, typename Self>
-    requires mtp::same_as<T, clone::Clone> && mtp::special_of<Self, Arc>
+    requires mtp::same_as<T, Clone> && mtp::special_of<Self, Arc>
 auto Impl<T, Self>::clone() const -> Self {
     auto& s = this->self();
     if (s.self.inner) {
@@ -464,7 +465,7 @@ auto Impl<T, Self>::clone() const -> Self {
 }
 
 template<typename T, typename Self>
-    requires mtp::same_as<T, clone::Clone> && mtp::special_of<Self, Weak>
+    requires mtp::same_as<T, Clone> && mtp::special_of<Self, Weak>
 auto Impl<T, Self>::clone() const -> Self {
     auto& s = this->self();
     if (s.self.inner) {
