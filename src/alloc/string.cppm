@@ -4,27 +4,28 @@ export module rstd.alloc:string;
 export import :vec;
 export import rstd.core;
 
+using ::alloc::vec::Vec;
+
 using namespace rstd;
-using alloc::vec::Vec;
 
 namespace alloc::string
 {
 
 export class String {
-    Vec<u8> vec;
+    ::alloc::vec::Vec<u8> vec;
 
-    constexpr String() = default;
-    String(Vec<u8>&& p): vec(rstd::move(p)) {}
+    constexpr String(::alloc::vec::Vec<u8>&& p): vec(rstd::move(p)) {}
 
 public:
     USE_TRAIT(String)
+    constexpr String()                           = default;
     constexpr String(Self&&) noexcept            = default;
     constexpr String& operator=(Self&&) noexcept = default;
 
     using value_type = u8;
 
     constexpr static auto make() -> String { return {}; }
-    static auto           from_utf8_unchecked(Vec<u8>&& bytes) -> String {
+    static auto           from_utf8_unchecked(::alloc::vec::Vec<u8>&& bytes) -> String {
         return String { rstd::move(bytes) };
     }
 
@@ -41,31 +42,23 @@ public:
     void push_back(u8 c) { vec.push(rstd::move(c)); }
 
     friend constexpr auto operator<=>(const String& a, const String& b) noexcept {
-        return cppstd::lexicographical_compare_three_way(begin(a),
-                                                         end(a),
-                                                         begin(b),
-                                                         end(b));
+        return cppstd::lexicographical_compare_three_way(
+            a.vec.begin(), a.vec.end(), b.vec.begin(), b.vec.end());
     }
     friend constexpr auto operator<=>(const String& a, slice<u8> b) noexcept {
         auto ptr = &*b;
         return cppstd::lexicographical_compare_three_way(
-            begin(a), end(a), ptr, ptr + b.len());
+            a.vec.begin(), a.vec.end(), ptr, ptr + b.len());
     }
     friend bool operator==(char const* b, const String& a) noexcept {
-        return cppstd::lexicographical_compare_three_way(begin(a),
-                                                         end(a),
-                                                         b,
-                                                         b + char_traits<char>::length(b)) ==
+        return cppstd::lexicographical_compare_three_way(
+                   a.vec.begin(), a.vec.end(), b, b + char_traits<char>::length(b)) ==
                cppstd::strong_ordering::equal;
     }
 
-    friend constexpr auto begin(const Self& self) noexcept -> const u8* {
-        return self.vec.begin();
-    }
-    friend constexpr auto end(const Self& self) noexcept -> const u8* {
-        return self.vec.end();
-    }
-    friend constexpr auto size(const Self& self) noexcept -> usize { return self.vec.len(); }
+    constexpr auto begin() const noexcept -> const u8* { return vec.begin(); }
+    constexpr auto end() const noexcept -> const u8* { return vec.end(); }
+    constexpr auto size() const noexcept -> usize { return vec.len(); }
 };
 
 export struct ToString {
@@ -80,65 +73,62 @@ export struct ToString {
 
 } // namespace alloc::string
 
-using String   = alloc::string::String;
-using ToString = alloc::string::ToString;
 namespace rstd
 {
 
-template<mtp::same_as<ToString> T, Impled<fmt::Display> A>
+template<mtp::same_as<::alloc::string::ToString> T, Impled<fmt::Display> A>
 struct Impl<T, A> : ImplBase<A> {
-    auto to_string() const -> String {
-        auto out = String::make();
+    auto to_string() const -> ::alloc::string::String {
+        auto out = ::alloc::string::String::make();
         fmt::format_to(cppstd::back_inserter(out), "{}", this->self());
         return out;
     }
 };
 
-template<mtp::same_as<cmp::PartialEq<String>> T, mtp::same_as<String> A>
+template<mtp::same_as<cmp::PartialEq<::alloc::string::String>> T,
+         mtp::same_as<::alloc::string::String>                 A>
 struct Impl<T, A> : ImplBase<default_tag<A>> {
-    auto eq(const String& other) const noexcept -> bool {
-        auto& a = this->self();
-        auto& b = other;
-        return a.vec == b.vec;
+    auto eq(const ::alloc::string::String& other) const noexcept -> bool {
+        return this->self().size() == other.size() &&
+               rstd::memcmp(this->self().begin(), other.begin(), this->self().size()) == 0;
     }
 };
 
-template<mtp::same_as<cmp::PartialEq<char const*>> T, mtp::same_as<String> A>
+template<mtp::same_as<cmp::PartialEq<char const*>> T, mtp::same_as<::alloc::string::String> A>
 struct Impl<T, A> : ImplBase<default_tag<A>> {
     using Rhs = char const*;
     auto eq(const Rhs& other) const noexcept -> bool {
         auto& a = this->self();
-        auto& b = other;
         return cppstd::lexicographical_compare_three_way(
-                   a.vec.begin(), a.vec.end(), b, b + char_traits<char>::length(b)) ==
-               std::strong_ordering::equal;
+                   a.begin(), a.end(), other, other + char_traits<char>::length(other)) ==
+               cppstd::strong_ordering::equal;
     }
 };
 
-template<mtp::same_as<convert::Into<Vec<u8>>> T, mtp::same_as<String> A>
+template<mtp::same_as<convert::Into<::alloc::vec::Vec<u8>>> T,
+         mtp::same_as<::alloc::string::String>              A>
 struct Impl<T, A> : ImplBase<A> {
-    auto into() -> Vec<u8> {
+    auto into() -> ::alloc::vec::Vec<u8> {
         auto& a = this->self();
         return rstd::move(a.vec);
     }
 };
 
-export template<Impled<ToString> A>
+export template<Impled<::alloc::string::ToString> A>
 auto to_string(A&& a) {
-    // use lvalue
-    return as<ToString>(a).to_string();
+    return as<::alloc::string::ToString>(a).to_string();
 }
 
 namespace fmt
 {
 
-export auto vformat(ref<str> fmt, fmt::format_args args) -> String {
-    auto buf = String::make();
+export auto vformat(ref<str> fmt, fmt::format_args args) -> ::alloc::string::String {
+    auto buf = ::alloc::string::String::make();
     fmt::vformat_to(cppstd::back_inserter(buf), { (char const*)fmt.data(), fmt.size() }, args);
     return buf;
 }
 export template<typename... Args>
-auto format(fmt::format_string<Args...> fmt, Args&&... args) -> String {
+auto format(fmt::format_string<Args...> fmt, Args&&... args) -> ::alloc::string::String {
     return fmt::vformat(fmt.get(), fmt::make_format_args(args...));
 }
 
@@ -150,9 +140,9 @@ export using fmt::vformat;
 } // namespace rstd
 
 template<>
-struct rstd::fmt::formatter<String> : rstd::fmt::formatter<rstd::ref<rstd::str>> {
+struct rstd::fmt::formatter<::alloc::string::String> : rstd::fmt::formatter<rstd::ref<rstd::str>> {
     template<typename FmtContext>
-    auto format(const String& str, FmtContext& ctx) const -> FmtContext::iterator {
+    auto format(const ::alloc::string::String& str, FmtContext& ctx) const -> FmtContext::iterator {
         return rstd::fmt::formatter<rstd::ref<rstd::str>>::format(str, ctx);
     }
 };

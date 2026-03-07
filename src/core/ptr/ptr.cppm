@@ -64,6 +64,16 @@ struct ref_base {
 
     constexpr auto* as_raw_ptr() const noexcept { return static_cast<Self const*>(this)->p; }
 
+    template<typename U>
+    constexpr auto cast() const noexcept -> mut_ptr<U> {
+        return mut_ptr<U>::from_raw_parts(reinterpret_cast<mtp::remove_extent_t<U>*>(as_raw_ptr()));
+    }
+
+    template<typename U>
+    constexpr auto cast_array(usize len = 0) const noexcept -> mut_ptr<U[]> {
+        return mut_ptr<U[]>::from_raw_parts(reinterpret_cast<U*>(as_raw_ptr()), len);
+    }
+
     /// \name Normal
     /// @{
     static constexpr auto from_raw_parts(value_type* p) noexcept -> Self
@@ -148,6 +158,16 @@ struct ptr_base {
     }
 
     constexpr auto* as_raw_ptr() const noexcept { return static_cast<Self const*>(this)->p; }
+
+    template<typename U>
+    constexpr auto cast() const noexcept -> mut_ptr<U> {
+        return mut_ptr<U>::from_raw_parts(reinterpret_cast<mtp::remove_extent_t<U>*>(as_raw_ptr()));
+    }
+
+    template<typename U>
+    constexpr auto cast_array(usize len = 0) const noexcept -> mut_ptr<U[]> {
+        return mut_ptr<U[]>::from_raw_parts(reinterpret_cast<U*>(as_raw_ptr()), len);
+    }
 
     /// \name Normal
     /// @{

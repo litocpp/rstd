@@ -9,9 +9,9 @@ target_sources(
          CXX_MODULES
          FILES
          mod.cppm
+         alloc.cppm
          rc.cppm
          string.cppm
-         alloc.cppm
          str.cppm
          boxed.cppm
          sync.cppm

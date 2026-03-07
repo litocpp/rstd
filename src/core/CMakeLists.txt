@@ -49,6 +49,9 @@ target_sources(
          tuple.cppm
          memchr.cppm
          cmp.cppm
+         alloc/global.cppm
+         alloc/layout.cppm
+         alloc/mod.cppm
          panic/panic_info.cppm
          intrinsics/mod.cppm
          ffi/mod.cppm

@@ -1,4 +1,5 @@
 export module rstd.alloc;
+export import :alloc;
 export import :rc;
 export import :str;
 export import :boxed;

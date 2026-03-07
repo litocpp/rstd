@@ -31,17 +31,15 @@ protected:
 
     template<typename V>
     constexpr void _construct_val(V&& val) {
-        rstd::construct_at(_ptr(), rstd::forward<V>(val));
+        auto v = union_value_t(rstd::forward<V>(val));
+        rstd::memcpy(m_storage, &v, sizeof(union_value_t));
     }
     template<typename V>
     constexpr void _assign_val(V&& val) {
-        rstd::construct_at(_ptr(), rstd::forward<V>(val));
+        _construct_val(rstd::forward<V>(val));
     }
     constexpr void _assign_none() {
-        if (is_some()) {
-            rstd::destroy_at(_ptr());
-            rstd::memset(m_storage, 0, sizeof(union_value_t));
-        }
+        rstd::memset(m_storage, 0, sizeof(union_value_t));
     }
 
 public:
@@ -87,19 +85,17 @@ public:
 
     /// \name T: Sized
     /// @{
-    /// Creates a pointer with the given address
     static auto without_provenance(num::nonzero::NonZero<usize> addr) noexcept -> NonNull<T>
         requires Impled<T, Sized>
     {
-        T* t = reinterpret_cast<T*>(addr);
-        return { t };
+        T* t = reinterpret_cast<T*>(addr.get());
+        return { mut_ptr<T>::from_raw_parts(t) };
     }
 
-    /// Creates a new `NonNull` that is dangling, but well-aligned.
     static auto dangling() noexcept -> NonNull<T>
         requires Impled<T, Sized>
     {
-        return { nullptr };
+        return { mut_ptr<T>::from_raw_parts(reinterpret_cast<T*>(alignof(T))) };
     }
     /// @}
 
@@ -120,19 +116,16 @@ public:
     constexpr auto as_ref() const noexcept { return m_ptr.as_ref(); }
 
     constexpr auto as_mut() const noexcept { return m_ptr.as_mut_ref(); }
-    constexpr void test() {}
     /// @}
 
     template<class U>
-    constexpr NonNull<U> cast() const noexcept {
-        static_assert(mtp::convertible_to<pointer_t, U*> || mtp::convertible_to<U*, pointer_t>,
-                      "NonNull::cast: unsupported cast between pointer types");
-        return NonNull<U>::new_unchecked(reinterpret_cast<U*>(m_ptr));
+    constexpr auto cast() const noexcept {
+        return NonNull<U>::make_unchecked(m_ptr.template cast<U>());
     }
 
     template<class U>
-        requires(mtp::convertible_to<U*, T*>)
-    constexpr NonNull(const NonNull<U>& other) noexcept: m_ptr(other.as_ptr()) {}
+        requires(mtp::convertible_to<mut_ptr<U>, mut_ptr<T>>)
+    constexpr NonNull(const NonNull<U>& other) noexcept: m_ptr(other.as_mut_ptr()) {}
 
     constexpr NonNull add(usize count) const noexcept {
         return NonNull::make_unchecked(m_ptr + count);
@@ -147,20 +140,11 @@ public:
     }
 
     constexpr NonNull byte_add(usize bytes) const noexcept {
-        auto* p = reinterpret_cast<byte*>(m_ptr) + bytes;
-        return NonNull::make_unchecked(reinterpret_cast<pointer_t>(p));
+        return NonNull::make_unchecked(m_ptr.byte_add(bytes));
     }
 
     constexpr NonNull byte_sub(usize bytes) const noexcept {
-        auto* p = reinterpret_cast<byte*>(m_ptr) - bytes;
-        return NonNull::make_unchecked(reinterpret_cast<pointer_t>(p));
-    }
-
-    template<class F>
-    constexpr NonNull map_addr(F&& f) const noexcept {
-        auto addr     = reinterpret_cast<rstd::nullptr_t>(m_ptr);
-        auto new_addr = static_cast<rstd::nullptr_t>(rstd::invoke(rstd::forward<F>(f), addr));
-        return NonNull::make_unchecked(reinterpret_cast<pointer_t>(new_addr));
+        return NonNull::make_unchecked(m_ptr.byte_sub(bytes));
     }
 
     friend constexpr bool operator<=>(NonNull a, NonNull b) noexcept { return a.m_ptr <=> b.m_ptr; }

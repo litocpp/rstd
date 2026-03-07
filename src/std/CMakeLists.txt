@@ -22,6 +22,7 @@ target_sources(
          CXX_MODULES
          FILES
          mod.cppm
+         alloc.cppm
          forward.cppm
          error.cppm
          panicking.cppm

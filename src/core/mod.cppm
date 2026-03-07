@@ -6,6 +6,7 @@ export import :cmp;
 export import :fmt;
 export import :convert;
 export import :slice;
+export import :alloc.layout;
 
 export import :ops;
 

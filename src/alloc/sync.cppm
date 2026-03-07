@@ -155,7 +155,7 @@ class Weak;
 
 } // namespace alloc::sync
 
-using namespace alloc::sync;
+using namespace ::alloc::sync;
 
 namespace rstd
 {
