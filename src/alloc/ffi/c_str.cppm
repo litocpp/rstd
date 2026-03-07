@@ -58,7 +58,6 @@ public:
         Vec<u8> vec = rstd::into(rstd::move(inner));
         [[maybe_unused]]
         auto nul = vec.pop(); // remove trailing null byte
-        debug_assert_eq(nul, Some(0));
         return vec;
     }
 

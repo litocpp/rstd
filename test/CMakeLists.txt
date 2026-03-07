@@ -28,6 +28,7 @@ add_executable(
   alloc/rc.cpp
   alloc/str.cpp
   alloc/boxed.cpp
+  alloc/vec.cpp
   alloc/sync.cpp
   alloc/string.cpp
   sys/sync/mutex/futex.cpp

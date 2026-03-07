@@ -2,112 +2,247 @@ module;
 #include <rstd/macro.hpp>
 export module rstd.alloc:vec;
 export import :boxed;
+export import :alloc;
 export import rstd.core;
 
 using namespace rstd;
 using alloc::boxed::Box;
+using rstd::ptr_::unique::Unique;
 
 namespace alloc::vec
 {
+
+/// A low-level utility for managing the backing storage of a `Vec`.
+/// It handles allocation and deallocation of raw memory, but does not
+/// manage the construction or destruction of elements.
+template <typename T>
+struct RawVec {
+    Unique<T> ptr;
+    usize cap;
+
+    constexpr RawVec() : ptr(Unique<T>::dangling()), cap(0) {}
+    constexpr RawVec(Unique<T> p, usize c) : ptr(rstd::move(p)), cap(c) {}
+
+    static auto with_capacity(usize capacity) -> RawVec {
+        if (capacity == 0) return RawVec();
+        auto* p = static_cast<T*>(::operator new(capacity * sizeof(T), std::align_val_t{alignof(T)}));
+        return RawVec(Unique<T>::make_unchecked(mut_ptr<T>::from_raw_parts(p)), capacity);
+    }
+
+    /// Reallocates the storage to a new capacity.
+    void grow(usize new_cap) {
+        if (new_cap <= cap) return;
+        
+        auto* new_ptr = static_cast<T*>(::operator new(new_cap * sizeof(T), std::align_val_t{alignof(T)}));
+        
+        if (cap > 0) {
+            auto* old_ptr = ptr.as_mut_ptr().as_raw_ptr();
+            for (usize i = 0; i < cap; ++i) {
+                new (new_ptr + i) T(rstd::move(old_ptr[i]));
+                old_ptr[i].~T();
+            }
+            ::operator delete(old_ptr, cap * sizeof(T), std::align_val_t{alignof(T)});
+        }
+        
+        ptr = Unique<T>::make_unchecked(mut_ptr<T>::from_raw_parts(new_ptr));
+        cap = new_cap;
+    }
+
+    ~RawVec() {
+        if (cap > 0) {
+             ::operator delete(ptr.as_mut_ptr().as_raw_ptr(), cap * sizeof(T), std::align_val_t{alignof(T)});
+        }
+    }
+
+    // Disable copy
+    RawVec(const RawVec&) = delete;
+    RawVec& operator=(const RawVec&) = delete;
+
+    // Move
+    constexpr RawVec(RawVec&& o) noexcept : ptr(rstd::move(o.ptr)), cap(o.cap) {
+        o.cap = 0;
+        o.ptr = Unique<T>::dangling();
+    }
+    constexpr RawVec& operator=(RawVec&& o) noexcept {
+        if (this != &o) {
+            this->~RawVec();
+            ptr = rstd::move(o.ptr);
+            cap = o.cap;
+            o.cap = 0;
+            o.ptr = Unique<T>::dangling();
+        }
+        return *this;
+    }
+};
+
 export template<typename T>
 class Vec {
-    cppstd::vector<T> inner;
+    RawVec<T> buf;
+    usize m_len;
 
-    constexpr Vec(cppstd::vector<T> inner): inner(inner) {}
     static_assert(Impled<T, Sized>);
 
 public:
     USE_TRAIT(Vec)
 
-    constexpr Vec() = default;
+    constexpr Vec() : buf(), m_len(0) {}
 
     constexpr Vec(const Self&)            = delete;
     constexpr Vec& operator=(const Self&) = delete;
 
-    constexpr Vec(Self&&) noexcept            = default;
-    constexpr Vec& operator=(Self&&) noexcept = default;
+    constexpr Vec(Self&& o) noexcept : buf(rstd::move(o.buf)), m_len(o.m_len) {
+        o.m_len = 0;
+    }
+    constexpr Vec& operator=(Self&& o) noexcept {
+        if (this != &o) {
+            clear();
+            buf = rstd::move(o.buf);
+            m_len = o.m_len;
+            o.m_len = 0;
+        }
+        return *this;
+    }
+
+    ~Vec() {
+        clear();
+    }
 
     static constexpr auto make() -> Self { return {}; }
-    static constexpr auto with_capacity(usize capacity) -> Self {
-        return { cppstd::vector<T>(capacity) };
+    static auto with_capacity(usize capacity) -> Self {
+        Vec v;
+        v.buf = RawVec<T>::with_capacity(capacity);
+        v.m_len = 0;
+        return v;
     }
 
     constexpr auto as_slice() const noexcept -> slice<T> {
-        return slice<T>::from_raw_parts(inner.data(), inner.size());
+        if (m_len == 0) return {};
+        return slice<T>::from_raw_parts(buf.ptr.as_ptr().as_raw_ptr(), m_len);
+    }
+
+    constexpr auto as_mut_slice() noexcept -> mut_ptr<T[]> {
+        if (m_len == 0) return {};
+        return mut_ptr<T[]>::from_raw_parts(buf.ptr.as_mut_ptr().as_raw_ptr(), m_len);
     }
 
     constexpr auto as_ptr() const noexcept -> ptr<T> {
-        return ptr<T>::from_raw_parts(inner.data());
+        return buf.ptr.as_ptr();
     }
 
-    auto into_boxed_slice() noexcept -> boxed::Box<T[]> {
-        auto raw = new T[inner.size()];
-        // TODO: Use memcpy if T is trivially relocatable
-        for (usize i = 0; i != inner.size(); ++i) {
-            raw[i] = rstd::move(inner[i]);
+    auto into_boxed_slice() noexcept -> Box<T[]> {
+        auto length = m_len;
+        auto* raw = static_cast<T*>(::operator new(length * sizeof(T), std::align_val_t{alignof(T)}));
+        auto* old_ptr = buf.ptr.as_mut_ptr().as_raw_ptr();
+        for (usize i = 0; i < length; ++i) {
+            new (raw + i) T(rstd::move(old_ptr[i]));
+            old_ptr[i].~T();
         }
-        auto b = boxed::Box<T[]>::from_raw(mut_ptr<T[]>::from_raw_parts(raw, inner.size()));
-        inner.clear();
+        auto b = Box<T[]>::from_raw(mut_ptr<T[]>::from_raw_parts(raw, length));
+        m_len = 0;
         return b;
     }
 
-    constexpr void push(T&& value) { inner.emplace_back(rstd::move(value)); }
+    constexpr void push(T&& value) {
+        if (m_len == buf.cap) {
+            buf.grow(buf.cap == 0 ? 4 : buf.cap * 2);
+        }
+        new (buf.ptr.as_mut_ptr().as_raw_ptr() + m_len) T(rstd::move(value));
+        m_len++;
+    }
+
     constexpr auto pop() -> Option<T> {
-        if (inner.empty()) {
+        if (m_len == 0) {
             return None();
         } else {
-            T value = rstd::move(inner.back());
-            inner.pop_back();
+            m_len--;
+            T* p = buf.ptr.as_mut_ptr().as_raw_ptr() + m_len;
+            T value = rstd::move(*p);
+            p->~T();
             return Some(value);
         }
     }
 
-    constexpr void push_back(const T& value) { inner.push_back(value); }
-    constexpr void pop_back() { inner.pop_back(); }
+    constexpr void push_back(const T& value)
+        requires Impled<T, clone::Clone>
+    {
+        if (m_len == buf.cap) {
+            buf.grow(buf.cap == 0 ? 4 : buf.cap * 2);
+        }
+        new (buf.ptr.as_mut_ptr().as_raw_ptr() + m_len) T(as<clone::Clone>(value).clone());
+        m_len++;
+    }
 
-    constexpr T&       at(usize index) { return inner.at(index); }
-    constexpr const T& at(usize index) const { return inner.at(index); }
+    constexpr void pop_back() {
+        (void)pop();
+    }
 
-    constexpr T&       operator[](usize index) { return inner[index]; }
-    constexpr const T& operator[](usize index) const { return inner[index]; }
+    constexpr T&       at(usize index) {
+        if (index >= m_len) rstd::panic("Vec index out of bounds");
+        return buf.ptr.as_mut_ptr().as_raw_ptr()[index];
+    }
+    constexpr const T& at(usize index) const {
+        if (index >= m_len) rstd::panic("Vec index out of bounds");
+        return buf.ptr.as_ptr().as_raw_ptr()[index];
+    }
 
-    constexpr usize len() const { return inner.size(); }
-    constexpr bool  is_empty() const { return inner.empty(); }
+    constexpr T&       operator[](usize index) { return at(index); }
+    constexpr const T& operator[](usize index) const { return at(index); }
 
-    constexpr void clear() { inner.clear(); }
+    constexpr usize len() const { return m_len; }
+    constexpr usize capacity() const { return buf.cap; }
+    constexpr bool  is_empty() const { return m_len == 0; }
+
+    constexpr void clear() {
+        auto* p = buf.ptr.as_mut_ptr().as_raw_ptr();
+        for (usize i = 0; i < m_len; ++i) {
+            p[i].~T();
+        }
+        m_len = 0;
+    }
 
     constexpr T remove(usize index) {
-        T value = rstd::move(inner[index]);
-        inner.erase(inner.begin() + index);
+        if (index >= m_len) rstd::panic("Vec index out of bounds");
+        T value = rstd::move(at(index));
+        auto* p = buf.ptr.as_mut_ptr().as_raw_ptr();
+        for (usize i = index; i < m_len - 1; ++i) {
+            p[i] = rstd::move(p[i+1]);
+        }
+        p[m_len - 1].~T();
+        m_len--;
         return value;
     }
 
-    friend constexpr auto begin(const Self& self) noexcept -> cppstd::vector<T>::const_iterator {
-        return cppstd::ranges::begin(self.inner);
-    }
-    friend constexpr auto end(const Self& self) noexcept -> cppstd::vector<T>::const_iterator {
-        return cppstd::ranges::end(self.inner);
-    }
-    friend constexpr auto size(const Self& self) noexcept -> usize { return self.len(); }
+    constexpr auto begin() noexcept { return buf.ptr.as_mut_ptr().as_raw_ptr(); }
+    constexpr auto end() noexcept { return buf.ptr.as_mut_ptr().as_raw_ptr() + m_len; }
+    constexpr auto begin() const noexcept { return buf.ptr.as_ptr().as_raw_ptr(); }
+    constexpr auto end() const noexcept { return buf.ptr.as_ptr().as_raw_ptr() + m_len; }
 };
+
 } // namespace alloc::vec
-using alloc::vec::Vec;
+
+export namespace rstd {
+    using alloc::vec::Vec;
+}
+
 namespace rstd
 {
-template<typename U, mtp::same_as<cmp::PartialEq<Vec<U>>> T>
-struct Impl<T, Vec<U>> : ImplBase<default_tag<Vec<U>>> {
-    auto eq(const Vec<U>& other) const noexcept -> bool {
-        return this->self().inner == other.inner;
+template<typename U, mtp::same_as<cmp::PartialEq<alloc::vec::Vec<U>>> T>
+struct Impl<T, alloc::vec::Vec<U>> : ImplBase<default_tag<alloc::vec::Vec<U>>> {
+    auto eq(const alloc::vec::Vec<U>& other) const noexcept -> bool {
+        if (this->self().len() != other.len()) return false;
+        for (usize i = 0; i < this->self().len(); ++i) {
+            if (!(this->self()[i] == other[i])) return false; 
+        }
+        return true;
     }
 };
 
 template<typename A, mtp::same_as<convert::From<Box<A[]>>> T>
-struct Impl<T, Vec<A>> : ImplBase<Vec<A>> {
-    static auto from(Box<A[]> b) -> Vec<A> {
+struct Impl<T, alloc::vec::Vec<A>> : ImplBase<alloc::vec::Vec<A>> {
+    static auto from(Box<A[]> b) -> alloc::vec::Vec<A> {
         auto ptr = b.as_mut_ptr();
         auto len = ptr.len();
-        auto vec = Vec<A>::with_capacity(len);
-        // TODO: Use memcpy if T is trivially relocatable
+        auto vec = alloc::vec::Vec<A>::with_capacity(len);
         for (usize i = 0; i != len; ++i) {
             vec.push(rstd::move(ptr[i]));
         }

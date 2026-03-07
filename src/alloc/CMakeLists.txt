@@ -11,6 +11,7 @@ target_sources(
          mod.cppm
          rc.cppm
          string.cppm
+         alloc.cppm
          str.cppm
          boxed.cppm
          sync.cppm

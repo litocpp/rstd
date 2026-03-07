@@ -37,33 +37,33 @@ public:
         return ref<str>::from_raw_parts(&*vec.as_ptr(), vec.len());
     }
 
-    void push_back(char c) { vec.push_back(static_cast<u8>(c)); }
-    void push_back(u8 c) { vec.push_back(c); }
+    void push_back(char c) { vec.push(static_cast<u8>(c)); }
+    void push_back(u8 c) { vec.push(rstd::move(c)); }
 
     friend constexpr auto operator<=>(const String& a, const String& b) noexcept {
-        return cppstd::lexicographical_compare_three_way(cppstd::ranges::begin(a),
-                                                         cppstd::ranges::end(a),
-                                                         cppstd::ranges::begin(b),
-                                                         cppstd::ranges::end(b));
+        return cppstd::lexicographical_compare_three_way(begin(a),
+                                                         end(a),
+                                                         begin(b),
+                                                         end(b));
     }
     friend constexpr auto operator<=>(const String& a, slice<u8> b) noexcept {
         auto ptr = &*b;
         return cppstd::lexicographical_compare_three_way(
-            cppstd::ranges::begin(a), cppstd::ranges::end(a), ptr, ptr + b.len());
+            begin(a), end(a), ptr, ptr + b.len());
     }
     friend bool operator==(char const* b, const String& a) noexcept {
-        return cppstd::lexicographical_compare_three_way(cppstd::ranges::begin(a),
-                                                         cppstd::ranges::end(a),
+        return cppstd::lexicographical_compare_three_way(begin(a),
+                                                         end(a),
                                                          b,
                                                          b + char_traits<char>::length(b)) ==
                cppstd::strong_ordering::equal;
     }
 
-    friend constexpr auto begin(const Self& self) noexcept -> cppstd::vector<u8>::const_iterator {
-        return cppstd::ranges::begin(self.vec);
+    friend constexpr auto begin(const Self& self) noexcept -> const u8* {
+        return self.vec.begin();
     }
-    friend constexpr auto end(const Self& self) noexcept -> cppstd::vector<u8>::const_iterator {
-        return cppstd::ranges::end(self.vec);
+    friend constexpr auto end(const Self& self) noexcept -> const u8* {
+        return self.vec.end();
     }
     friend constexpr auto size(const Self& self) noexcept -> usize { return self.vec.len(); }
 };
