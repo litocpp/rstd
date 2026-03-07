@@ -219,11 +219,14 @@ struct ImplBase<default_tag<A, TraitDefaultPolicy::Normal>> : ImplBase<A> {};
 export template<typename A, typename... T>
 concept Impled = (mtp::check_trait<T, mtp::remove_cvref_t<A>>() && ...);
 
+/// use trait default implemention
+/// can be inherited by Impl or class A
 export template<typename T, typename A, TraitDefaultPolicy P = TraitDefaultPolicy::Normal>
-using ImplDefault = Impl<T, default_tag<A, P>>;
+using LinkTraitDefault = Impl<T, default_tag<A, P>>;
 
+/// use class method as Impl
 export template<typename T, typename A>
-struct ImplInClass : mtp::ImplWithPtr<A>, mtp::remove_cv_t<T>::template Api<A, in_class_tag> {};
+struct LinkClassMethod : mtp::ImplWithPtr<A>, mtp::remove_cv_t<T>::template Api<A, in_class_tag> {};
 
 /// delegate trait call to impl
 export template<usize I, typename TApi, typename... Args>
@@ -243,12 +246,12 @@ inline constexpr decltype(auto) trait_call(TApi* self, Args&&... args) {
         const auto* apis = mtp::DynHelper::get_apis(dyn);
         return rstd::get<I>(*apis)(mtp::DynHelper::get_self(dyn), rstd::forward<Args>(args)...);
     } else if constexpr (mtp::same_as<Delegate, in_class_tag>) {
-        // delegate for ImplInClass
+        // delegate for LinkClassMethod
         // used for trait impl inherite Api
         constexpr const auto api { mtp::TraitApiHelper<Trait, TClass>::template get<I>() };
 
         auto impl_in_class =
-            static_cast<mtp::follow_const_t<TApi, ImplInClass<Trait, TClass>>*>(self);
+            static_cast<mtp::follow_const_t<TApi, LinkClassMethod<Trait, TClass>>*>(self);
 
         const auto self_ = rstd::addressof(mtp::ImplHelper::get_self(impl_in_class));
         return (self_->*api)(rstd::forward<Args>(args)...);
@@ -299,14 +302,14 @@ struct WithTrait : Traits::template Api<Self>... {
 };
 
 export template<typename Self, typename... Traits>
-struct WithTraitDefault : ImplDefault<Traits, Self, TraitDefaultPolicy::InClass>... {
-    constexpr bool operator==(const WithTraitDefault) const { return true; }
-};
-
-export template<typename Self, typename... Traits>
 struct MayWithTrait
     : mtp::conditional_t<Impled<Traits, Self>, typename Traits::template Api<Self>, empty>... {
     constexpr bool operator==(const MayWithTrait) const { return true; }
+};
+
+export template<typename Self, typename... Traits>
+struct WithTraitDefault : LinkTraitDefault<Traits, Self, TraitDefaultPolicy::InClass>... {
+    constexpr bool operator==(const WithTraitDefault) const { return true; }
 };
 
 } // namespace rstd

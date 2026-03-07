@@ -29,13 +29,13 @@ struct VTable {
     using api_tuple_t =
         decltype(mtp::to_dyn(mtp::TraitApiHelper<T, trait_api_t>::template make<Tuple>()));
 
-    using apis_t   = api_tuple_t<cppstd::tuple>;
-    using delete_t = void (*)(voidp);
+    using apis_t = api_tuple_t<cppstd::tuple>;
+    using drop_t = void (*)(voidp);
 
-    delete_t deleter;
-    apis_t   apis;
-    usize    size;
-    usize    align;
+    drop_t drop;
+    apis_t apis;
+    usize  size;
+    usize  align;
 };
 
 template<typename T, typename U>
@@ -82,10 +82,9 @@ struct VTableStaticStorage {
     }
 
     static constexpr const VTable<T> vtable {
-        .deleter =
+        .drop =
             [](voidp p) {
-                // static_cast<U*>(p)->~U();
-                delete static_cast<U*>(p);
+                static_cast<U*>(p)->~U();
             },
         .apis  = convert_all(cppstd::make_index_sequence<cppstd::tuple_size_v<apis_t>> {}),
         .size  = sizeof(U),

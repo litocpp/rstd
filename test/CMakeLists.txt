@@ -46,6 +46,6 @@ gtest_discover_tests(rstd_test)
 
 if(OFF)
 add_executable(nostd nostd/main.cpp)
-target_link_libraries(nostd PRIVATE rstd::rstd)
+target_link_libraries(nostd PRIVATE rstd::rstd rstd::new)
 target_link_options(nostd PRIVATE -nostdlib++)
 endif()

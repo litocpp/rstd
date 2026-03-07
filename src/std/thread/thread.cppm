@@ -51,10 +51,10 @@ using sys::thread::thread_name_string::ThreadNameString;
 
 template<>
 struct Impl<convert::From<String>, ThreadNameString>
-    : ImplInClass<convert::From<String>, ThreadNameString> {};
+    : LinkClassMethod<convert::From<String>, ThreadNameString> {};
 
 template<>
-struct Impl<clone::Clone, ThreadNameString> : ImplDefault<clone::Clone, ThreadNameString> {
+struct Impl<clone::Clone, ThreadNameString> : LinkTraitDefault<clone::Clone, ThreadNameString> {
     auto clone() -> ThreadNameString {
         return ThreadNameString { as<clone::Clone>(this->self().inner).clone() };
     }
@@ -171,7 +171,7 @@ public:
 } // namespace thread
 
 template<>
-struct Impl<clone::Clone, thread::Thread> : ImplDefault<clone::Clone, thread::Thread> {
+struct Impl<clone::Clone, thread::Thread> : LinkTraitDefault<clone::Clone, thread::Thread> {
     auto clone() const -> thread::Thread {
         auto arc = as<clone::Clone>(this->self().inner.get_ref()).clone();
         return thread::Thread { Pin<Arc<thread::Inner>>::make_unchecked(rstd::move(arc)) };

@@ -1,7 +1,7 @@
 export module rstd:process;
 export import :sys;
 
-namespace rstd::process
+export namespace rstd::process
 {
 
 [[gnu::cold]] [[noreturn]]

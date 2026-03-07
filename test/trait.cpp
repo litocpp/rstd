@@ -262,10 +262,10 @@ struct InClassDef : rstd::WithTraitDefault<InClassDef, rstd::clone::Clone> {
 };
 
 template<>
-struct rstd::Impl<rstd::clone::Clone, InClass> : rstd::ImplInClass<rstd::clone::Clone, InClass> {};
+struct rstd::Impl<rstd::clone::Clone, InClass> : rstd::LinkClassMethod<rstd::clone::Clone, InClass> {};
 template<>
 struct rstd::Impl<rstd::clone::Clone, InClassDef>
-    : rstd::ImplInClass<rstd::clone::Clone, InClassDef> {};
+    : rstd::LinkClassMethod<rstd::clone::Clone, InClassDef> {};
 
 TEST(Trait, InClass) {
     {

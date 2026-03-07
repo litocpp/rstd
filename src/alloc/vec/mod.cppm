@@ -6,9 +6,9 @@ export import :boxed;
 export import :alloc;
 export import rstd.core;
 
-using ::alloc::Allocator;
 using ::alloc::boxed::Box;
 
+using rstd::alloc::Allocator;
 using rstd::alloc::Layout;
 using rstd::ptr_::non_null::NonNull;
 using rstd::ptr_::unique::Unique;
@@ -31,7 +31,7 @@ struct RawVec {
     static auto with_capacity(usize capacity) -> RawVec {
         if (capacity == 0) return RawVec();
         auto layout = Layout::array<T>(capacity).unwrap();
-        auto res    = as<Allocator>(GLOBAL).allocate(layout);
+        auto res    = GLOBAL.allocate(layout);
         if (res.is_err()) handle_alloc_error(layout);
 
         auto p = res.unwrap_unchecked().as_mut_ptr().template cast<T>();
@@ -45,14 +45,14 @@ struct RawVec {
         auto new_layout = Layout::array<T>(new_cap).unwrap();
 
         if (cap == 0) {
-            auto res = as<Allocator>(GLOBAL).allocate(new_layout);
+            auto res = GLOBAL.allocate(new_layout);
             if (res.is_err()) handle_alloc_error(new_layout);
             ptr = Unique<T>::make_unchecked(res.unwrap_unchecked().as_mut_ptr().template cast<T>());
         } else {
             auto old_layout = Layout::array<T>(cap).unwrap();
             auto old_ptr    = ptr.as_mut_ptr();
 
-            auto res = as<Allocator>(GLOBAL).grow(
+            auto res = GLOBAL.grow(
                 NonNull<u8>::make_unchecked(old_ptr.template cast<u8>()), old_layout, new_layout);
             if (res.is_err()) handle_alloc_error(new_layout);
 
@@ -64,7 +64,7 @@ struct RawVec {
     ~RawVec() {
         if (cap > 0) {
             auto layout = Layout::array<T>(cap).unwrap();
-            as<Allocator>(GLOBAL).deallocate(
+            GLOBAL.deallocate(
                 NonNull<u8>::make_unchecked(ptr.as_mut_ptr().template cast<u8>()), layout);
         }
     }
@@ -141,7 +141,7 @@ public:
     auto into_boxed_slice() noexcept -> Box<T[]> {
         auto length = m_len;
         auto layout = Layout::array<T>(length).unwrap();
-        auto res    = as<Allocator>(GLOBAL).allocate(layout);
+        auto res    = GLOBAL.allocate(layout);
         if (res.is_err()) handle_alloc_error(layout);
 
         auto* raw     = reinterpret_cast<T*>(res.unwrap_unchecked().as_mut_ptr().as_raw_ptr());

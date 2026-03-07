@@ -173,7 +173,7 @@ struct Impl<T, Self> : Impl<T, default_tag<Self>> {
 };
 
 template<mtp::same_as<ArcImplTrait> T, typename A, ArcStoragePolicy P>
-struct Impl<T, ArcInnerImpl<A, P>> : ImplInClass<T, ArcInnerImpl<A, P>> {};
+struct Impl<T, ArcInnerImpl<A, P>> : LinkClassMethod<T, ArcInnerImpl<A, P>> {};
 
 } // namespace rstd
 

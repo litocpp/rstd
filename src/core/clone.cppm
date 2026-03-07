@@ -29,13 +29,13 @@ struct Impl<clone::Clone, default_tag<Self, P>> : ImplBase<default_tag<Self, P>>
 template<typename Self>
     requires mtp::is_arithmetic_v<Self> || mtp::is_pointer_v<Self> ||
              mtp::is_copy_constructible_v<Self>
-struct Impl<clone::Clone, Self> : ImplDefault<clone::Clone, Self> {
+struct Impl<clone::Clone, Self> : LinkTraitDefault<clone::Clone, Self> {
     auto clone() const -> Self { return this->self(); }
 };
 
 template<typename Self>
     requires mtp::is_tuple_v<Self> && (! mtp::is_copy_constructible_v<Self>)
-struct Impl<clone::Clone, Self> : ImplDefault<clone::Clone, Self> {
+struct Impl<clone::Clone, Self> : LinkTraitDefault<clone::Clone, Self> {
     auto clone() const -> Self {
         auto& self = this->self();
         return cppstd::apply(

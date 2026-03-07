@@ -4,9 +4,9 @@ export module rstd.alloc:boxed;
 export import rstd.core;
 export import :alloc;
 
-using alloc::Allocator;
 using alloc::handle_alloc_error;
 
+using rstd::alloc::Allocator;
 using rstd::alloc::Layout;
 using rstd::mem::manually_drop::ManuallyDrop;
 using rstd::pin::Pin;
@@ -55,8 +55,8 @@ public:
     static auto make(Args&&... args) -> Box
         requires Impled<T, Sized>
     {
-        auto layout = Layout::new_<T>();
-        auto res    = as<Allocator>(GLOBAL).allocate(layout);
+        auto layout = Layout::make<T>();
+        auto res    = GLOBAL.allocate(layout);
         if (res.is_err()) handle_alloc_error(layout);
 
         auto p = res.unwrap_unchecked().as_mut_ptr().template cast<T>();
@@ -68,8 +68,8 @@ public:
     static auto make(U&& in) -> Box
         requires(! Impled<T, Sized> && mtp::dyn_traits<T>::template Impled<U>)
     {
-        auto layout = Layout::new_<U>();
-        auto res    = as<Allocator>(GLOBAL).allocate(layout);
+        auto layout = Layout::make<U>();
+        auto res    = GLOBAL.allocate(layout);
         if (res.is_err()) handle_alloc_error(layout);
 
         auto p = res.unwrap_unchecked().as_mut_ptr().template cast<U>();
@@ -104,7 +104,11 @@ public:
 
     void reset() noexcept {
         if (m_ptr != nullptr) {
-            auto mptr = m_ptr.as_mut_ptr();
+            auto mptr         = m_ptr.as_mut_ptr();
+            auto raw_non_null = NonNull<u8>::make_unchecked(
+                mut_ptr<u8>::from_raw_parts(reinterpret_cast<u8*>(mptr.as_raw_ptr())));
+            Option<Layout> layout {};
+
             if constexpr (mtp::is_array_v<T>) {
                 using V   = mtp::remove_extent_t<T>;
                 usize len = mptr.len();
@@ -112,21 +116,16 @@ public:
                 for (usize i = 0; i < len; ++i) {
                     p[i].~V();
                 }
-                auto layout = Layout::array<V>(len).unwrap();
-                as<Allocator>(GLOBAL).deallocate(
-                    NonNull<u8>::make_unchecked(
-                        mut_ptr<u8>::from_raw_parts(reinterpret_cast<u8*>(mptr.as_raw_ptr()))),
-                    layout);
-            } else if constexpr (requires { mptr.metadata()->deleter(mptr.as_raw_ptr()); }) {
-                mptr.metadata()->deleter(mptr.as_raw_ptr());
+                layout = Some(Layout::array<V>(len).unwrap());
+            } else if constexpr (requires { mptr.metadata()->drop; }) {
+                auto const* meta = mptr.metadata();
+                meta->drop(mptr.as_raw_ptr());
+                layout = Some(Layout::from_size_align(meta->size, meta->align).unwrap());
             } else {
                 mptr.as_raw_ptr()->~T();
-                auto layout = Layout::new_<T>();
-                as<Allocator>(GLOBAL).deallocate(
-                    NonNull<u8>::make_unchecked(
-                        mut_ptr<u8>::from_raw_parts(reinterpret_cast<u8*>(mptr.as_raw_ptr()))),
-                    layout);
+                layout = Some(Layout::make<T>());
             }
+            GLOBAL.deallocate(raw_non_null, layout.unwrap());
             m_ptr.reset();
         }
     }
@@ -144,7 +143,7 @@ public:
         auto length = old.len();
         auto layout = Layout::array<V>(length).unwrap();
 
-        auto res = as<Allocator>(GLOBAL).allocate(layout);
+        auto res = GLOBAL.allocate(layout);
         if (res.is_err()) handle_alloc_error(layout);
 
         auto* raw = static_cast<V*>(res.unwrap_unchecked().as_mut_ptr().as_raw_ptr());
@@ -162,10 +161,10 @@ namespace rstd
 {
 
 template<typename A, mtp::same_as<AsRef<const A>> T>
-struct Impl<T, ::alloc::boxed::Box<A>> : ImplInClass<T, ::alloc::boxed::Box<A>> {};
+struct Impl<T, ::alloc::boxed::Box<A>> : LinkClassMethod<T, ::alloc::boxed::Box<A>> {};
 
 template<typename A, mtp::same_as<Clone> T>
     requires requires(::alloc::boxed::Box<A> b) { b.clone(); }
-struct Impl<T, ::alloc::boxed::Box<A>> : ImplInClass<T, ::alloc::boxed::Box<A>> {};
+struct Impl<T, ::alloc::boxed::Box<A>> : LinkClassMethod<T, ::alloc::boxed::Box<A>> {};
 
 } // namespace rstd

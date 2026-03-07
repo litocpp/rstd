@@ -6,4 +6,4 @@ export import :sync;
 export import :thread;
 export import :process;
 export import :panicking;
-import rstd.alloc;
+export import :alloc;

@@ -4,10 +4,10 @@ export module rstd.alloc:ffi.c_str;
 export import :boxed;
 export import :vec;
 
-using ::alloc::Allocator;
 using ::alloc::boxed::Box;
 using ::alloc::vec::Vec;
 
+using rstd::alloc::Allocator;
 using rstd::ffi::CStr;
 namespace fmt = rstd::fmt;
 using namespace rstd::prelude;
@@ -46,7 +46,7 @@ public:
     static auto from_raw_parts(char const* p) -> CString {
         auto len    = rstd::char_traits<char>::length(p) + 1;
         auto layout = Layout::array<u8>(len).unwrap();
-        auto res    = as<Allocator>(GLOBAL).allocate(layout);
+        auto res    = GLOBAL.allocate(layout);
         if (res.is_err()) handle_alloc_error(layout);
 
         auto* raw = static_cast<u8*>(res.unwrap_unchecked().as_mut_ptr().as_raw_ptr());
@@ -80,25 +80,26 @@ public:
 
 } // namespace alloc::ffi
 
+using ::alloc::ffi::CString;
+using ::alloc::ffi::NulError;
+
 namespace rstd
 {
 
 template<>
-struct Impl<Clone, ::alloc::ffi::CString> : ImplDefault<Clone, ::alloc::ffi::CString> {
-    auto clone() -> ::alloc::ffi::CString {
-        return ::alloc::ffi::CString { this->self().inner.clone() };
-    }
+struct Impl<Clone, CString> : LinkTraitDefault<Clone, CString> {
+    auto clone() -> CString { return CString { this->self().inner.clone() }; }
 };
 
-template<mtp::same_as<AsRef<ffi::CStr>> T, mtp::same_as<::alloc::ffi::CString> A>
+template<mtp::same_as<AsRef<ffi::CStr>> T, mtp::same_as<CString> A>
 struct Impl<T, A> {};
 
 } // namespace rstd
 
 template<>
-struct rstd::fmt::formatter<::alloc::ffi::CString> : rstd::fmt::formatter<rstd::ref<rstd::str>> {
+struct rstd::fmt::formatter<CString> : rstd::fmt::formatter<rstd::ref<rstd::str>> {
     template<typename FmtContext>
-    auto format(const ::alloc::ffi::CString& cstr, FmtContext& ctx) const -> FmtContext::iterator {
+    auto format(const CString& cstr, FmtContext& ctx) const -> FmtContext::iterator {
         using namespace rstd::prelude;
         auto str_ref = cstr.as_ref();
         auto s       = ref<str>::from_raw_parts((u8 const*)str_ref.p, str_ref.length);
@@ -107,9 +108,9 @@ struct rstd::fmt::formatter<::alloc::ffi::CString> : rstd::fmt::formatter<rstd::
 };
 
 template<>
-struct rstd::fmt::formatter<::alloc::ffi::NulError> : rstd::fmt::formatter<rstd::ref<rstd::str>> {
+struct rstd::fmt::formatter<NulError> : rstd::fmt::formatter<rstd::ref<rstd::str>> {
     template<typename FmtContext>
-    auto format(const ::alloc::ffi::NulError& cstr, FmtContext& ctx) const -> FmtContext::iterator {
+    auto format(const NulError& cstr, FmtContext& ctx) const -> FmtContext::iterator {
         using namespace rstd::prelude;
         return fmt::formatter<ref<str>>::format("NulError", ctx);
     }
