@@ -1,9 +1,6 @@
 export module rstd.core;
 export import :choice;
-export import :literal;
 export import :core;
-export import :meta;
-export import :cppstd;
 export import :trait;
 export import :cmp;
 export import :fmt;

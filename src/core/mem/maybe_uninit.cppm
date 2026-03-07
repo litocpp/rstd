@@ -1,6 +1,5 @@
 export module rstd.core:mem.maybe_uninit;
 export import :core;
-export import :meta;
 export import :mem.manually_drop;
 
 namespace rstd::mem::maybe_uninit

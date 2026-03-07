@@ -1,6 +1,5 @@
 export module rstd.core:pin;
 export import :core;
-export import :meta;
 
 namespace rstd::pin
 {

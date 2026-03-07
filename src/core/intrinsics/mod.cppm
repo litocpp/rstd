@@ -1,5 +1,5 @@
 export module rstd.core:intrinsics;
-export import :meta;
+export import rstd.basic;
 
 export namespace rstd::intrinsics
 {

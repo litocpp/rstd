@@ -1,4 +1,4 @@
-export module rstd.core:literal;
+export module rstd.basic:literal;
 export import :cppstd;
 
 namespace rstd

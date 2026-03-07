@@ -1,4 +1,4 @@
-export module rstd.core:basic;
+export module rstd.basic:basic;
 export import :cppstd;
 
 namespace rstd
@@ -38,7 +38,7 @@ export using cppstd::make_unsigned_t;
 export using cppstd::bit_cast;
 export using cppstd::default_delete;
 
-export using mtp::declval;
+export using cppstd::declval;
 
 export [[noreturn]] inline void unreachable() {
     // Uses compiler specific extensions if possible.

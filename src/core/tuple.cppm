@@ -1,5 +1,5 @@
 export module rstd.core:tuple;
-export import :meta;
+export import rstd.basic;
 
 namespace rstd::tuple
 {

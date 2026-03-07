@@ -1,6 +1,5 @@
 export module rstd.core:mem.manually_drop;
 export import :core;
-export import :meta;
 
 namespace rstd::mem::manually_drop
 {

@@ -1,6 +1,5 @@
 export module rstd.core:trait;
-export import :basic;
-export import :meta;
+export import rstd.basic;
 
 namespace rstd
 {
@@ -197,8 +196,6 @@ consteval bool check_trait() {
 }
 
 } // namespace mtp
-
-
 
 export template<typename A>
 struct ImplBase : mtp::ImplWithPtr<A> {};

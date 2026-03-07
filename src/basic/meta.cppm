@@ -1,5 +1,6 @@
-export module rstd.core:meta;
+export module rstd.basic:meta;
 export import :literal;
+export import :basic;
 
 export namespace rstd::mtp
 {

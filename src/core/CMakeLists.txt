@@ -8,6 +8,7 @@ add_library(rstd.core)
 add_library(rstd::core ALIAS rstd.core)
 target_compile_features(rstd.core PUBLIC cxx_std_23)
 target_include_directories(rstd.core PUBLIC include)
+target_link_libraries(rstd.core PUBLIC rstd.basic)
 target_compile_options(
   rstd.core PUBLIC "$<$<COMPILE_LANG_AND_ID:CXX,Clang>:-fsized-deallocation>")
 target_sources(
@@ -19,8 +20,7 @@ target_sources(
          BASE_DIRS
          include
          FILES
-         include/rstd/macro.hpp
-         )
+         include/rstd/macro.hpp)
 
 target_sources(rstd.core PRIVATE mod.cpp)
 target_sources(
@@ -31,10 +31,7 @@ target_sources(
          CXX_MODULES
          FILES
          mod.cppm
-         literal.cppm
-         basic.cppm
          core.cppm
-         meta.cppm
          trait.cppm
          marker.cppm
          convert.cppm
@@ -45,7 +42,6 @@ target_sources(
          panic.cppm
          panicking.cppm
          log.cppm
-         cppstd.cppm
          choice.cppm
          pin.cppm
          hint.cppm
@@ -80,5 +76,4 @@ target_sources(
          mem/drop_guard.cppm
          sync/mod.cppm
          sync/atomic.cppm
-         forward/mod.cppm
-         )
+         forward/mod.cppm)
