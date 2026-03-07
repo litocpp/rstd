@@ -50,7 +50,7 @@ struct ArrayTestStruct {
     }
 };
 
-TEST(RcTest, BasicConstruction) {
+TEST(Rc, BasicConstruction) {
     Rc<int> empty;
     EXPECT_EQ(empty.get(), nullptr);
 
@@ -61,13 +61,13 @@ TEST(RcTest, BasicConstruction) {
     EXPECT_EQ(rc.weak_count(), 0);
 }
 
-TEST(RcTest, MakeRc) {
+TEST(Rc, MakeRc) {
     auto rc = make_rc<std::string>("test");
     EXPECT_EQ(*rc, "test");
     EXPECT_EQ(rc.strong_count(), 1);
 }
 
-TEST(RcTest, CopyAndMove) {
+TEST(Rc, CopyAndMove) {
     auto rc1 = make_rc<int>(42);
     auto rc2 = rc1;
     EXPECT_EQ(rc1.strong_count(), 2);
@@ -79,7 +79,7 @@ TEST(RcTest, CopyAndMove) {
     EXPECT_EQ(rc3.strong_count(), 2);
 }
 
-TEST(RcTest, Destruction) {
+TEST(Rc, Destruction) {
     bool destroyed = false;
     {
         auto rc = make_rc<TestStruct>(42, &destroyed);
@@ -88,7 +88,7 @@ TEST(RcTest, Destruction) {
     EXPECT_TRUE(destroyed);
 }
 
-TEST(RcTest, WeakReference) {
+TEST(Rc, WeakReference) {
     auto rc   = make_rc<int>(42);
     auto weak = rc.downgrade();
 
@@ -107,7 +107,7 @@ TEST(RcTest, WeakReference) {
     EXPECT_FALSE(upgraded.has_value());
 }
 
-TEST(RcTest, CustomDeleter) {
+TEST(Rc, CustomDeleter) {
     bool custom_deleted = false;
     {
         auto deleter = [&custom_deleted](int* p) {
@@ -119,14 +119,14 @@ TEST(RcTest, CustomDeleter) {
     EXPECT_TRUE(custom_deleted);
 }
 
-TEST(RcTest, ArraySupport) {
+TEST(Rc, ArraySupport) {
     auto rc = make_rc<int[]>(3, 42);
     EXPECT_EQ(rc.get()[0], 42);
     EXPECT_EQ(rc.get()[1], 42);
     EXPECT_EQ(rc.get()[2], 42);
 }
 
-TEST(RcTest, ArrayOfStructs) {
+TEST(Rc, ArrayOfStructs) {
     auto rc = make_rc<ArrayTestStruct[]>(3, ArrayTestStruct(42, "test"));
 
     EXPECT_EQ(rc.get()[0], ArrayTestStruct(42, "test"));
@@ -142,7 +142,7 @@ TEST(RcTest, ArrayOfStructs) {
     EXPECT_EQ(rc.get()[2], ArrayTestStruct(42, "test"));
 }
 
-TEST(RcTest, Uniqueness) {
+TEST(Rc, Uniqueness) {
     auto rc1 = make_rc<int>(42);
     EXPECT_TRUE(rc1.is_unique());
 
@@ -154,7 +154,7 @@ TEST(RcTest, Uniqueness) {
     EXPECT_FALSE(rc2.is_unique());
 }
 
-TEST(RcTest, SwapOperation) {
+TEST(Rc, SwapOperation) {
     auto rc1 = make_rc<int>(1);
     auto rc2 = make_rc<int>(2);
 
@@ -163,7 +163,7 @@ TEST(RcTest, SwapOperation) {
     EXPECT_EQ(*rc2, 1);
 }
 
-TEST(RcTest, CustomAllocator) {
+TEST(Rc, CustomAllocator) {
     bool allocated   = false;
     bool deallocated = false;
     {
@@ -177,7 +177,7 @@ TEST(RcTest, CustomAllocator) {
     EXPECT_TRUE(deallocated);
 }
 
-TEST(RcTest, Size) {
+TEST(Rc, Size) {
     // Test size for single object
     auto rc_single = make_rc<int>(42);
     EXPECT_EQ(rc_single.size(), 1);
@@ -191,7 +191,7 @@ TEST(RcTest, Size) {
     EXPECT_EQ(rc_struct_array.size(), 3);
 }
 
-TEST(RcTest, Constness) {
+TEST(Rc, Constness) {
     auto        val       = make_rc<int>(42);
     const auto& const_val = val;
     int         x         = *const_val;
