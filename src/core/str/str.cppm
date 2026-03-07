@@ -107,8 +107,7 @@ public:
 } // namespace rstd
 
 template<>
-struct rstd::fmt::formatter<rstd::ref<rstd::str>>
-    : rstd::fmt::formatter<cppstd::string_view> {
+struct rstd::fmt::formatter<rstd::ref<rstd::str>> : rstd::fmt::formatter<cppstd::string_view> {
     template<class FmtContext>
     FmtContext::iterator format(rstd::ref<rstd::str> str, FmtContext& ctx) const {
         return rstd::fmt::formatter<cppstd::string_view>::format(
@@ -119,17 +118,19 @@ struct rstd::fmt::formatter<rstd::ref<rstd::str>>
 namespace rstd::str_
 {
 export constexpr auto extract_last(ref<str> path, usize count) -> ref<str> {
-    auto size = path.size();
-    while (size != 0) {
-        if (path[size - 1] == '/' || path[size - 1] == '\\') {
+    auto pos = path.size();
+    while (pos != 0) {
+        if (path[pos - 1] == '/' || path[pos - 1] == '\\') {
             --count;
         }
         if (count != 0) {
-            --size;
+            --pos;
         } else {
             break;
         }
     }
-    return ref<str>::from_raw_parts(path.begin() + size, path.end() - path.begin());
+    auto begin = path.begin() + pos;
+    auto size  = path.end() - begin;
+    return ref<str>::from_raw_parts(begin, size);
 }
 } // namespace rstd::str_
