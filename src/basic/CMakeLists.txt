@@ -10,5 +10,5 @@ target_sources(
          mod.cppm
          prelude.cppm
          basic.cppm
-         meta.cppm
+         mtp.cppm
          cppstd.cppm)

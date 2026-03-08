@@ -65,6 +65,7 @@ struct NonNull {
     using pointer_t       = mut_ptr<T>;
     using const_pointer_t = ptr<T>;
 
+    static_assert(mtp::triv_copy<pointer_t>);
     pointer_t pointer;
 
     USE_TRAIT(NonNull)
@@ -95,6 +96,7 @@ struct NonNull {
     }
 
     static constexpr auto make_unchecked(pointer_t p) noexcept -> NonNull {
+        static_assert(mtp::triv_copy<NonNull>);
         return { .pointer = p };
     }
 

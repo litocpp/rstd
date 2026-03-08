@@ -1,4 +1,4 @@
-export module rstd.basic:meta;
+export module rstd.basic:mtp;
 export import :prelude;
 export import :basic;
 
@@ -28,6 +28,17 @@ concept transparent =
     sizeof(S) == sizeof(T) && alignof(S) == alignof(T) && mtp::is_standard_layout_v<S>;
 
 // custom
+
+template<typename T>
+concept triv = __is_trivial(T);
+template<typename T>
+concept triv_init = __is_trivially_constructible(T);
+template<typename T>
+concept triv_drop = __has_trivial_destructor(T);
+template<typename T>
+concept triv_copy = __is_trivially_copyable(T);
+template<typename T, typename U>
+concept triv_assign = __is_trivially_assignable(T, U);
 
 template<typename T>
 using void_empty_t = conditional_t<is_void_v<T>, empty, T>;
@@ -84,7 +95,7 @@ concept special_of = is_specialization_of<T, Primary>::value;
 template<typename T, typename U>
 using follow_const_t =
     mtp::conditional_t<mtp::is_const_v<T>, mtp::add_const_t<mtp::remove_const_t<U>>,
-                        mtp::remove_const_t<U>>;
+                       mtp::remove_const_t<U>>;
 
 } // namespace rstd::mtp
 

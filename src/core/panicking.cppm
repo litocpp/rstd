@@ -10,11 +10,18 @@ void panic_fmt(ref<str> msg, const source_location loc = source_location::curren
 
 export template<typename... T>
 struct panic {
+#ifdef __clang__
     [[gnu::always_inline]] [[noreturn]]
     inline panic(cppstd::format_string<T...>   fmt, T&&... args,
                  const cppstd::source_location loc = cppstd::source_location::current()) {
         panic_fmt(cppstd::vformat(fmt.get(), cppstd::make_format_args(args...)), loc);
     }
+#else
+    [[noreturn]]
+    inline panic(cppstd::format_string<T...>, T&&...) {
+        __builtin_abort();
+    }
+#endif
 };
 
 template<typename... Ts>

@@ -28,9 +28,18 @@ constexpr auto all(T const& src, u8 val) noexcept -> bool {
     return __builtin_memcmp(addressof(src), dst, sizeof(T)) == 0;
 }
 
-export template<typename T>
+export template<mtp::triv_copy T>
 constexpr void fill(T& src, u8 val) noexcept {
+#ifdef __clang__
     __builtin_memset(addressof(src), val, sizeof(T));
+#else
+    if constexpr (mtp::triv<T>) {
+        __builtin_memset(addressof(src), val, sizeof(T));
+    } else {
+        auto p = reinterpret_cast<u8*>(addressof(src));
+        for (usize i = 0; i < sizeof(T); ++i) p[i] = val;
+    }
+#endif
 }
 
 export template<typename T>
