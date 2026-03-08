@@ -31,7 +31,7 @@ template<typename Tp, typename CharT,
 concept formattable_impl = parsable_with<Tp, Context> && formattable_with<Tp, Context>;
 } // namespace detail
 
-template<typename Tp, typename CharT = char>
+export template<typename Tp, typename CharT = char>
 concept formattable = detail::formattable_impl<mtp::remove_reference_t<Tp>, CharT>;
 
 export struct Display {
