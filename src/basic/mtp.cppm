@@ -34,7 +34,13 @@ concept triv = __is_trivial(T);
 template<typename T>
 concept triv_init = __is_trivially_constructible(T);
 template<typename T>
-concept triv_drop = __has_trivial_destructor(T);
+concept triv_drop =
+#ifdef __clang__
+    __is_trivially_destructible(T);
+#else
+    __has_trivial_destructor(T);
+#endif
+
 template<typename T>
 concept triv_copy = __is_trivially_copyable(T);
 template<typename T, typename U>

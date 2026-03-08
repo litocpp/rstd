@@ -23,11 +23,11 @@ public:
 
     static auto make(lifecycle::JoinInner<T> inner) -> Self { return Self { rstd::move(inner) }; }
 
-    auto thread(this Self const& self) -> Thread { return self.inner.thread(); }
+    auto thread() const -> Thread { return inner.thread(); }
 
-    auto join(this Self&& self) -> Result<ret_t> { return rstd::move(self).inner.join(); }
+    auto join() && -> Result<ret_t> { return rstd::move(*this).inner.join(); }
 
-    auto is_finished(this Self const& self) -> bool { return self.inner.is_finished(); }
+    auto is_finished() const -> bool { return inner.is_finished(); }
 
     friend struct lifecycle::JoinInner<T>;
 };

@@ -37,19 +37,19 @@ export struct Builder {
                  } };
     }
 
-    auto name(this Self self, String name) -> Builder {
-        self.d.name = Some(rstd::move(name));
-        return self;
+    auto name(String name) -> Builder& {
+        d.name = Some(rstd::move(name));
+        return *this;
     }
 
-    auto stack_size(this Self self, usize size) -> Builder {
-        self.d.stack_size = Some(size);
-        return self;
+    auto stack_size(usize size) -> Builder& {
+        d.stack_size = Some(size);
+        return *this;
     }
 
-    auto no_hooks(this Self self) -> Builder {
-        self.d.no_hooks = true;
-        return self;
+    auto no_hooks() -> Builder& {
+        d.no_hooks = true;
+        return *this;
     }
 
     template<typename F>

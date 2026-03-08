@@ -165,7 +165,7 @@ public:
             Arc<Inner>::from_raw(ArcRaw<Inner>::from_raw(p))) };
     }
 
-    auto set_current(this Thread self) -> Result<empty, Thread>;
+    auto set_current() && -> Result<empty, Thread>;
 };
 
 } // namespace thread
@@ -191,7 +191,7 @@ export struct ThreadInit {
     // cppstd::move_only_function<void()> start;
     Box<dyn<FnMut<void()>>> start;
 
-    void init(this ThreadInit const& self);
+    void init() const;
 };
 
 static_assert(mtp::destructible<ThreadInit>);

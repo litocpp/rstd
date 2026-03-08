@@ -33,7 +33,7 @@ struct DropGuard {
     constexpr auto       operator->() noexcept { return as_ptr(); }
     constexpr const auto operator->() const noexcept { return as_ptr(); }
 
-    constexpr auto as_ptr(this Self const& self) noexcept { return self.inner.as_ptr(); }
-    constexpr auto as_mut_ptr(this Self& self) noexcept { return self.inner.as_ptr(); }
+    constexpr auto as_ptr() const noexcept { return inner.as_ptr(); }
+    constexpr auto as_mut_ptr() noexcept { return inner.as_mut_ptr(); }
 };
 } // namespace rstd::mem::drop_guard

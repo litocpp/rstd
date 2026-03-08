@@ -36,7 +36,7 @@ public:
 
     constexpr auto as_ptr() const -> T const* { return d.storage_loc(); }
     constexpr auto as_mut_ptr() -> T* { return d.storage_loc(); }
-    constexpr auto take(this ManuallyDrop self) -> T { return { rstd::move(*self) }; }
+    constexpr auto take() -> T&& { return { rstd::move(**this) }; }
 };
 
 template<typename T>
@@ -80,7 +80,7 @@ public:
 
     constexpr auto as_ptr() const -> T const* { return d.storage_loc(); }
     constexpr auto as_mut_ptr() -> T* { return d.storage_loc(); }
-    constexpr auto take(this ManuallyDrop self) -> T { return { rstd::move(*self) }; }
+    constexpr auto take() -> T && { return { rstd::move(**this) }; }
 };
 
 template<>

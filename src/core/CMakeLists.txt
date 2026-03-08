@@ -6,7 +6,7 @@ project(
 
 add_library(rstd.core)
 add_library(rstd::core ALIAS rstd.core)
-target_compile_features(rstd.core PUBLIC cxx_std_23)
+target_compile_features(rstd.core PUBLIC cxx_std_20)
 target_include_directories(rstd.core PUBLIC include)
 target_link_libraries(rstd.core PUBLIC rstd.basic)
 target_compile_options(

@@ -19,13 +19,13 @@ namespace rstd::thread::lifecycle
 template<typename T>
 struct Packet {
     Option<Arc<ScopeData>> scope;
-    Option<Result<T>>                  result;
+    Option<Result<T>>      result;
 };
 
 template<>
 struct Packet<void> {
     Option<Arc<ScopeData>> scope;
-    Option<Result<empty>>              result;
+    Option<Result<empty>>  result;
 };
 
 template<typename T>
@@ -38,14 +38,14 @@ struct JoinInner {
 
     USE_TRAIT(JoinInner)
 
-    auto is_finished(this Self const& self) -> bool { return self.packet->strong_count() == 1; }
+    auto is_finished() const -> bool { return packet->strong_count() == 1; }
 
-    auto thread(this Self const& self) -> Thread const& { return self.thread_; }
+    auto thread() const -> Thread const& { return thread_; }
 
-    auto join(this Self&& self) -> Result<ret_t> {
-        self.native.join();
+    auto join() && -> Result<ret_t> {
+        native.join();
 
-        return self.packet.get_mut()
+        return packet.get_mut()
             .expect("threads should not terminate unexpectedly")
             ->result.take()
             .unwrap();
@@ -72,7 +72,7 @@ auto spawn_unchecked(Option<String> name, usize stack_size, Option<Arc<ScopeData
     auto my_packet    = packet.assume_init();
     auto their_packet = my_packet.clone();
 
-    auto start = [f = rstd::move(f), p = my_packet.clone()] mutable {
+    auto start = [f = rstd::move(f), p = my_packet.clone()]() mutable {
         if constexpr (mtp::same_as<ret_t, void>) {
             f();
             p->result = Some(Ok<empty, int>(empty {}));
@@ -97,12 +97,12 @@ auto spawn_unchecked(Option<String> name, usize stack_size, Option<Arc<ScopeData
 
 namespace rstd::thread
 {
-void ThreadInit::init(this ThreadInit const& self) {
-    if (set_current(self.handle.clone()).is_err()) {
+void ThreadInit::init() const {
+    if (set_current(handle.clone()).is_err()) {
         panic("current thread handle already set during thread spawn");
     }
 
-    if (auto name = self.handle.cname()) {
+    if (auto name = handle.cname()) {
         imp::Thread::set_name(*name);
     }
 }

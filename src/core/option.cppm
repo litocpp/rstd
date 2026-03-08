@@ -23,7 +23,8 @@ export struct Unknown {
 };
 
 export template<typename U = void, typename T>
-[[gnu::always_inline]] inline constexpr auto Some(T&& val) {
+[[gnu::always_inline]]
+inline constexpr auto Some(T&& val) {
     if constexpr (mtp::same_as<U, void>) {
         using val_t = mtp::remove_reference_t<T>;
         if constexpr (mtp::trivially_value<val_t>) {
@@ -39,7 +40,8 @@ export template<typename U = void, typename T>
 }
 
 export template<typename U = void, typename T = Unknown>
-[[gnu::always_inline]] inline constexpr auto None(T&& = {}) {
+[[gnu::always_inline]]
+inline constexpr auto None(T&& = {}) {
     if constexpr (mtp::same_as<U, void>) {
         if constexpr (mtp::same_as<Unknown, T>) {
             return Unknown();
@@ -64,7 +66,7 @@ struct option_traits<Option<T>> {
     using value_type    = T;
     using ret_value_t   = T;
     using union_value_t = mtp::conditional_t<mtp::is_reference_v<T>,
-                                              mtp::add_pointer_t<mtp::remove_reference_t<T>>, T>;
+                                             mtp::add_pointer_t<mtp::remove_reference_t<T>>, T>;
 };
 
 template<typename T>
@@ -181,17 +183,19 @@ protected:
     }
 
     template<typename U>
-    [[gnu::always_inline]] inline constexpr auto* _ptr_wrapper(this U&& self) noexcept {
+    [[gnu::always_inline]]
+    inline static constexpr auto* _ptr_wrapper(U&& self) noexcept {
         if constexpr (mtp::is_reference_v<T>) {
-            return *self._ptr();
+            return *(self._ptr());
         } else {
             return self._ptr();
         }
     }
 
     template<typename U>
-    [[gnu::always_inline]] inline constexpr auto&& _get(this U&& self) noexcept {
-        auto* ptr = self._ptr_wrapper();
+    [[gnu::always_inline]]
+    inline static constexpr auto&& _get(U&& self) noexcept {
+        auto* ptr = _ptr_wrapper(rstd::forward<U>(self));
 
         using value_t = mtp::remove_reference_t<decltype(*ptr)>;
         if constexpr (mtp::is_lvalue_reference_v<U>)
@@ -200,7 +204,7 @@ protected:
             return static_cast<mtp::add_rvalue_reference_t<value_t>>(*ptr);
     }
 
-    constexpr auto&& _get_move() noexcept { return static_cast<Option<T>&&>(*this)._get(); }
+    constexpr auto&& _get_move() noexcept { return _get(static_cast<Option<T>&&>(*this)); }
 
 public:
     constexpr auto is_none() const noexcept -> bool { return ! this->is_some(); }
@@ -216,7 +220,7 @@ public:
 
     constexpr auto as_ref() const -> Option<mtp::add_lvalue_reference_t<mtp::add_const_t<T>>> {
         if (this->is_some()) {
-            return option::Some(_get());
+            return option::Some(_get(*this));
         } else {
             return option::None();
         }
@@ -281,18 +285,28 @@ public:
 
     constexpr auto take() -> Option<T> { return rstd::exchange(_cast(), option::None()); }
 
-    template<typename U>
     [[nodiscard]]
-    constexpr auto& operator*(this U&& self) noexcept {
-        assert(self.is_some());
-        return rstd::forward<U>(self)._get();
+    constexpr auto& operator*() const noexcept {
+        assert(this->is_some());
+        return _get(*this);
     }
 
-    template<typename U>
     [[nodiscard]]
-    constexpr auto* operator->(this U&& self) noexcept {
-        assert(self.is_some());
-        return rstd::forward<U>(self)._ptr_wrapper();
+    constexpr auto& operator*() noexcept {
+        assert(this->is_some());
+        return _get(*this);
+    }
+
+    [[nodiscard]]
+    constexpr auto* operator->() const noexcept {
+        assert(this->is_some());
+        return _ptr_wrapper(*this);
+    }
+
+    [[nodiscard]]
+    constexpr auto* operator->() noexcept {
+        assert(this->is_some());
+        return _ptr_wrapper(*this);
     }
 
     [[nodiscard]]
@@ -362,6 +376,7 @@ class Option : public detail::option_base<T>, public detail::option_adapter<T> {
 
     using traits        = detail::option_base<T>::traits;
     using union_value_t = detail::option_store<T>::union_value_t;
+    using base_t        = detail::option_base<T>;
 
 public:
     USE_TRAIT(Option)
@@ -381,7 +396,7 @@ public:
         requires mtp::custom_move_constructible<union_value_t>
     {
         if (o.is_some()) {
-            this->_construct_val(rstd::move(o)._get());
+            this->_construct_val(base_t::_get(rstd::move(o)));
         } else {
             this->_assign_none();
         }
@@ -409,7 +424,7 @@ public:
         requires mtp::custom_move_assignable<union_value_t>
     {
         if (v.is_some()) {
-            this->_assign_val(rstd::move(v._get()));
+            this->_assign_val(base_t::_get(rstd::move(v)));
         } else {
             this->_assign_none();
         }
@@ -486,7 +501,7 @@ struct Impl<cmp::PartialEq<option::Option<U>>, Option<A>> : ImplBase<Option<A>> 
     auto eq(const Option<U>& other) const noexcept -> bool {
         auto& self = this->self();
         if (self.is_some())
-            return other.is_some() && (self._get() == other._get());
+            return other.is_some() && (*self == *other);
         else
             return ! other.is_some();
     }

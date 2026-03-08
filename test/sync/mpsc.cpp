@@ -30,7 +30,7 @@ TEST(Mpsc, SyncChannelBasic) {
 
     EXPECT_TRUE(tx.send(1).is_ok());
     EXPECT_TRUE(tx.send(2).is_ok());
-    
+
     // Should block, but we test try_send
     EXPECT_TRUE(tx.try_send(3).is_err());
 
@@ -43,10 +43,10 @@ TEST(Mpsc, SyncChannelBasic) {
 TEST(Mpsc, SyncChannelThreads) {
     auto [tx, rx] = sync_channel<int>(1);
 
-    auto t1 = thread::spawn([tx = rstd::move(tx)] mutable {
-        tx.send(1).unwrap_unchecked();
-        tx.send(2).unwrap_unchecked();
-    }).unwrap_unchecked();
+    auto t1 = thread::spawn([tx = rstd::move(tx)]() mutable {
+                  tx.send(1).unwrap_unchecked();
+                  tx.send(2).unwrap_unchecked();
+              }).unwrap_unchecked();
 
     EXPECT_EQ(rx.recv().unwrap_unchecked(), 1);
     EXPECT_EQ(rx.recv().unwrap_unchecked(), 2);
@@ -64,10 +64,10 @@ TEST(Mpsc, SyncChannelDisconnect) {
 
     EXPECT_EQ(rx.recv().unwrap_unchecked(), 1);
 
-    auto t1 = thread::spawn([tx = rstd::move(tx)] mutable {
-        thread::sleep(cppstd::chrono::duration<double>(0.1));
-        // tx will be dropped after this lambda exits
-    }).unwrap_unchecked();
+    auto t1 = thread::spawn([tx = rstd::move(tx)]() mutable {
+                  thread::sleep(cppstd::chrono::duration<double>(0.1));
+                  // tx will be dropped after this lambda exits
+              }).unwrap_unchecked();
 
     // rx should eventually see disconnect
     EXPECT_TRUE(rx.recv().is_err());
@@ -88,13 +88,13 @@ TEST(Mpsc, UnboundedChannel) {
 TEST(Mpsc, UnboundedChannelThreads) {
     auto [tx, rx] = channel<int>();
 
-    auto t1 = thread::spawn([tx = tx] mutable {
-        tx.send(10).unwrap_unchecked();
-    }).unwrap_unchecked();
+    auto t1 = thread::spawn([tx = tx]() mutable {
+                  tx.send(10).unwrap_unchecked();
+              }).unwrap_unchecked();
 
-    auto t2 = thread::spawn([tx = tx] mutable {
-        tx.send(20).unwrap_unchecked();
-    }).unwrap_unchecked();
+    auto t2 = thread::spawn([tx = tx]() mutable {
+                  tx.send(20).unwrap_unchecked();
+              }).unwrap_unchecked();
 
     auto v1 = rx.recv().unwrap_unchecked();
     auto v2 = rx.recv().unwrap_unchecked();

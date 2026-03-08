@@ -10,7 +10,7 @@ add_subdirectory(thread)
 add_subdirectory(sync)
 
 add_library(rstd.std)
-target_compile_features(rstd.std PUBLIC cxx_std_23)
+target_compile_features(rstd.std PUBLIC cxx_std_20)
 target_link_libraries(rstd.std PUBLIC rstd.core rstd.alloc)
 set_target_properties(rstd.std PROPERTIES OUTPUT_NAME rstd)
 

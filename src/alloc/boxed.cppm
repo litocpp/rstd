@@ -90,8 +90,8 @@ public:
         return Box { NonNull<T>::make_unchecked(raw) };
     }
 
-    constexpr auto into_raw(this Self&& self) noexcept -> mut_ptr<T> {
-        auto b = ManuallyDrop<>::make(rstd::move(self));
+    constexpr auto into_raw() && noexcept -> mut_ptr<T> {
+        auto b = ManuallyDrop<>::make(rstd::move(*this));
         return b->m_ptr.as_mut_ptr();
     }
 

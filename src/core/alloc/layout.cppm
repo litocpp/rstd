@@ -7,6 +7,7 @@ export import :cmp;
 export import :option;
 export import :assert;
 export import :ptr.ptr;
+export import :mem;
 
 namespace rstd::alloc
 {
@@ -45,7 +46,7 @@ export struct Layout {
     }
 
     constexpr auto dangling() const noexcept -> mut_ptr<u8> {
-        return mut_ptr<u8>::from_raw_parts(reinterpret_cast<u8*>(align));
+        return mut_ptr<u8>::from_raw_parts(mem::transmute<u8*>(align));
     }
 };
 

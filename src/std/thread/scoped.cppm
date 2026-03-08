@@ -14,30 +14,30 @@ struct ScopeData {
 
     using Self = ScopeData;
 
-    void increment_num_running_threads(this Self const& self) {
+    void increment_num_running_threads() const {
         // We check for 'overflow' with usize::MAX / 2, to make sure there's no
         // chance it overflows to 0, which would result in unsoundness.
-        if (self.num_running_threads.fetch_add(1, Ordering::Relaxed) >
+        if (num_running_threads.fetch_add(1, Ordering::Relaxed) >
             rstd::numeric_limits<usize>::max() / 2) {
             // This can only reasonably happen by mem::forget()'ing a lot of ScopedJoinHandles.
-            self.overflow();
+            overflow();
         }
     }
 
     [[gnu::cold]]
-    void overflow(this Self const& self) {
-        self.decrement_num_running_threads(false);
+    void overflow() const {
+        decrement_num_running_threads(false);
         panic("too many running threads in thread scope");
     }
 
-    void decrement_num_running_threads(this Self const& self, bool panic) {
+    void decrement_num_running_threads(bool panic) const {
         if (panic) {
-            self.a_thread_panicked.store(true, Ordering::Relaxed);
+            a_thread_panicked.store(true, Ordering::Relaxed);
         }
-        if (self.num_running_threads.fetch_sub(1, Ordering::Release) == 1) {
-            self.main_thread.unpark();
+        if (num_running_threads.fetch_sub(1, Ordering::Release) == 1) {
+            main_thread.unpark();
         }
     }
 };
 
-} // namespace rstd::thread::scpoed
+} // namespace rstd::thread::scoped

@@ -192,8 +192,8 @@ export struct ErrorKind {
 
     using Self = ErrorKind;
 
-    auto as_str(this Self const& self) -> ref<str> {
-        switch (self.code) {
+    auto as_str() const -> ref<str> {
+        switch (code) {
         case AddrInUse: return "address in use";
         case AddrNotAvailable: return "address not available";
         case AlreadyExists: return "entity already exists";
@@ -261,8 +261,7 @@ using Result = result::Result<T, error::Error>;
 }
 
 template<>
-struct rstd::fmt::formatter<rstd::io::error::Error>
-    : rstd::fmt::formatter<cppstd::string_view> {
+struct rstd::fmt::formatter<rstd::io::error::Error> : rstd::fmt::formatter<cppstd::string_view> {
     template<class FmtContext>
     FmtContext::iterator format(rstd::io::error::Error const& err, FmtContext& ctx) const {
         return rstd::fmt::formatter<cppstd::string_view>::format("", ctx);

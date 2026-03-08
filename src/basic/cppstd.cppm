@@ -158,7 +158,6 @@ using std::formatter;
 using std::make_format_args;
 using std::vformat;
 using std::vformat_to;
-using std::formattable;
 
 // string
 using std::basic_string;
@@ -184,7 +183,9 @@ using std::iter_value_t;
 
 // function
 using std::function;
+#if __has_cpp_attribute(__cpp_lib_move_only_function)
 using std::move_only_function;
+#endif
 
 // future
 using std::future;

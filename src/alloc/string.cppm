@@ -19,14 +19,14 @@ export class String {
 
 public:
     USE_TRAIT(String)
-    constexpr String()                           = default;
-    constexpr String(Self&&) noexcept            = default;
-    constexpr String& operator=(Self&&) noexcept = default;
+    constexpr String()                 = default;
+    constexpr String(Self&&) noexcept  = default;
+    String& operator=(Self&&) noexcept = default;
 
     using value_type = u8;
 
-    constexpr static auto make() -> String { return {}; }
-    static auto           from_utf8_unchecked(Vec<u8>&& bytes) -> String {
+    static auto make() -> String { return {}; }
+    static auto from_utf8_unchecked(Vec<u8>&& bytes) -> String {
         return String { rstd::move(bytes) };
     }
 
