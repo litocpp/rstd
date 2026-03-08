@@ -183,7 +183,7 @@ using std::iter_value_t;
 
 // function
 using std::function;
-#if __has_cpp_attribute(__cpp_lib_move_only_function)
+#ifdef __cpp_lib_move_only_function
 using std::move_only_function;
 #endif
 
