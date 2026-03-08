@@ -33,7 +33,7 @@ auto from_raw_parts_override(U* self, P ptr) noexcept -> T {
 export template<typename Self, typename T, bool Mutable>
 struct ref_base {
     /// we only process T[] for value_type
-    using value_type = mtp::conditional_t<Mutable, mtp::remove_extent_t<T>,
+    using value_type = mtp::cond<Mutable, mtp::remove_extent_t<T>,
                                            mtp::add_const_t<mtp::remove_extent_t<T>>>;
 
     constexpr value_type* operator->() const noexcept { return static_cast<Self const*>(this)->p; }
@@ -114,7 +114,7 @@ struct ref_base {
 export template<typename Self, typename T, bool Mutable>
 struct ptr_base {
     /// we only process T[] for value_type
-    using value_type = mtp::conditional_t<Mutable, mtp::remove_extent_t<T>,
+    using value_type = mtp::cond<Mutable, mtp::remove_extent_t<T>,
                                            mtp::add_const_t<mtp::remove_extent_t<T>>>;
 
     constexpr value_type* operator->() const noexcept { return static_cast<Self const*>(this)->p; }

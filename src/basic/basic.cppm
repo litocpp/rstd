@@ -52,7 +52,7 @@ inline void unreachable() {
 }
 
 export template<typename T>
-void swap(T& a, T& b) noexcept(mtp::is_nothrow_copy_constructible_v<T>) {
+void swap(T& a, T& b) noexcept(cppstd::is_nothrow_copy_constructible_v<T>) {
     T t(a);
     a = b;
     b = t;

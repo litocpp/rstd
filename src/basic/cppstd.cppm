@@ -345,15 +345,7 @@ using std::views::transform;
 
 } // namespace cppstd
 
-export namespace rstd
-{
-
-using ::stderr;
-using ::stdout;
-
-} // namespace rstd
-
-export namespace rstd::mtp
+export namespace cppstd
 {
 
 using std::false_type;
@@ -499,5 +491,155 @@ using std::decay;
 using std::decay_t;
 
 using std::declval;
+
+} // namespace cppstd
+
+export namespace rstd
+{
+
+using ::stderr;
+using ::stdout;
+
+} // namespace rstd
+
+export namespace rstd::mtp
+{
+
+using cppstd::false_type;
+using cppstd::integral_constant;
+using cppstd::true_type;
+
+template<bool v>
+using bool_constant = integral_constant<bool, v>;
+
+using cppstd::conjunction_v;
+using cppstd::disjunction_v;
+using cppstd::negation_v;
+
+using cppstd::same_as;
+
+using cppstd::underlying_type;
+using cppstd::underlying_type_t;
+
+using cppstd::is_aggregate;
+using cppstd::is_aggregate_v;
+using cppstd::is_arithmetic;
+using cppstd::is_arithmetic_v;
+using cppstd::is_array;
+using cppstd::is_array_v;
+using cppstd::is_base_of;
+using cppstd::is_base_of_v;
+using cppstd::is_class;
+using cppstd::is_class_v;
+using cppstd::is_enum;
+using cppstd::is_enum_v;
+using cppstd::is_floating_point;
+using cppstd::is_floating_point_v;
+using cppstd::is_integral;
+using cppstd::is_integral_v;
+using cppstd::is_lvalue_reference;
+using cppstd::is_lvalue_reference_v;
+using cppstd::is_pointer;
+using cppstd::is_pointer_v;
+using cppstd::is_reference;
+using cppstd::is_reference_v;
+using cppstd::is_rvalue_reference;
+using cppstd::is_rvalue_reference_v;
+using cppstd::is_union;
+using cppstd::is_union_v;
+
+using cppstd::add_const;
+using cppstd::add_const_t;
+
+using cppstd::add_pointer;
+using cppstd::add_pointer_t;
+
+using cppstd::add_lvalue_reference;
+using cppstd::add_lvalue_reference_t;
+using cppstd::add_rvalue_reference;
+using cppstd::add_rvalue_reference_t;
+
+using cppstd::remove_reference;
+using cppstd::remove_reference_t;
+
+using cppstd::remove_cv;
+using cppstd::remove_cv_t;
+
+using cppstd::constructible_from;
+using cppstd::destructible;
+using cppstd::is_const;
+using cppstd::is_const_v;
+using cppstd::is_constructible_v;
+using cppstd::is_default_constructible_v;
+using cppstd::is_nothrow_constructible;
+using cppstd::is_nothrow_constructible_v;
+using cppstd::is_nothrow_destructible;
+using cppstd::is_nothrow_destructible_v;
+
+// copy
+using cppstd::is_copy_constructible;
+using cppstd::is_copy_constructible_v;
+using cppstd::is_nothrow_copy_constructible;
+using cppstd::is_nothrow_copy_constructible_v;
+using cppstd::is_trivially_copy_constructible;
+using cppstd::is_trivially_copy_constructible_v;
+using cppstd::is_trivially_copyable;
+using cppstd::is_trivially_copyable_v;
+
+// move
+using cppstd::is_move_constructible;
+using cppstd::is_move_constructible_v;
+using cppstd::is_nothrow_move_constructible;
+using cppstd::is_nothrow_move_constructible_v;
+using cppstd::is_trivially_move_constructible;
+using cppstd::is_trivially_move_constructible_v;
+
+using cppstd::is_copy_assignable;
+using cppstd::is_copy_assignable_v;
+using cppstd::is_nothrow_copy_assignable;
+using cppstd::is_nothrow_copy_assignable_v;
+using cppstd::is_trivially_copy_assignable;
+using cppstd::is_trivially_copy_assignable_v;
+
+using cppstd::is_move_assignable;
+using cppstd::is_move_assignable_v;
+using cppstd::is_nothrow_move_assignable;
+using cppstd::is_nothrow_move_assignable_v;
+using cppstd::is_trivially_move_assignable;
+using cppstd::is_trivially_move_assignable_v;
+
+using cppstd::is_nothrow_assignable;
+using cppstd::is_nothrow_assignable_v;
+
+using cppstd::is_convertible_v;
+using cppstd::is_invocable;
+using cppstd::is_invocable_v;
+
+using cppstd::remove_const_t;
+using cppstd::remove_cvref;
+using cppstd::remove_cvref_t;
+using cppstd::remove_extent_t;
+using cppstd::remove_pointer_t;
+
+using cppstd::integral;
+using cppstd::is_void;
+using cppstd::is_void_v;
+
+using cppstd::invoke_result;
+using cppstd::invoke_result_t;
+using cppstd::is_nothrow_default_constructible_v;
+using cppstd::is_trivially_destructible_v;
+using cppstd::semiregular;
+using cppstd::type_identity;
+using cppstd::type_identity_t;
+
+using cppstd::alignment_of_v;
+using cppstd::default_delete;
+using cppstd::is_standard_layout_v;
+
+using cppstd::decay;
+using cppstd::decay_t;
+
+using cppstd::declval;
 
 } // namespace rstd::mtp

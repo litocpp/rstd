@@ -65,7 +65,7 @@ template<typename T>
 struct option_traits<Option<T>> {
     using value_type    = T;
     using ret_value_t   = T;
-    using union_value_t = mtp::conditional_t<mtp::is_reference_v<T>,
+    using union_value_t = mtp::cond<mtp::is_reference_v<T>,
                                              mtp::add_pointer_t<mtp::remove_reference_t<T>>, T>;
 };
 

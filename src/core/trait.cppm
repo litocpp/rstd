@@ -303,7 +303,7 @@ struct WithTrait : Traits::template Api<Self>... {
 
 export template<typename Self, typename... Traits>
 struct MayWithTrait
-    : mtp::conditional_t<Impled<Traits, Self>, typename Traits::template Api<Self>, empty>... {
+    : mtp::cond<Impled<Traits, Self>, typename Traits::template Api<Self>, empty>... {
     constexpr bool operator==(const MayWithTrait) const { return true; }
 };
 

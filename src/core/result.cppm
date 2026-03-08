@@ -46,9 +46,9 @@ struct result_traits<Result<T, E>> {
     using ret_error_t = E;
 
     using union_value_t =
-        mtp::conditional_t<mtp::is_reference_v<T>,
+        mtp::cond<mtp::is_reference_v<T>,
                             mtp::add_pointer_t<mtp::remove_reference_t<T>>, mtp::remove_cv_t<T>>;
-    using union_error_t = mtp::conditional_t<mtp::is_reference_v<E>,
+    using union_error_t = mtp::cond<mtp::is_reference_v<E>,
                                               mtp::add_pointer_t<mtp::remove_reference_t<E>>, E>;
 };
 
@@ -423,8 +423,8 @@ public:
 
     template<typename U  = void, typename F,
              typename U2 = typename mtp::invoke_result_t<F, T>::value_type>
-    // requires ImpledT<FnOnce<F, Result<mtp::conditional_t<mtp::is_void_v<U>, U2, U>, E>(T)>>
-    auto and_then(F&& op) -> Result<mtp::conditional_t<mtp::is_void_v<U>, U2, U>, E> {
+    // requires ImpledT<FnOnce<F, Result<mtp::cond<mtp::is_void_v<U>, U2, U>, E>(T)>>
+    auto and_then(F&& op) -> Result<mtp::cond<mtp::is_void_v<U>, U2, U>, E> {
         if (is_ok()) {
             return rstd::move(op)(_get_move<0>());
         } else {

@@ -43,7 +43,7 @@ struct VTableStaticStorage {
     using vtable_t = VTable<T>;
     using impl_t   = Impl<T, U>;
     using ApiHelper =
-        mtp::TraitApiHelper<T, mtp::conditional_t<mtp::is_direct_trait<T>, U, impl_t>>;
+        mtp::TraitApiHelper<T, mtp::cond<mtp::is_direct_trait<T>, U, impl_t>>;
     using apis_t = vtable_t::apis_t;
 
     template<usize I, typename Fn>
@@ -221,13 +221,13 @@ struct dyn {
 
     template<typename T>
     static constexpr auto from_ptr(T* in) noexcept {
-        using ptr_t = mtp::conditional_t<mtp::is_const_v<T>, ptr<dyn>, mut_ptr<dyn>>;
+        using ptr_t = mtp::cond<mtp::is_const_v<T>, ptr<dyn>, mut_ptr<dyn>>;
         return ptr_t { { { ptr_t::delegate_t::from_raw_ptr(in) } } };
     }
 
     template<typename T>
     static constexpr auto from_ref(T& in) noexcept {
-        using ref_t = mtp::conditional_t<mtp::is_const_v<T>, ref<dyn>, mut_ref<dyn>>;
+        using ref_t = mtp::cond<mtp::is_const_v<T>, ref<dyn>, mut_ref<dyn>>;
         return ref_t { { { ref_t::delegate_t::from_raw_ptr(rstd::addressof(in)) } } };
     }
 };

@@ -15,24 +15,30 @@ struct func_traits {
 
 template<typename From, typename To>
 concept convertible_to =
-    is_convertible_v<From, To> && requires { static_cast<To>(mtp::declval<From>()); };
+    cppstd::is_convertible_v<From, To> && requires { static_cast<To>(cppstd::declval<From>()); };
 
 template<typename T, typename U>
 concept equalable = requires(const T& a, const U& b) {
-    { a == b } -> mtp::convertible_to<bool>;
-    { a != b } -> mtp::convertible_to<bool>;
+    { a == b } -> convertible_to<bool>;
+    { a != b } -> convertible_to<bool>;
 };
 
 template<typename S, typename T>
 concept transparent =
-    sizeof(S) == sizeof(T) && alignof(S) == alignof(T) && mtp::is_standard_layout_v<S>;
+    sizeof(S) == sizeof(T) && alignof(S) == alignof(T) && cppstd::is_standard_layout_v<S>;
 
-// custom
+/// \name Trivial
+/// @{
 
+/// Is trivial
 template<typename T>
 concept triv = __is_trivial(T);
+
+/// Is trivially constructible
 template<typename T>
 concept triv_init = __is_trivially_constructible(T);
+
+/// Is trivially destructible
 template<typename T>
 concept triv_drop =
 #ifdef __clang__
@@ -41,13 +47,29 @@ concept triv_drop =
     __has_trivial_destructor(T);
 #endif
 
+/// Is trivially copyable
 template<typename T>
 concept triv_copy = __is_trivially_copyable(T);
+/// Is trivially assignable
 template<typename T, typename U>
 concept triv_assign = __is_trivially_assignable(T, U);
+/// @}
+
+/// \name Access
+/// @{
+template<typename T>
+using underlying = __underlying_type(T);
+/// @}
+
+/// \name Logic
+/// @{
+/// Is trivially assignable
+template<bool Cond, typename Iftrue, typename Iffalse>
+using cond = cppstd::conditional_t<Cond, Iftrue, Iffalse>;
+/// @}
 
 template<typename T>
-using void_empty_t = conditional_t<is_void_v<T>, empty, T>;
+using void_empty_t = cond<is_void_v<T>, empty, T>;
 
 template<typename T, typename... Args>
 concept nothrow_constructible = is_nothrow_constructible_v<T, Args...>;
@@ -100,8 +122,7 @@ concept special_of = is_specialization_of<T, Primary>::value;
 
 template<typename T, typename U>
 using follow_const_t =
-    mtp::conditional_t<mtp::is_const_v<T>, mtp::add_const_t<mtp::remove_const_t<U>>,
-                       mtp::remove_const_t<U>>;
+    mtp::cond<mtp::is_const_v<T>, mtp::add_const_t<mtp::remove_const_t<U>>, mtp::remove_const_t<U>>;
 
 } // namespace rstd::mtp
 
@@ -112,7 +133,7 @@ template<typename T, typename Ret, typename... Args, bool Ne>
 struct func_traits<Ret (*)(T, Args...) noexcept(Ne)> {
     static constexpr bool is_member = false;
 
-    using primary = mtp::conditional_t<mtp::is_pointer_v<T>, void, T>;
+    using primary = mtp::cond<mtp::is_pointer_v<T>, void, T>;
 
     using to_dyn = Ret (*)(voidp, Args...) noexcept(Ne);
 };

@@ -6,9 +6,9 @@ namespace rstd
 {
 
 export template<typename T>
-using param_t = mtp::conditional_t<mtp::is_trivially_copy_constructible_v<T>, T, T&&>;
+using param_t = mtp::cond<mtp::is_trivially_copy_constructible_v<T>, T, T&&>;
 export template<typename T>
-using param_ref_t = mtp::conditional_t<mtp::is_trivially_copy_constructible_v<T>, T, T&>;
+using param_ref_t = mtp::cond<mtp::is_trivially_copy_constructible_v<T>, T, T&>;
 
 export template<typename T>
 [[nodiscard, gnu::always_inline]] inline param_t<T> param_forward(param_ref_t<T> t) {
