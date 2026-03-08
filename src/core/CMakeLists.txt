@@ -4,7 +4,7 @@ project(
   VERSION 0.1.0
   LANGUAGES CXX)
 
-add_library(rstd.core)
+add_library(rstd.core STATIC)
 add_library(rstd::core ALIAS rstd.core)
 target_compile_features(rstd.core PUBLIC cxx_std_20)
 target_include_directories(rstd.core PUBLIC include)

@@ -14,9 +14,9 @@ extern "C" {
 
 void* __rstd_alloc(usize size, usize align) {
     if (align != __STDCPP_DEFAULT_NEW_ALIGNMENT__) {
-        return ::operator new(size, std::align_val_t { align }, std::nothrow);
+        return ::operator new(size, std::align_val_t { align }, std::nothrow_t {});
     } else {
-        return ::operator new(size, std::nothrow);
+        return ::operator new(size, std::nothrow_t {});
     }
 }
 

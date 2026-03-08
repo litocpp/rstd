@@ -1,4 +1,4 @@
-add_library(rstd.alloc)
+add_library(rstd.alloc STATIC)
 target_compile_features(rstd.alloc PUBLIC cxx_std_20)
 target_link_libraries(rstd.alloc PUBLIC rstd.core)
 target_sources(
