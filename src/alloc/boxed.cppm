@@ -11,7 +11,6 @@ using rstd::alloc::Layout;
 using rstd::mem::manually_drop::ManuallyDrop;
 using rstd::pin::Pin;
 using rstd::ptr_::non_null::NonNull;
-using rstd::ptr_::unique::Unique;
 namespace mtp = rstd::mtp;
 using namespace rstd::prelude;
 
@@ -20,9 +19,9 @@ namespace alloc::boxed
 
 export template<typename T>
 class Box {
-    Unique<T> m_ptr;
+    NonNull<T> m_ptr;
 
-    Box(Unique<T>&& ptr) noexcept: m_ptr(rstd::move(ptr)) {}
+    constexpr explicit Box(NonNull<T> ptr) noexcept: m_ptr(ptr) {}
 
 public:
     USE_TRAIT(Box)
@@ -42,11 +41,15 @@ public:
         *this = source.clone();
     }
 
-    Box(Box&& o) noexcept: m_ptr(rstd::move(o.m_ptr)) {}
+    constexpr Box(Box&& o) noexcept: m_ptr(o.m_ptr) { rstd::mem::fill(o.m_ptr, 0); }
     Box& operator=(Box&& o) noexcept {
         if (this != &o) {
+            // clean
             reset();
-            m_ptr = rstd::move(o.m_ptr);
+            // assign
+            m_ptr = o.m_ptr;
+            // move
+            rstd::mem::fill(o.m_ptr, 0);
         }
         return *this;
     }
@@ -83,27 +86,25 @@ public:
         return Pin<Box>::make_unchecked(make(rstd::forward<T>(in)));
     }
 
-    static Box from_raw(mut_ptr<T> raw) noexcept { return { Unique<T>::make_unchecked(raw) }; }
+    constexpr static Box from_raw(mut_ptr<T> raw) noexcept {
+        return Box { NonNull<T>::make_unchecked(raw) };
+    }
 
-    auto into_raw(this Self&& self) noexcept -> mut_ptr<T> {
+    constexpr auto into_raw(this Self&& self) noexcept -> mut_ptr<T> {
         auto b = ManuallyDrop<>::make(rstd::move(self));
         return b->m_ptr.as_mut_ptr();
     }
 
-    auto get() noexcept -> mut_ptr<T>::value_type* {
-        if (m_ptr) {
-            return m_ptr.as_mut_ptr().as_raw_ptr();
-        } else {
-            return nullptr;
-        }
+    constexpr auto get() noexcept -> mut_ptr<T>::value_type* {
+        return m_ptr.as_mut_ptr().as_raw_ptr();
     }
 
     constexpr auto     operator->() noexcept { return m_ptr.as_mut_ptr(); }
     constexpr auto     operator->() const noexcept { return m_ptr.as_ptr(); }
-    explicit constexpr operator bool() const noexcept { return m_ptr != nullptr; }
+    explicit constexpr operator bool() const noexcept { return ! rstd::mem::all(m_ptr, 0); }
 
     void reset() noexcept {
-        if (m_ptr != nullptr) {
+        if (! rstd::mem::all(m_ptr, 0)) {
             auto mptr         = m_ptr.as_mut_ptr();
             auto raw_non_null = NonNull<u8>::make_unchecked(
                 mut_ptr<u8>::from_raw_parts(reinterpret_cast<u8*>(mptr.as_raw_ptr())));
@@ -126,14 +127,14 @@ public:
                 layout = Some(Layout::make<T>());
             }
             GLOBAL.deallocate(raw_non_null, layout.unwrap());
-            m_ptr.reset();
+            rstd::mem::fill(m_ptr, 0);
         }
     }
 
-    auto as_ref() const noexcept -> ref<T> { return m_ptr.as_ptr().as_ref(); }
+    constexpr auto as_ref() const noexcept -> ref<T> { return m_ptr.as_ptr().as_ref(); }
 
-    auto as_ptr() const noexcept -> ptr<T> { return m_ptr.as_ptr(); }
-    auto as_mut_ptr() const noexcept -> mut_ptr<T> { return m_ptr.as_mut_ptr(); }
+    constexpr auto as_ptr() const noexcept -> ptr<T> { return m_ptr.as_ptr(); }
+    constexpr auto as_mut_ptr() const noexcept -> mut_ptr<T> { return m_ptr.as_mut_ptr(); }
 
     auto clone() -> Self
         requires mtp::is_array_v<T>

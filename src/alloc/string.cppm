@@ -13,9 +13,9 @@ namespace alloc::string
 {
 
 export class String {
-    ::alloc::vec::Vec<u8> vec;
+    Vec<u8> vec;
 
-    constexpr String(::alloc::vec::Vec<u8>&& p): vec(rstd::move(p)) {}
+    constexpr String(Vec<u8>&& p): vec(rstd::move(p)) {}
 
 public:
     USE_TRAIT(String)
@@ -26,7 +26,7 @@ public:
     using value_type = u8;
 
     constexpr static auto make() -> String { return {}; }
-    static auto           from_utf8_unchecked(::alloc::vec::Vec<u8>&& bytes) -> String {
+    static auto           from_utf8_unchecked(Vec<u8>&& bytes) -> String {
         return String { rstd::move(bytes) };
     }
 
@@ -74,28 +74,30 @@ export struct ToString {
 
 } // namespace alloc::string
 
+using ::alloc::string::String;
+using ::alloc::string::ToString;
+
 namespace rstd
 {
 
-template<mtp::same_as<::alloc::string::ToString> T, Impled<fmt::Display> A>
+template<mtp::same_as<ToString> T, Impled<fmt::Display> A>
 struct Impl<T, A> : ImplBase<A> {
-    auto to_string() const -> ::alloc::string::String {
-        auto out = ::alloc::string::String::make();
+    auto to_string() const -> String {
+        auto out = String::make();
         fmt::format_to(cppstd::back_inserter(out), "{}", this->self());
         return out;
     }
 };
 
-template<mtp::same_as<cmp::PartialEq<::alloc::string::String>> T,
-         mtp::same_as<::alloc::string::String>                 A>
+template<mtp::same_as<cmp::PartialEq<String>> T, mtp::same_as<String> A>
 struct Impl<T, A> : ImplBase<default_tag<A>> {
-    auto eq(const ::alloc::string::String& other) const noexcept -> bool {
+    auto eq(const String& other) const noexcept -> bool {
         return this->self().size() == other.size() &&
                rstd::memcmp(this->self().begin(), other.begin(), this->self().size()) == 0;
     }
 };
 
-template<mtp::same_as<cmp::PartialEq<char const*>> T, mtp::same_as<::alloc::string::String> A>
+template<mtp::same_as<cmp::PartialEq<char const*>> T, mtp::same_as<String> A>
 struct Impl<T, A> : ImplBase<default_tag<A>> {
     using Rhs = char const*;
     auto eq(const Rhs& other) const noexcept -> bool {
@@ -106,30 +108,29 @@ struct Impl<T, A> : ImplBase<default_tag<A>> {
     }
 };
 
-template<mtp::same_as<Into<::alloc::vec::Vec<u8>>> T,
-         mtp::same_as<::alloc::string::String>              A>
+template<mtp::same_as<Into<Vec<u8>>> T, mtp::same_as<String> A>
 struct Impl<T, A> : ImplBase<A> {
-    auto into() -> ::alloc::vec::Vec<u8> {
+    auto into() -> Vec<u8> {
         auto& a = this->self();
         return rstd::move(a.vec);
     }
 };
 
-export template<Impled<::alloc::string::ToString> A>
+export template<Impled<ToString> A>
 auto to_string(A&& a) {
-    return as<::alloc::string::ToString>(a).to_string();
+    return as<ToString>(a).to_string();
 }
 
 namespace fmt
 {
 
-export auto vformat(ref<str> fmt, fmt::format_args args) -> ::alloc::string::String {
-    auto buf = ::alloc::string::String::make();
+export auto vformat(ref<str> fmt, fmt::format_args args) -> String {
+    auto buf = String::make();
     fmt::vformat_to(cppstd::back_inserter(buf), { (char const*)fmt.data(), fmt.size() }, args);
     return buf;
 }
 export template<typename... Args>
-auto format(fmt::format_string<Args...> fmt, Args&&... args) -> ::alloc::string::String {
+auto format(fmt::format_string<Args...> fmt, Args&&... args) -> String {
     return fmt::vformat(fmt.get(), fmt::make_format_args(args...));
 }
 
@@ -141,9 +142,9 @@ export using fmt::vformat;
 } // namespace rstd
 
 template<>
-struct rstd::fmt::formatter<::alloc::string::String> : rstd::fmt::formatter<rstd::ref<rstd::str>> {
+struct rstd::fmt::formatter<String> : rstd::fmt::formatter<rstd::ref<rstd::str>> {
     template<typename FmtContext>
-    auto format(const ::alloc::string::String& str, FmtContext& ctx) const -> FmtContext::iterator {
+    auto format(const String& str, FmtContext& ctx) const -> FmtContext::iterator {
         return rstd::fmt::formatter<rstd::ref<rstd::str>>::format(str, ctx);
     }
 };

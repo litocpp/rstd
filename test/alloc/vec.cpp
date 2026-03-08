@@ -1,10 +1,11 @@
 #include <gtest/gtest.h>
 import rstd;
 
-using namespace rstd;
+using namespace rstd::prelude;
+using rstd::vec::Vec;
 
 TEST(Vec, BasicPushPop) {
-    rstd::Vec<int> v;
+    Vec<int> v;
     EXPECT_EQ(v.len(), 0);
     EXPECT_TRUE(v.is_empty());
 
@@ -23,7 +24,7 @@ TEST(Vec, BasicPushPop) {
 }
 
 TEST(Vec, Growth) {
-    rstd::Vec<int> v = rstd::Vec<int>::with_capacity(2);
+    Vec<int> v = Vec<int>::with_capacity(2);
     EXPECT_EQ(v.capacity(), 2);
 
     v.push(1);
@@ -40,7 +41,7 @@ TEST(Vec, Growth) {
 }
 
 TEST(Vec, Indexing) {
-    rstd::Vec<int> v;
+    Vec<int> v;
     v.push(10);
     v.push(20);
 
@@ -54,8 +55,8 @@ TEST(Vec, Indexing) {
 TEST(Vec, Destructor) {
     static int drop_count = 0;
     struct Dropper {
-        Dropper() = default;
-        Dropper(const Dropper&) = delete;
+        Dropper()                          = default;
+        Dropper(const Dropper&)            = delete;
         Dropper& operator=(const Dropper&) = delete;
         Dropper(Dropper&&) noexcept {}
         Dropper& operator=(Dropper&&) noexcept { return *this; }
@@ -64,9 +65,9 @@ TEST(Vec, Destructor) {
 
     drop_count = 0;
     {
-        rstd::Vec<Dropper> v;
-        v.push(Dropper{});
-        v.push(Dropper{});
+        Vec<Dropper> v;
+        v.push(Dropper {});
+        v.push(Dropper {});
     }
     // Each push involves a temporary and a move.
     // 2 (temporaries) + 2 (in vec) = 4 drops.
@@ -74,10 +75,10 @@ TEST(Vec, Destructor) {
 }
 
 TEST(Vec, IntoBoxedSlice) {
-    rstd::Vec<int> v;
+    Vec<int> v;
     v.push(1);
     v.push(2);
-    
+
     auto b = v.into_boxed_slice();
     EXPECT_EQ(v.len(), 0);
     // Box<T[]> should have metadata for length
@@ -87,7 +88,7 @@ TEST(Vec, IntoBoxedSlice) {
 }
 
 TEST(Vec, Remove) {
-    rstd::Vec<int> v;
+    Vec<int> v;
     v.push(1);
     v.push(2);
     v.push(3);

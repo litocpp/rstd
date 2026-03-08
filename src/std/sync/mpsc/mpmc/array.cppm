@@ -7,12 +7,13 @@ export import :sync.mpsc.mpmc.utils;
 export import :sync.mpsc.mpmc.waker;
 export import rstd.core;
 import :forward;
+import rstd.alloc;
 
-using rstd_alloc::boxed::Box;
 using rstd::mem::maybe_uninit::MaybeUninit;
 using rstd::sync::atomic::Atomic;
-using rstd::sync::atomic::Ordering;
 using rstd::sync::atomic::fence;
+using rstd::sync::atomic::Ordering;
+using rstd_alloc::boxed::Box;
 
 namespace rstd::sync::mpsc::mpmc
 {
@@ -30,8 +31,8 @@ export struct Token {
 
 template<typename T>
 struct Slot {
-    Atomic<usize>    stamp;
-    MaybeUninit<T>   msg;
+    Atomic<usize>  stamp;
+    MaybeUninit<T> msg;
 };
 
 export template<typename T>
@@ -51,13 +52,20 @@ struct Channel {
         usize mark_bit = cppstd::bit_ceil(cap + 1);
         usize one_lap  = mark_bit * 2;
 
-        auto* raw_slots = new Slot<T>[cap];
+        auto slots_storage = ::alloc::GLOBAL.allocate(alloc::Layout::array<Slot<T>>(cap).unwrap())
+                                 .unwrap()
+                                 .as_raw_ptr();
+
+        auto* raw_slots = new (slots_storage) Slot<T>[cap];
         for (usize i = 0; i < cap; ++i) {
             raw_slots[i].stamp.store(i, Ordering::Relaxed);
         }
         auto buffer = Box<Slot<T>[]>::from_raw(mut_ptr<Slot<T>[]>::from_raw_parts(raw_slots, cap));
 
-        auto* raw_chan = new Channel {
+        auto storage =
+            ::alloc::GLOBAL.allocate(alloc::Layout::make<Channel>()).unwrap().as_raw_ptr();
+
+        auto* raw_chan = new (storage) Channel {
             .head      = {},
             .tail      = {},
             .buffer    = rstd::move(buffer),
@@ -69,7 +77,7 @@ struct Channel {
         };
         raw_chan->head->store(0, Ordering::Relaxed);
         raw_chan->tail->store(0, Ordering::Relaxed);
-        
+
         return Box<Channel>::from_raw(mut_ptr<Channel>::from_raw_parts(raw_chan));
     }
 
@@ -215,7 +223,7 @@ struct Channel {
         if (start_recv(token)) {
             return read(token);
         }
-        return Err(empty{});
+        return Err(empty {});
     }
 
     void disconnect() {
@@ -233,9 +241,9 @@ struct Channel {
 
             while (h != t) {
                 usize index = h & (mark_bit - 1);
-                auto& slot = buffer.as_mut_ptr()[index];
+                auto& slot  = buffer.as_mut_ptr()[index];
                 slot.msg.assume_init_drop();
-                
+
                 if (index + 1 < cap) {
                     h += 1;
                 } else {
@@ -246,8 +254,13 @@ struct Channel {
     }
 
     bool is_disconnected() const { return (tail->load(Ordering::SeqCst) & mark_bit) != 0; }
-    bool is_empty() const { return (head->load(Ordering::SeqCst) == (tail->load(Ordering::SeqCst) & ~mark_bit)); }
-    bool is_full() const { return (head->load(Ordering::SeqCst) + one_lap == (tail->load(Ordering::SeqCst) & ~mark_bit)); }
+    bool is_empty() const {
+        return (head->load(Ordering::SeqCst) == (tail->load(Ordering::SeqCst) & ~mark_bit));
+    }
+    bool is_full() const {
+        return (head->load(Ordering::SeqCst) + one_lap ==
+                (tail->load(Ordering::SeqCst) & ~mark_bit));
+    }
     usize len() const {
         usize h = head->load(Ordering::SeqCst);
         usize t = tail->load(Ordering::SeqCst) & ~mark_bit;

@@ -68,7 +68,6 @@ target_sources(
          str/traits.cppm
          ptr/mod.cppm
          ptr/non_null.cppm
-         ptr/unique.cppm
          ptr/dyn.cppm
          ptr/metadata.cppm
          ptr/ptr.cppm

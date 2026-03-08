@@ -19,7 +19,6 @@ export using cppstd::max;
 export using cppstd::min;
 export using cppstd::get;
 export using cppstd::get_if;
-export using cppstd::addressof;
 export using cppstd::construct_at;
 export using cppstd::launder;
 export using cppstd::copy;
@@ -40,7 +39,8 @@ export using cppstd::default_delete;
 
 export using cppstd::declval;
 
-export [[noreturn]] inline void unreachable() {
+export [[noreturn]]
+inline void unreachable() {
     // Uses compiler specific extensions if possible.
     // Even if no extension is used, undefined behavior is still raised by
     // an empty function body and the noreturn attribute.
@@ -58,5 +58,10 @@ void swap(T& a, T& b) noexcept(mtp::is_nothrow_copy_constructible_v<T>) {
     b = t;
 }
 
+export template<typename T>
+[[gnu::always_inline]]
+constexpr auto addressof(T& val) noexcept -> T* {
+    return __builtin_addressof(val);
+}
 
 } // namespace rstd
