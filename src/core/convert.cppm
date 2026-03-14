@@ -53,21 +53,21 @@ struct AsMut {
 
 export template<typename T, typename F>
 auto into(F&& val) -> T {
-    return Impl<Into<T>, mtp::remove_reference_t<F>>::into(val);
+    return Impl<Into<T>, mtp::rm_ref<F>>::into(val);
 }
 
 template<typename T>
 struct IntoWrapper {
     T&& self;
     template<typename U>
-        requires Impled<T, convert::Into<mtp::remove_cv_t<U>>>
+        requires Impled<T, convert::Into<mtp::rm_cv<U>>>
     operator U() {
-        if constexpr (Impled<mtp::remove_cv_t<U>, convert::From<T>>) {
-            return Impl<convert::From<T>, mtp::remove_cv_t<U>>::from(rstd::move(self));
+        if constexpr (Impled<mtp::rm_cv<U>, convert::From<T>>) {
+            return Impl<convert::From<T>, mtp::rm_cv<U>>::from(rstd::move(self));
         } else {
-            using Trait = convert::Into<mtp::remove_cv_t<U>>;
-            if constexpr (mtp::is_const_v<T>) {
-                if constexpr (Impled<clone::Clone, mtp::remove_cv_t<U>>) {
+            using Trait = convert::Into<mtp::rm_cv<U>>;
+            if constexpr (mtp::is_const<T>) {
+                if constexpr (Impled<clone::Clone, mtp::rm_cv<U>>) {
                     auto tmp = as<clone::Clone>(self).clone();
                     return as<Trait>(tmp).into();
                 } else {
@@ -88,18 +88,18 @@ struct IntoWrapper {
 };
 
 export template<typename T>
-auto into(T&& t) -> IntoWrapper<mtp::remove_reference_t<T>> {
+auto into(T&& t) -> IntoWrapper<mtp::rm_ref<T>> {
     return { rstd::move(t) };
 }
 
 export template<typename T, typename F>
 auto as_ref(F& r) noexcept {
-    return Impl<AsRef<T>, mtp::remove_reference_t<F>>::as_ref(r);
+    return Impl<AsRef<T>, mtp::rm_ref<F>>::as_ref(r);
 }
 
 export template<typename T, typename F>
 auto as_mut(F& r) noexcept {
-    return Impl<AsMut<T>, mtp::remove_reference_t<F>>::as_mut(r);
+    return Impl<AsMut<T>, mtp::rm_ref<F>>::as_mut(r);
 }
 } // namespace rstd::convert
 
@@ -117,7 +117,7 @@ struct Impl<T, Self> : ImplBase<Self> {
 };
 
 template<typename T, typename Self>
-    requires mtp::same_as<T, convert::From<mtp::underlying_type_t<Self>>> && mtp::is_enum_v<Self>
+    requires mtp::same_as<T, convert::From<mtp::underlying<Self>>> && mtp::is_enum<Self>
 struct Impl<T, Self> : ImplBase<Self> {
     using from_t = typename T::from_t;
     static auto from(from_t value) -> Self { return static_cast<Self>(value); }

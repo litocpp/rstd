@@ -55,7 +55,7 @@ struct JoinInner {
 template<typename F>
 auto spawn_unchecked(Option<String> name, usize stack_size, Option<Arc<ScopeData>> scope_data,
                      F&& f) -> io::Result<JoinInner<mtp::invoke_result_t<F>>>
-// requires Impled<F, FnOnce<void()>> && mtp::special_of<mtp::remove_cvref_t<F>,
+// requires Impled<F, FnOnce<void()>> && mtp::spec_of<mtp::rm_cvf<F>,
 // rstd_alloc::boxed::Box>
 {
     using namespace rstd_alloc::boxed;

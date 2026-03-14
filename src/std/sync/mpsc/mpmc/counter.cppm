@@ -35,7 +35,7 @@ class Receiver;
 
 /// Wraps a channel into the reference counter.
 export template<typename C>
-auto new_counter(C chan) -> cppstd::tuple<Sender<C>, Receiver<C>> {
+auto new_counter(C chan) -> rstd::tuple<Sender<C>, Receiver<C>> {
     auto* counter = Box<Counter<C>>::make(rstd::move(chan)).into_raw().as_raw_ptr();
     return { Sender<C> { counter }, Receiver<C> { counter } };
 }

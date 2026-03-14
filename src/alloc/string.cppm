@@ -53,8 +53,8 @@ public:
     }
     friend bool operator==(char const* b, const String& a) noexcept {
         return cppstd::lexicographical_compare_three_way(
-                   a.vec.begin(), a.vec.end(), b, b + rstd::char_traits<char>::length(b)) ==
-               cppstd::strong_ordering::equal;
+                   a.vec.begin(), a.vec.end(), b, b + rstd::strlen(b)) ==
+               rstd::strong_ordering::equal;
     }
 
     constexpr auto begin() const noexcept -> const u8* { return vec.begin(); }
@@ -93,7 +93,7 @@ template<mtp::same_as<cmp::PartialEq<String>> T, mtp::same_as<String> A>
 struct Impl<T, A> : ImplBase<default_tag<A>> {
     auto eq(const String& other) const noexcept -> bool {
         return this->self().size() == other.size() &&
-               rstd::memcmp(this->self().begin(), other.begin(), this->self().size()) == 0;
+               rstd::mem::memcmp(this->self().begin(), other.begin(), this->self().size()) == 0;
     }
 };
 
@@ -103,8 +103,8 @@ struct Impl<T, A> : ImplBase<default_tag<A>> {
     auto eq(const Rhs& other) const noexcept -> bool {
         auto& a = this->self();
         return cppstd::lexicographical_compare_three_way(
-                   a.begin(), a.end(), other, other + char_traits<char>::length(other)) ==
-               cppstd::strong_ordering::equal;
+                   a.begin(), a.end(), other, other + rstd::strlen(other)) ==
+               rstd::strong_ordering::equal;
     }
 };
 

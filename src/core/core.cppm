@@ -6,21 +6,21 @@ namespace rstd
 {
 
 export template<typename T>
-using param_t = mtp::cond<mtp::is_trivially_copy_constructible_v<T>, T, T&&>;
+using param_t = mtp::cond<mtp::triv_copy<T>, T, T&&>;
 export template<typename T>
-using param_ref_t = mtp::cond<mtp::is_trivially_copy_constructible_v<T>, T, T&>;
+using param_ref_t = mtp::cond<mtp::triv_copy<T>, T, T&>;
 
 export template<typename T>
 [[nodiscard, gnu::always_inline]] inline param_t<T> param_forward(param_ref_t<T> t) {
-    if constexpr (mtp::is_trivially_copy_constructible_v<T>) {
+    if constexpr (mtp::triv_copy<T>) {
         return t;
     } else {
         return static_cast<T&&>(t);
     }
 }
 
-static_assert(mtp::is_trivially_copy_constructible_v<i32>);
-static_assert(mtp::is_trivially_copy_constructible_v<i32&>);
+static_assert(mtp::triv_copy<i32>);
+static_assert(mtp::triv_copy<i32&>);
 
 export template<typename To, typename From>
 struct AsCast {
@@ -28,9 +28,9 @@ struct AsCast {
 };
 
 export template<typename To, typename From>
-    requires requires() { typename AsCast<To, mtp::remove_reference_t<From>>; }
+    requires requires() { typename AsCast<To, mtp::rm_ref<From>>; }
 [[gnu::always_inline]] inline constexpr auto as_cast(From&& from) noexcept -> To {
-    return AsCast<To, mtp::remove_reference_t<From>>::cast(rstd::forward<From>(from));
+    return AsCast<To, mtp::rm_ref<From>>::cast(rstd::forward<From>(from));
 }
 
 template<typename T>
@@ -38,7 +38,7 @@ struct AsCast<mut_ptr<T>, ptr<T>> {
     static constexpr auto cast(auto&& from) noexcept -> mut_ptr<T> {
         auto raw = from.as_raw_ptr();
         using val_t =
-            mtp::remove_const_t<mtp::remove_extent_t<mtp::remove_pointer_t<decltype(raw)>>>;
+            mtp::rm_const<mtp::rm_ext<mtp::rm_ptr<decltype(raw)>>>;
         return rstd::from_raw_parts_override<mut_ptr<T>>(&from, const_cast<val_t*>(raw));
     }
 };

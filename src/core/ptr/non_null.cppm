@@ -32,13 +32,13 @@ protected:
     template<typename V>
     constexpr void _construct_val(V&& val) {
         auto v = union_value_t(rstd::forward<V>(val));
-        rstd::memcpy(m_storage, &v, sizeof(union_value_t));
+        __builtin_memcpy(m_storage, &v, sizeof(union_value_t));
     }
     template<typename V>
     constexpr void _assign_val(V&& val) {
         _construct_val(rstd::forward<V>(val));
     }
-    constexpr void _assign_none() { rstd::memset(m_storage, 0, sizeof(union_value_t)); }
+    constexpr void _assign_none() { __builtin_memset(m_storage, 0, sizeof(union_value_t)); }
 
 public:
     constexpr auto is_some() const noexcept -> bool {

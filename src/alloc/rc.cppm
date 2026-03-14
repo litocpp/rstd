@@ -8,7 +8,7 @@ namespace alloc::rc
 {
 
 template<typename Allocator, typename T>
-using rebind_alloc = typename rstd::allocator_traits<Allocator>::template rebind_alloc<T>;
+using rebind_alloc = typename cppstd::allocator_traits<Allocator>::template rebind_alloc<T>;
 
 constexpr bool noexp { false };
 
@@ -21,7 +21,7 @@ void increase_count(usize& count) {
 
 template<typename T>
 constexpr auto compute_alignment() -> usize {
-    return rstd::max(alignof(mtp::remove_extent_t<T>), alignof(usize));
+    return rstd::cmp::max(alignof(mtp::rm_ext<T>), alignof(usize));
 }
 
 template<typename T>
@@ -52,7 +52,7 @@ enum class StoragePolicy : u32
 
 template<typename T>
 struct alignas(usize) RcInner {
-    using value_t = mtp::remove_extent_t<T>;
+    using value_t = mtp::rm_ext<T>;
 
     usize    strong { 1 };
     usize    weak { 1 };
@@ -77,7 +77,7 @@ struct alignas(usize) RcInner {
 };
 
 template<typename T>
-using RcInnerConst = RcInner<mtp::add_const_t<T>>;
+using RcInnerConst = RcInner<mtp::add_const<T>>;
 
 template<typename T, StoragePolicy P, typename ValueDeleter = void>
 struct RcInnerImpl {
@@ -86,7 +86,7 @@ struct RcInnerImpl {
 
 template<typename T>
 struct RcInnerImpl<T, StoragePolicy::Embed> : RcInnerConst<T> {
-    static_assert(! mtp::is_array_v<T>);
+    static_assert(! mtp::is_array<T>);
 
     alignas(T) rstd::byte storage[sizeof(T)];
 
@@ -139,20 +139,19 @@ struct RcInnerArrayImpl : RcInnerConst<T> {
 
 template<typename T>
 struct RcInnerImpl<T[], StoragePolicy::Separate> : RcInnerArrayImpl<T[]> {
-    using value_t = mtp::remove_extent_t<T>;
+    using value_t = mtp::rm_ext<T>;
 
     RcInnerImpl(usize n) noexcept: RcInnerArrayImpl<T[]>(n) {}
 
     void do_delete(DeleteType t) override {
         auto self = this;
         if (t == DeleteType::Value) {
-            auto ptr = const_cast<mtp::remove_const_t<value_t>*>(self->value);
+            auto ptr = const_cast<mtp::rm_const<value_t>*>(self->value);
             for (usize i = 0; i < this->size; i++) {
                 (ptr + i)->~value_t();
             }
-            ::operator delete[]((void*)ptr,
-                                sizeof(value_t) * this->size,
-                                rstd::align_val_t { mtp::alignment_of_v<value_t> });
+            ::operator delete[](
+                (void*)ptr, sizeof(value_t) * this->size, rstd::align_val_t { alignof(value_t) });
             self->value = nullptr;
         } else {
             delete self;
@@ -161,8 +160,8 @@ struct RcInnerImpl<T[], StoragePolicy::Separate> : RcInnerArrayImpl<T[]> {
 
     template<typename... Args>
     void allocate_value(Args&&... args) {
-        auto* ptr   = static_cast<value_t*>(::operator new[](
-            sizeof(value_t) * this->size, rstd::align_val_t { mtp::alignment_of_v<value_t> }));
+        auto* ptr = static_cast<value_t*>(
+            ::operator new[](sizeof(value_t) * this->size, rstd::align_val_t { alignof(value_t) }));
         this->value = ptr;
         for (usize i = 0; i < this->size; i++) {
             new (ptr + i) value_t(rstd::forward<Args>(args)...);
@@ -182,7 +181,7 @@ struct RcInnerImpl<T, StoragePolicy::SeparateWithDeleter, ValueDeleter> : RcInne
         auto self = this;
 
         if (t == DeleteType::Value) {
-            self->value_deletor(const_cast<mtp::remove_cv_t<T>*>(self->value));
+            self->value_deletor(const_cast<mtp::rm_cv<T>*>(self->value));
             self->value = nullptr;
         } else {
             delete self;
@@ -222,7 +221,7 @@ struct RcInnerAllocImpl<T, Allocator, StoragePolicy::Embed> : RcInnerImpl<T, Sto
 template<typename T, typename Allocator>
 struct RcInnerAllocImpl<T, Allocator, StoragePolicy::Separate>
     : RcInnerImpl<T, StoragePolicy::Separate> {
-    static_assert(! mtp::is_array_v<T>);
+    static_assert(! mtp::is_array<T>);
     using base_t = RcInnerImpl<T, StoragePolicy::Separate>;
     Allocator allocator;
 
@@ -231,7 +230,7 @@ struct RcInnerAllocImpl<T, Allocator, StoragePolicy::Separate>
         auto self = this;
         if (t == DeleteType::Value) {
             self->value->~T();
-            self->allocator.deallocate(const_cast<mtp::remove_cv_t<T>*>(self->value), 1);
+            self->allocator.deallocate(const_cast<mtp::rm_cv<T>*>(self->value), 1);
             self->value = nullptr;
         } else {
             auto self_allocator = rebind_alloc<Allocator, RcInnerAllocImpl>(self->allocator);
@@ -251,7 +250,7 @@ template<typename T, typename Allocator>
 struct RcInnerAllocImpl<T[], Allocator, StoragePolicy::Separate>
     : RcInnerImpl<T[], StoragePolicy::Separate> {
     using base_t  = RcInnerImpl<T[], StoragePolicy::Separate>;
-    using value_t = mtp::remove_extent_t<T>;
+    using value_t = mtp::rm_ext<T>;
     Allocator allocator;
 
     RcInnerAllocImpl(Allocator a, usize n): base_t(n), allocator(a) {}
@@ -262,7 +261,7 @@ struct RcInnerAllocImpl<T[], Allocator, StoragePolicy::Separate>
             for (usize i = 0; i < n; i++) {
                 (self->value + i)->~value_t();
             }
-            auto p = const_cast<mtp::remove_const_t<value_t>*>(self->value);
+            auto p = const_cast<mtp::rm_const<value_t>*>(self->value);
             self->allocator.deallocate(p, n);
             self->value = nullptr;
         } else {
@@ -316,7 +315,7 @@ struct RcMakeHelper {
 export template<typename T>
 class Weak final {
     friend class Rc<T>;
-    using inner_t = RcInner<mtp::add_const_t<T>>;
+    using inner_t = RcInner<mtp::add_const<T>>;
     inner_t* m_ptr;
 
     explicit Weak(inner_t* p) noexcept: m_ptr(p) {}
@@ -356,7 +355,7 @@ public:
 template<typename T>
 class RcBase {
 protected:
-    using inner_t = RcInner<mtp::add_const_t<T>>;
+    using inner_t = RcInner<mtp::add_const<T>>;
     inner_t* m_ptr;
 
     explicit RcBase(inner_t* p) noexcept: m_ptr(p) {}
@@ -391,8 +390,8 @@ protected:
     }
 
 public:
-    using value_t       = mtp::remove_extent_t<T>;
-    using const_value_t = mtp::add_const_t<mtp::remove_extent_t<T>>;
+    using value_t       = mtp::rm_ext<T>;
+    using const_value_t = mtp::add_const<mtp::rm_ext<T>>;
 
     auto strong_count() const -> usize { return m_ptr ? m_ptr->strong : 0; }
 
@@ -402,7 +401,7 @@ public:
 
     auto size() const -> usize {
         if (m_ptr) {
-            if constexpr (mtp::is_array_v<T>) {
+            if constexpr (mtp::is_array<T>) {
                 auto p = static_cast<const RcInnerArrayImpl<T>*>(m_ptr);
                 return p->size;
             } else {
@@ -510,10 +509,10 @@ public:
     }
 
     template<typename U>
-        requires mtp::is_const_v<T> && mtp::same_as<mtp::remove_cv_t<T>, U>
+        requires mtp::is_const<T> && mtp::same_as<mtp::rm_cv<T>, U>
     Rc(const Rc<U>& o): Rc(o.to_const()) {}
 
-    explicit Rc(T* p): Rc(p, mtp::default_delete<T>()) {}
+    explicit Rc(T* p): Rc(p, cppstd::default_delete<T>()) {}
     template<typename Deleter>
     Rc(T* p, Deleter&& d): Rc(RcBase<T>::allocate_inner(p, rstd::move(d))) {}
 
@@ -534,7 +533,7 @@ public:
 };
 
 export template<typename T, StoragePolicy Sp = StoragePolicy::Separate, typename... Args>
-    requires(! mtp::is_array_v<T>)
+    requires(! mtp::is_array<T>)
 auto make_rc(Args&&... args) -> Rc<T> {
     auto inner = new RcInnerImpl<T, Sp>();
     inner->allocate_value(rstd::forward<Args>(args)...);
@@ -542,7 +541,7 @@ auto make_rc(Args&&... args) -> Rc<T> {
 }
 
 export template<typename T, StoragePolicy Sp = StoragePolicy::Separate, typename... Args>
-    requires mtp::is_array_v<T>
+    requires mtp::is_array<T>
 auto make_rc(usize n, const typename Rc<T>::const_value_t& init) -> Rc<T> {
     auto inner = new RcInnerImpl<T, Sp>(n);
     inner->allocate_value(init);
@@ -551,7 +550,7 @@ auto make_rc(usize n, const typename Rc<T>::const_value_t& init) -> Rc<T> {
 
 export template<typename T, StoragePolicy Sp = StoragePolicy::Separate, typename Allocator,
                 typename... Args>
-    requires(! mtp::is_array_v<T>)
+    requires(! mtp::is_array<T>)
 auto allocate_make_rc(const Allocator& alloc, Args&&... args) -> Rc<T> {
     using inner_t       = RcInnerAllocImpl<T, Allocator, Sp>;
     auto self_allocator = rebind_alloc<Allocator, inner_t>(alloc);
@@ -562,7 +561,7 @@ auto allocate_make_rc(const Allocator& alloc, Args&&... args) -> Rc<T> {
     return RcMakeHelper::make_rc<T>(inner);
 }
 export template<typename T, StoragePolicy Sp = StoragePolicy::Separate, typename Allocator>
-    requires mtp::is_array_v<T>
+    requires mtp::is_array<T>
 auto allocate_make_rc(const Allocator& alloc, usize n, typename Rc<T>::const_value_t& t) -> Rc<T> {
     using inner_t       = RcInnerAllocImpl<T, Allocator, Sp>;
     auto self_allocator = rebind_alloc<Allocator, inner_t>(alloc);

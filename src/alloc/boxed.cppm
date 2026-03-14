@@ -110,8 +110,8 @@ public:
                 mut_ptr<u8>::from_raw_parts(reinterpret_cast<u8*>(mptr.as_raw_ptr())));
             Option<Layout> layout {};
 
-            if constexpr (mtp::is_array_v<T>) {
-                using V   = mtp::remove_extent_t<T>;
+            if constexpr (mtp::is_array<T>) {
+                using V   = mtp::rm_ext<T>;
                 usize len = mptr.len();
                 auto* p   = reinterpret_cast<V*>(mptr.as_raw_ptr());
                 for (usize i = 0; i < len; ++i) {
@@ -137,9 +137,9 @@ public:
     constexpr auto as_mut_ptr() const noexcept -> mut_ptr<T> { return m_ptr.as_mut_ptr(); }
 
     auto clone() -> Self
-        requires mtp::is_array_v<T>
+        requires mtp::is_array<T>
     {
-        using V     = mtp::remove_extent_t<T>;
+        using V     = mtp::rm_ext<T>;
         auto old    = as_ptr();
         auto length = old.len();
         auto layout = Layout::array<V>(length).unwrap();

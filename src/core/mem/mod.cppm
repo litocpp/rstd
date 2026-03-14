@@ -18,8 +18,16 @@ constexpr auto transmute(Src src) noexcept -> Dst {
     return __builtin_bit_cast(Dst, src);
 }
 
-export constexpr auto memcmp(voidp src, voidp dst, usize len) noexcept -> bool {
-    return __builtin_memcmp(src, dst, len);
+export constexpr auto memcmp(const_voidp v1, const_voidp v2, usize len) noexcept -> bool {
+    return __builtin_memcmp(v1, v2, len);
+}
+
+export auto memset(voidp src, u8 val, usize len) noexcept -> voidp {
+    return __builtin_memset(src, val, len);
+}
+
+export auto memcpy(voidp dst, const_voidp src, usize len) noexcept -> voidp {
+    return __builtin_memcpy(dst, src, len);
 }
 
 export template<typename T>

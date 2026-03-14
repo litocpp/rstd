@@ -130,9 +130,9 @@ consteval bool check_apis() {
 
         if constexpr (F1::is_member) {
             // Is member func
-            static_assert(mtp::is_lvalue_reference_v<P1> == mtp::is_lvalue_reference_v<P2> &&
-                              mtp::is_rvalue_reference_v<P1> == mtp::is_rvalue_reference_v<P2> &&
-                              mtp::is_const_v<P1> == mtp::is_const_v<P2> &&
+            static_assert(mtp::is_ref_lv<P1> == mtp::is_ref_lv<P2> &&
+                              mtp::is_ref_rv<P1> == mtp::is_ref_rv<P2> &&
+                              mtp::is_const<P1> == mtp::is_const<P2> &&
                               mtp::same_as<typename F1::to_dyn, typename F2::to_dyn>,
                           "Trait api not satisfy");
         } else {
@@ -184,12 +184,14 @@ consteval bool check_trait() {
         } else {
             return true;
         }
-    } else if constexpr (mtp::destructible<Impl<T, A>>) {
-        if constexpr (mtp::has_trait_api<T>) {
-            // check apis on Impl<T,A>
-            return check_trait_apis<T, A, Impl<T, A>>();
-        } else {
-            return true;
+    } else if constexpr (mtp::complete<Impl<T, A>>) {
+        if constexpr (mtp::drop<Impl<T, A>>) {
+            if constexpr (mtp::has_trait_api<T>) {
+                // check apis on Impl<T,A>
+                return check_trait_apis<T, A, Impl<T, A>>();
+            } else {
+                return true;
+            }
         }
     }
     return false;
@@ -217,7 +219,7 @@ struct ImplBase<default_tag<A, TraitDefaultPolicy::Normal>> : ImplBase<A> {};
 
 /// check if has Impl
 export template<typename A, typename... T>
-concept Impled = (mtp::check_trait<T, mtp::remove_cvref_t<A>>() && ...);
+concept Impled = (mtp::check_trait<T, mtp::rm_cvf<A>>() && ...);
 
 /// use trait default implemention
 /// can be inherited by Impl or class A
@@ -226,14 +228,14 @@ using LinkTraitDefault = Impl<T, default_tag<A, P>>;
 
 /// use class method as Impl
 export template<typename T, typename A>
-struct LinkClassMethod : mtp::ImplWithPtr<A>, mtp::remove_cv_t<T>::template Api<A, in_class_tag> {};
+struct LinkClassMethod : mtp::ImplWithPtr<A>, mtp::rm_cv<T>::template Api<A, in_class_tag> {};
 
 /// delegate trait call to impl
 export template<usize I, typename TApi, typename... Args>
-    requires mtp::is_trait_api<mtp::remove_cv_t<TApi>>
+    requires mtp::is_trait_api<mtp::rm_cv<TApi>>
 [[gnu::always_inline]]
 inline constexpr decltype(auto) trait_call(TApi* self, Args&&... args) {
-    using TApi_    = mtp::remove_cv_t<TApi>;
+    using TApi_    = mtp::rm_cv<TApi>;
     using Trait    = typename TApi_::Trait;
     using TClass   = typename mtp::TraitApiTraits<TApi_>::type;
     using Delegate = typename mtp::TraitApiTraits<TApi_>::delegate_type;
@@ -267,10 +269,10 @@ inline constexpr decltype(auto) trait_call(TApi* self, Args&&... args) {
 
 /// delegate static trait call to impl
 export template<usize I, typename TApi, typename... Args>
-    requires mtp::is_trait_api<mtp::remove_cv_t<TApi>>
+    requires mtp::is_trait_api<mtp::rm_cv<TApi>>
 [[gnu::always_inline]]
 inline constexpr decltype(auto) trait_static_call(Args&&... args) {
-    using TApi_  = mtp::remove_cv_t<TApi>;
+    using TApi_  = mtp::rm_cv<TApi>;
     using Trait  = typename TApi_::Trait;
     using TClass = typename mtp::TraitApiTraits<TApi_>::type;
     using TImpl  = Impl<Trait, TClass>;
@@ -281,11 +283,11 @@ inline constexpr decltype(auto) trait_static_call(Args&&... args) {
 
 /// as a triat
 /// only accept lvalue for no stack-use-after-scope
-/// requires Impled<T, mtp::remove_cvref_t<A>>, maybe used in impldef which not satisfy
+/// requires Impled<T, mtp::rm_cvf<A>>, maybe used in impldef which not satisfy
 export template<typename T, typename A>
 [[gnu::always_inline]]
 inline constexpr decltype(auto) as(A& t) noexcept {
-    using class_t = mtp::remove_cvref_t<A>;
+    using class_t = mtp::rm_cvf<A>;
     static_assert(Impled<class_t, T>);
     if constexpr (mtp::is_direct_trait<T>) {
         return t;

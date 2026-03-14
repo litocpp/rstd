@@ -66,7 +66,7 @@ struct Impl<Allocator, default_tag<Self, P>> : ImplBase<default_tag<Self, P>> {
         auto res = as<Allocator>(this->self()).allocate(layout);
         if (res.is_ok()) {
             auto ptr = res.unwrap_unchecked();
-            rstd::memset(ptr.as_mut_ptr().as_raw_ptr(), 0, layout.size);
+            mem::memset(ptr.as_mut_ptr().as_raw_ptr(), 0, layout.size);
         }
         return res;
     }
@@ -81,7 +81,7 @@ struct Impl<Allocator, default_tag<Self, P>> : ImplBase<default_tag<Self, P>> {
         auto new_res = rstd::as<Allocator>(this->self()).allocate(new_layout);
         if (new_res.is_ok()) {
             auto new_ptr = new_res.unwrap_unchecked();
-            rstd::memcpy(
+            mem::memcpy(
                 new_ptr.as_mut_ptr().as_raw_ptr(), ptr.as_ptr().as_raw_ptr(), old_layout.size);
             rstd::as<Allocator>(this->self()).deallocate(ptr, old_layout);
         }

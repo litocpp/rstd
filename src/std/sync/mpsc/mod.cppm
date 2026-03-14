@@ -182,14 +182,14 @@ public:
 };
 
 export template<typename T>
-auto channel() -> cppstd::tuple<Sender<T>, Receiver<T>> {
+auto channel() -> rstd::tuple<Sender<T>, Receiver<T>> {
     auto chan = mpmc::ListChannel<T>::make();
     auto [s, r] = mpmc::new_counter(rstd::move(chan));
     return { Sender<T>(rstd::move(s)), Receiver<T>(rstd::move(r)) };
 }
 
 export template<typename T>
-auto sync_channel(usize bound) -> cppstd::tuple<SyncSender<T>, Receiver<T>> {
+auto sync_channel(usize bound) -> rstd::tuple<SyncSender<T>, Receiver<T>> {
     auto chan = mpmc::Channel<T>::with_capacity(bound);
     auto [s, r] = mpmc::new_counter(rstd::move(chan));
     return { SyncSender<T>(rstd::move(s)), Receiver<T>(rstd::move(r)) };

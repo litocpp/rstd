@@ -1,7 +1,7 @@
 export module rstd.core:tuple;
 export import rstd.basic;
 
-namespace rstd::tuple
+namespace rstd::tuple_
 {
 
 export template<typename... Ts>

@@ -52,7 +52,7 @@ public:
     constexpr ref(slice<u8> p) noexcept: ref(p.p, p.length) {}
 
     constexpr ref(char const* c_str) noexcept
-        : ref(rstd::bit_cast<u8 const*>(c_str), char_traits<char>::length(c_str)) {}
+        : ref(rstd::bit_cast<u8 const*>(c_str), rstd::strlen(c_str)) {}
 
     static constexpr auto from_raw_parts(value_type* p, usize length) noexcept -> Self {
         return { p, length };
@@ -72,7 +72,7 @@ export using str = str_::Str;
 export [[nodiscard]]
 constexpr bool operator==(ref<str> a, ref<str> b) noexcept {
     return a.size() == b.size() &&
-           strncmp((char const*)a.data(), (char* const)b.data(), a.size()) == 0;
+           __builtin_strncmp((char const*)a.data(), (char* const)b.data(), a.size()) == 0;
 }
 
 template<>

@@ -161,13 +161,13 @@ using namespace ::alloc::sync;
 namespace rstd
 {
 template<typename T, typename Self>
-    requires mtp::same_as<T, Clone> && mtp::special_of<Self, Arc>
+    requires mtp::same_as<T, Clone> && mtp::spec_of<Self, Arc>
 struct Impl<T, Self> : Impl<T, default_tag<Self>> {
     auto clone() const -> Self;
 };
 
 template<typename T, typename Self>
-    requires mtp::same_as<T, Clone> && mtp::special_of<Self, Weak>
+    requires mtp::same_as<T, Clone> && mtp::spec_of<Self, Weak>
 struct Impl<T, Self> : Impl<T, default_tag<Self>> {
     auto clone() const -> Self;
 };
@@ -455,7 +455,7 @@ auto Arc<T>::downgrade() const noexcept -> Weak<T> {
 namespace rstd
 {
 template<typename T, typename Self>
-    requires mtp::same_as<T, Clone> && mtp::special_of<Self, Arc>
+    requires mtp::same_as<T, Clone> && mtp::spec_of<Self, Arc>
 auto Impl<T, Self>::clone() const -> Self {
     auto& s = this->self();
     if (s.self.inner) {
@@ -465,7 +465,7 @@ auto Impl<T, Self>::clone() const -> Self {
 }
 
 template<typename T, typename Self>
-    requires mtp::same_as<T, Clone> && mtp::special_of<Self, Weak>
+    requires mtp::same_as<T, Clone> && mtp::spec_of<Self, Weak>
 auto Impl<T, Self>::clone() const -> Self {
     auto& s = this->self();
     if (s.self.inner) {

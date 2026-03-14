@@ -19,12 +19,11 @@ struct UnknownErr {
 namespace detail
 {
 template<typename T, typename U, typename V>
-constexpr void reinit(T* newval, U* oldval,
-                      V&& arg) noexcept(mtp::is_nothrow_constructible_v<T, V>) {
-    if constexpr (mtp::is_nothrow_constructible_v<T, V>) {
+constexpr void reinit(T* newval, U* oldval, V&& arg) noexcept(mtp::noex_init<T, V>) {
+    if constexpr (mtp::noex_init<T, V>) {
         rstd::destroy_at(oldval);
         rstd::construct_at(newval, rstd::forward<V>(arg));
-    } else if constexpr (mtp::is_nothrow_move_constructible_v<T>) {
+    } else if constexpr (mtp::noex_move<T>) {
         T tmp(rstd::forward<V>(arg)); // might throw
         rstd::destroy_at(oldval);
         rstd::construct_at(newval, rstd::move(tmp));
@@ -46,10 +45,10 @@ struct result_traits<Result<T, E>> {
     using ret_error_t = E;
 
     using union_value_t =
-        mtp::cond<mtp::is_reference_v<T>,
-                            mtp::add_pointer_t<mtp::remove_reference_t<T>>, mtp::remove_cv_t<T>>;
-    using union_error_t = mtp::cond<mtp::is_reference_v<E>,
-                                              mtp::add_pointer_t<mtp::remove_reference_t<E>>, E>;
+        mtp::cond<mtp::is_ref<T>, mtp::add_ptr<mtp::rm_ref<T>>,
+                  mtp::rm_cv<T>>;
+    using union_error_t =
+        mtp::cond<mtp::is_ref<E>, mtp::add_ptr<mtp::rm_ref<E>>, E>;
 };
 
 template<typename T, typename E>
@@ -66,14 +65,14 @@ struct result_traits<Result<T, E>&> : result_traits<Result<T, E>> {
 
 template<typename T, typename E>
 struct result_traits<const Result<T, E>&> : result_traits<Result<T, E>> {
-    using ret_value_t = mtp::add_const_t<T>&;
-    using ret_error_t = mtp::add_const_t<E>&;
+    using ret_value_t = mtp::add_const<T>&;
+    using ret_error_t = mtp::add_const<E>&;
 };
 
 template<typename T, typename E>
 struct result_traits<const Result<T, E>&&> : result_traits<Result<T, E>> {
-    using ret_value_t = mtp::add_const_t<T>&&;
-    using ret_error_t = mtp::add_const_t<E>&&;
+    using ret_value_t = mtp::add_const<T>&&;
+    using ret_error_t = mtp::add_const<E>&&;
 };
 
 } // namespace detail
@@ -86,8 +85,7 @@ export using result::Ok;
 export using result::Err;
 
 template<typename T, typename Self>
-    requires mtp::same_as<T, clone::Clone> &&
-             mtp::is_specialization_of_v<Self, rstd::result::Result> &&
+    requires mtp::same_as<T, clone::Clone> && mtp::spec_of<Self, rstd::result::Result> &&
              Impled<typename result::detail::result_traits<Self>::union_value_t, clone::Clone> &&
              Impled<typename result::detail::result_traits<Self>::union_error_t, clone::Clone>
 struct Impl<T, Self> : ImplBase<Self> {
@@ -100,13 +98,13 @@ struct Impl<T, Self> : ImplBase<Self> {
     auto clone() const -> Self {
         auto& r = this->self();
         if (r.is_ok()) {
-            if constexpr (mtp::is_reference_v<v_t>) {
+            if constexpr (mtp::is_ref<v_t>) {
                 return Ok(*Impl<clone::Clone, uv_t>::clone(&r.m_val));
             } else {
                 return Ok(Impl<clone::Clone, uv_t>::clone(&r.m_val));
             }
         } else {
-            if constexpr (mtp::is_reference_v<e_t>) {
+            if constexpr (mtp::is_ref<e_t>) {
                 return Err(*Impl<clone::Clone, ue_t> { &r.m_err }.clone());
             } else {
                 return Err(Impl<clone::Clone, ue_t> { &r.m_err }.clone());
@@ -117,13 +115,13 @@ struct Impl<T, Self> : ImplBase<Self> {
     void clone_from(Self& source) {
         auto& self = this->self();
         if (source.is_ok()) {
-            if constexpr (mtp::is_reference_v<v_t>) {
+            if constexpr (mtp::is_ref<v_t>) {
                 self._assign_val(source.template _get<0>());
             } else {
                 self._assign_val(Impl<clone::Clone, ue_t> { &source.m_val }.clone());
             }
         } else {
-            if constexpr (mtp::is_reference_v<e_t>) {
+            if constexpr (mtp::is_ref<e_t>) {
                 self._assign_err(source.template _get<1>());
             } else {
                 self._assign_err(Impl<clone::Clone, ue_t> { &source.m_err }.clone());
@@ -156,17 +154,17 @@ protected:
     }
 
     template<i32 I, typename U>
-        requires mtp::same_as<mtp::remove_cvref_t<U>, Result<T, E>>
+        requires mtp::same_as<mtp::rm_cvf<U>, Result<T, E>>
     static constexpr decltype(auto) _get(U&& self) {
         using traits = detail::result_traits<decltype(self)>;
         if constexpr (I == 0) {
-            if constexpr (mtp::is_reference_v<T>) {
+            if constexpr (mtp::is_ref<T>) {
                 return static_cast<traits::ret_value_t>(*(self.m_val));
             } else {
                 return static_cast<traits::ret_value_t>(self.m_val);
             }
         } else {
-            if constexpr (mtp::is_reference_v<E>) {
+            if constexpr (mtp::is_ref<E>) {
                 return static_cast<traits::ret_error_t>(*(self.m_err));
             } else {
                 return static_cast<traits::ret_error_t>(self.m_err);
@@ -207,7 +205,7 @@ protected:
     constexpr void _construct_val(V&& val) {
         auto& self     = _cast();
         self.m_has_val = true;
-        if constexpr (mtp::is_reference_v<T>) {
+        if constexpr (mtp::is_ref<T>) {
             self.m_val = rstd::addressof(val);
         } else {
             rstd::construct_at(rstd::addressof(self.m_val), rstd::forward<V>(val));
@@ -217,7 +215,7 @@ protected:
     constexpr void _construct_err(V&& err) {
         auto& self     = _cast();
         self.m_has_val = false;
-        if constexpr (mtp::is_reference_v<E>) {
+        if constexpr (mtp::is_ref<E>) {
             self.m_err = rstd::addressof(err);
         } else {
             rstd::construct_at(rstd::addressof(self.m_err), rstd::forward<V>(err));
@@ -227,7 +225,7 @@ protected:
     template<typename V>
     constexpr void _assign_val(V&& v) {
         auto& self = _cast();
-        if constexpr (mtp::is_reference_v<T>) {
+        if constexpr (mtp::is_ref<T>) {
             if (self.m_has_val)
                 self.m_val = rstd::addressof(v);
             else {
@@ -249,7 +247,7 @@ protected:
     template<typename V>
     constexpr void _assign_err(V&& v) {
         auto& self = _cast();
-        if constexpr (mtp::is_reference_v<E>) {
+        if constexpr (mtp::is_ref<E>) {
             if (self.m_has_val) {
                 detail::reinit(
                     rstd::addressof(self.m_err), rstd::addressof(self.m_val), rstd::addressof(v));
@@ -390,7 +388,7 @@ public:
     }
 
     auto unwrap_or_default() -> T
-        requires mtp::is_default_constructible_v<T>
+        requires mtp::init<T>
     {
         if (is_ok()) {
             return _get_move<0>();
@@ -423,8 +421,8 @@ public:
 
     template<typename U  = void, typename F,
              typename U2 = typename mtp::invoke_result_t<F, T>::value_type>
-    // requires ImpledT<FnOnce<F, Result<mtp::cond<mtp::is_void_v<U>, U2, U>, E>(T)>>
-    auto and_then(F&& op) -> Result<mtp::cond<mtp::is_void_v<U>, U2, U>, E> {
+    // requires ImpledT<FnOnce<F, Result<mtp::cond<mtp::is_void<U>, U2, U>, E>(T)>>
+    auto and_then(F&& op) -> Result<mtp::cond<mtp::is_void<U>, U2, U>, E> {
         if (is_ok()) {
             return rstd::move(op)(_get_move<0>());
         } else {
@@ -486,8 +484,8 @@ public:
         }
     }
 
-    constexpr auto as_ref() const -> Result<mtp::add_lvalue_reference_t<mtp::add_const_t<T>>,
-                                            mtp::add_lvalue_reference_t<mtp::add_const_t<E>>> {
+    constexpr auto as_ref() const -> Result<mtp::add_ref<mtp::add_const<T>>,
+                                            mtp::add_ref<mtp::add_const<E>>> {
         if (is_ok()) {
             return Ok(_get<0>());
         } else {
@@ -496,13 +494,13 @@ public:
     }
 
     [[nodiscard]]
-    constexpr const mtp::remove_reference_t<T>* operator->() const noexcept {
+    constexpr const mtp::rm_ref<T>* operator->() const noexcept {
         assert(is_ok());
         return rstd::addressof(_get<0>());
     }
 
     [[nodiscard]]
-    constexpr mtp::remove_reference_t<T>* operator->() noexcept {
+    constexpr mtp::rm_ref<T>* operator->() noexcept {
         assert(is_ok());
         return rstd::addressof(_get<0>());
     }
@@ -615,49 +613,47 @@ public:
     template<typename U>
     using rebind = Result<U, error_type>;
 
-    constexpr Result() noexcept(mtp::is_nothrow_default_constructible_v<T>)
-        requires mtp::is_default_constructible_v<T>
+    constexpr Result() noexcept(mtp::noex_init<T>)
+        requires mtp::init<T>
         : m_val(), m_has_val(true) {}
 
     // Ok ctor
-    constexpr Result(T&& val, detail::ok_tag) noexcept(mtp::nothrow_constructible<T, T>) {
+    constexpr Result(T&& val, detail::ok_tag) noexcept(mtp::noex_init<T, T>) {
         this->_construct_val(rstd::forward<T>(val));
     }
 
     // Err ctor
-    constexpr Result(E&& err, detail::err_tag) noexcept(mtp::nothrow_constructible<E, E>) {
+    constexpr Result(E&& err, detail::err_tag) noexcept(mtp::noex_init<E, E>) {
         this->_construct_err(rstd::forward<E>(err));
     }
 
     // from Ok
     template<typename U>
     constexpr Result(U&& o) noexcept(
-        mtp::nothrow_constructible<T, typename detail::result_traits<U>::value_type>)
-        requires mtp::constructible_from<UnknownErr,
-                                          typename detail::result_traits<U>::error_type> &&
-                 mtp::constructible_from<T, typename detail::result_traits<U>::value_type>
+        mtp::noex_init<T, typename detail::result_traits<U>::value_type>)
+        requires mtp::init<UnknownErr,
+                                         typename detail::result_traits<U>::error_type> &&
+                 mtp::init<T, typename detail::result_traits<U>::value_type>
     {
-        this->_construct_val(mtp::remove_cvref_t<U>::template _get<0>(rstd::forward<U>(o)));
+        this->_construct_val(mtp::rm_cvf<U>::template _get<0>(rstd::forward<U>(o)));
     }
 
     // from Err
     template<typename U>
     constexpr Result(U&& o) noexcept(
-        mtp::nothrow_constructible<E, typename detail::result_traits<U>::error_type>)
-        requires mtp::constructible_from<UnknownOk,
-                                          typename detail::result_traits<U>::value_type> &&
-                 mtp::constructible_from<E, typename detail::result_traits<U>::error_type>
+        mtp::noex_init<E, typename detail::result_traits<U>::error_type>)
+        requires mtp::init<UnknownOk,
+                                         typename detail::result_traits<U>::value_type> &&
+                 mtp::init<E, typename detail::result_traits<U>::error_type>
     {
-        this->_construct_err(mtp::remove_cvref_t<U>::template _get<1>(rstd::forward<U>(o)));
+        this->_construct_err(mtp::rm_cvf<U>::template _get<1>(rstd::forward<U>(o)));
     }
 
     constexpr Result(const Result&) = default;
     constexpr Result(Result&&)      = default;
 
-    constexpr Result(Result&& o) noexcept(
-        mtp::conjunction_v<mtp::is_nothrow_move_constructible<T>,
-                            mtp::is_nothrow_move_constructible<E>>)
-        requires mtp::custom_move_constructible<T> || mtp::custom_move_constructible<E>
+    constexpr Result(Result&& o) noexcept(mtp::noex_move<T> && mtp::noex_move<E>)
+        requires mtp::user_move<T> || mtp::user_move<E>
     {
         if (o.m_has_val) {
             this->_construct_val(Result::template _get<0>(rstd::move(o)));
@@ -669,14 +665,14 @@ public:
     constexpr ~Result() = default;
 
     constexpr ~Result()
-        requires(! mtp::is_trivially_destructible_v<T>) || (! mtp::is_trivially_destructible_v<E>)
+        requires(! mtp::triv_drop<T>) || (! mtp::triv_drop<E>)
     {
         if (m_has_val) {
-            if constexpr (! mtp::is_trivially_destructible_v<T>) {
+            if constexpr (! mtp::triv_drop<T>) {
                 rstd::destroy_at(rstd::addressof(m_val));
             }
         } else {
-            if constexpr (! mtp::is_trivially_destructible_v<E>) {
+            if constexpr (! mtp::triv_drop<E>) {
                 rstd::destroy_at(rstd::addressof(m_err));
             }
         }
@@ -685,21 +681,21 @@ public:
     Result& operator=(const Result&) = delete;
 
     constexpr Result& operator=(Result&&)
-        requires mtp::is_trivially_move_assignable_v<typename traits::union_value_t> &&
-                     mtp::is_trivially_move_assignable_v<typename traits::union_error_t>
+        requires mtp::triv_assign_move<typename traits::union_value_t> &&
+                     mtp::triv_assign_move<typename traits::union_error_t>
     = default;
 
-    constexpr Result& operator=(Result&& o) noexcept(
-        mtp::conjunction_v<mtp::is_nothrow_move_constructible<typename traits::union_value_t>,
-                            mtp::is_nothrow_move_constructible<typename traits::union_value_t>,
-                            mtp::is_nothrow_move_assignable<typename traits::union_error_t>,
-                            mtp::is_nothrow_move_assignable<typename traits::union_error_t>>)
-        requires(! (mtp::is_trivially_move_assignable_v<typename traits::union_value_t> &&
-                    mtp::is_trivially_move_assignable_v<typename traits::union_error_t>)) &&
-                (mtp::is_move_assignable_v<typename traits::union_value_t> &&
-                 mtp::is_move_constructible_v<typename traits::union_value_t> &&
-                 mtp::is_move_assignable_v<typename traits::union_error_t> &&
-                 mtp::is_move_constructible_v<typename traits::union_error_t>)
+    constexpr Result&
+    operator=(Result&& o) noexcept(mtp::noex_move<typename traits::union_value_t> &&
+                                   mtp::noex_move<typename traits::union_value_t> &&
+                                   mtp::noex_assign_move<typename traits::union_error_t> &&
+                                   mtp::noex_assign_move<typename traits::union_error_t>)
+        requires(! (mtp::triv_assign_move<typename traits::union_value_t> &&
+                    mtp::triv_assign_move<typename traits::union_error_t>)) &&
+                (mtp::assign_move<typename traits::union_value_t> &&
+                 mtp::move<typename traits::union_value_t> &&
+                 mtp::assign_move<typename traits::union_error_t> &&
+                 mtp::move<typename traits::union_error_t>)
     {
         if (o.m_has_val)
             this->_assign_val(Result::template _get<0>(rstd::move(o)));
@@ -709,7 +705,7 @@ public:
     }
 
     template<typename U, typename E2>
-        requires(! mtp::is_void_v<U>) &&
+        requires(! mtp::is_void<U>) &&
                 requires(const T& t, const U& u, const E& e, const E2& e2) {
                     { t == u } -> mtp::convertible_to<bool>;
                     { e == e2 } -> mtp::convertible_to<bool>;

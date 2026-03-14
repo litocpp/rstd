@@ -194,7 +194,7 @@ export struct ThreadInit {
     void init() const;
 };
 
-static_assert(mtp::destructible<ThreadInit>);
+static_assert(mtp::drop<ThreadInit>);
 
 } // namespace thread
 } // namespace rstd

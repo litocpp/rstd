@@ -31,7 +31,7 @@ void __rstd_dealloc(void* ptr, usize size, usize align) {
 void* __rstd_realloc(void* ptr, usize old_size, usize align, usize new_size) {
     void* new_ptr = __rstd_alloc(new_size, align);
     if (new_ptr) {
-        rstd::memcpy(new_ptr, ptr, old_size < new_size ? old_size : new_size);
+        rstd::mem::memcpy(new_ptr, ptr, old_size < new_size ? old_size : new_size);
         __rstd_dealloc(ptr, old_size, align);
     }
     return new_ptr;
@@ -40,7 +40,7 @@ void* __rstd_realloc(void* ptr, usize old_size, usize align, usize new_size) {
 void* __rstd_alloc_zeroed(usize size, usize align) {
     void* ptr = __rstd_alloc(size, align);
     if (ptr) {
-        rstd::memset(ptr, 0, size);
+        rstd::mem::memset(ptr, 0, size);
     }
     return ptr;
 }

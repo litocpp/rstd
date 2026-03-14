@@ -17,6 +17,15 @@ struct PartialEq {
     using Funcs = TraitFuncs<&T::eq, &T::ne>;
 };
 
+export template<typename T>
+constexpr auto max(T v1, T v2) noexcept -> T {
+    return v1 > v2 ? v1 : v2;
+}
+export template<typename T>
+constexpr auto min(T v1, T v2) noexcept -> T {
+    return v1 < v2 ? v1 : v2;
+}
+
 } // namespace rstd::cmp
 
 namespace rstd

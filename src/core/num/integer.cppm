@@ -22,7 +22,7 @@ struct IntImpl : ImplBase<T> {
         }
     }
 
-    auto overflowing_add(Self rhs) const noexcept -> cppstd::tuple<Self, bool> {
+    auto overflowing_add(Self rhs) const noexcept -> rstd::tuple<Self, bool> {
         return intrinsics::add_with_overflow(this->self(), rhs);
     }
 };

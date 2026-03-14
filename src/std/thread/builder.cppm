@@ -54,8 +54,8 @@ export struct Builder {
 
     template<typename F>
     auto spawn(F&& f) -> io::Result<JoinHandle<mtp::invoke_result_t<F>>>
-    // requires Impled<mtp::remove_cvref_t<F>, FnOnce<void()>> &&
-    // mtp::same_as<mtp::remove_cvref_t<F>, Box<dyn<FnOnce<void()>>>
+    // requires Impled<mtp::rm_cvf<F>, FnOnce<void()>> &&
+    // mtp::same_as<mtp::rm_cvf<F>, Box<dyn<FnOnce<void()>>>
     {
         auto stack_size = d.stack_size.unwrap_or(0);
 

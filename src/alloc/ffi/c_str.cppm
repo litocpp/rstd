@@ -44,13 +44,13 @@ public:
     }
 
     static auto from_raw_parts(char const* p) -> CString {
-        auto len    = rstd::char_traits<char>::length(p) + 1;
+        auto len    = rstd::strlen(p) + 1;
         auto layout = Layout::array<u8>(len).unwrap();
         auto res    = GLOBAL.allocate(layout);
         if (res.is_err()) handle_alloc_error(layout);
 
         auto* raw = static_cast<u8*>(res.unwrap_unchecked().as_mut_ptr().as_raw_ptr());
-        rstd::memcpy(raw, p, len);
+        rstd::mem::memcpy(raw, p, len);
         auto boxed = ::alloc::boxed::Box<u8[]>::from_raw(mut_ptr<u8[]>::from_raw_parts(raw, len));
         return CString { rstd::move(boxed) };
     }

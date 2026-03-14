@@ -22,7 +22,7 @@ namespace mtp
 {
 
 template<typename T>
-concept DST = mtp::destructible<Impl<ptr_::Pointee, T>>;
+concept DST = Impled<T, ptr_::Pointee>;
 
 template<typename T>
 concept DSTArray = mtp::same_as<typename Impl<ptr_::Pointee, T>::Metadata, usize>;
