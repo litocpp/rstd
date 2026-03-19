@@ -231,6 +231,7 @@ public:
             return _get_move();
         }
         rstd::panic("{}", msg);
+        rstd::unreachable();
     }
 
     auto unwrap() -> T {
@@ -238,6 +239,7 @@ public:
             return _get_move();
         }
         rstd::panic("called `Option::unwrap()` on a `None` value");
+        rstd::unreachable();
     }
 
     template<typename U>

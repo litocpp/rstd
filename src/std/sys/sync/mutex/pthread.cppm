@@ -8,6 +8,7 @@ export import :sys.sync.once_box;
 export import :sys.pal;
 export import :sys.libc.pthread;
 import :forward;
+import rstd.alloc;
 
 using rstd_alloc::boxed::Box;
 using rstd::sys::sync::OnceBox;

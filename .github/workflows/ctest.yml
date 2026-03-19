@@ -14,11 +14,11 @@ jobs:
           - arch: x64
             runs_on: ubuntu-24.04
             compiler: clang
-            version: 21
+            version: 18
           - arch: aarch64
             runs_on: ubuntu-24.04-arm
             compiler: clang
-            version: 21
+            version: 18
           - arch: x64
             runs_on: ubuntu-24.04
             compiler: gcc

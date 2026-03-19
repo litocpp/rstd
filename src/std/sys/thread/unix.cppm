@@ -5,7 +5,7 @@ export import :sys.libc;
 export import :io;
 import :forward;
 export import :thread.thread;
-export import rstd.core;
+export import rstd.alloc;
 
 #if RSTD_OS_LINUX
 
