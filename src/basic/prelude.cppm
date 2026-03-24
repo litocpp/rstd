@@ -17,6 +17,9 @@ export {
     using u16 = ::uint16_t;
     using u32 = ::uint32_t;
     using u64 = ::uint64_t;
+    using u128 = unsigned __int128;
+
+    using i128 = __int128;
 
     using idx   = ::ptrdiff_t;
     using usize = ::size_t;

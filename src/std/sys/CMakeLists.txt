@@ -21,11 +21,13 @@ set(RSTD_SYS_SOURCES
     sys/pal/mod.cppm
     sys/pal/unix/mod.cppm
     sys/pal/unix/futex.cppm
+    sys/pal/unix/time.cppm
     sys/pal/unix/sync/mutex.cppm
     sys/pal/unix/sync/condvar.cppm
     sys/pal/unix/sync/mod.cppm
     sys/pal/windows/mod.cppm
     sys/pal/windows/futex.cppm
+    sys/pal/windows/time.cppm
     sys/sync/once_box.cppm
     sys/sync/mutex/mod.cppm
     sys/sync/mutex/futex.cppm

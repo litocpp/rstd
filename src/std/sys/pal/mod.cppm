@@ -11,12 +11,16 @@ export namespace rstd::sys::pal
 namespace futex = pal::unix::futex;
 using unix::Mutex;
 using unix::Condvar;
+using unix::Instant;
+using unix::SystemTime;
 using unix::abort_internal;
 
 #elif RSTD_OS_WINDOWS
 
 namespace futex = pal::windows::futex;
 using windows::Mutex;
+using windows::Instant;
+using windows::SystemTime;
 #endif
 
 } // namespace rstd::sys::pal

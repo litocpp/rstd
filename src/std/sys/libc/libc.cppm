@@ -15,6 +15,7 @@ using ::timespec;
 using ::nanosleep;
 using ::sched_yield;
 constexpr auto M_CLOCK_MONOTONIC = CLOCK_MONOTONIC;
+constexpr auto M_CLOCK_REALTIME = CLOCK_REALTIME;
 constexpr auto M_ETIMEDOUT       = ETIMEDOUT;
 constexpr auto M_EINTR           = EINTR;
 

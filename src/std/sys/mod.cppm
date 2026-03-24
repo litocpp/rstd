@@ -8,5 +8,7 @@ export namespace rstd::sys
 {
 
 using pal::abort_internal;
+using pal::Instant;
+using pal::SystemTime;
 
 }

@@ -50,6 +50,7 @@ target_sources(
          tuple.cppm
          memchr.cppm
          cmp.cppm
+         time.cppm
          alloc/global.cppm
          alloc/layout.cppm
          alloc/mod.cppm

@@ -1,5 +1,6 @@
 export module rstd;
 export import rstd.core;
+export import :time;
 export import :forward;
 export import :sys;
 export import :sync;
