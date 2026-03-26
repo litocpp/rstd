@@ -38,6 +38,7 @@ add_executable(
   thread.cpp
   sync/mpsc.cpp
   time.cpp
+  fmt.cpp
   )
 
 target_link_libraries(rstd_test PRIVATE rstd::rstd GTest::gtest_main)

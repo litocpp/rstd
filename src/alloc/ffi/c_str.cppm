@@ -95,23 +95,3 @@ template<mtp::same_as<AsRef<ffi::CStr>> T, mtp::same_as<CString> A>
 struct Impl<T, A> {};
 
 } // namespace rstd
-
-template<>
-struct rstd::fmt::formatter<CString> : rstd::fmt::formatter<rstd::ref<rstd::str>> {
-    template<typename FmtContext>
-    auto format(const CString& cstr, FmtContext& ctx) const -> FmtContext::iterator {
-        using namespace rstd::prelude;
-        auto str_ref = cstr.as_ref();
-        auto s       = ref<str>::from_raw_parts((u8 const*)str_ref.p, str_ref.length);
-        return fmt::formatter<ref<str>>::format(s, ctx);
-    }
-};
-
-template<>
-struct rstd::fmt::formatter<NulError> : rstd::fmt::formatter<rstd::ref<rstd::str>> {
-    template<typename FmtContext>
-    auto format(const NulError& cstr, FmtContext& ctx) const -> FmtContext::iterator {
-        using namespace rstd::prelude;
-        return fmt::formatter<ref<str>>::format("NulError", ctx);
-    }
-};

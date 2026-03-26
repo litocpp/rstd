@@ -3,70 +3,114 @@ export import :trait;
 export import rstd.basic;
 
 namespace rstd::fmt
+
 {
 
-namespace detail
-{
-template<typename Tp, typename Context,
-         typename Formatter    = typename Context::template formatter_type<mtp::rm_const<Tp>>,
-         typename ParseContext = cppstd::basic_format_parse_context<typename Context::char_type>>
-concept parsable_with = mtp::init<Formatter> && requires(Formatter f, ParseContext pc) {
-    { f.parse(pc) } -> mtp::same_as<typename ParseContext::iterator>;
-};
+export struct Formatter;
 
-template<typename Tp, typename Context,
-         typename Formatter    = typename Context::template formatter_type<mtp::rm_const<Tp>>,
-         typename ParseContext = cppstd::basic_format_parse_context<typename Context::char_type>>
-concept formattable_with =
-    mtp::init<Formatter> && requires(const Formatter cf, Tp&& t, Context fc) {
-        { cf.format(t, fc) } -> mtp::same_as<typename Context::iterator>;
+// Display Trait
+export struct Display {
+    using Trait                  = Display;
+    static constexpr bool direct = false;
+
+    template<typename Self, typename Delegate = void>
+    struct Api : ImplBase<Delegate> {
+        using Trait = Display;
+        auto fmt(Formatter& f) const -> bool;
     };
 
-// An unspecified output iterator type used in the `formattable` concept.
-template<typename CharT>
-using Iter_for = cppstd::back_insert_iterator<cppstd::basic_string<CharT>>;
+    template<typename T>
+    using Funcs = TraitFuncs<&T::fmt>;
+};
 
-template<typename Tp, typename CharT,
-         typename Context = cppstd::basic_format_context<Iter_for<CharT>, CharT>>
-concept formattable_impl = parsable_with<Tp, Context> && formattable_with<Tp, Context>;
-} // namespace detail
+// Debug Trait
+export struct Debug {
+    using Trait                  = Debug;
+    static constexpr bool direct = false;
+
+    template<typename Self, typename Delegate = void>
+    struct Api : ImplBase<Delegate> {
+        using Trait = Debug;
+        auto fmt(Formatter& f) const -> bool;
+    };
+
+    template<typename T>
+    using Funcs = TraitFuncs<&T::fmt>;
+};
+
+// Write Trait
+export struct Write {
+    using Trait                  = Write;
+    static constexpr bool direct = false;
+
+    template<typename Self, typename Delegate = void>
+    struct Api : ImplBase<Delegate> {
+        using Trait = Write;
+        auto write_str(const u8* p, usize len) -> bool;
+    };
+
+    template<typename T>
+    using Funcs = TraitFuncs<&T::write_str>;
+};
+
+export struct Formatter {
+private:
+    void* _writer;
+    auto (*_write_func)(void*, const u8*, usize) -> bool;
+
+public:
+    template<typename W>
+        requires Impled<W, Write>
+    constexpr Formatter(W& writer) noexcept
+        : _writer(rstd::addressof(writer)), _write_func([](void* w, const u8* p, usize len) {
+              return as<Write>(*static_cast<W*>(w)).write_str(p, len);
+          }) {}
+
+    auto write_raw(const u8* p, usize len) -> bool { return _write_func(_writer, p, len); }
+
+    auto write_fmt(struct Arguments args) -> bool;
+};
+
+// Type-erased argument for formatting
+export struct Argument {
+private:
+    const void* _ptr;
+    auto (*_fmt_func)(const void*, Formatter&) -> bool;
+
+public:
+    template<typename T>
+        requires Impled<T, Display>
+    static auto display(const T& val) -> Argument {
+        return { rstd::addressof(val), [](const void* p, Formatter& f) {
+                    return as<Display>(*static_cast<const T*>(p)).fmt(f);
+                } };
+    }
+
+    template<typename T>
+        requires Impled<T, Debug>
+    static auto debug(const T& val) -> Argument {
+        return { rstd::addressof(val), [](const void* p, Formatter& f) {
+                    return as<Debug>(*static_cast<const T*>(p)).fmt(f);
+                } };
+    }
+
+    auto fmt(Formatter& f) const -> bool { return _fmt_func(_ptr, f); }
+
+private:
+    constexpr Argument(const void* p, auto (*func)(const void*, Formatter&)->bool)
+        : _ptr(p), _fmt_func(func) {}
+};
+
+export struct Arguments {
+    const u8*       fmt_ptr;
+    usize           fmt_len;
+    const Argument* args_ptr;
+    usize           args_len;
+
+    auto fmt(Formatter& f) const -> bool { return f.write_fmt(*this); }
+};
 
 export template<typename Tp, typename CharT = char>
-concept formattable = detail::formattable_impl<mtp::rm_ref<Tp>, CharT>;
-
-export struct Display {
-    template<typename Self, typename = void>
-    struct Api {};
-};
-
-export struct Debug {
-    template<typename Self, typename = void>
-    struct Api {};
-};
-
-export using cppstd::basic_format_context;
-export using cppstd::basic_format_parse_context;
-export using cppstd::basic_format_string;
-export using cppstd::formatter;
-export using cppstd::format_string;
-export using cppstd::make_format_args;
-export using cppstd::format_args;
-
-export using cppstd::format_to;
-export using cppstd::format_to_n;
-export using cppstd::formatted_size;
-export using cppstd::vformat_to;
+concept formattable = Impled<Tp, Display> || Impled<Tp, Debug>;
 
 } // namespace rstd::fmt
-
-namespace rstd
-{
-export using cppstd::format_string;
-
-template<typename T, typename A>
-    requires mtp::same_as<T, fmt::Display> && fmt::formattable<A, char>
-struct Impl<T, A> {};
-
-static_assert(Impled<int, fmt::Display>);
-
-} // namespace rstd

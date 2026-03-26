@@ -99,7 +99,7 @@ namespace rstd::thread
 {
 void ThreadInit::init() const {
     if (set_current(handle.clone()).is_err()) {
-        panic("current thread handle already set during thread spawn");
+        panic{"current thread handle already set during thread spawn"};
     }
 
     if (auto name = handle.cname()) {

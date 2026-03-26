@@ -26,7 +26,7 @@ void Parker::park() {
             assert(old == NOTIFIED, "park state changed unexpectedly");
             return;
         }
-        panic("inconsistent park state");
+        panic{"inconsistent park state"};
     }
 
     while (true) {
@@ -53,7 +53,7 @@ void Parker::park_timeout(const cppstd::chrono::duration<double>& dur) {
             assert(old == NOTIFIED && "park state changed unexpectedly");
             return;
         }
-        throw panic("inconsistent park_timeout state");
+        throw panic{"inconsistent park_timeout state"};
     }
 
     cvar.wait_timeout(lock,
@@ -61,7 +61,7 @@ void Parker::park_timeout(const cppstd::chrono::duration<double>& dur) {
 
     usize old = state.exchange(EMPTY, Ordering::Acquire);
     if (old != NOTIFIED && old != PARKED) {
-        throw panic("inconsistent park_timeout state: {}", old);
+        throw panic { rstd::format("inconsistent park_timeout state: {}", old) };
     }
 }
 
@@ -72,7 +72,7 @@ void Parker::unpark() {
     case EMPTY:
     case NOTIFIED: return;
     case PARKED: break;
-    default: panic("inconsistent state in unpark");
+    default: panic{"inconsistent state in unpark"};
     }
 
     // Lock to ensure proper synchronization with the parking thread

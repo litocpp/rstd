@@ -116,12 +116,5 @@ struct Impl<Allocator, default_tag<Self, P>> : ImplBase<default_tag<Self, P>> {
         return new_ptr;
     }
 };
-} // namespace rstd
+} // namespace rstd::alloc
 
-template<>
-struct rstd::fmt::formatter<rstd::alloc::AllocError> : rstd::fmt::formatter<cppstd::string_view> {
-    template<class FmtContext>
-    FmtContext::iterator format(rstd::alloc::AllocError const& err, FmtContext& ctx) const {
-        return rstd::fmt::formatter<cppstd::string_view>::format("AllocError", ctx);
-    }
-};

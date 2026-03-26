@@ -115,7 +115,7 @@ public:
     /// Returns None if no name was set.
     auto name() const -> Option<ThreadNameString> {
         if (! inner.get_ref()) {
-            rstd::panic("Thread::name() called with null Arc in Pin");
+            rstd::panic{"Thread::name() called with null Arc in Pin"};
         }
         if (auto& name = inner->as_ptr()->name; name) {
             return name.clone();

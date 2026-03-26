@@ -189,11 +189,11 @@ public:
     constexpr void pop_back() { (void)pop(); }
 
     constexpr T& at(usize index) {
-        if (index >= m_len) rstd::panic("Vec index out of bounds");
+        if (index >= m_len) rstd::panic { "Vec index out of bounds" };
         return m_buf.ptr.as_mut_ptr().as_raw_ptr()[index];
     }
     constexpr const T& at(usize index) const {
-        if (index >= m_len) rstd::panic("Vec index out of bounds");
+        if (index >= m_len) rstd::panic { "Vec index out of bounds" };
         return m_buf.ptr.as_ptr().as_raw_ptr()[index];
     }
 
@@ -213,7 +213,7 @@ public:
     }
 
     constexpr T remove(usize index) {
-        if (index >= m_len) rstd::panic("Vec index out of bounds");
+        if (index >= m_len) rstd::panic { "Vec index out of bounds" };
         T     value = rstd::move(at(index));
         auto* p     = m_buf.ptr.as_mut_ptr().as_raw_ptr();
         for (usize i = index; i < m_len - 1; ++i) {

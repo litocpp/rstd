@@ -6,21 +6,19 @@ export import :panicking;
 namespace rstd
 {
 
-export template<typename... T>
-struct assert_fmt {
+export struct assert_fmt {
 /// workaround for gcc source_location link err
 #ifdef __clang__
     [[noreturn]]
     inline assert_fmt(ref<str> expr_str, const source_location& loc = source_location::current()) {
-        panic_fmt(cppstd::format("Assertion `{}` failed", expr_str), loc);
+        // panic_fmt(expr_str, loc);
+        __builtin_abort();
     }
     [[gnu::always_inline]] [[noreturn]]
-    inline assert_fmt(ref<str> expr_str, cppstd::format_string<T...> fmt, T&&... args,
+    inline assert_fmt(ref<str> expr_str, ref<str> msg,
                       const cppstd::source_location loc = cppstd::source_location::current()) {
-        panic_fmt(cppstd::format("Assertion `{}` failed: {}",
-                                 expr_str,
-                                 cppstd::vformat(fmt.get(), rstd::fmt::make_format_args(args...))),
-                  loc);
+        // panic_fmt(msg, loc);
+        __builtin_abort();
     }
 #else
     [[gnu::always_inline]] [[noreturn]]
@@ -28,13 +26,10 @@ struct assert_fmt {
         __builtin_abort();
     }
     [[gnu::always_inline]] [[noreturn]]
-    inline assert_fmt(ref<str>, cppstd::format_string<T...>, T&&...) {
+    inline assert_fmt(ref<str>, ref<str>) {
         __builtin_abort();
     }
 #endif
 };
-
-template<typename... Ts>
-assert_fmt(ref<str>, cppstd::format_string<Ts...>, Ts&&...) -> assert_fmt<Ts...>;
 
 } // namespace rstd

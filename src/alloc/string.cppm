@@ -79,13 +79,129 @@ using ::alloc::string::ToString;
 
 namespace rstd
 {
+template<>
+struct Impl<fmt::Write, String> : ImplBase<String> {
+    auto write_str(const u8* p, usize len) -> bool {
+        auto& self = this->self();
+        for (usize i = 0; i < len; ++i) {
+            self.push_back(p[i]);
+        }
+        return true;
+    }
+};
+}
+
+namespace rstd::fmt
+{
+
+export template<typename... Args>
+auto format(ref<str> fmt_str, Args&&... args) -> String {
+    auto buf = String::make();
+    Formatter f(buf);
+    if constexpr (sizeof...(Args) > 0) {
+        Argument arg_array[] = { Argument::display(args)... };
+        f.write_fmt({ fmt_str.data(), fmt_str.size(), arg_array, sizeof...(Args) });
+    } else {
+        f.write_fmt({ fmt_str.data(), fmt_str.size(), nullptr, 0 });
+    }
+    return buf;
+}
+
+} // namespace rstd::fmt
+
+namespace rstd
+{
+
+export using fmt::format;
+
+template<mtp::is_int T>
+struct Impl<fmt::Display, T> : ImplBase<T> {
+    auto fmt(fmt::Formatter& f) const -> bool {
+        char  buf[64];
+        char* p   = buf + 64;
+        auto  val = this->self();
+        if (val == 0) {
+            return f.write_raw((const u8*)"0", 1);
+        }
+        unsigned __int128 uval;
+        bool              neg = false;
+        if constexpr (mtp::same_as<T, i8> || mtp::same_as<T, i16> || mtp::same_as<T, i32> ||
+                      mtp::same_as<T, i64> || mtp::same_as<T, i128> || mtp::same_as<T, int> || mtp::same_as<T, long> || mtp::same_as<T, long long>) {
+            if (val < 0) {
+                neg  = true;
+                uval = (val == numeric_limits<T>::min())
+                           ? (unsigned __int128)numeric_limits<T>::max() + 1
+                           : (unsigned __int128)-val;
+            } else {
+                uval = (unsigned __int128)val;
+            }
+        } else {
+            uval = (unsigned __int128)val;
+        }
+
+        while (uval > 0) {
+            *--p = (char)('0' + (uval % 10));
+            uval /= 10;
+        }
+
+        if (neg) *--p = '-';
+        return f.write_raw((const u8*)p, (buf + 64) - p);
+    }
+};
+
+template<>
+struct Impl<fmt::Display, ref<str>> : ImplBase<ref<str>> {
+    auto fmt(fmt::Formatter& f) const -> bool {
+        return f.write_raw(this->self().data(), this->self().size());
+    }
+};
+
+template<>
+struct Impl<fmt::Display, char const*> : ImplBase<char const*> {
+    auto fmt(fmt::Formatter& f) const -> bool {
+        auto s = this->self();
+        return f.write_raw((const u8*)s, rstd::strlen(s));
+    }
+};
+
+template<usize N>
+struct Impl<fmt::Display, char[N]> : ImplBase<char[N]> {
+    auto fmt(fmt::Formatter& f) const -> bool {
+        return f.write_raw((const u8*)this->self(), rstd::strlen(this->self()));
+    }
+};
+
+template<usize N>
+struct Impl<fmt::Display, char const[N]> : ImplBase<char const[N]> {
+    auto fmt(fmt::Formatter& f) const -> bool {
+        return f.write_raw((const u8*)this->self(), rstd::strlen(this->self()));
+    }
+};
+
+template<>
+struct Impl<fmt::Display, time::Duration> : ImplBase<time::Duration> {
+    auto fmt(fmt::Formatter& f) const -> bool {
+        auto& d = this->self();
+        auto s_str = rstd::format("{}", d.as_secs());
+        f.write_raw(s_str.begin(), s_str.size());
+        f.write_raw((const u8*)"s ", 2);
+        auto n_str = rstd::format("{}", d.subsec_nanos());
+        f.write_raw(n_str.begin(), n_str.size());
+        return f.write_raw((const u8*)"ns", 2);
+    }
+};
+
+template<>
+struct Impl<fmt::Debug, time::Duration> : ImplBase<time::Duration> {
+    auto fmt(fmt::Formatter& f) const -> bool {
+        return as<fmt::Display>(this->self()).fmt(f);
+    }
+};
 
 template<mtp::same_as<ToString> T, Impled<fmt::Display> A>
 struct Impl<T, A> : ImplBase<A> {
     auto to_string() const -> String {
-        auto out = String::make();
-        fmt::format_to(cppstd::back_inserter(out), "{}", this->self());
-        return out;
+        return rstd::format("{}", this->self());
     }
 };
 
@@ -121,30 +237,4 @@ auto to_string(A&& a) {
     return as<ToString>(a).to_string();
 }
 
-namespace fmt
-{
-
-export auto vformat(ref<str> fmt, fmt::format_args args) -> String {
-    auto buf = String::make();
-    fmt::vformat_to(cppstd::back_inserter(buf), { (char const*)fmt.data(), fmt.size() }, args);
-    return buf;
-}
-export template<typename... Args>
-auto format(fmt::format_string<Args...> fmt, Args&&... args) -> String {
-    return fmt::vformat(fmt.get(), fmt::make_format_args(args...));
-}
-
-} // namespace fmt
-
-export using fmt::format;
-export using fmt::vformat;
-
 } // namespace rstd
-
-template<>
-struct rstd::fmt::formatter<String> : rstd::fmt::formatter<rstd::ref<rstd::str>> {
-    template<typename FmtContext>
-    auto format(const String& str, FmtContext& ctx) const -> FmtContext::iterator {
-        return rstd::fmt::formatter<rstd::ref<rstd::str>>::format(str, ctx);
-    }
-};

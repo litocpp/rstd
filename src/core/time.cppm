@@ -1,5 +1,3 @@
-module;
-#include <format>
 export module rstd.core:time;
 import :cmp;
 import :fmt;
@@ -123,17 +121,3 @@ export struct Duration {
 };
 
 } // namespace rstd::time
-
-namespace std
-{
-export template<>
-struct formatter<rstd::time::Duration> {
-    template<typename ParseContext>
-    constexpr auto parse(ParseContext& ctx) { return ctx.begin(); }
-
-    template<typename Context>
-    auto format(const rstd::time::Duration& d, Context& ctx) const {
-        return std::format_to(ctx.out(), "{}s {}ns", d.as_secs(), d.subsec_nanos());
-    }
-};
-} // namespace std

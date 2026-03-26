@@ -35,7 +35,7 @@ public:
     // Rust uses cfg_select! to pick a fast atomic path; here we always use an atomic counter.
     static ThreadId make() {
         auto exhausted = []() {
-            panic("failed to generate unique thread ID: bitspace exhausted");
+            panic{"failed to generate unique thread ID: bitspace exhausted"};
         };
 
         using rstd::sync::atomic::Atomic;

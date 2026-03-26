@@ -6,24 +6,24 @@ namespace rstd
 {
 
 export [[noreturn]]
-void panic_fmt(ref<str> msg, const source_location loc = source_location::current());
+void panic_fmt(fmt::Arguments args, const source_location loc = source_location::current());
 
-export template<typename... T>
+export template<typename... Args>
 struct panic {
 #ifdef __clang__
     [[gnu::always_inline]] [[noreturn]]
-    inline panic(cppstd::format_string<T...>   fmt, T&&... args,
-                 const cppstd::source_location loc = cppstd::source_location::current()) {
-        panic_fmt(cppstd::vformat(fmt.get(), cppstd::make_format_args(args...)), loc);
+    inline panic(ref<str>, Args&&... args, const source_location loc = source_location::current()) {
+        // panic_fmt(args, loc);
+        __builtin_abort();
     }
 #else
     [[noreturn]]
-    inline panic(cppstd::format_string<T...>, T&&...) {
+    inline panic(ref<str>) {
         __builtin_abort();
     }
 #endif
 };
 
 template<typename... Ts>
-panic(cppstd::format_string<Ts...>, Ts&&...) -> panic<Ts...>;
+panic(ref<str>, Ts&&...) -> panic<Ts...>;
 } // namespace rstd

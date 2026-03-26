@@ -27,7 +27,7 @@ void Once::wait(bool ignore_poisoning) {
         case COMPLETE: return;
         case POISONED:
             if (! ignore_poisoning) {
-                panic("Once instance has previously been poisoned");
+                panic{"Once instance has previously been poisoned"};
             }
             break;
         default:

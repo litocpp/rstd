@@ -35,7 +35,7 @@ public:
         if (r != 0) {
             // TODO: from_raw_parts_os_error
             // error = Error::from_raw_parts_os_error(r);
-            panic("failed to lock mutex");
+            panic{"failed to lock mutex"};
         }
     }
 

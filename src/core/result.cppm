@@ -134,9 +134,9 @@ struct Impl<T, Self> : ImplBase<Self> {
 namespace rstd::result
 {
 
-template<fmt::formattable E>
+template<typename E>
 auto unwrap_failed(ref<str> msg, E& e) {
-    rstd::panic("{}: {}", msg, e);
+    rstd::panic { msg };
 }
 
 namespace detail
@@ -366,7 +366,6 @@ public:
     }
 
     auto expect(ref<str> msg) -> T
-        requires fmt::formattable<E>
     {
         if (is_ok()) {
             return _get_move<0>();
@@ -377,7 +376,6 @@ public:
     }
 
     auto unwrap() -> T
-        requires fmt::formattable<E>
     {
         if (is_ok()) {
             return _get_move<0>();
@@ -398,7 +396,6 @@ public:
     }
 
     auto expect_err(ref<str> msg) -> E
-        requires fmt::formattable<T>
     {
         if (is_ok()) {
             unwrap_failed(msg, _get<0>());
@@ -409,7 +406,6 @@ public:
     }
 
     auto unwrap_err() -> E
-        requires fmt::formattable<T>
     {
         if (is_err()) {
             return _get_move<1>();

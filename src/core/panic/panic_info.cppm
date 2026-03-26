@@ -1,14 +1,13 @@
 export module rstd.core:panic_info;
+export import :fmt;
 export import :str.str;
 
 namespace rstd::panic_
 {
 export struct PanicInfo {
-    ref<str> message;
+    fmt::Arguments message;
 
     cppstd::source_location location;
-    // bool can_unwind;
-    // bool force_no_backtrace;
 };
 
 } // namespace rstd::panic_

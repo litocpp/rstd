@@ -106,15 +106,6 @@ public:
 
 } // namespace rstd
 
-template<>
-struct rstd::fmt::formatter<rstd::ref<rstd::str>> : rstd::fmt::formatter<cppstd::string_view> {
-    template<class FmtContext>
-    FmtContext::iterator format(rstd::ref<rstd::str> str, FmtContext& ctx) const {
-        return rstd::fmt::formatter<cppstd::string_view>::format(
-            { reinterpret_cast<char const*>(str.data()), str.size() }, ctx);
-    }
-};
-
 namespace rstd::str_
 {
 export constexpr auto extract_last(ref<str> path, usize count) -> ref<str> {

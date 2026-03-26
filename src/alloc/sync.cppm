@@ -322,7 +322,7 @@ public:
     // Rust: Arc::as_ptr (raw pointer to T)
     auto as_ptr() const noexcept {
         if (! self.inner) [[unlikely]] {
-            rstd::panic("Arc::as_ptr called on an empty Arc");
+            rstd::panic { "Arc::as_ptr called on an empty Arc" };
         }
         return self.inner->data();
     }

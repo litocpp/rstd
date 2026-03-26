@@ -70,10 +70,10 @@ public:
 
     /// Acquires another sender reference.
     auto acquire() const -> Sender<C> {
-        if (!counter_ptr) rstd::panic("Sender::acquire on null");
+        if (!counter_ptr) rstd::panic{"Sender::acquire on null"};
         usize count = counter()->senders.fetch_add(1, Ordering::Relaxed);
         if (count > cppstd::numeric_limits<isize>::max()) {
-            rstd::panic("mpsc sender count overflow");
+            rstd::panic{"mpsc sender count overflow"};
         }
         return Sender { counter_ptr };
     }
@@ -127,10 +127,10 @@ public:
 
     /// Acquires another receiver reference.
     auto acquire() const -> Receiver<C> {
-        if (!counter_ptr) rstd::panic("Receiver::acquire on null");
+        if (!counter_ptr) rstd::panic{"Receiver::acquire on null"};
         usize count = counter()->receivers.fetch_add(1, Ordering::Relaxed);
         if (count > cppstd::numeric_limits<isize>::max()) {
-            rstd::panic("mpsc receiver count overflow");
+            rstd::panic{"mpsc receiver count overflow"};
         }
         return Receiver { counter_ptr };
     }

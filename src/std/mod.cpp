@@ -51,11 +51,11 @@ void rstd_panic_impl(PanicInfo const& info) {
 
     auto& loc = info.location;
 
-    auto out = rstd::fmt::format("aborting due to panic at {}({}:{}):\n{}\n",
+    auto out = rstd::fmt::format("aborting due to panic at {}({}:{}):\n",
                                  rstd::str_::extract_last(loc.file_name(), 2),
                                  loc.function_name(),
-                                 loc.line(),
-                                 info.message);
+                                 loc.line());
+                                 //info.message);
 
     cppstd::fwrite(out.as_ref().as_raw_ptr(), out.as_ref().count_bytes(), 1, cppstd::stderr);
     cppstd::fflush(cppstd::stderr);

@@ -27,7 +27,7 @@ struct ScopeData {
     [[gnu::cold]]
     void overflow() const {
         decrement_num_running_threads(false);
-        panic("too many running threads in thread scope");
+        panic{"too many running threads in thread scope"};
     }
 
     void decrement_num_running_threads(bool panic) const {

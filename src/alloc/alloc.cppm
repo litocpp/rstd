@@ -51,7 +51,7 @@ export auto alloc_zeroed(Layout layout) noexcept -> mut_ptr<u8> {
 
 export [[gnu::cold]]
 void handle_alloc_error(Layout layout) {
-    rstd::panic("memory allocation of {} bytes failed", layout.size);
+    rstd::panic { "memory allocation failed" };
 }
 
 /// The global memory allocator.
