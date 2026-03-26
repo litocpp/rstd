@@ -95,7 +95,7 @@ namespace rstd::fmt
 {
 
 export template<typename... Args>
-auto format(ref<str> fmt_str, Args&&... args) -> String {
+auto format(fmt::format_string<Args...> fmt_str, Args&&... args) -> String {
     auto buf = String::make();
     Formatter f(buf);
     if constexpr (sizeof...(Args) > 0) {
