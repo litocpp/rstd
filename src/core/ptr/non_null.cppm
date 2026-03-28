@@ -144,10 +144,6 @@ struct NonNull {
     }
     constexpr bool operator==(pointer_t p) noexcept { return pointer == p; }
     constexpr bool operator==(nullptr_t in) const noexcept { return pointer == in; }
-
-    struct Hasher {
-        usize operator()(NonNull p) const noexcept { return cppstd::hash<pointer_t> {}(p.pointer); }
-    };
 };
 
 } // namespace rstd::ptr_::non_null

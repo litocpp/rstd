@@ -81,7 +81,7 @@ struct Impl<io::Seek, io::Empty> : ImplBase<io::Empty> {
 template<>
 struct Impl<io::Read, io::Repeat> : ImplBase<io::Repeat> {
     auto read(u8* buf, usize len) -> io::Result<usize> {
-        cppstd::memset(buf, int(this->self().byte), len);
+        rstd::mem::memset(buf, int(this->self().byte), len);
         return Ok(len);
     }
 };

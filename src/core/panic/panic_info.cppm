@@ -14,10 +14,10 @@ export struct Location {
     u32         _col;
 
     constexpr auto file_name() const noexcept -> const char* { return _file; }
-    constexpr auto line()      const noexcept -> u32         { return _line; }
-    constexpr auto column()    const noexcept -> u32         { return _col; }
+    constexpr auto line() const noexcept -> u32 { return _line; }
+    constexpr auto column() const noexcept -> u32 { return _col; }
 
-    static constexpr auto from(cppstd::source_location sl) noexcept -> Location {
+    static constexpr auto from(rstd::source_location sl) noexcept -> Location {
         return { sl.file_name(), u32(sl.line()), u32(sl.column()) };
     }
 };
@@ -39,10 +39,8 @@ export struct PanicInfo {
 //
 // The caller writes just `foo(42)` and gets the right location automatically.
 export struct SrcLoc {
-    cppstd::source_location val;
-    consteval SrcLoc(cppstd::source_location v =
-                     cppstd::source_location::current()) noexcept
-        : val(v) {}
+    rstd::source_location val;
+    consteval SrcLoc(rstd::source_location v = rstd::source_location::current()) noexcept: val(v) {}
 };
 
 } // namespace rstd::panic_

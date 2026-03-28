@@ -38,7 +38,7 @@ template<typename Self>
 struct Impl<clone::Clone, Self> : LinkTraitDefault<clone::Clone, Self> {
     auto clone() const -> Self {
         auto& self = this->self();
-        return cppstd::apply(
+        return mtp::apply(
             [](const auto&... elements) -> Self {
                 return { rstd::as<rstd::clone::Clone>(elements).clone()... };
             },

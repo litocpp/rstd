@@ -52,15 +52,13 @@ void rstd_panic_impl(PanicInfo const& info) {
     auto& loc  = info.location;
     auto  file = rstd::str_::extract_last(loc.file_name(), 2);
 
-    auto header = rstd::fmt::format("thread 'main' panicked at {}:{}:{}:\n",
-                                    file, loc.line(), loc.column());
-    cppstd::fwrite(header.as_ref().as_raw_ptr(), header.as_ref().count_bytes(), 1, cppstd::stderr);
+    auto header = rstd::fmt::format(
+        "thread 'main' panicked at {}:{}:{}:\n{}\n", file, loc.line(), loc.column(), info.message);
+    rstd::io::Stderr out {};
 
-    auto msg = rstd::fmt::format("{}", info.message);
-    cppstd::fwrite(msg.as_ref().as_raw_ptr(), msg.as_ref().count_bytes(), 1, cppstd::stderr);
-    cppstd::fwrite("\n", 1, 1, cppstd::stderr);
-
-    cppstd::fflush(cppstd::stderr);
+    rstd::as<rstd::io::Write>(out).write((u8 const*)header.as_ref().as_raw_ptr(),
+                                         header.as_ref().count_bytes());
+    rstd::as<rstd::io::Write>(out).flush();
     rstd::process::abort();
 }
 }

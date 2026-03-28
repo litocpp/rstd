@@ -43,16 +43,16 @@ public:
     void push_back(u8 c) { vec.push(rstd::move(c)); }
 
     friend constexpr auto operator<=>(const String& a, const String& b) noexcept {
-        return cppstd::lexicographical_compare_three_way(
+        return rstd::lexicographical_compare_three_way(
             a.vec.begin(), a.vec.end(), b.vec.begin(), b.vec.end());
     }
     friend constexpr auto operator<=>(const String& a, slice<u8> b) noexcept {
         auto ptr = &*b;
-        return cppstd::lexicographical_compare_three_way(
+        return rstd::lexicographical_compare_three_way(
             a.vec.begin(), a.vec.end(), ptr, ptr + b.len());
     }
     friend bool operator==(char const* b, const String& a) noexcept {
-        return cppstd::lexicographical_compare_three_way(
+        return rstd::lexicographical_compare_three_way(
                    a.vec.begin(), a.vec.end(), b, b + rstd::strlen(b)) ==
                rstd::strong_ordering::equal;
     }
@@ -272,7 +272,7 @@ struct Impl<T, A> : ImplBase<default_tag<A>> {
     using Rhs = char const*;
     auto eq(const Rhs& other) const noexcept -> bool {
         auto& a = this->self();
-        return cppstd::lexicographical_compare_three_way(
+        return rstd::lexicographical_compare_three_way(
                    a.begin(), a.end(), other, other + rstd::strlen(other)) ==
                rstd::strong_ordering::equal;
     }

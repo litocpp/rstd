@@ -1,5 +1,6 @@
 export module rstd.basic:mtp;
 export import :prelude;
+export import :mtp.std;
 
 #if ! __has_builtin(__is_nothrow_destructible)
 export import :cppstd;

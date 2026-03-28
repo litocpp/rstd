@@ -11,4 +11,4 @@ target_sources(
          prelude.cppm
          basic.cppm
          mtp.cppm
-         cppstd.cppm)
+         mtp.std.cppm)

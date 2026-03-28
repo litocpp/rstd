@@ -1,5 +1,4 @@
 module;
-#include <new>
 #define DEFINE_VALID_RANGE_TYPE(name, T, UT, low, high)                                      \
     namespace rstd::num::niche_types                                                         \
     {                                                                                        \

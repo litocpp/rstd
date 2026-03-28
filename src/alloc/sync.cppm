@@ -14,7 +14,7 @@ using namespace rstd::prelude;
 namespace alloc::sync
 {
 
-constexpr usize MAX_REFCOUNT = (rstd::numeric_limits<usize>::max)() / 2;
+constexpr usize MAX_REFCOUNT = rstd::numeric_limits<usize>::max() / 2;
 
 enum class DeleteType
 {

@@ -84,8 +84,8 @@ template<>
 struct rstd::Impl<io::Write, BufWrite> : ImplBase<BufWrite> {
     auto write(const u8* buf, usize len) -> io::Result<usize> {
         auto& self = this->self();
-        usize n = cppstd::min(len, usize(sizeof(self.data)) - self.pos);
-        cppstd::memcpy(self.data + self.pos, buf, n);
+        usize n = rstd::min(len, usize(sizeof(self.data)) - self.pos);
+        rstd::mem::memcpy(self.data + self.pos, buf, n);
         self.pos += n;
         return Ok(n);
     }
@@ -114,8 +114,8 @@ template<>
 struct rstd::Impl<io::Read, MemRead> : ImplBase<MemRead> {
     auto read(u8* buf, usize len) -> io::Result<usize> {
         auto& self = this->self();
-        usize n = cppstd::min(len, self.len - self.pos);
-        cppstd::memcpy(buf, self.data + self.pos, n);
+        usize n = rstd::min(len, self.len - self.pos);
+        rstd::mem::memcpy(buf, self.data + self.pos, n);
         self.pos += n;
         return Ok(n);
     }

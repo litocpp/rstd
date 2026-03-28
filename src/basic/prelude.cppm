@@ -1,9 +1,18 @@
 module;
+#include <compare>
 #include <cstdint>
 #include <cstddef>
+#include <limits>
 #include <tuple>
 #include <source_location>
 export module rstd.basic:prelude;
+
+namespace std
+{
+export using std::tuple_size;
+export using std::tuple_element;
+export using std::get;
+} // namespace std
 
 namespace rstd
 {
@@ -13,10 +22,10 @@ export {
     using i32 = ::int32_t;
     using i64 = ::int64_t;
 
-    using u8  = ::uint8_t;
-    using u16 = ::uint16_t;
-    using u32 = ::uint32_t;
-    using u64 = ::uint64_t;
+    using u8   = ::uint8_t;
+    using u16  = ::uint16_t;
+    using u32  = ::uint32_t;
+    using u64  = ::uint64_t;
     using u128 = unsigned __int128;
 
     using i128 = __int128;
@@ -45,6 +54,7 @@ export {
 
     using std::align_val_t;
 
+    using std::compare_three_way;
     using std::partial_ordering;
     using std::strong_ordering;
     using std::weak_ordering;
@@ -86,6 +96,7 @@ using std::tuple_size;
 
 using std::align_val_t;
 
+using std::compare_three_way;
 using std::partial_ordering;
 using std::strong_ordering;
 using std::weak_ordering;

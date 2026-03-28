@@ -77,7 +77,7 @@ struct VTableStaticStorage {
     }
 
     template<usize... Is>
-    consteval static auto convert_all(cppstd::index_sequence<Is...>) {
+    consteval static auto convert_all(mtp::index_sequence<Is...>) {
         return apis_t { (convert<Is>())... };
     }
 
@@ -86,7 +86,7 @@ struct VTableStaticStorage {
             [](voidp p) {
                 static_cast<U*>(p)->~U();
             },
-        .apis  = convert_all(cppstd::make_index_sequence<mtp::tuple_size<apis_t>> {}),
+        .apis  = convert_all(mtp::make_index_sequence<mtp::tuple_size<apis_t>> {}),
         .size  = sizeof(U),
         .align = alignof(U),
     };

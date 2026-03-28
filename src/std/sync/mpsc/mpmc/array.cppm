@@ -49,7 +49,7 @@ struct Channel {
     static auto with_capacity(usize cap) -> Box<Channel> {
         assert(cap > 0);
 
-        usize mark_bit = cppstd::bit_ceil(cap + 1);
+        usize mark_bit = rstd::num::bit_ceil(cap + 1);
         usize one_lap  = mark_bit * 2;
 
         auto slots_storage = ::alloc::GLOBAL.allocate(alloc::Layout::array<Slot<T>>(cap).unwrap())

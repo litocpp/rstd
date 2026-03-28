@@ -97,14 +97,14 @@ TEST(Rc, WeakReference) {
 
     {
         auto upgraded = weak.upgrade();
-        ASSERT_TRUE(upgraded.has_value());
+        ASSERT_TRUE(upgraded.is_some());
         EXPECT_EQ(**upgraded, 42);
         EXPECT_EQ(rc.strong_count(), 2);
     }
 
     rc            = Rc<int>(); // Reset original
     auto upgraded = weak.upgrade();
-    EXPECT_FALSE(upgraded.has_value());
+    EXPECT_FALSE(upgraded.is_some());
 }
 
 TEST(Rc, CustomDeleter) {

@@ -8,7 +8,7 @@ namespace alloc::rc
 {
 
 template<typename Allocator, typename T>
-using rebind_alloc = typename cppstd::allocator_traits<Allocator>::template rebind_alloc<T>;
+using rebind_alloc = typename mtp::allocator_traits<Allocator>::template rebind_alloc<T>;
 
 constexpr bool noexp { false };
 
@@ -341,10 +341,10 @@ public:
         return Weak(m_ptr);
     }
 
-    auto upgrade() const -> cppstd::optional<Rc<T>> {
-        if (! m_ptr || m_ptr->strong == 0) return cppstd::nullopt;
+    auto upgrade() const -> Option<Rc<T>> {
+        if (! m_ptr || m_ptr->strong == 0) return {};
         m_ptr->inc_strong();
-        return { RcMakeHelper::make_rc<T>(m_ptr) };
+        return Some(RcMakeHelper::make_rc<T>(m_ptr));
     }
 
     auto strong_count() const -> usize { return m_ptr ? m_ptr->strong : 0; }
@@ -512,7 +512,7 @@ public:
         requires mtp::is_const<T> && mtp::same_as<mtp::rm_cv<T>, U>
     Rc(const Rc<U>& o): Rc(o.to_const()) {}
 
-    explicit Rc(T* p): Rc(p, cppstd::default_delete<T>()) {}
+    explicit Rc(T* p): Rc(p, mtp::default_delete<T>()) {}
     template<typename Deleter>
     Rc(T* p, Deleter&& d): Rc(RcBase<T>::allocate_inner(p, rstd::move(d))) {}
 
