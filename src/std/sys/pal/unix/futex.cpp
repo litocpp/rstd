@@ -20,11 +20,12 @@ bool futex_wait(Futex* futex, Primitive expected, Option<Duration> timeout) {
     if (timeout) {
         ts = Some(libc::timespec {});
         libc::clock_gettime(libc::M_CLOCK_MONOTONIC, &*ts);
-        auto secs  = cppstd::chrono::duration_cast<cppstd::chrono::seconds>(*timeout);
-        auto nsecs = cppstd::chrono::duration_cast<cppstd::chrono::nanoseconds>(
-            cppstd::chrono::operator-(*timeout, secs));
-        ts->tv_sec += secs.count();
-        ts->tv_nsec += nsecs.count();
+        ts->tv_sec  += (long)timeout->as_secs();
+        ts->tv_nsec += (long)timeout->subsec_nanos();
+        if (ts->tv_nsec >= (long)rstd::time::NANOS_PER_SEC) {
+            ts->tv_nsec -= (long)rstd::time::NANOS_PER_SEC;
+            ts->tv_sec  += 1;
+        }
     }
     auto pts = ts ? &*ts : nullptr;
 

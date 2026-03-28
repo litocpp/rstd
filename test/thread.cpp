@@ -52,32 +52,28 @@ TEST(Thread, Current) {
 }
 
 TEST(Thread, Sleep) {
-    auto start = cppstd::chrono::steady_clock::now();
-    thread::sleep(cppstd::chrono::duration<double>(0.1));
-    auto end = cppstd::chrono::steady_clock::now();
-
-    auto elapsed = cppstd::chrono::duration_cast<cppstd::chrono::duration<double>>(end - start);
-    EXPECT_GE(elapsed.count(), 0.1);
+    auto start = rstd::time::Instant::now();
+    thread::sleep(rstd::time::Duration::from_millis(100));
+    auto elapsed = start.elapsed();
+    EXPECT_GE(elapsed.as_secs_f64(), 0.1);
 }
 
 #if !__has_feature(address_sanitizer)
 TEST(Thread, MultipleThreads) {
-    using namespace cppstd::chrono;
-
     auto counter = std::atomic<int>(0);
     {
         auto handle1 = thread::spawn([&counter] {
-                           thread::sleep(duration<double>(0.05));
+                           thread::sleep(rstd::time::Duration::from_millis(50));
                            counter++;
                        }).unwrap();
 
         auto handle2 = thread::spawn([&counter] {
-                           thread::sleep(duration<double>(0.03));
+                           thread::sleep(rstd::time::Duration::from_millis(30));
                            counter++;
                        }).unwrap();
 
         auto handle3 = thread::spawn([&counter] {
-                           thread::sleep(duration<double>(0.01));
+                           thread::sleep(rstd::time::Duration::from_millis(10));
                            counter++;
                        }).unwrap();
 

@@ -9,7 +9,7 @@ using rstd::sync::atomic::Atomic;
 namespace rstd::sys::pal::unix::futex
 {
 
-export using Duration = cppstd::chrono::duration<double>;
+export using Duration = rstd::time::Duration;
 /// Must be the underlying type of Futex
 export using Primitive = u32;
 export using Futex     = Atomic<Primitive>;

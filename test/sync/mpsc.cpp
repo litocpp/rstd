@@ -65,7 +65,7 @@ TEST(Mpsc, SyncChannelDisconnect) {
     EXPECT_EQ(rx.recv().unwrap_unchecked(), 1);
 
     auto t1 = thread::spawn([tx = rstd::move(tx)]() mutable {
-                  thread::sleep(cppstd::chrono::duration<double>(0.1));
+                  thread::sleep(rstd::time::Duration::from_millis(100));
                   // tx will be dropped after this lambda exits
               }).unwrap_unchecked();
 

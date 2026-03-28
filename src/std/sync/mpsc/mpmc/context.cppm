@@ -1,10 +1,10 @@
 module;
 #include <rstd/macro.hpp>
-#include <chrono>
 export module rstd:sync.mpsc.mpmc.context;
 export import :sync.mpsc.mpmc.select;
 export import rstd.core;
 export import :thread;
+export import :time;
 import :forward;
 import rstd.alloc;
 
@@ -84,7 +84,8 @@ public:
     }
 
     /// Waits until an operation is selected and returns it.
-    auto wait_until(Option<cppstd::chrono::steady_clock::time_point> deadline) const -> Selected {
+    /// `deadline` is an optional Instant; if present, parks with a timeout.
+    auto wait_until(Option<time::Instant> deadline) const -> Selected {
         while (true) {
             // Check whether an operation has been selected.
             auto sel = Selected::from_usize(inner->select.load(Ordering::Acquire));
@@ -92,16 +93,14 @@ public:
                 return sel;
             }
 
-            // If there's a deadline, park the current thread until the deadline is reached.
             if (deadline.is_some()) {
                 auto end = deadline.unwrap_unchecked();
-                auto now = cppstd::chrono::steady_clock::now();
+                auto now = time::Instant::now();
 
                 if (now < end) {
-                    inner->thread.park_timeout(
-                        cppstd::chrono::duration_cast<cppstd::chrono::duration<double>>(end - now));
+                    inner->thread.park_timeout(end.duration_since(now));
                 } else {
-                    // The deadline has been reached. Try aborting select.
+                    // Deadline reached — try aborting select.
                     auto res = try_select(Selected::Aborted());
                     if (res.is_ok()) {
                         return Selected::Aborted();

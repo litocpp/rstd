@@ -14,7 +14,7 @@ constexpr bool noexp { false };
 
 void increase_count(usize& count) {
     if (count == rstd::numeric_limits<usize>::max()) {
-        throw cppstd::runtime_error("reference count overflow");
+        rstd::panic("reference count overflow");
     }
     ++count;
 }

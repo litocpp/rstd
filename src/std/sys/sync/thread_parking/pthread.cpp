@@ -22,11 +22,12 @@ void Parker::park() {
     if (! state.compare_exchange_strong(expected, PARKED, Ordering::Relaxed, Ordering::Relaxed)) {
         if (expected == NOTIFIED) {
             // Must read here for synchronization, see Rust comments
-            [[maybe_unused]] usize old = state.exchange(EMPTY, Ordering::Acquire);
+            [[maybe_unused]]
+            usize old = state.exchange(EMPTY, Ordering::Acquire);
             assert(old == NOTIFIED, "park state changed unexpectedly");
             return;
         }
-        panic{"inconsistent park state"};
+        panic { "inconsistent park state" };
     }
 
     while (true) {
@@ -39,7 +40,7 @@ void Parker::park() {
     }
 }
 
-void Parker::park_timeout(const cppstd::chrono::duration<double>& dur) {
+void Parker::park_timeout(rstd::time::Duration dur) {
     usize expected = NOTIFIED;
     if (state.compare_exchange_strong(expected, EMPTY, Ordering::Acquire, Ordering::Relaxed)) {
         return;
@@ -49,19 +50,20 @@ void Parker::park_timeout(const cppstd::chrono::duration<double>& dur) {
     expected = EMPTY;
     if (! state.compare_exchange_strong(expected, PARKED, Ordering::Acquire, Ordering::Relaxed)) {
         if (expected == NOTIFIED) {
-            [[maybe_unused]] usize old = state.exchange(EMPTY, Ordering::Acquire);
+            [[maybe_unused]]
+            usize old = state.exchange(EMPTY, Ordering::Acquire);
             assert(old == NOTIFIED && "park state changed unexpectedly");
             return;
         }
-        throw panic{"inconsistent park_timeout state"};
+        panic { "inconsistent park_timeout state" };
     }
 
     cvar.wait_timeout(lock,
-                      cppstd::chrono::duration_cast<cppstd::chrono::nanoseconds>(dur).count());
+                      (i64)(dur.as_secs() * u64(rstd::time::NANOS_PER_SEC)) + (i64)dur.subsec_nanos());
 
     usize old = state.exchange(EMPTY, Ordering::Acquire);
     if (old != NOTIFIED && old != PARKED) {
-        throw panic { rstd::format("inconsistent park_timeout state: {}", old) };
+        panic("inconsistent park_timeout state: {}", old);
     }
 }
 
@@ -72,7 +74,7 @@ void Parker::unpark() {
     case EMPTY:
     case NOTIFIED: return;
     case PARKED: break;
-    default: panic{"inconsistent state in unpark"};
+    default: panic { "inconsistent state in unpark" };
     }
 
     // Lock to ensure proper synchronization with the parking thread

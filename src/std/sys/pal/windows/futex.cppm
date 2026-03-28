@@ -10,7 +10,7 @@ namespace rstd::sys::pal::windows::futex
 {
 export {
     // Basic futex types
-    using Duration       = cppstd::chrono::duration<double>;
+    using Duration       = rstd::time::Duration;
     using Primitive      = u32;
     using Futex          = Atomic<Primitive>;
     using SmallPrimitive = u8;

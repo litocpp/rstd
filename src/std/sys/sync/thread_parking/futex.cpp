@@ -26,7 +26,7 @@ void Parker::park() {
     }
 }
 
-void Parker::park_timeout(cppstd::chrono::duration<double> timeout) {
+void Parker::park_timeout(rstd::time::Duration timeout) {
     // Change NOTIFIED=>EMPTY or EMPTY=>PARKED, and directly return in the first case
     if (state.fetch_sub(1, Ordering::Acquire) == NOTIFIED) {
         return;

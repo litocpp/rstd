@@ -188,23 +188,67 @@ struct Impl<fmt::Display, char const[N]> : ImplBase<char const[N]> {
     }
 };
 
-template<>
-struct Impl<fmt::Display, time::Duration> : ImplBase<time::Duration> {
-    auto fmt(fmt::Formatter& f) const -> bool {
-        auto& d = this->self();
-        auto s_str = rstd::format("{}", d.as_secs());
-        f.write_raw(s_str.begin(), s_str.size());
-        f.write_raw((const u8*)"s ", 2);
-        auto n_str = rstd::format("{}", d.subsec_nanos());
-        f.write_raw(n_str.begin(), n_str.size());
-        return f.write_raw((const u8*)"ns", 2);
-    }
-};
-
+// Duration has no Display (matching Rust: format is ambiguous).
+// Debug format matches Rust: "1.5s", "500ms", "1.234µs", "789ns".
 template<>
 struct Impl<fmt::Debug, time::Duration> : ImplBase<time::Duration> {
     auto fmt(fmt::Formatter& f) const -> bool {
-        return as<fmt::Display>(this->self()).fmt(f);
+        auto& d = this->self();
+        const u64 secs  = d.as_secs();
+        const u32 nanos = d.subsec_nanos();
+        if (secs > 0) {
+            // Render as seconds with up to 9 decimal places, trimming trailing zeros.
+            auto s = rstd::format("{}", secs);
+            f.write_raw(s.begin(), s.size());
+            if (nanos != 0) {
+                // Produce 9-digit fractional part then strip trailing zeros.
+                char frac[10];
+                u32 n = nanos;
+                for (int i = 8; i >= 0; --i) { frac[i] = char('0' + n % 10); n /= 10; }
+                frac[9] = '\0';
+                int len = 9;
+                while (len > 1 && frac[len-1] == '0') --len;
+                f.write_raw((const u8*)".", 1);
+                f.write_raw((const u8*)frac, usize(len));
+            }
+            return f.write_raw((const u8*)"s", 1);
+        } else if (nanos >= time::NANOS_PER_MILLI) {
+            // milliseconds
+            u32 ms   = nanos / time::NANOS_PER_MILLI;
+            u32 rem  = nanos % time::NANOS_PER_MILLI;
+            auto s   = rstd::format("{}", ms);
+            f.write_raw(s.begin(), s.size());
+            if (rem != 0) {
+                char frac[7]; u32 r = rem;
+                for (int i = 5; i >= 0; --i) { frac[i] = char('0' + r % 10); r /= 10; }
+                frac[6] = '\0';
+                int len = 6;
+                while (len > 1 && frac[len-1] == '0') --len;
+                f.write_raw((const u8*)".", 1);
+                f.write_raw((const u8*)frac, usize(len));
+            }
+            return f.write_raw((const u8*)"ms", 2);
+        } else if (nanos >= time::NANOS_PER_MICRO) {
+            // microseconds — use ASCII "us" (µ is multi-byte, avoid encoding issues)
+            u32 us  = nanos / time::NANOS_PER_MICRO;
+            u32 rem = nanos % time::NANOS_PER_MICRO;
+            auto s  = rstd::format("{}", us);
+            f.write_raw(s.begin(), s.size());
+            if (rem != 0) {
+                char frac[4]; u32 r = rem;
+                for (int i = 2; i >= 0; --i) { frac[i] = char('0' + r % 10); r /= 10; }
+                frac[3] = '\0';
+                int len = 3;
+                while (len > 1 && frac[len-1] == '0') --len;
+                f.write_raw((const u8*)".", 1);
+                f.write_raw((const u8*)frac, usize(len));
+            }
+            return f.write_raw((const u8*)"us", 2);
+        } else {
+            auto s = rstd::format("{}", nanos);
+            f.write_raw(s.begin(), s.size());
+            return f.write_raw((const u8*)"ns", 2);
+        }
     }
 };
 

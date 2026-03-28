@@ -26,12 +26,18 @@ TEST(Fmt, IntegerTypes) {
 
 TEST(Fmt, Duration) {
     auto d = time::Duration::from_millis(1500);
-    auto s = rstd::format("Time: {}", d);
-    EXPECT_EQ(s, "Time: 1s 500000000ns");
+    auto s = rstd::format("Time: {:?}", d);
+    EXPECT_EQ(s, "Time: 1.5s");
 }
 
-TEST(Fmt, ToString) {
-    auto d = time::Duration::from_secs(1);
-    auto s = rstd::to_string(d);
-    EXPECT_EQ(s, "1s 0ns");
+TEST(Fmt, DurationMs) {
+    auto d = time::Duration::from_millis(500);
+    auto s = rstd::format("{:?}", d);
+    EXPECT_EQ(s, "500ms");
+}
+
+TEST(Fmt, DurationNs) {
+    auto d = time::Duration::from_nanos(789);
+    auto s = rstd::format("{:?}", d);
+    EXPECT_EQ(s, "789ns");
 }

@@ -143,7 +143,7 @@ public:
     ///
     /// # Safety
     /// May only be called from the thread to which this handle belongs.
-    void park_timeout(cppstd::chrono::duration<double> timeout) const {
+    void park_timeout(rstd::time::Duration timeout) const {
         inner->as_ptr()->parker.park_timeout(timeout);
     }
 

@@ -45,7 +45,6 @@ module;
 #include <stdexcept>
 #include <algorithm>
 
-#include <chrono>
 #include <filesystem>
 #include <bit>
 
@@ -263,24 +262,6 @@ using std::numeric_limits;
 
 using std::error_category;
 using std::error_code;
-
-namespace chrono
-{
-using std::chrono::duration;
-using std::chrono::duration_cast;
-using std::chrono::microseconds;
-using std::chrono::milliseconds;
-using std::chrono::nanoseconds;
-using std::chrono::seconds;
-using std::chrono::steady_clock;
-using std::chrono::system_clock;
-using std::chrono::time_point;
-using std::chrono::operator-;
-using std::chrono::operator>;
-using std::chrono::operator<;
-using std::chrono::operator<=;
-using std::chrono::operator>=;
-} // namespace chrono
 
 namespace filesystem
 {

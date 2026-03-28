@@ -19,7 +19,7 @@ void wake_by_address_all(const void* address) { WakeByAddressAll(const_cast<void
 
 template<typename T>
 bool futex_wait(const rstd::atomic<T>* futex, T expected, Option<Duration> timeout) {
-    DWORD timeout_ms = timeout ? static_cast<DWORD>(timeout->count()) : INFINITE;
+    DWORD timeout_ms = timeout ? static_cast<DWORD>(timeout->as_millis()) : INFINITE;
 
     bool result = wait_on_address(futex, &expected, sizeof(T), timeout_ms);
     return result || GetLastError() != ERROR_TIMEOUT;

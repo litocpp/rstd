@@ -16,7 +16,7 @@ auto spawn(F&& f) -> io::Result<JoinHandle<mtp::invoke_result_t<F>>> {
     return builder::Builder::make().spawn(rstd::forward<F>(f));
 }
 
-export inline void sleep(cppstd::chrono::duration<double> dur) {
+export inline void sleep(rstd::time::Duration dur) {
     sys::thread::Thread::sleep(dur);
 }
 
@@ -28,7 +28,7 @@ export inline void park() {
     current().park();
 }
 
-export inline void park_timeout(cppstd::chrono::duration<double> timeout) {
+export inline void park_timeout(rstd::time::Duration timeout) {
     current().park_timeout(timeout);
 }
 

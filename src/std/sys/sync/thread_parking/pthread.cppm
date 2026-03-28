@@ -21,7 +21,7 @@ private:
 public:
     Parker();
     void park();
-    void park_timeout(const cppstd::chrono::duration<double>& dur);
+    void park_timeout(rstd::time::Duration dur);
     void unpark();
 };
 } // namespace rstd::sys::sync::thread_parking::pthread

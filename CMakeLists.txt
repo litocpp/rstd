@@ -17,12 +17,10 @@ if(PROJECT_IS_TOP_LEVEL)
   set(CMAKE_POSITION_INDEPENDENT_CODE ON)
   add_compile_options("$<$<COMPILE_LANG_AND_ID:CXX,Clang,GNU>:${WARN_OPTS}>")
   add_compile_options("$<$<COMPILE_LANG_AND_ID:CXX,Clang>:${WARN_CLANG_OPTS}>")
+  add_compile_options("$<$<COMPILE_LANG_AND_ID:CXX,Clang,GNU>:-fno-rtti;-fno-exceptions>")
 endif()
 
-if(OFF)
-add_compile_options(-nostdlib++)
-add_link_options(-nostdlib++)
-endif()
+
 
 add_subdirectory(src)
 

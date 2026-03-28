@@ -70,11 +70,9 @@ export struct Thread {
         libc::pthread_setname_np(current().id, (char const*)name.p);
     }
 
-    static void sleep(cppstd::chrono::duration<double> dur) {
-        auto total_secs = dur.count();
-        auto s          = static_cast<long>(total_secs);
-        auto ns         = static_cast<long>((total_secs - static_cast<double>(s)) * 1e9);
-        libc::timespec ts { .tv_sec = s, .tv_nsec = ns };
+    static void sleep(rstd::time::Duration dur) {
+        libc::timespec ts { .tv_sec  = (long)dur.as_secs(),
+                            .tv_nsec = (long)dur.subsec_nanos() };
         libc::nanosleep(&ts, nullptr);
     }
 

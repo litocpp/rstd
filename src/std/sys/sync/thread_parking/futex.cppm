@@ -18,7 +18,7 @@ public:
     Parker();
     ~Parker();
     void park();
-    void park_timeout(cppstd::chrono::duration<double> timeout);
+    void park_timeout(rstd::time::Duration timeout);
     void unpark();
 };
 } // namespace rstd::sync::thread_parking
