@@ -153,3 +153,182 @@ TEST(Io, PrintlnSmoke) {
     io::println<> {};
     io::println { "io println: {}", 42 };
 }
+
+// ── Cursor<Vec<u8>> ───────────────────────────────────────────────────────
+
+TEST(Io, CursorVecRead) {
+    using rstd::vec::Vec;
+    Vec<u8> v = Vec<u8>::with_capacity(5);
+    const u8 init[] = { 1, 2, 3, 4, 5 };
+    for (auto b : init) v.push(u8(b));
+    auto cur = io::Cursor<Vec<u8>>(rstd::move(v));
+    u8 buf[3] {};
+    auto res = as<io::Read>(cur).read(buf, 3);
+    EXPECT_TRUE(res.is_ok());
+    EXPECT_EQ(res.unwrap_unchecked(), usize(3));
+    EXPECT_EQ(buf[0], u8(1));
+    EXPECT_EQ(buf[2], u8(3));
+    EXPECT_EQ(cur.position(), u64(3));
+}
+
+TEST(Io, CursorVecWrite) {
+    using rstd::vec::Vec;
+    auto cur = io::Cursor<Vec<u8>>(Vec<u8>::with_capacity(0));
+    const u8 msg[] = { 'h', 'i' };
+    auto res = as<io::Write>(cur).write(msg, 2);
+    EXPECT_TRUE(res.is_ok());
+    EXPECT_EQ(res.unwrap_unchecked(), usize(2));
+    EXPECT_EQ(cur.position(), u64(2));
+    EXPECT_EQ(cur.get_ref().len(), usize(2));
+    EXPECT_EQ(cur.get_ref()[0], u8('h'));
+}
+
+TEST(Io, CursorVecSeek) {
+    using rstd::vec::Vec;
+    Vec<u8> v = Vec<u8>::with_capacity(4);
+    for (u8 b : { u8(10), u8(20), u8(30), u8(40) }) v.push(u8(b));
+    auto cur = io::Cursor<Vec<u8>>(rstd::move(v));
+    // Seek to end
+    auto res = as<io::Seek>(cur).seek(io::SeekFrom::from_end(0));
+    EXPECT_TRUE(res.is_ok());
+    EXPECT_EQ(res.unwrap_unchecked(), u64(4));
+    // Seek back 2
+    auto res2 = as<io::Seek>(cur).seek(io::SeekFrom::from_current(-2));
+    EXPECT_TRUE(res2.is_ok());
+    EXPECT_EQ(res2.unwrap_unchecked(), u64(2));
+    u8 buf[1] {};
+    as<io::Read>(cur).read(buf, 1);
+    EXPECT_EQ(buf[0], u8(30));
+}
+
+TEST(Io, CursorVecBufRead) {
+    using rstd::vec::Vec;
+    Vec<u8> v = Vec<u8>::with_capacity(3);
+    for (u8 b : { u8(7), u8(8), u8(9) }) v.push(u8(b));
+    auto cur = io::Cursor<Vec<u8>>(rstd::move(v));
+    auto res = as<io::BufRead>(cur).fill_buf();
+    EXPECT_TRUE(res.is_ok());
+    auto sl = res.unwrap_unchecked();
+    EXPECT_EQ(sl.len(), usize(3));
+    EXPECT_EQ(sl[0], u8(7));
+    as<io::BufRead>(cur).consume(2);
+    EXPECT_EQ(cur.position(), u64(2));
+}
+
+// ── Cursor<slice<u8>> ─────────────────────────────────────────────────────
+
+TEST(Io, CursorSliceRead) {
+    const u8 data[] = { 10, 20, 30 };
+    auto sl  = slice<u8>::from_raw_parts(data, 3);
+    auto cur = io::Cursor<slice<u8>>(sl);
+    u8 buf[2] {};
+    auto res = as<io::Read>(cur).read(buf, 2);
+    EXPECT_TRUE(res.is_ok());
+    EXPECT_EQ(buf[0], u8(10));
+    EXPECT_EQ(buf[1], u8(20));
+    EXPECT_EQ(cur.position(), u64(2));
+}
+
+// ── BufReader ─────────────────────────────────────────────────────────────
+
+TEST(Io, BufReaderBasic) {
+    // Use Cursor<Vec<u8>> as the inner reader.
+    using rstd::vec::Vec;
+    Vec<u8> v = Vec<u8>::with_capacity(6);
+    const u8 init[] = { 1, 2, 3, 4, 5, 6 };
+    for (auto b : init) v.push(u8(b));
+    auto inner = io::Cursor<Vec<u8>>(rstd::move(v));
+    auto br    = io::BufReader<io::Cursor<Vec<u8>>>(rstd::move(inner), 4);
+    u8 buf[6] {};
+    // First read — fills internal 4-byte buffer, returns 4
+    auto r1 = as<io::Read>(br).read(buf, 6);
+    EXPECT_TRUE(r1.is_ok());
+    usize n1 = r1.unwrap_unchecked();
+    EXPECT_GT(n1, usize(0));
+    EXPECT_LE(n1, usize(6));
+    EXPECT_EQ(buf[0], u8(1));
+}
+
+TEST(Io, BufReaderFillBuf) {
+    using rstd::vec::Vec;
+    Vec<u8> v = Vec<u8>::with_capacity(3);
+    for (u8 b : { u8(11), u8(22), u8(33) }) v.push(u8(b));
+    auto inner = io::Cursor<Vec<u8>>(rstd::move(v));
+    auto br    = io::BufReader<io::Cursor<Vec<u8>>>(rstd::move(inner), 8);
+    auto res = as<io::BufRead>(br).fill_buf();
+    EXPECT_TRUE(res.is_ok());
+    auto sl = res.unwrap_unchecked();
+    EXPECT_GE(sl.len(), usize(3));
+    EXPECT_EQ(sl[0], u8(11));
+    as<io::BufRead>(br).consume(1);
+}
+
+// ── BufWriter ─────────────────────────────────────────────────────────────
+
+TEST(Io, BufWriterBasic) {
+    using rstd::vec::Vec;
+    // Use Cursor<Vec<u8>> as sink.
+    auto sink_cur = io::Cursor<Vec<u8>>(Vec<u8>::with_capacity(0));
+    auto bw       = io::BufWriter<io::Cursor<Vec<u8>>>(rstd::move(sink_cur), 8);
+    const u8 msg[] = { 'a', 'b', 'c' };
+    auto res = as<io::Write>(bw).write(msg, 3);
+    EXPECT_TRUE(res.is_ok());
+    EXPECT_EQ(res.unwrap_unchecked(), usize(3));
+    // Flush to push data to inner.
+    auto fres = as<io::Write>(bw).flush();
+    EXPECT_TRUE(fres.is_ok());
+}
+
+// ── Empty / Repeat / Sink ─────────────────────────────────────────────────
+
+TEST(Io, EmptyRead) {
+    auto e = io::empty_io();
+    u8 buf[4] {};
+    auto res = as<io::Read>(e).read(buf, 4);
+    EXPECT_TRUE(res.is_ok());
+    EXPECT_EQ(res.unwrap_unchecked(), usize(0));
+}
+
+TEST(Io, EmptyWrite) {
+    auto e = io::empty_io();
+    const u8 msg[] = "x";
+    auto res = as<io::Write>(e).write(msg, 1);
+    EXPECT_TRUE(res.is_ok());
+    EXPECT_EQ(res.unwrap_unchecked(), usize(1));
+}
+
+TEST(Io, RepeatRead) {
+    auto r = io::repeat(u8(0xAB));
+    u8 buf[4] {};
+    auto res = as<io::Read>(r).read(buf, 4);
+    EXPECT_TRUE(res.is_ok());
+    EXPECT_EQ(res.unwrap_unchecked(), usize(4));
+    for (int i = 0; i < 4; ++i)
+        EXPECT_EQ(buf[i], u8(0xAB));
+}
+
+TEST(Io, SinkWrite) {
+    auto s = io::sink();
+    const u8 msg[] = { 1, 2, 3 };
+    auto res = as<io::Write>(s).write(msg, 3);
+    EXPECT_TRUE(res.is_ok());
+    EXPECT_EQ(res.unwrap_unchecked(), usize(3));
+}
+
+// ── copy() ────────────────────────────────────────────────────────────────
+
+TEST(Io, CopyAll) {
+    using rstd::vec::Vec;
+    // Source: Cursor over 5 bytes
+    Vec<u8> src_v = Vec<u8>::with_capacity(5);
+    for (u8 b : { u8(1), u8(2), u8(3), u8(4), u8(5) }) src_v.push(u8(b));
+    auto src = io::Cursor<Vec<u8>>(rstd::move(src_v));
+    // Dest: Cursor<Vec<u8>> starting empty
+    auto dst = io::Cursor<Vec<u8>>(Vec<u8>::with_capacity(0));
+    auto res = io::copy(src, dst);
+    EXPECT_TRUE(res.is_ok());
+    EXPECT_EQ(res.unwrap_unchecked(), u64(5));
+    EXPECT_EQ(dst.get_ref().len(), usize(5));
+    EXPECT_EQ(dst.get_ref()[0], u8(1));
+    EXPECT_EQ(dst.get_ref()[4], u8(5));
+}

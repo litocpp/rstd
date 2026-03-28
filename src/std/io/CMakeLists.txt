@@ -2,5 +2,8 @@ set(RSTD_IO_SOURCES
     io/mod.cppm
     io/error.cppm
     io/traits.cppm
+    io/buffered.cppm
+    io/cursor.cppm
+    io/util.cppm
     io/stdio.cppm
     PARENT_SCOPE)

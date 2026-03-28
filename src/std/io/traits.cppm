@@ -4,6 +4,12 @@ export import rstd.core;
 
 namespace rstd::io
 {
+// Default internal buffer capacity (8 KiB, matching Rust std).
+export inline constexpr usize DEFAULT_BUF_SIZE = 8192;
+}
+
+namespace rstd::io
+{
 
 using error::Error;
 using error::ErrorKind;
