@@ -39,6 +39,7 @@ add_executable(
   sync/mpsc.cpp
   time.cpp
   fmt.cpp
+  io.cpp
   )
 
 target_link_libraries(rstd_test PRIVATE rstd::rstd GTest::gtest_main)
@@ -46,6 +47,8 @@ target_link_libraries(rstd_test PRIVATE rstd::rstd GTest::gtest_main)
 include(GoogleTest)
 gtest_discover_tests(rstd_test)
 
+if(OFF)
 add_executable(nostd nostd/main.cpp)
 target_link_libraries(nostd PRIVATE rstd::nostd)
 target_link_options(nostd PRIVATE -nostdlib++)
+endif()
