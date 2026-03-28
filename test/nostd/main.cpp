@@ -1,3 +1,5 @@
 import rstd;
 
-int main() {}
+int main() {
+    rstd::format("hello world");
+}

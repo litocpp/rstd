@@ -9,8 +9,6 @@ add_library(rstd::core ALIAS rstd.core)
 target_compile_features(rstd.core PUBLIC cxx_std_20)
 target_include_directories(rstd.core PUBLIC include)
 target_link_libraries(rstd.core PUBLIC rstd.basic)
-target_compile_options(
-  rstd.core PUBLIC "$<$<COMPILE_LANG_AND_ID:CXX,Clang>:-fsized-deallocation>")
 target_sources(
   rstd.core
   PUBLIC FILE_SET

@@ -36,6 +36,3 @@ target_sources(
 
 target_sources(rstd.std PRIVATE ${RSTD_PRIVATE_SOURCES} mod.cpp)
 
-add_library(rstd INTERFACE)
-add_library(rstd::rstd ALIAS rstd)
-target_link_libraries(rstd INTERFACE $<LINK_GROUP:RESCAN,rstd.core,rstd.alloc,rstd.std>)

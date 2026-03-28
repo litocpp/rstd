@@ -1,4 +1,2 @@
-add_library(rstd.new STATIC new.cpp)
-target_compile_features(rstd.new PUBLIC cxx_std_20)
-
-add_library(rstd::new ALIAS rstd.new)
+add_library(rstd.nostd STATIC new.cpp cxa.cpp)
+target_compile_features(rstd.nostd PUBLIC cxx_std_20)
