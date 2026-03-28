@@ -99,7 +99,7 @@ auto format(fmt::format_string<Args...> fmt_str, Args&&... args) -> String {
     auto buf = String::make();
     Formatter f(buf);
     if constexpr (sizeof...(Args) > 0) {
-        Argument arg_array[] = { Argument::display(args)... };
+        Argument arg_array[] = { Argument::make(args)... };
         f.write_fmt({ fmt_str.data(), fmt_str.size(), arg_array, sizeof...(Args) });
     } else {
         f.write_fmt({ fmt_str.data(), fmt_str.size(), nullptr, 0 });
@@ -126,7 +126,8 @@ struct Impl<fmt::Display, T> : ImplBase<T> {
         unsigned __int128 uval;
         bool              neg = false;
         if constexpr (mtp::same_as<T, i8> || mtp::same_as<T, i16> || mtp::same_as<T, i32> ||
-                      mtp::same_as<T, i64> || mtp::same_as<T, i128> || mtp::same_as<T, int> || mtp::same_as<T, long> || mtp::same_as<T, long long>) {
+                      mtp::same_as<T, i64> || mtp::same_as<T, i128> || mtp::same_as<T, int> ||
+                      mtp::same_as<T, long> || mtp::same_as<T, long long>) {
             if (val < 0) {
                 neg  = true;
                 uval = (val == numeric_limits<T>::min())
@@ -149,6 +150,13 @@ struct Impl<fmt::Display, T> : ImplBase<T> {
     }
 };
 
+template<mtp::is_int T>
+struct Impl<fmt::Debug, T> : ImplBase<T> {
+    auto fmt(fmt::Formatter& f) const -> bool {
+        return as<fmt::Display>(this->self()).fmt(f);
+    }
+};
+
 template<>
 struct Impl<fmt::Display, ref<str>> : ImplBase<ref<str>> {
     auto fmt(fmt::Formatter& f) const -> bool {
@@ -157,10 +165,28 @@ struct Impl<fmt::Display, ref<str>> : ImplBase<ref<str>> {
 };
 
 template<>
+struct Impl<fmt::Debug, ref<str>> : ImplBase<ref<str>> {
+    auto fmt(fmt::Formatter& f) const -> bool {
+        f.write_raw((const u8*)"\"", 1);
+        as<fmt::Display>(this->self()).fmt(f);
+        return f.write_raw((const u8*)"\"", 1);
+    }
+};
+
+template<>
 struct Impl<fmt::Display, char const*> : ImplBase<char const*> {
     auto fmt(fmt::Formatter& f) const -> bool {
         auto s = this->self();
         return f.write_raw((const u8*)s, rstd::strlen(s));
+    }
+};
+
+template<>
+struct Impl<fmt::Debug, char const*> : ImplBase<char const*> {
+    auto fmt(fmt::Formatter& f) const -> bool {
+        f.write_raw((const u8*)"\"", 1);
+        as<fmt::Display>(this->self()).fmt(f);
+        return f.write_raw((const u8*)"\"", 1);
     }
 };
 
