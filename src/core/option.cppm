@@ -5,7 +5,6 @@ export import :clone;
 export import :panicking;
 export import :slice;
 export import :ops.function;
-export import :assert;
 export import :forward;
 export import :cmp;
 

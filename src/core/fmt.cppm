@@ -270,3 +270,17 @@ export template<typename... Args>
 using format_string = FormatString<typename _FmtId<Args>::type...>;
 
 } // namespace rstd::fmt
+
+namespace rstd
+{
+
+// Arguments implements Display: writing it re-runs the format substitution.
+// Enables format("{}", some_arguments) and format("{}", panic_info.message).
+template<>
+struct Impl<fmt::Display, fmt::Arguments> : ImplBase<fmt::Arguments> {
+    auto fmt(fmt::Formatter& f) const -> bool {
+        return f.write_fmt(this->self());
+    }
+};
+
+} // namespace rstd

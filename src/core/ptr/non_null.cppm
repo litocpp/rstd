@@ -5,7 +5,6 @@ export import :marker;
 export import :num;
 export import :cmp;
 export import :option;
-export import :assert;
 
 namespace rstd::ptr_::non_null
 {

@@ -158,22 +158,6 @@ struct Impl<fmt::Debug, T> : ImplBase<T> {
 };
 
 template<>
-struct Impl<fmt::Display, ref<str>> : ImplBase<ref<str>> {
-    auto fmt(fmt::Formatter& f) const -> bool {
-        return f.write_raw(this->self().data(), this->self().size());
-    }
-};
-
-template<>
-struct Impl<fmt::Debug, ref<str>> : ImplBase<ref<str>> {
-    auto fmt(fmt::Formatter& f) const -> bool {
-        f.write_raw((const u8*)"\"", 1);
-        as<fmt::Display>(this->self()).fmt(f);
-        return f.write_raw((const u8*)"\"", 1);
-    }
-};
-
-template<>
 struct Impl<fmt::Display, char const*> : ImplBase<char const*> {
     auto fmt(fmt::Formatter& f) const -> bool {
         auto s = this->self();

@@ -5,25 +5,93 @@ export import :panic;
 namespace rstd
 {
 
-export [[noreturn]]
-void panic_fmt(fmt::Arguments args, const source_location loc = source_location::current());
+// ── Core panic entry points ────────────────────────────────────────────────
 
+// Formatted panic: constructs PanicInfo{can_unwind=true} and calls rstd_panic_impl.
+export [[noreturn]]
+void panic_fmt(fmt::Arguments args, panic_::Location loc);
+
+// Variant for noexcept / extern-C contexts (drop impls, FFI boundaries).
+// Sets PanicInfo::can_unwind = false so the handler knows it must abort.
+export [[noreturn]]
+void panic_fmt_nounwind(fmt::Arguments args, panic_::Location loc);
+
+// ── panic<Args...> ─────────────────────────────────────────────────────────
+// Compile-time-checked panic.  Usage:
+//   rstd::panic("something went wrong");
+//   rstd::panic("expected {}, got {}", expected, actual);
+//
+// The first argument must be a string *literal*.  The consteval constructor of
+// format_string validates placeholder count vs argument count at compile time.
+// SrcLoc (a consteval wrapper) captures the caller location on both Clang and GCC.
 export template<typename... Args>
 struct panic {
-#ifdef __clang__
     [[gnu::always_inline]] [[noreturn]]
-    inline panic(ref<str>, Args&&... args, const source_location loc = source_location::current()) {
-        // panic_fmt(args, loc);
-        __builtin_abort();
+    panic(fmt::format_string<Args...> fmt_str, Args&&... args,
+          panic_::SrcLoc loc = {}) {
+        if constexpr (sizeof...(Args) > 0) {
+            fmt::Argument arg_array[] = { fmt::Argument::make(args)... };
+            panic_fmt({ fmt_str.data(), fmt_str.size(), arg_array, sizeof...(Args) },
+                      panic_::Location::from(loc.val));
+        } else {
+            panic_fmt({ fmt_str.data(), fmt_str.size(), nullptr, 0 },
+                      panic_::Location::from(loc.val));
+        }
     }
-#else
-    [[noreturn]]
-    inline panic(ref<str>) {
-        __builtin_abort();
-    }
-#endif
 };
 
 template<typename... Ts>
-panic(ref<str>, Ts&&...) -> panic<Ts...>;
+panic(fmt::format_string<Ts...>, Ts&&...) -> panic<Ts...>;
+panic(ref<str>, panic_::SrcLoc = {}) -> panic<>;
+
+// Overload for runtime ref<str> (no compile-time format checking).
+// Used when the message is already a pre-built string (e.g. unwrap_failed).
+template<>
+struct panic<> {
+    [[gnu::always_inline]] [[noreturn]]
+    panic(ref<str> msg, panic_::SrcLoc loc = {}) {
+        // Wrap the str bytes as a single Display argument.
+        fmt::Argument arg = fmt::Argument::make(msg);
+        static constexpr char fmt_s[] = "{}";
+        panic_fmt({ (const u8*)fmt_s, 2, &arg, 1 },
+                  panic_::Location::from(loc.val));
+    }
+};
+
+// ── assert_fmt ────────────────────────────────────────────────────────────
+// Called by the assert!() / assert_eq!() macros.
+//
+// Two forms (dispatched by constructor overload resolution):
+//   assert_fmt("expr")               →  panic "assertion failed: expr"
+//   assert_fmt("expr", "msg {}", x)  →  panic "msg {}" with x
+//
+// The expr string comes from the macro's stringification of the condition.
+// The optional message path uses format_string<Args...> for compile-time checking.
+export struct assert_fmt {
+
+    // assert(EXP)  — condition only, no user message
+    [[gnu::always_inline]] [[noreturn]]
+    assert_fmt(ref<str> expr, panic_::SrcLoc loc = {}) {
+        static constexpr char fmt_s[] = "assertion failed: {}";
+        fmt::Argument arg = fmt::Argument::make(expr);
+        panic_fmt({ (const u8*)fmt_s, sizeof(fmt_s) - 1, &arg, 1 },
+                  panic_::Location::from(loc.val));
+    }
+
+    // assert(EXP, "msg {}", args...)  — condition + formatted user message
+    template<typename... Args>
+    [[gnu::always_inline]] [[noreturn]]
+    assert_fmt(ref<str> /*expr*/, fmt::format_string<Args...> msg, Args&&... args,
+               panic_::SrcLoc loc = {}) {
+        if constexpr (sizeof...(Args) > 0) {
+            fmt::Argument arg_array[] = { fmt::Argument::make(args)... };
+            panic_fmt({ msg.data(), msg.size(), arg_array, sizeof...(Args) },
+                      panic_::Location::from(loc.val));
+        } else {
+            panic_fmt({ msg.data(), msg.size(), nullptr, 0 },
+                      panic_::Location::from(loc.val));
+        }
+    }
+};
+
 } // namespace rstd

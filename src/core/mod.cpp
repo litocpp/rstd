@@ -1,7 +1,7 @@
 module rstd.core;
 import :core;
 import :fmt;
-import :assert;
+import :panicking;
 
 using rstd::panic_::PanicInfo;
 
@@ -11,10 +11,19 @@ void rstd_panic_impl(PanicInfo const&);
 namespace rstd
 {
 
-void panic_fmt(fmt::Arguments args, const source_location loc) {
+void panic_fmt(fmt::Arguments args, panic_::Location loc) {
     auto info = PanicInfo {
         .message  = args,
         .location = loc,
+    };
+    rstd_panic_impl(info);
+}
+
+void panic_fmt_nounwind(fmt::Arguments args, panic_::Location loc) {
+    auto info = PanicInfo {
+        .message           = args,
+        .location          = loc,
+        .can_unwind        = false,
     };
     rstd_panic_impl(info);
 }

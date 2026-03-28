@@ -5,7 +5,6 @@ export module rstd.core:alloc.layout;
 export import :num;
 export import :cmp;
 export import :option;
-export import :assert;
 export import :ptr.ptr;
 export import :mem;
 

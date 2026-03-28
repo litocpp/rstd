@@ -19,7 +19,6 @@ export import :pin;
 export import :panicking;
 export import :hint;
 export import :str;
-export import :assert;
 export import :ptr;
 export import :mem;
 export import :sync;

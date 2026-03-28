@@ -46,7 +46,6 @@ target_sources(
          choice.cppm
          pin.cppm
          hint.cppm
-         assert.cppm
          tuple.cppm
          memchr.cppm
          cmp.cppm

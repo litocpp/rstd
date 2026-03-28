@@ -125,3 +125,24 @@ export constexpr auto extract_last(ref<str> path, usize count) -> ref<str> {
     return ref<str>::from_raw_parts(begin, size);
 }
 } // namespace rstd::str_
+
+namespace rstd
+{
+
+template<>
+struct Impl<fmt::Display, ref<str>> : ImplBase<ref<str>> {
+    auto fmt(fmt::Formatter& f) const -> bool {
+        return f.write_raw(this->self().data(), this->self().size());
+    }
+};
+
+template<>
+struct Impl<fmt::Debug, ref<str>> : ImplBase<ref<str>> {
+    auto fmt(fmt::Formatter& f) const -> bool {
+        f.write_raw((const u8*)"\"", 1);
+        as<fmt::Display>(this->self()).fmt(f);
+        return f.write_raw((const u8*)"\"", 1);
+    }
+};
+
+} // namespace rstd

@@ -49,15 +49,17 @@ void* __rstd_alloc_zeroed(usize size, usize align) {
 void rstd_panic_impl(PanicInfo const& info) {
     // TODO: unwind
 
-    auto& loc = info.location;
+    auto& loc  = info.location;
+    auto  file = rstd::str_::extract_last(loc.file_name(), 2);
 
-    auto out = rstd::fmt::format("aborting due to panic at {}({}:{}):\n",
-                                 rstd::str_::extract_last(loc.file_name(), 2),
-                                 loc.function_name(),
-                                 loc.line());
-                                 //info.message);
+    auto header = rstd::fmt::format("thread 'main' panicked at {}:{}:{}:\n",
+                                    file, loc.line(), loc.column());
+    cppstd::fwrite(header.as_ref().as_raw_ptr(), header.as_ref().count_bytes(), 1, cppstd::stderr);
 
-    cppstd::fwrite(out.as_ref().as_raw_ptr(), out.as_ref().count_bytes(), 1, cppstd::stderr);
+    auto msg = rstd::fmt::format("{}", info.message);
+    cppstd::fwrite(msg.as_ref().as_raw_ptr(), msg.as_ref().count_bytes(), 1, cppstd::stderr);
+    cppstd::fwrite("\n", 1, 1, cppstd::stderr);
+
     cppstd::fflush(cppstd::stderr);
     rstd::process::abort();
 }
