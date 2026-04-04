@@ -5,21 +5,24 @@ import :panicking;
 
 using rstd::panic_::PanicInfo;
 
-// Weak default: just trap.  The `rstd` (std) library overrides this with a
-// formatted, human-readable implementation.  Using a weak symbol removes the
-// circular link-time dependency between rstd.core and rstd, which lets us
-// avoid LINK_GROUP (unsupported on Windows PE/COFF linkers).
-extern "C" [[noreturn]] __attribute__((weak))
-void rstd_panic_impl(PanicInfo const& /*info*/) {
-    __builtin_trap();
+extern "C" [[noreturn]] void rstd_panic_impl(PanicInfo const& info);
+
+namespace {
+bool panic_write_fmt(void const* data, void* ctx,
+                     bool (*write)(void*, rstd::u8 const*, rstd::usize)) {
+    auto const& args = *static_cast<rstd::fmt::Arguments const*>(data);
+    rstd::fmt::Formatter f(ctx, write);
+    return f.write_fmt(args);
 }
+} // namespace
 
 namespace rstd
 {
 
 void panic_fmt(fmt::Arguments args, panic_::Location loc) {
     auto info = PanicInfo {
-        .message  = args,
+        .data     = &args,
+        .fmt      = panic_write_fmt,
         .location = loc,
     };
     rstd_panic_impl(info);
@@ -27,9 +30,10 @@ void panic_fmt(fmt::Arguments args, panic_::Location loc) {
 
 void panic_fmt_nounwind(fmt::Arguments args, panic_::Location loc) {
     auto info = PanicInfo {
-        .message           = args,
-        .location          = loc,
-        .can_unwind        = false,
+        .data       = &args,
+        .fmt        = panic_write_fmt,
+        .location   = loc,
+        .can_unwind = false,
     };
     rstd_panic_impl(info);
 }

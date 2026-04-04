@@ -132,6 +132,10 @@ public:
               return as<Write>(*static_cast<W*>(w)).write_str(p, len);
           }) {}
 
+    // Raw construction from type-erased writer (used by panic infrastructure).
+    Formatter(void* writer, bool(*write_func)(void*, const u8*, usize)) noexcept
+        : _writer(writer), _write_func(write_func) {}
+
     auto write_raw(const u8* p, usize len) -> bool { return _write_func(_writer, p, len); }
     auto write_fmt(struct Arguments args) -> bool;
 

@@ -11,4 +11,5 @@ target_sources(
          prelude.cppm
          basic.cppm
          mtp.cppm
-         mtp.std.cppm)
+         mtp.std.cppm
+         panic_info.cppm)
