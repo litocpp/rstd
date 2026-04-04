@@ -26,17 +26,21 @@
         return as<rstd::cmp::PartialEq<_USE_TRAIT_T>>(a).eq(b);             \
     }
 
+#define RSTD_STR(a, ...)   #a
+#define RSTD_FIRST(a, ...) a
+#define RSTD_REST(a, ...)  __VA_ARGS__
+
+#define RSTD_REST_ARGS(a, ...) __VA_OPT__(, ) __VA_ARGS__
+
 #ifdef NDEBUG
 #    define debug_assert(...)    ((void)0)
 #    define debug_assert_eq(...) ((void)0)
 #else
 #    define debug_assert(EXP, ...) \
-        if (! (EXP)) rstd::assert_fmt(#EXP __VA_OPT__(, ) __VA_ARGS__)
-#    define debug_assert_eq(A, B) \
-        if ((A) != (B)) rstd::assert_fmt("(" #A " == " #B ")")
+        if (! (EXP)) rstd::panic(#EXP RSTD_STR(__VA_ARGS__) RSTD_REST_ARGS(__VA_ARGS__))
+#    define debug_assert_eq(A, B) debug_assert((A) == (B))
 #endif
 
 #define assert(EXP, ...) \
-    if (! (EXP)) rstd::assert_fmt(#EXP __VA_OPT__(, ) __VA_ARGS__)
-#define assert_eq(A, B) \
-    if ((A) != (B)) rstd::assert_fmt("(" #A " == " #B ")")
+    if (! (EXP)) rstd::panic(#EXP RSTD_STR(__VA_ARGS__) RSTD_REST_ARGS(__VA_ARGS__))
+#define assert_eq(A, B) assert((A) == (B))

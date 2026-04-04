@@ -55,7 +55,7 @@ module;
 
 #define ALWAYS_INLINE [[gnu::always_inline]] inline
 
-export module rstd.basic:cppstd;
+export module cppstd;
 
 export using ::operator new;
 export using ::operator delete;

@@ -7,4 +7,7 @@ target_sources(
          TYPE
          CXX_MODULES
          FILES
+         rstd.cppm
          cppstd.cppm)
+
+target_link_libraries(rstd.cppstd PUBLIC rstd::rstd)
