@@ -77,16 +77,6 @@ export using std::iterator;
 export using std::back_insert_iterator;
 } // namespace std
 
-#ifdef __GNUC__
-namespace __gnu_cxx
-{
-export using __gnu_cxx::__normal_iterator;
-export using __gnu_cxx::operator==;
-export using __gnu_cxx::operator-;
-export using __gnu_cxx::operator+;
-} // namespace __gnu_cxx
-#endif
-
 export namespace cppstd
 {
 
