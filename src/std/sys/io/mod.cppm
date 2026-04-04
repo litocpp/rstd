@@ -3,11 +3,12 @@ module;
 #if RSTD_OS_UNIX
 #  include <errno.h>
 #endif
-#if RSTD_OS_WINDOWS
-#  include <windows.h>
-#endif
 export module rstd:sys.io;
 export import rstd.core;
+
+#if RSTD_OS_WINDOWS
+import :sys.libc.windows;
+#endif
 
 namespace rstd::sys::io
 {
@@ -19,7 +20,7 @@ auto last_os_error() noexcept -> RawOsError {
 #if RSTD_OS_UNIX
     return errno;
 #elif RSTD_OS_WINDOWS
-    return static_cast<RawOsError>(GetLastError());
+    return static_cast<RawOsError>(libc::GetLastError());
 #else
     return 0;
 #endif

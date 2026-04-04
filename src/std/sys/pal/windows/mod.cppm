@@ -6,8 +6,7 @@ export import :sys.pal.windows.sync;
 export import :sys.pal.windows.time;
 
 #if RSTD_OS_WINDOWS
-
-extern "C" __declspec(noreturn) void __stdcall RaiseFailFastException(void*, void*, unsigned long);
+import :sys.libc.windows;
 
 namespace rstd::sys::pal::windows
 {
@@ -18,7 +17,7 @@ export using pal::windows::time::SystemTime;
 
 export [[noreturn]]
 void abort_internal() {
-    RaiseFailFastException(nullptr, nullptr, 0x2); // FAIL_FAST_GENERATE_EXCEPTION_ADDRESS
+    libc::RaiseFailFastException(nullptr, nullptr, 0x2);
 }
 } // namespace rstd::sys::pal::windows
 #endif

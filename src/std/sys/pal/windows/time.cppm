@@ -1,12 +1,12 @@
 module;
 #include <rstd/macro.hpp>
-#if RSTD_OS_WINDOWS
-#include <windows.h>
-#endif
 export module rstd:sys.pal.windows.time;
 
 #if RSTD_OS_WINDOWS
 import rstd.core;
+import :sys.libc.windows;
+
+using namespace rstd::sys::libc;
 
 namespace rstd::sys::pal::windows::time
 {

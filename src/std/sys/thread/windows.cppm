@@ -1,20 +1,19 @@
 module;
 #include <rstd/macro.hpp>
-#if RSTD_OS_WINDOWS
-#include <windows.h>
-#endif
 export module rstd:sys.thread.windows;
 
 #if RSTD_OS_WINDOWS
 export import :io;
 export import :sys.libc.std;
+export import :sys.libc.windows;
 export import :thread.thread;
 export import rstd.alloc;
 
 using rstd_alloc::boxed::Box;
 using rstd::thread::ThreadInit;
+using namespace rstd::sys::libc;
 
-extern "C" DWORD WINAPI rstd_thread_start_win(void* data);
+extern "C" DWORD __stdcall rstd_thread_start_win(void* data);
 
 namespace rstd::sys::thread::windows
 {
@@ -30,7 +29,7 @@ export struct Thread {
             stack,
             rstd_thread_start_win,
             raw.p,
-            STACK_SIZE_PARAM_IS_A_RESERVATION,
+            M_STACK_SIZE_PARAM_IS_A_RESERVATION,
             nullptr);
 
         if (h != nullptr) {
@@ -42,8 +41,8 @@ export struct Thread {
     }
 
     auto join() const -> rstd::io::Result<voidp> {
-        auto rc = WaitForSingleObject(handle, INFINITE);
-        if (rc == WAIT_FAILED) {
+        auto rc = WaitForSingleObject(handle, M_INFINITE);
+        if (rc == M_WAIT_FAILED) {
             return Err(
                 rstd::io::error::Error::from_raw_os_error((i32)GetLastError()));
         }
@@ -59,13 +58,12 @@ export struct Thread {
     }
 
     static void set_name(ref<ffi::CStr> name) {
-        // Convert UTF-8 CStr to wide string for SetThreadDescription
         auto* p = (const char*)name.p;
-        int len = MultiByteToWideChar(CP_UTF8, 0, p, -1, nullptr, 0);
+        int len = MultiByteToWideChar(M_CP_UTF8, 0, p, -1, nullptr, 0);
         if (len > 0) {
             auto* buf = (wchar_t*)rstd::sys::libc::malloc(sizeof(wchar_t) * (usize)len);
             if (buf) {
-                MultiByteToWideChar(CP_UTF8, 0, p, -1, buf, len);
+                MultiByteToWideChar(M_CP_UTF8, 0, p, -1, buf, len);
                 SetThreadDescription(GetCurrentThread(), buf);
                 rstd::sys::libc::free(buf);
             }
@@ -74,8 +72,8 @@ export struct Thread {
 
     static void sleep(rstd::time::Duration dur) {
         auto ms = dur.as_millis();
-        if (ms >= INFINITE) {
-            Sleep(INFINITE - 1);
+        if (ms >= M_INFINITE) {
+            Sleep(M_INFINITE - 1);
         } else {
             Sleep(static_cast<DWORD>(ms));
         }

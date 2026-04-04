@@ -18,6 +18,7 @@ set(RSTD_SYS_SOURCES
     sys/libc/mod.cppm
     sys/libc/pthread.cppm
     sys/libc/unix.cppm
+    sys/libc/windows.cppm
     sys/libc/libc.cppm
     sys/pal/mod.cppm
     sys/pal/unix/mod.cppm

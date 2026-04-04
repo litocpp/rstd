@@ -4,12 +4,14 @@ module;
 #  include <unistd.h>
 #  include <errno.h>
 #endif
-#if RSTD_OS_WINDOWS
-#  include <windows.h>
-#endif
 export module rstd:sys.io.stdio;
 export import :io.error;
 export import rstd.core;
+
+#if RSTD_OS_WINDOWS
+import :sys.libc.windows;
+using namespace rstd::sys::libc;
+#endif
 
 namespace rstd::sys::io::stdio
 {
@@ -49,13 +51,13 @@ export auto read_fd(int fd, u8* buf, usize len) noexcept -> Result<usize> {
 export auto write_fd(int fd, const u8* buf, usize len) noexcept -> Result<usize> {
     HANDLE h;
     switch (fd) {
-    case 1: h = GetStdHandle(STD_OUTPUT_HANDLE); break;
-    case 2: h = GetStdHandle(STD_ERROR_HANDLE);  break;
+    case 1: h = GetStdHandle(M_STD_OUTPUT_HANDLE); break;
+    case 2: h = GetStdHandle(M_STD_ERROR_HANDLE);  break;
     default:
         return Err(Error::from_kind(
             ErrorKind { ErrorKind::InvalidInput }));
     }
-    if (h == INVALID_HANDLE_VALUE || h == nullptr) {
+    if (h == M_INVALID_HANDLE_VALUE || h == nullptr) {
         return Err(Error::from_raw_os_error(
             static_cast<rstd::io::error::RawOsError>(GetLastError())));
     }
@@ -72,8 +74,8 @@ export auto read_fd(int fd, u8* buf, usize len) noexcept -> Result<usize> {
         return Err(Error::from_kind(
             ErrorKind { ErrorKind::InvalidInput }));
     }
-    HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
-    if (h == INVALID_HANDLE_VALUE || h == nullptr) {
+    HANDLE h = GetStdHandle(M_STD_INPUT_HANDLE);
+    if (h == M_INVALID_HANDLE_VALUE || h == nullptr) {
         return Err(Error::from_raw_os_error(
             static_cast<rstd::io::error::RawOsError>(GetLastError())));
     }

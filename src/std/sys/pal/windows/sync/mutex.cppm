@@ -3,24 +3,10 @@ module;
 export module rstd:sys.pal.windows.sync.mutex;
 
 #if RSTD_OS_WINDOWS
-// SRWLOCK is used instead of CriticalSection because:
-// 1. SRWLock is several times faster than CriticalSection
-// 2. CriticalSection allows recursive locking while SRWLock deadlocks,
-//    matching Unix pthread_mutex behavior for consistency
-// 3. No fairness guarantees needed (matches Rust policy)
-
 export import rstd.core;
+import :sys.libc.windows;
 
-// SRWLOCK is a pointer-sized opaque type
-struct SRWLOCK {
-    void* p;
-};
-
-extern "C" {
-void __stdcall AcquireSRWLockExclusive(SRWLOCK*);
-unsigned char __stdcall TryAcquireSRWLockExclusive(SRWLOCK*);
-void __stdcall ReleaseSRWLockExclusive(SRWLOCK*);
-}
+using namespace rstd::sys::libc;
 
 namespace rstd::sys::pal::windows::sync::mutex
 {
@@ -28,7 +14,7 @@ namespace rstd::sys::pal::windows::sync::mutex
 export class Mutex {
     SRWLOCK srwlock;
 
-    constexpr Mutex() noexcept: srwlock { nullptr } {}
+    constexpr Mutex() noexcept: srwlock {} {}
 
 public:
     Mutex(const Mutex&)            = delete;
