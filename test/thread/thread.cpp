@@ -5,7 +5,7 @@ import rstd;
 using rstd::thread::builder::Builder;
 
 TEST(Thread, Basic) {
-    rstd::i32 x { 1 };
+    rstd::i32 x { 0 };
 
     auto handle = Builder::make().spawn([&] {
         x = 1;

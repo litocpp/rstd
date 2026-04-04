@@ -2,6 +2,8 @@ module;
 #include <rstd/macro.hpp>
 #if RSTD_OS_UNIX
 #  include <errno.h>
+#elif RSTD_OS_WINDOWS
+#  include <winerror.h>
 #endif
 export module rstd:io.error;
 export import :sys.io;
@@ -170,6 +172,45 @@ auto decode_error_kind(RawOsError err) noexcept -> ErrorKind {
     case ENOBUFS:      return EK { EK::OutOfMemory };
     case EINPROGRESS:  return EK { EK::InProgress };
     default:           return EK { EK::Uncategorized };
+    }
+}
+#elif RSTD_OS_WINDOWS
+[[gnu::always_inline]] inline
+auto decode_error_kind(RawOsError err) noexcept -> ErrorKind {
+    using EK = ErrorKind;
+    switch ((unsigned long)err) {
+    case ERROR_FILE_NOT_FOUND:
+    case ERROR_PATH_NOT_FOUND:       return EK { EK::NotFound };
+    case ERROR_ACCESS_DENIED:        return EK { EK::PermissionDenied };
+    case ERROR_CONNECTION_REFUSED:    return EK { EK::ConnectionRefused };
+    case ERROR_CONNECTION_ABORTED:    return EK { EK::ConnectionAborted };
+    case ERROR_NETNAME_DELETED:      return EK { EK::ConnectionReset };
+    case ERROR_HOST_UNREACHABLE:     return EK { EK::HostUnreachable };
+    case ERROR_NETWORK_UNREACHABLE:  return EK { EK::NetworkUnreachable };
+    case ERROR_ADDRESS_ALREADY_ASSOCIATED: return EK { EK::AddrInUse };
+    case ERROR_BROKEN_PIPE:
+    case ERROR_NO_DATA:              return EK { EK::BrokenPipe };
+    case ERROR_FILE_EXISTS:
+    case ERROR_ALREADY_EXISTS:       return EK { EK::AlreadyExists };
+    case WAIT_TIMEOUT:
+    case ERROR_SEM_TIMEOUT:          return EK { EK::TimedOut };
+    case ERROR_INVALID_PARAMETER:
+    case ERROR_INVALID_DATA:         return EK { EK::InvalidInput };
+    case ERROR_DIR_NOT_EMPTY:        return EK { EK::DirectoryNotEmpty };
+    case ERROR_DISK_FULL:            return EK { EK::StorageFull };
+    case ERROR_SEEK:                 return EK { EK::NotSeekable };
+    case ERROR_NOT_READY:
+    case ERROR_BUSY:                 return EK { EK::ResourceBusy };
+    case ERROR_POSSIBLE_DEADLOCK:    return EK { EK::Deadlock };
+    case ERROR_NOT_SAME_DEVICE:      return EK { EK::CrossesDevices };
+    case ERROR_TOO_MANY_LINKS:       return EK { EK::TooManyLinks };
+    case ERROR_FILENAME_EXCED_RANGE: return EK { EK::InvalidFilename };
+    case ERROR_NOT_ENOUGH_MEMORY:
+    case ERROR_OUTOFMEMORY:          return EK { EK::OutOfMemory };
+    case ERROR_NOT_SUPPORTED:
+    case ERROR_CALL_NOT_IMPLEMENTED: return EK { EK::Unsupported };
+    case ERROR_IO_PENDING:           return EK { EK::InProgress };
+    default:                         return EK { EK::Uncategorized };
     }
 }
 #else

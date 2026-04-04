@@ -18,6 +18,7 @@ export using pal::windows::time::SystemTime;
 export [[noreturn]]
 void abort_internal() {
     libc::RaiseFailFastException(nullptr, nullptr, 0x2);
+    __builtin_unreachable();
 }
 } // namespace rstd::sys::pal::windows
 #endif

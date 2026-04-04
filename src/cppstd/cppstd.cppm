@@ -330,9 +330,6 @@ using std::strncmp;
 using std::less;
 using std::lexicographical_compare_three_way;
 
-using ::stderr;
-using ::stdout;
-
 namespace pmr
 {
 using std::pmr::deque;

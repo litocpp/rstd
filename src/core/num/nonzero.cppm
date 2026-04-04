@@ -121,19 +121,5 @@ ImplNonZero(NonZeroU64Inner, u64);
 
 namespace rstd {
 static_assert(sizeof(rstd::num::nonzero::NonZero<u64>) == sizeof(u64));
-static_assert(sizeof(rstd::option::detail::option_store<rstd::num::nonzero::NonZero<u64>>) == sizeof(u64));
-
-namespace option
-{
-struct EE {};
-
-template<typename T>
-struct BB {
-    alignas(T) rstd::byte m_storage[sizeof(T)] {};
-};
-template<typename T>
-class Test2 : public detail::option_base<T>, public EE {
-};
-}
-static_assert(sizeof(option::Test2<rstd::num::nonzero::NonZero<u64>>) == sizeof(u64));
+static_assert(sizeof(rstd::option::Option<rstd::num::nonzero::NonZero<u64>>) == sizeof(u64));
 }

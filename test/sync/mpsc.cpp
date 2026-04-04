@@ -3,6 +3,7 @@ import rstd;
 using namespace rstd;
 using namespace rstd::sync::mpsc;
 
+
 TEST(MpmcArray, BasicSendRecv) {
     auto channel = mpmc::Channel<int>::with_capacity(4);
 

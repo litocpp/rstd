@@ -7,21 +7,20 @@ import rstd.core;
 
 using rstd::mut_ptr;
 using rstd_alloc::boxed::Box;
+using namespace rstd::sys::libc;
 
+#if RSTD_OS_WINDOWS
+extern "C" DWORD __stdcall rstd_thread_start_win(void* data) {
+#else
 extern "C" void* rstd_thread_start(void* data) {
+#endif
     auto init = Box<ThreadInit>::from_raw(
         mut_ptr<ThreadInit>::from_raw_parts(static_cast<ThreadInit*>(data)));
 
-    // TODO:  source_location::current bug on gcc
-    // relocation against `.Lsrc_loc3' in read-only section `.text'
-    // wrapper with if to avoid assert
-    assert(init);
-    if (init) {
-        init->init();
+    init->init();
 
-        // Run the closure
-        init->start->operator()();
-    }
+    // Run the closure
+    init->start->operator()();
 
     return {};
 }

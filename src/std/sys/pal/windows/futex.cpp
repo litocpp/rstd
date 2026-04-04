@@ -1,5 +1,8 @@
 module;
 #include <rstd/macro.hpp>
+#if RSTD_OS_WINDOWS
+#pragma comment(lib, "synchronization")
+#endif
 module rstd;
 import :sys.pal.windows.futex;
 

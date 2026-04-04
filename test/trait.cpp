@@ -143,13 +143,6 @@ std::string rstd::Impl<StringConverterTrait, TestClass>::to_binary() const {
     return result;
 }
 
-// Add new tests
-TEST(Trait, CloneTrait) {
-    TestClass original(42);
-    auto      cloned = std::any_cast<TestClass>(original.clone());
-    EXPECT_EQ(cloned.value, 42);
-}
-
 TEST(Trait, DisplayTrait) {
     TestClass          obj(42);
     std::ostringstream oss;

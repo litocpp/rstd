@@ -70,9 +70,9 @@ auto spawn_unchecked(Option<String> name, usize stack_size, Option<Arc<ScopeData
     ::new (ptr) Packet<ret_t> { .scope = rstd::move(scope_data), .result = None() };
 
     auto my_packet    = packet.assume_init();
-    auto their_packet = my_packet.clone();
+    auto their_packet = as<clone::Clone>(my_packet).clone();
 
-    auto start = [f = rstd::move(f), p = my_packet.clone()]() mutable {
+    auto start = [f = rstd::move(f), p = as<clone::Clone>(my_packet).clone()]() mutable {
         if constexpr (mtp::same_as<ret_t, void>) {
             f();
             p->result = Some(Ok<empty, int>(empty {}));
@@ -82,7 +82,7 @@ auto spawn_unchecked(Option<String> name, usize stack_size, Option<Arc<ScopeData
     };
 
     auto&& init = Box<ThreadInit>::make(ThreadInit {
-        .handle = thread.clone(), .start = Box<dyn<FnMut<void()>>>::make(rstd::move(start)) });
+        .handle = as<clone::Clone>(thread).clone(), .start = Box<dyn<FnMut<void()>>>::make(rstd::move(start)) });
 
     return imp::Thread::make(stack_size, rstd::move(init)).map([&](auto&& native) {
         return JoinInner<ret_t> {
