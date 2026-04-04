@@ -23,10 +23,6 @@ void* __rstd_alloc_zeroed(usize size, usize align);
 namespace alloc
 {
 
-/**
- * Functions that use the global allocator registered with __rstd_alloc etc.
- */
-
 export auto alloc(Layout layout) noexcept -> mut_ptr<u8> {
     layout = layout.cpp_layout();
     return mut_ptr<u8>::from_raw_parts(static_cast<u8*>(__rstd_alloc(layout.size, layout.align)));
@@ -54,13 +50,24 @@ void handle_alloc_error(Layout layout) {
     rstd::panic { "memory allocation failed" };
 }
 
-/// The global memory allocator.
-export struct Global : rstd::WithTraitDefault<Global, Allocator> {
+/// Forward declaration
+export struct Global;
+
+} // namespace alloc
+
+namespace alloc_ = alloc;
+
+/// Impl before Global definition — methods live here, not on Global.
+/// Inherits LinkTraitDefault so default grow/shrink/grow_zeroed call back
+/// through impl_() which constructs Impl directly (no trait_call).
+template<>
+struct rstd::Impl<rstd::alloc::Allocator, alloc_::Global>
+    : LinkTraitDefault<rstd::alloc::Allocator, alloc_::Global> {
     auto allocate(Layout layout) const -> Result<NonNull<u8[]>, AllocError> {
         if (layout.size == 0) {
             return Ok(NonNull<u8[]>::make_unchecked(layout.dangling().template cast_array<u8>()));
         }
-        auto p = alloc(layout);
+        auto p = ::alloc::alloc(layout);
         if (p == nullptr) return Err(AllocError {});
         return Ok(NonNull<u8[]>::make_unchecked(p.template cast_array<u8>(layout.size)));
     }
@@ -69,24 +76,50 @@ export struct Global : rstd::WithTraitDefault<Global, Allocator> {
         if (layout.size == 0) {
             return Ok(NonNull<u8[]>::make_unchecked(layout.dangling().template cast_array<u8>()));
         }
-        auto p = alloc_zeroed(layout);
+        auto p = ::alloc::alloc_zeroed(layout);
         if (p == nullptr) return Err(AllocError {});
         return Ok(NonNull<u8[]>::make_unchecked(p.template cast_array<u8>(layout.size)));
     }
 
     void deallocate(NonNull<u8> ptr, Layout layout) const noexcept {
         if (layout.size != 0) {
-            dealloc(ptr.as_mut_ptr(), layout.cpp_layout());
+            ::alloc::dealloc(ptr.as_mut_ptr(), layout.cpp_layout());
         }
+    }
+};
+
+namespace alloc
+{
+
+using Impl_ = rstd::Impl<Allocator, Global>;
+
+/// The global memory allocator.
+/// Delegates to Impl<Allocator, Global> which holds the real implementations
+/// and default methods (grow/shrink/grow_zeroed via LinkTraitDefault).
+export struct Global {
+    auto allocate(Layout layout) const -> Result<NonNull<u8[]>, AllocError> {
+        return Impl_ { this }.allocate(layout);
+    }
+    auto allocate_zeroed(Layout layout) const -> Result<NonNull<u8[]>, AllocError> {
+        return Impl_ { this }.allocate_zeroed(layout);
+    }
+    void deallocate(NonNull<u8> ptr, Layout layout) const noexcept {
+        Impl_ { this }.deallocate(ptr, layout);
+    }
+    auto grow(NonNull<u8> ptr, Layout old_layout, Layout new_layout) const
+        -> Result<NonNull<u8[]>, AllocError> {
+        return Impl_ { this }.grow(ptr, old_layout, new_layout);
+    }
+    auto grow_zeroed(NonNull<u8> ptr, Layout old_layout, Layout new_layout) const
+        -> Result<NonNull<u8[]>, AllocError> {
+        return Impl_ { this }.grow_zeroed(ptr, old_layout, new_layout);
+    }
+    auto shrink(NonNull<u8> ptr, Layout old_layout, Layout new_layout) const
+        -> Result<NonNull<u8[]>, AllocError> {
+        return Impl_ { this }.shrink(ptr, old_layout, new_layout);
     }
 };
 
 export Global GLOBAL {};
 
 } // namespace alloc
-
-namespace alloc_ = alloc;
-
-template<>
-struct rstd::Impl<rstd::alloc::Allocator, alloc_::Global>
-    : LinkClassMethod<rstd::alloc::Allocator, alloc_::Global> {};

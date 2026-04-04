@@ -62,8 +62,13 @@ using alloc::Layout;
 
 template<typename Self, auto P>
 struct Impl<Allocator, default_tag<Self, P>> : ImplBase<default_tag<Self, P>> {
-    auto allocate_zeroed(Layout layout) -> Result<NonNull<u8[]>, AllocError> {
-        auto res = as<Allocator>(this->self()).allocate(layout);
+private:
+    auto impl_() const { return Impl<Allocator, Self> { &this->self() }; }
+    auto impl_() { return Impl<Allocator, Self> { &this->self() }; }
+
+public:
+    auto allocate_zeroed(Layout layout) const -> Result<NonNull<u8[]>, AllocError> {
+        auto res = impl_().allocate(layout);
         if (res.is_ok()) {
             auto ptr = res.unwrap_unchecked();
             mem::memset(ptr.as_mut_ptr().as_raw_ptr(), 0, layout.size);
@@ -71,19 +76,19 @@ struct Impl<Allocator, default_tag<Self, P>> : ImplBase<default_tag<Self, P>> {
         return res;
     }
 
-    auto grow(NonNull<u8> ptr, Layout old_layout, Layout new_layout)
+    auto grow(NonNull<u8> ptr, Layout old_layout, Layout new_layout) const
         -> Result<NonNull<u8[]>, AllocError> {
         debug_assert(new_layout.size >= old_layout.size);
         if (old_layout.size == 0) {
-            return rstd::as<Allocator>(this->self()).allocate(new_layout);
+            return impl_().allocate(new_layout);
         }
 
-        auto new_res = rstd::as<Allocator>(this->self()).allocate(new_layout);
+        auto new_res = impl_().allocate(new_layout);
         if (new_res.is_ok()) {
             auto new_ptr = new_res.unwrap_unchecked();
             mem::memcpy(
                 new_ptr.as_mut_ptr().as_raw_ptr(), ptr.as_ptr().as_raw_ptr(), old_layout.size);
-            rstd::as<Allocator>(this->self()).deallocate(ptr, old_layout);
+            impl_().deallocate(ptr, old_layout);
         }
         return new_res;
     }
@@ -92,28 +97,14 @@ struct Impl<Allocator, default_tag<Self, P>> : ImplBase<default_tag<Self, P>> {
         -> Result<NonNull<u8[]>, AllocError> {
         debug_assert(new_layout.size >= old_layout.size,
                      "`new_layout.size` must be greater than or equal to `old_layout.size`");
-
-        auto new_ptr = rstd::as<Allocator>(this->self()).allocate_zeroed(new_layout);
-
-        return new_ptr;
+        return impl_().allocate_zeroed(new_layout);
     }
 
     auto shrink(NonNull<u8> ptr, Layout old_layout, Layout new_layout) const
         -> Result<NonNull<u8[]>, AllocError> {
         debug_assert(new_layout.size <= old_layout.size,
                      "`new_layout.size` must be smaller than or equal to `old_layout.size`");
-        auto new_ptr = rstd::as<Allocator>(this->self()).allocate(new_layout);
-
-        // // SAFETY: because `new_layout.size()` must be lower than or equal to
-        // // `old_layout.size()`, both the old and new memory allocation are valid for reads and
-        // // writes for `new_layout.size()` bytes. Also, because the old allocation wasn't yet
-        // // deallocated, it cannot overlap `new_ptr`. Thus, the call to `copy_nonoverlapping` is
-        // // safe. The safety contract for `dealloc` must be upheld by the caller.
-        // unsafe {
-        //     ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_mut_ptr(), new_layout.size());
-        //     self.deallocate(ptr, old_layout);
-        // }
-        return new_ptr;
+        return impl_().allocate(new_layout);
     }
 };
 } // namespace rstd::alloc
