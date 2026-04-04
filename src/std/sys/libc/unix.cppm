@@ -6,6 +6,9 @@ module;
 #include <sys/syscall.h>
 #include <unistd.h>
 #include <sched.h>
+#include <stdlib.h>
+#include <time.h>
+#include <errno.h>
 #endif
 export module rstd:sys.libc.unix;
 

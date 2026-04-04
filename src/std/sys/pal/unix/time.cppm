@@ -5,6 +5,7 @@ export module rstd:sys.pal.unix.time;
 #if RSTD_OS_UNIX
 import rstd.core;
 import :sys.libc.std;
+import :sys.libc.unix;
 
 namespace rstd::sys::pal::unix::time
 {

@@ -5,6 +5,7 @@ export module rstd:sys.pal.unix.sync.condvar;
 #if RSTD_OS_UNIX
 export import :sys.libc.pthread;
 export import :sys.libc.std;
+export import :sys.libc.unix;
 export import :sys.pal.unix.sync.mutex;
 export import rstd.core;
 
