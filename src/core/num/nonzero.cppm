@@ -22,14 +22,14 @@ struct ZeroablePrimitive {};
 
 } // namespace rstd::num::nonzero
 
-export namespace rstd::num::nonzero
+namespace rstd::num::nonzero
 {
 
 /// A value that is known not to equal zero.
 ///
 /// This enables some memory layout optimization.
 /// For example, `Option<NonZero<u32>>` is the same size as `u32`:
-template<typename T>
+export template<typename T>
 struct NonZero {
     static_assert(false);
 };
@@ -77,6 +77,7 @@ private:
 
 } // namespace rstd::option::detail
 
+
 namespace rstd::num::nonzero
 {
 
@@ -87,6 +88,7 @@ struct NonZero<T> {
     Impl<ZeroablePrimitive, T>::NonZeroInner val;
 
     constexpr static auto make(T n) noexcept -> Option<Self> {
+
         return rstd::bit_cast<Option<Self>>(n);
     }
 
@@ -104,6 +106,7 @@ struct NonZero<T> {
     }
     friend constexpr bool operator==(NonZero<T> a, NonZero<T> b) noexcept { return a.val == b.val; }
 };
+
 } // namespace rstd::num::nonzero
 
 ImplNonZero(NonZeroI8Inner, i8);
@@ -115,3 +118,22 @@ ImplNonZero(NonZeroU8Inner, u8);
 ImplNonZero(NonZeroU16Inner, u16);
 ImplNonZero(NonZeroU32Inner, u32);
 ImplNonZero(NonZeroU64Inner, u64);
+
+namespace rstd {
+static_assert(sizeof(rstd::num::nonzero::NonZero<u64>) == sizeof(u64));
+static_assert(sizeof(rstd::option::detail::option_store<rstd::num::nonzero::NonZero<u64>>) == sizeof(u64));
+
+namespace option
+{
+struct EE {};
+
+template<typename T>
+struct BB {
+    alignas(T) rstd::byte m_storage[sizeof(T)] {};
+};
+template<typename T>
+class Test2 : public detail::option_base<T>, public EE {
+};
+}
+static_assert(sizeof(option::Test2<rstd::num::nonzero::NonZero<u64>>) == sizeof(u64));
+}

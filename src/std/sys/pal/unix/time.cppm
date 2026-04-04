@@ -1,4 +1,8 @@
+module;
+#include <rstd/macro.hpp>
 export module rstd:sys.pal.unix.time;
+
+#if RSTD_OS_UNIX
 import rstd.core;
 import :sys.libc.std;
 
@@ -60,7 +64,7 @@ struct Timespec {
         if (a.tv_sec < b.tv_sec) return false;
         return a.tv_nsec >= b.tv_nsec;
     }
-    
+
     friend auto operator==(Timespec a, Timespec b) noexcept -> bool {
         return a.tv_sec == b.tv_sec && a.tv_nsec == b.tv_nsec;
     }
@@ -126,3 +130,4 @@ export struct SystemTime {
 };
 
 } // namespace rstd::sys::pal::unix::time
+#endif

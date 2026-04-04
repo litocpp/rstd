@@ -7,3 +7,6 @@
 /doc/doxygen-awesome-css
 /std
 /gcc
+/.claude
+*.md
+!README.md

@@ -18,11 +18,6 @@ class Cursor {
     T   inner_;
     u64 pos_ = 0;
 
-    friend struct rstd::Impl<io::Read, Cursor<T>>;
-    friend struct rstd::Impl<io::Write, Cursor<Vec<u8>>>;
-    friend struct rstd::Impl<io::Seek, Cursor<T>>;
-    friend struct rstd::Impl<io::BufRead, Cursor<T>>;
-
 public:
     USE_TRAIT(Cursor)
 
@@ -112,7 +107,6 @@ struct Impl<io::Write, io::Cursor<Vec<u8>>> : ImplBase<io::Cursor<Vec<u8>>> {
         usize total = self.inner_.len();
         usize pos   = usize(rstd::min(self.pos_, u64(total)));
         usize end   = pos + len;
-        // Grow if needed.
         for (usize i = total; i < end; ++i) self.inner_.push(u8(0));
         rstd::mem::memcpy(self.inner_.begin() + pos, buf, len);
         self.pos_ += len;

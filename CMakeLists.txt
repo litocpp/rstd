@@ -8,10 +8,14 @@ project(
 option(RSTD_BUILD_TESTING "Build tests" ${PROJECT_IS_TOP_LEVEL})
 option(RSTD_USE_ASAN "asan" OFF)
 
-set(WARN_OPTS -Wall -Wpedantic -Werror)
+set(WARN_OPTS -Wall -Wpedantic)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  list(APPEND WARN_OPTS -Werror)
+endif()
 set(WARN_CLANG_OPTS -Wno-gnu-statement-expression -Wno-deprecated-declarations -fsized-deallocation)
 
 if(PROJECT_IS_TOP_LEVEL)
+  set(CMAKE_CXX_STANDARD 20)
   set(CMAKE_CXX_STANDARD_REQUIRED ON)
   set(CMAKE_CXX_EXTENSIONS OFF)
   set(CMAKE_POSITION_INDEPENDENT_CODE ON)

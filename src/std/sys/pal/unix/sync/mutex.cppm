@@ -1,6 +1,8 @@
 module;
 #include <rstd/macro.hpp>
 export module rstd:sys.pal.unix.sync.mutex;
+
+#if RSTD_OS_UNIX
 export import :sys.libc.pthread;
 export import rstd.core;
 
@@ -48,3 +50,4 @@ public:
 };
 
 } // namespace rstd::sys::pal::unix::sync::mutex
+#endif

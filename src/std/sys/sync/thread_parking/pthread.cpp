@@ -3,6 +3,8 @@ module;
 module rstd;
 import :sys.sync.thread_parking.pthread;
 
+#if RSTD_OS_UNIX && !RSTD_OS_LINUX
+
 using rstd::sync::atomic::Ordering;
 
 namespace rstd::sys::sync::thread_parking::pthread
@@ -84,3 +86,4 @@ void Parker::unpark() {
 }
 
 } // namespace rstd::sys::sync::thread_parking::pthread
+#endif

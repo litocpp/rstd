@@ -1,7 +1,11 @@
 module;
+#include <rstd/macro.hpp>
+#ifdef RSTD_OS_LINUX
 #include <pthread.h>
+#endif
 export module rstd:sys.libc.pthread;
 
+#ifdef RSTD_OS_LINUX
 export namespace rstd::sys::libc
 {
 using ::pthread_mutex_destroy;
@@ -44,3 +48,4 @@ constexpr auto pthread_cond_initializer() noexcept -> pthread_cond_t {
     return PTHREAD_COND_INITIALIZER;
 }
 } // namespace rstd::sys::lib::pthread
+#endif

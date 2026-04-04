@@ -1,8 +1,11 @@
+module;
+#include <rstd/macro.hpp>
 export module rstd:sys.pal.unix;
 export import :sys.pal.unix.futex;
 export import :sys.pal.unix.sync;
 export import :sys.pal.unix.time;
 
+#if RSTD_OS_UNIX
 namespace rstd::sys::pal::unix
 {
 export using pal::unix::sync::mutex::Mutex;
@@ -15,3 +18,4 @@ void abort_internal() {
     libc::abort();
 }
 } // namespace rstd::sys::pal::unix
+#endif

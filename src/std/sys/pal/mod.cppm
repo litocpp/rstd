@@ -19,8 +19,10 @@ using unix::abort_internal;
 
 namespace futex = pal::windows::futex;
 using windows::Mutex;
+using windows::Condvar;
 using windows::Instant;
 using windows::SystemTime;
+using windows::abort_internal;
 #endif
 
 } // namespace rstd::sys::pal

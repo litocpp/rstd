@@ -6,7 +6,7 @@ namespace rstd::io
 {
 // Default internal buffer capacity (8 KiB, matching Rust std).
 export inline constexpr usize DEFAULT_BUF_SIZE = 8192;
-}
+} // namespace rstd::io
 
 namespace rstd::io
 {
@@ -25,7 +25,7 @@ export struct Read {
     static constexpr bool direct = false;
 
     template<typename Self, typename Delegate = void>
-    struct Api : ImplBase<Delegate> {
+    struct Api {
         using Trait = Read;
         /// Read bytes into buf[0..len].  Returns number of bytes read.
         auto read(u8* buf, usize len) -> Result<usize>;
@@ -45,10 +45,10 @@ export struct Write {
     static constexpr bool direct = false;
 
     template<typename Self, typename Delegate = void>
-    struct Api : ImplBase<Delegate> {
+    struct Api {
         using Trait = Write;
         auto write(const u8* buf, usize len) -> Result<usize>;
-        auto flush()                         -> Result<empty>;
+        auto flush() -> Result<empty>;
     };
 
     template<typename T>
@@ -57,13 +57,18 @@ export struct Write {
 
 // ── SeekFrom ──────────────────────────────────────────────────────────────
 export struct SeekFrom {
-    enum class Which : u8 { Start, End, Current };
+    enum class Which : u8
+    {
+        Start,
+        End,
+        Current
+    };
     Which which;
     i64   offset; // treated as u64 for Which::Start
 
-    static auto from_start(u64 n)   noexcept -> SeekFrom { return { Which::Start,   i64(n) }; }
-    static auto from_end(i64 n)     noexcept -> SeekFrom { return { Which::End,     n      }; }
-    static auto from_current(i64 n) noexcept -> SeekFrom { return { Which::Current, n      }; }
+    static auto from_start(u64 n) noexcept -> SeekFrom { return { Which::Start, i64(n) }; }
+    static auto from_end(i64 n) noexcept -> SeekFrom { return { Which::End, n }; }
+    static auto from_current(i64 n) noexcept -> SeekFrom { return { Which::Current, n }; }
 };
 
 // ── Seek ──────────────────────────────────────────────────────────────────
@@ -74,7 +79,7 @@ export struct Seek {
     static constexpr bool direct = false;
 
     template<typename Self, typename Delegate = void>
-    struct Api : ImplBase<Delegate> {
+    struct Api {
         using Trait = Seek;
         auto seek(SeekFrom pos) -> Result<u64>;
     };
@@ -93,7 +98,7 @@ export struct BufRead {
     static constexpr bool direct = false;
 
     template<typename Self, typename Delegate = void>
-    struct Api : ImplBase<Delegate> {
+    struct Api {
         using Trait = BufRead;
         auto fill_buf() -> Result<slice<u8>>;
         auto consume(usize amt) -> void;

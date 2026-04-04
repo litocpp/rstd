@@ -171,7 +171,7 @@ private:
 };
 
 template<typename T>
-struct option_base : option_store<T>, WithTrait<Option<T>, clone::Clone> {
+struct option_base : option_store<T> {
     using traits = detail::option_traits<Option<T>>;
 
 protected:
@@ -330,31 +330,8 @@ export using option::None;
 
 template<typename T, typename Self>
     requires mtp::same_as<T, clone::Clone> && mtp::spec_of<Self, rstd::option::Option> &&
-             Impled<typename option::detail::option_traits<Self>::union_value_t, clone::Clone>
-struct Impl<T, Self> : ImplBase<Self> {
-    using uv_t = typename option::detail::option_traits<Self>::union_value_t;
-    using v_t  = typename option::detail::option_traits<Self>::value_type;
-    auto clone() const -> Self {
-        auto& o = this->self();
-        if (o.is_some()) {
-            return Some(Impl<clone::Clone, uv_t> { o._ptr() }.clone());
-        }
-        return option::Unknown();
-    }
-
-    void clone_from(Self& source) {
-        auto& self = this->self();
-        if (source.is_some()) {
-            if constexpr (mtp::is_ref<v_t>) {
-                self._assign_val(source._get());
-            } else {
-                self._assign_val(Impl<clone::Clone, uv_t> { source._ptr() }.clone());
-            }
-        } else {
-            self._assign_none();
-        }
-    }
-};
+             requires(Self s) { s.clone(); }
+struct Impl<T, Self> : LinkClassMethod<T, Self> {};
 } // namespace rstd
 
 namespace rstd::option
@@ -428,6 +405,29 @@ public:
             this->_assign_none();
         }
         return *this;
+    }
+
+    auto clone() const -> Option
+        requires Impled<union_value_t, clone::Clone>
+    {
+        if (this->is_some()) {
+            return Some(Impl<clone::Clone, union_value_t> { this->_ptr() }.clone());
+        }
+        return option::Unknown();
+    }
+
+    void clone_from(Option& source)
+        requires Impled<union_value_t, clone::Clone>
+    {
+        if (source.is_some()) {
+            if constexpr (mtp::is_ref<T>) {
+                this->_assign_val(base_t::_get(source));
+            } else {
+                this->_assign_val(Impl<clone::Clone, union_value_t> { source._ptr() }.clone());
+            }
+        } else {
+            this->_assign_none();
+        }
     }
 
 private:

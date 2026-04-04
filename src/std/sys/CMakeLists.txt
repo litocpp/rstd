@@ -29,6 +29,9 @@ set(RSTD_SYS_SOURCES
     sys/pal/windows/mod.cppm
     sys/pal/windows/futex.cppm
     sys/pal/windows/time.cppm
+    sys/pal/windows/sync/mod.cppm
+    sys/pal/windows/sync/mutex.cppm
+    sys/pal/windows/sync/condvar.cppm
     sys/sync/once_box.cppm
     sys/sync/mutex/mod.cppm
     sys/sync/mutex/futex.cppm

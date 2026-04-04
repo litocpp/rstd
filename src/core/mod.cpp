@@ -5,8 +5,14 @@ import :panicking;
 
 using rstd::panic_::PanicInfo;
 
-extern "C" [[noreturn]]
-void rstd_panic_impl(PanicInfo const&);
+// Weak default: just trap.  The `rstd` (std) library overrides this with a
+// formatted, human-readable implementation.  Using a weak symbol removes the
+// circular link-time dependency between rstd.core and rstd, which lets us
+// avoid LINK_GROUP (unsupported on Windows PE/COFF linkers).
+extern "C" [[noreturn]] __attribute__((weak))
+void rstd_panic_impl(PanicInfo const& /*info*/) {
+    __builtin_trap();
+}
 
 namespace rstd
 {
