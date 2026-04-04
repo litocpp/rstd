@@ -8,24 +8,24 @@ namespace rstd
 
 namespace ptr_
 {
-struct Pointee {
+export struct Pointee {
     using Metadata = void;
 };
 } // namespace ptr_
 
-template<mtp::same_as<ptr_::Pointee> T, typename A>
-struct Impl<T, A[]> {
+template<mtp::same_as<ptr_::Pointee> T, mtp::is_array A>
+struct Impl<T, A> {
     using Metadata = usize;
 };
 
 namespace mtp
 {
 
-template<typename T>
+export template<typename T>
 concept DST = Impled<T, ptr_::Pointee>;
 
-template<typename T>
-concept DSTArray = mtp::same_as<typename Impl<ptr_::Pointee, T>::Metadata, usize>;
+export template<typename T>
+concept DSTArray = mtp::same<typename Impl<ptr_::Pointee, T>::Metadata, usize>;
 
 } // namespace mtp
 

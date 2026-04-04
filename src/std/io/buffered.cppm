@@ -28,10 +28,6 @@ class BufReader {
         return res;
     }
 
-    friend struct rstd::Impl<io::Read, BufReader<R>>;
-    friend struct rstd::Impl<io::BufRead, BufReader<R>>;
-    friend struct rstd::Impl<io::Seek, BufReader<R>>;
-
 public:
     USE_TRAIT(BufReader)
 

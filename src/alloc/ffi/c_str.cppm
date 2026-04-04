@@ -46,7 +46,7 @@ public:
     static auto from_raw_parts(char const* p) -> CString {
         auto len    = rstd::strlen(p) + 1;
         auto layout = Layout::array<u8>(len).unwrap();
-        auto res    = GLOBAL.allocate(layout);
+        auto res    = as<Allocator>(GLOBAL).allocate(layout);
         if (res.is_err()) handle_alloc_error(layout);
 
         auto* raw = static_cast<u8*>(res.unwrap_unchecked().as_mut_ptr().as_raw_ptr());

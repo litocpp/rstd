@@ -7,11 +7,14 @@ module;
 #include <source_location>
 export module rstd.basic:prelude;
 
+export using ::operator new;
+export using ::operator delete;
 namespace std
 {
 export using std::tuple_size;
 export using std::tuple_element;
 export using std::get;
+export using std::strong_ordering;
 } // namespace std
 
 namespace rstd
@@ -26,9 +29,11 @@ export {
     using u16  = ::uint16_t;
     using u32  = ::uint32_t;
     using u64  = ::uint64_t;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
     using u128 = unsigned __int128;
-
     using i128 = __int128;
+#pragma GCC diagnostic pop
 
     using idx   = ::ptrdiff_t;
     using usize = ::size_t;

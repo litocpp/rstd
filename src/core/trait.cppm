@@ -11,7 +11,6 @@ struct TraitFuncs {};
 /// Impl for trait
 export template<typename T, typename A>
 struct Impl;
-
 namespace mtp
 {
 template<typename T>

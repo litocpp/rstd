@@ -27,7 +27,7 @@ void panic_fmt_nounwind(fmt::Arguments args, panic_::Location loc);
 export template<typename... Args>
 struct panic {
     [[gnu::always_inline]] [[noreturn]]
-    panic(fmt::format_string<Args...> fmt_str, Args&&... args, panic_::SrcLoc loc = {}) {
+    inline panic(fmt::format_string<Args...> fmt_str, Args&&... args, panic_::SrcLoc loc = {}) {
         if constexpr (sizeof...(Args) > 0) {
             fmt::Argument arg_array[] = { fmt::Argument::make(args)... };
             panic_fmt({ fmt_str.data(), fmt_str.size(), arg_array, sizeof...(Args) },
@@ -48,7 +48,7 @@ panic(ref<str>, panic_::SrcLoc = {}) -> panic<>;
 template<>
 struct panic<> {
     [[gnu::always_inline]] [[noreturn]]
-    panic(ref<str> msg, panic_::SrcLoc loc = {}) {
+    inline panic(ref<str> msg, panic_::SrcLoc loc = {}) {
         // Wrap the str bytes as a single Display argument.
         fmt::Argument         arg     = fmt::Argument::make(msg);
         static constexpr char fmt_s[] = "{}";

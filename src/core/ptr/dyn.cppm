@@ -203,8 +203,8 @@ struct mut_ptr<dyn<A>> : dyn_ptr_base<A> {
     }
 };
 
-template<mtp::same_as<ptr_::Pointee> T, typename A>
-struct Impl<T, dyn<A>> {
+template<typename A>
+struct Impl<ptr_::Pointee, dyn<A>> {
     using Metadata = mtp::add_ptr<typename dyn_delegate<A>::vtable_t>;
 };
 

@@ -49,5 +49,7 @@ public:
     }
 };
 
+static_assert(mtp::triv_copy<mut_ptr<Mutex>>);
+
 } // namespace rstd::sys::pal::unix::sync::mutex
 #endif

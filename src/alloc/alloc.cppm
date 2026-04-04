@@ -91,34 +91,7 @@ struct rstd::Impl<rstd::alloc::Allocator, alloc_::Global>
 namespace alloc
 {
 
-using Impl_ = rstd::Impl<Allocator, Global>;
-
-/// The global memory allocator.
-/// Delegates to Impl<Allocator, Global> which holds the real implementations
-/// and default methods (grow/shrink/grow_zeroed via LinkTraitDefault).
-export struct Global {
-    auto allocate(Layout layout) const -> Result<NonNull<u8[]>, AllocError> {
-        return Impl_ { this }.allocate(layout);
-    }
-    auto allocate_zeroed(Layout layout) const -> Result<NonNull<u8[]>, AllocError> {
-        return Impl_ { this }.allocate_zeroed(layout);
-    }
-    void deallocate(NonNull<u8> ptr, Layout layout) const noexcept {
-        Impl_ { this }.deallocate(ptr, layout);
-    }
-    auto grow(NonNull<u8> ptr, Layout old_layout, Layout new_layout) const
-        -> Result<NonNull<u8[]>, AllocError> {
-        return Impl_ { this }.grow(ptr, old_layout, new_layout);
-    }
-    auto grow_zeroed(NonNull<u8> ptr, Layout old_layout, Layout new_layout) const
-        -> Result<NonNull<u8[]>, AllocError> {
-        return Impl_ { this }.grow_zeroed(ptr, old_layout, new_layout);
-    }
-    auto shrink(NonNull<u8> ptr, Layout old_layout, Layout new_layout) const
-        -> Result<NonNull<u8[]>, AllocError> {
-        return Impl_ { this }.shrink(ptr, old_layout, new_layout);
-    }
-};
+export struct Global {};
 
 export Global GLOBAL {};
 

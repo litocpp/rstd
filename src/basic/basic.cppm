@@ -19,19 +19,18 @@ constexpr inline T exchange(T&  obj,
 }
 
 export template<typename T, typename... Args>
-    requires(! mtp::is_array_dst<T>) && requires { ::new ((void*)0) T(mtp::declval<Args>()...); }
+    requires(! mtp::is_array_dst<T>) && requires { new T{mtp::declval<Args>()...}; }
 constexpr T* construct_at(T* location,
-                          Args&&... args) noexcept(noexcept(::new ((void*)0)
-                                                                T(mtp::declval<Args>()...))) {
+                          Args&&... args) noexcept(noexcept(new T{mtp::declval<Args>()...})) {
     void* loc = location;
     if constexpr (mtp::is_array<T>) {
         static_assert(sizeof...(Args) == 0,
                       "std::construct_at for array "
                       "types must not use any arguments to initialize the "
                       "array");
-        return ::new (loc) T[1]();
+        return new (loc) T[1]();
     } else
-        return ::new (loc) T(rstd::forward<Args>(args)...);
+        return new (loc) T{rstd::forward<Args>(args)...};
 }
 export template<typename T>
 constexpr inline void destroy_at(T* location) {

@@ -140,7 +140,7 @@ struct print {
     }
 };
 // Zero-arg specialisation avoids zero-length array.
-export template<>
+template<>
 struct print<> {
     print(fmt::format_string<> fmt_str) {
         print_fmt({ fmt_str.data(), fmt_str.size(), nullptr, 0 });
@@ -157,7 +157,7 @@ struct println {
         print_fmt({ (const u8*)"\n", 1, nullptr, 0 });
     }
 };
-export template<>
+template<>
 struct println<> {
     println() {
         print_fmt({ (const u8*)"\n", 1, nullptr, 0 });
@@ -177,7 +177,7 @@ struct eprint {
         eprint_fmt({ fmt_str.data(), fmt_str.size(), arg_array, sizeof...(Args) });
     }
 };
-export template<>
+template<>
 struct eprint<> {
     eprint(fmt::format_string<> fmt_str) {
         eprint_fmt({ fmt_str.data(), fmt_str.size(), nullptr, 0 });
@@ -194,7 +194,7 @@ struct eprintln {
         eprint_fmt({ (const u8*)"\n", 1, nullptr, 0 });
     }
 };
-export template<>
+template<>
 struct eprintln<> {
     eprintln() {
         eprint_fmt({ (const u8*)"\n", 1, nullptr, 0 });

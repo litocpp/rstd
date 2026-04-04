@@ -59,10 +59,10 @@ public:
 
     constexpr auto as_raw_ptr() const noexcept -> const u8* { return vec.begin(); }
 
-    constexpr auto begin() const noexcept -> const char* { return (const char*)vec.begin(); }
-    constexpr auto end() const noexcept -> const char* { return (const char*)vec.end(); }
+    constexpr auto begin() const noexcept -> const char* { return rstd::bit_cast<const char*>(vec.begin()); }
+    constexpr auto end() const noexcept -> const char* { return rstd::bit_cast<const char*>(vec.end()); }
     constexpr auto data() const noexcept -> const char* {
-        return (const char*)vec.as_ptr().as_raw_ptr();
+        return rstd::bit_cast<const char*>(vec.as_ptr().as_raw_ptr());
     }
     constexpr auto size() const noexcept -> usize { return vec.len(); }
 };
@@ -128,7 +128,7 @@ struct Impl<fmt::Display, T> : ImplBase<T> {
         if (val == 0) {
             return f.write_raw((const u8*)"0", 1);
         }
-        unsigned __int128 uval;
+        u128 uval;
         bool              neg = false;
         if constexpr (mtp::same_as<T, i8> || mtp::same_as<T, i16> || mtp::same_as<T, i32> ||
                       mtp::same_as<T, i64> || mtp::same_as<T, i128> || mtp::same_as<T, int> ||
@@ -136,13 +136,13 @@ struct Impl<fmt::Display, T> : ImplBase<T> {
             if (val < 0) {
                 neg  = true;
                 uval = (val == numeric_limits<T>::min())
-                           ? (unsigned __int128)numeric_limits<T>::max() + 1
-                           : (unsigned __int128)-val;
+                           ? (u128)numeric_limits<T>::max() + 1
+                           : (u128)-val;
             } else {
-                uval = (unsigned __int128)val;
+                uval = (u128)val;
             }
         } else {
-            uval = (unsigned __int128)val;
+            uval = (u128)val;
         }
 
         while (uval > 0) {

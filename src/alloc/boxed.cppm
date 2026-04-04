@@ -59,7 +59,7 @@ public:
         requires Impled<T, Sized>
     {
         auto layout = Layout::make<T>();
-        auto res    = GLOBAL.allocate(layout);
+        auto res    = as<Allocator>(GLOBAL).allocate(layout);
         if (res.is_err()) handle_alloc_error(layout);
 
         auto p = res.unwrap_unchecked().as_mut_ptr().template cast<T>();
@@ -72,7 +72,7 @@ public:
         requires(! Impled<T, Sized> && mtp::dyn_traits<T>::template Impled<U>)
     {
         auto layout = Layout::make<U>();
-        auto res    = GLOBAL.allocate(layout);
+        auto res    = as<Allocator>(GLOBAL).allocate(layout);
         if (res.is_err()) handle_alloc_error(layout);
 
         auto p = res.unwrap_unchecked().as_mut_ptr().template cast<U>();
@@ -126,7 +126,7 @@ public:
                 mptr.as_raw_ptr()->~T();
                 layout = Some(Layout::make<T>());
             }
-            GLOBAL.deallocate(raw_non_null, layout.unwrap());
+            as<Allocator>(GLOBAL).deallocate(raw_non_null, layout.unwrap());
             rstd::mem::fill(m_ptr, 0);
         }
     }
@@ -144,7 +144,7 @@ public:
         auto length = old.len();
         auto layout = Layout::array<V>(length).unwrap();
 
-        auto res = GLOBAL.allocate(layout);
+        auto res = as<Allocator>(GLOBAL).allocate(layout);
         if (res.is_err()) handle_alloc_error(layout);
 
         auto* raw = static_cast<V*>(res.unwrap_unchecked().as_mut_ptr().as_raw_ptr());

@@ -33,8 +33,7 @@ auto from_raw_parts_override(U* self, P ptr) noexcept -> T {
 export template<typename Self, typename T, bool Mutable>
 struct ref_base {
     /// we only process T[] for value_type
-    using value_type = mtp::cond<Mutable, mtp::rm_ext<T>,
-                                           mtp::add_const<mtp::rm_ext<T>>>;
+    using value_type = mtp::cond<Mutable, mtp::rm_ext<T>, mtp::add_const<mtp::rm_ext<T>>>;
 
     constexpr value_type* operator->() const noexcept { return static_cast<Self const*>(this)->p; }
     constexpr value_type& operator*() const noexcept {
@@ -114,8 +113,7 @@ struct ref_base {
 export template<typename Self, typename T, bool Mutable>
 struct ptr_base {
     /// we only process T[] for value_type
-    using value_type = mtp::cond<Mutable, mtp::rm_ext<T>,
-                                           mtp::add_const<mtp::rm_ext<T>>>;
+    using value_type = mtp::cond<Mutable, mtp::rm_ext<T>, mtp::add_const<mtp::rm_ext<T>>>;
 
     constexpr value_type* operator->() const noexcept { return static_cast<Self const*>(this)->p; }
     constexpr value_type& operator*() const noexcept {
@@ -271,7 +269,8 @@ struct mut_ptr : ptr_base<mut_ptr<T>, T, true> {
     T* p { nullptr };
 };
 
-template<mtp::DSTArray T>
+template<typename T>
+    requires mtp::DSTArray<T>
 struct mut_ptr<T> : ptr_base<mut_ptr<T>, T, true> {
     static_assert(! mtp::is_const<T>);
     using value_type = mtp::rm_ext<T>;

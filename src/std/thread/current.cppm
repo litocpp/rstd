@@ -34,7 +34,7 @@ export auto try_current() -> Option<Thread> {
     auto thread = Thread::from_raw(CURRENT);
     auto res    = thread.clone();
     thread.into_raw(); // Don't drop it.
-    return rstd::option::Some<Thread>(rstd::move(res));
+    return rstd::Some<Thread>(rstd::move(res));
 }
 
 export auto set_current(Thread thread) -> Result<empty, Thread> {

@@ -1,10 +1,10 @@
+module;
+#if ! __has_builtin(__is_nothrow_destructible)
+#    include <type_traits>
+#endif
 export module rstd.basic:mtp;
 export import :prelude;
 export import :mtp.std;
-
-#if ! __has_builtin(__is_nothrow_destructible)
-export import :cppstd;
-#endif
 
 /// @cond undocumented
 
@@ -111,6 +111,9 @@ struct rm_ref<T&&> {
     using type = T;
 };
 
+template<typename...>
+using void_t = void;
+
 /// @endcond
 
 export namespace rstd::mtp
@@ -199,7 +202,7 @@ concept drop =
 #if __has_builtin(__is_nothrow_destructible)
     __is_nothrow_destructible(T);
 #else
-    cppstd::is_nothrow_destructible_v<T>;
+    std::is_nothrow_destructible_v<T>;
 #endif
 
 template<typename T>
@@ -285,7 +288,7 @@ concept noex_drop =
 #if __has_builtin(__is_nothrow_destructible)
     __is_nothrow_destructible(T);
 #else
-    cppstd::is_nothrow_destructible_v<T>;
+    std::is_nothrow_destructible_v<T>;
 #endif
 /// @}
 
@@ -486,6 +489,5 @@ consteval auto get_auto() {
     static_assert(I < sizeof...(Vals), "out of range");
     return get_auto_impl<I, Vals...>();
 }
-
 
 } // namespace rstd::mtp

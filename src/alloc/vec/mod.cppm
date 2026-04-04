@@ -24,7 +24,7 @@ struct RawVec {
     static auto with_capacity(usize capacity) -> RawVec {
         if (capacity == 0) return RawVec();
         auto layout = Layout::array<T>(capacity).unwrap();
-        auto res    = ::alloc::GLOBAL.allocate(layout);
+        auto res    = as<Allocator>(::alloc::GLOBAL).allocate(layout);
         if (res.is_err()) handle_alloc_error(layout);
 
         auto p = res.unwrap_unchecked().as_mut_ptr().template cast<T>();
@@ -38,7 +38,7 @@ struct RawVec {
         auto new_layout = Layout::array<T>(new_cap).unwrap();
 
         if (cap == 0) {
-            auto res = ::alloc::GLOBAL.allocate(new_layout);
+            auto res = as<Allocator>(::alloc::GLOBAL).allocate(new_layout);
             if (res.is_err()) handle_alloc_error(new_layout);
             ptr =
                 NonNull<T>::make_unchecked(res.unwrap_unchecked().as_mut_ptr().template cast<T>());
@@ -46,7 +46,7 @@ struct RawVec {
             auto old_layout = Layout::array<T>(cap).unwrap();
             auto old_ptr    = ptr.as_mut_ptr();
 
-            auto res = ::alloc::GLOBAL.grow(
+            auto res = as<Allocator>(::alloc::GLOBAL).grow(
                 NonNull<u8>::make_unchecked(old_ptr.template cast<u8>()), old_layout, new_layout);
             if (res.is_err()) handle_alloc_error(new_layout);
 
@@ -67,7 +67,7 @@ struct RawVec {
         if (! rstd::mem::all(ptr, 0)) {
             debug_assert(cap > 0);
             auto layout = Layout::array<T>(cap).unwrap();
-            ::alloc::GLOBAL.deallocate(
+            as<Allocator>(::alloc::GLOBAL).deallocate(
                 NonNull<u8>::make_unchecked(ptr.as_mut_ptr().template cast<u8>()), layout);
         }
         reset_ptr();
@@ -142,7 +142,7 @@ public:
     auto into_boxed_slice() noexcept -> Box<T[]> {
         auto length = m_len;
         auto layout = Layout::array<T>(length).unwrap();
-        auto res    = GLOBAL.allocate(layout);
+        auto res    = as<Allocator>(GLOBAL).allocate(layout);
         if (res.is_err()) handle_alloc_error(layout);
 
         auto* raw     = reinterpret_cast<T*>(res.unwrap_unchecked().as_mut_ptr().as_raw_ptr());
