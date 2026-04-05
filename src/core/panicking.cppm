@@ -1,6 +1,7 @@
 export module rstd.core:panicking;
 export import :fmt;
 export import :panic;
+export import :str.str;
 
 namespace rstd
 {

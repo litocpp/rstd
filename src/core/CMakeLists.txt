@@ -51,7 +51,6 @@ target_sources(
          alloc/global.cppm
          alloc/layout.cppm
          alloc/mod.cppm
-         panic/panic_info.cppm
          intrinsics/mod.cppm
          ffi/mod.cppm
          ffi/c_str.cppm
