@@ -31,6 +31,7 @@ target_sources(
          process/exit_status.cppm
          process/command.cppm
          env.cppm
+         path.cppm
          ffi/mod.cppm
          ffi/os_str.cppm
          ${RSTD_SYS_SOURCES}
