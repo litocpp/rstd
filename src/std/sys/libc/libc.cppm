@@ -6,6 +6,10 @@ module;
 #include <stddef.h>
 #include <rstd/macro.hpp>
 
+#if RSTD_OS_UNIX
+#include <unistd.h>
+#endif
+
 export module rstd:sys.libc.std;
 
 export namespace rstd::sys::libc
@@ -41,5 +45,14 @@ inline auto errno() noexcept -> int {
 #    error "rstd: unsupported platform for errno()"
 #endif
 };
+
+// Environment
+using ::getenv;
+using ::setenv;
+using ::unsetenv;
+
+// Process
+using ::getpid;
+using ::_exit;
 
 } // namespace rstd::sys::libc

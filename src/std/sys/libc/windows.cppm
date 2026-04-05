@@ -76,6 +76,10 @@ using ::MultiByteToWideChar;
 
 // ── Process ──────────────────────────────────────────────────────────────
 using ::RaiseFailFastException;
+using ::ExitProcess;
+using ::GetCurrentProcessId;
+using ::GetEnvironmentVariableA;
+using ::SetEnvironmentVariableA;
 
 } // namespace rstd::sys::libc
 #endif

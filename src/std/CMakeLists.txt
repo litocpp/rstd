@@ -28,6 +28,7 @@ target_sources(
          error.cppm
          panicking.cppm
          process.cppm
+         env.cppm
          ffi/mod.cppm
          ${RSTD_SYS_SOURCES}
          ${RSTD_IO_SOURCES}

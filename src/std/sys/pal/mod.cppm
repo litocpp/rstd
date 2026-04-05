@@ -14,6 +14,11 @@ using unix::Condvar;
 using unix::Instant;
 using unix::SystemTime;
 using unix::abort_internal;
+using unix::exit_internal;
+using unix::getpid_internal;
+using unix::getenv_internal;
+using unix::setenv_internal;
+using unix::unsetenv_internal;
 
 #elif RSTD_OS_WINDOWS
 
@@ -23,6 +28,11 @@ using windows::Condvar;
 using windows::Instant;
 using windows::SystemTime;
 using windows::abort_internal;
+using windows::exit_internal;
+using windows::getpid_internal;
+using windows::getenv_internal;
+using windows::setenv_internal;
+using windows::unsetenv_internal;
 #endif
 
 } // namespace rstd::sys::pal

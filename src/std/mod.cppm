@@ -7,5 +7,6 @@ export import :sys;
 export import :sync;
 export import :thread;
 export import :process;
+export import :env;
 export import :panicking;
 export import :alloc;
