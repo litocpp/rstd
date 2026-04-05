@@ -36,7 +36,7 @@ TEST(Process, CommandWithArgs) {
                    .set_stdout(rstd::process::Stdio::piped())
                    .spawn();
     ASSERT_TRUE(res.is_ok());
-    auto child = rstd::move(res.unwrap());
+    auto child = res.unwrap();
     EXPECT_GT(child.id(), 0u);
 
     auto status = child.wait();
@@ -49,7 +49,7 @@ TEST(Process, CommandOutput) {
                    .arg("hello")
                    .output();
     ASSERT_TRUE(res.is_ok());
-    auto out = rstd::move(res.unwrap());
+    auto out = res.unwrap();
     EXPECT_TRUE(out.status.success());
 
     // stdout should contain "hello\n"
@@ -65,7 +65,7 @@ TEST(Process, CommandOutputStderr) {
                    .arg("echo err >&2")
                    .output();
     ASSERT_TRUE(res.is_ok());
-    auto out = rstd::move(res.unwrap());
+    auto out = res.unwrap();
 
     auto* p = reinterpret_cast<const char*>(out.stderr_buf.begin());
     EXPECT_EQ(std::string(p, out.stderr_buf.len()), "err\n");
@@ -83,13 +83,13 @@ TEST(Process, ChildStdinWrite) {
                    .set_stdout(rstd::process::Stdio::piped())
                    .spawn();
     ASSERT_TRUE(res.is_ok());
-    auto child = rstd::move(res.unwrap());
+    auto child = res.unwrap();
 
     // Write to child's stdin via io::Write
     auto stdin_opt = child.take_stdin();
     ASSERT_TRUE(stdin_opt.is_some());
     {
-        auto stdin_h = rstd::move(stdin_opt.unwrap());
+        auto stdin_h = stdin_opt.unwrap();
         auto msg = reinterpret_cast<const rstd::u8*>("hello pipe");
         auto wres = rstd::as<rstd::io::Write>(stdin_h).write(msg, 10);
         ASSERT_TRUE(wres.is_ok());
@@ -99,7 +99,7 @@ TEST(Process, ChildStdinWrite) {
     auto stdout_opt = child.take_stdout();
     ASSERT_TRUE(stdout_opt.is_some());
     {
-        auto stdout_h = rstd::move(stdout_opt.unwrap());
+        auto stdout_h = stdout_opt.unwrap();
         rstd::u8 buf[64] = {};
         auto rres = rstd::as<rstd::io::Read>(stdout_h).read(buf, sizeof(buf));
         ASSERT_TRUE(rres.is_ok());
@@ -120,7 +120,7 @@ TEST(Process, WaitWithOutput) {
     ASSERT_TRUE(res.is_ok());
     auto out_res = res.unwrap().wait_with_output();
     ASSERT_TRUE(out_res.is_ok());
-    auto out = rstd::move(out_res.unwrap());
+    auto out = out_res.unwrap();
     EXPECT_TRUE(out.status.success());
     auto* p = reinterpret_cast<const char*>(out.stdout_buf.begin());
     EXPECT_EQ(std::string(p, out.stdout_buf.len()), "collected\n");
