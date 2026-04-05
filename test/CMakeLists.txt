@@ -44,6 +44,7 @@ add_executable(
   process.cpp
   char.cpp
   str.cpp
+  ffi/os_str.cpp
   )
 
 target_link_libraries(rstd_test PRIVATE rstd::rstd GTest::gtest_main)

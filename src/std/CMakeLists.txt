@@ -32,6 +32,7 @@ target_sources(
          process/command.cppm
          env.cppm
          ffi/mod.cppm
+         ffi/os_str.cppm
          ${RSTD_SYS_SOURCES}
          ${RSTD_IO_SOURCES}
          ${RSTD_THREAD_SOURCES}
