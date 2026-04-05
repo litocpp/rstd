@@ -11,6 +11,7 @@ export import :mem;
 namespace rstd::alloc
 {
 
+/// Describes the memory layout of a type: its size and alignment.
 export struct Layout {
     usize size;
     usize align;

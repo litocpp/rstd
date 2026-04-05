@@ -3,6 +3,8 @@ export import :trait;
 
 namespace rstd
 {
+/// Trait for callables that can be called once, consuming themselves.
+/// \tparam T A function signature, e.g. `R(Args...)`.
 export template<typename T>
 struct FnOnce {
     static_assert(false);
@@ -22,6 +24,8 @@ struct FnOnce<R(Args...) noexcept(NoEx)> {
     using Funcs = TraitFuncs<&T::call_once>;
 };
 
+/// Trait for callables that can be called by mutable reference.
+/// \tparam T A function signature, e.g. `R(Args...)`.
 export template<typename T>
 struct FnMut {
     static_assert(false);
@@ -43,6 +47,8 @@ struct FnMut<R(Args...) noexcept(NoEx)> {
     static constexpr bool direct { true };
 };
 
+/// Trait for callables that can be called by const reference.
+/// \tparam T A function signature, e.g. `R(Args...)`.
 export template<typename T>
 struct Fn {
     static_assert(false);

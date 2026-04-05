@@ -4,12 +4,23 @@ export import :ptr.metadata;
 namespace rstd
 {
 
+/// An immutable raw pointer, analogous to Rust's `*const T`.
+/// \tparam T The pointee type.
 export template<typename T>
 struct ptr;
+
+/// A mutable raw pointer, analogous to Rust's `*mut T`.
+/// \tparam T The pointee type.
 export template<typename T>
 struct mut_ptr;
+
+/// An immutable reference wrapper, analogous to Rust's `&T`.
+/// \tparam T The referenced type.
 export template<typename T>
 struct ref;
+
+/// A mutable reference wrapper, analogous to Rust's `&mut T`.
+/// \tparam T The referenced type.
 export template<typename T>
 struct mut_ref;
 
@@ -30,6 +41,10 @@ auto from_raw_parts_override(U* self, P ptr) noexcept -> T {
         return T::from_raw_parts(ptr);
 }
 
+/// CRTP base for reference-like pointer types (`ref`, `mut_ref`).
+/// \tparam Self The derived type (CRTP).
+/// \tparam T The pointee type.
+/// \tparam Mutable Whether the reference is mutable.
 export template<typename Self, typename T, bool Mutable>
 struct ref_base {
     /// we only process T[] for value_type
@@ -110,6 +125,10 @@ struct ref_base {
     /// @}
 };
 
+/// CRTP base for raw pointer types (`ptr`, `mut_ptr`).
+/// \tparam Self The derived type (CRTP).
+/// \tparam T The pointee type.
+/// \tparam Mutable Whether the pointer is mutable.
 export template<typename Self, typename T, bool Mutable>
 struct ptr_base {
     /// we only process T[] for value_type
@@ -280,6 +299,8 @@ struct mut_ptr<T> : ptr_base<mut_ptr<T>, T, true> {
     usize       length;
 };
 
+/// A borrowed reference to a contiguous sequence of `T`, analogous to Rust's `&[T]`.
+/// \tparam T The element type.
 export template<typename T>
 using slice = ref<T[]>;
 

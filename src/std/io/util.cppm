@@ -10,18 +10,22 @@ namespace rstd::io
 /// A reader that always returns EOF and a writer that discards all bytes.
 export struct Empty {};
 
+/// Creates a value that implements Read (always EOF), Write (discards), and Seek.
 export inline auto empty_io() noexcept -> Empty { return {}; }
 
 // ── Repeat ────────────────────────────────────────────────────────────────
 /// A reader that infinitely yields one byte value.
 export struct Repeat { u8 byte; };
 
+/// Creates a reader that infinitely yields the given byte.
+/// \param byte The byte value to repeat.
 export inline auto repeat(u8 byte) noexcept -> Repeat { return { byte }; }
 
 // ── Sink ──────────────────────────────────────────────────────────────────
 /// A writer that discards all bytes and never errors.
 export struct Sink {};
 
+/// Creates a writer that successfully consumes all data without storing it.
 export inline auto sink() noexcept -> Sink { return {}; }
 
 // ── copy ──────────────────────────────────────────────────────────────────

@@ -4,12 +4,19 @@ export import :mtp;
 namespace rstd
 {
 
+/// Obtains the actual address of an object, even if `operator&` is overloaded.
+/// \param val Reference to the object.
+/// \return Pointer to the object.
 export template<typename T>
 [[gnu::always_inline]]
 constexpr auto addressof(T& val) noexcept -> T* {
     return __builtin_addressof(val);
 }
 
+/// Replaces `obj` with `new_val`, returning the old value.
+/// \param obj The object whose value is replaced.
+/// \param new_val The new value to assign.
+/// \return The previous value of `obj`.
 export template<typename T, typename U = T>
 constexpr inline T exchange(T&  obj,
                             U&& new_val) noexcept(mtp::noex_move<T> && mtp::noex_assign<T&, U>) {
@@ -18,6 +25,10 @@ constexpr inline T exchange(T&  obj,
     return old;
 }
 
+/// Constructs an object of type `T` at the given memory location.
+/// \param location Pointer to uninitialized storage.
+/// \param args Arguments forwarded to the constructor.
+/// \return Pointer to the constructed object.
 export template<typename T, typename... Args>
     requires(! mtp::is_array_dst<T>) && requires { new T{mtp::declval<Args>()...}; }
 constexpr T* construct_at(T* location,
@@ -32,6 +43,8 @@ constexpr T* construct_at(T* location,
     } else
         return new (loc) T{rstd::forward<Args>(args)...};
 }
+/// Destroys the object at the given location by calling its destructor.
+/// \param location Pointer to the object to destroy.
 export template<typename T>
 constexpr inline void destroy_at(T* location) {
     if constexpr (__cplusplus > 201703L && mtp::is_array<T>) {
@@ -40,6 +53,9 @@ constexpr inline void destroy_at(T* location) {
         location->~T();
 }
 
+/// Obtains a pointer to an object created in storage occupied by another object of the same type.
+/// \param __p Pointer to launder.
+/// \return A pointer to the same memory with the correct type provenance.
 export template<typename T>
 [[nodiscard]]
 constexpr T* launder(T* __p) noexcept {
@@ -53,6 +69,9 @@ constexpr T* launder(T* __p) noexcept {
     return nullptr;
 }
 
+/// Returns the length of a null-terminated byte string.
+/// \param s Pointer to a null-terminated string.
+/// \return The number of characters before the null terminator.
 export constexpr auto strlen(char const* s) noexcept -> usize {
     if (mtp::is_constant_evaluated()) {
         usize i = 0;
@@ -63,12 +82,11 @@ export constexpr auto strlen(char const* s) noexcept -> usize {
     }
 }
 
-/// Create a value of type `To` from the bits of `from`.
-/**
- * @tparam _To   A trivially-copyable type.
- * @param __from A trivially-copyable object of the same size as `_To`.
- * @return       An object of type `_To`.
- */
+/// Reinterprets the bits of `from` as a value of type `To`.
+/// \tparam To A trivially-copyable destination type.
+/// \tparam From A trivially-copyable source type with the same size as `To`.
+/// \param from The source value.
+/// \return An object of type `To` with the same bit representation.
 export template<typename To, typename From>
 [[nodiscard]]
 constexpr To bit_cast(const From& from) noexcept
@@ -77,6 +95,7 @@ constexpr To bit_cast(const From& from) noexcept
     return __builtin_bit_cast(To, from);
 }
 
+/// Informs the compiler that this point in the code is unreachable.
 export [[noreturn]]
 inline void unreachable() {
     // Uses compiler specific extensions if possible.
@@ -89,6 +108,7 @@ inline void unreachable() {
 #endif
 }
 
+/// Swaps the values of `a` and `b`.
 export template<typename T>
 void swap(T& a, T& b) noexcept(mtp::noex_copy<T>) {
     T t(a);
@@ -96,6 +116,7 @@ void swap(T& a, T& b) noexcept(mtp::noex_copy<T>) {
     b = t;
 }
 
+/// Returns the smaller of two values.
 export template<typename T>
 constexpr auto min(T a, T b) noexcept -> T {
     return a > b ? b : a;
@@ -144,6 +165,8 @@ constexpr auto lexicographical_compare_three_way(InputIter1 first1, InputIter1 l
     return (first1 == last1) <=> (first2 == last2);
 }
 
+/// Performs lexicographic three-way comparison of two ranges using `<=>`.
+/// \return The ordering result of the first differing element pair, or a length comparison.
 export template<typename InputIter1, typename InputIter2>
 constexpr auto lexicographical_compare_three_way(InputIter1 first1, InputIter1 last1,
                                                  InputIter2 first2, InputIter2 last2) {

@@ -77,6 +77,8 @@ struct RawVec {
 namespace alloc::vec
 {
 
+/// A contiguous growable array type, analogous to Rust's `Vec<T>`.
+/// \tparam T The element type, which must be `Sized`.
 export template<typename T>
 class Vec {
     RawVec<T> m_buf;
@@ -89,6 +91,7 @@ class Vec {
 public:
     USE_TRAIT(Vec)
 
+    /// Creates an empty `Vec` with no allocation.
     constexpr Vec(): m_buf(), m_len(0) {}
 
     // no copy
@@ -122,23 +125,36 @@ public:
         m_buf.drop();
     }
 
+    /// Creates a new empty `Vec`.
+    /// \return An empty `Vec`.
     static constexpr auto make() -> Self { return {}; }
+    /// Creates a new empty `Vec` with at least the specified capacity.
+    /// \param capacity The minimum number of elements the `Vec` can hold without reallocating.
+    /// \return A `Vec` with preallocated capacity.
     static auto           with_capacity(usize capacity) -> Self {
         return Vec { RawVec<T>::with_capacity(capacity), 0 };
     }
 
+    /// Returns a slice containing the entire vector.
+    /// \return An immutable `slice<T>` over all elements.
     constexpr auto as_slice() const noexcept -> slice<T> {
         if (m_len == 0) return {};
         return slice<T>::from_raw_parts(m_buf.ptr.as_ptr().as_raw_ptr(), m_len);
     }
 
+    /// Returns a mutable slice containing the entire vector.
+    /// \return A mutable pointer to a slice over all elements.
     constexpr auto as_mut_slice() noexcept -> mut_ptr<T[]> {
         if (m_len == 0) return {};
         return mut_ptr<T[]>::from_raw_parts(m_buf.ptr.as_mut_ptr().as_raw_ptr(), m_len);
     }
 
+    /// Returns a const pointer to the first element of the vector.
+    /// \return A const pointer to the underlying buffer.
     constexpr auto as_ptr() const noexcept -> ptr<T> { return m_buf.ptr.as_ptr(); }
 
+    /// Converts this `Vec` into a `Box<T[]>`, transferring ownership of all elements.
+    /// \return A boxed slice containing the vector's elements.
     auto into_boxed_slice() noexcept -> Box<T[]> {
         auto length = m_len;
         auto layout = Layout::array<T>(length).unwrap();
@@ -156,6 +172,8 @@ public:
         return b;
     }
 
+    /// Appends an element to the back of the vector by moving it.
+    /// \param value The value to append.
     constexpr void push(T&& value) {
         if (m_len == m_buf.cap) {
             m_buf.grow(m_buf.cap == 0 ? 4 : m_buf.cap * 2);
@@ -164,6 +182,8 @@ public:
         m_len++;
     }
 
+    /// Removes the last element from the vector and returns it, or `None` if empty.
+    /// \return An `Option<T>` containing the removed element.
     constexpr auto pop() -> Option<T> {
         if (m_len == 0) {
             return None();
@@ -176,6 +196,8 @@ public:
         }
     }
 
+    /// Appends a cloned copy of the element to the back of the vector.
+    /// \param value The value to clone and append.
     constexpr void push_back(const T& value)
         requires Impled<T, Clone>
     {
@@ -186,24 +208,39 @@ public:
         m_len++;
     }
 
+    /// Removes the last element from the vector, discarding it.
     constexpr void pop_back() { (void)pop(); }
 
+    /// Returns a mutable reference to the element at the given index, panicking if out of bounds.
+    /// \param index The index of the element.
+    /// \return A mutable reference to the element.
     constexpr T& at(usize index) {
         if (index >= m_len) rstd::panic { "Vec index out of bounds" };
         return m_buf.ptr.as_mut_ptr().as_raw_ptr()[index];
     }
+    /// Returns a const reference to the element at the given index, panicking if out of bounds.
+    /// \param index The index of the element.
+    /// \return A const reference to the element.
     constexpr const T& at(usize index) const {
         if (index >= m_len) rstd::panic { "Vec index out of bounds" };
         return m_buf.ptr.as_ptr().as_raw_ptr()[index];
     }
 
+    /// Indexes into the vector, panicking if out of bounds.
     constexpr T&       operator[](usize index) { return at(index); }
+    /// Indexes into the vector (const), panicking if out of bounds.
     constexpr const T& operator[](usize index) const { return at(index); }
 
+    /// Returns the number of elements in the vector.
+    /// \return The length of the vector.
     constexpr usize len() const { return m_len; }
+    /// Returns the number of elements the vector can hold without reallocating.
+    /// \return The current capacity.
     constexpr usize capacity() const { return m_buf.cap; }
+    /// Returns `true` if the vector contains no elements.
     constexpr bool  is_empty() const { return m_len == 0; }
 
+    /// Clears the vector, destroying all elements but not deallocating memory.
     constexpr void clear() {
         auto* p = m_buf.ptr.as_mut_ptr().as_raw_ptr();
         for (usize i = 0; i < m_len; ++i) {
@@ -212,6 +249,9 @@ public:
         m_len = 0;
     }
 
+    /// Removes and returns the element at the given index, shifting subsequent elements left.
+    /// \param index The index of the element to remove.
+    /// \return The removed element.
     constexpr T remove(usize index) {
         if (index >= m_len) rstd::panic { "Vec index out of bounds" };
         T     value = rstd::move(at(index));
@@ -224,9 +264,13 @@ public:
         return value;
     }
 
+    /// Returns a mutable iterator to the beginning.
     constexpr auto begin() noexcept { return m_buf.ptr.as_mut_ptr().as_raw_ptr(); }
+    /// Returns a mutable iterator to the end.
     constexpr auto end() noexcept { return m_buf.ptr.as_mut_ptr().as_raw_ptr() + m_len; }
+    /// Returns a const iterator to the beginning.
     constexpr auto begin() const noexcept { return m_buf.ptr.as_ptr().as_raw_ptr(); }
+    /// Returns a const iterator to the end.
     constexpr auto end() const noexcept { return m_buf.ptr.as_ptr().as_raw_ptr() + m_len; }
 };
 

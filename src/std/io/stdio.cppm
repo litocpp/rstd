@@ -72,6 +72,7 @@ namespace rstd::io
 
 // ── Stdout ────────────────────────────────────────────────────────────────
 
+/// A locked reference to the stdout stream, providing exclusive write access.
 export struct StdoutLock {
     detail::ScopedLock guard { detail::stdout_mutex() };
 };
@@ -85,6 +86,7 @@ export struct Stdout {
     auto lock() -> StdoutLock { return {}; }
 };
 
+/// Constructs a new handle to the standard output of the current process.
 export inline auto stdout() noexcept -> Stdout { return {}; }
 
 // ── Stderr ────────────────────────────────────────────────────────────────
@@ -93,10 +95,12 @@ export inline auto stdout() noexcept -> Stdout { return {}; }
 /// Intentionally lock-free so it is usable from panic handlers.
 export struct Stderr {};
 
+/// Constructs a new handle to the standard error of the current process.
 export inline auto stderr() noexcept -> Stderr { return {}; }
 
 // ── Stdin ─────────────────────────────────────────────────────────────────
 
+/// A locked reference to the stdin stream, providing exclusive read access.
 export struct StdinLock {
     detail::ScopedLock guard { detail::stdin_mutex() };
 };
@@ -105,9 +109,11 @@ export struct StdinLock {
 export struct Stdin {
     USE_TRAIT(Stdin)
 
+    /// Locks stdin and returns a guard providing exclusive read access.
     auto lock() -> StdinLock { return {}; }
 };
 
+/// Constructs a new handle to the standard input of the current process.
 export inline auto stdin() noexcept -> Stdin { return {}; }
 
 // ── Free formatting functions ─────────────────────────────────────────────
@@ -132,6 +138,8 @@ export inline auto eprint_fmt(fmt::Arguments args) -> Result<empty> {
 // ── print / println / eprint / eprintln ──────────────────────────────────
 // Rust-style call-syntax structs using CTAD deduction guides.
 
+/// Prints formatted text to stdout.
+/// \tparam Args The types of format arguments.
 export template<typename... Args>
 struct print {
     print(fmt::format_string<Args...> fmt_str, Args&&... args) {
@@ -149,6 +157,8 @@ struct print<> {
 template<typename... Args>
 print(fmt::format_string<Args...>, Args&&...) -> print<Args...>;
 
+/// Prints formatted text to stdout, followed by a newline.
+/// \tparam Args The types of format arguments.
 export template<typename... Args>
 struct println {
     println(fmt::format_string<Args...> fmt_str, Args&&... args) {
@@ -170,6 +180,8 @@ struct println<> {
 template<typename... Args>
 println(fmt::format_string<Args...>, Args&&...) -> println<Args...>;
 
+/// Prints formatted text to stderr.
+/// \tparam Args The types of format arguments.
 export template<typename... Args>
 struct eprint {
     eprint(fmt::format_string<Args...> fmt_str, Args&&... args) {
@@ -186,6 +198,8 @@ struct eprint<> {
 template<typename... Args>
 eprint(fmt::format_string<Args...>, Args&&...) -> eprint<Args...>;
 
+/// Prints formatted text to stderr, followed by a newline.
+/// \tparam Args The types of format arguments.
 export template<typename... Args>
 struct eprintln {
     eprintln(fmt::format_string<Args...> fmt_str, Args&&... args) {

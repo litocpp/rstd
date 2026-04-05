@@ -12,6 +12,7 @@ using namespace rstd::prelude;
 namespace alloc::string
 {
 
+/// A UTF-8 encoded, growable string, analogous to Rust's `String`.
 export class String {
     Vec<u8> vec;
 
@@ -25,21 +26,33 @@ public:
 
     using value_type = u8;
 
+    /// Creates a new empty `String`.
+    /// \return An empty `String`.
     static auto make() -> String { return {}; }
+    /// Creates a new `String` from a byte vector without checking UTF-8 validity.
+    /// \param bytes The byte vector to convert.
+    /// \return A `String` wrapping the given bytes.
     static auto from_utf8_unchecked(Vec<u8>&& bytes) -> String {
         return String { rstd::move(bytes) };
     }
 
+    /// Returns a reference to the string as a `CStr`.
+    /// \return A `ref<CStr>` view of the string data.
     auto as_ref() const noexcept -> ref<ffi::CStr> {
         auto p = as_cast<ffi::CStr const*>(&*vec.as_ptr());
         return ref<ffi::CStr>::from_raw_parts(p, vec.len());
     }
 
+    /// Converts the `String` to a `ref<str>` string slice.
     constexpr operator ref<str>() const {
         return ref<str>::from_raw_parts(&*vec.as_ptr(), vec.len());
     }
 
+    /// Appends a `char` to the end of this string.
+    /// \param c The character to append.
     void push_back(char c) { vec.push(static_cast<u8>(c)); }
+    /// Appends a byte to the end of this string.
+    /// \param c The byte to append.
     void push_back(u8 c) { vec.push(rstd::move(c)); }
 
     friend constexpr auto operator<=>(const String& a, const String& b) noexcept {
@@ -57,16 +70,25 @@ public:
                rstd::strong_ordering::equal;
     }
 
+    /// Returns a raw pointer to the underlying byte buffer.
+    /// \return A const pointer to the first byte.
     constexpr auto as_raw_ptr() const noexcept -> const u8* { return vec.begin(); }
 
+    /// Returns a const iterator to the beginning of the string.
     constexpr auto begin() const noexcept -> const char* { return rstd::bit_cast<const char*>(vec.begin()); }
+    /// Returns a const iterator to the end of the string.
     constexpr auto end() const noexcept -> const char* { return rstd::bit_cast<const char*>(vec.end()); }
+    /// Returns a pointer to the string data as a char array.
+    /// \return A const `char*` pointer to the data.
     constexpr auto data() const noexcept -> const char* {
         return rstd::bit_cast<const char*>(vec.as_ptr().as_raw_ptr());
     }
+    /// Returns the length of the string in bytes.
+    /// \return The number of bytes in the string.
     constexpr auto size() const noexcept -> usize { return vec.len(); }
 };
 
+/// A trait for converting a value to a `String`.
 export struct ToString {
     template<typename T, typename = void>
     struct Api {
@@ -99,6 +121,11 @@ struct Impl<fmt::Write, String> : ImplBase<String> {
 namespace rstd::fmt
 {
 
+/// Creates a `String` using format syntax, analogous to Rust's `format!` macro.
+/// \tparam Args The types of the format arguments.
+/// \param fmt_str The format string.
+/// \param args The arguments to format.
+/// \return A `String` with the formatted result.
 export template<typename... Args>
 auto format(fmt::format_string<Args...> fmt_str, Args&&... args) -> String {
     auto      buf = String::make();
@@ -117,6 +144,7 @@ auto format(fmt::format_string<Args...> fmt_str, Args&&... args) -> String {
 namespace rstd
 {
 
+/// Re-exports `fmt::format` into the `rstd` namespace.
 export using fmt::format;
 
 template<mtp::is_int T>
@@ -298,6 +326,10 @@ struct Impl<T, A> : ImplBase<A> {
     }
 };
 
+/// Converts a value that implements `ToString` into a `String`.
+/// \tparam A The type of the value, which must implement `ToString`.
+/// \param a The value to convert.
+/// \return A `String` representation of the value.
 export template<Impled<ToString> A>
 auto to_string(A&& a) {
     return as<ToString>(a).to_string();

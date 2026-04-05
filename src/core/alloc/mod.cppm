@@ -11,7 +11,7 @@ using rstd::result::Result;
 namespace rstd::alloc
 {
 
-// Error type for allocation failures
+/// The error type for fallible allocation operations.
 export struct AllocError {};
 
 /// A high-level trait for an allocator.

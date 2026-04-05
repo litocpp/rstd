@@ -29,6 +29,7 @@ export struct Builder {
 
     USE_TRAIT(Builder)
 
+    /// Creates a new Builder with default configuration.
     static auto make() -> Builder {
         return { .d = {
                      .name {},
@@ -37,21 +38,30 @@ export struct Builder {
                  } };
     }
 
+    /// Sets the name of the thread-to-be.
+    /// \param name The thread name for identification in panic messages.
     auto name(String name) -> Builder& {
         d.name = Some(rstd::move(name));
         return *this;
     }
 
+    /// Sets the size of the stack for the new thread.
+    /// \param size The stack size in bytes.
     auto stack_size(usize size) -> Builder& {
         d.stack_size = Some(size);
         return *this;
     }
 
+    /// Disables running and inheriting thread spawn hooks.
     auto no_hooks() -> Builder& {
         d.no_hooks = true;
         return *this;
     }
 
+    /// Spawns a new thread by taking ownership of the Builder and calling `f`.
+    /// \tparam F The callable type for the thread entry point.
+    /// \param f The closure or function to execute in the new thread.
+    /// \return A JoinHandle on success, or an I/O error on failure.
     template<typename F>
     auto spawn(F&& f) -> io::Result<JoinHandle<mtp::invoke_result_t<F>>>
     // requires Impled<mtp::rm_cvf<F>, FnOnce<void()>> &&

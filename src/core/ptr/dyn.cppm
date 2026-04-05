@@ -10,9 +10,13 @@ using namespace rstd::prelude;
 
 namespace rstd::ptr_
 {
+/// A dynamically-typed wrapper enabling trait-object dispatch, analogous to Rust's `dyn Trait`.
+/// \tparam A The trait type.
 export template<typename A>
 struct dyn;
 
+/// Delegate that holds the vtable and data pointer for dynamic dispatch.
+/// \tparam T The trait type.
 export template<typename T>
 struct dyn_delegate;
 } // namespace rstd::ptr_
@@ -171,6 +175,7 @@ public:
 namespace rstd
 {
 
+/// Re-export of `ptr_::dyn` for trait-object pointers.
 export using ptr_::dyn;
 
 template<typename A>
@@ -235,6 +240,8 @@ struct dyn {
 
 namespace mtp
 {
+/// Traits for extracting information from a `dyn<T>` type.
+/// \tparam T The dyn type to inspect.
 export template<typename T>
 struct dyn_traits {
     static_assert(false);

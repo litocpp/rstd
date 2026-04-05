@@ -5,25 +5,23 @@ export import :panic;
 namespace rstd
 {
 
-// ── Core panic entry points ────────────────────────────────────────────────
-
-// Formatted panic: constructs PanicInfo{can_unwind=true} and calls rstd_panic_impl.
+/// Triggers a panic with a formatted message and source location.
+/// \param args The formatted message arguments.
+/// \param loc The source location of the panic.
 export [[noreturn]]
 void panic_fmt(fmt::Arguments args, panic_::Location loc);
 
-// Variant for noexcept / extern-C contexts (drop impls, FFI boundaries).
-// Sets PanicInfo::can_unwind = false so the handler knows it must abort.
+/// Triggers a non-unwinding panic for noexcept or FFI contexts.
+/// \param args The formatted message arguments.
+/// \param loc The source location of the panic.
 export [[noreturn]]
 void panic_fmt_nounwind(fmt::Arguments args, panic_::Location loc);
 
-// ── panic<Args...> ─────────────────────────────────────────────────────────
-// Compile-time-checked panic.  Usage:
-//   rstd::panic("something went wrong");
-//   rstd::panic("expected {}, got {}", expected, actual);
-//
-// The first argument must be a string *literal*.  The consteval constructor of
-// format_string validates placeholder count vs argument count at compile time.
-// SrcLoc (a consteval wrapper) captures the caller location on both Clang and GCC.
+/// Compile-time-checked panic with format string support.
+///
+/// The first argument must be a string literal. Placeholder count is validated
+/// at compile time. Source location is captured automatically.
+/// \tparam Args The types of the format arguments.
 export template<typename... Args>
 struct panic {
     [[gnu::always_inline]] [[noreturn]]

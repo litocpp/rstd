@@ -17,6 +17,8 @@ using namespace rstd::prelude;
 namespace alloc::boxed
 {
 
+/// A pointer type that uniquely owns a heap allocation of type `T`.
+/// \tparam T The type of the value stored on the heap.
 export template<typename T>
 class Box {
     NonNull<T> m_ptr;
@@ -30,11 +32,15 @@ public:
     Box(const Box&) noexcept            = delete;
     Box& operator=(const Box&) noexcept = delete;
 
+    /// Creates a new `Box` by cloning the contained value.
+    /// \return A new `Box` with a cloned copy of the value.
     auto clone() -> Self
         requires Impled<T, Clone, Sized>
     {
         return make(as<Clone>(as_ptr()).clone());
     }
+    /// Replaces the contents of this `Box` with a clone of the source.
+    /// \param source The `Box` to clone from.
     void clone_from(Self& source)
         requires requires(Box b) { b.clone(); }
     {
@@ -54,6 +60,10 @@ public:
         return *this;
     }
 
+    /// Allocates memory on the heap and constructs `T` in place with the given arguments.
+    /// \tparam Args The constructor argument types.
+    /// \param args The arguments forwarded to the constructor of `T`.
+    /// \return A `Box` owning the newly allocated value.
     template<typename... Args>
     static auto make(Args&&... args) -> Box
         requires Impled<T, Sized>
@@ -67,6 +77,10 @@ public:
         return from_raw(p);
     }
 
+    /// Allocates memory on the heap for a dynamically-sized trait object.
+    /// \tparam U The concrete type that implements the trait `T`.
+    /// \param in The value to box as a trait object.
+    /// \return A `Box` owning the trait object.
     template<typename U>
     static auto make(U&& in) -> Box
         requires(! Impled<T, Sized> && mtp::dyn_traits<T>::template Impled<U>)
@@ -80,29 +94,43 @@ public:
         return from_raw(T::from_ptr(p.as_raw_ptr()));
     }
 
+    /// Constructs a new `Pin<Box<T>>` by moving the value onto the heap.
+    /// \param in The value to pin on the heap.
+    /// \return A pinned `Box` owning the value.
     static auto pin(T&& in) -> Pin<Box>
         requires Impled<T, Sized>
     {
         return Pin<Box>::make_unchecked(make(rstd::forward<T>(in)));
     }
 
+    /// Constructs a `Box` from a raw mutable pointer.
+    /// \param raw The raw pointer that was previously obtained from `into_raw`.
+    /// \return A `Box` that takes ownership of the pointed-to value.
     constexpr static Box from_raw(mut_ptr<T> raw) noexcept {
         return Box { NonNull<T>::make_unchecked(raw) };
     }
 
+    /// Consumes the `Box`, returning the wrapped raw pointer without deallocating.
+    /// \return A mutable pointer to the heap-allocated value.
     constexpr auto into_raw() && noexcept -> mut_ptr<T> {
         auto b = ManuallyDrop<>::make(rstd::move(*this));
         return b->m_ptr.as_mut_ptr();
     }
 
+    /// Returns a raw pointer to the contained value.
+    /// \return A raw pointer to the heap-allocated value.
     constexpr auto get() noexcept -> mut_ptr<T>::value_type* {
         return m_ptr.as_mut_ptr().as_raw_ptr();
     }
 
+    /// Dereferences the `Box`, providing mutable access to the inner value.
     constexpr auto     operator->() noexcept { return m_ptr.as_mut_ptr(); }
+    /// Dereferences the `Box`, providing const access to the inner value.
     constexpr auto     operator->() const noexcept { return m_ptr.as_ptr(); }
+    /// Returns `true` if this `Box` holds a valid (non-null) pointer.
     explicit constexpr operator bool() const noexcept { return ! rstd::mem::all(m_ptr, 0); }
 
+    /// Destroys the contained value and deallocates the memory.
     void reset() noexcept {
         if (! rstd::mem::all(m_ptr, 0)) {
             auto mptr         = m_ptr.as_mut_ptr();
@@ -131,11 +159,19 @@ public:
         }
     }
 
+    /// Returns an immutable reference to the contained value.
+    /// \return A `ref<T>` to the boxed value.
     constexpr auto as_ref() const noexcept -> ref<T> { return m_ptr.as_ptr().as_ref(); }
 
+    /// Returns a const pointer to the contained value.
+    /// \return A `ptr<T>` to the boxed value.
     constexpr auto as_ptr() const noexcept -> ptr<T> { return m_ptr.as_ptr(); }
+    /// Returns a mutable pointer to the contained value.
+    /// \return A `mut_ptr<T>` to the boxed value.
     constexpr auto as_mut_ptr() const noexcept -> mut_ptr<T> { return m_ptr.as_mut_ptr(); }
 
+    /// Creates a new `Box` by cloning all elements of the contained array.
+    /// \return A new `Box` owning a cloned copy of the array.
     auto clone() -> Self
         requires mtp::is_array<T>
     {

@@ -11,9 +11,12 @@ export import :cmp;
 namespace rstd::option
 {
 
+/// An optional value: either `Some` containing a value, or `None`.
+/// \tparam T The type of the contained value.
 export template<typename T>
 class Option;
 
+/// A sentinel type representing an untyped `None` value, implicitly convertible to any `Option<T>`.
 export struct Unknown {
     template<typename T>
     constexpr operator Option<T>() {
@@ -21,6 +24,10 @@ export struct Unknown {
     }
 };
 
+/// Creates an `Option` containing the given value.
+/// \tparam U Optional explicit type for the contained value; deduced if omitted.
+/// \param val The value to wrap.
+/// \return An `Option<T>` in the `Some` state.
 export template<typename U = void, typename T>
 [[gnu::always_inline]]
 inline constexpr auto Some(T&& val) {
@@ -38,6 +45,9 @@ inline constexpr auto Some(T&& val) {
     }
 }
 
+/// Creates an empty `Option` representing no value.
+/// \tparam U Optional explicit type for the `Option`; deduced or returns `Unknown` if omitted.
+/// \return An `Option<T>` in the `None` state, or an `Unknown` sentinel.
 export template<typename U = void, typename T = Unknown>
 [[gnu::always_inline]]
 inline constexpr auto None(T&& = {}) {
@@ -88,8 +98,11 @@ struct option_traits<const Option<T>&&> : option_traits<Option<T>> {
     using ret_value_t = mtp::add_ref_rv<mtp::add_const<T>>;
 };
 
+/// Internal storage for `Option<T>`.
+/// \tparam T The stored value type.
 export template<typename T>
 struct option_store {
+    /// Returns `true` if the option contains a value.
     constexpr auto is_some() const noexcept -> bool { return m_has_val; }
 
 protected:
@@ -206,8 +219,12 @@ protected:
     constexpr auto&& _get_move() noexcept { return _get(static_cast<Option<T>&&>(*this)); }
 
 public:
+    /// Returns `true` if the option is `None`.
     constexpr auto is_none() const noexcept -> bool { return ! this->is_some(); }
 
+    /// Returns `true` if the option contains a value and the predicate returns `true`.
+    /// \param f A predicate applied to the contained value.
+    /// \return `true` if `Some` and `f` returns `true`, otherwise `false`.
     template<typename F>
     // requires ImpledT<FnOnce<F, bool(T)>>
     auto is_some_and(F&& f) -> bool {
@@ -217,6 +234,8 @@ public:
         return false;
     }
 
+    /// Converts from `Option<T>` to `Option<const T&>`.
+    /// \return An `Option` containing a const reference to the inner value, or `None`.
     constexpr auto as_ref() const -> Option<mtp::add_ref<mtp::add_const<T>>> {
         if (this->is_some()) {
             return option::Some(_get(*this));
@@ -225,6 +244,9 @@ public:
         }
     }
 
+    /// Returns the contained value, consuming the option. Panics with the given message if `None`.
+    /// \param msg The panic message to display if the value is `None`.
+    /// \return The contained value.
     auto expect(ref<str> msg) -> T {
         if (this->is_some()) {
             return _get_move();
@@ -233,6 +255,8 @@ public:
         rstd::unreachable();
     }
 
+    /// Returns the contained value, consuming the option. Panics if the value is `None`.
+    /// \return The contained value.
     auto unwrap() -> T {
         if (this->is_some()) {
             return _get_move();
@@ -241,6 +265,9 @@ public:
         rstd::unreachable();
     }
 
+    /// Returns the contained value or the provided default.
+    /// \param default_value The value to return if `None`.
+    /// \return The contained value or `default_value`.
     template<typename U>
     auto unwrap_or(U&& default_value) -> T {
         if (this->is_some()) {
@@ -249,6 +276,9 @@ public:
         return rstd::forward<U>(default_value);
     }
 
+    /// Returns the contained value or computes it from the provided closure.
+    /// \param f A closure that produces a default value.
+    /// \return The contained value or the result of `f()`.
     template<typename F>
     // requires ImpledT<FnOnce<F, T()>>
     auto unwrap_or_else(F&& f) -> T {
@@ -258,6 +288,8 @@ public:
         return rstd::forward<F>(f)();
     }
 
+    /// Returns the contained value without checking. Undefined behavior if `None`.
+    /// \return The contained value.
     constexpr auto unwrap_unchecked() -> T {
         if (this->is_some()) {
             return _get_move();
@@ -266,6 +298,9 @@ public:
         }
     }
 
+    /// Maps an `Option<T>` to `Option<U>` by applying a function to the contained value.
+    /// \param f A function that transforms the contained value.
+    /// \return `Some(f(value))` if `Some`, otherwise `None`.
     template<typename F, typename U = mtp::invoke_result_t<F, T>>
     // requires ImpledT<FnOnce<F, U(T)>>
     constexpr auto map(F&& f) -> Option<U> {
@@ -275,6 +310,9 @@ public:
         return option::None<U>();
     }
 
+    /// Returns `None` if the option is `None`, otherwise calls `f` with the contained value and returns the result.
+    /// \param f A function that takes the contained value and returns an `Option`.
+    /// \return The result of `f(value)` if `Some`, otherwise `None`.
     template<typename F, typename U = mtp::invoke_result_t<F, T>>
         requires mtp::spec_of<U, Option>
     constexpr auto and_then(F&& f) -> U {
@@ -284,32 +322,39 @@ public:
         return option::None();
     }
 
+    /// Takes the value out of the option, leaving `None` in its place.
+    /// \return The previously contained `Option`.
     constexpr auto take() -> Option<T> { return rstd::exchange(_cast(), option::None()); }
 
+    /// Dereferences the contained value. Asserts that the option is `Some`.
     [[nodiscard]]
     constexpr auto& operator*() const noexcept {
         assert(this->is_some());
         return _get(*this);
     }
 
+    /// Dereferences the contained value. Asserts that the option is `Some`.
     [[nodiscard]]
     constexpr auto& operator*() noexcept {
         assert(this->is_some());
         return _get(*this);
     }
 
+    /// Accesses the contained value via pointer. Asserts that the option is `Some`.
     [[nodiscard]]
     constexpr auto* operator->() const noexcept {
         assert(this->is_some());
         return _ptr_wrapper(*this);
     }
 
+    /// Accesses the contained value via pointer. Asserts that the option is `Some`.
     [[nodiscard]]
     constexpr auto* operator->() noexcept {
         assert(this->is_some());
         return _ptr_wrapper(*this);
     }
 
+    /// Returns `true` if the option is `Some`.
     [[nodiscard]]
     constexpr explicit operator bool() const noexcept {
         return this->is_some();
@@ -337,6 +382,8 @@ struct Impl<T, Self> : LinkClassMethod<T, Self> {};
 namespace rstd::option
 {
 
+/// An optional value: either `Some(T)` or `None`.
+/// \tparam T The type of the contained value.
 template<typename T>
 class Option : public detail::option_base<T>, public detail::option_adapter<T> {
     template<typename>
@@ -407,6 +454,8 @@ public:
         return *this;
     }
 
+    /// Creates a deep copy of this option and its contained value.
+    /// \return A new `Option` with a cloned value, or `None`.
     auto clone() const -> Option
         requires Impled<union_value_t, clone::Clone>
     {
@@ -416,6 +465,8 @@ public:
         return option::Unknown();
     }
 
+    /// Overwrites this option with a clone of the source.
+    /// \param source The option to clone from.
     void clone_from(Option& source)
         requires Impled<union_value_t, clone::Clone>
     {
@@ -454,6 +505,9 @@ namespace detail
 
 template<typename T>
 struct option_adapter : option_adapter_l1<T> {
+    /// Transforms the `Option<T>` into a `Result<T, E>`, mapping `Some(v)` to `Ok(v)` and `None` to `Err(err)`.
+    /// \param err The error value to use if the option is `None`.
+    /// \return `Ok(value)` if `Some`, otherwise `Err(err)`.
     template<typename E>
     auto ok_or(E err) -> result::Result<T, E> {
         auto& self = static_cast<Option<T>&>(*this);
@@ -464,6 +518,9 @@ struct option_adapter : option_adapter_l1<T> {
         }
     }
 
+    /// Transforms the `Option<T>` into a `Result<T, E>`, mapping `Some(v)` to `Ok(v)` and `None` to `Err(err())`.
+    /// \param err A closure that produces the error value if the option is `None`.
+    /// \return `Ok(value)` if `Some`, otherwise `Err(err())`.
     template<typename F, typename E = mtp::invoke_result_t<F>>
     auto ok_or_else(F&& err) -> result::Result<T, E> {
         auto& self = static_cast<Option<T>&>(*this);
@@ -477,6 +534,8 @@ struct option_adapter : option_adapter_l1<T> {
 
 template<typename T>
 struct option_adapter_l1<Option<T>> {
+    /// Converts from `Option<Option<T>>` to `Option<T>`, flattening one level of nesting.
+    /// \return The inner `Option<T>` if `Some`, otherwise `None`.
     constexpr auto flatten() -> Option<T> {
         auto&& self = static_cast<Option<Option<T>>&&>(*this);
         if (self.is_some()) {

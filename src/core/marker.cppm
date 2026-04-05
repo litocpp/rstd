@@ -4,13 +4,16 @@ export import :trait;
 namespace rstd
 {
 
+/// Marker trait for types that can be duplicated by simple bitwise copy.
 export struct Copy {};
 
+/// Marker trait for types that can be safely transferred across thread boundaries.
 export struct Send {};
 
+/// Marker trait for types that can be safely shared between threads via references.
 export struct Sync {};
 
-/// Types with a constant size known at compile time.
+/// Marker trait for types with a constant size known at compile time.
 export struct Sized {};
 
 } // namespace rstd

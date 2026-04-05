@@ -11,6 +11,8 @@ namespace rstd::io
 {
 
 // ── BufReader ─────────────────────────────────────────────────────────────
+/// A buffered wrapper around a reader, reducing the number of read syscalls.
+/// \tparam R The underlying reader type, which must implement `io::Read`.
 export template<typename R>
     requires Impled<R, io::Read>
 class BufReader {
@@ -31,14 +33,21 @@ class BufReader {
 public:
     USE_TRAIT(BufReader)
 
+    /// Creates a new BufReader with the specified buffer capacity.
+    /// \param inner The underlying reader.
+    /// \param capacity The buffer size in bytes (defaults to DEFAULT_BUF_SIZE).
     explicit BufReader(R inner, usize capacity = DEFAULT_BUF_SIZE)
         : inner_(rstd::move(inner)), buf_(Vec<u8>::with_capacity(capacity)) {
         for (usize i = 0; i < capacity; ++i) buf_.push(u8(0));
     }
 
+    /// Returns a reference to the underlying reader.
     auto get_ref() const noexcept -> const R& { return inner_; }
+    /// Returns a mutable reference to the underlying reader.
     auto get_mut() noexcept -> R& { return inner_; }
+    /// Returns the total capacity of the internal buffer.
     auto capacity() const noexcept -> usize { return buf_.len(); }
+    /// Returns a slice of the buffered data that has been read but not yet consumed.
     auto buffer() const noexcept -> slice<u8> {
         return slice<u8>::from_raw_parts(buf_.begin() + pos_, filled_ - pos_);
     }
@@ -51,6 +60,8 @@ public:
 };
 
 // ── BufWriter ─────────────────────────────────────────────────────────────
+/// A buffered wrapper around a writer, reducing the number of write syscalls.
+/// \tparam W The underlying writer type, which must implement `io::Write`.
 export template<typename W>
     requires Impled<W, io::Write>
 class BufWriter {
@@ -88,16 +99,24 @@ class BufWriter {
 public:
     USE_TRAIT(BufWriter)
 
+    /// Creates a new BufWriter with the specified buffer capacity.
+    /// \param inner The underlying writer.
+    /// \param capacity The buffer size in bytes (defaults to DEFAULT_BUF_SIZE).
     explicit BufWriter(W inner, usize capacity = DEFAULT_BUF_SIZE)
         : inner_(rstd::move(inner)), buf_(Vec<u8>::with_capacity(capacity)) {}
 
+    /// Returns a reference to the underlying writer.
     auto get_ref() const noexcept -> const W& { return inner_; }
+    /// Returns a mutable reference to the underlying writer.
     auto get_mut() noexcept -> W& { return inner_; }
+    /// Returns the total capacity of the internal buffer.
     auto capacity() const noexcept -> usize { return buf_.capacity(); }
+    /// Returns a slice of the buffered data that has not yet been flushed.
     auto buffer() const noexcept -> slice<u8> {
         return slice<u8>::from_raw_parts(buf_.begin(), buf_.len());
     }
 
+    /// Consumes this BufWriter, flushing and returning the underlying writer.
     auto into_inner() && -> W { return rstd::move(inner_); }
 };
 

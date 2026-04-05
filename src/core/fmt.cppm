@@ -6,22 +6,24 @@ namespace rstd::fmt
 
 {
 
+/// Forward declaration of the Formatter used during format output.
 export struct Formatter;
 
-// ── Alignment ─────────────────────────────────────────────────────────────
+/// Text alignment options for formatted output.
 export enum class Align : u32 { None = 0, Left = 1, Right = 2, Center = 3 };
 
-// ── FormattingOptions ──────────────────────────────────────────────────────
-// Bit layout (mirrors Rust's FormattingOptions):
-//   [20: 0]  fill character (Unicode scalar, default U+0020 ' ')
-//   [22:21]  alignment  0=none 1=left 2=right 3=center
-//   [23]     sign_plus   (+)
-//   [24]     sign_minus  (-)
-//   [25]     alternate   (#)
-//   [26]     zero_pad    (0)
-//   [27]     debug       (?)
-//   [28]     has_width
-//   [29]     has_precision
+/// Options that control how values are formatted (fill, align, width, precision, flags).
+///
+/// Bit layout (mirrors Rust's FormattingOptions):
+///   [20: 0]  fill character (Unicode scalar, default U+0020 ' ')
+///   [22:21]  alignment  0=none 1=left 2=right 3=center
+///   [23]     sign_plus   (+)
+///   [24]     sign_minus  (-)
+///   [25]     alternate   (#)
+///   [26]     zero_pad    (0)
+///   [27]     debug       (?)
+///   [28]     has_width
+///   [29]     has_precision
 export struct FormattingOptions {
     u32 flags     = u32(' '); // fill=' ', all flags clear
     u16 width     = 0;
@@ -67,9 +69,10 @@ export struct FormattingOptions {
     }
 };
 
-// ── Display Trait ──────────────────────────────────────────────────────────
-// User-facing output: {}
-// fmt(f) reads f.options() for spec (width, fill, align, sign, alternate, ...).
+/// Trait for user-facing output formatting, invoked via `{}`.
+///
+/// Implementors provide `fmt(Formatter&)` to write a human-readable representation.
+/// The Formatter's options() provides access to format specifiers (width, fill, align, etc.).
 export struct Display {
     using Trait                  = Display;
     static constexpr bool direct = false;
@@ -84,9 +87,10 @@ export struct Display {
     using Funcs = TraitFuncs<&T::fmt>;
 };
 
-// ── Debug Trait ────────────────────────────────────────────────────────────
-// Programmer-facing output: {:?}  pretty: {:#?}
-// Dispatched automatically by Argument when the format spec contains '?'.
+/// Trait for programmer-facing debug output, invoked via `{:?}` or pretty-printed via `{:#?}`.
+///
+/// Implementors provide `fmt(Formatter&)` to write a debug representation.
+/// Dispatched automatically by Argument when the format spec contains '?'.
 export struct Debug {
     using Trait                  = Debug;
     static constexpr bool direct = false;
@@ -101,7 +105,9 @@ export struct Debug {
     using Funcs = TraitFuncs<&T::fmt>;
 };
 
-// ── Write Trait ────────────────────────────────────────────────────────────
+/// Trait for a byte-oriented output sink used by the formatting machinery.
+///
+/// Implementors provide `write_str(const u8* p, usize len)` to accept raw bytes.
 export struct Write {
     using Trait                  = Write;
     static constexpr bool direct = false;
@@ -116,7 +122,10 @@ export struct Write {
     using Funcs = TraitFuncs<&T::write_str>;
 };
 
-// ── Formatter ─────────────────────────────────────────────────────────────
+/// The core formatting engine that drives output through a type-erased Write sink.
+///
+/// Holds a reference to the output writer and the current FormattingOptions.
+/// Passed to Display::fmt and Debug::fmt to produce formatted output.
 export struct Formatter {
 private:
     void*  _writer;
@@ -164,7 +173,9 @@ public:
     }
 };
 
-// ── Argument ──────────────────────────────────────────────────────────────
+/// A type-erased formatting argument that can dispatch to Display or Debug.
+///
+/// Created via `Argument::make(val)` and used internally by the format machinery.
 export struct Argument {
 private:
     const void* _ptr;
@@ -207,6 +218,7 @@ private:
         : _ptr(p), _fmt_func(func) {}
 };
 
+/// A pre-compiled set of format arguments: a format string plus its type-erased Argument array.
 export struct Arguments {
     const u8*       fmt_ptr;
     usize           fmt_len;
@@ -216,6 +228,8 @@ export struct Arguments {
     auto fmt(Formatter& f) const -> bool { return f.write_fmt(*this); }
 };
 
+/// Checks whether a type can be formatted, i.e. it implements Display or Debug.
+/// \tparam Tp The type to check.
 export template<typename Tp, typename CharT = char>
 concept formattable = Impled<Tp, Display> || Impled<Tp, Debug>;
 
@@ -255,6 +269,8 @@ consteval void check(const char* s, usize n, usize n_args) {
 template<typename T>
 struct _FmtId { using type = T; };
 
+/// A compile-time validated format string that ensures argument count and brace matching.
+/// \tparam Args The types of the format arguments.
 export template<typename... Args>
 struct FormatString {
     const char* _ptr;
@@ -270,6 +286,7 @@ struct FormatString {
     auto size() const noexcept -> usize { return _len; }
 };
 
+/// Convenience alias for FormatString with identity-mapped argument types.
 export template<typename... Args>
 using format_string = FormatString<typename _FmtId<Args>::type...>;
 

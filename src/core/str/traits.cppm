@@ -4,6 +4,7 @@ export import :result;
 
 namespace rstd::str_
 {
+/// Trait for parsing a value from a string slice.
 export struct FromStr {
     template<typename Self, typename = void>
     struct Api {
@@ -20,6 +21,10 @@ export struct FromStr {
 
 namespace rstd
 {
+/// Parses a string slice into the specified type.
+/// \tparam T The type to parse into; must implement `FromStr`.
+/// \param str The string slice to parse.
+/// \return A `Result` containing the parsed value or an error.
 export template<typename T>
 auto from_str(ref<str> str) {
     return Impl<str_::FromStr, mtp::rm_cvf<T>>::from_str(str);

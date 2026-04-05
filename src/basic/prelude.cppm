@@ -7,64 +7,103 @@ module;
 #include <source_location>
 export module rstd.basic:prelude;
 
+/// Global placement new operator.
 export using ::operator new;
+/// Global delete operator.
 export using ::operator delete;
 namespace std
 {
+/// Provides the number of elements in a tuple-like type.
 export using std::tuple_size;
+/// Provides the type of the I-th element in a tuple-like type.
 export using std::tuple_element;
+/// Extracts the I-th element from a tuple-like type.
 export using std::get;
+/// A totally ordered comparison result type.
 export using std::strong_ordering;
 } // namespace std
 
 namespace rstd
 {
 export {
+    /// 8-bit signed integer.
     using i8  = ::int8_t;
+    /// 16-bit signed integer.
     using i16 = ::int16_t;
+    /// 32-bit signed integer.
     using i32 = ::int32_t;
+    /// 64-bit signed integer.
     using i64 = ::int64_t;
 
+    /// 8-bit unsigned integer.
     using u8   = ::uint8_t;
+    /// 16-bit unsigned integer.
     using u16  = ::uint16_t;
+    /// 32-bit unsigned integer.
     using u32  = ::uint32_t;
+    /// 64-bit unsigned integer.
     using u64  = ::uint64_t;
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpedantic"
+    /// 128-bit unsigned integer.
     using u128 = unsigned __int128;
+    /// 128-bit signed integer.
     using i128 = __int128;
 #pragma GCC diagnostic pop
 
+    /// Signed index type, equivalent to Rust's `isize` used for offsets.
     using idx   = ::ptrdiff_t;
+    /// Pointer-sized unsigned integer, equivalent to Rust's `usize`.
     using usize = ::size_t;
+    /// Pointer-sized signed integer, equivalent to Rust's `isize`.
     using isize = ::intptr_t;
+    /// A type representing a raw byte, with no numeric interpretation.
     using std::byte;
 
+    /// Mutable void pointer.
     using voidp       = void*;
+    /// Const void pointer.
     using const_voidp = void const*;
+    /// Integer type guaranteed to hold a pointer value.
     using usizeptr    = ::uintptr_t;
 
+    /// A zero-sized type, analogous to Rust's `()` (unit).
     struct empty {};
+    /// A zero-sized phantom type parameterized on `T`.
     template<typename>
     struct emptyT {};
 
+    /// The type of `nullptr`.
     using std::nullptr_t;
+    /// Provides the minimum and maximum finite values for arithmetic types.
     using std::numeric_limits;
+    /// Captures information about the source code location.
     using std::source_location;
 
+    /// Extracts the I-th element from a tuple-like type.
     using std::get;
+    /// A fixed-size heterogeneous collection of values.
     using std::tuple;
+    /// Provides the type of the I-th element in a tuple-like type.
     using std::tuple_element;
+    /// Provides the number of elements in a tuple-like type.
     using std::tuple_size;
 
+    /// Alignment value type for sized deallocation.
     using std::align_val_t;
 
+    /// Function object performing three-way comparison.
     using std::compare_three_way;
+    /// A partially ordered comparison result type.
     using std::partial_ordering;
+    /// A totally ordered comparison result type.
     using std::strong_ordering;
+    /// A weakly ordered comparison result type.
     using std::weak_ordering;
 
+    /// Forwards lvalues as either lvalues or rvalues, preserving value category.
     using std::forward;
+    /// Converts a value to an rvalue, enabling move semantics.
     using std::move;
 }
 

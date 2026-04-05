@@ -5,6 +5,8 @@ export import :mem.manually_drop;
 namespace rstd::mem::maybe_uninit
 {
 
+/// Traits for extracting the value type from a `MaybeUninit` specialization.
+/// \tparam T The type to inspect; primary template yields `void`.
 export template<typename T>
 struct maybe_uninit_traits {
     using value_type = void;

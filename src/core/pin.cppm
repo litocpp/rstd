@@ -4,6 +4,11 @@ export import :core;
 namespace rstd::pin
 {
 
+/// A pinned pointer that guarantees the pointee will not be moved, analogous to Rust's `Pin<P>`.
+///
+/// Pinning prevents the pointee from being moved out of its location in memory,
+/// which is required for self-referential types and certain async patterns.
+/// \tparam Ptr The pointer type being pinned (e.g., `mut_ptr<T>`, a smart pointer).
 export template<class Ptr>
 class Pin {
     Ptr pointer;
@@ -24,26 +29,38 @@ public:
         return *this;
     }
 
+    /// Pins a pointer, asserting that the pointee satisfies pinning requirements.
+    /// \param p The pointer to pin.
+    /// \return A `Pin` wrapping the pointer.
     static Pin make(Ptr p) noexcept(mtp::noex_move<Ptr> ||
                                     mtp::triv_copy<Ptr>) {
         return Pin { p };
     }
 
-    // Construct a Pin without checking pinning guarantees (unsafe in Rust).
+    /// Constructs a `Pin` without verifying pinning guarantees (unsafe).
+    /// \param p The pointer to pin.
+    /// \return A `Pin` wrapping the pointer.
     static constexpr Pin
     make_unchecked(Ptr p) noexcept(mtp::noex_move<Ptr> ||
                                    mtp::triv_copy<Ptr>) {
         return Pin { p };
     }
 
-    // Unwrap the Pin and return the inner pointer (unsafe in Rust).
+    /// Unwraps the `Pin`, returning the inner pointer (unsafe).
+    /// \param p The pinned pointer to unwrap.
+    /// \return The inner pointer.
     static constexpr Ptr
     into_inner_unchecked(Pin p) noexcept(mtp::noex_move<Ptr>) {
         return rstd::param_forward<Ptr>(p.pointer);
     }
 
+    /// Returns an immutable reference to the inner pointer.
     const Ptr& get_ref() const noexcept { return pointer; }
+
+    /// Returns a mutable reference to the inner pointer.
     Ptr&       get_mut() noexcept { return pointer; }
+
+    /// Returns a mutable reference to the inner pointer without borrow checking (unsafe).
     Ptr&       get_unchecked_mut() noexcept { return pointer; }
 
     using pointee_ptr_t = mtp::add_ptr<mtp::rm_ref<Ptr>>;

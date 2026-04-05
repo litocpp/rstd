@@ -5,10 +5,12 @@ export import :marker;
 
 namespace rstd::str_
 {
+/// An unsized UTF-8 string type, analogous to Rust's `str`.
 export struct Str {
     ~Str() = delete;
 };
 
+/// Concept for types that can be viewed as a string slice (must expose `data()` and `size()`).
 template<typename T>
 concept ViewableStr = requires(T t) {
     { t.data() } -> mtp::convertible_to<char const*>;
@@ -67,8 +69,10 @@ public:
     constexpr operator bool() const { return length > 0 && p != nullptr; }
 };
 
+/// Type alias for the unsized string type.
 export using str = str_::Str;
 
+/// Compares two string slices for equality by value.
 export [[nodiscard]]
 constexpr bool operator==(ref<str> a, ref<str> b) noexcept {
     return a.size() == b.size() &&
@@ -108,6 +112,10 @@ public:
 
 namespace rstd::str_
 {
+/// Extracts the last `count` path components from a path string.
+/// \param path The path string to extract from.
+/// \param count The number of trailing path components to extract.
+/// \return A string slice containing the last `count` components.
 export constexpr auto extract_last(ref<str> path, usize count) -> ref<str> {
     auto pos = path.size();
     while (pos != 0) {

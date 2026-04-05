@@ -71,6 +71,10 @@ struct alignas(8) Inner {
     Parker                   parker;
 };
 
+/// A handle to a thread.
+///
+/// Threads are represented by the `Thread` type. Each thread has a unique `ThreadId`,
+/// an optional name, and a parker for blocking/unblocking.
 export class Thread : public WithTrait<Thread, clone::Clone> {
     Pin<Arc<Inner>> inner;
 
@@ -186,6 +190,7 @@ struct Impl<clone::Clone, thread::Thread> : LinkTraitDefault<clone::Clone, threa
 namespace thread
 {
 
+/// Initialization payload for spawning a new thread, containing the handle and start function.
 export struct ThreadInit {
     Thread handle;
     // cppstd::move_only_function<void()> start;

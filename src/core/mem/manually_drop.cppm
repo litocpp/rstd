@@ -13,6 +13,11 @@ struct ManuallyDropData {
     }
 };
 
+/// A wrapper that inhibits the automatic destructor call, analogous to Rust's `ManuallyDrop<T>`.
+///
+/// The contained value will not be dropped when `ManuallyDrop` goes out of scope.
+/// Use `ManuallyDrop<void>::drop()` to explicitly destroy the inner value.
+/// \tparam T The wrapped type; defaults to `void` for the factory/drop helper specialization.
 export template<typename T = void>
 class ManuallyDrop {
     friend class ManuallyDrop<void>;
@@ -24,6 +29,10 @@ class ManuallyDrop {
 
 public:
     ~ManuallyDrop() = default;
+
+    /// Creates a new `ManuallyDrop` wrapping the given value.
+    /// \param v The value to wrap.
+    /// \return A `ManuallyDrop` containing the moved value.
     [[nodiscard]]
     constexpr static auto make(T&& v) noexcept -> ManuallyDrop {
         return { rstd::forward<T>(v) };
@@ -34,8 +43,13 @@ public:
     constexpr T&       operator*() noexcept { return *d.storage_loc(); }
     constexpr const T& operator*() const noexcept { return *d.storage_loc(); }
 
+    /// Returns a const pointer to the contained value.
     constexpr auto as_ptr() const -> T const* { return d.storage_loc(); }
+
+    /// Returns a mutable pointer to the contained value.
     constexpr auto as_mut_ptr() -> T* { return d.storage_loc(); }
+
+    /// Extracts the contained value by move.
     constexpr auto take() -> T&& { return { rstd::move(**this) }; }
 };
 

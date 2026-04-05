@@ -265,15 +265,20 @@ protected:
     }
 
 public:
+    /// Returns `true` if the result is `Ok`.
     constexpr auto is_ok() const noexcept -> bool {
         auto& self = _cast();
         return self.m_has_val;
     }
+    /// Returns `true` if the result is `Err`.
     constexpr auto is_err() const noexcept -> bool {
         auto& self = _cast();
         return ! self.m_has_val;
     }
 
+    /// Returns `true` if the result is `Ok` and the predicate returns `true` for the contained value.
+    /// \param f A predicate applied to the `Ok` value.
+    /// \return `true` if `Ok` and `f` returns `true`, otherwise `false`.
     template<typename F>
     // requires ImpledT<FnOnce<F, bool(T)>>
     auto is_ok_and(F&& f) -> bool {
@@ -283,6 +288,9 @@ public:
             return false;
     }
 
+    /// Returns `true` if the result is `Err` and the predicate returns `true` for the error value.
+    /// \param f A predicate applied to the `Err` value.
+    /// \return `true` if `Err` and `f` returns `true`, otherwise `false`.
     template<typename F>
     // requires ImpledT<FnOnce<F, bool(E)>>
     auto is_err_and(F&& f) -> bool {
@@ -292,6 +300,8 @@ public:
             return false;
     }
 
+    /// Converts from `Result<T, E>` to `Option<T>`, discarding the error if any.
+    /// \return `Some(value)` if `Ok`, otherwise `None`.
     auto ok() -> Option<T> {
         if (is_ok()) {
             return _get_move<0>();
@@ -299,6 +309,8 @@ public:
             return rstd::None();
     }
 
+    /// Converts from `Result<T, E>` to `Option<E>`, discarding the success value if any.
+    /// \return `Some(error)` if `Err`, otherwise `None`.
     auto err() -> Option<E> {
         if (is_err()) {
             return _get_move<1>();
@@ -306,6 +318,9 @@ public:
             return rstd::None();
     }
 
+    /// Maps a `Result<T, E>` to `Result<U, E>` by applying a function to the `Ok` value.
+    /// \param op A function that transforms the `Ok` value.
+    /// \return `Ok(op(value))` if `Ok`, otherwise the original `Err`.
     template<typename F, typename U = mtp::invoke_result_t<F, T>>
     // requires ImpledT<FnOnce<F, U(T)>>
     auto map(F&& op) -> Result<U, E> {
@@ -316,6 +331,10 @@ public:
         }
     }
 
+    /// Returns the provided default if `Err`, or applies a function to the `Ok` value.
+    /// \param def The default value to return if `Err`.
+    /// \param op A function that transforms the `Ok` value.
+    /// \return `op(value)` if `Ok`, otherwise `def`.
     template<typename U, typename F>
     // requires ImpledT<FnOnce<F, U(T)>>
     auto map_or(U&& def, F&& op) -> U {
@@ -326,6 +345,10 @@ public:
         }
     }
 
+    /// Maps a `Result<T, E>` to `U` by applying `f` to the `Ok` value or `def` to the `Err` value.
+    /// \param def A closure applied to the `Err` value.
+    /// \param f A closure applied to the `Ok` value.
+    /// \return The result of `f` or `def`.
     template<typename U, typename D, typename F>
     // requires ImpledT<FnOnce<D, U(E)>, FnOnce<F, U(T)>>
     auto map_or_else(D&& def, F&& f) -> U {
@@ -335,6 +358,9 @@ public:
             return rstd::move(def)(_get_move<1>());
         }
     }
+    /// Maps a `Result<T, E>` to `Result<T, F>` by applying a function to the `Err` value.
+    /// \param op A function that transforms the `Err` value.
+    /// \return The original `Ok` value, or `Err(op(error))`.
     template<typename O, typename F = mtp::invoke_result_t<O, E>>
     // requires ImpledT<FnOnce<O, F(E)>>
     auto map_err(O&& op) -> Result<T, F> {
@@ -345,6 +371,9 @@ public:
         }
     }
 
+    /// Calls the provided closure with a reference to the `Ok` value, then returns the result unchanged.
+    /// \param f A closure to call with the `Ok` value.
+    /// \return The original `Result`.
     template<typename F>
     // requires ImpledT<FnOnce<F, void(T&)>>
     auto inspect(F&& f) -> Result<T, E> {
@@ -355,6 +384,9 @@ public:
         return rstd::move(self);
     }
 
+    /// Calls the provided closure with a reference to the `Err` value, then returns the result unchanged.
+    /// \param f A closure to call with the `Err` value.
+    /// \return The original `Result`.
     template<typename F>
     // requires ImpledT<FnOnce<F, void(E&)>>
     auto inspect_err(F&& f) -> Result<T, E> {
@@ -365,6 +397,9 @@ public:
         return rstd::move(self);
     }
 
+    /// Returns the contained `Ok` value. Panics with the given message if `Err`.
+    /// \param msg The panic message to display on failure.
+    /// \return The contained `Ok` value.
     auto expect(ref<str> msg) -> T
     {
         if (is_ok()) {
@@ -375,6 +410,8 @@ public:
         }
     }
 
+    /// Returns the contained `Ok` value. Panics if the result is `Err`.
+    /// \return The contained `Ok` value.
     auto unwrap() -> T
     {
         if (is_ok()) {
@@ -385,6 +422,8 @@ public:
         }
     }
 
+    /// Returns the contained `Ok` value or a default-constructed `T`.
+    /// \return The contained value if `Ok`, otherwise `T{}`.
     auto unwrap_or_default() -> T
         requires mtp::init<T>
     {
@@ -395,6 +434,9 @@ public:
         }
     }
 
+    /// Returns the contained `Err` value. Panics with the given message if `Ok`.
+    /// \param msg The panic message to display on failure.
+    /// \return The contained `Err` value.
     auto expect_err(ref<str> msg) -> E
     {
         if (is_ok()) {
@@ -405,6 +447,8 @@ public:
         }
     }
 
+    /// Returns the contained `Err` value. Panics if the result is `Ok`.
+    /// \return The contained `Err` value.
     auto unwrap_err() -> E
     {
         if (is_err()) {
@@ -415,6 +459,9 @@ public:
         }
     }
 
+    /// Calls `op` with the `Ok` value and returns the result. Returns the `Err` value unchanged if `Err`.
+    /// \param op A function that takes the `Ok` value and returns a `Result`.
+    /// \return The result of `op(value)` if `Ok`, otherwise the original `Err`.
     template<typename U  = void, typename F,
              typename U2 = typename mtp::invoke_result_t<F, T>::value_type>
     // requires ImpledT<FnOnce<F, Result<mtp::cond<mtp::is_void<U>, U2, U>, E>(T)>>
@@ -426,6 +473,9 @@ public:
         }
     }
 
+    /// Returns the `Ok` value if `Ok`, otherwise returns `res`.
+    /// \param res The alternative result to return if `Err`.
+    /// \return The original `Ok` or the provided alternative.
     template<typename F>
     auto or_(Result<T, F>&& res) -> Result<T, F> {
         if (is_ok()) {
@@ -436,6 +486,9 @@ public:
         }
     }
 
+    /// Calls `op` with the `Err` value if `Err`, otherwise returns the `Ok` value.
+    /// \param op A function that takes the `Err` value and returns a `Result`.
+    /// \return The original `Ok`, or the result of `op(error)`.
     template<typename F, typename O>
     // requires ImpledT<FnOnce<O, Result<T, F>(E)>>
     auto or_else(O&& op) -> Result<T, F> {
@@ -446,6 +499,9 @@ public:
         }
     }
 
+    /// Returns the contained `Ok` value or the provided default.
+    /// \param def The default value to return if `Err`.
+    /// \return The contained value or `def`.
     auto unwrap_or(T&& def) -> T {
         if (is_ok()) {
             return _get_move<0>();
@@ -454,6 +510,9 @@ public:
         }
     }
 
+    /// Returns the contained `Ok` value or computes it from the `Err` value using the provided closure.
+    /// \param op A closure that takes the `Err` value and returns a `T`.
+    /// \return The contained value or the result of `op(error)`.
     template<typename F>
     // requires ImpledT<FnOnce<F, T(E)>>
     auto unwrap_or_else(F&& op) -> T {
@@ -464,6 +523,8 @@ public:
         }
     }
 
+    /// Returns the contained `Ok` value without checking. Undefined behavior if `Err`.
+    /// \return The contained `Ok` value.
     auto unwrap_unchecked() -> T {
         if (is_ok()) {
             return _get_move<0>();
@@ -472,6 +533,8 @@ public:
         }
     }
 
+    /// Returns the contained `Err` value without checking. Undefined behavior if `Ok`.
+    /// \return The contained `Err` value.
     auto unwrap_err_unchecked() -> E {
         if (is_err()) {
             return _get_move<1>();
@@ -480,6 +543,8 @@ public:
         }
     }
 
+    /// Converts from `Result<T, E>` to `Result<const T&, const E&>`.
+    /// \return A `Result` containing const references to the inner values.
     constexpr auto as_ref() const -> Result<mtp::add_ref<mtp::add_const<T>>,
                                             mtp::add_ref<mtp::add_const<E>>> {
         if (is_ok()) {
@@ -489,42 +554,49 @@ public:
         }
     }
 
+    /// Accesses the contained `Ok` value via pointer. Asserts that the result is `Ok`.
     [[nodiscard]]
     constexpr const mtp::rm_ref<T>* operator->() const noexcept {
         assert(is_ok());
         return rstd::addressof(_get<0>());
     }
 
+    /// Accesses the contained `Ok` value via pointer. Asserts that the result is `Ok`.
     [[nodiscard]]
     constexpr mtp::rm_ref<T>* operator->() noexcept {
         assert(is_ok());
         return rstd::addressof(_get<0>());
     }
 
+    /// Dereferences the contained `Ok` value. Asserts that the result is `Ok`.
     [[nodiscard]]
     constexpr const T& operator*() const& noexcept {
         assert(is_ok());
         return _get<0>();
     }
 
+    /// Dereferences the contained `Ok` value. Asserts that the result is `Ok`.
     [[nodiscard]]
     constexpr T& operator*() & noexcept {
         assert(is_ok());
         return _get<0>();
     }
 
+    /// Dereferences the contained `Ok` value. Asserts that the result is `Ok`.
     [[nodiscard]]
     constexpr const T&& operator*() const&& noexcept {
         assert(is_ok());
         return _get<0>();
     }
 
+    /// Dereferences the contained `Ok` value. Asserts that the result is `Ok`.
     [[nodiscard]]
     constexpr T&& operator*() && noexcept {
         assert(is_ok());
         return _get<0>();
     }
 
+    /// Returns `true` if the result is `Ok`.
     [[nodiscard]]
     constexpr explicit operator bool() const noexcept {
         return is_ok();
@@ -536,6 +608,8 @@ struct result_impl : result_base<T, E> {};
 
 template<typename T, typename E>
 struct result_impl<const T&, E> : result_base<const T&, E> {
+    /// Maps a `Result<const T&, E>` to `Result<T, E>` by copying the contained value.
+    /// \return A new `Result` with a copied `Ok` value.
     constexpr auto copied() -> Result<T, E> {
         if (this->is_ok()) {
             return Ok(T(this->template _self_get<0>()));
@@ -544,6 +618,8 @@ struct result_impl<const T&, E> : result_base<const T&, E> {
         }
     }
 
+    /// Maps a `Result<const T&, E>` to `Result<T, E>` by cloning the contained value.
+    /// \return A new `Result` with a cloned `Ok` value.
     auto cloned() -> Result<T, E>
         requires Impled<T, clone::Clone>
     {
@@ -555,6 +631,8 @@ struct result_impl<const T&, E> : result_base<const T&, E> {
 
 template<typename T, typename E>
 struct result_impl<T&, E> : result_base<T&, E> {
+    /// Maps a `Result<T&, E>` to `Result<T, E>` by copying the contained value.
+    /// \return A new `Result` with a copied `Ok` value.
     constexpr auto copied() -> Result<T, E> {
         if (this->is_ok()) {
             return Ok(T(this->template _self_get<0>()));
@@ -563,6 +641,8 @@ struct result_impl<T&, E> : result_base<T&, E> {
         }
     }
 
+    /// Maps a `Result<T&, E>` to `Result<T, E>` by cloning the contained value.
+    /// \return A new `Result` with a cloned `Ok` value.
     auto cloned() -> Result<T, E>
         requires Impled<T, clone::Clone>
     {
@@ -574,6 +654,8 @@ struct result_impl<T&, E> : result_base<T&, E> {
 
 template<typename T, typename E>
 struct result_impl<Result<T, E>, E> : result_base<Result<T, E>, E> {
+    /// Converts from `Result<Result<T, E>, E>` to `Result<T, E>`, flattening one level of nesting.
+    /// \return The inner `Result` if `Ok`, otherwise the outer `Err`.
     constexpr auto flatten() -> Result<T, E> {
         if (this->is_ok()) {
             return this->template _self_get<0>();
@@ -588,6 +670,9 @@ struct err_tag {};
 
 } // namespace detail
 
+/// A type that represents either success (`Ok`) or failure (`Err`).
+/// \tparam T The type of the success value.
+/// \tparam E The type of the error value.
 template<typename T, typename E>
 class Result : public detail::result_impl<T, E> {
     template<typename, typename>
@@ -716,11 +801,21 @@ public:
     }
 };
 
+/// Creates a `Result` in the `Ok` state containing the given value.
+/// \tparam T The success value type.
+/// \tparam TErr The error type (can be deduced later).
+/// \param val The success value.
+/// \return A `Result<T, TErr>` in the `Ok` state.
 template<typename T, typename TErr>
 constexpr auto Ok(T&& val) -> Result<T, TErr> {
     return { rstd::forward<T>(val), detail::ok_tag {} };
 }
 
+/// Creates a `Result` in the `Err` state containing the given error.
+/// \tparam TErr The error type.
+/// \tparam T The success type (can be deduced later).
+/// \param val The error value.
+/// \return A `Result<T, TErr>` in the `Err` state.
 template<typename TErr, typename T>
 constexpr auto Err(TErr&& val) -> Result<T, TErr> {
     return { rstd::forward<TErr>(val), detail::err_tag {} };
@@ -731,6 +826,8 @@ namespace rstd::option::detail
 {
 template<typename T, typename E>
 struct option_adapter_l1<result::Result<T, E>> {
+    /// Transposes an `Option<Result<T, E>>` into a `Result<Option<T>, E>`.
+    /// \return `Ok(Some(v))` if `Some(Ok(v))`, `Err(e)` if `Some(Err(e))`, or `Ok(None)` if `None`.
     constexpr auto transpose() -> result::Result<Option<T>, E> {
         auto&& self = static_cast<Option<result::Result<T, E>>&&>(*this);
         if (self.is_some()) {

@@ -9,12 +9,18 @@ import :clone;
 namespace rstd::time
 {
 
+/// Number of nanoseconds in one second.
 export const u32 NANOS_PER_SEC   = 1'000'000'000u;
+/// Number of nanoseconds in one millisecond.
 export const u32 NANOS_PER_MILLI = 1'000'000u;
+/// Number of nanoseconds in one microsecond.
 export const u32 NANOS_PER_MICRO = 1'000u;
+/// Number of milliseconds in one second.
 export const u64 MILLIS_PER_SEC  = 1'000u;
+/// Number of microseconds in one second.
 export const u64 MICROS_PER_SEC  = 1'000'000u;
 
+/// A span of time, with nanosecond precision.
 export struct Duration {
     u64 _secs;
     u32 _nanos; // invariant: always < NANOS_PER_SEC
@@ -135,12 +141,17 @@ export struct Duration {
     constexpr auto& operator/=(u32 rhs)      noexcept { *this = *this / rhs; return *this; }
 };
 
-// Constants defined outside the struct so the type is complete.
+/// A duration of zero time.
 export inline constexpr Duration Duration_ZERO        = { 0, 0 };
+/// The maximum representable duration.
 export inline constexpr Duration Duration_MAX         = { u64(-1), NANOS_PER_SEC - 1 };
+/// A duration of exactly one second.
 export inline constexpr Duration Duration_SECOND      = { 1, 0 };
+/// A duration of exactly one millisecond.
 export inline constexpr Duration Duration_MILLISECOND = { 0, NANOS_PER_MILLI };
+/// A duration of exactly one microsecond.
 export inline constexpr Duration Duration_MICROSECOND = { 0, NANOS_PER_MICRO };
+/// A duration of exactly one nanosecond.
 export inline constexpr Duration Duration_NANOSECOND  = { 0, 1 };
 
 } // namespace rstd::time

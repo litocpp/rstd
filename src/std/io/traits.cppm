@@ -4,7 +4,7 @@ export import rstd.core;
 
 namespace rstd::io
 {
-// Default internal buffer capacity (8 KiB, matching Rust std).
+/// Default internal buffer capacity (8 KiB, matching Rust std).
 export inline constexpr usize DEFAULT_BUF_SIZE = 8192;
 } // namespace rstd::io
 
@@ -56,6 +56,7 @@ export struct Write {
 };
 
 // ── SeekFrom ──────────────────────────────────────────────────────────────
+/// Enumeration of possible methods to seek within an I/O object.
 export struct SeekFrom {
     enum class Which : u8
     {
@@ -66,8 +67,11 @@ export struct SeekFrom {
     Which which;
     i64   offset; // treated as u64 for Which::Start
 
+    /// Creates a SeekFrom that seeks to an absolute position from the start.
     static auto from_start(u64 n) noexcept -> SeekFrom { return { Which::Start, i64(n) }; }
+    /// Creates a SeekFrom that seeks relative to the end of the stream.
     static auto from_end(i64 n) noexcept -> SeekFrom { return { Which::End, n }; }
+    /// Creates a SeekFrom that seeks relative to the current position.
     static auto from_current(i64 n) noexcept -> SeekFrom { return { Which::Current, n }; }
 };
 

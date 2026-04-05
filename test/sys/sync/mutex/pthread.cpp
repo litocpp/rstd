@@ -2,6 +2,7 @@
 #if RSTD_OS_UNIX && ! RSTD_OS_WINDOWS
 
 #include <gtest/gtest.h>
+#include <thread>
 import rstd;
 using rstd::sys::sync::mutex::pthread::Mutex;
 

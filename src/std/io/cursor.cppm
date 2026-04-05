@@ -23,10 +23,16 @@ public:
 
     explicit Cursor(T inner) noexcept: inner_(rstd::move(inner)), pos_(0) {}
 
+    /// Returns a reference to the underlying value in this cursor.
     auto get_ref() const noexcept -> const T& { return inner_; }
+    /// Returns a mutable reference to the underlying value in this cursor.
     auto get_mut() noexcept -> T& { return inner_; }
+    /// Returns the current position of this cursor.
     auto position() const noexcept -> u64 { return pos_; }
+    /// Sets the position of this cursor.
+    /// \param p The new byte offset from the start.
     void set_position(u64 p) noexcept { pos_ = p; }
+    /// Consumes this cursor, returning the underlying value.
     auto into_inner() -> T { return rstd::move(inner_); }
 };
 

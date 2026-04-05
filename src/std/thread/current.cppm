@@ -27,6 +27,7 @@ struct CurrentGuard {
     ~CurrentGuard() { drop_current(); }
 };
 
+/// Returns the current thread's handle, or None if unavailable.
 export auto try_current() -> Option<Thread> {
     if (CURRENT == nullptr || CURRENT == BUSY || CURRENT == DESTROYED) {
         return None();
@@ -37,6 +38,8 @@ export auto try_current() -> Option<Thread> {
     return rstd::Some<Thread>(rstd::move(res));
 }
 
+/// Sets the handle for the current thread, returning Err if already set or the ID mismatches.
+/// \param thread The thread handle to install as the current thread.
 export auto set_current(Thread thread) -> Result<empty, Thread> {
     if (CURRENT) {
         return Err(rstd::move(thread));
@@ -57,6 +60,7 @@ export auto set_current(Thread thread) -> Result<empty, Thread> {
     return Ok(empty {});
 }
 
+/// Returns a handle to the current thread, lazily initializing if necessary.
 export auto current() -> Thread {
     if (auto t = try_current(); t.is_some()) {
         return t.unwrap_unchecked();

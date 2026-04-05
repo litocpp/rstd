@@ -148,9 +148,12 @@ struct ArcInnerImpl<T, ArcStoragePolicy::Separate> : ArcInner<T> {
     }
 };
 
-// Forward decls
+/// A thread-safe reference-counting pointer, analogous to Rust's `Arc<T>`.
+/// \tparam T The type of the value managed by atomic reference counting.
 export template<typename T>
 class Arc;
+/// A non-owning, weakly-referenced companion to `Arc` that does not prevent deallocation.
+/// \tparam T The type of the referenced value.
 export template<typename T>
 class Weak;
 
@@ -195,6 +198,8 @@ struct ArcData {
     ArcInner<T>* inner { nullptr };
 };
 
+/// A raw representation of an `Arc` pointer, used for low-level interop.
+/// \tparam T The element type.
 export template<typename T>
 class ArcRaw {
     ArcInner<T>* inner;
@@ -203,12 +208,20 @@ class ArcRaw {
     ArcRaw(auto t): inner(t) {}
 
 public:
+    /// Returns a mutable pointer to the managed value.
     auto as_ptr() const { return inner->data(); };
+    /// Consumes the `ArcRaw`, returning a raw void pointer without releasing ownership.
+    /// \return A raw void pointer to the inner allocation.
     auto into_raw() -> voidp { return rstd::exchange(inner, nullptr); }
 
+    /// Reconstructs an `ArcRaw` from a raw void pointer previously obtained via `into_raw`.
+    /// \param p The raw void pointer.
+    /// \return An `ArcRaw` wrapping the pointer.
     static auto from_raw(voidp p) -> ArcRaw { return { static_cast<ArcInner<T>*>(p) }; }
 };
 
+/// A thread-safe reference-counting pointer, analogous to Rust's `Arc<T>`.
+/// \tparam T The type of the value managed by atomic reference counting.
 export template<typename T>
 class Arc : public WithTrait<Arc<T>, Clone> {
     ArcData<T> self;
@@ -243,6 +256,7 @@ public:
 
     ~Arc() { reset(); }
 
+    /// Drops the current allocation, decrementing the strong count.
     void reset() {
         if (self.inner) {
             self.inner->drop_strong();
@@ -285,8 +299,13 @@ public:
         return Pin<Arc<T>>::make_unchecked(Arc::make(rstd::param_forward<T>(value)));
     }
 
+    /// Reconstructs an `Arc` from an `ArcRaw` previously obtained via `into_raw`.
+    /// \param r The raw Arc representation.
+    /// \return An `Arc` that takes back ownership.
     static Arc from_raw(ArcRaw<T> r) noexcept { return { ArcData<T> { .inner = r.inner } }; }
 
+    /// Converts an `Arc<MaybeUninit<T>>` into an `Arc<T>` after the value has been initialized.
+    /// \return An `Arc<T>` over the now-initialized value.
     auto assume_init()
         requires(! mtp::same_as<typename maybe_uninit_traits<T>::value_type, void>)
     {
@@ -296,17 +315,26 @@ public:
         return Arc<V> { { .inner = inner } };
     }
 
+    /// Dereferences the `Arc`, returning a mutable reference to the inner value.
     ref<T>       operator*() noexcept { return self.inner->data().as_ref(); }
+    /// Dereferences the `Arc`, returning a const reference to the inner value.
     ref<const T> operator*() const noexcept { return self.inner->data().to_ref(); }
 
+    /// Provides pointer-like mutable access to the inner value.
     T*       operator->() noexcept { return self.inner->data(); }
+    /// Provides pointer-like const access to the inner value.
     T*       operator->() const noexcept { return self.inner->data(); }
+    /// Returns `true` if this `Arc` is non-empty.
     explicit operator bool() const noexcept { return self.inner != nullptr; }
 
+    /// Returns the number of strong (`Arc`) pointers to the same allocation.
+    /// \return The current strong reference count.
     usize strong_count() const noexcept {
         return self.inner ? self.inner->strong.load(rstd::sync::atomic::Ordering::Acquire) : 0;
     }
 
+    /// Returns the number of `Weak` pointers to the same allocation.
+    /// \return The current weak reference count (excluding the implicit weak held by strong pointers).
     usize weak_count() const noexcept {
         // Rust's Arc::weak_count excludes the implicit weak if strong>0.
         if (! self.inner) return 0;
@@ -316,10 +344,11 @@ public:
         return w > 0 ? (w - 1) : 0;
     }
 
-    // Rust: Arc::downgrade
+    /// Creates a `Weak` pointer to the same allocation without incrementing the strong count.
+    /// \return A `Weak<T>` pointer.
     Weak<T> downgrade() const noexcept;
 
-    // Rust: Arc::as_ptr (raw pointer to T)
+    /// Returns a raw pointer to the managed value.
     auto as_ptr() const noexcept {
         if (! self.inner) [[unlikely]] {
             rstd::panic { "Arc::as_ptr called on an empty Arc" };
@@ -347,7 +376,8 @@ public:
         return None();
     }
 
-    // Rust: Arc::try_unwrap / into_inner style
+    /// Attempts to unwrap the `Arc`, returning the inner value if this is the only strong reference.
+    /// \return `Ok(T)` if successful, or `Err(Arc)` if other strong references exist.
     auto try_unwrap() -> Result<T, Arc>
         requires Impled<T, Sized>
     {
@@ -370,8 +400,8 @@ public:
         return Err(rstd::move(*this));
     }
 
-    // ===== Raw interop (Rust: into_raw / from_raw_parts) =====
-    // These are intentionally low-level; the pointer must come from into_raw().
+    /// Consumes the `Arc` without decrementing the reference count, returning an `ArcRaw`.
+    /// \return An `ArcRaw<T>` for low-level interop; must be reconverted with `from_raw`.
     auto into_raw() noexcept {
         auto inner = self.inner;
         self       = {}; // leak ownership to raw
@@ -379,6 +409,8 @@ public:
     }
 };
 
+/// A thread-safe weak reference to an `Arc`-managed allocation.
+/// \tparam T The type of the referenced value.
 export template<class T>
 class Weak : public WithTrait<Weak<T>, Clone> {
     ArcData<T> self;
@@ -408,12 +440,13 @@ public:
 
     ~Weak() { reset(); }
 
-    /// Constructs a new `Weak<T>`, without allocating any memory.
-    /// Calling `upgrade()` on the return value always gives `None`.
+    /// Constructs a new empty `Weak<T>` without allocating any memory.
+    /// Calling `upgrade` on the return value always gives an empty `Arc`.
     static constexpr auto make() noexcept -> Weak {
         return Weak { ArcData<T> { .inner = nullptr } };
     }
 
+    /// Releases the weak reference, decrementing the weak count.
     void reset() {
         if (self.inner) {
             self.inner->drop_weak();
@@ -421,6 +454,8 @@ public:
         }
     }
 
+    /// Attempts to upgrade the `Weak` pointer to an `Arc`, succeeding only if strong references remain.
+    /// \return An `Arc<T>` if the value is still alive, or an empty `Arc` otherwise.
     auto upgrade() const noexcept -> Arc<T> {
         if (self.inner && self.inner->try_inc_strong()) {
             return { self };
@@ -428,16 +463,22 @@ public:
         return { {} };
     }
 
+    /// Returns the number of strong (`Arc`) pointers to the same allocation.
+    /// \return The current strong reference count.
     auto strong_count() const noexcept -> usize {
         return self.inner ? self.inner->strong.load(rstd::sync::atomic::Ordering::Acquire) : 0;
     }
 
+    /// Returns the number of weak pointers to the same allocation (including this one).
+    /// \return The current weak reference count.
     auto weak_count() const noexcept -> usize {
         return self.inner ? self.inner->weak.load(rstd::sync::atomic::Ordering::Acquire) : 0;
     }
 
+    /// Returns `true` if the value has been dropped (strong count is zero).
     bool expired() const noexcept { return strong_count() == 0; }
 
+    /// Returns a raw pointer to the managed value.
     auto as_ptr() const noexcept { return self.inner->data(); }
 };
 

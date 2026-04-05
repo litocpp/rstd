@@ -14,6 +14,7 @@ namespace rstd::ffi
 //     NotNulTerminated,
 // }
 
+/// A borrowed reference to a nul-terminated C string.
 export class CStr;
 
 } // namespace rstd::ffi

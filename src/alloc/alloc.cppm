@@ -23,34 +23,50 @@ void* __rstd_alloc_zeroed(usize size, usize align);
 namespace alloc
 {
 
+/// Allocates memory with the given layout using the global allocator.
+/// \param layout The memory layout describing size and alignment requirements.
+/// \return A mutable pointer to the allocated memory.
 export auto alloc(Layout layout) noexcept -> mut_ptr<u8> {
     layout = layout.cpp_layout();
     return mut_ptr<u8>::from_raw_parts(static_cast<u8*>(__rstd_alloc(layout.size, layout.align)));
 }
 
+/// Deallocates memory previously allocated with the given layout.
+/// \param ptr The pointer to the memory to deallocate.
+/// \param layout The layout that was used to allocate the memory.
 export void dealloc(mut_ptr<u8> ptr, Layout layout) noexcept {
     layout = layout.cpp_layout();
     __rstd_dealloc(ptr.as_raw_ptr(), layout.size, layout.align);
 }
 
+/// Reallocates memory to a new size, preserving existing data up to the minimum of old and new sizes.
+/// \param ptr The pointer to the previously allocated memory.
+/// \param layout The layout that was used for the original allocation.
+/// \param new_size The desired new size in bytes.
+/// \return A mutable pointer to the reallocated memory.
 export auto realloc(mut_ptr<u8> ptr, Layout layout, usize new_size) noexcept -> mut_ptr<u8> {
     layout = layout.cpp_layout();
     return mut_ptr<u8>::from_raw_parts(
         static_cast<u8*>(__rstd_realloc(ptr.as_raw_ptr(), layout.size, layout.align, new_size)));
 }
 
+/// Allocates zero-initialized memory with the given layout.
+/// \param layout The memory layout describing size and alignment requirements.
+/// \return A mutable pointer to the zero-initialized allocated memory.
 export auto alloc_zeroed(Layout layout) noexcept -> mut_ptr<u8> {
     layout = layout.cpp_layout();
     return mut_ptr<u8>::from_raw_parts(
         static_cast<u8*>(__rstd_alloc_zeroed(layout.size, layout.align)));
 }
 
+/// Aborts the process on memory allocation failure.
+/// \param layout The layout of the allocation that failed.
 export [[gnu::cold]]
 void handle_alloc_error(Layout layout) {
     rstd::panic { "memory allocation failed" };
 }
 
-/// Forward declaration
+/// The global memory allocator.
 export struct Global;
 
 } // namespace alloc
@@ -91,8 +107,10 @@ struct rstd::Impl<rstd::alloc::Allocator, alloc_::Global>
 namespace alloc
 {
 
+/// The global memory allocator, implementing the `Allocator` trait.
 export struct Global {};
 
+/// The singleton instance of the global allocator.
 export Global GLOBAL {};
 
 } // namespace alloc

@@ -7,6 +7,8 @@ export import rstd.core;
 namespace rstd::sync::mpsc
 {
 
+/// The receiving half of a channel, used to receive messages sent by `Sender` or `SyncSender`.
+/// \tparam T The type of values received through the channel.
 export template<typename T>
 class Receiver {
     mpmc::Receiver<Box<mpmc::Channel<T>>> inner_bounded;
@@ -17,6 +19,8 @@ public:
     Receiver(mpmc::Receiver<Box<mpmc::Channel<T>>> i) : inner_bounded(rstd::move(i)), is_bounded(true) {}
     Receiver(mpmc::Receiver<Box<mpmc::ListChannel<T>>> i) : inner_unbounded(rstd::move(i)), is_bounded(false) {}
 
+    /// Blocks the current thread until a message is received or the channel is disconnected.
+    /// \return Ok(value) on success, or Err on disconnection.
     auto recv() -> Result<T, empty> {
         if (is_bounded) {
             mpmc::Token token;
@@ -67,6 +71,8 @@ public:
         }
     }
 
+    /// Attempts to receive a message without blocking.
+    /// \return Ok(value) if a message was available, or Err if the channel is empty or disconnected.
     auto try_recv() -> Result<T, empty> {
         if (is_bounded) {
             mpmc::Token token;
@@ -97,6 +103,10 @@ public:
     Receiver& operator=(Receiver&&) noexcept = default;
 };
 
+/// The sending half of an asynchronous (unbounded) channel.
+///
+/// Senders can be cloned to send from multiple threads.
+/// \tparam T The type of values sent through the channel.
 export template<typename T>
 class Sender {
     mpmc::Sender<Box<mpmc::ListChannel<T>>> inner;
@@ -104,6 +114,8 @@ class Sender {
 public:
     Sender(mpmc::Sender<Box<mpmc::ListChannel<T>>> i) : inner(rstd::move(i)) {}
 
+    /// Sends a value on this channel, returning Err(msg) if the receiver has disconnected.
+    /// \param msg The message to send.
     auto send(T msg) -> Result<empty, T> {
         mpmc::ListToken token {};
         if (inner->start_send(token)) {
@@ -128,6 +140,10 @@ public:
     Sender& operator=(Sender&&) noexcept = default;
 };
 
+/// The sending half of a synchronous (bounded) channel.
+///
+/// Blocks when the buffer is full until space becomes available.
+/// \tparam T The type of values sent through the channel.
 export template<typename T>
 class SyncSender {
     mpmc::Sender<Box<mpmc::Channel<T>>> inner;
@@ -135,6 +151,9 @@ class SyncSender {
 public:
     SyncSender(mpmc::Sender<Box<mpmc::Channel<T>>> i) : inner(rstd::move(i)) {}
 
+    /// Sends a value on this channel, blocking if the buffer is full.
+    /// \param msg The message to send.
+    /// \return Err(msg) if the receiver has disconnected.
     auto send(T msg) -> Result<empty, T> {
         mpmc::Token token;
         if (inner->start_send(token)) {
@@ -157,6 +176,9 @@ public:
         }
     }
 
+    /// Attempts to send a value without blocking.
+    /// \param msg The message to send.
+    /// \return Err(msg) if the buffer is full or the receiver has disconnected.
     auto try_send(T msg) -> Result<empty, T> {
         mpmc::Token token;
         if (inner->start_send(token)) {
@@ -181,6 +203,8 @@ public:
     SyncSender& operator=(SyncSender&&) noexcept = default;
 };
 
+/// Creates an asynchronous (unbounded) channel, returning the sender and receiver halves.
+/// \tparam T The type of values to be sent through the channel.
 export template<typename T>
 auto channel() -> rstd::tuple<Sender<T>, Receiver<T>> {
     auto chan = mpmc::ListChannel<T>::make();
@@ -188,6 +212,9 @@ auto channel() -> rstd::tuple<Sender<T>, Receiver<T>> {
     return { Sender<T>(rstd::move(s)), Receiver<T>(rstd::move(r)) };
 }
 
+/// Creates a synchronous (bounded) channel with the given buffer capacity.
+/// \tparam T The type of values to be sent through the channel.
+/// \param bound The maximum number of messages that can be buffered.
 export template<typename T>
 auto sync_channel(usize bound) -> rstd::tuple<SyncSender<T>, Receiver<T>> {
     auto chan = mpmc::Channel<T>::with_capacity(bound);

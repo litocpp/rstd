@@ -302,6 +302,8 @@ struct RcInnerAllocImpl<T, Allocator, StoragePolicy::SeparateWithDeleter, ValueD
     }
 };
 
+/// A single-threaded reference-counting pointer, analogous to Rust's `Rc<T>`.
+/// \tparam T The type of the value managed by reference counting.
 export template<typename T>
 class Rc;
 
@@ -312,6 +314,8 @@ struct RcMakeHelper {
     }
 };
 
+/// A non-owning reference to an `Rc`-managed allocation that does not prevent deallocation.
+/// \tparam T The type of the referenced value.
 export template<typename T>
 class Weak final {
     friend class Rc<T>;
@@ -321,10 +325,13 @@ class Weak final {
     explicit Weak(inner_t* p) noexcept: m_ptr(p) {}
 
 public:
+    /// Creates an empty `Weak` pointer.
     Weak() noexcept: m_ptr(nullptr) {}
 
+    /// Copy constructs a `Weak` pointer, incrementing the weak count.
     Weak(const Weak& other) noexcept: Weak(other.clone()) {}
 
+    /// Move constructs a `Weak` pointer, taking ownership from `other`.
     Weak(Weak&& other) noexcept: m_ptr(other.m_ptr) { other.m_ptr = nullptr; }
 
     ~Weak() {
@@ -336,19 +343,27 @@ public:
         }
     }
 
+    /// Creates a new `Weak` pointer to the same allocation.
+    /// \return A cloned `Weak` pointer.
     auto clone() const noexcept -> Weak {
         if (m_ptr) m_ptr->inc_weak();
         return Weak(m_ptr);
     }
 
+    /// Attempts to upgrade the `Weak` pointer to an `Rc`, returning `None` if the value has been dropped.
+    /// \return An `Option<Rc<T>>` containing the upgraded pointer, or `None`.
     auto upgrade() const -> Option<Rc<T>> {
         if (! m_ptr || m_ptr->strong == 0) return {};
         m_ptr->inc_strong();
         return Some(RcMakeHelper::make_rc<T>(m_ptr));
     }
 
+    /// Returns the number of strong (`Rc`) pointers to the same allocation.
+    /// \return The strong reference count.
     auto strong_count() const -> usize { return m_ptr ? m_ptr->strong : 0; }
 
+    /// Returns the number of `Weak` pointers to the same allocation.
+    /// \return The weak reference count (excluding the implicit weak held by strong pointers).
     auto weak_count() const -> usize { return m_ptr ? m_ptr->weak - 1 : 0; }
 };
 
@@ -484,6 +499,8 @@ public:
     auto operator->() const noexcept -> const_value_t* { return get(); }
 };
 
+/// A single-threaded reference-counting pointer, analogous to Rust's `Rc<T>`.
+/// \tparam T The type of the value managed by reference counting.
 export template<typename T>
 class Rc final : public RcAdaptor<T> {
     friend struct RcMakeHelper;
@@ -491,9 +508,11 @@ class Rc final : public RcAdaptor<T> {
     explicit Rc(inner_t* p) noexcept: RcAdaptor<T>(p) {}
 
 public:
+    /// Creates an empty `Rc` that does not point to any allocation.
     Rc(): Rc((inner_t*)nullptr) {}
     ~Rc() { RcBase<T>::drop(); }
 
+    /// Copy constructs an `Rc`, incrementing the strong reference count.
     Rc(const Rc& other) noexcept(noexp): Rc(other.clone()) {}
     Rc& operator=(const Rc& other) noexcept(noexp) {
         if (this != &other) {
@@ -512,26 +531,50 @@ public:
         requires mtp::is_const<T> && mtp::same_as<mtp::rm_cv<T>, U>
     Rc(const Rc<U>& o): Rc(o.to_const()) {}
 
+    /// Constructs an `Rc` from a raw pointer with the default deleter.
+    /// \param p The raw pointer to take ownership of.
     explicit Rc(T* p): Rc(p, mtp::default_delete<T>()) {}
+    /// Constructs an `Rc` from a raw pointer with a custom deleter.
+    /// \tparam Deleter The type of the deleter callable.
+    /// \param p The raw pointer to take ownership of.
+    /// \param d The deleter to invoke when the value is dropped.
     template<typename Deleter>
     Rc(T* p, Deleter&& d): Rc(RcBase<T>::allocate_inner(p, rstd::move(d))) {}
 
+    /// Constructs an `Rc` from a raw pointer with a custom deleter and allocator.
+    /// \tparam Deleter The type of the deleter callable.
+    /// \tparam Allocator The type of the allocator.
+    /// \param p The raw pointer to take ownership of.
+    /// \param d The deleter to invoke when the value is dropped.
+    /// \param alloc The allocator used for the control block.
     template<typename Deleter, typename Allocator>
     Rc(T* p, Deleter&& d, Allocator alloc)
         : Rc(RcBase<T>::allocate_inner(p, alloc, rstd::move(d))) {}
 
+    /// Creates a `Weak` pointer to the same allocation.
+    /// \return A `Weak<T>` that does not contribute to the strong count.
     auto downgrade() const -> Weak<T> {
         this->m_ptr->inc_weak();
         return Weak<T>(this->m_ptr);
     }
+    /// Creates a new `Rc` pointer to the same allocation, incrementing the strong count.
+    /// \return A cloned `Rc`.
     auto clone() const noexcept(noexp) -> Rc {
         if (this->m_ptr) this->m_ptr->inc_strong();
         return Rc(this->m_ptr);
     }
 
+    /// Swaps the inner pointers of two `Rc`s.
+    /// \param other The other `Rc` to swap with.
     void swap(Rc& other) noexcept { rstd::swap(this->m_ptr, other.m_ptr); }
 };
 
+/// Constructs an `Rc<T>` by allocating and constructing `T` in place.
+/// \tparam T The value type.
+/// \tparam Sp The storage policy (default: `Separate`).
+/// \tparam Args The constructor argument types.
+/// \param args The arguments forwarded to the constructor of `T`.
+/// \return An `Rc<T>` owning the newly constructed value.
 export template<typename T, StoragePolicy Sp = StoragePolicy::Separate, typename... Args>
     requires(! mtp::is_array<T>)
 auto make_rc(Args&&... args) -> Rc<T> {
@@ -540,6 +583,12 @@ auto make_rc(Args&&... args) -> Rc<T> {
     return RcMakeHelper::make_rc<T>(inner);
 }
 
+/// Constructs an `Rc<T[]>` for an array type, initializing `n` elements with `init`.
+/// \tparam T The array element type.
+/// \tparam Sp The storage policy (default: `Separate`).
+/// \param n The number of elements in the array.
+/// \param init The value used to initialize each element.
+/// \return An `Rc<T[]>` owning the newly constructed array.
 export template<typename T, StoragePolicy Sp = StoragePolicy::Separate, typename... Args>
     requires mtp::is_array<T>
 auto make_rc(usize n, const typename Rc<T>::const_value_t& init) -> Rc<T> {
@@ -548,6 +597,14 @@ auto make_rc(usize n, const typename Rc<T>::const_value_t& init) -> Rc<T> {
     return RcMakeHelper::make_rc<T>(inner);
 }
 
+/// Constructs an `Rc<T>` using a custom allocator, constructing `T` in place.
+/// \tparam T The value type.
+/// \tparam Sp The storage policy (default: `Separate`).
+/// \tparam Allocator The allocator type.
+/// \tparam Args The constructor argument types.
+/// \param alloc The allocator to use.
+/// \param args The arguments forwarded to the constructor of `T`.
+/// \return An `Rc<T>` owning the newly constructed value.
 export template<typename T, StoragePolicy Sp = StoragePolicy::Separate, typename Allocator,
                 typename... Args>
     requires(! mtp::is_array<T>)
@@ -560,6 +617,14 @@ auto allocate_make_rc(const Allocator& alloc, Args&&... args) -> Rc<T> {
     inner->allocate_value(rstd::forward<Args>(args)...);
     return RcMakeHelper::make_rc<T>(inner);
 }
+/// Constructs an `Rc<T[]>` for an array type using a custom allocator.
+/// \tparam T The array element type.
+/// \tparam Sp The storage policy (default: `Separate`).
+/// \tparam Allocator The allocator type.
+/// \param alloc The allocator to use.
+/// \param n The number of elements in the array.
+/// \param t The value used to initialize each element.
+/// \return An `Rc<T[]>` owning the newly constructed array.
 export template<typename T, StoragePolicy Sp = StoragePolicy::Separate, typename Allocator>
     requires mtp::is_array<T>
 auto allocate_make_rc(const Allocator& alloc, usize n, typename Rc<T>::const_value_t& t) -> Rc<T> {
@@ -572,7 +637,9 @@ auto allocate_make_rc(const Allocator& alloc, usize n, typename Rc<T>::const_val
     return RcMakeHelper::make_rc<T>(inner);
 }
 
-// Non-member functions
+/// Swaps two `Rc` pointers.
+/// \param lhs The first `Rc`.
+/// \param rhs The second `Rc`.
 export template<typename T>
 void swap(Rc<T>& lhs, Rc<T>& rhs) noexcept {
     lhs.swap(rhs);

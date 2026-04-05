@@ -3,6 +3,9 @@ export import rstd.core;
 
 namespace rstd::error
 {
+/// A trait representing the basic expectations for error values.
+///
+/// Types implementing this trait must also implement `fmt::Display`.
 export struct Error {
     template<typename Self, typename = void>
         requires Impled<Self, fmt::Display>

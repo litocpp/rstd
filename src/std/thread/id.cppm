@@ -31,8 +31,7 @@ public:
     /// Unstable in Rust: `thread_id_value`
     [[nodiscard]] constexpr auto as_u64() const noexcept { return m_v; }
 
-    // Generate a new unique thread ID.
-    // Rust uses cfg_select! to pick a fast atomic path; here we always use an atomic counter.
+    /// Generates a new unique thread ID using an atomic counter.
     static ThreadId make() {
         auto exhausted = []() {
             panic{"failed to generate unique thread ID: bitspace exhausted"};
@@ -57,6 +56,9 @@ public:
         }
     }
 
+    /// Attempts to construct a ThreadId from a raw u64 value.
+    /// \param v The raw identifier value; must be non-zero.
+    /// \return Some(ThreadId) if v is non-zero, None otherwise.
     static constexpr auto from_u64(value_type v) noexcept -> Option<ThreadId> {
         return NonZero<value_type>::make(v).map([](auto n) {
             return ThreadId { n };

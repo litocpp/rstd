@@ -12,6 +12,7 @@ export import rstd.core;
 namespace rstd::io::error
 {
 
+/// The platform-native OS error code type (e.g. errno on Unix, GetLastError on Windows).
 export using rstd::sys::io::RawOsError;
 
 /// A list specifying general categories of I/O error.
@@ -64,6 +65,7 @@ export struct ErrorKind {
 
     using Self = ErrorKind;
 
+    /// Returns a string description of this error kind.
     auto as_str() const noexcept -> ref<str> {
         switch (code) {
         case AddrInUse:             return "address in use";
@@ -280,6 +282,7 @@ public:
         return nullptr;
     }
 
+    /// Returns the internal tag indicating the error representation.
     auto tag() const noexcept -> Tag { return tag_; }
 
     friend bool operator==(const Error& a, const Error& b) noexcept {
@@ -287,13 +290,15 @@ public:
     }
 };
 
-/// Static error constants mirroring Rust's io::Error constants.
+/// Constant error for invalid UTF-8 data in a stream.
 export inline constexpr Error Error_INVALID_UTF8 =
     Error::new_const(ErrorKind { ErrorKind::InvalidData }, "stream did not contain valid UTF-8");
 
+/// Constant error returned when `read_exact` encounters an unexpected EOF.
 export inline constexpr Error Error_READ_EXACT_EOF =
     Error::new_const(ErrorKind { ErrorKind::UnexpectedEof }, "failed to fill whole buffer");
 
+/// Constant error returned when `write_all` fails to write all bytes.
 export inline constexpr Error Error_WRITE_ALL_EOF =
     Error::new_const(ErrorKind { ErrorKind::WriteZero }, "failed to write whole buffer");
 
@@ -405,6 +410,8 @@ struct Impl<fmt::Debug, io::error::Error> : ImplBase<io::error::Error> {
 
 namespace rstd::io
 {
+/// A specialized Result type for I/O operations.
+/// \tparam T The success value type.
 export template<typename T>
 using Result = result::Result<T, error::Error>;
 

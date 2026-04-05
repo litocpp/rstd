@@ -19,12 +19,16 @@ struct NulError {
     Vec<u8> data;
 };
 
+/// An owned, C-compatible, nul-terminated string, analogous to Rust's `CString`.
 export class CString {
 public:
     ::alloc::boxed::Box<u8[]> inner;
 
     USE_TRAIT(CString)
 
+    /// Creates a `CString` from a byte vector without checking for interior nul bytes.
+    /// \param v The byte vector; a nul terminator will be appended.
+    /// \return A `CString` wrapping the data.
     static auto from_vec_unchecked(Vec<u8>&& v) -> Self {
         return _from_vec_unchecked(rstd::move(v));
     }
@@ -33,6 +37,10 @@ public:
         auto boxed = v.into_boxed_slice();
         return Self { rstd::move(boxed) };
     }
+    /// Creates a new `CString` from a type convertible to `Vec<u8>`, checking for interior nul bytes.
+    /// \tparam T A type that implements `Into<Vec<u8>>`.
+    /// \param t The input data.
+    /// \return `Ok(CString)` on success, or `Err(NulError)` if an interior nul byte is found.
     template<Impled<Into<Vec<u8>>> T>
     static auto make(T t) -> Result<CString, NulError> {
         Vec<u8> vec = rstd::into(rstd::move(t));
@@ -43,6 +51,9 @@ public:
         }
     }
 
+    /// Creates a `CString` by copying from a nul-terminated C string pointer.
+    /// \param p A pointer to a nul-terminated C string.
+    /// \return A `CString` owning a copy of the data.
     static auto from_raw_parts(char const* p) -> CString {
         auto len    = rstd::strlen(p) + 1;
         auto layout = Layout::array<u8>(len).unwrap();
@@ -55,23 +66,31 @@ public:
         return CString { rstd::move(boxed) };
     }
 
+    /// Returns a borrowed reference to the inner `CStr`.
+    /// \return A `ref<CStr>` view of the C string data.
     auto as_ref() const -> ref<CStr> {
         auto ptr = inner.as_ptr();
         auto p   = reinterpret_cast<CStr const*>(&*ptr);
         return { .p = p, .length = ptr.len() - 1 };
     }
 
+    /// Consumes the `CString` and returns the underlying byte vector without the nul terminator.
+    /// \return A `Vec<u8>` containing the string bytes.
     auto into_bytes() -> Vec<u8> {
         Vec<u8> vec = rstd::into(rstd::move(inner));
         (void)vec.pop(); // remove trailing null byte
         return vec;
     }
 
+    /// Returns the contents as a byte slice, not including the nul terminator.
+    /// \return A `slice<u8>` of the string bytes.
     auto to_bytes() const -> slice<u8> {
         auto bytes = to_bytes_with_nul();
         return slice<u8>::from_raw_parts(bytes.p, bytes.len() - 1);
     }
 
+    /// Returns the contents as a byte slice, including the nul terminator.
+    /// \return A `slice<u8>` of the string bytes with the trailing nul.
     auto to_bytes_with_nul() const -> slice<u8> {
         auto cstr = as_ref();
         return slice<u8>::from_raw_parts(as_cast<const u8*>(cstr.p), cstr.length);

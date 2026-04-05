@@ -1,3 +1,4 @@
+/// The I/O module, providing traits, types, and functions for input and output.
 export module rstd:io;
 export import :io.error;
 export import :io.traits;

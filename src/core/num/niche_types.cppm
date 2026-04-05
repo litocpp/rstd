@@ -35,6 +35,8 @@ struct Test {
 };
 static_assert(Test<i32>::x);
 
+/// Base type for niche-optimized non-zero integer inner representations.
+/// \tparam T The underlying integer type.
 export template<typename T>
 struct NonZeroBase {
     T val;

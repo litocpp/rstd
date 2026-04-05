@@ -4,6 +4,7 @@ export import :core;
 namespace rstd::sync::atomic
 {
 
+/// Atomic memory ordering constraints.
 export enum class memory_order : int {
     relaxed = __ATOMIC_RELAXED,
     consume = __ATOMIC_CONSUME,
@@ -13,6 +14,7 @@ export enum class memory_order : int {
     seq_cst = __ATOMIC_SEQ_CST
 };
 
+/// Named constants for atomic memory orderings.
 export struct Ordering {
     static constexpr memory_order Relaxed = memory_order::relaxed;
     static constexpr memory_order Consume = memory_order::consume;
@@ -22,14 +24,20 @@ export struct Ordering {
     static constexpr memory_order SeqCst  = memory_order::seq_cst;
 };
 
+/// Issues a thread-level memory fence with the given ordering.
+/// \param order The memory ordering constraint.
 export inline void fence(memory_order order) noexcept {
     __atomic_thread_fence(static_cast<int>(order));
 }
 
+/// Issues a compiler-only memory fence (no CPU instruction emitted).
+/// \param order The memory ordering constraint.
 export inline void compiler_fence(memory_order order) noexcept {
     __atomic_signal_fence(static_cast<int>(order));
 }
 
+/// A generic atomic type for lock-free concurrent access.
+/// \tparam T The underlying value type.
 export template<typename T>
 class Atomic {
     T val;

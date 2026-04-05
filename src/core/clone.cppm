@@ -4,6 +4,11 @@ export import :trait;
 namespace rstd::clone
 {
 
+/// Trait for types that can explicitly duplicate themselves.
+///
+/// Implementors provide:
+/// - `clone() const -> Self` : Creates and returns a duplicate of this value.
+/// - `clone_from(Self& source)` : Overwrites self with a clone of source (optional, has default).
 export struct Clone {
     template<typename Self, typename = void>
     struct Api {
