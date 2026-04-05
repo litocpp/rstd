@@ -26,3 +26,4 @@ export import :intrinsics;
 export import :time;
 export import :ffi;
 export import :memchr;
+export import :char_;

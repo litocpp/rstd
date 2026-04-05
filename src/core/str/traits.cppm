@@ -30,3 +30,33 @@ auto from_str(ref<str> str) {
     return Impl<str_::FromStr, mtp::rm_cvf<T>>::from_str(str);
 }
 } // namespace rstd
+
+// ── str functions that return Option ─────────────────────────────────────
+namespace rstd::str_
+{
+
+/// Validates a byte slice as UTF-8 and returns a string slice on success.
+export constexpr auto from_utf8(slice<u8> bytes) noexcept -> Option<ref<str>> {
+    if (char_::is_valid_utf8(&*bytes, bytes.len())) {
+        ref<str> r;
+        r.p = &*bytes;
+        r.length = bytes.len();
+        return Some(rstd::move(r));
+    }
+    return None();
+}
+
+/// Finds the byte offset of `needle` in `haystack`.
+export constexpr auto find(ref<str> haystack, ref<str> needle) noexcept -> Option<usize> {
+    if (needle.size() == 0) { usize z = 0; return Some(rstd::move(z)); }
+    if (needle.size() > haystack.size()) return None();
+    for (usize i = 0; i <= haystack.size() - needle.size(); i++) {
+        if (__builtin_memcmp(haystack.data() + i, needle.data(), needle.size()) == 0) {
+            usize r = i;
+            return Some(rstd::move(r));
+        }
+    }
+    return None();
+}
+
+} // namespace rstd::str_

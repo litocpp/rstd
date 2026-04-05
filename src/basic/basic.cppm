@@ -143,7 +143,6 @@ constexpr auto lexicographical_compare_three_way(InputIter1 first1, InputIter1 l
                         return result <=> 0;
                     }
                 }
-                // 如果前缀相同，则比较长度
                 return len1 <=> len2;
             }
         }

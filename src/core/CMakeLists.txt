@@ -77,4 +77,5 @@ target_sources(
          mem/drop_guard.cppm
          sync/mod.cppm
          sync/atomic.cppm
-         forward/mod.cppm)
+         forward/mod.cppm
+         char.cppm)

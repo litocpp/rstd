@@ -27,11 +27,24 @@ public:
     using value_type = u8;
 
     /// Creates a new empty `String`.
-    /// \return An empty `String`.
     static auto make() -> String { return {}; }
+
+    /// Creates a `String` from a string slice (copies the bytes).
+    static auto make(ref<str> s) -> String {
+        auto v = Vec<u8>::with_capacity(s.size());
+        for (usize i = 0; i < s.size(); i++) {
+            u8 b = s.data()[i];
+            v.push(rstd::move(b));
+        }
+        return String { rstd::move(v) };
+    }
+
+    /// Creates a `String` from a null-terminated C string (copies the bytes).
+    static auto make(const char* s) -> String {
+        return make(ref<str>(s));
+    }
+
     /// Creates a new `String` from a byte vector without checking UTF-8 validity.
-    /// \param bytes The byte vector to convert.
-    /// \return A `String` wrapping the given bytes.
     static auto from_utf8_unchecked(Vec<u8>&& bytes) -> String {
         return String { rstd::move(bytes) };
     }
@@ -49,11 +62,43 @@ public:
     }
 
     /// Appends a `char` to the end of this string.
-    /// \param c The character to append.
     void push_back(char c) { vec.push(static_cast<u8>(c)); }
     /// Appends a byte to the end of this string.
-    /// \param c The byte to append.
     void push_back(u8 c) { vec.push(rstd::move(c)); }
+
+    /// Appends a Unicode code point, encoding as UTF-8.
+    void push(char32_t cp) {
+        u8 buf[4];
+        auto n = rstd::char_::encode_utf8(cp, buf);
+        for (usize i = 0; i < n; i++) {
+            u8 b = buf[i];
+            vec.push(rstd::move(b));
+        }
+    }
+
+    /// Returns a string slice of the entire `String`.
+    constexpr auto as_str() const noexcept -> ref<str> {
+        return ref<str>::from_raw_parts(&*vec.as_ptr(), vec.len());
+    }
+
+    /// Returns the byte length of this string.
+    constexpr auto len() const noexcept -> usize { return vec.len(); }
+    /// Returns `true` if this string contains no bytes.
+    constexpr auto is_empty() const noexcept -> bool { return vec.len() == 0; }
+    /// Returns the current capacity in bytes.
+    constexpr auto capacity() const noexcept -> usize { return vec.capacity(); }
+    /// Clears the string, removing all bytes.
+    constexpr void clear() { vec.clear(); }
+
+    /// Truncates the string to `new_len` bytes.
+    ///
+    /// Panics if `new_len` is not on a UTF-8 character boundary.
+    void truncate(usize new_len) {
+        if (new_len < vec.len()) {
+            assert(rstd::char_::is_char_boundary(vec.begin(), vec.len(), new_len));
+            while (vec.len() > new_len) vec.pop();
+        }
+    }
 
     friend constexpr auto operator<=>(const String& a, const String& b) noexcept {
         return rstd::lexicographical_compare_three_way(
