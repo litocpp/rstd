@@ -41,6 +41,7 @@ add_executable(
   fmt.cpp
   io.cpp
   env.cpp
+  process.cpp
   )
 
 target_link_libraries(rstd_test PRIVATE rstd::rstd GTest::gtest_main)

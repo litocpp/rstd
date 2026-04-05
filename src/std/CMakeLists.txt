@@ -27,7 +27,9 @@ target_sources(
          forward.cppm
          error.cppm
          panicking.cppm
-         process.cppm
+         process/mod.cppm
+         process/exit_status.cppm
+         process/command.cppm
          env.cppm
          ffi/mod.cppm
          ${RSTD_SYS_SOURCES}
@@ -35,5 +37,5 @@ target_sources(
          ${RSTD_THREAD_SOURCES}
          ${RSTD_SYNC_SOURCES})
 
-target_sources(rstd.std PRIVATE ${RSTD_PRIVATE_SOURCES} mod.cpp)
+target_sources(rstd.std PRIVATE ${RSTD_PRIVATE_SOURCES} mod.cpp process/process.cpp)
 

@@ -1,4 +1,6 @@
 export module rstd:process;
+export import :process.exit_status;
+export import :process.command;
 export import :sys;
 
 export namespace rstd::process
@@ -12,7 +14,7 @@ void abort() {
 
 /// Terminates the current process with the specified exit code.
 ///
-/// This calls `_exit` on Unix and `ExitProcess` on Windows.
+/// Calls `_exit` on Unix and `ExitProcess` on Windows.
 /// Destructors and atexit handlers are NOT run.
 ///
 /// \param code  Exit status code (0 = success).
