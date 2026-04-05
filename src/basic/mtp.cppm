@@ -1,7 +1,3 @@
-module;
-#if ! __has_builtin(__is_nothrow_destructible)
-#    include <type_traits>
-#endif
 export module rstd.basic:mtp;
 export import :prelude;
 export import :mtp.std;
@@ -224,7 +220,7 @@ concept drop =
 #if __has_builtin(__is_nothrow_destructible)
     __is_nothrow_destructible(T);
 #else
-    std::is_nothrow_destructible_v<T>;
+    mtp::is_nothrow_destructible_v<T>;
 #endif
 
 /// Satisfied when `T` is copy constructible.
@@ -317,7 +313,7 @@ concept noex_drop =
 #if __has_builtin(__is_nothrow_destructible)
     __is_nothrow_destructible(T);
 #else
-    std::is_nothrow_destructible_v<T>;
+    mtp::is_nothrow_destructible_v<T>;
 #endif
 /// @}
 

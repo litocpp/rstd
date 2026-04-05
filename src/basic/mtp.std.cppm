@@ -30,4 +30,6 @@ using std::make_index_sequence;
 using std::allocator_traits;
 /// Default deleter that calls `delete` on a pointer.
 using std::default_delete;
+
+using std::is_nothrow_destructible_v;
 } // namespace rstd::mtp
