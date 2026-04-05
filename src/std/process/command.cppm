@@ -18,9 +18,41 @@ struct EnvAction {
     Option<CString> value; // None = remove
 };
 
-// forward
+// forwards
 class Command;
 struct Child;
+
+/// A handle to a child process's standard input (write end of pipe).
+///
+/// Dropping this closes the pipe, causing the child to see EOF on its stdin.
+struct ChildStdin {
+    i32 fd { -1 };
+    ~ChildStdin();
+    ChildStdin(ChildStdin&& o) noexcept : fd(o.fd) { o.fd = -1; }
+    ChildStdin& operator=(ChildStdin&&) = delete;
+    ChildStdin() = default;
+    explicit ChildStdin(i32 f) : fd(f) {}
+};
+
+/// A handle to a child process's standard output (read end of pipe).
+struct ChildStdout {
+    i32 fd { -1 };
+    ~ChildStdout();
+    ChildStdout(ChildStdout&& o) noexcept : fd(o.fd) { o.fd = -1; }
+    ChildStdout& operator=(ChildStdout&&) = delete;
+    ChildStdout() = default;
+    explicit ChildStdout(i32 f) : fd(f) {}
+};
+
+/// A handle to a child process's standard error (read end of pipe).
+struct ChildStderr {
+    i32 fd { -1 };
+    ~ChildStderr();
+    ChildStderr(ChildStderr&& o) noexcept : fd(o.fd) { o.fd = -1; }
+    ChildStderr& operator=(ChildStderr&&) = delete;
+    ChildStderr() = default;
+    explicit ChildStderr(i32 f) : fd(f) {}
+};
 
 } // namespace rstd::process
 
@@ -30,18 +62,53 @@ auto spawn(rstd::process::Command& cmd)
     -> rstd::result::Result<rstd::process::Child, rstd::io::error::Error>;
 }
 
+// ── io::Read / io::Write impls for child pipe handles ────────────────────
+namespace rstd
+{
+
+template<>
+struct Impl<io::Write, process::ChildStdin> : ImplBase<process::ChildStdin> {
+    auto write(const u8* buf, usize len) -> io::Result<usize> {
+        return sys::io::stdio::write_fd(this->self().fd, buf, len);
+    }
+    auto flush() -> io::Result<empty> { return Ok(empty {}); }
+};
+
+template<>
+struct Impl<io::Read, process::ChildStdout> : ImplBase<process::ChildStdout> {
+    auto read(u8* buf, usize len) -> io::Result<usize> {
+        return sys::io::stdio::read_fd(this->self().fd, buf, len);
+    }
+};
+
+template<>
+struct Impl<io::Read, process::ChildStderr> : ImplBase<process::ChildStderr> {
+    auto read(u8* buf, usize len) -> io::Result<usize> {
+        return sys::io::stdio::read_fd(this->self().fd, buf, len);
+    }
+};
+
+} // namespace rstd
+
 export namespace rstd::process
 {
 
 /// A child process handle.
 struct Child {
-    i32  pid       { -1 };
-    i32  stdin_fd  { -1 };
-    i32  stdout_fd { -1 };
-    i32  stderr_fd { -1 };
+    i32                  pid { -1 };
+    Option<ChildStdin>   stdin_pipe;
+    Option<ChildStdout>  stdout_pipe;
+    Option<ChildStderr>  stderr_pipe;
 
     /// Returns the OS-assigned process ID.
     auto id() const noexcept -> u32 { return static_cast<u32>(pid); }
+
+    /// Takes ownership of the child's stdin pipe handle.
+    auto take_stdin() -> Option<ChildStdin> { return stdin_pipe.take(); }
+    /// Takes ownership of the child's stdout pipe handle.
+    auto take_stdout() -> Option<ChildStdout> { return stdout_pipe.take(); }
+    /// Takes ownership of the child's stderr pipe handle.
+    auto take_stderr() -> Option<ChildStderr> { return stderr_pipe.take(); }
 
     /// Waits for the child to exit and returns its status.
     auto wait() -> io::Result<ExitStatus>;
@@ -49,16 +116,19 @@ struct Child {
     /// Sends SIGKILL to the child process.
     auto kill() -> io::Result<rstd::empty>;
 
+    /// Waits for the child and collects all remaining stdout/stderr.
+    auto wait_with_output() -> io::Result<Output>;
+
     ~Child();
     Child(Child&& o) noexcept
-        : pid(o.pid), stdin_fd(o.stdin_fd), stdout_fd(o.stdout_fd), stderr_fd(o.stderr_fd) {
-        o.pid = -1; o.stdin_fd = -1; o.stdout_fd = -1; o.stderr_fd = -1;
+        : pid(o.pid),
+          stdin_pipe(o.stdin_pipe.take()),
+          stdout_pipe(o.stdout_pipe.take()),
+          stderr_pipe(o.stderr_pipe.take()) {
+        o.pid = -1;
     }
     Child& operator=(Child&&) = delete;
     Child() = default;
-
-private:
-    void close_fds();
 };
 
 /// A process builder, providing fine-grained control over how a new process
@@ -145,7 +215,13 @@ public:
     }
 
     /// Executes the command, waits for it, and collects stdout/stderr.
-    auto output() -> io::Result<Output>;
+    auto output() -> io::Result<Output> {
+        cfg_stdout_ = Stdio::piped();
+        cfg_stderr_ = Stdio::piped();
+        auto child = spawn();
+        if (child.is_err()) return Err(child.unwrap_err());
+        return child.unwrap().wait_with_output();
+    }
 };
 
 } // namespace rstd::process

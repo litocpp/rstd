@@ -76,6 +76,56 @@ TEST(Process, CommandNotFound) {
     EXPECT_TRUE(res.is_err());
 }
 
+TEST(Process, ChildStdinWrite) {
+    // cat reads from stdin and writes to stdout
+    auto res = rstd::process::Command::make("cat")
+                   .set_stdin(rstd::process::Stdio::piped())
+                   .set_stdout(rstd::process::Stdio::piped())
+                   .spawn();
+    ASSERT_TRUE(res.is_ok());
+    auto child = rstd::move(res.unwrap());
+
+    // Write to child's stdin via io::Write
+    auto stdin_opt = child.take_stdin();
+    ASSERT_TRUE(stdin_opt.is_some());
+    {
+        auto stdin_h = rstd::move(stdin_opt.unwrap());
+        auto msg = reinterpret_cast<const rstd::u8*>("hello pipe");
+        auto wres = rstd::as<rstd::io::Write>(stdin_h).write(msg, 10);
+        ASSERT_TRUE(wres.is_ok());
+    } // stdin_h dropped here, child sees EOF
+
+    // Read from child's stdout via io::Read
+    auto stdout_opt = child.take_stdout();
+    ASSERT_TRUE(stdout_opt.is_some());
+    {
+        auto stdout_h = rstd::move(stdout_opt.unwrap());
+        rstd::u8 buf[64] = {};
+        auto rres = rstd::as<rstd::io::Read>(stdout_h).read(buf, sizeof(buf));
+        ASSERT_TRUE(rres.is_ok());
+        EXPECT_EQ(rres.unwrap(), 10u);
+        EXPECT_EQ(std::string(reinterpret_cast<char*>(buf), 10), "hello pipe");
+    }
+
+    auto status = child.wait();
+    ASSERT_TRUE(status.is_ok());
+    EXPECT_TRUE(status.unwrap().success());
+}
+
+TEST(Process, WaitWithOutput) {
+    auto res = rstd::process::Command::make("echo")
+                   .arg("collected")
+                   .set_stdout(rstd::process::Stdio::piped())
+                   .spawn();
+    ASSERT_TRUE(res.is_ok());
+    auto out_res = res.unwrap().wait_with_output();
+    ASSERT_TRUE(out_res.is_ok());
+    auto out = rstd::move(out_res.unwrap());
+    EXPECT_TRUE(out.status.success());
+    auto* p = reinterpret_cast<const char*>(out.stdout_buf.begin());
+    EXPECT_EQ(std::string(p, out.stdout_buf.len()), "collected\n");
+}
+
 TEST(Process, StdioNull) {
     auto res = rstd::process::Command::make("echo")
                    .arg("silenced")
