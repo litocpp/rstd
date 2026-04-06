@@ -144,7 +144,7 @@ struct ptr_base {
     constexpr bool operator==(const value_type& other) const noexcept {
         return *(static_cast<Self const*>(this)->p) == other;
     }
-    constexpr bool operator==(rstd::nullptr_t) const noexcept {
+    constexpr bool operator==(std::nullptr_t) const noexcept {
         return static_cast<Self const*>(this)->p == nullptr;
     }
 

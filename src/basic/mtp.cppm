@@ -30,6 +30,25 @@ namespace rstd::mtp
 export template<typename...>
 using void_t = void;
 
+export template<typename T, T... Is>
+class integer_sequence {
+    using value_type = T;
+    static constexpr usize size() noexcept { return sizeof...(Is); }
+};
+
+export template<usize... Is>
+using index_sequence = integer_sequence<usize, Is...>;
+
+export template<typename T, T N>
+using make_integer_sequence
+#if __has_builtin(__make_integer_seq)
+    = __make_integer_seq<integer_sequence, T, N>;
+#else
+    = integer_sequence<T, __integer_pack(N)...>;
+#endif
+export template<usize N>
+using make_index_sequence = make_integer_sequence<usize, N>;
+
 #if __has_builtin(__is_const)
 /// Satisfied when `T` is const-qualified.
 export template<typename T>

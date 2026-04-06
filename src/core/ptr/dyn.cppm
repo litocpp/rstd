@@ -117,7 +117,7 @@ struct rstd::ptr_::dyn_delegate : public mtp::rm_cv<T>::template Api<dyn_tag> {
                      rstd::addressof(VTableStaticStorage<trait_t, mtp::rm_cv<U>>::vtable) };
     }
 
-    auto operator==(rstd::nullptr_t) const noexcept -> bool { return p == nullptr; }
+    auto operator==(std::nullptr_t) const noexcept -> bool { return p == nullptr; }
 };
 
 template<typename A>
@@ -147,7 +147,7 @@ public:
     constexpr auto operator*() noexcept -> delegate_t& { return d; }
 
     constexpr auto operator==(const dyn_ptr_base& o) const noexcept -> bool { return d.p == o.d.p; }
-    constexpr auto operator==(rstd::nullptr_t) const noexcept -> bool { return d == nullptr; }
+    constexpr auto operator==(std::nullptr_t) const noexcept -> bool { return d == nullptr; }
 
     constexpr auto as_ptr() const noexcept -> rstd::ptr<dyn<trait_t>>
         requires Mutable

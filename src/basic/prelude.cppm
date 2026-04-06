@@ -22,6 +22,7 @@ export using std::get;
 /// A totally ordered comparison result type.
 export using std::strong_ordering;
 export using std::compare_three_way;
+export using std::nullptr_t;
 } // namespace std
 
 namespace rstd

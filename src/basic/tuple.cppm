@@ -1,7 +1,6 @@
 export module rstd.basic:tuple;
 export import :prelude;
 export import :mtp;
-export import :mtp.std;
 
 using namespace rstd;
 
@@ -10,13 +9,6 @@ using namespace rstd;
 template<usize I, typename T>
 struct tuple_leaf {
     T value;
-
-    constexpr tuple_leaf() noexcept = default;
-
-    template<typename U>
-        requires(! mtp::same<mtp::rm_cvf<U>, tuple_leaf>)
-    constexpr tuple_leaf(U&& v) noexcept(noexcept(T(rstd::forward<U>(v))))
-        : value(rstd::forward<U>(v)) {}
 };
 
 template<typename IndexSeq, typename... Ts>
@@ -57,8 +49,7 @@ constexpr auto& leaf_ref(Impl& impl) noexcept {
 template<usize I, typename T, typename Impl>
 constexpr auto const& leaf_ref(const Impl& impl) noexcept {
     return static_cast<const tuple_leaf<I, T>&>(impl).value;
-
-} // namespace detail
+}
 
 namespace rstd
 {
@@ -134,9 +125,41 @@ constexpr auto&& get(tuple<Ts...>&& t) noexcept {
     return rstd::move(t).template get<I>();
 }
 
-// ── Equality comparison ──────────────────────────────────────────────────
-namespace detail
+/// Creates a tuple, deducing element types from the arguments.
+export template<typename... Ts>
+constexpr auto make_tuple(Ts&&... ts) {
+    return tuple<mtp::rm_cvf<Ts>...>(rstd::forward<Ts>(ts)...);
+}
+
+// ── apply: invoke a callable with tuple elements unpacked ───────────────
+namespace tuple_detail
 {
+template<typename F, typename Tup, usize... Is>
+constexpr decltype(auto) apply_impl(F&& f, Tup&& t, mtp::index_sequence<Is...>) {
+    return rstd::forward<F>(f)(rstd::get<Is>(rstd::forward<Tup>(t))...);
+}
+} // namespace tuple_detail
+
+/// Invokes `f` with the elements of `t` as individual arguments.
+export template<typename F, typename... Ts>
+constexpr decltype(auto) apply(F&& f, tuple<Ts...>& t) {
+    return tuple_detail::apply_impl(
+        rstd::forward<F>(f), t, mtp::make_index_sequence<sizeof...(Ts)> {});
+}
+
+export template<typename F, typename... Ts>
+constexpr decltype(auto) apply(F&& f, const tuple<Ts...>& t) {
+    return tuple_detail::apply_impl(
+        rstd::forward<F>(f), t, mtp::make_index_sequence<sizeof...(Ts)> {});
+}
+
+export template<typename F, typename... Ts>
+constexpr decltype(auto) apply(F&& f, tuple<Ts...>&& t) {
+    return tuple_detail::apply_impl(
+        rstd::forward<F>(f), rstd::move(t), mtp::make_index_sequence<sizeof...(Ts)> {});
+}
+
+// ── Equality comparison ──────────────────────────────────────────────────
 template<usize I, typename... Ts>
 constexpr bool tuple_eq(const tuple<Ts...>& a, const tuple<Ts...>& b) {
     if constexpr (I == sizeof...(Ts)) {
@@ -145,11 +168,10 @@ constexpr bool tuple_eq(const tuple<Ts...>& a, const tuple<Ts...>& b) {
         return (a.template get<I>() == b.template get<I>()) && tuple_eq<I + 1>(a, b);
     }
 }
-} // namespace detail
 
 export template<typename... Ts>
 constexpr bool operator==(const tuple<Ts...>& a, const tuple<Ts...>& b) {
-    return detail::tuple_eq<0>(a, b);
+    return tuple_eq<0>(a, b);
 }
 
 } // namespace rstd
@@ -159,7 +181,7 @@ namespace std
 {
 
 template<typename... Ts>
-struct tuple_size<::rstd::tuple<Ts...>> : integral_constant<usize, sizeof...(Ts)> {};
+struct tuple_size<::rstd::tuple<Ts...>> : integral_constant<::rstd::usize, sizeof...(Ts)> {};
 
 template<::rstd::usize I, typename... Ts>
 struct tuple_element<I, ::rstd::tuple<Ts...>> {

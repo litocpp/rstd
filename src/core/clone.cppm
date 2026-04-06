@@ -32,8 +32,7 @@ struct Impl<clone::Clone, default_tag<Self, P>> : ImplBase<default_tag<Self, P>>
 };
 
 template<typename Self>
-    requires mtp::is_arithmetic<Self> || mtp::is_ptr<Self> ||
-             mtp::copy<Self>
+    requires mtp::is_arithmetic<Self> || mtp::is_ptr<Self> || mtp::copy<Self>
 struct Impl<clone::Clone, Self> : LinkTraitDefault<clone::Clone, Self> {
     auto clone() const -> Self { return this->self(); }
 };
@@ -43,7 +42,7 @@ template<typename Self>
 struct Impl<clone::Clone, Self> : LinkTraitDefault<clone::Clone, Self> {
     auto clone() const -> Self {
         auto& self = this->self();
-        return mtp::apply(
+        return rstd::apply(
             [](const auto&... elements) -> Self {
                 return { rstd::as<rstd::clone::Clone>(elements).clone()... };
             },
