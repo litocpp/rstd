@@ -33,7 +33,7 @@ struct VTable {
     using api_tuple_t =
         decltype(mtp::to_dyn(mtp::TraitApiHelper<T, trait_api_t>::template make<Tuple>()));
 
-    using apis_t = api_tuple_t<std::tuple>;
+    using apis_t = api_tuple_t<rstd::tuple>;
     using drop_t = void (*)(voidp);
 
     drop_t drop;

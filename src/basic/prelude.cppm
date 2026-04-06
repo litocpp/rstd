@@ -13,7 +13,6 @@ export using ::operator new;
 export using ::operator delete;
 namespace std
 {
-export using std::tuple;
 /// Provides the number of elements in a tuple-like type.
 export using std::tuple_size;
 /// Provides the type of the I-th element in a tuple-like type.
@@ -84,8 +83,6 @@ export {
 
     /// Extracts the I-th element from a tuple-like type.
     using std::get;
-    /// A fixed-size heterogeneous collection of values.
-    using std::tuple;
     /// Provides the type of the I-th element in a tuple-like type.
     using std::tuple_element;
     /// Provides the number of elements in a tuple-like type.
@@ -136,7 +133,6 @@ using std::nullptr_t;
 using std::numeric_limits;
 using std::source_location;
 
-using std::tuple;
 using std::tuple_element;
 using std::tuple_size;
 

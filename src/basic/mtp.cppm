@@ -15,8 +15,9 @@ using enable_if_t = typename enable_if<Cond, Tp>::type;
 
 template<class T, T v>
 struct integral_constant {
-    using value_type = T;
-    using type       = integral_constant;
+    static constexpr T value = v;
+    using value_type         = T;
+    using type               = integral_constant;
     consteval value_type operator()() const noexcept { return v; }
 };
 template<bool v>
