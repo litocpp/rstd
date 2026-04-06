@@ -1,12 +1,12 @@
-export module rstd.core:tuple;
-export import rstd.basic;
+export module rstd.basic:tuple;
+export import :prelude;
 
-namespace rstd::tuple_
+namespace rstd::exp
 {
 
 /// A fixed-size heterogeneous collection of values.
 /// \tparam Ts The element types.
 export template<typename... Ts>
-class Tuple {};
+class tuple {};
 
-} // namespace rstd::tuple
+} // namespace std::tuple

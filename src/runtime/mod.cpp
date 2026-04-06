@@ -5,8 +5,8 @@ module;
 
 module rstd.runtime;
 
-using rstd::u8;
-using rstd::usize;
+
+using namespace rstd;
 
 extern "C" {
 

@@ -44,7 +44,6 @@ target_sources(
          choice.cppm
          pin.cppm
          hint.cppm
-         tuple.cppm
          memchr.cppm
          cmp.cppm
          time.cppm

@@ -32,11 +32,9 @@ module;
 #include <mutex>
 #include <shared_mutex>
 
-#include <ranges>
 #include <iterator>
 #include <tuple>
 #include <deque>
-#include <variant>
 #include <functional>
 #include <memory>
 #include <utility>
@@ -67,8 +65,6 @@ export using std::is_error_code_enum;
 // export for struct binding
 export using std::tuple_size;
 export using std::tuple_element;
-export using std::get;
-export using std::get_if;
 
 export using std::strong_ordering;
 export using std::weak_ordering;
@@ -198,10 +194,6 @@ using std::ranges::range;
 using std::ranges::range_value_t;
 using std::ranges::size;
 } // namespace ranges
-namespace views
-{
-using std::views::transform;
-}
 
 // tuple
 using std::integer_sequence;
@@ -217,14 +209,6 @@ using std::bind;
 using std::enable_shared_from_this;
 using std::invoke;
 using std::make_shared;
-using std::make_unique;
-using std::monostate;
-using std::shared_ptr;
-using std::transform;
-using std::unique_ptr;
-using std::variant;
-using std::visit;
-using std::weak_ptr;
 
 using std::exception;
 using std::exception_ptr;
@@ -283,7 +267,6 @@ using std::filesystem::remove;
 using std::abort;
 using std::apply;
 using std::get;
-using std::get_if;
 using std::invoke;
 using std::runtime_error;
 

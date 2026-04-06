@@ -4,19 +4,6 @@ export import :mtp.std;
 
 /// @cond undocumented
 
-template<class T>
-struct type_identity {
-    using type = T;
-};
-
-template<typename T>
-struct declval_protector {
-    static const bool stop = false;
-};
-
-template<typename T>
-auto return_nop() -> T;
-
 template<bool, typename T = void>
 struct enable_if {};
 template<typename T>
@@ -36,6 +23,86 @@ template<bool v>
 using bool_constant = integral_constant<bool, v>;
 struct true_type : integral_constant<bool, true> {};
 struct false_type : integral_constant<bool, false> {};
+
+namespace rstd::mtp
+{
+export template<typename...>
+using void_t = void;
+
+#if __has_builtin(__is_const)
+/// Satisfied when `T` is const-qualified.
+export template<typename T>
+concept is_const = __is_const(T);
+#else
+template<typename T>
+struct is_const_t : false_type {};
+template<typename T>
+struct is_const_t<T const> : true_type {};
+
+export template<typename T>
+concept is_const = is_const_t<T> {}();
+#endif
+
+#if __has_builtin(__is_pointer)
+/// Satisfied when `T` is a pointer type.
+export template<typename T>
+concept is_ptr = __is_pointer(T);
+#else
+
+template<typename T>
+struct is_ptr_t : false_type {};
+template<typename T>
+struct is_ptr_t<T*> : true_type {};
+template<typename T>
+struct is_ptr_t<T* const> : true_type {};
+template<typename T>
+struct is_ptr_t<T* volatile> : true_type {};
+template<typename T>
+struct is_ptr_t<T* const volatile> : true_type {};
+
+export template<typename T>
+concept is_ptr = is_ptr_t<T> {}();
+#endif
+
+#if __has_builtin(__remove_extent)
+/// Removes one array extent from `T`.
+export template<typename T>
+using rm_ext = __remove_extent(T);
+#else
+template<typename T>
+struct remove_extent {
+    using type = T;
+};
+template<typename T, usize Size>
+struct remove_extent<T[Size]> {
+    using type = T;
+};
+template<typename T>
+struct remove_extent<T[]> {
+    using type = T;
+};
+export template<typename T>
+using rm_ext = remove_extent<T>::type;
+#endif
+
+} // namespace rstd::mtp
+
+using rstd::mtp::is_const;
+using rstd::mtp::is_ptr;
+using rstd::mtp::void_t;
+
+template<class T>
+struct type_identity {
+    using type = T;
+};
+
+template<typename T>
+struct declval_protector {
+    static const bool stop = false;
+};
+
+template<typename T>
+auto return_nop() -> T;
 
 template<typename T, typename...>
 using first_t = T;
@@ -86,18 +153,37 @@ constexpr bool eq(type_identity<T>, type_identity<U>) {
 
 template<typename>
 struct is_lvalue_reference : false_type {};
-template<typename _Tp>
-struct is_lvalue_reference<_Tp&> : true_type {};
+template<typename T>
+struct is_lvalue_reference<T&> : true_type {};
 /// is_rvalue_reference
 template<typename>
 struct is_rvalue_reference : false_type {};
-template<typename _Tp>
-struct is_rvalue_reference<_Tp&&> : true_type {};
+template<typename T>
+struct is_rvalue_reference<T&&> : true_type {};
 template<class T, template<class...> class Primary>
 
 struct spec_of : false_type {};
 template<template<class...> class Primary, class... Args>
 struct spec_of<Primary<Args...>, Primary> : true_type {};
+
+template<typename T, typename = void>
+struct add_pointer_helper {
+    using type = T;
+};
+template<typename T>
+struct add_pointer_helper<T, void_t<T*>> {
+    using type = T*;
+};
+template<typename T>
+struct add_ptr : public add_pointer_helper<T> {};
+template<typename T>
+struct add_ptr<T&> {
+    using type = T*;
+};
+template<typename T>
+struct add_ptr<T&&> {
+    using type = T*;
+};
 
 template<typename T>
 struct add_const {
@@ -128,21 +214,63 @@ struct rm_ref<T&&> {
 };
 
 template<typename Tp>
+struct rm_cv {
+    using type = Tp;
+};
+template<typename Tp>
+struct rm_cv<const Tp> {
+    using type = Tp;
+};
+template<typename Tp>
+struct rm_cv<volatile Tp> {
+    using type = Tp;
+};
+template<typename Tp>
+struct rm_cv<const volatile Tp> {
+    using type = Tp;
+};
+
+template<typename Tp>
 struct is_array_known_bounds : public false_type {};
 template<typename Tp, rstd::usize Size>
 struct is_array_known_bounds<Tp[Size]> : public true_type {};
-template<typename _Tp>
+template<typename T>
 struct is_array_unknown_bounds : public false_type {};
-template<typename _Tp>
-struct is_array_unknown_bounds<_Tp[]> : public true_type {};
+template<typename T>
+struct is_array_unknown_bounds<T[]> : public true_type {};
 
+// Decay trait for arrays and functions, used for perfect forwarding
+// in make_pair, make_tuple, etc.
+template<typename _Up>
+struct decay_selector : conditional<is_const<const _Up>, // false for functions
+                                    rm_cv<_Up>,          // N.B. DR 705.
+                                    add_ptr<_Up>>::type  // function decays to pointer
+{};
+template<typename Up, rstd::usize Nm>
+struct decay_selector<Up[Nm]> {
+    using type = Up*;
+};
+template<typename Up>
+struct decay_selector<Up[]> {
+    using type = Up*;
+};
+/// decay
+template<typename T>
+struct decay {
+    using type = typename decay_selector<T>::type;
+};
+template<typename T>
+struct decay<T&> {
+    using type = typename decay_selector<T>::type;
+};
+template<typename T>
+struct decay<T&&> {
+    using type = typename decay_selector<T>::type;
+};
 /// @endcond
 
 namespace rstd::mtp
 {
-
-template<typename...>
-using void_t = void;
 
 /// Compile-time type tag for `T`.
 export template<typename T>
@@ -152,10 +280,20 @@ inline constexpr type_identity<T> type_c {};
 /// @{
 /// Applies array-to-pointer, function-to-pointer, and cv-removal transformations.
 export template<typename T>
-using decay = __decay(T);
+using decay =
+#if __has_builtin(__is_nothrow_destructible)
+    __decay(T);
+#else
+    ::decay<T>::type;
+#endif
 /// Adds a pointer indirection to `T`.
 export template<typename T>
-using add_ptr = __add_pointer(T);
+using add_ptr =
+#if __has_builtin(__add_pointer)
+    __add_pointer(T);
+#else
+    ::add_ptr<T>;
+#endif
 /// Adds an lvalue reference to `T`.
 export template<typename T>
 using add_ref = ::add_ref<T>::type;
@@ -180,9 +318,7 @@ using rm_ref = ::rm_ref<T>::type;
 /// Removes reference and cv qualifiers from `T`.
 export template<typename T>
 using rm_cvf = __remove_cvref(T);
-/// Removes one array extent from `T`.
-export template<typename T>
-using rm_ext = __remove_extent(T);
+
 /// @}
 
 /// Utility to simplify expressions used in unevaluated operands
@@ -246,7 +382,7 @@ concept drop =
 #if __has_builtin(__is_nothrow_destructible)
     __is_nothrow_destructible(T);
 #else
-    mtp::is_nothrow_destructible_v<T>;
+    noexcept(declval<T&>().~T());
 #endif
 
 /// Satisfied when `T` is copy constructible.
@@ -339,7 +475,7 @@ concept noex_drop =
 #if __has_builtin(__is_nothrow_destructible)
     __is_nothrow_destructible(T);
 #else
-    mtp::is_nothrow_destructible_v<T>;
+    noexcept(declval<T&>().~T());
 #endif
 /// @}
 
@@ -380,12 +516,6 @@ concept is_float = any<rm_cvf<T>, float, double, long double>;
 export template<typename T>
 concept is_arithmetic = is_int<T> || is_float<T>;
 
-/// Satisfied when `T` is const-qualified.
-export template<typename T>
-concept is_const = __is_const(T);
-/// Satisfied when `T` is a pointer type.
-export template<typename T>
-concept is_ptr = __is_pointer(T);
 /// Satisfied when `T` is a reference type (lvalue or rvalue).
 export template<typename T>
 concept is_ref = __is_reference(T);
@@ -409,10 +539,16 @@ export template<typename T>
 concept is_array = __is_array(T);
 /// Satisfied when `T` is an array type with unknown bound.
 export template<typename T>
-concept is_array_dst = __is_unbounded_array(T);
+concept is_array_dst =
+#if __has_builtin(__is_unbounded_array)
+    __is_unbounded_array(T);
+#else
+    ::is_array_unknown_bounds<T> {}();
+#endif
+
 /// Satisfied when `T` is a tuple-like type (has `tuple_size`).
 export template<typename T>
-concept is_tuple = requires { rstd::tuple_size<T>(); };
+concept is_tuple = requires { std::tuple_size<T>(); };
 /// Satisfied when `T` is an aggregate type.
 export template<typename T>
 concept is_aggregate = __is_aggregate(rm_cv<T>);
@@ -447,10 +583,10 @@ using underlying = __underlying_type(T);
 
 /// The number of elements in a tuple-like type.
 export template<typename T>
-constexpr auto tuple_size = rstd::tuple_size<T>::value;
+constexpr auto tuple_size = std::tuple_size<T>::value;
 /// The type of the I-th element in a tuple-like type.
 export template<usize I, typename T>
-using tuple_element = rstd::tuple_element<I, T>::type;
+using tuple_element = std::tuple_element<I, T>::type;
 /// @}
 
 /// Satisfied when `T` is a specialization of the template `Primary`.

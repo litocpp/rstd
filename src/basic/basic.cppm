@@ -129,8 +129,8 @@ constexpr auto lexicographical_compare_three_way(InputIter1 first1, InputIter1 l
                                                  Compare comp) {
     if constexpr (mtp::is_ptr<InputIter1> && mtp::is_ptr<InputIter2>) {
         if (! mtp::is_constant_evaluated()) {
-            using T1 = mtp::iter_value_t<InputIter1>;
-            using T2 = mtp::iter_value_t<InputIter2>;
+            using T1 = std::iter_value_t<InputIter1>;
+            using T2 = std::iter_value_t<InputIter2>;
 
             if constexpr (mtp::same<T1, T2> && mtp::is_int<T1> && sizeof(T1) == 1) {
                 auto len1    = last1 - first1;
@@ -150,7 +150,7 @@ constexpr auto lexicographical_compare_three_way(InputIter1 first1, InputIter1 l
 
     while (first1 != last1) {
         if (first2 == last2) {
-            return rstd::strong_ordering::greater;
+            return std::strong_ordering::greater;
         }
 
         if (auto cmp = comp(*first1, *first2); cmp != 0) {
@@ -170,7 +170,7 @@ export template<typename InputIter1, typename InputIter2>
 constexpr auto lexicographical_compare_three_way(InputIter1 first1, InputIter1 last1,
                                                  InputIter2 first2, InputIter2 last2) {
     return rstd::lexicographical_compare_three_way(
-        first1, last1, first2, last2, rstd::compare_three_way {});
+        first1, last1, first2, last2, std::compare_three_way {});
 }
 
 } // namespace rstd

@@ -13,6 +13,7 @@ export using ::operator new;
 export using ::operator delete;
 namespace std
 {
+export using std::tuple;
 /// Provides the number of elements in a tuple-like type.
 export using std::tuple_size;
 /// Provides the type of the I-th element in a tuple-like type.
@@ -21,6 +22,7 @@ export using std::tuple_element;
 export using std::get;
 /// A totally ordered comparison result type.
 export using std::strong_ordering;
+export using std::compare_three_way;
 } // namespace std
 
 namespace rstd
