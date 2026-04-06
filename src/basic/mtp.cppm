@@ -11,11 +11,43 @@ struct type_identity {
 
 template<typename T>
 struct declval_protector {
-    static const bool __stop = false;
+    static const bool stop = false;
 };
 
 template<typename T>
 auto return_nop() -> T;
+
+template<bool, typename T = void>
+struct enable_if {};
+template<typename T>
+struct enable_if<true, T> {
+    using type = T;
+};
+template<bool Cond, typename Tp = void>
+using enable_if_t = typename enable_if<Cond, Tp>::type;
+
+template<class T, T v>
+struct integral_constant {
+    using value_type = T;
+    using type       = integral_constant;
+    consteval value_type operator()() const noexcept { return v; }
+};
+template<bool v>
+using bool_constant = integral_constant<bool, v>;
+struct true_type : integral_constant<bool, true> {};
+struct false_type : integral_constant<bool, false> {};
+
+template<typename T, typename...>
+using first_t = T;
+
+template<typename... Bn>
+auto or_fn(int) -> first_t<false_type, enable_if_t<! bool(Bn::value)>...>;
+template<typename... _Bn>
+auto or_fn(...) -> true_type;
+template<typename... _Bn>
+auto and_fn(int) -> first_t<true_type, enable_if_t<bool(_Bn::value)>...>;
+template<typename... _Bn>
+auto and_fn(...) -> false_type;
 
 template<class T> // Note that “cv void&” is a substitution failure
 auto try_add_lvalue_reference(int) -> type_identity<T&>;
@@ -52,30 +84,18 @@ constexpr bool eq(type_identity<T>, type_identity<U>) {
     return false;
 }
 
-template<class T, T v>
-struct integral_constant {
-    using value_type = T;
-    constexpr value_type operator()() const noexcept { return v; }
-};
-struct true_type : integral_constant<bool, true> {};
-struct false_type : integral_constant<bool, false> {};
-
 template<typename>
 struct is_lvalue_reference : false_type {};
-
 template<typename _Tp>
 struct is_lvalue_reference<_Tp&> : true_type {};
-
 /// is_rvalue_reference
 template<typename>
 struct is_rvalue_reference : false_type {};
-
 template<typename _Tp>
 struct is_rvalue_reference<_Tp&&> : true_type {};
-
 template<class T, template<class...> class Primary>
-struct spec_of : false_type {};
 
+struct spec_of : false_type {};
 template<template<class...> class Primary, class... Args>
 struct spec_of<Primary<Args...>, Primary> : true_type {};
 
@@ -107,67 +127,73 @@ struct rm_ref<T&&> {
     using type = T;
 };
 
-template<typename...>
-using void_t = void;
+template<typename Tp>
+struct is_array_known_bounds : public false_type {};
+template<typename Tp, rstd::usize Size>
+struct is_array_known_bounds<Tp[Size]> : public true_type {};
+template<typename _Tp>
+struct is_array_unknown_bounds : public false_type {};
+template<typename _Tp>
+struct is_array_unknown_bounds<_Tp[]> : public true_type {};
 
 /// @endcond
 
-export namespace rstd::mtp
+namespace rstd::mtp
 {
-/// Compile-time type tag for `T`.
-template<typename T>
-inline constexpr type_identity<T> type_c {};
 
-/// Satisfied when `T` is a complete type.
-template<typename T>
-concept complete = requires { sizeof(T); };
+template<typename...>
+using void_t = void;
+
+/// Compile-time type tag for `T`.
+export template<typename T>
+inline constexpr type_identity<T> type_c {};
 
 /// \name type modifier
 /// @{
 /// Applies array-to-pointer, function-to-pointer, and cv-removal transformations.
-template<typename T>
+export template<typename T>
 using decay = __decay(T);
 /// Adds a pointer indirection to `T`.
-template<typename T>
+export template<typename T>
 using add_ptr = __add_pointer(T);
 /// Adds an lvalue reference to `T`.
-template<typename T>
+export template<typename T>
 using add_ref = ::add_ref<T>::type;
 /// Adds an rvalue reference to `T`.
-template<typename T>
+export template<typename T>
 using add_ref_rv = ::add_ref_rv<T>::type;
 /// Adds `const` qualification to `T`.
-template<typename T>
+export template<typename T>
 using add_const = ::add_const<T>::type;
 /// Removes `const` qualification from `T`.
-template<typename T>
+export template<typename T>
 using rm_const = ::rm_const<T>::type;
 /// Removes top-level `const` and `volatile` qualifiers from `T`.
-template<typename T>
+export template<typename T>
 using rm_cv = __remove_cv(T);
 /// Removes one level of pointer indirection from `T`.
-template<typename T>
+export template<typename T>
 using rm_ptr = __remove_pointer(T);
 /// Removes reference qualification from `T`.
-template<typename T>
+export template<typename T>
 using rm_ref = ::rm_ref<T>::type;
 /// Removes reference and cv qualifiers from `T`.
-template<typename T>
+export template<typename T>
 using rm_cvf = __remove_cvref(T);
 /// Removes one array extent from `T`.
-template<typename T>
+export template<typename T>
 using rm_ext = __remove_extent(T);
 /// @}
 
 /// Utility to simplify expressions used in unevaluated operands
-template<typename T>
+export template<typename T>
 auto declval() noexcept -> add_ref_rv<T> {
-    static_assert(declval_protector<T>::__stop, "declval() must not be used!");
+    static_assert(declval_protector<T>::stop, "declval() must not be used!");
     return return_nop<add_ref_rv<T>>();
 }
 
 /// Detects whether the current invocation occurs within a constant-evaluated context.
-[[gnu::always_inline]]
+export [[gnu::always_inline]]
 constexpr inline bool is_constant_evaluated() noexcept {
 #if __cpp_if_consteval >= 202106L
     if consteval {
@@ -185,37 +211,37 @@ constexpr inline bool is_constant_evaluated() noexcept {
 // concepts
 
 /// Satisfied when `T` and `U` are the same type.
-template<typename T, typename U>
+export template<typename T, typename U>
 concept same_as = __is_same(T, U);
 
 /// Satisfied when `T` is the same as all of `Rest...`.
-template<typename T, typename... Rest>
+export template<typename T, typename... Rest>
 concept same = (__is_same(T, Rest) && ...);
 /// Satisfied when `T` is the same as any of `Rest...`.
-template<typename T, typename... Rest>
+export template<typename T, typename... Rest>
 concept any = (__is_same(T, Rest) || ...);
 
 /// Satisfied when `From` is implicitly and explicitly convertible to `To`.
-template<typename From, typename To>
+export template<typename From, typename To>
 concept convertible_to =
     __is_convertible(From, To) && requires { static_cast<To>(mtp::declval<From>()); };
 
 /// Satisfied when `T` and `U` can be compared with `==` and `!=`.
-template<typename T, typename U>
+export template<typename T, typename U>
 concept equalable = requires(const T& a, const U& b) {
     { a == b } -> convertible_to<bool>;
     { a != b } -> convertible_to<bool>;
 };
 
 /// Satisfied when `S` has the same size and alignment as `T` and is standard-layout.
-template<typename S, typename T>
+export template<typename S, typename T>
 concept transparent = sizeof(S) == sizeof(T) && alignof(S) == alignof(T) && __is_standard_layout(S);
 
 /// Satisfied when `T` is constructible from `Args...`.
-template<typename T, typename... Args>
+export template<typename T, typename... Args>
 concept init = __is_constructible(T, Args...);
 /// Satisfied when `T` is nothrow destructible.
-template<typename T>
+export template<typename T>
 concept drop =
 #if __has_builtin(__is_nothrow_destructible)
     __is_nothrow_destructible(T);
@@ -224,36 +250,36 @@ concept drop =
 #endif
 
 /// Satisfied when `T` is copy constructible.
-template<typename T>
+export template<typename T>
 concept copy = __is_constructible(T, add_ref<add_const<T>>);
 
 /// Satisfied when `T` is move constructible.
-template<typename T>
+export template<typename T>
 concept move = __is_constructible(T, add_ref_rv<T>);
 
 /// Satisfied when `U` can be assigned to `T`.
-template<typename T, typename U>
+export template<typename T, typename U>
 concept assign = __is_assignable(T, U);
 /// Satisfied when `T` is copy assignable.
-template<typename T>
+export template<typename T>
 concept assign_copy = assign<add_ref<T>, add_ref<add_const<T>>>;
 /// Satisfied when `T` is move assignable.
-template<typename T>
+export template<typename T>
 concept assign_move = assign<add_ref<T>, add_ref_rv<T>>;
 
 /// \name Trivial
 /// @{
 
 /// Is trivial
-template<typename T>
+export template<typename T>
 concept triv = __is_trivial(T);
 
 /// Is trivially constructible
-template<typename T, typename... Args>
+export template<typename T, typename... Args>
 concept triv_init = __is_trivially_constructible(T, Args...);
 
 /// Is trivially destructible
-template<typename T>
+export template<typename T>
 concept triv_drop =
 #if __has_builtin(__is_trivially_destructible)
     __is_trivially_destructible(T);
@@ -262,22 +288,22 @@ concept triv_drop =
 #endif
 
 /// Is trivially copyable
-template<typename T>
+export template<typename T>
 concept triv_copy = triv_init<T, add_ref<add_const<T>>>;
 //__is_trivially_copyable(T);
 
 /// Is trivially moveable
-template<typename T>
+export template<typename T>
 concept triv_move = triv_init<T, add_ref_rv<T>>;
 /// Is trivially assignable
-template<typename T, typename U>
+export template<typename T, typename U>
 concept triv_assign = __is_trivially_assignable(T, U);
 
 /// Is trivially copy assignable.
-template<typename T>
+export template<typename T>
 concept triv_assign_copy = triv_assign<add_ref<T>, add_ref<add_const<T>>>;
 /// Is trivially move assignable.
-template<typename T>
+export template<typename T>
 concept triv_assign_move = triv_assign<add_ref<T>, add_ref_rv<T>>;
 /// @}
 
@@ -285,30 +311,30 @@ concept triv_assign_move = triv_assign<add_ref<T>, add_ref_rv<T>>;
 /// @{
 
 /// Is nothrow constructible
-template<typename T, typename... Args>
+export template<typename T, typename... Args>
 concept noex_init = __is_nothrow_constructible(T, Args...);
 
 /// Is nothrow assignable
-template<typename T, typename U>
+export template<typename T, typename U>
 concept noex_assign = __is_nothrow_assignable(T, U);
 
 /// Is nothrow copy construcible
-template<typename T>
+export template<typename T>
 concept noex_copy = noex_init<T, add_ref<add_const<T>>>;
 
 /// Is nothrow move construcible
-template<typename T>
+export template<typename T>
 concept noex_move = noex_init<T, add_ref_rv<T>>;
 
 /// Is nothrow copy assignable
-template<typename T>
+export template<typename T>
 concept noex_assign_copy = noex_assign<add_ref<T>, add_ref<add_const<T>>>;
 /// Is nothrow move assignable
-template<typename T>
+export template<typename T>
 concept noex_assign_move = noex_assign<add_ref<T>, add_ref_rv<T>>;
 
 /// Is no throw destructible
-template<typename T>
+export template<typename T>
 concept noex_drop =
 #if __has_builtin(__is_nothrow_destructible)
     __is_nothrow_destructible(T);
@@ -320,34 +346,27 @@ concept noex_drop =
 /// \name User
 /// @{
 /// Has a user-defined (non-trivial) copy constructor.
-template<typename T>
+export template<typename T>
 concept user_copy = init<T, T const&> && (! triv_copy<T>);
 /// Has a user-defined (non-trivial) move constructor.
-template<typename T>
+export template<typename T>
 concept user_move = init<T, T&&> && (! triv_move<T>);
 /// Has a user-defined (non-trivial) copy assignment operator.
-template<typename T>
+export template<typename T>
 concept user_assign_copy = assign<T, T const&> && (! triv_assign_copy<T>);
 /// Has a user-defined (non-trivial) move assignment operator.
-template<typename T>
+export template<typename T>
 concept user_assign_move = assign<T, T&&> && (! triv_assign_move<T>);
 
-/// @}
-
-/// \name Logic
-/// @{
-/// Selects `Iftrue` or `Iffalse` based on a compile-time boolean condition.
-template<bool Cond, typename Iftrue, typename Iffalse>
-using cond = ::conditional<Cond, Iftrue, Iffalse>::type;
 /// @}
 
 /// \name Is
 /// @{
 /// Satisfied when `T` is `void` (ignoring cv/ref qualifiers).
-template<typename T>
+export template<typename T>
 concept is_void = same<rm_cvf<T>, void>;
 /// Satisfied when `T` is an integral type.
-template<typename T>
+export template<typename T>
 concept is_int = requires(T t, T* p, void (*f)(T)) // T* parameter excludes reference types
 {
     reinterpret_cast<T>(t); // Exclude class types
@@ -355,86 +374,111 @@ concept is_int = requires(T t, T* p, void (*f)(T)) // T* parameter excludes refe
     p + t;                  // Exclude everything not yet excluded but integral types
 };
 /// Satisfied when `T` is a floating-point type.
-template<typename T>
+export template<typename T>
 concept is_float = any<rm_cvf<T>, float, double, long double>;
 /// Satisfied when `T` is an arithmetic (integral or floating-point) type.
-template<typename T>
+export template<typename T>
 concept is_arithmetic = is_int<T> || is_float<T>;
 
 /// Satisfied when `T` is const-qualified.
-template<typename T>
+export template<typename T>
 concept is_const = __is_const(T);
 /// Satisfied when `T` is a pointer type.
-template<typename T>
+export template<typename T>
 concept is_ptr = __is_pointer(T);
 /// Satisfied when `T` is a reference type (lvalue or rvalue).
-template<typename T>
+export template<typename T>
 concept is_ref = __is_reference(T);
 /// Satisfied when `T` is an lvalue reference.
-template<typename T>
+export template<typename T>
 concept is_ref_lv = ::is_lvalue_reference<T> {}();
 /// Satisfied when `T` is an rvalue reference.
-template<typename T>
+export template<typename T>
 concept is_ref_rv = ::is_rvalue_reference<T> {}();
 /// Satisfied when `T` is an enumeration type.
-template<typename T>
+export template<typename T>
 concept is_enum = __is_enum(T);
 /// Satisfied when `T` is a union type.
-template<typename T>
+export template<typename T>
 concept is_union = __is_union(T);
 /// Satisfied when `T` is a class or struct type.
-template<typename T>
+export template<typename T>
 concept is_class = __is_class(T);
 /// Satisfied when `T` is an array type.
-template<typename T>
+export template<typename T>
 concept is_array = __is_array(T);
 /// Satisfied when `T` is an array type with unknown bound.
-template<typename T>
+export template<typename T>
 concept is_array_dst = __is_unbounded_array(T);
 /// Satisfied when `T` is a tuple-like type (has `tuple_size`).
-template<typename T>
+export template<typename T>
 concept is_tuple = requires { rstd::tuple_size<T>(); };
 /// Satisfied when `T` is an aggregate type.
-template<typename T>
+export template<typename T>
 concept is_aggregate = __is_aggregate(rm_cv<T>);
 /// Satisfied when `Base` is a base class of `Derived`.
-template<typename Base, typename Derived>
+export template<typename Base, typename Derived>
 concept is_base_of = __is_base_of(Base, Derived);
+
+export template<typename T>
+concept is_func = __is_function(T);
+/// @}
+
+/// \name Logic
+/// @{
+/// Selects `Iftrue` or `Iffalse` based on a compile-time boolean condition.
+export template<bool Cond, typename Iftrue, typename Iffalse>
+using cond = ::conditional<Cond, Iftrue, Iffalse>::type;
+
+export template<typename... Bn>
+struct or_ : decltype(or_fn<Bn...>(0)) {};
+export template<typename... Bn>
+struct and_ : decltype(and_fn<Bn...>(0)) {};
+export template<typename Pp>
+struct not_ : bool_constant<! bool(Pp::value)> {};
 /// @}
 
 /// \name Access
 /// @{
 /// Retrieves the underlying integer type of an enum.
-template<typename T>
+export template<typename T>
     requires is_enum<T>
 using underlying = __underlying_type(T);
 
 /// The number of elements in a tuple-like type.
-template<typename T>
+export template<typename T>
 constexpr auto tuple_size = rstd::tuple_size<T>::value;
 /// The type of the I-th element in a tuple-like type.
-template<usize I, typename T>
+export template<usize I, typename T>
 using tuple_element = rstd::tuple_element<I, T>::type;
 /// @}
 
 /// Satisfied when `T` is a specialization of the template `Primary`.
-template<class T, template<class...> class Primary>
+export template<class T, template<class...> class Primary>
 concept spec_of = ::spec_of<T, Primary> {}();
 
 /// Maps `void` to `empty`, otherwise yields `T`.
-template<typename T>
+export template<typename T>
 using void_empty_t = cond<is_void<T>, empty, T>;
 
 /// Propagates the const-ness of `T` onto `U`.
-template<typename T, typename U>
+export template<typename T, typename U>
 using follow_const_t =
     mtp::cond<mtp::is_const<T>, mtp::add_const<mtp::rm_const<U>>, mtp::rm_const<U>>;
+
+/// Satisfied when `T` is a complete type.
+export template<typename T>
+concept complete = requires { sizeof(T); };
+
+template<typename T>
+concept complete_or_unbounded =
+    complete<T> || is_ref<T> || is_func<T> || is_void<T> || (is_array_unknown_bounds<T> {}());
 
 /// \name traits
 /// @{
 
 /// Extracts metadata from function pointer and member function pointer types.
-template<typename T>
+export template<typename T>
 struct func_traits {
     static_assert(false);
 };

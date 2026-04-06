@@ -72,10 +72,9 @@ struct option_traits {};
 
 template<typename T>
 struct option_traits<Option<T>> {
-    using value_type  = T;
-    using ret_value_t = T;
-    using union_value_t =
-        mtp::cond<mtp::is_ref<T>, mtp::add_ptr<mtp::rm_ref<T>>, T>;
+    using value_type    = T;
+    using ret_value_t   = T;
+    using union_value_t = mtp::cond<mtp::is_ref<T>, mtp::add_ptr<mtp::rm_ref<T>>, T>;
 };
 
 template<typename T>
@@ -216,7 +215,11 @@ protected:
             return static_cast<mtp::add_ref_rv<value_t>>(*ptr);
     }
 
-    constexpr auto&& _get_move() noexcept { return _get(static_cast<Option<T>&&>(*this)); }
+    template<typename U>
+    [[gnu::always_inline]]
+    constexpr auto&& _get_move(U&& self) noexcept {
+        return _get(rstd::move(self));
+    }
 
 public:
     /// Returns `true` if the option is `None`.
@@ -229,7 +232,7 @@ public:
     // requires ImpledT<FnOnce<F, bool(T)>>
     auto is_some_and(F&& f) -> bool {
         if (this->is_some()) {
-            return rstd::forward<F>(f)(_get_move());
+            return rstd::forward<F>(f)(_get_move(*this));
         }
         return false;
     }
@@ -249,7 +252,7 @@ public:
     /// \return The contained value.
     auto expect(ref<str> msg) -> T {
         if (this->is_some()) {
-            return _get_move();
+            return _get_move(*this);
         }
         rstd::panic("{}", msg);
         rstd::unreachable();
@@ -259,7 +262,7 @@ public:
     /// \return The contained value.
     auto unwrap() -> T {
         if (this->is_some()) {
-            return _get_move();
+            return _get_move(*this);
         }
         rstd::panic("called `Option::unwrap()` on a `None` value");
         rstd::unreachable();
@@ -271,7 +274,7 @@ public:
     template<typename U>
     auto unwrap_or(U&& default_value) -> T {
         if (this->is_some()) {
-            return _get_move();
+            return _get_move(*this);
         }
         return rstd::forward<U>(default_value);
     }
@@ -283,7 +286,7 @@ public:
     // requires ImpledT<FnOnce<F, T()>>
     auto unwrap_or_else(F&& f) -> T {
         if (this->is_some()) {
-            return _get_move();
+            return _get_move(*this);
         }
         return rstd::forward<F>(f)();
     }
@@ -292,7 +295,7 @@ public:
     /// \return The contained value.
     constexpr auto unwrap_unchecked() -> T {
         if (this->is_some()) {
-            return _get_move();
+            return _get_move(*this);
         } else {
             rstd::unreachable();
         }
@@ -305,19 +308,20 @@ public:
     // requires ImpledT<FnOnce<F, U(T)>>
     constexpr auto map(F&& f) -> Option<U> {
         if (this->is_some()) {
-            return option::Some(rstd::forward<F>(f)(_get_move()));
+            return option::Some(rstd::forward<F>(f)(_get_move(*this)));
         }
         return option::None<U>();
     }
 
-    /// Returns `None` if the option is `None`, otherwise calls `f` with the contained value and returns the result.
+    /// Returns `None` if the option is `None`, otherwise calls `f` with the contained value and
+    /// returns the result.
     /// \param f A function that takes the contained value and returns an `Option`.
     /// \return The result of `f(value)` if `Some`, otherwise `None`.
     template<typename F, typename U = mtp::invoke_result_t<F, T>>
         requires mtp::spec_of<U, Option>
     constexpr auto and_then(F&& f) -> U {
         if (this->is_some()) {
-            return rstd::forward<F>(f)(_get_move());
+            return rstd::forward<F>(f)(_get_move(*this));
         }
         return option::None();
     }
@@ -505,27 +509,29 @@ namespace detail
 
 template<typename T>
 struct option_adapter : option_adapter_l1<T> {
-    /// Transforms the `Option<T>` into a `Result<T, E>`, mapping `Some(v)` to `Ok(v)` and `None` to `Err(err)`.
+    /// Transforms the `Option<T>` into a `Result<T, E>`, mapping `Some(v)` to `Ok(v)` and `None` to
+    /// `Err(err)`.
     /// \param err The error value to use if the option is `None`.
     /// \return `Ok(value)` if `Some`, otherwise `Err(err)`.
     template<typename E>
     auto ok_or(E err) -> result::Result<T, E> {
         auto& self = static_cast<Option<T>&>(*this);
         if (self.is_some()) {
-            return result::Ok(self._get_move());
+            return result::Ok(self._get_move(self));
         } else {
             return result::Err(err);
         }
     }
 
-    /// Transforms the `Option<T>` into a `Result<T, E>`, mapping `Some(v)` to `Ok(v)` and `None` to `Err(err())`.
+    /// Transforms the `Option<T>` into a `Result<T, E>`, mapping `Some(v)` to `Ok(v)` and `None` to
+    /// `Err(err())`.
     /// \param err A closure that produces the error value if the option is `None`.
     /// \return `Ok(value)` if `Some`, otherwise `Err(err())`.
     template<typename F, typename E = mtp::invoke_result_t<F>>
     auto ok_or_else(F&& err) -> result::Result<T, E> {
         auto& self = static_cast<Option<T>&>(*this);
         if (self.is_some()) {
-            return result::Ok(self._get_move());
+            return result::Ok(self._get_move(self));
         } else {
             return result::Err(rstd::move(err)());
         }
@@ -539,7 +545,7 @@ struct option_adapter_l1<Option<T>> {
     constexpr auto flatten() -> Option<T> {
         auto&& self = static_cast<Option<Option<T>>&&>(*this);
         if (self.is_some()) {
-            return self._get_move();
+            return self._get_move(self);
         } else {
             return None();
         }

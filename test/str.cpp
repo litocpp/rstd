@@ -1,6 +1,7 @@
-import rstd;
 #include <gtest/gtest.h>
 #include <vector>
+
+import rstd;
 
 using namespace rstd::prelude;
 

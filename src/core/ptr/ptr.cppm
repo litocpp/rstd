@@ -105,7 +105,7 @@ struct ref_base {
         return *(static_cast<Self const*>(this)->p + i);
     }
 
-    constexpr auto len() const noexcept
+    constexpr auto len() const noexcept -> usize
         requires mtp::DSTArray<T>
     {
         return static_cast<Self const*>(this)->length;

@@ -2,14 +2,13 @@ module;
 #include <rstd/macro.hpp>
 
 #if RSTD_OS_UNIX
-#include <sys/wait.h>
-#include <unistd.h>
-#include <spawn.h>
-#include <signal.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <stdlib.h>
-extern char** environ;
+#    include <sys/wait.h>
+#    include <unistd.h>
+#    include <spawn.h>
+#    include <signal.h>
+#    include <fcntl.h>
+#    include <errno.h>
+#    include <stdlib.h>
 #endif
 
 module rstd;
@@ -19,14 +18,15 @@ using namespace rstd::prelude;
 // ── ExitStatus::from_raw (Unix) ──────────────────────────────────────────
 #if RSTD_OS_UNIX
 auto rstd::process::ExitStatus::from_raw(i32 raw) noexcept -> ExitStatus {
-    if (WIFEXITED(raw))    return ExitStatus::from_code(WEXITSTATUS(raw));
-    if (WIFSIGNALED(raw))  return ExitStatus::from_signal(WTERMSIG(raw));
+    if (WIFEXITED(raw)) return ExitStatus::from_code(WEXITSTATUS(raw));
+    if (WIFSIGNALED(raw)) return ExitStatus::from_signal(WTERMSIG(raw));
     return ExitStatus::from_code(-1);
 }
 #endif
 
 // ── Pipe handle destructors ─────────────────────────────────────────────
-namespace rstd::process {
+namespace rstd::process
+{
 
 ChildStdin::~ChildStdin() {
 #if RSTD_OS_UNIX
@@ -65,7 +65,8 @@ auto Child::wait() -> io::Result<ExitStatus> {
     pid = -1;
     return Ok(ExitStatus::from_raw(status));
 #else
-    return Err(io::error::Error::from_kind(io::error::ErrorKind { io::error::ErrorKind::Unsupported }));
+    return Err(
+        io::error::Error::from_kind(io::error::ErrorKind { io::error::ErrorKind::Unsupported }));
 #endif
 }
 
@@ -80,7 +81,8 @@ auto Child::kill() -> io::Result<rstd::empty> {
     }
     return Ok(rstd::empty {});
 #else
-    return Err(io::error::Error::from_kind(io::error::ErrorKind { io::error::ErrorKind::Unsupported }));
+    return Err(
+        io::error::Error::from_kind(io::error::ErrorKind { io::error::ErrorKind::Unsupported }));
 #endif
 }
 
@@ -111,17 +113,13 @@ auto Child::wait_with_output() -> io::Result<Output> {
 
     auto out_buf = read_all(out_fd);
     auto err_buf = read_all(err_fd);
-    stdout_pipe = {};
-    stderr_pipe = {};
+    stdout_pipe  = {};
+    stderr_pipe  = {};
 
     auto status = wait();
     if (status.is_err()) return Err(status.unwrap_err());
 
-    return Ok(Output {
-        status.unwrap(),
-        rstd::move(out_buf),
-        rstd::move(err_buf)
-    });
+    return Ok(Output { status.unwrap(), rstd::move(out_buf), rstd::move(err_buf) });
 }
 
 } // namespace rstd::process
@@ -131,17 +129,16 @@ auto Child::wait_with_output() -> io::Result<Output> {
 namespace rstd::sys::process_impl
 {
 
-auto spawn(rstd::process::Command& cmd)
-    -> rstd::result::Result<rstd::process::Child, rstd::io::error::Error>
-{
+auto Spawn::spawn(rstd::process::Command& cmd)
+    -> rstd::result::Result<rstd::process::Child, rstd::io::error::Error> {
 #if RSTD_OS_UNIX
     using namespace rstd::process;
 
-    auto& prog = cmd.program_;
-    auto prog_ptr = reinterpret_cast<char const*>(prog.to_bytes_with_nul().p);
+    auto& prog     = cmd.program_;
+    auto  prog_ptr = reinterpret_cast<char const*>(prog.to_bytes_with_nul().p);
 
     // argv: [program, args..., nullptr]
-    auto argc = cmd.args_.len() + 2;
+    auto argc     = cmd.args_.len() + 2;
     auto argv_buf = ::alloc::vec::Vec<char*>::with_capacity(argc);
     argv_buf.push(const_cast<char*>(prog_ptr));
     for (usize i = 0; i < cmd.args_.len(); i++) {
@@ -193,42 +190,58 @@ auto spawn(rstd::process::Command& cmd)
     }
 
     {
-        pid_t child_pid = -1;
-        char** envp = environ;
+        pid_t  child_pid = -1;
+        char** envp      = environ;
 
-        int err = ::posix_spawnp(&child_pid, prog_ptr, &actions, nullptr,
-                                 argv_buf.begin(), envp);
+        int err = ::posix_spawnp(&child_pid, prog_ptr, &actions, nullptr, argv_buf.begin(), envp);
         posix_spawn_file_actions_destroy(&actions);
 
         if (err != 0) {
-            if (stdin_pipe[0]  >= 0) { ::close(stdin_pipe[0]); ::close(stdin_pipe[1]); }
-            if (stdout_pipe[0] >= 0) { ::close(stdout_pipe[0]); ::close(stdout_pipe[1]); }
-            if (stderr_pipe[0] >= 0) { ::close(stderr_pipe[0]); ::close(stderr_pipe[1]); }
+            if (stdin_pipe[0] >= 0) {
+                ::close(stdin_pipe[0]);
+                ::close(stdin_pipe[1]);
+            }
+            if (stdout_pipe[0] >= 0) {
+                ::close(stdout_pipe[0]);
+                ::close(stdout_pipe[1]);
+            }
+            if (stderr_pipe[0] >= 0) {
+                ::close(stderr_pipe[0]);
+                ::close(stderr_pipe[1]);
+            }
             return Err(rstd::io::error::Error::from_raw_os_error(err));
         }
 
         // Close child-side fds in parent
-        if (stdin_pipe[0]  >= 0) ::close(stdin_pipe[0]);
+        if (stdin_pipe[0] >= 0) ::close(stdin_pipe[0]);
         if (stdout_pipe[1] >= 0) ::close(stdout_pipe[1]);
         if (stderr_pipe[1] >= 0) ::close(stderr_pipe[1]);
 
         Child child;
         child.pid = child_pid;
-        if (stdin_pipe[1]  >= 0) child.stdin_pipe  = Some(ChildStdin(stdin_pipe[1]));
+        if (stdin_pipe[1] >= 0) child.stdin_pipe = Some(ChildStdin(stdin_pipe[1]));
         if (stdout_pipe[0] >= 0) child.stdout_pipe = Some(ChildStdout(stdout_pipe[0]));
         if (stderr_pipe[0] >= 0) child.stderr_pipe = Some(ChildStderr(stderr_pipe[0]));
         return Ok(rstd::move(child));
     }
 
-fail:
-    {
-        int e = errno;
-        posix_spawn_file_actions_destroy(&actions);
-        if (stdin_pipe[0]  >= 0) { ::close(stdin_pipe[0]); ::close(stdin_pipe[1]); }
-        if (stdout_pipe[0] >= 0) { ::close(stdout_pipe[0]); ::close(stdout_pipe[1]); }
-        if (stderr_pipe[0] >= 0) { ::close(stderr_pipe[0]); ::close(stderr_pipe[1]); }
-        return Err(rstd::io::error::Error::from_raw_os_error(e));
+fail: {
+    int e = errno;
+    posix_spawn_file_actions_destroy(&actions);
+    if (stdin_pipe[0] >= 0) {
+        ::close(stdin_pipe[0]);
+        ::close(stdin_pipe[1]);
     }
+    if (stdout_pipe[0] >= 0) {
+        ::close(stdout_pipe[0]);
+        ::close(stdout_pipe[1]);
+    }
+    if (stderr_pipe[0] >= 0) {
+        ::close(stderr_pipe[0]);
+        ::close(stderr_pipe[1]);
+    }
+    return Err(rstd::io::error::Error::from_raw_os_error(e));
+}
 #else
     return Err(rstd::io::error::Error::from_kind(
         rstd::io::error::ErrorKind { rstd::io::error::ErrorKind::Unsupported }));

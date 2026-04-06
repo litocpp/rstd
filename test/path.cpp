@@ -1,5 +1,5 @@
-import rstd;
 #include <gtest/gtest.h>
+import rstd;
 
 using rstd::path::Path;
 using rstd::path::PathBuf;

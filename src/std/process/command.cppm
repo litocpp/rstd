@@ -5,16 +5,16 @@ export import :process.exit_status;
 export import :io;
 export import rstd.alloc;
 
+using ::alloc::ffi::CString;
 using ::alloc::string::String;
 using ::alloc::vec::Vec;
-using ::alloc::ffi::CString;
 using namespace rstd::prelude;
 
 export namespace rstd::process
 {
 
 struct EnvAction {
-    CString key;
+    CString         key;
     Option<CString> value; // None = remove
 };
 
@@ -28,39 +28,41 @@ struct Child;
 struct ChildStdin {
     i32 fd { -1 };
     ~ChildStdin();
-    ChildStdin(ChildStdin&& o) noexcept : fd(o.fd) { o.fd = -1; }
+    ChildStdin(ChildStdin&& o) noexcept: fd(o.fd) { o.fd = -1; }
     ChildStdin& operator=(ChildStdin&&) = delete;
-    ChildStdin() = default;
-    explicit ChildStdin(i32 f) : fd(f) {}
+    ChildStdin()                        = default;
+    explicit ChildStdin(i32 f): fd(f) {}
 };
 
 /// A handle to a child process's standard output (read end of pipe).
 struct ChildStdout {
     i32 fd { -1 };
     ~ChildStdout();
-    ChildStdout(ChildStdout&& o) noexcept : fd(o.fd) { o.fd = -1; }
+    ChildStdout(ChildStdout&& o) noexcept: fd(o.fd) { o.fd = -1; }
     ChildStdout& operator=(ChildStdout&&) = delete;
-    ChildStdout() = default;
-    explicit ChildStdout(i32 f) : fd(f) {}
+    ChildStdout()                         = default;
+    explicit ChildStdout(i32 f): fd(f) {}
 };
 
 /// A handle to a child process's standard error (read end of pipe).
 struct ChildStderr {
     i32 fd { -1 };
     ~ChildStderr();
-    ChildStderr(ChildStderr&& o) noexcept : fd(o.fd) { o.fd = -1; }
+    ChildStderr(ChildStderr&& o) noexcept: fd(o.fd) { o.fd = -1; }
     ChildStderr& operator=(ChildStderr&&) = delete;
-    ChildStderr() = default;
-    explicit ChildStderr(i32 f) : fd(f) {}
+    ChildStderr()                         = default;
+    explicit ChildStderr(i32 f): fd(f) {}
 };
 
 } // namespace rstd::process
 
 namespace rstd::sys::process_impl
 {
-auto spawn(rstd::process::Command& cmd)
-    -> rstd::result::Result<rstd::process::Child, rstd::io::error::Error>;
-}
+struct Spawn {
+    static auto spawn(rstd::process::Command& cmd)
+        -> rstd::result::Result<rstd::process::Child, rstd::io::error::Error>;
+};
+} // namespace rstd::sys::process_impl
 
 // ── io::Read / io::Write impls for child pipe handles ────────────────────
 namespace rstd
@@ -95,10 +97,10 @@ export namespace rstd::process
 
 /// A child process handle.
 struct Child {
-    i32                  pid { -1 };
-    Option<ChildStdin>   stdin_pipe;
-    Option<ChildStdout>  stdout_pipe;
-    Option<ChildStderr>  stderr_pipe;
+    i32                 pid { -1 };
+    Option<ChildStdin>  stdin_pipe;
+    Option<ChildStdout> stdout_pipe;
+    Option<ChildStderr> stderr_pipe;
 
     /// Returns the OS-assigned process ID.
     auto id() const noexcept -> u32 { return static_cast<u32>(pid); }
@@ -128,28 +130,27 @@ struct Child {
         o.pid = -1;
     }
     Child& operator=(Child&&) = delete;
-    Child() = default;
+    Child()                   = default;
 };
 
 /// A process builder, providing fine-grained control over how a new process
 /// should be spawned. Analogous to Rust's `std::process::Command`.
 class Command {
-    CString          program_;
-    Vec<CString>     args_ {};
-    Vec<EnvAction>   env_actions_ {};
-    Option<CString>  cwd_ {};
-    Stdio            cfg_stdin_  { Stdio::inherit() };
-    Stdio            cfg_stdout_ { Stdio::inherit() };
-    Stdio            cfg_stderr_ { Stdio::inherit() };
-    bool             env_clear_ { false };
+    CString         program_;
+    Vec<CString>    args_ {};
+    Vec<EnvAction>  env_actions_ {};
+    Option<CString> cwd_ {};
+    Stdio           cfg_stdin_ { Stdio::inherit() };
+    Stdio           cfg_stdout_ { Stdio::inherit() };
+    Stdio           cfg_stderr_ { Stdio::inherit() };
+    bool            env_clear_ { false };
 
-    friend auto sys::process_impl::spawn(Command&)
-        -> result::Result<Child, io::error::Error>;
+    friend sys::process_impl::Spawn;
 
-    explicit Command(CString&& prog) : program_(rstd::move(prog)) {}
+    explicit Command(CString&& prog): program_(rstd::move(prog)) {}
 
 public:
-    Command(Command&&) noexcept = default;
+    Command(Command&&) noexcept            = default;
     Command& operator=(Command&&) noexcept = default;
 
     /// Creates a new `Command` for the given program.
@@ -167,19 +168,14 @@ public:
 
     /// Sets an environment variable for the child process.
     auto env(const char* key, const char* value) -> Command& {
-        env_actions_.push(EnvAction {
-            CString::from_raw_parts(key),
-            Some(CString::from_raw_parts(value))
-        });
+        env_actions_.push(
+            EnvAction { CString::from_raw_parts(key), Some(CString::from_raw_parts(value)) });
         return *this;
     }
 
     /// Removes an environment variable for the child process.
     auto env_remove(const char* key) -> Command& {
-        env_actions_.push(EnvAction {
-            CString::from_raw_parts(key),
-            Option<CString> {}
-        });
+        env_actions_.push(EnvAction { CString::from_raw_parts(key), Option<CString> {} });
         return *this;
     }
 
@@ -196,16 +192,23 @@ public:
     }
 
     /// Configures the child process's standard input.
-    auto set_stdin(Stdio s) -> Command& { cfg_stdin_ = s; return *this; }
+    auto set_stdin(Stdio s) -> Command& {
+        cfg_stdin_ = s;
+        return *this;
+    }
     /// Configures the child process's standard output.
-    auto set_stdout(Stdio s) -> Command& { cfg_stdout_ = s; return *this; }
+    auto set_stdout(Stdio s) -> Command& {
+        cfg_stdout_ = s;
+        return *this;
+    }
     /// Configures the child process's standard error.
-    auto set_stderr(Stdio s) -> Command& { cfg_stderr_ = s; return *this; }
+    auto set_stderr(Stdio s) -> Command& {
+        cfg_stderr_ = s;
+        return *this;
+    }
 
     /// Spawns the child process.
-    auto spawn() -> io::Result<Child> {
-        return sys::process_impl::spawn(*this);
-    }
+    auto spawn() -> io::Result<Child> { return sys::process_impl::Spawn::spawn(*this); }
 
     /// Executes the command and waits for it to finish, returning the exit status.
     auto status() -> io::Result<ExitStatus> {
@@ -218,7 +221,7 @@ public:
     auto output() -> io::Result<Output> {
         cfg_stdout_ = Stdio::piped();
         cfg_stderr_ = Stdio::piped();
-        auto child = spawn();
+        auto child  = spawn();
         if (child.is_err()) return Err(child.unwrap_err());
         return child.unwrap().wait_with_output();
     }
