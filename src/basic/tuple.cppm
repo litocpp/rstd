@@ -40,6 +40,27 @@ struct nth_type<I, T, Ts...> {
 template<usize I, typename... Ts>
 using nth_type_t = typename nth_type<I, Ts...>::type;
 
+/// Count occurrences of T in a parameter pack.
+template<typename T, typename... Ts>
+constexpr usize type_count = (usize(0) + ... + (mtp::same_as<T, Ts> ? usize(1) : usize(0)));
+
+/// Index of the first occurrence of T in a parameter pack.
+template<typename T, typename... Ts>
+struct type_index;
+
+template<typename T, typename U, typename... Ts>
+struct type_index<T, U, Ts...> {
+    static constexpr usize value = mtp::same_as<T, U> ? usize(0) : usize(1) + type_index<T, Ts...>::value;
+};
+
+template<typename T>
+struct type_index<T> {
+    static constexpr usize value = 0;
+};
+
+template<typename T, typename... Ts>
+constexpr usize type_index_v = type_index<T, Ts...>::value;
+
 /// Cast a `tuple_impl` to the leaf base for element `I`, exposing its `value`.
 template<usize I, typename T, typename Impl>
 constexpr auto& leaf_ref(Impl& impl) noexcept {
@@ -107,6 +128,30 @@ public:
         using T = nth_type_t<I, Ts...>;
         return static_cast<T&&>(leaf_ref<I, T>(impl));
     }
+
+    /// Access the element of type T (lvalue overload).
+    template<typename T>
+    constexpr T& get() & noexcept {
+        static_assert(type_count<T, Ts...> == 1,
+                      "tuple type-based get requires exactly one element of the requested type");
+        return leaf_ref<type_index_v<T, Ts...>, T>(impl);
+    }
+
+    /// Access the element of type T (const lvalue overload).
+    template<typename T>
+    constexpr T const& get() const& noexcept {
+        static_assert(type_count<T, Ts...> == 1,
+                      "tuple type-based get requires exactly one element of the requested type");
+        return leaf_ref<type_index_v<T, Ts...>, T>(impl);
+    }
+
+    /// Access the element of type T (rvalue overload).
+    template<typename T>
+    constexpr T&& get() && noexcept {
+        static_assert(type_count<T, Ts...> == 1,
+                      "tuple type-based get requires exactly one element of the requested type");
+        return static_cast<T&&>(leaf_ref<type_index_v<T, Ts...>, T>(impl));
+    }
 };
 
 /// Free function version of `get<I>(t)`, for structured-binding compatibility.
@@ -123,6 +168,21 @@ constexpr auto const& get(const tuple<Ts...>& t) noexcept {
 export template<usize I, typename... Ts>
 constexpr auto&& get(tuple<Ts...>&& t) noexcept {
     return rstd::move(t).template get<I>();
+}
+
+export template<typename T, typename... Ts>
+constexpr T& get(tuple<Ts...>& t) noexcept {
+    return t.template get<T>();
+}
+
+export template<typename T, typename... Ts>
+constexpr T const& get(const tuple<Ts...>& t) noexcept {
+    return t.template get<T>();
+}
+
+export template<typename T, typename... Ts>
+constexpr T&& get(tuple<Ts...>&& t) noexcept {
+    return rstd::move(t).template get<T>();
 }
 
 /// Creates a tuple, deducing element types from the arguments.

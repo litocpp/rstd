@@ -36,12 +36,14 @@ module;
 #include <tuple>
 #include <deque>
 #include <functional>
-#include <memory>
 #include <utility>
 
 #include <optional>
 #include <stdexcept>
 #include <algorithm>
+
+#include <memory>
+#include <variant>
 
 #include <chrono>
 #include <filesystem>
@@ -50,6 +52,8 @@ module;
 #include <memory_resource>
 #include <coroutine>
 #include <new>
+
+#include <ranges>
 
 #define ALWAYS_INLINE [[gnu::always_inline]] inline
 
@@ -183,6 +187,7 @@ using std::hash;
 using std::begin;
 using std::end;
 
+// <ranges>
 namespace ranges
 {
 using std::ranges::begin;
@@ -193,6 +198,10 @@ using std::ranges::range;
 using std::ranges::range_value_t;
 using std::ranges::size;
 } // namespace ranges
+namespace views
+{
+using std::views::transform;
+}
 
 // tuple
 using std::integer_sequence;
@@ -223,6 +232,19 @@ using std::nullopt;
 using std::nullopt_t;
 using std::nullptr_t;
 using std::optional;
+
+// <variant>
+using std::apply;
+using std::monostate;
+using std::variant;
+using std::visit;
+
+// <memory>
+using std::make_shared;
+using std::make_unique;
+using std::shared_ptr;
+using std::unique_ptr;
+using std::weak_ptr;
 
 template<std::size_t... Ints>
 using index_sequence = std::integer_sequence<std::size_t, Ints...>;
@@ -266,6 +288,7 @@ using std::filesystem::remove;
 using std::abort;
 using std::apply;
 using std::get;
+using std::get_if;
 using std::invoke;
 using std::runtime_error;
 
@@ -285,9 +308,11 @@ using std::fabs;
 using std::max;
 using std::min;
 
+// <algorithm>
 using std::find;
 using std::find_if;
 using std::from_chars;
+using std::transform;
 
 // c stdio
 using std::fflush;
@@ -460,8 +485,7 @@ using std::is_standard_layout_v;
 using std::decay;
 using std::decay_t;
 
-using std::is_nothrow_destructible;
 using std::declval;
+using std::is_nothrow_destructible;
 
 } // namespace cppstd
-
