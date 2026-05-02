@@ -2,16 +2,20 @@ module;
 // c
 #include <cassert>
 #include <cmath>
+#include <cstdarg>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 
 // c++11
 #include <algorithm>
 #include <atomic>
+#include <bitset>
 #include <chrono>
+#include <condition_variable>
 #include <deque>
 #include <fstream>
 #include <functional>
@@ -19,13 +23,22 @@ module;
 #include <iostream>
 #include <iterator>
 #include <limits>
+#include <list>
 #include <map>
 #include <memory>
 #include <mutex>
 #include <new>
+#include <numeric>
+#include <queue>
+#include <random>
+#include <regex>
 #include <set>
+#include <sstream>
+#include <stack>
 #include <stdexcept>
 #include <string>
+#include <system_error>
+#include <thread>
 #include <tuple>
 #include <type_traits>
 #include <unordered_map>
@@ -34,6 +47,7 @@ module;
 #include <vector>
 
 // c++17
+#include <charconv>
 #include <filesystem>
 #include <memory_resource>
 #include <optional>
@@ -55,475 +69,847 @@ export module cppstd;
 
 export using ::operator new;
 export using ::operator delete;
+
+// ============================================================================
+// All re-exports live in `std::` namespace. Consumers `import cppstd;` and
+// then use names as `std::vector`, `std::string`, etc. — same as if they had
+// `#include <vector>` etc. but going through one shared module BMI.
+//
+// Plus: a small set of C-attached typedefs that <cstdint>/<cstddef> normally
+// leak to the global namespace via the platform's C-compat layer. Re-exporting
+// these at global scope keeps existing "unprefixed" usages (`int32_t`, `size_t`)
+// working across the migration without per-call-site `std::` qualification.
+// ============================================================================
+
+export using ::int8_t;
+export using ::int16_t;
+export using ::int32_t;
+export using ::int64_t;
+export using ::uint8_t;
+export using ::uint16_t;
+export using ::uint32_t;
+export using ::uint64_t;
+export using ::intptr_t;
+export using ::uintptr_t;
+export using ::size_t;
+export using ::ptrdiff_t;
+export using ::FILE;
+export using ::va_list;
+export using ::time_t;
+export using ::clock_t;
+
 namespace std
-{
-// c++11
-export using std::is_error_code_enum;
-// export for struct binding
-export using std::tuple_element;
-export using std::tuple_size;
-export using std::back_insert_iterator;
-export using std::iterator;
-
-// c++20
-export using std::coroutine_handle;
-export using std::coroutine_traits;
-export using std::strong_ordering;
-export using std::weak_ordering;
-} // namespace std
-
-export namespace cppstd
 {
 
 // ==== c ====
 
 // <cstdint>
-using std::int8_t;
-using std::int16_t;
-using std::int32_t;
-using std::int64_t;
-using std::uint8_t;
-using std::uint16_t;
-using std::uint32_t;
-using std::uint64_t;
-using std::intptr_t;
-using std::uintptr_t;
+export using std::int8_t;
+export using std::int16_t;
+export using std::int32_t;
+export using std::int64_t;
+export using std::uint8_t;
+export using std::uint16_t;
+export using std::uint32_t;
+export using std::uint64_t;
+export using std::intptr_t;
+export using std::uintptr_t;
 
 // <cstddef>
-using std::nullptr_t;
-using std::ptrdiff_t;
-using std::size_t;
+export using std::nullptr_t;
+export using std::ptrdiff_t;
+export using std::size_t;
 
 // <cstdlib>
-using std::abort;
+export using std::abort;
+export using std::atoi;
+export using std::exit;
+export using std::free;
+export using std::getenv;
+export using std::malloc;
+export using std::strtod;
+export using std::strtol;
+export using std::strtoul;
+export using std::system;
 
 // <cstdio>
-using std::fflush;
-using std::fwrite;
+export using std::FILE;
+export using std::fclose;
+export using std::fflush;
+export using std::fgets;
+export using std::fopen;
+export using std::fprintf;
+export using std::fread;
+export using std::fseek;
+export using std::ftell;
+export using std::fwrite;
+export using std::printf;
+export using std::snprintf;
+export using std::sprintf;
+export using std::sscanf;
+export using std::vfprintf;
 
 // <cstring>
-using std::memcmp;
-using std::memcpy;
-using std::memset;
-using std::strlen;
-using std::strncmp;
+export using std::memcmp;
+export using std::memcpy;
+export using std::memmove;
+export using std::memset;
+export using std::strchr;
+export using std::strcmp;
+export using std::strcpy;
+export using std::strlen;
+export using std::strncmp;
+export using std::strncpy;
+export using std::strstr;
 
 // <cmath>
-using std::fabs;
+export using std::abs;
+export using std::acos;
+export using std::asin;
+export using std::atan;
+export using std::atan2;
+export using std::ceil;
+export using std::cos;
+export using std::exp;
+export using std::fabs;
+export using std::floor;
+export using std::fmod;
+export using std::log;
+export using std::log2;
+export using std::log10;
+export using std::pow;
+export using std::round;
+export using std::sin;
+export using std::sqrt;
+export using std::tan;
+
+// <ctime>
+export using std::clock;
+export using std::clock_t;
+export using std::localtime;
+export using std::time;
+export using std::time_t;
+export using std::tm;
 
 // ==== c++11 ====
 
 // <type_traits>
-using std::false_type;
-using std::integral_constant;
-using std::true_type;
+export using std::false_type;
+export using std::integral_constant;
+export using std::true_type;
+export using std::bool_constant;
 
-template<bool v>
-using bool_constant = integral_constant<bool, v>;
+export using std::enable_if;
+export using std::enable_if_t;
 
-using std::enable_if;
-using std::enable_if_t;
+export using std::conditional;
+export using std::conditional_t;
 
-using std::conditional_t;
+export using std::decay;
+export using std::decay_t;
 
-using std::decay;
-using std::decay_t;
+export using std::underlying_type;
+export using std::underlying_type_t;
 
-using std::underlying_type;
-using std::underlying_type_t;
+export using std::make_signed;
+export using std::make_signed_t;
+export using std::make_unsigned;
+export using std::make_unsigned_t;
 
-using std::make_unsigned_t;
+export using std::is_arithmetic;
+export using std::is_arithmetic_v;
+export using std::is_array;
+export using std::is_array_v;
+export using std::is_base_of;
+export using std::is_base_of_v;
+export using std::is_class;
+export using std::is_class_v;
+export using std::is_const;
+export using std::is_const_v;
+export using std::is_constructible;
+export using std::is_constructible_v;
+export using std::is_default_constructible;
+export using std::is_default_constructible_v;
+export using std::is_enum;
+export using std::is_enum_v;
+export using std::is_floating_point;
+export using std::is_floating_point_v;
+export using std::is_integral;
+export using std::is_integral_v;
+export using std::is_lvalue_reference;
+export using std::is_lvalue_reference_v;
+export using std::is_pointer;
+export using std::is_pointer_v;
+export using std::is_reference;
+export using std::is_reference_v;
+export using std::is_rvalue_reference;
+export using std::is_rvalue_reference_v;
+export using std::is_same;
+export using std::is_same_v;
+export using std::is_standard_layout;
+export using std::is_standard_layout_v;
+export using std::is_union;
+export using std::is_union_v;
+export using std::is_void;
+export using std::is_void_v;
 
-using std::is_arithmetic;
-using std::is_arithmetic_v;
-using std::is_array;
-using std::is_array_v;
-using std::is_base_of;
-using std::is_base_of_v;
-using std::is_class;
-using std::is_class_v;
-using std::is_const;
-using std::is_const_v;
-using std::is_constructible_v;
-using std::is_default_constructible_v;
-using std::is_enum;
-using std::is_enum_v;
-using std::is_floating_point;
-using std::is_floating_point_v;
-using std::is_integral;
-using std::is_integral_v;
-using std::is_lvalue_reference;
-using std::is_lvalue_reference_v;
-using std::is_pointer;
-using std::is_pointer_v;
-using std::is_reference;
-using std::is_reference_v;
-using std::is_rvalue_reference;
-using std::is_rvalue_reference_v;
-using std::is_standard_layout_v;
-using std::is_union;
-using std::is_union_v;
-using std::is_void;
-using std::is_void_v;
+export using std::add_const;
+export using std::add_const_t;
+export using std::add_lvalue_reference;
+export using std::add_lvalue_reference_t;
+export using std::add_pointer;
+export using std::add_pointer_t;
+export using std::add_rvalue_reference;
+export using std::add_rvalue_reference_t;
 
-using std::add_const;
-using std::add_const_t;
-using std::add_lvalue_reference;
-using std::add_lvalue_reference_t;
-using std::add_pointer;
-using std::add_pointer_t;
-using std::add_rvalue_reference;
-using std::add_rvalue_reference_t;
+export using std::remove_const;
+export using std::remove_const_t;
+export using std::remove_cv;
+export using std::remove_cv_t;
+export using std::remove_extent;
+export using std::remove_extent_t;
+export using std::remove_pointer;
+export using std::remove_pointer_t;
+export using std::remove_reference;
+export using std::remove_reference_t;
 
-using std::remove_const_t;
-using std::remove_cv;
-using std::remove_cv_t;
-using std::remove_extent_t;
-using std::remove_pointer_t;
-using std::remove_reference;
-using std::remove_reference_t;
+export using std::is_nothrow_constructible;
+export using std::is_nothrow_constructible_v;
+export using std::is_nothrow_default_constructible;
+export using std::is_nothrow_default_constructible_v;
+export using std::is_nothrow_destructible;
+export using std::is_nothrow_destructible_v;
+export using std::is_trivially_destructible;
+export using std::is_trivially_destructible_v;
 
-using std::is_nothrow_constructible;
-using std::is_nothrow_constructible_v;
-using std::is_nothrow_default_constructible_v;
-using std::is_nothrow_destructible;
-using std::is_nothrow_destructible_v;
-using std::is_trivially_destructible_v;
+export using std::is_copy_constructible;
+export using std::is_copy_constructible_v;
+export using std::is_nothrow_copy_constructible;
+export using std::is_nothrow_copy_constructible_v;
+export using std::is_trivially_copy_constructible;
+export using std::is_trivially_copy_constructible_v;
+export using std::is_trivially_copyable;
+export using std::is_trivially_copyable_v;
 
-using std::is_copy_constructible;
-using std::is_copy_constructible_v;
-using std::is_nothrow_copy_constructible;
-using std::is_nothrow_copy_constructible_v;
-using std::is_trivially_copy_constructible;
-using std::is_trivially_copy_constructible_v;
-using std::is_trivially_copyable;
-using std::is_trivially_copyable_v;
+export using std::is_move_constructible;
+export using std::is_move_constructible_v;
+export using std::is_nothrow_move_constructible;
+export using std::is_nothrow_move_constructible_v;
+export using std::is_trivially_move_constructible;
+export using std::is_trivially_move_constructible_v;
 
-using std::is_move_constructible;
-using std::is_move_constructible_v;
-using std::is_nothrow_move_constructible;
-using std::is_nothrow_move_constructible_v;
-using std::is_trivially_move_constructible;
-using std::is_trivially_move_constructible_v;
+export using std::is_copy_assignable;
+export using std::is_copy_assignable_v;
+export using std::is_nothrow_copy_assignable;
+export using std::is_nothrow_copy_assignable_v;
+export using std::is_trivially_copy_assignable;
+export using std::is_trivially_copy_assignable_v;
 
-using std::is_copy_assignable;
-using std::is_copy_assignable_v;
-using std::is_nothrow_copy_assignable;
-using std::is_nothrow_copy_assignable_v;
-using std::is_trivially_copy_assignable;
-using std::is_trivially_copy_assignable_v;
+export using std::is_move_assignable;
+export using std::is_move_assignable_v;
+export using std::is_nothrow_move_assignable;
+export using std::is_nothrow_move_assignable_v;
+export using std::is_trivially_move_assignable;
+export using std::is_trivially_move_assignable_v;
 
-using std::is_move_assignable;
-using std::is_move_assignable_v;
-using std::is_nothrow_move_assignable;
-using std::is_nothrow_move_assignable_v;
-using std::is_trivially_move_assignable;
-using std::is_trivially_move_assignable_v;
+export using std::is_nothrow_assignable;
+export using std::is_nothrow_assignable_v;
 
-using std::is_nothrow_assignable;
-using std::is_nothrow_assignable_v;
+export using std::is_convertible;
+export using std::is_convertible_v;
 
-using std::is_convertible_v;
-
-using std::alignment_of_v;
+export using std::alignment_of;
+export using std::alignment_of_v;
 
 // <limits>
-using std::numeric_limits;
+export using std::numeric_limits;
 
 // <new>
-using std::max_align_t;
+export using std::bad_alloc;
+export using std::max_align_t;
+export using std::nothrow;
+export using std::nothrow_t;
 
 // <atomic>
-using std::atomic;
-using std::atomic_thread_fence;
-using std::memory_order;
+export using std::atomic;
+export using std::atomic_thread_fence;
+export using std::memory_order;
+export using std::memory_order_acq_rel;
+export using std::memory_order_acquire;
+export using std::memory_order_relaxed;
+export using std::memory_order_release;
+export using std::memory_order_seq_cst;
+
+// <bitset>
+export using std::bitset;
 
 // <string>
-using std::basic_string;
-using std::char_traits;
-using std::string;
+export using std::basic_string;
+export using std::char_traits;
+export using std::getline;
+export using std::stod;
+export using std::stof;
+export using std::stoi;
+export using std::stol;
+export using std::stoll;
+export using std::stoul;
+export using std::stoull;
+export using std::string;
+export using std::to_string;
+export using std::to_wstring;
+export using std::wstring;
+
+// <cstdarg>
+export using std::va_list;
 
 // <fstream>
-using std::fstream;
+export using std::basic_fstream;
+export using std::basic_ifstream;
+export using std::basic_ofstream;
+export using std::fstream;
+export using std::ifstream;
+export using std::ofstream;
 
-namespace ios_base
-{
-constexpr auto app    = std::ios_base::app;
-constexpr auto binary = std::ios_base::binary;
-constexpr auto in     = std::ios_base::in;
-constexpr auto out    = std::ios_base::out;
-constexpr auto trunc  = std::ios_base::trunc;
-constexpr auto ate    = std::ios_base::ate;
+// <iostream>
+export using std::cerr;
+export using std::cin;
+export using std::clog;
+export using std::cout;
+export using std::endl;
+export using std::flush;
+export using std::ostream;
+export using std::istream;
+export using std::iostream;
 
-constexpr auto failbit = std::ios_base::failbit;
-constexpr auto badbit  = std::ios_base::badbit;
-constexpr auto eofbit  = std::ios_base::eofbit;
-constexpr auto goodbit = std::ios_base::goodbit;
-} // namespace ios_base
+// <sstream>
+export using std::basic_istringstream;
+export using std::basic_ostringstream;
+export using std::basic_stringstream;
+export using std::istringstream;
+export using std::ostringstream;
+export using std::stringstream;
+
+// <regex>
+export using std::cmatch;
+export using std::regex;
+export using std::regex_match;
+export using std::regex_replace;
+export using std::regex_search;
+export using std::smatch;
+export using std::sregex_iterator;
+export using std::ssub_match;
 
 // <algorithm>
-using std::copy;
-using std::copy_n;
-using std::find;
-using std::find_if;
-using std::max;
-using std::min;
-using std::transform;
+export using std::all_of;
+export using std::any_of;
+export using std::binary_search;
+export using std::copy;
+export using std::copy_if;
+export using std::copy_n;
+export using std::count;
+export using std::count_if;
+export using std::distance;
+export using std::equal;
+export using std::fill;
+export using std::fill_n;
+export using std::find;
+export using std::find_if;
+export using std::find_if_not;
+export using std::for_each;
+export using std::iter_swap;
+export using std::lower_bound;
+export using std::max;
+export using std::min;
+export using std::minmax;
+export using std::none_of;
+export using std::partition;
+export using std::remove;
+export using std::remove_if;
+export using std::replace;
+export using std::replace_if;
+export using std::reverse;
+export using std::rotate;
+export using std::sort;
+export using std::stable_sort;
+export using std::swap_ranges;
+export using std::transform;
+export using std::unique;
+export using std::upper_bound;
+
+// <numeric>
+export using std::accumulate;
+export using std::adjacent_difference;
+export using std::iota;
+export using std::partial_sum;
+export using std::reduce;
 
 // <memory>
-using std::addressof;
-using std::allocator;
-using std::allocator_traits;
-using std::default_delete;
-using std::enable_shared_from_this;
-using std::make_shared;
-using std::shared_ptr;
-using std::unique_ptr;
-using std::weak_ptr;
+export using std::addressof;
+export using std::allocator;
+export using std::allocator_traits;
+export using std::default_delete;
+export using std::enable_shared_from_this;
+export using std::make_shared;
+export using std::shared_ptr;
+export using std::unique_ptr;
+export using std::weak_ptr;
 
 // <functional>
-using std::bind;
-using std::function;
-using std::hash;
-using std::less;
+export using std::bind;
+export using std::cref;
+export using std::function;
+export using std::greater;
+export using std::greater_equal;
+export using std::hash;
+export using std::less;
+export using std::less_equal;
+export using std::reference_wrapper;
+export using std::ref;
+
+namespace placeholders
+{
+export using std::placeholders::_1;
+export using std::placeholders::_2;
+export using std::placeholders::_3;
+export using std::placeholders::_4;
+export using std::placeholders::_5;
+} // namespace placeholders
 
 // <tuple>
-using std::get;
-using std::make_tuple;
-using std::tuple;
-using std::tuple_element;
-using std::tuple_element_t;
-using std::tuple_size;
-using std::tuple_size_v;
+export using std::get;
+export using std::ignore;
+export using std::make_tuple;
+export using std::tie;
+export using std::tuple;
+// tuple_element / tuple_size already exported above for structured bindings
 
 // <utility>
-using std::declval;
-using std::forward;
-using std::move;
-using std::swap;
+export using std::declval;
+export using std::forward;
+export using std::move;
+export using std::pair;
+export using std::make_pair;
+export using std::swap;
 
 // <iterator>
-using std::back_insert_iterator;
-using std::back_inserter;
-using std::begin;
-using std::end;
+export using std::advance;
+export using std::back_inserter;
+// back_insert_iterator + iterator already exported above
+export using std::begin;
+export using std::cbegin;
+export using std::cend;
+export using std::end;
+export using std::front_inserter;
+export using std::inserter;
+export using std::next;
+export using std::ostream_iterator;
+export using std::prev;
+export using std::rbegin;
+export using std::rend;
+export using std::reverse_iterator;
+export using std::ssize;
+export using std::size;
+export using std::data;
 
 // containers
-using std::deque;
-using std::map;
-using std::set;
-using std::unordered_map;
-using std::unordered_set;
-using std::vector;
+export using std::array;
+export using std::deque;
+export using std::list;
+export using std::map;
+export using std::multimap;
+export using std::multiset;
+export using std::set;
+export using std::stack;
+export using std::queue;
+export using std::priority_queue;
+export using std::unordered_map;
+export using std::unordered_multimap;
+export using std::unordered_multiset;
+export using std::unordered_set;
+export using std::vector;
 
 // <mutex>
-using std::lock_guard;
-using std::mutex;
-using std::unique_lock;
+export using std::adopt_lock;
+export using std::call_once;
+export using std::defer_lock;
+export using std::lock;
+export using std::lock_guard;
+export using std::mutex;
+export using std::once_flag;
+export using std::recursive_mutex;
+export using std::scoped_lock;
+export using std::try_to_lock;
+export using std::unique_lock;
+
+// <condition_variable>
+export using std::condition_variable;
+export using std::condition_variable_any;
+export using std::cv_status;
 
 // <future>
-using std::future;
-using std::promise;
+export using std::async;
+export using std::future;
+export using std::future_status;
+export using std::launch;
+export using std::packaged_task;
+export using std::promise;
+export using std::shared_future;
 
 // <thread>
-using std::thread;
+export using std::thread;
+namespace this_thread
+{
+export using std::this_thread::get_id;
+export using std::this_thread::sleep_for;
+export using std::this_thread::sleep_until;
+export using std::this_thread::yield;
+} // namespace this_thread
 
 // <chrono>
 namespace chrono
 {
-using std::chrono::duration;
-using std::chrono::duration_cast;
-using std::chrono::microseconds;
-using std::chrono::milliseconds;
-using std::chrono::nanoseconds;
-using std::chrono::seconds;
-using std::chrono::steady_clock;
-using std::chrono::system_clock;
-using std::chrono::time_point;
-using std::chrono::operator-;
-using std::chrono::operator>;
-using std::chrono::operator<;
-using std::chrono::operator<=;
-using std::chrono::operator>=;
+export using std::chrono::duration;
+export using std::chrono::duration_cast;
+export using std::chrono::high_resolution_clock;
+export using std::chrono::hours;
+export using std::chrono::microseconds;
+export using std::chrono::milliseconds;
+export using std::chrono::minutes;
+export using std::chrono::nanoseconds;
+export using std::chrono::seconds;
+export using std::chrono::steady_clock;
+export using std::chrono::system_clock;
+export using std::chrono::time_point;
+export using std::chrono::time_point_cast;
+export using std::chrono::operator-;
+export using std::chrono::operator+;
+export using std::chrono::operator*;
+export using std::chrono::operator/;
+export using std::chrono::operator%;
+export using std::chrono::operator>;
+export using std::chrono::operator<;
+export using std::chrono::operator<=;
+export using std::chrono::operator>=;
+export using std::chrono::operator==;
 } // namespace chrono
 
+// <random>
+export using std::bernoulli_distribution;
+export using std::default_random_engine;
+export using std::mt19937;
+export using std::mt19937_64;
+export using std::normal_distribution;
+export using std::random_device;
+export using std::uniform_int_distribution;
+export using std::uniform_real_distribution;
+
 // <stdexcept>
-using std::runtime_error;
+export using std::domain_error;
+export using std::invalid_argument;
+export using std::length_error;
+export using std::logic_error;
+export using std::out_of_range;
+export using std::overflow_error;
+export using std::range_error;
+export using std::runtime_error;
+export using std::underflow_error;
 
 // <system_error>
-using std::error_category;
-using std::error_code;
+export using std::errc;
+export using std::error_category;
+export using std::error_code;
+export using std::error_condition;
+export using std::generic_category;
+export using std::system_category;
+export using std::system_error;
 
 // <exception>
-using std::exception;
-using std::exception_ptr;
-using std::rethrow_exception;
+export using std::current_exception;
+export using std::exception;
+export using std::exception_ptr;
+export using std::make_exception_ptr;
+export using std::rethrow_exception;
+export using std::terminate;
+export using std::uncaught_exception;
+export using std::uncaught_exceptions;
 
 // ==== c++14 ====
 
 // <utility>
-using std::exchange;
-using std::integer_sequence;
-using std::make_integer_sequence;
-
-template<std::size_t... Ints>
-using index_sequence = std::integer_sequence<std::size_t, Ints...>;
-template<std::size_t N>
-using make_index_sequence = std::make_integer_sequence<std::size_t, N>;
+export using std::exchange;
+export using std::index_sequence;
+export using std::index_sequence_for;
+export using std::integer_sequence;
+export using std::make_index_sequence;
+export using std::make_integer_sequence;
 
 // <memory>
-using std::make_unique;
+export using std::make_unique;
 
 // ==== c++17 ====
 
 // <type_traits>
-using std::conjunction;
-using std::conjunction_v;
-using std::disjunction;
-using std::disjunction_v;
-using std::is_aggregate;
-using std::is_aggregate_v;
-using std::is_invocable;
-using std::is_invocable_v;
-using std::invoke_result;
-using std::invoke_result_t;
-using std::negation;
-using std::negation_v;
+export using std::conjunction;
+export using std::conjunction_v;
+export using std::disjunction;
+export using std::disjunction_v;
+export using std::is_aggregate;
+export using std::is_aggregate_v;
+export using std::is_invocable;
+export using std::is_invocable_r;
+export using std::is_invocable_r_v;
+export using std::is_invocable_v;
+export using std::invoke_result;
+export using std::invoke_result_t;
+export using std::negation;
+export using std::negation_v;
+export using std::void_t;
 
 // <cstddef>
-using std::byte;
+export using std::byte;
 
 // <new>
-using std::align_val_t;
-using std::launder;
+export using std::align_val_t;
+export using std::launder;
 
 // <string_view>
-using std::basic_string_view;
-using std::string_view;
+export using std::basic_string_view;
+export using std::string_view;
+export using std::wstring_view;
 
 // <optional>
-using std::nullopt;
-using std::nullopt_t;
-using std::optional;
+export using std::bad_optional_access;
+export using std::make_optional;
+export using std::nullopt;
+export using std::nullopt_t;
+export using std::optional;
 
 // <variant>
-using std::get_if;
-using std::monostate;
-using std::variant;
-using std::visit;
+export using std::bad_variant_access;
+export using std::get_if;
+export using std::holds_alternative;
+export using std::monostate;
+export using std::variant;
+export using std::variant_alternative;
+export using std::variant_alternative_t;
+export using std::variant_npos;
+export using std::variant_size;
+export using std::variant_size_v;
+export using std::visit;
 
 // <functional>
-using std::invoke;
+export using std::invoke;
+export using std::not_fn;
 
 // <tuple>
-using std::apply;
+export using std::apply;
+export using std::make_from_tuple;
 
 // <charconv>
-using std::from_chars;
+export using std::from_chars;
+export using std::from_chars_result;
+export using std::to_chars;
+export using std::to_chars_result;
 
 // <memory>
-using std::destroy_at;
+export using std::destroy;
+export using std::destroy_at;
+export using std::destroy_n;
+export using std::uninitialized_copy;
+export using std::uninitialized_copy_n;
+export using std::uninitialized_default_construct;
+export using std::uninitialized_default_construct_n;
+export using std::uninitialized_fill;
+export using std::uninitialized_fill_n;
+export using std::uninitialized_move;
+export using std::uninitialized_value_construct;
 
 // <shared_mutex>
-using std::shared_mutex;
+export using std::shared_lock;
+export using std::shared_mutex;
+export using std::shared_timed_mutex;
 
 // <filesystem>
 namespace filesystem
 {
-using std::filesystem::create_directories;
-using std::filesystem::exists;
-using std::filesystem::path;
-using std::filesystem::remove;
+export using std::filesystem::absolute;
+export using std::filesystem::canonical;
+export using std::filesystem::copy;
+export using std::filesystem::create_directories;
+export using std::filesystem::create_directory;
+export using std::filesystem::current_path;
+export using std::filesystem::directory_entry;
+export using std::filesystem::directory_iterator;
+export using std::filesystem::exists;
+export using std::filesystem::file_size;
+export using std::filesystem::file_status;
+export using std::filesystem::file_type;
+export using std::filesystem::is_directory;
+export using std::filesystem::is_regular_file;
+export using std::filesystem::path;
+export using std::filesystem::recursive_directory_iterator;
+export using std::filesystem::relative;
+export using std::filesystem::remove;
+export using std::filesystem::remove_all;
+export using std::filesystem::rename;
+export using std::filesystem::status;
+export using std::filesystem::temp_directory_path;
 } // namespace filesystem
 
 // <memory_resource>
 namespace pmr
 {
-using std::pmr::deque;
-using std::pmr::get_default_resource;
-using std::pmr::memory_resource;
-using std::pmr::polymorphic_allocator;
-using std::pmr::synchronized_pool_resource;
-using std::pmr::vector;
+export using std::pmr::deque;
+export using std::pmr::get_default_resource;
+export using std::pmr::memory_resource;
+export using std::pmr::polymorphic_allocator;
+export using std::pmr::set_default_resource;
+export using std::pmr::synchronized_pool_resource;
+export using std::pmr::unsynchronized_pool_resource;
+export using std::pmr::vector;
 } // namespace pmr
 
 // ==== c++20 ====
 
 // <type_traits>
-using std::remove_cvref;
-using std::remove_cvref_t;
-using std::type_identity;
-using std::type_identity_t;
+export using std::remove_cvref;
+export using std::remove_cvref_t;
+export using std::type_identity;
+export using std::type_identity_t;
 
 // <concepts>
-using std::constructible_from;
-using std::destructible;
-using std::integral;
-using std::same_as;
-using std::semiregular;
+export using std::constructible_from;
+export using std::convertible_to;
+export using std::derived_from;
+export using std::destructible;
+export using std::integral;
+export using std::same_as;
+export using std::semiregular;
+export using std::signed_integral;
+export using std::unsigned_integral;
 
-// <compare>
-using std::strong_ordering;
-using std::weak_ordering;
+// <compare> (already exported strong_ordering / weak_ordering at top)
+export using std::partial_ordering;
 
 // <bit>
-using std::bit_cast;
-using std::bit_ceil;
+export using std::bit_cast;
+export using std::bit_ceil;
+export using std::bit_floor;
+export using std::bit_width;
+export using std::countl_one;
+export using std::countl_zero;
+export using std::countr_one;
+export using std::countr_zero;
+export using std::has_single_bit;
+export using std::popcount;
 
 // <format>
-using std::basic_format_context;
-using std::basic_format_parse_context;
-using std::basic_format_string;
-using std::format;
-using std::format_args;
-using std::format_string;
-using std::format_to;
-using std::format_to_n;
-using std::formatted_size;
-using std::formatter;
-using std::make_format_args;
-using std::vformat;
-using std::vformat_to;
+export using std::basic_format_context;
+export using std::basic_format_parse_context;
+export using std::basic_format_string;
+export using std::format;
+export using std::format_args;
+export using std::format_string;
+export using std::format_to;
+export using std::format_to_n;
+export using std::formatted_size;
+export using std::formatter;
+export using std::make_format_args;
+export using std::vformat;
+export using std::vformat_to;
 
 // <source_location>
-using std::source_location;
+export using std::source_location;
 
 // <ranges>
 namespace ranges
 {
-using std::ranges::begin;
-using std::ranges::data;
-using std::ranges::distance;
-using std::ranges::end;
-using std::ranges::range;
-using std::ranges::range_value_t;
-using std::ranges::size;
+export using std::ranges::begin;
+export using std::ranges::data;
+export using std::ranges::distance;
+export using std::ranges::end;
+export using std::ranges::range;
+export using std::ranges::range_value_t;
+export using std::ranges::size;
 } // namespace ranges
-namespace views
+namespace ranges::views
 {
-using std::views::transform;
-}
+export using std::ranges::views::transform;
+} // namespace ranges::views
 
 // <algorithm>
-using std::lexicographical_compare_three_way;
+export using std::lexicographical_compare_three_way;
 
 // <memory>
-using std::construct_at;
+export using std::construct_at;
 
 // <iterator>
-using std::iter_value_t;
+export using std::iter_value_t;
 
 // <span>
-using std::as_bytes;
-using std::as_writable_bytes;
-using std::dynamic_extent;
-using std::span;
+export using std::as_bytes;
+export using std::as_writable_bytes;
+export using std::dynamic_extent;
+export using std::span;
 
 // ==== c++23 ====
 
 // <functional>
 #ifdef __cpp_lib_move_only_function
-using std::move_only_function;
+export using std::move_only_function;
 #endif
 
-} // namespace cppstd
+} // namespace std
+
+// libstdc++ vector::iterator is __gnu_cxx::__normal_iterator, with comparison
+// operators defined as free functions in __gnu_cxx::. Without explicit export,
+// ADL can't find them through `import cppstd;`. Non-portable but needed for
+// libstdc++ — libc++ uses different iterator types, so this block is a no-op
+// elsewhere (guarded by __GLIBCXX__).
+#ifdef __GLIBCXX__
+namespace __gnu_cxx
+{
+export using __gnu_cxx::operator==;
+export using __gnu_cxx::operator-;
+} // namespace __gnu_cxx
+#endif
+
+namespace std
+{
+
+// previously exported (kept for backward compat with prior cppstd block)
+export using std::is_error_code_enum;
+export using std::tuple_element;
+export using std::tuple_element_t;
+export using std::tuple_size;
+export using std::tuple_size_v;
+export using std::back_insert_iterator;
+export using std::iterator;
+export using std::coroutine_handle;
+export using std::coroutine_traits;
+export using std::strong_ordering;
+export using std::weak_ordering;
+
+// Free-function operators in std:: that ADL needs visible at import sites.
+// Without an explicit `export using`, GMF-attached overloads aren't reachable.
+// libstdc++ vector::iterator is __gnu_cxx::__normal_iterator with hidden-friend
+// operators in __gnu_cxx::; those are still reachable via ADL through the
+// vector type even with these std exports active.
+export using std::operator+;
+export using std::operator==;
+export using std::operator!=;
+export using std::operator<;
+export using std::operator<=;
+export using std::operator>;
+export using std::operator>=;
+export using std::operator<<;
+export using std::operator>>;
+export using std::operator|;
+export using std::operator&;
+export using std::operator^;
+export using std::operator~;
+export using std::operator|=;
+export using std::operator&=;
+export using std::operator^=;
+
+} // namespace std

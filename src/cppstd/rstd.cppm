@@ -6,7 +6,7 @@ namespace rstd
 {
 
 template<>
-struct Impl<fmt::Display, cppstd::string> : ImplBase<cppstd::string> {
+struct Impl<fmt::Display, std::string> : ImplBase<std::string> {
     auto fmt(fmt::Formatter& f) const -> bool {
         auto s = this->self();
         return f.write_raw((const u8*)s.data(), s.size());
@@ -14,7 +14,7 @@ struct Impl<fmt::Display, cppstd::string> : ImplBase<cppstd::string> {
 };
 
 template<>
-struct Impl<fmt::Display, cppstd::string_view> : ImplBase<cppstd::string_view> {
+struct Impl<fmt::Display, std::string_view> : ImplBase<std::string_view> {
     auto fmt(fmt::Formatter& f) const -> bool {
         auto s = this->self();
         return f.write_raw((const u8*)s.data(), s.size());
@@ -22,13 +22,13 @@ struct Impl<fmt::Display, cppstd::string_view> : ImplBase<cppstd::string_view> {
 };
 
 template<>
-struct Impl<convert::From<string::String>, cppstd::string> : ImplBase<cppstd::string> {
-    static auto from(const string::String& s) -> cppstd::string { return { s.begin(), s.end() }; }
+struct Impl<convert::From<string::String>, std::string> : ImplBase<std::string> {
+    static auto from(const string::String& s) -> std::string { return { s.begin(), s.end() }; }
 };
 
 template<>
-struct Impl<convert::From<string::String>, cppstd::string_view> : ImplBase<cppstd::string_view> {
-    static auto from(const string::String& s) -> cppstd::string { return { s.begin(), s.end() }; }
+struct Impl<convert::From<string::String>, std::string_view> : ImplBase<std::string_view> {
+    static auto from(const string::String& s) -> std::string { return { s.begin(), s.end() }; }
 };
 
 } // namespace rstd
