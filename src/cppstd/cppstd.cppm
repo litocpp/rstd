@@ -866,7 +866,7 @@ export using std::move_only_function;
 // ADL can't find them through `import cppstd;`. Non-portable but needed for
 // libstdc++ — libc++ uses different iterator types, so this block is a no-op
 // elsewhere (guarded by __GLIBCXX__).
-#ifdef __GLIBCXX__
+#if defined(__GLIBCXX__) && __GLIBCXX__ <= 20260209
 namespace __gnu_cxx
 {
 export using __gnu_cxx::operator==;
