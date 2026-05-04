@@ -173,3 +173,52 @@ TEST(LogMacros, FilteredOut) {
     // error is allowed
     error("allowed error");
 }
+
+// ── Convenience macros (rstd_*) ───────────────────────────────────────────
+
+#include <rstd/macro.hpp>
+
+TEST(LogMacroHelpers, LevelFiltering) {
+    set_max_level(LevelFilter::Warn);
+    // These are above the max level, macro guard skips them entirely
+    rstd_info("should not run");
+    rstd_debug("should not run");
+    rstd_trace("should not run");
+
+    // These are at or below the max level, they execute
+    rstd_error("error ok");
+    rstd_warn("warn ok");
+}
+
+TEST(LogMacroHelpers, NoArgs) {
+    set_max_level(LevelFilter::Trace);
+    rstd_error("no arg error");
+    rstd_warn("no arg warn");
+    rstd_info("no arg info");
+    rstd_debug("no arg debug");
+    rstd_trace("no arg trace");
+}
+
+TEST(LogMacroHelpers, FormatArgs) {
+    set_max_level(LevelFilter::Trace);
+    rstd_error("fmt: {}", "e");
+    rstd_warn("fmt: {}", "w");
+    rstd_info("fmt: {}", "i");
+    rstd_debug("fmt: {}", "d");
+    rstd_trace("fmt: {}", "t");
+}
+
+TEST(LogMacroHelpers, LazyEvaluation) {
+    set_max_level(LevelFilter::Error);
+
+    bool called = false;
+    auto side_effect = [&] { called = true; return 42; };
+
+    // info is filtered out, side_effect should not be called
+    rstd_info("val: {}", side_effect());
+    EXPECT_FALSE(called);
+
+    // error is allowed, side_effect should be called
+    rstd_error("val: {}", side_effect());
+    EXPECT_TRUE(called);
+}

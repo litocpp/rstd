@@ -44,3 +44,42 @@
 #define assert(EXP, ...) \
     if (! (EXP)) rstd::panic(#EXP RSTD_STR(__VA_ARGS__) RSTD_REST_ARGS(__VA_ARGS__))
 #define assert_eq(A, B) assert((A) == (B))
+
+#define rstd_error(...)                                            \
+    do {                                                           \
+        if (rstd::log::log_enabled(rstd::log::Level::Error, "")) { \
+            rstd::log::error(__VA_ARGS__);                         \
+        }                                                          \
+    } while (0)
+
+#define rstd_warn(...)                                            \
+    do {                                                          \
+        if (rstd::log::log_enabled(rstd::log::Level::Warn, "")) { \
+            rstd::log::warn(__VA_ARGS__);                         \
+        }                                                         \
+    } while (0)
+
+#define rstd_info(...)                                            \
+    do {                                                          \
+        if (rstd::log::log_enabled(rstd::log::Level::Info, "")) { \
+            rstd::log::info(__VA_ARGS__);                         \
+        }                                                         \
+    } while (0)
+
+#ifdef NDEBUG
+#    define rstd_debug(...) ((void)0)
+#else
+#    define rstd_debug(...)                                            \
+        do {                                                           \
+            if (rstd::log::log_enabled(rstd::log::Level::Debug, "")) { \
+                rstd::log::debug(__VA_ARGS__);                         \
+            }                                                          \
+        } while (0)
+#endif
+
+#define rstd_trace(...)                                            \
+    do {                                                           \
+        if (rstd::log::log_enabled(rstd::log::Level::Trace, "")) { \
+            rstd::log::trace(__VA_ARGS__);                         \
+        }                                                          \
+    } while (0)
