@@ -137,8 +137,8 @@ TEST(LogEnvLogger, DefaultError) {
 
 TEST(LogGlobal, SetLoggerOnce) {
     // The global logger can only be set once per process.
-    // If another test already set it, this will return false.
-    EnvLogger logger;
+    // Use static storage so the pointer remains valid for the process lifetime.
+    static EnvLogger logger;
     bool ok = set_logger(logger);
     // We don't assert ok because another test may have already set it.
     (void)ok;

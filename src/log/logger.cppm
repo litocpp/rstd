@@ -30,9 +30,12 @@ export struct Log {
 
 namespace detail {
 
-// Three states: 0=uninitialized, 1=initializing, 2=initialized
-inline sync::atomic::Atomic<usize> g_state { 0 };
-inline sync::atomic::Atomic<usize> g_max_level { 0 }; // LevelFilter::Off by default
+// Nop logger — default when no logger is set.
+struct NopLogger {};
+
+inline bool nop_enabled(void const*, Metadata const&) { return false; }
+inline void nop_log(void const*, Record const&) {}
+inline void nop_flush(void const*) {}
 
 // Type-erased logger via function-pointer table (avoids vtable portability issues).
 struct LoggerVTable {
@@ -41,17 +44,14 @@ struct LoggerVTable {
     void (*flush)(void const*);
 };
 
-inline LoggerVTable g_vtable {};
-inline void const*  g_logger_ptr { nullptr };
-
-// Nop logger — default when no logger is set.
-struct NopLogger {};
-
-inline bool nop_enabled(void const*, Metadata const&) { return false; }
-inline void nop_log(void const*, Record const&) {}
-inline void nop_flush(void const*) {}
-
 inline constexpr LoggerVTable NOP_VTABLE { nop_enabled, nop_log, nop_flush };
+
+// Three states: 0=uninitialized, 1=initializing, 2=initialized
+inline sync::atomic::Atomic<usize> g_state { 0 };
+inline sync::atomic::Atomic<usize> g_max_level { 0 }; // LevelFilter::Off by default
+
+inline LoggerVTable g_vtable { nop_enabled, nop_log, nop_flush };
+inline void const*  g_logger_ptr { nullptr };
 
 } // namespace detail
 
@@ -110,13 +110,18 @@ export [[nodiscard]] inline auto log_enabled(Level level, ref<str>) noexcept -> 
 /// Logs a Record through the global logger (no-op if no logger set).
 export inline void log(Record const& record) noexcept {
     if (record.lvl() <= max_level()) {
-        detail::g_vtable.log(detail::g_logger_ptr, record);
+        // Acquire ensures we see the fully initialized vtable from set_logger().
+        if (detail::g_state.load(sync::atomic::Ordering::Acquire) == 2) {
+            detail::g_vtable.log(detail::g_logger_ptr, record);
+        }
     }
 }
 
 /// Flushes any buffered records through the global logger.
 export inline void flush() noexcept {
-    detail::g_vtable.flush(detail::g_logger_ptr);
+    if (detail::g_state.load(sync::atomic::Ordering::Acquire) == 2) {
+        detail::g_vtable.flush(detail::g_logger_ptr);
+    }
 }
 
 } // namespace rstd::log
