@@ -143,8 +143,13 @@ struct ListChannel {
             auto* block = head->block.load(Ordering::Acquire);
             auto& slot = block->slots[offset];
             if (!(slot.state.load(Ordering::Acquire) & WRITE)) {
-                if (tail->index.load(Ordering::Acquire) == head_idx) {
-                    if (tail->index.load(Ordering::Acquire) & 1) {
+                // Mask the disconnect bit (bit 0) before comparing to head_idx:
+                // disconnect() does `tail->index |= 1` without bumping the
+                // counter, so an unmasked compare misses the empty+disconnected
+                // case and the receiver spins forever instead of returning Err.
+                usize tail_idx = tail->index.load(Ordering::Acquire);
+                if ((tail_idx & ~static_cast<usize>(1)) == head_idx) {
+                    if (tail_idx & 1) {
                         token.block = nullptr;
                         return true;
                     }

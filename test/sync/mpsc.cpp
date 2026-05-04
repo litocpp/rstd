@@ -105,3 +105,25 @@ TEST(Mpsc, UnboundedChannelThreads) {
     rstd::move(t1).join().unwrap_unchecked();
     rstd::move(t2).join().unwrap_unchecked();
 }
+
+// Regression: ListChannel::start_recv must detect disconnect when the
+// channel is empty (head == tail). Earlier the unmasked compare against
+// head_idx missed the disconnect bit set by `tail |= 1`, so a receiver
+// that drained the queue and re-entered start_recv would spin forever.
+TEST(Mpsc, UnboundedDisconnectAfterDrain) {
+    auto [tx, rx] = channel<int>();
+    EXPECT_TRUE(tx.send(1).is_ok());
+    EXPECT_EQ(rx.recv().unwrap_unchecked(), 1);
+
+    auto t = thread::spawn([rx = rstd::move(rx)]() mutable {
+                 // Channel is empty here; senders disconnected below.
+                 // recv() must return Err, not spin.
+                 EXPECT_TRUE(rx.recv().is_err());
+             }).unwrap_unchecked();
+
+    // Give the receiver a moment to enter start_recv before disconnecting.
+    rstd::thread::sleep(rstd::time::Duration::from_millis(50));
+    { auto _ = rstd::move(tx); } // drop sender, triggers disconnect
+
+    rstd::move(t).join().unwrap_unchecked();
+}
