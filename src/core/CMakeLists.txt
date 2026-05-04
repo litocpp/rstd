@@ -38,10 +38,9 @@ target_sources(
          option.cppm
          result.cppm
          fmt.cppm
-         panic.cppm
-         panicking.cppm
-         log.cppm
-         choice.cppm
+          panic.cppm
+          panicking.cppm
+          choice.cppm
          pin.cppm
          hint.cppm
          memchr.cppm
