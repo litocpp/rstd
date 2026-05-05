@@ -56,7 +56,7 @@ constexpr T bit_ceil(T x) noexcept {
 
     int shift_exponent = width - countl_zero(static_cast<T>(x - 1u));
 
-    assert(shift_exponent < width);
+    rstd_assert(shift_exponent < width);
     return T(1) << shift_exponent;
 }
 

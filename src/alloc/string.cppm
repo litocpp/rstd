@@ -95,7 +95,7 @@ public:
     /// Panics if `new_len` is not on a UTF-8 character boundary.
     void truncate(usize new_len) {
         if (new_len < vec.len()) {
-            assert(rstd::char_::is_char_boundary(vec.begin(), vec.len(), new_len));
+            rstd_assert(rstd::char_::is_char_boundary(vec.begin(), vec.len(), new_len));
             while (vec.len() > new_len) vec.pop();
         }
     }

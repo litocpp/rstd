@@ -333,28 +333,28 @@ public:
     /// Dereferences the contained value. Asserts that the option is `Some`.
     [[nodiscard]]
     constexpr auto& operator*() const noexcept {
-        assert(this->is_some());
+        rstd_assert(this->is_some());
         return _get(*this);
     }
 
     /// Dereferences the contained value. Asserts that the option is `Some`.
     [[nodiscard]]
     constexpr auto& operator*() noexcept {
-        assert(this->is_some());
+        rstd_assert(this->is_some());
         return _get(*this);
     }
 
     /// Accesses the contained value via pointer. Asserts that the option is `Some`.
     [[nodiscard]]
     constexpr auto* operator->() const noexcept {
-        assert(this->is_some());
+        rstd_assert(this->is_some());
         return _ptr_wrapper(*this);
     }
 
     /// Accesses the contained value via pointer. Asserts that the option is `Some`.
     [[nodiscard]]
     constexpr auto* operator->() noexcept {
-        assert(this->is_some());
+        rstd_assert(this->is_some());
         return _ptr_wrapper(*this);
     }
 

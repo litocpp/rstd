@@ -23,10 +23,10 @@ export struct Thread {
 
     static auto make(usize stack, Box<ThreadInit>&& init) -> rstd::io::Result<Thread> {
         libc::pthread_attr_t attr {};
-        assert_eq(libc::pthread_attr_init(&attr), 0);
+        rstd_assert_eq(libc::pthread_attr_init(&attr), 0);
 
         if (stack != 0) {
-            assert_eq(libc::pthread_attr_setstacksize(&attr, stack), 0);
+            rstd_assert_eq(libc::pthread_attr_setstacksize(&attr, stack), 0);
         }
 
         auto raw = rstd::move(init).into_raw();
@@ -34,7 +34,7 @@ export struct Thread {
         auto native = libc::pthread_t {};
         auto ret    = libc::pthread_create(&native, &attr, rstd_thread_start, raw.p);
         if (ret == 0) {
-            assert_eq(libc::pthread_attr_destroy(&attr), 0);
+            rstd_assert_eq(libc::pthread_attr_destroy(&attr), 0);
             return Ok(Thread { .id = native });
         } else {
             Box<ThreadInit>::from_raw(raw);

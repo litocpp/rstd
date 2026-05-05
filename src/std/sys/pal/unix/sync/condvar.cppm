@@ -40,16 +40,16 @@ public:
     void init() noexcept {
         pthread_condattr_t attr;
         auto r = pthread_condattr_init(&attr);
-        assert_eq(r, 0);
+        rstd_assert_eq(r, 0);
 
         r = pthread_condattr_setclock(&attr, M_CLOCK_MONOTONIC);
-        assert_eq(r, 0);
+        rstd_assert_eq(r, 0);
 
         r = pthread_cond_init(raw(), &attr);
-        assert_eq(r, 0);
+        rstd_assert_eq(r, 0);
 
         r = pthread_condattr_destroy(&attr);
-        assert_eq(r, 0);
+        rstd_assert_eq(r, 0);
     }
 
     // Signal one waiting thread
@@ -87,7 +87,7 @@ public:
         ts.tv_nsec = total_nsec % NSEC_PER_SEC;
 
         auto r = pthread_cond_timedwait(raw(), mutex.raw(), &ts);
-        assert(r == M_ETIMEDOUT || r == 0, "pthread_cond_timedwait failed");
+        rstd_assert(r == M_ETIMEDOUT || r == 0, "pthread_cond_timedwait failed");
         return r == 0;
     }
 };

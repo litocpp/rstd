@@ -5,6 +5,14 @@ export import rstd.core;
 namespace rstd::log
 {
 
+/// A target tag used to specify the logging target in macro-like calls.
+///
+/// Default-constructs to an empty target; wraps a `ref<str>`.
+export struct Target {
+    ref<str> value;
+    constexpr Target(ref<str> s = {}) noexcept : value(s) {}
+};
+
 /// Metadata about a log message, carrying level and target.
 export struct Metadata {
     Level      level;

@@ -41,9 +41,9 @@
 #    define debug_assert_eq(A, B) debug_assert((A) == (B))
 #endif
 
-#define assert(EXP, ...) \
+#define rstd_assert(EXP, ...) \
     if (! (EXP)) rstd::panic(#EXP RSTD_STR(__VA_ARGS__) RSTD_REST_ARGS(__VA_ARGS__))
-#define assert_eq(A, B) assert((A) == (B))
+#define rstd_assert_eq(A, B) rstd_assert((A) == (B))
 
 #define rstd_error(...)                                            \
     do {                                                           \
@@ -82,4 +82,44 @@
         if (rstd::log::log_enabled(rstd::log::Level::Trace, "")) { \
             rstd::log::trace(__VA_ARGS__);                         \
         }                                                          \
+    } while (0)
+
+// Target-specific macros
+#define rstd_error_t(TARGET, ...)                                            \
+    do {                                                                     \
+        if (rstd::log::log_enabled(rstd::log::Level::Error, TARGET)) {       \
+            rstd::log::error(TARGET, __VA_ARGS__);                           \
+        }                                                                    \
+    } while (0)
+
+#define rstd_warn_t(TARGET, ...)                                            \
+    do {                                                                    \
+        if (rstd::log::log_enabled(rstd::log::Level::Warn, TARGET)) {       \
+            rstd::log::warn(TARGET, __VA_ARGS__);                           \
+        }                                                                   \
+    } while (0)
+
+#define rstd_info_t(TARGET, ...)                                            \
+    do {                                                                    \
+        if (rstd::log::log_enabled(rstd::log::Level::Info, TARGET)) {       \
+            rstd::log::info(TARGET, __VA_ARGS__);                           \
+        }                                                                   \
+    } while (0)
+
+#ifdef NDEBUG
+#    define rstd_debug_t(...) ((void)0)
+#else
+#    define rstd_debug_t(TARGET, ...)                                       \
+        do {                                                                \
+            if (rstd::log::log_enabled(rstd::log::Level::Debug, TARGET)) {  \
+                rstd::log::debug(TARGET, __VA_ARGS__);                      \
+            }                                                               \
+        } while (0)
+#endif
+
+#define rstd_trace_t(TARGET, ...)                                           \
+    do {                                                                    \
+        if (rstd::log::log_enabled(rstd::log::Level::Trace, TARGET)) {      \
+            rstd::log::trace(TARGET, __VA_ARGS__);                          \
+        }                                                                   \
     } while (0)

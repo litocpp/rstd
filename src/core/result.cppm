@@ -557,42 +557,42 @@ public:
     /// Accesses the contained `Ok` value via pointer. Asserts that the result is `Ok`.
     [[nodiscard]]
     constexpr const mtp::rm_ref<T>* operator->() const noexcept {
-        assert(is_ok());
+        rstd_assert(is_ok());
         return rstd::addressof(_get<0>());
     }
 
     /// Accesses the contained `Ok` value via pointer. Asserts that the result is `Ok`.
     [[nodiscard]]
     constexpr mtp::rm_ref<T>* operator->() noexcept {
-        assert(is_ok());
+        rstd_assert(is_ok());
         return rstd::addressof(_get<0>());
     }
 
     /// Dereferences the contained `Ok` value. Asserts that the result is `Ok`.
     [[nodiscard]]
     constexpr const T& operator*() const& noexcept {
-        assert(is_ok());
+        rstd_assert(is_ok());
         return _get<0>();
     }
 
     /// Dereferences the contained `Ok` value. Asserts that the result is `Ok`.
     [[nodiscard]]
     constexpr T& operator*() & noexcept {
-        assert(is_ok());
+        rstd_assert(is_ok());
         return _get<0>();
     }
 
     /// Dereferences the contained `Ok` value. Asserts that the result is `Ok`.
     [[nodiscard]]
     constexpr const T&& operator*() const&& noexcept {
-        assert(is_ok());
+        rstd_assert(is_ok());
         return _get<0>();
     }
 
     /// Dereferences the contained `Ok` value. Asserts that the result is `Ok`.
     [[nodiscard]]
     constexpr T&& operator*() && noexcept {
-        assert(is_ok());
+        rstd_assert(is_ok());
         return _get<0>();
     }
 

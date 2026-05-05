@@ -103,8 +103,10 @@ inline bool set_logger(T const& logger) noexcept {
 }
 
 /// Returns true if the given level/target would be logged at the current max_level.
-export [[nodiscard]] inline auto log_enabled(Level level, ref<str>) noexcept -> bool {
-    return level <= max_level();
+export [[nodiscard]] inline auto log_enabled(Level level, ref<str> target) noexcept -> bool {
+    if (level > max_level()) return false;
+    if (detail::g_state.load(sync::atomic::Ordering::Acquire) != 2) return false;
+    return detail::g_vtable.enabled(detail::g_logger_ptr, Metadata{level, target});
 }
 
 /// Logs a Record through the global logger (no-op if no logger set).

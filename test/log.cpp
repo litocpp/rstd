@@ -174,6 +174,21 @@ TEST(LogMacros, FilteredOut) {
     error("allowed error");
 }
 
+TEST(LogMacros, TargetCompile) {
+    set_max_level(LevelFilter::Trace);
+    error("my_mod", "targeted error: {}", "e");
+    warn("my_mod", "targeted warn: {}", "w");
+    info("my_mod", "targeted info: {}", "i");
+    debug("my_mod", "targeted debug: {}", "d");
+    trace("my_mod", "targeted trace: {}", "t");
+}
+
+TEST(LogMacros, TargetNoArgs) {
+    set_max_level(LevelFilter::Trace);
+    error("my_mod", "targeted error no args");
+    info("my_mod", "targeted info no args");
+}
+
 // ── Convenience macros (rstd_*) ───────────────────────────────────────────
 
 #include <rstd/macro.hpp>
@@ -221,4 +236,29 @@ TEST(LogMacroHelpers, LazyEvaluation) {
     // error is allowed, side_effect should be called
     rstd_error("val: {}", side_effect());
     EXPECT_TRUE(called);
+}
+
+// ── Target-specific macros ────────────────────────────────────────────────
+
+TEST(LogMacroHelpers, TargetMacrosCompile) {
+    set_max_level(LevelFilter::Trace);
+    rstd_error_t("my_mod", "targeted error: {}", "e");
+    rstd_warn_t("my_mod", "targeted warn: {}", "w");
+    rstd_info_t("my_mod", "targeted info: {}", "i");
+    rstd_debug_t("my_mod", "targeted debug: {}", "d");
+    rstd_trace_t("my_mod", "targeted trace: {}", "t");
+}
+
+TEST(LogMacroHelpers, TargetMacrosFiltered) {
+    static EnvLogger logger("error,my_mod=off");
+    (void)set_logger(logger);
+    set_max_level(LevelFilter::Trace);
+
+    // my_mod is off, these should be filtered
+    rstd_error_t("my_mod", "should not appear");
+    rstd_warn_t("my_mod", "should not appear");
+    rstd_info_t("my_mod", "should not appear");
+
+    // other targets are allowed at error
+    rstd_error_t("other", "other error ok");
 }

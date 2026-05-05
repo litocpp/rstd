@@ -48,7 +48,7 @@ struct Channel {
     SyncWaker                  receivers;
 
     static auto with_capacity(usize cap) -> Box<Channel> {
-        assert(cap > 0);
+        rstd_assert(cap > 0);
 
         usize mark_bit = rstd::num::bit_ceil(cap + 1);
         usize one_lap  = mark_bit * 2;
