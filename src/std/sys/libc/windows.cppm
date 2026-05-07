@@ -4,6 +4,8 @@ module;
 #ifdef RSTD_OS_WINDOWS
 #include <windows.h>
 #include <synchapi.h>
+#include <time.h>
+#include <io.h>
 #endif
 export module rstd:sys.libc.windows;
 
@@ -55,6 +57,13 @@ using ::WakeByAddressAll;
 using ::QueryPerformanceFrequency;
 using ::QueryPerformanceCounter;
 using ::GetSystemTimeAsFileTime;
+using ::gmtime_s;
+
+inline auto gmtime_utc(::time_t secs) noexcept -> ::tm {
+    ::tm out {};
+    ::gmtime_s(&out, &secs);
+    return out;
+}
 
 // ── Threading ────────────────────────────────────────────────────────────
 using ::CreateThread;
@@ -70,6 +79,9 @@ using ::SetThreadDescription;
 using ::GetStdHandle;
 using ::WriteFile;
 using ::ReadFile;
+using ::GetConsoleMode;
+using ::_isatty;
+using ::_fileno;
 
 // ── String ───────────────────────────────────────────────────────────────
 using ::MultiByteToWideChar;

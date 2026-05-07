@@ -15,6 +15,10 @@ export module rstd:sys.libc.std;
 export namespace rstd::sys::libc
 {
 using ::timespec;
+using ::time_t;
+using ::tm;
+using ::time;
+using ::gmtime;
 
 
 using ::abort;

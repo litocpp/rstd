@@ -101,4 +101,25 @@ export auto read_fd(int, u8*, usize) noexcept -> Result<usize> {
 
 #endif
 
+#if RSTD_OS_UNIX
+export auto is_terminal_fd(int fd) noexcept -> bool {
+    return ::isatty(fd) != 0;
+}
+#elif RSTD_OS_WINDOWS
+export auto is_terminal_fd(int fd) noexcept -> bool {
+    HANDLE h;
+    switch (fd) {
+    case 0: h = GetStdHandle(M_STD_INPUT_HANDLE);  break;
+    case 1: h = GetStdHandle(M_STD_OUTPUT_HANDLE); break;
+    case 2: h = GetStdHandle(M_STD_ERROR_HANDLE);  break;
+    default: return false;
+    }
+    if (h == M_INVALID_HANDLE_VALUE || h == nullptr) return false;
+    DWORD mode = 0;
+    return GetConsoleMode(h, &mode) != 0;
+}
+#else
+export auto is_terminal_fd(int) noexcept -> bool { return false; }
+#endif
+
 } // namespace rstd::sys::io::stdio

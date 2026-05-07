@@ -32,10 +32,19 @@ constexpr auto M_FUTEX_BITSET_MATCH_ANY = FUTEX_BITSET_MATCH_ANY;
 
 using ::clock_gettime;
 using ::nanosleep;
+using ::gmtime_r;
 constexpr auto M_CLOCK_MONOTONIC = CLOCK_MONOTONIC;
 constexpr auto M_CLOCK_REALTIME = CLOCK_REALTIME;
 constexpr auto M_ETIMEDOUT       = ETIMEDOUT;
 constexpr auto M_EINTR           = EINTR;
+
+inline auto gmtime_utc(::time_t secs) noexcept -> ::tm {
+    ::tm out {};
+    ::gmtime_r(&secs, &out);
+    return out;
+}
+
+using ::isatty;
 
 // ── Process ──────────────────────────────────────────────────────────────
 using ::pid_t;

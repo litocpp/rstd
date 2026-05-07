@@ -1,16 +1,10 @@
 module;
 #include <rstd/macro.hpp>
-#include <stdlib.h>
-#if RSTD_OS_UNIX
-#  include <unistd.h>
-#  include <errno.h>
-#elif RSTD_OS_WINDOWS
-#  include <windows.h>
-#endif
 export module rstd.log:env_logger;
 export import :logger;
 export import :record;
 export import rstd.core;
+import rstd;
 
 namespace rstd::log
 {
@@ -22,6 +16,63 @@ struct FilterRule {
     u8          target_len { 0 };
     LevelFilter level { LevelFilter::Off };
 };
+
+// ── Color style ───────────────────────────────────────────────────────────
+
+enum class Style : u8 { Auto, Always, Never };
+
+namespace detail
+{
+
+inline auto stderr_is_tty() noexcept -> bool {
+    return rstd::sys::io::stdio::is_terminal_fd(2);
+}
+
+inline auto parse_style(ref<str> s) noexcept -> Style {
+    auto eq_ci = [](ref<str> a, const char* b, usize n) {
+        if (a.size() != n) return false;
+        for (usize i = 0; i < n; ++i) {
+            char ca = (char)a.data()[i];
+            char cb = b[i];
+            if (ca >= 'A' && ca <= 'Z') ca = char(ca - 'A' + 'a');
+            if (cb >= 'A' && cb <= 'Z') cb = char(cb - 'A' + 'a');
+            if (ca != cb) return false;
+        }
+        return true;
+    };
+    if (eq_ci(s, "always", 6)) return Style::Always;
+    if (eq_ci(s, "never",  5)) return Style::Never;
+    return Style::Auto;
+}
+
+inline auto padded_level_str(Level l) noexcept -> const char* {
+    switch (l) {
+        case Level::Error: return "ERROR";
+        case Level::Warn:  return "WARN ";
+        case Level::Info:  return "INFO ";
+        case Level::Debug: return "DEBUG";
+        case Level::Trace: return "TRACE";
+    }
+    return "?????";
+}
+
+inline auto level_color(Level l) noexcept -> const char* {
+    switch (l) {
+        case Level::Error: return "\x1b[31m";
+        case Level::Warn:  return "\x1b[33m";
+        case Level::Info:  return "\x1b[32m";
+        case Level::Debug: return "\x1b[34m";
+        case Level::Trace: return "\x1b[36m";
+    }
+    return "";
+}
+
+inline constexpr char COLOR_RESET[] = "\x1b[0m";
+inline constexpr usize COLOR_PREFIX_LEN = 5;  // "\x1b[XYm"
+inline constexpr usize COLOR_RESET_LEN  = 4;  // "\x1b[0m"
+inline constexpr usize PADDED_LEVEL_LEN = 5;
+
+} // namespace detail
 
 // ── StderrWriter ────────────────────────────────────────────────────────────
 
@@ -47,8 +98,15 @@ export struct EnvLogger {
     FilterRule  rules[MAX_RULES];
     usize       rule_count { 0 };
     LevelFilter default_level { LevelFilter::Error };
+    Style       style { Style::Auto };
+    bool        color_enabled { false };
 
-    EnvLogger() noexcept { parse_env(); }
+    EnvLogger() noexcept {
+        parse_env();
+        parse_style_env();
+        color_enabled = (style == Style::Always)
+            || (style == Style::Auto && detail::stderr_is_tty());
+    }
 
     explicit EnvLogger(ref<str> filters) noexcept { parse_filters(filters); }
 
@@ -86,9 +144,15 @@ private:
     // ── parsing ───────────────────────────────────────────────────────────
 
     void parse_env() noexcept {
-        auto* val = ::getenv("RSTD_LOG");
+        auto* val = rstd::sys::getenv_internal("RSTD_LOG");
         if (val == nullptr) return;
         parse_filters(ref<str>(val));
+    }
+
+    void parse_style_env() noexcept {
+        auto* val = rstd::sys::getenv_internal("RSTD_LOG_STYLE");
+        if (val == nullptr) return;
+        style = detail::parse_style(ref<str>(val));
     }
 
     void parse_filters(ref<str> input) noexcept {
@@ -156,51 +220,43 @@ private:
         fmt::Formatter f(&w, [](void* ctx, const u8* p, usize len) -> bool {
             auto* self = static_cast<StderrWriter*>(ctx);
             while (len > 0) {
-#if RSTD_OS_UNIX
-                auto n = ::write(self->fd, p, len);
-                if (n < 0) {
-                    if (errno == EINTR) continue;
-                    return false;
-                }
+                auto res = rstd::sys::io::stdio::write_fd(self->fd, p, len);
+                if (res.is_err()) return false;
+                auto n = res.unwrap_unchecked();
                 if (n == 0) return false;
                 p   += n;
                 len -= n;
-#elif RSTD_OS_WINDOWS
-                HANDLE h = GetStdHandle(self->fd == 2 ? STD_ERROR_HANDLE : STD_OUTPUT_HANDLE);
-                if (h == INVALID_HANDLE_VALUE || h == nullptr) return false;
-                DWORD written = 0;
-                if (!WriteFile(h, p, static_cast<DWORD>(len), &written, nullptr)) return false;
-                if (written == 0) return false;
-                p   += written;
-                len -= written;
-#else
-                return false;
-#endif
             }
             return true;
         });
 
-        // [
         f.write_raw((u8*)"[", 1);
 
-        // LEVEL
-        auto lvl_str = as_str(r.lvl());
-        f.write_raw(lvl_str.data(), lvl_str.size());
+        char ts[20];
+        rstd::time::format_rfc3339_utc_now(ts);
+        f.write_raw((u8 const*)ts, 20);
+        f.write_raw((u8*)" ", 1);
 
-        // target
+        if (color_enabled) {
+            f.write_raw((u8 const*)detail::level_color(r.lvl()),
+                        detail::COLOR_PREFIX_LEN);
+        }
+        f.write_raw((u8 const*)detail::padded_level_str(r.lvl()),
+                    detail::PADDED_LEVEL_LEN);
+        if (color_enabled) {
+            f.write_raw((u8 const*)detail::COLOR_RESET, detail::COLOR_RESET_LEN);
+        }
+
         auto tgt = r.target();
         if (tgt.size() > 0) {
             f.write_raw((u8*)" ", 1);
             f.write_raw(tgt.data(), tgt.size());
         }
 
-        // ]
         f.write_raw((u8*)"] ", 2);
 
-        // message
         r.args_().fmt(f);
 
-        // newline
         f.write_raw((u8*)"\n", 1);
     }
 };

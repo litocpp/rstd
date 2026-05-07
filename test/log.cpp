@@ -224,6 +224,8 @@ TEST(LogMacroHelpers, FormatArgs) {
 }
 
 TEST(LogMacroHelpers, LazyEvaluation) {
+    static EnvLogger logger;
+    (void)set_logger(logger);
     set_max_level(LevelFilter::Error);
 
     bool called = false;
