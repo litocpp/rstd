@@ -72,6 +72,33 @@ inline constexpr usize COLOR_PREFIX_LEN = 5;  // "\x1b[XYm"
 inline constexpr usize COLOR_RESET_LEN  = 4;  // "\x1b[0m"
 inline constexpr usize PADDED_LEVEL_LEN = 5;
 
+// Extract a "module path" (namespace prefix) from a pretty function string,
+// matching Rust's module_path!() semantics: drop the trailing function name.
+// Example: "void rstd::log::foo()" -> "rstd::log".
+// Returns empty when the function has no namespace (e.g. "void foo()").
+// Note: C++20 module names are not surfaced in __PRETTY_FUNCTION__; the
+// linker-level "name@module.name" mangling is unavailable at compile time,
+// so we use the namespace path instead, which is the closest analogue.
+inline auto module_from_function(const char* fn) noexcept -> ref<str> {
+    if (fn == nullptr || *fn == '\0') return {};
+    const char* last_sep = nullptr;
+    int depth = 0;
+    for (const char* p = fn; *p != '\0'; ++p) {
+        char c = *p;
+        if (c == '<') ++depth;
+        else if (c == '>') --depth;
+        else if (depth == 0) {
+            if (c == '(') break;
+            if (c == ':' && p[1] == ':') { last_sep = p; ++p; }
+        }
+    }
+    if (last_sep == nullptr) return {};
+    const char* start = last_sep;
+    while (start > fn && *(start - 1) != ' ') --start;
+    if (start >= last_sep) return {};
+    return ref<str>((const u8*)start, usize(last_sep - start));
+}
+
 } // namespace detail
 
 // ── StderrWriter ────────────────────────────────────────────────────────────
@@ -245,6 +272,12 @@ private:
                     detail::PADDED_LEVEL_LEN);
         if (color_enabled) {
             f.write_raw((u8 const*)detail::COLOR_RESET, detail::COLOR_RESET_LEN);
+        }
+
+        auto md = detail::module_from_function(r.loc().function_name());
+        if (md.size() > 0) {
+            f.write_raw((u8*)" ", 1);
+            f.write_raw(md.data(), md.size());
         }
 
         auto tgt = r.target();

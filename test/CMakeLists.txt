@@ -49,6 +49,10 @@ add_executable(
   log.cpp
   )
 
+target_sources(
+  rstd_test
+  PRIVATE FILE_SET modules TYPE CXX_MODULES FILES log_module_check.cppm)
+
 target_link_libraries(rstd_test PRIVATE rstd::rstd GTest::gtest_main)
 
 include(GoogleTest)

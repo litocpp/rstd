@@ -18,16 +18,20 @@ struct source_location {
 using sl_type = source_location;
 #endif
 // Cross-ABI-safe location type.
-// Matches Rust's core::panic::Location: file/line/col only, no function_name.
+// Extends Rust's core::panic::Location (file/line/col) with function_name,
+// useful for logging's module_path-like display.
 // POD struct — safe to pass across extern "C" boundaries.
 /// A cross-ABI-safe source location, analogous to Rust's `core::panic::Location`.
 export struct Location {
     const char* _file;
+    const char* _function;
     u32         _line;
     u32         _col;
 
     /// Returns the file name where this location was captured.
     constexpr auto file_name() const noexcept -> const char* { return _file; }
+    /// Returns the pretty function name (compiler-defined, may include module info on Clang C++20 modules).
+    constexpr auto function_name() const noexcept -> const char* { return _function; }
     /// Returns the line number.
     constexpr auto line() const noexcept -> u32 { return _line; }
     /// Returns the column number.
@@ -35,7 +39,7 @@ export struct Location {
 
     /// Creates a `Location` from a `source_location`.
     static constexpr auto from(sl_type sl) noexcept -> Location {
-        return { sl.file_name(), u32(sl.line()), u32(sl.column()) };
+        return { sl.file_name(), sl.function_name(), u32(sl.line()), u32(sl.column()) };
     }
 };
 

@@ -3,6 +3,7 @@
 import rstd.log;
 import rstd.core;
 import rstd.alloc;
+import log_module_check;
 
 using namespace rstd::prelude;
 using namespace rstd::log;
@@ -187,6 +188,13 @@ TEST(LogMacros, TargetNoArgs) {
     set_max_level(LevelFilter::Trace);
     error("my_mod", "targeted error no args");
     info("my_mod", "targeted info no args");
+}
+
+TEST(LogMacros, ModuleNameInOutput) {
+    static EnvLogger logger;
+    (void)set_logger(logger);
+    set_max_level(LevelFilter::Trace);
+    log_module_check::emit_from_module();
 }
 
 // ── Convenience macros (rstd_*) ───────────────────────────────────────────
