@@ -9,6 +9,18 @@ namespace rstd::fmt
 /// Forward declaration of the Formatter used during format output.
 export struct Formatter;
 
+// Forward declarations consumed by the `Arguments::make` factory below.
+// `FormatString` is forward-declared; its definition lives further
+// down once the consteval check helpers are in scope.
+template<typename T> struct _FmtId { using type = T; };
+export template<typename... Args> struct FormatString;
+export template<typename... Args>
+using format_string = FormatString<typename _FmtId<Args>::type...>;
+
+namespace detail {
+template<usize N> struct ArgumentsStorage;
+}
+
 /// Text alignment options for formatted output.
 export enum class Align : u32 { None = 0, Left = 1, Right = 2, Center = 3 };
 
@@ -226,7 +238,44 @@ export struct Arguments {
     usize           args_len;
 
     auto fmt(Formatter& f) const -> bool { return f.write_fmt(*this); }
+
+    /// Build an `Arguments` view from a format string + variadic
+    /// display-able args. Returns a small storage holder that owns the
+    /// type-erased `Argument` array and converts implicitly to
+    /// `Arguments`. Caller must keep the holder alive while the view
+    /// is in use (same lifetime rule as `std::make_format_args`).
+    template<typename... Args>
+    static constexpr auto make(format_string<Args...> fmt_str, Args&&... args) noexcept
+        -> detail::ArgumentsStorage<sizeof...(Args)>;
 };
+
+namespace detail {
+/// Storage holder for `Arguments::make`: owns the `Argument` array and
+/// the format-string view; converts implicitly to a non-owning
+/// `Arguments`. The N==0 branch sizes the array to 1 to keep the
+/// trivial-copy POD valid for zero-arg formats.
+template<usize N>
+struct ArgumentsStorage {
+    Argument  storage[N == 0 ? 1 : N];
+    const u8* fmt_ptr;
+    usize     fmt_len;
+
+    constexpr operator Arguments() const noexcept {
+        return { fmt_ptr, fmt_len, storage, N };
+    }
+};
+} // namespace detail
+
+template<typename... Args>
+constexpr auto Arguments::make(format_string<Args...> fmt_str, Args&&... args) noexcept
+    -> detail::ArgumentsStorage<sizeof...(Args)>
+{
+    return {
+        { Argument::make(args)... },
+        fmt_str.data(),
+        fmt_str.size(),
+    };
+}
 
 /// Checks whether a type can be formatted, i.e. it implements Display or Debug.
 /// \tparam Tp The type to check.
@@ -266,12 +315,9 @@ consteval void check(const char* s, usize n, usize n_args) {
 }
 } // namespace fmt_check
 
-template<typename T>
-struct _FmtId { using type = T; };
-
 /// A compile-time validated format string that ensures argument count and brace matching.
 /// \tparam Args The types of the format arguments.
-export template<typename... Args>
+template<typename... Args>
 struct FormatString {
     const char* _ptr;
     usize       _len;
@@ -286,9 +332,8 @@ struct FormatString {
     auto size() const noexcept -> usize { return _len; }
 };
 
-/// Convenience alias for FormatString with identity-mapped argument types.
-export template<typename... Args>
-using format_string = FormatString<typename _FmtId<Args>::type...>;
+// `format_string` alias declared at the top of this namespace alongside
+// other forward declarations.
 
 } // namespace rstd::fmt
 
