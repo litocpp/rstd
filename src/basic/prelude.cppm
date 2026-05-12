@@ -45,6 +45,11 @@ export {
     using u32  = ::uint32_t;
     /// 64-bit unsigned integer.
     using u64  = ::uint64_t;
+
+    /// 32-bit IEEE 754 floating-point.
+    using f32 = float;
+    /// 64-bit IEEE 754 floating-point.
+    using f64 = double;
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpedantic"
     /// 128-bit unsigned integer.
@@ -119,6 +124,9 @@ using u8  = ::uint8_t;
 using u16 = ::uint16_t;
 using u32 = ::uint32_t;
 using u64 = ::uint64_t;
+
+using f32 = float;
+using f64 = double;
 
 using idx   = ::ptrdiff_t;
 using usize = ::size_t;

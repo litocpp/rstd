@@ -43,6 +43,7 @@ add_executable(
   env.cpp
   process.cpp
   char.cpp
+  floats.cpp
   str.cpp
   ffi/os_str.cpp
   path.cpp

@@ -75,4 +75,6 @@ target_sources(
          sync/mod.cppm
          sync/atomic.cppm
          forward/mod.cppm
-         char.cppm)
+         char.cppm
+         f32.cppm
+         f64.cppm)
