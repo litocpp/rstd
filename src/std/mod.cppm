@@ -11,3 +11,4 @@ export import :env;
 export import :path;
 export import :panicking;
 export import :alloc;
+export import :fs;

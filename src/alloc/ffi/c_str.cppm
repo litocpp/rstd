@@ -14,7 +14,7 @@ using namespace rstd::prelude;
 
 namespace alloc::ffi
 {
-struct NulError {
+export struct NulError {
     usize   size;
     Vec<u8> data;
 };
@@ -85,15 +85,15 @@ public:
     /// Returns the contents as a byte slice, not including the nul terminator.
     /// \return A `slice<u8>` of the string bytes.
     auto to_bytes() const -> slice<u8> {
-        auto bytes = to_bytes_with_nul();
-        return slice<u8>::from_raw_parts(bytes.p, bytes.len() - 1);
+        auto cstr = as_ref();
+        return slice<u8>::from_raw_parts(as_cast<const u8*>(cstr.p), cstr.length);
     }
 
     /// Returns the contents as a byte slice, including the nul terminator.
     /// \return A `slice<u8>` of the string bytes with the trailing nul.
     auto to_bytes_with_nul() const -> slice<u8> {
         auto cstr = as_ref();
-        return slice<u8>::from_raw_parts(as_cast<const u8*>(cstr.p), cstr.length);
+        return slice<u8>::from_raw_parts(as_cast<const u8*>(cstr.p), cstr.length + 1);
     }
 };
 

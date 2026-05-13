@@ -2,6 +2,8 @@ export module rstd:path;
 export import :ffi;
 export import rstd.alloc;
 
+using ::alloc::ffi::CString;
+using ::alloc::ffi::NulError;
 using ::alloc::string::String;
 using ::alloc::vec::Vec;
 using rstd::ffi::OsStr;
@@ -174,6 +176,21 @@ struct ref<path::Path> : ref_base<ref<path::Path>, u8[], false> {
     constexpr auto len() const noexcept -> usize { return length; }
     constexpr auto is_empty() const noexcept -> bool { return length == 0; }
     constexpr auto data() const noexcept -> u8 const* { return p; }
+
+    /// Copies the path bytes into a NUL-terminated `CString` suitable for libc calls.
+    /// Returns `Err(NulError)` if the path contains an interior NUL byte.
+    auto to_cstring() const -> Result<CString, NulError> {
+        for (usize i = 0; i < length; i++) {
+            if (p[i] == 0) {
+                Vec<u8> v = Vec<u8>::with_capacity(length);
+                for (usize j = 0; j < length; j++) v.push(u8(p[j]));
+                return Err(NulError { length, rstd::move(v) });
+            }
+        }
+        Vec<u8> v = Vec<u8>::with_capacity(length + 1);
+        for (usize i = 0; i < length; i++) v.push(u8(p[i]));
+        return Ok(CString::from_vec_unchecked(rstd::move(v)));
+    }
 
     constexpr operator bool() const { return length > 0 && p != nullptr; }
 };

@@ -10,7 +10,7 @@ import :sys.libc.unix;
 namespace rstd::sys::pal::unix::time
 {
 
-struct Timespec {
+export struct Timespec {
     i64 tv_sec;
     u32 tv_nsec;
 

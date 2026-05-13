@@ -45,6 +45,8 @@ add_executable(
   char.cpp
   floats.cpp
   ints.cpp
+  sys_fd.cpp
+  fs.cpp
   str.cpp
   ffi/os_str.cpp
   path.cpp
