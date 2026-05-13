@@ -42,7 +42,7 @@ public:
         auto r = pthread_condattr_init(&attr);
         rstd_assert_eq(r, 0);
 
-        r = pthread_condattr_setclock(&attr, M_CLOCK_MONOTONIC);
+        r = pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);
         rstd_assert_eq(r, 0);
 
         r = pthread_cond_init(raw(), &attr);
@@ -78,7 +78,7 @@ public:
         timespec ts;
 
         // Get current time with CLOCK_MONOTONIC
-        clock_gettime(M_CLOCK_MONOTONIC, &ts);
+        clock_gettime(CLOCK_MONOTONIC, &ts);
 
         // Add timeout
         const u64 NSEC_PER_SEC = 1'000'000'000;
@@ -87,7 +87,7 @@ public:
         ts.tv_nsec = total_nsec % NSEC_PER_SEC;
 
         auto r = pthread_cond_timedwait(raw(), mutex.raw(), &ts);
-        rstd_assert(r == M_ETIMEDOUT || r == 0, "pthread_cond_timedwait failed");
+        rstd_assert(r == ETIMEDOUT || r == 0, "pthread_cond_timedwait failed");
         return r == 0;
     }
 };

@@ -80,7 +80,7 @@ export struct Instant {
     Timespec t;
 
     static auto now() noexcept -> Instant {
-        return { Timespec::now(libc::M_CLOCK_MONOTONIC) };
+        return { Timespec::now(libc::CLOCK_MONOTONIC) };
     }
 
     auto elapsed() const noexcept -> rstd::time::Duration {
@@ -107,7 +107,7 @@ export struct SystemTime {
     Timespec t;
 
     static auto now() noexcept -> SystemTime {
-        return { Timespec::now(libc::M_CLOCK_REALTIME) };
+        return { Timespec::now(libc::CLOCK_REALTIME) };
     }
 
     auto sub_time(SystemTime other) const noexcept -> Result<rstd::time::Duration, rstd::time::Duration> {

@@ -19,7 +19,7 @@ bool futex_wait(Futex* futex, Primitive expected, Option<Duration> timeout) {
     Option<libc::timespec> ts;
     if (timeout) {
         ts = Some(libc::timespec {});
-        libc::clock_gettime(libc::M_CLOCK_MONOTONIC, &*ts);
+        libc::clock_gettime(libc::CLOCK_MONOTONIC, &*ts);
         ts->tv_sec  += (long)timeout->as_secs();
         ts->tv_nsec += (long)timeout->subsec_nanos();
         if (ts->tv_nsec >= (long)rstd::time::NANOS_PER_SEC) {
@@ -33,18 +33,18 @@ bool futex_wait(Futex* futex, Primitive expected, Option<Duration> timeout) {
         if (futex->load(rstd::sync::atomic::Ordering::Relaxed) != expected) {
             return true;
         }
-        auto r = syscall(M_SYS_futex,
+        auto r = syscall(SYS_futex,
                          futex,
-                         M_FUTEX_WAIT_BITSET | M_FUTEX_PRIVATE_FLAG,
+                         FUTEX_WAIT_BITSET | FUTEX_PRIVATE_FLAG,
                          expected,
                          pts,
                          nullptr,
-                         M_FUTEX_BITSET_MATCH_ANY);
+                         FUTEX_BITSET_MATCH_ANY);
 
         if (r < 0) {
             switch (libc::errno()) {
-            case libc::M_ETIMEDOUT: return false;
-            case libc::M_EINTR: continue;
+            case libc::ETIMEDOUT: return false;
+            case libc::EINTR: continue;
             default: return true;
             }
         }
@@ -54,12 +54,12 @@ bool futex_wait(Futex* futex, Primitive expected, Option<Duration> timeout) {
 }
 
 bool futex_wake(Futex* futex) {
-    return syscall(M_SYS_futex, futex, M_FUTEX_WAKE | M_FUTEX_PRIVATE_FLAG, 1) > 0;
+    return syscall(SYS_futex, futex, FUTEX_WAKE | FUTEX_PRIVATE_FLAG, 1) > 0;
 }
 
 void futex_wake_all(Futex* futex) {
     syscall(
-        M_SYS_futex, futex, M_FUTEX_WAKE | M_FUTEX_PRIVATE_FLAG, rstd::numeric_limits<i32>::max());
+        SYS_futex, futex, FUTEX_WAKE | FUTEX_PRIVATE_FLAG, rstd::numeric_limits<i32>::max());
 }
 
 #    endif

@@ -67,7 +67,7 @@ public:
     /// Duplicates the fd with O_CLOEXEC set on the duplicate.
     auto try_clone() const -> Result<OwnedFd> {
 #if RSTD_OS_UNIX
-        int new_fd = libc::fcntl(fd_, libc::M_F_DUPFD_CLOEXEC, 0);
+        int new_fd = libc::fcntl(fd_, libc::F_DUPFD_CLOEXEC, 0);
         if (new_fd < 0) return Err(Error::from_raw_os_error(libc::get_errno()));
         return Ok(OwnedFd { new_fd });
 #else

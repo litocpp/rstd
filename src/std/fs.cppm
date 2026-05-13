@@ -40,21 +40,21 @@ export struct FileType {
 
     auto is_file() const noexcept -> bool {
 #if RSTD_OS_UNIX
-        return (mode_ & libc::M_S_IFMT) == libc::M_S_IFREG;
+        return (mode_ & libc::S_IFMT) == libc::S_IFREG;
 #else
         return false;
 #endif
     }
     auto is_dir() const noexcept -> bool {
 #if RSTD_OS_UNIX
-        return (mode_ & libc::M_S_IFMT) == libc::M_S_IFDIR;
+        return (mode_ & libc::S_IFMT) == libc::S_IFDIR;
 #else
         return false;
 #endif
     }
     auto is_symlink() const noexcept -> bool {
 #if RSTD_OS_UNIX
-        return (mode_ & libc::M_S_IFMT) == libc::M_S_IFLNK;
+        return (mode_ & libc::S_IFMT) == libc::S_IFLNK;
 #else
         return false;
 #endif
@@ -62,28 +62,28 @@ export struct FileType {
     // Unix-specific extensions.
     auto is_fifo() const noexcept -> bool {
 #if RSTD_OS_UNIX
-        return (mode_ & libc::M_S_IFMT) == libc::M_S_IFIFO;
+        return (mode_ & libc::S_IFMT) == libc::S_IFIFO;
 #else
         return false;
 #endif
     }
     auto is_block_device() const noexcept -> bool {
 #if RSTD_OS_UNIX
-        return (mode_ & libc::M_S_IFMT) == libc::M_S_IFBLK;
+        return (mode_ & libc::S_IFMT) == libc::S_IFBLK;
 #else
         return false;
 #endif
     }
     auto is_char_device() const noexcept -> bool {
 #if RSTD_OS_UNIX
-        return (mode_ & libc::M_S_IFMT) == libc::M_S_IFCHR;
+        return (mode_ & libc::S_IFMT) == libc::S_IFCHR;
 #else
         return false;
 #endif
     }
     auto is_socket() const noexcept -> bool {
 #if RSTD_OS_UNIX
-        return (mode_ & libc::M_S_IFMT) == libc::M_S_IFSOCK;
+        return (mode_ & libc::S_IFMT) == libc::S_IFSOCK;
 #else
         return false;
 #endif
@@ -298,27 +298,27 @@ public:
     /// Compute the platform open(2) flags from the options. Returns Err if
     /// the combination is invalid (mirrors Rust's get_access_mode/get_creation_mode).
     auto get_access_mode() const noexcept -> Result<i32> {
-        if (read_ && !write_ && !append_) return Ok(i32 { libc::M_O_RDONLY });
-        if (!read_ && write_ && !append_) return Ok(i32 { libc::M_O_WRONLY });
-        if (read_ && write_ && !append_)  return Ok(i32 { libc::M_O_RDWR });
-        if (!read_ && append_)            return Ok(i32 { libc::M_O_WRONLY | libc::M_O_APPEND });
-        if (read_ && append_)             return Ok(i32 { libc::M_O_RDWR   | libc::M_O_APPEND });
-        return Err(Error::from_raw_os_error(libc::M_EINVAL));
+        if (read_ && !write_ && !append_) return Ok(i32 { libc::O_RDONLY });
+        if (!read_ && write_ && !append_) return Ok(i32 { libc::O_WRONLY });
+        if (read_ && write_ && !append_)  return Ok(i32 { libc::O_RDWR });
+        if (!read_ && append_)            return Ok(i32 { libc::O_WRONLY | libc::O_APPEND });
+        if (read_ && append_)             return Ok(i32 { libc::O_RDWR   | libc::O_APPEND });
+        return Err(Error::from_raw_os_error(libc::EINVAL));
     }
 
     auto get_creation_mode() const noexcept -> Result<i32> {
         if (!write_ && !append_) {
             if (truncate_ || create_ || create_new_)
-                return Err(Error::from_raw_os_error(libc::M_EINVAL));
+                return Err(Error::from_raw_os_error(libc::EINVAL));
         }
         if (append_) {
             if (truncate_ && !create_new_)
-                return Err(Error::from_raw_os_error(libc::M_EINVAL));
+                return Err(Error::from_raw_os_error(libc::EINVAL));
         }
-        if (create_new_) return Ok(i32 { libc::M_O_CREAT | libc::M_O_EXCL });
-        if (create_ && truncate_) return Ok(i32 { libc::M_O_CREAT | libc::M_O_TRUNC });
-        if (create_) return Ok(i32 { libc::M_O_CREAT });
-        if (truncate_) return Ok(i32 { libc::M_O_TRUNC });
+        if (create_new_) return Ok(i32 { libc::O_CREAT | libc::O_EXCL });
+        if (create_ && truncate_) return Ok(i32 { libc::O_CREAT | libc::O_TRUNC });
+        if (create_) return Ok(i32 { libc::O_CREAT });
+        if (truncate_) return Ok(i32 { libc::O_TRUNC });
         return Ok(i32 { 0 });
     }
 #endif
@@ -384,11 +384,11 @@ public:
         libc::off_t off;
         switch (pos.which) {
         case SeekFrom::Which::Start:
-            whence = libc::M_SEEK_SET; off = libc::off_t(u64(pos.offset)); break;
+            whence = libc::SEEK_SET; off = libc::off_t(u64(pos.offset)); break;
         case SeekFrom::Which::End:
-            whence = libc::M_SEEK_END; off = libc::off_t(pos.offset); break;
+            whence = libc::SEEK_END; off = libc::off_t(pos.offset); break;
         case SeekFrom::Which::Current:
-            whence = libc::M_SEEK_CUR; off = libc::off_t(pos.offset); break;
+            whence = libc::SEEK_CUR; off = libc::off_t(pos.offset); break;
         }
         auto r = libc::lseek(fd_.as_raw_fd(), off, whence);
         if (r < 0) return Err(Error::from_raw_os_error(libc::get_errno()));
@@ -422,7 +422,7 @@ public:
     auto set_len(u64 size) -> Result<empty> {
 #if RSTD_OS_UNIX
         while (libc::ftruncate(fd_.as_raw_fd(), libc::off_t(size)) < 0) {
-            if (libc::get_errno() == libc::M_EINTR) continue;
+            if (libc::get_errno() == libc::EINTR) continue;
             return Err(Error::from_raw_os_error(libc::get_errno()));
         }
         return Ok(empty {});
@@ -437,7 +437,7 @@ public:
         while (true) {
             libc::ssize_t n = libc::pread(fd_.as_raw_fd(), buf, len, libc::off_t(offset));
             if (n >= 0) return Ok(usize(n));
-            if (libc::get_errno() == libc::M_EINTR) continue;
+            if (libc::get_errno() == libc::EINTR) continue;
             return Err(Error::from_raw_os_error(libc::get_errno()));
         }
 #else
@@ -452,7 +452,7 @@ public:
         while (true) {
             libc::ssize_t n = libc::pwrite(fd_.as_raw_fd(), buf, len, libc::off_t(offset));
             if (n >= 0) return Ok(usize(n));
-            if (libc::get_errno() == libc::M_EINTR) continue;
+            if (libc::get_errno() == libc::EINTR) continue;
             return Err(Error::from_raw_os_error(libc::get_errno()));
         }
 #else
@@ -495,8 +495,8 @@ public:
     auto lock() -> Result<empty> {
 #if RSTD_OS_UNIX
         while (true) {
-            if (libc::flock(fd_.as_raw_fd(), libc::M_LOCK_EX) == 0) return Ok(empty {});
-            if (libc::get_errno() == libc::M_EINTR) continue;
+            if (libc::flock(fd_.as_raw_fd(), libc::LOCK_EX) == 0) return Ok(empty {});
+            if (libc::get_errno() == libc::EINTR) continue;
             return Err(Error::from_raw_os_error(libc::get_errno()));
         }
 #else
@@ -508,8 +508,8 @@ public:
     auto lock_shared() -> Result<empty> {
 #if RSTD_OS_UNIX
         while (true) {
-            if (libc::flock(fd_.as_raw_fd(), libc::M_LOCK_SH) == 0) return Ok(empty {});
-            if (libc::get_errno() == libc::M_EINTR) continue;
+            if (libc::flock(fd_.as_raw_fd(), libc::LOCK_SH) == 0) return Ok(empty {});
+            if (libc::get_errno() == libc::EINTR) continue;
             return Err(Error::from_raw_os_error(libc::get_errno()));
         }
 #else
@@ -517,11 +517,11 @@ public:
 #endif
     }
 
-    /// flock(2) libc::M_LOCK_EX | libc::M_LOCK_NB. Returns WouldBlock if another process holds the lock.
+    /// flock(2) libc::LOCK_EX | libc::LOCK_NB. Returns WouldBlock if another process holds the lock.
     auto try_lock() -> Result<empty> {
 #if RSTD_OS_UNIX
-        if (libc::flock(fd_.as_raw_fd(), libc::M_LOCK_EX | libc::M_LOCK_NB) == 0) return Ok(empty {});
-        if (libc::get_errno() == libc::M_EWOULDBLOCK)
+        if (libc::flock(fd_.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) == 0) return Ok(empty {});
+        if (libc::get_errno() == libc::EWOULDBLOCK)
             return Err(Error::from_kind(ErrorKind { ErrorKind::WouldBlock }));
         return Err(Error::from_raw_os_error(libc::get_errno()));
 #else
@@ -529,11 +529,11 @@ public:
 #endif
     }
 
-    /// flock(2) libc::M_LOCK_SH | libc::M_LOCK_NB.
+    /// flock(2) libc::LOCK_SH | libc::LOCK_NB.
     auto try_lock_shared() -> Result<empty> {
 #if RSTD_OS_UNIX
-        if (libc::flock(fd_.as_raw_fd(), libc::M_LOCK_SH | libc::M_LOCK_NB) == 0) return Ok(empty {});
-        if (libc::get_errno() == libc::M_EWOULDBLOCK)
+        if (libc::flock(fd_.as_raw_fd(), libc::LOCK_SH | libc::LOCK_NB) == 0) return Ok(empty {});
+        if (libc::get_errno() == libc::EWOULDBLOCK)
             return Err(Error::from_kind(ErrorKind { ErrorKind::WouldBlock }));
         return Err(Error::from_raw_os_error(libc::get_errno()));
 #else
@@ -544,7 +544,7 @@ public:
     /// flock(2) LOCK_UN.
     auto unlock() -> Result<empty> {
 #if RSTD_OS_UNIX
-        if (libc::flock(fd_.as_raw_fd(), libc::M_LOCK_UN) == 0) return Ok(empty {});
+        if (libc::flock(fd_.as_raw_fd(), libc::LOCK_UN) == 0) return Ok(empty {});
         return Err(Error::from_raw_os_error(libc::get_errno()));
 #else
         return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
@@ -575,7 +575,7 @@ public:
 #endif
     }
 
-    /// futimens(2) — set accessed/modified times. libc::M_UTIME_OMIT for unset fields.
+    /// futimens(2) — set accessed/modified times. libc::UTIME_OMIT for unset fields.
     auto set_times(FileTimes times) -> Result<empty> {
 #if RSTD_OS_UNIX
         libc::timespec_t ts[2];
@@ -586,7 +586,7 @@ public:
                 out.tv_nsec = long(spec.tv_nsec);
             } else {
                 out.tv_sec  = 0;
-                out.tv_nsec = libc::M_UTIME_OMIT;
+                out.tv_nsec = libc::UTIME_OMIT;
             }
         };
         fill(times.accessed_, ts[0]);
@@ -635,13 +635,13 @@ inline auto OpenOptions::open(ref<Path> path) const -> Result<File> {
     if (creation.is_err()) return Err(creation.unwrap_err_unchecked());
 
     int flags = access.unwrap_unchecked() | creation.unwrap_unchecked() |
-                custom_flags_ | libc::M_O_CLOEXEC;
+                custom_flags_ | libc::O_CLOEXEC;
     auto path_ptr = reinterpret_cast<const char*>(cs.to_bytes_with_nul().p);
 
     while (true) {
         int fd = libc::open(path_ptr, flags, libc::mode_t(mode_));
         if (fd >= 0) return Ok(File { OwnedFd { fd } });
-        if (libc::get_errno() == libc::M_EINTR) continue;
+        if (libc::get_errno() == libc::EINTR) continue;
         return Err(Error::from_raw_os_error(libc::get_errno()));
     }
 #else
@@ -1068,13 +1068,13 @@ public:
                 rstd::ffi::OsString::from(parent_.as_path().as_os_str()));
             e.name_   = rstd::ffi::OsString::from(rstd::ref<rstd::str>(nm));
             switch (d->d_type) {
-            case libc::M_DT_REG:  e.type_ = libc::M_S_IFREG;  break;
-            case libc::M_DT_DIR:  e.type_ = libc::M_S_IFDIR;  break;
-            case libc::M_DT_LNK:  e.type_ = libc::M_S_IFLNK;  break;
-            case libc::M_DT_FIFO: e.type_ = libc::M_S_IFIFO;  break;
-            case libc::M_DT_BLK:  e.type_ = libc::M_S_IFBLK;  break;
-            case libc::M_DT_CHR:  e.type_ = libc::M_S_IFCHR;  break;
-            case libc::M_DT_SOCK: e.type_ = libc::M_S_IFSOCK; break;
+            case libc::DT_REG:  e.type_ = libc::S_IFREG;  break;
+            case libc::DT_DIR:  e.type_ = libc::S_IFDIR;  break;
+            case libc::DT_LNK:  e.type_ = libc::S_IFLNK;  break;
+            case libc::DT_FIFO: e.type_ = libc::S_IFIFO;  break;
+            case libc::DT_BLK:  e.type_ = libc::S_IFBLK;  break;
+            case libc::DT_CHR:  e.type_ = libc::S_IFCHR;  break;
+            case libc::DT_SOCK: e.type_ = libc::S_IFSOCK; break;
             default:              e.type_ = 0;                break;
             }
             return Some(Result<DirEntry>(Ok(rstd::move(e))));
