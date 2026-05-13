@@ -157,6 +157,7 @@ export using std::memset;
 export using std::strchr;
 export using std::strcmp;
 export using std::strcpy;
+export using std::strerror;
 export using std::strlen;
 export using std::strncmp;
 export using std::strncpy;
@@ -182,6 +183,9 @@ export using std::round;
 export using std::sin;
 export using std::sqrt;
 export using std::tan;
+export using std::isnan;
+export using std::isfinite;
+export using std::isinf;
 
 // <ctime>
 export using std::clock;

@@ -8,6 +8,7 @@ module;
 #include <sys/stat.h>
 #include <sys/file.h>
 #include <sys/types.h>
+#include <sys/sysmacros.h>
 #include <unistd.h>
 #include <sched.h>
 #include <stdlib.h>
@@ -18,6 +19,7 @@ module;
 #include <spawn.h>
 #include <fcntl.h>
 #include <dirent.h>
+
 #endif
 
 export module rstd:sys.libc.unix;
@@ -36,6 +38,8 @@ inline constexpr auto _ETIMEDOUT   = ETIMEDOUT;
 inline constexpr auto _EINTR       = EINTR;
 inline constexpr auto _EINVAL      = EINVAL;
 inline constexpr auto _EWOULDBLOCK = EWOULDBLOCK;
+inline constexpr auto _EIO         = EIO;
+inline constexpr auto _EAGAIN      = EAGAIN;
 
 inline constexpr auto _SIGKILL = SIGKILL;
 
@@ -89,6 +93,8 @@ inline constexpr auto _UTIME_OMIT = UTIME_OMIT;
 #undef EINTR
 #undef EINVAL
 #undef EWOULDBLOCK
+#undef EIO
+#undef EAGAIN
 #undef SIGKILL
 #undef O_CLOEXEC
 #undef O_RDONLY
@@ -125,6 +131,19 @@ inline constexpr auto _UTIME_OMIT = UTIME_OMIT;
 #undef LOCK_UN
 #undef UTIME_OMIT
 
+inline auto _rstd_make_dev(unsigned int ma, unsigned int mi) noexcept -> ::dev_t {
+    return makedev(ma, mi);
+}
+inline auto _rstd_dev_major(::dev_t d) noexcept -> unsigned int {
+    return major(d);
+}
+inline auto _rstd_dev_minor(::dev_t d) noexcept -> unsigned int {
+    return minor(d);
+}
+#undef makedev
+#undef major
+#undef minor
+
 export namespace rstd::sys::libc
 {
 
@@ -147,6 +166,8 @@ inline constexpr auto ETIMEDOUT       = _ETIMEDOUT;
 inline constexpr auto EINTR           = _EINTR;
 inline constexpr auto EINVAL          = _EINVAL;
 inline constexpr auto EWOULDBLOCK     = _EWOULDBLOCK;
+inline constexpr auto EIO             = _EIO;
+inline constexpr auto EAGAIN          = _EAGAIN;
 
 inline auto gmtime_utc(::time_t secs) noexcept -> ::tm {
     ::tm out {};
@@ -211,6 +232,7 @@ using ::mode_t;
 using ::off_t;
 using ::ssize_t;
 using ::time_t;
+using ::dev_t;
 using ::DIR;
 using ::dirent;
 /// `struct stat` aliased to avoid clash with the `::stat()` function.
@@ -266,6 +288,12 @@ inline constexpr auto UTIME_OMIT = _UTIME_OMIT;
 
 /// Returns an lvalue reference to the platform `errno`. Use to read and write.
 inline auto get_errno() noexcept -> int& { return errno; }
+
+inline auto makedev(unsigned int ma, unsigned int mi) noexcept -> ::dev_t {
+    return _rstd_make_dev(ma, mi);
+}
+inline auto major(::dev_t d) noexcept -> unsigned int { return _rstd_dev_major(d); }
+inline auto minor(::dev_t d) noexcept -> unsigned int { return _rstd_dev_minor(d); }
 
 inline auto wait_exited(int status) -> bool  { return WIFEXITED(status); }
 inline auto wait_exitstatus(int status) -> int { return WEXITSTATUS(status); }
