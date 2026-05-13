@@ -29,3 +29,4 @@ export import :memchr;
 export import :char_;
 export import :f32_;
 export import :f64_;
+export import :int_;

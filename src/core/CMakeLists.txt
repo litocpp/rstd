@@ -77,4 +77,5 @@ target_sources(
          forward/mod.cppm
          char.cppm
          f32.cppm
-         f64.cppm)
+         f64.cppm
+         int.cppm)
