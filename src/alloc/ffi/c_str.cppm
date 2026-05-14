@@ -17,6 +17,11 @@ namespace alloc::ffi
 export struct NulError {
     usize   size;
     Vec<u8> data;
+
+    NulError(usize s, Vec<u8>&& d) noexcept : size(s), data(rstd::move(d)) {}
+    NulError(NulError&&) noexcept;
+    NulError& operator=(NulError&&) noexcept;
+    ~NulError();
 };
 
 /// An owned, C-compatible, nul-terminated string, analogous to Rust's `CString`.
@@ -25,6 +30,11 @@ public:
     ::alloc::boxed::Box<u8[]> inner;
 
     USE_TRAIT(CString)
+
+    CString(::alloc::boxed::Box<u8[]>&& b) noexcept : inner(rstd::move(b)) {}
+    CString(CString&&) noexcept;
+    CString& operator=(CString&&) noexcept;
+    ~CString();
 
     /// Creates a `CString` from a byte vector without checking for interior nul bytes.
     /// \param v The byte vector; a nul terminator will be appended.
@@ -96,6 +106,17 @@ public:
         return slice<u8>::from_raw_parts(as_cast<const u8*>(cstr.p), cstr.length + 1);
     }
 };
+
+// Out-of-line non-inline defaults so a strong symbol lands in this module's
+// object file. Works around gcc 15 modules failing to emit implicit special
+// members for module-owned classes.
+NulError::NulError(NulError&&) noexcept            = default;
+NulError& NulError::operator=(NulError&&) noexcept = default;
+NulError::~NulError()                              = default;
+
+CString::CString(CString&&) noexcept            = default;
+CString& CString::operator=(CString&&) noexcept = default;
+CString::~CString()                             = default;
 
 } // namespace alloc::ffi
 
