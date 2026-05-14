@@ -380,8 +380,8 @@ public:
     /// Seeks within the file.
     auto seek(SeekFrom pos) -> Result<u64> {
 #if RSTD_OS_UNIX
-        int        whence;
-        libc::off_t off;
+        int         whence = libc::SEEK_SET;
+        libc::off_t off    = 0;
         switch (pos.which) {
         case SeekFrom::Which::Start:
             whence = libc::SEEK_SET; off = libc::off_t(u64(pos.offset)); break;
