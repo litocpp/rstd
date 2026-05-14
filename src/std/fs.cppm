@@ -176,7 +176,7 @@ public:
 
     auto modified() const -> Result<rstd::time::SystemTime> {
 #if RSTD_OS_UNIX
-        return Ok(rstd::time::SystemTime { rstd::sys::SystemTime {
+        return Ok(rstd::time::SystemTime { rstd::sys::pal::unix::time::SystemTime {
             rstd::sys::pal::unix::time::Timespec {
                 i64(st_.st_mtim.tv_sec), u32(st_.st_mtim.tv_nsec) } } });
 #else
@@ -185,7 +185,7 @@ public:
     }
     auto accessed() const -> Result<rstd::time::SystemTime> {
 #if RSTD_OS_UNIX
-        return Ok(rstd::time::SystemTime { rstd::sys::SystemTime {
+        return Ok(rstd::time::SystemTime { rstd::sys::pal::unix::time::SystemTime {
             rstd::sys::pal::unix::time::Timespec {
                 i64(st_.st_atim.tv_sec), u32(st_.st_atim.tv_nsec) } } });
 #else

@@ -218,7 +218,7 @@ TEST(FsTimes, SetModifiedRoundTrip) {
                  .unwrap_unchecked();
 
     // Pick an epoch instant: 2020-01-01 UTC = 1577836800
-    auto t   = rstd::time::SystemTime { rstd::sys::SystemTime {
+    auto t   = rstd::time::SystemTime { rstd::sys::pal::unix::time::SystemTime {
         rstd::sys::pal::unix::time::Timespec { 1577836800, 0 } } };
     auto res = f.set_modified(t);
     ASSERT_TRUE(res.is_ok());
