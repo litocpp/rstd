@@ -75,9 +75,9 @@ auto spawn_unchecked(Option<String> name, usize stack_size, Option<Arc<ScopeData
     auto start = [f = rstd::move(f), p = as<clone::Clone>(my_packet).clone()]() mutable {
         if constexpr (mtp::same_as<ret_t, void>) {
             f();
-            p->result = Some(Ok<empty, int>(empty {}));
+            p->result = option::Some(Ok<empty, int>(empty {}));
         } else {
-            p->result = Some(Ok<ret_t, int>(rstd::move(f)()));
+            p->result = option::Some(Ok<ret_t, int>(rstd::move(f)()));
         }
     };
 

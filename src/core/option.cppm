@@ -34,14 +34,14 @@ inline constexpr auto Some(T&& val) {
     if constexpr (mtp::same_as<U, void>) {
         using val_t = mtp::rm_ref<T>;
         if constexpr (mtp::triv_copy<val_t> && (! mtp::is_ref<val_t>)) {
-            return Option<val_t>(rstd::move(val));
+            return Option<val_t>::make_with(rstd::move(val));
         } else {
             // use T here, as lvalue is Option<T&>
             // only move is Option<T>
-            return Option<T>(rstd::forward<T>(val));
+            return Option<T>::make_with(rstd::forward<T>(val));
         }
     } else {
-        return Option<U>(rstd::forward<T>(val));
+        return Option<U>::make_with(rstd::forward<T>(val));
     }
 }
 
@@ -397,11 +397,6 @@ class Option : public detail::option_base<T>, public detail::option_adapter<T> {
     template<typename>
     friend struct detail::option_adapter_l1;
 
-    template<typename, typename T_>
-    friend constexpr auto rstd::option::Some(T_&& val);
-    template<typename, typename T_>
-    friend constexpr auto rstd::option::None(T_&& val);
-
     using traits        = detail::option_base<T>::traits;
     using union_value_t = detail::option_store<T>::union_value_t;
     using base_t        = detail::option_base<T>;
@@ -483,6 +478,11 @@ public:
         } else {
             this->_assign_none();
         }
+    }
+
+    template<typename U>
+    static constexpr auto make_with(U&& val) noexcept(mtp::noex_init<T, U>) {
+        return Option(rstd::forward<U>(val));
     }
 
 private:
