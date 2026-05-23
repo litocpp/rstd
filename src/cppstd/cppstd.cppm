@@ -1,6 +1,7 @@
 module;
 // c
 #include <cassert>
+#include <cctype>
 #include <cmath>
 #include <cstdarg>
 #include <cstddef>
@@ -162,6 +163,22 @@ export using std::strlen;
 export using std::strncmp;
 export using std::strncpy;
 export using std::strstr;
+
+// <cctype>
+export using std::isalnum;
+export using std::isalpha;
+export using std::isblank;
+export using std::iscntrl;
+export using std::isdigit;
+export using std::isgraph;
+export using std::islower;
+export using std::isprint;
+export using std::ispunct;
+export using std::isspace;
+export using std::isupper;
+export using std::isxdigit;
+export using std::tolower;
+export using std::toupper;
 
 // <cmath>
 export using std::abs;
@@ -384,6 +401,10 @@ export using std::flush;
 export using std::ostream;
 export using std::istream;
 export using std::iostream;
+export using std::ios;
+export using std::ios_base;
+export using std::streampos;
+export using std::streamsize;
 
 // <sstream>
 export using std::basic_istringstream;
@@ -407,6 +428,7 @@ export using std::ssub_match;
 export using std::all_of;
 export using std::any_of;
 export using std::binary_search;
+export using std::clamp;
 export using std::copy;
 export using std::copy_if;
 export using std::copy_n;
@@ -417,15 +439,21 @@ export using std::equal;
 export using std::fill;
 export using std::fill_n;
 export using std::find;
+export using std::find_first_of;
 export using std::find_if;
 export using std::find_if_not;
 export using std::for_each;
+export using std::is_sorted;
 export using std::iter_swap;
 export using std::lower_bound;
 export using std::max;
+export using std::max_element;
 export using std::min;
+export using std::min_element;
 export using std::minmax;
+export using std::mismatch;
 export using std::none_of;
+export using std::nth_element;
 export using std::partition;
 export using std::remove;
 export using std::remove_if;
@@ -433,6 +461,7 @@ export using std::replace;
 export using std::replace_if;
 export using std::reverse;
 export using std::rotate;
+export using std::search;
 export using std::sort;
 export using std::stable_sort;
 export using std::swap_ranges;
@@ -671,6 +700,7 @@ export using std::void_t;
 
 // <cstddef>
 export using std::byte;
+export using std::to_integer;
 
 // <new>
 export using std::align_val_t;
@@ -742,8 +772,11 @@ export using std::filesystem::copy;
 export using std::filesystem::create_directories;
 export using std::filesystem::create_directory;
 export using std::filesystem::current_path;
+export using std::filesystem::begin;
+export using std::filesystem::end;
 export using std::filesystem::directory_entry;
 export using std::filesystem::directory_iterator;
+export using std::filesystem::directory_options;
 export using std::filesystem::exists;
 export using std::filesystem::file_size;
 export using std::filesystem::file_status;
@@ -751,6 +784,7 @@ export using std::filesystem::file_type;
 export using std::filesystem::is_directory;
 export using std::filesystem::is_regular_file;
 export using std::filesystem::path;
+export using std::filesystem::read_symlink;
 export using std::filesystem::recursive_directory_iterator;
 export using std::filesystem::relative;
 export using std::filesystem::remove;
