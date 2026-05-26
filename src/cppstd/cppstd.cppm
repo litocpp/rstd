@@ -139,16 +139,18 @@ export using std::fclose;
 export using std::fflush;
 export using std::fgets;
 export using std::fopen;
-export using std::fprintf;
 export using std::fread;
 export using std::fseek;
 export using std::ftell;
 export using std::fwrite;
-export using std::printf;
-export using std::snprintf;
-export using std::sprintf;
 export using std::sscanf;
 export using std::vfprintf;
+#if 0
+export using std::printf;
+export using std::fprintf;
+export using std::snprintf;
+export using std::sprintf;
+#endif
 
 // <cstring>
 export using std::memcmp;
