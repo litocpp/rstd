@@ -12,6 +12,27 @@ using namespace rstd::prelude;
 namespace alloc::string
 {
 
+/// Iterator over the Unicode scalar values of a UTF-8 byte range.
+export struct Chars : rstd::WithTraitDefault<Chars, rstd::iter::Iterator> {
+    using Item = u32;
+    const u8* cur;
+    const u8* fin;
+    Chars(const u8* b, const u8* e): cur(b), fin(e) {}
+    auto next() -> rstd::Option<u32> {
+        if (cur == fin) return rstd::None();
+        u8  b0 = *cur++;
+        u32 cp;
+        usize extra;
+        if (b0 < 0x80) return rstd::Some(static_cast<u32>(b0));
+        else if ((b0 >> 5) == 0x6) { cp = b0 & 0x1Fu; extra = 1; }
+        else if ((b0 >> 4) == 0xE) { cp = b0 & 0x0Fu; extra = 2; }
+        else { cp = b0 & 0x07u; extra = 3; }
+        for (usize k = 0; k < extra && cur < fin; ++k)
+            cp = (cp << 6) | (static_cast<u32>(*cur++) & 0x3Fu);
+        return rstd::Some(cp);
+    }
+};
+
 /// A UTF-8 encoded, growable string, analogous to Rust's `String`.
 export class String {
     Vec<u8> vec;
@@ -131,6 +152,11 @@ public:
     /// Returns the length of the string in bytes.
     /// \return The number of bytes in the string.
     constexpr auto size() const noexcept -> usize { return vec.len(); }
+
+    /// Returns an iterator over the bytes (`u8`) of the string.
+    auto bytes() const { return rstd::iter::SliceIter<u8>(vec.begin(), vec.end()).copied(); }
+    /// Returns an iterator over the Unicode scalar values of the string.
+    auto chars() const -> Chars { return Chars(vec.begin(), vec.end()); }
 };
 
 /// A trait for converting a value to a `String`.
@@ -159,6 +185,27 @@ struct Impl<fmt::Write, String> : ImplBase<String> {
             self.push_back(p[i]);
         }
         return true;
+    }
+};
+
+// collect<String>() from an iterator of char or u8.
+template<>
+struct Impl<iter::FromIterator<char>, String> : ImplBase<String> {
+    template<typename It>
+    static auto from_iter(It it) -> String {
+        auto s = String::make();
+        for (auto x = it.next(); x.is_some(); x = it.next()) s.push_back(*x);
+        return s;
+    }
+};
+
+template<>
+struct Impl<iter::FromIterator<u8>, String> : ImplBase<String> {
+    template<typename It>
+    static auto from_iter(It it) -> String {
+        auto s = String::make();
+        for (auto x = it.next(); x.is_some(); x = it.next()) s.push_back(static_cast<char>(*x));
+        return s;
     }
 };
 } // namespace rstd

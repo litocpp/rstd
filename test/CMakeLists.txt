@@ -31,6 +31,7 @@ add_executable(
   alloc/vec.cpp
   alloc/sync.cpp
   alloc/string.cpp
+  iter/iterator.cpp
   sys/sync/mutex/futex.cpp
   sys/sync/mutex/pthread.cpp
   thread/thread.cpp

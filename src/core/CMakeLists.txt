@@ -68,6 +68,11 @@ target_sources(
          ptr/ptr.cppm
          ops/mod.cppm
          ops/function.cppm
+         iter/mod.cppm
+         iter/traits.cppm
+         iter/adapters.cppm
+         iter/sources.cppm
+         iter/range.cppm
          mem/mod.cppm
          mem/manually_drop.cppm
          mem/maybe_uninit.cppm

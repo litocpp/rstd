@@ -77,6 +77,9 @@ struct RawVec {
 namespace alloc::vec
 {
 
+template<typename T>
+struct VecIntoIter;
+
 /// A contiguous growable array type, analogous to Rust's `Vec<T>`.
 /// \tparam T The element type, which must be `Sized`.
 export template<typename T>
@@ -272,6 +275,44 @@ public:
     constexpr auto begin() const noexcept { return m_buf.ptr.as_ptr().as_raw_ptr(); }
     /// Returns a const iterator to the end.
     constexpr auto end() const noexcept { return m_buf.ptr.as_ptr().as_raw_ptr() + m_len; }
+
+    using IntoIter = VecIntoIter<T>;
+
+    /// Returns an iterator over `&T`.
+    auto iter() const -> rstd::iter::SliceIter<T> { return { begin(), end() }; }
+    /// Returns an iterator over `&mut T`.
+    auto iter_mut() -> rstd::iter::SliceIterMut<T> { return { begin(), end() }; }
+    /// Consumes the vector, returning an iterator over owned `T`.
+    auto into_iter() -> VecIntoIter<T> { return VecIntoIter<T>(rstd::move(*this)); }
+};
+
+/// Owning iterator over a `Vec<T>`, yielding elements by value.
+template<typename T>
+struct VecIntoIter : rstd::WithTraitDefault<VecIntoIter<T>, rstd::iter::Iterator> {
+    using Item = T;
+    Vec<T> vec;
+    usize  idx;
+
+    explicit VecIntoIter(Vec<T> v): vec(rstd::move(v)), idx(0) {}
+
+    auto next() -> rstd::Option<Item> {
+        if (idx >= vec.len()) return rstd::None();
+        T v = rstd::move(vec[idx]);
+        ++idx;
+        return rstd::Some(rstd::move(v));
+    }
+
+    auto next_back() -> rstd::Option<Item> {
+        if (idx >= vec.len()) return rstd::None();
+        return vec.pop();
+    }
+
+    auto size_hint() const -> rstd::iter::SizeHint {
+        usize n = vec.len() - idx;
+        return { n, rstd::Some(n) };
+    }
+
+    auto len() const -> usize { return vec.len() - idx; }
 };
 
 } // namespace alloc::vec
@@ -300,6 +341,23 @@ struct Impl<T, ::alloc::vec::Vec<A>> : ImplBase<::alloc::vec::Vec<A>> {
         }
         return vec;
     }
+};
+
+// collect<Vec<A>>() builds a Vec by draining any iterator of A.
+template<typename A>
+struct Impl<iter::FromIterator<A>, ::alloc::vec::Vec<A>> : ImplBase<::alloc::vec::Vec<A>> {
+    template<typename It>
+    static auto from_iter(It it) -> ::alloc::vec::Vec<A> {
+        auto vec = ::alloc::vec::Vec<A>::make();
+        for (auto x = it.next(); x.is_some(); x = it.next())
+            vec.push(rstd::move(*x));
+        return vec;
+    }
+};
+
+template<typename A>
+struct Impl<iter::IntoIterator, ::alloc::vec::Vec<A>> : ImplBase<::alloc::vec::Vec<A>> {
+    auto into_iter() -> ::alloc::vec::VecIntoIter<A> { return this->self().into_iter(); }
 };
 
 } // namespace rstd

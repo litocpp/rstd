@@ -10,6 +10,7 @@ export import :slice;
 export import :alloc;
 
 export import :ops;
+export import :iter;
 
 export import :clone;
 export import :option;

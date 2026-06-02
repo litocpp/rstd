@@ -10,6 +10,7 @@ import :convert;
 
 import :option;
 import :result;
+import :iter;
 
 export namespace rstd::prelude
 {
@@ -52,4 +53,12 @@ using rstd::Ok;
 using rstd::Result;
 
 using rstd::str;
+
+using rstd::iter::Iterator;
+using rstd::iter::IntoIterator;
+using rstd::iter::FromIterator;
+using rstd::iter::DoubleEndedIterator;
+using rstd::iter::ExactSizeIterator;
+using rstd::iter::Range;
+using rstd::iter::range;
 } // namespace rstd::prelude
