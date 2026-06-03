@@ -32,6 +32,34 @@ TEST(Env, OverwriteVar) {
     EXPECT_EQ("second", val.unwrap());
 }
 
+TEST(Env, Args) {
+    // glibc .init_array captured the real process argv; there is always argv[0].
+    auto n = rstd::env::args().count();
+    EXPECT_GE(n, 1u);
+
+    auto first = rstd::env::args().next();
+    ASSERT_TRUE(first.is_some());
+    EXPECT_GT(first.unwrap().len(), 0u);  // program path is non-empty
+}
+
+TEST(Env, ArgsManualInit) {
+    const char* argv[] = { "prog", "--flag", "value" };
+    rstd::env::args_init(3, argv);
+
+    auto collected = rstd::env::args().collect<rstd::vec::Vec<rstd::string::String>>();
+    ASSERT_EQ(collected.len(), 3u);
+    EXPECT_EQ("prog", collected[0]);
+    EXPECT_EQ("--flag", collected[1]);
+    EXPECT_EQ("value", collected[2]);
+
+    // args() is an ExactSize + DoubleEnded iterator
+    auto it = rstd::env::args();
+    EXPECT_EQ(rstd::as<rstd::iter::ExactSizeIterator>(it).len(), 3u);
+    auto last = rstd::env::args().next_back();
+    ASSERT_TRUE(last.is_some());
+    EXPECT_EQ("value", last.unwrap());
+}
+
 TEST(Process, Id) {
     auto pid = rstd::process::id();
     EXPECT_GT(pid, 0u);

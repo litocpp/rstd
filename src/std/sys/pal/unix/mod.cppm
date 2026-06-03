@@ -39,5 +39,44 @@ export auto unsetenv_internal(const char* name) -> bool {
     return libc::unsetenv(name) == 0;
 }
 
+// Command-line argument capture.
+//
+// glibc passes (argc, argv, envp) to functions in `.init_array` as a non-standard
+// extension, so we register a capturing function there and stash the raw argc/argv.
+// This makes `env::args()` work without a runtime `main` wrapper.
+namespace args_detail
+{
+inline isize              g_argc = 0;
+inline char const* const* g_argv = nullptr;
+
+extern "C" inline void rstd_capture_args(int argc, char** argv, char**) {
+    g_argc = static_cast<isize>(argc);
+    g_argv = argv;
+}
+
+using init_fn_t = void (*)(int, char**, char**);
+
+[[gnu::used, gnu::retain, gnu::section(".init_array.00099")]]
+inline init_fn_t rstd_args_init_entry = &rstd_capture_args;
+} // namespace args_detail
+
+/// Raw, system-provided command-line argument vector.
+export struct ArgcArgv {
+    isize              argc;
+    char const* const* argv;
+};
+
+/// Overrides the captured argc/argv (e.g. when `.init_array` capture is unavailable).
+export void args_capture(isize argc, char const* const* argv) {
+    args_detail::g_argc = argc;
+    args_detail::g_argv = argv;
+}
+
+/// Returns the unmodified system-provided argc/argv, or `{0, nullptr}` if unset.
+export auto args_argc_argv() -> ArgcArgv {
+    if (args_detail::g_argv == nullptr) return { 0, nullptr };
+    return { args_detail::g_argc, args_detail::g_argv };
+}
+
 } // namespace rstd::sys::pal::unix
 #endif

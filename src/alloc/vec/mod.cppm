@@ -77,7 +77,7 @@ struct RawVec {
 namespace alloc::vec
 {
 
-template<typename T>
+export template<typename T>
 struct VecIntoIter;
 
 /// A contiguous growable array type, analogous to Rust's `Vec<T>`.
@@ -195,7 +195,7 @@ public:
             T* p     = m_buf.ptr.as_mut_ptr().as_raw_ptr() + m_len;
             T  value = rstd::move(*p);
             p->~T();
-            return Some(value);
+            return Some(rstd::move(value));
         }
     }
 
@@ -287,7 +287,7 @@ public:
 };
 
 /// Owning iterator over a `Vec<T>`, yielding elements by value.
-template<typename T>
+export template<typename T>
 struct VecIntoIter : rstd::WithTraitDefault<VecIntoIter<T>, rstd::iter::Iterator> {
     using Item = T;
     Vec<T> vec;

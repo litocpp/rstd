@@ -45,5 +45,29 @@ export auto unsetenv_internal(const char* name) -> bool {
     return libc::SetEnvironmentVariableA(name, nullptr) != 0;
 }
 
+/// Raw, system-provided command-line argument vector.
+export struct ArgcArgv {
+    isize              argc;
+    char const* const* argv;
+};
+
+namespace args_detail
+{
+inline isize              g_argc = 0;
+inline char const* const* g_argv = nullptr;
+} // namespace args_detail
+
+/// Overrides the captured argc/argv (call from `main` on Windows).
+export void args_capture(isize argc, char const* const* argv) {
+    args_detail::g_argc = argc;
+    args_detail::g_argv = argv;
+}
+
+/// Returns the captured argc/argv, or `{0, nullptr}` if `args_capture` was not called.
+export auto args_argc_argv() -> ArgcArgv {
+    if (args_detail::g_argv == nullptr) return { 0, nullptr };
+    return { args_detail::g_argc, args_detail::g_argv };
+}
+
 } // namespace rstd::sys::pal::windows
 #endif

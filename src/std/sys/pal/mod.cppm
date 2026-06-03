@@ -19,6 +19,9 @@ using unix::getpid_internal;
 using unix::getenv_internal;
 using unix::setenv_internal;
 using unix::unsetenv_internal;
+using unix::ArgcArgv;
+using unix::args_capture;
+using unix::args_argc_argv;
 
 #elif RSTD_OS_WINDOWS
 
@@ -33,6 +36,9 @@ using windows::getpid_internal;
 using windows::getenv_internal;
 using windows::setenv_internal;
 using windows::unsetenv_internal;
+using windows::ArgcArgv;
+using windows::args_capture;
+using windows::args_argc_argv;
 #endif
 
 } // namespace rstd::sys::pal

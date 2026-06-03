@@ -15,6 +15,9 @@ using pal::getpid_internal;
 using pal::getenv_internal;
 using pal::setenv_internal;
 using pal::unsetenv_internal;
+using pal::ArgcArgv;
+using pal::args_capture;
+using pal::args_argc_argv;
 using pal::Instant;
 using pal::SystemTime;
 
