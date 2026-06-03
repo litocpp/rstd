@@ -54,6 +54,8 @@ template<class I>
 struct Cycle;
 template<class I>
 struct Intersperse;
+template<class I>
+struct ByRef;
 
 /// `(lower, upper)` bound on the number of remaining elements.
 export using SizeHint = rstd::tuple<usize, Option<usize>>;
@@ -401,6 +403,106 @@ struct Impl<iter::Iterator, default_tag<Self, P>> : ImplBase<default_tag<Self, P
     auto ge(U other) -> bool {
         return this->self().cmp(rstd::move(other)) != rstd::strong_ordering::less;
     }
+
+    // compare(a, b) -> strong_ordering; returns the minimum (first on ties).
+    template<typename F>
+    auto min_by(F compare) {
+        auto best = this->self().next();
+        for (auto x = this->self().next(); x.is_some(); x = this->self().next())
+            if (compare(*best, *x) == rstd::strong_ordering::greater) best = rstd::move(x);
+        return best;
+    }
+
+    // compare(a, b) -> strong_ordering; returns the maximum (last on ties).
+    template<typename F>
+    auto max_by(F compare) {
+        auto best = this->self().next();
+        for (auto x = this->self().next(); x.is_some(); x = this->self().next())
+            if (compare(*best, *x) != rstd::strong_ordering::greater) best = rstd::move(x);
+        return best;
+    }
+
+    // Index (from the front) of the last element matching `pred`.
+    // Requires DoubleEndedIterator + ExactSizeIterator.
+    template<typename Pred>
+    auto rposition(Pred pred) -> Option<usize> {
+        usize i = this->self().len();
+        for (auto x = this->self().next_back(); x.is_some(); x = this->self().next_back()) {
+            --i;
+            if (pred(*x)) return rstd::Some(i);
+        }
+        return rstd::None();
+    }
+
+    // The n-th element from the back. Requires DoubleEndedIterator.
+    auto nth_back(usize n) {
+        auto x = this->self().next_back();
+        for (usize i = 0; i < n && x.is_some(); ++i)
+            x = this->self().next_back();
+        return x;
+    }
+
+    // Advances the iterator by up to `n`, returning the number actually advanced.
+    auto advance_by(usize n) -> usize {
+        usize i = 0;
+        for (; i < n; ++i)
+            if (this->self().next().is_none()) break;
+        return i;
+    }
+
+    auto is_sorted() -> bool {
+        auto prev = this->self().next();
+        if (prev.is_none()) return true;
+        for (auto x = this->self().next(); x.is_some(); x = this->self().next()) {
+            if (*x < *prev) return false;
+            prev = rstd::move(x);
+        }
+        return true;
+    }
+
+    // key(item) -> comparable; checks the keys are non-decreasing.
+    template<typename F>
+    auto is_sorted_by_key(F key) -> bool {
+        auto first = this->self().next();
+        if (first.is_none()) return true;
+        auto prev = key(*first);
+        for (auto x = this->self().next(); x.is_some(); x = this->self().next()) {
+            auto k = key(*x);
+            if (k < prev) return false;
+            prev = rstd::move(k);
+        }
+        return true;
+    }
+
+    // Splits into two collections of type B by `pred`. B must be default-constructible
+    // and expose `push`. Kept generic so core never names a concrete container.
+    template<typename B, typename Pred>
+    auto partition(Pred pred) -> rstd::tuple<B, B> {
+        B yes {};
+        B no {};
+        for (auto x = this->self().next(); x.is_some(); x = this->self().next()) {
+            if (pred(*x))
+                yes.push(rstd::move(*x));
+            else
+                no.push(rstd::move(*x));
+        }
+        return { rstd::move(yes), rstd::move(no) };
+    }
+
+    // Item must be a 2-tuple; splits into collections CA/CB (default-constructible, `push`).
+    template<typename CA, typename CB>
+    auto unzip() -> rstd::tuple<CA, CB> {
+        CA a {};
+        CB b {};
+        for (auto x = this->self().next(); x.is_some(); x = this->self().next()) {
+            a.push(rstd::move(x->template get<0>()));
+            b.push(rstd::move(x->template get<1>()));
+        }
+        return { rstd::move(a), rstd::move(b) };
+    }
+
+    // Borrows the iterator so adapters can consume from it without moving it.
+    auto by_ref() -> iter::ByRef<Self> { return iter::ByRef<Self>(rstd::addressof(this->self())); }
 
     // ---- adapters (move the receiver into the adapter) ----
     template<typename F>

@@ -357,6 +357,16 @@ struct FlatMap : WithTraitDefault<FlatMap<I, F>, Iterator> {
     }
 };
 
+// Borrows an iterator by pointer so it can be partially consumed without moving.
+template<class I>
+struct ByRef : WithTraitDefault<ByRef<I>, Iterator> {
+    using Item = typename I::Item;
+    I* inner;
+    explicit ByRef(I* p): inner(p) {}
+    auto next() -> Option<Item> { return inner->next(); }
+    auto size_hint() const -> SizeHint { return inner->size_hint(); }
+};
+
 template<class I>
 struct Intersperse : WithTraitDefault<Intersperse<I>, Iterator> {
     using Item = typename I::Item;

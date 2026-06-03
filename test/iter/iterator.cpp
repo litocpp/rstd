@@ -248,6 +248,67 @@ TEST(Iter, SliceArray) {
     EXPECT_EQ(arr[3], 41);
 }
 
+TEST(Iter, MinByMaxBy) {
+    auto cmp = [](const i32& a, const i32& b) { return a <=> b; };
+    EXPECT_EQ(iter::range(0, 5).min_by(cmp), Some(0));
+    EXPECT_EQ(iter::range(0, 5).max_by(cmp), Some(4));
+}
+
+TEST(Iter, RpositionNthBackAdvanceBy) {
+    auto p = iter::range(0, 5).rposition([](const i32& x) { return x < 3; });
+    EXPECT_EQ(p, Some(2u));  // last element < 3 is value 2 at index 2
+
+    EXPECT_EQ(iter::range(0, 5).nth_back(0), Some(4));
+    EXPECT_EQ(iter::range(0, 5).nth_back(1), Some(3));
+
+    auto it = iter::range(0, 5);
+    EXPECT_EQ(it.advance_by(2), 2u);
+    EXPECT_EQ(it.next(), Some(2));
+    EXPECT_EQ(it.advance_by(100), 2u);  // only 3,4 remain
+}
+
+TEST(Iter, IsSorted) {
+    EXPECT_TRUE(iter::range(0, 5).is_sorted());
+
+    Vec<i32> v;
+    v.push(3);
+    v.push(1);
+    v.push(2);
+    EXPECT_FALSE(v.iter().copied().is_sorted());
+
+    EXPECT_TRUE(iter::range(0, 5).is_sorted_by_key([](i32 x) { return x; }));
+    EXPECT_FALSE(iter::range(0, 5).is_sorted_by_key([](i32 x) { return -x; }));
+}
+
+TEST(Iter, PartitionUnzip) {
+    auto pr = iter::range(0, 6).partition<Vec<i32>>([](const i32& x) { return x % 2 == 0; });
+    ASSERT_EQ(pr.get<0>().len(), 3u);  // evens
+    ASSERT_EQ(pr.get<1>().len(), 3u);  // odds
+    EXPECT_EQ(pr.get<0>()[1], 2);
+    EXPECT_EQ(pr.get<1>()[0], 1);
+
+    auto uz = iter::range(0, 3)
+                  .map([](i32 x) { return rstd::tuple<i32, i32>(x, x * x); })
+                  .unzip<Vec<i32>, Vec<i32>>();
+    ASSERT_EQ(uz.get<0>().len(), 3u);
+    ASSERT_EQ(uz.get<1>().len(), 3u);
+    EXPECT_EQ(uz.get<0>()[2], 2);
+    EXPECT_EQ(uz.get<1>()[2], 4);
+}
+
+TEST(Iter, ByRef) {
+    auto it        = iter::range(0, 10);
+    auto first_two = it.by_ref().take(2).collect<Vec<i32>>();
+    ASSERT_EQ(first_two.len(), 2u);
+    EXPECT_EQ(first_two[0], 0);
+    EXPECT_EQ(first_two[1], 1);
+
+    auto rest = it.collect<Vec<i32>>();  // continues from where by_ref left off
+    ASSERT_EQ(rest.len(), 8u);
+    EXPECT_EQ(rest[0], 2);
+    EXPECT_EQ(rest[7], 9);
+}
+
 TEST(Iter, StringCharsBytes) {
     auto s   = String::make("abc");
     auto cnt = s.chars().count();
