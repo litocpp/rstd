@@ -17,8 +17,10 @@ export namespace rstd::sys::libc
 using ::timespec;
 using ::time_t;
 using ::tm;
-using ::time;
-using ::gmtime;
+
+inline auto time(time_t* timer) noexcept -> time_t {
+    return ::time(timer);
+}
 
 
 using ::abort;
@@ -52,11 +54,13 @@ inline auto errno() noexcept -> int {
 
 // Environment
 using ::getenv;
+#if RSTD_OS_UNIX
 using ::setenv;
 using ::unsetenv;
 
 // Process
 using ::getpid;
+#endif
 using ::_exit;
 
 } // namespace rstd::sys::libc

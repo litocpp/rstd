@@ -1,5 +1,10 @@
 module;
 #include <rstd/macro.hpp>
+
+#if RSTD_OS_WINDOWS
+#include <process.h>
+#include <stdlib.h>
+#endif
 export module rstd:sys.pal.windows;
 export import :sys.pal.windows.futex;
 export import :sys.pal.windows.sync;
@@ -32,17 +37,15 @@ export auto getpid_internal() -> u32 {
 }
 
 export auto getenv_internal(const char* name) -> const char* {
-    // Windows GetEnvironmentVariableA needs a buffer; for simplicity
-    // use the CRT getenv which is available via stdlib.h
     return ::getenv(name);
 }
 
 export auto setenv_internal(const char* name, const char* value) -> bool {
-    return libc::SetEnvironmentVariableA(name, value) != 0;
+    return libc::_putenv_s(name, value) == 0;
 }
 
 export auto unsetenv_internal(const char* name) -> bool {
-    return libc::SetEnvironmentVariableA(name, nullptr) != 0;
+    return libc::_putenv_s(name, "") == 0;
 }
 
 /// Raw, system-provided command-line argument vector.
@@ -65,7 +68,9 @@ export void args_capture(isize argc, char const* const* argv) {
 
 /// Returns the captured argc/argv, or `{0, nullptr}` if `args_capture` was not called.
 export auto args_argc_argv() -> ArgcArgv {
-    if (args_detail::g_argv == nullptr) return { 0, nullptr };
+    if (args_detail::g_argv == nullptr)
+        return { static_cast<isize>(__argc),
+                 reinterpret_cast<char const* const*>(__argv) };
     return { args_detail::g_argc, args_detail::g_argv };
 }
 

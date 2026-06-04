@@ -209,8 +209,10 @@ export using std::isinf;
 // <ctime>
 export using std::clock;
 export using std::clock_t;
+#if !defined(_WIN32)
 export using std::localtime;
 export using std::time;
+#endif
 export using std::time_t;
 export using std::tm;
 
@@ -665,7 +667,9 @@ export using std::exception_ptr;
 export using std::make_exception_ptr;
 export using std::rethrow_exception;
 export using std::terminate;
+#if __cplusplus < 202002L
 export using std::uncaught_exception;
+#endif
 export using std::uncaught_exceptions;
 
 // ==== c++14 ====

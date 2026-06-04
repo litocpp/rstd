@@ -1088,6 +1088,8 @@ private:
             dir_ = nullptr;
         }
     }
+#else
+    auto next() -> Option<Result<DirEntry>> { return None(); }
 #endif
 };
 

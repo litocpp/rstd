@@ -17,8 +17,8 @@ if(RSTD_USE_ASAN)
                    -fsanitize-recover=address)
 endif()
 
-add_executable(
-  rstd_test
+set(
+  RSTD_TEST_SOURCES
   trait.cpp
   result.cpp
   compile.cpp
@@ -33,7 +33,6 @@ add_executable(
   alloc/string.cpp
   iter/iterator.cpp
   sys/sync/mutex/futex.cpp
-  sys/sync/mutex/pthread.cpp
   thread/thread.cpp
   num/nonzero.cpp
   thread.cpp
@@ -42,17 +41,25 @@ add_executable(
   fmt.cpp
   io.cpp
   env.cpp
-  process.cpp
   char.cpp
   floats.cpp
   ints.cpp
-  sys_fd.cpp
-  fs.cpp
   str.cpp
   ffi/os_str.cpp
   path.cpp
-  log.cpp
-  )
+  log.cpp)
+
+if(UNIX)
+  list(
+    APPEND
+    RSTD_TEST_SOURCES
+    sys/sync/mutex/pthread.cpp
+    process.cpp
+    sys_fd.cpp
+    fs.cpp)
+endif()
+
+add_executable(rstd_test ${RSTD_TEST_SOURCES})
 
 target_sources(
   rstd_test

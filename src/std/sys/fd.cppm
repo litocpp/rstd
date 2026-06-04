@@ -19,7 +19,7 @@ export using RawFd = int;
 export inline constexpr RawFd INVALID_RAW_FD = -1;
 #else
 export using RawFd = void*;
-export inline constexpr RawFd INVALID_RAW_FD = (void*)(-1);
+export inline RawFd const INVALID_RAW_FD = (void*)(-1);
 #endif
 
 /// Non-owning view of a file descriptor.

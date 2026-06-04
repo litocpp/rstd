@@ -6,6 +6,9 @@ module;
 #include <synchapi.h>
 #include <time.h>
 #include <io.h>
+#include <process.h>
+#include <stdio.h>
+#include <stdlib.h>
 #endif
 export module rstd:sys.libc.windows;
 
@@ -57,7 +60,6 @@ using ::WakeByAddressAll;
 using ::QueryPerformanceFrequency;
 using ::QueryPerformanceCounter;
 using ::GetSystemTimeAsFileTime;
-using ::gmtime_s;
 
 inline auto gmtime_utc(::time_t secs) noexcept -> ::tm {
     ::tm out {};
@@ -92,6 +94,8 @@ using ::ExitProcess;
 using ::GetCurrentProcessId;
 using ::GetEnvironmentVariableA;
 using ::SetEnvironmentVariableA;
+
+using ::_putenv_s;
 
 } // namespace rstd::sys::libc
 #endif
