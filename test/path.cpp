@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 import rstd;
 
+using rstd::path::Component;
 using rstd::path::Path;
 using rstd::path::PathBuf;
 
@@ -70,6 +71,77 @@ TEST(Path, ToStr) {
     EXPECT_EQ(*s, rstd::ref<rstd::str>("/tmp/test"));
 }
 
+TEST(Path, ComponentsAbsolute) {
+    auto c = rstd::ref<Path>("/tmp/foo.txt").components();
+    EXPECT_EQ(c.next().unwrap(), Component::root_dir());
+    auto tmp = c.next();
+    ASSERT_TRUE(tmp.is_some());
+    EXPECT_TRUE((*tmp).is_normal());
+    EXPECT_EQ((*tmp).as_os_str().to_str().unwrap(), rstd::ref<rstd::str>("tmp"));
+    auto file = c.next();
+    ASSERT_TRUE(file.is_some());
+    EXPECT_TRUE((*file).is_normal());
+    EXPECT_EQ((*file).as_os_str().to_str().unwrap(), rstd::ref<rstd::str>("foo.txt"));
+    EXPECT_TRUE(c.next().is_none());
+}
+
+TEST(Path, ComponentsNormaliseSeparatorsAndDot) {
+    auto c = rstd::ref<Path>("a//./b/.").components();
+    auto a = c.next();
+    ASSERT_TRUE(a.is_some());
+    EXPECT_EQ((*a).as_os_str().to_str().unwrap(), rstd::ref<rstd::str>("a"));
+    auto b = c.next();
+    ASSERT_TRUE(b.is_some());
+    EXPECT_EQ((*b).as_os_str().to_str().unwrap(), rstd::ref<rstd::str>("b"));
+    EXPECT_TRUE(c.next().is_none());
+}
+
+TEST(Path, ComponentsLeadingCurDir) {
+    auto c = rstd::ref<Path>("./a/..").components();
+    EXPECT_EQ(c.next().unwrap(), Component::cur_dir());
+    auto a = c.next();
+    ASSERT_TRUE(a.is_some());
+    EXPECT_EQ((*a).as_os_str().to_str().unwrap(), rstd::ref<rstd::str>("a"));
+    EXPECT_EQ(c.next().unwrap(), Component::parent_dir());
+    EXPECT_TRUE(c.next().is_none());
+}
+
+TEST(Path, HasRoot) {
+    EXPECT_TRUE(rstd::ref<Path>("/usr").has_root());
+    EXPECT_FALSE(rstd::ref<Path>("usr").has_root());
+}
+
+TEST(Path, StartsWithComponentBoundary) {
+    EXPECT_TRUE(rstd::ref<Path>("/assets/scene.json").starts_with(rstd::ref<Path>("/assets")));
+    EXPECT_TRUE(rstd::ref<Path>("/assets/scene.json").starts_with(rstd::ref<Path>("/assets/")));
+    EXPECT_FALSE(rstd::ref<Path>("/assets/scene.json").starts_with(rstd::ref<Path>("/asset")));
+    EXPECT_FALSE(rstd::ref<Path>("/assets/scene.json").starts_with(rstd::ref<Path>("assets")));
+}
+
+TEST(Path, StripPrefix) {
+    auto stripped = rstd::ref<Path>("/assets/scene.json").strip_prefix(rstd::ref<Path>("/assets"));
+    ASSERT_TRUE(stripped.is_some());
+    EXPECT_EQ((*stripped).to_str().unwrap(), rstd::ref<rstd::str>("scene.json"));
+}
+
+TEST(Path, StripPrefixRootAndExact) {
+    auto root = rstd::ref<Path>("/test/haha/foo.txt").strip_prefix(rstd::ref<Path>("/"));
+    ASSERT_TRUE(root.is_some());
+    EXPECT_EQ((*root).to_str().unwrap(), rstd::ref<rstd::str>("test/haha/foo.txt"));
+
+    auto exact =
+        rstd::ref<Path>("/test/haha/foo.txt/").strip_prefix(rstd::ref<Path>("/test/haha/foo.txt"));
+    ASSERT_TRUE(exact.is_some());
+    EXPECT_TRUE((*exact).is_empty());
+}
+
+TEST(Path, StripPrefixMismatch) {
+    EXPECT_TRUE(
+        rstd::ref<Path>("/assets/scene.json").strip_prefix(rstd::ref<Path>("/asset")).is_none());
+    EXPECT_TRUE(
+        rstd::ref<Path>("/assets/scene.json").strip_prefix(rstd::ref<Path>("assets")).is_none());
+}
+
 // ── PathBuf ──────────────────────────────────────────────────────────────
 
 TEST(PathBuf, MakeEmpty) {
@@ -81,6 +153,11 @@ TEST(PathBuf, FromStr) {
     auto p = PathBuf::from("/usr/bin");
     EXPECT_EQ(p.len(), 8u);
     EXPECT_TRUE(p.as_path().is_absolute());
+}
+
+TEST(PathBuf, FromPath) {
+    auto p = PathBuf::from(rstd::ref<Path>("/usr/bin"));
+    EXPECT_EQ(p.as_path().to_str().unwrap(), rstd::ref<rstd::str>("/usr/bin"));
 }
 
 TEST(PathBuf, Push) {

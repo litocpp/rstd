@@ -21,6 +21,87 @@ export struct Path {
     ~Path() = delete;
 };
 
+export enum class ComponentKind {
+    RootDir,
+    CurDir,
+    ParentDir,
+    Normal,
+};
+
+export class Component {
+public:
+    constexpr Component() noexcept = default;
+
+    static constexpr auto root_dir() noexcept -> Component {
+        return Component { ComponentKind::RootDir, {} };
+    }
+    static constexpr auto cur_dir() noexcept -> Component {
+        return Component { ComponentKind::CurDir, {} };
+    }
+    static constexpr auto parent_dir() noexcept -> Component {
+        return Component { ComponentKind::ParentDir, {} };
+    }
+    static constexpr auto normal(ref<OsStr> s) noexcept -> Component {
+        return Component { ComponentKind::Normal, s };
+    }
+
+    constexpr auto kind() const noexcept -> ComponentKind { return m_kind; }
+    constexpr auto is_root_dir() const noexcept -> bool { return m_kind == ComponentKind::RootDir; }
+    constexpr auto is_cur_dir() const noexcept -> bool { return m_kind == ComponentKind::CurDir; }
+    constexpr auto is_parent_dir() const noexcept -> bool {
+        return m_kind == ComponentKind::ParentDir;
+    }
+    constexpr auto is_normal() const noexcept -> bool { return m_kind == ComponentKind::Normal; }
+
+    constexpr auto as_os_str() const noexcept -> ref<OsStr> {
+        switch (m_kind) {
+        case ComponentKind::RootDir: return ref<OsStr>("/");
+        case ComponentKind::CurDir: return ref<OsStr>(".");
+        case ComponentKind::ParentDir: return ref<OsStr>("..");
+        case ComponentKind::Normal: return m_os;
+        }
+        return {};
+    }
+
+    constexpr auto operator==(const Component& other) const noexcept -> bool {
+        if (m_kind != other.m_kind) return false;
+        if (m_kind != ComponentKind::Normal) return true;
+        if (m_os.len() != other.m_os.len()) return false;
+        for (usize i = 0; i < m_os.len(); ++i) {
+            if (m_os.data()[i] != other.m_os.data()[i]) return false;
+        }
+        return true;
+    }
+
+private:
+    constexpr Component(ComponentKind kind, ref<OsStr> os) noexcept : m_kind(kind), m_os(os) {}
+
+    ComponentKind m_kind { ComponentKind::Normal };
+    ref<OsStr>   m_os {};
+};
+
+export class Components {
+public:
+    using Item = Component;
+
+    constexpr Components() noexcept = default;
+    constexpr Components(u8 const* p, usize len) noexcept;
+
+    constexpr auto next() noexcept -> Option<Component>;
+    constexpr auto as_path() const noexcept -> ref<Path>;
+
+private:
+    constexpr auto remaining_start() const noexcept -> usize;
+
+    u8 const* m_path { nullptr };
+    usize     m_len { 0 };
+    usize     m_pos { 0 };
+    bool      m_root_pending { false };
+    bool      m_cur_pending { false };
+};
+
+export class PathBuf;
+
 } // namespace rstd::path
 
 namespace rstd
@@ -51,6 +132,37 @@ constexpr bool is_sep(u8 c) {
 #endif
 }
 
+constexpr auto root_len(u8 const* p, usize len) -> usize {
+    if (len == 0) return 0;
+#if defined(RSTD_OS_WINDOWS)
+    if (len >= 3 && p[1] == ':' && is_sep(p[2])) return 3;
+    if (is_sep(p[0])) return 1;
+    return 0;
+#else
+    return p[0] == '/' ? 1 : 0;
+#endif
+}
+
+constexpr auto skip_seps(u8 const* p, usize len, usize pos) -> usize {
+    while (pos < len && is_sep(p[pos])) ++pos;
+    return pos;
+}
+
+constexpr auto eq_bytes(u8 const* p, usize len, const char* s) -> bool {
+    usize i = 0;
+    while (i < len && s[i] != '\0') {
+        if (p[i] != static_cast<u8>(s[i])) return false;
+        ++i;
+    }
+    return i == len && s[i] == '\0';
+}
+
+constexpr auto include_cur_dir(u8 const* p, usize len) -> bool {
+    if (root_len(p, len) != 0) return false;
+    if (len == 1) return p[0] == '.';
+    return len > 1 && p[0] == '.' && is_sep(p[1]);
+}
+
 /// Find the start of the file name component (after the last separator).
 constexpr auto file_name_start(u8 const* p, usize len) -> usize {
     if (len == 0) return 0;
@@ -65,6 +177,54 @@ constexpr auto file_name_start(u8 const* p, usize len) -> usize {
 }
 
 } // namespace path_detail
+
+namespace path
+{
+
+constexpr Components::Components(u8 const* p, usize len) noexcept : m_path(p), m_len(len) {
+    auto root = path_detail::root_len(p, len);
+    if (root != 0) {
+        m_root_pending = true;
+        m_pos          = root;
+    } else if (path_detail::include_cur_dir(p, len)) {
+        m_cur_pending = true;
+        m_pos         = 1;
+    }
+}
+
+constexpr auto Components::next() noexcept -> Option<Component> {
+    if (m_root_pending) {
+        m_root_pending = false;
+        return Some(Component::root_dir());
+    }
+    if (m_cur_pending) {
+        m_cur_pending = false;
+        return Some(Component::cur_dir());
+    }
+
+    while (true) {
+        m_pos = path_detail::skip_seps(m_path, m_len, m_pos);
+        if (m_pos >= m_len) return None();
+
+        auto start = m_pos;
+        while (m_pos < m_len && ! path_detail::is_sep(m_path[m_pos])) ++m_pos;
+        auto len = m_pos - start;
+
+        if (path_detail::eq_bytes(m_path + start, len, ".")) continue;
+        if (path_detail::eq_bytes(m_path + start, len, "..")) {
+            return Some(Component::parent_dir());
+        }
+        return Some(Component::normal(ref<OsStr>::from_raw_parts(m_path + start, len)));
+    }
+}
+
+constexpr auto Components::remaining_start() const noexcept -> usize {
+    if (m_root_pending) return 0;
+    if (m_cur_pending) return 0;
+    return path_detail::skip_seps(m_path, m_len, m_pos);
+}
+
+} // namespace path
 
 /// A borrowed reference to a filesystem path.
 template<>
@@ -120,6 +280,42 @@ struct ref<path::Path> : ref_base<ref<path::Path>, u8[], false> {
 
     /// Returns `true` if the path is not absolute.
     constexpr auto is_relative() const noexcept -> bool { return !is_absolute(); }
+
+    /// Returns `true` if the path has a root component.
+    constexpr auto has_root() const noexcept -> bool {
+        return path_detail::root_len(p, length) != 0;
+    }
+
+    /// Produces an iterator over the path components.
+    constexpr auto components() const noexcept -> path::Components {
+        return path::Components(p, length);
+    }
+
+    /// Returns `true` when `base` is a component-wise prefix of this path.
+    constexpr auto starts_with(ref<path::Path> base) const noexcept -> bool {
+        auto iter   = components();
+        auto prefix = base.components();
+        while (true) {
+            auto b = prefix.next();
+            if (b.is_none()) return true;
+            auto s = iter.next();
+            if (s.is_none()) return false;
+            if (! (*s == *b)) return false;
+        }
+    }
+
+    /// Strips `base` as a component-wise prefix and returns the remaining path.
+    constexpr auto strip_prefix(ref<path::Path> base) const noexcept -> Option<ref<path::Path>> {
+        auto iter   = components();
+        auto prefix = base.components();
+        while (true) {
+            auto b = prefix.next();
+            if (b.is_none()) return Some(iter.as_path());
+            auto s = iter.next();
+            if (s.is_none()) return None();
+            if (! (*s == *b)) return None();
+        }
+    }
 
     /// Returns the parent path (everything before the last component).
     ///
@@ -200,6 +396,11 @@ struct ref<path::Path> : ref_base<ref<path::Path>, u8[], false> {
 export namespace rstd::path
 {
 
+constexpr auto Components::as_path() const noexcept -> ref<Path> {
+    auto start = remaining_start();
+    return ref<Path>::from_raw_parts(m_path + start, m_len - start);
+}
+
 /// An owned, mutable filesystem path, analogous to Rust's `PathBuf`.
 class PathBuf {
     OsString inner;
@@ -222,6 +423,11 @@ public:
     /// Creates a `PathBuf` from a `ref<str>`.
     static auto from(ref<str> s) -> PathBuf {
         return PathBuf { OsString::from(s) };
+    }
+
+    /// Creates a `PathBuf` from a borrowed path.
+    static auto from(ref<Path> s) -> PathBuf {
+        return PathBuf { OsString::from(s.as_os_str()) };
     }
 
     /// Creates a `PathBuf` from an `OsString`.
