@@ -98,3 +98,52 @@ TEST(Vec, Remove) {
     EXPECT_EQ(v[0], 1);
     EXPECT_EQ(v[1], 3);
 }
+
+TEST(Vec, ReserveAndExtendFromSlice) {
+    Vec<rstd::u8> v;
+    v.reserve(8);
+    EXPECT_GE(v.capacity(), 8);
+    EXPECT_EQ(v.len(), 0);
+
+    rstd::u8 data[] { 1, 2, 3 };
+    v.extend_from_slice(rstd::slice<rstd::u8>::from_raw_parts(data, 3));
+
+    EXPECT_EQ(v.len(), 3);
+    EXPECT_EQ(v[0], 1);
+    EXPECT_EQ(v[1], 2);
+    EXPECT_EQ(v[2], 3);
+}
+
+TEST(Vec, SpareCapacityAndSetLen) {
+    auto v = Vec<rstd::u8>::with_capacity(4);
+
+    auto spare = v.spare_capacity_mut();
+    ASSERT_EQ(spare.len(), 4);
+    spare[0] = 7;
+    spare[1] = 8;
+    spare[2] = 9;
+    v.set_len_unchecked(3);
+
+    EXPECT_EQ(v.len(), 3);
+    EXPECT_EQ(v[0], 7);
+    EXPECT_EQ(v[1], 8);
+    EXPECT_EQ(v[2], 9);
+
+    v.truncate(2);
+    EXPECT_EQ(v.len(), 2);
+    EXPECT_EQ(v[1], 8);
+}
+
+TEST(Vec, Resize) {
+    Vec<int> v;
+    v.resize(3, 5);
+
+    ASSERT_EQ(v.len(), 3);
+    EXPECT_EQ(v[0], 5);
+    EXPECT_EQ(v[1], 5);
+    EXPECT_EQ(v[2], 5);
+
+    v.resize(1, 0);
+    EXPECT_EQ(v.len(), 1);
+    EXPECT_EQ(v[0], 5);
+}

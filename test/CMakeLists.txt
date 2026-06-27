@@ -36,6 +36,8 @@ set(
   thread/thread.cpp
   num/nonzero.cpp
   thread.cpp
+  async.cpp
+  bytes.cpp
   sync/mpsc.cpp
   time.cpp
   fmt.cpp

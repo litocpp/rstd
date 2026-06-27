@@ -3,11 +3,15 @@ set(RSTD_SYS_SOURCES)
 set(RSTD_IO_SOURCES)
 set(RSTD_THREAD_SOURCES)
 set(RSTD_SYNC_SOURCES)
+set(RSTD_ASYNC_SOURCES)
+set(RSTD_BYTES_SOURCES)
 
 add_subdirectory(sys)
 add_subdirectory(io)
 add_subdirectory(thread)
 add_subdirectory(sync)
+add_subdirectory(async)
+add_subdirectory(bytes)
 
 add_library(rstd.std STATIC)
 target_compile_features(rstd.std PUBLIC cxx_std_20)
@@ -38,7 +42,8 @@ target_sources(
          ${RSTD_SYS_SOURCES}
          ${RSTD_IO_SOURCES}
          ${RSTD_THREAD_SOURCES}
-         ${RSTD_SYNC_SOURCES})
+         ${RSTD_SYNC_SOURCES}
+         ${RSTD_ASYNC_SOURCES}
+         ${RSTD_BYTES_SOURCES})
 
 target_sources(rstd.std PRIVATE ${RSTD_PRIVATE_SOURCES} mod.cpp process/process.cpp)
-

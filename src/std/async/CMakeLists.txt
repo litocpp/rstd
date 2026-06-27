@@ -1,0 +1,9 @@
+set(RSTD_ASYNC_SOURCES
+    async/mod.cppm
+    async/forward.cppm
+    async/task.cppm
+    async/runtime_core.cppm
+    async/spawn.cppm
+    async/runtime.cppm
+    async/time.cppm
+    PARENT_SCOPE)

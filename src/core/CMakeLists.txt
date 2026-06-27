@@ -37,6 +37,8 @@ target_sources(
          clone.cppm
          option.cppm
          result.cppm
+         task.cppm
+         future.cppm
          fmt.cppm
           panic.cppm
           panicking.cppm

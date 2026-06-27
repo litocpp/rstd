@@ -138,6 +138,18 @@ public:
         return Vec { RawVec<T>::with_capacity(capacity), 0 };
     }
 
+    /// Ensures that at least `additional` more elements can be inserted without reallocating.
+    void reserve(usize additional) {
+        auto required = m_len + additional;
+        if (required <= m_buf.cap) return;
+
+        auto new_cap = m_buf.cap == 0 ? usize { 4 } : m_buf.cap;
+        while (new_cap < required) {
+            new_cap *= 2;
+        }
+        m_buf.grow(new_cap);
+    }
+
     /// Returns a slice containing the entire vector.
     /// \return An immutable `slice<T>` over all elements.
     constexpr auto as_slice() const noexcept -> slice<T> {
@@ -155,6 +167,35 @@ public:
     /// Returns a const pointer to the first element of the vector.
     /// \return A const pointer to the underlying buffer.
     constexpr auto as_ptr() const noexcept -> ptr<T> { return m_buf.ptr.as_ptr(); }
+
+    /// Returns a mutable pointer to the first element of the vector.
+    constexpr auto as_mut_ptr() noexcept -> mut_ptr<T> { return m_buf.ptr.as_mut_ptr(); }
+
+    /// Returns the initialized contiguous storage as a raw pointer.
+    constexpr auto data() noexcept -> T* { return begin(); }
+
+    /// Returns the initialized contiguous storage as a raw pointer.
+    constexpr auto data() const noexcept -> const T* { return begin(); }
+
+    /// Returns writable spare capacity after the initialized range.
+    ///
+    /// The returned memory is uninitialized. After writing initialized values into it, callers must
+    /// publish the written length with `set_len_unchecked`.
+    constexpr auto spare_capacity_mut() noexcept -> mut_ptr<T[]> {
+        if (m_buf.cap == m_len) return {};
+        return mut_ptr<T[]>::from_raw_parts(m_buf.ptr.as_mut_ptr().as_raw_ptr() + m_len,
+                                            m_buf.cap - m_len);
+    }
+
+    /// Sets the vector length without initializing or dropping elements.
+    ///
+    /// Callers must ensure that all elements in the new initialized range are valid.
+    constexpr void set_len_unchecked(usize new_len) {
+        if (new_len > m_buf.cap) {
+            rstd::panic { "Vec::set_len_unchecked out of capacity" };
+        }
+        m_len = new_len;
+    }
 
     /// Converts this `Vec` into a `Box<T[]>`, transferring ownership of all elements.
     /// \return A boxed slice containing the vector's elements.
@@ -214,6 +255,22 @@ public:
     /// Removes the last element from the vector, discarding it.
     constexpr void pop_back() { (void)pop(); }
 
+    /// Appends a copy of all elements in `values`.
+    void extend_from_slice(slice<T> values) {
+        reserve(values.len());
+        auto* p = m_buf.ptr.as_mut_ptr().as_raw_ptr() + m_len;
+        for (usize i = 0; i < values.len(); ++i) {
+            new (p + i) T(values[i]);
+        }
+        m_len += values.len();
+    }
+
+    /// Appends a copy of `count` elements starting at `values`.
+    void extend_from_slice(const T* values, usize count) {
+        if (count == 0) return;
+        extend_from_slice(slice<T>::from_raw_parts(values, count));
+    }
+
     /// Returns a mutable reference to the element at the given index, panicking if out of bounds.
     /// \param index The index of the element.
     /// \return A mutable reference to the element.
@@ -250,6 +307,32 @@ public:
             p[i].~T();
         }
         m_len = 0;
+    }
+
+    /// Shortens the vector, dropping elements after `new_len`.
+    constexpr void truncate(usize new_len) {
+        if (new_len >= m_len) return;
+        auto* p = m_buf.ptr.as_mut_ptr().as_raw_ptr();
+        for (usize i = new_len; i < m_len; ++i) {
+            p[i].~T();
+        }
+        m_len = new_len;
+    }
+
+    /// Resizes the vector to `new_len`, cloning `value` into newly-created slots.
+    void resize(usize new_len, const T& value) {
+        if (new_len <= m_len) {
+            truncate(new_len);
+            return;
+        }
+
+        auto old_len = m_len;
+        reserve(new_len - m_len);
+        auto* p = m_buf.ptr.as_mut_ptr().as_raw_ptr();
+        for (usize i = old_len; i < new_len; ++i) {
+            new (p + i) T(value);
+        }
+        m_len = new_len;
     }
 
     /// Removes and returns the element at the given index, shifting subsequent elements left.
