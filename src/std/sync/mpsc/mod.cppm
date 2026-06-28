@@ -29,14 +29,21 @@ public:
             }
 
             auto cx = mpmc::Context::make();
+            auto oper = mpmc::Operation::hook(this);
             while (true) {
                 if (inner_bounded->start_recv(token)) {
                     return inner_bounded->read(token);
                 }
 
-                inner_bounded->receivers.register_op(mpmc::Operation::hook(this), cx);
+                cx.reset();
+                inner_bounded->receivers.register_op(oper, cx);
+                if (inner_bounded->start_recv(token)) {
+                    inner_bounded->receivers.unregister(oper);
+                    return inner_bounded->read(token);
+                }
+
                 auto sel = cx.wait_until(None());
-                inner_bounded->receivers.unregister(mpmc::Operation::hook(this));
+                inner_bounded->receivers.unregister(oper);
 
                 if (sel.is_disconnected()) {
                     if (inner_bounded->start_recv(token)) {
@@ -52,14 +59,21 @@ public:
             }
 
             auto cx = mpmc::Context::make();
+            auto oper = mpmc::Operation::hook(this);
             while (true) {
                 if (inner_unbounded->start_recv(token)) {
                     return inner_unbounded->read(token);
                 }
 
-                inner_unbounded->receivers.register_op(mpmc::Operation::hook(this), cx);
+                cx.reset();
+                inner_unbounded->receivers.register_op(oper, cx);
+                if (inner_unbounded->start_recv(token)) {
+                    inner_unbounded->receivers.unregister(oper);
+                    return inner_unbounded->read(token);
+                }
+
                 auto sel = cx.wait_until(None());
-                inner_unbounded->receivers.unregister(mpmc::Operation::hook(this));
+                inner_unbounded->receivers.unregister(oper);
 
                 if (sel.is_disconnected()) {
                     if (inner_unbounded->start_recv(token)) {
@@ -161,14 +175,21 @@ public:
         }
 
         auto cx = mpmc::Context::make();
+        auto oper = mpmc::Operation::hook(this);
         while (true) {
             if (inner->start_send(token)) {
                 return inner->write(token, rstd::move(msg));
             }
 
-            inner->senders.register_op(mpmc::Operation::hook(this), cx);
+            cx.reset();
+            inner->senders.register_op(oper, cx);
+            if (inner->start_send(token)) {
+                inner->senders.unregister(oper);
+                return inner->write(token, rstd::move(msg));
+            }
+
             auto sel = cx.wait_until(None());
-            inner->senders.unregister(mpmc::Operation::hook(this));
+            inner->senders.unregister(oper);
 
             if (sel.is_disconnected()) {
                 return Err(rstd::move(msg));
