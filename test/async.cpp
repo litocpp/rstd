@@ -4,6 +4,7 @@ import rstd;
 
 using namespace rstd;
 using namespace rstd::prelude;
+using ::alloc::vec::Vec;
 
 namespace
 {
@@ -28,6 +29,51 @@ struct TwoPollInt {
             return task::Poll<int>::Pending();
         }
         return task::Poll<int>::Ready(41);
+    }
+};
+
+struct CountReadyInt {
+    using Output = int;
+
+    int* polls;
+    int  value;
+
+    auto poll(pin::Pin<mut_ref<CountReadyInt>>, task::Context&) -> task::Poll<int> {
+        ++*polls;
+        return task::Poll<int>::Ready(value);
+    }
+};
+
+struct CountPendingInt {
+    using Output = int;
+
+    int* polls;
+    int  value;
+
+    auto poll(pin::Pin<mut_ref<CountPendingInt>>, task::Context& cx) -> task::Poll<int> {
+        ++*polls;
+        if (*polls == 1) {
+            cx.waker().wake_by_ref();
+            return task::Poll<int>::Pending();
+        }
+        return task::Poll<int>::Ready(value);
+    }
+};
+
+struct IndexedPendingInt {
+    using Output = int;
+
+    int* polls;
+    int  index;
+    int  value;
+
+    auto poll(pin::Pin<mut_ref<IndexedPendingInt>>, task::Context& cx) -> task::Poll<int> {
+        ++polls[index];
+        if (polls[index] == 1) {
+            cx.waker().wake_by_ref();
+            return task::Poll<int>::Pending();
+        }
+        return task::Poll<int>::Ready(value);
     }
 };
 
@@ -138,6 +184,54 @@ TEST(AsyncCoro, CoroutineRePollsPendingChildAfterWake) {
 
 TEST(AsyncCoro, SpawnLocalJoinHandle) {
     EXPECT_EQ(async::block_on(join_child()), 42);
+}
+
+TEST(AsyncCoro, JoinPollsAllChildren) {
+    int ready_polls  = 0;
+    int pending_polls = 0;
+
+    auto out = async::block_on(async::join(CountReadyInt { &ready_polls, 10 },
+                                           CountPendingInt { &pending_polls, 20 }));
+
+    EXPECT_EQ(out.get<0>(), 10);
+    EXPECT_EQ(out.get<1>(), 20);
+    EXPECT_EQ(ready_polls, 1);
+    EXPECT_EQ(pending_polls, 2);
+}
+
+TEST(AsyncCoro, JoinSupportsVoidFuture) {
+    auto out = async::block_on(async::join(async::yield_now(), ReadyInt {}));
+    EXPECT_EQ(out.get<1>(), 7);
+}
+
+TEST(AsyncCoro, JoinAllPreservesOrder) {
+    int polls[3] {};
+    auto futures = Vec<IndexedPendingInt>::make();
+    futures.push(IndexedPendingInt { polls, 0, 30 });
+    futures.push(IndexedPendingInt { polls, 1, 10 });
+    futures.push(IndexedPendingInt { polls, 2, 20 });
+
+    auto out = async::block_on(async::join_all(rstd::move(futures)));
+
+    ASSERT_EQ(out.len(), 3u);
+    EXPECT_EQ(out[0], 30);
+    EXPECT_EQ(out[1], 10);
+    EXPECT_EQ(out[2], 20);
+    EXPECT_EQ(polls[0], 2);
+    EXPECT_EQ(polls[1], 2);
+    EXPECT_EQ(polls[2], 2);
+}
+
+TEST(AsyncCoro, JoinAllHandlesEmptyAndVoid) {
+    auto empty_futures = Vec<ReadyInt>::make();
+    auto empty_out     = async::block_on(async::join_all(rstd::move(empty_futures)));
+    EXPECT_TRUE(empty_out.is_empty());
+
+    auto void_futures = Vec<async::YieldNow>::make();
+    void_futures.push(async::yield_now());
+    void_futures.push(async::yield_now());
+    auto void_out = async::block_on(async::join_all(rstd::move(void_futures)));
+    EXPECT_EQ(void_out.len(), 2u);
 }
 
 TEST(AsyncCoro, SleepWakesTask) {
