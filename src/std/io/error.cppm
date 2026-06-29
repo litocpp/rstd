@@ -1,4 +1,5 @@
 module;
+#include <rstd/enum.hpp>
 #include <rstd/macro.hpp>
 #if RSTD_OS_UNIX
 #  include <errno.h>
@@ -224,71 +225,76 @@ auto decode_error_kind(RawOsError) noexcept -> ErrorKind {
 
 } // namespace detail
 
+#define RSTD_IO_ERROR_VARIANTS(V)        \
+    V(Os, (RawOsError code;))            \
+    V(Kind, (ErrorKind kind;))           \
+    V(Message, (ErrorKind kind; const char* message;))
+
 /// The error type for I/O operations.
 export struct Error {
-    enum class Tag : u8 { Os, Kind, Message };
-
 private:
-    Tag        tag_     { Tag::Kind };
-    RawOsError os_code_ { 0 };
-    ErrorKind  kind_    { ErrorKind::Uncategorized };
-    const char* msg_    { nullptr };
+    RSTD_ENUM_SELF(Error)
+    RSTD_ENUM_VARIANT_COUNT(RSTD_IO_ERROR_VARIANTS)
+    RSTD_ENUM_INDEX_TYPE()
+    RSTD_ENUM_PAYLOAD_TYPES(RSTD_IO_ERROR_VARIANTS)
 
 public:
+    RSTD_ENUM_TAG_TYPE(RSTD_IO_ERROR_VARIANTS)
+
+private:
+    RSTD_ENUM_DEFAULT_STORAGE(RSTD_IO_ERROR_VARIANTS)
+    RSTD_ENUM_STORAGE(Error)
+    RSTD_ENUM_ACCESSORS(RSTD_IO_ERROR_VARIANTS)
+
+public:
+    constexpr Error() noexcept: RSTD_ENUM_INIT(Kind, ErrorKind { ErrorKind::Uncategorized }) {}
+
     /// Construct from a raw OS error code (errno / GetLastError).
     static auto from_raw_os_error(RawOsError code) noexcept -> Error {
-        Error e;
-        e.tag_     = Tag::Os;
-        e.os_code_ = code;
-        return e;
+        return Error(RSTD_ENUM_IN_PLACE(Os), code);
     }
 
     /// Construct from an ErrorKind.
     static auto from_kind(ErrorKind k) noexcept -> Error {
-        Error e;
-        e.tag_   = Tag::Kind;
-        e.kind_  = k;
-        return e;
+        return Error(RSTD_ENUM_IN_PLACE(Kind), k);
     }
 
     /// Construct a static-message error (no allocation).
     static constexpr auto new_const(ErrorKind k, const char* msg) noexcept -> Error {
-        Error e;
-        e.tag_  = Tag::Message;
-        e.kind_ = k;
-        e.msg_  = msg;
-        return e;
+        return Error(RSTD_ENUM_IN_PLACE(Message), k, msg);
     }
 
     /// Returns the ErrorKind for this error.
     auto kind() const noexcept -> ErrorKind {
-        switch (tag_) {
-        case Tag::Os:      return detail::decode_error_kind(os_code_);
-        case Tag::Kind:    return kind_;
-        case Tag::Message: return kind_;
+        switch (tag()) {
+        case Tag::Os:      return detail::decode_error_kind(as_Os().code);
+        case Tag::Kind:    return as_Kind().kind;
+        case Tag::Message: return as_Message().kind;
         }
         return ErrorKind { ErrorKind::Uncategorized };
     }
 
     /// Returns the raw OS error code if this error originated from the OS.
     auto raw_os_error() const noexcept -> Option<RawOsError> {
-        if (tag_ == Tag::Os) return Some(RawOsError(os_code_));
+        if (is_Os()) return Some(RawOsError(as_Os().code));
         return None();
     }
 
     /// Returns the static message if present (Tag::Message only).
     auto static_message() const noexcept -> const char* {
-        if (tag_ == Tag::Message) return msg_;
+        if (is_Message()) return as_Message().message;
         return nullptr;
     }
 
     /// Returns the internal tag indicating the error representation.
-    auto tag() const noexcept -> Tag { return tag_; }
+    RSTD_ENUM_OBSERVERS()
 
     friend bool operator==(const Error& a, const Error& b) noexcept {
         return a.kind() == b.kind();
     }
 };
+
+#undef RSTD_IO_ERROR_VARIANTS
 
 /// Constant error for invalid UTF-8 data in a stream.
 export inline constexpr Error Error_INVALID_UTF8 =

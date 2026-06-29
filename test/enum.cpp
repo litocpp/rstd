@@ -30,6 +30,13 @@ RSTD_ENUM(Box, BOX_VARIANTS)
 
 RSTD_ENUM_TEMPLATE((class T), Maybe, MAYBE_VARIANTS)
 
+#define COLOR_VARIANTS(V) \
+    V(Red)                \
+    V(Green)              \
+    V(Blue)
+
+RSTD_TAG_ENUM(Color, COLOR_VARIANTS)
+
 #define INLINE_SCORE_VARIANTS(V) \
     V(Idle, ())                  \
     V(Points, (int value;))
@@ -94,6 +101,18 @@ auto score(const Message& message) -> int {
         RSTD_CASE(Quit) { result = 0; }
         RSTD_CASE(Move, x, y) { result = x + y; }
         RSTD_CASE(Write, text) { result = static_cast<int>(text.size()); }
+    }
+
+    return result;
+}
+
+auto color_score(const Color& color) -> int {
+    int result = -1;
+
+    RSTD_MATCH(color) {
+        RSTD_CASE(Red) { result = 1; }
+        RSTD_CASE(Green) { result = 2; }
+        RSTD_CASE(Blue) { result = 3; }
     }
 
     return result;
@@ -167,6 +186,23 @@ TEST(Enum, SupportsTemplateEnum) {
     EXPECT_TRUE(value.is_Some());
     EXPECT_TRUE(none.is_None());
     EXPECT_EQ(value.as_Some().value, 9);
+}
+
+TEST(Enum, SupportsTagOnlyEnum) {
+    static_assert(sizeof(Color) == sizeof(rstd::u8));
+
+    auto color = Color::Red();
+    EXPECT_TRUE(color.is_Red());
+    EXPECT_FALSE(color.is_Green());
+    EXPECT_EQ(color.tag(), Color::Tag::Red);
+    EXPECT_EQ(color.index(), 0u);
+    EXPECT_EQ(color_score(color), 1);
+
+    color.replace_Blue();
+    EXPECT_TRUE(color.is_Blue());
+    EXPECT_EQ(color.tag(), Color::Tag::Blue);
+    EXPECT_EQ(color.index(), 2u);
+    EXPECT_EQ(color_score(color), 3);
 }
 
 TEST(Enum, SupportsCustomClassWithInlineParts) {

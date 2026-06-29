@@ -76,6 +76,18 @@ union union_pack<Base, T, Rest...> {
 
     constexpr union_pack() noexcept {}
 
+    template<usize I, typename... Args>
+        requires(I == Base) && mtp::init<T, Args...>
+    explicit constexpr union_pack(in_place_index_t<I>, Args&&... args) noexcept(
+        mtp::noex_init<T, Args...>)
+        : head(rstd::forward<Args>(args)...) {}
+
+    template<usize I, typename... Args>
+        requires(I > Base) && mtp::init<type_at_t<I - Base, T, Rest...>, Args...>
+    explicit constexpr union_pack(in_place_index_t<I>, Args&&... args) noexcept(
+        mtp::noex_init<type_at_t<I - Base, T, Rest...>, Args...>)
+        : tail(in_place_index<I>, rstd::forward<Args>(args)...) {}
+
     constexpr ~union_pack() noexcept
         requires(mtp::triv_drop<T> && (mtp::triv_drop<Rest> && ...))
     = default;
@@ -83,6 +95,27 @@ union union_pack<Base, T, Rest...> {
     constexpr ~union_pack() noexcept
         requires(! (mtp::triv_drop<T> && (mtp::triv_drop<Rest> && ...)))
     {}
+
+    template<usize I, typename... Args>
+    constexpr void construct(Args&&... args) noexcept(
+        mtp::noex_init<type_at_t<I - Base, T, Rest...>, Args...>) {
+        if constexpr (I == Base) {
+            rstd::construct_at(rstd::addressof(head), rstd::forward<Args>(args)...);
+        } else {
+            rstd::construct_at(rstd::addressof(tail));
+            tail.template construct<I>(rstd::forward<Args>(args)...);
+        }
+    }
+
+    template<usize I>
+    constexpr void destroy() noexcept {
+        if constexpr (I == Base) {
+            rstd::destroy_at(rstd::addressof(head));
+        } else {
+            tail.template destroy<I>();
+            rstd::destroy_at(rstd::addressof(tail));
+        }
+    }
 
     template<usize I>
     [[nodiscard]]
@@ -139,7 +172,7 @@ class storage {
     void destroy_impl() noexcept {
         if constexpr (I < count) {
             if (index_ == static_cast<index_type>(I)) {
-                rstd::destroy_at(rstd::addressof(data_.template get<I>()));
+                data_.template destroy<I>();
             } else {
                 destroy_impl<I + 1>();
             }
@@ -177,7 +210,7 @@ class storage {
     constexpr void
     construct(in_place_index_t<I>,
               Args&&... args) noexcept(mtp::noex_init<type_at_t<I, Ts...>, Args...>) {
-        rstd::construct_at(rstd::addressof(data_.template get<I>()), rstd::forward<Args>(args)...);
+        data_.template construct<I>(rstd::forward<Args>(args)...);
         index_ = static_cast<index_type>(I);
     }
 
@@ -187,9 +220,9 @@ public:
     template<usize I, typename... Args>
         requires(I < count) && mtp::init<type_at_t<I, Ts...>, Args...>
     explicit constexpr storage(in_place_index_t<I>, Args&&... args) noexcept(
-        mtp::noex_init<type_at_t<I, Ts...>, Args...>) {
-        construct(in_place_index<I>, rstd::forward<Args>(args)...);
-    }
+        mtp::noex_init<type_at_t<I, Ts...>, Args...>)
+        : data_(in_place_index<I>, rstd::forward<Args>(args)...),
+          index_(static_cast<index_type>(I)) {}
 
     constexpr storage(storage const& other)
         requires(mtp::copy<Ts> && ...)
@@ -344,6 +377,46 @@ public:
     [[nodiscard]]
     constexpr decltype(auto) get(in_place_index_t<I>) const&& noexcept {
         return static_cast<storage const&&>(*this).template get<I>();
+    }
+};
+
+export template<usize Count>
+class tag_storage {
+    using index_type = smallest_index_t<Count>;
+
+    static constexpr index_type invalid_index = static_cast<index_type>(Count);
+
+    index_type index_ = invalid_index;
+
+public:
+    constexpr tag_storage() noexcept = default;
+
+    template<usize I>
+        requires(I < Count)
+    explicit constexpr tag_storage(in_place_index_t<I>) noexcept
+        : index_(static_cast<index_type>(I)) {}
+
+    template<usize I>
+        requires(I < Count)
+    constexpr void replace(in_place_index_t<I>) noexcept {
+        index_ = static_cast<index_type>(I);
+    }
+
+    [[nodiscard]]
+    constexpr usize index() const noexcept {
+        return static_cast<usize>(index_);
+    }
+
+    [[nodiscard]]
+    constexpr bool valid() const noexcept {
+        return index_ != invalid_index;
+    }
+
+    template<usize I>
+        requires(I < Count)
+    [[nodiscard]]
+    constexpr bool is(in_place_index_t<I>) const noexcept {
+        return index_ == static_cast<index_type>(I);
     }
 };
 

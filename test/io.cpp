@@ -25,12 +25,14 @@ TEST(Io, ErrorKindDebug) {
 
 TEST(Io, ErrorFromKind) {
     auto e = Error::from_kind(ErrorKind { ErrorKind::NotFound });
+    EXPECT_EQ(e.tag(), Error::Tag::Kind);
     EXPECT_EQ(e.kind(), ErrorKind { ErrorKind::NotFound });
     EXPECT_TRUE(e.raw_os_error().is_none());
 }
 
 TEST(Io, ErrorFromOsError) {
     auto e = Error::from_raw_os_error(2); // ENOENT on Linux
+    EXPECT_EQ(e.tag(), Error::Tag::Os);
     EXPECT_EQ(e.kind(), ErrorKind { ErrorKind::NotFound });
     EXPECT_EQ(e.raw_os_error().unwrap_unchecked(), 2);
 }
@@ -47,6 +49,7 @@ TEST(Io, ErrorOsDisplay) {
 }
 
 TEST(Io, ErrorMessage) {
+    static_assert(error::Error_READ_EXACT_EOF.tag() == Error::Tag::Message);
     auto e = error::Error_READ_EXACT_EOF;
     EXPECT_EQ(e.kind(), ErrorKind { ErrorKind::UnexpectedEof });
     EXPECT_EQ(rstd::format("{}", e), "failed to fill whole buffer");
