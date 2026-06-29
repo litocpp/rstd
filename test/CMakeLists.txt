@@ -25,6 +25,7 @@ set(
   option.cpp
   clone.cpp
   convert.cpp
+  enum.cpp
   alloc/rc.cpp
   alloc/str.cpp
   alloc/boxed.cpp

@@ -18,6 +18,7 @@ target_sources(
          BASE_DIRS
          include
          FILES
+         include/rstd/enum.hpp
          include/rstd/macro.hpp)
 
 target_sources(rstd.core PRIVATE mod.cpp)
@@ -37,6 +38,7 @@ target_sources(
          clone.cppm
          option.cppm
          result.cppm
+         enum.cppm
          task.cppm
          future.cppm
          fmt.cppm

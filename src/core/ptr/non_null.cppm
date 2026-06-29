@@ -17,42 +17,13 @@ struct NonNull;
 namespace rstd::option::detail
 {
 
-template<typename T>
-struct option_store<ptr_::non_null::NonNull<T>> {
-protected:
-    using union_value_t       = ptr_::non_null::NonNull<T>;
-    using union_const_value_t = ptr_::non_null::NonNull<T> const;
+template<typename T, typename NonePayload, typename SomePayload>
+struct option_storage<ptr_::non_null::NonNull<T>, NonePayload, SomePayload>
+    : zero_niche_option_storage<NonePayload, SomePayload> {
+    using base = zero_niche_option_storage<NonePayload, SomePayload>;
+    using base::base;
 
-    constexpr auto _ptr() const noexcept -> union_const_value_t* {
-        return reinterpret_cast<union_const_value_t*>(m_storage);
-    }
-    constexpr auto _ptr() noexcept -> union_value_t* {
-        return reinterpret_cast<union_value_t*>(m_storage);
-    }
-
-    template<typename V>
-    constexpr void _construct_val(V&& val) {
-        auto v = union_value_t(rstd::forward<V>(val));
-        __builtin_memcpy(m_storage, &v, sizeof(union_value_t));
-    }
-    template<typename V>
-    constexpr void _assign_val(V&& val) {
-        _construct_val(rstd::forward<V>(val));
-    }
-    constexpr void _assign_none() { __builtin_memset(m_storage, 0, sizeof(union_value_t)); }
-
-public:
-    constexpr auto is_some() const noexcept -> bool {
-        for (usize i = 0; i < sizeof(union_value_t); i++) {
-            if (m_storage[i] != rstd::byte(0)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-private:
-    alignas(union_value_t) rstd::byte m_storage[sizeof(union_value_t)] {};
+    static_assert(sizeof(SomePayload) == sizeof(ptr_::non_null::NonNull<T>));
 };
 
 } // namespace rstd::option::detail

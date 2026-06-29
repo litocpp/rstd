@@ -5,6 +5,30 @@
 import rstd;
 using namespace rstd;
 
+namespace
+{
+
+struct DropCounter {
+    int* drops;
+
+    explicit DropCounter(int& count): drops(&count) {}
+    DropCounter(const DropCounter&)            = delete;
+    DropCounter& operator=(const DropCounter&) = delete;
+    DropCounter(DropCounter&& other) noexcept: drops(other.drops) { other.drops = nullptr; }
+    DropCounter& operator=(DropCounter&& other) noexcept {
+        drops       = other.drops;
+        other.drops = nullptr;
+        return *this;
+    }
+    ~DropCounter() {
+        if (drops != nullptr) {
+            ++*drops;
+        }
+    }
+};
+
+} // namespace
+
 TEST(Result, BasicOperations) {
     Result<int, float> x = Ok(3);
     EXPECT_TRUE(x.is_ok());
@@ -20,6 +44,20 @@ TEST(Result, CloneOperations) {
     EXPECT_EQ(x.unwrap(), 3);
     EXPECT_EQ(m.unwrap(), 3);
     EXPECT_EQ(n.unwrap(), 3);
+}
+
+TEST(Result, CloneFromOperations) {
+    Result<int, float> ok  = Ok(7);
+    Result<int, float> err = Err(1.5f);
+
+    err.clone_from(ok);
+    ASSERT_TRUE(err.is_ok());
+    EXPECT_EQ(err.unwrap(), 7);
+
+    Result<int, float> next_err = Err(2.5f);
+    ok.clone_from(next_err);
+    ASSERT_TRUE(ok.is_err());
+    EXPECT_EQ(ok.unwrap_err(), 2.5f);
 }
 
 TEST(Result, UniquePtr) {
@@ -85,4 +123,28 @@ TEST(Result, MapOrWithError) {
                              return t;
                          }),
               42);
+}
+
+TEST(Result, ReferenceValue) {
+    int                       value = 3;
+    Result<int&, std::string> ref   = Ok<int&>(value);
+
+    ASSERT_TRUE(ref.is_ok());
+    EXPECT_EQ(*ref, 3);
+
+    value = 9;
+    EXPECT_EQ(ref.unwrap(), 9);
+}
+
+TEST(Result, MoveAssignmentChangesVariantAndDropsOldPayload) {
+    int drops = 0;
+    {
+        Result<DropCounter, DropCounter> value = Ok(DropCounter { drops });
+        EXPECT_TRUE(value.is_ok());
+
+        value = Result<DropCounter, DropCounter>(Err(DropCounter { drops }));
+        EXPECT_TRUE(value.is_err());
+        EXPECT_EQ(drops, 1);
+    }
+    EXPECT_EQ(drops, 2);
 }

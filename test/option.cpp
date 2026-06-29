@@ -1,10 +1,38 @@
 #include <gtest/gtest.h>
+#include <memory>
 import rstd.core;
 using namespace rstd;
 
 static_assert(mtp::same_as<decltype(Some(Some<int>(1))), Option<Option<int>>>);
 static_assert(mtp::same_as<decltype(Some(None<int>())), Option<Option<int>>>);
 static_assert(mtp::same_as<decltype(None(None<int>())), Option<Option<int>>>);
+static_assert(sizeof(Option<int&>) == sizeof(int*));
+static_assert(sizeof(Option<num::nonzero::NonZero<u64>>) == sizeof(u64));
+static_assert(sizeof(Option<ptr_::non_null::NonNull<int>>) == sizeof(ptr_::non_null::NonNull<int>));
+
+namespace
+{
+
+struct DropCounter {
+    int* drops;
+
+    explicit DropCounter(int& count): drops(&count) {}
+    DropCounter(const DropCounter&)            = delete;
+    DropCounter& operator=(const DropCounter&) = delete;
+    DropCounter(DropCounter&& other) noexcept: drops(other.drops) { other.drops = nullptr; }
+    DropCounter& operator=(DropCounter&& other) noexcept {
+        drops       = other.drops;
+        other.drops = nullptr;
+        return *this;
+    }
+    ~DropCounter() {
+        if (drops != nullptr) {
+            ++*drops;
+        }
+    }
+};
+
+} // namespace
 
 TEST(Option, Basic) {
     Option<int> none;
@@ -33,6 +61,10 @@ TEST(Option, Reference) {
 
     value = 100;
     EXPECT_EQ(*ref, 100);
+
+    const auto& cref = ref;
+    static_assert(mtp::same_as<decltype(*cref), const int&>);
+    EXPECT_EQ(*cref, 100);
 }
 
 struct CloneType;
@@ -134,6 +166,51 @@ TEST(Option, MoveSemantics) {
     auto moved = std::move(some);
     EXPECT_TRUE(moved.is_some());
     EXPECT_EQ(**moved, 42);
+}
+
+TEST(Option, TakeLeavesNone) {
+    auto value = Some<std::unique_ptr<int>>(std::make_unique<int>(7));
+    auto taken = value.take();
+
+    EXPECT_TRUE(value.is_none());
+    ASSERT_TRUE(taken.is_some());
+    EXPECT_EQ(**taken, 7);
+}
+
+TEST(Option, NonZeroNicheStorage) {
+    using NonZeroU64 = num::nonzero::NonZero<u64>;
+
+    auto value = Some(NonZeroU64::make_unchecked(11));
+    ASSERT_TRUE(value.is_some());
+    EXPECT_EQ(value.unwrap().get(), 11u);
+
+    value = None<NonZeroU64>();
+    EXPECT_TRUE(value.is_none());
+
+    value      = Some(NonZeroU64::make_unchecked(12));
+    auto taken = value.take();
+    EXPECT_TRUE(value.is_none());
+    ASSERT_TRUE(taken.is_some());
+    EXPECT_EQ(taken.unwrap().get(), 12u);
+}
+
+TEST(Option, SelfMoveAssignmentKeepsValue) {
+    auto value = Some<std::unique_ptr<int>>(std::make_unique<int>(9));
+    auto same  = &value;
+    value      = std::move(*same);
+
+    ASSERT_TRUE(value.is_some());
+    ASSERT_NE(*value, nullptr);
+    EXPECT_EQ(**value, 9);
+}
+
+TEST(Option, DropsNonTrivialValue) {
+    int drops = 0;
+    {
+        auto value = Some(DropCounter { drops });
+        EXPECT_TRUE(value.is_some());
+    }
+    EXPECT_EQ(drops, 1);
 }
 
 TEST(Option, ExpectUnwrap) {

@@ -1,6 +1,8 @@
 module;
 #include <rstd/macro.hpp>
+#include <rstd/enum.hpp>
 export module rstd.core:result;
+import :enum_;
 export import :clone;
 export import :fmt;
 export import :ops.function;
@@ -18,20 +20,6 @@ struct UnknownErr {
 
 namespace detail
 {
-template<typename T, typename U, typename V>
-constexpr void reinit(T* newval, U* oldval, V&& arg) noexcept(mtp::noex_init<T, V>) {
-    if constexpr (mtp::noex_init<T, V>) {
-        rstd::destroy_at(oldval);
-        rstd::construct_at(newval, rstd::forward<V>(arg));
-    } else if constexpr (mtp::noex_move<T>) {
-        T tmp(rstd::forward<V>(arg)); // might throw
-        rstd::destroy_at(oldval);
-        rstd::construct_at(newval, rstd::move(tmp));
-    } else {
-        // Guard
-        rstd::construct_at(newval, rstd::forward<V>(arg)); // might throw
-    }
-}
 
 template<typename T>
 struct result_traits {};
@@ -86,49 +74,8 @@ export using result::Err;
 
 template<typename T, typename Self>
     requires mtp::same_as<T, clone::Clone> && mtp::spec_of<Self, rstd::result::Result> &&
-             Impled<typename result::detail::result_traits<Self>::union_value_t, clone::Clone> &&
-             Impled<typename result::detail::result_traits<Self>::union_error_t, clone::Clone>
-struct Impl<T, Self> : ImplBase<Self> {
-    using traits = result::detail::result_traits<Self>;
-    using v_t    = typename traits::value_type;
-    using e_t    = typename traits::error_type;
-    using uv_t   = typename traits::union_value_t;
-    using ue_t   = typename traits::union_error_t;
-
-    auto clone() const -> Self {
-        auto& r = this->self();
-        if (r.is_ok()) {
-            if constexpr (mtp::is_ref<v_t>) {
-                return Ok(*Impl<clone::Clone, uv_t>::clone(&r.m_val));
-            } else {
-                return Ok(Impl<clone::Clone, uv_t>::clone(&r.m_val));
-            }
-        } else {
-            if constexpr (mtp::is_ref<e_t>) {
-                return Err(*Impl<clone::Clone, ue_t> { &r.m_err }.clone());
-            } else {
-                return Err(Impl<clone::Clone, ue_t> { &r.m_err }.clone());
-            }
-        }
-    }
-
-    void clone_from(Self& source) {
-        auto& self = this->self();
-        if (source.is_ok()) {
-            if constexpr (mtp::is_ref<v_t>) {
-                self._assign_val(source.template _get<0>());
-            } else {
-                self._assign_val(Impl<clone::Clone, ue_t> { &source.m_val }.clone());
-            }
-        } else {
-            if constexpr (mtp::is_ref<e_t>) {
-                self._assign_err(source.template _get<1>());
-            } else {
-                self._assign_err(Impl<clone::Clone, ue_t> { &source.m_err }.clone());
-            }
-        }
-    }
-};
+             requires(Self s) { s.clone(); }
+struct Impl<T, Self> : LinkClassMethod<T, Self> {};
 } // namespace rstd
 
 namespace rstd::result
@@ -143,7 +90,7 @@ namespace detail
 {
 
 template<typename T, typename E>
-struct result_base : WithTrait<Result<T, E>, clone::Clone> {
+struct result_base {
     template<typename, typename>
     friend class result::Result;
 
@@ -159,15 +106,15 @@ protected:
         using traits = detail::result_traits<decltype(self)>;
         if constexpr (I == 0) {
             if constexpr (mtp::is_ref<T>) {
-                return static_cast<traits::ret_value_t>(*(self.m_val));
+                return static_cast<traits::ret_value_t>(*(*self._value_ptr()));
             } else {
-                return static_cast<traits::ret_value_t>(self.m_val);
+                return static_cast<traits::ret_value_t>(*self._value_ptr());
             }
         } else {
             if constexpr (mtp::is_ref<E>) {
-                return static_cast<traits::ret_error_t>(*(self.m_err));
+                return static_cast<traits::ret_error_t>(*(*self._error_ptr()));
             } else {
-                return static_cast<traits::ret_error_t>(self.m_err);
+                return static_cast<traits::ret_error_t>(*self._error_ptr());
             }
         }
     }
@@ -203,77 +150,31 @@ protected:
 
     template<typename V>
     constexpr void _construct_val(V&& val) {
-        auto& self     = _cast();
-        self.m_has_val = true;
-        if constexpr (mtp::is_ref<T>) {
-            self.m_val = rstd::addressof(val);
-        } else {
-            rstd::construct_at(rstd::addressof(self.m_val), rstd::forward<V>(val));
-        }
+        _cast()._replace_ok(rstd::forward<V>(val));
     }
     template<typename V>
     constexpr void _construct_err(V&& err) {
-        auto& self     = _cast();
-        self.m_has_val = false;
-        if constexpr (mtp::is_ref<E>) {
-            self.m_err = rstd::addressof(err);
-        } else {
-            rstd::construct_at(rstd::addressof(self.m_err), rstd::forward<V>(err));
-        }
+        _cast()._replace_err(rstd::forward<V>(err));
     }
 
     template<typename V>
     constexpr void _assign_val(V&& v) {
-        auto& self = _cast();
-        if constexpr (mtp::is_ref<T>) {
-            if (self.m_has_val)
-                self.m_val = rstd::addressof(v);
-            else {
-                detail::reinit(
-                    rstd::addressof(self.m_val), rstd::addressof(self.m_err), rstd::addressof(v));
-                self.m_has_val = true;
-            }
-        } else {
-            if (self.m_has_val)
-                self.m_val = rstd::forward<V>(v);
-            else {
-                detail::reinit(
-                    rstd::addressof(self.m_val), rstd::addressof(self.m_err), rstd::forward<V>(v));
-                self.m_has_val = true;
-            }
-        }
+        _cast()._replace_ok(rstd::forward<V>(v));
     }
 
     template<typename V>
     constexpr void _assign_err(V&& v) {
-        auto& self = _cast();
-        if constexpr (mtp::is_ref<E>) {
-            if (self.m_has_val) {
-                detail::reinit(
-                    rstd::addressof(self.m_err), rstd::addressof(self.m_val), rstd::addressof(v));
-                self.m_has_val = false;
-            } else
-                self.m_err = rstd::addressof(v);
-        } else {
-            if (self.m_has_val) {
-                detail::reinit(
-                    rstd::addressof(self.m_err), rstd::addressof(self.m_val), rstd::forward<V>(v));
-                self.m_has_val = false;
-            } else
-                self.m_err = rstd::forward<V>(v);
-        }
+        _cast()._replace_err(rstd::forward<V>(v));
     }
 
 public:
     /// Returns `true` if the result is `Ok`.
     constexpr auto is_ok() const noexcept -> bool {
-        auto& self = _cast();
-        return self.m_has_val;
+        return _cast()._is_ok();
     }
     /// Returns `true` if the result is `Err`.
     constexpr auto is_err() const noexcept -> bool {
-        auto& self = _cast();
-        return ! self.m_has_val;
+        return ! is_ok();
     }
 
     /// Returns `true` if the result is `Ok` and the predicate returns `true` for the contained value.
@@ -670,6 +571,10 @@ struct err_tag {};
 
 } // namespace detail
 
+#define RSTD_RESULT_VARIANTS(V) \
+    V(Ok, (union_value_t value;)) \
+    V(Err, (union_error_t error;))
+
 /// A type that represents either success (`Ok`) or failure (`Err`).
 /// \tparam T The type of the success value.
 /// \tparam E The type of the error value.
@@ -681,11 +586,55 @@ class Result : public detail::result_impl<T, E> {
     friend struct rstd::Impl;
 
     using traits = detail::result_traits<Result<T, E>>;
-    union {
-        traits::union_value_t m_val;
-        traits::union_error_t m_err;
-    };
-    bool m_has_val;
+    using union_value_t = typename traits::union_value_t;
+    using union_error_t = typename traits::union_error_t;
+
+    RSTD_ENUM_VARIANT_TYPES(RSTD_RESULT_VARIANTS)
+    RSTD_ENUM_DEFAULT_STORAGE(RSTD_RESULT_VARIANTS)
+    RSTD_ENUM_STORAGE(Result)
+
+    [[nodiscard]]
+    constexpr auto _value_ptr() noexcept -> union_value_t* {
+        return rstd::addressof(rstd_enum_storage_.get(RSTD_ENUM_IN_PLACE(Ok)).value);
+    }
+
+    [[nodiscard]]
+    constexpr auto _value_ptr() const noexcept -> union_value_t const* {
+        return rstd::addressof(rstd_enum_storage_.get(RSTD_ENUM_IN_PLACE(Ok)).value);
+    }
+
+    [[nodiscard]]
+    constexpr auto _error_ptr() noexcept -> union_error_t* {
+        return rstd::addressof(rstd_enum_storage_.get(RSTD_ENUM_IN_PLACE(Err)).error);
+    }
+
+    [[nodiscard]]
+    constexpr auto _error_ptr() const noexcept -> union_error_t const* {
+        return rstd::addressof(rstd_enum_storage_.get(RSTD_ENUM_IN_PLACE(Err)).error);
+    }
+
+    template<typename V>
+    constexpr void _replace_ok(V&& val) {
+        if constexpr (mtp::is_ref<T>) {
+            rstd_enum_storage_.replace(RSTD_ENUM_IN_PLACE(Ok), rstd::addressof(val));
+        } else {
+            rstd_enum_storage_.replace(RSTD_ENUM_IN_PLACE(Ok), rstd::forward<V>(val));
+        }
+    }
+
+    template<typename V>
+    constexpr void _replace_err(V&& err) {
+        if constexpr (mtp::is_ref<E>) {
+            rstd_enum_storage_.replace(RSTD_ENUM_IN_PLACE(Err), rstd::addressof(err));
+        } else {
+            rstd_enum_storage_.replace(RSTD_ENUM_IN_PLACE(Err), rstd::forward<V>(err));
+        }
+    }
+
+    [[nodiscard]]
+    constexpr auto _is_ok() const noexcept -> bool {
+        return rstd_enum_storage_.is(RSTD_ENUM_IN_PLACE(Ok));
+    }
 
 public:
     using value_type = T;
@@ -696,7 +645,7 @@ public:
 
     constexpr Result() noexcept(mtp::noex_init<T>)
         requires mtp::init<T>
-        : m_val(), m_has_val(true) {}
+        : RSTD_ENUM_INIT(Ok) {}
 
     // Ok ctor
     constexpr Result(T&& val, detail::ok_tag) noexcept(mtp::noex_init<T, T>) {
@@ -736,7 +685,7 @@ public:
     constexpr Result(Result&& o) noexcept(mtp::noex_move<T> && mtp::noex_move<E>)
         requires mtp::user_move<T> || mtp::user_move<E>
     {
-        if (o.m_has_val) {
+        if (o.is_ok()) {
             this->_construct_val(Result::template _get<0>(rstd::move(o)));
         } else {
             this->_construct_err(Result::template _get<1>(rstd::move(o)));
@@ -744,20 +693,6 @@ public:
     }
 
     constexpr ~Result() = default;
-
-    constexpr ~Result()
-        requires(! mtp::triv_drop<T>) || (! mtp::triv_drop<E>)
-    {
-        if (m_has_val) {
-            if constexpr (! mtp::triv_drop<T>) {
-                rstd::destroy_at(rstd::addressof(m_val));
-            }
-        } else {
-            if constexpr (! mtp::triv_drop<E>) {
-                rstd::destroy_at(rstd::addressof(m_err));
-            }
-        }
-    }
 
     Result& operator=(const Result&) = delete;
 
@@ -778,11 +713,56 @@ public:
                  mtp::assign_move<typename traits::union_error_t> &&
                  mtp::move<typename traits::union_error_t>)
     {
-        if (o.m_has_val)
+        if (this == rstd::addressof(o)) {
+            return *this;
+        }
+        if (o.is_ok())
             this->_assign_val(Result::template _get<0>(rstd::move(o)));
         else
             this->_assign_err(Result::template _get<1>(rstd::move(o)));
         return *this;
+    }
+
+    /// Creates a deep copy of this result and its contained value.
+    /// \return A new `Result` with a cloned value or error.
+    auto clone() const -> Result
+        requires Impled<union_value_t, clone::Clone> && Impled<union_error_t, clone::Clone>
+    {
+        if (this->is_ok()) {
+            if constexpr (mtp::is_ref<T>) {
+                return Ok(*Impl<clone::Clone, union_value_t> { this->_value_ptr() }.clone());
+            } else {
+                return Ok(Impl<clone::Clone, union_value_t> { this->_value_ptr() }.clone());
+            }
+        } else {
+            if constexpr (mtp::is_ref<E>) {
+                return Err(*Impl<clone::Clone, union_error_t> { this->_error_ptr() }.clone());
+            } else {
+                return Err(Impl<clone::Clone, union_error_t> { this->_error_ptr() }.clone());
+            }
+        }
+    }
+
+    /// Overwrites this result with a clone of the source.
+    /// \param source The result to clone from.
+    void clone_from(Result& source)
+        requires Impled<union_value_t, clone::Clone> && Impled<union_error_t, clone::Clone>
+    {
+        if (source.is_ok()) {
+            if constexpr (mtp::is_ref<T>) {
+                this->_assign_val(source.template _get<0>());
+            } else {
+                this->_assign_val(
+                    Impl<clone::Clone, union_value_t> { source._value_ptr() }.clone());
+            }
+        } else {
+            if constexpr (mtp::is_ref<E>) {
+                this->_assign_err(source.template _get<1>());
+            } else {
+                this->_assign_err(
+                    Impl<clone::Clone, union_error_t> { source._error_ptr() }.clone());
+            }
+        }
     }
 
     template<typename U, typename E2>
@@ -800,6 +780,8 @@ public:
             return ! y.is_ok() && bool(x.template _get<1>() == y.template _get<1>());
     }
 };
+
+#undef RSTD_RESULT_VARIANTS
 
 /// Creates a `Result` in the `Ok` state containing the given value.
 /// \tparam T The success value type.

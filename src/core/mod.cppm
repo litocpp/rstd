@@ -15,6 +15,7 @@ export import :iter;
 export import :clone;
 export import :option;
 export import :result;
+export import :enum_;
 export import :task;
 export import :future;
 

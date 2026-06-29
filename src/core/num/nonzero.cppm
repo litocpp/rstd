@@ -38,41 +38,13 @@ struct NonZero {
 namespace rstd::option::detail
 {
 
-template<typename T>
-struct option_store<num::nonzero::NonZero<T>> {
-    constexpr auto is_some() const noexcept -> bool {
-        for (usize i = 0; i < sizeof(T); i++) {
-            if (m_storage[i] != rstd::byte(0)) {
-                return true;
-            }
-        }
-        return false;
-    }
+template<typename T, typename NonePayload, typename SomePayload>
+struct option_storage<num::nonzero::NonZero<T>, NonePayload, SomePayload>
+    : zero_niche_option_storage<NonePayload, SomePayload> {
+    using base = zero_niche_option_storage<NonePayload, SomePayload>;
+    using base::base;
 
-protected:
-    using union_value_t       = num::nonzero::NonZero<T>;
-    using union_const_value_t = num::nonzero::NonZero<T> const;
-
-    constexpr auto _ptr() const noexcept {
-        return reinterpret_cast<union_const_value_t*>(m_storage);
-    }
-    constexpr auto _ptr() noexcept { return reinterpret_cast<union_value_t*>(m_storage); }
-    template<typename V>
-    constexpr void _construct_val(V&& val) {
-        rstd::construct_at(_ptr(), rstd::addressof(val));
-    }
-    template<typename V>
-    constexpr void _assign_val(V&& val) {
-        rstd::construct_at(_ptr(), rstd::addressof(val));
-    }
-    constexpr void _assign_none() {
-        if (is_some()) {
-            m_storage = {};
-        }
-    }
-
-private:
-    alignas(T) rstd::byte m_storage[sizeof(T)] {};
+    static_assert(sizeof(SomePayload) == sizeof(num::nonzero::NonZero<T>));
 };
 
 } // namespace rstd::option::detail
