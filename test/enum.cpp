@@ -18,6 +18,8 @@ namespace
 
 RSTD_ENUM(Message, MESSAGE_VARIANTS)
 
+RSTD_ENUM_WITH_DEFAULT(DefaultMessage, MESSAGE_VARIANTS, Quit)
+
 #define BOX_VARIANTS(V) \
     V(Empty, ())        \
     V(Value, (std::unique_ptr<int> value;))
@@ -30,6 +32,8 @@ RSTD_ENUM(Box, BOX_VARIANTS)
 
 RSTD_ENUM_TEMPLATE((class T), Maybe, MAYBE_VARIANTS)
 
+RSTD_ENUM_TEMPLATE_WITH_DEFAULT((class T), DefaultMaybe, MAYBE_VARIANTS, None)
+
 #define COLOR_VARIANTS(V) \
     V(Red)                \
     V(Green)              \
@@ -37,28 +41,25 @@ RSTD_ENUM_TEMPLATE((class T), Maybe, MAYBE_VARIANTS)
 
 RSTD_TAG_ENUM(Color, COLOR_VARIANTS)
 
+RSTD_TAG_ENUM_WITH_DEFAULT(DefaultColor, COLOR_VARIANTS, Green)
+
+#define DEFAULT_POINTS_VARIANTS(V) \
+    V(Idle, ())                    \
+    V(Points, (int value;))
+
+RSTD_ENUM_WITH_DEFAULT(DefaultPoints, DEFAULT_POINTS_VARIANTS, Points, 5)
+
 #define INLINE_SCORE_VARIANTS(V) \
     V(Idle, ())                  \
     V(Points, (int value;))
 
 class InlineScore {
-public:
-    RSTD_ENUM_SELF(InlineScore)
-    RSTD_ENUM_VARIANT_TYPES(INLINE_SCORE_VARIANTS)
-    RSTD_ENUM_DEFAULT_STORAGE(INLINE_SCORE_VARIANTS)
+    RSTD_ENUM_BODY_WITH_DEFAULT(InlineScore, INLINE_SCORE_VARIANTS, Idle)
 
 private:
     int multiplier_ = 2;
-    RSTD_ENUM_STORAGE(InlineScore)
 
 public:
-    RSTD_ENUM_FACTORIES(INLINE_SCORE_VARIANTS)
-    RSTD_ENUM_REPLACERS(INLINE_SCORE_VARIANTS)
-    RSTD_ENUM_OBSERVERS()
-    RSTD_ENUM_ACCESSORS(INLINE_SCORE_VARIANTS)
-
-    constexpr InlineScore() noexcept: RSTD_ENUM_INIT(Idle) {}
-
     constexpr void set_multiplier(int value) noexcept { multiplier_ = value; }
 
     [[nodiscard]]
@@ -186,6 +187,28 @@ TEST(Enum, SupportsTemplateEnum) {
     EXPECT_TRUE(value.is_Some());
     EXPECT_TRUE(none.is_None());
     EXPECT_EQ(value.as_Some().value, 9);
+}
+
+TEST(Enum, SupportsDefaultVariant) {
+    static_assert(std::default_initializable<DefaultMessage>);
+    static_assert(std::default_initializable<DefaultMaybe<int>>);
+    static_assert(std::default_initializable<DefaultColor>);
+    static_assert(std::default_initializable<DefaultPoints>);
+
+    DefaultMessage message;
+    EXPECT_TRUE(message.is_Quit());
+    EXPECT_EQ(message.tag(), DefaultMessage::Tag::Quit);
+
+    DefaultMaybe<int> maybe;
+    EXPECT_TRUE(maybe.is_None());
+
+    DefaultColor color;
+    EXPECT_TRUE(color.is_Green());
+    EXPECT_EQ(color.tag(), DefaultColor::Tag::Green);
+
+    DefaultPoints points;
+    EXPECT_TRUE(points.is_Points());
+    EXPECT_EQ(points.as_Points().value, 5);
 }
 
 TEST(Enum, SupportsTagOnlyEnum) {

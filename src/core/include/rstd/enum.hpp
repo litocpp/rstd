@@ -170,6 +170,11 @@
                                         rstd_enum_detail_Args...>)                            \
         : rstd_enum_storage_(in_place, ::rstd::forward<rstd_enum_detail_Args>(args)...) {}
 
+#define RSTD_ENUM_DEFAULT_CTOR(ClassName, Name, ...)                                      \
+    constexpr ClassName() noexcept(                                                       \
+        noexcept(rstd_enum_storage_type(RSTD_ENUM_IN_PLACE(Name) __VA_OPT__(, ) __VA_ARGS__))) \
+        : RSTD_ENUM_INIT(Name __VA_OPT__(, ) __VA_ARGS__) {}
+
 #define RSTD_ENUM_FACTORIES(VARIANTS) VARIANTS(RSTD_ENUM_DETAIL_FACTORY)
 
 #define RSTD_ENUM_REPLACERS(VARIANTS) VARIANTS(RSTD_ENUM_DETAIL_REPLACE)
@@ -213,6 +218,24 @@ public:                                      \
                                              \
     RSTD_ENUM_ACCESSORS(VARIANTS)
 
+#define RSTD_ENUM_INLINE_WITH_DEFAULT(ClassName, VARIANTS, Name, ...) \
+public:                                                              \
+    RSTD_ENUM_TYPES(ClassName, VARIANTS)                             \
+                                                                     \
+private:                                                             \
+    RSTD_ENUM_STORAGE(ClassName)                                     \
+                                                                     \
+public:                                                              \
+    RSTD_ENUM_DEFAULT_CTOR(ClassName, Name __VA_OPT__(, ) __VA_ARGS__) \
+                                                                     \
+    RSTD_ENUM_FACTORIES(VARIANTS)                                    \
+                                                                     \
+    RSTD_ENUM_REPLACERS(VARIANTS)                                    \
+                                                                     \
+    RSTD_ENUM_OBSERVERS()                                            \
+                                                                     \
+    RSTD_ENUM_ACCESSORS(VARIANTS)
+
 #define RSTD_TAG_ENUM_INLINE(ClassName, VARIANTS) \
 public:                                          \
     RSTD_TAG_ENUM_TYPES(ClassName, VARIANTS)     \
@@ -229,9 +252,33 @@ public:                                          \
                                                  \
     RSTD_TAG_ENUM_ACCESSORS(VARIANTS)
 
+#define RSTD_TAG_ENUM_INLINE_WITH_DEFAULT(ClassName, VARIANTS, Name) \
+public:                                                            \
+    RSTD_TAG_ENUM_TYPES(ClassName, VARIANTS)                       \
+                                                                   \
+private:                                                           \
+    RSTD_ENUM_STORAGE(ClassName)                                   \
+                                                                   \
+public:                                                            \
+    RSTD_ENUM_DEFAULT_CTOR(ClassName, Name)                        \
+                                                                   \
+    RSTD_TAG_ENUM_FACTORIES(VARIANTS)                              \
+                                                                   \
+    RSTD_TAG_ENUM_REPLACERS(VARIANTS)                              \
+                                                                   \
+    RSTD_ENUM_OBSERVERS()                                          \
+                                                                   \
+    RSTD_TAG_ENUM_ACCESSORS(VARIANTS)
+
 #define RSTD_ENUM_BODY(ClassName, VARIANTS) RSTD_ENUM_INLINE(ClassName, VARIANTS)
 
 #define RSTD_TAG_ENUM_BODY(ClassName, VARIANTS) RSTD_TAG_ENUM_INLINE(ClassName, VARIANTS)
+
+#define RSTD_ENUM_BODY_WITH_DEFAULT(ClassName, VARIANTS, Name, ...) \
+    RSTD_ENUM_INLINE_WITH_DEFAULT(ClassName, VARIANTS, Name __VA_OPT__(, ) __VA_ARGS__)
+
+#define RSTD_TAG_ENUM_BODY_WITH_DEFAULT(ClassName, VARIANTS, Name) \
+    RSTD_TAG_ENUM_INLINE_WITH_DEFAULT(ClassName, VARIANTS, Name)
 
 #define RSTD_ENUM(ClassName, VARIANTS)      \
     class ClassName final {                 \
@@ -241,6 +288,16 @@ public:                                          \
 #define RSTD_TAG_ENUM(ClassName, VARIANTS)      \
     class ClassName final {                     \
         RSTD_TAG_ENUM_BODY(ClassName, VARIANTS) \
+    };
+
+#define RSTD_ENUM_WITH_DEFAULT(ClassName, VARIANTS, Name, ...)      \
+    class ClassName final {                                         \
+        RSTD_ENUM_BODY_WITH_DEFAULT(ClassName, VARIANTS, Name __VA_OPT__(, ) __VA_ARGS__) \
+    };
+
+#define RSTD_TAG_ENUM_WITH_DEFAULT(ClassName, VARIANTS, Name)      \
+    class ClassName final {                                        \
+        RSTD_TAG_ENUM_BODY_WITH_DEFAULT(ClassName, VARIANTS, Name) \
     };
 
 #define RSTD_ENUM_TEMPLATE(TemplateParams, ClassName, VARIANTS) \
@@ -253,6 +310,18 @@ public:                                          \
     template<RSTD_ENUM_DETAIL_UNPAREN TemplateParams>               \
     class ClassName final {                                         \
         RSTD_TAG_ENUM_BODY(ClassName, VARIANTS)                     \
+    };
+
+#define RSTD_ENUM_TEMPLATE_WITH_DEFAULT(TemplateParams, ClassName, VARIANTS, Name, ...) \
+    template<RSTD_ENUM_DETAIL_UNPAREN TemplateParams>                                  \
+    class ClassName final {                                                            \
+        RSTD_ENUM_BODY_WITH_DEFAULT(ClassName, VARIANTS, Name __VA_OPT__(, ) __VA_ARGS__) \
+    };
+
+#define RSTD_TAG_ENUM_TEMPLATE_WITH_DEFAULT(TemplateParams, ClassName, VARIANTS, Name) \
+    template<RSTD_ENUM_DETAIL_UNPAREN TemplateParams>                                 \
+    class ClassName final {                                                           \
+        RSTD_TAG_ENUM_BODY_WITH_DEFAULT(ClassName, VARIANTS, Name)                    \
     };
 
 #define RSTD_MATCH(value) switch (auto&& matched = (value); matched.tag())
