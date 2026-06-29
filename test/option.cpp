@@ -67,20 +67,15 @@ TEST(Option, Reference) {
     EXPECT_EQ(*cref, 100);
 }
 
-struct CloneType;
-template<>
-struct rstd::Impl<clone::Clone, CloneType> : ImplBase<CloneType> {
-    auto clone() const -> CloneType;
-};
-
-struct CloneType : WithTrait<CloneType, clone::Clone> {
+struct CloneType : DefaultInClass<CloneType, clone::Clone> {
     int value;
     explicit CloneType(int v): value(v) {}
+    auto clone() const -> CloneType { return CloneType { value }; }
 };
 
-auto rstd::Impl<clone::Clone, CloneType>::clone() const -> CloneType {
-    return CloneType { self().value };
-}
+template<>
+struct rstd::Impl<clone::Clone, CloneType> : LinkClassRequiredWithDefault<clone::Clone, CloneType> {
+};
 
 TEST(Option, Clone) {
     auto original = Some(CloneType { 42 });

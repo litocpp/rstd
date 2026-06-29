@@ -127,7 +127,7 @@ namespace rstd
 {
 
 template<>
-struct Impl<Clone, CString> : LinkTraitDefault<Clone, CString> {
+struct Impl<Clone, CString> : DefaultInImpl<Clone, CString> {
     auto clone() -> CString { return CString { this->self().inner.clone() }; }
 };
 

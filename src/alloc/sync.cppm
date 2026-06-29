@@ -165,15 +165,11 @@ namespace rstd
 {
 template<typename T, typename Self>
     requires mtp::same_as<T, Clone> && mtp::spec_of<Self, Arc>
-struct Impl<T, Self> : Impl<T, default_tag<Self>> {
-    auto clone() const -> Self;
-};
+struct Impl<T, Self> : LinkClassRequiredWithDefault<T, Self> {};
 
 template<typename T, typename Self>
     requires mtp::same_as<T, Clone> && mtp::spec_of<Self, Weak>
-struct Impl<T, Self> : Impl<T, default_tag<Self>> {
-    auto clone() const -> Self;
-};
+struct Impl<T, Self> : LinkClassRequiredWithDefault<T, Self> {};
 
 template<mtp::same_as<ArcImplTrait> T, typename A, ArcStoragePolicy P>
 struct Impl<T, ArcInnerImpl<A, P>> : LinkClassMethod<T, ArcInnerImpl<A, P>> {};
@@ -223,7 +219,7 @@ public:
 /// A thread-safe reference-counting pointer, analogous to Rust's `Arc<T>`.
 /// \tparam T The type of the value managed by atomic reference counting.
 export template<typename T>
-class Arc : public WithTrait<Arc<T>, Clone> {
+class Arc : public DefaultInClass<Arc<T>, Clone> {
     ArcData<T> self;
 
     template<typename, typename>
@@ -255,6 +251,13 @@ public:
     }
 
     ~Arc() { reset(); }
+
+    auto clone() const -> Arc {
+        if (self.inner) {
+            self.inner->inc_strong();
+        }
+        return { self };
+    }
 
     /// Drops the current allocation, decrementing the strong count.
     void reset() {
@@ -412,7 +415,7 @@ public:
 /// A thread-safe weak reference to an `Arc`-managed allocation.
 /// \tparam T The type of the referenced value.
 export template<class T>
-class Weak : public WithTrait<Weak<T>, Clone> {
+class Weak : public DefaultInClass<Weak<T>, Clone> {
     ArcData<T> self;
 
     template<typename, typename>
@@ -439,6 +442,13 @@ public:
     }
 
     ~Weak() { reset(); }
+
+    auto clone() const -> Weak {
+        if (self.inner) {
+            self.inner->inc_weak();
+        }
+        return { self };
+    }
 
     /// Constructs a new empty `Weak<T>` without allocating any memory.
     /// Calling `upgrade` on the return value always gives an empty `Arc`.
@@ -492,27 +502,3 @@ auto Arc<T>::downgrade() const noexcept -> Weak<T> {
 }
 
 } // namespace alloc::sync
-
-namespace rstd
-{
-template<typename T, typename Self>
-    requires mtp::same_as<T, Clone> && mtp::spec_of<Self, Arc>
-auto Impl<T, Self>::clone() const -> Self {
-    auto& s = this->self();
-    if (s.self.inner) {
-        s.self.inner->inc_strong();
-    }
-    return { s.self };
-}
-
-template<typename T, typename Self>
-    requires mtp::same_as<T, Clone> && mtp::spec_of<Self, Weak>
-auto Impl<T, Self>::clone() const -> Self {
-    auto& s = this->self();
-    if (s.self.inner) {
-        s.self.inner->inc_weak();
-    }
-    return { s.self };
-}
-
-} // namespace rstd

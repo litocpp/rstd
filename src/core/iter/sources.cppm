@@ -7,7 +7,7 @@ namespace rstd::iter
 
 /// Iterator over `&T` of a contiguous range, yielding `ref<T>`.
 export template<class T>
-struct SliceIter : WithTraitDefault<SliceIter<T>, Iterator> {
+struct SliceIter : DefaultInClass<SliceIter<T>, Iterator> {
     using Item = ref<T>;
 
     const T* cur;
@@ -37,7 +37,7 @@ struct SliceIter : WithTraitDefault<SliceIter<T>, Iterator> {
 
 /// Iterator over `&mut T` of a contiguous range, yielding `mut_ref<T>`.
 export template<class T>
-struct SliceIterMut : WithTraitDefault<SliceIterMut<T>, Iterator> {
+struct SliceIterMut : DefaultInClass<SliceIterMut<T>, Iterator> {
     using Item = mut_ref<T>;
 
     T* cur;
@@ -67,7 +67,7 @@ struct SliceIterMut : WithTraitDefault<SliceIterMut<T>, Iterator> {
 
 /// Iterator that yields nothing.
 export template<class T>
-struct Empty : WithTraitDefault<Empty<T>, Iterator> {
+struct Empty : DefaultInClass<Empty<T>, Iterator> {
     using Item = T;
     constexpr Empty() = default;
     constexpr auto next() -> Option<Item> { return rstd::None(); }
@@ -77,7 +77,7 @@ struct Empty : WithTraitDefault<Empty<T>, Iterator> {
 
 /// Iterator that yields a single value exactly once.
 export template<class T>
-struct Once : WithTraitDefault<Once<T>, Iterator> {
+struct Once : DefaultInClass<Once<T>, Iterator> {
     using Item = T;
     Option<T> val;
     explicit Once(T v): val(rstd::Some(rstd::move(v))) {}
@@ -91,7 +91,7 @@ struct Once : WithTraitDefault<Once<T>, Iterator> {
 
 /// Iterator that endlessly repeats a value (clones each time).
 export template<class T>
-struct Repeat : WithTraitDefault<Repeat<T>, Iterator> {
+struct Repeat : DefaultInClass<Repeat<T>, Iterator> {
     using Item = T;
     T val;
     explicit Repeat(T v): val(rstd::move(v)) {}
@@ -101,7 +101,7 @@ struct Repeat : WithTraitDefault<Repeat<T>, Iterator> {
 
 /// Iterator that calls a closure returning `Option<T>` until it yields `None`.
 export template<class F>
-struct FromFn : WithTraitDefault<FromFn<F>, Iterator> {
+struct FromFn : DefaultInClass<FromFn<F>, Iterator> {
     using Item = typename decltype(mtp::declval<F&>()())::value_type;
     F f;
     explicit FromFn(F fn): f(rstd::move(fn)) {}
@@ -110,7 +110,7 @@ struct FromFn : WithTraitDefault<FromFn<F>, Iterator> {
 
 /// Iterator produced by repeatedly applying `succ` to the previous element.
 export template<class T, class F>
-struct Successors : WithTraitDefault<Successors<T, F>, Iterator> {
+struct Successors : DefaultInClass<Successors<T, F>, Iterator> {
     using Item = T;
     Option<T> next_val;
     F         succ;

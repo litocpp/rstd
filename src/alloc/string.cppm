@@ -13,7 +13,7 @@ namespace alloc::string
 {
 
 /// Iterator over the Unicode scalar values of a UTF-8 byte range.
-export struct Chars : rstd::WithTraitDefault<Chars, rstd::iter::Iterator> {
+export struct Chars : rstd::DefaultInClass<Chars, rstd::iter::Iterator> {
     using Item = u32;
     const u8* cur;
     const u8* fin;
@@ -392,7 +392,7 @@ struct Impl<T, A> : ImplBase<A> {
 };
 
 template<mtp::same_as<cmp::PartialEq<String>> T, mtp::same_as<String> A>
-struct Impl<T, A> : ImplBase<default_tag<A>> {
+struct Impl<T, A> : DefaultInImpl<T, A> {
     auto eq(const String& other) const noexcept -> bool {
         return this->self().size() == other.size() &&
                rstd::mem::memcmp(this->self().begin(), other.begin(), this->self().size()) == 0;
@@ -400,7 +400,7 @@ struct Impl<T, A> : ImplBase<default_tag<A>> {
 };
 
 template<mtp::same_as<cmp::PartialEq<char const*>> T, mtp::same_as<String> A>
-struct Impl<T, A> : ImplBase<default_tag<A>> {
+struct Impl<T, A> : DefaultInImpl<T, A> {
     using Rhs = char const*;
     auto eq(const Rhs& other) const noexcept -> bool {
         auto& a = this->self();

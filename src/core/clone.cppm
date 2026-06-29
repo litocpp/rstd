@@ -11,12 +11,21 @@ namespace rstd::clone
 /// - `clone_from(Self& source)` : Overwrites self with a clone of source (optional, has default).
 export struct Clone {
     template<typename Self, typename = void>
+    struct RequiredApi {
+        using Trait = Clone;
+        auto clone() const -> Self { return trait_required_call<0>(this); }
+    };
+
+    template<typename Self, typename = void>
     struct Api {
         using Trait = Clone;
         auto clone() const -> Self { return trait_call<0>(this); }
 
         void clone_from(Self& source) { return trait_call<1, Api>(this, source); }
     };
+
+    template<class T>
+    using RequiredFuncs = TraitFuncs<&T::clone>;
 
     template<class T>
     using Funcs = TraitFuncs<&T::clone, &T::clone_from>;
@@ -33,13 +42,13 @@ struct Impl<clone::Clone, default_tag<Self, P>> : ImplBase<default_tag<Self, P>>
 
 template<typename Self>
     requires mtp::is_arithmetic<Self> || mtp::is_ptr<Self> || mtp::copy<Self>
-struct Impl<clone::Clone, Self> : LinkTraitDefault<clone::Clone, Self> {
+struct Impl<clone::Clone, Self> : DefaultInImpl<clone::Clone, Self> {
     auto clone() const -> Self { return this->self(); }
 };
 
 template<typename Self>
     requires mtp::is_tuple<Self> && (! mtp::copy<Self>)
-struct Impl<clone::Clone, Self> : LinkTraitDefault<clone::Clone, Self> {
+struct Impl<clone::Clone, Self> : DefaultInImpl<clone::Clone, Self> {
     auto clone() const -> Self {
         auto& self = this->self();
         return rstd::apply(

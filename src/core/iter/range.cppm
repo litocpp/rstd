@@ -6,7 +6,7 @@ namespace rstd::iter
 
 /// Half-open integer range `[start, end)`, analogous to Rust's `start..end`.
 export template<class T>
-struct Range : WithTraitDefault<Range<T>, Iterator> {
+struct Range : DefaultInClass<Range<T>, Iterator> {
     using Item = T;
     T start;
     T fin;

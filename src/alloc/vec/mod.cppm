@@ -371,7 +371,7 @@ public:
 
 /// Owning iterator over a `Vec<T>`, yielding elements by value.
 export template<typename T>
-struct VecIntoIter : rstd::WithTraitDefault<VecIntoIter<T>, rstd::iter::Iterator> {
+struct VecIntoIter : rstd::DefaultInClass<VecIntoIter<T>, rstd::iter::Iterator> {
     using Item = T;
     Vec<T> vec;
     usize  idx;
@@ -403,7 +403,7 @@ struct VecIntoIter : rstd::WithTraitDefault<VecIntoIter<T>, rstd::iter::Iterator
 namespace rstd
 {
 template<typename U, mtp::same_as<cmp::PartialEq<::alloc::vec::Vec<U>>> T>
-struct Impl<T, ::alloc::vec::Vec<U>> : ImplBase<default_tag<::alloc::vec::Vec<U>>> {
+struct Impl<T, ::alloc::vec::Vec<U>> : DefaultInImpl<T, ::alloc::vec::Vec<U>> {
     auto eq(const ::alloc::vec::Vec<U>& other) const noexcept -> bool {
         if (this->self().len() != other.len()) return false;
         for (usize i = 0; i < this->self().len(); ++i) {

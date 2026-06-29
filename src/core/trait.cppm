@@ -119,6 +119,12 @@ using TraitFuncs = typename Trait::template Funcs<A>;
 template<typename Trait, typename A>
 using TraitApiHelper = TraitFuncsHelper<TraitFuncs<Trait, A>>;
 
+template<typename Trait, typename A>
+using RequiredTraitFuncs = typename Trait::template RequiredFuncs<A>;
+
+template<typename Trait, typename A>
+using RequiredTraitApiHelper = TraitFuncsHelper<RequiredTraitFuncs<Trait, A>>;
+
 template<typename Trait, typename A, typename B, usize Index = 0>
 consteval bool check_apis() {
     using ApiHelperA = TraitApiHelper<Trait, A>;
@@ -245,18 +251,61 @@ struct ImplBase<default_tag<A, TraitDefaultPolicy::Normal>> : ImplBase<A> {};
 export template<typename A, typename... T>
 concept Impled = (mtp::check_trait<T, mtp::rm_cvf<A>>() && ...);
 
-/// Alias for a trait's default implementation, which can be inherited by Impl or class A.
-/// \tparam T The trait type.
-/// \tparam A The concrete type.
-/// \tparam P The default policy (Normal or InClass).
-export template<typename T, typename A, TraitDefaultPolicy P = TraitDefaultPolicy::Normal>
-using LinkTraitDefault = Impl<T, default_tag<A, P>>;
+/// Default methods inherited by a class that wants them as members.
+/// \tparam Self The concrete type.
+/// \tparam T The trait that owns the default methods.
+export template<typename Self, typename T>
+using DefaultInClass = Impl<T, default_tag<Self, TraitDefaultPolicy::InClass>>;
+
+/// Default methods inherited by an Impl specialization.
+/// \tparam T The trait that owns the default methods.
+/// \tparam Self The concrete type.
+export template<typename T, typename Self>
+using DefaultInImpl = Impl<T, default_tag<Self, TraitDefaultPolicy::Normal>>;
 
 /// Links a class's own methods as the trait implementation, delegating via in-class dispatch.
 /// \tparam T The trait type.
 /// \tparam A The concrete type whose methods satisfy the trait.
 export template<typename T, typename A>
 struct LinkClassMethod : mtp::ImplWithPtr<A>, mtp::rm_cv<T>::template Api<A, in_class_tag> {};
+
+/// Links a class's required methods while inheriting the chosen Impl base.
+/// \tparam T The trait type.
+/// \tparam A The concrete type whose required methods satisfy the trait.
+/// \tparam Base The Impl base that supplies self storage and provided methods.
+export template<typename T, typename A, typename Base = ImplBase<A>>
+struct LinkClassRequired
+    : Base, mtp::rm_cv<T>::template RequiredApi<A, LinkClassRequired<T, A, Base>> {
+    template<typename P>
+    constexpr LinkClassRequired(P* p) noexcept: Base { p } {}
+};
+
+/// Links class required methods and fills provided methods from the trait default Impl.
+/// \tparam T The trait type.
+/// \tparam A The concrete type whose required methods satisfy the trait.
+export template<typename T, typename A>
+using LinkClassRequiredWithDefault = LinkClassRequired<T, A, DefaultInImpl<T, A>>;
+
+/// Dispatches a required trait method to the corresponding class member.
+/// \tparam I The index of the method in the trait's required API function list.
+/// \tparam TApi The required trait API type.
+/// \param self Pointer to the required trait API object.
+/// \param args Arguments forwarded to the class method.
+/// \return The result of the dispatched method call.
+export template<usize I, typename TApi, typename... Args>
+    requires mtp::is_trait_api<mtp::rm_cv<TApi>>
+[[gnu::always_inline]]
+inline constexpr decltype(auto) trait_required_call(TApi* self, Args&&... args) {
+    using TApi_    = mtp::rm_cv<TApi>;
+    using Trait    = typename TApi_::Trait;
+    using TClass   = typename mtp::TraitApiTraits<TApi_>::type;
+    using Delegate = typename mtp::TraitApiTraits<TApi_>::delegate_type;
+
+    constexpr const auto api { mtp::RequiredTraitApiHelper<Trait, TClass>::template get<I>() };
+    auto impl_in_class = static_cast<mtp::follow_const_t<TApi, Delegate>*>(self);
+    const auto self_   = rstd::addressof(mtp::ImplHelper::get_self(impl_in_class));
+    return (self_->*api)(rstd::forward<Args>(args)...);
+}
 
 /// Dispatches a trait method call to the appropriate Impl, handling static, dynamic, and in-class dispatch.
 /// \tparam I The index of the method in the trait's API function list.
@@ -337,30 +386,5 @@ inline constexpr decltype(auto) as(A& t) noexcept {
         return ret_t { rstd::addressof(t) };
     }
 }
-
-/// Mixin that inherits the API of all given Traits for type Self.
-/// \tparam Self The concrete type.
-/// \tparam Traits The trait types whose APIs are mixed in.
-export template<typename Self, typename... Traits>
-struct WithTrait : Traits::template Api<Self>... {
-    constexpr bool operator==(const WithTrait) const { return true; }
-};
-
-/// Conditionally mixes in trait APIs for Self, only including traits that Self implements.
-/// \tparam Self The concrete type.
-/// \tparam Traits The trait types to conditionally mix in.
-export template<typename Self, typename... Traits>
-struct MayWithTrait
-    : mtp::cond<Impled<Traits, Self>, typename Traits::template Api<Self>, empty>... {
-    constexpr bool operator==(const MayWithTrait) const { return true; }
-};
-
-/// Mixin that inherits the default trait implementations for all given Traits using in-class policy.
-/// \tparam Self The concrete type.
-/// \tparam Traits The trait types whose defaults are mixed in.
-export template<typename Self, typename... Traits>
-struct WithTraitDefault : LinkTraitDefault<Traits, Self, TraitDefaultPolicy::InClass>... {
-    constexpr bool operator==(const WithTraitDefault) const { return true; }
-};
 
 } // namespace rstd

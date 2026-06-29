@@ -28,7 +28,8 @@ using rstd::dyn;
 using rstd::Impl;
 using rstd::Impled;
 using rstd::TraitFuncs;
-using rstd::WithTrait;
+using rstd::DefaultInClass;
+using rstd::DefaultInImpl;
 
 using rstd::Send;
 using rstd::Sized;

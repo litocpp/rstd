@@ -3,12 +3,18 @@
 
 import rstd;
 
-struct B : rstd::WithTrait<B, rstd::clone::Clone> {
+struct B : rstd::DefaultInClass<B, rstd::clone::Clone> {
     int a;
 
     B(int v): a(v) {}
     B(const B& o): a(o.a) {}
     B& operator=(const B& o) = default;
+    auto clone() const -> B { return B { *this }; }
+    auto operator==(const B& other) const -> bool { return a == other.a; }
+};
+
+template<>
+struct rstd::Impl<rstd::clone::Clone, B> : rstd::LinkClassRequiredWithDefault<rstd::clone::Clone, B> {
 };
 
 TEST(Clone, Auto) {

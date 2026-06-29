@@ -71,9 +71,17 @@ using item_of = typename decltype(mtp::declval<X&>().next())::value_type;
 /// Trait for types that produce a sequence of values via `next()`.
 ///
 /// Required: `next() -> Option<Item>`. `size_hint()` has a default. Every other
-/// method is a provided default (see the `default_tag` Impl below) and is reached
-/// in-class through `WithTraitDefault<Self, Iterator>`.
+/// method is a provided default (see the `default_tag` Impl below) and can be
+/// inherited in-class through `DefaultInClass<Self, Iterator>`.
 export struct Iterator {
+    template<typename Self, typename = void>
+    struct RequiredApi {
+        using Trait = Iterator;
+        using Item  = typename Self::Item;
+
+        auto next() -> Option<Item> { return trait_required_call<0>(this); }
+    };
+
     template<typename Self, typename = void>
     struct Api {
         using Trait = Iterator;
@@ -82,6 +90,9 @@ export struct Iterator {
         auto next() -> Option<Item> { return trait_call<0>(this); }
         auto size_hint() const -> SizeHint { return trait_call<1, Api>(this); }
     };
+
+    template<class T>
+    using RequiredFuncs = TraitFuncs<&T::next>;
 
     template<class T>
     using Funcs = TraitFuncs<&T::next, &T::size_hint>;
@@ -173,10 +184,10 @@ struct Impl<iter::ExactSizeIterator, X> : ImplBase<X> {
     auto len() const -> usize { return this->self().len(); }
 };
 
-// All provided Iterator methods. Pulled in-class by WithTraitDefault<Self,Iterator>
-// (InClass policy) so iterators get them as members and chaining needs no as<>().
+// All provided Iterator methods. Pulled in-class by DefaultInClass<Self, Iterator>
+// so iterators get them as members and chaining needs no as<>().
 //
-// Item-dependent signatures use deduced `auto` returns: WithTraitDefault instantiates
+// Item-dependent signatures use deduced `auto` returns: DefaultInClass instantiates
 // this Impl while `Self` is still incomplete, so `typename Self::Item` may only appear
 // inside method bodies (instantiated lazily on call), never in a member's declaration.
 template<typename Self, auto P>

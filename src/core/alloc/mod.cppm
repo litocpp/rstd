@@ -17,6 +17,19 @@ export struct AllocError {};
 /// A high-level trait for an allocator.
 export struct Allocator {
     template<typename Self, typename = void>
+    struct RequiredApi {
+        using Trait = Allocator;
+
+        auto allocate(Layout layout) const -> Result<NonNull<u8[]>, AllocError> {
+            return trait_required_call<0>(this, layout);
+        }
+
+        void deallocate(NonNull<u8> ptr, Layout layout) const noexcept {
+            trait_required_call<1>(this, ptr, layout);
+        }
+    };
+
+    template<typename Self, typename = void>
     struct Api {
         using Trait = Allocator;
 
@@ -47,6 +60,9 @@ export struct Allocator {
             return trait_call<5>(this, ptr, old_layout, new_layout);
         }
     };
+
+    template<typename T>
+    using RequiredFuncs = TraitFuncs<&T::allocate, &T::deallocate>;
 
     template<typename T>
     using Funcs = TraitFuncs<&T::allocate, &T::allocate_zeroed, &T::deallocate, &T::grow,
@@ -108,4 +124,3 @@ public:
     }
 };
 } // namespace rstd::alloc
-

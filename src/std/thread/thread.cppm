@@ -54,7 +54,7 @@ struct Impl<convert::From<String>, ThreadNameString>
     : LinkClassMethod<convert::From<String>, ThreadNameString> {};
 
 template<>
-struct Impl<clone::Clone, ThreadNameString> : LinkTraitDefault<clone::Clone, ThreadNameString> {
+struct Impl<clone::Clone, ThreadNameString> : DefaultInImpl<clone::Clone, ThreadNameString> {
     auto clone() -> ThreadNameString {
         return ThreadNameString { as<clone::Clone>(this->self().inner).clone() };
     }
@@ -75,7 +75,7 @@ struct alignas(8) Inner {
 ///
 /// Threads are represented by the `Thread` type. Each thread has a unique `ThreadId`,
 /// an optional name, and a parker for blocking/unblocking.
-export class Thread : public WithTrait<Thread, clone::Clone> {
+export class Thread : public DefaultInClass<Thread, clone::Clone> {
     Pin<Arc<Inner>> inner;
 
     explicit Thread(Pin<Arc<Inner>> inner): inner(rstd::move(inner)) {}
@@ -94,6 +94,11 @@ public:
         return *this;
     }
     Thread& operator=(Thread&&) noexcept = default;
+
+    auto clone() const -> Thread {
+        auto arc = as<clone::Clone>(inner.get_ref()).clone();
+        return Thread { Pin<Arc<Inner>>::make_unchecked(rstd::move(arc)) };
+    }
 
     /// Creates a new thread handle.
     static auto make(ThreadId id, Option<String> name) -> Thread {
@@ -175,17 +180,8 @@ public:
 } // namespace thread
 
 template<>
-struct Impl<clone::Clone, thread::Thread> : LinkTraitDefault<clone::Clone, thread::Thread> {
-    auto clone() const -> thread::Thread {
-        auto arc = as<clone::Clone>(this->self().inner.get_ref()).clone();
-        return thread::Thread { Pin<Arc<thread::Inner>>::make_unchecked(rstd::move(arc)) };
-    }
-
-    void clone_from(thread::Thread& source) {
-        auto arc           = as<clone::Clone>(source.inner.get_ref()).clone();
-        this->self().inner = Pin<Arc<thread::Inner>>::make_unchecked(rstd::move(arc));
-    }
-};
+struct Impl<clone::Clone, thread::Thread>
+    : LinkClassRequiredWithDefault<clone::Clone, thread::Thread> {};
 
 namespace thread
 {

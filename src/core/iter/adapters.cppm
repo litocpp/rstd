@@ -5,7 +5,7 @@ namespace rstd::iter
 {
 
 template<class I, class F>
-struct Map : WithTraitDefault<Map<I, F>, Iterator> {
+struct Map : DefaultInClass<Map<I, F>, Iterator> {
     using Item = mtp::invoke_result_t<F&, typename I::Item>;
     I i;
     F f;
@@ -19,7 +19,7 @@ struct Map : WithTraitDefault<Map<I, F>, Iterator> {
 };
 
 template<class I, class F>
-struct MapWhile : WithTraitDefault<MapWhile<I, F>, Iterator> {
+struct MapWhile : DefaultInClass<MapWhile<I, F>, Iterator> {
     using Item = typename mtp::invoke_result_t<F&, typename I::Item>::value_type;
     I i;
     F f;
@@ -32,7 +32,7 @@ struct MapWhile : WithTraitDefault<MapWhile<I, F>, Iterator> {
 };
 
 template<class I, class P>
-struct Filter : WithTraitDefault<Filter<I, P>, Iterator> {
+struct Filter : DefaultInClass<Filter<I, P>, Iterator> {
     using Item = typename I::Item;
     I i;
     P pred;
@@ -45,7 +45,7 @@ struct Filter : WithTraitDefault<Filter<I, P>, Iterator> {
 };
 
 template<class I, class F>
-struct FilterMap : WithTraitDefault<FilterMap<I, F>, Iterator> {
+struct FilterMap : DefaultInClass<FilterMap<I, F>, Iterator> {
     using Item = typename mtp::invoke_result_t<F&, typename I::Item>::value_type;
     I i;
     F f;
@@ -60,7 +60,7 @@ struct FilterMap : WithTraitDefault<FilterMap<I, F>, Iterator> {
 };
 
 template<class I>
-struct Enumerate : WithTraitDefault<Enumerate<I>, Iterator> {
+struct Enumerate : DefaultInClass<Enumerate<I>, Iterator> {
     using Item = rstd::tuple<usize, typename I::Item>;
     I     i;
     usize count;
@@ -75,7 +75,7 @@ struct Enumerate : WithTraitDefault<Enumerate<I>, Iterator> {
 };
 
 template<class A, class B>
-struct Zip : WithTraitDefault<Zip<A, B>, Iterator> {
+struct Zip : DefaultInClass<Zip<A, B>, Iterator> {
     using Item = rstd::tuple<typename A::Item, typename B::Item>;
     A a;
     B b;
@@ -90,7 +90,7 @@ struct Zip : WithTraitDefault<Zip<A, B>, Iterator> {
 };
 
 template<class I>
-struct Take : WithTraitDefault<Take<I>, Iterator> {
+struct Take : DefaultInClass<Take<I>, Iterator> {
     using Item = typename I::Item;
     I     i;
     usize n;
@@ -103,7 +103,7 @@ struct Take : WithTraitDefault<Take<I>, Iterator> {
 };
 
 template<class I>
-struct Skip : WithTraitDefault<Skip<I>, Iterator> {
+struct Skip : DefaultInClass<Skip<I>, Iterator> {
     using Item = typename I::Item;
     I     i;
     usize n;
@@ -119,7 +119,7 @@ struct Skip : WithTraitDefault<Skip<I>, Iterator> {
 };
 
 template<class I, class P>
-struct TakeWhile : WithTraitDefault<TakeWhile<I, P>, Iterator> {
+struct TakeWhile : DefaultInClass<TakeWhile<I, P>, Iterator> {
     using Item = typename I::Item;
     I    i;
     P    pred;
@@ -135,7 +135,7 @@ struct TakeWhile : WithTraitDefault<TakeWhile<I, P>, Iterator> {
 };
 
 template<class I, class P>
-struct SkipWhile : WithTraitDefault<SkipWhile<I, P>, Iterator> {
+struct SkipWhile : DefaultInClass<SkipWhile<I, P>, Iterator> {
     using Item = typename I::Item;
     I    i;
     P    pred;
@@ -157,7 +157,7 @@ struct SkipWhile : WithTraitDefault<SkipWhile<I, P>, Iterator> {
 };
 
 template<class I>
-struct StepBy : WithTraitDefault<StepBy<I>, Iterator> {
+struct StepBy : DefaultInClass<StepBy<I>, Iterator> {
     using Item = typename I::Item;
     I     i;
     usize step;
@@ -175,7 +175,7 @@ struct StepBy : WithTraitDefault<StepBy<I>, Iterator> {
 };
 
 template<class A, class B>
-struct Chain : WithTraitDefault<Chain<A, B>, Iterator> {
+struct Chain : DefaultInClass<Chain<A, B>, Iterator> {
     using Item = typename A::Item;
     A    a;
     B    b;
@@ -192,7 +192,7 @@ struct Chain : WithTraitDefault<Chain<A, B>, Iterator> {
 };
 
 template<class I>
-struct Cloned : WithTraitDefault<Cloned<I>, Iterator> {
+struct Cloned : DefaultInClass<Cloned<I>, Iterator> {
     using Item = mtp::rm_cvf<decltype(*mtp::declval<typename I::Item>())>;
     I i;
     explicit Cloned(I in): i(rstd::move(in)) {}
@@ -206,7 +206,7 @@ struct Cloned : WithTraitDefault<Cloned<I>, Iterator> {
 };
 
 template<class I>
-struct Copied : WithTraitDefault<Copied<I>, Iterator> {
+struct Copied : DefaultInClass<Copied<I>, Iterator> {
     using Item = mtp::rm_cvf<decltype(*mtp::declval<typename I::Item>())>;
     I i;
     explicit Copied(I in): i(rstd::move(in)) {}
@@ -220,7 +220,7 @@ struct Copied : WithTraitDefault<Copied<I>, Iterator> {
 };
 
 template<class I, class F>
-struct Inspect : WithTraitDefault<Inspect<I, F>, Iterator> {
+struct Inspect : DefaultInClass<Inspect<I, F>, Iterator> {
     using Item = typename I::Item;
     I i;
     F f;
@@ -234,7 +234,7 @@ struct Inspect : WithTraitDefault<Inspect<I, F>, Iterator> {
 };
 
 template<class I, class St, class F>
-struct Scan : WithTraitDefault<Scan<I, St, F>, Iterator> {
+struct Scan : DefaultInClass<Scan<I, St, F>, Iterator> {
     using Item = typename mtp::invoke_result_t<F&, St&, typename I::Item>::value_type;
     I  i;
     St st;
@@ -248,7 +248,7 @@ struct Scan : WithTraitDefault<Scan<I, St, F>, Iterator> {
 };
 
 template<class I>
-struct Fuse : WithTraitDefault<Fuse<I>, Iterator> {
+struct Fuse : DefaultInClass<Fuse<I>, Iterator> {
     using Item = typename I::Item;
     I    i;
     bool done;
@@ -262,7 +262,7 @@ struct Fuse : WithTraitDefault<Fuse<I>, Iterator> {
 };
 
 template<class I>
-struct Peekable : WithTraitDefault<Peekable<I>, Iterator> {
+struct Peekable : DefaultInClass<Peekable<I>, Iterator> {
     using Item = typename I::Item;
     I            i;
     Option<Item> peeked;
@@ -280,7 +280,7 @@ struct Peekable : WithTraitDefault<Peekable<I>, Iterator> {
 };
 
 template<class I>
-struct Rev : WithTraitDefault<Rev<I>, Iterator> {
+struct Rev : DefaultInClass<Rev<I>, Iterator> {
     using Item = typename I::Item;
     I i;
     explicit Rev(I in): i(rstd::move(in)) {}
@@ -290,7 +290,7 @@ struct Rev : WithTraitDefault<Rev<I>, Iterator> {
 };
 
 template<class I>
-struct Cycle : WithTraitDefault<Cycle<I>, Iterator> {
+struct Cycle : DefaultInClass<Cycle<I>, Iterator> {
     using Item = typename I::Item;
     I orig;
     I cur;
@@ -314,7 +314,7 @@ constexpr auto into_iter_of(X&& x) {
 }
 
 template<class I>
-struct Flatten : WithTraitDefault<Flatten<I>, Iterator> {
+struct Flatten : DefaultInClass<Flatten<I>, Iterator> {
     using Inner = decltype(into_iter_of(mtp::declval<typename I::Item>()));
     using Item  = typename Inner::Item;
     I             i;
@@ -335,7 +335,7 @@ struct Flatten : WithTraitDefault<Flatten<I>, Iterator> {
 };
 
 template<class I, class F>
-struct FlatMap : WithTraitDefault<FlatMap<I, F>, Iterator> {
+struct FlatMap : DefaultInClass<FlatMap<I, F>, Iterator> {
     using Mapped = mtp::invoke_result_t<F&, typename I::Item>;
     using Inner  = decltype(into_iter_of(mtp::declval<Mapped>()));
     using Item   = typename Inner::Item;
@@ -359,7 +359,7 @@ struct FlatMap : WithTraitDefault<FlatMap<I, F>, Iterator> {
 
 // Borrows an iterator by pointer so it can be partially consumed without moving.
 template<class I>
-struct ByRef : WithTraitDefault<ByRef<I>, Iterator> {
+struct ByRef : DefaultInClass<ByRef<I>, Iterator> {
     using Item = typename I::Item;
     I* inner;
     explicit ByRef(I* p): inner(p) {}
@@ -368,7 +368,7 @@ struct ByRef : WithTraitDefault<ByRef<I>, Iterator> {
 };
 
 template<class I>
-struct Intersperse : WithTraitDefault<Intersperse<I>, Iterator> {
+struct Intersperse : DefaultInClass<Intersperse<I>, Iterator> {
     using Item = typename I::Item;
     I            i;
     Item         sep;

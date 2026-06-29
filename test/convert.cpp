@@ -22,12 +22,21 @@ template<>
 struct rstd::Impl<rstd::convert::From<C>, B> {
     static auto from(C c) -> B;
 };
-struct C : rstd::WithTrait<C, rstd::convert::Into<A>, rstd::convert::Into<B>> {
+struct C {
     int a;
 };
 
 auto rstd::Impl<rstd::convert::From<C>, A>::from(C c) -> A { return { c.a }; }
 auto rstd::Impl<rstd::convert::From<C>, B>::from(C c) -> B { return { c.a }; }
+
+struct D {
+    int a;
+    auto into() -> A { return { a }; }
+};
+
+template<>
+struct rstd::Impl<rstd::convert::Into<A>, D>
+    : rstd::LinkClassRequired<rstd::convert::Into<A>, D> {};
 
 template<>
 struct rstd::Impl<rstd::convert::From<B>, A> {
@@ -49,4 +58,10 @@ TEST(Convert, Basic) {
     b   = rstd::into(c);
     EXPECT_EQ(c.a, a.a);
     EXPECT_EQ(c.a, b.a);
+    D d { 321 };
+    a = d.into();
+    EXPECT_EQ(a.a, 321);
+    D e { 654 };
+    a = rstd::as<rstd::convert::Into<A>>(e).into();
+    EXPECT_EQ(a.a, 654);
 }

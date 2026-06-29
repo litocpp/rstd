@@ -72,76 +72,53 @@ struct TestClassFields {
 
 struct TestClass;
 
-// Trait implementations declarations
 template<>
-struct rstd::Impl<CloneTrait, TestClass> : rstd::ImplBase<TestClass> {
-    TestClass clone() const;
-};
+struct rstd::Impl<CloneTrait, TestClass> : rstd::LinkClassMethod<CloneTrait, TestClass> {};
 
 template<>
-struct rstd::Impl<DisplayTrait, TestClass> : rstd::ImplBase<TestClass> {
-    void display(std::ostream& os) const;
-};
+struct rstd::Impl<DisplayTrait, TestClass> : rstd::LinkClassMethod<DisplayTrait, TestClass> {};
 
 template<>
-struct rstd::Impl<AddableTrait, TestClass> : rstd::ImplBase<TestClass> {
-    TestClass add(const TestClass& other) const;
-};
+struct rstd::Impl<AddableTrait, TestClass> : rstd::LinkClassMethod<AddableTrait, TestClass> {};
 
 template<>
-struct rstd::Impl<MultiplyableTrait, TestClass> : rstd::ImplBase<TestClass> {
-    TestClass multiply(int factor) const;
-};
+struct rstd::Impl<MultiplyableTrait, TestClass>
+    : rstd::LinkClassMethod<MultiplyableTrait, TestClass> {};
 
-// Add trait implementation declaration
 template<>
-struct rstd::Impl<StringConverterTrait, TestClass> : rstd::ImplBase<TestClass> {
-    std::string to_string() const;
-    std::string to_hex() const;
-    std::string to_binary() const;
-};
+struct rstd::Impl<StringConverterTrait, TestClass>
+    : rstd::LinkClassMethod<StringConverterTrait, TestClass> {};
 
-struct TestClass : public TestClassFields,
-                   public rstd::WithTrait<TestClass, CloneTrait, DisplayTrait, AddableTrait,
-                                          MultiplyableTrait, StringConverterTrait> {
+struct TestClass : public TestClassFields {
     using TestClassFields::TestClassFields;
-};
 
-// Trait implementations definitions
-TestClass rstd::Impl<CloneTrait, TestClass>::clone() const { return TestClass(self().value); }
+    TestClass clone() const { return TestClass(value); }
 
-void rstd::Impl<DisplayTrait, TestClass>::display(std::ostream& os) const {
-    os << "TestClass(" << self().value << ")";
-}
+    void display(std::ostream& os) const { os << "TestClass(" << value << ")"; }
 
-TestClass rstd::Impl<AddableTrait, TestClass>::add(const TestClass& other) const {
-    return TestClass(self().value + other.value);
-}
+    TestClass add(const TestClass& other) const { return TestClass(value + other.value); }
 
-TestClass rstd::Impl<MultiplyableTrait, TestClass>::multiply(int factor) const {
-    return TestClass(self().value * factor);
-}
+    TestClass multiply(int factor) const { return TestClass(value * factor); }
 
-// Add implementations before the tests
-std::string rstd::Impl<StringConverterTrait, TestClass>::to_string() const {
-    return std::to_string(self().value);
-}
+    std::string to_string() const { return std::to_string(value); }
 
-std::string rstd::Impl<StringConverterTrait, TestClass>::to_hex() const {
-    std::stringstream ss;
-    ss << "0x" << std::hex << self().value;
-    return ss.str();
-}
-
-std::string rstd::Impl<StringConverterTrait, TestClass>::to_binary() const {
-    int value = self().value;
-    if (value == 0) return "0b0";
-    std::string result = "0b";
-    for (int i = sizeof(int) * 8 - 1; i >= 0; --i) {
-        if (result.length() > 2 || (value & (1 << i))) result += (value & (1 << i)) ? '1' : '0';
+    std::string to_hex() const {
+        std::stringstream ss;
+        ss << "0x" << std::hex << value;
+        return ss.str();
     }
-    return result;
-}
+
+    std::string to_binary() const {
+        if (value == 0) return "0b0";
+        std::string result = "0b";
+        for (int i = sizeof(int) * 8 - 1; i >= 0; --i) {
+            if (result.length() > 2 || (value & (1 << i))) {
+                result += (value & (1 << i)) ? '1' : '0';
+            }
+        }
+        return result;
+    }
+};
 
 TEST(Trait, DisplayTrait) {
     TestClass          obj(42);
@@ -242,10 +219,9 @@ TEST(Trait, ConstDynTest) {
 struct InClass {
     int  a;
     auto clone() const -> InClass { return { a }; }
-    void clone_from(InClass&) {}
 };
 
-struct InClassDef : rstd::WithTraitDefault<InClassDef, rstd::clone::Clone> {
+struct InClassDef : rstd::DefaultInClass<InClassDef, rstd::clone::Clone> {
     int  a;
     auto clone() const -> InClassDef {
         InClassDef o {};
@@ -255,7 +231,8 @@ struct InClassDef : rstd::WithTraitDefault<InClassDef, rstd::clone::Clone> {
 };
 
 template<>
-struct rstd::Impl<rstd::clone::Clone, InClass> : rstd::LinkClassMethod<rstd::clone::Clone, InClass> {};
+struct rstd::Impl<rstd::clone::Clone, InClass>
+    : rstd::LinkClassRequiredWithDefault<rstd::clone::Clone, InClass> {};
 template<>
 struct rstd::Impl<rstd::clone::Clone, InClassDef>
     : rstd::LinkClassMethod<rstd::clone::Clone, InClassDef> {};
@@ -268,17 +245,62 @@ TEST(Trait, InClass) {
         auto n = mm.clone();
         (void)n;
         EXPECT_EQ(m.a, 100);
+        InClass source { 7 };
+        mm.clone_from(source);
+        EXPECT_EQ(m.a, 7);
     }
     {
-        // InClassDef m, n;
-        // m.a = 100;
-        // n.a = 1000;
-        // rstd::as<rstd::clone::Clone>(m).clone_from(n);
-        // EXPECT_EQ(n.a, 1000);
-        // m.a = 888;
-        // n.clone_from(m);
-        // EXPECT_EQ(n.a, m.a);
+        InClassDef m, n;
+        m.a = 100;
+        n.a = 1000;
+        rstd::as<rstd::clone::Clone>(m).clone_from(n);
+        EXPECT_EQ(m.a, 1000);
+        m.a = 888;
+        n.clone_from(m);
+        EXPECT_EQ(n.a, m.a);
     }
+}
+
+struct EqOnly : rstd::DefaultInClass<EqOnly, rstd::cmp::PartialEq<EqOnly>> {
+    int a;
+    explicit EqOnly(int v): a(v) {}
+    auto eq(const EqOnly& other) noexcept -> bool { return a == other.a; }
+};
+
+template<>
+struct rstd::Impl<rstd::cmp::PartialEq<EqOnly>, EqOnly>
+    : rstd::LinkClassRequiredWithDefault<rstd::cmp::PartialEq<EqOnly>, EqOnly> {};
+
+struct RequiredIter : rstd::DefaultInClass<RequiredIter, rstd::iter::Iterator> {
+    using Item = int;
+
+    int left;
+
+    explicit RequiredIter(int v): left(v) {}
+
+    auto next() -> rstd::Option<int> {
+        if (left == 0) return rstd::None();
+        return rstd::Some(left--);
+    }
+};
+
+template<>
+struct rstd::Impl<rstd::iter::Iterator, RequiredIter>
+    : rstd::LinkClassRequiredWithDefault<rstd::iter::Iterator, RequiredIter> {};
+
+TEST(Trait, RequiredWithDefault) {
+    EqOnly a { 1 };
+    EqOnly b { 2 };
+    EXPECT_TRUE(a.eq(a));
+    EXPECT_TRUE(a.ne(b));
+    EXPECT_TRUE(rstd::as<rstd::cmp::PartialEq<EqOnly>>(a).eq(a));
+    EXPECT_TRUE(rstd::as<rstd::cmp::PartialEq<EqOnly>>(a).ne(b));
+
+    RequiredIter direct { 3 };
+    EXPECT_EQ(direct.count(), 3);
+
+    RequiredIter via_trait { 2 };
+    EXPECT_EQ(rstd::as<rstd::iter::Iterator>(via_trait).count(), 2);
 }
 
 using rstd::boxed::Box;

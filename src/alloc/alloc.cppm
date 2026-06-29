@@ -74,11 +74,11 @@ export struct Global;
 namespace alloc_ = alloc;
 
 /// Impl before Global definition — methods live here, not on Global.
-/// Inherits LinkTraitDefault so default grow/shrink/grow_zeroed call back
+/// Inherits DefaultInImpl so default grow/shrink/grow_zeroed call back
 /// through impl_() which constructs Impl directly (no trait_call).
 template<>
 struct rstd::Impl<rstd::alloc::Allocator, alloc_::Global>
-    : LinkTraitDefault<rstd::alloc::Allocator, alloc_::Global> {
+    : DefaultInImpl<rstd::alloc::Allocator, alloc_::Global> {
     auto allocate(Layout layout) const -> Result<NonNull<u8[]>, AllocError> {
         if (layout.size == 0) {
             return Ok(NonNull<u8[]>::make_unchecked(layout.dangling().template cast_array<u8>()));
