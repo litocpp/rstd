@@ -7,6 +7,7 @@ export import :sys;
 export import :sync;
 export import :thread;
 export import :async;
+export import :io;
 export import :bytes;
 export import :process;
 export import :env;
