@@ -7,6 +7,10 @@ import :time;
 namespace rstd::async
 {
 
+export struct Elapsed {
+    friend constexpr auto operator==(Elapsed, Elapsed) noexcept -> bool = default;
+};
+
 export struct YieldNow {
     using Output = void;
 
@@ -88,12 +92,62 @@ public:
     }
 };
 
+export template<future::FutureLike F>
+class Timeout {
+    F     future_;
+    Sleep delay_;
+    bool  completed { false };
+
+public:
+    using Output = Result<mtp::void_empty_t<future::future_output_t<F>>, Elapsed>;
+
+    Timeout(F future, time::Duration duration)
+        : future_(rstd::move(future)), delay_(duration) {}
+
+    Timeout(const Timeout&)            = delete;
+    Timeout& operator=(const Timeout&) = delete;
+    Timeout(Timeout&&) noexcept        = default;
+    auto operator=(Timeout&&) noexcept -> Timeout& = default;
+
+    auto poll(pin::Pin<mut_ref<Timeout>> self, task::Context& cx) -> task::Poll<Output> {
+        auto& value = *self.get_unchecked_mut();
+        if (value.completed) {
+            rstd::panic { "async::Timeout polled after completion" };
+        }
+
+        auto future_out = future::poll(value.future_, cx);
+        if (future_out.is_ready()) {
+            value.completed = true;
+            if constexpr (mtp::is_void<future::future_output_t<F>>) {
+                rstd::move(future_out).take();
+                return task::Poll<Output>::Ready(Ok(empty {}));
+            } else {
+                return task::Poll<Output>::Ready(Ok(rstd::move(future_out).take()));
+            }
+        }
+
+        auto delay_out = future::poll(value.delay_, cx);
+        if (delay_out.is_ready()) {
+            rstd::move(delay_out).take();
+            value.completed = true;
+            return task::Poll<Output>::Ready(Err(Elapsed {}));
+        }
+
+        return task::Poll<Output>::Pending();
+    }
+};
+
 export inline auto yield_now() -> YieldNow {
     return YieldNow {};
 }
 
 export inline auto sleep(time::Duration duration) -> Sleep {
     return Sleep { duration };
+}
+
+export template<future::FutureLike F>
+auto timeout(F future, time::Duration duration) -> Timeout<F> {
+    return Timeout<F> { rstd::move(future), duration };
 }
 
 } // namespace rstd::async

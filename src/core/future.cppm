@@ -15,10 +15,19 @@ constexpr auto pin_mut(T& value) noexcept -> pin::Pin<mut_ref<T>> {
 export template<typename F>
 using future_output_t = typename mtp::rm_cvf<F>::Output;
 
+export template<typename S>
+using stream_item_t = typename mtp::rm_cvf<S>::Item;
+
 export template<typename F>
 concept FutureLike = requires(mtp::rm_cvf<F>& future, task::Context& cx) {
     typename mtp::rm_cvf<F>::Output;
     { future.poll(pin_mut(future), cx) } -> mtp::same_as<task::Poll<future_output_t<F>>>;
+};
+
+export template<typename S>
+concept StreamLike = requires(mtp::rm_cvf<S>& stream, task::Context& cx) {
+    typename mtp::rm_cvf<S>::Item;
+    { stream.poll_next(pin_mut(stream), cx) } -> mtp::same_as<task::Poll<Option<stream_item_t<S>>>>;
 };
 
 export template<typename Output>
@@ -57,6 +66,13 @@ auto poll(F& future, task::Context& cx) -> task::Poll<future_output_t<F>>
     requires FutureLike<F>
 {
     return future.poll(pin_mut(future), cx);
+}
+
+export template<typename S>
+auto poll_next(S& stream, task::Context& cx) -> task::Poll<Option<stream_item_t<S>>>
+    requires StreamLike<S>
+{
+    return stream.poll_next(pin_mut(stream), cx);
 }
 
 } // namespace rstd::future
