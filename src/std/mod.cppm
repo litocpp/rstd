@@ -9,6 +9,7 @@ export import :thread;
 export import :async;
 export import :io;
 export import :bytes;
+export import :net;
 export import :process;
 export import :env;
 export import :path;

@@ -1,25 +1,17 @@
 module;
 #include <rstd/macro.hpp>
 
-#if RSTD_OS_UNIX
-#    include <sys/wait.h>
-#    include <unistd.h>
-#    include <spawn.h>
-#    include <signal.h>
-#    include <fcntl.h>
-#    include <errno.h>
-#    include <stdlib.h>
-#endif
-
 module rstd;
+import :sys.libc;
 
 using namespace rstd::prelude;
+namespace libc = rstd::sys::libc;
 
 // ── ExitStatus::from_raw (Unix) ──────────────────────────────────────────
 #if RSTD_OS_UNIX
 auto rstd::process::ExitStatus::from_raw(i32 raw) noexcept -> ExitStatus {
-    if (WIFEXITED(raw)) return ExitStatus::from_code(WEXITSTATUS(raw));
-    if (WIFSIGNALED(raw)) return ExitStatus::from_signal(WTERMSIG(raw));
+    if (libc::wait_exited(raw)) return ExitStatus::from_code(libc::wait_exitstatus(raw));
+    if (libc::wait_signaled(raw)) return ExitStatus::from_signal(libc::wait_termsig(raw));
     return ExitStatus::from_code(-1);
 }
 #endif
@@ -30,17 +22,17 @@ namespace rstd::process
 
 ChildStdin::~ChildStdin() {
 #if RSTD_OS_UNIX
-    if (fd >= 0) ::close(fd);
+    if (fd >= 0) libc::close(fd);
 #endif
 }
 ChildStdout::~ChildStdout() {
 #if RSTD_OS_UNIX
-    if (fd >= 0) ::close(fd);
+    if (fd >= 0) libc::close(fd);
 #endif
 }
 ChildStderr::~ChildStderr() {
 #if RSTD_OS_UNIX
-    if (fd >= 0) ::close(fd);
+    if (fd >= 0) libc::close(fd);
 #endif
 }
 
@@ -55,10 +47,11 @@ auto Child::wait() -> io::Result<ExitStatus> {
 
     int status = 0;
     while (true) {
-        auto ret = ::waitpid(pid, &status, 0);
+        auto ret = libc::waitpid(pid, &status, 0);
         if (ret == -1) {
-            if (errno == EINTR) continue;
-            return Err(io::error::Error::from_raw_os_error(errno));
+            auto err = libc::get_errno();
+            if (err == libc::EINTR) continue;
+            return Err(io::error::Error::from_raw_os_error(err));
         }
         break;
     }
@@ -76,8 +69,8 @@ auto Child::kill() -> io::Result<rstd::empty> {
         return Err(io::error::Error::from_kind(
             io::error::ErrorKind { io::error::ErrorKind::InvalidInput }));
     }
-    if (::kill(pid, SIGKILL) == -1) {
-        return Err(io::error::Error::from_raw_os_error(errno));
+    if (libc::kill(pid, libc::SIGKILL) == -1) {
+        return Err(io::error::Error::from_raw_os_error(libc::get_errno()));
     }
     return Ok(rstd::empty {});
 #else
@@ -96,7 +89,7 @@ auto Child::wait_with_output() -> io::Result<Output> {
         if (fd >= 0) {
             u8 tmp[4096];
             while (true) {
-                auto n = ::read(fd, tmp, sizeof(tmp));
+                auto n = libc::read(fd, tmp, sizeof(tmp));
                 if (n <= 0) break;
                 for (isize i = 0; i < n; i++) {
                     u8 b = tmp[i];
@@ -148,74 +141,74 @@ auto Spawn::spawn(rstd::process::Command& cmd)
     argv_buf.push(nullptr);
 
     // File actions
-    posix_spawn_file_actions_t actions;
-    posix_spawn_file_actions_init(&actions);
+    libc::posix_spawn_file_actions_t actions;
+    libc::posix_spawn_file_actions_init(&actions);
 
     int stdin_pipe[2]  = { -1, -1 };
     int stdout_pipe[2] = { -1, -1 };
     int stderr_pipe[2] = { -1, -1 };
 
     auto make_pipe = [](int fds[2]) -> bool {
-        return ::pipe2(fds, O_CLOEXEC) == 0;
+        return libc::pipe2(fds, libc::O_CLOEXEC) == 0;
     };
 
     // stdin
     if (cmd.cfg_stdin_.kind == Stdio::Piped_) {
         if (! make_pipe(stdin_pipe)) goto fail;
-        posix_spawn_file_actions_adddup2(&actions, stdin_pipe[0], 0);
-        posix_spawn_file_actions_addclose(&actions, stdin_pipe[0]);
-        posix_spawn_file_actions_addclose(&actions, stdin_pipe[1]);
+        libc::posix_spawn_file_actions_adddup2(&actions, stdin_pipe[0], 0);
+        libc::posix_spawn_file_actions_addclose(&actions, stdin_pipe[0]);
+        libc::posix_spawn_file_actions_addclose(&actions, stdin_pipe[1]);
     } else if (cmd.cfg_stdin_.kind == Stdio::Null_) {
-        posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0);
+        libc::posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", libc::O_RDONLY, 0);
     }
 
     // stdout
     if (cmd.cfg_stdout_.kind == Stdio::Piped_) {
         if (! make_pipe(stdout_pipe)) goto fail;
-        posix_spawn_file_actions_adddup2(&actions, stdout_pipe[1], 1);
-        posix_spawn_file_actions_addclose(&actions, stdout_pipe[0]);
-        posix_spawn_file_actions_addclose(&actions, stdout_pipe[1]);
+        libc::posix_spawn_file_actions_adddup2(&actions, stdout_pipe[1], 1);
+        libc::posix_spawn_file_actions_addclose(&actions, stdout_pipe[0]);
+        libc::posix_spawn_file_actions_addclose(&actions, stdout_pipe[1]);
     } else if (cmd.cfg_stdout_.kind == Stdio::Null_) {
-        posix_spawn_file_actions_addopen(&actions, 1, "/dev/null", O_WRONLY, 0);
+        libc::posix_spawn_file_actions_addopen(&actions, 1, "/dev/null", libc::O_WRONLY, 0);
     }
 
     // stderr
     if (cmd.cfg_stderr_.kind == Stdio::Piped_) {
         if (! make_pipe(stderr_pipe)) goto fail;
-        posix_spawn_file_actions_adddup2(&actions, stderr_pipe[1], 2);
-        posix_spawn_file_actions_addclose(&actions, stderr_pipe[0]);
-        posix_spawn_file_actions_addclose(&actions, stderr_pipe[1]);
+        libc::posix_spawn_file_actions_adddup2(&actions, stderr_pipe[1], 2);
+        libc::posix_spawn_file_actions_addclose(&actions, stderr_pipe[0]);
+        libc::posix_spawn_file_actions_addclose(&actions, stderr_pipe[1]);
     } else if (cmd.cfg_stderr_.kind == Stdio::Null_) {
-        posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0);
+        libc::posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", libc::O_WRONLY, 0);
     }
 
     {
-        pid_t  child_pid = -1;
-        char** envp      = environ;
+        libc::pid_t child_pid = -1;
+        char**      envp      = libc::environ;
 
-        int err = ::posix_spawnp(&child_pid, prog_ptr, &actions, nullptr, argv_buf.begin(), envp);
-        posix_spawn_file_actions_destroy(&actions);
+        int err = libc::posix_spawnp(&child_pid, prog_ptr, &actions, nullptr, argv_buf.begin(), envp);
+        libc::posix_spawn_file_actions_destroy(&actions);
 
         if (err != 0) {
             if (stdin_pipe[0] >= 0) {
-                ::close(stdin_pipe[0]);
-                ::close(stdin_pipe[1]);
+                libc::close(stdin_pipe[0]);
+                libc::close(stdin_pipe[1]);
             }
             if (stdout_pipe[0] >= 0) {
-                ::close(stdout_pipe[0]);
-                ::close(stdout_pipe[1]);
+                libc::close(stdout_pipe[0]);
+                libc::close(stdout_pipe[1]);
             }
             if (stderr_pipe[0] >= 0) {
-                ::close(stderr_pipe[0]);
-                ::close(stderr_pipe[1]);
+                libc::close(stderr_pipe[0]);
+                libc::close(stderr_pipe[1]);
             }
             return Err(rstd::io::error::Error::from_raw_os_error(err));
         }
 
         // Close child-side fds in parent
-        if (stdin_pipe[0] >= 0) ::close(stdin_pipe[0]);
-        if (stdout_pipe[1] >= 0) ::close(stdout_pipe[1]);
-        if (stderr_pipe[1] >= 0) ::close(stderr_pipe[1]);
+        if (stdin_pipe[0] >= 0) libc::close(stdin_pipe[0]);
+        if (stdout_pipe[1] >= 0) libc::close(stdout_pipe[1]);
+        if (stderr_pipe[1] >= 0) libc::close(stderr_pipe[1]);
 
         Child child;
         child.pid = child_pid;
@@ -226,19 +219,19 @@ auto Spawn::spawn(rstd::process::Command& cmd)
     }
 
 fail: {
-    int e = errno;
-    posix_spawn_file_actions_destroy(&actions);
+    int e = libc::get_errno();
+    libc::posix_spawn_file_actions_destroy(&actions);
     if (stdin_pipe[0] >= 0) {
-        ::close(stdin_pipe[0]);
-        ::close(stdin_pipe[1]);
+        libc::close(stdin_pipe[0]);
+        libc::close(stdin_pipe[1]);
     }
     if (stdout_pipe[0] >= 0) {
-        ::close(stdout_pipe[0]);
-        ::close(stdout_pipe[1]);
+        libc::close(stdout_pipe[0]);
+        libc::close(stdout_pipe[1]);
     }
     if (stderr_pipe[0] >= 0) {
-        ::close(stderr_pipe[0]);
-        ::close(stderr_pipe[1]);
+        libc::close(stderr_pipe[0]);
+        libc::close(stderr_pipe[1]);
     }
     return Err(rstd::io::error::Error::from_raw_os_error(e));
 }

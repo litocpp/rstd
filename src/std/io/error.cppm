@@ -1,17 +1,15 @@
 module;
 #include <rstd/enum.hpp>
 #include <rstd/macro.hpp>
-#if RSTD_OS_UNIX
-#  include <errno.h>
-#elif RSTD_OS_WINDOWS
-#  include <winerror.h>
-#endif
 export module rstd:io.error;
 export import :sys.io;
 export import rstd.core;
+import :sys.libc;
 
 namespace rstd::io::error
 {
+
+namespace libc = rstd::sys::libc;
 
 /// The platform-native OS error code type (e.g. errno on Unix, GetLastError on Windows).
 export using rstd::sys::io::RawOsError;
@@ -126,94 +124,89 @@ namespace detail
 auto decode_error_kind(RawOsError err) noexcept -> ErrorKind {
     using EK = ErrorKind;
     switch (err) {
-    case ENOENT:       return EK { EK::NotFound };
-    case EACCES:
-    case EPERM:        return EK { EK::PermissionDenied };
-    case ECONNREFUSED: return EK { EK::ConnectionRefused };
-    case ECONNRESET:   return EK { EK::ConnectionReset };
-    case EHOSTUNREACH: return EK { EK::HostUnreachable };
-    case ENETUNREACH:  return EK { EK::NetworkUnreachable };
-    case ECONNABORTED: return EK { EK::ConnectionAborted };
-    case ENOTCONN:     return EK { EK::NotConnected };
-    case EADDRINUSE:   return EK { EK::AddrInUse };
-    case EADDRNOTAVAIL:return EK { EK::AddrNotAvailable };
-    case ENETDOWN:     return EK { EK::NetworkDown };
-    case EPIPE:        return EK { EK::BrokenPipe };
-    case EEXIST:       return EK { EK::AlreadyExists };
-#if EAGAIN != EWOULDBLOCK
-    case EWOULDBLOCK:
-#endif
-    case EAGAIN:       return EK { EK::WouldBlock };
-    case ENOTDIR:      return EK { EK::NotADirectory };
-    case EISDIR:       return EK { EK::IsADirectory };
-    case ENOTEMPTY:    return EK { EK::DirectoryNotEmpty };
-    case EROFS:        return EK { EK::ReadOnlyFilesystem };
-    case ELOOP:        return EK { EK::FilesystemLoop };
-#ifdef ESTALE
-    case ESTALE:       return EK { EK::StaleNetworkFileHandle };
-#endif
-    case EINVAL:       return EK { EK::InvalidInput };
-    case ETIMEDOUT:    return EK { EK::TimedOut };
-    case ENOSPC:       return EK { EK::StorageFull };
-    case ESPIPE:       return EK { EK::NotSeekable };
-#ifdef EDQUOT
-    case EDQUOT:       return EK { EK::QuotaExceeded };
-#endif
-    case EFBIG:        return EK { EK::FileTooLarge };
-    case EBUSY:        return EK { EK::ResourceBusy };
-    case ETXTBSY:      return EK { EK::ExecutableFileBusy };
-    case EDEADLK:      return EK { EK::Deadlock };
-    case EXDEV:        return EK { EK::CrossesDevices };
-    case EMLINK:       return EK { EK::TooManyLinks };
-    case ENAMETOOLONG: return EK { EK::InvalidFilename };
-    case E2BIG:        return EK { EK::ArgumentListTooLong };
-    case EINTR:        return EK { EK::Interrupted };
-    case ENOSYS:
-    case EOPNOTSUPP:
-    case EAFNOSUPPORT: return EK { EK::Unsupported };
-    case ENOMEM:
-    case ENOBUFS:      return EK { EK::OutOfMemory };
-    case EINPROGRESS:  return EK { EK::InProgress };
-    default:           return EK { EK::Uncategorized };
+    case libc::ENOENT:       return EK { EK::NotFound };
+    case libc::EACCES:
+    case libc::EPERM:        return EK { EK::PermissionDenied };
+    case libc::ECONNREFUSED: return EK { EK::ConnectionRefused };
+    case libc::ECONNRESET:   return EK { EK::ConnectionReset };
+    case libc::EHOSTUNREACH: return EK { EK::HostUnreachable };
+    case libc::ENETUNREACH:  return EK { EK::NetworkUnreachable };
+    case libc::ECONNABORTED: return EK { EK::ConnectionAborted };
+    case libc::ENOTCONN:     return EK { EK::NotConnected };
+    case libc::EADDRINUSE:   return EK { EK::AddrInUse };
+    case libc::EADDRNOTAVAIL:return EK { EK::AddrNotAvailable };
+    case libc::ENETDOWN:     return EK { EK::NetworkDown };
+    case libc::EPIPE:        return EK { EK::BrokenPipe };
+    case libc::EEXIST:       return EK { EK::AlreadyExists };
+    case libc::EAGAIN:       return EK { EK::WouldBlock };
+    case libc::ENOTDIR:      return EK { EK::NotADirectory };
+    case libc::EISDIR:       return EK { EK::IsADirectory };
+    case libc::ENOTEMPTY:    return EK { EK::DirectoryNotEmpty };
+    case libc::EROFS:        return EK { EK::ReadOnlyFilesystem };
+    case libc::ELOOP:        return EK { EK::FilesystemLoop };
+    case libc::EINVAL:       return EK { EK::InvalidInput };
+    case libc::ETIMEDOUT:    return EK { EK::TimedOut };
+    case libc::ENOSPC:       return EK { EK::StorageFull };
+    case libc::ESPIPE:       return EK { EK::NotSeekable };
+    case libc::EFBIG:        return EK { EK::FileTooLarge };
+    case libc::EBUSY:        return EK { EK::ResourceBusy };
+    case libc::ETXTBSY:      return EK { EK::ExecutableFileBusy };
+    case libc::EDEADLK:      return EK { EK::Deadlock };
+    case libc::EXDEV:        return EK { EK::CrossesDevices };
+    case libc::EMLINK:       return EK { EK::TooManyLinks };
+    case libc::ENAMETOOLONG: return EK { EK::InvalidFilename };
+    case libc::E2BIG:        return EK { EK::ArgumentListTooLong };
+    case libc::EINTR:        return EK { EK::Interrupted };
+    case libc::ENOSYS:
+    case libc::EOPNOTSUPP:
+    case libc::EAFNOSUPPORT: return EK { EK::Unsupported };
+    case libc::ENOMEM:
+    case libc::ENOBUFS:      return EK { EK::OutOfMemory };
+    case libc::EINPROGRESS:  return EK { EK::InProgress };
+    default:                 break;
     }
+    if (err == libc::EWOULDBLOCK) return EK { EK::WouldBlock };
+    if (libc::HAS_ESTALE && err == libc::ESTALE) return EK { EK::StaleNetworkFileHandle };
+    if (libc::HAS_EDQUOT && err == libc::EDQUOT) return EK { EK::QuotaExceeded };
+    return EK { EK::Uncategorized };
 }
 #elif RSTD_OS_WINDOWS
 [[gnu::always_inline]] inline
 auto decode_error_kind(RawOsError err) noexcept -> ErrorKind {
     using EK = ErrorKind;
     switch ((unsigned long)err) {
-    case ERROR_FILE_NOT_FOUND:
-    case ERROR_PATH_NOT_FOUND:       return EK { EK::NotFound };
-    case ERROR_ACCESS_DENIED:        return EK { EK::PermissionDenied };
-    case ERROR_CONNECTION_REFUSED:    return EK { EK::ConnectionRefused };
-    case ERROR_CONNECTION_ABORTED:    return EK { EK::ConnectionAborted };
-    case ERROR_NETNAME_DELETED:      return EK { EK::ConnectionReset };
-    case ERROR_HOST_UNREACHABLE:     return EK { EK::HostUnreachable };
-    case ERROR_NETWORK_UNREACHABLE:  return EK { EK::NetworkUnreachable };
-    case ERROR_ADDRESS_ALREADY_ASSOCIATED: return EK { EK::AddrInUse };
-    case ERROR_BROKEN_PIPE:
-    case ERROR_NO_DATA:              return EK { EK::BrokenPipe };
-    case ERROR_FILE_EXISTS:
-    case ERROR_ALREADY_EXISTS:       return EK { EK::AlreadyExists };
-    case WAIT_TIMEOUT:
-    case ERROR_SEM_TIMEOUT:          return EK { EK::TimedOut };
-    case ERROR_INVALID_PARAMETER:
-    case ERROR_INVALID_DATA:         return EK { EK::InvalidInput };
-    case ERROR_DIR_NOT_EMPTY:        return EK { EK::DirectoryNotEmpty };
-    case ERROR_DISK_FULL:            return EK { EK::StorageFull };
-    case ERROR_SEEK:                 return EK { EK::NotSeekable };
-    case ERROR_NOT_READY:
-    case ERROR_BUSY:                 return EK { EK::ResourceBusy };
-    case ERROR_POSSIBLE_DEADLOCK:    return EK { EK::Deadlock };
-    case ERROR_NOT_SAME_DEVICE:      return EK { EK::CrossesDevices };
-    case ERROR_TOO_MANY_LINKS:       return EK { EK::TooManyLinks };
-    case ERROR_FILENAME_EXCED_RANGE: return EK { EK::InvalidFilename };
-    case ERROR_NOT_ENOUGH_MEMORY:
-    case ERROR_OUTOFMEMORY:          return EK { EK::OutOfMemory };
-    case ERROR_NOT_SUPPORTED:
-    case ERROR_CALL_NOT_IMPLEMENTED: return EK { EK::Unsupported };
-    case ERROR_IO_PENDING:           return EK { EK::InProgress };
-    default:                         return EK { EK::Uncategorized };
+    case libc::ERROR_FILE_NOT_FOUND:
+    case libc::ERROR_PATH_NOT_FOUND:       return EK { EK::NotFound };
+    case libc::ERROR_ACCESS_DENIED:        return EK { EK::PermissionDenied };
+    case libc::ERROR_CONNECTION_REFUSED:   return EK { EK::ConnectionRefused };
+    case libc::ERROR_CONNECTION_ABORTED:   return EK { EK::ConnectionAborted };
+    case libc::ERROR_NETNAME_DELETED:      return EK { EK::ConnectionReset };
+    case libc::ERROR_HOST_UNREACHABLE:     return EK { EK::HostUnreachable };
+    case libc::ERROR_NETWORK_UNREACHABLE:  return EK { EK::NetworkUnreachable };
+    case libc::ERROR_ADDRESS_ALREADY_ASSOCIATED: return EK { EK::AddrInUse };
+    case libc::ERROR_BROKEN_PIPE:
+    case libc::ERROR_NO_DATA:              return EK { EK::BrokenPipe };
+    case libc::ERROR_FILE_EXISTS:
+    case libc::ERROR_ALREADY_EXISTS:       return EK { EK::AlreadyExists };
+    case libc::WAIT_TIMEOUT:
+    case libc::ERROR_SEM_TIMEOUT:          return EK { EK::TimedOut };
+    case libc::ERROR_INVALID_PARAMETER:
+    case libc::ERROR_INVALID_DATA:         return EK { EK::InvalidInput };
+    case libc::ERROR_DIR_NOT_EMPTY:        return EK { EK::DirectoryNotEmpty };
+    case libc::ERROR_DISK_FULL:            return EK { EK::StorageFull };
+    case libc::ERROR_SEEK:                 return EK { EK::NotSeekable };
+    case libc::ERROR_NOT_READY:
+    case libc::ERROR_BUSY:                 return EK { EK::ResourceBusy };
+    case libc::ERROR_POSSIBLE_DEADLOCK:    return EK { EK::Deadlock };
+    case libc::ERROR_NOT_SAME_DEVICE:      return EK { EK::CrossesDevices };
+    case libc::ERROR_TOO_MANY_LINKS:       return EK { EK::TooManyLinks };
+    case libc::ERROR_FILENAME_EXCED_RANGE: return EK { EK::InvalidFilename };
+    case libc::ERROR_NOT_ENOUGH_MEMORY:
+    case libc::ERROR_OUTOFMEMORY:          return EK { EK::OutOfMemory };
+    case libc::ERROR_NOT_SUPPORTED:
+    case libc::ERROR_CALL_NOT_IMPLEMENTED: return EK { EK::Unsupported };
+    case libc::ERROR_IO_PENDING:           return EK { EK::InProgress };
+    default:                               return EK { EK::Uncategorized };
     }
 }
 #else

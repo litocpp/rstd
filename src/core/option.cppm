@@ -575,6 +575,14 @@ public:
     /// \return The previously contained `Option`.
     constexpr auto take() -> Option<T> { return rstd::exchange(*this, option::None()); }
 
+    /// Inserts a value into the option, replacing any previous value.
+    template<typename U>
+        requires mtp::init<T, U>
+    constexpr auto insert(U&& value) -> T& {
+        this->_assign_val(rstd::forward<U>(value));
+        return **this;
+    }
+
     /// Dereferences the contained value. Asserts that the option is `Some`.
     [[nodiscard]]
     constexpr auto& operator*() const noexcept {

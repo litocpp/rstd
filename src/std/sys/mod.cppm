@@ -5,6 +5,7 @@ export import :sys.sync.mutex;
 export import :sys.thread;
 export import :sys.pal;
 export import :sys.fd;
+export import :sys.socket;
 
 export namespace rstd::sys
 {

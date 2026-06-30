@@ -6,6 +6,7 @@ set(RSTD_ASYNC_SOURCES
     async/select.cppm
     async/oneshot.cppm
     async/io.cppm
+    async/reactor.cppm
     async/runtime_core.cppm
     async/spawn.cppm
     async/runtime.cppm

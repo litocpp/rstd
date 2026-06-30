@@ -5,6 +5,7 @@ export import :async.join;
 export import :async.select;
 export import :async.oneshot;
 export import :async.io;
+export import :async.reactor;
 export import :async.spawn;
 export import :async.runtime;
 export import :async.time;

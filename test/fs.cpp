@@ -1,7 +1,3 @@
-#include <stdlib.h>
-#include <sys/stat.h>
-#include <unistd.h>
-
 #include <cstring>
 #include <gtest/gtest.h>
 import rstd;
@@ -11,6 +7,7 @@ using rstd::fs::FileType;
 using rstd::fs::OpenOptions;
 using rstd::fs::Permissions;
 using rstd::io::SeekFrom;
+namespace libc = rstd::sys::libc;
 
 namespace
 {
@@ -20,11 +17,11 @@ class TempPath {
 public:
     TempPath() {
         char tmpl[] = "/tmp/rstd-fs-test-XXXXXX";
-        int  fd     = ::mkstemp(tmpl);
-        if (fd >= 0) ::close(fd);
+        int  fd     = libc::mkstemp(tmpl);
+        if (fd >= 0) libc::close(fd);
         path_ = tmpl;
     }
-    ~TempPath() { ::unlink(path_.c_str()); }
+    ~TempPath() { libc::unlink(path_.c_str()); }
     auto c_str() const -> const char* { return path_.c_str(); }
     auto as_path() const -> rstd::ref<rstd::path::Path> {
         return rstd::ref<rstd::path::Path>(path_.c_str());
@@ -115,12 +112,12 @@ TEST(Fs, SetLenTruncatesAndExtends) {
 
     EXPECT_TRUE(f.set_len(5).is_ok());
 
-    struct stat st{};
-    ::stat(tp.c_str(), &st);
+    libc::stat_t st{};
+    libc::stat(tp.c_str(), &st);
     EXPECT_EQ(st.st_size, 5);
 
     EXPECT_TRUE(f.set_len(20).is_ok());
-    ::stat(tp.c_str(), &st);
+    libc::stat(tp.c_str(), &st);
     EXPECT_EQ(st.st_size, 20);
 }
 
@@ -231,9 +228,14 @@ TEST(FsTimes, SetModifiedRoundTrip) {
 }
 
 TEST(FsFileType, EqualityForSameKind) {
-    auto t1 = FileType { S_IFREG };
-    auto t2 = FileType { S_IFREG | 0644 };
-    auto td = FileType { S_IFDIR };
+    TempPath tp;
+    auto t1 = File::create(tp.as_path()).unwrap_unchecked().metadata().unwrap_unchecked().file_type();
+    auto t2 = File::open(tp.as_path()).unwrap_unchecked().metadata().unwrap_unchecked().file_type();
+    auto td = File::open(rstd::ref<rstd::path::Path>("/tmp"))
+                  .unwrap_unchecked()
+                  .metadata()
+                  .unwrap_unchecked()
+                  .file_type();
     EXPECT_TRUE(t1 == t2);
     EXPECT_FALSE(t1 == td);
 }
@@ -272,16 +274,16 @@ TEST(FsFreeFn, RemoveFile) {
 TEST(FsFreeFn, RenameMoves) {
     TempPath src;
     char     dst_buf[] = "/tmp/rstd-fs-rename-XXXXXX";
-    int      fd        = ::mkstemp(dst_buf);
-    ::close(fd);
-    ::unlink(dst_buf); // we need the target to NOT exist
+    int      fd        = libc::mkstemp(dst_buf);
+    libc::close(fd);
+    libc::unlink(dst_buf); // we need the target to NOT exist
 
     EXPECT_TRUE(rstd::fs::rename(src.as_path(),
                                  rstd::ref<rstd::path::Path>(dst_buf))
                     .is_ok());
     EXPECT_FALSE(rstd::fs::exists(src.as_path()).unwrap_unchecked());
     EXPECT_TRUE(rstd::fs::exists(rstd::ref<rstd::path::Path>(dst_buf)).unwrap_unchecked());
-    ::unlink(dst_buf);
+    libc::unlink(dst_buf);
 }
 
 TEST(FsFreeFn, CopyDuplicates) {
@@ -291,8 +293,8 @@ TEST(FsFreeFn, CopyDuplicates) {
     rstd::fs::write(src.as_path(), slice).unwrap_unchecked();
 
     char dst_buf[] = "/tmp/rstd-fs-copy-XXXXXX";
-    int  fd        = ::mkstemp(dst_buf);
-    ::close(fd);
+    int  fd        = libc::mkstemp(dst_buf);
+    libc::close(fd);
 
     auto n = rstd::fs::copy(src.as_path(),
                             rstd::ref<rstd::path::Path>(dst_buf))
@@ -300,15 +302,15 @@ TEST(FsFreeFn, CopyDuplicates) {
     EXPECT_EQ(n, 5u);
     auto v = rstd::fs::read(rstd::ref<rstd::path::Path>(dst_buf)).unwrap_unchecked();
     EXPECT_EQ(v.len(), 5u);
-    ::unlink(dst_buf);
+    libc::unlink(dst_buf);
 }
 
 TEST(FsFreeFn, CreateAndRemoveDir) {
     char dir_buf[] = "/tmp/rstd-fs-dir-XXXXXX";
-    auto p         = ::mkdtemp(dir_buf);
+    auto p         = libc::mkdtemp(dir_buf);
     ASSERT_NE(p, nullptr);
     // mkdtemp already created it; remove and recreate via our API.
-    ::rmdir(dir_buf);
+    libc::rmdir(dir_buf);
     EXPECT_TRUE(rstd::fs::create_dir(rstd::ref<rstd::path::Path>(dir_buf)).is_ok());
     EXPECT_TRUE(rstd::fs::metadata(rstd::ref<rstd::path::Path>(dir_buf))
                     .unwrap_unchecked()
@@ -318,7 +320,7 @@ TEST(FsFreeFn, CreateAndRemoveDir) {
 
 TEST(FsFreeFn, CreateDirAllNested) {
     char base[] = "/tmp/rstd-fs-cda-XXXXXX";
-    ::mkdtemp(base);
+    libc::mkdtemp(base);
 
     rstd::path::PathBuf p = rstd::path::PathBuf::from(base);
     p.push(rstd::ref<rstd::path::Path>("a"));
@@ -332,17 +334,17 @@ TEST(FsFreeFn, CreateDirAllNested) {
     while (p.pop() && p.as_path().len() > rstd::ref<rstd::path::Path>(base).len()) {
         rstd::fs::remove_dir(p).is_ok();
     }
-    ::rmdir(base);
+    libc::rmdir(base);
 }
 
 TEST(FsFreeFn, ReadLink) {
     char src[] = "/tmp/rstd-fs-symtgt-XXXXXX";
-    int  fd    = ::mkstemp(src);
-    ::close(fd);
+    int  fd    = libc::mkstemp(src);
+    libc::close(fd);
     char link_path[] = "/tmp/rstd-fs-symlnk-XXXXXX";
-    int  lf          = ::mkstemp(link_path);
-    ::close(lf);
-    ::unlink(link_path);
+    int  lf          = libc::mkstemp(link_path);
+    libc::close(lf);
+    libc::unlink(link_path);
 
     EXPECT_TRUE(rstd::fs::soft_link(rstd::ref<rstd::path::Path>(src),
                                     rstd::ref<rstd::path::Path>(link_path))
@@ -351,8 +353,8 @@ TEST(FsFreeFn, ReadLink) {
                       .unwrap_unchecked();
     EXPECT_EQ(target.len(), std::strlen(src));
 
-    ::unlink(link_path);
-    ::unlink(src);
+    libc::unlink(link_path);
+    libc::unlink(src);
 }
 
 TEST(FsFreeFn, SetPermissionsByPath) {
@@ -364,7 +366,7 @@ TEST(FsFreeFn, SetPermissionsByPath) {
 
 TEST(FsReadDir, IteratesEntries) {
     char base[] = "/tmp/rstd-fs-readdir-XXXXXX";
-    ::mkdtemp(base);
+    libc::mkdtemp(base);
 
     // Create two files under base.
     rstd::path::PathBuf p1 = rstd::path::PathBuf::from(base);
@@ -398,7 +400,7 @@ TEST(FsReadDir, IteratesEntries) {
 
 TEST(FsReadDir, RemoveDirAllRecursive) {
     char base[] = "/tmp/rstd-fs-rda-XXXXXX";
-    ::mkdtemp(base);
+    libc::mkdtemp(base);
 
     rstd::path::PathBuf p = rstd::path::PathBuf::from(base);
     p.push(rstd::ref<rstd::path::Path>("sub"));

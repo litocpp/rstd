@@ -43,6 +43,7 @@ set(
   time.cpp
   fmt.cpp
   io.cpp
+  net.cpp
   env.cpp
   char.cpp
   floats.cpp

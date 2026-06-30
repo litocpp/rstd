@@ -14,6 +14,7 @@ set(RSTD_PRIVATE_SOURCES
 set(RSTD_SYS_SOURCES
     sys/mod.cppm
     sys/fd.cppm
+    sys/socket.cppm
     sys/io/mod.cppm
     sys/io/stdio.cppm
     sys/libc/mod.cppm

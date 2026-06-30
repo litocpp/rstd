@@ -1,15 +1,11 @@
 module;
 #include <rstd/macro.hpp>
-#if RSTD_OS_UNIX
-#  include <unistd.h>
-#  include <errno.h>
-#endif
 export module rstd:sys.io.stdio;
 export import :io.error;
 export import rstd.core;
+import :sys.libc;
 
 #if RSTD_OS_WINDOWS
-import :sys.libc.windows;
 using namespace rstd::sys::libc;
 #endif
 
@@ -19,6 +15,7 @@ namespace rstd::sys::io::stdio
 using rstd::io::Result;
 using rstd::io::error::Error;
 using rstd::io::error::ErrorKind;
+namespace libc = rstd::sys::libc;
 
 #if RSTD_OS_UNIX
 
@@ -26,10 +23,10 @@ using rstd::io::error::ErrorKind;
 /// Automatically retries on EINTR.  Returns bytes written.
 export auto write_fd(int fd, const u8* buf, usize len) noexcept -> Result<usize> {
     while (true) {
-        auto n = ::write(fd, buf, len);
+        auto n = libc::write(fd, buf, len);
         if (n >= 0) return Ok(usize(n));
-        auto err = errno;
-        if (err == EINTR) continue;
+        auto err = libc::get_errno();
+        if (err == libc::EINTR) continue;
         return Err(Error::from_raw_os_error(err));
     }
 }
@@ -38,10 +35,10 @@ export auto write_fd(int fd, const u8* buf, usize len) noexcept -> Result<usize>
 /// Automatically retries on EINTR.  Returns bytes read (0 = EOF).
 export auto read_fd(int fd, u8* buf, usize len) noexcept -> Result<usize> {
     while (true) {
-        auto n = ::read(fd, buf, len);
+        auto n = libc::read(fd, buf, len);
         if (n >= 0) return Ok(usize(n));
-        auto err = errno;
-        if (err == EINTR) continue;
+        auto err = libc::get_errno();
+        if (err == libc::EINTR) continue;
         return Err(Error::from_raw_os_error(err));
     }
 }
@@ -103,7 +100,7 @@ export auto read_fd(int, u8*, usize) noexcept -> Result<usize> {
 
 #if RSTD_OS_UNIX
 export auto is_terminal_fd(int fd) noexcept -> bool {
-    return ::isatty(fd) != 0;
+    return libc::isatty(fd) != 0;
 }
 #elif RSTD_OS_WINDOWS
 export auto is_terminal_fd(int fd) noexcept -> bool {

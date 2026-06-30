@@ -30,7 +30,7 @@ struct FutureAwaiter : AwaiterBase {
         if (out.is_pending()) {
             return false;
         }
-        m_result = Some(rstd::move(out).take());
+        m_result.insert(rstd::move(out).take());
         return true;
     }
 };
@@ -80,7 +80,7 @@ public:
 
         template<typename U>
         void return_value(U&& value) {
-            result = Some(rstd::forward<U>(value));
+            result.insert(rstd::forward<U>(value));
         }
 
         void unhandled_exception() {
