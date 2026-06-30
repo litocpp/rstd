@@ -1,6 +1,7 @@
 set(RSTD_SYNC_SOURCES
     sync/mod.cppm
     sync/mutex.cppm
+    sync/condvar.cppm
     sync/poison/mod.cppm
     sync/poison/once.cppm
     sync/mpsc/mod.cppm

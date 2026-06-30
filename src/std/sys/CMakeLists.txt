@@ -39,6 +39,8 @@ set(RSTD_SYS_SOURCES
     sys/sync/mutex/mod.cppm
     sys/sync/mutex/futex.cppm
     sys/sync/mutex/pthread.cppm
+    sys/sync/condvar/mod.cppm
+    sys/sync/condvar/futex.cppm
     sys/sync/once/mod.cppm
     sys/sync/once/futex.cppm
     sys/sync/thread_parking/mod.cppm

@@ -2,6 +2,7 @@ export module rstd:sys;
 export import :sys.libc;
 export import :sys.sync.thread_parking;
 export import :sys.sync.mutex;
+export import :sys.sync.condvar;
 export import :sys.thread;
 export import :sys.pal;
 export import :sys.fd;

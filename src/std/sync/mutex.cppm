@@ -9,6 +9,8 @@ using sys_mutex_t = rstd::sys::sync::mutex::Mutex;
 namespace rstd::sync
 {
 
+export class Condvar;
+
 /// An RAII guard returned by `Mutex::lock`, providing access to the protected data.
 ///
 /// The mutex is released when this guard is dropped.
@@ -17,6 +19,10 @@ export template<typename T>
 class MutexGuard {
     sys_mutex_t* m_lock;
     T*           m_data;
+
+    friend class Condvar;
+
+    auto raw_lock() noexcept -> sys_mutex_t& { return *m_lock; }
 
 public:
     MutexGuard(sys_mutex_t* l, T* d): m_lock(l), m_data(d) { m_lock->lock(); }

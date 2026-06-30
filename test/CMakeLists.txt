@@ -39,6 +39,7 @@ set(
   thread.cpp
   async.cpp
   bytes.cpp
+  sync/condvar.cpp
   sync/mpsc.cpp
   time.cpp
   fmt.cpp
