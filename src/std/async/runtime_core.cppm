@@ -3,7 +3,6 @@ import :async.forward;
 import rstd.alloc;
 import :sync;
 import :thread;
-import :time;
 
 using namespace rstd;
 
@@ -41,28 +40,11 @@ public:
     explicit operator bool() const noexcept { return ptr != nullptr; }
 };
 
-struct TimerEntry {
-    usize         id {};
-    time::Instant deadline {};
-    task::Waker  waker;
-
-    TimerEntry() = delete;
-    TimerEntry(usize id, time::Instant deadline, task::Waker waker)
-        : id(id), deadline(deadline), waker(rstd::move(waker)) {}
-
-    TimerEntry(const TimerEntry&)            = delete;
-    TimerEntry& operator=(const TimerEntry&) = delete;
-    TimerEntry(TimerEntry&&) noexcept        = default;
-    auto operator=(TimerEntry&&) noexcept -> TimerEntry& = default;
-};
-
 struct RuntimeState {
-    Vec<TaskRef>    ready;
-    Vec<TaskRef>    tasks;
-    Vec<TimerEntry> timers;
+    Vec<TaskRef> ready;
+    Vec<TaskRef> tasks;
     Option<thread::Thread> parker;
-    usize next_timer_id { 1 };
-    bool  notified { false };
+    bool notified { false };
 };
 
 struct RuntimeInner {
@@ -101,91 +83,17 @@ struct RuntimeInner {
     void spawn(TaskRef task);
     void schedule(TaskRef task);
 
-    auto add_timer(time::Instant deadline, task::Waker waker) -> usize {
-        auto st = state.lock().unwrap_unchecked();
-        auto id = st->next_timer_id++;
-        st->timers.push(TimerEntry { id, deadline, rstd::move(waker) });
-        notify_locked(*st);
-        return id;
-    }
-
-    void update_timer(usize id, task::Waker waker) {
-        auto st = state.lock().unwrap_unchecked();
-        for (usize i = 0; i < st->timers.len(); ++i) {
-            if (st->timers[i].id == id) {
-                st->timers[i].waker = rstd::move(waker);
-                notify_locked(*st);
-                return;
-            }
-        }
-    }
-
-    void cancel_timer(usize id) {
-        auto st = state.lock().unwrap_unchecked();
-        for (usize i = 0; i < st->timers.len(); ++i) {
-            if (st->timers[i].id == id) {
-                st->timers.remove(i);
-                return;
-            }
-        }
-    }
-
-    void wake_expired_timers() {
-        auto wakers = Vec<task::Waker>::make();
-        {
-            auto st  = state.lock().unwrap_unchecked();
-            auto now = time::Instant::now();
-            for (usize i = 0; i < st->timers.len();) {
-                if (st->timers[i].deadline <= now) {
-                    auto entry = st->timers.remove(i);
-                    wakers.push(rstd::move(entry.waker));
-                } else {
-                    ++i;
-                }
-            }
-        }
-
-        while (! wakers.is_empty()) {
-            rstd::move(wakers.pop().unwrap_unchecked()).wake();
-        }
-    }
-
-    auto next_timer_delay_locked(RuntimeState& st) -> Option<time::Duration> {
-        if (st.timers.is_empty()) {
-            return None();
-        }
-
-        auto now      = time::Instant::now();
-        auto deadline = st.timers[0].deadline;
-        for (usize i = 1; i < st.timers.len(); ++i) {
-            if (st.timers[i].deadline < deadline) {
-                deadline = st.timers[i].deadline;
-            }
-        }
-
-        if (deadline <= now) {
-            return Some<time::Duration>(time::Duration_ZERO);
-        }
-        return Some(deadline - now);
-    }
-
     void wait_for_work() {
-        auto timeout = Option<time::Duration> {};
         {
             auto st = state.lock().unwrap_unchecked();
             if (! st->ready.is_empty() || st->notified) {
                 st->notified = false;
                 return;
             }
-            timeout      = next_timer_delay_locked(*st);
             st->notified = false;
         }
 
-        if (timeout.is_some()) {
-            thread::park_timeout(*timeout);
-        } else {
-            thread::park();
-        }
+        thread::park();
     }
 };
 

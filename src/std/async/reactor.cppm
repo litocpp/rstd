@@ -4,6 +4,7 @@ module;
 export module rstd:async.reactor;
 export import :async.forward;
 export import :io.error;
+export import :time;
 import :sys.fd;
 import :sys.libc;
 import :sync;
@@ -16,6 +17,9 @@ namespace libc = rstd::sys::libc;
 
 namespace rstd::async
 {
+
+inline constexpr u64 WAKE_EVENT_ID  = 0;
+inline constexpr u64 TIMER_EVENT_ID = u64(-1);
 
 export struct Interest {
     u8 m_bits {};
@@ -115,12 +119,29 @@ struct RegistrationState {
     auto operator=(const RegistrationState&) -> RegistrationState& = delete;
 };
 
+struct TimerEntry {
+    usize               id {};
+    time::Instant       deadline {};
+    Option<task::Waker> waker {};
+
+    TimerEntry(usize id, time::Instant deadline, task::Waker waker)
+        : id(id), deadline(deadline), waker(Some(rstd::move(waker))) {}
+
+    TimerEntry(const TimerEntry&)                        = delete;
+    auto operator=(const TimerEntry&) -> TimerEntry&     = delete;
+    TimerEntry(TimerEntry&&) noexcept                    = default;
+    auto operator=(TimerEntry&&) noexcept -> TimerEntry& = default;
+};
+
 struct ReactorState {
     Vec<sync::Arc<RegistrationState>> registrations {};
+    Vec<TimerEntry>                   timers {};
     sys::fd::OwnedFd                  wake_read {};
     sys::fd::OwnedFd                  wake_write {};
+    sys::fd::OwnedFd                  timer {};
     sys::fd::OwnedFd                  epoll {};
     usize                             next_registration_id { 1 };
+    usize                             next_timer_id { 1 };
     bool                              stopped { false };
 };
 
@@ -134,6 +155,62 @@ class Reactor {
 
     static auto last_os_error() noexcept -> io::Error {
         return io::Error::from_raw_os_error(sys::io::last_os_error());
+    }
+
+    static auto duration_to_timespec(time::Duration duration) noexcept -> libc::timespec_t {
+        return libc::timespec_t {
+            .tv_sec  = static_cast<libc::time_t>(duration.as_secs()),
+            .tv_nsec = static_cast<long>(duration.subsec_nanos()),
+        };
+    }
+
+    static auto earliest_timer_locked(ReactorState& st) -> Option<time::Instant> {
+        if (st.timers.is_empty()) return None();
+
+        auto deadline = st.timers[0].deadline;
+        for (usize i = 1; i < st.timers.len(); ++i) {
+            if (st.timers[i].deadline < deadline) {
+                deadline = st.timers[i].deadline;
+            }
+        }
+        return Some(deadline);
+    }
+
+    auto update_timerfd_locked(ReactorState& st) -> io::Result<empty> {
+#if RSTD_OS_LINUX
+        if (! st.timer.is_open()) return Ok(empty {});
+
+        auto spec = libc::itimerspec_t {};
+        auto next = earliest_timer_locked(st);
+        if (next.is_some()) {
+            auto now      = time::Instant::now();
+            auto deadline = rstd::move(next).unwrap_unchecked();
+            auto delay    = deadline <= now ? time::Duration::from_nanos(1) : deadline - now;
+            spec.it_value = duration_to_timespec(delay);
+        }
+
+        if (libc::timerfd_settime(st.timer.as_raw_fd(), 0, &spec, nullptr) < 0) {
+            return Err(last_os_error());
+        }
+        return Ok(empty {});
+#else
+        (void)st;
+        return Err(m_init_error);
+#endif
+    }
+
+    static void collect_expired_timers_locked(ReactorState& st, Vec<task::Waker>& wakers) {
+        auto now = time::Instant::now();
+        for (usize i = 0; i < st.timers.len();) {
+            if (st.timers[i].deadline <= now) {
+                auto entry = st.timers.remove(i);
+                if (entry.waker.is_some()) {
+                    wakers.push(rstd::move(entry.waker).unwrap_unchecked());
+                }
+            } else {
+                ++i;
+            }
+        }
     }
 
     auto init_backend() -> io::Result<empty> {
@@ -152,17 +229,32 @@ class Reactor {
         auto read_fd  = sys::fd::OwnedFd::from_raw_fd(fds[0]);
         auto write_fd = sys::fd::OwnedFd::from_raw_fd(fds[1]);
 
-        auto wake_event = libc::epoll_event {};
-        wake_event.events = libc::EPOLLIN;
-        wake_event.data.u64 = 0;
+        int timer =
+            libc::timerfd_create(libc::CLOCK_MONOTONIC, libc::TFD_NONBLOCK | libc::TFD_CLOEXEC);
+        if (timer < 0) {
+            return Err(last_os_error());
+        }
+        auto timer_fd = sys::fd::OwnedFd::from_raw_fd(timer);
+
+        auto wake_event     = libc::epoll_event {};
+        wake_event.events   = libc::EPOLLIN;
+        wake_event.data.u64 = WAKE_EVENT_ID;
         if (libc::epoll_ctl(epoll, libc::EPOLL_CTL_ADD, fds[0], &wake_event) < 0) {
             return Err(last_os_error());
         }
 
-        auto st       = m_state.lock().unwrap_unchecked();
-        st->epoll     = rstd::move(epoll_fd);
-        st->wake_read = rstd::move(read_fd);
+        auto timer_event     = libc::epoll_event {};
+        timer_event.events   = libc::EPOLLIN;
+        timer_event.data.u64 = TIMER_EVENT_ID;
+        if (libc::epoll_ctl(epoll, libc::EPOLL_CTL_ADD, timer, &timer_event) < 0) {
+            return Err(last_os_error());
+        }
+
+        auto st        = m_state.lock().unwrap_unchecked();
+        st->epoll      = rstd::move(epoll_fd);
+        st->wake_read  = rstd::move(read_fd);
         st->wake_write = rstd::move(write_fd);
+        st->timer      = rstd::move(timer_fd);
         return Ok(empty {});
 #else
         return Err(m_init_error);
@@ -181,7 +273,18 @@ class Reactor {
     void drain_wake_pipe(sys::fd::RawFd fd) {
 #if RSTD_OS_LINUX
         u8 buf[64] {};
-        while (libc::read(fd, buf, sizeof(buf)) > 0) {}
+        while (libc::read(fd, buf, sizeof(buf)) > 0) {
+        }
+#else
+        (void)fd;
+#endif
+    }
+
+    void drain_timerfd(sys::fd::RawFd fd) {
+#if RSTD_OS_LINUX
+        u64 expirations {};
+        while (libc::read(fd, &expirations, sizeof(expirations)) > 0) {
+        }
 #else
         (void)fd;
 #endif
@@ -230,13 +333,13 @@ class Reactor {
                     return Err(last_os_error());
                 }
                 registration.backend_registered = false;
-                registration.backend_events = 0;
+                registration.backend_events     = 0;
             }
             return Ok(empty {});
         }
 
-        auto event = libc::epoll_event {};
-        event.events = events | libc::EPOLLERR | libc::EPOLLHUP;
+        auto event     = libc::epoll_event {};
+        event.events   = events | libc::EPOLLERR | libc::EPOLLHUP;
         event.data.u64 = u64(registration.id);
 
         int op = registration.backend_registered ? libc::EPOLL_CTL_MOD : libc::EPOLL_CTL_ADD;
@@ -244,7 +347,7 @@ class Reactor {
             return Err(last_os_error());
         }
         registration.backend_registered = true;
-        registration.backend_events = events;
+        registration.backend_events     = events;
         return Ok(empty {});
 #else
         (void)st;
@@ -296,6 +399,19 @@ class Reactor {
             rstd::move(wakers.pop().unwrap_unchecked()).wake();
         }
     }
+
+    void wake_expired_timers() {
+        auto wakers = Vec<task::Waker>::make();
+        {
+            auto st = m_state.lock().unwrap_unchecked();
+            collect_expired_timers_locked(*st, wakers);
+            (void)update_timerfd_locked(*st);
+        }
+
+        while (! wakers.is_empty()) {
+            rstd::move(wakers.pop().unwrap_unchecked()).wake();
+        }
+    }
 #endif
 
 public:
@@ -320,7 +436,7 @@ public:
 
     ~Reactor() {
         {
-            auto st = m_state.lock().unwrap_unchecked();
+            auto st     = m_state.lock().unwrap_unchecked();
             st->stopped = true;
         }
         notify();
@@ -334,14 +450,70 @@ public:
         if (! m_available) return Err(io::Error { m_init_error });
 
         auto registration = [&] {
-            auto st = m_state.lock().unwrap_unchecked();
-            auto id = st->next_registration_id++;
+            auto st           = m_state.lock().unwrap_unchecked();
+            auto id           = st->next_registration_id++;
             auto registration = sync::Arc<RegistrationState>::make(fd, id);
             st->registrations.push(registration.clone());
             return registration;
         }();
         notify();
         return Ok(rstd::move(registration));
+    }
+
+    auto add_timer(time::Instant deadline, task::Waker waker) -> io::Result<usize> {
+        if (! m_available) return Err(io::Error { m_init_error });
+
+        auto wakers = Vec<task::Waker>::make();
+        auto id     = usize {};
+        {
+            auto st = m_state.lock().unwrap_unchecked();
+            id      = st->next_timer_id++;
+            st->timers.push(TimerEntry { id, deadline, rstd::move(waker) });
+            collect_expired_timers_locked(*st, wakers);
+            auto updated = update_timerfd_locked(*st);
+            if (updated.is_err()) return Err(rstd::move(updated).unwrap_err_unchecked());
+        }
+
+        while (! wakers.is_empty()) {
+            rstd::move(wakers.pop().unwrap_unchecked()).wake();
+        }
+        return Ok(id);
+    }
+
+    auto update_timer(usize id, task::Waker waker) -> io::Result<empty> {
+        if (! m_available) return Err(io::Error { m_init_error });
+
+        auto wakers = Vec<task::Waker>::make();
+        {
+            auto st = m_state.lock().unwrap_unchecked();
+            for (usize i = 0; i < st->timers.len(); ++i) {
+                if (st->timers[i].id == id) {
+                    st->timers[i].waker = Some(rstd::move(waker));
+                    collect_expired_timers_locked(*st, wakers);
+                    auto updated = update_timerfd_locked(*st);
+                    if (updated.is_err()) return Err(rstd::move(updated).unwrap_err_unchecked());
+                    break;
+                }
+            }
+        }
+
+        while (! wakers.is_empty()) {
+            rstd::move(wakers.pop().unwrap_unchecked()).wake();
+        }
+        return Ok(empty {});
+    }
+
+    void cancel_timer(usize id) {
+        {
+            auto st = m_state.lock().unwrap_unchecked();
+            for (usize i = 0; i < st->timers.len(); ++i) {
+                if (st->timers[i].id == id) {
+                    st->timers.remove(i);
+                    (void)update_timerfd_locked(*st);
+                    return;
+                }
+            }
+        }
     }
 
     void deregister(sync::Arc<RegistrationState>& registration) {
@@ -363,7 +535,7 @@ public:
             if (registration->write_waker.is_some()) {
                 wakers.push(rstd::move(registration->write_waker.take()).unwrap_unchecked());
             }
-            registration->read_waiter_id = 0;
+            registration->read_waiter_id  = 0;
             registration->write_waiter_id = 0;
         }
 
@@ -399,11 +571,11 @@ public:
                 waiter_id = registration->next_waiter_id++;
             }
             if (interest.is_readable()) {
-                registration->read_waker = Some(cx.waker().clone());
+                registration->read_waker     = Some(cx.waker().clone());
                 registration->read_waiter_id = waiter_id;
             }
             if (interest.is_writable()) {
-                registration->write_waker = Some(cx.waker().clone());
+                registration->write_waker     = Some(cx.waker().clone());
                 registration->write_waiter_id = waiter_id;
             }
 
@@ -438,11 +610,11 @@ public:
 
         auto st = m_state.lock().unwrap_unchecked();
         if (interest.is_readable() && registration->read_waiter_id == waiter_id) {
-            registration->read_waker = None();
+            registration->read_waker     = None();
             registration->read_waiter_id = 0;
         }
         if (interest.is_writable() && registration->write_waiter_id == waiter_id) {
-            registration->write_waker = None();
+            registration->write_waker     = None();
             registration->write_waiter_id = 0;
         }
         (void)update_backend_locked(*st, *registration.as_ptr().as_raw_ptr());
@@ -456,12 +628,14 @@ public:
         while (true) {
             sys::fd::RawFd epoll_fd {};
             sys::fd::RawFd wake_fd {};
+            sys::fd::RawFd timer_fd {};
 
             {
                 auto st = m_state.lock().unwrap_unchecked();
                 if (st->stopped) break;
                 epoll_fd = st->epoll.as_raw_fd();
-                wake_fd = st->wake_read.as_raw_fd();
+                wake_fd  = st->wake_read.as_raw_fd();
+                timer_fd = st->timer.as_raw_fd();
             }
 
             int rc = libc::epoll_wait(epoll_fd, events.data(), int(events.len()), -1);
@@ -471,9 +645,11 @@ public:
             }
 
             for (int i = 0; i < rc; ++i) {
-                if (events[usize(i)].data.u64 == 0) {
+                if (events[usize(i)].data.u64 == WAKE_EVENT_ID) {
                     drain_wake_pipe(wake_fd);
-                    break;
+                } else if (events[usize(i)].data.u64 == TIMER_EVENT_ID) {
+                    drain_timerfd(timer_fd);
+                    wake_expired_timers();
                 }
             }
             wake_ready(events, rc);
@@ -541,6 +717,49 @@ public:
     void clear_waker(Interest interest, usize waiter_id) {
         if (m_state) {
             global_reactor().clear_waker(m_state, interest, waiter_id);
+        }
+    }
+};
+
+export class TimerRegistration {
+    Option<usize> m_id {};
+
+    explicit TimerRegistration(usize id): m_id(Some(id)) {}
+
+public:
+    TimerRegistration(const TimerRegistration&)                    = delete;
+    auto operator=(const TimerRegistration&) -> TimerRegistration& = delete;
+
+    TimerRegistration(TimerRegistration&& other) noexcept: m_id(other.m_id.take()) {}
+
+    auto operator=(TimerRegistration&& other) noexcept -> TimerRegistration& {
+        if (this != &other) {
+            reset();
+            m_id = other.m_id.take();
+        }
+        return *this;
+    }
+
+    ~TimerRegistration() { reset(); }
+
+    static auto register_deadline(time::Instant deadline, task::Waker waker)
+        -> io::Result<TimerRegistration> {
+        auto id = global_reactor().add_timer(deadline, rstd::move(waker));
+        if (id.is_err()) return Err(rstd::move(id).unwrap_err_unchecked());
+        return Ok(TimerRegistration { rstd::move(id).unwrap_unchecked() });
+    }
+
+    auto update_waker(task::Waker waker) -> io::Result<empty> {
+        if (m_id.is_none()) {
+            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
+        }
+        return global_reactor().update_timer(*m_id, rstd::move(waker));
+    }
+
+    void reset() {
+        if (m_id.is_some()) {
+            global_reactor().cancel_timer(rstd::move(m_id).unwrap_unchecked());
+            m_id = None();
         }
     }
 };

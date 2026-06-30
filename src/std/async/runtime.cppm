@@ -57,7 +57,6 @@ public:
         auto  cx      = task::Context { waker };
 
         while (true) {
-            inner->wake_expired_timers();
             auto out = future::poll(future, cx);
             if (out.is_ready()) {
                 run_ready();
@@ -70,7 +69,6 @@ public:
             }
 
             run_ready();
-            inner->wake_expired_timers();
             inner->wait_for_work();
         }
     }

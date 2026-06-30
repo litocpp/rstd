@@ -14,6 +14,7 @@ module;
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/sysmacros.h>
+#include <sys/timerfd.h>
 #include <unistd.h>
 #include <sched.h>
 #include <stdlib.h>
@@ -149,6 +150,8 @@ inline constexpr auto _EPOLLERR      = EPOLLERR;
 inline constexpr auto _EPOLL_CTL_ADD = EPOLL_CTL_ADD;
 inline constexpr auto _EPOLL_CTL_MOD = EPOLL_CTL_MOD;
 inline constexpr auto _EPOLL_CTL_DEL = EPOLL_CTL_DEL;
+inline constexpr auto _TFD_NONBLOCK  = TFD_NONBLOCK;
+inline constexpr auto _TFD_CLOEXEC   = TFD_CLOEXEC;
 
 inline constexpr auto _S_IFMT   = S_IFMT;
 inline constexpr auto _S_IFREG  = S_IFREG;
@@ -264,6 +267,8 @@ inline constexpr auto _UTIME_OMIT = UTIME_OMIT;
 #undef EPOLL_CTL_ADD
 #undef EPOLL_CTL_MOD
 #undef EPOLL_CTL_DEL
+#undef TFD_NONBLOCK
+#undef TFD_CLOEXEC
 #undef S_IFMT
 #undef S_IFREG
 #undef S_IFDIR
@@ -441,6 +446,8 @@ using ::getpeername;
 using ::epoll_create1;
 using ::epoll_ctl;
 using ::epoll_wait;
+using ::timerfd_create;
+using ::timerfd_settime;
 
 // ── Type aliases ─────────────────────────────────────────────────────────
 using ::mode_t;
@@ -459,6 +466,7 @@ using ::socklen_t;
 using stat_t     = struct ::stat;
 /// `struct timespec` aliased to avoid the `struct` keyword leaking into call sites.
 using timespec_t = struct ::timespec;
+using itimerspec_t = struct ::itimerspec;
 using epoll_event = struct ::epoll_event;
 
 inline constexpr auto SIGKILL   = _SIGKILL;
@@ -507,6 +515,8 @@ inline constexpr auto EPOLLERR      = _EPOLLERR;
 inline constexpr auto EPOLL_CTL_ADD = _EPOLL_CTL_ADD;
 inline constexpr auto EPOLL_CTL_MOD = _EPOLL_CTL_MOD;
 inline constexpr auto EPOLL_CTL_DEL = _EPOLL_CTL_DEL;
+[[maybe_unused]] inline constexpr auto TFD_NONBLOCK = _TFD_NONBLOCK;
+[[maybe_unused]] inline constexpr auto TFD_CLOEXEC  = _TFD_CLOEXEC;
 
 // ── Stat mode masks ──────────────────────────────────────────────────────
 inline constexpr auto S_IFMT   = _S_IFMT;

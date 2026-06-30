@@ -1,7 +1,7 @@
 export module rstd:async.time;
 export import :async.forward;
+import :async.reactor;
 export import :async.runtime_core;
-import :sync;
 import :time;
 
 namespace rstd::async
@@ -28,41 +28,28 @@ export struct YieldNow {
 };
 
 export class Sleep {
-    time::Instant deadline;
-    Option<usize> timer_id;
-    sync::Weak<RuntimeInner> runtime;
+    time::Instant             deadline;
+    Option<TimerRegistration> timer;
 
-    void cancel() {
-        if (timer_id.is_some()) {
-            if (auto rt = runtime.upgrade()) {
-                rt->cancel_timer(*timer_id);
-            }
-            timer_id = None();
-        }
-    }
+    void cancel() { timer = None(); }
 
 public:
     using Output = void;
 
     explicit Sleep(time::Duration duration)
-        : deadline(time::Instant::now() + duration),
-          timer_id(None()),
-          runtime(sync::Weak<RuntimeInner>::make()) {}
+        : deadline(time::Instant::now() + duration), timer(None()) {}
 
     Sleep(const Sleep&)            = delete;
     Sleep& operator=(const Sleep&) = delete;
 
     Sleep(Sleep&& other) noexcept
-        : deadline(other.deadline),
-          timer_id(other.timer_id.take()),
-          runtime(rstd::move(other.runtime)) {}
+        : deadline(other.deadline), timer(other.timer.take()) {}
 
     auto operator=(Sleep&& other) noexcept -> Sleep& {
         if (this != &other) {
             cancel();
             deadline = other.deadline;
-            timer_id = other.timer_id.take();
-            runtime  = rstd::move(other.runtime);
+            timer    = other.timer.take();
         }
         return *this;
     }
@@ -81,11 +68,18 @@ public:
             rstd::panic { "async::sleep polled without an async runtime" };
         }
 
-        if (sleep.timer_id.is_none()) {
-            sleep.runtime  = rt->weak();
-            sleep.timer_id = Some(rt->add_timer(sleep.deadline, cx.waker().clone()));
-        } else if (auto runtime = sleep.runtime.upgrade()) {
-            runtime->update_timer(*sleep.timer_id, cx.waker().clone());
+        (void)rt;
+        if (sleep.timer.is_none()) {
+            auto timer = TimerRegistration::register_deadline(sleep.deadline, cx.waker().clone());
+            if (timer.is_err()) {
+                rstd::panic { "async::sleep failed to register timer" };
+            }
+            sleep.timer = Some(rstd::move(timer).unwrap_unchecked());
+        } else {
+            auto updated = sleep.timer->update_waker(cx.waker().clone());
+            if (updated.is_err()) {
+                rstd::panic { "async::sleep failed to update timer" };
+            }
         }
 
         return task::Poll<void>::Pending();

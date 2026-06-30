@@ -227,6 +227,17 @@ async::coro<void> sleep_once() {
     co_await async::sleep(time::Duration::from_millis(10));
 }
 
+async::coro<int> sleep_child_value() {
+    co_await async::sleep(time::Duration::from_millis(1));
+    co_return 17;
+}
+
+async::coro<int> join_sleeping_child() {
+    auto handle = async::spawn_local(sleep_child_value());
+    auto result = co_await rstd::move(handle);
+    co_return result.unwrap();
+}
+
 async::coro<int> oneshot_roundtrip() {
     auto channel = async::oneshot::channel<int>();
     auto tx      = rstd::move(channel.get<0>());
@@ -585,6 +596,10 @@ TEST(AsyncCoro, SleepWakesTask) {
     auto start = time::Instant::now();
     async::block_on(sleep_once());
     EXPECT_GE(start.elapsed().as_millis(), 5u);
+}
+
+TEST(AsyncCoro, SpawnedSleepWakesTask) {
+    EXPECT_EQ(async::block_on(join_sleeping_child()), 17);
 }
 
 TEST(AsyncCoro, PreludeExportsCoro) {
