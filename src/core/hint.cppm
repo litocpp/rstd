@@ -11,4 +11,15 @@ void spin_loop() {
 #else
 #endif
 }
+
+/// Hides a value from the optimizer while preserving normal ownership semantics.
+template<typename T>
+auto black_box(T&& value) noexcept -> T&& {
+#if defined(__clang__) || defined(__GNUC__)
+    asm volatile("" : "+r,m"(value) : : "memory");
+#else
+    asm volatile("" : : "g"(&value) : "memory");
+#endif
+    return static_cast<T&&>(value);
+}
 } // namespace rstd::hint

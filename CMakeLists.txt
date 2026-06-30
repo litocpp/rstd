@@ -6,6 +6,8 @@ project(
   LANGUAGES CXX)
 
 option(RSTD_BUILD_TESTING "Build tests" ${PROJECT_IS_TOP_LEVEL})
+option(RSTD_BUILD_BENCHMARKS "Build rstd benchmark executables" OFF)
+option(RSTD_BENCHMARKS_IN_CTEST "Register benchmark smoke tests in ctest" OFF)
 option(RSTD_USE_ASAN "asan" OFF)
 
 set(WARN_OPTS -Wall -Wpedantic)
@@ -26,7 +28,15 @@ endif()
 
 
 
+if(RSTD_BUILD_TESTING OR RSTD_BENCHMARKS_IN_CTEST)
+  include(CTest)
+endif()
+
 add_subdirectory(src)
+
+if(RSTD_BUILD_BENCHMARKS)
+  add_subdirectory(bench)
+endif()
 
 # Add installation rules
 if(PROJECT_IS_TOP_LEVEL)
@@ -38,10 +48,6 @@ if(PROJECT_IS_TOP_LEVEL)
 endif()
 
 # Testing configuration
-if(RSTD_BUILD_TESTING)
-  include(CTest)
-
-  if(BUILD_TESTING)
-    add_subdirectory(test)
-  endif()
+if(RSTD_BUILD_TESTING AND BUILD_TESTING)
+  add_subdirectory(test)
 endif()
