@@ -98,6 +98,17 @@ async::coro<io::Result<bytes::BytesMut>> tcp_roundtrip(net::TcpListener& listene
     co_return Ok(rstd::move(received));
 }
 
+async::coro<io::Result<bytes::BytesMut>> spawned_tcp_roundtrip(net::TcpListener& listener,
+                                                               net::SocketAddr   addr) {
+    auto handle = async::spawn(tcp_roundtrip(listener, addr));
+    auto joined = co_await rstd::move(handle);
+    if (joined.is_err()) {
+        co_return Err(io::error::Error::from_kind(
+            io::error::ErrorKind { io::error::ErrorKind::Other }));
+    }
+    co_return rstd::move(joined).unwrap();
+}
+
 async::coro<io::Result<net::TcpStream>> connected_client(net::TcpListener& listener,
                                                          net::SocketAddr   addr) {
     auto client = co_await net::TcpStream::connect(addr);
@@ -192,6 +203,30 @@ TEST(NetTcp, LoopbackRoundTrip) {
 
     auto result = async::block_on(
         tcp_roundtrip(tcp_listener, rstd::move(local_addr).unwrap_unchecked()));
+    ASSERT_TRUE(result.is_ok());
+
+    auto received = rstd::move(result).unwrap_unchecked();
+    ASSERT_EQ(received.len(), 4u);
+    EXPECT_EQ(received[0], u8('p'));
+    EXPECT_EQ(received[1], u8('i'));
+    EXPECT_EQ(received[2], u8('n'));
+    EXPECT_EQ(received[3], u8('g'));
+}
+
+TEST(NetTcp, MultiThreadRuntimeLoopbackRoundTrip) {
+    auto listener = net::TcpListener::bind(net::SocketAddr::ipv4_loopback(0));
+    ASSERT_TRUE(listener.is_ok());
+
+    auto tcp_listener = rstd::move(listener).unwrap_unchecked();
+    auto addr = tcp_listener.local_addr();
+    ASSERT_TRUE(addr.is_ok());
+
+    auto runtime_result = async::RuntimeBuilder::multi_thread().worker_threads(2).build();
+    ASSERT_TRUE(runtime_result.is_ok());
+    auto runtime = rstd::move(runtime_result).unwrap_unchecked();
+
+    auto result = runtime.block_on(
+        spawned_tcp_roundtrip(tcp_listener, rstd::move(addr).unwrap_unchecked()));
     ASSERT_TRUE(result.is_ok());
 
     auto received = rstd::move(result).unwrap_unchecked();

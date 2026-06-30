@@ -13,6 +13,11 @@ struct TaskStateBase;
 
 inline thread_local RuntimeInner* CURRENT_RUNTIME { nullptr };
 
+enum class RuntimeKind {
+    CurrentThread,
+    ThreadPool,
+};
+
 class TaskRef {
     TaskStateBase* ptr { nullptr };
 
@@ -40,29 +45,126 @@ public:
     explicit operator bool() const noexcept { return ptr != nullptr; }
 };
 
+struct ReadyQueue {
+    Vec<TaskRef> m_tasks;
+
+    ReadyQueue() : m_tasks(Vec<TaskRef>::make()) {}
+
+    auto is_empty() const -> bool { return m_tasks.is_empty(); }
+
+    void push(TaskRef task) { m_tasks.push(rstd::move(task)); }
+
+    auto pop_front() -> Option<TaskRef> {
+        if (m_tasks.is_empty()) {
+            return None();
+        }
+        return Some(m_tasks.remove(0));
+    }
+
+    void clear() { m_tasks.clear(); }
+};
+
+struct TaskRegistry {
+    Vec<TaskRef> m_tasks;
+
+    TaskRegistry() : m_tasks(Vec<TaskRef>::make()) {}
+
+    void insert(TaskRef task) { m_tasks.push(rstd::move(task)); }
+
+    auto take_all() -> Vec<TaskRef> {
+        auto tasks = rstd::move(m_tasks);
+        m_tasks    = Vec<TaskRef>::make();
+        return tasks;
+    }
+
+    void remove(TaskStateBase* task) {
+        for (usize i = 0; i < m_tasks.len(); ++i) {
+            if (m_tasks[i].get() == task) {
+                m_tasks.remove(i);
+                return;
+            }
+        }
+    }
+};
+
+struct CurrentThreadScheduler {
+    ReadyQueue             m_ready;
+    Option<thread::Thread> m_parker;
+    bool                   m_notified { false };
+
+    CurrentThreadScheduler() : m_ready(), m_parker(None()) {}
+
+    void push_ready(TaskRef task) { m_ready.push(rstd::move(task)); }
+
+    auto pop_ready() -> Option<TaskRef> { return m_ready.pop_front(); }
+
+    void notify_locked() {
+        m_notified = true;
+        if (m_parker.is_some()) {
+            thread::unpark(*m_parker);
+        }
+    }
+
+    void set_parker(thread::Thread thread) { m_parker = Some(rstd::move(thread)); }
+
+    void clear_parker() { m_parker = None(); }
+
+    void clear_ready() { m_ready.clear(); }
+
+    auto should_park_locked() -> bool {
+        if (! m_ready.is_empty() || m_notified) {
+            m_notified = false;
+            return false;
+        }
+        m_notified = false;
+        return true;
+    }
+};
+
+struct ThreadPoolScheduler {
+    ReadyQueue m_ready;
+    bool       m_stopping { false };
+
+    ThreadPoolScheduler() : m_ready() {}
+
+    void push_ready(TaskRef task) { m_ready.push(rstd::move(task)); }
+
+    auto pop_ready() -> Option<TaskRef> { return m_ready.pop_front(); }
+
+    void stop_locked() { m_stopping = true; }
+
+    auto is_stopping() const -> bool { return m_stopping; }
+
+    void clear_ready() { m_ready.clear(); }
+};
+
 struct RuntimeState {
-    Vec<TaskRef> ready;
-    Vec<TaskRef> tasks;
-    Option<thread::Thread> parker;
-    bool notified { false };
+    TaskRegistry           m_registry;
+    CurrentThreadScheduler m_scheduler;
+    ThreadPoolScheduler    m_thread_pool;
+
+    RuntimeState() : m_registry(), m_scheduler(), m_thread_pool() {}
 };
 
 struct RuntimeInner {
+    RuntimeKind              m_kind;
     sync::Mutex<RuntimeState> state;
     sync::Weak<RuntimeInner>  self;
+    sync::Condvar             m_worker_cvar;
 
-    RuntimeInner() : state(RuntimeState {}), self(sync::Weak<RuntimeInner>::make()) {}
+    explicit RuntimeInner(RuntimeKind kind = RuntimeKind::CurrentThread)
+        : m_kind(kind),
+          state(RuntimeState {}),
+          self(sync::Weak<RuntimeInner>::make()),
+          m_worker_cvar(sync::Condvar::make()) {}
 
     void init_self(sync::Weak<RuntimeInner> weak) { self = rstd::move(weak); }
 
     auto weak() -> sync::Weak<RuntimeInner> { return self.clone(); }
 
-    void notify_locked(RuntimeState& st) {
-        st.notified = true;
-        if (st.parker.is_some()) {
-            thread::unpark(*st.parker);
-        }
-    }
+    auto is_thread_pool() const -> bool { return m_kind == RuntimeKind::ThreadPool; }
+
+    void notify_locked(RuntimeState& st) { st.m_scheduler.notify_locked(); }
 
     void notify() {
         auto st = state.lock().unwrap_unchecked();
@@ -70,27 +172,28 @@ struct RuntimeInner {
     }
 
     void set_parker(thread::Thread thread) {
-        auto st    = state.lock().unwrap_unchecked();
-        st->parker = Some(rstd::move(thread));
+        auto st = state.lock().unwrap_unchecked();
+        st->m_scheduler.set_parker(rstd::move(thread));
     }
 
     void clear_parker() {
-        auto st    = state.lock().unwrap_unchecked();
-        st->parker = None();
+        auto st = state.lock().unwrap_unchecked();
+        st->m_scheduler.clear_parker();
     }
 
-    void remove_task_locked(RuntimeState& st, TaskStateBase* task);
     void spawn(TaskRef task);
     void schedule(TaskRef task);
+    void drain_ready();
+    void worker_loop();
+    void request_stop();
+    void abort_all_tasks();
 
     void wait_for_work() {
         {
             auto st = state.lock().unwrap_unchecked();
-            if (! st->ready.is_empty() || st->notified) {
-                st->notified = false;
+            if (! st->m_scheduler.should_park_locked()) {
                 return;
             }
-            st->notified = false;
         }
 
         thread::park();
@@ -155,21 +258,21 @@ inline void TaskRef::schedule() const {
     }
 }
 
-inline void RuntimeInner::remove_task_locked(RuntimeState& st, TaskStateBase* task) {
-    for (usize i = 0; i < st.tasks.len(); ++i) {
-        if (st.tasks[i].get() == task) {
-            st.tasks.remove(i);
-            return;
-        }
-    }
-}
-
 inline void RuntimeInner::spawn(TaskRef task) {
     auto st = state.lock().unwrap_unchecked();
+    if (is_thread_pool() && st->m_thread_pool.is_stopping()) {
+        return;
+    }
+
     task->queued = true;
-    st->tasks.push(task.clone());
-    st->ready.push(rstd::move(task));
-    notify_locked(*st);
+    st->m_registry.insert(task.clone());
+    if (is_thread_pool()) {
+        st->m_thread_pool.push_ready(rstd::move(task));
+        m_worker_cvar.notify_one();
+    } else {
+        st->m_scheduler.push_ready(rstd::move(task));
+        notify_locked(*st);
+    }
 }
 
 inline void RuntimeInner::schedule(TaskRef task) {
@@ -177,9 +280,18 @@ inline void RuntimeInner::schedule(TaskRef task) {
     if (task->completed || task->queued) {
         return;
     }
+    if (is_thread_pool() && st->m_thread_pool.is_stopping()) {
+        return;
+    }
+
     task->queued = true;
-    st->ready.push(rstd::move(task));
-    notify_locked(*st);
+    if (is_thread_pool()) {
+        st->m_thread_pool.push_ready(rstd::move(task));
+        m_worker_cvar.notify_one();
+    } else {
+        st->m_scheduler.push_ready(rstd::move(task));
+        notify_locked(*st);
+    }
 }
 
 inline void TaskStateBase::schedule(TaskRef self) {
@@ -201,7 +313,7 @@ inline void TaskStateBase::finish() {
     }
     completed = true;
     queued    = false;
-    rt->remove_task_locked(*st, this);
+    st->m_registry.remove(this);
     rt->notify_locked(*st);
 }
 
@@ -217,7 +329,7 @@ inline void TaskStateBase::abort() {
         if (! completed) {
             completed = true;
             queued    = false;
-            rt->remove_task_locked(*st, this);
+            st->m_registry.remove(this);
             rt->notify_locked(*st);
             should_complete = true;
         }
@@ -258,6 +370,37 @@ inline auto make_task_waker(const TaskRef& task) -> task::Waker {
         new TaskRef(task.clone()),
         &TASK_WAKER_VTABLE,
     });
+}
+
+inline void poll_runtime_task(TaskRef& task_state) {
+    auto waker = make_task_waker(task_state);
+    auto cx    = task::Context { waker };
+    task_state->poll(cx);
+}
+
+inline void RuntimeInner::drain_ready() {
+    if (is_thread_pool()) {
+        return;
+    }
+
+    while (true) {
+        auto task_state = TaskRef {};
+        {
+            auto st   = state.lock().unwrap_unchecked();
+            auto next = st->m_scheduler.pop_ready();
+            if (next.is_none()) {
+                return;
+            }
+
+            task_state         = rstd::move(next).unwrap_unchecked();
+            task_state->queued = false;
+            if (task_state->completed) {
+                continue;
+            }
+        }
+
+        poll_runtime_task(task_state);
+    }
 }
 
 inline auto runtime_waker_clone(voidp data) -> voidp {
@@ -315,3 +458,61 @@ struct ParkerScope {
 
     ~ParkerScope() { runtime->clear_parker(); }
 };
+
+inline void RuntimeInner::worker_loop() {
+    auto scope = RuntimeScope { *this };
+
+    for (;;) {
+        auto task_state = TaskRef {};
+        {
+            auto st = state.lock().unwrap_unchecked();
+            for (;;) {
+                if (st->m_thread_pool.is_stopping()) {
+                    return;
+                }
+
+                auto next = st->m_thread_pool.pop_ready();
+                if (next.is_some()) {
+                    task_state         = rstd::move(next).unwrap_unchecked();
+                    task_state->queued = false;
+                    if (task_state->completed) {
+                        task_state.reset();
+                        continue;
+                    }
+                    break;
+                }
+
+                m_worker_cvar.wait(st);
+            }
+        }
+
+        poll_runtime_task(task_state);
+    }
+}
+
+inline void RuntimeInner::request_stop() {
+    if (! is_thread_pool()) {
+        return;
+    }
+
+    {
+        auto st = state.lock().unwrap_unchecked();
+        st->m_thread_pool.stop_locked();
+    }
+    m_worker_cvar.notify_all();
+}
+
+inline void RuntimeInner::abort_all_tasks() {
+    auto tasks = Vec<TaskRef>::make();
+    {
+        auto st = state.lock().unwrap_unchecked();
+        tasks   = st->m_registry.take_all();
+        st->m_scheduler.clear_ready();
+        st->m_thread_pool.clear_ready();
+    }
+
+    while (! tasks.is_empty()) {
+        auto task = rstd::move(tasks.pop()).unwrap_unchecked();
+        task->abort();
+    }
+}

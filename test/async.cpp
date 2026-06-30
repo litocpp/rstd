@@ -107,6 +107,49 @@ struct DropPendingInt {
     }
 };
 
+struct NeverReadyCount {
+    using Output = int;
+
+    int* polls;
+
+    auto poll(pin::Pin<mut_ref<NeverReadyCount>>, task::Context&) -> task::Poll<int> {
+        ++*polls;
+        return task::Poll<int>::Pending();
+    }
+};
+
+struct SavedWakeState {
+    struct Fields {
+        Option<task::Waker> waker;
+        bool                ready { false };
+        int                 polls { 0 };
+    };
+
+    sync::Mutex<Fields> fields;
+
+    SavedWakeState(): fields(Fields {}) {}
+};
+
+struct ExternalWakeInt {
+    using Output = int;
+
+    sync::Arc<SavedWakeState> state;
+
+    auto poll(pin::Pin<mut_ref<ExternalWakeInt>> self, task::Context& cx)
+        -> task::Poll<int> {
+        auto& future = *self.get_unchecked_mut();
+        auto  fields = future.state->fields.lock().unwrap();
+
+        ++fields->polls;
+        if (fields->ready) {
+            return task::Poll<int>::Ready(fields->polls);
+        }
+
+        fields->waker = Some(cx.waker().clone());
+        return task::Poll<int>::Pending();
+    }
+};
+
 struct CounterStream {
     using Item = int;
 
@@ -207,8 +250,23 @@ async::coro<int> child_value() {
     co_return 21;
 }
 
+async::coro<int> indexed_child_value(int value) {
+    co_await async::yield_now();
+    co_return value;
+}
+
+async::coro<bool> current_thread_has_name() {
+    co_return thread::current().name().is_some();
+}
+
 async::coro<int> join_child() {
     auto handle = async::spawn_local(child_value());
+    auto result = co_await rstd::move(handle);
+    co_return result.unwrap() * 2;
+}
+
+async::coro<int> join_spawned_child() {
+    auto handle = async::spawn(child_value());
     auto result = co_await rstd::move(handle);
     co_return result.unwrap() * 2;
 }
@@ -221,6 +279,16 @@ async::coro<bool> abort_join_child() {
         co_return false;
     }
     co_return result.unwrap_err().is_aborted();
+}
+
+async::coro<bool> abort_queued_child(int& polls) {
+    auto handle = async::spawn_local(NeverReadyCount { &polls });
+    handle.abort();
+    auto result = co_await rstd::move(handle);
+    if (result.is_ok()) {
+        co_return false;
+    }
+    co_return result.unwrap_err().is_aborted() && polls == 0;
 }
 
 async::coro<void> sleep_once() {
@@ -236,6 +304,43 @@ async::coro<int> join_sleeping_child() {
     auto handle = async::spawn_local(sleep_child_value());
     auto result = co_await rstd::move(handle);
     co_return result.unwrap();
+}
+
+async::coro<int> join_spawned_sleeping_child() {
+    auto handle = async::spawn(sleep_child_value());
+    auto result = co_await rstd::move(handle);
+    co_return result.unwrap();
+}
+
+async::coro<int> join_externally_woken_child(sync::Arc<SavedWakeState> state) {
+    auto handle = async::spawn(ExternalWakeInt { rstd::move(state) });
+    auto result = co_await rstd::move(handle);
+    co_return result.unwrap();
+}
+
+async::coro<int> join_many_spawned_children() {
+    auto handles = Vec<async::JoinHandle<int>>::make();
+    for (int i = 0; i < 64; ++i) {
+        handles.push(async::spawn(indexed_child_value(i)));
+    }
+
+    auto results = co_await async::join_all(rstd::move(handles));
+    int  sum     = 0;
+    for (usize i = 0; i < results.len(); ++i) {
+        sum += results[i].unwrap();
+    }
+    co_return sum;
+}
+
+async::coro<bool> join_spawned_thread_name_check() {
+    auto handle = async::spawn(current_thread_has_name());
+    auto result = co_await rstd::move(handle);
+    co_return result.unwrap();
+}
+
+async::coro<async::JoinHandle<int>> spawn_never_ready_child(int& polls) {
+    auto handle = async::spawn(NeverReadyCount { &polls });
+    co_return rstd::move(handle);
 }
 
 async::coro<int> oneshot_roundtrip() {
@@ -345,8 +450,104 @@ TEST(AsyncCoro, SpawnLocalJoinHandle) {
     EXPECT_EQ(async::block_on(join_child()), 42);
 }
 
+TEST(AsyncCoro, MultiThreadRuntimeSpawnJoinHandle) {
+    auto runtime_result = async::RuntimeBuilder::multi_thread().worker_threads(2).build();
+    auto runtime        = runtime_result.unwrap();
+
+    EXPECT_EQ(runtime.block_on(join_spawned_child()), 42);
+}
+
 TEST(AsyncCoro, JoinHandleAbortCompletesWithError) {
     EXPECT_TRUE(async::block_on(abort_join_child()));
+}
+
+TEST(AsyncCoro, AbortQueuedTaskDoesNotPollFuture) {
+    int polls = 0;
+
+    EXPECT_TRUE(async::block_on(abort_queued_child(polls)));
+    EXPECT_EQ(polls, 0);
+}
+
+TEST(AsyncCoro, SavedWakerReschedulesTaskFromExternalThread) {
+    auto state  = sync::Arc<SavedWakeState>::make();
+    auto worker = state.clone();
+
+    auto handle = thread::spawn([worker = rstd::move(worker)] {
+        for (;;) {
+            auto waker = Option<task::Waker> {};
+            {
+                auto fields = worker->fields.lock().unwrap();
+                if (fields->waker.is_some()) {
+                    fields->ready = true;
+                    waker         = fields->waker.take();
+                }
+            }
+
+            if (waker.is_some()) {
+                rstd::move(*waker).wake();
+                return;
+            }
+
+            thread::sleep(time::Duration::from_millis(1));
+        }
+    }).unwrap();
+
+    EXPECT_EQ(async::block_on(ExternalWakeInt { state.clone() }), 2);
+    rstd::move(handle).join().unwrap();
+
+    auto fields = state->fields.lock().unwrap();
+    EXPECT_EQ(fields->polls, 2);
+}
+
+TEST(AsyncCoro, MultiThreadRuntimeExternalTaskWake) {
+    auto state  = sync::Arc<SavedWakeState>::make();
+    auto worker = state.clone();
+
+    auto handle = thread::spawn([worker = rstd::move(worker)] {
+        for (;;) {
+            auto waker = Option<task::Waker> {};
+            {
+                auto fields = worker->fields.lock().unwrap();
+                if (fields->waker.is_some()) {
+                    fields->ready = true;
+                    waker         = fields->waker.take();
+                }
+            }
+
+            if (waker.is_some()) {
+                rstd::move(*waker).wake();
+                return;
+            }
+
+            thread::sleep(time::Duration::from_millis(1));
+        }
+    }).unwrap();
+
+    auto runtime_result = async::RuntimeBuilder::multi_thread().worker_threads(2).build();
+    auto runtime        = runtime_result.unwrap();
+
+    EXPECT_EQ(runtime.block_on(join_externally_woken_child(state.clone())), 2);
+    rstd::move(handle).join().unwrap();
+
+    auto fields = state->fields.lock().unwrap();
+    EXPECT_EQ(fields->polls, 2);
+}
+
+TEST(AsyncCoro, MultiThreadRuntimeRunsManySpawnedTasks) {
+    auto runtime_result = async::RuntimeBuilder::multi_thread().worker_threads(4).build();
+    auto runtime        = runtime_result.unwrap();
+
+    EXPECT_EQ(runtime.block_on(join_many_spawned_children()), 2016);
+}
+
+TEST(AsyncCoro, MultiThreadRuntimeNamesWorkerThreads) {
+    auto builder = async::RuntimeBuilder::multi_thread();
+    builder.worker_threads(2).thread_name(rstd::string::String::make("async-worker"));
+
+    auto runtime_result = builder.build();
+    auto runtime        = runtime_result.unwrap();
+
+    EXPECT_TRUE(runtime.block_on(join_spawned_thread_name_check()));
 }
 
 TEST(AsyncCoro, OneShotRoundtrip) {
@@ -600,6 +801,45 @@ TEST(AsyncCoro, SleepWakesTask) {
 
 TEST(AsyncCoro, SpawnedSleepWakesTask) {
     EXPECT_EQ(async::block_on(join_sleeping_child()), 17);
+}
+
+TEST(AsyncCoro, MultiThreadRuntimeSpawnedSleepWakesTask) {
+    auto runtime_result = async::RuntimeBuilder::multi_thread().worker_threads(2).build();
+    auto runtime        = runtime_result.unwrap();
+
+    EXPECT_EQ(runtime.block_on(join_spawned_sleeping_child()), 17);
+}
+
+TEST(AsyncCoro, MultiThreadRuntimeDropAbortsPendingTasks) {
+    int polls = 0;
+    auto handle = Option<async::JoinHandle<int>> {};
+
+    {
+        auto runtime_result = async::RuntimeBuilder::multi_thread().worker_threads(2).build();
+        auto runtime        = runtime_result.unwrap();
+
+        handle = Some(runtime.block_on(spawn_never_ready_child(polls)));
+        ASSERT_TRUE(handle.is_some());
+        EXPECT_FALSE((*handle).is_finished());
+    }
+
+    auto pending = rstd::move(handle).unwrap_unchecked();
+    EXPECT_TRUE(pending.is_finished());
+
+    auto joined = async::block_on(rstd::move(pending));
+    ASSERT_TRUE(joined.is_err());
+    EXPECT_TRUE(rstd::move(joined).unwrap_err().is_aborted());
+}
+
+TEST(AsyncCoro, RuntimeBuilderRejectsZeroWorkerThreads) {
+    auto builder = async::RuntimeBuilder::multi_thread();
+    builder.worker_threads(0);
+
+    auto runtime = builder.build();
+
+    EXPECT_TRUE(runtime.is_err());
+    EXPECT_EQ(rstd::move(runtime).unwrap_err().kind(),
+              io::error::ErrorKind { io::error::ErrorKind::InvalidInput });
 }
 
 TEST(AsyncCoro, PreludeExportsCoro) {

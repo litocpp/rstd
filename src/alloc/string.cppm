@@ -208,6 +208,17 @@ struct Impl<iter::FromIterator<u8>, String> : ImplBase<String> {
         return s;
     }
 };
+
+template<>
+struct Impl<clone::Clone, String> : DefaultInImpl<clone::Clone, String> {
+    auto clone() const -> String {
+        return String::make(this->self().as_str());
+    }
+
+    void clone_from(String& source) {
+        this->self() = String::make(source.as_str());
+    }
+};
 } // namespace rstd
 
 namespace rstd::fmt

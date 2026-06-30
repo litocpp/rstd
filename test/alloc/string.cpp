@@ -17,3 +17,13 @@ TEST(String, ToString) {
     EXPECT_EQ(a_str, "10");
     EXPECT_EQ("10", a_str);
 }
+
+TEST(String, CloneCopiesBytes) {
+    auto original = String::make("hello");
+    auto cloned   = rstd::as<rstd::clone::Clone>(original).clone();
+
+    original.push_back('!');
+
+    EXPECT_EQ(original, "hello!");
+    EXPECT_EQ(cloned, "hello");
+}

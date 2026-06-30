@@ -256,10 +256,22 @@ namespace rstd::async
 {
 
 export template<future::FutureLike F>
+auto spawn(F future) -> JoinHandle<future::future_output_t<F>> {
+    auto* runtime = CURRENT_RUNTIME;
+    if (runtime == nullptr) {
+        rstd::panic { "spawn called without an async runtime" };
+    }
+    return spawn_on(*runtime, rstd::move(future));
+}
+
+export template<future::FutureLike F>
 auto spawn_local(F future) -> JoinHandle<future::future_output_t<F>> {
     auto* runtime = CURRENT_RUNTIME;
     if (runtime == nullptr) {
         rstd::panic { "spawn_local called without an async runtime" };
+    }
+    if (runtime->is_thread_pool()) {
+        rstd::panic { "spawn_local is only supported by current-thread runtime" };
     }
     return spawn_on(*runtime, rstd::move(future));
 }
