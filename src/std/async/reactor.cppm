@@ -5,6 +5,7 @@ export module rstd:async.reactor;
 export import :async.forward;
 export import :io.error;
 export import :time;
+import :async.runtime_core;
 import :sys.fd;
 import :sys.libc;
 import :sync;
@@ -550,6 +551,11 @@ public:
                         Interest                      interest,
                         usize&                        waiter_id)
         -> task::Poll<io::Result<ReadyEvent>> {
+        if (CURRENT_RUNTIME != nullptr && ! CURRENT_RUNTIME->io_enabled()) {
+            return task::Poll<io::Result<ReadyEvent>>::Ready(Err(
+                io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported })));
+        }
+
         if (interest.is_empty()) {
             return task::Poll<io::Result<ReadyEvent>>::Ready(Ok(ReadyEvent {}));
         }

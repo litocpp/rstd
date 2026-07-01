@@ -47,15 +47,17 @@ export class Runtime {
 
     friend class RuntimeBuilder;
 
-    explicit Runtime(RuntimeKind kind)
-        : m_inner(sync::Arc<RuntimeInner>::make(kind)),
+    explicit Runtime(RuntimeKind kind, RuntimeConfig config)
+        : m_inner(sync::Arc<RuntimeInner>::make(kind, config)),
           m_workers(Vec<thread::JoinHandle<void>>::make()) {
         m_inner->init_self(m_inner.downgrade());
     }
 
-    static auto make_thread_pool(usize worker_threads, Option<String> const& thread_name)
+    static auto make_thread_pool(usize worker_threads,
+                                 Option<String> const& thread_name,
+                                 RuntimeConfig config)
         -> io::Result<Runtime> {
-        auto runtime = Runtime { RuntimeKind::ThreadPool };
+        auto runtime = Runtime { RuntimeKind::ThreadPool, config };
 
         for (usize i = 0; i < worker_threads; ++i) {
             auto inner   = runtime.m_inner.clone();
@@ -94,7 +96,7 @@ export class Runtime {
     }
 
 public:
-    Runtime() : Runtime(RuntimeKind::CurrentThread) {}
+    Runtime() : Runtime(RuntimeKind::CurrentThread, RuntimeConfig::all()) {}
 
     Runtime(const Runtime&)            = delete;
     Runtime& operator=(const Runtime&) = delete;
@@ -110,6 +112,10 @@ public:
     ~Runtime() { shutdown(); }
 
     auto handle() const -> RuntimeHandle { return RuntimeHandle { m_inner.downgrade() }; }
+
+    auto io_enabled() const -> bool { return m_inner->io_enabled(); }
+
+    auto time_enabled() const -> bool { return m_inner->time_enabled(); }
 
     template<future::FutureLike F>
     auto spawn(F future) -> JoinHandle<future::future_output_t<F>> {
@@ -151,12 +157,16 @@ public:
 };
 
 export class RuntimeBuilder {
-    RuntimeKind m_kind;
-    usize       m_worker_threads;
+    RuntimeKind    m_kind;
+    usize          m_worker_threads;
     Option<String> m_thread_name;
+    RuntimeConfig  m_config;
 
     RuntimeBuilder(RuntimeKind kind, usize worker_threads)
-        : m_kind(kind), m_worker_threads(worker_threads), m_thread_name(None()) {}
+        : m_kind(kind),
+          m_worker_threads(worker_threads),
+          m_thread_name(None()),
+          m_config(RuntimeConfig {}) {}
 
 public:
     static auto current_thread() -> RuntimeBuilder {
@@ -177,9 +187,25 @@ public:
         return *this;
     }
 
+    auto enable_io() -> RuntimeBuilder& {
+        m_config.enable_io = true;
+        return *this;
+    }
+
+    auto enable_time() -> RuntimeBuilder& {
+        m_config.enable_time = true;
+        return *this;
+    }
+
+    auto enable_all() -> RuntimeBuilder& {
+        enable_io();
+        enable_time();
+        return *this;
+    }
+
     auto build() -> io::Result<Runtime> {
         if (m_kind == RuntimeKind::CurrentThread) {
-            return Ok(Runtime {});
+            return Ok(Runtime { RuntimeKind::CurrentThread, m_config });
         }
 
         if (m_worker_threads == 0) {
@@ -187,7 +213,7 @@ public:
                 io::error::ErrorKind { io::error::ErrorKind::InvalidInput }));
         }
 
-        return Runtime::make_thread_pool(m_worker_threads, m_thread_name);
+        return Runtime::make_thread_pool(m_worker_threads, m_thread_name, m_config);
     }
 };
 

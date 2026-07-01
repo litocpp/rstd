@@ -58,17 +58,19 @@ public:
 
     auto poll(pin::Pin<mut_ref<Sleep>> self, task::Context& cx) -> task::Poll<void> {
         auto& sleep = *self.get_unchecked_mut();
+        auto* rt = CURRENT_RUNTIME;
+        if (rt == nullptr) {
+            rstd::panic { "async::sleep polled without an async runtime" };
+        }
+        if (! rt->time_enabled()) {
+            rstd::panic { "async::sleep requires a runtime with time enabled" };
+        }
+
         if (time::Instant::now() >= sleep.deadline) {
             sleep.cancel();
             return task::Poll<void>::Ready();
         }
 
-        auto* rt = CURRENT_RUNTIME;
-        if (rt == nullptr) {
-            rstd::panic { "async::sleep polled without an async runtime" };
-        }
-
-        (void)rt;
         if (sleep.timer.is_none()) {
             auto timer = TimerRegistration::register_deadline(sleep.deadline, cx.waker().clone());
             if (timer.is_err()) {

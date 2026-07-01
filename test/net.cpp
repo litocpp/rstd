@@ -223,7 +223,8 @@ TEST(NetTcp, MultiThreadRuntimeLoopbackRoundTrip) {
     auto addr = tcp_listener.local_addr();
     ASSERT_TRUE(addr.is_ok());
 
-    auto runtime_result = async::RuntimeBuilder::multi_thread().worker_threads(2).build();
+    auto runtime_result =
+        async::RuntimeBuilder::multi_thread().worker_threads(2).enable_io().build();
     ASSERT_TRUE(runtime_result.is_ok());
     auto runtime = rstd::move(runtime_result).unwrap_unchecked();
 

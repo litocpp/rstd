@@ -18,6 +18,15 @@ enum class RuntimeKind {
     ThreadPool,
 };
 
+struct RuntimeConfig {
+    bool enable_io { false };
+    bool enable_time { false };
+
+    static constexpr auto all() noexcept -> RuntimeConfig {
+        return RuntimeConfig { true, true };
+    }
+};
+
 class TaskRef {
     TaskStateBase* ptr { nullptr };
 
@@ -154,12 +163,15 @@ struct RuntimeState {
 
 struct RuntimeInner {
     RuntimeKind              m_kind;
+    RuntimeConfig            m_config;
     sync::Mutex<RuntimeState> state;
     sync::Weak<RuntimeInner>  self;
     sync::Condvar             m_worker_cvar;
 
-    explicit RuntimeInner(RuntimeKind kind = RuntimeKind::CurrentThread)
+    explicit RuntimeInner(RuntimeKind kind = RuntimeKind::CurrentThread,
+                          RuntimeConfig config = RuntimeConfig {})
         : m_kind(kind),
+          m_config(config),
           state(RuntimeState {}),
           self(sync::Weak<RuntimeInner>::make()),
           m_worker_cvar(sync::Condvar::make()) {}
@@ -169,6 +181,10 @@ struct RuntimeInner {
     auto weak() -> sync::Weak<RuntimeInner> { return self.clone(); }
 
     auto is_thread_pool() const -> bool { return m_kind == RuntimeKind::ThreadPool; }
+
+    auto io_enabled() const -> bool { return m_config.enable_io; }
+
+    auto time_enabled() const -> bool { return m_config.enable_time; }
 
     void notify_locked(RuntimeState& st) { st.m_scheduler.notify_locked(); }
 

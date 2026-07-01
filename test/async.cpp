@@ -235,6 +235,26 @@ struct ErrorAsyncRead {
     }
 };
 
+struct ZeroAsyncWrite {
+    auto poll_write(pin::Pin<mut_ref<ZeroAsyncWrite>>,
+                    task::Context&,
+                    const bytes::Bytes&) -> task::Poll<io::Result<usize>> {
+        return task::Poll<io::Result<usize>>::Ready(Ok(0u));
+    }
+
+    auto poll_flush(pin::Pin<mut_ref<ZeroAsyncWrite>>, task::Context&)
+        -> task::Poll<io::Result<empty>> {
+        return task::Poll<io::Result<empty>>::Ready(Ok(empty {}));
+    }
+
+    auto poll_shutdown(pin::Pin<mut_ref<ZeroAsyncWrite>>, task::Context&)
+        -> task::Poll<io::Result<empty>> {
+        return task::Poll<io::Result<empty>>::Ready(Ok(empty {}));
+    }
+};
+
+static_assert(async::io::AsyncWriteLike<ZeroAsyncWrite>);
+
 async::coro<int> lazy_value(int& counter) {
     ++counter;
     co_return 5;
@@ -1137,7 +1157,8 @@ TEST(AsyncCoro, NotifyWakesCurrentThreadRuntimeFromExternalThread) {
 }
 
 TEST(AsyncCoro, NotifyWakesSpawnedTaskFromExternalThread) {
-    auto runtime_result = async::RuntimeBuilder::multi_thread().worker_threads(2).build();
+    auto runtime_result =
+        async::RuntimeBuilder::multi_thread().worker_threads(2).enable_io().build();
     auto runtime        = runtime_result.unwrap();
 
     auto notify_result = async::Notify::make();
@@ -1178,7 +1199,8 @@ TEST(AsyncCoro, CompletionCompletesCurrentThreadRuntimeFromExternalThread) {
 }
 
 TEST(AsyncCoro, CompletionCompletesSpawnedTaskFromExternalThread) {
-    auto runtime_result = async::RuntimeBuilder::multi_thread().worker_threads(2).build();
+    auto runtime_result =
+        async::RuntimeBuilder::multi_thread().worker_threads(2).enable_io().build();
     auto runtime        = runtime_result.unwrap();
 
     auto completion_result = async::Completion<int>::make();
@@ -1308,7 +1330,8 @@ TEST(AsyncCoro, CompletionQueueWakesCurrentThreadRuntimeFromExternalThread) {
 }
 
 TEST(AsyncCoro, CompletionQueueWakesSpawnedTaskFromExternalThread) {
-    auto runtime_result = async::RuntimeBuilder::multi_thread().worker_threads(2).build();
+    auto runtime_result =
+        async::RuntimeBuilder::multi_thread().worker_threads(2).enable_io().build();
     auto runtime        = runtime_result.unwrap();
 
     auto queue_result = async::CompletionQueue<int>::make();
@@ -1404,7 +1427,8 @@ TEST(AsyncCoro, MultiThreadRuntimeSpawnRunsWhileCallerContinues) {
 }
 
 TEST(AsyncCoro, MultiThreadRuntimeDetachedSpawnRunsWhileCallerContinues) {
-    auto runtime_result = async::RuntimeBuilder::multi_thread().worker_threads(2).build();
+    auto runtime_result =
+        async::RuntimeBuilder::multi_thread().worker_threads(2).enable_time().build();
     auto runtime        = runtime_result.unwrap();
     auto signal         = std::atomic<int> { 0 };
 
@@ -1414,7 +1438,8 @@ TEST(AsyncCoro, MultiThreadRuntimeDetachedSpawnRunsWhileCallerContinues) {
 }
 
 TEST(AsyncCoro, RuntimeHandleCloneSpawnsWhileCallerContinues) {
-    auto runtime_result = async::RuntimeBuilder::multi_thread().worker_threads(2).build();
+    auto runtime_result =
+        async::RuntimeBuilder::multi_thread().worker_threads(2).enable_time().build();
     auto runtime        = runtime_result.unwrap();
     auto handle         = runtime.handle();
     auto cloned         = handle.clone();
@@ -1671,6 +1696,88 @@ TEST(AsyncCoro, AsyncIoProtocolsUseBytesAndIoResult) {
     EXPECT_TRUE(stream.shutdown);
 }
 
+TEST(AsyncCoro, AsyncIoHelpersReadWriteFlushShutdown) {
+    u8 read_data[] { 'a', 'b', 'c' };
+    auto stream   = MockAsyncIo { read_data, 3 };
+    auto read_buf = bytes::BytesMut::make();
+
+    auto read_result = async::block_on(async::io::read(stream, read_buf));
+    ASSERT_TRUE(read_result.is_ok());
+    EXPECT_EQ(rstd::move(read_result).unwrap(), 3u);
+    ASSERT_EQ(read_buf.len(), 3u);
+    EXPECT_EQ(read_buf[0], 'a');
+    EXPECT_EQ(read_buf[2], 'c');
+
+    u8 write_data[] { 'x', 'y' };
+    auto write_buf = bytes::Bytes::copy_from_slice(slice<u8>::from_raw_parts(write_data, 2));
+    auto write_result = async::block_on(async::io::write(stream, write_buf));
+    ASSERT_TRUE(write_result.is_ok());
+    EXPECT_EQ(rstd::move(write_result).unwrap(), 2u);
+    ASSERT_EQ(stream.written.len(), 2u);
+    EXPECT_EQ(stream.written[0], 'x');
+    EXPECT_EQ(stream.written[1], 'y');
+
+    auto flush_result = async::block_on(async::io::flush(stream));
+    ASSERT_TRUE(flush_result.is_ok());
+    EXPECT_TRUE(stream.flushed);
+
+    auto shutdown_result = async::block_on(async::io::shutdown(stream));
+    ASSERT_TRUE(shutdown_result.is_ok());
+    EXPECT_TRUE(stream.shutdown);
+}
+
+TEST(AsyncCoro, AsyncIoReadExactReadsRequestedBytes) {
+    u8 read_data[] { 'q', 'w', 'e' };
+    auto stream   = MockAsyncIo { read_data, 3 };
+    auto read_buf = bytes::BytesMut::make();
+
+    auto result = async::block_on(async::io::read_exact(stream, read_buf, 3));
+
+    ASSERT_TRUE(result.is_ok());
+    ASSERT_EQ(read_buf.len(), 3u);
+    EXPECT_EQ(read_buf[0], 'q');
+    EXPECT_EQ(read_buf[2], 'e');
+}
+
+TEST(AsyncCoro, AsyncIoReadExactReportsUnexpectedEof) {
+    u8 read_data[] { 0 };
+    auto stream          = MockAsyncIo { read_data, 0 };
+    stream.read_pending  = false;
+    auto read_buf        = bytes::BytesMut::make();
+
+    auto result = async::block_on(async::io::read_exact(stream, read_buf, 1));
+
+    ASSERT_TRUE(result.is_err());
+    EXPECT_EQ(rstd::move(result).unwrap_err().kind(),
+              io::error::ErrorKind { io::error::ErrorKind::UnexpectedEof });
+}
+
+TEST(AsyncCoro, AsyncIoWriteAllWritesFullBuffer) {
+    u8 read_data[] { 0 };
+    auto stream = MockAsyncIo { read_data, 0 };
+    u8 write_data[] { 'm', 'n', 'o' };
+    auto write_buf = bytes::Bytes::copy_from_slice(slice<u8>::from_raw_parts(write_data, 3));
+
+    auto result = async::block_on(async::io::write_all(stream, write_buf));
+
+    ASSERT_TRUE(result.is_ok());
+    ASSERT_EQ(stream.written.len(), 3u);
+    EXPECT_EQ(stream.written[0], 'm');
+    EXPECT_EQ(stream.written[2], 'o');
+}
+
+TEST(AsyncCoro, AsyncIoWriteAllReportsWriteZero) {
+    auto writer = ZeroAsyncWrite {};
+    u8 write_data[] { 'z' };
+    auto write_buf = bytes::Bytes::copy_from_slice(slice<u8>::from_raw_parts(write_data, 1));
+
+    auto result = async::block_on(async::io::write_all(writer, write_buf));
+
+    ASSERT_TRUE(result.is_err());
+    EXPECT_EQ(rstd::move(result).unwrap_err().kind(),
+              io::error::ErrorKind { io::error::ErrorKind::WriteZero });
+}
+
 TEST(AsyncCoro, AsyncIoReadErrorUsesIoResult) {
     auto counts = WakerCounts {};
     auto waker  = task::Waker::from_raw(task::RawWaker::from_raw_parts(
@@ -1699,7 +1806,8 @@ TEST(AsyncCoro, SpawnedSleepWakesTask) {
 }
 
 TEST(AsyncCoro, MultiThreadRuntimeSpawnedSleepWakesTask) {
-    auto runtime_result = async::RuntimeBuilder::multi_thread().worker_threads(2).build();
+    auto runtime_result =
+        async::RuntimeBuilder::multi_thread().worker_threads(2).enable_time().build();
     auto runtime        = runtime_result.unwrap();
 
     EXPECT_EQ(runtime.block_on(join_spawned_sleeping_child()), 17);
@@ -1735,6 +1843,59 @@ TEST(AsyncCoro, RuntimeBuilderRejectsZeroWorkerThreads) {
     EXPECT_TRUE(runtime.is_err());
     EXPECT_EQ(rstd::move(runtime).unwrap_err().kind(),
               io::error::ErrorKind { io::error::ErrorKind::InvalidInput });
+}
+
+TEST(AsyncCoro, RuntimeBuilderDefaultsToDisabledDrivers) {
+    auto runtime_result = async::RuntimeBuilder::current_thread().build();
+    ASSERT_TRUE(runtime_result.is_ok());
+    auto runtime = runtime_result.unwrap();
+
+    EXPECT_FALSE(runtime.io_enabled());
+    EXPECT_FALSE(runtime.time_enabled());
+}
+
+TEST(AsyncCoro, RuntimeBuilderEnableAllSetsDriverCapabilities) {
+    auto runtime_result = async::RuntimeBuilder::multi_thread()
+                              .worker_threads(2)
+                              .enable_all()
+                              .build();
+    ASSERT_TRUE(runtime_result.is_ok());
+    auto runtime = runtime_result.unwrap();
+
+    EXPECT_TRUE(runtime.io_enabled());
+    EXPECT_TRUE(runtime.time_enabled());
+}
+
+TEST(AsyncCoro, RuntimeBuilderEnableIndividualDriverCapabilities) {
+    auto io_runtime_result = async::RuntimeBuilder::current_thread().enable_io().build();
+    ASSERT_TRUE(io_runtime_result.is_ok());
+    auto io_runtime = io_runtime_result.unwrap();
+
+    EXPECT_TRUE(io_runtime.io_enabled());
+    EXPECT_FALSE(io_runtime.time_enabled());
+
+    auto time_runtime_result = async::RuntimeBuilder::current_thread().enable_time().build();
+    ASSERT_TRUE(time_runtime_result.is_ok());
+    auto time_runtime = time_runtime_result.unwrap();
+
+    EXPECT_FALSE(time_runtime.io_enabled());
+    EXPECT_TRUE(time_runtime.time_enabled());
+}
+
+TEST(AsyncCoro, RuntimeBuilderWithoutIoRejectsReadiness) {
+    auto notify_result = async::Notify::make();
+    ASSERT_TRUE(notify_result.is_ok());
+    auto notify = rstd::move(notify_result).unwrap_unchecked();
+
+    auto runtime_result = async::RuntimeBuilder::current_thread().build();
+    ASSERT_TRUE(runtime_result.is_ok());
+    auto runtime = runtime_result.unwrap();
+
+    auto result = runtime.block_on(notify.notified());
+
+    ASSERT_TRUE(result.is_err());
+    EXPECT_EQ(rstd::move(result).unwrap_err().kind(),
+              io::error::ErrorKind { io::error::ErrorKind::Unsupported });
 }
 
 TEST(AsyncCoro, PreludeExportsCoro) {
