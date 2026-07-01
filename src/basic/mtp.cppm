@@ -328,7 +328,7 @@ export template<typename T>
 using rm_const = ::rm_const<T>::type;
 /// Removes top-level `const` and `volatile` qualifiers from `T`.
 export template<typename T>
-using rm_cv = __remove_cv(T);
+using rm_cv = ::rm_cv<T>::type;
 /// Removes one level of pointer indirection from `T`.
 export template<typename T>
 using rm_ptr = __remove_pointer(T);
@@ -337,7 +337,7 @@ export template<typename T>
 using rm_ref = ::rm_ref<T>::type;
 /// Removes reference and cv qualifiers from `T`.
 export template<typename T>
-using rm_cvf = __remove_cvref(T);
+using rm_cvf = rm_cv<rm_ref<T>>;
 
 /// @}
 

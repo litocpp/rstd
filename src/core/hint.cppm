@@ -16,7 +16,7 @@ void spin_loop() {
 template<typename T>
 auto black_box(T&& value) noexcept -> T&& {
 #if defined(__clang__) || defined(__GNUC__)
-    asm volatile("" : "+r,m"(value) : : "memory");
+    asm volatile("" : : "g"(__builtin_addressof(value)) : "memory");
 #else
     asm volatile("" : : "g"(&value) : "memory");
 #endif

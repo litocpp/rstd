@@ -108,6 +108,7 @@ union union_pack<Base, T, Rest...> {
     }
 
     template<usize I>
+    [[gnu::always_inline]]
     constexpr void destroy() noexcept {
         if constexpr (I == Base) {
             rstd::destroy_at(rstd::addressof(head));
@@ -169,7 +170,8 @@ class storage {
     index_type           index_ = invalid_index;
 
     template<usize I>
-    void destroy_impl() noexcept {
+    [[gnu::always_inline]]
+    inline void destroy_impl() noexcept {
         if constexpr (I < count) {
             if (index_ == static_cast<index_type>(I)) {
                 data_.template destroy<I>();
@@ -215,7 +217,7 @@ class storage {
     }
 
 public:
-    constexpr storage() noexcept = default;
+    constexpr inline storage() noexcept : data_(), index_(invalid_index) {}
 
     template<usize I, typename... Args>
         requires(I < count) && mtp::init<type_at_t<I, Ts...>, Args...>
@@ -244,10 +246,11 @@ public:
         requires(! (mtp::move<Ts> && ...))
     = delete;
 
-    constexpr ~storage()
+    constexpr inline ~storage()
         requires(mtp::triv_drop<Ts> && ...)
     = default;
 
+    [[gnu::always_inline]]
     constexpr ~storage()
         requires(! (mtp::triv_drop<Ts> && ...))
     {
@@ -303,6 +306,7 @@ public:
         }
     }
 
+    [[gnu::always_inline]]
     constexpr void destroy() noexcept {
         if (index_ != invalid_index) {
             destroy_impl<0>();

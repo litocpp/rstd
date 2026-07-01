@@ -91,7 +91,7 @@ public:
     }
 };
 
-export template<typename T>
+template<typename T>
 class Poll<T&> {
     T* m_value { nullptr };
 
@@ -124,7 +124,7 @@ public:
     }
 };
 
-export template<>
+template<>
 class Poll<void> {
     bool m_ready { false };
 

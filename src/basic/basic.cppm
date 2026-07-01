@@ -46,6 +46,7 @@ constexpr T* construct_at(T* location,
 /// Destroys the object at the given location by calling its destructor.
 /// \param location Pointer to the object to destroy.
 export template<typename T>
+[[gnu::always_inline]]
 constexpr inline void destroy_at(T* location) {
     if constexpr (__cplusplus > 201703L && mtp::is_array<T>) {
         for (auto& x : *location) rstd::destroy_at(rstd::addressof(x));

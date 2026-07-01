@@ -25,8 +25,6 @@ module;
 #include <spawn.h>
 #include <fcntl.h>
 #include <dirent.h>
-
-extern char** environ;
 #endif
 
 export module rstd:sys.libc.unix;

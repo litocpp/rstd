@@ -67,16 +67,12 @@ constexpr auto all(T const& src, u8 val) noexcept -> bool {
 /// \param val The byte value to set.
 export template<mtp::triv_copy T>
 constexpr void fill(T& src, u8 val) noexcept {
-#ifdef __clang__
-    __builtin_memset(addressof(src), val, sizeof(T));
-#else
-    if constexpr (mtp::triv<T>) {
-        __builtin_memset(addressof(src), val, sizeof(T));
-    } else {
+    if (mtp::is_constant_evaluated()) {
         auto p = reinterpret_cast<u8*>(addressof(src));
         for (usize i = 0; i < sizeof(T); ++i) p[i] = val;
+    } else {
+        rstd::mem::memset(static_cast<voidp>(addressof(src)), val, sizeof(T));
     }
-#endif
 }
 
 /// Returns a zero-initialized value of type `T`.

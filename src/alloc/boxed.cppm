@@ -136,7 +136,7 @@ public:
             auto mptr         = m_ptr.as_mut_ptr();
             auto raw_non_null = NonNull<u8>::make_unchecked(
                 mut_ptr<u8>::from_raw_parts(reinterpret_cast<u8*>(mptr.as_raw_ptr())));
-            Option<Layout> layout {};
+            Layout layout {};
 
             if constexpr (mtp::is_array<T>) {
                 using V   = mtp::rm_ext<T>;
@@ -145,16 +145,16 @@ public:
                 for (usize i = 0; i < len; ++i) {
                     p[i].~V();
                 }
-                layout = Some(Layout::array<V>(len).unwrap());
+                layout = Layout::array<V>(len).unwrap();
             } else if constexpr (requires { mptr.metadata()->drop; }) {
                 auto const* meta = mptr.metadata();
                 meta->drop(mptr.as_raw_ptr());
-                layout = Some(Layout::from_size_align(meta->size, meta->align).unwrap());
+                layout = Layout::from_size_align(meta->size, meta->align).unwrap();
             } else {
-                mptr.as_raw_ptr()->~T();
-                layout = Some(Layout::make<T>());
+                rstd::destroy_at(mptr.as_raw_ptr());
+                layout = Layout::make<T>();
             }
-            as<Allocator>(GLOBAL).deallocate(raw_non_null, layout.unwrap());
+            as<Allocator>(GLOBAL).deallocate(raw_non_null, layout);
             rstd::mem::fill(m_ptr, 0);
         }
     }

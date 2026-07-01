@@ -578,7 +578,7 @@ struct err_tag {};
 /// A type that represents either success (`Ok`) or failure (`Err`).
 /// \tparam T The type of the success value.
 /// \tparam E The type of the error value.
-template<typename T, typename E>
+export template<typename T, typename E>
 class Result : public detail::result_impl<T, E> {
     template<typename, typename>
     friend struct detail::result_base;
@@ -686,11 +686,12 @@ public:
         this->_construct_err(mtp::rm_cvf<U>::template _get<1>(rstd::forward<U>(o)));
     }
 
-    constexpr Result(const Result&) = default;
-    constexpr Result(Result&&)      = default;
+    constexpr inline Result(const Result&) = default;
 
-    constexpr Result(Result&& o) noexcept(mtp::noex_move<T> && mtp::noex_move<E>)
-        requires mtp::user_move<T> || mtp::user_move<E>
+    constexpr inline Result(Result&& o) noexcept(mtp::noex_move<union_value_t> &&
+                                                 mtp::noex_move<union_error_t>)
+        requires mtp::move<union_value_t> && mtp::move<union_error_t>
+        : rstd_enum_storage_()
     {
         if (o.is_ok()) {
             this->_construct_val(Result::template _get<0>(rstd::move(o)));
@@ -699,14 +700,30 @@ public:
         }
     }
 
-    constexpr ~Result() = default;
+    constexpr inline ~Result()
+        requires(mtp::triv_drop<union_value_t> && mtp::triv_drop<union_error_t>)
+    = default;
+
+    constexpr inline ~Result()
+        requires(! (mtp::triv_drop<union_value_t> && mtp::triv_drop<union_error_t>))
+    {}
 
     Result& operator=(const Result&) = delete;
 
-    constexpr Result& operator=(Result&&)
+    constexpr inline Result& operator=(Result&& o) noexcept(
+        mtp::noex_move<union_value_t> && mtp::noex_move<union_error_t>)
         requires mtp::triv_assign_move<typename traits::union_value_t> &&
                      mtp::triv_assign_move<typename traits::union_error_t>
-    = default;
+    {
+        if (this == rstd::addressof(o)) {
+            return *this;
+        }
+        if (o.is_ok())
+            this->_assign_val(Result::template _get<0>(rstd::move(o)));
+        else
+            this->_assign_err(Result::template _get<1>(rstd::move(o)));
+        return *this;
+    }
 
     constexpr Result&
     operator=(Result&& o) noexcept(mtp::noex_move<typename traits::union_value_t> &&

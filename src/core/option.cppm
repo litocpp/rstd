@@ -337,7 +337,7 @@ namespace rstd::option
 
 /// An optional value: either `Some(T)` or `None`.
 /// \tparam T The type of the contained value.
-template<typename T>
+export template<typename T>
 class Option : public detail::option_adapter<T> {
     template<typename>
     friend struct detail::option_adapter;
@@ -420,10 +420,10 @@ public:
 
     constexpr Option() noexcept: RSTD_ENUM_INIT(None) {}
 
-    constexpr Option(const Option&) noexcept
+    constexpr inline Option(const Option&) noexcept
         requires mtp::triv_copy<union_value_t>
     = default;
-    constexpr Option(Option&&) noexcept
+    constexpr inline Option(Option&&) noexcept
         requires mtp::triv_move<union_value_t>
     = default;
 
@@ -438,12 +438,12 @@ public:
         }
     }
 
-    ~Option() = default;
+    inline ~Option() = default;
 
-    constexpr Option& operator=(const Option&)
+    constexpr inline Option& operator=(const Option&)
         requires mtp::triv_assign_copy<union_value_t>
     = default;
-    constexpr Option& operator=(Option&&)
+    constexpr inline Option& operator=(Option&&)
         requires mtp::triv_assign_move<union_value_t>
     = default;
 
@@ -585,14 +585,15 @@ public:
 
     /// Dereferences the contained value. Asserts that the option is `Some`.
     [[nodiscard]]
-    constexpr auto& operator*() const noexcept {
+    constexpr auto operator*() const noexcept
+        -> mtp::add_ref<mtp::add_const<mtp::rm_ref<T>>> {
         rstd_assert(this->is_some());
         return _get(*this);
     }
 
     /// Dereferences the contained value. Asserts that the option is `Some`.
     [[nodiscard]]
-    constexpr auto& operator*() noexcept {
+    constexpr auto operator*() noexcept -> mtp::add_ref<mtp::rm_ref<T>> {
         rstd_assert(this->is_some());
         return _get(*this);
     }

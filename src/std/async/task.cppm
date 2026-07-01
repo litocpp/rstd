@@ -162,7 +162,7 @@ public:
     }
 };
 
-export template<>
+template<>
 class coro<void> {
 public:
     using Output = void;
