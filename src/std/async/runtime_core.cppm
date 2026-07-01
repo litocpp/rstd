@@ -91,6 +91,7 @@ struct CurrentThreadScheduler {
     ReadyQueue             m_ready;
     Option<thread::Thread> m_parker;
     bool                   m_notified { false };
+    bool                   m_parked { false };
 
     CurrentThreadScheduler() : m_ready(), m_parker(None()) {}
 
@@ -99,8 +100,9 @@ struct CurrentThreadScheduler {
     auto pop_ready() -> Option<TaskRef> { return m_ready.pop_front(); }
 
     void notify_locked() {
+        bool should_unpark = m_parked && ! m_notified;
         m_notified = true;
-        if (m_parker.is_some()) {
+        if (should_unpark && m_parker.is_some()) {
             thread::unpark(*m_parker);
         }
     }
@@ -110,6 +112,10 @@ struct CurrentThreadScheduler {
     void clear_parker() { m_parker = None(); }
 
     void clear_ready() { m_ready.clear(); }
+
+    void begin_park_locked() { m_parked = true; }
+
+    void end_park_locked() { m_parked = false; }
 
     auto should_park_locked() -> bool {
         if (! m_ready.is_empty() || m_notified) {
@@ -194,9 +200,15 @@ struct RuntimeInner {
             if (! st->m_scheduler.should_park_locked()) {
                 return;
             }
+            st->m_scheduler.begin_park_locked();
         }
 
         thread::park();
+
+        {
+            auto st = state.lock().unwrap_unchecked();
+            st->m_scheduler.end_park_locked();
+        }
     }
 };
 

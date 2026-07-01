@@ -312,6 +312,68 @@ async::coro<int> join_spawned_sleeping_child() {
     co_return result.unwrap();
 }
 
+async::coro<io::Result<empty>> wait_for_notify(async::Notify notify) {
+    co_return co_await notify.notified();
+}
+
+async::coro<io::Result<empty>> join_spawned_notify_waiter(async::Notify notify) {
+    auto handle = async::spawn(wait_for_notify(rstd::move(notify)));
+    auto result = co_await rstd::move(handle);
+    if (result.is_err()) {
+        co_return Err(io::error::Error::from_kind(
+            io::error::ErrorKind { io::error::ErrorKind::Other }));
+    }
+    co_return rstd::move(result).unwrap();
+}
+
+async::coro<Result<int, async::CompletionError<empty>>> wait_for_completion(
+    async::Completion<int> completion) {
+    co_return co_await completion;
+}
+
+async::coro<Result<int, async::CompletionError<empty>>> join_spawned_completion_waiter(
+    async::Completion<int> completion) {
+    auto handle = async::spawn(wait_for_completion(rstd::move(completion)));
+    auto result = co_await rstd::move(handle);
+    if (result.is_err()) {
+        co_return Err(async::CompletionError<empty>::canceled());
+    }
+    co_return rstd::move(result).unwrap();
+}
+
+async::coro<Result<int, async::CompletionError<int>>> wait_for_fallible_completion(
+    async::Completion<int, int> completion) {
+    co_return co_await completion;
+}
+
+async::coro<io::Result<Vec<int>>> drain_completion_queue(async::CompletionQueue<int> queue) {
+    auto out = Vec<int>::make();
+
+    for (;;) {
+        auto next = co_await queue.next();
+        if (next.is_err()) {
+            co_return Err(rstd::move(next).unwrap_err_unchecked());
+        }
+
+        auto item = rstd::move(next).unwrap_unchecked();
+        if (item.is_none()) {
+            co_return Ok(rstd::move(out));
+        }
+        out.push(rstd::move(item).unwrap_unchecked());
+    }
+}
+
+async::coro<io::Result<Vec<int>>> join_spawned_queue_waiter(
+    async::CompletionQueue<int> queue) {
+    auto handle = async::spawn(drain_completion_queue(rstd::move(queue)));
+    auto result = co_await rstd::move(handle);
+    if (result.is_err()) {
+        co_return Err(io::error::Error::from_kind(
+            io::error::ErrorKind { io::error::ErrorKind::Other }));
+    }
+    co_return rstd::move(result).unwrap();
+}
+
 async::coro<int> join_externally_woken_child(sync::Arc<SavedWakeState> state) {
     auto handle = async::spawn(ExternalWakeInt { rstd::move(state) });
     auto result = co_await rstd::move(handle);
@@ -531,6 +593,272 @@ TEST(AsyncCoro, MultiThreadRuntimeExternalTaskWake) {
 
     auto fields = state->fields.lock().unwrap();
     EXPECT_EQ(fields->polls, 2);
+}
+
+TEST(AsyncCoro, NotifyWakesCurrentThreadRuntimeFromExternalThread) {
+    auto notify_result = async::Notify::make();
+    ASSERT_TRUE(notify_result.is_ok());
+    auto notify   = rstd::move(notify_result).unwrap_unchecked();
+    auto notifier = notify.notifier();
+
+    auto handle = thread::spawn([notifier = rstd::move(notifier)] {
+        thread::sleep(time::Duration::from_millis(1));
+        return notifier.notify();
+    }).unwrap();
+
+    auto result = async::block_on(wait_for_notify(rstd::move(notify)));
+    ASSERT_TRUE(result.is_ok());
+
+    auto wake = rstd::move(handle).join().unwrap();
+    ASSERT_TRUE(wake.is_ok());
+}
+
+TEST(AsyncCoro, NotifyWakesSpawnedTaskFromExternalThread) {
+    auto runtime_result = async::RuntimeBuilder::multi_thread().worker_threads(2).build();
+    auto runtime        = runtime_result.unwrap();
+
+    auto notify_result = async::Notify::make();
+    ASSERT_TRUE(notify_result.is_ok());
+    auto notify   = rstd::move(notify_result).unwrap_unchecked();
+    auto notifier = notify.notifier();
+
+    auto handle = thread::spawn([notifier = rstd::move(notifier)] {
+        thread::sleep(time::Duration::from_millis(1));
+        return notifier.notify();
+    }).unwrap();
+
+    auto result = runtime.block_on(join_spawned_notify_waiter(rstd::move(notify)));
+    ASSERT_TRUE(result.is_ok());
+
+    auto wake = rstd::move(handle).join().unwrap();
+    ASSERT_TRUE(wake.is_ok());
+}
+
+TEST(AsyncCoro, CompletionCompletesCurrentThreadRuntimeFromExternalThread) {
+    auto completion_result = async::Completion<int>::make();
+    ASSERT_TRUE(completion_result.is_ok());
+    auto pair       = rstd::move(completion_result).unwrap_unchecked();
+    auto completion = rstd::move(pair.get<0>());
+    auto completer  = rstd::move(pair.get<1>());
+
+    auto handle = thread::spawn([completer = rstd::move(completer)]() mutable {
+        thread::sleep(time::Duration::from_millis(1));
+        return completer.complete(77);
+    }).unwrap();
+
+    auto result = async::block_on(wait_for_completion(rstd::move(completion)));
+    ASSERT_TRUE(result.is_ok());
+    EXPECT_EQ(rstd::move(result).unwrap(), 77);
+
+    auto completed = rstd::move(handle).join().unwrap();
+    ASSERT_TRUE(completed.is_ok());
+}
+
+TEST(AsyncCoro, CompletionCompletesSpawnedTaskFromExternalThread) {
+    auto runtime_result = async::RuntimeBuilder::multi_thread().worker_threads(2).build();
+    auto runtime        = runtime_result.unwrap();
+
+    auto completion_result = async::Completion<int>::make();
+    ASSERT_TRUE(completion_result.is_ok());
+    auto pair       = rstd::move(completion_result).unwrap_unchecked();
+    auto completion = rstd::move(pair.get<0>());
+    auto completer  = rstd::move(pair.get<1>());
+
+    auto handle = thread::spawn([completer = rstd::move(completer)]() mutable {
+        thread::sleep(time::Duration::from_millis(1));
+        return completer.complete(88);
+    }).unwrap();
+
+    auto result = runtime.block_on(join_spawned_completion_waiter(rstd::move(completion)));
+    ASSERT_TRUE(result.is_ok());
+    EXPECT_EQ(rstd::move(result).unwrap(), 88);
+
+    auto completed = rstd::move(handle).join().unwrap();
+    ASSERT_TRUE(completed.is_ok());
+}
+
+TEST(AsyncCoro, CompletionFailReturnsError) {
+    auto completion_result = async::Completion<int, int>::make();
+    ASSERT_TRUE(completion_result.is_ok());
+    auto pair       = rstd::move(completion_result).unwrap_unchecked();
+    auto completion = rstd::move(pair.get<0>());
+    auto completer  = rstd::move(pair.get<1>());
+
+    ASSERT_TRUE(completer.fail(9).is_ok());
+
+    auto result = async::block_on(wait_for_fallible_completion(rstd::move(completion)));
+    ASSERT_TRUE(result.is_err());
+    auto error = rstd::move(result).unwrap_err();
+    ASSERT_TRUE(error.is_failed());
+    EXPECT_EQ(rstd::move(error).unwrap_failed(), 9);
+}
+
+TEST(AsyncCoro, CompletionRejectsDuplicateComplete) {
+    auto completion_result = async::Completion<int>::make();
+    ASSERT_TRUE(completion_result.is_ok());
+    auto pair       = rstd::move(completion_result).unwrap_unchecked();
+    auto completion = rstd::move(pair.get<0>());
+    auto completer  = rstd::move(pair.get<1>());
+
+    ASSERT_TRUE(completer.complete(1).is_ok());
+    auto duplicate = completer.complete(2);
+    ASSERT_TRUE(duplicate.is_err());
+    EXPECT_EQ(rstd::move(duplicate).unwrap_err(), 2);
+
+    auto result = async::block_on(wait_for_completion(rstd::move(completion)));
+    ASSERT_TRUE(result.is_ok());
+    EXPECT_EQ(rstd::move(result).unwrap(), 1);
+}
+
+TEST(AsyncCoro, CompletionHandleDropCancelsReceiver) {
+    auto completion_result = async::Completion<int>::make();
+    ASSERT_TRUE(completion_result.is_ok());
+    auto pair       = rstd::move(completion_result).unwrap_unchecked();
+    auto completion = rstd::move(pair.get<0>());
+    {
+        auto completer = rstd::move(pair.get<1>());
+    }
+
+    auto result = async::block_on(wait_for_completion(rstd::move(completion)));
+    ASSERT_TRUE(result.is_err());
+    EXPECT_TRUE(rstd::move(result).unwrap_err().is_canceled());
+}
+
+TEST(AsyncCoro, CompletionReceiverDropClosesHandle) {
+    auto completion_result = async::Completion<int>::make();
+    ASSERT_TRUE(completion_result.is_ok());
+    auto pair      = rstd::move(completion_result).unwrap_unchecked();
+    auto completer = rstd::move(pair.get<1>());
+    {
+        auto completion = rstd::move(pair.get<0>());
+    }
+
+    EXPECT_TRUE(completer.is_closed());
+    auto result = completer.complete(5);
+    ASSERT_TRUE(result.is_err());
+    EXPECT_EQ(rstd::move(result).unwrap_err(), 5);
+}
+
+TEST(AsyncCoro, CompletionQueuePushCloseDrainsItems) {
+    auto queue_result = async::CompletionQueue<int>::make();
+    ASSERT_TRUE(queue_result.is_ok());
+    auto pair     = rstd::move(queue_result).unwrap_unchecked();
+    auto queue    = rstd::move(pair.get<0>());
+    auto producer = rstd::move(pair.get<1>());
+
+    ASSERT_TRUE(producer.push(1).is_ok());
+    ASSERT_TRUE(producer.push(2).is_ok());
+    producer.close();
+
+    auto result = async::block_on(drain_completion_queue(rstd::move(queue)));
+    ASSERT_TRUE(result.is_ok());
+    auto values = rstd::move(result).unwrap_unchecked();
+    ASSERT_EQ(values.len(), 2u);
+    EXPECT_EQ(values[0], 1);
+    EXPECT_EQ(values[1], 2);
+}
+
+TEST(AsyncCoro, CompletionQueueWakesCurrentThreadRuntimeFromExternalThread) {
+    auto queue_result = async::CompletionQueue<int>::make();
+    ASSERT_TRUE(queue_result.is_ok());
+    auto pair     = rstd::move(queue_result).unwrap_unchecked();
+    auto queue    = rstd::move(pair.get<0>());
+    auto producer = rstd::move(pair.get<1>());
+
+    auto handle = thread::spawn([producer = rstd::move(producer)]() mutable {
+        thread::sleep(time::Duration::from_millis(1));
+        auto pushed = producer.push(7);
+        if (pushed.is_err()) {
+            return false;
+        }
+        producer.close();
+        return true;
+    }).unwrap();
+
+    auto result = async::block_on(drain_completion_queue(rstd::move(queue)));
+    ASSERT_TRUE(result.is_ok());
+    auto values = rstd::move(result).unwrap_unchecked();
+    ASSERT_EQ(values.len(), 1u);
+    EXPECT_EQ(values[0], 7);
+
+    EXPECT_TRUE(rstd::move(handle).join().unwrap());
+}
+
+TEST(AsyncCoro, CompletionQueueWakesSpawnedTaskFromExternalThread) {
+    auto runtime_result = async::RuntimeBuilder::multi_thread().worker_threads(2).build();
+    auto runtime        = runtime_result.unwrap();
+
+    auto queue_result = async::CompletionQueue<int>::make();
+    ASSERT_TRUE(queue_result.is_ok());
+    auto pair     = rstd::move(queue_result).unwrap_unchecked();
+    auto queue    = rstd::move(pair.get<0>());
+    auto producer = rstd::move(pair.get<1>());
+
+    auto handle = thread::spawn([producer = rstd::move(producer)]() mutable {
+        thread::sleep(time::Duration::from_millis(1));
+        auto pushed = producer.push(11);
+        if (pushed.is_err()) {
+            return false;
+        }
+        producer.close();
+        return true;
+    }).unwrap();
+
+    auto result = runtime.block_on(join_spawned_queue_waiter(rstd::move(queue)));
+    ASSERT_TRUE(result.is_ok());
+    auto values = rstd::move(result).unwrap_unchecked();
+    ASSERT_EQ(values.len(), 1u);
+    EXPECT_EQ(values[0], 11);
+
+    EXPECT_TRUE(rstd::move(handle).join().unwrap());
+}
+
+TEST(AsyncCoro, CompletionQueueHandleDropClosesReceiver) {
+    auto queue_result = async::CompletionQueue<int>::make();
+    ASSERT_TRUE(queue_result.is_ok());
+    auto pair  = rstd::move(queue_result).unwrap_unchecked();
+    auto queue = rstd::move(pair.get<0>());
+    {
+        auto producer = rstd::move(pair.get<1>());
+    }
+
+    auto result = async::block_on(queue.next());
+    ASSERT_TRUE(result.is_ok());
+    EXPECT_TRUE(rstd::move(result).unwrap_unchecked().is_none());
+}
+
+TEST(AsyncCoro, CompletionQueueReceiverDropClosesHandle) {
+    auto queue_result = async::CompletionQueue<int>::make();
+    ASSERT_TRUE(queue_result.is_ok());
+    auto pair     = rstd::move(queue_result).unwrap_unchecked();
+    auto producer = rstd::move(pair.get<1>());
+    {
+        auto queue = rstd::move(pair.get<0>());
+    }
+
+    EXPECT_TRUE(producer.is_closed());
+    auto pushed = producer.push(13);
+    ASSERT_TRUE(pushed.is_err());
+    EXPECT_EQ(rstd::move(pushed).unwrap_err(), 13);
+}
+
+TEST(AsyncCoro, CompletionQueueClonedProducersCloseAfterLastDrop) {
+    auto queue_result = async::CompletionQueue<int>::make();
+    ASSERT_TRUE(queue_result.is_ok());
+    auto pair      = rstd::move(queue_result).unwrap_unchecked();
+    auto queue     = rstd::move(pair.get<0>());
+    auto producer1 = rstd::move(pair.get<1>());
+    auto producer2 = producer1.clone();
+
+    producer1.drop();
+    ASSERT_TRUE(producer2.push(17).is_ok());
+    producer2.drop();
+
+    auto result = async::block_on(drain_completion_queue(rstd::move(queue)));
+    ASSERT_TRUE(result.is_ok());
+    auto values = rstd::move(result).unwrap_unchecked();
+    ASSERT_EQ(values.len(), 1u);
+    EXPECT_EQ(values[0], 17);
 }
 
 TEST(AsyncCoro, MultiThreadRuntimeRunsManySpawnedTasks) {
