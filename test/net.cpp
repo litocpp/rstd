@@ -15,10 +15,12 @@ struct WakerCounts {
     std::atomic<int> drops { 0 };
 };
 
-auto count_clone(voidp data) -> voidp {
+extern const task::RawWakerVTable COUNT_WAKER_VTABLE;
+
+auto count_clone(voidp data) -> task::RawWaker {
     auto* counts = static_cast<WakerCounts*>(data);
     ++counts->clones;
-    return data;
+    return task::RawWaker::from_raw_parts(data, rstd::addressof(COUNT_WAKER_VTABLE));
 }
 
 void count_wake(voidp data) {
@@ -303,7 +305,9 @@ TEST(NetTcp, ReadinessFutureDropCancelsWaiter) {
     ASSERT_TRUE(addr.is_ok());
 
     auto counts = WakerCounts {};
-    auto waker  = task::Waker::from_raw(task::RawWaker { &counts, &COUNT_WAKER_VTABLE });
+    auto waker  = task::Waker::from_raw(task::RawWaker::from_raw_parts(
+        &counts,
+        rstd::addressof(COUNT_WAKER_VTABLE)));
     auto cx     = task::Context { waker };
 
     {

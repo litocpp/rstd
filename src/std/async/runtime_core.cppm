@@ -352,8 +352,22 @@ inline void TaskStateBase::abort() {
     }
 }
 
-inline auto task_waker_clone(voidp data) -> voidp {
-    return new TaskRef(static_cast<TaskRef*>(data)->clone());
+inline auto task_waker_clone(voidp data) -> task::RawWaker;
+inline void task_waker_wake(voidp data);
+inline void task_waker_wake_by_ref(voidp data);
+inline void task_waker_drop(voidp data);
+
+inline const task::RawWakerVTable TASK_WAKER_VTABLE {
+    &task_waker_clone,
+    &task_waker_wake,
+    &task_waker_wake_by_ref,
+    &task_waker_drop,
+};
+
+inline auto task_waker_clone(voidp data) -> task::RawWaker {
+    return task::RawWaker::from_raw_parts(
+        new TaskRef(static_cast<TaskRef*>(data)->clone()),
+        rstd::addressof(TASK_WAKER_VTABLE));
 }
 
 inline void task_waker_wake(voidp data) {
@@ -370,18 +384,10 @@ inline void task_waker_drop(voidp data) {
     delete static_cast<TaskRef*>(data);
 }
 
-inline const task::RawWakerVTable TASK_WAKER_VTABLE {
-    &task_waker_clone,
-    &task_waker_wake,
-    &task_waker_wake_by_ref,
-    &task_waker_drop,
-};
-
 inline auto make_task_waker(const TaskRef& task) -> task::Waker {
-    return task::Waker::from_raw(task::RawWaker {
+    return task::Waker::from_raw(task::RawWaker::from_raw_parts(
         new TaskRef(task.clone()),
-        &TASK_WAKER_VTABLE,
-    });
+        rstd::addressof(TASK_WAKER_VTABLE)));
 }
 
 inline void poll_runtime_task(TaskRef& task_state) {
@@ -415,8 +421,22 @@ inline void RuntimeInner::drain_ready() {
     }
 }
 
-inline auto runtime_waker_clone(voidp data) -> voidp {
-    return new sync::Weak<RuntimeInner>(static_cast<sync::Weak<RuntimeInner>*>(data)->clone());
+inline auto runtime_waker_clone(voidp data) -> task::RawWaker;
+inline void runtime_waker_wake(voidp data);
+inline void runtime_waker_wake_by_ref(voidp data);
+inline void runtime_waker_drop(voidp data);
+
+inline const task::RawWakerVTable RUNTIME_WAKER_VTABLE {
+    &runtime_waker_clone,
+    &runtime_waker_wake,
+    &runtime_waker_wake_by_ref,
+    &runtime_waker_drop,
+};
+
+inline auto runtime_waker_clone(voidp data) -> task::RawWaker {
+    return task::RawWaker::from_raw_parts(
+        new sync::Weak<RuntimeInner>(static_cast<sync::Weak<RuntimeInner>*>(data)->clone()),
+        rstd::addressof(RUNTIME_WAKER_VTABLE));
 }
 
 inline void runtime_waker_wake(voidp data) {
@@ -437,18 +457,10 @@ inline void runtime_waker_drop(voidp data) {
     delete static_cast<sync::Weak<RuntimeInner>*>(data);
 }
 
-inline const task::RawWakerVTable RUNTIME_WAKER_VTABLE {
-    &runtime_waker_clone,
-    &runtime_waker_wake,
-    &runtime_waker_wake_by_ref,
-    &runtime_waker_drop,
-};
-
 inline auto make_runtime_waker(RuntimeInner& runtime) -> task::Waker {
-    return task::Waker::from_raw(task::RawWaker {
+    return task::Waker::from_raw(task::RawWaker::from_raw_parts(
         new sync::Weak<RuntimeInner>(runtime.weak()),
-        &RUNTIME_WAKER_VTABLE,
-    });
+        rstd::addressof(RUNTIME_WAKER_VTABLE)));
 }
 
 struct RuntimeScope {

@@ -144,17 +144,48 @@ public:
     }
 };
 
+export struct RawWaker;
+
 export struct RawWakerVTable {
-    voidp (*clone)(voidp);
-    void (*wake)(voidp);
-    void (*wake_by_ref)(voidp);
-    void (*drop)(voidp);
+    using CloneFn = RawWaker (*)(voidp);
+    using WakeFn  = void (*)(voidp);
+    using DropFn  = void (*)(voidp);
+
+    CloneFn clone;
+    WakeFn  wake;
+    WakeFn  wake_by_ref;
+    DropFn  drop;
+
+    static constexpr auto make(CloneFn clone, WakeFn wake, WakeFn wake_by_ref, DropFn drop)
+        -> RawWakerVTable {
+        return RawWakerVTable { clone, wake, wake_by_ref, drop };
+    }
 };
 
 export struct RawWaker {
-    voidp data { nullptr };
-    const RawWakerVTable* vtable { nullptr };
+    voidp                  data { nullptr };
+    const RawWakerVTable*  vtable { nullptr };
+
+    static constexpr auto from_raw_parts(voidp data, const RawWakerVTable* vtable) noexcept
+        -> RawWaker {
+        return RawWaker { data, vtable };
+    }
 };
+
+inline auto noop_waker_clone(voidp) -> RawWaker;
+inline void noop_waker_wake(voidp) {}
+inline void noop_waker_drop(voidp) {}
+
+inline const RawWakerVTable NOOP_WAKER_VTABLE {
+    &noop_waker_clone,
+    &noop_waker_wake,
+    &noop_waker_wake,
+    &noop_waker_drop,
+};
+
+inline auto noop_waker_clone(voidp) -> RawWaker {
+    return RawWaker::from_raw_parts(nullptr, rstd::addressof(NOOP_WAKER_VTABLE));
+}
 
 export class Waker {
     RawWaker raw {};
@@ -181,6 +212,16 @@ public:
 
     static auto from_raw(RawWaker raw) noexcept -> Waker { return Waker { raw }; }
 
+    static auto from_raw_parts(voidp data, const RawWakerVTable* vtable) noexcept -> Waker {
+        return Waker { RawWaker::from_raw_parts(data, vtable) };
+    }
+
+    static auto noop() noexcept -> const Waker& {
+        static const auto waker = Waker::from_raw(
+            RawWaker::from_raw_parts(nullptr, rstd::addressof(NOOP_WAKER_VTABLE)));
+        return waker;
+    }
+
     void reset() noexcept {
         if (raw.vtable != nullptr) {
             auto current = rstd::exchange(raw, {});
@@ -192,7 +233,14 @@ public:
         if (raw.vtable == nullptr) {
             return Waker {};
         }
-        return Waker::from_raw(RawWaker { raw.vtable->clone(raw.data), raw.vtable });
+        return Waker::from_raw(raw.vtable->clone(raw.data));
+    }
+
+    void clone_from(const Waker& source) {
+        if (! will_wake(source)) {
+            auto cloned = source.clone();
+            *this       = rstd::move(cloned);
+        }
     }
 
     void wake() && {
@@ -212,6 +260,9 @@ public:
         return raw.data == other.raw.data && raw.vtable == other.raw.vtable;
     }
 
+    auto data() const noexcept -> voidp { return raw.data; }
+    auto vtable() const noexcept -> const RawWakerVTable* { return raw.vtable; }
+
     explicit operator bool() const noexcept { return raw.vtable != nullptr; }
 };
 
@@ -220,6 +271,10 @@ export class Context {
 
 public:
     explicit constexpr Context(const Waker& waker) noexcept : m_waker(rstd::addressof(waker)) {}
+
+    static constexpr auto from_waker(const Waker& waker) noexcept -> Context {
+        return Context { waker };
+    }
 
     constexpr auto waker() const noexcept -> const Waker& { return *m_waker; }
 };

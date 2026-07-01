@@ -35,6 +35,8 @@ export class Runtime;
 
 export class RuntimeHandle;
 
+export class AtomicWaker;
+
 export struct YieldNow;
 
 export class Sleep;

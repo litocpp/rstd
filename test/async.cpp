@@ -459,10 +459,12 @@ struct WakerCounts {
     std::atomic<int> drops { 0 };
 };
 
-auto count_clone(voidp data) -> voidp {
+extern const task::RawWakerVTable COUNT_WAKER_VTABLE;
+
+auto count_clone(voidp data) -> task::RawWaker {
     auto* counts = static_cast<WakerCounts*>(data);
     ++counts->clones;
-    return data;
+    return task::RawWaker::from_raw_parts(data, rstd::addressof(COUNT_WAKER_VTABLE));
 }
 
 void count_wake(voidp data) {
@@ -484,6 +486,129 @@ const task::RawWakerVTable COUNT_WAKER_VTABLE {
     &count_drop,
 };
 
+struct RawCloneSwitchCounts {
+    std::atomic<int> clones { 0 };
+    std::atomic<int> wake_refs_a { 0 };
+    std::atomic<int> wake_refs_b { 0 };
+    std::atomic<int> drops_a { 0 };
+    std::atomic<int> drops_b { 0 };
+};
+
+auto switch_clone_a(voidp data) -> task::RawWaker;
+void switch_wake_a(voidp) {}
+void switch_wake_ref_a(voidp data) {
+    ++static_cast<RawCloneSwitchCounts*>(data)->wake_refs_a;
+}
+void switch_drop_a(voidp data) {
+    ++static_cast<RawCloneSwitchCounts*>(data)->drops_a;
+}
+
+auto switch_clone_b(voidp data) -> task::RawWaker;
+void switch_wake_b(voidp) {}
+void switch_wake_ref_b(voidp data) {
+    ++static_cast<RawCloneSwitchCounts*>(data)->wake_refs_b;
+}
+void switch_drop_b(voidp data) {
+    ++static_cast<RawCloneSwitchCounts*>(data)->drops_b;
+}
+
+const task::RawWakerVTable SWITCH_WAKER_VTABLE_A {
+    &switch_clone_a,
+    &switch_wake_a,
+    &switch_wake_ref_a,
+    &switch_drop_a,
+};
+
+const task::RawWakerVTable SWITCH_WAKER_VTABLE_B {
+    &switch_clone_b,
+    &switch_wake_b,
+    &switch_wake_ref_b,
+    &switch_drop_b,
+};
+
+auto switch_clone_a(voidp data) -> task::RawWaker {
+    ++static_cast<RawCloneSwitchCounts*>(data)->clones;
+    return task::RawWaker::from_raw_parts(data, rstd::addressof(SWITCH_WAKER_VTABLE_B));
+}
+
+auto switch_clone_b(voidp data) -> task::RawWaker {
+    ++static_cast<RawCloneSwitchCounts*>(data)->clones;
+    return task::RawWaker::from_raw_parts(data, rstd::addressof(SWITCH_WAKER_VTABLE_B));
+}
+
+struct BlockingCloneWakerCounts {
+    std::atomic<int>  clones { 0 };
+    std::atomic<int>  wakes { 0 };
+    std::atomic<int>  wake_refs { 0 };
+    std::atomic<int>  drops { 0 };
+    std::atomic<bool> clone_entered { false };
+    std::atomic<bool> release_clone { false };
+};
+
+extern const task::RawWakerVTable BLOCKING_CLONE_WAKER_VTABLE;
+
+auto blocking_clone(voidp data) -> task::RawWaker {
+    auto* counts = static_cast<BlockingCloneWakerCounts*>(data);
+    ++counts->clones;
+    counts->clone_entered.store(true, std::memory_order_release);
+    while (! counts->release_clone.load(std::memory_order_acquire)) {
+        hint::spin_loop();
+    }
+    return task::RawWaker::from_raw_parts(data, rstd::addressof(BLOCKING_CLONE_WAKER_VTABLE));
+}
+
+void blocking_wake(voidp data) {
+    ++static_cast<BlockingCloneWakerCounts*>(data)->wakes;
+}
+
+void blocking_wake_by_ref(voidp data) {
+    ++static_cast<BlockingCloneWakerCounts*>(data)->wake_refs;
+}
+
+void blocking_drop(voidp data) {
+    ++static_cast<BlockingCloneWakerCounts*>(data)->drops;
+}
+
+const task::RawWakerVTable BLOCKING_CLONE_WAKER_VTABLE {
+    &blocking_clone,
+    &blocking_wake,
+    &blocking_wake_by_ref,
+    &blocking_drop,
+};
+
+struct SharedWakeState {
+    sync::Mutex<bool> ready;
+    async::AtomicWaker waker;
+
+    SharedWakeState() : ready(false) {}
+
+    void complete() {
+        {
+            auto locked = ready.lock().unwrap_unchecked();
+            *locked = true;
+        }
+        waker.wake();
+    }
+};
+
+struct SharedWakeFuture {
+    using Output = int;
+
+    sync::Arc<SharedWakeState> state;
+
+    auto poll(pin::Pin<mut_ref<SharedWakeFuture>> self, task::Context& cx)
+        -> task::Poll<int> {
+        auto& future = *self.get_unchecked_mut();
+        future.state->waker.register_context(cx);
+
+        auto locked = future.state->ready.lock().unwrap_unchecked();
+        if (*locked) {
+            return task::Poll<int>::Ready(17);
+        }
+        return task::Poll<int>::Pending();
+    }
+};
+
 } // namespace
 
 TEST(AsyncCoro, PollHelpers) {
@@ -498,7 +623,9 @@ TEST(AsyncCoro, PollHelpers) {
 TEST(AsyncCoro, WakerOwnsRawHandle) {
     auto counts = WakerCounts {};
     {
-        auto waker = task::Waker::from_raw(task::RawWaker { &counts, &COUNT_WAKER_VTABLE });
+        auto waker = task::Waker::from_raw(task::RawWaker::from_raw_parts(
+            &counts,
+            rstd::addressof(COUNT_WAKER_VTABLE)));
         auto clone = waker.clone();
         waker.wake_by_ref();
         rstd::move(clone).wake();
@@ -508,6 +635,145 @@ TEST(AsyncCoro, WakerOwnsRawHandle) {
     EXPECT_EQ(counts.wake_refs.load(), 1);
     EXPECT_EQ(counts.wakes.load(), 1);
     EXPECT_EQ(counts.drops.load(), 1);
+}
+
+TEST(AsyncCoro, WakerCloneUsesReturnedRawWaker) {
+    auto counts = RawCloneSwitchCounts {};
+    {
+        auto waker = task::Waker::from_raw(task::RawWaker::from_raw_parts(
+            &counts,
+            rstd::addressof(SWITCH_WAKER_VTABLE_A)));
+        auto clone = waker.clone();
+
+        EXPECT_EQ(clone.vtable(), rstd::addressof(SWITCH_WAKER_VTABLE_B));
+        clone.wake_by_ref();
+    }
+
+    EXPECT_EQ(counts.clones.load(), 1);
+    EXPECT_EQ(counts.wake_refs_a.load(), 0);
+    EXPECT_EQ(counts.wake_refs_b.load(), 1);
+    EXPECT_EQ(counts.drops_a.load(), 1);
+    EXPECT_EQ(counts.drops_b.load(), 1);
+}
+
+TEST(AsyncCoro, WakerCloneFromSkipsEquivalentWaker) {
+    auto counts = WakerCounts {};
+    {
+        auto waker = task::Waker::from_raw(task::RawWaker::from_raw_parts(
+            &counts,
+            rstd::addressof(COUNT_WAKER_VTABLE)));
+        auto same = waker.clone();
+
+        EXPECT_EQ(counts.clones.load(), 1);
+        waker.clone_from(same);
+        EXPECT_EQ(counts.clones.load(), 1);
+    }
+
+    EXPECT_EQ(counts.drops.load(), 2);
+}
+
+TEST(AsyncCoro, NoopWakerDoesNothing) {
+    auto& waker = task::Waker::noop();
+    auto  clone = waker.clone();
+
+    waker.wake_by_ref();
+    rstd::move(clone).wake();
+    EXPECT_TRUE(waker.will_wake(task::Waker::noop()));
+}
+
+TEST(AsyncCoro, AtomicWakerWakesRegisteredWaker) {
+    auto counts = WakerCounts {};
+    auto atomic = async::AtomicWaker {};
+    auto waker  = task::Waker::from_raw(task::RawWaker::from_raw_parts(
+        &counts,
+        rstd::addressof(COUNT_WAKER_VTABLE)));
+
+    atomic.register_waker(waker);
+    atomic.wake();
+    atomic.wake();
+
+    EXPECT_EQ(counts.clones.load(), 1);
+    EXPECT_EQ(counts.wakes.load(), 1);
+}
+
+TEST(AsyncCoro, AtomicWakerWakesLatestRegisteredWaker) {
+    auto first_counts  = WakerCounts {};
+    auto second_counts = WakerCounts {};
+    auto atomic        = async::AtomicWaker {};
+
+    auto first = task::Waker::from_raw(task::RawWaker::from_raw_parts(
+        &first_counts,
+        rstd::addressof(COUNT_WAKER_VTABLE)));
+    auto second = task::Waker::from_raw(task::RawWaker::from_raw_parts(
+        &second_counts,
+        rstd::addressof(COUNT_WAKER_VTABLE)));
+
+    atomic.register_waker(first);
+    atomic.register_waker(second);
+    atomic.wake();
+
+    EXPECT_EQ(first_counts.wakes.load(), 0);
+    EXPECT_EQ(second_counts.wakes.load(), 1);
+}
+
+TEST(AsyncCoro, AtomicWakerWakeDuringRegisterWakesNewWaker) {
+    auto counts = BlockingCloneWakerCounts {};
+    auto atomic = async::AtomicWaker {};
+    auto waker  = task::Waker::from_raw(task::RawWaker::from_raw_parts(
+        &counts,
+        rstd::addressof(BLOCKING_CLONE_WAKER_VTABLE)));
+
+    auto handle = thread::spawn([&atomic, &waker] {
+        atomic.register_waker(waker);
+    }).unwrap();
+
+    for (int i = 0; i < 10000 && ! counts.clone_entered.load(std::memory_order_acquire); ++i) {
+        thread::sleep(time::Duration::from_millis(1));
+    }
+
+    if (! counts.clone_entered.load(std::memory_order_acquire)) {
+        counts.release_clone.store(true, std::memory_order_release);
+        rstd::move(handle).join().unwrap();
+        FAIL() << "blocking clone did not start";
+    }
+
+    atomic.wake();
+    counts.release_clone.store(true, std::memory_order_release);
+    rstd::move(handle).join().unwrap();
+    atomic.wake();
+
+    EXPECT_EQ(counts.clones.load(), 1);
+    EXPECT_EQ(counts.wakes.load(), 1);
+    EXPECT_EQ(counts.wake_refs.load(), 0);
+}
+
+TEST(AsyncCoro, SharedStateFutureWakesLatestTask) {
+    auto state  = sync::Arc<SharedWakeState>::make();
+    auto future = SharedWakeFuture { state.clone() };
+
+    auto first_counts = WakerCounts {};
+    auto first_waker  = task::Waker::from_raw(task::RawWaker::from_raw_parts(
+        &first_counts,
+        rstd::addressof(COUNT_WAKER_VTABLE)));
+    auto first_cx = task::Context::from_waker(first_waker);
+    auto first    = future::poll(future, first_cx);
+    EXPECT_TRUE(first.is_pending());
+
+    auto second_counts = WakerCounts {};
+    auto second_waker  = task::Waker::from_raw(task::RawWaker::from_raw_parts(
+        &second_counts,
+        rstd::addressof(COUNT_WAKER_VTABLE)));
+    auto second_cx = task::Context::from_waker(second_waker);
+    auto second    = future::poll(future, second_cx);
+    EXPECT_TRUE(second.is_pending());
+
+    state->complete();
+    EXPECT_EQ(first_counts.wakes.load(), 0);
+    EXPECT_EQ(second_counts.wakes.load(), 1);
+
+    auto done = future::poll(future, second_cx);
+    ASSERT_TRUE(done.is_ready());
+    EXPECT_EQ(rstd::move(done).take(), 17);
 }
 
 TEST(AsyncCoro, BlockOnReadyFuture) {
@@ -941,7 +1207,9 @@ TEST(AsyncCoro, OneShotSenderCloseWakesReceiver) {
     auto tx      = rstd::move(channel.get<0>());
     auto rx      = rstd::move(channel.get<1>());
     auto counts  = WakerCounts {};
-    auto waker   = task::Waker::from_raw(task::RawWaker { &counts, &COUNT_WAKER_VTABLE });
+    auto waker   = task::Waker::from_raw(task::RawWaker::from_raw_parts(
+        &counts,
+        rstd::addressof(COUNT_WAKER_VTABLE)));
     auto cx      = task::Context { waker };
 
     auto first = future::poll(rx, cx);
@@ -961,7 +1229,9 @@ TEST(AsyncCoro, OneShotReceiverDropWakesSenderCancellation) {
     auto channel = async::oneshot::channel<int>();
     auto tx      = rstd::move(channel.get<0>());
     auto counts  = WakerCounts {};
-    auto waker   = task::Waker::from_raw(task::RawWaker { &counts, &COUNT_WAKER_VTABLE });
+    auto waker   = task::Waker::from_raw(task::RawWaker::from_raw_parts(
+        &counts,
+        rstd::addressof(COUNT_WAKER_VTABLE)));
     auto cx      = task::Context { waker };
 
     {
@@ -1092,7 +1362,9 @@ TEST(AsyncCoro, TimeoutExpiresAndDropsFuture) {
 
 TEST(AsyncCoro, StreamLikePollNext) {
     auto counts = WakerCounts {};
-    auto waker  = task::Waker::from_raw(task::RawWaker { &counts, &COUNT_WAKER_VTABLE });
+    auto waker  = task::Waker::from_raw(task::RawWaker::from_raw_parts(
+        &counts,
+        rstd::addressof(COUNT_WAKER_VTABLE)));
     auto cx     = task::Context { waker };
     auto stream = CounterStream {};
 
@@ -1117,7 +1389,9 @@ TEST(AsyncCoro, AsyncIoProtocolsUseBytesAndIoResult) {
     u8 read_data[] { 'a', 'b', 'c' };
     auto stream = MockAsyncIo { read_data, 3 };
     auto counts = WakerCounts {};
-    auto waker  = task::Waker::from_raw(task::RawWaker { &counts, &COUNT_WAKER_VTABLE });
+    auto waker  = task::Waker::from_raw(task::RawWaker::from_raw_parts(
+        &counts,
+        rstd::addressof(COUNT_WAKER_VTABLE)));
     auto cx     = task::Context { waker };
     auto read_buf = bytes::BytesMut::make();
 
@@ -1162,7 +1436,9 @@ TEST(AsyncCoro, AsyncIoProtocolsUseBytesAndIoResult) {
 
 TEST(AsyncCoro, AsyncIoReadErrorUsesIoResult) {
     auto counts = WakerCounts {};
-    auto waker  = task::Waker::from_raw(task::RawWaker { &counts, &COUNT_WAKER_VTABLE });
+    auto waker  = task::Waker::from_raw(task::RawWaker::from_raw_parts(
+        &counts,
+        rstd::addressof(COUNT_WAKER_VTABLE)));
     auto cx     = task::Context { waker };
     auto reader = ErrorAsyncRead {};
     auto buf    = bytes::BytesMut::make();
