@@ -259,6 +259,13 @@ async::coro<bool> current_thread_has_name() {
     co_return thread::current().name().is_some();
 }
 
+async::coro<int> await_executor_once(async::AnyExecutor ex, int& value) {
+    value       = 1;
+    auto posted = co_await ex;
+    value       = posted ? 2 : -1;
+    co_return value;
+}
+
 async::coro<void> signal_after_yield(std::atomic<int>& signal) {
     co_await async::yield_now();
     signal.store(1, std::memory_order_release);
@@ -611,6 +618,107 @@ struct SharedWakeFuture {
 
 } // namespace
 
+struct TestExecutorState {
+    sync::Mutex<Vec<async::ExecutorJob>> jobs;
+    sync::Mutex<bool>                    closed;
+
+    TestExecutorState() : jobs(Vec<async::ExecutorJob>::make()), closed(false) {}
+};
+
+struct TestExecutor {
+    sync::Weak<TestExecutorState> state;
+
+    explicit TestExecutor(sync::Weak<TestExecutorState> state) : state(rstd::move(state)) {}
+
+    TestExecutor(const TestExecutor&)            = delete;
+    auto operator=(const TestExecutor&) -> TestExecutor& = delete;
+    TestExecutor(TestExecutor&&) noexcept                    = default;
+    auto operator=(TestExecutor&&) noexcept -> TestExecutor& = default;
+
+    auto clone() const -> TestExecutor { return TestExecutor { state.clone() }; }
+
+    auto post_job(async::ExecutorJob job) -> bool {
+        auto shared = state.upgrade();
+        if (! shared) {
+            return false;
+        }
+
+        auto is_closed = shared->closed.lock().unwrap_unchecked();
+        if (*is_closed) {
+            return false;
+        }
+
+        auto queue = shared->jobs.lock().unwrap_unchecked();
+        queue->push(rstd::move(job));
+        return true;
+    }
+
+    template<typename F>
+    auto post(F job) -> bool {
+        return post_job(async::ExecutorJob::make(rstd::move(job)));
+    }
+
+    auto is_closed() -> bool {
+        auto shared = state.upgrade();
+        if (! shared) {
+            return true;
+        }
+        auto is_closed = shared->closed.lock().unwrap_unchecked();
+        return *is_closed;
+    }
+};
+
+struct TestExecutorContext {
+    using executor_type = TestExecutor;
+
+    sync::Arc<TestExecutorState> state;
+
+    TestExecutorContext() : state(sync::Arc<TestExecutorState>::make()) {}
+
+    auto executor() -> TestExecutor { return TestExecutor { state.downgrade() }; }
+
+    auto take_ready() -> Vec<async::ExecutorJob> {
+        auto queue = state->jobs.lock().unwrap_unchecked();
+        auto out   = rstd::move(*queue);
+        *queue     = Vec<async::ExecutorJob>::make();
+        return out;
+    }
+
+    auto run_ready() -> usize {
+        auto ready = take_ready();
+        auto ran   = usize {};
+        while (! ready.is_empty()) {
+            auto job = ready.remove(0);
+            job->operator()();
+            ++ran;
+        }
+        return ran;
+    }
+
+    void close() {
+        {
+            auto is_closed = state->closed.lock().unwrap_unchecked();
+            *is_closed     = true;
+        }
+
+        auto queue = state->jobs.lock().unwrap_unchecked();
+        queue->clear();
+    }
+
+    auto is_closed() -> bool {
+        auto is_closed = state->closed.lock().unwrap_unchecked();
+        return *is_closed;
+    }
+};
+
+template<>
+struct rstd::Impl<rstd::async::Executor, TestExecutor>
+    : rstd::LinkClassMethod<rstd::async::Executor, TestExecutor> {};
+
+template<>
+struct rstd::Impl<rstd::async::ExecutorContext, TestExecutorContext>
+    : rstd::LinkClassMethod<rstd::async::ExecutorContext, TestExecutorContext> {};
+
 TEST(AsyncCoro, PollHelpers) {
     auto ready = task::Poll<int>::Ready(3);
     ASSERT_TRUE(ready.is_ready());
@@ -745,6 +853,135 @@ TEST(AsyncCoro, AtomicWakerWakeDuringRegisterWakesNewWaker) {
     EXPECT_EQ(counts.clones.load(), 1);
     EXPECT_EQ(counts.wakes.load(), 1);
     EXPECT_EQ(counts.wake_refs.load(), 0);
+}
+
+TEST(AsyncExecutor, PostRunsWhenRunReadyIsCalled) {
+    auto context = async::LocalExecutorContext::make();
+    auto ex      = context.executor();
+    int  value   = 0;
+
+    EXPECT_TRUE(ex.post([&value] {
+        value = 7;
+    }));
+    EXPECT_EQ(value, 0);
+
+    EXPECT_EQ(context.run_ready(), usize { 1 });
+    EXPECT_EQ(value, 7);
+    EXPECT_EQ(context.run_ready(), usize { 0 });
+}
+
+TEST(AsyncExecutor, CanWrapExternalExecutorContext) {
+    auto context = TestExecutorContext {};
+    auto ex      = async::AnyExecutor::from_executor(context.executor());
+    int  value   = 0;
+
+    EXPECT_TRUE(ex.post([&value] {
+        value = 11;
+    }));
+
+    EXPECT_EQ(value, 0);
+
+    EXPECT_EQ(context.run_ready(), usize { 1 });
+    EXPECT_EQ(value, 11);
+
+    context.close();
+    EXPECT_TRUE(context.is_closed());
+    EXPECT_TRUE(ex.is_closed());
+    EXPECT_FALSE(ex.post([] {}));
+}
+
+TEST(AsyncExecutor, TypedExecutorContextRunsThroughContext) {
+    auto context = TestExecutorContext {};
+    auto ex      = context.executor();
+    int  value   = 0;
+
+    EXPECT_TRUE(ex.post([&value] {
+        value = 19;
+    }));
+
+    EXPECT_EQ(value, 0);
+    EXPECT_EQ(context.run_ready(), usize { 1 });
+    EXPECT_EQ(value, 19);
+
+    context.close();
+    EXPECT_TRUE(ex.is_closed());
+    EXPECT_FALSE(ex.post([] {}));
+}
+
+TEST(AsyncExecutor, HandleCanPostFromAnotherThread) {
+    auto context = async::LocalExecutorContext::make();
+    auto value   = std::atomic<int> { 0 };
+    auto ex      = context.executor();
+
+    auto worker = thread::spawn([ex = rstd::move(ex), &value]() mutable {
+        return ex.post([&value] {
+            value.store(3, std::memory_order_release);
+        });
+    }).unwrap();
+
+    auto posted = rstd::move(worker).join().unwrap();
+    EXPECT_TRUE(posted);
+    EXPECT_EQ(value.load(std::memory_order_acquire), 0);
+
+    EXPECT_EQ(context.run_ready(), usize { 1 });
+    EXPECT_EQ(value.load(std::memory_order_acquire), 3);
+}
+
+TEST(AsyncExecutor, NestedPostRunsOnNextRunReady) {
+    auto context = async::LocalExecutorContext::make();
+    auto ex      = context.executor();
+    int  value   = 0;
+
+    EXPECT_TRUE(ex.post([nested = ex.clone(), &value]() mutable {
+        value = 1;
+        EXPECT_TRUE(nested.post([&value] {
+            value = 2;
+        }));
+    }));
+
+    EXPECT_EQ(context.run_ready(), usize { 1 });
+    EXPECT_EQ(value, 1);
+
+    EXPECT_EQ(context.run_ready(), usize { 1 });
+    EXPECT_EQ(value, 2);
+}
+
+TEST(AsyncExecutor, PostFailsAfterClose) {
+    auto context = async::LocalExecutorContext::make();
+    auto ex      = context.executor();
+
+    EXPECT_TRUE(ex.post([] {}));
+    context.close();
+
+    EXPECT_TRUE(context.is_closed());
+    EXPECT_TRUE(ex.is_closed());
+    EXPECT_FALSE(ex.post([] {}));
+    EXPECT_EQ(context.run_ready(), usize { 0 });
+}
+
+TEST(AsyncExecutor, CoAwaitExecutorCompletesAfterRunReady) {
+    auto context = async::LocalExecutorContext::make();
+    auto ex      = async::AnyExecutor::from_executor(context.executor());
+    int  value   = 0;
+    auto future  = await_executor_once(ex.clone(), value);
+
+    auto counts = WakerCounts {};
+    auto waker  = task::Waker::from_raw(task::RawWaker::from_raw_parts(
+        &counts,
+        rstd::addressof(COUNT_WAKER_VTABLE)));
+    auto cx = task::Context::from_waker(waker);
+
+    auto first = future::poll(future, cx);
+    EXPECT_TRUE(first.is_pending());
+    EXPECT_EQ(value, 1);
+
+    EXPECT_EQ(context.run_ready(), usize { 1 });
+    EXPECT_EQ(counts.wakes.load(), 1);
+
+    auto second = future::poll(future, cx);
+    ASSERT_TRUE(second.is_ready());
+    EXPECT_EQ(rstd::move(second).take(), 2);
+    EXPECT_EQ(value, 2);
 }
 
 TEST(AsyncCoro, SharedStateFutureWakesLatestTask) {

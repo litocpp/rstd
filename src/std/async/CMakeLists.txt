@@ -2,6 +2,7 @@ set(RSTD_ASYNC_SOURCES
     async/mod.cppm
     async/forward.cppm
     async/atomic_waker.cppm
+    async/executor.cppm
     async/task.cppm
     async/join.cppm
     async/select.cppm

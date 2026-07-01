@@ -92,6 +92,15 @@ public:
             return FutureAwaiter<promise_type, F> { rstd::forward<F>(future) };
         }
 
+        template<typename A>
+            requires(! future::FutureLike<A>) && requires(A&& awaitable) {
+                rstd::forward<A>(awaitable).into_future();
+            }
+        auto await_transform(A&& awaitable) {
+            auto future = rstd::forward<A>(awaitable).into_future();
+            return FutureAwaiter<promise_type, decltype(future)> { rstd::move(future) };
+        }
+
         auto take_result() -> T {
             if (result.is_none()) {
                 rstd::panic { "async coro completed without a value" };
@@ -186,6 +195,15 @@ public:
         template<future::FutureLike F>
         auto await_transform(F&& future) {
             return FutureAwaiter<promise_type, F> { rstd::forward<F>(future) };
+        }
+
+        template<typename A>
+            requires(! future::FutureLike<A>) && requires(A&& awaitable) {
+                rstd::forward<A>(awaitable).into_future();
+            }
+        auto await_transform(A&& awaitable) {
+            auto future = rstd::forward<A>(awaitable).into_future();
+            return FutureAwaiter<promise_type, decltype(future)> { rstd::move(future) };
         }
     };
 

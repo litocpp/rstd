@@ -31,6 +31,16 @@ class coro;
 export template<typename T>
 class JoinHandle;
 
+export struct Executor;
+
+export struct ExecutorContext;
+
+export class LocalExecutor;
+
+export class LocalExecutorContext;
+
+export class AnyExecutor;
+
 export class Runtime;
 
 export class RuntimeHandle;

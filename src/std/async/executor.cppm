@@ -1,0 +1,280 @@
+export module rstd:async.executor;
+export import :async.forward;
+import rstd.alloc;
+import :sync;
+
+using namespace rstd;
+using ::alloc::boxed::Box;
+using ::alloc::vec::Vec;
+
+namespace rstd::async
+{
+
+export using ExecutorJob = Box<dyn<FnMut<void()>>>;
+
+export struct Executor {
+    template<class Self, class Delegate = void>
+    struct Api {
+        using Trait = Executor;
+
+        auto post_job(ExecutorJob job) -> bool { return trait_call<0>(this, rstd::move(job)); }
+        auto post(ExecutorJob job) -> bool { return post_job(rstd::move(job)); }
+        auto is_closed() -> bool { return trait_call<1>(this); }
+    };
+
+    template<typename Self>
+    using Funcs = TraitFuncs<&Self::post_job, &Self::is_closed>;
+};
+
+export struct ExecutorContext {
+    template<class Self, class Delegate = void>
+    struct Api {
+        using Trait = ExecutorContext;
+
+        auto executor() -> typename Self::executor_type { return trait_call<0>(this); }
+    };
+
+    template<typename Self>
+    using Funcs = TraitFuncs<&Self::executor>;
+};
+
+struct ExecutorAwaitState {
+    sync::atomic::Atomic<bool> ready { false };
+};
+
+export template<typename E>
+class ExecutorAwait {
+    E                                m_executor;
+    sync::Arc<ExecutorAwaitState>    m_state;
+    bool                             m_posted { false };
+    bool                             m_failed { false };
+
+public:
+    using Output = bool;
+
+    explicit ExecutorAwait(E executor)
+        : m_executor(rstd::move(executor)), m_state(sync::Arc<ExecutorAwaitState>::make()) {}
+
+    auto poll(pin::Pin<mut_ref<ExecutorAwait>> self, task::Context& cx) -> task::Poll<bool> {
+        auto& value = *self.get_unchecked_mut();
+        if (value.m_failed) {
+            return task::Poll<bool>::Ready(false);
+        }
+        if (value.m_state->ready.load(sync::atomic::Ordering::Acquire)) {
+            return task::Poll<bool>::Ready(true);
+        }
+
+        if (! value.m_posted) {
+            value.m_posted = true;
+            auto state     = value.m_state.clone();
+            auto waker     = cx.waker().clone();
+            auto posted    = as<Executor>(value.m_executor).post_job(ExecutorJob::make(
+                [state = rstd::move(state), waker = rstd::move(waker)]() mutable {
+                    state->ready.store(true, sync::atomic::Ordering::Release);
+                    rstd::move(waker).wake();
+                }));
+
+            if (! posted) {
+                value.m_failed = true;
+                return task::Poll<bool>::Ready(false);
+            }
+        }
+
+        return task::Poll<bool>::Pending();
+    }
+};
+
+struct LocalExecutorState {
+    sync::Mutex<Vec<ExecutorJob>> jobs;
+    sync::Mutex<bool>             closed;
+
+    LocalExecutorState() : jobs(Vec<ExecutorJob>::make()), closed(false) {}
+
+    auto post(ExecutorJob job) -> bool {
+        auto is_closed = closed.lock().unwrap_unchecked();
+        if (*is_closed) {
+            return false;
+        }
+        auto queue = jobs.lock().unwrap_unchecked();
+        queue->push(rstd::move(job));
+        return true;
+    }
+
+    auto take_ready() -> Vec<ExecutorJob> {
+        auto queue = jobs.lock().unwrap_unchecked();
+        auto out   = rstd::move(*queue);
+        *queue     = Vec<ExecutorJob>::make();
+        return out;
+    }
+
+    auto run_ready() -> usize {
+        auto ready = take_ready();
+        auto ran   = usize {};
+        while (! ready.is_empty()) {
+            auto job = ready.remove(0);
+            job->operator()();
+            ++ran;
+        }
+        return ran;
+    }
+
+    void close() {
+        {
+            auto is_closed = closed.lock().unwrap_unchecked();
+            *is_closed     = true;
+        }
+        auto queue = jobs.lock().unwrap_unchecked();
+        queue->clear();
+    }
+
+    auto is_closed() -> bool {
+        auto is_closed = closed.lock().unwrap_unchecked();
+        return *is_closed;
+    }
+};
+
+export class LocalExecutor {
+    sync::Weak<LocalExecutorState> m_state;
+
+    explicit LocalExecutor(sync::Weak<LocalExecutorState> state) : m_state(rstd::move(state)) {}
+
+    friend class LocalExecutorContext;
+
+public:
+    LocalExecutor(const LocalExecutor&)            = delete;
+    auto operator=(const LocalExecutor&) -> LocalExecutor& = delete;
+    LocalExecutor(LocalExecutor&&) noexcept                    = default;
+    auto operator=(LocalExecutor&&) noexcept -> LocalExecutor& = default;
+    ~LocalExecutor()                                          = default;
+
+    auto clone() const -> LocalExecutor { return LocalExecutor { m_state.clone() }; }
+
+    auto post_job(ExecutorJob job) -> bool {
+        auto state = m_state.upgrade();
+        if (! state) {
+            return false;
+        }
+        return state->post(rstd::move(job));
+    }
+
+    template<typename F>
+    auto post(F job) -> bool {
+        return post_job(ExecutorJob::make(rstd::move(job)));
+    }
+
+    auto is_closed() -> bool {
+        auto state = m_state.upgrade();
+        return ! state || state->is_closed();
+    }
+
+    auto into_future() const -> ExecutorAwait<LocalExecutor> {
+        return ExecutorAwait<LocalExecutor> { clone() };
+    }
+};
+
+export class LocalExecutorContext {
+    sync::Arc<LocalExecutorState> m_state;
+
+public:
+    using executor_type = LocalExecutor;
+
+    LocalExecutorContext() : m_state(sync::Arc<LocalExecutorState>::make()) {}
+
+    LocalExecutorContext(const LocalExecutorContext&)            = delete;
+    auto operator=(const LocalExecutorContext&) -> LocalExecutorContext& = delete;
+    LocalExecutorContext(LocalExecutorContext&&) noexcept                    = default;
+    auto operator=(LocalExecutorContext&&) noexcept -> LocalExecutorContext& = default;
+    ~LocalExecutorContext()                                                = default;
+
+    static auto make() -> LocalExecutorContext { return LocalExecutorContext {}; }
+
+    auto executor() -> LocalExecutor { return LocalExecutor { m_state.downgrade() }; }
+
+    auto run_ready() -> usize {
+        if (! m_state) {
+            return 0;
+        }
+        return m_state->run_ready();
+    }
+
+    void close() {
+        if (m_state) {
+            m_state->close();
+        }
+    }
+
+    auto is_closed() const -> bool { return ! m_state || m_state->is_closed(); }
+};
+
+} // namespace rstd::async
+
+namespace rstd
+{
+
+template<>
+struct Impl<async::Executor, async::LocalExecutor>
+    : LinkClassMethod<async::Executor, async::LocalExecutor> {};
+
+template<>
+struct Impl<async::ExecutorContext, async::LocalExecutorContext>
+    : LinkClassMethod<async::ExecutorContext, async::LocalExecutorContext> {};
+
+} // namespace rstd
+
+namespace rstd::async
+{
+
+struct AnyExecutorInner {
+    Box<dyn<Executor>> executor;
+
+    explicit AnyExecutorInner(Box<dyn<Executor>> executor) : executor(rstd::move(executor)) {}
+
+    auto post_job(ExecutorJob job) -> bool { return executor->post(rstd::move(job)); }
+
+    auto is_closed() -> bool { return executor->is_closed(); }
+};
+
+export class AnyExecutor {
+    sync::Arc<AnyExecutorInner> m_inner;
+
+    explicit AnyExecutor(sync::Arc<AnyExecutorInner> inner) : m_inner(rstd::move(inner)) {}
+
+public:
+    template<typename E>
+        requires Impled<E, Executor>
+    static auto from_executor(E executor) -> AnyExecutor {
+        return AnyExecutor { sync::Arc<AnyExecutorInner>::make(
+            Box<dyn<Executor>>::make(rstd::move(executor))) };
+    }
+
+    auto clone() const -> AnyExecutor { return AnyExecutor { m_inner.clone() }; }
+
+    auto post_job(ExecutorJob job) -> bool {
+        if (! m_inner) {
+            return false;
+        }
+        return m_inner->post_job(rstd::move(job));
+    }
+
+    template<typename F>
+    auto post(F job) -> bool {
+        return post_job(ExecutorJob::make(rstd::move(job)));
+    }
+
+    auto is_closed() -> bool { return ! m_inner || m_inner->is_closed(); }
+
+    auto into_future() const -> ExecutorAwait<AnyExecutor> {
+        return ExecutorAwait<AnyExecutor> { clone() };
+    }
+};
+
+} // namespace rstd::async
+
+namespace rstd
+{
+
+template<>
+struct Impl<async::Executor, async::AnyExecutor>
+    : LinkClassMethod<async::Executor, async::AnyExecutor> {};
+
+} // namespace rstd
