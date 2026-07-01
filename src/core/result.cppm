@@ -169,11 +169,11 @@ protected:
 
 public:
     /// Returns `true` if the result is `Ok`.
-    constexpr auto is_ok() const noexcept -> bool {
+    [[gnu::always_inline]] inline constexpr auto is_ok() const noexcept -> bool {
         return _cast()._is_ok();
     }
     /// Returns `true` if the result is `Err`.
-    constexpr auto is_err() const noexcept -> bool {
+    [[gnu::always_inline]] inline constexpr auto is_err() const noexcept -> bool {
         return ! is_ok();
     }
 
@@ -642,6 +642,13 @@ public:
 
     template<typename U>
     using rebind = Result<U, error_type>;
+
+    [[gnu::always_inline]] inline constexpr auto is_ok() const noexcept -> bool {
+        return _is_ok();
+    }
+    [[gnu::always_inline]] inline constexpr auto is_err() const noexcept -> bool {
+        return ! is_ok();
+    }
 
     constexpr Result() noexcept(mtp::noex_init<T>)
         requires mtp::init<T>
