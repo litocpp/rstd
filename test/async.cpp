@@ -259,6 +259,26 @@ async::coro<bool> current_thread_has_name() {
     co_return thread::current().name().is_some();
 }
 
+async::coro<void> signal_after_yield(std::atomic<int>& signal) {
+    co_await async::yield_now();
+    signal.store(1, std::memory_order_release);
+}
+
+async::coro<void> signal_after_sleep(std::atomic<int>& signal) {
+    co_await async::sleep(time::Duration::from_millis(1));
+    signal.store(1, std::memory_order_release);
+}
+
+auto wait_for_signal(std::atomic<int>& signal) -> bool {
+    for (int i = 0; i < 100; ++i) {
+        if (signal.load(std::memory_order_acquire) != 0) {
+            return true;
+        }
+        thread::sleep(time::Duration::from_millis(1));
+    }
+    return false;
+}
+
 async::coro<int> join_child() {
     auto handle = async::spawn_local(child_value());
     auto result = co_await rstd::move(handle);
@@ -866,6 +886,40 @@ TEST(AsyncCoro, MultiThreadRuntimeRunsManySpawnedTasks) {
     auto runtime        = runtime_result.unwrap();
 
     EXPECT_EQ(runtime.block_on(join_many_spawned_children()), 2016);
+}
+
+TEST(AsyncCoro, MultiThreadRuntimeSpawnRunsWhileCallerContinues) {
+    auto runtime_result = async::RuntimeBuilder::multi_thread().worker_threads(2).build();
+    auto runtime        = runtime_result.unwrap();
+    auto signal         = std::atomic<int> { 0 };
+
+    auto handle = runtime.spawn(signal_after_yield(signal));
+
+    EXPECT_TRUE(wait_for_signal(signal));
+    auto result = runtime.block_on(rstd::move(handle));
+    ASSERT_TRUE(result.is_ok());
+}
+
+TEST(AsyncCoro, MultiThreadRuntimeDetachedSpawnRunsWhileCallerContinues) {
+    auto runtime_result = async::RuntimeBuilder::multi_thread().worker_threads(2).build();
+    auto runtime        = runtime_result.unwrap();
+    auto signal         = std::atomic<int> { 0 };
+
+    (void)runtime.spawn(signal_after_sleep(signal));
+
+    EXPECT_TRUE(wait_for_signal(signal));
+}
+
+TEST(AsyncCoro, RuntimeHandleCloneSpawnsWhileCallerContinues) {
+    auto runtime_result = async::RuntimeBuilder::multi_thread().worker_threads(2).build();
+    auto runtime        = runtime_result.unwrap();
+    auto handle         = runtime.handle();
+    auto cloned         = handle.clone();
+    auto signal         = std::atomic<int> { 0 };
+
+    (void)cloned.spawn(signal_after_sleep(signal));
+
+    EXPECT_TRUE(wait_for_signal(signal));
 }
 
 TEST(AsyncCoro, MultiThreadRuntimeNamesWorkerThreads) {

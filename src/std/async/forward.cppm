@@ -33,6 +33,8 @@ class JoinHandle;
 
 export class Runtime;
 
+export class RuntimeHandle;
+
 export struct YieldNow;
 
 export class Sleep;

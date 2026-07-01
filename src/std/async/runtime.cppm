@@ -15,6 +15,32 @@ namespace rstd::async
 
 export class RuntimeBuilder;
 
+export class RuntimeHandle {
+    sync::Weak<RuntimeInner> m_inner;
+
+    explicit RuntimeHandle(sync::Weak<RuntimeInner> inner) : m_inner(rstd::move(inner)) {}
+
+    friend class Runtime;
+
+public:
+    RuntimeHandle(const RuntimeHandle&)            = delete;
+    auto operator=(const RuntimeHandle&) -> RuntimeHandle& = delete;
+    RuntimeHandle(RuntimeHandle&&) noexcept                    = default;
+    auto operator=(RuntimeHandle&&) noexcept -> RuntimeHandle& = default;
+    ~RuntimeHandle()                                           = default;
+
+    auto clone() const -> RuntimeHandle { return RuntimeHandle { m_inner.clone() }; }
+
+    template<future::FutureLike F>
+    auto spawn(F future) const -> JoinHandle<future::future_output_t<F>> {
+        auto inner = m_inner.upgrade();
+        if (! inner) {
+            rstd::panic { "RuntimeHandle::spawn called after runtime shutdown" };
+        }
+        return ::spawn_on(*inner.as_ptr().as_raw_ptr(), rstd::move(future));
+    }
+};
+
 export class Runtime {
     sync::Arc<RuntimeInner>       m_inner;
     Vec<thread::JoinHandle<void>> m_workers;
@@ -82,6 +108,8 @@ public:
         return *this;
     }
     ~Runtime() { shutdown(); }
+
+    auto handle() const -> RuntimeHandle { return RuntimeHandle { m_inner.downgrade() }; }
 
     template<future::FutureLike F>
     auto spawn(F future) -> JoinHandle<future::future_output_t<F>> {
