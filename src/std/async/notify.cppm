@@ -182,9 +182,9 @@ public:
     auto operator=(NotifyFuture&&) noexcept -> NotifyFuture& = default;
     ~NotifyFuture() = default;
 
-    auto poll(pin::Pin<mut_ref<NotifyFuture>> self, task::Context& cx)
+    auto poll(mut_ref<NotifyFuture> self, task::Context& cx)
         -> task::Poll<Output> {
-        auto& future = *self.get_unchecked_mut();
+        auto& future = *self;
         if (future.m_completed) {
             rstd::panic { "async::NotifyFuture polled after completion" };
         }
@@ -210,7 +210,7 @@ public:
                     future.m_event.take().unwrap_unchecked());
             }
 
-            auto ready = future.m_readiness.poll(future::pin_mut(future.m_readiness), cx);
+            auto ready = future.m_readiness.poll(future::as_mut_ref(future.m_readiness), cx);
             if (ready.is_pending()) {
                 return task::Poll<Output>::Pending();
             }

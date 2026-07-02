@@ -88,8 +88,8 @@ public:
     Select(Select&&) noexcept        = default;
     auto operator=(Select&&) noexcept -> Select& = default;
 
-    auto poll(pin::Pin<mut_ref<Select>> self, task::Context& cx) -> task::Poll<Output> {
-        auto& value = *self.get_unchecked_mut();
+    auto poll(mut_ref<Select> self, task::Context& cx) -> task::Poll<Output> {
+        auto& value = *self;
         if (value.completed) {
             rstd::panic { "async::Select polled after completion" };
         }
@@ -134,8 +134,8 @@ public:
     Race(Race&&) noexcept        = default;
     auto operator=(Race&&) noexcept -> Race& = default;
 
-    auto poll(pin::Pin<mut_ref<Race>> self, task::Context& cx) -> task::Poll<Output> {
-        auto& value = *self.get_unchecked_mut();
+    auto poll(mut_ref<Race> self, task::Context& cx) -> task::Poll<Output> {
+        auto& value = *self;
         if (value.completed) {
             rstd::panic { "async::Race polled after completion" };
         }

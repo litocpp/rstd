@@ -55,8 +55,8 @@ public:
     explicit ExecutorAwait(E executor)
         : m_executor(rstd::move(executor)), m_state(sync::Arc<ExecutorAwaitState>::make()) {}
 
-    auto poll(pin::Pin<mut_ref<ExecutorAwait>> self, task::Context& cx) -> task::Poll<bool> {
-        auto& value = *self.get_unchecked_mut();
+    auto poll(mut_ref<ExecutorAwait> self, task::Context& cx) -> task::Poll<bool> {
+        auto& value = *self;
         if (value.m_failed) {
             return task::Poll<bool>::Ready(false);
         }

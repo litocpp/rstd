@@ -3,7 +3,6 @@ export import rstd.core;
 import :forward;
 
 using rstd::boxed::Box;
-using rstd::pin::Pin;
 using rstd::sync::atomic::Atomic;
 
 export namespace rstd::sys::sync
@@ -32,23 +31,23 @@ public:
     static OnceBox make() noexcept { return { nullptr }; }
 
     // Unsafe: caller must ensure the value is initialized and observed.
-    auto get_unchecked() const noexcept -> Pin<T&> {
-        return Pin<T&>::make_unchecked(*m_ptr.load(rstd::sync::atomic::Ordering::Relaxed));
+    auto get_unchecked() const noexcept -> T& {
+        return *m_ptr.load(rstd::sync::atomic::Ordering::Relaxed);
     }
 
     template<typename F>
-    auto get_or_init(F&& f) -> Pin<T&> {
+    auto get_or_init(F&& f) -> T& {
         T* p = m_ptr.load(rstd::sync::atomic::Ordering::Acquire);
         if (p) {
-            return Pin<T&>::make_unchecked(*p);
+            return *p;
         }
         return initialize(rstd::forward<F>(f));
     }
 
-    auto take() noexcept -> Option<Pin<Box<T>>> {
+    auto take() noexcept -> Option<Box<T>> {
         T* p = m_ptr.exchange(nullptr, rstd::sync::atomic::Ordering::Relaxed);
         if (p) {
-            return rstd::Some(Pin<Box<T>>::make_unchecked(Box<T>::from_raw(mut_ptr<T>::from_raw_parts(p))));
+            return rstd::Some(Box<T>::from_raw(mut_ptr<T>::from_raw_parts(p)));
 
         }
         return {};
@@ -59,16 +58,16 @@ public:
 
 private:
     template<typename F>
-    auto initialize(F&& f) -> Pin<T&> {
-        T* raw      = rstd::move(f().get_unchecked_mut()).into_raw();
+    auto initialize(F&& f) -> T& {
+        T* raw      = rstd::move(f()).into_raw();
         T* expected = nullptr;
         if (m_ptr.compare_exchange_strong(
                 expected, raw, rstd::sync::atomic::Ordering::Release, rstd::sync::atomic::Ordering::Acquire)) {
-            return Pin<T&>::make_unchecked(*raw);
+            return *raw;
         } else {
-            // Lost the race: destroy our allocation and use the winner's pointer.
-            delete raw;
-            return Pin<T&>::make_unchecked(*expected);
+            auto dropped = Box<T>::from_raw(mut_ptr<T>::from_raw_parts(raw));
+            (void)dropped;
+            return *expected;
         }
     }
 };

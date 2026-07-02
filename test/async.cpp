@@ -12,7 +12,7 @@ namespace
 struct ReadyInt {
     using Output = int;
 
-    auto poll(pin::Pin<mut_ref<ReadyInt>>, task::Context&) -> task::Poll<int> {
+    auto poll(mut_ref<ReadyInt>, task::Context&) -> task::Poll<int> {
         return task::Poll<int>::Ready(7);
     }
 };
@@ -22,7 +22,7 @@ struct TwoPollInt {
 
     int* polls;
 
-    auto poll(pin::Pin<mut_ref<TwoPollInt>>, task::Context& cx) -> task::Poll<int> {
+    auto poll(mut_ref<TwoPollInt>, task::Context& cx) -> task::Poll<int> {
         ++*polls;
         if (*polls == 1) {
             cx.waker().wake_by_ref();
@@ -38,7 +38,7 @@ struct CountReadyInt {
     int* polls;
     int  value;
 
-    auto poll(pin::Pin<mut_ref<CountReadyInt>>, task::Context&) -> task::Poll<int> {
+    auto poll(mut_ref<CountReadyInt>, task::Context&) -> task::Poll<int> {
         ++*polls;
         return task::Poll<int>::Ready(value);
     }
@@ -50,7 +50,7 @@ struct CountPendingInt {
     int* polls;
     int  value;
 
-    auto poll(pin::Pin<mut_ref<CountPendingInt>>, task::Context& cx) -> task::Poll<int> {
+    auto poll(mut_ref<CountPendingInt>, task::Context& cx) -> task::Poll<int> {
         ++*polls;
         if (*polls == 1) {
             cx.waker().wake_by_ref();
@@ -67,7 +67,7 @@ struct IndexedPendingInt {
     int  index;
     int  value;
 
-    auto poll(pin::Pin<mut_ref<IndexedPendingInt>>, task::Context& cx) -> task::Poll<int> {
+    auto poll(mut_ref<IndexedPendingInt>, task::Context& cx) -> task::Poll<int> {
         ++polls[index];
         if (polls[index] == 1) {
             cx.waker().wake_by_ref();
@@ -102,7 +102,7 @@ struct DropPendingInt {
         }
     }
 
-    auto poll(pin::Pin<mut_ref<DropPendingInt>>, task::Context&) -> task::Poll<int> {
+    auto poll(mut_ref<DropPendingInt>, task::Context&) -> task::Poll<int> {
         return task::Poll<int>::Pending();
     }
 };
@@ -112,7 +112,7 @@ struct NeverReadyCount {
 
     int* polls;
 
-    auto poll(pin::Pin<mut_ref<NeverReadyCount>>, task::Context&) -> task::Poll<int> {
+    auto poll(mut_ref<NeverReadyCount>, task::Context&) -> task::Poll<int> {
         ++*polls;
         return task::Poll<int>::Pending();
     }
@@ -135,9 +135,9 @@ struct ExternalWakeInt {
 
     sync::Arc<SavedWakeState> state;
 
-    auto poll(pin::Pin<mut_ref<ExternalWakeInt>> self, task::Context& cx)
+    auto poll(mut_ref<ExternalWakeInt> self, task::Context& cx)
         -> task::Poll<int> {
-        auto& future = *self.get_unchecked_mut();
+        auto& future = *self;
         auto  fields = future.state->fields.lock().unwrap();
 
         ++fields->polls;
@@ -155,9 +155,9 @@ struct CounterStream {
 
     int next { 0 };
 
-    auto poll_next(pin::Pin<mut_ref<CounterStream>> self, task::Context&)
+    auto poll_next(mut_ref<CounterStream> self, task::Context&)
         -> task::Poll<Option<int>> {
-        auto& stream = *self.get_unchecked_mut();
+        auto& stream = *self;
         if (stream.next >= 2) {
             return task::Poll<Option<int>>::Ready(None());
         }
@@ -177,10 +177,10 @@ struct MockAsyncIo {
     bool            flushed { false };
     bool            shutdown { false };
 
-    auto poll_read(pin::Pin<mut_ref<MockAsyncIo>> self,
+    auto poll_read(mut_ref<MockAsyncIo> self,
                    task::Context&                 cx,
                    bytes::BytesMut&               buf) -> task::Poll<io::Result<usize>> {
-        auto& stream = *self.get_unchecked_mut();
+        auto& stream = *self;
         if (stream.read_pending) {
             stream.read_pending = false;
             cx.waker().wake_by_ref();
@@ -193,10 +193,10 @@ struct MockAsyncIo {
         return task::Poll<io::Result<usize>>::Ready(Ok(remaining));
     }
 
-    auto poll_write(pin::Pin<mut_ref<MockAsyncIo>> self,
+    auto poll_write(mut_ref<MockAsyncIo> self,
                     task::Context&                 cx,
                     const bytes::Bytes&            buf) -> task::Poll<io::Result<usize>> {
-        auto& stream = *self.get_unchecked_mut();
+        auto& stream = *self;
         if (stream.write_pending) {
             stream.write_pending = false;
             cx.waker().wake_by_ref();
@@ -207,16 +207,16 @@ struct MockAsyncIo {
         return task::Poll<io::Result<usize>>::Ready(Ok(buf.len()));
     }
 
-    auto poll_flush(pin::Pin<mut_ref<MockAsyncIo>> self, task::Context&)
+    auto poll_flush(mut_ref<MockAsyncIo> self, task::Context&)
         -> task::Poll<io::Result<empty>> {
-        auto& stream  = *self.get_unchecked_mut();
+        auto& stream  = *self;
         stream.flushed = true;
         return task::Poll<io::Result<empty>>::Ready(Ok(empty {}));
     }
 
-    auto poll_shutdown(pin::Pin<mut_ref<MockAsyncIo>> self, task::Context&)
+    auto poll_shutdown(mut_ref<MockAsyncIo> self, task::Context&)
         -> task::Poll<io::Result<empty>> {
-        auto& stream   = *self.get_unchecked_mut();
+        auto& stream   = *self;
         stream.shutdown = true;
         return task::Poll<io::Result<empty>>::Ready(Ok(empty {}));
     }
@@ -226,7 +226,7 @@ static_assert(async::io::AsyncReadLike<MockAsyncIo>);
 static_assert(async::io::AsyncWriteLike<MockAsyncIo>);
 
 struct ErrorAsyncRead {
-    auto poll_read(pin::Pin<mut_ref<ErrorAsyncRead>>,
+    auto poll_read(mut_ref<ErrorAsyncRead>,
                    task::Context&,
                    bytes::BytesMut&) -> task::Poll<io::Result<usize>> {
         return task::Poll<io::Result<usize>>::Ready(
@@ -236,18 +236,18 @@ struct ErrorAsyncRead {
 };
 
 struct ZeroAsyncWrite {
-    auto poll_write(pin::Pin<mut_ref<ZeroAsyncWrite>>,
+    auto poll_write(mut_ref<ZeroAsyncWrite>,
                     task::Context&,
                     const bytes::Bytes&) -> task::Poll<io::Result<usize>> {
         return task::Poll<io::Result<usize>>::Ready(Ok(0u));
     }
 
-    auto poll_flush(pin::Pin<mut_ref<ZeroAsyncWrite>>, task::Context&)
+    auto poll_flush(mut_ref<ZeroAsyncWrite>, task::Context&)
         -> task::Poll<io::Result<empty>> {
         return task::Poll<io::Result<empty>>::Ready(Ok(empty {}));
     }
 
-    auto poll_shutdown(pin::Pin<mut_ref<ZeroAsyncWrite>>, task::Context&)
+    auto poll_shutdown(mut_ref<ZeroAsyncWrite>, task::Context&)
         -> task::Poll<io::Result<empty>> {
         return task::Poll<io::Result<empty>>::Ready(Ok(empty {}));
     }
@@ -623,9 +623,9 @@ struct SharedWakeFuture {
 
     sync::Arc<SharedWakeState> state;
 
-    auto poll(pin::Pin<mut_ref<SharedWakeFuture>> self, task::Context& cx)
+    auto poll(mut_ref<SharedWakeFuture> self, task::Context& cx)
         -> task::Poll<int> {
-        auto& future = *self.get_unchecked_mut();
+        auto& future = *self;
         future.state->waker.register_context(cx);
 
         auto locked = future.state->ready.lock().unwrap_unchecked();
@@ -1498,14 +1498,14 @@ TEST(AsyncCoro, OneShotReceiverDropWakesSenderCancellation) {
 
     {
         auto rx    = rstd::move(channel.get<1>());
-        auto first = tx.poll_canceled(future::pin_mut(tx), cx);
+        auto first = tx.poll_canceled(future::as_mut_ref(tx), cx);
         EXPECT_TRUE(first.is_pending());
         EXPECT_EQ(counts.clones.load(), 1);
     }
 
     EXPECT_EQ(counts.wakes.load(), 1);
 
-    auto second = tx.poll_canceled(future::pin_mut(tx), cx);
+    auto second = tx.poll_canceled(future::as_mut_ref(tx), cx);
     ASSERT_TRUE(second.is_ready());
     rstd::move(second).take();
 }

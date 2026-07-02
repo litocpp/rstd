@@ -12,7 +12,7 @@ namespace
 struct ReadyInt {
     using Output = int;
 
-    auto poll(pin::Pin<mut_ref<ReadyInt>>, task::Context&) -> task::Poll<int> {
+    auto poll(mut_ref<ReadyInt>, task::Context&) -> task::Poll<int> {
         return task::Poll<int>::Ready(1);
     }
 };

@@ -19,7 +19,6 @@ export import :enum_;
 export import :task;
 export import :future;
 
-export import :pin;
 export import :panicking;
 export import :hint;
 export import :str;

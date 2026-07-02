@@ -16,8 +16,8 @@ export struct YieldNow {
 
     bool yielded { false };
 
-    auto poll(pin::Pin<mut_ref<YieldNow>> self, task::Context& cx) -> task::Poll<void> {
-        auto& value = *self.get_unchecked_mut();
+    auto poll(mut_ref<YieldNow> self, task::Context& cx) -> task::Poll<void> {
+        auto& value = *self;
         if (! value.yielded) {
             value.yielded = true;
             cx.waker().wake_by_ref();
@@ -56,8 +56,8 @@ public:
 
     ~Sleep() { cancel(); }
 
-    auto poll(pin::Pin<mut_ref<Sleep>> self, task::Context& cx) -> task::Poll<void> {
-        auto& sleep = *self.get_unchecked_mut();
+    auto poll(mut_ref<Sleep> self, task::Context& cx) -> task::Poll<void> {
+        auto& sleep = *self;
         auto* rt = CURRENT_RUNTIME;
         if (rt == nullptr) {
             rstd::panic { "async::sleep polled without an async runtime" };
@@ -105,8 +105,8 @@ public:
     Timeout(Timeout&&) noexcept        = default;
     auto operator=(Timeout&&) noexcept -> Timeout& = default;
 
-    auto poll(pin::Pin<mut_ref<Timeout>> self, task::Context& cx) -> task::Poll<Output> {
-        auto& value = *self.get_unchecked_mut();
+    auto poll(mut_ref<Timeout> self, task::Context& cx) -> task::Poll<Output> {
+        auto& value = *self;
         if (value.completed) {
             rstd::panic { "async::Timeout polled after completion" };
         }

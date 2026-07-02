@@ -172,8 +172,8 @@ public:
 
     auto is_canceled() const -> bool { return ! state || state->is_canceled(); }
 
-    auto poll_canceled(pin::Pin<mut_ref<Sender>> self, task::Context& cx) -> task::Poll<void> {
-        auto& value = *self.get_unchecked_mut();
+    auto poll_canceled(mut_ref<Sender> self, task::Context& cx) -> task::Poll<void> {
+        auto& value = *self;
         if (! value.active || ! value.state) {
             return task::Poll<void>::Ready();
         }
@@ -215,8 +215,8 @@ public:
         }
     }
 
-    auto poll(pin::Pin<mut_ref<Receiver>> self, task::Context& cx) -> task::Poll<Output> {
-        auto& value = *self.get_unchecked_mut();
+    auto poll(mut_ref<Receiver> self, task::Context& cx) -> task::Poll<Output> {
+        auto& value = *self;
         if (! value.active || ! value.state) {
             return task::Poll<Output>::Ready(Err(Canceled {}));
         }

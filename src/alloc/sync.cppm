@@ -5,7 +5,6 @@ export import rstd.core;
 
 using rstd::mem::maybe_uninit::maybe_uninit_traits;
 using rstd::mem::maybe_uninit::MaybeUninit;
-using rstd::pin::Pin;
 using rstd::sync::atomic::Atomic;
 using rstd::sync::atomic::fence;
 namespace mtp = rstd::mtp;
@@ -291,15 +290,6 @@ public:
         requires Impled<T, Sized>
     {
         return Arc<MaybeUninit<T>>::make(MaybeUninit<T>::uninit());
-    }
-
-    /// Creates a new `Pin<Arc<T>>`. If `T` does not implement `Unpin`, then
-    /// the value will be pinned in memory and unable to be moved.
-    ///
-    /// This is useful for types that must not be moved after creation,
-    /// such as self-referential structures.
-    static auto pin(rstd::param_t<T> value) -> Pin<Arc<T>> {
-        return Pin<Arc<T>>::make_unchecked(Arc::make(rstd::param_forward<T>(value)));
     }
 
     /// Reconstructs an `Arc` from an `ArcRaw` previously obtained via `into_raw`.

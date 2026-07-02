@@ -146,10 +146,10 @@ public:
         return Err(rstd::move(error));
     }
 
-    auto poll_read(pin::Pin<mut_ref<TcpStream>> self,
+    auto poll_read(mut_ref<TcpStream> self,
                    task::Context&               cx,
                    bytes::BytesMut&             buf) -> task::Poll<io::Result<usize>> {
-        auto& stream = *self.get_unchecked_mut();
+        auto& stream = *self;
         auto  event  = Option<async::ReadyEvent> {};
         while (true) {
             auto chunk  = buf.chunk_mut();
@@ -185,10 +185,10 @@ public:
         }
     }
 
-    auto poll_write(pin::Pin<mut_ref<TcpStream>> self,
+    auto poll_write(mut_ref<TcpStream> self,
                     task::Context&               cx,
                     bytes::Bytes const&          buf) -> task::Poll<io::Result<usize>> {
-        auto& stream = *self.get_unchecked_mut();
+        auto& stream = *self;
         auto  event  = Option<async::ReadyEvent> {};
         while (true) {
             auto result = stream.m_socket.send(buf.data(), buf.len());
@@ -221,14 +221,14 @@ public:
         }
     }
 
-    auto poll_flush(pin::Pin<mut_ref<TcpStream>>, task::Context&)
+    auto poll_flush(mut_ref<TcpStream>, task::Context&)
         -> task::Poll<io::Result<empty>> {
         return task::Poll<io::Result<empty>>::Ready(Ok(empty {}));
     }
 
-    auto poll_shutdown(pin::Pin<mut_ref<TcpStream>> self, task::Context&)
+    auto poll_shutdown(mut_ref<TcpStream> self, task::Context&)
         -> task::Poll<io::Result<empty>> {
-        auto& stream = *self.get_unchecked_mut();
+        auto& stream = *self;
         return task::Poll<io::Result<empty>>::Ready(stream.shutdown());
     }
 };

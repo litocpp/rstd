@@ -262,9 +262,9 @@ public:
         }
     }
 
-    auto poll(pin::Pin<mut_ref<Completion>> self, task::Context& cx)
+    auto poll(mut_ref<Completion> self, task::Context& cx)
         -> task::Poll<Output> {
-        auto& completion = *self.get_unchecked_mut();
+        auto& completion = *self;
         if (! completion.m_active || ! completion.m_state) {
             return task::Poll<Output>::Ready(Err(CompletionError<E>::canceled()));
         }
@@ -282,7 +282,7 @@ public:
             }
 
             auto notified =
-                completion.m_wait->poll(future::pin_mut(*completion.m_wait), cx);
+                completion.m_wait->poll(future::as_mut_ref(*completion.m_wait), cx);
             if (notified.is_pending()) {
                 return task::Poll<Output>::Pending();
             }

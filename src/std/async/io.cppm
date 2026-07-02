@@ -11,7 +11,7 @@ export struct AsyncRead {
     struct Api {
         using Trait = AsyncRead;
 
-        auto poll_read(pin::Pin<mut_ref<Self>> self,
+        auto poll_read(mut_ref<Self> self,
                        task::Context&          cx,
                        bytes::BytesMut&        buf) -> task::Poll<::rstd::io::Result<usize>> {
             return trait_call<0>(this, self, cx, buf);
@@ -27,18 +27,18 @@ export struct AsyncWrite {
     struct Api {
         using Trait = AsyncWrite;
 
-        auto poll_write(pin::Pin<mut_ref<Self>> self,
+        auto poll_write(mut_ref<Self> self,
                         task::Context&          cx,
                         const bytes::Bytes&     buf) -> task::Poll<::rstd::io::Result<usize>> {
             return trait_call<0>(this, self, cx, buf);
         }
 
-        auto poll_flush(pin::Pin<mut_ref<Self>> self, task::Context& cx)
+        auto poll_flush(mut_ref<Self> self, task::Context& cx)
             -> task::Poll<::rstd::io::Result<empty>> {
             return trait_call<1>(this, self, cx);
         }
 
-        auto poll_shutdown(pin::Pin<mut_ref<Self>> self, task::Context& cx)
+        auto poll_shutdown(mut_ref<Self> self, task::Context& cx)
             -> task::Poll<::rstd::io::Result<empty>> {
             return trait_call<2>(this, self, cx);
         }
@@ -52,7 +52,7 @@ export template<typename R>
 concept AsyncReadInClass = requires(mtp::rm_cvf<R>& reader,
                                     task::Context&  cx,
                                     bytes::BytesMut& buf) {
-    { reader.poll_read(future::pin_mut(reader), cx, buf) }
+    { reader.poll_read(future::as_mut_ref(reader), cx, buf) }
         -> mtp::same_as<task::Poll<::rstd::io::Result<usize>>>;
 };
 
@@ -63,11 +63,11 @@ export template<typename W>
 concept AsyncWriteInClass = requires(mtp::rm_cvf<W>& writer,
                                      task::Context&  cx,
                                      const bytes::Bytes& buf) {
-    { writer.poll_write(future::pin_mut(writer), cx, buf) }
+    { writer.poll_write(future::as_mut_ref(writer), cx, buf) }
         -> mtp::same_as<task::Poll<::rstd::io::Result<usize>>>;
-    { writer.poll_flush(future::pin_mut(writer), cx) }
+    { writer.poll_flush(future::as_mut_ref(writer), cx) }
         -> mtp::same_as<task::Poll<::rstd::io::Result<empty>>>;
-    { writer.poll_shutdown(future::pin_mut(writer), cx) }
+    { writer.poll_shutdown(future::as_mut_ref(writer), cx) }
         -> mtp::same_as<task::Poll<::rstd::io::Result<empty>>>;
 };
 
@@ -80,9 +80,9 @@ auto poll_read(R& reader, task::Context& cx, bytes::BytesMut& buf)
     requires AsyncReadLike<R>
 {
     if constexpr (AsyncReadInClass<R>) {
-        return reader.poll_read(future::pin_mut(reader), cx, buf);
+        return reader.poll_read(future::as_mut_ref(reader), cx, buf);
     } else {
-        return as<AsyncRead>(reader).poll_read(future::pin_mut(reader), cx, buf);
+        return as<AsyncRead>(reader).poll_read(future::as_mut_ref(reader), cx, buf);
     }
 }
 
@@ -92,9 +92,9 @@ auto poll_write(W& writer, task::Context& cx, const bytes::Bytes& buf)
     requires AsyncWriteLike<W>
 {
     if constexpr (AsyncWriteInClass<W>) {
-        return writer.poll_write(future::pin_mut(writer), cx, buf);
+        return writer.poll_write(future::as_mut_ref(writer), cx, buf);
     } else {
-        return as<AsyncWrite>(writer).poll_write(future::pin_mut(writer), cx, buf);
+        return as<AsyncWrite>(writer).poll_write(future::as_mut_ref(writer), cx, buf);
     }
 }
 
@@ -103,9 +103,9 @@ auto poll_flush(W& writer, task::Context& cx) -> task::Poll<::rstd::io::Result<e
     requires AsyncWriteLike<W>
 {
     if constexpr (AsyncWriteInClass<W>) {
-        return writer.poll_flush(future::pin_mut(writer), cx);
+        return writer.poll_flush(future::as_mut_ref(writer), cx);
     } else {
-        return as<AsyncWrite>(writer).poll_flush(future::pin_mut(writer), cx);
+        return as<AsyncWrite>(writer).poll_flush(future::as_mut_ref(writer), cx);
     }
 }
 
@@ -114,9 +114,9 @@ auto poll_shutdown(W& writer, task::Context& cx) -> task::Poll<::rstd::io::Resul
     requires AsyncWriteLike<W>
 {
     if constexpr (AsyncWriteInClass<W>) {
-        return writer.poll_shutdown(future::pin_mut(writer), cx);
+        return writer.poll_shutdown(future::as_mut_ref(writer), cx);
     } else {
-        return as<AsyncWrite>(writer).poll_shutdown(future::pin_mut(writer), cx);
+        return as<AsyncWrite>(writer).poll_shutdown(future::as_mut_ref(writer), cx);
     }
 }
 
@@ -137,8 +137,8 @@ public:
     ReadFuture(ReadFuture&&) noexcept                    = default;
     auto operator=(ReadFuture&&) noexcept -> ReadFuture& = default;
 
-    auto poll(pin::Pin<mut_ref<ReadFuture>> self, task::Context& cx) -> task::Poll<Output> {
-        auto& future = *self.get_unchecked_mut();
+    auto poll(mut_ref<ReadFuture> self, task::Context& cx) -> task::Poll<Output> {
+        auto& future = *self;
         if (future.completed) {
             rstd::panic { "async::io::ReadFuture polled after completion" };
         }
@@ -168,8 +168,8 @@ public:
     WriteFuture(WriteFuture&&) noexcept                    = default;
     auto operator=(WriteFuture&&) noexcept -> WriteFuture& = default;
 
-    auto poll(pin::Pin<mut_ref<WriteFuture>> self, task::Context& cx) -> task::Poll<Output> {
-        auto& future = *self.get_unchecked_mut();
+    auto poll(mut_ref<WriteFuture> self, task::Context& cx) -> task::Poll<Output> {
+        auto& future = *self;
         if (future.completed) {
             rstd::panic { "async::io::WriteFuture polled after completion" };
         }
@@ -202,9 +202,9 @@ public:
     ReadExactFuture(ReadExactFuture&&) noexcept                    = default;
     auto operator=(ReadExactFuture&&) noexcept -> ReadExactFuture& = default;
 
-    auto poll(pin::Pin<mut_ref<ReadExactFuture>> self, task::Context& cx)
+    auto poll(mut_ref<ReadExactFuture> self, task::Context& cx)
         -> task::Poll<Output> {
-        auto& future = *self.get_unchecked_mut();
+        auto& future = *self;
         if (future.completed) {
             rstd::panic { "async::io::ReadExactFuture polled after completion" };
         }
@@ -253,9 +253,9 @@ public:
     WriteAllFuture(WriteAllFuture&&) noexcept                    = default;
     auto operator=(WriteAllFuture&&) noexcept -> WriteAllFuture& = default;
 
-    auto poll(pin::Pin<mut_ref<WriteAllFuture>> self, task::Context& cx)
+    auto poll(mut_ref<WriteAllFuture> self, task::Context& cx)
         -> task::Poll<Output> {
-        auto& future = *self.get_unchecked_mut();
+        auto& future = *self;
         if (future.completed) {
             rstd::panic { "async::io::WriteAllFuture polled after completion" };
         }
@@ -303,8 +303,8 @@ public:
     FlushFuture(FlushFuture&&) noexcept                    = default;
     auto operator=(FlushFuture&&) noexcept -> FlushFuture& = default;
 
-    auto poll(pin::Pin<mut_ref<FlushFuture>> self, task::Context& cx) -> task::Poll<Output> {
-        auto& future = *self.get_unchecked_mut();
+    auto poll(mut_ref<FlushFuture> self, task::Context& cx) -> task::Poll<Output> {
+        auto& future = *self;
         if (future.completed) {
             rstd::panic { "async::io::FlushFuture polled after completion" };
         }
@@ -332,9 +332,9 @@ public:
     ShutdownFuture(ShutdownFuture&&) noexcept                    = default;
     auto operator=(ShutdownFuture&&) noexcept -> ShutdownFuture& = default;
 
-    auto poll(pin::Pin<mut_ref<ShutdownFuture>> self, task::Context& cx)
+    auto poll(mut_ref<ShutdownFuture> self, task::Context& cx)
         -> task::Poll<Output> {
-        auto& future = *self.get_unchecked_mut();
+        auto& future = *self;
         if (future.completed) {
             rstd::panic { "async::io::ShutdownFuture polled after completion" };
         }

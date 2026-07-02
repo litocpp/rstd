@@ -804,9 +804,9 @@ public:
 
     ~ReadinessFuture() { cancel(); }
 
-    auto poll(pin::Pin<mut_ref<ReadinessFuture>> self, task::Context& cx)
+    auto poll(mut_ref<ReadinessFuture> self, task::Context& cx)
         -> task::Poll<Output> {
-        auto& future = *self.get_unchecked_mut();
+        auto& future = *self;
         future.m_started = true;
         auto result = future.m_registration->poll_readiness(cx, future.m_interest, future.m_waiter_id);
         if (result.is_ready()) {

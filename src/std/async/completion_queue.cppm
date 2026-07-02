@@ -141,9 +141,9 @@ public:
     auto operator=(CompletionQueueNext&&) noexcept -> CompletionQueueNext& = default;
     ~CompletionQueueNext()                                                = default;
 
-    auto poll(pin::Pin<mut_ref<CompletionQueueNext>> self, task::Context& cx)
+    auto poll(mut_ref<CompletionQueueNext> self, task::Context& cx)
         -> task::Poll<Output> {
-        auto& next = *self.get_unchecked_mut();
+        auto& next = *self;
         if (next.m_completed) {
             rstd::panic { "async::CompletionQueueNext polled after completion" };
         }
@@ -160,7 +160,7 @@ public:
                 next.m_wait = Some(next.m_notify.notified());
             }
 
-            auto notified = next.m_wait->poll(future::pin_mut(*next.m_wait), cx);
+            auto notified = next.m_wait->poll(future::as_mut_ref(*next.m_wait), cx);
             if (notified.is_pending()) {
                 return task::Poll<Output>::Pending();
             }

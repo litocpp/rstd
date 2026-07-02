@@ -54,8 +54,8 @@ public:
     Join(Join&&) noexcept        = default;
     auto operator=(Join&&) noexcept -> Join& = default;
 
-    auto poll(pin::Pin<mut_ref<Join>> self, task::Context& cx) -> task::Poll<Output> {
-        auto& value = *self.get_unchecked_mut();
+    auto poll(mut_ref<Join> self, task::Context& cx) -> task::Poll<Output> {
+        auto& value = *self;
         if (value.completed) {
             rstd::panic { "async::Join polled after completion" };
         }
@@ -97,8 +97,8 @@ public:
     JoinAll(JoinAll&&) noexcept        = default;
     auto operator=(JoinAll&&) noexcept -> JoinAll& = default;
 
-    auto poll(pin::Pin<mut_ref<JoinAll>> self, task::Context& cx) -> task::Poll<Output> {
-        auto& value = *self.get_unchecked_mut();
+    auto poll(mut_ref<JoinAll> self, task::Context& cx) -> task::Poll<Output> {
+        auto& value = *self;
         if (value.completed) {
             rstd::panic { "async::JoinAll polled after completion" };
         }

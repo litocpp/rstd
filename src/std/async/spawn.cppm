@@ -225,8 +225,8 @@ public:
 
     auto is_finished() const -> bool { return state->is_ready(); }
 
-    auto poll(pin::Pin<mut_ref<JoinHandle>> self, task::Context& cx) -> task::Poll<Output> {
-        return self.get_unchecked_mut()->state->poll(cx);
+    auto poll(mut_ref<JoinHandle> self, task::Context& cx) -> task::Poll<Output> {
+        return self->state->poll(cx);
     }
 };
 

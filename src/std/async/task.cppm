@@ -141,8 +141,8 @@ public:
         }
     }
 
-    auto poll(pin::Pin<mut_ref<coro>> self, task::Context& cx) -> task::Poll<T> {
-        auto& task = *self.get_unchecked_mut();
+    auto poll(mut_ref<coro> self, task::Context& cx) -> task::Poll<T> {
+        auto& task = *self;
         if (! task.m_handle) {
             rstd::panic { "empty async coro polled" };
         }
@@ -239,8 +239,8 @@ public:
         }
     }
 
-    auto poll(pin::Pin<mut_ref<coro>> self, task::Context& cx) -> task::Poll<void> {
-        auto& task = *self.get_unchecked_mut();
+    auto poll(mut_ref<coro> self, task::Context& cx) -> task::Poll<void> {
+        auto& task = *self;
         if (! task.m_handle) {
             rstd::panic { "empty async coro polled" };
         }

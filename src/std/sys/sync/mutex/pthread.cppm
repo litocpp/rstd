@@ -25,16 +25,16 @@ export class Mutex {
 public:
     static auto make() -> Mutex { return {}; }
 
-    void lock() { get()->lock(); }
+    void lock() { get().lock(); }
 
-    bool try_lock() { return get()->try_lock(); }
+    bool try_lock() { return get().try_lock(); }
 
-    void unlock() { get()->unlock(); }
+    void unlock() { get().unlock(); }
 
     ~Mutex() {
         if (! pal) return;
         if (auto opt = pal.take()) {
-            auto& p = opt->get_unchecked_mut();
+            auto& p = *opt;
             if (p->try_lock()) {
                 p->unlock();
             } else {
@@ -46,10 +46,9 @@ public:
     }
 
 private:
-    auto get() -> Pin<pal::Mutex&> {
-        return pal.get_or_init([]() -> Pin<Box<pal::Mutex>> {
-            auto pal = Box<pal::Mutex>::pin(pal::Mutex::make());
-            return pal;
+    auto get() -> pal::Mutex& {
+        return pal.get_or_init([]() -> Box<pal::Mutex> {
+            return Box<pal::Mutex>::make(pal::Mutex::make());
         });
     }
 };

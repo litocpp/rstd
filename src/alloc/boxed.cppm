@@ -9,7 +9,6 @@ using alloc::handle_alloc_error;
 using rstd::alloc::Allocator;
 using rstd::alloc::Layout;
 using rstd::mem::manually_drop::ManuallyDrop;
-using rstd::pin::Pin;
 using rstd::ptr_::non_null::NonNull;
 namespace mtp = rstd::mtp;
 using namespace rstd::prelude;
@@ -92,15 +91,6 @@ public:
         auto p = res.unwrap_unchecked().as_mut_ptr().template cast<U>();
         new (p.as_raw_ptr()) U(rstd::forward<U>(in));
         return from_raw(T::from_ptr(p.as_raw_ptr()));
-    }
-
-    /// Constructs a new `Pin<Box<T>>` by moving the value onto the heap.
-    /// \param in The value to pin on the heap.
-    /// \return A pinned `Box` owning the value.
-    static auto pin(T&& in) -> Pin<Box>
-        requires Impled<T, Sized>
-    {
-        return Pin<Box>::make_unchecked(make(rstd::forward<T>(in)));
     }
 
     /// Constructs a `Box` from a raw mutable pointer.

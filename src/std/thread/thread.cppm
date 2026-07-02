@@ -11,7 +11,6 @@ import rstd.alloc;
 using alloc::sync::Arc;
 using alloc::sync::ArcRaw;
 using rstd::boxed::Box;
-using rstd::pin::Pin;
 using rstd::string::String;
 using rstd::sys::sync::thread_parking::Parker;
 
@@ -76,28 +75,26 @@ struct alignas(8) Inner {
 /// Threads are represented by the `Thread` type. Each thread has a unique `ThreadId`,
 /// an optional name, and a parker for blocking/unblocking.
 export class Thread : public DefaultInClass<Thread, clone::Clone> {
-    Pin<Arc<Inner>> inner;
+    Arc<Inner> inner;
 
-    explicit Thread(Pin<Arc<Inner>> inner): inner(rstd::move(inner)) {}
+    explicit Thread(Arc<Inner> inner): inner(rstd::move(inner)) {}
 
 public:
     USE_TRAIT(Thread)
 
     Thread(const Thread& other) noexcept
-        : inner(Pin<Arc<Inner>>::make_unchecked(as<clone::Clone>(other.inner.get_ref()).clone())) {}
+        : inner(as<clone::Clone>(other.inner).clone()) {}
     Thread(Thread&&) noexcept = default;
     Thread& operator=(const Thread& other) noexcept {
         if (this != &other) {
-            inner =
-                Pin<Arc<Inner>>::make_unchecked(as<clone::Clone>(other.inner.get_ref()).clone());
+            inner = as<clone::Clone>(other.inner).clone();
         }
         return *this;
     }
     Thread& operator=(Thread&&) noexcept = default;
 
     auto clone() const -> Thread {
-        auto arc = as<clone::Clone>(inner.get_ref()).clone();
-        return Thread { Pin<Arc<Inner>>::make_unchecked(rstd::move(arc)) };
+        return Thread { as<clone::Clone>(inner).clone() };
     }
 
     /// Creates a new thread handle.
@@ -112,21 +109,19 @@ public:
 
         ::new (ptr) Inner { .name { rstd::move(thread_name) }, .id { id }, .parker {} };
 
-        auto pinned = Pin<Arc<Inner>>::make_unchecked(arc.assume_init());
-
-        return Thread { rstd::move(pinned) };
+        return Thread { arc.assume_init() };
     }
 
     /// Gets the thread's unique identifier.
-    auto id() const noexcept -> ThreadId { return inner.get_ref()->id; }
+    auto id() const noexcept -> ThreadId { return inner->id; }
 
     /// Gets the thread's name as a string reference if available.
     /// Returns None if no name was set.
     auto name() const -> Option<ThreadNameString> {
-        if (! inner.get_ref()) {
-            rstd::panic{"Thread::name() called with null Arc in Pin"};
+        if (! inner) {
+            rstd::panic{"Thread::name() called with null Arc"};
         }
-        if (auto& name = inner->as_ptr()->name; name) {
+        if (auto& name = inner->name; name) {
             return name.clone();
         } else if (main_thread::get() == Some(id())) {
             return Some(ThreadNameString { ffi::CString::from_raw_parts("main") });
@@ -140,26 +135,26 @@ public:
     /// Every thread is equipped with some basic low-level blocking support, via
     /// the park() function and the unpark() method. These can be used as a more
     /// CPU-efficient implementation of a spinlock.
-    void unpark() const noexcept { inner->as_ptr()->parker.unpark(); }
+    void unpark() const noexcept { inner->parker.unpark(); }
 
     /// Like the public park, but callable on any handle.
     ///
     /// # Safety
     /// May only be called from the thread to which this handle belongs.
-    void park() const { inner->as_ptr()->parker.park(); }
+    void park() const { inner->parker.park(); }
 
     /// Like the public park_timeout, but callable on any handle.
     ///
     /// # Safety
     /// May only be called from the thread to which this handle belongs.
     void park_timeout(rstd::time::Duration timeout) const {
-        inner->as_ptr()->parker.park_timeout(timeout);
+        inner->parker.park_timeout(timeout);
     }
 
     /// Gets the C string representation of the thread name, if available.
     auto cname() const noexcept -> Option<ref<ffi::CStr>> {
-        if (inner.get_ref()->name.is_some()) {
-            return Some(inner.get_ref()->name.as_ref().unwrap().as_cstr());
+        if (inner->name.is_some()) {
+            return Some(inner->name.as_ref().unwrap().as_cstr());
         }
         if (main_thread::get() == Some(id())) {
             return Some(ffi::CStr::from_ptr("main"));
@@ -167,11 +162,10 @@ public:
         return None();
     }
 
-    auto into_raw() { return inner->into_raw().into_raw(); }
+    auto into_raw() { return inner.into_raw().into_raw(); }
 
     static auto from_raw(voidp p) -> Thread {
-        return Thread { Pin<Arc<Inner>>::make_unchecked(
-            Arc<Inner>::from_raw(ArcRaw<Inner>::from_raw(p))) };
+        return Thread { Arc<Inner>::from_raw(ArcRaw<Inner>::from_raw(p)) };
     }
 
     auto set_current() && -> Result<empty, Thread>;

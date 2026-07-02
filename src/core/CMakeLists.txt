@@ -45,7 +45,6 @@ target_sources(
           panic.cppm
           panicking.cppm
           choice.cppm
-         pin.cppm
          hint.cppm
          memchr.cppm
          cmp.cppm
