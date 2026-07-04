@@ -223,14 +223,22 @@ public:
         return b;
     }
 
-    /// Appends an element to the back of the vector by moving it.
-    /// \param value The value to append.
-    constexpr void push(T&& value) {
+    /// Constructs an element in-place at the back of the vector.
+    template<typename... Args>
+    constexpr T& emplace_back(Args&&... args) {
         if (m_len == m_buf.cap) {
             m_buf.grow(m_buf.cap == 0 ? 4 : m_buf.cap * 2);
         }
-        new (m_buf.ptr.as_mut_ptr().as_raw_ptr() + m_len) T(rstd::move(value));
+        auto* slot = m_buf.ptr.as_mut_ptr().as_raw_ptr() + m_len;
+        new (slot) T(rstd::forward<Args>(args)...);
         m_len++;
+        return *slot;
+    }
+
+    /// Appends an element to the back of the vector by moving it.
+    /// \param value The value to append.
+    constexpr void push(T&& value) {
+        (void)emplace_back(rstd::move(value));
     }
 
     /// Removes the last element from the vector and returns it, or `None` if empty.
