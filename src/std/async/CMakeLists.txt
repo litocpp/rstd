@@ -3,7 +3,9 @@ set(RSTD_ASYNC_SOURCES
     async/forward.cppm
     async/atomic_waker.cppm
     async/executor.cppm
+    async/awaitable.cppm
     async/task.cppm
+    async/runtime_driver.cppm
     async/join.cppm
     async/select.cppm
     async/oneshot.cppm

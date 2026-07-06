@@ -17,6 +17,29 @@ struct ReadyInt {
     }
 };
 
+struct IntoReadyInt {
+    auto into_future() -> ReadyInt { return ReadyInt {}; }
+};
+
+struct NonAwaitable {};
+
+static_assert(async::AwaitableLike<ReadyInt>);
+static_assert(async::AwaitableLike<IntoReadyInt>);
+static_assert(async::AwaitableLike<async::Completion<int>>);
+static_assert(async::AwaitableLike<async::CompletionQueueNext<int>>);
+static_assert(async::AwaitableLike<async::coro<int>>);
+static_assert(! async::AwaitableLike<NonAwaitable>);
+static_assert(! future::FutureLike<async::coro<int>>);
+static_assert(! future::FutureLike<async::Completion<int>>);
+static_assert(! future::FutureLike<async::CompletionQueueNext<int>>);
+static_assert(mtp::same_as<async::await_output_t<ReadyInt>, int>);
+static_assert(mtp::same_as<async::await_output_t<IntoReadyInt>, int>);
+static_assert(mtp::same_as<async::await_output_t<async::coro<int>>, int>);
+static_assert(mtp::same_as<async::await_output_t<async::Completion<int>>,
+                           Result<int, async::CompletionError<empty>>>);
+static_assert(mtp::same_as<async::await_output_t<async::CompletionQueueNext<int>>,
+                           io::Result<Option<int>>>);
+
 struct TwoPollInt {
     using Output = int;
 
@@ -263,6 +286,16 @@ async::coro<int> lazy_value(int& counter) {
 async::coro<int> await_two_poll(int& polls) {
     auto value = co_await TwoPollInt { &polls };
     co_return value + 1;
+}
+
+async::coro<int> await_into_future() {
+    co_return co_await IntoReadyInt {};
+}
+
+async::coro<int> join_spawned_into_future() {
+    auto handle = async::spawn(IntoReadyInt {});
+    auto result = co_await rstd::move(handle);
+    co_return result.unwrap();
 }
 
 async::coro<int> child_value() {
@@ -979,28 +1012,23 @@ TEST(AsyncExecutor, PostFailsAfterClose) {
     EXPECT_EQ(context.run_ready(), usize { 0 });
 }
 
-TEST(AsyncExecutor, CoAwaitExecutorCompletesAfterRunReady) {
+TEST(AsyncExecutor, CoAwaitExecutorCompletesThroughRuntime) {
     auto context = async::LocalExecutorContext::make();
     auto ex      = async::AnyExecutor::from_executor(context.executor());
     int  value   = 0;
-    auto future  = await_executor_once(ex.clone(), value);
 
-    auto counts = WakerCounts {};
-    auto waker  = task::Waker::from_raw(task::RawWaker::from_raw_parts(
-        &counts,
-        rstd::addressof(COUNT_WAKER_VTABLE)));
-    auto cx = task::Context::from_waker(waker);
+    auto worker = thread::spawn([&context] {
+        for (int i = 0; i < 1000; ++i) {
+            if (context.run_ready() != 0) {
+                return true;
+            }
+            thread::sleep(time::Duration::from_millis(1));
+        }
+        return false;
+    }).unwrap();
 
-    auto first = future::poll(future, cx);
-    EXPECT_TRUE(first.is_pending());
-    EXPECT_EQ(value, 1);
-
-    EXPECT_EQ(context.run_ready(), usize { 1 });
-    EXPECT_EQ(counts.wakes.load(), 1);
-
-    auto second = future::poll(future, cx);
-    ASSERT_TRUE(second.is_ready());
-    EXPECT_EQ(rstd::move(second).take(), 2);
+    EXPECT_EQ(async::block_on(await_executor_once(ex.clone(), value)), 2);
+    EXPECT_TRUE(rstd::move(worker).join().unwrap());
     EXPECT_EQ(value, 2);
 }
 
@@ -1049,6 +1077,26 @@ TEST(AsyncCoro, CoroutineRePollsPendingChildAfterWake) {
     int polls = 0;
     EXPECT_EQ(async::block_on(await_two_poll(polls)), 42);
     EXPECT_EQ(polls, 2);
+}
+
+TEST(AsyncCoro, CoroutineAwaitsIntoFutureAdapter) {
+    EXPECT_EQ(async::block_on(await_into_future()), 7);
+}
+
+TEST(AsyncCoro, BlockOnAwaitsIntoFutureAdapter) {
+    EXPECT_EQ(async::block_on(IntoReadyInt {}), 7);
+}
+
+TEST(AsyncCoro, SpawnAwaitsIntoFutureAdapter) {
+    EXPECT_EQ(async::block_on(join_spawned_into_future()), 7);
+}
+
+TEST(AsyncCoro, RuntimeHandleSpawnsIntoFutureAdapter) {
+    auto runtime = async::RuntimeBuilder::multi_thread().worker_threads(1).build().unwrap();
+    auto handle  = runtime.handle();
+    auto joined  = handle.spawn(IntoReadyInt {});
+
+    EXPECT_EQ(runtime.block_on(rstd::move(joined)).unwrap(), 7);
 }
 
 TEST(AsyncCoro, SpawnLocalJoinHandle) {
@@ -1196,6 +1244,39 @@ TEST(AsyncCoro, CompletionCompletesCurrentThreadRuntimeFromExternalThread) {
 
     auto completed = rstd::move(handle).join().unwrap();
     ASSERT_TRUE(completed.is_ok());
+}
+
+TEST(AsyncCoro, BlockOnAwaitsCompletionDirectly) {
+    auto completion_result = async::Completion<int>::make();
+    ASSERT_TRUE(completion_result.is_ok());
+    auto pair       = rstd::move(completion_result).unwrap_unchecked();
+    auto completion = rstd::move(pair.get<0>());
+    auto completer  = rstd::move(pair.get<1>());
+
+    ASSERT_TRUE(completer.complete(55).is_ok());
+
+    auto result = async::block_on(rstd::move(completion));
+    ASSERT_TRUE(result.is_ok());
+    EXPECT_EQ(rstd::move(result).unwrap(), 55);
+}
+
+TEST(AsyncCoro, SpawnAwaitsCompletionDirectly) {
+    auto runtime = async::Runtime {};
+
+    auto completion_result = async::Completion<int>::make();
+    ASSERT_TRUE(completion_result.is_ok());
+    auto pair       = rstd::move(completion_result).unwrap_unchecked();
+    auto completion = rstd::move(pair.get<0>());
+    auto completer  = rstd::move(pair.get<1>());
+
+    auto joined = runtime.spawn(rstd::move(completion));
+    ASSERT_TRUE(completer.complete(66).is_ok());
+
+    auto join_result = runtime.block_on(rstd::move(joined));
+    ASSERT_TRUE(join_result.is_ok());
+    auto result = rstd::move(join_result).unwrap();
+    ASSERT_TRUE(result.is_ok());
+    EXPECT_EQ(rstd::move(result).unwrap(), 66);
 }
 
 TEST(AsyncCoro, CompletionCompletesSpawnedTaskFromExternalThread) {

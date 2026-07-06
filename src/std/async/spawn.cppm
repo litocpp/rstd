@@ -1,6 +1,8 @@
 export module rstd:async.spawn;
-export import :async.forward;
+export import :async.awaitable;
 export import :async.runtime_core;
+import :async.runtime_driver;
+import :async.task;
 import rstd.alloc;
 import :sync;
 
@@ -255,17 +257,18 @@ auto spawn_on(RuntimeInner& runtime, F future) -> rstd::async::JoinHandle<future
 namespace rstd::async
 {
 
-export template<future::FutureLike F>
-auto spawn(F future) -> JoinHandle<future::future_output_t<F>> {
+export template<AwaitableLike A>
+auto spawn(A awaitable) -> JoinHandle<await_output_t<A>> {
     auto* runtime = CURRENT_RUNTIME;
     if (runtime == nullptr) {
         rstd::panic { "spawn called without an async runtime" };
     }
-    return spawn_on(*runtime, rstd::move(future));
+    auto driver = make_runtime_driver(into_coro(rstd::move(awaitable)));
+    return spawn_on(*runtime, rstd::move(driver));
 }
 
-export template<future::FutureLike F>
-auto spawn_local(F future) -> JoinHandle<future::future_output_t<F>> {
+export template<AwaitableLike A>
+auto spawn_local(A awaitable) -> JoinHandle<await_output_t<A>> {
     auto* runtime = CURRENT_RUNTIME;
     if (runtime == nullptr) {
         rstd::panic { "spawn_local called without an async runtime" };
@@ -273,7 +276,8 @@ auto spawn_local(F future) -> JoinHandle<future::future_output_t<F>> {
     if (runtime->is_thread_pool()) {
         rstd::panic { "spawn_local is only supported by current-thread runtime" };
     }
-    return spawn_on(*runtime, rstd::move(future));
+    auto driver = make_runtime_driver(into_coro(rstd::move(awaitable)));
+    return spawn_on(*runtime, rstd::move(driver));
 }
 
 } // namespace rstd::async

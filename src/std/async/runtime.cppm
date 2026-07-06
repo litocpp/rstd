@@ -1,7 +1,9 @@
 export module rstd:async.runtime;
-export import :async.forward;
+export import :async.awaitable;
 export import :async.runtime_core;
+import :async.runtime_driver;
 import :async.spawn;
+import :async.task;
 import :io;
 import rstd.alloc;
 import :sync;
@@ -31,13 +33,14 @@ public:
 
     auto clone() const -> RuntimeHandle { return RuntimeHandle { m_inner.clone() }; }
 
-    template<future::FutureLike F>
-    auto spawn(F future) const -> JoinHandle<future::future_output_t<F>> {
+    template<AwaitableLike A>
+    auto spawn(A awaitable) const -> JoinHandle<await_output_t<A>> {
         auto inner = m_inner.upgrade();
         if (! inner) {
             rstd::panic { "RuntimeHandle::spawn called after runtime shutdown" };
         }
-        return ::spawn_on(*inner.as_ptr().as_raw_ptr(), rstd::move(future));
+        auto driver = make_runtime_driver(into_coro(rstd::move(awaitable)));
+        return ::spawn_on(*inner.as_ptr().as_raw_ptr(), rstd::move(driver));
     }
 };
 
@@ -117,32 +120,35 @@ public:
 
     auto time_enabled() const -> bool { return m_inner->time_enabled(); }
 
-    template<future::FutureLike F>
-    auto spawn(F future) -> JoinHandle<future::future_output_t<F>> {
-        return ::spawn_on(*m_inner.as_ptr().as_raw_ptr(), rstd::move(future));
+    template<AwaitableLike A>
+    auto spawn(A awaitable) -> JoinHandle<await_output_t<A>> {
+        auto driver = make_runtime_driver(into_coro(rstd::move(awaitable)));
+        return ::spawn_on(*m_inner.as_ptr().as_raw_ptr(), rstd::move(driver));
     }
 
-    template<future::FutureLike F>
-    auto spawn_local(F future) -> JoinHandle<future::future_output_t<F>> {
+    template<AwaitableLike A>
+    auto spawn_local(A awaitable) -> JoinHandle<await_output_t<A>> {
         if (m_inner->is_thread_pool()) {
             rstd::panic { "spawn_local is only supported by current-thread runtime" };
         }
-        return ::spawn_on(*m_inner.as_ptr().as_raw_ptr(), rstd::move(future));
+        auto driver = make_runtime_driver(into_coro(rstd::move(awaitable)));
+        return ::spawn_on(*m_inner.as_ptr().as_raw_ptr(), rstd::move(driver));
     }
 
-    template<future::FutureLike F>
-    auto block_on(F future) -> future::future_output_t<F> {
+    template<AwaitableLike A>
+    auto block_on(A awaitable) -> await_output_t<A> {
         auto& runtime = *m_inner.as_ptr().as_raw_ptr();
         auto  scope   = RuntimeScope { runtime };
         auto  parker  = ParkerScope { runtime };
         auto  waker   = make_runtime_waker(runtime);
         auto  cx      = task::Context { waker };
+        auto  driver  = make_runtime_driver(into_coro(rstd::move(awaitable)));
 
         while (true) {
-            auto out = future::poll(future, cx);
+            auto out = future::poll(driver, cx);
             if (out.is_ready()) {
                 m_inner->drain_ready();
-                if constexpr (mtp::is_void<future::future_output_t<F>>) {
+                if constexpr (mtp::is_void<await_output_t<A>>) {
                     rstd::move(out).take();
                     return;
                 } else {
@@ -217,10 +223,10 @@ public:
     }
 };
 
-export template<future::FutureLike F>
-auto block_on(F future) -> future::future_output_t<F> {
+export template<AwaitableLike A>
+auto block_on(A awaitable) -> await_output_t<A> {
     auto runtime = Runtime {};
-    return runtime.block_on(rstd::move(future));
+    return runtime.block_on(rstd::move(awaitable));
 }
 
 } // namespace rstd::async

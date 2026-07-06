@@ -1,75 +1,41 @@
 export module rstd:async.task;
-export import :async.forward;
+export import :async.awaitable;
 
 using namespace rstd;
 
-struct AwaiterBase {
-    virtual auto poll(task::Context& cx) -> bool = 0;
+struct AwaitingOperation {
+    void* ptr { nullptr };
+    async::AwaitOperationState (*resume_fn)(void*, async::AwaitContext&) { nullptr };
 
-protected:
-    ~AwaiterBase() = default;
-};
-
-template<typename Promise, typename F, typename Output = future::future_output_t<F>>
-struct FutureAwaiter : AwaiterBase {
-    F              m_future;
-    Option<Output> m_result;
-
-    explicit FutureAwaiter(F&& future) : m_future(rstd::forward<F>(future)) {}
-
-    constexpr auto await_ready() const noexcept -> bool { return false; }
-
-    void await_suspend(std::coroutine_handle<Promise> handle) noexcept {
-        handle.promise().awaiting = this;
+    template<typename Suspension>
+    static auto make(Suspension* suspension) noexcept -> AwaitingOperation {
+        return AwaitingOperation {
+            suspension,
+            [](void* ptr, async::AwaitContext& cx) -> async::AwaitOperationState {
+                return static_cast<Suspension*>(ptr)->resume(cx);
+            },
+        };
     }
 
-    auto await_resume() -> Output { return rstd::move(m_result).unwrap_unchecked(); }
+    constexpr explicit operator bool() const noexcept { return ptr != nullptr; }
 
-    auto poll(task::Context& cx) -> bool override {
-        auto out = future::poll(m_future, cx);
-        if (out.is_pending()) {
-            return false;
-        }
-        m_result.insert(rstd::move(out).take());
-        return true;
-    }
-};
-
-template<typename Promise, typename F>
-struct FutureAwaiter<Promise, F, void> : AwaiterBase {
-    F m_future;
-
-    explicit FutureAwaiter(F&& future) : m_future(rstd::forward<F>(future)) {}
-
-    constexpr auto await_ready() const noexcept -> bool { return false; }
-
-    void await_suspend(std::coroutine_handle<Promise> handle) noexcept {
-        handle.promise().awaiting = this;
-    }
-
-    void await_resume() const noexcept {}
-
-    auto poll(task::Context& cx) -> bool override {
-        auto out = future::poll(m_future, cx);
-        if (out.is_pending()) {
-            return false;
-        }
-        rstd::move(out).take();
-        return true;
+    auto resume(async::AwaitContext& cx) const -> async::AwaitOperationState {
+        return resume_fn(ptr, cx);
     }
 };
 
 namespace rstd::async
 {
 
+template<typename T>
+struct CoroAccess;
+
 export template<typename T>
 class coro {
 public:
-    using Output = T;
-
     struct promise_type {
-        AwaiterBase* awaiting { nullptr };
-        Option<T>    result;
+        AwaitingOperation awaiting {};
+        Option<T>         result;
 
         auto get_return_object() noexcept -> coro {
             return coro { std::coroutine_handle<promise_type>::from_promise(*this) };
@@ -87,18 +53,14 @@ public:
             rstd::panic { "unhandled exception in async coro" };
         }
 
-        template<future::FutureLike F>
-        auto await_transform(F&& future) {
-            return FutureAwaiter<promise_type, F> { rstd::forward<F>(future) };
+        template<typename Suspension>
+        void set_awaiting(Suspension* suspension) noexcept {
+            awaiting = AwaitingOperation::make(suspension);
         }
 
-        template<typename A>
-            requires(! future::FutureLike<A>) && requires(A&& awaitable) {
-                rstd::forward<A>(awaitable).into_future();
-            }
+        template<AwaitableLike A>
         auto await_transform(A&& awaitable) {
-            auto future = rstd::forward<A>(awaitable).into_future();
-            return FutureAwaiter<promise_type, decltype(future)> { rstd::move(future) };
+            return make_suspension(rstd::forward<A>(awaitable));
         }
 
         auto take_result() -> T {
@@ -113,24 +75,23 @@ private:
     using Handle = std::coroutine_handle<promise_type>;
 
     Handle m_handle {};
-    bool   m_completed { false };
 
     explicit coro(Handle handle) noexcept : m_handle(handle) {}
+
+    friend struct CoroAccess<T>;
 
 public:
     coro(const coro&)            = delete;
     coro& operator=(const coro&) = delete;
 
-    coro(coro&& other) noexcept
-        : m_handle(rstd::exchange(other.m_handle, {})), m_completed(other.m_completed) {}
+    coro(coro&& other) noexcept : m_handle(rstd::exchange(other.m_handle, {})) {}
 
     auto operator=(coro&& other) noexcept -> coro& {
         if (this != &other) {
             if (m_handle) {
                 m_handle.destroy();
             }
-            m_handle    = rstd::exchange(other.m_handle, {});
-            m_completed = other.m_completed;
+            m_handle = rstd::exchange(other.m_handle, {});
         }
         return *this;
     }
@@ -140,44 +101,13 @@ public:
             m_handle.destroy();
         }
     }
-
-    auto poll(mut_ref<coro> self, task::Context& cx) -> task::Poll<T> {
-        auto& task = *self;
-        if (! task.m_handle) {
-            rstd::panic { "empty async coro polled" };
-        }
-        if (task.m_completed) {
-            rstd::panic { "async coro polled after completion" };
-        }
-
-        auto& promise = task.m_handle.promise();
-        while (true) {
-            if (promise.awaiting != nullptr) {
-                auto* awaiting = promise.awaiting;
-                if (! awaiting->poll(cx)) {
-                    return task::Poll<T>::Pending();
-                }
-                promise.awaiting = nullptr;
-                task.m_handle.resume();
-            } else {
-                task.m_handle.resume();
-            }
-
-            if (task.m_handle.done()) {
-                task.m_completed = true;
-                return task::Poll<T>::Ready(promise.take_result());
-            }
-        }
-    }
 };
 
 template<>
 class coro<void> {
 public:
-    using Output = void;
-
     struct promise_type {
-        AwaiterBase* awaiting { nullptr };
+        AwaitingOperation awaiting {};
 
         auto get_return_object() noexcept -> coro {
             return coro { std::coroutine_handle<promise_type>::from_promise(*this) };
@@ -192,18 +122,14 @@ public:
             rstd::panic { "unhandled exception in async coro" };
         }
 
-        template<future::FutureLike F>
-        auto await_transform(F&& future) {
-            return FutureAwaiter<promise_type, F> { rstd::forward<F>(future) };
+        template<typename Suspension>
+        void set_awaiting(Suspension* suspension) noexcept {
+            awaiting = AwaitingOperation::make(suspension);
         }
 
-        template<typename A>
-            requires(! future::FutureLike<A>) && requires(A&& awaitable) {
-                rstd::forward<A>(awaitable).into_future();
-            }
+        template<AwaitableLike A>
         auto await_transform(A&& awaitable) {
-            auto future = rstd::forward<A>(awaitable).into_future();
-            return FutureAwaiter<promise_type, decltype(future)> { rstd::move(future) };
+            return make_suspension(rstd::forward<A>(awaitable));
         }
     };
 
@@ -211,24 +137,23 @@ private:
     using Handle = std::coroutine_handle<promise_type>;
 
     Handle m_handle {};
-    bool   m_completed { false };
 
     explicit coro(Handle handle) noexcept : m_handle(handle) {}
+
+    friend struct CoroAccess<void>;
 
 public:
     coro(const coro&)            = delete;
     coro& operator=(const coro&) = delete;
 
-    coro(coro&& other) noexcept
-        : m_handle(rstd::exchange(other.m_handle, {})), m_completed(other.m_completed) {}
+    coro(coro&& other) noexcept : m_handle(rstd::exchange(other.m_handle, {})) {}
 
     auto operator=(coro&& other) noexcept -> coro& {
         if (this != &other) {
             if (m_handle) {
                 m_handle.destroy();
             }
-            m_handle    = rstd::exchange(other.m_handle, {});
-            m_completed = other.m_completed;
+            m_handle = rstd::exchange(other.m_handle, {});
         }
         return *this;
     }
@@ -238,35 +163,117 @@ public:
             m_handle.destroy();
         }
     }
+};
 
-    auto poll(mut_ref<coro> self, task::Context& cx) -> task::Poll<void> {
-        auto& task = *self;
-        if (! task.m_handle) {
-            rstd::panic { "empty async coro polled" };
-        }
-        if (task.m_completed) {
-            rstd::panic { "async coro polled after completion" };
-        }
+template<typename T>
+struct CoroAccess {
+    static auto handle(coro<T>& task) noexcept -> std::coroutine_handle<typename coro<T>::promise_type>& {
+        return task.m_handle;
+    }
+};
 
-        auto& promise = task.m_handle.promise();
-        while (true) {
-            if (promise.awaiting != nullptr) {
-                auto* awaiting = promise.awaiting;
-                if (! awaiting->poll(cx)) {
-                    return task::Poll<void>::Pending();
-                }
-                promise.awaiting = nullptr;
-                task.m_handle.resume();
-            } else {
-                task.m_handle.resume();
+template<typename T>
+auto resume_coro(coro<T>& task, bool& completed, task::Context& cx) -> task::Poll<T> {
+    auto& handle = CoroAccess<T>::handle(task);
+    if (! handle) {
+        rstd::panic { "empty async coro resumed" };
+    }
+    if (completed) {
+        rstd::panic { "async coro resumed after completion" };
+    }
+
+    auto& promise = handle.promise();
+    while (true) {
+        auto await_context = async::AwaitContext { cx };
+        if (promise.awaiting) {
+            auto awaiting = promise.awaiting;
+            if (awaiting.resume(await_context) == async::AwaitOperationState::Pending) {
+                return task::Poll<T>::Pending();
             }
+            promise.awaiting = {};
+            handle.resume();
+        } else {
+            handle.resume();
+        }
 
-            if (task.m_handle.done()) {
-                task.m_completed = true;
+        if (handle.done()) {
+            completed = true;
+            if constexpr (mtp::is_void<T>) {
                 return task::Poll<void>::Ready();
+            } else {
+                return task::Poll<T>::Ready(promise.take_result());
             }
         }
     }
+}
+
+template<typename T>
+class CoroWaitOperation {
+public:
+    using Output = T;
+
+private:
+    coro<T>   m_coro;
+    bool      m_completed { false };
+    Option<T> m_ready;
+
+public:
+    explicit CoroWaitOperation(coro<T>&& task) : m_coro(rstd::move(task)) {}
+
+    auto resume(AwaitContext& cx) -> AwaitOperationState {
+        auto out = resume_coro(m_coro, m_completed, cx.task_context());
+        if (out.is_pending()) {
+            return AwaitOperationState::Pending;
+        }
+        m_ready.insert(rstd::move(out).take());
+        return AwaitOperationState::Ready;
+    }
+
+    auto take_output() -> T { return rstd::move(m_ready).unwrap_unchecked(); }
 };
+
+template<>
+class CoroWaitOperation<void> {
+public:
+    using Output = void;
+
+private:
+    coro<void> m_coro;
+    bool       m_completed { false };
+
+public:
+    explicit CoroWaitOperation(coro<void>&& task) : m_coro(rstd::move(task)) {}
+
+    auto resume(AwaitContext& cx) -> AwaitOperationState {
+        auto out = resume_coro(m_coro, m_completed, cx.task_context());
+        if (out.is_pending()) {
+            return AwaitOperationState::Pending;
+        }
+        rstd::move(out).take();
+        return AwaitOperationState::Ready;
+    }
+
+    constexpr void take_output() const noexcept {}
+};
+
+template<typename T>
+struct AwaitableTraits<coro<T>> {
+    using Output = T;
+
+    static auto make_suspension(coro<T>&& task) {
+        auto operation = CoroWaitOperation<T> { rstd::move(task) };
+        return AwaitSuspension<decltype(operation)> { rstd::move(operation) };
+    }
+};
+
+export template<AwaitableLike A>
+auto into_coro(A awaitable) -> coro<await_output_t<A>> {
+    if constexpr (mtp::is_void<await_output_t<A>>) {
+        co_await rstd::move(awaitable);
+        co_return;
+    } else {
+        co_return co_await rstd::move(awaitable);
+    }
+}
 
 } // namespace rstd::async

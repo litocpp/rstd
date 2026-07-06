@@ -1,6 +1,6 @@
 export module rstd:async.completion;
 export import :async.forward;
-import :async.notify;
+import :async.awaitable;
 import :io;
 import :sync;
 
@@ -15,15 +15,13 @@ public:
     enum class Kind {
         Canceled,
         Failed,
-        Notify,
     };
 
 private:
-    Kind              m_kind;
-    Option<E>         m_failed;
-    Option<io::Error> m_notify;
+    Kind      m_kind;
+    Option<E> m_failed;
 
-    explicit CompletionError(Kind kind) : m_kind(kind), m_failed(None()), m_notify(None()) {}
+    explicit CompletionError(Kind kind) : m_kind(kind), m_failed(None()) {}
 
 public:
     static auto canceled() -> CompletionError {
@@ -36,16 +34,9 @@ public:
         return out;
     }
 
-    static auto notify(io::Error error) -> CompletionError {
-        auto out     = CompletionError { Kind::Notify };
-        out.m_notify = Some(rstd::move(error));
-        return out;
-    }
-
     auto kind() const noexcept -> Kind { return m_kind; }
     auto is_canceled() const noexcept -> bool { return m_kind == Kind::Canceled; }
     auto is_failed() const noexcept -> bool { return m_kind == Kind::Failed; }
-    auto is_notify() const noexcept -> bool { return m_kind == Kind::Notify; }
 
     auto unwrap_failed() && -> E {
         if (! is_failed() || m_failed.is_none()) {
@@ -53,17 +44,13 @@ public:
         }
         return rstd::move(m_failed).unwrap_unchecked();
     }
-
-    auto unwrap_notify() && -> io::Error {
-        if (! is_notify() || m_notify.is_none()) {
-            rstd::panic { "CompletionError::unwrap_notify called on non-notify error" };
-        }
-        return rstd::move(m_notify).unwrap_unchecked();
-    }
 };
 
 export template<typename T, typename E = empty>
 class Completion;
+
+template<typename T, typename E = empty>
+class CompletionWaitOperation;
 
 export template<typename T, typename E = empty>
 class CompletionHandle;
@@ -77,18 +64,21 @@ struct CompletionState {
         bool      canceled { false };
         bool      receiver_closed { false };
         bool      consumed { false };
+        Option<task::Waker> waker;
     };
 
     sync::Mutex<Fields> fields;
-    NotifyHandle        notifier;
 
-    explicit CompletionState(NotifyHandle notifier)
-        : fields(Fields {}), notifier(rstd::move(notifier)) {}
+    CompletionState() : fields(Fields {}) {}
 
     CompletionState(const CompletionState&)            = delete;
     auto operator=(const CompletionState&) -> CompletionState& = delete;
 
-    void wake() { (void)notifier.notify(); }
+    static void wake(Option<task::Waker> waker) {
+        if (waker.is_some()) {
+            rstd::move(*waker).wake();
+        }
+    }
 
     void add_handle() {
         auto f = fields.lock().unwrap_unchecked();
@@ -96,6 +86,7 @@ struct CompletionState {
     }
 
     auto complete(T value) -> Result<empty, T> {
+        auto waker = Option<task::Waker> {};
         {
             auto f = fields.lock().unwrap_unchecked();
             if (f->receiver_closed || f->value.is_some() || f->error.is_some() ||
@@ -104,13 +95,15 @@ struct CompletionState {
             }
 
             f->value = Some(rstd::move(value));
+            waker    = f->waker.take();
         }
 
-        wake();
+        wake(rstd::move(waker));
         return Ok(empty {});
     }
 
     auto fail(E error) -> Result<empty, E> {
+        auto waker = Option<task::Waker> {};
         {
             auto f = fields.lock().unwrap_unchecked();
             if (f->receiver_closed || f->value.is_some() || f->error.is_some() ||
@@ -119,13 +112,15 @@ struct CompletionState {
             }
 
             f->error = Some(rstd::move(error));
+            waker    = f->waker.take();
         }
 
-        wake();
+        wake(rstd::move(waker));
         return Ok(empty {});
     }
 
     auto cancel() -> bool {
+        auto waker = Option<task::Waker> {};
         {
             auto f = fields.lock().unwrap_unchecked();
             if (f->receiver_closed || f->value.is_some() || f->error.is_some() ||
@@ -134,14 +129,15 @@ struct CompletionState {
             }
 
             f->canceled = true;
+            waker       = f->waker.take();
         }
 
-        wake();
+        wake(rstd::move(waker));
         return true;
     }
 
     void drop_handle() {
-        auto should_wake = false;
+        auto waker = Option<task::Waker> {};
         {
             auto f = fields.lock().unwrap_unchecked();
             if (f->handles > 0) {
@@ -150,18 +146,17 @@ struct CompletionState {
             if (f->handles == 0 && ! f->receiver_closed && f->value.is_none() &&
                 f->error.is_none() && ! f->canceled) {
                 f->canceled = true;
-                should_wake = true;
+                waker       = f->waker.take();
             }
         }
 
-        if (should_wake) {
-            wake();
-        }
+        wake(rstd::move(waker));
     }
 
     void close_receiver() {
         auto f = fields.lock().unwrap_unchecked();
         f->receiver_closed = true;
+        f->waker           = None();
     }
 
     auto is_closed() -> bool {
@@ -169,15 +164,16 @@ struct CompletionState {
         return f->receiver_closed || f->value.is_some() || f->error.is_some() || f->canceled;
     }
 
-    auto take_result() -> Option<Result<T, CompletionError<E>>> {
+    auto wait(task::Context& cx) -> Option<Result<T, CompletionError<E>>> {
         auto f = fields.lock().unwrap_unchecked();
         if (f->consumed) {
-            rstd::panic { "async::Completion polled after completion" };
+            rstd::panic { "async::Completion awaited after completion" };
         }
 
         if (f->value.is_some()) {
             f->consumed        = true;
             f->receiver_closed = true;
+            f->waker           = None();
             return Some<Result<T, CompletionError<E>>>(
                 Ok(rstd::move(f->value).unwrap_unchecked()));
         }
@@ -185,6 +181,7 @@ struct CompletionState {
         if (f->error.is_some()) {
             f->consumed        = true;
             f->receiver_closed = true;
+            f->waker           = None();
             return Some<Result<T, CompletionError<E>>>(Err(CompletionError<E>::failed(
                 rstd::move(f->error).unwrap_unchecked())));
         }
@@ -192,10 +189,12 @@ struct CompletionState {
         if (f->canceled || f->handles == 0) {
             f->consumed        = true;
             f->receiver_closed = true;
+            f->waker           = None();
             return Some<Result<T, CompletionError<E>>>(
                 Err(CompletionError<E>::canceled()));
         }
 
+        f->waker = Some(cx.waker().clone());
         return None();
     }
 };
@@ -203,16 +202,13 @@ struct CompletionState {
 export template<typename T, typename E>
 class Completion {
     sync::Arc<CompletionState<T, E>> m_state;
-    Notify                          m_notify;
-    Option<NotifyFuture>            m_wait;
     bool                            m_active { true };
 
-    Completion(sync::Arc<CompletionState<T, E>> state, Notify notify)
-        : m_state(rstd::move(state)),
-          m_notify(rstd::move(notify)),
-          m_wait(None()) {}
+    explicit Completion(sync::Arc<CompletionState<T, E>> state)
+        : m_state(rstd::move(state)) {}
 
     friend class CompletionHandle<T, E>;
+    friend class CompletionWaitOperation<T, E>;
 
 public:
     using Output = Result<T, CompletionError<E>>;
@@ -222,16 +218,12 @@ public:
 
     Completion(Completion&& other) noexcept
         : m_state(rstd::move(other.m_state)),
-          m_notify(rstd::move(other.m_notify)),
-          m_wait(other.m_wait.take()),
           m_active(rstd::exchange(other.m_active, false)) {}
 
     auto operator=(Completion&& other) noexcept -> Completion& {
         if (this != &other) {
             close();
             m_state  = rstd::move(other.m_state);
-            m_notify = rstd::move(other.m_notify);
-            m_wait   = other.m_wait.take();
             m_active = rstd::exchange(other.m_active, false);
         }
         return *this;
@@ -240,17 +232,10 @@ public:
     ~Completion() { close(); }
 
     static auto make() -> io::Result<tuple<Completion<T, E>, CompletionHandle<T, E>>> {
-        auto notify = Notify::make();
-        if (notify.is_err()) {
-            return Err(rstd::move(notify).unwrap_err_unchecked());
-        }
-
-        auto notify_value = rstd::move(notify).unwrap_unchecked();
-        auto notifier     = notify_value.notifier();
-        auto state        = sync::Arc<CompletionState<T, E>>::make(rstd::move(notifier));
+        auto state = sync::Arc<CompletionState<T, E>>::make();
 
         return Ok(tuple<Completion<T, E>, CompletionHandle<T, E>> {
-            Completion<T, E> { state.clone(), rstd::move(notify_value) },
+            Completion<T, E> { state.clone() },
             CompletionHandle<T, E> { rstd::move(state) },
         });
     }
@@ -262,40 +247,64 @@ public:
         }
     }
 
-    auto poll(mut_ref<Completion> self, task::Context& cx)
-        -> task::Poll<Output> {
-        auto& completion = *self;
-        if (! completion.m_active || ! completion.m_state) {
-            return task::Poll<Output>::Ready(Err(CompletionError<E>::canceled()));
+};
+
+template<typename T, typename E>
+class CompletionWaitOperation {
+public:
+    using Output = typename Completion<T, E>::Output;
+
+private:
+    Option<Completion<T, E>> m_owned;
+    Completion<T, E>*        m_borrowed { nullptr };
+    Option<Output>           m_result;
+
+    auto completion() -> Completion<T, E>& {
+        if (m_owned.is_some()) {
+            return *m_owned;
+        }
+        return *m_borrowed;
+    }
+
+public:
+    explicit CompletionWaitOperation(Completion<T, E>& completion)
+        : m_borrowed(rstd::addressof(completion)) {}
+
+    explicit CompletionWaitOperation(Completion<T, E>&& completion)
+        : m_owned(Some(rstd::move(completion))) {}
+
+    auto take_output() -> Output { return rstd::move(m_result).unwrap_unchecked(); }
+
+    auto resume(AwaitContext& cx) -> AwaitOperationState {
+        auto& value = completion();
+        if (! value.m_active || ! value.m_state) {
+            m_result.insert(Err(CompletionError<E>::canceled()));
+            return AwaitOperationState::Ready;
         }
 
-        for (;;) {
-            auto result = completion.m_state->take_result();
-            if (result.is_some()) {
-                completion.m_active = false;
-                return task::Poll<Output>::Ready(
-                    rstd::move(result).unwrap_unchecked());
-            }
-
-            if (completion.m_wait.is_none()) {
-                completion.m_wait = Some(completion.m_notify.notified());
-            }
-
-            auto notified =
-                completion.m_wait->poll(future::as_mut_ref(*completion.m_wait), cx);
-            if (notified.is_pending()) {
-                return task::Poll<Output>::Pending();
-            }
-
-            completion.m_wait = None();
-            auto notify_result = rstd::move(notified).take();
-            if (notify_result.is_err()) {
-                completion.m_active = false;
-                completion.m_state->close_receiver();
-                return task::Poll<Output>::Ready(Err(CompletionError<E>::notify(
-                    rstd::move(notify_result).unwrap_err_unchecked())));
-            }
+        auto out = value.m_state->wait(cx.task_context());
+        if (out.is_none()) {
+            return AwaitOperationState::Pending;
         }
+
+        value.m_active = false;
+        m_result.insert(rstd::move(out).unwrap_unchecked());
+        return AwaitOperationState::Ready;
+    }
+};
+
+template<typename T, typename E>
+struct AwaitableTraits<Completion<T, E>> {
+    using Output = typename Completion<T, E>::Output;
+
+    static auto make_suspension(Completion<T, E>& completion) {
+        auto operation = CompletionWaitOperation<T, E> { completion };
+        return AwaitSuspension<decltype(operation)> { rstd::move(operation) };
+    }
+
+    static auto make_suspension(Completion<T, E>&& completion) {
+        auto operation = CompletionWaitOperation<T, E> { rstd::move(completion) };
+        return AwaitSuspension<decltype(operation)> { rstd::move(operation) };
     }
 };
 

@@ -2,6 +2,7 @@ export module rstd:async;
 export import :async.forward;
 export import :async.atomic_waker;
 export import :async.executor;
+export import :async.awaitable;
 export import :async.task;
 export import :async.join;
 export import :async.select;

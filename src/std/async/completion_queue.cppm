@@ -1,6 +1,6 @@
 export module rstd:async.completion_queue;
 export import :async.forward;
-import :async.notify;
+import :async.awaitable;
 import :io;
 import :sync;
 import rstd.alloc;
@@ -21,24 +21,40 @@ export template<typename T>
 class CompletionQueueNext;
 
 template<typename T>
+class CompletionQueueNextWaitOperation;
+
+template<typename T>
 struct CompletionQueueState {
     struct Fields {
         Vec<T> items;
         usize  handles { 1 };
         bool   closed { false };
         bool   receiver_closed { false };
+        Option<task::Waker> waker;
     };
 
     sync::Mutex<Fields> fields;
-    NotifyHandle        notifier;
 
-    explicit CompletionQueueState(NotifyHandle notifier)
-        : fields(Fields {}), notifier(rstd::move(notifier)) {}
+    CompletionQueueState() : fields(Fields {}) {}
 
     CompletionQueueState(const CompletionQueueState&)            = delete;
     auto operator=(const CompletionQueueState&) -> CompletionQueueState& = delete;
 
-    auto wake() -> io::Result<empty> { return notifier.notify(); }
+    static void wake_waiter(Option<task::Waker> waker) {
+        if (waker.is_some()) {
+            rstd::move(*waker).wake();
+        }
+    }
+
+    auto wake() -> io::Result<empty> {
+        auto waker = Option<task::Waker> {};
+        {
+            auto f = fields.lock().unwrap_unchecked();
+            waker = f->waker.take();
+        }
+        wake_waiter(rstd::move(waker));
+        return Ok(empty {});
+    }
 
     void add_handle() {
         auto f = fields.lock().unwrap_unchecked();
@@ -46,6 +62,7 @@ struct CompletionQueueState {
     }
 
     auto push(T item) -> Result<empty, T> {
+        auto waker = Option<task::Waker> {};
         {
             auto f = fields.lock().unwrap_unchecked();
             if (f->closed || f->receiver_closed) {
@@ -53,50 +70,52 @@ struct CompletionQueueState {
             }
 
             f->items.push(rstd::move(item));
+            waker = f->waker.take();
         }
 
-        (void)wake();
+        wake_waiter(rstd::move(waker));
         return Ok(empty {});
     }
 
     void close_queue() {
-        auto should_wake = false;
+        auto waker = Option<task::Waker> {};
         {
             auto f = fields.lock().unwrap_unchecked();
             if (! f->closed) {
-                f->closed  = true;
-                should_wake = true;
+                f->closed = true;
+                waker     = f->waker.take();
             }
         }
 
-        if (should_wake) {
-            (void)wake();
-        }
+        wake_waiter(rstd::move(waker));
     }
 
     void drop_handle() {
-        auto should_wake = false;
+        auto waker = Option<task::Waker> {};
         {
             auto f = fields.lock().unwrap_unchecked();
             if (f->handles > 0) {
                 --f->handles;
             }
             if (f->handles == 0 && ! f->closed) {
-                f->closed  = true;
-                should_wake = true;
+                f->closed = true;
+                waker     = f->waker.take();
             }
         }
 
-        if (should_wake) {
-            (void)wake();
-        }
+        wake_waiter(rstd::move(waker));
     }
 
     void close_receiver() {
-        auto f = fields.lock().unwrap_unchecked();
-        f->receiver_closed = true;
-        f->closed          = true;
-        f->items.clear();
+        auto waker = Option<task::Waker> {};
+        {
+            auto f = fields.lock().unwrap_unchecked();
+            f->receiver_closed = true;
+            f->closed          = true;
+            f->items.clear();
+            waker = f->waker.take();
+        }
+        wake_waiter(rstd::move(waker));
     }
 
     auto is_closed() -> bool {
@@ -104,16 +123,17 @@ struct CompletionQueueState {
         return f->receiver_closed || f->closed;
     }
 
-    auto take_next() -> Option<Option<T>> {
+    auto wait_next(task::Context& cx) -> Option<io::Result<Option<T>>> {
         auto f = fields.lock().unwrap_unchecked();
         if (! f->items.is_empty()) {
-            return Some<Option<T>>(Some(f->items.remove(0)));
+            return Some<io::Result<Option<T>>>(Ok(Some(f->items.remove(0))));
         }
 
         if (f->closed || f->receiver_closed || f->handles == 0) {
-            return Some<Option<T>>(None<T>());
+            return Some<io::Result<Option<T>>>(Ok(None<T>()));
         }
 
+        f->waker = Some(cx.waker().clone());
         return None();
     }
 };
@@ -121,16 +141,13 @@ struct CompletionQueueState {
 export template<typename T>
 class CompletionQueueNext {
     sync::Arc<CompletionQueueState<T>> m_state;
-    Notify                             m_notify;
-    Option<NotifyFuture>               m_wait;
     bool                               m_completed { false };
 
-    CompletionQueueNext(sync::Arc<CompletionQueueState<T>> state, Notify notify)
-        : m_state(rstd::move(state)),
-          m_notify(rstd::move(notify)),
-          m_wait(None()) {}
+    explicit CompletionQueueNext(sync::Arc<CompletionQueueState<T>> state)
+        : m_state(rstd::move(state)) {}
 
     friend class CompletionQueue<T>;
+    friend class CompletionQueueNextWaitOperation<T>;
 
 public:
     using Output = io::Result<Option<T>>;
@@ -140,51 +157,73 @@ public:
     CompletionQueueNext(CompletionQueueNext&&) noexcept                    = default;
     auto operator=(CompletionQueueNext&&) noexcept -> CompletionQueueNext& = default;
     ~CompletionQueueNext()                                                = default;
+};
 
-    auto poll(mut_ref<CompletionQueueNext> self, task::Context& cx)
-        -> task::Poll<Output> {
-        auto& next = *self;
-        if (next.m_completed) {
-            rstd::panic { "async::CompletionQueueNext polled after completion" };
+template<typename T>
+class CompletionQueueNextWaitOperation {
+public:
+    using Output = typename CompletionQueueNext<T>::Output;
+
+private:
+    Option<CompletionQueueNext<T>> m_owned;
+    CompletionQueueNext<T>*        m_borrowed { nullptr };
+    Option<Output>                 m_result;
+
+    auto next() -> CompletionQueueNext<T>& {
+        if (m_owned.is_some()) {
+            return *m_owned;
+        }
+        return *m_borrowed;
+    }
+
+public:
+    explicit CompletionQueueNextWaitOperation(CompletionQueueNext<T>& next)
+        : m_borrowed(rstd::addressof(next)) {}
+
+    explicit CompletionQueueNextWaitOperation(CompletionQueueNext<T>&& next)
+        : m_owned(Some(rstd::move(next))) {}
+
+    auto take_output() -> Output { return rstd::move(m_result).unwrap_unchecked(); }
+
+    auto resume(AwaitContext& cx) -> AwaitOperationState {
+        auto& value = next();
+        if (value.m_completed) {
+            rstd::panic { "async::CompletionQueueNext awaited after completion" };
         }
 
-        for (;;) {
-            auto item = next.m_state->take_next();
-            if (item.is_some()) {
-                next.m_completed = true;
-                return task::Poll<Output>::Ready(
-                    Ok(rstd::move(item).unwrap_unchecked()));
-            }
-
-            if (next.m_wait.is_none()) {
-                next.m_wait = Some(next.m_notify.notified());
-            }
-
-            auto notified = next.m_wait->poll(future::as_mut_ref(*next.m_wait), cx);
-            if (notified.is_pending()) {
-                return task::Poll<Output>::Pending();
-            }
-
-            next.m_wait = None();
-            auto notify_result = rstd::move(notified).take();
-            if (notify_result.is_err()) {
-                next.m_completed = true;
-                return task::Poll<Output>::Ready(
-                    Err(rstd::move(notify_result).unwrap_err_unchecked()));
-            }
+        auto out = value.m_state->wait_next(cx.task_context());
+        if (out.is_none()) {
+            return AwaitOperationState::Pending;
         }
+
+        value.m_completed = true;
+        m_result.insert(rstd::move(out).unwrap_unchecked());
+        return AwaitOperationState::Ready;
+    }
+};
+
+template<typename T>
+struct AwaitableTraits<CompletionQueueNext<T>> {
+    using Output = typename CompletionQueueNext<T>::Output;
+
+    static auto make_suspension(CompletionQueueNext<T>& next) {
+        auto operation = CompletionQueueNextWaitOperation<T> { next };
+        return AwaitSuspension<decltype(operation)> { rstd::move(operation) };
+    }
+
+    static auto make_suspension(CompletionQueueNext<T>&& next) {
+        auto operation = CompletionQueueNextWaitOperation<T> { rstd::move(next) };
+        return AwaitSuspension<decltype(operation)> { rstd::move(operation) };
     }
 };
 
 export template<typename T>
 class CompletionQueue {
     sync::Arc<CompletionQueueState<T>> m_state;
-    Notify                             m_notify;
     bool                               m_active { true };
 
-    CompletionQueue(sync::Arc<CompletionQueueState<T>> state, Notify notify)
-        : m_state(rstd::move(state)),
-          m_notify(rstd::move(notify)) {}
+    explicit CompletionQueue(sync::Arc<CompletionQueueState<T>> state)
+        : m_state(rstd::move(state)) {}
 
     friend class CompletionQueueHandle<T>;
 
@@ -194,14 +233,12 @@ public:
 
     CompletionQueue(CompletionQueue&& other) noexcept
         : m_state(rstd::move(other.m_state)),
-          m_notify(rstd::move(other.m_notify)),
           m_active(rstd::exchange(other.m_active, false)) {}
 
     auto operator=(CompletionQueue&& other) noexcept -> CompletionQueue& {
         if (this != &other) {
             close();
             m_state  = rstd::move(other.m_state);
-            m_notify = rstd::move(other.m_notify);
             m_active = rstd::exchange(other.m_active, false);
         }
         return *this;
@@ -210,17 +247,10 @@ public:
     ~CompletionQueue() { close(); }
 
     static auto make() -> io::Result<tuple<CompletionQueue<T>, CompletionQueueHandle<T>>> {
-        auto notify = Notify::make();
-        if (notify.is_err()) {
-            return Err(rstd::move(notify).unwrap_err_unchecked());
-        }
-
-        auto notify_value = rstd::move(notify).unwrap_unchecked();
-        auto notifier     = notify_value.notifier();
-        auto state        = sync::Arc<CompletionQueueState<T>>::make(rstd::move(notifier));
+        auto state = sync::Arc<CompletionQueueState<T>>::make();
 
         return Ok(tuple<CompletionQueue<T>, CompletionQueueHandle<T>> {
-            CompletionQueue<T> { state.clone(), rstd::move(notify_value) },
+            CompletionQueue<T> { state.clone() },
             CompletionQueueHandle<T> { rstd::move(state) },
         });
     }
@@ -236,7 +266,7 @@ public:
         if (! m_state) {
             rstd::panic { "CompletionQueue::next called on empty queue" };
         }
-        return CompletionQueueNext<T> { m_state.clone(), m_notify.clone() };
+        return CompletionQueueNext<T> { m_state.clone() };
     }
 };
 
