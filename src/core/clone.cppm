@@ -35,19 +35,23 @@ export struct Clone {
 
 namespace rstd
 {
-template<typename Self, auto P>
-struct Impl<clone::Clone, default_tag<Self, P>> : ImplBase<default_tag<Self, P>> {
+template<typename Tag>
+    requires mtp::trait_default_tag<Tag>
+struct Impl<clone::Clone, Tag> : ImplBase<Tag> {
+    using Self = mtp::trait_default_self_t<Tag>;
+
     void clone_from(Self& source) { this->self() = as<clone::Clone>(source).clone(); }
 };
 
 template<typename Self>
-    requires mtp::is_arithmetic<Self> || mtp::is_ptr<Self> || mtp::copy<Self>
+    requires(! mtp::trait_default_tag<Self>) &&
+            (mtp::is_arithmetic<Self> || mtp::is_ptr<Self> || mtp::copy<Self>)
 struct Impl<clone::Clone, Self> : DefaultInImpl<clone::Clone, Self> {
     auto clone() const -> Self { return this->self(); }
 };
 
 template<typename Self>
-    requires mtp::is_tuple<Self> && (! mtp::copy<Self>)
+    requires(! mtp::trait_default_tag<Self>) && mtp::is_tuple<Self> && (! mtp::copy<Self>)
 struct Impl<clone::Clone, Self> : DefaultInImpl<clone::Clone, Self> {
     auto clone() const -> Self {
         auto& self = this->self();

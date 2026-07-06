@@ -55,8 +55,9 @@ constexpr auto min(T v1, T v2) noexcept -> T {
 
 namespace rstd
 {
-template<typename Self, typename Rhs, auto P>
-struct Impl<cmp::PartialEq<Rhs>, default_tag<Self, P>> : ImplBase<default_tag<Self, P>> {
+template<typename Rhs, typename Tag>
+    requires mtp::trait_default_tag<Tag>
+struct Impl<cmp::PartialEq<Rhs>, Tag> : ImplBase<Tag> {
     auto ne(const Rhs& other) noexcept -> bool {
         return ! as<cmp::PartialEq<Rhs>>(this->self()).eq(other);
     }

@@ -77,11 +77,30 @@ template<>
 struct rstd::Impl<clone::Clone, CloneType> : LinkClassRequiredWithDefault<clone::Clone, CloneType> {
 };
 
+struct InClassOnlyClone : DefaultInClass<InClassOnlyClone, clone::Clone> {
+    int value;
+
+    explicit InClassOnlyClone(int v): value(v) {}
+    InClassOnlyClone(const InClassOnlyClone&)            = delete;
+    InClassOnlyClone& operator=(const InClassOnlyClone&) = delete;
+    InClassOnlyClone(InClassOnlyClone&&)                 = default;
+    InClassOnlyClone& operator=(InClassOnlyClone&&)      = default;
+
+    auto clone() const -> InClassOnlyClone { return InClassOnlyClone { value }; }
+};
+
+static_assert(Impled<InClassOnlyClone, clone::Clone>);
+
 TEST(Option, Clone) {
     auto original = Some(CloneType { 42 });
     auto cloned   = original.clone();
     EXPECT_TRUE(cloned.is_some());
     EXPECT_EQ((*cloned).value, 42);
+
+    auto in_class_original = Some(InClassOnlyClone { 7 });
+    auto in_class_cloned   = in_class_original.clone();
+    ASSERT_TRUE(in_class_cloned.is_some());
+    EXPECT_EQ((*in_class_cloned).value, 7);
 }
 
 TEST(Option, Map) {

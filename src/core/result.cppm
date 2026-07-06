@@ -525,7 +525,7 @@ struct result_impl<const T&, E> : result_base<const T&, E> {
         requires Impled<T, clone::Clone>
     {
         return this->map([](auto t) {
-            return Impl<clone::Clone, T>::clone(t);
+            return as<clone::Clone>(t).clone();
         });
     }
 };
@@ -548,7 +548,7 @@ struct result_impl<T&, E> : result_base<T&, E> {
         requires Impled<T, clone::Clone>
     {
         return this->map([](auto t) {
-            return Impl<clone::Clone, T>::clone(t);
+            return as<clone::Clone>(t).clone();
         });
     }
 };
@@ -754,15 +754,15 @@ public:
     {
         if (this->is_ok()) {
             if constexpr (mtp::is_ref<T>) {
-                return Ok(*Impl<clone::Clone, union_value_t> { this->_value_ptr() }.clone());
+                return Ok(*as<clone::Clone>(*this->_value_ptr()).clone());
             } else {
-                return Ok(Impl<clone::Clone, union_value_t> { this->_value_ptr() }.clone());
+                return Ok(as<clone::Clone>(*this->_value_ptr()).clone());
             }
         } else {
             if constexpr (mtp::is_ref<E>) {
-                return Err(*Impl<clone::Clone, union_error_t> { this->_error_ptr() }.clone());
+                return Err(*as<clone::Clone>(*this->_error_ptr()).clone());
             } else {
-                return Err(Impl<clone::Clone, union_error_t> { this->_error_ptr() }.clone());
+                return Err(as<clone::Clone>(*this->_error_ptr()).clone());
             }
         }
     }
@@ -776,15 +776,13 @@ public:
             if constexpr (mtp::is_ref<T>) {
                 this->_assign_val(source.template _get<0>());
             } else {
-                this->_assign_val(
-                    Impl<clone::Clone, union_value_t> { source._value_ptr() }.clone());
+                this->_assign_val(as<clone::Clone>(*source._value_ptr()).clone());
             }
         } else {
             if constexpr (mtp::is_ref<E>) {
                 this->_assign_err(source.template _get<1>());
             } else {
-                this->_assign_err(
-                    Impl<clone::Clone, union_error_t> { source._error_ptr() }.clone());
+                this->_assign_err(as<clone::Clone>(*source._error_ptr()).clone());
             }
         }
     }

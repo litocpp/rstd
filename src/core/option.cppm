@@ -413,6 +413,14 @@ class Option : public detail::option_adapter<T> {
         return _get(rstd::move(self));
     }
 
+    auto _clone_some() const {
+        if constexpr (mtp::is_ref<T>) {
+            return Some<T>(*as<clone::Clone>(*this->_ptr()).clone());
+        } else {
+            return Some(as<clone::Clone>(*this->_ptr()).clone());
+        }
+    }
+
 public:
     USE_TRAIT(Option)
 
@@ -624,7 +632,7 @@ public:
         requires Impled<union_value_t, clone::Clone>
     {
         if (this->is_some()) {
-            return Some(Impl<clone::Clone, union_value_t> { this->_ptr() }.clone());
+            return _clone_some();
         }
         return option::Unknown();
     }
@@ -638,7 +646,7 @@ public:
             if constexpr (mtp::is_ref<T>) {
                 this->_assign_val(_get(source));
             } else {
-                this->_assign_val(Impl<clone::Clone, union_value_t> { source._ptr() }.clone());
+                this->_assign_val(as<clone::Clone>(*source._ptr()).clone());
             }
         } else {
             this->_assign_none();

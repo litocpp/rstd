@@ -44,11 +44,11 @@ struct VTable {
 
 template<typename T, typename U>
 struct VTableStaticStorage {
-    using vtable_t = VTable<T>;
-    using impl_t   = Impl<T, U>;
-    using ApiHelper =
-        mtp::TraitApiHelper<T, mtp::cond<mtp::is_direct_trait<T>, U, impl_t>>;
-    using apis_t = vtable_t::apis_t;
+    using vtable_t  = VTable<T>;
+    using source    = mtp::trait_impl_source<T, U>;
+    using impl_t    = Impl<T, U>;
+    using ApiHelper = mtp::TraitApiHelper<T, typename source::api_owner>;
+    using apis_t    = vtable_t::apis_t;
 
     template<usize I, typename Fn>
     struct Wrap {
@@ -59,7 +59,8 @@ struct VTableStaticStorage {
     struct Wrap<I, Ret (*)(voidp, Args...) noexcept(Ne)> {
         static auto func(voidp p, Args... args) noexcept(Ne) {
             constexpr const auto api { ApiHelper::template get<I>() };
-            if constexpr (mtp::is_direct_trait<T>) {
+            if constexpr (source::kind == mtp::trait_impl_kind::Direct ||
+                          source::kind == mtp::trait_impl_kind::InClass) {
                 auto self { static_cast<U*>(p) };
                 return (self->*api)(rstd::forward<Args>(args)...);
             } else {
@@ -112,9 +113,9 @@ struct rstd::ptr_::dyn_delegate : public mtp::rm_cv<T>::template Api<dyn_tag> {
 
     template<typename U>
     static auto from_raw_ptr(U* p) noexcept -> dyn_delegate {
-        return { .p = static_cast<ptr_t>(p),
-                 .vtable =
-                     rstd::addressof(VTableStaticStorage<trait_t, mtp::rm_cv<U>>::vtable) };
+        static_assert(mtp::check_trait_or_diagnose<trait_t, mtp::rm_cv<U>>());
+        return { .p      = static_cast<ptr_t>(p),
+                 .vtable = rstd::addressof(VTableStaticStorage<trait_t, mtp::rm_cv<U>>::vtable) };
     }
 
     auto operator==(std::nullptr_t) const noexcept -> bool { return p == nullptr; }

@@ -163,12 +163,18 @@ namespace rstd
 {
 
 // Generic Iterator Impl: any type with a member next() implements the trait.
-// Forwards next()/size_hint() to the type's own members so as<>/Impled/dyn work.
+// It keeps provided methods on the external Impl path because Impl has priority over in-class.
 template<class X>
     requires iter::has_next<X>
-struct Impl<iter::Iterator, X> : ImplBase<X> {
+struct Impl<iter::Iterator, X> : DefaultInImpl<iter::Iterator, X> {
     auto next() { return this->self().next(); }
-    auto size_hint() const -> iter::SizeHint { return this->self().size_hint(); }
+    auto size_hint() const -> iter::SizeHint {
+        if constexpr (requires(const X& x) { x.size_hint(); }) {
+            return this->self().size_hint();
+        } else {
+            return DefaultInImpl<iter::Iterator, X>::size_hint();
+        }
+    }
 };
 
 // Generic DoubleEnded/ExactSize Impls for iterators exposing next_back()/len().
@@ -190,8 +196,11 @@ struct Impl<iter::ExactSizeIterator, X> : ImplBase<X> {
 // Item-dependent signatures use deduced `auto` returns: DefaultInClass instantiates
 // this Impl while `Self` is still incomplete, so `typename Self::Item` may only appear
 // inside method bodies (instantiated lazily on call), never in a member's declaration.
-template<typename Self, auto P>
-struct Impl<iter::Iterator, default_tag<Self, P>> : ImplBase<default_tag<Self, P>> {
+template<typename Tag>
+    requires mtp::trait_default_tag<Tag>
+struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
+    using Self = mtp::trait_default_self_t<Tag>;
+
     auto size_hint() const -> iter::SizeHint { return { 0, rstd::None() }; }
 
     // ---- consuming ----

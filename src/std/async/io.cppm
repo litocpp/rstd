@@ -57,7 +57,7 @@ concept AsyncReadInClass = requires(mtp::rm_cvf<R>& reader,
 };
 
 export template<typename R>
-concept AsyncReadLike = AsyncReadInClass<R> || Impled<mtp::rm_cvf<R>, AsyncRead>;
+concept AsyncReadLike = Impled<mtp::rm_cvf<R>, AsyncRead>;
 
 export template<typename W>
 concept AsyncWriteInClass = requires(mtp::rm_cvf<W>& writer,
@@ -72,18 +72,30 @@ concept AsyncWriteInClass = requires(mtp::rm_cvf<W>& writer,
 };
 
 export template<typename W>
-concept AsyncWriteLike = AsyncWriteInClass<W> || Impled<mtp::rm_cvf<W>, AsyncWrite>;
+concept AsyncWriteLike = Impled<mtp::rm_cvf<W>, AsyncWrite>;
+
+} // namespace rstd::async::io
+
+namespace rstd
+{
+template<typename R>
+    requires async::io::AsyncReadInClass<R>
+struct Impl<async::io::AsyncRead, R> : LinkClassMethod<async::io::AsyncRead, R> {};
+
+template<typename W>
+    requires async::io::AsyncWriteInClass<W>
+struct Impl<async::io::AsyncWrite, W> : LinkClassMethod<async::io::AsyncWrite, W> {};
+} // namespace rstd
+
+namespace rstd::async::io
+{
 
 export template<typename R>
 auto poll_read(R& reader, task::Context& cx, bytes::BytesMut& buf)
     -> task::Poll<::rstd::io::Result<usize>>
     requires AsyncReadLike<R>
 {
-    if constexpr (AsyncReadInClass<R>) {
-        return reader.poll_read(future::as_mut_ref(reader), cx, buf);
-    } else {
-        return as<AsyncRead>(reader).poll_read(future::as_mut_ref(reader), cx, buf);
-    }
+    return as<AsyncRead>(reader).poll_read(future::as_mut_ref(reader), cx, buf);
 }
 
 export template<typename W>
@@ -91,33 +103,21 @@ auto poll_write(W& writer, task::Context& cx, const bytes::Bytes& buf)
     -> task::Poll<::rstd::io::Result<usize>>
     requires AsyncWriteLike<W>
 {
-    if constexpr (AsyncWriteInClass<W>) {
-        return writer.poll_write(future::as_mut_ref(writer), cx, buf);
-    } else {
-        return as<AsyncWrite>(writer).poll_write(future::as_mut_ref(writer), cx, buf);
-    }
+    return as<AsyncWrite>(writer).poll_write(future::as_mut_ref(writer), cx, buf);
 }
 
 export template<typename W>
 auto poll_flush(W& writer, task::Context& cx) -> task::Poll<::rstd::io::Result<empty>>
     requires AsyncWriteLike<W>
 {
-    if constexpr (AsyncWriteInClass<W>) {
-        return writer.poll_flush(future::as_mut_ref(writer), cx);
-    } else {
-        return as<AsyncWrite>(writer).poll_flush(future::as_mut_ref(writer), cx);
-    }
+    return as<AsyncWrite>(writer).poll_flush(future::as_mut_ref(writer), cx);
 }
 
 export template<typename W>
 auto poll_shutdown(W& writer, task::Context& cx) -> task::Poll<::rstd::io::Result<empty>>
     requires AsyncWriteLike<W>
 {
-    if constexpr (AsyncWriteInClass<W>) {
-        return writer.poll_shutdown(future::as_mut_ref(writer), cx);
-    } else {
-        return as<AsyncWrite>(writer).poll_shutdown(future::as_mut_ref(writer), cx);
-    }
+    return as<AsyncWrite>(writer).poll_shutdown(future::as_mut_ref(writer), cx);
 }
 
 export template<AsyncReadLike R>

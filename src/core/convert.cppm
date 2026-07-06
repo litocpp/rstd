@@ -88,7 +88,7 @@ struct AsMut {
 /// \return The converted value of type T.
 export template<typename T, typename F>
 auto into(F&& val) -> T {
-    return Impl<Into<T>, mtp::rm_ref<F>>::into(val);
+    return as<Into<T>>(val).into();
 }
 
 template<typename T>
@@ -137,7 +137,7 @@ auto into(T&& t) -> IntoWrapper<mtp::rm_ref<T>> {
 /// \param r The value to borrow from.
 export template<typename T, typename F>
 auto as_ref(F& r) noexcept {
-    return Impl<AsRef<T>, mtp::rm_ref<F>>::as_ref(r);
+    return as<AsRef<T>>(r).as_ref();
 }
 
 /// Borrows r as a mutable reference to T via the AsMut trait.
@@ -146,7 +146,7 @@ auto as_ref(F& r) noexcept {
 /// \param r The value to borrow from.
 export template<typename T, typename F>
 auto as_mut(F& r) noexcept {
-    return Impl<AsMut<T>, mtp::rm_ref<F>>::as_mut(r);
+    return as<AsMut<T>>(r).as_mut();
 }
 } // namespace rstd::convert
 

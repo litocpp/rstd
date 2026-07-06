@@ -54,7 +54,7 @@ struct Impl<convert::From<String>, ThreadNameString>
 
 template<>
 struct Impl<clone::Clone, ThreadNameString> : DefaultInImpl<clone::Clone, ThreadNameString> {
-    auto clone() -> ThreadNameString {
+    auto clone() const -> ThreadNameString {
         return ThreadNameString { as<clone::Clone>(this->self().inner).clone() };
     }
 };

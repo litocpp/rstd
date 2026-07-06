@@ -128,7 +128,7 @@ namespace rstd
 
 template<>
 struct Impl<Clone, CString> : DefaultInImpl<Clone, CString> {
-    auto clone() -> CString { return CString { this->self().inner.clone() }; }
+    auto clone() const -> CString { return CString { this->self().inner.clone() }; }
 };
 
 template<mtp::same_as<AsRef<ffi::CStr>> T, mtp::same_as<CString> A>

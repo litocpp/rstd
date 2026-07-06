@@ -46,19 +46,17 @@ namespace ptr_
 /// \tparam T The trait type to dispatch dynamically.
 export template<typename T>
 struct dyn_delegate;
-}
-
-enum class TraitDefaultPolicy
-{
-    InClass,
-    Normal
-};
+} // namespace ptr_
 
 /// Tag type used to select a default trait implementation for type T.
 /// \tparam T The type for which to provide a default implementation.
-/// \tparam P The policy controlling how the default is applied.
-export template<typename T, TraitDefaultPolicy P = TraitDefaultPolicy::Normal>
+export template<typename T>
 struct default_tag {};
+
+/// Tag type used to select default trait methods inherited directly by T.
+/// \tparam T The type inheriting the default implementation.
+export template<typename T>
+struct in_class_default_tag {};
 
 struct in_class_tag {};
 
@@ -149,7 +147,8 @@ consteval bool check_apis() {
             // Is member func
             static_assert(mtp::is_ref_lv<P1> == mtp::is_ref_lv<P2> &&
                               mtp::is_ref_rv<P1> == mtp::is_ref_rv<P2> &&
-                              mtp::is_const<P1> == mtp::is_const<P2> &&
+                              mtp::is_const<mtp::rm_ref<P1>> ==
+                                  mtp::is_const<mtp::rm_ref<P2>> &&
                               mtp::same_as<typename F1::to_dyn, typename F2::to_dyn>,
                           "Trait api not satisfy");
         } else {
@@ -195,32 +194,239 @@ consteval bool check_trait_apis() {
     return check_apis<T, TraitApi<T, A>, ToCheck>();
 }
 
+template<typename...>
+constexpr bool dependent_false = false;
+
+enum class trait_impl_kind
+{
+    None,
+    Dyn,
+    Direct,
+    External,
+    InClass
+};
+
+enum class trait_impl_failure_reason
+{
+    None,
+    NoImpl,
+    ExternalUnavailable,
+    ExternalApiMismatch,
+    InClassApiMismatch,
+    DirectApiMismatch
+};
+
+template<typename Trait, typename A>
+using external_trait_impl_t = Impl<Trait, A>;
+
+template<typename Trait, typename A>
+using in_class_trait_impl_t = Impl<Trait, in_class_default_tag<A>>;
+
+template<typename T>
+struct trait_default_tag_traits;
+
+template<typename A>
+struct trait_default_tag_traits<default_tag<A>> {
+    using self = A;
+};
+
+template<typename A>
+struct trait_default_tag_traits<in_class_default_tag<A>> {
+    using self = A;
+};
+
+template<typename T>
+concept trait_default_tag = requires { typename trait_default_tag_traits<T>::self; };
+
+template<typename T>
+using trait_default_self_t = typename trait_default_tag_traits<T>::self;
+
+template<typename Trait, typename A>
+concept has_external_trait_impl = mtp::complete<external_trait_impl_t<Trait, A>>;
+
+template<typename Trait, typename A>
+concept has_in_class_trait_impl =
+    mtp::complete<A> && requires(A& a) { static_cast<in_class_trait_impl_t<Trait, A>&>(a); };
+
+template<typename Trait, typename A, typename ToCheck>
+concept trait_apis_formable = mtp::has_trait_api<Trait> && requires {
+    typename TraitApi<Trait, A>;
+    typename TraitApiHelper<Trait, TraitApi<Trait, A>>;
+    typename TraitApiHelper<Trait, ToCheck>;
+};
+
+template<typename Trait, typename ExpectedApi, typename ToCheck, usize Index = 0>
+consteval bool check_apis_quiet() {
+    using ApiHelperA = TraitApiHelper<Trait, ExpectedApi>;
+    using ApiHelperB = TraitApiHelper<Trait, ToCheck>;
+
+    if constexpr (Index == 0) {
+        if constexpr (ApiHelperA::size() != ApiHelperB::size()) {
+            return false;
+        }
+    }
+
+    if constexpr (Index < ApiHelperA::size()) {
+        using T1 = ApiHelperA::template type_at<Index>;
+        using T2 = ApiHelperB::template type_at<Index>;
+
+        using F1 = mtp::func_traits<T1>;
+        using F2 = mtp::func_traits<T2>;
+        using P1 = typename F1::primary;
+        using P2 = typename F2::primary;
+
+        if constexpr (F1::is_member != F2::is_member) {
+            return false;
+        } else if constexpr (F1::is_member) {
+            if constexpr (! (mtp::is_ref_lv<P1> == mtp::is_ref_lv<P2> &&
+                             mtp::is_ref_rv<P1> == mtp::is_ref_rv<P2> &&
+                             mtp::is_const<mtp::rm_ref<P1>> ==
+                                 mtp::is_const<mtp::rm_ref<P2>> &&
+                             mtp::same_as<typename F1::to_dyn, typename F2::to_dyn>)) {
+                return false;
+            }
+        } else if constexpr (! mtp::same_as<T1, T2>) {
+            return false;
+        }
+        return check_apis_quiet<Trait, ExpectedApi, ToCheck, Index + 1>();
+    }
+    return true;
+}
+
+template<typename Trait, typename A, typename ToCheck>
+consteval bool check_trait_apis_quiet() {
+    if constexpr (! mtp::has_trait_api<Trait>) {
+        return true;
+    } else if constexpr (! trait_apis_formable<Trait, A, ToCheck>) {
+        return false;
+    } else {
+        return check_apis_quiet<Trait, TraitApi<Trait, A>, ToCheck>();
+    }
+}
+
+template<typename Trait, typename A>
+consteval auto select_trait_impl_kind() -> trait_impl_kind {
+    if constexpr (mtp::same_as<A, dyn_tag>) {
+        return trait_impl_kind::Dyn;
+    } else if constexpr (mtp::is_direct_trait<Trait>) {
+        return trait_impl_kind::Direct;
+    } else if constexpr (has_external_trait_impl<Trait, A>) {
+        return trait_impl_kind::External;
+    } else if constexpr (has_in_class_trait_impl<Trait, A>) {
+        return trait_impl_kind::InClass;
+    } else {
+        return trait_impl_kind::None;
+    }
+}
+
+template<typename Trait, typename A, trait_impl_kind Kind>
+struct trait_impl_source_for;
+
+template<typename Trait, typename A>
+struct trait_impl_source_for<Trait, A, trait_impl_kind::Dyn> {
+    using api_owner              = dyn_tag;
+    static constexpr auto kind   = trait_impl_kind::Dyn;
+    static constexpr bool value  = true;
+    static constexpr auto reason = trait_impl_failure_reason::None;
+};
+
+template<typename Trait, typename A>
+struct trait_impl_source_for<Trait, A, trait_impl_kind::Direct> {
+    using api_owner             = A;
+    static constexpr auto kind  = trait_impl_kind::Direct;
+    static constexpr bool value = check_trait_apis_quiet<Trait, A, A>();
+    static constexpr auto reason =
+        value ? trait_impl_failure_reason::None : trait_impl_failure_reason::DirectApiMismatch;
+};
+
+template<typename Trait, typename A>
+struct trait_impl_source_for<Trait, A, trait_impl_kind::External> {
+    using api_owner                 = Impl<Trait, A>;
+    static constexpr auto kind      = trait_impl_kind::External;
+    static constexpr bool available = mtp::drop<Impl<Trait, A>>;
+    static constexpr bool api_ok = available && check_trait_apis_quiet<Trait, A, Impl<Trait, A>>();
+    static constexpr bool value  = available && api_ok;
+    static constexpr auto reason =
+        value ? trait_impl_failure_reason::None
+              : (available ? trait_impl_failure_reason::ExternalApiMismatch
+                           : trait_impl_failure_reason::ExternalUnavailable);
+};
+
+template<typename Trait, typename A>
+struct trait_impl_source_for<Trait, A, trait_impl_kind::InClass> {
+    using api_owner             = A;
+    static constexpr auto kind  = trait_impl_kind::InClass;
+    static constexpr bool value = check_trait_apis_quiet<Trait, A, A>();
+    static constexpr auto reason =
+        value ? trait_impl_failure_reason::None : trait_impl_failure_reason::InClassApiMismatch;
+};
+
+template<typename Trait, typename A>
+struct trait_impl_source_for<Trait, A, trait_impl_kind::None> {
+    using api_owner              = void;
+    static constexpr auto kind   = trait_impl_kind::None;
+    static constexpr bool value  = false;
+    static constexpr auto reason = trait_impl_failure_reason::NoImpl;
+};
+
+template<typename Trait, typename A>
+struct trait_impl_source : trait_impl_source_for<Trait, A, select_trait_impl_kind<Trait, A>()> {};
+
+template<typename Trait, typename A, trait_impl_failure_reason Reason>
+struct trait_impl_failure;
+
+template<typename Trait, typename A>
+struct trait_impl_failure<Trait, A, trait_impl_failure_reason::NoImpl> {
+    static_assert(dependent_false<Trait, A>,
+                  "rstd::Impled failed: no external Impl or in-class DefaultInClass marker");
+    static constexpr bool value = false;
+};
+
+template<typename Trait, typename A>
+struct trait_impl_failure<Trait, A, trait_impl_failure_reason::ExternalUnavailable> {
+    static_assert(dependent_false<Trait, A>,
+                  "rstd::Impled failed: external Impl exists but is not usable");
+    static constexpr bool value = false;
+};
+
+template<typename Trait, typename A>
+struct trait_impl_failure<Trait, A, trait_impl_failure_reason::ExternalApiMismatch> {
+    static_assert(dependent_false<Trait, A>,
+                  "rstd::Impled failed: external Impl does not satisfy trait API");
+    static constexpr bool value = false;
+};
+
+template<typename Trait, typename A>
+struct trait_impl_failure<Trait, A, trait_impl_failure_reason::InClassApiMismatch> {
+    static_assert(dependent_false<Trait, A>,
+                  "rstd::Impled failed: in-class implementation does not satisfy trait API");
+    static constexpr bool value = false;
+};
+
+template<typename Trait, typename A>
+struct trait_impl_failure<Trait, A, trait_impl_failure_reason::DirectApiMismatch> {
+    static_assert(dependent_false<Trait, A>,
+                  "rstd::Impled failed: direct trait implementation does not satisfy trait API");
+    static constexpr bool value = false;
+};
+
+template<typename Trait, typename A>
+consteval bool check_trait_or_diagnose() {
+    using source = trait_impl_source<Trait, A>;
+    if constexpr (source::value) {
+        return true;
+    } else {
+        return trait_impl_failure<Trait, A, source::reason>::value;
+    }
+}
+
 /// Checks whether type A implements trait T, either directly or via Impl.
 /// \tparam T The trait type.
 /// \tparam A The type to check.
 /// \return true if A implements T.
 export template<typename T, typename A>
 consteval bool check_trait() {
-    if constexpr (mtp::same_as<A, dyn_tag>) {
-        return true;
-    } else if constexpr (mtp::is_direct_trait<T>) {
-        if constexpr (mtp::has_trait_api<T>) {
-            // check apis on A
-            return check_trait_apis<T, A, A>();
-        } else {
-            return true;
-        }
-    } else if constexpr (mtp::complete<Impl<T, A>>) {
-        if constexpr (mtp::drop<Impl<T, A>>) {
-            if constexpr (mtp::has_trait_api<T>) {
-                // check apis on Impl<T,A>
-                return check_trait_apis<T, A, Impl<T, A>>();
-            } else {
-                return true;
-            }
-        }
-    }
-    return false;
+    return trait_impl_source<T, A>::value;
 }
 
 } // namespace mtp
@@ -230,10 +436,12 @@ consteval bool check_trait() {
 export template<typename A>
 struct ImplBase : mtp::ImplWithPtr<A> {};
 
-// This is used as base class for user class
-// not the Impl class
 template<typename A>
-struct ImplBase<default_tag<A, TraitDefaultPolicy::InClass>> {
+struct ImplBase<default_tag<A>> : ImplBase<A> {};
+
+// This is used as a base class for the user class, not for an external Impl.
+template<typename A>
+struct ImplBase<in_class_default_tag<A>> {
     template<typename, typename>
     friend struct Impl;
 
@@ -241,9 +449,6 @@ private:
     auto self() -> A& { return *static_cast<A*>(this); }
     auto self() const -> A const& { return *static_cast<A const*>(this); }
 };
-
-template<typename A>
-struct ImplBase<default_tag<A, TraitDefaultPolicy::Normal>> : ImplBase<A> {};
 
 /// Checks whether type A implements all the given traits T.
 /// \tparam A The type to check.
@@ -255,13 +460,13 @@ concept Impled = (mtp::check_trait<T, mtp::rm_cvf<A>>() && ...);
 /// \tparam Self The concrete type.
 /// \tparam T The trait that owns the default methods.
 export template<typename Self, typename T>
-using DefaultInClass = Impl<T, default_tag<Self, TraitDefaultPolicy::InClass>>;
+using DefaultInClass = Impl<T, in_class_default_tag<Self>>;
 
 /// Default methods inherited by an Impl specialization.
 /// \tparam T The trait that owns the default methods.
 /// \tparam Self The concrete type.
 export template<typename T, typename Self>
-using DefaultInImpl = Impl<T, default_tag<Self, TraitDefaultPolicy::Normal>>;
+using DefaultInImpl = Impl<T, default_tag<Self>>;
 
 /// Links a class's own methods as the trait implementation, delegating via in-class dispatch.
 /// \tparam T The trait type.
@@ -274,8 +479,8 @@ struct LinkClassMethod : mtp::ImplWithPtr<A>, mtp::rm_cv<T>::template Api<A, in_
 /// \tparam A The concrete type whose required methods satisfy the trait.
 /// \tparam Base The Impl base that supplies self storage and provided methods.
 export template<typename T, typename A, typename Base = ImplBase<A>>
-struct LinkClassRequired
-    : Base, mtp::rm_cv<T>::template RequiredApi<A, LinkClassRequired<T, A, Base>> {
+struct LinkClassRequired : Base,
+                           mtp::rm_cv<T>::template RequiredApi<A, LinkClassRequired<T, A, Base>> {
     template<typename P>
     constexpr LinkClassRequired(P* p) noexcept: Base { p } {}
 };
@@ -302,12 +507,13 @@ inline constexpr decltype(auto) trait_required_call(TApi* self, Args&&... args) 
     using Delegate = typename mtp::TraitApiTraits<TApi_>::delegate_type;
 
     constexpr const auto api { mtp::RequiredTraitApiHelper<Trait, TClass>::template get<I>() };
-    auto impl_in_class = static_cast<mtp::follow_const_t<TApi, Delegate>*>(self);
-    const auto self_   = rstd::addressof(mtp::ImplHelper::get_self(impl_in_class));
+    auto                 impl_in_class = static_cast<mtp::follow_const_t<TApi, Delegate>*>(self);
+    const auto           self_         = rstd::addressof(mtp::ImplHelper::get_self(impl_in_class));
     return (self_->*api)(rstd::forward<Args>(args)...);
 }
 
-/// Dispatches a trait method call to the appropriate Impl, handling static, dynamic, and in-class dispatch.
+/// Dispatches a trait method call to the appropriate Impl, handling static, dynamic, and in-class
+/// dispatch.
 /// \tparam I The index of the method in the trait's API function list.
 /// \tparam TApi The trait API type (deduced from self).
 /// \param self Pointer to the trait API object.
@@ -377,12 +583,13 @@ export template<typename T, typename A>
 [[gnu::always_inline]]
 inline constexpr decltype(auto) as(A& t) noexcept {
     using class_t = mtp::rm_cvf<A>;
-    static_assert(Impled<class_t, T>);
-    if constexpr (mtp::is_direct_trait<T>) {
+    using source  = mtp::trait_impl_source<T, class_t>;
+    static_assert(mtp::check_trait_or_diagnose<T, class_t>());
+    if constexpr (source::kind == mtp::trait_impl_kind::Direct ||
+                  source::kind == mtp::trait_impl_kind::InClass) {
         return t;
     } else {
-        using impl_t = Impl<T, class_t>;
-        using ret_t  = mtp::follow_const_t<A, impl_t>;
+        using ret_t = mtp::follow_const_t<A, typename source::api_owner>;
         return ret_t { rstd::addressof(t) };
     }
 }

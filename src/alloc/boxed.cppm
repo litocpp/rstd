@@ -33,7 +33,7 @@ public:
 
     /// Creates a new `Box` by cloning the contained value.
     /// \return A new `Box` with a cloned copy of the value.
-    auto clone() -> Self
+    auto clone() const -> Self
         requires Impled<T, Clone, Sized>
     {
         return make(as<Clone>(as_ptr()).clone());
@@ -162,7 +162,7 @@ public:
 
     /// Creates a new `Box` by cloning all elements of the contained array.
     /// \return A new `Box` owning a cloned copy of the array.
-    auto clone() -> Self
+    auto clone() const -> Self
         requires mtp::is_array<T>
     {
         using V     = mtp::rm_ext<T>;

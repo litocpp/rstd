@@ -76,15 +76,15 @@ using alloc::Allocator;
 using alloc::AllocError;
 using alloc::Layout;
 
-template<typename Self, auto P>
-struct Impl<Allocator, default_tag<Self, P>> : ImplBase<default_tag<Self, P>> {
+template<typename Tag>
+    requires mtp::trait_default_tag<Tag>
+struct Impl<Allocator, Tag> : ImplBase<Tag> {
 private:
-    auto impl_() const { return Impl<Allocator, Self> { &this->self() }; }
-    auto impl_() { return Impl<Allocator, Self> { &this->self() }; }
+    decltype(auto) allocator() const { return as<Allocator>(this->self()); }
 
 public:
     auto allocate_zeroed(Layout layout) const -> Result<NonNull<u8[]>, AllocError> {
-        auto res = impl_().allocate(layout);
+        auto res = allocator().allocate(layout);
         if (res.is_ok()) {
             auto ptr = res.unwrap_unchecked();
             mem::memset(ptr.as_mut_ptr().as_raw_ptr(), 0, layout.size);
@@ -96,15 +96,15 @@ public:
         -> Result<NonNull<u8[]>, AllocError> {
         debug_assert(new_layout.size >= old_layout.size);
         if (old_layout.size == 0) {
-            return impl_().allocate(new_layout);
+            return allocator().allocate(new_layout);
         }
 
-        auto new_res = impl_().allocate(new_layout);
+        auto new_res = allocator().allocate(new_layout);
         if (new_res.is_ok()) {
             auto new_ptr = new_res.unwrap_unchecked();
             mem::memcpy(
                 new_ptr.as_mut_ptr().as_raw_ptr(), ptr.as_ptr().as_raw_ptr(), old_layout.size);
-            impl_().deallocate(ptr, old_layout);
+            allocator().deallocate(ptr, old_layout);
         }
         return new_res;
     }
@@ -113,14 +113,14 @@ public:
         -> Result<NonNull<u8[]>, AllocError> {
         debug_assert(new_layout.size >= old_layout.size,
                      "`new_layout.size` must be greater than or equal to `old_layout.size`");
-        return impl_().allocate_zeroed(new_layout);
+        return allocator().allocate_zeroed(new_layout);
     }
 
     auto shrink(NonNull<u8> ptr, Layout old_layout, Layout new_layout) const
         -> Result<NonNull<u8[]>, AllocError> {
         debug_assert(new_layout.size <= old_layout.size,
                      "`new_layout.size` must be smaller than or equal to `old_layout.size`");
-        return impl_().allocate(new_layout);
+        return allocator().allocate(new_layout);
     }
 };
 } // namespace rstd::alloc

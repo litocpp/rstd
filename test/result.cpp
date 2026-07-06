@@ -27,6 +27,20 @@ struct DropCounter {
     }
 };
 
+struct InClassOnlyClone : DefaultInClass<InClassOnlyClone, clone::Clone> {
+    int value;
+
+    explicit InClassOnlyClone(int v): value(v) {}
+    InClassOnlyClone(const InClassOnlyClone&)            = delete;
+    InClassOnlyClone& operator=(const InClassOnlyClone&) = delete;
+    InClassOnlyClone(InClassOnlyClone&&)                 = default;
+    InClassOnlyClone& operator=(InClassOnlyClone&&)      = default;
+
+    auto clone() const -> InClassOnlyClone { return InClassOnlyClone { value }; }
+};
+
+static_assert(Impled<InClassOnlyClone, clone::Clone>);
+
 } // namespace
 
 TEST(Result, BasicOperations) {
@@ -44,6 +58,11 @@ TEST(Result, CloneOperations) {
     EXPECT_EQ(x.unwrap(), 3);
     EXPECT_EQ(m.unwrap(), 3);
     EXPECT_EQ(n.unwrap(), 3);
+
+    Result<InClassOnlyClone, float> in_class = Ok(InClassOnlyClone { 9 });
+    auto                            cloned   = in_class.clone();
+    ASSERT_TRUE(cloned.is_ok());
+    EXPECT_EQ(cloned.unwrap().value, 9);
 }
 
 TEST(Result, CloneFromOperations) {

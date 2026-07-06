@@ -223,6 +223,12 @@ struct InClass {
 
 struct InClassDef : rstd::DefaultInClass<InClassDef, rstd::clone::Clone> {
     int  a;
+    InClassDef() = default;
+    InClassDef(const InClassDef&) = delete;
+    InClassDef(InClassDef&&) = default;
+    auto operator=(const InClassDef&) -> InClassDef& = delete;
+    auto operator=(InClassDef&&) -> InClassDef& = default;
+
     auto clone() const -> InClassDef {
         InClassDef o {};
         o.a = a;
@@ -233,9 +239,24 @@ struct InClassDef : rstd::DefaultInClass<InClassDef, rstd::clone::Clone> {
 template<>
 struct rstd::Impl<rstd::clone::Clone, InClass>
     : rstd::LinkClassRequiredWithDefault<rstd::clone::Clone, InClass> {};
-template<>
-struct rstd::Impl<rstd::clone::Clone, InClassDef>
-    : rstd::LinkClassMethod<rstd::clone::Clone, InClassDef> {};
+
+struct NotClone {
+    int  a;
+    NotClone() = default;
+    NotClone(const NotClone&) = delete;
+    NotClone(NotClone&&) = default;
+    auto operator=(const NotClone&) -> NotClone& = delete;
+    auto operator=(NotClone&&) -> NotClone& = default;
+
+    auto clone() const -> NotClone {
+        NotClone o {};
+        o.a = a;
+        return o;
+    }
+};
+
+static_assert(rstd::Impled<InClassDef, rstd::clone::Clone>);
+static_assert(! rstd::Impled<NotClone, rstd::clone::Clone>);
 
 TEST(Trait, InClass) {
     {
@@ -251,6 +272,7 @@ TEST(Trait, InClass) {
     }
     {
         InClassDef m, n;
+        static_assert(std::is_same_v<decltype(rstd::as<rstd::clone::Clone>(m)), InClassDef&>);
         m.a = 100;
         n.a = 1000;
         rstd::as<rstd::clone::Clone>(m).clone_from(n);
@@ -267,10 +289,6 @@ struct EqOnly : rstd::DefaultInClass<EqOnly, rstd::cmp::PartialEq<EqOnly>> {
     auto eq(const EqOnly& other) noexcept -> bool { return a == other.a; }
 };
 
-template<>
-struct rstd::Impl<rstd::cmp::PartialEq<EqOnly>, EqOnly>
-    : rstd::LinkClassRequiredWithDefault<rstd::cmp::PartialEq<EqOnly>, EqOnly> {};
-
 struct RequiredIter : rstd::DefaultInClass<RequiredIter, rstd::iter::Iterator> {
     using Item = int;
 
@@ -284,9 +302,22 @@ struct RequiredIter : rstd::DefaultInClass<RequiredIter, rstd::iter::Iterator> {
     }
 };
 
+static_assert(rstd::Impled<EqOnly, rstd::cmp::PartialEq<EqOnly>>);
+static_assert(rstd::Impled<RequiredIter, rstd::iter::Iterator>);
+
+struct OverrideEq : rstd::DefaultInClass<OverrideEq, rstd::cmp::PartialEq<OverrideEq>> {
+    int a;
+    explicit OverrideEq(int v): a(v) {}
+    auto eq(const OverrideEq& other) noexcept -> bool { return a == other.a; }
+};
+
 template<>
-struct rstd::Impl<rstd::iter::Iterator, RequiredIter>
-    : rstd::LinkClassRequiredWithDefault<rstd::iter::Iterator, RequiredIter> {};
+struct rstd::Impl<rstd::cmp::PartialEq<OverrideEq>, OverrideEq>
+    : rstd::DefaultInImpl<rstd::cmp::PartialEq<OverrideEq>, OverrideEq> {
+    auto eq(const OverrideEq&) noexcept -> bool { return false; }
+};
+
+static_assert(rstd::Impled<OverrideEq, rstd::cmp::PartialEq<OverrideEq>>);
 
 TEST(Trait, RequiredWithDefault) {
     EqOnly a { 1 };
@@ -296,11 +327,25 @@ TEST(Trait, RequiredWithDefault) {
     EXPECT_TRUE(rstd::as<rstd::cmp::PartialEq<EqOnly>>(a).eq(a));
     EXPECT_TRUE(rstd::as<rstd::cmp::PartialEq<EqOnly>>(a).ne(b));
 
+    auto dyn_eq = rstd::dyn<rstd::cmp::PartialEq<EqOnly>>::from_ref(a);
+    EXPECT_TRUE(dyn_eq->eq(a));
+    EXPECT_TRUE(dyn_eq->ne(b));
+
     RequiredIter direct { 3 };
     EXPECT_EQ(direct.count(), 3);
 
     RequiredIter via_trait { 2 };
     EXPECT_EQ(rstd::as<rstd::iter::Iterator>(via_trait).count(), 2);
+}
+
+TEST(Trait, ExternalImplOverridesInClass) {
+    OverrideEq a { 1 };
+    EXPECT_TRUE(a.eq(a));
+    EXPECT_FALSE(rstd::as<rstd::cmp::PartialEq<OverrideEq>>(a).eq(a));
+
+    auto dyn_eq = rstd::dyn<rstd::cmp::PartialEq<OverrideEq>>::from_ref(a);
+    EXPECT_FALSE(dyn_eq->eq(a));
+    EXPECT_TRUE(dyn_eq->ne(a));
 }
 
 using rstd::boxed::Box;
