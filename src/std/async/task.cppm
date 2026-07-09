@@ -6,6 +6,7 @@ using namespace rstd;
 struct AwaitingOperation {
     void* ptr { nullptr };
     async::AwaitOperationState (*resume_fn)(void*, async::AwaitContext&) { nullptr };
+    async::AwaitOperationState (*resume_external_fn)(void*, async::AwaitContext&) { nullptr };
     async::ResumePlacement (*placement_fn)(void*) { nullptr };
 
     template<typename Suspension>
@@ -14,6 +15,9 @@ struct AwaitingOperation {
             suspension,
             [](void* ptr, async::AwaitContext& cx) -> async::AwaitOperationState {
                 return static_cast<Suspension*>(ptr)->resume(cx);
+            },
+            [](void* ptr, async::AwaitContext& cx) -> async::AwaitOperationState {
+                return static_cast<Suspension*>(ptr)->resume_external(cx);
             },
             [](void* ptr) -> async::ResumePlacement {
                 return static_cast<Suspension*>(ptr)->placement();
@@ -25,6 +29,10 @@ struct AwaitingOperation {
 
     auto resume(async::AwaitContext& cx) const -> async::AwaitOperationState {
         return resume_fn(ptr, cx);
+    }
+
+    auto resume_external(async::AwaitContext& cx) const -> async::AwaitOperationState {
+        return resume_external_fn(ptr, cx);
     }
 
     auto placement() const -> async::ResumePlacement {
@@ -181,6 +189,7 @@ struct CoroAccess {
 };
 
 export template<AwaitableInput A>
+    requires(! mtp::spec_of<mtp::rm_cvf<A>, coro>)
 auto into_coro(A awaitable) -> coro<await_output_t<A>> {
     if constexpr (mtp::is_void<await_output_t<A>>) {
         co_await rstd::move(awaitable);
@@ -188,6 +197,11 @@ auto into_coro(A awaitable) -> coro<await_output_t<A>> {
     } else {
         co_return co_await rstd::move(awaitable);
     }
+}
+
+export template<typename T>
+auto into_coro(coro<T> task) -> coro<T> {
+    return rstd::move(task);
 }
 
 } // namespace rstd::async

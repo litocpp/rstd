@@ -1,4 +1,5 @@
 export module rstd:async.runtime_core;
+import :async.awaitable;
 import :async.forward;
 import rstd.alloc;
 import :sync;
@@ -12,6 +13,14 @@ struct RuntimeInner;
 struct TaskStateBase;
 
 inline thread_local RuntimeInner* CURRENT_RUNTIME { nullptr };
+
+inline thread_local async::ExecutionDomainKind CURRENT_EXECUTION_DOMAIN {
+    async::ExecutionDomainKind::RuntimeWorker
+};
+
+inline auto current_execution_domain() noexcept -> async::ExecutionDomainKind {
+    return CURRENT_EXECUTION_DOMAIN;
+}
 
 enum class RuntimeKind {
     CurrentThread,
@@ -237,8 +246,9 @@ struct TaskStateBase {
     explicit TaskStateBase(sync::Weak<RuntimeInner> runtime) : runtime(rstd::move(runtime)) {}
     virtual ~TaskStateBase() = default;
 
-    virtual void poll(task::Context& cx) = 0;
+    virtual void poll(TaskRef& self, task::Context& cx) = 0;
     virtual void complete_abort()        = 0;
+    virtual void run_external_continuation(TaskRef& self);
 
     void inc_ref() noexcept {
         refs.fetch_add(1, rstd::sync::atomic::Ordering::Relaxed);
@@ -255,6 +265,10 @@ struct TaskStateBase {
     void finish();
     void abort();
 };
+
+inline void TaskStateBase::run_external_continuation(TaskRef&) {
+    rstd::panic { "async task cannot resume on external executor" };
+}
 
 inline auto TaskRef::operator=(TaskRef&& other) noexcept -> TaskRef& {
     if (this != &other) {
@@ -409,7 +423,7 @@ inline auto make_task_waker(const TaskRef& task) -> task::Waker {
 inline void poll_runtime_task(TaskRef& task_state) {
     auto waker = make_task_waker(task_state);
     auto cx    = task::Context { waker };
-    task_state->poll(cx);
+    task_state->poll(task_state, cx);
 }
 
 inline void RuntimeInner::drain_ready() {
@@ -487,6 +501,17 @@ struct RuntimeScope {
     }
 
     ~RuntimeScope() { CURRENT_RUNTIME = previous; }
+};
+
+struct ExecutionDomainScope {
+    async::ExecutionDomainKind previous;
+
+    explicit ExecutionDomainScope(async::ExecutionDomainKind domain)
+        : previous(CURRENT_EXECUTION_DOMAIN) {
+        CURRENT_EXECUTION_DOMAIN = domain;
+    }
+
+    ~ExecutionDomainScope() { CURRENT_EXECUTION_DOMAIN = previous; }
 };
 
 struct ParkerScope {

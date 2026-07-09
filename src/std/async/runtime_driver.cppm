@@ -24,6 +24,10 @@ public:
     auto drive(task::Context& cx) {
         return resume_coro(m_coro, m_completed, cx);
     }
+
+    auto resume_external_segment(task::Context& cx) {
+        return resume_coro_external_segment(m_coro, m_completed, cx);
+    }
 };
 
 template<typename T>

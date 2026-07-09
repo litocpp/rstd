@@ -292,7 +292,7 @@ public:
         return AwaitOperationState::Ready;
     }
 
-    constexpr auto placement() const noexcept -> ResumePlacement {
+    auto placement() const -> ResumePlacement {
         return ResumePlacement::runtime_worker();
     }
 };

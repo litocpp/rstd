@@ -144,6 +144,52 @@ public:
         auto  cx      = task::Context { waker };
         auto  driver  = make_runtime_driver(into_coro(rstd::move(awaitable)));
 
+        using BlockOnDriver = decltype(driver);
+
+        struct BlockOnExternalState {
+            RuntimeInner*                               runtime;
+            BlockOnDriver*                              driver;
+            task::Waker                                 waker;
+            sync::Arc<sync::atomic::Atomic<bool>>       done;
+
+            BlockOnExternalState(RuntimeInner* runtime,
+                                 BlockOnDriver* driver,
+                                 task::Waker waker,
+                                 sync::Arc<sync::atomic::Atomic<bool>> done)
+                : runtime(runtime),
+                  driver(driver),
+                  waker(rstd::move(waker)),
+                  done(rstd::move(done)) {}
+
+            static auto post(ResumePlacement& placement,
+                             sync::Arc<BlockOnExternalState> state) -> bool {
+                return placement.post_external(ResumeJob::make(
+                    [state = rstd::move(state)]() mutable {
+                        BlockOnExternalState::run(rstd::move(state));
+                    }));
+            }
+
+            static void run(sync::Arc<BlockOnExternalState> state) {
+                auto scope  = RuntimeScope { *state->runtime };
+                auto domain = ExecutionDomainScope { ExecutionDomainKind::ExternalExecutor };
+                auto cx     = task::Context { state->waker };
+                auto out    = state->driver->resume_external_segment(cx);
+                if (out.is_external()) {
+                    auto placement = out.take_placement();
+                    auto posted    = post(placement, state.clone());
+                    if (! posted) {
+                        placement.reject_external();
+                        state->done->store(true, sync::atomic::Ordering::Release);
+                        state->waker.clone().wake();
+                    }
+                    return;
+                }
+
+                state->done->store(true, sync::atomic::Ordering::Release);
+                state->waker.clone().wake();
+            }
+        };
+
         while (true) {
             auto out = driver.drive(cx);
             if (out.is_ready()) {
@@ -156,7 +202,24 @@ public:
                 }
             }
             if (out.is_external()) {
-                rstd::panic { "block_on async coro cannot resume on external executor" };
+                auto placement = out.take_placement();
+                auto done      = sync::Arc<sync::atomic::Atomic<bool>>::make(false);
+                auto state     = sync::Arc<BlockOnExternalState>::make(
+                    rstd::addressof(runtime),
+                    rstd::addressof(driver),
+                    cx.waker().clone(),
+                    done.clone());
+                auto posted = BlockOnExternalState::post(placement, rstd::move(state));
+                if (! posted) {
+                    placement.reject_external();
+                    continue;
+                }
+
+                while (! done->load(sync::atomic::Ordering::Acquire)) {
+                    m_inner->drain_ready();
+                    m_inner->wait_for_work();
+                }
+                continue;
             }
 
             m_inner->drain_ready();

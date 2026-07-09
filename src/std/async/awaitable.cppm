@@ -1,19 +1,33 @@
 export module rstd:async.awaitable;
 export import :async.forward;
+import rstd.alloc;
 
 using namespace rstd;
+using ::alloc::boxed::Box;
 
 namespace rstd::async
 {
 
+enum class ExecutionDomainKind {
+    RuntimeWorker,
+    ExternalExecutor,
+};
+
 class AwaitContext {
-    task::Context* m_poll_context;
+    task::Context*       m_poll_context;
+    ExecutionDomainKind  m_execution_domain;
 
 public:
-    explicit constexpr AwaitContext(task::Context& cx) noexcept
-        : m_poll_context(rstd::addressof(cx)) {}
+    explicit constexpr AwaitContext(
+        task::Context& cx,
+        ExecutionDomainKind execution_domain = ExecutionDomainKind::RuntimeWorker) noexcept
+        : m_poll_context(rstd::addressof(cx)),
+          m_execution_domain(execution_domain) {}
 
     constexpr auto poll_context() const noexcept -> task::Context& { return *m_poll_context; }
+    constexpr auto execution_domain() const noexcept -> ExecutionDomainKind {
+        return m_execution_domain;
+    }
     constexpr auto waker() const noexcept -> const task::Waker& {
         return m_poll_context->waker();
     }
@@ -27,19 +41,59 @@ enum class ResumePlacementKind {
     ExternalExecutor,
 };
 
-struct ResumePlacement {
-    ResumePlacementKind kind { ResumePlacementKind::RuntimeWorker };
+using ResumeJob    = Box<dyn<FnMut<void()>>>;
+using ResumePost   = Box<dyn<FnMut<bool(ResumeJob)>>>;
+using ResumeReject = Box<dyn<FnMut<void()>>>;
 
-    static constexpr auto runtime_worker() noexcept -> ResumePlacement {
+struct ResumePlacement {
+    ResumePlacementKind  kind { ResumePlacementKind::RuntimeWorker };
+    Option<ResumePost>   external_post;
+    Option<ResumeReject> external_reject;
+
+    ResumePlacement() = default;
+
+    explicit ResumePlacement(ResumePlacementKind kind)
+        : kind(kind), external_post(None()), external_reject(None()) {}
+
+    explicit ResumePlacement(ResumePost post, ResumeReject reject)
+        : kind(ResumePlacementKind::ExternalExecutor),
+          external_post(Some(rstd::move(post))),
+          external_reject(Some(rstd::move(reject))) {}
+
+    ResumePlacement(const ResumePlacement&)            = delete;
+    auto operator=(const ResumePlacement&) -> ResumePlacement& = delete;
+    ResumePlacement(ResumePlacement&&) noexcept                    = default;
+    auto operator=(ResumePlacement&&) noexcept -> ResumePlacement& = default;
+    ~ResumePlacement()                                            = default;
+
+    static auto runtime_worker() -> ResumePlacement {
         return ResumePlacement { ResumePlacementKind::RuntimeWorker };
     }
 
-    static constexpr auto external_executor() noexcept -> ResumePlacement {
-        return ResumePlacement { ResumePlacementKind::ExternalExecutor };
+    static auto external_executor(ResumePost post, ResumeReject reject) -> ResumePlacement {
+        return ResumePlacement { rstd::move(post), rstd::move(reject) };
     }
 
-    constexpr auto is_runtime_worker() const noexcept -> bool {
+    auto is_runtime_worker() const noexcept -> bool {
         return kind == ResumePlacementKind::RuntimeWorker;
+    }
+
+    auto is_external_executor() const noexcept -> bool {
+        return kind == ResumePlacementKind::ExternalExecutor;
+    }
+
+    auto post_external(ResumeJob job) -> bool {
+        if (external_post.is_none()) {
+            return false;
+        }
+        return (*external_post)->operator()(rstd::move(job));
+    }
+
+    void reject_external() {
+        if (external_reject.is_some()) {
+            auto reject = external_reject.take().unwrap_unchecked();
+            reject->operator()();
+        }
     }
 };
 
@@ -142,6 +196,16 @@ public:
         return m_operation.resume(cx);
     }
 
+    auto resume_external(AwaitContext& cx) -> AwaitOperationState {
+        if constexpr (requires(Operation& operation, AwaitContext& context) {
+                          { operation.resume_external(context) } -> mtp::same_as<AwaitOperationState>;
+                      }) {
+            return m_operation.resume_external(cx);
+        } else {
+            return AwaitOperationState::Pending;
+        }
+    }
+
     auto placement() -> ResumePlacement { return m_operation.placement(); }
 };
 
@@ -164,6 +228,16 @@ public:
 
     auto resume(AwaitContext& cx) -> AwaitOperationState {
         return m_operation.resume(cx);
+    }
+
+    auto resume_external(AwaitContext& cx) -> AwaitOperationState {
+        if constexpr (requires(Operation& operation, AwaitContext& context) {
+                          { operation.resume_external(context) } -> mtp::same_as<AwaitOperationState>;
+                      }) {
+            return m_operation.resume_external(cx);
+        } else {
+            return AwaitOperationState::Pending;
+        }
     }
 
     auto placement() -> ResumePlacement { return m_operation.placement(); }
@@ -190,7 +264,7 @@ public:
         return AwaitOperationState::Ready;
     }
 
-    constexpr auto placement() const noexcept -> ResumePlacement {
+    auto placement() const -> ResumePlacement {
         return ResumePlacement::runtime_worker();
     }
 };
@@ -215,7 +289,7 @@ public:
         return AwaitOperationState::Ready;
     }
 
-    constexpr auto placement() const noexcept -> ResumePlacement {
+    auto placement() const -> ResumePlacement {
         return ResumePlacement::runtime_worker();
     }
 };

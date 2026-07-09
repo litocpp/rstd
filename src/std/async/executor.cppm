@@ -48,21 +48,43 @@ struct ExecutorAwaitState {
 };
 
 template<typename E>
+struct ExecutorAwaitShared {
+    E executor;
+
+    explicit ExecutorAwaitShared(E executor) : executor(rstd::move(executor)) {}
+
+    auto post_job(ExecutorJob job) -> bool {
+        return as<Executor>(executor).post_job(rstd::move(job));
+    }
+
+    auto is_closed() -> bool {
+        return as<Executor>(executor).is_closed();
+    }
+};
+
+template<typename E>
 class ExecutorAwaitOperation {
-    E                             m_executor;
-    sync::Arc<ExecutorAwaitState> m_state;
-    bool                          m_posted { false };
-    bool                          m_result { false };
+    sync::Arc<ExecutorAwaitShared<E>> m_shared;
+    sync::Arc<ExecutorAwaitState>     m_state;
+    bool                              m_posted { false };
+    bool                              m_completed { false };
+    bool                              m_result { false };
 
 public:
     using Output = bool;
 
     explicit ExecutorAwaitOperation(E executor)
-        : m_executor(rstd::move(executor)), m_state(sync::Arc<ExecutorAwaitState>::make()) {}
+        : m_shared(sync::Arc<ExecutorAwaitShared<E>>::make(rstd::move(executor))),
+          m_state(sync::Arc<ExecutorAwaitState>::make()) {}
 
     auto resume(AwaitContext& cx) -> AwaitOperationState {
+        if (m_completed) {
+            return AwaitOperationState::Ready;
+        }
+
         if (m_state->ready.load(sync::atomic::Ordering::Acquire)) {
-            m_result = true;
+            m_result    = true;
+            m_completed = true;
             return AwaitOperationState::Ready;
         }
 
@@ -70,14 +92,16 @@ public:
             m_posted       = true;
             auto state     = m_state.clone();
             auto waker     = cx.waker().clone();
-            auto posted    = as<Executor>(m_executor).post_job(ExecutorJob::make(
+            auto shared    = m_shared.clone();
+            auto posted    = shared->post_job(ExecutorJob::make(
                 [state = rstd::move(state), waker = rstd::move(waker)]() mutable {
                     state->ready.store(true, sync::atomic::Ordering::Release);
                     rstd::move(waker).wake();
                 }));
 
             if (! posted) {
-                m_result = false;
+                m_result    = false;
+                m_completed = true;
                 return AwaitOperationState::Ready;
             }
         }
@@ -85,8 +109,35 @@ public:
         return AwaitOperationState::Pending;
     }
 
-    constexpr auto placement() const noexcept -> ResumePlacement {
-        return ResumePlacement::runtime_worker();
+    auto resume_external(AwaitContext& cx) -> AwaitOperationState {
+        if (m_completed) {
+            return AwaitOperationState::Ready;
+        }
+        if (cx.execution_domain() != ExecutionDomainKind::ExternalExecutor) {
+            return AwaitOperationState::Pending;
+        }
+
+        m_result    = ! m_shared->is_closed();
+        m_completed = true;
+        return AwaitOperationState::Ready;
+    }
+
+    auto placement() -> ResumePlacement {
+        if (! m_result) {
+            return ResumePlacement::runtime_worker();
+        }
+
+        auto shared = m_shared.clone();
+        auto* self  = this;
+        auto post   = ResumePost::make(
+            [shared = rstd::move(shared)](ResumeJob job) mutable -> bool {
+                return shared->post_job(rstd::move(job));
+            });
+        auto reject = ResumeReject::make([self]() mutable {
+            self->m_result    = false;
+            self->m_completed = true;
+        });
+        return ResumePlacement::external_executor(rstd::move(post), rstd::move(reject));
     }
 
     auto take_output() const noexcept -> bool { return m_result; }
@@ -127,12 +178,8 @@ struct LocalExecutorState {
     }
 
     void close() {
-        {
-            auto is_closed = closed.lock().unwrap_unchecked();
-            *is_closed     = true;
-        }
-        auto queue = jobs.lock().unwrap_unchecked();
-        queue->clear();
+        auto is_closed = closed.lock().unwrap_unchecked();
+        *is_closed     = true;
     }
 
     auto is_closed() -> bool {

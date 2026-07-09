@@ -172,7 +172,7 @@ struct TaskState : TaskStateBase {
     TaskState(sync::Weak<RuntimeInner> runtime, F future, sync::Arc<JoinState<T>> join)
         : TaskStateBase(rstd::move(runtime)), future(rstd::move(future)), join(rstd::move(join)) {}
 
-    void poll(task::Context& cx) override {
+    void poll(TaskRef&, task::Context& cx) override {
         auto out = future::poll(future, cx);
         if (out.is_pending()) {
             return;
@@ -256,13 +256,23 @@ struct DriverTaskState : TaskStateBase {
                     sync::Arc<JoinState<T>> join)
         : TaskStateBase(rstd::move(runtime)), driver(rstd::move(driver)), join(rstd::move(join)) {}
 
-    void poll(task::Context& cx) override {
+    void poll(TaskRef& self, task::Context& cx) override {
         auto out = driver.drive(cx);
         if (out.is_pending()) {
             return;
         }
         if (out.is_external()) {
-            rstd::panic { "spawned async coro cannot resume on external executor" };
+            auto placement = out.take_placement();
+            auto task      = self.clone();
+            auto posted    = placement.post_external(rstd::async::ResumeJob::make(
+                [task = rstd::move(task)]() mutable {
+                    task->run_external_continuation(task);
+                }));
+            if (! posted) {
+                placement.reject_external();
+                self.schedule();
+            }
+            return;
         }
 
         auto join_waker = Option<task::Waker> {};
@@ -284,6 +294,37 @@ struct DriverTaskState : TaskStateBase {
         if (join_waker.is_some()) {
             rstd::move(*join_waker).wake();
         }
+    }
+
+    void run_external_continuation(TaskRef& self) override {
+        if (completed) {
+            return;
+        }
+
+        auto rt = runtime.upgrade();
+        if (! rt) {
+            return;
+        }
+
+        auto scope  = RuntimeScope { *rt.as_ptr() };
+        auto domain = ExecutionDomainScope { rstd::async::ExecutionDomainKind::ExternalExecutor };
+        auto waker  = make_task_waker(self);
+        auto cx     = task::Context { waker };
+        auto out    = driver.resume_external_segment(cx);
+        if (out.is_external()) {
+            auto placement = out.take_placement();
+            auto task   = self.clone();
+            auto posted = placement.post_external(rstd::async::ResumeJob::make(
+                [task = rstd::move(task)]() mutable {
+                    task->run_external_continuation(task);
+                }));
+            if (! posted) {
+                placement.reject_external();
+                self.schedule();
+            }
+            return;
+        }
+        self.schedule();
     }
 };
 

@@ -1,4 +1,5 @@
 export module rstd:async.coro_driver;
+import :async.runtime_core;
 import :async.task;
 
 using namespace rstd;
@@ -12,6 +13,41 @@ enum class CoroDriveState {
     External,
 };
 
+enum class CoroExternalSegmentState {
+    Runtime,
+    External,
+};
+
+class CoroExternalSegmentResult {
+    CoroExternalSegmentState m_state;
+    ResumePlacement          m_placement;
+
+    explicit CoroExternalSegmentResult(CoroExternalSegmentState state)
+        : m_state(state), m_placement(ResumePlacement::runtime_worker()) {}
+
+    explicit CoroExternalSegmentResult(ResumePlacement placement)
+        : m_state(CoroExternalSegmentState::External), m_placement(rstd::move(placement)) {}
+
+public:
+    static auto Runtime() -> CoroExternalSegmentResult {
+        return CoroExternalSegmentResult { CoroExternalSegmentState::Runtime };
+    }
+
+    static auto External(ResumePlacement placement) -> CoroExternalSegmentResult {
+        return CoroExternalSegmentResult { rstd::move(placement) };
+    }
+
+    auto is_runtime() const noexcept -> bool {
+        return m_state == CoroExternalSegmentState::Runtime;
+    }
+
+    auto is_external() const noexcept -> bool {
+        return m_state == CoroExternalSegmentState::External;
+    }
+
+    auto take_placement() -> ResumePlacement { return rstd::move(m_placement); }
+};
+
 template<typename T>
 class CoroDriveResult {
     CoroDriveState  m_state;
@@ -19,7 +55,7 @@ class CoroDriveResult {
     ResumePlacement m_placement;
 
     CoroDriveResult(CoroDriveState state, ResumePlacement placement)
-        : m_state(state), m_value(None()), m_placement(placement) {}
+        : m_state(state), m_value(None()), m_placement(rstd::move(placement)) {}
 
 public:
     static auto Pending() -> CoroDriveResult {
@@ -33,7 +69,7 @@ public:
     }
 
     static auto External(ResumePlacement placement) -> CoroDriveResult {
-        return CoroDriveResult { CoroDriveState::External, placement };
+        return CoroDriveResult { CoroDriveState::External, rstd::move(placement) };
     }
 
     auto is_pending() const noexcept -> bool { return m_state == CoroDriveState::Pending; }
@@ -41,7 +77,7 @@ public:
     auto is_external() const noexcept -> bool { return m_state == CoroDriveState::External; }
 
     auto take() -> T { return rstd::move(m_value).unwrap_unchecked(); }
-    auto placement() const noexcept -> ResumePlacement { return m_placement; }
+    auto take_placement() -> ResumePlacement { return rstd::move(m_placement); }
 };
 
 template<>
@@ -53,14 +89,14 @@ class CoroDriveResult<void> {
         : m_state(state), m_placement(ResumePlacement::runtime_worker()) {}
 
     explicit CoroDriveResult(ResumePlacement placement)
-        : m_state(CoroDriveState::External), m_placement(placement) {}
+        : m_state(CoroDriveState::External), m_placement(rstd::move(placement)) {}
 
 public:
     static auto Pending() -> CoroDriveResult { return CoroDriveResult { CoroDriveState::Pending }; }
     static auto Ready() -> CoroDriveResult { return CoroDriveResult { CoroDriveState::Ready }; }
 
     static auto External(ResumePlacement placement) -> CoroDriveResult {
-        return CoroDriveResult { placement };
+        return CoroDriveResult { rstd::move(placement) };
     }
 
     auto is_pending() const noexcept -> bool { return m_state == CoroDriveState::Pending; }
@@ -68,7 +104,7 @@ public:
     auto is_external() const noexcept -> bool { return m_state == CoroDriveState::External; }
 
     constexpr void take() const noexcept {}
-    auto placement() const noexcept -> ResumePlacement { return m_placement; }
+    auto take_placement() -> ResumePlacement { return rstd::move(m_placement); }
 };
 
 template<typename T>
@@ -82,8 +118,17 @@ auto resume_coro(coro<T>& task, bool& completed, task::Context& cx) -> CoroDrive
     }
 
     auto& promise = handle.promise();
+    if (handle.done()) {
+        completed = true;
+        if constexpr (mtp::is_void<T>) {
+            return CoroDriveResult<void>::Ready();
+        } else {
+            return CoroDriveResult<T>::Ready(promise.take_result());
+        }
+    }
+
     while (true) {
-        auto await_context = async::AwaitContext { cx };
+        auto await_context = async::AwaitContext { cx, current_execution_domain() };
         if (promise.awaiting) {
             auto awaiting = promise.awaiting;
             if (awaiting.resume(await_context) == async::AwaitOperationState::Pending) {
@@ -91,7 +136,8 @@ auto resume_coro(coro<T>& task, bool& completed, task::Context& cx) -> CoroDrive
             }
             auto placement = awaiting.placement();
             if (! placement.is_runtime_worker()) {
-                return CoroDriveResult<T>::External(placement);
+                promise.awaiting = {};
+                return CoroDriveResult<T>::External(rstd::move(placement));
             }
             promise.awaiting = {};
             handle.resume();
@@ -108,6 +154,41 @@ auto resume_coro(coro<T>& task, bool& completed, task::Context& cx) -> CoroDrive
             }
         }
     }
+}
+
+template<typename T>
+auto resume_coro_external_segment(coro<T>& task,
+                                  bool completed,
+                                  task::Context& cx) -> CoroExternalSegmentResult {
+    auto& handle = CoroAccess<T>::handle(task);
+    if (! handle) {
+        rstd::panic { "empty async coro resumed" };
+    }
+    if (completed) {
+        rstd::panic { "async coro resumed after completion" };
+    }
+
+    auto& promise = handle.promise();
+    promise.awaiting = {};
+    handle.resume();
+
+    if (handle.done() || ! promise.awaiting) {
+        return CoroExternalSegmentResult::Runtime();
+    }
+
+    auto await_context = AwaitContext { cx, ExecutionDomainKind::ExternalExecutor };
+    auto awaiting      = promise.awaiting;
+    if (awaiting.resume_external(await_context) == AwaitOperationState::Pending) {
+        return CoroExternalSegmentResult::Runtime();
+    }
+
+    auto placement = awaiting.placement();
+    if (! placement.is_external_executor()) {
+        return CoroExternalSegmentResult::Runtime();
+    }
+
+    promise.awaiting = {};
+    return CoroExternalSegmentResult::External(rstd::move(placement));
 }
 
 template<typename T>
@@ -135,7 +216,7 @@ public:
         return AwaitOperationState::Ready;
     }
 
-    constexpr auto placement() const noexcept -> ResumePlacement {
+    auto placement() const -> ResumePlacement {
         return ResumePlacement::runtime_worker();
     }
 
@@ -166,7 +247,7 @@ public:
         return AwaitOperationState::Ready;
     }
 
-    constexpr auto placement() const noexcept -> ResumePlacement {
+    auto placement() const -> ResumePlacement {
         return ResumePlacement::runtime_worker();
     }
 
