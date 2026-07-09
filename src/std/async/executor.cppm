@@ -17,7 +17,9 @@ export struct Executor {
     struct Api {
         using Trait = Executor;
 
-        auto post_job(ExecutorJob job) -> bool { return trait_call<0>(this, rstd::move(job)); }
+        auto post_job(ExecutorJob job) -> bool {
+            return trait_call<0>(this, rstd::move(job));
+        }
         auto post(ExecutorJob job) -> bool { return post_job(rstd::move(job)); }
         auto is_closed() -> bool { return trait_call<1>(this); }
     };
@@ -31,7 +33,9 @@ export struct ExecutorContext {
     struct Api {
         using Trait = ExecutorContext;
 
-        auto executor() -> typename Self::executor_type { return trait_call<0>(this); }
+        auto executor() -> typename Self::executor_type {
+            return trait_call<0>(this);
+        }
     };
 
     template<typename Self>

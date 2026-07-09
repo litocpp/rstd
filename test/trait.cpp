@@ -22,7 +22,9 @@ struct DisplayTrait {
 
     struct Api {
         using Trait = DisplayTrait;
-        void display(std::ostream& os) const { return rstd::trait_call<0>(this, os); }
+        void display(std::ostream& os) const {
+            return rstd::trait_call<0>(this, os);
+        }
     };
 
     template<typename T>

@@ -73,10 +73,6 @@ struct CloneType : DefaultInClass<CloneType, clone::Clone> {
     auto clone() const -> CloneType { return CloneType { value }; }
 };
 
-template<>
-struct rstd::Impl<clone::Clone, CloneType> : LinkClassRequiredWithDefault<clone::Clone, CloneType> {
-};
-
 struct InClassOnlyClone : DefaultInClass<InClassOnlyClone, clone::Clone> {
     int value;
 

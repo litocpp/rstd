@@ -649,6 +649,7 @@ template<typename T, typename Ret, typename... Args, bool Ne>
 struct func_traits<Ret (*)(T, Args...) noexcept(Ne)> {
     static constexpr bool is_member = false;
 
+    using ret     = Ret;
     using primary = mtp::cond<mtp::is_ptr<T>, void, T>;
 
     using to_dyn = Ret (*)(voidp, Args...) noexcept(Ne);
@@ -658,6 +659,7 @@ template<typename Ret, bool Ne>
 struct func_traits<Ret (*)(void) noexcept(Ne)> {
     static constexpr bool is_member = false;
 
+    using ret     = Ret;
     using primary = void;
 
     using to_dyn = Ret (*)(void) noexcept(Ne);
@@ -667,6 +669,7 @@ template<typename T, typename Ret, typename... Args, bool Ne>
 struct func_traits<Ret (T::*)(Args...) noexcept(Ne)> {
     static constexpr bool is_member = true;
 
+    using ret     = Ret;
     using primary = T&;
 
     using to_dyn = Ret (*)(voidp, Args...) noexcept(Ne);
@@ -676,6 +679,7 @@ template<typename T, typename Ret, typename... Args, bool Ne>
 struct func_traits<Ret (T::*)(Args...) & noexcept(Ne)> {
     static constexpr bool is_member = true;
 
+    using ret     = Ret;
     using primary = T&;
 
     using to_dyn = Ret (*)(voidp, Args...) noexcept(Ne);
@@ -685,6 +689,7 @@ template<typename T, typename Ret, typename... Args, bool Ne>
 struct func_traits<Ret (T::*)(Args...) && noexcept(Ne)> {
     static constexpr bool is_member = true;
 
+    using ret     = Ret;
     using primary = T&&;
 
     using to_dyn = Ret (*)(voidp, Args...) noexcept(Ne);
@@ -694,6 +699,7 @@ template<typename T, typename Ret, typename... Args, bool Ne>
 struct func_traits<Ret (T::*)(Args...) const noexcept(Ne)> {
     static constexpr bool is_member = true;
 
+    using ret     = Ret;
     using primary = const T&;
 
     using to_dyn = Ret (*)(voidp, Args...) noexcept(Ne);
@@ -703,6 +709,7 @@ template<typename T, typename Ret, typename... Args, bool Ne>
 struct func_traits<Ret (T::*)(Args...) const & noexcept(Ne)> {
     static constexpr bool is_member = true;
 
+    using ret     = Ret;
     using primary = const T&;
 
     using to_dyn = Ret (*)(voidp, Args...) noexcept(Ne);
@@ -712,6 +719,7 @@ template<typename T, typename Ret, typename... Args, bool Ne>
 struct func_traits<Ret (T::*)(Args...) const && noexcept(Ne)> {
     static constexpr bool is_member = true;
 
+    using ret     = Ret;
     using primary = const T&&;
 
     using to_dyn = Ret (*)(voidp, Args...) noexcept(Ne);

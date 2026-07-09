@@ -13,10 +13,6 @@ struct B : rstd::DefaultInClass<B, rstd::clone::Clone> {
     auto operator==(const B& other) const -> bool { return a == other.a; }
 };
 
-template<>
-struct rstd::Impl<rstd::clone::Clone, B> : rstd::LinkClassRequiredWithDefault<rstd::clone::Clone, B> {
-};
-
 TEST(Clone, Auto) {
     B    b { 1 };
     auto b2 = b.clone();

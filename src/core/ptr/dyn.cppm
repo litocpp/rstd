@@ -113,9 +113,14 @@ struct rstd::ptr_::dyn_delegate : public mtp::rm_cv<T>::template Api<dyn_tag> {
 
     template<typename U>
     static auto from_raw_ptr(U* p) noexcept -> dyn_delegate {
-        static_assert(mtp::check_trait_or_diagnose<trait_t, mtp::rm_cv<U>>());
-        return { .p      = static_cast<ptr_t>(p),
-                 .vtable = rstd::addressof(VTableStaticStorage<trait_t, mtp::rm_cv<U>>::vtable) };
+        using class_t = mtp::rm_cv<U>;
+        using source  = mtp::trait_impl_source<trait_t, class_t>;
+        if constexpr (! source::value) {
+            static_assert(mtp::check_trait_or_diagnose<trait_t, class_t>());
+        } else {
+            return { .p      = static_cast<ptr_t>(p),
+                     .vtable = rstd::addressof(VTableStaticStorage<trait_t, class_t>::vtable) };
+        }
     }
 
     auto operator==(std::nullptr_t) const noexcept -> bool { return p == nullptr; }

@@ -88,7 +88,7 @@ export struct Iterator {
         using Item  = typename Self::Item;
 
         auto next() -> Option<Item> { return trait_call<0>(this); }
-        auto size_hint() const -> SizeHint { return trait_call<1, Api>(this); }
+        auto size_hint() const -> SizeHint { return trait_call<1>(this); }
     };
 
     template<class T>

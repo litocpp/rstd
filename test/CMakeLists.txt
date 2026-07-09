@@ -76,6 +76,24 @@ target_link_libraries(rstd_test PRIVATE rstd::rstd GTest::gtest_main)
 include(GoogleTest)
 gtest_discover_tests(rstd_test)
 
+add_executable(rstd_compile_fail_trait_impled_diagnostic EXCLUDE_FROM_ALL
+               compile_fail/trait_impled_diagnostic.cpp)
+target_link_libraries(rstd_compile_fail_trait_impled_diagnostic PRIVATE rstd::rstd)
+
+add_test(
+  NAME Trait.ImpledDiagnosticFailure
+  COMMAND
+    ${CMAKE_COMMAND}
+    -DBUILD_DIR=${CMAKE_BINARY_DIR}
+    -DTARGET_NAME=rstd_compile_fail_trait_impled_diagnostic
+    -DCONFIG=$<CONFIG>
+    "-DEXPECTED_REGEX=rstd::Impled failed: no external Impl or in-class DefaultInClass marker"
+    -P ${CMAKE_CURRENT_LIST_DIR}/compile_fail/run_compile_fail.cmake)
+set_tests_properties(
+  Trait.ImpledDiagnosticFailure
+  PROPERTIES
+    RUN_SERIAL TRUE)
+
 if(OFF)
 add_executable(nostd nostd/main.cpp)
 target_link_libraries(nostd PRIVATE rstd::nostd)

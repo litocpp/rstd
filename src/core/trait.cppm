@@ -67,6 +67,11 @@ namespace mtp
 
 struct ImplHelper;
 
+struct api_check_tag {};
+
+template<typename Ret>
+auto trait_check_return() -> Ret;
+
 template<typename T>
 struct TraitFuncsHelper;
 
@@ -112,6 +117,9 @@ template<typename Trait, typename A, typename Delegate = void>
 using TraitApi = typename Trait::template Api<A, Delegate>;
 
 template<typename Trait, typename A>
+using TraitCheckApi = TraitApi<Trait, A, api_check_tag>;
+
+template<typename Trait, typename A>
 using TraitFuncs = typename Trait::template Funcs<A>;
 
 template<typename Trait, typename A>
@@ -122,6 +130,17 @@ using RequiredTraitFuncs = typename Trait::template RequiredFuncs<A>;
 
 template<typename Trait, typename A>
 using RequiredTraitApiHelper = TraitFuncsHelper<RequiredTraitFuncs<Trait, A>>;
+
+template<typename F>
+using trait_func_return_t = typename mtp::func_traits<mtp::rm_cv<F>>::ret;
+
+template<usize I, typename Trait, typename A>
+using trait_api_return_t =
+    trait_func_return_t<decltype(TraitApiHelper<Trait, A>::template get<I>())>;
+
+template<usize I, typename Trait, typename A>
+using required_trait_api_return_t =
+    trait_func_return_t<decltype(RequiredTraitApiHelper<Trait, A>::template get<I>())>;
 
 template<typename Trait, typename A, typename B, usize Index = 0>
 consteval bool check_apis() {
@@ -191,7 +210,7 @@ struct ImplHelper {
 export template<typename T, typename A, typename ToCheck>
 consteval bool check_trait_apis() {
     static_assert(mtp::has_trait_api<T>);
-    return check_apis<T, TraitApi<T, A>, ToCheck>();
+    return check_apis<T, TraitCheckApi<T, A>, ToCheck>();
 }
 
 template<typename...>
@@ -250,8 +269,8 @@ concept has_in_class_trait_impl =
 
 template<typename Trait, typename A, typename ToCheck>
 concept trait_apis_formable = mtp::has_trait_api<Trait> && requires {
-    typename TraitApi<Trait, A>;
-    typename TraitApiHelper<Trait, TraitApi<Trait, A>>;
+    typename TraitCheckApi<Trait, A>;
+    typename TraitApiHelper<Trait, TraitCheckApi<Trait, A>>;
     typename TraitApiHelper<Trait, ToCheck>;
 };
 
@@ -300,7 +319,7 @@ consteval bool check_trait_apis_quiet() {
     } else if constexpr (! trait_apis_formable<Trait, A, ToCheck>) {
         return false;
     } else {
-        return check_apis_quiet<Trait, TraitApi<Trait, A>, ToCheck>();
+        return check_apis_quiet<Trait, TraitCheckApi<Trait, A>, ToCheck>();
     }
 }
 
@@ -506,10 +525,16 @@ inline constexpr decltype(auto) trait_required_call(TApi* self, Args&&... args) 
     using TClass   = typename mtp::TraitApiTraits<TApi_>::type;
     using Delegate = typename mtp::TraitApiTraits<TApi_>::delegate_type;
 
-    constexpr const auto api { mtp::RequiredTraitApiHelper<Trait, TClass>::template get<I>() };
-    auto                 impl_in_class = static_cast<mtp::follow_const_t<TApi, Delegate>*>(self);
-    const auto           self_         = rstd::addressof(mtp::ImplHelper::get_self(impl_in_class));
-    return (self_->*api)(rstd::forward<Args>(args)...);
+    if constexpr (mtp::same_as<Delegate, mtp::api_check_tag>) {
+        using Ret = mtp::required_trait_api_return_t<I, Trait, TApi_>;
+        return mtp::trait_check_return<Ret>();
+    } else {
+        constexpr const auto api { mtp::RequiredTraitApiHelper<Trait, TClass>::template get<I>() };
+        auto                 impl_in_class =
+            static_cast<mtp::follow_const_t<TApi, Delegate>*>(self);
+        const auto self_ = rstd::addressof(mtp::ImplHelper::get_self(impl_in_class));
+        return (self_->*api)(rstd::forward<Args>(args)...);
+    }
 }
 
 /// Dispatches a trait method call to the appropriate Impl, handling static, dynamic, and in-class
@@ -529,15 +554,15 @@ inline constexpr decltype(auto) trait_call(TApi* self, Args&&... args) {
     using Delegate = typename mtp::TraitApiTraits<TApi_>::delegate_type;
     using TImpl    = Impl<Trait, TClass>;
 
-    if constexpr (mtp::same_as<TClass, dyn_tag>) {
-        // delegate for dyn
+    if constexpr (mtp::same_as<Delegate, mtp::api_check_tag>) {
+        using Ret = mtp::trait_api_return_t<I, Trait, TApi_>;
+        return mtp::trait_check_return<Ret>();
+    } else if constexpr (mtp::same_as<TClass, dyn_tag>) {
         auto dyn = static_cast<mtp::follow_const_t<TApi, ptr_::dyn_delegate<Trait>>*>(self);
 
         const auto* apis = mtp::DynHelper::get_apis(dyn);
         return rstd::get<I>(*apis)(mtp::DynHelper::get_self(dyn), rstd::forward<Args>(args)...);
     } else if constexpr (mtp::same_as<Delegate, in_class_tag>) {
-        // delegate for LinkClassMethod
-        // used for trait impl inherite Api
         constexpr const auto api { mtp::TraitApiHelper<Trait, TClass>::template get<I>() };
 
         auto impl_in_class =
@@ -546,8 +571,6 @@ inline constexpr decltype(auto) trait_call(TApi* self, Args&&... args) {
         const auto self_ = rstd::addressof(mtp::ImplHelper::get_self(impl_in_class));
         return (self_->*api)(rstd::forward<Args>(args)...);
     } else {
-        // delegate for Impl
-        // used for class inherite Api
         constexpr const auto api { mtp::TraitApiHelper<Trait, TImpl>::template get<I>() };
 
         TImpl const self_ { static_cast<mtp::follow_const_t<TApi, TClass>*>(self) };
@@ -564,13 +587,19 @@ export template<usize I, typename TApi, typename... Args>
     requires mtp::is_trait_api<mtp::rm_cv<TApi>>
 [[gnu::always_inline]]
 inline constexpr decltype(auto) trait_static_call(Args&&... args) {
-    using TApi_  = mtp::rm_cv<TApi>;
-    using Trait  = typename TApi_::Trait;
-    using TClass = typename mtp::TraitApiTraits<TApi_>::type;
-    using TImpl  = Impl<Trait, TClass>;
+    using TApi_    = mtp::rm_cv<TApi>;
+    using Trait    = typename TApi_::Trait;
+    using TClass   = typename mtp::TraitApiTraits<TApi_>::type;
+    using Delegate = typename mtp::TraitApiTraits<TApi_>::delegate_type;
+    using TImpl    = Impl<Trait, TClass>;
 
-    constexpr const auto api { mtp::TraitApiHelper<Trait, TImpl>::template get<I>() };
-    return api(rstd::forward<Args>(args)...);
+    if constexpr (mtp::same_as<Delegate, mtp::api_check_tag>) {
+        using Ret = mtp::trait_api_return_t<I, Trait, TApi_>;
+        return mtp::trait_check_return<Ret>();
+    } else {
+        constexpr const auto api { mtp::TraitApiHelper<Trait, TImpl>::template get<I>() };
+        return api(rstd::forward<Args>(args)...);
+    }
 }
 
 /// Casts an lvalue reference to a trait view, returning the Impl wrapper for trait T.
@@ -584,9 +613,10 @@ export template<typename T, typename A>
 inline constexpr decltype(auto) as(A& t) noexcept {
     using class_t = mtp::rm_cvf<A>;
     using source  = mtp::trait_impl_source<T, class_t>;
-    static_assert(mtp::check_trait_or_diagnose<T, class_t>());
-    if constexpr (source::kind == mtp::trait_impl_kind::Direct ||
-                  source::kind == mtp::trait_impl_kind::InClass) {
+    if constexpr (! source::value) {
+        static_assert(mtp::check_trait_or_diagnose<T, class_t>());
+    } else if constexpr (source::kind == mtp::trait_impl_kind::Direct ||
+                         source::kind == mtp::trait_impl_kind::InClass) {
         return t;
     } else {
         using ret_t = mtp::follow_const_t<A, typename source::api_owner>;

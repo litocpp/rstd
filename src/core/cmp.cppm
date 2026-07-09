@@ -15,7 +15,9 @@ struct PartialEq {
     template<typename Self, typename = void>
     struct RequiredApi {
         using Trait = PartialEq;
-        auto eq(const Rhs& other) noexcept -> bool { return trait_required_call<0>(this, other); }
+        auto eq(const Rhs& other) noexcept -> bool {
+            return trait_required_call<0>(this, other);
+        }
     };
 
     template<typename Self, typename = void>

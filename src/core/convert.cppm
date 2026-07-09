@@ -16,7 +16,10 @@ struct From {
     using from_t = TF;
     template<typename Self, typename = void>
     struct Api {
-        static auto from(from_t value) -> Self { trait_call_static<0, From<TF>, Self>(value); }
+        using Trait = From;
+        static auto from(from_t value) -> Self {
+            return trait_static_call<0, Api>(rstd::move(value));
+        }
     };
     template<typename T>
     using Funcs = TraitFuncs<&T::from>;
@@ -58,6 +61,7 @@ export template<typename T>
 struct AsRef {
     template<typename Self, typename = void>
     struct Api {
+        using Trait = AsRef;
         auto as_ref() const noexcept -> ref<T> { return trait_call<0>(this); }
     };
 
@@ -74,6 +78,7 @@ export template<typename T>
 struct AsMut {
     template<typename Self, typename = void>
     struct Api {
+        using Trait = AsMut;
         auto as_mut() noexcept -> ref<T> { return trait_call<0>(this); }
     };
 

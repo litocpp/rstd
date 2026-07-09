@@ -8,9 +8,10 @@ namespace rstd::str_
 export struct FromStr {
     template<typename Self, typename = void>
     struct Api {
+        using Trait = FromStr;
         using Err = typename Impl<FromStr, Self>::Err;
         static auto from_str(ref<str> str) -> Result<Self, Err> {
-            return rstd::trait_static_call<FromStr, Self>(str);
+            return rstd::trait_static_call<0, Api>(str);
         }
     };
 
