@@ -240,7 +240,9 @@ struct InClassDef : rstd::DefaultInClass<InClassDef, rstd::clone::Clone> {
 
 template<>
 struct rstd::Impl<rstd::clone::Clone, InClass>
-    : rstd::LinkClassRequiredWithDefault<rstd::clone::Clone, InClass> {};
+    : rstd::DefaultInImpl<rstd::clone::Clone, InClass> {
+    auto clone() const -> InClass { return this->self().clone(); }
+};
 
 struct NotClone {
     int  a;

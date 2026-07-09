@@ -13,23 +13,12 @@ namespace rstd::cmp
 export template<typename Rhs>
 struct PartialEq {
     template<typename Self, typename = void>
-    struct RequiredApi {
-        using Trait = PartialEq;
-        auto eq(const Rhs& other) const noexcept -> bool {
-            return trait_required_call<0>(this, other);
-        }
-    };
-
-    template<typename Self, typename = void>
     struct Api {
         using Trait = PartialEq;
         auto eq(const Rhs& other) const noexcept -> bool { return trait_call<0>(this, other); }
 
         auto ne(const Rhs& other) const noexcept -> bool { return trait_call<1>(this, other); }
     };
-
-    template<typename T>
-    using RequiredFuncs = TraitFuncs<&T::eq>;
 
     template<typename T>
     using Funcs = TraitFuncs<&T::eq, &T::ne>;

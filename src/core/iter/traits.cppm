@@ -75,14 +75,6 @@ using item_of = typename decltype(mtp::declval<X&>().next())::value_type;
 /// inherited in-class through `DefaultInClass<Self, Iterator>`.
 export struct Iterator {
     template<typename Self, typename = void>
-    struct RequiredApi {
-        using Trait = Iterator;
-        using Item  = typename Self::Item;
-
-        auto next() -> Option<Item> { return trait_required_call<0>(this); }
-    };
-
-    template<typename Self, typename = void>
     struct Api {
         using Trait = Iterator;
         using Item  = typename Self::Item;
@@ -90,9 +82,6 @@ export struct Iterator {
         auto next() -> Option<Item> { return trait_call<0>(this); }
         auto size_hint() const -> SizeHint { return trait_call<1>(this); }
     };
-
-    template<class T>
-    using RequiredFuncs = TraitFuncs<&T::next>;
 
     template<class T>
     using Funcs = TraitFuncs<&T::next, &T::size_hint>;

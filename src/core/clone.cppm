@@ -11,21 +11,12 @@ namespace rstd::clone
 /// - `clone_from(Self& source)` : Overwrites self with a clone of source (optional, has default).
 export struct Clone {
     template<typename Self, typename = void>
-    struct RequiredApi {
-        using Trait = Clone;
-        auto clone() const -> Self { return trait_required_call<0>(this); }
-    };
-
-    template<typename Self, typename = void>
     struct Api {
         using Trait = Clone;
         auto clone() const -> Self { return trait_call<0>(this); }
 
         void clone_from(Self& source) { return trait_call<1>(this, source); }
     };
-
-    template<class T>
-    using RequiredFuncs = TraitFuncs<&T::clone>;
 
     template<class T>
     using Funcs = TraitFuncs<&T::clone, &T::clone_from>;

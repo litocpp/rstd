@@ -34,19 +34,10 @@ export template<typename TF>
 struct Into {
     using into_t = TF;
     template<typename Self, typename = void>
-    struct RequiredApi {
-        using Trait = Into;
-        auto into() -> into_t { return trait_required_call<0>(this); }
-    };
-
-    template<typename Self, typename = void>
     struct Api {
         using Trait = Into;
         auto into() -> into_t { return trait_call<0>(this); }
     };
-
-    template<typename T>
-    using RequiredFuncs = TraitFuncs<&T::into>;
 
     template<typename T>
     using Funcs = TraitFuncs<&T::into>;

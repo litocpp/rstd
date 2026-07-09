@@ -128,22 +128,12 @@ using TraitFuncs = typename Trait::template Funcs<A>;
 template<typename Trait, typename A>
 using TraitApiHelper = TraitFuncsHelper<TraitFuncs<Trait, A>>;
 
-template<typename Trait, typename A>
-using RequiredTraitFuncs = typename Trait::template RequiredFuncs<A>;
-
-template<typename Trait, typename A>
-using RequiredTraitApiHelper = TraitFuncsHelper<RequiredTraitFuncs<Trait, A>>;
-
 template<typename F>
 using trait_func_return_t = typename mtp::func_traits<mtp::rm_cv<F>>::ret;
 
 template<usize I, typename Trait, typename A>
 using trait_api_return_t =
     trait_func_return_t<decltype(TraitApiHelper<Trait, A>::template get<I>())>;
-
-template<usize I, typename Trait, typename A>
-using required_trait_api_return_t =
-    trait_func_return_t<decltype(RequiredTraitApiHelper<Trait, A>::template get<I>())>;
 
 template<typename Trait>
 concept trait_allows_const_member_impl =
@@ -502,50 +492,6 @@ using DefaultInImpl = Impl<T, default_tag<Self>>;
 /// \tparam A The concrete type whose methods satisfy the trait.
 export template<typename T, typename A>
 struct LinkClassMethod : mtp::ImplWithPtr<A>, mtp::rm_cv<T>::template Api<A, in_class_tag> {};
-
-/// Links a class's required methods while inheriting the chosen Impl base.
-/// \tparam T The trait type.
-/// \tparam A The concrete type whose required methods satisfy the trait.
-/// \tparam Base The Impl base that supplies self storage and provided methods.
-export template<typename T, typename A, typename Base = ImplBase<A>>
-struct LinkClassRequired : Base,
-                           mtp::rm_cv<T>::template RequiredApi<A, LinkClassRequired<T, A, Base>> {
-    template<typename P>
-    constexpr LinkClassRequired(P* p) noexcept: Base { p } {}
-};
-
-/// Links class required methods and fills provided methods from the trait default Impl.
-/// \tparam T The trait type.
-/// \tparam A The concrete type whose required methods satisfy the trait.
-export template<typename T, typename A>
-using LinkClassRequiredWithDefault = LinkClassRequired<T, A, DefaultInImpl<T, A>>;
-
-/// Dispatches a required trait method to the corresponding class member.
-/// \tparam I The index of the method in the trait's required API function list.
-/// \tparam TApi The required trait API type.
-/// \param self Pointer to the required trait API object.
-/// \param args Arguments forwarded to the class method.
-/// \return The result of the dispatched method call.
-export template<usize I, typename TApi, typename... Args>
-    requires mtp::is_trait_api<mtp::rm_cv<TApi>>
-[[gnu::always_inline]]
-inline constexpr decltype(auto) trait_required_call(TApi* self, Args&&... args) {
-    using TApi_    = mtp::rm_cv<TApi>;
-    using Trait    = typename TApi_::Trait;
-    using TClass   = typename mtp::TraitApiTraits<TApi_>::type;
-    using Delegate = typename mtp::TraitApiTraits<TApi_>::delegate_type;
-
-    if constexpr (mtp::same_as<Delegate, mtp::api_check_tag>) {
-        using Ret = mtp::required_trait_api_return_t<I, Trait, TApi_>;
-        return mtp::trait_check_return<Ret>();
-    } else {
-        constexpr const auto api { mtp::RequiredTraitApiHelper<Trait, TClass>::template get<I>() };
-        auto                 impl_in_class =
-            static_cast<mtp::follow_const_t<TApi, Delegate>*>(self);
-        const auto self_ = rstd::addressof(mtp::ImplHelper::get_self(impl_in_class));
-        return (self_->*api)(rstd::forward<Args>(args)...);
-    }
-}
 
 /// Dispatches a trait method call to the appropriate Impl, handling static, dynamic, and in-class
 /// dispatch.
