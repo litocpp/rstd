@@ -33,14 +33,14 @@ public:
 
     auto clone() const -> RuntimeHandle { return RuntimeHandle { m_inner.clone() }; }
 
-    template<AwaitableLike A>
+    template<AwaitableInput A>
     auto spawn(A awaitable) const -> JoinHandle<await_output_t<A>> {
         auto inner = m_inner.upgrade();
         if (! inner) {
             rstd::panic { "RuntimeHandle::spawn called after runtime shutdown" };
         }
         auto driver = make_runtime_driver(into_coro(rstd::move(awaitable)));
-        return ::spawn_on(*inner.as_ptr().as_raw_ptr(), rstd::move(driver));
+        return ::spawn_driver_on(*inner.as_ptr().as_raw_ptr(), rstd::move(driver));
     }
 };
 
@@ -120,22 +120,22 @@ public:
 
     auto time_enabled() const -> bool { return m_inner->time_enabled(); }
 
-    template<AwaitableLike A>
+    template<AwaitableInput A>
     auto spawn(A awaitable) -> JoinHandle<await_output_t<A>> {
         auto driver = make_runtime_driver(into_coro(rstd::move(awaitable)));
-        return ::spawn_on(*m_inner.as_ptr().as_raw_ptr(), rstd::move(driver));
+        return ::spawn_driver_on(*m_inner.as_ptr().as_raw_ptr(), rstd::move(driver));
     }
 
-    template<AwaitableLike A>
+    template<AwaitableInput A>
     auto spawn_local(A awaitable) -> JoinHandle<await_output_t<A>> {
         if (m_inner->is_thread_pool()) {
             rstd::panic { "spawn_local is only supported by current-thread runtime" };
         }
         auto driver = make_runtime_driver(into_coro(rstd::move(awaitable)));
-        return ::spawn_on(*m_inner.as_ptr().as_raw_ptr(), rstd::move(driver));
+        return ::spawn_driver_on(*m_inner.as_ptr().as_raw_ptr(), rstd::move(driver));
     }
 
-    template<AwaitableLike A>
+    template<AwaitableInput A>
     auto block_on(A awaitable) -> await_output_t<A> {
         auto& runtime = *m_inner.as_ptr().as_raw_ptr();
         auto  scope   = RuntimeScope { runtime };
@@ -145,15 +145,18 @@ public:
         auto  driver  = make_runtime_driver(into_coro(rstd::move(awaitable)));
 
         while (true) {
-            auto out = future::poll(driver, cx);
+            auto out = driver.drive(cx);
             if (out.is_ready()) {
                 m_inner->drain_ready();
                 if constexpr (mtp::is_void<await_output_t<A>>) {
-                    rstd::move(out).take();
+                    out.take();
                     return;
                 } else {
-                    return rstd::move(out).take();
+                    return out.take();
                 }
+            }
+            if (out.is_external()) {
+                rstd::panic { "block_on async coro cannot resume on external executor" };
             }
 
             m_inner->drain_ready();
@@ -223,7 +226,7 @@ public:
     }
 };
 
-export template<AwaitableLike A>
+export template<AwaitableInput A>
 auto block_on(A awaitable) -> await_output_t<A> {
     auto runtime = Runtime {};
     return runtime.block_on(rstd::move(awaitable));

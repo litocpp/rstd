@@ -9,7 +9,8 @@ namespace rstd::async::detail
 template<typename F>
 using select_output_t = mtp::void_empty_t<future::future_output_t<F>>;
 
-template<future::FutureLike F>
+template<typename F>
+    requires Impled<mtp::rm_cvf<F>, future::Future<future::future_output_t<F>>>
 auto take_ready(task::Poll<future::future_output_t<F>>&& out) -> select_output_t<F> {
     if constexpr (mtp::is_void<future::future_output_t<F>>) {
         rstd::move(out).take();
@@ -69,7 +70,9 @@ public:
     }
 };
 
-export template<future::FutureLike F1, future::FutureLike F2>
+export template<typename F1, typename F2>
+    requires Impled<mtp::rm_cvf<F1>, future::Future<future::future_output_t<F1>>> &&
+             Impled<mtp::rm_cvf<F2>, future::Future<future::future_output_t<F2>>>
 class Select {
     Option<F1> f1;
     Option<F2> f2;
@@ -116,7 +119,9 @@ public:
     }
 };
 
-export template<future::FutureLike F1, future::FutureLike F2>
+export template<typename F1, typename F2>
+    requires Impled<mtp::rm_cvf<F1>, future::Future<future::future_output_t<F1>>> &&
+             Impled<mtp::rm_cvf<F2>, future::Future<future::future_output_t<F2>>>
 class Race {
     Select<F1, F2> select_;
     bool           completed { false };
@@ -154,12 +159,16 @@ public:
     }
 };
 
-export template<future::FutureLike F1, future::FutureLike F2>
+export template<typename F1, typename F2>
+    requires Impled<mtp::rm_cvf<F1>, future::Future<future::future_output_t<F1>>> &&
+             Impled<mtp::rm_cvf<F2>, future::Future<future::future_output_t<F2>>>
 auto select(F1 future1, F2 future2) -> Select<F1, F2> {
     return Select<F1, F2> { rstd::move(future1), rstd::move(future2) };
 }
 
-export template<future::FutureLike F1, future::FutureLike F2>
+export template<typename F1, typename F2>
+    requires Impled<mtp::rm_cvf<F1>, future::Future<future::future_output_t<F1>>> &&
+             Impled<mtp::rm_cvf<F2>, future::Future<future::future_output_t<F2>>>
 auto race(F1 future1, F2 future2) -> Race<F1, F2> {
     return Race<F1, F2> { rstd::move(future1), rstd::move(future2) };
 }

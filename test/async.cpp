@@ -18,22 +18,33 @@ struct ReadyInt {
 };
 
 struct IntoReadyInt {
+    using Future = ReadyInt;
+
     auto into_future() -> ReadyInt { return ReadyInt {}; }
 };
 
 struct NonAwaitable {};
 
-static_assert(async::AwaitableLike<ReadyInt>);
-static_assert(async::AwaitableLike<IntoReadyInt>);
-static_assert(async::AwaitableLike<async::Completion<int>>);
-static_assert(async::AwaitableLike<async::CompletionQueueNext<int>>);
-static_assert(async::AwaitableLike<async::coro<int>>);
-static_assert(! async::AwaitableLike<NonAwaitable>);
-static_assert(! future::FutureLike<async::coro<int>>);
-static_assert(! future::FutureLike<async::Completion<int>>);
-static_assert(! future::FutureLike<async::CompletionQueueNext<int>>);
+static_assert(async::AwaitableInput<ReadyInt>);
+static_assert(async::AwaitableInput<IntoReadyInt>);
+static_assert(async::AwaitableInput<async::Completion<int>>);
+static_assert(async::AwaitableInput<async::CompletionQueueNext<int>>);
+static_assert(async::AwaitableInput<async::LocalExecutor>);
+static_assert(async::AwaitableInput<async::AnyExecutor>);
+static_assert(async::AwaitableInput<async::coro<int>>);
+static_assert(! async::AwaitableInput<NonAwaitable>);
+static_assert(! Impled<async::coro<int>, future::Future<int>>);
+static_assert(! Impled<async::Completion<int>,
+                       future::Future<Result<int, async::CompletionError<empty>>>>);
+static_assert(! Impled<async::CompletionQueueNext<int>, future::Future<io::Result<Option<int>>>>);
+static_assert(! Impled<async::LocalExecutor, future::Future<bool>>);
+static_assert(! Impled<async::AnyExecutor, future::Future<bool>>);
+static_assert(! Impled<async::LocalExecutor, async::IntoFuture>);
+static_assert(! Impled<async::AnyExecutor, async::IntoFuture>);
 static_assert(mtp::same_as<async::await_output_t<ReadyInt>, int>);
 static_assert(mtp::same_as<async::await_output_t<IntoReadyInt>, int>);
+static_assert(mtp::same_as<async::await_output_t<async::LocalExecutor>, bool>);
+static_assert(mtp::same_as<async::await_output_t<async::AnyExecutor>, bool>);
 static_assert(mtp::same_as<async::await_output_t<async::coro<int>>, int>);
 static_assert(mtp::same_as<async::await_output_t<async::Completion<int>>,
                            Result<int, async::CompletionError<empty>>>);
@@ -188,7 +199,7 @@ struct CounterStream {
     }
 };
 
-static_assert(future::StreamLike<CounterStream>);
+static_assert(Impled<CounterStream, future::Stream<int>>);
 
 struct MockAsyncIo {
     const u8*       read_data;
@@ -245,8 +256,8 @@ struct MockAsyncIo {
     }
 };
 
-static_assert(async::io::AsyncReadLike<MockAsyncIo>);
-static_assert(async::io::AsyncWriteLike<MockAsyncIo>);
+static_assert(Impled<MockAsyncIo, async::io::AsyncRead>);
+static_assert(Impled<MockAsyncIo, async::io::AsyncWrite>);
 
 struct ErrorAsyncRead {
     auto poll_read(mut_ref<ErrorAsyncRead>,
@@ -276,7 +287,7 @@ struct ZeroAsyncWrite {
     }
 };
 
-static_assert(async::io::AsyncWriteLike<ZeroAsyncWrite>);
+static_assert(Impled<ZeroAsyncWrite, async::io::AsyncWrite>);
 
 async::coro<int> lazy_value(int& counter) {
     ++counter;
@@ -1703,7 +1714,7 @@ TEST(AsyncCoro, TimeoutExpiresAndDropsFuture) {
     EXPECT_EQ(drops, 1);
 }
 
-TEST(AsyncCoro, StreamLikePollNext) {
+TEST(AsyncCoro, StreamTraitPollNext) {
     auto counts = WakerCounts {};
     auto waker  = task::Waker::from_raw(task::RawWaker::from_raw_parts(
         &counts,

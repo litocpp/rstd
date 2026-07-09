@@ -88,7 +88,8 @@ public:
     }
 };
 
-export template<future::FutureLike F>
+export template<typename F>
+    requires Impled<mtp::rm_cvf<F>, future::Future<future::future_output_t<F>>>
 class Timeout {
     F     future_;
     Sleep delay_;
@@ -141,7 +142,8 @@ export inline auto sleep(time::Duration duration) -> Sleep {
     return Sleep { duration };
 }
 
-export template<future::FutureLike F>
+export template<typename F>
+    requires Impled<mtp::rm_cvf<F>, future::Future<future::future_output_t<F>>>
 auto timeout(F future, time::Duration duration) -> Timeout<F> {
     return Timeout<F> { rstd::move(future), duration };
 }

@@ -11,7 +11,8 @@ namespace rstd::async::detail
 template<typename F>
 using join_output_t = mtp::void_empty_t<future::future_output_t<F>>;
 
-template<future::FutureLike F>
+template<typename F>
+    requires Impled<mtp::rm_cvf<F>, future::Future<future::future_output_t<F>>>
 auto poll_join_slot(F& future_, Option<join_output_t<F>>& slot, task::Context& cx) -> bool {
     if (slot.is_some()) {
         return true;
@@ -36,7 +37,9 @@ auto poll_join_slot(F& future_, Option<join_output_t<F>>& slot, task::Context& c
 namespace rstd::async
 {
 
-export template<future::FutureLike F1, future::FutureLike F2>
+export template<typename F1, typename F2>
+    requires Impled<mtp::rm_cvf<F1>, future::Future<future::future_output_t<F1>>> &&
+             Impled<mtp::rm_cvf<F2>, future::Future<future::future_output_t<F2>>>
 class Join {
     F1 f1;
     F2 f2;
@@ -73,7 +76,8 @@ public:
     }
 };
 
-export template<future::FutureLike F>
+export template<typename F>
+    requires Impled<mtp::rm_cvf<F>, future::Future<future::future_output_t<F>>>
 class JoinAll {
     Vec<F> futures;
     Vec<Option<detail::join_output_t<F>>> outputs;
@@ -125,12 +129,15 @@ public:
     }
 };
 
-export template<future::FutureLike F1, future::FutureLike F2>
+export template<typename F1, typename F2>
+    requires Impled<mtp::rm_cvf<F1>, future::Future<future::future_output_t<F1>>> &&
+             Impled<mtp::rm_cvf<F2>, future::Future<future::future_output_t<F2>>>
 auto join(F1 future1, F2 future2) -> Join<F1, F2> {
     return Join<F1, F2> { rstd::move(future1), rstd::move(future2) };
 }
 
-export template<future::FutureLike F>
+export template<typename F>
+    requires Impled<mtp::rm_cvf<F>, future::Future<future::future_output_t<F>>>
 auto join_all(Vec<F> futures) -> JoinAll<F> {
     return JoinAll<F> { rstd::move(futures) };
 }

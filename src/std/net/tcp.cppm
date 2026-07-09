@@ -336,7 +336,7 @@ public:
     }
 };
 
-static_assert(async::io::AsyncReadLike<TcpStream>);
-static_assert(async::io::AsyncWriteLike<TcpStream>);
+static_assert(Impled<TcpStream, async::io::AsyncRead>);
+static_assert(Impled<TcpStream, async::io::AsyncWrite>);
 
 } // namespace rstd::net

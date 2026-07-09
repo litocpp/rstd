@@ -56,9 +56,6 @@ concept AsyncReadInClass = requires(mtp::rm_cvf<R>& reader,
         -> mtp::same_as<task::Poll<::rstd::io::Result<usize>>>;
 };
 
-export template<typename R>
-concept AsyncReadLike = Impled<mtp::rm_cvf<R>, AsyncRead>;
-
 export template<typename W>
 concept AsyncWriteInClass = requires(mtp::rm_cvf<W>& writer,
                                      task::Context&  cx,
@@ -71,18 +68,15 @@ concept AsyncWriteInClass = requires(mtp::rm_cvf<W>& writer,
         -> mtp::same_as<task::Poll<::rstd::io::Result<empty>>>;
 };
 
-export template<typename W>
-concept AsyncWriteLike = Impled<mtp::rm_cvf<W>, AsyncWrite>;
-
 } // namespace rstd::async::io
 
 namespace rstd
 {
-template<typename R>
+export template<typename R>
     requires async::io::AsyncReadInClass<R>
 struct Impl<async::io::AsyncRead, R> : LinkClassMethod<async::io::AsyncRead, R> {};
 
-template<typename W>
+export template<typename W>
     requires async::io::AsyncWriteInClass<W>
 struct Impl<async::io::AsyncWrite, W> : LinkClassMethod<async::io::AsyncWrite, W> {};
 } // namespace rstd
@@ -93,7 +87,7 @@ namespace rstd::async::io
 export template<typename R>
 auto poll_read(R& reader, task::Context& cx, bytes::BytesMut& buf)
     -> task::Poll<::rstd::io::Result<usize>>
-    requires AsyncReadLike<R>
+    requires Impled<mtp::rm_cvf<R>, AsyncRead>
 {
     return as<AsyncRead>(reader).poll_read(future::as_mut_ref(reader), cx, buf);
 }
@@ -101,26 +95,27 @@ auto poll_read(R& reader, task::Context& cx, bytes::BytesMut& buf)
 export template<typename W>
 auto poll_write(W& writer, task::Context& cx, const bytes::Bytes& buf)
     -> task::Poll<::rstd::io::Result<usize>>
-    requires AsyncWriteLike<W>
+    requires Impled<mtp::rm_cvf<W>, AsyncWrite>
 {
     return as<AsyncWrite>(writer).poll_write(future::as_mut_ref(writer), cx, buf);
 }
 
 export template<typename W>
 auto poll_flush(W& writer, task::Context& cx) -> task::Poll<::rstd::io::Result<empty>>
-    requires AsyncWriteLike<W>
+    requires Impled<mtp::rm_cvf<W>, AsyncWrite>
 {
     return as<AsyncWrite>(writer).poll_flush(future::as_mut_ref(writer), cx);
 }
 
 export template<typename W>
 auto poll_shutdown(W& writer, task::Context& cx) -> task::Poll<::rstd::io::Result<empty>>
-    requires AsyncWriteLike<W>
+    requires Impled<mtp::rm_cvf<W>, AsyncWrite>
 {
     return as<AsyncWrite>(writer).poll_shutdown(future::as_mut_ref(writer), cx);
 }
 
-export template<AsyncReadLike R>
+export template<typename R>
+    requires Impled<mtp::rm_cvf<R>, AsyncRead>
 class ReadFuture {
     R*               reader;
     bytes::BytesMut* buf;
@@ -151,7 +146,8 @@ public:
     }
 };
 
-export template<AsyncWriteLike W>
+export template<typename W>
+    requires Impled<mtp::rm_cvf<W>, AsyncWrite>
 class WriteFuture {
     W*                  writer;
     const bytes::Bytes* buf;
@@ -182,7 +178,8 @@ public:
     }
 };
 
-export template<AsyncReadLike R>
+export template<typename R>
+    requires Impled<mtp::rm_cvf<R>, AsyncRead>
 class ReadExactFuture {
     R*               reader;
     bytes::BytesMut* buf;
@@ -235,7 +232,8 @@ public:
     }
 };
 
-export template<AsyncWriteLike W>
+export template<typename W>
+    requires Impled<mtp::rm_cvf<W>, AsyncWrite>
 class WriteAllFuture {
     W*                  writer;
     const bytes::Bytes* buf;
@@ -288,7 +286,8 @@ public:
     }
 };
 
-export template<AsyncWriteLike W>
+export template<typename W>
+    requires Impled<mtp::rm_cvf<W>, AsyncWrite>
 class FlushFuture {
     W*   writer;
     bool completed { false };
@@ -317,7 +316,8 @@ public:
     }
 };
 
-export template<AsyncWriteLike W>
+export template<typename W>
+    requires Impled<mtp::rm_cvf<W>, AsyncWrite>
 class ShutdownFuture {
     W*   writer;
     bool completed { false };
@@ -347,32 +347,38 @@ public:
     }
 };
 
-export template<AsyncReadLike R>
+export template<typename R>
+    requires Impled<mtp::rm_cvf<R>, AsyncRead>
 auto read(R& reader, bytes::BytesMut& buf) -> ReadFuture<R> {
     return ReadFuture<R> { reader, buf };
 }
 
-export template<AsyncWriteLike W>
+export template<typename W>
+    requires Impled<mtp::rm_cvf<W>, AsyncWrite>
 auto write(W& writer, const bytes::Bytes& buf) -> WriteFuture<W> {
     return WriteFuture<W> { writer, buf };
 }
 
-export template<AsyncReadLike R>
+export template<typename R>
+    requires Impled<mtp::rm_cvf<R>, AsyncRead>
 auto read_exact(R& reader, bytes::BytesMut& buf, usize len) -> ReadExactFuture<R> {
     return ReadExactFuture<R> { reader, buf, len };
 }
 
-export template<AsyncWriteLike W>
+export template<typename W>
+    requires Impled<mtp::rm_cvf<W>, AsyncWrite>
 auto write_all(W& writer, const bytes::Bytes& buf) -> WriteAllFuture<W> {
     return WriteAllFuture<W> { writer, buf };
 }
 
-export template<AsyncWriteLike W>
+export template<typename W>
+    requires Impled<mtp::rm_cvf<W>, AsyncWrite>
 auto flush(W& writer) -> FlushFuture<W> {
     return FlushFuture<W> { writer };
 }
 
-export template<AsyncWriteLike W>
+export template<typename W>
+    requires Impled<mtp::rm_cvf<W>, AsyncWrite>
 auto shutdown(W& writer) -> ShutdownFuture<W> {
     return ShutdownFuture<W> { writer };
 }

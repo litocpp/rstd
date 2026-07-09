@@ -1,5 +1,6 @@
 export module rstd:async.executor;
 export import :async.forward;
+import :async.awaitable;
 import rstd.alloc;
 import :sync;
 
@@ -46,46 +47,49 @@ struct ExecutorAwaitState {
     sync::atomic::Atomic<bool> ready { false };
 };
 
-export template<typename E>
-class ExecutorAwait {
-    E                                m_executor;
-    sync::Arc<ExecutorAwaitState>    m_state;
-    bool                             m_posted { false };
-    bool                             m_failed { false };
+template<typename E>
+class ExecutorAwaitOperation {
+    E                             m_executor;
+    sync::Arc<ExecutorAwaitState> m_state;
+    bool                          m_posted { false };
+    bool                          m_result { false };
 
 public:
     using Output = bool;
 
-    explicit ExecutorAwait(E executor)
+    explicit ExecutorAwaitOperation(E executor)
         : m_executor(rstd::move(executor)), m_state(sync::Arc<ExecutorAwaitState>::make()) {}
 
-    auto poll(mut_ref<ExecutorAwait> self, task::Context& cx) -> task::Poll<bool> {
-        auto& value = *self;
-        if (value.m_failed) {
-            return task::Poll<bool>::Ready(false);
-        }
-        if (value.m_state->ready.load(sync::atomic::Ordering::Acquire)) {
-            return task::Poll<bool>::Ready(true);
+    auto resume(AwaitContext& cx) -> AwaitOperationState {
+        if (m_state->ready.load(sync::atomic::Ordering::Acquire)) {
+            m_result = true;
+            return AwaitOperationState::Ready;
         }
 
-        if (! value.m_posted) {
-            value.m_posted = true;
-            auto state     = value.m_state.clone();
+        if (! m_posted) {
+            m_posted       = true;
+            auto state     = m_state.clone();
             auto waker     = cx.waker().clone();
-            auto posted    = as<Executor>(value.m_executor).post_job(ExecutorJob::make(
+            auto posted    = as<Executor>(m_executor).post_job(ExecutorJob::make(
                 [state = rstd::move(state), waker = rstd::move(waker)]() mutable {
                     state->ready.store(true, sync::atomic::Ordering::Release);
                     rstd::move(waker).wake();
                 }));
 
             if (! posted) {
-                value.m_failed = true;
-                return task::Poll<bool>::Ready(false);
+                m_result = false;
+                return AwaitOperationState::Ready;
             }
         }
 
-        return task::Poll<bool>::Pending();
+        return AwaitOperationState::Pending;
     }
+
+    constexpr auto placement() const noexcept -> ResumePlacement {
+        return ResumePlacement::runtime_worker();
+    }
+
+    auto take_output() const noexcept -> bool { return m_result; }
 };
 
 struct LocalExecutorState {
@@ -169,10 +173,6 @@ public:
     auto is_closed() -> bool {
         auto state = m_state.upgrade();
         return ! state || state->is_closed();
-    }
-
-    auto into_future() const -> ExecutorAwait<LocalExecutor> {
-        return ExecutorAwait<LocalExecutor> { clone() };
     }
 };
 
@@ -266,9 +266,37 @@ public:
     }
 
     auto is_closed() -> bool { return ! m_inner || m_inner->is_closed(); }
+};
 
-    auto into_future() const -> ExecutorAwait<AnyExecutor> {
-        return ExecutorAwait<AnyExecutor> { clone() };
+template<typename E>
+auto make_executor_suspension(E executor) {
+    auto operation = ExecutorAwaitOperation<E> { rstd::move(executor) };
+    return AwaitSuspension<decltype(operation)> { rstd::move(operation) };
+}
+
+template<>
+struct AwaitableTraits<LocalExecutor> {
+    using Output = bool;
+
+    static auto make_suspension(LocalExecutor& executor) {
+        return make_executor_suspension(executor.clone());
+    }
+
+    static auto make_suspension(LocalExecutor&& executor) {
+        return make_executor_suspension(rstd::move(executor));
+    }
+};
+
+template<>
+struct AwaitableTraits<AnyExecutor> {
+    using Output = bool;
+
+    static auto make_suspension(AnyExecutor& executor) {
+        return make_executor_suspension(executor.clone());
+    }
+
+    static auto make_suspension(AnyExecutor&& executor) {
+        return make_executor_suspension(rstd::move(executor));
     }
 };
 

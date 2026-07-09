@@ -164,7 +164,7 @@ struct CompletionState {
         return f->receiver_closed || f->value.is_some() || f->error.is_some() || f->canceled;
     }
 
-    auto wait(task::Context& cx) -> Option<Result<T, CompletionError<E>>> {
+    auto wait(const task::Waker& waker) -> Option<Result<T, CompletionError<E>>> {
         auto f = fields.lock().unwrap_unchecked();
         if (f->consumed) {
             rstd::panic { "async::Completion awaited after completion" };
@@ -194,7 +194,7 @@ struct CompletionState {
                 Err(CompletionError<E>::canceled()));
         }
 
-        f->waker = Some(cx.waker().clone());
+        f->waker = Some(waker.clone());
         return None();
     }
 };
@@ -282,7 +282,7 @@ public:
             return AwaitOperationState::Ready;
         }
 
-        auto out = value.m_state->wait(cx.task_context());
+        auto out = value.m_state->wait(cx.waker());
         if (out.is_none()) {
             return AwaitOperationState::Pending;
         }
@@ -290,6 +290,10 @@ public:
         value.m_active = false;
         m_result.insert(rstd::move(out).unwrap_unchecked());
         return AwaitOperationState::Ready;
+    }
+
+    constexpr auto placement() const noexcept -> ResumePlacement {
+        return ResumePlacement::runtime_worker();
     }
 };
 

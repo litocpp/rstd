@@ -123,7 +123,7 @@ struct CompletionQueueState {
         return f->receiver_closed || f->closed;
     }
 
-    auto wait_next(task::Context& cx) -> Option<io::Result<Option<T>>> {
+    auto wait_next(const task::Waker& waker) -> Option<io::Result<Option<T>>> {
         auto f = fields.lock().unwrap_unchecked();
         if (! f->items.is_empty()) {
             return Some<io::Result<Option<T>>>(Ok(Some(f->items.remove(0))));
@@ -133,7 +133,7 @@ struct CompletionQueueState {
             return Some<io::Result<Option<T>>>(Ok(None<T>()));
         }
 
-        f->waker = Some(cx.waker().clone());
+        f->waker = Some(waker.clone());
         return None();
     }
 };
@@ -191,7 +191,7 @@ public:
             rstd::panic { "async::CompletionQueueNext awaited after completion" };
         }
 
-        auto out = value.m_state->wait_next(cx.task_context());
+        auto out = value.m_state->wait_next(cx.waker());
         if (out.is_none()) {
             return AwaitOperationState::Pending;
         }
@@ -199,6 +199,10 @@ public:
         value.m_completed = true;
         m_result.insert(rstd::move(out).unwrap_unchecked());
         return AwaitOperationState::Ready;
+    }
+
+    constexpr auto placement() const noexcept -> ResumePlacement {
+        return ResumePlacement::runtime_worker();
     }
 };
 

@@ -4,6 +4,7 @@ export import :async.atomic_waker;
 export import :async.executor;
 export import :async.awaitable;
 export import :async.task;
+export import :async.coro_driver;
 export import :async.join;
 export import :async.select;
 export import :async.oneshot;

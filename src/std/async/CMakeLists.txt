@@ -5,6 +5,7 @@ set(RSTD_ASYNC_SOURCES
     async/executor.cppm
     async/awaitable.cppm
     async/task.cppm
+    async/coro_driver.cppm
     async/runtime_driver.cppm
     async/join.cppm
     async/select.cppm

@@ -17,18 +17,6 @@ using future_output_t = typename mtp::rm_cvf<F>::Output;
 export template<typename S>
 using stream_item_t = typename mtp::rm_cvf<S>::Item;
 
-export template<typename F>
-concept FutureLike = requires(mtp::rm_cvf<F>& future, task::Context& cx) {
-    typename mtp::rm_cvf<F>::Output;
-    { future.poll(as_mut_ref(future), cx) } -> mtp::same_as<task::Poll<future_output_t<F>>>;
-};
-
-export template<typename S>
-concept StreamLike = requires(mtp::rm_cvf<S>& stream, task::Context& cx) {
-    typename mtp::rm_cvf<S>::Item;
-    { stream.poll_next(as_mut_ref(stream), cx) } -> mtp::same_as<task::Poll<Option<stream_item_t<S>>>>;
-};
-
 export template<typename Output>
 struct Future {
     template<class Self, class Delegate = void>
@@ -60,18 +48,50 @@ struct Stream {
     using Funcs = TraitFuncs<&F::poll_next>;
 };
 
+template<typename F>
+concept FutureInClass = requires(mtp::rm_cvf<F>& future, task::Context& cx) {
+    typename mtp::rm_cvf<F>::Output;
+    { future.poll(as_mut_ref(future), cx) } -> mtp::same_as<task::Poll<future_output_t<F>>>;
+};
+
+template<typename S>
+concept StreamInClass = requires(mtp::rm_cvf<S>& stream, task::Context& cx) {
+    typename mtp::rm_cvf<S>::Item;
+    { stream.poll_next(as_mut_ref(stream), cx) } -> mtp::same_as<task::Poll<Option<stream_item_t<S>>>>;
+};
+
+} // namespace rstd::future
+
+namespace rstd
+{
+
+export template<typename F>
+    requires future::FutureInClass<F>
+struct Impl<future::Future<future::future_output_t<F>>, F>
+    : LinkClassMethod<future::Future<future::future_output_t<F>>, F> {};
+
+export template<typename S>
+    requires future::StreamInClass<S>
+struct Impl<future::Stream<future::stream_item_t<S>>, S>
+    : LinkClassMethod<future::Stream<future::stream_item_t<S>>, S> {};
+
+} // namespace rstd
+
+namespace rstd::future
+{
+
 export template<typename F>
 auto poll(F& future, task::Context& cx) -> task::Poll<future_output_t<F>>
-    requires FutureLike<F>
+    requires Impled<mtp::rm_cvf<F>, Future<future_output_t<F>>>
 {
-    return future.poll(as_mut_ref(future), cx);
+    return as<Future<future_output_t<F>>>(future).poll(as_mut_ref(future), cx);
 }
 
 export template<typename S>
 auto poll_next(S& stream, task::Context& cx) -> task::Poll<Option<stream_item_t<S>>>
-    requires StreamLike<S>
+    requires Impled<mtp::rm_cvf<S>, Stream<stream_item_t<S>>>
 {
-    return stream.poll_next(as_mut_ref(stream), cx);
+    return as<Stream<stream_item_t<S>>>(stream).poll_next(as_mut_ref(stream), cx);
 }
 
 } // namespace rstd::future

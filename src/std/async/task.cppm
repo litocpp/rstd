@@ -6,6 +6,7 @@ using namespace rstd;
 struct AwaitingOperation {
     void* ptr { nullptr };
     async::AwaitOperationState (*resume_fn)(void*, async::AwaitContext&) { nullptr };
+    async::ResumePlacement (*placement_fn)(void*) { nullptr };
 
     template<typename Suspension>
     static auto make(Suspension* suspension) noexcept -> AwaitingOperation {
@@ -14,6 +15,9 @@ struct AwaitingOperation {
             [](void* ptr, async::AwaitContext& cx) -> async::AwaitOperationState {
                 return static_cast<Suspension*>(ptr)->resume(cx);
             },
+            [](void* ptr) -> async::ResumePlacement {
+                return static_cast<Suspension*>(ptr)->placement();
+            },
         };
     }
 
@@ -21,6 +25,10 @@ struct AwaitingOperation {
 
     auto resume(async::AwaitContext& cx) const -> async::AwaitOperationState {
         return resume_fn(ptr, cx);
+    }
+
+    auto placement() const -> async::ResumePlacement {
+        return placement_fn(ptr);
     }
 };
 
@@ -58,7 +66,7 @@ public:
             awaiting = AwaitingOperation::make(suspension);
         }
 
-        template<AwaitableLike A>
+        template<AwaitableInput A>
         auto await_transform(A&& awaitable) {
             return make_suspension(rstd::forward<A>(awaitable));
         }
@@ -127,7 +135,7 @@ public:
             awaiting = AwaitingOperation::make(suspension);
         }
 
-        template<AwaitableLike A>
+        template<AwaitableInput A>
         auto await_transform(A&& awaitable) {
             return make_suspension(rstd::forward<A>(awaitable));
         }
@@ -172,101 +180,7 @@ struct CoroAccess {
     }
 };
 
-template<typename T>
-auto resume_coro(coro<T>& task, bool& completed, task::Context& cx) -> task::Poll<T> {
-    auto& handle = CoroAccess<T>::handle(task);
-    if (! handle) {
-        rstd::panic { "empty async coro resumed" };
-    }
-    if (completed) {
-        rstd::panic { "async coro resumed after completion" };
-    }
-
-    auto& promise = handle.promise();
-    while (true) {
-        auto await_context = async::AwaitContext { cx };
-        if (promise.awaiting) {
-            auto awaiting = promise.awaiting;
-            if (awaiting.resume(await_context) == async::AwaitOperationState::Pending) {
-                return task::Poll<T>::Pending();
-            }
-            promise.awaiting = {};
-            handle.resume();
-        } else {
-            handle.resume();
-        }
-
-        if (handle.done()) {
-            completed = true;
-            if constexpr (mtp::is_void<T>) {
-                return task::Poll<void>::Ready();
-            } else {
-                return task::Poll<T>::Ready(promise.take_result());
-            }
-        }
-    }
-}
-
-template<typename T>
-class CoroWaitOperation {
-public:
-    using Output = T;
-
-private:
-    coro<T>   m_coro;
-    bool      m_completed { false };
-    Option<T> m_ready;
-
-public:
-    explicit CoroWaitOperation(coro<T>&& task) : m_coro(rstd::move(task)) {}
-
-    auto resume(AwaitContext& cx) -> AwaitOperationState {
-        auto out = resume_coro(m_coro, m_completed, cx.task_context());
-        if (out.is_pending()) {
-            return AwaitOperationState::Pending;
-        }
-        m_ready.insert(rstd::move(out).take());
-        return AwaitOperationState::Ready;
-    }
-
-    auto take_output() -> T { return rstd::move(m_ready).unwrap_unchecked(); }
-};
-
-template<>
-class CoroWaitOperation<void> {
-public:
-    using Output = void;
-
-private:
-    coro<void> m_coro;
-    bool       m_completed { false };
-
-public:
-    explicit CoroWaitOperation(coro<void>&& task) : m_coro(rstd::move(task)) {}
-
-    auto resume(AwaitContext& cx) -> AwaitOperationState {
-        auto out = resume_coro(m_coro, m_completed, cx.task_context());
-        if (out.is_pending()) {
-            return AwaitOperationState::Pending;
-        }
-        rstd::move(out).take();
-        return AwaitOperationState::Ready;
-    }
-
-    constexpr void take_output() const noexcept {}
-};
-
-template<typename T>
-struct AwaitableTraits<coro<T>> {
-    using Output = T;
-
-    static auto make_suspension(coro<T>&& task) {
-        auto operation = CoroWaitOperation<T> { rstd::move(task) };
-        return AwaitSuspension<decltype(operation)> { rstd::move(operation) };
-    }
-};
-
-export template<AwaitableLike A>
+export template<AwaitableInput A>
 auto into_coro(A awaitable) -> coro<await_output_t<A>> {
     if constexpr (mtp::is_void<await_output_t<A>>) {
         co_await rstd::move(awaitable);

@@ -200,8 +200,13 @@ struct TaskState : TaskStateBase {
     }
 };
 
-template<future::FutureLike F>
+template<typename F>
+    requires Impled<mtp::rm_cvf<F>, future::Future<future::future_output_t<F>>>
 auto spawn_on(RuntimeInner& runtime, F future) -> rstd::async::JoinHandle<future::future_output_t<F>>;
+
+template<typename T>
+auto spawn_driver_on(RuntimeInner& runtime, rstd::async::RuntimeCoroDriver<T> driver)
+    -> rstd::async::JoinHandle<T>;
 
 namespace rstd::async
 {
@@ -241,7 +246,49 @@ struct JoinHandleFactory {
     }
 };
 
-template<future::FutureLike F>
+template<typename T>
+struct DriverTaskState : TaskStateBase {
+    rstd::async::RuntimeCoroDriver<T> driver;
+    sync::Arc<JoinState<T>>           join;
+
+    DriverTaskState(sync::Weak<RuntimeInner> runtime,
+                    rstd::async::RuntimeCoroDriver<T> driver,
+                    sync::Arc<JoinState<T>> join)
+        : TaskStateBase(rstd::move(runtime)), driver(rstd::move(driver)), join(rstd::move(join)) {}
+
+    void poll(task::Context& cx) override {
+        auto out = driver.drive(cx);
+        if (out.is_pending()) {
+            return;
+        }
+        if (out.is_external()) {
+            rstd::panic { "spawned async coro cannot resume on external executor" };
+        }
+
+        auto join_waker = Option<task::Waker> {};
+        if constexpr (mtp::is_void<T>) {
+            out.take();
+            join_waker = join->complete_value();
+        } else {
+            join_waker = join->complete_value(out.take());
+        }
+
+        finish();
+        if (join_waker.is_some()) {
+            rstd::move(*join_waker).wake();
+        }
+    }
+
+    void complete_abort() override {
+        auto join_waker = join->complete_abort();
+        if (join_waker.is_some()) {
+            rstd::move(*join_waker).wake();
+        }
+    }
+};
+
+template<typename F>
+    requires Impled<mtp::rm_cvf<F>, future::Future<future::future_output_t<F>>>
 auto spawn_on(RuntimeInner& runtime, F future) -> rstd::async::JoinHandle<future::future_output_t<F>> {
     using Output = future::future_output_t<F>;
 
@@ -254,20 +301,32 @@ auto spawn_on(RuntimeInner& runtime, F future) -> rstd::async::JoinHandle<future
     return JoinHandleFactory::make<Output>(rstd::move(join));
 }
 
+template<typename T>
+auto spawn_driver_on(RuntimeInner& runtime, rstd::async::RuntimeCoroDriver<T> driver)
+    -> rstd::async::JoinHandle<T> {
+    auto join = sync::Arc<JoinState<T>>::make();
+    auto task = TaskRef::adopt(
+        new DriverTaskState<T>(runtime.weak(), rstd::move(driver), join.clone()));
+    join->set_task(task.clone());
+    runtime.spawn(rstd::move(task));
+
+    return JoinHandleFactory::make<T>(rstd::move(join));
+}
+
 namespace rstd::async
 {
 
-export template<AwaitableLike A>
+export template<AwaitableInput A>
 auto spawn(A awaitable) -> JoinHandle<await_output_t<A>> {
     auto* runtime = CURRENT_RUNTIME;
     if (runtime == nullptr) {
         rstd::panic { "spawn called without an async runtime" };
     }
     auto driver = make_runtime_driver(into_coro(rstd::move(awaitable)));
-    return spawn_on(*runtime, rstd::move(driver));
+    return spawn_driver_on(*runtime, rstd::move(driver));
 }
 
-export template<AwaitableLike A>
+export template<AwaitableInput A>
 auto spawn_local(A awaitable) -> JoinHandle<await_output_t<A>> {
     auto* runtime = CURRENT_RUNTIME;
     if (runtime == nullptr) {
@@ -277,7 +336,7 @@ auto spawn_local(A awaitable) -> JoinHandle<await_output_t<A>> {
         rstd::panic { "spawn_local is only supported by current-thread runtime" };
     }
     auto driver = make_runtime_driver(into_coro(rstd::move(awaitable)));
-    return spawn_on(*runtime, rstd::move(driver));
+    return spawn_driver_on(*runtime, rstd::move(driver));
 }
 
 } // namespace rstd::async
