@@ -157,40 +157,6 @@ constexpr bool trait_member_primary_compatible =
      (trait_allows_const_member_impl<Trait> && ! mtp::is_const<mtp::rm_ref<Expected>> &&
       mtp::is_const<mtp::rm_ref<Actual>>));
 
-template<typename Trait, typename A, typename B, usize Index = 0>
-consteval bool check_apis() {
-    using ApiHelperA = TraitApiHelper<Trait, A>;
-    using ApiHelperB = TraitApiHelper<Trait, B>;
-
-    if constexpr (Index == 0) {
-        static_assert(ApiHelperA::size() == ApiHelperB::size(), "Please implement all Trait api");
-    }
-
-    if constexpr (Index < ApiHelperA::size()) {
-        using T1 = ApiHelperA::template type_at<Index>;
-        using T2 = ApiHelperB::template type_at<Index>;
-
-        using F1 = mtp::func_traits<T1>;
-        using F2 = mtp::func_traits<T2>;
-        using P1 = typename F1::primary;
-        using P2 = typename F2::primary;
-
-        static_assert(F1::is_member == F2::is_member);
-
-        if constexpr (F1::is_member) {
-            // Is member func
-            static_assert(trait_member_primary_compatible<Trait, P1, P2> &&
-                              mtp::same_as<typename F1::to_dyn, typename F2::to_dyn>,
-                          "Trait api not satisfy");
-        } else {
-            // not member func, full compare
-            static_assert(mtp::same_as<T1, T2>, "Trait api not satisfy");
-        }
-        return check_apis<Trait, A, B, Index + 1>();
-    }
-    return true;
-}
-
 template<typename... Api, template<class...> typename Tuple>
 consteval auto to_dyn(Tuple<Api...>) {
     return Tuple { (typename mtp::func_traits<Api>::to_dyn)(nullptr)... };
@@ -213,17 +179,6 @@ struct ImplHelper {
         return t->self();
     }
 };
-
-/// Validates that ToCheck correctly implements all API methods for trait T with type A.
-/// \tparam T The trait type.
-/// \tparam A The type parameter for the trait API.
-/// \tparam ToCheck The type whose API methods are validated.
-/// \return true if the APIs match.
-export template<typename T, typename A, typename ToCheck>
-consteval bool check_trait_apis() {
-    static_assert(mtp::has_trait_api<T>);
-    return check_apis<T, TraitCheckApi<T, A>, ToCheck>();
-}
 
 template<typename...>
 constexpr bool dependent_false = false;
@@ -254,23 +209,32 @@ template<typename Trait, typename A>
 using in_class_trait_impl_t = Impl<Trait, in_class_default_tag<A>>;
 
 template<typename T>
-struct trait_default_tag_traits;
+constexpr bool trait_default_tag_v = false;
 
-template<typename A>
-struct trait_default_tag_traits<default_tag<A>> {
-    using self = A;
-};
+template<typename T>
+constexpr bool trait_default_tag_v<default_tag<T>> = true;
 
-template<typename A>
-struct trait_default_tag_traits<in_class_default_tag<A>> {
-    using self = A;
+template<typename T>
+constexpr bool trait_default_tag_v<in_class_default_tag<T>> = true;
+
+template<typename T>
+concept trait_default_tag = trait_default_tag_v<T>;
+
+template<typename T>
+struct trait_default_self;
+
+template<typename T>
+struct trait_default_self<default_tag<T>> {
+    using type = T;
 };
 
 template<typename T>
-concept trait_default_tag = requires { typename trait_default_tag_traits<T>::self; };
+struct trait_default_self<in_class_default_tag<T>> {
+    using type = T;
+};
 
 template<typename T>
-using trait_default_self_t = typename trait_default_tag_traits<T>::self;
+using trait_default_self_t = typename trait_default_self<T>::type;
 
 template<typename Trait, typename A>
 concept has_external_trait_impl = mtp::complete<external_trait_impl_t<Trait, A>>;
@@ -288,13 +252,35 @@ concept trait_apis_formable = mtp::has_trait_api<Trait> && requires {
     TraitApiHelper<Trait, ToCheck>::size();
 };
 
-template<typename Trait, typename ExpectedApi, typename ToCheck, usize Index = 0>
-consteval bool check_apis_quiet() {
+template<typename Trait, typename Expected, typename Actual>
+consteval bool trait_api_entry_matches() {
+    using F1 = mtp::func_traits<Expected>;
+    using F2 = mtp::func_traits<Actual>;
+
+    if constexpr (F1::is_member != F2::is_member) {
+        return false;
+    } else if constexpr (F1::is_member) {
+        using P1 = typename F1::primary;
+        using P2 = typename F2::primary;
+
+        return trait_member_primary_compatible<Trait, P1, P2> &&
+               mtp::same_as<typename F1::to_dyn, typename F2::to_dyn>;
+    } else {
+        return mtp::same_as<Expected, Actual>;
+    }
+}
+
+template<bool Diagnose, typename Trait, typename ExpectedApi, typename ToCheck, usize Index = 0>
+consteval bool check_apis_match() {
     using ApiHelperA = TraitApiHelper<Trait, ExpectedApi>;
     using ApiHelperB = TraitApiHelper<Trait, ToCheck>;
 
     if constexpr (Index == 0) {
         if constexpr (ApiHelperA::size() != ApiHelperB::size()) {
+            if constexpr (Diagnose) {
+                static_assert(ApiHelperA::size() == ApiHelperB::size(),
+                              "Please implement all Trait api");
+            }
             return false;
         }
     }
@@ -303,24 +289,37 @@ consteval bool check_apis_quiet() {
         using T1 = ApiHelperA::template type_at<Index>;
         using T2 = ApiHelperB::template type_at<Index>;
 
-        using F1 = mtp::func_traits<T1>;
-        using F2 = mtp::func_traits<T2>;
-        using P1 = typename F1::primary;
-        using P2 = typename F2::primary;
-
-        if constexpr (F1::is_member != F2::is_member) {
-            return false;
-        } else if constexpr (F1::is_member) {
-            if constexpr (! (trait_member_primary_compatible<Trait, P1, P2> &&
-                             mtp::same_as<typename F1::to_dyn, typename F2::to_dyn>)) {
-                return false;
+        if constexpr (! trait_api_entry_matches<Trait, T1, T2>()) {
+            if constexpr (Diagnose) {
+                static_assert(trait_api_entry_matches<Trait, T1, T2>(),
+                              "Trait api not satisfy");
             }
-        } else if constexpr (! mtp::same_as<T1, T2>) {
             return false;
         }
-        return check_apis_quiet<Trait, ExpectedApi, ToCheck, Index + 1>();
+        return check_apis_match<Diagnose, Trait, ExpectedApi, ToCheck, Index + 1>();
     }
     return true;
+}
+
+template<typename Trait, typename ExpectedApi, typename ToCheck>
+consteval bool check_apis() {
+    return check_apis_match<true, Trait, ExpectedApi, ToCheck>();
+}
+
+/// Validates that ToCheck correctly implements all API methods for trait T with type A.
+/// \tparam T The trait type.
+/// \tparam A The type parameter for the trait API.
+/// \tparam ToCheck The type whose API methods are validated.
+/// \return true if the APIs match.
+export template<typename T, typename A, typename ToCheck>
+consteval bool check_trait_apis() {
+    static_assert(mtp::has_trait_api<T>);
+    return check_apis<T, TraitCheckApi<T, A>, ToCheck>();
+}
+
+template<typename Trait, typename ExpectedApi, typename ToCheck>
+consteval bool check_apis_quiet() {
+    return check_apis_match<false, Trait, ExpectedApi, ToCheck>();
 }
 
 template<typename Trait, typename A, typename ToCheck>
