@@ -27,19 +27,12 @@ struct ArcImplTrait {
     template<typename Self, typename = void>
     struct Api {
         using Trait = ArcImplTrait;
-        auto data() noexcept -> voidp { return trait_call<0>(this); }
-        void do_delete(DeleteType t, EmbedDeconstructor d) { trait_call<1>(this, t, d); }
+        auto data() noexcept -> voidp { return rstd::trait_call<0>(this); }
+        void do_delete(DeleteType t, EmbedDeconstructor d) { rstd::trait_call<1>(this, t, d); }
     };
 
     template<typename F>
     using Funcs = TraitFuncs<&F::data, &F::do_delete>;
-};
-
-enum class ArcStoragePolicy : u32
-{
-    Embed = 0,
-    Separate,
-    SeparateWithDeleter
 };
 
 template<class T>
@@ -108,13 +101,8 @@ struct ArcInner {
     }
 };
 
-template<typename T, ArcStoragePolicy P = ArcStoragePolicy::Embed>
-struct ArcInnerImpl {
-    static_assert(false);
-};
-
 template<typename T>
-struct ArcInnerImpl<T, ArcStoragePolicy::Embed> : ArcInner<T> {
+struct ArcInnerImpl : ArcInner<T> {
     static_assert(Impled<T, Sized>);
 
     alignas(T) rstd::byte storage[sizeof(T)];
@@ -125,22 +113,6 @@ struct ArcInnerImpl<T, ArcStoragePolicy::Embed> : ArcInner<T> {
     void do_delete(DeleteType t, EmbedDeconstructor deconstruct) {
         if (t == DeleteType::Value) {
             deconstruct(&storage);
-        } else {
-            delete this;
-        }
-    }
-};
-
-template<typename T>
-struct ArcInnerImpl<T, ArcStoragePolicy::Separate> : ArcInner<T> {
-    ptr<T> p;
-
-    ArcInnerImpl();
-
-    auto data() noexcept -> voidp { return p; }
-    void do_delete(DeleteType t, EmbedDeconstructor) {
-        if (t == DeleteType::Value) {
-            delete rstd::addressof(*p);
         } else {
             delete this;
         }
@@ -162,26 +134,15 @@ using namespace ::alloc::sync;
 
 namespace rstd
 {
-template<typename T, typename Self>
-    requires mtp::same_as<T, Clone> && mtp::spec_of<Self, Arc>
-struct Impl<T, Self> : LinkClassRequiredWithDefault<T, Self> {};
-
-template<typename T, typename Self>
-    requires mtp::same_as<T, Clone> && mtp::spec_of<Self, Weak>
-struct Impl<T, Self> : LinkClassRequiredWithDefault<T, Self> {};
-
-template<mtp::same_as<ArcImplTrait> T, typename A, ArcStoragePolicy P>
-struct Impl<T, ArcInnerImpl<A, P>> : LinkClassMethod<T, ArcInnerImpl<A, P>> {};
+template<mtp::same_as<ArcImplTrait> T, typename A>
+struct Impl<T, ArcInnerImpl<A>> : LinkClassMethod<T, ArcInnerImpl<A>> {};
 
 } // namespace rstd
 
 namespace alloc
 {
 template<typename T>
-sync::ArcInnerImpl<T, ArcStoragePolicy::Embed>::ArcInnerImpl()
-    : ArcInner<T>(dyn<ArcImplTrait>::from_ptr(this)) {}
-template<typename T>
-sync::ArcInnerImpl<T, ArcStoragePolicy::Separate>::ArcInnerImpl()
+sync::ArcInnerImpl<T>::ArcInnerImpl()
     : ArcInner<T>(dyn<ArcImplTrait>::from_ptr(this)) {}
 
 } // namespace alloc
@@ -269,7 +230,7 @@ public:
     /// Constructs a new `Arc<T>`.
     template<typename... Args>
     static auto make(Args&&... args) -> Arc {
-        auto inner = new ArcInnerImpl<T, ArcStoragePolicy::Embed>;
+        auto inner = new ArcInnerImpl<T>;
         rstd::construct_at(reinterpret_cast<T*>(&(inner->storage)), rstd::forward<Args>(args)...);
         return { ArcData<T> { .inner = inner } };
     }

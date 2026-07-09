@@ -288,7 +288,7 @@ TEST(Trait, InClass) {
 struct EqOnly : rstd::DefaultInClass<EqOnly, rstd::cmp::PartialEq<EqOnly>> {
     int a;
     explicit EqOnly(int v): a(v) {}
-    auto eq(const EqOnly& other) noexcept -> bool { return a == other.a; }
+    auto eq(const EqOnly& other) const noexcept -> bool { return a == other.a; }
 };
 
 struct RequiredIter : rstd::DefaultInClass<RequiredIter, rstd::iter::Iterator> {
@@ -310,13 +310,13 @@ static_assert(rstd::Impled<RequiredIter, rstd::iter::Iterator>);
 struct OverrideEq : rstd::DefaultInClass<OverrideEq, rstd::cmp::PartialEq<OverrideEq>> {
     int a;
     explicit OverrideEq(int v): a(v) {}
-    auto eq(const OverrideEq& other) noexcept -> bool { return a == other.a; }
+    auto eq(const OverrideEq& other) const noexcept -> bool { return a == other.a; }
 };
 
 template<>
 struct rstd::Impl<rstd::cmp::PartialEq<OverrideEq>, OverrideEq>
     : rstd::DefaultInImpl<rstd::cmp::PartialEq<OverrideEq>, OverrideEq> {
-    auto eq(const OverrideEq&) noexcept -> bool { return false; }
+    auto eq(const OverrideEq&) const noexcept -> bool { return false; }
 };
 
 static_assert(rstd::Impled<OverrideEq, rstd::cmp::PartialEq<OverrideEq>>);

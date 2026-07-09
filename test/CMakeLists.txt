@@ -76,23 +76,46 @@ target_link_libraries(rstd_test PRIVATE rstd::rstd GTest::gtest_main)
 include(GoogleTest)
 gtest_discover_tests(rstd_test)
 
-add_executable(rstd_compile_fail_trait_impled_diagnostic EXCLUDE_FROM_ALL
-               compile_fail/trait_impled_diagnostic.cpp)
-target_link_libraries(rstd_compile_fail_trait_impled_diagnostic PRIVATE rstd::rstd)
+function(add_rstd_compile_fail target source name expected_regex)
+  add_executable(${target} EXCLUDE_FROM_ALL ${source})
+  target_link_libraries(${target} PRIVATE rstd::rstd)
+  add_test(
+    NAME ${name}
+    COMMAND
+      ${CMAKE_COMMAND}
+      -DBUILD_DIR=${CMAKE_BINARY_DIR}
+      -DTARGET_NAME=${target}
+      -DCONFIG=$<CONFIG>
+      "-DEXPECTED_REGEX=${expected_regex}"
+      -P ${CMAKE_CURRENT_LIST_DIR}/compile_fail/run_compile_fail.cmake)
+  set_tests_properties(${name} PROPERTIES RUN_SERIAL TRUE)
+endfunction()
 
-add_test(
-  NAME Trait.ImpledDiagnosticFailure
-  COMMAND
-    ${CMAKE_COMMAND}
-    -DBUILD_DIR=${CMAKE_BINARY_DIR}
-    -DTARGET_NAME=rstd_compile_fail_trait_impled_diagnostic
-    -DCONFIG=$<CONFIG>
-    "-DEXPECTED_REGEX=rstd::Impled failed: no external Impl or in-class DefaultInClass marker"
-    -P ${CMAKE_CURRENT_LIST_DIR}/compile_fail/run_compile_fail.cmake)
-set_tests_properties(
+add_rstd_compile_fail(
+  rstd_compile_fail_trait_impled_diagnostic
+  compile_fail/trait_impled_diagnostic.cpp
   Trait.ImpledDiagnosticFailure
-  PROPERTIES
-    RUN_SERIAL TRUE)
+  "rstd::Impled failed: no external Impl or in-class DefaultInClass marker")
+add_rstd_compile_fail(
+  rstd_compile_fail_trait_in_class_api_mismatch
+  compile_fail/trait_in_class_api_mismatch.cpp
+  Trait.InClassApiMismatchFailure
+  "rstd::Impled failed: in-class implementation does not satisfy trait API")
+add_rstd_compile_fail(
+  rstd_compile_fail_trait_external_api_mismatch
+  compile_fail/trait_external_api_mismatch.cpp
+  Trait.ExternalApiMismatchFailure
+  "rstd::Impled failed: external Impl does not satisfy trait API")
+add_rstd_compile_fail(
+  rstd_compile_fail_trait_external_const_api_mismatch
+  compile_fail/trait_external_const_api_mismatch.cpp
+  Trait.ExternalConstApiMismatchFailure
+  "rstd::Impled failed: external Impl does not satisfy trait API")
+add_rstd_compile_fail(
+  rstd_compile_fail_trait_direct_api_mismatch
+  compile_fail/trait_direct_api_mismatch.cpp
+  Trait.DirectApiMismatchFailure
+  "rstd::Impled failed: direct trait implementation does not satisfy trait API")
 
 if(OFF)
 add_executable(nostd nostd/main.cpp)

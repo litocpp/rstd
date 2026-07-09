@@ -35,8 +35,11 @@ export template<typename T>
 concept is_direct_trait = T::direct;
 
 /// Checks whether T has an Api member template defining trait methods.
+template<template<typename, typename> typename>
+struct trait_api_template_probe {};
+
 export template<typename T>
-concept has_trait_api = requires { T::Api; };
+concept has_trait_api = requires { typename trait_api_template_probe<T::template Api>; };
 
 } // namespace mtp
 
@@ -142,6 +145,18 @@ template<usize I, typename Trait, typename A>
 using required_trait_api_return_t =
     trait_func_return_t<decltype(RequiredTraitApiHelper<Trait, A>::template get<I>())>;
 
+template<typename Trait>
+concept trait_allows_const_member_impl =
+    requires { Trait::allow_const_member_impl; } && Trait::allow_const_member_impl;
+
+template<typename Trait, typename Expected, typename Actual>
+constexpr bool trait_member_primary_compatible =
+    mtp::is_ref_lv<Expected> == mtp::is_ref_lv<Actual> &&
+    mtp::is_ref_rv<Expected> == mtp::is_ref_rv<Actual> &&
+    (mtp::is_const<mtp::rm_ref<Expected>> == mtp::is_const<mtp::rm_ref<Actual>> ||
+     (trait_allows_const_member_impl<Trait> && ! mtp::is_const<mtp::rm_ref<Expected>> &&
+      mtp::is_const<mtp::rm_ref<Actual>>));
+
 template<typename Trait, typename A, typename B, usize Index = 0>
 consteval bool check_apis() {
     using ApiHelperA = TraitApiHelper<Trait, A>;
@@ -164,10 +179,7 @@ consteval bool check_apis() {
 
         if constexpr (F1::is_member) {
             // Is member func
-            static_assert(mtp::is_ref_lv<P1> == mtp::is_ref_lv<P2> &&
-                              mtp::is_ref_rv<P1> == mtp::is_ref_rv<P2> &&
-                              mtp::is_const<mtp::rm_ref<P1>> ==
-                                  mtp::is_const<mtp::rm_ref<P2>> &&
+            static_assert(trait_member_primary_compatible<Trait, P1, P2> &&
                               mtp::same_as<typename F1::to_dyn, typename F2::to_dyn>,
                           "Trait api not satisfy");
         } else {
@@ -272,6 +284,8 @@ concept trait_apis_formable = mtp::has_trait_api<Trait> && requires {
     typename TraitCheckApi<Trait, A>;
     typename TraitApiHelper<Trait, TraitCheckApi<Trait, A>>;
     typename TraitApiHelper<Trait, ToCheck>;
+    TraitApiHelper<Trait, TraitCheckApi<Trait, A>>::size();
+    TraitApiHelper<Trait, ToCheck>::size();
 };
 
 template<typename Trait, typename ExpectedApi, typename ToCheck, usize Index = 0>
@@ -297,10 +311,7 @@ consteval bool check_apis_quiet() {
         if constexpr (F1::is_member != F2::is_member) {
             return false;
         } else if constexpr (F1::is_member) {
-            if constexpr (! (mtp::is_ref_lv<P1> == mtp::is_ref_lv<P2> &&
-                             mtp::is_ref_rv<P1> == mtp::is_ref_rv<P2> &&
-                             mtp::is_const<mtp::rm_ref<P1>> ==
-                                 mtp::is_const<mtp::rm_ref<P2>> &&
+            if constexpr (! (trait_member_primary_compatible<Trait, P1, P2> &&
                              mtp::same_as<typename F1::to_dyn, typename F2::to_dyn>)) {
                 return false;
             }

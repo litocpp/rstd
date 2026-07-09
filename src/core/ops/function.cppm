@@ -33,6 +33,8 @@ struct FnMut {
 
 template<typename R, bool NoEx, typename... Args>
 struct FnMut<R(Args...) noexcept(NoEx)> {
+    static constexpr bool allow_const_member_impl { true };
+
     template<typename Self, typename = void>
     struct Api {
         using Trait = FnMut;

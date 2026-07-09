@@ -173,10 +173,6 @@ public:
 
 } // namespace thread
 
-template<>
-struct Impl<clone::Clone, thread::Thread>
-    : LinkClassRequiredWithDefault<clone::Clone, thread::Thread> {};
-
 namespace thread
 {
 

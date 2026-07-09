@@ -737,7 +737,8 @@ namespace rstd
 
 template<typename U, typename A>
     requires mtp::equalable<U, A>
-struct Impl<cmp::PartialEq<option::Option<U>>, Option<A>> : ImplBase<Option<A>> {
+struct Impl<cmp::PartialEq<option::Option<U>>, Option<A>>
+    : DefaultInImpl<cmp::PartialEq<option::Option<U>>, Option<A>> {
     auto eq(const Option<U>& other) const noexcept -> bool {
         auto& self = this->self();
         if (self.is_some())

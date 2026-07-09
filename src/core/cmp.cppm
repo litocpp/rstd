@@ -15,7 +15,7 @@ struct PartialEq {
     template<typename Self, typename = void>
     struct RequiredApi {
         using Trait = PartialEq;
-        auto eq(const Rhs& other) noexcept -> bool {
+        auto eq(const Rhs& other) const noexcept -> bool {
             return trait_required_call<0>(this, other);
         }
     };
@@ -23,9 +23,9 @@ struct PartialEq {
     template<typename Self, typename = void>
     struct Api {
         using Trait = PartialEq;
-        auto eq(const Rhs& other) noexcept -> bool { return trait_call<0>(this, other); }
+        auto eq(const Rhs& other) const noexcept -> bool { return trait_call<0>(this, other); }
 
-        auto ne(const Rhs& other) noexcept -> bool { return trait_call<1>(this, other); }
+        auto ne(const Rhs& other) const noexcept -> bool { return trait_call<1>(this, other); }
     };
 
     template<typename T>
@@ -60,7 +60,7 @@ namespace rstd
 template<typename Rhs, typename Tag>
     requires mtp::trait_default_tag<Tag>
 struct Impl<cmp::PartialEq<Rhs>, Tag> : ImplBase<Tag> {
-    auto ne(const Rhs& other) noexcept -> bool {
+    auto ne(const Rhs& other) const noexcept -> bool {
         return ! as<cmp::PartialEq<Rhs>>(this->self()).eq(other);
     }
 };

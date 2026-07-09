@@ -155,6 +155,9 @@ export struct FusedIterator {
     struct Api {
         using Trait = FusedIterator;
     };
+
+    template<typename>
+    using Funcs = TraitFuncs<>;
 };
 
 } // namespace rstd::iter
