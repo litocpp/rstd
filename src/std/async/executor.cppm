@@ -11,17 +11,83 @@ using ::alloc::vec::Vec;
 namespace rstd::async
 {
 
-export using ExecutorJob = Box<dyn<FnMut<void()>>>;
+using ExecutorJobFn = Box<dyn<FnMut<void()>>>;
+
+export class ExecutorJob {
+    Option<ExecutorJobFn> m_run;
+    Option<ExecutorJobFn> m_cancel;
+
+    ExecutorJob(ExecutorJobFn run, Option<ExecutorJobFn> cancel)
+        : m_run(Some(rstd::move(run))), m_cancel(rstd::move(cancel)) {}
+
+public:
+    ExecutorJob(const ExecutorJob&)            = delete;
+    auto operator=(const ExecutorJob&) -> ExecutorJob& = delete;
+
+    ExecutorJob(ExecutorJob&& other) noexcept
+        : m_run(other.m_run.take()), m_cancel(other.m_cancel.take()) {}
+
+    auto operator=(ExecutorJob&& other) noexcept -> ExecutorJob& {
+        if (this != &other) {
+            cancel();
+            m_run    = other.m_run.take();
+            m_cancel = other.m_cancel.take();
+        }
+        return *this;
+    }
+
+    ~ExecutorJob() { cancel(); }
+
+    template<typename F>
+    static auto make(F run) -> ExecutorJob {
+        return ExecutorJob { ExecutorJobFn::make(rstd::move(run)), None() };
+    }
+
+    template<typename F, typename C>
+    static auto make(F run, C cancel) -> ExecutorJob {
+        return ExecutorJob {
+            ExecutorJobFn::make(rstd::move(run)),
+            Some(ExecutorJobFn::make(rstd::move(cancel))),
+        };
+    }
+
+    void run() {
+        if (m_run.is_none()) {
+            return;
+        }
+
+        m_cancel = None();
+        auto run = m_run.take().unwrap_unchecked();
+        run->operator()();
+    }
+
+    void cancel() {
+        if (m_run.is_none()) {
+            m_cancel = None();
+            return;
+        }
+
+        auto keep_alive = m_run.take();
+        if (m_cancel.is_some()) {
+            auto cancel = m_cancel.take().unwrap_unchecked();
+            cancel->operator()();
+        }
+        (void)keep_alive;
+    }
+};
 
 export struct Executor {
     template<class Self, class Delegate = void>
     struct Api {
         using Trait = Executor;
 
+        // Returning true transfers the job to executor ownership. An accepted job
+        // must be run or canceled; dropping it performs cancellation automatically.
         auto post_job(ExecutorJob job) -> bool {
             return trait_call<0>(this, rstd::move(job));
         }
         auto post(ExecutorJob job) -> bool { return post_job(rstd::move(job)); }
+        // A closed executor rejects new posts; it may still have accepted jobs to drain.
         auto is_closed() -> bool { return trait_call<1>(this); }
     };
 
@@ -44,7 +110,11 @@ export struct ExecutorContext {
 };
 
 struct ExecutorAwaitState {
-    sync::atomic::Atomic<bool> ready { false };
+    static constexpr usize Pending  = 0;
+    static constexpr usize Ready    = 1;
+    static constexpr usize Canceled = 2;
+
+    sync::atomic::Atomic<usize> status { Pending };
 };
 
 template<typename E>
@@ -82,20 +152,30 @@ public:
             return AwaitOperationState::Ready;
         }
 
-        if (m_state->ready.load(sync::atomic::Ordering::Acquire)) {
-            m_result    = true;
+        auto status = m_state->status.load(sync::atomic::Ordering::Acquire);
+        if (status != ExecutorAwaitState::Pending) {
+            m_result    = status == ExecutorAwaitState::Ready;
             m_completed = true;
             return AwaitOperationState::Ready;
         }
 
         if (! m_posted) {
             m_posted       = true;
-            auto state     = m_state.clone();
-            auto waker     = cx.waker().clone();
-            auto shared    = m_shared.clone();
-            auto posted    = shared->post_job(ExecutorJob::make(
-                [state = rstd::move(state), waker = rstd::move(waker)]() mutable {
-                    state->ready.store(true, sync::atomic::Ordering::Release);
+            auto ready_state  = m_state.clone();
+            auto ready_waker  = cx.waker().clone();
+            auto cancel_state = m_state.clone();
+            auto cancel_waker = cx.waker().clone();
+            auto shared       = m_shared.clone();
+            auto posted       = shared->post_job(ExecutorJob::make(
+                [state = rstd::move(ready_state), waker = rstd::move(ready_waker)]() mutable {
+                    state->status.store(ExecutorAwaitState::Ready,
+                                        sync::atomic::Ordering::Release);
+                    rstd::move(waker).wake();
+                },
+                [state = rstd::move(cancel_state),
+                 waker = rstd::move(cancel_waker)]() mutable {
+                    state->status.store(ExecutorAwaitState::Canceled,
+                                        sync::atomic::Ordering::Release);
                     rstd::move(waker).wake();
                 }));
 
@@ -130,8 +210,15 @@ public:
         auto shared = m_shared.clone();
         auto* self  = this;
         auto post   = ResumePost::make(
-            [shared = rstd::move(shared)](ResumeJob job) mutable -> bool {
-                return shared->post_job(rstd::move(job));
+            [shared = rstd::move(shared)](ResumeJob job,
+                                          ResumeCancel cancel) mutable -> bool {
+                return shared->post_job(ExecutorJob::make(
+                    [job = rstd::move(job)]() mutable {
+                        job->operator()();
+                    },
+                    [cancel = rstd::move(cancel)]() mutable {
+                        cancel->operator()();
+                    }));
             });
         auto reject = ResumeReject::make([self]() mutable {
             self->m_result    = false;
@@ -171,7 +258,7 @@ struct LocalExecutorState {
         auto ran   = usize {};
         while (! ready.is_empty()) {
             auto job = ready.remove(0);
-            job->operator()();
+            job.run();
             ++ran;
         }
         return ran;

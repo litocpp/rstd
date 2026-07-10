@@ -23,8 +23,9 @@ struct JoinState {
     };
 
     sync::Mutex<Fields> fields;
+    sync::Condvar       ready_cvar;
 
-    JoinState() : fields(Fields {}) {}
+    JoinState() : fields(Fields {}), ready_cvar(sync::Condvar::make()) {}
 
     void set_task(TaskRef task) {
         auto f = fields.lock().unwrap_unchecked();
@@ -32,25 +33,35 @@ struct JoinState {
     }
 
     auto complete_value(T in) -> Option<task::Waker> {
-        auto f = fields.lock().unwrap_unchecked();
-        if (f->ready) {
-            return None();
+        auto waker = Option<task::Waker> {};
+        {
+            auto f = fields.lock().unwrap_unchecked();
+            if (f->ready) {
+                return None();
+            }
+            f->value = Some(rstd::move(in));
+            f->ready = true;
+            f->task  = None();
+            waker    = f->waker.take();
         }
-        f->value = Some(rstd::move(in));
-        f->ready = true;
-        f->task  = None();
-        return f->waker.take();
+        ready_cvar.notify_all();
+        return waker;
     }
 
     auto complete_abort() -> Option<task::Waker> {
-        auto f = fields.lock().unwrap_unchecked();
-        if (f->ready) {
-            return None();
+        auto waker = Option<task::Waker> {};
+        {
+            auto f = fields.lock().unwrap_unchecked();
+            if (f->ready) {
+                return None();
+            }
+            f->error = Some(JoinError {});
+            f->ready = true;
+            f->task  = None();
+            waker    = f->waker.take();
         }
-        f->error = Some(JoinError {});
-        f->ready = true;
-        f->task  = None();
-        return f->waker.take();
+        ready_cvar.notify_all();
+        return waker;
     }
 
     auto poll(task::Context& cx) -> task::Poll<Result<T, JoinError>> {
@@ -72,6 +83,21 @@ struct JoinState {
     auto is_ready() const -> bool {
         auto f = fields.lock().unwrap_unchecked();
         return f->ready;
+    }
+
+    auto wait() -> Result<T, JoinError> {
+        auto f = fields.lock().unwrap_unchecked();
+        ready_cvar.wait_while(f, [](Fields const& state) {
+            return ! state.ready;
+        });
+        if (f->consumed) {
+            rstd::panic { "JoinHandle waited after completion" };
+        }
+        f->consumed = true;
+        if (f->error.is_some()) {
+            return Err(rstd::move(f->error).unwrap_unchecked());
+        }
+        return Ok(rstd::move(f->value).unwrap_unchecked());
     }
 
     void abort_task() {
@@ -99,8 +125,9 @@ struct JoinState<void> {
     };
 
     sync::Mutex<Fields> fields;
+    sync::Condvar       ready_cvar;
 
-    JoinState() : fields(Fields {}) {}
+    JoinState() : fields(Fields {}), ready_cvar(sync::Condvar::make()) {}
 
     void set_task(TaskRef task) {
         auto f = fields.lock().unwrap_unchecked();
@@ -108,24 +135,34 @@ struct JoinState<void> {
     }
 
     auto complete_value() -> Option<task::Waker> {
-        auto f = fields.lock().unwrap_unchecked();
-        if (f->ready) {
-            return None();
+        auto waker = Option<task::Waker> {};
+        {
+            auto f = fields.lock().unwrap_unchecked();
+            if (f->ready) {
+                return None();
+            }
+            f->ready = true;
+            f->task  = None();
+            waker    = f->waker.take();
         }
-        f->ready = true;
-        f->task  = None();
-        return f->waker.take();
+        ready_cvar.notify_all();
+        return waker;
     }
 
     auto complete_abort() -> Option<task::Waker> {
-        auto f = fields.lock().unwrap_unchecked();
-        if (f->ready) {
-            return None();
+        auto waker = Option<task::Waker> {};
+        {
+            auto f = fields.lock().unwrap_unchecked();
+            if (f->ready) {
+                return None();
+            }
+            f->error = Some(JoinError {});
+            f->ready = true;
+            f->task  = None();
+            waker    = f->waker.take();
         }
-        f->error = Some(JoinError {});
-        f->ready = true;
-        f->task  = None();
-        return f->waker.take();
+        ready_cvar.notify_all();
+        return waker;
     }
 
     auto poll(task::Context& cx) -> task::Poll<Result<empty, JoinError>> {
@@ -148,6 +185,21 @@ struct JoinState<void> {
     auto is_ready() const -> bool {
         auto f = fields.lock().unwrap_unchecked();
         return f->ready;
+    }
+
+    auto wait() -> Result<empty, JoinError> {
+        auto f = fields.lock().unwrap_unchecked();
+        ready_cvar.wait_while(f, [](Fields const& state) {
+            return ! state.ready;
+        });
+        if (f->consumed) {
+            rstd::panic { "JoinHandle waited after completion" };
+        }
+        f->consumed = true;
+        if (f->error.is_some()) {
+            return Err(rstd::move(f->error).unwrap_unchecked());
+        }
+        return Ok(empty {});
     }
 
     void abort_task() {
@@ -178,6 +230,10 @@ struct TaskState : TaskStateBase {
             return;
         }
 
+        if (! finish()) {
+            return;
+        }
+
         auto join_waker = Option<task::Waker> {};
         if constexpr (mtp::is_void<T>) {
             rstd::move(out).take();
@@ -186,7 +242,6 @@ struct TaskState : TaskStateBase {
             join_waker = join->complete_value(rstd::move(out).take());
         }
 
-        finish();
         if (join_waker.is_some()) {
             rstd::move(*join_waker).wake();
         }
@@ -218,6 +273,11 @@ class JoinHandle {
     explicit JoinHandle(sync::Arc<JoinState<T>> state) : state(rstd::move(state)) {}
 
     friend struct ::JoinHandleFactory;
+    friend class Runtime;
+
+    auto blocking_wait() -> Result<mtp::void_empty_t<T>, JoinError> {
+        return state->wait();
+    }
 
 public:
     using Output = Result<mtp::void_empty_t<T>, JoinError>;
@@ -262,16 +322,26 @@ struct DriverTaskState : TaskStateBase {
             return;
         }
         if (out.is_external()) {
-            auto placement = out.take_placement();
-            auto task      = self.clone();
-            auto posted    = placement.post_external(rstd::async::ResumeJob::make(
-                [task = rstd::move(task)]() mutable {
-                    task->run_external_continuation(task);
-                }));
-            if (! posted) {
-                placement.reject_external();
-                self.schedule();
+            if (! prepare_external_handoff()) {
+                return;
             }
+
+            auto placement = out.take_placement();
+            auto run_task    = self.clone();
+            auto cancel_task = self.clone();
+            auto posted      = placement.post_external(
+                rstd::async::ResumeJob::make([task = rstd::move(run_task)]() mutable {
+                    task->run_external_continuation(task);
+                }),
+                rstd::async::ResumeCancel::make(
+                    [task = rstd::move(cancel_task)]() mutable {
+                        task->cancel_external_handoff(task);
+                    }));
+            (void)posted;
+            return;
+        }
+
+        if (! finish()) {
             return;
         }
 
@@ -283,7 +353,6 @@ struct DriverTaskState : TaskStateBase {
             join_waker = join->complete_value(out.take());
         }
 
-        finish();
         if (join_waker.is_some()) {
             rstd::move(*join_waker).wake();
         }
@@ -297,12 +366,11 @@ struct DriverTaskState : TaskStateBase {
     }
 
     void run_external_continuation(TaskRef& self) override {
-        if (completed) {
-            return;
-        }
-
         auto rt = runtime.upgrade();
         if (! rt) {
+            return;
+        }
+        if (! begin_external_execution()) {
             return;
         }
 
@@ -312,19 +380,25 @@ struct DriverTaskState : TaskStateBase {
         auto cx     = task::Context { waker };
         auto out    = driver.resume_external_segment(cx);
         if (out.is_external()) {
-            auto placement = out.take_placement();
-            auto task   = self.clone();
-            auto posted = placement.post_external(rstd::async::ResumeJob::make(
-                [task = rstd::move(task)]() mutable {
-                    task->run_external_continuation(task);
-                }));
-            if (! posted) {
-                placement.reject_external();
-                self.schedule();
+            if (! prepare_external_handoff()) {
+                return;
             }
+
+            auto placement = out.take_placement();
+            auto run_task    = self.clone();
+            auto cancel_task = self.clone();
+            auto posted      = placement.post_external(
+                rstd::async::ResumeJob::make([task = rstd::move(run_task)]() mutable {
+                    task->run_external_continuation(task);
+                }),
+                rstd::async::ResumeCancel::make(
+                    [task = rstd::move(cancel_task)]() mutable {
+                        task->cancel_external_handoff(task);
+                    }));
+            (void)posted;
             return;
         }
-        self.schedule();
+        end_external_execution(self);
     }
 };
 

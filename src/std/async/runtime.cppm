@@ -50,8 +50,8 @@ export class Runtime {
 
     friend class RuntimeBuilder;
 
-    explicit Runtime(RuntimeKind kind, RuntimeConfig config)
-        : m_inner(sync::Arc<RuntimeInner>::make(kind, config)),
+    explicit Runtime(RuntimeKind kind, RuntimeConfig config, usize worker_count = 0)
+        : m_inner(sync::Arc<RuntimeInner>::make(kind, config, worker_count)),
           m_workers(Vec<thread::JoinHandle<void>>::make()) {
         m_inner->init_self(m_inner.downgrade());
     }
@@ -60,7 +60,7 @@ export class Runtime {
                                  Option<String> const& thread_name,
                                  RuntimeConfig config)
         -> io::Result<Runtime> {
-        auto runtime = Runtime { RuntimeKind::ThreadPool, config };
+        auto runtime = Runtime { RuntimeKind::ThreadPool, config, worker_threads };
 
         for (usize i = 0; i < worker_threads; ++i) {
             auto inner   = runtime.m_inner.clone();
@@ -69,8 +69,8 @@ export class Runtime {
                 builder.name(rstd::as<rstd::clone::Clone>(*thread_name).clone());
             }
 
-            auto worker = builder.spawn([inner = rstd::move(inner)] {
-                inner->worker_loop();
+            auto worker = builder.spawn([inner = rstd::move(inner), i] {
+                inner->worker_loop(RuntimeWorkerId { i });
             });
 
             if (worker.is_err()) {
@@ -96,6 +96,28 @@ export class Runtime {
             (void)rstd::move(worker).join();
         }
         m_inner->abort_all_tasks();
+    }
+
+    template<AwaitableInput A>
+    auto block_on_thread_pool(A awaitable) -> await_output_t<A> {
+        auto* runtime = m_inner.as_ptr().as_raw_ptr();
+        if (CURRENT_RUNTIME == runtime && has_current_runtime_worker() &&
+            current_execution_domain() == ExecutionDomainKind::RuntimeWorker) {
+            rstd::panic { "Runtime::block_on cannot run inside its runtime worker" };
+        }
+
+        auto joined = spawn(rstd::move(awaitable));
+        auto result = joined.blocking_wait();
+        if (result.is_err()) {
+            rstd::panic { "Runtime::block_on root task was aborted" };
+        }
+
+        if constexpr (mtp::is_void<await_output_t<A>>) {
+            (void)rstd::move(result).unwrap_unchecked();
+            return;
+        } else {
+            return rstd::move(result).unwrap_unchecked();
+        }
     }
 
 public:
@@ -137,6 +159,10 @@ public:
 
     template<AwaitableInput A>
     auto block_on(A awaitable) -> await_output_t<A> {
+        if (m_inner->is_thread_pool()) {
+            return block_on_thread_pool(rstd::move(awaitable));
+        }
+
         auto& runtime = *m_inner.as_ptr().as_raw_ptr();
         auto  scope   = RuntimeScope { runtime };
         auto  parker  = ParkerScope { runtime };
@@ -163,9 +189,14 @@ public:
 
             static auto post(ResumePlacement& placement,
                              sync::Arc<BlockOnExternalState> state) -> bool {
-                return placement.post_external(ResumeJob::make(
-                    [state = rstd::move(state)]() mutable {
+                auto run_state = state.clone();
+                return placement.post_external(
+                    ResumeJob::make([state = rstd::move(run_state)]() mutable {
                         BlockOnExternalState::run(rstd::move(state));
+                    }),
+                    ResumeCancel::make([state = rstd::move(state)]() mutable {
+                        state->done->store(true, sync::atomic::Ordering::Release);
+                        state->waker.clone().wake();
                     }));
             }
 
@@ -177,11 +208,7 @@ public:
                 if (out.is_external()) {
                     auto placement = out.take_placement();
                     auto posted    = post(placement, state.clone());
-                    if (! posted) {
-                        placement.reject_external();
-                        state->done->store(true, sync::atomic::Ordering::Release);
-                        state->waker.clone().wake();
-                    }
+                    (void)posted;
                     return;
                 }
 
@@ -211,7 +238,6 @@ public:
                     done.clone());
                 auto posted = BlockOnExternalState::post(placement, rstd::move(state));
                 if (! posted) {
-                    placement.reject_external();
                     continue;
                 }
 

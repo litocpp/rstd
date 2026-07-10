@@ -42,7 +42,8 @@ enum class ResumePlacementKind {
 };
 
 using ResumeJob    = Box<dyn<FnMut<void()>>>;
-using ResumePost   = Box<dyn<FnMut<bool(ResumeJob)>>>;
+using ResumeCancel = Box<dyn<FnMut<void()>>>;
+using ResumePost   = Box<dyn<FnMut<bool(ResumeJob, ResumeCancel)>>>;
 using ResumeReject = Box<dyn<FnMut<void()>>>;
 
 struct ResumePlacement {
@@ -82,18 +83,24 @@ struct ResumePlacement {
         return kind == ResumePlacementKind::ExternalExecutor;
     }
 
-    auto post_external(ResumeJob job) -> bool {
+    auto post_external(ResumeJob job, ResumeCancel owner_cancel) -> bool {
+        auto reject = external_reject.take();
+        auto cancel = ResumeCancel::make(
+            [reject = rstd::move(reject), owner_cancel = rstd::move(owner_cancel)]() mutable {
+                if (reject.is_some()) {
+                    auto callback = reject.take().unwrap_unchecked();
+                    callback->operator()();
+                }
+                owner_cancel->operator()();
+            });
+
         if (external_post.is_none()) {
+            cancel->operator()();
             return false;
         }
-        return (*external_post)->operator()(rstd::move(job));
-    }
 
-    void reject_external() {
-        if (external_reject.is_some()) {
-            auto reject = external_reject.take().unwrap_unchecked();
-            reject->operator()();
-        }
+        auto post = external_post.take().unwrap_unchecked();
+        return post->operator()(rstd::move(job), rstd::move(cancel));
     }
 };
 
