@@ -1,6 +1,7 @@
 export module rstd:async.completion;
 export import :async.forward;
 import :async.awaitable;
+import :async.terminal;
 import :io;
 import :sync;
 
@@ -56,14 +57,12 @@ class CompletionHandle;
 
 template<typename T, typename E>
 struct CompletionState {
+    using Output = Result<T, CompletionError<E>>;
+
     struct Fields {
-        Option<T>           value;
-        Option<E>           error;
-        usize               handles { 1 };
-        bool                canceled { false };
-        bool                receiver_closed { false };
-        bool                consumed { false };
-        Option<task::Waker> waker;
+        TerminalCell<Output> terminal;
+        usize                handles { 1 };
+        Option<task::Waker>  waker;
     };
 
     sync::Mutex<Fields> fields;
@@ -88,12 +87,12 @@ struct CompletionState {
         auto waker = Option<task::Waker> {};
         {
             auto f = fields.lock().unwrap_unchecked();
-            if (f->receiver_closed || f->value.is_some() || f->error.is_some() || f->canceled) {
+            if (! f->terminal.is_pending()) {
                 return Err(rstd::move(value));
             }
 
-            f->value = Some(rstd::move(value));
-            waker    = f->waker.take();
+            (void)f->terminal.publish(Output { Ok(rstd::move(value)) });
+            waker = f->waker.take();
         }
 
         wake(rstd::move(waker));
@@ -104,12 +103,13 @@ struct CompletionState {
         auto waker = Option<task::Waker> {};
         {
             auto f = fields.lock().unwrap_unchecked();
-            if (f->receiver_closed || f->value.is_some() || f->error.is_some() || f->canceled) {
+            if (! f->terminal.is_pending()) {
                 return Err(rstd::move(error));
             }
 
-            f->error = Some(rstd::move(error));
-            waker    = f->waker.take();
+            (void)f->terminal.publish(
+                Output { Err(CompletionError<E>::failed(rstd::move(error))) });
+            waker = f->waker.take();
         }
 
         wake(rstd::move(waker));
@@ -120,12 +120,12 @@ struct CompletionState {
         auto waker = Option<task::Waker> {};
         {
             auto f = fields.lock().unwrap_unchecked();
-            if (f->receiver_closed || f->value.is_some() || f->error.is_some() || f->canceled) {
+            if (! f->terminal.is_pending()) {
                 return false;
             }
 
-            f->canceled = true;
-            waker       = f->waker.take();
+            (void)f->terminal.publish(Output { Err(CompletionError<E>::canceled()) });
+            waker = f->waker.take();
         }
 
         wake(rstd::move(waker));
@@ -139,10 +139,9 @@ struct CompletionState {
             if (f->handles > 0) {
                 --f->handles;
             }
-            if (f->handles == 0 && ! f->receiver_closed && f->value.is_none() &&
-                f->error.is_none() && ! f->canceled) {
-                f->canceled = true;
-                waker       = f->waker.take();
+            if (f->handles == 0 && f->terminal.is_pending()) {
+                (void)f->terminal.publish(Output { Err(CompletionError<E>::canceled()) });
+                waker = f->waker.take();
             }
         }
 
@@ -150,42 +149,28 @@ struct CompletionState {
     }
 
     void close_receiver() {
-        auto f             = fields.lock().unwrap_unchecked();
-        f->receiver_closed = true;
-        f->waker           = None();
+        auto f   = fields.lock().unwrap_unchecked();
+        f->waker = None();
+        f->terminal.close();
     }
 
     auto is_closed() -> bool {
         auto f = fields.lock().unwrap_unchecked();
-        return f->receiver_closed || f->value.is_some() || f->error.is_some() || f->canceled;
+        return f->terminal.is_terminal();
     }
 
-    auto wait(const task::Waker& waker) -> Option<Result<T, CompletionError<E>>> {
+    auto wait(const task::Waker& waker) -> Option<Output> {
         auto f = fields.lock().unwrap_unchecked();
-        if (f->consumed) {
+        if (f->terminal.is_consumed()) {
             rstd::panic { "async::Completion awaited after completion" };
         }
 
-        if (f->value.is_some()) {
-            f->consumed        = true;
-            f->receiver_closed = true;
-            f->waker           = None();
-            return Some<Result<T, CompletionError<E>>>(Ok(rstd::move(f->value).unwrap_unchecked()));
+        if (f->terminal.is_ready()) {
+            f->waker = None();
+            return Some(f->terminal.take());
         }
-
-        if (f->error.is_some()) {
-            f->consumed        = true;
-            f->receiver_closed = true;
-            f->waker           = None();
-            return Some<Result<T, CompletionError<E>>>(
-                Err(CompletionError<E>::failed(rstd::move(f->error).unwrap_unchecked())));
-        }
-
-        if (f->canceled || f->handles == 0) {
-            f->consumed        = true;
-            f->receiver_closed = true;
-            f->waker           = None();
-            return Some<Result<T, CompletionError<E>>>(Err(CompletionError<E>::canceled()));
+        if (f->terminal.is_closed()) {
+            rstd::panic { "async::Completion awaited after close" };
         }
 
         f->waker = Some(waker.clone());
@@ -266,24 +251,25 @@ public:
 
     auto take_output() -> Output { return rstd::move(m_result).unwrap_unchecked(); }
 
-    auto resume(AwaitContext& cx) -> AwaitOperationState {
+    auto advance(AwaitContext& cx) -> AwaitTransition {
+        if (cx.execution_domain() == ExecutionDomainKind::ExternalExecutor) {
+            return AwaitTransition::return_to_owner();
+        }
         auto& value = completion();
         if (! value.m_active || ! value.m_state) {
             m_result.insert(Err(CompletionError<E>::canceled()));
-            return AwaitOperationState::Ready;
+            return AwaitTransition::continue_();
         }
 
         auto out = value.m_state->wait(cx.waker());
         if (out.is_none()) {
-            return AwaitOperationState::Pending;
+            return AwaitTransition::suspend();
         }
 
         value.m_active = false;
         m_result.insert(rstd::move(out).unwrap_unchecked());
-        return AwaitOperationState::Ready;
+        return AwaitTransition::continue_();
     }
-
-    auto placement() const -> ResumePlacement { return ResumePlacement::runtime_worker(); }
 };
 
 template<typename T, typename E>

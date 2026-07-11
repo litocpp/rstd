@@ -1,9 +1,8 @@
 export module rstd:async.awaitable;
 export import :async.forward;
-import rstd.alloc;
+import :async.facility;
 
 using namespace rstd;
-using ::alloc::boxed::Box;
 
 namespace rstd::async
 {
@@ -34,79 +33,52 @@ public:
 export template<typename A>
 using into_future_t = typename mtp::rm_cvf<A>::Future;
 
-enum class ResumePlacementKind
+enum class AwaitTransitionKind
 {
-    RuntimeWorker,
-    ExternalExecutor,
+    Continue,
+    Suspend,
+    SubmitCompletion,
+    SubmitFacility,
+    ReturnToOwner,
 };
 
-using ResumeJob    = Box<dyn<FnMut<void()>>>;
-using ResumeCancel = Box<dyn<FnMut<void()>>>;
-using ResumePost   = Box<dyn<FnMut<bool(ResumeJob, ResumeCancel)>>>;
-using ResumeReject = Box<dyn<FnMut<void()>>>;
+class AwaitTransition {
+    AwaitTransitionKind m_kind { AwaitTransitionKind::Suspend };
+    FacilityEndpoint    m_endpoint;
+    usize               m_facility_id { 0 };
 
-struct ResumePlacement {
-    ResumePlacementKind  kind { ResumePlacementKind::RuntimeWorker };
-    Option<ResumePost>   external_post;
-    Option<ResumeReject> external_reject;
+    explicit AwaitTransition(AwaitTransitionKind kind): m_kind(kind) {}
 
-    ResumePlacement() = default;
+    explicit AwaitTransition(usize facility_id)
+        : m_kind(AwaitTransitionKind::SubmitCompletion), m_facility_id(facility_id) {}
 
-    explicit ResumePlacement(ResumePlacementKind kind)
-        : kind(kind), external_post(None()), external_reject(None()) {}
+    explicit AwaitTransition(FacilityEndpoint endpoint)
+        : m_kind(AwaitTransitionKind::SubmitFacility), m_endpoint(rstd::move(endpoint)) {}
 
-    explicit ResumePlacement(ResumePost post, ResumeReject reject)
-        : kind(ResumePlacementKind::ExternalExecutor),
-          external_post(Some(rstd::move(post))),
-          external_reject(Some(rstd::move(reject))) {}
-
-    ResumePlacement(const ResumePlacement&)                        = delete;
-    auto operator=(const ResumePlacement&) -> ResumePlacement&     = delete;
-    ResumePlacement(ResumePlacement&&) noexcept                    = default;
-    auto operator=(ResumePlacement&&) noexcept -> ResumePlacement& = default;
-    ~ResumePlacement()                                             = default;
-
-    static auto runtime_worker() -> ResumePlacement {
-        return ResumePlacement { ResumePlacementKind::RuntimeWorker };
+public:
+    static auto continue_() -> AwaitTransition {
+        return AwaitTransition { AwaitTransitionKind::Continue };
     }
 
-    static auto external_executor(ResumePost post, ResumeReject reject) -> ResumePlacement {
-        return ResumePlacement { rstd::move(post), rstd::move(reject) };
+    static auto suspend() -> AwaitTransition {
+        return AwaitTransition { AwaitTransitionKind::Suspend };
     }
 
-    auto is_runtime_worker() const noexcept -> bool {
-        return kind == ResumePlacementKind::RuntimeWorker;
+    static auto submit_facility(FacilityEndpoint endpoint) -> AwaitTransition {
+        return AwaitTransition { rstd::move(endpoint) };
     }
 
-    auto is_external_executor() const noexcept -> bool {
-        return kind == ResumePlacementKind::ExternalExecutor;
+    static auto submit_completion(usize facility_id) -> AwaitTransition {
+        return AwaitTransition { facility_id };
     }
 
-    auto post_external(ResumeJob job, ResumeCancel owner_cancel) -> bool {
-        auto reject = external_reject.take();
-        auto cancel = ResumeCancel::make(
-            [reject = rstd::move(reject), owner_cancel = rstd::move(owner_cancel)]() mutable {
-                if (reject.is_some()) {
-                    auto callback = reject.take().unwrap_unchecked();
-                    callback->operator()();
-                }
-                owner_cancel->operator()();
-            });
-
-        if (external_post.is_none()) {
-            cancel->operator()();
-            return false;
-        }
-
-        auto post = external_post.take().unwrap_unchecked();
-        return post->operator()(rstd::move(job), rstd::move(cancel));
+    static auto return_to_owner() -> AwaitTransition {
+        return AwaitTransition { AwaitTransitionKind::ReturnToOwner };
     }
-};
 
-enum class AwaitOperationState
-{
-    Pending,
-    Ready,
+    auto kind() const noexcept -> AwaitTransitionKind { return m_kind; }
+    auto take_endpoint() -> FacilityEndpoint { return rstd::move(m_endpoint); }
+    auto facility_id() const noexcept -> usize { return m_facility_id; }
 };
 
 template<typename A>
@@ -194,21 +166,23 @@ public:
 
     auto await_resume() -> Output { return m_operation.take_output(); }
 
-    auto resume(AwaitContext& cx) -> AwaitOperationState { return m_operation.resume(cx); }
+    auto advance(AwaitContext& cx) -> AwaitTransition { return m_operation.advance(cx); }
 
-    auto resume_external(AwaitContext& cx) -> AwaitOperationState {
-        if constexpr (requires(Operation& operation, AwaitContext& context) {
-                          {
-                              operation.resume_external(context)
-                          } -> mtp::same_as<AwaitOperationState>;
-                      }) {
-            return m_operation.resume_external(cx);
-        } else {
-            return AwaitOperationState::Pending;
+    template<typename Event>
+        requires requires(Operation& operation, Event& event) {
+            { operation.complete_facility(event) } -> mtp::same_as<bool>;
         }
+    auto complete_facility(Event& event) -> bool {
+        return m_operation.complete_facility(event);
     }
 
-    auto placement() -> ResumePlacement { return m_operation.placement(); }
+    template<typename Token>
+        requires requires(Operation& operation, Token token) {
+            { operation.submit_completion(rstd::move(token)) };
+        }
+    auto submit_completion(Token token) {
+        return m_operation.submit_completion(rstd::move(token));
+    }
 };
 
 template<typename Operation>
@@ -228,21 +202,23 @@ public:
 
     void await_resume() { m_operation.take_output(); }
 
-    auto resume(AwaitContext& cx) -> AwaitOperationState { return m_operation.resume(cx); }
+    auto advance(AwaitContext& cx) -> AwaitTransition { return m_operation.advance(cx); }
 
-    auto resume_external(AwaitContext& cx) -> AwaitOperationState {
-        if constexpr (requires(Operation& operation, AwaitContext& context) {
-                          {
-                              operation.resume_external(context)
-                          } -> mtp::same_as<AwaitOperationState>;
-                      }) {
-            return m_operation.resume_external(cx);
-        } else {
-            return AwaitOperationState::Pending;
+    template<typename Event>
+        requires requires(Operation& operation, Event& event) {
+            { operation.complete_facility(event) } -> mtp::same_as<bool>;
         }
+    auto complete_facility(Event& event) -> bool {
+        return m_operation.complete_facility(event);
     }
 
-    auto placement() -> ResumePlacement { return m_operation.placement(); }
+    template<typename Token>
+        requires requires(Operation& operation, Token token) {
+            { operation.submit_completion(rstd::move(token)) };
+        }
+    auto submit_completion(Token token) {
+        return m_operation.submit_completion(rstd::move(token));
+    }
 };
 
 template<typename F, typename T = future::future_output_t<F>>
@@ -257,16 +233,17 @@ public:
 
     auto take_output() -> Output { return rstd::move(m_result).unwrap_unchecked(); }
 
-    auto resume(AwaitContext& cx) -> AwaitOperationState {
+    auto advance(AwaitContext& cx) -> AwaitTransition {
+        if (cx.execution_domain() == ExecutionDomainKind::ExternalExecutor) {
+            return AwaitTransition::return_to_owner();
+        }
         auto out = future::poll(m_future, cx.poll_context());
         if (out.is_pending()) {
-            return AwaitOperationState::Pending;
+            return AwaitTransition::suspend();
         }
         m_result.insert(rstd::move(out).take());
-        return AwaitOperationState::Ready;
+        return AwaitTransition::continue_();
     }
-
-    auto placement() const -> ResumePlacement { return ResumePlacement::runtime_worker(); }
 };
 
 template<typename F>
@@ -280,16 +257,17 @@ public:
 
     void take_output() const noexcept {}
 
-    auto resume(AwaitContext& cx) -> AwaitOperationState {
+    auto advance(AwaitContext& cx) -> AwaitTransition {
+        if (cx.execution_domain() == ExecutionDomainKind::ExternalExecutor) {
+            return AwaitTransition::return_to_owner();
+        }
         auto out = future::poll(m_future, cx.poll_context());
         if (out.is_pending()) {
-            return AwaitOperationState::Pending;
+            return AwaitTransition::suspend();
         }
         rstd::move(out).take();
-        return AwaitOperationState::Ready;
+        return AwaitTransition::continue_();
     }
-
-    auto placement() const -> ResumePlacement { return ResumePlacement::runtime_worker(); }
 };
 
 template<InternalAwaitable A>

@@ -185,7 +185,10 @@ public:
 
     auto take_output() -> Output { return rstd::move(m_result).unwrap_unchecked(); }
 
-    auto resume(AwaitContext& cx) -> AwaitOperationState {
+    auto advance(AwaitContext& cx) -> AwaitTransition {
+        if (cx.execution_domain() == ExecutionDomainKind::ExternalExecutor) {
+            return AwaitTransition::return_to_owner();
+        }
         auto& value = next();
         if (value.m_completed) {
             rstd::panic { "async::CompletionQueueNext awaited after completion" };
@@ -193,15 +196,13 @@ public:
 
         auto out = value.m_state->wait_next(cx.waker());
         if (out.is_none()) {
-            return AwaitOperationState::Pending;
+            return AwaitTransition::suspend();
         }
 
         value.m_completed = true;
         m_result.insert(rstd::move(out).unwrap_unchecked());
-        return AwaitOperationState::Ready;
+        return AwaitTransition::continue_();
     }
-
-    auto placement() const -> ResumePlacement { return ResumePlacement::runtime_worker(); }
 };
 
 template<typename T>

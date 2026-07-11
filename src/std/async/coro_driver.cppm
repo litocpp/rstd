@@ -1,4 +1,5 @@
 export module rstd:async.coro_driver;
+import :async.facility;
 import :async.runtime_core;
 import :async.task;
 
@@ -7,139 +8,106 @@ using namespace rstd;
 namespace rstd::async
 {
 
-enum class CoroDriveState
+enum class CoroFrameState
 {
-    Pending,
-    Ready,
-    External,
+    InitialSuspended,
+    AwaitSuspended,
+    FinalSuspended,
+    ResultTaken,
 };
 
-enum class CoroExternalSegmentState
+enum class DriveActionKind
 {
-    Runtime,
-    External,
+    Suspended,
+    SubmitCompletion,
+    SubmitFacility,
+    ReturnToOwner,
+    FinalSuspended,
 };
 
-class CoroExternalSegmentResult {
-    CoroExternalSegmentState m_state;
-    ResumePlacement          m_placement;
+class DriveAction {
+    DriveActionKind  m_kind { DriveActionKind::Suspended };
+    FacilityEndpoint m_endpoint;
+    usize            m_facility_id { 0 };
 
-    explicit CoroExternalSegmentResult(CoroExternalSegmentState state)
-        : m_state(state), m_placement(ResumePlacement::runtime_worker()) {}
+    explicit DriveAction(DriveActionKind kind): m_kind(kind) {}
 
-    explicit CoroExternalSegmentResult(ResumePlacement placement)
-        : m_state(CoroExternalSegmentState::External), m_placement(rstd::move(placement)) {}
+    explicit DriveAction(usize facility_id)
+        : m_kind(DriveActionKind::SubmitCompletion), m_facility_id(facility_id) {}
+
+    explicit DriveAction(FacilityEndpoint endpoint)
+        : m_kind(DriveActionKind::SubmitFacility), m_endpoint(rstd::move(endpoint)) {}
 
 public:
-    static auto Runtime() -> CoroExternalSegmentResult {
-        return CoroExternalSegmentResult { CoroExternalSegmentState::Runtime };
+    static auto suspended() -> DriveAction { return DriveAction { DriveActionKind::Suspended }; }
+
+    static auto submit_facility(FacilityEndpoint endpoint) -> DriveAction {
+        return DriveAction { rstd::move(endpoint) };
     }
 
-    static auto External(ResumePlacement placement) -> CoroExternalSegmentResult {
-        return CoroExternalSegmentResult { rstd::move(placement) };
+    static auto submit_completion(usize facility_id) -> DriveAction {
+        return DriveAction { facility_id };
     }
 
-    auto is_runtime() const noexcept -> bool {
-        return m_state == CoroExternalSegmentState::Runtime;
+    static auto return_to_owner() -> DriveAction {
+        return DriveAction { DriveActionKind::ReturnToOwner };
     }
 
-    auto is_external() const noexcept -> bool {
-        return m_state == CoroExternalSegmentState::External;
+    static auto final_suspended() -> DriveAction {
+        return DriveAction { DriveActionKind::FinalSuspended };
     }
 
-    auto take_placement() -> ResumePlacement { return rstd::move(m_placement); }
+    auto kind() const noexcept -> DriveActionKind { return m_kind; }
+    auto is_suspended() const noexcept -> bool { return m_kind == DriveActionKind::Suspended; }
+    auto is_submit_facility() const noexcept -> bool {
+        return m_kind == DriveActionKind::SubmitFacility;
+    }
+    auto is_submit_completion() const noexcept -> bool {
+        return m_kind == DriveActionKind::SubmitCompletion;
+    }
+    auto is_return_to_owner() const noexcept -> bool {
+        return m_kind == DriveActionKind::ReturnToOwner;
+    }
+    auto is_final_suspended() const noexcept -> bool {
+        return m_kind == DriveActionKind::FinalSuspended;
+    }
+    auto take_endpoint() -> FacilityEndpoint { return rstd::move(m_endpoint); }
+    auto facility_id() const noexcept -> usize { return m_facility_id; }
 };
 
 template<typename T>
-class CoroDriveResult {
-    CoroDriveState  m_state;
-    Option<T>       m_value;
-    ResumePlacement m_placement;
-
-    CoroDriveResult(CoroDriveState state, ResumePlacement placement)
-        : m_state(state), m_value(None()), m_placement(rstd::move(placement)) {}
-
-public:
-    static auto Pending() -> CoroDriveResult {
-        return CoroDriveResult { CoroDriveState::Pending, ResumePlacement::runtime_worker() };
-    }
-
-    static auto Ready(T value) -> CoroDriveResult {
-        auto out    = CoroDriveResult { CoroDriveState::Ready, ResumePlacement::runtime_worker() };
-        out.m_value = Some(rstd::move(value));
-        return out;
-    }
-
-    static auto External(ResumePlacement placement) -> CoroDriveResult {
-        return CoroDriveResult { CoroDriveState::External, rstd::move(placement) };
-    }
-
-    auto is_pending() const noexcept -> bool { return m_state == CoroDriveState::Pending; }
-    auto is_ready() const noexcept -> bool { return m_state == CoroDriveState::Ready; }
-    auto is_external() const noexcept -> bool { return m_state == CoroDriveState::External; }
-
-    auto take() -> T { return rstd::move(m_value).unwrap_unchecked(); }
-    auto take_placement() -> ResumePlacement { return rstd::move(m_placement); }
-};
-
-template<>
-class CoroDriveResult<void> {
-    CoroDriveState  m_state;
-    ResumePlacement m_placement;
-
-    explicit CoroDriveResult(CoroDriveState state)
-        : m_state(state), m_placement(ResumePlacement::runtime_worker()) {}
-
-    explicit CoroDriveResult(ResumePlacement placement)
-        : m_state(CoroDriveState::External), m_placement(rstd::move(placement)) {}
-
-public:
-    static auto Pending() -> CoroDriveResult { return CoroDriveResult { CoroDriveState::Pending }; }
-    static auto Ready() -> CoroDriveResult { return CoroDriveResult { CoroDriveState::Ready }; }
-
-    static auto External(ResumePlacement placement) -> CoroDriveResult {
-        return CoroDriveResult { rstd::move(placement) };
-    }
-
-    auto is_pending() const noexcept -> bool { return m_state == CoroDriveState::Pending; }
-    auto is_ready() const noexcept -> bool { return m_state == CoroDriveState::Ready; }
-    auto is_external() const noexcept -> bool { return m_state == CoroDriveState::External; }
-
-    constexpr void take() const noexcept {}
-    auto           take_placement() -> ResumePlacement { return rstd::move(m_placement); }
-};
-
-template<typename T>
-auto resume_coro(coro<T>& task, bool& completed, task::Context& cx) -> CoroDriveResult<T> {
+auto resume_coro(coro<T>& task, CoroFrameState& state, task::Context& cx) -> DriveAction {
     auto& handle = CoroAccess<T>::handle(task);
     if (! handle) {
         rstd::panic { "empty async coro resumed" };
     }
-    if (completed) {
+    if (state == CoroFrameState::ResultTaken) {
         rstd::panic { "async coro resumed after completion" };
+    }
+    if (state == CoroFrameState::FinalSuspended) {
+        return DriveAction::final_suspended();
     }
 
     auto& promise = handle.promise();
-    if (handle.done()) {
-        completed = true;
-        if constexpr (mtp::is_void<T>) {
-            return CoroDriveResult<void>::Ready();
-        } else {
-            return CoroDriveResult<T>::Ready(promise.take_result());
-        }
-    }
-
     while (true) {
         auto await_context = async::AwaitContext { cx, current_execution_domain() };
         if (promise.awaiting) {
-            auto awaiting = promise.awaiting;
-            if (awaiting.resume(await_context) == async::AwaitOperationState::Pending) {
-                return CoroDriveResult<T>::Pending();
+            auto awaiting   = promise.awaiting;
+            auto transition = awaiting.advance(await_context);
+            if (transition.kind() == async::AwaitTransitionKind::Suspend) {
+                state = CoroFrameState::AwaitSuspended;
+                return DriveAction::suspended();
             }
-            auto placement = awaiting.placement();
-            if (! placement.is_runtime_worker()) {
-                promise.awaiting = {};
-                return CoroDriveResult<T>::External(rstd::move(placement));
+            if (transition.kind() == async::AwaitTransitionKind::SubmitFacility) {
+                state = CoroFrameState::AwaitSuspended;
+                return DriveAction::submit_facility(transition.take_endpoint());
+            }
+            if (transition.kind() == async::AwaitTransitionKind::SubmitCompletion) {
+                state = CoroFrameState::AwaitSuspended;
+                return DriveAction::submit_completion(transition.facility_id());
+            }
+            if (transition.kind() == async::AwaitTransitionKind::ReturnToOwner) {
+                rstd::panic { "async await operation returned to its current runtime owner" };
             }
             promise.awaiting = {};
             handle.resume();
@@ -148,48 +116,89 @@ auto resume_coro(coro<T>& task, bool& completed, task::Context& cx) -> CoroDrive
         }
 
         if (handle.done()) {
-            completed = true;
-            if constexpr (mtp::is_void<T>) {
-                return CoroDriveResult<void>::Ready();
-            } else {
-                return CoroDriveResult<T>::Ready(promise.take_result());
-            }
+            state = CoroFrameState::FinalSuspended;
+            return DriveAction::final_suspended();
         }
     }
 }
 
 template<typename T>
-auto resume_coro_external_segment(coro<T>& task, bool completed, task::Context& cx)
-    -> CoroExternalSegmentResult {
+auto resume_coro_external_segment(coro<T>& task, CoroFrameState& state, task::Context& cx)
+    -> DriveAction {
     auto& handle = CoroAccess<T>::handle(task);
     if (! handle) {
         rstd::panic { "empty async coro resumed" };
     }
-    if (completed) {
+    if (state == CoroFrameState::FinalSuspended || state == CoroFrameState::ResultTaken) {
         rstd::panic { "async coro resumed after completion" };
     }
 
-    auto& promise    = handle.promise();
-    promise.awaiting = {};
-    handle.resume();
+    auto& promise = handle.promise();
+    while (true) {
+        if (promise.awaiting) {
+            auto await_context = AwaitContext { cx, ExecutionDomainKind::ExternalExecutor };
+            auto awaiting      = promise.awaiting;
+            auto transition    = awaiting.advance(await_context);
+            if (transition.kind() == AwaitTransitionKind::SubmitFacility) {
+                state = CoroFrameState::AwaitSuspended;
+                return DriveAction::submit_facility(transition.take_endpoint());
+            }
+            if (transition.kind() == AwaitTransitionKind::SubmitCompletion ||
+                transition.kind() == AwaitTransitionKind::Suspend ||
+                transition.kind() == AwaitTransitionKind::ReturnToOwner) {
+                state = CoroFrameState::AwaitSuspended;
+                return DriveAction::return_to_owner();
+            }
+            promise.awaiting = {};
+            handle.resume();
+        } else {
+            handle.resume();
+        }
 
-    if (handle.done() || ! promise.awaiting) {
-        return CoroExternalSegmentResult::Runtime();
+        if (handle.done()) {
+            state = CoroFrameState::FinalSuspended;
+            return DriveAction::final_suspended();
+        }
     }
+}
 
-    auto await_context = AwaitContext { cx, ExecutionDomainKind::ExternalExecutor };
-    auto awaiting      = promise.awaiting;
-    if (awaiting.resume_external(await_context) == AwaitOperationState::Pending) {
-        return CoroExternalSegmentResult::Runtime();
+template<typename T>
+auto complete_coro_facility(coro<T>& task, CoroFrameState state, FacilityEvent& event) -> bool {
+    if (state != CoroFrameState::AwaitSuspended) {
+        return false;
     }
+    auto& promise = CoroAccess<T>::handle(task).promise();
+    return promise.awaiting && promise.awaiting.complete_facility(event);
+}
 
-    auto placement = awaiting.placement();
-    if (! placement.is_external_executor()) {
-        return CoroExternalSegmentResult::Runtime();
+template<typename T>
+auto submit_coro_completion(coro<T>& task, CoroFrameState state, FacilityCompletionToken token)
+    -> FacilityCompletionSubmitResult {
+    if (state != CoroFrameState::AwaitSuspended) {
+        return FacilityCompletionSubmitResult::rejected(rstd::move(token));
     }
+    auto& promise = CoroAccess<T>::handle(task).promise();
+    if (! promise.awaiting) {
+        return FacilityCompletionSubmitResult::rejected(rstd::move(token));
+    }
+    return promise.awaiting.submit_completion(rstd::move(token));
+}
 
-    promise.awaiting = {};
-    return CoroExternalSegmentResult::External(rstd::move(placement));
+template<typename T>
+auto take_coro_result(coro<T>& task, CoroFrameState& state) -> T {
+    if (state != CoroFrameState::FinalSuspended) {
+        rstd::panic { "async coro result taken before final suspend" };
+    }
+    state = CoroFrameState::ResultTaken;
+    return CoroAccess<T>::handle(task).promise().take_result();
+}
+
+template<>
+inline auto take_coro_result(coro<void>&, CoroFrameState& state) -> void {
+    if (state != CoroFrameState::FinalSuspended) {
+        rstd::panic { "async coro result taken before final suspend" };
+    }
+    state = CoroFrameState::ResultTaken;
 }
 
 template<typename T>
@@ -198,26 +207,43 @@ public:
     using Output = T;
 
 private:
-    coro<T>   m_coro;
-    bool      m_completed { false };
-    Option<T> m_ready;
+    coro<T>        m_coro;
+    CoroFrameState m_state { CoroFrameState::InitialSuspended };
+    Option<T>      m_ready;
 
 public:
     explicit CoroWaitOperation(coro<T>&& task): m_coro(rstd::move(task)) {}
 
-    auto resume(AwaitContext& cx) -> AwaitOperationState {
-        auto out = resume_coro(m_coro, m_completed, cx.poll_context());
-        if (out.is_pending()) {
-            return AwaitOperationState::Pending;
+    auto advance(AwaitContext& cx) -> AwaitTransition {
+        auto action = cx.execution_domain() == ExecutionDomainKind::ExternalExecutor
+                          ? resume_coro_external_segment(m_coro, m_state, cx.poll_context())
+                          : resume_coro(m_coro, m_state, cx.poll_context());
+        if (action.is_suspended()) {
+            return AwaitTransition::suspend();
         }
-        if (out.is_external()) {
-            rstd::panic { "child async coro cannot resume on external executor" };
+        if (action.is_submit_completion()) {
+            return AwaitTransition::submit_completion(action.facility_id());
         }
-        m_ready.insert(out.take());
-        return AwaitOperationState::Ready;
+        if (action.is_submit_facility()) {
+            return AwaitTransition::submit_facility(action.take_endpoint());
+        }
+        if (action.is_return_to_owner()) {
+            return AwaitTransition::return_to_owner();
+        }
+        if (! action.is_final_suspended()) {
+            rstd::panic { "child async coro returned an invalid drive action" };
+        }
+        m_ready.insert(take_coro_result(m_coro, m_state));
+        return AwaitTransition::continue_();
     }
 
-    auto placement() const -> ResumePlacement { return ResumePlacement::runtime_worker(); }
+    auto complete_facility(FacilityEvent& event) -> bool {
+        return complete_coro_facility(m_coro, m_state, event);
+    }
+
+    auto submit_completion(FacilityCompletionToken token) -> FacilityCompletionSubmitResult {
+        return submit_coro_completion(m_coro, m_state, rstd::move(token));
+    }
 
     auto take_output() -> T { return rstd::move(m_ready).unwrap_unchecked(); }
 };
@@ -228,25 +254,42 @@ public:
     using Output = void;
 
 private:
-    coro<void> m_coro;
-    bool       m_completed { false };
+    coro<void>     m_coro;
+    CoroFrameState m_state { CoroFrameState::InitialSuspended };
 
 public:
     explicit CoroWaitOperation(coro<void>&& task): m_coro(rstd::move(task)) {}
 
-    auto resume(AwaitContext& cx) -> AwaitOperationState {
-        auto out = resume_coro(m_coro, m_completed, cx.poll_context());
-        if (out.is_pending()) {
-            return AwaitOperationState::Pending;
+    auto advance(AwaitContext& cx) -> AwaitTransition {
+        auto action = cx.execution_domain() == ExecutionDomainKind::ExternalExecutor
+                          ? resume_coro_external_segment(m_coro, m_state, cx.poll_context())
+                          : resume_coro(m_coro, m_state, cx.poll_context());
+        if (action.is_suspended()) {
+            return AwaitTransition::suspend();
         }
-        if (out.is_external()) {
-            rstd::panic { "child async coro cannot resume on external executor" };
+        if (action.is_submit_completion()) {
+            return AwaitTransition::submit_completion(action.facility_id());
         }
-        out.take();
-        return AwaitOperationState::Ready;
+        if (action.is_submit_facility()) {
+            return AwaitTransition::submit_facility(action.take_endpoint());
+        }
+        if (action.is_return_to_owner()) {
+            return AwaitTransition::return_to_owner();
+        }
+        if (! action.is_final_suspended()) {
+            rstd::panic { "child async coro returned an invalid drive action" };
+        }
+        take_coro_result(m_coro, m_state);
+        return AwaitTransition::continue_();
     }
 
-    auto placement() const -> ResumePlacement { return ResumePlacement::runtime_worker(); }
+    auto complete_facility(FacilityEvent& event) -> bool {
+        return complete_coro_facility(m_coro, m_state, event);
+    }
+
+    auto submit_completion(FacilityCompletionToken token) -> FacilityCompletionSubmitResult {
+        return submit_coro_completion(m_coro, m_state, rstd::move(token));
+    }
 
     constexpr void take_output() const noexcept {}
 };

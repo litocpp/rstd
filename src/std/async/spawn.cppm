@@ -1,8 +1,10 @@
 export module rstd:async.spawn;
 export import :async.awaitable;
 export import :async.runtime_core;
+import :async.facility;
 import :async.runtime_driver;
 import :async.task;
+import :async.terminal;
 import rstd.alloc;
 import :sync;
 
@@ -13,13 +15,13 @@ struct JoinHandleFactory;
 
 template<typename T>
 struct JoinState {
+    using Stored = mtp::void_empty_t<T>;
+    using Output = Result<Stored, JoinError>;
+
     struct Fields {
-        Option<T>           value;
-        Option<JoinError>   error;
-        Option<task::Waker> waker;
-        Option<TaskRef>     task;
-        bool                ready { false };
-        bool                consumed { false };
+        TerminalCell<Output> terminal;
+        Option<task::Waker>  waker;
+        Option<TaskRef>      task;
     };
 
     sync::Mutex<Fields> fields;
@@ -32,17 +34,15 @@ struct JoinState {
         f->task = Some(rstd::move(task));
     }
 
-    auto complete_value(T in) -> Option<task::Waker> {
+    auto complete_value(Stored in) -> Option<task::Waker> {
         auto waker = Option<task::Waker> {};
         {
             auto f = fields.lock().unwrap_unchecked();
-            if (f->ready) {
+            if (! f->terminal.publish(Output { Ok(rstd::move(in)) })) {
                 return None();
             }
-            f->value = Some(rstd::move(in));
-            f->ready = true;
-            f->task  = None();
-            waker    = f->waker.take();
+            f->task = None();
+            waker   = f->waker.take();
         }
         ready_cvar.notify_all();
         return waker;
@@ -52,54 +52,48 @@ struct JoinState {
         auto waker = Option<task::Waker> {};
         {
             auto f = fields.lock().unwrap_unchecked();
-            if (f->ready) {
+            if (! f->terminal.publish(Output { Err(JoinError {}) })) {
                 return None();
             }
-            f->error = Some(JoinError {});
-            f->ready = true;
-            f->task  = None();
-            waker    = f->waker.take();
+            f->task = None();
+            waker   = f->waker.take();
         }
         ready_cvar.notify_all();
         return waker;
     }
 
-    auto poll(task::Context& cx) -> task::Poll<Result<T, JoinError>> {
+    auto poll(task::Context& cx) -> task::Poll<Output> {
         auto f = fields.lock().unwrap_unchecked();
-        if (f->ready) {
-            if (f->consumed) {
-                rstd::panic { "JoinHandle polled after completion" };
-            }
-            f->consumed = true;
-            if (f->error.is_some()) {
-                return task::Poll<Result<T, JoinError>>::Ready(
-                    Err(rstd::move(f->error).unwrap_unchecked()));
-            }
-            return task::Poll<Result<T, JoinError>>::Ready(
-                Ok(rstd::move(f->value).unwrap_unchecked()));
+        if (f->terminal.is_ready()) {
+            return task::Poll<Output>::Ready(f->terminal.take());
+        }
+        if (f->terminal.is_consumed()) {
+            rstd::panic { "JoinHandle polled after completion" };
+        }
+        if (f->terminal.is_closed()) {
+            rstd::panic { "JoinHandle polled after close" };
         }
         f->waker = Some(cx.waker().clone());
-        return task::Poll<Result<T, JoinError>>::Pending();
+        return task::Poll<Output>::Pending();
     }
 
     auto is_ready() const -> bool {
         auto f = fields.lock().unwrap_unchecked();
-        return f->ready;
+        return f->terminal.is_terminal();
     }
 
-    auto wait() -> Result<T, JoinError> {
+    auto wait() -> Output {
         auto f = fields.lock().unwrap_unchecked();
         ready_cvar.wait_while(f, [](Fields const& state) {
-            return ! state.ready;
+            return state.terminal.is_pending();
         });
-        if (f->consumed) {
+        if (f->terminal.is_consumed()) {
             rstd::panic { "JoinHandle waited after completion" };
         }
-        f->consumed = true;
-        if (f->error.is_some()) {
-            return Err(rstd::move(f->error).unwrap_unchecked());
+        if (f->terminal.is_closed()) {
+            rstd::panic { "JoinHandle waited after close" };
         }
-        return Ok(rstd::move(f->value).unwrap_unchecked());
+        return f->terminal.take();
     }
 
     void abort_task() {
@@ -111,156 +105,36 @@ struct JoinState {
             }
         }
         if (task.is_some()) {
-            (*task)->abort();
+            task->abort();
         }
     }
 };
 
-template<>
-struct JoinState<void> {
-    struct Fields {
-        Option<JoinError>   error;
-        Option<task::Waker> waker;
-        Option<TaskRef>     task;
-        bool                ready { false };
-        bool                consumed { false };
-    };
+template<typename T>
+class JoinStateOwner {
+    Option<sync::Arc<JoinState<T>>> m_owned;
+    JoinState<T>*                   m_state { nullptr };
 
-    sync::Mutex<Fields> fields;
-    sync::Condvar       ready_cvar;
+    JoinStateOwner(Option<sync::Arc<JoinState<T>>> owned, JoinState<T>* state)
+        : m_owned(rstd::move(owned)), m_state(state) {}
 
-    JoinState(): fields(Fields {}), ready_cvar(sync::Condvar::make()) {}
+public:
+    JoinStateOwner(const JoinStateOwner&)                        = delete;
+    auto operator=(const JoinStateOwner&) -> JoinStateOwner&     = delete;
+    JoinStateOwner(JoinStateOwner&&) noexcept                    = default;
+    auto operator=(JoinStateOwner&&) noexcept -> JoinStateOwner& = default;
 
-    void set_task(TaskRef task) {
-        auto f  = fields.lock().unwrap_unchecked();
-        f->task = Some(rstd::move(task));
+    static auto owned(sync::Arc<JoinState<T>> state) -> JoinStateOwner {
+        auto* ptr = state.as_ptr().as_raw_ptr();
+        return JoinStateOwner { Some(rstd::move(state)), ptr };
     }
 
-    auto complete_value() -> Option<task::Waker> {
-        auto waker = Option<task::Waker> {};
-        {
-            auto f = fields.lock().unwrap_unchecked();
-            if (f->ready) {
-                return None();
-            }
-            f->ready = true;
-            f->task  = None();
-            waker    = f->waker.take();
-        }
-        ready_cvar.notify_all();
-        return waker;
+    static auto borrowed(JoinState<T>& state) -> JoinStateOwner {
+        return JoinStateOwner { None(), rstd::addressof(state) };
     }
 
-    auto complete_abort() -> Option<task::Waker> {
-        auto waker = Option<task::Waker> {};
-        {
-            auto f = fields.lock().unwrap_unchecked();
-            if (f->ready) {
-                return None();
-            }
-            f->error = Some(JoinError {});
-            f->ready = true;
-            f->task  = None();
-            waker    = f->waker.take();
-        }
-        ready_cvar.notify_all();
-        return waker;
-    }
-
-    auto poll(task::Context& cx) -> task::Poll<Result<empty, JoinError>> {
-        auto f = fields.lock().unwrap_unchecked();
-        if (f->ready) {
-            if (f->consumed) {
-                rstd::panic { "JoinHandle polled after completion" };
-            }
-            f->consumed = true;
-            if (f->error.is_some()) {
-                return task::Poll<Result<empty, JoinError>>::Ready(
-                    Err(rstd::move(f->error).unwrap_unchecked()));
-            }
-            return task::Poll<Result<empty, JoinError>>::Ready(Ok(empty {}));
-        }
-        f->waker = Some(cx.waker().clone());
-        return task::Poll<Result<empty, JoinError>>::Pending();
-    }
-
-    auto is_ready() const -> bool {
-        auto f = fields.lock().unwrap_unchecked();
-        return f->ready;
-    }
-
-    auto wait() -> Result<empty, JoinError> {
-        auto f = fields.lock().unwrap_unchecked();
-        ready_cvar.wait_while(f, [](Fields const& state) {
-            return ! state.ready;
-        });
-        if (f->consumed) {
-            rstd::panic { "JoinHandle waited after completion" };
-        }
-        f->consumed = true;
-        if (f->error.is_some()) {
-            return Err(rstd::move(f->error).unwrap_unchecked());
-        }
-        return Ok(empty {});
-    }
-
-    void abort_task() {
-        auto task = Option<TaskRef> {};
-        {
-            auto f = fields.lock().unwrap_unchecked();
-            if (f->task.is_some()) {
-                task = Some(f->task->clone());
-            }
-        }
-        if (task.is_some()) {
-            (*task)->abort();
-        }
-    }
+    auto operator->() const noexcept -> JoinState<T>* { return m_state; }
 };
-
-template<typename T, typename F>
-struct TaskState : TaskStateBase {
-    F                       future;
-    sync::Arc<JoinState<T>> join;
-
-    TaskState(sync::Weak<RuntimeInner> runtime, F future, sync::Arc<JoinState<T>> join)
-        : TaskStateBase(rstd::move(runtime)), future(rstd::move(future)), join(rstd::move(join)) {}
-
-    void poll(TaskRef&, task::Context& cx) override {
-        auto out = future::poll(future, cx);
-        if (out.is_pending()) {
-            return;
-        }
-
-        if (! finish()) {
-            return;
-        }
-
-        auto join_waker = Option<task::Waker> {};
-        if constexpr (mtp::is_void<T>) {
-            rstd::move(out).take();
-            join_waker = join->complete_value();
-        } else {
-            join_waker = join->complete_value(rstd::move(out).take());
-        }
-
-        if (join_waker.is_some()) {
-            rstd::move(*join_waker).wake();
-        }
-    }
-
-    void complete_abort() override {
-        auto join_waker = join->complete_abort();
-        if (join_waker.is_some()) {
-            rstd::move(*join_waker).wake();
-        }
-    }
-};
-
-template<typename F>
-    requires Impled<mtp::rm_cvf<F>, future::Future<future::future_output_t<F>>>
-auto spawn_on(RuntimeInner& runtime, F future)
-    -> rstd::async::JoinHandle<future::future_output_t<F>>;
 
 template<typename T>
 auto spawn_driver_on(RuntimeInner& runtime, rstd::async::RuntimeCoroDriver<T> driver)
@@ -309,50 +183,58 @@ struct JoinHandleFactory {
 
 template<typename T>
 struct DriverTaskState : TaskStateBase {
+    using Stored = mtp::void_empty_t<T>;
+
     rstd::async::RuntimeCoroDriver<T> driver;
-    sync::Arc<JoinState<T>>           join;
+    JoinStateOwner<T>                 join;
+    Option<Stored>                    ready;
 
-    DriverTaskState(sync::Weak<RuntimeInner>          runtime,
+    DriverTaskState(TaskRefControl&                   ref_control,
+                    sync::Weak<RuntimeInner>          runtime,
                     rstd::async::RuntimeCoroDriver<T> driver,
-                    sync::Arc<JoinState<T>>           join)
-        : TaskStateBase(rstd::move(runtime)), driver(rstd::move(driver)), join(rstd::move(join)) {}
+                    JoinStateOwner<T>                 join)
+        : TaskStateBase(ref_control, rstd::move(runtime)),
+          driver(rstd::move(driver)),
+          join(rstd::move(join)) {}
 
-    void poll(TaskRef& self, task::Context& cx) override {
-        auto out = driver.drive(cx);
-        if (out.is_pending()) {
-            return;
-        }
-        if (out.is_external()) {
-            if (! prepare_external_handoff()) {
-                return;
+    auto poll(TaskRef&, task::Context& cx) -> TaskPollAction override {
+        if (auto event = take_completion_event(); event.is_some()) {
+            auto completion = rstd::move(event).unwrap_unchecked();
+            if (! driver.complete_facility(completion)) {
+                rstd::panic { "async facility event has no matching await operation" };
             }
-
-            auto placement   = out.take_placement();
-            auto run_task    = self.clone();
-            auto cancel_task = self.clone();
-            auto posted      = placement.post_external(
-                rstd::async::ResumeJob::make([task = rstd::move(run_task)]() mutable {
-                    task->run_external_continuation(task);
-                }),
-                rstd::async::ResumeCancel::make([task = rstd::move(cancel_task)]() mutable {
-                    task->cancel_external_handoff(task);
-                }));
-            (void)posted;
-            return;
+        }
+        auto out = driver.drive(cx);
+        if (out.is_suspended()) {
+            return TaskPollAction::none();
+        }
+        if (out.is_submit_completion()) {
+            return TaskPollAction::submit_completion(FacilityId { out.facility_id() });
+        }
+        if (out.is_submit_facility()) {
+            return TaskPollAction::submit_facility(out.take_endpoint());
+        }
+        if (out.is_return_to_owner()) {
+            rstd::panic { "runtime coroutine returned to its current owner" };
+        }
+        if (! out.is_final_suspended()) {
+            rstd::panic { "runtime coroutine driver returned an invalid action" };
         }
 
-        if (! finish()) {
-            return;
-        }
-
-        auto join_waker = Option<task::Waker> {};
         if constexpr (mtp::is_void<T>) {
-            out.take();
-            join_waker = join->complete_value();
+            driver.take_result();
+            ready = Some(empty {});
         } else {
-            join_waker = join->complete_value(out.take());
+            ready = Some(driver.take_result());
         }
+        return TaskPollAction::complete();
+    }
 
+    void complete_value() override {
+        if (ready.is_none()) {
+            rstd::panic { "async coroutine task completed without a value" };
+        }
+        auto join_waker = join->complete_value(rstd::move(ready).unwrap_unchecked());
         if (join_waker.is_some()) {
             rstd::move(*join_waker).wake();
         }
@@ -365,63 +247,110 @@ struct DriverTaskState : TaskStateBase {
         }
     }
 
-    void run_external_continuation(TaskRef& self) override {
+    auto submit_completion_facility(FacilityCompletionToken token)
+        -> FacilityCompletionSubmitResult override {
+        return driver.submit_completion(rstd::move(token));
+    }
+
+    auto submit_facility(FacilityTicket ticket, FacilityRequest request)
+        -> FacilitySubmitResult override {
+        auto token = ticket.into_execution_token();
+        if (request.progress() != FacilityProgress::ExternallyDriven ||
+            request.effect() != FacilityEffect::ExecuteTaskSegment) {
+            auto task = token.access_task();
+            if (task.is_some()) {
+                (*task)->cancel_facility_handoff(rstd::move(token));
+            }
+            return FacilitySubmitResult::Unsupported;
+        }
+
+        auto endpoint = request.take_endpoint();
+        auto job      = rstd::async::FacilityJob { rstd::move(token) };
+        switch (endpoint.submit(rstd::move(job))) {
+        case rstd::async::FacilityEndpointSubmitResult::Accepted:
+            return FacilitySubmitResult::Accepted;
+        case rstd::async::FacilityEndpointSubmitResult::Rejected:
+            return FacilitySubmitResult::Rejected;
+        case rstd::async::FacilityEndpointSubmitResult::Unsupported:
+            return FacilitySubmitResult::Unsupported;
+        }
+        rstd::unreachable();
+    }
+
+    void run_facility_execution(FacilityExecutionToken token, TaskAccess access) override {
         auto rt = runtime.upgrade();
         if (! rt) {
             return;
         }
-        if (! begin_external_execution()) {
+        auto acquired = begin_facility_execution(rstd::move(token), rstd::move(access));
+        if (acquired.is_none()) {
             return;
         }
+        auto  lease = rstd::move(acquired).unwrap_unchecked();
+        auto& self  = lease.task();
 
         auto scope  = RuntimeScope { *rt.as_ptr() };
         auto domain = ExecutionDomainScope { rstd::async::ExecutionDomainKind::ExternalExecutor };
         auto waker  = make_task_waker(self);
         auto cx     = task::Context { waker };
         auto out    = driver.resume_external_segment(cx);
-        if (out.is_external()) {
-            if (! prepare_external_handoff()) {
-                return;
-            }
-
-            auto placement   = out.take_placement();
-            auto run_task    = self.clone();
-            auto cancel_task = self.clone();
-            auto posted      = placement.post_external(
-                rstd::async::ResumeJob::make([task = rstd::move(run_task)]() mutable {
-                    task->run_external_continuation(task);
-                }),
-                rstd::async::ResumeCancel::make([task = rstd::move(cancel_task)]() mutable {
-                    task->cancel_external_handoff(task);
-                }));
-            (void)posted;
+        if (out.is_submit_facility()) {
+            auto outcome = TaskPollAction::submit_facility(out.take_endpoint());
+            auto action  = end_facility_execution(rstd::move(lease), rstd::move(outcome));
+            apply(rstd::move(action));
             return;
         }
-        end_external_execution(self);
+        auto action = end_facility_execution(rstd::move(lease), TaskPollAction::none());
+        apply(rstd::move(action));
     }
 };
 
-template<typename F>
-    requires Impled<mtp::rm_cvf<F>, future::Future<future::future_output_t<F>>>
-auto spawn_on(RuntimeInner& runtime, F future)
-    -> rstd::async::JoinHandle<future::future_output_t<F>> {
-    using Output = future::future_output_t<F>;
+template<typename State>
+class HeapTaskStorage {
+    static void destroy(voidp owner) { delete static_cast<HeapTaskStorage*>(owner); }
 
-    auto join = sync::Arc<JoinState<Output>>::make();
-    auto task =
-        TaskRef::adopt(new TaskState<Output, F>(runtime.weak(), rstd::move(future), join.clone()));
-    join->set_task(task.clone());
-    runtime.spawn(rstd::move(task));
+    TaskRefControl control;
+    State          state;
 
-    return JoinHandleFactory::make<Output>(rstd::move(join));
-}
+public:
+    template<typename... Args>
+    explicit HeapTaskStorage(Args&&... args)
+        : control(this, &destroy), state(control, rstd::forward<Args>(args)...) {}
+
+    auto into_task() -> TaskRef { return TaskRef::adopt(rstd::addressof(control)); }
+};
+
+template<typename State>
+class ScopedTaskStorage {
+    TaskRefControl* control;
+    TaskRef         owner;
+    State           state;
+
+public:
+    template<typename... Args>
+    explicit ScopedTaskStorage(Args&&... args)
+        : control(TaskRefControl::make_scoped()),
+          owner(TaskRef::adopt(control)),
+          state(*control, rstd::forward<Args>(args)...) {}
+
+    ScopedTaskStorage(const ScopedTaskStorage&)                    = delete;
+    auto operator=(const ScopedTaskStorage&) -> ScopedTaskStorage& = delete;
+    ScopedTaskStorage(ScopedTaskStorage&&)                         = delete;
+    auto operator=(ScopedTaskStorage&&) -> ScopedTaskStorage&      = delete;
+
+    ~ScopedTaskStorage() { control->detach(); }
+
+    auto task() const -> TaskRef { return owner.clone(); }
+    void spawn(RuntimeInner& runtime) { runtime.spawn(owner.clone()); }
+};
 
 template<typename T>
 auto spawn_driver_on(RuntimeInner& runtime, rstd::async::RuntimeCoroDriver<T> driver)
     -> rstd::async::JoinHandle<T> {
-    auto join = sync::Arc<JoinState<T>>::make();
-    auto task =
-        TaskRef::adopt(new DriverTaskState<T>(runtime.weak(), rstd::move(driver), join.clone()));
+    auto join    = sync::Arc<JoinState<T>>::make();
+    auto storage = new HeapTaskStorage<DriverTaskState<T>>(
+        runtime.weak(), rstd::move(driver), JoinStateOwner<T>::owned(join.clone()));
+    auto task = storage->into_task();
     join->set_task(task.clone());
     runtime.spawn(rstd::move(task));
 

@@ -10,6 +10,7 @@ module;
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <sys/epoll.h>
+#include <sys/eventfd.h>
 #include <sys/file.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -148,6 +149,8 @@ inline constexpr auto _EPOLLERR      = EPOLLERR;
 inline constexpr auto _EPOLL_CTL_ADD = EPOLL_CTL_ADD;
 inline constexpr auto _EPOLL_CTL_MOD = EPOLL_CTL_MOD;
 inline constexpr auto _EPOLL_CTL_DEL = EPOLL_CTL_DEL;
+inline constexpr auto _EFD_NONBLOCK  = EFD_NONBLOCK;
+inline constexpr auto _EFD_CLOEXEC   = EFD_CLOEXEC;
 inline constexpr auto _TFD_NONBLOCK  = TFD_NONBLOCK;
 inline constexpr auto _TFD_CLOEXEC   = TFD_CLOEXEC;
 
@@ -265,6 +268,8 @@ inline constexpr auto _UTIME_OMIT = UTIME_OMIT;
 #undef EPOLL_CTL_ADD
 #undef EPOLL_CTL_MOD
 #undef EPOLL_CTL_DEL
+#undef EFD_NONBLOCK
+#undef EFD_CLOEXEC
 #undef TFD_NONBLOCK
 #undef TFD_CLOEXEC
 #undef S_IFMT
@@ -444,6 +449,7 @@ using ::getpeername;
 using ::epoll_create1;
 using ::epoll_ctl;
 using ::epoll_wait;
+using ::eventfd;
 using ::timerfd_create;
 using ::timerfd_settime;
 
@@ -517,6 +523,10 @@ inline constexpr auto EPOLLERR       = _EPOLLERR;
 inline constexpr auto EPOLL_CTL_ADD  = _EPOLL_CTL_ADD;
 inline constexpr auto EPOLL_CTL_MOD  = _EPOLL_CTL_MOD;
 inline constexpr auto EPOLL_CTL_DEL  = _EPOLL_CTL_DEL;
+[[maybe_unused]]
+inline constexpr auto EFD_NONBLOCK = _EFD_NONBLOCK;
+[[maybe_unused]]
+inline constexpr auto EFD_CLOEXEC = _EFD_CLOEXEC;
 [[maybe_unused]]
 inline constexpr auto TFD_NONBLOCK = _TFD_NONBLOCK;
 [[maybe_unused]]

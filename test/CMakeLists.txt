@@ -39,6 +39,12 @@ set(
   num/nonzero.cpp
   thread.cpp
   async.cpp
+  async/concurrency.cpp
+  async/facility.cpp
+  async/frame.cpp
+  async/lifecycle.cpp
+  async/poll.cpp
+  async/runtime.cpp
   bytes.cpp
   sync/condvar.cpp
   sync/mpsc.cpp

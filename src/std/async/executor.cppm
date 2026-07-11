@@ -1,6 +1,8 @@
 export module rstd:async.executor;
 export import :async.forward;
 import :async.awaitable;
+import :async.facility;
+import :async.runtime_core;
 import rstd.alloc;
 import :sync;
 
@@ -11,27 +13,29 @@ using ::alloc::vec::Vec;
 namespace rstd::async
 {
 
-using ExecutorJobFn = Box<dyn<FnMut<void()>>>;
+enum class ExecutorJobAction
+{
+    Run,
+    Cancel,
+};
+
+using ExecutorJobFn = Box<dyn<FnMut<void(ExecutorJobAction)>>>;
 
 export class ExecutorJob {
-    Option<ExecutorJobFn> m_run;
-    Option<ExecutorJobFn> m_cancel;
+    Option<ExecutorJobFn> m_dispatch;
 
-    ExecutorJob(ExecutorJobFn run, Option<ExecutorJobFn> cancel)
-        : m_run(Some(rstd::move(run))), m_cancel(rstd::move(cancel)) {}
+    explicit ExecutorJob(ExecutorJobFn dispatch): m_dispatch(Some(rstd::move(dispatch))) {}
 
 public:
     ExecutorJob(const ExecutorJob&)                    = delete;
     auto operator=(const ExecutorJob&) -> ExecutorJob& = delete;
 
-    ExecutorJob(ExecutorJob&& other) noexcept
-        : m_run(other.m_run.take()), m_cancel(other.m_cancel.take()) {}
+    ExecutorJob(ExecutorJob&& other) noexcept: m_dispatch(other.m_dispatch.take()) {}
 
     auto operator=(ExecutorJob&& other) noexcept -> ExecutorJob& {
         if (this != &other) {
             cancel();
-            m_run    = other.m_run.take();
-            m_cancel = other.m_cancel.take();
+            m_dispatch = other.m_dispatch.take();
         }
         return *this;
     }
@@ -40,39 +44,44 @@ public:
 
     template<typename F>
     static auto make(F run) -> ExecutorJob {
-        return ExecutorJob { ExecutorJobFn::make(rstd::move(run)), None() };
+        return dispatch([run = rstd::move(run)](ExecutorJobAction action) mutable {
+            if (action == ExecutorJobAction::Run) {
+                run();
+            }
+        });
     }
 
     template<typename F, typename C>
     static auto make(F run, C cancel) -> ExecutorJob {
-        return ExecutorJob {
-            ExecutorJobFn::make(rstd::move(run)),
-            Some(ExecutorJobFn::make(rstd::move(cancel))),
-        };
+        return dispatch(
+            [run = rstd::move(run), cancel = rstd::move(cancel)](ExecutorJobAction action) mutable {
+                if (action == ExecutorJobAction::Run) {
+                    run();
+                } else {
+                    cancel();
+                }
+            });
+    }
+
+    template<typename F>
+    static auto dispatch(F dispatch) -> ExecutorJob {
+        return ExecutorJob { ExecutorJobFn::make(rstd::move(dispatch)) };
     }
 
     void run() {
-        if (m_run.is_none()) {
+        if (m_dispatch.is_none()) {
             return;
         }
-
-        m_cancel = None();
-        auto run = m_run.take().unwrap_unchecked();
-        run->operator()();
+        auto dispatch = m_dispatch.take().unwrap_unchecked();
+        dispatch->operator()(ExecutorJobAction::Run);
     }
 
     void cancel() {
-        if (m_run.is_none()) {
-            m_cancel = None();
+        if (m_dispatch.is_none()) {
             return;
         }
-
-        auto keep_alive = m_run.take();
-        if (m_cancel.is_some()) {
-            auto cancel = m_cancel.take().unwrap_unchecked();
-            cancel->operator()();
-        }
-        (void)keep_alive;
+        auto dispatch = m_dispatch.take().unwrap_unchecked();
+        dispatch->operator()(ExecutorJobAction::Cancel);
     }
 };
 
@@ -105,120 +114,111 @@ export struct ExecutorContext {
     using Funcs = TraitFuncs<&Self::executor>;
 };
 
-struct ExecutorAwaitState {
-    static constexpr usize Pending  = 0;
-    static constexpr usize Ready    = 1;
-    static constexpr usize Canceled = 2;
-
-    sync::atomic::Atomic<usize> status { Pending };
-};
-
 template<typename E>
 struct ExecutorAwaitShared {
-    E executor;
+    E                         executor;
+    sync::Mutex<Option<bool>> result;
 
-    explicit ExecutorAwaitShared(E executor): executor(rstd::move(executor)) {}
+    explicit ExecutorAwaitShared(E executor)
+        : executor(rstd::move(executor)), result(Option<bool> {}) {}
 
     auto post_job(ExecutorJob job) -> bool {
         return as<Executor>(executor).post_job(rstd::move(job));
     }
 
     auto is_closed() -> bool { return as<Executor>(executor).is_closed(); }
+
+    auto load_result() -> Option<bool> {
+        auto value = result.lock().unwrap_unchecked();
+        return *value;
+    }
+
+    void store_result(bool value) {
+        auto current = result.lock().unwrap_unchecked();
+        *current     = Some(value);
+    }
 };
+
+template<typename E>
+auto executor_endpoint_submit(voidp data, FacilityJob job) -> FacilityEndpointSubmitResult {
+    using Shared    = ExecutorAwaitShared<E>;
+    auto shared     = sync::Arc<Shared>::from_raw(::alloc::sync::ArcRaw<Shared>::from_raw(data));
+    auto job_shared = shared.clone();
+    auto accepted   = shared->post_job(ExecutorJob::dispatch(
+        [shared = rstd::move(job_shared), job = rstd::move(job)](ExecutorJobAction action) mutable {
+            if (action == ExecutorJobAction::Run) {
+                job.run();
+            } else {
+                shared->store_result(false);
+                job.cancel();
+            }
+        }));
+    (void)rstd::move(shared).into_raw().into_raw();
+    return accepted ? FacilityEndpointSubmitResult::Accepted
+                    : FacilityEndpointSubmitResult::Rejected;
+}
+
+template<typename E>
+void executor_endpoint_drop(voidp data) {
+    using Shared = ExecutorAwaitShared<E>;
+    auto shared  = sync::Arc<Shared>::from_raw(::alloc::sync::ArcRaw<Shared>::from_raw(data));
+    (void)shared;
+}
+
+template<typename E>
+auto executor_endpoint_vtable() -> const RawFacilityEndpointVTable* {
+    static const auto vtable = RawFacilityEndpointVTable {
+        &executor_endpoint_submit<E>,
+        &executor_endpoint_drop<E>,
+    };
+    return rstd::addressof(vtable);
+}
+
+template<typename E>
+auto make_executor_endpoint(const sync::Arc<ExecutorAwaitShared<E>>& shared) -> FacilityEndpoint {
+    auto id    = reinterpret_cast<usize>(shared.as_ptr().as_raw_ptr());
+    auto owned = shared.clone();
+    return FacilityEndpoint::from_raw(
+        id,
+        RawFacilityEndpoint::from_raw_parts(rstd::move(owned).into_raw().into_raw(),
+                                            executor_endpoint_vtable<E>()));
+}
 
 template<typename E>
 class ExecutorAwaitOperation {
     sync::Arc<ExecutorAwaitShared<E>> m_shared;
-    sync::Arc<ExecutorAwaitState>     m_state;
-    bool                              m_posted { false };
-    bool                              m_completed { false };
-    bool                              m_result { false };
 
 public:
     using Output = bool;
 
     explicit ExecutorAwaitOperation(E executor)
-        : m_shared(sync::Arc<ExecutorAwaitShared<E>>::make(rstd::move(executor))),
-          m_state(sync::Arc<ExecutorAwaitState>::make()) {}
+        : m_shared(sync::Arc<ExecutorAwaitShared<E>>::make(rstd::move(executor))) {}
 
-    auto resume(AwaitContext& cx) -> AwaitOperationState {
-        if (m_completed) {
-            return AwaitOperationState::Ready;
-        }
-
-        auto status = m_state->status.load(sync::atomic::Ordering::Acquire);
-        if (status != ExecutorAwaitState::Pending) {
-            m_result    = status == ExecutorAwaitState::Ready;
-            m_completed = true;
-            return AwaitOperationState::Ready;
-        }
-
-        if (! m_posted) {
-            m_posted          = true;
-            auto ready_state  = m_state.clone();
-            auto ready_waker  = cx.waker().clone();
-            auto cancel_state = m_state.clone();
-            auto cancel_waker = cx.waker().clone();
-            auto shared       = m_shared.clone();
-            auto posted       = shared->post_job(ExecutorJob::make(
-                [state = rstd::move(ready_state), waker = rstd::move(ready_waker)]() mutable {
-                    state->status.store(ExecutorAwaitState::Ready, sync::atomic::Ordering::Release);
-                    rstd::move(waker).wake();
-                },
-                [state = rstd::move(cancel_state), waker = rstd::move(cancel_waker)]() mutable {
-                    state->status.store(ExecutorAwaitState::Canceled,
-                                        sync::atomic::Ordering::Release);
-                    rstd::move(waker).wake();
-                }));
-
-            if (! posted) {
-                m_result    = false;
-                m_completed = true;
-                return AwaitOperationState::Ready;
+    auto advance(AwaitContext& cx) -> AwaitTransition {
+        auto current = m_shared->load_result();
+        if (current.is_some()) {
+            if (! *current && cx.execution_domain() == ExecutionDomainKind::ExternalExecutor) {
+                return AwaitTransition::return_to_owner();
             }
+            return AwaitTransition::continue_();
         }
-
-        return AwaitOperationState::Pending;
+        auto result = ! m_shared->is_closed();
+        m_shared->store_result(result);
+        if (! result) {
+            return cx.execution_domain() == ExecutionDomainKind::ExternalExecutor
+                       ? AwaitTransition::return_to_owner()
+                       : AwaitTransition::continue_();
+        }
+        return AwaitTransition::submit_facility(make_executor_endpoint(m_shared));
     }
 
-    auto resume_external(AwaitContext& cx) -> AwaitOperationState {
-        if (m_completed) {
-            return AwaitOperationState::Ready;
+    auto take_output() -> bool {
+        auto result = m_shared->load_result();
+        if (result.is_none()) {
+            rstd::panic { "executor await output taken before facility completion" };
         }
-        if (cx.execution_domain() != ExecutionDomainKind::ExternalExecutor) {
-            return AwaitOperationState::Pending;
-        }
-
-        m_result    = ! m_shared->is_closed();
-        m_completed = true;
-        return AwaitOperationState::Ready;
+        return *result;
     }
-
-    auto placement() -> ResumePlacement {
-        if (! m_result) {
-            return ResumePlacement::runtime_worker();
-        }
-
-        auto  shared = m_shared.clone();
-        auto* self   = this;
-        auto  post   = ResumePost::make(
-            [shared = rstd::move(shared)](ResumeJob job, ResumeCancel cancel) mutable -> bool {
-                return shared->post_job(ExecutorJob::make(
-                    [job = rstd::move(job)]() mutable {
-                        job->operator()();
-                    },
-                    [cancel = rstd::move(cancel)]() mutable {
-                        cancel->operator()();
-                    }));
-            });
-        auto reject = ResumeReject::make([self]() mutable {
-            self->m_result    = false;
-            self->m_completed = true;
-        });
-        return ResumePlacement::external_executor(rstd::move(post), rstd::move(reject));
-    }
-
-    auto take_output() const noexcept -> bool { return m_result; }
 };
 
 struct LocalExecutorState {

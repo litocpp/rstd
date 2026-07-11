@@ -11,6 +11,7 @@ import :thread;
 
 using ::alloc::vec::Vec;
 using ::alloc::string::String;
+using ::alloc::boxed::Box;
 
 namespace rstd::async
 {
@@ -47,12 +48,14 @@ public:
 export class Runtime {
     sync::Arc<RuntimeInner>       m_inner;
     Vec<thread::JoinHandle<void>> m_workers;
+    Option<Box<RuntimeWorker>>    m_current_worker;
 
     friend class RuntimeBuilder;
 
     explicit Runtime(RuntimeKind kind, RuntimeConfig config, usize worker_count = 0)
         : m_inner(sync::Arc<RuntimeInner>::make(kind, config, worker_count)),
-          m_workers(Vec<thread::JoinHandle<void>>::make()) {
+          m_workers(Vec<thread::JoinHandle<void>>::make()),
+          m_current_worker(None()) {
         m_inner->init_self(m_inner.downgrade());
     }
 
@@ -81,42 +84,27 @@ export class Runtime {
             runtime.m_workers.push(rstd::move(worker).unwrap_unchecked());
         }
 
+        auto started = runtime.m_inner->wait_for_startup();
+        if (started.is_err()) {
+            auto error = rstd::move(started).unwrap_err_unchecked();
+            runtime.shutdown();
+            return Err(rstd::move(error));
+        }
         return Ok(rstd::move(runtime));
     }
 
     void shutdown() {
-        if (! m_inner || ! m_inner->is_thread_pool()) {
+        if (! m_inner || ! m_inner->begin_shutdown()) {
             return;
         }
 
-        m_inner->request_stop();
+        m_inner->abort_all_tasks();
+        m_inner->stop_workers();
         while (! m_workers.is_empty()) {
             auto worker = rstd::move(m_workers.pop()).unwrap_unchecked();
             (void)rstd::move(worker).join();
         }
-        m_inner->abort_all_tasks();
-    }
-
-    template<AwaitableInput A>
-    auto block_on_thread_pool(A awaitable) -> await_output_t<A> {
-        auto* runtime = m_inner.as_ptr().as_raw_ptr();
-        if (CURRENT_RUNTIME == runtime && has_current_runtime_worker() &&
-            current_execution_domain() == ExecutionDomainKind::RuntimeWorker) {
-            rstd::panic { "Runtime::block_on cannot run inside its runtime worker" };
-        }
-
-        auto joined = spawn(rstd::move(awaitable));
-        auto result = joined.blocking_wait();
-        if (result.is_err()) {
-            rstd::panic { "Runtime::block_on root task was aborted" };
-        }
-
-        if constexpr (mtp::is_void<await_output_t<A>>) {
-            (void)rstd::move(result).unwrap_unchecked();
-            return;
-        } else {
-            return rstd::move(result).unwrap_unchecked();
-        }
+        m_inner->finish_shutdown();
     }
 
 public:
@@ -128,8 +116,9 @@ public:
     auto operator=(Runtime&& other) noexcept -> Runtime& {
         if (this != &other) {
             shutdown();
-            m_inner   = rstd::move(other.m_inner);
-            m_workers = rstd::move(other.m_workers);
+            m_inner          = rstd::move(other.m_inner);
+            m_workers        = rstd::move(other.m_workers);
+            m_current_worker = rstd::move(other.m_current_worker);
         }
         return *this;
     }
@@ -158,96 +147,69 @@ public:
 
     template<AwaitableInput A>
     auto block_on(A awaitable) -> await_output_t<A> {
+        auto driver = make_runtime_driver(into_coro(rstd::move(awaitable)));
+
+        using Output  = await_output_t<A>;
+        auto* runtime = m_inner.as_ptr().as_raw_ptr();
         if (m_inner->is_thread_pool()) {
-            return block_on_thread_pool(rstd::move(awaitable));
+            if (CURRENT_RUNTIME == runtime && has_current_runtime_worker() &&
+                current_execution_domain() == ExecutionDomainKind::RuntimeWorker) {
+                rstd::panic { "Runtime::block_on cannot run inside its runtime worker" };
+            }
+
+            auto joined = JoinState<Output> {};
+            auto root   = ScopedTaskStorage<DriverTaskState<Output>> {
+                runtime->weak(), rstd::move(driver), JoinStateOwner<Output>::borrowed(joined)
+            };
+            joined.set_task(root.task());
+            root.spawn(*runtime);
+            auto result = joined.wait();
+            if (result.is_err()) {
+                rstd::panic { "Runtime::block_on root task was aborted" };
+            }
+
+            if constexpr (mtp::is_void<Output>) {
+                (void)rstd::move(result).unwrap_unchecked();
+                return;
+            } else {
+                return rstd::move(result).unwrap_unchecked();
+            }
         }
 
-        auto& runtime = *m_inner.as_ptr().as_raw_ptr();
-        auto  scope   = RuntimeScope { runtime };
-        auto  parker  = ParkerScope { runtime };
-        auto  waker   = make_runtime_waker(runtime);
-        auto  cx      = task::Context { waker };
-        auto  driver  = make_runtime_driver(into_coro(rstd::move(awaitable)));
-
-        using BlockOnDriver = decltype(driver);
-
-        struct BlockOnExternalState {
-            RuntimeInner*                         runtime;
-            BlockOnDriver*                        driver;
-            task::Waker                           waker;
-            sync::Arc<sync::atomic::Atomic<bool>> done;
-
-            BlockOnExternalState(RuntimeInner*                         runtime,
-                                 BlockOnDriver*                        driver,
-                                 task::Waker                           waker,
-                                 sync::Arc<sync::atomic::Atomic<bool>> done)
-                : runtime(runtime),
-                  driver(driver),
-                  waker(rstd::move(waker)),
-                  done(rstd::move(done)) {}
-
-            static auto post(ResumePlacement& placement, sync::Arc<BlockOnExternalState> state)
-                -> bool {
-                auto run_state = state.clone();
-                return placement.post_external(
-                    ResumeJob::make([state = rstd::move(run_state)]() mutable {
-                        BlockOnExternalState::run(rstd::move(state));
-                    }),
-                    ResumeCancel::make([state = rstd::move(state)]() mutable {
-                        state->done->store(true, sync::atomic::Ordering::Release);
-                        state->waker.clone().wake();
-                    }));
-            }
-
-            static void run(sync::Arc<BlockOnExternalState> state) {
-                auto scope  = RuntimeScope { *state->runtime };
-                auto domain = ExecutionDomainScope { ExecutionDomainKind::ExternalExecutor };
-                auto cx     = task::Context { state->waker };
-                auto out    = state->driver->resume_external_segment(cx);
-                if (out.is_external()) {
-                    auto placement = out.take_placement();
-                    auto posted    = post(placement, state.clone());
-                    (void)posted;
-                    return;
-                }
-
-                state->done->store(true, sync::atomic::Ordering::Release);
-                state->waker.clone().wake();
-            }
+        auto attachment   = CurrentThreadWorkerAttachment { runtime->m_shared.worker_handle(
+            RuntimeWorkerId::current_thread()) };
+        auto scope        = RuntimeScope { *runtime };
+        auto worker_scope = RuntimeWorkerScope { RuntimeWorkerId::current_thread() };
+        if (m_current_worker.is_none()) {
+            m_current_worker = Some(Box<RuntimeWorker>::make(
+                *runtime, runtime->m_shared.worker_handle(RuntimeWorkerId::current_thread())));
+        }
+        auto* worker = m_current_worker->get();
+        if (! worker->poll_initialized()) {
+            rstd::panic { "async runtime worker Poll is unavailable or already attached" };
+        }
+        auto joined = JoinState<Output> {};
+        auto root   = ScopedTaskStorage<DriverTaskState<Output>> {
+            runtime->weak(), rstd::move(driver), JoinStateOwner<Output>::borrowed(joined)
         };
-
-        while (true) {
-            auto out = driver.drive(cx);
-            if (out.is_ready()) {
-                m_inner->drain_ready();
-                if constexpr (mtp::is_void<await_output_t<A>>) {
-                    out.take();
-                    return;
-                } else {
-                    return out.take();
-                }
+        joined.set_task(root.task());
+        root.spawn(*runtime);
+        while (! joined.is_ready()) {
+            worker->drain_ready();
+            if (! joined.is_ready()) {
+                worker->wait_for_work();
             }
-            if (out.is_external()) {
-                auto placement = out.take_placement();
-                auto done      = sync::Arc<sync::atomic::Atomic<bool>>::make(false);
-                auto state     = sync::Arc<BlockOnExternalState>::make(rstd::addressof(runtime),
-                                                                       rstd::addressof(driver),
-                                                                       cx.waker().clone(),
-                                                                       done.clone());
-                auto posted    = BlockOnExternalState::post(placement, rstd::move(state));
-                if (! posted) {
-                    continue;
-                }
+        }
 
-                while (! done->load(sync::atomic::Ordering::Acquire)) {
-                    m_inner->drain_ready();
-                    m_inner->wait_for_work();
-                }
-                continue;
-            }
-
-            m_inner->drain_ready();
-            m_inner->wait_for_work();
+        auto result = joined.wait();
+        if (result.is_err()) {
+            rstd::panic { "Runtime::block_on root task was aborted" };
+        }
+        if constexpr (mtp::is_void<Output>) {
+            (void)rstd::move(result).unwrap_unchecked();
+            return;
+        } else {
+            return rstd::move(result).unwrap_unchecked();
         }
     }
 };

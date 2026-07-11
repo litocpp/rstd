@@ -1,51 +1,78 @@
 export module rstd:async.task;
 export import :async.awaitable;
+import :async.runtime_core;
 
 using namespace rstd;
 
 struct AwaitingOperation {
     void* ptr { nullptr };
-    async::AwaitOperationState (*resume_fn)(void*, async::AwaitContext&) { nullptr };
-    async::AwaitOperationState (*resume_external_fn)(void*, async::AwaitContext&) { nullptr };
-    async::ResumePlacement (*placement_fn)(void*) { nullptr };
+    async::AwaitTransition (*advance_fn)(void*, async::AwaitContext&) { nullptr };
+    bool (*complete_facility_fn)(void*, FacilityEvent&) { nullptr };
+    FacilityCompletionSubmitResult (*submit_completion_fn)(void*,
+                                                           FacilityCompletionToken) { nullptr };
 
     template<typename Suspension>
     static auto make(Suspension* suspension) noexcept -> AwaitingOperation {
-        return AwaitingOperation {
+        auto operation = AwaitingOperation {
             suspension,
-            [](void* ptr, async::AwaitContext& cx) -> async::AwaitOperationState {
-                return static_cast<Suspension*>(ptr)->resume(cx);
+            [](void* ptr, async::AwaitContext& cx) -> async::AwaitTransition {
+                return static_cast<Suspension*>(ptr)->advance(cx);
             },
-            [](void* ptr, async::AwaitContext& cx) -> async::AwaitOperationState {
-                return static_cast<Suspension*>(ptr)->resume_external(cx);
-            },
-            [](void* ptr) -> async::ResumePlacement {
-                return static_cast<Suspension*>(ptr)->placement();
-            },
+            nullptr,
+            nullptr,
         };
+        if constexpr (requires(Suspension& value, FacilityEvent& event) {
+                          { value.complete_facility(event) } -> mtp::same_as<bool>;
+                      }) {
+            operation.complete_facility_fn = [](void* ptr, FacilityEvent& event) -> bool {
+                return static_cast<Suspension*>(ptr)->complete_facility(event);
+            };
+        }
+        if constexpr (requires(Suspension& value, FacilityCompletionToken token) {
+                          {
+                              value.submit_completion(rstd::move(token))
+                          } -> mtp::same_as<FacilityCompletionSubmitResult>;
+                      }) {
+            operation.submit_completion_fn =
+                [](void* ptr, FacilityCompletionToken token) -> FacilityCompletionSubmitResult {
+                return static_cast<Suspension*>(ptr)->submit_completion(rstd::move(token));
+            };
+        }
+        return operation;
     }
 
     constexpr explicit operator bool() const noexcept { return ptr != nullptr; }
 
-    auto resume(async::AwaitContext& cx) const -> async::AwaitOperationState {
-        return resume_fn(ptr, cx);
+    auto advance(async::AwaitContext& cx) const -> async::AwaitTransition {
+        return advance_fn(ptr, cx);
     }
 
-    auto resume_external(async::AwaitContext& cx) const -> async::AwaitOperationState {
-        return resume_external_fn(ptr, cx);
+    auto complete_facility(FacilityEvent& event) const -> bool {
+        return complete_facility_fn != nullptr && complete_facility_fn(ptr, event);
     }
 
-    auto placement() const -> async::ResumePlacement { return placement_fn(ptr); }
+    auto submit_completion(FacilityCompletionToken token) const -> FacilityCompletionSubmitResult {
+        if (submit_completion_fn == nullptr) {
+            return FacilityCompletionSubmitResult::unsupported(rstd::move(token));
+        }
+        return submit_completion_fn(ptr, rstd::move(token));
+    }
 };
 
 namespace rstd::async
 {
 
+#if defined(__clang__) && __has_cpp_attribute(clang::coro_await_elidable)
+#define RSTD_CORO_AWAIT_ELIDABLE [[clang::coro_await_elidable]]
+#else
+#define RSTD_CORO_AWAIT_ELIDABLE
+#endif
+
 template<typename T>
 struct CoroAccess;
 
 export template<typename T>
-class coro {
+class RSTD_CORO_AWAIT_ELIDABLE coro {
 public:
     struct promise_type {
         AwaitingOperation awaiting {};
@@ -116,7 +143,7 @@ public:
 };
 
 template<>
-class coro<void> {
+class RSTD_CORO_AWAIT_ELIDABLE coro<void> {
 public:
     struct promise_type {
         AwaitingOperation awaiting {};
@@ -175,6 +202,8 @@ public:
     }
 };
 
+#undef RSTD_CORO_AWAIT_ELIDABLE
+
 template<typename T>
 struct CoroAccess {
     static auto handle(coro<T>& task) noexcept
@@ -195,7 +224,11 @@ auto into_coro(A awaitable) -> coro<await_output_t<A>> {
 }
 
 export template<typename T>
+#if defined(__clang__) && __has_cpp_attribute(clang::coro_await_elidable_argument)
+auto into_coro([[clang::coro_await_elidable_argument]] coro<T> task) -> coro<T> {
+#else
 auto into_coro(coro<T> task) -> coro<T> {
+#endif
     return rstd::move(task);
 }
 

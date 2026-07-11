@@ -1,7 +1,9 @@
 set(RSTD_ASYNC_SOURCES
     async/mod.cppm
     async/forward.cppm
+    async/terminal.cppm
     async/atomic_waker.cppm
+    async/facility.cppm
     async/executor.cppm
     async/awaitable.cppm
     async/task.cppm
@@ -11,6 +13,9 @@ set(RSTD_ASYNC_SOURCES
     async/select.cppm
     async/oneshot.cppm
     async/io.cppm
+    async/readiness.cppm
+    async/poll.cppm
+    async/timer_facility.cppm
     async/reactor.cppm
     async/notify.cppm
     async/completion.cppm

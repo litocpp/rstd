@@ -3,86 +3,21 @@ module;
 
 export module rstd:async.reactor;
 export import :async.forward;
+export import :async.readiness;
 export import :io.error;
 export import :time;
+import :async.awaitable;
+import :async.poll;
 import :async.runtime_core;
 import :sys.fd;
-import :sys.libc;
 import :sync;
-import :thread;
 import rstd.alloc;
 
 using namespace rstd;
 using ::alloc::vec::Vec;
-namespace libc = rstd::sys::libc;
 
 namespace rstd::async
 {
-
-inline constexpr u64 WAKE_EVENT_ID  = 0;
-inline constexpr u64 TIMER_EVENT_ID = u64(-1);
-
-export struct Interest {
-    u8 m_bits {};
-
-    static constexpr u8 READABLE { 1 };
-    static constexpr u8 WRITABLE { 2 };
-
-    static constexpr auto readable() noexcept -> Interest { return Interest { READABLE }; }
-    static constexpr auto writable() noexcept -> Interest { return Interest { WRITABLE }; }
-    static constexpr auto read_write() noexcept -> Interest {
-        return Interest { u8(READABLE | WRITABLE) };
-    }
-
-    constexpr auto is_readable() const noexcept -> bool { return (m_bits & READABLE) != 0; }
-    constexpr auto is_writable() const noexcept -> bool { return (m_bits & WRITABLE) != 0; }
-    constexpr auto is_empty() const noexcept -> bool { return m_bits == 0; }
-
-    friend constexpr auto operator|(Interest a, Interest b) noexcept -> Interest {
-        return Interest { u8(a.m_bits | b.m_bits) };
-    }
-};
-
-export struct Ready {
-    u8 m_bits {};
-
-    static constexpr u8 READABLE { 1 };
-    static constexpr u8 WRITABLE { 2 };
-    static constexpr u8 READ_CLOSED { 4 };
-    static constexpr u8 WRITE_CLOSED { 8 };
-    static constexpr u8 ERROR { 16 };
-
-    static constexpr auto readable() noexcept -> Ready { return Ready { READABLE }; }
-    static constexpr auto writable() noexcept -> Ready { return Ready { WRITABLE }; }
-    static constexpr auto read_closed() noexcept -> Ready { return Ready { READ_CLOSED }; }
-    static constexpr auto write_closed() noexcept -> Ready { return Ready { WRITE_CLOSED }; }
-    static constexpr auto error() noexcept -> Ready { return Ready { ERROR }; }
-
-    constexpr auto is_readable() const noexcept -> bool { return (m_bits & READABLE) != 0; }
-    constexpr auto is_writable() const noexcept -> bool { return (m_bits & WRITABLE) != 0; }
-    constexpr auto is_read_closed() const noexcept -> bool { return (m_bits & READ_CLOSED) != 0; }
-    constexpr auto is_write_closed() const noexcept -> bool { return (m_bits & WRITE_CLOSED) != 0; }
-    constexpr auto is_error() const noexcept -> bool { return (m_bits & ERROR) != 0; }
-    constexpr auto is_empty() const noexcept -> bool { return m_bits == 0; }
-
-    constexpr auto for_interest(Interest interest) const noexcept -> Ready {
-        auto bits = u8(0);
-        if (interest.is_readable()) bits |= m_bits & (READABLE | READ_CLOSED | ERROR);
-        if (interest.is_writable()) bits |= m_bits & (WRITABLE | WRITE_CLOSED | ERROR);
-        return Ready { bits };
-    }
-
-    constexpr void remove(Ready ready) noexcept { m_bits &= ~ready.m_bits; }
-
-    friend constexpr auto operator|(Ready a, Ready b) noexcept -> Ready {
-        return Ready { u8(a.m_bits | b.m_bits) };
-    }
-
-    constexpr auto operator|=(Ready other) noexcept -> Ready& {
-        m_bits |= other.m_bits;
-        return *this;
-    }
-};
 
 export struct ReadyEvent {
     Ready m_ready {};
@@ -98,577 +33,513 @@ export struct ReadyEvent {
     constexpr auto is_error() const noexcept -> bool { return m_ready.is_error(); }
 };
 
+inline constexpr usize READINESS_FACILITY_ID { rstd::numeric_limits<usize>::max() - 1 };
+
+struct ReadinessFacilityWaiter {
+    usize                   id;
+    Interest                interest;
+    FacilityCompletionToken token;
+
+    ReadinessFacilityWaiter(usize id, Interest interest, FacilityCompletionToken token)
+        : id(id), interest(interest), token(rstd::move(token)) {}
+};
+
+struct RegistrationFields {
+    Ready                        ready {};
+    usize                        tick { 1 };
+    Option<task::Waker>          read_waker {};
+    Option<task::Waker>          write_waker {};
+    usize                        read_waiter_id {};
+    usize                        write_waiter_id {};
+    usize                        next_waiter_id { 1 };
+    Option<WorkerHandle>         worker {};
+    Option<PollKey>              key {};
+    Option<io::Error>            error {};
+    bool                         closed { false };
+    Vec<ReadinessFacilityWaiter> facility_waiters;
+
+    RegistrationFields(): facility_waiters(Vec<ReadinessFacilityWaiter>::make()) {}
+};
+
 struct RegistrationState {
-    sys::fd::RawFd      fd;
-    usize               id {};
-    Ready               ready {};
-    usize               tick { 1 };
-    Option<task::Waker> read_waker {};
-    Option<task::Waker> write_waker {};
-    usize               read_waiter_id {};
-    usize               write_waiter_id {};
-    usize               next_waiter_id { 1 };
-    u32                 backend_events {};
-    bool                backend_registered { false };
-    bool                closed { false };
+    sys::fd::RawFd                  fd;
+    sync::Mutex<RegistrationFields> fields;
 
-    RegistrationState(sys::fd::RawFd fd, usize id): fd(fd), id(id) {}
-
-    RegistrationState(const RegistrationState&)                    = delete;
-    auto operator=(const RegistrationState&) -> RegistrationState& = delete;
+    explicit RegistrationState(sys::fd::RawFd fd): fd(fd), fields(RegistrationFields {}) {}
 };
 
-struct TimerEntry {
-    usize               id {};
-    time::Instant       deadline {};
-    Option<task::Waker> waker {};
+struct TimerFields {
+    WorkerHandle        worker;
+    PollKey             key;
+    Option<task::Waker> waker;
+    Option<io::Error>   error {};
+    bool                active { true };
 
-    TimerEntry(usize id, time::Instant deadline, task::Waker waker)
-        : id(id), deadline(deadline), waker(Some(rstd::move(waker))) {}
-
-    TimerEntry(const TimerEntry&)                        = delete;
-    auto operator=(const TimerEntry&) -> TimerEntry&     = delete;
-    TimerEntry(TimerEntry&&) noexcept                    = default;
-    auto operator=(TimerEntry&&) noexcept -> TimerEntry& = default;
+    TimerFields(WorkerHandle worker, PollKey key, task::Waker waker)
+        : worker(rstd::move(worker)), key(key), waker(Some(rstd::move(waker))) {}
 };
 
-struct ReactorState {
-    Vec<sync::Arc<RegistrationState>> registrations {};
-    Vec<TimerEntry>                   timers {};
-    sys::fd::OwnedFd                  wake_read {};
-    sys::fd::OwnedFd                  wake_write {};
-    sys::fd::OwnedFd                  timer {};
-    sys::fd::OwnedFd                  epoll {};
-    usize                             next_registration_id { 1 };
-    usize                             next_timer_id { 1 };
-    bool                              stopped { false };
+struct TimerState {
+    sync::Mutex<TimerFields> fields;
+
+    TimerState(WorkerHandle worker, PollKey key, task::Waker waker)
+        : fields(TimerFields { rstd::move(worker), key, rstd::move(waker) }) {}
 };
 
-class Reactor {
-    sync::Mutex<ReactorState>        m_state;
-    Option<thread::JoinHandle<void>> m_thread {};
-    bool                             m_available { false };
-    io::Error m_init_error { io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }) };
+using RegistrationArc = sync::Arc<RegistrationState>;
+using TimerArc        = sync::Arc<TimerState>;
 
-    static auto last_os_error() noexcept -> io::Error {
-        return io::Error::from_raw_os_error(sys::io::last_os_error());
+auto make_registration_owner(const RegistrationArc& state) -> PollEventOwner;
+auto make_timer_owner(const TimerArc& state) -> PollEventOwner;
+
+auto registration_interest(const RegistrationFields& fields) noexcept -> Interest {
+    auto interest = Interest {};
+    if (fields.read_waker.is_some()) interest = interest | Interest::readable();
+    if (fields.write_waker.is_some()) interest = interest | Interest::writable();
+    for (usize i = 0; i < fields.facility_waiters.len(); ++i) {
+        interest = interest | fields.facility_waiters[i].interest;
     }
+    return interest;
+}
 
-    static auto duration_to_timespec(time::Duration duration) noexcept -> libc::timespec_t {
-        return libc::timespec_t {
-            .tv_sec  = static_cast<libc::time_t>(duration.as_secs()),
-            .tv_nsec = static_cast<long>(duration.subsec_nanos()),
-        };
+void wake_all(Vec<task::Waker>& wakers) {
+    while (! wakers.is_empty()) {
+        rstd::move(wakers.pop().unwrap_unchecked()).wake();
     }
+}
 
-    static auto earliest_timer_locked(ReactorState& st) -> Option<time::Instant> {
-        if (st.timers.is_empty()) return None();
-
-        auto deadline = st.timers[0].deadline;
-        for (usize i = 1; i < st.timers.len(); ++i) {
-            if (st.timers[i].deadline < deadline) {
-                deadline = st.timers[i].deadline;
-            }
+void fail_registration(const RegistrationArc& state, io::Error error) {
+    auto wakers           = Vec<task::Waker>::make();
+    auto tokens           = Vec<FacilityCompletionToken>::make();
+    auto key              = PollKey {};
+    auto completion_error = io::Error { error };
+    {
+        auto fields = state->fields.lock().unwrap_unchecked();
+        if (fields->closed) return;
+        fields->closed = true;
+        fields->error  = Some(rstd::move(error));
+        if (fields->read_waker.is_some()) {
+            wakers.push(rstd::move(fields->read_waker).unwrap_unchecked());
         }
-        return Some(deadline);
-    }
-
-    auto update_timerfd_locked(ReactorState& st) -> io::Result<empty> {
-#if RSTD_OS_LINUX
-        if (! st.timer.is_open()) return Ok(empty {});
-
-        auto spec = libc::itimerspec_t {};
-        auto next = earliest_timer_locked(st);
-        if (next.is_some()) {
-            auto now      = time::Instant::now();
-            auto deadline = rstd::move(next).unwrap_unchecked();
-            auto delay    = deadline <= now ? time::Duration::from_nanos(1) : deadline - now;
-            spec.it_value = duration_to_timespec(delay);
+        if (fields->write_waker.is_some()) {
+            wakers.push(rstd::move(fields->write_waker).unwrap_unchecked());
         }
-
-        if (libc::timerfd_settime(st.timer.as_raw_fd(), 0, &spec, nullptr) < 0) {
-            return Err(last_os_error());
+        fields->read_waiter_id  = 0;
+        fields->write_waiter_id = 0;
+        if (fields->key.is_some()) {
+            key = *fields->key;
         }
-        return Ok(empty {});
-#else
-        (void)st;
-        return Err(m_init_error);
-#endif
-    }
-
-    static void collect_expired_timers_locked(ReactorState& st, Vec<task::Waker>& wakers) {
-        auto now = time::Instant::now();
-        for (usize i = 0; i < st.timers.len();) {
-            if (st.timers[i].deadline <= now) {
-                auto entry = st.timers.remove(i);
-                if (entry.waker.is_some()) {
-                    wakers.push(rstd::move(entry.waker).unwrap_unchecked());
-                }
-            } else {
-                ++i;
-            }
+        while (! fields->facility_waiters.is_empty()) {
+            tokens.push(rstd::move(fields->facility_waiters.pop()).unwrap_unchecked().token);
         }
     }
-
-    auto init_backend() -> io::Result<empty> {
-#if RSTD_OS_LINUX
-        int epoll = libc::epoll_create1(libc::EPOLL_CLOEXEC);
-        if (epoll < 0) {
-            return Err(last_os_error());
-        }
-        auto epoll_fd = sys::fd::OwnedFd::from_raw_fd(epoll);
-
-        int fds[2] {};
-        if (libc::pipe2(fds, libc::O_NONBLOCK | libc::O_CLOEXEC) < 0) {
-            return Err(last_os_error());
-        }
-
-        auto read_fd  = sys::fd::OwnedFd::from_raw_fd(fds[0]);
-        auto write_fd = sys::fd::OwnedFd::from_raw_fd(fds[1]);
-
-        int timer =
-            libc::timerfd_create(libc::CLOCK_MONOTONIC, libc::TFD_NONBLOCK | libc::TFD_CLOEXEC);
-        if (timer < 0) {
-            return Err(last_os_error());
-        }
-        auto timer_fd = sys::fd::OwnedFd::from_raw_fd(timer);
-
-        auto wake_event     = libc::epoll_event {};
-        wake_event.events   = libc::EPOLLIN;
-        wake_event.data.u64 = WAKE_EVENT_ID;
-        if (libc::epoll_ctl(epoll, libc::EPOLL_CTL_ADD, fds[0], &wake_event) < 0) {
-            return Err(last_os_error());
-        }
-
-        auto timer_event     = libc::epoll_event {};
-        timer_event.events   = libc::EPOLLIN;
-        timer_event.data.u64 = TIMER_EVENT_ID;
-        if (libc::epoll_ctl(epoll, libc::EPOLL_CTL_ADD, timer, &timer_event) < 0) {
-            return Err(last_os_error());
-        }
-
-        auto st        = m_state.lock().unwrap_unchecked();
-        st->epoll      = rstd::move(epoll_fd);
-        st->wake_read  = rstd::move(read_fd);
-        st->wake_write = rstd::move(write_fd);
-        st->timer      = rstd::move(timer_fd);
-        return Ok(empty {});
-#else
-        return Err(m_init_error);
-#endif
+    wake_all(wakers);
+    while (! tokens.is_empty()) {
+        auto token = rstd::move(tokens.pop()).unwrap_unchecked();
+        (void)token.complete_poll(
+            PollEventData::backend_error(key, io::Error { completion_error }));
     }
+}
 
-    void notify() {
-#if RSTD_OS_LINUX
-        auto st = m_state.lock().unwrap_unchecked();
-        if (! st->wake_write.is_open()) return;
-        u8 byte = 1;
-        (void)libc::write(st->wake_write.as_raw_fd(), &byte, 1);
-#endif
-    }
+auto submit_registration_command(const RegistrationArc& state,
+                                 WorkerHandle&          worker,
+                                 PollCommand            command) -> bool {
+    auto submitted = worker.submit_poll(rstd::move(command));
+    if (submitted.is_ok()) return true;
+    fail_registration(state, io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected }));
+    return false;
+}
 
-    void drain_wake_pipe(sys::fd::RawFd fd) {
-#if RSTD_OS_LINUX
-        u8 buf[64] {};
-        while (libc::read(fd, buf, sizeof(buf)) > 0) {
-        }
-#else
-        (void)fd;
-#endif
-    }
+struct ReadinessCancellationState {
+    RegistrationArc registration;
+    usize           waiter_id;
 
-    void drain_timerfd(sys::fd::RawFd fd) {
-#if RSTD_OS_LINUX
-        u64 expirations {};
-        while (libc::read(fd, &expirations, sizeof(expirations)) > 0) {
-        }
-#else
-        (void)fd;
-#endif
-    }
+    ReadinessCancellationState(RegistrationArc registration, usize waiter_id)
+        : registration(rstd::move(registration)), waiter_id(waiter_id) {}
+};
 
-    static auto backend_ready_bits(u32 events) noexcept -> Ready {
-        auto ready = Ready {};
-#if RSTD_OS_LINUX
-        if ((events & libc::EPOLLIN) != 0) ready |= Ready::readable();
-        if ((events & libc::EPOLLOUT) != 0) ready |= Ready::writable();
-        if (libc::HAS_EPOLLRDHUP && (events & libc::EPOLLRDHUP) != 0) {
-            ready |= Ready::read_closed();
-        }
-        if ((events & libc::EPOLLHUP) != 0) ready |= Ready::read_closed() | Ready::write_closed();
-        if ((events & libc::EPOLLERR) != 0) ready |= Ready::error();
-#else
-        (void)events;
-#endif
-        return ready;
-    }
+using ReadinessCancellationArc = sync::Arc<ReadinessCancellationState>;
 
-    static auto backend_interest_events(RegistrationState& registration) noexcept -> u32 {
-        u32 events = 0;
-#if RSTD_OS_LINUX
-        if (registration.read_waker.is_some()) events |= libc::EPOLLIN;
-        if (registration.write_waker.is_some()) events |= libc::EPOLLOUT;
-        if (libc::HAS_EPOLLRDHUP && registration.read_waker.is_some()) {
-            events |= libc::EPOLLRDHUP;
-        }
-#endif
-        return events;
-    }
-
-    auto update_backend_locked(ReactorState& st, RegistrationState& registration)
-        -> io::Result<empty> {
-#if RSTD_OS_LINUX
-        auto events = registration.closed ? u32(0) : backend_interest_events(registration);
-        if (events == registration.backend_events && registration.backend_registered) {
-            return Ok(empty {});
-        }
-
-        if (events == 0) {
-            if (registration.backend_registered) {
-                if (libc::epoll_ctl(
-                        st.epoll.as_raw_fd(), libc::EPOLL_CTL_DEL, registration.fd, nullptr) < 0) {
-                    return Err(last_os_error());
-                }
-                registration.backend_registered = false;
-                registration.backend_events     = 0;
-            }
-            return Ok(empty {});
-        }
-
-        auto event     = libc::epoll_event {};
-        event.events   = events | libc::EPOLLERR | libc::EPOLLHUP;
-        event.data.u64 = u64(registration.id);
-
-        int op = registration.backend_registered ? libc::EPOLL_CTL_MOD : libc::EPOLL_CTL_ADD;
-        if (libc::epoll_ctl(st.epoll.as_raw_fd(), op, registration.fd, &event) < 0) {
-            return Err(last_os_error());
-        }
-        registration.backend_registered = true;
-        registration.backend_events     = events;
-        return Ok(empty {});
-#else
-        (void)st;
-        (void)registration;
-        return Err(m_init_error);
-#endif
-    }
-
-    static auto find_registration_locked(ReactorState& st, usize id) -> RegistrationState* {
-        for (usize i = 0; i < st.registrations.len(); ++i) {
-            auto* registration = st.registrations[i].as_ptr().as_raw_ptr();
-            if (registration->id == id) return registration;
-        }
-        return nullptr;
-    }
-
-#if RSTD_OS_LINUX
-    void wake_ready(Vec<libc::epoll_event>& events, int count) {
-        auto wakers = Vec<task::Waker>::make();
-        {
-            auto st = m_state.lock().unwrap_unchecked();
-            for (int i = 0; i < count; ++i) {
-                auto id = usize(events[usize(i)].data.u64);
-                if (id == 0) continue;
-
-                auto* registration = find_registration_locked(*st, id);
-                if (registration == nullptr || registration->closed) continue;
-
-                auto ready = backend_ready_bits(events[usize(i)].events);
-                if (ready.is_empty()) continue;
-
-                registration->ready |= ready;
-                ++registration->tick;
-                if ((ready.is_readable() || ready.is_read_closed() || ready.is_error()) &&
-                    registration->read_waker.is_some()) {
-                    wakers.push(rstd::move(registration->read_waker.take()).unwrap_unchecked());
-                    registration->read_waiter_id = 0;
-                }
-                if ((ready.is_writable() || ready.is_write_closed() || ready.is_error()) &&
-                    registration->write_waker.is_some()) {
-                    wakers.push(rstd::move(registration->write_waker.take()).unwrap_unchecked());
-                    registration->write_waiter_id = 0;
-                }
-                (void)update_backend_locked(*st, *registration);
-            }
-        }
-
-        while (! wakers.is_empty()) {
-            rstd::move(wakers.pop().unwrap_unchecked()).wake();
-        }
-    }
-
-    void wake_expired_timers() {
-        auto wakers = Vec<task::Waker>::make();
-        {
-            auto st = m_state.lock().unwrap_unchecked();
-            collect_expired_timers_locked(*st, wakers);
-            (void)update_timerfd_locked(*st);
-        }
-
-        while (! wakers.is_empty()) {
-            rstd::move(wakers.pop().unwrap_unchecked()).wake();
-        }
-    }
-#endif
-
-public:
-    Reactor(): m_state(ReactorState {}) {
-        auto backend = init_backend();
-        if (backend.is_err()) {
-            m_init_error = rstd::move(backend).unwrap_err_unchecked();
-            return;
-        }
-
-        auto spawned = thread::spawn([this] {
-            run();
-        });
-        if (spawned.is_err()) {
-            m_init_error = rstd::move(spawned).unwrap_err_unchecked();
-            return;
-        }
-
-        m_thread.insert(rstd::move(spawned).unwrap_unchecked());
-        m_available = true;
-    }
-
-    ~Reactor() {
-        {
-            auto st     = m_state.lock().unwrap_unchecked();
-            st->stopped = true;
-        }
-        notify();
-        if (m_thread.is_some()) {
-            auto handle = rstd::move(m_thread.take()).unwrap_unchecked();
-            (void)rstd::move(handle).join();
-        }
-    }
-
-    auto register_fd(sys::fd::RawFd fd) -> io::Result<sync::Arc<RegistrationState>> {
-        if (! m_available) return Err(io::Error { m_init_error });
-
-        auto registration = [&] {
-            auto st           = m_state.lock().unwrap_unchecked();
-            auto id           = st->next_registration_id++;
-            auto registration = sync::Arc<RegistrationState>::make(fd, id);
-            st->registrations.push(registration.clone());
-            return registration;
-        }();
-        notify();
-        return Ok(rstd::move(registration));
-    }
-
-    auto add_timer(time::Instant deadline, task::Waker waker) -> io::Result<usize> {
-        if (! m_available) return Err(io::Error { m_init_error });
-
-        auto wakers = Vec<task::Waker>::make();
-        auto id     = usize {};
-        {
-            auto st = m_state.lock().unwrap_unchecked();
-            id      = st->next_timer_id++;
-            st->timers.push(TimerEntry { id, deadline, rstd::move(waker) });
-            collect_expired_timers_locked(*st, wakers);
-            auto updated = update_timerfd_locked(*st);
-            if (updated.is_err()) return Err(rstd::move(updated).unwrap_err_unchecked());
-        }
-
-        while (! wakers.is_empty()) {
-            rstd::move(wakers.pop().unwrap_unchecked()).wake();
-        }
-        return Ok(id);
-    }
-
-    auto update_timer(usize id, task::Waker waker) -> io::Result<empty> {
-        if (! m_available) return Err(io::Error { m_init_error });
-
-        auto wakers = Vec<task::Waker>::make();
-        {
-            auto st = m_state.lock().unwrap_unchecked();
-            for (usize i = 0; i < st->timers.len(); ++i) {
-                if (st->timers[i].id == id) {
-                    st->timers[i].waker = Some(rstd::move(waker));
-                    collect_expired_timers_locked(*st, wakers);
-                    auto updated = update_timerfd_locked(*st);
-                    if (updated.is_err()) return Err(rstd::move(updated).unwrap_err_unchecked());
-                    break;
-                }
-            }
-        }
-
-        while (! wakers.is_empty()) {
-            rstd::move(wakers.pop().unwrap_unchecked()).wake();
-        }
-        return Ok(empty {});
-    }
-
-    void cancel_timer(usize id) {
-        {
-            auto st = m_state.lock().unwrap_unchecked();
-            for (usize i = 0; i < st->timers.len(); ++i) {
-                if (st->timers[i].id == id) {
-                    st->timers.remove(i);
-                    (void)update_timerfd_locked(*st);
-                    return;
-                }
-            }
-        }
-    }
-
-    void deregister(sync::Arc<RegistrationState>& registration) {
-        auto wakers = Vec<task::Waker>::make();
-        {
-            auto st = m_state.lock().unwrap_unchecked();
-            for (usize i = 0; i < st->registrations.len(); ++i) {
-                if (sync::Arc<RegistrationState>::ptr_eq(st->registrations[i], registration)) {
-                    st->registrations.remove(i);
-                    break;
-                }
-            }
-
-            registration->closed = true;
-            (void)update_backend_locked(*st, *registration.as_ptr().as_raw_ptr());
-            if (registration->read_waker.is_some()) {
-                wakers.push(rstd::move(registration->read_waker.take()).unwrap_unchecked());
-            }
-            if (registration->write_waker.is_some()) {
-                wakers.push(rstd::move(registration->write_waker.take()).unwrap_unchecked());
-            }
-            registration->read_waiter_id  = 0;
-            registration->write_waiter_id = 0;
-        }
-
-        notify();
-        while (! wakers.is_empty()) {
-            rstd::move(wakers.pop().unwrap_unchecked()).wake();
-        }
-    }
-
-    auto poll_readiness(sync::Arc<RegistrationState>& registration,
-                        task::Context&                cx,
-                        Interest                      interest,
-                        usize& waiter_id) -> task::Poll<io::Result<ReadyEvent>> {
-        if (CURRENT_RUNTIME != nullptr && ! CURRENT_RUNTIME->io_enabled()) {
-            return task::Poll<io::Result<ReadyEvent>>::Ready(
-                Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported })));
-        }
-
-        if (interest.is_empty()) {
-            return task::Poll<io::Result<ReadyEvent>>::Ready(Ok(ReadyEvent {}));
-        }
-
-        {
-            auto st    = m_state.lock().unwrap_unchecked();
-            auto ready = registration->ready.for_interest(interest);
-            if (! ready.is_empty()) {
-                return task::Poll<io::Result<ReadyEvent>>::Ready(
-                    Ok(ReadyEvent { ready, registration->tick }));
-            }
-
-            if (registration->closed) {
-                return task::Poll<io::Result<ReadyEvent>>::Ready(
-                    Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected })));
-            }
-
-            if (waiter_id == 0) {
-                waiter_id = registration->next_waiter_id++;
-            }
-            if (interest.is_readable()) {
-                registration->read_waker     = Some(cx.waker().clone());
-                registration->read_waiter_id = waiter_id;
-            }
-            if (interest.is_writable()) {
-                registration->write_waker     = Some(cx.waker().clone());
-                registration->write_waiter_id = waiter_id;
-            }
-
-            auto update = update_backend_locked(*st, *registration.as_ptr().as_raw_ptr());
-            if (update.is_err()) {
-                return task::Poll<io::Result<ReadyEvent>>::Ready(
-                    Err(rstd::move(update).unwrap_err_unchecked()));
-            }
-            (void)st;
-        }
-
-        notify();
-        return task::Poll<io::Result<ReadyEvent>>::Pending();
-    }
-
-    void clear_readiness(sync::Arc<RegistrationState>& registration, Ready ready) {
-        auto st = m_state.lock().unwrap_unchecked();
-        registration->ready.remove(ready);
-        (void)st;
-    }
-
-    void clear_readiness(sync::Arc<RegistrationState>& registration, ReadyEvent event) {
-        auto st = m_state.lock().unwrap_unchecked();
-        if (registration->tick == event.tick()) {
-            registration->ready.remove(event.ready());
-        }
-        (void)st;
-    }
-
-    void
-    clear_waker(sync::Arc<RegistrationState>& registration, Interest interest, usize waiter_id) {
-        if (waiter_id == 0) return;
-
-        auto st = m_state.lock().unwrap_unchecked();
-        if (interest.is_readable() && registration->read_waiter_id == waiter_id) {
-            registration->read_waker     = None();
-            registration->read_waiter_id = 0;
-        }
-        if (interest.is_writable() && registration->write_waiter_id == waiter_id) {
-            registration->write_waker     = None();
-            registration->write_waiter_id = 0;
-        }
-        (void)update_backend_locked(*st, *registration.as_ptr().as_raw_ptr());
-    }
-
-    void run() {
-#if RSTD_OS_LINUX
-        auto events = Vec<libc::epoll_event>::make();
-        events.resize(64, libc::epoll_event {});
-
-        while (true) {
-            sys::fd::RawFd epoll_fd {};
-            sys::fd::RawFd wake_fd {};
-            sys::fd::RawFd timer_fd {};
-
-            {
-                auto st = m_state.lock().unwrap_unchecked();
-                if (st->stopped) break;
-                epoll_fd = st->epoll.as_raw_fd();
-                wake_fd  = st->wake_read.as_raw_fd();
-                timer_fd = st->timer.as_raw_fd();
-            }
-
-            int rc = libc::epoll_wait(epoll_fd, events.data(), int(events.len()), -1);
-            if (rc < 0) {
-                if (libc::get_errno() == libc::EINTR) continue;
+void cancel_readiness_waiter(const ReadinessCancellationArc& cancellation) {
+    auto  token   = Option<FacilityCompletionToken> {};
+    auto  worker  = Option<WorkerHandle> {};
+    auto  command = Option<PollCommand> {};
+    auto& state   = cancellation->registration;
+    {
+        auto fields = state->fields.lock().unwrap_unchecked();
+        for (usize i = 0; i < fields->facility_waiters.len(); ++i) {
+            if (fields->facility_waiters[i].id != cancellation->waiter_id) {
                 continue;
             }
-
-            for (int i = 0; i < rc; ++i) {
-                if (events[usize(i)].data.u64 == WAKE_EVENT_ID) {
-                    drain_wake_pipe(wake_fd);
-                } else if (events[usize(i)].data.u64 == TIMER_EVENT_ID) {
-                    drain_timerfd(timer_fd);
-                    wake_expired_timers();
-                }
+            token = Some(rstd::move(fields->facility_waiters.remove(i)).token);
+            if (! fields->closed && fields->worker.is_some() && fields->key.is_some()) {
+                worker  = Some(fields->worker->clone());
+                command = Some(PollCommand::update_interest(
+                    *fields->key, registration_interest(*fields), make_registration_owner(state)));
             }
-            wake_ready(events, rc);
+            break;
         }
-#endif
     }
+    if (command.is_some()) {
+        (void)submit_registration_command(state, *worker, rstd::move(command).unwrap_unchecked());
+    }
+}
+
+void readiness_cancellation_cancel(voidp data) {
+    auto cancellation = ReadinessCancellationArc::from_raw(
+        ::alloc::sync::ArcRaw<ReadinessCancellationState>::from_raw(data));
+    cancel_readiness_waiter(cancellation);
+}
+
+void readiness_cancellation_drop(voidp data) {
+    auto cancellation = ReadinessCancellationArc::from_raw(
+        ::alloc::sync::ArcRaw<ReadinessCancellationState>::from_raw(data));
+    (void)cancellation;
+}
+
+const RawFacilityCancellationVTable READINESS_CANCELLATION_VTABLE {
+    &readiness_cancellation_cancel,
+    &readiness_cancellation_drop,
 };
 
-auto global_reactor() -> Reactor& {
-    static auto reactor = Reactor {};
-    return reactor;
+auto make_readiness_cancellation(const RegistrationArc& state, usize waiter_id, FacilityToken token)
+    -> FacilityCancellation {
+    auto cancellation = ReadinessCancellationArc::make(state.clone(), waiter_id);
+    return FacilityCancellation::from_raw(
+        token,
+        RawFacilityCancellation::from_raw_parts(rstd::move(cancellation).into_raw().into_raw(),
+                                                rstd::addressof(READINESS_CANCELLATION_VTABLE)));
+}
+
+void handle_registration_event(const RegistrationArc& state, PollEventData data) {
+    if (data.kind() == PollEventKind::BackendError) {
+        auto error = data.has_backend_error()
+                         ? data.take_backend_error()
+                         : io::Error::from_kind(io::ErrorKind { io::ErrorKind::Other });
+        fail_registration(state, rstd::move(error));
+        return;
+    }
+    if (data.kind() != PollEventKind::Readiness) return;
+
+    auto ready = data.readiness();
+    auto key   = data.key();
+
+    auto wakers  = Vec<task::Waker>::make();
+    auto tokens  = Vec<FacilityCompletionToken>::make();
+    auto worker  = Option<WorkerHandle> {};
+    auto command = Option<PollCommand> {};
+    {
+        auto fields = state->fields.lock().unwrap_unchecked();
+        if (fields->closed) return;
+
+        fields->ready |= ready;
+        ++fields->tick;
+        if ((ready.is_readable() || ready.is_read_closed() || ready.is_error()) &&
+            fields->read_waker.is_some()) {
+            wakers.push(rstd::move(fields->read_waker).unwrap_unchecked());
+            fields->read_waiter_id = 0;
+        }
+        if ((ready.is_writable() || ready.is_write_closed() || ready.is_error()) &&
+            fields->write_waker.is_some()) {
+            wakers.push(rstd::move(fields->write_waker).unwrap_unchecked());
+            fields->write_waiter_id = 0;
+        }
+        for (usize i = 0; i < fields->facility_waiters.len();) {
+            if (ready.for_interest(fields->facility_waiters[i].interest).is_empty()) {
+                ++i;
+                continue;
+            }
+            tokens.push(rstd::move(fields->facility_waiters.remove(i)).token);
+        }
+
+        if (fields->worker.is_some() && fields->key.is_some()) {
+            worker  = Some(fields->worker->clone());
+            command = Some(PollCommand::update_interest(
+                *fields->key, registration_interest(*fields), make_registration_owner(state)));
+        }
+    }
+
+    if (command.is_some()) {
+        (void)submit_registration_command(state, *worker, rstd::move(command).unwrap_unchecked());
+    }
+    wake_all(wakers);
+    while (! tokens.is_empty()) {
+        auto token = rstd::move(tokens.pop()).unwrap_unchecked();
+        (void)token.complete_poll(PollEventData::readiness(key, ready));
+    }
+}
+
+auto registration_owner_clone(voidp data) -> RawPollEventOwner;
+
+void registration_owner_dispatch(voidp data, PollEventData event) {
+    auto state =
+        RegistrationArc::from_raw(::alloc::sync::ArcRaw<RegistrationState>::from_raw(data));
+    handle_registration_event(state, rstd::move(event));
+    (void)rstd::move(state).into_raw().into_raw();
+}
+
+void registration_owner_drop(voidp data) {
+    auto state =
+        RegistrationArc::from_raw(::alloc::sync::ArcRaw<RegistrationState>::from_raw(data));
+    (void)state;
+}
+
+extern const RawPollEventOwnerVTable REGISTRATION_OWNER_VTABLE;
+
+const RawPollEventOwnerVTable REGISTRATION_OWNER_VTABLE {
+    &registration_owner_clone,
+    &registration_owner_dispatch,
+    &registration_owner_drop,
+};
+
+auto make_registration_owner(const RegistrationArc& state) -> PollEventOwner {
+    auto owned = state.clone();
+    return PollEventOwner::from_raw(RawPollEventOwner::from_raw_parts(
+        rstd::move(owned).into_raw().into_raw(), rstd::addressof(REGISTRATION_OWNER_VTABLE)));
+}
+
+auto registration_owner_clone(voidp data) -> RawPollEventOwner {
+    auto state =
+        RegistrationArc::from_raw(::alloc::sync::ArcRaw<RegistrationState>::from_raw(data));
+    auto cloned = state.clone();
+    (void)rstd::move(state).into_raw().into_raw();
+    return RawPollEventOwner::from_raw_parts(rstd::move(cloned).into_raw().into_raw(),
+                                             rstd::addressof(REGISTRATION_OWNER_VTABLE));
+}
+
+void handle_timer_event(const TimerArc& state, PollEventData data) {
+    auto waker = Option<task::Waker> {};
+    {
+        auto fields = state->fields.lock().unwrap_unchecked();
+        if (! fields->active) return;
+        if (data.kind() == PollEventKind::BackendError) {
+            fields->error =
+                data.has_backend_error()
+                    ? Some(data.take_backend_error())
+                    : Some(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Other }));
+        } else if (data.kind() != PollEventKind::Timer) {
+            return;
+        }
+        fields->active = false;
+        waker          = fields->waker.take();
+    }
+    if (waker.is_some()) {
+        rstd::move(waker).unwrap_unchecked().wake();
+    }
+}
+
+auto timer_owner_clone(voidp data) -> RawPollEventOwner;
+
+void timer_owner_dispatch(voidp data, PollEventData event) {
+    auto state = TimerArc::from_raw(::alloc::sync::ArcRaw<TimerState>::from_raw(data));
+    handle_timer_event(state, rstd::move(event));
+    (void)rstd::move(state).into_raw().into_raw();
+}
+
+void timer_owner_drop(voidp data) {
+    auto state = TimerArc::from_raw(::alloc::sync::ArcRaw<TimerState>::from_raw(data));
+    (void)state;
+}
+
+const RawPollEventOwnerVTable TIMER_OWNER_VTABLE {
+    &timer_owner_clone,
+    &timer_owner_dispatch,
+    &timer_owner_drop,
+};
+
+auto timer_owner_clone(voidp data) -> RawPollEventOwner {
+    auto state  = TimerArc::from_raw(::alloc::sync::ArcRaw<TimerState>::from_raw(data));
+    auto cloned = state.clone();
+    (void)rstd::move(state).into_raw().into_raw();
+    return RawPollEventOwner::from_raw_parts(rstd::move(cloned).into_raw().into_raw(),
+                                             rstd::addressof(TIMER_OWNER_VTABLE));
+}
+
+auto make_timer_owner(const TimerArc& state) -> PollEventOwner {
+    auto owned = state.clone();
+    return PollEventOwner::from_raw(RawPollEventOwner::from_raw_parts(
+        rstd::move(owned).into_raw().into_raw(), rstd::addressof(TIMER_OWNER_VTABLE)));
+}
+
+auto try_registration_readiness(const RegistrationArc& state, Interest interest)
+    -> Option<io::Result<ReadyEvent>> {
+    auto fields = state->fields.lock().unwrap_unchecked();
+    auto ready  = fields->ready.for_interest(interest);
+    if (! ready.is_empty()) {
+        return Some(io::Result<ReadyEvent>(Ok(ReadyEvent { ready, fields->tick })));
+    }
+    if (fields->closed) {
+        auto error = fields->error.is_some()
+                         ? io::Error { *fields->error }
+                         : io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected });
+        return Some(io::Result<ReadyEvent>(Err(rstd::move(error))));
+    }
+    return None();
+}
+
+auto registration_ready_event(const RegistrationArc& state, Interest interest, Ready ready)
+    -> ReadyEvent {
+    auto fields = state->fields.lock().unwrap_unchecked();
+    return ReadyEvent { ready.for_interest(interest), fields->tick };
+}
+
+auto submit_registration_readiness(const RegistrationArc&  state,
+                                   FacilityCompletionToken token,
+                                   Interest                interest,
+                                   usize& waiter_id) -> FacilityCompletionSubmitResult {
+    auto identity        = token.token();
+    auto worker          = Option<WorkerHandle> {};
+    auto command         = Option<PollCommand> {};
+    bool register_source = false;
+    {
+        auto fields = state->fields.lock().unwrap_unchecked();
+        if (fields->closed) {
+            return FacilityCompletionSubmitResult::rejected(rstd::move(token));
+        }
+        if (waiter_id == 0) {
+            waiter_id = fields->next_waiter_id++;
+        }
+        for (usize i = 0; i < fields->facility_waiters.len(); ++i) {
+            if (fields->facility_waiters[i].id == waiter_id) {
+                return FacilityCompletionSubmitResult::rejected(rstd::move(token));
+            }
+        }
+
+        if (fields->worker.is_some() && fields->key.is_some()) {
+            worker = Some(fields->worker->clone());
+        } else if (CURRENT_RUNTIME != nullptr && has_current_runtime_worker()) {
+            auto current = CURRENT_RUNTIME->current_poll_worker();
+            if (current.is_err()) {
+                return FacilityCompletionSubmitResult::rejected(rstd::move(token));
+            }
+            auto bound      = rstd::move(current).unwrap_unchecked();
+            auto key        = bound.allocate_poll_key(PollKeyKind::Registration);
+            fields->worker  = Some(bound.clone());
+            fields->key     = Some(key);
+            worker          = Some(rstd::move(bound));
+            register_source = true;
+        } else {
+            return FacilityCompletionSubmitResult::rejected(rstd::move(token));
+        }
+
+        fields->facility_waiters.push(
+            ReadinessFacilityWaiter { waiter_id, interest, rstd::move(token) });
+        if (fields->key.is_none()) {
+            rstd::panic { "async readiness facility bound without a Poll key" };
+        }
+        auto key = *fields->key;
+        if (register_source) {
+            command = Some(PollCommand::register_source(
+                key, state->fd, registration_interest(*fields), make_registration_owner(state)));
+        } else {
+            command = Some(PollCommand::update_interest(
+                key, registration_interest(*fields), make_registration_owner(state)));
+        }
+    }
+
+    (void)submit_registration_command(state, *worker, rstd::move(command).unwrap_unchecked());
+    return FacilityCompletionSubmitResult::accepted(
+        make_readiness_cancellation(state, waiter_id, identity));
+}
+
+auto poll_registration_readiness(const RegistrationArc& state,
+                                 task::Context&         cx,
+                                 Interest               interest,
+                                 usize& waiter_id) -> task::Poll<io::Result<ReadyEvent>> {
+    if (CURRENT_RUNTIME != nullptr && ! CURRENT_RUNTIME->io_enabled()) {
+        return task::Poll<io::Result<ReadyEvent>>::Ready(
+            Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported })));
+    }
+    if (interest.is_empty()) {
+        return task::Poll<io::Result<ReadyEvent>>::Ready(Ok(ReadyEvent {}));
+    }
+
+    auto worker  = Option<WorkerHandle> {};
+    auto command = Option<PollCommand> {};
+    {
+        auto fields = state->fields.lock().unwrap_unchecked();
+        auto ready  = fields->ready.for_interest(interest);
+        if (! ready.is_empty()) {
+            return task::Poll<io::Result<ReadyEvent>>::Ready(
+                Ok(ReadyEvent { ready, fields->tick }));
+        }
+        if (fields->closed) {
+            auto error = fields->error.is_some()
+                             ? io::Error { *fields->error }
+                             : io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected });
+            return task::Poll<io::Result<ReadyEvent>>::Ready(Err(rstd::move(error)));
+        }
+
+        if (waiter_id == 0) waiter_id = fields->next_waiter_id++;
+        if (interest.is_readable()) {
+            fields->read_waker     = Some(cx.waker().clone());
+            fields->read_waiter_id = waiter_id;
+        }
+        if (interest.is_writable()) {
+            fields->write_waker     = Some(cx.waker().clone());
+            fields->write_waiter_id = waiter_id;
+        }
+
+        if (fields->worker.is_some() && fields->key.is_some()) {
+            worker  = Some(fields->worker->clone());
+            command = Some(PollCommand::update_interest(
+                *fields->key, registration_interest(*fields), make_registration_owner(state)));
+        } else if (CURRENT_RUNTIME != nullptr && has_current_runtime_worker()) {
+            auto current = CURRENT_RUNTIME->current_poll_worker();
+            if (current.is_err()) {
+                return task::Poll<io::Result<ReadyEvent>>::Ready(
+                    Err(rstd::move(current).unwrap_err_unchecked()));
+            }
+            auto bound     = rstd::move(current).unwrap_unchecked();
+            auto key       = bound.allocate_poll_key(PollKeyKind::Registration);
+            fields->worker = Some(bound.clone());
+            fields->key    = Some(key);
+            worker         = Some(rstd::move(bound));
+            command        = Some(PollCommand::register_source(
+                key, state->fd, registration_interest(*fields), make_registration_owner(state)));
+        }
+    }
+
+    if (command.is_some() &&
+        ! submit_registration_command(state, *worker, rstd::move(command).unwrap_unchecked())) {
+        return task::Poll<io::Result<ReadyEvent>>::Ready(
+            Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected })));
+    }
+    return task::Poll<io::Result<ReadyEvent>>::Pending();
+}
+
+void clear_registration_waker(const RegistrationArc& state, Interest interest, usize waiter_id) {
+    if (! state || waiter_id == 0) return;
+
+    auto worker  = Option<WorkerHandle> {};
+    auto command = Option<PollCommand> {};
+    {
+        auto fields = state->fields.lock().unwrap_unchecked();
+        if (interest.is_readable() && fields->read_waiter_id == waiter_id) {
+            fields->read_waker     = None();
+            fields->read_waiter_id = 0;
+        }
+        if (interest.is_writable() && fields->write_waiter_id == waiter_id) {
+            fields->write_waker     = None();
+            fields->write_waiter_id = 0;
+        }
+        if (! fields->closed && fields->worker.is_some() && fields->key.is_some()) {
+            worker  = Some(fields->worker->clone());
+            command = Some(PollCommand::update_interest(
+                *fields->key, registration_interest(*fields), make_registration_owner(state)));
+        }
+    }
+    if (command.is_some()) {
+        (void)submit_registration_command(state, *worker, rstd::move(command).unwrap_unchecked());
+    }
 }
 
 export class Registration {
-    sync::Arc<RegistrationState> m_state;
+    RegistrationArc m_state;
 
-    explicit Registration(sync::Arc<RegistrationState> state): m_state(rstd::move(state)) {}
+    explicit Registration(RegistrationArc state): m_state(rstd::move(state)) {}
+
+    friend class ReadinessFuture;
 
 public:
     Registration(const Registration&)                    = delete;
@@ -687,57 +558,92 @@ public:
     ~Registration() { reset(); }
 
     static auto register_fd(sys::fd::RawFd fd) -> io::Result<Registration> {
-        auto state = global_reactor().register_fd(fd);
-        if (state.is_err()) return Err(rstd::move(state).unwrap_err_unchecked());
-        return Ok(Registration { rstd::move(state).unwrap_unchecked() });
+        if (fd == sys::fd::INVALID_RAW_FD) {
+            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
+        }
+        return Ok(Registration { RegistrationArc::make(fd) });
     }
 
     void reset() {
-        if (m_state) {
-            global_reactor().deregister(m_state);
-            m_state.reset();
+        if (! m_state) return;
+
+        auto wakers  = Vec<task::Waker>::make();
+        auto tokens  = Vec<FacilityCompletionToken>::make();
+        auto worker  = Option<WorkerHandle> {};
+        auto command = Option<PollCommand> {};
+        {
+            auto fields = m_state->fields.lock().unwrap_unchecked();
+            if (! fields->closed) {
+                fields->closed = true;
+                if (fields->read_waker.is_some()) {
+                    wakers.push(rstd::move(fields->read_waker).unwrap_unchecked());
+                }
+                if (fields->write_waker.is_some()) {
+                    wakers.push(rstd::move(fields->write_waker).unwrap_unchecked());
+                }
+                fields->read_waiter_id  = 0;
+                fields->write_waiter_id = 0;
+                while (! fields->facility_waiters.is_empty()) {
+                    tokens.push(
+                        rstd::move(fields->facility_waiters.pop()).unwrap_unchecked().token);
+                }
+                if (fields->worker.is_some() && fields->key.is_some()) {
+                    worker  = Some(fields->worker->clone());
+                    command = Some(PollCommand::deregister_source(
+                        *fields->key, make_registration_owner(m_state)));
+                }
+            }
         }
+
+        if (command.is_some()) {
+            (void)worker->submit_poll(rstd::move(command).unwrap_unchecked());
+        }
+        wake_all(wakers);
+        while (! tokens.is_empty()) {
+            auto token = rstd::move(tokens.pop()).unwrap_unchecked();
+            (void)token.complete(FacilityEventKind::Canceled);
+        }
+        m_state.reset();
     }
 
     auto poll_readiness(task::Context& cx, Interest interest, usize& waiter_id)
         -> task::Poll<io::Result<ReadyEvent>> {
-        return global_reactor().poll_readiness(m_state, cx, interest, waiter_id);
+        return poll_registration_readiness(m_state, cx, interest, waiter_id);
     }
 
     void clear_readiness(Ready ready) {
-        if (m_state) {
-            global_reactor().clear_readiness(m_state, ready);
-        }
+        if (! m_state) return;
+        auto fields = m_state->fields.lock().unwrap_unchecked();
+        fields->ready.remove(ready);
     }
 
     void clear_readiness(ReadyEvent event) {
-        if (m_state) {
-            global_reactor().clear_readiness(m_state, event);
+        if (! m_state) return;
+        auto fields = m_state->fields.lock().unwrap_unchecked();
+        if (fields->tick == event.tick()) {
+            fields->ready.remove(event.ready());
         }
     }
 
     void clear_waker(Interest interest, usize waiter_id) {
-        if (m_state) {
-            global_reactor().clear_waker(m_state, interest, waiter_id);
-        }
+        clear_registration_waker(m_state, interest, waiter_id);
     }
 };
 
 export class TimerRegistration {
-    Option<usize> m_id {};
+    TimerArc m_state;
 
-    explicit TimerRegistration(usize id): m_id(Some(id)) {}
+    explicit TimerRegistration(TimerArc state): m_state(rstd::move(state)) {}
 
 public:
     TimerRegistration(const TimerRegistration&)                    = delete;
     auto operator=(const TimerRegistration&) -> TimerRegistration& = delete;
-
-    TimerRegistration(TimerRegistration&& other) noexcept: m_id(other.m_id.take()) {}
+    TimerRegistration(TimerRegistration&&) noexcept                = default;
 
     auto operator=(TimerRegistration&& other) noexcept -> TimerRegistration& {
         if (this != &other) {
             reset();
-            m_id = other.m_id.take();
+            m_state = rstd::move(other.m_state);
         }
         return *this;
     }
@@ -746,54 +652,94 @@ public:
 
     static auto register_deadline(time::Instant deadline, task::Waker waker)
         -> io::Result<TimerRegistration> {
-        auto id = global_reactor().add_timer(deadline, rstd::move(waker));
-        if (id.is_err()) return Err(rstd::move(id).unwrap_err_unchecked());
-        return Ok(TimerRegistration { rstd::move(id).unwrap_unchecked() });
+        if (CURRENT_RUNTIME == nullptr || ! CURRENT_RUNTIME->time_enabled()) {
+            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
+        }
+        auto current = CURRENT_RUNTIME->current_poll_worker();
+        if (current.is_err()) return Err(rstd::move(current).unwrap_err_unchecked());
+
+        auto worker    = rstd::move(current).unwrap_unchecked();
+        auto key       = worker.allocate_poll_key(PollKeyKind::Timer);
+        auto state     = TimerArc::make(worker.clone(), key, rstd::move(waker));
+        auto command   = PollCommand::arm_timer(key, deadline, make_timer_owner(state));
+        auto submitted = worker.submit_poll(rstd::move(command));
+        if (submitted.is_err()) {
+            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected }));
+        }
+        return Ok(TimerRegistration { rstd::move(state) });
     }
 
     auto update_waker(task::Waker waker) -> io::Result<empty> {
-        if (m_id.is_none()) {
+        if (! m_state) {
             return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
         }
-        return global_reactor().update_timer(*m_id, rstd::move(waker));
+        auto fields = m_state->fields.lock().unwrap_unchecked();
+        if (fields->error.is_some()) return Err(io::Error { *fields->error });
+        if (! fields->active) {
+            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected }));
+        }
+        fields->waker = Some(rstd::move(waker));
+        return Ok(empty {});
     }
 
     void reset() {
-        if (m_id.is_some()) {
-            global_reactor().cancel_timer(rstd::move(m_id).unwrap_unchecked());
-            m_id = None();
+        if (! m_state) return;
+
+        auto worker  = Option<WorkerHandle> {};
+        auto command = Option<PollCommand> {};
+        {
+            auto fields = m_state->fields.lock().unwrap_unchecked();
+            if (fields->active) {
+                fields->active = false;
+                fields->waker  = None();
+                worker         = Some(fields->worker.clone());
+                command = Some(PollCommand::cancel_timer(fields->key, make_timer_owner(m_state)));
+            }
         }
+        if (command.is_some()) {
+            (void)worker->submit_poll(rstd::move(command).unwrap_unchecked());
+        }
+        m_state.reset();
     }
 };
 
 export class ReadinessFuture {
-    Registration* m_registration {};
-    Interest      m_interest {};
-    usize         m_waiter_id {};
-    bool          m_started { false };
+    RegistrationArc                m_state;
+    Interest                       m_interest {};
+    usize                          m_waiter_id {};
+    bool                           m_started { false };
+    Option<io::Result<ReadyEvent>> m_facility_result;
+    bool                           m_facility_submitted { false };
+    bool                           m_completed { false };
 
 public:
     using Output = io::Result<ReadyEvent>;
 
     ReadinessFuture(Registration& registration, Interest interest)
-        : m_registration(rstd::addressof(registration)), m_interest(interest) {}
+        : m_state(registration.m_state.clone()), m_interest(interest), m_facility_result(None()) {}
 
     ReadinessFuture(const ReadinessFuture&)                    = delete;
     auto operator=(const ReadinessFuture&) -> ReadinessFuture& = delete;
 
     ReadinessFuture(ReadinessFuture&& other) noexcept
-        : m_registration(rstd::exchange(other.m_registration, nullptr)),
+        : m_state(rstd::move(other.m_state)),
           m_interest(other.m_interest),
           m_waiter_id(rstd::exchange(other.m_waiter_id, 0)),
-          m_started(rstd::exchange(other.m_started, false)) {}
+          m_started(rstd::exchange(other.m_started, false)),
+          m_facility_result(other.m_facility_result.take()),
+          m_facility_submitted(rstd::exchange(other.m_facility_submitted, false)),
+          m_completed(rstd::exchange(other.m_completed, false)) {}
 
     auto operator=(ReadinessFuture&& other) noexcept -> ReadinessFuture& {
         if (this != &other) {
             cancel();
-            m_registration = rstd::exchange(other.m_registration, nullptr);
-            m_interest     = other.m_interest;
-            m_waiter_id    = rstd::exchange(other.m_waiter_id, 0);
-            m_started      = rstd::exchange(other.m_started, false);
+            m_state              = rstd::move(other.m_state);
+            m_interest           = other.m_interest;
+            m_waiter_id          = rstd::exchange(other.m_waiter_id, 0);
+            m_started            = rstd::exchange(other.m_started, false);
+            m_facility_result    = other.m_facility_result.take();
+            m_facility_submitted = rstd::exchange(other.m_facility_submitted, false);
+            m_completed          = rstd::exchange(other.m_completed, false);
         }
         return *this;
     }
@@ -801,10 +747,13 @@ public:
     ~ReadinessFuture() { cancel(); }
 
     auto poll(mut_ref<ReadinessFuture> self, task::Context& cx) -> task::Poll<Output> {
-        auto& future     = *self;
+        auto& future = *self;
+        if (future.m_facility_submitted || future.m_completed) {
+            rstd::panic { "async::ReadinessFuture polled after direct await started" };
+        }
         future.m_started = true;
         auto result =
-            future.m_registration->poll_readiness(cx, future.m_interest, future.m_waiter_id);
+            poll_registration_readiness(future.m_state, cx, future.m_interest, future.m_waiter_id);
         if (result.is_ready()) {
             future.m_waiter_id = 0;
             future.m_started   = false;
@@ -812,13 +761,106 @@ public:
         return result;
     }
 
+    auto advance(AwaitContext& cx) -> AwaitTransition {
+        if (cx.execution_domain() == ExecutionDomainKind::ExternalExecutor) {
+            return AwaitTransition::return_to_owner();
+        }
+        if (m_completed) {
+            rstd::panic { "async::ReadinessFuture advanced after completion" };
+        }
+        auto* runtime = CURRENT_RUNTIME;
+        if (runtime == nullptr) {
+            rstd::panic { "async::ReadinessFuture advanced without an async runtime" };
+        }
+        if (m_facility_result.is_some()) {
+            m_facility_submitted = false;
+            m_completed          = true;
+            return AwaitTransition::continue_();
+        }
+        if (! runtime->io_enabled()) {
+            m_facility_result.insert(
+                Output(Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }))));
+            m_completed = true;
+            return AwaitTransition::continue_();
+        }
+        if (m_interest.is_empty()) {
+            m_facility_result.insert(Output(Ok(ReadyEvent {})));
+            m_completed = true;
+            return AwaitTransition::continue_();
+        }
+        auto immediate = try_registration_readiness(m_state, m_interest);
+        if (immediate.is_some()) {
+            m_facility_result = Some(rstd::move(immediate).unwrap_unchecked());
+            m_completed       = true;
+            return AwaitTransition::continue_();
+        }
+        if (m_facility_submitted) {
+            return AwaitTransition::suspend();
+        }
+        m_facility_submitted = true;
+        return AwaitTransition::submit_completion(READINESS_FACILITY_ID);
+    }
+
+    auto submit_completion(FacilityCompletionToken token) -> FacilityCompletionSubmitResult {
+        if (! m_facility_submitted || m_completed || m_facility_result.is_some()) {
+            return FacilityCompletionSubmitResult::rejected(rstd::move(token));
+        }
+        return submit_registration_readiness(m_state, rstd::move(token), m_interest, m_waiter_id);
+    }
+
+    auto complete_facility(FacilityEvent& event) -> bool {
+        if (! m_facility_submitted || m_completed || m_facility_result.is_some()) {
+            return false;
+        }
+        if (! event.has_poll_event()) {
+            m_facility_result.insert(
+                Output(Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected }))));
+            return true;
+        }
+
+        auto poll_event = event.take_poll_event();
+        if (poll_event.kind() == PollEventKind::Readiness) {
+            auto ready = poll_event.readiness().for_interest(m_interest);
+            if (ready.is_empty()) {
+                return false;
+            }
+            m_facility_result.insert(
+                Output(Ok(registration_ready_event(m_state, m_interest, ready))));
+            return true;
+        }
+        if (poll_event.kind() == PollEventKind::BackendError) {
+            auto error = poll_event.has_backend_error()
+                             ? poll_event.take_backend_error()
+                             : io::Error::from_kind(io::ErrorKind { io::ErrorKind::Other });
+            m_facility_result.insert(Output(Err(rstd::move(error))));
+            return true;
+        }
+        return false;
+    }
+
+    auto take_output() -> Output {
+        if (! m_completed || m_facility_result.is_none()) {
+            rstd::panic { "async::ReadinessFuture output taken before completion" };
+        }
+        return rstd::move(m_facility_result).unwrap_unchecked();
+    }
+
 private:
     void cancel() {
-        if (m_started && m_registration != nullptr && m_waiter_id != 0) {
-            m_registration->clear_waker(m_interest, m_waiter_id);
+        if (m_started && m_state && m_waiter_id != 0) {
+            clear_registration_waker(m_state, m_interest, m_waiter_id);
         }
         m_waiter_id = 0;
         m_started   = false;
+    }
+};
+
+template<>
+struct AwaitableTraits<ReadinessFuture> {
+    using Output = ReadinessFuture::Output;
+
+    static auto make_suspension(ReadinessFuture&& future) {
+        return AwaitSuspension<ReadinessFuture> { rstd::move(future) };
     }
 };
 

@@ -1,7 +1,9 @@
 export module rstd:async.time;
 export import :async.forward;
+import :async.awaitable;
 import :async.reactor;
 export import :async.runtime_core;
+import :async.timer_facility;
 import :time;
 
 namespace rstd::async
@@ -28,32 +30,124 @@ export struct YieldNow {
 };
 
 export class Sleep {
-    time::Instant             deadline;
-    Option<TimerRegistration> timer;
+    time::Instant                     deadline;
+    Option<TimerRegistration>         timer;
+    Option<TimerFacilityRegistration> facility_timer;
+    Option<FacilityEventKind>         facility_result;
+    bool                              facility_submitted { false };
+    bool                              completed { false };
 
-    void cancel() { timer = None(); }
+    void cancel() {
+        timer          = None();
+        facility_timer = None();
+    }
 
 public:
     using Output = void;
 
     explicit Sleep(time::Duration duration)
-        : deadline(time::Instant::now() + duration), timer(None()) {}
+        : deadline(time::Instant::now() + duration),
+          timer(None()),
+          facility_timer(None()),
+          facility_result(None()) {}
 
     Sleep(const Sleep&)            = delete;
     Sleep& operator=(const Sleep&) = delete;
 
-    Sleep(Sleep&& other) noexcept: deadline(other.deadline), timer(other.timer.take()) {}
+    Sleep(Sleep&& other) noexcept
+        : deadline(other.deadline),
+          timer(other.timer.take()),
+          facility_timer(other.facility_timer.take()),
+          facility_result(other.facility_result.take()),
+          facility_submitted(rstd::exchange(other.facility_submitted, false)),
+          completed(rstd::exchange(other.completed, false)) {}
 
     auto operator=(Sleep&& other) noexcept -> Sleep& {
         if (this != &other) {
             cancel();
-            deadline = other.deadline;
-            timer    = other.timer.take();
+            deadline           = other.deadline;
+            timer              = other.timer.take();
+            facility_timer     = other.facility_timer.take();
+            facility_result    = other.facility_result.take();
+            facility_submitted = rstd::exchange(other.facility_submitted, false);
+            completed          = rstd::exchange(other.completed, false);
         }
         return *this;
     }
 
     ~Sleep() { cancel(); }
+
+    auto advance(AwaitContext& cx) -> AwaitTransition {
+        if (cx.execution_domain() == ExecutionDomainKind::ExternalExecutor) {
+            return AwaitTransition::return_to_owner();
+        }
+        auto* rt = CURRENT_RUNTIME;
+        if (rt == nullptr) {
+            rstd::panic { "async::sleep advanced without an async runtime" };
+        }
+        if (! rt->time_enabled()) {
+            rstd::panic { "async::sleep requires a runtime with time enabled" };
+        }
+        if (facility_result.is_some()) {
+            auto result        = facility_result.take().unwrap_unchecked();
+            facility_timer     = None();
+            facility_submitted = false;
+            if (result != FacilityEventKind::Ready) {
+                rstd::panic { "async::sleep timer facility failed" };
+            }
+            completed = true;
+            return AwaitTransition::continue_();
+        }
+        if (time::Instant::now() >= deadline) {
+            completed = true;
+            return AwaitTransition::continue_();
+        }
+        if (facility_submitted) {
+            return AwaitTransition::suspend();
+        }
+        facility_submitted = true;
+        return AwaitTransition::submit_completion(TIMER_FACILITY_ID);
+    }
+
+    auto submit_completion(FacilityCompletionToken token) -> FacilityCompletionSubmitResult {
+        if (! facility_submitted || facility_timer.is_some()) {
+            return FacilityCompletionSubmitResult::rejected(rstd::move(token));
+        }
+        auto submitted = TimerFacilityRegistration::submit(deadline, rstd::move(token));
+        if (submitted.is_err()) {
+            return FacilityCompletionSubmitResult::rejected(
+                rstd::move(submitted).unwrap_err_unchecked());
+        }
+        auto registration = rstd::move(submitted).unwrap_unchecked();
+        auto cancellation = registration.cancellation();
+        facility_timer    = Some(rstd::move(registration));
+        return FacilityCompletionSubmitResult::accepted(rstd::move(cancellation));
+    }
+
+    auto complete_facility(FacilityEvent& event) -> bool {
+        if (! facility_submitted || facility_result.is_some()) {
+            return false;
+        }
+        if (event.has_poll_event()) {
+            auto poll_event = event.take_poll_event();
+            if (poll_event.kind() != PollEventKind::Timer &&
+                poll_event.kind() != PollEventKind::BackendError) {
+                return false;
+            }
+            facility_result =
+                Some(poll_event.kind() == PollEventKind::Timer ? FacilityEventKind::Ready
+                                                               : FacilityEventKind::Error);
+        } else {
+            facility_result = Some(event.kind());
+        }
+        return true;
+    }
+
+    void take_output() const {
+        if (! completed) {
+            rstd::panic { "async::sleep output taken before completion" };
+        }
+    }
 
     auto poll(mut_ref<Sleep> self, task::Context& cx) -> task::Poll<void> {
         auto& sleep = *self;
@@ -84,6 +178,15 @@ public:
         }
 
         return task::Poll<void>::Pending();
+    }
+};
+
+template<>
+struct AwaitableTraits<Sleep> {
+    using Output = void;
+
+    static auto make_suspension(Sleep&& sleep) {
+        return AwaitSuspension<Sleep> { rstd::move(sleep) };
     }
 };
 
