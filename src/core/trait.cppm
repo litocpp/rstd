@@ -73,7 +73,9 @@ struct ImplHelper;
 struct api_check_tag {};
 
 template<typename Ret>
-auto trait_check_return() -> Ret;
+[[noreturn]] auto trait_check_return() -> Ret {
+    __builtin_unreachable();
+}
 
 template<typename T>
 struct TraitFuncsHelper;
