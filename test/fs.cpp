@@ -80,12 +80,8 @@ TEST(Fs, CreateNewFailsIfExists) {
 
 TEST(Fs, SeekRoundTrip) {
     TempPath tp;
-    auto     fres = OpenOptions::make()
-                    .read(true)
-                    .write(true)
-                    .create(true)
-                    .truncate(true)
-                    .open(tp.as_path());
+    auto     fres =
+        OpenOptions::make().read(true).write(true).create(true).truncate(true).open(tp.as_path());
     ASSERT_TRUE(fres.is_ok());
     auto f = rstd::move(fres).unwrap_unchecked();
 
@@ -112,7 +108,7 @@ TEST(Fs, SetLenTruncatesAndExtends) {
 
     EXPECT_TRUE(f.set_len(5).is_ok());
 
-    libc::stat_t st{};
+    libc::stat_t st {};
     libc::stat(tp.c_str(), &st);
     EXPECT_EQ(st.st_size, 5);
 
@@ -124,13 +120,13 @@ TEST(Fs, SetLenTruncatesAndExtends) {
 TEST(Fs, TryCloneTwoHandlesSameFile) {
     TempPath tp;
     auto     f1 = OpenOptions::make()
-                  .read(true)
-                  .write(true)
-                  .create(true)
-                  .truncate(true)
-                  .open(tp.as_path())
-                  .unwrap_unchecked();
-    auto f2 = f1.try_clone().unwrap_unchecked();
+                      .read(true)
+                      .write(true)
+                      .create(true)
+                      .truncate(true)
+                      .open(tp.as_path())
+                      .unwrap_unchecked();
+    auto     f2 = f1.try_clone().unwrap_unchecked();
     EXPECT_NE(f1.as_raw_fd(), f2.as_raw_fd());
 
     f1.write(reinterpret_cast<const rstd::u8*>("ABCD"), 4).unwrap_unchecked();
@@ -152,7 +148,7 @@ TEST(Fs, AppendFlagPositionsAtEnd) {
     auto f = OpenOptions::make().append(true).open(tp.as_path()).unwrap_unchecked();
     f.write(reinterpret_cast<const rstd::u8*>("BBB"), 3).unwrap_unchecked();
 
-    auto v = File::open(tp.as_path()).unwrap_unchecked();
+    auto     v      = File::open(tp.as_path()).unwrap_unchecked();
     rstd::u8 buf[6] = {};
     auto     n      = v.read(buf, 6).unwrap_unchecked();
     EXPECT_EQ(n, 6u);
@@ -178,8 +174,8 @@ TEST(FsMetadata, BasicStat) {
 }
 
 TEST(FsMetadata, DirectoryDetected) {
-    auto f    = File::open(rstd::ref<rstd::path::Path>("/tmp")).unwrap_unchecked();
-    auto m    = f.metadata().unwrap_unchecked();
+    auto f = File::open(rstd::ref<rstd::path::Path>("/tmp")).unwrap_unchecked();
+    auto m = f.metadata().unwrap_unchecked();
     EXPECT_TRUE(m.is_dir());
     EXPECT_FALSE(m.is_file());
 }
@@ -207,12 +203,12 @@ TEST(FsPermissions, ReadonlyToggle) {
 TEST(FsTimes, SetModifiedRoundTrip) {
     TempPath tp;
     auto     f = OpenOptions::make()
-                 .read(true)
-                 .write(true)
-                 .create(true)
-                 .truncate(true)
-                 .open(tp.as_path())
-                 .unwrap_unchecked();
+                     .read(true)
+                     .write(true)
+                     .create(true)
+                     .truncate(true)
+                     .open(tp.as_path())
+                     .unwrap_unchecked();
 
     // Pick an epoch instant: 2020-01-01 UTC = 1577836800
     auto t   = rstd::time::SystemTime { rstd::sys::pal::unix::time::SystemTime {
@@ -220,8 +216,8 @@ TEST(FsTimes, SetModifiedRoundTrip) {
     auto res = f.set_modified(t);
     ASSERT_TRUE(res.is_ok());
 
-    auto m       = f.metadata().unwrap_unchecked();
-    auto modres  = m.modified();
+    auto m      = f.metadata().unwrap_unchecked();
+    auto modres = m.modified();
     ASSERT_TRUE(modres.is_ok());
     auto got_st = rstd::move(modres).unwrap_unchecked();
     EXPECT_EQ(got_st.inner.t.tv_sec, 1577836800);
@@ -229,7 +225,8 @@ TEST(FsTimes, SetModifiedRoundTrip) {
 
 TEST(FsFileType, EqualityForSameKind) {
     TempPath tp;
-    auto t1 = File::create(tp.as_path()).unwrap_unchecked().metadata().unwrap_unchecked().file_type();
+    auto     t1 =
+        File::create(tp.as_path()).unwrap_unchecked().metadata().unwrap_unchecked().file_type();
     auto t2 = File::open(tp.as_path()).unwrap_unchecked().metadata().unwrap_unchecked().file_type();
     auto td = File::open(rstd::ref<rstd::path::Path>("/tmp"))
                   .unwrap_unchecked()
@@ -241,9 +238,9 @@ TEST(FsFileType, EqualityForSameKind) {
 }
 
 TEST(FsFreeFn, WriteReadRoundTrip) {
-    TempPath tp;
+    TempPath    tp;
     const char* msg   = "hello fs::write";
-    auto       slice = rstd::slice<rstd::u8>::from_raw_parts(
+    auto        slice = rstd::slice<rstd::u8>::from_raw_parts(
         const_cast<rstd::u8*>(reinterpret_cast<const rstd::u8*>(msg)), 15);
     ASSERT_TRUE(rstd::fs::write(tp.as_path(), slice).is_ok());
 
@@ -278,9 +275,7 @@ TEST(FsFreeFn, RenameMoves) {
     libc::close(fd);
     libc::unlink(dst_buf); // we need the target to NOT exist
 
-    EXPECT_TRUE(rstd::fs::rename(src.as_path(),
-                                 rstd::ref<rstd::path::Path>(dst_buf))
-                    .is_ok());
+    EXPECT_TRUE(rstd::fs::rename(src.as_path(), rstd::ref<rstd::path::Path>(dst_buf)).is_ok());
     EXPECT_FALSE(rstd::fs::exists(src.as_path()).unwrap_unchecked());
     EXPECT_TRUE(rstd::fs::exists(rstd::ref<rstd::path::Path>(dst_buf)).unwrap_unchecked());
     libc::unlink(dst_buf);
@@ -296,9 +291,7 @@ TEST(FsFreeFn, CopyDuplicates) {
     int  fd        = libc::mkstemp(dst_buf);
     libc::close(fd);
 
-    auto n = rstd::fs::copy(src.as_path(),
-                            rstd::ref<rstd::path::Path>(dst_buf))
-                 .unwrap_unchecked();
+    auto n = rstd::fs::copy(src.as_path(), rstd::ref<rstd::path::Path>(dst_buf)).unwrap_unchecked();
     EXPECT_EQ(n, 5u);
     auto v = rstd::fs::read(rstd::ref<rstd::path::Path>(dst_buf)).unwrap_unchecked();
     EXPECT_EQ(v.len(), 5u);
@@ -312,9 +305,8 @@ TEST(FsFreeFn, CreateAndRemoveDir) {
     // mkdtemp already created it; remove and recreate via our API.
     libc::rmdir(dir_buf);
     EXPECT_TRUE(rstd::fs::create_dir(rstd::ref<rstd::path::Path>(dir_buf)).is_ok());
-    EXPECT_TRUE(rstd::fs::metadata(rstd::ref<rstd::path::Path>(dir_buf))
-                    .unwrap_unchecked()
-                    .is_dir());
+    EXPECT_TRUE(
+        rstd::fs::metadata(rstd::ref<rstd::path::Path>(dir_buf)).unwrap_unchecked().is_dir());
     EXPECT_TRUE(rstd::fs::remove_dir(rstd::ref<rstd::path::Path>(dir_buf)).is_ok());
 }
 
@@ -349,8 +341,7 @@ TEST(FsFreeFn, ReadLink) {
     EXPECT_TRUE(rstd::fs::soft_link(rstd::ref<rstd::path::Path>(src),
                                     rstd::ref<rstd::path::Path>(link_path))
                     .is_ok());
-    auto target = rstd::fs::read_link(rstd::ref<rstd::path::Path>(link_path))
-                      .unwrap_unchecked();
+    auto target = rstd::fs::read_link(rstd::ref<rstd::path::Path>(link_path)).unwrap_unchecked();
     EXPECT_EQ(target.len(), std::strlen(src));
 
     libc::unlink(link_path);
@@ -371,17 +362,19 @@ TEST(FsReadDir, IteratesEntries) {
     // Create two files under base.
     rstd::path::PathBuf p1 = rstd::path::PathBuf::from(base);
     p1.push(rstd::ref<rstd::path::Path>("a"));
-    rstd::fs::write(p1, rstd::slice<rstd::u8>::from_raw_parts(
-                            const_cast<rstd::u8*>(reinterpret_cast<const rstd::u8*>("x")), 1))
+    rstd::fs::write(p1,
+                    rstd::slice<rstd::u8>::from_raw_parts(
+                        const_cast<rstd::u8*>(reinterpret_cast<const rstd::u8*>("x")), 1))
         .unwrap_unchecked();
 
     rstd::path::PathBuf p2 = rstd::path::PathBuf::from(base);
     p2.push(rstd::ref<rstd::path::Path>("b"));
-    rstd::fs::write(p2, rstd::slice<rstd::u8>::from_raw_parts(
-                            const_cast<rstd::u8*>(reinterpret_cast<const rstd::u8*>("y")), 1))
+    rstd::fs::write(p2,
+                    rstd::slice<rstd::u8>::from_raw_parts(
+                        const_cast<rstd::u8*>(reinterpret_cast<const rstd::u8*>("y")), 1))
         .unwrap_unchecked();
 
-    auto rd = rstd::fs::read_dir(rstd::ref<rstd::path::Path>(base)).unwrap_unchecked();
+    auto rd    = rstd::fs::read_dir(rstd::ref<rstd::path::Path>(base)).unwrap_unchecked();
     int  count = 0;
     while (true) {
         auto opt = rd.next();
@@ -411,8 +404,9 @@ TEST(FsReadDir, RemoveDirAllRecursive) {
     leaf.push(rstd::ref<rstd::path::Path>("sub"));
     leaf.push(rstd::ref<rstd::path::Path>("deeper"));
     leaf.push(rstd::ref<rstd::path::Path>("leaf"));
-    rstd::fs::write(leaf, rstd::slice<rstd::u8>::from_raw_parts(
-                              const_cast<rstd::u8*>(reinterpret_cast<const rstd::u8*>("z")), 1))
+    rstd::fs::write(leaf,
+                    rstd::slice<rstd::u8>::from_raw_parts(
+                        const_cast<rstd::u8*>(reinterpret_cast<const rstd::u8*>("z")), 1))
         .unwrap_unchecked();
 
     EXPECT_TRUE(rstd::fs::remove_dir_all(rstd::ref<rstd::path::Path>(base)).is_ok());
@@ -422,12 +416,12 @@ TEST(FsReadDir, RemoveDirAllRecursive) {
 TEST(FsFile, ReadAtWriteAt) {
     TempPath tp;
     auto     f = OpenOptions::make()
-                 .read(true)
-                 .write(true)
-                 .create(true)
-                 .truncate(true)
-                 .open(tp.as_path())
-                 .unwrap_unchecked();
+                     .read(true)
+                     .write(true)
+                     .create(true)
+                     .truncate(true)
+                     .open(tp.as_path())
+                     .unwrap_unchecked();
 
     EXPECT_TRUE(f.write_all_at(reinterpret_cast<const rstd::u8*>("HELLO"), 5, 100).is_ok());
     rstd::u8 buf[5] = {};
@@ -458,7 +452,7 @@ TEST(Fs, ReadTraitImplCanBeUsed) {
         .write(reinterpret_cast<const rstd::u8*>("xyz"), 3)
         .unwrap_unchecked();
 
-    auto f = File::open(tp.as_path()).unwrap_unchecked();
+    auto     f      = File::open(tp.as_path()).unwrap_unchecked();
     rstd::u8 buf[8] = {};
     auto     res    = rstd::as<rstd::io::Read>(f).read(buf, 8);
     ASSERT_TRUE(res.is_ok());

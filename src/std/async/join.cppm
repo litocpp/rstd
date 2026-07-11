@@ -41,20 +41,20 @@ export template<typename F1, typename F2>
     requires Impled<mtp::rm_cvf<F1>, future::Future<future::future_output_t<F1>>> &&
              Impled<mtp::rm_cvf<F2>, future::Future<future::future_output_t<F2>>>
 class Join {
-    F1 f1;
-    F2 f2;
+    F1                                f1;
+    F2                                f2;
     Option<detail::join_output_t<F1>> out1;
     Option<detail::join_output_t<F2>> out2;
-    bool completed { false };
+    bool                              completed { false };
 
 public:
     using Output = tuple<detail::join_output_t<F1>, detail::join_output_t<F2>>;
 
-    Join(F1 future1, F2 future2) : f1(rstd::move(future1)), f2(rstd::move(future2)) {}
+    Join(F1 future1, F2 future2): f1(rstd::move(future1)), f2(rstd::move(future2)) {}
 
-    Join(const Join&)            = delete;
-    Join& operator=(const Join&) = delete;
-    Join(Join&&) noexcept        = default;
+    Join(const Join&)                        = delete;
+    Join& operator=(const Join&)             = delete;
+    Join(Join&&) noexcept                    = default;
     auto operator=(Join&&) noexcept -> Join& = default;
 
     auto poll(mut_ref<Join> self, task::Context& cx) -> task::Poll<Output> {
@@ -79,10 +79,10 @@ public:
 export template<typename F>
     requires Impled<mtp::rm_cvf<F>, future::Future<future::future_output_t<F>>>
 class JoinAll {
-    Vec<F> futures;
+    Vec<F>                                futures;
     Vec<Option<detail::join_output_t<F>>> outputs;
-    usize remaining { 0 };
-    bool  completed { false };
+    usize                                 remaining { 0 };
+    bool                                  completed { false };
 
 public:
     using Output = Vec<detail::join_output_t<F>>;
@@ -96,9 +96,9 @@ public:
         }
     }
 
-    JoinAll(const JoinAll&)            = delete;
-    JoinAll& operator=(const JoinAll&) = delete;
-    JoinAll(JoinAll&&) noexcept        = default;
+    JoinAll(const JoinAll&)                        = delete;
+    JoinAll& operator=(const JoinAll&)             = delete;
+    JoinAll(JoinAll&&) noexcept                    = default;
     auto operator=(JoinAll&&) noexcept -> JoinAll& = default;
 
     auto poll(mut_ref<JoinAll> self, task::Context& cx) -> task::Poll<Output> {
@@ -118,7 +118,7 @@ public:
 
         if (value.remaining == 0) {
             value.completed = true;
-            auto out = Output::with_capacity(value.outputs.len());
+            auto out        = Output::with_capacity(value.outputs.len());
             for (usize i = 0; i < value.outputs.len(); ++i) {
                 out.push(rstd::move(value.outputs[i]).unwrap_unchecked());
             }

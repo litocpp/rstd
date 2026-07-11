@@ -46,8 +46,10 @@ struct RawVec {
             auto old_layout = Layout::array<T>(cap).unwrap();
             auto old_ptr    = ptr.as_mut_ptr();
 
-            auto res = as<Allocator>(::alloc::GLOBAL).grow(
-                NonNull<u8>::make_unchecked(old_ptr.template cast<u8>()), old_layout, new_layout);
+            auto res = as<Allocator>(::alloc::GLOBAL)
+                           .grow(NonNull<u8>::make_unchecked(old_ptr.template cast<u8>()),
+                                 old_layout,
+                                 new_layout);
             if (res.is_err()) handle_alloc_error(new_layout);
 
             ptr =
@@ -67,8 +69,9 @@ struct RawVec {
         if (! rstd::mem::all(ptr, 0)) {
             debug_assert(cap > 0);
             auto layout = Layout::array<T>(cap).unwrap();
-            as<Allocator>(::alloc::GLOBAL).deallocate(
-                NonNull<u8>::make_unchecked(ptr.as_mut_ptr().template cast<u8>()), layout);
+            as<Allocator>(::alloc::GLOBAL)
+                .deallocate(NonNull<u8>::make_unchecked(ptr.as_mut_ptr().template cast<u8>()),
+                            layout);
         }
         reset_ptr();
     }
@@ -134,7 +137,7 @@ public:
     /// Creates a new empty `Vec` with at least the specified capacity.
     /// \param capacity The minimum number of elements the `Vec` can hold without reallocating.
     /// \return A `Vec` with preallocated capacity.
-    static auto           with_capacity(usize capacity) -> Self {
+    static auto with_capacity(usize capacity) -> Self {
         return Vec { RawVec<T>::with_capacity(capacity), 0 };
     }
 
@@ -287,7 +290,7 @@ public:
     }
 
     /// Indexes into the vector, panicking if out of bounds.
-    constexpr T&       operator[](usize index) { return at(index); }
+    constexpr T& operator[](usize index) { return at(index); }
     /// Indexes into the vector (const), panicking if out of bounds.
     constexpr const T& operator[](usize index) const { return at(index); }
 
@@ -298,7 +301,7 @@ public:
     /// \return The current capacity.
     constexpr usize capacity() const { return m_buf.cap; }
     /// Returns `true` if the vector contains no elements.
-    constexpr bool  is_empty() const { return m_len == 0; }
+    constexpr bool is_empty() const { return m_len == 0; }
 
     /// Clears the vector, destroying all elements but not deallocating memory.
     constexpr void clear() {
@@ -432,8 +435,7 @@ struct Impl<iter::FromIterator<A>, ::alloc::vec::Vec<A>> : ImplBase<::alloc::vec
     template<typename It>
     static auto from_iter(It it) -> ::alloc::vec::Vec<A> {
         auto vec = ::alloc::vec::Vec<A>::make();
-        for (auto x = it.next(); x.is_some(); x = it.next())
-            vec.push(rstd::move(*x));
+        for (auto x = it.next(); x.is_some(); x = it.next()) vec.push(rstd::move(*x));
         return vec;
     }
 };

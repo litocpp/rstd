@@ -5,12 +5,15 @@ import :panicking;
 
 using rstd::panic_::PanicInfo;
 
-extern "C" [[noreturn]] void rstd_panic_impl(PanicInfo const& info);
+extern "C" [[noreturn]]
+void rstd_panic_impl(PanicInfo const& info);
 
-namespace {
-bool panic_write_fmt(void const* data, void* ctx,
+namespace
+{
+bool panic_write_fmt(void const* data,
+                     void*       ctx,
                      bool (*write)(void*, rstd::u8 const*, rstd::usize)) {
-    auto const& args = *static_cast<rstd::fmt::Arguments const*>(data);
+    auto const&          args = *static_cast<rstd::fmt::Arguments const*>(data);
     rstd::fmt::Formatter f(ctx, write);
     return f.write_fmt(args);
 }
@@ -54,10 +57,11 @@ namespace rstd::fmt
 //   width     = [1-9][0-9]*
 //   precision = '.' [0-9]+
 //   type      = '?' | 'b' | 'd' | 'o' | 'x' | 'X' | 'e' | 'E' | 'p' | 's'
-namespace {
+namespace
+{
 auto parse_spec(const char* b, const char* e) -> FormattingOptions {
     using Opts = FormattingOptions;
-    Opts opts{};
+    Opts opts {};
     if (b >= e) return opts;
 
     auto align_of = [](char c) -> Align {
@@ -77,20 +81,32 @@ auto parse_spec(const char* b, const char* e) -> FormattingOptions {
     }
 
     // sign
-    if (b < e && b[0] == '+')      { opts.set_flag(Opts::SIGN_PLUS);  b++; }
-    else if (b < e && b[0] == '-') { opts.set_flag(Opts::SIGN_MINUS); b++; }
+    if (b < e && b[0] == '+') {
+        opts.set_flag(Opts::SIGN_PLUS);
+        b++;
+    } else if (b < e && b[0] == '-') {
+        opts.set_flag(Opts::SIGN_MINUS);
+        b++;
+    }
 
     // alternate
-    if (b < e && b[0] == '#') { opts.set_flag(Opts::ALTERNATE); b++; }
+    if (b < e && b[0] == '#') {
+        opts.set_flag(Opts::ALTERNATE);
+        b++;
+    }
 
     // zero-pad
-    if (b < e && b[0] == '0') { opts.set_flag(Opts::ZERO_PAD); b++; }
+    if (b < e && b[0] == '0') {
+        opts.set_flag(Opts::ZERO_PAD);
+        b++;
+    }
 
     // width: [1-9][0-9]*
     if (b < e && b[0] >= '1' && b[0] <= '9') {
         u16 w = 0;
         while (b < e && (unsigned char)(b[0] - '0') < 10u) {
-            w = u16(w * 10 + (b[0] - '0')); b++;
+            w = u16(w * 10 + (b[0] - '0'));
+            b++;
         }
         opts.set_width(w);
     }
@@ -100,7 +116,8 @@ auto parse_spec(const char* b, const char* e) -> FormattingOptions {
         b++;
         u16 p = 0;
         while (b < e && (unsigned char)(b[0] - '0') < 10u) {
-            p = u16(p * 10 + (b[0] - '0')); b++;
+            p = u16(p * 10 + (b[0] - '0'));
+            b++;
         }
         opts.set_precision(p);
     }
@@ -108,7 +125,7 @@ auto parse_spec(const char* b, const char* e) -> FormattingOptions {
     // type char
     if (b < e) {
         switch (b[0]) {
-        case '?': opts.set_flag(Opts::DEBUG);  break;
+        case '?': opts.set_flag(Opts::DEBUG); break;
         // 'b' 'd' 'o' 'x' 'X' 'e' 'E' 'p' 's' — reserved for P2
         default: break;
         }
@@ -129,13 +146,14 @@ auto Formatter::write_fmt(Arguments args) -> bool {
         if (*p == '{') {
             if (p + 1 < end && *(p + 1) == '{') {
                 // Escaped {{
-                if (p > last && !write_raw(last, p - last)) return false;
-                if (!write_raw((const u8*)"{", 1)) return false;
-                p += 2; last = p;
+                if (p > last && ! write_raw(last, p - last)) return false;
+                if (! write_raw((const u8*)"{", 1)) return false;
+                p += 2;
+                last = p;
                 continue;
             }
             // Flush literal text before placeholder.
-            if (p > last && !write_raw(last, p - last)) return false;
+            if (p > last && ! write_raw(last, p - last)) return false;
             p++; // skip '{'
 
             // Scan to matching '}'.
@@ -143,7 +161,8 @@ auto Formatter::write_fmt(Arguments args) -> bool {
             while (p < end && *p != '}') p++;
             if (p >= end) return false; // unmatched '{'
             const char* inner_end = reinterpret_cast<const char*>(p);
-            p++; last = p;
+            p++;
+            last = p;
 
             // Skip optional arg-id (digits), then optional ':'.
             const char* spec_b = inner;
@@ -158,15 +177,16 @@ auto Formatter::write_fmt(Arguments args) -> bool {
             auto saved = Formatter_set_options(*this, parse_spec(spec_b, spec_e));
             bool ok    = args.args_ptr[arg_idx].fmt(*this);
             Formatter_restore_options(*this, saved);
-            if (!ok) return false;
+            if (! ok) return false;
             arg_idx++;
 
         } else if (*p == '}') {
             if (p + 1 < end && *(p + 1) == '}') {
                 // Escaped }}
-                if (p > last && !write_raw(last, p - last)) return false;
-                if (!write_raw((const u8*)"}", 1)) return false;
-                p += 2; last = p;
+                if (p > last && ! write_raw(last, p - last)) return false;
+                if (! write_raw((const u8*)"}", 1)) return false;
+                p += 2;
+                last = p;
                 continue;
             }
             return false; // unmatched '}'
@@ -175,7 +195,7 @@ auto Formatter::write_fmt(Arguments args) -> bool {
         }
     }
 
-    if (p > last && !write_raw(last, p - last)) return false;
+    if (p > last && ! write_raw(last, p - last)) return false;
     return true;
 }
 

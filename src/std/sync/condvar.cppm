@@ -39,7 +39,7 @@ public:
 
     template<typename T>
     auto wait_timeout(MutexGuard<T>& guard, time::Duration timeout) -> WaitTimeoutResult {
-        return WaitTimeoutResult { !m_inner.wait_timeout(guard.raw_lock(), timeout) };
+        return WaitTimeoutResult { ! m_inner.wait_timeout(guard.raw_lock(), timeout) };
     }
 
     template<typename T, typename F>

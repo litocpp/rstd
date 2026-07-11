@@ -61,9 +61,7 @@ export struct Ready {
     constexpr auto is_readable() const noexcept -> bool { return (m_bits & READABLE) != 0; }
     constexpr auto is_writable() const noexcept -> bool { return (m_bits & WRITABLE) != 0; }
     constexpr auto is_read_closed() const noexcept -> bool { return (m_bits & READ_CLOSED) != 0; }
-    constexpr auto is_write_closed() const noexcept -> bool {
-        return (m_bits & WRITE_CLOSED) != 0;
-    }
+    constexpr auto is_write_closed() const noexcept -> bool { return (m_bits & WRITE_CLOSED) != 0; }
     constexpr auto is_error() const noexcept -> bool { return (m_bits & ERROR) != 0; }
     constexpr auto is_empty() const noexcept -> bool { return m_bits == 0; }
 
@@ -114,9 +112,9 @@ struct RegistrationState {
     bool                backend_registered { false };
     bool                closed { false };
 
-    RegistrationState(sys::fd::RawFd fd, usize id) : fd(fd), id(id) {}
+    RegistrationState(sys::fd::RawFd fd, usize id): fd(fd), id(id) {}
 
-    RegistrationState(const RegistrationState&)            = delete;
+    RegistrationState(const RegistrationState&)                    = delete;
     auto operator=(const RegistrationState&) -> RegistrationState& = delete;
 };
 
@@ -147,12 +145,10 @@ struct ReactorState {
 };
 
 class Reactor {
-    sync::Mutex<ReactorState> m_state;
+    sync::Mutex<ReactorState>        m_state;
     Option<thread::JoinHandle<void>> m_thread {};
-    bool                      m_available { false };
-    io::Error                 m_init_error {
-        io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported })
-    };
+    bool                             m_available { false };
+    io::Error m_init_error { io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }) };
 
     static auto last_os_error() noexcept -> io::Error {
         return io::Error::from_raw_os_error(sys::io::last_os_error());
@@ -416,7 +412,7 @@ class Reactor {
 #endif
 
 public:
-    Reactor() : m_state(ReactorState {}) {
+    Reactor(): m_state(ReactorState {}) {
         auto backend = init_backend();
         if (backend.is_err()) {
             m_init_error = rstd::move(backend).unwrap_err_unchecked();
@@ -549,11 +545,10 @@ public:
     auto poll_readiness(sync::Arc<RegistrationState>& registration,
                         task::Context&                cx,
                         Interest                      interest,
-                        usize&                        waiter_id)
-        -> task::Poll<io::Result<ReadyEvent>> {
+                        usize& waiter_id) -> task::Poll<io::Result<ReadyEvent>> {
         if (CURRENT_RUNTIME != nullptr && ! CURRENT_RUNTIME->io_enabled()) {
-            return task::Poll<io::Result<ReadyEvent>>::Ready(Err(
-                io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported })));
+            return task::Poll<io::Result<ReadyEvent>>::Ready(
+                Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported })));
         }
 
         if (interest.is_empty()) {
@@ -569,8 +564,8 @@ public:
             }
 
             if (registration->closed) {
-                return task::Poll<io::Result<ReadyEvent>>::Ready(Err(io::Error::from_kind(
-                    io::ErrorKind { io::ErrorKind::NotConnected })));
+                return task::Poll<io::Result<ReadyEvent>>::Ready(
+                    Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected })));
             }
 
             if (waiter_id == 0) {
@@ -611,7 +606,8 @@ public:
         (void)st;
     }
 
-    void clear_waker(sync::Arc<RegistrationState>& registration, Interest interest, usize waiter_id) {
+    void
+    clear_waker(sync::Arc<RegistrationState>& registration, Interest interest, usize waiter_id) {
         if (waiter_id == 0) return;
 
         auto st = m_state.lock().unwrap_unchecked();
@@ -672,13 +668,13 @@ auto global_reactor() -> Reactor& {
 export class Registration {
     sync::Arc<RegistrationState> m_state;
 
-    explicit Registration(sync::Arc<RegistrationState> state) : m_state(rstd::move(state)) {}
+    explicit Registration(sync::Arc<RegistrationState> state): m_state(rstd::move(state)) {}
 
 public:
-    Registration(const Registration&)            = delete;
+    Registration(const Registration&)                    = delete;
     auto operator=(const Registration&) -> Registration& = delete;
 
-    Registration(Registration&& other) noexcept : m_state(rstd::move(other.m_state)) {}
+    Registration(Registration&& other) noexcept: m_state(rstd::move(other.m_state)) {}
 
     auto operator=(Registration&& other) noexcept -> Registration& {
         if (this != &other) {
@@ -782,7 +778,7 @@ public:
     ReadinessFuture(Registration& registration, Interest interest)
         : m_registration(rstd::addressof(registration)), m_interest(interest) {}
 
-    ReadinessFuture(const ReadinessFuture&)            = delete;
+    ReadinessFuture(const ReadinessFuture&)                    = delete;
     auto operator=(const ReadinessFuture&) -> ReadinessFuture& = delete;
 
     ReadinessFuture(ReadinessFuture&& other) noexcept
@@ -795,23 +791,23 @@ public:
         if (this != &other) {
             cancel();
             m_registration = rstd::exchange(other.m_registration, nullptr);
-            m_interest = other.m_interest;
-            m_waiter_id = rstd::exchange(other.m_waiter_id, 0);
-            m_started = rstd::exchange(other.m_started, false);
+            m_interest     = other.m_interest;
+            m_waiter_id    = rstd::exchange(other.m_waiter_id, 0);
+            m_started      = rstd::exchange(other.m_started, false);
         }
         return *this;
     }
 
     ~ReadinessFuture() { cancel(); }
 
-    auto poll(mut_ref<ReadinessFuture> self, task::Context& cx)
-        -> task::Poll<Output> {
-        auto& future = *self;
+    auto poll(mut_ref<ReadinessFuture> self, task::Context& cx) -> task::Poll<Output> {
+        auto& future     = *self;
         future.m_started = true;
-        auto result = future.m_registration->poll_readiness(cx, future.m_interest, future.m_waiter_id);
+        auto result =
+            future.m_registration->poll_readiness(cx, future.m_interest, future.m_waiter_id);
         if (result.is_ready()) {
             future.m_waiter_id = 0;
-            future.m_started = false;
+            future.m_started   = false;
         }
         return result;
     }
@@ -822,7 +818,7 @@ private:
             m_registration->clear_waker(m_interest, m_waiter_id);
         }
         m_waiter_id = 0;
-        m_started = false;
+        m_started   = false;
     }
 };
 

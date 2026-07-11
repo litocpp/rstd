@@ -47,5 +47,5 @@ constexpr auto pthread_mutex_initializer() noexcept -> pthread_mutex_t {
 constexpr auto pthread_cond_initializer() noexcept -> pthread_cond_t {
     return PTHREAD_COND_INITIALIZER;
 }
-} // namespace rstd::sys::lib::pthread
+} // namespace rstd::sys::libc
 #endif

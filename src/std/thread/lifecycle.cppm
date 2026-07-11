@@ -53,8 +53,10 @@ struct JoinInner {
 };
 
 template<typename F>
-auto spawn_unchecked(Option<String> name, usize stack_size, Option<Arc<ScopeData>> scope_data,
-                     F&& f) -> io::Result<JoinInner<mtp::invoke_result_t<F>>>
+auto spawn_unchecked(Option<String>         name,
+                     usize                  stack_size,
+                     Option<Arc<ScopeData>> scope_data,
+                     F&&                    f) -> io::Result<JoinInner<mtp::invoke_result_t<F>>>
 // requires Impled<F, FnOnce<void()>> && mtp::spec_of<mtp::rm_cvf<F>,
 // rstd_alloc::boxed::Box>
 {
@@ -81,8 +83,9 @@ auto spawn_unchecked(Option<String> name, usize stack_size, Option<Arc<ScopeData
         }
     };
 
-    auto&& init = Box<ThreadInit>::make(ThreadInit {
-        .handle = as<clone::Clone>(thread).clone(), .start = Box<dyn<FnMut<void()>>>::make(rstd::move(start)) });
+    auto&& init = Box<ThreadInit>::make(
+        ThreadInit { .handle = as<clone::Clone>(thread).clone(),
+                     .start  = Box<dyn<FnMut<void()>>>::make(rstd::move(start)) });
 
     return imp::Thread::make(stack_size, rstd::move(init)).map([&](auto&& native) {
         return JoinInner<ret_t> {
@@ -99,7 +102,7 @@ namespace rstd::thread
 {
 void ThreadInit::init() const {
     if (set_current(as<clone::Clone>(handle).clone()).is_err()) {
-        panic{"current thread handle already set during thread spawn"};
+        panic { "current thread handle already set during thread spawn" };
     }
 
     if (auto name = handle.cname()) {

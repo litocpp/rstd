@@ -89,12 +89,12 @@ async::coro<io::Result<bytes::BytesMut>> tcp_roundtrip(net::TcpListener& listene
     auto server_stream = rstd::move(accepted_pair.template get<0>());
 
     const u8 payload[] = { 'p', 'i', 'n', 'g' };
-    auto     bytes = bytes::Bytes::copy_from_slice(slice<u8>::from_raw_parts(payload, 4));
-    auto     written = co_await write_some(client_stream, bytes);
+    auto     bytes     = bytes::Bytes::copy_from_slice(slice<u8>::from_raw_parts(payload, 4));
+    auto     written   = co_await write_some(client_stream, bytes);
     if (written.is_err()) co_return Err(rstd::move(written).unwrap_err_unchecked());
 
     auto received = bytes::BytesMut::with_capacity(4);
-    auto read = co_await read_some(server_stream, received);
+    auto read     = co_await read_some(server_stream, received);
     if (read.is_err()) co_return Err(rstd::move(read).unwrap_err_unchecked());
 
     co_return Ok(rstd::move(received));
@@ -105,8 +105,8 @@ async::coro<io::Result<bytes::BytesMut>> spawned_tcp_roundtrip(net::TcpListener&
     auto handle = async::spawn(tcp_roundtrip(listener, addr));
     auto joined = co_await rstd::move(handle);
     if (joined.is_err()) {
-        co_return Err(io::error::Error::from_kind(
-            io::error::ErrorKind { io::error::ErrorKind::Other }));
+        co_return Err(
+            io::error::Error::from_kind(io::error::ErrorKind { io::error::ErrorKind::Other }));
     }
     co_return rstd::move(joined).unwrap();
 }
@@ -138,7 +138,7 @@ async::coro<io::Result<usize>> shutdown_write_reads_eof(net::TcpListener& listen
     if (shutdown.is_err()) co_return Err(rstd::move(shutdown).unwrap_err_unchecked());
 
     auto received = bytes::BytesMut::with_capacity(1);
-    auto read = co_await read_some(server_stream, received);
+    auto read     = co_await read_some(server_stream, received);
     if (read.is_err()) co_return Err(rstd::move(read).unwrap_err_unchecked());
     co_return Ok(rstd::move(read).unwrap_unchecked());
 }
@@ -156,17 +156,16 @@ async::coro<io::Result<bytes::BytesMut>> repeated_readiness(net::TcpListener& li
     auto server_stream = rstd::move(accepted_pair.template get<0>());
 
     const u8 first_payload[] = { 'a' };
-    auto     first_bytes =
-        bytes::Bytes::copy_from_slice(slice<u8>::from_raw_parts(first_payload, 1));
+    auto first_bytes   = bytes::Bytes::copy_from_slice(slice<u8>::from_raw_parts(first_payload, 1));
     auto first_written = co_await write_some(client_stream, first_bytes);
     if (first_written.is_err()) co_return Err(rstd::move(first_written).unwrap_err_unchecked());
 
     auto first_read_buf = bytes::BytesMut::with_capacity(1);
-    auto first_read = co_await read_some(server_stream, first_read_buf);
+    auto first_read     = co_await read_some(server_stream, first_read_buf);
     if (first_read.is_err()) co_return Err(rstd::move(first_read).unwrap_err_unchecked());
 
     auto empty_read_buf = bytes::BytesMut::with_capacity(1);
-    auto empty_read = server_stream.try_read(empty_read_buf);
+    auto empty_read     = server_stream.try_read(empty_read_buf);
     if (empty_read.is_ok()) {
         co_return Err(io::error::Error::from_kind(
             io::error::ErrorKind { io::error::ErrorKind::InvalidInput }));
@@ -175,14 +174,13 @@ async::coro<io::Result<bytes::BytesMut>> repeated_readiness(net::TcpListener& li
     if (! would_block(empty_error)) co_return Err(rstd::move(empty_error));
 
     const u8 second_payload[] = { 'b' };
-    auto     second_bytes =
-        bytes::Bytes::copy_from_slice(slice<u8>::from_raw_parts(second_payload, 1));
+    auto second_bytes = bytes::Bytes::copy_from_slice(slice<u8>::from_raw_parts(second_payload, 1));
     auto second_written = co_await write_some(client_stream, second_bytes);
     if (second_written.is_err()) {
         co_return Err(rstd::move(second_written).unwrap_err_unchecked());
     }
 
-    auto received = bytes::BytesMut::with_capacity(1);
+    auto received    = bytes::BytesMut::with_capacity(1);
     auto second_read = co_await read_some(server_stream, received);
     if (second_read.is_err()) co_return Err(rstd::move(second_read).unwrap_err_unchecked());
 
@@ -196,15 +194,15 @@ TEST(NetTcp, LoopbackRoundTrip) {
     ASSERT_TRUE(listener.is_ok());
 
     auto tcp_listener = rstd::move(listener).unwrap_unchecked();
-    auto addr = tcp_listener.local_addr();
+    auto addr         = tcp_listener.local_addr();
     ASSERT_TRUE(addr.is_ok());
     EXPECT_NE(rstd::move(addr).unwrap_unchecked().port(), 0);
 
     auto local_addr = tcp_listener.local_addr();
     ASSERT_TRUE(local_addr.is_ok());
 
-    auto result = async::block_on(
-        tcp_roundtrip(tcp_listener, rstd::move(local_addr).unwrap_unchecked()));
+    auto result =
+        async::block_on(tcp_roundtrip(tcp_listener, rstd::move(local_addr).unwrap_unchecked()));
     ASSERT_TRUE(result.is_ok());
 
     auto received = rstd::move(result).unwrap_unchecked();
@@ -220,7 +218,7 @@ TEST(NetTcp, MultiThreadRuntimeLoopbackRoundTrip) {
     ASSERT_TRUE(listener.is_ok());
 
     auto tcp_listener = rstd::move(listener).unwrap_unchecked();
-    auto addr = tcp_listener.local_addr();
+    auto addr         = tcp_listener.local_addr();
     ASSERT_TRUE(addr.is_ok());
 
     auto runtime_result =
@@ -228,8 +226,8 @@ TEST(NetTcp, MultiThreadRuntimeLoopbackRoundTrip) {
     ASSERT_TRUE(runtime_result.is_ok());
     auto runtime = rstd::move(runtime_result).unwrap_unchecked();
 
-    auto result = runtime.block_on(
-        spawned_tcp_roundtrip(tcp_listener, rstd::move(addr).unwrap_unchecked()));
+    auto result =
+        runtime.block_on(spawned_tcp_roundtrip(tcp_listener, rstd::move(addr).unwrap_unchecked()));
     ASSERT_TRUE(result.is_ok());
 
     auto received = rstd::move(result).unwrap_unchecked();
@@ -247,7 +245,7 @@ TEST(NetTcp, ConnectRefusedReturnsError) {
         ASSERT_TRUE(listener.is_ok());
 
         auto tcp_listener = rstd::move(listener).unwrap_unchecked();
-        auto addr = tcp_listener.local_addr();
+        auto addr         = tcp_listener.local_addr();
         ASSERT_TRUE(addr.is_ok());
         local_addr = rstd::move(addr).unwrap_unchecked();
     }
@@ -263,7 +261,7 @@ TEST(NetTcp, ShutdownWriteReadsEof) {
     ASSERT_TRUE(listener.is_ok());
 
     auto tcp_listener = rstd::move(listener).unwrap_unchecked();
-    auto addr = tcp_listener.local_addr();
+    auto addr         = tcp_listener.local_addr();
     ASSERT_TRUE(addr.is_ok());
 
     auto result = async::block_on(
@@ -277,16 +275,16 @@ TEST(NetTcp, FromOwnedFdKeepsOwnership) {
     ASSERT_TRUE(listener.is_ok());
 
     auto tcp_listener = rstd::move(listener).unwrap_unchecked();
-    auto addr = tcp_listener.local_addr();
+    auto addr         = tcp_listener.local_addr();
     ASSERT_TRUE(addr.is_ok());
 
-    auto client = async::block_on(
-        connected_client(tcp_listener, rstd::move(addr).unwrap_unchecked()));
+    auto client =
+        async::block_on(connected_client(tcp_listener, rstd::move(addr).unwrap_unchecked()));
     ASSERT_TRUE(client.is_ok());
 
     auto client_stream = rstd::move(client).unwrap_unchecked();
-    auto fd = client_stream.into_owned_fd();
-    auto raw = fd.as_raw_fd();
+    auto fd            = client_stream.into_owned_fd();
+    auto raw           = fd.as_raw_fd();
     ASSERT_TRUE(fd_is_open(raw));
 
     {
@@ -302,26 +300,24 @@ TEST(NetTcp, ReadinessFutureDropCancelsWaiter) {
     ASSERT_TRUE(listener.is_ok());
 
     auto tcp_listener = rstd::move(listener).unwrap_unchecked();
-    auto addr = tcp_listener.local_addr();
+    auto addr         = tcp_listener.local_addr();
     ASSERT_TRUE(addr.is_ok());
 
     auto counts = WakerCounts {};
-    auto waker  = task::Waker::from_raw(task::RawWaker::from_raw_parts(
-        &counts,
-        rstd::addressof(COUNT_WAKER_VTABLE)));
-    auto cx     = task::Context { waker };
+    auto waker  = task::Waker::from_raw(
+        task::RawWaker::from_raw_parts(&counts, rstd::addressof(COUNT_WAKER_VTABLE)));
+    auto cx = task::Context { waker };
 
     {
         auto readable = tcp_listener.readable();
-        auto first = future::poll(readable, cx);
+        auto first    = future::poll(readable, cx);
         EXPECT_TRUE(first.is_pending());
     }
 
     EXPECT_EQ(counts.clones.load(), 1);
     EXPECT_EQ(counts.drops.load(), 1);
 
-    auto client = async::block_on(
-        net::TcpStream::connect(rstd::move(addr).unwrap_unchecked()));
+    auto client = async::block_on(net::TcpStream::connect(rstd::move(addr).unwrap_unchecked()));
     ASSERT_TRUE(client.is_ok());
 
     auto accepted = async::block_on(tcp_listener.accept());
@@ -335,11 +331,11 @@ TEST(NetTcp, RepeatedWouldBlockWaitsForNextReadiness) {
     ASSERT_TRUE(listener.is_ok());
 
     auto tcp_listener = rstd::move(listener).unwrap_unchecked();
-    auto addr = tcp_listener.local_addr();
+    auto addr         = tcp_listener.local_addr();
     ASSERT_TRUE(addr.is_ok());
 
-    auto result = async::block_on(
-        repeated_readiness(tcp_listener, rstd::move(addr).unwrap_unchecked()));
+    auto result =
+        async::block_on(repeated_readiness(tcp_listener, rstd::move(addr).unwrap_unchecked()));
     ASSERT_TRUE(result.is_ok());
 
     auto received = rstd::move(result).unwrap_unchecked();

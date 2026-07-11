@@ -24,19 +24,23 @@ TEST(Time, Instant) {
     auto now = Instant::now();
     // Busy wait for a bit to ensure some time passes
     int sum = 0;
-    for (int i = 0; i < 1000000; ++i) { sum += i; }
+    for (int i = 0; i < 1000000; ++i) {
+        sum += i;
+    }
     (void)sum;
     auto later = Instant::now();
     EXPECT_GE(later, now);
-    
+
     auto elapsed = now.elapsed();
     EXPECT_GE(elapsed.as_nanos(), 0);
 }
 
 TEST(Time, SystemTime) {
     auto now = SystemTime::now();
-    int sum = 0;
-    for (int i = 0; i < 1000000; ++i) { sum += i; }
+    int  sum = 0;
+    for (int i = 0; i < 1000000; ++i) {
+        sum += i;
+    }
     (void)sum;
     auto later = SystemTime::now();
     EXPECT_GE(later, now);
@@ -47,8 +51,8 @@ TEST(Time, SystemTime) {
 }
 
 TEST(Time, Arithmetic) {
-    auto now = Instant::now();
-    auto dur = Duration::from_secs(1);
+    auto now   = Instant::now();
+    auto dur   = Duration::from_secs(1);
     auto later = now + dur;
     EXPECT_EQ(later - now, dur);
     EXPECT_EQ(later - dur, now);

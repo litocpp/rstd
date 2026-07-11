@@ -6,7 +6,7 @@ using rstd::bytes::Bytes;
 using rstd::bytes::BytesMut;
 
 TEST(BytesMut, PutSliceAndFreeze) {
-    auto buf = BytesMut::with_capacity(8);
+    auto     buf = BytesMut::with_capacity(8);
     rstd::u8 hello[] { 'h', 'e', 'l', 'l', 'o' };
 
     buf.put_slice(rstd::slice<rstd::u8>::from_raw_parts(hello, 5));

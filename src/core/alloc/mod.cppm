@@ -49,8 +49,12 @@ export struct Allocator {
     };
 
     template<typename T>
-    using Funcs = TraitFuncs<&T::allocate, &T::allocate_zeroed, &T::deallocate, &T::grow,
-                             &T::grow_zeroed, &T::shrink>;
+    using Funcs = TraitFuncs<&T::allocate,
+                             &T::allocate_zeroed,
+                             &T::deallocate,
+                             &T::grow,
+                             &T::grow_zeroed,
+                             &T::shrink>;
 };
 } // namespace rstd::alloc
 
@@ -107,4 +111,4 @@ public:
         return allocator().allocate(new_layout);
     }
 };
-} // namespace rstd::alloc
+} // namespace rstd

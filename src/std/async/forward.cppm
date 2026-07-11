@@ -21,7 +21,7 @@ export struct JoinError {
 
     Kind kind { Kind::Aborted };
 
-    constexpr auto is_aborted() const noexcept -> bool { return kind == Kind::Aborted; }
+    constexpr auto        is_aborted() const noexcept -> bool { return kind == Kind::Aborted; }
     friend constexpr auto operator==(JoinError, JoinError) noexcept -> bool = default;
 };
 

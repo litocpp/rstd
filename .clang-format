@@ -1,4 +1,6 @@
 ﻿---
+BasedOnStyle: LLVM
+
 AccessModifierOffset: -4
 
 AlignAfterOpenBracket: Align
@@ -9,12 +11,13 @@ AlignEscapedNewlines: Left
 AlignOperands: true
 AlignTrailingComments: true
 
-AllowAllParametersOfDeclarationOnNextLine: true
+AllowAllParametersOfDeclarationOnNextLine: false
 AllowShortBlocksOnASingleLine: false
 AllowShortCaseLabelsOnASingleLine: true
 AllowShortIfStatementsOnASingleLine: true
 AllowShortLoopsOnASingleLine: true
 AllowShortLambdasOnASingleLine: false
+AllowShortFunctionsOnASingleLine: InlineOnly
 
 AlwaysBreakAfterReturnType: None
 AlwaysBreakTemplateDeclarations: true
@@ -26,18 +29,20 @@ BraceWrapping:
   SplitEmptyFunction: false
   SplitEmptyRecord: false
 BinPackArguments: false
-BinPackParameters: true
+BinPackParameters: OnePerLine
 CompactNamespaces: false
 ConstructorInitializerAllOnOneLineOrOnePerLine: true
 Cpp11BracedListStyle: false
 IndentCaseLabels: false
-IndentPPDirectives: AfterHash
+IndentPPDirectives: None
 IndentWidth: 4
 IndentWrappedFunctionNames: false
 KeepEmptyLinesAtTheStartOfBlocks: false
 Language: Cpp
 PointerAlignment: Left
-SortIncludes: false
+ReflowComments: false
+SortIncludes: Never
+SortUsingDeclarations: Never
 SpaceAfterCStyleCast: false
 SpaceAfterLogicalNot: true
 SpaceAfterTemplateKeyword: false
@@ -52,10 +57,9 @@ SpacesInCStyleCastParentheses: false
 SpacesInContainerLiterals: false
 SpacesInParentheses: false
 SpacesInSquareBrackets: false
-Standard: Cpp11
+Standard: Latest
 TabWidth: 4
 UseTab: Never
 ColumnLimit: 100
 
-# 属性与函数名 强制分行。
 BreakAfterAttributes: Always

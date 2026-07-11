@@ -53,7 +53,8 @@ struct Channel {
         usize mark_bit = rstd::num::bit_ceil(cap + 1);
         usize one_lap  = mark_bit * 2;
 
-        auto slots_storage = as<Allocator>(::alloc::GLOBAL).allocate(alloc::Layout::array<Slot<T>>(cap).unwrap())
+        auto slots_storage = as<Allocator>(::alloc::GLOBAL)
+                                 .allocate(alloc::Layout::array<Slot<T>>(cap).unwrap())
                                  .unwrap()
                                  .as_raw_ptr();
 
@@ -63,8 +64,10 @@ struct Channel {
         }
         auto buffer = Box<Slot<T>[]>::from_raw(mut_ptr<Slot<T>[]>::from_raw_parts(raw_slots, cap));
 
-        auto storage =
-            as<Allocator>(::alloc::GLOBAL).allocate(alloc::Layout::make<Channel>()).unwrap().as_raw_ptr();
+        auto storage = as<Allocator>(::alloc::GLOBAL)
+                           .allocate(alloc::Layout::make<Channel>())
+                           .unwrap()
+                           .as_raw_ptr();
 
         auto* raw_chan = new (storage) Channel {
             .head      = {},

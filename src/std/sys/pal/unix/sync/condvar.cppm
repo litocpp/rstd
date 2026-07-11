@@ -22,7 +22,8 @@ export class Condvar {
 
 public:
     ~Condvar() noexcept {
-        [[maybe_unused]] auto r = pthread_cond_destroy(&inner);
+        [[maybe_unused]]
+        auto r = pthread_cond_destroy(&inner);
         debug_assert_eq(r, 0);
     }
 
@@ -39,7 +40,7 @@ public:
     // Initialize the condition variable with CLOCK_MONOTONIC
     void init() noexcept {
         pthread_condattr_t attr;
-        auto r = pthread_condattr_init(&attr);
+        auto               r = pthread_condattr_init(&attr);
         rstd_assert_eq(r, 0);
 
         r = pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);
@@ -54,20 +55,23 @@ public:
 
     // Signal one waiting thread
     void notify_one() noexcept {
-        [[maybe_unused]] auto r = pthread_cond_signal(raw());
+        [[maybe_unused]]
+        auto r = pthread_cond_signal(raw());
         debug_assert_eq(r, 0);
     }
 
     // Signal all waiting threads
     void notify_all() noexcept {
-        [[maybe_unused]] auto r = pthread_cond_broadcast(raw());
+        [[maybe_unused]]
+        auto r = pthread_cond_broadcast(raw());
         debug_assert_eq(r, 0);
     }
 
     // Wait on the condition variable
     // mutex must be locked by the current thread
     void wait(Mutex& mutex) noexcept {
-        [[maybe_unused]] auto r = pthread_cond_wait(raw(), mutex.raw());
+        [[maybe_unused]]
+        auto r = pthread_cond_wait(raw(), mutex.raw());
         debug_assert_eq(r, 0);
     }
 
@@ -82,7 +86,7 @@ public:
 
         // Add timeout
         const u64 NSEC_PER_SEC = 1'000'000'000;
-        u64 total_nsec = ts.tv_nsec + timeout_ns;
+        u64       total_nsec   = ts.tv_nsec + timeout_ns;
         ts.tv_sec += total_nsec / NSEC_PER_SEC;
         ts.tv_nsec = total_nsec % NSEC_PER_SEC;
 

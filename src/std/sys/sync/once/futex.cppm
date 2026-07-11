@@ -48,4 +48,4 @@ public:
 private:
     Futex state_and_queued;
 };
-} // namespace rstd
+} // namespace rstd::sys::sync::once::futex

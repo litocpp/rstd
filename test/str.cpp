@@ -58,7 +58,7 @@ TEST(Str, SplitAt) {
 
 TEST(Str, CharsAscii) {
     std::vector<char32_t> cps;
-    auto it = rstd::str_::chars("ABC");
+    auto                  it = rstd::str_::chars("ABC");
     for (auto c : it) cps.push_back(c);
     ASSERT_EQ(cps.size(), 3u);
     EXPECT_EQ(cps[0], U'A');
@@ -85,15 +85,15 @@ TEST(Str, CharsEmoji) {
 
 TEST(Str, FromUtf8Valid) {
     rstd::u8 data[] = { 'h', 'i' };
-    auto sl = rstd::slice<rstd::u8>::from_raw_parts(data, 2);
-    auto r = rstd::str_::from_utf8(sl);
+    auto     sl     = rstd::slice<rstd::u8>::from_raw_parts(data, 2);
+    auto     r      = rstd::str_::from_utf8(sl);
     ASSERT_TRUE(r.is_some());
     EXPECT_EQ(r.unwrap(), rstd::ref<rstd::str>("hi"));
 }
 
 TEST(Str, FromUtf8Invalid) {
     rstd::u8 data[] = { 0xFF, 0xFE };
-    auto sl = rstd::slice<rstd::u8>::from_raw_parts(data, 2);
+    auto     sl     = rstd::slice<rstd::u8>::from_raw_parts(data, 2);
     EXPECT_TRUE(rstd::str_::from_utf8(sl).is_none());
 }
 
@@ -105,7 +105,7 @@ TEST(String, MakeFromStr) {
 
 TEST(String, MakeFromRefStr) {
     rstd::ref<rstd::str> r("world");
-    auto s = rstd::string::String::make(r);
+    auto                 s = rstd::string::String::make(r);
     EXPECT_EQ(s.len(), 5u);
     EXPECT_EQ("world", s);
 }
@@ -116,7 +116,7 @@ TEST(String, PushCodepoint) {
     EXPECT_EQ("hi!", s);
 
     s.push(char32_t(0x4E2D)); // 中
-    EXPECT_EQ(s.len(), 6u); // "hi!" (3) + "中" (3 bytes)
+    EXPECT_EQ(s.len(), 6u);   // "hi!" (3) + "中" (3 bytes)
 }
 
 TEST(String, AsStr) {

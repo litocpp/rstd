@@ -1,8 +1,8 @@
 import rstd;
 
 struct BadInClassClone : rstd::DefaultInClass<BadInClassClone, rstd::clone::Clone> {
-    BadInClassClone() = default;
-    BadInClassClone(const BadInClassClone&) = delete;
+    BadInClassClone()                                          = default;
+    BadInClassClone(const BadInClassClone&)                    = delete;
     auto operator=(const BadInClassClone&) -> BadInClassClone& = delete;
 
     auto clone() const -> int { return 0; }

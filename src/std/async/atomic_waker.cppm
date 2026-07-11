@@ -17,10 +17,10 @@ export class AtomicWaker {
 public:
     AtomicWaker() = default;
 
-    AtomicWaker(const AtomicWaker&)            = delete;
+    AtomicWaker(const AtomicWaker&)                    = delete;
     auto operator=(const AtomicWaker&) -> AtomicWaker& = delete;
-    AtomicWaker(AtomicWaker&&)                 = delete;
-    auto operator=(AtomicWaker&&) -> AtomicWaker& = delete;
+    AtomicWaker(AtomicWaker&&)                         = delete;
+    auto operator=(AtomicWaker&&) -> AtomicWaker&      = delete;
 
     ~AtomicWaker() = default;
 

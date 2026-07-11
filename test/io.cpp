@@ -87,7 +87,7 @@ template<>
 struct rstd::Impl<io::Write, BufWrite> : ImplBase<BufWrite> {
     auto write(const u8* buf, usize len) -> io::Result<usize> {
         auto& self = this->self();
-        usize n = rstd::min(len, usize(sizeof(self.data)) - self.pos);
+        usize n    = rstd::min(len, usize(sizeof(self.data)) - self.pos);
         rstd::mem::memcpy(self.data + self.pos, buf, n);
         self.pos += n;
         return Ok(n);
@@ -98,7 +98,7 @@ struct rstd::Impl<io::Write, BufWrite> : ImplBase<BufWrite> {
 TEST(Io, WriteAll) {
     BufWrite w;
     const u8 msg[] = "hello world";
-    auto res = io::write_all(w, msg, sizeof(msg) - 1);
+    auto     res   = io::write_all(w, msg, sizeof(msg) - 1);
     EXPECT_TRUE(res.is_ok());
     EXPECT_EQ(w.pos, usize(11));
     EXPECT_EQ(w.data[0], u8('h'));
@@ -117,7 +117,7 @@ template<>
 struct rstd::Impl<io::Read, MemRead> : ImplBase<MemRead> {
     auto read(u8* buf, usize len) -> io::Result<usize> {
         auto& self = this->self();
-        usize n = rstd::min(len, self.len - self.pos);
+        usize n    = rstd::min(len, self.len - self.pos);
         rstd::mem::memcpy(buf, self.data + self.pos, n);
         self.pos += n;
         return Ok(n);
@@ -126,9 +126,9 @@ struct rstd::Impl<io::Read, MemRead> : ImplBase<MemRead> {
 
 TEST(Io, ReadExact) {
     const u8 src[] = "abcdef";
-    MemRead r { src, 6, 0 };
-    u8 dst[4] {};
-    auto res = io::read_exact(r, dst, 4);
+    MemRead  r { src, 6, 0 };
+    u8       dst[4] {};
+    auto     res = io::read_exact(r, dst, 4);
     EXPECT_TRUE(res.is_ok());
     EXPECT_EQ(dst[0], u8('a'));
     EXPECT_EQ(dst[3], u8('d'));
@@ -137,12 +137,11 @@ TEST(Io, ReadExact) {
 
 TEST(Io, ReadExactUnexpectedEof) {
     const u8 src[] = "ab";
-    MemRead r { src, 2, 0 };
-    u8 dst[4] {};
-    auto res = io::read_exact(r, dst, 4);
+    MemRead  r { src, 2, 0 };
+    u8       dst[4] {};
+    auto     res = io::read_exact(r, dst, 4);
     EXPECT_TRUE(res.is_err());
-    EXPECT_EQ(res.unwrap_err_unchecked().kind(),
-              ErrorKind { ErrorKind::UnexpectedEof });
+    EXPECT_EQ(res.unwrap_err_unchecked().kind(), ErrorKind { ErrorKind::UnexpectedEof });
 }
 
 // ── Stdio smoke tests ─────────────────────────────────────────────────────
@@ -161,11 +160,11 @@ TEST(Io, PrintlnSmoke) {
 
 TEST(Io, CursorVecRead) {
     using rstd::vec::Vec;
-    Vec<u8> v = Vec<u8>::with_capacity(5);
+    Vec<u8>  v      = Vec<u8>::with_capacity(5);
     const u8 init[] = { 1, 2, 3, 4, 5 };
     for (auto b : init) v.push(u8(b));
     auto cur = io::Cursor<Vec<u8>>(rstd::move(v));
-    u8 buf[3] {};
+    u8   buf[3] {};
     auto res = as<io::Read>(cur).read(buf, 3);
     EXPECT_TRUE(res.is_ok());
     EXPECT_EQ(res.unwrap_unchecked(), usize(3));
@@ -176,9 +175,9 @@ TEST(Io, CursorVecRead) {
 
 TEST(Io, CursorVecWrite) {
     using rstd::vec::Vec;
-    auto cur = io::Cursor<Vec<u8>>(Vec<u8>::with_capacity(0));
+    auto     cur   = io::Cursor<Vec<u8>>(Vec<u8>::with_capacity(0));
     const u8 msg[] = { 'h', 'i' };
-    auto res = as<io::Write>(cur).write(msg, 2);
+    auto     res   = as<io::Write>(cur).write(msg, 2);
     EXPECT_TRUE(res.is_ok());
     EXPECT_EQ(res.unwrap_unchecked(), usize(2));
     EXPECT_EQ(cur.position(), u64(2));
@@ -222,10 +221,10 @@ TEST(Io, CursorVecBufRead) {
 
 TEST(Io, CursorSliceRead) {
     const u8 data[] = { 10, 20, 30 };
-    auto sl  = slice<u8>::from_raw_parts(data, 3);
-    auto cur = io::Cursor<slice<u8>>(sl);
-    u8 buf[2] {};
-    auto res = as<io::Read>(cur).read(buf, 2);
+    auto     sl     = slice<u8>::from_raw_parts(data, 3);
+    auto     cur    = io::Cursor<slice<u8>>(sl);
+    u8       buf[2] {};
+    auto     res = as<io::Read>(cur).read(buf, 2);
     EXPECT_TRUE(res.is_ok());
     EXPECT_EQ(buf[0], u8(10));
     EXPECT_EQ(buf[1], u8(20));
@@ -237,12 +236,12 @@ TEST(Io, CursorSliceRead) {
 TEST(Io, BufReaderBasic) {
     // Use Cursor<Vec<u8>> as the inner reader.
     using rstd::vec::Vec;
-    Vec<u8> v = Vec<u8>::with_capacity(6);
+    Vec<u8>  v      = Vec<u8>::with_capacity(6);
     const u8 init[] = { 1, 2, 3, 4, 5, 6 };
     for (auto b : init) v.push(u8(b));
     auto inner = io::Cursor<Vec<u8>>(rstd::move(v));
     auto br    = io::BufReader<io::Cursor<Vec<u8>>>(rstd::move(inner), 4);
-    u8 buf[6] {};
+    u8   buf[6] {};
     // First read — fills internal 4-byte buffer, returns 4
     auto r1 = as<io::Read>(br).read(buf, 6);
     EXPECT_TRUE(r1.is_ok());
@@ -258,7 +257,7 @@ TEST(Io, BufReaderFillBuf) {
     for (u8 b : { u8(11), u8(22), u8(33) }) v.push(u8(b));
     auto inner = io::Cursor<Vec<u8>>(rstd::move(v));
     auto br    = io::BufReader<io::Cursor<Vec<u8>>>(rstd::move(inner), 8);
-    auto res = as<io::BufRead>(br).fill_buf();
+    auto res   = as<io::BufRead>(br).fill_buf();
     EXPECT_TRUE(res.is_ok());
     auto sl = res.unwrap_unchecked();
     EXPECT_GE(sl.len(), usize(3));
@@ -271,10 +270,10 @@ TEST(Io, BufReaderFillBuf) {
 TEST(Io, BufWriterBasic) {
     using rstd::vec::Vec;
     // Use Cursor<Vec<u8>> as sink.
-    auto sink_cur = io::Cursor<Vec<u8>>(Vec<u8>::with_capacity(0));
-    auto bw       = io::BufWriter<io::Cursor<Vec<u8>>>(rstd::move(sink_cur), 8);
-    const u8 msg[] = { 'a', 'b', 'c' };
-    auto res = as<io::Write>(bw).write(msg, 3);
+    auto     sink_cur = io::Cursor<Vec<u8>>(Vec<u8>::with_capacity(0));
+    auto     bw       = io::BufWriter<io::Cursor<Vec<u8>>>(rstd::move(sink_cur), 8);
+    const u8 msg[]    = { 'a', 'b', 'c' };
+    auto     res      = as<io::Write>(bw).write(msg, 3);
     EXPECT_TRUE(res.is_ok());
     EXPECT_EQ(res.unwrap_unchecked(), usize(3));
     // Flush to push data to inner.
@@ -286,34 +285,33 @@ TEST(Io, BufWriterBasic) {
 
 TEST(Io, EmptyRead) {
     auto e = io::empty_io();
-    u8 buf[4] {};
+    u8   buf[4] {};
     auto res = as<io::Read>(e).read(buf, 4);
     EXPECT_TRUE(res.is_ok());
     EXPECT_EQ(res.unwrap_unchecked(), usize(0));
 }
 
 TEST(Io, EmptyWrite) {
-    auto e = io::empty_io();
+    auto     e     = io::empty_io();
     const u8 msg[] = "x";
-    auto res = as<io::Write>(e).write(msg, 1);
+    auto     res   = as<io::Write>(e).write(msg, 1);
     EXPECT_TRUE(res.is_ok());
     EXPECT_EQ(res.unwrap_unchecked(), usize(1));
 }
 
 TEST(Io, RepeatRead) {
     auto r = io::repeat(u8(0xAB));
-    u8 buf[4] {};
+    u8   buf[4] {};
     auto res = as<io::Read>(r).read(buf, 4);
     EXPECT_TRUE(res.is_ok());
     EXPECT_EQ(res.unwrap_unchecked(), usize(4));
-    for (int i = 0; i < 4; ++i)
-        EXPECT_EQ(buf[i], u8(0xAB));
+    for (int i = 0; i < 4; ++i) EXPECT_EQ(buf[i], u8(0xAB));
 }
 
 TEST(Io, SinkWrite) {
-    auto s = io::sink();
+    auto     s     = io::sink();
     const u8 msg[] = { 1, 2, 3 };
-    auto res = as<io::Write>(s).write(msg, 3);
+    auto     res   = as<io::Write>(s).write(msg, 3);
     EXPECT_TRUE(res.is_ok());
     EXPECT_EQ(res.unwrap_unchecked(), usize(3));
 }

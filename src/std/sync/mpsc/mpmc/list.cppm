@@ -30,7 +30,7 @@ struct Block {
     Atomic<Block*> next;
     ListSlot<T>    slots[31];
 
-    Block() : next(nullptr) {
+    Block(): next(nullptr) {
         for (int i = 0; i < 31; ++i) {
             slots[i].state.store(0, Ordering::Relaxed);
         }
@@ -50,7 +50,7 @@ export struct ListToken {
 
 export template<typename T>
 struct ListPosition {
-    Atomic<usize>  index;
+    Atomic<usize>     index;
     Atomic<Block<T>*> block;
 };
 
@@ -85,21 +85,24 @@ struct ListChannel {
                 // Install next block if needed
                 auto* curr_block = tail->block.load(Ordering::Acquire);
                 auto* next_block = curr_block->next.load(Ordering::Acquire);
-                if (!next_block) {
-                    next_block = new Block<T>();
+                if (! next_block) {
+                    next_block         = new Block<T>();
                     Block<T>* expected = nullptr;
-                    if (!curr_block->next.compare_exchange_strong(expected, next_block, Ordering::Release, Ordering::Acquire)) {
+                    if (! curr_block->next.compare_exchange_strong(
+                            expected, next_block, Ordering::Release, Ordering::Acquire)) {
                         delete next_block;
                         next_block = expected;
                     }
                 }
-                tail->block.compare_exchange_strong(curr_block, next_block, Ordering::Release, Ordering::Acquire);
+                tail->block.compare_exchange_strong(
+                    curr_block, next_block, Ordering::Release, Ordering::Acquire);
                 tail->index.fetch_add(2, Ordering::Release);
                 continue;
             }
 
-            if (tail->index.compare_exchange_weak(tail_idx, tail_idx + 2, Ordering::SeqCst, Ordering::Relaxed)) {
-                token.block = reinterpret_cast<u8 const*>(tail->block.load(Ordering::Acquire));
+            if (tail->index.compare_exchange_weak(
+                    tail_idx, tail_idx + 2, Ordering::SeqCst, Ordering::Relaxed)) {
+                token.block  = reinterpret_cast<u8 const*>(tail->block.load(Ordering::Acquire));
                 token.offset = offset;
                 return true;
             }
@@ -108,9 +111,9 @@ struct ListChannel {
     }
 
     auto write(ListToken& token, T msg) -> Result<empty, T> {
-        if (!token.block) return Err(rstd::move(msg));
+        if (! token.block) return Err(rstd::move(msg));
         auto* block = reinterpret_cast<Block<T>*>(const_cast<u8*>(token.block));
-        auto& slot = block->slots[token.offset];
+        auto& slot  = block->slots[token.offset];
         slot.msg.write(rstd::move(msg));
         slot.state.fetch_or(WRITE, Ordering::Release);
         receivers.notify();
@@ -121,12 +124,12 @@ struct ListChannel {
         Backoff backoff;
         while (true) {
             usize head_idx = head->index.load(Ordering::Acquire);
-            usize offset = (head_idx >> 1) % 32;
+            usize offset   = (head_idx >> 1) % 32;
 
             if (offset == 31) {
                 auto* curr_block = head->block.load(Ordering::Acquire);
                 auto* next_block = curr_block->next.load(Ordering::Acquire);
-                if (!next_block) {
+                if (! next_block) {
                     // Check if disconnected
                     if (tail->index.load(Ordering::Acquire) & 1) {
                         token.block = nullptr;
@@ -134,15 +137,16 @@ struct ListChannel {
                     }
                     return false; // Empty
                 }
-                head->block.compare_exchange_strong(curr_block, next_block, Ordering::Release, Ordering::Acquire);
+                head->block.compare_exchange_strong(
+                    curr_block, next_block, Ordering::Release, Ordering::Acquire);
                 head->index.fetch_add(2, Ordering::Release);
                 // TODO: delete old block? Need refcounting for blocks.
                 continue;
             }
 
             auto* block = head->block.load(Ordering::Acquire);
-            auto& slot = block->slots[offset];
-            if (!(slot.state.load(Ordering::Acquire) & WRITE)) {
+            auto& slot  = block->slots[offset];
+            if (! (slot.state.load(Ordering::Acquire) & WRITE)) {
                 // Mask the disconnect bit (bit 0) before comparing to head_idx:
                 // disconnect() does `tail->index |= 1` without bumping the
                 // counter, so an unmasked compare misses the empty+disconnected
@@ -159,8 +163,9 @@ struct ListChannel {
                 continue;
             }
 
-            if (head->index.compare_exchange_weak(head_idx, head_idx + 2, Ordering::SeqCst, Ordering::Relaxed)) {
-                token.block = reinterpret_cast<u8 const*>(block);
+            if (head->index.compare_exchange_weak(
+                    head_idx, head_idx + 2, Ordering::SeqCst, Ordering::Relaxed)) {
+                token.block  = reinterpret_cast<u8 const*>(block);
                 token.offset = offset;
                 return true;
             }
@@ -169,10 +174,10 @@ struct ListChannel {
     }
 
     auto read(ListToken& token) -> Result<T, empty> {
-        if (!token.block) return Err(empty {});
+        if (! token.block) return Err(empty {});
         auto* block = reinterpret_cast<Block<T>*>(const_cast<u8*>(token.block));
-        auto& slot = block->slots[token.offset];
-        T msg = rstd::move(slot.msg.assume_init_mut());
+        auto& slot  = block->slots[token.offset];
+        T     msg   = rstd::move(slot.msg.assume_init_mut());
         slot.state.fetch_or(READ, Ordering::Release);
         return Ok(rstd::move(msg));
     }
@@ -186,13 +191,13 @@ struct ListChannel {
         auto* curr = head->block.load(Ordering::Relaxed);
         while (curr) {
             auto* next = curr->next.load(Ordering::Relaxed);
-            
+
             // Drop messages in the block
-            // In a real implementation we'd check head/tail indices, 
+            // In a real implementation we'd check head/tail indices,
             // but for a simple cleanup we can just try to drop all written but not read messages.
             // For now, let's just delete the block.
             // TODO: properly drop elements of T.
-            
+
             delete curr;
             curr = next;
         }

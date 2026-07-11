@@ -22,9 +22,7 @@ struct DisplayTrait {
 
     struct Api {
         using Trait = DisplayTrait;
-        void display(std::ostream& os) const {
-            return rstd::trait_call<0>(this, os);
-        }
+        void display(std::ostream& os) const { return rstd::trait_call<0>(this, os); }
     };
 
     template<typename T>
@@ -224,12 +222,12 @@ struct InClass {
 };
 
 struct InClassDef : rstd::DefaultInClass<InClassDef, rstd::clone::Clone> {
-    int  a;
-    InClassDef() = default;
-    InClassDef(const InClassDef&) = delete;
-    InClassDef(InClassDef&&) = default;
+    int a;
+    InClassDef()                                     = default;
+    InClassDef(const InClassDef&)                    = delete;
+    InClassDef(InClassDef&&)                         = default;
     auto operator=(const InClassDef&) -> InClassDef& = delete;
-    auto operator=(InClassDef&&) -> InClassDef& = default;
+    auto operator=(InClassDef&&) -> InClassDef&      = default;
 
     auto clone() const -> InClassDef {
         InClassDef o {};
@@ -239,18 +237,17 @@ struct InClassDef : rstd::DefaultInClass<InClassDef, rstd::clone::Clone> {
 };
 
 template<>
-struct rstd::Impl<rstd::clone::Clone, InClass>
-    : rstd::DefaultInImpl<rstd::clone::Clone, InClass> {
+struct rstd::Impl<rstd::clone::Clone, InClass> : rstd::DefaultInImpl<rstd::clone::Clone, InClass> {
     auto clone() const -> InClass { return this->self().clone(); }
 };
 
 struct NotClone {
-    int  a;
-    NotClone() = default;
-    NotClone(const NotClone&) = delete;
-    NotClone(NotClone&&) = default;
+    int a;
+    NotClone()                                   = default;
+    NotClone(const NotClone&)                    = delete;
+    NotClone(NotClone&&)                         = default;
     auto operator=(const NotClone&) -> NotClone& = delete;
-    auto operator=(NotClone&&) -> NotClone& = default;
+    auto operator=(NotClone&&) -> NotClone&      = default;
 
     auto clone() const -> NotClone {
         NotClone o {};

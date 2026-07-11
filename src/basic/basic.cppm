@@ -30,9 +30,9 @@ constexpr inline T exchange(T&  obj,
 /// \param args Arguments forwarded to the constructor.
 /// \return Pointer to the constructed object.
 export template<typename T, typename... Args>
-    requires(! mtp::is_array_dst<T>) && requires { new T{mtp::declval<Args>()...}; }
+    requires(! mtp::is_array_dst<T>) && requires { new T { mtp::declval<Args>()... }; }
 constexpr T* construct_at(T* location,
-                          Args&&... args) noexcept(noexcept(new T{mtp::declval<Args>()...})) {
+                          Args&&... args) noexcept(noexcept(new T { mtp::declval<Args>()... })) {
     void* loc = location;
     if constexpr (mtp::is_array<T>) {
         static_assert(sizeof...(Args) == 0,
@@ -41,7 +41,7 @@ constexpr T* construct_at(T* location,
                       "array");
         return new (loc) T[1]();
     } else
-        return new (loc) T{rstd::forward<Args>(args)...};
+        return new (loc) T { rstd::forward<Args>(args)... };
 }
 /// Destroys the object at the given location by calling its destructor.
 /// \param location Pointer to the object to destroy.
@@ -125,9 +125,11 @@ constexpr auto min(T a, T b) noexcept -> T {
 
 template<typename InputIter1, typename InputIter2, typename Compare>
 [[nodiscard]]
-constexpr auto lexicographical_compare_three_way(InputIter1 first1, InputIter1 last1,
-                                                 InputIter2 first2, InputIter2 last2,
-                                                 Compare comp) {
+constexpr auto lexicographical_compare_three_way(InputIter1 first1,
+                                                 InputIter1 last1,
+                                                 InputIter2 first2,
+                                                 InputIter2 last2,
+                                                 Compare    comp) {
     if constexpr (mtp::is_ptr<InputIter1> && mtp::is_ptr<InputIter2>) {
         if (! mtp::is_constant_evaluated()) {
             using T1 = std::iter_value_t<InputIter1>;
@@ -168,8 +170,10 @@ constexpr auto lexicographical_compare_three_way(InputIter1 first1, InputIter1 l
 /// Performs lexicographic three-way comparison of two ranges using `<=>`.
 /// \return The ordering result of the first differing element pair, or a length comparison.
 export template<typename InputIter1, typename InputIter2>
-constexpr auto lexicographical_compare_three_way(InputIter1 first1, InputIter1 last1,
-                                                 InputIter2 first2, InputIter2 last2) {
+constexpr auto lexicographical_compare_three_way(InputIter1 first1,
+                                                 InputIter1 last1,
+                                                 InputIter2 first2,
+                                                 InputIter2 last2) {
     return rstd::lexicographical_compare_three_way(
         first1, last1, first2, last2, std::compare_three_way {});
 }

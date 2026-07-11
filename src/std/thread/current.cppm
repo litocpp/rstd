@@ -16,9 +16,13 @@ namespace id
 thread_local Option<ThreadId> ID    = None();
 constexpr auto                CHEAP = true;
 
-auto get() -> Option<ThreadId> { return ID; }
+auto get() -> Option<ThreadId> {
+    return ID;
+}
 
-void set(ThreadId id) { ID = (Some(id)); }
+void set(ThreadId id) {
+    ID = (Some(id));
+}
 } // namespace id
 
 void drop_current();

@@ -114,9 +114,9 @@ public:
     }
 
     /// Dereferences the `Box`, providing mutable access to the inner value.
-    constexpr auto     operator->() noexcept { return m_ptr.as_mut_ptr(); }
+    constexpr auto operator->() noexcept { return m_ptr.as_mut_ptr(); }
     /// Dereferences the `Box`, providing const access to the inner value.
-    constexpr auto     operator->() const noexcept { return m_ptr.as_ptr(); }
+    constexpr auto operator->() const noexcept { return m_ptr.as_ptr(); }
     /// Returns `true` if this `Box` holds a valid (non-null) pointer.
     explicit constexpr operator bool() const noexcept { return ! rstd::mem::all(m_ptr, 0); }
 

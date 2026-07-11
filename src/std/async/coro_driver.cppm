@@ -7,13 +7,15 @@ using namespace rstd;
 namespace rstd::async
 {
 
-enum class CoroDriveState {
+enum class CoroDriveState
+{
     Pending,
     Ready,
     External,
 };
 
-enum class CoroExternalSegmentState {
+enum class CoroExternalSegmentState
+{
     Runtime,
     External,
 };
@@ -104,7 +106,7 @@ public:
     auto is_external() const noexcept -> bool { return m_state == CoroDriveState::External; }
 
     constexpr void take() const noexcept {}
-    auto take_placement() -> ResumePlacement { return rstd::move(m_placement); }
+    auto           take_placement() -> ResumePlacement { return rstd::move(m_placement); }
 };
 
 template<typename T>
@@ -157,9 +159,8 @@ auto resume_coro(coro<T>& task, bool& completed, task::Context& cx) -> CoroDrive
 }
 
 template<typename T>
-auto resume_coro_external_segment(coro<T>& task,
-                                  bool completed,
-                                  task::Context& cx) -> CoroExternalSegmentResult {
+auto resume_coro_external_segment(coro<T>& task, bool completed, task::Context& cx)
+    -> CoroExternalSegmentResult {
     auto& handle = CoroAccess<T>::handle(task);
     if (! handle) {
         rstd::panic { "empty async coro resumed" };
@@ -168,7 +169,7 @@ auto resume_coro_external_segment(coro<T>& task,
         rstd::panic { "async coro resumed after completion" };
     }
 
-    auto& promise = handle.promise();
+    auto& promise    = handle.promise();
     promise.awaiting = {};
     handle.resume();
 
@@ -202,7 +203,7 @@ private:
     Option<T> m_ready;
 
 public:
-    explicit CoroWaitOperation(coro<T>&& task) : m_coro(rstd::move(task)) {}
+    explicit CoroWaitOperation(coro<T>&& task): m_coro(rstd::move(task)) {}
 
     auto resume(AwaitContext& cx) -> AwaitOperationState {
         auto out = resume_coro(m_coro, m_completed, cx.poll_context());
@@ -216,9 +217,7 @@ public:
         return AwaitOperationState::Ready;
     }
 
-    auto placement() const -> ResumePlacement {
-        return ResumePlacement::runtime_worker();
-    }
+    auto placement() const -> ResumePlacement { return ResumePlacement::runtime_worker(); }
 
     auto take_output() -> T { return rstd::move(m_ready).unwrap_unchecked(); }
 };
@@ -233,7 +232,7 @@ private:
     bool       m_completed { false };
 
 public:
-    explicit CoroWaitOperation(coro<void>&& task) : m_coro(rstd::move(task)) {}
+    explicit CoroWaitOperation(coro<void>&& task): m_coro(rstd::move(task)) {}
 
     auto resume(AwaitContext& cx) -> AwaitOperationState {
         auto out = resume_coro(m_coro, m_completed, cx.poll_context());
@@ -247,9 +246,7 @@ public:
         return AwaitOperationState::Ready;
     }
 
-    auto placement() const -> ResumePlacement {
-        return ResumePlacement::runtime_worker();
-    }
+    auto placement() const -> ResumePlacement { return ResumePlacement::runtime_worker(); }
 
     constexpr void take_output() const noexcept {}
 };

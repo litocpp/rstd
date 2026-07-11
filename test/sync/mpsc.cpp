@@ -3,7 +3,6 @@ import rstd;
 using namespace rstd;
 using namespace rstd::sync::mpsc;
 
-
 TEST(MpmcArray, BasicSendRecv) {
     auto channel = mpmc::Channel<int>::with_capacity(4);
 
@@ -123,7 +122,9 @@ TEST(Mpsc, UnboundedDisconnectAfterDrain) {
 
     // Give the receiver a moment to enter start_recv before disconnecting.
     rstd::thread::sleep(rstd::time::Duration::from_millis(50));
-    { auto _ = rstd::move(tx); } // drop sender, triggers disconnect
+    {
+        auto _ = rstd::move(tx);
+    } // drop sender, triggers disconnect
 
     rstd::move(t).join().unwrap_unchecked();
 }

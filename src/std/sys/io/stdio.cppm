@@ -49,37 +49,34 @@ export auto write_fd(int fd, const u8* buf, usize len) noexcept -> Result<usize>
     HANDLE h;
     switch (fd) {
     case 1: h = GetStdHandle(M_STD_OUTPUT_HANDLE); break;
-    case 2: h = GetStdHandle(M_STD_ERROR_HANDLE);  break;
-    default:
-        return Err(Error::from_kind(
-            ErrorKind { ErrorKind::InvalidInput }));
+    case 2: h = GetStdHandle(M_STD_ERROR_HANDLE); break;
+    default: return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
     }
     if (h == M_INVALID_HANDLE_VALUE || h == nullptr) {
-        return Err(Error::from_raw_os_error(
-            static_cast<rstd::io::error::RawOsError>(GetLastError())));
+        return Err(
+            Error::from_raw_os_error(static_cast<rstd::io::error::RawOsError>(GetLastError())));
     }
     DWORD written = 0;
-    if (!WriteFile(h, buf, static_cast<DWORD>(len), &written, nullptr)) {
-        return Err(Error::from_raw_os_error(
-            static_cast<rstd::io::error::RawOsError>(GetLastError())));
+    if (! WriteFile(h, buf, static_cast<DWORD>(len), &written, nullptr)) {
+        return Err(
+            Error::from_raw_os_error(static_cast<rstd::io::error::RawOsError>(GetLastError())));
     }
     return Ok(usize(written));
 }
 
 export auto read_fd(int fd, u8* buf, usize len) noexcept -> Result<usize> {
     if (fd != 0) {
-        return Err(Error::from_kind(
-            ErrorKind { ErrorKind::InvalidInput }));
+        return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
     }
     HANDLE h = GetStdHandle(M_STD_INPUT_HANDLE);
     if (h == M_INVALID_HANDLE_VALUE || h == nullptr) {
-        return Err(Error::from_raw_os_error(
-            static_cast<rstd::io::error::RawOsError>(GetLastError())));
+        return Err(
+            Error::from_raw_os_error(static_cast<rstd::io::error::RawOsError>(GetLastError())));
     }
     DWORD read_bytes = 0;
-    if (!ReadFile(h, buf, static_cast<DWORD>(len), &read_bytes, nullptr)) {
-        return Err(Error::from_raw_os_error(
-            static_cast<rstd::io::error::RawOsError>(GetLastError())));
+    if (! ReadFile(h, buf, static_cast<DWORD>(len), &read_bytes, nullptr)) {
+        return Err(
+            Error::from_raw_os_error(static_cast<rstd::io::error::RawOsError>(GetLastError())));
     }
     return Ok(usize(read_bytes));
 }
@@ -87,13 +84,11 @@ export auto read_fd(int fd, u8* buf, usize len) noexcept -> Result<usize> {
 #else
 
 export auto write_fd(int, const u8*, usize) noexcept -> Result<usize> {
-    return Err(Error::from_kind(
-        ErrorKind { ErrorKind::Unsupported }));
+    return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
 }
 
 export auto read_fd(int, u8*, usize) noexcept -> Result<usize> {
-    return Err(Error::from_kind(
-        ErrorKind { ErrorKind::Unsupported }));
+    return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
 }
 
 #endif
@@ -106,9 +101,9 @@ export auto is_terminal_fd(int fd) noexcept -> bool {
 export auto is_terminal_fd(int fd) noexcept -> bool {
     HANDLE h;
     switch (fd) {
-    case 0: h = GetStdHandle(M_STD_INPUT_HANDLE);  break;
+    case 0: h = GetStdHandle(M_STD_INPUT_HANDLE); break;
     case 1: h = GetStdHandle(M_STD_OUTPUT_HANDLE); break;
-    case 2: h = GetStdHandle(M_STD_ERROR_HANDLE);  break;
+    case 2: h = GetStdHandle(M_STD_ERROR_HANDLE); break;
     default: return false;
     }
     if (h == M_INVALID_HANDLE_VALUE || h == nullptr) return false;
@@ -116,7 +111,9 @@ export auto is_terminal_fd(int fd) noexcept -> bool {
     return GetConsoleMode(h, &mode) != 0;
 }
 #else
-export auto is_terminal_fd(int) noexcept -> bool { return false; }
+export auto is_terminal_fd(int) noexcept -> bool {
+    return false;
+}
 #endif
 
 } // namespace rstd::sys::io::stdio

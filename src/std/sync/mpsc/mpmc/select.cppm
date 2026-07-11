@@ -22,7 +22,8 @@ export struct Operation {
 
 /// Current state of a blocking operation.
 export struct Selected {
-    enum class State : usize {
+    enum class State : usize
+    {
         Waiting      = 0,
         Aborted      = 1,
         Disconnected = 2,
@@ -49,7 +50,7 @@ export struct Selected {
         return None();
     }
 
-    operator usize() const { return val; }
+                    operator usize() const { return val; }
     static Selected from_usize(usize v) { return Selected { v }; }
 };
 

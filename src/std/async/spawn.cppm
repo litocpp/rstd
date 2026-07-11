@@ -14,21 +14,21 @@ struct JoinHandleFactory;
 template<typename T>
 struct JoinState {
     struct Fields {
-        Option<T>          value;
-        Option<JoinError>  error;
+        Option<T>           value;
+        Option<JoinError>   error;
         Option<task::Waker> waker;
-        Option<TaskRef>    task;
-        bool               ready { false };
-        bool               consumed { false };
+        Option<TaskRef>     task;
+        bool                ready { false };
+        bool                consumed { false };
     };
 
     sync::Mutex<Fields> fields;
     sync::Condvar       ready_cvar;
 
-    JoinState() : fields(Fields {}), ready_cvar(sync::Condvar::make()) {}
+    JoinState(): fields(Fields {}), ready_cvar(sync::Condvar::make()) {}
 
     void set_task(TaskRef task) {
-        auto f = fields.lock().unwrap_unchecked();
+        auto f  = fields.lock().unwrap_unchecked();
         f->task = Some(rstd::move(task));
     }
 
@@ -72,9 +72,11 @@ struct JoinState {
             }
             f->consumed = true;
             if (f->error.is_some()) {
-                return task::Poll<Result<T, JoinError>>::Ready(Err(rstd::move(f->error).unwrap_unchecked()));
+                return task::Poll<Result<T, JoinError>>::Ready(
+                    Err(rstd::move(f->error).unwrap_unchecked()));
             }
-            return task::Poll<Result<T, JoinError>>::Ready(Ok(rstd::move(f->value).unwrap_unchecked()));
+            return task::Poll<Result<T, JoinError>>::Ready(
+                Ok(rstd::move(f->value).unwrap_unchecked()));
         }
         f->waker = Some(cx.waker().clone());
         return task::Poll<Result<T, JoinError>>::Pending();
@@ -117,20 +119,20 @@ struct JoinState {
 template<>
 struct JoinState<void> {
     struct Fields {
-        Option<JoinError>  error;
+        Option<JoinError>   error;
         Option<task::Waker> waker;
-        Option<TaskRef>    task;
-        bool               ready { false };
-        bool               consumed { false };
+        Option<TaskRef>     task;
+        bool                ready { false };
+        bool                consumed { false };
     };
 
     sync::Mutex<Fields> fields;
     sync::Condvar       ready_cvar;
 
-    JoinState() : fields(Fields {}), ready_cvar(sync::Condvar::make()) {}
+    JoinState(): fields(Fields {}), ready_cvar(sync::Condvar::make()) {}
 
     void set_task(TaskRef task) {
-        auto f = fields.lock().unwrap_unchecked();
+        auto f  = fields.lock().unwrap_unchecked();
         f->task = Some(rstd::move(task));
     }
 
@@ -257,7 +259,8 @@ struct TaskState : TaskStateBase {
 
 template<typename F>
     requires Impled<mtp::rm_cvf<F>, future::Future<future::future_output_t<F>>>
-auto spawn_on(RuntimeInner& runtime, F future) -> rstd::async::JoinHandle<future::future_output_t<F>>;
+auto spawn_on(RuntimeInner& runtime, F future)
+    -> rstd::async::JoinHandle<future::future_output_t<F>>;
 
 template<typename T>
 auto spawn_driver_on(RuntimeInner& runtime, rstd::async::RuntimeCoroDriver<T> driver)
@@ -270,23 +273,21 @@ export template<typename T>
 class JoinHandle {
     sync::Arc<JoinState<T>> state;
 
-    explicit JoinHandle(sync::Arc<JoinState<T>> state) : state(rstd::move(state)) {}
+    explicit JoinHandle(sync::Arc<JoinState<T>> state): state(rstd::move(state)) {}
 
     friend struct ::JoinHandleFactory;
     friend class Runtime;
 
-    auto blocking_wait() -> Result<mtp::void_empty_t<T>, JoinError> {
-        return state->wait();
-    }
+    auto blocking_wait() -> Result<mtp::void_empty_t<T>, JoinError> { return state->wait(); }
 
 public:
     using Output = Result<mtp::void_empty_t<T>, JoinError>;
 
-    JoinHandle(const JoinHandle&)            = delete;
-    JoinHandle& operator=(const JoinHandle&) = delete;
-    JoinHandle(JoinHandle&&) noexcept        = default;
+    JoinHandle(const JoinHandle&)                        = delete;
+    JoinHandle& operator=(const JoinHandle&)             = delete;
+    JoinHandle(JoinHandle&&) noexcept                    = default;
     auto operator=(JoinHandle&&) noexcept -> JoinHandle& = default;
-    ~JoinHandle() = default;
+    ~JoinHandle()                                        = default;
 
     void abort() { state->abort_task(); }
 
@@ -311,9 +312,9 @@ struct DriverTaskState : TaskStateBase {
     rstd::async::RuntimeCoroDriver<T> driver;
     sync::Arc<JoinState<T>>           join;
 
-    DriverTaskState(sync::Weak<RuntimeInner> runtime,
+    DriverTaskState(sync::Weak<RuntimeInner>          runtime,
                     rstd::async::RuntimeCoroDriver<T> driver,
-                    sync::Arc<JoinState<T>> join)
+                    sync::Arc<JoinState<T>>           join)
         : TaskStateBase(rstd::move(runtime)), driver(rstd::move(driver)), join(rstd::move(join)) {}
 
     void poll(TaskRef& self, task::Context& cx) override {
@@ -326,17 +327,16 @@ struct DriverTaskState : TaskStateBase {
                 return;
             }
 
-            auto placement = out.take_placement();
+            auto placement   = out.take_placement();
             auto run_task    = self.clone();
             auto cancel_task = self.clone();
             auto posted      = placement.post_external(
                 rstd::async::ResumeJob::make([task = rstd::move(run_task)]() mutable {
                     task->run_external_continuation(task);
                 }),
-                rstd::async::ResumeCancel::make(
-                    [task = rstd::move(cancel_task)]() mutable {
-                        task->cancel_external_handoff(task);
-                    }));
+                rstd::async::ResumeCancel::make([task = rstd::move(cancel_task)]() mutable {
+                    task->cancel_external_handoff(task);
+                }));
             (void)posted;
             return;
         }
@@ -384,17 +384,16 @@ struct DriverTaskState : TaskStateBase {
                 return;
             }
 
-            auto placement = out.take_placement();
+            auto placement   = out.take_placement();
             auto run_task    = self.clone();
             auto cancel_task = self.clone();
             auto posted      = placement.post_external(
                 rstd::async::ResumeJob::make([task = rstd::move(run_task)]() mutable {
                     task->run_external_continuation(task);
                 }),
-                rstd::async::ResumeCancel::make(
-                    [task = rstd::move(cancel_task)]() mutable {
-                        task->cancel_external_handoff(task);
-                    }));
+                rstd::async::ResumeCancel::make([task = rstd::move(cancel_task)]() mutable {
+                    task->cancel_external_handoff(task);
+                }));
             (void)posted;
             return;
         }
@@ -404,12 +403,13 @@ struct DriverTaskState : TaskStateBase {
 
 template<typename F>
     requires Impled<mtp::rm_cvf<F>, future::Future<future::future_output_t<F>>>
-auto spawn_on(RuntimeInner& runtime, F future) -> rstd::async::JoinHandle<future::future_output_t<F>> {
+auto spawn_on(RuntimeInner& runtime, F future)
+    -> rstd::async::JoinHandle<future::future_output_t<F>> {
     using Output = future::future_output_t<F>;
 
     auto join = sync::Arc<JoinState<Output>>::make();
-    auto task = TaskRef::adopt(
-        new TaskState<Output, F>(runtime.weak(), rstd::move(future), join.clone()));
+    auto task =
+        TaskRef::adopt(new TaskState<Output, F>(runtime.weak(), rstd::move(future), join.clone()));
     join->set_task(task.clone());
     runtime.spawn(rstd::move(task));
 
@@ -420,8 +420,8 @@ template<typename T>
 auto spawn_driver_on(RuntimeInner& runtime, rstd::async::RuntimeCoroDriver<T> driver)
     -> rstd::async::JoinHandle<T> {
     auto join = sync::Arc<JoinState<T>>::make();
-    auto task = TaskRef::adopt(
-        new DriverTaskState<T>(runtime.weak(), rstd::move(driver), join.clone()));
+    auto task =
+        TaskRef::adopt(new DriverTaskState<T>(runtime.weak(), rstd::move(driver), join.clone()));
     join->set_task(task.clone());
     runtime.spawn(rstd::move(task));
 

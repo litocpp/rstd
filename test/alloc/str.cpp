@@ -25,7 +25,9 @@ struct Impl<str_::FromStr, int> {
 };
 } // namespace rstd
 
-static auto call(ref<str> s) { return s[1]; }
+static auto call(ref<str> s) {
+    return s[1];
+}
 
 TEST(Str, FromStr) {
     std::string name = "name";

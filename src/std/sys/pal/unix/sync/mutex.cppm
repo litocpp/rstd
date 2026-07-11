@@ -37,14 +37,15 @@ public:
         if (r != 0) {
             // TODO: from_raw_parts_os_error
             // error = Error::from_raw_parts_os_error(r);
-            panic{"failed to lock mutex"};
+            panic { "failed to lock mutex" };
         }
     }
 
     auto try_lock() noexcept -> bool { return pthread_mutex_trylock(raw()) == 0; }
 
     void unlock() noexcept {
-        [[maybe_unused]] auto r = pthread_mutex_unlock(raw());
+        [[maybe_unused]]
+        auto r = pthread_mutex_unlock(raw());
         debug_assert_eq(r, 0);
     }
 };

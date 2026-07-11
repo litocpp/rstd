@@ -23,10 +23,14 @@ namespace rstd
 {
 
 template<>
-struct Impl<Sized, ffi::OsStr> { ~Impl() = delete; };
+struct Impl<Sized, ffi::OsStr> {
+    ~Impl() = delete;
+};
 
 template<>
-struct Impl<ptr_::Pointee, ffi::OsStr> { using Metadata = usize; };
+struct Impl<ptr_::Pointee, ffi::OsStr> {
+    using Metadata = usize;
+};
 
 /// A borrowed reference to a platform-native string.
 template<>
@@ -34,12 +38,12 @@ struct ref<ffi::OsStr> : ref_base<ref<ffi::OsStr>, u8[], false> {
     u8 const* p { nullptr };
     usize     length { 0 };
 
-    using Self = ref;
+    using Self               = ref;
     constexpr ref() noexcept = default;
-    constexpr ref(u8 const* p, usize len) noexcept : p(p), length(len) {}
+    constexpr ref(u8 const* p, usize len) noexcept: p(p), length(len) {}
 
     /// Construct from a `ref<str>` (UTF-8 is always valid OS bytes).
-    constexpr ref(ref<str> s) noexcept : p(s.data()), length(s.size()) {}
+    constexpr ref(ref<str> s) noexcept: p(s.data()), length(s.size()) {}
 
     /// Construct from a null-terminated C string.
     constexpr ref(const char* c_str) noexcept
@@ -67,8 +71,8 @@ struct ref<ffi::OsStr> : ref_base<ref<ffi::OsStr>, u8[], false> {
 
     /// Converts to a `String`, replacing invalid UTF-8 with U+FFFD.
     auto to_string_lossy() const -> String {
-        auto buf = String::make();
-        usize i = 0;
+        auto  buf = String::make();
+        usize i   = 0;
         while (i < length) {
             auto [cp, n] = char_::decode_utf8(p + i, length - i);
             if (cp == char_::REPLACEMENT && n == 1 && p[i] > 0x7F) {
@@ -100,11 +104,11 @@ export namespace rstd::ffi
 class OsString {
     Vec<u8> inner;
 
-    explicit OsString(Vec<u8>&& v) : inner(rstd::move(v)) {}
+    explicit OsString(Vec<u8>&& v): inner(rstd::move(v)) {}
 
 public:
-    OsString() = default;
-    OsString(OsString&&) noexcept = default;
+    OsString()                               = default;
+    OsString(OsString&&) noexcept            = default;
     OsString& operator=(OsString&&) noexcept = default;
 
     /// Creates an empty `OsString`.
@@ -117,9 +121,7 @@ public:
     }
 
     /// Creates an `OsString` by copying a `ref<str>`.
-    static auto from(ref<str> s) -> OsString {
-        return from(String::make(s));
-    }
+    static auto from(ref<str> s) -> OsString { return from(String::make(s)); }
 
     /// Creates an `OsString` by copying a `ref<OsStr>`.
     static auto from(ref<OsStr> s) -> OsString {
@@ -182,7 +184,7 @@ struct Impl<fmt::Display, ref<ffi::OsStr>> : ImplBase<ref<ffi::OsStr>> {
         usize i = 0;
         while (i < s.len()) {
             auto [cp, n] = char_::decode_utf8(s.data() + i, s.len() - i);
-            u8 buf[4];
+            u8   buf[4];
             auto wrote = char_::encode_utf8(cp, buf);
             if (! f.write_raw(buf, wrote)) return false;
             i += n;

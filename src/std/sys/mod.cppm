@@ -23,4 +23,4 @@ using pal::args_argc_argv;
 using pal::Instant;
 using pal::SystemTime;
 
-}
+} // namespace rstd::sys

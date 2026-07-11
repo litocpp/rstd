@@ -1,19 +1,19 @@
 #pragma once
 
 #if defined(_WIN32)
-#    define RSTD_OS_WINDOWS 1
+#define RSTD_OS_WINDOWS 1
 #endif
 
 #if defined(__linux__)
-#    define RSTD_OS_LINUX 1
+#define RSTD_OS_LINUX 1
 #endif
 
 #if defined(__APPLE__)
-#    define RSTD_OS_APPLE 1
+#define RSTD_OS_APPLE 1
 #endif
 
 #if defined(__unix__) || defined(__APPLE__)
-#    define RSTD_OS_UNIX 1
+#define RSTD_OS_UNIX 1
 #endif
 
 #define USE_TRAIT(Class)                                                    \
@@ -33,12 +33,12 @@
 #define RSTD_REST_ARGS(a, ...) __VA_OPT__(, ) __VA_ARGS__
 
 #ifdef NDEBUG
-#    define debug_assert(...)    ((void)0)
-#    define debug_assert_eq(...) ((void)0)
+#define debug_assert(...)    ((void)0)
+#define debug_assert_eq(...) ((void)0)
 #else
-#    define debug_assert(EXP, ...) \
-        if (! (EXP)) rstd::panic(#EXP RSTD_STR(__VA_ARGS__) RSTD_REST_ARGS(__VA_ARGS__))
-#    define debug_assert_eq(A, B) debug_assert((A) == (B))
+#define debug_assert(EXP, ...) \
+    if (! (EXP)) rstd::panic(#EXP RSTD_STR(__VA_ARGS__) RSTD_REST_ARGS(__VA_ARGS__))
+#define debug_assert_eq(A, B) debug_assert((A) == (B))
 #endif
 
 #define rstd_assert(EXP, ...) \
@@ -67,14 +67,14 @@
     } while (0)
 
 #ifdef NDEBUG
-#    define rstd_debug(...) ((void)0)
+#define rstd_debug(...) ((void)0)
 #else
-#    define rstd_debug(...)                                            \
-        do {                                                           \
-            if (rstd::log::log_enabled(rstd::log::Level::Debug, "")) { \
-                rstd::log::debug(__VA_ARGS__);                         \
-            }                                                          \
-        } while (0)
+#define rstd_debug(...)                                            \
+    do {                                                           \
+        if (rstd::log::log_enabled(rstd::log::Level::Debug, "")) { \
+            rstd::log::debug(__VA_ARGS__);                         \
+        }                                                          \
+    } while (0)
 #endif
 
 #define rstd_trace(...)                                            \
@@ -85,41 +85,41 @@
     } while (0)
 
 // Target-specific macros
-#define rstd_error_t(TARGET, ...)                                            \
-    do {                                                                     \
-        if (rstd::log::log_enabled(rstd::log::Level::Error, TARGET)) {       \
-            rstd::log::error(TARGET, __VA_ARGS__);                           \
-        }                                                                    \
+#define rstd_error_t(TARGET, ...)                                      \
+    do {                                                               \
+        if (rstd::log::log_enabled(rstd::log::Level::Error, TARGET)) { \
+            rstd::log::error(TARGET, __VA_ARGS__);                     \
+        }                                                              \
     } while (0)
 
-#define rstd_warn_t(TARGET, ...)                                            \
-    do {                                                                    \
-        if (rstd::log::log_enabled(rstd::log::Level::Warn, TARGET)) {       \
-            rstd::log::warn(TARGET, __VA_ARGS__);                           \
-        }                                                                   \
+#define rstd_warn_t(TARGET, ...)                                      \
+    do {                                                              \
+        if (rstd::log::log_enabled(rstd::log::Level::Warn, TARGET)) { \
+            rstd::log::warn(TARGET, __VA_ARGS__);                     \
+        }                                                             \
     } while (0)
 
-#define rstd_info_t(TARGET, ...)                                            \
-    do {                                                                    \
-        if (rstd::log::log_enabled(rstd::log::Level::Info, TARGET)) {       \
-            rstd::log::info(TARGET, __VA_ARGS__);                           \
-        }                                                                   \
+#define rstd_info_t(TARGET, ...)                                      \
+    do {                                                              \
+        if (rstd::log::log_enabled(rstd::log::Level::Info, TARGET)) { \
+            rstd::log::info(TARGET, __VA_ARGS__);                     \
+        }                                                             \
     } while (0)
 
 #ifdef NDEBUG
-#    define rstd_debug_t(...) ((void)0)
+#define rstd_debug_t(...) ((void)0)
 #else
-#    define rstd_debug_t(TARGET, ...)                                       \
-        do {                                                                \
-            if (rstd::log::log_enabled(rstd::log::Level::Debug, TARGET)) {  \
-                rstd::log::debug(TARGET, __VA_ARGS__);                      \
-            }                                                               \
-        } while (0)
+#define rstd_debug_t(TARGET, ...)                                      \
+    do {                                                               \
+        if (rstd::log::log_enabled(rstd::log::Level::Debug, TARGET)) { \
+            rstd::log::debug(TARGET, __VA_ARGS__);                     \
+        }                                                              \
+    } while (0)
 #endif
 
-#define rstd_trace_t(TARGET, ...)                                           \
-    do {                                                                    \
-        if (rstd::log::log_enabled(rstd::log::Level::Trace, TARGET)) {      \
-            rstd::log::trace(TARGET, __VA_ARGS__);                          \
-        }                                                                   \
+#define rstd_trace_t(TARGET, ...)                                      \
+    do {                                                               \
+        if (rstd::log::log_enabled(rstd::log::Level::Trace, TARGET)) { \
+            rstd::log::trace(TARGET, __VA_ARGS__);                     \
+        }                                                              \
     } while (0)

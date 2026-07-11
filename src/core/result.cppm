@@ -32,11 +32,8 @@ struct result_traits<Result<T, E>> {
     using ret_value_t = T;
     using ret_error_t = E;
 
-    using union_value_t =
-        mtp::cond<mtp::is_ref<T>, mtp::add_ptr<mtp::rm_ref<T>>,
-                  mtp::rm_cv<T>>;
-    using union_error_t =
-        mtp::cond<mtp::is_ref<E>, mtp::add_ptr<mtp::rm_ref<E>>, E>;
+    using union_value_t = mtp::cond<mtp::is_ref<T>, mtp::add_ptr<mtp::rm_ref<T>>, mtp::rm_cv<T>>;
+    using union_error_t = mtp::cond<mtp::is_ref<E>, mtp::add_ptr<mtp::rm_ref<E>>, E>;
 };
 
 template<typename T, typename E>
@@ -169,11 +166,13 @@ protected:
 
 public:
     /// Returns `true` if the result is `Ok`.
-    [[gnu::always_inline]] inline constexpr auto is_ok() const noexcept -> bool {
+    [[gnu::always_inline]]
+    inline constexpr auto is_ok() const noexcept -> bool {
         return _cast()._is_ok();
     }
     /// Returns `true` if the result is `Err`.
-    [[gnu::always_inline]] inline constexpr auto is_err() const noexcept -> bool {
+    [[gnu::always_inline]]
+    inline constexpr auto is_err() const noexcept -> bool {
         return ! is_ok();
     }
 
@@ -301,8 +300,7 @@ public:
     /// Returns the contained `Ok` value. Panics with the given message if `Err`.
     /// \param msg The panic message to display on failure.
     /// \return The contained `Ok` value.
-    auto expect(ref<str> msg) -> T
-    {
+    auto expect(ref<str> msg) -> T {
         if (is_ok()) {
             return _get_move<0>();
         } else {
@@ -313,8 +311,7 @@ public:
 
     /// Returns the contained `Ok` value. Panics if the result is `Err`.
     /// \return The contained `Ok` value.
-    auto unwrap() -> T
-    {
+    auto unwrap() -> T {
         if (is_ok()) {
             return _get_move<0>();
         } else {
@@ -338,8 +335,7 @@ public:
     /// Returns the contained `Err` value. Panics with the given message if `Ok`.
     /// \param msg The panic message to display on failure.
     /// \return The contained `Err` value.
-    auto expect_err(ref<str> msg) -> E
-    {
+    auto expect_err(ref<str> msg) -> E {
         if (is_ok()) {
             unwrap_failed(msg, _get<0>());
             rstd::unreachable();
@@ -350,8 +346,7 @@ public:
 
     /// Returns the contained `Err` value. Panics if the result is `Ok`.
     /// \return The contained `Err` value.
-    auto unwrap_err() -> E
-    {
+    auto unwrap_err() -> E {
         if (is_err()) {
             return _get_move<1>();
         } else {
@@ -363,7 +358,8 @@ public:
     /// Calls `op` with the `Ok` value and returns the result. Returns the `Err` value unchanged if `Err`.
     /// \param op A function that takes the `Ok` value and returns a `Result`.
     /// \return The result of `op(value)` if `Ok`, otherwise the original `Err`.
-    template<typename U  = void, typename F,
+    template<typename U = void,
+             typename F,
              typename U2 = typename mtp::invoke_result_t<F, T>::value_type>
     // requires ImpledT<FnOnce<F, Result<mtp::cond<mtp::is_void<U>, U2, U>, E>(T)>>
     auto and_then(F&& op) -> Result<mtp::cond<mtp::is_void<U>, U2, U>, E> {
@@ -446,8 +442,8 @@ public:
 
     /// Converts from `Result<T, E>` to `Result<const T&, const E&>`.
     /// \return A `Result` containing const references to the inner values.
-    constexpr auto as_ref() const -> Result<mtp::add_ref<mtp::add_const<T>>,
-                                            mtp::add_ref<mtp::add_const<E>>> {
+    constexpr auto as_ref() const
+        -> Result<mtp::add_ref<mtp::add_const<T>>, mtp::add_ref<mtp::add_const<E>>> {
         if (is_ok()) {
             return Ok(_get<0>());
         } else {
@@ -571,7 +567,7 @@ struct err_tag {};
 
 } // namespace detail
 
-#define RSTD_RESULT_VARIANTS(V) \
+#define RSTD_RESULT_VARIANTS(V)   \
     V(Ok, (union_value_t value;)) \
     V(Err, (union_error_t error;))
 
@@ -585,7 +581,7 @@ class Result : public detail::result_impl<T, E> {
     template<typename, typename>
     friend struct rstd::Impl;
 
-    using traits = detail::result_traits<Result<T, E>>;
+    using traits        = detail::result_traits<Result<T, E>>;
     using union_value_t = typename traits::union_value_t;
     using union_error_t = typename traits::union_error_t;
 
@@ -643,10 +639,12 @@ public:
     template<typename U>
     using rebind = Result<U, error_type>;
 
-    [[gnu::always_inline]] inline constexpr auto is_ok() const noexcept -> bool {
+    [[gnu::always_inline]]
+    inline constexpr auto is_ok() const noexcept -> bool {
         return _is_ok();
     }
-    [[gnu::always_inline]] inline constexpr auto is_err() const noexcept -> bool {
+    [[gnu::always_inline]]
+    inline constexpr auto is_err() const noexcept -> bool {
         return ! is_ok();
     }
 
@@ -668,8 +666,7 @@ public:
     template<typename U>
     constexpr Result(U&& o) noexcept(
         mtp::noex_init<T, typename detail::result_traits<U>::value_type>)
-        requires mtp::init<UnknownErr,
-                                         typename detail::result_traits<U>::error_type> &&
+        requires mtp::init<UnknownErr, typename detail::result_traits<U>::error_type> &&
                  mtp::init<T, typename detail::result_traits<U>::value_type>
     {
         this->_construct_val(mtp::rm_cvf<U>::template _get<0>(rstd::forward<U>(o)));
@@ -679,8 +676,7 @@ public:
     template<typename U>
     constexpr Result(U&& o) noexcept(
         mtp::noex_init<E, typename detail::result_traits<U>::error_type>)
-        requires mtp::init<UnknownOk,
-                                         typename detail::result_traits<U>::value_type> &&
+        requires mtp::init<UnknownOk, typename detail::result_traits<U>::value_type> &&
                  mtp::init<E, typename detail::result_traits<U>::error_type>
     {
         this->_construct_err(mtp::rm_cvf<U>::template _get<1>(rstd::forward<U>(o)));
@@ -691,8 +687,7 @@ public:
     constexpr inline Result(Result&& o) noexcept(mtp::noex_move<union_value_t> &&
                                                  mtp::noex_move<union_error_t>)
         requires mtp::move<union_value_t> && mtp::move<union_error_t>
-        : rstd_enum_storage_()
-    {
+        : rstd_enum_storage_() {
         if (o.is_ok()) {
             this->_construct_val(Result::template _get<0>(rstd::move(o)));
         } else {
@@ -710,10 +705,10 @@ public:
 
     Result& operator=(const Result&) = delete;
 
-    constexpr inline Result& operator=(Result&& o) noexcept(
-        mtp::noex_move<union_value_t> && mtp::noex_move<union_error_t>)
+    constexpr inline Result& operator=(Result&& o) noexcept(mtp::noex_move<union_value_t> &&
+                                                            mtp::noex_move<union_error_t>)
         requires mtp::triv_assign_move<typename traits::union_value_t> &&
-                     mtp::triv_assign_move<typename traits::union_error_t>
+                 mtp::triv_assign_move<typename traits::union_error_t>
     {
         if (this == rstd::addressof(o)) {
             return *this;
@@ -788,11 +783,10 @@ public:
     }
 
     template<typename U, typename E2>
-        requires(! mtp::is_void<U>) &&
-                requires(const T& t, const U& u, const E& e, const E2& e2) {
-                    { t == u } -> mtp::convertible_to<bool>;
-                    { e == e2 } -> mtp::convertible_to<bool>;
-                }
+        requires(! mtp::is_void<U>) && requires(const T& t, const U& u, const E& e, const E2& e2) {
+            { t == u } -> mtp::convertible_to<bool>;
+            { e == e2 } -> mtp::convertible_to<bool>;
+        }
     friend constexpr bool operator==(const Result& x, const Result<U, E2>& y) noexcept(
         noexcept(bool(x.template _get<0>() == y.template _get<0>())) &&
         noexcept(bool(x.template _get<1>() == y.template _get<1>()))) {

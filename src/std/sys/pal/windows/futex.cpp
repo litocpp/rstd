@@ -23,7 +23,9 @@ void wake_by_address_single(const void* address) {
     WakeByAddressSingle(const_cast<void*>(address));
 }
 
-void wake_by_address_all(const void* address) { WakeByAddressAll(const_cast<void*>(address)); }
+void wake_by_address_all(const void* address) {
+    WakeByAddressAll(const_cast<void*>(address));
+}
 
 template<typename T>
 bool futex_wait(const Atomic<T>* futex, T expected, Option<Duration> timeout) {

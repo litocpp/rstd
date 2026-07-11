@@ -58,9 +58,7 @@ public:
         return p == nullptr ? nullptr : p + m_pos;
     }
 
-    auto as_slice() const noexcept -> slice<u8> {
-        return slice<u8>::from_raw_parts(data(), len());
-    }
+    auto as_slice() const noexcept -> slice<u8> { return slice<u8>::from_raw_parts(data(), len()); }
 
     auto remaining() const noexcept -> usize { return len(); }
     auto chunk() const noexcept -> slice<u8> { return as_slice(); }
@@ -129,9 +127,7 @@ public:
         return p == nullptr ? nullptr : p + m_pos;
     }
 
-    auto as_slice() const noexcept -> slice<u8> {
-        return slice<u8>::from_raw_parts(data(), len());
-    }
+    auto as_slice() const noexcept -> slice<u8> { return slice<u8>::from_raw_parts(data(), len()); }
 
     auto as_mut_slice() noexcept -> mut_ptr<u8[]> {
         return mut_ptr<u8[]>::from_raw_parts(data(), len());
@@ -168,7 +164,7 @@ public:
 
     void resize(usize new_len, u8 value) {
         if (m_pos != 0 && new_len > len()) {
-            auto dst     = Vec<u8>::with_capacity(new_len);
+            auto dst = Vec<u8>::with_capacity(new_len);
             dst.extend_from_slice(as_slice());
             dst.resize(new_len, value);
             m_buf = rstd::move(dst);

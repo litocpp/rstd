@@ -12,13 +12,19 @@ export struct Formatter;
 // Forward declarations consumed by the `Arguments::make` factory below.
 // `FormatString` is forward-declared; its definition lives further
 // down once the consteval check helpers are in scope.
-template<typename T> struct _FmtId { using type = T; };
-export template<typename... Args> struct FormatString;
+template<typename T>
+struct _FmtId {
+    using type = T;
+};
+export template<typename... Args>
+struct FormatString;
 export template<typename... Args>
 using format_string = FormatString<typename _FmtId<Args>::type...>;
 
-namespace detail {
-template<usize N> struct ArgumentsStorage;
+namespace detail
+{
+template<usize N>
+struct ArgumentsStorage;
 }
 
 /// Text alignment options for formatted output.
@@ -52,15 +58,15 @@ export struct FormattingOptions {
     static constexpr u32 HAS_WIDTH   = 1u << 28u;
     static constexpr u32 HAS_PREC    = 1u << 29u;
 
-    constexpr auto fill()      const noexcept -> char  { return char(flags & FILL_MASK); }
-    constexpr auto align()     const noexcept -> Align { return Align((flags >> ALIGN_SHIFT) & 0b11u); }
-    constexpr auto sign_plus() const noexcept -> bool  { return bool(flags & SIGN_PLUS); }
-    constexpr auto sign_minus()const noexcept -> bool  { return bool(flags & SIGN_MINUS); }
-    constexpr auto alternate() const noexcept -> bool  { return bool(flags & ALTERNATE); }
-    constexpr auto zero_pad()  const noexcept -> bool  { return bool(flags & ZERO_PAD); }
-    constexpr auto is_debug()  const noexcept -> bool  { return bool(flags & DEBUG); }
-    constexpr auto has_width() const noexcept -> bool  { return bool(flags & HAS_WIDTH); }
-    constexpr auto has_prec()  const noexcept -> bool  { return bool(flags & HAS_PREC); }
+    constexpr auto fill() const noexcept -> char { return char(flags & FILL_MASK); }
+    constexpr auto align() const noexcept -> Align { return Align((flags >> ALIGN_SHIFT) & 0b11u); }
+    constexpr auto sign_plus() const noexcept -> bool { return bool(flags & SIGN_PLUS); }
+    constexpr auto sign_minus() const noexcept -> bool { return bool(flags & SIGN_MINUS); }
+    constexpr auto alternate() const noexcept -> bool { return bool(flags & ALTERNATE); }
+    constexpr auto zero_pad() const noexcept -> bool { return bool(flags & ZERO_PAD); }
+    constexpr auto is_debug() const noexcept -> bool { return bool(flags & DEBUG); }
+    constexpr auto has_width() const noexcept -> bool { return bool(flags & HAS_WIDTH); }
+    constexpr auto has_prec() const noexcept -> bool { return bool(flags & HAS_PREC); }
 
     constexpr auto set_fill(char c) noexcept -> FormattingOptions& {
         flags = (flags & ~FILL_MASK) | u32(u8(c));
@@ -71,13 +77,18 @@ export struct FormattingOptions {
         return *this;
     }
     constexpr auto set_width(u16 w) noexcept -> FormattingOptions& {
-        width = w; flags |= HAS_WIDTH; return *this;
+        width = w;
+        flags |= HAS_WIDTH;
+        return *this;
     }
     constexpr auto set_precision(u16 p) noexcept -> FormattingOptions& {
-        precision = p; flags |= HAS_PREC; return *this;
+        precision = p;
+        flags |= HAS_PREC;
+        return *this;
     }
     constexpr auto set_flag(u32 f) noexcept -> FormattingOptions& {
-        flags |= f; return *this;
+        flags |= f;
+        return *this;
     }
 };
 
@@ -140,44 +151,44 @@ export struct Write {
 /// Passed to Display::fmt and Debug::fmt to produce formatted output.
 export struct Formatter {
 private:
-    void*  _writer;
+    void* _writer;
     auto (*_write_func)(void*, const u8*, usize) -> bool;
-    FormattingOptions _options{};
+    FormattingOptions _options {};
 
 public:
     template<typename W>
         requires Impled<W, Write>
     constexpr Formatter(W& writer) noexcept
-        : _writer(rstd::addressof(writer)),
-          _write_func([](void* w, const u8* p, usize len) {
+        : _writer(rstd::addressof(writer)), _write_func([](void* w, const u8* p, usize len) {
               return as<Write>(*static_cast<W*>(w)).write_str(p, len);
           }) {}
 
     // Raw construction from type-erased writer (used by panic infrastructure).
-    Formatter(void* writer, bool(*write_func)(void*, const u8*, usize)) noexcept
+    Formatter(void* writer, bool (*write_func)(void*, const u8*, usize)) noexcept
         : _writer(writer), _write_func(write_func) {}
 
     auto write_raw(const u8* p, usize len) -> bool { return _write_func(_writer, p, len); }
     auto write_fmt(struct Arguments args) -> bool;
 
     // Read-only access to current format options (valid inside Display::fmt / Debug::fmt).
-    auto options()     const noexcept -> FormattingOptions const& { return _options; }
-    auto fill()        const noexcept -> char  { return _options.fill(); }
-    auto align()       const noexcept -> Align { return _options.align(); }
-    auto sign_plus()   const noexcept -> bool  { return _options.sign_plus(); }
-    auto sign_minus()  const noexcept -> bool  { return _options.sign_minus(); }
-    auto alternate()   const noexcept -> bool  { return _options.alternate(); }
-    auto zero_pad()    const noexcept -> bool  { return _options.zero_pad(); }
-    auto is_debug()    const noexcept -> bool  { return _options.is_debug(); }
-    auto has_width()   const noexcept -> bool  { return _options.has_width(); }
-    auto has_prec()    const noexcept -> bool  { return _options.has_prec(); }
-    auto width()       const noexcept -> u16   { return _options.width; }
-    auto precision()   const noexcept -> u16   { return _options.precision; }
+    auto options() const noexcept -> FormattingOptions const& { return _options; }
+    auto fill() const noexcept -> char { return _options.fill(); }
+    auto align() const noexcept -> Align { return _options.align(); }
+    auto sign_plus() const noexcept -> bool { return _options.sign_plus(); }
+    auto sign_minus() const noexcept -> bool { return _options.sign_minus(); }
+    auto alternate() const noexcept -> bool { return _options.alternate(); }
+    auto zero_pad() const noexcept -> bool { return _options.zero_pad(); }
+    auto is_debug() const noexcept -> bool { return _options.is_debug(); }
+    auto has_width() const noexcept -> bool { return _options.has_width(); }
+    auto has_prec() const noexcept -> bool { return _options.has_prec(); }
+    auto width() const noexcept -> u16 { return _options.width; }
+    auto precision() const noexcept -> u16 { return _options.precision; }
 
     // write_fmt is the only one allowed to mutate _options.
-    friend auto Formatter_set_options(Formatter& f, FormattingOptions opts) noexcept -> FormattingOptions {
-        auto saved  = f._options;
-        f._options  = opts;
+    friend auto Formatter_set_options(Formatter& f, FormattingOptions opts) noexcept
+        -> FormattingOptions {
+        auto saved = f._options;
+        f._options = opts;
         return saved;
     }
     friend auto Formatter_restore_options(Formatter& f, FormattingOptions opts) noexcept -> void {
@@ -197,36 +208,37 @@ public:
     // Construct from any type that implements Display and/or Debug.
     // Spec dispatch: if Formatter::is_debug() → Debug::fmt, else → Display::fmt.
     template<typename T>
-        requires (Impled<T, Display> || Impled<T, Debug>)
+        requires(Impled<T, Display> || Impled<T, Debug>)
     static auto make(const T& val) -> Argument {
-        return { rstd::addressof(val),
-                 [](const void* p, Formatter& f) -> bool {
-                     const T& self = *static_cast<const T*>(p);
-                     if (f.is_debug()) {
-                         if constexpr (Impled<T, Debug>) {
-                             return as<Debug>(self).fmt(f);
-                         } else {
-                             return false; // T not Debug-able
-                         }
-                     } else {
-                         if constexpr (Impled<T, Display>) {
-                             return as<Display>(self).fmt(f);
-                         } else {
-                             return false; // T only Debug-able
-                         }
-                     }
-                 } };
+        return { rstd::addressof(val), [](const void* p, Formatter& f) -> bool {
+                    const T& self = *static_cast<const T*>(p);
+                    if (f.is_debug()) {
+                        if constexpr (Impled<T, Debug>) {
+                            return as<Debug>(self).fmt(f);
+                        } else {
+                            return false; // T not Debug-able
+                        }
+                    } else {
+                        if constexpr (Impled<T, Display>) {
+                            return as<Display>(self).fmt(f);
+                        } else {
+                            return false; // T only Debug-able
+                        }
+                    }
+                } };
     }
 
     // Legacy alias kept for backward compatibility.
     template<typename T>
         requires Impled<T, Display>
-    static auto display(const T& val) -> Argument { return make(val); }
+    static auto display(const T& val) -> Argument {
+        return make(val);
+    }
 
     auto fmt(Formatter& f) const -> bool { return _fmt_func(_ptr, f); }
 
 private:
-    constexpr Argument(const void* p, auto (*func)(const void*, Formatter&) -> bool)
+    constexpr Argument(const void* p, auto (*func)(const void*, Formatter&)->bool)
         : _ptr(p), _fmt_func(func) {}
 };
 
@@ -249,7 +261,8 @@ export struct Arguments {
         -> detail::ArgumentsStorage<sizeof...(Args)>;
 };
 
-namespace detail {
+namespace detail
+{
 /// Storage holder for `Arguments::make`: owns the `Argument` array and
 /// the format-string view; converts implicitly to a non-owning
 /// `Arguments`. The N==0 branch sizes the array to 1 to keep the
@@ -260,16 +273,13 @@ struct ArgumentsStorage {
     const u8* fmt_ptr;
     usize     fmt_len;
 
-    constexpr operator Arguments() const noexcept {
-        return { fmt_ptr, fmt_len, storage, N };
-    }
+    constexpr operator Arguments() const noexcept { return { fmt_ptr, fmt_len, storage, N }; }
 };
 } // namespace detail
 
 template<typename... Args>
 constexpr auto Arguments::make(format_string<Args...> fmt_str, Args&&... args) noexcept
-    -> detail::ArgumentsStorage<sizeof...(Args)>
-{
+    -> detail::ArgumentsStorage<sizeof...(Args)> {
     return {
         { Argument::make(args)... },
         fmt_str.data(),
@@ -287,9 +297,18 @@ concept formattable = Impled<Tp, Display> || Impled<Tp, Debug>;
 // a consteval context causes a hard compile error.
 namespace fmt_check
 {
-[[noreturn]] inline void unmatched_left_brace()  { __builtin_unreachable(); }
-[[noreturn]] inline void unmatched_right_brace() { __builtin_unreachable(); }
-[[noreturn]] inline void too_few_args()          { __builtin_unreachable(); }
+[[noreturn]]
+inline void unmatched_left_brace() {
+    __builtin_unreachable();
+}
+[[noreturn]]
+inline void unmatched_right_brace() {
+    __builtin_unreachable();
+}
+[[noreturn]]
+inline void too_few_args() {
+    __builtin_unreachable();
+}
 
 consteval void check(const char* s, usize n, usize n_args) {
     usize count = 0;
@@ -323,8 +342,7 @@ struct FormatString {
     usize       _len;
 
     template<usize N>
-    consteval FormatString(const char (&s)[N]) noexcept
-        : _ptr(s), _len(N - 1) {
+    consteval FormatString(const char (&s)[N]) noexcept: _ptr(s), _len(N - 1) {
         fmt_check::check(s, N - 1, sizeof...(Args));
     }
 
@@ -344,9 +362,7 @@ namespace rstd
 // Enables format("{}", some_arguments) and format("{}", panic_info.message).
 template<>
 struct Impl<fmt::Display, fmt::Arguments> : ImplBase<fmt::Arguments> {
-    auto fmt(fmt::Formatter& f) const -> bool {
-        return f.write_fmt(this->self());
-    }
+    auto fmt(fmt::Formatter& f) const -> bool { return f.write_fmt(this->self()); }
 };
 
 } // namespace rstd

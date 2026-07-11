@@ -281,8 +281,7 @@ consteval bool check_apis_match() {
 
         if constexpr (! trait_api_entry_matches<Trait, T1, T2>()) {
             if constexpr (Diagnose) {
-                static_assert(trait_api_entry_matches<Trait, T1, T2>(),
-                              "Trait api not satisfy");
+                static_assert(trait_api_entry_matches<Trait, T1, T2>(), "Trait api not satisfy");
             }
             return false;
         }

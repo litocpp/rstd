@@ -8,35 +8,34 @@ using ::alloc::boxed::Box;
 namespace rstd::async
 {
 
-enum class ExecutionDomainKind {
+enum class ExecutionDomainKind
+{
     RuntimeWorker,
     ExternalExecutor,
 };
 
 class AwaitContext {
-    task::Context*       m_poll_context;
-    ExecutionDomainKind  m_execution_domain;
+    task::Context*      m_poll_context;
+    ExecutionDomainKind m_execution_domain;
 
 public:
     explicit constexpr AwaitContext(
-        task::Context& cx,
+        task::Context&      cx,
         ExecutionDomainKind execution_domain = ExecutionDomainKind::RuntimeWorker) noexcept
-        : m_poll_context(rstd::addressof(cx)),
-          m_execution_domain(execution_domain) {}
+        : m_poll_context(rstd::addressof(cx)), m_execution_domain(execution_domain) {}
 
     constexpr auto poll_context() const noexcept -> task::Context& { return *m_poll_context; }
     constexpr auto execution_domain() const noexcept -> ExecutionDomainKind {
         return m_execution_domain;
     }
-    constexpr auto waker() const noexcept -> const task::Waker& {
-        return m_poll_context->waker();
-    }
+    constexpr auto waker() const noexcept -> const task::Waker& { return m_poll_context->waker(); }
 };
 
 export template<typename A>
 using into_future_t = typename mtp::rm_cvf<A>::Future;
 
-enum class ResumePlacementKind {
+enum class ResumePlacementKind
+{
     RuntimeWorker,
     ExternalExecutor,
 };
@@ -61,11 +60,11 @@ struct ResumePlacement {
           external_post(Some(rstd::move(post))),
           external_reject(Some(rstd::move(reject))) {}
 
-    ResumePlacement(const ResumePlacement&)            = delete;
-    auto operator=(const ResumePlacement&) -> ResumePlacement& = delete;
+    ResumePlacement(const ResumePlacement&)                        = delete;
+    auto operator=(const ResumePlacement&) -> ResumePlacement&     = delete;
     ResumePlacement(ResumePlacement&&) noexcept                    = default;
     auto operator=(ResumePlacement&&) noexcept -> ResumePlacement& = default;
-    ~ResumePlacement()                                            = default;
+    ~ResumePlacement()                                             = default;
 
     static auto runtime_worker() -> ResumePlacement {
         return ResumePlacement { ResumePlacementKind::RuntimeWorker };
@@ -104,7 +103,8 @@ struct ResumePlacement {
     }
 };
 
-enum class AwaitOperationState {
+enum class AwaitOperationState
+{
     Pending,
     Ready,
 };
@@ -113,9 +113,7 @@ template<typename A>
 struct AwaitableTraits;
 
 template<typename A>
-concept InternalAwaitable = requires {
-    typename AwaitableTraits<mtp::rm_cvf<A>>::Output;
-};
+concept InternalAwaitable = requires { typename AwaitableTraits<mtp::rm_cvf<A>>::Output; };
 
 export struct IntoFuture {
     template<class Self, class Delegate = void>
@@ -131,15 +129,12 @@ export struct IntoFuture {
 };
 
 template<typename A>
-concept FutureInput = requires {
-    typename future::future_output_t<A>;
-} && Impled<mtp::rm_cvf<A>, future::Future<future::future_output_t<A>>>;
+concept FutureInput = requires { typename future::future_output_t<A>; } &&
+                      Impled<mtp::rm_cvf<A>, future::Future<future::future_output_t<A>>>;
 
 template<typename A>
-concept IntoFutureInput = (! FutureInput<A>) &&
-    requires {
-        typename into_future_t<A>;
-    } && Impled<mtp::rm_cvf<A>, IntoFuture> && FutureInput<into_future_t<A>>;
+concept IntoFutureInput = (! FutureInput<A>) && requires { typename into_future_t<A>; } &&
+                          Impled<mtp::rm_cvf<A>, IntoFuture> && FutureInput<into_future_t<A>>;
 
 template<typename A>
 concept IntoFutureInClass = requires(mtp::rm_cvf<A>& awaitable) {
@@ -199,13 +194,13 @@ public:
 
     auto await_resume() -> Output { return m_operation.take_output(); }
 
-    auto resume(AwaitContext& cx) -> AwaitOperationState {
-        return m_operation.resume(cx);
-    }
+    auto resume(AwaitContext& cx) -> AwaitOperationState { return m_operation.resume(cx); }
 
     auto resume_external(AwaitContext& cx) -> AwaitOperationState {
         if constexpr (requires(Operation& operation, AwaitContext& context) {
-                          { operation.resume_external(context) } -> mtp::same_as<AwaitOperationState>;
+                          {
+                              operation.resume_external(context)
+                          } -> mtp::same_as<AwaitOperationState>;
                       }) {
             return m_operation.resume_external(cx);
         } else {
@@ -233,13 +228,13 @@ public:
 
     void await_resume() { m_operation.take_output(); }
 
-    auto resume(AwaitContext& cx) -> AwaitOperationState {
-        return m_operation.resume(cx);
-    }
+    auto resume(AwaitContext& cx) -> AwaitOperationState { return m_operation.resume(cx); }
 
     auto resume_external(AwaitContext& cx) -> AwaitOperationState {
         if constexpr (requires(Operation& operation, AwaitContext& context) {
-                          { operation.resume_external(context) } -> mtp::same_as<AwaitOperationState>;
+                          {
+                              operation.resume_external(context)
+                          } -> mtp::same_as<AwaitOperationState>;
                       }) {
             return m_operation.resume_external(cx);
         } else {
@@ -252,13 +247,13 @@ public:
 
 template<typename F, typename T = future::future_output_t<F>>
 class FuturePollOperation {
-    F              m_future;
-    Option<T>      m_result;
+    F         m_future;
+    Option<T> m_result;
 
 public:
     using Output = T;
 
-    explicit FuturePollOperation(F&& future) : m_future(rstd::forward<F>(future)) {}
+    explicit FuturePollOperation(F&& future): m_future(rstd::forward<F>(future)) {}
 
     auto take_output() -> Output { return rstd::move(m_result).unwrap_unchecked(); }
 
@@ -271,9 +266,7 @@ public:
         return AwaitOperationState::Ready;
     }
 
-    auto placement() const -> ResumePlacement {
-        return ResumePlacement::runtime_worker();
-    }
+    auto placement() const -> ResumePlacement { return ResumePlacement::runtime_worker(); }
 };
 
 template<typename F>
@@ -283,7 +276,7 @@ class FuturePollOperation<F, void> {
 public:
     using Output = void;
 
-    explicit FuturePollOperation(F&& future) : m_future(rstd::forward<F>(future)) {}
+    explicit FuturePollOperation(F&& future): m_future(rstd::forward<F>(future)) {}
 
     void take_output() const noexcept {}
 
@@ -296,9 +289,7 @@ public:
         return AwaitOperationState::Ready;
     }
 
-    auto placement() const -> ResumePlacement {
-        return ResumePlacement::runtime_worker();
-    }
+    auto placement() const -> ResumePlacement { return ResumePlacement::runtime_worker(); }
 };
 
 template<InternalAwaitable A>
@@ -315,7 +306,7 @@ auto make_suspension(F&& future) {
 
 template<IntoFutureInput A>
 auto make_suspension(A&& awaitable) {
-    auto future = as<IntoFuture>(awaitable).into_future();
+    auto future    = as<IntoFuture>(awaitable).into_future();
     auto operation = FuturePollOperation<decltype(future)> { rstd::move(future) };
     return AwaitSuspension<decltype(operation)> { rstd::move(operation) };
 }

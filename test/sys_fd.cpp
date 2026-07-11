@@ -7,7 +7,9 @@ using rstd::sys::fd::OwnedFd;
 using rstd::sys::fd::RawFd;
 namespace libc = rstd::sys::libc;
 
-static auto fd_open(int flags) -> int { return libc::open("/dev/null", flags); }
+static auto fd_open(int flags) -> int {
+    return libc::open("/dev/null", flags);
+}
 
 static auto fd_is_open(int fd) -> bool {
     return libc::fcntl(fd, libc::F_GETFD) != -1;

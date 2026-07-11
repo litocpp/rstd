@@ -11,9 +11,9 @@ struct MoveOnly {
 
     explicit MoveOnly(int value): value(value) {}
 
-    MoveOnly(const MoveOnly&)            = delete;
-    MoveOnly& operator=(const MoveOnly&) = delete;
-    MoveOnly(MoveOnly&&) noexcept        = default;
+    MoveOnly(const MoveOnly&)                        = delete;
+    MoveOnly& operator=(const MoveOnly&)             = delete;
+    MoveOnly(MoveOnly&&) noexcept                    = default;
     auto operator=(MoveOnly&&) noexcept -> MoveOnly& = default;
 };
 

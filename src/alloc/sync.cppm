@@ -142,8 +142,8 @@ struct Impl<T, ArcInnerImpl<A>> : LinkClassMethod<T, ArcInnerImpl<A>> {};
 namespace alloc
 {
 template<typename T>
-sync::ArcInnerImpl<T>::ArcInnerImpl()
-    : ArcInner<T>(dyn<ArcImplTrait>::from_ptr(this)) {}
+sync::ArcInnerImpl<T>::ArcInnerImpl(): ArcInner<T>(dyn<ArcImplTrait>::from_ptr(this)) {
+}
 
 } // namespace alloc
 
@@ -270,14 +270,14 @@ public:
     }
 
     /// Dereferences the `Arc`, returning a mutable reference to the inner value.
-    ref<T>       operator*() noexcept { return self.inner->data().as_ref(); }
+    ref<T> operator*() noexcept { return self.inner->data().as_ref(); }
     /// Dereferences the `Arc`, returning a const reference to the inner value.
     ref<const T> operator*() const noexcept { return self.inner->data().to_ref(); }
 
     /// Provides pointer-like mutable access to the inner value.
-    T*       operator->() noexcept { return self.inner->data(); }
+    T* operator->() noexcept { return self.inner->data(); }
     /// Provides pointer-like const access to the inner value.
-    T*       operator->() const noexcept { return self.inner->data(); }
+    T* operator->() const noexcept { return self.inner->data(); }
     /// Returns `true` if this `Arc` is non-empty.
     explicit operator bool() const noexcept { return self.inner != nullptr; }
 

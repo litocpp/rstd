@@ -83,12 +83,11 @@ public:
     using RightOutput = detail::select_output_t<F2>;
     using Output      = Either<LeftOutput, RightOutput>;
 
-    Select(F1 future1, F2 future2)
-        : f1(Some(rstd::move(future1))), f2(Some(rstd::move(future2))) {}
+    Select(F1 future1, F2 future2): f1(Some(rstd::move(future1))), f2(Some(rstd::move(future2))) {}
 
-    Select(const Select&)            = delete;
-    Select& operator=(const Select&) = delete;
-    Select(Select&&) noexcept        = default;
+    Select(const Select&)                        = delete;
+    Select& operator=(const Select&)             = delete;
+    Select(Select&&) noexcept                    = default;
     auto operator=(Select&&) noexcept -> Select& = default;
 
     auto poll(mut_ref<Select> self, task::Context& cx) -> task::Poll<Output> {
@@ -99,7 +98,7 @@ public:
 
         auto out1 = future::poll(*value.f1, cx);
         if (out1.is_ready()) {
-            auto selected = detail::take_ready<F1>(rstd::move(out1));
+            auto selected   = detail::take_ready<F1>(rstd::move(out1));
             value.completed = true;
             value.f1        = None<F1>();
             value.f2        = None<F2>();
@@ -108,7 +107,7 @@ public:
 
         auto out2 = future::poll(*value.f2, cx);
         if (out2.is_ready()) {
-            auto selected = detail::take_ready<F2>(rstd::move(out2));
+            auto selected   = detail::take_ready<F2>(rstd::move(out2));
             value.completed = true;
             value.f1        = None<F1>();
             value.f2        = None<F2>();
@@ -132,11 +131,11 @@ public:
     static_assert(mtp::same_as<Output, detail::select_output_t<F2>>,
                   "async::race requires both futures to produce the same output type");
 
-    Race(F1 future1, F2 future2) : select_(rstd::move(future1), rstd::move(future2)) {}
+    Race(F1 future1, F2 future2): select_(rstd::move(future1), rstd::move(future2)) {}
 
-    Race(const Race&)            = delete;
-    Race& operator=(const Race&) = delete;
-    Race(Race&&) noexcept        = default;
+    Race(const Race&)                        = delete;
+    Race& operator=(const Race&)             = delete;
+    Race(Race&&) noexcept                    = default;
     auto operator=(Race&&) noexcept -> Race& = default;
 
     auto poll(mut_ref<Race> self, task::Context& cx) -> task::Poll<Output> {

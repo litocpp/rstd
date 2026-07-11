@@ -38,8 +38,7 @@ struct Stream {
     struct Api {
         using Trait = Stream;
 
-        auto poll_next(mut_ref<Self> self, task::Context& cx)
-            -> task::Poll<Option<Item>> {
+        auto poll_next(mut_ref<Self> self, task::Context& cx) -> task::Poll<Option<Item>> {
             return trait_call<0>(this, self, cx);
         }
     };
@@ -57,7 +56,9 @@ concept FutureInClass = requires(mtp::rm_cvf<F>& future, task::Context& cx) {
 template<typename S>
 concept StreamInClass = requires(mtp::rm_cvf<S>& stream, task::Context& cx) {
     typename mtp::rm_cvf<S>::Item;
-    { stream.poll_next(as_mut_ref(stream), cx) } -> mtp::same_as<task::Poll<Option<stream_item_t<S>>>>;
+    {
+        stream.poll_next(as_mut_ref(stream), cx)
+    } -> mtp::same_as<task::Poll<Option<stream_item_t<S>>>>;
 };
 
 } // namespace rstd::future

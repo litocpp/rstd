@@ -21,7 +21,7 @@ export class ExecutorJob {
         : m_run(Some(rstd::move(run))), m_cancel(rstd::move(cancel)) {}
 
 public:
-    ExecutorJob(const ExecutorJob&)            = delete;
+    ExecutorJob(const ExecutorJob&)                    = delete;
     auto operator=(const ExecutorJob&) -> ExecutorJob& = delete;
 
     ExecutorJob(ExecutorJob&& other) noexcept
@@ -83,9 +83,7 @@ export struct Executor {
 
         // Returning true transfers the job to executor ownership. An accepted job
         // must be run or canceled; dropping it performs cancellation automatically.
-        auto post_job(ExecutorJob job) -> bool {
-            return trait_call<0>(this, rstd::move(job));
-        }
+        auto post_job(ExecutorJob job) -> bool { return trait_call<0>(this, rstd::move(job)); }
         auto post(ExecutorJob job) -> bool { return post_job(rstd::move(job)); }
         // A closed executor rejects new posts; it may still have accepted jobs to drain.
         auto is_closed() -> bool { return trait_call<1>(this); }
@@ -100,9 +98,7 @@ export struct ExecutorContext {
     struct Api {
         using Trait = ExecutorContext;
 
-        auto executor() -> typename Self::executor_type {
-            return trait_call<0>(this);
-        }
+        auto executor() -> typename Self::executor_type { return trait_call<0>(this); }
     };
 
     template<typename Self>
@@ -121,15 +117,13 @@ template<typename E>
 struct ExecutorAwaitShared {
     E executor;
 
-    explicit ExecutorAwaitShared(E executor) : executor(rstd::move(executor)) {}
+    explicit ExecutorAwaitShared(E executor): executor(rstd::move(executor)) {}
 
     auto post_job(ExecutorJob job) -> bool {
         return as<Executor>(executor).post_job(rstd::move(job));
     }
 
-    auto is_closed() -> bool {
-        return as<Executor>(executor).is_closed();
-    }
+    auto is_closed() -> bool { return as<Executor>(executor).is_closed(); }
 };
 
 template<typename E>
@@ -160,7 +154,7 @@ public:
         }
 
         if (! m_posted) {
-            m_posted       = true;
+            m_posted          = true;
             auto ready_state  = m_state.clone();
             auto ready_waker  = cx.waker().clone();
             auto cancel_state = m_state.clone();
@@ -168,12 +162,10 @@ public:
             auto shared       = m_shared.clone();
             auto posted       = shared->post_job(ExecutorJob::make(
                 [state = rstd::move(ready_state), waker = rstd::move(ready_waker)]() mutable {
-                    state->status.store(ExecutorAwaitState::Ready,
-                                        sync::atomic::Ordering::Release);
+                    state->status.store(ExecutorAwaitState::Ready, sync::atomic::Ordering::Release);
                     rstd::move(waker).wake();
                 },
-                [state = rstd::move(cancel_state),
-                 waker = rstd::move(cancel_waker)]() mutable {
+                [state = rstd::move(cancel_state), waker = rstd::move(cancel_waker)]() mutable {
                     state->status.store(ExecutorAwaitState::Canceled,
                                         sync::atomic::Ordering::Release);
                     rstd::move(waker).wake();
@@ -207,11 +199,10 @@ public:
             return ResumePlacement::runtime_worker();
         }
 
-        auto shared = m_shared.clone();
-        auto* self  = this;
-        auto post   = ResumePost::make(
-            [shared = rstd::move(shared)](ResumeJob job,
-                                          ResumeCancel cancel) mutable -> bool {
+        auto  shared = m_shared.clone();
+        auto* self   = this;
+        auto  post   = ResumePost::make(
+            [shared = rstd::move(shared)](ResumeJob job, ResumeCancel cancel) mutable -> bool {
                 return shared->post_job(ExecutorJob::make(
                     [job = rstd::move(job)]() mutable {
                         job->operator()();
@@ -234,7 +225,7 @@ struct LocalExecutorState {
     sync::Mutex<Vec<ExecutorJob>> jobs;
     sync::Mutex<bool>             closed;
 
-    LocalExecutorState() : jobs(Vec<ExecutorJob>::make()), closed(false) {}
+    LocalExecutorState(): jobs(Vec<ExecutorJob>::make()), closed(false) {}
 
     auto post(ExecutorJob job) -> bool {
         auto is_closed = closed.lock().unwrap_unchecked();
@@ -278,16 +269,16 @@ struct LocalExecutorState {
 export class LocalExecutor {
     sync::Weak<LocalExecutorState> m_state;
 
-    explicit LocalExecutor(sync::Weak<LocalExecutorState> state) : m_state(rstd::move(state)) {}
+    explicit LocalExecutor(sync::Weak<LocalExecutorState> state): m_state(rstd::move(state)) {}
 
     friend class LocalExecutorContext;
 
 public:
-    LocalExecutor(const LocalExecutor&)            = delete;
-    auto operator=(const LocalExecutor&) -> LocalExecutor& = delete;
+    LocalExecutor(const LocalExecutor&)                        = delete;
+    auto operator=(const LocalExecutor&) -> LocalExecutor&     = delete;
     LocalExecutor(LocalExecutor&&) noexcept                    = default;
     auto operator=(LocalExecutor&&) noexcept -> LocalExecutor& = default;
-    ~LocalExecutor()                                          = default;
+    ~LocalExecutor()                                           = default;
 
     auto clone() const -> LocalExecutor { return LocalExecutor { m_state.clone() }; }
 
@@ -316,13 +307,13 @@ export class LocalExecutorContext {
 public:
     using executor_type = LocalExecutor;
 
-    LocalExecutorContext() : m_state(sync::Arc<LocalExecutorState>::make()) {}
+    LocalExecutorContext(): m_state(sync::Arc<LocalExecutorState>::make()) {}
 
-    LocalExecutorContext(const LocalExecutorContext&)            = delete;
-    auto operator=(const LocalExecutorContext&) -> LocalExecutorContext& = delete;
+    LocalExecutorContext(const LocalExecutorContext&)                        = delete;
+    auto operator=(const LocalExecutorContext&) -> LocalExecutorContext&     = delete;
     LocalExecutorContext(LocalExecutorContext&&) noexcept                    = default;
     auto operator=(LocalExecutorContext&&) noexcept -> LocalExecutorContext& = default;
-    ~LocalExecutorContext()                                                = default;
+    ~LocalExecutorContext()                                                  = default;
 
     static auto make() -> LocalExecutorContext { return LocalExecutorContext {}; }
 
@@ -365,7 +356,7 @@ namespace rstd::async
 struct AnyExecutorInner {
     Box<dyn<Executor>> executor;
 
-    explicit AnyExecutorInner(Box<dyn<Executor>> executor) : executor(rstd::move(executor)) {}
+    explicit AnyExecutorInner(Box<dyn<Executor>> executor): executor(rstd::move(executor)) {}
 
     auto post_job(ExecutorJob job) -> bool { return executor->post(rstd::move(job)); }
 
@@ -375,7 +366,7 @@ struct AnyExecutorInner {
 export class AnyExecutor {
     sync::Arc<AnyExecutorInner> m_inner;
 
-    explicit AnyExecutor(sync::Arc<AnyExecutorInner> inner) : m_inner(rstd::move(inner)) {}
+    explicit AnyExecutor(sync::Arc<AnyExecutorInner> inner): m_inner(rstd::move(inner)) {}
 
 public:
     template<typename E>

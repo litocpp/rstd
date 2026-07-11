@@ -82,8 +82,7 @@ export class Thread : public DefaultInClass<Thread, clone::Clone> {
 public:
     USE_TRAIT(Thread)
 
-    Thread(const Thread& other) noexcept
-        : inner(as<clone::Clone>(other.inner).clone()) {}
+    Thread(const Thread& other) noexcept: inner(as<clone::Clone>(other.inner).clone()) {}
     Thread(Thread&&) noexcept = default;
     Thread& operator=(const Thread& other) noexcept {
         if (this != &other) {
@@ -93,9 +92,7 @@ public:
     }
     Thread& operator=(Thread&&) noexcept = default;
 
-    auto clone() const -> Thread {
-        return Thread { as<clone::Clone>(inner).clone() };
-    }
+    auto clone() const -> Thread { return Thread { as<clone::Clone>(inner).clone() }; }
 
     /// Creates a new thread handle.
     static auto make(ThreadId id, Option<String> name) -> Thread {
@@ -119,7 +116,7 @@ public:
     /// Returns None if no name was set.
     auto name() const -> Option<ThreadNameString> {
         if (! inner) {
-            rstd::panic{"Thread::name() called with null Arc"};
+            rstd::panic { "Thread::name() called with null Arc" };
         }
         if (auto& name = inner->name; name) {
             return name.clone();
@@ -147,9 +144,7 @@ public:
     ///
     /// # Safety
     /// May only be called from the thread to which this handle belongs.
-    void park_timeout(rstd::time::Duration timeout) const {
-        inner->parker.park_timeout(timeout);
-    }
+    void park_timeout(rstd::time::Duration timeout) const { inner->parker.park_timeout(timeout); }
 
     /// Gets the C string representation of the thread name, if available.
     auto cname() const noexcept -> Option<ref<ffi::CStr>> {

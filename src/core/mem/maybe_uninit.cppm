@@ -49,8 +49,7 @@ public:
     ///
     /// Note that dropping a `MaybeUninit<T>` will never call `T`'s destructor.
     /// It is your responsibility to make sure `T` gets destroyed if it got initialized.
-    constexpr static auto make(T&& val) noexcept(mtp::noex_move<T>)
-        -> MaybeUninit {
+    constexpr static auto make(T&& val) noexcept(mtp::noex_move<T>) -> MaybeUninit {
         return MaybeUninit(rstd::forward<T>(val));
     }
 

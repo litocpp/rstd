@@ -50,7 +50,8 @@ struct type_index;
 
 template<typename T, typename U, typename... Ts>
 struct type_index<T, U, Ts...> {
-    static constexpr usize value = mtp::same_as<T, U> ? usize(0) : usize(1) + type_index<T, Ts...>::value;
+    static constexpr usize value =
+        mtp::same_as<T, U> ? usize(0) : usize(1) + type_index<T, Ts...>::value;
 };
 
 template<typename T>

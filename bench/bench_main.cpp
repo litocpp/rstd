@@ -52,7 +52,8 @@ auto parse_options(int argc, char** argv) -> Options {
         } else if (std::strcmp(argv[i], "--list") == 0) {
             options.m_list = true;
         } else if (std::strcmp(argv[i], "--help") == 0) {
-            std::printf("usage: rstd_bench [--suite all|alloc|sync|async|net] [--quick] [--iterations N] [--json PATH] [--list]\n");
+            std::printf("usage: rstd_bench [--suite all|alloc|sync|async|net] [--quick] "
+                        "[--iterations N] [--json PATH] [--list]\n");
             std::exit(0);
         }
     }
@@ -83,8 +84,7 @@ auto run_case(const Options& options, const rstd_bench::BenchCase& bench) -> Run
     bool ok      = bench.m_run(context);
     auto ended   = std::chrono::steady_clock::now();
 
-    auto elapsed =
-        std::chrono::duration_cast<std::chrono::nanoseconds>(ended - started).count();
+    auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(ended - started).count();
 
     return RunResult {
         .m_case       = &bench,
@@ -97,11 +97,10 @@ auto run_case(const Options& options, const rstd_bench::BenchCase& bench) -> Run
 }
 
 void print_result(const RunResult& result) {
-    double ns_per_iter = result.m_iterations == 0
-                           ? 0.0
-                           : static_cast<double>(result.m_elapsed_ns) /
-                               static_cast<double>(result.m_iterations);
-    double total_ms = static_cast<double>(result.m_elapsed_ns) / 1'000'000.0;
+    double ns_per_iter = result.m_iterations == 0 ? 0.0
+                                                  : static_cast<double>(result.m_elapsed_ns) /
+                                                        static_cast<double>(result.m_iterations);
+    double total_ms    = static_cast<double>(result.m_elapsed_ns) / 1'000'000.0;
 
     std::printf("%-8s %-32s %10llu %12.2f ns/op %10.3f ms %s\n",
                 result.m_case->m_suite,
@@ -115,11 +114,11 @@ void print_result(const RunResult& result) {
 void write_json(FILE* file, const RunResult* results, std::size_t count) {
     std::fprintf(file, "[\n");
     for (std::size_t i = 0; i < count; ++i) {
-        const auto& result = results[i];
-        double ns_per_iter = result.m_iterations == 0
-                               ? 0.0
-                               : static_cast<double>(result.m_elapsed_ns) /
-                                   static_cast<double>(result.m_iterations);
+        const auto& result      = results[i];
+        double      ns_per_iter = result.m_iterations == 0
+                                      ? 0.0
+                                      : static_cast<double>(result.m_elapsed_ns) /
+                                            static_cast<double>(result.m_iterations);
         std::fprintf(file,
                      "  {\"suite\":\"%s\",\"name\":\"%s\",\"iterations\":%llu,"
                      "\"elapsed_ns\":%llu,\"ns_per_iter\":%.3f,"
@@ -143,7 +142,7 @@ void write_json(FILE* file, const RunResult* results, std::size_t count) {
 template<std::size_t N>
 void append_list(rstd_bench::BenchCase const* (&cases)[N],
                  std::size_t (&lens)[N],
-                 std::size_t index,
+                 std::size_t           index,
                  rstd_bench::BenchList list) {
     cases[index] = list.m_cases;
     lens[index]  = list.m_len;
@@ -172,15 +171,13 @@ auto main(int argc, char** argv) -> int {
         return 0;
     }
 
-    RunResult results[128] {};
+    RunResult   results[128] {};
     std::size_t result_count = 0;
-    bool all_ok = true;
+    bool        all_ok       = true;
 
-    std::printf("%-8s %-32s %10s %20s %13s %s\n",
-                "suite", "name", "iters", "time", "total", "status");
-    std::printf("build=%s asan=%s\n",
-                RSTD_BENCH_BUILD_TYPE,
-                RSTD_BENCH_ASAN ? "true" : "false");
+    std::printf(
+        "%-8s %-32s %10s %20s %13s %s\n", "suite", "name", "iters", "time", "total", "status");
+    std::printf("build=%s asan=%s\n", RSTD_BENCH_BUILD_TYPE, RSTD_BENCH_ASAN ? "true" : "false");
 
     for (std::size_t i = 0; i < 4; ++i) {
         for (std::size_t j = 0; j < lens[i]; ++j) {
@@ -189,7 +186,7 @@ auto main(int argc, char** argv) -> int {
                 continue;
             }
             auto result = run_case(options, bench);
-            all_ok = all_ok && result.m_ok;
+            all_ok      = all_ok && result.m_ok;
             print_result(result);
             results[result_count++] = result;
         }

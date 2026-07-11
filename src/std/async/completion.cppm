@@ -12,7 +12,8 @@ namespace rstd::async
 export template<typename E>
 class CompletionError {
 public:
-    enum class Kind {
+    enum class Kind
+    {
         Canceled,
         Failed,
     };
@@ -21,12 +22,10 @@ private:
     Kind      m_kind;
     Option<E> m_failed;
 
-    explicit CompletionError(Kind kind) : m_kind(kind), m_failed(None()) {}
+    explicit CompletionError(Kind kind): m_kind(kind), m_failed(None()) {}
 
 public:
-    static auto canceled() -> CompletionError {
-        return CompletionError { Kind::Canceled };
-    }
+    static auto canceled() -> CompletionError { return CompletionError { Kind::Canceled }; }
 
     static auto failed(E error) -> CompletionError {
         auto out     = CompletionError { Kind::Failed };
@@ -58,20 +57,20 @@ class CompletionHandle;
 template<typename T, typename E>
 struct CompletionState {
     struct Fields {
-        Option<T> value;
-        Option<E> error;
-        usize     handles { 1 };
-        bool      canceled { false };
-        bool      receiver_closed { false };
-        bool      consumed { false };
+        Option<T>           value;
+        Option<E>           error;
+        usize               handles { 1 };
+        bool                canceled { false };
+        bool                receiver_closed { false };
+        bool                consumed { false };
         Option<task::Waker> waker;
     };
 
     sync::Mutex<Fields> fields;
 
-    CompletionState() : fields(Fields {}) {}
+    CompletionState(): fields(Fields {}) {}
 
-    CompletionState(const CompletionState&)            = delete;
+    CompletionState(const CompletionState&)                    = delete;
     auto operator=(const CompletionState&) -> CompletionState& = delete;
 
     static void wake(Option<task::Waker> waker) {
@@ -89,8 +88,7 @@ struct CompletionState {
         auto waker = Option<task::Waker> {};
         {
             auto f = fields.lock().unwrap_unchecked();
-            if (f->receiver_closed || f->value.is_some() || f->error.is_some() ||
-                f->canceled) {
+            if (f->receiver_closed || f->value.is_some() || f->error.is_some() || f->canceled) {
                 return Err(rstd::move(value));
             }
 
@@ -106,8 +104,7 @@ struct CompletionState {
         auto waker = Option<task::Waker> {};
         {
             auto f = fields.lock().unwrap_unchecked();
-            if (f->receiver_closed || f->value.is_some() || f->error.is_some() ||
-                f->canceled) {
+            if (f->receiver_closed || f->value.is_some() || f->error.is_some() || f->canceled) {
                 return Err(rstd::move(error));
             }
 
@@ -123,8 +120,7 @@ struct CompletionState {
         auto waker = Option<task::Waker> {};
         {
             auto f = fields.lock().unwrap_unchecked();
-            if (f->receiver_closed || f->value.is_some() || f->error.is_some() ||
-                f->canceled) {
+            if (f->receiver_closed || f->value.is_some() || f->error.is_some() || f->canceled) {
                 return false;
             }
 
@@ -154,7 +150,7 @@ struct CompletionState {
     }
 
     void close_receiver() {
-        auto f = fields.lock().unwrap_unchecked();
+        auto f             = fields.lock().unwrap_unchecked();
         f->receiver_closed = true;
         f->waker           = None();
     }
@@ -174,24 +170,22 @@ struct CompletionState {
             f->consumed        = true;
             f->receiver_closed = true;
             f->waker           = None();
-            return Some<Result<T, CompletionError<E>>>(
-                Ok(rstd::move(f->value).unwrap_unchecked()));
+            return Some<Result<T, CompletionError<E>>>(Ok(rstd::move(f->value).unwrap_unchecked()));
         }
 
         if (f->error.is_some()) {
             f->consumed        = true;
             f->receiver_closed = true;
             f->waker           = None();
-            return Some<Result<T, CompletionError<E>>>(Err(CompletionError<E>::failed(
-                rstd::move(f->error).unwrap_unchecked())));
+            return Some<Result<T, CompletionError<E>>>(
+                Err(CompletionError<E>::failed(rstd::move(f->error).unwrap_unchecked())));
         }
 
         if (f->canceled || f->handles == 0) {
             f->consumed        = true;
             f->receiver_closed = true;
             f->waker           = None();
-            return Some<Result<T, CompletionError<E>>>(
-                Err(CompletionError<E>::canceled()));
+            return Some<Result<T, CompletionError<E>>>(Err(CompletionError<E>::canceled()));
         }
 
         f->waker = Some(waker.clone());
@@ -202,10 +196,9 @@ struct CompletionState {
 export template<typename T, typename E>
 class Completion {
     sync::Arc<CompletionState<T, E>> m_state;
-    bool                            m_active { true };
+    bool                             m_active { true };
 
-    explicit Completion(sync::Arc<CompletionState<T, E>> state)
-        : m_state(rstd::move(state)) {}
+    explicit Completion(sync::Arc<CompletionState<T, E>> state): m_state(rstd::move(state)) {}
 
     friend class CompletionHandle<T, E>;
     friend class CompletionWaitOperation<T, E>;
@@ -213,12 +206,11 @@ class Completion {
 public:
     using Output = Result<T, CompletionError<E>>;
 
-    Completion(const Completion&)            = delete;
+    Completion(const Completion&)                    = delete;
     auto operator=(const Completion&) -> Completion& = delete;
 
     Completion(Completion&& other) noexcept
-        : m_state(rstd::move(other.m_state)),
-          m_active(rstd::exchange(other.m_active, false)) {}
+        : m_state(rstd::move(other.m_state)), m_active(rstd::exchange(other.m_active, false)) {}
 
     auto operator=(Completion&& other) noexcept -> Completion& {
         if (this != &other) {
@@ -246,7 +238,6 @@ public:
             m_state->close_receiver();
         }
     }
-
 };
 
 template<typename T, typename E>
@@ -292,9 +283,7 @@ public:
         return AwaitOperationState::Ready;
     }
 
-    auto placement() const -> ResumePlacement {
-        return ResumePlacement::runtime_worker();
-    }
+    auto placement() const -> ResumePlacement { return ResumePlacement::runtime_worker(); }
 };
 
 template<typename T, typename E>
@@ -315,20 +304,18 @@ struct AwaitableTraits<Completion<T, E>> {
 export template<typename T, typename E>
 class CompletionHandle {
     sync::Arc<CompletionState<T, E>> m_state;
-    bool                            m_active { true };
+    bool                             m_active { true };
 
-    explicit CompletionHandle(sync::Arc<CompletionState<T, E>> state)
-        : m_state(rstd::move(state)) {}
+    explicit CompletionHandle(sync::Arc<CompletionState<T, E>> state): m_state(rstd::move(state)) {}
 
     friend class Completion<T, E>;
 
 public:
-    CompletionHandle(const CompletionHandle&)            = delete;
+    CompletionHandle(const CompletionHandle&)                    = delete;
     auto operator=(const CompletionHandle&) -> CompletionHandle& = delete;
 
     CompletionHandle(CompletionHandle&& other) noexcept
-        : m_state(rstd::move(other.m_state)),
-          m_active(rstd::exchange(other.m_active, false)) {}
+        : m_state(rstd::move(other.m_state)), m_active(rstd::exchange(other.m_active, false)) {}
 
     auto operator=(CompletionHandle&& other) noexcept -> CompletionHandle& {
         if (this != &other) {
@@ -377,9 +364,7 @@ public:
         return m_state->cancel();
     }
 
-    auto is_closed() -> bool {
-        return ! m_active || ! m_state || m_state->is_closed();
-    }
+    auto is_closed() -> bool { return ! m_active || ! m_state || m_state->is_closed(); }
 };
 
 } // namespace rstd::async

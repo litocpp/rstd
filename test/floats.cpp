@@ -15,10 +15,10 @@ TEST(F32Consts, SqrtAndLog) {
 }
 
 TEST(F32Limits, MatchNumericLimits) {
-    EXPECT_EQ(rstd::f32_::MAX,          rstd::numeric_limits<rstd::f32>::max());
-    EXPECT_EQ(rstd::f32_::MIN,          rstd::numeric_limits<rstd::f32>::lowest());
+    EXPECT_EQ(rstd::f32_::MAX, rstd::numeric_limits<rstd::f32>::max());
+    EXPECT_EQ(rstd::f32_::MIN, rstd::numeric_limits<rstd::f32>::lowest());
     EXPECT_EQ(rstd::f32_::MIN_POSITIVE, rstd::numeric_limits<rstd::f32>::min());
-    EXPECT_EQ(rstd::f32_::EPSILON,      rstd::numeric_limits<rstd::f32>::epsilon());
+    EXPECT_EQ(rstd::f32_::EPSILON, rstd::numeric_limits<rstd::f32>::epsilon());
     EXPECT_EQ(rstd::f32_::MANTISSA_DIGITS, 24u);
     EXPECT_EQ(rstd::f32_::RADIX, 2u);
 }
@@ -38,12 +38,12 @@ TEST(F64Consts, Pi) {
 }
 
 TEST(F64Limits, MatchNumericLimits) {
-    EXPECT_EQ(rstd::f64_::MAX,             rstd::numeric_limits<rstd::f64>::max());
-    EXPECT_EQ(rstd::f64_::MIN,             rstd::numeric_limits<rstd::f64>::lowest());
-    EXPECT_EQ(rstd::f64_::EPSILON,         rstd::numeric_limits<rstd::f64>::epsilon());
+    EXPECT_EQ(rstd::f64_::MAX, rstd::numeric_limits<rstd::f64>::max());
+    EXPECT_EQ(rstd::f64_::MIN, rstd::numeric_limits<rstd::f64>::lowest());
+    EXPECT_EQ(rstd::f64_::EPSILON, rstd::numeric_limits<rstd::f64>::epsilon());
     EXPECT_EQ(rstd::f64_::MANTISSA_DIGITS, 53u);
-    EXPECT_EQ(rstd::f64_::MIN_EXP,         -1021);
-    EXPECT_EQ(rstd::f64_::MAX_EXP,         1024);
+    EXPECT_EQ(rstd::f64_::MIN_EXP, -1021);
+    EXPECT_EQ(rstd::f64_::MAX_EXP, 1024);
 }
 
 TEST(F64Limits, InfAndNan) {

@@ -29,12 +29,15 @@ public:
     }
 
     /// Unstable in Rust: `thread_id_value`
-    [[nodiscard]] constexpr auto as_u64() const noexcept { return m_v; }
+    [[nodiscard]]
+    constexpr auto as_u64() const noexcept {
+        return m_v;
+    }
 
     /// Generates a new unique thread ID using an atomic counter.
     static ThreadId make() {
         auto exhausted = []() {
-            panic{"failed to generate unique thread ID: bitspace exhausted"};
+            panic { "failed to generate unique thread ID: bitspace exhausted" };
         };
 
         using rstd::sync::atomic::Atomic;

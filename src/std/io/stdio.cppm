@@ -19,13 +19,17 @@ namespace detail
 inline sys::sync::mutex::Mutex g_stdout_mutex = sys::sync::mutex::Mutex::make();
 inline sys::sync::mutex::Mutex g_stdin_mutex  = sys::sync::mutex::Mutex::make();
 
-inline auto& stdout_mutex() noexcept { return g_stdout_mutex; }
-inline auto& stdin_mutex()  noexcept { return g_stdin_mutex; }
+inline auto& stdout_mutex() noexcept {
+    return g_stdout_mutex;
+}
+inline auto& stdin_mutex() noexcept {
+    return g_stdin_mutex;
+}
 
 // RAII lock guard over sys::sync::mutex::Mutex.
 struct ScopedLock {
     sys::sync::mutex::Mutex& m;
-    explicit ScopedLock(sys::sync::mutex::Mutex& m) noexcept : m(m) { m.lock(); }
+    explicit ScopedLock(sys::sync::mutex::Mutex& m) noexcept: m(m) { m.lock(); }
     ~ScopedLock() noexcept { m.unlock(); }
     ScopedLock(const ScopedLock&) = delete;
 };
@@ -59,7 +63,7 @@ struct Impl<fmt::Write, io::detail::FdWriter> : ImplBase<io::detail::FdWriter> {
                 self.result = Err(io::error::Error_WRITE_ALL_EOF);
                 return false;
             }
-            p   += n;
+            p += n;
             len -= n;
         }
         return true;
@@ -87,7 +91,9 @@ export struct Stdout {
 };
 
 /// Constructs a new handle to the standard output of the current process.
-export inline auto stdout() noexcept -> Stdout { return {}; }
+export inline auto stdout() noexcept -> Stdout {
+    return {};
+}
 
 // ── Stderr ────────────────────────────────────────────────────────────────
 
@@ -96,7 +102,9 @@ export inline auto stdout() noexcept -> Stdout { return {}; }
 export struct Stderr {};
 
 /// Constructs a new handle to the standard error of the current process.
-export inline auto stderr() noexcept -> Stderr { return {}; }
+export inline auto stderr() noexcept -> Stderr {
+    return {};
+}
 
 // ── Stdin ─────────────────────────────────────────────────────────────────
 
@@ -114,7 +122,9 @@ export struct Stdin {
 };
 
 /// Constructs a new handle to the standard input of the current process.
-export inline auto stdin() noexcept -> Stdin { return {}; }
+export inline auto stdin() noexcept -> Stdin {
+    return {};
+}
 
 // ── Free formatting functions ─────────────────────────────────────────────
 
@@ -169,9 +179,7 @@ struct println {
 };
 template<>
 struct println<> {
-    println() {
-        print_fmt({ (const u8*)"\n", 1, nullptr, 0 });
-    }
+    println() { print_fmt({ (const u8*)"\n", 1, nullptr, 0 }); }
     explicit println(fmt::format_string<> fmt_str) {
         print_fmt({ fmt_str.data(), fmt_str.size(), nullptr, 0 });
         print_fmt({ (const u8*)"\n", 1, nullptr, 0 });
@@ -210,9 +218,7 @@ struct eprintln {
 };
 template<>
 struct eprintln<> {
-    eprintln() {
-        eprint_fmt({ (const u8*)"\n", 1, nullptr, 0 });
-    }
+    eprintln() { eprint_fmt({ (const u8*)"\n", 1, nullptr, 0 }); }
     explicit eprintln(fmt::format_string<> fmt_str) {
         eprint_fmt({ fmt_str.data(), fmt_str.size(), nullptr, 0 });
         eprint_fmt({ (const u8*)"\n", 1, nullptr, 0 });

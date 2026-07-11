@@ -48,9 +48,9 @@ export class TcpStream {
     }
 
 public:
-    TcpStream(const TcpStream&)            = delete;
-    auto operator=(const TcpStream&) -> TcpStream& = delete;
-    TcpStream(TcpStream&&) noexcept        = default;
+    TcpStream(const TcpStream&)                        = delete;
+    auto operator=(const TcpStream&) -> TcpStream&     = delete;
+    TcpStream(TcpStream&&) noexcept                    = default;
     auto operator=(TcpStream&&) noexcept -> TcpStream& = default;
 
     static auto connect(SocketAddr addr) -> async::coro<io::Result<TcpStream>> {
@@ -59,8 +59,8 @@ public:
             co_return Err(rstd::move(socket_result).unwrap_err_unchecked());
         }
 
-        auto socket = rstd::move(socket_result).unwrap_unchecked();
-        bool connecting = false;
+        auto socket         = rstd::move(socket_result).unwrap_unchecked();
+        bool connecting     = false;
         auto connect_result = socket.connect(addr);
         if (connect_result.is_err()) {
             auto error = rstd::move(connect_result).unwrap_err_unchecked();
@@ -102,25 +102,19 @@ public:
     auto local_addr() const -> io::Result<SocketAddr> { return m_socket.local_addr(); }
     auto peer_addr() const -> io::Result<SocketAddr> { return m_socket.peer_addr(); }
     auto take_error() -> io::Result<Option<io::Error>> { return m_socket.take_error(); }
-    auto set_nodelay(bool enabled) -> io::Result<empty> {
-        return m_socket.set_nodelay(enabled);
-    }
+    auto set_nodelay(bool enabled) -> io::Result<empty> { return m_socket.set_nodelay(enabled); }
     auto shutdown() -> io::Result<empty> { return m_socket.shutdown_write(); }
 
     auto ready(async::Interest interest) -> async::ReadinessFuture {
         return async::ReadinessFuture { m_registration, interest };
     }
 
-    auto readable() -> async::ReadinessFuture {
-        return ready(async::Interest::readable());
-    }
+    auto readable() -> async::ReadinessFuture { return ready(async::Interest::readable()); }
 
-    auto writable() -> async::ReadinessFuture {
-        return ready(async::Interest::writable());
-    }
+    auto writable() -> async::ReadinessFuture { return ready(async::Interest::writable()); }
 
     auto try_read(bytes::BytesMut& buf) -> io::Result<usize> {
-        auto chunk = buf.chunk_mut();
+        auto chunk  = buf.chunk_mut();
         auto result = m_socket.recv(chunk.as_raw_ptr(), chunk.len());
         if (result.is_ok()) {
             auto n = rstd::move(result).unwrap_unchecked();
@@ -146,9 +140,8 @@ public:
         return Err(rstd::move(error));
     }
 
-    auto poll_read(mut_ref<TcpStream> self,
-                   task::Context&               cx,
-                   bytes::BytesMut&             buf) -> task::Poll<io::Result<usize>> {
+    auto poll_read(mut_ref<TcpStream> self, task::Context& cx, bytes::BytesMut& buf)
+        -> task::Poll<io::Result<usize>> {
         auto& stream = *self;
         auto  event  = Option<async::ReadyEvent> {};
         while (true) {
@@ -167,8 +160,7 @@ public:
 
             if (event.is_some()) {
                 auto previous = event.take();
-                stream.m_registration.clear_readiness(
-                    rstd::move(previous).unwrap_unchecked());
+                stream.m_registration.clear_readiness(rstd::move(previous).unwrap_unchecked());
             }
 
             auto ready = stream.m_registration.poll_readiness(
@@ -176,7 +168,7 @@ public:
             if (ready.is_pending()) return task::Poll<io::Result<usize>>::Pending();
 
             stream.m_read_waiter_id = 0;
-            auto ready_result = rstd::move(ready).take();
+            auto ready_result       = rstd::move(ready).take();
             if (ready_result.is_err()) {
                 return task::Poll<io::Result<usize>>::Ready(
                     Err(rstd::move(ready_result).unwrap_err_unchecked()));
@@ -185,9 +177,8 @@ public:
         }
     }
 
-    auto poll_write(mut_ref<TcpStream> self,
-                    task::Context&               cx,
-                    bytes::Bytes const&          buf) -> task::Poll<io::Result<usize>> {
+    auto poll_write(mut_ref<TcpStream> self, task::Context& cx, bytes::Bytes const& buf)
+        -> task::Poll<io::Result<usize>> {
         auto& stream = *self;
         auto  event  = Option<async::ReadyEvent> {};
         while (true) {
@@ -203,8 +194,7 @@ public:
 
             if (event.is_some()) {
                 auto previous = event.take();
-                stream.m_registration.clear_readiness(
-                    rstd::move(previous).unwrap_unchecked());
+                stream.m_registration.clear_readiness(rstd::move(previous).unwrap_unchecked());
             }
 
             auto ready = stream.m_registration.poll_readiness(
@@ -212,7 +202,7 @@ public:
             if (ready.is_pending()) return task::Poll<io::Result<usize>>::Pending();
 
             stream.m_write_waiter_id = 0;
-            auto ready_result = rstd::move(ready).take();
+            auto ready_result        = rstd::move(ready).take();
             if (ready_result.is_err()) {
                 return task::Poll<io::Result<usize>>::Ready(
                     Err(rstd::move(ready_result).unwrap_err_unchecked()));
@@ -221,13 +211,11 @@ public:
         }
     }
 
-    auto poll_flush(mut_ref<TcpStream>, task::Context&)
-        -> task::Poll<io::Result<empty>> {
+    auto poll_flush(mut_ref<TcpStream>, task::Context&) -> task::Poll<io::Result<empty>> {
         return task::Poll<io::Result<empty>>::Ready(Ok(empty {}));
     }
 
-    auto poll_shutdown(mut_ref<TcpStream> self, task::Context&)
-        -> task::Poll<io::Result<empty>> {
+    auto poll_shutdown(mut_ref<TcpStream> self, task::Context&) -> task::Poll<io::Result<empty>> {
         auto& stream = *self;
         return task::Poll<io::Result<empty>>::Ready(stream.shutdown());
     }
@@ -241,16 +229,16 @@ export class TcpListener {
         : m_socket(rstd::move(socket)), m_registration(rstd::move(registration)) {}
 
 public:
-    TcpListener(const TcpListener&)            = delete;
-    auto operator=(const TcpListener&) -> TcpListener& = delete;
-    TcpListener(TcpListener&&) noexcept        = default;
+    TcpListener(const TcpListener&)                        = delete;
+    auto operator=(const TcpListener&) -> TcpListener&     = delete;
+    TcpListener(TcpListener&&) noexcept                    = default;
     auto operator=(TcpListener&&) noexcept -> TcpListener& = default;
 
     static auto bind(SocketAddr addr) -> io::Result<TcpListener> {
         auto socket = Socket::tcp(addr);
         if (socket.is_err()) return Err(rstd::move(socket).unwrap_err_unchecked());
 
-        auto raw = rstd::move(socket).unwrap_unchecked();
+        auto raw   = rstd::move(socket).unwrap_unchecked();
         auto reuse = raw.set_reuseaddr(true);
         if (reuse.is_err()) return Err(rstd::move(reuse).unwrap_err_unchecked());
 
@@ -272,9 +260,7 @@ public:
         return async::ReadinessFuture { m_registration, interest };
     }
 
-    auto readable() -> async::ReadinessFuture {
-        return ready(async::Interest::readable());
-    }
+    auto readable() -> async::ReadinessFuture { return ready(async::Interest::readable()); }
 
     auto try_accept() -> io::Result<tuple<TcpStream, SocketAddr>> {
         auto accepted = m_socket.accept();

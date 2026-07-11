@@ -29,7 +29,7 @@ namespace rstd
 {
 export {
     /// 8-bit signed integer.
-    using i8  = ::int8_t;
+    using i8 = ::int8_t;
     /// 16-bit signed integer.
     using i16 = ::int16_t;
     /// 32-bit signed integer.
@@ -38,13 +38,13 @@ export {
     using i64 = ::int64_t;
 
     /// 8-bit unsigned integer.
-    using u8   = ::uint8_t;
+    using u8 = ::uint8_t;
     /// 16-bit unsigned integer.
-    using u16  = ::uint16_t;
+    using u16 = ::uint16_t;
     /// 32-bit unsigned integer.
-    using u32  = ::uint32_t;
+    using u32 = ::uint32_t;
     /// 64-bit unsigned integer.
-    using u64  = ::uint64_t;
+    using u64 = ::uint64_t;
 
     /// 32-bit IEEE 754 floating-point.
     using f32 = float;
@@ -59,7 +59,7 @@ export {
 #pragma GCC diagnostic pop
 
     /// Signed index type, equivalent to Rust's `isize` used for offsets.
-    using idx   = ::ptrdiff_t;
+    using idx = ::ptrdiff_t;
     /// Pointer-sized unsigned integer, equivalent to Rust's `usize`.
     using usize = ::size_t;
     /// Pointer-sized signed integer, equivalent to Rust's `isize`.
@@ -68,11 +68,11 @@ export {
     using std::byte;
 
     /// Mutable void pointer.
-    using voidp       = void*;
+    using voidp = void*;
     /// Const void pointer.
     using const_voidp = void const*;
     /// Integer type guaranteed to hold a pointer value.
-    using usizeptr    = ::uintptr_t;
+    using usizeptr = ::uintptr_t;
 
     /// A zero-sized type, analogous to Rust's `()` (unit).
     struct empty {};

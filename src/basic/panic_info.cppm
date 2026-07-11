@@ -55,9 +55,9 @@ export struct PanicInfo {
     /// The source location where the panic originated.
     Location location;
     /// Whether the panic is allowed to unwind the stack.
-    bool     can_unwind         = true;
+    bool can_unwind = true;
     /// Whether to suppress backtrace generation.
-    bool     force_no_backtrace = false;
+    bool force_no_backtrace = false;
 };
 
 // Consteval wrapper for source_location.

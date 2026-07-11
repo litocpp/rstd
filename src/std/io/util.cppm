@@ -11,22 +11,30 @@ namespace rstd::io
 export struct Empty {};
 
 /// Creates a value that implements Read (always EOF), Write (discards), and Seek.
-export inline auto empty_io() noexcept -> Empty { return {}; }
+export inline auto empty_io() noexcept -> Empty {
+    return {};
+}
 
 // ── Repeat ────────────────────────────────────────────────────────────────
 /// A reader that infinitely yields one byte value.
-export struct Repeat { u8 byte; };
+export struct Repeat {
+    u8 byte;
+};
 
 /// Creates a reader that infinitely yields the given byte.
 /// \param byte The byte value to repeat.
-export inline auto repeat(u8 byte) noexcept -> Repeat { return { byte }; }
+export inline auto repeat(u8 byte) noexcept -> Repeat {
+    return { byte };
+}
 
 // ── Sink ──────────────────────────────────────────────────────────────────
 /// A writer that discards all bytes and never errors.
 export struct Sink {};
 
 /// Creates a writer that successfully consumes all data without storing it.
-export inline auto sink() noexcept -> Sink { return {}; }
+export inline auto sink() noexcept -> Sink {
+    return {};
+}
 
 // ── copy ──────────────────────────────────────────────────────────────────
 /// Copy all bytes from `reader` into `writer`.  Returns bytes copied.
@@ -34,8 +42,8 @@ export template<typename R, typename W>
     requires Impled<R, io::Read> && Impled<W, io::Write>
 auto copy(R& reader, W& writer) -> Result<u64> {
     constexpr usize BUF_SIZE = DEFAULT_BUF_SIZE;
-    u8    buf[BUF_SIZE];
-    u64   total = 0;
+    u8              buf[BUF_SIZE];
+    u64             total = 0;
     while (true) {
         auto rres = as<Read>(reader).read(buf, BUF_SIZE);
         if (rres.is_err()) {

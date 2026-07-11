@@ -28,14 +28,19 @@ export struct Log {
 
 // ── Global logger state ───────────────────────────────────────────────────
 
-namespace detail {
+namespace detail
+{
 
 // Nop logger — default when no logger is set.
 struct NopLogger {};
 
-inline bool nop_enabled(void const*, Metadata const&) { return false; }
-inline void nop_log(void const*, Record const&) {}
-inline void nop_flush(void const*) {}
+inline bool nop_enabled(void const*, Metadata const&) {
+    return false;
+}
+inline void nop_log(void const*, Record const&) {
+}
+inline void nop_flush(void const*) {
+}
 
 // Type-erased logger via function-pointer table (avoids vtable portability issues).
 struct LoggerVTable {
@@ -58,9 +63,9 @@ inline void const*  g_logger_ptr { nullptr };
 // ── set_logger / set_max_level ────────────────────────────────────────────
 
 /// Returns the current global maximum log level.
-export [[nodiscard]] inline auto max_level() noexcept -> LevelFilter {
-    return static_cast<LevelFilter>(
-        detail::g_max_level.load(sync::atomic::Ordering::Relaxed));
+export [[nodiscard]]
+inline auto max_level() noexcept -> LevelFilter {
+    return static_cast<LevelFilter>(detail::g_max_level.load(sync::atomic::Ordering::Relaxed));
 }
 
 /// Sets the global maximum log level (relaxed ordering).
@@ -89,24 +94,23 @@ inline bool set_logger(T const& logger) noexcept {
     };
 
     usize expected = 0;
-    if (!detail::g_state.compare_exchange_strong(
-            expected, 1,
-            sync::atomic::Ordering::Acquire,
-            sync::atomic::Ordering::Relaxed)) {
+    if (! detail::g_state.compare_exchange_strong(
+            expected, 1, sync::atomic::Ordering::Acquire, sync::atomic::Ordering::Relaxed)) {
         return false;
     }
 
-    detail::g_vtable   = vtable;
+    detail::g_vtable     = vtable;
     detail::g_logger_ptr = rstd::addressof(logger);
     detail::g_state.store(2, sync::atomic::Ordering::Release);
     return true;
 }
 
 /// Returns true if the given level/target would be logged at the current max_level.
-export [[nodiscard]] inline auto log_enabled(Level level, ref<str> target) noexcept -> bool {
+export [[nodiscard]]
+inline auto log_enabled(Level level, ref<str> target) noexcept -> bool {
     if (level > max_level()) return false;
     if (detail::g_state.load(sync::atomic::Ordering::Acquire) != 2) return false;
-    return detail::g_vtable.enabled(detail::g_logger_ptr, Metadata{level, target});
+    return detail::g_vtable.enabled(detail::g_logger_ptr, Metadata { level, target });
 }
 
 /// Logs a Record through the global logger (no-op if no logger set).

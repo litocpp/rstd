@@ -22,7 +22,6 @@ inline auto time(time_t* timer) noexcept -> time_t {
     return ::time(timer);
 }
 
-
 using ::abort;
 
 // Memory management
@@ -48,7 +47,7 @@ inline auto errno() noexcept -> int {
 #elif defined(RSTD_OS_APPLE)
     return *__error();
 #else
-#    error "rstd: unsupported platform for errno()"
+#error "rstd: unsupported platform for errno()"
 #endif
 };
 

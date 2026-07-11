@@ -74,10 +74,10 @@ public:
     }
 
 private:
-    constexpr Component(ComponentKind kind, ref<OsStr> os) noexcept : m_kind(kind), m_os(os) {}
+    constexpr Component(ComponentKind kind, ref<OsStr> os) noexcept: m_kind(kind), m_os(os) {}
 
     ComponentKind m_kind { ComponentKind::Normal };
-    ref<OsStr>   m_os {};
+    ref<OsStr>    m_os {};
 };
 
 export class Components {
@@ -108,16 +108,20 @@ namespace rstd
 {
 
 template<>
-struct Impl<Sized, path::Path> { ~Impl() = delete; };
+struct Impl<Sized, path::Path> {
+    ~Impl() = delete;
+};
 
 template<>
-struct Impl<ptr_::Pointee, path::Path> { using Metadata = usize; };
+struct Impl<ptr_::Pointee, path::Path> {
+    using Metadata = usize;
+};
 
 #if defined(RSTD_OS_WINDOWS)
-inline constexpr u8 PATH_SEP = '\\';
+inline constexpr u8   PATH_SEP         = '\\';
 inline constexpr bool HAS_DRIVE_PREFIX = true;
 #else
-inline constexpr u8 PATH_SEP = '/';
+inline constexpr u8   PATH_SEP         = '/';
 inline constexpr bool HAS_DRIVE_PREFIX = false;
 #endif
 
@@ -171,7 +175,7 @@ constexpr auto file_name_start(u8 const* p, usize len) -> usize {
     while (i > 0 && is_sep(p[i - 1])) --i;
     if (i == 0) return len; // all separators → no file name
     usize end = i;
-    while (i > 0 && !is_sep(p[i - 1])) --i;
+    while (i > 0 && ! is_sep(p[i - 1])) --i;
     (void)end;
     return i;
 }
@@ -181,7 +185,7 @@ constexpr auto file_name_start(u8 const* p, usize len) -> usize {
 namespace path
 {
 
-constexpr Components::Components(u8 const* p, usize len) noexcept : m_path(p), m_len(len) {
+constexpr Components::Components(u8 const* p, usize len) noexcept: m_path(p), m_len(len) {
     auto root = path_detail::root_len(p, len);
     if (root != 0) {
         m_root_pending = true;
@@ -232,15 +236,15 @@ struct ref<path::Path> : ref_base<ref<path::Path>, u8[], false> {
     u8 const* p { nullptr };
     usize     length { 0 };
 
-    using Self = ref;
+    using Self               = ref;
     constexpr ref() noexcept = default;
-    constexpr ref(u8 const* p, usize len) noexcept : p(p), length(len) {}
+    constexpr ref(u8 const* p, usize len) noexcept: p(p), length(len) {}
 
     /// Construct from a `ref<OsStr>`.
-    constexpr ref(ref<OsStr> s) noexcept : p(s.data()), length(s.len()) {}
+    constexpr ref(ref<OsStr> s) noexcept: p(s.data()), length(s.len()) {}
 
     /// Construct from a `ref<str>`.
-    constexpr ref(ref<str> s) noexcept : p(s.data()), length(s.size()) {}
+    constexpr ref(ref<str> s) noexcept: p(s.data()), length(s.size()) {}
 
     /// Construct from a null-terminated C string.
     constexpr ref(const char* c) noexcept
@@ -256,14 +260,10 @@ struct ref<path::Path> : ref_base<ref<path::Path>, u8[], false> {
     }
 
     /// Attempts to yield a `ref<str>` if the path is valid UTF-8.
-    constexpr auto to_str() const noexcept -> Option<ref<str>> {
-        return as_os_str().to_str();
-    }
+    constexpr auto to_str() const noexcept -> Option<ref<str>> { return as_os_str().to_str(); }
 
     /// Converts to a `String`, replacing invalid UTF-8 with U+FFFD.
-    auto to_string_lossy() const -> String {
-        return as_os_str().to_string_lossy();
-    }
+    auto to_string_lossy() const -> String { return as_os_str().to_string_lossy(); }
 
     /// Returns `true` if the path starts with a root separator.
     constexpr auto is_absolute() const noexcept -> bool {
@@ -279,7 +279,7 @@ struct ref<path::Path> : ref_base<ref<path::Path>, u8[], false> {
     }
 
     /// Returns `true` if the path is not absolute.
-    constexpr auto is_relative() const noexcept -> bool { return !is_absolute(); }
+    constexpr auto is_relative() const noexcept -> bool { return ! is_absolute(); }
 
     /// Returns `true` if the path has a root component.
     constexpr auto has_root() const noexcept -> bool {
@@ -347,7 +347,7 @@ struct ref<path::Path> : ref_base<ref<path::Path>, u8[], false> {
     constexpr auto file_name() const noexcept -> Option<ref<OsStr>> {
         if (length == 0) return None();
         usize start = path_detail::file_name_start(p, length);
-        usize end = length;
+        usize end   = length;
         while (end > start && path_detail::is_sep(p[end - 1])) --end;
         if (end <= start) return None();
         ref<OsStr> r = ref<OsStr>::from_raw_parts(p + start, end - start);
@@ -362,7 +362,10 @@ struct ref<path::Path> : ref_base<ref<path::Path>, u8[], false> {
         // Find last '.' that is not the first character
         usize dot = name.len();
         for (usize i = name.len(); i > 1; --i) {
-            if (name.data()[i - 1] == '.') { dot = i - 1; break; }
+            if (name.data()[i - 1] == '.') {
+                dot = i - 1;
+                break;
+            }
         }
         if (dot == name.len() || dot == 0) return None();
         ref<OsStr> r = ref<OsStr>::from_raw_parts(name.data() + dot + 1, name.len() - dot - 1);
@@ -405,45 +408,33 @@ constexpr auto Components::as_path() const noexcept -> ref<Path> {
 class PathBuf {
     OsString inner;
 
-    explicit PathBuf(OsString&& s) : inner(rstd::move(s)) {}
+    explicit PathBuf(OsString&& s): inner(rstd::move(s)) {}
 
 public:
-    PathBuf() = default;
-    PathBuf(PathBuf&&) noexcept = default;
+    PathBuf()                              = default;
+    PathBuf(PathBuf&&) noexcept            = default;
     PathBuf& operator=(PathBuf&&) noexcept = default;
 
     /// Creates an empty `PathBuf`.
     static auto make() -> PathBuf { return {}; }
 
     /// Creates a `PathBuf` from a `String`.
-    static auto from(String&& s) -> PathBuf {
-        return PathBuf { OsString::from(rstd::move(s)) };
-    }
+    static auto from(String&& s) -> PathBuf { return PathBuf { OsString::from(rstd::move(s)) }; }
 
     /// Creates a `PathBuf` from a `ref<str>`.
-    static auto from(ref<str> s) -> PathBuf {
-        return PathBuf { OsString::from(s) };
-    }
+    static auto from(ref<str> s) -> PathBuf { return PathBuf { OsString::from(s) }; }
 
     /// Creates a `PathBuf` from a borrowed path.
-    static auto from(ref<Path> s) -> PathBuf {
-        return PathBuf { OsString::from(s.as_os_str()) };
-    }
+    static auto from(ref<Path> s) -> PathBuf { return PathBuf { OsString::from(s.as_os_str()) }; }
 
     /// Creates a `PathBuf` from an `OsString`.
-    static auto from(OsString&& s) -> PathBuf {
-        return PathBuf { rstd::move(s) };
-    }
+    static auto from(OsString&& s) -> PathBuf { return PathBuf { rstd::move(s) }; }
 
     /// Creates a `PathBuf` from a C string.
-    static auto from(const char* s) -> PathBuf {
-        return from(ref<str>(s));
-    }
+    static auto from(const char* s) -> PathBuf { return from(ref<str>(s)); }
 
     /// Returns a borrowed `ref<Path>`.
-    auto as_path() const noexcept -> ref<Path> {
-        return ref<Path>(inner.as_os_str());
-    }
+    auto as_path() const noexcept -> ref<Path> { return ref<Path>(inner.as_os_str()); }
 
     /// Consumes the `PathBuf` and returns the inner `OsString`.
     auto into_os_string() -> OsString { return rstd::move(inner); }
@@ -453,7 +444,7 @@ public:
     /// If `component` is absolute, it replaces the current path.
     /// Otherwise, a separator is inserted if needed and `component` is appended.
     void push(ref<Path> component) {
-        auto comp = component.as_os_str();
+        auto      comp = component.as_os_str();
         ref<Path> comp_path(comp);
         if (comp_path.is_absolute()) {
             inner = OsString::from(comp);
@@ -462,7 +453,7 @@ public:
         // Add separator if current path is non-empty and doesn't end with one
         if (inner.len() > 0) {
             auto bytes = inner.as_os_str().as_encoded_bytes();
-            if (!path_detail::is_sep((&*bytes)[bytes.len() - 1])) {
+            if (! path_detail::is_sep((&*bytes)[bytes.len() - 1])) {
                 u8 sep = PATH_SEP;
                 inner.push(ref<OsStr>::from_raw_parts(&sep, 1));
             }
@@ -475,7 +466,7 @@ public:
         auto p = as_path().parent();
         if (p.is_none()) return false;
         auto parent = *p;
-        inner = OsString::from(parent.as_os_str());
+        inner       = OsString::from(parent.as_os_str());
         return true;
     }
 
@@ -506,7 +497,7 @@ struct Impl<fmt::Display, ref<path::Path>> : ImplBase<ref<path::Path>> {
         usize i = 0;
         while (i < s.len()) {
             auto [cp, n] = char_::decode_utf8(s.data() + i, s.len() - i);
-            u8 buf[4];
+            u8   buf[4];
             auto wrote = char_::encode_utf8(cp, buf);
             if (! f.write_raw(buf, wrote)) return false;
             i += n;

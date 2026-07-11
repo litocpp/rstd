@@ -19,7 +19,12 @@ struct FilterRule {
 
 // ── Color style ───────────────────────────────────────────────────────────
 
-enum class Style : u8 { Auto, Always, Never };
+enum class Style : u8
+{
+    Auto,
+    Always,
+    Never
+};
 
 namespace detail
 {
@@ -41,35 +46,35 @@ inline auto parse_style(ref<str> s) noexcept -> Style {
         return true;
     };
     if (eq_ci(s, "always", 6)) return Style::Always;
-    if (eq_ci(s, "never",  5)) return Style::Never;
+    if (eq_ci(s, "never", 5)) return Style::Never;
     return Style::Auto;
 }
 
 inline auto padded_level_str(Level l) noexcept -> const char* {
     switch (l) {
-        case Level::Error: return "ERROR";
-        case Level::Warn:  return "WARN ";
-        case Level::Info:  return "INFO ";
-        case Level::Debug: return "DEBUG";
-        case Level::Trace: return "TRACE";
+    case Level::Error: return "ERROR";
+    case Level::Warn: return "WARN ";
+    case Level::Info: return "INFO ";
+    case Level::Debug: return "DEBUG";
+    case Level::Trace: return "TRACE";
     }
     return "?????";
 }
 
 inline auto level_color(Level l) noexcept -> const char* {
     switch (l) {
-        case Level::Error: return "\x1b[31m";
-        case Level::Warn:  return "\x1b[33m";
-        case Level::Info:  return "\x1b[32m";
-        case Level::Debug: return "\x1b[34m";
-        case Level::Trace: return "\x1b[36m";
+    case Level::Error: return "\x1b[31m";
+    case Level::Warn: return "\x1b[33m";
+    case Level::Info: return "\x1b[32m";
+    case Level::Debug: return "\x1b[34m";
+    case Level::Trace: return "\x1b[36m";
     }
     return "";
 }
 
-inline constexpr char COLOR_RESET[] = "\x1b[0m";
-inline constexpr usize COLOR_PREFIX_LEN = 5;  // "\x1b[XYm"
-inline constexpr usize COLOR_RESET_LEN  = 4;  // "\x1b[0m"
+inline constexpr char  COLOR_RESET[]    = "\x1b[0m";
+inline constexpr usize COLOR_PREFIX_LEN = 5; // "\x1b[XYm"
+inline constexpr usize COLOR_RESET_LEN  = 4; // "\x1b[0m"
 inline constexpr usize PADDED_LEVEL_LEN = 5;
 
 // Extract a "module path" (namespace prefix) from a pretty function string,
@@ -82,14 +87,19 @@ inline constexpr usize PADDED_LEVEL_LEN = 5;
 inline auto module_from_function(const char* fn) noexcept -> ref<str> {
     if (fn == nullptr || *fn == '\0') return {};
     const char* last_sep = nullptr;
-    int depth = 0;
+    int         depth    = 0;
     for (const char* p = fn; *p != '\0'; ++p) {
         char c = *p;
-        if (c == '<') ++depth;
-        else if (c == '>') --depth;
+        if (c == '<')
+            ++depth;
+        else if (c == '>')
+            --depth;
         else if (depth == 0) {
             if (c == '(') break;
-            if (c == ':' && p[1] == ':') { last_sep = p; ++p; }
+            if (c == ':' && p[1] == ':') {
+                last_sep = p;
+                ++p;
+            }
         }
     }
     if (last_sep == nullptr) return {};
@@ -131,8 +141,8 @@ export struct EnvLogger {
     EnvLogger() noexcept {
         parse_env();
         parse_style_env();
-        color_enabled = (style == Style::Always)
-            || (style == Style::Auto && detail::stderr_is_tty());
+        color_enabled =
+            (style == Style::Always) || (style == Style::Auto && detail::stderr_is_tty());
     }
 
     explicit EnvLogger(ref<str> filters) noexcept { parse_filters(filters); }
@@ -151,7 +161,7 @@ export struct EnvLogger {
     }
 
     auto log(Record const& r) const noexcept -> void {
-        if (!enabled(r.metadata)) return;
+        if (! enabled(r.metadata)) return;
         write_record(r);
     }
 
@@ -221,9 +231,9 @@ private:
                 if (tlen >= sizeof(rule.target)) tlen = sizeof(rule.target) - 1;
                 __builtin_memcpy(rule.target, p, tlen);
                 rule.target[tlen] = '\0';
-                rule.target_len = u8(tlen);
-                rule.level = parse_level_filter(ref<str>(l_beg, usize(end - l_beg)))
-                                 .unwrap_or(LevelFilter::Trace);
+                rule.target_len   = u8(tlen);
+                rule.level        = parse_level_filter(ref<str>(l_beg, usize(end - l_beg)))
+                                        .unwrap_or(LevelFilter::Trace);
             }
         } else {
             // global level directive
@@ -243,7 +253,7 @@ private:
     // ── formatting output ─────────────────────────────────────────────────
 
     void write_record(Record const& r) const noexcept {
-        StderrWriter w;
+        StderrWriter   w;
         fmt::Formatter f(&w, [](void* ctx, const u8* p, usize len) -> bool {
             auto* self = static_cast<StderrWriter*>(ctx);
             while (len > 0) {
@@ -251,7 +261,7 @@ private:
                 if (res.is_err()) return false;
                 auto n = res.unwrap_unchecked();
                 if (n == 0) return false;
-                p   += n;
+                p += n;
                 len -= n;
             }
             return true;
@@ -265,11 +275,9 @@ private:
         f.write_raw((u8*)" ", 1);
 
         if (color_enabled) {
-            f.write_raw((u8 const*)detail::level_color(r.lvl()),
-                        detail::COLOR_PREFIX_LEN);
+            f.write_raw((u8 const*)detail::level_color(r.lvl()), detail::COLOR_PREFIX_LEN);
         }
-        f.write_raw((u8 const*)detail::padded_level_str(r.lvl()),
-                    detail::PADDED_LEVEL_LEN);
+        f.write_raw((u8 const*)detail::padded_level_str(r.lvl()), detail::PADDED_LEVEL_LEN);
         if (color_enabled) {
             f.write_raw((u8 const*)detail::COLOR_RESET, detail::COLOR_RESET_LEN);
         }

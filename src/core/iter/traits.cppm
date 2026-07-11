@@ -211,8 +211,7 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
 
     auto nth(usize n) {
         auto x = this->self().next();
-        for (usize i = 0; i < n && x.is_some(); ++i)
-            x = this->self().next();
+        for (usize i = 0; i < n && x.is_some(); ++i) x = this->self().next();
         return x;
     }
 
@@ -236,8 +235,7 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
 
     template<typename F>
     void for_each(F f) {
-        for (auto x = this->self().next(); x.is_some(); x = this->self().next())
-            f(rstd::move(*x));
+        for (auto x = this->self().next(); x.is_some(); x = this->self().next()) f(rstd::move(*x));
     }
 
     auto sum() {
@@ -449,8 +447,7 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
     // The n-th element from the back. Requires DoubleEndedIterator.
     auto nth_back(usize n) {
         auto x = this->self().next_back();
-        for (usize i = 0; i < n && x.is_some(); ++i)
-            x = this->self().next_back();
+        for (usize i = 0; i < n && x.is_some(); ++i) x = this->self().next_back();
         return x;
     }
 
@@ -575,9 +572,7 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
         return iter::Peekable<Self>(rstd::move(this->self()));
     }
 
-    auto flatten() -> iter::Flatten<Self> {
-        return iter::Flatten<Self>(rstd::move(this->self()));
-    }
+    auto flatten() -> iter::Flatten<Self> { return iter::Flatten<Self>(rstd::move(this->self())); }
 
     template<typename F>
     auto flat_map(F f) -> iter::FlatMap<Self, F> {

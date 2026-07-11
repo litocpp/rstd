@@ -13,17 +13,15 @@ class RuntimeCoroDriver {
     bool    m_completed { false };
 
 public:
-    explicit RuntimeCoroDriver(coro<T>&& task) : m_coro(rstd::move(task)) {}
+    explicit RuntimeCoroDriver(coro<T>&& task): m_coro(rstd::move(task)) {}
 
-    RuntimeCoroDriver(const RuntimeCoroDriver&)            = delete;
-    auto operator=(const RuntimeCoroDriver&) -> RuntimeCoroDriver& = delete;
+    RuntimeCoroDriver(const RuntimeCoroDriver&)                        = delete;
+    auto operator=(const RuntimeCoroDriver&) -> RuntimeCoroDriver&     = delete;
     RuntimeCoroDriver(RuntimeCoroDriver&&) noexcept                    = default;
     auto operator=(RuntimeCoroDriver&&) noexcept -> RuntimeCoroDriver& = default;
-    ~RuntimeCoroDriver()                                              = default;
+    ~RuntimeCoroDriver()                                               = default;
 
-    auto drive(task::Context& cx) {
-        return resume_coro(m_coro, m_completed, cx);
-    }
+    auto drive(task::Context& cx) { return resume_coro(m_coro, m_completed, cx); }
 
     auto resume_external_segment(task::Context& cx) {
         return resume_coro_external_segment(m_coro, m_completed, cx);

@@ -58,18 +58,18 @@ auto condvar_ping_pong(rstd_bench::BenchContext& context) -> bool {
     for (std::uint64_t i = 0; i < iterations; ++i) {
         auto guard = state->m_fields.lock().unwrap_unchecked();
         state->m_cvar.wait_while(guard, [](const PingPongFields& fields) {
-            return !fields.m_main_turn;
+            return ! fields.m_main_turn;
         });
         guard->m_main_turn = false;
         state->m_cvar.notify_one();
         state->m_cvar.wait_while(guard, [](const PingPongFields& fields) {
-            return !fields.m_main_turn;
+            return ! fields.m_main_turn;
         });
         rstd::hint::black_box(guard->m_count);
     }
 
     auto joined = rstd::move(handle).join();
-    if (joined.is_err() || !rstd::move(joined).unwrap_unchecked()) {
+    if (joined.is_err() || ! rstd::move(joined).unwrap_unchecked()) {
         return false;
     }
 

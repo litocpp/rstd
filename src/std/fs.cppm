@@ -111,14 +111,16 @@ public:
 
     auto set_readonly(bool ro) noexcept -> void {
 #if RSTD_OS_UNIX
-        if (ro) mode_ &= ~u32(0222);
-        else    mode_ |= 0222;
+        if (ro)
+            mode_ &= ~u32(0222);
+        else
+            mode_ |= 0222;
 #endif
     }
 
     // Unix-specific:
-    auto mode() const noexcept -> u32 { return mode_; }
-    auto set_mode(u32 m) noexcept -> void { mode_ = m; }
+    auto        mode() const noexcept -> u32 { return mode_; }
+    auto        set_mode(u32 m) noexcept -> void { mode_ = m; }
     static auto from_mode(u32 m) noexcept -> Permissions { return Permissions { m }; }
 };
 
@@ -129,7 +131,7 @@ export struct FileTimes {
     Option<rstd::time::SystemTime> modified_ {};
 
     static auto make() noexcept -> FileTimes { return {}; }
-    auto set_accessed(rstd::time::SystemTime t) noexcept -> FileTimes& {
+    auto        set_accessed(rstd::time::SystemTime t) noexcept -> FileTimes& {
         accessed_ = Some(t);
         return *this;
     }
@@ -176,8 +178,8 @@ public:
 
     auto modified() const -> Result<rstd::time::SystemTime> {
 #if RSTD_OS_UNIX
-        return Ok(rstd::time::SystemTime { rstd::sys::pal::unix::time::SystemTime {
-            rstd::sys::pal::unix::time::Timespec {
+        return Ok(rstd::time::SystemTime {
+            rstd::sys::pal::unix::time::SystemTime { rstd::sys::pal::unix::time::Timespec {
                 i64(st_.st_mtim.tv_sec), u32(st_.st_mtim.tv_nsec) } } });
 #else
         return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
@@ -185,8 +187,8 @@ public:
     }
     auto accessed() const -> Result<rstd::time::SystemTime> {
 #if RSTD_OS_UNIX
-        return Ok(rstd::time::SystemTime { rstd::sys::pal::unix::time::SystemTime {
-            rstd::sys::pal::unix::time::Timespec {
+        return Ok(rstd::time::SystemTime {
+            rstd::sys::pal::unix::time::SystemTime { rstd::sys::pal::unix::time::Timespec {
                 i64(st_.st_atim.tv_sec), u32(st_.st_atim.tv_nsec) } } });
 #else
         return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
@@ -298,22 +300,21 @@ public:
     /// Compute the platform open(2) flags from the options. Returns Err if
     /// the combination is invalid (mirrors Rust's get_access_mode/get_creation_mode).
     auto get_access_mode() const noexcept -> Result<i32> {
-        if (read_ && !write_ && !append_) return Ok(i32 { libc::O_RDONLY });
-        if (!read_ && write_ && !append_) return Ok(i32 { libc::O_WRONLY });
-        if (read_ && write_ && !append_)  return Ok(i32 { libc::O_RDWR });
-        if (!read_ && append_)            return Ok(i32 { libc::O_WRONLY | libc::O_APPEND });
-        if (read_ && append_)             return Ok(i32 { libc::O_RDWR   | libc::O_APPEND });
+        if (read_ && ! write_ && ! append_) return Ok(i32 { libc::O_RDONLY });
+        if (! read_ && write_ && ! append_) return Ok(i32 { libc::O_WRONLY });
+        if (read_ && write_ && ! append_) return Ok(i32 { libc::O_RDWR });
+        if (! read_ && append_) return Ok(i32 { libc::O_WRONLY | libc::O_APPEND });
+        if (read_ && append_) return Ok(i32 { libc::O_RDWR | libc::O_APPEND });
         return Err(Error::from_raw_os_error(libc::EINVAL));
     }
 
     auto get_creation_mode() const noexcept -> Result<i32> {
-        if (!write_ && !append_) {
+        if (! write_ && ! append_) {
             if (truncate_ || create_ || create_new_)
                 return Err(Error::from_raw_os_error(libc::EINVAL));
         }
         if (append_) {
-            if (truncate_ && !create_new_)
-                return Err(Error::from_raw_os_error(libc::EINVAL));
+            if (truncate_ && ! create_new_) return Err(Error::from_raw_os_error(libc::EINVAL));
         }
         if (create_new_) return Ok(i32 { libc::O_CREAT | libc::O_EXCL });
         if (create_ && truncate_) return Ok(i32 { libc::O_CREAT | libc::O_TRUNC });
@@ -330,7 +331,7 @@ export class File {
 
 public:
     File() noexcept = default;
-    explicit File(OwnedFd fd) noexcept : fd_(rstd::move(fd)) {}
+    explicit File(OwnedFd fd) noexcept: fd_(rstd::move(fd)) {}
 
     /// Open `path` read-only.
     static auto open(ref<Path> path) -> Result<File> {
@@ -384,11 +385,17 @@ public:
         libc::off_t off    = 0;
         switch (pos.which) {
         case SeekFrom::Which::Start:
-            whence = libc::SEEK_SET; off = libc::off_t(u64(pos.offset)); break;
+            whence = libc::SEEK_SET;
+            off    = libc::off_t(u64(pos.offset));
+            break;
         case SeekFrom::Which::End:
-            whence = libc::SEEK_END; off = libc::off_t(pos.offset); break;
+            whence = libc::SEEK_END;
+            off    = libc::off_t(pos.offset);
+            break;
         case SeekFrom::Which::Current:
-            whence = libc::SEEK_CUR; off = libc::off_t(pos.offset); break;
+            whence = libc::SEEK_CUR;
+            off    = libc::off_t(pos.offset);
+            break;
         }
         auto r = libc::lseek(fd_.as_raw_fd(), off, whence);
         if (r < 0) return Err(Error::from_raw_os_error(libc::get_errno()));
@@ -401,7 +408,8 @@ public:
     /// fsync(2) — flushes file data and metadata to disk.
     auto sync_all() -> Result<empty> {
 #if RSTD_OS_UNIX
-        if (libc::fsync(fd_.as_raw_fd()) < 0) return Err(Error::from_raw_os_error(libc::get_errno()));
+        if (libc::fsync(fd_.as_raw_fd()) < 0)
+            return Err(Error::from_raw_os_error(libc::get_errno()));
         return Ok(empty {});
 #else
         return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
@@ -411,7 +419,8 @@ public:
     /// fdatasync(2) — flushes file data (skipping non-essential metadata).
     auto sync_data() -> Result<empty> {
 #if RSTD_OS_UNIX
-        if (libc::fdatasync(fd_.as_raw_fd()) < 0) return Err(Error::from_raw_os_error(libc::get_errno()));
+        if (libc::fdatasync(fd_.as_raw_fd()) < 0)
+            return Err(Error::from_raw_os_error(libc::get_errno()));
         return Ok(empty {});
 #else
         return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
@@ -441,7 +450,9 @@ public:
             return Err(Error::from_raw_os_error(libc::get_errno()));
         }
 #else
-        (void)buf; (void)len; (void)offset;
+        (void)buf;
+        (void)len;
+        (void)offset;
         return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
 #endif
     }
@@ -456,7 +467,9 @@ public:
             return Err(Error::from_raw_os_error(libc::get_errno()));
         }
 #else
-        (void)buf; (void)len; (void)offset;
+        (void)buf;
+        (void)len;
+        (void)offset;
         return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
 #endif
     }
@@ -467,8 +480,7 @@ public:
             auto r = read_at(buf, len, offset);
             if (r.is_err()) return Err(r.unwrap_err_unchecked());
             usize n = r.unwrap_unchecked();
-            if (n == 0)
-                return Err(Error::from_kind(ErrorKind { ErrorKind::UnexpectedEof }));
+            if (n == 0) return Err(Error::from_kind(ErrorKind { ErrorKind::UnexpectedEof }));
             buf += n;
             len -= n;
             offset += n;
@@ -482,8 +494,7 @@ public:
             auto r = write_at(buf, len, offset);
             if (r.is_err()) return Err(r.unwrap_err_unchecked());
             usize n = r.unwrap_unchecked();
-            if (n == 0)
-                return Err(Error::from_kind(ErrorKind { ErrorKind::WriteZero }));
+            if (n == 0) return Err(Error::from_kind(ErrorKind { ErrorKind::WriteZero }));
             buf += n;
             len -= n;
             offset += n;
@@ -582,8 +593,8 @@ public:
         auto fill = [&](Option<rstd::time::SystemTime> const& opt, libc::timespec_t& out) {
             if (opt.is_some()) {
                 auto const& spec = (*opt).inner.t;
-                out.tv_sec  = libc::time_t(spec.tv_sec);
-                out.tv_nsec = long(spec.tv_nsec);
+                out.tv_sec       = libc::time_t(spec.tv_sec);
+                out.tv_nsec      = long(spec.tv_nsec);
             } else {
                 out.tv_sec  = 0;
                 out.tv_nsec = libc::UTIME_OMIT;
@@ -616,9 +627,7 @@ public:
     auto as_fd() const noexcept -> BorrowedFd { return fd_.as_fd(); }
     auto into_raw_fd() noexcept -> RawFd { return fd_.into_raw_fd(); }
 
-    static auto from_raw_fd(RawFd fd) noexcept -> File {
-        return File { OwnedFd::from_raw_fd(fd) };
-    }
+    static auto from_raw_fd(RawFd fd) noexcept -> File { return File { OwnedFd::from_raw_fd(fd) }; }
 };
 
 inline auto OpenOptions::open(ref<Path> path) const -> Result<File> {
@@ -634,8 +643,8 @@ inline auto OpenOptions::open(ref<Path> path) const -> Result<File> {
     auto creation = get_creation_mode();
     if (creation.is_err()) return Err(creation.unwrap_err_unchecked());
 
-    int flags = access.unwrap_unchecked() | creation.unwrap_unchecked() |
-                custom_flags_ | libc::O_CLOEXEC;
+    int flags =
+        access.unwrap_unchecked() | creation.unwrap_unchecked() | custom_flags_ | libc::O_CLOEXEC;
     auto path_ptr = reinterpret_cast<const char*>(cs.to_bytes_with_nul().p);
 
     while (true) {
@@ -697,7 +706,7 @@ export inline auto read_to_string(ref<Path> path) -> Result<String> {
     auto v = read(path);
     if (v.is_err()) return Err(v.unwrap_err_unchecked());
     auto bytes = rstd::move(v).unwrap_unchecked();
-    if (!rstd::char_::is_valid_utf8(bytes.as_slice().p, bytes.len())) {
+    if (! rstd::char_::is_valid_utf8(bytes.as_slice().p, bytes.len())) {
         return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidData }));
     }
     return Ok(String::from_utf8_unchecked(rstd::move(bytes)));
@@ -713,8 +722,7 @@ export inline auto write(ref<Path> path, slice<u8> contents) -> Result<empty> {
         auto r = f.write(contents.p + off, contents.len() - off);
         if (r.is_err()) return Err(r.unwrap_err_unchecked());
         usize n = r.unwrap_unchecked();
-        if (n == 0)
-            return Err(Error::from_kind(ErrorKind { ErrorKind::WriteZero }));
+        if (n == 0) return Err(Error::from_kind(ErrorKind { ErrorKind::WriteZero }));
         off += n;
     }
     return Ok(empty {});
@@ -726,11 +734,10 @@ namespace detail
 inline auto stat_path(ref<Path> path, bool follow) -> Result<Metadata> {
     auto cs = path_cstring(path);
     if (cs.is_err()) return Err(cs.unwrap_err_unchecked());
-    auto    csv = rstd::move(cs).unwrap_unchecked();
+    auto     csv = rstd::move(cs).unwrap_unchecked();
     Metadata m;
-    int r = follow
-                ? libc::stat(reinterpret_cast<const char*>(csv.to_bytes_with_nul().p),  &m.st_)
-                : libc::lstat(reinterpret_cast<const char*>(csv.to_bytes_with_nul().p), &m.st_);
+    int r = follow ? libc::stat(reinterpret_cast<const char*>(csv.to_bytes_with_nul().p), &m.st_)
+                   : libc::lstat(reinterpret_cast<const char*>(csv.to_bytes_with_nul().p), &m.st_);
     if (r < 0) return Err(Error::from_raw_os_error(libc::get_errno()));
     return Ok(rstd::move(m));
 }
@@ -818,7 +825,8 @@ export inline auto rename(ref<Path> from, ref<Path> to) -> Result<empty> {
 #if RSTD_OS_UNIX
     return detail::run_path2(from, to, libc::rename);
 #else
-    (void)from; (void)to;
+    (void)from;
+    (void)to;
     return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
 #endif
 }
@@ -828,7 +836,8 @@ export inline auto hard_link(ref<Path> original, ref<Path> link) -> Result<empty
 #if RSTD_OS_UNIX
     return detail::run_path2(original, link, libc::link);
 #else
-    (void)original; (void)link;
+    (void)original;
+    (void)link;
     return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
 #endif
 }
@@ -838,7 +847,8 @@ export inline auto soft_link(ref<Path> original, ref<Path> link) -> Result<empty
 #if RSTD_OS_UNIX
     return detail::run_path2(original, link, libc::symlink);
 #else
-    (void)original; (void)link;
+    (void)original;
+    (void)link;
     return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
 #endif
 }
@@ -855,8 +865,8 @@ export inline auto read_link(ref<Path> path) -> Result<rstd::path::PathBuf> {
         Vec<u8> v = Vec<u8>::with_capacity(cap);
         for (usize i = 0; i < cap; i++) v.push(u8(0));
         auto n = libc::readlink(reinterpret_cast<const char*>(csv.to_bytes_with_nul().p),
-                            reinterpret_cast<char*>(v.as_mut_slice().as_raw_ptr()),
-                            cap);
+                                reinterpret_cast<char*>(v.as_mut_slice().as_raw_ptr()),
+                                cap);
         if (n < 0) return Err(Error::from_raw_os_error(libc::get_errno()));
         if (usize(n) < cap) {
             // Truncate to the actual length.
@@ -879,14 +889,14 @@ export inline auto canonicalize(ref<Path> path) -> Result<rstd::path::PathBuf> {
     if (cs.is_err()) return Err(cs.unwrap_err_unchecked());
     auto  csv = rstd::move(cs).unwrap_unchecked();
     char* raw = libc::realpath(reinterpret_cast<const char*>(csv.to_bytes_with_nul().p), nullptr);
-    if (!raw) return Err(Error::from_raw_os_error(libc::get_errno()));
-    usize   len = 0;
+    if (! raw) return Err(Error::from_raw_os_error(libc::get_errno()));
+    usize len = 0;
     while (raw[len] != 0) ++len;
-    Vec<u8> v   = Vec<u8>::with_capacity(len);
+    Vec<u8> v = Vec<u8>::with_capacity(len);
     for (usize i = 0; i < len; i++) v.push(u8(raw[i]));
     libc::free(raw);
-    return Ok(rstd::path::PathBuf::from(
-        ::alloc::string::String::from_utf8_unchecked(rstd::move(v))));
+    return Ok(
+        rstd::path::PathBuf::from(::alloc::string::String::from_utf8_unchecked(rstd::move(v))));
 #else
     (void)path;
     return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
@@ -939,11 +949,12 @@ export inline auto set_permissions(ref<Path> path, Permissions perm) -> Result<e
     if (cs.is_err()) return Err(cs.unwrap_err_unchecked());
     auto csv = rstd::move(cs).unwrap_unchecked();
     if (libc::chmod(reinterpret_cast<const char*>(csv.to_bytes_with_nul().p),
-                libc::mode_t(perm.mode_)) < 0)
+                    libc::mode_t(perm.mode_)) < 0)
         return Err(Error::from_raw_os_error(libc::get_errno()));
     return Ok(empty {});
 #else
-    (void)path; (void)perm;
+    (void)path;
+    (void)perm;
     return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
 #endif
 }
@@ -960,12 +971,8 @@ export inline auto copy(ref<Path> from, ref<Path> to) -> Result<u64> {
     if (src_meta.is_err()) return Err(src_meta.unwrap_err_unchecked());
     auto perm = rstd::move(src_meta).unwrap_unchecked().permissions();
 
-    auto dres = OpenOptions::make()
-                    .write(true)
-                    .create(true)
-                    .truncate(true)
-                    .mode(perm.mode())
-                    .open(to);
+    auto dres =
+        OpenOptions::make().write(true).create(true).truncate(true).mode(perm.mode()).open(to);
     if (dres.is_err()) return Err(dres.unwrap_err_unchecked());
     auto dst = rstd::move(dres).unwrap_unchecked();
 
@@ -981,8 +988,7 @@ export inline auto copy(ref<Path> from, ref<Path> to) -> Result<u64> {
             auto w = dst.write(chunk + off, n - off);
             if (w.is_err()) return Err(w.unwrap_err_unchecked());
             usize m = w.unwrap_unchecked();
-            if (m == 0)
-                return Err(Error::from_kind(ErrorKind { ErrorKind::WriteZero }));
+            if (m == 0) return Err(Error::from_kind(ErrorKind { ErrorKind::WriteZero }));
             off += m;
         }
         total += n;
@@ -1014,8 +1020,9 @@ public:
     auto file_type() const -> Result<FileType> {
         if (type_ != 0) return Ok(FileType { type_ });
         auto p = path();
-        return symlink_metadata(rstd::ref<rstd::path::Path>(p.as_path()))
-            .map([](Metadata m) { return m.file_type(); });
+        return symlink_metadata(rstd::ref<rstd::path::Path>(p.as_path())).map([](Metadata m) {
+            return m.file_type();
+        });
     }
 
     auto metadata() const -> Result<Metadata> {
@@ -1028,7 +1035,7 @@ public:
 export class ReadDir {
 public:
 #if RSTD_OS_UNIX
-    libc::DIR*              dir_ { nullptr };
+    libc::DIR*          dir_ { nullptr };
     rstd::path::PathBuf parent_;
 
     ReadDir() noexcept = default;
@@ -1036,7 +1043,7 @@ public:
         : dir_(d), parent_(rstd::move(parent)) {}
     ReadDir(ReadDir const&)        = delete;
     auto operator=(ReadDir const&) = delete;
-    ReadDir(ReadDir&& other) noexcept : dir_(other.dir_), parent_(rstd::move(other.parent_)) {
+    ReadDir(ReadDir&& other) noexcept: dir_(other.dir_), parent_(rstd::move(other.parent_)) {
         other.dir_ = nullptr;
     }
     auto operator=(ReadDir&& other) noexcept -> ReadDir& {
@@ -1052,11 +1059,11 @@ public:
 
     /// Returns the next entry, skipping "." and "..". `None` at end of stream.
     auto next() -> Option<Result<DirEntry>> {
-        if (!dir_) return None();
+        if (! dir_) return None();
         while (true) {
-            libc::get_errno()              = 0;
-            libc::dirent* d = libc::readdir(dir_);
-            if (!d) {
+            libc::get_errno() = 0;
+            libc::dirent* d   = libc::readdir(dir_);
+            if (! d) {
                 if (libc::get_errno() == 0) return None();
                 return Some(Result<DirEntry>(Err(Error::from_raw_os_error(libc::get_errno()))));
             }
@@ -1064,18 +1071,18 @@ public:
             if (nm[0] == '.' && (nm[1] == 0 || (nm[1] == '.' && nm[2] == 0))) continue;
 
             DirEntry e;
-            e.parent_ = rstd::path::PathBuf::from(
-                rstd::ffi::OsString::from(parent_.as_path().as_os_str()));
-            e.name_   = rstd::ffi::OsString::from(rstd::ref<rstd::str>(nm));
+            e.parent_ =
+                rstd::path::PathBuf::from(rstd::ffi::OsString::from(parent_.as_path().as_os_str()));
+            e.name_ = rstd::ffi::OsString::from(rstd::ref<rstd::str>(nm));
             switch (d->d_type) {
-            case libc::DT_REG:  e.type_ = libc::S_IFREG;  break;
-            case libc::DT_DIR:  e.type_ = libc::S_IFDIR;  break;
-            case libc::DT_LNK:  e.type_ = libc::S_IFLNK;  break;
-            case libc::DT_FIFO: e.type_ = libc::S_IFIFO;  break;
-            case libc::DT_BLK:  e.type_ = libc::S_IFBLK;  break;
-            case libc::DT_CHR:  e.type_ = libc::S_IFCHR;  break;
+            case libc::DT_REG: e.type_ = libc::S_IFREG; break;
+            case libc::DT_DIR: e.type_ = libc::S_IFDIR; break;
+            case libc::DT_LNK: e.type_ = libc::S_IFLNK; break;
+            case libc::DT_FIFO: e.type_ = libc::S_IFIFO; break;
+            case libc::DT_BLK: e.type_ = libc::S_IFBLK; break;
+            case libc::DT_CHR: e.type_ = libc::S_IFCHR; break;
             case libc::DT_SOCK: e.type_ = libc::S_IFSOCK; break;
-            default:              e.type_ = 0;                break;
+            default: e.type_ = 0; break;
             }
             return Some(Result<DirEntry>(Ok(rstd::move(e))));
         }
@@ -1098,14 +1105,14 @@ export inline auto read_dir(ref<Path> path) -> Result<ReadDir> {
 #if RSTD_OS_UNIX
     auto cs = detail::path_cstring(path);
     if (cs.is_err()) return Err(cs.unwrap_err_unchecked());
-    auto    csv = rstd::move(cs).unwrap_unchecked();
-    libc::DIR*  d   = libc::opendir(reinterpret_cast<const char*>(csv.to_bytes_with_nul().p));
-    if (!d) return Err(Error::from_raw_os_error(libc::get_errno()));
+    auto       csv = rstd::move(cs).unwrap_unchecked();
+    libc::DIR* d   = libc::opendir(reinterpret_cast<const char*>(csv.to_bytes_with_nul().p));
+    if (! d) return Err(Error::from_raw_os_error(libc::get_errno()));
     // Copy path bytes for parent_.
     Vec<u8> bytes = Vec<u8>::with_capacity(path.len());
     for (usize i = 0; i < path.len(); i++) bytes.push(u8(path.data()[i]));
-    auto parent_pb = rstd::path::PathBuf::from(
-        ::alloc::string::String::from_utf8_unchecked(rstd::move(bytes)));
+    auto parent_pb =
+        rstd::path::PathBuf::from(::alloc::string::String::from_utf8_unchecked(rstd::move(bytes)));
     return Ok(ReadDir { d, rstd::move(parent_pb) });
 #else
     (void)path;
@@ -1119,7 +1126,7 @@ export inline auto remove_dir_all(ref<Path> path) -> Result<empty> {
     auto m = symlink_metadata(path);
     if (m.is_err()) return Err(m.unwrap_err_unchecked());
     auto meta = rstd::move(m).unwrap_unchecked();
-    if (!meta.is_dir()) {
+    if (! meta.is_dir()) {
         // Rust's behaviour: treat symlinks-to-dirs as files for removal.
         return remove_file(path);
     }
@@ -1131,9 +1138,9 @@ export inline auto remove_dir_all(ref<Path> path) -> Result<empty> {
         if (opt.is_none()) break;
         auto er = rstd::move(opt).unwrap_unchecked();
         if (er.is_err()) return Err(er.unwrap_err_unchecked());
-        auto ent  = rstd::move(er).unwrap_unchecked();
-        auto p    = ent.path();
-        auto ftr  = ent.file_type();
+        auto ent = rstd::move(er).unwrap_unchecked();
+        auto p   = ent.path();
+        auto ftr = ent.file_type();
         if (ftr.is_err()) return Err(ftr.unwrap_err_unchecked());
         auto ft = ftr.unwrap_unchecked();
         if (ft.is_dir()) {
@@ -1155,9 +1162,7 @@ namespace rstd
 
 template<>
 struct Impl<io::Read, fs::File> : ImplBase<fs::File> {
-    auto read(u8* buf, usize len) -> io::Result<usize> {
-        return this->self().read(buf, len);
-    }
+    auto read(u8* buf, usize len) -> io::Result<usize> { return this->self().read(buf, len); }
 };
 
 template<>

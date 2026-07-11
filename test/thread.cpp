@@ -25,9 +25,8 @@ TEST(Thread, SpawnWithValue) {
 }
 
 TEST(Thread, BuilderWithName) {
-    auto result = thread::builder::Builder::make()
-        .name(rstd::format("{}", "test-thread"))
-        .spawn([] {
+    auto result =
+        thread::builder::Builder::make().name(rstd::format("{}", "test-thread")).spawn([] {
             // Do some work
         });
 
@@ -58,7 +57,7 @@ TEST(Thread, Sleep) {
     EXPECT_GE(elapsed.as_secs_f64(), 0.1);
 }
 
-#if !__has_feature(address_sanitizer)
+#if ! __has_feature(address_sanitizer)
 TEST(Thread, MultipleThreads) {
     auto counter = std::atomic<int>(0);
     {

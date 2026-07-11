@@ -20,13 +20,13 @@ export class RuntimeBuilder;
 export class RuntimeHandle {
     sync::Weak<RuntimeInner> m_inner;
 
-    explicit RuntimeHandle(sync::Weak<RuntimeInner> inner) : m_inner(rstd::move(inner)) {}
+    explicit RuntimeHandle(sync::Weak<RuntimeInner> inner): m_inner(rstd::move(inner)) {}
 
     friend class Runtime;
 
 public:
-    RuntimeHandle(const RuntimeHandle&)            = delete;
-    auto operator=(const RuntimeHandle&) -> RuntimeHandle& = delete;
+    RuntimeHandle(const RuntimeHandle&)                        = delete;
+    auto operator=(const RuntimeHandle&) -> RuntimeHandle&     = delete;
     RuntimeHandle(RuntimeHandle&&) noexcept                    = default;
     auto operator=(RuntimeHandle&&) noexcept -> RuntimeHandle& = default;
     ~RuntimeHandle()                                           = default;
@@ -56,10 +56,9 @@ export class Runtime {
         m_inner->init_self(m_inner.downgrade());
     }
 
-    static auto make_thread_pool(usize worker_threads,
+    static auto make_thread_pool(usize                 worker_threads,
                                  Option<String> const& thread_name,
-                                 RuntimeConfig config)
-        -> io::Result<Runtime> {
+                                 RuntimeConfig         config) -> io::Result<Runtime> {
         auto runtime = Runtime { RuntimeKind::ThreadPool, config, worker_threads };
 
         for (usize i = 0; i < worker_threads; ++i) {
@@ -121,7 +120,7 @@ export class Runtime {
     }
 
 public:
-    Runtime() : Runtime(RuntimeKind::CurrentThread, RuntimeConfig::all()) {}
+    Runtime(): Runtime(RuntimeKind::CurrentThread, RuntimeConfig::all()) {}
 
     Runtime(const Runtime&)            = delete;
     Runtime& operator=(const Runtime&) = delete;
@@ -173,22 +172,22 @@ public:
         using BlockOnDriver = decltype(driver);
 
         struct BlockOnExternalState {
-            RuntimeInner*                               runtime;
-            BlockOnDriver*                              driver;
-            task::Waker                                 waker;
-            sync::Arc<sync::atomic::Atomic<bool>>       done;
+            RuntimeInner*                         runtime;
+            BlockOnDriver*                        driver;
+            task::Waker                           waker;
+            sync::Arc<sync::atomic::Atomic<bool>> done;
 
-            BlockOnExternalState(RuntimeInner* runtime,
-                                 BlockOnDriver* driver,
-                                 task::Waker waker,
+            BlockOnExternalState(RuntimeInner*                         runtime,
+                                 BlockOnDriver*                        driver,
+                                 task::Waker                           waker,
                                  sync::Arc<sync::atomic::Atomic<bool>> done)
                 : runtime(runtime),
                   driver(driver),
                   waker(rstd::move(waker)),
                   done(rstd::move(done)) {}
 
-            static auto post(ResumePlacement& placement,
-                             sync::Arc<BlockOnExternalState> state) -> bool {
+            static auto post(ResumePlacement& placement, sync::Arc<BlockOnExternalState> state)
+                -> bool {
                 auto run_state = state.clone();
                 return placement.post_external(
                     ResumeJob::make([state = rstd::move(run_state)]() mutable {
@@ -231,12 +230,11 @@ public:
             if (out.is_external()) {
                 auto placement = out.take_placement();
                 auto done      = sync::Arc<sync::atomic::Atomic<bool>>::make(false);
-                auto state     = sync::Arc<BlockOnExternalState>::make(
-                    rstd::addressof(runtime),
-                    rstd::addressof(driver),
-                    cx.waker().clone(),
-                    done.clone());
-                auto posted = BlockOnExternalState::post(placement, rstd::move(state));
+                auto state     = sync::Arc<BlockOnExternalState>::make(rstd::addressof(runtime),
+                                                                       rstd::addressof(driver),
+                                                                       cx.waker().clone(),
+                                                                       done.clone());
+                auto posted    = BlockOnExternalState::post(placement, rstd::move(state));
                 if (! posted) {
                     continue;
                 }

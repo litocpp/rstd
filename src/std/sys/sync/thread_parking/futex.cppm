@@ -21,4 +21,4 @@ public:
     void park_timeout(rstd::time::Duration timeout);
     void unpark();
 };
-} // namespace rstd::sync::thread_parking
+} // namespace rstd::sys::sync::thread_parking::futex

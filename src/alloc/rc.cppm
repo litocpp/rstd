@@ -605,7 +605,9 @@ auto make_rc(usize n, const typename Rc<T>::const_value_t& init) -> Rc<T> {
 /// \param alloc The allocator to use.
 /// \param args The arguments forwarded to the constructor of `T`.
 /// \return An `Rc<T>` owning the newly constructed value.
-export template<typename T, StoragePolicy Sp = StoragePolicy::Separate, typename Allocator,
+export template<typename T,
+                StoragePolicy Sp = StoragePolicy::Separate,
+                typename Allocator,
                 typename... Args>
     requires(! mtp::is_array<T>)
 auto allocate_make_rc(const Allocator& alloc, Args&&... args) -> Rc<T> {

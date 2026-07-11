@@ -31,33 +31,31 @@ export struct Instant {
         return { u64(li.QuadPart) };
     }
 
-    auto elapsed() const noexcept -> rstd::time::Duration {
-        return now().duration_since(*this);
-    }
+    auto elapsed() const noexcept -> rstd::time::Duration { return now().duration_since(*this); }
 
     auto duration_since(Instant other) const noexcept -> rstd::time::Duration {
-        u64 diff  = ticks >= other.ticks ? ticks - other.ticks : 0;
-        u64 freq  = qpc_freq();
-        u64 secs  = diff / freq;
-        u64 rem   = diff % freq;
+        u64 diff = ticks >= other.ticks ? ticks - other.ticks : 0;
+        u64 freq = qpc_freq();
+        u64 secs = diff / freq;
+        u64 rem  = diff % freq;
         // rem/freq < 1 s; multiply first to avoid losing precision.
         u32 nanos = u32(rem * u64(rstd::time::NANOS_PER_SEC) / freq);
         return rstd::time::Duration::new_(secs, nanos);
     }
 
     auto checked_add_duration(rstd::time::Duration dur) const noexcept -> Option<Instant> {
-        u64 freq      = qpc_freq();
-        u64 add_ticks = dur.as_secs() * freq +
-                        u64(dur.subsec_nanos()) * freq / u64(rstd::time::NANOS_PER_SEC);
+        u64 freq = qpc_freq();
+        u64 add_ticks =
+            dur.as_secs() * freq + u64(dur.subsec_nanos()) * freq / u64(rstd::time::NANOS_PER_SEC);
         u64 result = ticks + add_ticks;
         if (result < ticks) return None(); // overflow
         return Some(Instant { result });
     }
 
     auto checked_sub_duration(rstd::time::Duration dur) const noexcept -> Option<Instant> {
-        u64 freq      = qpc_freq();
-        u64 sub_ticks = dur.as_secs() * freq +
-                        u64(dur.subsec_nanos()) * freq / u64(rstd::time::NANOS_PER_SEC);
+        u64 freq = qpc_freq();
+        u64 sub_ticks =
+            dur.as_secs() * freq + u64(dur.subsec_nanos()) * freq / u64(rstd::time::NANOS_PER_SEC);
         if (sub_ticks > ticks) return None();
         return Some(Instant { ticks - sub_ticks });
     }
@@ -77,9 +75,10 @@ export struct SystemTime {
         return { v };
     }
 
-    auto sub_time(SystemTime other) const noexcept -> Result<rstd::time::Duration, rstd::time::Duration> {
-        constexpr u64 PER_SEC  = 10'000'000u; // 100ns intervals per second
-        constexpr u32 NS_PER   = 100u;        // nanoseconds per interval
+    auto sub_time(SystemTime other) const noexcept
+        -> Result<rstd::time::Duration, rstd::time::Duration> {
+        constexpr u64 PER_SEC = 10'000'000u; // 100ns intervals per second
+        constexpr u32 NS_PER  = 100u;        // nanoseconds per interval
         if (intervals >= other.intervals) {
             u64 diff  = intervals - other.intervals;
             u64 secs  = diff / PER_SEC;
@@ -96,8 +95,8 @@ export struct SystemTime {
     auto checked_add_duration(rstd::time::Duration dur) const noexcept -> Option<SystemTime> {
         constexpr u64 PER_SEC = 10'000'000u;
         constexpr u64 NS_PER  = 100u;
-        u64 add = dur.as_secs() * PER_SEC + u64(dur.subsec_nanos()) / NS_PER;
-        u64 result = intervals + add;
+        u64           add     = dur.as_secs() * PER_SEC + u64(dur.subsec_nanos()) / NS_PER;
+        u64           result  = intervals + add;
         if (result < intervals) return None();
         return Some(SystemTime { result });
     }
@@ -105,13 +104,17 @@ export struct SystemTime {
     auto checked_sub_duration(rstd::time::Duration dur) const noexcept -> Option<SystemTime> {
         constexpr u64 PER_SEC = 10'000'000u;
         constexpr u64 NS_PER  = 100u;
-        u64 sub = dur.as_secs() * PER_SEC + u64(dur.subsec_nanos()) / NS_PER;
+        u64           sub     = dur.as_secs() * PER_SEC + u64(dur.subsec_nanos()) / NS_PER;
         if (sub > intervals) return None();
         return Some(SystemTime { intervals - sub });
     }
 
-    friend auto operator==(SystemTime a, SystemTime b) noexcept -> bool { return a.intervals == b.intervals; }
-    friend auto operator<=>(SystemTime a, SystemTime b) noexcept { return a.intervals <=> b.intervals; }
+    friend auto operator==(SystemTime a, SystemTime b) noexcept -> bool {
+        return a.intervals == b.intervals;
+    }
+    friend auto operator<=>(SystemTime a, SystemTime b) noexcept {
+        return a.intervals <=> b.intervals;
+    }
 };
 
 } // namespace rstd::sys::pal::windows::time

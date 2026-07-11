@@ -12,7 +12,7 @@ struct alignas(64) CachePadded {
     T value;
 
     CachePadded() = default;
-    CachePadded(T v) : value(rstd::move(v)) {}
+    CachePadded(T v): value(rstd::move(v)) {}
 
     auto operator*() -> T& { return value; }
     auto operator*() const -> const T& { return value; }
@@ -21,14 +21,14 @@ struct alignas(64) CachePadded {
 };
 
 export class Backoff {
-    usize step;
+    usize                step;
     static constexpr u32 SPIN_LIMIT = 6;
 
 public:
-    Backoff() : step(0) {}
+    Backoff(): step(0) {}
 
     void spin_light() {
-        auto limit = step < SPIN_LIMIT ? step : SPIN_LIMIT;
+        auto  limit = step < SPIN_LIMIT ? step : SPIN_LIMIT;
         usize count = 1 << limit;
         for (usize i = 0; i < count; ++i) {
             hint::spin_loop();

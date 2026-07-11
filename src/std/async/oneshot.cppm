@@ -25,7 +25,7 @@ struct State {
 
     sync::Mutex<Fields> fields;
 
-    State() : fields(Fields {}) {}
+    State(): fields(Fields {}) {}
 
     auto send(T value) -> Result<empty, T> {
         auto receiver_waker = Option<task::Waker> {};
@@ -111,8 +111,7 @@ struct State {
         if (canceled) {
             return task::Poll<Result<T, Canceled>>::Ready(Err(Canceled {}));
         }
-        return task::Poll<Result<T, Canceled>>::Ready(
-            Ok(rstd::move(value).unwrap_unchecked()));
+        return task::Poll<Result<T, Canceled>>::Ready(Ok(rstd::move(value).unwrap_unchecked()));
     }
 
     auto poll_canceled(task::Context& cx) -> task::Poll<void> {
@@ -133,10 +132,10 @@ struct State {
 export template<typename T>
 class Sender {
     sync::Arc<State<T>> state;
-    bool               active { true };
+    bool                active { true };
 
 public:
-    explicit Sender(sync::Arc<State<T>> state) : state(rstd::move(state)) {}
+    explicit Sender(sync::Arc<State<T>> state): state(rstd::move(state)) {}
 
     Sender(const Sender&)            = delete;
     Sender& operator=(const Sender&) = delete;
@@ -184,12 +183,12 @@ public:
 export template<typename T>
 class Receiver {
     sync::Arc<State<T>> state;
-    bool               active { true };
+    bool                active { true };
 
 public:
     using Output = Result<T, Canceled>;
 
-    explicit Receiver(sync::Arc<State<T>> state) : state(rstd::move(state)) {}
+    explicit Receiver(sync::Arc<State<T>> state): state(rstd::move(state)) {}
 
     Receiver(const Receiver&)            = delete;
     Receiver& operator=(const Receiver&) = delete;

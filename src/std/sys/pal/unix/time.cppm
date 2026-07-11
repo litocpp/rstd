@@ -39,7 +39,7 @@ export struct Timespec {
     }
 
     auto checked_add_duration(rstd::time::Duration dur) const noexcept -> Option<Timespec> {
-        i64 secs = tv_sec + (i64)dur.as_secs();
+        i64 secs  = tv_sec + (i64)dur.as_secs();
         u32 nanos = tv_nsec + dur.subsec_nanos();
         if (nanos >= rstd::time::NANOS_PER_SEC) {
             nanos -= rstd::time::NANOS_PER_SEC;
@@ -79,24 +79,24 @@ export struct Timespec {
 export struct Instant {
     Timespec t;
 
-    static auto now() noexcept -> Instant {
-        return { Timespec::now(libc::CLOCK_MONOTONIC) };
-    }
+    static auto now() noexcept -> Instant { return { Timespec::now(libc::CLOCK_MONOTONIC) }; }
 
-    auto elapsed() const noexcept -> rstd::time::Duration {
-        return now().t.sub_timespec(t);
-    }
+    auto elapsed() const noexcept -> rstd::time::Duration { return now().t.sub_timespec(t); }
 
     auto duration_since(Instant other) const noexcept -> rstd::time::Duration {
         return t.sub_timespec(other.t);
     }
 
     auto checked_add_duration(rstd::time::Duration dur) const noexcept -> Option<Instant> {
-        return t.checked_add_duration(dur).map([](Timespec ts) { return Instant { ts }; });
+        return t.checked_add_duration(dur).map([](Timespec ts) {
+            return Instant { ts };
+        });
     }
 
     auto checked_sub_duration(rstd::time::Duration dur) const noexcept -> Option<Instant> {
-        return t.checked_sub_duration(dur).map([](Timespec ts) { return Instant { ts }; });
+        return t.checked_sub_duration(dur).map([](Timespec ts) {
+            return Instant { ts };
+        });
     }
 
     friend auto operator==(Instant a, Instant b) noexcept -> bool { return a.t == b.t; }
@@ -106,11 +106,10 @@ export struct Instant {
 export struct SystemTime {
     Timespec t;
 
-    static auto now() noexcept -> SystemTime {
-        return { Timespec::now(libc::CLOCK_REALTIME) };
-    }
+    static auto now() noexcept -> SystemTime { return { Timespec::now(libc::CLOCK_REALTIME) }; }
 
-    auto sub_time(SystemTime other) const noexcept -> Result<rstd::time::Duration, rstd::time::Duration> {
+    auto sub_time(SystemTime other) const noexcept
+        -> Result<rstd::time::Duration, rstd::time::Duration> {
         if (t >= other.t) {
             return Ok(t.sub_timespec(other.t));
         } else {
@@ -119,11 +118,15 @@ export struct SystemTime {
     }
 
     auto checked_add_duration(rstd::time::Duration dur) const noexcept -> Option<SystemTime> {
-        return t.checked_add_duration(dur).map([](Timespec ts) { return SystemTime { ts }; });
+        return t.checked_add_duration(dur).map([](Timespec ts) {
+            return SystemTime { ts };
+        });
     }
 
     auto checked_sub_duration(rstd::time::Duration dur) const noexcept -> Option<SystemTime> {
-        return t.checked_sub_duration(dur).map([](Timespec ts) { return SystemTime { ts }; });
+        return t.checked_sub_duration(dur).map([](Timespec ts) {
+            return SystemTime { ts };
+        });
     }
 
     friend auto operator==(SystemTime a, SystemTime b) noexcept -> bool { return a.t == b.t; }

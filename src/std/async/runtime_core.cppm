@@ -24,7 +24,8 @@ struct RuntimeWorkerId {
     friend constexpr auto operator==(RuntimeWorkerId, RuntimeWorkerId) noexcept -> bool = default;
 };
 
-enum class TaskLifecycle {
+enum class TaskLifecycle
+{
     Idle,
     Queued,
     RunningRuntime,
@@ -33,9 +34,9 @@ enum class TaskLifecycle {
     Completed,
 };
 
-inline thread_local RuntimeInner* CURRENT_RUNTIME { nullptr };
+inline thread_local RuntimeInner*   CURRENT_RUNTIME { nullptr };
 inline thread_local RuntimeWorkerId CURRENT_RUNTIME_WORKER {};
-inline thread_local bool CURRENT_RUNTIME_WORKER_ACTIVE { false };
+inline thread_local bool            CURRENT_RUNTIME_WORKER_ACTIVE { false };
 
 inline thread_local async::ExecutionDomainKind CURRENT_EXECUTION_DOMAIN {
     async::ExecutionDomainKind::RuntimeWorker
@@ -53,7 +54,8 @@ inline auto current_execution_domain() noexcept -> async::ExecutionDomainKind {
     return CURRENT_EXECUTION_DOMAIN;
 }
 
-enum class RuntimeKind {
+enum class RuntimeKind
+{
     CurrentThread,
     ThreadPool,
 };
@@ -62,15 +64,13 @@ struct RuntimeConfig {
     bool enable_io { false };
     bool enable_time { false };
 
-    static constexpr auto all() noexcept -> RuntimeConfig {
-        return RuntimeConfig { true, true };
-    }
+    static constexpr auto all() noexcept -> RuntimeConfig { return RuntimeConfig { true, true }; }
 };
 
 class TaskRef {
     TaskStateBase* ptr { nullptr };
 
-    explicit TaskRef(TaskStateBase* ptr) noexcept : ptr(ptr) {}
+    explicit TaskRef(TaskStateBase* ptr) noexcept: ptr(ptr) {}
 
 public:
     TaskRef() noexcept = default;
@@ -80,7 +80,7 @@ public:
     TaskRef(const TaskRef&)            = delete;
     TaskRef& operator=(const TaskRef&) = delete;
 
-    TaskRef(TaskRef&& other) noexcept : ptr(rstd::exchange(other.ptr, nullptr)) {}
+    TaskRef(TaskRef&& other) noexcept: ptr(rstd::exchange(other.ptr, nullptr)) {}
 
     auto operator=(TaskRef&& other) noexcept -> TaskRef&;
     ~TaskRef();
@@ -89,15 +89,15 @@ public:
     void reset() noexcept;
     void schedule() const;
 
-    auto get() const noexcept -> TaskStateBase* { return ptr; }
-    auto operator->() const noexcept -> TaskStateBase* { return ptr; }
+    auto     get() const noexcept -> TaskStateBase* { return ptr; }
+    auto     operator->() const noexcept -> TaskStateBase* { return ptr; }
     explicit operator bool() const noexcept { return ptr != nullptr; }
 };
 
 struct ReadyQueue {
     Vec<TaskRef> m_tasks;
 
-    ReadyQueue() : m_tasks(Vec<TaskRef>::make()) {}
+    ReadyQueue(): m_tasks(Vec<TaskRef>::make()) {}
 
     auto is_empty() const -> bool { return m_tasks.is_empty(); }
 
@@ -116,7 +116,7 @@ struct ReadyQueue {
 struct TaskRegistry {
     Vec<TaskRef> m_tasks;
 
-    TaskRegistry() : m_tasks(Vec<TaskRef>::make()) {}
+    TaskRegistry(): m_tasks(Vec<TaskRef>::make()) {}
 
     void insert(TaskRef task) { m_tasks.push(rstd::move(task)); }
 
@@ -140,7 +140,8 @@ struct TaskRegistry {
     }
 };
 
-enum class WorkerWait {
+enum class WorkerWait
+{
     Retry,
     Park,
     Stop,
@@ -153,17 +154,17 @@ struct WorkerFields {
     bool                   m_parked { false };
     bool                   m_stopping { false };
 
-    WorkerFields() : m_ready(), m_parker(None()) {}
+    WorkerFields(): m_ready(), m_parker(None()) {}
 };
 
 struct WorkerState {
     sync::Mutex<WorkerFields> m_fields;
 
-    WorkerState() : m_fields(WorkerFields {}) {}
+    WorkerState(): m_fields(WorkerFields {}) {}
 };
 
 class WorkerHandle {
-    RuntimeWorkerId       m_id;
+    RuntimeWorkerId        m_id;
     sync::Arc<WorkerState> m_state;
 
     WorkerHandle(RuntimeWorkerId id, sync::Arc<WorkerState> state)
@@ -182,9 +183,9 @@ public:
         return WorkerHandle { id, sync::Arc<WorkerState>::make() };
     }
 
-    WorkerHandle(const WorkerHandle&)            = delete;
-    WorkerHandle& operator=(const WorkerHandle&) = delete;
-    WorkerHandle(WorkerHandle&&) noexcept        = default;
+    WorkerHandle(const WorkerHandle&)                        = delete;
+    WorkerHandle& operator=(const WorkerHandle&)             = delete;
+    WorkerHandle(WorkerHandle&&) noexcept                    = default;
     auto operator=(WorkerHandle&&) noexcept -> WorkerHandle& = default;
 
     auto clone() const -> WorkerHandle { return WorkerHandle { m_id, m_state.clone() }; }
@@ -267,7 +268,7 @@ class RuntimeShared {
 
 public:
     sync::Mutex<RuntimeSharedState> state;
-    sync::Condvar                  task_cvar;
+    sync::Condvar                   task_cvar;
 
     explicit RuntimeShared(usize worker_count)
         : m_workers(Vec<WorkerHandle>::make()),
@@ -282,12 +283,10 @@ public:
         return m_workers[normalize(id)];
     }
 
-    auto worker_handle(RuntimeWorkerId id) const -> WorkerHandle {
-        return worker(id).clone();
-    }
+    auto worker_handle(RuntimeWorkerId id) const -> WorkerHandle { return worker(id).clone(); }
 
     auto next_worker_locked(RuntimeSharedState& shared) const -> RuntimeWorkerId {
-        auto worker = RuntimeWorkerId { shared.m_next_worker % m_workers.len() };
+        auto worker          = RuntimeWorkerId { shared.m_next_worker % m_workers.len() };
         shared.m_next_worker = (shared.m_next_worker + 1) % m_workers.len();
         return worker;
     }
@@ -308,7 +307,7 @@ public:
 
 class RuntimeWorker {
     RuntimeInner* m_runtime;
-    WorkerHandle m_handle;
+    WorkerHandle  m_handle;
 
 public:
     RuntimeWorker(RuntimeInner& runtime, WorkerHandle handle)
@@ -318,14 +317,14 @@ public:
 };
 
 struct RuntimeInner {
-    RuntimeKind             m_kind;
-    RuntimeConfig           m_config;
-    RuntimeShared           m_shared;
+    RuntimeKind              m_kind;
+    RuntimeConfig            m_config;
+    RuntimeShared            m_shared;
     sync::Weak<RuntimeInner> self;
 
-    explicit RuntimeInner(RuntimeKind kind = RuntimeKind::CurrentThread,
-                          RuntimeConfig config = RuntimeConfig {},
-                          usize worker_count = 0)
+    explicit RuntimeInner(RuntimeKind   kind         = RuntimeKind::CurrentThread,
+                          RuntimeConfig config       = RuntimeConfig {},
+                          usize         worker_count = 0)
         : m_kind(kind),
           m_config(config),
           m_shared(kind == RuntimeKind::CurrentThread ? usize { 1 } : worker_count),
@@ -378,20 +377,18 @@ struct TaskStateBase {
     rstd::sync::atomic::Atomic<usize> refs { 1 };
     sync::Weak<RuntimeInner>          runtime;
     RuntimeWorkerId                   owner_worker {};
-    TaskLifecycle                    lifecycle { TaskLifecycle::Idle };
-    bool                             wake_requested { false };
-    bool                             cancel_requested { false };
+    TaskLifecycle                     lifecycle { TaskLifecycle::Idle };
+    bool                              wake_requested { false };
+    bool                              cancel_requested { false };
 
-    explicit TaskStateBase(sync::Weak<RuntimeInner> runtime) : runtime(rstd::move(runtime)) {}
+    explicit TaskStateBase(sync::Weak<RuntimeInner> runtime): runtime(rstd::move(runtime)) {}
     virtual ~TaskStateBase() = default;
 
     virtual void poll(TaskRef& self, task::Context& cx) = 0;
-    virtual void complete_abort()        = 0;
+    virtual void complete_abort()                       = 0;
     virtual void run_external_continuation(TaskRef& self);
 
-    void inc_ref() noexcept {
-        refs.fetch_add(1, rstd::sync::atomic::Ordering::Relaxed);
-    }
+    void inc_ref() noexcept { refs.fetch_add(1, rstd::sync::atomic::Ordering::Relaxed); }
 
     void dec_ref() noexcept {
         if (refs.fetch_sub(1, rstd::sync::atomic::Ordering::AcqRel) == 1) {
@@ -422,7 +419,9 @@ inline auto TaskRef::operator=(TaskRef&& other) noexcept -> TaskRef& {
     return *this;
 }
 
-inline TaskRef::~TaskRef() { reset(); }
+inline TaskRef::~TaskRef() {
+    reset();
+}
 
 inline auto TaskRef::clone() const noexcept -> TaskRef {
     if (ptr != nullptr) {
@@ -477,16 +476,12 @@ inline void RuntimeInner::schedule(TaskRef task) {
     {
         auto st = m_shared.state.lock().unwrap_unchecked();
         switch (task->lifecycle) {
-            case TaskLifecycle::Completed:
-            case TaskLifecycle::Queued:
-                return;
-            case TaskLifecycle::RunningRuntime:
-            case TaskLifecycle::ExternalQueued:
-            case TaskLifecycle::RunningExternal:
-                task->wake_requested = true;
-                return;
-            case TaskLifecycle::Idle:
-                break;
+        case TaskLifecycle::Completed:
+        case TaskLifecycle::Queued: return;
+        case TaskLifecycle::RunningRuntime:
+        case TaskLifecycle::ExternalQueued:
+        case TaskLifecycle::RunningExternal: task->wake_requested = true; return;
+        case TaskLifecycle::Idle: break;
         }
 
         if (is_thread_pool() && st->m_stopping) {
@@ -496,7 +491,7 @@ inline void RuntimeInner::schedule(TaskRef task) {
             should_abort = true;
         } else {
             task->lifecycle = TaskLifecycle::Queued;
-            auto worker = task->owner_worker;
+            auto worker     = task->owner_worker;
             (void)m_shared.worker(worker).schedule(rstd::move(task));
         }
     }
@@ -527,9 +522,9 @@ inline auto TaskStateBase::finish() -> bool {
             return false;
         }
 
-        should_abort    = cancel_requested;
-        lifecycle       = TaskLifecycle::Completed;
-        wake_requested  = false;
+        should_abort   = cancel_requested;
+        lifecycle      = TaskLifecycle::Completed;
+        wake_requested = false;
         st->m_registry.remove(this);
         rt->notify_locked(*st);
     }
@@ -585,8 +580,7 @@ inline void TaskStateBase::end_runtime_execution(TaskRef& self) {
             return;
         }
 
-        if (cancel_requested ||
-            (rt->is_thread_pool() && st->m_stopping)) {
+        if (cancel_requested || (rt->is_thread_pool() && st->m_stopping)) {
             lifecycle      = TaskLifecycle::Completed;
             wake_requested = false;
             st->m_registry.remove(this);
@@ -622,8 +616,7 @@ inline auto TaskStateBase::prepare_external_handoff() -> bool {
             return false;
         }
 
-        if (cancel_requested ||
-            (rt->is_thread_pool() && st->m_stopping)) {
+        if (cancel_requested || (rt->is_thread_pool() && st->m_stopping)) {
             lifecycle      = TaskLifecycle::Completed;
             wake_requested = false;
             st->m_registry.remove(this);
@@ -657,8 +650,7 @@ inline auto TaskStateBase::begin_external_execution() -> bool {
             return false;
         }
 
-        if (cancel_requested ||
-            (rt->is_thread_pool() && st->m_stopping)) {
+        if (cancel_requested || (rt->is_thread_pool() && st->m_stopping)) {
             lifecycle      = TaskLifecycle::Completed;
             wake_requested = false;
             st->m_registry.remove(this);
@@ -690,8 +682,7 @@ inline void TaskStateBase::cancel_external_handoff(TaskRef& self) {
             return;
         }
 
-        if (cancel_requested ||
-            (rt->is_thread_pool() && st->m_stopping)) {
+        if (cancel_requested || (rt->is_thread_pool() && st->m_stopping)) {
             lifecycle      = TaskLifecycle::Completed;
             wake_requested = false;
             st->m_registry.remove(this);
@@ -723,8 +714,7 @@ inline void TaskStateBase::end_external_execution(TaskRef& self) {
             return;
         }
 
-        if (cancel_requested ||
-            (rt->is_thread_pool() && st->m_stopping)) {
+        if (cancel_requested || (rt->is_thread_pool() && st->m_stopping)) {
             lifecycle      = TaskLifecycle::Completed;
             wake_requested = false;
             st->m_registry.remove(this);
@@ -756,9 +746,8 @@ inline const task::RawWakerVTable TASK_WAKER_VTABLE {
 };
 
 inline auto task_waker_clone(voidp data) -> task::RawWaker {
-    return task::RawWaker::from_raw_parts(
-        new TaskRef(static_cast<TaskRef*>(data)->clone()),
-        rstd::addressof(TASK_WAKER_VTABLE));
+    return task::RawWaker::from_raw_parts(new TaskRef(static_cast<TaskRef*>(data)->clone()),
+                                          rstd::addressof(TASK_WAKER_VTABLE));
 }
 
 inline void task_waker_wake(voidp data) {
@@ -777,8 +766,7 @@ inline void task_waker_drop(voidp data) {
 
 inline auto make_task_waker(const TaskRef& task) -> task::Waker {
     return task::Waker::from_raw(task::RawWaker::from_raw_parts(
-        new TaskRef(task.clone()),
-        rstd::addressof(TASK_WAKER_VTABLE)));
+        new TaskRef(task.clone()), rstd::addressof(TASK_WAKER_VTABLE)));
 }
 
 inline void poll_runtime_task(TaskRef& task_state) {
@@ -851,14 +839,13 @@ inline void runtime_waker_drop(voidp data) {
 
 inline auto make_runtime_waker(RuntimeInner& runtime) -> task::Waker {
     return task::Waker::from_raw(task::RawWaker::from_raw_parts(
-        new sync::Weak<RuntimeInner>(runtime.weak()),
-        rstd::addressof(RUNTIME_WAKER_VTABLE)));
+        new sync::Weak<RuntimeInner>(runtime.weak()), rstd::addressof(RUNTIME_WAKER_VTABLE)));
 }
 
 struct RuntimeScope {
     RuntimeInner* previous;
 
-    explicit RuntimeScope(RuntimeInner& runtime) : previous(CURRENT_RUNTIME) {
+    explicit RuntimeScope(RuntimeInner& runtime): previous(CURRENT_RUNTIME) {
         CURRENT_RUNTIME = rstd::addressof(runtime);
     }
 
@@ -870,8 +857,7 @@ struct RuntimeWorkerScope {
     bool            previous_active;
 
     explicit RuntimeWorkerScope(RuntimeWorkerId worker)
-        : previous_worker(CURRENT_RUNTIME_WORKER),
-          previous_active(CURRENT_RUNTIME_WORKER_ACTIVE) {
+        : previous_worker(CURRENT_RUNTIME_WORKER), previous_active(CURRENT_RUNTIME_WORKER_ACTIVE) {
         CURRENT_RUNTIME_WORKER        = worker;
         CURRENT_RUNTIME_WORKER_ACTIVE = true;
     }
@@ -896,7 +882,7 @@ struct ExecutionDomainScope {
 struct ParkerScope {
     RuntimeInner* runtime;
 
-    explicit ParkerScope(RuntimeInner& runtime) : runtime(rstd::addressof(runtime)) {
+    explicit ParkerScope(RuntimeInner& runtime): runtime(rstd::addressof(runtime)) {
         runtime.set_parker(thread::current());
     }
 
@@ -938,7 +924,7 @@ inline void RuntimeWorker::run() {
             }
             if (task_state->lifecycle == TaskLifecycle::Queued) {
                 task_state->lifecycle = TaskLifecycle::RunningRuntime;
-                should_run           = true;
+                should_run            = true;
             }
         }
 

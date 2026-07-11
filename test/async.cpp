@@ -34,8 +34,8 @@ static_assert(async::AwaitableInput<async::AnyExecutor>);
 static_assert(async::AwaitableInput<async::coro<int>>);
 static_assert(! async::AwaitableInput<NonAwaitable>);
 static_assert(! Impled<async::coro<int>, future::Future<int>>);
-static_assert(! Impled<async::Completion<int>,
-                       future::Future<Result<int, async::CompletionError<empty>>>>);
+static_assert(
+    ! Impled<async::Completion<int>, future::Future<Result<int, async::CompletionError<empty>>>>);
 static_assert(! Impled<async::CompletionQueueNext<int>, future::Future<io::Result<Option<int>>>>);
 static_assert(! Impled<async::LocalExecutor, future::Future<bool>>);
 static_assert(! Impled<async::AnyExecutor, future::Future<bool>>);
@@ -48,8 +48,8 @@ static_assert(mtp::same_as<async::await_output_t<async::AnyExecutor>, bool>);
 static_assert(mtp::same_as<async::await_output_t<async::coro<int>>, int>);
 static_assert(mtp::same_as<async::await_output_t<async::Completion<int>>,
                            Result<int, async::CompletionError<empty>>>);
-static_assert(mtp::same_as<async::await_output_t<async::CompletionQueueNext<int>>,
-                           io::Result<Option<int>>>);
+static_assert(
+    mtp::same_as<async::await_output_t<async::CompletionQueueNext<int>>, io::Result<Option<int>>>);
 
 struct TwoPollInt {
     using Output = int;
@@ -120,8 +120,7 @@ struct DropPendingInt {
     DropPendingInt(const DropPendingInt&)            = delete;
     DropPendingInt& operator=(const DropPendingInt&) = delete;
 
-    DropPendingInt(DropPendingInt&& other) noexcept
-        : drops(rstd::exchange(other.drops, nullptr)) {}
+    DropPendingInt(DropPendingInt&& other) noexcept: drops(rstd::exchange(other.drops, nullptr)) {}
 
     auto operator=(DropPendingInt&& other) noexcept -> DropPendingInt& {
         if (this != &other) {
@@ -169,8 +168,7 @@ struct ExternalWakeInt {
 
     sync::Arc<SavedWakeState> state;
 
-    auto poll(mut_ref<ExternalWakeInt> self, task::Context& cx)
-        -> task::Poll<int> {
+    auto poll(mut_ref<ExternalWakeInt> self, task::Context& cx) -> task::Poll<int> {
         auto& future = *self;
         auto  fields = future.state->fields.lock().unwrap();
 
@@ -189,8 +187,7 @@ struct CounterStream {
 
     int next { 0 };
 
-    auto poll_next(mut_ref<CounterStream> self, task::Context&)
-        -> task::Poll<Option<int>> {
+    auto poll_next(mut_ref<CounterStream> self, task::Context&) -> task::Poll<Option<int>> {
         auto& stream = *self;
         if (stream.next >= 2) {
             return task::Poll<Option<int>>::Ready(None());
@@ -211,9 +208,8 @@ struct MockAsyncIo {
     bool            flushed { false };
     bool            shutdown { false };
 
-    auto poll_read(mut_ref<MockAsyncIo> self,
-                   task::Context&                 cx,
-                   bytes::BytesMut&               buf) -> task::Poll<io::Result<usize>> {
+    auto poll_read(mut_ref<MockAsyncIo> self, task::Context& cx, bytes::BytesMut& buf)
+        -> task::Poll<io::Result<usize>> {
         auto& stream = *self;
         if (stream.read_pending) {
             stream.read_pending = false;
@@ -227,9 +223,8 @@ struct MockAsyncIo {
         return task::Poll<io::Result<usize>>::Ready(Ok(remaining));
     }
 
-    auto poll_write(mut_ref<MockAsyncIo> self,
-                    task::Context&                 cx,
-                    const bytes::Bytes&            buf) -> task::Poll<io::Result<usize>> {
+    auto poll_write(mut_ref<MockAsyncIo> self, task::Context& cx, const bytes::Bytes& buf)
+        -> task::Poll<io::Result<usize>> {
         auto& stream = *self;
         if (stream.write_pending) {
             stream.write_pending = false;
@@ -241,16 +236,14 @@ struct MockAsyncIo {
         return task::Poll<io::Result<usize>>::Ready(Ok(buf.len()));
     }
 
-    auto poll_flush(mut_ref<MockAsyncIo> self, task::Context&)
-        -> task::Poll<io::Result<empty>> {
-        auto& stream  = *self;
+    auto poll_flush(mut_ref<MockAsyncIo> self, task::Context&) -> task::Poll<io::Result<empty>> {
+        auto& stream   = *self;
         stream.flushed = true;
         return task::Poll<io::Result<empty>>::Ready(Ok(empty {}));
     }
 
-    auto poll_shutdown(mut_ref<MockAsyncIo> self, task::Context&)
-        -> task::Poll<io::Result<empty>> {
-        auto& stream   = *self;
+    auto poll_shutdown(mut_ref<MockAsyncIo> self, task::Context&) -> task::Poll<io::Result<empty>> {
+        auto& stream    = *self;
         stream.shutdown = true;
         return task::Poll<io::Result<empty>>::Ready(Ok(empty {}));
     }
@@ -260,29 +253,24 @@ static_assert(Impled<MockAsyncIo, async::io::AsyncRead>);
 static_assert(Impled<MockAsyncIo, async::io::AsyncWrite>);
 
 struct ErrorAsyncRead {
-    auto poll_read(mut_ref<ErrorAsyncRead>,
-                   task::Context&,
-                   bytes::BytesMut&) -> task::Poll<io::Result<usize>> {
-        return task::Poll<io::Result<usize>>::Ready(
-            Err(io::error::Error::from_kind(
-                io::error::ErrorKind { io::error::ErrorKind::InvalidInput })));
+    auto poll_read(mut_ref<ErrorAsyncRead>, task::Context&, bytes::BytesMut&)
+        -> task::Poll<io::Result<usize>> {
+        return task::Poll<io::Result<usize>>::Ready(Err(io::error::Error::from_kind(
+            io::error::ErrorKind { io::error::ErrorKind::InvalidInput })));
     }
 };
 
 struct ZeroAsyncWrite {
-    auto poll_write(mut_ref<ZeroAsyncWrite>,
-                    task::Context&,
-                    const bytes::Bytes&) -> task::Poll<io::Result<usize>> {
+    auto poll_write(mut_ref<ZeroAsyncWrite>, task::Context&, const bytes::Bytes&)
+        -> task::Poll<io::Result<usize>> {
         return task::Poll<io::Result<usize>>::Ready(Ok(0u));
     }
 
-    auto poll_flush(mut_ref<ZeroAsyncWrite>, task::Context&)
-        -> task::Poll<io::Result<empty>> {
+    auto poll_flush(mut_ref<ZeroAsyncWrite>, task::Context&) -> task::Poll<io::Result<empty>> {
         return task::Poll<io::Result<empty>>::Ready(Ok(empty {}));
     }
 
-    auto poll_shutdown(mut_ref<ZeroAsyncWrite>, task::Context&)
-        -> task::Poll<io::Result<empty>> {
+    auto poll_shutdown(mut_ref<ZeroAsyncWrite>, task::Context&) -> task::Poll<io::Result<empty>> {
         return task::Poll<io::Result<empty>>::Ready(Ok(empty {}));
     }
 };
@@ -341,7 +329,7 @@ async::coro<thread::ThreadId> await_executor_twice_thread(async::AnyExecutor ex)
     co_return thread::current().id();
 }
 
-async::coro<bool> close_executor_before_second_await(async::AnyExecutor ex,
+async::coro<bool> close_executor_before_second_await(async::AnyExecutor           ex,
                                                      async::LocalExecutorContext& context) {
     auto first = co_await ex;
     if (! first) {
@@ -359,9 +347,9 @@ async::coro<int> await_executor_then_spawn(async::AnyExecutor ex) {
 }
 
 async::coro<int> hold_external_segment(async::AnyExecutor ex,
-                                       std::atomic<int>& entered,
-                                       std::atomic<int>& release,
-                                       std::atomic<int>& resumed) {
+                                       std::atomic<int>&  entered,
+                                       std::atomic<int>&  release,
+                                       std::atomic<int>&  resumed) {
     if (! co_await ex) {
         co_return -1;
     }
@@ -376,8 +364,7 @@ async::coro<int> hold_external_segment(async::AnyExecutor ex,
     co_return 1;
 }
 
-async::coro<bool> record_block_on_worker(std::atomic<u64>& first,
-                                         std::atomic<u64>& second) {
+async::coro<bool> record_block_on_worker(std::atomic<u64>& first, std::atomic<u64>& second) {
     first.store(thread::current().id().as_u64().get(), std::memory_order_release);
     co_await async::yield_now();
     second.store(thread::current().id().as_u64().get(), std::memory_order_release);
@@ -385,9 +372,9 @@ async::coro<bool> record_block_on_worker(std::atomic<u64>& first,
 }
 
 async::coro<bool> record_external_return_worker(async::AnyExecutor ex,
-                                                std::atomic<u64>& before,
-                                                std::atomic<u64>& external,
-                                                std::atomic<u64>& after) {
+                                                std::atomic<u64>&  before,
+                                                std::atomic<u64>&  external,
+                                                std::atomic<u64>&  after) {
     before.store(thread::current().id().as_u64().get(), std::memory_order_release);
     if (! co_await ex) {
         co_return false;
@@ -499,19 +486,19 @@ async::coro<io::Result<empty>> join_spawned_notify_waiter(async::Notify notify) 
     auto handle = async::spawn(wait_for_notify(rstd::move(notify)));
     auto result = co_await rstd::move(handle);
     if (result.is_err()) {
-        co_return Err(io::error::Error::from_kind(
-            io::error::ErrorKind { io::error::ErrorKind::Other }));
+        co_return Err(
+            io::error::Error::from_kind(io::error::ErrorKind { io::error::ErrorKind::Other }));
     }
     co_return rstd::move(result).unwrap();
 }
 
-async::coro<Result<int, async::CompletionError<empty>>> wait_for_completion(
-    async::Completion<int> completion) {
+async::coro<Result<int, async::CompletionError<empty>>>
+wait_for_completion(async::Completion<int> completion) {
     co_return co_await completion;
 }
 
-async::coro<Result<int, async::CompletionError<empty>>> join_spawned_completion_waiter(
-    async::Completion<int> completion) {
+async::coro<Result<int, async::CompletionError<empty>>>
+join_spawned_completion_waiter(async::Completion<int> completion) {
     auto handle = async::spawn(wait_for_completion(rstd::move(completion)));
     auto result = co_await rstd::move(handle);
     if (result.is_err()) {
@@ -520,8 +507,8 @@ async::coro<Result<int, async::CompletionError<empty>>> join_spawned_completion_
     co_return rstd::move(result).unwrap();
 }
 
-async::coro<Result<int, async::CompletionError<int>>> wait_for_fallible_completion(
-    async::Completion<int, int> completion) {
+async::coro<Result<int, async::CompletionError<int>>>
+wait_for_fallible_completion(async::Completion<int, int> completion) {
     co_return co_await completion;
 }
 
@@ -542,13 +529,12 @@ async::coro<io::Result<Vec<int>>> drain_completion_queue(async::CompletionQueue<
     }
 }
 
-async::coro<io::Result<Vec<int>>> join_spawned_queue_waiter(
-    async::CompletionQueue<int> queue) {
+async::coro<io::Result<Vec<int>>> join_spawned_queue_waiter(async::CompletionQueue<int> queue) {
     auto handle = async::spawn(drain_completion_queue(rstd::move(queue)));
     auto result = co_await rstd::move(handle);
     if (result.is_err()) {
-        co_return Err(io::error::Error::from_kind(
-            io::error::ErrorKind { io::error::ErrorKind::Other }));
+        co_return Err(
+            io::error::Error::from_kind(io::error::ErrorKind { io::error::ErrorKind::Other }));
     }
     co_return rstd::move(result).unwrap();
 }
@@ -654,7 +640,8 @@ struct RawCloneSwitchCounts {
 };
 
 auto switch_clone_a(voidp data) -> task::RawWaker;
-void switch_wake_a(voidp) {}
+void switch_wake_a(voidp) {
+}
 void switch_wake_ref_a(voidp data) {
     ++static_cast<RawCloneSwitchCounts*>(data)->wake_refs_a;
 }
@@ -663,7 +650,8 @@ void switch_drop_a(voidp data) {
 }
 
 auto switch_clone_b(voidp data) -> task::RawWaker;
-void switch_wake_b(voidp) {}
+void switch_wake_b(voidp) {
+}
 void switch_wake_ref_b(voidp data) {
     ++static_cast<RawCloneSwitchCounts*>(data)->wake_refs_b;
 }
@@ -736,15 +724,15 @@ const task::RawWakerVTable BLOCKING_CLONE_WAKER_VTABLE {
 };
 
 struct SharedWakeState {
-    sync::Mutex<bool> ready;
+    sync::Mutex<bool>  ready;
     async::AtomicWaker waker;
 
-    SharedWakeState() : ready(false) {}
+    SharedWakeState(): ready(false) {}
 
     void complete() {
         {
             auto locked = ready.lock().unwrap_unchecked();
-            *locked = true;
+            *locked     = true;
         }
         waker.wake();
     }
@@ -755,8 +743,7 @@ struct SharedWakeFuture {
 
     sync::Arc<SharedWakeState> state;
 
-    auto poll(mut_ref<SharedWakeFuture> self, task::Context& cx)
-        -> task::Poll<int> {
+    auto poll(mut_ref<SharedWakeFuture> self, task::Context& cx) -> task::Poll<int> {
         auto& future = *self;
         future.state->waker.register_context(cx);
 
@@ -774,16 +761,16 @@ struct TestExecutorState {
     sync::Mutex<Vec<async::ExecutorJob>> jobs;
     sync::Mutex<bool>                    closed;
 
-    TestExecutorState() : jobs(Vec<async::ExecutorJob>::make()), closed(false) {}
+    TestExecutorState(): jobs(Vec<async::ExecutorJob>::make()), closed(false) {}
 };
 
 struct TestExecutor {
     sync::Weak<TestExecutorState> state;
 
-    explicit TestExecutor(sync::Weak<TestExecutorState> state) : state(rstd::move(state)) {}
+    explicit TestExecutor(sync::Weak<TestExecutorState> state): state(rstd::move(state)) {}
 
-    TestExecutor(const TestExecutor&)            = delete;
-    auto operator=(const TestExecutor&) -> TestExecutor& = delete;
+    TestExecutor(const TestExecutor&)                        = delete;
+    auto operator=(const TestExecutor&) -> TestExecutor&     = delete;
     TestExecutor(TestExecutor&&) noexcept                    = default;
     auto operator=(TestExecutor&&) noexcept -> TestExecutor& = default;
 
@@ -825,7 +812,7 @@ struct TestExecutorContext {
 
     sync::Arc<TestExecutorState> state;
 
-    TestExecutorContext() : state(sync::Arc<TestExecutorState>::make()) {}
+    TestExecutorContext(): state(sync::Arc<TestExecutorState>::make()) {}
 
     auto executor() -> TestExecutor { return TestExecutor { state.downgrade() }; }
 
@@ -880,9 +867,7 @@ struct RejectSecondExecutorState {
     sync::Mutex<Vec<async::ExecutorJob>> jobs;
     sync::Mutex<usize>                   posts;
 
-    RejectSecondExecutorState()
-        : jobs(Vec<async::ExecutorJob>::make()),
-          posts(usize {}) {}
+    RejectSecondExecutorState(): jobs(Vec<async::ExecutorJob>::make()), posts(usize {}) {}
 };
 
 struct RejectSecondExecutor {
@@ -891,8 +876,8 @@ struct RejectSecondExecutor {
     explicit RejectSecondExecutor(sync::Weak<RejectSecondExecutorState> state)
         : state(rstd::move(state)) {}
 
-    RejectSecondExecutor(const RejectSecondExecutor&)            = delete;
-    auto operator=(const RejectSecondExecutor&) -> RejectSecondExecutor& = delete;
+    RejectSecondExecutor(const RejectSecondExecutor&)                        = delete;
+    auto operator=(const RejectSecondExecutor&) -> RejectSecondExecutor&     = delete;
     RejectSecondExecutor(RejectSecondExecutor&&) noexcept                    = default;
     auto operator=(RejectSecondExecutor&&) noexcept -> RejectSecondExecutor& = default;
 
@@ -925,11 +910,9 @@ struct RejectSecondExecutor {
 struct RejectSecondExecutorContext {
     sync::Arc<RejectSecondExecutorState> state;
 
-    RejectSecondExecutorContext() : state(sync::Arc<RejectSecondExecutorState>::make()) {}
+    RejectSecondExecutorContext(): state(sync::Arc<RejectSecondExecutorState>::make()) {}
 
-    auto executor() -> RejectSecondExecutor {
-        return RejectSecondExecutor { state.downgrade() };
-    }
+    auto executor() -> RejectSecondExecutor { return RejectSecondExecutor { state.downgrade() }; }
 
     auto run_ready() -> usize {
         auto ready = Vec<async::ExecutorJob>::make();
@@ -970,9 +953,8 @@ TEST(AsyncCoro, PollHelpers) {
 TEST(AsyncCoro, WakerOwnsRawHandle) {
     auto counts = WakerCounts {};
     {
-        auto waker = task::Waker::from_raw(task::RawWaker::from_raw_parts(
-            &counts,
-            rstd::addressof(COUNT_WAKER_VTABLE)));
+        auto waker = task::Waker::from_raw(
+            task::RawWaker::from_raw_parts(&counts, rstd::addressof(COUNT_WAKER_VTABLE)));
         auto clone = waker.clone();
         waker.wake_by_ref();
         rstd::move(clone).wake();
@@ -987,9 +969,8 @@ TEST(AsyncCoro, WakerOwnsRawHandle) {
 TEST(AsyncCoro, WakerCloneUsesReturnedRawWaker) {
     auto counts = RawCloneSwitchCounts {};
     {
-        auto waker = task::Waker::from_raw(task::RawWaker::from_raw_parts(
-            &counts,
-            rstd::addressof(SWITCH_WAKER_VTABLE_A)));
+        auto waker = task::Waker::from_raw(
+            task::RawWaker::from_raw_parts(&counts, rstd::addressof(SWITCH_WAKER_VTABLE_A)));
         auto clone = waker.clone();
 
         EXPECT_EQ(clone.vtable(), rstd::addressof(SWITCH_WAKER_VTABLE_B));
@@ -1006,9 +987,8 @@ TEST(AsyncCoro, WakerCloneUsesReturnedRawWaker) {
 TEST(AsyncCoro, WakerCloneFromSkipsEquivalentWaker) {
     auto counts = WakerCounts {};
     {
-        auto waker = task::Waker::from_raw(task::RawWaker::from_raw_parts(
-            &counts,
-            rstd::addressof(COUNT_WAKER_VTABLE)));
+        auto waker = task::Waker::from_raw(
+            task::RawWaker::from_raw_parts(&counts, rstd::addressof(COUNT_WAKER_VTABLE)));
         auto same = waker.clone();
 
         EXPECT_EQ(counts.clones.load(), 1);
@@ -1031,9 +1011,8 @@ TEST(AsyncCoro, NoopWakerDoesNothing) {
 TEST(AsyncCoro, AtomicWakerWakesRegisteredWaker) {
     auto counts = WakerCounts {};
     auto atomic = async::AtomicWaker {};
-    auto waker  = task::Waker::from_raw(task::RawWaker::from_raw_parts(
-        &counts,
-        rstd::addressof(COUNT_WAKER_VTABLE)));
+    auto waker  = task::Waker::from_raw(
+        task::RawWaker::from_raw_parts(&counts, rstd::addressof(COUNT_WAKER_VTABLE)));
 
     atomic.register_waker(waker);
     atomic.wake();
@@ -1048,12 +1027,10 @@ TEST(AsyncCoro, AtomicWakerWakesLatestRegisteredWaker) {
     auto second_counts = WakerCounts {};
     auto atomic        = async::AtomicWaker {};
 
-    auto first = task::Waker::from_raw(task::RawWaker::from_raw_parts(
-        &first_counts,
-        rstd::addressof(COUNT_WAKER_VTABLE)));
-    auto second = task::Waker::from_raw(task::RawWaker::from_raw_parts(
-        &second_counts,
-        rstd::addressof(COUNT_WAKER_VTABLE)));
+    auto first = task::Waker::from_raw(
+        task::RawWaker::from_raw_parts(&first_counts, rstd::addressof(COUNT_WAKER_VTABLE)));
+    auto second = task::Waker::from_raw(
+        task::RawWaker::from_raw_parts(&second_counts, rstd::addressof(COUNT_WAKER_VTABLE)));
 
     atomic.register_waker(first);
     atomic.register_waker(second);
@@ -1066,13 +1043,12 @@ TEST(AsyncCoro, AtomicWakerWakesLatestRegisteredWaker) {
 TEST(AsyncCoro, AtomicWakerWakeDuringRegisterWakesNewWaker) {
     auto counts = BlockingCloneWakerCounts {};
     auto atomic = async::AtomicWaker {};
-    auto waker  = task::Waker::from_raw(task::RawWaker::from_raw_parts(
-        &counts,
-        rstd::addressof(BLOCKING_CLONE_WAKER_VTABLE)));
+    auto waker  = task::Waker::from_raw(
+        task::RawWaker::from_raw_parts(&counts, rstd::addressof(BLOCKING_CLONE_WAKER_VTABLE)));
 
     auto handle = thread::spawn([&atomic, &waker] {
-        atomic.register_waker(waker);
-    }).unwrap();
+                      atomic.register_waker(waker);
+                  }).unwrap();
 
     for (int i = 0; i < 10000 && ! counts.clone_entered.load(std::memory_order_acquire); ++i) {
         thread::sleep(time::Duration::from_millis(1));
@@ -1147,15 +1123,17 @@ TEST(AsyncExecutor, ExecutorJobRunAndCancelAreExactlyOnce) {
 }
 
 TEST(AsyncExecutor, ExecutorJobMoveAssignmentCancelsReplacedJob) {
-    int first_cancels  = 0;
-    int second_cancels = 0;
-    auto first = async::ExecutorJob::make(
-        [] {},
+    int  first_cancels  = 0;
+    int  second_cancels = 0;
+    auto first          = async::ExecutorJob::make(
+        [] {
+        },
         [&first_cancels] {
             ++first_cancels;
         });
     auto second = async::ExecutorJob::make(
-        [] {},
+        [] {
+        },
         [&second_cancels] {
             ++second_cancels;
         });
@@ -1185,7 +1163,8 @@ TEST(AsyncExecutor, CanWrapExternalExecutorContext) {
     context.close();
     EXPECT_TRUE(context.is_closed());
     EXPECT_TRUE(ex.is_closed());
-    EXPECT_FALSE(ex.post([] {}));
+    EXPECT_FALSE(ex.post([] {
+    }));
 }
 
 TEST(AsyncExecutor, WrappedExternalCloseRejectsNewPostsButDrainsAcceptedJobs) {
@@ -1200,7 +1179,8 @@ TEST(AsyncExecutor, WrappedExternalCloseRejectsNewPostsButDrainsAcceptedJobs) {
 
     EXPECT_TRUE(context.is_closed());
     EXPECT_TRUE(ex.is_closed());
-    EXPECT_FALSE(ex.post([] {}));
+    EXPECT_FALSE(ex.post([] {
+    }));
     EXPECT_EQ(value, 0);
     EXPECT_EQ(context.run_ready(), usize { 1 });
     EXPECT_EQ(value, 23);
@@ -1221,7 +1201,8 @@ TEST(AsyncExecutor, TypedExecutorContextRunsThroughContext) {
 
     context.close();
     EXPECT_TRUE(ex.is_closed());
-    EXPECT_FALSE(ex.post([] {}));
+    EXPECT_FALSE(ex.post([] {
+    }));
 }
 
 TEST(AsyncExecutor, HandleCanPostFromAnotherThread) {
@@ -1230,10 +1211,10 @@ TEST(AsyncExecutor, HandleCanPostFromAnotherThread) {
     auto ex      = context.executor();
 
     auto worker = thread::spawn([ex = rstd::move(ex), &value]() mutable {
-        return ex.post([&value] {
-            value.store(3, std::memory_order_release);
-        });
-    }).unwrap();
+                      return ex.post([&value] {
+                          value.store(3, std::memory_order_release);
+                      });
+                  }).unwrap();
 
     auto posted = rstd::move(worker).join().unwrap();
     EXPECT_TRUE(posted);
@@ -1274,7 +1255,8 @@ TEST(AsyncExecutor, CloseRejectsNewPostsButDrainsAcceptedJobs) {
 
     EXPECT_TRUE(context.is_closed());
     EXPECT_TRUE(ex.is_closed());
-    EXPECT_FALSE(ex.post([] {}));
+    EXPECT_FALSE(ex.post([] {
+    }));
     EXPECT_EQ(value, 0);
     EXPECT_EQ(context.run_ready(), usize { 1 });
     EXPECT_EQ(value, 5);
@@ -1286,16 +1268,16 @@ TEST(AsyncExecutor, CoAwaitExecutorCompletesThroughRuntime) {
     int  value   = 0;
 
     auto worker = thread::spawn([&context] {
-        auto ran = usize {};
-        for (int i = 0; i < 1000; ++i) {
-            ran += context.run_ready();
-            if (ran >= 2) {
-                return true;
-            }
-            thread::sleep(time::Duration::from_millis(1));
-        }
-        return false;
-    }).unwrap();
+                      auto ran = usize {};
+                      for (int i = 0; i < 1000; ++i) {
+                          ran += context.run_ready();
+                          if (ran >= 2) {
+                              return true;
+                          }
+                          thread::sleep(time::Duration::from_millis(1));
+                      }
+                      return false;
+                  }).unwrap();
 
     EXPECT_EQ(async::block_on(await_executor_once(ex.clone(), value)), 2);
     EXPECT_TRUE(rstd::move(worker).join().unwrap());
@@ -1308,14 +1290,14 @@ TEST(AsyncExecutor, DroppedAcceptedAwaitJobReturnsFalse) {
     int  value   = 0;
 
     auto worker = thread::spawn([&context] {
-        for (int i = 0; i < 1000; ++i) {
-            if (context.drop_ready() != 0) {
-                return true;
-            }
-            thread::sleep(time::Duration::from_millis(1));
-        }
-        return false;
-    }).unwrap();
+                      for (int i = 0; i < 1000; ++i) {
+                          if (context.drop_ready() != 0) {
+                              return true;
+                          }
+                          thread::sleep(time::Duration::from_millis(1));
+                      }
+                      return false;
+                  }).unwrap();
 
     EXPECT_EQ(async::block_on(await_executor_once(ex.clone(), value)), -1);
     EXPECT_TRUE(rstd::move(worker).join().unwrap());
@@ -1328,17 +1310,17 @@ TEST(AsyncExecutor, DroppedAcceptedContinuationReturnsFalse) {
     int  value   = 0;
 
     auto worker = thread::spawn([&context] {
-        auto marker_ran = false;
-        for (int i = 0; i < 1000; ++i) {
-            if (! marker_ran) {
-                marker_ran = context.run_ready() != 0;
-            } else if (context.drop_ready() != 0) {
-                return true;
-            }
-            thread::sleep(time::Duration::from_millis(1));
-        }
-        return false;
-    }).unwrap();
+                      auto marker_ran = false;
+                      for (int i = 0; i < 1000; ++i) {
+                          if (! marker_ran) {
+                              marker_ran = context.run_ready() != 0;
+                          } else if (context.drop_ready() != 0) {
+                              return true;
+                          }
+                          thread::sleep(time::Duration::from_millis(1));
+                      }
+                      return false;
+                  }).unwrap();
 
     EXPECT_EQ(async::block_on(await_executor_once(ex.clone(), value)), -1);
     EXPECT_TRUE(rstd::move(worker).join().unwrap());
@@ -1386,15 +1368,15 @@ TEST(AsyncExecutor, AbortRunningExternalContinuationAtAwaitBoundary) {
     auto handle  = runtime.spawn(hold_external_segment(ex.clone(), entered, release, resumed));
 
     auto executor_thread = thread::spawn([&context, &entered] {
-        for (int i = 0; i < 1000; ++i) {
-            auto ran = context.run_ready();
-            if (entered.load(std::memory_order_acquire) != 0) {
-                return ran != 0;
-            }
-            thread::sleep(time::Duration::from_millis(1));
-        }
-        return false;
-    }).unwrap();
+                               for (int i = 0; i < 1000; ++i) {
+                                   auto ran = context.run_ready();
+                                   if (entered.load(std::memory_order_acquire) != 0) {
+                                       return ran != 0;
+                                   }
+                                   thread::sleep(time::Duration::from_millis(1));
+                               }
+                               return false;
+                           }).unwrap();
 
     ASSERT_TRUE(wait_for_signal(entered));
     handle.abort();
@@ -1420,21 +1402,21 @@ TEST(AsyncExecutor, RuntimeShutdownWaitsForRunningExternalContinuation) {
     auto handle  = (*runtime).spawn(hold_external_segment(ex.clone(), entered, release, resumed));
 
     auto executor_thread = thread::spawn([&context, &entered] {
-        for (int i = 0; i < 1000; ++i) {
-            auto ran = context.run_ready();
-            if (entered.load(std::memory_order_acquire) != 0) {
-                return ran != 0;
-            }
-            thread::sleep(time::Duration::from_millis(1));
-        }
-        return false;
-    }).unwrap();
+                               for (int i = 0; i < 1000; ++i) {
+                                   auto ran = context.run_ready();
+                                   if (entered.load(std::memory_order_acquire) != 0) {
+                                       return ran != 0;
+                                   }
+                                   thread::sleep(time::Duration::from_millis(1));
+                               }
+                               return false;
+                           }).unwrap();
 
     ASSERT_TRUE(wait_for_signal(entered));
     auto releaser = thread::spawn([&release] {
-        thread::sleep(time::Duration::from_millis(5));
-        release.store(1, std::memory_order_release);
-    }).unwrap();
+                        thread::sleep(time::Duration::from_millis(5));
+                        release.store(1, std::memory_order_release);
+                    }).unwrap();
 
     runtime = None();
 
@@ -1449,35 +1431,33 @@ TEST(AsyncExecutor, RuntimeShutdownWaitsForRunningExternalContinuation) {
 }
 
 TEST(AsyncExecutor, MultiThreadBlockOnReturnsExternalAwaitToOwnerWorker) {
-    auto context = TestExecutorContext {};
-    auto ex      = async::AnyExecutor::from_executor(context.executor());
-    auto runtime = async::RuntimeBuilder::multi_thread().worker_threads(2).build().unwrap();
+    auto context  = TestExecutorContext {};
+    auto ex       = async::AnyExecutor::from_executor(context.executor());
+    auto runtime  = async::RuntimeBuilder::multi_thread().worker_threads(2).build().unwrap();
     auto before   = std::atomic<u64> { 0 };
     auto external = std::atomic<u64> { 0 };
     auto after    = std::atomic<u64> { 0 };
     auto done     = std::atomic<bool> { false };
 
     auto executor_thread = thread::spawn([&context, &done] {
-        for (int i = 0; i < 1000; ++i) {
-            (void)context.run_ready();
-            if (done.load(std::memory_order_acquire)) {
-                return true;
-            }
-            thread::sleep(time::Duration::from_millis(1));
-        }
-        return false;
-    }).unwrap();
+                               for (int i = 0; i < 1000; ++i) {
+                                   (void)context.run_ready();
+                                   if (done.load(std::memory_order_acquire)) {
+                                       return true;
+                                   }
+                                   thread::sleep(time::Duration::from_millis(1));
+                               }
+                               return false;
+                           }).unwrap();
 
-    EXPECT_TRUE(runtime.block_on(
-        record_external_return_worker(ex.clone(), before, external, after)));
+    EXPECT_TRUE(
+        runtime.block_on(record_external_return_worker(ex.clone(), before, external, after)));
     done.store(true, std::memory_order_release);
 
     EXPECT_TRUE(rstd::move(executor_thread).join().unwrap());
     EXPECT_NE(before.load(std::memory_order_acquire), u64 { 0 });
-    EXPECT_EQ(before.load(std::memory_order_acquire),
-              after.load(std::memory_order_acquire));
-    EXPECT_NE(before.load(std::memory_order_acquire),
-              external.load(std::memory_order_acquire));
+    EXPECT_EQ(before.load(std::memory_order_acquire), after.load(std::memory_order_acquire));
+    EXPECT_NE(before.load(std::memory_order_acquire), external.load(std::memory_order_acquire));
 }
 
 TEST(AsyncExecutor, CoAwaitExecutorContinuationRunsOnExecutorThread) {
@@ -1486,19 +1466,20 @@ TEST(AsyncExecutor, CoAwaitExecutorContinuationRunsOnExecutorThread) {
     auto main_id   = thread::current().id();
     auto worker_id = std::atomic<u64> { 0 };
 
-    auto worker = thread::spawn([&context, &worker_id] {
-        worker_id.store(thread::current().id().as_u64().get(), std::memory_order_release);
+    auto worker =
+        thread::spawn([&context, &worker_id] {
+            worker_id.store(thread::current().id().as_u64().get(), std::memory_order_release);
 
-        auto ran = usize {};
-        for (int i = 0; i < 1000; ++i) {
-            ran += context.run_ready();
-            if (ran >= 2) {
-                return true;
+            auto ran = usize {};
+            for (int i = 0; i < 1000; ++i) {
+                ran += context.run_ready();
+                if (ran >= 2) {
+                    return true;
+                }
+                thread::sleep(time::Duration::from_millis(1));
             }
-            thread::sleep(time::Duration::from_millis(1));
-        }
-        return false;
-    }).unwrap();
+            return false;
+        }).unwrap();
 
     auto resumed_id = async::block_on(await_executor_thread(ex.clone()));
 
@@ -1514,19 +1495,20 @@ TEST(AsyncExecutor, SpawnedExecutorContinuationCompletesThroughRuntime) {
     auto worker_id = std::atomic<u64> { 0 };
 
     auto handle = runtime.spawn(await_executor_thread(ex.clone()));
-    auto worker = thread::spawn([&context, &worker_id] {
-        worker_id.store(thread::current().id().as_u64().get(), std::memory_order_release);
+    auto worker =
+        thread::spawn([&context, &worker_id] {
+            worker_id.store(thread::current().id().as_u64().get(), std::memory_order_release);
 
-        auto ran = usize {};
-        for (int i = 0; i < 1000; ++i) {
-            ran += context.run_ready();
-            if (ran >= 2) {
-                return true;
+            auto ran = usize {};
+            for (int i = 0; i < 1000; ++i) {
+                ran += context.run_ready();
+                if (ran >= 2) {
+                    return true;
+                }
+                thread::sleep(time::Duration::from_millis(1));
             }
-            thread::sleep(time::Duration::from_millis(1));
-        }
-        return false;
-    }).unwrap();
+            return false;
+        }).unwrap();
 
     auto resumed_id = runtime.block_on(rstd::move(handle)).unwrap();
 
@@ -1539,16 +1521,16 @@ TEST(AsyncExecutor, ExternalContinuationCanSpawnOntoRuntime) {
     auto ex      = async::AnyExecutor::from_executor(context.executor());
 
     auto worker = thread::spawn([&context] {
-        auto ran = usize {};
-        for (int i = 0; i < 1000; ++i) {
-            ran += context.run_ready();
-            if (ran >= 2) {
-                return true;
-            }
-            thread::sleep(time::Duration::from_millis(1));
-        }
-        return false;
-    }).unwrap();
+                      auto ran = usize {};
+                      for (int i = 0; i < 1000; ++i) {
+                          ran += context.run_ready();
+                          if (ran >= 2) {
+                              return true;
+                          }
+                          thread::sleep(time::Duration::from_millis(1));
+                      }
+                      return false;
+                  }).unwrap();
 
     EXPECT_EQ(async::block_on(await_executor_then_spawn(ex.clone())), 7);
     EXPECT_TRUE(rstd::move(worker).join().unwrap());
@@ -1561,19 +1543,20 @@ TEST(AsyncExecutor, ConsecutiveExecutorAwaitsChainOnExecutor) {
     auto ran_count = std::atomic<usize> { 0 };
     auto worker_id = std::atomic<u64> { 0 };
 
-    auto worker = thread::spawn([&context, &done, &ran_count, &worker_id] {
-        worker_id.store(thread::current().id().as_u64().get(), std::memory_order_release);
+    auto worker =
+        thread::spawn([&context, &done, &ran_count, &worker_id] {
+            worker_id.store(thread::current().id().as_u64().get(), std::memory_order_release);
 
-        for (int i = 0; i < 1000; ++i) {
-            ran_count.fetch_add(context.run_ready(), std::memory_order_relaxed);
-            if (done.load(std::memory_order_acquire)) {
+            for (int i = 0; i < 1000; ++i) {
                 ran_count.fetch_add(context.run_ready(), std::memory_order_relaxed);
-                return true;
+                if (done.load(std::memory_order_acquire)) {
+                    ran_count.fetch_add(context.run_ready(), std::memory_order_relaxed);
+                    return true;
+                }
+                thread::sleep(time::Duration::from_millis(1));
             }
-            thread::sleep(time::Duration::from_millis(1));
-        }
-        return false;
-    }).unwrap();
+            return false;
+        }).unwrap();
 
     auto resumed_id = async::block_on(await_executor_twice_thread(ex.clone()));
     done.store(true, std::memory_order_release);
@@ -1590,16 +1573,16 @@ TEST(AsyncExecutor, ClosedExecutorDuringExternalSegmentReturnsFalse) {
     auto ran_count = std::atomic<usize> { 0 };
 
     auto worker = thread::spawn([&context, &done, &ran_count] {
-        for (int i = 0; i < 1000; ++i) {
-            ran_count.fetch_add(context.run_ready(), std::memory_order_relaxed);
-            if (done.load(std::memory_order_acquire)) {
-                ran_count.fetch_add(context.run_ready(), std::memory_order_relaxed);
-                return true;
-            }
-            thread::sleep(time::Duration::from_millis(1));
-        }
-        return false;
-    }).unwrap();
+                      for (int i = 0; i < 1000; ++i) {
+                          ran_count.fetch_add(context.run_ready(), std::memory_order_relaxed);
+                          if (done.load(std::memory_order_acquire)) {
+                              ran_count.fetch_add(context.run_ready(), std::memory_order_relaxed);
+                              return true;
+                          }
+                          thread::sleep(time::Duration::from_millis(1));
+                      }
+                      return false;
+                  }).unwrap();
 
     auto result = async::block_on(close_executor_before_second_await(ex.clone(), context));
     done.store(true, std::memory_order_release);
@@ -1618,16 +1601,16 @@ TEST(AsyncExecutor, SpawnedClosedExecutorDuringExternalSegmentReturnsFalse) {
 
     auto handle = runtime.spawn(close_executor_before_second_await(ex.clone(), context));
     auto worker = thread::spawn([&context, &done, &ran_count] {
-        for (int i = 0; i < 1000; ++i) {
-            ran_count.fetch_add(context.run_ready(), std::memory_order_relaxed);
-            if (done.load(std::memory_order_acquire)) {
-                ran_count.fetch_add(context.run_ready(), std::memory_order_relaxed);
-                return true;
-            }
-            thread::sleep(time::Duration::from_millis(1));
-        }
-        return false;
-    }).unwrap();
+                      for (int i = 0; i < 1000; ++i) {
+                          ran_count.fetch_add(context.run_ready(), std::memory_order_relaxed);
+                          if (done.load(std::memory_order_acquire)) {
+                              ran_count.fetch_add(context.run_ready(), std::memory_order_relaxed);
+                              return true;
+                          }
+                          thread::sleep(time::Duration::from_millis(1));
+                      }
+                      return false;
+                  }).unwrap();
 
     auto result = runtime.block_on(rstd::move(handle)).unwrap();
     done.store(true, std::memory_order_release);
@@ -1643,14 +1626,14 @@ TEST(AsyncExecutor, RejectedExternalContinuationPostReturnsFalse) {
     auto value   = int {};
 
     auto worker = thread::spawn([&context] {
-        for (int i = 0; i < 1000; ++i) {
-            if (context.run_ready() >= usize { 1 }) {
-                return true;
-            }
-            thread::sleep(time::Duration::from_millis(1));
-        }
-        return false;
-    }).unwrap();
+                      for (int i = 0; i < 1000; ++i) {
+                          if (context.run_ready() >= usize { 1 }) {
+                              return true;
+                          }
+                          thread::sleep(time::Duration::from_millis(1));
+                      }
+                      return false;
+                  }).unwrap();
 
     EXPECT_EQ(async::block_on(await_executor_once(ex.clone(), value)), -1);
     EXPECT_TRUE(rstd::move(worker).join().unwrap());
@@ -1666,14 +1649,14 @@ TEST(AsyncExecutor, SpawnedRejectedExternalContinuationPostReturnsFalse) {
 
     auto handle = runtime.spawn(await_executor_once(ex.clone(), value));
     auto worker = thread::spawn([&context] {
-        for (int i = 0; i < 1000; ++i) {
-            if (context.run_ready() >= usize { 1 }) {
-                return true;
-            }
-            thread::sleep(time::Duration::from_millis(1));
-        }
-        return false;
-    }).unwrap();
+                      for (int i = 0; i < 1000; ++i) {
+                          if (context.run_ready() >= usize { 1 }) {
+                              return true;
+                          }
+                          thread::sleep(time::Duration::from_millis(1));
+                      }
+                      return false;
+                  }).unwrap();
 
     EXPECT_EQ(runtime.block_on(rstd::move(handle)).unwrap(), -1);
     EXPECT_TRUE(rstd::move(worker).join().unwrap());
@@ -1686,17 +1669,15 @@ TEST(AsyncCoro, SharedStateFutureWakesLatestTask) {
     auto future = SharedWakeFuture { state.clone() };
 
     auto first_counts = WakerCounts {};
-    auto first_waker  = task::Waker::from_raw(task::RawWaker::from_raw_parts(
-        &first_counts,
-        rstd::addressof(COUNT_WAKER_VTABLE)));
+    auto first_waker  = task::Waker::from_raw(
+        task::RawWaker::from_raw_parts(&first_counts, rstd::addressof(COUNT_WAKER_VTABLE)));
     auto first_cx = task::Context::from_waker(first_waker);
     auto first    = future::poll(future, first_cx);
     EXPECT_TRUE(first.is_pending());
 
     auto second_counts = WakerCounts {};
-    auto second_waker  = task::Waker::from_raw(task::RawWaker::from_raw_parts(
-        &second_counts,
-        rstd::addressof(COUNT_WAKER_VTABLE)));
+    auto second_waker  = task::Waker::from_raw(
+        task::RawWaker::from_raw_parts(&second_counts, rstd::addressof(COUNT_WAKER_VTABLE)));
     auto second_cx = task::Context::from_waker(second_waker);
     auto second    = future::poll(future, second_cx);
     EXPECT_TRUE(second.is_pending());
@@ -1715,8 +1696,8 @@ TEST(AsyncCoro, BlockOnReadyFuture) {
 }
 
 TEST(AsyncCoro, CoroutineIsLazy) {
-    int counter = 0;
-    auto task   = lazy_value(counter);
+    int  counter = 0;
+    auto task    = lazy_value(counter);
     EXPECT_EQ(counter, 0);
     EXPECT_EQ(async::block_on(rstd::move(task)), 5);
     EXPECT_EQ(counter, 1);
@@ -1767,8 +1748,7 @@ TEST(AsyncCoro, MultiThreadBlockOnRunsRootOnOwnerWorker) {
 
     EXPECT_TRUE(runtime.block_on(record_block_on_worker(first, second)));
     EXPECT_NE(first.load(std::memory_order_acquire), caller);
-    EXPECT_EQ(first.load(std::memory_order_acquire),
-              second.load(std::memory_order_acquire));
+    EXPECT_EQ(first.load(std::memory_order_acquire), second.load(std::memory_order_acquire));
 }
 
 TEST(AsyncCoro, MultiThreadBlockOnSupportsVoidOutput) {
@@ -1779,10 +1759,7 @@ TEST(AsyncCoro, MultiThreadBlockOnSupportsVoidOutput) {
 TEST(AsyncCoro, MultiThreadBlockOnRejectsNestedWorkerCall) {
     EXPECT_DEATH(
         {
-            auto runtime = async::RuntimeBuilder::multi_thread()
-                               .worker_threads(1)
-                               .build()
-                               .unwrap();
+            auto runtime = async::RuntimeBuilder::multi_thread().worker_threads(1).build().unwrap();
             (void)runtime.block_on(nested_runtime_block_on(runtime));
         },
         "");
@@ -1804,24 +1781,24 @@ TEST(AsyncCoro, SavedWakerReschedulesTaskFromExternalThread) {
     auto worker = state.clone();
 
     auto handle = thread::spawn([worker = rstd::move(worker)] {
-        for (;;) {
-            auto waker = Option<task::Waker> {};
-            {
-                auto fields = worker->fields.lock().unwrap();
-                if (fields->waker.is_some()) {
-                    fields->ready = true;
-                    waker         = fields->waker.take();
-                }
-            }
+                      for (;;) {
+                          auto waker = Option<task::Waker> {};
+                          {
+                              auto fields = worker->fields.lock().unwrap();
+                              if (fields->waker.is_some()) {
+                                  fields->ready = true;
+                                  waker         = fields->waker.take();
+                              }
+                          }
 
-            if (waker.is_some()) {
-                rstd::move(*waker).wake();
-                return;
-            }
+                          if (waker.is_some()) {
+                              rstd::move(*waker).wake();
+                              return;
+                          }
 
-            thread::sleep(time::Duration::from_millis(1));
-        }
-    }).unwrap();
+                          thread::sleep(time::Duration::from_millis(1));
+                      }
+                  }).unwrap();
 
     EXPECT_EQ(async::block_on(ExternalWakeInt { state.clone() }), 2);
     rstd::move(handle).join().unwrap();
@@ -1835,24 +1812,24 @@ TEST(AsyncCoro, MultiThreadRuntimeExternalTaskWake) {
     auto worker = state.clone();
 
     auto handle = thread::spawn([worker = rstd::move(worker)] {
-        for (;;) {
-            auto waker = Option<task::Waker> {};
-            {
-                auto fields = worker->fields.lock().unwrap();
-                if (fields->waker.is_some()) {
-                    fields->ready = true;
-                    waker         = fields->waker.take();
-                }
-            }
+                      for (;;) {
+                          auto waker = Option<task::Waker> {};
+                          {
+                              auto fields = worker->fields.lock().unwrap();
+                              if (fields->waker.is_some()) {
+                                  fields->ready = true;
+                                  waker         = fields->waker.take();
+                              }
+                          }
 
-            if (waker.is_some()) {
-                rstd::move(*waker).wake();
-                return;
-            }
+                          if (waker.is_some()) {
+                              rstd::move(*waker).wake();
+                              return;
+                          }
 
-            thread::sleep(time::Duration::from_millis(1));
-        }
-    }).unwrap();
+                          thread::sleep(time::Duration::from_millis(1));
+                      }
+                  }).unwrap();
 
     auto runtime_result = async::RuntimeBuilder::multi_thread().worker_threads(2).build();
     auto runtime        = runtime_result.unwrap();
@@ -1871,9 +1848,9 @@ TEST(AsyncCoro, NotifyWakesCurrentThreadRuntimeFromExternalThread) {
     auto notifier = notify.notifier();
 
     auto handle = thread::spawn([notifier = rstd::move(notifier)] {
-        thread::sleep(time::Duration::from_millis(1));
-        return notifier.notify();
-    }).unwrap();
+                      thread::sleep(time::Duration::from_millis(1));
+                      return notifier.notify();
+                  }).unwrap();
 
     auto result = async::block_on(wait_for_notify(rstd::move(notify)));
     ASSERT_TRUE(result.is_ok());
@@ -1885,7 +1862,7 @@ TEST(AsyncCoro, NotifyWakesCurrentThreadRuntimeFromExternalThread) {
 TEST(AsyncCoro, NotifyWakesSpawnedTaskFromExternalThread) {
     auto runtime_result =
         async::RuntimeBuilder::multi_thread().worker_threads(2).enable_io().build();
-    auto runtime        = runtime_result.unwrap();
+    auto runtime = runtime_result.unwrap();
 
     auto notify_result = async::Notify::make();
     ASSERT_TRUE(notify_result.is_ok());
@@ -1893,9 +1870,9 @@ TEST(AsyncCoro, NotifyWakesSpawnedTaskFromExternalThread) {
     auto notifier = notify.notifier();
 
     auto handle = thread::spawn([notifier = rstd::move(notifier)] {
-        thread::sleep(time::Duration::from_millis(1));
-        return notifier.notify();
-    }).unwrap();
+                      thread::sleep(time::Duration::from_millis(1));
+                      return notifier.notify();
+                  }).unwrap();
 
     auto result = runtime.block_on(join_spawned_notify_waiter(rstd::move(notify)));
     ASSERT_TRUE(result.is_ok());
@@ -1912,9 +1889,9 @@ TEST(AsyncCoro, CompletionCompletesCurrentThreadRuntimeFromExternalThread) {
     auto completer  = rstd::move(pair.get<1>());
 
     auto handle = thread::spawn([completer = rstd::move(completer)]() mutable {
-        thread::sleep(time::Duration::from_millis(1));
-        return completer.complete(77);
-    }).unwrap();
+                      thread::sleep(time::Duration::from_millis(1));
+                      return completer.complete(77);
+                  }).unwrap();
 
     auto result = async::block_on(wait_for_completion(rstd::move(completion)));
     ASSERT_TRUE(result.is_ok());
@@ -1960,7 +1937,7 @@ TEST(AsyncCoro, SpawnAwaitsCompletionDirectly) {
 TEST(AsyncCoro, CompletionCompletesSpawnedTaskFromExternalThread) {
     auto runtime_result =
         async::RuntimeBuilder::multi_thread().worker_threads(2).enable_io().build();
-    auto runtime        = runtime_result.unwrap();
+    auto runtime = runtime_result.unwrap();
 
     auto completion_result = async::Completion<int>::make();
     ASSERT_TRUE(completion_result.is_ok());
@@ -1969,9 +1946,9 @@ TEST(AsyncCoro, CompletionCompletesSpawnedTaskFromExternalThread) {
     auto completer  = rstd::move(pair.get<1>());
 
     auto handle = thread::spawn([completer = rstd::move(completer)]() mutable {
-        thread::sleep(time::Duration::from_millis(1));
-        return completer.complete(88);
-    }).unwrap();
+                      thread::sleep(time::Duration::from_millis(1));
+                      return completer.complete(88);
+                  }).unwrap();
 
     auto result = runtime.block_on(join_spawned_completion_waiter(rstd::move(completion)));
     ASSERT_TRUE(result.is_ok());
@@ -2070,14 +2047,14 @@ TEST(AsyncCoro, CompletionQueueWakesCurrentThreadRuntimeFromExternalThread) {
     auto producer = rstd::move(pair.get<1>());
 
     auto handle = thread::spawn([producer = rstd::move(producer)]() mutable {
-        thread::sleep(time::Duration::from_millis(1));
-        auto pushed = producer.push(7);
-        if (pushed.is_err()) {
-            return false;
-        }
-        producer.close();
-        return true;
-    }).unwrap();
+                      thread::sleep(time::Duration::from_millis(1));
+                      auto pushed = producer.push(7);
+                      if (pushed.is_err()) {
+                          return false;
+                      }
+                      producer.close();
+                      return true;
+                  }).unwrap();
 
     auto result = async::block_on(drain_completion_queue(rstd::move(queue)));
     ASSERT_TRUE(result.is_ok());
@@ -2091,7 +2068,7 @@ TEST(AsyncCoro, CompletionQueueWakesCurrentThreadRuntimeFromExternalThread) {
 TEST(AsyncCoro, CompletionQueueWakesSpawnedTaskFromExternalThread) {
     auto runtime_result =
         async::RuntimeBuilder::multi_thread().worker_threads(2).enable_io().build();
-    auto runtime        = runtime_result.unwrap();
+    auto runtime = runtime_result.unwrap();
 
     auto queue_result = async::CompletionQueue<int>::make();
     ASSERT_TRUE(queue_result.is_ok());
@@ -2100,14 +2077,14 @@ TEST(AsyncCoro, CompletionQueueWakesSpawnedTaskFromExternalThread) {
     auto producer = rstd::move(pair.get<1>());
 
     auto handle = thread::spawn([producer = rstd::move(producer)]() mutable {
-        thread::sleep(time::Duration::from_millis(1));
-        auto pushed = producer.push(11);
-        if (pushed.is_err()) {
-            return false;
-        }
-        producer.close();
-        return true;
-    }).unwrap();
+                      thread::sleep(time::Duration::from_millis(1));
+                      auto pushed = producer.push(11);
+                      if (pushed.is_err()) {
+                          return false;
+                      }
+                      producer.close();
+                      return true;
+                  }).unwrap();
 
     auto result = runtime.block_on(join_spawned_queue_waiter(rstd::move(queue)));
     ASSERT_TRUE(result.is_ok());
@@ -2184,12 +2161,12 @@ TEST(AsyncCoro, ConcurrentRuntimeHandlesScheduleWorkerQueues) {
 
     auto make_caller = [&] {
         auto caller_handle = handle.clone();
-        return thread::spawn(
-            [caller_handle = rstd::move(caller_handle), &completed]() mutable {
-                for (int task = 0; task < tasks_per_caller; ++task) {
-                    (void)caller_handle.spawn(increment_after_yields(completed));
-                }
-            }).unwrap();
+        return thread::spawn([caller_handle = rstd::move(caller_handle), &completed]() mutable {
+                   for (int task = 0; task < tasks_per_caller; ++task) {
+                       (void)caller_handle.spawn(increment_after_yields(completed));
+                   }
+               })
+            .unwrap();
     };
 
     auto caller1 = make_caller();
@@ -2221,8 +2198,8 @@ TEST(AsyncCoro, MultiThreadRuntimeSpawnRunsWhileCallerContinues) {
 TEST(AsyncCoro, MultiThreadRuntimeDetachedSpawnRunsWhileCallerContinues) {
     auto runtime_result =
         async::RuntimeBuilder::multi_thread().worker_threads(2).enable_time().build();
-    auto runtime        = runtime_result.unwrap();
-    auto signal         = std::atomic<int> { 0 };
+    auto runtime = runtime_result.unwrap();
+    auto signal  = std::atomic<int> { 0 };
 
     (void)runtime.spawn(signal_after_sleep(signal));
 
@@ -2232,10 +2209,10 @@ TEST(AsyncCoro, MultiThreadRuntimeDetachedSpawnRunsWhileCallerContinues) {
 TEST(AsyncCoro, RuntimeHandleCloneSpawnsWhileCallerContinues) {
     auto runtime_result =
         async::RuntimeBuilder::multi_thread().worker_threads(2).enable_time().build();
-    auto runtime        = runtime_result.unwrap();
-    auto handle         = runtime.handle();
-    auto cloned         = handle.clone();
-    auto signal         = std::atomic<int> { 0 };
+    auto runtime = runtime_result.unwrap();
+    auto handle  = runtime.handle();
+    auto cloned  = handle.clone();
+    auto signal  = std::atomic<int> { 0 };
 
     (void)cloned.spawn(signal_after_sleep(signal));
 
@@ -2261,10 +2238,9 @@ TEST(AsyncCoro, OneShotSenderCloseWakesReceiver) {
     auto tx      = rstd::move(channel.get<0>());
     auto rx      = rstd::move(channel.get<1>());
     auto counts  = WakerCounts {};
-    auto waker   = task::Waker::from_raw(task::RawWaker::from_raw_parts(
-        &counts,
-        rstd::addressof(COUNT_WAKER_VTABLE)));
-    auto cx      = task::Context { waker };
+    auto waker   = task::Waker::from_raw(
+        task::RawWaker::from_raw_parts(&counts, rstd::addressof(COUNT_WAKER_VTABLE)));
+    auto cx = task::Context { waker };
 
     auto first = future::poll(rx, cx);
     EXPECT_TRUE(first.is_pending());
@@ -2283,10 +2259,9 @@ TEST(AsyncCoro, OneShotReceiverDropWakesSenderCancellation) {
     auto channel = async::oneshot::channel<int>();
     auto tx      = rstd::move(channel.get<0>());
     auto counts  = WakerCounts {};
-    auto waker   = task::Waker::from_raw(task::RawWaker::from_raw_parts(
-        &counts,
-        rstd::addressof(COUNT_WAKER_VTABLE)));
-    auto cx      = task::Context { waker };
+    auto waker   = task::Waker::from_raw(
+        task::RawWaker::from_raw_parts(&counts, rstd::addressof(COUNT_WAKER_VTABLE)));
+    auto cx = task::Context { waker };
 
     {
         auto rx    = rstd::move(channel.get<1>());
@@ -2319,11 +2294,11 @@ TEST(AsyncCoro, OneShotReportsSenderDropAsCanceled) {
 }
 
 TEST(AsyncCoro, JoinPollsAllChildren) {
-    int ready_polls  = 0;
+    int ready_polls   = 0;
     int pending_polls = 0;
 
-    auto out = async::block_on(async::join(CountReadyInt { &ready_polls, 10 },
-                                           CountPendingInt { &pending_polls, 20 }));
+    auto out = async::block_on(
+        async::join(CountReadyInt { &ready_polls, 10 }, CountPendingInt { &pending_polls, 20 }));
 
     EXPECT_EQ(out.get<0>(), 10);
     EXPECT_EQ(out.get<1>(), 20);
@@ -2337,7 +2312,7 @@ TEST(AsyncCoro, JoinSupportsVoidFuture) {
 }
 
 TEST(AsyncCoro, JoinAllPreservesOrder) {
-    int polls[3] {};
+    int  polls[3] {};
     auto futures = Vec<IndexedPendingInt>::make();
     futures.push(IndexedPendingInt { polls, 0, 30 });
     futures.push(IndexedPendingInt { polls, 1, 10 });
@@ -2379,8 +2354,7 @@ TEST(AsyncCoro, SelectReturnsLeftAndDropsLoser) {
 TEST(AsyncCoro, SelectReturnsRightWhenLeftPending) {
     int left_polls = 0;
 
-    auto out = async::block_on(
-        async::select(CountPendingInt { &left_polls, 11 }, ReadyInt {}));
+    auto out = async::block_on(async::select(CountPendingInt { &left_polls, 11 }, ReadyInt {}));
 
     ASSERT_TRUE(out.is_right());
     EXPECT_EQ(rstd::move(out).unwrap_right(), 7);
@@ -2390,25 +2364,23 @@ TEST(AsyncCoro, SelectReturnsRightWhenLeftPending) {
 TEST(AsyncCoro, RaceReturnsWinnerOutput) {
     int left_polls = 0;
 
-    auto out = async::block_on(
-        async::race(CountPendingInt { &left_polls, 11 }, ReadyInt {}));
+    auto out = async::block_on(async::race(CountPendingInt { &left_polls, 11 }, ReadyInt {}));
 
     EXPECT_EQ(out, 7);
     EXPECT_EQ(left_polls, 1);
 }
 
 TEST(AsyncCoro, TimeoutReadyFutureWins) {
-    auto result = async::block_on(
-        async::timeout(ReadyInt {}, time::Duration::from_millis(0)));
+    auto result = async::block_on(async::timeout(ReadyInt {}, time::Duration::from_millis(0)));
 
     ASSERT_TRUE(result.is_ok());
     EXPECT_EQ(rstd::move(result).unwrap(), 7);
 }
 
 TEST(AsyncCoro, TimeoutExpiresAndDropsFuture) {
-    int drops = 0;
-    auto result = async::block_on(
-        async::timeout(DropPendingInt { &drops }, time::Duration::from_millis(1)));
+    int  drops = 0;
+    auto result =
+        async::block_on(async::timeout(DropPendingInt { &drops }, time::Duration::from_millis(1)));
 
     EXPECT_TRUE(result.is_err());
     EXPECT_EQ(drops, 1);
@@ -2416,9 +2388,8 @@ TEST(AsyncCoro, TimeoutExpiresAndDropsFuture) {
 
 TEST(AsyncCoro, StreamTraitPollNext) {
     auto counts = WakerCounts {};
-    auto waker  = task::Waker::from_raw(task::RawWaker::from_raw_parts(
-        &counts,
-        rstd::addressof(COUNT_WAKER_VTABLE)));
+    auto waker  = task::Waker::from_raw(
+        task::RawWaker::from_raw_parts(&counts, rstd::addressof(COUNT_WAKER_VTABLE)));
     auto cx     = task::Context { waker };
     auto stream = CounterStream {};
 
@@ -2440,13 +2411,12 @@ TEST(AsyncCoro, StreamTraitPollNext) {
 }
 
 TEST(AsyncCoro, AsyncIoProtocolsUseBytesAndIoResult) {
-    u8 read_data[] { 'a', 'b', 'c' };
+    u8   read_data[] { 'a', 'b', 'c' };
     auto stream = MockAsyncIo { read_data, 3 };
     auto counts = WakerCounts {};
-    auto waker  = task::Waker::from_raw(task::RawWaker::from_raw_parts(
-        &counts,
-        rstd::addressof(COUNT_WAKER_VTABLE)));
-    auto cx     = task::Context { waker };
+    auto waker  = task::Waker::from_raw(
+        task::RawWaker::from_raw_parts(&counts, rstd::addressof(COUNT_WAKER_VTABLE)));
+    auto cx       = task::Context { waker };
     auto read_buf = bytes::BytesMut::make();
 
     auto read_pending = async::io::poll_read(stream, cx, read_buf);
@@ -2462,8 +2432,8 @@ TEST(AsyncCoro, AsyncIoProtocolsUseBytesAndIoResult) {
     EXPECT_EQ(read_buf[0], 'a');
     EXPECT_EQ(read_buf[2], 'c');
 
-    u8 write_data[] { 'x', 'y' };
-    auto write_buf = bytes::Bytes::copy_from_slice(slice<u8>::from_raw_parts(write_data, 2));
+    u8   write_data[] { 'x', 'y' };
+    auto write_buf     = bytes::Bytes::copy_from_slice(slice<u8>::from_raw_parts(write_data, 2));
     auto write_pending = async::io::poll_write(stream, cx, write_buf);
     EXPECT_TRUE(write_pending.is_pending());
     EXPECT_EQ(counts.wake_refs.load(), 2);
@@ -2489,7 +2459,7 @@ TEST(AsyncCoro, AsyncIoProtocolsUseBytesAndIoResult) {
 }
 
 TEST(AsyncCoro, AsyncIoHelpersReadWriteFlushShutdown) {
-    u8 read_data[] { 'a', 'b', 'c' };
+    u8   read_data[] { 'a', 'b', 'c' };
     auto stream   = MockAsyncIo { read_data, 3 };
     auto read_buf = bytes::BytesMut::make();
 
@@ -2500,8 +2470,8 @@ TEST(AsyncCoro, AsyncIoHelpersReadWriteFlushShutdown) {
     EXPECT_EQ(read_buf[0], 'a');
     EXPECT_EQ(read_buf[2], 'c');
 
-    u8 write_data[] { 'x', 'y' };
-    auto write_buf = bytes::Bytes::copy_from_slice(slice<u8>::from_raw_parts(write_data, 2));
+    u8   write_data[] { 'x', 'y' };
+    auto write_buf    = bytes::Bytes::copy_from_slice(slice<u8>::from_raw_parts(write_data, 2));
     auto write_result = async::block_on(async::io::write(stream, write_buf));
     ASSERT_TRUE(write_result.is_ok());
     EXPECT_EQ(rstd::move(write_result).unwrap(), 2u);
@@ -2519,7 +2489,7 @@ TEST(AsyncCoro, AsyncIoHelpersReadWriteFlushShutdown) {
 }
 
 TEST(AsyncCoro, AsyncIoReadExactReadsRequestedBytes) {
-    u8 read_data[] { 'q', 'w', 'e' };
+    u8   read_data[] { 'q', 'w', 'e' };
     auto stream   = MockAsyncIo { read_data, 3 };
     auto read_buf = bytes::BytesMut::make();
 
@@ -2532,10 +2502,10 @@ TEST(AsyncCoro, AsyncIoReadExactReadsRequestedBytes) {
 }
 
 TEST(AsyncCoro, AsyncIoReadExactReportsUnexpectedEof) {
-    u8 read_data[] { 0 };
-    auto stream          = MockAsyncIo { read_data, 0 };
-    stream.read_pending  = false;
-    auto read_buf        = bytes::BytesMut::make();
+    u8   read_data[] { 0 };
+    auto stream         = MockAsyncIo { read_data, 0 };
+    stream.read_pending = false;
+    auto read_buf       = bytes::BytesMut::make();
 
     auto result = async::block_on(async::io::read_exact(stream, read_buf, 1));
 
@@ -2545,9 +2515,9 @@ TEST(AsyncCoro, AsyncIoReadExactReportsUnexpectedEof) {
 }
 
 TEST(AsyncCoro, AsyncIoWriteAllWritesFullBuffer) {
-    u8 read_data[] { 0 };
+    u8   read_data[] { 0 };
     auto stream = MockAsyncIo { read_data, 0 };
-    u8 write_data[] { 'm', 'n', 'o' };
+    u8   write_data[] { 'm', 'n', 'o' };
     auto write_buf = bytes::Bytes::copy_from_slice(slice<u8>::from_raw_parts(write_data, 3));
 
     auto result = async::block_on(async::io::write_all(stream, write_buf));
@@ -2560,7 +2530,7 @@ TEST(AsyncCoro, AsyncIoWriteAllWritesFullBuffer) {
 
 TEST(AsyncCoro, AsyncIoWriteAllReportsWriteZero) {
     auto writer = ZeroAsyncWrite {};
-    u8 write_data[] { 'z' };
+    u8   write_data[] { 'z' };
     auto write_buf = bytes::Bytes::copy_from_slice(slice<u8>::from_raw_parts(write_data, 1));
 
     auto result = async::block_on(async::io::write_all(writer, write_buf));
@@ -2572,9 +2542,8 @@ TEST(AsyncCoro, AsyncIoWriteAllReportsWriteZero) {
 
 TEST(AsyncCoro, AsyncIoReadErrorUsesIoResult) {
     auto counts = WakerCounts {};
-    auto waker  = task::Waker::from_raw(task::RawWaker::from_raw_parts(
-        &counts,
-        rstd::addressof(COUNT_WAKER_VTABLE)));
+    auto waker  = task::Waker::from_raw(
+        task::RawWaker::from_raw_parts(&counts, rstd::addressof(COUNT_WAKER_VTABLE)));
     auto cx     = task::Context { waker };
     auto reader = ErrorAsyncRead {};
     auto buf    = bytes::BytesMut::make();
@@ -2600,13 +2569,13 @@ TEST(AsyncCoro, SpawnedSleepWakesTask) {
 TEST(AsyncCoro, MultiThreadRuntimeSpawnedSleepWakesTask) {
     auto runtime_result =
         async::RuntimeBuilder::multi_thread().worker_threads(2).enable_time().build();
-    auto runtime        = runtime_result.unwrap();
+    auto runtime = runtime_result.unwrap();
 
     EXPECT_EQ(runtime.block_on(join_spawned_sleeping_child()), 17);
 }
 
 TEST(AsyncCoro, MultiThreadRuntimeDropAbortsPendingTasks) {
-    int polls = 0;
+    int  polls  = 0;
     auto handle = Option<async::JoinHandle<int>> {};
 
     {
@@ -2647,10 +2616,8 @@ TEST(AsyncCoro, RuntimeBuilderDefaultsToDisabledDrivers) {
 }
 
 TEST(AsyncCoro, RuntimeBuilderEnableAllSetsDriverCapabilities) {
-    auto runtime_result = async::RuntimeBuilder::multi_thread()
-                              .worker_threads(2)
-                              .enable_all()
-                              .build();
+    auto runtime_result =
+        async::RuntimeBuilder::multi_thread().worker_threads(2).enable_all().build();
     ASSERT_TRUE(runtime_result.is_ok());
     auto runtime = runtime_result.unwrap();
 

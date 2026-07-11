@@ -12,7 +12,7 @@ namespace rstd::ptr_::non_null
 /// \tparam T The pointee type.
 export template<typename T>
 struct NonNull;
-}
+} // namespace rstd::ptr_::non_null
 
 namespace rstd::option::detail
 {

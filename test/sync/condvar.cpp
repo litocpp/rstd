@@ -20,14 +20,14 @@ TEST(Condvar, WaitWhileWakesAfterNotifyOne) {
     auto worker = state.clone();
 
     auto handle = thread::spawn([worker = rstd::move(worker)] {
-        auto guard = worker->ready.lock().unwrap();
-        *guard     = true;
-        worker->cvar.notify_one();
-    }).unwrap();
+                      auto guard = worker->ready.lock().unwrap();
+                      *guard     = true;
+                      worker->cvar.notify_one();
+                  }).unwrap();
 
     auto guard = state->ready.lock().unwrap();
     state->cvar.wait_while(guard, [](bool ready) {
-        return !ready;
+        return ! ready;
     });
 
     EXPECT_TRUE(*guard);
@@ -50,18 +50,16 @@ TEST(Condvar, WaitTimeoutWhileReturnsWhenPredicateClears) {
     auto worker = state.clone();
 
     auto handle = thread::spawn([worker = rstd::move(worker)] {
-        thread::sleep(time::Duration::from_millis(5));
-        auto guard = worker->ready.lock().unwrap();
-        *guard     = true;
-        worker->cvar.notify_all();
-    }).unwrap();
+                      thread::sleep(time::Duration::from_millis(5));
+                      auto guard = worker->ready.lock().unwrap();
+                      *guard     = true;
+                      worker->cvar.notify_all();
+                  }).unwrap();
 
-    auto guard  = state->ready.lock().unwrap();
-    auto result = state->cvar.wait_timeout_while(
-        guard,
-        time::Duration::from_millis(500),
-        [](bool ready) {
-            return !ready;
+    auto guard = state->ready.lock().unwrap();
+    auto result =
+        state->cvar.wait_timeout_while(guard, time::Duration::from_millis(500), [](bool ready) {
+            return ! ready;
         });
 
     EXPECT_FALSE(result.timed_out());

@@ -8,23 +8,22 @@ import :sys.libc.unix;
 #endif
 using namespace rstd::sys::libc;
 
-
 #if RSTD_OS_UNIX
 namespace rstd::sys::pal::unix::futex
 {
 
-#    if RSTD_OS_LINUX
+#if RSTD_OS_LINUX
 
 bool futex_wait(Futex* futex, Primitive expected, Option<Duration> timeout) {
     Option<libc::timespec> ts;
     if (timeout) {
         ts = Some(libc::timespec {});
         libc::clock_gettime(libc::CLOCK_MONOTONIC, &*ts);
-        ts->tv_sec  += (long)timeout->as_secs();
+        ts->tv_sec += (long)timeout->as_secs();
         ts->tv_nsec += (long)timeout->subsec_nanos();
         if (ts->tv_nsec >= (long)rstd::time::NANOS_PER_SEC) {
             ts->tv_nsec -= (long)rstd::time::NANOS_PER_SEC;
-            ts->tv_sec  += 1;
+            ts->tv_sec += 1;
         }
     }
     auto pts = ts ? &*ts : nullptr;
@@ -58,11 +57,10 @@ bool futex_wake(Futex* futex) {
 }
 
 void futex_wake_all(Futex* futex) {
-    syscall(
-        SYS_futex, futex, FUTEX_WAKE | FUTEX_PRIVATE_FLAG, rstd::numeric_limits<i32>::max());
+    syscall(SYS_futex, futex, FUTEX_WAKE | FUTEX_PRIVATE_FLAG, rstd::numeric_limits<i32>::max());
 }
 
-#    endif
+#endif
 
 } // namespace rstd::sys::pal::unix::futex
 #endif

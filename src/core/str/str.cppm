@@ -138,20 +138,26 @@ export struct Chars {
     struct Sentinel {};
 
     struct Iterator {
-        Chars* chars;
+        Chars*   chars;
         char32_t current { 0 };
         bool     done { false };
 
-        constexpr Iterator(Chars* c) : chars(c) { advance(); }
+        constexpr Iterator(Chars* c): chars(c) { advance(); }
 
         constexpr void advance() {
-            if (chars->_ptr >= chars->_end) { done = true; return; }
+            if (chars->_ptr >= chars->_end) {
+                done = true;
+                return;
+            }
             current = chars->next_unchecked();
         }
 
         constexpr auto operator*() const -> char32_t { return current; }
-        constexpr auto operator++() -> Iterator& { advance(); return *this; }
-        constexpr auto operator!=(Sentinel) const -> bool { return !done; }
+        constexpr auto operator++() -> Iterator& {
+            advance();
+            return *this;
+        }
+        constexpr auto operator!=(Sentinel) const -> bool { return ! done; }
     };
 
     constexpr auto begin() -> Iterator { return Iterator { this }; }
@@ -207,8 +213,7 @@ export constexpr auto contains(ref<str> haystack, ref<str> needle) noexcept -> b
     if (needle.size() == 0) return true;
     if (needle.size() > haystack.size()) return false;
     for (usize i = 0; i <= haystack.size() - needle.size(); i++) {
-        if (__builtin_memcmp(haystack.data() + i, needle.data(), needle.size()) == 0)
-            return true;
+        if (__builtin_memcmp(haystack.data() + i, needle.data(), needle.size()) == 0) return true;
     }
     return false;
 }
@@ -226,12 +231,9 @@ export constexpr auto ends_with(ref<str> s, ref<str> suffix) noexcept -> bool {
 }
 
 /// Splits the string at the given byte position.
-export constexpr auto split_at(ref<str> s, usize mid) noexcept
-    -> rstd::tuple<ref<str>, ref<str>> {
-    return {
-        ref<str>::from_raw_parts(const_cast<u8*>(s.data()), mid),
-        ref<str>::from_raw_parts(const_cast<u8*>(s.data() + mid), s.size() - mid)
-    };
+export constexpr auto split_at(ref<str> s, usize mid) noexcept -> rstd::tuple<ref<str>, ref<str>> {
+    return { ref<str>::from_raw_parts(const_cast<u8*>(s.data()), mid),
+             ref<str>::from_raw_parts(const_cast<u8*>(s.data() + mid), s.size() - mid) };
 }
 
 /// Returns the string with leading and trailing ASCII whitespace removed.
@@ -239,7 +241,8 @@ export constexpr auto trim(ref<str> s) noexcept -> ref<str> {
     auto* b = s.data();
     auto* e = b + s.size();
     while (b < e && (*b == ' ' || *b == '\t' || *b == '\n' || *b == '\r')) ++b;
-    while (e > b && (*(e-1) == ' ' || *(e-1) == '\t' || *(e-1) == '\n' || *(e-1) == '\r')) --e;
+    while (e > b && (*(e - 1) == ' ' || *(e - 1) == '\t' || *(e - 1) == '\n' || *(e - 1) == '\r'))
+        --e;
     return ref<str>::from_raw_parts(const_cast<u8*>(b), static_cast<usize>(e - b));
 }
 

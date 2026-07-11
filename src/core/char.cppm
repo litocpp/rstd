@@ -19,14 +19,14 @@ constexpr auto is_ascii(char32_t c) noexcept -> bool {
 ///
 /// Returns 0 for invalid code points (surrogates, > U+10FFFF).
 constexpr auto len_utf8(char32_t c) noexcept -> usize {
-    if (c <= 0x7F)       return 1;
-    if (c <= 0x7FF)      return 2;
+    if (c <= 0x7F) return 1;
+    if (c <= 0x7FF) return 2;
     if (c <= 0xFFFF) {
         // Surrogates are not valid scalar values.
         if (c >= 0xD800 && c <= 0xDFFF) return 0;
         return 3;
     }
-    if (c <= 0x10FFFF)   return 4;
+    if (c <= 0x10FFFF) return 4;
     return 0;
 }
 
@@ -68,8 +68,7 @@ constexpr auto encode_utf8(char32_t c, u8* buf) noexcept -> usize {
 /// \param len  Number of available bytes.
 /// \return `{code_point, bytes_consumed}`.
 ///         On invalid/incomplete sequence, returns `{REPLACEMENT, 1}` (skip one byte).
-constexpr auto decode_utf8(const u8* ptr, usize len) noexcept
-    -> rstd::tuple<char32_t, usize> {
+constexpr auto decode_utf8(const u8* ptr, usize len) noexcept -> rstd::tuple<char32_t, usize> {
     if (len == 0) return { REPLACEMENT, 0 };
 
     u8 b0 = ptr[0];
@@ -80,17 +79,17 @@ constexpr auto decode_utf8(const u8* ptr, usize len) noexcept
     }
 
     // Determine expected sequence length from leading byte.
-    usize seq_len;
+    usize    seq_len;
     char32_t cp;
     if ((b0 & 0xE0) == 0xC0) {
         seq_len = 2;
-        cp = b0 & 0x1F;
+        cp      = b0 & 0x1F;
     } else if ((b0 & 0xF0) == 0xE0) {
         seq_len = 3;
-        cp = b0 & 0x0F;
+        cp      = b0 & 0x0F;
     } else if ((b0 & 0xF8) == 0xF0) {
         seq_len = 4;
-        cp = b0 & 0x07;
+        cp      = b0 & 0x07;
     } else {
         // Invalid leading byte (continuation or 0xFE/0xFF).
         return { REPLACEMENT, 1 };
@@ -106,13 +105,13 @@ constexpr auto decode_utf8(const u8* ptr, usize len) noexcept
     }
 
     // Reject overlong encodings.
-    if (seq_len == 2 && cp < 0x80)    return { REPLACEMENT, 1 };
-    if (seq_len == 3 && cp < 0x800)   return { REPLACEMENT, 1 };
+    if (seq_len == 2 && cp < 0x80) return { REPLACEMENT, 1 };
+    if (seq_len == 3 && cp < 0x800) return { REPLACEMENT, 1 };
     if (seq_len == 4 && cp < 0x10000) return { REPLACEMENT, 1 };
 
     // Reject surrogates and out-of-range.
     if (cp >= 0xD800 && cp <= 0xDFFF) return { REPLACEMENT, 1 };
-    if (cp > MAX)                     return { REPLACEMENT, 1 };
+    if (cp > MAX) return { REPLACEMENT, 1 };
 
     return { cp, seq_len };
 }
@@ -139,8 +138,7 @@ constexpr auto is_valid_utf8(const u8* ptr, usize len) noexcept -> bool {
     usize i = 0;
     while (i < len) {
         auto [cp, n] = decode_utf8(ptr + i, len - i);
-        if (cp == REPLACEMENT && (n <= 1 && (i >= len || ptr[i] > 0x7F)))
-            return false;
+        if (cp == REPLACEMENT && (n <= 1 && (i >= len || ptr[i] > 0x7F))) return false;
         i += n;
     }
     return true;

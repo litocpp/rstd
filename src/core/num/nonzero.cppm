@@ -49,7 +49,6 @@ struct option_storage<num::nonzero::NonZero<T>, NonePayload, SomePayload>
 
 } // namespace rstd::option::detail
 
-
 namespace rstd::num::nonzero
 {
 
@@ -60,7 +59,6 @@ struct NonZero<T> {
     Impl<ZeroablePrimitive, T>::NonZeroInner val;
 
     constexpr static auto make(T n) noexcept -> Option<Self> {
-
         return rstd::bit_cast<Option<Self>>(n);
     }
 
@@ -91,7 +89,8 @@ ImplNonZero(NonZeroU16Inner, u16);
 ImplNonZero(NonZeroU32Inner, u32);
 ImplNonZero(NonZeroU64Inner, u64);
 
-namespace rstd {
+namespace rstd
+{
 static_assert(sizeof(rstd::num::nonzero::NonZero<u64>) == sizeof(u64));
 static_assert(sizeof(rstd::option::Option<rstd::num::nonzero::NonZero<u64>>) == sizeof(u64));
-}
+} // namespace rstd

@@ -11,7 +11,8 @@ namespace rstd::ptr_
 /// \tparam T The pointee type.
 /// \return A null pointer of type `T*`.
 export template<typename T>
-[[gnu::always_inline]] inline constexpr auto null_mut() noexcept -> T* {
+[[gnu::always_inline]]
+inline constexpr auto null_mut() noexcept -> T* {
     return nullptr;
 }
 
@@ -20,7 +21,8 @@ export template<typename T>
 /// \param addr The address for the pointer.
 /// \return A pointer to `T` with the given address.
 export template<typename T>
-[[gnu::always_inline]] inline auto without_provenance_mut(usize addr) noexcept -> T* {
+[[gnu::always_inline]]
+inline auto without_provenance_mut(usize addr) noexcept -> T* {
     // An int-to-pointer transmute currently has exactly the intended semantics: it creates a
     // pointer without provenance. Note that this is *not* a stable guarantee about transmute
     // semantics, it relies on sysroot crates having special status.

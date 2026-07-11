@@ -12,10 +12,10 @@ namespace rstd::sys::socket
 
 using fd::OwnedFd;
 using fd::RawFd;
-using Error = ::rstd::io::error::Error;
+using Error     = ::rstd::io::error::Error;
 using ErrorKind = ::rstd::io::error::ErrorKind;
 template<typename T>
-using Result = ::rstd::io::Result<T>;
+using Result   = ::rstd::io::Result<T>;
 namespace libc = rstd::sys::libc;
 
 namespace detail
@@ -34,8 +34,10 @@ inline auto set_nonblocking(RawFd fd, bool enabled) -> Result<empty> {
     int flags = libc::fcntl(fd, libc::F_GETFL, 0);
     if (flags < 0) return Err(last_error());
 
-    if (enabled) flags |= libc::O_NONBLOCK;
-    else flags &= ~libc::O_NONBLOCK;
+    if (enabled)
+        flags |= libc::O_NONBLOCK;
+    else
+        flags &= ~libc::O_NONBLOCK;
 
     if (libc::fcntl(fd, libc::F_SETFL, flags) < 0) return Err(last_error());
     return Ok(empty {});
@@ -88,13 +90,12 @@ public:
     static auto ipv4(Ipv4Addr ip, u16 port) noexcept -> SocketAddr {
         auto out = SocketAddr {};
 #if RSTD_OS_UNIX
-        auto addr            = libc::sockaddr_in {};
-        addr.sin_family      = libc::AF_INET;
-        addr.sin_port        = libc::htons(port);
-        addr.sin_addr.s_addr = libc::htonl((u32(ip.m_octets[0]) << 24) |
-                                           (u32(ip.m_octets[1]) << 16) |
-                                           (u32(ip.m_octets[2]) << 8) |
-                                           u32(ip.m_octets[3]));
+        auto addr       = libc::sockaddr_in {};
+        addr.sin_family = libc::AF_INET;
+        addr.sin_port   = libc::htons(port);
+        addr.sin_addr.s_addr =
+            libc::htonl((u32(ip.m_octets[0]) << 24) | (u32(ip.m_octets[1]) << 16) |
+                        (u32(ip.m_octets[2]) << 8) | u32(ip.m_octets[3]));
         *reinterpret_cast<libc::sockaddr_in*>(&out.m_storage) = addr;
         out.m_len                                             = sizeof(addr);
 #else
@@ -108,9 +109,7 @@ public:
         return ipv4(Ipv4Addr::loopback(), port);
     }
 
-    static auto ipv4_any(u16 port) noexcept -> SocketAddr {
-        return ipv4(Ipv4Addr::any(), port);
-    }
+    static auto ipv4_any(u16 port) noexcept -> SocketAddr { return ipv4(Ipv4Addr::any(), port); }
 
     auto family() const noexcept -> i32 {
 #if RSTD_OS_UNIX
@@ -165,17 +164,15 @@ public:
 export class Socket {
     OwnedFd m_fd;
 
-    explicit Socket(OwnedFd fd) noexcept : m_fd(rstd::move(fd)) {}
+    explicit Socket(OwnedFd fd) noexcept: m_fd(rstd::move(fd)) {}
 
 public:
-    Socket(const Socket&)            = delete;
-    auto operator=(const Socket&)    = delete;
-    Socket(Socket&&) noexcept        = default;
+    Socket(const Socket&)                        = delete;
+    auto operator=(const Socket&)                = delete;
+    Socket(Socket&&) noexcept                    = default;
     auto operator=(Socket&&) noexcept -> Socket& = default;
 
-    static auto from_owned_fd(OwnedFd fd) noexcept -> Socket {
-        return Socket { rstd::move(fd) };
-    }
+    static auto from_owned_fd(OwnedFd fd) noexcept -> Socket { return Socket { rstd::move(fd) }; }
 
     auto into_owned_fd() noexcept -> OwnedFd { return rstd::move(m_fd); }
     auto as_raw_fd() const noexcept -> RawFd { return m_fd.as_raw_fd(); }
@@ -194,8 +191,8 @@ public:
         int raw = libc::socket(addr.family(), libc::SOCK_STREAM, 0);
         if (raw < 0) return Err(detail::last_error());
 
-        auto fd       = OwnedFd::from_raw_fd(raw);
-        auto cloexec  = detail::set_cloexec(raw);
+        auto fd      = OwnedFd::from_raw_fd(raw);
+        auto cloexec = detail::set_cloexec(raw);
         if (cloexec.is_err()) return Err(rstd::move(cloexec).unwrap_err_unchecked());
 
         auto nonblock = detail::set_nonblocking(raw, true);
@@ -274,13 +271,13 @@ public:
 
     auto accept() -> Result<tuple<Socket, SocketAddr>> {
 #if RSTD_OS_UNIX
-        auto addr = SocketAddr {};
+        auto addr  = SocketAddr {};
         addr.m_len = sizeof(addr.m_storage);
-        int raw = libc::accept(as_raw_fd(), addr.as_sockaddr(), addr.len_ptr());
+        int raw    = libc::accept(as_raw_fd(), addr.as_sockaddr(), addr.len_ptr());
         if (raw < 0) return Err(detail::last_error());
 
-        auto fd       = OwnedFd::from_raw_fd(raw);
-        auto cloexec  = detail::set_cloexec(raw);
+        auto fd      = OwnedFd::from_raw_fd(raw);
+        auto cloexec = detail::set_cloexec(raw);
         if (cloexec.is_err()) return Err(rstd::move(cloexec).unwrap_err_unchecked());
 
         auto nonblock = detail::set_nonblocking(raw, true);
@@ -327,7 +324,7 @@ public:
 
     auto take_error() -> Result<Option<Error>> {
 #if RSTD_OS_UNIX
-        int         value = 0;
+        int             value = 0;
         libc::socklen_t len   = sizeof(value);
         if (libc::getsockopt(as_raw_fd(), libc::SOL_SOCKET, libc::SO_ERROR, &value, &len) < 0) {
             return Err(detail::last_error());
@@ -341,7 +338,7 @@ public:
 
     auto local_addr() const -> Result<SocketAddr> {
 #if RSTD_OS_UNIX
-        auto addr = SocketAddr {};
+        auto addr  = SocketAddr {};
         addr.m_len = sizeof(addr.m_storage);
         if (libc::getsockname(as_raw_fd(), addr.as_sockaddr(), addr.len_ptr()) < 0) {
             return Err(detail::last_error());
@@ -354,7 +351,7 @@ public:
 
     auto peer_addr() const -> Result<SocketAddr> {
 #if RSTD_OS_UNIX
-        auto addr = SocketAddr {};
+        auto addr  = SocketAddr {};
         addr.m_len = sizeof(addr.m_storage);
         if (libc::getpeername(as_raw_fd(), addr.as_sockaddr(), addr.len_ptr()) < 0) {
             return Err(detail::last_error());

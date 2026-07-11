@@ -4,12 +4,12 @@ import rstd;
 using namespace rstd::char_;
 
 TEST(Char, LenUtf8) {
-    EXPECT_EQ(len_utf8('A'), 1u);           // ASCII
-    EXPECT_EQ(len_utf8(0x00E9), 2u);        // é (U+00E9)
-    EXPECT_EQ(len_utf8(0x4E2D), 3u);        // 中 (U+4E2D)
-    EXPECT_EQ(len_utf8(0x1F600), 4u);       // 😀 (U+1F600)
-    EXPECT_EQ(len_utf8(0xD800), 0u);        // surrogate (invalid)
-    EXPECT_EQ(len_utf8(0x110000), 0u);      // out of range
+    EXPECT_EQ(len_utf8('A'), 1u);      // ASCII
+    EXPECT_EQ(len_utf8(0x00E9), 2u);   // é (U+00E9)
+    EXPECT_EQ(len_utf8(0x4E2D), 3u);   // 中 (U+4E2D)
+    EXPECT_EQ(len_utf8(0x1F600), 4u);  // 😀 (U+1F600)
+    EXPECT_EQ(len_utf8(0xD800), 0u);   // surrogate (invalid)
+    EXPECT_EQ(len_utf8(0x110000), 0u); // out of range
 }
 
 TEST(Char, EncodeDecodeAscii) {
@@ -48,21 +48,21 @@ TEST(Char, EncodeDecodeFourByte) {
 
 TEST(Char, DecodeInvalidLeading) {
     rstd::u8 bad[] = { 0xFF };
-    auto [cp, n] = decode_utf8(bad, 1);
+    auto [cp, n]   = decode_utf8(bad, 1);
     EXPECT_EQ(cp, REPLACEMENT);
     EXPECT_EQ(n, 1u);
 }
 
 TEST(Char, DecodeIncomplete) {
     rstd::u8 bad[] = { 0xC3 }; // start of 2-byte, but only 1 byte
-    auto [cp, n] = decode_utf8(bad, 1);
+    auto [cp, n]   = decode_utf8(bad, 1);
     EXPECT_EQ(cp, REPLACEMENT);
 }
 
 TEST(Char, DecodeOverlong) {
     // Overlong encoding of '/' (U+002F): C0 AF
     rstd::u8 bad[] = { 0xC0, 0xAF };
-    auto [cp, n] = decode_utf8(bad, 2);
+    auto [cp, n]   = decode_utf8(bad, 2);
     EXPECT_EQ(cp, REPLACEMENT);
 }
 

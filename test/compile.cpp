@@ -87,10 +87,12 @@ static decltype(auto) _dt_auto_check() {
 }
 
 template<typename T>
-T _forward(T&&) {}
+T _forward(T&&) {
+}
 
 template<typename T>
-T _tcall(T) {}
+T _tcall(T) {
+}
 
 static void _do() {
     A          a;
@@ -144,4 +146,6 @@ static void _do() {
 
 } // namespace
 
-TEST(Compile, Test) { _do(); }
+TEST(Compile, Test) {
+    _do();
+}

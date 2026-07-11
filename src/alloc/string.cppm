@@ -20,13 +20,21 @@ export struct Chars : rstd::DefaultInClass<Chars, rstd::iter::Iterator> {
     Chars(const u8* b, const u8* e): cur(b), fin(e) {}
     auto next() -> rstd::Option<u32> {
         if (cur == fin) return rstd::None();
-        u8  b0 = *cur++;
-        u32 cp;
+        u8    b0 = *cur++;
+        u32   cp;
         usize extra;
-        if (b0 < 0x80) return rstd::Some(static_cast<u32>(b0));
-        else if ((b0 >> 5) == 0x6) { cp = b0 & 0x1Fu; extra = 1; }
-        else if ((b0 >> 4) == 0xE) { cp = b0 & 0x0Fu; extra = 2; }
-        else { cp = b0 & 0x07u; extra = 3; }
+        if (b0 < 0x80)
+            return rstd::Some(static_cast<u32>(b0));
+        else if ((b0 >> 5) == 0x6) {
+            cp    = b0 & 0x1Fu;
+            extra = 1;
+        } else if ((b0 >> 4) == 0xE) {
+            cp    = b0 & 0x0Fu;
+            extra = 2;
+        } else {
+            cp    = b0 & 0x07u;
+            extra = 3;
+        }
         for (usize k = 0; k < extra && cur < fin; ++k)
             cp = (cp << 6) | (static_cast<u32>(*cur++) & 0x3Fu);
         return rstd::Some(cp);
@@ -61,9 +69,7 @@ public:
     }
 
     /// Creates a `String` from a null-terminated C string (copies the bytes).
-    static auto make(const char* s) -> String {
-        return make(ref<str>(s));
-    }
+    static auto make(const char* s) -> String { return make(ref<str>(s)); }
 
     /// Creates a new `String` from a byte vector without checking UTF-8 validity.
     static auto from_utf8_unchecked(Vec<u8>&& bytes) -> String {
@@ -89,7 +95,7 @@ public:
 
     /// Appends a Unicode code point, encoding as UTF-8.
     void push(char32_t cp) {
-        u8 buf[4];
+        u8   buf[4];
         auto n = rstd::char_::encode_utf8(cp, buf);
         for (usize i = 0; i < n; i++) {
             u8 b = buf[i];
@@ -141,9 +147,13 @@ public:
     constexpr auto as_raw_ptr() const noexcept -> const u8* { return vec.begin(); }
 
     /// Returns a const iterator to the beginning of the string.
-    constexpr auto begin() const noexcept -> const char* { return rstd::bit_cast<const char*>(vec.begin()); }
+    constexpr auto begin() const noexcept -> const char* {
+        return rstd::bit_cast<const char*>(vec.begin());
+    }
     /// Returns a const iterator to the end of the string.
-    constexpr auto end() const noexcept -> const char* { return rstd::bit_cast<const char*>(vec.end()); }
+    constexpr auto end() const noexcept -> const char* {
+        return rstd::bit_cast<const char*>(vec.end());
+    }
     /// Returns a pointer to the string data as a char array.
     /// \return A const `char*` pointer to the data.
     constexpr auto data() const noexcept -> const char* {
@@ -211,13 +221,9 @@ struct Impl<iter::FromIterator<u8>, String> : ImplBase<String> {
 
 template<>
 struct Impl<clone::Clone, String> : DefaultInImpl<clone::Clone, String> {
-    auto clone() const -> String {
-        return String::make(this->self().as_str());
-    }
+    auto clone() const -> String { return String::make(this->self().as_str()); }
 
-    void clone_from(String& source) {
-        this->self() = String::make(source.as_str());
-    }
+    void clone_from(String& source) { this->self() = String::make(source.as_str()); }
 };
 } // namespace rstd
 
@@ -260,15 +266,14 @@ struct Impl<fmt::Display, T> : ImplBase<T> {
             return f.write_raw((const u8*)"0", 1);
         }
         u128 uval;
-        bool              neg = false;
+        bool neg = false;
         if constexpr (mtp::same_as<T, i8> || mtp::same_as<T, i16> || mtp::same_as<T, i32> ||
                       mtp::same_as<T, i64> || mtp::same_as<T, i128> || mtp::same_as<T, int> ||
                       mtp::same_as<T, long> || mtp::same_as<T, long long>) {
             if (val < 0) {
                 neg  = true;
-                uval = (val == numeric_limits<T>::min())
-                           ? (u128)numeric_limits<T>::max() + 1
-                           : (u128)-val;
+                uval = (val == numeric_limits<T>::min()) ? (u128)numeric_limits<T>::max() + 1
+                                                         : (u128)-val;
             } else {
                 uval = (u128)val;
             }

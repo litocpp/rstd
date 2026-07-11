@@ -24,14 +24,14 @@ TEST(LogLevel, Comparison) {
 
 TEST(LogLevel, EqLevelFilter) {
     EXPECT_TRUE(Level::Error == LevelFilter::Error);
-    EXPECT_TRUE(Level::Info  == LevelFilter::Info);
+    EXPECT_TRUE(Level::Info == LevelFilter::Info);
     EXPECT_TRUE(Level::Trace == LevelFilter::Trace);
     EXPECT_FALSE(Level::Debug == LevelFilter::Trace);
 }
 
 TEST(LogLevel, ToLevelFilter) {
     EXPECT_EQ(to_level_filter(Level::Error), LevelFilter::Error);
-    EXPECT_EQ(to_level_filter(Level::Info),  LevelFilter::Info);
+    EXPECT_EQ(to_level_filter(Level::Info), LevelFilter::Info);
     EXPECT_EQ(to_level_filter(Level::Trace), LevelFilter::Trace);
 }
 
@@ -45,15 +45,15 @@ TEST(LogLevel, ToLevel) {
 
 TEST(LogParse, LevelCaseInsensitive) {
     EXPECT_EQ(parse_level("error").unwrap(), Level::Error);
-    EXPECT_EQ(parse_level("WARN").unwrap(),  Level::Warn);
-    EXPECT_EQ(parse_level("Info").unwrap(),  Level::Info);
+    EXPECT_EQ(parse_level("WARN").unwrap(), Level::Warn);
+    EXPECT_EQ(parse_level("Info").unwrap(), Level::Info);
     EXPECT_EQ(parse_level("dEbUg").unwrap(), Level::Debug);
     EXPECT_EQ(parse_level("trace").unwrap(), Level::Trace);
     EXPECT_TRUE(parse_level("invalid").is_none());
 }
 
 TEST(LogParse, LevelFilterCaseInsensitive) {
-    EXPECT_EQ(parse_level_filter("off").unwrap(),   LevelFilter::Off);
+    EXPECT_EQ(parse_level_filter("off").unwrap(), LevelFilter::Off);
     EXPECT_EQ(parse_level_filter("ERROR").unwrap(), LevelFilter::Error);
     EXPECT_EQ(parse_level_filter("TRACE").unwrap(), LevelFilter::Trace);
     EXPECT_TRUE(parse_level_filter("bad").is_none());
@@ -62,19 +62,13 @@ TEST(LogParse, LevelFilterCaseInsensitive) {
 // ── Metadata / Record ─────────────────────────────────────────────────────
 
 TEST(LogRecord, MetadataBuilder) {
-    auto m = MetadataBuilder()
-        .set_level(Level::Debug)
-        .set_target("test")
-        .build();
+    auto m = MetadataBuilder().set_level(Level::Debug).set_target("test").build();
     EXPECT_EQ(m.lvl(), Level::Debug);
     EXPECT_EQ(m.tgt().size(), 4u);
 }
 
 TEST(LogRecord, RecordBuilder) {
-    auto rec = RecordBuilder()
-        .set_level(Level::Error)
-        .set_target("my_mod")
-        .build();
+    auto rec = RecordBuilder().set_level(Level::Error).set_target("my_mod").build();
     EXPECT_EQ(rec.lvl(), Level::Error);
     EXPECT_EQ(rec.target().size(), 6u);
     EXPECT_EQ(rec.file(), nullptr);
@@ -140,7 +134,7 @@ TEST(LogGlobal, SetLoggerOnce) {
     // The global logger can only be set once per process.
     // Use static storage so the pointer remains valid for the process lifetime.
     static EnvLogger logger;
-    bool ok = set_logger(logger);
+    bool             ok = set_logger(logger);
     // We don't assert ok because another test may have already set it.
     (void)ok;
 }
@@ -236,8 +230,11 @@ TEST(LogMacroHelpers, LazyEvaluation) {
     (void)set_logger(logger);
     set_max_level(LevelFilter::Error);
 
-    bool called = false;
-    auto side_effect = [&] { called = true; return 42; };
+    bool called      = false;
+    auto side_effect = [&] {
+        called = true;
+        return 42;
+    };
 
     // info is filtered out, side_effect should not be called
     rstd_info("val: {}", side_effect());

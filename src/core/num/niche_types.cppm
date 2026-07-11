@@ -64,7 +64,7 @@ DEFINE_VALID_RANGE_TYPE(UsizeNoHighBit, usize, usize, 0, 0x7fffffff)
 DEFINE_VALID_RANGE_TYPE(NonZeroUsizeInner, usize, usize, 1, 0xffffffff)
 DEFINE_VALID_RANGE_TYPE(NonZeroIsizeInner, isize, usize, 1, 0xffffffff)
 #else
-#    error "Unsupported pointer width"
+#error "Unsupported pointer width"
 #endif
 
 DEFINE_VALID_RANGE_TYPE(U32NotAllOnes, u32, u32, 0, 0xfffffffe)

@@ -68,7 +68,7 @@ struct SliceIterMut : DefaultInClass<SliceIterMut<T>, Iterator> {
 /// Iterator that yields nothing.
 export template<class T>
 struct Empty : DefaultInClass<Empty<T>, Iterator> {
-    using Item = T;
+    using Item        = T;
     constexpr Empty() = default;
     constexpr auto next() -> Option<Item> { return rstd::None(); }
     constexpr auto size_hint() const -> SizeHint { return { 0, rstd::Some(usize(0)) }; }

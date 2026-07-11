@@ -15,8 +15,6 @@ export template<typename Enum, typename Data>
 struct Choice {
     using Entity = Enum;
     Entity entity;
-
-
 };
 
 } // namespace rstd

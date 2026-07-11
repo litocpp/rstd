@@ -120,7 +120,8 @@ template<typename T, typename NonePayload, typename SomePayload>
 struct option_storage<T&, NonePayload, SomePayload> {
     constexpr option_storage() noexcept = default;
 
-    constexpr explicit option_storage(enum_detail::in_place_index_t<0>) noexcept: none_(), some_() {}
+    constexpr explicit option_storage(enum_detail::in_place_index_t<0>) noexcept
+        : none_(), some_() {}
 
     template<typename V>
     explicit constexpr option_storage(enum_detail::in_place_index_t<1>, V&& val) noexcept
@@ -196,8 +197,9 @@ struct option_storage<T&, NonePayload, SomePayload> {
     }
 
 private:
-    [[no_unique_address]] NonePayload none_;
-    SomePayload                       some_;
+    [[no_unique_address]]
+    NonePayload none_;
+    SomePayload some_;
 };
 
 export template<typename NonePayload, typename SomePayload>
@@ -306,8 +308,9 @@ private:
         }
     }
 
-    [[no_unique_address]] NonePayload none_;
-    alignas(SomePayload) rstd::byte   m_storage[sizeof(SomePayload)] {};
+    [[no_unique_address]]
+    NonePayload none_;
+    alignas(SomePayload) rstd::byte m_storage[sizeof(SomePayload)] {};
 };
 
 template<typename T>
@@ -437,8 +440,7 @@ public:
 
     constexpr Option(Option&& o) noexcept(mtp::noex_move<union_value_t>)
         requires mtp::user_move<union_value_t>
-        : RSTD_ENUM_INIT(None)
-    {
+        : RSTD_ENUM_INIT(None) {
         if (o.is_some()) {
             this->_construct_val(_get(rstd::move(o)));
         } else {
@@ -593,8 +595,7 @@ public:
 
     /// Dereferences the contained value. Asserts that the option is `Some`.
     [[nodiscard]]
-    constexpr auto operator*() const noexcept
-        -> mtp::add_ref<mtp::add_const<mtp::rm_ref<T>>> {
+    constexpr auto operator*() const noexcept -> mtp::add_ref<mtp::add_const<mtp::rm_ref<T>>> {
         rstd_assert(this->is_some());
         return _get(*this);
     }
@@ -667,8 +668,7 @@ private:
 
     explicit constexpr Option(mtp::rm_ref<T>* ptr) noexcept
         requires mtp::is_ref<T>
-        : RSTD_ENUM_INIT(None)
-    {
+        : RSTD_ENUM_INIT(None) {
         this->_construct_val(*ptr);
     }
 };

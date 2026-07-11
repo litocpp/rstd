@@ -39,7 +39,7 @@ TEST(Env, Args) {
 
     auto first = rstd::env::args().next();
     ASSERT_TRUE(first.is_some());
-    EXPECT_GT(first.unwrap().len(), 0u);  // program path is non-empty
+    EXPECT_GT(first.unwrap().len(), 0u); // program path is non-empty
 }
 
 TEST(Env, ArgsManualInit) {

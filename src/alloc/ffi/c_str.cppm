@@ -18,7 +18,7 @@ export struct NulError {
     usize   size;
     Vec<u8> data;
 
-    NulError(usize s, Vec<u8>&& d) noexcept : size(s), data(rstd::move(d)) {}
+    NulError(usize s, Vec<u8>&& d) noexcept: size(s), data(rstd::move(d)) {}
     NulError(NulError&&) noexcept;
     NulError& operator=(NulError&&) noexcept;
     ~NulError();
@@ -31,7 +31,7 @@ public:
 
     USE_TRAIT(CString)
 
-    CString(::alloc::boxed::Box<u8[]>&& b) noexcept : inner(rstd::move(b)) {}
+    CString(::alloc::boxed::Box<u8[]>&& b) noexcept: inner(rstd::move(b)) {}
     CString(CString&&) noexcept;
     CString& operator=(CString&&) noexcept;
     ~CString();

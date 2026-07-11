@@ -99,9 +99,15 @@ auto score(const Message& message) -> int {
     int result = -1;
 
     RSTD_MATCH(message) {
-        RSTD_CASE(Quit) { result = 0; }
-        RSTD_CASE(Move, x, y) { result = x + y; }
-        RSTD_CASE(Write, text) { result = static_cast<int>(text.size()); }
+        RSTD_CASE(Quit) {
+            result = 0;
+        }
+        RSTD_CASE(Move, x, y) {
+            result = x + y;
+        }
+        RSTD_CASE(Write, text) {
+            result = static_cast<int>(text.size());
+        }
     }
 
     return result;
@@ -111,9 +117,15 @@ auto color_score(const Color& color) -> int {
     int result = -1;
 
     RSTD_MATCH(color) {
-        RSTD_CASE(Red) { result = 1; }
-        RSTD_CASE(Green) { result = 2; }
-        RSTD_CASE(Blue) { result = 3; }
+        RSTD_CASE(Red) {
+            result = 1;
+        }
+        RSTD_CASE(Green) {
+            result = 2;
+        }
+        RSTD_CASE(Blue) {
+            result = 3;
+        }
     }
 
     return result;
@@ -143,9 +155,15 @@ TEST(Enum, MatchesWholePayload) {
     int  result  = 0;
 
     RSTD_MATCH(message) {
-        RSTD_CASE(Quit) { result = 0; }
-        RSTD_CASE(Move, x, y) { result = x + y; }
-        RSTD_CASE_PAYLOAD(Write, payload) { result = static_cast<int>(payload.text.size()); }
+        RSTD_CASE(Quit) {
+            result = 0;
+        }
+        RSTD_CASE(Move, x, y) {
+            result = x + y;
+        }
+        RSTD_CASE_PAYLOAD(Write, payload) {
+            result = static_cast<int>(payload.text.size());
+        }
     }
 
     EXPECT_EQ(result, 7);
@@ -172,8 +190,11 @@ TEST(Enum, SupportsMoveOnlyPayload) {
     std::unique_ptr<int> taken;
 
     RSTD_MATCH(std::move(box)) {
-        RSTD_CASE(Empty) {}
-        RSTD_CASE(Value, value) { taken = std::move(value); }
+        RSTD_CASE(Empty) {
+        }
+        RSTD_CASE(Value, value) {
+            taken = std::move(value);
+        }
     }
 
     ASSERT_NE(taken, nullptr);
@@ -230,7 +251,7 @@ TEST(Enum, SupportsTagOnlyEnum) {
 
 TEST(Enum, SupportsCustomClassWithInlineParts) {
     InlineScore idle;
-    auto score = InlineScore::Points(6);
+    auto        score = InlineScore::Points(6);
 
     EXPECT_TRUE(idle.is_Idle());
     EXPECT_EQ(idle.score(), 0);

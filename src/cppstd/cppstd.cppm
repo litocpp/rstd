@@ -209,7 +209,7 @@ export using std::isinf;
 // <ctime>
 export using std::clock;
 export using std::clock_t;
-#if !defined(_WIN32)
+#if ! defined(_WIN32)
 export using std::localtime;
 export using std::time;
 #endif

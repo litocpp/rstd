@@ -38,7 +38,8 @@ ChildStderr::~ChildStderr() {
 
 // ── Child ────────────────────────────────────────────────────────────────
 
-Child::~Child() {}
+Child::~Child() {
+}
 
 auto Child::wait() -> io::Result<ExitStatus> {
 #if RSTD_OS_UNIX
@@ -186,7 +187,8 @@ auto Spawn::spawn(rstd::process::Command& cmd)
         libc::pid_t child_pid = -1;
         char**      envp      = libc::environ;
 
-        int err = libc::posix_spawnp(&child_pid, prog_ptr, &actions, nullptr, argv_buf.begin(), envp);
+        int err =
+            libc::posix_spawnp(&child_pid, prog_ptr, &actions, nullptr, argv_buf.begin(), envp);
         libc::posix_spawn_file_actions_destroy(&actions);
 
         if (err != 0) {

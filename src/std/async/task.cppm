@@ -35,9 +35,7 @@ struct AwaitingOperation {
         return resume_external_fn(ptr, cx);
     }
 
-    auto placement() const -> async::ResumePlacement {
-        return placement_fn(ptr);
-    }
+    auto placement() const -> async::ResumePlacement { return placement_fn(ptr); }
 };
 
 namespace rstd::async
@@ -65,9 +63,7 @@ public:
             result.insert(rstd::forward<U>(value));
         }
 
-        void unhandled_exception() {
-            rstd::panic { "unhandled exception in async coro" };
-        }
+        void unhandled_exception() { rstd::panic { "unhandled exception in async coro" }; }
 
         template<typename Suspension>
         void set_awaiting(Suspension* suspension) noexcept {
@@ -92,7 +88,7 @@ private:
 
     Handle m_handle {};
 
-    explicit coro(Handle handle) noexcept : m_handle(handle) {}
+    explicit coro(Handle handle) noexcept: m_handle(handle) {}
 
     friend struct CoroAccess<T>;
 
@@ -100,7 +96,7 @@ public:
     coro(const coro&)            = delete;
     coro& operator=(const coro&) = delete;
 
-    coro(coro&& other) noexcept : m_handle(rstd::exchange(other.m_handle, {})) {}
+    coro(coro&& other) noexcept: m_handle(rstd::exchange(other.m_handle, {})) {}
 
     auto operator=(coro&& other) noexcept -> coro& {
         if (this != &other) {
@@ -134,9 +130,7 @@ public:
 
         constexpr void return_void() const noexcept {}
 
-        void unhandled_exception() {
-            rstd::panic { "unhandled exception in async coro" };
-        }
+        void unhandled_exception() { rstd::panic { "unhandled exception in async coro" }; }
 
         template<typename Suspension>
         void set_awaiting(Suspension* suspension) noexcept {
@@ -154,7 +148,7 @@ private:
 
     Handle m_handle {};
 
-    explicit coro(Handle handle) noexcept : m_handle(handle) {}
+    explicit coro(Handle handle) noexcept: m_handle(handle) {}
 
     friend struct CoroAccess<void>;
 
@@ -162,7 +156,7 @@ public:
     coro(const coro&)            = delete;
     coro& operator=(const coro&) = delete;
 
-    coro(coro&& other) noexcept : m_handle(rstd::exchange(other.m_handle, {})) {}
+    coro(coro&& other) noexcept: m_handle(rstd::exchange(other.m_handle, {})) {}
 
     auto operator=(coro&& other) noexcept -> coro& {
         if (this != &other) {
@@ -183,7 +177,8 @@ public:
 
 template<typename T>
 struct CoroAccess {
-    static auto handle(coro<T>& task) noexcept -> std::coroutine_handle<typename coro<T>::promise_type>& {
+    static auto handle(coro<T>& task) noexcept
+        -> std::coroutine_handle<typename coro<T>::promise_type>& {
         return task.m_handle;
     }
 };

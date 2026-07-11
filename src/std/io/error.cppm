@@ -67,48 +67,48 @@ export struct ErrorKind {
     /// Returns a string description of this error kind.
     auto as_str() const noexcept -> ref<str> {
         switch (code) {
-        case AddrInUse:             return "address in use";
-        case AddrNotAvailable:      return "address not available";
-        case AlreadyExists:         return "entity already exists";
-        case ArgumentListTooLong:   return "argument list too long";
-        case BrokenPipe:            return "broken pipe";
-        case ConnectionAborted:     return "connection aborted";
-        case ConnectionRefused:     return "connection refused";
-        case ConnectionReset:       return "connection reset";
-        case CrossesDevices:        return "cross-device link or rename";
-        case Deadlock:              return "deadlock";
-        case DirectoryNotEmpty:     return "directory not empty";
-        case ExecutableFileBusy:    return "executable file busy";
-        case FileTooLarge:          return "file too large";
-        case FilesystemLoop:        return "filesystem loop or indirection limit (e.g. symlink loop)";
-        case HostUnreachable:       return "host unreachable";
-        case InProgress:            return "in progress";
-        case Interrupted:           return "operation interrupted";
-        case InvalidData:           return "invalid data";
-        case InvalidFilename:       return "invalid filename";
-        case InvalidInput:          return "invalid input parameter";
-        case IsADirectory:          return "is a directory";
-        case NetworkDown:           return "network down";
-        case NetworkUnreachable:    return "network unreachable";
-        case NotADirectory:         return "not a directory";
-        case NotConnected:          return "not connected";
-        case NotFound:              return "entity not found";
-        case NotSeekable:           return "seek on unseekable file";
-        case Other:                 return "other error";
-        case OutOfMemory:           return "out of memory";
-        case PermissionDenied:      return "permission denied";
-        case QuotaExceeded:         return "quota exceeded";
-        case ReadOnlyFilesystem:    return "read-only filesystem or storage medium";
-        case ResourceBusy:          return "resource busy";
-        case StaleNetworkFileHandle:return "stale network file handle";
-        case StorageFull:           return "no storage space";
-        case TimedOut:              return "timed out";
-        case TooManyLinks:          return "too many links";
-        case Uncategorized:         return "uncategorized error";
-        case UnexpectedEof:         return "unexpected end of file";
-        case Unsupported:           return "unsupported";
-        case WouldBlock:            return "operation would block";
-        case WriteZero:             return "write zero";
+        case AddrInUse: return "address in use";
+        case AddrNotAvailable: return "address not available";
+        case AlreadyExists: return "entity already exists";
+        case ArgumentListTooLong: return "argument list too long";
+        case BrokenPipe: return "broken pipe";
+        case ConnectionAborted: return "connection aborted";
+        case ConnectionRefused: return "connection refused";
+        case ConnectionReset: return "connection reset";
+        case CrossesDevices: return "cross-device link or rename";
+        case Deadlock: return "deadlock";
+        case DirectoryNotEmpty: return "directory not empty";
+        case ExecutableFileBusy: return "executable file busy";
+        case FileTooLarge: return "file too large";
+        case FilesystemLoop: return "filesystem loop or indirection limit (e.g. symlink loop)";
+        case HostUnreachable: return "host unreachable";
+        case InProgress: return "in progress";
+        case Interrupted: return "operation interrupted";
+        case InvalidData: return "invalid data";
+        case InvalidFilename: return "invalid filename";
+        case InvalidInput: return "invalid input parameter";
+        case IsADirectory: return "is a directory";
+        case NetworkDown: return "network down";
+        case NetworkUnreachable: return "network unreachable";
+        case NotADirectory: return "not a directory";
+        case NotConnected: return "not connected";
+        case NotFound: return "entity not found";
+        case NotSeekable: return "seek on unseekable file";
+        case Other: return "other error";
+        case OutOfMemory: return "out of memory";
+        case PermissionDenied: return "permission denied";
+        case QuotaExceeded: return "quota exceeded";
+        case ReadOnlyFilesystem: return "read-only filesystem or storage medium";
+        case ResourceBusy: return "resource busy";
+        case StaleNetworkFileHandle: return "stale network file handle";
+        case StorageFull: return "no storage space";
+        case TimedOut: return "timed out";
+        case TooManyLinks: return "too many links";
+        case Uncategorized: return "uncategorized error";
+        case UnexpectedEof: return "unexpected end of file";
+        case Unsupported: return "unsupported";
+        case WouldBlock: return "operation would block";
+        case WriteZero: return "write zero";
         }
         return "";
     }
@@ -120,50 +120,50 @@ namespace detail
 {
 
 #if RSTD_OS_UNIX
-[[gnu::always_inline]] inline
-auto decode_error_kind(RawOsError err) noexcept -> ErrorKind {
+[[gnu::always_inline]]
+inline auto decode_error_kind(RawOsError err) noexcept -> ErrorKind {
     using EK = ErrorKind;
     switch (err) {
-    case libc::ENOENT:       return EK { EK::NotFound };
+    case libc::ENOENT: return EK { EK::NotFound };
     case libc::EACCES:
-    case libc::EPERM:        return EK { EK::PermissionDenied };
+    case libc::EPERM: return EK { EK::PermissionDenied };
     case libc::ECONNREFUSED: return EK { EK::ConnectionRefused };
-    case libc::ECONNRESET:   return EK { EK::ConnectionReset };
+    case libc::ECONNRESET: return EK { EK::ConnectionReset };
     case libc::EHOSTUNREACH: return EK { EK::HostUnreachable };
-    case libc::ENETUNREACH:  return EK { EK::NetworkUnreachable };
+    case libc::ENETUNREACH: return EK { EK::NetworkUnreachable };
     case libc::ECONNABORTED: return EK { EK::ConnectionAborted };
-    case libc::ENOTCONN:     return EK { EK::NotConnected };
-    case libc::EADDRINUSE:   return EK { EK::AddrInUse };
-    case libc::EADDRNOTAVAIL:return EK { EK::AddrNotAvailable };
-    case libc::ENETDOWN:     return EK { EK::NetworkDown };
-    case libc::EPIPE:        return EK { EK::BrokenPipe };
-    case libc::EEXIST:       return EK { EK::AlreadyExists };
-    case libc::EAGAIN:       return EK { EK::WouldBlock };
-    case libc::ENOTDIR:      return EK { EK::NotADirectory };
-    case libc::EISDIR:       return EK { EK::IsADirectory };
-    case libc::ENOTEMPTY:    return EK { EK::DirectoryNotEmpty };
-    case libc::EROFS:        return EK { EK::ReadOnlyFilesystem };
-    case libc::ELOOP:        return EK { EK::FilesystemLoop };
-    case libc::EINVAL:       return EK { EK::InvalidInput };
-    case libc::ETIMEDOUT:    return EK { EK::TimedOut };
-    case libc::ENOSPC:       return EK { EK::StorageFull };
-    case libc::ESPIPE:       return EK { EK::NotSeekable };
-    case libc::EFBIG:        return EK { EK::FileTooLarge };
-    case libc::EBUSY:        return EK { EK::ResourceBusy };
-    case libc::ETXTBSY:      return EK { EK::ExecutableFileBusy };
-    case libc::EDEADLK:      return EK { EK::Deadlock };
-    case libc::EXDEV:        return EK { EK::CrossesDevices };
-    case libc::EMLINK:       return EK { EK::TooManyLinks };
+    case libc::ENOTCONN: return EK { EK::NotConnected };
+    case libc::EADDRINUSE: return EK { EK::AddrInUse };
+    case libc::EADDRNOTAVAIL: return EK { EK::AddrNotAvailable };
+    case libc::ENETDOWN: return EK { EK::NetworkDown };
+    case libc::EPIPE: return EK { EK::BrokenPipe };
+    case libc::EEXIST: return EK { EK::AlreadyExists };
+    case libc::EAGAIN: return EK { EK::WouldBlock };
+    case libc::ENOTDIR: return EK { EK::NotADirectory };
+    case libc::EISDIR: return EK { EK::IsADirectory };
+    case libc::ENOTEMPTY: return EK { EK::DirectoryNotEmpty };
+    case libc::EROFS: return EK { EK::ReadOnlyFilesystem };
+    case libc::ELOOP: return EK { EK::FilesystemLoop };
+    case libc::EINVAL: return EK { EK::InvalidInput };
+    case libc::ETIMEDOUT: return EK { EK::TimedOut };
+    case libc::ENOSPC: return EK { EK::StorageFull };
+    case libc::ESPIPE: return EK { EK::NotSeekable };
+    case libc::EFBIG: return EK { EK::FileTooLarge };
+    case libc::EBUSY: return EK { EK::ResourceBusy };
+    case libc::ETXTBSY: return EK { EK::ExecutableFileBusy };
+    case libc::EDEADLK: return EK { EK::Deadlock };
+    case libc::EXDEV: return EK { EK::CrossesDevices };
+    case libc::EMLINK: return EK { EK::TooManyLinks };
     case libc::ENAMETOOLONG: return EK { EK::InvalidFilename };
-    case libc::E2BIG:        return EK { EK::ArgumentListTooLong };
-    case libc::EINTR:        return EK { EK::Interrupted };
+    case libc::E2BIG: return EK { EK::ArgumentListTooLong };
+    case libc::EINTR: return EK { EK::Interrupted };
     case libc::ENOSYS:
     case libc::EOPNOTSUPP:
     case libc::EAFNOSUPPORT: return EK { EK::Unsupported };
     case libc::ENOMEM:
-    case libc::ENOBUFS:      return EK { EK::OutOfMemory };
-    case libc::EINPROGRESS:  return EK { EK::InProgress };
-    default:                 break;
+    case libc::ENOBUFS: return EK { EK::OutOfMemory };
+    case libc::EINPROGRESS: return EK { EK::InProgress };
+    default: break;
     }
     if (err == libc::EWOULDBLOCK) return EK { EK::WouldBlock };
     if (libc::HAS_ESTALE && err == libc::ESTALE) return EK { EK::StaleNetworkFileHandle };
@@ -171,56 +171,56 @@ auto decode_error_kind(RawOsError err) noexcept -> ErrorKind {
     return EK { EK::Uncategorized };
 }
 #elif RSTD_OS_WINDOWS
-[[gnu::always_inline]] inline
-auto decode_error_kind(RawOsError err) noexcept -> ErrorKind {
+[[gnu::always_inline]]
+inline auto decode_error_kind(RawOsError err) noexcept -> ErrorKind {
     using EK = ErrorKind;
     switch ((unsigned long)err) {
     case libc::ERROR_FILE_NOT_FOUND:
-    case libc::ERROR_PATH_NOT_FOUND:       return EK { EK::NotFound };
-    case libc::ERROR_ACCESS_DENIED:        return EK { EK::PermissionDenied };
-    case libc::ERROR_CONNECTION_REFUSED:   return EK { EK::ConnectionRefused };
-    case libc::ERROR_CONNECTION_ABORTED:   return EK { EK::ConnectionAborted };
-    case libc::ERROR_NETNAME_DELETED:      return EK { EK::ConnectionReset };
-    case libc::ERROR_HOST_UNREACHABLE:     return EK { EK::HostUnreachable };
-    case libc::ERROR_NETWORK_UNREACHABLE:  return EK { EK::NetworkUnreachable };
+    case libc::ERROR_PATH_NOT_FOUND: return EK { EK::NotFound };
+    case libc::ERROR_ACCESS_DENIED: return EK { EK::PermissionDenied };
+    case libc::ERROR_CONNECTION_REFUSED: return EK { EK::ConnectionRefused };
+    case libc::ERROR_CONNECTION_ABORTED: return EK { EK::ConnectionAborted };
+    case libc::ERROR_NETNAME_DELETED: return EK { EK::ConnectionReset };
+    case libc::ERROR_HOST_UNREACHABLE: return EK { EK::HostUnreachable };
+    case libc::ERROR_NETWORK_UNREACHABLE: return EK { EK::NetworkUnreachable };
     case libc::ERROR_ADDRESS_ALREADY_ASSOCIATED: return EK { EK::AddrInUse };
     case libc::ERROR_BROKEN_PIPE:
-    case libc::ERROR_NO_DATA:              return EK { EK::BrokenPipe };
+    case libc::ERROR_NO_DATA: return EK { EK::BrokenPipe };
     case libc::ERROR_FILE_EXISTS:
-    case libc::ERROR_ALREADY_EXISTS:       return EK { EK::AlreadyExists };
+    case libc::ERROR_ALREADY_EXISTS: return EK { EK::AlreadyExists };
     case libc::WAIT_TIMEOUT:
-    case libc::ERROR_SEM_TIMEOUT:          return EK { EK::TimedOut };
+    case libc::ERROR_SEM_TIMEOUT: return EK { EK::TimedOut };
     case libc::ERROR_INVALID_PARAMETER:
-    case libc::ERROR_INVALID_DATA:         return EK { EK::InvalidInput };
-    case libc::ERROR_DIR_NOT_EMPTY:        return EK { EK::DirectoryNotEmpty };
-    case libc::ERROR_DISK_FULL:            return EK { EK::StorageFull };
-    case libc::ERROR_SEEK:                 return EK { EK::NotSeekable };
+    case libc::ERROR_INVALID_DATA: return EK { EK::InvalidInput };
+    case libc::ERROR_DIR_NOT_EMPTY: return EK { EK::DirectoryNotEmpty };
+    case libc::ERROR_DISK_FULL: return EK { EK::StorageFull };
+    case libc::ERROR_SEEK: return EK { EK::NotSeekable };
     case libc::ERROR_NOT_READY:
-    case libc::ERROR_BUSY:                 return EK { EK::ResourceBusy };
-    case libc::ERROR_POSSIBLE_DEADLOCK:    return EK { EK::Deadlock };
-    case libc::ERROR_NOT_SAME_DEVICE:      return EK { EK::CrossesDevices };
-    case libc::ERROR_TOO_MANY_LINKS:       return EK { EK::TooManyLinks };
+    case libc::ERROR_BUSY: return EK { EK::ResourceBusy };
+    case libc::ERROR_POSSIBLE_DEADLOCK: return EK { EK::Deadlock };
+    case libc::ERROR_NOT_SAME_DEVICE: return EK { EK::CrossesDevices };
+    case libc::ERROR_TOO_MANY_LINKS: return EK { EK::TooManyLinks };
     case libc::ERROR_FILENAME_EXCED_RANGE: return EK { EK::InvalidFilename };
     case libc::ERROR_NOT_ENOUGH_MEMORY:
-    case libc::ERROR_OUTOFMEMORY:          return EK { EK::OutOfMemory };
+    case libc::ERROR_OUTOFMEMORY: return EK { EK::OutOfMemory };
     case libc::ERROR_NOT_SUPPORTED:
     case libc::ERROR_CALL_NOT_IMPLEMENTED: return EK { EK::Unsupported };
-    case libc::ERROR_IO_PENDING:           return EK { EK::InProgress };
-    default:                               return EK { EK::Uncategorized };
+    case libc::ERROR_IO_PENDING: return EK { EK::InProgress };
+    default: return EK { EK::Uncategorized };
     }
 }
 #else
-[[gnu::always_inline]] inline
-auto decode_error_kind(RawOsError) noexcept -> ErrorKind {
+[[gnu::always_inline]]
+inline auto decode_error_kind(RawOsError) noexcept -> ErrorKind {
     return ErrorKind { ErrorKind::Uncategorized };
 }
 #endif
 
 } // namespace detail
 
-#define RSTD_IO_ERROR_VARIANTS(V)        \
-    V(Os, (RawOsError code;))            \
-    V(Kind, (ErrorKind kind;))           \
+#define RSTD_IO_ERROR_VARIANTS(V) \
+    V(Os, (RawOsError code;))     \
+    V(Kind, (ErrorKind kind;))    \
     V(Message, (ErrorKind kind; const char* message;))
 
 /// The error type for I/O operations.
@@ -260,8 +260,8 @@ public:
     /// Returns the ErrorKind for this error.
     auto kind() const noexcept -> ErrorKind {
         switch (tag()) {
-        case Tag::Os:      return detail::decode_error_kind(as_Os().code);
-        case Tag::Kind:    return as_Kind().kind;
+        case Tag::Os: return detail::decode_error_kind(as_Os().code);
+        case Tag::Kind: return as_Kind().kind;
         case Tag::Message: return as_Message().kind;
         }
         return ErrorKind { ErrorKind::Uncategorized };
@@ -282,9 +282,7 @@ public:
     /// Returns the internal tag indicating the error representation.
     RSTD_ENUM_OBSERVERS()
 
-    friend bool operator==(const Error& a, const Error& b) noexcept {
-        return a.kind() == b.kind();
-    }
+    friend bool operator==(const Error& a, const Error& b) noexcept { return a.kind() == b.kind(); }
 };
 
 #undef RSTD_IO_ERROR_VARIANTS
@@ -308,12 +306,18 @@ namespace rstd::io::error::detail
 {
 // Write a decimal integer directly — avoids needing alloc for int Display.
 inline void write_decimal(fmt::Formatter& f, i32 n) noexcept {
-    char buf[12];
+    char  buf[12];
     char* end = buf + sizeof(buf);
     char* p   = end;
     u32   v   = (n < 0) ? u32(i64(0) - i64(n)) : u32(n);
-    if (v == 0) { f.write_raw((const u8*)"0", 1); return; }
-    while (v > 0) { *--p = char('0' + v % 10); v /= 10; }
+    if (v == 0) {
+        f.write_raw((const u8*)"0", 1);
+        return;
+    }
+    while (v > 0) {
+        *--p = char('0' + v % 10);
+        v /= 10;
+    }
     if (n < 0) *--p = '-';
     f.write_raw((const u8*)p, usize(end - p));
 }
@@ -347,7 +351,7 @@ struct Impl<fmt::Display, io::error::Error> : ImplBase<io::error::Error> {
         switch (e.tag()) {
         case Tag::Os: {
             // "entity not found (os error 2)"
-            auto k = e.kind();
+            auto k        = e.kind();
             auto kind_str = k.as_str();
             f.write_raw(kind_str.data(), kind_str.size());
             const char prefix[] = " (os error ";

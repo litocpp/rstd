@@ -24,13 +24,12 @@ export struct Thread {
     static auto make(usize stack, Box<ThreadInit>&& init) -> rstd::io::Result<Thread> {
         auto raw = rstd::move(init).into_raw();
 
-        auto h = CreateThread(
-            nullptr,
-            stack,
-            rstd_thread_start_win,
-            raw.p,
-            M_STACK_SIZE_PARAM_IS_A_RESERVATION,
-            nullptr);
+        auto h = CreateThread(nullptr,
+                              stack,
+                              rstd_thread_start_win,
+                              raw.p,
+                              M_STACK_SIZE_PARAM_IS_A_RESERVATION,
+                              nullptr);
 
         if (h != nullptr) {
             return Ok(Thread { .handle = h });
@@ -43,23 +42,21 @@ export struct Thread {
     auto join() const -> rstd::io::Result<voidp> {
         auto rc = WaitForSingleObject(handle, M_INFINITE);
         if (rc == M_WAIT_FAILED) {
-            return Err(
-                rstd::io::error::Error::from_raw_os_error((i32)GetLastError()));
+            return Err(rstd::io::error::Error::from_raw_os_error((i32)GetLastError()));
         }
         return Ok(nullptr);
     }
 
     auto detach() const -> rstd::io::Result<i32> {
         if (CloseHandle(handle) == 0) {
-            return Err(
-                rstd::io::error::Error::from_raw_os_error((i32)GetLastError()));
+            return Err(rstd::io::error::Error::from_raw_os_error((i32)GetLastError()));
         }
         return Ok(0);
     }
 
     static void set_name(ref<ffi::CStr> name) {
-        auto* p = (const char*)name.p;
-        int len = MultiByteToWideChar(M_CP_UTF8, 0, p, -1, nullptr, 0);
+        auto* p   = (const char*)name.p;
+        int   len = MultiByteToWideChar(M_CP_UTF8, 0, p, -1, nullptr, 0);
         if (len > 0) {
             auto* buf = (wchar_t*)rstd::sys::libc::malloc(sizeof(wchar_t) * (usize)len);
             if (buf) {

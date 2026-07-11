@@ -23,15 +23,13 @@ struct NotifyState {
     sys::fd::OwnedFd write_fd;
     Registration     registration;
 
-    NotifyState(sys::fd::OwnedFd read_fd,
-                sys::fd::OwnedFd write_fd,
-                Registration     registration)
+    NotifyState(sys::fd::OwnedFd read_fd, sys::fd::OwnedFd write_fd, Registration registration)
         : read_fd(rstd::move(read_fd)),
           write_fd(rstd::move(write_fd)),
           registration(rstd::move(registration)) {}
 
-    NotifyState(const NotifyState&)            = delete;
-    auto operator=(const NotifyState&) -> NotifyState& = delete;
+    NotifyState(const NotifyState&)                        = delete;
+    auto operator=(const NotifyState&) -> NotifyState&     = delete;
     NotifyState(NotifyState&&) noexcept                    = default;
     auto operator=(NotifyState&&) noexcept -> NotifyState& = default;
 
@@ -94,14 +92,14 @@ struct NotifyState {
 export class Notify {
     sync::Arc<NotifyState> m_state;
 
-    explicit Notify(sync::Arc<NotifyState> state) : m_state(rstd::move(state)) {}
+    explicit Notify(sync::Arc<NotifyState> state): m_state(rstd::move(state)) {}
 
 public:
-    Notify(const Notify&)            = delete;
-    auto operator=(const Notify&) -> Notify& = delete;
-    Notify(Notify&&) noexcept                  = default;
+    Notify(const Notify&)                        = delete;
+    auto operator=(const Notify&) -> Notify&     = delete;
+    Notify(Notify&&) noexcept                    = default;
     auto operator=(Notify&&) noexcept -> Notify& = default;
-    ~Notify() = default;
+    ~Notify()                                    = default;
 
     auto clone() const -> Notify { return Notify { m_state.clone() }; }
 
@@ -121,9 +119,7 @@ public:
         }
 
         auto state = sync::Arc<NotifyState>::make(
-            rstd::move(read_fd),
-            rstd::move(write_fd),
-            rstd::move(registration).unwrap_unchecked());
+            rstd::move(read_fd), rstd::move(write_fd), rstd::move(registration).unwrap_unchecked());
         return Ok(Notify { rstd::move(state) });
 #else
         return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
@@ -137,20 +133,18 @@ public:
 export class NotifyHandle {
     sync::Arc<NotifyState> m_state;
 
-    explicit NotifyHandle(sync::Arc<NotifyState> state) : m_state(rstd::move(state)) {}
+    explicit NotifyHandle(sync::Arc<NotifyState> state): m_state(rstd::move(state)) {}
 
     friend class Notify;
 
 public:
-    NotifyHandle(const NotifyHandle&)            = delete;
-    auto operator=(const NotifyHandle&) -> NotifyHandle& = delete;
-    NotifyHandle(NotifyHandle&&) noexcept                  = default;
+    NotifyHandle(const NotifyHandle&)                        = delete;
+    auto operator=(const NotifyHandle&) -> NotifyHandle&     = delete;
+    NotifyHandle(NotifyHandle&&) noexcept                    = default;
     auto operator=(NotifyHandle&&) noexcept -> NotifyHandle& = default;
-    ~NotifyHandle() = default;
+    ~NotifyHandle()                                          = default;
 
-    auto clone() const -> NotifyHandle {
-        return NotifyHandle { m_state.clone() };
-    }
+    auto clone() const -> NotifyHandle { return NotifyHandle { m_state.clone() }; }
 
     auto notify() const -> io::Result<empty> {
         if (! m_state) {
@@ -176,14 +170,13 @@ export class NotifyFuture {
 public:
     using Output = io::Result<empty>;
 
-    NotifyFuture(const NotifyFuture&)            = delete;
-    auto operator=(const NotifyFuture&) -> NotifyFuture& = delete;
+    NotifyFuture(const NotifyFuture&)                        = delete;
+    auto operator=(const NotifyFuture&) -> NotifyFuture&     = delete;
     NotifyFuture(NotifyFuture&&) noexcept                    = default;
     auto operator=(NotifyFuture&&) noexcept -> NotifyFuture& = default;
-    ~NotifyFuture() = default;
+    ~NotifyFuture()                                          = default;
 
-    auto poll(mut_ref<NotifyFuture> self, task::Context& cx)
-        -> task::Poll<Output> {
+    auto poll(mut_ref<NotifyFuture> self, task::Context& cx) -> task::Poll<Output> {
         auto& future = *self;
         if (future.m_completed) {
             rstd::panic { "async::NotifyFuture polled after completion" };
@@ -193,8 +186,7 @@ public:
             auto drained = future.m_state->drain();
             if (drained.is_err()) {
                 future.m_completed = true;
-                return task::Poll<Output>::Ready(
-                    Err(rstd::move(drained).unwrap_err_unchecked()));
+                return task::Poll<Output>::Ready(Err(rstd::move(drained).unwrap_err_unchecked()));
             }
             if (rstd::move(drained).unwrap_unchecked()) {
                 if (future.m_event.is_some()) {

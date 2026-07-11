@@ -35,14 +35,12 @@ struct Waker {
     /// A list of operations waiting to be ready.
     Vec<Entry> observers;
 
-    Waker() : selectors(Vec<Entry>::make()), observers(Vec<Entry>::make()) {}
-    Waker(Waker&&) noexcept = default;
+    Waker(): selectors(Vec<Entry>::make()), observers(Vec<Entry>::make()) {}
+    Waker(Waker&&) noexcept            = default;
     Waker& operator=(Waker&&) noexcept = default;
 
     /// Registers a select operation.
-    void register_op(Operation oper, const Context& cx) {
-        register_with_packet(oper, nullptr, cx);
-    }
+    void register_op(Operation oper, const Context& cx) { register_with_packet(oper, nullptr, cx); }
 
     /// Registers a select operation and a packet.
     void register_with_packet(Operation oper, void* packet, const Context& cx) {
@@ -128,31 +126,34 @@ export class SyncWaker {
     Atomic<bool> is_empty_;
 
 public:
-    SyncWaker() : inner(Waker {}), is_empty_(true) {}
+    SyncWaker(): inner(Waker {}), is_empty_(true) {}
 
     /// Registers the current thread with an operation.
     void register_op(Operation oper, const Context& cx) {
         auto guard = inner.lock().unwrap_unchecked();
         guard->register_op(oper, cx);
-        is_empty_.store(guard->selectors.is_empty() && guard->observers.is_empty(), Ordering::SeqCst);
+        is_empty_.store(guard->selectors.is_empty() && guard->observers.is_empty(),
+                        Ordering::SeqCst);
     }
 
     /// Unregisters an operation previously registered by the current thread.
     auto unregister(Operation oper) -> Option<Entry> {
         auto guard = inner.lock().unwrap_unchecked();
         auto entry = guard->unregister(oper);
-        is_empty_.store(guard->selectors.is_empty() && guard->observers.is_empty(), Ordering::SeqCst);
+        is_empty_.store(guard->selectors.is_empty() && guard->observers.is_empty(),
+                        Ordering::SeqCst);
         return entry;
     }
 
     /// Attempts to find one thread (not the current one), select its operation, and wake it up.
     void notify() {
-        if (!is_empty_.load(Ordering::SeqCst)) {
+        if (! is_empty_.load(Ordering::SeqCst)) {
             auto guard = inner.lock().unwrap_unchecked();
-            if (!is_empty_.load(Ordering::SeqCst)) {
+            if (! is_empty_.load(Ordering::SeqCst)) {
                 guard->try_select();
                 guard->notify();
-                is_empty_.store(guard->selectors.is_empty() && guard->observers.is_empty(), Ordering::SeqCst);
+                is_empty_.store(guard->selectors.is_empty() && guard->observers.is_empty(),
+                                Ordering::SeqCst);
             }
         }
     }
@@ -161,7 +162,8 @@ public:
     void disconnect() {
         auto guard = inner.lock().unwrap_unchecked();
         guard->disconnect();
-        is_empty_.store(guard->selectors.is_empty() && guard->observers.is_empty(), Ordering::SeqCst);
+        is_empty_.store(guard->selectors.is_empty() && guard->observers.is_empty(),
+                        Ordering::SeqCst);
     }
 
     ~SyncWaker() {}

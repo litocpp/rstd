@@ -81,27 +81,33 @@ public:
         return ret;
     }
 
-    auto compare_exchange_weak(T& expected, T desired, memory_order success = memory_order::seq_cst,
+    auto compare_exchange_weak(T&           expected,
+                               T            desired,
+                               memory_order success = memory_order::seq_cst,
                                memory_order failure = memory_order::seq_cst) noexcept -> bool {
         return __atomic_compare_exchange(
             &val, &expected, &desired, true, static_cast<int>(success), static_cast<int>(failure));
     }
 
-    auto compare_exchange_weak(T& expected, T desired, memory_order success = memory_order::seq_cst,
+    auto compare_exchange_weak(T&           expected,
+                               T            desired,
+                               memory_order success = memory_order::seq_cst,
                                memory_order failure = memory_order::seq_cst) volatile noexcept
         -> bool {
         return __atomic_compare_exchange(
             &val, &expected, &desired, true, static_cast<int>(success), static_cast<int>(failure));
     }
 
-    auto compare_exchange_strong(T& expected, T desired,
+    auto compare_exchange_strong(T&           expected,
+                                 T            desired,
                                  memory_order success = memory_order::seq_cst,
                                  memory_order failure = memory_order::seq_cst) noexcept -> bool {
         return __atomic_compare_exchange(
             &val, &expected, &desired, false, static_cast<int>(success), static_cast<int>(failure));
     }
 
-    auto compare_exchange_strong(T& expected, T desired,
+    auto compare_exchange_strong(T&           expected,
+                                 T            desired,
                                  memory_order success = memory_order::seq_cst,
                                  memory_order failure = memory_order::seq_cst) volatile noexcept
         -> bool {

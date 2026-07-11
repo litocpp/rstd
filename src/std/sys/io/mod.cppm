@@ -11,8 +11,8 @@ namespace libc = rstd::sys::libc;
 
 export using RawOsError = i32;
 
-export [[gnu::always_inline]] inline
-auto last_os_error() noexcept -> RawOsError {
+export [[gnu::always_inline]]
+inline auto last_os_error() noexcept -> RawOsError {
 #if RSTD_OS_UNIX
     return libc::get_errno();
 #elif RSTD_OS_WINDOWS

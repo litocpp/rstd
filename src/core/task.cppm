@@ -12,9 +12,7 @@ class Poll {
     alignas(T) rstd::byte storage[sizeof(T)];
     bool m_ready { false };
 
-    constexpr auto ptr() noexcept -> T* {
-        return rstd::launder(reinterpret_cast<T*>(storage));
-    }
+    constexpr auto ptr() noexcept -> T* { return rstd::launder(reinterpret_cast<T*>(storage)); }
 
     constexpr auto ptr() const noexcept -> const T* {
         return rstd::launder(reinterpret_cast<const T*>(storage));
@@ -33,7 +31,7 @@ public:
     Poll(const Poll&)            = delete;
     Poll& operator=(const Poll&) = delete;
 
-    constexpr Poll(Poll&& other) noexcept(mtp::noex_move<T>) : m_ready(other.m_ready) {
+    constexpr Poll(Poll&& other) noexcept(mtp::noex_move<T>): m_ready(other.m_ready) {
         if (m_ready) {
             rstd::construct_at(ptr(), rstd::move(*other.ptr()));
             other.drop_value();
@@ -128,7 +126,7 @@ template<>
 class Poll<void> {
     bool m_ready { false };
 
-    constexpr explicit Poll(bool ready) noexcept : m_ready(ready) {}
+    constexpr explicit Poll(bool ready) noexcept: m_ready(ready) {}
 
 public:
     static constexpr auto Ready() noexcept -> Poll { return Poll { true }; }
@@ -163,8 +161,8 @@ export struct RawWakerVTable {
 };
 
 export struct RawWaker {
-    voidp                  data { nullptr };
-    const RawWakerVTable*  vtable { nullptr };
+    voidp                 data { nullptr };
+    const RawWakerVTable* vtable { nullptr };
 
     static constexpr auto from_raw_parts(voidp data, const RawWakerVTable* vtable) noexcept
         -> RawWaker {
@@ -173,8 +171,10 @@ export struct RawWaker {
 };
 
 inline auto noop_waker_clone(voidp) -> RawWaker;
-inline void noop_waker_wake(voidp) {}
-inline void noop_waker_drop(voidp) {}
+inline void noop_waker_wake(voidp) {
+}
+inline void noop_waker_drop(voidp) {
+}
 
 inline const RawWakerVTable NOOP_WAKER_VTABLE {
     &noop_waker_clone,
@@ -190,7 +190,7 @@ inline auto noop_waker_clone(voidp) -> RawWaker {
 export class Waker {
     RawWaker raw {};
 
-    explicit Waker(RawWaker raw) noexcept : raw(raw) {}
+    explicit Waker(RawWaker raw) noexcept: raw(raw) {}
 
 public:
     Waker() noexcept = default;
@@ -198,7 +198,7 @@ public:
     Waker(const Waker&)            = delete;
     Waker& operator=(const Waker&) = delete;
 
-    Waker(Waker&& other) noexcept : raw(rstd::exchange(other.raw, {})) {}
+    Waker(Waker&& other) noexcept: raw(rstd::exchange(other.raw, {})) {}
 
     auto operator=(Waker&& other) noexcept -> Waker& {
         if (this != &other) {
@@ -217,8 +217,8 @@ public:
     }
 
     static auto noop() noexcept -> const Waker& {
-        static const auto waker = Waker::from_raw(
-            RawWaker::from_raw_parts(nullptr, rstd::addressof(NOOP_WAKER_VTABLE)));
+        static const auto waker =
+            Waker::from_raw(RawWaker::from_raw_parts(nullptr, rstd::addressof(NOOP_WAKER_VTABLE)));
         return waker;
     }
 
@@ -270,7 +270,7 @@ export class Context {
     const Waker* m_waker;
 
 public:
-    explicit constexpr Context(const Waker& waker) noexcept : m_waker(rstd::addressof(waker)) {}
+    explicit constexpr Context(const Waker& waker) noexcept: m_waker(rstd::addressof(waker)) {}
 
     static constexpr auto from_waker(const Waker& waker) noexcept -> Context {
         return Context { waker };

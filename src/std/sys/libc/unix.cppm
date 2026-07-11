@@ -39,44 +39,44 @@ inline constexpr auto _FUTEX_BITSET_MATCH_ANY = FUTEX_BITSET_MATCH_ANY;
 inline constexpr auto _CLOCK_MONOTONIC = CLOCK_MONOTONIC;
 inline constexpr auto _CLOCK_REALTIME  = CLOCK_REALTIME;
 
-inline constexpr auto _ENOENT       = ENOENT;
-inline constexpr auto _EACCES       = EACCES;
-inline constexpr auto _EPERM        = EPERM;
-inline constexpr auto _ECONNREFUSED = ECONNREFUSED;
-inline constexpr auto _ECONNRESET   = ECONNRESET;
-inline constexpr auto _EHOSTUNREACH = EHOSTUNREACH;
-inline constexpr auto _ENETUNREACH  = ENETUNREACH;
-inline constexpr auto _ECONNABORTED = ECONNABORTED;
-inline constexpr auto _ENOTCONN     = ENOTCONN;
-inline constexpr auto _EADDRINUSE   = EADDRINUSE;
+inline constexpr auto _ENOENT        = ENOENT;
+inline constexpr auto _EACCES        = EACCES;
+inline constexpr auto _EPERM         = EPERM;
+inline constexpr auto _ECONNREFUSED  = ECONNREFUSED;
+inline constexpr auto _ECONNRESET    = ECONNRESET;
+inline constexpr auto _EHOSTUNREACH  = EHOSTUNREACH;
+inline constexpr auto _ENETUNREACH   = ENETUNREACH;
+inline constexpr auto _ECONNABORTED  = ECONNABORTED;
+inline constexpr auto _ENOTCONN      = ENOTCONN;
+inline constexpr auto _EADDRINUSE    = EADDRINUSE;
 inline constexpr auto _EADDRNOTAVAIL = EADDRNOTAVAIL;
-inline constexpr auto _ENETDOWN     = ENETDOWN;
-inline constexpr auto _EPIPE        = EPIPE;
-inline constexpr auto _EEXIST       = EEXIST;
-inline constexpr auto _EAGAIN       = EAGAIN;
-inline constexpr auto _EWOULDBLOCK  = EWOULDBLOCK;
-inline constexpr auto _ENOTDIR      = ENOTDIR;
-inline constexpr auto _EISDIR       = EISDIR;
-inline constexpr auto _ENOTEMPTY    = ENOTEMPTY;
-inline constexpr auto _EROFS        = EROFS;
-inline constexpr auto _ELOOP        = ELOOP;
+inline constexpr auto _ENETDOWN      = ENETDOWN;
+inline constexpr auto _EPIPE         = EPIPE;
+inline constexpr auto _EEXIST        = EEXIST;
+inline constexpr auto _EAGAIN        = EAGAIN;
+inline constexpr auto _EWOULDBLOCK   = EWOULDBLOCK;
+inline constexpr auto _ENOTDIR       = ENOTDIR;
+inline constexpr auto _EISDIR        = EISDIR;
+inline constexpr auto _ENOTEMPTY     = ENOTEMPTY;
+inline constexpr auto _EROFS         = EROFS;
+inline constexpr auto _ELOOP         = ELOOP;
 #ifdef ESTALE
-inline constexpr auto _ESTALE       = ESTALE;
-inline constexpr bool _HAS_ESTALE   = true;
+inline constexpr auto _ESTALE     = ESTALE;
+inline constexpr bool _HAS_ESTALE = true;
 #else
-inline constexpr auto _ESTALE       = -1;
-inline constexpr bool _HAS_ESTALE   = false;
+inline constexpr auto _ESTALE     = -1;
+inline constexpr bool _HAS_ESTALE = false;
 #endif
-inline constexpr auto _EINVAL       = EINVAL;
-inline constexpr auto _ETIMEDOUT    = ETIMEDOUT;
-inline constexpr auto _ENOSPC       = ENOSPC;
-inline constexpr auto _ESPIPE       = ESPIPE;
+inline constexpr auto _EINVAL    = EINVAL;
+inline constexpr auto _ETIMEDOUT = ETIMEDOUT;
+inline constexpr auto _ENOSPC    = ENOSPC;
+inline constexpr auto _ESPIPE    = ESPIPE;
 #ifdef EDQUOT
-inline constexpr auto _EDQUOT       = EDQUOT;
-inline constexpr bool _HAS_EDQUOT   = true;
+inline constexpr auto _EDQUOT     = EDQUOT;
+inline constexpr bool _HAS_EDQUOT = true;
 #else
-inline constexpr auto _EDQUOT       = -2;
-inline constexpr bool _HAS_EDQUOT   = false;
+inline constexpr auto _EDQUOT     = -2;
+inline constexpr bool _HAS_EDQUOT = false;
 #endif
 inline constexpr auto _EFBIG        = EFBIG;
 inline constexpr auto _EBUSY        = EBUSY;
@@ -97,26 +97,26 @@ inline constexpr auto _EINPROGRESS  = EINPROGRESS;
 
 inline constexpr auto _SIGKILL = SIGKILL;
 
-inline constexpr auto _O_CLOEXEC   = O_CLOEXEC;
-inline constexpr auto _O_NONBLOCK  = O_NONBLOCK;
-inline constexpr auto _O_RDONLY    = O_RDONLY;
-inline constexpr auto _O_WRONLY    = O_WRONLY;
-inline constexpr auto _O_RDWR      = O_RDWR;
-inline constexpr auto _O_CREAT     = O_CREAT;
-inline constexpr auto _O_EXCL      = O_EXCL;
-inline constexpr auto _O_TRUNC     = O_TRUNC;
-inline constexpr auto _O_APPEND    = O_APPEND;
-inline constexpr auto _O_NOFOLLOW  = O_NOFOLLOW;
-inline constexpr auto _O_DIRECTORY = O_DIRECTORY;
+inline constexpr auto _O_CLOEXEC       = O_CLOEXEC;
+inline constexpr auto _O_NONBLOCK      = O_NONBLOCK;
+inline constexpr auto _O_RDONLY        = O_RDONLY;
+inline constexpr auto _O_WRONLY        = O_WRONLY;
+inline constexpr auto _O_RDWR          = O_RDWR;
+inline constexpr auto _O_CREAT         = O_CREAT;
+inline constexpr auto _O_EXCL          = O_EXCL;
+inline constexpr auto _O_TRUNC         = O_TRUNC;
+inline constexpr auto _O_APPEND        = O_APPEND;
+inline constexpr auto _O_NOFOLLOW      = O_NOFOLLOW;
+inline constexpr auto _O_DIRECTORY     = O_DIRECTORY;
 inline constexpr auto _F_DUPFD_CLOEXEC = F_DUPFD_CLOEXEC;
-inline constexpr auto _F_GETFL     = F_GETFL;
-inline constexpr auto _F_SETFL     = F_SETFL;
-inline constexpr auto _F_GETFD     = F_GETFD;
-inline constexpr auto _F_SETFD     = F_SETFD;
-inline constexpr auto _FD_CLOEXEC  = FD_CLOEXEC;
-inline constexpr auto _SEEK_SET = SEEK_SET;
-inline constexpr auto _SEEK_CUR = SEEK_CUR;
-inline constexpr auto _SEEK_END = SEEK_END;
+inline constexpr auto _F_GETFL         = F_GETFL;
+inline constexpr auto _F_SETFL         = F_SETFL;
+inline constexpr auto _F_GETFD         = F_GETFD;
+inline constexpr auto _F_SETFD         = F_SETFD;
+inline constexpr auto _FD_CLOEXEC      = FD_CLOEXEC;
+inline constexpr auto _SEEK_SET        = SEEK_SET;
+inline constexpr auto _SEEK_CUR        = SEEK_CUR;
+inline constexpr auto _SEEK_END        = SEEK_END;
 
 inline constexpr auto _AF_INET      = AF_INET;
 inline constexpr auto _AF_INET6     = AF_INET6;
@@ -137,10 +137,10 @@ inline constexpr auto _EPOLL_CLOEXEC = EPOLL_CLOEXEC;
 inline constexpr auto _EPOLLIN       = EPOLLIN;
 inline constexpr auto _EPOLLOUT      = EPOLLOUT;
 #ifdef EPOLLRDHUP
-inline constexpr auto _EPOLLRDHUP    = EPOLLRDHUP;
+inline constexpr auto _EPOLLRDHUP     = EPOLLRDHUP;
 inline constexpr bool _HAS_EPOLLRDHUP = true;
 #else
-inline constexpr auto _EPOLLRDHUP    = 0;
+inline constexpr auto _EPOLLRDHUP     = 0;
 inline constexpr bool _HAS_EPOLLRDHUP = false;
 #endif
 inline constexpr auto _EPOLLHUP      = EPOLLHUP;
@@ -461,35 +461,35 @@ using ::sockaddr_in;
 using ::sockaddr_in6;
 using ::socklen_t;
 /// `struct stat` aliased to avoid clash with the `::stat()` function.
-using stat_t     = struct ::stat;
+using stat_t = struct ::stat;
 /// `struct timespec` aliased to avoid the `struct` keyword leaking into call sites.
-using timespec_t = struct ::timespec;
+using timespec_t   = struct ::timespec;
 using itimerspec_t = struct ::itimerspec;
-using epoll_event = struct ::epoll_event;
+using epoll_event  = struct ::epoll_event;
 
-inline constexpr auto SIGKILL   = _SIGKILL;
-inline constexpr auto O_CLOEXEC = _O_CLOEXEC;
+inline constexpr auto SIGKILL    = _SIGKILL;
+inline constexpr auto O_CLOEXEC  = _O_CLOEXEC;
 inline constexpr auto O_NONBLOCK = _O_NONBLOCK;
 
 // ── Open flags / seek whence ─────────────────────────────────────────────
-inline constexpr auto O_RDONLY    = _O_RDONLY;
-inline constexpr auto O_WRONLY    = _O_WRONLY;
-inline constexpr auto O_RDWR      = _O_RDWR;
-inline constexpr auto O_CREAT     = _O_CREAT;
-inline constexpr auto O_EXCL      = _O_EXCL;
-inline constexpr auto O_TRUNC     = _O_TRUNC;
-inline constexpr auto O_APPEND    = _O_APPEND;
-inline constexpr auto O_NOFOLLOW  = _O_NOFOLLOW;
-inline constexpr auto O_DIRECTORY = _O_DIRECTORY;
+inline constexpr auto O_RDONLY        = _O_RDONLY;
+inline constexpr auto O_WRONLY        = _O_WRONLY;
+inline constexpr auto O_RDWR          = _O_RDWR;
+inline constexpr auto O_CREAT         = _O_CREAT;
+inline constexpr auto O_EXCL          = _O_EXCL;
+inline constexpr auto O_TRUNC         = _O_TRUNC;
+inline constexpr auto O_APPEND        = _O_APPEND;
+inline constexpr auto O_NOFOLLOW      = _O_NOFOLLOW;
+inline constexpr auto O_DIRECTORY     = _O_DIRECTORY;
 inline constexpr auto F_DUPFD_CLOEXEC = _F_DUPFD_CLOEXEC;
-inline constexpr auto F_GETFL     = _F_GETFL;
-inline constexpr auto F_SETFL     = _F_SETFL;
-inline constexpr auto F_GETFD     = _F_GETFD;
-inline constexpr auto F_SETFD     = _F_SETFD;
-inline constexpr auto FD_CLOEXEC  = _FD_CLOEXEC;
-inline constexpr auto SEEK_SET    = _SEEK_SET;
-inline constexpr auto SEEK_CUR    = _SEEK_CUR;
-inline constexpr auto SEEK_END    = _SEEK_END;
+inline constexpr auto F_GETFL         = _F_GETFL;
+inline constexpr auto F_SETFL         = _F_SETFL;
+inline constexpr auto F_GETFD         = _F_GETFD;
+inline constexpr auto F_SETFD         = _F_SETFD;
+inline constexpr auto FD_CLOEXEC      = _FD_CLOEXEC;
+inline constexpr auto SEEK_SET        = _SEEK_SET;
+inline constexpr auto SEEK_CUR        = _SEEK_CUR;
+inline constexpr auto SEEK_END        = _SEEK_END;
 
 // ── Sockets / epoll ─────────────────────────────────────────────────────
 inline constexpr auto AF_INET      = _AF_INET;
@@ -498,23 +498,29 @@ inline constexpr auto SOCK_STREAM  = _SOCK_STREAM;
 inline constexpr auto SOL_SOCKET   = _SOL_SOCKET;
 inline constexpr auto SO_REUSEADDR = _SO_REUSEADDR;
 inline constexpr auto SO_ERROR     = _SO_ERROR;
-[[maybe_unused]] inline constexpr auto IPPROTO_TCP  = _IPPROTO_TCP;
-inline constexpr auto TCP_NODELAY  = _TCP_NODELAY;
-[[maybe_unused]] inline constexpr auto SHUT_WR      = _SHUT_WR;
-[[maybe_unused]] inline constexpr auto MSG_NOSIGNAL = _MSG_NOSIGNAL;
+[[maybe_unused]]
+inline constexpr auto IPPROTO_TCP = _IPPROTO_TCP;
+inline constexpr auto TCP_NODELAY = _TCP_NODELAY;
+[[maybe_unused]]
+inline constexpr auto SHUT_WR = _SHUT_WR;
+[[maybe_unused]]
+inline constexpr auto MSG_NOSIGNAL = _MSG_NOSIGNAL;
 
-[[maybe_unused]] inline constexpr auto EPOLL_CLOEXEC = _EPOLL_CLOEXEC;
-inline constexpr auto EPOLLIN       = _EPOLLIN;
-inline constexpr auto EPOLLOUT      = _EPOLLOUT;
-inline constexpr auto EPOLLRDHUP    = _EPOLLRDHUP;
+[[maybe_unused]]
+inline constexpr auto EPOLL_CLOEXEC  = _EPOLL_CLOEXEC;
+inline constexpr auto EPOLLIN        = _EPOLLIN;
+inline constexpr auto EPOLLOUT       = _EPOLLOUT;
+inline constexpr auto EPOLLRDHUP     = _EPOLLRDHUP;
 inline constexpr auto HAS_EPOLLRDHUP = _HAS_EPOLLRDHUP;
-inline constexpr auto EPOLLHUP      = _EPOLLHUP;
-inline constexpr auto EPOLLERR      = _EPOLLERR;
-inline constexpr auto EPOLL_CTL_ADD = _EPOLL_CTL_ADD;
-inline constexpr auto EPOLL_CTL_MOD = _EPOLL_CTL_MOD;
-inline constexpr auto EPOLL_CTL_DEL = _EPOLL_CTL_DEL;
-[[maybe_unused]] inline constexpr auto TFD_NONBLOCK = _TFD_NONBLOCK;
-[[maybe_unused]] inline constexpr auto TFD_CLOEXEC  = _TFD_CLOEXEC;
+inline constexpr auto EPOLLHUP       = _EPOLLHUP;
+inline constexpr auto EPOLLERR       = _EPOLLERR;
+inline constexpr auto EPOLL_CTL_ADD  = _EPOLL_CTL_ADD;
+inline constexpr auto EPOLL_CTL_MOD  = _EPOLL_CTL_MOD;
+inline constexpr auto EPOLL_CTL_DEL  = _EPOLL_CTL_DEL;
+[[maybe_unused]]
+inline constexpr auto TFD_NONBLOCK = _TFD_NONBLOCK;
+[[maybe_unused]]
+inline constexpr auto TFD_CLOEXEC = _TFD_CLOEXEC;
 
 // ── Stat mode masks ──────────────────────────────────────────────────────
 inline constexpr auto S_IFMT   = _S_IFMT;
@@ -527,13 +533,20 @@ inline constexpr auto S_IFCHR  = _S_IFCHR;
 inline constexpr auto S_IFSOCK = _S_IFSOCK;
 
 // ── Dirent type tags ─────────────────────────────────────────────────────
-[[maybe_unused]] inline constexpr auto DT_REG  = _DT_REG;
-[[maybe_unused]] inline constexpr auto DT_DIR  = _DT_DIR;
-[[maybe_unused]] inline constexpr auto DT_LNK  = _DT_LNK;
-[[maybe_unused]] inline constexpr auto DT_FIFO = _DT_FIFO;
-[[maybe_unused]] inline constexpr auto DT_BLK  = _DT_BLK;
-[[maybe_unused]] inline constexpr auto DT_CHR  = _DT_CHR;
-[[maybe_unused]] inline constexpr auto DT_SOCK = _DT_SOCK;
+[[maybe_unused]]
+inline constexpr auto DT_REG = _DT_REG;
+[[maybe_unused]]
+inline constexpr auto DT_DIR = _DT_DIR;
+[[maybe_unused]]
+inline constexpr auto DT_LNK = _DT_LNK;
+[[maybe_unused]]
+inline constexpr auto DT_FIFO = _DT_FIFO;
+[[maybe_unused]]
+inline constexpr auto DT_BLK = _DT_BLK;
+[[maybe_unused]]
+inline constexpr auto DT_CHR = _DT_CHR;
+[[maybe_unused]]
+inline constexpr auto DT_SOCK = _DT_SOCK;
 
 // ── flock ────────────────────────────────────────────────────────────────
 inline constexpr auto LOCK_SH = _LOCK_SH;
@@ -545,18 +558,32 @@ inline constexpr auto LOCK_UN = _LOCK_UN;
 inline constexpr auto UTIME_OMIT = _UTIME_OMIT;
 
 /// Returns an lvalue reference to the platform `errno`. Use to read and write.
-inline auto get_errno() noexcept -> int& { return errno; }
+inline auto get_errno() noexcept -> int& {
+    return errno;
+}
 
 inline auto makedev(unsigned int ma, unsigned int mi) noexcept -> ::dev_t {
     return _rstd_make_dev(ma, mi);
 }
-inline auto major(::dev_t d) noexcept -> unsigned int { return _rstd_dev_major(d); }
-inline auto minor(::dev_t d) noexcept -> unsigned int { return _rstd_dev_minor(d); }
+inline auto major(::dev_t d) noexcept -> unsigned int {
+    return _rstd_dev_major(d);
+}
+inline auto minor(::dev_t d) noexcept -> unsigned int {
+    return _rstd_dev_minor(d);
+}
 
-inline auto wait_exited(int status) -> bool  { return WIFEXITED(status); }
-inline auto wait_exitstatus(int status) -> int { return WEXITSTATUS(status); }
-inline auto wait_signaled(int status) -> bool { return WIFSIGNALED(status); }
-inline auto wait_termsig(int status) -> int  { return WTERMSIG(status); }
+inline auto wait_exited(int status) -> bool {
+    return WIFEXITED(status);
+}
+inline auto wait_exitstatus(int status) -> int {
+    return WEXITSTATUS(status);
+}
+inline auto wait_signaled(int status) -> bool {
+    return WIFSIGNALED(status);
+}
+inline auto wait_termsig(int status) -> int {
+    return WTERMSIG(status);
+}
 
 } // namespace rstd::sys::libc
 #endif

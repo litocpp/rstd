@@ -42,8 +42,7 @@ public:
     Sleep(const Sleep&)            = delete;
     Sleep& operator=(const Sleep&) = delete;
 
-    Sleep(Sleep&& other) noexcept
-        : deadline(other.deadline), timer(other.timer.take()) {}
+    Sleep(Sleep&& other) noexcept: deadline(other.deadline), timer(other.timer.take()) {}
 
     auto operator=(Sleep&& other) noexcept -> Sleep& {
         if (this != &other) {
@@ -58,7 +57,7 @@ public:
 
     auto poll(mut_ref<Sleep> self, task::Context& cx) -> task::Poll<void> {
         auto& sleep = *self;
-        auto* rt = CURRENT_RUNTIME;
+        auto* rt    = CURRENT_RUNTIME;
         if (rt == nullptr) {
             rstd::panic { "async::sleep polled without an async runtime" };
         }
@@ -98,12 +97,11 @@ class Timeout {
 public:
     using Output = Result<mtp::void_empty_t<future::future_output_t<F>>, Elapsed>;
 
-    Timeout(F future, time::Duration duration)
-        : future_(rstd::move(future)), delay_(duration) {}
+    Timeout(F future, time::Duration duration): future_(rstd::move(future)), delay_(duration) {}
 
-    Timeout(const Timeout&)            = delete;
-    Timeout& operator=(const Timeout&) = delete;
-    Timeout(Timeout&&) noexcept        = default;
+    Timeout(const Timeout&)                        = delete;
+    Timeout& operator=(const Timeout&)             = delete;
+    Timeout(Timeout&&) noexcept                    = default;
     auto operator=(Timeout&&) noexcept -> Timeout& = default;
 
     auto poll(mut_ref<Timeout> self, task::Context& cx) -> task::Poll<Output> {

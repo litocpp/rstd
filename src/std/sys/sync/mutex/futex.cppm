@@ -22,17 +22,22 @@ public:
 
     static auto make() noexcept -> Mutex { return {}; }
 
-    [[nodiscard]] bool try_lock() noexcept {
+    [[nodiscard]]
+    bool try_lock() noexcept {
         State expected = UNLOCKED;
         // Acquire on success, Relaxed on failure (match Rust)
-        return m_futex.compare_exchange_strong(
-            expected, LOCKED, rstd::sync::atomic::Ordering::Acquire, rstd::sync::atomic::Ordering::Relaxed);
+        return m_futex.compare_exchange_strong(expected,
+                                               LOCKED,
+                                               rstd::sync::atomic::Ordering::Acquire,
+                                               rstd::sync::atomic::Ordering::Relaxed);
     }
 
     void lock() noexcept {
         State expected = UNLOCKED;
-        if (! m_futex.compare_exchange_strong(
-                expected, LOCKED, rstd::sync::atomic::Ordering::Acquire, rstd::sync::atomic::Ordering::Relaxed)) {
+        if (! m_futex.compare_exchange_strong(expected,
+                                              LOCKED,
+                                              rstd::sync::atomic::Ordering::Acquire,
+                                              rstd::sync::atomic::Ordering::Relaxed)) {
             lock_contended();
         }
     }
@@ -53,8 +58,10 @@ private:
         // If it's unlocked now, attempt to take the lock without marking contended.
         if (state == UNLOCKED) {
             State expected = UNLOCKED;
-            if (m_futex.compare_exchange_strong(
-                    expected, LOCKED, rstd::sync::atomic::Ordering::Acquire, rstd::sync::atomic::Ordering::Relaxed)) {
+            if (m_futex.compare_exchange_strong(expected,
+                                                LOCKED,
+                                                rstd::sync::atomic::Ordering::Acquire,
+                                                rstd::sync::atomic::Ordering::Relaxed)) {
                 return; // Locked!
             }
             state = m_futex.load(rstd::sync::atomic::Ordering::Relaxed);

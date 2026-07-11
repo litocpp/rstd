@@ -26,18 +26,18 @@ class CompletionQueueNextWaitOperation;
 template<typename T>
 struct CompletionQueueState {
     struct Fields {
-        Vec<T> items;
-        usize  handles { 1 };
-        bool   closed { false };
-        bool   receiver_closed { false };
+        Vec<T>              items;
+        usize               handles { 1 };
+        bool                closed { false };
+        bool                receiver_closed { false };
         Option<task::Waker> waker;
     };
 
     sync::Mutex<Fields> fields;
 
-    CompletionQueueState() : fields(Fields {}) {}
+    CompletionQueueState(): fields(Fields {}) {}
 
-    CompletionQueueState(const CompletionQueueState&)            = delete;
+    CompletionQueueState(const CompletionQueueState&)                    = delete;
     auto operator=(const CompletionQueueState&) -> CompletionQueueState& = delete;
 
     static void wake_waiter(Option<task::Waker> waker) {
@@ -50,7 +50,7 @@ struct CompletionQueueState {
         auto waker = Option<task::Waker> {};
         {
             auto f = fields.lock().unwrap_unchecked();
-            waker = f->waker.take();
+            waker  = f->waker.take();
         }
         wake_waiter(rstd::move(waker));
         return Ok(empty {});
@@ -109,7 +109,7 @@ struct CompletionQueueState {
     void close_receiver() {
         auto waker = Option<task::Waker> {};
         {
-            auto f = fields.lock().unwrap_unchecked();
+            auto f             = fields.lock().unwrap_unchecked();
             f->receiver_closed = true;
             f->closed          = true;
             f->items.clear();
@@ -152,11 +152,11 @@ class CompletionQueueNext {
 public:
     using Output = io::Result<Option<T>>;
 
-    CompletionQueueNext(const CompletionQueueNext&)            = delete;
-    auto operator=(const CompletionQueueNext&) -> CompletionQueueNext& = delete;
+    CompletionQueueNext(const CompletionQueueNext&)                        = delete;
+    auto operator=(const CompletionQueueNext&) -> CompletionQueueNext&     = delete;
     CompletionQueueNext(CompletionQueueNext&&) noexcept                    = default;
     auto operator=(CompletionQueueNext&&) noexcept -> CompletionQueueNext& = default;
-    ~CompletionQueueNext()                                                = default;
+    ~CompletionQueueNext()                                                 = default;
 };
 
 template<typename T>
@@ -201,9 +201,7 @@ public:
         return AwaitOperationState::Ready;
     }
 
-    auto placement() const -> ResumePlacement {
-        return ResumePlacement::runtime_worker();
-    }
+    auto placement() const -> ResumePlacement { return ResumePlacement::runtime_worker(); }
 };
 
 template<typename T>
@@ -232,12 +230,11 @@ class CompletionQueue {
     friend class CompletionQueueHandle<T>;
 
 public:
-    CompletionQueue(const CompletionQueue&)            = delete;
+    CompletionQueue(const CompletionQueue&)                    = delete;
     auto operator=(const CompletionQueue&) -> CompletionQueue& = delete;
 
     CompletionQueue(CompletionQueue&& other) noexcept
-        : m_state(rstd::move(other.m_state)),
-          m_active(rstd::exchange(other.m_active, false)) {}
+        : m_state(rstd::move(other.m_state)), m_active(rstd::exchange(other.m_active, false)) {}
 
     auto operator=(CompletionQueue&& other) noexcept -> CompletionQueue& {
         if (this != &other) {
@@ -285,12 +282,11 @@ class CompletionQueueHandle {
     friend class CompletionQueue<T>;
 
 public:
-    CompletionQueueHandle(const CompletionQueueHandle&)            = delete;
+    CompletionQueueHandle(const CompletionQueueHandle&)                    = delete;
     auto operator=(const CompletionQueueHandle&) -> CompletionQueueHandle& = delete;
 
     CompletionQueueHandle(CompletionQueueHandle&& other) noexcept
-        : m_state(rstd::move(other.m_state)),
-          m_active(rstd::exchange(other.m_active, false)) {}
+        : m_state(rstd::move(other.m_state)), m_active(rstd::exchange(other.m_active, false)) {}
 
     auto operator=(CompletionQueueHandle&& other) noexcept -> CompletionQueueHandle& {
         if (this != &other) {
@@ -339,9 +335,7 @@ public:
         return m_state->wake();
     }
 
-    auto is_closed() -> bool {
-        return ! m_active || ! m_state || m_state->is_closed();
-    }
+    auto is_closed() -> bool { return ! m_active || ! m_state || m_state->is_closed(); }
 };
 
 } // namespace rstd::async

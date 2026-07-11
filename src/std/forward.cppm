@@ -17,7 +17,7 @@ export namespace boxed
 {
 /// A pointer type for heap allocation, analogous to Rust's `Box<T>`.
 using rstd_alloc::boxed::Box;
-}
+} // namespace boxed
 
 /// Reference-counted pointer types.
 export namespace rc
@@ -35,13 +35,13 @@ export namespace string
 using rstd_alloc::string::String;
 /// A trait for converting a value to a String.
 using rstd_alloc::string::ToString;
-}
+} // namespace string
 /// A contiguous growable array type.
 export namespace vec
 {
 /// A contiguous growable array type, analogous to Rust's `Vec<T>`.
 using rstd_alloc::vec::Vec;
-}
+} // namespace vec
 
 // export namespace borrow = rstd_alloc::borrow;
 // export namespace rstd_alloc::fmt;

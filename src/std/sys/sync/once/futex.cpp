@@ -4,15 +4,18 @@ import :sys.sync.once.futex;
 namespace rstd::sys::sync::once::futex
 {
 CompletionGuard::CompletionGuard(Futex* state_and_queued, Primitive set_state_on_drop_to)
-    : state_and_queued(state_and_queued), set_state_on_drop_to(set_state_on_drop_to) {}
+    : state_and_queued(state_and_queued), set_state_on_drop_to(set_state_on_drop_to) {
+}
 
 CompletionGuard::~CompletionGuard() {
-    if (state_and_queued->exchange(set_state_on_drop_to, rstd::sync::atomic::Ordering::Release) & QUEUED) {
+    if (state_and_queued->exchange(set_state_on_drop_to, rstd::sync::atomic::Ordering::Release) &
+        QUEUED) {
         pal::futex::futex_wake_all(state_and_queued);
     }
 }
 
-Once::Once(): state_and_queued(INCOMPLETE) {}
+Once::Once(): state_and_queued(INCOMPLETE) {
+}
 
 bool Once::is_completed() const {
     return state_and_queued.load(rstd::sync::atomic::Ordering::Acquire) == COMPLETE;
@@ -27,16 +30,17 @@ void Once::wait(bool ignore_poisoning) {
         case COMPLETE: return;
         case POISONED:
             if (! ignore_poisoning) {
-                panic{"Once instance has previously been poisoned"};
+                panic { "Once instance has previously been poisoned" };
             }
             break;
         default:
             if (! queued) {
                 state_and_queued += QUEUED;
-                if (this->state_and_queued.compare_exchange_weak(state,
-                                                                 state_and_queued,
-                                                                 rstd::sync::atomic::Ordering::Relaxed,
-                                                                 rstd::sync::atomic::Ordering::Acquire)) {
+                if (this->state_and_queued.compare_exchange_weak(
+                        state,
+                        state_and_queued,
+                        rstd::sync::atomic::Ordering::Relaxed,
+                        rstd::sync::atomic::Ordering::Acquire)) {
                     continue;
                 }
             }
@@ -90,4 +94,4 @@ void Once::call(bool ignore_poisoning, Dyn<FnMut, void(OnceState&)> f) {
     }
 }
     */
-} // namespace rstd::sys::sync::once
+} // namespace rstd::sys::sync::once::futex

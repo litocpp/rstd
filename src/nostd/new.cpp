@@ -22,7 +22,9 @@ void* operator new(std::size_t size, std::align_val_t al) {
 #endif
 }
 
-void* operator new(std::size_t size, const std::nothrow_t&) noexcept { return malloc(size); }
+void* operator new(std::size_t size, const std::nothrow_t&) noexcept {
+    return malloc(size);
+}
 
 void* operator new(std::size_t size, std::align_val_t al, const std::nothrow_t&) noexcept {
 #ifdef _WIN32
@@ -36,10 +38,18 @@ void* operator new(std::size_t size, std::align_val_t al, const std::nothrow_t&)
 #endif
 }
 
-void operator delete(void* ptr) noexcept { free(ptr); }
+void operator delete(void* ptr) noexcept {
+    free(ptr);
+}
 
-void operator delete(void* ptr, std::size_t) noexcept { free(ptr); }
+void operator delete(void* ptr, std::size_t) noexcept {
+    free(ptr);
+}
 
-void operator delete(void* ptr, std::align_val_t) noexcept { free(ptr); }
+void operator delete(void* ptr, std::align_val_t) noexcept {
+    free(ptr);
+}
 
-void operator delete(void* ptr, std::size_t, std::align_val_t) noexcept { free(ptr); }
+void operator delete(void* ptr, std::size_t, std::align_val_t) noexcept {
+    free(ptr);
+}

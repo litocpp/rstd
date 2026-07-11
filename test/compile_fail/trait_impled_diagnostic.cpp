@@ -1,8 +1,8 @@
 import rstd;
 
 struct NoClone {
-    NoClone() = default;
-    NoClone(const NoClone&) = delete;
+    NoClone()                                  = default;
+    NoClone(const NoClone&)                    = delete;
     auto operator=(const NoClone&) -> NoClone& = delete;
 };
 

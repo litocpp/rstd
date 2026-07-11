@@ -26,11 +26,15 @@ struct C {
     int a;
 };
 
-auto rstd::Impl<rstd::convert::From<C>, A>::from(C c) -> A { return { c.a }; }
-auto rstd::Impl<rstd::convert::From<C>, B>::from(C c) -> B { return { c.a }; }
+auto rstd::Impl<rstd::convert::From<C>, A>::from(C c) -> A {
+    return { c.a };
+}
+auto rstd::Impl<rstd::convert::From<C>, B>::from(C c) -> B {
+    return { c.a };
+}
 
 struct D {
-    int a;
+    int  a;
     auto into() -> A { return { a }; }
 };
 

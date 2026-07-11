@@ -78,8 +78,8 @@ union union_pack<Base, T, Rest...> {
 
     template<usize I, typename... Args>
         requires(I == Base) && mtp::init<T, Args...>
-    explicit constexpr union_pack(in_place_index_t<I>, Args&&... args) noexcept(
-        mtp::noex_init<T, Args...>)
+    explicit constexpr union_pack(in_place_index_t<I>,
+                                  Args&&... args) noexcept(mtp::noex_init<T, Args...>)
         : head(rstd::forward<Args>(args)...) {}
 
     template<usize I, typename... Args>
@@ -97,8 +97,8 @@ union union_pack<Base, T, Rest...> {
     {}
 
     template<usize I, typename... Args>
-    constexpr void construct(Args&&... args) noexcept(
-        mtp::noex_init<type_at_t<I - Base, T, Rest...>, Args...>) {
+    constexpr void
+    construct(Args&&... args) noexcept(mtp::noex_init<type_at_t<I - Base, T, Rest...>, Args...>) {
         if constexpr (I == Base) {
             rstd::construct_at(rstd::addressof(head), rstd::forward<Args>(args)...);
         } else {
@@ -217,7 +217,7 @@ class storage {
     }
 
 public:
-    constexpr inline storage() noexcept : data_(), index_(invalid_index) {}
+    constexpr inline storage() noexcept: data_(), index_(invalid_index) {}
 
     template<usize I, typename... Args>
         requires(I < count) && mtp::init<type_at_t<I, Ts...>, Args...>

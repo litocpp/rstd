@@ -5,7 +5,6 @@ module;
 
 module rstd.runtime;
 
-
 using namespace rstd;
 
 extern "C" {
@@ -47,20 +46,19 @@ void* __rstd_alloc_zeroed(usize size, usize align) {
 void rstd_panic_impl(rstd::panic_::PanicInfo const& info) {
     auto& loc = info.location;
 
-    fprintf(stderr, "thread 'main' panicked at %s:%u:%u:\n",
-            loc.file_name(), loc.line(), loc.column());
+    fprintf(
+        stderr, "thread 'main' panicked at %s:%u:%u:\n", loc.file_name(), loc.line(), loc.column());
 
     if (info.fmt) {
         FILE* f = stderr;
-        info.fmt(info.data, &f,
-                 +[](void* ctx, u8 const* buf, usize len) -> bool {
-                     return fwrite(buf, 1, len, *static_cast<FILE**>(ctx)) == len;
-                 });
+        info.fmt(
+            info.data, &f, +[](void* ctx, u8 const* buf, usize len) -> bool {
+                return fwrite(buf, 1, len, *static_cast<FILE**>(ctx)) == len;
+            });
     }
 
     fputc('\n', stderr);
     fflush(stderr);
     abort();
 }
-
 }

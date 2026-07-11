@@ -38,10 +38,18 @@ public:
 
 namespace detail
 {
-inline auto cursor_data(const Vec<u8>& v) noexcept -> const u8* { return v.begin(); }
-inline auto cursor_len(const Vec<u8>& v) noexcept -> usize { return v.len(); }
-inline auto cursor_data(slice<u8> s) noexcept -> const u8* { return &*s; }
-inline auto cursor_len(slice<u8> s) noexcept -> usize { return s.len(); }
+inline auto cursor_data(const Vec<u8>& v) noexcept -> const u8* {
+    return v.begin();
+}
+inline auto cursor_len(const Vec<u8>& v) noexcept -> usize {
+    return v.len();
+}
+inline auto cursor_data(slice<u8> s) noexcept -> const u8* {
+    return &*s;
+}
+inline auto cursor_len(slice<u8> s) noexcept -> usize {
+    return s.len();
+}
 } // namespace detail
 
 } // namespace rstd::io

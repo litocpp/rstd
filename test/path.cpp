@@ -193,15 +193,15 @@ TEST(PathBuf, Pop) {
 }
 
 TEST(PathBuf, Join) {
-    auto p = PathBuf::from("/usr");
+    auto p      = PathBuf::from("/usr");
     auto joined = p.join(rstd::ref<Path>("local/bin"));
-    auto s = joined.as_path().to_str();
+    auto s      = joined.as_path().to_str();
     ASSERT_TRUE(s.is_some());
     EXPECT_EQ(*s, rstd::ref<rstd::str>("/usr/local/bin"));
 }
 
 TEST(PathBuf, ImplicitConversion) {
-    auto buf = PathBuf::from("/tmp");
-    rstd::ref<Path> r = buf;
+    auto            buf = PathBuf::from("/tmp");
+    rstd::ref<Path> r   = buf;
     EXPECT_EQ(r.len(), 4u);
 }

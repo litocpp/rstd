@@ -6,8 +6,10 @@ using rstd::sync::atomic::Ordering;
 namespace rstd::sys::sync::thread_parking::futex
 {
 
-Parker::Parker(): state(EMPTY) {}
-Parker::~Parker() {}
+Parker::Parker(): state(EMPTY) {
+}
+Parker::~Parker() {
+}
 
 void Parker::park() {
     if (state.fetch_sub(1, Ordering::Acquire) == NOTIFIED) {

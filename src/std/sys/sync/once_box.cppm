@@ -48,21 +48,24 @@ public:
         T* p = m_ptr.exchange(nullptr, rstd::sync::atomic::Ordering::Relaxed);
         if (p) {
             return rstd::Some(Box<T>::from_raw(mut_ptr<T>::from_raw_parts(p)));
-
         }
         return {};
     }
 
-    constexpr explicit operator bool() const noexcept { return m_ptr.load(rstd::sync::atomic::Ordering::Relaxed) != nullptr; }
-    T*                 operator->() { return m_ptr.load(rstd::sync::atomic::Ordering::Relaxed); }
+    constexpr explicit operator bool() const noexcept {
+        return m_ptr.load(rstd::sync::atomic::Ordering::Relaxed) != nullptr;
+    }
+    T* operator->() { return m_ptr.load(rstd::sync::atomic::Ordering::Relaxed); }
 
 private:
     template<typename F>
     auto initialize(F&& f) -> T& {
         T* raw      = rstd::move(f()).into_raw();
         T* expected = nullptr;
-        if (m_ptr.compare_exchange_strong(
-                expected, raw, rstd::sync::atomic::Ordering::Release, rstd::sync::atomic::Ordering::Acquire)) {
+        if (m_ptr.compare_exchange_strong(expected,
+                                          raw,
+                                          rstd::sync::atomic::Ordering::Release,
+                                          rstd::sync::atomic::Ordering::Acquire)) {
             return *raw;
         } else {
             auto dropped = Box<T>::from_raw(mut_ptr<T>::from_raw_parts(raw));

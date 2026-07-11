@@ -71,8 +71,7 @@ export struct Thread {
     }
 
     static void sleep(rstd::time::Duration dur) {
-        libc::timespec ts { .tv_sec  = (long)dur.as_secs(),
-                            .tv_nsec = (long)dur.subsec_nanos() };
+        libc::timespec ts { .tv_sec = (long)dur.as_secs(), .tv_nsec = (long)dur.subsec_nanos() };
         libc::nanosleep(&ts, nullptr);
     }
 

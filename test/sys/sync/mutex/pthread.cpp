@@ -6,10 +6,10 @@
 import rstd;
 using rstd::sys::sync::mutex::pthread::Mutex;
 
-#    define RSTD_TEST_GROUP MutexPthread
-#    include "common.hpp"
+#define RSTD_TEST_GROUP MutexPthread
+#include "common.hpp"
 
-#if !__has_feature(address_sanitizer)
+#if ! __has_feature(address_sanitizer)
 TEST(MutexPthread, DestructorDoesNotHangIfLockedElsewhere) {
     // Purpose of this test:
     // - When Mutex is destroyed while the underlying pthread_mutex_t is locked,

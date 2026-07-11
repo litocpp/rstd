@@ -3,13 +3,14 @@ module;
 module rstd;
 import :sys.sync.thread_parking.pthread;
 
-#if RSTD_OS_UNIX && !RSTD_OS_LINUX
+#if RSTD_OS_UNIX && ! RSTD_OS_LINUX
 
 using rstd::sync::atomic::Ordering;
 
 namespace rstd::sys::sync::thread_parking::pthread
 {
-Parker::Parker(): state(EMPTY), lock(sys::pal::Mutex::make()), cvar(Condvar::make()) {}
+Parker::Parker(): state(EMPTY), lock(sys::pal::Mutex::make()), cvar(Condvar::make()) {
+}
 
 void Parker::park() {
     // Try fast path for already-notified state
@@ -60,8 +61,8 @@ void Parker::park_timeout(rstd::time::Duration dur) {
         panic { "inconsistent park_timeout state" };
     }
 
-    cvar.wait_timeout(lock,
-                      (i64)(dur.as_secs() * u64(rstd::time::NANOS_PER_SEC)) + (i64)dur.subsec_nanos());
+    cvar.wait_timeout(
+        lock, (i64)(dur.as_secs() * u64(rstd::time::NANOS_PER_SEC)) + (i64)dur.subsec_nanos());
 
     usize old = state.exchange(EMPTY, Ordering::Acquire);
     if (old != NOTIFIED && old != PARKED) {

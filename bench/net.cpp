@@ -20,7 +20,7 @@ async::coro<io::Result<usize>> write_some(net::TcpStream& stream, bytes::Bytes c
         }
 
         auto error = rstd::move(written).unwrap_err_unchecked();
-        if (!would_block(error)) {
+        if (! would_block(error)) {
             co_return Err(rstd::move(error));
         }
 
@@ -39,7 +39,7 @@ async::coro<io::Result<usize>> read_some(net::TcpStream& stream, bytes::BytesMut
         }
 
         auto error = rstd::move(read).unwrap_err_unchecked();
-        if (!would_block(error)) {
+        if (! would_block(error)) {
             co_return Err(rstd::move(error));
         }
 
@@ -67,8 +67,8 @@ async::coro<io::Result<bytes::BytesMut>> tcp_roundtrip(net::TcpListener& listene
     auto server_stream = rstd::move(accepted_pair.template get<0>());
 
     const u8 payload[] = { 'p', 'i', 'n', 'g' };
-    auto     bytes = bytes::Bytes::copy_from_slice(slice<u8>::from_raw_parts(payload, 4));
-    while (!bytes.is_empty()) {
+    auto     bytes     = bytes::Bytes::copy_from_slice(slice<u8>::from_raw_parts(payload, 4));
+    while (! bytes.is_empty()) {
         auto written = co_await write_some(client_stream, bytes);
         if (written.is_err()) {
             co_return Err(rstd::move(written).unwrap_err_unchecked());
@@ -106,8 +106,8 @@ auto loopback_roundtrip_4b(rstd_bench::BenchContext& context) -> bool {
             return false;
         }
 
-        auto result = runtime.block_on(
-            tcp_roundtrip(listener, rstd::move(addr).unwrap_unchecked()));
+        auto result =
+            runtime.block_on(tcp_roundtrip(listener, rstd::move(addr).unwrap_unchecked()));
         if (result.is_err()) {
             return false;
         }

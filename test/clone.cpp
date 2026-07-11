@@ -8,7 +8,7 @@ struct B : rstd::DefaultInClass<B, rstd::clone::Clone> {
 
     B(int v): a(v) {}
     B(const B& o): a(o.a) {}
-    B& operator=(const B& o) = default;
+    B&   operator=(const B& o) = default;
     auto clone() const -> B { return B { *this }; }
     auto operator==(const B& other) const -> bool { return a == other.a; }
 };

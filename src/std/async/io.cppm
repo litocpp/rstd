@@ -11,9 +11,8 @@ export struct AsyncRead {
     struct Api {
         using Trait = AsyncRead;
 
-        auto poll_read(mut_ref<Self> self,
-                       task::Context&          cx,
-                       bytes::BytesMut&        buf) -> task::Poll<::rstd::io::Result<usize>> {
+        auto poll_read(mut_ref<Self> self, task::Context& cx, bytes::BytesMut& buf)
+            -> task::Poll<::rstd::io::Result<usize>> {
             return trait_call<0>(this, self, cx, buf);
         }
     };
@@ -27,9 +26,8 @@ export struct AsyncWrite {
     struct Api {
         using Trait = AsyncWrite;
 
-        auto poll_write(mut_ref<Self> self,
-                        task::Context&          cx,
-                        const bytes::Bytes&     buf) -> task::Poll<::rstd::io::Result<usize>> {
+        auto poll_write(mut_ref<Self> self, task::Context& cx, const bytes::Bytes& buf)
+            -> task::Poll<::rstd::io::Result<usize>> {
             return trait_call<0>(this, self, cx, buf);
         }
 
@@ -49,24 +47,26 @@ export struct AsyncWrite {
 };
 
 export template<typename R>
-concept AsyncReadInClass = requires(mtp::rm_cvf<R>& reader,
-                                    task::Context&  cx,
-                                    bytes::BytesMut& buf) {
-    { reader.poll_read(future::as_mut_ref(reader), cx, buf) }
-        -> mtp::same_as<task::Poll<::rstd::io::Result<usize>>>;
-};
+concept AsyncReadInClass =
+    requires(mtp::rm_cvf<R>& reader, task::Context& cx, bytes::BytesMut& buf) {
+        {
+            reader.poll_read(future::as_mut_ref(reader), cx, buf)
+        } -> mtp::same_as<task::Poll<::rstd::io::Result<usize>>>;
+    };
 
 export template<typename W>
-concept AsyncWriteInClass = requires(mtp::rm_cvf<W>& writer,
-                                     task::Context&  cx,
-                                     const bytes::Bytes& buf) {
-    { writer.poll_write(future::as_mut_ref(writer), cx, buf) }
-        -> mtp::same_as<task::Poll<::rstd::io::Result<usize>>>;
-    { writer.poll_flush(future::as_mut_ref(writer), cx) }
-        -> mtp::same_as<task::Poll<::rstd::io::Result<empty>>>;
-    { writer.poll_shutdown(future::as_mut_ref(writer), cx) }
-        -> mtp::same_as<task::Poll<::rstd::io::Result<empty>>>;
-};
+concept AsyncWriteInClass =
+    requires(mtp::rm_cvf<W>& writer, task::Context& cx, const bytes::Bytes& buf) {
+        {
+            writer.poll_write(future::as_mut_ref(writer), cx, buf)
+        } -> mtp::same_as<task::Poll<::rstd::io::Result<usize>>>;
+        {
+            writer.poll_flush(future::as_mut_ref(writer), cx)
+        } -> mtp::same_as<task::Poll<::rstd::io::Result<empty>>>;
+        {
+            writer.poll_shutdown(future::as_mut_ref(writer), cx)
+        } -> mtp::same_as<task::Poll<::rstd::io::Result<empty>>>;
+    };
 
 } // namespace rstd::async::io
 
@@ -127,8 +127,8 @@ public:
     ReadFuture(R& reader, bytes::BytesMut& buf)
         : reader(rstd::addressof(reader)), buf(rstd::addressof(buf)) {}
 
-    ReadFuture(const ReadFuture&)            = delete;
-    auto operator=(const ReadFuture&) -> ReadFuture& = delete;
+    ReadFuture(const ReadFuture&)                        = delete;
+    auto operator=(const ReadFuture&) -> ReadFuture&     = delete;
     ReadFuture(ReadFuture&&) noexcept                    = default;
     auto operator=(ReadFuture&&) noexcept -> ReadFuture& = default;
 
@@ -159,8 +159,8 @@ public:
     WriteFuture(W& writer, const bytes::Bytes& buf)
         : writer(rstd::addressof(writer)), buf(rstd::addressof(buf)) {}
 
-    WriteFuture(const WriteFuture&)            = delete;
-    auto operator=(const WriteFuture&) -> WriteFuture& = delete;
+    WriteFuture(const WriteFuture&)                        = delete;
+    auto operator=(const WriteFuture&) -> WriteFuture&     = delete;
     WriteFuture(WriteFuture&&) noexcept                    = default;
     auto operator=(WriteFuture&&) noexcept -> WriteFuture& = default;
 
@@ -183,10 +183,10 @@ export template<typename R>
 class ReadExactFuture {
     R*               reader;
     bytes::BytesMut* buf;
-    usize           target_len {};
-    usize           start_len {};
-    bool            started { false };
-    bool            completed { false };
+    usize            target_len {};
+    usize            start_len {};
+    bool             started { false };
+    bool             completed { false };
 
 public:
     using Output = ::rstd::io::Result<empty>;
@@ -194,13 +194,12 @@ public:
     ReadExactFuture(R& reader, bytes::BytesMut& buf, usize len)
         : reader(rstd::addressof(reader)), buf(rstd::addressof(buf)), target_len(len) {}
 
-    ReadExactFuture(const ReadExactFuture&)            = delete;
-    auto operator=(const ReadExactFuture&) -> ReadExactFuture& = delete;
+    ReadExactFuture(const ReadExactFuture&)                        = delete;
+    auto operator=(const ReadExactFuture&) -> ReadExactFuture&     = delete;
     ReadExactFuture(ReadExactFuture&&) noexcept                    = default;
     auto operator=(ReadExactFuture&&) noexcept -> ReadExactFuture& = default;
 
-    auto poll(mut_ref<ReadExactFuture> self, task::Context& cx)
-        -> task::Poll<Output> {
+    auto poll(mut_ref<ReadExactFuture> self, task::Context& cx) -> task::Poll<Output> {
         auto& future = *self;
         if (future.completed) {
             rstd::panic { "async::io::ReadExactFuture polled after completion" };
@@ -237,8 +236,8 @@ export template<typename W>
 class WriteAllFuture {
     W*                  writer;
     const bytes::Bytes* buf;
-    usize              written {};
-    bool               completed { false };
+    usize               written {};
+    bool                completed { false };
 
 public:
     using Output = ::rstd::io::Result<empty>;
@@ -246,13 +245,12 @@ public:
     WriteAllFuture(W& writer, const bytes::Bytes& buf)
         : writer(rstd::addressof(writer)), buf(rstd::addressof(buf)) {}
 
-    WriteAllFuture(const WriteAllFuture&)            = delete;
-    auto operator=(const WriteAllFuture&) -> WriteAllFuture& = delete;
+    WriteAllFuture(const WriteAllFuture&)                        = delete;
+    auto operator=(const WriteAllFuture&) -> WriteAllFuture&     = delete;
     WriteAllFuture(WriteAllFuture&&) noexcept                    = default;
     auto operator=(WriteAllFuture&&) noexcept -> WriteAllFuture& = default;
 
-    auto poll(mut_ref<WriteAllFuture> self, task::Context& cx)
-        -> task::Poll<Output> {
+    auto poll(mut_ref<WriteAllFuture> self, task::Context& cx) -> task::Poll<Output> {
         auto& future = *self;
         if (future.completed) {
             rstd::panic { "async::io::WriteAllFuture polled after completion" };
@@ -260,9 +258,8 @@ public:
 
         while (future.written < future.buf->len()) {
             auto remaining = bytes::Bytes::copy_from_slice(slice<u8>::from_raw_parts(
-                future.buf->data() + future.written,
-                future.buf->len() - future.written));
-            auto out = poll_write(*future.writer, cx, remaining);
+                future.buf->data() + future.written, future.buf->len() - future.written));
+            auto out       = poll_write(*future.writer, cx, remaining);
             if (out.is_pending()) {
                 return task::Poll<Output>::Pending();
             }
@@ -295,10 +292,10 @@ class FlushFuture {
 public:
     using Output = ::rstd::io::Result<empty>;
 
-    explicit FlushFuture(W& writer) : writer(rstd::addressof(writer)) {}
+    explicit FlushFuture(W& writer): writer(rstd::addressof(writer)) {}
 
-    FlushFuture(const FlushFuture&)            = delete;
-    auto operator=(const FlushFuture&) -> FlushFuture& = delete;
+    FlushFuture(const FlushFuture&)                        = delete;
+    auto operator=(const FlushFuture&) -> FlushFuture&     = delete;
     FlushFuture(FlushFuture&&) noexcept                    = default;
     auto operator=(FlushFuture&&) noexcept -> FlushFuture& = default;
 
@@ -325,15 +322,14 @@ class ShutdownFuture {
 public:
     using Output = ::rstd::io::Result<empty>;
 
-    explicit ShutdownFuture(W& writer) : writer(rstd::addressof(writer)) {}
+    explicit ShutdownFuture(W& writer): writer(rstd::addressof(writer)) {}
 
-    ShutdownFuture(const ShutdownFuture&)            = delete;
-    auto operator=(const ShutdownFuture&) -> ShutdownFuture& = delete;
+    ShutdownFuture(const ShutdownFuture&)                        = delete;
+    auto operator=(const ShutdownFuture&) -> ShutdownFuture&     = delete;
     ShutdownFuture(ShutdownFuture&&) noexcept                    = default;
     auto operator=(ShutdownFuture&&) noexcept -> ShutdownFuture& = default;
 
-    auto poll(mut_ref<ShutdownFuture> self, task::Context& cx)
-        -> task::Poll<Output> {
+    auto poll(mut_ref<ShutdownFuture> self, task::Context& cx) -> task::Poll<Output> {
         auto& future = *self;
         if (future.completed) {
             rstd::panic { "async::io::ShutdownFuture polled after completion" };

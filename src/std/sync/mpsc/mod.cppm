@@ -11,13 +11,15 @@ namespace rstd::sync::mpsc
 /// \tparam T The type of values received through the channel.
 export template<typename T>
 class Receiver {
-    mpmc::Receiver<Box<mpmc::Channel<T>>> inner_bounded;
+    mpmc::Receiver<Box<mpmc::Channel<T>>>     inner_bounded;
     mpmc::Receiver<Box<mpmc::ListChannel<T>>> inner_unbounded;
-    bool is_bounded;
+    bool                                      is_bounded;
 
 public:
-    Receiver(mpmc::Receiver<Box<mpmc::Channel<T>>> i) : inner_bounded(rstd::move(i)), is_bounded(true) {}
-    Receiver(mpmc::Receiver<Box<mpmc::ListChannel<T>>> i) : inner_unbounded(rstd::move(i)), is_bounded(false) {}
+    Receiver(mpmc::Receiver<Box<mpmc::Channel<T>>> i)
+        : inner_bounded(rstd::move(i)), is_bounded(true) {}
+    Receiver(mpmc::Receiver<Box<mpmc::ListChannel<T>>> i)
+        : inner_unbounded(rstd::move(i)), is_bounded(false) {}
 
     /// Blocks the current thread until a message is received or the channel is disconnected.
     /// \return Ok(value) on success, or Err on disconnection.
@@ -28,7 +30,7 @@ public:
                 return inner_bounded->read(token);
             }
 
-            auto cx = mpmc::Context::make();
+            auto cx   = mpmc::Context::make();
             auto oper = mpmc::Operation::hook(this);
             while (true) {
                 if (inner_bounded->start_recv(token)) {
@@ -58,7 +60,7 @@ public:
                 return inner_unbounded->read(token);
             }
 
-            auto cx = mpmc::Context::make();
+            auto cx   = mpmc::Context::make();
             auto oper = mpmc::Operation::hook(this);
             while (true) {
                 if (inner_unbounded->start_recv(token)) {
@@ -105,15 +107,19 @@ public:
 
     ~Receiver() {
         if (is_bounded) {
-            inner_bounded.release([](auto* chan_box) { (*chan_box)->disconnect(); });
+            inner_bounded.release([](auto* chan_box) {
+                (*chan_box)->disconnect();
+            });
         } else {
-            inner_unbounded.release([](auto* chan_box) { (*chan_box)->disconnect(); });
+            inner_unbounded.release([](auto* chan_box) {
+                (*chan_box)->disconnect();
+            });
         }
     }
 
-    Receiver(const Receiver&) = delete;
-    Receiver& operator=(const Receiver&) = delete;
-    Receiver(Receiver&&) noexcept = default;
+    Receiver(const Receiver&)                = delete;
+    Receiver& operator=(const Receiver&)     = delete;
+    Receiver(Receiver&&) noexcept            = default;
     Receiver& operator=(Receiver&&) noexcept = default;
 };
 
@@ -126,7 +132,7 @@ class Sender {
     mpmc::Sender<Box<mpmc::ListChannel<T>>> inner;
 
 public:
-    Sender(mpmc::Sender<Box<mpmc::ListChannel<T>>> i) : inner(rstd::move(i)) {}
+    Sender(mpmc::Sender<Box<mpmc::ListChannel<T>>> i): inner(rstd::move(i)) {}
 
     /// Sends a value on this channel, returning Err(msg) if the receiver has disconnected.
     /// \param msg The message to send.
@@ -139,18 +145,22 @@ public:
     }
 
     ~Sender() {
-        inner.release([](auto* chan_box) { (*chan_box)->disconnect(); });
+        inner.release([](auto* chan_box) {
+            (*chan_box)->disconnect();
+        });
     }
 
-    Sender(const Sender& other) : inner(other.inner.acquire()) {}
+    Sender(const Sender& other): inner(other.inner.acquire()) {}
     Sender& operator=(const Sender& other) {
         if (this != &other) {
-            inner.release([](auto* chan_box) { (*chan_box)->disconnect(); });
+            inner.release([](auto* chan_box) {
+                (*chan_box)->disconnect();
+            });
             inner = other.inner.acquire();
         }
         return *this;
     }
-    Sender(Sender&&) noexcept = default;
+    Sender(Sender&&) noexcept            = default;
     Sender& operator=(Sender&&) noexcept = default;
 };
 
@@ -163,7 +173,7 @@ class SyncSender {
     mpmc::Sender<Box<mpmc::Channel<T>>> inner;
 
 public:
-    SyncSender(mpmc::Sender<Box<mpmc::Channel<T>>> i) : inner(rstd::move(i)) {}
+    SyncSender(mpmc::Sender<Box<mpmc::Channel<T>>> i): inner(rstd::move(i)) {}
 
     /// Sends a value on this channel, blocking if the buffer is full.
     /// \param msg The message to send.
@@ -174,7 +184,7 @@ public:
             return inner->write(token, rstd::move(msg));
         }
 
-        auto cx = mpmc::Context::make();
+        auto cx   = mpmc::Context::make();
         auto oper = mpmc::Operation::hook(this);
         while (true) {
             if (inner->start_send(token)) {
@@ -209,18 +219,22 @@ public:
     }
 
     ~SyncSender() {
-        inner.release([](auto* chan_box) { (*chan_box)->disconnect(); });
+        inner.release([](auto* chan_box) {
+            (*chan_box)->disconnect();
+        });
     }
 
-    SyncSender(const SyncSender& other) : inner(other.inner.acquire()) {}
+    SyncSender(const SyncSender& other): inner(other.inner.acquire()) {}
     SyncSender& operator=(const SyncSender& other) {
         if (this != &other) {
-            inner.release([](auto* chan_box) { (*chan_box)->disconnect(); });
+            inner.release([](auto* chan_box) {
+                (*chan_box)->disconnect();
+            });
             inner = other.inner.acquire();
         }
         return *this;
     }
-    SyncSender(SyncSender&&) noexcept = default;
+    SyncSender(SyncSender&&) noexcept            = default;
     SyncSender& operator=(SyncSender&&) noexcept = default;
 };
 
@@ -228,7 +242,7 @@ public:
 /// \tparam T The type of values to be sent through the channel.
 export template<typename T>
 auto channel() -> rstd::tuple<Sender<T>, Receiver<T>> {
-    auto chan = mpmc::ListChannel<T>::make();
+    auto chan   = mpmc::ListChannel<T>::make();
     auto [s, r] = mpmc::new_counter(rstd::move(chan));
     return { Sender<T>(rstd::move(s)), Receiver<T>(rstd::move(r)) };
 }
@@ -238,7 +252,7 @@ auto channel() -> rstd::tuple<Sender<T>, Receiver<T>> {
 /// \param bound The maximum number of messages that can be buffered.
 export template<typename T>
 auto sync_channel(usize bound) -> rstd::tuple<SyncSender<T>, Receiver<T>> {
-    auto chan = mpmc::Channel<T>::with_capacity(bound);
+    auto chan   = mpmc::Channel<T>::with_capacity(bound);
     auto [s, r] = mpmc::new_counter(rstd::move(chan));
     return { SyncSender<T>(rstd::move(s)), Receiver<T>(rstd::move(r)) };
 }

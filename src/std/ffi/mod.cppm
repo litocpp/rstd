@@ -11,4 +11,4 @@ namespace rstd::ffi
 /// An owned, C-compatible, nul-terminated string with no nul bytes in the middle.
 export using rstd_alloc::ffi::CString;
 
-}
+} // namespace rstd::ffi

@@ -15,10 +15,10 @@ using rstd::io::error::Error;
 namespace libc = rstd::sys::libc;
 
 #if RSTD_OS_UNIX
-export using RawFd = int;
+export using RawFd                           = int;
 export inline constexpr RawFd INVALID_RAW_FD = -1;
 #else
-export using RawFd = void*;
+export using RawFd                       = void*;
 export inline RawFd const INVALID_RAW_FD = (void*)(-1);
 #endif
 
@@ -28,19 +28,17 @@ export struct BorrowedFd {
 
     constexpr auto as_raw_fd() const noexcept -> RawFd { return fd; }
 
-    static constexpr auto borrow_raw(RawFd fd) noexcept -> BorrowedFd {
-        return BorrowedFd { fd };
-    }
+    static constexpr auto borrow_raw(RawFd fd) noexcept -> BorrowedFd { return BorrowedFd { fd }; }
 };
 
 /// RAII-owning file descriptor; closes on destruction.
 export class OwnedFd {
 public:
     OwnedFd() noexcept = default;
-    explicit OwnedFd(RawFd fd) noexcept : fd_(fd) {}
-    OwnedFd(OwnedFd const&)            = delete;
-    auto operator=(OwnedFd const&)     = delete;
-    OwnedFd(OwnedFd&& other) noexcept : fd_(other.fd_) { other.fd_ = INVALID_RAW_FD; }
+    explicit OwnedFd(RawFd fd) noexcept: fd_(fd) {}
+    OwnedFd(OwnedFd const&)        = delete;
+    auto operator=(OwnedFd const&) = delete;
+    OwnedFd(OwnedFd&& other) noexcept: fd_(other.fd_) { other.fd_ = INVALID_RAW_FD; }
     auto operator=(OwnedFd&& other) noexcept -> OwnedFd& {
         if (this != &other) {
             close_();
@@ -71,8 +69,8 @@ public:
         if (new_fd < 0) return Err(Error::from_raw_os_error(libc::get_errno()));
         return Ok(OwnedFd { new_fd });
 #else
-        return Err(Error::from_kind(rstd::io::error::ErrorKind {
-            rstd::io::error::ErrorKind::Unsupported }));
+        return Err(Error::from_kind(
+            rstd::io::error::ErrorKind { rstd::io::error::ErrorKind::Unsupported }));
 #endif
     }
 
