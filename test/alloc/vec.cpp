@@ -2,6 +2,7 @@
 import rstd;
 
 using namespace rstd::prelude;
+using rstd::string::String;
 using rstd::vec::Vec;
 
 TEST(Vec, BasicPushPop) {
@@ -146,4 +147,18 @@ TEST(Vec, Resize) {
     v.resize(1, 0);
     EXPECT_EQ(v.len(), 1);
     EXPECT_EQ(v[0], 5);
+}
+
+TEST(Vec, CloneOwnsIndependentElements) {
+    auto values = Vec<String>::make();
+    values.push(String::make("alpha"));
+    values.push(String::make("beta"));
+
+    auto cloned = rstd::as<rstd::clone::Clone>(values).clone();
+    values[0].push_back('!');
+
+    ASSERT_EQ(cloned.len(), 2u);
+    EXPECT_EQ(values[0], "alpha!");
+    EXPECT_EQ(cloned[0], "alpha");
+    EXPECT_EQ(cloned[1], "beta");
 }

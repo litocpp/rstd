@@ -90,8 +90,6 @@ class Vec {
     RawVec<T> m_buf;
     usize     m_len;
 
-    static_assert(Impled<T, Sized>);
-
     constexpr explicit Vec(RawVec<T> buf, usize len): m_buf(buf), m_len(len) {}
 
 public:
@@ -405,6 +403,20 @@ struct VecIntoIter : rstd::DefaultInClass<VecIntoIter<T>, rstd::iter::Iterator> 
 
 namespace rstd
 {
+template<typename T>
+    requires Impled<T, clone::Clone>
+struct Impl<clone::Clone, ::alloc::vec::Vec<T>>
+    : DefaultInImpl<clone::Clone, ::alloc::vec::Vec<T>> {
+    auto clone() const -> ::alloc::vec::Vec<T> {
+        auto& source = this->self();
+        auto  result = ::alloc::vec::Vec<T>::with_capacity(source.len());
+        for (usize i = 0; i < source.len(); ++i) {
+            result.push(as<clone::Clone>(source[i]).clone());
+        }
+        return result;
+    }
+};
+
 template<typename U, mtp::same_as<cmp::PartialEq<::alloc::vec::Vec<U>>> T>
 struct Impl<T, ::alloc::vec::Vec<U>> : DefaultInImpl<T, ::alloc::vec::Vec<U>> {
     auto eq(const ::alloc::vec::Vec<U>& other) const noexcept -> bool {

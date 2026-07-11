@@ -310,11 +310,13 @@ class BTreeMap {
     Option<Box<TreeNode>> root;
     usize                 length;
 
-    static bool equivalent(const K& left, const K& right) {
+    template<typename Q>
+    static bool equivalent(const K& left, const Q& right) {
         return ! (left < right) && ! (right < left);
     }
 
-    static auto lower_bound(const TreeNode& node, const K& key) -> usize {
+    template<typename Q>
+    static auto lower_bound(const TreeNode& node, const Q& key) -> usize {
         usize index = 0;
         while (index < node.len && node.key(index) < key) ++index;
         return index;
@@ -482,7 +484,8 @@ class BTreeMap {
         return remove_max(*child);
     }
 
-    static auto remove_from_internal(TreeNode& node, usize index, const K& key) -> Option<Entry> {
+    template<typename Q>
+    static auto remove_from_internal(TreeNode& node, usize index, const Q& key) -> Option<Entry> {
         auto* left  = node.child(index);
         auto* right = node.child(index + 1);
         if (left->len >= B) {
@@ -505,7 +508,8 @@ class BTreeMap {
         return remove_from_node(merged, key);
     }
 
-    static auto remove_from_node(TreeNode& node, const K& key) -> Option<Entry> {
+    template<typename Q>
+    static auto remove_from_node(TreeNode& node, const Q& key) -> Option<Entry> {
         usize index = lower_bound(node, key);
         if (index < node.len && equivalent(node.key(index), key)) {
             if (node.leaf) return Some(node.remove_entry(index));
@@ -646,7 +650,13 @@ public:
         return old;
     }
 
-    auto get(const K& key) const -> Option<rstd::ref<V>> {
+    template<typename Q>
+    auto get(const Q& key) const -> Option<rstd::ref<V>>
+        requires requires(const K& stored, const Q& borrowed) {
+            stored < borrowed;
+            borrowed < stored;
+        }
+    {
         auto* node = root_node();
         while (node != nullptr) {
             usize index = lower_bound(*node, key);
@@ -659,7 +669,13 @@ public:
         return None();
     }
 
-    auto get_mut(const K& key) -> Option<rstd::mut_ref<V>> {
+    template<typename Q>
+    auto get_mut(const Q& key) -> Option<rstd::mut_ref<V>>
+        requires requires(const K& stored, const Q& borrowed) {
+            stored < borrowed;
+            borrowed < stored;
+        }
+    {
         auto* node = root_node();
         while (node != nullptr) {
             usize index = lower_bound(*node, key);
@@ -672,7 +688,13 @@ public:
         return None();
     }
 
-    auto get_key_value(const K& key) const -> Option<rstd::tuple<rstd::ref<K>, rstd::ref<V>>> {
+    template<typename Q>
+    auto get_key_value(const Q& key) const -> Option<rstd::tuple<rstd::ref<K>, rstd::ref<V>>>
+        requires requires(const K& stored, const Q& borrowed) {
+            stored < borrowed;
+            borrowed < stored;
+        }
+    {
         auto* node = root_node();
         while (node != nullptr) {
             usize index = lower_bound(*node, key);
@@ -687,9 +709,23 @@ public:
         return None();
     }
 
-    auto contains_key(const K& key) const -> bool { return get(key).is_some(); }
+    template<typename Q>
+    auto contains_key(const Q& key) const -> bool
+        requires requires(const K& stored, const Q& borrowed) {
+            stored < borrowed;
+            borrowed < stored;
+        }
+    {
+        return get(key).is_some();
+    }
 
-    auto remove_entry(const K& key) -> Option<Entry> {
+    template<typename Q>
+    auto remove_entry(const Q& key) -> Option<Entry>
+        requires requires(const K& stored, const Q& borrowed) {
+            stored < borrowed;
+            borrowed < stored;
+        }
+    {
         if (root.is_none()) return None();
         auto removed = remove_from_node(*root_node(), key);
         if (removed.is_some()) --length;
@@ -698,7 +734,13 @@ public:
         return removed;
     }
 
-    auto remove(const K& key) -> Option<V> {
+    template<typename Q>
+    auto remove(const Q& key) -> Option<V>
+        requires requires(const K& stored, const Q& borrowed) {
+            stored < borrowed;
+            borrowed < stored;
+        }
+    {
         auto entry = remove_entry(key);
         if (entry.is_none()) return None();
         return Some(rstd::move(entry->template get<1>()));
@@ -760,6 +802,50 @@ public:
 
 namespace rstd
 {
+
+template<typename K, typename V>
+    requires Impled<K, clone::Clone> && Impled<V, clone::Clone>
+struct Impl<clone::Clone, ::alloc::collections::BTreeMap<K, V>>
+    : DefaultInImpl<clone::Clone, ::alloc::collections::BTreeMap<K, V>> {
+    auto clone() const -> ::alloc::collections::BTreeMap<K, V> {
+        auto result = ::alloc::collections::BTreeMap<K, V>::make();
+        auto iter   = this->self().iter();
+        for (auto item = iter.next(); item.is_some(); item = iter.next()) {
+            result.insert(as<clone::Clone>(*item->template get<0>()).clone(),
+                          as<clone::Clone>(*item->template get<1>()).clone());
+        }
+        return result;
+    }
+};
+
+template<typename K, typename V>
+    requires requires(const K& left_key,
+                      const K& right_key,
+                      const V& left_value,
+                      const V& right_value) {
+        left_key == right_key;
+        left_value == right_value;
+    }
+struct Impl<cmp::PartialEq<::alloc::collections::BTreeMap<K, V>>,
+            ::alloc::collections::BTreeMap<K, V>>
+    : DefaultInImpl<cmp::PartialEq<::alloc::collections::BTreeMap<K, V>>,
+                    ::alloc::collections::BTreeMap<K, V>> {
+    auto eq(const ::alloc::collections::BTreeMap<K, V>& other) const noexcept -> bool {
+        auto& self = this->self();
+        if (self.len() != other.len()) return false;
+
+        auto left  = self.iter();
+        auto right = other.iter();
+        for (auto lhs = left.next(), rhs = right.next(); lhs.is_some();
+             lhs = left.next(), rhs = right.next()) {
+            if (*lhs->template get<0>() != *rhs->template get<0>() ||
+                *lhs->template get<1>() != *rhs->template get<1>()) {
+                return false;
+            }
+        }
+        return true;
+    }
+};
 
 template<typename K, typename V>
 struct Impl<iter::FromIterator<tuple<K, V>>, ::alloc::collections::BTreeMap<K, V>>

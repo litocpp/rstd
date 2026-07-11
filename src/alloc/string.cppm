@@ -79,19 +79,25 @@ public:
     /// Returns a reference to the string as a `CStr`.
     /// \return A `ref<CStr>` view of the string data.
     auto as_ref() const noexcept -> ref<ffi::CStr> {
-        auto p = as_cast<ffi::CStr const*>(&*vec.as_ptr());
+        auto p = as_cast<ffi::CStr const*>(vec.as_ptr().as_raw_ptr());
         return ref<ffi::CStr>::from_raw_parts(p, vec.len());
     }
 
     /// Converts the `String` to a `ref<str>` string slice.
     constexpr operator ref<str>() const {
-        return ref<str>::from_raw_parts(&*vec.as_ptr(), vec.len());
+        return ref<str>::from_raw_parts(vec.as_ptr().as_raw_ptr(), vec.len());
     }
 
     /// Appends a `char` to the end of this string.
     void push_back(char c) { vec.push(static_cast<u8>(c)); }
     /// Appends a byte to the end of this string.
     void push_back(u8 c) { vec.push(rstd::move(c)); }
+
+    /// Appends a UTF-8 string slice.
+    void push_str(ref<str> value) {
+        if (value.size() == 0) return;
+        vec.extend_from_slice(slice<u8>::from_raw_parts(value.data(), value.size()));
+    }
 
     /// Appends a Unicode code point, encoding as UTF-8.
     void push(char32_t cp) {
@@ -105,7 +111,7 @@ public:
 
     /// Returns a string slice of the entire `String`.
     constexpr auto as_str() const noexcept -> ref<str> {
-        return ref<str>::from_raw_parts(&*vec.as_ptr(), vec.len());
+        return ref<str>::from_raw_parts(vec.as_ptr().as_raw_ptr(), vec.len());
     }
 
     /// Returns the byte length of this string.
@@ -136,7 +142,19 @@ public:
         return rstd::lexicographical_compare_three_way(
             a.vec.begin(), a.vec.end(), ptr, ptr + b.len());
     }
-    friend bool operator==(char const* b, const String& a) noexcept {
+    friend constexpr auto operator<=>(const String& a, ref<str> b) noexcept {
+        return rstd::lexicographical_compare_three_way(
+            a.vec.begin(), a.vec.end(), b.begin(), b.end());
+    }
+    friend constexpr auto operator<=>(ref<str> a, const String& b) noexcept {
+        return rstd::lexicographical_compare_three_way(
+            a.begin(), a.end(), b.vec.begin(), b.vec.end());
+    }
+    friend constexpr bool operator==(const String& a, ref<str> b) noexcept {
+        return a.size() == b.size() && rstd::mem::memcmp(a.begin(), b.begin(), a.size()) == 0;
+    }
+    friend constexpr bool operator==(ref<str> a, const String& b) noexcept { return b == a; }
+    friend bool           operator==(char const* b, const String& a) noexcept {
         return rstd::lexicographical_compare_three_way(
                    a.vec.begin(), a.vec.end(), b, b + rstd::strlen(b)) ==
                rstd::strong_ordering::equal;

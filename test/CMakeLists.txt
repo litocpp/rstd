@@ -35,6 +35,10 @@ set(
   alloc/string.cpp
   collections/btree_map.cpp
   collections/hash_map.cpp
+  json/number.cpp
+  json/value.cpp
+  json/parser.cpp
+  json/module.cpp
   iter/iterator.cpp
   sys/sync/mutex/futex.cpp
   thread/thread.cpp
@@ -124,6 +128,11 @@ add_rstd_compile_fail(
   compile_fail/trait_direct_api_mismatch.cpp
   Trait.DirectApiMismatchFailure
   "rstd::Impled failed: direct trait implementation does not satisfy trait API")
+add_rstd_compile_fail(
+  rstd_compile_fail_std_does_not_export_json
+  compile_fail/std_does_not_export_json.cpp
+  JsonModule.StdDoesNotExportJson
+  "no member named 'json' in namespace 'rstd'")
 
 if(OFF)
 add_executable(nostd nostd/main.cpp)

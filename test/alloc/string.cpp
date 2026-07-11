@@ -27,3 +27,23 @@ TEST(String, CloneCopiesBytes) {
     EXPECT_EQ(original, "hello!");
     EXPECT_EQ(cloned, "hello");
 }
+
+TEST(String, BorrowedComparisonUsesAllBytes) {
+    auto text = String::make("alpha");
+
+    EXPECT_EQ(text, rstd::ref<rstd::str>("alpha"));
+    EXPECT_EQ(rstd::ref<rstd::str>("alpha"), text);
+    EXPECT_LT(text, rstd::ref<rstd::str>("beta"));
+    EXPECT_GT(rstd::ref<rstd::str>("beta"), text);
+
+    const rstd::u8 embedded[] = { 'a', 0, 'b' };
+    auto           owned      = String::make(rstd::ref<rstd::str>(embedded, 3));
+    EXPECT_EQ(owned, rstd::ref<rstd::str>(embedded, 3));
+    EXPECT_NE(owned, rstd::ref<rstd::str>(embedded, 2));
+}
+
+TEST(String, PushStrAppendsCompleteSlice) {
+    auto text = String::make("left");
+    text.push_str("-右");
+    EXPECT_EQ(text, rstd::ref<rstd::str>("left-右"));
+}

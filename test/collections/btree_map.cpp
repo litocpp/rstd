@@ -3,6 +3,7 @@ import rstd;
 
 using namespace rstd::prelude;
 using rstd::collections::BTreeMap;
+using rstd::string::String;
 namespace iter = rstd::iter;
 
 namespace
@@ -271,4 +272,35 @@ TEST(BTreeMap, MoveOnlyKeysAndMapMovesRemainValid) {
     destination = rstd::move(empty);
     EXPECT_TRUE(destination.is_empty());
     EXPECT_TRUE(empty.is_empty());
+}
+
+TEST(BTreeMap, BorrowedStringLookupAndRemoval) {
+    auto map = BTreeMap<String, i32>::make();
+    map.insert(String::make("alpha"), 1);
+    map.insert(String::make("beta"), 2);
+
+    auto alpha = ref<rstd::str>("alpha");
+    ASSERT_TRUE(map.contains_key(alpha));
+    ASSERT_TRUE(map.get(alpha).is_some());
+    EXPECT_EQ(**map.get(alpha), 1);
+
+    auto beta = ref<rstd::str>("beta");
+    ASSERT_TRUE(map.get_mut(beta).is_some());
+    **map.get_mut(beta) = 20;
+    EXPECT_EQ(map.remove(beta), Some(20));
+    EXPECT_FALSE(map.contains_key(beta));
+}
+
+TEST(BTreeMap, CloneAndEqualityUseOwnedEntries) {
+    auto map = BTreeMap<String, String>::make();
+    map.insert(String::make("a"), String::make("one"));
+    map.insert(String::make("b"), String::make("two"));
+
+    auto cloned = rstd::as<rstd::clone::Clone>(map).clone();
+    EXPECT_EQ(map, cloned);
+
+    **cloned.get_mut(ref<rstd::str>("a")) = String::make("changed");
+    EXPECT_NE(map, cloned);
+    EXPECT_EQ(**map.get(ref<rstd::str>("a")), "one");
+    EXPECT_EQ(**cloned.get(ref<rstd::str>("a")), "changed");
 }

@@ -38,9 +38,9 @@ namespace rstd::str_
 
 /// Validates a byte slice as UTF-8 and returns a string slice on success.
 export constexpr auto from_utf8(slice<u8> bytes) noexcept -> Option<ref<str>> {
-    if (char_::is_valid_utf8(&*bytes, bytes.len())) {
+    if (char_::is_valid_utf8(bytes.as_raw_ptr(), bytes.len())) {
         ref<str> r;
-        r.p      = &*bytes;
+        r.p      = bytes.as_raw_ptr();
         r.length = bytes.len();
         return Some(rstd::move(r));
     }
