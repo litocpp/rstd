@@ -33,6 +33,7 @@ set(
   alloc/vec.cpp
   alloc/sync.cpp
   alloc/string.cpp
+  collections/btree_map.cpp
   iter/iterator.cpp
   sys/sync/mutex/futex.cpp
   thread/thread.cpp

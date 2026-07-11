@@ -43,6 +43,13 @@ export namespace vec
 using rstd_alloc::vec::Vec;
 } // namespace vec
 
+/// Ordered collection types.
+export namespace collections
+{
+/// An ordered map backed by a B-tree.
+using rstd_alloc::collections::BTreeMap;
+} // namespace collections
+
 // export namespace borrow = rstd_alloc::borrow;
 // export namespace rstd_alloc::fmt;
 // export namespace rstd_alloc::format;

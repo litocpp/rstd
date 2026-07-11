@@ -17,4 +17,7 @@ target_sources(
          sync.cppm
          ffi/mod.cppm
          ffi/c_str.cppm
-         vec/mod.cppm)
+         vec/mod.cppm
+         collections/mod.cppm
+         collections/btree/node.cppm
+         collections/btree/map.cppm)

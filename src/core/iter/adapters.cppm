@@ -11,11 +11,23 @@ struct Map : DefaultInClass<Map<I, F>, Iterator> {
     F f;
     Map(I in, F fn): i(rstd::move(in)), f(rstd::move(fn)) {}
     auto next() -> Option<Item> {
-        auto x = i.next();
+        auto x = as<Iterator>(i).next();
         if (x.is_none()) return rstd::None();
         return rstd::Some(f(rstd::move(*x)));
     }
-    auto size_hint() const -> SizeHint { return i.size_hint(); }
+    auto size_hint() const -> SizeHint { return as<Iterator>(i).size_hint(); }
+    auto next_back() -> Option<Item>
+        requires Impled<I, DoubleEndedIterator>
+    {
+        auto x = as<DoubleEndedIterator>(i).next_back();
+        if (x.is_none()) return rstd::None();
+        return rstd::Some(f(rstd::move(*x)));
+    }
+    auto len() const -> usize
+        requires Impled<I, ExactSizeIterator>
+    {
+        return as<ExactSizeIterator>(i).len();
+    }
 };
 
 template<class I, class F>

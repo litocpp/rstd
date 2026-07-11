@@ -7,3 +7,4 @@ export import :vec;
 export import :ffi;
 export import :string;
 export import :sync;
+export import :collections;

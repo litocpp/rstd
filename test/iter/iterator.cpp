@@ -10,6 +10,47 @@ using rstd::vec::Vec;
 using rstd::string::String;
 namespace iter = rstd::iter;
 
+namespace
+{
+
+struct ExternalDoubleEnded : DefaultInClass<ExternalDoubleEnded, iter::Iterator> {
+    using Item = i32;
+
+    i32 front;
+    i32 back;
+
+    ExternalDoubleEnded(i32 first, i32 last): front(first), back(last) {}
+
+    auto next() -> Option<Item> {
+        if (front == back) return None();
+        return Some(front++);
+    }
+
+    auto pop_back() -> Option<Item> {
+        if (front == back) return None();
+        return Some(--back);
+    }
+
+    auto remaining() const -> usize { return static_cast<usize>(back - front); }
+};
+
+} // namespace
+
+namespace rstd
+{
+
+template<>
+struct Impl<iter::DoubleEndedIterator, ExternalDoubleEnded> : ImplBase<ExternalDoubleEnded> {
+    auto next_back() -> Option<i32> { return this->self().pop_back(); }
+};
+
+template<>
+struct Impl<iter::ExactSizeIterator, ExternalDoubleEnded> : ImplBase<ExternalDoubleEnded> {
+    auto len() const -> usize { return this->self().remaining(); }
+};
+
+} // namespace rstd
+
 TEST(Iter, RangeCollect) {
     auto v = iter::range(0, 5).collect<Vec<i32>>();
     ASSERT_EQ(v.len(), 5u);
@@ -38,6 +79,58 @@ TEST(Iter, MapFilterChain) {
     ASSERT_EQ(v.len(), 7u);
     EXPECT_EQ(v[0], 6);
     EXPECT_EQ(v[6], 18);
+}
+
+TEST(Iter, MapPreservesIteratorCapabilities) {
+    i32  calls  = 0;
+    auto mapped = iter::range(0, 5).map([&](i32 x) {
+        ++calls;
+        return rstd::tuple<i32, i32>(x, calls);
+    });
+
+    EXPECT_EQ(calls, 0);
+    EXPECT_EQ(mapped.size_hint().get<0>(), 5u);
+    EXPECT_EQ(mapped.size_hint().get<1>(), Some(5u));
+    EXPECT_EQ(mapped.len(), 5u);
+
+    auto back = mapped.next_back();
+    ASSERT_TRUE(back.is_some());
+    EXPECT_EQ(back->get<0>(), 4);
+    EXPECT_EQ(back->get<1>(), 1);
+
+    auto front = mapped.next();
+    ASSERT_TRUE(front.is_some());
+    EXPECT_EQ(front->get<0>(), 0);
+    EXPECT_EQ(front->get<1>(), 2);
+    EXPECT_EQ(mapped.len(), 3u);
+    EXPECT_EQ(mapped.size_hint().get<0>(), 3u);
+
+    auto next_back = rstd::as<iter::DoubleEndedIterator>(mapped).next_back();
+    ASSERT_TRUE(next_back.is_some());
+    EXPECT_EQ(next_back->get<0>(), 3);
+    EXPECT_EQ(next_back->get<1>(), 3);
+    EXPECT_EQ(rstd::as<iter::ExactSizeIterator>(mapped).len(), 2u);
+}
+
+TEST(Iter, MapUsesInnerTraitInterfaces) {
+    auto mapped = ExternalDoubleEnded { 0, 4 }.map([](i32 x) {
+        return x * 10;
+    });
+    static_assert(rstd::Impled<decltype(mapped), iter::DoubleEndedIterator>);
+    static_assert(rstd::Impled<decltype(mapped), iter::ExactSizeIterator>);
+
+    EXPECT_EQ(mapped.next(), Some(0));
+    EXPECT_EQ(mapped.next_back(), Some(30));
+    EXPECT_EQ(mapped.len(), 2u);
+
+    auto source       = iter::from_fn([]() -> Option<i32> {
+        return None();
+    });
+    auto forward_only = rstd::move(source).map([](i32 x) {
+        return x;
+    });
+    static_assert(! rstd::Impled<decltype(forward_only), iter::DoubleEndedIterator>);
+    static_assert(! rstd::Impled<decltype(forward_only), iter::ExactSizeIterator>);
 }
 
 TEST(Iter, TakeSkipStepBy) {
