@@ -20,4 +20,7 @@ target_sources(
          vec/mod.cppm
          collections/mod.cppm
          collections/btree/node.cppm
-         collections/btree/map.cppm)
+         collections/btree/map.cppm
+         collections/hash/table.cppm
+         collections/hash/map.cppm
+         hash/random.cppm)

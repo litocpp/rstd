@@ -34,6 +34,7 @@ set(
   alloc/sync.cpp
   alloc/string.cpp
   collections/btree_map.cpp
+  collections/hash_map.cpp
   iter/iterator.cpp
   sys/sync/mutex/futex.cpp
   thread/thread.cpp

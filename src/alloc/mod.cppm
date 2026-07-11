@@ -8,3 +8,4 @@ export import :ffi;
 export import :string;
 export import :sync;
 export import :collections;
+export import :hash.random;

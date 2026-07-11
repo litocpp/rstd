@@ -48,6 +48,8 @@ export namespace collections
 {
 /// An ordered map backed by a B-tree.
 using rstd_alloc::collections::BTreeMap;
+/// A hash map using open addressing.
+using rstd_alloc::collections::HashMap;
 } // namespace collections
 
 // export namespace borrow = rstd_alloc::borrow;

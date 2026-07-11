@@ -188,6 +188,13 @@ using ::alloc::string::ToString;
 namespace rstd
 {
 template<>
+struct Impl<hash::Hash, String> : ImplBase<String> {
+    void hash(hash::DefaultHasher& state) const noexcept {
+        state.write(reinterpret_cast<const u8*>(this->self().data()), this->self().size());
+    }
+};
+
+template<>
 struct Impl<fmt::Write, String> : ImplBase<String> {
     auto write_str(const u8* p, usize len) -> bool {
         auto& self = this->self();
