@@ -1,3 +1,5 @@
+module;
+#include <rstd/macro.hpp>
 export module rstd.core:ffi.c_str;
 export import :marker;
 export import :core;
@@ -35,6 +37,10 @@ struct Impl<ptr_::Pointee, CStr> {
 
 template<>
 struct ref<CStr> : ref_base<ref<CStr>, CStr, false> {
+    USE_TRAIT(ref)
+
+    using Target = CStr;
+
     CStr const* p { nullptr };
     usize       length { 1 };
 
@@ -43,16 +49,34 @@ struct ref<CStr> : ref_base<ref<CStr>, CStr, false> {
     auto to_bytes() const noexcept -> slice<u8> {
         return slice<u8>::from_raw_parts(reinterpret_cast<u8 const*>(p), length);
     }
+
+    constexpr auto deref() const noexcept -> ref<Target> { return *this; }
 };
 
 template<>
-struct mut_ref<CStr> : ref_base<ref<CStr>, CStr, true> {
+struct mut_ref<CStr> : ref_base<mut_ref<CStr>, CStr, true> {
+    USE_TRAIT(mut_ref)
+
+    using Target = CStr;
+
     CStr* p { nullptr };
     usize length { 1 };
 
     auto count_bytes() const noexcept { return length; }
     auto is_empty() const noexcept { return length == 0; }
+
+    constexpr auto deref() const noexcept -> ref<Target> { return this->as_ref(); }
+    constexpr auto deref_mut() noexcept -> mut_ref<Target> { return *this; }
 };
+
+template<>
+struct Impl<ops::Deref, ref<CStr>> : LinkClassMethod<ops::Deref, ref<CStr>> {};
+
+template<>
+struct Impl<ops::Deref, mut_ref<CStr>> : LinkClassMethod<ops::Deref, mut_ref<CStr>> {};
+
+template<>
+struct Impl<ops::DerefMut, mut_ref<CStr>> : LinkClassMethod<ops::DerefMut, mut_ref<CStr>> {};
 
 namespace ffi
 {

@@ -1,5 +1,9 @@
+module;
+#include <rstd/macro.hpp>
 export module rstd.core:ptr.ptr;
 export import :ptr.metadata;
+export import :ops.deref;
+export import :cmp;
 
 namespace rstd
 {
@@ -13,16 +17,6 @@ struct ptr;
 /// \tparam T The pointee type.
 export template<typename T>
 struct mut_ptr;
-
-/// An immutable reference wrapper, analogous to Rust's `&T`.
-/// \tparam T The referenced type.
-export template<typename T>
-struct ref;
-
-/// A mutable reference wrapper, analogous to Rust's `&mut T`.
-/// \tparam T The referenced type.
-export template<typename T>
-struct mut_ref;
 
 template<typename T, typename U>
 auto from_raw_parts(U* self) noexcept -> T {
@@ -49,11 +43,6 @@ export template<typename Self, typename T, bool Mutable>
 struct ref_base {
     /// we only process T[] for value_type
     using value_type = mtp::cond<Mutable, mtp::rm_ext<T>, mtp::add_const<mtp::rm_ext<T>>>;
-
-    constexpr value_type* operator->() const noexcept { return static_cast<Self const*>(this)->p; }
-    constexpr value_type& operator*() const noexcept {
-        return *(static_cast<Self const*>(this)->p);
-    }
 
     constexpr rstd::strong_ordering operator<=>(const ref_base& o) const noexcept = default;
 
@@ -231,39 +220,59 @@ template<typename T>
 struct ref : ref_base<ref<T>, T, false> {
     static_assert(! mtp::is_const<T>);
 
+    USE_TRAIT(ref)
+
+    using Target = T;
+
     T const* p { nullptr };
 
-    using Self = ref;
+    constexpr auto deref() const noexcept -> ref<T> { return *this; }
 };
 
 template<mtp::DSTArray T>
 struct ref<T> : ref_base<ref<T>, T, false> {
     static_assert(! mtp::is_const<T>);
+
+    USE_TRAIT(ref)
+
+    using Target        = T;
     using value_type    = mtp::rm_ext<T>;
     using metadata_type = usize;
 
     value_type const* p { nullptr };
     metadata_type     length;
 
-    using Self = ref;
+    constexpr auto deref() const noexcept -> ref<T> { return *this; }
 };
 
 template<typename T>
 struct mut_ref : ref_base<mut_ref<T>, T, true> {
     static_assert(! mtp::is_const<T>);
-    using Self = mut_ref;
+
+    USE_TRAIT(mut_ref)
+
+    using Target = T;
 
     T* p { nullptr };
+
+    constexpr auto deref() const noexcept -> ref<T> { return this->as_ref(); }
+    constexpr auto deref_mut() noexcept -> mut_ref<T> { return *this; }
 };
 
 template<mtp::DSTArray T>
 struct mut_ref<T> : ref_base<mut_ref<T>, T, true> {
     static_assert(! mtp::is_const<T>);
+
+    USE_TRAIT(mut_ref)
+
+    using Target     = T;
     using value_type = mtp::rm_ext<T>;
-    using Self       = mut_ref;
 
     value_type* p { nullptr };
     usize       length;
+
+    constexpr auto deref() const noexcept -> ref<T> { return this->as_ref(); }
+    constexpr auto deref_mut() noexcept -> mut_ref<T> { return *this; }
 };
 
 template<typename T>
@@ -307,5 +316,19 @@ struct mut_ptr<T> : ptr_base<mut_ptr<T>, T, true> {
 /// \tparam T The element type.
 export template<typename T>
 using slice = ref<T[]>;
+
+} // namespace rstd
+
+namespace rstd
+{
+
+template<typename T>
+struct Impl<ops::Deref, ref<T>> : LinkClassMethod<ops::Deref, ref<T>> {};
+
+template<typename T>
+struct Impl<ops::Deref, mut_ref<T>> : LinkClassMethod<ops::Deref, mut_ref<T>> {};
+
+template<typename T>
+struct Impl<ops::DerefMut, mut_ref<T>> : LinkClassMethod<ops::DerefMut, mut_ref<T>> {};
 
 } // namespace rstd

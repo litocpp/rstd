@@ -2,12 +2,17 @@
 
 #include <atomic>
 #include <thread>
+#include <type_traits>
 #include <vector>
 
 import rstd;
 
 using rstd::sync::Arc;
 using rstd::sync::Weak;
+
+static_assert(rstd::Impled<Arc<int>, rstd::ops::Deref>);
+static_assert(rstd::Impled<Arc<int>, rstd::ops::DerefMut>);
+static_assert(! rstd::Impled<Weak<int>, rstd::ops::Deref>);
 
 namespace
 {
@@ -58,6 +63,26 @@ TEST(ArcBasic, MakeAndDeref) {
     EXPECT_EQ(*a, 42);
     EXPECT_EQ(a.strong_count(), 1u);
     EXPECT_EQ(a.weak_count(), 0u);
+}
+
+TEST(ArcBasic, DerefSupportsSharedMutation) {
+    auto arc = Arc<Payload>::make(5);
+    auto shared = arc.clone();
+
+    EXPECT_EQ(arc.deref().as_raw_ptr(), arc.as_ptr());
+    EXPECT_EQ(rstd::as<rstd::ops::Deref>(arc).deref().as_raw_ptr(), arc.as_ptr());
+    EXPECT_EQ(rstd::as<rstd::ops::DerefMut>(arc).deref_mut().as_raw_ptr(), arc.as_ptr());
+    EXPECT_EQ(&*arc, arc.as_ptr());
+    static_assert(std::is_same_v<decltype(*arc), Payload&>);
+
+    arc->x = 8;
+    EXPECT_EQ(shared->x, 8);
+
+    const auto& const_handle = arc;
+    static_assert(rstd::ops::ConstDerefMut<Arc<Payload>>);
+    static_assert(std::is_same_v<decltype(*const_handle), Payload&>);
+    const_handle->x = 13;
+    EXPECT_EQ(shared->x, 13);
 }
 
 TEST(ArcBasic, CopyIncrementsStrong) {

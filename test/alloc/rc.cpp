@@ -1,10 +1,14 @@
 #include <gtest/gtest.h>
 #include <string>
+#include <type_traits>
 
 import rstd;
 
 using namespace rstd;
 using namespace rstd::rc;
+
+static_assert(rstd::Impled<Rc<int>, rstd::ops::Deref>);
+static_assert(! rstd::Impled<Rc<int>, rstd::ops::DerefMut>);
 
 struct TestStruct {
     int   value;
@@ -65,6 +69,16 @@ TEST(Rc, MakeRc) {
     auto rc = make_rc<std::string>("test");
     EXPECT_EQ(*rc, "test");
     EXPECT_EQ(rc.strong_count(), 1);
+}
+
+TEST(Rc, DerefIsImmutable) {
+    auto rc = make_rc<TestStruct>(7, nullptr);
+
+    EXPECT_EQ(rc.deref().as_raw_ptr(), rc.get());
+    EXPECT_EQ(rstd::as<rstd::ops::Deref>(rc).deref().as_raw_ptr(), rc.get());
+    EXPECT_EQ(&*rc, rc.get());
+    static_assert(std::is_same_v<decltype(*rc), const TestStruct&>);
+    EXPECT_EQ(rc->value, 7);
 }
 
 TEST(Rc, CopyAndMove) {

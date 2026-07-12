@@ -1,3 +1,5 @@
+module;
+#include <rstd/macro.hpp>
 export module rstd:path;
 export import :ffi;
 export import rstd.alloc;
@@ -233,10 +235,13 @@ constexpr auto Components::remaining_start() const noexcept -> usize {
 /// A borrowed reference to a filesystem path.
 template<>
 struct ref<path::Path> : ref_base<ref<path::Path>, u8[], false> {
+    USE_TRAIT(ref)
+
+    using Target = path::Path;
+
     u8 const* p { nullptr };
     usize     length { 0 };
 
-    using Self               = ref;
     constexpr ref() noexcept = default;
     constexpr ref(u8 const* p, usize len) noexcept: p(p), length(len) {}
 
@@ -392,7 +397,12 @@ struct ref<path::Path> : ref_base<ref<path::Path>, u8[], false> {
     }
 
     constexpr operator bool() const { return length > 0 && p != nullptr; }
+
+    constexpr auto deref() const noexcept -> ref<Target> { return *this; }
 };
+
+template<>
+struct Impl<ops::Deref, ref<path::Path>> : LinkClassMethod<ops::Deref, ref<path::Path>> {};
 
 } // namespace rstd
 

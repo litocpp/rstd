@@ -27,6 +27,8 @@ class Box {
 public:
     USE_TRAIT(Box)
 
+    using Target = T;
+
     ~Box() { reset(); }
     Box(const Box&) noexcept            = delete;
     Box& operator=(const Box&) noexcept = delete;
@@ -113,10 +115,10 @@ public:
         return m_ptr.as_mut_ptr().as_raw_ptr();
     }
 
-    /// Dereferences the `Box`, providing mutable access to the inner value.
-    constexpr auto operator->() noexcept { return m_ptr.as_mut_ptr(); }
-    /// Dereferences the `Box`, providing const access to the inner value.
-    constexpr auto operator->() const noexcept { return m_ptr.as_ptr(); }
+    /// Returns an immutable borrow of the contained value.
+    constexpr auto deref() const noexcept -> ref<T> { return as_ref(); }
+    /// Returns a mutable borrow of the contained value.
+    constexpr auto deref_mut() noexcept -> mut_ref<T> { return m_ptr.as_mut_ptr().as_mut_ref(); }
     /// Returns `true` if this `Box` holds a valid (non-null) pointer.
     explicit constexpr operator bool() const noexcept { return ! rstd::mem::all(m_ptr, 0); }
 
@@ -193,5 +195,13 @@ struct Impl<T, ::alloc::boxed::Box<A>> : LinkClassMethod<T, ::alloc::boxed::Box<
 template<typename A, mtp::same_as<Clone> T>
     requires requires(::alloc::boxed::Box<A> b) { b.clone(); }
 struct Impl<T, ::alloc::boxed::Box<A>> : LinkClassMethod<T, ::alloc::boxed::Box<A>> {};
+
+template<typename A>
+struct Impl<ops::Deref, ::alloc::boxed::Box<A>>
+    : LinkClassMethod<ops::Deref, ::alloc::boxed::Box<A>> {};
+
+template<typename A>
+struct Impl<ops::DerefMut, ::alloc::boxed::Box<A>>
+    : LinkClassMethod<ops::DerefMut, ::alloc::boxed::Box<A>> {};
 
 } // namespace rstd

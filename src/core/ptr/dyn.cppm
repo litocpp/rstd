@@ -186,10 +186,14 @@ export using ptr_::dyn;
 
 template<typename A>
 struct ref<dyn<A>> : dyn_ptr_base<A const> {
+    using Target     = dyn<A>;
     using delegate_t = dyn_delegate<A const>;
+
     static auto from_raw_parts(delegate_t::ptr_t p, delegate_t::vtable_t const* v) -> ref {
         return { { { .p = p, .vtable = v } } };
     }
+
+    constexpr auto deref() const noexcept -> ref<Target> { return *this; }
 };
 template<typename A>
 struct ptr<dyn<A>> : dyn_ptr_base<A const> {
@@ -201,10 +205,15 @@ struct ptr<dyn<A>> : dyn_ptr_base<A const> {
 
 template<typename A>
 struct mut_ref<dyn<A>> : dyn_ptr_base<A> {
+    using Target     = dyn<A>;
     using delegate_t = dyn_delegate<A>;
+
     static auto from_raw_parts(delegate_t::ptr_t p, delegate_t::vtable_t const* v) -> mut_ref {
         return { { { .p = p, .vtable = v } } };
     }
+
+    constexpr auto deref() const noexcept -> ref<Target> { return this->as_ref(); }
+    constexpr auto deref_mut() noexcept -> mut_ref<Target> { return *this; }
 };
 template<typename A>
 struct mut_ptr<dyn<A>> : dyn_ptr_base<A> {
@@ -223,6 +232,16 @@ template<typename A>
 struct Impl<Sized, dyn<A>> {
     ~Impl() = delete;
 };
+
+template<typename A>
+struct Impl<ops::Deref, ref<dyn<A>>> : LinkClassMethod<ops::Deref, ref<dyn<A>>> {};
+
+template<typename A>
+struct Impl<ops::Deref, mut_ref<dyn<A>>> : LinkClassMethod<ops::Deref, mut_ref<dyn<A>>> {};
+
+template<typename A>
+struct Impl<ops::DerefMut, mut_ref<dyn<A>>>
+    : LinkClassMethod<ops::DerefMut, mut_ref<dyn<A>>> {};
 
 namespace ptr_
 {

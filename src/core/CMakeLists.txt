@@ -71,6 +71,7 @@ target_sources(
          ptr/metadata.cppm
          ptr/ptr.cppm
          ops/mod.cppm
+         ops/deref.cppm
          ops/function.cppm
          iter/mod.cppm
          iter/traits.cppm

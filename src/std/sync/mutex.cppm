@@ -25,6 +25,10 @@ class MutexGuard {
     auto raw_lock() noexcept -> sys_mutex_t& { return *m_lock; }
 
 public:
+    USE_TRAIT(MutexGuard)
+
+    using Target = T;
+
     MutexGuard(sys_mutex_t* l, T* d): m_lock(l), m_data(d) { m_lock->lock(); }
 
     ~MutexGuard() {
@@ -48,8 +52,9 @@ public:
         return *this;
     }
 
-    auto operator*() -> T& { return *m_data; }
-    auto operator->() -> T* { return m_data; }
+    auto deref() const noexcept -> ref<T> { return ref<T>::from_raw_parts(m_data); }
+
+    auto deref_mut() noexcept -> mut_ref<T> { return mut_ref<T>::from_raw_parts(m_data); }
 };
 
 /// A mutual exclusion primitive useful for protecting shared data.
@@ -75,3 +80,16 @@ public:
 };
 
 } // namespace rstd::sync
+
+namespace rstd
+{
+
+template<typename T>
+struct Impl<ops::Deref, sync::MutexGuard<T>>
+    : LinkClassMethod<ops::Deref, sync::MutexGuard<T>> {};
+
+template<typename T>
+struct Impl<ops::DerefMut, sync::MutexGuard<T>>
+    : LinkClassMethod<ops::DerefMut, sync::MutexGuard<T>> {};
+
+} // namespace rstd

@@ -2,6 +2,7 @@ module;
 #include <rstd/macro.hpp>
 export module rstd.core:mem.drop_guard;
 export import :cmp;
+export import :ops.deref;
 export import :mem.manually_drop;
 
 using rstd::mem::manually_drop::ManuallyDrop;

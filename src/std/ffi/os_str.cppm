@@ -1,3 +1,5 @@
+module;
+#include <rstd/macro.hpp>
 export module rstd:ffi.os_str;
 export import :io;
 export import rstd.alloc;
@@ -35,10 +37,13 @@ struct Impl<ptr_::Pointee, ffi::OsStr> {
 /// A borrowed reference to a platform-native string.
 template<>
 struct ref<ffi::OsStr> : ref_base<ref<ffi::OsStr>, u8[], false> {
+    USE_TRAIT(ref)
+
+    using Target = ffi::OsStr;
+
     u8 const* p { nullptr };
     usize     length { 0 };
 
-    using Self               = ref;
     constexpr ref() noexcept = default;
     constexpr ref(u8 const* p, usize len) noexcept: p(p), length(len) {}
 
@@ -91,6 +96,8 @@ struct ref<ffi::OsStr> : ref_base<ref<ffi::OsStr>, u8[], false> {
     constexpr auto data() const noexcept -> u8 const* { return p; }
 
     constexpr operator bool() const { return length > 0 && p != nullptr; }
+
+    constexpr auto deref() const noexcept -> ref<Target> { return *this; }
 };
 
 } // namespace rstd
@@ -191,7 +198,11 @@ struct Impl<fmt::Display, ref<ffi::OsStr>> : ImplBase<ref<ffi::OsStr>> {
         }
         return true;
     }
+
 };
+
+template<>
+struct Impl<ops::Deref, ref<ffi::OsStr>> : LinkClassMethod<ops::Deref, ref<ffi::OsStr>> {};
 
 template<>
 struct Impl<fmt::Debug, ref<ffi::OsStr>> : ImplBase<ref<ffi::OsStr>> {

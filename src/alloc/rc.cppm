@@ -1,3 +1,5 @@
+module;
+#include <rstd/macro.hpp>
 export module rstd.alloc:rc;
 export import rstd.core;
 
@@ -438,11 +440,6 @@ public:
         return p ? p->value : nullptr;
     }
 
-    auto operator*() const noexcept -> const_value_t& {
-        auto p = this->inner();
-        return *(p->value);
-    }
-    auto operator->() const noexcept -> const_value_t* { return get(); }
 };
 
 template<typename T>
@@ -462,21 +459,10 @@ public:
         auto p = this->inner();
         return p ? const_cast<value_t*>(p->value) : nullptr;
     }
-    auto operator*() noexcept -> value_t& {
-        auto p = this->inner();
-        return *const_cast<value_t*>(p->value);
-    }
-    auto operator->() noexcept -> value_t* { return get(); }
-
     auto get() const noexcept -> const_value_t* {
         auto p = this->inner();
         return p ? p->value : nullptr;
     }
-    auto operator*() const noexcept -> const_value_t& {
-        auto p = this->inner();
-        return *(p->value);
-    }
-    auto operator->() const noexcept -> const_value_t* { return get(); }
 };
 template<typename F>
 class RcAdaptor<const F> : public RcBase<const F> {
@@ -492,11 +478,6 @@ public:
         auto p = this->inner();
         return p ? p->value : nullptr;
     }
-    auto operator*() const noexcept -> const_value_t& {
-        auto p = this->inner();
-        return *(p->value);
-    }
-    auto operator->() const noexcept -> const_value_t* { return get(); }
 };
 
 /// A single-threaded reference-counting pointer, analogous to Rust's `Rc<T>`.
@@ -508,6 +489,10 @@ class Rc final : public RcAdaptor<T> {
     explicit Rc(inner_t* p) noexcept: RcAdaptor<T>(p) {}
 
 public:
+    USE_TRAIT(Rc)
+
+    using Target = mtp::rm_const<T>;
+
     /// Creates an empty `Rc` that does not point to any allocation.
     Rc(): Rc((inner_t*)nullptr) {}
     ~Rc() { RcBase<T>::drop(); }
@@ -562,6 +547,15 @@ public:
     auto clone() const noexcept(noexp) -> Rc {
         if (this->m_ptr) this->m_ptr->inc_strong();
         return Rc(this->m_ptr);
+    }
+
+    /// Returns an immutable borrow of the managed value.
+    auto deref() const noexcept -> ref<Target> {
+        if constexpr (mtp::is_array<Target>) {
+            return ref<Target>::from_raw_parts(this->get(), this->size());
+        } else {
+            return ref<Target>::from_raw_parts(this->get());
+        }
     }
 
     /// Swaps the inner pointers of two `Rc`s.
@@ -647,3 +641,12 @@ void swap(Rc<T>& lhs, Rc<T>& rhs) noexcept {
     lhs.swap(rhs);
 }
 } // namespace alloc::rc
+
+namespace rstd
+{
+
+template<typename T>
+struct Impl<ops::Deref, ::alloc::rc::Rc<T>>
+    : LinkClassMethod<ops::Deref, ::alloc::rc::Rc<T>> {};
+
+} // namespace rstd

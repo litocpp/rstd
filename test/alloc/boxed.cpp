@@ -1,8 +1,13 @@
 #include <gtest/gtest.h>
 
+#include <type_traits>
+
 import rstd;
 
 using rstd::boxed::Box;
+
+static_assert(rstd::Impled<Box<int>, rstd::ops::Deref>);
+static_assert(rstd::Impled<Box<int>, rstd::ops::DerefMut>);
 
 namespace
 {
@@ -41,6 +46,29 @@ TEST(BoxTest, MakeAndAccess) {
         EXPECT_EQ(Counter::alive, 1);
     }
     EXPECT_EQ(Counter::alive, 0);
+}
+
+TEST(BoxTest, DerefUsesBorrowProjection) {
+    auto box = Box<Counter>::make(4);
+
+    EXPECT_EQ(box.deref().as_raw_ptr(), box.get());
+    EXPECT_EQ(rstd::as<rstd::ops::Deref>(box).deref().as_raw_ptr(), box.get());
+    EXPECT_EQ(&*box, box.get());
+
+    static_assert(std::is_same_v<decltype(*box), Counter&>);
+    const auto& const_box = box;
+    static_assert(std::is_same_v<decltype(*const_box), const Counter&>);
+
+    box->v = 8;
+    EXPECT_EQ(const_box->v, 8);
+}
+
+TEST(BoxTest, DynArrowKeepsDelegateAliveForFullExpression) {
+    int calls = 0;
+    auto callback = Box<rstd::dyn<rstd::FnMut<void()>>>::make([&calls] { ++calls; });
+
+    callback->operator()();
+    EXPECT_EQ(calls, 1);
 }
 
 TEST(BoxTest, MoveCtorTransfersOwnership) {

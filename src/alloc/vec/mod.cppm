@@ -95,6 +95,8 @@ class Vec {
 public:
     USE_TRAIT(Vec)
 
+    using Target = T[];
+
     /// Creates an empty `Vec` with no allocation.
     constexpr Vec(): m_buf(), m_len(0) {}
 
@@ -163,6 +165,12 @@ public:
     constexpr auto as_mut_slice() noexcept -> mut_ptr<T[]> {
         if (m_len == 0) return {};
         return mut_ptr<T[]>::from_raw_parts(m_buf.ptr.as_mut_ptr().as_raw_ptr(), m_len);
+    }
+
+    constexpr auto deref() const noexcept -> ref<Target> { return as_slice(); }
+
+    constexpr auto deref_mut() noexcept -> mut_ref<Target> {
+        return as_mut_slice().as_mut_ref();
     }
 
     /// Returns a const pointer to the first element of the vector.
@@ -423,6 +431,14 @@ template<typename T>
     requires Impled<T, clone::Clone>
 struct Impl<clone::Clone, ::alloc::vec::Vec<T>>
     : LinkClassMethod<clone::Clone, ::alloc::vec::Vec<T>> {};
+
+template<typename T>
+struct Impl<ops::Deref, ::alloc::vec::Vec<T>>
+    : LinkClassMethod<ops::Deref, ::alloc::vec::Vec<T>> {};
+
+template<typename T>
+struct Impl<ops::DerefMut, ::alloc::vec::Vec<T>>
+    : LinkClassMethod<ops::DerefMut, ::alloc::vec::Vec<T>> {};
 
 template<typename U, mtp::same_as<cmp::PartialEq<::alloc::vec::Vec<U>>> T>
 struct Impl<T, ::alloc::vec::Vec<U>> : DefaultInImpl<T, ::alloc::vec::Vec<U>> {

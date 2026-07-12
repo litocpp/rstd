@@ -1,3 +1,5 @@
+module;
+#include <rstd/macro.hpp>
 export module rstd.core:str.str;
 export import :core;
 export import :fmt;
@@ -39,10 +41,12 @@ struct Impl<ptr_::Pointee, str_::Str> {
 template<>
 struct ref<str_::Str> : ref_base<ref<str_::Str>, u8[], false> {
 public:
+    USE_TRAIT(ref)
+
+    using Target = str_::Str;
+
     u8 const* p { nullptr };
     usize     length { 0 };
-
-    using Self = ref;
 
     constexpr ref() noexcept = default;
 
@@ -68,7 +72,12 @@ public:
     constexpr auto end() const { return p + length; }
 
     constexpr operator bool() const { return length > 0 && p != nullptr; }
+
+    constexpr auto deref() const noexcept -> ref<Target> { return *this; }
 };
+
+template<>
+struct Impl<ops::Deref, ref<str_::Str>> : LinkClassMethod<ops::Deref, ref<str_::Str>> {};
 
 /// Type alias for the unsized string type.
 export using str = str_::Str;

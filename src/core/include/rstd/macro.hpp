@@ -16,15 +16,43 @@
 #define RSTD_OS_UNIX 1
 #endif
 
-#define USE_TRAIT(Class)                                                    \
-    using Self = Class;                                                     \
-    template<typename, typename>                                            \
-    friend struct rstd::Impl;                                               \
+#define RSTD_DETAIL_PARTIAL_EQ_OPERATORS()                                  \
     template<typename _USE_TRAIT_T>                                         \
         requires rstd::Impled<Self, rstd::cmp::PartialEq<_USE_TRAIT_T>>     \
     friend bool operator==(const Self& a, const _USE_TRAIT_T& b) noexcept { \
         return as<rstd::cmp::PartialEq<_USE_TRAIT_T>>(a).eq(b);             \
     }
+
+#define RSTD_DETAIL_DEREF_OPERATORS()                                      \
+    template<typename _USE_TRAIT_SELF = Self>                              \
+        requires rstd::Impled<_USE_TRAIT_SELF, rstd::ops::Deref>           \
+    constexpr decltype(auto) operator*() const noexcept {                  \
+        return rstd::ops::deref_value(                                     \
+            static_cast<const _USE_TRAIT_SELF&>(*this));                   \
+    }                                                                      \
+    template<typename _USE_TRAIT_SELF = Self>                              \
+        requires rstd::Impled<_USE_TRAIT_SELF, rstd::ops::DerefMut>        \
+    constexpr decltype(auto) operator*() noexcept {                        \
+        return rstd::ops::deref_value(static_cast<_USE_TRAIT_SELF&>(*this)); \
+    }                                                                      \
+    template<typename _USE_TRAIT_SELF = Self>                              \
+        requires rstd::Impled<_USE_TRAIT_SELF, rstd::ops::Deref>           \
+    constexpr auto operator->() const noexcept {                           \
+        return rstd::ops::deref_arrow(                                     \
+            static_cast<const _USE_TRAIT_SELF&>(*this));                   \
+    }                                                                      \
+    template<typename _USE_TRAIT_SELF = Self>                              \
+        requires rstd::Impled<_USE_TRAIT_SELF, rstd::ops::DerefMut>        \
+    constexpr auto operator->() noexcept {                                 \
+        return rstd::ops::deref_arrow(static_cast<_USE_TRAIT_SELF&>(*this)); \
+    }
+
+#define USE_TRAIT(Class)             \
+    using Self = Class;              \
+    template<typename, typename>     \
+    friend struct rstd::Impl;        \
+    RSTD_DETAIL_PARTIAL_EQ_OPERATORS() \
+    RSTD_DETAIL_DEREF_OPERATORS()
 
 #define RSTD_STR(a, ...)   #a
 #define RSTD_FIRST(a, ...) a

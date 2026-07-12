@@ -20,6 +20,7 @@ endif()
 set(
   RSTD_TEST_SOURCES
   trait.cpp
+  deref.cpp
   result.cpp
   try_async.cpp
   compile.cpp
@@ -167,6 +168,11 @@ add_rstd_compile_fail(
   compile_fail/try_incompatible_error.cpp
   Try.IncompatibleErrorFailure
   "no viable conversion|could not convert")
+add_rstd_compile_fail(
+  rstd_compile_fail_deref_mut_without_deref
+  compile_fail/deref_mut_without_deref.cpp
+  Deref.DerefMutWithoutDerefFailure
+  "constraints not satisfied|Impled.*Deref")
 
 if(OFF)
 add_executable(nostd nostd/main.cpp)

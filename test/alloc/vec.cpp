@@ -1,6 +1,9 @@
 #include <gtest/gtest.h>
 import rstd;
 
+static_assert(rstd::Impled<rstd::vec::Vec<int>, rstd::ops::Deref>);
+static_assert(rstd::Impled<rstd::vec::Vec<int>, rstd::ops::DerefMut>);
+
 using namespace rstd::prelude;
 using rstd::string::String;
 using rstd::vec::Vec;

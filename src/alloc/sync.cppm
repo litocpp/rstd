@@ -182,9 +182,6 @@ export template<typename T>
 class Arc : public DefaultInClass<Arc<T>, Clone> {
     ArcData<T> self;
 
-    template<typename, typename>
-    friend struct rstd::Impl;
-
     template<typename>
     friend class Weak;
 
@@ -194,6 +191,9 @@ class Arc : public DefaultInClass<Arc<T>, Clone> {
     constexpr Arc(ArcData<T> s): self(s) {}
 
 public:
+    USE_TRAIT(Arc)
+
+    using Target       = T;
     using element_type = T;
 
     // Copy
@@ -269,15 +269,10 @@ public:
         return Arc<V> { { .inner = inner } };
     }
 
-    /// Dereferences the `Arc`, returning a mutable reference to the inner value.
-    ref<T> operator*() noexcept { return self.inner->data().as_ref(); }
-    /// Dereferences the `Arc`, returning a const reference to the inner value.
-    ref<const T> operator*() const noexcept { return self.inner->data().to_ref(); }
-
-    /// Provides pointer-like mutable access to the inner value.
-    T* operator->() noexcept { return self.inner->data(); }
-    /// Provides pointer-like const access to the inner value.
-    T* operator->() const noexcept { return self.inner->data(); }
+    /// Returns an immutable borrow of the managed value.
+    auto deref() const noexcept -> ref<T> { return self.inner->data().as_ref(); }
+    /// Returns a mutable borrow of the managed value.
+    auto deref_mut() const noexcept -> mut_ref<T> { return self.inner->data().as_mut_ref(); }
     /// Returns `true` if this `Arc` is non-empty.
     explicit operator bool() const noexcept { return self.inner != nullptr; }
 
@@ -453,3 +448,16 @@ auto Arc<T>::downgrade() const noexcept -> Weak<T> {
 }
 
 } // namespace alloc::sync
+
+namespace rstd
+{
+
+template<typename T>
+struct Impl<ops::Deref, ::alloc::sync::Arc<T>>
+    : LinkClassMethod<ops::Deref, ::alloc::sync::Arc<T>> {};
+
+template<typename T>
+struct Impl<ops::DerefMut, ::alloc::sync::Arc<T>>
+    : LinkClassMethod<ops::DerefMut, ::alloc::sync::Arc<T>> {};
+
+} // namespace rstd
