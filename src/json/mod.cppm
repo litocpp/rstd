@@ -5,3 +5,4 @@ export import :number;
 export import :error;
 export import :value;
 export import :parser;
+export import :serialize;

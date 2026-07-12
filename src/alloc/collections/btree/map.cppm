@@ -631,6 +631,26 @@ public:
     auto len() const noexcept -> usize { return length; }
     auto is_empty() const noexcept -> bool { return length == 0; }
 
+    auto clone() const -> BTreeMap
+        requires rstd::Impled<K, rstd::clone::Clone> &&
+                 rstd::Impled<V, rstd::clone::Clone>
+    {
+        auto result = BTreeMap::make();
+        auto source = iter();
+        for (auto item = source.next(); item.is_some(); item = source.next()) {
+            result.insert(rstd::as<rstd::clone::Clone>(*item->template get<0>()).clone(),
+                          rstd::as<rstd::clone::Clone>(*item->template get<1>()).clone());
+        }
+        return result;
+    }
+
+    void clone_from(BTreeMap& source)
+        requires rstd::Impled<K, rstd::clone::Clone> &&
+                 rstd::Impled<V, rstd::clone::Clone>
+    {
+        *this = source.clone();
+    }
+
     void clear() {
         root   = None();
         length = 0;
@@ -806,17 +826,7 @@ namespace rstd
 template<typename K, typename V>
     requires Impled<K, clone::Clone> && Impled<V, clone::Clone>
 struct Impl<clone::Clone, ::alloc::collections::BTreeMap<K, V>>
-    : DefaultInImpl<clone::Clone, ::alloc::collections::BTreeMap<K, V>> {
-    auto clone() const -> ::alloc::collections::BTreeMap<K, V> {
-        auto result = ::alloc::collections::BTreeMap<K, V>::make();
-        auto iter   = this->self().iter();
-        for (auto item = iter.next(); item.is_some(); item = iter.next()) {
-            result.insert(as<clone::Clone>(*item->template get<0>()).clone(),
-                          as<clone::Clone>(*item->template get<1>()).clone());
-        }
-        return result;
-    }
-};
+    : LinkClassMethod<clone::Clone, ::alloc::collections::BTreeMap<K, V>> {};
 
 template<typename K, typename V>
     requires requires(const K& left_key,

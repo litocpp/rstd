@@ -20,12 +20,14 @@ TEST(String, ToString) {
 
 TEST(String, CloneCopiesBytes) {
     auto original = String::make("hello");
-    auto cloned   = rstd::as<rstd::clone::Clone>(original).clone();
+    auto direct   = original.clone();
+    auto abstract = rstd::as<rstd::clone::Clone>(original).clone();
 
     original.push_back('!');
 
     EXPECT_EQ(original, "hello!");
-    EXPECT_EQ(cloned, "hello");
+    EXPECT_EQ(direct, "hello");
+    EXPECT_EQ(abstract, "hello");
 }
 
 TEST(String, BorrowedComparisonUsesAllBytes) {

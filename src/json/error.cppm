@@ -12,6 +12,7 @@ enum class ErrorCode : u8
 {
     EofWhileParsingList,
     EofWhileParsingObject,
+    EofWhileParsingComment,
     EofWhileParsingString,
     EofWhileParsingValue,
     ExpectedColon,
@@ -72,6 +73,7 @@ public:
         switch (code_) {
         case detail::ErrorCode::EofWhileParsingList:
         case detail::ErrorCode::EofWhileParsingObject:
+        case detail::ErrorCode::EofWhileParsingComment:
         case detail::ErrorCode::EofWhileParsingString:
         case detail::ErrorCode::EofWhileParsingValue: return Category::Eof;
         default: return Category::Syntax;
@@ -116,6 +118,9 @@ auto Impl<fmt::Display, json::Error>::fmt(fmt::Formatter& formatter) const -> bo
     case json::detail::ErrorCode::EofWhileParsingList: message = "EOF while parsing a list"; break;
     case json::detail::ErrorCode::EofWhileParsingObject:
         message = "EOF while parsing an object";
+        break;
+    case json::detail::ErrorCode::EofWhileParsingComment:
+        message = "EOF while parsing a comment";
         break;
     case json::detail::ErrorCode::EofWhileParsingString:
         message = "EOF while parsing a string";

@@ -38,6 +38,7 @@ set(
   json/number.cpp
   json/value.cpp
   json/parser.cpp
+  json/serialize.cpp
   json/module.cpp
   iter/iterator.cpp
   sys/sync/mutex/futex.cpp

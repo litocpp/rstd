@@ -104,6 +104,24 @@ TEST(JsonParser, RejectsInvalidGrammar) {
     EXPECT_TRUE(control_result.unwrap_err().is_syntax());
 }
 
+TEST(JsonParser, CommentsRequireExplicitOption) {
+    const auto comments = rstd::json::ParseOptions { .allow_comments = true };
+
+    EXPECT_TRUE(parse("/* comment */ null").is_err());
+    EXPECT_TRUE(rstd::json::from_str("/* comment */ null", comments).unwrap().is_null());
+    EXPECT_EQ((*rstd::json::from_str("[1, // line\n 2, /* block */ 3]", comments)
+                    .unwrap()
+                    .as_array()
+                    .unwrap())
+                  .len(),
+              3u);
+    EXPECT_TRUE(rstd::json::from_str("1 // trailing", comments).is_ok());
+
+    auto unterminated = rstd::json::from_str("/* unterminated", comments);
+    ASSERT_TRUE(unterminated.is_err());
+    EXPECT_TRUE(unterminated.unwrap_err().is_eof());
+}
+
 TEST(JsonParser, ClassifiesTruncatedInputAsEof) {
     expect_eof_error("");
     expect_eof_error("[");

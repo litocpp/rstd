@@ -301,6 +301,22 @@ public:
     /// Returns `true` if the vector contains no elements.
     constexpr bool is_empty() const { return m_len == 0; }
 
+    auto clone() const -> Vec
+        requires rstd::Impled<T, rstd::clone::Clone>
+    {
+        auto result = Vec::with_capacity(m_len);
+        for (usize i = 0; i < m_len; ++i) {
+            result.push(rstd::as<rstd::clone::Clone>((*this)[i]).clone());
+        }
+        return result;
+    }
+
+    void clone_from(Vec& source)
+        requires rstd::Impled<T, rstd::clone::Clone>
+    {
+        *this = source.clone();
+    }
+
     /// Clears the vector, destroying all elements but not deallocating memory.
     constexpr void clear() {
         auto* p = m_buf.ptr.as_mut_ptr().as_raw_ptr();
@@ -406,16 +422,7 @@ namespace rstd
 template<typename T>
     requires Impled<T, clone::Clone>
 struct Impl<clone::Clone, ::alloc::vec::Vec<T>>
-    : DefaultInImpl<clone::Clone, ::alloc::vec::Vec<T>> {
-    auto clone() const -> ::alloc::vec::Vec<T> {
-        auto& source = this->self();
-        auto  result = ::alloc::vec::Vec<T>::with_capacity(source.len());
-        for (usize i = 0; i < source.len(); ++i) {
-            result.push(as<clone::Clone>(source[i]).clone());
-        }
-        return result;
-    }
-};
+    : LinkClassMethod<clone::Clone, ::alloc::vec::Vec<T>> {};
 
 template<typename U, mtp::same_as<cmp::PartialEq<::alloc::vec::Vec<U>>> T>
 struct Impl<T, ::alloc::vec::Vec<U>> : DefaultInImpl<T, ::alloc::vec::Vec<U>> {

@@ -12,8 +12,14 @@ export namespace rstd::json
 
 using ParseResult = rstd::Result<Value, Error>;
 
+struct ParseOptions {
+    bool allow_comments { false };
+};
+
 auto from_str(ref<str> input) -> ParseResult;
+auto from_str(ref<str> input, ParseOptions options) -> ParseResult;
 auto from_slice(slice<u8> input) -> ParseResult;
+auto from_slice(slice<u8> input, ParseOptions options) -> ParseResult;
 
 } // namespace rstd::json
 
@@ -26,6 +32,7 @@ class Parser {
     usize    line_ { 1 };
     usize    column_ { 1 };
     u8       remaining_depth_ { 128 };
+    ParseOptions options_;
 
     [[nodiscard]]
     auto eof() const noexcept -> bool {
@@ -35,6 +42,11 @@ class Parser {
     [[nodiscard]]
     auto peek() const noexcept -> u8 {
         return eof() ? u8(0) : input_.data()[offset_];
+    }
+
+    [[nodiscard]]
+    auto peek_next() const noexcept -> u8 {
+        return offset_ + 1 >= input_.size() ? u8(0) : input_.data()[offset_ + 1];
     }
 
     auto take() noexcept -> u8 {
@@ -48,16 +60,42 @@ class Parser {
         return byte;
     }
 
-    void consume_whitespace() noexcept {
+    auto consume_whitespace() noexcept -> Option<Error> {
         while (! eof()) {
             switch (peek()) {
             case ' ':
             case '\n':
             case '\r':
             case '\t': take(); break;
-            default: return;
+            default:
+                if (! options_.allow_comments || peek() != '/') return None();
+                if (peek_next() == '/') {
+                    take();
+                    take();
+                    while (! eof() && peek() != '\n') take();
+                    break;
+                }
+                if (peek_next() == '*') {
+                    take();
+                    take();
+                    while (! eof()) {
+                        if (peek() == '*' && peek_next() == '/') {
+                            take();
+                            take();
+                            break;
+                        }
+                        take();
+                    }
+                    if (eof() && (offset_ < 2 || input_.data()[offset_ - 2] != '*' ||
+                                  input_.data()[offset_ - 1] != '/')) {
+                        return Some(error(ErrorCode::EofWhileParsingComment));
+                    }
+                    break;
+                }
+                return None();
             }
         }
+        return None();
     }
 
     [[nodiscard]]
@@ -337,7 +375,7 @@ class Parser {
         if (remaining_depth_ == 1) return Err(error(ErrorCode::RecursionLimitExceeded));
         --remaining_depth_;
         take();
-        consume_whitespace();
+        if (auto failure = consume_whitespace(); failure.is_some()) return Err(*failure);
 
         auto values = Array::make();
         if (! eof() && peek() == ']') {
@@ -351,7 +389,7 @@ class Parser {
             auto value = parse_value();
             if (value.is_err()) return Err(value.unwrap_err());
             values.push(value.unwrap());
-            consume_whitespace();
+            if (auto failure = consume_whitespace(); failure.is_some()) return Err(*failure);
 
             if (eof()) return Err(error(ErrorCode::EofWhileParsingList));
             if (peek() == ']') {
@@ -361,7 +399,7 @@ class Parser {
             }
             if (peek() != ',') return Err(error(ErrorCode::ExpectedListCommaOrEnd));
             take();
-            consume_whitespace();
+            if (auto failure = consume_whitespace(); failure.is_some()) return Err(*failure);
             if (eof()) return Err(error(ErrorCode::EofWhileParsingValue));
             if (peek() == ']') return Err(error(ErrorCode::TrailingComma));
         }
@@ -372,7 +410,7 @@ class Parser {
         if (remaining_depth_ == 1) return Err(error(ErrorCode::RecursionLimitExceeded));
         --remaining_depth_;
         take();
-        consume_whitespace();
+        if (auto failure = consume_whitespace(); failure.is_some()) return Err(*failure);
 
         auto values = Map::make();
         if (! eof() && peek() == '}') {
@@ -386,7 +424,7 @@ class Parser {
             if (peek() != '"') return Err(error(ErrorCode::KeyMustBeAString));
             auto key = parse_string();
             if (key.is_err()) return Err(key.unwrap_err());
-            consume_whitespace();
+            if (auto failure = consume_whitespace(); failure.is_some()) return Err(*failure);
 
             if (eof()) return Err(error(ErrorCode::EofWhileParsingObject));
             if (peek() != ':') return Err(error(ErrorCode::ExpectedColon));
@@ -394,7 +432,7 @@ class Parser {
             auto value = parse_value();
             if (value.is_err()) return Err(value.unwrap_err());
             values.insert(key.unwrap(), value.unwrap());
-            consume_whitespace();
+            if (auto failure = consume_whitespace(); failure.is_some()) return Err(*failure);
 
             if (eof()) return Err(error(ErrorCode::EofWhileParsingObject));
             if (peek() == '}') {
@@ -404,7 +442,7 @@ class Parser {
             }
             if (peek() != ',') return Err(error(ErrorCode::ExpectedObjectCommaOrEnd));
             take();
-            consume_whitespace();
+            if (auto failure = consume_whitespace(); failure.is_some()) return Err(*failure);
             if (eof()) return Err(error(ErrorCode::EofWhileParsingValue));
             if (peek() == '}') return Err(error(ErrorCode::TrailingComma));
             if (peek() != '"') return Err(error(ErrorCode::KeyMustBeAString));
@@ -412,7 +450,8 @@ class Parser {
     }
 
 public:
-    explicit Parser(ref<str> input) noexcept: input_(input) {}
+    explicit Parser(ref<str> input, ParseOptions options = {}) noexcept
+        : input_(input), options_(options) {}
 
     [[nodiscard]]
     static auto invalid_unicode_error() noexcept -> Error {
@@ -421,7 +460,7 @@ public:
 
     [[nodiscard]]
     auto parse_value() -> ParseResult {
-        consume_whitespace();
+        if (auto failure = consume_whitespace(); failure.is_some()) return Err(*failure);
         if (eof()) return Err(error(ErrorCode::EofWhileParsingValue));
 
         switch (peek()) {
@@ -446,7 +485,7 @@ public:
     auto parse() -> ParseResult {
         auto value = parse_value();
         if (value.is_err()) return Err(value.unwrap_err());
-        consume_whitespace();
+        if (auto failure = consume_whitespace(); failure.is_some()) return Err(*failure);
         if (! eof()) return Err(error(ErrorCode::TrailingCharacters));
         return value;
     }
@@ -461,12 +500,20 @@ auto from_str(ref<str> input) -> ParseResult {
     return detail::Parser(input).parse();
 }
 
+auto from_str(ref<str> input, ParseOptions options) -> ParseResult {
+    return detail::Parser(input, options).parse();
+}
+
 auto from_slice(slice<u8> input) -> ParseResult {
+    return from_slice(input, {});
+}
+
+auto from_slice(slice<u8> input, ParseOptions options) -> ParseResult {
     auto text = str_::from_utf8(input);
     if (text.is_none()) {
         return Err(detail::Parser::invalid_unicode_error());
     }
-    return from_str(*text);
+    return from_str(*text, options);
 }
 
 } // namespace rstd::json

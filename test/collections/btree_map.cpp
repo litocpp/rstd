@@ -38,6 +38,11 @@ struct MoveOnlyKey {
     }
 };
 
+template<typename T>
+concept ConcreteCloneable = requires(const T& value) { value.clone(); };
+
+static_assert(! ConcreteCloneable<BTreeMap<MoveOnlyKey, i32>>);
+
 } // namespace
 
 TEST(BTreeMap, BasicLookupAndReplacement) {
@@ -150,6 +155,42 @@ TEST(BTreeMap, MutableAndOwningIterators) {
         EXPECT_EQ(item->get<1>(), expected == 10 ? 1001 : expected + 1);
     }
     EXPECT_TRUE(owned.next().is_none());
+}
+
+TEST(BTreeMap, IteratorItemsSupportStructuredBindings) {
+    auto map = BTreeMap<i32, TrackedValue>::make();
+    map.insert(2, TrackedValue(20));
+
+    {
+        auto item = map.iter().next();
+        ASSERT_TRUE(item.is_some());
+        auto [key, value] = item.unwrap();
+        EXPECT_EQ(*key, 2);
+        EXPECT_EQ(value->value, 20);
+    }
+
+    {
+        auto item = map.iter_mut().next();
+        ASSERT_TRUE(item.is_some());
+        auto [key, value] = item.unwrap();
+        EXPECT_EQ(*key, 2);
+        value->value = 21;
+    }
+
+    {
+        const auto& const_map = map;
+        auto        item      = const_map.iter().next();
+        ASSERT_TRUE(item.is_some());
+        const auto [key, value] = item.unwrap();
+        EXPECT_EQ(*key, 2);
+        EXPECT_EQ(value->value, 21);
+    }
+
+    auto item = map.into_iter().next();
+    ASSERT_TRUE(item.is_some());
+    auto [key, value] = item.unwrap();
+    EXPECT_EQ(key, 2);
+    EXPECT_EQ(value.value, 21);
 }
 
 TEST(BTreeMap, PopAndCollect) {
@@ -296,11 +337,14 @@ TEST(BTreeMap, CloneAndEqualityUseOwnedEntries) {
     map.insert(String::make("a"), String::make("one"));
     map.insert(String::make("b"), String::make("two"));
 
-    auto cloned = rstd::as<rstd::clone::Clone>(map).clone();
-    EXPECT_EQ(map, cloned);
+    auto direct   = map.clone();
+    auto abstract = rstd::as<rstd::clone::Clone>(map).clone();
+    EXPECT_EQ(map, direct);
+    EXPECT_EQ(map, abstract);
 
-    **cloned.get_mut(ref<rstd::str>("a")) = String::make("changed");
-    EXPECT_NE(map, cloned);
+    **direct.get_mut(ref<rstd::str>("a")) = String::make("changed");
+    EXPECT_NE(map, direct);
     EXPECT_EQ(**map.get(ref<rstd::str>("a")), "one");
-    EXPECT_EQ(**cloned.get(ref<rstd::str>("a")), "changed");
+    EXPECT_EQ(**direct.get(ref<rstd::str>("a")), "changed");
+    EXPECT_EQ(**abstract.get(ref<rstd::str>("a")), "one");
 }

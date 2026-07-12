@@ -36,14 +36,17 @@ TEST(JsonValue, ClonesRecursiveOwnership) {
     object.insert(String::make("items"), Value::Array(rstd::move(array)));
     auto value = Value::Object(rstd::move(object));
 
-    auto cloned = rstd::as<rstd::clone::Clone>(value).clone();
-    EXPECT_EQ(value, cloned);
+    auto direct   = value.clone();
+    auto abstract = rstd::as<rstd::clone::Clone>(value).clone();
+    EXPECT_EQ(value, direct);
+    EXPECT_EQ(value, abstract);
 
-    auto cloned_items = cloned.get_mut(rstd::ref<rstd::str>("items"));
+    auto cloned_items = direct.get_mut(rstd::ref<rstd::str>("items"));
     ASSERT_TRUE(cloned_items.is_some());
     **cloned_items = Value::Null();
 
-    EXPECT_NE(value, cloned);
+    EXPECT_NE(value, direct);
+    EXPECT_EQ(value, abstract);
     EXPECT_TRUE((**value.get(rstd::ref<rstd::str>("items"))).is_array());
 }
 

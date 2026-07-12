@@ -31,7 +31,7 @@ export using Map   = ::alloc::collections::BTreeMap<::alloc::string::String, Val
     V(Array, (rstd::json::Array value;))        \
     V(Object, (rstd::json::Map value;))
 
-export class Value {
+export class Value : public rstd::DefaultInClass<Value, rstd::clone::Clone> {
     RSTD_ENUM_BODY_WITH_DEFAULT(Value, RSTD_JSON_VALUE_VARIANTS, Null)
 
 private:
@@ -82,6 +82,10 @@ public:
     Value& operator=(const Value&)     = delete;
     Value(Value&&) noexcept            = default;
     Value& operator=(Value&&) noexcept = default;
+
+    auto clone() const -> Value;
+
+    void clone_from(Value& source) { *this = source.clone(); }
 
     [[nodiscard]]
     auto is_object() const noexcept -> bool {
@@ -337,40 +341,36 @@ public:
     }
 };
 
+auto Value::clone() const -> Value {
+    RSTD_MATCH(*this) {
+        RSTD_CASE(Null) {
+            return Value::Null();
+        }
+        RSTD_CASE(Bool, boolean) {
+            return Value::Bool(boolean);
+        }
+        RSTD_CASE(Number, number) {
+            return Value::Number(number);
+        }
+        RSTD_CASE(String, string) {
+            return Value::String(string.clone());
+        }
+        RSTD_CASE(Array, array) {
+            return Value::Array(array.clone());
+        }
+        RSTD_CASE(Object, object) {
+            return Value::Object(object.clone());
+        }
+    }
+    rstd::panic { "invalid JSON value" };
+}
+
 #undef RSTD_JSON_VALUE_VARIANTS
 
 } // namespace rstd::json
 
 namespace rstd
 {
-
-template<>
-struct Impl<clone::Clone, json::Value> : DefaultInImpl<clone::Clone, json::Value> {
-    auto clone() const -> json::Value {
-        auto& value = this->self();
-        RSTD_MATCH(value) {
-            RSTD_CASE(Null) {
-                return json::Value::Null();
-            }
-            RSTD_CASE(Bool, boolean) {
-                return json::Value::Bool(boolean);
-            }
-            RSTD_CASE(Number, number) {
-                return json::Value::Number(number);
-            }
-            RSTD_CASE(String, string) {
-                return json::Value::String(as<clone::Clone>(string).clone());
-            }
-            RSTD_CASE(Array, array) {
-                return json::Value::Array(as<clone::Clone>(array).clone());
-            }
-            RSTD_CASE(Object, object) {
-                return json::Value::Object(as<clone::Clone>(object).clone());
-            }
-        }
-        rstd::panic { "invalid JSON value" };
-    }
-};
 
 template<>
 struct Impl<cmp::PartialEq<json::Value>, json::Value>

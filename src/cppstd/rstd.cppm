@@ -2,6 +2,27 @@ export module rstd.cppstd;
 export import rstd;
 export import cppstd;
 
+export namespace rstd::cppstd
+{
+
+inline auto as_str(std::string_view value) noexcept -> ref<str> {
+    return ref<str>::from_raw_parts(reinterpret_cast<const u8*>(value.data()), value.size());
+}
+
+inline auto to_string(ref<str> value) -> std::string {
+    return { reinterpret_cast<const char*>(value.data()), value.size() };
+}
+
+inline auto as_string_view(ref<str> value) noexcept -> std::string_view {
+    return { reinterpret_cast<const char*>(value.data()), value.size() };
+}
+
+inline auto to_string(const string::String& value) -> std::string {
+    return to_string(value.as_str());
+}
+
+} // namespace rstd::cppstd
+
 namespace rstd
 {
 

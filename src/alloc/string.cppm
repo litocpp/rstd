@@ -71,6 +71,10 @@ public:
     /// Creates a `String` from a null-terminated C string (copies the bytes).
     static auto make(const char* s) -> String { return make(ref<str>(s)); }
 
+    auto clone() const -> String { return String::make(as_str()); }
+
+    void clone_from(String& source) { *this = source.clone(); }
+
     /// Creates a new `String` from a byte vector without checking UTF-8 validity.
     static auto from_utf8_unchecked(Vec<u8>&& bytes) -> String {
         return String { rstd::move(bytes) };
@@ -245,11 +249,7 @@ struct Impl<iter::FromIterator<u8>, String> : ImplBase<String> {
 };
 
 template<>
-struct Impl<clone::Clone, String> : DefaultInImpl<clone::Clone, String> {
-    auto clone() const -> String { return String::make(this->self().as_str()); }
-
-    void clone_from(String& source) { this->self() = String::make(source.as_str()); }
-};
+struct Impl<clone::Clone, String> : LinkClassMethod<clone::Clone, String> {};
 } // namespace rstd
 
 namespace rstd::fmt

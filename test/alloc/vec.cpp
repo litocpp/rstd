@@ -5,6 +5,25 @@ using namespace rstd::prelude;
 using rstd::string::String;
 using rstd::vec::Vec;
 
+namespace
+{
+
+template<typename T>
+concept ConcreteCloneable = requires(const T& value) { value.clone(); };
+
+struct MoveOnly {
+    MoveOnly()                            = default;
+    MoveOnly(const MoveOnly&)             = delete;
+    MoveOnly& operator=(const MoveOnly&)  = delete;
+    MoveOnly(MoveOnly&&)                  = default;
+    MoveOnly& operator=(MoveOnly&&)       = default;
+};
+
+static_assert(ConcreteCloneable<Vec<String>>);
+static_assert(! ConcreteCloneable<Vec<MoveOnly>>);
+
+} // namespace
+
 TEST(Vec, BasicPushPop) {
     Vec<int> v;
     EXPECT_EQ(v.len(), 0);
@@ -154,11 +173,15 @@ TEST(Vec, CloneOwnsIndependentElements) {
     values.push(String::make("alpha"));
     values.push(String::make("beta"));
 
-    auto cloned = rstd::as<rstd::clone::Clone>(values).clone();
+    auto direct   = values.clone();
+    auto abstract = rstd::as<rstd::clone::Clone>(values).clone();
     values[0].push_back('!');
 
-    ASSERT_EQ(cloned.len(), 2u);
+    ASSERT_EQ(direct.len(), 2u);
+    ASSERT_EQ(abstract.len(), 2u);
     EXPECT_EQ(values[0], "alpha!");
-    EXPECT_EQ(cloned[0], "alpha");
-    EXPECT_EQ(cloned[1], "beta");
+    EXPECT_EQ(direct[0], "alpha");
+    EXPECT_EQ(direct[1], "beta");
+    EXPECT_EQ(abstract[0], "alpha");
+    EXPECT_EQ(abstract[1], "beta");
 }

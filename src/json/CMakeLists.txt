@@ -14,4 +14,5 @@ target_sources(
          number.cppm
          error.cppm
          value.cppm
-         parser.cppm)
+         parser.cppm
+         serialize.cppm)
