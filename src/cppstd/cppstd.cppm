@@ -927,8 +927,8 @@ export using std::move_only_function;
 // operators defined as free functions in __gnu_cxx::. Without explicit export,
 // ADL can't find them through `import cppstd;`. Non-portable but needed for
 // libstdc++ — libc++ uses different iterator types, so this block is a no-op
-// elsewhere (guarded by __GLIBCXX__).
-#if defined(__GLIBCXX__) && __GLIBCXX__ <= 20260209
+// elsewhere (guarded by _GLIBCXX_RELEASE).
+#if defined(_GLIBCXX_RELEASE) && _GLIBCXX_RELEASE <= 15
 namespace __gnu_cxx
 {
 export using __gnu_cxx::operator==;
