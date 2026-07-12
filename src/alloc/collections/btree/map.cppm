@@ -3,8 +3,8 @@ module;
 
 export module rstd.alloc:collections.btree_map;
 export import :vec;
+export import :collections.btree_node;
 export import rstd.core;
-import :collections.btree_node;
 
 namespace alloc::collections
 {

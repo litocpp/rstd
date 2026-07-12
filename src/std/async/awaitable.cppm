@@ -119,7 +119,7 @@ concept IntoFutureInClass = requires(mtp::rm_cvf<A>& awaitable) {
 namespace rstd
 {
 
-export template<typename A>
+template<typename A>
     requires async::IntoFutureInClass<A>
 struct Impl<async::IntoFuture, A> : LinkClassMethod<async::IntoFuture, A> {};
 

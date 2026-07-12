@@ -32,6 +32,44 @@
 
 #define RSTD_REST_ARGS(a, ...) __VA_OPT__(, ) __VA_ARGS__
 
+#define RSTD_DETAIL_TRY_BODY_1(EXPR, RETURN)                                    \
+    __extension__({                                                             \
+        auto&& rstd_try_result_ = (EXPR);                                       \
+        static_assert(::rstd::try_::TrySource<decltype(rstd_try_result_)>,      \
+                      "rstd_try requires rstd::Result or rstd::Option");        \
+        if (! ::rstd::try_::is_success(rstd_try_result_)) {                     \
+            RETURN ::rstd::try_::take_residual(::rstd::move(rstd_try_result_)); \
+        }                                                                       \
+        ::rstd::try_::take_output(::rstd::move(rstd_try_result_));              \
+    })
+
+#define RSTD_DETAIL_TRY_BODY_2(EXPR, FALLBACK, RETURN)                                          \
+    __extension__({                                                                             \
+        auto&& rstd_try_result_ = (EXPR);                                                       \
+        static_assert(::rstd::try_::TrySource<decltype(rstd_try_result_)>,                      \
+                      "rstd_try requires rstd::Result or rstd::Option");                        \
+        if (! ::rstd::try_::is_success(rstd_try_result_)) {                                     \
+            auto&& _e = ::rstd::try_::take_failure(::rstd::move(rstd_try_result_));             \
+            RETURN ::rstd::try_::into_residual(                                                 \
+                ::rstd::try_::resolve_fallback((FALLBACK), ::rstd::forward<decltype(_e)>(_e))); \
+        }                                                                                       \
+        ::rstd::try_::take_output(::rstd::move(rstd_try_result_));                              \
+    })
+
+#define RSTD_DETAIL_TRY_1(EXPR) ::rstd::try_::finish(RSTD_DETAIL_TRY_BODY_1(EXPR, return))
+#define RSTD_DETAIL_TRY_2(EXPR, FALLBACK) \
+    ::rstd::try_::finish(RSTD_DETAIL_TRY_BODY_2(EXPR, FALLBACK, return))
+#define RSTD_DETAIL_CO_TRY_1(EXPR) ::rstd::try_::finish(RSTD_DETAIL_TRY_BODY_1(EXPR, co_return))
+#define RSTD_DETAIL_CO_TRY_2(EXPR, FALLBACK) \
+    ::rstd::try_::finish(RSTD_DETAIL_TRY_BODY_2(EXPR, FALLBACK, co_return))
+
+#define RSTD_DETAIL_SELECT_TRY(_1, _2, NAME, ...) NAME
+#define rstd_try(...) \
+    RSTD_DETAIL_SELECT_TRY(__VA_ARGS__, RSTD_DETAIL_TRY_2, RSTD_DETAIL_TRY_1)(__VA_ARGS__)
+#define rstd_co_try(...) \
+    RSTD_DETAIL_SELECT_TRY(__VA_ARGS__, RSTD_DETAIL_CO_TRY_2, RSTD_DETAIL_CO_TRY_1)(__VA_ARGS__)
+
+
 #ifdef NDEBUG
 #define debug_assert(...)    ((void)0)
 #define debug_assert_eq(...) ((void)0)

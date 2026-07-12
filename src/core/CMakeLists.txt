@@ -38,6 +38,7 @@ target_sources(
          clone.cppm
          option.cppm
          result.cppm
+         try.cppm
          enum.cppm
          task.cppm
          future.cppm

@@ -76,7 +76,9 @@ struct ref_base {
         return rstd::from_raw_parts<mut_ptr<T>>(static_cast<Self const*>(this));
     }
 
-    constexpr auto* as_raw_ptr() const noexcept { return static_cast<Self const*>(this)->p; }
+    constexpr auto as_raw_ptr() const noexcept -> value_type* {
+        return static_cast<Self const*>(this)->p;
+    }
 
     template<typename U>
     constexpr auto cast() const noexcept -> mut_ptr<U> {
@@ -174,7 +176,9 @@ struct ptr_base {
         }
     }
 
-    constexpr auto* as_raw_ptr() const noexcept { return static_cast<Self const*>(this)->p; }
+    constexpr auto as_raw_ptr() const noexcept -> value_type* {
+        return static_cast<Self const*>(this)->p;
+    }
 
     template<typename U>
     constexpr auto cast() const noexcept -> mut_ptr<U> {

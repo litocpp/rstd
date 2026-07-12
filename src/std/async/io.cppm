@@ -72,11 +72,11 @@ concept AsyncWriteInClass =
 
 namespace rstd
 {
-export template<typename R>
+template<typename R>
     requires async::io::AsyncReadInClass<R>
 struct Impl<async::io::AsyncRead, R> : LinkClassMethod<async::io::AsyncRead, R> {};
 
-export template<typename W>
+template<typename W>
     requires async::io::AsyncWriteInClass<W>
 struct Impl<async::io::AsyncWrite, W> : LinkClassMethod<async::io::AsyncWrite, W> {};
 } // namespace rstd

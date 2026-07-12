@@ -62,9 +62,20 @@ TEST(Option, Reference) {
     value = 100;
     EXPECT_EQ(*ref, 100);
 
+    auto& unwrapped = ref.unwrap_unchecked();
+    static_assert(mtp::same_as<decltype(unwrapped), int&>);
+    unwrapped = 120;
+    EXPECT_EQ(value, 120);
+
     const auto& cref = ref;
     static_assert(mtp::same_as<decltype(*cref), const int&>);
-    EXPECT_EQ(*cref, 100);
+    EXPECT_EQ(*cref, 120);
+
+    auto   rref             = Some<int&&>(rstd::move(value));
+    auto&& unwrapped_rvalue = rref.unwrap_unchecked();
+    static_assert(mtp::same_as<decltype(unwrapped_rvalue), int&&>);
+    unwrapped_rvalue = 140;
+    EXPECT_EQ(value, 140);
 }
 
 struct CloneType : DefaultInClass<CloneType, clone::Clone> {

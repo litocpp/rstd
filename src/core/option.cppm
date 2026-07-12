@@ -413,7 +413,11 @@ class Option : public detail::option_adapter<T> {
     template<typename U>
     [[gnu::always_inline]]
     constexpr auto&& _get_move(U&& self) noexcept {
-        return _get(rstd::move(self));
+        if constexpr (mtp::is_ref_lv<T>) {
+            return _get(self);
+        } else {
+            return _get(rstd::move(self));
+        }
     }
 
     auto _clone_some() const {

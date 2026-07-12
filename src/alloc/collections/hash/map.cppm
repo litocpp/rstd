@@ -4,8 +4,8 @@ module;
 export module rstd.alloc:collections.hash_map;
 export import :vec;
 export import :hash.random;
+export import :collections.hash_table;
 export import rstd.core;
-import :collections.hash_table;
 
 namespace alloc::collections
 {

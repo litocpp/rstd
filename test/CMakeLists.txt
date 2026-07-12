@@ -21,6 +21,7 @@ set(
   RSTD_TEST_SOURCES
   trait.cpp
   result.cpp
+  try_async.cpp
   compile.cpp
   option.cpp
   clone.cpp
@@ -89,6 +90,18 @@ target_link_libraries(rstd_test PRIVATE rstd::rstd GTest::gtest_main)
 include(GoogleTest)
 gtest_discover_tests(rstd_test)
 
+add_executable(rstd_try_test try.cpp)
+target_sources(
+  rstd_try_test
+  PRIVATE FILE_SET modules TYPE CXX_MODULES FILES try_module_check.cppm)
+target_link_libraries(rstd_try_test PRIVATE rstd::core rstd.runtime GTest::gtest_main)
+gtest_discover_tests(rstd_try_test)
+
+add_executable(rstd_try_coroutine_test try_coroutine.cpp)
+target_link_libraries(rstd_try_coroutine_test PRIVATE rstd::core rstd.runtime
+                                                      GTest::gtest_main)
+gtest_discover_tests(rstd_try_coroutine_test)
+
 function(add_rstd_compile_fail target source name expected_regex)
   add_executable(${target} EXCLUDE_FROM_ALL ${source})
   target_link_libraries(${target} PRIVATE rstd::rstd)
@@ -134,6 +147,26 @@ add_rstd_compile_fail(
   compile_fail/std_does_not_export_json.cpp
   JsonModule.StdDoesNotExportJson
   "no member named 'json' in namespace 'rstd'")
+add_rstd_compile_fail(
+  rstd_compile_fail_try_unsupported_source
+  compile_fail/try_unsupported_source.cpp
+  Try.UnsupportedSourceFailure
+  "rstd_try requires rstd::Result or rstd::Option")
+add_rstd_compile_fail(
+  rstd_compile_fail_try_option_to_result
+  compile_fail/try_option_to_result.cpp
+  Try.OptionToResultFailure
+  "no viable conversion|could not convert")
+add_rstd_compile_fail(
+  rstd_compile_fail_try_result_to_option
+  compile_fail/try_result_to_option.cpp
+  Try.ResultToOptionFailure
+  "no viable conversion|could not convert")
+add_rstd_compile_fail(
+  rstd_compile_fail_try_incompatible_error
+  compile_fail/try_incompatible_error.cpp
+  Try.IncompatibleErrorFailure
+  "no viable conversion|could not convert")
 
 if(OFF)
 add_executable(nostd nostd/main.cpp)

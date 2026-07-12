@@ -66,12 +66,12 @@ concept StreamInClass = requires(mtp::rm_cvf<S>& stream, task::Context& cx) {
 namespace rstd
 {
 
-export template<typename F>
+template<typename F>
     requires future::FutureInClass<F>
 struct Impl<future::Future<future::future_output_t<F>>, F>
     : LinkClassMethod<future::Future<future::future_output_t<F>>, F> {};
 
-export template<typename S>
+template<typename S>
     requires future::StreamInClass<S>
 struct Impl<future::Stream<future::stream_item_t<S>>, S>
     : LinkClassMethod<future::Stream<future::stream_item_t<S>>, S> {};
