@@ -233,16 +233,6 @@ struct Impl<Sized, dyn<A>> {
     ~Impl() = delete;
 };
 
-template<typename A>
-struct Impl<ops::Deref, ref<dyn<A>>> : LinkClassMethod<ops::Deref, ref<dyn<A>>> {};
-
-template<typename A>
-struct Impl<ops::Deref, mut_ref<dyn<A>>> : LinkClassMethod<ops::Deref, mut_ref<dyn<A>>> {};
-
-template<typename A>
-struct Impl<ops::DerefMut, mut_ref<dyn<A>>>
-    : LinkClassMethod<ops::DerefMut, mut_ref<dyn<A>>> {};
-
 namespace ptr_
 {
 template<typename A>

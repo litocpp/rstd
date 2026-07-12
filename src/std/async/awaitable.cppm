@@ -97,6 +97,7 @@ export struct IntoFuture {
     };
 
     template<typename F>
+        requires requires { typename F::Future; }
     using Funcs = TraitFuncs<&F::into_future>;
 };
 
@@ -108,22 +109,7 @@ template<typename A>
 concept IntoFutureInput = (! FutureInput<A>) && requires { typename into_future_t<A>; } &&
                           Impled<mtp::rm_cvf<A>, IntoFuture> && FutureInput<into_future_t<A>>;
 
-template<typename A>
-concept IntoFutureInClass = requires(mtp::rm_cvf<A>& awaitable) {
-    typename into_future_t<A>;
-    { awaitable.into_future() } -> mtp::same_as<into_future_t<A>>;
-};
-
 } // namespace rstd::async
-
-namespace rstd
-{
-
-template<typename A>
-    requires async::IntoFutureInClass<A>
-struct Impl<async::IntoFuture, A> : LinkClassMethod<async::IntoFuture, A> {};
-
-} // namespace rstd
 
 namespace rstd::async
 {

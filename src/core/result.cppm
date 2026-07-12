@@ -69,10 +69,6 @@ export using result::Result;
 export using result::Ok;
 export using result::Err;
 
-template<typename T, typename Self>
-    requires mtp::same_as<T, clone::Clone> && mtp::spec_of<Self, rstd::result::Result> &&
-             requires(Self s) { s.clone(); }
-struct Impl<T, Self> : LinkClassMethod<T, Self> {};
 } // namespace rstd
 
 namespace rstd::result

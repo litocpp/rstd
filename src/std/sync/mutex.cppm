@@ -80,16 +80,3 @@ public:
 };
 
 } // namespace rstd::sync
-
-namespace rstd
-{
-
-template<typename T>
-struct Impl<ops::Deref, sync::MutexGuard<T>>
-    : LinkClassMethod<ops::Deref, sync::MutexGuard<T>> {};
-
-template<typename T>
-struct Impl<ops::DerefMut, sync::MutexGuard<T>>
-    : LinkClassMethod<ops::DerefMut, sync::MutexGuard<T>> {};
-
-} // namespace rstd

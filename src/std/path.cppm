@@ -401,9 +401,6 @@ struct ref<path::Path> : ref_base<ref<path::Path>, u8[], false> {
     constexpr auto deref() const noexcept -> ref<Target> { return *this; }
 };
 
-template<>
-struct Impl<ops::Deref, ref<path::Path>> : LinkClassMethod<ops::Deref, ref<path::Path>> {};
-
 } // namespace rstd
 
 export namespace rstd::path

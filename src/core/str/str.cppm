@@ -76,9 +76,6 @@ public:
     constexpr auto deref() const noexcept -> ref<Target> { return *this; }
 };
 
-template<>
-struct Impl<ops::Deref, ref<str_::Str>> : LinkClassMethod<ops::Deref, ref<str_::Str>> {};
-
 /// Type alias for the unsized string type.
 export using str = str_::Str;
 

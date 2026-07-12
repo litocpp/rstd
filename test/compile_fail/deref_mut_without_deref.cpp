@@ -10,10 +10,6 @@ struct MutOnly {
     }
 };
 
-template<>
-struct rstd::Impl<rstd::ops::DerefMut, MutOnly>
-    : rstd::LinkClassMethod<rstd::ops::DerefMut, MutOnly> {};
-
 int main() {
     static_assert(rstd::Impled<MutOnly, rstd::ops::DerefMut>);
 }

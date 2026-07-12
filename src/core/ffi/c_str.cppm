@@ -69,15 +69,6 @@ struct mut_ref<CStr> : ref_base<mut_ref<CStr>, CStr, true> {
     constexpr auto deref_mut() noexcept -> mut_ref<Target> { return *this; }
 };
 
-template<>
-struct Impl<ops::Deref, ref<CStr>> : LinkClassMethod<ops::Deref, ref<CStr>> {};
-
-template<>
-struct Impl<ops::Deref, mut_ref<CStr>> : LinkClassMethod<ops::Deref, mut_ref<CStr>> {};
-
-template<>
-struct Impl<ops::DerefMut, mut_ref<CStr>> : LinkClassMethod<ops::DerefMut, mut_ref<CStr>> {};
-
 namespace ffi
 {
 class CStr {

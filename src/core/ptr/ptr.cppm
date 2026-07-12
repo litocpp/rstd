@@ -318,17 +318,3 @@ export template<typename T>
 using slice = ref<T[]>;
 
 } // namespace rstd
-
-namespace rstd
-{
-
-template<typename T>
-struct Impl<ops::Deref, ref<T>> : LinkClassMethod<ops::Deref, ref<T>> {};
-
-template<typename T>
-struct Impl<ops::Deref, mut_ref<T>> : LinkClassMethod<ops::Deref, mut_ref<T>> {};
-
-template<typename T>
-struct Impl<ops::DerefMut, mut_ref<T>> : LinkClassMethod<ops::DerefMut, mut_ref<T>> {};
-
-} // namespace rstd

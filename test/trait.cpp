@@ -64,6 +64,18 @@ struct StringConverterTrait {
     using Funcs = rstd::TraitFuncs<&T::to_string, &T::to_hex, &T::to_binary>;
 };
 
+struct EmptyNonDirectTrait {
+    template<typename Self, typename = void>
+    struct Api {
+        using Trait = EmptyNonDirectTrait;
+    };
+
+    template<typename>
+    using Funcs = rstd::TraitFuncs<>;
+};
+
+static_assert(! rstd::Impled<int, EmptyNonDirectTrait>);
+
 // Base structure for fields
 struct TestClassFields {
     int value;
@@ -119,6 +131,56 @@ struct TestClass : public TestClassFields {
         return result;
     }
 };
+
+struct PlainInClassDisplay {
+    int value;
+
+    void display(std::ostream& os) const { os << "plain(" << value << ")"; }
+};
+
+struct OverriddenInClassDisplay {
+    void display(std::ostream& os) const { os << "in-class"; }
+};
+
+template<>
+struct rstd::Impl<DisplayTrait, OverriddenInClassDisplay>
+    : rstd::ImplBase<OverriddenInClassDisplay> {
+    void display(std::ostream& os) const { os << "external"; }
+};
+
+static_assert(rstd::Impled<PlainInClassDisplay, DisplayTrait>);
+static_assert(rstd::Impled<OverriddenInClassDisplay, DisplayTrait>);
+
+TEST(Trait, PlainInClassWithoutExternalImpl) {
+    PlainInClassDisplay value { 42 };
+    static_assert(std::is_same_v<decltype(rstd::as<DisplayTrait>(value)), PlainInClassDisplay&>);
+
+    std::ostringstream direct;
+    rstd::as<DisplayTrait>(value).display(direct);
+    EXPECT_EQ(direct.str(), "plain(42)");
+
+    auto               dynamic = rstd::dyn<DisplayTrait>::from_ref(value);
+    std::ostringstream via_dyn;
+    dynamic->display(via_dyn);
+    EXPECT_EQ(via_dyn.str(), "plain(42)");
+}
+
+TEST(Trait, ExternalImplOverridesPlainInClass) {
+    OverriddenInClassDisplay value;
+
+    std::ostringstream direct;
+    value.display(direct);
+    EXPECT_EQ(direct.str(), "in-class");
+
+    std::ostringstream via_trait;
+    rstd::as<DisplayTrait>(value).display(via_trait);
+    EXPECT_EQ(via_trait.str(), "external");
+
+    auto               dynamic = rstd::dyn<DisplayTrait>::from_ref(value);
+    std::ostringstream via_dyn;
+    dynamic->display(via_dyn);
+    EXPECT_EQ(via_dyn.str(), "external");
+}
 
 TEST(Trait, DisplayTrait) {
     TestClass          obj(42);

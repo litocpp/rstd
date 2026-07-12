@@ -1,14 +1,22 @@
 import rstd;
 
-struct BadInClassClone : rstd::DefaultInClass<BadInClassClone, rstd::clone::Clone> {
-    BadInClassClone()                                          = default;
-    BadInClassClone(const BadInClassClone&)                    = delete;
-    auto operator=(const BadInClassClone&) -> BadInClassClone& = delete;
+struct InClassTrait {
+    template<typename Self, typename = void>
+    struct Api {
+        using Trait = InClassTrait;
 
-    auto clone() const -> int { return 0; }
+        void apply() const { rstd::trait_call<0>(this); }
+    };
+
+    template<typename Self>
+    using Funcs = rstd::TraitFuncs<&Self::apply>;
+};
+
+struct BadInClass {
+    auto apply() const -> int { return 0; }
 };
 
 int main() {
-    BadInClassClone value;
-    (void)rstd::as<rstd::clone::Clone>(value).clone();
+    BadInClass value;
+    rstd::as<InClassTrait>(value).apply();
 }

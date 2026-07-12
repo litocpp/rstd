@@ -47,36 +47,7 @@ struct Stream {
     using Funcs = TraitFuncs<&F::poll_next>;
 };
 
-template<typename F>
-concept FutureInClass = requires(mtp::rm_cvf<F>& future, task::Context& cx) {
-    typename mtp::rm_cvf<F>::Output;
-    { future.poll(as_mut_ref(future), cx) } -> mtp::same_as<task::Poll<future_output_t<F>>>;
-};
-
-template<typename S>
-concept StreamInClass = requires(mtp::rm_cvf<S>& stream, task::Context& cx) {
-    typename mtp::rm_cvf<S>::Item;
-    {
-        stream.poll_next(as_mut_ref(stream), cx)
-    } -> mtp::same_as<task::Poll<Option<stream_item_t<S>>>>;
-};
-
 } // namespace rstd::future
-
-namespace rstd
-{
-
-template<typename F>
-    requires future::FutureInClass<F>
-struct Impl<future::Future<future::future_output_t<F>>, F>
-    : LinkClassMethod<future::Future<future::future_output_t<F>>, F> {};
-
-template<typename S>
-    requires future::StreamInClass<S>
-struct Impl<future::Stream<future::stream_item_t<S>>, S>
-    : LinkClassMethod<future::Stream<future::stream_item_t<S>>, S> {};
-
-} // namespace rstd
 
 namespace rstd::future
 {

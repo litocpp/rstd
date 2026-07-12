@@ -197,9 +197,6 @@ enum class trait_impl_failure_reason
 template<typename Trait, typename A>
 using external_trait_impl_t = Impl<Trait, A>;
 
-template<typename Trait, typename A>
-using in_class_trait_impl_t = Impl<Trait, in_class_default_tag<A>>;
-
 template<typename T>
 constexpr bool trait_default_tag_v = false;
 
@@ -232,17 +229,23 @@ template<typename Trait, typename A>
 concept has_external_trait_impl = mtp::complete<external_trait_impl_t<Trait, A>>;
 
 template<typename Trait, typename A>
-concept has_in_class_trait_impl =
-    mtp::complete<A> && requires(A& a) { static_cast<in_class_trait_impl_t<Trait, A>&>(a); };
+concept trait_funcs_formable = mtp::has_trait_api<Trait> && requires {
+    typename TraitApiHelper<Trait, A>;
+    TraitApiHelper<Trait, A>::size();
+};
 
 template<typename Trait, typename A, typename ToCheck>
-concept trait_apis_formable = mtp::has_trait_api<Trait> && requires {
+concept trait_apis_formable = trait_funcs_formable<Trait, ToCheck> && requires {
     typename TraitCheckApi<Trait, A>;
     typename TraitApiHelper<Trait, TraitCheckApi<Trait, A>>;
     typename TraitApiHelper<Trait, ToCheck>;
     TraitApiHelper<Trait, TraitCheckApi<Trait, A>>::size();
     TraitApiHelper<Trait, ToCheck>::size();
 };
+
+template<typename Trait, typename A>
+concept has_in_class_trait_candidate =
+    mtp::complete<A> && trait_funcs_formable<Trait, A> && (TraitApiHelper<Trait, A>::size() > 0);
 
 template<typename Trait, typename Expected, typename Actual>
 consteval bool trait_api_entry_matches() {
@@ -332,7 +335,7 @@ consteval auto select_trait_impl_kind() -> trait_impl_kind {
         return trait_impl_kind::Direct;
     } else if constexpr (has_external_trait_impl<Trait, A>) {
         return trait_impl_kind::External;
-    } else if constexpr (has_in_class_trait_impl<Trait, A>) {
+    } else if constexpr (has_in_class_trait_candidate<Trait, A>) {
         return trait_impl_kind::InClass;
     } else {
         return trait_impl_kind::None;
@@ -398,7 +401,7 @@ struct trait_impl_failure;
 template<typename Trait, typename A>
 struct trait_impl_failure<Trait, A, trait_impl_failure_reason::NoImpl> {
     static_assert(dependent_false<Trait, A>,
-                  "rstd::Impled failed: no external Impl or in-class DefaultInClass marker");
+                  "rstd::Impled failed: no external Impl or complete in-class trait API");
     static constexpr bool value = false;
 };
 
@@ -488,7 +491,7 @@ using DefaultInClass = Impl<T, in_class_default_tag<Self>>;
 export template<typename T, typename Self>
 using DefaultInImpl = Impl<T, default_tag<Self>>;
 
-/// Links a class's own methods as the trait implementation, delegating via in-class dispatch.
+/// Adapts a concrete type's members through an external Impl wrapper.
 /// \tparam T The trait type.
 /// \tparam A The concrete type whose methods satisfy the trait.
 export template<typename T, typename A>
@@ -564,7 +567,7 @@ inline constexpr decltype(auto) trait_static_call(Args&&... args) {
 /// \tparam T The trait type to cast to.
 /// \tparam A The concrete type (deduced).
 /// \param t The object to view as the trait.
-/// \return A trait Impl wrapper or a reference to t if the trait is direct.
+/// \return A trait Impl wrapper, or a reference to t for direct and in-class implementations.
 export template<typename T, typename A>
 [[gnu::always_inline]]
 inline constexpr decltype(auto) as(A& t) noexcept {

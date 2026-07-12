@@ -46,40 +46,7 @@ export struct AsyncWrite {
     using Funcs = TraitFuncs<&F::poll_write, &F::poll_flush, &F::poll_shutdown>;
 };
 
-export template<typename R>
-concept AsyncReadInClass =
-    requires(mtp::rm_cvf<R>& reader, task::Context& cx, bytes::BytesMut& buf) {
-        {
-            reader.poll_read(future::as_mut_ref(reader), cx, buf)
-        } -> mtp::same_as<task::Poll<::rstd::io::Result<usize>>>;
-    };
-
-export template<typename W>
-concept AsyncWriteInClass =
-    requires(mtp::rm_cvf<W>& writer, task::Context& cx, const bytes::Bytes& buf) {
-        {
-            writer.poll_write(future::as_mut_ref(writer), cx, buf)
-        } -> mtp::same_as<task::Poll<::rstd::io::Result<usize>>>;
-        {
-            writer.poll_flush(future::as_mut_ref(writer), cx)
-        } -> mtp::same_as<task::Poll<::rstd::io::Result<empty>>>;
-        {
-            writer.poll_shutdown(future::as_mut_ref(writer), cx)
-        } -> mtp::same_as<task::Poll<::rstd::io::Result<empty>>>;
-    };
-
 } // namespace rstd::async::io
-
-namespace rstd
-{
-template<typename R>
-    requires async::io::AsyncReadInClass<R>
-struct Impl<async::io::AsyncRead, R> : LinkClassMethod<async::io::AsyncRead, R> {};
-
-template<typename W>
-    requires async::io::AsyncWriteInClass<W>
-struct Impl<async::io::AsyncWrite, W> : LinkClassMethod<async::io::AsyncWrite, W> {};
-} // namespace rstd
 
 namespace rstd::async::io
 {

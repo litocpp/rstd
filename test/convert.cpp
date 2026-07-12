@@ -39,9 +39,6 @@ struct D {
 };
 
 template<>
-struct rstd::Impl<rstd::convert::Into<A>, D> : rstd::LinkClassMethod<rstd::convert::Into<A>, D> {};
-
-template<>
 struct rstd::Impl<rstd::convert::From<B>, A> {
     using from_t = B;
     using Self   = A;

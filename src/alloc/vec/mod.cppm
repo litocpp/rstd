@@ -427,19 +427,6 @@ struct VecIntoIter : rstd::DefaultInClass<VecIntoIter<T>, rstd::iter::Iterator> 
 
 namespace rstd
 {
-template<typename T>
-    requires Impled<T, clone::Clone>
-struct Impl<clone::Clone, ::alloc::vec::Vec<T>>
-    : LinkClassMethod<clone::Clone, ::alloc::vec::Vec<T>> {};
-
-template<typename T>
-struct Impl<ops::Deref, ::alloc::vec::Vec<T>>
-    : LinkClassMethod<ops::Deref, ::alloc::vec::Vec<T>> {};
-
-template<typename T>
-struct Impl<ops::DerefMut, ::alloc::vec::Vec<T>>
-    : LinkClassMethod<ops::DerefMut, ::alloc::vec::Vec<T>> {};
-
 template<typename U, mtp::same_as<cmp::PartialEq<::alloc::vec::Vec<U>>> T>
 struct Impl<T, ::alloc::vec::Vec<U>> : DefaultInImpl<T, ::alloc::vec::Vec<U>> {
     auto eq(const ::alloc::vec::Vec<U>& other) const noexcept -> bool {

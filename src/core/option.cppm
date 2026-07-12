@@ -326,10 +326,6 @@ export using option::Option;
 export using option::Some;
 export using option::None;
 
-template<typename T, typename Self>
-    requires mtp::same_as<T, clone::Clone> && mtp::spec_of<Self, rstd::option::Option> &&
-             requires(Self s) { s.clone(); }
-struct Impl<T, Self> : LinkClassMethod<T, Self> {};
 } // namespace rstd
 
 namespace rstd::option

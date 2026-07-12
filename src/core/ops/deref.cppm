@@ -24,6 +24,7 @@ export struct Deref {
     };
 
     template<typename T>
+        requires requires { typename T::Target; }
     using Funcs = TraitFuncs<&T::deref>;
 };
 
@@ -42,6 +43,7 @@ export struct DerefMut {
     };
 
     template<typename T>
+        requires requires { typename T::Target; }
     using Funcs = TraitFuncs<&T::deref_mut>;
 };
 

@@ -130,15 +130,6 @@ class Weak;
 
 } // namespace alloc::sync
 
-using namespace ::alloc::sync;
-
-namespace rstd
-{
-template<mtp::same_as<ArcImplTrait> T, typename A>
-struct Impl<T, ArcInnerImpl<A>> : LinkClassMethod<T, ArcInnerImpl<A>> {};
-
-} // namespace rstd
-
 namespace alloc
 {
 template<typename T>
@@ -448,16 +439,3 @@ auto Arc<T>::downgrade() const noexcept -> Weak<T> {
 }
 
 } // namespace alloc::sync
-
-namespace rstd
-{
-
-template<typename T>
-struct Impl<ops::Deref, ::alloc::sync::Arc<T>>
-    : LinkClassMethod<ops::Deref, ::alloc::sync::Arc<T>> {};
-
-template<typename T>
-struct Impl<ops::DerefMut, ::alloc::sync::Arc<T>>
-    : LinkClassMethod<ops::DerefMut, ::alloc::sync::Arc<T>> {};
-
-} // namespace rstd

@@ -105,12 +105,14 @@ export struct Executor {
 export struct ExecutorContext {
     template<class Self, class Delegate = void>
     struct Api {
-        using Trait = ExecutorContext;
+        using Trait         = ExecutorContext;
+        using executor_type = typename Self::executor_type;
 
-        auto executor() -> typename Self::executor_type { return trait_call<0>(this); }
+        auto executor() -> executor_type { return trait_call<0>(this); }
     };
 
     template<typename Self>
+        requires requires { typename Self::executor_type; }
     using Funcs = TraitFuncs<&Self::executor>;
 };
 

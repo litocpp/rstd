@@ -189,19 +189,4 @@ using ::alloc::boxed::Box;
 namespace rstd
 {
 
-template<typename A, mtp::same_as<AsRef<const A>> T>
-struct Impl<T, ::alloc::boxed::Box<A>> : LinkClassMethod<T, ::alloc::boxed::Box<A>> {};
-
-template<typename A, mtp::same_as<Clone> T>
-    requires requires(::alloc::boxed::Box<A> b) { b.clone(); }
-struct Impl<T, ::alloc::boxed::Box<A>> : LinkClassMethod<T, ::alloc::boxed::Box<A>> {};
-
-template<typename A>
-struct Impl<ops::Deref, ::alloc::boxed::Box<A>>
-    : LinkClassMethod<ops::Deref, ::alloc::boxed::Box<A>> {};
-
-template<typename A>
-struct Impl<ops::DerefMut, ::alloc::boxed::Box<A>>
-    : LinkClassMethod<ops::DerefMut, ::alloc::boxed::Box<A>> {};
-
 } // namespace rstd

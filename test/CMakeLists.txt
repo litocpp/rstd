@@ -122,7 +122,7 @@ add_rstd_compile_fail(
   rstd_compile_fail_trait_impled_diagnostic
   compile_fail/trait_impled_diagnostic.cpp
   Trait.ImpledDiagnosticFailure
-  "rstd::Impled failed: no external Impl or in-class DefaultInClass marker")
+  "rstd::Impled failed: no external Impl or complete in-class trait API")
 add_rstd_compile_fail(
   rstd_compile_fail_trait_in_class_api_mismatch
   compile_fail/trait_in_class_api_mismatch.cpp

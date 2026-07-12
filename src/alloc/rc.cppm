@@ -641,12 +641,3 @@ void swap(Rc<T>& lhs, Rc<T>& rhs) noexcept {
     lhs.swap(rhs);
 }
 } // namespace alloc::rc
-
-namespace rstd
-{
-
-template<typename T>
-struct Impl<ops::Deref, ::alloc::rc::Rc<T>>
-    : LinkClassMethod<ops::Deref, ::alloc::rc::Rc<T>> {};
-
-} // namespace rstd

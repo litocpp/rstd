@@ -202,9 +202,6 @@ struct Impl<fmt::Display, ref<ffi::OsStr>> : ImplBase<ref<ffi::OsStr>> {
 };
 
 template<>
-struct Impl<ops::Deref, ref<ffi::OsStr>> : LinkClassMethod<ops::Deref, ref<ffi::OsStr>> {};
-
-template<>
 struct Impl<fmt::Debug, ref<ffi::OsStr>> : ImplBase<ref<ffi::OsStr>> {
     auto fmt(fmt::Formatter& f) const -> bool {
         f.write_raw((const u8*)"\"", 1);

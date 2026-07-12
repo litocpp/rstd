@@ -824,11 +824,6 @@ namespace rstd
 {
 
 template<typename K, typename V>
-    requires Impled<K, clone::Clone> && Impled<V, clone::Clone>
-struct Impl<clone::Clone, ::alloc::collections::BTreeMap<K, V>>
-    : LinkClassMethod<clone::Clone, ::alloc::collections::BTreeMap<K, V>> {};
-
-template<typename K, typename V>
     requires requires(const K& left_key,
                       const K& right_key,
                       const V& left_value,

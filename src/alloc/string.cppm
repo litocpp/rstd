@@ -248,8 +248,6 @@ struct Impl<iter::FromIterator<u8>, String> : ImplBase<String> {
     }
 };
 
-template<>
-struct Impl<clone::Clone, String> : LinkClassMethod<clone::Clone, String> {};
 } // namespace rstd
 
 namespace rstd::fmt
