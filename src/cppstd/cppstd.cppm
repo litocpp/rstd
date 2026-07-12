@@ -21,6 +21,7 @@ module;
 #include <fstream>
 #include <functional>
 #include <future>
+#include <initializer_list>
 #include <iostream>
 #include <iterator>
 #include <limits>
@@ -197,6 +198,8 @@ export using std::fmod;
 export using std::log;
 export using std::log2;
 export using std::log10;
+export using std::lerp;
+export using std::nextafter;
 export using std::pow;
 export using std::round;
 export using std::sin;
@@ -271,6 +274,8 @@ export using std::is_rvalue_reference;
 export using std::is_rvalue_reference_v;
 export using std::is_same;
 export using std::is_same_v;
+export using std::is_signed;
+export using std::is_signed_v;
 export using std::is_standard_layout;
 export using std::is_standard_layout_v;
 export using std::is_union;
@@ -358,6 +363,8 @@ export using std::nothrow_t;
 // <atomic>
 export using std::atomic;
 export using std::atomic_thread_fence;
+export using std::atomic_uint32_t;
+export using std::atomic_uint64_t;
 export using std::memory_order;
 export using std::memory_order_acq_rel;
 export using std::memory_order_acquire;
@@ -421,12 +428,20 @@ export using std::stringstream;
 // <regex>
 export using std::cmatch;
 export using std::regex;
+export using std::regex_error;
 export using std::regex_match;
 export using std::regex_replace;
 export using std::regex_search;
 export using std::smatch;
 export using std::sregex_iterator;
 export using std::ssub_match;
+
+namespace regex_constants
+{
+export using std::regex_constants::operator|;
+export using std::regex_constants::operator|=;
+export using std::regex_constants::syntax_option_type;
+} // namespace regex_constants
 
 // <algorithm>
 export using std::all_of;
@@ -564,6 +579,9 @@ export using std::unordered_multimap;
 export using std::unordered_multiset;
 export using std::unordered_set;
 export using std::vector;
+
+// <initializer_list>
+export using std::initializer_list;
 
 // <mutex>
 export using std::adopt_lock;
@@ -928,6 +946,7 @@ export using std::tuple_element_t;
 export using std::tuple_size;
 export using std::tuple_size_v;
 export using std::back_insert_iterator;
+export using std::istreambuf_iterator;
 export using std::iterator;
 export using std::coroutine_handle;
 export using std::coroutine_traits;
