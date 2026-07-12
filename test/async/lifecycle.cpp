@@ -61,9 +61,8 @@ TEST(RstdAsyncLifecycle, BuilderPublishesConfiguredDriverCapabilities) {
 }
 
 TEST(RstdAsyncLifecycle, MoveAssignmentStopsPreviousRuntimeBeforeReplacement) {
-    auto polled = std::atomic<bool> { false };
-    auto runtime =
-        async::RuntimeBuilder::multi_thread().worker_threads(1).build().unwrap();
+    auto polled  = std::atomic<bool> { false };
+    auto runtime = async::RuntimeBuilder::multi_thread().worker_threads(1).build().unwrap();
     auto pending = runtime.spawn(PendingValue { &polled });
     while (! polled.load(std::memory_order_acquire)) {
         hint::spin_loop();
@@ -83,10 +82,8 @@ TEST(RstdAsyncLifecycle, ExpiredRuntimeHandleRejectsAdmission) {
     EXPECT_DEATH(
         {
             auto handle = [] {
-                auto runtime = async::RuntimeBuilder::multi_thread()
-                                   .worker_threads(1)
-                                   .build()
-                                   .unwrap();
+                auto runtime =
+                    async::RuntimeBuilder::multi_thread().worker_threads(1).build().unwrap();
                 return runtime.handle();
             }();
             (void)handle.spawn(ReadyValue {});

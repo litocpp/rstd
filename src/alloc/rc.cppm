@@ -439,7 +439,6 @@ public:
         auto p = this->inner();
         return p ? p->value : nullptr;
     }
-
 };
 
 template<typename T>

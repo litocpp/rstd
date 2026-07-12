@@ -76,9 +76,8 @@ TEST(RstdAsyncFrame, ShutdownDestroysPendingFutureFrameOnce) {
     int  drops  = 0;
     auto polled = std::atomic<bool> { false };
     auto joined = [&] {
-        auto runtime =
-            async::RuntimeBuilder::multi_thread().worker_threads(1).build().unwrap();
-        auto handle = runtime.spawn(PendingFrameFuture { FrameProbe { drops }, &polled });
+        auto runtime = async::RuntimeBuilder::multi_thread().worker_threads(1).build().unwrap();
+        auto handle  = runtime.spawn(PendingFrameFuture { FrameProbe { drops }, &polled });
         while (! polled.load(std::memory_order_acquire)) {
             hint::spin_loop();
         }

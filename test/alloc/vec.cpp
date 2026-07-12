@@ -15,11 +15,11 @@ template<typename T>
 concept ConcreteCloneable = requires(const T& value) { value.clone(); };
 
 struct MoveOnly {
-    MoveOnly()                            = default;
-    MoveOnly(const MoveOnly&)             = delete;
-    MoveOnly& operator=(const MoveOnly&)  = delete;
-    MoveOnly(MoveOnly&&)                  = default;
-    MoveOnly& operator=(MoveOnly&&)       = default;
+    MoveOnly()                           = default;
+    MoveOnly(const MoveOnly&)            = delete;
+    MoveOnly& operator=(const MoveOnly&) = delete;
+    MoveOnly(MoveOnly&&)                 = default;
+    MoveOnly& operator=(MoveOnly&&)      = default;
 };
 
 static_assert(ConcreteCloneable<Vec<String>>);

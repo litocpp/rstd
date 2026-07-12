@@ -66,7 +66,7 @@ TEST(ArcBasic, MakeAndDeref) {
 }
 
 TEST(ArcBasic, DerefSupportsSharedMutation) {
-    auto arc = Arc<Payload>::make(5);
+    auto arc    = Arc<Payload>::make(5);
     auto shared = arc.clone();
 
     EXPECT_EQ(arc.deref().as_raw_ptr(), arc.as_ptr());

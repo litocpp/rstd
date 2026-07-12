@@ -64,8 +64,10 @@ TEST(BoxTest, DerefUsesBorrowProjection) {
 }
 
 TEST(BoxTest, DynArrowKeepsDelegateAliveForFullExpression) {
-    int calls = 0;
-    auto callback = Box<rstd::dyn<rstd::FnMut<void()>>>::make([&calls] { ++calls; });
+    int  calls    = 0;
+    auto callback = Box<rstd::dyn<rstd::FnMut<void()>>>::make([&calls] {
+        ++calls;
+    });
 
     callback->operator()();
     EXPECT_EQ(calls, 1);

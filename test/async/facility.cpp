@@ -71,7 +71,7 @@ auto long_sleep() -> async::coro<void> {
 
 template<typename T>
 auto run_executor_until_finished(async::LocalExecutorContext& context,
-                                 async::JoinHandle<T> const&   handle) -> usize {
+                                 async::JoinHandle<T> const&  handle) -> usize {
     auto ran = usize {};
     for (int attempt = 0; attempt < 1000 && ! handle.is_finished(); ++attempt) {
         ran += context.run_ready();
@@ -142,8 +142,8 @@ TEST(RstdAsyncFacility, ClosedCompletionQueueDrainsOwnedItemsInOrder) {
 }
 
 TEST(RstdAsyncFacility, ExecutorJobConsumesRunOrCancelExactlyOnce) {
-    int runs    = 0;
-    int cancels = 0;
+    int  runs    = 0;
+    int  cancels = 0;
     auto run_job = async::ExecutorJob::make(
         [&runs] {
             ++runs;
@@ -216,7 +216,7 @@ TEST(RstdAsyncFacility, ConsecutiveExecutorAwaitsIssueDistinctJobs) {
     auto executor      = async::AnyExecutor::from_executor(context.executor());
     auto runtime       = async::RuntimeBuilder::multi_thread().worker_threads(1).build().unwrap();
     auto continuations = std::atomic<int> { 0 };
-    auto joined = runtime.spawn(await_executor_twice(executor.clone(), continuations));
+    auto joined        = runtime.spawn(await_executor_twice(executor.clone(), continuations));
 
     auto ran = run_executor_until_finished(context, joined);
     ASSERT_TRUE(joined.is_finished());
@@ -240,8 +240,7 @@ TEST(RstdAsyncFacility, ClosedExecutorRejectsWithoutPostingJob) {
 
 TEST(RstdAsyncFacility, TimerCompletionReturnsThroughRuntimeQueue) {
     auto completions = std::atomic<int> { 0 };
-    auto runtime =
-        async::RuntimeBuilder::current_thread().enable_time().build().unwrap();
+    auto runtime     = async::RuntimeBuilder::current_thread().enable_time().build().unwrap();
 
     runtime.block_on(sleep_and_mark(completions));
     EXPECT_EQ(completions.load(std::memory_order_relaxed), 1);

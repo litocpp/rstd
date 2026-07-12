@@ -169,9 +169,7 @@ public:
 
     constexpr auto deref() const noexcept -> ref<Target> { return as_slice(); }
 
-    constexpr auto deref_mut() noexcept -> mut_ref<Target> {
-        return as_mut_slice().as_mut_ref();
-    }
+    constexpr auto deref_mut() noexcept -> mut_ref<Target> { return as_mut_slice().as_mut_ref(); }
 
     /// Returns a const pointer to the first element of the vector.
     /// \return A const pointer to the underlying buffer.

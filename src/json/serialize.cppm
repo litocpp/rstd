@@ -26,9 +26,7 @@ class Emitter {
     fmt::Formatter& formatter_;
     FormatOptions   options_;
 
-    auto write(ref<str> value) -> bool {
-        return formatter_.write_raw(value.data(), value.size());
-    }
+    auto write(ref<str> value) -> bool { return formatter_.write_raw(value.data(), value.size()); }
 
     auto write_byte(u8 value) -> bool { return formatter_.write_raw(&value, 1); }
 
@@ -69,7 +67,10 @@ class Emitter {
                 break;
             default:
                 if (byte < 0x20) {
-                    const u8 escape[] = { '\\', 'u', '0', '0',
+                    const u8 escape[] = { '\\',
+                                          'u',
+                                          '0',
+                                          '0',
                                           static_cast<u8>(HEX[byte >> 4]),
                                           static_cast<u8>(HEX[byte & 0x0f]) };
                     if (! formatter_.write_raw(escape, sizeof(escape))) return false;
@@ -189,8 +190,8 @@ auto to_string(const Value& value) -> ::alloc::string::String {
 }
 
 auto to_string(const Value& value, FormatOptions options) -> ::alloc::string::String {
-    auto output = ::alloc::string::String::make();
-    fmt::Formatter formatter(output);
+    auto            output = ::alloc::string::String::make();
+    fmt::Formatter  formatter(output);
     detail::Emitter emitter(formatter, options);
     if (! emitter.write_value(value)) rstd::panic { "failed to serialize JSON value" };
     return output;

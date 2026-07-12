@@ -27,11 +27,11 @@ namespace rstd::json::detail
 {
 
 class Parser {
-    ref<str> input_;
-    usize    offset_ { 0 };
-    usize    line_ { 1 };
-    usize    column_ { 1 };
-    u8       remaining_depth_ { 128 };
+    ref<str>     input_;
+    usize        offset_ { 0 };
+    usize        line_ { 1 };
+    usize        column_ { 1 };
+    u8           remaining_depth_ { 128 };
     ParseOptions options_;
 
     [[nodiscard]]

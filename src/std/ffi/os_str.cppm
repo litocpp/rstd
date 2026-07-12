@@ -198,7 +198,6 @@ struct Impl<fmt::Display, ref<ffi::OsStr>> : ImplBase<ref<ffi::OsStr>> {
         }
         return true;
     }
-
 };
 
 template<>

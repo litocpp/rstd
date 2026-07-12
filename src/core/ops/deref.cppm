@@ -48,14 +48,15 @@ export struct DerefMut {
 };
 
 export template<typename Self>
-concept ConstDerefMut = Impled<Self, Deref> && Impled<Self, DerefMut> && requires(const Self& self) {
-    { self.deref_mut() } -> mtp::same_as<mut_ref<typename Self::Target>>;
-};
+concept ConstDerefMut =
+    Impled<Self, Deref> && Impled<Self, DerefMut> && requires(const Self& self) {
+        { self.deref_mut() } -> mtp::same_as<mut_ref<typename Self::Target>>;
+    };
 
 export template<typename Self>
     requires Impled<Self, Deref> && (! ConstDerefMut<Self>)
 constexpr decltype(auto) deref_value(const Self& self) noexcept {
-    auto target = as<Deref>(self).deref();
+    auto target   = as<Deref>(self).deref();
     using Pointee = mtp::rm_cv<mtp::rm_ptr<decltype(target.as_raw_ptr())>>;
     if constexpr (mtp::is_void<Pointee>) {
         using Delegate = mtp::rm_ref<decltype(target.operator*())>;
@@ -67,7 +68,7 @@ constexpr decltype(auto) deref_value(const Self& self) noexcept {
 
 export template<ConstDerefMut Self>
 constexpr decltype(auto) deref_value(const Self& self) noexcept {
-    auto target = self.deref_mut();
+    auto target   = self.deref_mut();
     using Pointee = mtp::rm_cv<mtp::rm_ptr<decltype(target.as_raw_ptr())>>;
     if constexpr (mtp::is_void<Pointee>) {
         using Delegate = mtp::rm_ref<decltype(target.operator*())>;
@@ -80,7 +81,7 @@ constexpr decltype(auto) deref_value(const Self& self) noexcept {
 export template<typename Self>
     requires Impled<Self, DerefMut>
 constexpr decltype(auto) deref_value(Self& self) noexcept {
-    auto target = as<DerefMut>(self).deref_mut();
+    auto target   = as<DerefMut>(self).deref_mut();
     using Pointee = mtp::rm_cv<mtp::rm_ptr<decltype(target.as_raw_ptr())>>;
     if constexpr (mtp::is_void<Pointee>) {
         using Delegate = mtp::rm_ref<decltype(target.operator*())>;
@@ -93,7 +94,7 @@ constexpr decltype(auto) deref_value(Self& self) noexcept {
 export template<typename Self>
     requires Impled<Self, Deref> && (! ConstDerefMut<Self>)
 constexpr auto deref_arrow(const Self& self) noexcept {
-    auto target = as<Deref>(self).deref();
+    auto target   = as<Deref>(self).deref();
     using Pointee = mtp::rm_cv<mtp::rm_ptr<decltype(target.as_raw_ptr())>>;
     if constexpr (mtp::is_void<Pointee>) {
         return target;
@@ -104,7 +105,7 @@ constexpr auto deref_arrow(const Self& self) noexcept {
 
 export template<ConstDerefMut Self>
 constexpr auto deref_arrow(const Self& self) noexcept {
-    auto target = self.deref_mut();
+    auto target   = self.deref_mut();
     using Pointee = mtp::rm_cv<mtp::rm_ptr<decltype(target.as_raw_ptr())>>;
     if constexpr (mtp::is_void<Pointee>) {
         return target;
@@ -116,7 +117,7 @@ constexpr auto deref_arrow(const Self& self) noexcept {
 export template<typename Self>
     requires Impled<Self, DerefMut>
 constexpr auto deref_arrow(Self& self) noexcept {
-    auto target = as<DerefMut>(self).deref_mut();
+    auto target   = as<DerefMut>(self).deref_mut();
     using Pointee = mtp::rm_cv<mtp::rm_ptr<decltype(target.as_raw_ptr())>>;
     if constexpr (mtp::is_void<Pointee>) {
         return target;

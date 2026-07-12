@@ -36,11 +36,10 @@ auto wait_readable(async::Registration& registration, std::atomic<bool>& entered
 }
 
 auto wait_readable_on_owner(async::Registration& registration,
-                            std::atomic<u64>&     before,
-                            std::atomic<u64>&     after) -> async::coro<bool> {
+                            std::atomic<u64>&    before,
+                            std::atomic<u64>&    after) -> async::coro<bool> {
     before.store(thread::current().id().as_u64().get(), std::memory_order_release);
-    auto ready =
-        co_await async::ReadinessFuture { registration, async::Interest::readable() };
+    auto ready = co_await async::ReadinessFuture { registration, async::Interest::readable() };
     after.store(thread::current().id().as_u64().get(), std::memory_order_release);
     co_return ready.is_ok() && rstd::move(ready).unwrap_unchecked().is_readable();
 }
@@ -58,14 +57,14 @@ TEST(RstdAsyncPoll, PipeReadinessCompletesThroughCurrentWorker) {
     auto registration = async::Registration::register_fd(fds.reader.as_raw_fd()).unwrap();
     auto entered      = std::atomic<bool> { false };
     auto writer_fd    = fds.writer.as_raw_fd();
-    auto writer = thread::spawn([writer_fd, &entered] {
+    auto writer       = thread::spawn([writer_fd, &entered] {
                       while (! entered.load(std::memory_order_acquire)) {
                           hint::spin_loop();
                       }
                       thread::sleep(time::Duration::from_millis(1));
                       return write_byte(writer_fd);
-                  }).unwrap();
-    auto runtime = async::RuntimeBuilder::current_thread().enable_io().build().unwrap();
+                        }).unwrap();
+    auto runtime      = async::RuntimeBuilder::current_thread().enable_io().build().unwrap();
 
     auto ready = runtime.block_on(wait_readable(registration, entered));
     ASSERT_TRUE(ready.is_ok());
@@ -92,16 +91,14 @@ TEST(RstdAsyncPoll, WorkerOwnedReadinessReturnsToEachOwnerThread) {
     auto second_pipe = make_pipe();
     ASSERT_TRUE(first_pipe.is_some());
     ASSERT_TRUE(second_pipe.is_some());
-    auto first  = rstd::move(first_pipe).unwrap_unchecked();
-    auto second = rstd::move(second_pipe).unwrap_unchecked();
-    auto first_registration =
-        async::Registration::register_fd(first.reader.as_raw_fd()).unwrap();
-    auto second_registration =
-        async::Registration::register_fd(second.reader.as_raw_fd()).unwrap();
-    auto first_before  = std::atomic<u64> { 0 };
-    auto first_after   = std::atomic<u64> { 0 };
-    auto second_before = std::atomic<u64> { 0 };
-    auto second_after  = std::atomic<u64> { 0 };
+    auto first               = rstd::move(first_pipe).unwrap_unchecked();
+    auto second              = rstd::move(second_pipe).unwrap_unchecked();
+    auto first_registration  = async::Registration::register_fd(first.reader.as_raw_fd()).unwrap();
+    auto second_registration = async::Registration::register_fd(second.reader.as_raw_fd()).unwrap();
+    auto first_before        = std::atomic<u64> { 0 };
+    auto first_after         = std::atomic<u64> { 0 };
+    auto second_before       = std::atomic<u64> { 0 };
+    auto second_after        = std::atomic<u64> { 0 };
     auto runtime =
         async::RuntimeBuilder::multi_thread().worker_threads(2).enable_io().build().unwrap();
 
@@ -133,9 +130,8 @@ TEST(RstdAsyncPoll, ShutdownCancelsReadinessDuringTaskTransition) {
         if (pipe.is_none()) {
             rstd::panic { "pipe2 failed" };
         }
-        auto fds = rstd::move(pipe).unwrap_unchecked();
-        auto registration =
-            async::Registration::register_fd(fds.reader.as_raw_fd()).unwrap();
+        auto fds          = rstd::move(pipe).unwrap_unchecked();
+        auto registration = async::Registration::register_fd(fds.reader.as_raw_fd()).unwrap();
         auto runtime =
             async::RuntimeBuilder::multi_thread().worker_threads(1).enable_io().build().unwrap();
         auto handle = runtime.spawn(wait_owned_registration(rstd::move(registration), entered));

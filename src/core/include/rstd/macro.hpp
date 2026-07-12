@@ -23,34 +23,32 @@
         return as<rstd::cmp::PartialEq<_USE_TRAIT_T>>(a).eq(b);             \
     }
 
-#define RSTD_DETAIL_DEREF_OPERATORS()                                      \
-    template<typename _USE_TRAIT_SELF = Self>                              \
-        requires rstd::Impled<_USE_TRAIT_SELF, rstd::ops::Deref>           \
-    constexpr decltype(auto) operator*() const noexcept {                  \
-        return rstd::ops::deref_value(                                     \
-            static_cast<const _USE_TRAIT_SELF&>(*this));                   \
-    }                                                                      \
-    template<typename _USE_TRAIT_SELF = Self>                              \
-        requires rstd::Impled<_USE_TRAIT_SELF, rstd::ops::DerefMut>        \
-    constexpr decltype(auto) operator*() noexcept {                        \
-        return rstd::ops::deref_value(static_cast<_USE_TRAIT_SELF&>(*this)); \
-    }                                                                      \
-    template<typename _USE_TRAIT_SELF = Self>                              \
-        requires rstd::Impled<_USE_TRAIT_SELF, rstd::ops::Deref>           \
-    constexpr auto operator->() const noexcept {                           \
-        return rstd::ops::deref_arrow(                                     \
-            static_cast<const _USE_TRAIT_SELF&>(*this));                   \
-    }                                                                      \
-    template<typename _USE_TRAIT_SELF = Self>                              \
-        requires rstd::Impled<_USE_TRAIT_SELF, rstd::ops::DerefMut>        \
-    constexpr auto operator->() noexcept {                                 \
-        return rstd::ops::deref_arrow(static_cast<_USE_TRAIT_SELF&>(*this)); \
+#define RSTD_DETAIL_DEREF_OPERATORS()                                              \
+    template<typename _USE_TRAIT_SELF = Self>                                      \
+        requires rstd::Impled<_USE_TRAIT_SELF, rstd::ops::Deref>                   \
+    constexpr decltype(auto) operator*() const noexcept {                          \
+        return rstd::ops::deref_value(static_cast<const _USE_TRAIT_SELF&>(*this)); \
+    }                                                                              \
+    template<typename _USE_TRAIT_SELF = Self>                                      \
+        requires rstd::Impled<_USE_TRAIT_SELF, rstd::ops::DerefMut>                \
+    constexpr decltype(auto) operator*() noexcept {                                \
+        return rstd::ops::deref_value(static_cast<_USE_TRAIT_SELF&>(*this));       \
+    }                                                                              \
+    template<typename _USE_TRAIT_SELF = Self>                                      \
+        requires rstd::Impled<_USE_TRAIT_SELF, rstd::ops::Deref>                   \
+    constexpr auto operator->() const noexcept {                                   \
+        return rstd::ops::deref_arrow(static_cast<const _USE_TRAIT_SELF&>(*this)); \
+    }                                                                              \
+    template<typename _USE_TRAIT_SELF = Self>                                      \
+        requires rstd::Impled<_USE_TRAIT_SELF, rstd::ops::DerefMut>                \
+    constexpr auto operator->() noexcept {                                         \
+        return rstd::ops::deref_arrow(static_cast<_USE_TRAIT_SELF&>(*this));       \
     }
 
-#define USE_TRAIT(Class)             \
-    using Self = Class;              \
-    template<typename, typename>     \
-    friend struct rstd::Impl;        \
+#define USE_TRAIT(Class)               \
+    using Self = Class;                \
+    template<typename, typename>       \
+    friend struct rstd::Impl;          \
     RSTD_DETAIL_PARTIAL_EQ_OPERATORS() \
     RSTD_DETAIL_DEREF_OPERATORS()
 
@@ -96,7 +94,6 @@
     RSTD_DETAIL_SELECT_TRY(__VA_ARGS__, RSTD_DETAIL_TRY_2, RSTD_DETAIL_TRY_1)(__VA_ARGS__)
 #define rstd_co_try(...) \
     RSTD_DETAIL_SELECT_TRY(__VA_ARGS__, RSTD_DETAIL_CO_TRY_2, RSTD_DETAIL_CO_TRY_1)(__VA_ARGS__)
-
 
 #ifdef NDEBUG
 #define debug_assert(...)    ((void)0)

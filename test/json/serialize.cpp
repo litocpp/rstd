@@ -20,7 +20,7 @@ TEST(JsonSerialize, WritesCompactSortedJson) {
 }
 
 TEST(JsonSerialize, WritesPrettyJsonWithRequestedIndent) {
-    auto value = from_str(R"({"z":[true,null],"a":1})").unwrap();
+    auto value  = from_str(R"({"z":[true,null],"a":1})").unwrap();
     auto output = to_string(value, FormatOptions { .pretty = true, .indent = 4 });
     EXPECT_EQ(text(output),
               "{\n"
@@ -33,17 +33,17 @@ TEST(JsonSerialize, WritesPrettyJsonWithRequestedIndent) {
 }
 
 TEST(JsonSerialize, EscapesStringsAndPreservesUtf8) {
-    auto value = from_str(
-                     R"({"text":"quote:\" slash:/ backslash:\\ controls:\b\f\n\r\t\u0001 utf8:雪"})")
-                     .unwrap();
+    auto value =
+        from_str(R"({"text":"quote:\" slash:/ backslash:\\ controls:\b\f\n\r\t\u0001 utf8:雪"})")
+            .unwrap();
     EXPECT_EQ(text(to_string(value)),
               R"({"text":"quote:\" slash:/ backslash:\\ controls:\b\f\n\r\t\u0001 utf8:雪"})");
 }
 
 TEST(JsonSerialize, FormatsNumberKindsAndRoundTrips) {
-    auto value = from_str(
-                     R"([0,-1,18446744073709551615,-0,1.0,1.25,5e-324,1.7976931348623157e308])")
-                     .unwrap();
+    auto value =
+        from_str(R"([0,-1,18446744073709551615,-0,1.0,1.25,5e-324,1.7976931348623157e308])")
+            .unwrap();
     auto output = to_string(value);
     EXPECT_EQ(text(output),
               R"([0,-1,18446744073709551615,-0.0,1.0,1.25,5e-324,1.7976931348623157e+308])");

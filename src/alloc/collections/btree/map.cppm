@@ -632,8 +632,7 @@ public:
     auto is_empty() const noexcept -> bool { return length == 0; }
 
     auto clone() const -> BTreeMap
-        requires rstd::Impled<K, rstd::clone::Clone> &&
-                 rstd::Impled<V, rstd::clone::Clone>
+        requires rstd::Impled<K, rstd::clone::Clone> && rstd::Impled<V, rstd::clone::Clone>
     {
         auto result = BTreeMap::make();
         auto source = iter();
@@ -645,8 +644,7 @@ public:
     }
 
     void clone_from(BTreeMap& source)
-        requires rstd::Impled<K, rstd::clone::Clone> &&
-                 rstd::Impled<V, rstd::clone::Clone>
+        requires rstd::Impled<K, rstd::clone::Clone> && rstd::Impled<V, rstd::clone::Clone>
     {
         *this = source.clone();
     }
