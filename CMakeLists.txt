@@ -42,9 +42,10 @@ endif()
 if(PROJECT_IS_TOP_LEVEL)
   include(GNUInstallDirs)
   install(
-    TARGETS rstd
+    TARGETS rstd.std rstd.runtime rstd.basic rstd.core rstd.alloc
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 endif()
 
 # Testing configuration

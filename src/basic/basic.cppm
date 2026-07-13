@@ -19,7 +19,8 @@ constexpr auto addressof(T& val) noexcept -> T* {
 /// \return The previous value of `obj`.
 export template<typename T, typename U = T>
 constexpr inline T exchange(T&  obj,
-                            U&& new_val) noexcept(mtp::noex_move<T> && mtp::noex_assign<T&, U>) {
+                            U&& new_val) noexcept(noexcept(T(rstd::move(obj))) &&
+                                                 noexcept(obj = rstd::forward<U>(new_val))) {
     T old = rstd::move(obj);
     obj   = rstd::forward<U>(new_val);
     return old;

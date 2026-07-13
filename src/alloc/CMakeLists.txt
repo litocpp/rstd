@@ -1,6 +1,6 @@
 add_library(rstd.alloc STATIC)
 target_compile_features(rstd.alloc PUBLIC cxx_std_20)
-target_link_libraries(rstd.alloc PUBLIC rstd.core)
+target_link_libraries(rstd.alloc PUBLIC rstd.core PRIVATE "$<LINK_ONLY:rstd.runtime>")
 target_sources(
   rstd.alloc
   PUBLIC FILE_SET
