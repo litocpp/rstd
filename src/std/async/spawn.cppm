@@ -163,12 +163,50 @@ public:
     auto operator=(JoinHandle&&) noexcept -> JoinHandle& = default;
     ~JoinHandle()                                        = default;
 
-    void abort() { state->abort_task(); }
+    void abort() const { state->abort_task(); }
 
     auto is_finished() const -> bool { return state->is_ready(); }
 
     auto poll(mut_ref<JoinHandle> self, task::Context& cx) -> task::Poll<Output> {
         return self->state->poll(cx);
+    }
+};
+
+export template<typename T>
+class AbortOnDropHandle {
+    Option<JoinHandle<T>> handle_;
+
+    void abort_owned() const {
+        if (handle_.is_some()) handle_->abort();
+    }
+
+public:
+    using Output = typename JoinHandle<T>::Output;
+
+    explicit AbortOnDropHandle(JoinHandle<T> handle): handle_(Some(rstd::move(handle))) {}
+
+    AbortOnDropHandle(const AbortOnDropHandle&)            = delete;
+    AbortOnDropHandle& operator=(const AbortOnDropHandle&) = delete;
+    AbortOnDropHandle(AbortOnDropHandle&& other) noexcept: handle_(other.handle_.take()) {}
+
+    auto operator=(AbortOnDropHandle&& other) noexcept -> AbortOnDropHandle& {
+        if (this != &other) {
+            abort_owned();
+            handle_ = other.handle_.take();
+        }
+        return *this;
+    }
+
+    ~AbortOnDropHandle() { abort_owned(); }
+
+    void abort() const { handle_->abort(); }
+
+    auto is_finished() const -> bool { return handle_->is_finished(); }
+
+    auto detach() && -> JoinHandle<T> { return rstd::move(handle_.take()).unwrap_unchecked(); }
+
+    auto poll(mut_ref<AbortOnDropHandle> self, task::Context& cx) -> task::Poll<Output> {
+        return future::poll(*self->handle_, cx);
     }
 };
 

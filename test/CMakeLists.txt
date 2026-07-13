@@ -48,6 +48,7 @@ set(
   num/nonzero.cpp
   thread.cpp
   async.cpp
+  async/abort_on_drop.cpp
   async/concurrency.cpp
   async/facility.cpp
   async/frame.cpp
