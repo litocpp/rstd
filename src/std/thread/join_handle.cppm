@@ -10,7 +10,7 @@ namespace rstd::thread
 
 /// An owned handle to a thread, which joins the thread on drop.
 /// \tparam T The return type of the thread's closure.
-template<typename T>
+export template<typename T>
 class JoinHandle {
     lifecycle::JoinInner<T> inner;
 

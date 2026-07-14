@@ -73,6 +73,20 @@ TEST(BoxTest, DynArrowKeepsDelegateAliveForFullExpression) {
     EXPECT_EQ(calls, 1);
 }
 
+TEST(BoxTest, DynFnMutWithByteSliceDestructs) {
+    rstd::usize seen = 0;
+    {
+        auto callback =
+            Box<rstd::dyn<rstd::FnMut<void(rstd::slice<rstd::byte>)>>>::make(
+                [&seen](rstd::slice<rstd::byte> bytes) {
+                    seen = bytes.len();
+                });
+        auto value = rstd::byte {};
+        callback->operator()(rstd::slice<rstd::byte>::from_raw_parts(&value, 1));
+    }
+    EXPECT_EQ(seen, 1u);
+}
+
 TEST(BoxTest, MoveCtorTransfersOwnership) {
     EXPECT_EQ(Counter::alive, 0);
     {

@@ -2,6 +2,16 @@
 import rstd;
 using namespace rstd;
 
+static_assert(! mtp::copy<thread::JoinHandle<void>>);
+
+TEST(Thread, ExplicitJoinHandleStorage) {
+    auto handle = Option<thread::JoinHandle<void>> {};
+    handle      = Some(thread::spawn([] {}).unwrap());
+
+    ASSERT_TRUE(handle.is_some());
+    EXPECT_TRUE(rstd::move(*handle).join().is_ok());
+}
+
 TEST(Thread, BasicSpawn) {
     auto result = thread::spawn([] {
         // Do some work

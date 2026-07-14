@@ -58,7 +58,7 @@ export auto memcpy(voidp dst, const_voidp src, usize len) noexcept -> voidp {
 export template<typename T>
 constexpr auto all(T const& src, u8 val) noexcept -> bool {
     u8 dst[sizeof(T)] {};
-    return __builtin_memcmp(addressof(src), dst, sizeof(T)) == 0;
+    return __builtin_memcmp(rstd::addressof(src), dst, sizeof(T)) == 0;
 }
 
 /// Fills all bytes of a trivially-copyable value with the given byte.
@@ -68,10 +68,10 @@ constexpr auto all(T const& src, u8 val) noexcept -> bool {
 export template<mtp::triv_copy T>
 constexpr void fill(T& src, u8 val) noexcept {
     if (mtp::is_constant_evaluated()) {
-        auto p = reinterpret_cast<u8*>(addressof(src));
+        auto p = reinterpret_cast<u8*>(rstd::addressof(src));
         for (usize i = 0; i < sizeof(T); ++i) p[i] = val;
     } else {
-        rstd::mem::memset(static_cast<voidp>(addressof(src)), val, sizeof(T));
+        rstd::mem::memset(static_cast<voidp>(rstd::addressof(src)), val, sizeof(T));
     }
 }
 
