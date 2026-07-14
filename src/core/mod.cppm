@@ -13,6 +13,7 @@ export import :ops;
 export import :iter;
 
 export import :clone;
+export import :clone_tuple;
 export import :option;
 export import :result;
 export import :try_;

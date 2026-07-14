@@ -26,6 +26,7 @@ set(
   compile.cpp
   option.cpp
   clone.cpp
+  clone_tuple.cpp
   convert.cpp
   enum.cpp
   hint.cpp

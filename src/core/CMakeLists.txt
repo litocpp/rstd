@@ -36,6 +36,7 @@ target_sources(
          marker.cppm
          convert.cppm
          clone.cppm
+         clone_tuple.cppm
          option.cppm
          result.cppm
          try.cppm

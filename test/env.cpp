@@ -9,6 +9,11 @@ TEST(Env, VarNotFound) {
     EXPECT_TRUE(val.is_none());
 }
 
+TEST(Env, TempDir) {
+    auto path = rstd::env::temp_dir();
+    EXPECT_FALSE(path.is_empty());
+}
+
 TEST(Env, SetAndGet) {
     rstd::env::set_var("RSTD_TEST_VAR", "hello");
     auto val = rstd::env::var("RSTD_TEST_VAR");

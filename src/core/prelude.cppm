@@ -4,6 +4,7 @@ import :ptr.dyn;
 
 import :marker;
 import :clone;
+import :clone_tuple;
 import :cmp;
 import :ops;
 import :convert;
@@ -35,6 +36,8 @@ using rstd::Send;
 using rstd::Sized;
 using rstd::Sync;
 using rstd::clone::Clone;
+using rstd::CloneTuple;
+using rstd::make_clone_tuple;
 
 using rstd::Fn;
 using rstd::FnMut;

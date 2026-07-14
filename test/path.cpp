@@ -149,6 +149,18 @@ TEST(PathBuf, MakeEmpty) {
     EXPECT_TRUE(p.is_empty());
 }
 
+static_assert(rstd::Impled<PathBuf, rstd::clone::Clone>);
+
+TEST(PathBuf, CloneOwnsIndependentStorage) {
+    auto original = PathBuf::from("/tmp/original");
+    auto cloned   = original.clone();
+    cloned.push(rstd::ref<Path>("child"));
+
+    EXPECT_EQ(original.as_path().to_str().unwrap(), rstd::ref<rstd::str>("/tmp/original"));
+    EXPECT_EQ(cloned.as_path().to_str().unwrap(),
+              rstd::ref<rstd::str>("/tmp/original/child"));
+}
+
 TEST(PathBuf, FromStr) {
     auto p = PathBuf::from("/usr/bin");
     EXPECT_EQ(p.len(), 8u);

@@ -1,9 +1,11 @@
 export module rstd:env;
+export import :path;
 export import :sys;
 export import rstd.alloc;
 
 using ::alloc::string::String;
 using ::alloc::vec::Vec;
+using rstd::path::PathBuf;
 
 using namespace rstd::prelude;
 
@@ -32,6 +34,27 @@ auto var(const char* key) -> Option<String> {
         return None();
     }
     return Some(env_detail::string_from_cstr(val));
+}
+
+/// Returns the directory used for temporary files.
+auto temp_dir() -> PathBuf {
+#if RSTD_OS_UNIX
+    auto configured = var("TMPDIR");
+    if (configured.is_some() && ! configured->is_empty()) {
+        return PathBuf::from(rstd::move(configured).unwrap());
+    }
+    return PathBuf::from("/tmp");
+#else
+    auto configured = var("TEMP");
+    if (configured.is_some() && ! configured->is_empty()) {
+        return PathBuf::from(rstd::move(configured).unwrap());
+    }
+    configured = var("TMP");
+    if (configured.is_some() && ! configured->is_empty()) {
+        return PathBuf::from(rstd::move(configured).unwrap());
+    }
+    return PathBuf::from(".");
+#endif
 }
 
 /// Sets the environment variable `key` to `value` in the current process.
