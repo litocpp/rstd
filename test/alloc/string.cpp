@@ -49,3 +49,41 @@ TEST(String, PushStrAppendsCompleteSlice) {
     text.push_str("-右");
     EXPECT_EQ(text, rstd::ref<rstd::str>("left-右"));
 }
+
+TEST(String, FromUtf8OwnsValidatedBytes) {
+    auto valid = rstd::vec::Vec<rstd::u8> {};
+    valid.push('a');
+    valid.push(0xe5);
+    valid.push(0x8f);
+    valid.push(0xb3);
+    valid.push(0xef);
+    valid.push(0xbf);
+    valid.push(0xbd);
+
+    auto text = String::from_utf8(rstd::move(valid));
+    ASSERT_TRUE(text.is_ok());
+    EXPECT_EQ(text.unwrap(), rstd::ref<rstd::str>("a右�"));
+
+    auto invalid = rstd::vec::Vec<rstd::u8> {};
+    invalid.push('a');
+    invalid.push(0xff);
+    auto error = String::from_utf8(rstd::move(invalid));
+    ASSERT_TRUE(error.is_err());
+    EXPECT_EQ(error.unwrap_err().valid_up_to(), 1u);
+
+    auto incomplete = rstd::vec::Vec<rstd::u8> {};
+    incomplete.push('a');
+    incomplete.push(0xe2);
+    incomplete.push(0x82);
+    auto incomplete_error = String::from_utf8(rstd::move(incomplete));
+    ASSERT_TRUE(incomplete_error.is_err());
+    EXPECT_EQ(incomplete_error.unwrap_err().valid_up_to(), 1u);
+
+    auto overlong = rstd::vec::Vec<rstd::u8> {};
+    overlong.push('a');
+    overlong.push(0xc0);
+    overlong.push(0xaf);
+    auto overlong_error = String::from_utf8(rstd::move(overlong));
+    ASSERT_TRUE(overlong_error.is_err());
+    EXPECT_EQ(overlong_error.unwrap_err().valid_up_to(), 1u);
+}

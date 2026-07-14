@@ -80,6 +80,13 @@ public:
         return String { rstd::move(bytes) };
     }
 
+    /// Creates a new `String` from owned bytes after validating UTF-8.
+    static auto from_utf8(Vec<u8>&& bytes) -> Result<String, rstd::str_::Utf8Error> {
+        auto validation = rstd::str_::validate_utf8(bytes.as_slice());
+        if (validation.is_err()) return Err(rstd::move(validation).unwrap_err());
+        return Ok(String { rstd::move(bytes) });
+    }
+
     /// Returns a reference to the string as a `CStr`.
     /// \return A `ref<CStr>` view of the string data.
     auto as_ref() const noexcept -> ref<ffi::CStr> {
