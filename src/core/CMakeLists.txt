@@ -61,6 +61,7 @@ target_sources(
          ffi/c_str.cppm
          hash/mod.cppm
          num/mod.cppm
+         num/flt2dec.cppm
          num/nonzero.cppm
          num/niche_types.cppm
          num/integer.cppm

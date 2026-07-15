@@ -73,6 +73,28 @@ TEST(Fmt, FloatLargePrecision) {
     EXPECT_EQ(scientific.as_raw_ptr()[scientific.size() - 1], '0');
 }
 
+TEST(Fmt, FloatBoundariesAndRounding) {
+    const auto min_subnormal = rstd::bit_cast<f64>(u64(1));
+    auto       fixed         = rstd::format("{}", min_subnormal);
+    ASSERT_EQ(fixed.size(), 326u);
+    EXPECT_EQ(fixed.as_raw_ptr()[0], '0');
+    EXPECT_EQ(fixed.as_raw_ptr()[1], '.');
+    EXPECT_EQ(fixed.as_raw_ptr()[fixed.size() - 1], '5');
+
+    EXPECT_EQ(rstd::format("{:?}", min_subnormal), "5e-324");
+    EXPECT_EQ(rstd::format("{:?}", f64_::MIN_POSITIVE), "2.2250738585072014e-308");
+    EXPECT_EQ(rstd::format("{:?}", f64_::MAX), "1.7976931348623157e308");
+    EXPECT_EQ(rstd::format("{:?}", rstd::bit_cast<f32>(u32(1))), "1e-45");
+    EXPECT_EQ(rstd::format("{:?}", f32_::MAX), "3.4028235e38");
+
+    EXPECT_EQ(rstd::format("{:.0} {:.0} {:.0} {:.0}", 0.5, 1.5, 2.5, 3.5), "0 2 2 4");
+    EXPECT_EQ(rstd::format("{:.0} {:.0}", 9.5, 99.5), "10 100");
+    EXPECT_EQ(rstd::format("{:.3e}", 0.0), "0.000e0");
+    EXPECT_EQ(rstd::format("{:.900}", min_subnormal).size(), 902u);
+    EXPECT_EQ(rstd::format("{:.900}", f64_::MIN_POSITIVE).size(), 902u);
+    EXPECT_EQ(rstd::format("{:.900e}", min_subnormal).size(), 907u);
+}
+
 TEST(Fmt, Duration) {
     auto d = time::Duration::from_millis(1500);
     auto s = rstd::format("Time: {:?}", d);
