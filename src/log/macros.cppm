@@ -3,21 +3,21 @@ export import :logger;
 export import :record;
 export import rstd.core;
 
-namespace rstd::log
-{
+using namespace rstd::prelude;
+using namespace rstd::log;
 
-namespace detail
-{
-
-inline void
-log_internal(Level level, ref<str> target, fmt::Arguments args, panic_::Location loc) noexcept {
+inline void log_internal(Level                  level,
+                         ref<str>               target,
+                         rstd::fmt::Arguments   args,
+                         rstd::panic_::Location loc) noexcept {
     if (level <= max_level()) {
         Record rec { Metadata { level, target }, args, loc };
         log(rec);
     }
 }
 
-} // namespace detail
+namespace rstd::log
+{
 
 // ── error ─────────────────────────────────────────────────────────────────
 
@@ -25,35 +25,35 @@ export template<typename... Args>
 struct error {
     error(fmt::format_string<Args...> fmt_str, Args&&... args, panic_::SrcLoc loc = {}) {
         fmt::Argument arg_array[] = { fmt::Argument::make(args)... };
-        detail::log_internal(Level::Error,
-                             ref<str>(),
-                             { fmt_str.data(), fmt_str.size(), arg_array, sizeof...(Args) },
-                             panic_::Location::from(loc.val));
+        log_internal(Level::Error,
+                     ref<str>(),
+                     { fmt_str.data(), fmt_str.size(), arg_array, sizeof...(Args) },
+                     panic_::Location::from(loc.val));
     }
     error(Target                      tgt,
           fmt::format_string<Args...> fmt_str,
           Args&&... args,
           panic_::SrcLoc loc = {}) {
         fmt::Argument arg_array[] = { fmt::Argument::make(args)... };
-        detail::log_internal(Level::Error,
-                             tgt.value,
-                             { fmt_str.data(), fmt_str.size(), arg_array, sizeof...(Args) },
-                             panic_::Location::from(loc.val));
+        log_internal(Level::Error,
+                     tgt.value,
+                     { fmt_str.data(), fmt_str.size(), arg_array, sizeof...(Args) },
+                     panic_::Location::from(loc.val));
     }
 };
 template<>
 struct error<> {
     error(fmt::format_string<> fmt_str, panic_::SrcLoc loc = {}) {
-        detail::log_internal(Level::Error,
-                             ref<str>(),
-                             { fmt_str.data(), fmt_str.size(), nullptr, 0 },
-                             panic_::Location::from(loc.val));
+        log_internal(Level::Error,
+                     ref<str>(),
+                     { fmt_str.data(), fmt_str.size(), nullptr, 0 },
+                     panic_::Location::from(loc.val));
     }
     error(Target tgt, fmt::format_string<> fmt_str, panic_::SrcLoc loc = {}) {
-        detail::log_internal(Level::Error,
-                             tgt.value,
-                             { fmt_str.data(), fmt_str.size(), nullptr, 0 },
-                             panic_::Location::from(loc.val));
+        log_internal(Level::Error,
+                     tgt.value,
+                     { fmt_str.data(), fmt_str.size(), nullptr, 0 },
+                     panic_::Location::from(loc.val));
     }
 };
 template<typename... Args>
@@ -67,32 +67,32 @@ export template<typename... Args>
 struct warn {
     warn(fmt::format_string<Args...> fmt_str, Args&&... args, panic_::SrcLoc loc = {}) {
         fmt::Argument arg_array[] = { fmt::Argument::make(args)... };
-        detail::log_internal(Level::Warn,
-                             ref<str>(),
-                             { fmt_str.data(), fmt_str.size(), arg_array, sizeof...(Args) },
-                             panic_::Location::from(loc.val));
+        log_internal(Level::Warn,
+                     ref<str>(),
+                     { fmt_str.data(), fmt_str.size(), arg_array, sizeof...(Args) },
+                     panic_::Location::from(loc.val));
     }
     warn(Target tgt, fmt::format_string<Args...> fmt_str, Args&&... args, panic_::SrcLoc loc = {}) {
         fmt::Argument arg_array[] = { fmt::Argument::make(args)... };
-        detail::log_internal(Level::Warn,
-                             tgt.value,
-                             { fmt_str.data(), fmt_str.size(), arg_array, sizeof...(Args) },
-                             panic_::Location::from(loc.val));
+        log_internal(Level::Warn,
+                     tgt.value,
+                     { fmt_str.data(), fmt_str.size(), arg_array, sizeof...(Args) },
+                     panic_::Location::from(loc.val));
     }
 };
 template<>
 struct warn<> {
     warn(fmt::format_string<> fmt_str, panic_::SrcLoc loc = {}) {
-        detail::log_internal(Level::Warn,
-                             ref<str>(),
-                             { fmt_str.data(), fmt_str.size(), nullptr, 0 },
-                             panic_::Location::from(loc.val));
+        log_internal(Level::Warn,
+                     ref<str>(),
+                     { fmt_str.data(), fmt_str.size(), nullptr, 0 },
+                     panic_::Location::from(loc.val));
     }
     warn(Target tgt, fmt::format_string<> fmt_str, panic_::SrcLoc loc = {}) {
-        detail::log_internal(Level::Warn,
-                             tgt.value,
-                             { fmt_str.data(), fmt_str.size(), nullptr, 0 },
-                             panic_::Location::from(loc.val));
+        log_internal(Level::Warn,
+                     tgt.value,
+                     { fmt_str.data(), fmt_str.size(), nullptr, 0 },
+                     panic_::Location::from(loc.val));
     }
 };
 template<typename... Args>
@@ -106,32 +106,32 @@ export template<typename... Args>
 struct info {
     info(fmt::format_string<Args...> fmt_str, Args&&... args, panic_::SrcLoc loc = {}) {
         fmt::Argument arg_array[] = { fmt::Argument::make(args)... };
-        detail::log_internal(Level::Info,
-                             ref<str>(),
-                             { fmt_str.data(), fmt_str.size(), arg_array, sizeof...(Args) },
-                             panic_::Location::from(loc.val));
+        log_internal(Level::Info,
+                     ref<str>(),
+                     { fmt_str.data(), fmt_str.size(), arg_array, sizeof...(Args) },
+                     panic_::Location::from(loc.val));
     }
     info(Target tgt, fmt::format_string<Args...> fmt_str, Args&&... args, panic_::SrcLoc loc = {}) {
         fmt::Argument arg_array[] = { fmt::Argument::make(args)... };
-        detail::log_internal(Level::Info,
-                             tgt.value,
-                             { fmt_str.data(), fmt_str.size(), arg_array, sizeof...(Args) },
-                             panic_::Location::from(loc.val));
+        log_internal(Level::Info,
+                     tgt.value,
+                     { fmt_str.data(), fmt_str.size(), arg_array, sizeof...(Args) },
+                     panic_::Location::from(loc.val));
     }
 };
 template<>
 struct info<> {
     info(fmt::format_string<> fmt_str, panic_::SrcLoc loc = {}) {
-        detail::log_internal(Level::Info,
-                             ref<str>(),
-                             { fmt_str.data(), fmt_str.size(), nullptr, 0 },
-                             panic_::Location::from(loc.val));
+        log_internal(Level::Info,
+                     ref<str>(),
+                     { fmt_str.data(), fmt_str.size(), nullptr, 0 },
+                     panic_::Location::from(loc.val));
     }
     info(Target tgt, fmt::format_string<> fmt_str, panic_::SrcLoc loc = {}) {
-        detail::log_internal(Level::Info,
-                             tgt.value,
-                             { fmt_str.data(), fmt_str.size(), nullptr, 0 },
-                             panic_::Location::from(loc.val));
+        log_internal(Level::Info,
+                     tgt.value,
+                     { fmt_str.data(), fmt_str.size(), nullptr, 0 },
+                     panic_::Location::from(loc.val));
     }
 };
 template<typename... Args>
@@ -145,35 +145,35 @@ export template<typename... Args>
 struct debug {
     debug(fmt::format_string<Args...> fmt_str, Args&&... args, panic_::SrcLoc loc = {}) {
         fmt::Argument arg_array[] = { fmt::Argument::make(args)... };
-        detail::log_internal(Level::Debug,
-                             ref<str>(),
-                             { fmt_str.data(), fmt_str.size(), arg_array, sizeof...(Args) },
-                             panic_::Location::from(loc.val));
+        log_internal(Level::Debug,
+                     ref<str>(),
+                     { fmt_str.data(), fmt_str.size(), arg_array, sizeof...(Args) },
+                     panic_::Location::from(loc.val));
     }
     debug(Target                      tgt,
           fmt::format_string<Args...> fmt_str,
           Args&&... args,
           panic_::SrcLoc loc = {}) {
         fmt::Argument arg_array[] = { fmt::Argument::make(args)... };
-        detail::log_internal(Level::Debug,
-                             tgt.value,
-                             { fmt_str.data(), fmt_str.size(), arg_array, sizeof...(Args) },
-                             panic_::Location::from(loc.val));
+        log_internal(Level::Debug,
+                     tgt.value,
+                     { fmt_str.data(), fmt_str.size(), arg_array, sizeof...(Args) },
+                     panic_::Location::from(loc.val));
     }
 };
 template<>
 struct debug<> {
     debug(fmt::format_string<> fmt_str, panic_::SrcLoc loc = {}) {
-        detail::log_internal(Level::Debug,
-                             ref<str>(),
-                             { fmt_str.data(), fmt_str.size(), nullptr, 0 },
-                             panic_::Location::from(loc.val));
+        log_internal(Level::Debug,
+                     ref<str>(),
+                     { fmt_str.data(), fmt_str.size(), nullptr, 0 },
+                     panic_::Location::from(loc.val));
     }
     debug(Target tgt, fmt::format_string<> fmt_str, panic_::SrcLoc loc = {}) {
-        detail::log_internal(Level::Debug,
-                             tgt.value,
-                             { fmt_str.data(), fmt_str.size(), nullptr, 0 },
-                             panic_::Location::from(loc.val));
+        log_internal(Level::Debug,
+                     tgt.value,
+                     { fmt_str.data(), fmt_str.size(), nullptr, 0 },
+                     panic_::Location::from(loc.val));
     }
 };
 template<typename... Args>
@@ -187,35 +187,35 @@ export template<typename... Args>
 struct trace {
     trace(fmt::format_string<Args...> fmt_str, Args&&... args, panic_::SrcLoc loc = {}) {
         fmt::Argument arg_array[] = { fmt::Argument::make(args)... };
-        detail::log_internal(Level::Trace,
-                             ref<str>(),
-                             { fmt_str.data(), fmt_str.size(), arg_array, sizeof...(Args) },
-                             panic_::Location::from(loc.val));
+        log_internal(Level::Trace,
+                     ref<str>(),
+                     { fmt_str.data(), fmt_str.size(), arg_array, sizeof...(Args) },
+                     panic_::Location::from(loc.val));
     }
     trace(Target                      tgt,
           fmt::format_string<Args...> fmt_str,
           Args&&... args,
           panic_::SrcLoc loc = {}) {
         fmt::Argument arg_array[] = { fmt::Argument::make(args)... };
-        detail::log_internal(Level::Trace,
-                             tgt.value,
-                             { fmt_str.data(), fmt_str.size(), arg_array, sizeof...(Args) },
-                             panic_::Location::from(loc.val));
+        log_internal(Level::Trace,
+                     tgt.value,
+                     { fmt_str.data(), fmt_str.size(), arg_array, sizeof...(Args) },
+                     panic_::Location::from(loc.val));
     }
 };
 template<>
 struct trace<> {
     trace(fmt::format_string<> fmt_str, panic_::SrcLoc loc = {}) {
-        detail::log_internal(Level::Trace,
-                             ref<str>(),
-                             { fmt_str.data(), fmt_str.size(), nullptr, 0 },
-                             panic_::Location::from(loc.val));
+        log_internal(Level::Trace,
+                     ref<str>(),
+                     { fmt_str.data(), fmt_str.size(), nullptr, 0 },
+                     panic_::Location::from(loc.val));
     }
     trace(Target tgt, fmt::format_string<> fmt_str, panic_::SrcLoc loc = {}) {
-        detail::log_internal(Level::Trace,
-                             tgt.value,
-                             { fmt_str.data(), fmt_str.size(), nullptr, 0 },
-                             panic_::Location::from(loc.val));
+        log_internal(Level::Trace,
+                     tgt.value,
+                     { fmt_str.data(), fmt_str.size(), nullptr, 0 },
+                     panic_::Location::from(loc.val));
     }
 };
 template<typename... Args>

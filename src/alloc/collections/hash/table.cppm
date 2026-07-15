@@ -5,9 +5,6 @@ export module rstd.alloc:collections.hash_table;
 export import :alloc;
 export import rstd.core;
 
-namespace alloc::collections::hash::detail
-{
-
 using rstd::alloc::Allocator;
 using rstd::alloc::Layout;
 using rstd::mem::maybe_uninit::MaybeUninit;
@@ -73,7 +70,7 @@ public:
     }
 };
 
-export template<typename K, typename V>
+template<typename K, typename V>
 class RawTable {
     Bucket<K, V>* data;
     usize         buckets;
@@ -241,5 +238,3 @@ public:
         debug_assert(valid());
     }
 };
-
-} // namespace alloc::collections::hash::detail

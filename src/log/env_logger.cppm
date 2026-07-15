@@ -6,8 +6,8 @@ export import :record;
 export import rstd.core;
 import rstd;
 
-namespace rstd::log
-{
+using namespace rstd::prelude;
+using namespace rstd::log;
 
 // ── Filter rule ───────────────────────────────────────────────────────────
 
@@ -25,9 +25,6 @@ enum class Style : u8
     Always,
     Never
 };
-
-namespace detail
-{
 
 inline auto stderr_is_tty() noexcept -> bool {
     return rstd::sys::io::stdio::is_terminal_fd(2);
@@ -109,7 +106,8 @@ inline auto module_from_function(const char* fn) noexcept -> ref<str> {
     return ref<str>((const u8*)start, usize(last_sep - start));
 }
 
-} // namespace detail
+namespace rstd::log
+{
 
 // ── StderrWriter ────────────────────────────────────────────────────────────
 
@@ -141,8 +139,7 @@ export struct EnvLogger {
     EnvLogger() noexcept {
         parse_env();
         parse_style_env();
-        color_enabled =
-            (style == Style::Always) || (style == Style::Auto && detail::stderr_is_tty());
+        color_enabled = (style == Style::Always) || (style == Style::Auto && stderr_is_tty());
     }
 
     explicit EnvLogger(ref<str> filters) noexcept { parse_filters(filters); }
@@ -189,7 +186,7 @@ private:
     void parse_style_env() noexcept {
         auto* val = rstd::sys::getenv_internal("RSTD_LOG_STYLE");
         if (val == nullptr) return;
-        style = detail::parse_style(ref<str>(val));
+        style = ::parse_style(ref<str>(val));
     }
 
     void parse_filters(ref<str> input) noexcept {
@@ -275,14 +272,14 @@ private:
         f.write_raw((u8*)" ", 1);
 
         if (color_enabled) {
-            f.write_raw((u8 const*)detail::level_color(r.lvl()), detail::COLOR_PREFIX_LEN);
+            f.write_raw((u8 const*)level_color(r.lvl()), COLOR_PREFIX_LEN);
         }
-        f.write_raw((u8 const*)detail::padded_level_str(r.lvl()), detail::PADDED_LEVEL_LEN);
+        f.write_raw((u8 const*)padded_level_str(r.lvl()), PADDED_LEVEL_LEN);
         if (color_enabled) {
-            f.write_raw((u8 const*)detail::COLOR_RESET, detail::COLOR_RESET_LEN);
+            f.write_raw((u8 const*)COLOR_RESET, COLOR_RESET_LEN);
         }
 
-        auto md = detail::module_from_function(r.loc().function_name());
+        auto md = module_from_function(r.loc().function_name());
         if (md.size() > 0) {
             f.write_raw((u8*)" ", 1);
             f.write_raw(md.data(), md.size());

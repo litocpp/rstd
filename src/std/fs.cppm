@@ -20,15 +20,16 @@ using rstd::path::Path;
 using rstd::sys::fd::BorrowedFd;
 using rstd::sys::fd::OwnedFd;
 using rstd::sys::fd::RawFd;
+using rstd::io::Error;
+using rstd::io::ErrorKind;
+using rstd::io::SeekFrom;
 using namespace rstd::prelude;
+
+template<typename T>
+using FsResult = rstd::io::Result<T>;
 
 namespace rstd::fs
 {
-
-using rstd::io::Error;
-using rstd::io::ErrorKind;
-using rstd::io::Result;
-using rstd::io::SeekFrom;
 
 export class File;
 export class Metadata;
@@ -176,7 +177,7 @@ public:
 #endif
     }
 
-    auto modified() const -> Result<rstd::time::SystemTime> {
+    auto modified() const -> FsResult<rstd::time::SystemTime> {
 #if RSTD_OS_UNIX
         return Ok(rstd::time::SystemTime {
             rstd::sys::pal::unix::time::SystemTime { rstd::sys::pal::unix::time::Timespec {
@@ -185,7 +186,7 @@ public:
         return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
 #endif
     }
-    auto accessed() const -> Result<rstd::time::SystemTime> {
+    auto accessed() const -> FsResult<rstd::time::SystemTime> {
 #if RSTD_OS_UNIX
         return Ok(rstd::time::SystemTime {
             rstd::sys::pal::unix::time::SystemTime { rstd::sys::pal::unix::time::Timespec {
@@ -194,7 +195,7 @@ public:
         return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
 #endif
     }
-    auto created() const -> Result<rstd::time::SystemTime> {
+    auto created() const -> FsResult<rstd::time::SystemTime> {
         // Linux's struct stat has no btime; statx() does, but mirroring Rust
         // we return Unsupported here. (Phase: future.)
         return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
@@ -294,12 +295,12 @@ public:
     }
 
     /// Open the file at `path` according to the configured options.
-    auto open(ref<Path> path) const -> Result<File>;
+    auto open(ref<Path> path) const -> FsResult<File>;
 
 #if RSTD_OS_UNIX
     /// Compute the platform open(2) flags from the options. Returns Err if
     /// the combination is invalid (mirrors Rust's get_access_mode/get_creation_mode).
-    auto get_access_mode() const noexcept -> Result<i32> {
+    auto get_access_mode() const noexcept -> FsResult<i32> {
         if (read_ && ! write_ && ! append_) return Ok(i32 { libc::O_RDONLY });
         if (! read_ && write_ && ! append_) return Ok(i32 { libc::O_WRONLY });
         if (read_ && write_ && ! append_) return Ok(i32 { libc::O_RDWR });
@@ -308,7 +309,7 @@ public:
         return Err(Error::from_raw_os_error(libc::EINVAL));
     }
 
-    auto get_creation_mode() const noexcept -> Result<i32> {
+    auto get_creation_mode() const noexcept -> FsResult<i32> {
         if (! write_ && ! append_) {
             if (truncate_ || create_ || create_new_)
                 return Err(Error::from_raw_os_error(libc::EINVAL));
@@ -334,21 +335,21 @@ public:
     explicit File(OwnedFd fd) noexcept: fd_(rstd::move(fd)) {}
 
     /// Open `path` read-only.
-    static auto open(ref<Path> path) -> Result<File> {
+    static auto open(ref<Path> path) -> FsResult<File> {
         OpenOptions o;
         o.read(true);
         return o.open(path);
     }
 
     /// Open `path` for writing, creating it (truncating if it exists).
-    static auto create(ref<Path> path) -> Result<File> {
+    static auto create(ref<Path> path) -> FsResult<File> {
         OpenOptions o;
         o.write(true).create(true).truncate(true);
         return o.open(path);
     }
 
     /// Open `path` for writing, failing if it already exists.
-    static auto create_new(ref<Path> path) -> Result<File> {
+    static auto create_new(ref<Path> path) -> FsResult<File> {
         OpenOptions o;
         o.read(true).write(true).create_new(true);
         return o.open(path);
@@ -358,7 +359,7 @@ public:
     static auto options() noexcept -> OpenOptions { return OpenOptions::make(); }
 
     /// Reads up to `len` bytes into `buf`. Retries on EINTR.
-    auto read(u8* buf, usize len) -> Result<usize> {
+    auto read(u8* buf, usize len) -> FsResult<usize> {
 #if RSTD_OS_UNIX
         return rstd::sys::io::stdio::read_fd(fd_.as_raw_fd(), buf, len);
 #else
@@ -367,7 +368,7 @@ public:
     }
 
     /// Writes up to `len` bytes from `buf`. Retries on EINTR.
-    auto write(const u8* buf, usize len) -> Result<usize> {
+    auto write(const u8* buf, usize len) -> FsResult<usize> {
 #if RSTD_OS_UNIX
         return rstd::sys::io::stdio::write_fd(fd_.as_raw_fd(), buf, len);
 #else
@@ -376,10 +377,10 @@ public:
     }
 
     /// No-op for files; the kernel buffers writes.
-    auto flush() -> Result<empty> { return Ok(empty {}); }
+    auto flush() -> FsResult<empty> { return Ok(empty {}); }
 
     /// Seeks within the file.
-    auto seek(SeekFrom pos) -> Result<u64> {
+    auto seek(SeekFrom pos) -> FsResult<u64> {
 #if RSTD_OS_UNIX
         int         whence = libc::SEEK_SET;
         libc::off_t off    = 0;
@@ -406,7 +407,7 @@ public:
     }
 
     /// fsync(2) — flushes file data and metadata to disk.
-    auto sync_all() -> Result<empty> {
+    auto sync_all() -> FsResult<empty> {
 #if RSTD_OS_UNIX
         if (libc::fsync(fd_.as_raw_fd()) < 0)
             return Err(Error::from_raw_os_error(libc::get_errno()));
@@ -417,7 +418,7 @@ public:
     }
 
     /// fdatasync(2) — flushes file data (skipping non-essential metadata).
-    auto sync_data() -> Result<empty> {
+    auto sync_data() -> FsResult<empty> {
 #if RSTD_OS_UNIX
         if (libc::fdatasync(fd_.as_raw_fd()) < 0)
             return Err(Error::from_raw_os_error(libc::get_errno()));
@@ -428,7 +429,7 @@ public:
     }
 
     /// ftruncate(2) — truncate or extend the file to `size` bytes.
-    auto set_len(u64 size) -> Result<empty> {
+    auto set_len(u64 size) -> FsResult<empty> {
 #if RSTD_OS_UNIX
         while (libc::ftruncate(fd_.as_raw_fd(), libc::off_t(size)) < 0) {
             if (libc::get_errno() == libc::EINTR) continue;
@@ -441,7 +442,7 @@ public:
     }
 
     /// pread(2) — positional read at absolute `offset`. EINTR-retried.
-    auto read_at(u8* buf, usize len, u64 offset) -> Result<usize> {
+    auto read_at(u8* buf, usize len, u64 offset) -> FsResult<usize> {
 #if RSTD_OS_UNIX
         while (true) {
             libc::ssize_t n = libc::pread(fd_.as_raw_fd(), buf, len, libc::off_t(offset));
@@ -458,7 +459,7 @@ public:
     }
 
     /// pwrite(2) — positional write at absolute `offset`. EINTR-retried.
-    auto write_at(const u8* buf, usize len, u64 offset) -> Result<usize> {
+    auto write_at(const u8* buf, usize len, u64 offset) -> FsResult<usize> {
 #if RSTD_OS_UNIX
         while (true) {
             libc::ssize_t n = libc::pwrite(fd_.as_raw_fd(), buf, len, libc::off_t(offset));
@@ -475,7 +476,7 @@ public:
     }
 
     /// pread loop: read exactly `len` bytes from `offset`.
-    auto read_exact_at(u8* buf, usize len, u64 offset) -> Result<empty> {
+    auto read_exact_at(u8* buf, usize len, u64 offset) -> FsResult<empty> {
         while (len > 0) {
             auto r = read_at(buf, len, offset);
             if (r.is_err()) return Err(r.unwrap_err_unchecked());
@@ -489,7 +490,7 @@ public:
     }
 
     /// pwrite loop: write all `len` bytes starting at `offset`.
-    auto write_all_at(const u8* buf, usize len, u64 offset) -> Result<empty> {
+    auto write_all_at(const u8* buf, usize len, u64 offset) -> FsResult<empty> {
         while (len > 0) {
             auto r = write_at(buf, len, offset);
             if (r.is_err()) return Err(r.unwrap_err_unchecked());
@@ -503,7 +504,7 @@ public:
     }
 
     /// flock(2) LOCK_EX (exclusive, blocking).
-    auto lock() -> Result<empty> {
+    auto lock() -> FsResult<empty> {
 #if RSTD_OS_UNIX
         while (true) {
             if (libc::flock(fd_.as_raw_fd(), libc::LOCK_EX) == 0) return Ok(empty {});
@@ -516,7 +517,7 @@ public:
     }
 
     /// flock(2) LOCK_SH (shared, blocking).
-    auto lock_shared() -> Result<empty> {
+    auto lock_shared() -> FsResult<empty> {
 #if RSTD_OS_UNIX
         while (true) {
             if (libc::flock(fd_.as_raw_fd(), libc::LOCK_SH) == 0) return Ok(empty {});
@@ -529,7 +530,7 @@ public:
     }
 
     /// flock(2) libc::LOCK_EX | libc::LOCK_NB. Returns WouldBlock if another process holds the lock.
-    auto try_lock() -> Result<empty> {
+    auto try_lock() -> FsResult<empty> {
 #if RSTD_OS_UNIX
         if (libc::flock(fd_.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) == 0) return Ok(empty {});
         if (libc::get_errno() == libc::EWOULDBLOCK)
@@ -541,7 +542,7 @@ public:
     }
 
     /// flock(2) libc::LOCK_SH | libc::LOCK_NB.
-    auto try_lock_shared() -> Result<empty> {
+    auto try_lock_shared() -> FsResult<empty> {
 #if RSTD_OS_UNIX
         if (libc::flock(fd_.as_raw_fd(), libc::LOCK_SH | libc::LOCK_NB) == 0) return Ok(empty {});
         if (libc::get_errno() == libc::EWOULDBLOCK)
@@ -553,7 +554,7 @@ public:
     }
 
     /// flock(2) LOCK_UN.
-    auto unlock() -> Result<empty> {
+    auto unlock() -> FsResult<empty> {
 #if RSTD_OS_UNIX
         if (libc::flock(fd_.as_raw_fd(), libc::LOCK_UN) == 0) return Ok(empty {});
         return Err(Error::from_raw_os_error(libc::get_errno()));
@@ -563,7 +564,7 @@ public:
     }
 
     /// fstat(2) — returns metadata for this file.
-    auto metadata() const -> Result<Metadata> {
+    auto metadata() const -> FsResult<Metadata> {
 #if RSTD_OS_UNIX
         Metadata m;
         if (libc::fstat(fd_.as_raw_fd(), &m.st_) < 0)
@@ -575,7 +576,7 @@ public:
     }
 
     /// fchmod(2) — change the file's permission bits.
-    auto set_permissions(Permissions perm) -> Result<empty> {
+    auto set_permissions(Permissions perm) -> FsResult<empty> {
 #if RSTD_OS_UNIX
         if (libc::fchmod(fd_.as_raw_fd(), libc::mode_t(perm.mode_)) < 0)
             return Err(Error::from_raw_os_error(libc::get_errno()));
@@ -587,7 +588,7 @@ public:
     }
 
     /// futimens(2) — set accessed/modified times. libc::UTIME_OMIT for unset fields.
-    auto set_times(FileTimes times) -> Result<empty> {
+    auto set_times(FileTimes times) -> FsResult<empty> {
 #if RSTD_OS_UNIX
         libc::timespec_t ts[2];
         auto fill = [&](Option<rstd::time::SystemTime> const& opt, libc::timespec_t& out) {
@@ -612,12 +613,12 @@ public:
     }
 
     /// Convenience wrapper: set only the modified time.
-    auto set_modified(rstd::time::SystemTime t) -> Result<empty> {
+    auto set_modified(rstd::time::SystemTime t) -> FsResult<empty> {
         return set_times(FileTimes::make().set_modified(t));
     }
 
     /// Returns a new `File` referring to the same underlying file. Uses dup(2).
-    auto try_clone() const -> Result<File> {
+    auto try_clone() const -> FsResult<File> {
         auto cloned = fd_.try_clone();
         if (cloned.is_err()) return Err(cloned.unwrap_err_unchecked());
         return Ok(File { rstd::move(cloned).unwrap_unchecked() });
@@ -630,7 +631,7 @@ public:
     static auto from_raw_fd(RawFd fd) noexcept -> File { return File { OwnedFd::from_raw_fd(fd) }; }
 };
 
-inline auto OpenOptions::open(ref<Path> path) const -> Result<File> {
+inline auto OpenOptions::open(ref<Path> path) const -> FsResult<File> {
 #if RSTD_OS_UNIX
     auto cs_res = path.to_cstring();
     if (cs_res.is_err()) {
@@ -661,19 +662,18 @@ inline auto OpenOptions::open(ref<Path> path) const -> Result<File> {
 
 // ── Free functions ────────────────────────────────────────────────────────
 
-namespace detail
-{
+} // namespace rstd::fs
 
 #if RSTD_OS_UNIX
 /// Helper: Path → null-terminated char buffer + length, or InvalidInput on interior NUL.
-inline auto path_cstring(ref<Path> path) -> Result<CString> {
+inline auto path_cstring(ref<Path> path) -> FsResult<CString> {
     auto r = path.to_cstring();
     if (r.is_err()) return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
     return Ok(rstd::move(r).unwrap_unchecked());
 }
 #endif
 
-inline auto read_to_end(File& f, Vec<u8>& out) -> Result<usize> {
+inline auto read_to_end(rstd::fs::File& f, Vec<u8>& out) -> FsResult<usize> {
     u8    chunk[4096];
     usize total = 0;
     while (true) {
@@ -687,22 +687,23 @@ inline auto read_to_end(File& f, Vec<u8>& out) -> Result<usize> {
     return Ok(total);
 }
 
-} // namespace detail
+namespace rstd::fs
+{
 
 /// Reads the entire contents of `path` into a new `Vec<u8>`.
-export inline auto read(ref<Path> path) -> Result<Vec<u8>> {
+export inline auto read(ref<Path> path) -> FsResult<Vec<u8>> {
     auto fres = File::open(path);
     if (fres.is_err()) return Err(fres.unwrap_err_unchecked());
     auto f   = rstd::move(fres).unwrap_unchecked();
     auto out = Vec<u8>::make();
-    auto r   = detail::read_to_end(f, out);
+    auto r   = read_to_end(f, out);
     if (r.is_err()) return Err(r.unwrap_err_unchecked());
     return Ok(rstd::move(out));
 }
 
 /// Reads the entire contents of `path` into a new UTF-8 `String`.
 /// Returns InvalidData on invalid UTF-8.
-export inline auto read_to_string(ref<Path> path) -> Result<String> {
+export inline auto read_to_string(ref<Path> path) -> FsResult<String> {
     auto v = read(path);
     if (v.is_err()) return Err(v.unwrap_err_unchecked());
     auto bytes = rstd::move(v).unwrap_unchecked();
@@ -713,7 +714,7 @@ export inline auto read_to_string(ref<Path> path) -> Result<String> {
 }
 
 /// Writes `contents` to `path`, creating or truncating the file as needed.
-export inline auto write(ref<Path> path, slice<u8> contents) -> Result<empty> {
+export inline auto write(ref<Path> path, slice<u8> contents) -> FsResult<empty> {
     auto fres = File::create(path);
     if (fres.is_err()) return Err(fres.unwrap_err_unchecked());
     auto  f   = rstd::move(fres).unwrap_unchecked();
@@ -729,25 +730,27 @@ export inline auto write(ref<Path> path, slice<u8> contents) -> Result<empty> {
 }
 
 #if RSTD_OS_UNIX
-namespace detail
-{
-inline auto stat_path(ref<Path> path, bool follow) -> Result<Metadata> {
+} // namespace rstd::fs
+
+inline auto stat_path(ref<Path> path, bool follow) -> FsResult<rstd::fs::Metadata> {
     auto cs = path_cstring(path);
     if (cs.is_err()) return Err(cs.unwrap_err_unchecked());
-    auto     csv = rstd::move(cs).unwrap_unchecked();
-    Metadata m;
+    auto               csv = rstd::move(cs).unwrap_unchecked();
+    rstd::fs::Metadata m;
     int r = follow ? libc::stat(reinterpret_cast<const char*>(csv.to_bytes_with_nul().p), &m.st_)
                    : libc::lstat(reinterpret_cast<const char*>(csv.to_bytes_with_nul().p), &m.st_);
     if (r < 0) return Err(Error::from_raw_os_error(libc::get_errno()));
     return Ok(rstd::move(m));
 }
-} // namespace detail
+
+namespace rstd::fs
+{
 #endif
 
 /// stat(2) — metadata for `path` (follows symlinks).
-export inline auto metadata(ref<Path> path) -> Result<Metadata> {
+export inline auto metadata(ref<Path> path) -> FsResult<Metadata> {
 #if RSTD_OS_UNIX
-    return detail::stat_path(path, true);
+    return stat_path(path, true);
 #else
     (void)path;
     return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
@@ -755,9 +758,9 @@ export inline auto metadata(ref<Path> path) -> Result<Metadata> {
 }
 
 /// lstat(2) — metadata for `path` without following symlinks.
-export inline auto symlink_metadata(ref<Path> path) -> Result<Metadata> {
+export inline auto symlink_metadata(ref<Path> path) -> FsResult<Metadata> {
 #if RSTD_OS_UNIX
-    return detail::stat_path(path, false);
+    return stat_path(path, false);
 #else
     (void)path;
     return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
@@ -765,7 +768,7 @@ export inline auto symlink_metadata(ref<Path> path) -> Result<Metadata> {
 }
 
 /// Returns Ok(true) if `path` exists. Maps NotFound to Ok(false).
-export inline auto exists(ref<Path> path) -> Result<bool> {
+export inline auto exists(ref<Path> path) -> FsResult<bool> {
     auto m = metadata(path);
     if (m.is_ok()) return Ok(true);
     auto e = rstd::move(m).unwrap_err_unchecked();
@@ -774,9 +777,9 @@ export inline auto exists(ref<Path> path) -> Result<bool> {
 }
 
 #if RSTD_OS_UNIX
-namespace detail
-{
-inline auto run_path1(ref<Path> path, int (*fn)(const char*)) -> Result<empty> {
+} // namespace rstd::fs
+
+inline auto run_path1(ref<Path> path, int (*fn)(const char*)) -> FsResult<empty> {
     auto cs = path_cstring(path);
     if (cs.is_err()) return Err(cs.unwrap_err_unchecked());
     auto csv = rstd::move(cs).unwrap_unchecked();
@@ -785,7 +788,7 @@ inline auto run_path1(ref<Path> path, int (*fn)(const char*)) -> Result<empty> {
     return Ok(empty {});
 }
 inline auto run_path2(ref<Path> from, ref<Path> to, int (*fn)(const char*, const char*))
-    -> Result<empty> {
+    -> FsResult<empty> {
     auto a = path_cstring(from);
     if (a.is_err()) return Err(a.unwrap_err_unchecked());
     auto av = rstd::move(a).unwrap_unchecked();
@@ -797,13 +800,15 @@ inline auto run_path2(ref<Path> from, ref<Path> to, int (*fn)(const char*, const
         return Err(Error::from_raw_os_error(libc::get_errno()));
     return Ok(empty {});
 }
-} // namespace detail
+
+namespace rstd::fs
+{
 #endif
 
 /// unlink(2).
-export inline auto remove_file(ref<Path> path) -> Result<empty> {
+export inline auto remove_file(ref<Path> path) -> FsResult<empty> {
 #if RSTD_OS_UNIX
-    return detail::run_path1(path, libc::unlink);
+    return run_path1(path, libc::unlink);
 #else
     (void)path;
     return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
@@ -811,9 +816,9 @@ export inline auto remove_file(ref<Path> path) -> Result<empty> {
 }
 
 /// rmdir(2). Fails if the directory is non-empty.
-export inline auto remove_dir(ref<Path> path) -> Result<empty> {
+export inline auto remove_dir(ref<Path> path) -> FsResult<empty> {
 #if RSTD_OS_UNIX
-    return detail::run_path1(path, libc::rmdir);
+    return run_path1(path, libc::rmdir);
 #else
     (void)path;
     return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
@@ -821,9 +826,9 @@ export inline auto remove_dir(ref<Path> path) -> Result<empty> {
 }
 
 /// rename(2) — move/rename `from` to `to`.
-export inline auto rename(ref<Path> from, ref<Path> to) -> Result<empty> {
+export inline auto rename(ref<Path> from, ref<Path> to) -> FsResult<empty> {
 #if RSTD_OS_UNIX
-    return detail::run_path2(from, to, libc::rename);
+    return run_path2(from, to, libc::rename);
 #else
     (void)from;
     (void)to;
@@ -832,9 +837,9 @@ export inline auto rename(ref<Path> from, ref<Path> to) -> Result<empty> {
 }
 
 /// link(2) — create a hard link to `original` at `link`.
-export inline auto hard_link(ref<Path> original, ref<Path> link) -> Result<empty> {
+export inline auto hard_link(ref<Path> original, ref<Path> link) -> FsResult<empty> {
 #if RSTD_OS_UNIX
-    return detail::run_path2(original, link, libc::link);
+    return run_path2(original, link, libc::link);
 #else
     (void)original;
     (void)link;
@@ -843,9 +848,9 @@ export inline auto hard_link(ref<Path> original, ref<Path> link) -> Result<empty
 }
 
 /// symlink(2) — create `link` pointing at `original`.
-export inline auto soft_link(ref<Path> original, ref<Path> link) -> Result<empty> {
+export inline auto soft_link(ref<Path> original, ref<Path> link) -> FsResult<empty> {
 #if RSTD_OS_UNIX
-    return detail::run_path2(original, link, libc::symlink);
+    return run_path2(original, link, libc::symlink);
 #else
     (void)original;
     (void)link;
@@ -854,9 +859,9 @@ export inline auto soft_link(ref<Path> original, ref<Path> link) -> Result<empty
 }
 
 /// readlink(2) — read the target of a symlink at `path`.
-export inline auto read_link(ref<Path> path) -> Result<rstd::path::PathBuf> {
+export inline auto read_link(ref<Path> path) -> FsResult<rstd::path::PathBuf> {
 #if RSTD_OS_UNIX
-    auto cs = detail::path_cstring(path);
+    auto cs = path_cstring(path);
     if (cs.is_err()) return Err(cs.unwrap_err_unchecked());
     auto csv = rstd::move(cs).unwrap_unchecked();
 
@@ -883,9 +888,9 @@ export inline auto read_link(ref<Path> path) -> Result<rstd::path::PathBuf> {
 }
 
 /// realpath(3) — fully resolve a path to its absolute, symlink-free form.
-export inline auto canonicalize(ref<Path> path) -> Result<rstd::path::PathBuf> {
+export inline auto canonicalize(ref<Path> path) -> FsResult<rstd::path::PathBuf> {
 #if RSTD_OS_UNIX
-    auto cs = detail::path_cstring(path);
+    auto cs = path_cstring(path);
     if (cs.is_err()) return Err(cs.unwrap_err_unchecked());
     auto  csv = rstd::move(cs).unwrap_unchecked();
     char* raw = libc::realpath(reinterpret_cast<const char*>(csv.to_bytes_with_nul().p), nullptr);
@@ -904,9 +909,9 @@ export inline auto canonicalize(ref<Path> path) -> Result<rstd::path::PathBuf> {
 }
 
 /// mkdir(2) with mode 0o777 (subject to umask).
-export inline auto create_dir(ref<Path> path) -> Result<empty> {
+export inline auto create_dir(ref<Path> path) -> FsResult<empty> {
 #if RSTD_OS_UNIX
-    auto cs = detail::path_cstring(path);
+    auto cs = path_cstring(path);
     if (cs.is_err()) return Err(cs.unwrap_err_unchecked());
     auto csv = rstd::move(cs).unwrap_unchecked();
     if (libc::mkdir(reinterpret_cast<const char*>(csv.to_bytes_with_nul().p), 0777) < 0)
@@ -920,7 +925,7 @@ export inline auto create_dir(ref<Path> path) -> Result<empty> {
 
 /// Recursively create `path` and any missing parent directories.
 /// Mirrors Rust's `DirBuilder::create_dir_all`.
-export inline auto create_dir_all(ref<Path> path) -> Result<empty> {
+export inline auto create_dir_all(ref<Path> path) -> FsResult<empty> {
     if (path.is_empty()) return Ok(empty {});
     auto m = metadata(path);
     if (m.is_ok()) {
@@ -943,9 +948,9 @@ export inline auto create_dir_all(ref<Path> path) -> Result<empty> {
 }
 
 /// chmod(2).
-export inline auto set_permissions(ref<Path> path, Permissions perm) -> Result<empty> {
+export inline auto set_permissions(ref<Path> path, Permissions perm) -> FsResult<empty> {
 #if RSTD_OS_UNIX
-    auto cs = detail::path_cstring(path);
+    auto cs = path_cstring(path);
     if (cs.is_err()) return Err(cs.unwrap_err_unchecked());
     auto csv = rstd::move(cs).unwrap_unchecked();
     if (libc::chmod(reinterpret_cast<const char*>(csv.to_bytes_with_nul().p),
@@ -962,7 +967,7 @@ export inline auto set_permissions(ref<Path> path, Permissions perm) -> Result<e
 /// Read `from` and write its contents to `to`. Returns the number of bytes copied.
 /// First cut: simple read/write loop. Phase-4-fast (later) can swap in
 /// `copy_file_range` on Linux.
-export inline auto copy(ref<Path> from, ref<Path> to) -> Result<u64> {
+export inline auto copy(ref<Path> from, ref<Path> to) -> FsResult<u64> {
     auto fres = File::open(from);
     if (fres.is_err()) return Err(fres.unwrap_err_unchecked());
     auto src = rstd::move(fres).unwrap_unchecked();
@@ -1017,7 +1022,7 @@ public:
     }
 
     /// File type. Falls back to lstat if dirent didn't carry it.
-    auto file_type() const -> Result<FileType> {
+    auto file_type() const -> FsResult<FileType> {
         if (type_ != 0) return Ok(FileType { type_ });
         auto p = path();
         return symlink_metadata(rstd::ref<rstd::path::Path>(p.as_path())).map([](Metadata m) {
@@ -1025,7 +1030,7 @@ public:
         });
     }
 
-    auto metadata() const -> Result<Metadata> {
+    auto metadata() const -> FsResult<Metadata> {
         auto p = path();
         return symlink_metadata(rstd::ref<rstd::path::Path>(p.as_path()));
     }
@@ -1058,14 +1063,14 @@ public:
     ~ReadDir() { close_(); }
 
     /// Returns the next entry, skipping "." and "..". `None` at end of stream.
-    auto next() -> Option<Result<DirEntry>> {
+    auto next() -> Option<FsResult<DirEntry>> {
         if (! dir_) return None();
         while (true) {
             libc::get_errno() = 0;
             libc::dirent* d   = libc::readdir(dir_);
             if (! d) {
                 if (libc::get_errno() == 0) return None();
-                return Some(Result<DirEntry>(Err(Error::from_raw_os_error(libc::get_errno()))));
+                return Some(FsResult<DirEntry>(Err(Error::from_raw_os_error(libc::get_errno()))));
             }
             const char* nm = d->d_name;
             if (nm[0] == '.' && (nm[1] == 0 || (nm[1] == '.' && nm[2] == 0))) continue;
@@ -1084,7 +1089,7 @@ public:
             case libc::DT_SOCK: e.type_ = libc::S_IFSOCK; break;
             default: e.type_ = 0; break;
             }
-            return Some(Result<DirEntry>(Ok(rstd::move(e))));
+            return Some(FsResult<DirEntry>(Ok(rstd::move(e))));
         }
     }
 
@@ -1096,14 +1101,14 @@ private:
         }
     }
 #else
-    auto next() -> Option<Result<DirEntry>> { return None(); }
+    auto next() -> Option<FsResult<DirEntry>> { return None(); }
 #endif
 };
 
 /// opendir(3) — open a directory for iteration.
-export inline auto read_dir(ref<Path> path) -> Result<ReadDir> {
+export inline auto read_dir(ref<Path> path) -> FsResult<ReadDir> {
 #if RSTD_OS_UNIX
-    auto cs = detail::path_cstring(path);
+    auto cs = path_cstring(path);
     if (cs.is_err()) return Err(cs.unwrap_err_unchecked());
     auto       csv = rstd::move(cs).unwrap_unchecked();
     libc::DIR* d   = libc::opendir(reinterpret_cast<const char*>(csv.to_bytes_with_nul().p));
@@ -1122,7 +1127,7 @@ export inline auto read_dir(ref<Path> path) -> Result<ReadDir> {
 
 /// Recursively remove `path` (a directory) and everything inside it.
 /// Symlinks at the leaf are unlinked, not followed.
-export inline auto remove_dir_all(ref<Path> path) -> Result<empty> {
+export inline auto remove_dir_all(ref<Path> path) -> FsResult<empty> {
     auto m = symlink_metadata(path);
     if (m.is_err()) return Err(m.unwrap_err_unchecked());
     auto meta = rstd::move(m).unwrap_unchecked();

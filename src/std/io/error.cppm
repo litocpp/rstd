@@ -9,8 +9,6 @@ import :sys.libc;
 namespace rstd::io::error
 {
 
-namespace libc = rstd::sys::libc;
-
 /// The platform-native OS error code type (e.g. errno on Unix, GetLastError on Windows).
 export using rstd::sys::io::RawOsError;
 
@@ -116,8 +114,11 @@ export struct ErrorKind {
     friend bool operator==(ErrorKind a, ErrorKind b) noexcept { return a.code == b.code; }
 };
 
-namespace detail
-{
+} // namespace rstd::io::error
+
+using namespace rstd::prelude;
+using namespace rstd::io::error;
+namespace libc = rstd::sys::libc;
 
 #if RSTD_OS_UNIX
 [[gnu::always_inline]]
@@ -216,7 +217,8 @@ inline auto decode_error_kind(RawOsError) noexcept -> ErrorKind {
 }
 #endif
 
-} // namespace detail
+namespace rstd::io::error
+{
 
 #define RSTD_IO_ERROR_VARIANTS(V) \
     V(Os, (RawOsError code;))     \
@@ -260,7 +262,7 @@ public:
     /// Returns the ErrorKind for this error.
     auto kind() const noexcept -> ErrorKind {
         switch (tag()) {
-        case Tag::Os: return detail::decode_error_kind(as_Os().code);
+        case Tag::Os: return decode_error_kind(as_Os().code);
         case Tag::Kind: return as_Kind().kind;
         case Tag::Message: return as_Message().kind;
         }
@@ -302,10 +304,10 @@ export inline constexpr Error Error_WRITE_ALL_EOF =
 } // namespace rstd::io::error
 
 // ── fmt::Display and fmt::Debug impls ─────────────────────────────────────
-namespace rstd::io::error::detail
-{
+using namespace rstd::prelude;
+
 // Write a decimal integer directly — avoids needing alloc for int Display.
-inline void write_decimal(fmt::Formatter& f, i32 n) noexcept {
+inline void write_decimal(rstd::fmt::Formatter& f, i32 n) noexcept {
     char  buf[12];
     char* end = buf + sizeof(buf);
     char* p   = end;
@@ -321,8 +323,6 @@ inline void write_decimal(fmt::Formatter& f, i32 n) noexcept {
     if (n < 0) *--p = '-';
     f.write_raw((const u8*)p, usize(end - p));
 }
-} // namespace rstd::io::error::detail
-
 namespace rstd
 {
 
@@ -346,8 +346,7 @@ template<>
 struct Impl<fmt::Display, io::error::Error> : ImplBase<io::error::Error> {
     auto fmt(fmt::Formatter& f) const -> bool {
         using Tag = io::error::Error::Tag;
-        using io::error::detail::write_decimal;
-        auto& e = this->self();
+        auto& e   = this->self();
         switch (e.tag()) {
         case Tag::Os: {
             // "entity not found (os error 2)"
@@ -377,8 +376,7 @@ template<>
 struct Impl<fmt::Debug, io::error::Error> : ImplBase<io::error::Error> {
     auto fmt(fmt::Formatter& f) const -> bool {
         using Tag = io::error::Error::Tag;
-        using io::error::detail::write_decimal;
-        auto& e = this->self();
+        auto& e   = this->self();
         switch (e.tag()) {
         case Tag::Os: {
             const char prefix[] = "Os(";

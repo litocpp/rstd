@@ -8,24 +8,27 @@ namespace rstd::net
 {
 
 export using SocketAddr = sys::socket::SocketAddr;
-using sys::socket::Socket;
 
-namespace detail
+} // namespace rstd::net
+
+using namespace rstd::prelude;
+using rstd::sys::socket::Socket;
+
+inline auto tcp_is_error_kind(rstd::io::Error const&      error,
+                              rstd::io::ErrorKind::Entity kind) noexcept -> bool {
+    return error.kind() == rstd::io::ErrorKind { kind };
+}
+
+inline auto tcp_is_would_block(rstd::io::Error const& error) noexcept -> bool {
+    return tcp_is_error_kind(error, rstd::io::ErrorKind::WouldBlock);
+}
+
+inline auto tcp_is_in_progress(rstd::io::Error const& error) noexcept -> bool {
+    return tcp_is_error_kind(error, rstd::io::ErrorKind::InProgress);
+}
+
+namespace rstd::net
 {
-
-inline auto is_error_kind(io::Error const& error, io::ErrorKind::Entity kind) noexcept -> bool {
-    return error.kind() == io::ErrorKind { kind };
-}
-
-inline auto is_would_block(io::Error const& error) noexcept -> bool {
-    return is_error_kind(error, io::ErrorKind::WouldBlock);
-}
-
-inline auto is_in_progress(io::Error const& error) noexcept -> bool {
-    return is_error_kind(error, io::ErrorKind::InProgress);
-}
-
-} // namespace detail
 
 export class TcpStream {
     Socket              m_socket;
@@ -64,7 +67,7 @@ public:
         auto connect_result = socket.connect(addr);
         if (connect_result.is_err()) {
             auto error = rstd::move(connect_result).unwrap_err_unchecked();
-            if (! detail::is_in_progress(error)) {
+            if (! tcp_is_in_progress(error)) {
                 co_return Err(rstd::move(error));
             }
             connecting = true;
@@ -123,7 +126,7 @@ public:
         }
 
         auto error = rstd::move(result).unwrap_err_unchecked();
-        if (detail::is_would_block(error)) {
+        if (tcp_is_would_block(error)) {
             m_registration.clear_readiness(async::Ready::readable());
         }
         return Err(rstd::move(error));
@@ -134,7 +137,7 @@ public:
         if (result.is_ok()) return result;
 
         auto error = rstd::move(result).unwrap_err_unchecked();
-        if (detail::is_would_block(error)) {
+        if (tcp_is_would_block(error)) {
             m_registration.clear_readiness(async::Ready::writable());
         }
         return Err(rstd::move(error));
@@ -154,7 +157,7 @@ public:
             }
 
             auto error = rstd::move(result).unwrap_err_unchecked();
-            if (! detail::is_would_block(error)) {
+            if (! tcp_is_would_block(error)) {
                 return task::Poll<io::Result<usize>>::Ready(Err(rstd::move(error)));
             }
 
@@ -188,7 +191,7 @@ public:
             }
 
             auto error = rstd::move(result).unwrap_err_unchecked();
-            if (! detail::is_would_block(error)) {
+            if (! tcp_is_would_block(error)) {
                 return task::Poll<io::Result<usize>>::Ready(Err(rstd::move(error)));
             }
 
@@ -266,7 +269,7 @@ public:
         auto accepted = m_socket.accept();
         if (accepted.is_err()) {
             auto error = rstd::move(accepted).unwrap_err_unchecked();
-            if (detail::is_would_block(error)) {
+            if (tcp_is_would_block(error)) {
                 m_registration.clear_readiness(async::Ready::readable());
             }
             return Err(rstd::move(error));
@@ -304,7 +307,7 @@ public:
             }
 
             auto error = rstd::move(accepted).unwrap_err_unchecked();
-            if (! detail::is_would_block(error)) {
+            if (! tcp_is_would_block(error)) {
                 co_return Err(rstd::move(error));
             }
 

@@ -6,18 +6,12 @@ export import :sys.io.stdio;
 export import :sys.sync.mutex;
 import rstd.alloc;
 
-namespace rstd::io
-{
-
-// ── Internal helpers ──────────────────────────────────────────────────────
-
-namespace detail
-{
+using namespace rstd::prelude;
 
 // Global mutexes — inline avoids local-static guards (__cxa_guard_*) which
 // are unavailable in -nostdlib++ builds.  Mutex is trivially destructible.
-inline sys::sync::mutex::Mutex g_stdout_mutex = sys::sync::mutex::Mutex::make();
-inline sys::sync::mutex::Mutex g_stdin_mutex  = sys::sync::mutex::Mutex::make();
+inline rstd::sys::sync::mutex::Mutex g_stdout_mutex = rstd::sys::sync::mutex::Mutex::make();
+inline rstd::sys::sync::mutex::Mutex g_stdin_mutex  = rstd::sys::sync::mutex::Mutex::make();
 
 inline auto& stdout_mutex() noexcept {
     return g_stdout_mutex;
@@ -28,8 +22,8 @@ inline auto& stdin_mutex() noexcept {
 
 // RAII lock guard over sys::sync::mutex::Mutex.
 struct ScopedLock {
-    sys::sync::mutex::Mutex& m;
-    explicit ScopedLock(sys::sync::mutex::Mutex& m) noexcept: m(m) { m.lock(); }
+    rstd::sys::sync::mutex::Mutex& m;
+    explicit ScopedLock(rstd::sys::sync::mutex::Mutex& m) noexcept: m(m) { m.lock(); }
     ~ScopedLock() noexcept { m.unlock(); }
     ScopedLock(const ScopedLock&) = delete;
 };
@@ -37,18 +31,14 @@ struct ScopedLock {
 // fmt::Write adapter that writes directly to a file descriptor.
 // Used to avoid a String heap allocation inside print_fmt/eprint_fmt.
 struct FdWriter {
-    int               fd;
-    io::Result<empty> result { Ok(empty {}) };
+    int                     fd;
+    rstd::io::Result<empty> result { rstd::Ok(empty {}) };
 };
-
-} // namespace detail
-
-} // namespace rstd::io
 
 namespace rstd
 {
 template<>
-struct Impl<fmt::Write, io::detail::FdWriter> : ImplBase<io::detail::FdWriter> {
+struct Impl<fmt::Write, FdWriter> : ImplBase<FdWriter> {
     auto write_str(const u8* p, usize len) -> bool {
         auto& self = this->self();
         if (self.result.is_err()) return false;
@@ -78,7 +68,7 @@ namespace rstd::io
 
 /// A locked reference to the stdout stream, providing exclusive write access.
 export struct StdoutLock {
-    detail::ScopedLock guard { detail::stdout_mutex() };
+    ScopedLock guard { stdout_mutex() };
 };
 
 /// Handle to the standard output stream.
@@ -110,7 +100,7 @@ export inline auto stderr() noexcept -> Stderr {
 
 /// A locked reference to the stdin stream, providing exclusive read access.
 export struct StdinLock {
-    detail::ScopedLock guard { detail::stdin_mutex() };
+    ScopedLock guard { stdin_mutex() };
 };
 
 /// Handle to the standard input stream.
@@ -130,17 +120,17 @@ export inline auto stdin() noexcept -> Stdin {
 
 /// Format `args` and write to stdout (with lock).
 export inline auto print_fmt(fmt::Arguments args) -> Result<empty> {
-    detail::ScopedLock guard(detail::stdout_mutex());
-    detail::FdWriter   w { 1 };
-    fmt::Formatter     f(w);
+    ScopedLock     guard(stdout_mutex());
+    FdWriter       w { 1 };
+    fmt::Formatter f(w);
     f.write_fmt(args);
     return rstd::move(w.result);
 }
 
 /// Format `args` and write to stderr (no lock — panic-safe).
 export inline auto eprint_fmt(fmt::Arguments args) -> Result<empty> {
-    detail::FdWriter w { 2 };
-    fmt::Formatter   f(w);
+    FdWriter       w { 2 };
+    fmt::Formatter f(w);
     f.write_fmt(args);
     return rstd::move(w.result);
 }
@@ -236,7 +226,7 @@ namespace rstd
 template<>
 struct Impl<io::Write, io::Stdout> : ImplBase<io::Stdout> {
     auto write(const u8* buf, usize len) -> io::Result<usize> {
-        io::detail::ScopedLock guard(io::detail::stdout_mutex());
+        ScopedLock guard(stdout_mutex());
         return sys::io::stdio::write_fd(1, buf, len);
     }
     auto flush() -> io::Result<empty> { return Ok(empty {}); }
@@ -262,7 +252,7 @@ struct Impl<io::Write, io::Stderr> : ImplBase<io::Stderr> {
 template<>
 struct Impl<io::Read, io::Stdin> : ImplBase<io::Stdin> {
     auto read(u8* buf, usize len) -> io::Result<usize> {
-        io::detail::ScopedLock guard(io::detail::stdin_mutex());
+        ScopedLock guard(stdin_mutex());
         return sys::io::stdio::read_fd(0, buf, len);
     }
 };

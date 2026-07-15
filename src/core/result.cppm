@@ -18,8 +18,18 @@ struct UnknownErr {
     constexpr bool operator==(const UnknownErr&) const noexcept { return true; }
 };
 
-namespace detail
-{
+} // namespace rstd::result
+
+using namespace rstd::prelude;
+using rstd::Impled;
+using rstd::ref;
+using rstd::str;
+using rstd::result::Err;
+using rstd::result::Ok;
+using rstd::result::Result;
+namespace clone  = rstd::clone;
+namespace mtp    = rstd::mtp;
+namespace result = rstd::result;
 
 template<typename T>
 struct result_traits {};
@@ -60,9 +70,6 @@ struct result_traits<const Result<T, E>&&> : result_traits<Result<T, E>> {
     using ret_error_t = mtp::add_const<E>&&;
 };
 
-} // namespace detail
-} // namespace rstd::result
-
 namespace rstd
 {
 export using result::Result;
@@ -71,16 +78,10 @@ export using result::Err;
 
 } // namespace rstd
 
-namespace rstd::result
-{
-
 template<typename E>
 auto unwrap_failed(ref<str> msg, E& e) {
     rstd::panic { msg };
 }
-
-namespace detail
-{
 
 template<typename T, typename E>
 struct result_base {
@@ -96,7 +97,7 @@ protected:
     template<i32 I, typename U>
         requires mtp::same_as<mtp::rm_cvf<U>, Result<T, E>>
     static constexpr decltype(auto) _get(U&& self) {
-        using traits = detail::result_traits<decltype(self)>;
+        using traits = result_traits<decltype(self)>;
         if constexpr (I == 0) {
             if constexpr (mtp::is_ref<T>) {
                 return static_cast<traits::ret_value_t>(*(*self._value_ptr()));
@@ -561,7 +562,8 @@ struct result_impl<Result<T, E>, E> : result_base<Result<T, E>, E> {
 struct ok_tag {};
 struct err_tag {};
 
-} // namespace detail
+namespace rstd::result
+{
 
 #define RSTD_RESULT_VARIANTS(V)   \
     V(Ok, (union_value_t value;)) \
@@ -571,13 +573,12 @@ struct err_tag {};
 /// \tparam T The type of the success value.
 /// \tparam E The type of the error value.
 export template<typename T, typename E>
-class Result : public detail::result_impl<T, E> {
-    template<typename, typename>
-    friend struct detail::result_base;
+class Result : public result_impl<T, E> {
+    friend struct ::result_base<T, E>;
     template<typename, typename>
     friend struct rstd::Impl;
 
-    using traits        = detail::result_traits<Result<T, E>>;
+    using traits        = result_traits<Result<T, E>>;
     using union_value_t = typename traits::union_value_t;
     using union_error_t = typename traits::union_error_t;
 
@@ -649,31 +650,29 @@ public:
         : RSTD_ENUM_INIT(Ok) {}
 
     // Ok ctor
-    constexpr Result(T&& val, detail::ok_tag) noexcept(mtp::noex_init<T, T>) {
+    constexpr Result(T&& val, ok_tag) noexcept(mtp::noex_init<T, T>) {
         this->_construct_val(rstd::forward<T>(val));
     }
 
     // Err ctor
-    constexpr Result(E&& err, detail::err_tag) noexcept(mtp::noex_init<E, E>) {
+    constexpr Result(E&& err, err_tag) noexcept(mtp::noex_init<E, E>) {
         this->_construct_err(rstd::forward<E>(err));
     }
 
     // from Ok
     template<typename U>
-    constexpr Result(U&& o) noexcept(
-        mtp::noex_init<T, typename detail::result_traits<U>::value_type>)
-        requires mtp::init<UnknownErr, typename detail::result_traits<U>::error_type> &&
-                 mtp::init<T, typename detail::result_traits<U>::value_type>
+    constexpr Result(U&& o) noexcept(mtp::noex_init<T, typename result_traits<U>::value_type>)
+        requires mtp::init<UnknownErr, typename result_traits<U>::error_type> &&
+                 mtp::init<T, typename result_traits<U>::value_type>
     {
         this->_construct_val(mtp::rm_cvf<U>::template _get<0>(rstd::forward<U>(o)));
     }
 
     // from Err
     template<typename U>
-    constexpr Result(U&& o) noexcept(
-        mtp::noex_init<E, typename detail::result_traits<U>::error_type>)
-        requires mtp::init<UnknownOk, typename detail::result_traits<U>::value_type> &&
-                 mtp::init<E, typename detail::result_traits<U>::error_type>
+    constexpr Result(U&& o) noexcept(mtp::noex_init<E, typename result_traits<U>::error_type>)
+        requires mtp::init<UnknownOk, typename result_traits<U>::value_type> &&
+                 mtp::init<E, typename result_traits<U>::error_type>
     {
         this->_construct_err(mtp::rm_cvf<U>::template _get<1>(rstd::forward<U>(o)));
     }
@@ -802,7 +801,7 @@ public:
 /// \return A `Result<T, TErr>` in the `Ok` state.
 template<typename T, typename TErr>
 constexpr auto Ok(T&& val) -> Result<T, TErr> {
-    return { rstd::forward<T>(val), detail::ok_tag {} };
+    return { rstd::forward<T>(val), ok_tag {} };
 }
 
 /// Creates a `Result` in the `Err` state containing the given error.
@@ -812,29 +811,25 @@ constexpr auto Ok(T&& val) -> Result<T, TErr> {
 /// \return A `Result<T, TErr>` in the `Err` state.
 template<typename TErr, typename T>
 constexpr auto Err(TErr&& val) -> Result<T, TErr> {
-    return { rstd::forward<TErr>(val), detail::err_tag {} };
+    return { rstd::forward<TErr>(val), err_tag {} };
 }
 } // namespace rstd::result
 
-namespace rstd::option::detail
-{
 template<typename T, typename E>
-struct option_adapter_l1<result::Result<T, E>> {
+struct option_adapter_l1<rstd::result::Result<T, E>> {
     /// Transposes an `Option<Result<T, E>>` into a `Result<Option<T>, E>`.
     /// \return `Ok(Some(v))` if `Some(Ok(v))`, `Err(e)` if `Some(Err(e))`, or `Ok(None)` if `None`.
-    constexpr auto transpose() -> result::Result<Option<T>, E> {
-        auto&& self = static_cast<Option<result::Result<T, E>>&&>(*this);
+    constexpr auto transpose() -> rstd::result::Result<Option<T>, E> {
+        auto&& self = static_cast<Option<rstd::result::Result<T, E>>&&>(*this);
         if (self.is_some()) {
             auto&& t = self.unwrap_unchecked();
             if (t.is_ok()) {
-                return Ok(Some(rstd::move(t.unwrap_unchecked())));
+                return Ok(rstd::Some(rstd::move(t.unwrap_unchecked())));
             } else {
                 return Err(rstd::move(t.unwrap_err_unchecked()));
             }
         } else {
-            return Ok<Option<T>>(None());
+            return Ok<Option<T>>(rstd::None());
         }
     }
 };
-
-} // namespace rstd::option::detail

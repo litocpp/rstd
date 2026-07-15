@@ -5,9 +5,6 @@ import rstd.alloc;
 using namespace rstd;
 using ::alloc::vec::Vec;
 
-namespace rstd::async::detail
-{
-
 template<typename F>
 using join_output_t = mtp::void_empty_t<future::future_output_t<F>>;
 
@@ -32,8 +29,6 @@ auto poll_join_slot(F& future_, Option<join_output_t<F>>& slot, task::Context& c
     return true;
 }
 
-} // namespace rstd::async::detail
-
 namespace rstd::async
 {
 
@@ -41,14 +36,14 @@ export template<typename F1, typename F2>
     requires Impled<mtp::rm_cvf<F1>, future::Future<future::future_output_t<F1>>> &&
              Impled<mtp::rm_cvf<F2>, future::Future<future::future_output_t<F2>>>
 class Join {
-    F1                                f1;
-    F2                                f2;
-    Option<detail::join_output_t<F1>> out1;
-    Option<detail::join_output_t<F2>> out2;
-    bool                              completed { false };
+    F1                        f1;
+    F2                        f2;
+    Option<join_output_t<F1>> out1;
+    Option<join_output_t<F2>> out2;
+    bool                      completed { false };
 
 public:
-    using Output = tuple<detail::join_output_t<F1>, detail::join_output_t<F2>>;
+    using Output = tuple<join_output_t<F1>, join_output_t<F2>>;
 
     Join(F1 future1, F2 future2): f1(rstd::move(future1)), f2(rstd::move(future2)) {}
 
@@ -63,8 +58,8 @@ public:
             rstd::panic { "async::Join polled after completion" };
         }
 
-        auto ready1 = detail::poll_join_slot(value.f1, value.out1, cx);
-        auto ready2 = detail::poll_join_slot(value.f2, value.out2, cx);
+        auto ready1 = poll_join_slot(value.f1, value.out1, cx);
+        auto ready2 = poll_join_slot(value.f2, value.out2, cx);
         if (ready1 && ready2) {
             value.completed = true;
             return task::Poll<Output>::Ready(Output {
@@ -79,20 +74,20 @@ public:
 export template<typename F>
     requires Impled<mtp::rm_cvf<F>, future::Future<future::future_output_t<F>>>
 class JoinAll {
-    Vec<F>                                futures;
-    Vec<Option<detail::join_output_t<F>>> outputs;
-    usize                                 remaining { 0 };
-    bool                                  completed { false };
+    Vec<F>                        futures;
+    Vec<Option<join_output_t<F>>> outputs;
+    usize                         remaining { 0 };
+    bool                          completed { false };
 
 public:
-    using Output = Vec<detail::join_output_t<F>>;
+    using Output = Vec<join_output_t<F>>;
 
     explicit JoinAll(Vec<F> in)
         : futures(rstd::move(in)),
-          outputs(Vec<Option<detail::join_output_t<F>>>::with_capacity(futures.len())),
+          outputs(Vec<Option<join_output_t<F>>>::with_capacity(futures.len())),
           remaining(futures.len()) {
         for (usize i = 0; i < remaining; ++i) {
-            outputs.push(None<detail::join_output_t<F>>());
+            outputs.push(None<join_output_t<F>>());
         }
     }
 
@@ -111,7 +106,7 @@ public:
             if (value.outputs[i].is_some()) {
                 continue;
             }
-            if (detail::poll_join_slot(value.futures[i], value.outputs[i], cx)) {
+            if (poll_join_slot(value.futures[i], value.outputs[i], cx)) {
                 --value.remaining;
             }
         }

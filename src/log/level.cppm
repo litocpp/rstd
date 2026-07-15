@@ -26,23 +26,25 @@ export enum class LevelFilter : u32 {
     Trace = 5,
 };
 
-// ── string names ──────────────────────────────────────────────────────────
+} // namespace rstd::log
 
-namespace detail
-{
+using namespace rstd::prelude;
+
 inline constexpr char const* LEVEL_NAMES[] = { "OFF", "ERROR", "WARN", "INFO", "DEBUG", "TRACE" };
-}
+
+namespace rstd::log
+{
 
 /// Returns the uppercase string name for a Level.
 export [[nodiscard]]
 inline constexpr auto as_str(Level l) noexcept -> ref<str> {
-    return detail::LEVEL_NAMES[static_cast<u32>(l)];
+    return LEVEL_NAMES[static_cast<u32>(l)];
 }
 
 /// Returns the uppercase string name for a LevelFilter.
 export [[nodiscard]]
 inline constexpr auto as_str(LevelFilter f) noexcept -> ref<str> {
-    return detail::LEVEL_NAMES[static_cast<u32>(f)];
+    return LEVEL_NAMES[static_cast<u32>(f)];
 }
 
 // ── comparisons ───────────────────────────────────────────────────────────

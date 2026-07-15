@@ -3,9 +3,6 @@ export import :async.forward;
 
 using namespace rstd;
 
-namespace rstd::async::detail
-{
-
 template<typename F>
 using select_output_t = mtp::void_empty_t<future::future_output_t<F>>;
 
@@ -19,8 +16,6 @@ auto take_ready(task::Poll<future::future_output_t<F>>&& out) -> select_output_t
         return rstd::move(out).take();
     }
 }
-
-} // namespace rstd::async::detail
 
 namespace rstd::async
 {
@@ -79,8 +74,8 @@ class Select {
     bool       completed { false };
 
 public:
-    using LeftOutput  = detail::select_output_t<F1>;
-    using RightOutput = detail::select_output_t<F2>;
+    using LeftOutput  = select_output_t<F1>;
+    using RightOutput = select_output_t<F2>;
     using Output      = Either<LeftOutput, RightOutput>;
 
     Select(F1 future1, F2 future2): f1(Some(rstd::move(future1))), f2(Some(rstd::move(future2))) {}
@@ -98,7 +93,7 @@ public:
 
         auto out1 = future::poll(*value.f1, cx);
         if (out1.is_ready()) {
-            auto selected   = detail::take_ready<F1>(rstd::move(out1));
+            auto selected   = take_ready<F1>(rstd::move(out1));
             value.completed = true;
             value.f1        = None<F1>();
             value.f2        = None<F2>();
@@ -107,7 +102,7 @@ public:
 
         auto out2 = future::poll(*value.f2, cx);
         if (out2.is_ready()) {
-            auto selected   = detail::take_ready<F2>(rstd::move(out2));
+            auto selected   = take_ready<F2>(rstd::move(out2));
             value.completed = true;
             value.f1        = None<F1>();
             value.f2        = None<F2>();
@@ -126,9 +121,9 @@ class Race {
     bool           completed { false };
 
 public:
-    using Output = detail::select_output_t<F1>;
+    using Output = select_output_t<F1>;
 
-    static_assert(mtp::same_as<Output, detail::select_output_t<F2>>,
+    static_assert(mtp::same_as<Output, select_output_t<F2>>,
                   "async::race requires both futures to produce the same output type");
 
     Race(F1 future1, F2 future2): select_(rstd::move(future1), rstd::move(future2)) {}

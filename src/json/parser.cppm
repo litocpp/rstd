@@ -18,8 +18,8 @@ auto from_slice(slice<u8> input, ParseOptions options) -> ParseResult;
 
 } // namespace rstd::json
 
-namespace rstd::json::detail
-{
+using namespace rstd::prelude;
+using namespace rstd::json;
 
 class Parser {
     ref<str>     input_;
@@ -230,7 +230,7 @@ class Parser {
                      usize fraction_end,
                      i32   exponent,
                      bool  negative) -> ParseResult {
-        auto parsed = num::dec2flt::to_f64({
+        auto parsed = rstd::num::dec2flt::to_f64({
             .integer  = slice<u8>::from_raw_parts(input_.data() + integer_begin,
                                                   integer_end - integer_begin),
             .fraction = slice<u8>::from_raw_parts(input_.data() + fraction_begin,
@@ -240,8 +240,9 @@ class Parser {
         });
         if (parsed.is_err()) {
             const auto cause = parsed.unwrap_err();
-            return Err(error(cause == num::dec2flt::Error::Overflow ? ErrorCode::NumberOutOfRange
-                                                                    : ErrorCode::InvalidNumber));
+            return Err(error(cause == rstd::num::dec2flt::Error::Overflow
+                                 ? ErrorCode::NumberOutOfRange
+                                 : ErrorCode::InvalidNumber));
         }
 
         auto number = Number::from_f64(parsed.unwrap());
@@ -319,7 +320,7 @@ class Parser {
         bool  overflow  = false;
         for (; digits < integer_end; ++digits) {
             const u64 digit = input_.data()[digits] - '0';
-            if (magnitude > (u64_::MAX - digit) / 10) {
+            if (magnitude > (rstd::u64_::MAX - digit) / 10) {
                 overflow = true;
                 break;
             }
@@ -333,12 +334,12 @@ class Parser {
         if (magnitude == 0) {
             return parse_float(integer_begin, integer_end, integer_end, integer_end, 0, negative);
         }
-        const u64 min_magnitude = static_cast<u64>(i64_::MAX) + 1;
+        const u64 min_magnitude = static_cast<u64>(rstd::i64_::MAX) + 1;
         if (magnitude > min_magnitude) {
             return parse_float(integer_begin, integer_end, integer_end, integer_end, 0, negative);
         }
         const i64 signed_value =
-            magnitude == min_magnitude ? i64_::MIN : -static_cast<i64>(magnitude);
+            magnitude == min_magnitude ? rstd::i64_::MIN : -static_cast<i64>(magnitude);
         return Ok(Value::Number(Number::from_i64(signed_value)));
     }
 
@@ -463,17 +464,15 @@ public:
     }
 };
 
-} // namespace rstd::json::detail
-
 namespace rstd::json
 {
 
 auto from_str(ref<str> input) -> ParseResult {
-    return detail::Parser(input).parse();
+    return Parser(input).parse();
 }
 
 auto from_str(ref<str> input, ParseOptions options) -> ParseResult {
-    return detail::Parser(input, options).parse();
+    return Parser(input, options).parse();
 }
 
 auto from_slice(slice<u8> input) -> ParseResult {
@@ -483,7 +482,7 @@ auto from_slice(slice<u8> input) -> ParseResult {
 auto from_slice(slice<u8> input, ParseOptions options) -> ParseResult {
     auto text = str_::from_utf8(input);
     if (text.is_none()) {
-        return Err(detail::Parser::invalid_unicode_error());
+        return Err(Parser::invalid_unicode_error());
     }
     return from_str(*text, options);
 }

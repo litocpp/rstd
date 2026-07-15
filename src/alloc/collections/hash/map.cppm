@@ -7,13 +7,11 @@ export import :hash.random;
 export import :collections.hash_table;
 export import rstd.core;
 
-namespace alloc::collections
-{
-
-using ::alloc::collections::hash::detail::BucketState;
-using ::alloc::collections::hash::detail::RawTable;
 using ::alloc::vec::Vec;
 using namespace rstd::prelude;
+
+namespace alloc::collections
+{
 
 export template<typename K>
 struct DefaultHashEqual {

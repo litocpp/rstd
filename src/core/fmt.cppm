@@ -2,6 +2,14 @@ export module rstd.core:fmt;
 export import :trait;
 export import rstd.basic;
 
+template<typename T>
+struct FmtId {
+    using type = T;
+};
+
+template<rstd::usize N>
+struct ArgumentsStorage;
+
 namespace rstd::fmt
 
 {
@@ -12,20 +20,10 @@ export struct Formatter;
 // Forward declarations consumed by the `Arguments::make` factory below.
 // `FormatString` is forward-declared; its definition lives further
 // down once the consteval check helpers are in scope.
-template<typename T>
-struct _FmtId {
-    using type = T;
-};
 export template<typename... Args>
 struct FormatString;
 export template<typename... Args>
-using format_string = FormatString<typename _FmtId<Args>::type...>;
-
-namespace detail
-{
-template<usize N>
-struct ArgumentsStorage;
-}
+using format_string = FormatString<typename FmtId<Args>::type...>;
 
 /// Text alignment options for formatted output.
 export enum class Align : u32 { None = 0, Left = 1, Right = 2, Center = 3 };
@@ -334,11 +332,14 @@ export struct Arguments {
     /// is in use (same lifetime rule as `std::make_format_args`).
     template<typename... Args>
     static constexpr auto make(format_string<Args...> fmt_str, Args&&... args) noexcept
-        -> detail::ArgumentsStorage<sizeof...(Args)>;
+        -> ::ArgumentsStorage<sizeof...(Args)>;
 };
 
-namespace detail
-{
+} // namespace rstd::fmt
+
+using namespace rstd::prelude;
+using namespace rstd::fmt;
+
 /// Storage holder for `Arguments::make`: owns the `Argument` array and
 /// the format-string view; converts implicitly to a non-owning
 /// `Arguments`. The N==0 branch sizes the array to 1 to keep the
@@ -351,11 +352,13 @@ struct ArgumentsStorage {
 
     constexpr operator Arguments() const noexcept { return { fmt_ptr, fmt_len, storage, N }; }
 };
-} // namespace detail
+
+namespace rstd::fmt
+{
 
 template<typename... Args>
 constexpr auto Arguments::make(format_string<Args...> fmt_str, Args&&... args) noexcept
-    -> detail::ArgumentsStorage<sizeof...(Args)> {
+    -> ::ArgumentsStorage<sizeof...(Args)> {
     return {
         { Argument::make(args)... },
         fmt_str.data(),
@@ -372,22 +375,22 @@ concept formattable =
 // ── Compile-time format string validation ─────────────────────────────────
 // These sentinel functions are non-constexpr on purpose: calling them inside
 // a consteval context causes a hard compile error.
-namespace fmt_check
-{
+} // namespace rstd::fmt
+
 [[noreturn]]
-inline void unmatched_left_brace() {
+inline void fmt_unmatched_left_brace() {
     __builtin_unreachable();
 }
 [[noreturn]]
-inline void unmatched_right_brace() {
+inline void fmt_unmatched_right_brace() {
     __builtin_unreachable();
 }
 [[noreturn]]
-inline void too_few_args() {
+inline void fmt_too_few_args() {
     __builtin_unreachable();
 }
 
-consteval void check(const char* s, usize n, usize n_args) {
+consteval void check_format_string(const char* s, usize n, usize n_args) {
     usize count = 0;
     for (usize i = 0; i < n; ++i) {
         if (s[i] == '{') {
@@ -396,20 +399,22 @@ consteval void check(const char* s, usize n, usize n_args) {
             } else {
                 ++i;
                 while (i < n && s[i] != '}') ++i;
-                if (i >= n) unmatched_left_brace();
+                if (i >= n) fmt_unmatched_left_brace();
                 ++count;
             }
         } else if (s[i] == '}') {
             if (i + 1 < n && s[i + 1] == '}') {
                 ++i; // skip }}
             } else {
-                unmatched_right_brace();
+                fmt_unmatched_right_brace();
             }
         }
     }
-    if (count > n_args) too_few_args();
+    if (count > n_args) fmt_too_few_args();
 }
-} // namespace fmt_check
+
+namespace rstd::fmt
+{
 
 /// A compile-time validated format string that ensures argument count and brace matching.
 /// \tparam Args The types of the format arguments.
@@ -420,7 +425,7 @@ struct FormatString {
 
     template<usize N>
     consteval FormatString(const char (&s)[N]) noexcept: _ptr(s), _len(N - 1) {
-        fmt_check::check(s, N - 1, sizeof...(Args));
+        check_format_string(s, N - 1, sizeof...(Args));
     }
 
     auto data() const noexcept -> const u8* { return reinterpret_cast<const u8*>(_ptr); }

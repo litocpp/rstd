@@ -65,8 +65,13 @@ inline constexpr auto None(T&& = {}) {
     }
 }
 
-namespace detail
-{
+} // namespace rstd::option
+
+using namespace rstd::prelude;
+using rstd::option::Option;
+namespace enum_detail = rstd::enum_detail;
+namespace mtp         = rstd::mtp;
+
 template<typename T>
 struct option_adapter_l1 {};
 
@@ -100,7 +105,7 @@ struct option_traits<const Option<T>&&> : option_traits<Option<T>> {
     using ret_value_t = mtp::add_ref_rv<mtp::add_const<T>>;
 };
 
-export template<typename T, typename NonePayload, typename SomePayload>
+template<typename T, typename NonePayload, typename SomePayload>
 struct option_storage : enum_detail::storage<NonePayload, SomePayload> {
     using base = enum_detail::storage<NonePayload, SomePayload>;
 
@@ -203,7 +208,7 @@ private:
     SomePayload some_;
 };
 
-export template<typename NonePayload, typename SomePayload>
+template<typename NonePayload, typename SomePayload>
 struct zero_niche_option_storage {
     constexpr zero_niche_option_storage() noexcept = default;
 
@@ -317,9 +322,6 @@ private:
 template<typename T>
 struct option_adapter;
 
-} // namespace detail
-} // namespace rstd::option
-
 namespace rstd
 {
 export using option::Option;
@@ -338,18 +340,16 @@ namespace rstd::option
 /// An optional value: either `Some(T)` or `None`.
 /// \tparam T The type of the contained value.
 export template<typename T>
-class Option : public detail::option_adapter<T> {
-    template<typename>
-    friend struct detail::option_adapter;
-    template<typename>
-    friend struct detail::option_adapter_l1;
+class Option : public option_adapter<T> {
+    friend struct ::option_adapter<T>;
+    friend struct ::option_adapter_l1<T>;
 
-    using traits        = detail::option_traits<Option<T>>;
+    using traits        = option_traits<Option<T>>;
     using union_value_t = typename traits::union_value_t;
 
     RSTD_ENUM_VARIANT_TYPES(RSTD_OPTION_VARIANTS)
 
-    using rstd_enum_storage_type = detail::option_storage<T, None_payload, Some_payload>;
+    using rstd_enum_storage_type = option_storage<T, None_payload, Some_payload>;
 
     RSTD_ENUM_STORAGE(Option)
 
@@ -678,11 +678,7 @@ private:
 
 } // namespace rstd::option
 
-namespace rstd::option
-{
-
-namespace detail
-{
+using namespace rstd::prelude;
 
 template<typename T>
 struct option_adapter : option_adapter_l1<T> {
@@ -691,12 +687,12 @@ struct option_adapter : option_adapter_l1<T> {
     /// \param err The error value to use if the option is `None`.
     /// \return `Ok(value)` if `Some`, otherwise `Err(err)`.
     template<typename E>
-    auto ok_or(E err) -> result::Result<T, E> {
+    auto ok_or(E err) -> rstd::result::Result<T, E> {
         auto& self = static_cast<Option<T>&>(*this);
         if (self.is_some()) {
-            return result::Ok(self._get_move(self));
+            return rstd::result::Ok(self._get_move(self));
         } else {
-            return result::Err(err);
+            return rstd::result::Err(err);
         }
     }
 
@@ -705,12 +701,12 @@ struct option_adapter : option_adapter_l1<T> {
     /// \param err A closure that produces the error value if the option is `None`.
     /// \return `Ok(value)` if `Some`, otherwise `Err(err())`.
     template<typename F, typename E = mtp::invoke_result_t<F>>
-    auto ok_or_else(F&& err) -> result::Result<T, E> {
+    auto ok_or_else(F&& err) -> rstd::result::Result<T, E> {
         auto& self = static_cast<Option<T>&>(*this);
         if (self.is_some()) {
-            return result::Ok(self._get_move(self));
+            return rstd::result::Ok(self._get_move(self));
         } else {
-            return result::Err(rstd::move(err)());
+            return rstd::result::Err(rstd::move(err)());
         }
     }
 };
@@ -724,14 +720,10 @@ struct option_adapter_l1<Option<T>> {
         if (self.is_some()) {
             return self._get_move(self);
         } else {
-            return None();
+            return rstd::None();
         }
     }
 };
-
-} // namespace detail
-
-} // namespace rstd::option
 
 namespace rstd
 {

@@ -17,12 +17,12 @@ auto to_string(const Value& value, FormatOptions options) -> ::alloc::string::St
 
 } // namespace rstd::json
 
-namespace rstd::json::detail
-{
+using namespace rstd::prelude;
+using namespace rstd::json;
 
 class Emitter {
-    fmt::Formatter& formatter_;
-    FormatOptions   options_;
+    rstd::fmt::Formatter& formatter_;
+    FormatOptions         options_;
 
     auto write(ref<str> value) -> bool { return formatter_.write_raw(value.data(), value.size()); }
 
@@ -83,7 +83,7 @@ class Emitter {
 
     template<typename T>
     auto write_integer(T value) -> bool {
-        return formatter_.write_fmt(fmt::Arguments::make("{}", value));
+        return formatter_.write_fmt(rstd::fmt::Arguments::make("{}", value));
     }
 
     auto write_float(f64 value) -> bool {
@@ -91,13 +91,13 @@ class Emitter {
             u8    bytes[64];
             usize len = 0;
         } buffer;
-        fmt::Formatter local(&buffer, [](void* context, const u8* bytes, usize len) -> bool {
+        rstd::fmt::Formatter local(&buffer, [](void* context, const u8* bytes, usize len) -> bool {
             auto& output = *static_cast<Buffer*>(context);
             if (output.len + len > sizeof(output.bytes)) return false;
             for (usize i = 0; i < len; ++i) output.bytes[output.len++] = bytes[i];
             return true;
         });
-        if (! local.write_fmt(fmt::Arguments::make("{:?}", value))) return false;
+        if (! local.write_fmt(rstd::fmt::Arguments::make("{:?}", value))) return false;
 
         usize exponent = buffer.len;
         for (usize i = 0; i < buffer.len; ++i) {
@@ -153,7 +153,7 @@ class Emitter {
     }
 
 public:
-    Emitter(fmt::Formatter& formatter, FormatOptions options)
+    Emitter(rstd::fmt::Formatter& formatter, FormatOptions options)
         : formatter_(formatter), options_(options) {}
 
     auto write_value(const Value& value, usize depth = 0) -> bool {
@@ -181,8 +181,6 @@ public:
     }
 };
 
-} // namespace rstd::json::detail
-
 namespace rstd::json
 {
 
@@ -191,9 +189,9 @@ auto to_string(const Value& value) -> ::alloc::string::String {
 }
 
 auto to_string(const Value& value, FormatOptions options) -> ::alloc::string::String {
-    auto            output = ::alloc::string::String::make();
-    fmt::Formatter  formatter(output);
-    detail::Emitter emitter(formatter, options);
+    auto           output = ::alloc::string::String::make();
+    fmt::Formatter formatter(output);
+    Emitter        emitter(formatter, options);
     if (! emitter.write_value(value)) rstd::panic { "failed to serialize JSON value" };
     return output;
 }
@@ -206,8 +204,8 @@ namespace rstd
 template<>
 struct Impl<fmt::Display, json::Value> : ImplBase<json::Value> {
     auto fmt(fmt::Formatter& formatter) const -> bool {
-        json::detail::Emitter emitter(
-            formatter, json::FormatOptions { .pretty = formatter.alternate(), .indent = 2 });
+        Emitter emitter(formatter,
+                        json::FormatOptions { .pretty = formatter.alternate(), .indent = 2 });
         return emitter.write_value(this->self());
     }
 };

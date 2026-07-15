@@ -26,8 +26,10 @@ struct Decimal {
 export using ShortestDecimal = Decimal<MAX_SIG_DIGITS>;
 export using ExactDecimal    = Decimal<DIGIT_CAPACITY>;
 
-namespace detail
-{
+} // namespace rstd::num::flt2dec
+
+using namespace rstd::prelude;
+using namespace rstd::num::flt2dec;
 
 struct Decoded {
     u64  mant;
@@ -103,7 +105,7 @@ constexpr auto decode(T value) noexcept -> FullDecoded {
              { mant << 1, 1, 1, static_cast<i16>(exp - 1), (mant & 1) == 0 } };
 }
 
-using Big = bignum::FixedBig<40>;
+using FloatBig = rstd::num::bignum::FixedBig<40>;
 
 constexpr u32 POW10[] = {
     1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000,
@@ -122,11 +124,11 @@ constexpr u32 POW5_TO_256[] = {
 };
 
 template<usize N>
-void mul_if(Big& value, usize exponent, usize bit, const u32 (&digits)[N]) {
+void mul_if(FloatBig& value, usize exponent, usize bit, const u32 (&digits)[N]) {
     if ((exponent & bit) != 0) value.mul_digits(digits, N);
 }
 
-void mul_pow10(Big& value, usize exponent) {
+void mul_pow10(FloatBig& value, usize exponent) {
     if (exponent < 8) {
         value.mul_small(POW10[exponent]);
         return;
@@ -141,7 +143,7 @@ void mul_pow10(Big& value, usize exponent) {
     value.mul_pow2(exponent);
 }
 
-void div_2pow10(Big& value, usize exponent) {
+void div_2pow10(FloatBig& value, usize exponent) {
     constexpr usize LARGEST = sizeof(POW10) / sizeof(POW10[0]) - 1;
     while (exponent > LARGEST) {
         value.div_rem_small(POW10[LARGEST]);
@@ -170,8 +172,11 @@ auto round_up(u8* digits, usize len) noexcept -> u8 {
     return len == 0 ? '1' : '0';
 }
 
-auto digit(Big& value, Big const& scale, Big const& scale2, Big const& scale4, Big const& scale8)
-    -> u8 {
+auto digit(FloatBig&       value,
+           FloatBig const& scale,
+           FloatBig const& scale2,
+           FloatBig const& scale4,
+           FloatBig const& scale8) -> u8 {
     u8 result = 0;
     if (value.compare(scale8) >= 0) {
         value.sub(scale8);
@@ -200,10 +205,10 @@ struct Digits {
 auto format_shortest(Decoded const& decoded, u8* buffer) -> Digits {
     i16 k = estimate_scaling_factor(decoded.mant + decoded.plus, decoded.exponent);
 
-    Big mant  = Big::from_u64(decoded.mant);
-    Big minus = Big::from_u64(decoded.minus);
-    Big plus  = Big::from_u64(decoded.plus);
-    Big scale = Big::from_small(1);
+    FloatBig mant  = FloatBig::from_u64(decoded.mant);
+    FloatBig minus = FloatBig::from_u64(decoded.minus);
+    FloatBig plus  = FloatBig::from_u64(decoded.plus);
+    FloatBig scale = FloatBig::from_small(1);
     if (decoded.exponent < 0) {
         scale.mul_pow2(static_cast<usize>(-decoded.exponent));
     } else {
@@ -220,7 +225,7 @@ auto format_shortest(Decoded const& decoded, u8* buffer) -> Digits {
         mul_pow10(plus, static_cast<usize>(-k));
     }
 
-    Big upper = mant;
+    FloatBig upper = mant;
     upper.add(plus);
     const bool high_reaches_scale =
         decoded.inclusive ? scale.compare(upper) <= 0 : scale.compare(upper) < 0;
@@ -232,9 +237,9 @@ auto format_shortest(Decoded const& decoded, u8* buffer) -> Digits {
         plus.mul_small(10);
     }
 
-    Big scale2 = scale;
-    Big scale4 = scale;
-    Big scale8 = scale;
+    FloatBig scale2 = scale;
+    FloatBig scale4 = scale;
+    FloatBig scale8 = scale;
     scale2.mul_pow2(1);
     scale4.mul_pow2(2);
     scale8.mul_pow2(3);
@@ -256,7 +261,7 @@ auto format_shortest(Decoded const& decoded, u8* buffer) -> Digits {
         plus.mul_small(10);
     }
 
-    Big twice_mant = mant;
+    FloatBig twice_mant = mant;
     twice_mant.mul_pow2(1);
     if (up && (! down || twice_mant.compare(scale) >= 0)) {
         if (const u8 carry = round_up(buffer, len); carry != 0) {
@@ -270,8 +275,8 @@ auto format_shortest(Decoded const& decoded, u8* buffer) -> Digits {
 auto format_exact(Decoded const& decoded, u8* buffer, usize capacity, i16 limit) -> Digits {
     i16 k = estimate_scaling_factor(decoded.mant, decoded.exponent);
 
-    Big mant  = Big::from_u64(decoded.mant);
-    Big scale = Big::from_small(1);
+    FloatBig mant  = FloatBig::from_u64(decoded.mant);
+    FloatBig scale = FloatBig::from_small(1);
     if (decoded.exponent < 0) {
         scale.mul_pow2(static_cast<usize>(-decoded.exponent));
     } else {
@@ -284,7 +289,7 @@ auto format_exact(Decoded const& decoded, u8* buffer, usize capacity, i16 limit)
         mul_pow10(mant, static_cast<usize>(-k));
     }
 
-    Big half_ulp = scale;
+    FloatBig half_ulp = scale;
     div_2pow10(half_ulp, capacity);
     half_ulp.add(mant);
     if (half_ulp.compare(scale) >= 0) {
@@ -302,9 +307,9 @@ auto format_exact(Decoded const& decoded, u8* buffer, usize capacity, i16 limit)
     }
 
     if (len != 0) {
-        Big scale2 = scale;
-        Big scale4 = scale;
-        Big scale8 = scale;
+        FloatBig scale2 = scale;
+        FloatBig scale4 = scale;
+        FloatBig scale8 = scale;
         scale2.mul_pow2(1);
         scale4.mul_pow2(2);
         scale8.mul_pow2(3);
@@ -319,7 +324,7 @@ auto format_exact(Decoded const& decoded, u8* buffer, usize capacity, i16 limit)
         }
     }
 
-    Big five_scale = scale;
+    FloatBig five_scale = scale;
     five_scale.mul_small(5);
     const i8 order = mant.compare(five_scale);
     if (order > 0 || (order == 0 && len != 0 && (buffer[len - 1] & 1) != 0)) {
@@ -344,14 +349,15 @@ auto make_decimal(FullDecoded const& decoded) -> Decimal<Capacity> {
     return result;
 }
 
-} // namespace detail
+namespace rstd::num::flt2dec
+{
 
 export template<Float T>
 auto shortest(T value) -> ShortestDecimal {
-    const auto decoded = detail::decode(value);
-    auto       result  = detail::make_decimal<MAX_SIG_DIGITS>(decoded);
+    const auto decoded = decode(value);
+    auto       result  = make_decimal<MAX_SIG_DIGITS>(decoded);
     if (decoded.category == Category::Finite) {
-        const auto digits = detail::format_shortest(decoded.finite, result.digits.data());
+        const auto digits = format_shortest(decoded.finite, result.digits.data());
         result.len        = digits.len;
         result.exponent   = digits.exponent;
     }
@@ -360,29 +366,28 @@ auto shortest(T value) -> ShortestDecimal {
 
 export template<Float T>
 auto exact_fixed(T value, usize fractional_digits) -> ExactDecimal {
-    const auto decoded = detail::decode(value);
-    auto       result  = detail::make_decimal<DIGIT_CAPACITY>(decoded);
+    const auto decoded = decode(value);
+    auto       result  = make_decimal<DIGIT_CAPACITY>(decoded);
     if (decoded.category == Category::Finite) {
-        const usize capacity = detail::max_buffer_len(decoded.finite.exponent);
+        const usize capacity = max_buffer_len(decoded.finite.exponent);
         const i16   limit    = fractional_digits < 0x8000
                                    ? static_cast<i16>(-static_cast<i16>(fractional_digits))
                                    : numeric_limits<i16>::min();
-        const auto  digits =
-            detail::format_exact(decoded.finite, result.digits.data(), capacity, limit);
-        result.len      = digits.len;
-        result.exponent = digits.exponent;
+        const auto  digits   = format_exact(decoded.finite, result.digits.data(), capacity, limit);
+        result.len           = digits.len;
+        result.exponent      = digits.exponent;
     }
     return result;
 }
 
 export template<Float T>
 auto exact_significant(T value, usize significant_digits) -> ExactDecimal {
-    const auto decoded = detail::decode(value);
-    auto       result  = detail::make_decimal<DIGIT_CAPACITY>(decoded);
+    const auto decoded = decode(value);
+    auto       result  = make_decimal<DIGIT_CAPACITY>(decoded);
     if (decoded.category == Category::Finite) {
-        const usize max_len  = detail::max_buffer_len(decoded.finite.exponent);
+        const usize max_len  = max_buffer_len(decoded.finite.exponent);
         const usize capacity = significant_digits < max_len ? significant_digits : max_len;
-        const auto  digits   = detail::format_exact(
+        const auto  digits   = format_exact(
             decoded.finite, result.digits.data(), capacity, numeric_limits<i16>::min());
         result.len      = digits.len;
         result.exponent = digits.exponent;

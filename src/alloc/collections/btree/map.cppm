@@ -6,15 +6,18 @@ export import :vec;
 export import :collections.btree_node;
 export import rstd.core;
 
-namespace alloc::collections
-{
-
 using ::alloc::boxed::Box;
-using ::alloc::collections::btree::detail::B;
-using ::alloc::collections::btree::detail::CAPACITY;
-using ::alloc::collections::btree::detail::Node;
 using ::alloc::vec::Vec;
 using namespace rstd::prelude;
+
+template<typename NodeType>
+struct BTreeMapFrame {
+    NodeType* node;
+    usize     index;
+};
+
+namespace alloc::collections
+{
 
 export template<typename K, typename V>
 class BTreeMap;
@@ -30,12 +33,6 @@ export template<typename K, typename V>
 class BTreeMapValues;
 export template<typename K, typename V>
 class BTreeMapValuesMut;
-
-template<typename NodeType>
-struct BTreeMapFrame {
-    NodeType* node;
-    usize     index;
-};
 
 export template<typename K, typename V>
 class BTreeMapIter : public rstd::DefaultInClass<BTreeMapIter<K, V>, rstd::iter::Iterator> {

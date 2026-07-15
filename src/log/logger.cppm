@@ -26,10 +26,10 @@ export struct Log {
     using Funcs = TraitFuncs<&T::enabled, &T::log, &T::flush>;
 };
 
-// ── Global logger state ───────────────────────────────────────────────────
+} // namespace rstd::log
 
-namespace detail
-{
+using namespace rstd::prelude;
+using namespace rstd::log;
 
 // Nop logger — default when no logger is set.
 struct NopLogger {};
@@ -52,25 +52,26 @@ struct LoggerVTable {
 inline constexpr LoggerVTable NOP_VTABLE { nop_enabled, nop_log, nop_flush };
 
 // Three states: 0=uninitialized, 1=initializing, 2=initialized
-inline sync::atomic::Atomic<usize> g_state { 0 };
-inline sync::atomic::Atomic<usize> g_max_level { 0 }; // LevelFilter::Off by default
+inline rstd::sync::atomic::Atomic<usize> g_state { 0 };
+inline rstd::sync::atomic::Atomic<usize> g_max_level { 0 }; // LevelFilter::Off by default
 
 inline LoggerVTable g_vtable { nop_enabled, nop_log, nop_flush };
 inline void const*  g_logger_ptr { nullptr };
 
-} // namespace detail
+namespace rstd::log
+{
 
 // ── set_logger / set_max_level ────────────────────────────────────────────
 
 /// Returns the current global maximum log level.
 export [[nodiscard]]
 inline auto max_level() noexcept -> LevelFilter {
-    return static_cast<LevelFilter>(detail::g_max_level.load(sync::atomic::Ordering::Relaxed));
+    return static_cast<LevelFilter>(g_max_level.load(sync::atomic::Ordering::Relaxed));
 }
 
 /// Sets the global maximum log level (relaxed ordering).
 export inline void set_max_level(LevelFilter level) noexcept {
-    detail::g_max_level.store(static_cast<usize>(level), sync::atomic::Ordering::Relaxed);
+    g_max_level.store(static_cast<usize>(level), sync::atomic::Ordering::Relaxed);
 }
 
 /// Attempts to set the global logger. Returns false if already initialized.
@@ -81,7 +82,7 @@ export template<typename T>
 inline bool set_logger(T const& logger) noexcept {
     using ImplT = Impl<Log, T>;
 
-    constexpr detail::LoggerVTable vtable {
+    constexpr LoggerVTable vtable {
         [](void const* p, Metadata const& m) -> bool {
             return ImplT { const_cast<T*>(static_cast<T const*>(p)) }.enabled(m);
         },
@@ -94,14 +95,14 @@ inline bool set_logger(T const& logger) noexcept {
     };
 
     usize expected = 0;
-    if (! detail::g_state.compare_exchange_strong(
+    if (! g_state.compare_exchange_strong(
             expected, 1, sync::atomic::Ordering::Acquire, sync::atomic::Ordering::Relaxed)) {
         return false;
     }
 
-    detail::g_vtable     = vtable;
-    detail::g_logger_ptr = rstd::addressof(logger);
-    detail::g_state.store(2, sync::atomic::Ordering::Release);
+    g_vtable     = vtable;
+    g_logger_ptr = rstd::addressof(logger);
+    g_state.store(2, sync::atomic::Ordering::Release);
     return true;
 }
 
@@ -109,24 +110,24 @@ inline bool set_logger(T const& logger) noexcept {
 export [[nodiscard]]
 inline auto log_enabled(Level level, ref<str> target) noexcept -> bool {
     if (level > max_level()) return false;
-    if (detail::g_state.load(sync::atomic::Ordering::Acquire) != 2) return false;
-    return detail::g_vtable.enabled(detail::g_logger_ptr, Metadata { level, target });
+    if (g_state.load(sync::atomic::Ordering::Acquire) != 2) return false;
+    return g_vtable.enabled(g_logger_ptr, Metadata { level, target });
 }
 
 /// Logs a Record through the global logger (no-op if no logger set).
 export inline void log(Record const& record) noexcept {
     if (record.lvl() <= max_level()) {
         // Acquire ensures we see the fully initialized vtable from set_logger().
-        if (detail::g_state.load(sync::atomic::Ordering::Acquire) == 2) {
-            detail::g_vtable.log(detail::g_logger_ptr, record);
+        if (g_state.load(sync::atomic::Ordering::Acquire) == 2) {
+            g_vtable.log(g_logger_ptr, record);
         }
     }
 }
 
 /// Flushes any buffered records through the global logger.
 export inline void flush() noexcept {
-    if (detail::g_state.load(sync::atomic::Ordering::Acquire) == 2) {
-        detail::g_vtable.flush(detail::g_logger_ptr);
+    if (g_state.load(sync::atomic::Ordering::Acquire) == 2) {
+        g_vtable.flush(g_logger_ptr);
     }
 }
 
@@ -137,7 +138,7 @@ namespace rstd
 {
 
 template<>
-struct Impl<log::Log, log::detail::NopLogger> : ImplBase<log::detail::NopLogger> {
+struct Impl<log::Log, NopLogger> : ImplBase<NopLogger> {
     auto enabled(log::Metadata const&) const -> bool { return false; }
     auto log(log::Record const&) const -> void {}
     auto flush() const -> void {}

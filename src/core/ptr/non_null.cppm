@@ -14,19 +14,14 @@ export template<typename T>
 struct NonNull;
 } // namespace rstd::ptr_::non_null
 
-namespace rstd::option::detail
-{
-
 template<typename T, typename NonePayload, typename SomePayload>
-struct option_storage<ptr_::non_null::NonNull<T>, NonePayload, SomePayload>
+struct option_storage<rstd::ptr_::non_null::NonNull<T>, NonePayload, SomePayload>
     : zero_niche_option_storage<NonePayload, SomePayload> {
     using base = zero_niche_option_storage<NonePayload, SomePayload>;
     using base::base;
 
-    static_assert(sizeof(SomePayload) == sizeof(ptr_::non_null::NonNull<T>));
+    static_assert(sizeof(SomePayload) == sizeof(rstd::ptr_::non_null::NonNull<T>));
 };
-
-} // namespace rstd::option::detail
 
 namespace rstd::ptr_::non_null
 {

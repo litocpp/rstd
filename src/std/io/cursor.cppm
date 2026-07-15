@@ -36,8 +36,10 @@ public:
     auto into_inner() -> T { return rstd::move(inner_); }
 };
 
-namespace detail
-{
+} // namespace rstd::io
+
+using namespace rstd::prelude;
+
 inline auto cursor_data(const Vec<u8>& v) noexcept -> const u8* {
     return v.begin();
 }
@@ -50,9 +52,6 @@ inline auto cursor_data(slice<u8> s) noexcept -> const u8* {
 inline auto cursor_len(slice<u8> s) noexcept -> usize {
     return s.len();
 }
-} // namespace detail
-
-} // namespace rstd::io
 
 // ── Impl specialisations ──────────────────────────────────────────────────
 namespace rstd
@@ -64,10 +63,10 @@ template<typename T>
 struct Impl<io::Read, io::Cursor<T>> : ImplBase<io::Cursor<T>> {
     auto read(u8* buf, usize len) -> io::Result<usize> {
         auto& self  = this->self();
-        usize total = io::detail::cursor_len(self.inner_);
+        usize total = cursor_len(self.inner_);
         usize pos   = usize(rstd::min(self.pos_, u64(total)));
         usize n     = rstd::min(len, total - pos);
-        rstd::mem::memcpy(buf, io::detail::cursor_data(self.inner_) + pos, n);
+        rstd::mem::memcpy(buf, cursor_data(self.inner_) + pos, n);
         self.pos_ += n;
         return Ok(n);
     }
@@ -79,14 +78,13 @@ template<typename T>
 struct Impl<io::BufRead, io::Cursor<T>> : ImplBase<io::Cursor<T>> {
     auto fill_buf() -> io::Result<slice<u8>> {
         auto& self  = this->self();
-        usize total = io::detail::cursor_len(self.inner_);
+        usize total = cursor_len(self.inner_);
         usize pos   = usize(rstd::min(self.pos_, u64(total)));
-        return Ok(
-            slice<u8>::from_raw_parts(io::detail::cursor_data(self.inner_) + pos, total - pos));
+        return Ok(slice<u8>::from_raw_parts(cursor_data(self.inner_) + pos, total - pos));
     }
     auto consume(usize amt) -> void {
         auto& self  = this->self();
-        usize total = io::detail::cursor_len(self.inner_);
+        usize total = cursor_len(self.inner_);
         self.pos_   = rstd::min(self.pos_ + u64(amt), u64(total));
     }
 };
@@ -97,7 +95,7 @@ template<typename T>
 struct Impl<io::Seek, io::Cursor<T>> : ImplBase<io::Cursor<T>> {
     auto seek(io::SeekFrom sf) -> io::Result<u64> {
         auto& self  = this->self();
-        i64   total = i64(io::detail::cursor_len(self.inner_));
+        i64   total = i64(cursor_len(self.inner_));
         i64   new_pos;
         switch (sf.which) {
         case io::SeekFrom::Which::Start: new_pos = i64(u64(sf.offset)); break;

@@ -35,19 +35,14 @@ struct NonZero {
 };
 } // namespace rstd::num::nonzero
 
-namespace rstd::option::detail
-{
-
 template<typename T, typename NonePayload, typename SomePayload>
-struct option_storage<num::nonzero::NonZero<T>, NonePayload, SomePayload>
+struct option_storage<rstd::num::nonzero::NonZero<T>, NonePayload, SomePayload>
     : zero_niche_option_storage<NonePayload, SomePayload> {
     using base = zero_niche_option_storage<NonePayload, SomePayload>;
     using base::base;
 
-    static_assert(sizeof(SomePayload) == sizeof(num::nonzero::NonZero<T>));
+    static_assert(sizeof(SomePayload) == sizeof(rstd::num::nonzero::NonZero<T>));
 };
-
-} // namespace rstd::option::detail
 
 namespace rstd::num::nonzero
 {

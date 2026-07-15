@@ -5,9 +5,6 @@ export module rstd.alloc:collections.btree_node;
 export import :boxed;
 export import rstd.core;
 
-namespace alloc::collections::btree::detail
-{
-
 using ::alloc::boxed::Box;
 using rstd::mem::maybe_uninit::MaybeUninit;
 using namespace rstd::prelude;
@@ -98,5 +95,3 @@ public:
 
     void move_edge(usize source, usize destination) { write_edge(destination, take_edge(source)); }
 };
-
-} // namespace alloc::collections::btree::detail
