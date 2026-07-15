@@ -3,6 +3,7 @@ import :ptr.ptr;
 import :ptr.dyn;
 
 import :marker;
+import :array;
 import :clone;
 import :clone_tuple;
 import :cmp;
@@ -21,6 +22,7 @@ using rstd::mut_ref;
 using rstd::ptr;
 using rstd::ref;
 using rstd::slice;
+using rstd::array;
 
 using rstd::as_cast;
 

@@ -20,6 +20,7 @@ endif()
 set(
   RSTD_TEST_SOURCES
   trait.cpp
+  array.cpp
   deref.cpp
   result.cpp
   try_async.cpp

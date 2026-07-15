@@ -63,14 +63,14 @@ struct AsRef {
 /// Trait for cheaply borrowing data as a mutable reference to T.
 ///
 /// Implementors provide:
-/// - `as_mut() noexcept -> ref<T>` : Returns a mutable reference to the inner T.
+/// - `as_mut() noexcept -> mut_ref<T>` : Returns a mutable reference to the inner T.
 /// \tparam T The target reference type.
 export template<typename T>
 struct AsMut {
     template<typename Self, typename = void>
     struct Api {
         using Trait = AsMut;
-        auto as_mut() noexcept -> ref<T> { return trait_call<0>(this); }
+        auto as_mut() noexcept -> mut_ref<T> { return trait_call<0>(this); }
     };
 
     template<typename F>
@@ -167,6 +167,7 @@ struct Impl<T, Self> : ImplBase<Self> {
 };
 
 export using convert::as_ref;
+export using convert::as_mut;
 export using convert::into;
 
 } // namespace rstd
