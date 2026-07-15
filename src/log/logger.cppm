@@ -14,8 +14,8 @@ export struct Log {
     using Trait                  = Log;
     static constexpr bool direct = false;
 
-    template<typename Self, typename Delegate = void>
-    struct Api : ImplBase<Delegate> {
+    template<typename Self, typename = void>
+    struct Api {
         using Trait = Log;
         auto enabled(Metadata const&) const -> bool;
         auto log(Record const&) const -> void;

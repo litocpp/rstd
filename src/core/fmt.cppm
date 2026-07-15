@@ -124,8 +124,8 @@ export struct Display {
     using Trait                  = Display;
     static constexpr bool direct = false;
 
-    template<typename Self, typename Delegate = void>
-    struct Api : ImplBase<Delegate> {
+    template<typename Self, typename = void>
+    struct Api {
         using Trait = Display;
         auto fmt(Formatter& f) const -> bool;
     };
@@ -142,8 +142,8 @@ export struct Debug {
     using Trait                  = Debug;
     static constexpr bool direct = false;
 
-    template<typename Self, typename Delegate = void>
-    struct Api : ImplBase<Delegate> {
+    template<typename Self, typename = void>
+    struct Api {
         using Trait = Debug;
         auto fmt(Formatter& f) const -> bool;
     };
@@ -157,8 +157,8 @@ export struct LowerExp {
     using Trait                  = LowerExp;
     static constexpr bool direct = false;
 
-    template<typename Self, typename Delegate = void>
-    struct Api : ImplBase<Delegate> {
+    template<typename Self, typename = void>
+    struct Api {
         using Trait = LowerExp;
         auto fmt(Formatter& f) const -> bool;
     };
@@ -172,8 +172,8 @@ export struct UpperExp {
     using Trait                  = UpperExp;
     static constexpr bool direct = false;
 
-    template<typename Self, typename Delegate = void>
-    struct Api : ImplBase<Delegate> {
+    template<typename Self, typename = void>
+    struct Api {
         using Trait = UpperExp;
         auto fmt(Formatter& f) const -> bool;
     };
@@ -189,8 +189,8 @@ export struct Write {
     using Trait                  = Write;
     static constexpr bool direct = false;
 
-    template<typename Self, typename Delegate = void>
-    struct Api : ImplBase<Delegate> {
+    template<typename Self, typename = void>
+    struct Api {
         using Trait = Write;
         auto write_str(const u8* p, usize len) -> bool;
     };
