@@ -46,6 +46,10 @@ inline constexpr f64 NEG_INFINITY = -numeric_limits<f64>::infinity();
 /// Not a Number (NaN).
 inline constexpr f64 NAN_ = numeric_limits<f64>::quiet_NaN();
 
+constexpr auto is_finite(f64 value) noexcept -> bool {
+    return value >= MIN && value <= MAX;
+}
+
 namespace consts
 {
 

@@ -1,6 +1,3 @@
-module;
-#include <cmath>
-
 export module rstd.json:number;
 export import rstd.core;
 
@@ -33,7 +30,7 @@ public:
 
     [[nodiscard]]
     static auto from_f64(f64 value) noexcept -> Option<Number> {
-        if (! std::isfinite(value)) return None();
+        if (! f64_::is_finite(value)) return None();
         return Some(Number(value));
     }
 

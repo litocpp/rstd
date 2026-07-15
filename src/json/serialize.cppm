@@ -1,7 +1,5 @@
 module;
 #include <rstd/enum.hpp>
-#include <charconv>
-#include <system_error>
 
 export module rstd.json:serialize;
 export import :value;
@@ -85,30 +83,33 @@ class Emitter {
 
     template<typename T>
     auto write_integer(T value) -> bool {
-        char buffer[32];
-        auto result = std::to_chars(buffer, buffer + sizeof(buffer), value);
-        if (result.ec != std::errc {}) rstd::panic { "failed to format JSON integer" };
-        return formatter_.write_raw(reinterpret_cast<const u8*>(buffer),
-                                    static_cast<usize>(result.ptr - buffer));
+        return formatter_.write_fmt(fmt::Arguments::make("{}", value));
     }
 
     auto write_float(f64 value) -> bool {
-        char buffer[128];
-        auto result = std::to_chars(buffer, buffer + sizeof(buffer), value);
-        if (result.ec != std::errc {}) rstd::panic { "failed to format JSON float" };
+        struct Buffer {
+            u8    bytes[64];
+            usize len = 0;
+        } buffer;
+        fmt::Formatter local(&buffer, [](void* context, const u8* bytes, usize len) -> bool {
+            auto& output = *static_cast<Buffer*>(context);
+            if (output.len + len > sizeof(output.bytes)) return false;
+            for (usize i = 0; i < len; ++i) output.bytes[output.len++] = bytes[i];
+            return true;
+        });
+        if (! local.write_fmt(fmt::Arguments::make("{:?}", value))) return false;
 
-        bool has_fraction_or_exponent = false;
-        for (const char* current = buffer; current != result.ptr; ++current) {
-            if (*current == '.' || *current == 'e' || *current == 'E') {
-                has_fraction_or_exponent = true;
+        usize exponent = buffer.len;
+        for (usize i = 0; i < buffer.len; ++i) {
+            if (buffer.bytes[i] == 'e') {
+                exponent = i;
                 break;
             }
         }
-        if (! formatter_.write_raw(reinterpret_cast<const u8*>(buffer),
-                                   static_cast<usize>(result.ptr - buffer))) {
-            return false;
-        }
-        return has_fraction_or_exponent || write(".0");
+        if (exponent == buffer.len) return formatter_.write_raw(buffer.bytes, buffer.len);
+        if (! formatter_.write_raw(buffer.bytes, exponent + 1)) return false;
+        if (buffer.bytes[exponent + 1] != '-' && ! write_byte('+')) return false;
+        return formatter_.write_raw(buffer.bytes + exponent + 1, buffer.len - exponent - 1);
     }
 
     auto write_number(const Number& number) -> bool {

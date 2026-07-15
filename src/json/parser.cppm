@@ -1,8 +1,3 @@
-module;
-#include <charconv>
-#include <cmath>
-#include <system_error>
-
 export module rstd.json:parser;
 export import :value;
 export import :error;
@@ -229,87 +224,41 @@ class Parser {
     }
 
     [[nodiscard]]
-    auto token_is_zero(usize begin, usize end) const noexcept -> bool {
-        for (usize i = begin; i < end; ++i) {
-            const u8 byte = input_.data()[i];
-            if (byte >= '1' && byte <= '9') return false;
-        }
-        return true;
-    }
-
-    [[nodiscard]]
-    auto token_underflows(usize begin, usize end) const noexcept -> bool {
-        usize cursor = begin;
-        if (input_.data()[cursor] == '-') ++cursor;
-
-        usize exponent_at = end;
-        usize dot_at      = end;
-        usize first       = end;
-        for (usize i = cursor; i < end; ++i) {
-            const u8 byte = input_.data()[i];
-            if (byte == '.') {
-                dot_at = i;
-            } else if (byte == 'e' || byte == 'E') {
-                exponent_at = i;
-                break;
-            } else if (first == end && byte >= '1' && byte <= '9') {
-                first = i;
-            }
-        }
-        if (first == end) return true;
-        if (dot_at == end || dot_at > exponent_at) dot_at = exponent_at;
-
-        i64 order = first < dot_at ? static_cast<i64>(dot_at - first - 1)
-                                   : -static_cast<i64>(first - dot_at);
-        if (exponent_at < end) {
-            usize exp_cursor = exponent_at + 1;
-            bool  negative   = false;
-            if (exp_cursor < end &&
-                (input_.data()[exp_cursor] == '+' || input_.data()[exp_cursor] == '-')) {
-                negative = input_.data()[exp_cursor] == '-';
-                ++exp_cursor;
-            }
-            i64 exponent = 0;
-            while (exp_cursor < end && exponent < 100000) {
-                exponent = exponent * 10 + (input_.data()[exp_cursor++] - '0');
-            }
-            order += negative ? -exponent : exponent;
-        }
-        return order <= -324;
-    }
-
-    [[nodiscard]]
-    auto parse_float(usize begin, usize end) -> ParseResult {
-        const char* first  = reinterpret_cast<const char*>(input_.data() + begin);
-        const char* last   = reinterpret_cast<const char*>(input_.data() + end);
-        f64         value  = 0.0;
-        auto        result = std::from_chars(first, last, value, std::chars_format::general);
-
-        if (result.ec == std::errc::result_out_of_range) {
-            if (token_underflows(begin, end) || token_is_zero(begin, end)) {
-                value = input_.data()[begin] == '-' ? -0.0 : 0.0;
-            } else {
-                return Err(error(ErrorCode::NumberOutOfRange));
-            }
-        } else if (result.ec != std::errc {} || result.ptr != last || ! std::isfinite(value)) {
-            return Err(error(ErrorCode::InvalidNumber));
+    auto parse_float(usize integer_begin,
+                     usize integer_end,
+                     usize fraction_begin,
+                     usize fraction_end,
+                     i32   exponent,
+                     bool  negative) -> ParseResult {
+        auto parsed = num::dec2flt::to_f64({
+            .integer  = slice<u8>::from_raw_parts(input_.data() + integer_begin,
+                                                  integer_end - integer_begin),
+            .fraction = slice<u8>::from_raw_parts(input_.data() + fraction_begin,
+                                                  fraction_end - fraction_begin),
+            .exponent = exponent,
+            .negative = negative,
+        });
+        if (parsed.is_err()) {
+            const auto cause = parsed.unwrap_err();
+            return Err(error(cause == num::dec2flt::Error::Overflow ? ErrorCode::NumberOutOfRange
+                                                                    : ErrorCode::InvalidNumber));
         }
 
-        auto number = Number::from_f64(value);
+        auto number = Number::from_f64(parsed.unwrap());
         if (number.is_none()) return Err(error(ErrorCode::NumberOutOfRange));
         return Ok(Value::Number(*number));
     }
 
     [[nodiscard]]
     auto parse_number() -> ParseResult {
-        const usize begin    = offset_;
-        bool        negative = false;
+        bool negative = false;
         if (peek() == '-') {
             negative = true;
             take();
             if (eof()) return Err(error(ErrorCode::EofWhileParsingValue));
         }
 
+        const usize integer_begin = offset_;
         if (peek() == '0') {
             take();
             if (! eof() && peek() >= '0' && peek() <= '9') {
@@ -322,36 +271,53 @@ class Parser {
         } else {
             return Err(error(ErrorCode::InvalidNumber));
         }
+        const usize integer_end = offset_;
 
-        bool floating = false;
+        bool  floating       = false;
+        usize fraction_begin = integer_end;
+        usize fraction_end   = integer_end;
         if (! eof() && peek() == '.') {
             floating = true;
             take();
             if (eof()) return Err(error(ErrorCode::EofWhileParsingValue));
             if (peek() < '0' || peek() > '9') return Err(error(ErrorCode::InvalidNumber));
+            fraction_begin = offset_;
             do {
                 take();
             } while (! eof() && peek() >= '0' && peek() <= '9');
+            fraction_end = offset_;
         }
 
+        i32 exponent = 0;
         if (! eof() && (peek() == 'e' || peek() == 'E')) {
             floating = true;
             take();
-            if (! eof() && (peek() == '+' || peek() == '-')) take();
+            bool exponent_negative = false;
+            if (! eof() && (peek() == '+' || peek() == '-')) {
+                exponent_negative = peek() == '-';
+                take();
+            }
             if (eof()) return Err(error(ErrorCode::EofWhileParsingValue));
             if (peek() < '0' || peek() > '9') return Err(error(ErrorCode::InvalidNumber));
             do {
+                if (exponent < 10'000) {
+                    exponent = exponent * 10 + static_cast<i32>(peek() - '0');
+                    if (exponent > 10'000) exponent = 10'000;
+                }
                 take();
             } while (! eof() && peek() >= '0' && peek() <= '9');
+            if (exponent_negative) exponent = -exponent;
         }
 
-        const usize end = offset_;
-        if (floating) return parse_float(begin, end);
+        if (floating) {
+            return parse_float(
+                integer_begin, integer_end, fraction_begin, fraction_end, exponent, negative);
+        }
 
-        usize digits    = begin + (negative ? 1 : 0);
+        usize digits    = integer_begin;
         u64   magnitude = 0;
         bool  overflow  = false;
-        for (; digits < end; ++digits) {
+        for (; digits < integer_end; ++digits) {
             const u64 digit = input_.data()[digits] - '0';
             if (magnitude > (u64_::MAX - digit) / 10) {
                 overflow = true;
@@ -359,12 +325,18 @@ class Parser {
             }
             magnitude = magnitude * 10 + digit;
         }
-        if (overflow) return parse_float(begin, end);
+        if (overflow) {
+            return parse_float(integer_begin, integer_end, integer_end, integer_end, 0, negative);
+        }
 
         if (! negative) return Ok(Value::Number(Number::from_u64(magnitude)));
-        if (magnitude == 0) return parse_float(begin, end);
+        if (magnitude == 0) {
+            return parse_float(integer_begin, integer_end, integer_end, integer_end, 0, negative);
+        }
         const u64 min_magnitude = static_cast<u64>(i64_::MAX) + 1;
-        if (magnitude > min_magnitude) return parse_float(begin, end);
+        if (magnitude > min_magnitude) {
+            return parse_float(integer_begin, integer_end, integer_end, integer_end, 0, negative);
+        }
         const i64 signed_value =
             magnitude == min_magnitude ? i64_::MIN : -static_cast<i64>(magnitude);
         return Ok(Value::Number(Number::from_i64(signed_value)));

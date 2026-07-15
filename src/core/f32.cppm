@@ -46,6 +46,10 @@ inline constexpr f32 NEG_INFINITY = -numeric_limits<f32>::infinity();
 /// Not a Number (NaN).
 inline constexpr f32 NAN_ = numeric_limits<f32>::quiet_NaN();
 
+constexpr auto is_finite(f32 value) noexcept -> bool {
+    return value >= MIN && value <= MAX;
+}
+
 namespace consts
 {
 

@@ -7,6 +7,7 @@ export import :trait;
 export import :cmp;
 export import :fmt;
 export import :fmt.floating;
+export import :num.dec2flt;
 export import :convert;
 export import :slice;
 export import :alloc;

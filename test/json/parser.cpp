@@ -42,6 +42,20 @@ TEST(JsonParser, ParsesScalarsAndNumberKinds) {
     EXPECT_EQ(parse("1e-400").unwrap().as_f64(), Some(0.0));
 }
 
+TEST(JsonParser, RoundsDecimalFloatsLikeSerdeJson) {
+    EXPECT_EQ(parse("2.638344616030823e-256").unwrap().as_f64(), Some(2.638344616030823e-256));
+    EXPECT_EQ(parse("1009e-31").unwrap().as_f64(), Some(1.009e-28));
+    EXPECT_EQ(parse("1.7976931348623157e308").unwrap().as_f64(), Some(rstd::f64_::MAX));
+    EXPECT_TRUE(parse("1.7976931348623159e308").is_err());
+
+    EXPECT_EQ(parse("2.4703282292062327e-324").unwrap().as_f64(), Some(0.0));
+    EXPECT_EQ(parse("2.4703282292062328e-324").unwrap().as_f64(),
+              Some(rstd::bit_cast<f64>(u64(1))));
+
+    auto negative_zero = parse("-1e-400000000000000000000").unwrap().as_f64().unwrap();
+    EXPECT_EQ(rstd::bit_cast<u64>(negative_zero), u64(1) << 63);
+}
+
 TEST(JsonParser, ParsesNestedContainersAndReplacesDuplicateKeys) {
     auto result = parse(R"({"b":null,"a":[true,{"x":1}],"a":2})");
     ASSERT_TRUE(result.is_ok());
