@@ -75,6 +75,8 @@ export struct SystemTime {
         return { v };
     }
 
+    static auto unix_epoch() noexcept -> SystemTime { return { 116'444'736'000'000'000u }; }
+
     auto sub_time(SystemTime other) const noexcept
         -> Result<rstd::time::Duration, rstd::time::Duration> {
         constexpr u64 PER_SEC = 10'000'000u; // 100ns intervals per second

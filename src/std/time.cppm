@@ -70,6 +70,9 @@ export struct SystemTime {
     /// Returns the system time corresponding to "now".
     static auto now() noexcept -> SystemTime { return { sys::SystemTime::now() }; }
 
+    /// Returns the system time corresponding to 1970-01-01 00:00:00 UTC.
+    static auto unix_epoch() noexcept -> SystemTime { return { sys::SystemTime::unix_epoch() }; }
+
     /// Returns the duration since an earlier SystemTime, or an Err if `other` is later.
     /// \param other The earlier system time.
     auto duration_since(SystemTime other) const noexcept -> Result<Duration, Duration> {

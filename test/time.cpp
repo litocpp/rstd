@@ -50,6 +50,17 @@ TEST(Time, SystemTime) {
     EXPECT_GE(res.unwrap().as_nanos(), 0);
 }
 
+TEST(Time, UnixEpoch) {
+    auto epoch = SystemTime::unix_epoch();
+    auto zero  = epoch.duration_since(epoch);
+    ASSERT_TRUE(zero.is_ok());
+    EXPECT_EQ(zero.unwrap(), Duration::from_secs(0));
+
+    auto since_epoch = SystemTime::now().duration_since(epoch);
+    ASSERT_TRUE(since_epoch.is_ok());
+    EXPECT_GT(since_epoch.unwrap().as_secs(), 1'000'000'000u);
+}
+
 TEST(Time, Arithmetic) {
     auto now   = Instant::now();
     auto dur   = Duration::from_secs(1);

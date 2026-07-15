@@ -108,6 +108,8 @@ export struct SystemTime {
 
     static auto now() noexcept -> SystemTime { return { Timespec::now(libc::CLOCK_REALTIME) }; }
 
+    static auto unix_epoch() noexcept -> SystemTime { return { Timespec { 0, 0 } }; }
+
     auto sub_time(SystemTime other) const noexcept
         -> Result<rstd::time::Duration, rstd::time::Duration> {
         if (t >= other.t) {
