@@ -125,8 +125,10 @@ auto parse_spec(const char* b, const char* e) -> FormattingOptions {
     // type char
     if (b < e) {
         switch (b[0]) {
-        case '?': opts.set_flag(Opts::DEBUG); break;
-        // 'b' 'd' 'o' 'x' 'X' 'e' 'E' 'p' 's' — reserved for P2
+        case '?': opts.set_presentation(Presentation::Debug); break;
+        case 'e': opts.set_presentation(Presentation::LowerExp); break;
+        case 'E': opts.set_presentation(Presentation::UpperExp); break;
+        // 'b' 'd' 'o' 'x' 'X' 'p' 's' — reserved for P2
         default: break;
         }
     }
@@ -134,6 +136,56 @@ auto parse_spec(const char* b, const char* e) -> FormattingOptions {
     return opts;
 }
 } // anonymous namespace
+
+auto Formatter::pad_numeric(const u8* sign,
+                            usize     sign_len,
+                            const u8* significand,
+                            usize     significand_len,
+                            usize     zero_count,
+                            const u8* exponent,
+                            usize     exponent_len) -> bool {
+    auto write_repeat = [this](u8 value, usize count) -> bool {
+        u8 buffer[64];
+        for (usize i = 0; i < sizeof(buffer); ++i) buffer[i] = value;
+        while (count != 0) {
+            auto chunk = count < sizeof(buffer) ? count : sizeof(buffer);
+            if (! write_raw(buffer, chunk)) return false;
+            count -= chunk;
+        }
+        return true;
+    };
+
+    auto write_number = [&]() -> bool {
+        if (sign_len != 0 && ! write_raw(sign, sign_len)) return false;
+        if (significand_len != 0 && ! write_raw(significand, significand_len)) return false;
+        if (! write_repeat('0', zero_count)) return false;
+        return exponent_len == 0 || write_raw(exponent, exponent_len);
+    };
+
+    const usize length = sign_len + significand_len + zero_count + exponent_len;
+    const usize width  = has_width() ? this->width() : 0;
+    if (length >= width) return write_number();
+
+    const usize padding = width - length;
+    if (zero_pad()) {
+        if (sign_len != 0 && ! write_raw(sign, sign_len)) return false;
+        if (! write_repeat('0', padding)) return false;
+        if (significand_len != 0 && ! write_raw(significand, significand_len)) return false;
+        if (! write_repeat('0', zero_count)) return false;
+        return exponent_len == 0 || write_raw(exponent, exponent_len);
+    }
+
+    auto alignment = align();
+    if (alignment == Align::None) alignment = Align::Right;
+    usize left = padding;
+    if (alignment == Align::Left) left = 0;
+    if (alignment == Align::Center) left = padding / 2;
+    const usize right = padding - left;
+
+    if (! write_repeat(static_cast<u8>(fill()), left)) return false;
+    if (! write_number()) return false;
+    return write_repeat(static_cast<u8>(fill()), right);
+}
 
 // ── Formatter::write_fmt ──────────────────────────────────────────────────
 auto Formatter::write_fmt(Arguments args) -> bool {

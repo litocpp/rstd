@@ -30,9 +30,12 @@ struct ArgumentsStorage;
 /// Text alignment options for formatted output.
 export enum class Align : u32 { None = 0, Left = 1, Right = 2, Center = 3 };
 
+/// Formatting trait selected by the placeholder's type specifier.
+export enum class Presentation : u8 { Display, Debug, LowerExp, UpperExp };
+
 /// Options that control how values are formatted (fill, align, width, precision, flags).
 ///
-/// Bit layout (mirrors Rust's FormattingOptions):
+/// Compact bit layout used by rstd's runtime parser:
 ///   [20: 0]  fill character (Unicode scalar, default U+0020 ' ')
 ///   [22:21]  alignment  0=none 1=left 2=right 3=center
 ///   [23]     sign_plus   (+)
@@ -42,21 +45,26 @@ export enum class Align : u32 { None = 0, Left = 1, Right = 2, Center = 3 };
 ///   [27]     debug       (?)
 ///   [28]     has_width
 ///   [29]     has_precision
+///   [30]     lower_exp   (e)
+///   [31]     upper_exp   (E)
 export struct FormattingOptions {
     u32 flags     = u32(' '); // fill=' ', all flags clear
     u16 width     = 0;
     u16 precision = 0;
 
-    static constexpr u32 FILL_MASK   = 0x1F'FFFFu;
-    static constexpr u32 ALIGN_SHIFT = 21u;
-    static constexpr u32 ALIGN_MASK  = 0b11u << 21u;
-    static constexpr u32 SIGN_PLUS   = 1u << 23u;
-    static constexpr u32 SIGN_MINUS  = 1u << 24u;
-    static constexpr u32 ALTERNATE   = 1u << 25u;
-    static constexpr u32 ZERO_PAD    = 1u << 26u;
-    static constexpr u32 DEBUG       = 1u << 27u;
-    static constexpr u32 HAS_WIDTH   = 1u << 28u;
-    static constexpr u32 HAS_PREC    = 1u << 29u;
+    static constexpr u32 FILL_MASK         = 0x1F'FFFFu;
+    static constexpr u32 ALIGN_SHIFT       = 21u;
+    static constexpr u32 ALIGN_MASK        = 0b11u << 21u;
+    static constexpr u32 SIGN_PLUS         = 1u << 23u;
+    static constexpr u32 SIGN_MINUS        = 1u << 24u;
+    static constexpr u32 ALTERNATE         = 1u << 25u;
+    static constexpr u32 ZERO_PAD          = 1u << 26u;
+    static constexpr u32 DEBUG             = 1u << 27u;
+    static constexpr u32 HAS_WIDTH         = 1u << 28u;
+    static constexpr u32 HAS_PREC          = 1u << 29u;
+    static constexpr u32 LOWER_EXP         = 1u << 30u;
+    static constexpr u32 UPPER_EXP         = 1u << 31u;
+    static constexpr u32 PRESENTATION_MASK = DEBUG | LOWER_EXP | UPPER_EXP;
 
     constexpr auto fill() const noexcept -> char { return char(flags & FILL_MASK); }
     constexpr auto align() const noexcept -> Align { return Align((flags >> ALIGN_SHIFT) & 0b11u); }
@@ -65,6 +73,12 @@ export struct FormattingOptions {
     constexpr auto alternate() const noexcept -> bool { return bool(flags & ALTERNATE); }
     constexpr auto zero_pad() const noexcept -> bool { return bool(flags & ZERO_PAD); }
     constexpr auto is_debug() const noexcept -> bool { return bool(flags & DEBUG); }
+    constexpr auto presentation() const noexcept -> Presentation {
+        if (flags & DEBUG) return Presentation::Debug;
+        if (flags & LOWER_EXP) return Presentation::LowerExp;
+        if (flags & UPPER_EXP) return Presentation::UpperExp;
+        return Presentation::Display;
+    }
     constexpr auto has_width() const noexcept -> bool { return bool(flags & HAS_WIDTH); }
     constexpr auto has_prec() const noexcept -> bool { return bool(flags & HAS_PREC); }
 
@@ -88,6 +102,16 @@ export struct FormattingOptions {
     }
     constexpr auto set_flag(u32 f) noexcept -> FormattingOptions& {
         flags |= f;
+        return *this;
+    }
+    constexpr auto set_presentation(Presentation value) noexcept -> FormattingOptions& {
+        flags &= ~PRESENTATION_MASK;
+        switch (value) {
+        case Presentation::Display: break;
+        case Presentation::Debug: flags |= DEBUG; break;
+        case Presentation::LowerExp: flags |= LOWER_EXP; break;
+        case Presentation::UpperExp: flags |= UPPER_EXP; break;
+        }
         return *this;
     }
 };
@@ -121,6 +145,36 @@ export struct Debug {
     template<typename Self, typename Delegate = void>
     struct Api : ImplBase<Delegate> {
         using Trait = Debug;
+        auto fmt(Formatter& f) const -> bool;
+    };
+
+    template<typename T>
+    using Funcs = TraitFuncs<&T::fmt>;
+};
+
+/// Scientific notation with a lower-case `e`, invoked via `{:e}`.
+export struct LowerExp {
+    using Trait                  = LowerExp;
+    static constexpr bool direct = false;
+
+    template<typename Self, typename Delegate = void>
+    struct Api : ImplBase<Delegate> {
+        using Trait = LowerExp;
+        auto fmt(Formatter& f) const -> bool;
+    };
+
+    template<typename T>
+    using Funcs = TraitFuncs<&T::fmt>;
+};
+
+/// Scientific notation with an upper-case `E`, invoked via `{:E}`.
+export struct UpperExp {
+    using Trait                  = UpperExp;
+    static constexpr bool direct = false;
+
+    template<typename Self, typename Delegate = void>
+    struct Api : ImplBase<Delegate> {
+        using Trait = UpperExp;
         auto fmt(Formatter& f) const -> bool;
     };
 
@@ -184,6 +238,14 @@ public:
     auto width() const noexcept -> u16 { return _options.width; }
     auto precision() const noexcept -> u16 { return _options.precision; }
 
+    auto pad_numeric(const u8* sign,
+                     usize     sign_len,
+                     const u8* significand,
+                     usize     significand_len,
+                     usize     zero_count,
+                     const u8* exponent,
+                     usize     exponent_len) -> bool;
+
     // write_fmt is the only one allowed to mutate _options.
     friend auto Formatter_set_options(Formatter& f, FormattingOptions opts) noexcept
         -> FormattingOptions {
@@ -206,23 +268,37 @@ private:
 
 public:
     // Construct from any type that implements Display and/or Debug.
-    // Spec dispatch: if Formatter::is_debug() → Debug::fmt, else → Display::fmt.
+    // Dispatches through the formatting trait selected by the placeholder.
     template<typename T>
-        requires(Impled<T, Display> || Impled<T, Debug>)
+        requires(Impled<T, Display> || Impled<T, Debug> || Impled<T, LowerExp> ||
+                 Impled<T, UpperExp>)
     static auto make(const T& val) -> Argument {
         return { rstd::addressof(val), [](const void* p, Formatter& f) -> bool {
                     const T& self = *static_cast<const T*>(p);
-                    if (f.is_debug()) {
+                    switch (f.options().presentation()) {
+                    case Presentation::Debug:
                         if constexpr (Impled<T, Debug>) {
                             return as<Debug>(self).fmt(f);
                         } else {
-                            return false; // T not Debug-able
+                            return false;
                         }
-                    } else {
+                    case Presentation::LowerExp:
+                        if constexpr (Impled<T, LowerExp>) {
+                            return as<LowerExp>(self).fmt(f);
+                        } else {
+                            return false;
+                        }
+                    case Presentation::UpperExp:
+                        if constexpr (Impled<T, UpperExp>) {
+                            return as<UpperExp>(self).fmt(f);
+                        } else {
+                            return false;
+                        }
+                    case Presentation::Display:
                         if constexpr (Impled<T, Display>) {
                             return as<Display>(self).fmt(f);
                         } else {
-                            return false; // T only Debug-able
+                            return false;
                         }
                     }
                 } };
@@ -290,7 +366,8 @@ constexpr auto Arguments::make(format_string<Args...> fmt_str, Args&&... args) n
 /// Checks whether a type can be formatted, i.e. it implements Display or Debug.
 /// \tparam Tp The type to check.
 export template<typename Tp, typename CharT = char>
-concept formattable = Impled<Tp, Display> || Impled<Tp, Debug>;
+concept formattable =
+    Impled<Tp, Display> || Impled<Tp, Debug> || Impled<Tp, LowerExp> || Impled<Tp, UpperExp>;
 
 // ── Compile-time format string validation ─────────────────────────────────
 // These sentinel functions are non-constexpr on purpose: calling them inside

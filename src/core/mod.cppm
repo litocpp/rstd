@@ -6,6 +6,7 @@ export import :prelude;
 export import :trait;
 export import :cmp;
 export import :fmt;
+export import :fmt.floating;
 export import :convert;
 export import :slice;
 export import :alloc;

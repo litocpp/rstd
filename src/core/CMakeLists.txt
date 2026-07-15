@@ -45,6 +45,7 @@ target_sources(
          task.cppm
          future.cppm
          fmt.cppm
+         fmt/float.cppm
           panic.cppm
           panicking.cppm
           choice.cppm
