@@ -2,73 +2,41 @@ module;
 #include <rstd/macro.hpp>
 export module rstd.alloc:sync;
 export import rstd.core;
+export import :alloc;
 
+using rstd::alloc::Allocator;
+using rstd::alloc::Layout;
 using rstd::mem::maybe_uninit::maybe_uninit_traits;
 using rstd::mem::maybe_uninit::MaybeUninit;
+using rstd::ptr_::non_null::NonNull;
 using rstd::sync::atomic::Atomic;
-using rstd::sync::atomic::fence;
 namespace mtp = rstd::mtp;
 using namespace rstd::prelude;
 
-namespace alloc::sync
-{
+constexpr usize ARC_MAX_REFCOUNT = rstd::numeric_limits<usize>::max() / 2;
 
-constexpr usize MAX_REFCOUNT = rstd::numeric_limits<usize>::max() / 2;
-
-enum class DeleteType
-{
-    Value = 0,
-    Self,
-};
-
-using EmbedDeconstructor = void (*)(voidp);
-
-struct ArcImplTrait {
-    template<typename Self, typename = void>
-    struct Api {
-        using Trait = ArcImplTrait;
-        auto data() noexcept -> voidp { return rstd::trait_call<0>(this); }
-        void do_delete(DeleteType t, EmbedDeconstructor d) { rstd::trait_call<1>(this, t, d); }
-    };
-
-    template<typename F>
-    using Funcs = TraitFuncs<&F::data, &F::do_delete>;
-};
-
-template<class T>
-struct ArcInner {
+struct ArcHeader {
     Atomic<usize> strong { 1 };
     Atomic<usize> weak { 1 };
-
-    mut_ptr<dyn<ArcImplTrait>> impl;
-
-    ArcInner(mut_ptr<dyn<ArcImplTrait>> i): impl(i) {}
-
-    auto data() noexcept -> mut_ptr<T> {
-        return mut_ptr<T>::from_raw_parts(rstd::launder(static_cast<T*>(impl->data())));
-    }
-    void do_delete(DeleteType t, EmbedDeconstructor de) { return impl->do_delete(t, de); }
-
-    static void embed_deconstruct(voidp p) { rstd::destroy_at(static_cast<T*>(p)); }
 
     void inc_strong() {
         [[maybe_unused]]
         auto old = strong.fetch_add(1, rstd::sync::atomic::Ordering::Relaxed);
-        debug_assert(old < MAX_REFCOUNT);
+        debug_assert(old < ARC_MAX_REFCOUNT);
     }
 
     void inc_weak() {
         [[maybe_unused]]
         auto old = weak.fetch_add(1, rstd::sync::atomic::Ordering::Relaxed);
-        debug_assert(old < MAX_REFCOUNT);
+        debug_assert(old < ARC_MAX_REFCOUNT);
     }
 
     bool try_inc_strong() {
-        usize cur = strong.load(rstd::sync::atomic::Ordering::Acquire);
-        while (cur != 0) {
-            debug_assert(cur < MAX_REFCOUNT);
-            if (strong.compare_exchange_weak(cur,
-                                             cur + 1,
+        usize current = strong.load(rstd::sync::atomic::Ordering::Acquire);
+        while (current != 0) {
+            debug_assert(current < ARC_MAX_REFCOUNT);
+            if (strong.compare_exchange_weak(current,
+                                             current + 1,
                                              rstd::sync::atomic::Ordering::AcqRel,
                                              rstd::sync::atomic::Ordering::Acquire)) {
                 return true;
@@ -76,99 +44,124 @@ struct ArcInner {
         }
         return false;
     }
-
-    void drop_strong() noexcept {
-        // If we were the last strong, destroy T and release the implicit weak.
-        if (strong.fetch_sub(1, rstd::sync::atomic::Ordering::AcqRel) == 1) {
-            // Synchronize with readers of T through acquire on last release.
-            rstd::sync::atomic::fence(rstd::sync::atomic::Ordering::Acquire);
-
-            do_delete(DeleteType::Value, &embed_deconstruct);
-
-            // release the implicit weak held by strong pointers
-            if (weak.fetch_sub(1, rstd::sync::atomic::Ordering::AcqRel) == 1) {
-                rstd::sync::atomic::fence(rstd::sync::atomic::Ordering::Acquire);
-                do_delete(DeleteType::Self, &embed_deconstruct);
-            }
-        }
-    }
-
-    void drop_weak() noexcept {
-        if (weak.fetch_sub(1, rstd::sync::atomic::Ordering::AcqRel) == 1) {
-            rstd::sync::atomic::fence(rstd::sync::atomic::Ordering::Acquire);
-            do_delete(DeleteType::Self, &embed_deconstruct);
-        }
-    }
 };
 
-template<typename T>
-struct ArcInnerImpl : ArcInner<T> {
-    static_assert(Impled<T, Sized>);
-
-    alignas(T) rstd::byte storage[sizeof(T)];
-
-    ArcInnerImpl();
-
-    auto data() noexcept -> voidp { return &storage; }
-    void do_delete(DeleteType t, EmbedDeconstructor deconstruct) {
-        if (t == DeleteType::Value) {
-            deconstruct(&storage);
-        } else {
-            delete this;
-        }
-    }
+struct ArcAllocationLayout {
+    Layout layout;
+    usize  value_offset;
 };
 
-/// A thread-safe reference-counting pointer, analogous to Rust's `Arc<T>`.
-/// \tparam T The type of the value managed by atomic reference counting.
-export template<typename T>
-class Arc;
-/// A non-owning, weakly-referenced companion to `Arc` that does not prevent deallocation.
-/// \tparam T The type of the referenced value.
-export template<typename T>
-class Weak;
-
-} // namespace alloc::sync
-
-namespace alloc
-{
-template<typename T>
-sync::ArcInnerImpl<T>::ArcInnerImpl(): ArcInner<T>(dyn<ArcImplTrait>::from_ptr(this)) {
+constexpr auto arc_allocation_layout(Layout value_layout) -> ArcAllocationLayout {
+    usize value_offset = 0;
+    auto  layout       = Layout::make<ArcHeader>().extend(value_layout, value_offset).unwrap();
+    return ArcAllocationLayout { .layout = layout.pad_to_align(), .value_offset = value_offset };
 }
 
-} // namespace alloc
+template<typename T>
+auto arc_allocation_layout(mut_ptr<T> pointer) -> ArcAllocationLayout {
+    return arc_allocation_layout(Layout::for_value(pointer.as_ptr()));
+}
+
+template<typename T>
+auto arc_header(mut_ptr<T> pointer) noexcept -> ArcHeader* {
+    auto  allocation = arc_allocation_layout(pointer);
+    auto* value      = reinterpret_cast<u8*>(pointer.as_raw_ptr());
+    return rstd::launder(reinterpret_cast<ArcHeader*>(value - allocation.value_offset));
+}
+
+template<typename T, typename... Args>
+auto arc_allocate_value(Args&&... args) -> mut_ptr<T> {
+    auto value_layout = Layout::make<T>();
+    auto allocation   = arc_allocation_layout(value_layout);
+    auto result       = rstd::as<Allocator>(::alloc::GLOBAL).allocate(allocation.layout);
+    if (result.is_err()) ::alloc::handle_alloc_error(allocation.layout);
+
+    auto* base   = result.unwrap_unchecked().as_mut_ptr().as_raw_ptr();
+    auto* header = rstd::construct_at(reinterpret_cast<ArcHeader*>(base));
+    (void)header;
+    auto* value = reinterpret_cast<T*>(base + allocation.value_offset);
+    rstd::construct_at(value, rstd::forward<Args>(args)...);
+    return mut_ptr<T>::from_raw_parts(value);
+}
+
+template<typename T>
+void arc_deallocate(mut_ptr<T> pointer) noexcept {
+    auto  allocation = arc_allocation_layout(pointer);
+    auto* header     = arc_header(pointer);
+    rstd::destroy_at(header);
+    auto allocation_pointer =
+        NonNull<u8>::make_unchecked(mut_ptr<u8>::from_raw_parts(reinterpret_cast<u8*>(header)));
+    rstd::as<Allocator>(::alloc::GLOBAL).deallocate(allocation_pointer, allocation.layout);
+}
+
+template<typename T>
+void arc_drop_weak(mut_ptr<T> pointer) noexcept {
+    auto* header = arc_header(pointer);
+    if (header->weak.fetch_sub(1, rstd::sync::atomic::Ordering::AcqRel) == 1) {
+        rstd::sync::atomic::fence(rstd::sync::atomic::Ordering::Acquire);
+        arc_deallocate(pointer);
+    }
+}
+
+template<typename T>
+void arc_drop_strong(mut_ptr<T> pointer) noexcept {
+    auto* header = arc_header(pointer);
+    if (header->strong.fetch_sub(1, rstd::sync::atomic::Ordering::AcqRel) == 1) {
+        rstd::sync::atomic::fence(rstd::sync::atomic::Ordering::Acquire);
+        rstd::ptr_::drop_in_place(pointer);
+        arc_drop_weak(pointer);
+    }
+}
+
+template<typename T>
+struct ArcData {
+    mut_ptr<T> pointer {};
+};
 
 namespace alloc::sync
 {
-template<typename T>
-struct ArcData {
-    ArcInner<T>* inner { nullptr };
-};
 
-/// A raw representation of an `Arc` pointer, used for low-level interop.
-/// \tparam T The element type.
+/// A thread-safe reference-counting pointer, analogous to Rust's `Arc<T>`.
+export template<typename T>
+class Arc;
+
+/// A non-owning weak reference to an `Arc` allocation.
+export template<typename T>
+class Weak;
+
+/// An owning raw representation used for low-level interop.
 export template<typename T>
 class ArcRaw {
-    ArcInner<T>* inner;
+    mut_ptr<T> pointer {};
 
     friend class Arc<T>;
-    ArcRaw(auto t): inner(t) {}
+    constexpr explicit ArcRaw(mut_ptr<T> pointer) noexcept: pointer(pointer) {}
 
 public:
-    /// Returns a mutable pointer to the managed value.
-    auto as_ptr() const { return inner->data(); };
-    /// Consumes the `ArcRaw`, returning a raw void pointer without releasing ownership.
-    /// \return A raw void pointer to the inner allocation.
-    auto into_raw() -> voidp { return rstd::exchange(inner, nullptr); }
+    auto as_ptr() const noexcept -> mut_ptr<T> { return pointer; }
 
-    /// Reconstructs an `ArcRaw` from a raw void pointer previously obtained via `into_raw`.
-    /// \param p The raw void pointer.
-    /// \return An `ArcRaw` wrapping the pointer.
-    static auto from_raw(voidp p) -> ArcRaw { return { static_cast<ArcInner<T>*>(p) }; }
+    auto into_ptr() noexcept -> mut_ptr<T> {
+        auto result = pointer;
+        pointer.reset();
+        return result;
+    }
+
+    static auto from_ptr(mut_ptr<T> pointer) noexcept -> ArcRaw { return ArcRaw { pointer }; }
+
+    auto into_raw() noexcept -> voidp
+        requires Impled<T, Sized>
+    {
+        return static_cast<voidp>(into_ptr().as_raw_ptr());
+    }
+
+    static auto from_raw(voidp pointer) noexcept -> ArcRaw
+        requires Impled<T, Sized>
+    {
+        return from_ptr(mut_ptr<T>::from_raw_parts(static_cast<T*>(pointer)));
+    }
 };
 
 /// A thread-safe reference-counting pointer, analogous to Rust's `Arc<T>`.
-/// \tparam T The type of the value managed by atomic reference counting.
 export template<typename T>
 class Arc : public DefaultInClass<Arc<T>, Clone> {
     ArcData<T> self;
@@ -179,7 +172,7 @@ class Arc : public DefaultInClass<Arc<T>, Clone> {
     template<typename>
     friend class Arc;
 
-    constexpr Arc(ArcData<T> s): self(s) {}
+    constexpr explicit Arc(ArcData<T> data) noexcept: self(data) {}
 
 public:
     USE_TRAIT(Arc)
@@ -187,12 +180,10 @@ public:
     using Target       = T;
     using element_type = T;
 
-    // Copy
     constexpr Arc(const Arc&)            = delete;
     constexpr Arc& operator=(const Arc&) = delete;
 
-    // Move
-    constexpr Arc(Arc&& other) noexcept: self({ rstd::exchange(other.self, {}) }) {}
+    constexpr Arc(Arc&& other) noexcept: self(rstd::exchange(other.self, {})) {}
     constexpr Arc& operator=(Arc&& other) noexcept {
         if (this != &other) {
             reset();
@@ -204,154 +195,131 @@ public:
     ~Arc() { reset(); }
 
     auto clone() const -> Arc {
-        if (self.inner) {
-            self.inner->inc_strong();
-        }
-        return { self };
+        if (self.pointer != nullptr) arc_header(self.pointer)->inc_strong();
+        return Arc { self };
     }
 
-    /// Drops the current allocation, decrementing the strong count.
-    void reset() {
-        if (self.inner) {
-            self.inner->drop_strong();
-            self.inner = nullptr;
+    void reset() noexcept {
+        if (self.pointer != nullptr) {
+            arc_drop_strong(self.pointer);
+            self.pointer.reset();
         }
     }
 
-    /// Constructs a new `Arc<T>`.
     template<typename... Args>
-    static auto make(Args&&... args) -> Arc {
-        auto inner = new ArcInnerImpl<T>;
-        rstd::construct_at(reinterpret_cast<T*>(&(inner->storage)), rstd::forward<Args>(args)...);
-        return { ArcData<T> { .inner = inner } };
+    static auto make(Args&&... args) -> Arc
+        requires Impled<T, Sized>
+    {
+        return Arc { ArcData<T> {
+            .pointer = arc_allocate_value<T>(rstd::forward<Args>(args)...),
+        } };
     }
 
-    /// Creates a new `Arc` containing an uninitialized value.
-    ///
-    /// The returned Arc contains a `MaybeUninit<T>` that must be initialized
-    /// before calling `assume_init()` to convert to `Arc<T>`.
-    ///
-    /// # Example
-    /// ```cpp
-    /// auto arc = Arc<int>::make_uninit();
-    /// // Initialize the value
-    /// Arc::get_mut(arc).unwrap().write(42);
-    /// auto initialized = arc.assume_init();
-    /// ```
+    template<typename U>
+    static auto make(U&& value) -> Arc
+        requires(! Impled<T, Sized>) && Impled<mtp::rm_cvf<U>, Sized> &&
+                mtp::dyn_traits<T>::template
+    Impled<mtp::rm_cvf<U>> {
+        using Concrete = mtp::rm_cvf<U>;
+        auto pointer   = arc_allocate_value<Concrete>(rstd::forward<U>(value));
+        return Arc { ArcData<T> { .pointer = T::from_ptr(pointer.as_raw_ptr()) } };
+    }
+
     static auto make_uninit() -> Arc<MaybeUninit<T>>
         requires Impled<T, Sized>
     {
         return Arc<MaybeUninit<T>>::make(MaybeUninit<T>::uninit());
     }
 
-    /// Reconstructs an `Arc` from an `ArcRaw` previously obtained via `into_raw`.
-    /// \param r The raw Arc representation.
-    /// \return An `Arc` that takes back ownership.
-    static Arc from_raw(ArcRaw<T> r) noexcept { return { ArcData<T> { .inner = r.inner } }; }
+    static auto from_raw(ArcRaw<T> raw) noexcept -> Arc {
+        return Arc { ArcData<T> { .pointer = raw.into_ptr() } };
+    }
 
-    /// Converts an `Arc<MaybeUninit<T>>` into an `Arc<T>` after the value has been initialized.
-    /// \return An `Arc<T>` over the now-initialized value.
     auto assume_init()
         requires(! mtp::same_as<typename maybe_uninit_traits<T>::value_type, void>)
     {
-        using V    = maybe_uninit_traits<T>::value_type;
-        auto inner = rstd::launder(reinterpret_cast<ArcInner<V>*>(self.inner));
-        self.inner = nullptr;
-        return Arc<V> { { .inner = inner } };
+        using Value  = maybe_uninit_traits<T>::value_type;
+        auto pointer = self.pointer.template cast<Value>();
+        self.pointer.reset();
+        return Arc<Value> { ArcData<Value> { .pointer = pointer } };
     }
 
-    /// Returns an immutable borrow of the managed value.
-    auto deref() const noexcept -> ref<T> { return self.inner->data().as_ref(); }
-    /// Returns a mutable borrow of the managed value.
-    auto deref_mut() const noexcept -> mut_ref<T> { return self.inner->data().as_mut_ref(); }
-    /// Returns `true` if this `Arc` is non-empty.
-    explicit operator bool() const noexcept { return self.inner != nullptr; }
+    auto deref() const noexcept -> ref<T> { return self.pointer.as_ref(); }
+    auto deref_mut() const noexcept -> mut_ref<T> { return self.pointer.as_mut_ref(); }
 
-    /// Returns the number of strong (`Arc`) pointers to the same allocation.
-    /// \return The current strong reference count.
+    explicit operator bool() const noexcept { return self.pointer != nullptr; }
+
     usize strong_count() const noexcept {
-        return self.inner ? self.inner->strong.load(rstd::sync::atomic::Ordering::Acquire) : 0;
+        return self.pointer != nullptr
+                   ? arc_header(self.pointer)->strong.load(rstd::sync::atomic::Ordering::Acquire)
+                   : 0;
     }
 
-    /// Returns the number of `Weak` pointers to the same allocation.
-    /// \return The current weak reference count (excluding the implicit weak held by strong pointers).
     usize weak_count() const noexcept {
-        // Rust's Arc::weak_count excludes the implicit weak if strong>0.
-        if (! self.inner) return 0;
-        auto w = self.inner->weak.load(rstd::sync::atomic::Ordering::Acquire);
-        auto s = self.inner->strong.load(rstd::sync::atomic::Ordering::Acquire);
-        if (s == 0) return w;
-        return w > 0 ? (w - 1) : 0;
+        if (self.pointer == nullptr) return 0;
+        auto* header = arc_header(self.pointer);
+        auto  weak   = header->weak.load(rstd::sync::atomic::Ordering::Acquire);
+        auto  strong = header->strong.load(rstd::sync::atomic::Ordering::Acquire);
+        if (strong == 0) return weak;
+        return weak > 0 ? weak - 1 : 0;
     }
 
-    /// Creates a `Weak` pointer to the same allocation without incrementing the strong count.
-    /// \return A `Weak<T>` pointer.
-    Weak<T> downgrade() const noexcept;
+    auto downgrade() const noexcept -> Weak<T>;
 
-    /// Returns a raw pointer to the managed value.
-    auto as_ptr() const noexcept {
-        if (! self.inner) [[unlikely]] {
+    auto as_ptr() const noexcept -> mut_ptr<T> {
+        if (self.pointer == nullptr) [[unlikely]] {
             rstd::panic { "Arc::as_ptr called on an empty Arc" };
         }
-        return self.inner->data();
+        return self.pointer;
     }
 
-    /// Returns true if the two `Arc`s point to the same allocation
-    /// (not just values that compare as equal).
-    static bool ptr_eq(const Arc& a, const Arc& b) noexcept { return a.self.inner == b.self.inner; }
+    static bool ptr_eq(const Arc& left, const Arc& right) noexcept {
+        return left.self.pointer.as_raw_ptr() == right.self.pointer.as_raw_ptr();
+    }
 
-    /// Returns true if this is the only `Arc` or `Weak` pointer to the allocation.
     static bool is_unique(const Arc& arc) noexcept {
-        return arc.self.inner &&
-               arc.self.inner->strong.load(rstd::sync::atomic::Ordering::Acquire) == 1 &&
-               arc.self.inner->weak.load(rstd::sync::atomic::Ordering::Acquire) == 1;
+        if (arc.self.pointer == nullptr) return false;
+        auto* header = arc_header(arc.self.pointer);
+        return header->strong.load(rstd::sync::atomic::Ordering::Acquire) == 1 &&
+               header->weak.load(rstd::sync::atomic::Ordering::Acquire) == 1;
     }
 
-    /// Returns a mutable reference to the inner value if there are no other
-    /// `Arc` or `Weak` pointers to the same allocation.
     auto get_mut() const noexcept -> Option<mut_ref<T>> {
-        if (is_unique(*this)) {
-            return Some(self.inner->data().as_mut_ref());
-        }
+        if (is_unique(*this)) return Some(self.pointer.as_mut_ref());
         return None();
     }
 
-    /// Attempts to unwrap the `Arc`, returning the inner value if this is the only strong reference.
-    /// \return `Ok(T)` if successful, or `Err(Arc)` if other strong references exist.
     auto try_unwrap() -> Result<T, Arc>
         requires Impled<T, Sized>
     {
-        do {
-            if (self.inner == nullptr) break;
-            // Attempt to drop strong to 0 with CAS to avoid races.
+        if (self.pointer != nullptr) {
+            auto* header   = arc_header(self.pointer);
             usize expected = 1;
-            if (! self.inner->strong.compare_exchange_strong(
-                    expected,
-                    0,
-                    rstd::sync::atomic::Ordering::Relaxed,
-                    rstd::sync::atomic::Ordering::Relaxed)) {
-                break;
+            if (header->strong.compare_exchange_strong(expected,
+                                                       0,
+                                                       rstd::sync::atomic::Ordering::Relaxed,
+                                                       rstd::sync::atomic::Ordering::Relaxed)) {
+                rstd::sync::atomic::fence(rstd::sync::atomic::Ordering::Acquire);
+                auto pointer = self.pointer;
+                self.pointer.reset();
+                T value = rstd::move(*pointer);
+                rstd::ptr_::drop_in_place(pointer);
+                arc_drop_weak(pointer);
+                return Ok(rstd::move(value));
             }
-            rstd::sync::atomic::fence(rstd::sync::atomic::Ordering::Acquire);
-            auto w = Weak<T> { self };
-            self   = {};
-            return Ok(rstd::move(*(w.self.inner->data())));
-        } while (0);
+        }
         return Err(rstd::move(*this));
     }
 
-    /// Consumes the `Arc` without decrementing the reference count, returning an `ArcRaw`.
-    /// \return An `ArcRaw<T>` for low-level interop; must be reconverted with `from_raw`.
-    auto into_raw() noexcept {
-        auto inner = self.inner;
-        self       = {}; // leak ownership to raw
-        return ArcRaw<T> { inner };
+    auto into_raw() noexcept -> ArcRaw<T> {
+        auto pointer = self.pointer;
+        self.pointer.reset();
+        return ArcRaw<T>::from_ptr(pointer);
     }
 };
 
-/// A thread-safe weak reference to an `Arc`-managed allocation.
-/// \tparam T The type of the referenced value.
-export template<class T>
+/// A non-owning weak reference to an `Arc` allocation.
+export template<typename T>
 class Weak : public DefaultInClass<Weak<T>, Clone> {
     ArcData<T> self;
 
@@ -359,16 +327,14 @@ class Weak : public DefaultInClass<Weak<T>, Clone> {
     friend struct rstd::Impl;
     friend class Arc<T>;
 
-    constexpr Weak(ArcData<T> s) noexcept: self(s) {}
+    constexpr explicit Weak(ArcData<T> data) noexcept: self(data) {}
 
 public:
     using element_type = T;
 
-    // Copy
-    constexpr Weak(const Weak& other)            = delete;
-    constexpr Weak& operator=(const Weak& other) = delete;
+    constexpr Weak(const Weak&)            = delete;
+    constexpr Weak& operator=(const Weak&) = delete;
 
-    // Move
     constexpr Weak(Weak&& other) noexcept: self(rstd::exchange(other.self, {})) {}
     constexpr Weak& operator=(Weak&& other) noexcept {
         if (this != &other) {
@@ -381,61 +347,48 @@ public:
     ~Weak() { reset(); }
 
     auto clone() const -> Weak {
-        if (self.inner) {
-            self.inner->inc_weak();
-        }
-        return { self };
+        if (self.pointer != nullptr) arc_header(self.pointer)->inc_weak();
+        return Weak { self };
     }
 
-    /// Constructs a new empty `Weak<T>` without allocating any memory.
-    /// Calling `upgrade` on the return value always gives an empty `Arc`.
-    static constexpr auto make() noexcept -> Weak {
-        return Weak { ArcData<T> { .inner = nullptr } };
-    }
+    static constexpr auto make() noexcept -> Weak { return Weak { ArcData<T> {} }; }
 
-    /// Releases the weak reference, decrementing the weak count.
-    void reset() {
-        if (self.inner) {
-            self.inner->drop_weak();
-            self.inner = nullptr;
+    void reset() noexcept {
+        if (self.pointer != nullptr) {
+            arc_drop_weak(self.pointer);
+            self.pointer.reset();
         }
     }
 
-    /// Attempts to upgrade the `Weak` pointer to an `Arc`, succeeding only if strong references remain.
-    /// \return An `Arc<T>` if the value is still alive, or an empty `Arc` otherwise.
     auto upgrade() const noexcept -> Arc<T> {
-        if (self.inner && self.inner->try_inc_strong()) {
-            return { self };
+        if (self.pointer != nullptr && arc_header(self.pointer)->try_inc_strong()) {
+            return Arc<T> { self };
         }
-        return { {} };
+        return Arc<T> { ArcData<T> {} };
     }
 
-    /// Returns the number of strong (`Arc`) pointers to the same allocation.
-    /// \return The current strong reference count.
     auto strong_count() const noexcept -> usize {
-        return self.inner ? self.inner->strong.load(rstd::sync::atomic::Ordering::Acquire) : 0;
+        return self.pointer != nullptr
+                   ? arc_header(self.pointer)->strong.load(rstd::sync::atomic::Ordering::Acquire)
+                   : 0;
     }
 
-    /// Returns the number of weak pointers to the same allocation (including this one).
-    /// \return The current weak reference count.
     auto weak_count() const noexcept -> usize {
-        return self.inner ? self.inner->weak.load(rstd::sync::atomic::Ordering::Acquire) : 0;
+        return self.pointer != nullptr
+                   ? arc_header(self.pointer)->weak.load(rstd::sync::atomic::Ordering::Acquire)
+                   : 0;
     }
 
-    /// Returns `true` if the value has been dropped (strong count is zero).
     bool expired() const noexcept { return strong_count() == 0; }
 
-    /// Returns a raw pointer to the managed value.
-    auto as_ptr() const noexcept { return self.inner->data(); }
+    auto as_ptr() const noexcept -> mut_ptr<T> { return self.pointer; }
 };
 
-template<class T>
+template<typename T>
 auto Arc<T>::downgrade() const noexcept -> Weak<T> {
-    Weak<T> out { self };
-    if (self.inner) {
-        self.inner->inc_weak();
-    }
-    return out;
+    Weak<T> result { self };
+    if (self.pointer != nullptr) arc_header(self.pointer)->inc_weak();
+    return result;
 }
 
 } // namespace alloc::sync

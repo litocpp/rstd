@@ -38,6 +38,32 @@ export struct Layout {
         return from_size_align(n * sizeof(T), alignof(T));
     }
 
+    template<typename T>
+    static auto for_value(ptr<T> pointer) noexcept -> Layout {
+        if constexpr (mtp::DSTArray<T>) {
+            return array<mtp::rm_ext<T>>(pointer.len()).unwrap();
+        } else if constexpr (mtp::DST<T>) {
+            auto const* metadata = pointer.metadata();
+            return from_size_align_unchecked(metadata->size, metadata->align);
+        } else {
+            return make<T>();
+        }
+    }
+
+    constexpr auto extend(Layout next, usize& offset) const -> Option<Layout> {
+        usize padding = (next.align - (size & (next.align - 1))) & (next.align - 1);
+        if (size > usize(-1) - padding) return None();
+        offset = size + padding;
+        if (offset > usize(-1) - next.size) return None();
+        usize combined_align = align > next.align ? align : next.align;
+        return from_size_align(offset + next.size, combined_align);
+    }
+
+    constexpr auto pad_to_align() const noexcept -> Layout {
+        usize padded_size = (size + (align - 1)) & ~(align - 1);
+        return Layout { .size = padded_size, .align = align };
+    }
+
     constexpr auto cpp_layout() const noexcept {
         return Layout { .size  = size,
                         .align = align < __STDCPP_DEFAULT_NEW_ALIGNMENT__

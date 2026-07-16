@@ -139,6 +139,7 @@ private:
     dyn_delegate<A> d;
 
 public:
+    constexpr dyn_ptr_base() noexcept: d {} {}
     constexpr dyn_ptr_base(dyn_delegate<A> d) noexcept: d(d) {}
     constexpr dyn_ptr_base(const dyn_ptr_base&)            = default;
     constexpr dyn_ptr_base(dyn_ptr_base&&)                 = default;
@@ -171,7 +172,10 @@ public:
         return rstd::mut_ref<dyn<trait_t>> { *this };
     }
 
-    constexpr void reset() noexcept { d.p = nullptr; }
+    constexpr void reset() noexcept {
+        d.p      = nullptr;
+        d.vtable = nullptr;
+    }
 
     constexpr auto as_raw_ptr() const noexcept -> delegate_t::ptr_t { return d.p; }
 

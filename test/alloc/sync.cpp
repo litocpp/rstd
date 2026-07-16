@@ -8,7 +8,88 @@
 import rstd;
 
 using rstd::sync::Arc;
+using rstd::sync::ArcRaw;
 using rstd::sync::Weak;
+
+struct ArcDynTrait {
+    template<typename Self, typename = void>
+    struct Api {
+        using Trait = ArcDynTrait;
+
+        auto value() const noexcept -> int { return rstd::trait_call<0>(this); }
+    };
+
+    template<typename T>
+    using Funcs = rstd::TraitFuncs<&T::value>;
+};
+
+struct alignas(64) ArcDynPayload {
+    int* drops;
+    int  stored;
+
+    ArcDynPayload(int& drops, int value): drops(&drops), stored(value) {}
+    ArcDynPayload(const ArcDynPayload&)            = delete;
+    ArcDynPayload& operator=(const ArcDynPayload&) = delete;
+
+    ArcDynPayload(ArcDynPayload&& other) noexcept: drops(other.drops), stored(other.stored) {
+        other.drops = nullptr;
+    }
+
+    ArcDynPayload& operator=(ArcDynPayload&& other) noexcept {
+        drops       = other.drops;
+        stored      = other.stored;
+        other.drops = nullptr;
+        return *this;
+    }
+
+    ~ArcDynPayload() {
+        if (drops != nullptr) ++*drops;
+    }
+
+    auto value() const noexcept -> int { return stored; }
+};
+
+struct ArcDynNoTrait {};
+
+struct ArcDynEmptyPayload {
+    auto value() const noexcept -> int { return 7; }
+};
+
+template<>
+struct rstd::Impl<ArcDynTrait, ArcDynPayload> : rstd::LinkClassMethod<ArcDynTrait, ArcDynPayload> {
+};
+
+template<>
+struct rstd::Impl<ArcDynTrait, ArcDynEmptyPayload>
+    : rstd::LinkClassMethod<ArcDynTrait, ArcDynEmptyPayload> {};
+
+using ArcDyn     = Arc<rstd::dyn<ArcDynTrait>>;
+using ArcDynWeak = Weak<rstd::dyn<ArcDynTrait>>;
+using ArcDynRaw  = ArcRaw<rstd::dyn<ArcDynTrait>>;
+using ArcDynPtr  = rstd::mut_ptr<rstd::dyn<ArcDynTrait>>;
+
+template<typename T>
+concept CanTryUnwrap = requires(T value) { value.try_unwrap(); };
+
+template<typename T, typename U>
+concept CanMakeArc = requires(U&& value) { T::make(rstd::forward<U>(value)); };
+
+template<typename T>
+concept HasOpaqueRaw = requires(T raw, rstd::voidp pointer) {
+    raw.into_raw();
+    T::from_raw(pointer);
+};
+
+static_assert(sizeof(Arc<int>) == sizeof(rstd::mut_ptr<int>));
+static_assert(sizeof(Weak<int>) == sizeof(rstd::mut_ptr<int>));
+static_assert(sizeof(ArcDyn) == sizeof(ArcDynPtr));
+static_assert(sizeof(ArcDynWeak) == sizeof(ArcDynPtr));
+static_assert(sizeof(ArcDynRaw) == sizeof(ArcDynPtr));
+static_assert(CanMakeArc<ArcDyn, ArcDynPayload>);
+static_assert(! CanMakeArc<ArcDyn, ArcDynNoTrait>);
+static_assert(! CanTryUnwrap<ArcDyn>);
+static_assert(! HasOpaqueRaw<ArcDynRaw>);
+static_assert(std::is_same_v<decltype(rstd::declval<ArcDyn&>().as_ptr()), ArcDynPtr>);
 
 static_assert(rstd::Impled<Arc<int>, rstd::ops::Deref>);
 static_assert(rstd::Impled<Arc<int>, rstd::ops::DerefMut>);
@@ -181,6 +262,20 @@ TEST(ArcUnwrap, TryUnwrapSuccess) {
     EXPECT_FALSE(a); // consumed
 }
 
+TEST(ArcUnwrap, TryUnwrapEndsStoredValueLifetime) {
+    DropCounter::reset();
+    {
+        auto arc = Arc<DropCounter>::make(DropCounter { 19 });
+        EXPECT_EQ(DropCounter::live.load(), 1);
+
+        auto result = arc.try_unwrap();
+        ASSERT_TRUE(result.is_ok());
+        EXPECT_FALSE(arc);
+        EXPECT_EQ(DropCounter::live.load(), 1);
+    }
+    EXPECT_EQ(DropCounter::live.load(), 0);
+}
+
 TEST(ArcUnwrap, TryUnwrapFailsWhenNotUnique) {
     auto a = Arc<Payload>::make(Payload { 11 });
     auto b = a.clone();
@@ -290,4 +385,56 @@ TEST(WeakBasic, EmptyWeakIsExpired) {
 
     auto a = w.upgrade();
     EXPECT_FALSE(a);
+}
+
+TEST(ArcDyn, DispatchCloneWeakAndRawRoundtrip) {
+    int  drops = 0;
+    auto arc   = ArcDyn::make(ArcDynPayload { drops, 41 });
+
+    EXPECT_EQ(arc->value(), 41);
+    EXPECT_EQ(reinterpret_cast<rstd::usize>(arc.as_ptr().as_raw_ptr()) % 64, 0u);
+
+    auto clone  = arc.clone();
+    auto weak   = arc.downgrade();
+    auto shared = weak.upgrade();
+    ASSERT_TRUE(shared);
+    EXPECT_EQ(shared->value(), 41);
+    EXPECT_EQ(arc.strong_count(), 3u);
+
+    clone.reset();
+    shared.reset();
+
+    auto raw      = arc.into_raw();
+    auto pointer  = raw.into_ptr();
+    auto metadata = pointer.metadata();
+    auto restored = ArcDyn::from_raw(ArcDynRaw::from_ptr(pointer));
+
+    EXPECT_FALSE(arc);
+    EXPECT_EQ(restored->value(), 41);
+    EXPECT_EQ(restored.as_ptr().metadata(), metadata);
+    EXPECT_EQ(weak.as_ptr().metadata(), metadata);
+
+    restored.reset();
+    EXPECT_EQ(drops, 1);
+    EXPECT_TRUE(weak.expired());
+
+    weak.reset();
+    EXPECT_EQ(drops, 1);
+}
+
+TEST(ArcDyn, EmptyWeakHasNullFatPointer) {
+    auto weak = ArcDynWeak::make();
+
+    EXPECT_TRUE(weak.expired());
+    EXPECT_EQ(weak.as_ptr(), nullptr);
+    EXPECT_EQ(weak.as_ptr().metadata(), nullptr);
+    EXPECT_FALSE(weak.upgrade());
+}
+
+TEST(ArcDyn, EmptyConcreteUsesDynamicLayout) {
+    auto arc = ArcDyn::make(ArcDynEmptyPayload {});
+
+    EXPECT_EQ(arc->value(), 7);
+    EXPECT_EQ(rstd::alloc::Layout::for_value(arc.as_ptr().as_ptr()).size,
+              sizeof(ArcDynEmptyPayload));
 }

@@ -158,7 +158,7 @@ struct ptr_base {
     constexpr operator value_type*() const noexcept { return static_cast<Self const*>(this)->p; }
 
     constexpr void reset() noexcept {
-        auto self = static_cast<Self const*>(this);
+        auto self = static_cast<Self*>(this);
         self->p   = nullptr;
         if constexpr (mtp::DSTArray<T>) {
             self->length = 0;
@@ -318,3 +318,24 @@ export template<typename T>
 using slice = ref<T[]>;
 
 } // namespace rstd
+
+namespace rstd::ptr_
+{
+
+/// Destroys the pointee without deallocating its storage.
+export template<typename T>
+void drop_in_place(mut_ptr<T> pointer) noexcept {
+    if constexpr (mtp::DSTArray<T>) {
+        using Element = mtp::rm_ext<T>;
+        auto* data    = pointer.as_raw_ptr();
+        for (usize i = 0; i < pointer.len(); ++i) {
+            rstd::destroy_at(static_cast<Element*>(data + i));
+        }
+    } else if constexpr (mtp::DST<T>) {
+        pointer.metadata()->drop(pointer.as_raw_ptr());
+    } else {
+        rstd::destroy_at(pointer.as_raw_ptr());
+    }
+}
+
+} // namespace rstd::ptr_

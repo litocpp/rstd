@@ -108,6 +108,33 @@ TEST(Vec, IntoBoxedSlice) {
     EXPECT_EQ(b.as_ptr().len(), 2);
     EXPECT_EQ(b.as_ptr()[0], 1);
     EXPECT_EQ(b.as_ptr()[1], 2);
+    EXPECT_EQ(rstd::alloc::Layout::for_value(b.as_ptr()).size, 2 * sizeof(int));
+}
+
+TEST(Vec, BoxedSliceDropsEveryElement) {
+    struct DropProbe {
+        int* drops;
+
+        explicit DropProbe(int& drops): drops(&drops) {}
+        DropProbe(const DropProbe&)            = delete;
+        DropProbe& operator=(const DropProbe&) = delete;
+
+        DropProbe(DropProbe&& other) noexcept: drops(other.drops) { other.drops = nullptr; }
+
+        ~DropProbe() {
+            if (drops != nullptr) ++*drops;
+        }
+    };
+
+    int  drops  = 0;
+    auto values = Vec<DropProbe>::make();
+    values.push(DropProbe { drops });
+    values.push(DropProbe { drops });
+
+    auto boxed = values.into_boxed_slice();
+    EXPECT_EQ(drops, 0);
+    boxed.reset();
+    EXPECT_EQ(drops, 2);
 }
 
 TEST(Vec, Remove) {

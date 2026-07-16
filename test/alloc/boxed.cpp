@@ -29,6 +29,24 @@ struct Counter {
     ~Counter() { --alive; }
 };
 
+struct CallbackDropProbe {
+    int* drops;
+
+    explicit CallbackDropProbe(int& drops): drops(&drops) {}
+    CallbackDropProbe(const CallbackDropProbe&)            = delete;
+    CallbackDropProbe& operator=(const CallbackDropProbe&) = delete;
+
+    CallbackDropProbe(CallbackDropProbe&& other) noexcept: drops(other.drops) {
+        other.drops = nullptr;
+    }
+
+    ~CallbackDropProbe() {
+        if (drops != nullptr) ++*drops;
+    }
+
+    void operator()() {}
+};
+
 TEST(BoxTest, MakeAndAccess) {
     {
         auto b = Box<int>::make(42);
@@ -76,15 +94,26 @@ TEST(BoxTest, DynArrowKeepsDelegateAliveForFullExpression) {
 TEST(BoxTest, DynFnMutWithByteSliceDestructs) {
     rstd::usize seen = 0;
     {
-        auto callback =
-            Box<rstd::dyn<rstd::FnMut<void(rstd::slice<rstd::byte>)>>>::make(
-                [&seen](rstd::slice<rstd::byte> bytes) {
-                    seen = bytes.len();
-                });
+        auto callback = Box<rstd::dyn<rstd::FnMut<void(rstd::slice<rstd::byte>)>>>::make(
+            [&seen](rstd::slice<rstd::byte> bytes) {
+                seen = bytes.len();
+            });
         auto value = rstd::byte {};
         callback->operator()(rstd::slice<rstd::byte>::from_raw_parts(&value, 1));
     }
     EXPECT_EQ(seen, 1u);
+}
+
+TEST(BoxTest, DynResetUsesConcreteDropAndLayout) {
+    int  drops    = 0;
+    auto callback = Box<rstd::dyn<rstd::FnMut<void()>>>::make(CallbackDropProbe { drops });
+
+    auto layout = rstd::alloc::Layout::for_value(callback.as_ptr());
+    EXPECT_EQ(layout.size, sizeof(CallbackDropProbe));
+    EXPECT_EQ(layout.align, alignof(CallbackDropProbe));
+
+    callback.reset();
+    EXPECT_EQ(drops, 1);
 }
 
 TEST(BoxTest, MoveCtorTransfersOwnership) {

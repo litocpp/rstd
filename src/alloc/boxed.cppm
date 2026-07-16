@@ -126,26 +126,10 @@ public:
     void reset() noexcept {
         if (! rstd::mem::all(m_ptr, 0)) {
             auto mptr         = m_ptr.as_mut_ptr();
+            auto layout       = Layout::for_value(mptr.as_ptr());
             auto raw_non_null = NonNull<u8>::make_unchecked(
                 mut_ptr<u8>::from_raw_parts(reinterpret_cast<u8*>(mptr.as_raw_ptr())));
-            Layout layout {};
-
-            if constexpr (mtp::is_array<T>) {
-                using V   = mtp::rm_ext<T>;
-                usize len = mptr.len();
-                auto* p   = reinterpret_cast<V*>(mptr.as_raw_ptr());
-                for (usize i = 0; i < len; ++i) {
-                    p[i].~V();
-                }
-                layout = Layout::array<V>(len).unwrap();
-            } else if constexpr (requires { mptr.metadata()->drop; }) {
-                auto const* meta = mptr.metadata();
-                meta->drop(mptr.as_raw_ptr());
-                layout = Layout::from_size_align(meta->size, meta->align).unwrap();
-            } else {
-                rstd::destroy_at(mptr.as_raw_ptr());
-                layout = Layout::make<T>();
-            }
+            rstd::ptr_::drop_in_place(mptr);
             as<Allocator>(GLOBAL).deallocate(raw_non_null, layout);
             rstd::mem::fill(m_ptr, 0);
         }
