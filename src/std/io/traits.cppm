@@ -92,6 +92,95 @@ export struct Seek {
     using Funcs = TraitFuncs<&T::seek>;
 };
 
+/// Trait for positional reads that do not modify a shared cursor.
+export struct ReadAt {
+    using Trait                  = ReadAt;
+    static constexpr bool direct = false;
+
+    template<typename Self, typename Delegate = void>
+    struct Api {
+        using Trait = ReadAt;
+        auto read_at(u8* buf, usize len, u64 offset) const -> Result<usize> {
+            return trait_call<0>(this, buf, len, offset);
+        }
+    };
+
+    template<typename T>
+    using Funcs = TraitFuncs<&T::read_at>;
+};
+
+/// Trait for positional writes that do not modify a shared cursor.
+export struct WriteAt {
+    using Trait                  = WriteAt;
+    static constexpr bool direct = false;
+
+    template<typename Self, typename Delegate = void>
+    struct Api {
+        using Trait = WriteAt;
+        auto write_at(const u8* buf, usize len, u64 offset) const -> Result<usize> {
+            return trait_call<0>(this, buf, len, offset);
+        }
+    };
+
+    template<typename T>
+    using Funcs = TraitFuncs<&T::write_at>;
+};
+
+/// Object-safe composition of Read and Seek.
+export struct ReadSeek {
+    using Trait                  = ReadSeek;
+    static constexpr bool direct = false;
+
+    template<typename Self, typename Delegate = void>
+    struct Api {
+        using Trait = ReadSeek;
+        auto read(u8* buf, usize len) -> Result<usize> { return trait_call<0>(this, buf, len); }
+        auto seek(SeekFrom pos) -> Result<u64> { return trait_call<1>(this, pos); }
+    };
+
+    template<typename T>
+    using Funcs = TraitFuncs<&T::read, &T::seek>;
+};
+
+/// Object-safe composition of Write and Seek.
+export struct WriteSeek {
+    using Trait                  = WriteSeek;
+    static constexpr bool direct = false;
+
+    template<typename Self, typename Delegate = void>
+    struct Api {
+        using Trait = WriteSeek;
+        auto write(const u8* buf, usize len) -> Result<usize> {
+            return trait_call<0>(this, buf, len);
+        }
+        auto flush() -> Result<empty> { return trait_call<1>(this); }
+        auto seek(SeekFrom pos) -> Result<u64> { return trait_call<2>(this, pos); }
+    };
+
+    template<typename T>
+    using Funcs = TraitFuncs<&T::write, &T::flush, &T::seek>;
+};
+
+/// Object-safe composition used by read-write file handles.
+export struct ReadWriteSeek {
+    using Trait                  = ReadWriteSeek;
+    static constexpr bool direct = false;
+
+    template<typename Self, typename Delegate = void>
+    struct Api {
+        using Trait = ReadWriteSeek;
+        auto read(u8* buf, usize len) -> Result<usize> { return trait_call<0>(this, buf, len); }
+        auto write(const u8* buf, usize len) -> Result<usize> {
+            return trait_call<1>(this, buf, len);
+        }
+        auto flush() -> Result<empty> { return trait_call<2>(this); }
+        auto seek(SeekFrom pos) -> Result<u64> { return trait_call<3>(this, pos); }
+    };
+
+    template<typename T>
+    using Funcs = TraitFuncs<&T::read, &T::write, &T::flush, &T::seek>;
+};
+
 // ── BufRead ───────────────────────────────────────────────────────────────
 /// Trait for buffered readers.
 /// Required:
@@ -168,4 +257,87 @@ auto stream_position(S& s) -> Result<u64> {
     return as<Seek>(s).seek(SeekFrom::from_current(0));
 }
 
+/// Read exactly `len` bytes without changing the source cursor.
+export template<typename R>
+    requires Impled<R, ReadAt>
+auto read_exact_at(const R& r, u8* buf, usize len, u64 offset) -> Result<empty> {
+    while (len > 0) {
+        auto res = as<ReadAt>(r).read_at(buf, len, offset);
+        if (res.is_err()) {
+            auto error = res.unwrap_err_unchecked();
+            if (error.kind() == ErrorKind { ErrorKind::Interrupted }) continue;
+            return Err(rstd::move(error));
+        }
+        usize read = res.unwrap_unchecked();
+        if (read == 0) return Err(error::Error_READ_EXACT_EOF);
+        if (read > len || read > u64(-1) - offset) {
+            return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidData }));
+        }
+        buf += read;
+        len -= read;
+        offset += read;
+    }
+    return Ok(empty {});
+}
+
+/// Write all `len` bytes without changing the destination cursor.
+export template<typename W>
+    requires Impled<W, WriteAt>
+auto write_all_at(const W& w, const u8* buf, usize len, u64 offset) -> Result<empty> {
+    while (len > 0) {
+        auto res = as<WriteAt>(w).write_at(buf, len, offset);
+        if (res.is_err()) {
+            auto error = res.unwrap_err_unchecked();
+            if (error.kind() == ErrorKind { ErrorKind::Interrupted }) continue;
+            return Err(rstd::move(error));
+        }
+        usize written = res.unwrap_unchecked();
+        if (written == 0) return Err(error::Error_WRITE_ALL_EOF);
+        if (written > len || written > u64(-1) - offset) {
+            return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidData }));
+        }
+        buf += written;
+        len -= written;
+        offset += written;
+    }
+    return Ok(empty {});
+}
+
 } // namespace rstd::io
+
+namespace rstd
+{
+
+template<typename T>
+    requires Impled<T, io::Read> && Impled<T, io::Seek>
+struct Impl<io::ReadSeek, T> : ImplBase<T> {
+    auto read(u8* buf, usize len) -> io::Result<usize> {
+        return as<io::Read>(this->self()).read(buf, len);
+    }
+    auto seek(io::SeekFrom pos) -> io::Result<u64> { return as<io::Seek>(this->self()).seek(pos); }
+};
+
+template<typename T>
+    requires Impled<T, io::Write> && Impled<T, io::Seek>
+struct Impl<io::WriteSeek, T> : ImplBase<T> {
+    auto write(const u8* buf, usize len) -> io::Result<usize> {
+        return as<io::Write>(this->self()).write(buf, len);
+    }
+    auto flush() -> io::Result<empty> { return as<io::Write>(this->self()).flush(); }
+    auto seek(io::SeekFrom pos) -> io::Result<u64> { return as<io::Seek>(this->self()).seek(pos); }
+};
+
+template<typename T>
+    requires Impled<T, io::Read> && Impled<T, io::Write> && Impled<T, io::Seek>
+struct Impl<io::ReadWriteSeek, T> : ImplBase<T> {
+    auto read(u8* buf, usize len) -> io::Result<usize> {
+        return as<io::Read>(this->self()).read(buf, len);
+    }
+    auto write(const u8* buf, usize len) -> io::Result<usize> {
+        return as<io::Write>(this->self()).write(buf, len);
+    }
+    auto flush() -> io::Result<empty> { return as<io::Write>(this->self()).flush(); }
+    auto seek(io::SeekFrom pos) -> io::Result<u64> { return as<io::Seek>(this->self()).seek(pos); }
+};
+
+} // namespace rstd

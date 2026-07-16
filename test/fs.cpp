@@ -427,6 +427,13 @@ TEST(FsFile, ReadAtWriteAt) {
     rstd::u8 buf[5] = {};
     EXPECT_TRUE(f.read_exact_at(buf, 5, 100).is_ok());
     EXPECT_EQ(std::memcmp(buf, "HELLO", 5), 0);
+
+    const auto& shared = f;
+    EXPECT_TRUE(
+        rstd::io::write_all_at(shared, reinterpret_cast<const rstd::u8*>("WORLD"), 5, 200).is_ok());
+    rstd::u8 trait_buf[5] = {};
+    EXPECT_TRUE(rstd::io::read_exact_at(shared, trait_buf, 5, 200).is_ok());
+    EXPECT_EQ(std::memcmp(trait_buf, "WORLD", 5), 0);
 }
 
 TEST(FsFile, FlockExclusiveBlocks) {

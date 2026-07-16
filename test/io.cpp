@@ -113,6 +113,25 @@ struct MemRead {
     usize     pos = 0;
 };
 
+struct MemReadAt {
+    const u8* data;
+    usize     len;
+
+    auto read_at(u8* buf, usize requested, u64 offset) const -> io::Result<usize> {
+        if (offset >= len) return Ok(usize(0));
+        auto count = rstd::min(requested, len - usize(offset));
+        rstd::mem::memcpy(buf, data + offset, count);
+        return Ok(count);
+    }
+};
+
+template<>
+struct rstd::Impl<io::ReadAt, MemReadAt> : rstd::ImplBase<MemReadAt> {
+    auto read_at(u8* buf, usize len, u64 offset) const -> io::Result<usize> {
+        return this->self().read_at(buf, len, offset);
+    }
+};
+
 template<>
 struct rstd::Impl<io::Read, MemRead> : ImplBase<MemRead> {
     auto read(u8* buf, usize len) -> io::Result<usize> {
@@ -142,6 +161,50 @@ TEST(Io, ReadExactUnexpectedEof) {
     auto     res = io::read_exact(r, dst, 4);
     EXPECT_TRUE(res.is_err());
     EXPECT_EQ(res.unwrap_err_unchecked().kind(), ErrorKind { ErrorKind::UnexpectedEof });
+}
+
+TEST(Io, ReadExactAtDoesNotChangeSourceState) {
+    const u8  src[] = "abcdefgh";
+    MemReadAt source { src, 8 };
+    u8        dst[4] {};
+
+    auto result = io::read_exact_at(source, dst, 4, 2);
+
+    EXPECT_TRUE(result.is_ok());
+    EXPECT_FALSE(rstd::mem::memcmp(dst, "cdef", 4));
+}
+
+TEST(Io, RangeReaderOwnsAnIndependentCursor) {
+    const u8 src[]  = "0123456789";
+    auto     source = io::SharedReadAt::make(MemReadAt { src, 10 });
+    auto     first  = io::RangeReader::make(source.clone(), 2, 5).unwrap_unchecked();
+    auto     second = io::RangeReader::make(rstd::move(source), 4, 3).unwrap_unchecked();
+
+    u8 first_buf[3] {};
+    u8 second_buf[3] {};
+    EXPECT_EQ(as<io::Read>(first).read(first_buf, 3).unwrap_unchecked(), usize(3));
+    EXPECT_EQ(as<io::Read>(second).read(second_buf, 3).unwrap_unchecked(), usize(3));
+    EXPECT_FALSE(rstd::mem::memcmp(first_buf, "234", 3));
+    EXPECT_FALSE(rstd::mem::memcmp(second_buf, "456", 3));
+    EXPECT_EQ(first.position(), u64(3));
+    EXPECT_EQ(second.position(), u64(3));
+
+    EXPECT_EQ(as<io::Seek>(first).seek(SeekFrom::from_end(-2)).unwrap_unchecked(), u64(3));
+    u8 tail[2] {};
+    EXPECT_EQ(as<io::Read>(first).read(tail, 2).unwrap_unchecked(), usize(2));
+    EXPECT_FALSE(rstd::mem::memcmp(tail, "56", 2));
+}
+
+TEST(Io, ReadSeekHandleDispatchesBothCapabilities) {
+    const u8 src[]  = "abcdef";
+    auto     source = io::SharedReadAt::make(MemReadAt { src, 6 });
+    auto     range  = io::RangeReader::make(rstd::move(source), 1, 4).unwrap_unchecked();
+    auto     handle = io::ReadSeekHandle::make(rstd::move(range));
+
+    u8 out[2] {};
+    EXPECT_EQ(handle->read(out, 2).unwrap_unchecked(), usize(2));
+    EXPECT_FALSE(rstd::mem::memcmp(out, "bc", 2));
+    EXPECT_EQ(handle->seek(SeekFrom::from_start(0)).unwrap_unchecked(), u64(0));
 }
 
 // ── Stdio smoke tests ─────────────────────────────────────────────────────

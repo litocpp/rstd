@@ -4,6 +4,7 @@ set(RSTD_IO_SOURCES
     io/traits.cppm
     io/buffered.cppm
     io/cursor.cppm
+    io/range.cppm
     io/util.cppm
     io/stdio.cppm
     PARENT_SCOPE)

@@ -442,7 +442,7 @@ public:
     }
 
     /// pread(2) — positional read at absolute `offset`. EINTR-retried.
-    auto read_at(u8* buf, usize len, u64 offset) -> FsResult<usize> {
+    auto read_at(u8* buf, usize len, u64 offset) const -> FsResult<usize> {
 #if RSTD_OS_UNIX
         while (true) {
             libc::ssize_t n = libc::pread(fd_.as_raw_fd(), buf, len, libc::off_t(offset));
@@ -459,7 +459,7 @@ public:
     }
 
     /// pwrite(2) — positional write at absolute `offset`. EINTR-retried.
-    auto write_at(const u8* buf, usize len, u64 offset) -> FsResult<usize> {
+    auto write_at(const u8* buf, usize len, u64 offset) const -> FsResult<usize> {
 #if RSTD_OS_UNIX
         while (true) {
             libc::ssize_t n = libc::pwrite(fd_.as_raw_fd(), buf, len, libc::off_t(offset));
@@ -476,7 +476,7 @@ public:
     }
 
     /// pread loop: read exactly `len` bytes from `offset`.
-    auto read_exact_at(u8* buf, usize len, u64 offset) -> FsResult<empty> {
+    auto read_exact_at(u8* buf, usize len, u64 offset) const -> FsResult<empty> {
         while (len > 0) {
             auto r = read_at(buf, len, offset);
             if (r.is_err()) return Err(r.unwrap_err_unchecked());
@@ -490,7 +490,7 @@ public:
     }
 
     /// pwrite loop: write all `len` bytes starting at `offset`.
-    auto write_all_at(const u8* buf, usize len, u64 offset) -> FsResult<empty> {
+    auto write_all_at(const u8* buf, usize len, u64 offset) const -> FsResult<empty> {
         while (len > 0) {
             auto r = write_at(buf, len, offset);
             if (r.is_err()) return Err(r.unwrap_err_unchecked());
@@ -1181,6 +1181,20 @@ struct Impl<io::Write, fs::File> : ImplBase<fs::File> {
 template<>
 struct Impl<io::Seek, fs::File> : ImplBase<fs::File> {
     auto seek(io::SeekFrom pos) -> io::Result<u64> { return this->self().seek(pos); }
+};
+
+template<>
+struct Impl<io::ReadAt, fs::File> : ImplBase<fs::File> {
+    auto read_at(u8* buf, usize len, u64 offset) const -> io::Result<usize> {
+        return this->self().read_at(buf, len, offset);
+    }
+};
+
+template<>
+struct Impl<io::WriteAt, fs::File> : ImplBase<fs::File> {
+    auto write_at(const u8* buf, usize len, u64 offset) const -> io::Result<usize> {
+        return this->self().write_at(buf, len, offset);
+    }
 };
 
 } // namespace rstd
