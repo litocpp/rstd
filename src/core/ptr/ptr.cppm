@@ -102,6 +102,12 @@ struct ref_base {
         return static_cast<Self const*>(this)->length;
     }
 
+    constexpr auto is_empty() const noexcept -> bool
+        requires mtp::DSTArray<T>
+    {
+        return len() == 0;
+    }
+
     static constexpr auto from_raw_parts(value_type* p, usize length) noexcept -> Self
         requires mtp::DSTArray<T> && mtp::is_aggregate<Self>
     {
