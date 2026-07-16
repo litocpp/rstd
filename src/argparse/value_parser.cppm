@@ -94,11 +94,7 @@ public:
           choices_(rstd::move(choices)),
           labels_(Vec<String>::with_capacity(choices_.len())) {
         for (usize i = 0; i < choices_.len(); ++i) {
-            if constexpr (mtp::same_as<T, String>) {
-                labels_.push(choices_[i].clone());
-            } else {
-                labels_.push(rstd::format("{}", choices_[i]));
-            }
+            labels_.push(rstd::format("{}", choices_[i]));
         }
     }
 

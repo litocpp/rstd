@@ -140,6 +140,11 @@ export struct Chars {
         return cp;
     }
 
+    /// Returns the unconsumed portion of the string.
+    constexpr auto as_str() const noexcept -> ref<str> {
+        return ref<str>::from_raw_parts(_ptr, static_cast<usize>(_end - _ptr));
+    }
+
     // ── range-for support ────────────────────────────────────────────
     struct Sentinel {};
 
@@ -279,16 +284,14 @@ namespace rstd
 
 template<>
 struct Impl<fmt::Display, ref<str>> : ImplBase<ref<str>> {
-    auto fmt(fmt::Formatter& f) const -> bool {
-        return f.write_raw(this->self().data(), this->self().size());
-    }
+    auto fmt(fmt::Formatter& f) const -> bool { return f.pad(this->self()); }
 };
 
 template<>
 struct Impl<fmt::Debug, ref<str>> : ImplBase<ref<str>> {
     auto fmt(fmt::Formatter& f) const -> bool {
-        f.write_raw((const u8*)"\"", 1);
-        as<fmt::Display>(this->self()).fmt(f);
+        if (! f.write_raw((const u8*)"\"", 1)) return false;
+        if (! f.write_raw(this->self().data(), this->self().size())) return false;
         return f.write_raw((const u8*)"\"", 1);
     }
 };

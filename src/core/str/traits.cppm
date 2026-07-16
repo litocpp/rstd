@@ -53,8 +53,8 @@ private:
 export constexpr auto validate_utf8(slice<u8> bytes) noexcept -> Result<empty, Utf8Error> {
     usize offset = 0;
     while (offset < bytes.len()) {
-        auto [code_point, consumed] = char_::decode_utf8(
-            bytes.as_raw_ptr() + offset, bytes.len() - offset);
+        auto [code_point, consumed] =
+            char_::decode_utf8(bytes.as_raw_ptr() + offset, bytes.len() - offset);
         if (code_point == char_::REPLACEMENT && consumed <= 1 && bytes[offset] > 0x7F) {
             return Err(Utf8Error { offset });
         }

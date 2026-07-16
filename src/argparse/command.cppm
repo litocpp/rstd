@@ -35,7 +35,7 @@ auto valid_long_name(ref<str> name) noexcept -> bool {
 void prefix_command_path(Arc<CompiledCommand>& schema, ref<str> parent) {
     auto  borrowed       = schema.get_mut();
     auto& command        = *borrowed.unwrap();
-    command.command_path = rstd::format("{} {}", parent, command.name.as_str());
+    command.command_path = rstd::format("{} {}", parent, command.name);
     for (usize i = 0; i < command.subcommands.len(); ++i) {
         prefix_command_path(command.subcommands[i].schema, command.command_path.as_str());
     }

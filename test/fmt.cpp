@@ -3,6 +3,7 @@ import rstd;
 import rstd.core;
 
 using namespace rstd;
+using rstd::prelude::String;
 
 static_assert(Impled<f32, fmt::Display>);
 static_assert(Impled<f32, fmt::Debug>);
@@ -22,6 +23,21 @@ TEST(Fmt, MultipleArgs) {
 TEST(Fmt, Escaping) {
     auto s = rstd::format("{{ Hello {} }}", "world");
     EXPECT_EQ(s, "{ Hello world }");
+}
+
+TEST(Fmt, StringDisplayDebugWidthAndPrecision) {
+    auto value = String::make("hello");
+    static_assert(Impled<String, fmt::Display>);
+    static_assert(Impled<String, fmt::Debug>);
+
+    EXPECT_EQ(rstd::format("{}", value), "hello");
+    EXPECT_EQ(rstd::format("{:?}", value), "\"hello\"");
+    EXPECT_EQ(rstd::format("{:.2?}", value), "\"hello\"");
+    EXPECT_EQ(rstd::format("{:>7.3}", value), "    hel");
+
+    auto unicode = String::make("é中x");
+    EXPECT_EQ(rstd::format("{:4.2}", unicode), "é中  ");
+    EXPECT_EQ(rstd::format("{:_^5.2}", unicode), "_é中__");
 }
 
 TEST(Fmt, IntegerTypes) {

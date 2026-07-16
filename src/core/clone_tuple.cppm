@@ -53,9 +53,7 @@ public:
     CloneTuple(CloneTuple&&)                    = default;
     auto operator=(CloneTuple&&) -> CloneTuple& = default;
 
-    auto clone() const -> CloneTuple {
-        return CloneTuple { FromTuple {}, clone_values(m_values) };
-    }
+    auto clone() const -> CloneTuple { return CloneTuple { FromTuple {}, clone_values(m_values) }; }
 
     void clone_from(CloneTuple& source)
         requires(mtp::assign_move<Ts> && ...)

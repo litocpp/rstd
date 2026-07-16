@@ -530,12 +530,12 @@ auto rstd::argparse::Parser::render_version() const -> String {
 
 auto rstd::argparse::Parser::render_version_for(ref<str> display_path) const -> String {
     if (schema_->version.is_none()) return String::make(display_path);
-    return rstd::format("{} {}", display_path, schema_->version->as_str());
+    return rstd::format("{} {}", display_path, *schema_->version);
 }
 
 auto rstd::argparse::Parser::render_error(const ParseError& error) const -> ErrorReport {
     auto usage = error.usage().size() == 0 ? render_usage() : String::make(error.usage());
-    auto text  = rstd::format("error: {}\n\n{}\n", error, usage.as_str());
+    auto text  = rstd::format("error: {}\n\n{}\n", error, usage);
     return ErrorReport { rstd::move(text), OutputTarget::Stderr(), 2 };
 }
 
@@ -736,8 +736,7 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
                 const auto& subcommand = schema_->subcommands[**subcommand_slot];
                 auto        child_argv = Vec<OsString>::with_capacity(argv.len() - index);
                 auto        child_name = token.to_string_lossy();
-                child_argv.push(
-                    OsString::from(rstd::format("{} {}", display_path, child_name.as_str())));
+                child_argv.push(OsString::from(rstd::format("{} {}", display_path, child_name)));
                 for (usize child_index = index + 1; child_index < argv.len(); ++child_index) {
                     child_argv.push(clone_os(argv[child_index].as_os_str()));
                 }

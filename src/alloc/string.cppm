@@ -166,9 +166,9 @@ public:
     }
     friend constexpr bool operator==(ref<str> a, const String& b) noexcept { return b == a; }
     friend bool           operator==(char const* b, const String& a) noexcept {
-        return rstd::lexicographical_compare_three_way(
-                   a.vec.begin(), a.vec.end(), b, b + rstd::strlen(b)) ==
-               rstd::strong_ordering::equal;
+        const usize length = rstd::strlen(b);
+        return a.vec.len() == length &&
+               rstd::mem::memcmp(a.vec.begin(), reinterpret_cast<const u8*>(b), length) == 0;
     }
 
     /// Returns a raw pointer to the underlying byte buffer.
@@ -231,6 +231,19 @@ struct Impl<fmt::Write, String> : ImplBase<String> {
             self.push_back(p[i]);
         }
         return true;
+    }
+};
+
+template<>
+struct Impl<fmt::Display, String> : ImplBase<String> {
+    auto fmt(fmt::Formatter& f) const -> bool { return f.pad(this->self().as_str()); }
+};
+
+template<>
+struct Impl<fmt::Debug, String> : ImplBase<String> {
+    auto fmt(fmt::Formatter& f) const -> bool {
+        auto value = this->self().as_str();
+        return as<fmt::Debug>(value).fmt(f);
     }
 };
 

@@ -97,6 +97,15 @@ TEST(Str, FromUtf8Invalid) {
     EXPECT_TRUE(rstd::str_::from_utf8(sl).is_none());
 }
 
+TEST(Str, CharsExposesUnconsumedString) {
+    auto chars = rstd::str_::chars("é中x");
+    EXPECT_EQ(chars.as_str(), "é中x");
+    EXPECT_EQ(chars.next_unchecked(), U'é');
+    EXPECT_EQ(chars.as_str(), "中x");
+    EXPECT_EQ(chars.next_unchecked(), U'中');
+    EXPECT_EQ(chars.as_str(), "x");
+}
+
 TEST(String, MakeFromStr) {
     auto s = rstd::string::String::make("hello");
     EXPECT_EQ(s.len(), 5u);

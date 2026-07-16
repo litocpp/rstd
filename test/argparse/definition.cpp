@@ -95,16 +95,8 @@ TEST(ArgparseDefinition, RejectsInvalidNamesAndValueCounts) {
 }
 
 TEST(ArgparseDefinition, SupportsRvalueBuildersAndParsesDefaultsDuringBuild) {
-    auto port_parser = [] {
-        return parse_with<u16>([](ref<rstd::ffi::OsStr> value) -> Result<u16, ValueError> {
-            auto text = value.to_str();
-            if (text.is_some() && *text == "8080") return Ok(u16 { 8080 });
-            return Err(ValueError::Message(String::make("invalid port")));
-        });
-    };
-
     auto command = Command::make("tool").about("about").disable_version();
-    auto key     = command.add_arg(Arg<u16>::value("port", port_parser())
+    auto key     = command.add_arg(Arg<u16>::value("port", from_str_parser<u16>())
                                        .long_name("port")
                                        .help("Port")
                                        .default_value("8080"));
@@ -114,10 +106,13 @@ TEST(ArgparseDefinition, SupportsRvalueBuildersAndParsesDefaultsDuringBuild) {
     EXPECT_TRUE(result.is_ok());
 
     auto invalid = Command::make("tool").disable_help();
-    invalid.add_arg(Arg<u16>::value("port", port_parser()).default_value("not-a-number"));
+    invalid.add_arg(Arg<u16>::value("port", from_str_parser<u16>()).default_value("not-a-number"));
     auto invalid_result = rstd::move(invalid).build();
     ASSERT_TRUE(invalid_result.is_err());
-    EXPECT_TRUE(invalid_result.unwrap_err().is_InvalidDefaultValue());
+    auto error = rstd::move(invalid_result).unwrap_err();
+    ASSERT_TRUE(error.is_InvalidDefaultValue());
+    EXPECT_EQ(error.as_InvalidDefaultValue().error.as_Message().message,
+              "invalid digit found in string");
 }
 
 TEST(ArgparseDefinition, RejectsBuiltinCollisionsAndInvalidImplicitValues) {

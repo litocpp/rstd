@@ -1,6 +1,12 @@
 export module rstd.core:fmt;
 export import :trait;
 export import rstd.basic;
+import :ops.deref;
+
+export namespace rstd::str_
+{
+struct Str;
+} // namespace rstd::str_
 
 template<typename T>
 struct FmtId {
@@ -221,6 +227,7 @@ public:
 
     auto write_raw(const u8* p, usize len) -> bool { return _write_func(_writer, p, len); }
     auto write_fmt(struct Arguments args) -> bool;
+    auto pad(ref<str_::Str> value) -> bool;
 
     // Read-only access to current format options (valid inside Display::fmt / Debug::fmt).
     auto options() const noexcept -> FormattingOptions const& { return _options; }

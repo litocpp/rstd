@@ -480,14 +480,14 @@ public:
     [[nodiscard]]
     constexpr const T&& operator*() const&& noexcept {
         rstd_assert(is_ok());
-        return _get<0>();
+        return rstd::move(*this).template _get<0>();
     }
 
     /// Dereferences the contained `Ok` value. Asserts that the result is `Ok`.
     [[nodiscard]]
     constexpr T&& operator*() && noexcept {
         rstd_assert(is_ok());
-        return _get<0>();
+        return rstd::move(*this).template _get<0>();
     }
 
     /// Returns `true` if the result is `Ok`.

@@ -4,6 +4,16 @@ import rstd;
 
 using namespace rstd::prelude;
 
+static void iterate_invalid_unicode_arg() {
+    const char  invalid[] = { 'v', static_cast<char>(0xff), '\0' };
+    const char* argv[]    = { "prog", invalid };
+    rstd::env::args_init(2, argv);
+
+    auto args = rstd::env::args();
+    (void)args.next();
+    (void)args.next();
+}
+
 TEST(Env, VarNotFound) {
     auto val = rstd::env::var("RSTD_TEST_NONEXISTENT_VAR_12345");
     EXPECT_TRUE(val.is_none());
@@ -19,6 +29,21 @@ TEST(Env, SetAndGet) {
     auto val = rstd::env::var("RSTD_TEST_VAR");
     ASSERT_TRUE(val.is_some());
     EXPECT_EQ("hello", val.unwrap());
+}
+
+TEST(Env, VarOsPreservesInvalidUnicode) {
+    const char invalid[] = { 'v', static_cast<char>(0xff), '\0' };
+    rstd::env::set_var("RSTD_TEST_VAR_OS", invalid);
+
+    auto value = rstd::env::var_os("RSTD_TEST_VAR_OS");
+    ASSERT_TRUE(value.is_some());
+    auto bytes = value->as_os_str().as_encoded_bytes();
+    ASSERT_EQ(bytes.len(), 2u);
+    EXPECT_EQ(bytes[0], static_cast<rstd::u8>('v'));
+    EXPECT_EQ(bytes[1], static_cast<rstd::u8>(0xff));
+    EXPECT_TRUE(value->as_os_str().to_str().is_none());
+
+    rstd::env::remove_var("RSTD_TEST_VAR_OS");
 }
 
 TEST(Env, RemoveVar) {
@@ -80,6 +105,10 @@ TEST(Env, ArgsOsPreservesBytes) {
     EXPECT_EQ(bytes[0], static_cast<rstd::u8>('v'));
     EXPECT_EQ(bytes[1], static_cast<rstd::u8>(0xff));
     EXPECT_TRUE(last->as_os_str().to_str().is_none());
+}
+
+TEST(Env, ArgsRejectInvalidUnicodeDuringIteration) {
+    EXPECT_DEATH(iterate_invalid_unicode_arg(), "not valid Unicode");
 }
 
 TEST(Process, Id) {

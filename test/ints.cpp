@@ -1,6 +1,13 @@
 #include <gtest/gtest.h>
 import rstd;
 
+using namespace rstd;
+
+static_assert(Impled<u16, str_::FromStr>);
+static_assert(Impled<i128, str_::FromStr>);
+static_assert(! Impled<bool, str_::FromStr>);
+static_assert(! Impled<char, str_::FromStr>);
+
 TEST(U8, MinMax) {
     EXPECT_EQ(rstd::u8_::MIN, 0u);
     EXPECT_EQ(rstd::u8_::MAX, 255u);
@@ -80,3 +87,34 @@ static_assert(rstd::i32_::MIN == -2147483647 - 1);
 static_assert(rstd::i32_::MAX == 2147483647);
 static_assert(rstd::u128_::BITS == 128);
 static_assert(rstd::i128_::MIN + 1 == -rstd::i128_::MAX);
+
+TEST(IntFromStr, ParsesPrimitiveIntegerBoundaries) {
+    EXPECT_EQ(from_str<i8>("-128").unwrap(), i8_::MIN);
+    EXPECT_EQ(from_str<i8>("+127").unwrap(), i8_::MAX);
+    EXPECT_EQ(from_str<u8>("255").unwrap(), u8_::MAX);
+    EXPECT_EQ(from_str<i32>("-0").unwrap(), 0);
+    EXPECT_EQ(from_str<i64>("-9223372036854775808").unwrap(), i64_::MIN);
+    EXPECT_EQ(from_str<u64>("18446744073709551615").unwrap(), u64_::MAX);
+    EXPECT_EQ(from_str<i128>("-170141183460469231731687303715884105728").unwrap(), i128_::MIN);
+    EXPECT_EQ(from_str<u128>("340282366920938463463374607431768211455").unwrap(), u128_::MAX);
+}
+
+TEST(IntFromStr, ReportsRustCompatibleErrorKinds) {
+    auto empty = from_str<i32>("").unwrap_err();
+    EXPECT_TRUE(empty.kind()->is_Empty());
+    EXPECT_EQ(rstd::format("{}", empty), "cannot parse integer from empty string");
+    EXPECT_EQ(rstd::format("{:?}", empty), "ParseIntError { kind: Empty }");
+
+    auto invalid = from_str<i32>(" 1").unwrap_err();
+    EXPECT_TRUE(invalid.kind()->is_InvalidDigit());
+    EXPECT_EQ(rstd::format("{}", invalid), "invalid digit found in string");
+
+    EXPECT_TRUE(from_str<u32>("-1").unwrap_err().kind()->is_InvalidDigit());
+    EXPECT_TRUE(from_str<i32>("+").unwrap_err().kind()->is_InvalidDigit());
+    EXPECT_TRUE(from_str<i8>("128").unwrap_err().kind()->is_PosOverflow());
+    EXPECT_TRUE(from_str<i8>("-129").unwrap_err().kind()->is_NegOverflow());
+    EXPECT_TRUE(from_str<u128>("340282366920938463463374607431768211456")
+                    .unwrap_err()
+                    .kind()
+                    ->is_PosOverflow());
+}

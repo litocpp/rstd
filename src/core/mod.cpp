@@ -2,6 +2,7 @@ module rstd.core;
 import :core;
 import :fmt;
 import :panicking;
+import :str.str;
 
 using rstd::panic_::PanicInfo;
 
@@ -185,6 +186,46 @@ auto Formatter::pad_numeric(const u8* sign,
     if (! write_repeat(static_cast<u8>(fill()), left)) return false;
     if (! write_number()) return false;
     return write_repeat(static_cast<u8>(fill()), right);
+}
+
+auto Formatter::pad(ref<str> value) -> bool {
+    if (! has_width() && ! has_prec()) return write_raw(value.data(), value.size());
+
+    const usize maximum  = has_prec() ? static_cast<usize>(precision()) : value.size();
+    auto        iterator = str_::chars(value);
+    usize       chars    = 0;
+    while (! iterator.is_empty() && chars < maximum) {
+        iterator.next_unchecked();
+        ++chars;
+    }
+    const usize bytes = value.size() - iterator.as_str().size();
+
+    const usize target_width = has_width() ? static_cast<usize>(width()) : 0;
+    if (chars >= target_width) return write_raw(value.data(), bytes);
+
+    const usize padding   = target_width - chars;
+    auto        alignment = align();
+    if (alignment == Align::None) alignment = Align::Left;
+
+    usize left = 0;
+    if (alignment == Align::Right) left = padding;
+    if (alignment == Align::Center) left = padding / 2;
+    const usize right = padding - left;
+
+    auto write_fill = [this](usize count) -> bool {
+        u8 buffer[64];
+        for (usize i = 0; i < sizeof(buffer); ++i) buffer[i] = static_cast<u8>(fill());
+        while (count != 0) {
+            const usize chunk = count < sizeof(buffer) ? count : sizeof(buffer);
+            if (! write_raw(buffer, chunk)) return false;
+            count -= chunk;
+        }
+        return true;
+    };
+
+    if (! write_fill(left)) return false;
+    if (! write_raw(value.data(), bytes)) return false;
+    return write_fill(right);
 }
 
 // ── Formatter::write_fmt ──────────────────────────────────────────────────

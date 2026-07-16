@@ -155,6 +155,21 @@ TEST(Result, ReferenceValue) {
     EXPECT_EQ(ref.unwrap(), 9);
 }
 
+TEST(Result, RvalueDereferencePreservesValueCategory) {
+    auto make_result = []() -> Result<Option<int>, int> {
+        return Ok(Some(7));
+    };
+
+    auto value = *make_result();
+    ASSERT_TRUE(value.is_some());
+    EXPECT_EQ(value.unwrap(), 7);
+    EXPECT_EQ(**make_result(), 7);
+
+    const Result<Option<int>, int> source = Ok(Some(9));
+    auto                           copied = *rstd::move(source);
+    EXPECT_EQ(copied.unwrap(), 9);
+}
+
 TEST(Result, MoveAssignmentChangesVariantAndDropsOldPayload) {
     int drops = 0;
     {

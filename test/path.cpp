@@ -157,8 +157,7 @@ TEST(PathBuf, CloneOwnsIndependentStorage) {
     cloned.push(rstd::ref<Path>("child"));
 
     EXPECT_EQ(original.as_path().to_str().unwrap(), rstd::ref<rstd::str>("/tmp/original"));
-    EXPECT_EQ(cloned.as_path().to_str().unwrap(),
-              rstd::ref<rstd::str>("/tmp/original/child"));
+    EXPECT_EQ(cloned.as_path().to_str().unwrap(), rstd::ref<rstd::str>("/tmp/original/child"));
 }
 
 TEST(PathBuf, FromStr) {

@@ -201,8 +201,7 @@ struct Impl<fmt::Display, argparse::ValueError> : ImplBase<argparse::ValueError>
                 reinterpret_cast<const u8*>("argument value is not valid UTF-8"),
                 rstd::strlen("argument value is not valid UTF-8"));
         case argparse::ValueError::Tag::Message:
-            return formatter.write_fmt(
-                fmt::Arguments::make("{}", error.as_Message().message.as_str()));
+            return formatter.write_fmt(fmt::Arguments::make("{}", error.as_Message().message));
         }
         return false;
     }
@@ -221,46 +220,45 @@ struct Impl<fmt::Display, argparse::DefinitionError> : ImplBase<argparse::Defini
         const auto& error = this->self();
         switch (error.tag()) {
         case argparse::DefinitionError::Tag::InvalidCommandName:
-            return formatter.write_fmt(fmt::Arguments::make(
-                "invalid command name '{}'", error.as_InvalidCommandName().name.as_str()));
+            return formatter.write_fmt(fmt::Arguments::make("invalid command name '{}'",
+                                                            error.as_InvalidCommandName().name));
         case argparse::DefinitionError::Tag::InvalidArgumentId:
-            return formatter.write_fmt(fmt::Arguments::make(
-                "invalid argument id '{}'", error.as_InvalidArgumentId().id.as_str()));
+            return formatter.write_fmt(
+                fmt::Arguments::make("invalid argument id '{}'", error.as_InvalidArgumentId().id));
         case argparse::DefinitionError::Tag::InvalidShortName:
             return formatter.write_fmt(fmt::Arguments::make("invalid short option '-{}'",
                                                             error.as_InvalidShortName().name));
         case argparse::DefinitionError::Tag::InvalidLongName:
-            return formatter.write_fmt(fmt::Arguments::make(
-                "invalid long option '--{}'", error.as_InvalidLongName().name.as_str()));
+            return formatter.write_fmt(fmt::Arguments::make("invalid long option '--{}'",
+                                                            error.as_InvalidLongName().name));
         case argparse::DefinitionError::Tag::DuplicateArgumentId:
-            return formatter.write_fmt(fmt::Arguments::make(
-                "duplicate argument id '{}'", error.as_DuplicateArgumentId().id.as_str()));
+            return formatter.write_fmt(fmt::Arguments::make("duplicate argument id '{}'",
+                                                            error.as_DuplicateArgumentId().id));
         case argparse::DefinitionError::Tag::DuplicateOption:
-            return formatter.write_fmt(fmt::Arguments::make(
-                "duplicate option '{}'", error.as_DuplicateOption().name.as_str()));
-        case argparse::DefinitionError::Tag::InvalidValueCount:
-            return formatter.write_fmt(fmt::Arguments::make(
-                "invalid value count for argument '{}'", error.as_InvalidValueCount().id.as_str()));
-        case argparse::DefinitionError::Tag::IncompatibleAction:
             return formatter.write_fmt(
-                fmt::Arguments::make("incompatible action for argument '{}'",
-                                     error.as_IncompatibleAction().id.as_str()));
+                fmt::Arguments::make("duplicate option '{}'", error.as_DuplicateOption().name));
+        case argparse::DefinitionError::Tag::InvalidValueCount:
+            return formatter.write_fmt(fmt::Arguments::make("invalid value count for argument '{}'",
+                                                            error.as_InvalidValueCount().id));
+        case argparse::DefinitionError::Tag::IncompatibleAction:
+            return formatter.write_fmt(fmt::Arguments::make("incompatible action for argument '{}'",
+                                                            error.as_IncompatibleAction().id));
         case argparse::DefinitionError::Tag::InvalidDefaultValue:
             return formatter.write_fmt(
                 fmt::Arguments::make("invalid default value for argument '{}': {}",
-                                     error.as_InvalidDefaultValue().id.as_str(),
+                                     error.as_InvalidDefaultValue().id,
                                      error.as_InvalidDefaultValue().error));
         case argparse::DefinitionError::Tag::InvalidImplicitValue:
             return formatter.write_fmt(
                 fmt::Arguments::make("invalid implicit value for argument '{}': {}",
-                                     error.as_InvalidImplicitValue().id.as_str(),
+                                     error.as_InvalidImplicitValue().id,
                                      error.as_InvalidImplicitValue().error));
         case argparse::DefinitionError::Tag::InvalidGroup:
-            return formatter.write_fmt(fmt::Arguments::make("invalid argument group '{}'",
-                                                            error.as_InvalidGroup().id.as_str()));
+            return formatter.write_fmt(
+                fmt::Arguments::make("invalid argument group '{}'", error.as_InvalidGroup().id));
         case argparse::DefinitionError::Tag::DuplicateGroupId:
-            return formatter.write_fmt(fmt::Arguments::make(
-                "duplicate argument group '{}'", error.as_DuplicateGroupId().id.as_str()));
+            return formatter.write_fmt(fmt::Arguments::make("duplicate argument group '{}'",
+                                                            error.as_DuplicateGroupId().id));
         case argparse::DefinitionError::Tag::ForeignKey:
             return formatter.write_raw(
                 reinterpret_cast<const u8*>("schema key belongs to a different command"),
@@ -269,8 +267,8 @@ struct Impl<fmt::Display, argparse::DefinitionError> : ImplBase<argparse::Defini
             return formatter.write_raw(reinterpret_cast<const u8*>("invalid argument relation"),
                                        rstd::strlen("invalid argument relation"));
         case argparse::DefinitionError::Tag::DuplicateSubcommand:
-            return formatter.write_fmt(fmt::Arguments::make(
-                "duplicate subcommand '{}'", error.as_DuplicateSubcommand().name.as_str()));
+            return formatter.write_fmt(fmt::Arguments::make("duplicate subcommand '{}'",
+                                                            error.as_DuplicateSubcommand().name));
         }
         return false;
     }
@@ -293,51 +291,47 @@ struct Impl<fmt::Display, argparse::ParseError> : ImplBase<argparse::ParseError>
                 return formatter.write_fmt(
                     fmt::Arguments::make("unknown argument '{}'; did you mean '{}'?",
                                          error.as_UnknownArgument().token.as_os_str(),
-                                         error.as_UnknownArgument().suggestion->as_str()));
+                                         *error.as_UnknownArgument().suggestion));
             }
             return formatter.write_fmt(fmt::Arguments::make(
                 "unknown argument '{}'", error.as_UnknownArgument().token.as_os_str()));
         case argparse::ParseError::Tag::MissingValue:
             return formatter.write_fmt(fmt::Arguments::make("missing value for argument '{}'",
-                                                            error.as_MissingValue().id.as_str()));
+                                                            error.as_MissingValue().id));
         case argparse::ParseError::Tag::TooFewValues:
             return formatter.write_fmt(fmt::Arguments::make("too few values for argument '{}'",
-                                                            error.as_TooFewValues().id.as_str()));
+                                                            error.as_TooFewValues().id));
         case argparse::ParseError::Tag::TooManyValues:
             return formatter.write_fmt(fmt::Arguments::make("too many values for argument '{}'",
-                                                            error.as_TooManyValues().id.as_str()));
+                                                            error.as_TooManyValues().id));
         case argparse::ParseError::Tag::InvalidValue:
             return formatter.write_fmt(
                 fmt::Arguments::make("invalid value '{}' for argument '{}': {}",
                                      error.as_InvalidValue().value.as_os_str(),
-                                     error.as_InvalidValue().id.as_str(),
+                                     error.as_InvalidValue().id,
                                      error.as_InvalidValue().error));
         case argparse::ParseError::Tag::InvalidUtf8Value:
             return formatter.write_fmt(
                 fmt::Arguments::make("value '{}' for argument '{}' is not valid UTF-8",
                                      error.as_InvalidUtf8Value().value.as_os_str(),
-                                     error.as_InvalidUtf8Value().id.as_str()));
+                                     error.as_InvalidUtf8Value().id));
         case argparse::ParseError::Tag::DuplicateArgument:
-            return formatter.write_fmt(
-                fmt::Arguments::make("argument '{}' cannot be used multiple times",
-                                     error.as_DuplicateArgument().id.as_str()));
+            return formatter.write_fmt(fmt::Arguments::make(
+                "argument '{}' cannot be used multiple times", error.as_DuplicateArgument().id));
         case argparse::ParseError::Tag::ArgumentConflict:
-            return formatter.write_fmt(
-                fmt::Arguments::make("argument '{}' conflicts with '{}'",
-                                     error.as_ArgumentConflict().left.as_str(),
-                                     error.as_ArgumentConflict().right.as_str()));
+            return formatter.write_fmt(fmt::Arguments::make("argument '{}' conflicts with '{}'",
+                                                            error.as_ArgumentConflict().left,
+                                                            error.as_ArgumentConflict().right));
         case argparse::ParseError::Tag::MissingRequiredArgument:
-            return formatter.write_fmt(
-                fmt::Arguments::make("required argument '{}' was not provided",
-                                     error.as_MissingRequiredArgument().id.as_str()));
+            return formatter.write_fmt(fmt::Arguments::make(
+                "required argument '{}' was not provided", error.as_MissingRequiredArgument().id));
         case argparse::ParseError::Tag::MissingRequiredGroup:
             return formatter.write_fmt(
                 fmt::Arguments::make("required argument group '{}' was not provided",
-                                     error.as_MissingRequiredGroup().id.as_str()));
+                                     error.as_MissingRequiredGroup().id));
         case argparse::ParseError::Tag::MissingSubcommand:
-            return formatter.write_fmt(
-                fmt::Arguments::make("command '{}' requires a subcommand",
-                                     error.as_MissingSubcommand().command.as_str()));
+            return formatter.write_fmt(fmt::Arguments::make("command '{}' requires a subcommand",
+                                                            error.as_MissingSubcommand().command));
         case argparse::ParseError::Tag::InvalidSubcommand:
             return formatter.write_fmt(fmt::Arguments::make(
                 "invalid subcommand '{}'", error.as_InvalidSubcommand().name.as_os_str()));
