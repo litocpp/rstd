@@ -43,6 +43,7 @@ using rstd::make_clone_tuple;
 
 using rstd::Fn;
 using rstd::FnMut;
+using rstd::FnOnce;
 
 using rstd::cmp::PartialEq;
 using rstd::convert::AsMut;

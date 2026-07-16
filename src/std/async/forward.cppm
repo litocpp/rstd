@@ -47,6 +47,8 @@ export class RuntimeHandle;
 
 export class AtomicWaker;
 
+export struct IntoFuture;
+
 export struct YieldNow;
 
 export class Sleep;
@@ -57,5 +59,7 @@ export namespace rstd::prelude
 {
 
 using rstd::async::coro;
+using rstd::async::IntoFuture;
+using rstd::future::Future;
 
 } // namespace rstd::prelude

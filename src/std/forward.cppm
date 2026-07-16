@@ -36,6 +36,15 @@ using rstd_alloc::string::String;
 /// A trait for converting a value to a String.
 using rstd_alloc::string::ToString;
 } // namespace string
+
+export namespace prelude
+{
+using rstd_alloc::boxed::Box;
+using rstd_alloc::string::String;
+using rstd_alloc::string::ToString;
+using rstd_alloc::vec::Vec;
+} // namespace prelude
+
 /// A contiguous growable array type.
 export namespace vec
 {

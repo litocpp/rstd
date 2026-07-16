@@ -72,6 +72,7 @@ set(
   str.cpp
   ffi/os_str.cpp
   path.cpp
+  prelude.cpp
   log.cpp)
 
 if(UNIX)
