@@ -17,6 +17,49 @@ export using ReadSeekHandle      = Box<dyn<ReadSeek>>;
 export using WriteSeekHandle     = Box<dyn<WriteSeek>>;
 export using ReadWriteSeekHandle = Box<dyn<ReadWriteSeek>>;
 
+export class RangeReader;
+
+export class ReadRange {
+public:
+    ReadRange(const ReadRange&)                        = delete;
+    auto operator=(const ReadRange&) -> ReadRange&     = delete;
+    ReadRange(ReadRange&&) noexcept                    = default;
+    auto operator=(ReadRange&&) noexcept -> ReadRange& = default;
+
+    static auto make(SharedReadAt source, u64 offset, u64 len) -> Result<ReadRange> {
+        if (len > u64(-1) - offset) {
+            return Err(
+                error::Error::from_kind(error::ErrorKind { error::ErrorKind::InvalidInput }));
+        }
+        return Ok(ReadRange(rstd::move(source), offset, len));
+    }
+
+    auto clone() const -> ReadRange { return ReadRange(m_source.clone(), m_offset, m_len); }
+
+    auto subrange(u64 offset, u64 len) const -> Result<ReadRange> {
+        if (offset > m_len || len > m_len - offset) {
+            return Err(
+                error::Error::from_kind(error::ErrorKind { error::ErrorKind::InvalidInput }));
+        }
+        return Ok(ReadRange(m_source.clone(), m_offset + offset, len));
+    }
+
+    auto reader() const -> RangeReader;
+    auto into_reader() && -> RangeReader;
+
+    auto offset() const noexcept -> u64 { return m_offset; }
+    auto len() const noexcept -> u64 { return m_len; }
+    bool is_empty() const noexcept { return m_len == 0; }
+
+private:
+    ReadRange(SharedReadAt source, u64 offset, u64 len)
+        : m_source(rstd::move(source)), m_offset(offset), m_len(len) {}
+
+    SharedReadAt m_source;
+    u64          m_offset { 0 };
+    u64          m_len { 0 };
+};
+
 export class RangeReader {
 public:
     RangeReader(const RangeReader&)                        = delete;
@@ -75,6 +118,8 @@ public:
     bool is_empty() const noexcept { return m_len == 0; }
 
 private:
+    friend class ReadRange;
+
     RangeReader(SharedReadAt source, u64 offset, u64 len)
         : m_source(rstd::move(source)), m_offset(offset), m_len(len) {}
 
@@ -99,6 +144,14 @@ private:
     u64          m_len { 0 };
     u64          m_position { 0 };
 };
+
+auto ReadRange::reader() const -> RangeReader {
+    return RangeReader(m_source.clone(), m_offset, m_len);
+}
+
+auto ReadRange::into_reader() && -> RangeReader {
+    return RangeReader(rstd::move(m_source), m_offset, m_len);
+}
 
 } // namespace rstd::io
 

@@ -195,6 +195,26 @@ TEST(Io, RangeReaderOwnsAnIndependentCursor) {
     EXPECT_FALSE(rstd::mem::memcmp(tail, "56", 2));
 }
 
+TEST(Io, ReadRangeCreatesReusableReadersAndSubranges) {
+    const u8 src[]  = "0123456789";
+    auto     source = io::SharedReadAt::make(MemReadAt { src, 10 });
+    auto     range  = io::ReadRange::make(rstd::move(source), 2, 6).unwrap_unchecked();
+    auto     first  = range.reader();
+    auto     second = range.reader();
+    auto     tail   = range.subrange(3, 2).unwrap_unchecked().into_reader();
+
+    u8 first_buf[2] {};
+    u8 second_buf[2] {};
+    u8 tail_buf[2] {};
+    EXPECT_EQ(as<io::Read>(first).read(first_buf, 2).unwrap_unchecked(), usize(2));
+    EXPECT_EQ(as<io::Read>(second).read(second_buf, 2).unwrap_unchecked(), usize(2));
+    EXPECT_EQ(as<io::Read>(tail).read(tail_buf, 2).unwrap_unchecked(), usize(2));
+    EXPECT_FALSE(rstd::mem::memcmp(first_buf, "23", 2));
+    EXPECT_FALSE(rstd::mem::memcmp(second_buf, "23", 2));
+    EXPECT_FALSE(rstd::mem::memcmp(tail_buf, "56", 2));
+    EXPECT_TRUE(range.subrange(5, 2).is_err());
+}
+
 TEST(Io, ReadSeekHandleDispatchesBothCapabilities) {
     const u8 src[]  = "abcdef";
     auto     source = io::SharedReadAt::make(MemReadAt { src, 6 });
