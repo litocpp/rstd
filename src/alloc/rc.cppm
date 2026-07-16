@@ -2,641 +2,671 @@ module;
 #include <rstd/macro.hpp>
 export module rstd.alloc:rc;
 export import rstd.core;
+export import :alloc;
 
-using namespace rstd::prelude;
+using rstd::alloc::Allocator;
+using rstd::alloc::Layout;
+using rstd::ptr_::non_null::NonNull;
 namespace mtp = rstd::mtp;
+using namespace rstd::prelude;
 
 namespace alloc::rc
 {
 
-template<typename Allocator, typename T>
-using rebind_alloc = typename mtp::allocator_traits<Allocator>::template rebind_alloc<T>;
+export enum class StoragePolicy : u32 { Embed = 0, Separate, SeparateWithDeleter };
 
-constexpr bool noexp { false };
+export template<typename T>
+class Rc;
 
-void increase_count(usize& count) {
+export template<typename T>
+class Weak;
+
+export template<typename T>
+class RcRaw;
+
+} // namespace alloc::rc
+
+template<typename AllocatorType, typename T>
+using rc_rebind_alloc = typename mtp::allocator_traits<AllocatorType>::template rebind_alloc<T>;
+
+constexpr bool RC_COPY_NOEXCEPT { false };
+
+void rc_increase_count(usize& count) {
     if (count == rstd::numeric_limits<usize>::max()) {
         rstd::panic("reference count overflow");
     }
     ++count;
 }
 
-template<typename T>
-constexpr auto compute_alignment() -> usize {
-    return rstd::cmp::max(alignof(mtp::rm_ext<T>), alignof(usize));
-}
+struct RcHeader;
+using RcReleaseValue  = void (*)(RcHeader*, Layout) noexcept;
+using RcReleaseHeader = void (*)(RcHeader*) noexcept;
 
-template<typename T>
-[[nodiscard]]
-constexpr auto layout_for_value(usize align) -> usize {
-    const auto size = sizeof(T);
-    return (size + align - 1) & ~(align - 1);
-}
+struct RcHeader {
+    usize strong { 1 };
+    usize weak { 1 };
+    voidp value { nullptr };
 
-template<typename T>
-[[nodiscard]]
-constexpr auto layout_for_value() -> usize {
-    return layout_for_value<T>(alignof(T));
-}
+    bool            external_drop;
+    RcReleaseValue  release_value;
+    RcReleaseHeader release_header;
 
-enum class DeleteType
-{
-    Value = 0,
-    Self,
-};
+    RcHeader(voidp           value,
+             bool            external_drop,
+             RcReleaseValue  release_value,
+             RcReleaseHeader release_header) noexcept
+        : value(value),
+          external_drop(external_drop),
+          release_value(release_value),
+          release_header(release_header) {}
 
-enum class StoragePolicy : u32
-{
-    Embed = 0,
-    Separate,
-    SeparateWithDeleter
+    void inc_strong() { rc_increase_count(strong); }
+    void inc_weak() { rc_increase_count(weak); }
 };
 
 template<typename T>
-struct alignas(usize) RcInner {
-    using value_t = mtp::rm_ext<T>;
+using RcTarget = mtp::rm_const<T>;
 
-    usize    strong { 1 };
-    usize    weak { 1 };
-    value_t* value { nullptr };
+template<typename T, bool = mtp::DST<RcTarget<T>>>
+struct RcData {
+    RcHeader* header { nullptr };
+};
 
-    RcInner() noexcept {}
-    virtual ~RcInner() = default;
+template<typename T>
+struct RcData<T, true> {
+    using Metadata = decltype(rstd::declval<mut_ptr<RcTarget<T>>>().metadata());
 
-    virtual void do_delete(DeleteType t) {
-        auto self = this;
-        if (t == DeleteType::Value) {
-            delete self->value;
-        } else {
-            delete self;
-        }
+    RcHeader* header { nullptr };
+    Metadata  metadata {};
+};
+
+template<typename T>
+auto rc_pointer(RcData<T> data) noexcept -> mut_ptr<RcTarget<T>> {
+    using Target = RcTarget<T>;
+    auto* value  = data.header == nullptr ? nullptr : data.header->value;
+    if constexpr (mtp::DSTArray<Target>) {
+        using Element = mtp::rm_ext<Target>;
+        return mut_ptr<Target>::from_raw_parts(reinterpret_cast<Element*>(value), data.metadata);
+    } else if constexpr (mtp::DST<Target>) {
+        return mut_ptr<Target>::from_raw_parts(value, data.metadata);
+    } else {
+        return mut_ptr<Target>::from_raw_parts(static_cast<Target*>(value));
     }
-
-    void inc_strong() { increase_count(strong); }
-    void dec_strong() { --strong; }
-    void inc_weak() { increase_count(weak); }
-    void dec_weak() { --weak; }
-};
+}
 
 template<typename T>
-using RcInnerConst = RcInner<mtp::add_const<T>>;
+auto rc_data(RcHeader* header, mut_ptr<RcTarget<T>> pointer) noexcept -> RcData<T> {
+    if constexpr (mtp::DST<RcTarget<T>>) {
+        return RcData<T> { .header = header, .metadata = pointer.metadata() };
+    } else {
+        return RcData<T> { .header = header };
+    }
+}
 
-template<typename T, StoragePolicy P, typename ValueDeleter = void>
-struct RcInnerImpl {
-    static_assert(false);
-};
+auto rc_allocate(Layout layout) -> mut_ptr<u8> {
+    auto result = rstd::as<Allocator>(::alloc::GLOBAL).allocate(layout);
+    if (result.is_err()) ::alloc::handle_alloc_error(layout);
+    return result.unwrap_unchecked().as_mut_ptr().template cast<u8>();
+}
+
+void rc_deallocate(voidp pointer, Layout layout) noexcept {
+    auto allocation_pointer =
+        NonNull<u8>::make_unchecked(mut_ptr<u8>::from_raw_parts(static_cast<u8*>(pointer)));
+    rstd::as<Allocator>(::alloc::GLOBAL).deallocate(allocation_pointer, layout);
+}
+
+void rc_release_global_value(RcHeader* header, Layout layout) noexcept {
+    rc_deallocate(header->value, layout);
+}
+
+void rc_release_global_header(RcHeader* header) noexcept {
+    delete header;
+}
+
+void rc_retain_embedded_value(RcHeader*, Layout) noexcept {
+}
 
 template<typename T>
-struct RcInnerImpl<T, StoragePolicy::Embed> : RcInnerConst<T> {
-    static_assert(! mtp::is_array<T>);
-
+struct RcEmbeddedHeader : RcHeader {
     alignas(T) rstd::byte storage[sizeof(T)];
 
-    RcInnerImpl() noexcept: RcInnerConst<T>() {}
-
-    void do_delete(DeleteType t) override {
-        auto self = this;
-        if (t == DeleteType::Value) {
-            self->value->~T();
-            self->value = nullptr;
-        } else {
-            delete self;
-        }
+    RcEmbeddedHeader() noexcept
+        : RcHeader(nullptr, false, &rc_retain_embedded_value, &RcEmbeddedHeader::release_self) {
+        value = storage;
     }
 
-    template<typename... Args>
-    void allocate_value(Args&&... args) {
-        auto ptr    = new (storage) T(rstd::forward<Args>(args)...);
-        this->value = ptr;
+    static void release_self(RcHeader* header) noexcept {
+        delete static_cast<RcEmbeddedHeader*>(header);
+    }
+};
+
+template<typename Element, typename AllocatorType>
+struct RcAllocatorHeader : RcHeader {
+    AllocatorType allocator;
+    usize         count;
+
+    RcAllocatorHeader(AllocatorType allocator, usize count)
+        : RcHeader(nullptr,
+                   false,
+                   &RcAllocatorHeader::release_value_storage,
+                   &RcAllocatorHeader::release_self),
+          allocator(rstd::move(allocator)),
+          count(count) {}
+
+    static void release_value_storage(RcHeader* header, Layout) noexcept {
+        auto* self = static_cast<RcAllocatorHeader*>(header);
+        self->allocator.deallocate(static_cast<Element*>(self->value), self->count);
+    }
+
+    static void release_self(RcHeader* header) noexcept {
+        auto* self      = static_cast<RcAllocatorHeader*>(header);
+        auto  allocator = rc_rebind_alloc<AllocatorType, RcAllocatorHeader>(self->allocator);
+        rstd::destroy_at(self);
+        allocator.deallocate(self, 1);
+    }
+};
+
+template<typename T, typename AllocatorType>
+struct RcEmbeddedAllocatorHeader : RcHeader {
+    AllocatorType allocator;
+    alignas(T) rstd::byte storage[sizeof(T)];
+
+    explicit RcEmbeddedAllocatorHeader(AllocatorType allocator)
+        : RcHeader(nullptr,
+                   false,
+                   &rc_retain_embedded_value,
+                   &RcEmbeddedAllocatorHeader::release_self),
+          allocator(rstd::move(allocator)) {
+        value = storage;
+    }
+
+    static void release_self(RcHeader* header) noexcept {
+        auto* self     = static_cast<RcEmbeddedAllocatorHeader*>(header);
+        auto allocator = rc_rebind_alloc<AllocatorType, RcEmbeddedAllocatorHeader>(self->allocator);
+        rstd::destroy_at(self);
+        allocator.deallocate(self, 1);
+    }
+};
+
+template<typename T, typename Deleter>
+struct RcDeleterHeader : RcHeader {
+    Deleter deleter;
+
+    RcDeleterHeader(T* pointer, Deleter deleter)
+        : RcHeader(const_cast<mtp::rm_const<T>*>(pointer),
+                   true,
+                   &RcDeleterHeader::release_external_value,
+                   &RcDeleterHeader::release_self),
+          deleter(rstd::move(deleter)) {}
+
+    static void release_external_value(RcHeader* header, Layout) noexcept {
+        auto* self = static_cast<RcDeleterHeader*>(header);
+        self->deleter(static_cast<T*>(self->value));
+    }
+
+    static void release_self(RcHeader* header) noexcept {
+        delete static_cast<RcDeleterHeader*>(header);
+    }
+};
+
+template<typename T, typename Deleter, typename AllocatorType>
+struct RcDeleterAllocatorHeader : RcHeader {
+    Deleter       deleter;
+    AllocatorType allocator;
+
+    RcDeleterAllocatorHeader(T* pointer, Deleter deleter, AllocatorType allocator)
+        : RcHeader(const_cast<mtp::rm_const<T>*>(pointer),
+                   true,
+                   &RcDeleterAllocatorHeader::release_external_value,
+                   &RcDeleterAllocatorHeader::release_self),
+          deleter(rstd::move(deleter)),
+          allocator(rstd::move(allocator)) {}
+
+    static void release_external_value(RcHeader* header, Layout) noexcept {
+        auto* self = static_cast<RcDeleterAllocatorHeader*>(header);
+        self->deleter(static_cast<T*>(self->value));
+    }
+
+    static void release_self(RcHeader* header) noexcept {
+        auto* self      = static_cast<RcDeleterAllocatorHeader*>(header);
+        auto  allocator = rc_rebind_alloc<AllocatorType, RcDeleterAllocatorHeader>(self->allocator);
+        rstd::destroy_at(self);
+        allocator.deallocate(self, 1);
     }
 };
 
 template<typename T>
-struct RcInnerImpl<T, StoragePolicy::Separate> : RcInnerConst<T> {
-    RcInnerImpl() noexcept: RcInnerConst<T>() {}
-
-    void do_delete(DeleteType t) override {
-        auto self = this;
-        if (t == DeleteType::Value) {
-            delete self->value;
-            self->value = nullptr;
-        } else {
-            delete self;
-        }
-    }
-
-    template<typename... Args>
-    void allocate_value(Args&&... args) {
-        auto ptr    = new T(rstd::forward<Args>(args)...);
-        this->value = ptr;
-    }
+struct RcAllocation {
+    RcHeader*  header;
+    mut_ptr<T> pointer;
 };
+
+template<typename T, typename... Args>
+auto rc_allocate_separate_value(Args&&... args) -> RcAllocation<T> {
+    auto layout  = Layout::make<T>();
+    auto pointer = rc_allocate(layout).template cast<T>();
+    rstd::construct_at(pointer.as_raw_ptr(), rstd::forward<Args>(args)...);
+    auto* header = new RcHeader(
+        pointer.as_raw_ptr(), false, &rc_release_global_value, &rc_release_global_header);
+    return RcAllocation<T> { .header = header, .pointer = pointer };
+}
+
+template<typename T, typename... Args>
+auto rc_allocate_embedded_value(Args&&... args) -> RcAllocation<T> {
+    auto* header  = new RcEmbeddedHeader<T>();
+    auto  pointer = mut_ptr<T>::from_raw_parts(static_cast<T*>(header->value));
+    rstd::construct_at(pointer.as_raw_ptr(), rstd::forward<Args>(args)...);
+    return RcAllocation<T> { .header = header, .pointer = pointer };
+}
+
+template<typename T, alloc::rc::StoragePolicy Policy, typename... Args>
+auto rc_allocate_value(Args&&... args) -> RcAllocation<T> {
+    if constexpr (Policy == alloc::rc::StoragePolicy::Separate) {
+        return rc_allocate_separate_value<T>(rstd::forward<Args>(args)...);
+    } else if constexpr (Policy == alloc::rc::StoragePolicy::Embed) {
+        return rc_allocate_embedded_value<T>(rstd::forward<Args>(args)...);
+    } else {
+        static_assert(Policy != Policy);
+    }
+}
+
+template<typename Element, typename Value>
+auto rc_allocate_array(usize count, Value const& initial) -> RcAllocation<Element[]> {
+    auto layout  = Layout::array<Element>(count).unwrap();
+    auto pointer = rc_allocate(layout).template cast_array<Element>(count);
+    for (usize index = 0; index < count; ++index) {
+        rstd::construct_at(pointer.as_raw_ptr() + index, initial);
+    }
+    auto* header = new RcHeader(
+        pointer.as_raw_ptr(), false, &rc_release_global_value, &rc_release_global_header);
+    return RcAllocation<Element[]> { .header = header, .pointer = pointer };
+}
+
+template<typename T, typename AllocatorType, typename... Args>
+auto rc_allocate_separate_value_with(AllocatorType allocator, Args&&... args) -> RcAllocation<T> {
+    using Header           = RcAllocatorHeader<T, AllocatorType>;
+    auto  header_allocator = rc_rebind_alloc<AllocatorType, Header>(allocator);
+    auto* header           = header_allocator.allocate(1);
+    rstd::construct_at(header, allocator, usize(1));
+    auto* value   = header->allocator.allocate(1);
+    header->value = value;
+    rstd::construct_at(value, rstd::forward<Args>(args)...);
+    return RcAllocation<T> {
+        .header  = header,
+        .pointer = mut_ptr<T>::from_raw_parts(value),
+    };
+}
+
+template<typename T, typename AllocatorType, typename... Args>
+auto rc_allocate_embedded_value_with(AllocatorType allocator, Args&&... args) -> RcAllocation<T> {
+    using Header           = RcEmbeddedAllocatorHeader<T, AllocatorType>;
+    auto  header_allocator = rc_rebind_alloc<AllocatorType, Header>(allocator);
+    auto* header           = header_allocator.allocate(1);
+    rstd::construct_at(header, allocator);
+    auto pointer = mut_ptr<T>::from_raw_parts(static_cast<T*>(header->value));
+    rstd::construct_at(pointer.as_raw_ptr(), rstd::forward<Args>(args)...);
+    return RcAllocation<T> { .header = header, .pointer = pointer };
+}
+
+template<typename T, alloc::rc::StoragePolicy Policy, typename AllocatorType, typename... Args>
+auto rc_allocate_value_with(AllocatorType allocator, Args&&... args) -> RcAllocation<T> {
+    if constexpr (Policy == alloc::rc::StoragePolicy::Separate) {
+        return rc_allocate_separate_value_with<T>(allocator, rstd::forward<Args>(args)...);
+    } else if constexpr (Policy == alloc::rc::StoragePolicy::Embed) {
+        return rc_allocate_embedded_value_with<T>(allocator, rstd::forward<Args>(args)...);
+    } else {
+        static_assert(Policy != Policy);
+    }
+}
+
+template<typename Element, typename AllocatorType, typename Value>
+auto rc_allocate_array_with(AllocatorType allocator, usize count, Value const& initial)
+    -> RcAllocation<Element[]> {
+    using Header           = RcAllocatorHeader<Element, AllocatorType>;
+    auto  header_allocator = rc_rebind_alloc<AllocatorType, Header>(allocator);
+    auto* header           = header_allocator.allocate(1);
+    rstd::construct_at(header, allocator, count);
+    auto* value   = header->allocator.allocate(count);
+    header->value = value;
+    for (usize index = 0; index < count; ++index) {
+        rstd::construct_at(value + index, initial);
+    }
+    return RcAllocation<Element[]> {
+        .header  = header,
+        .pointer = mut_ptr<Element[]>::from_raw_parts(value, count),
+    };
+}
+
+template<typename T, typename Deleter>
+auto rc_external_data(T* pointer, Deleter&& deleter) -> RcData<T> {
+    using StoredDeleter = mtp::rm_cvf<Deleter>;
+    auto* header = new RcDeleterHeader<T, StoredDeleter>(pointer, rstd::forward<Deleter>(deleter));
+    auto  value_pointer = mut_ptr<RcTarget<T>>::from_raw_parts(const_cast<RcTarget<T>*>(pointer));
+    return rc_data<T>(header, value_pointer);
+}
+
+template<typename T, typename Deleter, typename AllocatorType>
+auto rc_external_data(T* pointer, Deleter&& deleter, AllocatorType allocator) -> RcData<T> {
+    using StoredDeleter    = mtp::rm_cvf<Deleter>;
+    using Header           = RcDeleterAllocatorHeader<T, StoredDeleter, AllocatorType>;
+    auto  header_allocator = rc_rebind_alloc<AllocatorType, Header>(allocator);
+    auto* header           = header_allocator.allocate(1);
+    rstd::construct_at(header, pointer, rstd::forward<Deleter>(deleter), rstd::move(allocator));
+    auto value_pointer = mut_ptr<RcTarget<T>>::from_raw_parts(const_cast<RcTarget<T>*>(pointer));
+    return rc_data<T>(header, value_pointer);
+}
 
 template<typename T>
-struct RcInnerArrayImpl : RcInnerConst<T> {
-    const usize size;
+void rc_drop_strong(RcData<T> data) noexcept {
+    auto* header = data.header;
+    if (header == nullptr) return;
+    --header->strong;
+    if (header->strong != 0) return;
 
-    RcInnerArrayImpl(usize n) noexcept: RcInnerConst<T>(), size(n) {}
-};
+    auto pointer = rc_pointer(data);
+    auto layout  = Layout::for_value(pointer.as_ptr());
+    if (! header->external_drop) {
+        rstd::ptr_::drop_in_place(pointer);
+    }
+    header->release_value(header, layout);
+
+    --header->weak;
+    if (header->weak == 0) {
+        header->release_header(header);
+    }
+}
 
 template<typename T>
-struct RcInnerImpl<T[], StoragePolicy::Separate> : RcInnerArrayImpl<T[]> {
-    using value_t = mtp::rm_ext<T>;
-
-    RcInnerImpl(usize n) noexcept: RcInnerArrayImpl<T[]>(n) {}
-
-    void do_delete(DeleteType t) override {
-        auto self = this;
-        if (t == DeleteType::Value) {
-            auto ptr = const_cast<mtp::rm_const<value_t>*>(self->value);
-            for (usize i = 0; i < this->size; i++) {
-                (ptr + i)->~value_t();
-            }
-            ::operator delete[](
-                (void*)ptr, sizeof(value_t) * this->size, rstd::align_val_t { alignof(value_t) });
-            self->value = nullptr;
-        } else {
-            delete self;
-        }
+void rc_drop_weak(RcData<T> data) noexcept {
+    auto* header = data.header;
+    if (header == nullptr) return;
+    --header->weak;
+    if (header->weak == 0) {
+        header->release_header(header);
     }
-
-    template<typename... Args>
-    void allocate_value(Args&&... args) {
-        auto* ptr = static_cast<value_t*>(
-            ::operator new[](sizeof(value_t) * this->size, rstd::align_val_t { alignof(value_t) }));
-        this->value = ptr;
-        for (usize i = 0; i < this->size; i++) {
-            new (ptr + i) value_t(rstd::forward<Args>(args)...);
-        }
-    }
-};
-
-template<typename T, typename ValueDeleter>
-struct RcInnerImpl<T, StoragePolicy::SeparateWithDeleter, ValueDeleter> : RcInnerConst<T> {
-    ValueDeleter value_deletor;
-
-    RcInnerImpl(T* p, ValueDeleter d): RcInnerConst<T>(), value_deletor(rstd::move(d)) {
-        this->value = p;
-    }
-
-    void do_delete(DeleteType t) override {
-        auto self = this;
-
-        if (t == DeleteType::Value) {
-            self->value_deletor(const_cast<mtp::rm_cv<T>*>(self->value));
-            self->value = nullptr;
-        } else {
-            delete self;
-        }
-    }
-};
-
-template<typename T, typename Allocator, StoragePolicy P, typename ValueDeleter = void>
-struct RcInnerAllocImpl {
-    static_assert(false);
-};
-
-template<typename T, typename Allocator>
-struct RcInnerAllocImpl<T, Allocator, StoragePolicy::Embed> : RcInnerImpl<T, StoragePolicy::Embed> {
-    using base_t = RcInnerImpl<T, StoragePolicy::Embed>;
-    Allocator allocator;
-
-    RcInnerAllocImpl(Allocator a): base_t(), allocator(a) {}
-    void do_delete(DeleteType t) override {
-        auto self = this;
-        if (t == DeleteType::Value) {
-            self->value->~T();
-            self->value     = nullptr;
-            self->has_value = false;
-        } else {
-            auto self_allocator = rebind_alloc<Allocator, RcInnerAllocImpl>(self->allocator);
-            self_allocator.deallocate(self, 1);
-        }
-    }
-
-    template<typename... Args>
-    void allocate_value(Args&&... args) {
-        base_t::template allocate_value<Args...>(rstd::forward<Args>(args)...);
-    }
-};
-
-template<typename T, typename Allocator>
-struct RcInnerAllocImpl<T, Allocator, StoragePolicy::Separate>
-    : RcInnerImpl<T, StoragePolicy::Separate> {
-    static_assert(! mtp::is_array<T>);
-    using base_t = RcInnerImpl<T, StoragePolicy::Separate>;
-    Allocator allocator;
-
-    RcInnerAllocImpl(Allocator a): base_t(), allocator(a) {}
-    void do_delete(DeleteType t) override {
-        auto self = this;
-        if (t == DeleteType::Value) {
-            self->value->~T();
-            self->allocator.deallocate(const_cast<mtp::rm_cv<T>*>(self->value), 1);
-            self->value = nullptr;
-        } else {
-            auto self_allocator = rebind_alloc<Allocator, RcInnerAllocImpl>(self->allocator);
-            self_allocator.deallocate(self, 1);
-        }
-    }
-
-    template<typename... Args>
-    void allocate_value(Args&&... args) {
-        auto* ptr = allocator.allocate(1);
-        new (ptr) T(rstd::forward<Args>(args)...);
-        this->value = ptr;
-    }
-};
-
-template<typename T, typename Allocator>
-struct RcInnerAllocImpl<T[], Allocator, StoragePolicy::Separate>
-    : RcInnerImpl<T[], StoragePolicy::Separate> {
-    using base_t  = RcInnerImpl<T[], StoragePolicy::Separate>;
-    using value_t = mtp::rm_ext<T>;
-    Allocator allocator;
-
-    RcInnerAllocImpl(Allocator a, usize n): base_t(n), allocator(a) {}
-    void do_delete(DeleteType t) override {
-        auto self = this;
-        if (t == DeleteType::Value) {
-            auto n = base_t::size;
-            for (usize i = 0; i < n; i++) {
-                (self->value + i)->~value_t();
-            }
-            auto p = const_cast<mtp::rm_const<value_t>*>(self->value);
-            self->allocator.deallocate(p, n);
-            self->value = nullptr;
-        } else {
-            auto self_allocator = rebind_alloc<Allocator, RcInnerAllocImpl>(self->allocator);
-            self_allocator.deallocate(self, 1);
-        }
-    }
-
-    template<typename... Args>
-    void allocate_value(Args&&... args) {
-        auto  n     = this->size;
-        auto* ptr   = allocator.allocate(n);
-        this->value = ptr;
-        for (usize i = 0; i < n; i++) {
-            new (ptr + i) value_t(rstd::forward<Args>(args)...);
-        }
-    }
-};
-
-template<typename T, typename Allocator, typename ValueDeleter>
-struct RcInnerAllocImpl<T, Allocator, StoragePolicy::SeparateWithDeleter, ValueDeleter>
-    : RcInnerImpl<T, StoragePolicy::SeparateWithDeleter, ValueDeleter> {
-    using base_t = RcInnerImpl<T, StoragePolicy::Separate>;
-    Allocator allocator;
-
-    RcInnerAllocImpl(Allocator a, T* p, ValueDeleter d): base_t(p, rstd::move(d)), allocator(a) {}
-
-    void do_delete(DeleteType t) override {
-        auto self = this;
-
-        if (t == DeleteType::Value) {
-            base_t::value_deletor(self->value);
-            self->value = nullptr;
-        } else {
-            auto self_allocator = rebind_alloc<Allocator, RcInnerAllocImpl>(self->allocator);
-            self_allocator.deallocate(self, 1);
-        }
-    }
-};
-
-/// A single-threaded reference-counting pointer, analogous to Rust's `Rc<T>`.
-/// \tparam T The type of the value managed by reference counting.
-export template<typename T>
-class Rc;
+}
 
 struct RcMakeHelper {
     template<typename T>
-    static auto make_rc(Rc<T>::inner_t* inner) noexcept {
-        return Rc<T>(inner);
+    static auto make(RcData<T> data) noexcept -> alloc::rc::Rc<T> {
+        return alloc::rc::Rc<T>(data);
     }
 };
 
-/// A non-owning reference to an `Rc`-managed allocation that does not prevent deallocation.
-/// \tparam T The type of the referenced value.
+namespace alloc::rc
+{
+
+export template<typename T>
+class RcRaw {
+    RcData<T> self;
+
+    friend class Rc<T>;
+    explicit RcRaw(RcData<T> data) noexcept: self(data) {}
+
+    auto take() noexcept -> RcData<T> { return rstd::exchange(self, {}); }
+
+public:
+    using Target = RcTarget<T>;
+
+    RcRaw(const RcRaw&)            = delete;
+    RcRaw& operator=(const RcRaw&) = delete;
+
+    RcRaw(RcRaw&& other) noexcept: self(other.take()) {}
+    RcRaw& operator=(RcRaw&&) = delete;
+
+    auto as_ptr() const noexcept -> mut_ptr<Target> { return rc_pointer(self); }
+};
+
 export template<typename T>
 class Weak final {
+    RcData<T> self;
+
     friend class Rc<T>;
-    using inner_t = RcInner<mtp::add_const<T>>;
-    inner_t* m_ptr;
-
-    explicit Weak(inner_t* p) noexcept: m_ptr(p) {}
+    explicit Weak(RcData<T> data) noexcept: self(data) {}
 
 public:
-    /// Creates an empty `Weak` pointer.
-    Weak() noexcept: m_ptr(nullptr) {}
+    using Target = RcTarget<T>;
 
-    /// Copy constructs a `Weak` pointer, incrementing the weak count.
+    Weak() noexcept = default;
     Weak(const Weak& other) noexcept: Weak(other.clone()) {}
-
-    /// Move constructs a `Weak` pointer, taking ownership from `other`.
-    Weak(Weak&& other) noexcept: m_ptr(other.m_ptr) { other.m_ptr = nullptr; }
-
-    ~Weak() {
-        if (m_ptr) {
-            m_ptr->dec_weak();
-            if (m_ptr->weak == 0) {
-                m_ptr->do_delete(DeleteType::Self);
-            }
+    Weak& operator=(const Weak& other) noexcept {
+        if (this != &other) {
+            auto replacement = other.clone();
+            rstd::swap(self, replacement.self);
         }
+        return *this;
     }
 
-    /// Creates a new `Weak` pointer to the same allocation.
-    /// \return A cloned `Weak` pointer.
+    Weak(Weak&& other) noexcept: self(rstd::exchange(other.self, {})) {}
+    Weak& operator=(Weak&& other) noexcept {
+        if (this != &other) {
+            rc_drop_weak(self);
+            self = rstd::exchange(other.self, {});
+        }
+        return *this;
+    }
+
+    ~Weak() { rc_drop_weak(self); }
+
     auto clone() const noexcept -> Weak {
-        if (m_ptr) m_ptr->inc_weak();
-        return Weak(m_ptr);
+        if (self.header != nullptr) self.header->inc_weak();
+        return Weak(self);
     }
 
-    /// Attempts to upgrade the `Weak` pointer to an `Rc`, returning `None` if the value has been dropped.
-    /// \return An `Option<Rc<T>>` containing the upgraded pointer, or `None`.
     auto upgrade() const -> Option<Rc<T>> {
-        if (! m_ptr || m_ptr->strong == 0) return {};
-        m_ptr->inc_strong();
-        return Some(RcMakeHelper::make_rc<T>(m_ptr));
+        if (self.header == nullptr || self.header->strong == 0) return None();
+        self.header->inc_strong();
+        return Some(RcMakeHelper::make<T>(self));
     }
 
-    /// Returns the number of strong (`Rc`) pointers to the same allocation.
-    /// \return The strong reference count.
-    auto strong_count() const -> usize { return m_ptr ? m_ptr->strong : 0; }
+    auto strong_count() const noexcept -> usize {
+        return self.header == nullptr ? 0 : self.header->strong;
+    }
 
-    /// Returns the number of `Weak` pointers to the same allocation.
-    /// \return The weak reference count (excluding the implicit weak held by strong pointers).
-    auto weak_count() const -> usize { return m_ptr ? m_ptr->weak - 1 : 0; }
+    auto weak_count() const noexcept -> usize {
+        if (self.header == nullptr) return 0;
+        auto weak = self.header->weak;
+        return self.header->strong == 0 ? weak : weak - 1;
+    }
+
+    bool expired() const noexcept { return strong_count() == 0; }
+
+    auto as_ptr() const noexcept -> mut_ptr<Target> { return rc_pointer(self); }
 };
 
-template<typename T>
-class RcBase {
-protected:
-    using inner_t = RcInner<mtp::add_const<T>>;
-    inner_t* m_ptr;
-
-    explicit RcBase(inner_t* p) noexcept: m_ptr(p) {}
-
-    auto inner() const { return m_ptr; }
-    auto inner() { return m_ptr; }
-
-    auto drop() {
-        if (m_ptr) {
-            m_ptr->dec_strong();
-            if (m_ptr->strong == 0) {
-                m_ptr->do_delete(DeleteType::Value);
-                m_ptr->dec_weak();
-                if (m_ptr->weak == 0) {
-                    m_ptr->do_delete(DeleteType::Self);
-                }
-            }
-        }
-    }
-
-    template<typename Deleter>
-    static auto allocate_inner(T* p, Deleter&& d) -> inner_t* {
-        return new RcInnerImpl<T, StoragePolicy::SeparateWithDeleter, Deleter>(p, rstd::move(d));
-    }
-
-    template<typename Deleter, typename Allocator>
-    static auto allocate_inner(T* p, Allocator alloc, Deleter&& d) -> inner_t* {
-        using inner_t = RcInnerAllocImpl<T, Allocator, StoragePolicy::SeparateWithDeleter, Deleter>;
-        auto self_allocator = rebind_alloc<Allocator, inner_t>(alloc);
-        auto mem            = (rstd::byte*)self_allocator.allocate(1);
-        return new (mem) inner_t(alloc, p, rstd::move(d));
-    }
-
-public:
-    using value_t       = mtp::rm_ext<T>;
-    using const_value_t = mtp::add_const<mtp::rm_ext<T>>;
-
-    auto strong_count() const -> usize { return m_ptr ? m_ptr->strong : 0; }
-
-    auto weak_count() const -> usize { return m_ptr ? m_ptr->weak - 1 : 0; }
-
-    auto is_unique() const -> bool { return strong_count() == 1 && weak_count() == 0; }
-
-    auto size() const -> usize {
-        if (m_ptr) {
-            if constexpr (mtp::is_array<T>) {
-                auto p = static_cast<const RcInnerArrayImpl<T>*>(m_ptr);
-                return p->size;
-            } else {
-                return 1;
-            }
-        } else {
-            return 0;
-        }
-    }
-
-    explicit operator bool() const noexcept { return m_ptr != nullptr; }
-
-    void reset() {
-        drop();
-        m_ptr = nullptr;
-    }
-    auto get() const noexcept -> const_value_t* {
-        auto p = this->inner();
-        return p ? p->value : nullptr;
-    }
-};
-
-template<typename T>
-class RcAdaptor : public RcBase<T> {
-protected:
-    using inner_t = RcBase<T>::inner_t;
-    explicit RcAdaptor(inner_t* p) noexcept: RcBase<T>(p) {}
-
-public:
-    using value_t       = RcBase<T>::value_t;
-    using const_value_t = RcBase<T>::const_value_t;
-    auto to_const() const -> Rc<const T> {
-        this->m_ptr->inc_strong();
-        return RcMakeHelper::make_rc<const T>(this->m_ptr);
-    }
-    auto get() noexcept -> value_t* {
-        auto p = this->inner();
-        return p ? const_cast<value_t*>(p->value) : nullptr;
-    }
-    auto get() const noexcept -> const_value_t* {
-        auto p = this->inner();
-        return p ? p->value : nullptr;
-    }
-};
-template<typename F>
-class RcAdaptor<const F> : public RcBase<const F> {
-    using T = const F;
-
-protected:
-    using inner_t = RcBase<T>::inner_t;
-    explicit RcAdaptor(inner_t* p) noexcept: RcBase<T>(p) {}
-
-public:
-    using const_value_t = RcBase<T>::const_value_t;
-    auto get() const noexcept -> const_value_t* {
-        auto p = this->inner();
-        return p ? p->value : nullptr;
-    }
-};
-
-/// A single-threaded reference-counting pointer, analogous to Rust's `Rc<T>`.
-/// \tparam T The type of the value managed by reference counting.
 export template<typename T>
-class Rc final : public RcAdaptor<T> {
-    friend struct RcMakeHelper;
-    using inner_t = RcBase<T>::inner_t;
-    explicit Rc(inner_t* p) noexcept: RcAdaptor<T>(p) {}
+class Rc final : public DefaultInClass<Rc<T>, Clone> {
+    RcData<T> self;
+
+    friend struct ::RcMakeHelper;
+    template<typename>
+    friend class Rc;
+
+    explicit Rc(RcData<T> data) noexcept: self(data) {}
 
 public:
     USE_TRAIT(Rc)
 
-    using Target = mtp::rm_const<T>;
+    using Target        = RcTarget<T>;
+    using value_t       = mtp::rm_ext<Target>;
+    using const_value_t = mtp::add_const<value_t>;
 
-    /// Creates an empty `Rc` that does not point to any allocation.
-    Rc(): Rc((inner_t*)nullptr) {}
-    ~Rc() { RcBase<T>::drop(); }
+    Rc() noexcept = default;
+    ~Rc() { rc_drop_strong(self); }
 
-    /// Copy constructs an `Rc`, incrementing the strong reference count.
-    Rc(const Rc& other) noexcept(noexp): Rc(other.clone()) {}
-    Rc& operator=(const Rc& other) noexcept(noexp) {
+    Rc(const Rc& other) noexcept(RC_COPY_NOEXCEPT): Rc(other.clone()) {}
+    Rc& operator=(const Rc& other) noexcept(RC_COPY_NOEXCEPT) {
         if (this != &other) {
-            Rc(other.clone()).swap(*this);
+            auto replacement = other.clone();
+            swap(replacement);
         }
         return *this;
     }
 
-    Rc(Rc&& other) noexcept: Rc(other.m_ptr) { other.m_ptr = nullptr; }
+    Rc(Rc&& other) noexcept: self(rstd::exchange(other.self, {})) {}
     Rc& operator=(Rc&& other) noexcept {
-        Rc(rstd::move(other)).swap(*this);
+        if (this != &other) {
+            rc_drop_strong(self);
+            self = rstd::exchange(other.self, {});
+        }
         return *this;
     }
 
     template<typename U>
-        requires mtp::is_const<T> && mtp::same_as<mtp::rm_cv<T>, U>
-    Rc(const Rc<U>& o): Rc(o.to_const()) {}
+        requires mtp::is_const<T> && mtp::same_as<mtp::rm_const<T>, U>
+    Rc(const Rc<U>& other): self(rc_data<T>(other.self.header, rc_pointer(other.self))) {
+        if (self.header != nullptr) self.header->inc_strong();
+    }
 
-    /// Constructs an `Rc` from a raw pointer with the default deleter.
-    /// \param p The raw pointer to take ownership of.
-    explicit Rc(T* p): Rc(p, mtp::default_delete<T>()) {}
-    /// Constructs an `Rc` from a raw pointer with a custom deleter.
-    /// \tparam Deleter The type of the deleter callable.
-    /// \param p The raw pointer to take ownership of.
-    /// \param d The deleter to invoke when the value is dropped.
+    explicit Rc(T* pointer)
+        requires Impled<Target, Sized>
+        : Rc(pointer, mtp::default_delete<T>()) {}
+
     template<typename Deleter>
-    Rc(T* p, Deleter&& d): Rc(RcBase<T>::allocate_inner(p, rstd::move(d))) {}
+    Rc(T* pointer, Deleter&& deleter)
+        requires Impled<Target, Sized>
+        : self(rc_external_data(pointer, rstd::forward<Deleter>(deleter))) {}
 
-    /// Constructs an `Rc` from a raw pointer with a custom deleter and allocator.
-    /// \tparam Deleter The type of the deleter callable.
-    /// \tparam Allocator The type of the allocator.
-    /// \param p The raw pointer to take ownership of.
-    /// \param d The deleter to invoke when the value is dropped.
-    /// \param alloc The allocator used for the control block.
-    template<typename Deleter, typename Allocator>
-    Rc(T* p, Deleter&& d, Allocator alloc)
-        : Rc(RcBase<T>::allocate_inner(p, alloc, rstd::move(d))) {}
+    template<typename Deleter, typename AllocatorType>
+    Rc(T* pointer, Deleter&& deleter, AllocatorType allocator)
+        requires Impled<Target, Sized>
+        : self(rc_external_data(pointer, rstd::forward<Deleter>(deleter), rstd::move(allocator))) {}
 
-    /// Creates a `Weak` pointer to the same allocation.
-    /// \return A `Weak<T>` that does not contribute to the strong count.
-    auto downgrade() const -> Weak<T> {
-        this->m_ptr->inc_weak();
-        return Weak<T>(this->m_ptr);
-    }
-    /// Creates a new `Rc` pointer to the same allocation, incrementing the strong count.
-    /// \return A cloned `Rc`.
-    auto clone() const noexcept(noexp) -> Rc {
-        if (this->m_ptr) this->m_ptr->inc_strong();
-        return Rc(this->m_ptr);
+    auto clone() const noexcept(RC_COPY_NOEXCEPT) -> Rc {
+        if (self.header != nullptr) self.header->inc_strong();
+        return Rc(self);
     }
 
-    /// Returns an immutable borrow of the managed value.
-    auto deref() const noexcept -> ref<Target> {
-        if constexpr (mtp::is_array<Target>) {
-            return ref<Target>::from_raw_parts(this->get(), this->size());
+    void reset() noexcept {
+        rc_drop_strong(self);
+        self = {};
+    }
+
+    auto downgrade() const noexcept -> Weak<T> {
+        if (self.header != nullptr) self.header->inc_weak();
+        return Weak<T>(self);
+    }
+
+    auto strong_count() const noexcept -> usize {
+        return self.header == nullptr ? 0 : self.header->strong;
+    }
+
+    auto weak_count() const noexcept -> usize {
+        if (self.header == nullptr) return 0;
+        auto weak = self.header->weak;
+        return self.header->strong == 0 ? weak : weak - 1;
+    }
+
+    auto is_unique() const noexcept -> bool {
+        return self.header != nullptr && self.header->strong == 1 && self.header->weak == 1;
+    }
+
+    auto size() const noexcept -> usize {
+        if (self.header == nullptr) return 0;
+        if constexpr (mtp::DSTArray<Target>) {
+            return self.metadata;
         } else {
-            return ref<Target>::from_raw_parts(this->get());
+            return 1;
         }
     }
 
-    /// Swaps the inner pointers of two `Rc`s.
-    /// \param other The other `Rc` to swap with.
-    void swap(Rc& other) noexcept { rstd::swap(this->m_ptr, other.m_ptr); }
+    explicit operator bool() const noexcept { return self.header != nullptr; }
+
+    auto as_ptr() const noexcept -> mut_ptr<Target> { return rc_pointer(self); }
+
+    auto get() noexcept -> value_t*
+        requires(! mtp::is_const<T>) && (! mtp::DST<Target> || mtp::DSTArray<Target>)
+    {
+        return self.header == nullptr ? nullptr : as_ptr().as_raw_ptr();
+    }
+
+    auto get() const noexcept -> const_value_t*
+        requires(! mtp::DST<Target> || mtp::DSTArray<Target>)
+    {
+        return self.header == nullptr ? nullptr : as_ptr().as_raw_ptr();
+    }
+
+    auto deref() const noexcept -> ref<Target> { return as_ptr().as_ref(); }
+
+    auto to_const() const -> Rc<const T>
+        requires(! mtp::is_const<T>) && Impled<Target, Sized>
+    {
+        if (self.header != nullptr) self.header->inc_strong();
+        return RcMakeHelper::make<const T>(rc_data<const T>(self.header, rc_pointer(self)));
+    }
+
+    static bool ptr_eq(const Rc& left, const Rc& right) noexcept {
+        return left.self.header == right.self.header;
+    }
+
+    static auto from_raw(RcRaw<T> raw) noexcept -> Rc { return Rc(raw.take()); }
+
+    auto into_raw() noexcept -> RcRaw<T> { return RcRaw<T>(rstd::exchange(self, {})); }
+
+    void swap(Rc& other) noexcept { rstd::swap(self, other.self); }
 };
 
-/// Constructs an `Rc<T>` by allocating and constructing `T` in place.
-/// \tparam T The value type.
-/// \tparam Sp The storage policy (default: `Separate`).
-/// \tparam Args The constructor argument types.
-/// \param args The arguments forwarded to the constructor of `T`.
-/// \return An `Rc<T>` owning the newly constructed value.
-export template<typename T, StoragePolicy Sp = StoragePolicy::Separate, typename... Args>
-    requires(! mtp::is_array<T>)
+export template<typename T, StoragePolicy Policy = StoragePolicy::Separate, typename... Args>
+    requires Impled<T, Sized>
 auto make_rc(Args&&... args) -> Rc<T> {
-    auto inner = new RcInnerImpl<T, Sp>();
-    inner->allocate_value(rstd::forward<Args>(args)...);
-    return RcMakeHelper::make_rc<T>(inner);
+    auto allocation = rc_allocate_value<T, Policy>(rstd::forward<Args>(args)...);
+    return RcMakeHelper::make<T>(rc_data<T>(allocation.header, allocation.pointer));
 }
 
-/// Constructs an `Rc<T[]>` for an array type, initializing `n` elements with `init`.
-/// \tparam T The array element type.
-/// \tparam Sp The storage policy (default: `Separate`).
-/// \param n The number of elements in the array.
-/// \param init The value used to initialize each element.
-/// \return An `Rc<T[]>` owning the newly constructed array.
-export template<typename T, StoragePolicy Sp = StoragePolicy::Separate, typename... Args>
-    requires mtp::is_array<T>
-auto make_rc(usize n, const typename Rc<T>::const_value_t& init) -> Rc<T> {
-    auto inner = new RcInnerImpl<T, Sp>(n);
-    inner->allocate_value(init);
-    return RcMakeHelper::make_rc<T>(inner);
+export template<typename T, StoragePolicy Policy = StoragePolicy::Separate>
+    requires mtp::DSTArray<T> && (Policy == StoragePolicy::Separate)
+auto make_rc(usize count, typename Rc<T>::const_value_t const& initial) -> Rc<T> {
+    using Element   = mtp::rm_ext<T>;
+    auto allocation = rc_allocate_array<Element>(count, initial);
+    return RcMakeHelper::make<T>(rc_data<T>(allocation.header, allocation.pointer));
 }
 
-/// Constructs an `Rc<T>` using a custom allocator, constructing `T` in place.
-/// \tparam T The value type.
-/// \tparam Sp The storage policy (default: `Separate`).
-/// \tparam Allocator The allocator type.
-/// \tparam Args The constructor argument types.
-/// \param alloc The allocator to use.
-/// \param args The arguments forwarded to the constructor of `T`.
-/// \return An `Rc<T>` owning the newly constructed value.
+export template<typename T, StoragePolicy Policy = StoragePolicy::Separate, typename U>
+    requires mtp::DST<T> && (! mtp::DSTArray<T>) && Impled<mtp::rm_cvf<U>, Sized> &&
+             mtp::dyn_traits<T>::template
+Impled<mtp::rm_cvf<U>> auto make_rc(U&& value) -> Rc<T> {
+    using Concrete  = mtp::rm_cvf<U>;
+    auto allocation = rc_allocate_value<Concrete, Policy>(rstd::forward<U>(value));
+    auto pointer    = T::from_ptr(allocation.pointer.as_raw_ptr());
+    return RcMakeHelper::make<T>(rc_data<T>(allocation.header, pointer));
+}
+
 export template<typename T,
-                StoragePolicy Sp = StoragePolicy::Separate,
-                typename Allocator,
+                StoragePolicy Policy = StoragePolicy::Separate,
+                typename AllocatorType,
                 typename... Args>
-    requires(! mtp::is_array<T>)
-auto allocate_make_rc(const Allocator& alloc, Args&&... args) -> Rc<T> {
-    using inner_t       = RcInnerAllocImpl<T, Allocator, Sp>;
-    auto self_allocator = rebind_alloc<Allocator, inner_t>(alloc);
-
-    auto mem   = (rstd::byte*)self_allocator.allocate(1);
-    auto inner = new (mem) inner_t(alloc);
-    inner->allocate_value(rstd::forward<Args>(args)...);
-    return RcMakeHelper::make_rc<T>(inner);
-}
-/// Constructs an `Rc<T[]>` for an array type using a custom allocator.
-/// \tparam T The array element type.
-/// \tparam Sp The storage policy (default: `Separate`).
-/// \tparam Allocator The allocator type.
-/// \param alloc The allocator to use.
-/// \param n The number of elements in the array.
-/// \param t The value used to initialize each element.
-/// \return An `Rc<T[]>` owning the newly constructed array.
-export template<typename T, StoragePolicy Sp = StoragePolicy::Separate, typename Allocator>
-    requires mtp::is_array<T>
-auto allocate_make_rc(const Allocator& alloc, usize n, typename Rc<T>::const_value_t& t) -> Rc<T> {
-    using inner_t       = RcInnerAllocImpl<T, Allocator, Sp>;
-    auto self_allocator = rebind_alloc<Allocator, inner_t>(alloc);
-
-    auto mem   = (rstd::byte*)self_allocator.allocate(1);
-    auto inner = new (mem) inner_t(alloc, n);
-    inner->allocate_value(t);
-    return RcMakeHelper::make_rc<T>(inner);
+    requires Impled<T, Sized>
+auto allocate_make_rc(AllocatorType const& allocator, Args&&... args) -> Rc<T> {
+    auto allocation = rc_allocate_value_with<T, Policy>(allocator, rstd::forward<Args>(args)...);
+    return RcMakeHelper::make<T>(rc_data<T>(allocation.header, allocation.pointer));
 }
 
-/// Swaps two `Rc` pointers.
-/// \param lhs The first `Rc`.
-/// \param rhs The second `Rc`.
+export template<typename T, StoragePolicy Policy = StoragePolicy::Separate, typename AllocatorType>
+    requires mtp::DSTArray<T> && (Policy == StoragePolicy::Separate)
+auto allocate_make_rc(AllocatorType const&                 allocator,
+                      usize                                count,
+                      typename Rc<T>::const_value_t const& initial) -> Rc<T> {
+    using Element   = mtp::rm_ext<T>;
+    auto allocation = rc_allocate_array_with<Element>(allocator, count, initial);
+    return RcMakeHelper::make<T>(rc_data<T>(allocation.header, allocation.pointer));
+}
+
+export template<typename T,
+                StoragePolicy Policy = StoragePolicy::Separate,
+                typename AllocatorType,
+                typename U>
+    requires mtp::DST<T> && (! mtp::DSTArray<T>) && Impled<mtp::rm_cvf<U>, Sized> &&
+             mtp::dyn_traits<T>::template
+Impled<mtp::rm_cvf<U>> auto allocate_make_rc(AllocatorType const& allocator, U&& value) -> Rc<T> {
+    using Concrete  = mtp::rm_cvf<U>;
+    auto allocation = rc_allocate_value_with<Concrete, Policy>(allocator, rstd::forward<U>(value));
+    auto pointer    = T::from_ptr(allocation.pointer.as_raw_ptr());
+    return RcMakeHelper::make<T>(rc_data<T>(allocation.header, pointer));
+}
+
 export template<typename T>
-void swap(Rc<T>& lhs, Rc<T>& rhs) noexcept {
-    lhs.swap(rhs);
+void swap(Rc<T>& left, Rc<T>& right) noexcept {
+    left.swap(right);
 }
+
 } // namespace alloc::rc

@@ -10,6 +10,68 @@ using namespace rstd::rc;
 static_assert(rstd::Impled<Rc<int>, rstd::ops::Deref>);
 static_assert(! rstd::Impled<Rc<int>, rstd::ops::DerefMut>);
 
+struct RcDynTrait {
+    template<typename Self, typename = void>
+    struct Api {
+        using Trait = RcDynTrait;
+
+        auto value() const noexcept -> int { return rstd::trait_call<0>(this); }
+    };
+
+    template<typename T>
+    using Funcs = rstd::TraitFuncs<&T::value>;
+};
+
+struct alignas(64) RcDynPayload {
+    int* drops;
+    int  stored;
+
+    RcDynPayload(int& drops, int value): drops(&drops), stored(value) {}
+    RcDynPayload(const RcDynPayload&)            = delete;
+    RcDynPayload& operator=(const RcDynPayload&) = delete;
+
+    RcDynPayload(RcDynPayload&& other) noexcept: drops(other.drops), stored(other.stored) {
+        other.drops = nullptr;
+    }
+
+    ~RcDynPayload() {
+        if (drops != nullptr) ++*drops;
+    }
+
+    auto value() const noexcept -> int { return stored; }
+};
+
+struct RcDynEmptyPayload {
+    auto value() const noexcept -> int { return 7; }
+};
+
+struct RcDynNoTrait {};
+
+template<>
+struct rstd::Impl<RcDynTrait, RcDynPayload> : rstd::LinkClassMethod<RcDynTrait, RcDynPayload> {};
+
+template<>
+struct rstd::Impl<RcDynTrait, RcDynEmptyPayload>
+    : rstd::LinkClassMethod<RcDynTrait, RcDynEmptyPayload> {};
+
+using RcDyn     = Rc<rstd::dyn<RcDynTrait>>;
+using RcDynWeak = Weak<rstd::dyn<RcDynTrait>>;
+using RcDynRaw  = RcRaw<rstd::dyn<RcDynTrait>>;
+using RcDynPtr  = rstd::mut_ptr<rstd::dyn<RcDynTrait>>;
+
+template<typename T, typename U>
+concept CanMakeRc = requires(U&& value) { make_rc<T>(rstd::forward<U>(value)); };
+
+static_assert(sizeof(Rc<int>) == sizeof(rstd::mut_ptr<int>));
+static_assert(sizeof(Weak<int>) == sizeof(rstd::mut_ptr<int>));
+static_assert(sizeof(Rc<int[]>) == sizeof(rstd::mut_ptr<int[]>));
+static_assert(sizeof(Weak<int[]>) == sizeof(rstd::mut_ptr<int[]>));
+static_assert(sizeof(RcDyn) == sizeof(RcDynPtr));
+static_assert(sizeof(RcDynWeak) == sizeof(RcDynPtr));
+static_assert(sizeof(RcDynRaw) == sizeof(RcDynPtr));
+static_assert(CanMakeRc<RcDyn::Target, RcDynPayload>);
+static_assert(! CanMakeRc<RcDyn::Target, RcDynNoTrait>);
+
 struct TestStruct {
     int   value;
     bool* destroyed;
@@ -52,6 +114,15 @@ struct ArrayTestStruct {
     bool operator==(const ArrayTestStruct& other) const {
         return value == other.value && name == other.name;
     }
+};
+
+struct RcArrayDropProbe {
+    int* drops;
+
+    explicit RcArrayDropProbe(int& drops): drops(&drops) {}
+    RcArrayDropProbe(const RcArrayDropProbe&) = default;
+
+    ~RcArrayDropProbe() { ++*drops; }
 };
 
 TEST(Rc, BasicConstruction) {
@@ -191,6 +262,57 @@ TEST(Rc, CustomAllocator) {
     EXPECT_TRUE(deallocated);
 }
 
+TEST(Rc, CustomDeleterAndAllocator) {
+    bool allocated   = false;
+    bool deallocated = false;
+    bool deleted     = false;
+    {
+        TestAllocator<int> allocator(&allocated, &deallocated);
+        auto               deleter = [&deleted](int* pointer) {
+            deleted = true;
+            delete pointer;
+        };
+        Rc<int> rc(new int(31), deleter, allocator);
+        EXPECT_TRUE(allocated);
+        EXPECT_FALSE(deallocated);
+        EXPECT_FALSE(deleted);
+        EXPECT_EQ(*rc, 31);
+    }
+    EXPECT_TRUE(deleted);
+    EXPECT_TRUE(deallocated);
+}
+
+TEST(Rc, CustomAllocatorSupportsArrayAndEmbedStorage) {
+    bool allocated   = false;
+    bool deallocated = false;
+    int  drops       = 0;
+    {
+        TestAllocator<RcArrayDropProbe> allocator(&allocated, &deallocated);
+        RcArrayDropProbe                initial { drops };
+        {
+            auto array = allocate_make_rc<RcArrayDropProbe[]>(allocator, 2, initial);
+            EXPECT_EQ(array.as_ptr().len(), 2u);
+        }
+        EXPECT_EQ(drops, 2);
+    }
+    EXPECT_EQ(drops, 3);
+    EXPECT_TRUE(allocated);
+    EXPECT_TRUE(deallocated);
+
+    allocated      = false;
+    deallocated    = false;
+    bool destroyed = false;
+    {
+        TestAllocator<TestStruct> allocator(&allocated, &deallocated);
+        auto                      embedded =
+            allocate_make_rc<TestStruct, StoragePolicy::Embed>(allocator, 47, &destroyed);
+        EXPECT_EQ(embedded->value, 47);
+    }
+    EXPECT_TRUE(destroyed);
+    EXPECT_TRUE(allocated);
+    EXPECT_TRUE(deallocated);
+}
+
 TEST(Rc, Size) {
     // Test size for single object
     auto rc_single = make_rc<int>(42);
@@ -210,4 +332,114 @@ TEST(Rc, Constness) {
     const auto& const_val = val;
     int         x         = *const_val;
     (void)x;
+}
+
+TEST(Rc, ConstConversionSharesAllocation) {
+    auto          rc       = make_rc<int>(42);
+    Rc<const int> const_rc = rc;
+
+    EXPECT_EQ(*const_rc, 42);
+    EXPECT_EQ(rc.strong_count(), 2u);
+    EXPECT_TRUE(Rc<int>::ptr_eq(rc, rc));
+    static_assert(std::is_same_v<decltype(const_rc.get()), const int*>);
+}
+
+TEST(Rc, EmbedStorageUsesPointerDrop) {
+    bool destroyed = false;
+    {
+        auto rc = make_rc<TestStruct, StoragePolicy::Embed>(17, &destroyed);
+        EXPECT_EQ(rc->value, 17);
+        EXPECT_FALSE(destroyed);
+    }
+    EXPECT_TRUE(destroyed);
+}
+
+TEST(Rc, ArrayMetadataDrivesLayoutAndDrop) {
+    int drops = 0;
+    {
+        RcArrayDropProbe initial { drops };
+        {
+            auto rc = make_rc<RcArrayDropProbe[]>(3, initial);
+            EXPECT_EQ(rc.as_ptr().len(), 3u);
+            EXPECT_EQ(rstd::alloc::Layout::for_value(rc.as_ptr().as_ptr()).size,
+                      3 * sizeof(RcArrayDropProbe));
+        }
+        EXPECT_EQ(drops, 3);
+    }
+    EXPECT_EQ(drops, 4);
+}
+
+TEST(Rc, WeakCountRemainsCorrectAfterValueDrop) {
+    Weak<int> weak;
+    {
+        auto rc = make_rc<int>(9);
+        weak    = rc.downgrade();
+        EXPECT_EQ(weak.weak_count(), 1u);
+    }
+
+    EXPECT_TRUE(weak.expired());
+    EXPECT_EQ(weak.strong_count(), 0u);
+    EXPECT_EQ(weak.weak_count(), 1u);
+}
+
+TEST(RcDyn, DispatchCopyWeakAndRawRoundtrip) {
+    int  drops = 0;
+    auto rc    = make_rc<rstd::dyn<RcDynTrait>>(RcDynPayload { drops, 41 });
+
+    EXPECT_EQ(rc->value(), 41);
+    EXPECT_EQ(reinterpret_cast<rstd::usize>(rc.as_ptr().as_raw_ptr()) % 64, 0u);
+
+    auto copy      = rc;
+    auto weak      = rc.downgrade();
+    auto weak_copy = weak;
+    EXPECT_EQ(weak.weak_count(), 2u);
+    {
+        auto upgraded = weak.upgrade();
+        ASSERT_TRUE(upgraded.is_some());
+        EXPECT_EQ((*upgraded)->value(), 41);
+    }
+
+    copy.reset();
+    auto raw      = rc.into_raw();
+    auto metadata = raw.as_ptr().metadata();
+    auto restored = RcDyn::from_raw(rstd::move(raw));
+
+    EXPECT_FALSE(rc);
+    EXPECT_EQ(restored->value(), 41);
+    EXPECT_EQ(restored.as_ptr().metadata(), metadata);
+    EXPECT_EQ(weak.as_ptr().metadata(), metadata);
+    EXPECT_EQ(weak_copy.as_ptr().metadata(), metadata);
+
+    restored.reset();
+    EXPECT_EQ(drops, 1);
+    EXPECT_TRUE(weak.expired());
+    EXPECT_TRUE(weak_copy.expired());
+    EXPECT_EQ(weak.as_ptr().metadata(), metadata);
+}
+
+TEST(RcDyn, EmbedAndEmptyWeakPreserveMetadataState) {
+    int drops = 0;
+    {
+        auto rc = make_rc<rstd::dyn<RcDynTrait>, StoragePolicy::Embed>(RcDynPayload { drops, 23 });
+        EXPECT_EQ(rc->value(), 23);
+    }
+    EXPECT_EQ(drops, 1);
+
+    RcDynWeak weak;
+    EXPECT_TRUE(weak.expired());
+    EXPECT_EQ(weak.as_ptr(), nullptr);
+    EXPECT_EQ(weak.as_ptr().metadata(), nullptr);
+}
+
+TEST(RcDyn, CustomAllocatorPreservesDynDispatch) {
+    bool allocated   = false;
+    bool deallocated = false;
+    {
+        TestAllocator<RcDynEmptyPayload> allocator(&allocated, &deallocated);
+        auto rc = allocate_make_rc<rstd::dyn<RcDynTrait>>(allocator, RcDynEmptyPayload {});
+        EXPECT_TRUE(allocated);
+        EXPECT_FALSE(deallocated);
+        EXPECT_EQ(rc->value(), 7);
+    }
+    EXPECT_TRUE(deallocated);
 }

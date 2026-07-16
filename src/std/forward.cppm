@@ -24,6 +24,9 @@ export namespace rc
 {
 using rstd_alloc::rc::allocate_make_rc;
 using rstd_alloc::rc::make_rc;
+using rstd_alloc::rc::RcRaw;
+using rstd_alloc::rc::StoragePolicy;
+using rstd_alloc::rc::Weak;
 /// A single-threaded reference-counting pointer.
 using rstd_alloc::rc::Rc;
 } // namespace rc
