@@ -146,6 +146,18 @@ public:
     /// \return A `mut_ptr<T>` to the boxed value.
     constexpr auto as_mut_ptr() const noexcept -> mut_ptr<T> { return m_ptr.as_mut_ptr(); }
 
+    /// Downcasts a boxed `Any` value to its concrete type.
+    template<typename U>
+    auto downcast() && -> Result<Box<U>, Box>
+        requires mtp::same_as<T, rstd::dyn<rstd::any::Any>>
+    {
+        if (! rstd::any::is<U>(as_ref())) return Err(rstd::move(*this));
+
+        auto raw      = rstd::move(*this).into_raw();
+        auto concrete = mut_ptr<U>::from_raw_parts(static_cast<U*>(raw.as_raw_ptr()));
+        return Ok(Box<U>::from_raw(concrete));
+    }
+
     /// Creates a new `Box` by cloning all elements of the contained array.
     /// \return A new `Box` owning a cloned copy of the array.
     auto clone() const -> Self

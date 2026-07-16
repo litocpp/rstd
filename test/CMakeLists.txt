@@ -20,6 +20,15 @@ endif()
 set(
   RSTD_TEST_SOURCES
   trait.cpp
+  any.cpp
+  argparse/definition.cpp
+  argparse/parsing.cpp
+  argparse/relations.cpp
+  argparse/subcommands.cpp
+  argparse/values.cpp
+  argparse/help.cpp
+  argparse/lifecycle.cpp
+  argparse/errors.cpp
   array.cpp
   deref.cpp
   result.cpp
@@ -89,9 +98,11 @@ add_executable(rstd_test ${RSTD_TEST_SOURCES})
 
 target_sources(
   rstd_test
-  PRIVATE FILE_SET modules TYPE CXX_MODULES FILES log_module_check.cppm)
+  PRIVATE FILE_SET modules TYPE CXX_MODULES FILES log_module_check.cppm
+          any_module_check.cppm)
 
-target_link_libraries(rstd_test PRIVATE rstd::rstd rstd::json rstd::log GTest::gtest_main)
+target_link_libraries(rstd_test PRIVATE rstd::rstd rstd::json rstd::log rstd::argparse
+                                        GTest::gtest_main)
 
 include(GoogleTest)
 gtest_discover_tests(rstd_test)

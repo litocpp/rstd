@@ -38,6 +38,20 @@ TEST(OsStr, ToStringLossy) {
     EXPECT_EQ(s2.len(), 5u); // 'h'(1) + U+FFFD(3) + 'i'(1)
 }
 
+TEST(OsStr, PrefixAndSplitPreserveArbitraryBytes) {
+    rstd::u8         bytes[] = { '-', '-', 'n', 'a', 'm', 'e', '=', 0xFF };
+    rstd::ref<OsStr> value(bytes, 8);
+
+    EXPECT_TRUE(value.starts_with(rstd::ref<OsStr>("--")));
+    auto stripped = value.strip_prefix(rstd::ref<OsStr>("--"));
+    ASSERT_TRUE(stripped.is_some());
+    auto split = stripped->split_once('=');
+    ASSERT_TRUE(split.is_some());
+    EXPECT_EQ(split->get<0>().to_str(), rstd::Some(rstd::ref<rstd::str>("name")));
+    EXPECT_EQ(split->get<1>().len(), 1u);
+    EXPECT_EQ(split->get<1>().data()[0], 0xFF);
+}
+
 TEST(OsString, MakeEmpty) {
     auto s = OsString::make();
     EXPECT_TRUE(s.is_empty());

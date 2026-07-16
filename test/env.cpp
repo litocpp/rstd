@@ -65,6 +65,23 @@ TEST(Env, ArgsManualInit) {
     EXPECT_EQ("value", last.unwrap());
 }
 
+TEST(Env, ArgsOsPreservesBytes) {
+    const char  invalid[] = { 'v', static_cast<char>(0xff), '\0' };
+    const char* argv[]    = { "prog", invalid };
+    rstd::env::args_init(2, argv);
+
+    auto args = rstd::env::args_os();
+    EXPECT_EQ(rstd::as<rstd::iter::ExactSizeIterator>(args).len(), 2u);
+
+    auto last = args.next_back();
+    ASSERT_TRUE(last.is_some());
+    auto bytes = last->as_os_str().as_encoded_bytes();
+    ASSERT_EQ(bytes.len(), 2u);
+    EXPECT_EQ(bytes[0], static_cast<rstd::u8>('v'));
+    EXPECT_EQ(bytes[1], static_cast<rstd::u8>(0xff));
+    EXPECT_TRUE(last->as_os_str().to_str().is_none());
+}
+
 TEST(Process, Id) {
     auto pid = rstd::process::id();
     EXPECT_GT(pid, 0u);

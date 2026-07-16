@@ -95,6 +95,31 @@ struct ref<ffi::OsStr> : ref_base<ref<ffi::OsStr>, u8[], false> {
     constexpr auto is_empty() const noexcept -> bool { return length == 0; }
     constexpr auto data() const noexcept -> u8 const* { return p; }
 
+    constexpr auto starts_with(ref<ffi::OsStr> prefix) const noexcept -> bool {
+        if (prefix.len() > length) return false;
+        for (usize i = 0; i < prefix.len(); ++i) {
+            if (p[i] != prefix.data()[i]) return false;
+        }
+        return true;
+    }
+
+    constexpr auto strip_prefix(ref<ffi::OsStr> prefix) const noexcept -> Option<ref<ffi::OsStr>> {
+        if (! starts_with(prefix)) return None();
+        return Some(ref<ffi::OsStr>::from_raw_parts(p + prefix.len(), length - prefix.len()));
+    }
+
+    constexpr auto split_once(u8 delimiter) const noexcept
+        -> Option<tuple<ref<ffi::OsStr>, ref<ffi::OsStr>>> {
+        for (usize i = 0; i < length; ++i) {
+            if (p[i] == delimiter) {
+                return Some(tuple<ref<ffi::OsStr>, ref<ffi::OsStr>>(
+                    ref<ffi::OsStr>::from_raw_parts(p, i),
+                    ref<ffi::OsStr>::from_raw_parts(p + i + 1, length - i - 1)));
+            }
+        }
+        return None();
+    }
+
     constexpr operator bool() const { return length > 0 && p != nullptr; }
 
     constexpr auto deref() const noexcept -> ref<Target> { return *this; }
