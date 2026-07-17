@@ -61,6 +61,26 @@ TEST(ArgparseRelations, ValidatesConflictsAndRequirementsAfterRecognition) {
     EXPECT_TRUE(valid.is_ok());
 }
 
+TEST(ArgparseRelations, DefaultsDoNotParticipateInRelations) {
+    auto command = Command::make("tool");
+    auto left    = command.add_arg(
+        Arg<String>::value("left", string_parser()).long_name("left").default_value("left"));
+    auto right = command.add_arg(
+        Arg<String>::value("right", string_parser()).long_name("right").default_value("right"));
+    command.add_group(ArgGroup::make("selection").arg(left).arg(right).multiple(false));
+    auto built = rstd::move(command).build();
+    ASSERT_TRUE(built.is_ok());
+    auto parser = rstd::move(built).unwrap();
+
+    EXPECT_TRUE(parser.parse_from(relation_argv("tool")).is_ok());
+    EXPECT_TRUE(parser.parse_from(relation_argv("tool", "--left", "selected")).is_ok());
+
+    auto conflict =
+        parser.parse_from(relation_argv("tool", "--left", "selected", "--right", "selected"));
+    ASSERT_TRUE(conflict.is_err());
+    EXPECT_TRUE(conflict.unwrap_err().is_ArgumentConflict());
+}
+
 TEST(ArgparseRelations, RejectsForeignKeysAndSelfRelationsDuringBuild) {
     auto first      = Command::make("first");
     auto first_key  = first.add_arg(Arg<bool>::flag("first").long_name("first"));

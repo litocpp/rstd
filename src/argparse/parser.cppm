@@ -203,6 +203,10 @@ auto apply_flag(const ArgSpec& spec, MatchedArg& matched, usize index)
     return None();
 }
 
+auto relation_present(const MatchedArg& matched) noexcept -> bool {
+    return matched.occurrences != 0 && ! matched.from_default;
+}
+
 struct ParseRun {
     rstd::argparse::Matches matches;
     Vec<OsString>           unknown;
@@ -835,7 +839,7 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
         usize       second  = 0;
         for (usize member_index = 0; member_index < group.members.len(); ++member_index) {
             const usize member = group.members[member_index];
-            if (matched[member].occurrences == 0) continue;
+            if (! relation_present(matched[member])) continue;
             if (present == 0)
                 first = member;
             else if (present == 1)
@@ -853,7 +857,7 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
 
     for (usize relation = 0; relation < schema_->conflicts.len(); ++relation) {
         const auto& conflict = schema_->conflicts[relation];
-        if (matched[conflict.left].occurrences != 0 && matched[conflict.right].occurrences != 0) {
+        if (relation_present(matched[conflict.left]) && relation_present(matched[conflict.right])) {
             return Err(ParseError::ArgumentConflict(schema_->args[conflict.left].id.clone(),
                                                     schema_->args[conflict.right].id.clone()));
         }
@@ -861,9 +865,9 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
 
     for (usize relation = 0; relation < schema_->requirements.len(); ++relation) {
         const auto& requirement = schema_->requirements[relation];
-        if (matched[requirement.source].occurrences == 0) continue;
+        if (! relation_present(matched[requirement.source])) continue;
         if (! requirement.target_is_group) {
-            if (matched[requirement.target].occurrences == 0) {
+            if (! relation_present(matched[requirement.target])) {
                 return Err(ParseError::MissingRequiredArgument(
                     schema_->args[requirement.target].id.clone()));
             }
@@ -872,7 +876,7 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
         const auto& group   = schema_->groups[requirement.target];
         bool        present = false;
         for (usize member_index = 0; member_index < group.members.len(); ++member_index) {
-            if (matched[group.members[member_index]].occurrences != 0) {
+            if (relation_present(matched[group.members[member_index]])) {
                 present = true;
                 break;
             }
