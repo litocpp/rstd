@@ -2,6 +2,7 @@ module;
 #include <rstd/enum.hpp>
 
 export module rstd.argparse:matches;
+export import :arg;
 import :schema;
 
 using namespace rstd::prelude;

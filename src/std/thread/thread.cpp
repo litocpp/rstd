@@ -1,6 +1,7 @@
 module;
 #include <rstd/macro.hpp>
 module rstd;
+import :sys.libc;
 import :thread.lifecycle;
 import :thread.thread;
 import rstd.alloc;

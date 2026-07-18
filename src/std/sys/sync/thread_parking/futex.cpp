@@ -1,4 +1,5 @@
 module rstd;
+import :sys.pal;
 import :sys.sync.thread_parking.futex;
 
 using rstd::sync::atomic::Ordering;

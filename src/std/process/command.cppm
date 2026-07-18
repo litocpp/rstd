@@ -4,6 +4,7 @@ export module rstd:process.command;
 export import :process.exit_status;
 export import :io;
 export import rstd.alloc;
+import :sys.io.stdio;
 
 using ::alloc::ffi::CString;
 using ::alloc::string::String;
