@@ -19,10 +19,6 @@ jobs:
             runs_on: ubuntu-24.04-arm
             compiler: clang
             version: 18
-          - arch: x64
-            runs_on: ubuntu-24.04
-            compiler: gcc
-            version: 15
 
     runs-on: ${{ matrix.runs_on }}
 
@@ -57,14 +53,6 @@ jobs:
 
           echo "CC=clang-${{ matrix.version }}"  >> $GITHUB_ENV
           echo "CXX=clang++-${{ matrix.version }}" >> $GITHUB_ENV
-
-      - name: Install GCC ${{ matrix.version }}
-        if: ${{ matrix.compiler == 'gcc' }}
-        run: |
-          conda install conda-forge::gcc=${{ matrix.version }}.* \
-            conda-forge::gxx=${{ matrix.version }}.*
-          echo "CC=${CONDA}/bin/gcc"  >> $GITHUB_ENV
-          echo "CXX=${CONDA}/bin/g++" >> $GITHUB_ENV
 
       - name: Configure (CMake)
         run: |
