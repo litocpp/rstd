@@ -107,7 +107,7 @@ public:
     constexpr auto len() const noexcept -> usize { return N; }
     constexpr auto is_empty() const noexcept -> bool { return N == 0; }
 
-    constexpr auto data() noexcept -> T* {
+    constexpr auto data() noexcept [[clang::lifetimebound]] -> T* {
         if constexpr (N == 0) {
             return nullptr;
         } else {
@@ -115,7 +115,7 @@ public:
         }
     }
 
-    constexpr auto data() const noexcept -> const T* {
+    constexpr auto data() const noexcept [[clang::lifetimebound]] -> const T* {
         if constexpr (N == 0) {
             return nullptr;
         } else {
@@ -123,62 +123,74 @@ public:
         }
     }
 
-    constexpr auto begin() noexcept -> T* { return data(); }
-    constexpr auto begin() const noexcept -> const T* { return data(); }
+    constexpr auto begin() noexcept [[clang::lifetimebound]] -> T* { return data(); }
+    constexpr auto begin() const noexcept [[clang::lifetimebound]] -> const T* { return data(); }
 
-    constexpr auto end() noexcept -> T* {
+    constexpr auto end() noexcept [[clang::lifetimebound]] -> T* {
         if constexpr (N == 0) return data();
         return data() + N;
     }
 
-    constexpr auto end() const noexcept -> const T* {
+    constexpr auto end() const noexcept [[clang::lifetimebound]] -> const T* {
         if constexpr (N == 0) return data();
         return data() + N;
     }
 
-    constexpr auto as_ptr() const noexcept -> ptr<T> { return ptr<T>::from_raw_parts(data()); }
-    constexpr auto as_mut_ptr() noexcept -> mut_ptr<T> {
+    constexpr auto as_ptr() const noexcept [[clang::lifetimebound]] -> ptr<T> {
+        return ptr<T>::from_raw_parts(data());
+    }
+    constexpr auto as_mut_ptr() noexcept [[clang::lifetimebound]] -> mut_ptr<T> {
         return mut_ptr<T>::from_raw_parts(data());
     }
 
-    constexpr auto as_slice() const noexcept -> slice<T> {
+    constexpr auto as_slice() const noexcept [[clang::lifetimebound]] -> slice<T> {
         return slice<T>::from_raw_parts(data(), N);
     }
 
-    constexpr auto as_mut_slice() noexcept -> mut_ref<T[]> {
+    constexpr auto as_mut_slice() noexcept [[clang::lifetimebound]] -> mut_ref<T[]> {
         return mut_ref<T[]>::from_raw_parts(data(), N);
     }
 
-    constexpr auto deref() const noexcept -> ref<Target> { return as_slice(); }
-    constexpr auto deref_mut() noexcept -> mut_ref<Target> { return as_mut_slice(); }
+    constexpr auto deref() const noexcept [[clang::lifetimebound]] -> ref<Target> {
+        return as_slice();
+    }
+    constexpr auto deref_mut() noexcept [[clang::lifetimebound]] -> mut_ref<Target> {
+        return as_mut_slice();
+    }
 
-    constexpr auto at(usize index) -> T& {
+    constexpr auto at(usize index) [[clang::lifetimebound]] -> T& {
         if (index >= N) rstd::panic { "array index out of bounds" };
         return data()[index];
     }
 
-    constexpr auto at(usize index) const -> const T& {
+    constexpr auto at(usize index) const [[clang::lifetimebound]] -> const T& {
         if (index >= N) rstd::panic { "array index out of bounds" };
         return data()[index];
     }
 
-    constexpr auto operator[](usize index) -> T& { return at(index); }
-    constexpr auto operator[](usize index) const -> const T& { return at(index); }
+    constexpr auto operator[](usize index) [[clang::lifetimebound]] -> T& { return at(index); }
+    constexpr auto operator[](usize index) const [[clang::lifetimebound]] -> const T& {
+        return at(index);
+    }
 
-    constexpr auto get(usize index) const noexcept -> Option<ref<T>> {
+    constexpr auto get(usize index) const noexcept [[clang::lifetimebound]] -> Option<ref<T>> {
         if (index >= N) return None();
         return Some(ref<T>::from_raw_parts(data() + index));
     }
 
-    constexpr auto get_mut(usize index) noexcept -> Option<mut_ref<T>> {
+    constexpr auto get_mut(usize index) noexcept [[clang::lifetimebound]] -> Option<mut_ref<T>> {
         if (index >= N) return None();
         return Some(mut_ref<T>::from_raw_parts(data() + index));
     }
 
-    constexpr auto first() const noexcept -> Option<ref<T>> { return get(0); }
-    constexpr auto first_mut() noexcept -> Option<mut_ref<T>> { return get_mut(0); }
+    constexpr auto first() const noexcept [[clang::lifetimebound]] -> Option<ref<T>> {
+        return get(0);
+    }
+    constexpr auto first_mut() noexcept [[clang::lifetimebound]] -> Option<mut_ref<T>> {
+        return get_mut(0);
+    }
 
-    constexpr auto last() const noexcept -> Option<ref<T>> {
+    constexpr auto last() const noexcept [[clang::lifetimebound]] -> Option<ref<T>> {
         if constexpr (N == 0) {
             return None();
         } else {
@@ -186,7 +198,7 @@ public:
         }
     }
 
-    constexpr auto last_mut() noexcept -> Option<mut_ref<T>> {
+    constexpr auto last_mut() noexcept [[clang::lifetimebound]] -> Option<mut_ref<T>> {
         if constexpr (N == 0) {
             return None();
         } else {
@@ -195,22 +207,26 @@ public:
     }
 
     template<usize I>
-    constexpr auto get() & noexcept -> T& {
+    constexpr auto get() & noexcept [[clang::lifetimebound]] -> T& {
         return element_unchecked<I>();
     }
 
     template<usize I>
-    constexpr auto get() const& noexcept -> const T& {
+    constexpr auto get() const& noexcept [[clang::lifetimebound]] -> const T& {
         return element_unchecked<I>();
     }
 
     template<usize I>
-    constexpr auto get() && noexcept -> T&& {
+    constexpr auto get() && noexcept [[clang::lifetimebound]] -> T&& {
         return rstd::move(element_unchecked<I>());
     }
 
-    constexpr auto iter() const -> iter::SliceIter<T> { return { begin(), end() }; }
-    constexpr auto iter_mut() -> iter::SliceIterMut<T> { return { begin(), end() }; }
+    constexpr auto iter() const [[clang::lifetimebound]] -> iter::SliceIter<T> {
+        return { begin(), end() };
+    }
+    constexpr auto iter_mut() [[clang::lifetimebound]] -> iter::SliceIterMut<T> {
+        return { begin(), end() };
+    }
 
     auto into_iter() -> IntoIter;
 
@@ -226,11 +242,11 @@ public:
         *this = source.clone();
     }
 
-    constexpr auto each_ref() const -> array<ref<T>, N> {
+    constexpr auto each_ref() const [[clang::lifetimebound]] -> array<ref<T>, N> {
         return each_ref_impl(mtp::make_index_sequence<N> {});
     }
 
-    constexpr auto each_mut() -> array<mut_ref<T>, N> {
+    constexpr auto each_mut() [[clang::lifetimebound]] -> array<mut_ref<T>, N> {
         return each_mut_impl(mtp::make_index_sequence<N> {});
     }
 
@@ -289,17 +305,17 @@ auto array<T, N>::into_iter() -> IntoIter {
 }
 
 export template<usize I, typename T, usize N>
-constexpr auto get(array<T, N>& values) noexcept -> T& {
+constexpr auto get(array<T, N>& values [[clang::lifetimebound]]) noexcept -> T& {
     return values.template get<I>();
 }
 
 export template<usize I, typename T, usize N>
-constexpr auto get(const array<T, N>& values) noexcept -> const T& {
+constexpr auto get(const array<T, N>& values [[clang::lifetimebound]]) noexcept -> const T& {
     return values.template get<I>();
 }
 
 export template<usize I, typename T, usize N>
-constexpr auto get(array<T, N>&& values) noexcept -> T&& {
+constexpr auto get(array<T, N>&& values [[clang::lifetimebound]]) noexcept -> T&& {
     return rstd::move(values).template get<I>();
 }
 

@@ -126,32 +126,32 @@ public:
     }
 
     [[nodiscard]]
-    auto as_object() const noexcept -> Option<ref<Map>> {
+    auto as_object() const noexcept [[clang::lifetimebound]] -> Option<ref<Map>> {
         if (! is_Object()) return None();
         return Some(ref<Map>::from_raw_parts(rstd::addressof(as_Object().value)));
     }
     [[nodiscard]]
-    auto as_object_mut() noexcept -> Option<mut_ref<Map>> {
+    auto as_object_mut() noexcept [[clang::lifetimebound]] -> Option<mut_ref<Map>> {
         if (! is_Object()) return None();
         return Some(mut_ref<Map>::from_raw_parts(rstd::addressof(as_Object().value)));
     }
     [[nodiscard]]
-    auto as_array() const noexcept -> Option<ref<json::Array>> {
+    auto as_array() const noexcept [[clang::lifetimebound]] -> Option<ref<json::Array>> {
         if (! is_Array()) return None();
         return Some(ref<json::Array>::from_raw_parts(rstd::addressof(as_Array().value)));
     }
     [[nodiscard]]
-    auto as_array_mut() noexcept -> Option<mut_ref<json::Array>> {
+    auto as_array_mut() noexcept [[clang::lifetimebound]] -> Option<mut_ref<json::Array>> {
         if (! is_Array()) return None();
         return Some(mut_ref<json::Array>::from_raw_parts(rstd::addressof(as_Array().value)));
     }
     [[nodiscard]]
-    auto as_str() const noexcept -> Option<ref<str>> {
+    auto as_str() const noexcept [[clang::lifetimebound]] -> Option<ref<str>> {
         if (! is_String()) return None();
         return Some(as_String().value.as_str());
     }
     [[nodiscard]]
-    auto as_number() const noexcept -> Option<ref<json::Number>> {
+    auto as_number() const noexcept [[clang::lifetimebound]] -> Option<ref<json::Number>> {
         if (! is_Number()) return None();
         return Some(ref<json::Number>::from_raw_parts(rstd::addressof(as_Number().value)));
     }
@@ -182,31 +182,33 @@ public:
     }
 
     [[nodiscard]]
-    auto get(usize index) const noexcept -> Option<ref<Value>> {
+    auto get(usize index) const noexcept [[clang::lifetimebound]] -> Option<ref<Value>> {
         if (! is_Array() || index >= as_Array().value.len()) return None();
         return Some(ref<Value>::from_raw_parts(rstd::addressof(as_Array().value[index])));
     }
     [[nodiscard]]
-    auto get_mut(usize index) noexcept -> Option<mut_ref<Value>> {
+    auto get_mut(usize index) noexcept [[clang::lifetimebound]] -> Option<mut_ref<Value>> {
         if (! is_Array() || index >= as_Array().value.len()) return None();
         return Some(mut_ref<Value>::from_raw_parts(rstd::addressof(as_Array().value[index])));
     }
     [[nodiscard]]
-    auto get(ref<str> key) const noexcept -> Option<ref<Value>> {
+    auto get(ref<str> key) const noexcept [[clang::lifetimebound]] -> Option<ref<Value>> {
         if (! is_Object()) return None();
         return as_Object().value.get(key);
     }
     [[nodiscard]]
-    auto get_mut(ref<str> key) noexcept -> Option<mut_ref<Value>> {
+    auto get_mut(ref<str> key) noexcept [[clang::lifetimebound]] -> Option<mut_ref<Value>> {
         if (! is_Object()) return None();
         return as_Object().value.get_mut(key);
     }
     [[nodiscard]]
-    auto get(const ::alloc::string::String& key) const noexcept -> Option<ref<Value>> {
+    auto get(const ::alloc::string::String& key) const noexcept [[clang::lifetimebound]]
+        -> Option<ref<Value>> {
         return get(key.as_str());
     }
     [[nodiscard]]
-    auto get_mut(const ::alloc::string::String& key) noexcept -> Option<mut_ref<Value>> {
+    auto get_mut(const ::alloc::string::String& key) noexcept [[clang::lifetimebound]]
+        -> Option<mut_ref<Value>> {
         return get_mut(key.as_str());
     }
 
@@ -229,24 +231,24 @@ public:
     }
 
     [[nodiscard]]
-    auto operator[](usize index) const noexcept -> const Value& {
+    auto operator[](usize index) const noexcept [[clang::lifetimebound]] -> const Value& {
         auto value = get(index);
         return value.is_some() ? **value : null_sentinel();
     }
 
     [[nodiscard]]
-    auto operator[](ref<str> key) const noexcept -> const Value& {
+    auto operator[](ref<str> key) const noexcept [[clang::lifetimebound]] -> const Value& {
         auto value = get(key);
         return value.is_some() ? **value : null_sentinel();
     }
 
-    auto operator[](usize index) -> Value& {
+    auto operator[](usize index) [[clang::lifetimebound]] -> Value& {
         auto value = get_mut(index);
         if (value.is_none()) rstd::panic { "cannot access JSON array index" };
         return **value;
     }
 
-    auto operator[](ref<str> key) -> Value& {
+    auto operator[](ref<str> key) [[clang::lifetimebound]] -> Value& {
         if (is_Null()) replace_Object(Map::make());
         if (! is_Object()) rstd::panic { "cannot access JSON object key" };
 
@@ -259,7 +261,7 @@ public:
     }
 
     [[nodiscard]]
-    auto pointer(ref<str> path) const -> Option<ref<Value>> {
+    auto pointer(ref<str> path) const [[clang::lifetimebound]] -> Option<ref<Value>> {
         if (path.size() == 0) {
             return Some(ref<Value>::from_raw_parts(rstd::addressof(*this)));
         }
@@ -300,7 +302,7 @@ public:
     }
 
     [[nodiscard]]
-    auto pointer_mut(ref<str> path) -> Option<mut_ref<Value>> {
+    auto pointer_mut(ref<str> path) [[clang::lifetimebound]] -> Option<mut_ref<Value>> {
         if (path.size() == 0) {
             return Some(mut_ref<Value>::from_raw_parts(rstd::addressof(*this)));
         }

@@ -138,27 +138,33 @@ public:
 
     /// Returns a raw pointer to the contained value.
     /// \return A non-null raw pointer to the heap-allocated value.
-    constexpr auto get() noexcept -> mut_ptr<T>::value_type* {
+    constexpr auto get() noexcept [[clang::lifetimebound]] -> mut_ptr<T>::value_type* {
         return checked_ptr().as_mut_ptr().as_raw_ptr();
     }
 
     /// Returns an immutable borrow of the contained value.
-    constexpr auto deref() const noexcept -> ref<T> { return as_ref(); }
+    constexpr auto deref() const noexcept [[clang::lifetimebound]] -> ref<T> { return as_ref(); }
     /// Returns a mutable borrow of the contained value.
-    constexpr auto deref_mut() noexcept -> mut_ref<T> {
+    constexpr auto deref_mut() noexcept [[clang::lifetimebound]] -> mut_ref<T> {
         return checked_ptr().as_mut_ptr().as_mut_ref();
     }
 
     /// Returns an immutable reference to the contained value.
     /// \return A `ref<T>` to the boxed value.
-    constexpr auto as_ref() const noexcept -> ref<T> { return checked_ptr().as_ptr().as_ref(); }
+    constexpr auto as_ref() const noexcept [[clang::lifetimebound]] -> ref<T> {
+        return checked_ptr().as_ptr().as_ref();
+    }
 
     /// Returns a const pointer to the contained value.
     /// \return A `ptr<T>` to the boxed value.
-    constexpr auto as_ptr() const noexcept -> ptr<T> { return checked_ptr().as_ptr(); }
+    constexpr auto as_ptr() const noexcept [[clang::lifetimebound]] -> ptr<T> {
+        return checked_ptr().as_ptr();
+    }
     /// Returns a mutable pointer to the contained value.
     /// \return A `mut_ptr<T>` to the boxed value.
-    constexpr auto as_mut_ptr() const noexcept -> mut_ptr<T> { return checked_ptr().as_mut_ptr(); }
+    constexpr auto as_mut_ptr() const noexcept [[clang::lifetimebound]] -> mut_ptr<T> {
+        return checked_ptr().as_mut_ptr();
+    }
 
     /// Downcasts a boxed `Any` value to its concrete type.
     template<typename U>

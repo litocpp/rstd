@@ -132,7 +132,7 @@ auto into(T&& t) -> IntoWrapper<mtp::rm_ref<T>> {
 /// \tparam F The source type (deduced).
 /// \param r The value to borrow from.
 export template<typename T, typename F>
-auto as_ref(F& r) noexcept {
+auto as_ref(F& r [[clang::lifetimebound]]) noexcept {
     return as<AsRef<T>>(r).as_ref();
 }
 
@@ -141,7 +141,7 @@ auto as_ref(F& r) noexcept {
 /// \tparam F The source type (deduced).
 /// \param r The value to borrow from.
 export template<typename T, typename F>
-auto as_mut(F& r) noexcept {
+auto as_mut(F& r [[clang::lifetimebound]]) noexcept {
     return as<AsMut<T>>(r).as_mut();
 }
 } // namespace rstd::convert

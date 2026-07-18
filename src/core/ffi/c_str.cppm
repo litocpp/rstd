@@ -76,7 +76,7 @@ public:
     CStr()  = delete;
     ~CStr() = delete;
 
-    static auto from_ptr(char const* p) noexcept -> ref<CStr> {
+    static auto from_ptr(char const* p [[clang::lifetimebound]]) noexcept -> ref<CStr> {
         return ref<CStr>::from_raw_parts(reinterpret_cast<CStr const*>(p), rstd::strlen(p));
     }
 };

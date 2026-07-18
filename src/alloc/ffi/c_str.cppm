@@ -78,7 +78,7 @@ public:
 
     /// Returns a borrowed reference to the inner `CStr`.
     /// \return A `ref<CStr>` view of the C string data.
-    auto as_ref() const -> ref<CStr> {
+    auto as_ref() const [[clang::lifetimebound]] -> ref<CStr> {
         auto ptr = inner.as_ptr();
         auto p   = reinterpret_cast<CStr const*>(&*ptr);
         return { .p = p, .length = ptr.len() - 1 };
@@ -94,14 +94,14 @@ public:
 
     /// Returns the contents as a byte slice, not including the nul terminator.
     /// \return A `slice<u8>` of the string bytes.
-    auto to_bytes() const -> slice<u8> {
+    auto to_bytes() const [[clang::lifetimebound]] -> slice<u8> {
         auto cstr = as_ref();
         return slice<u8>::from_raw_parts(as_cast<const u8*>(cstr.p), cstr.length);
     }
 
     /// Returns the contents as a byte slice, including the nul terminator.
     /// \return A `slice<u8>` of the string bytes with the trailing nul.
-    auto to_bytes_with_nul() const -> slice<u8> {
+    auto to_bytes_with_nul() const [[clang::lifetimebound]] -> slice<u8> {
         auto cstr = as_ref();
         return slice<u8>::from_raw_parts(as_cast<const u8*>(cstr.p), cstr.length + 1);
     }

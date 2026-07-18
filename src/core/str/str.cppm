@@ -52,16 +52,19 @@ public:
 
     template<typename T>
         requires str_::ViewableStr<T>
-    constexpr ref(const T& t) noexcept(noexcept(rstd::declval<T>().data()))
+    constexpr ref(const T& t [[clang::lifetimebound]])
+        noexcept(noexcept(rstd::declval<T>().data()))
         : p((u8 const*)t.data()), length(t.size()) {};
 
-    constexpr ref(u8 const* p, usize length) noexcept: p(p), length(length) {}
-    constexpr ref(slice<u8> p) noexcept: ref(p.p, p.length) {}
+    constexpr ref(u8 const* p [[clang::lifetimebound]], usize length) noexcept
+        : p(p), length(length) {}
+    constexpr ref(slice<u8> p [[clang::lifetimebound]]) noexcept: ref(p.p, p.length) {}
 
-    constexpr ref(char const* c_str) noexcept
+    constexpr ref(char const* c_str [[clang::lifetimebound]]) noexcept
         : ref(rstd::bit_cast<u8 const*>(c_str), rstd::strlen(c_str)) {}
 
-    static constexpr auto from_raw_parts(value_type* p, usize length) noexcept -> Self {
+    static constexpr auto from_raw_parts(value_type* p [[clang::lifetimebound]],
+                                         usize length) noexcept -> Self {
         return { p, length };
     }
 
@@ -98,12 +101,15 @@ public:
 
     template<typename T>
         requires str_::ViewableStr<T>
-    constexpr ptr(const T& t) noexcept(noexcept(rstd::declval<T>().data()))
+    constexpr ptr(const T& t [[clang::lifetimebound]])
+        noexcept(noexcept(rstd::declval<T>().data()))
         : p((u8 const*)t.data()), length(t.size()) {};
 
-    constexpr ptr(u8 const* p, usize length) noexcept: p(p), length(length) {}
+    constexpr ptr(u8 const* p [[clang::lifetimebound]], usize length) noexcept
+        : p(p), length(length) {}
 
-    static constexpr auto from_raw_parts(value_type* p, usize length) noexcept -> Self {
+    static constexpr auto from_raw_parts(value_type* p [[clang::lifetimebound]],
+                                         usize length) noexcept -> Self {
         return { p, length };
     }
 
@@ -182,7 +188,8 @@ namespace rstd
 {
 
 /// Creates a string slice from a byte slice without UTF-8 validation.
-export constexpr auto from_utf8_unchecked(slice<u8> bytes) noexcept -> ref<str> {
+export constexpr auto from_utf8_unchecked(slice<u8> bytes [[clang::lifetimebound]]) noexcept
+    -> ref<str> {
     return ref<str>::from_raw_parts(const_cast<u8*>(&*bytes), bytes.len());
 }
 
@@ -210,12 +217,12 @@ export constexpr auto is_char_boundary(ref<str> s, usize pos) noexcept -> bool {
 }
 
 /// Returns the byte slice of the string.
-export constexpr auto as_bytes(ref<str> s) noexcept -> slice<u8> {
+export constexpr auto as_bytes(ref<str> s [[clang::lifetimebound]]) noexcept -> slice<u8> {
     return slice<u8>::from_raw_parts(s.data(), s.size());
 }
 
 /// Returns a `Chars` iterator over the string's Unicode code points.
-export constexpr auto chars(ref<str> s) noexcept -> Chars {
+export constexpr auto chars(ref<str> s [[clang::lifetimebound]]) noexcept -> Chars {
     return { s.data(), s.data() + s.size() };
 }
 
@@ -242,13 +249,14 @@ export constexpr auto ends_with(ref<str> s, ref<str> suffix) noexcept -> bool {
 }
 
 /// Splits the string at the given byte position.
-export constexpr auto split_at(ref<str> s, usize mid) noexcept -> rstd::tuple<ref<str>, ref<str>> {
+export constexpr auto split_at(ref<str> s [[clang::lifetimebound]], usize mid) noexcept
+    -> rstd::tuple<ref<str>, ref<str>> {
     return { ref<str>::from_raw_parts(const_cast<u8*>(s.data()), mid),
              ref<str>::from_raw_parts(const_cast<u8*>(s.data() + mid), s.size() - mid) };
 }
 
 /// Returns the string with leading and trailing ASCII whitespace removed.
-export constexpr auto trim(ref<str> s) noexcept -> ref<str> {
+export constexpr auto trim(ref<str> s [[clang::lifetimebound]]) noexcept -> ref<str> {
     auto* b = s.data();
     auto* e = b + s.size();
     while (b < e && (*b == ' ' || *b == '\t' || *b == '\n' || *b == '\r')) ++b;
@@ -261,7 +269,8 @@ export constexpr auto trim(ref<str> s) noexcept -> ref<str> {
 /// \param path The path string to extract from.
 /// \param count The number of trailing path components to extract.
 /// \return A string slice containing the last `count` components.
-export constexpr auto extract_last(ref<str> path, usize count) -> ref<str> {
+export constexpr auto extract_last(ref<str> path [[clang::lifetimebound]], usize count)
+    -> ref<str> {
     auto pos = path.size();
     while (pos != 0) {
         if (path[pos - 1] == '/' || path[pos - 1] == '\\') {

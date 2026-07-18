@@ -43,7 +43,7 @@ public:
     static constexpr auto parent_dir() noexcept -> Component {
         return Component { ComponentKind::ParentDir, {} };
     }
-    static constexpr auto normal(ref<OsStr> s) noexcept -> Component {
+    static constexpr auto normal(ref<OsStr> s [[clang::lifetimebound]]) noexcept -> Component {
         return Component { ComponentKind::Normal, s };
     }
 
@@ -87,7 +87,7 @@ public:
     using Item = Component;
 
     constexpr Components() noexcept = default;
-    constexpr Components(u8 const* p, usize len) noexcept;
+    constexpr Components(u8 const* p [[clang::lifetimebound]], usize len) noexcept;
 
     constexpr auto next() noexcept -> Option<Component>;
     constexpr auto as_path() const noexcept -> ref<Path>;
@@ -243,19 +243,23 @@ struct ref<path::Path> : ref_base<ref<path::Path>, u8[], false> {
     usize     length { 0 };
 
     constexpr ref() noexcept = default;
-    constexpr ref(u8 const* p, usize len) noexcept: p(p), length(len) {}
+    constexpr ref(u8 const* p [[clang::lifetimebound]], usize len) noexcept
+        : p(p), length(len) {}
 
     /// Construct from a `ref<OsStr>`.
-    constexpr ref(ref<OsStr> s) noexcept: p(s.data()), length(s.len()) {}
+    constexpr ref(ref<OsStr> s [[clang::lifetimebound]]) noexcept
+        : p(s.data()), length(s.len()) {}
 
     /// Construct from a `ref<str>`.
-    constexpr ref(ref<str> s) noexcept: p(s.data()), length(s.size()) {}
+    constexpr ref(ref<str> s [[clang::lifetimebound]]) noexcept
+        : p(s.data()), length(s.size()) {}
 
     /// Construct from a null-terminated C string.
-    constexpr ref(const char* c) noexcept
+    constexpr ref(const char* c [[clang::lifetimebound]]) noexcept
         : p(rstd::bit_cast<u8 const*>(c)), length(rstd::strlen(c)) {}
 
-    static constexpr auto from_raw_parts(u8 const* p, usize len) noexcept -> Self {
+    static constexpr auto from_raw_parts(u8 const* p [[clang::lifetimebound]],
+                                         usize len) noexcept -> Self {
         return { p, len };
     }
 
@@ -441,7 +445,9 @@ public:
     static auto from(const char* s) -> PathBuf { return from(ref<str>(s)); }
 
     /// Returns a borrowed `ref<Path>`.
-    auto as_path() const noexcept -> ref<Path> { return ref<Path>(inner.as_os_str()); }
+    auto as_path() const noexcept [[clang::lifetimebound]] -> ref<Path> {
+        return ref<Path>(inner.as_os_str());
+    }
 
     auto clone() const -> PathBuf { return PathBuf::from(as_path()); }
 
@@ -492,7 +498,7 @@ public:
     auto is_empty() const noexcept -> bool { return inner.is_empty(); }
 
     /// Implicit conversion to `ref<Path>`.
-    operator ref<Path>() const noexcept { return as_path(); }
+    operator ref<Path>() const noexcept [[clang::lifetimebound]] { return as_path(); }
 };
 
 } // namespace rstd::path

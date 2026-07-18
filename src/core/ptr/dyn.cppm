@@ -193,7 +193,8 @@ struct ref<dyn<A>> : dyn_ptr_base<A const> {
     using Target     = dyn<A>;
     using delegate_t = dyn_delegate<A const>;
 
-    static auto from_raw_parts(delegate_t::ptr_t p, delegate_t::vtable_t const* v) -> ref {
+    static auto from_raw_parts(delegate_t::ptr_t p [[clang::lifetimebound]],
+                               delegate_t::vtable_t const* v) -> ref {
         return { { { .p = p, .vtable = v } } };
     }
 
@@ -202,7 +203,8 @@ struct ref<dyn<A>> : dyn_ptr_base<A const> {
 template<typename A>
 struct ptr<dyn<A>> : dyn_ptr_base<A const> {
     using delegate_t = dyn_delegate<A const>;
-    static auto from_raw_parts(delegate_t::ptr_t p, delegate_t::vtable_t const* v) -> ptr {
+    static auto from_raw_parts(delegate_t::ptr_t p [[clang::lifetimebound]],
+                               delegate_t::vtable_t const* v) -> ptr {
         return { { { .p = p, .vtable = v } } };
     }
 };
@@ -212,7 +214,8 @@ struct mut_ref<dyn<A>> : dyn_ptr_base<A> {
     using Target     = dyn<A>;
     using delegate_t = dyn_delegate<A>;
 
-    static auto from_raw_parts(delegate_t::ptr_t p, delegate_t::vtable_t const* v) -> mut_ref {
+    static auto from_raw_parts(delegate_t::ptr_t p [[clang::lifetimebound]],
+                               delegate_t::vtable_t const* v) -> mut_ref {
         return { { { .p = p, .vtable = v } } };
     }
 
@@ -222,7 +225,8 @@ struct mut_ref<dyn<A>> : dyn_ptr_base<A> {
 template<typename A>
 struct mut_ptr<dyn<A>> : dyn_ptr_base<A> {
     using delegate_t = dyn_delegate<A>;
-    static auto from_raw_parts(delegate_t::ptr_t p, delegate_t::vtable_t const* v) -> mut_ptr {
+    static auto from_raw_parts(delegate_t::ptr_t p [[clang::lifetimebound]],
+                               delegate_t::vtable_t const* v) -> mut_ptr {
         return { { { .p = p, .vtable = v } } };
     }
 };
@@ -244,13 +248,13 @@ struct dyn {
     ~dyn() = delete;
 
     template<typename T>
-    static constexpr auto from_ptr(T* in) noexcept {
+    static constexpr auto from_ptr(T* in [[clang::lifetimebound]]) noexcept {
         using ptr_t = mtp::cond<mtp::is_const<T>, ptr<dyn>, mut_ptr<dyn>>;
         return ptr_t { { { ptr_t::delegate_t::from_raw_ptr(in) } } };
     }
 
     template<typename T>
-    static constexpr auto from_ref(T& in) noexcept {
+    static constexpr auto from_ref(T& in [[clang::lifetimebound]]) noexcept {
         using ref_t = mtp::cond<mtp::is_const<T>, ref<dyn>, mut_ref<dyn>>;
         return ref_t { { { ref_t::delegate_t::from_raw_ptr(rstd::addressof(in)) } } };
     }

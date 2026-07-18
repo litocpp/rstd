@@ -10,20 +10,31 @@ option(RSTD_BUILD_BENCHMARKS "Build rstd benchmark executables" OFF)
 option(RSTD_BENCHMARKS_IN_CTEST "Register benchmark smoke tests in ctest" OFF)
 option(RSTD_USE_ASAN "asan" OFF)
 
-set(WARN_OPTS -Wall -Wpedantic)
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-  list(APPEND WARN_OPTS -Werror)
-endif()
-set(WARN_CLANG_OPTS -Wno-gnu-statement-expression -Wno-deprecated-declarations -fsized-deallocation)
+set(ALL_OPTS
+  -Wall
+  -Wpedantic
+  -fno-rtti
+  -fno-exceptions
+)
+set(GNU_OPTS
+  -Werror
+  -Wno-attributes=clang::lifetimebound
+)
+set(CLANG_OPTS
+  -Wno-gnu-statement-expression
+  -Wno-deprecated-declarations
+  -Wunknown-attributes
+  -fsized-deallocation
+)
 
 if(PROJECT_IS_TOP_LEVEL)
   set(CMAKE_CXX_STANDARD 20)
   set(CMAKE_CXX_STANDARD_REQUIRED ON)
   set(CMAKE_CXX_EXTENSIONS OFF)
   set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-  add_compile_options("$<$<COMPILE_LANG_AND_ID:CXX,Clang,GNU>:${WARN_OPTS}>")
-  add_compile_options("$<$<COMPILE_LANG_AND_ID:CXX,Clang>:${WARN_CLANG_OPTS}>")
-  add_compile_options("$<$<COMPILE_LANG_AND_ID:CXX,Clang,GNU>:-fno-rtti;-fno-exceptions>")
+  add_compile_options("$<$<COMPILE_LANG_AND_ID:CXX,GNU>:${GNU_OPTS}>")
+  add_compile_options("$<$<COMPILE_LANG_AND_ID:CXX,Clang>:${CLANG_OPTS}>")
+  add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:${ALL_OPTS}>")
 endif()
 
 

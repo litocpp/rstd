@@ -89,13 +89,13 @@ public:
 
     /// Returns a reference to the string as a `CStr`.
     /// \return A `ref<CStr>` view of the string data.
-    auto as_ref() const noexcept -> ref<ffi::CStr> {
+    auto as_ref() const noexcept [[clang::lifetimebound]] -> ref<ffi::CStr> {
         auto p = as_cast<ffi::CStr const*>(vec.as_ptr().as_raw_ptr());
         return ref<ffi::CStr>::from_raw_parts(p, vec.len());
     }
 
     /// Converts the `String` to a `ref<str>` string slice.
-    constexpr operator ref<str>() const {
+    constexpr operator ref<str>() const [[clang::lifetimebound]] {
         return ref<str>::from_raw_parts(vec.as_ptr().as_raw_ptr(), vec.len());
     }
 
@@ -121,7 +121,7 @@ public:
     }
 
     /// Returns a string slice of the entire `String`.
-    constexpr auto as_str() const noexcept -> ref<str> {
+    constexpr auto as_str() const noexcept [[clang::lifetimebound]] -> ref<str> {
         return ref<str>::from_raw_parts(vec.as_ptr().as_raw_ptr(), vec.len());
     }
 
@@ -173,19 +173,21 @@ public:
 
     /// Returns a raw pointer to the underlying byte buffer.
     /// \return A const pointer to the first byte.
-    constexpr auto as_raw_ptr() const noexcept -> const u8* { return vec.begin(); }
+    constexpr auto as_raw_ptr() const noexcept [[clang::lifetimebound]] -> const u8* {
+        return vec.begin();
+    }
 
     /// Returns a const iterator to the beginning of the string.
-    constexpr auto begin() const noexcept -> const char* {
+    constexpr auto begin() const noexcept [[clang::lifetimebound]] -> const char* {
         return rstd::bit_cast<const char*>(vec.begin());
     }
     /// Returns a const iterator to the end of the string.
-    constexpr auto end() const noexcept -> const char* {
+    constexpr auto end() const noexcept [[clang::lifetimebound]] -> const char* {
         return rstd::bit_cast<const char*>(vec.end());
     }
     /// Returns a pointer to the string data as a char array.
     /// \return A const `char*` pointer to the data.
-    constexpr auto data() const noexcept -> const char* {
+    constexpr auto data() const noexcept [[clang::lifetimebound]] -> const char* {
         return rstd::bit_cast<const char*>(vec.as_ptr().as_raw_ptr());
     }
     /// Returns the length of the string in bytes.
@@ -193,9 +195,11 @@ public:
     constexpr auto size() const noexcept -> usize { return vec.len(); }
 
     /// Returns an iterator over the bytes (`u8`) of the string.
-    auto bytes() const { return rstd::iter::SliceIter<u8>(vec.begin(), vec.end()).copied(); }
+    auto bytes() const [[clang::lifetimebound]] {
+        return rstd::iter::SliceIter<u8>(vec.begin(), vec.end()).copied();
+    }
     /// Returns an iterator over the Unicode scalar values of the string.
-    auto chars() const -> Chars { return Chars(vec.begin(), vec.end()); }
+    auto chars() const [[clang::lifetimebound]] -> Chars { return Chars(vec.begin(), vec.end()); }
 };
 
 /// A trait for converting a value to a `String`.

@@ -67,7 +67,7 @@ struct NonNull {
     /// Creates a `NonNull` if the pointer is non-null, or `None` otherwise.
     /// \param p The pointer to wrap.
     /// \return `Some(NonNull)` if `p` is non-null, `None` otherwise.
-    static constexpr auto make(pointer_t p) noexcept -> Option<NonNull> {
+    static constexpr auto make(pointer_t p [[clang::lifetimebound]]) noexcept -> Option<NonNull> {
         if (p == nullptr) return {};
         return Some(NonNull {
             .pointer = p,
@@ -77,7 +77,8 @@ struct NonNull {
     /// Creates a `NonNull` without checking that the pointer is non-null.
     /// \param p The pointer to wrap; must not be null.
     /// \return A `NonNull` wrapping `p`.
-    static constexpr auto make_unchecked(pointer_t p) noexcept -> NonNull {
+    static constexpr auto make_unchecked(pointer_t p [[clang::lifetimebound]]) noexcept
+        -> NonNull {
         static_assert(mtp::triv_copy<NonNull>);
         return { .pointer = p };
     }

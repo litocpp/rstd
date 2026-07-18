@@ -155,40 +155,48 @@ public:
 
     /// Returns a slice containing the entire vector.
     /// \return An immutable `slice<T>` over all elements.
-    constexpr auto as_slice() const noexcept -> slice<T> {
+    constexpr auto as_slice() const noexcept [[clang::lifetimebound]] -> slice<T> {
         if (m_len == 0) return {};
         return slice<T>::from_raw_parts(m_buf.ptr.as_ptr().as_raw_ptr(), m_len);
     }
 
     /// Returns a mutable slice containing the entire vector.
     /// \return A mutable pointer to a slice over all elements.
-    constexpr auto as_mut_slice() noexcept -> mut_ptr<T[]> {
+    constexpr auto as_mut_slice() noexcept [[clang::lifetimebound]] -> mut_ptr<T[]> {
         if (m_len == 0) return {};
         return mut_ptr<T[]>::from_raw_parts(m_buf.ptr.as_mut_ptr().as_raw_ptr(), m_len);
     }
 
-    constexpr auto deref() const noexcept -> ref<Target> { return as_slice(); }
+    constexpr auto deref() const noexcept [[clang::lifetimebound]] -> ref<Target> {
+        return as_slice();
+    }
 
-    constexpr auto deref_mut() noexcept -> mut_ref<Target> { return as_mut_slice().as_mut_ref(); }
+    constexpr auto deref_mut() noexcept [[clang::lifetimebound]] -> mut_ref<Target> {
+        return as_mut_slice().as_mut_ref();
+    }
 
     /// Returns a const pointer to the first element of the vector.
     /// \return A const pointer to the underlying buffer.
-    constexpr auto as_ptr() const noexcept -> ptr<T> { return m_buf.ptr.as_ptr(); }
+    constexpr auto as_ptr() const noexcept [[clang::lifetimebound]] -> ptr<T> {
+        return m_buf.ptr.as_ptr();
+    }
 
     /// Returns a mutable pointer to the first element of the vector.
-    constexpr auto as_mut_ptr() noexcept -> mut_ptr<T> { return m_buf.ptr.as_mut_ptr(); }
+    constexpr auto as_mut_ptr() noexcept [[clang::lifetimebound]] -> mut_ptr<T> {
+        return m_buf.ptr.as_mut_ptr();
+    }
 
     /// Returns the initialized contiguous storage as a raw pointer.
-    constexpr auto data() noexcept -> T* { return begin(); }
+    constexpr auto data() noexcept [[clang::lifetimebound]] -> T* { return begin(); }
 
     /// Returns the initialized contiguous storage as a raw pointer.
-    constexpr auto data() const noexcept -> const T* { return begin(); }
+    constexpr auto data() const noexcept [[clang::lifetimebound]] -> const T* { return begin(); }
 
     /// Returns writable spare capacity after the initialized range.
     ///
     /// The returned memory is uninitialized. After writing initialized values into it, callers must
     /// publish the written length with `set_len_unchecked`.
-    constexpr auto spare_capacity_mut() noexcept -> mut_ptr<T[]> {
+    constexpr auto spare_capacity_mut() noexcept [[clang::lifetimebound]] -> mut_ptr<T[]> {
         if (m_buf.cap == m_len) return {};
         return mut_ptr<T[]>::from_raw_parts(m_buf.ptr.as_mut_ptr().as_raw_ptr() + m_len,
                                             m_buf.cap - m_len);
@@ -289,22 +297,24 @@ public:
     /// Returns a mutable reference to the element at the given index, panicking if out of bounds.
     /// \param index The index of the element.
     /// \return A mutable reference to the element.
-    constexpr T& at(usize index) {
+    constexpr T& at(usize index) [[clang::lifetimebound]] {
         if (index >= m_len) rstd::panic { "Vec index out of bounds" };
         return m_buf.ptr.as_mut_ptr().as_raw_ptr()[index];
     }
     /// Returns a const reference to the element at the given index, panicking if out of bounds.
     /// \param index The index of the element.
     /// \return A const reference to the element.
-    constexpr const T& at(usize index) const {
+    constexpr const T& at(usize index) const [[clang::lifetimebound]] {
         if (index >= m_len) rstd::panic { "Vec index out of bounds" };
         return m_buf.ptr.as_ptr().as_raw_ptr()[index];
     }
 
     /// Indexes into the vector, panicking if out of bounds.
-    constexpr T& operator[](usize index) { return at(index); }
+    constexpr T& operator[](usize index) [[clang::lifetimebound]] { return at(index); }
     /// Indexes into the vector (const), panicking if out of bounds.
-    constexpr const T& operator[](usize index) const { return at(index); }
+    constexpr const T& operator[](usize index) const [[clang::lifetimebound]] {
+        return at(index);
+    }
 
     /// Returns the number of elements in the vector.
     /// \return The length of the vector.
@@ -382,20 +392,32 @@ public:
     }
 
     /// Returns a mutable iterator to the beginning.
-    constexpr auto begin() noexcept { return m_buf.ptr.as_mut_ptr().as_raw_ptr(); }
+    constexpr auto begin() noexcept [[clang::lifetimebound]] {
+        return m_buf.ptr.as_mut_ptr().as_raw_ptr();
+    }
     /// Returns a mutable iterator to the end.
-    constexpr auto end() noexcept { return m_buf.ptr.as_mut_ptr().as_raw_ptr() + m_len; }
+    constexpr auto end() noexcept [[clang::lifetimebound]] {
+        return m_buf.ptr.as_mut_ptr().as_raw_ptr() + m_len;
+    }
     /// Returns a const iterator to the beginning.
-    constexpr auto begin() const noexcept { return m_buf.ptr.as_ptr().as_raw_ptr(); }
+    constexpr auto begin() const noexcept [[clang::lifetimebound]] {
+        return m_buf.ptr.as_ptr().as_raw_ptr();
+    }
     /// Returns a const iterator to the end.
-    constexpr auto end() const noexcept { return m_buf.ptr.as_ptr().as_raw_ptr() + m_len; }
+    constexpr auto end() const noexcept [[clang::lifetimebound]] {
+        return m_buf.ptr.as_ptr().as_raw_ptr() + m_len;
+    }
 
     using IntoIter = VecIntoIter<T>;
 
     /// Returns an iterator over `&T`.
-    auto iter() const -> rstd::iter::SliceIter<T> { return { begin(), end() }; }
+    auto iter() const [[clang::lifetimebound]] -> rstd::iter::SliceIter<T> {
+        return { begin(), end() };
+    }
     /// Returns an iterator over `&mut T`.
-    auto iter_mut() -> rstd::iter::SliceIterMut<T> { return { begin(), end() }; }
+    auto iter_mut() [[clang::lifetimebound]] -> rstd::iter::SliceIterMut<T> {
+        return { begin(), end() };
+    }
     /// Consumes the vector, returning an iterator over owned `T`.
     auto into_iter() -> VecIntoIter<T> { return VecIntoIter<T>(rstd::move(*this)); }
 };

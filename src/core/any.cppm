@@ -49,14 +49,15 @@ auto is(mut_ref<dyn<Any>> value) noexcept -> bool {
 }
 
 template<typename T>
-auto downcast_ref(ref<dyn<Any>> value) noexcept -> Option<ref<T>> {
+auto downcast_ref(ref<dyn<Any>> value [[clang::lifetimebound]]) noexcept -> Option<ref<T>> {
     if (! is<T>(value)) return None();
     auto result = ref<T>::from_raw_parts(static_cast<const T*>(value.as_raw_ptr()));
     return Some(rstd::move(result));
 }
 
 template<typename T>
-auto downcast_mut(mut_ref<dyn<Any>> value) noexcept -> Option<mut_ref<T>> {
+auto downcast_mut(mut_ref<dyn<Any>> value [[clang::lifetimebound]]) noexcept
+    -> Option<mut_ref<T>> {
     if (! is<T>(value)) return None();
     auto result = mut_ref<T>::from_raw_parts(static_cast<T*>(value.as_raw_ptr()));
     return Some(rstd::move(result));

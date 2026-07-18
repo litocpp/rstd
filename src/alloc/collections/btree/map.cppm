@@ -62,7 +62,7 @@ class BTreeMapIter : public rstd::DefaultInClass<BTreeMapIter<K, V>, rstd::iter:
 public:
     using Item = rstd::tuple<rstd::ref<K>, rstd::ref<V>>;
 
-    BTreeMapIter(const TreeNode* root, usize len): remaining(len) {
+    BTreeMapIter(const TreeNode* root [[clang::lifetimebound]], usize len): remaining(len) {
         push_left(root);
         push_right(root);
     }
@@ -155,7 +155,7 @@ class BTreeMapIterMut : public rstd::DefaultInClass<BTreeMapIterMut<K, V>, rstd:
 public:
     using Item = rstd::tuple<rstd::ref<K>, rstd::mut_ref<V>>;
 
-    BTreeMapIterMut(TreeNode* root, usize len): remaining(len) {
+    BTreeMapIterMut(TreeNode* root [[clang::lifetimebound]], usize len): remaining(len) {
         push_left(root);
         push_right(root);
     }
@@ -228,7 +228,8 @@ class BTreeMapKeys : public rstd::DefaultInClass<BTreeMapKeys<K, V>, rstd::iter:
 
 public:
     using Item = rstd::ref<K>;
-    explicit BTreeMapKeys(BTreeMapIter<K, V> iter): inner(rstd::move(iter)) {}
+    explicit BTreeMapKeys(BTreeMapIter<K, V> iter [[clang::lifetimebound]])
+        : inner(rstd::move(iter)) {}
     auto next() -> Option<Item> {
         auto item = inner.next();
         if (item.is_none()) return None();
@@ -249,7 +250,8 @@ class BTreeMapValues : public rstd::DefaultInClass<BTreeMapValues<K, V>, rstd::i
 
 public:
     using Item = rstd::ref<V>;
-    explicit BTreeMapValues(BTreeMapIter<K, V> iter): inner(rstd::move(iter)) {}
+    explicit BTreeMapValues(BTreeMapIter<K, V> iter [[clang::lifetimebound]])
+        : inner(rstd::move(iter)) {}
     auto next() -> Option<Item> {
         auto item = inner.next();
         if (item.is_none()) return None();
@@ -271,7 +273,8 @@ class BTreeMapValuesMut
 
 public:
     using Item = rstd::mut_ref<V>;
-    explicit BTreeMapValuesMut(BTreeMapIterMut<K, V> iter): inner(rstd::move(iter)) {}
+    explicit BTreeMapValuesMut(BTreeMapIterMut<K, V> iter [[clang::lifetimebound]])
+        : inner(rstd::move(iter)) {}
     auto next() -> Option<Item> {
         auto item = inner.next();
         if (item.is_none()) return None();
@@ -666,7 +669,7 @@ public:
     }
 
     template<typename Q>
-    auto get(const Q& key) const -> Option<rstd::ref<V>>
+    auto get(const Q& key) const [[clang::lifetimebound]] -> Option<rstd::ref<V>>
         requires requires(const K& stored, const Q& borrowed) {
             stored < borrowed;
             borrowed < stored;
@@ -685,7 +688,7 @@ public:
     }
 
     template<typename Q>
-    auto get_mut(const Q& key) -> Option<rstd::mut_ref<V>>
+    auto get_mut(const Q& key) [[clang::lifetimebound]] -> Option<rstd::mut_ref<V>>
         requires requires(const K& stored, const Q& borrowed) {
             stored < borrowed;
             borrowed < stored;
@@ -704,7 +707,8 @@ public:
     }
 
     template<typename Q>
-    auto get_key_value(const Q& key) const -> Option<rstd::tuple<rstd::ref<K>, rstd::ref<V>>>
+    auto get_key_value(const Q& key) const [[clang::lifetimebound]]
+        -> Option<rstd::tuple<rstd::ref<K>, rstd::ref<V>>>
         requires requires(const K& stored, const Q& borrowed) {
             stored < borrowed;
             borrowed < stored;
@@ -761,7 +765,8 @@ public:
         return Some(rstd::move(entry->template get<1>()));
     }
 
-    auto first_key_value() const -> Option<rstd::tuple<rstd::ref<K>, rstd::ref<V>>> {
+    auto first_key_value() const [[clang::lifetimebound]]
+        -> Option<rstd::tuple<rstd::ref<K>, rstd::ref<V>>> {
         auto* node = root_node();
         if (node == nullptr || length == 0) return None();
         while (! node->leaf) node = node->child(0);
@@ -770,7 +775,8 @@ public:
             rstd::ref<V>::from_raw_parts(rstd::addressof(node->value(0)))));
     }
 
-    auto last_key_value() const -> Option<rstd::tuple<rstd::ref<K>, rstd::ref<V>>> {
+    auto last_key_value() const [[clang::lifetimebound]]
+        -> Option<rstd::tuple<rstd::ref<K>, rstd::ref<V>>> {
         auto* node = root_node();
         if (node == nullptr || length == 0) return None();
         while (! node->leaf) node = node->child(node->len);
@@ -798,11 +804,21 @@ public:
         return Some(rstd::move(entry));
     }
 
-    auto iter() const -> BTreeMapIter<K, V> { return { root_node(), length }; }
-    auto iter_mut() -> BTreeMapIterMut<K, V> { return { root_node(), length }; }
-    auto keys() const -> BTreeMapKeys<K, V> { return BTreeMapKeys<K, V>(iter()); }
-    auto values() const -> BTreeMapValues<K, V> { return BTreeMapValues<K, V>(iter()); }
-    auto values_mut() -> BTreeMapValuesMut<K, V> { return BTreeMapValuesMut<K, V>(iter_mut()); }
+    auto iter() const [[clang::lifetimebound]] -> BTreeMapIter<K, V> {
+        return { root_node(), length };
+    }
+    auto iter_mut() [[clang::lifetimebound]] -> BTreeMapIterMut<K, V> {
+        return { root_node(), length };
+    }
+    auto keys() const [[clang::lifetimebound]] -> BTreeMapKeys<K, V> {
+        return BTreeMapKeys<K, V>(iter());
+    }
+    auto values() const [[clang::lifetimebound]] -> BTreeMapValues<K, V> {
+        return BTreeMapValues<K, V>(iter());
+    }
+    auto values_mut() [[clang::lifetimebound]] -> BTreeMapValuesMut<K, V> {
+        return BTreeMapValuesMut<K, V>(iter_mut());
+    }
 
     using IntoIter = BTreeMapIntoIter<K, V>;
     auto into_iter() -> IntoIter {

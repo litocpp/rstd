@@ -44,7 +44,8 @@ class HashMapIter : public rstd::DefaultInClass<HashMapIter<K, V>, rstd::iter::I
 
 public:
     using Item = rstd::tuple<rstd::ref<K>, rstd::ref<V>>;
-    HashMapIter(const RawTable<K, V>* source, usize len): table(source), index(0), remaining(len) {}
+    HashMapIter(const RawTable<K, V>* source [[clang::lifetimebound]], usize len)
+        : table(source), index(0), remaining(len) {}
 
     auto next() -> Option<Item> {
         while (remaining != 0 && index < table->bucket_count()) {
@@ -68,7 +69,8 @@ class HashMapIterMut : public rstd::DefaultInClass<HashMapIterMut<K, V>, rstd::i
 
 public:
     using Item = rstd::tuple<rstd::ref<K>, rstd::mut_ref<V>>;
-    HashMapIterMut(RawTable<K, V>* source, usize len): table(source), index(0), remaining(len) {}
+    HashMapIterMut(RawTable<K, V>* source [[clang::lifetimebound]], usize len)
+        : table(source), index(0), remaining(len) {}
 
     auto next() -> Option<Item> {
         while (remaining != 0 && index < table->bucket_count()) {
@@ -90,7 +92,8 @@ class HashMapKeys : public rstd::DefaultInClass<HashMapKeys<K, V>, rstd::iter::I
 
 public:
     using Item = rstd::ref<K>;
-    explicit HashMapKeys(HashMapIter<K, V> iter): inner(rstd::move(iter)) {}
+    explicit HashMapKeys(HashMapIter<K, V> iter [[clang::lifetimebound]])
+        : inner(rstd::move(iter)) {}
     auto next() -> Option<Item> {
         auto item = inner.next();
         return item.is_some() ? Some(item->template get<0>()) : None();
@@ -105,7 +108,8 @@ class HashMapValues : public rstd::DefaultInClass<HashMapValues<K, V>, rstd::ite
 
 public:
     using Item = rstd::ref<V>;
-    explicit HashMapValues(HashMapIter<K, V> iter): inner(rstd::move(iter)) {}
+    explicit HashMapValues(HashMapIter<K, V> iter [[clang::lifetimebound]])
+        : inner(rstd::move(iter)) {}
     auto next() -> Option<Item> {
         auto item = inner.next();
         return item.is_some() ? Some(item->template get<1>()) : None();
@@ -120,7 +124,8 @@ class HashMapValuesMut : public rstd::DefaultInClass<HashMapValuesMut<K, V>, rst
 
 public:
     using Item = rstd::mut_ref<V>;
-    explicit HashMapValuesMut(HashMapIterMut<K, V> iter): inner(rstd::move(iter)) {}
+    explicit HashMapValuesMut(HashMapIterMut<K, V> iter [[clang::lifetimebound]])
+        : inner(rstd::move(iter)) {}
     auto next() -> Option<Item> {
         auto item = inner.next();
         return item.is_some() ? Some(item->template get<1>()) : None();
@@ -194,7 +199,7 @@ public:
     auto len() const noexcept -> usize { return table.len(); }
     auto is_empty() const noexcept -> bool { return table.len() == 0; }
     auto capacity() const noexcept -> usize { return table.capacity(); }
-    auto hasher() const noexcept -> const S& { return hash_builder; }
+    auto hasher() const noexcept [[clang::lifetimebound]] -> const S& { return hash_builder; }
 
     void reserve(usize additional) { table.reserve(additional); }
     void shrink_to_fit() { table.shrink_to(0); }
@@ -213,20 +218,21 @@ public:
         return None();
     }
 
-    auto get(const K& key) const -> Option<rstd::ref<V>> {
+    auto get(const K& key) const [[clang::lifetimebound]] -> Option<rstd::ref<V>> {
         auto found = find_index(key);
         if (found.is_none()) return None();
         return Some(rstd::ref<V>::from_raw_parts(rstd::addressof(table.bucket(*found).value())));
     }
 
-    auto get_mut(const K& key) -> Option<rstd::mut_ref<V>> {
+    auto get_mut(const K& key) [[clang::lifetimebound]] -> Option<rstd::mut_ref<V>> {
         auto found = find_index(key);
         if (found.is_none()) return None();
         return Some(
             rstd::mut_ref<V>::from_raw_parts(rstd::addressof(table.bucket(*found).value())));
     }
 
-    auto get_key_value(const K& key) const -> Option<rstd::tuple<rstd::ref<K>, rstd::ref<V>>> {
+    auto get_key_value(const K& key) const [[clang::lifetimebound]]
+        -> Option<rstd::tuple<rstd::ref<K>, rstd::ref<V>>> {
         auto found = find_index(key);
         if (found.is_none()) return None();
         const auto& bucket = table.bucket(*found);
@@ -257,11 +263,21 @@ public:
         }
     }
 
-    auto iter() const -> HashMapIter<K, V> { return { rstd::addressof(table), table.len() }; }
-    auto iter_mut() -> HashMapIterMut<K, V> { return { rstd::addressof(table), table.len() }; }
-    auto keys() const -> HashMapKeys<K, V> { return HashMapKeys<K, V>(iter()); }
-    auto values() const -> HashMapValues<K, V> { return HashMapValues<K, V>(iter()); }
-    auto values_mut() -> HashMapValuesMut<K, V> { return HashMapValuesMut<K, V>(iter_mut()); }
+    auto iter() const [[clang::lifetimebound]] -> HashMapIter<K, V> {
+        return { rstd::addressof(table), table.len() };
+    }
+    auto iter_mut() [[clang::lifetimebound]] -> HashMapIterMut<K, V> {
+        return { rstd::addressof(table), table.len() };
+    }
+    auto keys() const [[clang::lifetimebound]] -> HashMapKeys<K, V> {
+        return HashMapKeys<K, V>(iter());
+    }
+    auto values() const [[clang::lifetimebound]] -> HashMapValues<K, V> {
+        return HashMapValues<K, V>(iter());
+    }
+    auto values_mut() [[clang::lifetimebound]] -> HashMapValuesMut<K, V> {
+        return HashMapValuesMut<K, V>(iter_mut());
+    }
     auto into_iter() -> IntoIter { return IntoIter(rstd::move(table)); }
 };
 

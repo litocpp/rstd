@@ -119,6 +119,12 @@ target_link_libraries(rstd_try_coroutine_test PRIVATE rstd::core rstd.runtime
                                                       GTest::gtest_main)
 gtest_discover_tests(rstd_try_coroutine_test)
 
+add_executable(rstd_lifetime_annotation_positive EXCLUDE_FROM_ALL lifetimebound_positive.cpp)
+target_link_libraries(rstd_lifetime_annotation_positive PRIVATE rstd::rstd)
+target_compile_options(
+  rstd_lifetime_annotation_positive
+  PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,Clang>:-Werror=dangling>")
+
 function(add_rstd_compile_fail target source name expected_regex)
   add_executable(${target} EXCLUDE_FROM_ALL ${source})
   target_link_libraries(${target} PRIVATE rstd::rstd)
@@ -189,6 +195,46 @@ add_rstd_compile_fail(
   compile_fail/deref_mut_without_deref.cpp
   Deref.DerefMutWithoutDerefFailure
   "constraints not satisfied|Impled.*Deref")
+add_rstd_compile_fail(
+  rstd_compile_fail_lifetimebound_temporary_box
+  compile_fail/lifetimebound_temporary_box.cpp
+  LifetimeBound.TemporaryBox
+  "temporary whose address is used.*will be destroyed|will be destroyed at the end of the full-expression")
+target_compile_options(
+  rstd_compile_fail_lifetimebound_temporary_box
+  PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,Clang>:-Werror=dangling>")
+add_rstd_compile_fail(
+  rstd_compile_fail_lifetimebound_temporary_vec
+  compile_fail/lifetimebound_temporary_vec.cpp
+  LifetimeBound.TemporaryVec
+  "temporary whose address is used.*will be destroyed|will be destroyed at the end of the full-expression")
+target_compile_options(
+  rstd_compile_fail_lifetimebound_temporary_vec
+  PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,Clang>:-Werror=dangling>")
+add_rstd_compile_fail(
+  rstd_compile_fail_lifetimebound_temporary_string_view
+  compile_fail/lifetimebound_temporary_string_view.cpp
+  LifetimeBound.TemporaryStringView
+  "temporary whose address is used.*will be destroyed|will be destroyed at the end of the full-expression")
+target_compile_options(
+  rstd_compile_fail_lifetimebound_temporary_string_view
+  PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,Clang>:-Werror=dangling>")
+add_rstd_compile_fail(
+  rstd_compile_fail_lifetimebound_temporary_array
+  compile_fail/lifetimebound_temporary_array.cpp
+  LifetimeBound.TemporaryArray
+  "temporary whose address is used.*will be destroyed|will be destroyed at the end of the full-expression")
+target_compile_options(
+  rstd_compile_fail_lifetimebound_temporary_array
+  PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,Clang>:-Werror=dangling>")
+add_rstd_compile_fail(
+  rstd_compile_fail_lifetimebound_trait_proxy
+  compile_fail/lifetimebound_trait_proxy.cpp
+  LifetimeBound.TraitProxy
+  "address of stack memory associated with local variable.*returned|returning address of local temporary object")
+target_compile_options(
+  rstd_compile_fail_lifetimebound_trait_proxy
+  PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,Clang>:-Werror=return-stack-address>")
 
 if(OFF)
 add_executable(nostd nostd/main.cpp)

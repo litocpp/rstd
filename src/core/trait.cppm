@@ -571,7 +571,7 @@ inline constexpr decltype(auto) trait_static_call(Args&&... args) {
 /// \return A trait Impl wrapper, or a reference to t for direct and in-class implementations.
 export template<typename T, typename A>
 [[gnu::always_inline]]
-inline constexpr decltype(auto) as(A& t) noexcept {
+inline constexpr decltype(auto) as(A& t [[clang::lifetimebound]]) noexcept {
     using class_t = mtp::rm_cvf<A>;
     using source  = mtp::trait_impl_source<T, class_t>;
     if constexpr (! source::value) {

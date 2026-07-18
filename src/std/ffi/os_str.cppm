@@ -45,16 +45,19 @@ struct ref<ffi::OsStr> : ref_base<ref<ffi::OsStr>, u8[], false> {
     usize     length { 0 };
 
     constexpr ref() noexcept = default;
-    constexpr ref(u8 const* p, usize len) noexcept: p(p), length(len) {}
+    constexpr ref(u8 const* p [[clang::lifetimebound]], usize len) noexcept
+        : p(p), length(len) {}
 
     /// Construct from a `ref<str>` (UTF-8 is always valid OS bytes).
-    constexpr ref(ref<str> s) noexcept: p(s.data()), length(s.size()) {}
+    constexpr ref(ref<str> s [[clang::lifetimebound]]) noexcept
+        : p(s.data()), length(s.size()) {}
 
     /// Construct from a null-terminated C string.
-    constexpr ref(const char* c_str) noexcept
+    constexpr ref(const char* c_str [[clang::lifetimebound]]) noexcept
         : p(rstd::bit_cast<u8 const*>(c_str)), length(rstd::strlen(c_str)) {}
 
-    static constexpr auto from_raw_parts(u8 const* p, usize len) noexcept -> Self {
+    static constexpr auto from_raw_parts(u8 const* p [[clang::lifetimebound]],
+                                         usize len) noexcept -> Self {
         return { p, len };
     }
 
@@ -171,7 +174,7 @@ public:
     }
 
     /// Returns a borrowed `ref<OsStr>`.
-    auto as_os_str() const noexcept -> ref<OsStr> {
+    auto as_os_str() const noexcept [[clang::lifetimebound]] -> ref<OsStr> {
         return ref<OsStr>::from_raw_parts(inner.begin(), inner.len());
     }
 
@@ -199,7 +202,7 @@ public:
     void clear() { inner.clear(); }
 
     /// Implicit conversion to `ref<OsStr>`.
-    operator ref<OsStr>() const noexcept { return as_os_str(); }
+    operator ref<OsStr>() const noexcept [[clang::lifetimebound]] { return as_os_str(); }
 };
 
 } // namespace rstd::ffi

@@ -374,7 +374,7 @@ template<class I>
 struct ByRef : DefaultInClass<ByRef<I>, Iterator> {
     using Item = typename I::Item;
     I* inner;
-    explicit ByRef(I* p): inner(p) {}
+    explicit ByRef(I* p [[clang::lifetimebound]]): inner(p) {}
     auto next() -> Option<Item> { return inner->next(); }
     auto size_hint() const -> SizeHint { return inner->size_hint(); }
 };

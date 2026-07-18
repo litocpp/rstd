@@ -511,7 +511,9 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
     }
 
     // Borrows the iterator so adapters can consume from it without moving it.
-    auto by_ref() -> iter::ByRef<Self> { return iter::ByRef<Self>(rstd::addressof(this->self())); }
+    auto by_ref() [[clang::lifetimebound]] -> iter::ByRef<Self> {
+        return iter::ByRef<Self>(rstd::addressof(this->self()));
+    }
 
     // ---- adapters (move the receiver into the adapter) ----
     template<typename F>

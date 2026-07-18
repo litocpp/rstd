@@ -81,7 +81,7 @@ struct ref_base {
 
     /// \name Normal
     /// @{
-    static constexpr auto from_raw_parts(value_type* p) noexcept -> Self
+    static constexpr auto from_raw_parts(value_type* p [[clang::lifetimebound]]) noexcept -> Self
         requires(! mtp::DST<T>)
     {
         return { .p = p };
@@ -108,7 +108,8 @@ struct ref_base {
         return len() == 0;
     }
 
-    static constexpr auto from_raw_parts(value_type* p, usize length) noexcept -> Self
+    static constexpr auto from_raw_parts(value_type* p [[clang::lifetimebound]],
+                                         usize length) noexcept -> Self
         requires mtp::DSTArray<T> && mtp::is_aggregate<Self>
     {
         return { .p = p, .length = length };
@@ -187,7 +188,7 @@ struct ptr_base {
 
     /// \name Normal
     /// @{
-    static constexpr auto from_raw_parts(value_type* p) noexcept -> Self
+    static constexpr auto from_raw_parts(value_type* p [[clang::lifetimebound]]) noexcept -> Self
         requires(! mtp::DST<T>) && mtp::is_aggregate<Self>
     {
         return { .p = p };
@@ -208,7 +209,8 @@ struct ptr_base {
         return static_cast<Self const*>(this)->length;
     }
 
-    static constexpr auto from_raw_parts(value_type* p, usize length) noexcept -> Self
+    static constexpr auto from_raw_parts(value_type* p [[clang::lifetimebound]],
+                                         usize length) noexcept -> Self
         requires mtp::DSTArray<T> && mtp::is_aggregate<Self>
     {
         return { .p = p, .length = length };

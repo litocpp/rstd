@@ -13,7 +13,9 @@ struct SliceIter : DefaultInClass<SliceIter<T>, Iterator> {
     const T* cur;
     const T* fin;
 
-    constexpr SliceIter(const T* begin, const T* end): cur(begin), fin(end) {}
+    constexpr SliceIter(const T* begin [[clang::lifetimebound]],
+                        const T* end [[clang::lifetimebound]])
+        : cur(begin), fin(end) {}
 
     constexpr auto next() -> Option<Item> {
         if (cur == fin) return rstd::None();
@@ -43,7 +45,9 @@ struct SliceIterMut : DefaultInClass<SliceIterMut<T>, Iterator> {
     T* cur;
     T* fin;
 
-    constexpr SliceIterMut(T* begin, T* end): cur(begin), fin(end) {}
+    constexpr SliceIterMut(T* begin [[clang::lifetimebound]],
+                           T* end [[clang::lifetimebound]])
+        : cur(begin), fin(end) {}
 
     constexpr auto next() -> Option<Item> {
         if (cur == fin) return rstd::None();
@@ -149,20 +153,20 @@ auto successors(Option<T> first, F f) -> Successors<T, F> {
 
 /// Iterator over `&T` of a `slice<T>`.
 export template<class T>
-auto from_slice(slice<T> s) -> SliceIter<T> {
+auto from_slice(slice<T> s [[clang::lifetimebound]]) -> SliceIter<T> {
     auto* p = s.as_raw_ptr();
     return { p, p + s.len() };
 }
 
 /// Iterator over `&T` of a C array.
 export template<class T, usize N>
-auto from_array(const T (&arr)[N]) -> SliceIter<T> {
+auto from_array(const T (&arr [[clang::lifetimebound]])[N]) -> SliceIter<T> {
     return { arr, arr + N };
 }
 
 /// Iterator over `&mut T` of a C array.
 export template<class T, usize N>
-auto from_array_mut(T (&arr)[N]) -> SliceIterMut<T> {
+auto from_array_mut(T (&arr [[clang::lifetimebound]])[N]) -> SliceIterMut<T> {
     return { arr, arr + N };
 }
 
