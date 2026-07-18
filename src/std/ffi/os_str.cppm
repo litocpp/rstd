@@ -207,6 +207,20 @@ public:
 
 } // namespace rstd::ffi
 
+namespace rstd
+{
+
+template<>
+struct Impl<convert::TryFrom<ffi::OsString>, ::alloc::string::String> {
+    using Error = ffi::OsString;
+
+    static auto try_from(ffi::OsString value) -> Result<::alloc::string::String, Error> {
+        return value.into_string();
+    }
+};
+
+} // namespace rstd
+
 // ── Display for ref<OsStr> ───────────────────────────────────────────────
 namespace rstd
 {

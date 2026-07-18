@@ -8,6 +8,12 @@ static_assert(Impled<i128, str_::FromStr>);
 static_assert(! Impled<bool, str_::FromStr>);
 static_assert(! Impled<char, str_::FromStr>);
 
+using WideningResult = decltype(try_from<u16>(u8 {}));
+static_assert(mtp::same_as<WideningResult, Result<u16, convert::Infallible>>);
+
+using NarrowingResult = decltype(try_from<u8>(u16 {}));
+static_assert(mtp::same_as<NarrowingResult, Result<u8, num::TryFromIntError>>);
+
 TEST(U8, MinMax) {
     EXPECT_EQ(rstd::u8_::MIN, 0u);
     EXPECT_EQ(rstd::u8_::MAX, 255u);
@@ -117,4 +123,20 @@ TEST(IntFromStr, ReportsRustCompatibleErrorKinds) {
                     .unwrap_err()
                     .kind()
                     ->is_PosOverflow());
+}
+
+TEST(IntTryFrom, ChecksPrimitiveIntegerRanges) {
+    EXPECT_EQ(try_from<u16>(u8_::MAX).unwrap(), 255);
+    EXPECT_EQ(try_into<i16>(u8_::MAX).unwrap(), 255);
+    EXPECT_EQ(try_from<u8>(u16(255)).unwrap(), 255);
+
+    EXPECT_TRUE(try_from<u8>(i16(-1)).is_err());
+    EXPECT_TRUE(try_from<u8>(u16(256)).is_err());
+    EXPECT_TRUE(try_from<i8>(i16(-129)).is_err());
+    EXPECT_TRUE(try_from<i8>(i16(128)).is_err());
+    EXPECT_TRUE(try_from<i64>(u64_::MAX).is_err());
+    EXPECT_TRUE(try_from<i128>(u128_::MAX).is_err());
+
+    auto error = try_from<u8>(u16(256)).unwrap_err();
+    EXPECT_EQ(format("{}", error), "out of range integral type conversion attempted");
 }

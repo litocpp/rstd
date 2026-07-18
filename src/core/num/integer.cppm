@@ -10,6 +10,7 @@ export import :str.traits;
 export import :trait;
 export import :intrinsics;
 import :enum_;
+import :convert;
 
 #define RSTD_INT_ERROR_KINDS(V) \
     V(Empty)                    \
@@ -38,10 +39,21 @@ public:
     }
 };
 
+class TryFromIntError {
+    constexpr TryFromIntError() noexcept = default;
+
+    template<typename, typename>
+    friend struct rstd::Impl;
+
+public:
+    constexpr TryFromIntError(const TryFromIntError&) noexcept = default;
+    constexpr TryFromIntError(TryFromIntError&&) noexcept      = default;
+};
+
 } // namespace rstd::num
 
 template<typename T>
-concept rstd_parseable_integer =
+concept rstd_integer =
     rstd::mtp::is_int<T> && (! rstd::mtp::same_as<T, bool>) && (! rstd::mtp::same_as<T, char>) &&
     (! rstd::mtp::same_as<T, wchar_t>) && (! rstd::mtp::same_as<T, char8_t>) &&
     (! rstd::mtp::same_as<T, char16_t>) && (! rstd::mtp::same_as<T, char32_t>);
@@ -68,7 +80,46 @@ struct IntImpl : ImplBase<T> {
 INT_IMPL(u32);
 INT_IMPL(u64);
 
-template<rstd_parseable_integer T>
+template<rstd_integer From, rstd_integer To>
+    requires(! mtp::same_as<From, To>)
+struct Impl<convert::TryFrom<From>, To> {
+private:
+    static constexpr bool infallible =
+        (! numeric_limits<From>::is_signed || numeric_limits<To>::is_signed) &&
+        numeric_limits<To>::digits >= numeric_limits<From>::digits;
+
+public:
+    using Error = mtp::cond<infallible, convert::Infallible, num::TryFromIntError>;
+
+    static auto try_from(From value) -> Result<To, Error> {
+        if constexpr (infallible) {
+            return Ok(static_cast<To>(value));
+        } else {
+            bool out_of_range = false;
+            if constexpr (numeric_limits<From>::is_signed) {
+                if (value < 0) {
+                    if constexpr (numeric_limits<To>::is_signed) {
+                        out_of_range =
+                            static_cast<i128>(value) < static_cast<i128>(numeric_limits<To>::min());
+                    } else {
+                        out_of_range = true;
+                    }
+                } else {
+                    out_of_range =
+                        static_cast<u128>(value) > static_cast<u128>(numeric_limits<To>::max());
+                }
+            } else {
+                out_of_range =
+                    static_cast<u128>(value) > static_cast<u128>(numeric_limits<To>::max());
+            }
+
+            if (out_of_range) return Err(num::TryFromIntError {});
+            return Ok(static_cast<To>(value));
+        }
+    }
+};
+
+template<rstd_integer T>
 struct Impl<str_::FromStr, T> {
     using Err  = num::ParseIntError;
     using Self = T;
@@ -141,6 +192,13 @@ struct Impl<fmt::Display, num::ParseIntError> : ImplBase<num::ParseIntError> {
         case num::IntErrorKind::Tag::Zero: break;
         }
         return formatter.pad(message);
+    }
+};
+
+template<>
+struct Impl<fmt::Display, num::TryFromIntError> : ImplBase<num::TryFromIntError> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        return formatter.pad("out of range integral type conversion attempted");
     }
 };
 

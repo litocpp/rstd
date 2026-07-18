@@ -50,6 +50,8 @@ using rstd::convert::AsMut;
 using rstd::convert::AsRef;
 using rstd::convert::From;
 using rstd::convert::Into;
+using rstd::convert::TryFrom;
+using rstd::convert::TryInto;
 
 using rstd::None;
 using rstd::Option;

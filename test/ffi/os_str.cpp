@@ -93,6 +93,16 @@ TEST(OsString, IntoStringInvalid) {
     EXPECT_TRUE(res.is_err());
 }
 
+TEST(OsString, TryIntoStringUsesOwnedConversion) {
+    auto valid = OsString::from(rstd::ref<rstd::str>("utf8"));
+    EXPECT_EQ("utf8", rstd::try_into<String>(rstd::move(valid)).unwrap());
+
+    rstd::u8         bad[] = { 0xFF };
+    rstd::ref<OsStr> bytes(bad, 1);
+    auto             invalid = OsString::from(bytes);
+    EXPECT_EQ(rstd::try_from<String>(rstd::move(invalid)).unwrap_err().len(), 1u);
+}
+
 TEST(OsString, Push) {
     auto os = OsString::from(rstd::ref<rstd::str>("he"));
     os.push(rstd::ref<OsStr>("llo"));
