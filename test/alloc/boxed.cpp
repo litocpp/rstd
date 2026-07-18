@@ -8,6 +8,7 @@ using rstd::boxed::Box;
 
 static_assert(rstd::Impled<Box<int>, rstd::ops::Deref>);
 static_assert(rstd::Impled<Box<int>, rstd::ops::DerefMut>);
+static_assert(sizeof(Box<int>) == sizeof(int*));
 
 namespace
 {
@@ -50,7 +51,6 @@ struct CallbackDropProbe {
 TEST(BoxTest, MakeAndAccess) {
     {
         auto b = Box<int>::make(42);
-        ASSERT_TRUE(static_cast<bool>(b));
         ASSERT_NE(b.get(), nullptr);
         EXPECT_EQ(*b.get(), 42);
     }
@@ -59,7 +59,6 @@ TEST(BoxTest, MakeAndAccess) {
     EXPECT_EQ(Counter::alive, 0);
     {
         auto b = Box<Counter>::make(Counter { 7 });
-        ASSERT_TRUE(b);
         EXPECT_EQ(b->v, 7);
         EXPECT_EQ(Counter::alive, 1);
     }
@@ -104,15 +103,17 @@ TEST(BoxTest, DynFnMutWithByteSliceDestructs) {
     EXPECT_EQ(seen, 1u);
 }
 
-TEST(BoxTest, DynResetUsesConcreteDropAndLayout) {
-    int  drops    = 0;
-    auto callback = Box<rstd::dyn<rstd::FnMut<void()>>>::make(CallbackDropProbe { drops });
+TEST(BoxTest, DynDropUsesConcreteDropAndLayout) {
+    int drops = 0;
+    {
+        auto callback = Box<rstd::dyn<rstd::FnMut<void()>>>::make(CallbackDropProbe { drops });
 
-    auto layout = rstd::alloc::Layout::for_value(callback.as_ptr());
-    EXPECT_EQ(layout.size, sizeof(CallbackDropProbe));
-    EXPECT_EQ(layout.align, alignof(CallbackDropProbe));
+        auto layout = rstd::alloc::Layout::for_value(callback.as_ptr());
+        EXPECT_EQ(layout.size, sizeof(CallbackDropProbe));
+        EXPECT_EQ(layout.align, alignof(CallbackDropProbe));
 
-    callback.reset();
+        EXPECT_EQ(drops, 0);
+    }
     EXPECT_EQ(drops, 1);
 }
 
@@ -126,13 +127,12 @@ TEST(BoxTest, MoveCtorTransfersOwnership) {
 
         auto b2 = rstd::move(b1);
         EXPECT_EQ(b2.get(), p1);
-        EXPECT_EQ(b1.get(), nullptr); // moved-from should be empty
         EXPECT_EQ(Counter::alive, 1);
     }
     EXPECT_EQ(Counter::alive, 0);
 }
 
-TEST(BoxTest, MoveAssignResetsOldAndTakesNew) {
+TEST(BoxTest, MoveAssignDropsOldAndTakesNew) {
     EXPECT_EQ(Counter::alive, 0);
     {
         auto b1 = Box<Counter>::make(Counter { 11 });
@@ -146,24 +146,80 @@ TEST(BoxTest, MoveAssignResetsOldAndTakesNew) {
         EXPECT_EQ(Counter::alive, 1);
 
         EXPECT_EQ(b2.get(), p1);
-        EXPECT_EQ(b1.get(), nullptr);
         EXPECT_EQ(b2->v, 11);
     }
     EXPECT_EQ(Counter::alive, 0);
 }
 
-TEST(BoxTest, ResetDeletesAndNulls) {
+TEST(BoxTest, MoveAssignRestoresMovedFromBox) {
     EXPECT_EQ(Counter::alive, 0);
     {
         auto b = Box<Counter>::make(Counter { 5 });
+        auto c = rstd::move(b);
         EXPECT_EQ(Counter::alive, 1);
 
-        b.reset();
-        EXPECT_EQ(Counter::alive, 0);
-        EXPECT_EQ(b.get(), nullptr);
-        EXPECT_FALSE(static_cast<bool>(b));
+        b = Box<Counter>::make(Counter { 7 });
+        EXPECT_EQ(Counter::alive, 2);
+        EXPECT_EQ(b->v, 7);
+        EXPECT_EQ(c->v, 5);
     }
     EXPECT_EQ(Counter::alive, 0);
+}
+
+TEST(BoxDeathTest, UseAfterMovePanics) {
+    auto b = Box<Counter>::make(Counter { 5 });
+    auto c = rstd::move(b);
+
+    EXPECT_DEATH(static_cast<void>(b.get()), "Box used after move");
+    EXPECT_DEATH(static_cast<void>(b.as_ptr()), "Box used after move");
+    EXPECT_DEATH(static_cast<void>(b.as_mut_ptr()), "Box used after move");
+    EXPECT_DEATH(static_cast<void>(b.as_ref()), "Box used after move");
+    EXPECT_DEATH(static_cast<void>(b.deref_mut()), "Box used after move");
+    EXPECT_DEATH(static_cast<void>(*b), "Box used after move");
+    EXPECT_DEATH(static_cast<void>(b.operator->()), "Box used after move");
+    EXPECT_DEATH(static_cast<void>(b.clone()), "Box used after move");
+    EXPECT_DEATH(static_cast<void>(Box<Counter>(rstd::move(b))), "Box used after move");
+    EXPECT_DEATH(static_cast<void>(rstd::move(b).into_raw()), "Box used after move");
+
+    const auto& const_b = b;
+    EXPECT_DEATH(static_cast<void>(const_b.as_ref()), "Box used after move");
+    EXPECT_EQ(c->v, 5);
+}
+
+TEST(BoxDeathTest, CloneFromMovedBoxPanics) {
+    auto source       = Box<int>::make(1);
+    auto moved_source = rstd::move(source);
+    auto target       = Box<int>::make(2);
+
+    EXPECT_DEATH(target.clone_from(source), "Box used after move");
+
+    auto moved_target = rstd::move(target);
+    EXPECT_DEATH(target.clone_from(moved_source), "Box used after move");
+    EXPECT_EQ(*moved_source, 1);
+    EXPECT_EQ(*moved_target, 2);
+}
+
+TEST(BoxDeathTest, DynAndArrayUseAfterMovePanics) {
+    using Callback      = rstd::dyn<rstd::FnMut<void()>>;
+    auto callback       = Box<Callback>::make([] {
+    });
+    auto moved_callback = rstd::move(callback);
+    EXPECT_DEATH(callback->operator()(), "Box used after move");
+
+    auto values = rstd::vec::Vec<int>::make();
+    values.push(1);
+    values.push(2);
+    auto array       = values.into_boxed_slice();
+    auto moved_array = rstd::move(array);
+    EXPECT_DEATH(static_cast<void>(array.clone()), "Box used after move");
+
+    moved_callback->operator()();
+    EXPECT_EQ(moved_array.as_ref().len(), 2u);
+}
+
+TEST(BoxDeathTest, FromNullPanics) {
+    EXPECT_DEATH(static_cast<void>(Box<int>::from_raw(rstd::mut_ptr<int>::from_raw_parts(nullptr))),
+                 "Box cannot be constructed from null");
 }
 
 TEST(BoxTest, FromRawTakesOwnership) {
@@ -174,7 +230,6 @@ TEST(BoxTest, FromRawTakesOwnership) {
 
         {
             auto b = Box<Counter>::from_raw(rstd::mut_ptr<Counter>::from_raw_parts(raw));
-            EXPECT_TRUE(b);
             EXPECT_EQ(b->v, 99);
         } // should delete raw here
 

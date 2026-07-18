@@ -8,7 +8,6 @@ using alloc::handle_alloc_error;
 
 using rstd::alloc::Allocator;
 using rstd::alloc::Layout;
-using rstd::mem::manually_drop::ManuallyDrop;
 using rstd::ptr_::non_null::NonNull;
 namespace mtp = rstd::mtp;
 using namespace rstd::prelude;
@@ -17,19 +16,52 @@ namespace alloc::boxed
 {
 
 /// A pointer type that uniquely owns a heap allocation of type `T`.
+/// A moved-from `Box` may only be destroyed or assigned to. Any other use panics.
 /// \tparam T The type of the value stored on the heap.
 export template<typename T>
 class Box {
-    NonNull<T> m_ptr;
+    Option<NonNull<T>> m_ptr;
 
-    constexpr explicit Box(NonNull<T> ptr) noexcept: m_ptr(ptr) {}
+    [[noreturn]]
+    static void panic_moved() {
+        rstd::panic { "Box used after move" };
+    }
+
+    [[nodiscard]]
+    constexpr auto checked_ptr() const noexcept -> NonNull<T> {
+        if (m_ptr.is_none()) panic_moved();
+        return *m_ptr;
+    }
+
+    [[nodiscard]]
+    constexpr auto take_ptr() noexcept -> NonNull<T> {
+        auto ptr = checked_ptr();
+        m_ptr    = Option<NonNull<T>> {};
+        return ptr;
+    }
+
+    void drop() noexcept {
+        if (m_ptr.is_none()) return;
+
+        auto mptr         = checked_ptr().as_mut_ptr();
+        auto layout       = Layout::for_value(mptr.as_ptr());
+        auto raw_non_null = NonNull<u8>::make_unchecked(
+            mut_ptr<u8>::from_raw_parts(reinterpret_cast<u8*>(mptr.as_raw_ptr())));
+        rstd::ptr_::drop_in_place(mptr);
+        as<Allocator>(GLOBAL).deallocate(raw_non_null, layout);
+        m_ptr = Option<NonNull<T>> {};
+    }
+
+    constexpr explicit Box(NonNull<T> ptr) noexcept: m_ptr(Some(ptr)) {
+        if (! ptr) rstd::panic { "Box cannot be constructed from null" };
+    }
 
 public:
     USE_TRAIT(Box)
 
     using Target = T;
 
-    ~Box() { reset(); }
+    ~Box() { drop(); }
     Box(const Box&) noexcept            = delete;
     Box& operator=(const Box&) noexcept = delete;
 
@@ -38,25 +70,23 @@ public:
     auto clone() const -> Self
         requires Impled<T, Clone, Sized>
     {
-        return make(as<Clone>(as_ptr()).clone());
+        return make(as<Clone>(*as_ptr()).clone());
     }
     /// Replaces the contents of this `Box` with a clone of the source.
     /// \param source The `Box` to clone from.
     void clone_from(Self& source)
         requires requires(Box b) { b.clone(); }
     {
+        static_cast<void>(checked_ptr());
         *this = source.clone();
     }
 
-    constexpr Box(Box&& o) noexcept: m_ptr(o.m_ptr) { rstd::mem::fill(o.m_ptr, 0); }
+    constexpr Box(Box&& o) noexcept: Box(o.take_ptr()) {}
     Box& operator=(Box&& o) noexcept {
         if (this != &o) {
-            // clean
-            reset();
-            // assign
-            m_ptr = o.m_ptr;
-            // move
-            rstd::mem::fill(o.m_ptr, 0);
+            auto ptr = o.take_ptr();
+            drop();
+            m_ptr = Some(ptr);
         }
         return *this;
     }
@@ -96,7 +126,7 @@ public:
     }
 
     /// Constructs a `Box` from a raw mutable pointer.
-    /// \param raw The raw pointer that was previously obtained from `into_raw`.
+    /// \param raw A non-null pointer that was previously obtained from `into_raw`.
     /// \return A `Box` that takes ownership of the pointed-to value.
     constexpr static Box from_raw(mut_ptr<T> raw) noexcept {
         return Box { NonNull<T>::make_unchecked(raw) };
@@ -104,47 +134,31 @@ public:
 
     /// Consumes the `Box`, returning the wrapped raw pointer without deallocating.
     /// \return A mutable pointer to the heap-allocated value.
-    constexpr auto into_raw() && noexcept -> mut_ptr<T> {
-        auto b = ManuallyDrop<>::make(rstd::move(*this));
-        return b->m_ptr.as_mut_ptr();
-    }
+    constexpr auto into_raw() && noexcept -> mut_ptr<T> { return take_ptr().as_mut_ptr(); }
 
     /// Returns a raw pointer to the contained value.
-    /// \return A raw pointer to the heap-allocated value.
+    /// \return A non-null raw pointer to the heap-allocated value.
     constexpr auto get() noexcept -> mut_ptr<T>::value_type* {
-        return m_ptr.as_mut_ptr().as_raw_ptr();
+        return checked_ptr().as_mut_ptr().as_raw_ptr();
     }
 
     /// Returns an immutable borrow of the contained value.
     constexpr auto deref() const noexcept -> ref<T> { return as_ref(); }
     /// Returns a mutable borrow of the contained value.
-    constexpr auto deref_mut() noexcept -> mut_ref<T> { return m_ptr.as_mut_ptr().as_mut_ref(); }
-    /// Returns `true` if this `Box` holds a valid (non-null) pointer.
-    explicit constexpr operator bool() const noexcept { return ! rstd::mem::all(m_ptr, 0); }
-
-    /// Destroys the contained value and deallocates the memory.
-    void reset() noexcept {
-        if (! rstd::mem::all(m_ptr, 0)) {
-            auto mptr         = m_ptr.as_mut_ptr();
-            auto layout       = Layout::for_value(mptr.as_ptr());
-            auto raw_non_null = NonNull<u8>::make_unchecked(
-                mut_ptr<u8>::from_raw_parts(reinterpret_cast<u8*>(mptr.as_raw_ptr())));
-            rstd::ptr_::drop_in_place(mptr);
-            as<Allocator>(GLOBAL).deallocate(raw_non_null, layout);
-            rstd::mem::fill(m_ptr, 0);
-        }
+    constexpr auto deref_mut() noexcept -> mut_ref<T> {
+        return checked_ptr().as_mut_ptr().as_mut_ref();
     }
 
     /// Returns an immutable reference to the contained value.
     /// \return A `ref<T>` to the boxed value.
-    constexpr auto as_ref() const noexcept -> ref<T> { return m_ptr.as_ptr().as_ref(); }
+    constexpr auto as_ref() const noexcept -> ref<T> { return checked_ptr().as_ptr().as_ref(); }
 
     /// Returns a const pointer to the contained value.
     /// \return A `ptr<T>` to the boxed value.
-    constexpr auto as_ptr() const noexcept -> ptr<T> { return m_ptr.as_ptr(); }
+    constexpr auto as_ptr() const noexcept -> ptr<T> { return checked_ptr().as_ptr(); }
     /// Returns a mutable pointer to the contained value.
     /// \return A `mut_ptr<T>` to the boxed value.
-    constexpr auto as_mut_ptr() const noexcept -> mut_ptr<T> { return m_ptr.as_mut_ptr(); }
+    constexpr auto as_mut_ptr() const noexcept -> mut_ptr<T> { return checked_ptr().as_mut_ptr(); }
 
     /// Downcasts a boxed `Any` value to its concrete type.
     template<typename U>
@@ -171,7 +185,7 @@ public:
         auto res = as<Allocator>(GLOBAL).allocate(layout);
         if (res.is_err()) handle_alloc_error(layout);
 
-        auto* raw = static_cast<V*>(res.unwrap_unchecked().as_mut_ptr().as_raw_ptr());
+        auto* raw = reinterpret_cast<V*>(res.unwrap_unchecked().as_mut_ptr().as_raw_ptr());
         for (usize i = 0; i < length; ++i) {
             new (raw + i) V(old[i]);
         }

@@ -131,9 +131,10 @@ TEST(Vec, BoxedSliceDropsEveryElement) {
     values.push(DropProbe { drops });
     values.push(DropProbe { drops });
 
-    auto boxed = values.into_boxed_slice();
-    EXPECT_EQ(drops, 0);
-    boxed.reset();
+    {
+        auto boxed = values.into_boxed_slice();
+        EXPECT_EQ(drops, 0);
+    }
     EXPECT_EQ(drops, 2);
 }
 

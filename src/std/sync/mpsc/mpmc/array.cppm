@@ -239,20 +239,18 @@ struct Channel {
     }
 
     ~Channel() {
-        if (buffer) {
-            usize h = head->load(Ordering::Relaxed);
-            usize t = tail->load(Ordering::Relaxed) & ~mark_bit;
+        usize h = head->load(Ordering::Relaxed);
+        usize t = tail->load(Ordering::Relaxed) & ~mark_bit;
 
-            while (h != t) {
-                usize index = h & (mark_bit - 1);
-                auto& slot  = buffer.as_mut_ptr()[index];
-                slot.msg.assume_init_drop();
+        while (h != t) {
+            usize index = h & (mark_bit - 1);
+            auto& slot  = buffer.as_mut_ptr()[index];
+            slot.msg.assume_init_drop();
 
-                if (index + 1 < cap) {
-                    h += 1;
-                } else {
-                    h = (h + one_lap) & ~(one_lap - 1);
-                }
+            if (index + 1 < cap) {
+                h += 1;
+            } else {
+                h = (h + one_lap) & ~(one_lap - 1);
             }
         }
     }
