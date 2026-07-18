@@ -44,7 +44,9 @@ class HashMapIter : public rstd::DefaultInClass<HashMapIter<K, V>, rstd::iter::I
 
 public:
     using Item = rstd::tuple<rstd::ref<K>, rstd::ref<V>>;
-    HashMapIter(const RawTable<K, V>* source [[clang::lifetimebound]], usize len)
+    HashMapIter(const RawTable<K, V>* source [[clang::lifetimebound]]
+                ,
+                usize len)
         : table(source), index(0), remaining(len) {}
 
     auto next() -> Option<Item> {
@@ -69,7 +71,9 @@ class HashMapIterMut : public rstd::DefaultInClass<HashMapIterMut<K, V>, rstd::i
 
 public:
     using Item = rstd::tuple<rstd::ref<K>, rstd::mut_ref<V>>;
-    HashMapIterMut(RawTable<K, V>* source [[clang::lifetimebound]], usize len)
+    HashMapIterMut(RawTable<K, V>* source [[clang::lifetimebound]]
+                   ,
+                   usize len)
         : table(source), index(0), remaining(len) {}
 
     auto next() -> Option<Item> {
@@ -232,7 +236,7 @@ public:
     }
 
     auto get_key_value(const K& key) const [[clang::lifetimebound]]
-        -> Option<rstd::tuple<rstd::ref<K>, rstd::ref<V>>> {
+    -> Option<rstd::tuple<rstd::ref<K>, rstd::ref<V>>> {
         auto found = find_index(key);
         if (found.is_none()) return None();
         const auto& bucket = table.bucket(*found);

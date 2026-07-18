@@ -2,7 +2,7 @@ export module rstd:async.time;
 export import :async.forward;
 import :async.awaitable;
 import :async.reactor;
-export import :async.runtime_core;
+import :async.runtime_core;
 import :async.timer_facility;
 import :time;
 

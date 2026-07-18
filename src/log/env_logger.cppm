@@ -27,7 +27,7 @@ enum class Style : u8
 };
 
 inline auto stderr_is_tty() noexcept -> bool {
-    return rstd::sys::io::stdio::is_terminal_fd(2);
+    return rstd::io::stderr().is_terminal();
 }
 
 inline auto parse_style(ref<str> s) noexcept -> Style {
@@ -112,8 +112,8 @@ namespace rstd::log
 // ── StderrWriter ────────────────────────────────────────────────────────────
 
 /// A raw stderr fd writer used by EnvLogger.
-export struct StderrWriter {
-    int fd = 2;
+struct StderrWriter {
+    rstd::io::Stderr stderr;
 };
 
 // ── EnvLogger ─────────────────────────────────────────────────────────────
@@ -178,15 +178,15 @@ private:
     // ── parsing ───────────────────────────────────────────────────────────
 
     void parse_env() noexcept {
-        auto* val = rstd::sys::getenv_internal("RSTD_LOG");
-        if (val == nullptr) return;
-        parse_filters(ref<str>(val));
+        auto val = rstd::env::var("RSTD_LOG");
+        if (val.is_none()) return;
+        parse_filters(val->as_str());
     }
 
     void parse_style_env() noexcept {
-        auto* val = rstd::sys::getenv_internal("RSTD_LOG_STYLE");
-        if (val == nullptr) return;
-        style = ::parse_style(ref<str>(val));
+        auto val = rstd::env::var("RSTD_LOG_STYLE");
+        if (val.is_none()) return;
+        style = ::parse_style(val->as_str());
     }
 
     void parse_filters(ref<str> input) noexcept {
@@ -254,7 +254,7 @@ private:
         fmt::Formatter f(&w, [](void* ctx, const u8* p, usize len) -> bool {
             auto* self = static_cast<StderrWriter*>(ctx);
             while (len > 0) {
-                auto res = rstd::sys::io::stdio::write_fd(self->fd, p, len);
+                auto res = rstd::as<rstd::io::Write>(self->stderr).write(p, len);
                 if (res.is_err()) return false;
                 auto n = res.unwrap_unchecked();
                 if (n == 0) return false;

@@ -1,9 +1,14 @@
+module;
 #include <rstd/macro.hpp>
-#if RSTD_OS_UNIX && ! RSTD_OS_WINDOWS
-
 #include <gtest/gtest.h>
 #include <thread>
-import rstd;
+
+module rstd;
+#if RSTD_OS_UNIX && ! RSTD_OS_WINDOWS
+import :sys.sync.mutex.pthread;
+
+namespace rstd_mutex_pthread_test
+{
 using rstd::sys::sync::mutex::pthread::Mutex;
 
 #define RSTD_TEST_GROUP MutexPthread
@@ -53,4 +58,5 @@ TEST(MutexPthread, DestructorDoesNotHangIfLockedElsewhere) {
     SUCCEED();
 }
 #endif // !__has_feature(address_sanitizer)
+} // namespace rstd_mutex_pthread_test
 #endif

@@ -9,7 +9,7 @@ export import :time;
 import :async.awaitable;
 import :async.poll;
 import :async.runtime_core;
-import :sys.fd;
+import :os.fd;
 import :sync;
 import rstd.alloc;
 
@@ -55,17 +55,21 @@ struct RegistrationFields {
     Option<WorkerHandle>         worker {};
     Option<PollKey>              key {};
     Option<io::Error>            error {};
+    Option<task::Waker>          deregister_waker {};
+    Option<io::Error>            deregister_error {};
     bool                         closed { false };
+    bool                         deregister_started { false };
+    bool                         deregistered { false };
     Vec<ReadinessFacilityWaiter> facility_waiters;
 
     RegistrationFields(): facility_waiters(Vec<ReadinessFacilityWaiter>::make()) {}
 };
 
 struct RegistrationState {
-    sys::fd::RawFd                  fd;
+    os::fd::RawFd                   fd;
     sync::Mutex<RegistrationFields> fields;
 
-    explicit RegistrationState(sys::fd::RawFd fd): fd(fd), fields(RegistrationFields {}) {}
+    explicit RegistrationState(os::fd::RawFd fd): fd(fd), fields(RegistrationFields {}) {}
 };
 
 struct TimerFields {
@@ -141,6 +145,74 @@ void fail_registration(const RegistrationArc& state, io::Error error) {
     }
 }
 
+void finish_registration_deregister(const RegistrationArc& state, Option<io::Error> error) {
+    auto waker = Option<task::Waker> {};
+    {
+        auto fields = state->fields.lock().unwrap_unchecked();
+        if (fields->deregistered) return;
+        fields->deregistered     = true;
+        fields->deregister_error = rstd::move(error);
+        waker                    = fields->deregister_waker.take();
+    }
+    if (waker.is_some()) {
+        rstd::move(waker).unwrap_unchecked().wake();
+    }
+}
+
+void begin_registration_deregister(const RegistrationArc& state) {
+    auto wakers               = Vec<task::Waker>::make();
+    auto tokens               = Vec<FacilityCompletionToken>::make();
+    auto worker               = Option<WorkerHandle> {};
+    auto command              = Option<PollCommand> {};
+    bool complete_immediately = false;
+    {
+        auto fields = state->fields.lock().unwrap_unchecked();
+        if (! fields->closed) {
+            fields->closed = true;
+            if (fields->read_waker.is_some()) {
+                wakers.push(rstd::move(fields->read_waker).unwrap_unchecked());
+            }
+            if (fields->write_waker.is_some()) {
+                wakers.push(rstd::move(fields->write_waker).unwrap_unchecked());
+            }
+            fields->read_waiter_id  = 0;
+            fields->write_waiter_id = 0;
+            while (! fields->facility_waiters.is_empty()) {
+                tokens.push(rstd::move(fields->facility_waiters.pop()).unwrap_unchecked().token);
+            }
+        }
+
+        if (! fields->deregister_started) {
+            fields->deregister_started = true;
+            if (fields->deregistered) {
+                complete_immediately = false;
+            } else if (fields->worker.is_some() && fields->key.is_some()) {
+                worker  = Some(fields->worker->clone());
+                command = Some(
+                    PollCommand::deregister_source(*fields->key, make_registration_owner(state)));
+            } else {
+                complete_immediately = true;
+            }
+        }
+    }
+
+    if (command.is_some()) {
+        auto submitted = worker->submit_poll(rstd::move(command).unwrap_unchecked());
+        if (submitted.is_err()) {
+            finish_registration_deregister(
+                state, Some(io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected })));
+        }
+    } else if (complete_immediately) {
+        finish_registration_deregister(state, None());
+    }
+
+    wake_all(wakers);
+    while (! tokens.is_empty()) {
+        auto token = rstd::move(tokens.pop()).unwrap_unchecked();
+        (void)token.complete(FacilityEventKind::Canceled);
+    }
+}
+
 auto submit_registration_command(const RegistrationArc& state,
                                  WorkerHandle&          worker,
                                  PollCommand            command) -> bool {
@@ -212,10 +284,26 @@ auto make_readiness_cancellation(const RegistrationArc& state, usize waiter_id, 
 }
 
 void handle_registration_event(const RegistrationArc& state, PollEventData data) {
+    if (data.kind() == PollEventKind::Deregistered) {
+        if (data.has_backend_error()) {
+            fail_registration(state, data.take_backend_error());
+        }
+        finish_registration_deregister(state, None());
+        return;
+    }
     if (data.kind() == PollEventKind::BackendError) {
-        auto error = data.has_backend_error()
-                         ? data.take_backend_error()
-                         : io::Error::from_kind(io::ErrorKind { io::ErrorKind::Other });
+        auto error         = data.has_backend_error()
+                                 ? data.take_backend_error()
+                                 : io::Error::from_kind(io::ErrorKind { io::ErrorKind::Other });
+        auto deregistering = false;
+        {
+            auto fields   = state->fields.lock().unwrap_unchecked();
+            deregistering = fields->deregister_started && ! fields->deregistered;
+        }
+        if (deregistering) {
+            finish_registration_deregister(state, Some(rstd::move(error)));
+            return;
+        }
         fail_registration(state, rstd::move(error));
         return;
     }
@@ -534,6 +622,8 @@ void clear_registration_waker(const RegistrationArc& state, Interest interest, u
     }
 }
 
+export class RegistrationDeregisterFuture;
+
 export class Registration {
     RegistrationArc m_state;
 
@@ -557,8 +647,8 @@ public:
 
     ~Registration() { reset(); }
 
-    static auto register_fd(sys::fd::RawFd fd) -> io::Result<Registration> {
-        if (fd == sys::fd::INVALID_RAW_FD) {
+    static auto register_fd(os::fd::RawFd fd) -> io::Result<Registration> {
+        if (fd == os::fd::INVALID_RAW_FD) {
             return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
         }
         return Ok(Registration { RegistrationArc::make(fd) });
@@ -566,45 +656,11 @@ public:
 
     void reset() {
         if (! m_state) return;
-
-        auto wakers  = Vec<task::Waker>::make();
-        auto tokens  = Vec<FacilityCompletionToken>::make();
-        auto worker  = Option<WorkerHandle> {};
-        auto command = Option<PollCommand> {};
-        {
-            auto fields = m_state->fields.lock().unwrap_unchecked();
-            if (! fields->closed) {
-                fields->closed = true;
-                if (fields->read_waker.is_some()) {
-                    wakers.push(rstd::move(fields->read_waker).unwrap_unchecked());
-                }
-                if (fields->write_waker.is_some()) {
-                    wakers.push(rstd::move(fields->write_waker).unwrap_unchecked());
-                }
-                fields->read_waiter_id  = 0;
-                fields->write_waiter_id = 0;
-                while (! fields->facility_waiters.is_empty()) {
-                    tokens.push(
-                        rstd::move(fields->facility_waiters.pop()).unwrap_unchecked().token);
-                }
-                if (fields->worker.is_some() && fields->key.is_some()) {
-                    worker  = Some(fields->worker->clone());
-                    command = Some(PollCommand::deregister_source(
-                        *fields->key, make_registration_owner(m_state)));
-                }
-            }
-        }
-
-        if (command.is_some()) {
-            (void)worker->submit_poll(rstd::move(command).unwrap_unchecked());
-        }
-        wake_all(wakers);
-        while (! tokens.is_empty()) {
-            auto token = rstd::move(tokens.pop()).unwrap_unchecked();
-            (void)token.complete(FacilityEventKind::Canceled);
-        }
-        m_state.reset();
+        auto state = rstd::move(m_state);
+        begin_registration_deregister(state);
     }
+
+    auto deregister() && -> RegistrationDeregisterFuture;
 
     auto poll_readiness(task::Context& cx, Interest interest, usize& waiter_id)
         -> task::Poll<io::Result<ReadyEvent>> {
@@ -629,6 +685,77 @@ public:
         clear_registration_waker(m_state, interest, waiter_id);
     }
 };
+
+export class RegistrationDeregisterFuture {
+    RegistrationArc m_state;
+    bool            m_completed { false };
+
+    explicit RegistrationDeregisterFuture(RegistrationArc state): m_state(rstd::move(state)) {}
+
+    friend class Registration;
+
+public:
+    using Output = io::Result<empty>;
+
+    RegistrationDeregisterFuture(const RegistrationDeregisterFuture&)                    = delete;
+    auto operator=(const RegistrationDeregisterFuture&) -> RegistrationDeregisterFuture& = delete;
+
+    RegistrationDeregisterFuture(RegistrationDeregisterFuture&& other) noexcept
+        : m_state(rstd::move(other.m_state)),
+          m_completed(rstd::exchange(other.m_completed, true)) {}
+
+    auto operator=(RegistrationDeregisterFuture&& other) noexcept -> RegistrationDeregisterFuture& {
+        if (this != &other) {
+            clear_waker();
+            m_state     = rstd::move(other.m_state);
+            m_completed = rstd::exchange(other.m_completed, true);
+        }
+        return *this;
+    }
+
+    ~RegistrationDeregisterFuture() { clear_waker(); }
+
+    auto poll(mut_ref<RegistrationDeregisterFuture> self, task::Context& cx) -> task::Poll<Output> {
+        auto& future = *self;
+        if (future.m_completed) {
+            rstd::panic { "async::RegistrationDeregisterFuture polled after completion" };
+        }
+
+        auto error = Option<io::Error> {};
+        {
+            auto fields = future.m_state->fields.lock().unwrap_unchecked();
+            if (! fields->deregistered) {
+                fields->deregister_waker = Some(cx.waker().clone());
+                return task::Poll<Output>::Pending();
+            }
+            if (fields->deregister_error.is_some()) {
+                error = Some(io::Error { *fields->deregister_error });
+            }
+        }
+
+        future.m_completed = true;
+        if (error.is_some()) {
+            return task::Poll<Output>::Ready(Err(rstd::move(error).unwrap_unchecked()));
+        }
+        return task::Poll<Output>::Ready(Ok(empty {}));
+    }
+
+private:
+    void clear_waker() {
+        if (! m_state || m_completed) return;
+        auto fields              = m_state->fields.lock().unwrap_unchecked();
+        fields->deregister_waker = None();
+    }
+};
+
+inline auto Registration::deregister() && -> RegistrationDeregisterFuture {
+    if (! m_state) {
+        rstd::panic { "async::Registration deregistered after move" };
+    }
+    auto state = rstd::move(m_state);
+    begin_registration_deregister(state);
+    return RegistrationDeregisterFuture { rstd::move(state) };
+}
 
 export class TimerRegistration {
     TimerArc m_state;

@@ -61,6 +61,22 @@ TEST(Time, UnixEpoch) {
     EXPECT_GT(since_epoch.unwrap().as_secs(), 1'000'000'000u);
 }
 
+TEST(Time, UnixTimestampRoundTrip) {
+    auto value = SystemTime::from_unix_time(-1, 500'000'000).unwrap();
+    auto unix  = value.as_unix_time();
+
+    EXPECT_EQ(unix.seconds, -1);
+    EXPECT_EQ(unix.nanoseconds, 500'000'000u);
+
+    auto before_epoch = SystemTime::unix_epoch().duration_since(value);
+    ASSERT_TRUE(before_epoch.is_ok());
+    EXPECT_EQ(before_epoch.unwrap(), Duration::from_millis(500));
+}
+
+TEST(Time, RejectsInvalidUnixNanoseconds) {
+    EXPECT_TRUE(SystemTime::from_unix_time(0, NANOS_PER_SEC).is_none());
+}
+
 TEST(Time, Arithmetic) {
     auto now   = Instant::now();
     auto dur   = Duration::from_secs(1);

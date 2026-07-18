@@ -243,23 +243,20 @@ struct ref<path::Path> : ref_base<ref<path::Path>, u8[], false> {
     usize     length { 0 };
 
     constexpr ref() noexcept = default;
-    constexpr ref(u8 const* p [[clang::lifetimebound]], usize len) noexcept
-        : p(p), length(len) {}
+    constexpr ref(u8 const* p [[clang::lifetimebound]], usize len) noexcept: p(p), length(len) {}
 
     /// Construct from a `ref<OsStr>`.
-    constexpr ref(ref<OsStr> s [[clang::lifetimebound]]) noexcept
-        : p(s.data()), length(s.len()) {}
+    constexpr ref(ref<OsStr> s [[clang::lifetimebound]]) noexcept: p(s.data()), length(s.len()) {}
 
     /// Construct from a `ref<str>`.
-    constexpr ref(ref<str> s [[clang::lifetimebound]]) noexcept
-        : p(s.data()), length(s.size()) {}
+    constexpr ref(ref<str> s [[clang::lifetimebound]]) noexcept: p(s.data()), length(s.size()) {}
 
     /// Construct from a null-terminated C string.
     constexpr ref(const char* c [[clang::lifetimebound]]) noexcept
         : p(rstd::bit_cast<u8 const*>(c)), length(rstd::strlen(c)) {}
 
-    static constexpr auto from_raw_parts(u8 const* p [[clang::lifetimebound]],
-                                         usize len) noexcept -> Self {
+    static constexpr auto from_raw_parts(u8 const* p [[clang::lifetimebound]], usize len) noexcept
+        -> Self {
         return { p, len };
     }
 

@@ -109,7 +109,7 @@ struct ref_base {
     }
 
     static constexpr auto from_raw_parts(value_type* p [[clang::lifetimebound]],
-                                         usize length) noexcept -> Self
+                                         usize       length) noexcept -> Self
         requires mtp::DSTArray<T> && mtp::is_aggregate<Self>
     {
         return { .p = p, .length = length };
@@ -210,7 +210,7 @@ struct ptr_base {
     }
 
     static constexpr auto from_raw_parts(value_type* p [[clang::lifetimebound]],
-                                         usize length) noexcept -> Self
+                                         usize       length) noexcept -> Self
         requires mtp::DSTArray<T> && mtp::is_aggregate<Self>
     {
         return { .p = p, .length = length };

@@ -11,11 +11,15 @@ set(RSTD_PRIVATE_SOURCES
     ${RSTD_PRIVATE_SOURCES}
     PARENT_SCOPE)
 
-set(RSTD_SYS_SOURCES
+set(RSTD_PRIVATE_MODULE_SOURCES
+    ${RSTD_PRIVATE_MODULE_SOURCES}
     sys/mod.cppm
-    sys/fd.cppm
+    sys/fs.cppm
     sys/socket.cppm
     sys/io/mod.cppm
+    PARENT_SCOPE)
+
+set(RSTD_SYS_SOURCES
     sys/io/stdio.cppm
     sys/libc/mod.cppm
     sys/libc/pthread.cppm
@@ -41,6 +45,7 @@ set(RSTD_SYS_SOURCES
     sys/sync/mutex/pthread.cppm
     sys/sync/condvar/mod.cppm
     sys/sync/condvar/futex.cppm
+    sys/sync/condvar/pthread.cppm
     sys/sync/once/mod.cppm
     sys/sync/once/futex.cppm
     sys/sync/thread_parking/mod.cppm

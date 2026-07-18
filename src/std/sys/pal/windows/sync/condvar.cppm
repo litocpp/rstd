@@ -41,9 +41,8 @@ public:
     }
 
     // Returns true if notified, false if timed out
-    auto wait_timeout(Mutex& mutex, u64 timeout_ns) noexcept -> bool {
-        auto dur = rstd::time::Duration::from_nanos(timeout_ns);
-        auto r   = SleepConditionVariableSRW(&inner, mutex.raw(), dur2timeout(dur), 0);
+    auto wait_timeout(Mutex& mutex, rstd::time::Duration timeout) noexcept -> bool {
+        auto r = SleepConditionVariableSRW(&inner, mutex.raw(), dur2timeout(timeout), 0);
         return r != 0;
     }
 };

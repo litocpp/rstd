@@ -1,3 +1,4 @@
+#include <cerrno>
 #include <gtest/gtest.h>
 import rstd;
 import rstd.core;
@@ -35,6 +36,13 @@ TEST(Io, ErrorFromOsError) {
     EXPECT_EQ(e.tag(), Error::Tag::Os);
     EXPECT_EQ(e.kind(), ErrorKind { ErrorKind::NotFound });
     EXPECT_EQ(e.raw_os_error().unwrap_unchecked(), 2);
+}
+
+TEST(Io, LastOsError) {
+    errno  = ENOENT;
+    auto e = Error::last_os_error();
+    EXPECT_EQ(e.raw_os_error().unwrap_unchecked(), ENOENT);
+    EXPECT_EQ(e.kind(), ErrorKind { ErrorKind::NotFound });
 }
 
 TEST(Io, ErrorDisplay) {

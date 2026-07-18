@@ -61,8 +61,7 @@ void Parker::park_timeout(rstd::time::Duration dur) {
         panic { "inconsistent park_timeout state" };
     }
 
-    cvar.wait_timeout(
-        lock, (i64)(dur.as_secs() * u64(rstd::time::NANOS_PER_SEC)) + (i64)dur.subsec_nanos());
+    cvar.wait_timeout(lock, dur);
 
     usize old = state.exchange(EMPTY, Ordering::Acquire);
     if (old != NOTIFIED && old != PARKED) {

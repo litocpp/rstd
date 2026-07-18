@@ -5,8 +5,7 @@ struct Value {
 };
 
 template<>
-struct rstd::Impl<rstd::clone::Clone, Value>
-    : rstd::DefaultInImpl<rstd::clone::Clone, Value> {
+struct rstd::Impl<rstd::clone::Clone, Value> : rstd::DefaultInImpl<rstd::clone::Clone, Value> {
     auto clone() const -> Value { return this->self(); }
 };
 

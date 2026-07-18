@@ -64,6 +64,11 @@ export struct Instant {
     friend auto operator<=>(Instant a, Instant b) noexcept { return a.ticks <=> b.ticks; }
 };
 
+export struct UnixTime {
+    i64 seconds;
+    u32 nanoseconds;
+};
+
 // 100-nanosecond intervals since 1601-01-01 (FILETIME epoch).
 export struct SystemTime {
     u64 intervals;
@@ -76,6 +81,26 @@ export struct SystemTime {
     }
 
     static auto unix_epoch() noexcept -> SystemTime { return { 116'444'736'000'000'000u }; }
+
+    static auto from_unix_time(i64 seconds, u32 nanoseconds) noexcept -> Option<SystemTime> {
+        if (nanoseconds >= rstd::time::NANOS_PER_SEC) return None();
+
+        auto value = i128(unix_epoch().intervals) + i128(seconds) * i128(10'000'000u) +
+                     i128(nanoseconds / 100u);
+        if (value < 0 || value > i128(rstd::numeric_limits<u64>::max())) return None();
+        return Some(SystemTime { u64(value) });
+    }
+
+    auto as_unix_time() const noexcept -> UnixTime {
+        auto value     = i128(intervals) - i128(unix_epoch().intervals);
+        auto seconds   = value / i128(10'000'000u);
+        auto remainder = value % i128(10'000'000u);
+        if (remainder < 0) {
+            --seconds;
+            remainder += i128(10'000'000u);
+        }
+        return { i64(seconds), u32(remainder * 100) };
+    }
 
     auto sub_time(SystemTime other) const noexcept
         -> Result<rstd::time::Duration, rstd::time::Duration> {

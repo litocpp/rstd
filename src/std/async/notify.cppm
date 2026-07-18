@@ -5,7 +5,7 @@ export module rstd:async.notify;
 export import :async.forward;
 export import :async.reactor;
 export import :io;
-import :sys.fd;
+import :os.fd;
 import :sys.libc;
 import :sync;
 
@@ -19,11 +19,11 @@ export class NotifyHandle;
 export class NotifyFuture;
 
 struct NotifyState {
-    sys::fd::OwnedFd read_fd;
-    sys::fd::OwnedFd write_fd;
-    Registration     registration;
+    os::fd::OwnedFd read_fd;
+    os::fd::OwnedFd write_fd;
+    Registration    registration;
 
-    NotifyState(sys::fd::OwnedFd read_fd, sys::fd::OwnedFd write_fd, Registration registration)
+    NotifyState(os::fd::OwnedFd read_fd, os::fd::OwnedFd write_fd, Registration registration)
         : read_fd(rstd::move(read_fd)),
           write_fd(rstd::move(write_fd)),
           registration(rstd::move(registration)) {}
@@ -110,8 +110,8 @@ public:
             return Err(NotifyState::last_os_error());
         }
 
-        auto read_fd  = sys::fd::OwnedFd::from_raw_fd(fds[0]);
-        auto write_fd = sys::fd::OwnedFd::from_raw_fd(fds[1]);
+        auto read_fd  = os::fd::OwnedFd::from_raw_fd(fds[0]);
+        auto write_fd = os::fd::OwnedFd::from_raw_fd(fds[1]);
 
         auto registration = Registration::register_fd(read_fd.as_raw_fd());
         if (registration.is_err()) {

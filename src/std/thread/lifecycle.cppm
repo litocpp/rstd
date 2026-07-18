@@ -5,7 +5,7 @@ export import :thread.thread;
 export import :thread.scoped;
 export import :thread.current;
 export import :thread.forward;
-export import :sys;
+import :sys.thread;
 export import rstd.core;
 export import rstd.alloc;
 

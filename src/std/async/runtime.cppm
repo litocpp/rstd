@@ -1,6 +1,6 @@
 export module rstd:async.runtime;
 export import :async.awaitable;
-export import :async.runtime_core;
+import :async.runtime_core;
 import :async.runtime_driver;
 import :async.spawn;
 import :async.task;

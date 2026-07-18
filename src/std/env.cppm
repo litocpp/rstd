@@ -1,6 +1,7 @@
+module;
+#include <rstd/macro.hpp>
 export module rstd:env;
 export import :path;
-export import :sys;
 export import :ffi;
 export import rstd.alloc;
 
@@ -30,11 +31,7 @@ export namespace rstd::env
 /// Fetches the environment variable `key` without requiring Unicode.
 ///
 /// Returns `None` if the variable is not set.
-auto var_os(const char* key) -> Option<OsString> {
-    auto* value = sys::getenv_internal(key);
-    if (value == nullptr) return None();
-    return Some(os_string_from_cstr(value));
-}
+auto var_os(const char* key) -> Option<OsString>;
 
 /// Fetches the environment variable `key` from the current process.
 ///
@@ -78,18 +75,14 @@ auto temp_dir() -> PathBuf {
 ///
 /// \param key    Null-terminated name of the environment variable.
 /// \param value  Null-terminated value to set.
-void set_var(const char* key, const char* value) {
-    sys::setenv_internal(key, value);
-}
+void set_var(const char* key, const char* value);
 
 /// Removes the environment variable `key` from the current process.
 ///
 /// Not thread-safe on Unix platforms.
 ///
 /// \param key  Null-terminated name of the environment variable to remove.
-void remove_var(const char* key) {
-    sys::unsetenv_internal(key);
-}
+void remove_var(const char* key);
 
 /// An owning iterator over command-line arguments as platform-native strings.
 using ArgsOs = ::alloc::vec::VecIntoIter<OsString>;
@@ -126,17 +119,7 @@ public:
 };
 
 /// Returns the command-line arguments without requiring UTF-8.
-auto args_os() -> ArgsOs {
-    auto raw = sys::args_argc_argv();
-    auto n   = raw.argc < 0 ? usize(0) : static_cast<usize>(raw.argc);
-    auto vec = Vec<OsString>::with_capacity(n);
-    for (isize i = 0; i < raw.argc; ++i) {
-        const char* p = raw.argv[i];
-        if (p == nullptr) break;
-        vec.push(os_string_from_cstr(p));
-    }
-    return vec.into_iter();
-}
+auto args_os() -> ArgsOs;
 
 /// Returns the command-line arguments of the current process.
 ///
@@ -145,14 +128,10 @@ auto args_os() -> ArgsOs {
 ///
 /// On Linux/glibc the arguments are captured automatically at startup. On other
 /// platforms (or when capture is unavailable) call `args_init` from `main` first.
-auto args() -> Args {
-    return Args(args_os());
-}
+auto args() -> Args;
 
 /// Manually provides `argc`/`argv` (e.g. from `main`) for platforms where automatic
 /// startup capture is unavailable. Safe to call before `args()`.
-void args_init(int argc, char const* const* argv) {
-    sys::args_capture(static_cast<isize>(argc), argv);
-}
+void args_init(int argc, char const* const* argv);
 
 } // namespace rstd::env

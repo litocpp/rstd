@@ -1,16 +1,13 @@
 export module rstd:process;
 export import :process.exit_status;
 export import :process.command;
-export import :sys;
 
 export namespace rstd::process
 {
 
 /// Terminates the process abnormally via the platform abort mechanism.
 [[gnu::cold]] [[noreturn]]
-void abort() {
-    sys::abort_internal();
-}
+void abort();
 
 /// Terminates the current process with the specified exit code.
 ///
@@ -19,13 +16,9 @@ void abort() {
 ///
 /// \param code  Exit status code (0 = success).
 [[gnu::cold]] [[noreturn]]
-void exit(i32 code) {
-    sys::exit_internal(code);
-}
+void exit(i32 code);
 
 /// Returns the OS-assigned process identifier of the current process.
-auto id() -> u32 {
-    return sys::getpid_internal();
-}
+auto id() -> u32;
 
 } // namespace rstd::process

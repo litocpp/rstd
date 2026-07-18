@@ -68,6 +68,7 @@ set(
   async/poll.cpp
   async/runtime.cpp
   bytes.cpp
+  sync/mutex.cpp
   sync/condvar.cpp
   sync/mpsc.cpp
   time.cpp
@@ -88,9 +89,10 @@ if(UNIX)
   list(
     APPEND
     RSTD_TEST_SOURCES
+    sys/sync/condvar/pthread.cpp
     sys/sync/mutex/pthread.cpp
     process.cpp
-    sys_fd.cpp
+    os_fd.cpp
     fs.cpp)
 endif()
 
@@ -166,11 +168,6 @@ add_rstd_compile_fail(
   Trait.DirectApiMismatchFailure
   "rstd::Impled failed: direct trait implementation does not satisfy trait API")
 add_rstd_compile_fail(
-  rstd_compile_fail_std_does_not_export_json
-  compile_fail/std_does_not_export_json.cpp
-  JsonModule.StdDoesNotExportJson
-  "no member named 'json' in namespace 'rstd'")
-add_rstd_compile_fail(
   rstd_compile_fail_try_unsupported_source
   compile_fail/try_unsupported_source.cpp
   Try.UnsupportedSourceFailure
@@ -226,6 +223,22 @@ add_rstd_compile_fail(
   "temporary whose address is used.*will be destroyed|will be destroyed at the end of the full-expression")
 target_compile_options(
   rstd_compile_fail_lifetimebound_temporary_array
+  PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,Clang>:-Werror=dangling>")
+add_rstd_compile_fail(
+  rstd_compile_fail_lifetimebound_temporary_owned_fd
+  compile_fail/lifetimebound_temporary_owned_fd.cpp
+  LifetimeBound.TemporaryOwnedFd
+  "temporary whose address is used.*will be destroyed|will be destroyed at the end of the full-expression")
+target_compile_options(
+  rstd_compile_fail_lifetimebound_temporary_owned_fd
+  PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,Clang>:-Werror=dangling>")
+add_rstd_compile_fail(
+  rstd_compile_fail_lifetimebound_temporary_file
+  compile_fail/lifetimebound_temporary_file.cpp
+  LifetimeBound.TemporaryFile
+  "temporary whose address is used.*will be destroyed|will be destroyed at the end of the full-expression")
+target_compile_options(
+  rstd_compile_fail_lifetimebound_temporary_file
   PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,Clang>:-Werror=dangling>")
 add_rstd_compile_fail(
   rstd_compile_fail_lifetimebound_trait_proxy

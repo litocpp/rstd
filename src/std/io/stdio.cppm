@@ -2,8 +2,8 @@ module;
 #include <rstd/macro.hpp>
 export module rstd:io.stdio;
 export import :io.traits;
-export import :sys.io.stdio;
-export import :sys.sync.mutex;
+import :sys.io.stdio;
+import :sys.sync.mutex;
 import rstd.alloc;
 
 using namespace rstd::prelude;
@@ -89,7 +89,9 @@ export inline auto stdout() noexcept -> Stdout {
 
 /// Handle to the standard error stream.
 /// Intentionally lock-free so it is usable from panic handlers.
-export struct Stderr {};
+export struct Stderr {
+    auto is_terminal() const noexcept -> bool { return sys::io::stdio::is_terminal_fd(2); }
+};
 
 /// Constructs a new handle to the standard error of the current process.
 export inline auto stderr() noexcept -> Stderr {

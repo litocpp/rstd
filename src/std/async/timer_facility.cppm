@@ -10,7 +10,7 @@ using namespace rstd;
 namespace rstd::async
 {
 
-export inline constexpr usize TIMER_FACILITY_ID { rstd::numeric_limits<usize>::max() };
+inline constexpr usize TIMER_FACILITY_ID { rstd::numeric_limits<usize>::max() };
 
 struct TimerFacilityFields {
     WorkerHandle                    worker;
@@ -123,7 +123,7 @@ auto make_timer_facility_cancellation(const TimerFacilityArc& state, FacilityTok
                                               rstd::addressof(TIMER_FACILITY_CANCELLATION_VTABLE)));
 }
 
-export class TimerFacilityRegistration {
+class TimerFacilityRegistration {
     TimerFacilityArc m_state;
     FacilityToken    m_token;
 

@@ -1,3 +1,4 @@
+#include <fcntl.h>
 #include <gtest/gtest.h>
 #include <atomic>
 import rstd;
@@ -43,7 +44,7 @@ const task::RawWakerVTable COUNT_WAKER_VTABLE {
 };
 
 auto fd_is_open(int fd) -> bool {
-    return sys::libc::fcntl(fd, sys::libc::F_GETFD) != -1;
+    return ::fcntl(fd, F_GETFD) != -1;
 }
 
 auto would_block(io::error::Error const& error) -> bool {
@@ -187,7 +188,82 @@ async::coro<io::Result<bytes::BytesMut>> repeated_readiness(net::TcpListener& li
     co_return Ok(rstd::move(received));
 }
 
+async::coro<io::Result<async::ReadyEvent>> wait_for_readiness(async::ReadinessFuture readiness) {
+    co_return co_await rstd::move(readiness);
+}
+
+async::coro<io::Result<empty>> detach_with_pending_readiness(net::TcpListener& listener,
+                                                             net::SocketAddr   addr) {
+    auto client = co_await net::TcpStream::connect(addr);
+    if (client.is_err()) co_return Err(rstd::move(client).unwrap_err_unchecked());
+
+    auto accepted = co_await listener.accept();
+    if (accepted.is_err()) co_return Err(rstd::move(accepted).unwrap_err_unchecked());
+
+    auto client_stream = rstd::move(client).unwrap_unchecked();
+    auto accepted_pair = rstd::move(accepted).unwrap_unchecked();
+    auto server_stream = rstd::move(accepted_pair.template get<0>());
+
+    auto waiter = async::spawn(wait_for_readiness(client_stream.readable()));
+    co_await async::yield_now();
+
+    auto detached = co_await rstd::move(client_stream).into_owned_fd();
+    if (detached.is_err()) co_return Err(rstd::move(detached).unwrap_err_unchecked());
+
+    auto joined = co_await rstd::move(waiter);
+    if (joined.is_err()) {
+        co_return Err(
+            io::error::Error::from_kind(io::error::ErrorKind { io::error::ErrorKind::Other }));
+    }
+    auto readiness = rstd::move(joined).unwrap_unchecked();
+    if (readiness.is_ok()) {
+        co_return Err(io::error::Error::from_kind(
+            io::error::ErrorKind { io::error::ErrorKind::InvalidInput }));
+    }
+
+    auto restored = net::TcpStream::from_owned_fd(rstd::move(detached).unwrap_unchecked());
+    if (restored.is_err()) co_return Err(rstd::move(restored).unwrap_err_unchecked());
+    auto restored_stream = rstd::move(restored).unwrap_unchecked();
+
+    const u8 payload[] = { 'r' };
+    auto     bytes     = bytes::Bytes::copy_from_slice(slice<u8>::from_raw_parts(payload, 1));
+    auto     written   = co_await write_some(restored_stream, bytes);
+    if (written.is_err()) co_return Err(rstd::move(written).unwrap_err_unchecked());
+
+    auto received = bytes::BytesMut::with_capacity(1);
+    auto read     = co_await read_some(server_stream, received);
+    if (read.is_err()) co_return Err(rstd::move(read).unwrap_err_unchecked());
+    if (rstd::move(read).unwrap_unchecked() != 1 || received[0] != u8('r')) {
+        co_return Err(io::error::Error::from_kind(
+            io::error::ErrorKind { io::error::ErrorKind::InvalidData }));
+    }
+
+    co_return Ok(empty {});
+}
+
 } // namespace
+
+TEST(NetSocketAddr, Ipv4StateIsPortable) {
+    auto addr = net::SocketAddr::ipv4(net::Ipv4Addr::make(192, 0, 2, 1), 8080);
+    EXPECT_TRUE(addr.is_ipv4());
+    EXPECT_FALSE(addr.is_ipv6());
+    EXPECT_EQ(addr.port(), 8080);
+    EXPECT_EQ(addr.octet(0), 192);
+    EXPECT_EQ(addr.octet(3), 1);
+}
+
+TEST(NetSocketAddr, Ipv6StateIsPortable) {
+    auto addr =
+        net::SocketAddr::ipv6(net::Ipv6Addr::make(0x2001, 0x0db8, 0, 0, 0, 0, 0, 1), 443, 7, 9);
+    EXPECT_TRUE(addr.is_ipv6());
+    EXPECT_FALSE(addr.is_ipv4());
+    EXPECT_EQ(addr.port(), 443);
+    EXPECT_EQ(addr.flowinfo(), 7u);
+    EXPECT_EQ(addr.scope_id(), 9u);
+    EXPECT_EQ(addr.octet(0), 0x20);
+    EXPECT_EQ(addr.octet(1), 0x01);
+    EXPECT_EQ(addr.octet(15), 0x01);
+}
 
 TEST(NetTcp, LoopbackRoundTrip) {
     auto listener = net::TcpListener::bind(net::SocketAddr::ipv4_loopback(0));
@@ -271,6 +347,7 @@ TEST(NetTcp, ShutdownWriteReadsEof) {
 }
 
 TEST(NetTcp, FromOwnedFdKeepsOwnership) {
+    auto runtime  = async::Runtime {};
     auto listener = net::TcpListener::bind(net::SocketAddr::ipv4_loopback(0));
     ASSERT_TRUE(listener.is_ok());
 
@@ -279,12 +356,14 @@ TEST(NetTcp, FromOwnedFdKeepsOwnership) {
     ASSERT_TRUE(addr.is_ok());
 
     auto client =
-        async::block_on(connected_client(tcp_listener, rstd::move(addr).unwrap_unchecked()));
+        runtime.block_on(connected_client(tcp_listener, rstd::move(addr).unwrap_unchecked()));
     ASSERT_TRUE(client.is_ok());
 
     auto client_stream = rstd::move(client).unwrap_unchecked();
-    auto fd            = client_stream.into_owned_fd();
-    auto raw           = fd.as_raw_fd();
+    auto detached      = runtime.block_on(rstd::move(client_stream).into_owned_fd());
+    ASSERT_TRUE(detached.is_ok());
+    auto fd  = rstd::move(detached).unwrap_unchecked();
+    auto raw = fd.as_raw_fd();
     ASSERT_TRUE(fd_is_open(raw));
 
     {
@@ -293,6 +372,38 @@ TEST(NetTcp, FromOwnedFdKeepsOwnership) {
         EXPECT_TRUE(fd_is_open(raw));
     }
     EXPECT_FALSE(fd_is_open(raw));
+}
+
+TEST(NetTcp, ListenerFromOwnedFdKeepsListeningSocket) {
+    auto runtime  = async::Runtime {};
+    auto listener = net::TcpListener::bind(net::SocketAddr::ipv4_loopback(0));
+    ASSERT_TRUE(listener.is_ok());
+
+    auto tcp_listener = rstd::move(listener).unwrap_unchecked();
+    auto before       = tcp_listener.local_addr();
+    ASSERT_TRUE(before.is_ok());
+
+    auto detached = runtime.block_on(rstd::move(tcp_listener).into_owned_fd());
+    ASSERT_TRUE(detached.is_ok());
+
+    auto restored = net::TcpListener::from_owned_fd(rstd::move(detached).unwrap_unchecked());
+    ASSERT_TRUE(restored.is_ok());
+    auto after = restored.unwrap_unchecked().local_addr();
+    ASSERT_TRUE(after.is_ok());
+    EXPECT_EQ(after.unwrap_unchecked(), before.unwrap_unchecked());
+}
+
+TEST(NetTcp, DetachCancelsOldReadinessBeforeFdReuse) {
+    auto listener = net::TcpListener::bind(net::SocketAddr::ipv4_loopback(0));
+    ASSERT_TRUE(listener.is_ok());
+
+    auto tcp_listener = rstd::move(listener).unwrap_unchecked();
+    auto addr         = tcp_listener.local_addr();
+    ASSERT_TRUE(addr.is_ok());
+
+    auto result = async::block_on(
+        detach_with_pending_readiness(tcp_listener, rstd::move(addr).unwrap_unchecked()));
+    ASSERT_TRUE(result.is_ok());
 }
 
 TEST(NetTcp, ReadinessFutureDropCancelsWaiter) {

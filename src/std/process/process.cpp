@@ -3,9 +3,24 @@ module;
 
 module rstd;
 import :sys.libc;
+import :sys.pal;
 
 using namespace rstd::prelude;
 namespace libc = rstd::sys::libc;
+
+[[gnu::cold]] [[noreturn]]
+void rstd::process::abort() {
+    sys::pal::abort_internal();
+}
+
+[[gnu::cold]] [[noreturn]]
+void rstd::process::exit(i32 code) {
+    sys::pal::exit_internal(code);
+}
+
+auto rstd::process::id() -> u32 {
+    return sys::pal::getpid_internal();
+}
 
 // ── ExitStatus::from_raw (Unix) ──────────────────────────────────────────
 #if RSTD_OS_UNIX

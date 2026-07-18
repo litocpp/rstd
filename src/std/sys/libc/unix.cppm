@@ -315,6 +315,7 @@ using ::posix_memalign;
 using ::htons;
 using ::htonl;
 using ::ntohs;
+using ::ntohl;
 
 inline constexpr auto SYS_futex              = _SYS_futex;
 inline constexpr auto FUTEX_WAIT_BITSET      = _FUTEX_WAIT_BITSET;
@@ -466,6 +467,15 @@ using ::sockaddr_storage;
 using ::sockaddr_in;
 using ::sockaddr_in6;
 using ::socklen_t;
+
+inline auto in6_addr_octet(::in6_addr const& addr, unsigned int index) noexcept -> unsigned char {
+    return addr.s6_addr[index];
+}
+
+inline void set_in6_addr_octet(::in6_addr& addr, unsigned int index, unsigned char value) noexcept {
+    addr.s6_addr[index] = value;
+}
+
 /// `struct stat` aliased to avoid clash with the `::stat()` function.
 using stat_t = struct ::stat;
 /// `struct timespec` aliased to avoid the `struct` keyword leaking into call sites.

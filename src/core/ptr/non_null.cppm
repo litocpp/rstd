@@ -77,8 +77,7 @@ struct NonNull {
     /// Creates a `NonNull` without checking that the pointer is non-null.
     /// \param p The pointer to wrap; must not be null.
     /// \return A `NonNull` wrapping `p`.
-    static constexpr auto make_unchecked(pointer_t p [[clang::lifetimebound]]) noexcept
-        -> NonNull {
+    static constexpr auto make_unchecked(pointer_t p [[clang::lifetimebound]]) noexcept -> NonNull {
         static_assert(mtp::triv_copy<NonNull>);
         return { .pointer = p };
     }

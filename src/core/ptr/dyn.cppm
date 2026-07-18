@@ -193,7 +193,7 @@ struct ref<dyn<A>> : dyn_ptr_base<A const> {
     using Target     = dyn<A>;
     using delegate_t = dyn_delegate<A const>;
 
-    static auto from_raw_parts(delegate_t::ptr_t p [[clang::lifetimebound]],
+    static auto from_raw_parts(delegate_t::ptr_t           p [[clang::lifetimebound]],
                                delegate_t::vtable_t const* v) -> ref {
         return { { { .p = p, .vtable = v } } };
     }
@@ -203,7 +203,7 @@ struct ref<dyn<A>> : dyn_ptr_base<A const> {
 template<typename A>
 struct ptr<dyn<A>> : dyn_ptr_base<A const> {
     using delegate_t = dyn_delegate<A const>;
-    static auto from_raw_parts(delegate_t::ptr_t p [[clang::lifetimebound]],
+    static auto from_raw_parts(delegate_t::ptr_t           p [[clang::lifetimebound]],
                                delegate_t::vtable_t const* v) -> ptr {
         return { { { .p = p, .vtable = v } } };
     }
@@ -214,7 +214,7 @@ struct mut_ref<dyn<A>> : dyn_ptr_base<A> {
     using Target     = dyn<A>;
     using delegate_t = dyn_delegate<A>;
 
-    static auto from_raw_parts(delegate_t::ptr_t p [[clang::lifetimebound]],
+    static auto from_raw_parts(delegate_t::ptr_t           p [[clang::lifetimebound]],
                                delegate_t::vtable_t const* v) -> mut_ref {
         return { { { .p = p, .vtable = v } } };
     }
@@ -225,7 +225,7 @@ struct mut_ref<dyn<A>> : dyn_ptr_base<A> {
 template<typename A>
 struct mut_ptr<dyn<A>> : dyn_ptr_base<A> {
     using delegate_t = dyn_delegate<A>;
-    static auto from_raw_parts(delegate_t::ptr_t p [[clang::lifetimebound]],
+    static auto from_raw_parts(delegate_t::ptr_t           p [[clang::lifetimebound]],
                                delegate_t::vtable_t const* v) -> mut_ptr {
         return { { { .p = p, .vtable = v } } };
     }

@@ -1,7 +1,7 @@
 module;
 #include <rstd/macro.hpp>
 export module rstd:sync.mutex;
-export import :sys.sync.mutex;
+import :sys.sync.mutex;
 export import rstd.core;
 
 using sys_mutex_t = rstd::sys::sync::mutex::Mutex;
@@ -71,12 +71,14 @@ public:
 
     /// Acquires the mutex, blocking the current thread until it is able to do so.
     /// \return A MutexGuard providing mutable access to the protected data.
-    auto lock_mut() const -> Result<MutexGuard<T>, empty> {
+    auto lock_mut() const [[clang::lifetimebound]] -> Result<MutexGuard<T>, empty> {
         return Ok<MutexGuard<T>, empty>(MutexGuard<T>(&m_lock, &m_data));
     }
 
     /// Acquires the mutex (alias for lock_mut; no poisoning support yet).
-    auto lock() const -> Result<MutexGuard<T>, empty> { return lock_mut(); }
+    auto lock() const [[clang::lifetimebound]] -> Result<MutexGuard<T>, empty> {
+        return lock_mut();
+    }
 };
 
 } // namespace rstd::sync

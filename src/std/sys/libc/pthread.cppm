@@ -1,11 +1,11 @@
 module;
 #include <rstd/macro.hpp>
-#ifdef RSTD_OS_LINUX
+#if RSTD_OS_UNIX
 #include <pthread.h>
 #endif
 export module rstd:sys.libc.pthread;
 
-#ifdef RSTD_OS_LINUX
+#if RSTD_OS_UNIX
 export namespace rstd::sys::libc
 {
 using ::pthread_mutex_destroy;
@@ -23,8 +23,12 @@ using ::pthread_cond_timedwait;
 using ::pthread_cond_wait;
 using ::pthread_condattr_destroy;
 using ::pthread_condattr_init;
-using ::pthread_condattr_setclock;
 using ::pthread_condattr_t;
+#if RSTD_OS_APPLE
+using ::pthread_cond_timedwait_relative_np;
+#else
+using ::pthread_condattr_setclock;
+#endif
 
 using ::pthread_attr_init;
 using ::pthread_attr_destroy;
@@ -38,7 +42,9 @@ using ::pthread_self;
 using ::pthread_equal;
 using ::pthread_t;
 
+#if RSTD_OS_LINUX
 using ::pthread_setname_np;
+#endif
 
 constexpr auto pthread_mutex_initializer() noexcept -> pthread_mutex_t {
     return PTHREAD_MUTEX_INITIALIZER;

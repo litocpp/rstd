@@ -245,9 +245,7 @@ public:
 
     /// Appends an element to the back of the vector by moving it.
     /// \param value The value to append.
-    constexpr void push(T&& value) {
-        (void)emplace_back(rstd::move(value));
-    }
+    constexpr void push(T&& value) { (void)emplace_back(rstd::move(value)); }
 
     /// Removes the last element from the vector and returns it, or `None` if empty.
     /// \return An `Option<T>` containing the removed element.
@@ -312,9 +310,7 @@ public:
     /// Indexes into the vector, panicking if out of bounds.
     constexpr T& operator[](usize index) [[clang::lifetimebound]] { return at(index); }
     /// Indexes into the vector (const), panicking if out of bounds.
-    constexpr const T& operator[](usize index) const [[clang::lifetimebound]] {
-        return at(index);
-    }
+    constexpr const T& operator[](usize index) const [[clang::lifetimebound]] { return at(index); }
 
     /// Returns the number of elements in the vector.
     /// \return The length of the vector.

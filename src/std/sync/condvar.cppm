@@ -1,6 +1,6 @@
 export module rstd:sync.condvar;
 export import :sync.mutex;
-export import :sys.sync.condvar;
+import :sys.sync.condvar;
 import :time;
 
 namespace rstd::sync

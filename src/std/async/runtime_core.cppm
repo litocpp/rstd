@@ -2128,7 +2128,13 @@ inline void RuntimeWorker::apply_poll(PollCommand command) {
     }
 
     auto applied = AsyncPoll::apply(*m_poll_state, rstd::move(command));
-    if (applied.status() == PollApplyStatus::Accepted) return;
+    if (applied.status() == PollApplyStatus::Accepted) {
+        if (applied.has_event()) {
+            auto event = applied.take_event();
+            event.dispatch();
+        }
+        return;
+    }
 
     auto rejected = applied.take_command();
     auto event    = rstd::move(rejected).into_error_event(applied.take_error());

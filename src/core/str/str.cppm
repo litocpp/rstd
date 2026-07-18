@@ -52,8 +52,8 @@ public:
 
     template<typename T>
         requires str_::ViewableStr<T>
-    constexpr ref(const T& t [[clang::lifetimebound]])
-        noexcept(noexcept(rstd::declval<T>().data()))
+    constexpr ref(const T& t [[clang::lifetimebound]]
+                  ) noexcept(noexcept(rstd::declval<T>().data()))
         : p((u8 const*)t.data()), length(t.size()) {};
 
     constexpr ref(u8 const* p [[clang::lifetimebound]], usize length) noexcept
@@ -64,7 +64,7 @@ public:
         : ref(rstd::bit_cast<u8 const*>(c_str), rstd::strlen(c_str)) {}
 
     static constexpr auto from_raw_parts(value_type* p [[clang::lifetimebound]],
-                                         usize length) noexcept -> Self {
+                                         usize       length) noexcept -> Self {
         return { p, length };
     }
 
@@ -101,15 +101,15 @@ public:
 
     template<typename T>
         requires str_::ViewableStr<T>
-    constexpr ptr(const T& t [[clang::lifetimebound]])
-        noexcept(noexcept(rstd::declval<T>().data()))
+    constexpr ptr(const T& t [[clang::lifetimebound]]
+                  ) noexcept(noexcept(rstd::declval<T>().data()))
         : p((u8 const*)t.data()), length(t.size()) {};
 
     constexpr ptr(u8 const* p [[clang::lifetimebound]], usize length) noexcept
         : p(p), length(length) {}
 
     static constexpr auto from_raw_parts(value_type* p [[clang::lifetimebound]],
-                                         usize length) noexcept -> Self {
+                                         usize       length) noexcept -> Self {
         return { p, length };
     }
 

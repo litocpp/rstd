@@ -18,18 +18,17 @@ namespace rstd::sys::pal::unix::sync::condvar
 export class Condvar {
     pthread_cond_t inner;
 
+public:
     Condvar() noexcept: inner(pthread_cond_initializer()) {}
 
-public:
     ~Condvar() noexcept {
         [[maybe_unused]]
         auto r = pthread_cond_destroy(&inner);
         debug_assert_eq(r, 0);
     }
 
-    Condvar(Condvar&& o) noexcept: inner(o.inner) {}
-
     Condvar(const Condvar&)            = delete;
+    Condvar(Condvar&&)                 = delete;
     Condvar& operator=(const Condvar&) = delete;
     Condvar& operator=(Condvar&&)      = delete;
 
@@ -37,8 +36,11 @@ public:
 
     auto raw() noexcept -> pthread_cond_t* { return &inner; }
 
-    // Initialize the condition variable with CLOCK_MONOTONIC
     void init() noexcept {
+#if RSTD_OS_APPLE
+        auto r = pthread_cond_init(raw(), nullptr);
+        rstd_assert_eq(r, 0);
+#else
         pthread_condattr_t attr;
         auto               r = pthread_condattr_init(&attr);
         rstd_assert_eq(r, 0);
@@ -51,6 +53,7 @@ public:
 
         r = pthread_condattr_destroy(&attr);
         rstd_assert_eq(r, 0);
+#endif
     }
 
     // Signal one waiting thread
@@ -75,22 +78,25 @@ public:
         debug_assert_eq(r, 0);
     }
 
-    // Wait on the condition variable with a timeout
-    // Returns true if notified, false if timed out
-    // mutex must be locked by the current thread
-    auto wait_timeout(Mutex& mutex, u64 timeout_ns) noexcept -> bool {
-        timespec ts;
-
-        // Get current time with CLOCK_MONOTONIC
+    auto wait_timeout(Mutex& mutex, rstd::time::Duration timeout) noexcept -> bool {
+        timespec ts {
+            .tv_sec  = static_cast<time_t>(timeout.as_secs()),
+            .tv_nsec = static_cast<long>(timeout.subsec_nanos()),
+        };
+#if RSTD_OS_APPLE
+        auto r = pthread_cond_timedwait_relative_np(raw(), mutex.raw(), &ts);
+#else
         clock_gettime(CLOCK_MONOTONIC, &ts);
 
-        // Add timeout
-        const u64 NSEC_PER_SEC = 1'000'000'000;
-        u64       total_nsec   = ts.tv_nsec + timeout_ns;
-        ts.tv_sec += total_nsec / NSEC_PER_SEC;
-        ts.tv_nsec = total_nsec % NSEC_PER_SEC;
+        ts.tv_sec += static_cast<time_t>(timeout.as_secs());
+        ts.tv_nsec += static_cast<long>(timeout.subsec_nanos());
+        if (ts.tv_nsec >= static_cast<long>(rstd::time::NANOS_PER_SEC)) {
+            ++ts.tv_sec;
+            ts.tv_nsec -= static_cast<long>(rstd::time::NANOS_PER_SEC);
+        }
 
         auto r = pthread_cond_timedwait(raw(), mutex.raw(), &ts);
+#endif
         rstd_assert(r == ETIMEDOUT || r == 0, "pthread_cond_timedwait failed");
         return r == 0;
     }

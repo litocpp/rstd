@@ -31,6 +31,8 @@ public:
 
     void unlock() { get().unlock(); }
 
+    auto pal_mutex() -> pal::Mutex& { return get(); }
+
     ~Mutex() {
         if (! pal) return;
         if (auto opt = pal.take()) {
@@ -48,7 +50,7 @@ public:
 private:
     auto get() -> pal::Mutex& {
         return pal.get_or_init([]() -> Box<pal::Mutex> {
-            return Box<pal::Mutex>::make(pal::Mutex::make());
+            return Box<pal::Mutex>::make();
         });
     }
 };

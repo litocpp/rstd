@@ -203,12 +203,12 @@ public:
     }
     [[nodiscard]]
     auto get(const ::alloc::string::String& key) const noexcept [[clang::lifetimebound]]
-        -> Option<ref<Value>> {
+    -> Option<ref<Value>> {
         return get(key.as_str());
     }
     [[nodiscard]]
     auto get_mut(const ::alloc::string::String& key) noexcept [[clang::lifetimebound]]
-        -> Option<mut_ref<Value>> {
+    -> Option<mut_ref<Value>> {
         return get_mut(key.as_str());
     }
 

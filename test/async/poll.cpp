@@ -1,3 +1,5 @@
+#include <fcntl.h>
+#include <unistd.h>
 #include <gtest/gtest.h>
 #include <atomic>
 import rstd;
@@ -9,24 +11,24 @@ namespace
 {
 
 struct PipePair {
-    sys::fd::OwnedFd reader;
-    sys::fd::OwnedFd writer;
+    os::fd::OwnedFd reader;
+    os::fd::OwnedFd writer;
 };
 
 auto make_pipe() -> Option<PipePair> {
     int fds[2] = { -1, -1 };
-    if (sys::libc::pipe2(fds, sys::libc::O_NONBLOCK | sys::libc::O_CLOEXEC) != 0) {
+    if (::pipe2(fds, O_NONBLOCK | O_CLOEXEC) != 0) {
         return None();
     }
     return Some(PipePair {
-        sys::fd::OwnedFd::from_raw_fd(fds[0]),
-        sys::fd::OwnedFd::from_raw_fd(fds[1]),
+        os::fd::OwnedFd::from_raw_fd(fds[0]),
+        os::fd::OwnedFd::from_raw_fd(fds[1]),
     });
 }
 
-auto write_byte(sys::fd::RawFd fd) -> bool {
+auto write_byte(os::fd::RawFd fd) -> bool {
     const u8 value = 1;
-    return sys::libc::write(fd, rstd::addressof(value), 1) == 1;
+    return ::write(fd, rstd::addressof(value), 1) == 1;
 }
 
 auto wait_readable(async::Registration& registration, std::atomic<bool>& entered)

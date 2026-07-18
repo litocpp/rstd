@@ -2,15 +2,13 @@ module;
 #include <rstd/enum.hpp>
 #include <rstd/macro.hpp>
 export module rstd:io.error;
-export import :sys.io;
 export import rstd.core;
-import :sys.libc;
 
 namespace rstd::io::error
 {
 
 /// The platform-native OS error code type (e.g. errno on Unix, GetLastError on Windows).
-export using rstd::sys::io::RawOsError;
+export using RawOsError = i32;
 
 /// A list specifying general categories of I/O error.
 export struct ErrorKind {
@@ -118,104 +116,6 @@ export struct ErrorKind {
 
 using namespace rstd::prelude;
 using namespace rstd::io::error;
-namespace libc = rstd::sys::libc;
-
-#if RSTD_OS_UNIX
-[[gnu::always_inline]]
-inline auto decode_error_kind(RawOsError err) noexcept -> ErrorKind {
-    using EK = ErrorKind;
-    switch (err) {
-    case libc::ENOENT: return EK { EK::NotFound };
-    case libc::EACCES:
-    case libc::EPERM: return EK { EK::PermissionDenied };
-    case libc::ECONNREFUSED: return EK { EK::ConnectionRefused };
-    case libc::ECONNRESET: return EK { EK::ConnectionReset };
-    case libc::EHOSTUNREACH: return EK { EK::HostUnreachable };
-    case libc::ENETUNREACH: return EK { EK::NetworkUnreachable };
-    case libc::ECONNABORTED: return EK { EK::ConnectionAborted };
-    case libc::ENOTCONN: return EK { EK::NotConnected };
-    case libc::EADDRINUSE: return EK { EK::AddrInUse };
-    case libc::EADDRNOTAVAIL: return EK { EK::AddrNotAvailable };
-    case libc::ENETDOWN: return EK { EK::NetworkDown };
-    case libc::EPIPE: return EK { EK::BrokenPipe };
-    case libc::EEXIST: return EK { EK::AlreadyExists };
-    case libc::EAGAIN: return EK { EK::WouldBlock };
-    case libc::ENOTDIR: return EK { EK::NotADirectory };
-    case libc::EISDIR: return EK { EK::IsADirectory };
-    case libc::ENOTEMPTY: return EK { EK::DirectoryNotEmpty };
-    case libc::EROFS: return EK { EK::ReadOnlyFilesystem };
-    case libc::ELOOP: return EK { EK::FilesystemLoop };
-    case libc::EINVAL: return EK { EK::InvalidInput };
-    case libc::ETIMEDOUT: return EK { EK::TimedOut };
-    case libc::ENOSPC: return EK { EK::StorageFull };
-    case libc::ESPIPE: return EK { EK::NotSeekable };
-    case libc::EFBIG: return EK { EK::FileTooLarge };
-    case libc::EBUSY: return EK { EK::ResourceBusy };
-    case libc::ETXTBSY: return EK { EK::ExecutableFileBusy };
-    case libc::EDEADLK: return EK { EK::Deadlock };
-    case libc::EXDEV: return EK { EK::CrossesDevices };
-    case libc::EMLINK: return EK { EK::TooManyLinks };
-    case libc::ENAMETOOLONG: return EK { EK::InvalidFilename };
-    case libc::E2BIG: return EK { EK::ArgumentListTooLong };
-    case libc::EINTR: return EK { EK::Interrupted };
-    case libc::ENOSYS:
-    case libc::EOPNOTSUPP:
-    case libc::EAFNOSUPPORT: return EK { EK::Unsupported };
-    case libc::ENOMEM:
-    case libc::ENOBUFS: return EK { EK::OutOfMemory };
-    case libc::EINPROGRESS: return EK { EK::InProgress };
-    default: break;
-    }
-    if (err == libc::EWOULDBLOCK) return EK { EK::WouldBlock };
-    if (libc::HAS_ESTALE && err == libc::ESTALE) return EK { EK::StaleNetworkFileHandle };
-    if (libc::HAS_EDQUOT && err == libc::EDQUOT) return EK { EK::QuotaExceeded };
-    return EK { EK::Uncategorized };
-}
-#elif RSTD_OS_WINDOWS
-[[gnu::always_inline]]
-inline auto decode_error_kind(RawOsError err) noexcept -> ErrorKind {
-    using EK = ErrorKind;
-    switch ((unsigned long)err) {
-    case libc::ERROR_FILE_NOT_FOUND:
-    case libc::ERROR_PATH_NOT_FOUND: return EK { EK::NotFound };
-    case libc::ERROR_ACCESS_DENIED: return EK { EK::PermissionDenied };
-    case libc::ERROR_CONNECTION_REFUSED: return EK { EK::ConnectionRefused };
-    case libc::ERROR_CONNECTION_ABORTED: return EK { EK::ConnectionAborted };
-    case libc::ERROR_NETNAME_DELETED: return EK { EK::ConnectionReset };
-    case libc::ERROR_HOST_UNREACHABLE: return EK { EK::HostUnreachable };
-    case libc::ERROR_NETWORK_UNREACHABLE: return EK { EK::NetworkUnreachable };
-    case libc::ERROR_ADDRESS_ALREADY_ASSOCIATED: return EK { EK::AddrInUse };
-    case libc::ERROR_BROKEN_PIPE:
-    case libc::ERROR_NO_DATA: return EK { EK::BrokenPipe };
-    case libc::ERROR_FILE_EXISTS:
-    case libc::ERROR_ALREADY_EXISTS: return EK { EK::AlreadyExists };
-    case libc::WAIT_TIMEOUT:
-    case libc::ERROR_SEM_TIMEOUT: return EK { EK::TimedOut };
-    case libc::ERROR_INVALID_PARAMETER:
-    case libc::ERROR_INVALID_DATA: return EK { EK::InvalidInput };
-    case libc::ERROR_DIR_NOT_EMPTY: return EK { EK::DirectoryNotEmpty };
-    case libc::ERROR_DISK_FULL: return EK { EK::StorageFull };
-    case libc::ERROR_SEEK: return EK { EK::NotSeekable };
-    case libc::ERROR_NOT_READY:
-    case libc::ERROR_BUSY: return EK { EK::ResourceBusy };
-    case libc::ERROR_POSSIBLE_DEADLOCK: return EK { EK::Deadlock };
-    case libc::ERROR_NOT_SAME_DEVICE: return EK { EK::CrossesDevices };
-    case libc::ERROR_TOO_MANY_LINKS: return EK { EK::TooManyLinks };
-    case libc::ERROR_FILENAME_EXCED_RANGE: return EK { EK::InvalidFilename };
-    case libc::ERROR_NOT_ENOUGH_MEMORY:
-    case libc::ERROR_OUTOFMEMORY: return EK { EK::OutOfMemory };
-    case libc::ERROR_NOT_SUPPORTED:
-    case libc::ERROR_CALL_NOT_IMPLEMENTED: return EK { EK::Unsupported };
-    case libc::ERROR_IO_PENDING: return EK { EK::InProgress };
-    default: return EK { EK::Uncategorized };
-    }
-}
-#else
-[[gnu::always_inline]]
-inline auto decode_error_kind(RawOsError) noexcept -> ErrorKind {
-    return ErrorKind { ErrorKind::Uncategorized };
-}
-#endif
 
 namespace rstd::io::error
 {
@@ -249,6 +149,9 @@ public:
         return Error(RSTD_ENUM_IN_PLACE(Os), code);
     }
 
+    /// Construct from the current platform error code.
+    static auto last_os_error() noexcept -> Error;
+
     /// Construct from an ErrorKind.
     static auto from_kind(ErrorKind k) noexcept -> Error {
         return Error(RSTD_ENUM_IN_PLACE(Kind), k);
@@ -260,14 +163,7 @@ public:
     }
 
     /// Returns the ErrorKind for this error.
-    auto kind() const noexcept -> ErrorKind {
-        switch (tag()) {
-        case Tag::Os: return decode_error_kind(as_Os().code);
-        case Tag::Kind: return as_Kind().kind;
-        case Tag::Message: return as_Message().kind;
-        }
-        return ErrorKind { ErrorKind::Uncategorized };
-    }
+    auto kind() const noexcept -> ErrorKind;
 
     /// Returns the raw OS error code if this error originated from the OS.
     auto raw_os_error() const noexcept -> Option<RawOsError> {

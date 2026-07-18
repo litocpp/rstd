@@ -103,12 +103,24 @@ export struct Instant {
     friend auto operator<=>(Instant a, Instant b) noexcept { return a.t <=> b.t; }
 };
 
+export struct UnixTime {
+    i64 seconds;
+    u32 nanoseconds;
+};
+
 export struct SystemTime {
     Timespec t;
 
     static auto now() noexcept -> SystemTime { return { Timespec::now(libc::CLOCK_REALTIME) }; }
 
     static auto unix_epoch() noexcept -> SystemTime { return { Timespec { 0, 0 } }; }
+
+    static auto from_unix_time(i64 seconds, u32 nanoseconds) noexcept -> Option<SystemTime> {
+        if (nanoseconds >= rstd::time::NANOS_PER_SEC) return None();
+        return Some(SystemTime { Timespec { seconds, nanoseconds } });
+    }
+
+    auto as_unix_time() const noexcept -> UnixTime { return { t.tv_sec, t.tv_nsec }; }
 
     auto sub_time(SystemTime other) const noexcept
         -> Result<rstd::time::Duration, rstd::time::Duration> {

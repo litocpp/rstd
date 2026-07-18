@@ -3,7 +3,7 @@ module;
 export module rstd:thread.thread;
 export import :thread.id;
 export import :thread.main_thread;
-export import :sys.sync.thread_parking;
+import :sys.sync.thread_parking;
 export import :ffi;
 import :forward;
 import rstd.alloc;

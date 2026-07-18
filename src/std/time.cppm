@@ -2,7 +2,7 @@ module;
 #include <rstd/macro.hpp>
 export module rstd:time;
 export import rstd.core;
-import :sys;
+import :sys.pal;
 import :sys.libc.std;
 #if RSTD_OS_UNIX
 import :sys.libc.unix;
@@ -16,12 +16,17 @@ namespace rstd::time
 /// A span of time, with nanosecond precision.
 export using rstd::time::Duration;
 
+export struct UnixTime {
+    i64 seconds {};
+    u32 nanoseconds {};
+};
+
 /// A measurement of a monotonically nondecreasing clock.
 export struct Instant {
-    sys::Instant inner;
+    sys::pal::Instant inner;
 
     /// Returns an instant corresponding to "now".
-    static auto now() noexcept -> Instant { return { sys::Instant::now() }; }
+    static auto now() noexcept -> Instant { return { sys::pal::Instant::now() }; }
 
     /// Returns the amount of time elapsed since this instant was created.
     auto elapsed() const noexcept -> Duration { return inner.elapsed(); }
@@ -36,7 +41,7 @@ export struct Instant {
     /// Returns Some(instant) if the addition does not overflow, or None otherwise.
     /// \param dur The duration to add.
     auto checked_add(Duration dur) const noexcept -> Option<Instant> {
-        return inner.checked_add_duration(dur).map([](sys::Instant i) {
+        return inner.checked_add_duration(dur).map([](sys::pal::Instant i) {
             return Instant { i };
         });
     }
@@ -44,7 +49,7 @@ export struct Instant {
     /// Returns Some(instant) if the subtraction does not underflow, or None otherwise.
     /// \param dur The duration to subtract.
     auto checked_sub(Duration dur) const noexcept -> Option<Instant> {
-        return inner.checked_sub_duration(dur).map([](sys::Instant i) {
+        return inner.checked_sub_duration(dur).map([](sys::pal::Instant i) {
             return Instant { i };
         });
     }
@@ -65,13 +70,29 @@ export struct Instant {
 
 /// A measurement of the system clock, useful for talking to external entities like the filesystem or other processes.
 export struct SystemTime {
-    sys::SystemTime inner;
+    sys::pal::SystemTime inner;
 
     /// Returns the system time corresponding to "now".
-    static auto now() noexcept -> SystemTime { return { sys::SystemTime::now() }; }
+    static auto now() noexcept -> SystemTime { return { sys::pal::SystemTime::now() }; }
 
     /// Returns the system time corresponding to 1970-01-01 00:00:00 UTC.
-    static auto unix_epoch() noexcept -> SystemTime { return { sys::SystemTime::unix_epoch() }; }
+    static auto unix_epoch() noexcept -> SystemTime {
+        return { sys::pal::SystemTime::unix_epoch() };
+    }
+
+    /// Creates a system time from a normalized Unix timestamp.
+    static auto from_unix_time(i64 seconds, u32 nanoseconds) noexcept -> Option<SystemTime> {
+        return sys::pal::SystemTime::from_unix_time(seconds, nanoseconds)
+            .map([](sys::pal::SystemTime value) {
+                return SystemTime { value };
+            });
+    }
+
+    /// Returns the normalized Unix timestamp represented by this value.
+    auto as_unix_time() const noexcept -> UnixTime {
+        auto value = inner.as_unix_time();
+        return { value.seconds, value.nanoseconds };
+    }
 
     /// Returns the duration since an earlier SystemTime, or an Err if `other` is later.
     /// \param other The earlier system time.
@@ -87,7 +108,7 @@ export struct SystemTime {
     /// Returns Some(time) if the addition does not overflow, or None otherwise.
     /// \param dur The duration to add.
     auto checked_add(Duration dur) const noexcept -> Option<SystemTime> {
-        return inner.checked_add_duration(dur).map([](sys::SystemTime s) {
+        return inner.checked_add_duration(dur).map([](sys::pal::SystemTime s) {
             return SystemTime { s };
         });
     }
@@ -95,7 +116,7 @@ export struct SystemTime {
     /// Returns Some(time) if the subtraction does not underflow, or None otherwise.
     /// \param dur The duration to subtract.
     auto checked_sub(Duration dur) const noexcept -> Option<SystemTime> {
-        return inner.checked_sub_duration(dur).map([](sys::SystemTime s) {
+        return inner.checked_sub_duration(dur).map([](sys::pal::SystemTime s) {
             return SystemTime { s };
         });
     }

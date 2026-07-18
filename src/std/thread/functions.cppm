@@ -5,7 +5,7 @@ export import :thread.builder;
 export import :thread.thread;
 export import :thread.join_handle;
 export import :thread.current;
-export import :sys;
+import :sys.thread;
 export import rstd.core;
 
 namespace rstd::thread

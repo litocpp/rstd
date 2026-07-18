@@ -4,7 +4,7 @@ export module rstd:thread.builder;
 import :forward;
 export import :thread.join_handle;
 export import :thread.lifecycle;
-export import :sys;
+import :sys.thread;
 export import rstd.core;
 
 using rstd_alloc::string::String;

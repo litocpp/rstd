@@ -6,7 +6,7 @@ export import :io.error;
 export import :async.readiness;
 export import :time;
 export import rstd.core;
-import :sys.fd;
+import :os.fd;
 import :sys.libc;
 import :sync;
 import rstd.alloc;
@@ -36,6 +36,7 @@ export enum class PollTimeout {
 export enum class PollEventKind {
     Wake,
     Readiness,
+    Deregistered,
     Completion,
     Timer,
     BackendError,
@@ -97,7 +98,7 @@ export enum class PollOperationKind {
 
 export class PollOperation {
     PollOperationKind m_kind { PollOperationKind::Read };
-    sys::fd::RawFd    m_fd { sys::fd::INVALID_RAW_FD };
+    os::fd::RawFd     m_fd { os::fd::INVALID_RAW_FD };
     void*             m_mut_data { nullptr };
     const void*       m_const_data { nullptr };
     usize             m_len {};
@@ -106,7 +107,7 @@ export class PollOperation {
 
 public:
     static auto
-    read(sys::fd::RawFd fd, void* data, usize len, Option<u64> offset = None(), u32 flags = 0)
+    read(os::fd::RawFd fd, void* data, usize len, Option<u64> offset = None(), u32 flags = 0)
         -> PollOperation {
         auto operation       = PollOperation {};
         operation.m_kind     = PollOperationKind::Read;
@@ -118,11 +119,9 @@ public:
         return operation;
     }
 
-    static auto write(sys::fd::RawFd fd,
-                      const void*    data,
-                      usize          len,
-                      Option<u64>    offset = None(),
-                      u32            flags  = 0) -> PollOperation {
+    static auto
+    write(os::fd::RawFd fd, const void* data, usize len, Option<u64> offset = None(), u32 flags = 0)
+        -> PollOperation {
         auto operation         = PollOperation {};
         operation.m_kind       = PollOperationKind::Write;
         operation.m_fd         = fd;
@@ -134,7 +133,7 @@ public:
     }
 
     auto kind() const noexcept -> PollOperationKind { return m_kind; }
-    auto fd() const noexcept -> sys::fd::RawFd { return m_fd; }
+    auto fd() const noexcept -> os::fd::RawFd { return m_fd; }
     auto mutable_data() const noexcept -> void* { return m_mut_data; }
     auto const_data() const noexcept -> const void* { return m_const_data; }
     auto len() const noexcept -> usize { return m_len; }
@@ -182,6 +181,16 @@ public:
     static auto readiness(PollKey key, Ready ready) -> PollEventData {
         auto data        = PollEventData { PollEventKind::Readiness, key };
         data.m_readiness = Some(ready);
+        return data;
+    }
+
+    static auto deregistered(PollKey key) -> PollEventData {
+        return PollEventData { PollEventKind::Deregistered, key };
+    }
+
+    static auto deregistered(PollKey key, io::Error error) -> PollEventData {
+        auto data            = PollEventData { PollEventKind::Deregistered, key };
+        data.m_backend_error = Some(rstd::move(error));
         return data;
     }
 
@@ -320,7 +329,7 @@ export enum class PollCommandKind {
 export class PollCommand {
     PollCommandKind        m_kind { PollCommandKind::RegisterSource };
     PollKey                m_key {};
-    sys::fd::RawFd         m_fd { sys::fd::INVALID_RAW_FD };
+    os::fd::RawFd          m_fd { os::fd::INVALID_RAW_FD };
     Interest               m_interest {};
     Option<PollOperation>  m_operation {};
     time::Instant          m_deadline {};
@@ -336,7 +345,7 @@ public:
     auto operator=(PollCommand&&) noexcept -> PollCommand& = default;
 
     static auto
-    register_source(PollKey key, sys::fd::RawFd fd, Interest interest, PollEventOwner owner)
+    register_source(PollKey key, os::fd::RawFd fd, Interest interest, PollEventOwner owner)
         -> PollCommand {
         auto command = PollCommand { PollCommandKind::RegisterSource, key, rstd::move(owner) };
         command.m_fd = fd;
@@ -379,7 +388,7 @@ public:
 
     auto kind() const noexcept -> PollCommandKind { return m_kind; }
     auto key() const noexcept -> PollKey { return m_key; }
-    auto fd() const noexcept -> sys::fd::RawFd { return m_fd; }
+    auto fd() const noexcept -> os::fd::RawFd { return m_fd; }
     auto interest() const noexcept -> Interest { return m_interest; }
     auto operation() const -> const PollOperation& { return *m_operation; }
     auto take_operation() -> PollOperation { return m_operation.take().unwrap_unchecked(); }
@@ -403,8 +412,12 @@ export class PollApplyResult {
     PollApplyStatus     m_status { PollApplyStatus::Accepted };
     Option<PollCommand> m_command {};
     Option<io::Error>   m_error {};
+    Option<PollEvent>   m_event {};
 
     explicit PollApplyResult(PollApplyStatus status): m_status(status) {}
+
+    explicit PollApplyResult(PollEvent event)
+        : m_status(PollApplyStatus::Accepted), m_event(Some(rstd::move(event))) {}
 
     PollApplyResult(PollApplyStatus status, PollCommand command, io::Error error)
         : m_status(status),
@@ -414,6 +427,10 @@ export class PollApplyResult {
 public:
     static auto accepted() -> PollApplyResult {
         return PollApplyResult { PollApplyStatus::Accepted };
+    }
+
+    static auto accepted(PollEvent event) -> PollApplyResult {
+        return PollApplyResult { rstd::move(event) };
     }
 
     static auto rejected(PollCommand command, io::Error error) -> PollApplyResult {
@@ -430,6 +447,8 @@ public:
     }
 
     auto status() const noexcept -> PollApplyStatus { return m_status; }
+    auto has_event() const noexcept -> bool { return m_event.is_some(); }
+    auto take_event() -> PollEvent { return m_event.take().unwrap_unchecked(); }
     auto take_command() -> PollCommand { return m_command.take().unwrap_unchecked(); }
     auto take_error() -> io::Error { return m_error.take().unwrap_unchecked(); }
 };
@@ -451,9 +470,9 @@ public:
 };
 
 struct PollWakeState {
-    sys::fd::OwnedFd fd;
+    os::fd::OwnedFd fd;
 
-    explicit PollWakeState(sys::fd::OwnedFd fd): fd(rstd::move(fd)) {}
+    explicit PollWakeState(os::fd::OwnedFd fd): fd(rstd::move(fd)) {}
 };
 
 export class PollWake {
@@ -478,7 +497,7 @@ public:
         if (rc == isize(sizeof(value)) || libc::get_errno() == libc::EAGAIN) {
             return Ok(empty {});
         }
-        return Err(io::Error::from_raw_os_error(sys::io::last_os_error()));
+        return Err(io::Error::last_os_error());
 #else
         return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
 #endif
@@ -487,13 +506,13 @@ public:
 
 struct PollRegistration {
     PollKey        key;
-    sys::fd::RawFd fd;
+    os::fd::RawFd  fd;
     Interest       interest;
     PollEventOwner owner;
     u32            backend_events {};
     bool           backend_registered { false };
 
-    PollRegistration(PollKey key, sys::fd::RawFd fd, Interest interest, PollEventOwner owner)
+    PollRegistration(PollKey key, os::fd::RawFd fd, Interest interest, PollEventOwner owner)
         : key(key), fd(fd), interest(interest), owner(rstd::move(owner)) {}
 };
 
@@ -508,16 +527,16 @@ struct PollTimer {
 
 export class PollState {
     PollStateKind         m_kind { PollStateKind::Closed };
-    sys::fd::OwnedFd      m_poll_fd {};
-    sys::fd::OwnedFd      m_wake_fd {};
-    sys::fd::OwnedFd      m_timer_fd {};
+    os::fd::OwnedFd       m_poll_fd {};
+    os::fd::OwnedFd       m_wake_fd {};
+    os::fd::OwnedFd       m_timer_fd {};
     Vec<PollRegistration> m_registrations;
     Vec<PollTimer>        m_timers;
 #if RSTD_OS_LINUX
     Vec<libc::epoll_event> m_backend_events;
 #endif
 
-    PollState(sys::fd::OwnedFd poll_fd, sys::fd::OwnedFd wake_fd, sys::fd::OwnedFd timer_fd)
+    PollState(os::fd::OwnedFd poll_fd, os::fd::OwnedFd wake_fd, os::fd::OwnedFd timer_fd)
         : m_kind(PollStateKind::Active),
           m_poll_fd(rstd::move(poll_fd)),
           m_wake_fd(rstd::move(wake_fd)),
@@ -554,11 +573,9 @@ export struct PollInit {
 };
 
 export class Poll {
-    static auto last_os_error() noexcept -> io::Error {
-        return io::Error::from_raw_os_error(sys::io::last_os_error());
-    }
+    static auto last_os_error() noexcept -> io::Error { return io::Error::last_os_error(); }
 
-    static void drain_wake(sys::fd::RawFd fd) noexcept {
+    static void drain_wake(os::fd::RawFd fd) noexcept {
 #if RSTD_OS_LINUX
         auto value = u64 {};
         while (libc::read(fd, &value, sizeof(value)) > 0) {
@@ -568,7 +585,7 @@ export class Poll {
 #endif
     }
 
-    static void drain_timer(sys::fd::RawFd fd) noexcept {
+    static void drain_timer(os::fd::RawFd fd) noexcept {
 #if RSTD_OS_LINUX
         auto value = u64 {};
         while (libc::read(fd, &value, sizeof(value)) > 0) {
@@ -714,18 +731,18 @@ public:
 #if RSTD_OS_LINUX
         auto poll_fd = libc::epoll_create1(libc::EPOLL_CLOEXEC);
         if (poll_fd < 0) return Err(last_os_error());
-        auto owned_poll = sys::fd::OwnedFd::from_raw_fd(poll_fd);
+        auto owned_poll = os::fd::OwnedFd::from_raw_fd(poll_fd);
 
         auto wake_fd = libc::eventfd(0, libc::EFD_NONBLOCK | libc::EFD_CLOEXEC);
         if (wake_fd < 0) return Err(last_os_error());
-        auto owned_wake = sys::fd::OwnedFd::from_raw_fd(wake_fd);
+        auto owned_wake = os::fd::OwnedFd::from_raw_fd(wake_fd);
         auto wake_send  = owned_wake.try_clone();
         if (wake_send.is_err()) return Err(rstd::move(wake_send).unwrap_err_unchecked());
 
         auto timer_fd =
             libc::timerfd_create(libc::CLOCK_MONOTONIC, libc::TFD_NONBLOCK | libc::TFD_CLOEXEC);
         if (timer_fd < 0) return Err(last_os_error());
-        auto owned_timer = sys::fd::OwnedFd::from_raw_fd(timer_fd);
+        auto owned_timer = os::fd::OwnedFd::from_raw_fd(timer_fd);
 
         auto event     = libc::epoll_event {};
         event.events   = libc::EPOLLIN;
@@ -809,9 +826,11 @@ public:
                                                      rstd::move(updated).unwrap_err_unchecked());
                 }
                 state.m_registrations.remove(i);
-                return PollApplyResult::accepted();
+                return PollApplyResult::accepted(PollEvent::owned(
+                    PollEventData::deregistered(command.key()), command.take_owner()));
             }
-            return PollApplyResult::accepted();
+            return PollApplyResult::accepted(
+                PollEvent::owned(PollEventData::deregistered(command.key()), command.take_owner()));
         }
         case PollCommandKind::SubmitOperation:
         case PollCommandKind::CancelOperation:
@@ -922,7 +941,7 @@ public:
         while (! state.m_registrations.is_empty()) {
             auto registration = state.m_registrations.pop().unwrap_unchecked();
             batch.push(PollEvent::owned(
-                PollEventData::backend_error(
+                PollEventData::deregistered(
                     registration.key,
                     io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected })),
                 rstd::move(registration.owner)));
@@ -934,9 +953,9 @@ public:
                     timer.key, io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected })),
                 rstd::move(timer.owner)));
         }
-        state.m_poll_fd  = sys::fd::OwnedFd {};
-        state.m_wake_fd  = sys::fd::OwnedFd {};
-        state.m_timer_fd = sys::fd::OwnedFd {};
+        state.m_poll_fd  = os::fd::OwnedFd {};
+        state.m_wake_fd  = os::fd::OwnedFd {};
+        state.m_timer_fd = os::fd::OwnedFd {};
         state.m_kind     = PollStateKind::Closed;
         return batch;
     }

@@ -45,8 +45,7 @@ struct SliceIterMut : DefaultInClass<SliceIterMut<T>, Iterator> {
     T* cur;
     T* fin;
 
-    constexpr SliceIterMut(T* begin [[clang::lifetimebound]],
-                           T* end [[clang::lifetimebound]])
+    constexpr SliceIterMut(T* begin [[clang::lifetimebound]], T* end [[clang::lifetimebound]])
         : cur(begin), fin(end) {}
 
     constexpr auto next() -> Option<Item> {

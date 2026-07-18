@@ -62,7 +62,10 @@ class BTreeMapIter : public rstd::DefaultInClass<BTreeMapIter<K, V>, rstd::iter:
 public:
     using Item = rstd::tuple<rstd::ref<K>, rstd::ref<V>>;
 
-    BTreeMapIter(const TreeNode* root [[clang::lifetimebound]], usize len): remaining(len) {
+    BTreeMapIter(const TreeNode* root [[clang::lifetimebound]]
+                 ,
+                 usize len)
+        : remaining(len) {
         push_left(root);
         push_right(root);
     }
@@ -155,7 +158,10 @@ class BTreeMapIterMut : public rstd::DefaultInClass<BTreeMapIterMut<K, V>, rstd:
 public:
     using Item = rstd::tuple<rstd::ref<K>, rstd::mut_ref<V>>;
 
-    BTreeMapIterMut(TreeNode* root [[clang::lifetimebound]], usize len): remaining(len) {
+    BTreeMapIterMut(TreeNode* root [[clang::lifetimebound]]
+                    ,
+                    usize len)
+        : remaining(len) {
         push_left(root);
         push_right(root);
     }
@@ -708,7 +714,7 @@ public:
 
     template<typename Q>
     auto get_key_value(const Q& key) const [[clang::lifetimebound]]
-        -> Option<rstd::tuple<rstd::ref<K>, rstd::ref<V>>>
+    -> Option<rstd::tuple<rstd::ref<K>, rstd::ref<V>>>
         requires requires(const K& stored, const Q& borrowed) {
             stored < borrowed;
             borrowed < stored;
@@ -766,7 +772,7 @@ public:
     }
 
     auto first_key_value() const [[clang::lifetimebound]]
-        -> Option<rstd::tuple<rstd::ref<K>, rstd::ref<V>>> {
+    -> Option<rstd::tuple<rstd::ref<K>, rstd::ref<V>>> {
         auto* node = root_node();
         if (node == nullptr || length == 0) return None();
         while (! node->leaf) node = node->child(0);
@@ -776,7 +782,7 @@ public:
     }
 
     auto last_key_value() const [[clang::lifetimebound]]
-        -> Option<rstd::tuple<rstd::ref<K>, rstd::ref<V>>> {
+    -> Option<rstd::tuple<rstd::ref<K>, rstd::ref<V>>> {
         auto* node = root_node();
         if (node == nullptr || length == 0) return None();
         while (! node->leaf) node = node->child(node->len);

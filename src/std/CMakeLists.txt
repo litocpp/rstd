@@ -1,4 +1,5 @@
 set(RSTD_PRIVATE_SOURCES)
+set(RSTD_PRIVATE_MODULE_SOURCES)
 set(RSTD_SYS_SOURCES)
 set(RSTD_IO_SOURCES)
 set(RSTD_THREAD_SOURCES)
@@ -6,6 +7,7 @@ set(RSTD_SYNC_SOURCES)
 set(RSTD_ASYNC_SOURCES)
 set(RSTD_BYTES_SOURCES)
 set(RSTD_NET_SOURCES)
+set(RSTD_OS_SOURCES)
 
 add_subdirectory(sys)
 add_subdirectory(io)
@@ -14,6 +16,7 @@ add_subdirectory(sync)
 add_subdirectory(async)
 add_subdirectory(bytes)
 add_subdirectory(net)
+add_subdirectory(os)
 
 add_library(rstd.std STATIC)
 target_compile_features(rstd.std PUBLIC cxx_std_20)
@@ -38,9 +41,11 @@ target_sources(
          process/command.cppm
          env.cppm
          path.cppm
+         fs/types.cppm
          fs.cppm
          ffi/mod.cppm
          ffi/os_str.cppm
+         ${RSTD_OS_SOURCES}
          ${RSTD_SYS_SOURCES}
          ${RSTD_IO_SOURCES}
          ${RSTD_THREAD_SOURCES}
@@ -49,4 +54,10 @@ target_sources(
          ${RSTD_BYTES_SOURCES}
          ${RSTD_NET_SOURCES})
 
-target_sources(rstd.std PRIVATE ${RSTD_PRIVATE_SOURCES} mod.cpp process/process.cpp)
+target_sources(
+  rstd.std
+  PRIVATE FILE_SET private_modules TYPE CXX_MODULES FILES
+          ${RSTD_PRIVATE_MODULE_SOURCES})
+
+target_sources(rstd.std PRIVATE ${RSTD_PRIVATE_SOURCES} mod.cpp process/process.cpp fs.cpp env.cpp
+                                os/fd.cpp)

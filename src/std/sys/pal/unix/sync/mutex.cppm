@@ -14,17 +14,13 @@ namespace rstd::sys::pal::unix::sync::mutex
 export class Mutex {
     pthread_mutex_t inner;
 
+public:
     Mutex() noexcept: inner(pthread_mutex_initializer()) {}
 
-public:
-    ~Mutex() noexcept {
-        // always destroy here even move is copy
-        // only valid when destroy on not used mutex
-        pthread_mutex_destroy(&inner);
-    }
+    ~Mutex() noexcept { pthread_mutex_destroy(&inner); }
 
-    Mutex(Mutex&& o) noexcept: inner(o.inner) {}
     Mutex(const Mutex&)            = delete;
+    Mutex(Mutex&&)                 = delete;
     Mutex& operator=(const Mutex&) = delete;
     Mutex& operator=(Mutex&&)      = delete;
 
