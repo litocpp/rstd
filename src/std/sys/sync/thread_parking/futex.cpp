@@ -13,7 +13,7 @@ Parker::~Parker() {
 }
 
 void Parker::park() {
-    if (state.fetch_sub(1, Ordering::Acquire) == NOTIFIED) {
+    if (state.fetch_sub(NOTIFIED, Ordering::Acquire) == NOTIFIED) {
         return;
     }
 
@@ -31,7 +31,7 @@ void Parker::park() {
 
 void Parker::park_timeout(rstd::time::Duration timeout) {
     // Change NOTIFIED=>EMPTY or EMPTY=>PARKED, and directly return in the first case
-    if (state.fetch_sub(1, Ordering::Acquire) == NOTIFIED) {
+    if (state.fetch_sub(NOTIFIED, Ordering::Acquire) == NOTIFIED) {
         return;
     }
 
@@ -40,7 +40,7 @@ void Parker::park_timeout(rstd::time::Duration timeout) {
 
     // Try to detect if we were notified or just timed out
     [[maybe_unused]]
-    i32 old = state.exchange(EMPTY, Ordering::Acquire);
+    State old = state.exchange(EMPTY, Ordering::Acquire);
     // Note: We don't differentiate between timeout and notification in this impl
     // TODO
 }

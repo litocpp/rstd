@@ -16,7 +16,7 @@ auto clone_os(ref<OsStr> value) -> OsString {
 
 auto option_lookup_name(ref<OsStr> token) -> Option<ref<str>> {
     auto name = token;
-    if (auto split = token.split_once('='); split.is_some()) name = split->template get<0>();
+    if (auto split = token.split_once(u8('=')); split.is_some()) name = split->template get<0>();
     auto text = name.to_str();
     if (text.is_none()) return None();
     return text;
@@ -30,19 +30,20 @@ auto lookup_option(const CompiledCommand& schema, ref<OsStr> token) -> Option<us
 }
 
 auto edit_distance(ref<str> left, ref<str> right) -> usize {
-    auto previous = Vec<usize>::with_capacity(right.size() + 1);
-    auto current  = Vec<usize>::with_capacity(right.size() + 1);
-    for (usize column = 0; column <= right.size(); ++column) {
+    auto previous = Vec<usize>::with_capacity(right.size() + usize(1));
+    auto current  = Vec<usize>::with_capacity(right.size() + usize(1));
+    for (usize column {}; column <= right.size(); ++column) {
         previous.push(usize(column));
-        current.push(usize { 0 });
+        current.push(usize());
     }
-    for (usize row = 1; row <= left.size(); ++row) {
-        current[0] = row;
-        for (usize column = 1; column <= right.size(); ++column) {
+    for (usize row = usize(1); row <= left.size(); ++row) {
+        current[usize()] = row;
+        for (usize column = usize(1); column <= right.size(); ++column) {
             const usize substitution =
-                previous[column - 1] + (left.data()[row - 1] == right.data()[column - 1] ? 0 : 1);
-            const usize insertion = current[column - 1] + 1;
-            const usize deletion  = previous[column] + 1;
+                previous[column - usize(1)] +
+                (left[row - usize(1)] == right[column - usize(1)] ? usize() : usize(1));
+            const usize insertion = current[column - usize(1)] + usize(1);
+            const usize deletion  = previous[column] + usize(1);
             usize       best      = substitution < insertion ? substitution : insertion;
             if (deletion < best) best = deletion;
             current[column] = best;
@@ -59,7 +60,7 @@ auto suggest_option(const CompiledCommand& schema, ref<OsStr> token) -> Option<S
     if (input.is_none()) return None();
 
     Option<String> suggestion    = None();
-    usize          best_distance = rstd::numeric_limits<usize>::max();
+    usize          best_distance = usize::MAX;
     auto           consider      = [&](String candidate) {
         const usize distance = edit_distance(*input, candidate.as_str());
         if (distance < best_distance) {
@@ -68,7 +69,7 @@ auto suggest_option(const CompiledCommand& schema, ref<OsStr> token) -> Option<S
         }
     };
 
-    for (usize slot = 0; slot < schema.args.len(); ++slot) {
+    for (usize slot {}; slot < schema.args.len(); ++slot) {
         const auto& argument = schema.args[slot];
         if (argument.short_name.is_some()) {
             auto candidate = String::make("-");
@@ -80,32 +81,34 @@ auto suggest_option(const CompiledCommand& schema, ref<OsStr> token) -> Option<S
             candidate.push_str(argument.long_name->as_str());
             consider(rstd::move(candidate));
         }
-        for (usize alias = 0; alias < argument.short_aliases.len(); ++alias) {
+        for (usize alias {}; alias < argument.short_aliases.len(); ++alias) {
             auto candidate = String::make("-");
             candidate.push_str(argument.short_aliases[alias].as_str());
             consider(rstd::move(candidate));
         }
-        for (usize alias = 0; alias < argument.aliases.len(); ++alias) {
+        for (usize alias {}; alias < argument.aliases.len(); ++alias) {
             auto candidate = String::make("--");
             candidate.push_str(argument.aliases[alias].as_str());
             consider(rstd::move(candidate));
         }
     }
-    return best_distance <= 3 ? rstd::move(suggestion) : None();
+    return best_distance <= usize(3) ? rstd::move(suggestion) : None();
 }
 
 auto is_option_like(ref<OsStr> token) -> bool {
-    return token.len() > 1 && token.data()[0] == '-';
+    return token.len() > usize(1) && rstd::byte_value(token.as_encoded_bytes()[usize()]) == u8('-');
 }
 
 auto count_positional_candidates(const CompiledCommand& schema,
                                  const Vec<OsString>&   argv,
                                  usize                  start,
                                  bool                   options) -> usize {
-    usize count = 0;
+    usize count {};
     for (usize index = start; index < argv.len(); ++index) {
         auto token = argv[index].as_os_str();
-        if (options && token.len() == 2 && token.data()[0] == '-' && token.data()[1] == '-') {
+        auto bytes = token.as_encoded_bytes();
+        if (options && token.len() == usize(2) && rstd::byte_value(bytes[usize()]) == u8('-') &&
+            rstd::byte_value(bytes[usize(1)]) == u8('-')) {
             options = false;
             continue;
         }
@@ -114,25 +117,27 @@ auto count_positional_candidates(const CompiledCommand& schema,
             if (exact.is_some()) {
                 const auto& spec = schema.args[*exact];
                 if ((spec.action.is_Set() || spec.action.is_Append()) &&
-                    token.split_once('=').is_none()) {
+                    token.split_once(u8('=')).is_none()) {
                     usize skip = spec.num_args.minimum();
-                    while (skip != 0 && index + 1 < argv.len()) {
+                    while (skip != usize() && index + usize(1) < argv.len()) {
                         ++index;
                         --skip;
                     }
                 }
                 continue;
             }
-            if (token.data()[0] == '-' && token.len() > 1) {
-                for (usize offset = 1; offset < token.len(); ++offset) {
-                    char name[3] = { '-', static_cast<char>(token.data()[offset]), '\0' };
-                    auto slot    = schema.option_index.get(ref<str>(name));
+            if (rstd::byte_value(bytes[usize()]) == u8('-') && token.len() > usize(1)) {
+                for (usize offset = usize(1); offset < token.len(); ++offset) {
+                    char name[3] = {
+                        '-', static_cast<char>(rstd::byte_value(bytes[offset]).to_primitive()), '\0'
+                    };
+                    auto slot = schema.option_index.get(ref<str>(name));
                     if (slot.is_none()) break;
                     const auto& spec = schema.args[**slot];
                     if (spec.action.is_Set() || spec.action.is_Append()) {
-                        if (offset + 1 == token.len()) {
+                        if (offset + usize(1) == token.len()) {
                             usize skip = spec.num_args.minimum();
-                            while (skip != 0 && index + 1 < argv.len()) {
+                            while (skip != usize() && index + usize(1) < argv.len()) {
                                 ++index;
                                 --skip;
                             }
@@ -183,9 +188,9 @@ auto apply_flag(const ArgSpec& spec, MatchedArg& matched, usize index)
         }
     } else if (spec.action.is_Count()) {
         if (matched.typed_values.is_empty()) {
-            matched.typed_values.push(Box<dyn<rstd::any::Any>>::make(u8 { 1 }));
+            matched.typed_values.push(Box<dyn<rstd::any::Any>>::make(u8(1)));
         } else {
-            auto count = rstd::any::downcast_mut<u8>(matched.typed_values[0].deref_mut());
+            auto count = rstd::any::downcast_mut<u8>(matched.typed_values[usize()].deref_mut());
             if (count.is_none()) {
                 return Some(rstd::argparse::ParseError::InvalidValue(
                     spec.id.clone(),
@@ -194,7 +199,7 @@ auto apply_flag(const ArgSpec& spec, MatchedArg& matched, usize index)
                     rstd::argparse::ValueError::Message(
                         String::make("count argument has an invalid compiled type"))));
             }
-            if (**count != rstd::numeric_limits<u8>::max()) ++**count;
+            if (**count != u8::MAX) ++**count;
         }
     }
     matched.indices.push(usize(index));
@@ -204,7 +209,7 @@ auto apply_flag(const ArgSpec& spec, MatchedArg& matched, usize index)
 }
 
 auto relation_present(const MatchedArg& matched) noexcept -> bool {
-    return matched.occurrences != 0 && ! matched.from_default;
+    return matched.occurrences != usize() && ! matched.from_default;
 }
 
 struct ParseRun {
@@ -418,8 +423,8 @@ void render_argument_line(String& output, const ArgSpec& argument) {
     }
     if (! argument.possible_values.is_empty()) {
         output.push_str(" [possible values: ");
-        for (usize value = 0; value < argument.possible_values.len(); ++value) {
-            if (value != 0) output.push_str(", ");
+        for (usize value {}; value < argument.possible_values.len(); ++value) {
+            if (value != usize()) output.push_str(", ");
             output.push_str(argument.possible_values[value].as_str());
         }
         output.push_back(']');
@@ -434,7 +439,7 @@ auto rstd::argparse::Parser::render_usage() const -> String {
 auto rstd::argparse::Parser::render_usage_for(ref<str> display_path) const -> String {
     auto output = rstd::format("Usage: {}", display_path);
     if (! schema_->option_index.is_empty()) output.push_str(" [OPTIONS]");
-    for (usize i = 0; i < schema_->positionals.len(); ++i) {
+    for (usize i {}; i < schema_->positionals.len(); ++i) {
         const auto& argument = schema_->args[schema_->positionals[i]];
         if (! argument.required)
             output.push_str(" [");
@@ -444,7 +449,7 @@ auto rstd::argparse::Parser::render_usage_for(ref<str> display_path) const -> St
                                                        : argument.value_name.as_str());
         output.push_back(argument.required ? '>' : ']');
         if (argument.num_args.maximum().is_none() ||
-            (argument.num_args.maximum().is_some() && *argument.num_args.maximum() > 1)) {
+            (argument.num_args.maximum().is_some() && *argument.num_args.maximum() > usize(1))) {
             output.push_str("...");
         }
     }
@@ -472,7 +477,7 @@ auto rstd::argparse::Parser::render_help_for(ref<str> display_path) const -> Str
 
     auto render_section = [&](ref<str> heading, bool options, Option<ref<str>> custom) {
         bool wrote_heading = false;
-        for (usize i = 0; i < schema_->args.len(); ++i) {
+        for (usize i {}; i < schema_->args.len(); ++i) {
             const auto& argument = schema_->args[i];
             if (argument.hidden) continue;
             const bool named = argument.short_name.is_some() || argument.long_name.is_some() ||
@@ -493,11 +498,11 @@ auto rstd::argparse::Parser::render_help_for(ref<str> display_path) const -> Str
 
     render_section("Arguments", false, None());
     render_section("Options", true, None());
-    for (usize i = 0; i < schema_->args.len(); ++i) {
+    for (usize i {}; i < schema_->args.len(); ++i) {
         const auto& argument = schema_->args[i];
         if (argument.hidden || argument.help_heading.is_empty()) continue;
         bool already_rendered = false;
-        for (usize previous = 0; previous < i; ++previous) {
+        for (usize previous {}; previous < i; ++previous) {
             if (schema_->args[previous].help_heading.as_str() == argument.help_heading.as_str()) {
                 already_rendered = true;
                 break;
@@ -510,7 +515,7 @@ auto rstd::argparse::Parser::render_help_for(ref<str> display_path) const -> Str
     }
     if (! schema_->subcommands.is_empty()) {
         output.push_str("\nSubcommands:\n");
-        for (usize i = 0; i < schema_->subcommands.len(); ++i) {
+        for (usize i {}; i < schema_->subcommands.len(); ++i) {
             output.push_str("  ");
             output.push_str(schema_->subcommands[i].name.as_str());
             if (schema_->subcommands[i].schema->about.is_some()) {
@@ -538,19 +543,19 @@ auto rstd::argparse::Parser::render_version_for(ref<str> display_path) const -> 
 }
 
 auto rstd::argparse::Parser::render_error(const ParseError& error) const -> ErrorReport {
-    auto usage = error.usage().size() == 0 ? render_usage() : String::make(error.usage());
+    auto usage = error.usage().size() == usize() ? render_usage() : String::make(error.usage());
     auto text  = rstd::format("error: {}\n\n{}\n", error, usage);
-    return ErrorReport { rstd::move(text), OutputTarget::Stderr(), 2 };
+    return ErrorReport { rstd::move(text), OutputTarget::Stderr(), i32(2) };
 }
 
 auto rstd::argparse::Parser::run(Vec<OsString> argv, bool known, usize index_offset) const
     -> Result<RunOutcome, ParseError> {
-    auto display_path =
-        argv.is_empty() ? schema_->command_path.clone() : argv[0].as_os_str().to_string_lossy();
-    auto result = run_impl(rstd::move(argv), known, index_offset, display_path.as_str());
+    auto display_path = argv.is_empty() ? schema_->command_path.clone()
+                                        : argv[usize()].as_os_str().to_string_lossy();
+    auto result       = run_impl(rstd::move(argv), known, index_offset, display_path.as_str());
     if (result.is_ok()) return result;
     auto error = rstd::move(result).unwrap_err();
-    if (error.command_path().size() == 0) {
+    if (error.command_path().size() == usize()) {
         error.attach_context(display_path.clone(), render_usage_for(display_path.as_str()));
     }
     return Err(rstd::move(error));
@@ -562,28 +567,32 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
                                       ref<str>      display_path) const
     -> Result<RunOutcome, ParseError> {
     auto matched = Vec<MatchedArg>::with_capacity(schema_->args.len());
-    for (usize slot = 0; slot < schema_->args.len(); ++slot) matched.push(MatchedArg {});
+    for (usize slot {}; slot < schema_->args.len(); ++slot) {
+        matched.push(MatchedArg {});
+    }
     auto                 unknown            = Vec<OsString>::make();
     Option<String>       subcommand_name    = None();
     Option<Box<Matches>> subcommand_matches = None();
 
-    usize positional = 0;
-    bool  options    = true;
-    usize index      = argv.is_empty() ? 0 : 1;
-    auto  absolute   = [index_offset](usize value) {
+    usize positional {};
+    bool  options  = true;
+    usize index    = argv.is_empty() ? usize() : usize(1);
+    auto  absolute = [index_offset](usize value) {
         return value + index_offset;
     };
 
     auto display = [&](const ArgSpec& spec) -> Option<RunOutcome> {
         if (spec.action.is_Help()) {
-            return Some(RunOutcome::Display(DisplayRequest {
-                DisplayKind::Help(), render_help_for(display_path), OutputTarget::Stdout(), 0 }));
+            return Some(RunOutcome::Display(DisplayRequest { DisplayKind::Help(),
+                                                             render_help_for(display_path),
+                                                             OutputTarget::Stdout(),
+                                                             i32() }));
         }
         if (spec.action.is_Version()) {
             return Some(RunOutcome::Display(DisplayRequest { DisplayKind::Version(),
                                                              render_version_for(display_path),
                                                              OutputTarget::Stdout(),
-                                                             0 }));
+                                                             i32() }));
         }
         return None();
     };
@@ -596,7 +605,7 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
 
         if (! spec.action.is_Set() && ! spec.action.is_Append()) {
             if (attached.is_some()) {
-                return Err(ParseError::TooManyValues(spec.id.clone(), 0, absolute(index)));
+                return Err(ParseError::TooManyValues(spec.id.clone(), usize(), absolute(index)));
             }
             if (auto error = apply_flag(spec, value, absolute(index)); error.is_some()) {
                 return Err(rstd::move(*error));
@@ -604,14 +613,14 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
             return Ok(None());
         }
 
-        if (spec.action.is_Set() && value.occurrences != 0) {
+        if (spec.action.is_Set() && value.occurrences != usize()) {
             return Err(ParseError::DuplicateArgument(spec.id.clone(), absolute(index)));
         }
 
-        usize count = 0;
+        usize count {};
         if (attached.is_some()) {
-            if (spec.num_args.maximum().is_some() && *spec.num_args.maximum() == 0) {
-                return Err(ParseError::TooManyValues(spec.id.clone(), 0, absolute(index)));
+            if (spec.num_args.maximum().is_some() && *spec.num_args.maximum() == usize()) {
+                return Err(ParseError::TooManyValues(spec.id.clone(), usize(), absolute(index)));
             }
             auto item = rstd::move(*attached);
             if (auto error = push_value(spec, value, rstd::move(item.value), item.index);
@@ -622,8 +631,8 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
         }
 
         while (spec.num_args.maximum().is_none() || count < *spec.num_args.maximum()) {
-            if (index + 1 >= argv.len()) break;
-            auto candidate = argv[index + 1].as_os_str();
+            if (index + usize(1) >= argv.len()) break;
+            auto candidate = argv[index + usize(1)].as_os_str();
             if (! spec.allow_hyphen_values && is_option_like(candidate)) break;
             ++index;
             if (auto error = push_value(spec, value, clone_os(candidate), absolute(index));
@@ -634,13 +643,13 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
         }
 
         if (count < spec.num_args.minimum()) {
-            if (count == 0) {
+            if (count == usize()) {
                 return Err(ParseError::MissingValue(spec.id.clone(), absolute(index)));
             }
             return Err(ParseError::TooFewValues(
                 spec.id.clone(), spec.num_args.minimum(), count, absolute(index)));
         }
-        if (count == 0 && spec.implicit_value.is_some()) {
+        if (count == usize() && spec.implicit_value.is_some()) {
             value.typed_values.push((*spec.implicit_value)->clone_value());
             value.raw_values.push(clone_os(spec.implicit_raw_value->as_os_str()));
             value.indices.push(absolute(index));
@@ -652,13 +661,16 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
 
     while (index < argv.len()) {
         auto token = argv[index].as_os_str();
-        if (options && token.len() == 2 && token.data()[0] == '-' && token.data()[1] == '-') {
+        auto bytes = token.as_encoded_bytes();
+        if (options && token.len() == usize(2) && rstd::byte_value(bytes[usize()]) == u8('-') &&
+            rstd::byte_value(bytes[usize(1)]) == u8('-')) {
             options = false;
             ++index;
             continue;
         }
 
-        if (options && token.len() > 2 && token.data()[0] == '-' && token.data()[1] == '-') {
+        if (options && token.len() > usize(2) && rstd::byte_value(bytes[usize()]) == u8('-') &&
+            rstd::byte_value(bytes[usize(1)]) == u8('-')) {
             auto slot = lookup_option(*schema_, token);
             if (slot.is_none()) {
                 if (known) {
@@ -670,7 +682,7 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
                     clone_os(token), absolute(index), suggest_option(*schema_, token)));
             }
             Option<IndexedValue> attached = None();
-            if (auto split = token.split_once('='); split.is_some()) {
+            if (auto split = token.split_once(u8('=')); split.is_some()) {
                 attached =
                     Some(IndexedValue { clone_os(split->template get<1>()), absolute(index) });
             }
@@ -681,7 +693,7 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
             continue;
         }
 
-        if (options && token.len() > 1 && token.data()[0] == '-') {
+        if (options && token.len() > usize(1) && rstd::byte_value(bytes[usize()]) == u8('-')) {
             auto exact = lookup_option(*schema_, token);
             if (exact.is_some()) {
                 auto result = consume_option(*exact, None());
@@ -692,8 +704,10 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
             }
 
             bool cluster_known = true;
-            for (usize offset = 1; offset < token.len();) {
-                char name[3] = { '-', static_cast<char>(token.data()[offset]), '\0' };
+            for (usize offset = usize(1); offset < token.len();) {
+                char name[3] = { '-',
+                                 static_cast<char>(rstd::byte_value(bytes[offset]).to_primitive()),
+                                 '\0' };
                 auto slot    = schema_->option_index.get(ref<str>(name));
                 if (slot.is_none()) {
                     cluster_known = false;
@@ -713,16 +727,20 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
                     clone_os(token), absolute(index), suggest_option(*schema_, token)));
             }
 
-            for (usize offset = 1; offset < token.len(); ++offset) {
-                char        name[3] = { '-', static_cast<char>(token.data()[offset]), '\0' };
-                auto        slot    = schema_->option_index.get(ref<str>(name));
-                const auto& spec    = schema_->args[**slot];
+            for (usize offset = usize(1); offset < token.len(); ++offset) {
+                char name[3] = { '-',
+                                 static_cast<char>(rstd::byte_value(bytes[offset]).to_primitive()),
+                                 '\0' };
+                auto slot    = schema_->option_index.get(ref<str>(name));
+                const auto&          spec     = schema_->args[**slot];
                 Option<IndexedValue> attached = None();
-                if ((spec.action.is_Set() || spec.action.is_Append()) && offset + 1 < token.len()) {
-                    attached = Some(
-                        IndexedValue { clone_os(ref<OsStr>::from_raw_parts(
-                                           token.data() + offset + 1, token.len() - offset - 1)),
-                                       absolute(index) });
+                if ((spec.action.is_Set() || spec.action.is_Append()) &&
+                    offset + usize(1) < token.len()) {
+                    attached =
+                        Some(IndexedValue { clone_os(ref<OsStr>::from_raw_parts(
+                                                token.data() + (offset + usize(1)).to_primitive(),
+                                                token.len() - offset - usize(1))),
+                                            absolute(index) });
                 }
                 auto result = consume_option(**slot, rstd::move(attached));
                 if (result.is_err()) return Err(rstd::move(result).unwrap_err());
@@ -741,7 +759,8 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
                 auto        child_argv = Vec<OsString>::with_capacity(argv.len() - index);
                 auto        child_name = token.to_string_lossy();
                 child_argv.push(OsString::from(rstd::format("{} {}", display_path, child_name)));
-                for (usize child_index = index + 1; child_index < argv.len(); ++child_index) {
+                for (usize child_index = index + usize(1); child_index < argv.len();
+                     ++child_index) {
                     child_argv.push(clone_os(argv[child_index].as_os_str()));
                 }
                 auto child_parser = Parser { subcommand.schema.clone() };
@@ -774,7 +793,7 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
                 ++positional;
                 continue;
             }
-            if (positional + 1 < schema_->positionals.len() &&
+            if (positional + usize(1) < schema_->positionals.len() &&
                 matched[slot].typed_values.len() >= schema_->args[slot].num_args.minimum() &&
                 count_positional_candidates(*schema_, argv, index, options) <=
                     schema_->positional_reserve[positional]) {
@@ -800,30 +819,30 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
             error.is_some()) {
             return Err(rstd::move(*error));
         }
-        matched[slot].occurrences = 1;
+        matched[slot].occurrences = usize(1);
         if (matched[slot].occurrence_ends.is_empty()) {
             matched[slot].occurrence_ends.push(matched[slot].typed_values.len());
         } else {
-            matched[slot].occurrence_ends[0] = matched[slot].typed_values.len();
+            matched[slot].occurrence_ends[usize()] = matched[slot].typed_values.len();
         }
         ++index;
     }
 
-    for (usize slot = 0; slot < schema_->args.len(); ++slot) {
+    for (usize slot {}; slot < schema_->args.len(); ++slot) {
         const auto& spec  = schema_->args[slot];
         auto&       value = matched[slot];
-        if (value.occurrences == 0 && spec.default_value.is_some()) {
+        if (value.occurrences == usize() && spec.default_value.is_some()) {
             value.typed_values.push((*spec.default_value)->clone_value());
             value.raw_values.push(clone_os(spec.default_raw_value->as_os_str()));
-            value.indices.push(usize { 0 });
-            value.occurrences  = 1;
+            value.indices.push(usize());
+            value.occurrences  = usize(1);
             value.from_default = true;
             value.occurrence_ends.push(value.typed_values.len());
         }
-        if (spec.required && value.occurrences == 0) {
+        if (spec.required && value.occurrences == usize()) {
             return Err(ParseError::MissingRequiredArgument(spec.id.clone()));
         }
-        if ((spec.action.is_Set() || spec.action.is_Append()) && value.occurrences != 0 &&
+        if ((spec.action.is_Set() || spec.action.is_Append()) && value.occurrences != usize() &&
             value.typed_values.len() < spec.num_args.minimum()) {
             return Err(ParseError::TooFewValues(spec.id.clone(),
                                                 spec.num_args.minimum(),
@@ -832,30 +851,30 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
         }
     }
 
-    for (usize group_slot = 0; group_slot < schema_->groups.len(); ++group_slot) {
-        const auto& group   = schema_->groups[group_slot];
-        usize       present = 0;
-        usize       first   = 0;
-        usize       second  = 0;
-        for (usize member_index = 0; member_index < group.members.len(); ++member_index) {
+    for (usize group_slot {}; group_slot < schema_->groups.len(); ++group_slot) {
+        const auto& group = schema_->groups[group_slot];
+        usize       present {};
+        usize       first {};
+        usize       second {};
+        for (usize member_index {}; member_index < group.members.len(); ++member_index) {
             const usize member = group.members[member_index];
             if (! relation_present(matched[member])) continue;
-            if (present == 0)
+            if (present == usize())
                 first = member;
-            else if (present == 1)
+            else if (present == usize(1))
                 second = member;
             ++present;
         }
-        if (group.required && present == 0) {
+        if (group.required && present == usize()) {
             return Err(ParseError::MissingRequiredGroup(group.id.clone()));
         }
-        if (! group.multiple && present > 1) {
+        if (! group.multiple && present > usize(1)) {
             return Err(ParseError::ArgumentConflict(schema_->args[first].id.clone(),
                                                     schema_->args[second].id.clone()));
         }
     }
 
-    for (usize relation = 0; relation < schema_->conflicts.len(); ++relation) {
+    for (usize relation {}; relation < schema_->conflicts.len(); ++relation) {
         const auto& conflict = schema_->conflicts[relation];
         if (relation_present(matched[conflict.left]) && relation_present(matched[conflict.right])) {
             return Err(ParseError::ArgumentConflict(schema_->args[conflict.left].id.clone(),
@@ -863,7 +882,7 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
         }
     }
 
-    for (usize relation = 0; relation < schema_->requirements.len(); ++relation) {
+    for (usize relation {}; relation < schema_->requirements.len(); ++relation) {
         const auto& requirement = schema_->requirements[relation];
         if (! relation_present(matched[requirement.source])) continue;
         if (! requirement.target_is_group) {
@@ -875,7 +894,7 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
         }
         const auto& group   = schema_->groups[requirement.target];
         bool        present = false;
-        for (usize member_index = 0; member_index < group.members.len(); ++member_index) {
+        for (usize member_index {}; member_index < group.members.len(); ++member_index) {
             if (relation_present(matched[group.members[member_index]])) {
                 present = true;
                 break;
@@ -897,7 +916,7 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
 
 auto rstd::argparse::Parser::parse_from(Vec<OsString> argv) const
     -> Result<ParseOutcome<Matches>, ParseError> {
-    auto result = run(rstd::move(argv), false, 0);
+    auto result = run(rstd::move(argv), false, usize());
     if (result.is_err()) return Err(rstd::move(result).unwrap_err());
     auto outcome = rstd::move(result).unwrap();
     if (outcome.is_Display()) {
@@ -908,7 +927,7 @@ auto rstd::argparse::Parser::parse_from(Vec<OsString> argv) const
 
 auto rstd::argparse::Parser::parse_known_from(Vec<OsString> argv) const
     -> Result<ParseOutcome<KnownMatches>, ParseError> {
-    auto result = run(rstd::move(argv), true, 0);
+    auto result = run(rstd::move(argv), true, usize());
     if (result.is_err()) return Err(rstd::move(result).unwrap_err());
     auto outcome = rstd::move(result).unwrap();
     if (outcome.is_Display()) {

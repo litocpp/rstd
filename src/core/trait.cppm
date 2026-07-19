@@ -88,25 +88,25 @@ struct TraitFuncsHelper<TraitFuncs<Api...>> {
         return T { Api... };
     }
 
-    template<usize I>
+    template<rstd::size_t I>
     consteval static auto get() {
         return mtp::get_auto<I, Api...>();
     }
 
     consteval static auto size() { return sizeof...(Api); }
 
-    template<usize I>
+    template<rstd::size_t I>
     using type_at = decltype(get<I>());
 };
 
 template<typename T>
 struct ImplWithPtr {
-    usizeptr ptr_;
+    rstd::uintptr_t ptr_;
 
     friend struct ImplHelper;
 
     template<typename P>
-    constexpr ImplWithPtr(P* p) noexcept: ptr_(rstd::bit_cast<usizeptr>(p)) {}
+    constexpr ImplWithPtr(P* p) noexcept: ptr_(rstd::bit_cast<rstd::uintptr_t>(p)) {}
 
 protected:
     constexpr auto self() noexcept -> T& { return *rstd::bit_cast<T*>(ptr_); }
@@ -134,7 +134,7 @@ using TraitApiHelper = TraitFuncsHelper<TraitFuncs<Trait, A>>;
 template<typename F>
 using trait_func_return_t = typename mtp::func_traits<mtp::rm_cv<F>>::ret;
 
-template<usize I, typename Trait, typename A>
+template<rstd::size_t I, typename Trait, typename A>
 using trait_api_return_t =
     trait_func_return_t<decltype(TraitApiHelper<Trait, A>::template get<I>())>;
 
@@ -266,7 +266,11 @@ consteval bool trait_api_entry_matches() {
     }
 }
 
-template<bool Diagnose, typename Trait, typename ExpectedApi, typename ToCheck, usize Index = 0>
+template<bool Diagnose,
+         typename Trait,
+         typename ExpectedApi,
+         typename ToCheck,
+         rstd::size_t Index = 0>
 consteval bool check_apis_match() {
     using ApiHelperA = TraitApiHelper<Trait, ExpectedApi>;
     using ApiHelperB = TraitApiHelper<Trait, ToCheck>;
@@ -505,7 +509,7 @@ struct LinkClassMethod : mtp::ImplWithPtr<A>, mtp::rm_cv<T>::template Api<A, in_
 /// \param self Pointer to the trait API object.
 /// \param args Arguments forwarded to the trait method.
 /// \return The result of the dispatched method call.
-export template<usize I, typename TApi, typename... Args>
+export template<rstd::size_t I, typename TApi, typename... Args>
     requires mtp::is_trait_api<mtp::rm_cv<TApi>>
 [[gnu::always_inline]]
 inline constexpr decltype(auto) trait_call(TApi* self, Args&&... args) {
@@ -544,7 +548,7 @@ inline constexpr decltype(auto) trait_call(TApi* self, Args&&... args) {
 /// \tparam TApi The trait API type.
 /// \param args Arguments forwarded to the static trait method.
 /// \return The result of the dispatched method call.
-export template<usize I, typename TApi, typename... Args>
+export template<rstd::size_t I, typename TApi, typename... Args>
     requires mtp::is_trait_api<mtp::rm_cv<TApi>>
 [[gnu::always_inline]]
 inline constexpr decltype(auto) trait_static_call(Args&&... args) {

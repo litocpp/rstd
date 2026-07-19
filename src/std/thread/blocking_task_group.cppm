@@ -1,6 +1,3 @@
-module;
-#include <rstd/macro.hpp>
-
 export module rstd:thread.blocking_task_group;
 export import :io;
 export import :thread.functions;
@@ -45,17 +42,17 @@ namespace blocking_task_group
 
 template<typename T>
 struct Entry {
-    usize                index { 0 };
+    usize                index {};
     Box<dyn<FnMut<T()>>> job;
 };
 
 template<typename T>
 struct Fields {
     Vec<Option<Entry<T>>> queue;
-    usize                 queue_head { 0 };
-    usize                 queue_tail { 0 };
-    usize                 queued { 0 };
-    usize                 running { 0 };
+    usize                 queue_head {};
+    usize                 queue_tail {};
+    usize                 queued {};
+    usize                 running {};
     Vec<Option<T>>        results;
     Vec<bool>             cancelled;
     bool                  closed { false };
@@ -63,7 +60,9 @@ struct Fields {
 
     explicit Fields(usize queue_capacity)
         : queue(Vec<Option<Entry<T>>>::with_capacity(queue_capacity)) {
-        for (usize index = 0; index < queue_capacity; ++index) queue.push(None());
+        for (rstd::size_t index = 0; index < queue_capacity.to_primitive(); ++index) {
+            queue.push(None());
+        }
     }
 };
 
@@ -72,7 +71,7 @@ struct Shared {
     sync::Mutex<Fields<T>> fields;
     sync::Condvar          work_available;
     sync::Condvar          space_available;
-    usize                  queue_capacity { 0 };
+    usize                  queue_capacity {};
 
     explicit Shared(usize capacity)
         : fields(Fields<T> { capacity }),
@@ -88,13 +87,13 @@ void worker(Arc<Shared<T>> shared) {
         {
             auto fields = shared->fields.lock().unwrap_unchecked();
             shared->work_available.wait_while(fields, [](const Fields<T>& fields) {
-                return fields.queued == 0 && ! fields.closed && ! fields.cancelling;
+                return fields.queued == usize() && ! fields.closed && ! fields.cancelling;
             });
 
-            if (fields->cancelling || (fields->closed && fields->queued == 0)) return;
+            if (fields->cancelling || (fields->closed && fields->queued == usize())) return;
 
             entry              = fields->queue[fields->queue_head].take();
-            fields->queue_head = (fields->queue_head + 1) % shared->queue_capacity;
+            fields->queue_head = (fields->queue_head + usize(1)) % shared->queue_capacity;
             --fields->queued;
             ++fields->running;
         }
@@ -118,16 +117,16 @@ auto cancel_pending(const Arc<Shared<T>>& shared) -> usize {
     fields->cancelling   = true;
     auto cancelled_count = fields->queued;
     auto queue_index     = fields->queue_head;
-    for (usize index = 0; index < fields->queued; ++index) {
+    for (rstd::size_t index = 0; index < fields->queued.to_primitive(); ++index) {
         auto entry = fields->queue[queue_index].take();
         if (entry.is_some()) {
             fields->cancelled[entry->index] = true;
         }
-        queue_index = (queue_index + 1) % shared->queue_capacity;
+        queue_index = (queue_index + usize(1)) % shared->queue_capacity;
     }
-    fields->queue_head = 0;
-    fields->queue_tail = 0;
-    fields->queued     = 0;
+    fields->queue_head = usize();
+    fields->queue_tail = usize();
+    fields->queued     = usize();
     shared->work_available.notify_all();
     shared->space_available.notify_all();
     return cancelled_count;
@@ -183,13 +182,13 @@ public:
     }
 
     static auto make(usize worker_count, usize queue_capacity) -> io::Result<BlockingTaskGroup> {
-        if (worker_count == 0 || queue_capacity == 0) {
+        if (worker_count == usize() || queue_capacity == usize()) {
             return Err(io::Error::new_const(io::ErrorKind { io::ErrorKind::InvalidInput },
                                             "blocking task group requires non-zero capacity"));
         }
 
         auto group = BlockingTaskGroup(Arc<Shared>::make(queue_capacity), worker_count);
-        for (usize index = 0; index < worker_count; ++index) {
+        for (rstd::size_t index = 0; index < worker_count.to_primitive(); ++index) {
             auto worker_state = group.m_shared.clone();
             auto spawned      = thread::spawn([state = rstd::move(worker_state)]() mutable {
                 blocking_task_group::worker(rstd::move(state));
@@ -227,7 +226,7 @@ public:
                 return task();
             }),
         });
-        fields->queue_tail                = (fields->queue_tail + 1) % m_shared->queue_capacity;
+        fields->queue_tail = (fields->queue_tail + usize(1)) % m_shared->queue_capacity;
         ++fields->queued;
         m_shared->work_available.notify_one();
         return Ok(index);
@@ -248,9 +247,10 @@ public:
 
         auto fields   = m_shared->fields.lock().unwrap_unchecked();
         auto outcomes = Vec<BlockingTaskOutcome<T>>::with_capacity(fields->results.len());
-        for (usize index = 0; index < fields->results.len(); ++index) {
-            outcomes.push(
-                BlockingTaskOutcome<T>(fields->results[index].take(), fields->cancelled[index]));
+        for (rstd::size_t index = 0; index < fields->results.len().to_primitive(); ++index) {
+            auto wrapped_index = usize(index);
+            outcomes.push(BlockingTaskOutcome<T>(fields->results[wrapped_index].take(),
+                                                 fields->cancelled[wrapped_index]));
         }
         return outcomes;
     }
@@ -274,7 +274,7 @@ private:
 
     Arc<Shared>           m_shared;
     Vec<JoinHandle<void>> m_workers;
-    usize                 m_worker_count { 0 };
+    usize                 m_worker_count {};
 };
 
 } // namespace rstd::thread

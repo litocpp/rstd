@@ -9,8 +9,8 @@ CompletionGuard::CompletionGuard(Futex* state_and_queued, Primitive set_state_on
 }
 
 CompletionGuard::~CompletionGuard() {
-    if (state_and_queued->exchange(set_state_on_drop_to, rstd::sync::atomic::Ordering::Release) &
-        QUEUED) {
+    if ((state_and_queued->exchange(set_state_on_drop_to, rstd::sync::atomic::Ordering::Release) &
+         QUEUED) != Primitive()) {
         pal::futex::futex_wake_all(state_and_queued);
     }
 }
@@ -26,15 +26,13 @@ void Once::wait(bool ignore_poisoning) {
     Primitive state_and_queued = this->state_and_queued.load(rstd::sync::atomic::Ordering::Acquire);
     while (true) {
         Primitive state  = state_and_queued & STATE_MASK;
-        bool      queued = state_and_queued & QUEUED;
-        switch (state) {
-        case COMPLETE: return;
-        case POISONED:
+        bool      queued = (state_and_queued & QUEUED) != Primitive();
+        if (state == COMPLETE) return;
+        if (state == POISONED) {
             if (! ignore_poisoning) {
                 panic { "Once instance has previously been poisoned" };
             }
-            break;
-        default:
+        } else {
             if (! queued) {
                 state_and_queued += QUEUED;
                 if (this->state_and_queued.compare_exchange_weak(
@@ -47,7 +45,6 @@ void Once::wait(bool ignore_poisoning) {
             }
             pal::futex::futex_wait(&this->state_and_queued, state_and_queued, rstd::None());
             state_and_queued = this->state_and_queued.load(rstd::sync::atomic::Ordering::Acquire);
-            break;
         }
     }
 }

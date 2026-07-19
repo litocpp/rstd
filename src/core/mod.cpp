@@ -1,6 +1,7 @@
 module rstd.core;
 import :core;
 import :fmt;
+import :num.types;
 import :panicking;
 import :str.str;
 
@@ -11,9 +12,7 @@ void rstd_panic_impl(PanicInfo const& info);
 
 namespace
 {
-bool panic_write_fmt(void const* data,
-                     void*       ctx,
-                     bool (*write)(void*, rstd::u8 const*, rstd::usize)) {
+bool panic_write_fmt(void const* data, void* ctx, rstd::panic_::WriteFn write) {
     auto const&          args = *static_cast<rstd::fmt::Arguments const*>(data);
     rstd::fmt::Formatter f(ctx, write);
     return f.write_fmt(args);
@@ -43,6 +42,26 @@ void panic_fmt_nounwind(fmt::Arguments args, panic_::Location loc) {
 }
 
 } // namespace rstd
+
+[[noreturn]]
+void panic_overflow() {
+    rstd::panic { "attempt to perform integer arithmetic with overflow" };
+}
+
+[[noreturn]]
+void panic_divide_by_zero() {
+    rstd::panic { "attempt to divide by zero" };
+}
+
+[[noreturn]]
+void panic_invalid_shift() {
+    rstd::panic { "attempt to shift with overflow" };
+}
+
+[[noreturn]]
+void panic_invalid_float_clamp() {
+    rstd::panic { "min > max, or either was NaN" };
+}
 
 namespace rstd::fmt
 {
@@ -104,9 +123,9 @@ auto parse_spec(const char* b, const char* e) -> FormattingOptions {
 
     // width: [1-9][0-9]*
     if (b < e && b[0] >= '1' && b[0] <= '9') {
-        u16 w = 0;
+        rstd::uint16_t w = 0;
         while (b < e && (unsigned char)(b[0] - '0') < 10u) {
-            w = u16(w * 10 + (b[0] - '0'));
+            w = static_cast<rstd::uint16_t>(w * 10 + (b[0] - '0'));
             b++;
         }
         opts.set_width(w);
@@ -115,9 +134,9 @@ auto parse_spec(const char* b, const char* e) -> FormattingOptions {
     // .precision
     if (b < e && b[0] == '.') {
         b++;
-        u16 p = 0;
+        rstd::uint16_t p = 0;
         while (b < e && (unsigned char)(b[0] - '0') < 10u) {
-            p = u16(p * 10 + (b[0] - '0'));
+            p = static_cast<rstd::uint16_t>(p * 10 + (b[0] - '0'));
             b++;
         }
         opts.set_precision(p);
@@ -138,16 +157,16 @@ auto parse_spec(const char* b, const char* e) -> FormattingOptions {
 }
 } // anonymous namespace
 
-auto Formatter::pad_numeric(const u8* sign,
-                            usize     sign_len,
-                            const u8* significand,
-                            usize     significand_len,
-                            usize     zero_count,
-                            const u8* exponent,
-                            usize     exponent_len) -> bool {
-    auto write_repeat = [this](u8 value, usize count) -> bool {
-        u8 buffer[64];
-        for (usize i = 0; i < sizeof(buffer); ++i) buffer[i] = value;
+auto Formatter::pad_numeric(const rstd::uint8_t* sign,
+                            rstd::size_t         sign_len,
+                            const rstd::uint8_t* significand,
+                            rstd::size_t         significand_len,
+                            rstd::size_t         zero_count,
+                            const rstd::uint8_t* exponent,
+                            rstd::size_t         exponent_len) -> bool {
+    auto write_repeat = [this](rstd::uint8_t value, rstd::size_t count) -> bool {
+        rstd::uint8_t buffer[64];
+        for (rstd::size_t i = 0; i < sizeof(buffer); ++i) buffer[i] = value;
         while (count != 0) {
             auto chunk = count < sizeof(buffer) ? count : sizeof(buffer);
             if (! write_raw(buffer, chunk)) return false;
@@ -163,11 +182,11 @@ auto Formatter::pad_numeric(const u8* sign,
         return exponent_len == 0 || write_raw(exponent, exponent_len);
     };
 
-    const usize length = sign_len + significand_len + zero_count + exponent_len;
-    const usize width  = has_width() ? this->width() : 0;
+    const rstd::size_t length = sign_len + significand_len + zero_count + exponent_len;
+    const rstd::size_t width  = has_width() ? this->width() : 0;
     if (length >= width) return write_number();
 
-    const usize padding = width - length;
+    const rstd::size_t padding = width - length;
     if (zero_pad()) {
         if (sign_len != 0 && ! write_raw(sign, sign_len)) return false;
         if (! write_repeat('0', padding)) return false;
@@ -178,45 +197,48 @@ auto Formatter::pad_numeric(const u8* sign,
 
     auto alignment = align();
     if (alignment == Align::None) alignment = Align::Right;
-    usize left = padding;
+    rstd::size_t left = padding;
     if (alignment == Align::Left) left = 0;
     if (alignment == Align::Center) left = padding / 2;
-    const usize right = padding - left;
+    const rstd::size_t right = padding - left;
 
-    if (! write_repeat(static_cast<u8>(fill()), left)) return false;
+    if (! write_repeat(static_cast<rstd::uint8_t>(fill()), left)) return false;
     if (! write_number()) return false;
-    return write_repeat(static_cast<u8>(fill()), right);
+    return write_repeat(static_cast<rstd::uint8_t>(fill()), right);
 }
 
 auto Formatter::pad(ref<str> value) -> bool {
-    if (! has_width() && ! has_prec()) return write_raw(value.data(), value.size());
+    if (! has_width() && ! has_prec()) return write_raw(value.data(), value.size().to_primitive());
 
-    const usize maximum  = has_prec() ? static_cast<usize>(precision()) : value.size();
-    auto        iterator = str_::chars(value);
-    usize       chars    = 0;
+    const rstd::size_t maximum =
+        has_prec() ? static_cast<rstd::size_t>(precision()) : value.size().to_primitive();
+    auto         iterator = str_::chars(value);
+    rstd::size_t chars    = 0;
     while (! iterator.is_empty() && chars < maximum) {
         iterator.next_unchecked();
         ++chars;
     }
-    const usize bytes = value.size() - iterator.as_str().size();
+    const rstd::size_t bytes =
+        value.size().to_primitive() - iterator.as_str().size().to_primitive();
 
-    const usize target_width = has_width() ? static_cast<usize>(width()) : 0;
+    const rstd::size_t target_width = has_width() ? static_cast<rstd::size_t>(width()) : 0;
     if (chars >= target_width) return write_raw(value.data(), bytes);
 
-    const usize padding   = target_width - chars;
-    auto        alignment = align();
+    const rstd::size_t padding   = target_width - chars;
+    auto               alignment = align();
     if (alignment == Align::None) alignment = Align::Left;
 
-    usize left = 0;
+    rstd::size_t left = 0;
     if (alignment == Align::Right) left = padding;
     if (alignment == Align::Center) left = padding / 2;
-    const usize right = padding - left;
+    const rstd::size_t right = padding - left;
 
-    auto write_fill = [this](usize count) -> bool {
-        u8 buffer[64];
-        for (usize i = 0; i < sizeof(buffer); ++i) buffer[i] = static_cast<u8>(fill());
+    auto write_fill = [this](rstd::size_t count) -> bool {
+        rstd::uint8_t buffer[64];
+        for (rstd::size_t i = 0; i < sizeof(buffer); ++i)
+            buffer[i] = static_cast<rstd::uint8_t>(fill());
         while (count != 0) {
-            const usize chunk = count < sizeof(buffer) ? count : sizeof(buffer);
+            const rstd::size_t chunk = count < sizeof(buffer) ? count : sizeof(buffer);
             if (! write_raw(buffer, chunk)) return false;
             count -= chunk;
         }
@@ -230,17 +252,18 @@ auto Formatter::pad(ref<str> value) -> bool {
 
 // ── Formatter::write_fmt ──────────────────────────────────────────────────
 auto Formatter::write_fmt(Arguments args) -> bool {
-    usize     arg_idx = 0;
-    const u8* p       = args.fmt_ptr;
-    const u8* end     = args.fmt_ptr + args.fmt_len;
-    const u8* last    = p;
+    rstd::size_t         arg_idx = 0;
+    const rstd::uint8_t* p       = args.fmt_ptr;
+    const rstd::uint8_t* end     = args.fmt_ptr + args.fmt_len;
+    const rstd::uint8_t* last    = p;
 
     while (p < end) {
         if (*p == '{') {
             if (p + 1 < end && *(p + 1) == '{') {
                 // Escaped {{
                 if (p > last && ! write_raw(last, p - last)) return false;
-                if (! write_raw((const u8*)"{", 1)) return false;
+                constexpr rstd::uint8_t LEFT_BRACE[] = { '{' };
+                if (! write_raw(LEFT_BRACE, sizeof(LEFT_BRACE))) return false;
                 p += 2;
                 last = p;
                 continue;
@@ -277,7 +300,8 @@ auto Formatter::write_fmt(Arguments args) -> bool {
             if (p + 1 < end && *(p + 1) == '}') {
                 // Escaped }}
                 if (p > last && ! write_raw(last, p - last)) return false;
-                if (! write_raw((const u8*)"}", 1)) return false;
+                constexpr rstd::uint8_t RIGHT_BRACE[] = { '}' };
+                if (! write_raw(RIGHT_BRACE, sizeof(RIGHT_BRACE))) return false;
                 p += 2;
                 last = p;
                 continue;

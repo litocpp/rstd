@@ -52,8 +52,8 @@ struct LoggerVTable {
 inline constexpr LoggerVTable NOP_VTABLE { nop_enabled, nop_log, nop_flush };
 
 // Three states: 0=uninitialized, 1=initializing, 2=initialized
-inline rstd::sync::atomic::Atomic<usize> g_state { 0 };
-inline rstd::sync::atomic::Atomic<usize> g_max_level { 0 }; // LevelFilter::Off by default
+inline rstd::sync::atomic::Atomic<usize> g_state {};
+inline rstd::sync::atomic::Atomic<usize> g_max_level {}; // LevelFilter::Off by default
 
 inline LoggerVTable g_vtable { nop_enabled, nop_log, nop_flush };
 inline void const*  g_logger_ptr { nullptr };
@@ -66,12 +66,13 @@ namespace rstd::log
 /// Returns the current global maximum log level.
 export [[nodiscard]]
 inline auto max_level() noexcept -> LevelFilter {
-    return static_cast<LevelFilter>(g_max_level.load(sync::atomic::Ordering::Relaxed));
+    return static_cast<LevelFilter>(
+        g_max_level.load(sync::atomic::Ordering::Relaxed).to_primitive());
 }
 
 /// Sets the global maximum log level (relaxed ordering).
 export inline void set_max_level(LevelFilter level) noexcept {
-    g_max_level.store(static_cast<usize>(level), sync::atomic::Ordering::Relaxed);
+    g_max_level.store(usize(static_cast<rstd::size_t>(level)), sync::atomic::Ordering::Relaxed);
 }
 
 /// Attempts to set the global logger. Returns false if already initialized.
@@ -94,15 +95,15 @@ inline bool set_logger(T const& logger) noexcept {
         }
     };
 
-    usize expected = 0;
+    usize expected {};
     if (! g_state.compare_exchange_strong(
-            expected, 1, sync::atomic::Ordering::Acquire, sync::atomic::Ordering::Relaxed)) {
+            expected, usize(1), sync::atomic::Ordering::Acquire, sync::atomic::Ordering::Relaxed)) {
         return false;
     }
 
     g_vtable     = vtable;
     g_logger_ptr = rstd::addressof(logger);
-    g_state.store(2, sync::atomic::Ordering::Release);
+    g_state.store(usize(2), sync::atomic::Ordering::Release);
     return true;
 }
 
@@ -110,7 +111,7 @@ inline bool set_logger(T const& logger) noexcept {
 export [[nodiscard]]
 inline auto log_enabled(Level level, ref<str> target) noexcept -> bool {
     if (level > max_level()) return false;
-    if (g_state.load(sync::atomic::Ordering::Acquire) != 2) return false;
+    if (g_state.load(sync::atomic::Ordering::Acquire) != usize(2)) return false;
     return g_vtable.enabled(g_logger_ptr, Metadata { level, target });
 }
 
@@ -118,7 +119,7 @@ inline auto log_enabled(Level level, ref<str> target) noexcept -> bool {
 export inline void log(Record const& record) noexcept {
     if (record.lvl() <= max_level()) {
         // Acquire ensures we see the fully initialized vtable from set_logger().
-        if (g_state.load(sync::atomic::Ordering::Acquire) == 2) {
+        if (g_state.load(sync::atomic::Ordering::Acquire) == usize(2)) {
             g_vtable.log(g_logger_ptr, record);
         }
     }
@@ -126,7 +127,7 @@ export inline void log(Record const& record) noexcept {
 
 /// Flushes any buffered records through the global logger.
 export inline void flush() noexcept {
-    if (g_state.load(sync::atomic::Ordering::Acquire) == 2) {
+    if (g_state.load(sync::atomic::Ordering::Acquire) == usize(2)) {
         g_vtable.flush(g_logger_ptr);
     }
 }

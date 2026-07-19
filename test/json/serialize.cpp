@@ -9,7 +9,7 @@ namespace
 {
 
 auto text(const ::alloc::string::String& value) -> std::string {
-    return { reinterpret_cast<const char*>(value.as_raw_ptr()), value.len() };
+    return { reinterpret_cast<const char*>(value.as_raw_ptr()), value.len().to_primitive() };
 }
 
 } // namespace
@@ -21,7 +21,7 @@ TEST(JsonSerialize, WritesCompactSortedJson) {
 
 TEST(JsonSerialize, WritesPrettyJsonWithRequestedIndent) {
     auto value  = from_str(R"({"z":[true,null],"a":1})").unwrap();
-    auto output = to_string(value, FormatOptions { .pretty = true, .indent = 4 });
+    auto output = to_string(value, FormatOptions { .pretty = true, .indent = usize(4) });
     EXPECT_EQ(text(output),
               "{\n"
               "    \"a\": 1,\n"

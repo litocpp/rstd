@@ -26,8 +26,8 @@ TEST(ArgparseDefinition, BuildsTypedSchemaAndIndexesOptions) {
     ASSERT_TRUE(result.is_ok());
     auto parser = rstd::move(result).unwrap();
     EXPECT_EQ(parser.name(), "server");
-    EXPECT_EQ(parser.arg_count(), 4u);
-    EXPECT_EQ(parser.positional_count(), 1u);
+    EXPECT_EQ(parser.arg_count(), usize(4));
+    EXPECT_EQ(parser.positional_count(), usize(1));
     EXPECT_TRUE(parser.contains_arg("input"));
     EXPECT_TRUE(parser.contains_arg("help"));
     EXPECT_TRUE(parser.contains_arg("version"));
@@ -86,7 +86,7 @@ TEST(ArgparseDefinition, RejectsInvalidNamesAndValueCounts) {
         auto command = Command::make("tool");
         command.disable_help();
         auto arg = Arg<String>::value("value", string_parser());
-        arg.num_args(NumArgs::range(2, 1));
+        arg.num_args(NumArgs::range(usize(2), usize(1)));
         command.add_arg(rstd::move(arg));
         auto result = rstd::move(command).build();
         ASSERT_TRUE(result.is_err());

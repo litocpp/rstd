@@ -73,10 +73,10 @@ TEST(CloneTuple, MakesCloneOnlyLambdaCaptureCopyConstructible) {
     };
 
     static_assert(rstd::mtp::copy<decltype(callback)>);
-    EXPECT_EQ(state.strong_count(), 2u);
+    EXPECT_EQ(state.strong_count(), rstd::usize(2));
 
     auto copied = callback;
-    EXPECT_EQ(state.strong_count(), 3u);
+    EXPECT_EQ(state.strong_count(), rstd::usize(3));
     EXPECT_EQ(callback(), 42);
     EXPECT_EQ(copied(), 42);
 }

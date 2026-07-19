@@ -1,5 +1,3 @@
-module;
-#include <rstd/macro.hpp>
 export module rstd:sync.mpsc;
 export import :sync.mpsc.mpmc;
 export import rstd.core;

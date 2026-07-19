@@ -9,7 +9,7 @@ using namespace rstd;
 
 extern "C" {
 
-void* __rstd_alloc(usize size, usize align) {
+void* __rstd_alloc(rstd::size_t size, rstd::size_t align) {
     if (align != __STDCPP_DEFAULT_NEW_ALIGNMENT__) {
         return ::operator new(size, std::align_val_t { align }, std::nothrow_t {});
     } else {
@@ -17,7 +17,7 @@ void* __rstd_alloc(usize size, usize align) {
     }
 }
 
-void __rstd_dealloc(void* ptr, usize size, usize align) {
+void __rstd_dealloc(void* ptr, rstd::size_t size, rstd::size_t align) {
     if (align != __STDCPP_DEFAULT_NEW_ALIGNMENT__) {
         ::operator delete(ptr, size, std::align_val_t { align });
     } else {
@@ -25,7 +25,7 @@ void __rstd_dealloc(void* ptr, usize size, usize align) {
     }
 }
 
-void* __rstd_realloc(void* ptr, usize old_size, usize align, usize new_size) {
+void* __rstd_realloc(void* ptr, rstd::size_t old_size, rstd::size_t align, rstd::size_t new_size) {
     void* new_ptr = __rstd_alloc(new_size, align);
     if (new_ptr) {
         __builtin_memcpy(new_ptr, ptr, old_size < new_size ? old_size : new_size);
@@ -34,7 +34,7 @@ void* __rstd_realloc(void* ptr, usize old_size, usize align, usize new_size) {
     return new_ptr;
 }
 
-void* __rstd_alloc_zeroed(usize size, usize align) {
+void* __rstd_alloc_zeroed(rstd::size_t size, rstd::size_t align) {
     void* ptr = __rstd_alloc(size, align);
     if (ptr) {
         __builtin_memset(ptr, 0, size);
@@ -52,7 +52,7 @@ void rstd_panic_impl(rstd::panic_::PanicInfo const& info) {
     if (info.fmt) {
         FILE* f = stderr;
         info.fmt(
-            info.data, &f, +[](void* ctx, u8 const* buf, usize len) -> bool {
+            info.data, &f, +[](void* ctx, rstd::uint8_t const* buf, rstd::size_t len) -> bool {
                 return fwrite(buf, 1, len, *static_cast<FILE**>(ctx)) == len;
             });
     }

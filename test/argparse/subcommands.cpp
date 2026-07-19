@@ -93,9 +93,9 @@ TEST(ArgparseSubcommands, KnownParsingUnifiesParentAndChildUnknownTokens) {
     ASSERT_TRUE(result.is_ok());
     auto outcome = rstd::move(result).unwrap();
     auto known   = rstd::move(outcome).as_Parsed().value;
-    ASSERT_EQ(known.unknown().len(), 2u);
-    EXPECT_EQ(known.unknown()[0].as_os_str().to_str(), Some(ref<str>("--parent-unknown")));
-    EXPECT_EQ(known.unknown()[1].as_os_str().to_str(), Some(ref<str>("--child-unknown")));
+    ASSERT_EQ(known.unknown().len(), usize(2));
+    EXPECT_EQ(known.unknown()[usize()].as_os_str().to_str(), Some(ref<str>("--parent-unknown")));
+    EXPECT_EQ(known.unknown()[usize(1)].as_os_str().to_str(), Some(ref<str>("--child-unknown")));
 }
 
 TEST(ArgparseSubcommands, RejectsDuplicateNamesAndAliases) {

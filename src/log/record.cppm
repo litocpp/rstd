@@ -58,7 +58,7 @@ export struct Record {
     auto args_() const noexcept -> fmt::Arguments { return args; }
     auto loc() const noexcept -> panic_::Location { return location; }
     auto file() const noexcept -> const char* { return location.file_name(); }
-    auto line_no() const noexcept -> u32 { return location.line(); }
+    auto line_no() const noexcept -> u32 { return u32(location.line()); }
 };
 
 /// A builder for Record.

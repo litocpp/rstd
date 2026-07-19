@@ -91,16 +91,16 @@ TEST(BoxTest, DynArrowKeepsDelegateAliveForFullExpression) {
 }
 
 TEST(BoxTest, DynFnMutWithByteSliceDestructs) {
-    rstd::usize seen = 0;
+    rstd::usize seen {};
     {
         auto callback = Box<rstd::dyn<rstd::FnMut<void(rstd::slice<rstd::byte>)>>>::make(
             [&seen](rstd::slice<rstd::byte> bytes) {
                 seen = bytes.len();
             });
         auto value = rstd::byte {};
-        callback->operator()(rstd::slice<rstd::byte>::from_raw_parts(&value, 1));
+        callback->operator()(rstd::slice<rstd::byte>::from_raw_parts(&value, rstd::usize(1)));
     }
-    EXPECT_EQ(seen, 1u);
+    EXPECT_EQ(seen, rstd::usize(1));
 }
 
 TEST(BoxTest, DynDropUsesConcreteDropAndLayout) {
@@ -109,8 +109,8 @@ TEST(BoxTest, DynDropUsesConcreteDropAndLayout) {
         auto callback = Box<rstd::dyn<rstd::FnMut<void()>>>::make(CallbackDropProbe { drops });
 
         auto layout = rstd::alloc::Layout::for_value(callback.as_ptr());
-        EXPECT_EQ(layout.size, sizeof(CallbackDropProbe));
-        EXPECT_EQ(layout.align, alignof(CallbackDropProbe));
+        EXPECT_EQ(layout.size, rstd::usize(sizeof(CallbackDropProbe)));
+        EXPECT_EQ(layout.align, rstd::usize(alignof(CallbackDropProbe)));
 
         EXPECT_EQ(drops, 0);
     }
@@ -214,7 +214,7 @@ TEST(BoxDeathTest, DynAndArrayUseAfterMovePanics) {
     EXPECT_DEATH(static_cast<void>(array.clone()), "Box used after move");
 
     moved_callback->operator()();
-    EXPECT_EQ(moved_array.as_ref().len(), 2u);
+    EXPECT_EQ(moved_array.as_ref().len(), rstd::usize(2));
 }
 
 TEST(BoxDeathTest, FromNullPanics) {

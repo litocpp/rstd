@@ -13,6 +13,7 @@ module;
     }
 
 export module rstd.core:num.nonzero;
+import :num.types;
 export import :core;
 export import :num.niche_types;
 
@@ -78,14 +79,20 @@ ImplNonZero(NonZeroI8Inner, i8);
 ImplNonZero(NonZeroI16Inner, i16);
 ImplNonZero(NonZeroI32Inner, i32);
 ImplNonZero(NonZeroI64Inner, i64);
+ImplNonZero(NonZeroI128Inner, i128);
 
 ImplNonZero(NonZeroU8Inner, u8);
 ImplNonZero(NonZeroU16Inner, u16);
 ImplNonZero(NonZeroU32Inner, u32);
 ImplNonZero(NonZeroU64Inner, u64);
+ImplNonZero(NonZeroU128Inner, u128);
+ImplNonZero(NonZeroUsizeInner, usize);
+ImplNonZero(NonZeroIsizeInner, isize);
 
 namespace rstd
 {
 static_assert(sizeof(rstd::num::nonzero::NonZero<u64>) == sizeof(u64));
 static_assert(sizeof(rstd::option::Option<rstd::num::nonzero::NonZero<u64>>) == sizeof(u64));
+static_assert(sizeof(rstd::option::Option<rstd::num::nonzero::NonZero<u128>>) == sizeof(u128));
+static_assert(sizeof(rstd::option::Option<rstd::num::nonzero::NonZero<i128>>) == sizeof(i128));
 } // namespace rstd

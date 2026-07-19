@@ -34,7 +34,7 @@ auto reenter_runtime(async::Runtime& runtime) -> async::coro<void> {
 
 TEST(RstdAsyncLifecycle, BuilderRejectsZeroWorkerThreadPool) {
     auto builder = async::RuntimeBuilder::multi_thread();
-    builder.worker_threads(0);
+    builder.worker_threads(usize());
 
     auto runtime = builder.build();
     ASSERT_TRUE(runtime.is_err());
@@ -62,7 +62,7 @@ TEST(RstdAsyncLifecycle, BuilderPublishesConfiguredDriverCapabilities) {
 
 TEST(RstdAsyncLifecycle, MoveAssignmentStopsPreviousRuntimeBeforeReplacement) {
     auto polled  = std::atomic<bool> { false };
-    auto runtime = async::RuntimeBuilder::multi_thread().worker_threads(1).build().unwrap();
+    auto runtime = async::RuntimeBuilder::multi_thread().worker_threads(usize(1)).build().unwrap();
     auto pending = runtime.spawn(PendingValue { &polled });
     while (! polled.load(std::memory_order_acquire)) {
         hint::spin_loop();
@@ -83,7 +83,7 @@ TEST(RstdAsyncLifecycle, ExpiredRuntimeHandleRejectsAdmission) {
         {
             auto handle = [] {
                 auto runtime =
-                    async::RuntimeBuilder::multi_thread().worker_threads(1).build().unwrap();
+                    async::RuntimeBuilder::multi_thread().worker_threads(usize(1)).build().unwrap();
                 return runtime.handle();
             }();
             (void)handle.spawn(ReadyValue {});

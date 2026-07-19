@@ -24,24 +24,29 @@ class Emitter {
     rstd::fmt::Formatter& formatter_;
     FormatOptions         options_;
 
-    auto write(ref<str> value) -> bool { return formatter_.write_raw(value.data(), value.size()); }
+    auto write(ref<str> value) -> bool {
+        return formatter_.write_raw(value.data(), value.size().to_primitive());
+    }
 
-    auto write_byte(u8 value) -> bool { return formatter_.write_raw(&value, 1); }
+    auto write_byte(u8 value) -> bool {
+        auto const byte = value.to_primitive();
+        return formatter_.write_raw(&byte, rstd::size_t(1));
+    }
 
     auto write_indent(usize depth) -> bool {
         const usize count = depth * options_.indent;
-        for (usize i = 0; i < count; ++i) {
-            if (! write_byte(' ')) return false;
+        for (usize i {}; i < count; ++i) {
+            if (! write_byte(u8(' '))) return false;
         }
         return true;
     }
 
     auto write_string(ref<str> value) -> bool {
-        if (! write_byte('"')) return false;
+        if (! write_byte(u8('"'))) return false;
         static constexpr char HEX[] = "0123456789abcdef";
-        for (usize i = 0; i < value.size(); ++i) {
-            const u8 byte = value.data()[i];
-            switch (byte) {
+        for (usize i {}; i < value.size(); ++i) {
+            const u8 byte = value[i];
+            switch (byte.to_primitive()) {
             case '"':
                 if (! write("\\\"")) return false;
                 break;
@@ -64,13 +69,15 @@ class Emitter {
                 if (! write("\\t")) return false;
                 break;
             default:
-                if (byte < 0x20) {
-                    const u8 escape[] = { '\\',
-                                          'u',
-                                          '0',
-                                          '0',
-                                          static_cast<u8>(HEX[byte >> 4]),
-                                          static_cast<u8>(HEX[byte & 0x0f]) };
+                if (byte < u8(0x20)) {
+                    const rstd::uint8_t escape[] = {
+                        '\\',
+                        'u',
+                        '0',
+                        '0',
+                        static_cast<rstd::uint8_t>(HEX[(byte >> u64(4)).to_primitive()]),
+                        static_cast<rstd::uint8_t>(HEX[(byte & u8(0x0f)).to_primitive()])
+                    };
                     if (! formatter_.write_raw(escape, sizeof(escape))) return false;
                 } else if (! write_byte(byte)) {
                     return false;
@@ -78,7 +85,7 @@ class Emitter {
                 break;
             }
         }
-        return write_byte('"');
+        return write_byte(u8('"'));
     }
 
     template<typename T>
@@ -88,19 +95,20 @@ class Emitter {
 
     auto write_float(f64 value) -> bool {
         struct Buffer {
-            u8    bytes[64];
-            usize len = 0;
+            rstd::uint8_t bytes[64];
+            rstd::size_t  len = 0;
         } buffer;
-        rstd::fmt::Formatter local(&buffer, [](void* context, const u8* bytes, usize len) -> bool {
-            auto& output = *static_cast<Buffer*>(context);
-            if (output.len + len > sizeof(output.bytes)) return false;
-            for (usize i = 0; i < len; ++i) output.bytes[output.len++] = bytes[i];
-            return true;
-        });
+        rstd::fmt::Formatter local(
+            &buffer, [](void* context, const rstd::uint8_t* bytes, rstd::size_t len) -> bool {
+                auto& output = *static_cast<Buffer*>(context);
+                if (output.len + len > sizeof(output.bytes)) return false;
+                for (rstd::size_t i = 0; i < len; ++i) output.bytes[output.len++] = bytes[i];
+                return true;
+            });
         if (! local.write_fmt(rstd::fmt::Arguments::make("{:?}", value))) return false;
 
-        usize exponent = buffer.len;
-        for (usize i = 0; i < buffer.len; ++i) {
+        rstd::size_t exponent = buffer.len;
+        for (rstd::size_t i = 0; i < buffer.len; ++i) {
             if (buffer.bytes[i] == 'e') {
                 exponent = i;
                 break;
@@ -108,7 +116,7 @@ class Emitter {
         }
         if (exponent == buffer.len) return formatter_.write_raw(buffer.bytes, buffer.len);
         if (! formatter_.write_raw(buffer.bytes, exponent + 1)) return false;
-        if (buffer.bytes[exponent + 1] != '-' && ! write_byte('+')) return false;
+        if (buffer.bytes[exponent + 1] != '-' && ! write_byte(u8('+'))) return false;
         return formatter_.write_raw(buffer.bytes + exponent + 1, buffer.len - exponent - 1);
     }
 
@@ -119,44 +127,44 @@ class Emitter {
     }
 
     auto write_array(const Array& array, usize depth) -> bool {
-        if (! write_byte('[')) return false;
-        if (array.is_empty()) return write_byte(']');
+        if (! write_byte(u8('['))) return false;
+        if (array.is_empty()) return write_byte(u8(']'));
 
-        if (options_.pretty && ! write_byte('\n')) return false;
-        for (usize i = 0; i < array.len(); ++i) {
-            if (options_.pretty && ! write_indent(depth + 1)) return false;
-            if (! write_value(array[i], depth + 1)) return false;
-            if (i + 1 != array.len() && ! write_byte(',')) return false;
-            if (options_.pretty && ! write_byte('\n')) return false;
+        if (options_.pretty && ! write_byte(u8('\n'))) return false;
+        for (usize i {}; i < array.len(); ++i) {
+            if (options_.pretty && ! write_indent(depth + usize(1))) return false;
+            if (! write_value(array[i], depth + usize(1))) return false;
+            if (i + usize(1) != array.len() && ! write_byte(u8(','))) return false;
+            if (options_.pretty && ! write_byte(u8('\n'))) return false;
         }
         if (options_.pretty && ! write_indent(depth)) return false;
-        return write_byte(']');
+        return write_byte(u8(']'));
     }
 
     auto write_object(const Map& object, usize depth) -> bool {
-        if (! write_byte('{')) return false;
-        if (object.is_empty()) return write_byte('}');
+        if (! write_byte(u8('{'))) return false;
+        if (object.is_empty()) return write_byte(u8('}'));
 
-        if (options_.pretty && ! write_byte('\n')) return false;
-        usize index = 0;
-        auto  iter  = object.iter();
+        if (options_.pretty && ! write_byte(u8('\n'))) return false;
+        usize index {};
+        auto  iter = object.iter();
         for (auto item = iter.next(); item.is_some(); item = iter.next(), ++index) {
-            if (options_.pretty && ! write_indent(depth + 1)) return false;
+            if (options_.pretty && ! write_indent(depth + usize(1))) return false;
             if (! write_string((*item).template get<0>()->as_str())) return false;
             if (! write(options_.pretty ? ": " : ":")) return false;
-            if (! write_value(*(*item).template get<1>(), depth + 1)) return false;
-            if (index + 1 != object.len() && ! write_byte(',')) return false;
-            if (options_.pretty && ! write_byte('\n')) return false;
+            if (! write_value(*(*item).template get<1>(), depth + usize(1))) return false;
+            if (index + usize(1) != object.len() && ! write_byte(u8(','))) return false;
+            if (options_.pretty && ! write_byte(u8('\n'))) return false;
         }
         if (options_.pretty && ! write_indent(depth)) return false;
-        return write_byte('}');
+        return write_byte(u8('}'));
     }
 
 public:
     Emitter(rstd::fmt::Formatter& formatter, FormatOptions options)
         : formatter_(formatter), options_(options) {}
 
-    auto write_value(const Value& value, usize depth = 0) -> bool {
+    auto write_value(const Value& value, usize depth = usize()) -> bool {
         RSTD_MATCH(value) {
             RSTD_CASE(Null) {
                 return write("null");
@@ -204,8 +212,8 @@ namespace rstd
 template<>
 struct Impl<fmt::Display, json::Value> : ImplBase<json::Value> {
     auto fmt(fmt::Formatter& formatter) const -> bool {
-        Emitter emitter(formatter,
-                        json::FormatOptions { .pretty = formatter.alternate(), .indent = 2 });
+        Emitter emitter(
+            formatter, json::FormatOptions { .pretty = formatter.alternate(), .indent = usize(2) });
         return emitter.write_value(this->self());
     }
 };

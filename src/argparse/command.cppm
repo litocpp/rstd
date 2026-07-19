@@ -7,7 +7,7 @@ using rstd::sync::atomic::Atomic;
 using rstd::sync::atomic::Ordering;
 using rstd::sync::Arc;
 
-Atomic<u64> next_command_token { 1 };
+Atomic<u64> next_command_token { u64(1) };
 
 auto make_option_name(char short_name) -> String {
     auto name = String::make("-");
@@ -22,11 +22,12 @@ auto make_option_name(ref<str> long_name) -> String {
 }
 
 auto valid_long_name(ref<str> name) noexcept -> bool {
-    if (name.size() == 0) return false;
-    for (usize i = 0; i < name.size(); ++i) {
-        const u8   byte  = name.data()[i];
-        const bool valid = (byte >= 'a' && byte <= 'z') || (byte >= 'A' && byte <= 'Z') ||
-                           (byte >= '0' && byte <= '9') || byte == '-' || byte == '_';
+    if (name.size() == usize()) return false;
+    for (usize i {}; i < name.size(); ++i) {
+        const u8   byte = name[i];
+        const bool valid =
+            (byte >= u8('a') && byte <= u8('z')) || (byte >= u8('A') && byte <= u8('Z')) ||
+            (byte >= u8('0') && byte <= u8('9')) || byte == u8('-') || byte == u8('_');
         if (! valid) return false;
     }
     return true;
@@ -36,7 +37,7 @@ void prefix_command_path(Arc<CompiledCommand>& schema, ref<str> parent) {
     auto  borrowed       = schema.get_mut();
     auto& command        = *borrowed.unwrap();
     command.command_path = rstd::format("{} {}", parent, command.name);
-    for (usize i = 0; i < command.subcommands.len(); ++i) {
+    for (usize i {}; i < command.subcommands.len(); ++i) {
         prefix_command_path(command.subcommands[i].schema, command.command_path.as_str());
     }
 }
@@ -143,7 +144,7 @@ public:
           conflicts_(Vec<ConflictDefinition>::make()),
           requirements_(Vec<RequirementDefinition>::make()),
           subcommands_(Vec<Command>::make()),
-          command_token_(next_command_token.fetch_add(1, Ordering::Relaxed)) {}
+          command_token_(next_command_token.fetch_add(u64(1), Ordering::Relaxed)) {}
 
     Command(const Command&)            = delete;
     Command& operator=(const Command&) = delete;
@@ -306,7 +307,7 @@ public:
         auto option_index = BTreeMap<String, usize>::make();
         auto positionals  = Vec<usize>::make();
 
-        for (usize slot = 0; slot < args_.len(); ++slot) {
+        for (usize slot {}; slot < args_.len(); ++slot) {
             auto& argument = args_[slot];
             if (argument.id.is_empty()) {
                 return Err(DefinitionError::InvalidArgumentId(argument.id.clone()));
@@ -320,12 +321,12 @@ public:
 
             const bool takes_value = argument.action.is_Set() || argument.action.is_Append();
             if (takes_value && argument.num_args.maximum().is_some() &&
-                *argument.num_args.maximum() == 0) {
+                *argument.num_args.maximum() == usize()) {
                 return Err(DefinitionError::IncompatibleAction(argument.id.clone()));
             }
             if (! takes_value &&
-                (argument.num_args.minimum() != 0 || argument.num_args.maximum().is_none() ||
-                 *argument.num_args.maximum() != 0)) {
+                (argument.num_args.minimum() != usize() || argument.num_args.maximum().is_none() ||
+                 *argument.num_args.maximum() != usize())) {
                 return Err(DefinitionError::IncompatibleAction(argument.id.clone()));
             }
 
@@ -339,7 +340,7 @@ public:
                 argument.default_value = Some(rstd::move(parsed).unwrap());
             }
             if (argument.implicit_raw_value.is_some()) {
-                if (! takes_value || argument.num_args.minimum() != 0) {
+                if (! takes_value || argument.num_args.minimum() != usize()) {
                     return Err(DefinitionError::IncompatibleAction(argument.id.clone()));
                 }
                 auto parsed =
@@ -375,7 +376,7 @@ public:
                 }
                 has_option_name = true;
             }
-            for (usize alias_index = 0; alias_index < argument.short_aliases.len(); ++alias_index) {
+            for (usize alias_index {}; alias_index < argument.short_aliases.len(); ++alias_index) {
                 auto& alias = argument.short_aliases[alias_index];
                 if (! valid_long_name(alias.as_str())) {
                     return Err(DefinitionError::InvalidShortName('-'));
@@ -387,7 +388,7 @@ public:
                 }
                 has_option_name = true;
             }
-            for (usize alias_index = 0; alias_index < argument.aliases.len(); ++alias_index) {
+            for (usize alias_index {}; alias_index < argument.aliases.len(); ++alias_index) {
                 auto& alias = argument.aliases[alias_index];
                 if (! valid_long_name(alias.as_str())) {
                     return Err(DefinitionError::InvalidLongName(alias.clone()));
@@ -407,17 +408,19 @@ public:
         }
 
         auto positional_reserve = Vec<usize>::with_capacity(positionals.len());
-        for (usize i = 0; i < positionals.len(); ++i) positional_reserve.push(usize { 0 });
-        usize reserve   = 0;
-        usize unbounded = 0;
-        for (usize i = positionals.len(); i > 0; --i) {
-            const usize position         = i - 1;
+        for (usize i {}; i < positionals.len(); ++i) {
+            positional_reserve.push(usize());
+        }
+        usize reserve {};
+        usize unbounded {};
+        for (usize i = positionals.len(); i > usize(); --i) {
+            const usize position         = i - usize(1);
             const auto& argument         = args_[positionals[position]];
             positional_reserve[position] = reserve;
             reserve += argument.num_args.minimum();
             if (argument.num_args.maximum().is_none()) {
                 ++unbounded;
-                if (unbounded > 1) {
+                if (unbounded > usize(1)) {
                     return Err(DefinitionError::InvalidValueCount(argument.id.clone()));
                 }
             }
@@ -425,7 +428,7 @@ public:
 
         auto group_index = BTreeMap<String, usize>::make();
         auto groups      = Vec<CompiledGroup>::with_capacity(groups_.len());
-        for (usize group_slot = 0; group_slot < groups_.len(); ++group_slot) {
+        for (usize group_slot {}; group_slot < groups_.len(); ++group_slot) {
             auto& group = groups_[group_slot];
             if (group.id_.is_empty() || group.members_.is_empty() ||
                 id_index.contains_key(group.id_.as_str())) {
@@ -435,12 +438,12 @@ public:
                 return Err(DefinitionError::DuplicateGroupId(group.id_.clone()));
             }
             auto members = Vec<usize>::with_capacity(group.members_.len());
-            for (usize member_index = 0; member_index < group.members_.len(); ++member_index) {
+            for (usize member_index {}; member_index < group.members_.len(); ++member_index) {
                 const auto& member = group.members_[member_index];
                 if (member.command != command_token_ || member.slot >= args_.len()) {
                     return Err(DefinitionError::ForeignKey());
                 }
-                for (usize previous = 0; previous < member_index; ++previous) {
+                for (usize previous {}; previous < member_index; ++previous) {
                     if (group.members_[previous].slot == member.slot) {
                         return Err(DefinitionError::InvalidGroup(group.id_.clone()));
                     }
@@ -452,7 +455,7 @@ public:
         }
 
         auto conflicts = Vec<CompiledConflict>::with_capacity(conflicts_.len());
-        for (usize relation = 0; relation < conflicts_.len(); ++relation) {
+        for (usize relation {}; relation < conflicts_.len(); ++relation) {
             const auto& definition = conflicts_[relation];
             if (definition.left.command != command_token_ ||
                 definition.right.command != command_token_ || definition.left.slot >= args_.len() ||
@@ -466,7 +469,7 @@ public:
         }
 
         auto requirements = Vec<CompiledRequirement>::with_capacity(requirements_.len());
-        for (usize relation = 0; relation < requirements_.len(); ++relation) {
+        for (usize relation {}; relation < requirements_.len(); ++relation) {
             const auto& definition = requirements_[relation];
             const usize target_len = definition.target_is_group ? groups.len() : args_.len();
             if (definition.source.command != command_token_ ||
@@ -485,7 +488,7 @@ public:
 
         auto subcommands      = Vec<CompiledSubcommand>::with_capacity(subcommands_.len());
         auto subcommand_index = BTreeMap<String, usize>::make();
-        for (usize subcommand_slot = 0; subcommand_slot < subcommands_.len(); ++subcommand_slot) {
+        for (usize subcommand_slot {}; subcommand_slot < subcommands_.len(); ++subcommand_slot) {
             auto& command = subcommands_[subcommand_slot];
             auto  aliases = rstd::move(command.aliases_);
             auto  built   = rstd::move(command).build();
@@ -496,7 +499,7 @@ public:
             if (subcommand_index.insert(name.clone(), subcommand_slot).is_some()) {
                 return Err(DefinitionError::DuplicateSubcommand(rstd::move(name)));
             }
-            for (usize alias_index = 0; alias_index < aliases.len(); ++alias_index) {
+            for (usize alias_index {}; alias_index < aliases.len(); ++alias_index) {
                 if (! valid_long_name(aliases[alias_index].as_str()) ||
                     subcommand_index.insert(aliases[alias_index].clone(), subcommand_slot)
                         .is_some()) {

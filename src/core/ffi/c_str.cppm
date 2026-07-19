@@ -1,6 +1,7 @@
 module;
 #include <rstd/macro.hpp>
 export module rstd.core:ffi.c_str;
+import :num.types;
 export import :marker;
 export import :core;
 
@@ -36,36 +37,50 @@ struct Impl<ptr_::Pointee, CStr> {
 };
 
 template<>
-struct ref<CStr> : ref_base<ref<CStr>, CStr, false> {
+struct ref<CStr> {
     USE_TRAIT(ref)
 
     using Target = CStr;
 
-    CStr const* p { nullptr };
-    usize       length { 1 };
+    char const* p { nullptr };
+    usize       length { rstd::size_t(1) };
 
     auto count_bytes() const noexcept { return length; }
-    auto is_empty() const noexcept { return length == 0; }
-    auto to_bytes() const noexcept -> slice<u8> {
-        return slice<u8>::from_raw_parts(reinterpret_cast<u8 const*>(p), length);
+    auto is_empty() const noexcept { return length == usize(); }
+    auto as_ptr() const noexcept [[clang::lifetimebound]] -> char const* { return p; }
+    auto as_raw_ptr() const noexcept [[clang::lifetimebound]] -> char const* { return p; }
+    auto metadata() const noexcept { return length; }
+
+    static auto from_raw_parts(char const* p [[clang::lifetimebound]], usize length) noexcept
+        -> ref<CStr> {
+        return { .p = p, .length = length };
     }
 
     constexpr auto deref() const noexcept -> ref<Target> { return *this; }
 };
 
 template<>
-struct mut_ref<CStr> : ref_base<mut_ref<CStr>, CStr, true> {
+struct mut_ref<CStr> {
     USE_TRAIT(mut_ref)
 
     using Target = CStr;
 
-    CStr* p { nullptr };
-    usize length { 1 };
+    char* p { nullptr };
+    usize length { rstd::size_t(1) };
 
     auto count_bytes() const noexcept { return length; }
-    auto is_empty() const noexcept { return length == 0; }
+    auto is_empty() const noexcept { return length == usize(); }
+    auto as_ptr() const noexcept [[clang::lifetimebound]] -> char const* { return p; }
+    auto as_mut_ptr() noexcept [[clang::lifetimebound]] -> char* { return p; }
+    auto as_raw_ptr() const noexcept [[clang::lifetimebound]] -> char* { return p; }
+    auto metadata() const noexcept { return length; }
 
-    constexpr auto deref() const noexcept -> ref<Target> { return this->as_ref(); }
+    static auto from_raw_parts(char* p [[clang::lifetimebound]], usize length) noexcept
+        -> mut_ref<CStr> {
+        return { .p = p, .length = length };
+    }
+
+    constexpr auto deref() const noexcept -> ref<Target> { return { .p = p, .length = length }; }
     constexpr auto deref_mut() noexcept -> mut_ref<Target> { return *this; }
 };
 
@@ -77,7 +92,7 @@ public:
     ~CStr() = delete;
 
     static auto from_ptr(char const* p [[clang::lifetimebound]]) noexcept -> ref<CStr> {
-        return ref<CStr>::from_raw_parts(reinterpret_cast<CStr const*>(p), rstd::strlen(p));
+        return ref<CStr>::from_raw_parts(p, usize(rstd::strlen(p)));
     }
 };
 

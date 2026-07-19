@@ -2,7 +2,6 @@ module;
 #include <compare>
 #include <cstdint>
 #include <cstddef>
-#include <limits>
 #include <tuple>
 #include <source_location>
 export module rstd.basic:prelude;
@@ -28,52 +27,31 @@ export using std::nullptr_t;
 namespace rstd
 {
 export {
-    /// 8-bit signed integer.
-    using i8 = ::int8_t;
-    /// 16-bit signed integer.
-    using i16 = ::int16_t;
-    /// 32-bit signed integer.
-    using i32 = ::int32_t;
-    /// 64-bit signed integer.
-    using i64 = ::int64_t;
-
-    /// 8-bit unsigned integer.
-    using u8 = ::uint8_t;
-    /// 16-bit unsigned integer.
-    using u16 = ::uint16_t;
-    /// 32-bit unsigned integer.
-    using u32 = ::uint32_t;
-    /// 64-bit unsigned integer.
-    using u64 = ::uint64_t;
-
-    /// 32-bit IEEE 754 floating-point.
-    using f32 = float;
-    /// 64-bit IEEE 754 floating-point.
-    using f64 = double;
+    using std::size_t;
+    using std::ptrdiff_t;
+    using std::int8_t;
+    using std::int16_t;
+    using std::int32_t;
+    using std::int64_t;
+    using std::uint8_t;
+    using std::uint16_t;
+    using std::uint32_t;
+    using std::uint64_t;
+    using std::intptr_t;
+    using std::uintptr_t;
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpedantic"
-    /// 128-bit unsigned integer.
-    using u128 = unsigned __int128;
-    /// 128-bit signed integer.
-    using i128 = __int128;
+    using int128_t  = __int128;
+    using uint128_t = unsigned __int128;
 #pragma GCC diagnostic pop
 
-    /// Signed index type, equivalent to Rust's `isize` used for offsets.
-    using idx = ::ptrdiff_t;
-    /// Pointer-sized unsigned integer, equivalent to Rust's `usize`.
-    using usize = ::size_t;
-    /// Pointer-sized signed integer, equivalent to Rust's `isize`.
-    using isize = ::intptr_t;
-    /// A type representing a raw byte, with no numeric interpretation.
-    using std::byte;
+    /// Raw byte storage type.
+    using byte = uint8_t;
 
     /// Mutable void pointer.
     using voidp = void*;
     /// Const void pointer.
     using const_voidp = void const*;
-    /// Integer type guaranteed to hold a pointer value.
-    using usizeptr = ::uintptr_t;
-
     /// A zero-sized type, analogous to Rust's `()` (unit).
     struct empty {};
     /// A zero-sized phantom type parameterized on `T`.
@@ -82,8 +60,6 @@ export {
 
     /// The type of `nullptr`.
     using std::nullptr_t;
-    /// Provides the minimum and maximum finite values for arithmetic types.
-    using std::numeric_limits;
     /// Captures information about the source code location.
     using std::source_location;
 
@@ -115,31 +91,28 @@ export {
 // used for using namespace
 export namespace prelude
 {
-using i8  = ::int8_t;
-using i16 = ::int16_t;
-using i32 = ::int32_t;
-using i64 = ::int64_t;
+using rstd::size_t;
+using rstd::ptrdiff_t;
+using rstd::int8_t;
+using rstd::int16_t;
+using rstd::int32_t;
+using rstd::int64_t;
+using rstd::uint8_t;
+using rstd::uint16_t;
+using rstd::uint32_t;
+using rstd::uint64_t;
+using rstd::intptr_t;
+using rstd::uintptr_t;
+using rstd::int128_t;
+using rstd::uint128_t;
 
-using u8  = ::uint8_t;
-using u16 = ::uint16_t;
-using u32 = ::uint32_t;
-using u64 = ::uint64_t;
-
-using f32 = float;
-using f64 = double;
-
-using idx   = ::ptrdiff_t;
-using usize = ::size_t;
-using isize = ::intptr_t;
-using std::byte;
+using rstd::byte;
 using voidp       = void*;
 using const_voidp = void const*;
-using usizeptr    = ::uintptr_t;
 using rstd::empty;
 using rstd::emptyT;
 
 using std::nullptr_t;
-using std::numeric_limits;
 using std::source_location;
 
 using std::tuple_element;

@@ -4,12 +4,12 @@ using namespace rstd;
 using namespace rstd::sync::mpsc;
 
 TEST(MpmcArray, BasicSendRecv) {
-    auto channel = mpmc::Channel<int>::with_capacity(4);
+    auto channel = mpmc::Channel<int>::with_capacity(usize(4));
 
     EXPECT_TRUE(channel->try_send(42));
     EXPECT_TRUE(channel->try_send(100));
 
-    EXPECT_EQ(channel->len(), 2);
+    EXPECT_EQ(channel->len(), usize(2));
     EXPECT_FALSE(channel->is_empty());
     EXPECT_FALSE(channel->is_full());
 
@@ -21,12 +21,12 @@ TEST(MpmcArray, BasicSendRecv) {
     ASSERT_TRUE(r2.is_ok());
     EXPECT_EQ(r2.unwrap_unchecked(), 100);
 
-    EXPECT_EQ(channel->len(), 0);
+    EXPECT_EQ(channel->len(), usize());
     EXPECT_TRUE(channel->is_empty());
 }
 
 TEST(Mpsc, SyncChannelBasic) {
-    auto [tx, rx] = sync_channel<int>(2);
+    auto [tx, rx] = sync_channel<int>(usize(2));
 
     EXPECT_TRUE(tx.send(1).is_ok());
     EXPECT_TRUE(tx.send(2).is_ok());
@@ -41,7 +41,7 @@ TEST(Mpsc, SyncChannelBasic) {
 }
 
 TEST(Mpsc, SyncChannelThreads) {
-    auto [tx, rx] = sync_channel<int>(1);
+    auto [tx, rx] = sync_channel<int>(usize(1));
 
     auto t1 = thread::spawn([tx = rstd::move(tx)]() mutable {
                   tx.send(1).unwrap_unchecked();
@@ -55,7 +55,7 @@ TEST(Mpsc, SyncChannelThreads) {
 }
 
 TEST(Mpsc, SyncChannelDisconnect) {
-    auto [tx, rx] = sync_channel<int>(1);
+    auto [tx, rx] = sync_channel<int>(usize(1));
 
     {
         auto tx2 = tx;
@@ -65,7 +65,7 @@ TEST(Mpsc, SyncChannelDisconnect) {
     EXPECT_EQ(rx.recv().unwrap_unchecked(), 1);
 
     auto t1 = thread::spawn([tx = rstd::move(tx)]() mutable {
-                  thread::sleep(rstd::time::Duration::from_millis(100));
+                  thread::sleep(rstd::time::Duration::from_millis(u64(100)));
                   // tx will be dropped after this lambda exits
               }).unwrap_unchecked();
 
@@ -121,7 +121,7 @@ TEST(Mpsc, UnboundedDisconnectAfterDrain) {
              }).unwrap_unchecked();
 
     // Give the receiver a moment to enter start_recv before disconnecting.
-    rstd::thread::sleep(rstd::time::Duration::from_millis(50));
+    rstd::thread::sleep(rstd::time::Duration::from_millis(u64(50)));
     {
         auto _ = rstd::move(tx);
     } // drop sender, triggers disconnect

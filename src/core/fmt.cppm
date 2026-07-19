@@ -1,4 +1,5 @@
 export module rstd.core:fmt;
+import :num.types;
 export import :trait;
 export import rstd.basic;
 import :ops.deref;
@@ -13,7 +14,7 @@ struct FmtId {
     using type = T;
 };
 
-template<rstd::usize N>
+template<rstd::size_t N>
 struct ArgumentsStorage;
 
 namespace rstd::fmt
@@ -32,10 +33,10 @@ export template<typename... Args>
 using format_string = FormatString<typename FmtId<Args>::type...>;
 
 /// Text alignment options for formatted output.
-export enum class Align : u32 { None = 0, Left = 1, Right = 2, Center = 3 };
+export enum class Align : rstd::uint32_t { None = 0, Left = 1, Right = 2, Center = 3 };
 
 /// Formatting trait selected by the placeholder's type specifier.
-export enum class Presentation : u8 { Display, Debug, LowerExp, UpperExp };
+export enum class Presentation : rstd::uint8_t { Display, Debug, LowerExp, UpperExp };
 
 /// Options that control how values are formatted (fill, align, width, precision, flags).
 ///
@@ -52,23 +53,23 @@ export enum class Presentation : u8 { Display, Debug, LowerExp, UpperExp };
 ///   [30]     lower_exp   (e)
 ///   [31]     upper_exp   (E)
 export struct FormattingOptions {
-    u32 flags     = u32(' '); // fill=' ', all flags clear
-    u16 width     = 0;
-    u16 precision = 0;
+    rstd::uint32_t flags     = static_cast<rstd::uint32_t>(' ');
+    rstd::uint16_t width     = 0;
+    rstd::uint16_t precision = 0;
 
-    static constexpr u32 FILL_MASK         = 0x1F'FFFFu;
-    static constexpr u32 ALIGN_SHIFT       = 21u;
-    static constexpr u32 ALIGN_MASK        = 0b11u << 21u;
-    static constexpr u32 SIGN_PLUS         = 1u << 23u;
-    static constexpr u32 SIGN_MINUS        = 1u << 24u;
-    static constexpr u32 ALTERNATE         = 1u << 25u;
-    static constexpr u32 ZERO_PAD          = 1u << 26u;
-    static constexpr u32 DEBUG             = 1u << 27u;
-    static constexpr u32 HAS_WIDTH         = 1u << 28u;
-    static constexpr u32 HAS_PREC          = 1u << 29u;
-    static constexpr u32 LOWER_EXP         = 1u << 30u;
-    static constexpr u32 UPPER_EXP         = 1u << 31u;
-    static constexpr u32 PRESENTATION_MASK = DEBUG | LOWER_EXP | UPPER_EXP;
+    static constexpr rstd::uint32_t FILL_MASK         = 0x1F'FFFFu;
+    static constexpr rstd::uint32_t ALIGN_SHIFT       = 21u;
+    static constexpr rstd::uint32_t ALIGN_MASK        = 0b11u << 21u;
+    static constexpr rstd::uint32_t SIGN_PLUS         = 1u << 23u;
+    static constexpr rstd::uint32_t SIGN_MINUS        = 1u << 24u;
+    static constexpr rstd::uint32_t ALTERNATE         = 1u << 25u;
+    static constexpr rstd::uint32_t ZERO_PAD          = 1u << 26u;
+    static constexpr rstd::uint32_t DEBUG             = 1u << 27u;
+    static constexpr rstd::uint32_t HAS_WIDTH         = 1u << 28u;
+    static constexpr rstd::uint32_t HAS_PREC          = 1u << 29u;
+    static constexpr rstd::uint32_t LOWER_EXP         = 1u << 30u;
+    static constexpr rstd::uint32_t UPPER_EXP         = 1u << 31u;
+    static constexpr rstd::uint32_t PRESENTATION_MASK = DEBUG | LOWER_EXP | UPPER_EXP;
 
     constexpr auto fill() const noexcept -> char { return char(flags & FILL_MASK); }
     constexpr auto align() const noexcept -> Align { return Align((flags >> ALIGN_SHIFT) & 0b11u); }
@@ -87,24 +88,24 @@ export struct FormattingOptions {
     constexpr auto has_prec() const noexcept -> bool { return bool(flags & HAS_PREC); }
 
     constexpr auto set_fill(char c) noexcept -> FormattingOptions& {
-        flags = (flags & ~FILL_MASK) | u32(u8(c));
+        flags = (flags & ~FILL_MASK) | static_cast<rstd::uint8_t>(c);
         return *this;
     }
     constexpr auto set_align(Align a) noexcept -> FormattingOptions& {
-        flags = (flags & ~ALIGN_MASK) | (u32(a) << ALIGN_SHIFT);
+        flags = (flags & ~ALIGN_MASK) | (static_cast<rstd::uint32_t>(a) << ALIGN_SHIFT);
         return *this;
     }
-    constexpr auto set_width(u16 w) noexcept -> FormattingOptions& {
+    constexpr auto set_width(rstd::uint16_t w) noexcept -> FormattingOptions& {
         width = w;
         flags |= HAS_WIDTH;
         return *this;
     }
-    constexpr auto set_precision(u16 p) noexcept -> FormattingOptions& {
+    constexpr auto set_precision(rstd::uint16_t p) noexcept -> FormattingOptions& {
         precision = p;
         flags |= HAS_PREC;
         return *this;
     }
-    constexpr auto set_flag(u32 f) noexcept -> FormattingOptions& {
+    constexpr auto set_flag(rstd::uint32_t f) noexcept -> FormattingOptions& {
         flags |= f;
         return *this;
     }
@@ -188,7 +189,7 @@ export struct UpperExp {
 
 /// Trait for a byte-oriented output sink used by the formatting machinery.
 ///
-/// Implementors provide `write_str(const u8* p, usize len)` to accept raw bytes.
+/// Implementors provide `write_str(const rstd::uint8_t* p, rstd::size_t len)` to accept raw bytes.
 export struct Write {
     using Trait                  = Write;
     static constexpr bool direct = false;
@@ -196,7 +197,7 @@ export struct Write {
     template<typename Self, typename = void>
     struct Api {
         using Trait = Write;
-        auto write_str(const u8* p, usize len) -> bool;
+        auto write_str(const rstd::uint8_t* p, rstd::size_t len) -> bool;
     };
 
     template<typename T>
@@ -210,22 +211,28 @@ export struct Write {
 export struct Formatter {
 private:
     void* _writer;
-    auto (*_write_func)(void*, const u8*, usize) -> bool;
+    auto (*_write_func)(void*, const rstd::uint8_t*, rstd::size_t) -> bool;
     FormattingOptions _options {};
 
 public:
     template<typename W>
         requires Impled<W, Write>
     constexpr Formatter(W& writer) noexcept
-        : _writer(rstd::addressof(writer)), _write_func([](void* w, const u8* p, usize len) {
+        : _writer(rstd::addressof(writer)),
+          _write_func([](void* w, const rstd::uint8_t* p, rstd::size_t len) {
               return as<Write>(*static_cast<W*>(w)).write_str(p, len);
           }) {}
 
     // Raw construction from type-erased writer (used by panic infrastructure).
-    Formatter(void* writer, bool (*write_func)(void*, const u8*, usize)) noexcept
+    Formatter(void* writer, bool (*write_func)(void*, const rstd::uint8_t*, rstd::size_t)) noexcept
         : _writer(writer), _write_func(write_func) {}
 
-    auto write_raw(const u8* p, usize len) -> bool { return _write_func(_writer, p, len); }
+    auto write_raw(const rstd::uint8_t* p, rstd::size_t len) -> bool {
+        return _write_func(_writer, p, len);
+    }
+    auto write_raw(const char* p, rstd::size_t len) -> bool {
+        return write_raw(reinterpret_cast<const rstd::uint8_t*>(p), len);
+    }
     auto write_fmt(struct Arguments args) -> bool;
     auto pad(ref<str_::Str> value) -> bool;
 
@@ -240,16 +247,16 @@ public:
     auto is_debug() const noexcept -> bool { return _options.is_debug(); }
     auto has_width() const noexcept -> bool { return _options.has_width(); }
     auto has_prec() const noexcept -> bool { return _options.has_prec(); }
-    auto width() const noexcept -> u16 { return _options.width; }
-    auto precision() const noexcept -> u16 { return _options.precision; }
+    auto width() const noexcept -> rstd::uint16_t { return _options.width; }
+    auto precision() const noexcept -> rstd::uint16_t { return _options.precision; }
 
-    auto pad_numeric(const u8* sign,
-                     usize     sign_len,
-                     const u8* significand,
-                     usize     significand_len,
-                     usize     zero_count,
-                     const u8* exponent,
-                     usize     exponent_len) -> bool;
+    auto pad_numeric(const rstd::uint8_t* sign,
+                     rstd::size_t         sign_len,
+                     const rstd::uint8_t* significand,
+                     rstd::size_t         significand_len,
+                     rstd::size_t         zero_count,
+                     const rstd::uint8_t* exponent,
+                     rstd::size_t         exponent_len) -> bool;
 
     // write_fmt is the only one allowed to mutate _options.
     friend auto Formatter_set_options(Formatter& f, FormattingOptions opts) noexcept
@@ -325,10 +332,10 @@ private:
 
 /// A pre-compiled set of format arguments: a format string plus its type-erased Argument array.
 export struct Arguments {
-    const u8*       fmt_ptr;
-    usize           fmt_len;
-    const Argument* args_ptr;
-    usize           args_len;
+    const rstd::uint8_t* fmt_ptr;
+    rstd::size_t         fmt_len;
+    const Argument*      args_ptr;
+    rstd::size_t         args_len;
 
     auto fmt(Formatter& f) const -> bool { return f.write_fmt(*this); }
 
@@ -351,11 +358,11 @@ using namespace rstd::fmt;
 /// the format-string view; converts implicitly to a non-owning
 /// `Arguments`. The N==0 branch sizes the array to 1 to keep the
 /// trivial-copy POD valid for zero-arg formats.
-template<usize N>
+template<rstd::size_t N>
 struct ArgumentsStorage {
-    Argument  storage[N == 0 ? 1 : N];
-    const u8* fmt_ptr;
-    usize     fmt_len;
+    Argument             storage[N == 0 ? 1 : N];
+    const rstd::uint8_t* fmt_ptr;
+    rstd::size_t         fmt_len;
 
     constexpr operator Arguments() const noexcept { return { fmt_ptr, fmt_len, storage, N }; }
 };
@@ -397,9 +404,9 @@ inline void fmt_too_few_args() {
     __builtin_unreachable();
 }
 
-consteval void check_format_string(const char* s, usize n, usize n_args) {
-    usize count = 0;
-    for (usize i = 0; i < n; ++i) {
+consteval void check_format_string(const char* s, rstd::size_t n, rstd::size_t n_args) {
+    rstd::size_t count = 0;
+    for (rstd::size_t i = 0; i < n; ++i) {
         if (s[i] == '{') {
             if (i + 1 < n && s[i + 1] == '{') {
                 ++i; // skip {{
@@ -427,16 +434,18 @@ namespace rstd::fmt
 /// \tparam Args The types of the format arguments.
 template<typename... Args>
 struct FormatString {
-    const char* _ptr;
-    usize       _len;
+    const char*  _ptr;
+    rstd::size_t _len;
 
-    template<usize N>
+    template<rstd::size_t N>
     consteval FormatString(const char (&s)[N]) noexcept: _ptr(s), _len(N - 1) {
         check_format_string(s, N - 1, sizeof...(Args));
     }
 
-    auto data() const noexcept -> const u8* { return reinterpret_cast<const u8*>(_ptr); }
-    auto size() const noexcept -> usize { return _len; }
+    auto data() const noexcept -> const rstd::uint8_t* {
+        return reinterpret_cast<const rstd::uint8_t*>(_ptr);
+    }
+    auto size() const noexcept -> rstd::size_t { return _len; }
 };
 
 // `format_string` alias declared at the top of this namespace alongside

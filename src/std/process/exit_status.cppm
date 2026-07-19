@@ -11,7 +11,7 @@ export namespace rstd::process
 /// Describes the result of a process after it has terminated.
 struct ExitStatus {
 private:
-    i32  code_ { 0 };
+    i32  code_ {};
     bool exited_ { true };
 
 public:
@@ -29,7 +29,7 @@ public:
 #endif
 
     /// Was termination successful? Returns `true` if exit code was 0.
-    constexpr auto success() const noexcept -> bool { return exited_ && code_ == 0; }
+    constexpr auto success() const noexcept -> bool { return exited_ && code_ == i32 {}; }
 
     /// Returns the exit code if the process exited normally.
     constexpr auto code() const noexcept -> Option<i32> {
@@ -62,7 +62,7 @@ struct Output {
 
 /// Describes how to configure a child process's standard I/O stream.
 struct Stdio {
-    enum Kind : u8
+    enum Kind : rstd::uint8_t
     {
         Inherit_,
         Null_,

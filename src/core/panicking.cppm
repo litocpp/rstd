@@ -1,4 +1,5 @@
 export module rstd.core:panicking;
+import :num.types;
 export import :fmt;
 export import :panic;
 export import :str.str;
@@ -51,7 +52,11 @@ struct panic<> {
         // Wrap the str bytes as a single Display argument.
         fmt::Argument         arg     = fmt::Argument::make(msg);
         static constexpr char fmt_s[] = "{}";
-        panic_fmt({ (const u8*)fmt_s, 2, &arg, 1 }, panic_::Location::from(loc.val));
+        panic_fmt({ reinterpret_cast<rstd::uint8_t const*>(fmt_s),
+                    rstd::size_t(2),
+                    &arg,
+                    rstd::size_t(1) },
+                  panic_::Location::from(loc.val));
     }
 };
 

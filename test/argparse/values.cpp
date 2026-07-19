@@ -14,8 +14,8 @@ auto value_argv(Tokens... tokens) -> Vec<OsString> {
 }
 
 TEST(ArgparseValues, AppendsWithoutReparsingAndKeepsRawIndices) {
-    usize parse_count = 0;
-    auto  parser_fn   = parse_with<String>(
+    usize parse_count {};
+    auto  parser_fn = parse_with<String>(
         [&parse_count](ref<rstd::ffi::OsStr> value) -> Result<String, ValueError> {
             ++parse_count;
             auto text = value.to_str();
@@ -33,7 +33,7 @@ TEST(ArgparseValues, AppendsWithoutReparsingAndKeepsRawIndices) {
     ASSERT_TRUE(result.is_ok());
     auto outcome = rstd::move(result).unwrap();
     auto matches = rstd::move(outcome).as_Parsed().value;
-    EXPECT_EQ(parse_count, 2u);
+    EXPECT_EQ(parse_count, usize(2));
 
     auto values = matches.get_many(include);
     ASSERT_TRUE(values.is_ok());
@@ -42,20 +42,20 @@ TEST(ArgparseValues, AppendsWithoutReparsingAndKeepsRawIndices) {
     EXPECT_EQ(**iterator.next(), "first");
     EXPECT_EQ(**iterator.next(), "second");
     EXPECT_TRUE(iterator.next().is_none());
-    EXPECT_EQ(parse_count, 2u);
+    EXPECT_EQ(parse_count, usize(2));
 
     ASSERT_TRUE(matches.raw_values("include").is_some());
-    EXPECT_EQ(matches.raw_values("include")->len(), 2u);
+    EXPECT_EQ(matches.raw_values("include")->len(), usize(2));
     ASSERT_TRUE(matches.indices("include").is_some());
-    EXPECT_EQ((*matches.indices("include"))[0], 2u);
-    EXPECT_EQ((*matches.indices("include"))[1], 3u);
+    EXPECT_EQ((*matches.indices("include"))[usize()], usize(2));
+    EXPECT_EQ((*matches.indices("include"))[usize(1)], usize(3));
     ASSERT_TRUE(matches.occurrence_ends("include").is_some());
-    EXPECT_EQ((*matches.occurrence_ends("include"))[0], 1u);
-    EXPECT_EQ((*matches.occurrence_ends("include"))[1], 2u);
+    EXPECT_EQ((*matches.occurrence_ends("include"))[usize()], usize(1));
+    EXPECT_EQ((*matches.occurrence_ends("include"))[usize(1)], usize(2));
 }
 
 TEST(ArgparseValues, BuildsAndReusesImplicitAndDefaultValues) {
-    usize parse_count = 0;
+    usize parse_count {};
     auto  make_parser = [&parse_count] {
         return parse_with<String>(
             [&parse_count](ref<rstd::ffi::OsStr> value) -> Result<String, ValueError> {
@@ -74,7 +74,7 @@ TEST(ArgparseValues, BuildsAndReusesImplicitAndDefaultValues) {
                                        .default_value("never"));
     auto built   = rstd::move(command).build();
     ASSERT_TRUE(built.is_ok());
-    EXPECT_EQ(parse_count, 2u);
+    EXPECT_EQ(parse_count, usize(2));
     auto parser = rstd::move(built).unwrap();
 
     auto implicit_result = parser.parse_from(value_argv("tool", "--color"));
@@ -90,7 +90,7 @@ TEST(ArgparseValues, BuildsAndReusesImplicitAndDefaultValues) {
     auto default_matches = rstd::move(default_outcome).as_Parsed().value;
     auto fallback        = default_matches.get_one(color);
     EXPECT_EQ(***fallback, "never");
-    EXPECT_EQ(parse_count, 2u);
+    EXPECT_EQ(parse_count, usize(2));
 }
 
 TEST(ArgparseValues, UsesExactShortAliasBeforeClusterAndSupportsHyphenValues) {
@@ -174,7 +174,7 @@ TEST(ArgparseValues, RejectsIncompatibleAccessorsAndFormatsCustomErrors) {
         Arg<String>::value("repeated", string_parser()).long_name("repeated").append());
     command.add_arg(Arg<String>::value(
         "custom", parse_with<String>([](ref<rstd::ffi::OsStr>) -> Result<String, u8> {
-            return Err(u8 { 7 });
+            return Err(u8(7));
         })));
     auto built = rstd::move(command).build();
     ASSERT_TRUE(built.is_ok());

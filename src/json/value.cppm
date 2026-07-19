@@ -11,8 +11,9 @@ namespace rstd::json
 export class Value;
 export auto operator==(const Value& left, const Value& right) noexcept -> bool;
 
-export template<mtp::is_int T>
-    requires(! mtp::same_as<mtp::rm_cv<T>, bool>) && (sizeof(T) <= sizeof(u64))
+export template<typename T>
+    requires(num::Integer<T> || (rstd::is_raw_int<T> && ! mtp::same_as<mtp::rm_cv<T>, bool>)) &&
+            (sizeof(T) <= sizeof(u64))
 auto operator==(const Value& left, T right) noexcept -> bool;
 
 export auto operator==(const Value& left, bool right) noexcept -> bool;
@@ -41,38 +42,38 @@ private:
     }
 
     static auto parse_array_index(ref<str> token) noexcept -> Option<usize> {
-        if (token.size() == 0 || token.data()[0] == '+' ||
-            (token.size() > 1 && token.data()[0] == '0')) {
+        if (token.size() == usize() || token[usize()] == u8('+') ||
+            (token.size() > usize(1) && token[usize()] == u8('0'))) {
             return None();
         }
 
-        usize value = 0;
-        for (usize i = 0; i < token.size(); ++i) {
-            const u8 byte = token.data()[i];
-            if (byte < '0' || byte > '9') return None();
-            const usize digit = byte - '0';
-            if (value > (usize_::MAX - digit) / 10) return None();
-            value = value * 10 + digit;
+        usize value {};
+        for (usize i {}; i < token.size(); ++i) {
+            const u8 byte = token[i];
+            if (byte < u8('0') || byte > u8('9')) return None();
+            const usize digit = rstd::as_cast<usize>(byte - u8('0'));
+            if (value > (usize::MAX - digit) / usize(10)) return None();
+            value = value * usize(10) + digit;
         }
         return Some(rstd::move(value));
     }
 
     static auto decode_pointer_token(ref<str> token) -> ::alloc::string::String {
         auto decoded = ::alloc::string::String::make();
-        for (usize i = 0; i < token.size(); ++i) {
-            if (token.data()[i] == '~' && i + 1 < token.size()) {
-                if (token.data()[i + 1] == '0') {
+        for (usize i {}; i < token.size(); ++i) {
+            if (token[i] == u8('~') && i + usize(1) < token.size()) {
+                if (token[i + usize(1)] == u8('0')) {
                     decoded.push_back('~');
                     ++i;
                     continue;
                 }
-                if (token.data()[i + 1] == '1') {
+                if (token[i + usize(1)] == u8('1')) {
                     decoded.push_back('/');
                     ++i;
                     continue;
                 }
             }
-            decoded.push_back(token.data()[i]);
+            decoded.push_back(token[i]);
         }
         return decoded;
     }
@@ -262,17 +263,17 @@ public:
 
     [[nodiscard]]
     auto pointer(ref<str> path) const [[clang::lifetimebound]] -> Option<ref<Value>> {
-        if (path.size() == 0) {
+        if (path.size() == usize()) {
             return Some(ref<Value>::from_raw_parts(rstd::addressof(*this)));
         }
-        if (path.data()[0] != '/') return None();
+        if (path[usize()] != u8('/')) return None();
 
         const Value* current = this;
-        usize        start   = 1;
+        usize        start   = usize(1);
         while (start <= path.size()) {
             usize end = start;
-            while (end < path.size() && path.data()[end] != '/') ++end;
-            auto token = ref<str>::from_raw_parts(path.data() + start, end - start);
+            while (end < path.size() && path[end] != u8('/')) ++end;
+            auto token = ref<str>::from_raw_parts(path.data() + start.to_primitive(), end - start);
 
             if (current->is_Object()) {
                 if (str_::contains(token, "~")) {
@@ -296,24 +297,24 @@ public:
             }
 
             if (end == path.size()) break;
-            start = end + 1;
+            start = end + usize(1);
         }
         return Some(ref<Value>::from_raw_parts(current));
     }
 
     [[nodiscard]]
     auto pointer_mut(ref<str> path) [[clang::lifetimebound]] -> Option<mut_ref<Value>> {
-        if (path.size() == 0) {
+        if (path.size() == usize()) {
             return Some(mut_ref<Value>::from_raw_parts(rstd::addressof(*this)));
         }
-        if (path.data()[0] != '/') return None();
+        if (path[usize()] != u8('/')) return None();
 
         Value* current = this;
-        usize  start   = 1;
+        usize  start   = usize(1);
         while (start <= path.size()) {
             usize end = start;
-            while (end < path.size() && path.data()[end] != '/') ++end;
-            auto token = ref<str>::from_raw_parts(path.data() + start, end - start);
+            while (end < path.size() && path[end] != u8('/')) ++end;
+            auto token = ref<str>::from_raw_parts(path.data() + start.to_primitive(), end - start);
 
             if (current->is_Object()) {
                 if (str_::contains(token, "~")) {
@@ -337,7 +338,7 @@ public:
             }
 
             if (end == path.size()) break;
-            start = end + 1;
+            start = end + usize(1);
         }
         return Some(mut_ref<Value>::from_raw_parts(current));
     }
@@ -409,20 +410,20 @@ struct Impl<convert::From<bool>, json::Value> : ImplBase<json::Value> {
     static auto from(bool value) -> json::Value { return json::Value::Bool(value); }
 };
 
-#define RSTD_JSON_FROM_UNSIGNED(Type)                                                    \
-    template<>                                                                           \
-    struct Impl<convert::From<Type>, json::Value> : ImplBase<json::Value> {              \
-        static auto from(Type value) -> json::Value {                                    \
-            return json::Value::Number(json::Number::from_u64(static_cast<u64>(value))); \
-        }                                                                                \
+#define RSTD_JSON_FROM_UNSIGNED(Type)                                                      \
+    template<>                                                                             \
+    struct Impl<convert::From<Type>, json::Value> : ImplBase<json::Value> {                \
+        static auto from(Type value) -> json::Value {                                      \
+            return json::Value::Number(json::Number::from_u64(rstd::as_cast<u64>(value))); \
+        }                                                                                  \
     };
 
-#define RSTD_JSON_FROM_SIGNED(Type)                                                      \
-    template<>                                                                           \
-    struct Impl<convert::From<Type>, json::Value> : ImplBase<json::Value> {              \
-        static auto from(Type value) -> json::Value {                                    \
-            return json::Value::Number(json::Number::from_i64(static_cast<i64>(value))); \
-        }                                                                                \
+#define RSTD_JSON_FROM_SIGNED(Type)                                                        \
+    template<>                                                                             \
+    struct Impl<convert::From<Type>, json::Value> : ImplBase<json::Value> {                \
+        static auto from(Type value) -> json::Value {                                      \
+            return json::Value::Number(json::Number::from_i64(rstd::as_cast<i64>(value))); \
+        }                                                                                  \
     };
 
 RSTD_JSON_FROM_UNSIGNED(u8)
@@ -449,7 +450,7 @@ struct Impl<convert::From<f64>, json::Value> : ImplBase<json::Value> {
 template<>
 struct Impl<convert::From<f32>, json::Value> : ImplBase<json::Value> {
     static auto from(f32 value) -> json::Value {
-        return Impl<convert::From<f64>, json::Value>::from(static_cast<f64>(value));
+        return Impl<convert::From<f64>, json::Value>::from(rstd::as_cast<f64>(value));
     }
 };
 
@@ -509,13 +510,15 @@ auto operator==(const Value& left, const Value& right) noexcept -> bool {
     return as<cmp::PartialEq<Value>>(left).eq(right);
 }
 
-template<mtp::is_int T>
-    requires(! mtp::same_as<mtp::rm_cv<T>, bool>) && (sizeof(T) <= sizeof(u64))
+template<typename T>
+    requires(num::Integer<T> || (rstd::is_raw_int<T> && ! mtp::same_as<mtp::rm_cv<T>, bool>)) &&
+            (sizeof(T) <= sizeof(u64))
 auto operator==(const Value& left, T right) noexcept -> bool {
-    if constexpr (static_cast<T>(-1) < static_cast<T>(0)) {
-        return left.as_i64() == Some(static_cast<i64>(right));
+    if constexpr (num::SignedInteger<T> ||
+                  (rstd::is_raw_int<T> && static_cast<T>(-1) < static_cast<T>(0))) {
+        return left.as_i64() == Some(rstd::as_cast<i64>(right));
     } else {
-        return left.as_u64() == Some(static_cast<u64>(right));
+        return left.as_u64() == Some(rstd::as_cast<u64>(right));
     }
 }
 
@@ -525,7 +528,7 @@ auto operator==(const Value& left, bool right) noexcept -> bool {
 
 auto operator==(const Value& left, f32 right) noexcept -> bool {
     auto value = left.as_f64();
-    return value.is_some() && static_cast<f32>(*value) == right;
+    return value.is_some() && rstd::as_cast<f32>(*value) == right;
 }
 
 auto operator==(const Value& left, f64 right) noexcept -> bool {
@@ -540,8 +543,9 @@ auto operator==(const Value& left, const ::alloc::string::String& right) noexcep
     return left == right.as_str();
 }
 
-export template<mtp::is_int T>
-    requires(! mtp::same_as<mtp::rm_cv<T>, bool>) && (sizeof(T) <= sizeof(u64))
+export template<typename T>
+    requires(num::Integer<T> || (rstd::is_raw_int<T> && ! mtp::same_as<mtp::rm_cv<T>, bool>)) &&
+            (sizeof(T) <= sizeof(u64))
 auto operator==(T left, const Value& right) noexcept -> bool {
     return right == left;
 }

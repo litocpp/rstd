@@ -16,9 +16,9 @@ export struct Interest {
         return Interest { u8(READABLE | WRITABLE) };
     }
 
-    constexpr auto is_readable() const noexcept -> bool { return (m_bits & READABLE) != 0; }
-    constexpr auto is_writable() const noexcept -> bool { return (m_bits & WRITABLE) != 0; }
-    constexpr auto is_empty() const noexcept -> bool { return m_bits == 0; }
+    constexpr auto is_readable() const noexcept -> bool { return (m_bits & READABLE) != u8 {}; }
+    constexpr auto is_writable() const noexcept -> bool { return (m_bits & WRITABLE) != u8 {}; }
+    constexpr auto is_empty() const noexcept -> bool { return m_bits == u8 {}; }
 
     friend constexpr auto operator|(Interest a, Interest b) noexcept -> Interest {
         return Interest { u8(a.m_bits | b.m_bits) };
@@ -40,15 +40,19 @@ export struct Ready {
     static constexpr auto write_closed() noexcept -> Ready { return Ready { WRITE_CLOSED }; }
     static constexpr auto error() noexcept -> Ready { return Ready { ERROR }; }
 
-    constexpr auto is_readable() const noexcept -> bool { return (m_bits & READABLE) != 0; }
-    constexpr auto is_writable() const noexcept -> bool { return (m_bits & WRITABLE) != 0; }
-    constexpr auto is_read_closed() const noexcept -> bool { return (m_bits & READ_CLOSED) != 0; }
-    constexpr auto is_write_closed() const noexcept -> bool { return (m_bits & WRITE_CLOSED) != 0; }
-    constexpr auto is_error() const noexcept -> bool { return (m_bits & ERROR) != 0; }
-    constexpr auto is_empty() const noexcept -> bool { return m_bits == 0; }
+    constexpr auto is_readable() const noexcept -> bool { return (m_bits & READABLE) != u8 {}; }
+    constexpr auto is_writable() const noexcept -> bool { return (m_bits & WRITABLE) != u8 {}; }
+    constexpr auto is_read_closed() const noexcept -> bool {
+        return (m_bits & READ_CLOSED) != u8 {};
+    }
+    constexpr auto is_write_closed() const noexcept -> bool {
+        return (m_bits & WRITE_CLOSED) != u8 {};
+    }
+    constexpr auto is_error() const noexcept -> bool { return (m_bits & ERROR) != u8 {}; }
+    constexpr auto is_empty() const noexcept -> bool { return m_bits == u8 {}; }
 
     constexpr auto for_interest(Interest interest) const noexcept -> Ready {
-        auto bits = u8(0);
+        auto bits = u8 {};
         if (interest.is_readable()) bits |= m_bits & (READABLE | READ_CLOSED | ERROR);
         if (interest.is_writable()) bits |= m_bits & (WRITABLE | WRITE_CLOSED | ERROR);
         return Ready { bits };

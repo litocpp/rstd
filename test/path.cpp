@@ -162,7 +162,7 @@ TEST(PathBuf, CloneOwnsIndependentStorage) {
 
 TEST(PathBuf, FromStr) {
     auto p = PathBuf::from("/usr/bin");
-    EXPECT_EQ(p.len(), 8u);
+    EXPECT_EQ(p.len(), rstd::usize(8));
     EXPECT_TRUE(p.as_path().is_absolute());
 }
 
@@ -214,5 +214,5 @@ TEST(PathBuf, Join) {
 TEST(PathBuf, ImplicitConversion) {
     auto            buf = PathBuf::from("/tmp");
     rstd::ref<Path> r   = buf;
-    EXPECT_EQ(r.len(), 4u);
+    EXPECT_EQ(r.len(), rstd::usize(4));
 }

@@ -58,12 +58,12 @@ TEST(Thread, Current) {
     auto current = thread::current();
     auto id      = current.id();
 
-    EXPECT_GT(id.as_u64().get(), 0);
+    EXPECT_GT(id.as_u64().get(), u64());
 }
 
 TEST(Thread, Sleep) {
     auto start = rstd::time::Instant::now();
-    thread::sleep(rstd::time::Duration::from_millis(100));
+    thread::sleep(rstd::time::Duration::from_millis(u64(100)));
     auto elapsed = start.elapsed();
     EXPECT_GE(elapsed.as_secs_f64(), 0.1);
 }
@@ -73,17 +73,17 @@ TEST(Thread, MultipleThreads) {
     auto counter = std::atomic<int>(0);
     {
         auto handle1 = thread::spawn([&counter] {
-                           thread::sleep(rstd::time::Duration::from_millis(50));
+                           thread::sleep(rstd::time::Duration::from_millis(u64(50)));
                            counter++;
                        }).unwrap();
 
         auto handle2 = thread::spawn([&counter] {
-                           thread::sleep(rstd::time::Duration::from_millis(30));
+                           thread::sleep(rstd::time::Duration::from_millis(u64(30)));
                            counter++;
                        }).unwrap();
 
         auto handle3 = thread::spawn([&counter] {
-                           thread::sleep(rstd::time::Duration::from_millis(10));
+                           thread::sleep(rstd::time::Duration::from_millis(u64(10)));
                            counter++;
                        }).unwrap();
 

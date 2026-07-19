@@ -4,8 +4,6 @@ module;
 #include <cctype>
 #include <cmath>
 #include <cstdarg>
-#include <cstddef>
-#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -68,6 +66,7 @@ module;
 #define ALWAYS_INLINE [[gnu::always_inline]] inline
 
 export module cppstd;
+import rstd.basic;
 
 export using ::operator new;
 export using ::operator delete;
@@ -106,21 +105,21 @@ namespace std
 // ==== c ====
 
 // <cstdint>
-export using std::int8_t;
-export using std::int16_t;
-export using std::int32_t;
-export using std::int64_t;
-export using std::uint8_t;
-export using std::uint16_t;
-export using std::uint32_t;
-export using std::uint64_t;
-export using std::intptr_t;
-export using std::uintptr_t;
+export using rstd::int8_t;
+export using rstd::int16_t;
+export using rstd::int32_t;
+export using rstd::int64_t;
+export using rstd::uint8_t;
+export using rstd::uint16_t;
+export using rstd::uint32_t;
+export using rstd::uint64_t;
+export using rstd::intptr_t;
+export using rstd::uintptr_t;
 
 // <cstddef>
 export using std::nullptr_t;
-export using std::ptrdiff_t;
-export using std::size_t;
+export using rstd::ptrdiff_t;
+export using rstd::size_t;
 
 // <cstdlib>
 export using std::abort;
@@ -723,8 +722,7 @@ export using std::negation_v;
 export using std::void_t;
 
 // <cstddef>
-export using std::byte;
-export using std::to_integer;
+export using rstd::byte;
 
 // <new>
 export using std::align_val_t;

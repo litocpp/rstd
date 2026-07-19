@@ -15,29 +15,13 @@ namespace alloc::string
 /// Iterator over the Unicode scalar values of a UTF-8 byte range.
 export struct Chars : rstd::DefaultInClass<Chars, rstd::iter::Iterator> {
     using Item = u32;
-    const u8* cur;
-    const u8* fin;
-    Chars(const u8* b, const u8* e): cur(b), fin(e) {}
+    rstd::str_::Chars inner;
+
+    explicit Chars(rstd::str_::Chars chars): inner(chars) {}
+
     auto next() -> rstd::Option<u32> {
-        if (cur == fin) return rstd::None();
-        u8    b0 = *cur++;
-        u32   cp;
-        usize extra;
-        if (b0 < 0x80)
-            return rstd::Some(static_cast<u32>(b0));
-        else if ((b0 >> 5) == 0x6) {
-            cp    = b0 & 0x1Fu;
-            extra = 1;
-        } else if ((b0 >> 4) == 0xE) {
-            cp    = b0 & 0x0Fu;
-            extra = 2;
-        } else {
-            cp    = b0 & 0x07u;
-            extra = 3;
-        }
-        for (usize k = 0; k < extra && cur < fin; ++k)
-            cp = (cp << 6) | (static_cast<u32>(*cur++) & 0x3Fu);
-        return rstd::Some(cp);
+        if (inner.is_empty()) return rstd::None();
+        return rstd::Some(u32(inner.next_unchecked()));
     }
 };
 
@@ -60,12 +44,7 @@ public:
 
     /// Creates a `String` from a string slice (copies the bytes).
     static auto make(ref<str> s) -> String {
-        auto v = Vec<u8>::with_capacity(s.size());
-        for (usize i = 0; i < s.size(); i++) {
-            u8 b = s.data()[i];
-            v.push(rstd::move(b));
-        }
-        return String { rstd::move(v) };
+        return String { Vec<u8>::copy_from_bytes(rstd::str_::as_bytes(s)) };
     }
 
     /// Creates a `String` from a null-terminated C string (copies the bytes).
@@ -90,45 +69,43 @@ public:
     /// Returns a reference to the string as a `CStr`.
     /// \return A `ref<CStr>` view of the string data.
     auto as_ref() const noexcept [[clang::lifetimebound]] -> ref<ffi::CStr> {
-        auto p = as_cast<ffi::CStr const*>(vec.as_ptr().as_raw_ptr());
+        auto p = reinterpret_cast<char const*>(vec.as_ptr().as_raw_ptr());
         return ref<ffi::CStr>::from_raw_parts(p, vec.len());
     }
 
     /// Converts the `String` to a `ref<str>` string slice.
-    constexpr operator ref<str>() const [[clang::lifetimebound]] {
-        return ref<str>::from_raw_parts(vec.as_ptr().as_raw_ptr(), vec.len());
-    }
+    operator ref<str>() const [[clang::lifetimebound]] { return as_str(); }
 
     /// Appends a `char` to the end of this string.
-    void push_back(char c) { vec.push(static_cast<u8>(c)); }
+    void push_back(char c) { vec.push(u8(c)); }
     /// Appends a byte to the end of this string.
     void push_back(u8 c) { vec.push(rstd::move(c)); }
 
     /// Appends a UTF-8 string slice.
     void push_str(ref<str> value) {
-        if (value.size() == 0) return;
-        vec.extend_from_slice(slice<u8>::from_raw_parts(value.data(), value.size()));
+        if (value.size() == usize()) return;
+        vec.extend_from_bytes(rstd::str_::as_bytes(value));
     }
 
     /// Appends a Unicode code point, encoding as UTF-8.
     void push(char32_t cp) {
         u8   buf[4];
         auto n = rstd::char_::encode_utf8(cp, buf);
-        for (usize i = 0; i < n; i++) {
-            u8 b = buf[i];
+        for (rstd::size_t index = 0; index < n.to_primitive(); ++index) {
+            u8 b = buf[index];
             vec.push(rstd::move(b));
         }
     }
 
     /// Returns a string slice of the entire `String`.
-    constexpr auto as_str() const noexcept [[clang::lifetimebound]] -> ref<str> {
-        return ref<str>::from_raw_parts(vec.as_ptr().as_raw_ptr(), vec.len());
+    auto as_str() const noexcept [[clang::lifetimebound]] -> ref<str> {
+        return rstd::from_utf8_unchecked(vec.as_slice());
     }
 
     /// Returns the byte length of this string.
     constexpr auto len() const noexcept -> usize { return vec.len(); }
     /// Returns `true` if this string contains no bytes.
-    constexpr auto is_empty() const noexcept -> bool { return vec.len() == 0; }
+    constexpr auto is_empty() const noexcept -> bool { return vec.len() == usize(); }
     /// Returns the current capacity in bytes.
     constexpr auto capacity() const noexcept -> usize { return vec.capacity(); }
     /// Clears the string, removing all bytes.
@@ -151,24 +128,25 @@ public:
     friend constexpr auto operator<=>(const String& a, slice<u8> b) noexcept {
         auto ptr = &*b;
         return rstd::lexicographical_compare_three_way(
-            a.vec.begin(), a.vec.end(), ptr, ptr + b.len());
+            a.vec.begin(), a.vec.end(), ptr, ptr + b.len().to_primitive());
     }
-    friend constexpr auto operator<=>(const String& a, ref<str> b) noexcept {
+    friend auto operator<=>(const String& a, ref<str> b) noexcept {
+        auto a_str = a.as_str();
         return rstd::lexicographical_compare_three_way(
-            a.vec.begin(), a.vec.end(), b.begin(), b.end());
+            a_str.begin(), a_str.end(), b.begin(), b.end());
     }
-    friend constexpr auto operator<=>(ref<str> a, const String& b) noexcept {
+    friend auto operator<=>(ref<str> a, const String& b) noexcept {
+        auto b_str = b.as_str();
         return rstd::lexicographical_compare_three_way(
-            a.begin(), a.end(), b.vec.begin(), b.vec.end());
+            a.begin(), a.end(), b_str.begin(), b_str.end());
     }
-    friend constexpr bool operator==(const String& a, ref<str> b) noexcept {
+    friend bool operator==(const String& a, ref<str> b) noexcept {
         return a.size() == b.size() && rstd::mem::memcmp(a.begin(), b.begin(), a.size()) == 0;
     }
-    friend constexpr bool operator==(ref<str> a, const String& b) noexcept { return b == a; }
-    friend bool           operator==(char const* b, const String& a) noexcept {
-        const usize length = rstd::strlen(b);
-        return a.vec.len() == length &&
-               rstd::mem::memcmp(a.vec.begin(), reinterpret_cast<const u8*>(b), length) == 0;
+    friend bool operator==(ref<str> a, const String& b) noexcept { return b == a; }
+    friend bool operator==(char const* b, const String& a) noexcept {
+        const usize length(rstd::strlen(b));
+        return a.vec.len() == length && rstd::mem::memcmp(a.vec.begin(), b, length) == 0;
     }
 
     /// Returns a raw pointer to the underlying byte buffer.
@@ -178,17 +156,17 @@ public:
     }
 
     /// Returns a const iterator to the beginning of the string.
-    constexpr auto begin() const noexcept [[clang::lifetimebound]] -> const char* {
-        return rstd::bit_cast<const char*>(vec.begin());
+    auto begin() const noexcept [[clang::lifetimebound]] -> const char* {
+        return reinterpret_cast<const char*>(vec.begin());
     }
     /// Returns a const iterator to the end of the string.
-    constexpr auto end() const noexcept [[clang::lifetimebound]] -> const char* {
-        return rstd::bit_cast<const char*>(vec.end());
+    auto end() const noexcept [[clang::lifetimebound]] -> const char* {
+        return reinterpret_cast<const char*>(vec.end());
     }
     /// Returns a pointer to the string data as a char array.
     /// \return A const `char*` pointer to the data.
-    constexpr auto data() const noexcept [[clang::lifetimebound]] -> const char* {
-        return rstd::bit_cast<const char*>(vec.as_ptr().as_raw_ptr());
+    auto data() const noexcept [[clang::lifetimebound]] -> const char* {
+        return reinterpret_cast<const char*>(vec.as_ptr().as_raw_ptr());
     }
     /// Returns the length of the string in bytes.
     /// \return The number of bytes in the string.
@@ -199,7 +177,9 @@ public:
         return rstd::iter::SliceIter<u8>(vec.begin(), vec.end()).copied();
     }
     /// Returns an iterator over the Unicode scalar values of the string.
-    auto chars() const [[clang::lifetimebound]] -> Chars { return Chars(vec.begin(), vec.end()); }
+    auto chars() const [[clang::lifetimebound]] -> Chars {
+        return Chars(rstd::str_::chars(as_str()));
+    }
 };
 
 /// A trait for converting a value to a `String`.
@@ -223,17 +203,14 @@ namespace rstd
 template<>
 struct Impl<hash::Hash, String> : ImplBase<String> {
     void hash(hash::DefaultHasher& state) const noexcept {
-        state.write(reinterpret_cast<const u8*>(this->self().data()), this->self().size());
+        state.write(str_::as_bytes(this->self().as_str()));
     }
 };
 
 template<>
 struct Impl<fmt::Write, String> : ImplBase<String> {
-    auto write_str(const u8* p, usize len) -> bool {
-        auto& self = this->self();
-        for (usize i = 0; i < len; ++i) {
-            self.push_back(p[i]);
-        }
+    auto write_str(const rstd::uint8_t* p, rstd::size_t len) -> bool {
+        this->self().push_str(ref<str>::from_raw_parts(p, usize(len)));
         return true;
     }
 };
@@ -267,7 +244,7 @@ struct Impl<iter::FromIterator<u8>, String> : ImplBase<String> {
     template<typename It>
     static auto from_iter(It it) -> String {
         auto s = String::make();
-        for (auto x = it.next(); x.is_some(); x = it.next()) s.push_back(static_cast<char>(*x));
+        for (auto x = it.next(); x.is_some(); x = it.next()) s.push_back(*x);
         return s;
     }
 };
@@ -303,42 +280,49 @@ namespace rstd
 /// Re-exports `fmt::format` into the `rstd` namespace.
 export using fmt::format;
 
-template<mtp::is_int T>
+template<typename T>
+    requires(num::Integer<T> || rstd::is_raw_int<T>)
 struct Impl<fmt::Display, T> : ImplBase<T> {
     auto fmt(fmt::Formatter& f) const -> bool {
         char  buf[64];
         char* p   = buf + 64;
-        auto  val = this->self();
-        if (val == 0) {
-            return f.write_raw((const u8*)"0", 1);
+        auto  raw = [&]() {
+            if constexpr (num::Integer<T>)
+                return this->self().to_primitive();
+            else
+                return this->self();
+        }();
+        if (raw == 0) {
+            constexpr rstd::uint8_t ZERO[] = { '0' };
+            return f.write_raw(ZERO, sizeof(ZERO));
         }
-        u128 uval;
-        bool neg = false;
-        if constexpr (mtp::same_as<T, i8> || mtp::same_as<T, i16> || mtp::same_as<T, i32> ||
-                      mtp::same_as<T, i64> || mtp::same_as<T, i128> || mtp::same_as<T, int> ||
-                      mtp::same_as<T, long> || mtp::same_as<T, long long>) {
-            if (val < 0) {
-                neg  = true;
-                uval = (val == numeric_limits<T>::min()) ? (u128)numeric_limits<T>::max() + 1
-                                                         : (u128)-val;
+        using Raw = decltype(raw);
+        rstd::uint128_t magnitude;
+        bool            negative = false;
+        if constexpr (Raw(-1) < Raw(0)) {
+            if (raw < 0) {
+                negative  = true;
+                magnitude = static_cast<rstd::uint128_t>(0) - static_cast<rstd::uint128_t>(raw);
             } else {
-                uval = (u128)val;
+                magnitude = static_cast<rstd::uint128_t>(raw);
             }
         } else {
-            uval = (u128)val;
+            magnitude = static_cast<rstd::uint128_t>(raw);
         }
 
-        while (uval > 0) {
-            *--p = (char)('0' + (uval % 10));
-            uval /= 10;
+        while (magnitude > 0) {
+            *--p = char('0' + static_cast<unsigned>(magnitude % 10));
+            magnitude /= 10;
         }
 
-        if (neg) *--p = '-';
-        return f.write_raw((const u8*)p, (buf + 64) - p);
+        if (negative) *--p = '-';
+        return f.write_raw(reinterpret_cast<const rstd::uint8_t*>(p),
+                           static_cast<rstd::size_t>((buf + 64) - p));
     }
 };
 
-template<mtp::is_int T>
+template<typename T>
+    requires(num::Integer<T> || rstd::is_raw_int<T>)
 struct Impl<fmt::Debug, T> : ImplBase<T> {
     auto fmt(fmt::Formatter& f) const -> bool { return as<fmt::Display>(this->self()).fmt(f); }
 };
@@ -347,30 +331,33 @@ template<>
 struct Impl<fmt::Display, char const*> : ImplBase<char const*> {
     auto fmt(fmt::Formatter& f) const -> bool {
         auto s = this->self();
-        return f.write_raw((const u8*)s, rstd::strlen(s));
+        return f.write_raw(reinterpret_cast<const rstd::uint8_t*>(s), rstd::strlen(s));
     }
 };
 
 template<>
 struct Impl<fmt::Debug, char const*> : ImplBase<char const*> {
     auto fmt(fmt::Formatter& f) const -> bool {
-        f.write_raw((const u8*)"\"", 1);
+        constexpr rstd::uint8_t QUOTE[] = { '"' };
+        f.write_raw(QUOTE, sizeof(QUOTE));
         as<fmt::Display>(this->self()).fmt(f);
-        return f.write_raw((const u8*)"\"", 1);
+        return f.write_raw(QUOTE, sizeof(QUOTE));
     }
 };
 
-template<usize N>
+template<rstd::size_t N>
 struct Impl<fmt::Display, char[N]> : ImplBase<char[N]> {
     auto fmt(fmt::Formatter& f) const -> bool {
-        return f.write_raw((const u8*)this->self(), rstd::strlen(this->self()));
+        return f.write_raw(reinterpret_cast<const rstd::uint8_t*>(this->self()),
+                           rstd::strlen(this->self()));
     }
 };
 
-template<usize N>
+template<rstd::size_t N>
 struct Impl<fmt::Display, char const[N]> : ImplBase<char const[N]> {
     auto fmt(fmt::Formatter& f) const -> bool {
-        return f.write_raw((const u8*)this->self(), rstd::strlen(this->self()));
+        return f.write_raw(reinterpret_cast<const rstd::uint8_t*>(this->self()),
+                           rstd::strlen(this->self()));
     }
 };
 
@@ -379,17 +366,20 @@ struct Impl<fmt::Display, char const[N]> : ImplBase<char const[N]> {
 template<>
 struct Impl<fmt::Debug, time::Duration> : ImplBase<time::Duration> {
     auto fmt(fmt::Formatter& f) const -> bool {
-        auto&     d     = this->self();
-        const u64 secs  = d.as_secs();
-        const u32 nanos = d.subsec_nanos();
+        auto write_ascii = [&f](const char* value, rstd::size_t length) {
+            return f.write_raw(reinterpret_cast<const rstd::uint8_t*>(value), length);
+        };
+        auto&                d     = this->self();
+        const rstd::uint64_t secs  = d.as_secs().to_primitive();
+        const rstd::uint32_t nanos = d.subsec_nanos().to_primitive();
         if (secs > 0) {
             // Render as seconds with up to 9 decimal places, trimming trailing zeros.
             auto s = rstd::format("{}", secs);
-            f.write_raw(s.as_raw_ptr(), s.size());
+            write_ascii(s.data(), s.size().to_primitive());
             if (nanos != 0) {
                 // Produce 9-digit fractional part then strip trailing zeros.
-                char frac[10];
-                u32  n = nanos;
+                char           frac[10];
+                rstd::uint32_t n = nanos;
                 for (int i = 8; i >= 0; --i) {
                     frac[i] = char('0' + n % 10);
                     n /= 10;
@@ -397,19 +387,19 @@ struct Impl<fmt::Debug, time::Duration> : ImplBase<time::Duration> {
                 frac[9] = '\0';
                 int len = 9;
                 while (len > 1 && frac[len - 1] == '0') --len;
-                f.write_raw((const u8*)".", 1);
-                f.write_raw((const u8*)frac, usize(len));
+                write_ascii(".", 1);
+                write_ascii(frac, static_cast<rstd::size_t>(len));
             }
-            return f.write_raw((const u8*)"s", 1);
-        } else if (nanos >= time::NANOS_PER_MILLI) {
+            return write_ascii("s", 1);
+        } else if (nanos >= time::NANOS_PER_MILLI.to_primitive()) {
             // milliseconds
-            u32  ms  = nanos / time::NANOS_PER_MILLI;
-            u32  rem = nanos % time::NANOS_PER_MILLI;
-            auto s   = rstd::format("{}", ms);
-            f.write_raw(s.as_raw_ptr(), s.size());
+            rstd::uint32_t ms  = nanos / time::NANOS_PER_MILLI.to_primitive();
+            rstd::uint32_t rem = nanos % time::NANOS_PER_MILLI.to_primitive();
+            auto           s   = rstd::format("{}", ms);
+            write_ascii(s.data(), s.size().to_primitive());
             if (rem != 0) {
-                char frac[7];
-                u32  r = rem;
+                char           frac[7];
+                rstd::uint32_t r = rem;
                 for (int i = 5; i >= 0; --i) {
                     frac[i] = char('0' + r % 10);
                     r /= 10;
@@ -417,19 +407,19 @@ struct Impl<fmt::Debug, time::Duration> : ImplBase<time::Duration> {
                 frac[6] = '\0';
                 int len = 6;
                 while (len > 1 && frac[len - 1] == '0') --len;
-                f.write_raw((const u8*)".", 1);
-                f.write_raw((const u8*)frac, usize(len));
+                write_ascii(".", 1);
+                write_ascii(frac, static_cast<rstd::size_t>(len));
             }
-            return f.write_raw((const u8*)"ms", 2);
-        } else if (nanos >= time::NANOS_PER_MICRO) {
+            return write_ascii("ms", 2);
+        } else if (nanos >= time::NANOS_PER_MICRO.to_primitive()) {
             // microseconds — use ASCII "us" (µ is multi-byte, avoid encoding issues)
-            u32  us  = nanos / time::NANOS_PER_MICRO;
-            u32  rem = nanos % time::NANOS_PER_MICRO;
-            auto s   = rstd::format("{}", us);
-            f.write_raw(s.as_raw_ptr(), s.size());
+            rstd::uint32_t us  = nanos / time::NANOS_PER_MICRO.to_primitive();
+            rstd::uint32_t rem = nanos % time::NANOS_PER_MICRO.to_primitive();
+            auto           s   = rstd::format("{}", us);
+            write_ascii(s.data(), s.size().to_primitive());
             if (rem != 0) {
-                char frac[4];
-                u32  r = rem;
+                char           frac[4];
+                rstd::uint32_t r = rem;
                 for (int i = 2; i >= 0; --i) {
                     frac[i] = char('0' + r % 10);
                     r /= 10;
@@ -437,14 +427,14 @@ struct Impl<fmt::Debug, time::Duration> : ImplBase<time::Duration> {
                 frac[3] = '\0';
                 int len = 3;
                 while (len > 1 && frac[len - 1] == '0') --len;
-                f.write_raw((const u8*)".", 1);
-                f.write_raw((const u8*)frac, usize(len));
+                write_ascii(".", 1);
+                write_ascii(frac, static_cast<rstd::size_t>(len));
             }
-            return f.write_raw((const u8*)"us", 2);
+            return write_ascii("us", 2);
         } else {
             auto s = rstd::format("{}", nanos);
-            f.write_raw(s.as_raw_ptr(), s.size());
-            return f.write_raw((const u8*)"ns", 2);
+            write_ascii(s.data(), s.size().to_primitive());
+            return write_ascii("ns", 2);
         }
     }
 };

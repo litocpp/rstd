@@ -136,10 +136,10 @@ struct CompletionState {
         auto waker = Option<task::Waker> {};
         {
             auto f = fields.lock().unwrap_unchecked();
-            if (f->handles > 0) {
+            if (f->handles > usize()) {
                 --f->handles;
             }
-            if (f->handles == 0 && f->terminal.is_pending()) {
+            if (f->handles == usize() && f->terminal.is_pending()) {
                 (void)f->terminal.publish(Output { Err(CompletionError<E>::canceled()) });
                 waker = f->waker.take();
             }

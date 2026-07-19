@@ -142,8 +142,8 @@ TEST(ArcBasic, MakeAndDeref) {
     auto a = Arc<int>::make(42);
     ASSERT_TRUE(a);
     EXPECT_EQ(*a, 42);
-    EXPECT_EQ(a.strong_count(), 1u);
-    EXPECT_EQ(a.weak_count(), 0u);
+    EXPECT_EQ(a.strong_count(), rstd::usize(1));
+    EXPECT_EQ(a.weak_count(), rstd::usize());
 }
 
 TEST(ArcBasic, DerefSupportsSharedMutation) {
@@ -168,42 +168,42 @@ TEST(ArcBasic, DerefSupportsSharedMutation) {
 
 TEST(ArcBasic, CopyIncrementsStrong) {
     auto a = Arc<int>::make(7);
-    EXPECT_EQ(a.strong_count(), 1u);
+    EXPECT_EQ(a.strong_count(), rstd::usize(1));
 
     auto b = a.clone();
-    EXPECT_EQ(a.strong_count(), 2u);
-    EXPECT_EQ(b.strong_count(), 2u);
+    EXPECT_EQ(a.strong_count(), rstd::usize(2));
+    EXPECT_EQ(b.strong_count(), rstd::usize(2));
 
     // Drop b
     b.reset();
-    EXPECT_EQ(a.strong_count(), 1u);
+    EXPECT_EQ(a.strong_count(), rstd::usize(1));
 }
 
 TEST(ArcBasic, MoveDoesNotChangeStrong) {
     auto a = Arc<int>::make(9);
-    EXPECT_EQ(a.strong_count(), 1u);
+    EXPECT_EQ(a.strong_count(), rstd::usize(1));
 
     auto b = std::move(a);
     EXPECT_FALSE(a);
     EXPECT_TRUE(b);
-    EXPECT_EQ(b.strong_count(), 1u);
+    EXPECT_EQ(b.strong_count(), rstd::usize(1));
 }
 
 TEST(ArcWeak, DowngradeAndUpgrade) {
     auto a = Arc<int>::make(100);
 
     auto w = a.downgrade();
-    EXPECT_EQ(a.strong_count(), 1u);
-    EXPECT_EQ(a.weak_count(), 1u); // excludes implicit weak
+    EXPECT_EQ(a.strong_count(), rstd::usize(1));
+    EXPECT_EQ(a.weak_count(), rstd::usize(1)); // excludes implicit weak
 
     auto a2 = w.upgrade();
     ASSERT_TRUE(a2);
     EXPECT_EQ(*a2, 100);
-    EXPECT_EQ(a.strong_count(), 2u);
-    EXPECT_EQ(a.weak_count(), 1u);
+    EXPECT_EQ(a.strong_count(), rstd::usize(2));
+    EXPECT_EQ(a.weak_count(), rstd::usize(1));
 
     a2.reset();
-    EXPECT_EQ(a.strong_count(), 1u);
+    EXPECT_EQ(a.strong_count(), rstd::usize(1));
 
     // Drop last strong -> value destroyed; weak upgrade fails
     a.reset();
@@ -214,20 +214,20 @@ TEST(ArcWeak, DowngradeAndUpgrade) {
 
 TEST(ArcWeak, WeakCountSemantics) {
     auto a = Arc<int>::make(1);
-    EXPECT_EQ(a.weak_count(), 0u);
+    EXPECT_EQ(a.weak_count(), rstd::usize());
 
     auto w1 = a.downgrade();
-    EXPECT_EQ(a.weak_count(), 1u);
+    EXPECT_EQ(a.weak_count(), rstd::usize(1));
 
     auto w2 = w1.clone();
-    EXPECT_EQ(a.weak_count(), 2u);
+    EXPECT_EQ(a.weak_count(), rstd::usize(2));
 
     w1.reset();
-    EXPECT_EQ(a.weak_count(), 1u);
+    EXPECT_EQ(a.weak_count(), rstd::usize(1));
 
     // if strong becomes 0, weak_count() returns raw weak count (including what remains)
     a.reset();
-    EXPECT_EQ(w2.weak_count(), 1u);
+    EXPECT_EQ(w2.weak_count(), rstd::usize(1));
 }
 
 TEST(ArcDrop, DropDestroysPayloadOnce) {
@@ -240,11 +240,11 @@ TEST(ArcDrop, DropDestroysPayloadOnce) {
         // live+1, then temporary destroyed => drops+1, live-1. So live==1, drops==1 inside scope.
 
         auto b = a.clone();
-        EXPECT_EQ(a.strong_count(), 2u);
+        EXPECT_EQ(a.strong_count(), rstd::usize(2));
         EXPECT_EQ(DropCounter::live.load(), 1);
 
         b.reset();
-        EXPECT_EQ(a.strong_count(), 1u);
+        EXPECT_EQ(a.strong_count(), rstd::usize(1));
         EXPECT_EQ(DropCounter::live.load(), 1);
     }
     // Arc dropped => inner payload destroyed exactly once more
@@ -256,7 +256,7 @@ TEST(ArcDrop, DropDestroysPayloadOnce) {
 TEST(ArcUnwrap, TryUnwrapSuccess) {
     auto a = Arc<Payload>::make(Payload { 5 });
 
-    EXPECT_EQ(a.strong_count(), 1);
+    EXPECT_EQ(a.strong_count(), rstd::usize(1));
     auto res = a.try_unwrap();
     EXPECT_EQ(res.is_ok(), true);
     EXPECT_FALSE(a); // consumed
@@ -280,11 +280,11 @@ TEST(ArcUnwrap, TryUnwrapFailsWhenNotUnique) {
     auto a = Arc<Payload>::make(Payload { 11 });
     auto b = a.clone();
 
-    EXPECT_EQ(a.strong_count(), 2);
+    EXPECT_EQ(a.strong_count(), rstd::usize(2));
     auto res = a.try_unwrap();
     EXPECT_FALSE(res);
     EXPECT_TRUE(b);
-    EXPECT_EQ(b.strong_count(), 2u);
+    EXPECT_EQ(b.strong_count(), rstd::usize(2));
 
     // cleanup
     b.reset();
@@ -300,7 +300,7 @@ TEST(ArcRaw, IntoRawFromRawRoundtrip) {
     auto b = Arc<int>::from_raw(p);
     EXPECT_TRUE(b);
     EXPECT_EQ(*b, 77);
-    EXPECT_EQ(b.strong_count(), 1u);
+    EXPECT_EQ(b.strong_count(), rstd::usize(1));
 }
 
 TEST(ArcThread, CloneDropAcrossThreads) {
@@ -326,7 +326,7 @@ TEST(ArcThread, CloneDropAcrossThreads) {
     for (auto& th : ts) th.join();
 
     // Only the original `a` remains (plus the copies captured in threads are gone)
-    EXPECT_EQ(a.strong_count(), 1u);
+    EXPECT_EQ(a.strong_count(), rstd::usize(1));
     EXPECT_EQ(*a, 123);
 }
 
@@ -380,8 +380,8 @@ TEST(ArcPtrEq, ClonesShareAllocation) {
 TEST(WeakBasic, EmptyWeakIsExpired) {
     auto w = Weak<int>::make();
     EXPECT_TRUE(w.expired());
-    EXPECT_EQ(w.strong_count(), 0u);
-    EXPECT_EQ(w.weak_count(), 0u);
+    EXPECT_EQ(w.strong_count(), rstd::usize());
+    EXPECT_EQ(w.weak_count(), rstd::usize());
 
     auto a = w.upgrade();
     EXPECT_FALSE(a);
@@ -392,14 +392,14 @@ TEST(ArcDyn, DispatchCloneWeakAndRawRoundtrip) {
     auto arc   = ArcDyn::make(ArcDynPayload { drops, 41 });
 
     EXPECT_EQ(arc->value(), 41);
-    EXPECT_EQ(reinterpret_cast<rstd::usize>(arc.as_ptr().as_raw_ptr()) % 64, 0u);
+    EXPECT_EQ(reinterpret_cast<rstd::uintptr_t>(arc.as_ptr().as_raw_ptr()) % 64, 0u);
 
     auto clone  = arc.clone();
     auto weak   = arc.downgrade();
     auto shared = weak.upgrade();
     ASSERT_TRUE(shared);
     EXPECT_EQ(shared->value(), 41);
-    EXPECT_EQ(arc.strong_count(), 3u);
+    EXPECT_EQ(arc.strong_count(), rstd::usize(3));
 
     clone.reset();
     shared.reset();
@@ -436,5 +436,5 @@ TEST(ArcDyn, EmptyConcreteUsesDynamicLayout) {
 
     EXPECT_EQ(arc->value(), 7);
     EXPECT_EQ(rstd::alloc::Layout::for_value(arc.as_ptr().as_ptr()).size,
-              sizeof(ArcDynEmptyPayload));
+              rstd::usize(sizeof(ArcDynEmptyPayload)));
 }

@@ -22,12 +22,12 @@ struct RawVec {
     usize      cap;
 
     static auto with_capacity(usize capacity) -> RawVec {
-        if (capacity == 0) return RawVec();
+        if (capacity == usize()) return RawVec();
         auto layout = Layout::array<T>(capacity).unwrap();
         auto res    = as<Allocator>(::alloc::GLOBAL).allocate(layout);
         if (res.is_err()) handle_alloc_error(layout);
 
-        auto p = res.unwrap_unchecked().as_mut_ptr().template cast<T>();
+        auto p = res.unwrap_unchecked().template as_mut_ptr<T>();
         return { .ptr = NonNull<T>::make_unchecked(p), .cap = capacity };
     }
 
@@ -37,23 +37,19 @@ struct RawVec {
 
         auto new_layout = Layout::array<T>(new_cap).unwrap();
 
-        if (cap == 0) {
+        if (cap == usize()) {
             auto res = as<Allocator>(::alloc::GLOBAL).allocate(new_layout);
             if (res.is_err()) handle_alloc_error(new_layout);
-            ptr =
-                NonNull<T>::make_unchecked(res.unwrap_unchecked().as_mut_ptr().template cast<T>());
+            ptr = NonNull<T>::make_unchecked(res.unwrap_unchecked().template as_mut_ptr<T>());
         } else {
             auto old_layout = Layout::array<T>(cap).unwrap();
             auto old_ptr    = ptr.as_mut_ptr();
 
-            auto res = as<Allocator>(::alloc::GLOBAL)
-                           .grow(NonNull<u8>::make_unchecked(old_ptr.template cast<u8>()),
-                                 old_layout,
-                                 new_layout);
+            auto res =
+                as<Allocator>(::alloc::GLOBAL).grow(old_ptr.as_raw_ptr(), old_layout, new_layout);
             if (res.is_err()) handle_alloc_error(new_layout);
 
-            ptr =
-                NonNull<T>::make_unchecked(res.unwrap_unchecked().as_mut_ptr().template cast<T>());
+            ptr = NonNull<T>::make_unchecked(res.unwrap_unchecked().template as_mut_ptr<T>());
         }
         cap = new_cap;
     }
@@ -61,17 +57,15 @@ struct RawVec {
     ~RawVec() {}
 
     void reset_ptr() {
-        rstd::mem::fill(ptr, 0);
-        cap = 0;
+        rstd::mem::fill(ptr, u8());
+        cap = usize();
     }
 
     void drop() {
-        if (! rstd::mem::all(ptr, 0)) {
-            debug_assert(cap > 0);
+        if (! rstd::mem::all(ptr, u8())) {
+            debug_assert(cap > usize());
             auto layout = Layout::array<T>(cap).unwrap();
-            as<Allocator>(::alloc::GLOBAL)
-                .deallocate(NonNull<u8>::make_unchecked(ptr.as_mut_ptr().template cast<u8>()),
-                            layout);
+            as<Allocator>(::alloc::GLOBAL).deallocate(ptr.as_raw_ptr(), layout);
         }
         reset_ptr();
     }
@@ -98,7 +92,7 @@ public:
     using Target = T[];
 
     /// Creates an empty `Vec` with no allocation.
-    constexpr Vec(): m_buf(), m_len(0) {}
+    constexpr Vec(): m_buf(), m_len() {}
 
     // no copy
     constexpr Vec(const Self&)            = delete;
@@ -107,7 +101,7 @@ public:
     // move
     constexpr Vec(Self&& o) noexcept: m_buf(o.m_buf), m_len(o.m_len) {
         o.m_buf.reset_ptr();
-        o.m_len = 0;
+        o.m_len = usize();
     }
     constexpr Vec& operator=(Self&& o) noexcept {
         if (this != &o) {
@@ -121,7 +115,7 @@ public:
 
             // move
             o.m_buf.reset_ptr();
-            o.m_len = 0;
+            o.m_len = usize();
         }
         return *this;
     }
@@ -138,7 +132,16 @@ public:
     /// \param capacity The minimum number of elements the `Vec` can hold without reallocating.
     /// \return A `Vec` with preallocated capacity.
     static auto with_capacity(usize capacity) -> Self {
-        return Vec { RawVec<T>::with_capacity(capacity), 0 };
+        return Vec { RawVec<T>::with_capacity(capacity), usize() };
+    }
+
+    /// Copies raw bytes into owned `u8` objects.
+    static auto copy_from_bytes(slice<byte> source) -> Self
+        requires mtp::same_as<T, u8>
+    {
+        auto result = with_capacity(source.len());
+        result.extend_from_bytes(source);
+        return result;
     }
 
     /// Ensures that at least `additional` more elements can be inserted without reallocating.
@@ -146,9 +149,9 @@ public:
         auto required = m_len + additional;
         if (required <= m_buf.cap) return;
 
-        auto new_cap = m_buf.cap == 0 ? usize { 4 } : m_buf.cap;
+        auto new_cap = m_buf.cap == usize() ? usize(4) : m_buf.cap;
         while (new_cap < required) {
-            new_cap *= 2;
+            new_cap *= usize(2);
         }
         m_buf.grow(new_cap);
     }
@@ -156,14 +159,14 @@ public:
     /// Returns a slice containing the entire vector.
     /// \return An immutable `slice<T>` over all elements.
     constexpr auto as_slice() const noexcept [[clang::lifetimebound]] -> slice<T> {
-        if (m_len == 0) return {};
+        if (m_len == usize()) return {};
         return slice<T>::from_raw_parts(m_buf.ptr.as_ptr().as_raw_ptr(), m_len);
     }
 
     /// Returns a mutable slice containing the entire vector.
     /// \return A mutable pointer to a slice over all elements.
     constexpr auto as_mut_slice() noexcept [[clang::lifetimebound]] -> mut_ptr<T[]> {
-        if (m_len == 0) return {};
+        if (m_len == usize()) return {};
         return mut_ptr<T[]>::from_raw_parts(m_buf.ptr.as_mut_ptr().as_raw_ptr(), m_len);
     }
 
@@ -198,8 +201,8 @@ public:
     /// publish the written length with `set_len_unchecked`.
     constexpr auto spare_capacity_mut() noexcept [[clang::lifetimebound]] -> mut_ptr<T[]> {
         if (m_buf.cap == m_len) return {};
-        return mut_ptr<T[]>::from_raw_parts(m_buf.ptr.as_mut_ptr().as_raw_ptr() + m_len,
-                                            m_buf.cap - m_len);
+        return mut_ptr<T[]>::from_raw_parts(
+            m_buf.ptr.as_mut_ptr().as_raw_ptr() + m_len.to_primitive(), m_buf.cap - m_len);
     }
 
     /// Sets the vector length without initializing or dropping elements.
@@ -220,14 +223,14 @@ public:
         auto res    = as<Allocator>(GLOBAL).allocate(layout);
         if (res.is_err()) handle_alloc_error(layout);
 
-        auto* raw     = reinterpret_cast<T*>(res.unwrap_unchecked().as_mut_ptr().as_raw_ptr());
+        auto* raw     = res.unwrap_unchecked().template as_mut_ptr<T>().as_raw_ptr();
         auto* old_ptr = m_buf.ptr.as_mut_ptr().as_raw_ptr();
-        for (usize i = 0; i < length; ++i) {
-            new (raw + i) T(rstd::move(old_ptr[i]));
-            old_ptr[i].~T();
+        for (rstd::size_t index = 0; index < length.to_primitive(); ++index) {
+            new (raw + index) T(rstd::move(old_ptr[index]));
+            old_ptr[index].~T();
         }
         auto b = Box<T[]>::from_raw(mut_ptr<T[]>::from_raw_parts(raw, length));
-        m_len  = 0;
+        m_len  = usize();
         return b;
     }
 
@@ -235,11 +238,11 @@ public:
     template<typename... Args>
     constexpr T& emplace_back(Args&&... args) {
         if (m_len == m_buf.cap) {
-            m_buf.grow(m_buf.cap == 0 ? 4 : m_buf.cap * 2);
+            m_buf.grow(m_buf.cap == usize() ? usize(4) : m_buf.cap * usize(2));
         }
-        auto* slot = m_buf.ptr.as_mut_ptr().as_raw_ptr() + m_len;
+        auto* slot = m_buf.ptr.as_mut_ptr().as_raw_ptr() + m_len.to_primitive();
         new (slot) T(rstd::forward<Args>(args)...);
-        m_len++;
+        ++m_len;
         return *slot;
     }
 
@@ -250,11 +253,11 @@ public:
     /// Removes the last element from the vector and returns it, or `None` if empty.
     /// \return An `Option<T>` containing the removed element.
     constexpr auto pop() -> Option<T> {
-        if (m_len == 0) {
+        if (m_len == usize()) {
             return None();
         } else {
-            m_len--;
-            T* p     = m_buf.ptr.as_mut_ptr().as_raw_ptr() + m_len;
+            --m_len;
+            T* p     = m_buf.ptr.as_mut_ptr().as_raw_ptr() + m_len.to_primitive();
             T  value = rstd::move(*p);
             p->~T();
             return Some(rstd::move(value));
@@ -267,10 +270,11 @@ public:
         requires Impled<T, Clone>
     {
         if (m_len == m_buf.cap) {
-            m_buf.grow(m_buf.cap == 0 ? 4 : m_buf.cap * 2);
+            m_buf.grow(m_buf.cap == usize() ? usize(4) : m_buf.cap * usize(2));
         }
-        new (m_buf.ptr.as_mut_ptr().as_raw_ptr() + m_len) T(as<Clone>(value).clone());
-        m_len++;
+        new (m_buf.ptr.as_mut_ptr().as_raw_ptr() + m_len.to_primitive())
+            T(as<Clone>(value).clone());
+        ++m_len;
     }
 
     /// Removes the last element from the vector, discarding it.
@@ -279,17 +283,25 @@ public:
     /// Appends a copy of all elements in `values`.
     void extend_from_slice(slice<T> values) {
         reserve(values.len());
-        auto* p = m_buf.ptr.as_mut_ptr().as_raw_ptr() + m_len;
-        for (usize i = 0; i < values.len(); ++i) {
-            new (p + i) T(values[i]);
+        auto* p = m_buf.ptr.as_mut_ptr().as_raw_ptr() + m_len.to_primitive();
+        for (rstd::size_t index = 0; index < values.len().to_primitive(); ++index) {
+            new (p + index) T(values[usize(index)]);
         }
         m_len += values.len();
     }
 
     /// Appends a copy of `count` elements starting at `values`.
     void extend_from_slice(const T* values, usize count) {
-        if (count == 0) return;
+        if (count == usize()) return;
         extend_from_slice(slice<T>::from_raw_parts(values, count));
+    }
+
+    /// Appends raw bytes as owned `u8` objects.
+    void extend_from_bytes(slice<byte> values)
+        requires mtp::same_as<T, u8>
+    {
+        reserve(values.len());
+        for (u8 value : u8_values(values)) emplace_back(value);
     }
 
     /// Returns a mutable reference to the element at the given index, panicking if out of bounds.
@@ -297,14 +309,14 @@ public:
     /// \return A mutable reference to the element.
     constexpr T& at(usize index) [[clang::lifetimebound]] {
         if (index >= m_len) rstd::panic { "Vec index out of bounds" };
-        return m_buf.ptr.as_mut_ptr().as_raw_ptr()[index];
+        return m_buf.ptr.as_mut_ptr().as_raw_ptr()[index.to_primitive()];
     }
     /// Returns a const reference to the element at the given index, panicking if out of bounds.
     /// \param index The index of the element.
     /// \return A const reference to the element.
     constexpr const T& at(usize index) const [[clang::lifetimebound]] {
         if (index >= m_len) rstd::panic { "Vec index out of bounds" };
-        return m_buf.ptr.as_ptr().as_raw_ptr()[index];
+        return m_buf.ptr.as_ptr().as_raw_ptr()[index.to_primitive()];
     }
 
     /// Indexes into the vector, panicking if out of bounds.
@@ -319,14 +331,14 @@ public:
     /// \return The current capacity.
     constexpr usize capacity() const { return m_buf.cap; }
     /// Returns `true` if the vector contains no elements.
-    constexpr bool is_empty() const { return m_len == 0; }
+    constexpr bool is_empty() const { return m_len == usize(); }
 
     auto clone() const -> Vec
         requires rstd::Impled<T, rstd::clone::Clone>
     {
         auto result = Vec::with_capacity(m_len);
-        for (usize i = 0; i < m_len; ++i) {
-            result.push(rstd::as<rstd::clone::Clone>((*this)[i]).clone());
+        for (rstd::size_t index = 0; index < m_len.to_primitive(); ++index) {
+            result.push(rstd::as<rstd::clone::Clone>((*this)[usize(index)]).clone());
         }
         return result;
     }
@@ -340,18 +352,18 @@ public:
     /// Clears the vector, destroying all elements but not deallocating memory.
     constexpr void clear() {
         auto* p = m_buf.ptr.as_mut_ptr().as_raw_ptr();
-        for (usize i = 0; i < m_len; ++i) {
-            p[i].~T();
+        for (rstd::size_t index = 0; index < m_len.to_primitive(); ++index) {
+            p[index].~T();
         }
-        m_len = 0;
+        m_len = usize();
     }
 
     /// Shortens the vector, dropping elements after `new_len`.
     constexpr void truncate(usize new_len) {
         if (new_len >= m_len) return;
         auto* p = m_buf.ptr.as_mut_ptr().as_raw_ptr();
-        for (usize i = new_len; i < m_len; ++i) {
-            p[i].~T();
+        for (rstd::size_t index = new_len.to_primitive(); index < m_len.to_primitive(); ++index) {
+            p[index].~T();
         }
         m_len = new_len;
     }
@@ -366,8 +378,8 @@ public:
         auto old_len = m_len;
         reserve(new_len - m_len);
         auto* p = m_buf.ptr.as_mut_ptr().as_raw_ptr();
-        for (usize i = old_len; i < new_len; ++i) {
-            new (p + i) T(value);
+        for (rstd::size_t index = old_len.to_primitive(); index < new_len.to_primitive(); ++index) {
+            new (p + index) T(value);
         }
         m_len = new_len;
     }
@@ -379,11 +391,12 @@ public:
         if (index >= m_len) rstd::panic { "Vec index out of bounds" };
         T     value = rstd::move(at(index));
         auto* p     = m_buf.ptr.as_mut_ptr().as_raw_ptr();
-        for (usize i = index; i < m_len - 1; ++i) {
-            p[i] = rstd::move(p[i + 1]);
+        for (rstd::size_t current = index.to_primitive(); current + 1 < m_len.to_primitive();
+             ++current) {
+            p[current] = rstd::move(p[current + 1]);
         }
-        p[m_len - 1].~T();
-        m_len--;
+        p[m_len.to_primitive() - 1].~T();
+        --m_len;
         return value;
     }
 
@@ -393,7 +406,7 @@ public:
     }
     /// Returns a mutable iterator to the end.
     constexpr auto end() noexcept [[clang::lifetimebound]] {
-        return m_buf.ptr.as_mut_ptr().as_raw_ptr() + m_len;
+        return m_buf.ptr.as_mut_ptr().as_raw_ptr() + m_len.to_primitive();
     }
     /// Returns a const iterator to the beginning.
     constexpr auto begin() const noexcept [[clang::lifetimebound]] {
@@ -401,7 +414,7 @@ public:
     }
     /// Returns a const iterator to the end.
     constexpr auto end() const noexcept [[clang::lifetimebound]] {
-        return m_buf.ptr.as_ptr().as_raw_ptr() + m_len;
+        return m_buf.ptr.as_ptr().as_raw_ptr() + m_len.to_primitive();
     }
 
     using IntoIter = VecIntoIter<T>;
@@ -425,7 +438,7 @@ struct VecIntoIter : rstd::DefaultInClass<VecIntoIter<T>, rstd::iter::Iterator> 
     Vec<T> vec;
     usize  idx;
 
-    explicit VecIntoIter(Vec<T> v): vec(rstd::move(v)), idx(0) {}
+    explicit VecIntoIter(Vec<T> v): vec(rstd::move(v)), idx() {}
 
     auto next() -> rstd::Option<Item> {
         if (idx >= vec.len()) return rstd::None();
@@ -455,8 +468,8 @@ template<typename U, mtp::same_as<cmp::PartialEq<::alloc::vec::Vec<U>>> T>
 struct Impl<T, ::alloc::vec::Vec<U>> : DefaultInImpl<T, ::alloc::vec::Vec<U>> {
     auto eq(const ::alloc::vec::Vec<U>& other) const noexcept -> bool {
         if (this->self().len() != other.len()) return false;
-        for (usize i = 0; i < this->self().len(); ++i) {
-            if (! (this->self()[i] == other[i])) return false;
+        for (rstd::size_t index = 0; index < this->self().len().to_primitive(); ++index) {
+            if (! (this->self()[usize(index)] == other[usize(index)])) return false;
         }
         return true;
     }
@@ -468,8 +481,8 @@ struct Impl<T, ::alloc::vec::Vec<A>> : ImplBase<::alloc::vec::Vec<A>> {
         auto ptr = b.as_mut_ptr();
         auto len = ptr.len();
         auto vec = ::alloc::vec::Vec<A>::with_capacity(len);
-        for (usize i = 0; i != len; ++i) {
-            vec.push(rstd::move(ptr[i]));
+        for (rstd::size_t index = 0; index != len.to_primitive(); ++index) {
+            vec.push(rstd::move(ptr[usize(index)]));
         }
         return vec;
     }

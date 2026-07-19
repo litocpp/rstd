@@ -1,5 +1,3 @@
-module;
-#include <rstd/macro.hpp>
 export module rstd:sync.mpsc.mpmc.counter;
 import :forward;
 export import rstd.core;
@@ -10,6 +8,8 @@ using rstd::sync::atomic::Ordering;
 
 namespace rstd::sync::mpsc::mpmc
 {
+
+constexpr usize COUNTER_MAX(isize::MAX.to_primitive());
 
 template<typename C>
 struct Counter {
@@ -25,7 +25,7 @@ struct Counter {
     /// The internal channel.
     C chan;
 
-    Counter(C c): senders(1), receivers(1), destroy(false), chan(rstd::move(c)) {}
+    Counter(C c): senders(usize(1)), receivers(usize(1)), destroy(false), chan(rstd::move(c)) {}
 };
 
 export template<typename C>
@@ -69,8 +69,8 @@ public:
     /// Acquires another sender reference.
     auto acquire() const -> Sender<C> {
         if (! counter_ptr) rstd::panic { "Sender::acquire on null" };
-        usize count = counter()->senders.fetch_add(1, Ordering::Relaxed);
-        if (count > rstd::numeric_limits<isize>::max()) {
+        usize count = counter()->senders.fetch_add(usize(1), Ordering::Relaxed);
+        if (count > COUNTER_MAX) {
             rstd::panic { "mpsc sender count overflow" };
         }
         return Sender { counter_ptr };
@@ -80,7 +80,7 @@ public:
     template<typename F>
     void release(F disconnect) {
         if (counter_ptr) {
-            if (counter()->senders.fetch_sub(1, Ordering::AcqRel) == 1) {
+            if (counter()->senders.fetch_sub(usize(1), Ordering::AcqRel) == usize(1)) {
                 disconnect(rstd::addressof(counter()->chan));
 
                 if (counter()->destroy.exchange(true, Ordering::AcqRel)) {
@@ -126,8 +126,8 @@ public:
     /// Acquires another receiver reference.
     auto acquire() const -> Receiver<C> {
         if (! counter_ptr) rstd::panic { "Receiver::acquire on null" };
-        usize count = counter()->receivers.fetch_add(1, Ordering::Relaxed);
-        if (count > rstd::numeric_limits<isize>::max()) {
+        usize count = counter()->receivers.fetch_add(usize(1), Ordering::Relaxed);
+        if (count > COUNTER_MAX) {
             rstd::panic { "mpsc receiver count overflow" };
         }
         return Receiver { counter_ptr };
@@ -137,7 +137,7 @@ public:
     template<typename F>
     void release(F disconnect) {
         if (counter_ptr) {
-            if (counter()->receivers.fetch_sub(1, Ordering::AcqRel) == 1) {
+            if (counter()->receivers.fetch_sub(usize(1), Ordering::AcqRel) == usize(1)) {
                 disconnect(rstd::addressof(counter()->chan));
 
                 if (counter()->destroy.exchange(true, Ordering::AcqRel)) {

@@ -1,4 +1,5 @@
 export module rstd.core:mem;
+import :num.types;
 
 export import :mem.manually_drop;
 export import :mem.maybe_uninit;
@@ -29,7 +30,7 @@ constexpr auto transmute(Src src) noexcept -> Dst {
 /// \param len Number of bytes to compare.
 /// \return `true` if the regions differ, `false` if equal.
 export constexpr auto memcmp(const_voidp v1, const_voidp v2, usize len) noexcept -> bool {
-    return __builtin_memcmp(v1, v2, len);
+    return __builtin_memcmp(v1, v2, len.to_primitive());
 }
 
 /// Fills `len` bytes of memory at `src` with `val`.
@@ -38,7 +39,7 @@ export constexpr auto memcmp(const_voidp v1, const_voidp v2, usize len) noexcept
 /// \param len Number of bytes to set.
 /// \return The destination pointer `src`.
 export auto memset(voidp src, u8 val, usize len) noexcept -> voidp {
-    return __builtin_memset(src, val, len);
+    return __builtin_memset(src, val.to_primitive(), len.to_primitive());
 }
 
 /// Copies `len` bytes from `src` to `dst`; regions must not overlap.
@@ -47,7 +48,7 @@ export auto memset(voidp src, u8 val, usize len) noexcept -> voidp {
 /// \param len Number of bytes to copy.
 /// \return The destination pointer `dst`.
 export auto memcpy(voidp dst, const_voidp src, usize len) noexcept -> voidp {
-    return __builtin_memcpy(dst, src, len);
+    return __builtin_memcpy(dst, src, len.to_primitive());
 }
 
 /// Checks whether all bytes of `src` are equal to `val`.
@@ -57,8 +58,9 @@ export auto memcpy(voidp dst, const_voidp src, usize len) noexcept -> voidp {
 /// \return `true` if every byte matches, `false` otherwise.
 export template<typename T>
 constexpr auto all(T const& src, u8 val) noexcept -> bool {
-    u8 dst[sizeof(T)] {};
-    return __builtin_memcmp(rstd::addressof(src), dst, sizeof(T)) == 0;
+    rstd::uint8_t bytes[sizeof(T)];
+    for (rstd::size_t i = 0; i < sizeof(T); ++i) bytes[i] = val.to_primitive();
+    return __builtin_memcmp(rstd::addressof(src), bytes, sizeof(T)) == 0;
 }
 
 /// Fills all bytes of a trivially-copyable value with the given byte.
@@ -68,10 +70,10 @@ constexpr auto all(T const& src, u8 val) noexcept -> bool {
 export template<mtp::triv_copy T>
 constexpr void fill(T& src, u8 val) noexcept {
     if (mtp::is_constant_evaluated()) {
-        auto p = reinterpret_cast<u8*>(rstd::addressof(src));
-        for (usize i = 0; i < sizeof(T); ++i) p[i] = val;
+        auto p = reinterpret_cast<byte*>(rstd::addressof(src));
+        for (rstd::size_t i = 0; i < sizeof(T); ++i) p[i] = val.to_primitive();
     } else {
-        rstd::mem::memset(static_cast<voidp>(rstd::addressof(src)), val, sizeof(T));
+        rstd::mem::memset(static_cast<voidp>(rstd::addressof(src)), val, usize(sizeof(T)));
     }
 }
 

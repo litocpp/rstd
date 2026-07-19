@@ -18,7 +18,7 @@ TEST(JsonValue, ExposesVariantAccessors) {
     EXPECT_TRUE(boolean.is_boolean());
     EXPECT_EQ(boolean.as_bool(), Some(true));
 
-    auto number = Value::Number(Number::from_i64(-7));
+    auto number = Value::Number(Number::from_i64(i64(-7)));
     EXPECT_TRUE(number.is_number());
     EXPECT_EQ(number.as_i64(), Some(i64(-7)));
 
@@ -78,11 +78,25 @@ TEST(JsonValue, IndexingMatchesReadAndWriteSemantics) {
 TEST(JsonValue, JsonPointerFollowsRfc6901Tokens) {
     auto value = rstd::json::from_str(R"({"foo":["bar","baz"],"":0,"a/b":1,"m~n":2})").unwrap();
 
-    EXPECT_EQ(**value.pointer(""), value);
-    EXPECT_EQ(**value.pointer("/foo/0"), rstd::ref<rstd::str>("bar"));
-    EXPECT_EQ(**value.pointer("/"), 0);
-    EXPECT_EQ(**value.pointer("/a~1b"), 1);
-    EXPECT_EQ(**value.pointer("/m~0n"), 2);
+    auto root = value.pointer("");
+    ASSERT_TRUE(root.is_some());
+    EXPECT_EQ(**root, value);
+
+    auto first = value.pointer("/foo/0");
+    ASSERT_TRUE(first.is_some());
+    EXPECT_EQ(**first, rstd::ref<rstd::str>("bar"));
+
+    auto empty = value.pointer("/");
+    ASSERT_TRUE(empty.is_some());
+    EXPECT_EQ(**empty, 0);
+
+    auto escaped_slash = value.pointer("/a~1b");
+    ASSERT_TRUE(escaped_slash.is_some());
+    EXPECT_EQ(**escaped_slash, 1);
+
+    auto escaped_tilde = value.pointer("/m~0n");
+    ASSERT_TRUE(escaped_tilde.is_some());
+    EXPECT_EQ(**escaped_tilde, 2);
     EXPECT_TRUE(value.pointer("foo").is_none());
     EXPECT_TRUE(value.pointer("/foo/00").is_none());
     EXPECT_TRUE(value.pointer("/foo/01").is_none());
@@ -94,16 +108,16 @@ TEST(JsonValue, JsonPointerFollowsRfc6901Tokens) {
 }
 
 TEST(JsonValue, PrimitiveConversionsDoNotUseSerialization) {
-    auto integer = rstd::Impl<rstd::convert::From<i32>, Value>::from(-9);
+    auto integer = rstd::Impl<rstd::convert::From<i32>, Value>::from(i32(-9));
     auto text    = rstd::Impl<rstd::convert::From<rstd::ref<rstd::str>>, Value>::from("text");
     auto some    = rstd::Impl<rstd::convert::From<rstd::Option<i32>>, Value>::from(Some(i32(7)));
     auto none =
         rstd::Impl<rstd::convert::From<rstd::Option<i32>>, Value>::from(rstd::Option<i32>());
-    auto non_finite = rstd::Impl<rstd::convert::From<f64>, Value>::from(rstd::f64_::NAN_);
+    auto non_finite = rstd::Impl<rstd::convert::From<f64>, Value>::from(f64::NAN_);
 
-    EXPECT_EQ(integer, -9);
+    EXPECT_EQ(integer, i32(-9));
     EXPECT_EQ(text, rstd::ref<rstd::str>("text"));
-    EXPECT_EQ(some, 7);
+    EXPECT_EQ(some, i32(7));
     EXPECT_TRUE(none.is_null());
     EXPECT_TRUE(non_finite.is_null());
 }

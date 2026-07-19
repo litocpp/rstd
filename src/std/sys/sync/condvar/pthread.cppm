@@ -21,7 +21,7 @@ export class Condvar {
     OnceBox<pal::Condvar> m_pal;
     Atomic<usize>         m_mutex;
 
-    Condvar() noexcept: m_pal(OnceBox<pal::Condvar>::make()), m_mutex(0) {}
+    Condvar() noexcept: m_pal(OnceBox<pal::Condvar>::make()), m_mutex(usize {}) {}
 
 public:
     Condvar(const Condvar&)            = delete;
@@ -55,8 +55,8 @@ private:
     }
 
     void verify(pal::Mutex& mutex) {
-        auto  address  = reinterpret_cast<usize>(&mutex);
-        usize expected = 0;
+        auto  address = usize(reinterpret_cast<rstd::uintptr_t>(&mutex));
+        usize expected {};
         if (m_mutex.compare_exchange_strong(
                 expected, address, Ordering::Relaxed, Ordering::Relaxed)) {
             return;

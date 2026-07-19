@@ -1,5 +1,3 @@
-module;
-#include <rstd/macro.hpp>
 export module rstd:thread.functions;
 export import :thread.builder;
 export import :thread.thread;

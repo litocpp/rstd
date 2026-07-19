@@ -1,4 +1,5 @@
 export module rstd.core:any;
+import :num.types;
 export import :ptr;
 
 using namespace rstd::prelude;
@@ -9,7 +10,7 @@ export namespace rstd::any
 class TypeId {
     template<typename T>
     struct Token {
-        static inline const u8 value = 0;
+        static inline const u8 value {};
     };
 
     const void* value_;

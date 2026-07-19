@@ -17,8 +17,9 @@ struct ScopeData {
     void increment_num_running_threads() const {
         // We check for 'overflow' with usize::MAX / 2, to make sure there's no
         // chance it overflows to 0, which would result in unsoundness.
-        if (num_running_threads.fetch_add(1, Ordering::Relaxed) >
-            rstd::numeric_limits<usize>::max() / 2) {
+        auto const one = usize(1);
+        auto const two = usize(2);
+        if (num_running_threads.fetch_add(one, Ordering::Relaxed) > usize::MAX / two) {
             // This can only reasonably happen by mem::forget()'ing a lot of ScopedJoinHandles.
             overflow();
         }
@@ -34,7 +35,8 @@ struct ScopeData {
         if (panic) {
             a_thread_panicked.store(true, Ordering::Relaxed);
         }
-        if (num_running_threads.fetch_sub(1, Ordering::Release) == 1) {
+        auto const one = usize(1);
+        if (num_running_threads.fetch_sub(one, Ordering::Release) == one) {
             main_thread.unpark();
         }
     }

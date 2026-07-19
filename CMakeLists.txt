@@ -9,6 +9,8 @@ option(RSTD_BUILD_TESTING "Build tests" ${PROJECT_IS_TOP_LEVEL})
 option(RSTD_BUILD_BENCHMARKS "Build rstd benchmark executables" OFF)
 option(RSTD_BENCHMARKS_IN_CTEST "Register benchmark smoke tests in ctest" OFF)
 option(RSTD_USE_ASAN "asan" OFF)
+option(RSTD_CHECK_INTEGER_OVERFLOW
+       "Enable integer overflow checks in non-Debug builds" OFF)
 
 set(ALL_OPTS
   -Wall

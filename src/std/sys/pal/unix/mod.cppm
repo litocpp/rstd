@@ -24,7 +24,7 @@ void exit_internal(int code) {
 }
 
 export auto getpid_internal() -> u32 {
-    return static_cast<u32>(libc::getpid());
+    return u32(libc::getpid());
 }
 
 export auto getenv_internal(const char* name) -> const char* {
@@ -46,11 +46,11 @@ export auto unsetenv_internal(const char* name) -> bool {
 // This makes `env::args()` work without a runtime `main` wrapper.
 namespace args_detail
 {
-inline isize              g_argc = 0;
+inline int                g_argc {};
 inline char const* const* g_argv = nullptr;
 
 extern "C" inline void rstd_capture_args(int argc, char** argv, char**) {
-    g_argc = static_cast<isize>(argc);
+    g_argc = argc;
     g_argv = argv;
 }
 
@@ -62,12 +62,12 @@ inline init_fn_t rstd_args_init_entry = &rstd_capture_args;
 
 /// Raw, system-provided command-line argument vector.
 export struct ArgcArgv {
-    isize              argc;
+    int                argc;
     char const* const* argv;
 };
 
 /// Overrides the captured argc/argv (e.g. when `.init_array` capture is unavailable).
-export void args_capture(isize argc, char const* const* argv) {
+export void args_capture(int argc, char const* const* argv) {
     args_detail::g_argc = argc;
     args_detail::g_argv = argv;
 }

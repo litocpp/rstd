@@ -74,9 +74,9 @@ constexpr T* launder(T* __p) noexcept {
 /// Returns the length of a null-terminated byte string.
 /// \param s Pointer to a null-terminated string.
 /// \return The number of characters before the null terminator.
-export constexpr auto strlen(char const* s) noexcept -> usize {
+export constexpr auto strlen(char const* s) noexcept -> size_t {
     if (mtp::is_constant_evaluated()) {
-        usize i = 0;
+        size_t i = 0;
         while (s[i] != '\0') ++i;
         return i;
     } else {
@@ -136,7 +136,7 @@ constexpr auto lexicographical_compare_three_way(InputIter1 first1,
             using T1 = std::iter_value_t<InputIter1>;
             using T2 = std::iter_value_t<InputIter2>;
 
-            if constexpr (mtp::same<T1, T2> && mtp::is_int<T1> && sizeof(T1) == 1) {
+            if constexpr (mtp::same<T1, T2> && rstd::is_raw_int<T1> && sizeof(T1) == 1) {
                 auto len1    = last1 - first1;
                 auto len2    = last2 - first2;
                 auto min_len = rstd::min(len1, len2);
@@ -165,7 +165,7 @@ constexpr auto lexicographical_compare_three_way(InputIter1 first1,
         ++first2;
     }
 
-    return (first1 == last1) <=> (first2 == last2);
+    return (first1 != last1) <=> (first2 != last2);
 }
 
 /// Performs lexicographic three-way comparison of two ranges using `<=>`.

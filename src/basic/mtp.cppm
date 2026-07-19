@@ -33,11 +33,11 @@ using void_t = void;
 export template<typename T, T... Is>
 class integer_sequence {
     using value_type = T;
-    static constexpr usize size() noexcept { return sizeof...(Is); }
+    static constexpr rstd::size_t size() noexcept { return sizeof...(Is); }
 };
 
-export template<usize... Is>
-using index_sequence = integer_sequence<usize, Is...>;
+export template<rstd::size_t... Is>
+using index_sequence = integer_sequence<rstd::size_t, Is...>;
 
 export template<typename T, T N>
 using make_integer_sequence
@@ -46,8 +46,8 @@ using make_integer_sequence
 #else
     = integer_sequence<T, __integer_pack(N)...>;
 #endif
-export template<usize N>
-using make_index_sequence = make_integer_sequence<usize, N>;
+export template<rstd::size_t N>
+using make_index_sequence = make_integer_sequence<rstd::size_t, N>;
 
 #if __has_builtin(__is_const)
 /// Satisfied when `T` is const-qualified.
@@ -93,7 +93,7 @@ template<typename T>
 struct remove_extent {
     using type = T;
 };
-template<typename T, usize Size>
+template<typename T, rstd::size_t Size>
 struct remove_extent<T[Size]> {
     using type = T;
 };
@@ -252,7 +252,7 @@ struct rm_cv<const volatile Tp> {
 
 template<typename Tp>
 struct is_array_known_bounds : public false_type {};
-template<typename Tp, rstd::usize Size>
+template<typename Tp, rstd::size_t Size>
 struct is_array_known_bounds<Tp[Size]> : public true_type {};
 template<typename T>
 struct is_array_unknown_bounds : public false_type {};
@@ -266,7 +266,7 @@ struct decay_selector : conditional<is_const<const _Up>, // false for functions
                                     rm_cv<_Up>,          // N.B. DR 705.
                                     add_ptr<_Up>>::type  // function decays to pointer
 {};
-template<typename Up, rstd::usize Nm>
+template<typename Up, rstd::size_t Nm>
 struct decay_selector<Up[Nm]> {
     using type = Up*;
 };
@@ -389,9 +389,17 @@ concept equalable = requires(const T& a, const U& b) {
     { a != b } -> convertible_to<bool>;
 };
 
+/// Satisfied when `T` is a standard-layout type.
+export template<typename T>
+concept is_standard_layout = __is_standard_layout(T);
+
+/// Satisfied when every value of `T` has a unique object representation.
+export template<typename T>
+concept has_unique_object_representations = __has_unique_object_representations(T);
+
 /// Satisfied when `S` has the same size and alignment as `T` and is standard-layout.
 export template<typename S, typename T>
-concept transparent = sizeof(S) == sizeof(T) && alignof(S) == alignof(T) && __is_standard_layout(S);
+concept transparent = sizeof(S) == sizeof(T) && alignof(S) == alignof(T) && is_standard_layout<S>;
 
 /// Satisfied when `T` is constructible from `Args...`.
 export template<typename T, typename... Args>
@@ -443,7 +451,11 @@ concept triv_drop =
     __has_trivial_destructor(T);
 #endif
 
-/// Is trivially copyable
+/// Satisfied when `T` is trivially copyable.
+export template<typename T>
+concept triv_copyable = __is_trivially_copyable(T);
+
+/// Is trivially copy constructible
 export template<typename T>
 concept triv_copy = triv_init<T, add_ref<add_const<T>>>;
 //__is_trivially_copyable(T);
@@ -521,20 +533,37 @@ concept user_assign_move = assign<T, T&&> && (! triv_assign_move<T>);
 /// Satisfied when `T` is `void` (ignoring cv/ref qualifiers).
 export template<typename T>
 concept is_void = same<rm_cvf<T>, void>;
-/// Satisfied when `T` is an integral type.
-export template<typename T>
-concept is_int = requires(T t, T* p, void (*f)(T)) // T* parameter excludes reference types
+
+namespace detail
 {
-    reinterpret_cast<T>(t); // Exclude class types
-    f(0);                   // Exclude enumeration types
-    p + t;                  // Exclude everything not yet excluded but integral types
+export struct integer_wrapper_tag {};
+} // namespace detail
+} // namespace rstd::mtp
+
+namespace rstd
+{
+/// Satisfied when `T` is a raw integral type.
+export template<typename T>
+concept is_raw_int = requires(T t, T* p, void (*f)(T)) {
+    reinterpret_cast<T>(t);
+    f(0);
+    p + t;
+};
+} // namespace rstd
+
+namespace rstd::mtp
+{
+/// Satisfied when `T` is an rstd integer wrapper.
+export template<typename T>
+concept is_int = requires {
+    requires same<typename rm_cvf<T>::integer_wrapper_tag, detail::integer_wrapper_tag>;
 };
 /// Satisfied when `T` is a floating-point type.
 export template<typename T>
 concept is_float = any<rm_cvf<T>, float, double, long double>;
 /// Satisfied when `T` is an arithmetic (integral or floating-point) type.
 export template<typename T>
-concept is_arithmetic = is_int<T> || is_float<T>;
+concept is_arithmetic = is_int<T> || rstd::is_raw_int<T> || is_float<T>;
 
 /// Satisfied when `T` is a reference type (lvalue or rvalue).
 export template<typename T>
@@ -605,7 +634,7 @@ using underlying = __underlying_type(T);
 export template<typename T>
 constexpr auto tuple_size = std::tuple_size<T>::value;
 /// The type of the I-th element in a tuple-like type.
-export template<usize I, typename T>
+export template<rstd::size_t I, typename T>
 using tuple_element = std::tuple_element<I, T>::type;
 /// @}
 
@@ -730,7 +759,7 @@ struct func_traits<Ret (T::*)(Args...) const && noexcept(Ne)> {
 namespace rstd::mtp
 {
 
-template<usize I, auto First, auto... Rest>
+template<rstd::size_t I, auto First, auto... Rest>
 consteval auto get_auto_impl() {
     if constexpr (I == 0) {
         return First;
@@ -742,7 +771,7 @@ consteval auto get_auto_impl() {
 }
 
 /// Retrieves the I-th value from a non-type template parameter pack at compile time.
-export template<usize I, auto... Vals>
+export template<rstd::size_t I, auto... Vals>
 consteval auto get_auto() {
     static_assert(I < sizeof...(Vals), "out of range");
     return get_auto_impl<I, Vals...>();

@@ -395,10 +395,10 @@ TEST(Trait, RequiredWithDefault) {
     EXPECT_TRUE(dyn_eq->ne(b));
 
     RequiredIter direct { 3 };
-    EXPECT_EQ(direct.count(), 3);
+    EXPECT_EQ(direct.count(), rstd::usize(3));
 
     RequiredIter via_trait { 2 };
-    EXPECT_EQ(rstd::as<rstd::iter::Iterator>(via_trait).count(), 2);
+    EXPECT_EQ(rstd::as<rstd::iter::Iterator>(via_trait).count(), rstd::usize(2));
 }
 
 TEST(Trait, ExternalImplOverridesInClass) {

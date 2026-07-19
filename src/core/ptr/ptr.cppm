@@ -1,6 +1,7 @@
 module;
 #include <rstd/macro.hpp>
 export module rstd.core:ptr.ptr;
+import :num.types;
 export import :ptr.metadata;
 export import :ops.deref;
 export import :cmp;
@@ -75,7 +76,7 @@ struct ref_base {
     }
 
     template<typename U>
-    constexpr auto cast_array(usize len = 0) const noexcept -> mut_ptr<U[]> {
+    constexpr auto cast_array(usize len = usize()) const noexcept -> mut_ptr<U[]> {
         return mut_ptr<U[]>::from_raw_parts(reinterpret_cast<U*>(as_raw_ptr()), len);
     }
 
@@ -93,7 +94,7 @@ struct ref_base {
     constexpr decltype(auto) operator[](usize i) const noexcept
         requires mtp::DSTArray<T>
     {
-        return *(static_cast<Self const*>(this)->p + i);
+        return *(static_cast<Self const*>(this)->p + i.to_primitive());
     }
 
     constexpr auto len() const noexcept -> usize
@@ -105,7 +106,7 @@ struct ref_base {
     constexpr auto is_empty() const noexcept -> bool
         requires mtp::DSTArray<T>
     {
-        return len() == 0;
+        return len() == usize();
     }
 
     static constexpr auto from_raw_parts(value_type* p [[clang::lifetimebound]],
@@ -168,7 +169,7 @@ struct ptr_base {
         auto self = static_cast<Self*>(this);
         self->p   = nullptr;
         if constexpr (mtp::DSTArray<T>) {
-            self->length = 0;
+            self->length = usize();
         }
     }
 
@@ -182,7 +183,7 @@ struct ptr_base {
     }
 
     template<typename U>
-    constexpr auto cast_array(usize len = 0) const noexcept -> mut_ptr<U[]> {
+    constexpr auto cast_array(usize len = usize()) const noexcept -> mut_ptr<U[]> {
         return mut_ptr<U[]>::from_raw_parts(reinterpret_cast<U*>(as_raw_ptr()), len);
     }
 
@@ -200,7 +201,7 @@ struct ptr_base {
     constexpr decltype(auto) operator[](usize i) const noexcept
         requires mtp::DSTArray<T>
     {
-        return *(static_cast<Self const*>(this)->p + i);
+        return *(static_cast<Self const*>(this)->p + i.to_primitive());
     }
 
     constexpr auto len() const noexcept
@@ -336,7 +337,7 @@ void drop_in_place(mut_ptr<T> pointer) noexcept {
     if constexpr (mtp::DSTArray<T>) {
         using Element = mtp::rm_ext<T>;
         auto* data    = pointer.as_raw_ptr();
-        for (usize i = 0; i < pointer.len(); ++i) {
+        for (rstd::size_t i = 0; i < pointer.len().to_primitive(); ++i) {
             rstd::destroy_at(static_cast<Element*>(data + i));
         }
     } else if constexpr (mtp::DST<T>) {

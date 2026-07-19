@@ -7,8 +7,8 @@ namespace rstd::thread
 inline thread_local voidp CURRENT { nullptr };
 
 constexpr voidp    NONE { ptr_::null_mut<void>() };
-static const voidp BUSY { ptr_::without_provenance_mut<void>(1) };
-static const voidp DESTROYED { ptr_::without_provenance_mut<void>(2) };
+static const voidp BUSY { ptr_::without_provenance_mut<void>(usize(1)) };
+static const voidp DESTROYED { ptr_::without_provenance_mut<void>(usize(2)) };
 
 namespace id
 {

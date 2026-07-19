@@ -25,7 +25,7 @@ auto BorrowedFd::try_clone_to_owned() const -> Result<OwnedFd> {
 #if RSTD_OS_UNIX
     auto new_fd = rstd::sys::libc::fcntl(fd_, rstd::sys::libc::F_DUPFD_CLOEXEC, 3);
     if (new_fd < 0) {
-        return Err(Error::from_raw_os_error(rstd::sys::libc::get_errno()));
+        return Err(Error::from_raw_os_error(i32(rstd::sys::libc::get_errno())));
     }
     return Ok(OwnedFd::from_raw_fd(new_fd));
 #else

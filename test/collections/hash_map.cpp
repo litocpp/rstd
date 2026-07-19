@@ -11,15 +11,15 @@ namespace
 struct ConstantHasher {
     template<typename T>
     auto operator()(const T&) const noexcept -> u64 {
-        return 7;
+        return u64(7);
     }
 };
 
 struct TrackedHashValue {
-    static inline i32 live = 0;
-    i32               value;
+    static inline int live = 0;
+    int               value;
 
-    explicit TrackedHashValue(i32 v): value(v) { ++live; }
+    explicit TrackedHashValue(int v): value(v) { ++live; }
     TrackedHashValue(const TrackedHashValue&)            = delete;
     TrackedHashValue& operator=(const TrackedHashValue&) = delete;
     TrackedHashValue(TrackedHashValue&& other) noexcept: value(other.value) { ++live; }
@@ -59,152 +59,163 @@ struct Impl<hash::Hash, HashKey> : ImplBase<HashKey> {
 
 TEST(HashMap, BasicLookupReplacementAndCapacity) {
     auto map = HashMap<i32, i32>::make();
-    EXPECT_EQ(map.capacity(), 0u);
-    EXPECT_TRUE(map.insert(1, 10).is_none());
-    EXPECT_TRUE(map.insert(2, 20).is_none());
-    EXPECT_EQ(map.insert(1, 100), Some(10));
-    EXPECT_EQ(map.len(), 2u);
-    EXPECT_TRUE(map.contains_key(1));
-    EXPECT_FALSE(map.contains_key(3));
-    EXPECT_EQ(**map.get(1), 100);
+    EXPECT_EQ(map.capacity(), usize());
+    EXPECT_TRUE(map.insert(i32(1), i32(10)).is_none());
+    EXPECT_TRUE(map.insert(i32(2), i32(20)).is_none());
+    EXPECT_EQ(map.insert(i32(1), i32(100)), Some(i32(10)));
+    EXPECT_EQ(map.len(), usize(2));
+    EXPECT_TRUE(map.contains_key(i32(1)));
+    EXPECT_FALSE(map.contains_key(i32(3)));
+    EXPECT_EQ(**map.get(i32(1)), i32(100));
 
-    auto pair = map.get_key_value(2);
+    auto pair = map.get_key_value(i32(2));
     ASSERT_TRUE(pair.is_some());
-    EXPECT_EQ(*pair->get<0>(), 2);
-    EXPECT_EQ(*pair->get<1>(), 20);
+    EXPECT_EQ(*pair->template get<0>(), i32(2));
+    EXPECT_EQ(*pair->template get<1>(), i32(20));
 
-    auto value = map.get_mut(2);
+    auto value = map.get_mut(i32(2));
     ASSERT_TRUE(value.is_some());
-    **value = 200;
-    EXPECT_EQ(**map.get(2), 200);
+    **value = i32(200);
+    EXPECT_EQ(**map.get(i32(2)), i32(200));
 
-    map.reserve(100);
-    EXPECT_GE(map.capacity(), 102u);
+    map.reserve(usize(100));
+    EXPECT_GE(map.capacity(), usize(102));
     map.clear();
     EXPECT_TRUE(map.is_empty());
-    EXPECT_GE(map.capacity(), 100u);
+    EXPECT_GE(map.capacity(), usize(100));
     map.shrink_to_fit();
-    EXPECT_EQ(map.capacity(), 0u);
+    EXPECT_EQ(map.capacity(), usize());
 }
 
 TEST(HashMap, CollisionChainsSurviveTombstonesAndRehash) {
-    auto map = HashMap<i32, i32, ConstantHasher>::with_capacity(1);
-    for (i32 i = 0; i < 300; ++i) map.insert(i, i * 2);
-    for (i32 i = 0; i < 150; ++i) EXPECT_EQ(map.remove(i), Some(i * 2));
-    for (i32 i = 150; i < 300; ++i) EXPECT_EQ(**map.get(i), i * 2);
+    auto map = HashMap<i32, i32, ConstantHasher>::with_capacity(usize(1));
+    for (i32 i {}; i < i32(300); i += i32(1)) map.insert(i, i * i32(2));
+    for (i32 i {}; i < i32(150); i += i32(1)) {
+        EXPECT_EQ(map.remove(i), Some(i * i32(2)));
+    }
+    for (i32 i = i32(150); i < i32(300); i += i32(1)) {
+        EXPECT_EQ(**map.get(i), i * i32(2));
+    }
 
-    for (i32 i = 300; i < 500; ++i) map.insert(i, i * 2);
-    for (i32 i = 150; i < 500; ++i) EXPECT_EQ(**map.get(i), i * 2);
-    EXPECT_EQ(map.len(), 350u);
+    for (i32 i = i32(300); i < i32(500); i += i32(1)) map.insert(i, i * i32(2));
+    for (i32 i = i32(150); i < i32(500); i += i32(1)) {
+        EXPECT_EQ(**map.get(i), i * i32(2));
+    }
+    EXPECT_EQ(map.len(), usize(350));
 
     map.retain([](const i32& key, i32& value) {
-        value += 1;
-        return key % 2 == 0;
+        value += i32(1);
+        return key % i32(2) == i32();
     });
-    for (i32 i = 150; i < 500; ++i) {
+    for (i32 i = i32(150); i < i32(500); i += i32(1)) {
         auto value = map.get(i);
-        EXPECT_EQ(value.is_some(), i % 2 == 0);
-        if (value.is_some()) EXPECT_EQ(**value, i * 2 + 1);
+        EXPECT_EQ(value.is_some(), i % i32(2) == i32());
+        if (value.is_some()) EXPECT_EQ(**value, i * i32(2) + i32(1));
     }
 }
 
 TEST(HashMap, IteratorsAndCollectPreserveAllEntries) {
-    auto map = iter::range(0, 256)
+    auto map = iter::range(i32(), i32(256))
                    .map([](i32 key) {
-                       return rstd::tuple<i32, i32>(key, key + 1);
+                       return rstd::tuple<i32, i32>(key, key + i32(1));
                    })
                    .collect<HashMap<i32, i32>>();
 
     bool seen[256] {};
     auto entries = map.iter_mut();
     for (auto item = entries.next(); item.is_some(); item = entries.next()) {
-        i32 key = *item->get<0>();
-        EXPECT_FALSE(seen[key]);
-        seen[key] = true;
-        *item->get<1>() += 10;
+        i32 key = *item->template get<0>();
+        EXPECT_FALSE(seen[key.to_primitive()]);
+        seen[key.to_primitive()] = true;
+        *item->template get<1>() += i32(10);
     }
-    for (i32 i = 0; i < 256; ++i) {
-        EXPECT_TRUE(seen[i]);
-        EXPECT_EQ(**map.get(i), i + 11);
+    for (i32 i {}; i < i32(256); i += i32(1)) {
+        EXPECT_TRUE(seen[i.to_primitive()]);
+        EXPECT_EQ(**map.get(i), i + i32(11));
     }
 
     auto owned = map.into_iter();
     EXPECT_TRUE(map.is_empty());
-    usize count = 0;
+    usize count {};
     for (auto item = owned.next(); item.is_some(); item = owned.next()) ++count;
-    EXPECT_EQ(count, 256u);
+    EXPECT_EQ(count, usize(256));
 }
 
 TEST(HashMap, MoveOnlyValuesHaveBalancedLifetimes) {
     EXPECT_EQ(TrackedHashValue::live, 0);
     {
         auto map = HashMap<i32, TrackedHashValue>::make();
-        for (i32 i = 0; i < 300; ++i) map.insert(i, TrackedHashValue(i));
-        auto old = map.insert(8, TrackedHashValue(800));
+        for (i32 i {}; i < i32(300); i += i32(1)) {
+            map.insert(i, TrackedHashValue(i.to_primitive()));
+        }
+        auto old = map.insert(i32(8), TrackedHashValue(800));
         ASSERT_TRUE(old.is_some());
         EXPECT_EQ(old->value, 8);
-        auto removed = map.remove(9);
+        auto removed = map.remove(i32(9));
         ASSERT_TRUE(removed.is_some());
         EXPECT_EQ(removed->value, 9);
-        map.reserve(500);
+        map.reserve(usize(500));
         map.clear();
     }
     EXPECT_EQ(TrackedHashValue::live, 0);
 }
 
 TEST(HashMap, RandomizedOperationsMatchModel) {
-    constexpr usize key_count = 311;
-    bool            present[key_count] {};
-    i32             values[key_count] {};
-    usize           expected_len = 0;
-    u32             state        = 0x87654321u;
-    auto            map          = HashMap<i32, i32>::make();
+    constexpr rstd::size_t key_count = 311;
+    bool                   present[key_count] {};
+    i32                    values[key_count] {};
+    usize                  expected_len {};
+    u32                    state = u32(0x87654321u);
+    auto                   map   = HashMap<i32, i32>::make();
 
-    for (i32 operation = 0; operation < 12000; ++operation) {
-        state   = state * 1664525u + 1013904223u;
-        i32 key = static_cast<i32>((state >> 7) % key_count);
-        if (state % 3 == 0) {
-            i32  value = operation * 5;
+    for (i32 operation {}; operation < i32(12000); operation += i32(1)) {
+        state    = state * u32(1664525u) + u32(1013904223u);
+        i32  key = as_cast<i32>((state >> u64(7)) % u32(static_cast<rstd::uint32_t>(key_count)));
+        auto model_index = static_cast<rstd::size_t>(key.to_primitive());
+        if (state % u32(3) == u32()) {
+            i32  value = operation * i32(5);
             auto old   = map.insert(key, value);
-            EXPECT_EQ(old.is_some(), present[key]);
-            if (present[key]) EXPECT_EQ(*old, values[key]);
-            if (! present[key]) ++expected_len;
-            present[key] = true;
-            values[key]  = value;
-        } else if (state % 3 == 1) {
+            EXPECT_EQ(old.is_some(), present[model_index]);
+            if (present[model_index]) EXPECT_EQ(*old, values[model_index]);
+            if (! present[model_index]) ++expected_len;
+            present[model_index] = true;
+            values[model_index]  = value;
+        } else if (state % u32(3) == u32(1)) {
             auto removed = map.remove(key);
-            EXPECT_EQ(removed.is_some(), present[key]);
-            if (present[key]) {
-                EXPECT_EQ(*removed, values[key]);
-                present[key] = false;
+            EXPECT_EQ(removed.is_some(), present[model_index]);
+            if (present[model_index]) {
+                EXPECT_EQ(*removed, values[model_index]);
+                present[model_index] = false;
                 --expected_len;
             }
         } else {
             auto value = map.get(key);
-            EXPECT_EQ(value.is_some(), present[key]);
-            if (present[key]) EXPECT_EQ(**value, values[key]);
+            EXPECT_EQ(value.is_some(), present[model_index]);
+            if (present[model_index]) EXPECT_EQ(**value, values[model_index]);
         }
-        if (operation % 53 == 0) EXPECT_EQ(map.len(), expected_len);
+        if (operation % i32(53) == i32()) EXPECT_EQ(map.len(), expected_len);
     }
 }
 
 TEST(HashMap, StringKeysUseTheirHashOwner) {
     auto map = HashMap<rstd::string::String, i32>::make();
-    map.insert(rstd::string::String::make("alpha"), 1);
-    map.insert(rstd::string::String::make("beta"), 2);
+    map.insert(rstd::string::String::make("alpha"), i32(1));
+    map.insert(rstd::string::String::make("beta"), i32(2));
     auto key = rstd::string::String::make("alpha");
-    EXPECT_EQ(**map.get(key), 1);
+    EXPECT_EQ(**map.get(key), i32(1));
 }
 
 TEST(HashMap, CustomHashKeepsTheStoredEquivalentKey) {
     auto map = HashMap<HashKey, i32>::make();
-    for (i32 i = 0; i < 200; ++i) map.insert(HashKey(i, 1000 + i), i);
+    for (i32 i {}; i < i32(200); i += i32(1)) {
+        map.insert(HashKey(i, i32(1000) + i), i);
+    }
 
-    EXPECT_EQ(map.insert(HashKey(5, 9999), 500), Some(5));
-    HashKey lookup(5, 0);
+    EXPECT_EQ(map.insert(HashKey(i32(5), i32(9999)), i32(500)), Some(i32(5)));
+    HashKey lookup(i32(5), i32());
     auto    entry = map.get_key_value(lookup);
     ASSERT_TRUE(entry.is_some());
-    EXPECT_EQ(entry->get<0>()->identity, 1005);
-    EXPECT_EQ(*entry->get<1>(), 500);
-    EXPECT_EQ(map.remove(lookup), Some(500));
+    EXPECT_EQ(entry->template get<0>()->identity, i32(1005));
+    EXPECT_EQ(*entry->template get<1>(), i32(500));
+    EXPECT_EQ(map.remove(lookup), Some(i32(500)));
 }

@@ -34,7 +34,7 @@ struct RawFacilityEndpoint {
 };
 
 class FacilityEndpoint {
-    usize               m_id {};
+    rstd::uintptr_t     m_id {};
     RawFacilityEndpoint m_raw {};
 
 public:
@@ -57,14 +57,14 @@ public:
 
     ~FacilityEndpoint() { reset(); }
 
-    static auto from_raw(usize id, RawFacilityEndpoint raw) -> FacilityEndpoint {
+    static auto from_raw(rstd::uintptr_t id, RawFacilityEndpoint raw) -> FacilityEndpoint {
         auto endpoint  = FacilityEndpoint {};
         endpoint.m_id  = id;
         endpoint.m_raw = raw;
         return endpoint;
     }
 
-    auto id() const noexcept -> usize { return m_id; }
+    auto id() const noexcept -> rstd::uintptr_t { return m_id; }
 
     auto submit(FacilityJob job) -> FacilityEndpointSubmitResult;
 

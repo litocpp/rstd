@@ -80,19 +80,19 @@ public:
 
     auto wait_timeout(Mutex& mutex, rstd::time::Duration timeout) noexcept -> bool {
         timespec ts {
-            .tv_sec  = static_cast<time_t>(timeout.as_secs()),
-            .tv_nsec = static_cast<long>(timeout.subsec_nanos()),
+            .tv_sec  = static_cast<time_t>(timeout.as_secs().to_primitive()),
+            .tv_nsec = static_cast<long>(timeout.subsec_nanos().to_primitive()),
         };
 #if RSTD_OS_APPLE
         auto r = pthread_cond_timedwait_relative_np(raw(), mutex.raw(), &ts);
 #else
         clock_gettime(CLOCK_MONOTONIC, &ts);
 
-        ts.tv_sec += static_cast<time_t>(timeout.as_secs());
-        ts.tv_nsec += static_cast<long>(timeout.subsec_nanos());
-        if (ts.tv_nsec >= static_cast<long>(rstd::time::NANOS_PER_SEC)) {
+        ts.tv_sec += static_cast<time_t>(timeout.as_secs().to_primitive());
+        ts.tv_nsec += static_cast<long>(timeout.subsec_nanos().to_primitive());
+        if (ts.tv_nsec >= static_cast<long>(rstd::time::NANOS_PER_SEC.to_primitive())) {
             ++ts.tv_sec;
-            ts.tv_nsec -= static_cast<long>(rstd::time::NANOS_PER_SEC);
+            ts.tv_nsec -= static_cast<long>(rstd::time::NANOS_PER_SEC.to_primitive());
         }
 
         auto r = pthread_cond_timedwait(raw(), mutex.raw(), &ts);

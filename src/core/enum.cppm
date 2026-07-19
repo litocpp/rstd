@@ -1,4 +1,5 @@
 export module rstd.core:enum_;
+import :num.types;
 import :intrinsics;
 export import :core;
 
@@ -12,23 +13,24 @@ inline void bad_enum_state() noexcept {
 
 export struct sentinel {};
 
-template<usize N>
+template<rstd::size_t N>
 struct smallest_index {
-    using type = mtp::cond<(N <= 0xff), u8, mtp::cond<(N <= 0xffff), u16, u32>>;
+    using type = mtp::
+        cond<(N <= 0xff), rstd::uint8_t, mtp::cond<(N <= 0xffff), rstd::uint16_t, rstd::uint32_t>>;
 };
 
-export template<usize N>
+export template<rstd::size_t N>
 using smallest_index_t = typename smallest_index<N>::type;
 
-export template<usize I>
+export template<rstd::size_t I>
 struct in_place_index_t {
     explicit constexpr in_place_index_t() = default;
 };
 
-export template<usize I>
+export template<rstd::size_t I>
 inline constexpr in_place_index_t<I> in_place_index {};
 
-template<usize I, typename T, typename... Rest>
+template<rstd::size_t I, typename T, typename... Rest>
 struct type_at_impl {
     using type = typename type_at_impl<I - 1, Rest...>::type;
 };
@@ -38,7 +40,7 @@ struct type_at_impl<0, T, Rest...> {
     using type = T;
 };
 
-template<usize I, typename... Ts>
+template<rstd::size_t I, typename... Ts>
 using type_at_t = typename type_at_impl<I, Ts...>::type;
 
 export template<typename Like, typename T>
@@ -60,29 +62,29 @@ constexpr decltype(auto) forward_like(T&& x) noexcept {
     }
 }
 
-template<usize Base, typename... Ts>
+template<rstd::size_t Base, typename... Ts>
 union union_pack;
 
-template<usize Base>
+template<rstd::size_t Base>
 union union_pack<Base> {
     constexpr union_pack() noexcept {}
     constexpr ~union_pack() noexcept = default;
 };
 
-template<usize Base, typename T, typename... Rest>
+template<rstd::size_t Base, typename T, typename... Rest>
 union union_pack<Base, T, Rest...> {
     T                             head;
     union_pack<Base + 1, Rest...> tail;
 
     constexpr union_pack() noexcept {}
 
-    template<usize I, typename... Args>
+    template<rstd::size_t I, typename... Args>
         requires(I == Base) && mtp::init<T, Args...>
     explicit constexpr union_pack(in_place_index_t<I>,
                                   Args&&... args) noexcept(mtp::noex_init<T, Args...>)
         : head(rstd::forward<Args>(args)...) {}
 
-    template<usize I, typename... Args>
+    template<rstd::size_t I, typename... Args>
         requires(I > Base) && mtp::init<type_at_t<I - Base, T, Rest...>, Args...>
     explicit constexpr union_pack(in_place_index_t<I>, Args&&... args) noexcept(
         mtp::noex_init<type_at_t<I - Base, T, Rest...>, Args...>)
@@ -96,7 +98,7 @@ union union_pack<Base, T, Rest...> {
         requires(! (mtp::triv_drop<T> && (mtp::triv_drop<Rest> && ...)))
     {}
 
-    template<usize I, typename... Args>
+    template<rstd::size_t I, typename... Args>
     constexpr void
     construct(Args&&... args) noexcept(mtp::noex_init<type_at_t<I - Base, T, Rest...>, Args...>) {
         if constexpr (I == Base) {
@@ -107,7 +109,7 @@ union union_pack<Base, T, Rest...> {
         }
     }
 
-    template<usize I>
+    template<rstd::size_t I>
     [[gnu::always_inline]]
     constexpr void destroy() noexcept {
         if constexpr (I == Base) {
@@ -118,7 +120,7 @@ union union_pack<Base, T, Rest...> {
         }
     }
 
-    template<usize I>
+    template<rstd::size_t I>
     [[nodiscard]]
     constexpr decltype(auto) get() & noexcept {
         if constexpr (I == Base) {
@@ -128,7 +130,7 @@ union union_pack<Base, T, Rest...> {
         }
     }
 
-    template<usize I>
+    template<rstd::size_t I>
     [[nodiscard]]
     constexpr decltype(auto) get() const& noexcept {
         if constexpr (I == Base) {
@@ -138,7 +140,7 @@ union union_pack<Base, T, Rest...> {
         }
     }
 
-    template<usize I>
+    template<rstd::size_t I>
     [[nodiscard]]
     constexpr decltype(auto) get() && noexcept {
         if constexpr (I == Base) {
@@ -148,7 +150,7 @@ union union_pack<Base, T, Rest...> {
         }
     }
 
-    template<usize I>
+    template<rstd::size_t I>
     [[nodiscard]]
     constexpr decltype(auto) get() const&& noexcept {
         if constexpr (I == Base) {
@@ -163,13 +165,13 @@ export template<typename... Ts>
 class storage {
     using index_type = smallest_index_t<sizeof...(Ts)>;
 
-    static constexpr usize      count         = sizeof...(Ts);
-    static constexpr index_type invalid_index = static_cast<index_type>(count);
+    static constexpr rstd::size_t count         = sizeof...(Ts);
+    static constexpr index_type   invalid_index = static_cast<index_type>(count);
 
     union_pack<0, Ts...> data_;
     index_type           index_ = invalid_index;
 
-    template<usize I>
+    template<rstd::size_t I>
     [[gnu::always_inline]]
     inline void destroy_impl() noexcept {
         if constexpr (I < count) {
@@ -181,7 +183,7 @@ class storage {
         }
     }
 
-    template<usize I>
+    template<rstd::size_t I>
     void copy_impl(storage const& other) {
         if constexpr (I < count) {
             if (other.index_ == static_cast<index_type>(I)) {
@@ -194,7 +196,7 @@ class storage {
         }
     }
 
-    template<usize I>
+    template<rstd::size_t I>
     void move_impl(storage&& other) noexcept((mtp::noex_move<Ts> && ...)) {
         if constexpr (I < count) {
             if (other.index_ == static_cast<index_type>(I)) {
@@ -207,7 +209,7 @@ class storage {
         }
     }
 
-    template<usize I, typename... Args>
+    template<rstd::size_t I, typename... Args>
         requires(I < count) && mtp::init<type_at_t<I, Ts...>, Args...>
     constexpr void
     construct(in_place_index_t<I>,
@@ -219,7 +221,7 @@ class storage {
 public:
     constexpr inline storage() noexcept: data_(), index_(invalid_index) {}
 
-    template<usize I, typename... Args>
+    template<rstd::size_t I, typename... Args>
         requires(I < count) && mtp::init<type_at_t<I, Ts...>, Args...>
     explicit constexpr storage(in_place_index_t<I>, Args&&... args) noexcept(
         mtp::noex_init<type_at_t<I, Ts...>, Args...>)
@@ -288,7 +290,7 @@ public:
         requires(! ((mtp::move<Ts> && ...) && (mtp::noex_move<Ts> && ...)))
     = delete;
 
-    template<usize I, typename... Args>
+    template<rstd::size_t I, typename... Args>
         requires(I < count) && mtp::init<type_at_t<I, Ts...>, Args...>
     constexpr void replace(in_place_index_t<I>,
                            Args&&... args) noexcept(mtp::noex_init<type_at_t<I, Ts...>, Args...>) {
@@ -315,8 +317,8 @@ public:
     }
 
     [[nodiscard]]
-    constexpr usize index() const noexcept {
-        return static_cast<usize>(index_);
+    constexpr rstd::size_t index() const noexcept {
+        return static_cast<rstd::size_t>(index_);
     }
 
     [[nodiscard]]
@@ -324,59 +326,59 @@ public:
         return index_ != invalid_index;
     }
 
-    template<usize I>
+    template<rstd::size_t I>
         requires(I < count)
     [[nodiscard]]
     constexpr bool is(in_place_index_t<I>) const noexcept {
         return index_ == static_cast<index_type>(I);
     }
 
-    template<usize I>
+    template<rstd::size_t I>
     [[nodiscard]]
     constexpr decltype(auto) get() & noexcept {
         return data_.template get<I>();
     }
 
-    template<usize I>
+    template<rstd::size_t I>
     [[nodiscard]]
     constexpr decltype(auto) get() const& noexcept {
         return data_.template get<I>();
     }
 
-    template<usize I>
+    template<rstd::size_t I>
     [[nodiscard]]
     constexpr decltype(auto) get() && noexcept {
         return rstd::move(data_).template get<I>();
     }
 
-    template<usize I>
+    template<rstd::size_t I>
     [[nodiscard]]
     constexpr decltype(auto) get() const&& noexcept {
         return static_cast<union_pack<0, Ts...> const&&>(data_).template get<I>();
     }
 
-    template<usize I>
+    template<rstd::size_t I>
         requires(I < count)
     [[nodiscard]]
     constexpr decltype(auto) get(in_place_index_t<I>) & noexcept {
         return get<I>();
     }
 
-    template<usize I>
+    template<rstd::size_t I>
         requires(I < count)
     [[nodiscard]]
     constexpr decltype(auto) get(in_place_index_t<I>) const& noexcept {
         return get<I>();
     }
 
-    template<usize I>
+    template<rstd::size_t I>
         requires(I < count)
     [[nodiscard]]
     constexpr decltype(auto) get(in_place_index_t<I>) && noexcept {
         return rstd::move(*this).template get<I>();
     }
 
-    template<usize I>
+    template<rstd::size_t I>
         requires(I < count)
     [[nodiscard]]
     constexpr decltype(auto) get(in_place_index_t<I>) const&& noexcept {
@@ -384,7 +386,7 @@ public:
     }
 };
 
-export template<usize Count>
+export template<rstd::size_t Count>
 class tag_storage {
     using index_type = smallest_index_t<Count>;
 
@@ -395,20 +397,20 @@ class tag_storage {
 public:
     constexpr tag_storage() noexcept = default;
 
-    template<usize I>
+    template<rstd::size_t I>
         requires(I < Count)
     explicit constexpr tag_storage(in_place_index_t<I>) noexcept
         : index_(static_cast<index_type>(I)) {}
 
-    template<usize I>
+    template<rstd::size_t I>
         requires(I < Count)
     constexpr void replace(in_place_index_t<I>) noexcept {
         index_ = static_cast<index_type>(I);
     }
 
     [[nodiscard]]
-    constexpr usize index() const noexcept {
-        return static_cast<usize>(index_);
+    constexpr rstd::size_t index() const noexcept {
+        return static_cast<rstd::size_t>(index_);
     }
 
     [[nodiscard]]
@@ -416,7 +418,7 @@ public:
         return index_ != invalid_index;
     }
 
-    template<usize I>
+    template<rstd::size_t I>
         requires(I < Count)
     [[nodiscard]]
     constexpr bool is(in_place_index_t<I>) const noexcept {

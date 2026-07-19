@@ -1,4 +1,5 @@
 export module rstd.core:num.flt2dec;
+import :num.types;
 import :array;
 import :num.bignum;
 import rstd.basic;
@@ -9,18 +10,18 @@ namespace rstd::num::flt2dec
 export template<typename T>
 concept Float = mtp::any<T, f32, f64>;
 
-export enum class Category : u8 { Nan, Infinite, Zero, Finite };
+export enum class Category : rstd::uint8_t { Nan, Infinite, Zero, Finite };
 
-export constexpr usize MAX_SIG_DIGITS = 17;
-export constexpr usize DIGIT_CAPACITY = 1024;
+export constexpr rstd::size_t MAX_SIG_DIGITS = 17;
+export constexpr rstd::size_t DIGIT_CAPACITY = 1024;
 
-export template<usize Capacity>
+export template<rstd::size_t Capacity>
 struct Decimal {
-    Category            category = Category::Zero;
-    bool                negative = false;
-    array<u8, Capacity> digits {};
-    usize               len      = 0;
-    i16                 exponent = 0;
+    Category                       category = Category::Zero;
+    bool                           negative = false;
+    array<rstd::uint8_t, Capacity> digits {};
+    rstd::size_t                   len      = 0;
+    rstd::int16_t                  exponent = 0;
 };
 
 export using ShortestDecimal = Decimal<MAX_SIG_DIGITS>;
@@ -32,11 +33,11 @@ using namespace rstd::prelude;
 using namespace rstd::num::flt2dec;
 
 struct Decoded {
-    u64  mant;
-    u64  minus;
-    u64  plus;
-    i16  exponent;
-    bool inclusive;
+    rstd::uint64_t mant;
+    rstd::uint64_t minus;
+    rstd::uint64_t plus;
+    rstd::int16_t  exponent;
+    bool           inclusive;
 };
 
 struct FullDecoded {
@@ -50,20 +51,20 @@ struct FloatLayout;
 
 template<>
 struct FloatLayout<f32> {
-    using Bits = u32;
+    using Bits = rstd::uint32_t;
 
-    static constexpr usize MANTISSA_BITS = 23;
-    static constexpr usize EXPONENT_BITS = 8;
-    static constexpr i16   EXPONENT_BIAS = 127;
+    static constexpr rstd::size_t  MANTISSA_BITS = 23;
+    static constexpr rstd::size_t  EXPONENT_BITS = 8;
+    static constexpr rstd::int16_t EXPONENT_BIAS = 127;
 };
 
 template<>
 struct FloatLayout<f64> {
-    using Bits = u64;
+    using Bits = rstd::uint64_t;
 
-    static constexpr usize MANTISSA_BITS = 52;
-    static constexpr usize EXPONENT_BITS = 11;
-    static constexpr i16   EXPONENT_BIAS = 1023;
+    static constexpr rstd::size_t  MANTISSA_BITS = 52;
+    static constexpr rstd::size_t  EXPONENT_BITS = 11;
+    static constexpr rstd::int16_t EXPONENT_BIAS = 1023;
 };
 
 template<Float T>
@@ -88,47 +89,57 @@ constexpr auto decode(T value) noexcept -> FullDecoded {
     }
 
     if (raw_exp == 0) {
-        const u64 mant = static_cast<u64>(raw_mant) << 1;
-        const i16 exp =
-            static_cast<i16>(-Layout::EXPONENT_BIAS - static_cast<i16>(Layout::MANTISSA_BITS));
+        const rstd::uint64_t mant = static_cast<rstd::uint64_t>(raw_mant) << 1;
+        const rstd::int16_t  exp  = static_cast<rstd::int16_t>(
+            -Layout::EXPONENT_BIAS - static_cast<rstd::int16_t>(Layout::MANTISSA_BITS));
         return { Category::Finite, negative, { mant, 1, 1, exp, true } };
     }
 
-    const u64 mant = static_cast<u64>((Bits(1) << Layout::MANTISSA_BITS) | raw_mant);
-    const i16 exp =
-        static_cast<i16>(raw_exp) - Layout::EXPONENT_BIAS - static_cast<i16>(Layout::MANTISSA_BITS);
+    const rstd::uint64_t mant =
+        static_cast<rstd::uint64_t>((Bits(1) << Layout::MANTISSA_BITS) | raw_mant);
+    const rstd::int16_t exp = static_cast<rstd::int16_t>(raw_exp) - Layout::EXPONENT_BIAS -
+                              static_cast<rstd::int16_t>(Layout::MANTISSA_BITS);
     if (raw_mant == 0) {
-        return { Category::Finite, negative, { mant << 2, 1, 2, static_cast<i16>(exp - 2), true } };
+        return { Category::Finite,
+                 negative,
+                 { mant << 2, 1, 2, static_cast<rstd::int16_t>(exp - 2), true } };
     }
     return { Category::Finite,
              negative,
-             { mant << 1, 1, 1, static_cast<i16>(exp - 1), (mant & 1) == 0 } };
+             { mant << 1, 1, 1, static_cast<rstd::int16_t>(exp - 1), (mant & 1) == 0 } };
 }
 
 using FloatBig = rstd::num::bignum::FixedBig<40>;
 
-constexpr u32 POW10[] = {
+constexpr rstd::uint32_t POW10[] = {
     1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000,
 };
-constexpr u32 POW5_TO_16[]  = { 0x86f26fc1, 0x23 };
-constexpr u32 POW5_TO_32[]  = { 0x85acef81, 0x2d6d415b, 0x4ee };
-constexpr u32 POW5_TO_64[]  = { 0xbf6a1f01, 0x6e38ed64, 0xdaa797ed, 0xe93ff9f4, 0x184f03 };
-constexpr u32 POW5_TO_128[] = {
+constexpr rstd::uint32_t POW5_TO_16[]  = { 0x86f26fc1, 0x23 };
+constexpr rstd::uint32_t POW5_TO_32[]  = { 0x85acef81, 0x2d6d415b, 0x4ee };
+constexpr rstd::uint32_t POW5_TO_64[]  = { 0xbf6a1f01,
+                                           0x6e38ed64,
+                                           0xdaa797ed,
+                                           0xe93ff9f4,
+                                           0x184f03 };
+constexpr rstd::uint32_t POW5_TO_128[] = {
     0x2e953e01, 0x3df9909,  0xf1538fd,  0x2374e42f, 0xd3cff5ec,
     0xc404dc08, 0xbccdb0da, 0xa6337f19, 0xe91f2603, 0x24e,
 };
-constexpr u32 POW5_TO_256[] = {
+constexpr rstd::uint32_t POW5_TO_256[] = {
     0x982e7c01, 0xbed3875b, 0xd8d99f72, 0x12152f87, 0x6bde50c6, 0xcf4a6e70, 0xd595d80f,
     0x26b2716e, 0xadc666b0, 0x1d153624, 0x3c42d35a, 0x63ff540e, 0xcc5573c0, 0x65f9ef17,
     0x55bc28f2, 0x80dcc7f7, 0xf46eeddc, 0x5fdcefce, 0x553f7,
 };
 
-template<usize N>
-void mul_if(FloatBig& value, usize exponent, usize bit, const u32 (&digits)[N]) {
+template<rstd::size_t N>
+void mul_if(FloatBig&    value,
+            rstd::size_t exponent,
+            rstd::size_t bit,
+            const rstd::uint32_t (&digits)[N]) {
     if ((exponent & bit) != 0) value.mul_digits(digits, N);
 }
 
-void mul_pow10(FloatBig& value, usize exponent) {
+void mul_pow10(FloatBig& value, rstd::size_t exponent) {
     if (exponent < 8) {
         value.mul_small(POW10[exponent]);
         return;
@@ -143,8 +154,8 @@ void mul_pow10(FloatBig& value, usize exponent) {
     value.mul_pow2(exponent);
 }
 
-void div_2pow10(FloatBig& value, usize exponent) {
-    constexpr usize LARGEST = sizeof(POW10) / sizeof(POW10[0]) - 1;
+void div_2pow10(FloatBig& value, rstd::size_t exponent) {
+    constexpr rstd::size_t LARGEST = sizeof(POW10) / sizeof(POW10[0]) - 1;
     while (exponent > LARGEST) {
         value.div_rem_small(POW10[LARGEST]);
         exponent -= LARGEST;
@@ -152,22 +163,23 @@ void div_2pow10(FloatBig& value, usize exponent) {
     value.div_rem_small(POW10[exponent] << 1);
 }
 
-auto estimate_scaling_factor(u64 mant, i16 exponent) noexcept -> i16 {
-    const i64 nbits = 64 - static_cast<i64>(__builtin_clzll(mant - 1));
-    return static_cast<i16>(((nbits + exponent) * 1292913986) >> 32);
+auto estimate_scaling_factor(rstd::uint64_t mant, rstd::int16_t exponent) noexcept
+    -> rstd::int16_t {
+    const rstd::int64_t nbits = 64 - static_cast<rstd::int64_t>(__builtin_clzll(mant - 1));
+    return static_cast<rstd::int16_t>(((nbits + exponent) * 1292913986) >> 32);
 }
 
-auto round_up(u8* digits, usize len) noexcept -> u8 {
-    for (usize i = len; i != 0; --i) {
+auto round_up(rstd::uint8_t* digits, rstd::size_t len) noexcept -> rstd::uint8_t {
+    for (rstd::size_t i = len; i != 0; --i) {
         if (digits[i - 1] != '9') {
             ++digits[i - 1];
-            for (usize j = i; j < len; ++j) digits[j] = '0';
+            for (rstd::size_t j = i; j < len; ++j) digits[j] = '0';
             return 0;
         }
     }
     if (len != 0) {
         digits[0] = '1';
-        for (usize i = 1; i < len; ++i) digits[i] = '0';
+        for (rstd::size_t i = 1; i < len; ++i) digits[i] = '0';
     }
     return len == 0 ? '1' : '0';
 }
@@ -176,8 +188,8 @@ auto digit(FloatBig&       value,
            FloatBig const& scale,
            FloatBig const& scale2,
            FloatBig const& scale4,
-           FloatBig const& scale8) -> u8 {
-    u8 result = 0;
+           FloatBig const& scale8) -> rstd::uint8_t {
+    rstd::uint8_t result = 0;
     if (value.compare(scale8) >= 0) {
         value.sub(scale8);
         result += 8;
@@ -198,31 +210,31 @@ auto digit(FloatBig&       value,
 }
 
 struct Digits {
-    usize len;
-    i16   exponent;
+    rstd::size_t  len;
+    rstd::int16_t exponent;
 };
 
-auto format_shortest(Decoded const& decoded, u8* buffer) -> Digits {
-    i16 k = estimate_scaling_factor(decoded.mant + decoded.plus, decoded.exponent);
+auto format_shortest(Decoded const& decoded, rstd::uint8_t* buffer) -> Digits {
+    rstd::int16_t k = estimate_scaling_factor(decoded.mant + decoded.plus, decoded.exponent);
 
     FloatBig mant  = FloatBig::from_u64(decoded.mant);
     FloatBig minus = FloatBig::from_u64(decoded.minus);
     FloatBig plus  = FloatBig::from_u64(decoded.plus);
     FloatBig scale = FloatBig::from_small(1);
     if (decoded.exponent < 0) {
-        scale.mul_pow2(static_cast<usize>(-decoded.exponent));
+        scale.mul_pow2(static_cast<rstd::size_t>(-decoded.exponent));
     } else {
-        mant.mul_pow2(static_cast<usize>(decoded.exponent));
-        minus.mul_pow2(static_cast<usize>(decoded.exponent));
-        plus.mul_pow2(static_cast<usize>(decoded.exponent));
+        mant.mul_pow2(static_cast<rstd::size_t>(decoded.exponent));
+        minus.mul_pow2(static_cast<rstd::size_t>(decoded.exponent));
+        plus.mul_pow2(static_cast<rstd::size_t>(decoded.exponent));
     }
 
     if (k >= 0) {
-        mul_pow10(scale, static_cast<usize>(k));
+        mul_pow10(scale, static_cast<rstd::size_t>(k));
     } else {
-        mul_pow10(mant, static_cast<usize>(-k));
-        mul_pow10(minus, static_cast<usize>(-k));
-        mul_pow10(plus, static_cast<usize>(-k));
+        mul_pow10(mant, static_cast<rstd::size_t>(-k));
+        mul_pow10(minus, static_cast<rstd::size_t>(-k));
+        mul_pow10(plus, static_cast<rstd::size_t>(-k));
     }
 
     FloatBig upper = mant;
@@ -244,11 +256,12 @@ auto format_shortest(Decoded const& decoded, u8* buffer) -> Digits {
     scale4.mul_pow2(2);
     scale8.mul_pow2(3);
 
-    usize len = 0;
-    bool  down;
-    bool  up;
+    rstd::size_t len = 0;
+    bool         down;
+    bool         up;
     for (;;) {
-        buffer[len++] = static_cast<u8>('0' + digit(mant, scale, scale2, scale4, scale8));
+        buffer[len++] =
+            static_cast<rstd::uint8_t>('0' + digit(mant, scale, scale2, scale4, scale8));
 
         down  = decoded.inclusive ? mant.compare(minus) <= 0 : mant.compare(minus) < 0;
         upper = mant;
@@ -264,7 +277,7 @@ auto format_shortest(Decoded const& decoded, u8* buffer) -> Digits {
     FloatBig twice_mant = mant;
     twice_mant.mul_pow2(1);
     if (up && (! down || twice_mant.compare(scale) >= 0)) {
-        if (const u8 carry = round_up(buffer, len); carry != 0) {
+        if (const rstd::uint8_t carry = round_up(buffer, len); carry != 0) {
             buffer[len++] = carry;
             ++k;
         }
@@ -272,21 +285,24 @@ auto format_shortest(Decoded const& decoded, u8* buffer) -> Digits {
     return { len, k };
 }
 
-auto format_exact(Decoded const& decoded, u8* buffer, usize capacity, i16 limit) -> Digits {
-    i16 k = estimate_scaling_factor(decoded.mant, decoded.exponent);
+auto format_exact(Decoded const& decoded,
+                  rstd::uint8_t* buffer,
+                  rstd::size_t   capacity,
+                  rstd::int16_t  limit) -> Digits {
+    rstd::int16_t k = estimate_scaling_factor(decoded.mant, decoded.exponent);
 
     FloatBig mant  = FloatBig::from_u64(decoded.mant);
     FloatBig scale = FloatBig::from_small(1);
     if (decoded.exponent < 0) {
-        scale.mul_pow2(static_cast<usize>(-decoded.exponent));
+        scale.mul_pow2(static_cast<rstd::size_t>(-decoded.exponent));
     } else {
-        mant.mul_pow2(static_cast<usize>(decoded.exponent));
+        mant.mul_pow2(static_cast<rstd::size_t>(decoded.exponent));
     }
 
     if (k >= 0) {
-        mul_pow10(scale, static_cast<usize>(k));
+        mul_pow10(scale, static_cast<rstd::size_t>(k));
     } else {
-        mul_pow10(mant, static_cast<usize>(-k));
+        mul_pow10(mant, static_cast<rstd::size_t>(-k));
     }
 
     FloatBig half_ulp = scale;
@@ -298,12 +314,13 @@ auto format_exact(Decoded const& decoded, u8* buffer, usize capacity, i16 limit)
         mant.mul_small(10);
     }
 
-    usize len;
+    rstd::size_t len;
     if (k < limit) {
         len = 0;
     } else {
-        const i32 requested = static_cast<i32>(k) - limit;
-        len = static_cast<usize>(requested) < capacity ? static_cast<usize>(requested) : capacity;
+        const rstd::int32_t requested = static_cast<rstd::int32_t>(k) - limit;
+        len = static_cast<rstd::size_t>(requested) < capacity ? static_cast<rstd::size_t>(requested)
+                                                              : capacity;
     }
 
     if (len != 0) {
@@ -314,21 +331,22 @@ auto format_exact(Decoded const& decoded, u8* buffer, usize capacity, i16 limit)
         scale4.mul_pow2(2);
         scale8.mul_pow2(3);
 
-        for (usize i = 0; i < len; ++i) {
+        for (rstd::size_t i = 0; i < len; ++i) {
             if (mant.is_zero()) {
                 for (; i < len; ++i) buffer[i] = '0';
                 return { len, k };
             }
-            buffer[i] = static_cast<u8>('0' + digit(mant, scale, scale2, scale4, scale8));
+            buffer[i] =
+                static_cast<rstd::uint8_t>('0' + digit(mant, scale, scale2, scale4, scale8));
             mant.mul_small(10);
         }
     }
 
     FloatBig five_scale = scale;
     five_scale.mul_small(5);
-    const i8 order = mant.compare(five_scale);
+    const rstd::int8_t order = mant.compare(five_scale);
     if (order > 0 || (order == 0 && len != 0 && (buffer[len - 1] & 1) != 0)) {
-        if (const u8 carry = round_up(buffer, len); carry != 0) {
+        if (const rstd::uint8_t carry = round_up(buffer, len); carry != 0) {
             ++k;
             if (k > limit && len < capacity) buffer[len++] = carry;
         }
@@ -336,12 +354,12 @@ auto format_exact(Decoded const& decoded, u8* buffer, usize capacity, i16 limit)
     return { len, k };
 }
 
-auto max_buffer_len(i16 exponent) noexcept -> usize {
-    const i32 factor = exponent < 0 ? -12 : 5;
-    return 21 + static_cast<usize>(factor * static_cast<i32>(exponent)) / 16;
+auto max_buffer_len(rstd::int16_t exponent) noexcept -> rstd::size_t {
+    const rstd::int32_t factor = exponent < 0 ? -12 : 5;
+    return 21 + static_cast<rstd::size_t>(factor * static_cast<rstd::int32_t>(exponent)) / 16;
 }
 
-template<usize Capacity>
+template<rstd::size_t Capacity>
 auto make_decimal(FullDecoded const& decoded) -> Decimal<Capacity> {
     Decimal<Capacity> result {};
     result.category = decoded.category;
@@ -365,30 +383,31 @@ auto shortest(T value) -> ShortestDecimal {
 }
 
 export template<Float T>
-auto exact_fixed(T value, usize fractional_digits) -> ExactDecimal {
+auto exact_fixed(T value, rstd::size_t fractional_digits) -> ExactDecimal {
     const auto decoded = decode(value);
     auto       result  = make_decimal<DIGIT_CAPACITY>(decoded);
     if (decoded.category == Category::Finite) {
-        const usize capacity = max_buffer_len(decoded.finite.exponent);
-        const i16   limit    = fractional_digits < 0x8000
-                                   ? static_cast<i16>(-static_cast<i16>(fractional_digits))
-                                   : numeric_limits<i16>::min();
-        const auto  digits   = format_exact(decoded.finite, result.digits.data(), capacity, limit);
-        result.len           = digits.len;
-        result.exponent      = digits.exponent;
+        const rstd::size_t  capacity = max_buffer_len(decoded.finite.exponent);
+        const rstd::int16_t limit =
+            fractional_digits < 0x8000
+                ? static_cast<rstd::int16_t>(-static_cast<rstd::int16_t>(fractional_digits))
+                : ::raw_integer_min<rstd::int16_t>();
+        const auto digits = format_exact(decoded.finite, result.digits.data(), capacity, limit);
+        result.len        = digits.len;
+        result.exponent   = digits.exponent;
     }
     return result;
 }
 
 export template<Float T>
-auto exact_significant(T value, usize significant_digits) -> ExactDecimal {
+auto exact_significant(T value, rstd::size_t significant_digits) -> ExactDecimal {
     const auto decoded = decode(value);
     auto       result  = make_decimal<DIGIT_CAPACITY>(decoded);
     if (decoded.category == Category::Finite) {
-        const usize max_len  = max_buffer_len(decoded.finite.exponent);
-        const usize capacity = significant_digits < max_len ? significant_digits : max_len;
-        const auto  digits   = format_exact(
-            decoded.finite, result.digits.data(), capacity, numeric_limits<i16>::min());
+        const rstd::size_t max_len  = max_buffer_len(decoded.finite.exponent);
+        const rstd::size_t capacity = significant_digits < max_len ? significant_digits : max_len;
+        const auto         digits   = format_exact(
+            decoded.finite, result.digits.data(), capacity, ::raw_integer_min<rstd::int16_t>());
         result.len      = digits.len;
         result.exponent = digits.exponent;
     }

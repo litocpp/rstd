@@ -2,7 +2,6 @@ module;
 #include <rstd/macro.hpp>
 
 #ifdef RSTD_OS_LINUX
-#include <arpa/inet.h>
 #include <linux/futex.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>

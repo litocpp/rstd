@@ -37,9 +37,13 @@ public:
     static constexpr auto exact(usize count) noexcept -> NumArgs {
         return NumArgs { count, count, false };
     }
-    static constexpr auto optional() noexcept -> NumArgs { return NumArgs { 0, 1, false }; }
-    static constexpr auto any() noexcept -> NumArgs { return NumArgs { 0, 0, true }; }
-    static constexpr auto at_least_one() noexcept -> NumArgs { return NumArgs { 1, 0, true }; }
+    static constexpr auto optional() noexcept -> NumArgs {
+        return NumArgs { usize(), usize(1), false };
+    }
+    static constexpr auto any() noexcept -> NumArgs { return NumArgs { usize(), usize(), true }; }
+    static constexpr auto at_least_one() noexcept -> NumArgs {
+        return NumArgs { usize(1), usize(), true };
+    }
     static constexpr auto range(usize minimum, usize maximum) noexcept -> NumArgs {
         return NumArgs { minimum, maximum, false };
     }
@@ -181,7 +185,7 @@ public:
         return Arg { id,
                      Box<dyn<ValueParser<T>>>::make(rstd::move(parser)),
                      ArgAction::Set(),
-                     NumArgs::exact(1),
+                     NumArgs::exact(usize(1)),
                      rstd::move(possible_values) };
     }
 
@@ -191,7 +195,7 @@ public:
         return Arg { id,
                      Box<dyn<ValueParser<T>>>::make(NoValueParser<T> {}),
                      ArgAction::SetTrue(),
-                     NumArgs::exact(0) };
+                     NumArgs::exact(usize()) };
     }
 
     static auto count(ref<str> id) -> Arg
@@ -200,7 +204,7 @@ public:
         return Arg { id,
                      Box<dyn<ValueParser<T>>>::make(NoValueParser<T> {}),
                      ArgAction::Count(),
-                     NumArgs::exact(0) };
+                     NumArgs::exact(usize()) };
     }
 
     static auto help_action(ref<str> id) -> Arg
@@ -209,7 +213,7 @@ public:
         return Arg { id,
                      Box<dyn<ValueParser<T>>>::make(NoValueParser<T> {}),
                      ArgAction::Help(),
-                     NumArgs::exact(0) };
+                     NumArgs::exact(usize()) };
     }
 
     static auto version_action(ref<str> id) -> Arg
@@ -218,7 +222,7 @@ public:
         return Arg { id,
                      Box<dyn<ValueParser<T>>>::make(NoValueParser<T> {}),
                      ArgAction::Version(),
-                     NumArgs::exact(0) };
+                     NumArgs::exact(usize()) };
     }
 
     auto short_name(char name) & -> Arg& {
@@ -374,7 +378,7 @@ public:
         return Arg { id,
                      Box<dyn<ValueParser<T>>>::make(NoValueParser<T> {}),
                      ArgAction::SetFalse(),
-                     NumArgs::exact(0) };
+                     NumArgs::exact(usize()) };
     }
 };
 

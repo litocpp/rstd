@@ -1,5 +1,4 @@
 module;
-#include <atomic>
 #include <chrono>
 
 export module rstd.alloc:hash.random;
@@ -9,19 +8,20 @@ namespace rstd::hash
 {
 
 constexpr auto mix_seed(u64 value) noexcept -> u64 {
-    value ^= value >> 30;
-    value *= 0xbf58476d1ce4e5b9ULL;
-    value ^= value >> 27;
-    value *= 0x94d049bb133111ebULL;
-    return value ^ (value >> 31);
+    value ^= value >> u64(30);
+    value *= u64(0xbf58476d1ce4e5b9ULL);
+    value ^= value >> u64(27);
+    value *= u64(0x94d049bb133111ebULL);
+    return value ^ (value >> u64(31));
 }
 
 inline auto next_seed() noexcept -> u64 {
-    static std::atomic<u64> counter { 0x9e3779b97f4a7c15ULL };
-    auto                    now =
-        static_cast<u64>(std::chrono::high_resolution_clock::now().time_since_epoch().count());
-    auto sequence = counter.fetch_add(0x9e3779b97f4a7c15ULL, std::memory_order_relaxed);
-    return mix_seed(now ^ sequence ^ reinterpret_cast<usize>(&counter));
+    constexpr auto                   increment = u64(0x9e3779b97f4a7c15ULL);
+    static sync::atomic::Atomic<u64> counter { increment };
+    auto now = as_cast<u64>(std::chrono::high_resolution_clock::now().time_since_epoch().count());
+    auto sequence = counter.fetch_add(increment, sync::atomic::Ordering::Relaxed);
+    auto address  = as_cast<u64>(reinterpret_cast<rstd::uintptr_t>(&counter));
+    return mix_seed(now ^ sequence ^ address);
 }
 
 export class RandomState {

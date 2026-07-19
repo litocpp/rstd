@@ -75,7 +75,7 @@ TEST(ArgparseHelp, RendersParseErrorsAsStderrMetadataWithoutIo) {
 
     auto report = parser.render_error(error);
     EXPECT_EQ(report.target(), OutputTarget::Tag::Stderr);
-    EXPECT_EQ(report.exit_code(), 2);
+    EXPECT_EQ(report.exit_code(), i32(2));
     EXPECT_EQ(report.text(),
               "error: unknown argument '--bad'\n"
               "\n"

@@ -37,10 +37,11 @@ TEST(Env, VarOsPreservesInvalidUnicode) {
 
     auto value = rstd::env::var_os("RSTD_TEST_VAR_OS");
     ASSERT_TRUE(value.is_some());
-    auto bytes = value->as_os_str().as_encoded_bytes();
-    ASSERT_EQ(bytes.len(), 2u);
-    EXPECT_EQ(bytes[0], static_cast<rstd::u8>('v'));
-    EXPECT_EQ(bytes[1], static_cast<rstd::u8>(0xff));
+    auto os_str = value->as_os_str();
+    auto bytes  = os_str.as_encoded_bytes();
+    ASSERT_EQ(bytes.len(), rstd::usize(2));
+    EXPECT_EQ(rstd::byte_value(bytes[rstd::usize()]), rstd::u8('v'));
+    EXPECT_EQ(rstd::byte_value(bytes[rstd::usize(1)]), rstd::u8(0xff));
     EXPECT_TRUE(value->as_os_str().to_str().is_none());
 
     rstd::env::remove_var("RSTD_TEST_VAR_OS");
@@ -65,11 +66,11 @@ TEST(Env, OverwriteVar) {
 TEST(Env, Args) {
     // glibc .init_array captured the real process argv; there is always argv[0].
     auto n = rstd::env::args().count();
-    EXPECT_GE(n, 1u);
+    EXPECT_GE(n, rstd::usize(1));
 
     auto first = rstd::env::args().next();
     ASSERT_TRUE(first.is_some());
-    EXPECT_GT(first.unwrap().len(), 0u); // program path is non-empty
+    EXPECT_GT(first.unwrap().len(), rstd::usize()); // program path is non-empty
 }
 
 TEST(Env, ArgsManualInit) {
@@ -77,14 +78,14 @@ TEST(Env, ArgsManualInit) {
     rstd::env::args_init(3, argv);
 
     auto collected = rstd::env::args().collect<rstd::vec::Vec<rstd::string::String>>();
-    ASSERT_EQ(collected.len(), 3u);
-    EXPECT_EQ("prog", collected[0]);
-    EXPECT_EQ("--flag", collected[1]);
-    EXPECT_EQ("value", collected[2]);
+    ASSERT_EQ(collected.len(), rstd::usize(3));
+    EXPECT_EQ("prog", collected[rstd::usize()]);
+    EXPECT_EQ("--flag", collected[rstd::usize(1)]);
+    EXPECT_EQ("value", collected[rstd::usize(2)]);
 
     // args() is an ExactSize + DoubleEnded iterator
     auto it = rstd::env::args();
-    EXPECT_EQ(rstd::as<rstd::iter::ExactSizeIterator>(it).len(), 3u);
+    EXPECT_EQ(rstd::as<rstd::iter::ExactSizeIterator>(it).len(), rstd::usize(3));
     auto last = rstd::env::args().next_back();
     ASSERT_TRUE(last.is_some());
     EXPECT_EQ("value", last.unwrap());
@@ -96,14 +97,15 @@ TEST(Env, ArgsOsPreservesBytes) {
     rstd::env::args_init(2, argv);
 
     auto args = rstd::env::args_os();
-    EXPECT_EQ(rstd::as<rstd::iter::ExactSizeIterator>(args).len(), 2u);
+    EXPECT_EQ(rstd::as<rstd::iter::ExactSizeIterator>(args).len(), rstd::usize(2));
 
     auto last = args.next_back();
     ASSERT_TRUE(last.is_some());
-    auto bytes = last->as_os_str().as_encoded_bytes();
-    ASSERT_EQ(bytes.len(), 2u);
-    EXPECT_EQ(bytes[0], static_cast<rstd::u8>('v'));
-    EXPECT_EQ(bytes[1], static_cast<rstd::u8>(0xff));
+    auto os_str = last->as_os_str();
+    auto bytes  = os_str.as_encoded_bytes();
+    ASSERT_EQ(bytes.len(), rstd::usize(2));
+    EXPECT_EQ(rstd::byte_value(bytes[rstd::usize()]), rstd::u8('v'));
+    EXPECT_EQ(rstd::byte_value(bytes[rstd::usize(1)]), rstd::u8(0xff));
     EXPECT_TRUE(last->as_os_str().to_str().is_none());
 }
 
@@ -113,5 +115,5 @@ TEST(Env, ArgsRejectInvalidUnicodeDuringIteration) {
 
 TEST(Process, Id) {
     auto pid = rstd::process::id();
-    EXPECT_GT(pid, 0u);
+    EXPECT_GT(pid, rstd::u32());
 }

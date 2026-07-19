@@ -1,7 +1,8 @@
 module;
 #include <rstd/macro.hpp>
 export module rstd.core:str.str;
-export import :core;
+import :num.types;
+export import :slice;
 export import :fmt;
 export import :marker;
 export import :char_;
@@ -39,14 +40,14 @@ struct Impl<ptr_::Pointee, str_::Str> {
 };
 
 template<>
-struct ref<str_::Str> : ref_base<ref<str_::Str>, u8[], false> {
+struct ref<str_::Str> : ref_base<ref<str_::Str>, rstd::uint8_t[], false> {
 public:
     USE_TRAIT(ref)
 
     using Target = str_::Str;
 
-    u8 const* p { nullptr };
-    usize     length { 0 };
+    rstd::uint8_t const* p { nullptr };
+    usize                length {};
 
     constexpr ref() noexcept = default;
 
@@ -54,27 +55,41 @@ public:
         requires str_::ViewableStr<T>
     constexpr ref(const T& t [[clang::lifetimebound]]
                   ) noexcept(noexcept(rstd::declval<T>().data()))
-        : p((u8 const*)t.data()), length(t.size()) {};
+        : p(reinterpret_cast<rstd::uint8_t const*>(t.data())), length(t.size()) {};
 
-    constexpr ref(u8 const* p [[clang::lifetimebound]], usize length) noexcept
+    constexpr ref(rstd::uint8_t const* p [[clang::lifetimebound]], usize length) noexcept
         : p(p), length(length) {}
-    constexpr ref(slice<u8> p [[clang::lifetimebound]]) noexcept: ref(p.p, p.length) {}
+    ref(char const* p [[clang::lifetimebound]]
+        ,
+        usize length) noexcept
+        : p(reinterpret_cast<rstd::uint8_t const*>(p)), length(length) {}
+    ref(slice<u8> bytes [[clang::lifetimebound]]
+        ) noexcept
+        : ref(rstd::as_bytes(bytes).as_raw_ptr(), bytes.length) {}
 
-    constexpr ref(char const* c_str [[clang::lifetimebound]]) noexcept
-        : ref(rstd::bit_cast<u8 const*>(c_str), rstd::strlen(c_str)) {}
+    ref(char const* c_str [[clang::lifetimebound]]
+        ) noexcept
+        : ref(reinterpret_cast<rstd::uint8_t const*>(c_str), usize(rstd::strlen(c_str))) {}
 
     static constexpr auto from_raw_parts(value_type* p [[clang::lifetimebound]],
                                          usize       length) noexcept -> Self {
         return { p, length };
     }
+    static auto from_raw_parts(char const* p [[clang::lifetimebound]], usize length) noexcept
+        -> Self {
+        return { p, length };
+    }
 
     constexpr auto size() const { return length; }
     constexpr auto data() const { return p; }
+    constexpr auto operator[](usize index) const noexcept -> u8 {
+        return u8(p[index.to_primitive()]);
+    }
 
     constexpr auto begin() const { return p; }
-    constexpr auto end() const { return p + length; }
+    constexpr auto end() const { return p + length.to_primitive(); }
 
-    constexpr operator bool() const { return length > 0 && p != nullptr; }
+    constexpr operator bool() const { return length != usize() && p != nullptr; }
 
     constexpr auto deref() const noexcept -> ref<Target> { return *this; }
 };
@@ -86,16 +101,16 @@ export using str = str_::Str;
 export [[nodiscard]]
 constexpr bool operator==(ref<str> a, ref<str> b) noexcept {
     return a.size() == b.size() &&
-           __builtin_strncmp((char const*)a.data(), (char* const)b.data(), a.size()) == 0;
+           __builtin_memcmp(a.data(), b.data(), a.size().to_primitive()) == 0;
 }
 
 template<>
-struct ptr<str_::Str> : ptr_base<ptr<str_::Str>, u8[], false> {
+struct ptr<str_::Str> : ptr_base<ptr<str_::Str>, rstd::uint8_t[], false> {
 public:
-    u8 const* p { nullptr };
-    usize     length { 0 };
+    rstd::uint8_t const* p { nullptr };
+    usize                length {};
 
-    using value_type         = u8;
+    using value_type         = rstd::uint8_t;
     using Self               = ptr;
     constexpr ptr() noexcept = default;
 
@@ -103,22 +118,33 @@ public:
         requires str_::ViewableStr<T>
     constexpr ptr(const T& t [[clang::lifetimebound]]
                   ) noexcept(noexcept(rstd::declval<T>().data()))
-        : p((u8 const*)t.data()), length(t.size()) {};
+        : p(reinterpret_cast<rstd::uint8_t const*>(t.data())), length(t.size()) {};
 
-    constexpr ptr(u8 const* p [[clang::lifetimebound]], usize length) noexcept
+    constexpr ptr(rstd::uint8_t const* p [[clang::lifetimebound]], usize length) noexcept
         : p(p), length(length) {}
+    ptr(char const* p [[clang::lifetimebound]]
+        ,
+        usize length) noexcept
+        : p(reinterpret_cast<rstd::uint8_t const*>(p)), length(length) {}
 
     static constexpr auto from_raw_parts(value_type* p [[clang::lifetimebound]],
                                          usize       length) noexcept -> Self {
         return { p, length };
     }
+    static auto from_raw_parts(char const* p [[clang::lifetimebound]], usize length) noexcept
+        -> Self {
+        return { p, length };
+    }
 
     constexpr auto size() const { return length; }
     constexpr auto data() const { return p; }
+    constexpr auto operator[](usize index) const noexcept -> u8 {
+        return u8(p[index.to_primitive()]);
+    }
     constexpr auto begin() const { return p; }
-    constexpr auto end() const { return p + length; }
+    constexpr auto end() const { return p + length.to_primitive(); }
 
-    constexpr operator bool() const { return length > 0 && p != nullptr; }
+    constexpr operator bool() const { return length != usize() && p != nullptr; }
 };
 
 } // namespace rstd
@@ -131,8 +157,8 @@ namespace rstd::str_
 ///
 /// Supports `next()` for manual iteration and `begin()`/`end()` for range-for.
 export struct Chars {
-    u8 const* _ptr;
-    u8 const* _end;
+    rstd::uint8_t const* _ptr;
+    rstd::uint8_t const* _end;
 
     /// Returns `true` if there are no remaining code points.
     constexpr auto is_empty() const noexcept -> bool { return _ptr >= _end; }
@@ -141,14 +167,14 @@ export struct Chars {
     /// Returns `char_::REPLACEMENT` with no advance if already at end.
     /// Use `is_empty()` to check before calling.
     constexpr auto next_unchecked() noexcept -> char32_t {
-        auto [cp, n] = char_::decode_utf8(_ptr, static_cast<usize>(_end - _ptr));
-        _ptr += n;
+        auto [cp, n] = char_::decode_utf8(_ptr, usize(_end - _ptr));
+        _ptr += n.to_primitive();
         return cp;
     }
 
     /// Returns the unconsumed portion of the string.
     constexpr auto as_str() const noexcept -> ref<str> {
-        return ref<str>::from_raw_parts(_ptr, static_cast<usize>(_end - _ptr));
+        return ref<str>::from_raw_parts(_ptr, usize(_end - _ptr));
     }
 
     // ── range-for support ────────────────────────────────────────────
@@ -188,9 +214,9 @@ namespace rstd
 {
 
 /// Creates a string slice from a byte slice without UTF-8 validation.
-export constexpr auto from_utf8_unchecked(slice<u8> bytes [[clang::lifetimebound]]) noexcept
-    -> ref<str> {
-    return ref<str>::from_raw_parts(const_cast<u8*>(&*bytes), bytes.len());
+export auto from_utf8_unchecked(slice<u8> bytes [[clang::lifetimebound]]) noexcept -> ref<str> {
+    auto raw = rstd::as_bytes(bytes);
+    return ref<str>::from_raw_parts(raw.as_raw_ptr(), raw.len());
 }
 
 } // namespace rstd
@@ -200,12 +226,12 @@ namespace rstd::str_
 
 /// Returns `true` if the string is empty (zero bytes).
 export constexpr auto is_empty(ref<str> s) noexcept -> bool {
-    return s.size() == 0;
+    return s.size() == usize();
 }
 
 /// Returns `true` if all bytes are ASCII.
 export constexpr auto is_ascii(ref<str> s) noexcept -> bool {
-    for (usize i = 0; i < s.size(); i++) {
+    for (rstd::size_t i = 0; i < s.size().to_primitive(); ++i) {
         if (s.data()[i] > 0x7F) return false;
     }
     return true;
@@ -216,22 +242,25 @@ export constexpr auto is_char_boundary(ref<str> s, usize pos) noexcept -> bool {
     return char_::is_char_boundary(s.data(), s.size(), pos);
 }
 
-/// Returns the byte slice of the string.
-export constexpr auto as_bytes(ref<str> s [[clang::lifetimebound]]) noexcept -> slice<u8> {
-    return slice<u8>::from_raw_parts(s.data(), s.size());
+/// Returns the raw byte slice of the string.
+export constexpr auto as_bytes(ref<str> s [[clang::lifetimebound]]) noexcept -> slice<byte> {
+    if (s.size() == usize()) return {};
+    return slice<byte>::from_raw_parts(s.data(), s.size());
 }
 
 /// Returns a `Chars` iterator over the string's Unicode code points.
 export constexpr auto chars(ref<str> s [[clang::lifetimebound]]) noexcept -> Chars {
-    return { s.data(), s.data() + s.size() };
+    return { s.data(), s.data() + s.size().to_primitive() };
 }
 
 /// Returns `true` if `needle` is a substring of `haystack`.
 export constexpr auto contains(ref<str> haystack, ref<str> needle) noexcept -> bool {
-    if (needle.size() == 0) return true;
+    if (needle.size() == usize()) return true;
     if (needle.size() > haystack.size()) return false;
-    for (usize i = 0; i <= haystack.size() - needle.size(); i++) {
-        if (__builtin_memcmp(haystack.data() + i, needle.data(), needle.size()) == 0) return true;
+    auto const limit = (haystack.size() - needle.size()).to_primitive();
+    for (rstd::size_t i = 0; i <= limit; ++i) {
+        if (__builtin_memcmp(haystack.data() + i, needle.data(), needle.size().to_primitive()) == 0)
+            return true;
     }
     return false;
 }
@@ -239,30 +268,32 @@ export constexpr auto contains(ref<str> haystack, ref<str> needle) noexcept -> b
 /// Returns `true` if the string starts with `prefix`.
 export constexpr auto starts_with(ref<str> s, ref<str> prefix) noexcept -> bool {
     if (prefix.size() > s.size()) return false;
-    return __builtin_memcmp(s.data(), prefix.data(), prefix.size()) == 0;
+    return __builtin_memcmp(s.data(), prefix.data(), prefix.size().to_primitive()) == 0;
 }
 
 /// Returns `true` if the string ends with `suffix`.
 export constexpr auto ends_with(ref<str> s, ref<str> suffix) noexcept -> bool {
     if (suffix.size() > s.size()) return false;
-    return __builtin_memcmp(s.data() + s.size() - suffix.size(), suffix.data(), suffix.size()) == 0;
+    return __builtin_memcmp(s.data() + (s.size() - suffix.size()).to_primitive(),
+                            suffix.data(),
+                            suffix.size().to_primitive()) == 0;
 }
 
 /// Splits the string at the given byte position.
 export constexpr auto split_at(ref<str> s [[clang::lifetimebound]], usize mid) noexcept
     -> rstd::tuple<ref<str>, ref<str>> {
-    return { ref<str>::from_raw_parts(const_cast<u8*>(s.data()), mid),
-             ref<str>::from_raw_parts(const_cast<u8*>(s.data() + mid), s.size() - mid) };
+    return { ref<str>::from_raw_parts(s.data(), mid),
+             ref<str>::from_raw_parts(s.data() + mid.to_primitive(), s.size() - mid) };
 }
 
 /// Returns the string with leading and trailing ASCII whitespace removed.
 export constexpr auto trim(ref<str> s [[clang::lifetimebound]]) noexcept -> ref<str> {
     auto* b = s.data();
-    auto* e = b + s.size();
+    auto* e = b + s.size().to_primitive();
     while (b < e && (*b == ' ' || *b == '\t' || *b == '\n' || *b == '\r')) ++b;
     while (e > b && (*(e - 1) == ' ' || *(e - 1) == '\t' || *(e - 1) == '\n' || *(e - 1) == '\r'))
         --e;
-    return ref<str>::from_raw_parts(const_cast<u8*>(b), static_cast<usize>(e - b));
+    return ref<str>::from_raw_parts(b, usize(e - b));
 }
 
 /// Extracts the last `count` path components from a path string.
@@ -272,19 +303,20 @@ export constexpr auto trim(ref<str> s [[clang::lifetimebound]]) noexcept -> ref<
 export constexpr auto extract_last(ref<str> path [[clang::lifetimebound]], usize count)
     -> ref<str> {
     auto pos = path.size();
-    while (pos != 0) {
-        if (path[pos - 1] == '/' || path[pos - 1] == '\\') {
+    while (pos != usize()) {
+        auto const index = (pos - usize(1)).to_primitive();
+        if (path.data()[index] == '/' || path.data()[index] == '\\') {
             --count;
         }
-        if (count != 0) {
+        if (count != usize()) {
             --pos;
         } else {
             break;
         }
     }
-    auto begin = path.begin() + pos;
-    auto size  = path.end() - begin;
-    return ref<str>::from_raw_parts(begin, size);
+    auto begin = path.begin() + pos.to_primitive();
+    auto size  = static_cast<rstd::size_t>(path.end() - begin);
+    return ref<str>::from_raw_parts(begin, usize(size));
 }
 } // namespace rstd::str_
 
@@ -299,9 +331,10 @@ struct Impl<fmt::Display, ref<str>> : ImplBase<ref<str>> {
 template<>
 struct Impl<fmt::Debug, ref<str>> : ImplBase<ref<str>> {
     auto fmt(fmt::Formatter& f) const -> bool {
-        if (! f.write_raw((const u8*)"\"", 1)) return false;
-        if (! f.write_raw(this->self().data(), this->self().size())) return false;
-        return f.write_raw((const u8*)"\"", 1);
+        auto const* quote = reinterpret_cast<rstd::uint8_t const*>("\"");
+        if (! f.write_raw(quote, rstd::size_t(1))) return false;
+        if (! f.write_raw(this->self().data(), this->self().size().to_primitive())) return false;
+        return f.write_raw(quote, rstd::size_t(1));
     }
 };
 

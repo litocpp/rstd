@@ -7,12 +7,12 @@ namespace rstd::sys::sync::once::futex
 using Primitive = pal::futex::Primitive;
 using Futex     = pal::futex::Futex;
 
-constexpr Primitive INCOMPLETE = 0;
-constexpr Primitive POISONED   = 1;
-constexpr Primitive RUNNING    = 2;
-constexpr Primitive COMPLETE   = 3;
-constexpr Primitive QUEUED     = 4;
-constexpr Primitive STATE_MASK = 0x11;
+constexpr Primitive INCOMPLETE {};
+constexpr Primitive POISONED { static_cast<Primitive::primitive_type>(1) };
+constexpr Primitive RUNNING { static_cast<Primitive::primitive_type>(2) };
+constexpr Primitive COMPLETE { static_cast<Primitive::primitive_type>(3) };
+constexpr Primitive QUEUED { static_cast<Primitive::primitive_type>(4) };
+constexpr Primitive STATE_MASK { static_cast<Primitive::primitive_type>(0x11) };
 
 class OnceState {
 public:

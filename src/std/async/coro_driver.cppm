@@ -28,11 +28,11 @@ enum class DriveActionKind
 class DriveAction {
     DriveActionKind  m_kind { DriveActionKind::Suspended };
     FacilityEndpoint m_endpoint;
-    usize            m_facility_id { 0 };
+    rstd::uintptr_t  m_facility_id {};
 
     explicit DriveAction(DriveActionKind kind): m_kind(kind) {}
 
-    explicit DriveAction(usize facility_id)
+    explicit DriveAction(rstd::uintptr_t facility_id)
         : m_kind(DriveActionKind::SubmitCompletion), m_facility_id(facility_id) {}
 
     explicit DriveAction(FacilityEndpoint endpoint)
@@ -45,7 +45,7 @@ public:
         return DriveAction { rstd::move(endpoint) };
     }
 
-    static auto submit_completion(usize facility_id) -> DriveAction {
+    static auto submit_completion(rstd::uintptr_t facility_id) -> DriveAction {
         return DriveAction { facility_id };
     }
 
@@ -72,7 +72,7 @@ public:
         return m_kind == DriveActionKind::FinalSuspended;
     }
     auto take_endpoint() -> FacilityEndpoint { return rstd::move(m_endpoint); }
-    auto facility_id() const noexcept -> usize { return m_facility_id; }
+    auto facility_id() const noexcept -> rstd::uintptr_t { return m_facility_id; }
 };
 
 template<typename T>

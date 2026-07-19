@@ -4,7 +4,7 @@ import rstd.core;
 export namespace rstd::fs
 {
 
-enum class FileTypeKind : u8
+enum class FileTypeKind : rstd::uint8_t
 {
     Unknown,
     File,

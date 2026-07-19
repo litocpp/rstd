@@ -201,18 +201,18 @@ TEST(Option, TakeLeavesNone) {
 TEST(Option, NonZeroNicheStorage) {
     using NonZeroU64 = num::nonzero::NonZero<u64>;
 
-    auto value = Some(NonZeroU64::make_unchecked(11));
+    auto value = Some(NonZeroU64::make_unchecked(u64(11)));
     ASSERT_TRUE(value.is_some());
-    EXPECT_EQ(value.unwrap().get(), 11u);
+    EXPECT_EQ(value.unwrap().get(), u64(11));
 
     value = None<NonZeroU64>();
     EXPECT_TRUE(value.is_none());
 
-    value      = Some(NonZeroU64::make_unchecked(12));
+    value      = Some(NonZeroU64::make_unchecked(u64(12)));
     auto taken = value.take();
     EXPECT_TRUE(value.is_none());
     ASSERT_TRUE(taken.is_some());
-    EXPECT_EQ(taken.unwrap().get(), 12u);
+    EXPECT_EQ(taken.unwrap().get(), u64(12));
 }
 
 TEST(Option, SelfMoveAssignmentKeepsValue) {

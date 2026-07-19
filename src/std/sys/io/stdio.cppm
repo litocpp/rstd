@@ -19,33 +19,33 @@ namespace libc = rstd::sys::libc;
 
 #if RSTD_OS_UNIX
 
-/// Write `len` bytes from `buf` to file descriptor `fd`.
-/// Automatically retries on EINTR.  Returns bytes written.
-export auto write_fd(int fd, const u8* buf, usize len) noexcept -> Result<usize> {
+/// Writes bytes to file descriptor `fd`, retrying on EINTR.
+export auto write_fd(int fd, slice<byte> buf) noexcept -> Result<usize> {
     while (true) {
-        auto n = libc::write(fd, buf, len);
+        auto n = libc::write(fd, buf.as_raw_ptr(), buf.len().to_primitive());
         if (n >= 0) return Ok(usize(n));
         auto err = libc::get_errno();
         if (err == libc::EINTR) continue;
-        return Err(Error::from_raw_os_error(err));
+        return Err(Error::from_raw_os_error(rstd::io::error::RawOsError(
+            static_cast<rstd::io::error::RawOsError::primitive_type>(err))));
     }
 }
 
-/// Read up to `len` bytes from file descriptor `fd` into `buf`.
-/// Automatically retries on EINTR.  Returns bytes read (0 = EOF).
-export auto read_fd(int fd, u8* buf, usize len) noexcept -> Result<usize> {
+/// Reads bytes from file descriptor `fd`, retrying on EINTR.
+export auto read_fd(int fd, mut_ref<byte[]> buf) noexcept -> Result<usize> {
     while (true) {
-        auto n = libc::read(fd, buf, len);
+        auto n = libc::read(fd, buf.as_raw_ptr(), buf.len().to_primitive());
         if (n >= 0) return Ok(usize(n));
         auto err = libc::get_errno();
         if (err == libc::EINTR) continue;
-        return Err(Error::from_raw_os_error(err));
+        return Err(Error::from_raw_os_error(rstd::io::error::RawOsError(
+            static_cast<rstd::io::error::RawOsError::primitive_type>(err))));
     }
 }
 
 #elif RSTD_OS_WINDOWS
 
-export auto write_fd(int fd, const u8* buf, usize len) noexcept -> Result<usize> {
+export auto write_fd(int fd, slice<byte> buf) noexcept -> Result<usize> {
     HANDLE h;
     switch (fd) {
     case 1: h = GetStdHandle(M_STD_OUTPUT_HANDLE); break;
@@ -57,14 +57,15 @@ export auto write_fd(int fd, const u8* buf, usize len) noexcept -> Result<usize>
             Error::from_raw_os_error(static_cast<rstd::io::error::RawOsError>(GetLastError())));
     }
     DWORD written = 0;
-    if (! WriteFile(h, buf, static_cast<DWORD>(len), &written, nullptr)) {
+    if (! WriteFile(
+            h, buf.as_raw_ptr(), static_cast<DWORD>(buf.len().to_primitive()), &written, nullptr)) {
         return Err(
             Error::from_raw_os_error(static_cast<rstd::io::error::RawOsError>(GetLastError())));
     }
     return Ok(usize(written));
 }
 
-export auto read_fd(int fd, u8* buf, usize len) noexcept -> Result<usize> {
+export auto read_fd(int fd, mut_ref<byte[]> buf) noexcept -> Result<usize> {
     if (fd != 0) {
         return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
     }
@@ -74,7 +75,11 @@ export auto read_fd(int fd, u8* buf, usize len) noexcept -> Result<usize> {
             Error::from_raw_os_error(static_cast<rstd::io::error::RawOsError>(GetLastError())));
     }
     DWORD read_bytes = 0;
-    if (! ReadFile(h, buf, static_cast<DWORD>(len), &read_bytes, nullptr)) {
+    if (! ReadFile(h,
+                   buf.as_raw_ptr(),
+                   static_cast<DWORD>(buf.len().to_primitive()),
+                   &read_bytes,
+                   nullptr)) {
         return Err(
             Error::from_raw_os_error(static_cast<rstd::io::error::RawOsError>(GetLastError())));
     }
@@ -83,11 +88,11 @@ export auto read_fd(int fd, u8* buf, usize len) noexcept -> Result<usize> {
 
 #else
 
-export auto write_fd(int, const u8*, usize) noexcept -> Result<usize> {
+export auto write_fd(int, slice<byte>) noexcept -> Result<usize> {
     return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
 }
 
-export auto read_fd(int, u8*, usize) noexcept -> Result<usize> {
+export auto read_fd(int, mut_ref<byte[]>) noexcept -> Result<usize> {
     return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
 }
 

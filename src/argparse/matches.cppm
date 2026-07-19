@@ -14,7 +14,7 @@ struct MatchedArg {
     Vec<OsString>                 raw_values;
     Vec<usize>                    indices;
     Vec<usize>                    occurrence_ends;
-    usize                         occurrences { 0 };
+    usize                         occurrences {};
     bool                          from_default { false };
 
     MatchedArg()
@@ -38,7 +38,7 @@ RSTD_TAG_ENUM_WITH_DEFAULT(ValueSource, RSTD_ARGPARSE_VALUE_SOURCE_VARIANTS, Com
 template<typename T>
 class Values : public DefaultInClass<Values<T>, iter::Iterator> {
     slice<Box<dyn<any::Any>>> values_;
-    usize                     next_ { 0 };
+    usize                     next_ {};
 
     explicit Values(slice<Box<dyn<any::Any>>> values): values_(values) {}
     friend class Matches;
@@ -90,12 +90,12 @@ public:
             return Err(MatchAccessError::WrongType());
         }
         if (spec.action.is_Append() ||
-            (spec.num_args.maximum().is_none() || *spec.num_args.maximum() > 1)) {
+            (spec.num_args.maximum().is_none() || *spec.num_args.maximum() > usize(1))) {
             return Err(MatchAccessError::IncompatibleAccessor());
         }
         const auto& matched = args_[key.slot_];
         if (matched.typed_values.is_empty()) return Ok(None());
-        auto value = any::downcast_ref<T>(matched.typed_values[0].as_ref());
+        auto value = any::downcast_ref<T>(matched.typed_values[usize()].as_ref());
         if (value.is_none()) return Err(MatchAccessError::WrongType());
         return Ok(rstd::move(value));
     }
@@ -117,19 +117,19 @@ public:
     [[nodiscard]]
     auto contains(ref<str> id) const -> bool {
         auto slot = schema_->id_index.get(id);
-        return slot.is_some() && args_[**slot].occurrences != 0;
+        return slot.is_some() && args_[**slot].occurrences != usize();
     }
 
     [[nodiscard]]
     auto occurrences(ref<str> id) const -> usize {
         auto slot = schema_->id_index.get(id);
-        return slot.is_some() ? args_[**slot].occurrences : 0;
+        return slot.is_some() ? args_[**slot].occurrences : usize();
     }
 
     [[nodiscard]]
     auto value_source(ref<str> id) const -> Option<ValueSource> {
         auto slot = schema_->id_index.get(id);
-        if (slot.is_none() || args_[**slot].occurrences == 0) return None();
+        if (slot.is_none() || args_[**slot].occurrences == usize()) return None();
         return args_[**slot].from_default ? Some(ValueSource::DefaultValue())
                                           : Some(ValueSource::CommandLine());
     }

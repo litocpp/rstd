@@ -6,7 +6,7 @@ using namespace rstd;
 
 /// Storage for a single tuple element. Tagged with an index to allow
 /// multiple elements of the same type within one tuple.
-template<usize I, typename T>
+template<size_t I, typename T>
 struct tuple_leaf {
     T value;
 };
@@ -14,7 +14,7 @@ struct tuple_leaf {
 template<typename IndexSeq, typename... Ts>
 struct tuple_impl;
 
-template<usize... Is, typename... Ts>
+template<size_t... Is, typename... Ts>
 struct tuple_impl<mtp::index_sequence<Is...>, Ts...> : tuple_leaf<Is, Ts>... {
     constexpr tuple_impl() noexcept((mtp::triv_init<Ts> && ...)) = default;
 
@@ -24,7 +24,7 @@ struct tuple_impl<mtp::index_sequence<Is...>, Ts...> : tuple_leaf<Is, Ts>... {
 };
 
 /// Type of the I-th element in a parameter pack.
-template<usize I, typename... Ts>
+template<size_t I, typename... Ts>
 struct nth_type;
 
 template<typename T, typename... Ts>
@@ -32,17 +32,17 @@ struct nth_type<0, T, Ts...> {
     using type = T;
 };
 
-template<usize I, typename T, typename... Ts>
+template<size_t I, typename T, typename... Ts>
 struct nth_type<I, T, Ts...> {
     using type = typename nth_type<I - 1, Ts...>::type;
 };
 
-template<usize I, typename... Ts>
+template<size_t I, typename... Ts>
 using nth_type_t = typename nth_type<I, Ts...>::type;
 
 /// Count occurrences of T in a parameter pack.
 template<typename T, typename... Ts>
-constexpr usize type_count = (usize(0) + ... + (mtp::same_as<T, Ts> ? usize(1) : usize(0)));
+constexpr size_t type_count = (size_t(0) + ... + (mtp::same_as<T, Ts> ? size_t(1) : size_t(0)));
 
 /// Index of the first occurrence of T in a parameter pack.
 template<typename T, typename... Ts>
@@ -50,25 +50,25 @@ struct type_index;
 
 template<typename T, typename U, typename... Ts>
 struct type_index<T, U, Ts...> {
-    static constexpr usize value =
-        mtp::same_as<T, U> ? usize(0) : usize(1) + type_index<T, Ts...>::value;
+    static constexpr size_t value =
+        mtp::same_as<T, U> ? size_t(0) : size_t(1) + type_index<T, Ts...>::value;
 };
 
 template<typename T>
 struct type_index<T> {
-    static constexpr usize value = 0;
+    static constexpr size_t value = 0;
 };
 
 template<typename T, typename... Ts>
-constexpr usize type_index_v = type_index<T, Ts...>::value;
+constexpr size_t type_index_v = type_index<T, Ts...>::value;
 
 /// Cast a `tuple_impl` to the leaf base for element `I`, exposing its `value`.
-template<usize I, typename T, typename Impl>
+template<size_t I, typename T, typename Impl>
 constexpr auto& leaf_ref(Impl& impl) noexcept {
     return static_cast<tuple_leaf<I, T>&>(impl).value;
 }
 
-template<usize I, typename T, typename Impl>
+template<size_t I, typename T, typename Impl>
 constexpr auto const& leaf_ref(const Impl& impl) noexcept {
     return static_cast<const tuple_leaf<I, T>&>(impl).value;
 }
@@ -87,7 +87,7 @@ class tuple {
 
 public:
     /// The number of elements.
-    static constexpr usize size = sizeof...(Ts);
+    static constexpr size_t size = sizeof...(Ts);
 
     constexpr tuple() noexcept((mtp::triv_init<Ts> && ...)) = default;
 
@@ -107,7 +107,7 @@ public:
     constexpr tuple& operator=(tuple&&)      = default;
 
     /// Access the I-th element (lvalue overload).
-    template<usize I>
+    template<size_t I>
     constexpr auto& get() & noexcept {
         static_assert(I < sizeof...(Ts), "tuple index out of range");
         using T = nth_type_t<I, Ts...>;
@@ -115,7 +115,7 @@ public:
     }
 
     /// Access the I-th element (const lvalue overload).
-    template<usize I>
+    template<size_t I>
     constexpr auto const& get() const& noexcept {
         static_assert(I < sizeof...(Ts), "tuple index out of range");
         using T = nth_type_t<I, Ts...>;
@@ -123,7 +123,7 @@ public:
     }
 
     /// Access the I-th element (rvalue overload).
-    template<usize I>
+    template<size_t I>
     constexpr auto&& get() && noexcept {
         static_assert(I < sizeof...(Ts), "tuple index out of range");
         using T = nth_type_t<I, Ts...>;
@@ -156,17 +156,17 @@ public:
 };
 
 /// Free function version of `get<I>(t)`, for structured-binding compatibility.
-export template<usize I, typename... Ts>
+export template<size_t I, typename... Ts>
 constexpr auto& get(tuple<Ts...>& t) noexcept {
     return t.template get<I>();
 }
 
-export template<usize I, typename... Ts>
+export template<size_t I, typename... Ts>
 constexpr auto const& get(const tuple<Ts...>& t) noexcept {
     return t.template get<I>();
 }
 
-export template<usize I, typename... Ts>
+export template<size_t I, typename... Ts>
 constexpr auto&& get(tuple<Ts...>&& t) noexcept {
     return rstd::move(t).template get<I>();
 }
@@ -195,7 +195,7 @@ constexpr auto make_tuple(Ts&&... ts) {
 // ── apply: invoke a callable with tuple elements unpacked ───────────────
 namespace tuple_detail
 {
-template<typename F, typename Tup, usize... Is>
+template<typename F, typename Tup, size_t... Is>
 constexpr decltype(auto) apply_impl(F&& f, Tup&& t, mtp::index_sequence<Is...>) {
     return rstd::forward<F>(f)(rstd::get<Is>(rstd::forward<Tup>(t))...);
 }
@@ -221,7 +221,7 @@ constexpr decltype(auto) apply(F&& f, tuple<Ts...>&& t) {
 }
 
 // ── Equality comparison ──────────────────────────────────────────────────
-template<usize I, typename... Ts>
+template<size_t I, typename... Ts>
 constexpr bool tuple_eq(const tuple<Ts...>& a, const tuple<Ts...>& b) {
     if constexpr (I == sizeof...(Ts)) {
         return true;
@@ -242,9 +242,9 @@ namespace std
 {
 
 template<typename... Ts>
-struct tuple_size<::rstd::tuple<Ts...>> : integral_constant<::rstd::usize, sizeof...(Ts)> {};
+struct tuple_size<::rstd::tuple<Ts...>> : integral_constant<::rstd::size_t, sizeof...(Ts)> {};
 
-template<::rstd::usize I, typename... Ts>
+template<::rstd::size_t I, typename... Ts>
 struct tuple_element<I, ::rstd::tuple<Ts...>> {
     using type = ::nth_type_t<I, Ts...>;
 };

@@ -64,13 +64,13 @@ TEST(LogParse, LevelFilterCaseInsensitive) {
 TEST(LogRecord, MetadataBuilder) {
     auto m = MetadataBuilder().set_level(Level::Debug).set_target("test").build();
     EXPECT_EQ(m.lvl(), Level::Debug);
-    EXPECT_EQ(m.tgt().size(), 4u);
+    EXPECT_EQ(m.tgt().size(), rstd::usize(4));
 }
 
 TEST(LogRecord, RecordBuilder) {
     auto rec = RecordBuilder().set_level(Level::Error).set_target("my_mod").build();
     EXPECT_EQ(rec.lvl(), Level::Error);
-    EXPECT_EQ(rec.target().size(), 6u);
+    EXPECT_EQ(rec.target().size(), rstd::usize(6));
     EXPECT_EQ(rec.file(), nullptr);
 }
 

@@ -27,7 +27,7 @@ auto make_pipe() -> Option<PipePair> {
 }
 
 auto write_byte(os::fd::RawFd fd) -> bool {
-    const u8 value = 1;
+    const rstd::uint8_t value = 1;
     return ::write(fd, rstd::addressof(value), 1) == 1;
 }
 
@@ -37,12 +37,12 @@ auto wait_readable(async::Registration& registration, std::atomic<bool>& entered
     co_return co_await async::ReadinessFuture { registration, async::Interest::readable() };
 }
 
-auto wait_readable_on_owner(async::Registration& registration,
-                            std::atomic<u64>&    before,
-                            std::atomic<u64>&    after) -> async::coro<bool> {
-    before.store(thread::current().id().as_u64().get(), std::memory_order_release);
+auto wait_readable_on_owner(async::Registration&         registration,
+                            std::atomic<rstd::uint64_t>& before,
+                            std::atomic<rstd::uint64_t>& after) -> async::coro<bool> {
+    before.store(thread::current().id().as_u64().get().to_primitive(), std::memory_order_release);
     auto ready = co_await async::ReadinessFuture { registration, async::Interest::readable() };
-    after.store(thread::current().id().as_u64().get(), std::memory_order_release);
+    after.store(thread::current().id().as_u64().get().to_primitive(), std::memory_order_release);
     co_return ready.is_ok() && rstd::move(ready).unwrap_unchecked().is_readable();
 }
 
@@ -63,7 +63,7 @@ TEST(RstdAsyncPoll, PipeReadinessCompletesThroughCurrentWorker) {
                       while (! entered.load(std::memory_order_acquire)) {
                           hint::spin_loop();
                       }
-                      thread::sleep(time::Duration::from_millis(1));
+                      thread::sleep(time::Duration::from_millis(u64(1)));
                       return write_byte(writer_fd);
                         }).unwrap();
     auto runtime      = async::RuntimeBuilder::current_thread().enable_io().build().unwrap();
@@ -97,12 +97,12 @@ TEST(RstdAsyncPoll, WorkerOwnedReadinessReturnsToEachOwnerThread) {
     auto second              = rstd::move(second_pipe).unwrap_unchecked();
     auto first_registration  = async::Registration::register_fd(first.reader.as_raw_fd()).unwrap();
     auto second_registration = async::Registration::register_fd(second.reader.as_raw_fd()).unwrap();
-    auto first_before        = std::atomic<u64> { 0 };
-    auto first_after         = std::atomic<u64> { 0 };
-    auto second_before       = std::atomic<u64> { 0 };
-    auto second_after        = std::atomic<u64> { 0 };
+    auto first_before        = std::atomic<rstd::uint64_t> { 0 };
+    auto first_after         = std::atomic<rstd::uint64_t> { 0 };
+    auto second_before       = std::atomic<rstd::uint64_t> { 0 };
+    auto second_after        = std::atomic<rstd::uint64_t> { 0 };
     auto runtime =
-        async::RuntimeBuilder::multi_thread().worker_threads(2).enable_io().build().unwrap();
+        async::RuntimeBuilder::multi_thread().worker_threads(usize(2)).enable_io().build().unwrap();
 
     auto first_join =
         runtime.spawn(wait_readable_on_owner(first_registration, first_before, first_after));
@@ -134,8 +134,11 @@ TEST(RstdAsyncPoll, ShutdownCancelsReadinessDuringTaskTransition) {
         }
         auto fds          = rstd::move(pipe).unwrap_unchecked();
         auto registration = async::Registration::register_fd(fds.reader.as_raw_fd()).unwrap();
-        auto runtime =
-            async::RuntimeBuilder::multi_thread().worker_threads(1).enable_io().build().unwrap();
+        auto runtime      = async::RuntimeBuilder::multi_thread()
+                                .worker_threads(usize(1))
+                                .enable_io()
+                                .build()
+                                .unwrap();
         auto handle = runtime.spawn(wait_owned_registration(rstd::move(registration), entered));
         while (! entered.load(std::memory_order_acquire)) {
             hint::spin_loop();

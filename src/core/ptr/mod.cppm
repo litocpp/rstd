@@ -1,4 +1,5 @@
 export module rstd.core:ptr;
+import :num.types;
 export import :ptr.non_null;
 export import :ptr.metadata;
 export import :ptr.dyn;

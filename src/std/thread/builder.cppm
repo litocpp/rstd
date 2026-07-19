@@ -67,7 +67,7 @@ export struct Builder {
     // requires Impled<mtp::rm_cvf<F>, FnOnce<void()>> &&
     // mtp::same_as<mtp::rm_cvf<F>, Box<dyn<FnOnce<void()>>>
     {
-        auto stack_size = d.stack_size.unwrap_or(0);
+        auto stack_size = d.stack_size.unwrap_or(usize());
 
         auto inner =
             lifecycle::spawn_unchecked(rstd::move(d.name), stack_size, None(), rstd::forward<F>(f));

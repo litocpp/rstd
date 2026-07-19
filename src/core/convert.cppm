@@ -252,13 +252,6 @@ struct Impl<T, Self> {
     }
 };
 
-template<typename T, typename Self>
-    requires mtp::same_as<T, convert::From<mtp::underlying<Self>>> && mtp::is_enum<Self>
-struct Impl<T, Self> : ImplBase<Self> {
-    using from_t = typename T::from_t;
-    static auto from(from_t value) -> Self { return static_cast<Self>(value); }
-};
-
 export using convert::as_ref;
 export using convert::as_mut;
 export using convert::into;

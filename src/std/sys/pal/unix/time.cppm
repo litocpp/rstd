@@ -14,48 +14,69 @@ export struct Timespec {
     i64 tv_sec;
     u32 tv_nsec;
 
+private:
+    static auto checked_seconds(rstd::int128_t value) noexcept -> Option<i64> {
+        if (value < static_cast<rstd::int128_t>(i64::MIN.to_primitive()) ||
+            value > static_cast<rstd::int128_t>(i64::MAX.to_primitive())) {
+            return None();
+        }
+        return Some(i64(value));
+    }
+
+public:
     static auto now(int clock_id) noexcept -> Timespec {
         libc::timespec ts;
         libc::clock_gettime(clock_id, &ts);
-        return { (i64)ts.tv_sec, (u32)ts.tv_nsec };
+        return { i64(ts.tv_sec), u32(ts.tv_nsec) };
     }
 
     auto sub_timespec(Timespec other) const noexcept -> rstd::time::Duration {
         if (*this >= other) {
-            u64 secs = (u64)(tv_sec - other.tv_sec);
+            auto const difference = static_cast<rstd::uint128_t>(
+                static_cast<rstd::int128_t>(tv_sec.to_primitive()) -
+                static_cast<rstd::int128_t>(other.tv_sec.to_primitive()));
+            u64 secs(static_cast<rstd::uint64_t>(difference));
             u32 nanos;
             if (tv_nsec >= other.tv_nsec) {
                 nanos = tv_nsec - other.tv_nsec;
             } else {
                 nanos = tv_nsec + rstd::time::NANOS_PER_SEC - other.tv_nsec;
-                secs -= 1;
+                --secs;
             }
             return rstd::time::Duration::new_(secs, nanos);
         } else {
-            // Rust's sub_timespec returns Result<Duration, Duration> (Ok if self >= other, Err otherwise)
-            // For simplicity here, just return zero or handle it in SystemTime
-            return rstd::time::Duration::from_secs(0);
+            return rstd::time::Duration::from_secs(u64 {});
         }
     }
 
     auto checked_add_duration(rstd::time::Duration dur) const noexcept -> Option<Timespec> {
-        i64 secs  = tv_sec + (i64)dur.as_secs();
+        auto seconds = checked_seconds(static_cast<rstd::int128_t>(tv_sec.to_primitive()) +
+                                       static_cast<rstd::int128_t>(dur.as_secs().to_primitive()));
+        if (seconds.is_none()) return None();
+        i64 secs  = rstd::move(seconds).unwrap_unchecked();
         u32 nanos = tv_nsec + dur.subsec_nanos();
         if (nanos >= rstd::time::NANOS_PER_SEC) {
             nanos -= rstd::time::NANOS_PER_SEC;
-            secs += 1;
+            auto with_carry = secs.checked_add(i64(1));
+            if (with_carry.is_none()) return None();
+            secs = rstd::move(with_carry).unwrap_unchecked();
         }
         return Some(Timespec { secs, nanos });
     }
 
     auto checked_sub_duration(rstd::time::Duration dur) const noexcept -> Option<Timespec> {
-        i64 secs = tv_sec - (i64)dur.as_secs();
+        auto seconds = checked_seconds(static_cast<rstd::int128_t>(tv_sec.to_primitive()) -
+                                       static_cast<rstd::int128_t>(dur.as_secs().to_primitive()));
+        if (seconds.is_none()) return None();
+        i64 secs = rstd::move(seconds).unwrap_unchecked();
         u32 nanos;
         if (tv_nsec >= dur.subsec_nanos()) {
             nanos = tv_nsec - dur.subsec_nanos();
         } else {
-            nanos = tv_nsec + rstd::time::NANOS_PER_SEC - dur.subsec_nanos();
-            secs -= 1;
+            nanos            = tv_nsec + rstd::time::NANOS_PER_SEC - dur.subsec_nanos();
+            auto with_borrow = secs.checked_sub(i64(1));
+            if (with_borrow.is_none()) return None();
+            secs = rstd::move(with_borrow).unwrap_unchecked();
         }
         return Some(Timespec { secs, nanos });
     }
@@ -113,7 +134,7 @@ export struct SystemTime {
 
     static auto now() noexcept -> SystemTime { return { Timespec::now(libc::CLOCK_REALTIME) }; }
 
-    static auto unix_epoch() noexcept -> SystemTime { return { Timespec { 0, 0 } }; }
+    static auto unix_epoch() noexcept -> SystemTime { return { Timespec { i64 {}, u32 {} } }; }
 
     static auto from_unix_time(i64 seconds, u32 nanoseconds) noexcept -> Option<SystemTime> {
         if (nanoseconds >= rstd::time::NANOS_PER_SEC) return None();

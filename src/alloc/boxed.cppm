@@ -43,12 +43,10 @@ class Box {
     void drop() noexcept {
         if (m_ptr.is_none()) return;
 
-        auto mptr         = checked_ptr().as_mut_ptr();
-        auto layout       = Layout::for_value(mptr.as_ptr());
-        auto raw_non_null = NonNull<u8>::make_unchecked(
-            mut_ptr<u8>::from_raw_parts(reinterpret_cast<u8*>(mptr.as_raw_ptr())));
+        auto mptr   = checked_ptr().as_mut_ptr();
+        auto layout = Layout::for_value(mptr.as_ptr());
         rstd::ptr_::drop_in_place(mptr);
-        as<Allocator>(GLOBAL).deallocate(raw_non_null, layout);
+        as<Allocator>(GLOBAL).deallocate(mptr.as_raw_ptr(), layout);
         m_ptr = Option<NonNull<T>> {};
     }
 
@@ -103,7 +101,7 @@ public:
         auto res    = as<Allocator>(GLOBAL).allocate(layout);
         if (res.is_err()) handle_alloc_error(layout);
 
-        auto p = res.unwrap_unchecked().as_mut_ptr().template cast<T>();
+        auto p = res.unwrap_unchecked().template as_mut_ptr<T>();
         new (p.as_raw_ptr()) T(rstd::forward<Args>(args)...);
         return from_raw(p);
     }
@@ -120,7 +118,7 @@ public:
         auto res    = as<Allocator>(GLOBAL).allocate(layout);
         if (res.is_err()) handle_alloc_error(layout);
 
-        auto p = res.unwrap_unchecked().as_mut_ptr().template cast<U>();
+        auto p = res.unwrap_unchecked().template as_mut_ptr<U>();
         new (p.as_raw_ptr()) U(rstd::forward<U>(in));
         return from_raw(T::from_ptr(p.as_raw_ptr()));
     }
@@ -191,9 +189,9 @@ public:
         auto res = as<Allocator>(GLOBAL).allocate(layout);
         if (res.is_err()) handle_alloc_error(layout);
 
-        auto* raw = reinterpret_cast<V*>(res.unwrap_unchecked().as_mut_ptr().as_raw_ptr());
-        for (usize i = 0; i < length; ++i) {
-            new (raw + i) V(old[i]);
+        auto* raw = res.unwrap_unchecked().template as_mut_ptr<V>().as_raw_ptr();
+        for (rstd::size_t index = 0; index < length.to_primitive(); ++index) {
+            new (raw + index) V(old[usize(index)]);
         }
         auto p = mut_ptr<T>::from_raw_parts(raw, length);
         return from_raw(p);

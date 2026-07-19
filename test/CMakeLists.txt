@@ -30,6 +30,7 @@ set(
   argparse/lifecycle.cpp
   argparse/errors.cpp
   array.cpp
+  atomic.cpp
   deref.cpp
   result.cpp
   try_async.cpp
@@ -97,6 +98,10 @@ if(UNIX)
 endif()
 
 add_executable(rstd_test ${RSTD_TEST_SOURCES})
+target_compile_definitions(
+  rstd_test
+  PRIVATE
+    "RSTD_TEST_CHECK_INTEGER_OVERFLOW=$<OR:$<CONFIG:Debug>,$<BOOL:${RSTD_CHECK_INTEGER_OVERFLOW}>>")
 
 target_sources(
   rstd_test
@@ -192,6 +197,41 @@ add_rstd_compile_fail(
   compile_fail/deref_mut_without_deref.cpp
   Deref.DerefMutWithoutDerefFailure
   "constraints not satisfied|Impled.*Deref")
+add_rstd_compile_fail(
+  rstd_compile_fail_numeric_mixed_native_arithmetic
+  compile_fail/numeric_mixed_native_arithmetic.cpp
+  Numeric.MixedNativeArithmetic
+  "invalid operands to binary expression|no viable overloaded")
+add_rstd_compile_fail(
+  rstd_compile_fail_numeric_implicit_narrowing
+  compile_fail/numeric_implicit_narrowing.cpp
+  Numeric.ImplicitNarrowing
+  "no viable conversion|cannot initialize")
+add_rstd_compile_fail(
+  rstd_compile_fail_numeric_implicit_primitive
+  compile_fail/numeric_implicit_primitive.cpp
+  Numeric.ImplicitPrimitive
+  "no viable conversion|cannot initialize|explicit constructor")
+add_rstd_compile_fail(
+  rstd_compile_fail_numeric_increment
+  compile_fail/numeric_increment.cpp
+  Numeric.SignedIncrement
+  "cannot increment|invalid argument type|constraints not satisfied")
+add_rstd_compile_fail(
+  rstd_compile_fail_numeric_temporary_increment
+  compile_fail/numeric_temporary_increment.cpp
+  Numeric.TemporaryIncrement
+  "cannot increment|invalid argument type|no viable overloaded|candidate function not viable|expects an lvalue")
+add_rstd_compile_fail(
+  rstd_compile_fail_numeric_literal_out_of_range
+  compile_fail/numeric_literal_out_of_range.cpp
+  Numeric.LiteralOutOfRange
+  "not a constant expression|consteval function")
+add_rstd_compile_fail(
+  rstd_compile_fail_numeric_constexpr_overflow
+  compile_fail/numeric_constexpr_overflow.cpp
+  Numeric.ConstexprOverflow
+  "not a constant expression|constexpr variable")
 add_rstd_compile_fail(
   rstd_compile_fail_lifetimebound_temporary_box
   compile_fail/lifetimebound_temporary_box.cpp

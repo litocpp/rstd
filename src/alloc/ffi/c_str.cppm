@@ -43,7 +43,7 @@ public:
         return _from_vec_unchecked(rstd::move(v));
     }
     static auto _from_vec_unchecked(Vec<u8>&& v) -> Self {
-        v.push(0);
+        v.push(u8());
         auto boxed = v.into_boxed_slice();
         return Self { rstd::move(boxed) };
     }
@@ -54,7 +54,7 @@ public:
     template<Impled<Into<Vec<u8>>> T>
     static auto make(T t) -> Result<CString, NulError> {
         Vec<u8> vec = rstd::into(rstd::move(t));
-        if (auto mem = rstd::memchr::memchr(0, vec.as_slice()); mem.is_some()) {
+        if (auto mem = rstd::memchr::memchr(u8(), vec.as_slice()); mem.is_some()) {
             return Err(NulError { vec.len(), rstd::move(vec) });
         } else {
             return Ok(CString::_from_vec_unchecked(rstd::move(vec)));
@@ -65,23 +65,18 @@ public:
     /// \param p A pointer to a nul-terminated C string.
     /// \return A `CString` owning a copy of the data.
     static auto from_raw_parts(char const* p) -> CString {
-        auto len    = rstd::strlen(p) + 1;
-        auto layout = Layout::array<u8>(len).unwrap();
-        auto res    = as<Allocator>(GLOBAL).allocate(layout);
-        if (res.is_err()) handle_alloc_error(layout);
-
-        auto* raw = static_cast<u8*>(res.unwrap_unchecked().as_mut_ptr().as_raw_ptr());
-        rstd::mem::memcpy(raw, p, len);
-        auto boxed = ::alloc::boxed::Box<u8[]>::from_raw(mut_ptr<u8[]>::from_raw_parts(raw, len));
-        return CString { rstd::move(boxed) };
+        const auto length = rstd::strlen(p) + 1;
+        auto       bytes  = Vec<u8>::copy_from_bytes(
+            slice<byte>::from_raw_parts(reinterpret_cast<byte const*>(p), usize(length)));
+        return CString { rstd::move(bytes).into_boxed_slice() };
     }
 
     /// Returns a borrowed reference to the inner `CStr`.
     /// \return A `ref<CStr>` view of the C string data.
     auto as_ref() const [[clang::lifetimebound]] -> ref<CStr> {
         auto ptr = inner.as_ptr();
-        auto p   = reinterpret_cast<CStr const*>(&*ptr);
-        return { .p = p, .length = ptr.len() - 1 };
+        auto p   = reinterpret_cast<char const*>(ptr.as_raw_ptr());
+        return { .p = p, .length = ptr.len() - usize(1) };
     }
 
     /// Consumes the `CString` and returns the underlying byte vector without the nul terminator.
@@ -95,15 +90,15 @@ public:
     /// Returns the contents as a byte slice, not including the nul terminator.
     /// \return A `slice<u8>` of the string bytes.
     auto to_bytes() const [[clang::lifetimebound]] -> slice<u8> {
-        auto cstr = as_ref();
-        return slice<u8>::from_raw_parts(as_cast<const u8*>(cstr.p), cstr.length);
+        auto ptr = inner.as_ptr();
+        return slice<u8>::from_raw_parts(ptr.as_raw_ptr(), ptr.len() - usize(1));
     }
 
     /// Returns the contents as a byte slice, including the nul terminator.
     /// \return A `slice<u8>` of the string bytes with the trailing nul.
     auto to_bytes_with_nul() const [[clang::lifetimebound]] -> slice<u8> {
-        auto cstr = as_ref();
-        return slice<u8>::from_raw_parts(as_cast<const u8*>(cstr.p), cstr.length + 1);
+        auto ptr = inner.as_ptr();
+        return slice<u8>::from_raw_parts(ptr.as_raw_ptr(), ptr.len());
     }
 };
 

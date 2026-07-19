@@ -7,9 +7,9 @@ namespace rstd::sys::sync::mutex::futex
 using Futex = pal::futex::SmallFutex;
 using State = pal::futex::SmallPrimitive;
 
-constexpr State UNLOCKED  = 0;
-constexpr State LOCKED    = 1; // locked, no other threads waiting
-constexpr State CONTENDED = 2; // locked, and other threads waiting (contended)
+constexpr State UNLOCKED {};
+constexpr State LOCKED { static_cast<State::primitive_type>(1) };    // locked, no waiters
+constexpr State CONTENDED { static_cast<State::primitive_type>(2) }; // locked with waiters
 
 export class Mutex {
     Futex m_futex;

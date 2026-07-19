@@ -1,4 +1,5 @@
 export module rstd.core:memchr;
+import :num.types;
 export import :option;
 
 namespace rstd::memchr
@@ -9,9 +10,9 @@ namespace rstd::memchr
 /// \param haystack The byte slice to search within.
 /// \return The index of the first match, or `None` if not found.
 export auto memchr(u8 needle, slice<u8> haystack) noexcept -> Option<usize> {
-    for (usize i = 0; i != haystack.len(); ++i) {
-        if (haystack[i] == needle) {
-            return Some(i);
+    for (rstd::size_t i = 0; i != haystack.len().to_primitive(); ++i) {
+        if (haystack[usize(i)] == needle) {
+            return Some(usize(i));
         }
     }
     return None();

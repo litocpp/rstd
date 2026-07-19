@@ -38,7 +38,7 @@ TEST(CondvarPthread, WaitTimeoutReportsTimeout) {
     auto cvar  = Condvar::make();
 
     mutex.lock();
-    auto notified = cvar.wait_timeout(mutex, rstd::time::Duration::from_millis(5));
+    auto notified = cvar.wait_timeout(mutex, rstd::time::Duration::from_millis(rstd::u64(5)));
     mutex.unlock();
 
     EXPECT_FALSE(notified);

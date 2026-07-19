@@ -8,7 +8,7 @@ using rstd::thread::ThreadId;
 namespace rstd::thread::main_thread
 {
 
-static auto MAIN { Atomic<u64> { 0 } };
+static auto MAIN { Atomic<u64> { u64 {} } };
 
 /// Returns the ThreadId of the main thread, or None if not yet set.
 export auto get() -> Option<ThreadId> {

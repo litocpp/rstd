@@ -1,4 +1,5 @@
 export module rstd.core:mem.maybe_uninit;
+import :num.types;
 export import :core;
 export import :mem.manually_drop;
 
@@ -66,7 +67,7 @@ public:
     /// It depends on `T` whether that already makes for proper initialization.
     constexpr static auto zeroed() noexcept -> MaybeUninit {
         MaybeUninit m;
-        for (usize i = 0; i < sizeof(T); ++i) {
+        for (rstd::size_t i = 0; i < sizeof(T); ++i) {
             m.storage[i] = rstd::byte { 0 };
         }
         return m;

@@ -197,9 +197,8 @@ struct Impl<fmt::Display, argparse::ValueError> : ImplBase<argparse::ValueError>
         const auto& error = this->self();
         switch (error.tag()) {
         case argparse::ValueError::Tag::InvalidUtf8:
-            return formatter.write_raw(
-                reinterpret_cast<const u8*>("argument value is not valid UTF-8"),
-                rstd::strlen("argument value is not valid UTF-8"));
+            return formatter.write_raw("argument value is not valid UTF-8",
+                                       rstd::strlen("argument value is not valid UTF-8"));
         case argparse::ValueError::Tag::Message:
             return formatter.write_fmt(fmt::Arguments::make("{}", error.as_Message().message));
         }
@@ -260,11 +259,10 @@ struct Impl<fmt::Display, argparse::DefinitionError> : ImplBase<argparse::Defini
             return formatter.write_fmt(fmt::Arguments::make("duplicate argument group '{}'",
                                                             error.as_DuplicateGroupId().id));
         case argparse::DefinitionError::Tag::ForeignKey:
-            return formatter.write_raw(
-                reinterpret_cast<const u8*>("schema key belongs to a different command"),
-                rstd::strlen("schema key belongs to a different command"));
+            return formatter.write_raw("schema key belongs to a different command",
+                                       rstd::strlen("schema key belongs to a different command"));
         case argparse::DefinitionError::Tag::InvalidRelation:
-            return formatter.write_raw(reinterpret_cast<const u8*>("invalid argument relation"),
+            return formatter.write_raw("invalid argument relation",
                                        rstd::strlen("invalid argument relation"));
         case argparse::DefinitionError::Tag::DuplicateSubcommand:
             return formatter.write_fmt(fmt::Arguments::make("duplicate subcommand '{}'",
@@ -357,16 +355,14 @@ struct Impl<fmt::Display, argparse::MatchAccessError> : ImplBase<argparse::Match
         const auto& error = this->self();
         switch (error.tag()) {
         case argparse::MatchAccessError::Tag::ForeignKey:
-            return formatter.write_raw(
-                reinterpret_cast<const u8*>("argument key belongs to a different command"),
-                rstd::strlen("argument key belongs to a different command"));
+            return formatter.write_raw("argument key belongs to a different command",
+                                       rstd::strlen("argument key belongs to a different command"));
         case argparse::MatchAccessError::Tag::WrongType:
-            return formatter.write_raw(
-                reinterpret_cast<const u8*>("argument key has the wrong value type"),
-                rstd::strlen("argument key has the wrong value type"));
+            return formatter.write_raw("argument key has the wrong value type",
+                                       rstd::strlen("argument key has the wrong value type"));
         case argparse::MatchAccessError::Tag::IncompatibleAccessor:
             return formatter.write_raw(
-                reinterpret_cast<const u8*>("accessor is incompatible with the argument action"),
+                "accessor is incompatible with the argument action",
                 rstd::strlen("accessor is incompatible with the argument action"));
         }
         return false;

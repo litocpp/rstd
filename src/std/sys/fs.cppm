@@ -45,17 +45,17 @@ export struct FileTimesData {
 
 export struct MetadataData {
     rstd::fs::FileTypeKind         file_type { rstd::fs::FileTypeKind::Unknown };
-    u64                            len { 0 };
-    u32                            permissions { 0 };
+    u64                            len {};
+    u32                            permissions {};
     Option<rstd::time::SystemTime> accessed {};
     Option<rstd::time::SystemTime> modified {};
     Option<rstd::time::SystemTime> created {};
-    u64                            dev { 0 };
-    u64                            ino { 0 };
-    u32                            mode { 0 };
-    u64                            nlink { 0 };
-    u32                            uid { 0 };
-    u32                            gid { 0 };
+    u64                            dev {};
+    u64                            ino {};
+    u32                            mode {};
+    u64                            nlink {};
+    u32                            uid {};
+    u32                            gid {};
 };
 
 export struct DirectoryEntryData {
@@ -85,10 +85,10 @@ auto path_cstring(ref<Path> path) -> Result<CString> {
 namespace libc = rstd::sys::libc;
 
 auto last_error() noexcept -> Error {
-    return Error::from_raw_os_error(libc::get_errno());
+    return Error::from_raw_os_error(i32(libc::get_errno()));
 }
 
-auto file_type_from_mode(u32 mode) noexcept -> rstd::fs::FileTypeKind {
+auto file_type_from_mode(libc::mode_t mode) noexcept -> rstd::fs::FileTypeKind {
     switch (mode & libc::S_IFMT) {
     case libc::S_IFREG: return rstd::fs::FileTypeKind::File;
     case libc::S_IFDIR: return rstd::fs::FileTypeKind::Directory;
@@ -115,47 +115,65 @@ auto file_type_from_dirent(unsigned char type) noexcept -> rstd::fs::FileTypeKin
 }
 
 auto metadata_from_stat(libc::stat_t const& stat) -> MetadataData {
-    auto mode = static_cast<u32>(stat.st_mode);
+    auto mode = static_cast<libc::mode_t>(stat.st_mode);
     return MetadataData {
         .file_type   = file_type_from_mode(mode),
-        .len         = static_cast<u64>(stat.st_size),
-        .permissions = mode & 0777u,
-        .accessed = rstd::time::SystemTime::from_unix_time(static_cast<i64>(stat.st_atim.tv_sec),
-                                                           static_cast<u32>(stat.st_atim.tv_nsec)),
-        .modified = rstd::time::SystemTime::from_unix_time(static_cast<i64>(stat.st_mtim.tv_sec),
-                                                           static_cast<u32>(stat.st_mtim.tv_nsec)),
-        .created  = None(),
-        .dev      = static_cast<u64>(stat.st_dev),
-        .ino      = static_cast<u64>(stat.st_ino),
-        .mode     = mode,
-        .nlink    = static_cast<u64>(stat.st_nlink),
-        .uid      = static_cast<u32>(stat.st_uid),
-        .gid      = static_cast<u32>(stat.st_gid),
+        .len         = u64(stat.st_size),
+        .permissions = u32(mode & 0777u),
+        .accessed    = rstd::time::SystemTime::from_unix_time(i64(stat.st_atim.tv_sec),
+                                                              u32(stat.st_atim.tv_nsec)),
+        .modified    = rstd::time::SystemTime::from_unix_time(i64(stat.st_mtim.tv_sec),
+                                                              u32(stat.st_mtim.tv_nsec)),
+        .created     = None(),
+        .dev         = u64(stat.st_dev),
+        .ino         = u64(stat.st_ino),
+        .mode        = u32(mode),
+        .nlink       = u64(stat.st_nlink),
+        .uid         = u32(stat.st_uid),
+        .gid         = u32(stat.st_gid),
     };
 }
 
-auto access_mode(OpenOptionsData const& options) -> Result<i32> {
-    if (options.read && ! options.write && ! options.append) return Ok(i32 { libc::O_RDONLY });
-    if (! options.read && options.write && ! options.append) return Ok(i32 { libc::O_WRONLY });
-    if (options.read && options.write && ! options.append) return Ok(i32 { libc::O_RDWR });
-    if (! options.read && options.append) return Ok(i32 { libc::O_WRONLY | libc::O_APPEND });
-    if (options.read && options.append) return Ok(i32 { libc::O_RDWR | libc::O_APPEND });
-    return Err(Error::from_raw_os_error(libc::EINVAL));
+auto access_mode(OpenOptionsData const& options) -> Result<int> {
+    if (options.read && ! options.write && ! options.append) return Ok(libc::O_RDONLY);
+    if (! options.read && options.write && ! options.append) return Ok(libc::O_WRONLY);
+    if (options.read && options.write && ! options.append) return Ok(libc::O_RDWR);
+    if (! options.read && options.append) return Ok(libc::O_WRONLY | libc::O_APPEND);
+    if (options.read && options.append) return Ok(libc::O_RDWR | libc::O_APPEND);
+    return Err(Error::from_raw_os_error(i32(libc::EINVAL)));
 }
 
-auto creation_mode(OpenOptionsData const& options) -> Result<i32> {
+auto creation_mode(OpenOptionsData const& options) -> Result<int> {
     if (! options.write && ! options.append &&
         (options.truncate || options.create || options.create_new)) {
-        return Err(Error::from_raw_os_error(libc::EINVAL));
+        return Err(Error::from_raw_os_error(i32(libc::EINVAL)));
     }
     if (options.append && options.truncate && ! options.create_new) {
-        return Err(Error::from_raw_os_error(libc::EINVAL));
+        return Err(Error::from_raw_os_error(i32(libc::EINVAL)));
     }
-    if (options.create_new) return Ok(i32 { libc::O_CREAT | libc::O_EXCL });
-    if (options.create && options.truncate) return Ok(i32 { libc::O_CREAT | libc::O_TRUNC });
-    if (options.create) return Ok(i32 { libc::O_CREAT });
-    if (options.truncate) return Ok(i32 { libc::O_TRUNC });
-    return Ok(i32 { 0 });
+    if (options.create_new) return Ok(libc::O_CREAT | libc::O_EXCL);
+    if (options.create && options.truncate) return Ok(libc::O_CREAT | libc::O_TRUNC);
+    if (options.create) return Ok(libc::O_CREAT);
+    if (options.truncate) return Ok(libc::O_TRUNC);
+    return Ok(0);
+}
+
+constexpr auto off_t_max() noexcept -> rstd::uint64_t {
+    static_assert(sizeof(libc::off_t) <= sizeof(rstd::uint64_t));
+    constexpr auto bits = static_cast<rstd::uint32_t>(sizeof(libc::off_t) * 8);
+    if constexpr (libc::off_t(-1) < libc::off_t(0)) {
+        return static_cast<rstd::uint64_t>((rstd::uint128_t(1) << (bits - 1)) - 1);
+    } else {
+        return static_cast<rstd::uint64_t>(~rstd::uint128_t(0) >> (128 - bits));
+    }
+}
+
+auto checked_off_t(u64 value) -> Result<libc::off_t> {
+    auto native = value.to_primitive();
+    if (native > off_t_max()) {
+        return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
+    }
+    return Ok(static_cast<libc::off_t>(native));
 }
 #endif
 
@@ -168,12 +186,13 @@ export auto open(ref<Path> path, OpenOptionsData const& options) -> Result<Owned
     auto creation = creation_mode(options);
     if (creation.is_err()) return Err(creation.unwrap_err_unchecked());
 
-    auto flags    = access.unwrap_unchecked() | creation.unwrap_unchecked() | options.custom_flags |
-                    libc::O_CLOEXEC;
+    auto flags    = access.unwrap_unchecked() | creation.unwrap_unchecked() |
+                    static_cast<int>(options.custom_flags.to_primitive()) | libc::O_CLOEXEC;
     auto value    = rstd::move(path_value).unwrap_unchecked();
     auto raw_path = reinterpret_cast<const char*>(value.to_bytes_with_nul().p);
     while (true) {
-        auto fd = libc::open(raw_path, flags, static_cast<libc::mode_t>(options.mode));
+        auto fd =
+            libc::open(raw_path, flags, static_cast<libc::mode_t>(options.mode.to_primitive()));
         if (fd >= 0) return Ok(OwnedFd::from_raw_fd(fd));
         if (libc::get_errno() != libc::EINTR) return Err(last_error());
     }
@@ -184,32 +203,30 @@ export auto open(ref<Path> path, OpenOptionsData const& options) -> Result<Owned
 #endif
 }
 
-export auto read(RawFd fd, u8* buffer, usize len) -> Result<usize> {
+export auto read(RawFd fd, mut_ref<byte[]> buffer) -> Result<usize> {
 #if RSTD_OS_UNIX
     while (true) {
-        auto count = libc::read(fd, buffer, len);
-        if (count >= 0) return Ok(static_cast<usize>(count));
+        auto count = libc::read(fd, buffer.as_raw_ptr(), buffer.len().to_primitive());
+        if (count >= 0) return Ok(usize(count));
         if (libc::get_errno() != libc::EINTR) return Err(last_error());
     }
 #else
     (void)fd;
     (void)buffer;
-    (void)len;
     return Err(unsupported_error());
 #endif
 }
 
-export auto write(RawFd fd, const u8* buffer, usize len) -> Result<usize> {
+export auto write(RawFd fd, slice<byte> buffer) -> Result<usize> {
 #if RSTD_OS_UNIX
     while (true) {
-        auto count = libc::write(fd, buffer, len);
-        if (count >= 0) return Ok(static_cast<usize>(count));
+        auto count = libc::write(fd, buffer.as_raw_ptr(), buffer.len().to_primitive());
+        if (count >= 0) return Ok(usize(count));
         if (libc::get_errno() != libc::EINTR) return Err(last_error());
     }
 #else
     (void)fd;
     (void)buffer;
-    (void)len;
     return Err(unsupported_error());
 #endif
 }
@@ -221,20 +238,24 @@ export auto seek(RawFd fd, SeekFrom position) -> Result<u64> {
     switch (position.which) {
     case SeekFrom::Which::Start:
         whence = libc::SEEK_SET;
-        offset = static_cast<libc::off_t>(static_cast<u64>(position.offset));
+        {
+            auto converted = checked_off_t(position.start);
+            if (converted.is_err()) return Err(converted.unwrap_err_unchecked());
+            offset = converted.unwrap_unchecked();
+        }
         break;
     case SeekFrom::Which::End:
         whence = libc::SEEK_END;
-        offset = static_cast<libc::off_t>(position.offset);
+        offset = static_cast<libc::off_t>(position.offset.to_primitive());
         break;
     case SeekFrom::Which::Current:
         whence = libc::SEEK_CUR;
-        offset = static_cast<libc::off_t>(position.offset);
+        offset = static_cast<libc::off_t>(position.offset.to_primitive());
         break;
     }
     auto result = libc::lseek(fd, offset, whence);
     if (result < 0) return Err(last_error());
-    return Ok(static_cast<u64>(result));
+    return Ok(u64(result));
 #else
     (void)fd;
     (void)position;
@@ -264,7 +285,9 @@ export auto sync_data(RawFd fd) -> Result<empty> {
 
 export auto set_len(RawFd fd, u64 size) -> Result<empty> {
 #if RSTD_OS_UNIX
-    while (libc::ftruncate(fd, static_cast<libc::off_t>(size)) < 0) {
+    auto converted = checked_off_t(size);
+    if (converted.is_err()) return Err(converted.unwrap_err_unchecked());
+    while (libc::ftruncate(fd, converted.unwrap_unchecked()) < 0) {
         if (libc::get_errno() != libc::EINTR) return Err(last_error());
     }
     return Ok(empty {});
@@ -275,33 +298,37 @@ export auto set_len(RawFd fd, u64 size) -> Result<empty> {
 #endif
 }
 
-export auto read_at(RawFd fd, u8* buffer, usize len, u64 offset) -> Result<usize> {
+export auto read_at(RawFd fd, mut_ref<byte[]> buffer, u64 offset) -> Result<usize> {
 #if RSTD_OS_UNIX
+    auto converted = checked_off_t(offset);
+    if (converted.is_err()) return Err(converted.unwrap_err_unchecked());
     while (true) {
-        auto count = libc::pread(fd, buffer, len, static_cast<libc::off_t>(offset));
-        if (count >= 0) return Ok(static_cast<usize>(count));
+        auto count = libc::pread(
+            fd, buffer.as_raw_ptr(), buffer.len().to_primitive(), converted.unwrap_unchecked());
+        if (count >= 0) return Ok(usize(count));
         if (libc::get_errno() != libc::EINTR) return Err(last_error());
     }
 #else
     (void)fd;
     (void)buffer;
-    (void)len;
     (void)offset;
     return Err(unsupported_error());
 #endif
 }
 
-export auto write_at(RawFd fd, const u8* buffer, usize len, u64 offset) -> Result<usize> {
+export auto write_at(RawFd fd, slice<byte> buffer, u64 offset) -> Result<usize> {
 #if RSTD_OS_UNIX
+    auto converted = checked_off_t(offset);
+    if (converted.is_err()) return Err(converted.unwrap_err_unchecked());
     while (true) {
-        auto count = libc::pwrite(fd, buffer, len, static_cast<libc::off_t>(offset));
-        if (count >= 0) return Ok(static_cast<usize>(count));
+        auto count = libc::pwrite(
+            fd, buffer.as_raw_ptr(), buffer.len().to_primitive(), converted.unwrap_unchecked());
+        if (count >= 0) return Ok(usize(count));
         if (libc::get_errno() != libc::EINTR) return Err(last_error());
     }
 #else
     (void)fd;
     (void)buffer;
-    (void)len;
     (void)offset;
     return Err(unsupported_error());
 #endif
@@ -326,7 +353,7 @@ export auto lock(RawFd fd, LockMode mode) -> Result<empty> {
             (mode == LockMode::TryExclusive || mode == LockMode::TryShared)) {
             return Err(Error::from_kind(ErrorKind { ErrorKind::WouldBlock }));
         }
-        return Err(Error::from_raw_os_error(error));
+        return Err(Error::from_raw_os_error(i32(error)));
     }
     return Ok(empty {});
 #else
@@ -366,7 +393,9 @@ export auto metadata(ref<Path> path, bool follow) -> Result<MetadataData> {
 
 export auto set_permissions(RawFd fd, u32 mode) -> Result<empty> {
 #if RSTD_OS_UNIX
-    if (libc::fchmod(fd, static_cast<libc::mode_t>(mode)) < 0) return Err(last_error());
+    if (libc::fchmod(fd, static_cast<libc::mode_t>(mode.to_primitive())) < 0) {
+        return Err(last_error());
+    }
     return Ok(empty {});
 #else
     (void)fd;
@@ -381,7 +410,9 @@ export auto set_permissions(ref<Path> path, u32 mode) -> Result<empty> {
     if (path_value.is_err()) return Err(path_value.unwrap_err_unchecked());
     auto value    = rstd::move(path_value).unwrap_unchecked();
     auto raw_path = reinterpret_cast<const char*>(value.to_bytes_with_nul().p);
-    if (libc::chmod(raw_path, static_cast<libc::mode_t>(mode)) < 0) return Err(last_error());
+    if (libc::chmod(raw_path, static_cast<libc::mode_t>(mode.to_primitive())) < 0) {
+        return Err(last_error());
+    }
     return Ok(empty {});
 #else
     (void)path;
@@ -396,8 +427,8 @@ export auto set_times(RawFd fd, FileTimesData times) -> Result<empty> {
     auto fill = [](Option<rstd::time::SystemTime> const& source, libc::timespec_t& target) {
         if (source.is_some()) {
             auto value     = (*source).as_unix_time();
-            target.tv_sec  = static_cast<libc::time_t>(value.seconds);
-            target.tv_nsec = static_cast<long>(value.nanoseconds);
+            target.tv_sec  = static_cast<libc::time_t>(value.seconds.to_primitive());
+            target.tv_nsec = static_cast<long>(value.nanoseconds.to_primitive());
         } else {
             target.tv_sec  = 0;
             target.tv_nsec = libc::UTIME_OMIT;
@@ -499,15 +530,16 @@ export auto read_link(ref<Path> path) -> Result<PathBuf> {
     auto value    = rstd::move(path_value).unwrap_unchecked();
     auto raw_path = reinterpret_cast<const char*>(value.to_bytes_with_nul().p);
 
-    usize capacity = 256;
+    rstd::size_t capacity = 256;
     while (true) {
-        auto bytes = Vec<u8>::with_capacity(capacity);
-        for (usize i = 0; i < capacity; ++i) bytes.push(u8 { 0 });
-        auto count = libc::readlink(
-            raw_path, reinterpret_cast<char*>(bytes.as_mut_slice().as_raw_ptr()), capacity);
+        auto bytes = Vec<u8>::with_capacity(usize(capacity));
+        bytes.resize(usize(capacity), u8 {});
+        auto raw   = as_bytes_mut(bytes.as_mut_slice().as_mut_ref());
+        auto count = libc::readlink(raw_path, reinterpret_cast<char*>(raw.as_raw_ptr()), capacity);
         if (count < 0) return Err(last_error());
-        if (static_cast<usize>(count) < capacity) {
-            while (bytes.len() > static_cast<usize>(count)) (void)bytes.pop();
+        auto length = static_cast<rstd::size_t>(count);
+        if (length < capacity) {
+            while (bytes.len().to_primitive() > length) (void)bytes.pop();
             return Ok(PathBuf::from(String::from_utf8_unchecked(rstd::move(bytes))));
         }
         capacity *= 2;
@@ -525,10 +557,10 @@ export auto canonicalize(ref<Path> path) -> Result<PathBuf> {
     auto value = rstd::move(path_value).unwrap_unchecked();
     auto raw = libc::realpath(reinterpret_cast<const char*>(value.to_bytes_with_nul().p), nullptr);
     if (! raw) return Err(last_error());
-    usize len = 0;
+    rstd::size_t len = 0;
     while (raw[len] != 0) ++len;
-    auto bytes = Vec<u8>::with_capacity(len);
-    for (usize i = 0; i < len; ++i) bytes.push(static_cast<u8>(raw[i]));
+    auto bytes = Vec<u8>::copy_from_bytes(
+        slice<byte>::from_raw_parts(reinterpret_cast<byte const*>(raw), usize(len)));
     libc::free(raw);
     return Ok(PathBuf::from(String::from_utf8_unchecked(rstd::move(bytes))));
 #else
@@ -580,10 +612,10 @@ export auto read_directory(void* handle) -> Option<Result<DirectoryEntryData>> {
         auto name = entry->d_name;
         if (name[0] == '.' && (name[1] == 0 || (name[1] == '.' && name[2] == 0))) continue;
 
-        usize len = 0;
+        rstd::size_t len = 0;
         while (name[len] != 0) ++len;
-        auto bytes = Vec<u8>::with_capacity(len);
-        for (usize i = 0; i < len; ++i) bytes.push(static_cast<u8>(name[i]));
+        auto bytes = Vec<u8>::copy_from_bytes(
+            slice<byte>::from_raw_parts(reinterpret_cast<byte const*>(name), usize(len)));
         return Some(Result<DirectoryEntryData>(Ok(DirectoryEntryData {
             .name      = rstd::move(bytes),
             .file_type = file_type_from_dirent(entry->d_type),

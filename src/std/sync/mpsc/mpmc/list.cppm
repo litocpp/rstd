@@ -1,5 +1,3 @@
-module;
-#include <rstd/macro.hpp>
 export module rstd:sync.mpsc.mpmc.list;
 export import :sync.mpsc.mpmc.context;
 export import :sync.mpsc.mpmc.select;
@@ -16,8 +14,8 @@ using rstd::sync::atomic::Ordering;
 namespace rstd::sync::mpsc::mpmc
 {
 
-const usize WRITE = 1;
-const usize READ  = 2;
+const usize WRITE { 1 };
+const usize READ { 2 };
 
 template<typename T>
 struct ListSlot {
@@ -32,21 +30,17 @@ struct Block {
 
     Block(): next(nullptr) {
         for (int i = 0; i < 31; ++i) {
-            slots[i].state.store(0, Ordering::Relaxed);
+            slots[i].state.store(usize(), Ordering::Relaxed);
         }
     }
 };
 
 export struct ListToken {
-    u8 const* block;
-    usize     offset;
+    const void* block;
+    usize       offset;
 
-    static ListToken default_token() { return ListToken { nullptr, 0 }; }
+    static ListToken default_token() { return ListToken { nullptr, usize() }; }
 };
-
-// Update Token to include list
-// Wait, I should probably use a union or just keep it separate.
-// For now I'll just use a generic token or update the existing one.
 
 export template<typename T>
 struct ListPosition {
@@ -67,9 +61,9 @@ struct ListChannel {
             .tail      = {},
             .receivers = {},
         };
-        raw->head->index.store(0, Ordering::Relaxed);
+        raw->head->index.store(usize(), Ordering::Relaxed);
         raw->head->block.store(block, Ordering::Relaxed);
-        raw->tail->index.store(0, Ordering::Relaxed);
+        raw->tail->index.store(usize(), Ordering::Relaxed);
         raw->tail->block.store(block, Ordering::Relaxed);
         return Box<ListChannel>::from_raw(mut_ptr<ListChannel>::from_raw_parts(raw));
     }
@@ -78,10 +72,10 @@ struct ListChannel {
         Backoff backoff;
         while (true) {
             usize tail_idx = tail->index.load(Ordering::Acquire);
-            if (tail_idx & 1) return true; // Disconnected
+            if ((tail_idx & usize(1)) != usize()) return true;
 
-            usize offset = (tail_idx >> 1) % 32;
-            if (offset == 31) {
+            usize offset = (tail_idx >> u64(1)) % usize(32);
+            if (offset == usize(31)) {
                 // Install next block if needed
                 auto* curr_block = tail->block.load(Ordering::Acquire);
                 auto* next_block = curr_block->next.load(Ordering::Acquire);
@@ -96,13 +90,13 @@ struct ListChannel {
                 }
                 tail->block.compare_exchange_strong(
                     curr_block, next_block, Ordering::Release, Ordering::Acquire);
-                tail->index.fetch_add(2, Ordering::Release);
+                tail->index.fetch_add(usize(2), Ordering::Release);
                 continue;
             }
 
             if (tail->index.compare_exchange_weak(
-                    tail_idx, tail_idx + 2, Ordering::SeqCst, Ordering::Relaxed)) {
-                token.block  = reinterpret_cast<u8 const*>(tail->block.load(Ordering::Acquire));
+                    tail_idx, tail_idx + usize(2), Ordering::SeqCst, Ordering::Relaxed)) {
+                token.block  = tail->block.load(Ordering::Acquire);
                 token.offset = offset;
                 return true;
             }
@@ -112,8 +106,8 @@ struct ListChannel {
 
     auto write(ListToken& token, T msg) -> Result<empty, T> {
         if (! token.block) return Err(rstd::move(msg));
-        auto* block = reinterpret_cast<Block<T>*>(const_cast<u8*>(token.block));
-        auto& slot  = block->slots[token.offset];
+        auto* block = static_cast<Block<T>*>(const_cast<void*>(token.block));
+        auto& slot  = block->slots[token.offset.to_primitive()];
         slot.msg.write(rstd::move(msg));
         slot.state.fetch_or(WRITE, Ordering::Release);
         receivers.notify();
@@ -124,14 +118,14 @@ struct ListChannel {
         Backoff backoff;
         while (true) {
             usize head_idx = head->index.load(Ordering::Acquire);
-            usize offset   = (head_idx >> 1) % 32;
+            usize offset   = (head_idx >> u64(1)) % usize(32);
 
-            if (offset == 31) {
+            if (offset == usize(31)) {
                 auto* curr_block = head->block.load(Ordering::Acquire);
                 auto* next_block = curr_block->next.load(Ordering::Acquire);
                 if (! next_block) {
                     // Check if disconnected
-                    if (tail->index.load(Ordering::Acquire) & 1) {
+                    if ((tail->index.load(Ordering::Acquire) & usize(1)) != usize()) {
                         token.block = nullptr;
                         return true;
                     }
@@ -139,21 +133,21 @@ struct ListChannel {
                 }
                 head->block.compare_exchange_strong(
                     curr_block, next_block, Ordering::Release, Ordering::Acquire);
-                head->index.fetch_add(2, Ordering::Release);
+                head->index.fetch_add(usize(2), Ordering::Release);
                 // TODO: delete old block? Need refcounting for blocks.
                 continue;
             }
 
             auto* block = head->block.load(Ordering::Acquire);
-            auto& slot  = block->slots[offset];
-            if (! (slot.state.load(Ordering::Acquire) & WRITE)) {
+            auto& slot  = block->slots[offset.to_primitive()];
+            if ((slot.state.load(Ordering::Acquire) & WRITE) == usize()) {
                 // Mask the disconnect bit (bit 0) before comparing to head_idx:
                 // disconnect() does `tail->index |= 1` without bumping the
                 // counter, so an unmasked compare misses the empty+disconnected
                 // case and the receiver spins forever instead of returning Err.
                 usize tail_idx = tail->index.load(Ordering::Acquire);
-                if ((tail_idx & ~static_cast<usize>(1)) == head_idx) {
-                    if (tail_idx & 1) {
+                if ((tail_idx & ~usize(1)) == head_idx) {
+                    if ((tail_idx & usize(1)) != usize()) {
                         token.block = nullptr;
                         return true;
                     }
@@ -164,8 +158,8 @@ struct ListChannel {
             }
 
             if (head->index.compare_exchange_weak(
-                    head_idx, head_idx + 2, Ordering::SeqCst, Ordering::Relaxed)) {
-                token.block  = reinterpret_cast<u8 const*>(block);
+                    head_idx, head_idx + usize(2), Ordering::SeqCst, Ordering::Relaxed)) {
+                token.block  = block;
                 token.offset = offset;
                 return true;
             }
@@ -175,15 +169,15 @@ struct ListChannel {
 
     auto read(ListToken& token) -> Result<T, empty> {
         if (! token.block) return Err(empty {});
-        auto* block = reinterpret_cast<Block<T>*>(const_cast<u8*>(token.block));
-        auto& slot  = block->slots[token.offset];
+        auto* block = static_cast<Block<T>*>(const_cast<void*>(token.block));
+        auto& slot  = block->slots[token.offset.to_primitive()];
         T     msg   = rstd::move(slot.msg.assume_init_mut());
         slot.state.fetch_or(READ, Ordering::Release);
         return Ok(rstd::move(msg));
     }
 
     void disconnect() {
-        tail->index.fetch_or(1, Ordering::SeqCst);
+        tail->index.fetch_or(usize(1), Ordering::SeqCst);
         receivers.disconnect();
     }
 

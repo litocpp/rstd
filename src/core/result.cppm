@@ -2,6 +2,7 @@ module;
 #include <rstd/macro.hpp>
 #include <rstd/enum.hpp>
 export module rstd.core:result;
+import :num.types;
 import :enum_;
 export import :clone;
 export import :fmt;
@@ -94,7 +95,7 @@ protected:
         return static_cast<const Result<T, E>&>(*this);
     }
 
-    template<i32 I, typename U>
+    template<rstd::int32_t I, typename U>
         requires mtp::same_as<mtp::rm_cvf<U>, Result<T, E>>
     static constexpr decltype(auto) _get(U&& self) {
         using traits = result_traits<decltype(self)>;
@@ -113,31 +114,31 @@ protected:
         }
     }
 
-    template<i32 I>
+    template<rstd::int32_t I>
     constexpr decltype(auto) _get() & {
         return result_base::template _get<I>(static_cast<Result<T, E>&>(*this));
     }
 
-    template<i32 I>
+    template<rstd::int32_t I>
     constexpr decltype(auto) _get() && {
         return result_base::template _get<I>(static_cast<Result<T, E>&&>(*this));
     }
 
-    template<i32 I>
+    template<rstd::int32_t I>
     constexpr decltype(auto) _get() const& {
         return result_base::template _get<I>(static_cast<const Result<T, E>&>(*this));
     }
-    template<i32 I>
+    template<rstd::int32_t I>
     constexpr decltype(auto) _get() const&& {
         return result_base::template _get<I>(static_cast<const Result<T, E>&&>(*this));
     }
 
-    template<i32 I>
+    template<rstd::int32_t I>
     constexpr decltype(auto) _get_move() {
         return result_base::template _get<I>(static_cast<Result<T, E>&&>(*this));
     }
 
-    template<i32 I, typename U>
+    template<rstd::int32_t I, typename U>
     constexpr decltype(auto) _self_get(U&& self) const {
         return result_base::template _get<I>(rstd::forward<U>(self));
     }

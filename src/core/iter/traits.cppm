@@ -1,4 +1,5 @@
 export module rstd.core:iter.traits;
+import :num.types;
 export import :trait;
 export import :option;
 export import :ops.function;
@@ -193,11 +194,11 @@ template<typename Tag>
 struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
     using Self = mtp::trait_default_self_t<Tag>;
 
-    auto size_hint() const -> iter::SizeHint { return { 0, rstd::None() }; }
+    auto size_hint() const -> iter::SizeHint { return { usize(), rstd::None() }; }
 
     // ---- consuming ----
     auto count() -> usize {
-        usize n = 0;
+        usize n;
         while (this->self().next().is_some()) ++n;
         return n;
     }
@@ -211,7 +212,7 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
 
     auto nth(usize n) {
         auto x = this->self().next();
-        for (usize i = 0; i < n && x.is_some(); ++i) x = this->self().next();
+        for (rstd::size_t i = 0; i < n.to_primitive() && x.is_some(); ++i) x = this->self().next();
         return x;
     }
 
@@ -287,7 +288,7 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
 
     template<typename Pred>
     auto position(Pred pred) -> Option<usize> {
-        usize i = 0;
+        usize i;
         for (auto x = this->self().next(); x.is_some(); x = this->self().next(), ++i)
             if (pred(*x)) return rstd::Some(i);
         return rstd::None();
@@ -447,13 +448,14 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
     // The n-th element from the back. Requires DoubleEndedIterator.
     auto nth_back(usize n) {
         auto x = this->self().next_back();
-        for (usize i = 0; i < n && x.is_some(); ++i) x = this->self().next_back();
+        for (rstd::size_t i = 0; i < n.to_primitive() && x.is_some(); ++i)
+            x = this->self().next_back();
         return x;
     }
 
     // Advances the iterator by up to `n`, returning the number actually advanced.
     auto advance_by(usize n) -> usize {
-        usize i = 0;
+        usize i;
         for (; i < n; ++i)
             if (this->self().next().is_none()) break;
         return i;

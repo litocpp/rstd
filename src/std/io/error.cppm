@@ -1,6 +1,5 @@
 module;
 #include <rstd/enum.hpp>
-#include <rstd/macro.hpp>
 export module rstd:io.error;
 export import rstd.core;
 
@@ -204,20 +203,22 @@ using namespace rstd::prelude;
 
 // Write a decimal integer directly — avoids needing alloc for int Display.
 inline void write_decimal(rstd::fmt::Formatter& f, i32 n) noexcept {
-    char  buf[12];
-    char* end = buf + sizeof(buf);
-    char* p   = end;
-    u32   v   = (n < 0) ? u32(i64(0) - i64(n)) : u32(n);
+    char           buf[12];
+    char*          end = buf + sizeof(buf);
+    char*          p   = end;
+    auto const     raw = n.to_primitive();
+    rstd::uint32_t v   = raw < 0 ? static_cast<rstd::uint32_t>(-static_cast<rstd::int64_t>(raw))
+                                 : static_cast<rstd::uint32_t>(raw);
     if (v == 0) {
-        f.write_raw((const u8*)"0", 1);
+        f.write_raw("0", 1);
         return;
     }
     while (v > 0) {
         *--p = char('0' + v % 10);
         v /= 10;
     }
-    if (n < 0) *--p = '-';
-    f.write_raw((const u8*)p, usize(end - p));
+    if (raw < 0) *--p = '-';
+    f.write_raw(p, static_cast<rstd::size_t>(end - p));
 }
 namespace rstd
 {
@@ -226,7 +227,7 @@ template<>
 struct Impl<fmt::Display, io::error::ErrorKind> : ImplBase<io::error::ErrorKind> {
     auto fmt(fmt::Formatter& f) const -> bool {
         auto s = this->self().as_str();
-        return f.write_raw(s.data(), s.size());
+        return f.write_raw(s.data(), s.size().to_primitive());
     }
 };
 
@@ -234,7 +235,7 @@ template<>
 struct Impl<fmt::Debug, io::error::ErrorKind> : ImplBase<io::error::ErrorKind> {
     auto fmt(fmt::Formatter& f) const -> bool {
         auto s = this->self().as_str();
-        return f.write_raw(s.data(), s.size());
+        return f.write_raw(s.data(), s.size().to_primitive());
     }
 };
 
@@ -248,20 +249,20 @@ struct Impl<fmt::Display, io::error::Error> : ImplBase<io::error::Error> {
             // "entity not found (os error 2)"
             auto k        = e.kind();
             auto kind_str = k.as_str();
-            f.write_raw(kind_str.data(), kind_str.size());
+            f.write_raw(kind_str.data(), kind_str.size().to_primitive());
             const char prefix[] = " (os error ";
-            f.write_raw((const u8*)prefix, sizeof(prefix) - 1);
+            f.write_raw(prefix, sizeof(prefix) - 1);
             write_decimal(f, e.raw_os_error().unwrap_unchecked());
-            return f.write_raw((const u8*)")", 1);
+            return f.write_raw(")", 1);
         }
         case Tag::Kind: {
             auto k = e.kind();
             auto s = k.as_str();
-            return f.write_raw(s.data(), s.size());
+            return f.write_raw(s.data(), s.size().to_primitive());
         }
         case Tag::Message: {
             auto msg = e.static_message();
-            return f.write_raw((const u8*)msg, rstd::strlen(msg));
+            return f.write_raw(msg, rstd::strlen(msg));
         }
         }
         return false;
@@ -276,27 +277,27 @@ struct Impl<fmt::Debug, io::error::Error> : ImplBase<io::error::Error> {
         switch (e.tag()) {
         case Tag::Os: {
             const char prefix[] = "Os(";
-            f.write_raw((const u8*)prefix, sizeof(prefix) - 1);
+            f.write_raw(prefix, sizeof(prefix) - 1);
             write_decimal(f, e.raw_os_error().unwrap_unchecked());
-            return f.write_raw((const u8*)")", 1);
+            return f.write_raw(")", 1);
         }
         case Tag::Kind: {
             const char prefix[] = "Kind(";
-            f.write_raw((const u8*)prefix, sizeof(prefix) - 1);
+            f.write_raw(prefix, sizeof(prefix) - 1);
             auto k = e.kind();
             as<fmt::Display>(k).fmt(f);
-            return f.write_raw((const u8*)")", 1);
+            return f.write_raw(")", 1);
         }
         case Tag::Message: {
             const char prefix[] = "Error { kind: ";
-            f.write_raw((const u8*)prefix, sizeof(prefix) - 1);
+            f.write_raw(prefix, sizeof(prefix) - 1);
             auto k = e.kind();
             as<fmt::Display>(k).fmt(f);
             const char sep[] = ", message: \"";
-            f.write_raw((const u8*)sep, sizeof(sep) - 1);
+            f.write_raw(sep, sizeof(sep) - 1);
             auto msg = e.static_message();
-            f.write_raw((const u8*)msg, rstd::strlen(msg));
-            return f.write_raw((const u8*)"\" }", 3);
+            f.write_raw(msg, rstd::strlen(msg));
+            return f.write_raw("\" }", 3);
         }
         }
         return false;

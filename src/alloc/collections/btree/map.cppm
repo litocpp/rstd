@@ -45,9 +45,9 @@ class BTreeMapIter : public rstd::DefaultInClass<BTreeMapIter<K, V>, rstd::iter:
 
     void push_left(const TreeNode* node) {
         while (node != nullptr) {
-            front.push(Frame { node, 0 });
+            front.push(Frame { node, usize() });
             if (node->leaf) break;
-            node = node->child(0);
+            node = node->child(usize());
         }
     }
 
@@ -71,9 +71,9 @@ public:
     }
 
     auto next() -> Option<Item> {
-        if (remaining == 0) return None();
+        if (remaining == usize()) return None();
         for (;;) {
-            auto& frame = front[front.len() - 1];
+            auto& frame = front[front.len() - usize(1)];
             auto* node  = frame.node;
             if (node->leaf) {
                 if (frame.index == node->len) {
@@ -91,7 +91,7 @@ public:
                 continue;
             }
             usize index = frame.index++;
-            push_left(node->child(index + 1));
+            push_left(node->child(index + usize(1)));
             --remaining;
             return Some(Item(rstd::ref<K>::from_raw_parts(rstd::addressof(node->key(index))),
                              rstd::ref<V>::from_raw_parts(rstd::addressof(node->value(index)))));
@@ -99,12 +99,12 @@ public:
     }
 
     auto next_back() -> Option<Item> {
-        if (remaining == 0) return None();
+        if (remaining == usize()) return None();
         for (;;) {
-            auto& frame = back[back.len() - 1];
+            auto& frame = back[back.len() - usize(1)];
             auto* node  = frame.node;
             if (node->leaf) {
-                if (frame.index == 0) {
+                if (frame.index == usize()) {
                     back.pop();
                     continue;
                 }
@@ -114,7 +114,7 @@ public:
                     Item(rstd::ref<K>::from_raw_parts(rstd::addressof(node->key(index))),
                          rstd::ref<V>::from_raw_parts(rstd::addressof(node->value(index)))));
             }
-            if (frame.index == 0) {
+            if (frame.index == usize()) {
                 back.pop();
                 continue;
             }
@@ -141,9 +141,9 @@ class BTreeMapIterMut : public rstd::DefaultInClass<BTreeMapIterMut<K, V>, rstd:
 
     void push_left(TreeNode* node) {
         while (node != nullptr) {
-            front.push(Frame { node, 0 });
+            front.push(Frame { node, usize() });
             if (node->leaf) break;
-            node = node->child(0);
+            node = node->child(usize());
         }
     }
 
@@ -167,9 +167,9 @@ public:
     }
 
     auto next() -> Option<Item> {
-        if (remaining == 0) return None();
+        if (remaining == usize()) return None();
         for (;;) {
-            auto& frame = front[front.len() - 1];
+            auto& frame = front[front.len() - usize(1)];
             auto* node  = frame.node;
             if (node->leaf) {
                 if (frame.index == node->len) {
@@ -187,7 +187,7 @@ public:
                 continue;
             }
             usize index = frame.index++;
-            push_left(node->child(index + 1));
+            push_left(node->child(index + usize(1)));
             --remaining;
             return Some(
                 Item(rstd::ref<K>::from_raw_parts(rstd::addressof(node->key(index))),
@@ -196,12 +196,12 @@ public:
     }
 
     auto next_back() -> Option<Item> {
-        if (remaining == 0) return None();
+        if (remaining == usize()) return None();
         for (;;) {
-            auto& frame = back[back.len() - 1];
+            auto& frame = back[back.len() - usize(1)];
             auto* node  = frame.node;
             if (node->leaf) {
-                if (frame.index == 0) {
+                if (frame.index == usize()) {
                     back.pop();
                     continue;
                 }
@@ -211,7 +211,7 @@ public:
                     Item(rstd::ref<K>::from_raw_parts(rstd::addressof(node->key(index))),
                          rstd::mut_ref<V>::from_raw_parts(rstd::addressof(node->value(index)))));
             }
-            if (frame.index == 0) {
+            if (frame.index == usize()) {
                 back.pop();
                 continue;
             }
@@ -323,7 +323,7 @@ class BTreeMap {
 
     template<typename Q>
     static auto lower_bound(const TreeNode& node, const Q& key) -> usize {
-        usize index = 0;
+        usize index {};
         while (index < node.len && node.key(index) < key) ++index;
         return index;
     }
@@ -334,13 +334,15 @@ class BTreeMap {
     }
 
     static void insert_edge(TreeNode& node, usize index, Box<TreeNode> edge, usize active) {
-        for (usize i = active; i > index; --i) node.move_edge(i - 1, i);
+        for (auto current = active; current > index; --current)
+            node.move_edge(current - usize(1), current);
         node.write_edge(index, rstd::move(edge));
     }
 
     static auto remove_edge(TreeNode& node, usize index, usize active) -> Box<TreeNode> {
         auto removed = node.take_edge(index);
-        for (usize i = index; i + 1 < active; ++i) node.move_edge(i + 1, i);
+        for (auto current = index; current + usize(1) < active; ++current)
+            node.move_edge(current + usize(1), current);
         return removed;
     }
 
@@ -348,20 +350,21 @@ class BTreeMap {
         auto* child   = parent.child(child_index);
         auto  sibling = Box<TreeNode>::make(child->leaf);
 
-        for (usize i = 0; i < B - 1; ++i) {
-            auto entry = child->take_entry(B + i);
+        for (usize i {}; i < usize(B - 1); ++i) {
+            auto entry = child->take_entry(usize(B) + i);
             sibling->write_entry(
                 i, rstd::move(entry.template get<0>()), rstd::move(entry.template get<1>()));
         }
-        sibling->len = B - 1;
+        sibling->len = usize(B - 1);
 
         if (! child->leaf) {
-            for (usize i = 0; i < B; ++i) sibling->write_edge(i, child->take_edge(B + i));
+            for (usize i {}; i < usize(B); ++i)
+                sibling->write_edge(i, child->take_edge(usize(B) + i));
         }
 
-        auto middle = child->take_entry(B - 1);
-        child->len  = B - 1;
-        insert_edge(parent, child_index + 1, rstd::move(sibling), parent.len + 1);
+        auto middle = child->take_entry(usize(B - 1));
+        child->len  = usize(B - 1);
+        insert_edge(parent, child_index + usize(1), rstd::move(sibling), parent.len + usize(1));
         parent.insert_entry(child_index,
                             rstd::move(middle.template get<0>()),
                             rstd::move(middle.template get<1>()));
@@ -385,7 +388,7 @@ class BTreeMap {
             }
 
             auto* child = node->child(index);
-            if (child->len == CAPACITY) {
+            if (child->len == usize(CAPACITY)) {
                 split_child(*node, index);
                 if (equivalent(node->key(index), key)) {
                     auto stored = node->take_entry(index);
@@ -402,28 +405,28 @@ class BTreeMap {
 
     static void borrow_from_previous(TreeNode& parent, usize child_index) {
         auto* child         = parent.child(child_index);
-        auto* sibling       = parent.child(child_index - 1);
-        auto  parent_entry  = parent.take_entry(child_index - 1);
-        auto  sibling_entry = sibling->remove_entry(sibling->len - 1);
+        auto* sibling       = parent.child(child_index - usize(1));
+        auto  parent_entry  = parent.take_entry(child_index - usize(1));
+        auto  sibling_entry = sibling->remove_entry(sibling->len - usize(1));
 
-        child->insert_entry(0,
+        child->insert_entry(usize(),
                             rstd::move(parent_entry.template get<0>()),
                             rstd::move(parent_entry.template get<1>()));
-        parent.write_entry(child_index - 1,
+        parent.write_entry(child_index - usize(1),
                            rstd::move(sibling_entry.template get<0>()),
                            rstd::move(sibling_entry.template get<1>()));
 
         if (! child->leaf) {
-            auto edge = sibling->take_edge(sibling->len + 1);
-            insert_edge(*child, 0, rstd::move(edge), child->len);
+            auto edge = sibling->take_edge(sibling->len + usize(1));
+            insert_edge(*child, usize(), rstd::move(edge), child->len);
         }
     }
 
     static void borrow_from_next(TreeNode& parent, usize child_index) {
         auto* child         = parent.child(child_index);
-        auto* sibling       = parent.child(child_index + 1);
+        auto* sibling       = parent.child(child_index + usize(1));
         auto  parent_entry  = parent.take_entry(child_index);
-        auto  sibling_entry = sibling->remove_entry(0);
+        auto  sibling_entry = sibling->remove_entry(usize());
 
         child->insert_entry(child->len,
                             rstd::move(parent_entry.template get<0>()),
@@ -433,22 +436,22 @@ class BTreeMap {
                            rstd::move(sibling_entry.template get<1>()));
 
         if (! child->leaf) {
-            auto edge = remove_edge(*sibling, 0, sibling->len + 2);
+            auto edge = remove_edge(*sibling, usize(), sibling->len + usize(2));
             insert_edge(*child, child->len, rstd::move(edge), child->len);
         }
     }
 
     static auto merge_children(TreeNode& parent, usize left_index) -> TreeNode& {
         usize old_parent_len = parent.len;
-        auto  right          = remove_edge(parent, left_index + 1, old_parent_len + 1);
-        auto* left           = parent.child(left_index);
-        auto  middle         = parent.remove_entry(left_index);
-        usize right_len      = right->len;
+        auto  right     = remove_edge(parent, left_index + usize(1), old_parent_len + usize(1));
+        auto* left      = parent.child(left_index);
+        auto  middle    = parent.remove_entry(left_index);
+        usize right_len = right->len;
 
         left->insert_entry(
             left->len, rstd::move(middle.template get<0>()), rstd::move(middle.template get<1>()));
-        while (right->len != 0) {
-            auto entry = right->remove_entry(0);
+        while (right->len != usize()) {
+            auto entry = right->remove_entry(usize());
             left->insert_entry(left->len,
                                rstd::move(entry.template get<0>()),
                                rstd::move(entry.template get<1>()));
@@ -456,7 +459,7 @@ class BTreeMap {
 
         if (! left->leaf) {
             usize first_edge = left->len - right_len;
-            for (usize i = 0; i <= right_len; ++i) {
+            for (usize i {}; i <= right_len; ++i) {
                 left->write_edge(first_edge + i, right->take_edge(i));
             }
             right->leaf = true;
@@ -465,26 +468,26 @@ class BTreeMap {
     }
 
     static auto remove_min(TreeNode& node) -> Entry {
-        if (node.leaf) return node.remove_entry(0);
-        auto* child = node.child(0);
-        if (child->len == B - 1) {
-            if (node.edge(1)->len >= B)
-                borrow_from_next(node, 0);
+        if (node.leaf) return node.remove_entry(usize());
+        auto* child = node.child(usize());
+        if (child->len == usize(B - 1)) {
+            if (node.edge(usize(1))->len >= usize(B))
+                borrow_from_next(node, usize());
             else
-                child = rstd::addressof(merge_children(node, 0));
+                child = rstd::addressof(merge_children(node, usize()));
         }
         return remove_min(*child);
     }
 
     static auto remove_max(TreeNode& node) -> Entry {
-        if (node.leaf) return node.remove_entry(node.len - 1);
+        if (node.leaf) return node.remove_entry(node.len - usize(1));
         usize child_index = node.len;
         auto* child       = node.child(child_index);
-        if (child->len == B - 1) {
-            if (node.edge(child_index - 1)->len >= B)
+        if (child->len == usize(B - 1)) {
+            if (node.edge(child_index - usize(1))->len >= usize(B))
                 borrow_from_previous(node, child_index);
             else {
-                child = rstd::addressof(merge_children(node, child_index - 1));
+                child = rstd::addressof(merge_children(node, child_index - usize(1)));
             }
         }
         return remove_max(*child);
@@ -493,8 +496,8 @@ class BTreeMap {
     template<typename Q>
     static auto remove_from_internal(TreeNode& node, usize index, const Q& key) -> Option<Entry> {
         auto* left  = node.child(index);
-        auto* right = node.child(index + 1);
-        if (left->len >= B) {
+        auto* right = node.child(index + usize(1));
+        if (left->len >= usize(B)) {
             auto removed     = node.take_entry(index);
             auto predecessor = remove_max(*left);
             node.write_entry(index,
@@ -502,7 +505,7 @@ class BTreeMap {
                              rstd::move(predecessor.template get<1>()));
             return Some(rstd::move(removed));
         }
-        if (right->len >= B) {
+        if (right->len >= usize(B)) {
             auto removed   = node.take_entry(index);
             auto successor = remove_min(*right);
             node.write_entry(index,
@@ -524,15 +527,15 @@ class BTreeMap {
         if (node.leaf) return None();
 
         auto* child = node.child(index);
-        if (child->len == B - 1) {
-            if (index != 0 && node.edge(index - 1)->len >= B) {
+        if (child->len == usize(B - 1)) {
+            if (index != usize() && node.edge(index - usize(1))->len >= usize(B)) {
                 borrow_from_previous(node, index);
-            } else if (index != node.len && node.edge(index + 1)->len >= B) {
+            } else if (index != node.len && node.edge(index + usize(1))->len >= usize(B)) {
                 borrow_from_next(node, index);
             } else if (index != node.len) {
                 child = rstd::addressof(merge_children(node, index));
             } else {
-                child = rstd::addressof(merge_children(node, index - 1));
+                child = rstd::addressof(merge_children(node, index - usize(1)));
             }
         }
         return remove_from_node(*child, key);
@@ -540,25 +543,25 @@ class BTreeMap {
 
     void normalize_root() {
         auto* current = root_node();
-        if (current == nullptr || current->len != 0 || current->leaf) return;
+        if (current == nullptr || current->len != usize() || current->leaf) return;
         auto old_root  = rstd::move(*root.take());
-        auto new_root  = old_root->take_edge(0);
+        auto new_root  = old_root->take_edge(usize());
         old_root->leaf = true;
         root           = Some(rstd::move(new_root));
     }
 
     static void drain_node(Box<TreeNode> node, Vec<Entry>& output) {
         if (node->leaf) {
-            while (node->len != 0) output.push(node->remove_entry(0));
+            while (node->len != usize()) output.push(node->remove_entry(usize()));
             return;
         }
 
-        while (node->len != 0) {
-            auto child = remove_edge(*node.get(), 0, node->len + 1);
+        while (node->len != usize()) {
+            auto child = remove_edge(*node.get(), usize(), node->len + usize(1));
             drain_node(rstd::move(child), output);
-            output.push(node->remove_entry(0));
+            output.push(node->remove_entry(usize()));
         }
-        auto child = node->take_edge(0);
+        auto child = node->take_edge(usize());
         node->leaf = true;
         drain_node(rstd::move(child), output);
     }
@@ -571,13 +574,13 @@ class BTreeMap {
                               usize&          leaf_depth,
                               bool&           saw_leaf,
                               usize&          count) {
-        if (node.len > CAPACITY || (! is_root && node.len < B - 1)) return false;
-        if (! node.leaf && node.len == 0) return false;
-        for (usize i = 0; i < node.len; ++i) {
+        if (node.len > usize(CAPACITY) || (! is_root && node.len < usize(B - 1))) return false;
+        if (! node.leaf && node.len == usize()) return false;
+        for (usize i {}; i < node.len; ++i) {
             const auto& key = node.key(i);
             if (lower != nullptr && ! (*lower < key)) return false;
             if (upper != nullptr && ! (key < *upper)) return false;
-            if (i != 0 && ! (node.key(i - 1) < key)) return false;
+            if (i != usize() && ! (node.key(i - usize(1)) < key)) return false;
         }
         count += node.len;
         if (node.leaf) {
@@ -586,14 +589,14 @@ class BTreeMap {
             saw_leaf   = true;
             return true;
         }
-        for (usize i = 0; i <= node.len; ++i) {
-            const K* child_lower = i == 0 ? lower : rstd::addressof(node.key(i - 1));
+        for (usize i {}; i <= node.len; ++i) {
+            const K* child_lower = i == usize() ? lower : rstd::addressof(node.key(i - usize(1)));
             const K* child_upper = i == node.len ? upper : rstd::addressof(node.key(i));
             if (! validate_node(*node.child(i),
                                 false,
                                 child_lower,
                                 child_upper,
-                                depth + 1,
+                                depth + usize(1),
                                 leaf_depth,
                                 saw_leaf,
                                 count)) {
@@ -604,30 +607,30 @@ class BTreeMap {
     }
 
     bool valid() const {
-        if (root.is_none()) return length == 0;
-        usize leaf_depth = 0;
-        usize count      = 0;
-        bool  saw_leaf   = false;
+        if (root.is_none()) return length == usize();
+        usize leaf_depth {};
+        usize count {};
+        bool  saw_leaf = false;
         return validate_node(
-                   *root_node(), true, nullptr, nullptr, 0, leaf_depth, saw_leaf, count) &&
+                   *root_node(), true, nullptr, nullptr, usize(), leaf_depth, saw_leaf, count) &&
                count == length;
     }
 
 public:
     USE_TRAIT(BTreeMap)
 
-    BTreeMap(): root(None()), length(0) {}
+    BTreeMap(): root(None()), length() {}
     BTreeMap(const BTreeMap&)            = delete;
     BTreeMap& operator=(const BTreeMap&) = delete;
     BTreeMap(BTreeMap&& other) noexcept: root(other.root.take()), length(other.length) {
-        other.length = 0;
+        other.length = usize();
     }
     BTreeMap& operator=(BTreeMap&& other) noexcept {
         if (this != rstd::addressof(other)) {
             clear();
             root         = other.root.take();
             length       = other.length;
-            other.length = 0;
+            other.length = usize();
         }
         return *this;
     }
@@ -635,7 +638,7 @@ public:
     static auto make() -> BTreeMap { return {}; }
 
     auto len() const noexcept -> usize { return length; }
-    auto is_empty() const noexcept -> bool { return length == 0; }
+    auto is_empty() const noexcept -> bool { return length == usize(); }
 
     auto clone() const -> BTreeMap
         requires rstd::Impled<K, rstd::clone::Clone> && rstd::Impled<V, rstd::clone::Clone>
@@ -657,16 +660,16 @@ public:
 
     void clear() {
         root   = None();
-        length = 0;
+        length = usize();
     }
 
     auto insert(K key, V value) -> Option<V> {
         if (root.is_none()) root = Some(Box<TreeNode>::make(true));
-        if (root_node()->len == CAPACITY) {
+        if (root_node()->len == usize(CAPACITY)) {
             auto old_root = rstd::move(*root.take());
             auto new_root = Box<TreeNode>::make(false);
-            new_root->write_edge(0, rstd::move(old_root));
-            split_child(*new_root.get(), 0);
+            new_root->write_edge(usize(), rstd::move(old_root));
+            split_child(*new_root.get(), usize());
             root = Some(rstd::move(new_root));
         }
         auto old = insert_non_full(*root_node(), rstd::move(key), rstd::move(value));
@@ -774,26 +777,26 @@ public:
     auto first_key_value() const [[clang::lifetimebound]]
     -> Option<rstd::tuple<rstd::ref<K>, rstd::ref<V>>> {
         auto* node = root_node();
-        if (node == nullptr || length == 0) return None();
-        while (! node->leaf) node = node->child(0);
+        if (node == nullptr || length == usize()) return None();
+        while (! node->leaf) node = node->child(usize());
         return Some(rstd::tuple<rstd::ref<K>, rstd::ref<V>>(
-            rstd::ref<K>::from_raw_parts(rstd::addressof(node->key(0))),
-            rstd::ref<V>::from_raw_parts(rstd::addressof(node->value(0)))));
+            rstd::ref<K>::from_raw_parts(rstd::addressof(node->key(usize()))),
+            rstd::ref<V>::from_raw_parts(rstd::addressof(node->value(usize())))));
     }
 
     auto last_key_value() const [[clang::lifetimebound]]
     -> Option<rstd::tuple<rstd::ref<K>, rstd::ref<V>>> {
         auto* node = root_node();
-        if (node == nullptr || length == 0) return None();
+        if (node == nullptr || length == usize()) return None();
         while (! node->leaf) node = node->child(node->len);
-        usize index = node->len - 1;
+        usize index = node->len - usize(1);
         return Some(rstd::tuple<rstd::ref<K>, rstd::ref<V>>(
             rstd::ref<K>::from_raw_parts(rstd::addressof(node->key(index))),
             rstd::ref<V>::from_raw_parts(rstd::addressof(node->value(index)))));
     }
 
     auto pop_first() -> Option<Entry> {
-        if (length == 0) return None();
+        if (length == usize()) return None();
         auto entry = remove_min(*root_node());
         --length;
         normalize_root();
@@ -802,7 +805,7 @@ public:
     }
 
     auto pop_last() -> Option<Entry> {
-        if (length == 0) return None();
+        if (length == usize()) return None();
         auto entry = remove_max(*root_node());
         --length;
         normalize_root();
@@ -830,7 +833,7 @@ public:
     auto into_iter() -> IntoIter {
         auto entries = Vec<Entry>::with_capacity(length);
         if (root.is_some()) drain_node(rstd::move(*root.take()), entries);
-        length = 0;
+        length = usize();
         return IntoIter(rstd::move(entries));
     }
 };

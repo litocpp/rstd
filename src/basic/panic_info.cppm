@@ -9,8 +9,8 @@ using sl_type = rstd::source_location;
 struct source_location {
     static consteval source_location current() noexcept { return {}; }
 
-    constexpr u32         line() const noexcept { return 0u; }
-    constexpr u32         column() const noexcept { return 0u; }
+    constexpr uint32_t    line() const noexcept { return 0u; }
+    constexpr uint32_t    column() const noexcept { return 0u; }
     constexpr const char* file_name() const noexcept { return ""; }
     constexpr const char* function_name() const noexcept { return ""; }
 };
@@ -25,26 +25,29 @@ using sl_type = source_location;
 export struct Location {
     const char* _file;
     const char* _function;
-    u32         _line;
-    u32         _col;
+    uint32_t    _line;
+    uint32_t    _col;
 
     /// Returns the file name where this location was captured.
     constexpr auto file_name() const noexcept -> const char* { return _file; }
     /// Returns the pretty function name (compiler-defined, may include module info on Clang C++20 modules).
     constexpr auto function_name() const noexcept -> const char* { return _function; }
     /// Returns the line number.
-    constexpr auto line() const noexcept -> u32 { return _line; }
+    constexpr auto line() const noexcept -> uint32_t { return _line; }
     /// Returns the column number.
-    constexpr auto column() const noexcept -> u32 { return _col; }
+    constexpr auto column() const noexcept -> uint32_t { return _col; }
 
     /// Creates a `Location` from a `source_location`.
     static constexpr auto from(sl_type sl) noexcept -> Location {
-        return { sl.file_name(), sl.function_name(), u32(sl.line()), u32(sl.column()) };
+        return { sl.file_name(),
+                 sl.function_name(),
+                 static_cast<uint32_t>(sl.line()),
+                 static_cast<uint32_t>(sl.column()) };
     }
 };
 
 /// Function pointer type for writing panic message bytes.
-export using WriteFn = bool (*)(void*, u8 const*, usize);
+export using WriteFn = bool (*)(void*, uint8_t const*, size_t);
 
 /// Carries information about a panic, analogous to Rust's `core::panic::PanicInfo`.
 export struct PanicInfo {

@@ -94,10 +94,10 @@ struct CompletionQueueState {
         auto waker = Option<task::Waker> {};
         {
             auto f = fields.lock().unwrap_unchecked();
-            if (f->handles > 0) {
+            if (f->handles > usize()) {
                 --f->handles;
             }
-            if (f->handles == 0 && ! f->closed) {
+            if (f->handles == usize() && ! f->closed) {
                 f->closed = true;
                 waker     = f->waker.take();
             }
@@ -126,10 +126,10 @@ struct CompletionQueueState {
     auto wait_next(const task::Waker& waker) -> Option<io::Result<Option<T>>> {
         auto f = fields.lock().unwrap_unchecked();
         if (! f->items.is_empty()) {
-            return Some<io::Result<Option<T>>>(Ok(Some(f->items.remove(0))));
+            return Some<io::Result<Option<T>>>(Ok(Some(f->items.remove(usize()))));
         }
 
-        if (f->closed || f->receiver_closed || f->handles == 0) {
+        if (f->closed || f->receiver_closed || f->handles == usize()) {
             return Some<io::Result<Option<T>>>(Ok(None<T>()));
         }
 

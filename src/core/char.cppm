@@ -1,4 +1,5 @@
 export module rstd.core:char_;
+import :num.types;
 export import rstd.basic;
 
 export namespace rstd::char_
@@ -19,15 +20,15 @@ constexpr auto is_ascii(char32_t c) noexcept -> bool {
 ///
 /// Returns 0 for invalid code points (surrogates, > U+10FFFF).
 constexpr auto len_utf8(char32_t c) noexcept -> usize {
-    if (c <= 0x7F) return 1;
-    if (c <= 0x7FF) return 2;
+    if (c <= 0x7F) return usize(1);
+    if (c <= 0x7FF) return usize(2);
     if (c <= 0xFFFF) {
         // Surrogates are not valid scalar values.
-        if (c >= 0xD800 && c <= 0xDFFF) return 0;
-        return 3;
+        if (c >= 0xD800 && c <= 0xDFFF) return usize();
+        return usize(3);
     }
-    if (c <= 0x10FFFF) return 4;
-    return 0;
+    if (c <= 0x10FFFF) return usize(4);
+    return usize();
 }
 
 /// Encodes a Unicode code point into UTF-8.
@@ -35,31 +36,33 @@ constexpr auto len_utf8(char32_t c) noexcept -> usize {
 /// \param c    The code point to encode.
 /// \param buf  Output buffer (must have room for at least `len_utf8(c)` bytes).
 /// \return Number of bytes written (1–4), or 0 on invalid code point.
-constexpr auto encode_utf8(char32_t c, u8* buf) noexcept -> usize {
+template<typename Byte>
+    requires(mtp::same_as<Byte, u8> || mtp::same_as<Byte, rstd::uint8_t>)
+constexpr auto encode_utf8(char32_t c, Byte* buf) noexcept -> usize {
     if (c <= 0x7F) {
-        buf[0] = static_cast<u8>(c);
-        return 1;
+        buf[0] = Byte(static_cast<rstd::uint8_t>(c));
+        return usize(1);
     }
     if (c <= 0x7FF) {
-        buf[0] = static_cast<u8>(0xC0 | (c >> 6));
-        buf[1] = static_cast<u8>(0x80 | (c & 0x3F));
-        return 2;
+        buf[0] = Byte(static_cast<rstd::uint8_t>(0xC0 | (c >> 6)));
+        buf[1] = Byte(static_cast<rstd::uint8_t>(0x80 | (c & 0x3F)));
+        return usize(2);
     }
     if (c <= 0xFFFF) {
-        if (c >= 0xD800 && c <= 0xDFFF) return 0;
-        buf[0] = static_cast<u8>(0xE0 | (c >> 12));
-        buf[1] = static_cast<u8>(0x80 | ((c >> 6) & 0x3F));
-        buf[2] = static_cast<u8>(0x80 | (c & 0x3F));
-        return 3;
+        if (c >= 0xD800 && c <= 0xDFFF) return usize();
+        buf[0] = Byte(static_cast<rstd::uint8_t>(0xE0 | (c >> 12)));
+        buf[1] = Byte(static_cast<rstd::uint8_t>(0x80 | ((c >> 6) & 0x3F)));
+        buf[2] = Byte(static_cast<rstd::uint8_t>(0x80 | (c & 0x3F)));
+        return usize(3);
     }
     if (c <= 0x10FFFF) {
-        buf[0] = static_cast<u8>(0xF0 | (c >> 18));
-        buf[1] = static_cast<u8>(0x80 | ((c >> 12) & 0x3F));
-        buf[2] = static_cast<u8>(0x80 | ((c >> 6) & 0x3F));
-        buf[3] = static_cast<u8>(0x80 | (c & 0x3F));
-        return 4;
+        buf[0] = Byte(static_cast<rstd::uint8_t>(0xF0 | (c >> 18)));
+        buf[1] = Byte(static_cast<rstd::uint8_t>(0x80 | ((c >> 12) & 0x3F)));
+        buf[2] = Byte(static_cast<rstd::uint8_t>(0x80 | ((c >> 6) & 0x3F)));
+        buf[3] = Byte(static_cast<rstd::uint8_t>(0x80 | (c & 0x3F)));
+        return usize(4);
     }
-    return 0;
+    return usize();
 }
 
 /// Decodes one UTF-8 code point from the start of a byte sequence.
@@ -68,19 +71,32 @@ constexpr auto encode_utf8(char32_t c, u8* buf) noexcept -> usize {
 /// \param len  Number of available bytes.
 /// \return `{code_point, bytes_consumed}`.
 ///         On invalid/incomplete sequence, returns `{REPLACEMENT, 1}` (skip one byte).
-constexpr auto decode_utf8(const u8* ptr, usize len) noexcept -> rstd::tuple<char32_t, usize> {
-    if (len == 0) return { REPLACEMENT, 0 };
+template<typename Byte>
+    requires(mtp::same_as<Byte, u8> || mtp::same_as<Byte, rstd::uint8_t>)
+constexpr auto byte_value(Byte byte) noexcept -> rstd::uint8_t {
+    if constexpr (mtp::same_as<Byte, u8>) {
+        return byte.to_primitive();
+    } else {
+        return byte;
+    }
+}
 
-    u8 b0 = ptr[0];
+template<typename Byte>
+    requires(mtp::same_as<Byte, u8> || mtp::same_as<Byte, rstd::uint8_t>)
+constexpr auto decode_utf8(const Byte* ptr, usize len) noexcept -> rstd::tuple<char32_t, usize> {
+    auto const available = len.to_primitive();
+    if (available == 0) return { REPLACEMENT, usize() };
+
+    rstd::uint8_t const b0 = byte_value(ptr[0]);
 
     // 1-byte (ASCII)
     if (b0 <= 0x7F) {
-        return { static_cast<char32_t>(b0), 1 };
+        return { static_cast<char32_t>(b0), usize(1) };
     }
 
     // Determine expected sequence length from leading byte.
-    usize    seq_len;
-    char32_t cp;
+    rstd::size_t seq_len;
+    char32_t     cp;
     if ((b0 & 0xE0) == 0xC0) {
         seq_len = 2;
         cp      = b0 & 0x1F;
@@ -92,54 +108,64 @@ constexpr auto decode_utf8(const u8* ptr, usize len) noexcept -> rstd::tuple<cha
         cp      = b0 & 0x07;
     } else {
         // Invalid leading byte (continuation or 0xFE/0xFF).
-        return { REPLACEMENT, 1 };
+        return { REPLACEMENT, usize(1) };
     }
 
-    if (seq_len > len) return { REPLACEMENT, 1 };
+    if (seq_len > available) return { REPLACEMENT, usize(1) };
 
     // Consume continuation bytes.
-    for (usize i = 1; i < seq_len; i++) {
-        u8 b = ptr[i];
-        if ((b & 0xC0) != 0x80) return { REPLACEMENT, 1 };
+    for (rstd::size_t i = 1; i < seq_len; ++i) {
+        rstd::uint8_t const b = byte_value(ptr[i]);
+        if ((b & 0xC0) != 0x80) return { REPLACEMENT, usize(1) };
         cp = (cp << 6) | (b & 0x3F);
     }
 
     // Reject overlong encodings.
-    if (seq_len == 2 && cp < 0x80) return { REPLACEMENT, 1 };
-    if (seq_len == 3 && cp < 0x800) return { REPLACEMENT, 1 };
-    if (seq_len == 4 && cp < 0x10000) return { REPLACEMENT, 1 };
+    if (seq_len == 2 && cp < 0x80) return { REPLACEMENT, usize(1) };
+    if (seq_len == 3 && cp < 0x800) return { REPLACEMENT, usize(1) };
+    if (seq_len == 4 && cp < 0x10000) return { REPLACEMENT, usize(1) };
 
     // Reject surrogates and out-of-range.
-    if (cp >= 0xD800 && cp <= 0xDFFF) return { REPLACEMENT, 1 };
-    if (cp > MAX) return { REPLACEMENT, 1 };
+    if (cp >= 0xD800 && cp <= 0xDFFF) return { REPLACEMENT, usize(1) };
+    if (cp > MAX) return { REPLACEMENT, usize(1) };
 
-    return { cp, seq_len };
+    return { cp, usize(seq_len) };
 }
 
 /// Returns `true` if the byte is a UTF-8 continuation byte (10xxxxxx).
-constexpr auto is_continuation(u8 b) noexcept -> bool {
-    return (b & 0xC0) == 0x80;
+template<typename Byte>
+    requires(mtp::same_as<Byte, u8> || mtp::same_as<Byte, rstd::uint8_t>)
+constexpr auto is_continuation(Byte byte) noexcept -> bool {
+    return (byte_value(byte) & 0xC0) == 0x80;
 }
 
 /// Returns `true` if position `pos` is on a UTF-8 character boundary
 /// within the byte sequence `[ptr, ptr+len)`.
 ///
 /// Positions 0 and `len` are always boundaries.
-constexpr auto is_char_boundary(const u8* ptr, usize len, usize pos) noexcept -> bool {
-    if (pos == 0 || pos == len) return true;
+template<typename Byte>
+    requires(mtp::same_as<Byte, u8> || mtp::same_as<Byte, rstd::uint8_t>)
+constexpr auto is_char_boundary(const Byte* ptr, usize len, usize pos) noexcept -> bool {
+    if (pos == usize() || pos == len) return true;
     if (pos > len) return false;
-    return ! is_continuation(ptr[pos]);
+    return ! is_continuation(ptr[pos.to_primitive()]);
 }
 
 /// Validates that a byte sequence is well-formed UTF-8.
 ///
 /// \return `true` if all bytes form valid UTF-8.
-constexpr auto is_valid_utf8(const u8* ptr, usize len) noexcept -> bool {
-    usize i = 0;
-    while (i < len) {
-        auto [cp, n] = decode_utf8(ptr + i, len - i);
-        if (cp == REPLACEMENT && (n <= 1 && (i >= len || ptr[i] > 0x7F))) return false;
-        i += n;
+template<typename Byte>
+    requires(mtp::same_as<Byte, u8> || mtp::same_as<Byte, rstd::uint8_t>)
+constexpr auto is_valid_utf8(const Byte* ptr, usize len) noexcept -> bool {
+    rstd::size_t i         = 0;
+    auto const   available = len.to_primitive();
+    while (i < available) {
+        auto [cp, n]        = decode_utf8(ptr + i, usize(available - i));
+        auto const consumed = n.to_primitive();
+        if (cp == REPLACEMENT && (consumed <= 1 && (i >= available || byte_value(ptr[i]) > 0x7F))) {
+            return false;
+        }
+        i += consumed;
     }
     return true;
 }

@@ -20,10 +20,10 @@ namespace rstd::sync::mpsc::mpmc
 {
 
 export struct ArrayToken {
-    u8 const* slot;
-    usize     stamp;
+    const void* slot;
+    usize       stamp;
 
-    static ArrayToken default_token() { return ArrayToken { nullptr, 0 }; }
+    static ArrayToken default_token() { return ArrayToken { nullptr, usize() }; }
 };
 
 export struct Token {
@@ -48,26 +48,27 @@ struct Channel {
     SyncWaker                  receivers;
 
     static auto with_capacity(usize cap) -> Box<Channel> {
-        rstd_assert(cap > 0);
+        rstd_assert(cap > usize());
 
-        usize mark_bit = rstd::num::bit_ceil(cap + 1);
-        usize one_lap  = mark_bit * 2;
+        usize mark_bit = (cap + usize(1)).next_power_of_two();
+        usize one_lap  = mark_bit * usize(2);
 
         auto slots_storage = as<Allocator>(::alloc::GLOBAL)
                                  .allocate(alloc::Layout::array<Slot<T>>(cap).unwrap())
                                  .unwrap()
-                                 .as_raw_ptr();
+                                 .pointer;
 
-        auto* raw_slots = new (slots_storage) Slot<T>[cap];
-        for (usize i = 0; i < cap; ++i) {
-            raw_slots[i].stamp.store(i, Ordering::Relaxed);
+        auto* raw_slots = static_cast<Slot<T>*>(slots_storage);
+        for (rstd::size_t i = 0; i < cap.to_primitive(); ++i) {
+            new (raw_slots + i) Slot<T> {};
+            raw_slots[i].stamp.store(usize(i), Ordering::Relaxed);
         }
         auto buffer = Box<Slot<T>[]>::from_raw(mut_ptr<Slot<T>[]>::from_raw_parts(raw_slots, cap));
 
         auto storage = as<Allocator>(::alloc::GLOBAL)
                            .allocate(alloc::Layout::make<Channel>())
                            .unwrap()
-                           .as_raw_ptr();
+                           .pointer;
 
         auto* raw_chan = new (storage) Channel {
             .head      = {},
@@ -79,8 +80,8 @@ struct Channel {
             .senders   = {},
             .receivers = {},
         };
-        raw_chan->head->store(0, Ordering::Relaxed);
-        raw_chan->tail->store(0, Ordering::Relaxed);
+        raw_chan->head->store(usize(), Ordering::Relaxed);
+        raw_chan->tail->store(usize(), Ordering::Relaxed);
 
         return Box<Channel>::from_raw(mut_ptr<Channel>::from_raw_parts(raw_chan));
     }
@@ -90,36 +91,36 @@ struct Channel {
         usize   tail_val = tail->load(Ordering::Relaxed);
 
         while (true) {
-            if ((tail_val & mark_bit) != 0) {
+            if ((tail_val & mark_bit) != usize()) {
                 token.array.slot  = nullptr;
-                token.array.stamp = 0;
+                token.array.stamp = usize();
                 return true;
             }
 
-            usize index = tail_val & (mark_bit - 1);
-            usize lap   = tail_val & ~(one_lap - 1);
+            usize index = tail_val & (mark_bit - usize(1));
+            usize lap   = tail_val & ~(one_lap - usize(1));
 
             auto& slot  = buffer.as_ptr()[index];
             usize stamp = slot.stamp.load(Ordering::Acquire);
 
             if (tail_val == stamp) {
                 usize new_tail;
-                if (index + 1 < cap) {
-                    new_tail = tail_val + 1;
+                if (index + usize(1) < cap) {
+                    new_tail = tail_val + usize(1);
                 } else {
-                    new_tail = (lap + one_lap) & ~(one_lap - 1); // wrap lap
+                    new_tail = (lap + one_lap) & ~(one_lap - usize(1));
                 }
 
                 if (tail->compare_exchange_weak(
                         tail_val, new_tail, Ordering::SeqCst, Ordering::Relaxed)) {
-                    token.array.slot  = reinterpret_cast<u8 const*>(&slot);
-                    token.array.stamp = tail_val + 1;
+                    token.array.slot  = &slot;
+                    token.array.stamp = tail_val + usize(1);
                     return true;
                 } else {
                     backoff.spin_light();
                     tail_val = tail->load(Ordering::Relaxed);
                 }
-            } else if (stamp + one_lap == tail_val + 1) {
+            } else if (stamp + one_lap == tail_val + usize(1)) {
                 fence(Ordering::SeqCst);
                 usize head_val = head->load(Ordering::Relaxed);
 
@@ -141,7 +142,7 @@ struct Channel {
             return Err(rstd::move(msg));
         }
 
-        auto* slot = reinterpret_cast<Slot<T>*>(const_cast<u8*>(token.array.slot));
+        auto* slot = static_cast<Slot<T>*>(const_cast<void*>(token.array.slot));
         slot->msg.write(rstd::move(msg));
         slot->stamp.store(token.array.stamp, Ordering::Release);
 
@@ -154,23 +155,23 @@ struct Channel {
         usize   head_val = head->load(Ordering::Relaxed);
 
         while (true) {
-            usize index = head_val & (mark_bit - 1);
-            usize lap   = head_val & ~(one_lap - 1);
+            usize index = head_val & (mark_bit - usize(1));
+            usize lap   = head_val & ~(one_lap - usize(1));
 
             auto& slot  = buffer.as_ptr()[index];
             usize stamp = slot.stamp.load(Ordering::Acquire);
 
-            if (head_val + 1 == stamp) {
+            if (head_val + usize(1) == stamp) {
                 usize new_head;
-                if (index + 1 < cap) {
-                    new_head = head_val + 1;
+                if (index + usize(1) < cap) {
+                    new_head = head_val + usize(1);
                 } else {
-                    new_head = (lap + one_lap) & ~(one_lap - 1); // wrap
+                    new_head = (lap + one_lap) & ~(one_lap - usize(1));
                 }
 
                 if (head->compare_exchange_weak(
                         head_val, new_head, Ordering::SeqCst, Ordering::Relaxed)) {
-                    token.array.slot  = reinterpret_cast<u8 const*>(&slot);
+                    token.array.slot  = &slot;
                     token.array.stamp = head_val + one_lap;
                     return true;
                 } else {
@@ -182,9 +183,9 @@ struct Channel {
                 usize tail_val = tail->load(Ordering::Relaxed);
 
                 if ((tail_val & ~mark_bit) == head_val) {
-                    if ((tail_val & mark_bit) != 0) {
+                    if ((tail_val & mark_bit) != usize()) {
                         token.array.slot  = nullptr;
-                        token.array.stamp = 0;
+                        token.array.stamp = usize();
                         return true;
                     } else {
                         return false; // empty
@@ -205,7 +206,7 @@ struct Channel {
             return Err(empty {}); // Disconnected
         }
 
-        auto* slot = reinterpret_cast<Slot<T>*>(const_cast<u8*>(token.array.slot));
+        auto* slot = static_cast<Slot<T>*>(const_cast<void*>(token.array.slot));
         T     msg  = rstd::move(slot->msg.assume_init_mut());
         slot->stamp.store(token.array.stamp, Ordering::Release);
 
@@ -232,7 +233,7 @@ struct Channel {
 
     void disconnect() {
         usize tail_val = tail->fetch_or(mark_bit, Ordering::SeqCst);
-        if ((tail_val & mark_bit) == 0) {
+        if ((tail_val & mark_bit) == usize()) {
             senders.disconnect();
             receivers.disconnect();
         }
@@ -243,19 +244,19 @@ struct Channel {
         usize t = tail->load(Ordering::Relaxed) & ~mark_bit;
 
         while (h != t) {
-            usize index = h & (mark_bit - 1);
+            usize index = h & (mark_bit - usize(1));
             auto& slot  = buffer.as_mut_ptr()[index];
             slot.msg.assume_init_drop();
 
-            if (index + 1 < cap) {
-                h += 1;
+            if (index + usize(1) < cap) {
+                ++h;
             } else {
-                h = (h + one_lap) & ~(one_lap - 1);
+                h = (h + one_lap) & ~(one_lap - usize(1));
             }
         }
     }
 
-    bool is_disconnected() const { return (tail->load(Ordering::SeqCst) & mark_bit) != 0; }
+    bool is_disconnected() const { return (tail->load(Ordering::SeqCst) & mark_bit) != usize(); }
     bool is_empty() const {
         return (head->load(Ordering::SeqCst) == (tail->load(Ordering::SeqCst) & ~mark_bit));
     }
@@ -267,8 +268,8 @@ struct Channel {
         usize h = head->load(Ordering::SeqCst);
         usize t = tail->load(Ordering::SeqCst) & ~mark_bit;
 
-        usize h_idx = h & (mark_bit - 1);
-        usize t_idx = t & (mark_bit - 1);
+        usize h_idx = h & (mark_bit - usize(1));
+        usize t_idx = t & (mark_bit - usize(1));
 
         if (h_idx <= t_idx) {
             return t_idx - h_idx;

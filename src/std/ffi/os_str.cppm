@@ -36,32 +36,42 @@ struct Impl<ptr_::Pointee, ffi::OsStr> {
 
 /// A borrowed reference to a platform-native string.
 template<>
-struct ref<ffi::OsStr> : ref_base<ref<ffi::OsStr>, u8[], false> {
+struct ref<ffi::OsStr> : ref_base<ref<ffi::OsStr>, rstd::uint8_t[], false> {
     USE_TRAIT(ref)
 
     using Target = ffi::OsStr;
 
-    u8 const* p { nullptr };
-    usize     length { 0 };
+    rstd::uint8_t const* p { nullptr };
+    usize                length {};
 
     constexpr ref() noexcept = default;
-    constexpr ref(u8 const* p [[clang::lifetimebound]], usize len) noexcept: p(p), length(len) {}
+    constexpr ref(rstd::uint8_t const* p [[clang::lifetimebound]], usize len) noexcept
+        : p(p), length(len) {}
+    ref(u8 const* p [[clang::lifetimebound]]
+        ,
+        usize len) noexcept
+        : p(rstd::as_bytes(slice<u8>::from_raw_parts(p, len)).as_raw_ptr()), length(len) {}
 
     /// Construct from a `ref<str>` (UTF-8 is always valid OS bytes).
     constexpr ref(ref<str> s [[clang::lifetimebound]]) noexcept: p(s.data()), length(s.size()) {}
 
     /// Construct from a null-terminated C string.
-    constexpr ref(const char* c_str [[clang::lifetimebound]]) noexcept
-        : p(rstd::bit_cast<u8 const*>(c_str)), length(rstd::strlen(c_str)) {}
+    ref(const char* c_str [[clang::lifetimebound]]
+        ) noexcept
+        : p(reinterpret_cast<rstd::uint8_t const*>(c_str)), length(rstd::strlen(c_str)) {}
 
-    static constexpr auto from_raw_parts(u8 const* p [[clang::lifetimebound]], usize len) noexcept
-        -> Self {
+    static constexpr auto from_raw_parts(rstd::uint8_t const* p [[clang::lifetimebound]],
+                                         usize                len) noexcept -> Self {
+        return { p, len };
+    }
+    static auto from_raw_parts(u8 const* p [[clang::lifetimebound]], usize len) noexcept -> Self {
         return { p, len };
     }
 
     /// Returns the encoded bytes of this OS string.
-    constexpr auto as_encoded_bytes() const noexcept -> slice<u8> {
-        return slice<u8>::from_raw_parts(p, length);
+    constexpr auto as_encoded_bytes() const noexcept [[clang::lifetimebound]] -> slice<byte> {
+        if (length == usize()) return {};
+        return slice<byte>::from_raw_parts(p, length);
     }
 
     /// Attempts to convert to a UTF-8 string slice.
@@ -77,28 +87,28 @@ struct ref<ffi::OsStr> : ref_base<ref<ffi::OsStr>, u8[], false> {
 
     /// Converts to a `String`, replacing invalid UTF-8 with U+FFFD.
     auto to_string_lossy() const -> String {
-        auto  buf = String::make();
-        usize i   = 0;
-        while (i < length) {
-            auto [cp, n] = char_::decode_utf8(p + i, length - i);
-            if (cp == char_::REPLACEMENT && n == 1 && p[i] > 0x7F) {
+        auto         buf   = String::make();
+        rstd::size_t index = 0;
+        while (index < length.to_primitive()) {
+            auto [cp, n] = char_::decode_utf8(p + index, usize(length.to_primitive() - index));
+            if (cp == char_::REPLACEMENT && n == usize(1) && p[index] > 0x7F) {
                 // Invalid byte — emit replacement character
                 buf.push(char_::REPLACEMENT);
             } else {
                 buf.push(cp);
             }
-            i += n;
+            index += n.to_primitive();
         }
         return buf;
     }
 
     constexpr auto len() const noexcept -> usize { return length; }
-    constexpr auto is_empty() const noexcept -> bool { return length == 0; }
-    constexpr auto data() const noexcept -> u8 const* { return p; }
+    constexpr auto is_empty() const noexcept -> bool { return length == usize {}; }
+    constexpr auto data() const noexcept -> rstd::uint8_t const* { return p; }
 
     constexpr auto starts_with(ref<ffi::OsStr> prefix) const noexcept -> bool {
         if (prefix.len() > length) return false;
-        for (usize i = 0; i < prefix.len(); ++i) {
+        for (rstd::size_t i = 0; i < prefix.len().to_primitive(); ++i) {
             if (p[i] != prefix.data()[i]) return false;
         }
         return true;
@@ -106,22 +116,24 @@ struct ref<ffi::OsStr> : ref_base<ref<ffi::OsStr>, u8[], false> {
 
     constexpr auto strip_prefix(ref<ffi::OsStr> prefix) const noexcept -> Option<ref<ffi::OsStr>> {
         if (! starts_with(prefix)) return None();
-        return Some(ref<ffi::OsStr>::from_raw_parts(p + prefix.len(), length - prefix.len()));
+        return Some(ref<ffi::OsStr>::from_raw_parts(p + prefix.len().to_primitive(),
+                                                    length - prefix.len()));
     }
 
     constexpr auto split_once(u8 delimiter) const noexcept
         -> Option<tuple<ref<ffi::OsStr>, ref<ffi::OsStr>>> {
-        for (usize i = 0; i < length; ++i) {
-            if (p[i] == delimiter) {
+        for (rstd::size_t i = 0; i < length.to_primitive(); ++i) {
+            if (p[i] == delimiter.to_primitive()) {
                 return Some(tuple<ref<ffi::OsStr>, ref<ffi::OsStr>>(
-                    ref<ffi::OsStr>::from_raw_parts(p, i),
-                    ref<ffi::OsStr>::from_raw_parts(p + i + 1, length - i - 1)));
+                    ref<ffi::OsStr>::from_raw_parts(p, usize(i)),
+                    ref<ffi::OsStr>::from_raw_parts(p + i + 1,
+                                                    usize(length.to_primitive() - i - 1))));
             }
         }
         return None();
     }
 
-    constexpr operator bool() const { return length > 0 && p != nullptr; }
+    constexpr operator bool() const { return length != usize {} && p != nullptr; }
 
     constexpr auto deref() const noexcept -> ref<Target> { return *this; }
 };
@@ -158,12 +170,7 @@ public:
 
     /// Creates an `OsString` by copying a `ref<OsStr>`.
     static auto from(ref<OsStr> s) -> OsString {
-        auto v = Vec<u8>::with_capacity(s.len());
-        for (usize i = 0; i < s.len(); i++) {
-            u8 b = s.data()[i];
-            v.push(rstd::move(b));
-        }
-        return OsString { rstd::move(v) };
+        return OsString { Vec<u8>::copy_from_bytes(s.as_encoded_bytes()) };
     }
 
     /// Creates an `OsString` from raw bytes without validation.
@@ -187,15 +194,10 @@ public:
     }
 
     /// Appends an `OsStr` to this string.
-    void push(ref<OsStr> s) {
-        for (usize i = 0; i < s.len(); i++) {
-            u8 b = s.data()[i];
-            inner.push(rstd::move(b));
-        }
-    }
+    void push(ref<OsStr> s) { inner.extend_from_bytes(s.as_encoded_bytes()); }
 
     auto len() const noexcept -> usize { return inner.len(); }
-    auto is_empty() const noexcept -> bool { return inner.len() == 0; }
+    auto is_empty() const noexcept -> bool { return inner.len() == usize {}; }
     auto capacity() const noexcept -> usize { return inner.capacity(); }
     void clear() { inner.clear(); }
 
@@ -227,14 +229,15 @@ template<>
 struct Impl<fmt::Display, ref<ffi::OsStr>> : ImplBase<ref<ffi::OsStr>> {
     auto fmt(fmt::Formatter& f) const -> bool {
         // Print as UTF-8 lossy — valid bytes pass through, invalid → replacement
-        auto& s = this->self();
-        usize i = 0;
-        while (i < s.len()) {
-            auto [cp, n] = char_::decode_utf8(s.data() + i, s.len() - i);
-            u8   buf[4];
-            auto wrote = char_::encode_utf8(cp, buf);
-            if (! f.write_raw(buf, wrote)) return false;
-            i += n;
+        auto&        s     = this->self();
+        rstd::size_t index = 0;
+        while (index < s.len().to_primitive()) {
+            auto [cp, n] =
+                char_::decode_utf8(s.data() + index, usize(s.len().to_primitive() - index));
+            rstd::uint8_t buf[4];
+            auto          wrote = char_::encode_utf8(cp, buf);
+            if (! f.write_raw(buf, wrote.to_primitive())) return false;
+            index += n.to_primitive();
         }
         return true;
     }
@@ -243,9 +246,9 @@ struct Impl<fmt::Display, ref<ffi::OsStr>> : ImplBase<ref<ffi::OsStr>> {
 template<>
 struct Impl<fmt::Debug, ref<ffi::OsStr>> : ImplBase<ref<ffi::OsStr>> {
     auto fmt(fmt::Formatter& f) const -> bool {
-        f.write_raw((const u8*)"\"", 1);
+        f.write_raw("\"", 1);
         as<fmt::Display>(this->self()).fmt(f);
-        return f.write_raw((const u8*)"\"", 1);
+        return f.write_raw("\"", 1);
     }
 };
 

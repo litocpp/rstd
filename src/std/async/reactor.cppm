@@ -1,6 +1,3 @@
-module;
-#include <rstd/macro.hpp>
-
 export module rstd:async.reactor;
 export import :async.forward;
 export import :async.readiness;
@@ -33,7 +30,7 @@ export struct ReadyEvent {
     constexpr auto is_error() const noexcept -> bool { return m_ready.is_error(); }
 };
 
-inline constexpr usize READINESS_FACILITY_ID { rstd::numeric_limits<usize>::max() - 1 };
+inline constexpr rstd::uintptr_t READINESS_FACILITY_ID { ~rstd::uintptr_t(0) - rstd::uintptr_t(1) };
 
 struct ReadinessFacilityWaiter {
     usize                   id;
@@ -46,12 +43,12 @@ struct ReadinessFacilityWaiter {
 
 struct RegistrationFields {
     Ready                        ready {};
-    usize                        tick { 1 };
+    usize                        tick { rstd::size_t(1) };
     Option<task::Waker>          read_waker {};
     Option<task::Waker>          write_waker {};
     usize                        read_waiter_id {};
     usize                        write_waiter_id {};
-    usize                        next_waiter_id { 1 };
+    usize                        next_waiter_id { rstd::size_t(1) };
     Option<WorkerHandle>         worker {};
     Option<PollKey>              key {};
     Option<io::Error>            error {};
@@ -100,8 +97,8 @@ auto registration_interest(const RegistrationFields& fields) noexcept -> Interes
     auto interest = Interest {};
     if (fields.read_waker.is_some()) interest = interest | Interest::readable();
     if (fields.write_waker.is_some()) interest = interest | Interest::writable();
-    for (usize i = 0; i < fields.facility_waiters.len(); ++i) {
-        interest = interest | fields.facility_waiters[i].interest;
+    for (rstd::size_t i = 0; i < fields.facility_waiters.len().to_primitive(); ++i) {
+        interest = interest | fields.facility_waiters[usize(i)].interest;
     }
     return interest;
 }
@@ -128,8 +125,8 @@ void fail_registration(const RegistrationArc& state, io::Error error) {
         if (fields->write_waker.is_some()) {
             wakers.push(rstd::move(fields->write_waker).unwrap_unchecked());
         }
-        fields->read_waiter_id  = 0;
-        fields->write_waiter_id = 0;
+        fields->read_waiter_id  = usize();
+        fields->write_waiter_id = usize();
         if (fields->key.is_some()) {
             key = *fields->key;
         }
@@ -175,8 +172,8 @@ void begin_registration_deregister(const RegistrationArc& state) {
             if (fields->write_waker.is_some()) {
                 wakers.push(rstd::move(fields->write_waker).unwrap_unchecked());
             }
-            fields->read_waiter_id  = 0;
-            fields->write_waiter_id = 0;
+            fields->read_waiter_id  = usize();
+            fields->write_waiter_id = usize();
             while (! fields->facility_waiters.is_empty()) {
                 tokens.push(rstd::move(fields->facility_waiters.pop()).unwrap_unchecked().token);
             }
@@ -239,11 +236,12 @@ void cancel_readiness_waiter(const ReadinessCancellationArc& cancellation) {
     auto& state   = cancellation->registration;
     {
         auto fields = state->fields.lock().unwrap_unchecked();
-        for (usize i = 0; i < fields->facility_waiters.len(); ++i) {
-            if (fields->facility_waiters[i].id != cancellation->waiter_id) {
+        for (rstd::size_t i = 0; i < fields->facility_waiters.len().to_primitive(); ++i) {
+            auto index = usize(i);
+            if (fields->facility_waiters[index].id != cancellation->waiter_id) {
                 continue;
             }
-            token = Some(rstd::move(fields->facility_waiters.remove(i)).token);
+            token = Some(rstd::move(fields->facility_waiters.remove(index)).token);
             if (! fields->closed && fields->worker.is_some() && fields->key.is_some()) {
                 worker  = Some(fields->worker->clone());
                 command = Some(PollCommand::update_interest(
@@ -325,19 +323,20 @@ void handle_registration_event(const RegistrationArc& state, PollEventData data)
         if ((ready.is_readable() || ready.is_read_closed() || ready.is_error()) &&
             fields->read_waker.is_some()) {
             wakers.push(rstd::move(fields->read_waker).unwrap_unchecked());
-            fields->read_waiter_id = 0;
+            fields->read_waiter_id = usize();
         }
         if ((ready.is_writable() || ready.is_write_closed() || ready.is_error()) &&
             fields->write_waker.is_some()) {
             wakers.push(rstd::move(fields->write_waker).unwrap_unchecked());
-            fields->write_waiter_id = 0;
+            fields->write_waiter_id = usize();
         }
-        for (usize i = 0; i < fields->facility_waiters.len();) {
-            if (ready.for_interest(fields->facility_waiters[i].interest).is_empty()) {
+        for (rstd::size_t i = 0; i < fields->facility_waiters.len().to_primitive();) {
+            auto index = usize(i);
+            if (ready.for_interest(fields->facility_waiters[index].interest).is_empty()) {
                 ++i;
                 continue;
             }
-            tokens.push(rstd::move(fields->facility_waiters.remove(i)).token);
+            tokens.push(rstd::move(fields->facility_waiters.remove(index)).token);
         }
 
         if (fields->worker.is_some() && fields->key.is_some()) {
@@ -484,11 +483,12 @@ auto submit_registration_readiness(const RegistrationArc&  state,
         if (fields->closed) {
             return FacilityCompletionSubmitResult::rejected(rstd::move(token));
         }
-        if (waiter_id == 0) {
-            waiter_id = fields->next_waiter_id++;
+        if (waiter_id == usize()) {
+            waiter_id = fields->next_waiter_id;
+            ++fields->next_waiter_id;
         }
-        for (usize i = 0; i < fields->facility_waiters.len(); ++i) {
-            if (fields->facility_waiters[i].id == waiter_id) {
+        for (rstd::size_t i = 0; i < fields->facility_waiters.len().to_primitive(); ++i) {
+            if (fields->facility_waiters[usize(i)].id == waiter_id) {
                 return FacilityCompletionSubmitResult::rejected(rstd::move(token));
             }
         }
@@ -558,7 +558,10 @@ auto poll_registration_readiness(const RegistrationArc& state,
             return task::Poll<io::Result<ReadyEvent>>::Ready(Err(rstd::move(error)));
         }
 
-        if (waiter_id == 0) waiter_id = fields->next_waiter_id++;
+        if (waiter_id == usize()) {
+            waiter_id = fields->next_waiter_id;
+            ++fields->next_waiter_id;
+        }
         if (interest.is_readable()) {
             fields->read_waker     = Some(cx.waker().clone());
             fields->read_waiter_id = waiter_id;
@@ -597,7 +600,7 @@ auto poll_registration_readiness(const RegistrationArc& state,
 }
 
 void clear_registration_waker(const RegistrationArc& state, Interest interest, usize waiter_id) {
-    if (! state || waiter_id == 0) return;
+    if (! state || waiter_id == usize()) return;
 
     auto worker  = Option<WorkerHandle> {};
     auto command = Option<PollCommand> {};
@@ -605,11 +608,11 @@ void clear_registration_waker(const RegistrationArc& state, Interest interest, u
         auto fields = state->fields.lock().unwrap_unchecked();
         if (interest.is_readable() && fields->read_waiter_id == waiter_id) {
             fields->read_waker     = None();
-            fields->read_waiter_id = 0;
+            fields->read_waiter_id = usize();
         }
         if (interest.is_writable() && fields->write_waiter_id == waiter_id) {
             fields->write_waker     = None();
-            fields->write_waiter_id = 0;
+            fields->write_waiter_id = usize();
         }
         if (! fields->closed && fields->worker.is_some() && fields->key.is_some()) {
             worker  = Some(fields->worker->clone());
@@ -851,7 +854,7 @@ public:
     ReadinessFuture(ReadinessFuture&& other) noexcept
         : m_state(rstd::move(other.m_state)),
           m_interest(other.m_interest),
-          m_waiter_id(rstd::exchange(other.m_waiter_id, 0)),
+          m_waiter_id(rstd::exchange(other.m_waiter_id, usize())),
           m_started(rstd::exchange(other.m_started, false)),
           m_facility_result(other.m_facility_result.take()),
           m_facility_submitted(rstd::exchange(other.m_facility_submitted, false)),
@@ -862,7 +865,7 @@ public:
             cancel();
             m_state              = rstd::move(other.m_state);
             m_interest           = other.m_interest;
-            m_waiter_id          = rstd::exchange(other.m_waiter_id, 0);
+            m_waiter_id          = rstd::exchange(other.m_waiter_id, usize());
             m_started            = rstd::exchange(other.m_started, false);
             m_facility_result    = other.m_facility_result.take();
             m_facility_submitted = rstd::exchange(other.m_facility_submitted, false);
@@ -882,7 +885,7 @@ public:
         auto result =
             poll_registration_readiness(future.m_state, cx, future.m_interest, future.m_waiter_id);
         if (result.is_ready()) {
-            future.m_waiter_id = 0;
+            future.m_waiter_id = usize();
             future.m_started   = false;
         }
         return result;
@@ -974,10 +977,10 @@ public:
 
 private:
     void cancel() {
-        if (m_started && m_state && m_waiter_id != 0) {
+        if (m_started && m_state && m_waiter_id != usize()) {
             clear_registration_waker(m_state, m_interest, m_waiter_id);
         }
-        m_waiter_id = 0;
+        m_waiter_id = usize();
         m_started   = false;
     }
 };

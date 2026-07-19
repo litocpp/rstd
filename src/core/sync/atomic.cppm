@@ -1,4 +1,5 @@
 export module rstd.core:sync.atomic;
+import :num.types;
 export import :core;
 
 namespace rstd::sync::atomic
@@ -40,53 +41,95 @@ export inline void compiler_fence(memory_order order) noexcept {
 /// \tparam T The underlying value type.
 export template<typename T>
 class Atomic {
-    T val;
+    template<typename U, bool = num::Numeric<U>>
+    struct StorageFor {
+        using Type = U;
+    };
+
+    template<typename U>
+    struct StorageFor<U, true> {
+        using Type = typename U::primitive_type;
+    };
+
+public:
+    using Native = typename StorageFor<T>::Type;
+
+private:
+    Native val {};
+
+    static constexpr auto to_native(T value) noexcept -> Native {
+        if constexpr (num::Numeric<T>) {
+            return value.to_primitive();
+        } else {
+            return value;
+        }
+    }
+
+    static constexpr auto from_native(Native value) noexcept -> T {
+        if constexpr (num::Numeric<T>) {
+            return T(value);
+        } else {
+            return value;
+        }
+    }
 
 public:
     constexpr Atomic() noexcept = default;
-    constexpr Atomic(T v) noexcept: val(v) {}
+    constexpr Atomic(T v) noexcept: val(to_native(v)) {}
     Atomic(const Atomic&)                     = delete;
     Atomic& operator=(const Atomic&)          = delete;
     Atomic& operator=(const Atomic&) volatile = delete;
 
     auto load(memory_order order = memory_order::seq_cst) const noexcept -> T {
-        T ret;
+        Native ret;
         __atomic_load(&val, &ret, static_cast<int>(order));
-        return ret;
+        return from_native(ret);
     }
 
     auto load(memory_order order = memory_order::seq_cst) const volatile noexcept -> T {
-        T ret;
+        Native ret;
         __atomic_load(&val, &ret, static_cast<int>(order));
-        return ret;
+        return from_native(ret);
     }
 
     void store(T v, memory_order order = memory_order::seq_cst) noexcept {
-        __atomic_store(&val, &v, static_cast<int>(order));
+        auto native = to_native(v);
+        __atomic_store(&val, &native, static_cast<int>(order));
     }
 
     void store(T v, memory_order order = memory_order::seq_cst) volatile noexcept {
-        __atomic_store(&val, &v, static_cast<int>(order));
+        auto native = to_native(v);
+        __atomic_store(&val, &native, static_cast<int>(order));
     }
 
     auto exchange(T v, memory_order order = memory_order::seq_cst) noexcept -> T {
-        T ret;
-        __atomic_exchange(&val, &v, &ret, static_cast<int>(order));
-        return ret;
+        auto   native = to_native(v);
+        Native ret;
+        __atomic_exchange(&val, &native, &ret, static_cast<int>(order));
+        return from_native(ret);
     }
 
     auto exchange(T v, memory_order order = memory_order::seq_cst) volatile noexcept -> T {
-        T ret;
-        __atomic_exchange(&val, &v, &ret, static_cast<int>(order));
-        return ret;
+        auto   native = to_native(v);
+        Native ret;
+        __atomic_exchange(&val, &native, &ret, static_cast<int>(order));
+        return from_native(ret);
     }
 
     auto compare_exchange_weak(T&           expected,
                                T            desired,
                                memory_order success = memory_order::seq_cst,
                                memory_order failure = memory_order::seq_cst) noexcept -> bool {
-        return __atomic_compare_exchange(
-            &val, &expected, &desired, true, static_cast<int>(success), static_cast<int>(failure));
+        auto       native_expected = to_native(expected);
+        auto       native_desired  = to_native(desired);
+        const bool exchanged       = __atomic_compare_exchange(&val,
+                                                               &native_expected,
+                                                               &native_desired,
+                                                               true,
+                                                               static_cast<int>(success),
+                                                               static_cast<int>(failure));
+        expected                   = from_native(native_expected);
+        return exchanged;
     }
 
     auto compare_exchange_weak(T&           expected,
@@ -94,16 +137,32 @@ public:
                                memory_order success = memory_order::seq_cst,
                                memory_order failure = memory_order::seq_cst) volatile noexcept
         -> bool {
-        return __atomic_compare_exchange(
-            &val, &expected, &desired, true, static_cast<int>(success), static_cast<int>(failure));
+        auto       native_expected = to_native(expected);
+        auto       native_desired  = to_native(desired);
+        const bool exchanged       = __atomic_compare_exchange(&val,
+                                                               &native_expected,
+                                                               &native_desired,
+                                                               true,
+                                                               static_cast<int>(success),
+                                                               static_cast<int>(failure));
+        expected                   = from_native(native_expected);
+        return exchanged;
     }
 
     auto compare_exchange_strong(T&           expected,
                                  T            desired,
                                  memory_order success = memory_order::seq_cst,
                                  memory_order failure = memory_order::seq_cst) noexcept -> bool {
-        return __atomic_compare_exchange(
-            &val, &expected, &desired, false, static_cast<int>(success), static_cast<int>(failure));
+        auto       native_expected = to_native(expected);
+        auto       native_desired  = to_native(desired);
+        const bool exchanged       = __atomic_compare_exchange(&val,
+                                                               &native_expected,
+                                                               &native_desired,
+                                                               false,
+                                                               static_cast<int>(success),
+                                                               static_cast<int>(failure));
+        expected                   = from_native(native_expected);
+        return exchanged;
     }
 
     auto compare_exchange_strong(T&           expected,
@@ -111,49 +170,68 @@ public:
                                  memory_order success = memory_order::seq_cst,
                                  memory_order failure = memory_order::seq_cst) volatile noexcept
         -> bool {
-        return __atomic_compare_exchange(
-            &val, &expected, &desired, false, static_cast<int>(success), static_cast<int>(failure));
+        auto       native_expected = to_native(expected);
+        auto       native_desired  = to_native(desired);
+        const bool exchanged       = __atomic_compare_exchange(&val,
+                                                               &native_expected,
+                                                               &native_desired,
+                                                               false,
+                                                               static_cast<int>(success),
+                                                               static_cast<int>(failure));
+        expected                   = from_native(native_expected);
+        return exchanged;
     }
 
     auto fetch_add(T arg, memory_order order = memory_order::seq_cst) noexcept -> T {
-        return __atomic_fetch_add(&val, arg, static_cast<int>(order));
+        return from_native(__atomic_fetch_add(&val, to_native(arg), static_cast<int>(order)));
     }
 
     auto fetch_add(T arg, memory_order order = memory_order::seq_cst) volatile noexcept -> T {
-        return __atomic_fetch_add(&val, arg, static_cast<int>(order));
+        return from_native(__atomic_fetch_add(&val, to_native(arg), static_cast<int>(order)));
     }
 
     auto fetch_sub(T arg, memory_order order = memory_order::seq_cst) noexcept -> T {
-        return __atomic_fetch_sub(&val, arg, static_cast<int>(order));
+        return from_native(__atomic_fetch_sub(&val, to_native(arg), static_cast<int>(order)));
     }
 
     auto fetch_sub(T arg, memory_order order = memory_order::seq_cst) volatile noexcept -> T {
-        return __atomic_fetch_sub(&val, arg, static_cast<int>(order));
+        return from_native(__atomic_fetch_sub(&val, to_native(arg), static_cast<int>(order)));
     }
 
     auto fetch_and(T arg, memory_order order = memory_order::seq_cst) noexcept -> T {
-        return __atomic_fetch_and(&val, arg, static_cast<int>(order));
+        return from_native(__atomic_fetch_and(&val, to_native(arg), static_cast<int>(order)));
     }
 
     auto fetch_and(T arg, memory_order order = memory_order::seq_cst) volatile noexcept -> T {
-        return __atomic_fetch_and(&val, arg, static_cast<int>(order));
+        return from_native(__atomic_fetch_and(&val, to_native(arg), static_cast<int>(order)));
     }
 
     auto fetch_or(T arg, memory_order order = memory_order::seq_cst) noexcept -> T {
-        return __atomic_fetch_or(&val, arg, static_cast<int>(order));
+        return from_native(__atomic_fetch_or(&val, to_native(arg), static_cast<int>(order)));
     }
 
     auto fetch_or(T arg, memory_order order = memory_order::seq_cst) volatile noexcept -> T {
-        return __atomic_fetch_or(&val, arg, static_cast<int>(order));
+        return from_native(__atomic_fetch_or(&val, to_native(arg), static_cast<int>(order)));
     }
 
     auto fetch_xor(T arg, memory_order order = memory_order::seq_cst) noexcept -> T {
-        return __atomic_fetch_xor(&val, arg, static_cast<int>(order));
+        return from_native(__atomic_fetch_xor(&val, to_native(arg), static_cast<int>(order)));
     }
 
     auto fetch_xor(T arg, memory_order order = memory_order::seq_cst) volatile noexcept -> T {
-        return __atomic_fetch_xor(&val, arg, static_cast<int>(order));
+        return from_native(__atomic_fetch_xor(&val, to_native(arg), static_cast<int>(order)));
     }
+
+    auto as_native_ptr() & noexcept [[clang::lifetimebound]] -> Native* { return &val; }
+    auto as_native_ptr() const& noexcept [[clang::lifetimebound]] -> const Native* { return &val; }
+    auto as_native_ptr() volatile& noexcept [[clang::lifetimebound]] -> volatile Native* {
+        return &val;
+    }
+    auto as_native_ptr() const volatile& noexcept [[clang::lifetimebound]] -> const
+        volatile Native* {
+        return &val;
+    }
+    auto as_native_ptr() && -> Native* = delete;
 };
 
 } // namespace rstd::sync::atomic

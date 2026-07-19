@@ -45,11 +45,11 @@ enum class AwaitTransitionKind
 class AwaitTransition {
     AwaitTransitionKind m_kind { AwaitTransitionKind::Suspend };
     FacilityEndpoint    m_endpoint;
-    usize               m_facility_id { 0 };
+    rstd::uintptr_t     m_facility_id {};
 
     explicit AwaitTransition(AwaitTransitionKind kind): m_kind(kind) {}
 
-    explicit AwaitTransition(usize facility_id)
+    explicit AwaitTransition(rstd::uintptr_t facility_id)
         : m_kind(AwaitTransitionKind::SubmitCompletion), m_facility_id(facility_id) {}
 
     explicit AwaitTransition(FacilityEndpoint endpoint)
@@ -68,7 +68,7 @@ public:
         return AwaitTransition { rstd::move(endpoint) };
     }
 
-    static auto submit_completion(usize facility_id) -> AwaitTransition {
+    static auto submit_completion(rstd::uintptr_t facility_id) -> AwaitTransition {
         return AwaitTransition { facility_id };
     }
 
@@ -78,7 +78,7 @@ public:
 
     auto kind() const noexcept -> AwaitTransitionKind { return m_kind; }
     auto take_endpoint() -> FacilityEndpoint { return rstd::move(m_endpoint); }
-    auto facility_id() const noexcept -> usize { return m_facility_id; }
+    auto facility_id() const noexcept -> rstd::uintptr_t { return m_facility_id; }
 };
 
 template<typename A>

@@ -13,7 +13,7 @@ using namespace rstd::prelude;
 namespace alloc::rc
 {
 
-export enum class StoragePolicy : u32 { Embed = 0, Separate, SeparateWithDeleter };
+export enum class StoragePolicy : rstd::uint32_t { Embed = 0, Separate, SeparateWithDeleter };
 
 export template<typename T>
 class Rc;
@@ -32,7 +32,7 @@ using rc_rebind_alloc = typename mtp::allocator_traits<AllocatorType>::template 
 constexpr bool RC_COPY_NOEXCEPT { false };
 
 void rc_increase_count(usize& count) {
-    if (count == rstd::numeric_limits<usize>::max()) {
+    if (count == usize::MAX) {
         rstd::panic("reference count overflow");
     }
     ++count;
@@ -106,13 +106,11 @@ auto rc_data(RcHeader* header, mut_ptr<RcTarget<T>> pointer) noexcept -> RcData<
 auto rc_allocate(Layout layout) -> mut_ptr<u8> {
     auto result = rstd::as<Allocator>(::alloc::GLOBAL).allocate(layout);
     if (result.is_err()) ::alloc::handle_alloc_error(layout);
-    return result.unwrap_unchecked().as_mut_ptr().template cast<u8>();
+    return result.unwrap_unchecked().template as_mut_ptr<u8>();
 }
 
 void rc_deallocate(voidp pointer, Layout layout) noexcept {
-    auto allocation_pointer =
-        NonNull<u8>::make_unchecked(mut_ptr<u8>::from_raw_parts(static_cast<u8*>(pointer)));
-    rstd::as<Allocator>(::alloc::GLOBAL).deallocate(allocation_pointer, layout);
+    rstd::as<Allocator>(::alloc::GLOBAL).deallocate(pointer, layout);
 }
 
 void rc_release_global_value(RcHeader* header, Layout layout) noexcept {
@@ -155,7 +153,7 @@ struct RcAllocatorHeader : RcHeader {
 
     static void release_value_storage(RcHeader* header, Layout) noexcept {
         auto* self = static_cast<RcAllocatorHeader*>(header);
-        self->allocator.deallocate(static_cast<Element*>(self->value), self->count);
+        self->allocator.deallocate(static_cast<Element*>(self->value), self->count.to_primitive());
     }
 
     static void release_self(RcHeader* header) noexcept {
@@ -274,7 +272,7 @@ template<typename Element, typename Value>
 auto rc_allocate_array(usize count, Value const& initial) -> RcAllocation<Element[]> {
     auto layout  = Layout::array<Element>(count).unwrap();
     auto pointer = rc_allocate(layout).template cast_array<Element>(count);
-    for (usize index = 0; index < count; ++index) {
+    for (rstd::size_t index = 0; index < count.to_primitive(); ++index) {
         rstd::construct_at(pointer.as_raw_ptr() + index, initial);
     }
     auto* header = new RcHeader(
@@ -326,9 +324,9 @@ auto rc_allocate_array_with(AllocatorType allocator, usize count, Value const& i
     auto  header_allocator = rc_rebind_alloc<AllocatorType, Header>(allocator);
     auto* header           = header_allocator.allocate(1);
     rstd::construct_at(header, allocator, count);
-    auto* value   = header->allocator.allocate(count);
+    auto* value   = header->allocator.allocate(count.to_primitive());
     header->value = value;
-    for (usize index = 0; index < count; ++index) {
+    for (rstd::size_t index = 0; index < count.to_primitive(); ++index) {
         rstd::construct_at(value + index, initial);
     }
     return RcAllocation<Element[]> {
@@ -361,7 +359,7 @@ void rc_drop_strong(RcData<T> data) noexcept {
     auto* header = data.header;
     if (header == nullptr) return;
     --header->strong;
-    if (header->strong != 0) return;
+    if (header->strong != usize()) return;
 
     auto pointer = rc_pointer(data);
     auto layout  = Layout::for_value(pointer.as_ptr());
@@ -371,7 +369,7 @@ void rc_drop_strong(RcData<T> data) noexcept {
     header->release_value(header, layout);
 
     --header->weak;
-    if (header->weak == 0) {
+    if (header->weak == usize()) {
         header->release_header(header);
     }
 }
@@ -381,7 +379,7 @@ void rc_drop_weak(RcData<T> data) noexcept {
     auto* header = data.header;
     if (header == nullptr) return;
     --header->weak;
-    if (header->weak == 0) {
+    if (header->weak == usize()) {
         header->release_header(header);
     }
 }
@@ -454,22 +452,22 @@ public:
     }
 
     auto upgrade() const -> Option<Rc<T>> {
-        if (self.header == nullptr || self.header->strong == 0) return None();
+        if (self.header == nullptr || self.header->strong == usize()) return None();
         self.header->inc_strong();
         return Some(RcMakeHelper::make<T>(self));
     }
 
     auto strong_count() const noexcept -> usize {
-        return self.header == nullptr ? 0 : self.header->strong;
+        return self.header == nullptr ? usize() : self.header->strong;
     }
 
     auto weak_count() const noexcept -> usize {
-        if (self.header == nullptr) return 0;
+        if (self.header == nullptr) return usize();
         auto weak = self.header->weak;
-        return self.header->strong == 0 ? weak : weak - 1;
+        return self.header->strong == usize() ? weak : weak - usize(1);
     }
 
-    bool expired() const noexcept { return strong_count() == 0; }
+    bool expired() const noexcept { return strong_count() == usize(); }
 
     auto as_ptr() const noexcept -> mut_ptr<Target> { return rc_pointer(self); }
 };
@@ -548,25 +546,26 @@ public:
     }
 
     auto strong_count() const noexcept -> usize {
-        return self.header == nullptr ? 0 : self.header->strong;
+        return self.header == nullptr ? usize() : self.header->strong;
     }
 
     auto weak_count() const noexcept -> usize {
-        if (self.header == nullptr) return 0;
+        if (self.header == nullptr) return usize();
         auto weak = self.header->weak;
-        return self.header->strong == 0 ? weak : weak - 1;
+        return self.header->strong == usize() ? weak : weak - usize(1);
     }
 
     auto is_unique() const noexcept -> bool {
-        return self.header != nullptr && self.header->strong == 1 && self.header->weak == 1;
+        return self.header != nullptr && self.header->strong == usize(1) &&
+               self.header->weak == usize(1);
     }
 
     auto size() const noexcept -> usize {
-        if (self.header == nullptr) return 0;
+        if (self.header == nullptr) return usize();
         if constexpr (mtp::DSTArray<Target>) {
             return self.metadata;
         } else {
-            return 1;
+            return usize(1);
         }
     }
 

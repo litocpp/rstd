@@ -1,4 +1,5 @@
 export module rstd.core:clone_tuple;
+import :num.types;
 export import :clone;
 export import rstd.basic;
 
@@ -25,9 +26,9 @@ class CloneTuple : public DefaultInClass<CloneTuple<Ts...>, clone::Clone> {
     }
 
 public:
-    static constexpr usize size = sizeof...(Ts);
+    static constexpr rstd::size_t size = sizeof...(Ts);
 
-    template<usize I>
+    template<rstd::size_t I>
     using element_type = mtp::tuple_element<I, tuple<Ts...>>;
 
     constexpr CloneTuple()
@@ -61,17 +62,17 @@ public:
         *this = source;
     }
 
-    template<usize I>
+    template<rstd::size_t I>
     constexpr decltype(auto) get() & noexcept {
         return m_values.template get<I>();
     }
 
-    template<usize I>
+    template<rstd::size_t I>
     constexpr decltype(auto) get() const& noexcept {
         return m_values.template get<I>();
     }
 
-    template<usize I>
+    template<rstd::size_t I>
     constexpr decltype(auto) get() && noexcept {
         return rstd::move(m_values).template get<I>();
     }
@@ -104,17 +105,17 @@ constexpr auto make_clone_tuple(Ts&&... values) -> CloneTuple<mtp::decay<Ts>...>
     return CloneTuple<mtp::decay<Ts>...> { rstd::forward<Ts>(values)... };
 }
 
-export template<usize I, typename... Ts>
+export template<rstd::size_t I, typename... Ts>
 constexpr decltype(auto) get(CloneTuple<Ts...>& values) noexcept {
     return values.template get<I>();
 }
 
-export template<usize I, typename... Ts>
+export template<rstd::size_t I, typename... Ts>
 constexpr decltype(auto) get(const CloneTuple<Ts...>& values) noexcept {
     return values.template get<I>();
 }
 
-export template<usize I, typename... Ts>
+export template<rstd::size_t I, typename... Ts>
 constexpr decltype(auto) get(CloneTuple<Ts...>&& values) noexcept {
     return rstd::move(values).template get<I>();
 }
@@ -161,10 +162,10 @@ namespace std
 
 template<typename... Ts>
 struct tuple_size<::rstd::CloneTuple<Ts...>> {
-    static constexpr ::rstd::usize value = sizeof...(Ts);
+    static constexpr rstd::size_t value = sizeof...(Ts);
 };
 
-template<::rstd::usize I, typename... Ts>
+template<rstd::size_t I, typename... Ts>
 struct tuple_element<I, ::rstd::CloneTuple<Ts...>> {
     using type = typename ::rstd::CloneTuple<Ts...>::template element_type<I>;
 };

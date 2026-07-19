@@ -16,12 +16,12 @@ namespace rstd::io
 export template<typename T>
 class Cursor {
     T   inner_;
-    u64 pos_ = 0;
+    u64 pos_ {};
 
 public:
     USE_TRAIT(Cursor)
 
-    explicit Cursor(T inner) noexcept: inner_(rstd::move(inner)), pos_(0) {}
+    explicit Cursor(T inner) noexcept: inner_(rstd::move(inner)), pos_() {}
 
     /// Returns a reference to the underlying value in this cursor.
     auto get_ref() const noexcept -> const T& { return inner_; }
@@ -47,7 +47,7 @@ inline auto cursor_len(const Vec<u8>& v) noexcept -> usize {
     return v.len();
 }
 inline auto cursor_data(slice<u8> s) noexcept -> const u8* {
-    return &*s;
+    return s.as_raw_ptr();
 }
 inline auto cursor_len(slice<u8> s) noexcept -> usize {
     return s.len();
@@ -61,14 +61,18 @@ namespace rstd
 template<typename T>
     requires(mtp::same_as<T, Vec<u8>> || mtp::same_as<T, slice<u8>>)
 struct Impl<io::Read, io::Cursor<T>> : ImplBase<io::Cursor<T>> {
-    auto read(u8* buf, usize len) -> io::Result<usize> {
-        auto& self  = this->self();
-        usize total = cursor_len(self.inner_);
-        usize pos   = usize(rstd::min(self.pos_, u64(total)));
-        usize n     = rstd::min(len, total - pos);
-        rstd::mem::memcpy(buf, cursor_data(self.inner_) + pos, n);
-        self.pos_ += n;
-        return Ok(n);
+    auto read(mut_ref<byte[]> buf) -> io::Result<usize> {
+        auto&      self         = this->self();
+        auto const total        = cursor_len(self.inner_).to_primitive();
+        auto const raw_position = self.pos_.to_primitive();
+        auto const position =
+            raw_position >= total ? total : static_cast<rstd::size_t>(raw_position);
+        auto const count = rstd::min(buf.len().to_primitive(), total - position);
+        if (count == 0) return Ok(usize {});
+        auto source = slice<u8>::from_raw_parts(cursor_data(self.inner_) + position, usize(count));
+        rstd::mem::memcpy(buf.as_raw_ptr(), as_bytes(source).as_raw_ptr(), usize(count));
+        self.pos_ = u64(raw_position + static_cast<rstd::uint64_t>(count));
+        return Ok(usize(count));
     }
 };
 
@@ -77,15 +81,23 @@ template<typename T>
     requires(mtp::same_as<T, Vec<u8>> || mtp::same_as<T, slice<u8>>)
 struct Impl<io::BufRead, io::Cursor<T>> : ImplBase<io::Cursor<T>> {
     auto fill_buf() -> io::Result<slice<u8>> {
-        auto& self  = this->self();
-        usize total = cursor_len(self.inner_);
-        usize pos   = usize(rstd::min(self.pos_, u64(total)));
-        return Ok(slice<u8>::from_raw_parts(cursor_data(self.inner_) + pos, total - pos));
+        auto&      self         = this->self();
+        auto const total        = cursor_len(self.inner_).to_primitive();
+        auto const raw_position = self.pos_.to_primitive();
+        auto const position =
+            raw_position >= total ? total : static_cast<rstd::size_t>(raw_position);
+        if (position == total) return Ok(slice<u8> {});
+        return Ok(slice<u8>::from_raw_parts(cursor_data(self.inner_) + position,
+                                            usize(total - position)));
     }
     auto consume(usize amt) -> void {
-        auto& self  = this->self();
-        usize total = cursor_len(self.inner_);
-        self.pos_   = rstd::min(self.pos_ + u64(amt), u64(total));
+        auto&      self         = this->self();
+        auto const total        = cursor_len(self.inner_).to_primitive();
+        auto const raw_position = self.pos_.to_primitive();
+        auto const position =
+            raw_position >= total ? total : static_cast<rstd::size_t>(raw_position);
+        auto const consumed = rstd::min(amt.to_primitive(), total - position);
+        self.pos_           = u64(position + consumed);
     }
 };
 
@@ -94,19 +106,28 @@ template<typename T>
     requires(mtp::same_as<T, Vec<u8>> || mtp::same_as<T, slice<u8>>)
 struct Impl<io::Seek, io::Cursor<T>> : ImplBase<io::Cursor<T>> {
     auto seek(io::SeekFrom sf) -> io::Result<u64> {
-        auto& self  = this->self();
-        i64   total = i64(cursor_len(self.inner_));
-        i64   new_pos;
-        switch (sf.which) {
-        case io::SeekFrom::Which::Start: new_pos = i64(u64(sf.offset)); break;
-        case io::SeekFrom::Which::End: new_pos = total + sf.offset; break;
-        case io::SeekFrom::Which::Current: new_pos = i64(self.pos_) + sf.offset; break;
-        default: new_pos = 0;
+        auto& self = this->self();
+        if (sf.which == io::SeekFrom::Which::Start) {
+            self.pos_ = sf.start;
+            return Ok(self.pos_);
         }
-        if (new_pos < 0)
+
+        rstd::int128_t base = 0;
+        switch (sf.which) {
+        case io::SeekFrom::Which::Start: break;
+        case io::SeekFrom::Which::End:
+            base = static_cast<rstd::int128_t>(cursor_len(self.inner_).to_primitive());
+            break;
+        case io::SeekFrom::Which::Current:
+            base = static_cast<rstd::int128_t>(self.pos_.to_primitive());
+            break;
+        }
+        auto const new_position = base + static_cast<rstd::int128_t>(sf.offset.to_primitive());
+        if (new_position < 0 || new_position > static_cast<rstd::int128_t>(~rstd::uint64_t(0))) {
             return Err(io::error::Error::from_kind(
                 io::error::ErrorKind { io::error::ErrorKind::InvalidInput }));
-        self.pos_ = u64(new_pos);
+        }
+        self.pos_ = u64(new_position);
         return Ok(self.pos_);
     }
 };
@@ -114,15 +135,30 @@ struct Impl<io::Seek, io::Cursor<T>> : ImplBase<io::Cursor<T>> {
 // Write — Vec<u8> only (grows the buffer)
 template<>
 struct Impl<io::Write, io::Cursor<Vec<u8>>> : ImplBase<io::Cursor<Vec<u8>>> {
-    auto write(const u8* buf, usize len) -> io::Result<usize> {
-        auto& self  = this->self();
-        usize total = self.inner_.len();
-        usize pos   = usize(rstd::min(self.pos_, u64(total)));
-        usize end   = pos + len;
-        for (usize i = total; i < end; ++i) self.inner_.push(u8(0));
-        rstd::mem::memcpy(self.inner_.begin() + pos, buf, len);
-        self.pos_ += len;
-        return Ok(len);
+    auto write(slice<byte> buf) -> io::Result<usize> {
+        auto&      self         = this->self();
+        auto const raw_position = self.pos_.to_primitive();
+        if (raw_position > ~rstd::size_t(0)) {
+            return Err(io::error::Error::from_kind(
+                io::error::ErrorKind { io::error::ErrorKind::InvalidInput }));
+        }
+        auto const position = static_cast<rstd::size_t>(raw_position);
+        auto const count    = buf.len().to_primitive();
+        if (count > ~rstd::size_t(0) - position) {
+            return Err(io::error::Error::from_kind(
+                io::error::ErrorKind { io::error::ErrorKind::InvalidInput }));
+        }
+        auto const end = position + count;
+        for (rstd::size_t i = self.inner_.len().to_primitive(); i < end; ++i) {
+            self.inner_.push(u8 {});
+        }
+        if (count != 0) {
+            auto destination =
+                mut_ref<u8[]>::from_raw_parts(self.inner_.begin() + position, usize(count));
+            rstd::mem::memcpy(as_bytes_mut(destination).as_raw_ptr(), buf.as_raw_ptr(), buf.len());
+        }
+        self.pos_ = u64(end);
+        return Ok(buf.len());
     }
     auto flush() -> io::Result<empty> { return Ok(empty {}); }
 };

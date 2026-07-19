@@ -8,9 +8,9 @@ using State = pal::futex::SmallPrimitive;
 
 export class Parker {
 private:
-    static constexpr State PARKED   = rstd::numeric_limits<State>::max();
-    static constexpr State EMPTY    = 0;
-    static constexpr State NOTIFIED = 1;
+    static constexpr State PARKED = State::MAX;
+    static constexpr State EMPTY {};
+    static constexpr State NOTIFIED { static_cast<State::primitive_type>(1) };
 
     Futex state;
 

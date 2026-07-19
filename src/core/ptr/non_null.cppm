@@ -1,6 +1,7 @@
 module;
 #include <rstd/macro.hpp>
 export module rstd.core:ptr.non_null;
+import :num.types;
 export import :marker;
 export import :num;
 export import :cmp;
@@ -48,7 +49,7 @@ struct NonNull {
     static auto without_provenance(num::nonzero::NonZero<usize> addr) noexcept -> NonNull<T>
         requires Impled<T, Sized>
     {
-        T* t = reinterpret_cast<T*>(addr.get());
+        T* t = reinterpret_cast<T*>(addr.get().to_primitive());
         return { mut_ptr<T>::from_raw_parts(t) };
     }
 

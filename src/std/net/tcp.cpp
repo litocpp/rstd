@@ -105,7 +105,7 @@ auto TcpStream::shutdown() -> io::Result<empty> {
 
 auto TcpStream::try_read(bytes::BytesMut& buf) -> io::Result<usize> {
     auto chunk  = buf.chunk_mut();
-    auto result = socket::recv(m_fd.as_raw_fd(), chunk.as_raw_ptr(), chunk.len());
+    auto result = socket::recv(m_fd.as_raw_fd(), as_bytes_mut(chunk.as_mut_ref()));
     if (result.is_ok()) {
         auto n = rstd::move(result).unwrap_unchecked();
         buf.advance_mut(n);
@@ -120,7 +120,7 @@ auto TcpStream::try_read(bytes::BytesMut& buf) -> io::Result<usize> {
 }
 
 auto TcpStream::try_write(bytes::Bytes const& buf) -> io::Result<usize> {
-    auto result = socket::send(m_fd.as_raw_fd(), buf.data(), buf.len());
+    auto result = socket::send(m_fd.as_raw_fd(), as_bytes(buf.as_slice()));
     if (result.is_ok()) return result;
 
     auto error = rstd::move(result).unwrap_err_unchecked();
@@ -136,7 +136,7 @@ auto TcpStream::poll_read(mut_ref<TcpStream> self, task::Context& cx, bytes::Byt
     auto  event  = Option<async::ReadyEvent> {};
     while (true) {
         auto chunk  = buf.chunk_mut();
-        auto result = socket::recv(stream.m_fd.as_raw_fd(), chunk.as_raw_ptr(), chunk.len());
+        auto result = socket::recv(stream.m_fd.as_raw_fd(), as_bytes_mut(chunk.as_mut_ref()));
         if (result.is_ok()) {
             auto n = rstd::move(result).unwrap_unchecked();
             buf.advance_mut(n);
@@ -157,7 +157,7 @@ auto TcpStream::poll_read(mut_ref<TcpStream> self, task::Context& cx, bytes::Byt
             cx, async::Interest::readable(), stream.m_read_waiter_id);
         if (ready.is_pending()) return task::Poll<io::Result<usize>>::Pending();
 
-        stream.m_read_waiter_id = 0;
+        stream.m_read_waiter_id = usize();
         auto ready_result       = rstd::move(ready).take();
         if (ready_result.is_err()) {
             return task::Poll<io::Result<usize>>::Ready(
@@ -172,7 +172,7 @@ auto TcpStream::poll_write(mut_ref<TcpStream> self, task::Context& cx, bytes::By
     auto& stream = *self;
     auto  event  = Option<async::ReadyEvent> {};
     while (true) {
-        auto result = socket::send(stream.m_fd.as_raw_fd(), buf.data(), buf.len());
+        auto result = socket::send(stream.m_fd.as_raw_fd(), as_bytes(buf.as_slice()));
         if (result.is_ok()) {
             return task::Poll<io::Result<usize>>::Ready(rstd::move(result));
         }
@@ -191,7 +191,7 @@ auto TcpStream::poll_write(mut_ref<TcpStream> self, task::Context& cx, bytes::By
             cx, async::Interest::writable(), stream.m_write_waiter_id);
         if (ready.is_pending()) return task::Poll<io::Result<usize>>::Pending();
 
-        stream.m_write_waiter_id = 0;
+        stream.m_write_waiter_id = usize();
         auto ready_result        = rstd::move(ready).take();
         if (ready_result.is_err()) {
             return task::Poll<io::Result<usize>>::Ready(

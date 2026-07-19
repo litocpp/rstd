@@ -13,30 +13,30 @@ using rstd::sync::atomic::Atomic;
 namespace mtp = rstd::mtp;
 using namespace rstd::prelude;
 
-constexpr usize ARC_MAX_REFCOUNT = rstd::numeric_limits<usize>::max() / 2;
+constexpr usize ARC_MAX_REFCOUNT = usize::MAX / usize(2);
 
 struct ArcHeader {
-    Atomic<usize> strong { 1 };
-    Atomic<usize> weak { 1 };
+    Atomic<usize> strong { usize(1) };
+    Atomic<usize> weak { usize(1) };
 
     void inc_strong() {
         [[maybe_unused]]
-        auto old = strong.fetch_add(1, rstd::sync::atomic::Ordering::Relaxed);
+        auto old = strong.fetch_add(usize(1), rstd::sync::atomic::Ordering::Relaxed);
         debug_assert(old < ARC_MAX_REFCOUNT);
     }
 
     void inc_weak() {
         [[maybe_unused]]
-        auto old = weak.fetch_add(1, rstd::sync::atomic::Ordering::Relaxed);
+        auto old = weak.fetch_add(usize(1), rstd::sync::atomic::Ordering::Relaxed);
         debug_assert(old < ARC_MAX_REFCOUNT);
     }
 
     bool try_inc_strong() {
         usize current = strong.load(rstd::sync::atomic::Ordering::Acquire);
-        while (current != 0) {
+        while (current != usize()) {
             debug_assert(current < ARC_MAX_REFCOUNT);
             if (strong.compare_exchange_weak(current,
-                                             current + 1,
+                                             current + usize(1),
                                              rstd::sync::atomic::Ordering::AcqRel,
                                              rstd::sync::atomic::Ordering::Acquire)) {
                 return true;
@@ -52,8 +52,8 @@ struct ArcAllocationLayout {
 };
 
 constexpr auto arc_allocation_layout(Layout value_layout) -> ArcAllocationLayout {
-    usize value_offset = 0;
-    auto  layout       = Layout::make<ArcHeader>().extend(value_layout, value_offset).unwrap();
+    usize value_offset {};
+    auto  layout = Layout::make<ArcHeader>().extend(value_layout, value_offset).unwrap();
     return ArcAllocationLayout { .layout = layout.pad_to_align(), .value_offset = value_offset };
 }
 
@@ -65,8 +65,9 @@ auto arc_allocation_layout(mut_ptr<T> pointer) -> ArcAllocationLayout {
 template<typename T>
 auto arc_header(mut_ptr<T> pointer) noexcept -> ArcHeader* {
     auto  allocation = arc_allocation_layout(pointer);
-    auto* value      = reinterpret_cast<u8*>(pointer.as_raw_ptr());
-    return rstd::launder(reinterpret_cast<ArcHeader*>(value - allocation.value_offset));
+    auto* value      = reinterpret_cast<rstd::byte*>(pointer.as_raw_ptr());
+    return rstd::launder(
+        reinterpret_cast<ArcHeader*>(value - allocation.value_offset.to_primitive()));
 }
 
 template<typename T, typename... Args>
@@ -76,10 +77,10 @@ auto arc_allocate_value(Args&&... args) -> mut_ptr<T> {
     auto result       = rstd::as<Allocator>(::alloc::GLOBAL).allocate(allocation.layout);
     if (result.is_err()) ::alloc::handle_alloc_error(allocation.layout);
 
-    auto* base   = result.unwrap_unchecked().as_mut_ptr().as_raw_ptr();
+    auto* base   = static_cast<rstd::byte*>(result.unwrap_unchecked().pointer);
     auto* header = rstd::construct_at(reinterpret_cast<ArcHeader*>(base));
     (void)header;
-    auto* value = reinterpret_cast<T*>(base + allocation.value_offset);
+    auto* value = reinterpret_cast<T*>(base + allocation.value_offset.to_primitive());
     rstd::construct_at(value, rstd::forward<Args>(args)...);
     return mut_ptr<T>::from_raw_parts(value);
 }
@@ -89,15 +90,13 @@ void arc_deallocate(mut_ptr<T> pointer) noexcept {
     auto  allocation = arc_allocation_layout(pointer);
     auto* header     = arc_header(pointer);
     rstd::destroy_at(header);
-    auto allocation_pointer =
-        NonNull<u8>::make_unchecked(mut_ptr<u8>::from_raw_parts(reinterpret_cast<u8*>(header)));
-    rstd::as<Allocator>(::alloc::GLOBAL).deallocate(allocation_pointer, allocation.layout);
+    rstd::as<Allocator>(::alloc::GLOBAL).deallocate(header, allocation.layout);
 }
 
 template<typename T>
 void arc_drop_weak(mut_ptr<T> pointer) noexcept {
     auto* header = arc_header(pointer);
-    if (header->weak.fetch_sub(1, rstd::sync::atomic::Ordering::AcqRel) == 1) {
+    if (header->weak.fetch_sub(usize(1), rstd::sync::atomic::Ordering::AcqRel) == usize(1)) {
         rstd::sync::atomic::fence(rstd::sync::atomic::Ordering::Acquire);
         arc_deallocate(pointer);
     }
@@ -106,7 +105,7 @@ void arc_drop_weak(mut_ptr<T> pointer) noexcept {
 template<typename T>
 void arc_drop_strong(mut_ptr<T> pointer) noexcept {
     auto* header = arc_header(pointer);
-    if (header->strong.fetch_sub(1, rstd::sync::atomic::Ordering::AcqRel) == 1) {
+    if (header->strong.fetch_sub(usize(1), rstd::sync::atomic::Ordering::AcqRel) == usize(1)) {
         rstd::sync::atomic::fence(rstd::sync::atomic::Ordering::Acquire);
         rstd::ptr_::drop_in_place(pointer);
         arc_drop_weak(pointer);
@@ -252,16 +251,16 @@ public:
     usize strong_count() const noexcept {
         return self.pointer != nullptr
                    ? arc_header(self.pointer)->strong.load(rstd::sync::atomic::Ordering::Acquire)
-                   : 0;
+                   : usize();
     }
 
     usize weak_count() const noexcept {
-        if (self.pointer == nullptr) return 0;
+        if (self.pointer == nullptr) return usize();
         auto* header = arc_header(self.pointer);
         auto  weak   = header->weak.load(rstd::sync::atomic::Ordering::Acquire);
         auto  strong = header->strong.load(rstd::sync::atomic::Ordering::Acquire);
-        if (strong == 0) return weak;
-        return weak > 0 ? weak - 1 : 0;
+        if (strong == usize()) return weak;
+        return weak > usize() ? weak - usize(1) : usize();
     }
 
     auto downgrade() const noexcept -> Weak<T>;
@@ -280,8 +279,8 @@ public:
     static bool is_unique(const Arc& arc) noexcept {
         if (arc.self.pointer == nullptr) return false;
         auto* header = arc_header(arc.self.pointer);
-        return header->strong.load(rstd::sync::atomic::Ordering::Acquire) == 1 &&
-               header->weak.load(rstd::sync::atomic::Ordering::Acquire) == 1;
+        return header->strong.load(rstd::sync::atomic::Ordering::Acquire) == usize(1) &&
+               header->weak.load(rstd::sync::atomic::Ordering::Acquire) == usize(1);
     }
 
     auto get_mut() const noexcept -> Option<mut_ref<T>> {
@@ -293,10 +292,10 @@ public:
         requires Impled<T, Sized>
     {
         if (self.pointer != nullptr) {
-            auto* header   = arc_header(self.pointer);
-            usize expected = 1;
+            auto* header = arc_header(self.pointer);
+            usize expected(rstd::size_t(1));
             if (header->strong.compare_exchange_strong(expected,
-                                                       0,
+                                                       usize(),
                                                        rstd::sync::atomic::Ordering::Relaxed,
                                                        rstd::sync::atomic::Ordering::Relaxed)) {
                 rstd::sync::atomic::fence(rstd::sync::atomic::Ordering::Acquire);
@@ -370,16 +369,16 @@ public:
     auto strong_count() const noexcept -> usize {
         return self.pointer != nullptr
                    ? arc_header(self.pointer)->strong.load(rstd::sync::atomic::Ordering::Acquire)
-                   : 0;
+                   : usize();
     }
 
     auto weak_count() const noexcept -> usize {
         return self.pointer != nullptr
                    ? arc_header(self.pointer)->weak.load(rstd::sync::atomic::Ordering::Acquire)
-                   : 0;
+                   : usize();
     }
 
-    bool expired() const noexcept { return strong_count() == 0; }
+    bool expired() const noexcept { return strong_count() == usize(); }
 
     auto as_ptr() const noexcept -> mut_ptr<T> { return self.pointer; }
 };

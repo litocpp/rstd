@@ -16,7 +16,7 @@ inline void abort() noexcept {
 /// \param b The second operand.
 /// \return A tuple of the wrapped result and a boolean that is true on overflow.
 template<class T>
-    requires(mtp::is_int<T>)
+    requires(rstd::is_raw_int<T>)
 [[gnu::always_inline]]
 inline constexpr auto add_with_overflow(T a, T b) noexcept -> rstd::tuple<T, bool> {
     T    r {};

@@ -1,4 +1,5 @@
 export module rstd.core:marker;
+import :num.types;
 export import :trait;
 
 namespace rstd

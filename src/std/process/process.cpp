@@ -15,7 +15,7 @@ void rstd::process::abort() {
 
 [[gnu::cold]] [[noreturn]]
 void rstd::process::exit(i32 code) {
-    sys::pal::exit_internal(code);
+    sys::pal::exit_internal(static_cast<int>(code.to_primitive()));
 }
 
 auto rstd::process::id() -> u32 {
@@ -25,9 +25,14 @@ auto rstd::process::id() -> u32 {
 // ── ExitStatus::from_raw (Unix) ──────────────────────────────────────────
 #if RSTD_OS_UNIX
 auto rstd::process::ExitStatus::from_raw(i32 raw) noexcept -> ExitStatus {
-    if (libc::wait_exited(raw)) return ExitStatus::from_code(libc::wait_exitstatus(raw));
-    if (libc::wait_signaled(raw)) return ExitStatus::from_signal(libc::wait_termsig(raw));
-    return ExitStatus::from_code(-1);
+    auto native = static_cast<int>(raw.to_primitive());
+    if (libc::wait_exited(native)) {
+        return ExitStatus::from_code(i32(libc::wait_exitstatus(native)));
+    }
+    if (libc::wait_signaled(native)) {
+        return ExitStatus::from_signal(i32(libc::wait_termsig(native)));
+    }
+    return ExitStatus::from_code(i32(-1));
 }
 #endif
 
@@ -67,12 +72,12 @@ auto Child::wait() -> io::Result<ExitStatus> {
         if (ret == -1) {
             auto err = libc::get_errno();
             if (err == libc::EINTR) continue;
-            return Err(io::error::Error::from_raw_os_error(err));
+            return Err(io::error::Error::from_raw_os_error(i32(err)));
         }
         break;
     }
     pid = -1;
-    return Ok(ExitStatus::from_raw(status));
+    return Ok(ExitStatus::from_raw(i32(status)));
 #else
     return Err(
         io::error::Error::from_kind(io::error::ErrorKind { io::error::ErrorKind::Unsupported }));
@@ -86,7 +91,7 @@ auto Child::kill() -> io::Result<rstd::empty> {
             io::error::ErrorKind { io::error::ErrorKind::InvalidInput }));
     }
     if (libc::kill(pid, libc::SIGKILL) == -1) {
-        return Err(io::error::Error::from_raw_os_error(libc::get_errno()));
+        return Err(io::error::Error::from_raw_os_error(i32(libc::get_errno())));
     }
     return Ok(rstd::empty {});
 #else
@@ -103,14 +108,12 @@ auto Child::wait_with_output() -> io::Result<Output> {
         ::alloc::vec::Vec<u8> buf;
 #if RSTD_OS_UNIX
         if (fd >= 0) {
-            u8 tmp[4096];
+            rstd::uint8_t tmp[4096];
             while (true) {
                 auto n = libc::read(fd, tmp, sizeof(tmp));
                 if (n <= 0) break;
-                for (isize i = 0; i < n; i++) {
-                    u8 b = tmp[i];
-                    buf.push(rstd::move(b));
-                }
+                buf.extend_from_bytes(
+                    slice<byte>::from_raw_parts(tmp, usize(static_cast<rstd::size_t>(n))));
             }
         }
 #endif
@@ -147,11 +150,11 @@ auto Spawn::spawn(rstd::process::Command& cmd)
     auto  prog_ptr = reinterpret_cast<char const*>(prog.to_bytes_with_nul().p);
 
     // argv: [program, args..., nullptr]
-    auto argc     = cmd.args_.len() + 2;
+    auto argc     = cmd.args_.len() + usize(2);
     auto argv_buf = ::alloc::vec::Vec<char*>::with_capacity(argc);
     argv_buf.push(const_cast<char*>(prog_ptr));
-    for (usize i = 0; i < cmd.args_.len(); i++) {
-        auto ptr = reinterpret_cast<char const*>(cmd.args_.at(i).to_bytes_with_nul().p);
+    for (rstd::size_t i = 0; i < cmd.args_.len().to_primitive(); ++i) {
+        auto ptr = reinterpret_cast<char const*>(cmd.args_.at(usize(i)).to_bytes_with_nul().p);
         argv_buf.push(const_cast<char*>(ptr));
     }
     argv_buf.push(nullptr);
@@ -219,7 +222,7 @@ auto Spawn::spawn(rstd::process::Command& cmd)
                 libc::close(stderr_pipe[0]);
                 libc::close(stderr_pipe[1]);
             }
-            return Err(rstd::io::error::Error::from_raw_os_error(err));
+            return Err(rstd::io::error::Error::from_raw_os_error(i32(err)));
         }
 
         // Close child-side fds in parent
@@ -250,7 +253,7 @@ fail: {
         libc::close(stderr_pipe[0]);
         libc::close(stderr_pipe[1]);
     }
-    return Err(rstd::io::error::Error::from_raw_os_error(e));
+    return Err(rstd::io::error::Error::from_raw_os_error(i32(e)));
 }
 #else
     return Err(rstd::io::error::Error::from_kind(

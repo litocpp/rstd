@@ -20,6 +20,8 @@ using FsResult = rstd::io::Result<T>;
 namespace rstd::fs
 {
 
+inline constexpr u32 PERMISSION_WRITE_MASK { rstd::uint32_t(0222) };
+
 class MetadataFactory;
 
 export class File;
@@ -48,18 +50,18 @@ public:
 };
 
 export class Permissions {
-    u32 m_mode { 0 };
+    u32 m_mode {};
 
 public:
     Permissions() noexcept = default;
 
-    auto readonly() const noexcept -> bool { return (m_mode & 0222) == 0; }
+    auto readonly() const noexcept -> bool { return (m_mode & PERMISSION_WRITE_MASK) == u32 {}; }
 
     void set_readonly(bool readonly) noexcept {
         if (readonly)
-            m_mode &= ~u32(0222);
+            m_mode &= ~PERMISSION_WRITE_MASK;
         else
-            m_mode |= 0222;
+            m_mode |= PERMISSION_WRITE_MASK;
     }
 
     auto        mode() const noexcept -> u32 { return m_mode; }
@@ -92,17 +94,17 @@ public:
 
 export class Metadata {
     FileType                       m_file_type {};
-    u64                            m_len { 0 };
+    u64                            m_len {};
     Permissions                    m_permissions {};
     Option<rstd::time::SystemTime> m_accessed {};
     Option<rstd::time::SystemTime> m_modified {};
     Option<rstd::time::SystemTime> m_created {};
-    u64                            m_dev { 0 };
-    u64                            m_ino { 0 };
-    u32                            m_mode { 0 };
-    u64                            m_nlink { 0 };
-    u32                            m_uid { 0 };
-    u32                            m_gid { 0 };
+    u64                            m_dev {};
+    u64                            m_ino {};
+    u32                            m_mode {};
+    u64                            m_nlink {};
+    u32                            m_uid {};
+    u32                            m_gid {};
 
     friend class MetadataFactory;
 
@@ -141,8 +143,8 @@ export class OpenOptions {
     bool m_truncate { false };
     bool m_create { false };
     bool m_create_new { false };
-    i32  m_custom_flags { 0 };
-    u32  m_mode { 0666 };
+    i32  m_custom_flags {};
+    u32  m_mode { rstd::uint32_t(0666) };
 
 public:
     static auto make() noexcept -> OpenOptions { return {}; }
@@ -195,17 +197,17 @@ public:
     static auto create_new(ref<Path> path) -> FsResult<File>;
     static auto options() noexcept -> OpenOptions { return OpenOptions::make(); }
 
-    auto read(u8* buffer, usize len) -> FsResult<usize>;
-    auto write(const u8* buffer, usize len) -> FsResult<usize>;
+    auto read(mut_ref<byte[]> buffer) -> FsResult<usize>;
+    auto write(slice<byte> buffer) -> FsResult<usize>;
     auto flush() -> FsResult<empty>;
     auto seek(SeekFrom position) -> FsResult<u64>;
     auto sync_all() -> FsResult<empty>;
     auto sync_data() -> FsResult<empty>;
     auto set_len(u64 size) -> FsResult<empty>;
-    auto read_at(u8* buffer, usize len, u64 offset) const -> FsResult<usize>;
-    auto write_at(const u8* buffer, usize len, u64 offset) const -> FsResult<usize>;
-    auto read_exact_at(u8* buffer, usize len, u64 offset) const -> FsResult<empty>;
-    auto write_all_at(const u8* buffer, usize len, u64 offset) const -> FsResult<empty>;
+    auto read_at(mut_ref<byte[]> buffer, u64 offset) const -> FsResult<usize>;
+    auto write_at(slice<byte> buffer, u64 offset) const -> FsResult<usize>;
+    auto read_exact_at(mut_ref<byte[]> buffer, u64 offset) const -> FsResult<empty>;
+    auto write_all_at(slice<byte> buffer, u64 offset) const -> FsResult<empty>;
     auto lock() -> FsResult<empty>;
     auto lock_shared() -> FsResult<empty>;
     auto try_lock() -> FsResult<empty>;
@@ -300,14 +302,12 @@ struct Impl<os::fd::FromRawFd, fs::File> {
 
 template<>
 struct Impl<io::Read, fs::File> : ImplBase<fs::File> {
-    auto read(u8* buffer, usize len) -> io::Result<usize> { return this->self().read(buffer, len); }
+    auto read(mut_ref<byte[]> buffer) -> io::Result<usize> { return this->self().read(buffer); }
 };
 
 template<>
 struct Impl<io::Write, fs::File> : ImplBase<fs::File> {
-    auto write(const u8* buffer, usize len) -> io::Result<usize> {
-        return this->self().write(buffer, len);
-    }
+    auto write(slice<byte> buffer) -> io::Result<usize> { return this->self().write(buffer); }
     auto flush() -> io::Result<empty> { return this->self().flush(); }
 };
 
@@ -318,15 +318,15 @@ struct Impl<io::Seek, fs::File> : ImplBase<fs::File> {
 
 template<>
 struct Impl<io::ReadAt, fs::File> : ImplBase<fs::File> {
-    auto read_at(u8* buffer, usize len, u64 offset) const -> io::Result<usize> {
-        return this->self().read_at(buffer, len, offset);
+    auto read_at(mut_ref<byte[]> buffer, u64 offset) const -> io::Result<usize> {
+        return this->self().read_at(buffer, offset);
     }
 };
 
 template<>
 struct Impl<io::WriteAt, fs::File> : ImplBase<fs::File> {
-    auto write_at(const u8* buffer, usize len, u64 offset) const -> io::Result<usize> {
-        return this->self().write_at(buffer, len, offset);
+    auto write_at(slice<byte> buffer, u64 offset) const -> io::Result<usize> {
+        return this->self().write_at(buffer, offset);
     }
 };
 

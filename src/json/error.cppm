@@ -1,13 +1,10 @@
-module;
-#include <rstd/macro.hpp>
-
 export module rstd.json:error;
 export import rstd.core;
 import rstd.alloc;
 
 using namespace rstd::prelude;
 
-enum class ErrorCode : u8
+enum class ErrorCode : rstd::uint8_t
 {
     EofWhileParsingList,
     EofWhileParsingObject,
@@ -37,7 +34,7 @@ class Parser;
 export namespace rstd::json
 {
 
-enum class Category : u8
+enum class Category : rstd::uint8_t
 {
     Syntax,
     Eof,

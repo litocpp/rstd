@@ -159,7 +159,7 @@ TEST(RstdAsyncRuntime, AbortQueuedChildPublishesJoinErrorWithoutPolling) {
 
 TEST(RstdAsyncRuntime, ThreadPoolSpawnAndJoinCompleteOnRuntime) {
     auto runs    = std::atomic<int> { 0 };
-    auto runtime = async::RuntimeBuilder::multi_thread().worker_threads(2).build().unwrap();
+    auto runtime = async::RuntimeBuilder::multi_thread().worker_threads(usize(2)).build().unwrap();
 
     EXPECT_EQ(runtime.block_on(join_thread_pool_child(runs)), 31);
     EXPECT_EQ(runs.load(std::memory_order_relaxed), 2);

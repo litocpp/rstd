@@ -103,18 +103,18 @@ TEST(Deref, OptionKeepsPresenceAndBorrowSeparate) {
 
 TEST(Deref, UnsizedTraitProjectionKeepsMetadata) {
     int  values[] { 2, 3, 5 };
-    auto slice = rstd::ref<int[]>::from_raw_parts(values, 3);
+    auto slice = rstd::ref<int[]>::from_raw_parts(values, rstd::usize(3));
 
     auto projected = slice.deref();
     EXPECT_EQ(projected.as_raw_ptr(), values);
-    EXPECT_EQ(projected.len(), 3);
+    EXPECT_EQ(projected.len(), rstd::usize(3));
 }
 
 TEST(Deref, SliceReportsWhetherEmpty) {
     int  values[] { 2, 3, 5 };
-    auto populated = rstd::slice<int>::from_raw_parts(values, 3);
-    auto empty     = rstd::slice<int>::from_raw_parts(values, 0);
-    auto mutable_  = rstd::mut_ref<int[]>::from_raw_parts(values, 0);
+    auto populated = rstd::slice<int>::from_raw_parts(values, rstd::usize(3));
+    auto empty     = rstd::slice<int>::from_raw_parts(values, rstd::usize());
+    auto mutable_  = rstd::mut_ref<int[]>::from_raw_parts(values, rstd::usize());
 
     EXPECT_FALSE(populated.is_empty());
     EXPECT_TRUE(empty.is_empty());

@@ -1,5 +1,3 @@
-module;
-#include <rstd/macro.hpp>
 export module rstd.log:env_logger;
 export import :logger;
 export import :record;
@@ -12,14 +10,14 @@ using namespace rstd::log;
 // ── Filter rule ───────────────────────────────────────────────────────────
 
 struct FilterRule {
-    char        target[64] {};
-    u8          target_len { 0 };
-    LevelFilter level { LevelFilter::Off };
+    char         target[64] {};
+    rstd::size_t target_len { 0 };
+    LevelFilter  level { LevelFilter::Off };
 };
 
 // ── Color style ───────────────────────────────────────────────────────────
 
-enum class Style : u8
+enum class Style : rstd::uint8_t
 {
     Auto,
     Always,
@@ -31,10 +29,10 @@ inline auto stderr_is_tty() noexcept -> bool {
 }
 
 inline auto parse_style(ref<str> s) noexcept -> Style {
-    auto eq_ci = [](ref<str> a, const char* b, usize n) {
-        if (a.size() != n) return false;
-        for (usize i = 0; i < n; ++i) {
-            char ca = (char)a.data()[i];
+    auto eq_ci = [](ref<str> a, const char* b, rstd::size_t n) {
+        if (a.size().to_primitive() != n) return false;
+        for (rstd::size_t i = 0; i < n; ++i) {
+            char ca = static_cast<char>(a.data()[i]);
             char cb = b[i];
             if (ca >= 'A' && ca <= 'Z') ca = char(ca - 'A' + 'a');
             if (cb >= 'A' && cb <= 'Z') cb = char(cb - 'A' + 'a');
@@ -69,10 +67,10 @@ inline auto level_color(Level l) noexcept -> const char* {
     return "";
 }
 
-inline constexpr char  COLOR_RESET[]    = "\x1b[0m";
-inline constexpr usize COLOR_PREFIX_LEN = 5; // "\x1b[XYm"
-inline constexpr usize COLOR_RESET_LEN  = 4; // "\x1b[0m"
-inline constexpr usize PADDED_LEVEL_LEN = 5;
+inline constexpr char         COLOR_RESET[]    = "\x1b[0m";
+inline constexpr rstd::size_t COLOR_PREFIX_LEN = 5; // "\x1b[XYm"
+inline constexpr rstd::size_t COLOR_RESET_LEN  = 4; // "\x1b[0m"
+inline constexpr rstd::size_t PADDED_LEVEL_LEN = 5;
 
 // Extract a "module path" (namespace prefix) from a pretty function string,
 // matching Rust's module_path!() semantics: drop the trailing function name.
@@ -103,7 +101,7 @@ inline auto module_from_function(const char* fn) noexcept -> ref<str> {
     const char* start = last_sep;
     while (start > fn && *(start - 1) != ' ') --start;
     if (start >= last_sep) return {};
-    return ref<str>((const u8*)start, usize(last_sep - start));
+    return ref<str>(start, usize(last_sep - start));
 }
 
 namespace rstd::log
@@ -128,13 +126,13 @@ struct StderrWriter {
 ///
 /// Target matching uses prefix search (e.g. `foo` matches `foo`, `foo::bar`).
 export struct EnvLogger {
-    static constexpr usize MAX_RULES = 16;
+    static constexpr rstd::size_t MAX_RULES = 16;
 
-    FilterRule  rules[MAX_RULES];
-    usize       rule_count { 0 };
-    LevelFilter default_level { LevelFilter::Error };
-    Style       style { Style::Auto };
-    bool        color_enabled { false };
+    FilterRule   rules[MAX_RULES];
+    rstd::size_t rule_count { 0 };
+    LevelFilter  default_level { LevelFilter::Error };
+    Style        style { Style::Auto };
+    bool         color_enabled { false };
 
     EnvLogger() noexcept {
         parse_env();
@@ -148,7 +146,7 @@ export struct EnvLogger {
 
     auto enabled(Metadata const& m) const noexcept -> bool {
         LevelFilter target_level = default_level;
-        for (usize i = 0; i < rule_count; ++i) {
+        for (rstd::size_t i = 0; i < rule_count; ++i) {
             if (match_prefix(m.target, rules[i].target, rules[i].target_len)) {
                 target_level = rules[i].level;
                 break;
@@ -168,7 +166,7 @@ export struct EnvLogger {
 
     auto filter() const noexcept -> LevelFilter {
         LevelFilter max = default_level;
-        for (usize i = 0; i < rule_count; ++i) {
+        for (rstd::size_t i = 0; i < rule_count; ++i) {
             if (rules[i].level > max) max = rules[i].level;
         }
         return max;
@@ -190,9 +188,9 @@ private:
     }
 
     void parse_filters(ref<str> input) noexcept {
-        const u8* p     = input.data();
-        const u8* end   = p + input.size();
-        const u8* token = p;
+        const rstd::uint8_t* p     = input.data();
+        const rstd::uint8_t* end   = p + input.size().to_primitive();
+        const rstd::uint8_t* token = p;
 
         while (p <= end) {
             if (p == end || *p == ',') {
@@ -205,30 +203,30 @@ private:
 
     void parse_one_rule(ref<str> raw) noexcept {
         // trim spaces
-        const u8* p   = raw.data();
-        const u8* end = p + raw.size();
+        const rstd::uint8_t* p   = raw.data();
+        const rstd::uint8_t* end = p + raw.size().to_primitive();
         while (p < end && (*p == ' ' || *p == '\t')) ++p;
         while (end > p && (*(end - 1) == ' ' || *(end - 1) == '\t')) --end;
         if (p >= end) return;
 
         // find '='
-        const u8* eq = p;
+        const rstd::uint8_t* eq = p;
         while (eq < end && *eq != '=') ++eq;
 
         if (eq < end) {
             // target=level
-            const u8* t_end = eq;
+            const rstd::uint8_t* t_end = eq;
             while (t_end > p && (*(t_end - 1) == ' ' || *(t_end - 1) == '\t')) --t_end;
-            const u8* l_beg = eq + 1;
+            const rstd::uint8_t* l_beg = eq + 1;
             while (l_beg < end && (*l_beg == ' ' || *l_beg == '\t')) ++l_beg;
 
             if (rule_count < MAX_RULES) {
                 auto& rule = rules[rule_count++];
-                auto  tlen = usize(t_end - p);
+                auto  tlen = static_cast<rstd::size_t>(t_end - p);
                 if (tlen >= sizeof(rule.target)) tlen = sizeof(rule.target) - 1;
                 __builtin_memcpy(rule.target, p, tlen);
                 rule.target[tlen] = '\0';
-                rule.target_len   = u8(tlen);
+                rule.target_len   = tlen;
                 rule.level        = parse_level_filter(ref<str>(l_beg, usize(end - l_beg)))
                                         .unwrap_or(LevelFilter::Trace);
             }
@@ -241,61 +239,63 @@ private:
         }
     }
 
-    static auto match_prefix(ref<str> target, const char* prefix, u8 prefix_len) noexcept -> bool {
+    static auto match_prefix(ref<str> target, const char* prefix, rstd::size_t prefix_len) noexcept
+        -> bool {
         if (prefix_len == 0) return true;
-        if (target.size() < prefix_len) return false;
-        return __builtin_strncmp((char*)target.data(), prefix, prefix_len) == 0;
+        if (target.size().to_primitive() < prefix_len) return false;
+        return __builtin_memcmp(target.data(), prefix, prefix_len) == 0;
     }
 
     // ── formatting output ─────────────────────────────────────────────────
 
     void write_record(Record const& r) const noexcept {
         StderrWriter   w;
-        fmt::Formatter f(&w, [](void* ctx, const u8* p, usize len) -> bool {
-            auto* self = static_cast<StderrWriter*>(ctx);
-            while (len > 0) {
-                auto res = rstd::as<rstd::io::Write>(self->stderr).write(p, len);
+        fmt::Formatter f(&w, [](void* ctx, const rstd::uint8_t* p, rstd::size_t len) -> bool {
+            auto* self  = static_cast<StderrWriter*>(ctx);
+            auto  bytes = slice<byte>::from_raw_parts(p, usize(len));
+            while (! bytes.is_empty()) {
+                auto res = rstd::as<rstd::io::Write>(self->stderr).write(bytes);
                 if (res.is_err()) return false;
-                auto n = res.unwrap_unchecked();
-                if (n == 0) return false;
-                p += n;
-                len -= n;
+                auto count = res.unwrap_unchecked().to_primitive();
+                if (count == 0 || count > bytes.len().to_primitive()) return false;
+                bytes = slice<byte>::from_raw_parts(bytes.as_raw_ptr() + count,
+                                                    usize(bytes.len().to_primitive() - count));
             }
             return true;
         });
 
-        f.write_raw((u8*)"[", 1);
+        f.write_raw("[", rstd::size_t(1));
 
         char ts[20];
         rstd::time::format_rfc3339_utc_now(ts);
-        f.write_raw((u8 const*)ts, 20);
-        f.write_raw((u8*)" ", 1);
+        f.write_raw(ts, rstd::size_t(20));
+        f.write_raw(" ", rstd::size_t(1));
 
         if (color_enabled) {
-            f.write_raw((u8 const*)level_color(r.lvl()), COLOR_PREFIX_LEN);
+            f.write_raw(level_color(r.lvl()), COLOR_PREFIX_LEN);
         }
-        f.write_raw((u8 const*)padded_level_str(r.lvl()), PADDED_LEVEL_LEN);
+        f.write_raw(padded_level_str(r.lvl()), PADDED_LEVEL_LEN);
         if (color_enabled) {
-            f.write_raw((u8 const*)COLOR_RESET, COLOR_RESET_LEN);
+            f.write_raw(COLOR_RESET, COLOR_RESET_LEN);
         }
 
         auto md = module_from_function(r.loc().function_name());
-        if (md.size() > 0) {
-            f.write_raw((u8*)" ", 1);
-            f.write_raw(md.data(), md.size());
+        if (md.size() > usize()) {
+            f.write_raw(" ", rstd::size_t(1));
+            f.write_raw(md.data(), md.size().to_primitive());
         }
 
         auto tgt = r.target();
-        if (tgt.size() > 0) {
-            f.write_raw((u8*)" ", 1);
-            f.write_raw(tgt.data(), tgt.size());
+        if (tgt.size() > usize()) {
+            f.write_raw(" ", rstd::size_t(1));
+            f.write_raw(tgt.data(), tgt.size().to_primitive());
         }
 
-        f.write_raw((u8*)"] ", 2);
+        f.write_raw("] ", rstd::size_t(2));
 
         r.args_().fmt(f);
 
-        f.write_raw((u8*)"\n", 1);
+        f.write_raw("\n", rstd::size_t(1));
     }
 };
 

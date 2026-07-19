@@ -18,7 +18,7 @@
 #define RSTD_TAG_ENUM_DETAIL_COUNT(Name) +1
 
 #define RSTD_ENUM_IN_PLACE(Name) \
-    ::rstd::enum_detail::in_place_index<static_cast<::rstd::usize>(Tag::Name)>
+    ::rstd::enum_detail::in_place_index<static_cast<rstd::size_t>(Tag::Name)>
 
 #define RSTD_ENUM_INIT(Name, ...) \
     rstd_enum_storage_(RSTD_ENUM_IN_PLACE(Name) __VA_OPT__(, ) __VA_ARGS__)
@@ -97,7 +97,7 @@
 #define RSTD_ENUM_SELF(ClassName) using Self = ClassName;
 
 #define RSTD_ENUM_VARIANT_COUNT(VARIANTS) \
-    static constexpr ::rstd::usize rstd_enum_variant_count = 0 VARIANTS(RSTD_ENUM_DETAIL_COUNT);
+    static constexpr rstd::size_t rstd_enum_variant_count = 0 VARIANTS(RSTD_ENUM_DETAIL_COUNT);
 #define RSTD_ENUM_INDEX_TYPE() \
     using rstd_enum_index_type = ::rstd::enum_detail::smallest_index_t<rstd_enum_variant_count>;
 
@@ -128,7 +128,7 @@
         RSTD_ENUM_DETAIL_STORAGE_TYPE)::rstd::enum_detail::sentinel>;
 
 #define RSTD_TAG_ENUM_VARIANT_COUNT(VARIANTS) \
-    static constexpr ::rstd::usize rstd_enum_variant_count = 0 VARIANTS(RSTD_TAG_ENUM_DETAIL_COUNT);
+    static constexpr rstd::size_t rstd_enum_variant_count = 0 VARIANTS(RSTD_TAG_ENUM_DETAIL_COUNT);
 #define RSTD_TAG_ENUM_TAG_TYPE(VARIANTS)   \
     enum class Tag : rstd_enum_index_type  \
     {                                      \
@@ -160,7 +160,7 @@
 #define RSTD_ENUM_STORAGE(ClassName)                                                       \
     rstd_enum_storage_type rstd_enum_storage_;                                             \
                                                                                            \
-    template<::rstd::usize I, typename... rstd_enum_detail_Args>                           \
+    template<rstd::size_t I, typename... rstd_enum_detail_Args>                            \
     explicit constexpr ClassName(                                                          \
         ::rstd::enum_detail::in_place_index_t<I> in_place,                                 \
         rstd_enum_detail_Args&&... args) noexcept(::rstd::mtp::                            \
@@ -185,19 +185,19 @@
 
 #define RSTD_TAG_ENUM_REPLACERS(VARIANTS) VARIANTS(RSTD_TAG_ENUM_DETAIL_REPLACE)
 
-#define RSTD_ENUM_OBSERVERS()                        \
-    [[nodiscard]]                                    \
-    constexpr ::rstd::usize index() const noexcept { \
-        auto const i = rstd_enum_storage_.index();   \
-        if (i >= rstd_enum_variant_count) {          \
-            ::rstd::enum_detail::bad_enum_state();   \
-        }                                            \
-        return i;                                    \
-    }                                                \
-                                                     \
-    [[nodiscard]]                                    \
-    constexpr Tag tag() const noexcept {             \
-        return static_cast<Tag>(index());            \
+#define RSTD_ENUM_OBSERVERS()                       \
+    [[nodiscard]]                                   \
+    constexpr rstd::size_t index() const noexcept { \
+        auto const i = rstd_enum_storage_.index();  \
+        if (i >= rstd_enum_variant_count) {         \
+            ::rstd::enum_detail::bad_enum_state();  \
+        }                                           \
+        return i;                                   \
+    }                                               \
+                                                    \
+    [[nodiscard]]                                   \
+    constexpr Tag tag() const noexcept {            \
+        return static_cast<Tag>(index());           \
     }
 
 #define RSTD_ENUM_ACCESSORS(VARIANTS) VARIANTS(RSTD_ENUM_DETAIL_ACCESSOR)

@@ -12,9 +12,9 @@ module;
         }                                                                                    \
     };                                                                                       \
     auto name::make(T in) noexcept -> Option<Self> {                                         \
-        constexpr const UT _low { low };                                                     \
-        constexpr const UT _high { high };                                                   \
-        const UT           _in { static_cast<UT>(in) };                                      \
+        constexpr const UT _low { static_cast<typename UT::primitive_type>(low) };           \
+        constexpr const UT _high { static_cast<typename UT::primitive_type>(high) };         \
+        const UT           _in = range_value<UT>(in);                                        \
         if (_in >= _low && _in <= _high) {                                                   \
             return Some(Self { in });                                                        \
         } else {                                                                             \
@@ -24,10 +24,20 @@ module;
     }
 
 export module rstd.core:num.niche_types;
+import :num.types;
 export import :option;
 
 namespace rstd::num::niche_types
 {
+template<typename U, typename T>
+constexpr auto range_value(T value) noexcept -> U {
+    if constexpr (num::Integer<T>) {
+        return U(static_cast<typename U::primitive_type>(value.to_primitive()));
+    } else {
+        return U(static_cast<typename U::primitive_type>(value));
+    }
+}
+
 template<typename T>
     requires requires { ::new ((void*)0) T(T {}); }
 struct Test {
@@ -49,10 +59,12 @@ DEFINE_VALID_RANGE_TYPE(NonZeroU8Inner, u8, u8, 1, 0xff)
 DEFINE_VALID_RANGE_TYPE(NonZeroU16Inner, u16, u16, 1, 0xffff)
 DEFINE_VALID_RANGE_TYPE(NonZeroU32Inner, u32, u32, 1, 0xffffffff)
 DEFINE_VALID_RANGE_TYPE(NonZeroU64Inner, u64, u64, 1, 0xffffffffffffffff)
+DEFINE_VALID_RANGE_TYPE(NonZeroU128Inner, u128, u128, 1, -1)
 DEFINE_VALID_RANGE_TYPE(NonZeroI8Inner, i8, u8, 1, 0xff)
 DEFINE_VALID_RANGE_TYPE(NonZeroI16Inner, i16, u16, 1, 0xffff)
 DEFINE_VALID_RANGE_TYPE(NonZeroI32Inner, i32, u32, 1, 0xffffffff)
 DEFINE_VALID_RANGE_TYPE(NonZeroI64Inner, i64, u64, 1, 0xffffffffffffffff)
+DEFINE_VALID_RANGE_TYPE(NonZeroI128Inner, i128, u128, 1, -1)
 DEFINE_VALID_RANGE_TYPE(NonZeroCharInner, char, u32, 1, 0x10ffff)
 
 #if __SIZEOF_POINTER__ == 8
@@ -75,5 +87,5 @@ DEFINE_VALID_RANGE_TYPE(I64NotAllOnes, i64, u64, 0, 0xfffffffffffffffe)
 namespace rstd::num::niche_types
 {
 
-static_assert(NonZeroU32Inner::make_unchecked(1) == NonZeroU32Inner::make_unchecked(1));
+static_assert(NonZeroU32Inner::make_unchecked(u32(1)) == NonZeroU32Inner::make_unchecked(u32(1)));
 } // namespace rstd::num::niche_types

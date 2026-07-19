@@ -1,4 +1,5 @@
 export module rstd.core:iter.sources;
+import :num.types;
 export import :iter.traits;
 export import :ptr;
 
@@ -30,11 +31,11 @@ struct SliceIter : DefaultInClass<SliceIter<T>, Iterator> {
     }
 
     constexpr auto size_hint() const -> SizeHint {
-        usize n = static_cast<usize>(fin - cur);
+        usize n(static_cast<rstd::size_t>(fin - cur));
         return { n, rstd::Some(n) };
     }
 
-    constexpr auto len() const -> usize { return static_cast<usize>(fin - cur); }
+    constexpr auto len() const -> usize { return usize(fin - cur); }
 };
 
 /// Iterator over `&mut T` of a contiguous range, yielding `mut_ref<T>`.
@@ -61,11 +62,11 @@ struct SliceIterMut : DefaultInClass<SliceIterMut<T>, Iterator> {
     }
 
     constexpr auto size_hint() const -> SizeHint {
-        usize n = static_cast<usize>(fin - cur);
+        usize n(static_cast<rstd::size_t>(fin - cur));
         return { n, rstd::Some(n) };
     }
 
-    constexpr auto len() const -> usize { return static_cast<usize>(fin - cur); }
+    constexpr auto len() const -> usize { return usize(fin - cur); }
 };
 
 /// Iterator that yields nothing.
@@ -74,8 +75,8 @@ struct Empty : DefaultInClass<Empty<T>, Iterator> {
     using Item        = T;
     constexpr Empty() = default;
     constexpr auto next() -> Option<Item> { return rstd::None(); }
-    constexpr auto size_hint() const -> SizeHint { return { 0, rstd::Some(usize(0)) }; }
-    constexpr auto len() const -> usize { return 0; }
+    constexpr auto size_hint() const -> SizeHint { return { usize(), rstd::Some(usize()) }; }
+    constexpr auto len() const -> usize { return usize(); }
 };
 
 /// Iterator that yields a single value exactly once.
@@ -86,10 +87,10 @@ struct Once : DefaultInClass<Once<T>, Iterator> {
     explicit Once(T v): val(rstd::Some(rstd::move(v))) {}
     auto next() -> Option<Item> { return val.take(); }
     auto size_hint() const -> SizeHint {
-        usize n = val.is_some() ? 1 : 0;
+        usize n = val.is_some() ? usize(1) : usize();
         return { n, rstd::Some(n) };
     }
-    auto len() const -> usize { return val.is_some() ? 1 : 0; }
+    auto len() const -> usize { return val.is_some() ? usize(1) : usize(); }
 };
 
 /// Iterator that endlessly repeats a value (clones each time).
@@ -99,7 +100,7 @@ struct Repeat : DefaultInClass<Repeat<T>, Iterator> {
     T val;
     explicit Repeat(T v): val(rstd::move(v)) {}
     auto next() -> Option<Item> { return rstd::Some(as<clone::Clone>(val).clone()); }
-    auto size_hint() const -> SizeHint { return { ~usize(0), rstd::None() }; }
+    auto size_hint() const -> SizeHint { return { usize::MAX, rstd::None() }; }
 };
 
 /// Iterator that calls a closure returning `Option<T>` until it yields `None`.
@@ -154,17 +155,18 @@ auto successors(Option<T> first, F f) -> Successors<T, F> {
 export template<class T>
 auto from_slice(slice<T> s [[clang::lifetimebound]]) -> SliceIter<T> {
     auto* p = s.as_raw_ptr();
-    return { p, p + s.len() };
+    if (s.is_empty()) return { p, p };
+    return { p, p + s.len().to_primitive() };
 }
 
 /// Iterator over `&T` of a C array.
-export template<class T, usize N>
+export template<class T, rstd::size_t N>
 auto from_array(const T (&arr [[clang::lifetimebound]])[N]) -> SliceIter<T> {
     return { arr, arr + N };
 }
 
 /// Iterator over `&mut T` of a C array.
-export template<class T, usize N>
+export template<class T, rstd::size_t N>
 auto from_array_mut(T (&arr [[clang::lifetimebound]])[N]) -> SliceIterMut<T> {
     return { arr, arr + N };
 }

@@ -39,22 +39,28 @@ namespace rstd
 {
 template<>
 struct Impl<fmt::Write, FdWriter> : ImplBase<FdWriter> {
-    auto write_str(const u8* p, usize len) -> bool {
+    auto write_str(const rstd::uint8_t* p, rstd::size_t len) -> bool {
         auto& self = this->self();
         if (self.result.is_err()) return false;
-        while (len > 0) {
-            auto res = sys::io::stdio::write_fd(self.fd, p, len);
+        while (len != 0) {
+            auto bytes = slice<byte>::from_raw_parts(p, usize(len));
+            auto res   = sys::io::stdio::write_fd(self.fd, bytes);
             if (res.is_err()) {
                 self.result = Err(res.unwrap_err_unchecked());
                 return false;
             }
-            usize n = res.unwrap_unchecked();
-            if (n == 0) {
+            auto const written = res.unwrap_unchecked().to_primitive();
+            if (written == 0) {
                 self.result = Err(io::error::Error_WRITE_ALL_EOF);
                 return false;
             }
-            p += n;
-            len -= n;
+            if (written > len) {
+                self.result = Err(io::error::Error::from_kind(
+                    io::error::ErrorKind { io::error::ErrorKind::InvalidData }));
+                return false;
+            }
+            p += written;
+            len -= written;
         }
         return true;
     }
@@ -63,6 +69,8 @@ struct Impl<fmt::Write, FdWriter> : ImplBase<FdWriter> {
 
 namespace rstd::io
 {
+
+inline constexpr rstd::uint8_t NEWLINE[] = { '\n' };
 
 // ── Stdout ────────────────────────────────────────────────────────────────
 
@@ -166,15 +174,15 @@ struct println {
     println(fmt::format_string<Args...> fmt_str, Args&&... args) {
         fmt::Argument arg_array[] = { fmt::Argument::make(args)... };
         print_fmt({ fmt_str.data(), fmt_str.size(), arg_array, sizeof...(Args) });
-        print_fmt({ (const u8*)"\n", 1, nullptr, 0 });
+        print_fmt({ NEWLINE, 1, nullptr, 0 });
     }
 };
 template<>
 struct println<> {
-    println() { print_fmt({ (const u8*)"\n", 1, nullptr, 0 }); }
+    println() { print_fmt({ NEWLINE, 1, nullptr, 0 }); }
     explicit println(fmt::format_string<> fmt_str) {
         print_fmt({ fmt_str.data(), fmt_str.size(), nullptr, 0 });
-        print_fmt({ (const u8*)"\n", 1, nullptr, 0 });
+        print_fmt({ NEWLINE, 1, nullptr, 0 });
     }
 };
 template<typename... Args>
@@ -205,15 +213,15 @@ struct eprintln {
     eprintln(fmt::format_string<Args...> fmt_str, Args&&... args) {
         fmt::Argument arg_array[] = { fmt::Argument::make(args)... };
         eprint_fmt({ fmt_str.data(), fmt_str.size(), arg_array, sizeof...(Args) });
-        eprint_fmt({ (const u8*)"\n", 1, nullptr, 0 });
+        eprint_fmt({ NEWLINE, 1, nullptr, 0 });
     }
 };
 template<>
 struct eprintln<> {
-    eprintln() { eprint_fmt({ (const u8*)"\n", 1, nullptr, 0 }); }
+    eprintln() { eprint_fmt({ NEWLINE, 1, nullptr, 0 }); }
     explicit eprintln(fmt::format_string<> fmt_str) {
         eprint_fmt({ fmt_str.data(), fmt_str.size(), nullptr, 0 });
-        eprint_fmt({ (const u8*)"\n", 1, nullptr, 0 });
+        eprint_fmt({ NEWLINE, 1, nullptr, 0 });
     }
 };
 template<typename... Args>
@@ -227,43 +235,39 @@ namespace rstd
 
 template<>
 struct Impl<io::Write, io::Stdout> : ImplBase<io::Stdout> {
-    auto write(const u8* buf, usize len) -> io::Result<usize> {
+    auto write(slice<byte> buf) -> io::Result<usize> {
         ScopedLock guard(stdout_mutex());
-        return sys::io::stdio::write_fd(1, buf, len);
+        return sys::io::stdio::write_fd(1, buf);
     }
     auto flush() -> io::Result<empty> { return Ok(empty {}); }
 };
 
 template<>
 struct Impl<io::Write, io::StdoutLock> : ImplBase<io::StdoutLock> {
-    auto write(const u8* buf, usize len) -> io::Result<usize> {
+    auto write(slice<byte> buf) -> io::Result<usize> {
         // Mutex is already held by the StdoutLock.
-        return sys::io::stdio::write_fd(1, buf, len);
+        return sys::io::stdio::write_fd(1, buf);
     }
     auto flush() -> io::Result<empty> { return Ok(empty {}); }
 };
 
 template<>
 struct Impl<io::Write, io::Stderr> : ImplBase<io::Stderr> {
-    auto write(const u8* buf, usize len) -> io::Result<usize> {
-        return sys::io::stdio::write_fd(2, buf, len);
-    }
+    auto write(slice<byte> buf) -> io::Result<usize> { return sys::io::stdio::write_fd(2, buf); }
     auto flush() -> io::Result<empty> { return Ok(empty {}); }
 };
 
 template<>
 struct Impl<io::Read, io::Stdin> : ImplBase<io::Stdin> {
-    auto read(u8* buf, usize len) -> io::Result<usize> {
+    auto read(mut_ref<byte[]> buf) -> io::Result<usize> {
         ScopedLock guard(stdin_mutex());
-        return sys::io::stdio::read_fd(0, buf, len);
+        return sys::io::stdio::read_fd(0, buf);
     }
 };
 
 template<>
 struct Impl<io::Read, io::StdinLock> : ImplBase<io::StdinLock> {
-    auto read(u8* buf, usize len) -> io::Result<usize> {
-        return sys::io::stdio::read_fd(0, buf, len);
-    }
+    auto read(mut_ref<byte[]> buf) -> io::Result<usize> { return sys::io::stdio::read_fd(0, buf); }
 };
 
 } // namespace rstd

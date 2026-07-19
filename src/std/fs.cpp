@@ -1,3 +1,5 @@
+module;
+
 module rstd;
 import :fs;
 import :sys.fs;
@@ -67,12 +69,12 @@ auto File::create_new(ref<Path> path) -> FsResult<File> {
     return options.open(path);
 }
 
-auto File::read(u8* buffer, usize len) -> FsResult<usize> {
-    return sys_fs::read(m_fd.as_raw_fd(), buffer, len);
+auto File::read(mut_ref<byte[]> buffer) -> FsResult<usize> {
+    return sys_fs::read(m_fd.as_raw_fd(), buffer);
 }
 
-auto File::write(const u8* buffer, usize len) -> FsResult<usize> {
-    return sys_fs::write(m_fd.as_raw_fd(), buffer, len);
+auto File::write(slice<byte> buffer) -> FsResult<usize> {
+    return sys_fs::write(m_fd.as_raw_fd(), buffer);
 }
 
 auto File::flush() -> FsResult<empty> {
@@ -95,38 +97,20 @@ auto File::set_len(u64 size) -> FsResult<empty> {
     return sys_fs::set_len(m_fd.as_raw_fd(), size);
 }
 
-auto File::read_at(u8* buffer, usize len, u64 offset) const -> FsResult<usize> {
-    return sys_fs::read_at(m_fd.as_raw_fd(), buffer, len, offset);
+auto File::read_at(mut_ref<byte[]> buffer, u64 offset) const -> FsResult<usize> {
+    return sys_fs::read_at(m_fd.as_raw_fd(), buffer, offset);
 }
 
-auto File::write_at(const u8* buffer, usize len, u64 offset) const -> FsResult<usize> {
-    return sys_fs::write_at(m_fd.as_raw_fd(), buffer, len, offset);
+auto File::write_at(slice<byte> buffer, u64 offset) const -> FsResult<usize> {
+    return sys_fs::write_at(m_fd.as_raw_fd(), buffer, offset);
 }
 
-auto File::read_exact_at(u8* buffer, usize len, u64 offset) const -> FsResult<empty> {
-    while (len > 0) {
-        auto result = read_at(buffer, len, offset);
-        if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
-        auto count = result.unwrap_unchecked();
-        if (count == 0) return Err(Error::from_kind(ErrorKind { ErrorKind::UnexpectedEof }));
-        buffer += count;
-        len -= count;
-        offset += count;
-    }
-    return Ok(empty {});
+auto File::read_exact_at(mut_ref<byte[]> buffer, u64 offset) const -> FsResult<empty> {
+    return io::read_exact_at(*this, buffer, offset);
 }
 
-auto File::write_all_at(const u8* buffer, usize len, u64 offset) const -> FsResult<empty> {
-    while (len > 0) {
-        auto result = write_at(buffer, len, offset);
-        if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
-        auto count = result.unwrap_unchecked();
-        if (count == 0) return Err(Error::from_kind(ErrorKind { ErrorKind::WriteZero }));
-        buffer += count;
-        len -= count;
-        offset += count;
-    }
-    return Ok(empty {});
+auto File::write_all_at(slice<byte> buffer, u64 offset) const -> FsResult<empty> {
+    return io::write_all_at(*this, buffer, offset);
 }
 
 auto File::lock() -> FsResult<empty> {
@@ -174,13 +158,14 @@ auto File::try_clone() const -> FsResult<File> {
 
 auto read_to_end(File& file, Vec<u8>& output) -> FsResult<usize> {
     u8    chunk[4096];
-    usize total = 0;
+    usize total {};
     while (true) {
-        auto result = file.read(chunk, sizeof(chunk));
+        auto values = mut_ref<u8[]>::from_raw_parts(chunk, usize(4096));
+        auto result = file.read(as_bytes_mut(values));
         if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
         auto count = result.unwrap_unchecked();
-        if (count == 0) break;
-        for (usize i = 0; i < count; ++i) output.push(u8(chunk[i]));
+        if (count == usize()) break;
+        output.extend_from_slice(slice<u8>::from_raw_parts(chunk, count));
         total += count;
     }
     return Ok(total);
@@ -209,16 +194,8 @@ auto read_to_string(ref<Path> path) -> FsResult<String> {
 auto write(ref<Path> path, slice<u8> contents) -> FsResult<empty> {
     auto file_result = File::create(path);
     if (file_result.is_err()) return Err(rstd::move(file_result).unwrap_err_unchecked());
-    auto  file   = rstd::move(file_result).unwrap_unchecked();
-    usize offset = 0;
-    while (offset < contents.len()) {
-        auto result = file.write(contents.p + offset, contents.len() - offset);
-        if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
-        auto count = result.unwrap_unchecked();
-        if (count == 0) return Err(Error::from_kind(ErrorKind { ErrorKind::WriteZero }));
-        offset += count;
-    }
-    return Ok(empty {});
+    auto file = rstd::move(file_result).unwrap_unchecked();
+    return io::write_all(file, as_bytes(contents));
 }
 
 auto metadata(ref<Path> path) -> FsResult<Metadata> {
@@ -315,26 +292,18 @@ auto copy(ref<Path> from, ref<Path> to) -> FsResult<u64> {
     auto destination = rstd::move(destination_result).unwrap_unchecked();
 
     u8  chunk[8192];
-    u64 total = 0;
+    u64 total {};
     while (true) {
-        auto read_result = source.read(chunk, sizeof(chunk));
+        auto values      = mut_ref<u8[]>::from_raw_parts(chunk, usize(8192));
+        auto read_result = source.read(as_bytes_mut(values));
         if (read_result.is_err()) return Err(rstd::move(read_result).unwrap_err_unchecked());
         auto count = read_result.unwrap_unchecked();
-        if (count == 0) break;
+        if (count == usize()) break;
 
-        usize offset = 0;
-        while (offset < count) {
-            auto write_result = destination.write(chunk + offset, count - offset);
-            if (write_result.is_err()) {
-                return Err(rstd::move(write_result).unwrap_err_unchecked());
-            }
-            auto written = write_result.unwrap_unchecked();
-            if (written == 0) {
-                return Err(Error::from_kind(ErrorKind { ErrorKind::WriteZero }));
-            }
-            offset += written;
-        }
-        total += count;
+        auto written =
+            io::write_all(destination, as_bytes(slice<u8>::from_raw_parts(chunk, count)));
+        if (written.is_err()) return Err(rstd::move(written).unwrap_err_unchecked());
+        total += u64(count.to_primitive());
     }
     return Ok(total);
 }
@@ -403,8 +372,7 @@ auto read_dir(ref<Path> path) -> FsResult<ReadDir> {
     auto result = sys_fs::open_directory(path);
     if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
 
-    auto bytes = Vec<u8>::with_capacity(path.len());
-    for (usize i = 0; i < path.len(); ++i) bytes.push(u8(path.data()[i]));
+    auto bytes  = Vec<u8>::copy_from_bytes(slice<byte>::from_raw_parts(path.data(), path.len()));
     auto parent = rstd::path::PathBuf::from(String::from_utf8_unchecked(rstd::move(bytes)));
     return Ok(ReadDir { rstd::move(result).unwrap_unchecked(), rstd::move(parent) });
 }

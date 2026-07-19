@@ -76,7 +76,7 @@ export template<typename F>
 class JoinAll {
     Vec<F>                        futures;
     Vec<Option<join_output_t<F>>> outputs;
-    usize                         remaining { 0 };
+    usize                         remaining {};
     bool                          completed { false };
 
 public:
@@ -86,7 +86,7 @@ public:
         : futures(rstd::move(in)),
           outputs(Vec<Option<join_output_t<F>>>::with_capacity(futures.len())),
           remaining(futures.len()) {
-        for (usize i = 0; i < remaining; ++i) {
+        for (rstd::size_t i = 0; i < remaining.to_primitive(); ++i) {
             outputs.push(None<join_output_t<F>>());
         }
     }
@@ -102,20 +102,21 @@ public:
             rstd::panic { "async::JoinAll polled after completion" };
         }
 
-        for (usize i = 0; i < value.futures.len(); ++i) {
-            if (value.outputs[i].is_some()) {
+        for (rstd::size_t i = 0; i < value.futures.len().to_primitive(); ++i) {
+            auto const index = usize(i);
+            if (value.outputs[index].is_some()) {
                 continue;
             }
-            if (poll_join_slot(value.futures[i], value.outputs[i], cx)) {
+            if (poll_join_slot(value.futures[index], value.outputs[index], cx)) {
                 --value.remaining;
             }
         }
 
-        if (value.remaining == 0) {
+        if (value.remaining == usize {}) {
             value.completed = true;
             auto out        = Output::with_capacity(value.outputs.len());
-            for (usize i = 0; i < value.outputs.len(); ++i) {
-                out.push(rstd::move(value.outputs[i]).unwrap_unchecked());
+            for (rstd::size_t i = 0; i < value.outputs.len().to_primitive(); ++i) {
+                out.push(rstd::move(value.outputs[usize(i)]).unwrap_unchecked());
             }
             return task::Poll<Output>::Ready(rstd::move(out));
         }

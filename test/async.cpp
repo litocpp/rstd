@@ -365,24 +365,28 @@ async::coro<int> hold_external_segment(async::AnyExecutor ex,
     co_return 1;
 }
 
-async::coro<bool> record_block_on_worker(std::atomic<u64>& first, std::atomic<u64>& second) {
-    first.store(thread::current().id().as_u64().get(), std::memory_order_release);
+async::coro<bool> record_block_on_worker(std::atomic<rstd::uint64_t>& first,
+                                         std::atomic<rstd::uint64_t>& second) {
+    first.store(thread::current().id().as_u64().get().to_primitive(), std::memory_order_release);
     co_await async::yield_now();
-    second.store(thread::current().id().as_u64().get(), std::memory_order_release);
+    second.store(thread::current().id().as_u64().get().to_primitive(), std::memory_order_release);
     co_return true;
 }
 
 async::coro<bool> record_external_return_worker(async::AnyExecutor ex,
-                                                std::atomic<u64>&  before,
-                                                std::atomic<u64>&  external,
-                                                std::atomic<u64>&  after) {
-    before.store(thread::current().id().as_u64().get(), std::memory_order_release);
+                                                std::atomic<rstd::uint64_t>& before,
+                                                std::atomic<rstd::uint64_t>& external,
+                                                std::atomic<rstd::uint64_t>& after) {
+    before.store(thread::current().id().as_u64().get().to_primitive(),
+                 std::memory_order_release);
     if (! co_await ex) {
         co_return false;
     }
-    external.store(thread::current().id().as_u64().get(), std::memory_order_release);
+    external.store(thread::current().id().as_u64().get().to_primitive(),
+                   std::memory_order_release);
     co_await async::yield_now();
-    after.store(thread::current().id().as_u64().get(), std::memory_order_release);
+    after.store(thread::current().id().as_u64().get().to_primitive(),
+                std::memory_order_release);
     co_return true;
 }
 
@@ -1435,9 +1439,9 @@ TEST(AsyncExecutor, MultiThreadBlockOnReturnsExternalAwaitToOwnerWorker) {
     auto context  = TestExecutorContext {};
     auto ex       = async::AnyExecutor::from_executor(context.executor());
     auto runtime  = async::RuntimeBuilder::multi_thread().worker_threads(2).build().unwrap();
-    auto before   = std::atomic<u64> { 0 };
-    auto external = std::atomic<u64> { 0 };
-    auto after    = std::atomic<u64> { 0 };
+    auto before   = std::atomic<rstd::uint64_t> { 0 };
+    auto external = std::atomic<rstd::uint64_t> { 0 };
+    auto after    = std::atomic<rstd::uint64_t> { 0 };
     auto done     = std::atomic<bool> { false };
 
     auto executor_thread = thread::spawn([&context, &done] {
@@ -1456,7 +1460,7 @@ TEST(AsyncExecutor, MultiThreadBlockOnReturnsExternalAwaitToOwnerWorker) {
     done.store(true, std::memory_order_release);
 
     EXPECT_TRUE(rstd::move(executor_thread).join().unwrap());
-    EXPECT_NE(before.load(std::memory_order_acquire), u64 { 0 });
+    EXPECT_NE(before.load(std::memory_order_acquire), rstd::uint64_t {});
     EXPECT_EQ(before.load(std::memory_order_acquire), after.load(std::memory_order_acquire));
     EXPECT_NE(before.load(std::memory_order_acquire), external.load(std::memory_order_acquire));
 }
@@ -1465,11 +1469,12 @@ TEST(AsyncExecutor, CoAwaitExecutorContinuationRunsOnExecutorThread) {
     auto context   = async::LocalExecutorContext::make();
     auto ex        = async::AnyExecutor::from_executor(context.executor());
     auto main_id   = thread::current().id();
-    auto worker_id = std::atomic<u64> { 0 };
+    auto worker_id = std::atomic<rstd::uint64_t> { 0 };
 
     auto worker =
         thread::spawn([&context, &worker_id] {
-            worker_id.store(thread::current().id().as_u64().get(), std::memory_order_release);
+            worker_id.store(thread::current().id().as_u64().get().to_primitive(),
+                            std::memory_order_release);
 
             auto ran = usize {};
             for (int i = 0; i < 1000; ++i) {
@@ -1486,19 +1491,21 @@ TEST(AsyncExecutor, CoAwaitExecutorContinuationRunsOnExecutorThread) {
 
     EXPECT_TRUE(rstd::move(worker).join().unwrap());
     EXPECT_NE(resumed_id, main_id);
-    EXPECT_EQ(resumed_id.as_u64().get(), worker_id.load(std::memory_order_acquire));
+    EXPECT_EQ(resumed_id.as_u64().get().to_primitive(),
+              worker_id.load(std::memory_order_acquire));
 }
 
 TEST(AsyncExecutor, SpawnedExecutorContinuationCompletesThroughRuntime) {
     auto context   = async::LocalExecutorContext::make();
     auto ex        = async::AnyExecutor::from_executor(context.executor());
     auto runtime   = async::Runtime {};
-    auto worker_id = std::atomic<u64> { 0 };
+    auto worker_id = std::atomic<rstd::uint64_t> { 0 };
 
     auto handle = runtime.spawn(await_executor_thread(ex.clone()));
     auto worker =
         thread::spawn([&context, &worker_id] {
-            worker_id.store(thread::current().id().as_u64().get(), std::memory_order_release);
+            worker_id.store(thread::current().id().as_u64().get().to_primitive(),
+                            std::memory_order_release);
 
             auto ran = usize {};
             for (int i = 0; i < 1000; ++i) {
@@ -1514,7 +1521,8 @@ TEST(AsyncExecutor, SpawnedExecutorContinuationCompletesThroughRuntime) {
     auto resumed_id = runtime.block_on(rstd::move(handle)).unwrap();
 
     EXPECT_TRUE(rstd::move(worker).join().unwrap());
-    EXPECT_EQ(resumed_id.as_u64().get(), worker_id.load(std::memory_order_acquire));
+    EXPECT_EQ(resumed_id.as_u64().get().to_primitive(),
+              worker_id.load(std::memory_order_acquire));
 }
 
 TEST(AsyncExecutor, ExternalContinuationCanSpawnOntoRuntime) {
@@ -1541,17 +1549,19 @@ TEST(AsyncExecutor, ConsecutiveExecutorAwaitsChainOnExecutor) {
     auto context   = async::LocalExecutorContext::make();
     auto ex        = async::AnyExecutor::from_executor(context.executor());
     auto done      = std::atomic<bool> { false };
-    auto ran_count = std::atomic<usize> { 0 };
-    auto worker_id = std::atomic<u64> { 0 };
+    auto ran_count = std::atomic<rstd::size_t> { 0 };
+    auto worker_id = std::atomic<rstd::uint64_t> { 0 };
 
     auto worker =
         thread::spawn([&context, &done, &ran_count, &worker_id] {
-            worker_id.store(thread::current().id().as_u64().get(), std::memory_order_release);
+            worker_id.store(thread::current().id().as_u64().get().to_primitive(),
+                            std::memory_order_release);
 
             for (int i = 0; i < 1000; ++i) {
-                ran_count.fetch_add(context.run_ready(), std::memory_order_relaxed);
+                ran_count.fetch_add(context.run_ready().to_primitive(), std::memory_order_relaxed);
                 if (done.load(std::memory_order_acquire)) {
-                    ran_count.fetch_add(context.run_ready(), std::memory_order_relaxed);
+                    ran_count.fetch_add(context.run_ready().to_primitive(),
+                                        std::memory_order_relaxed);
                     return true;
                 }
                 thread::sleep(time::Duration::from_millis(1));
@@ -1563,21 +1573,24 @@ TEST(AsyncExecutor, ConsecutiveExecutorAwaitsChainOnExecutor) {
     done.store(true, std::memory_order_release);
 
     EXPECT_TRUE(rstd::move(worker).join().unwrap());
-    EXPECT_EQ(resumed_id.as_u64().get(), worker_id.load(std::memory_order_acquire));
-    EXPECT_EQ(ran_count.load(std::memory_order_relaxed), usize { 3 });
+    EXPECT_EQ(resumed_id.as_u64().get().to_primitive(),
+              worker_id.load(std::memory_order_acquire));
+    EXPECT_EQ(ran_count.load(std::memory_order_relaxed), rstd::size_t(3));
 }
 
 TEST(AsyncExecutor, ClosedExecutorDuringExternalSegmentReturnsFalse) {
     auto context   = async::LocalExecutorContext::make();
     auto ex        = async::AnyExecutor::from_executor(context.executor());
     auto done      = std::atomic<bool> { false };
-    auto ran_count = std::atomic<usize> { 0 };
+    auto ran_count = std::atomic<rstd::size_t> { 0 };
 
     auto worker = thread::spawn([&context, &done, &ran_count] {
                       for (int i = 0; i < 1000; ++i) {
-                          ran_count.fetch_add(context.run_ready(), std::memory_order_relaxed);
+                          ran_count.fetch_add(context.run_ready().to_primitive(),
+                                              std::memory_order_relaxed);
                           if (done.load(std::memory_order_acquire)) {
-                              ran_count.fetch_add(context.run_ready(), std::memory_order_relaxed);
+                              ran_count.fetch_add(context.run_ready().to_primitive(),
+                                                  std::memory_order_relaxed);
                               return true;
                           }
                           thread::sleep(time::Duration::from_millis(1));
@@ -1590,7 +1603,7 @@ TEST(AsyncExecutor, ClosedExecutorDuringExternalSegmentReturnsFalse) {
 
     EXPECT_TRUE(rstd::move(worker).join().unwrap());
     EXPECT_FALSE(result);
-    EXPECT_EQ(ran_count.load(std::memory_order_relaxed), usize { 2 });
+    EXPECT_EQ(ran_count.load(std::memory_order_relaxed), rstd::size_t(2));
 }
 
 TEST(AsyncExecutor, SpawnedClosedExecutorDuringExternalSegmentReturnsFalse) {
@@ -1598,14 +1611,16 @@ TEST(AsyncExecutor, SpawnedClosedExecutorDuringExternalSegmentReturnsFalse) {
     auto ex        = async::AnyExecutor::from_executor(context.executor());
     auto runtime   = async::Runtime {};
     auto done      = std::atomic<bool> { false };
-    auto ran_count = std::atomic<usize> { 0 };
+    auto ran_count = std::atomic<rstd::size_t> { 0 };
 
     auto handle = runtime.spawn(close_executor_before_second_await(ex.clone(), context));
     auto worker = thread::spawn([&context, &done, &ran_count] {
                       for (int i = 0; i < 1000; ++i) {
-                          ran_count.fetch_add(context.run_ready(), std::memory_order_relaxed);
+                          ran_count.fetch_add(context.run_ready().to_primitive(),
+                                              std::memory_order_relaxed);
                           if (done.load(std::memory_order_acquire)) {
-                              ran_count.fetch_add(context.run_ready(), std::memory_order_relaxed);
+                              ran_count.fetch_add(context.run_ready().to_primitive(),
+                                                  std::memory_order_relaxed);
                               return true;
                           }
                           thread::sleep(time::Duration::from_millis(1));
@@ -1618,7 +1633,7 @@ TEST(AsyncExecutor, SpawnedClosedExecutorDuringExternalSegmentReturnsFalse) {
 
     EXPECT_TRUE(rstd::move(worker).join().unwrap());
     EXPECT_FALSE(result);
-    EXPECT_EQ(ran_count.load(std::memory_order_relaxed), usize { 2 });
+    EXPECT_EQ(ran_count.load(std::memory_order_relaxed), rstd::size_t(2));
 }
 
 TEST(AsyncExecutor, RejectedExternalContinuationPostReturnsFalse) {
@@ -1743,9 +1758,9 @@ TEST(AsyncCoro, MultiThreadRuntimeSpawnJoinHandle) {
 
 TEST(AsyncCoro, MultiThreadBlockOnRunsRootOnOwnerWorker) {
     auto runtime = async::RuntimeBuilder::multi_thread().worker_threads(2).build().unwrap();
-    auto first   = std::atomic<u64> { 0 };
-    auto second  = std::atomic<u64> { 0 };
-    auto caller  = thread::current().id().as_u64().get();
+    auto first   = std::atomic<rstd::uint64_t> { 0 };
+    auto second  = std::atomic<rstd::uint64_t> { 0 };
+    auto caller  = thread::current().id().as_u64().get().to_primitive();
 
     EXPECT_TRUE(runtime.block_on(record_block_on_worker(first, second)));
     EXPECT_NE(first.load(std::memory_order_acquire), caller);

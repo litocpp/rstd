@@ -29,38 +29,38 @@ static_assert(! ConcreteCloneable<Vec<MoveOnly>>);
 
 TEST(Vec, BasicPushPop) {
     Vec<int> v;
-    EXPECT_EQ(v.len(), 0);
+    EXPECT_EQ(v.len(), usize());
     EXPECT_TRUE(v.is_empty());
 
     v.push(1);
     v.push(2);
     v.push(3);
 
-    EXPECT_EQ(v.len(), 3);
+    EXPECT_EQ(v.len(), usize(3));
     EXPECT_FALSE(v.is_empty());
 
     EXPECT_EQ(v.pop(), Some(3));
     EXPECT_EQ(v.pop(), Some(2));
     EXPECT_EQ(v.pop(), Some(1));
     EXPECT_TRUE(v.pop().is_none());
-    EXPECT_EQ(v.len(), 0);
+    EXPECT_EQ(v.len(), usize());
 }
 
 TEST(Vec, Growth) {
-    Vec<int> v = Vec<int>::with_capacity(2);
-    EXPECT_EQ(v.capacity(), 2);
+    Vec<int> v = Vec<int>::with_capacity(usize(2));
+    EXPECT_EQ(v.capacity(), usize(2));
 
     v.push(1);
     v.push(2);
-    EXPECT_EQ(v.capacity(), 2);
+    EXPECT_EQ(v.capacity(), usize(2));
 
     v.push(3);
-    EXPECT_GT(v.capacity(), 2);
-    EXPECT_EQ(v.len(), 3);
+    EXPECT_GT(v.capacity(), usize(2));
+    EXPECT_EQ(v.len(), usize(3));
 
-    EXPECT_EQ(v[0], 1);
-    EXPECT_EQ(v[1], 2);
-    EXPECT_EQ(v[2], 3);
+    EXPECT_EQ(v[usize()], 1);
+    EXPECT_EQ(v[usize(1)], 2);
+    EXPECT_EQ(v[usize(2)], 3);
 }
 
 TEST(Vec, Indexing) {
@@ -68,11 +68,11 @@ TEST(Vec, Indexing) {
     v.push(10);
     v.push(20);
 
-    EXPECT_EQ(v[0], 10);
-    EXPECT_EQ(v[1], 20);
+    EXPECT_EQ(v[usize()], 10);
+    EXPECT_EQ(v[usize(1)], 20);
 
-    v[0] = 30;
-    EXPECT_EQ(v[0], 30);
+    v[usize()] = 30;
+    EXPECT_EQ(v[usize()], 30);
 }
 
 TEST(Vec, Destructor) {
@@ -103,12 +103,12 @@ TEST(Vec, IntoBoxedSlice) {
     v.push(2);
 
     auto b = v.into_boxed_slice();
-    EXPECT_EQ(v.len(), 0);
+    EXPECT_EQ(v.len(), usize());
     // Box<T[]> should have metadata for length
-    EXPECT_EQ(b.as_ptr().len(), 2);
-    EXPECT_EQ(b.as_ptr()[0], 1);
-    EXPECT_EQ(b.as_ptr()[1], 2);
-    EXPECT_EQ(rstd::alloc::Layout::for_value(b.as_ptr()).size, 2 * sizeof(int));
+    EXPECT_EQ(b.as_ptr().len(), usize(2));
+    EXPECT_EQ(b.as_ptr()[usize()], 1);
+    EXPECT_EQ(b.as_ptr()[usize(1)], 2);
+    EXPECT_EQ(rstd::alloc::Layout::for_value(b.as_ptr()).size, usize(2 * sizeof(int)));
 }
 
 TEST(Vec, BoxedSliceDropsEveryElement) {
@@ -144,59 +144,59 @@ TEST(Vec, Remove) {
     v.push(2);
     v.push(3);
 
-    EXPECT_EQ(v.remove(1), 2);
-    EXPECT_EQ(v.len(), 2);
-    EXPECT_EQ(v[0], 1);
-    EXPECT_EQ(v[1], 3);
+    EXPECT_EQ(v.remove(usize(1)), 2);
+    EXPECT_EQ(v.len(), usize(2));
+    EXPECT_EQ(v[usize()], 1);
+    EXPECT_EQ(v[usize(1)], 3);
 }
 
 TEST(Vec, ReserveAndExtendFromSlice) {
     Vec<rstd::u8> v;
-    v.reserve(8);
-    EXPECT_GE(v.capacity(), 8);
-    EXPECT_EQ(v.len(), 0);
+    v.reserve(usize(8));
+    EXPECT_GE(v.capacity(), usize(8));
+    EXPECT_EQ(v.len(), usize());
 
-    rstd::u8 data[] { 1, 2, 3 };
-    v.extend_from_slice(rstd::slice<rstd::u8>::from_raw_parts(data, 3));
+    rstd::u8 data[] { u8(1), u8(2), u8(3) };
+    v.extend_from_slice(rstd::slice<rstd::u8>::from_raw_parts(data, usize(3)));
 
-    EXPECT_EQ(v.len(), 3);
-    EXPECT_EQ(v[0], 1);
-    EXPECT_EQ(v[1], 2);
-    EXPECT_EQ(v[2], 3);
+    EXPECT_EQ(v.len(), usize(3));
+    EXPECT_EQ(v[usize()], u8(1));
+    EXPECT_EQ(v[usize(1)], u8(2));
+    EXPECT_EQ(v[usize(2)], u8(3));
 }
 
 TEST(Vec, SpareCapacityAndSetLen) {
-    auto v = Vec<rstd::u8>::with_capacity(4);
+    auto v = Vec<rstd::u8>::with_capacity(usize(4));
 
     auto spare = v.spare_capacity_mut();
-    ASSERT_EQ(spare.len(), 4);
-    spare[0] = 7;
-    spare[1] = 8;
-    spare[2] = 9;
-    v.set_len_unchecked(3);
+    ASSERT_EQ(spare.len(), usize(4));
+    spare[usize()]  = u8(7);
+    spare[usize(1)] = u8(8);
+    spare[usize(2)] = u8(9);
+    v.set_len_unchecked(usize(3));
 
-    EXPECT_EQ(v.len(), 3);
-    EXPECT_EQ(v[0], 7);
-    EXPECT_EQ(v[1], 8);
-    EXPECT_EQ(v[2], 9);
+    EXPECT_EQ(v.len(), usize(3));
+    EXPECT_EQ(v[usize()], u8(7));
+    EXPECT_EQ(v[usize(1)], u8(8));
+    EXPECT_EQ(v[usize(2)], u8(9));
 
-    v.truncate(2);
-    EXPECT_EQ(v.len(), 2);
-    EXPECT_EQ(v[1], 8);
+    v.truncate(usize(2));
+    EXPECT_EQ(v.len(), usize(2));
+    EXPECT_EQ(v[usize(1)], u8(8));
 }
 
 TEST(Vec, Resize) {
     Vec<int> v;
-    v.resize(3, 5);
+    v.resize(usize(3), 5);
 
-    ASSERT_EQ(v.len(), 3);
-    EXPECT_EQ(v[0], 5);
-    EXPECT_EQ(v[1], 5);
-    EXPECT_EQ(v[2], 5);
+    ASSERT_EQ(v.len(), usize(3));
+    EXPECT_EQ(v[usize()], 5);
+    EXPECT_EQ(v[usize(1)], 5);
+    EXPECT_EQ(v[usize(2)], 5);
 
-    v.resize(1, 0);
-    EXPECT_EQ(v.len(), 1);
-    EXPECT_EQ(v[0], 5);
+    v.resize(usize(1), 0);
+    EXPECT_EQ(v.len(), usize(1));
+    EXPECT_EQ(v[usize()], 5);
 }
 
 TEST(Vec, CloneOwnsIndependentElements) {
@@ -206,13 +206,13 @@ TEST(Vec, CloneOwnsIndependentElements) {
 
     auto direct   = values.clone();
     auto abstract = rstd::as<rstd::clone::Clone>(values).clone();
-    values[0].push_back('!');
+    values[usize()].push_back('!');
 
-    ASSERT_EQ(direct.len(), 2u);
-    ASSERT_EQ(abstract.len(), 2u);
-    EXPECT_EQ(values[0], "alpha!");
-    EXPECT_EQ(direct[0], "alpha");
-    EXPECT_EQ(direct[1], "beta");
-    EXPECT_EQ(abstract[0], "alpha");
-    EXPECT_EQ(abstract[1], "beta");
+    ASSERT_EQ(direct.len(), usize(2));
+    ASSERT_EQ(abstract.len(), usize(2));
+    EXPECT_EQ(values[usize()], "alpha!");
+    EXPECT_EQ(direct[usize()], "alpha");
+    EXPECT_EQ(direct[usize(1)], "beta");
+    EXPECT_EQ(abstract[usize()], "alpha");
+    EXPECT_EQ(abstract[usize(1)], "beta");
 }

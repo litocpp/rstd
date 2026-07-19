@@ -7,9 +7,9 @@ namespace rstd::async
 {
 
 export class AtomicWaker {
-    static constexpr usize WAITING     = 0;
-    static constexpr usize REGISTERING = 0b01;
-    static constexpr usize WAKING      = 0b10;
+    static constexpr usize WAITING {};
+    static constexpr usize REGISTERING { static_cast<usize::primitive_type>(0b01) };
+    static constexpr usize WAKING { static_cast<usize::primitive_type>(0b10) };
 
     sync::atomic::Atomic<usize> m_state { WAITING };
     Option<task::Waker>         m_waker {};

@@ -44,8 +44,8 @@ TEST(ArgparseParsing, ParsesOptionsPositionalsClustersAndAttachedValues) {
     auto count = matches.get_one(verbose);
     ASSERT_TRUE(count.is_ok());
     ASSERT_TRUE(count->is_some());
-    EXPECT_EQ(***count, 2u);
-    EXPECT_EQ(matches.occurrences("verbose"), 2u);
+    EXPECT_EQ(***count, u8(2));
+    EXPECT_EQ(matches.occurrences("verbose"), usize(2));
 }
 
 TEST(ArgparseParsing, SupportsLongEqualsEndOfOptionsAndDefaults) {
@@ -84,9 +84,9 @@ TEST(ArgparseParsing, PreservesNonUtf8Values) {
     ASSERT_TRUE(built.is_ok());
     auto parser = rstd::move(built).unwrap();
 
-    u8   bytes[] = { 0xFF, 'x' };
-    auto args    = argv("tool");
-    args.push(OsString::from(ref<OsStr>::from_raw_parts(bytes, 2)));
+    rstd::uint8_t bytes[] = { 0xFF, 'x' };
+    auto          args    = argv("tool");
+    args.push(OsString::from(ref<OsStr>::from_raw_parts(bytes, usize(2))));
     auto result = parser.parse_from(rstd::move(args));
     ASSERT_TRUE(result.is_ok());
     auto outcome = rstd::move(result).unwrap();
@@ -109,9 +109,9 @@ TEST(ArgparseParsing, KnownParsingKeepsUnknownClusterAtomic) {
     auto outcome = rstd::move(result).unwrap();
     auto known   = rstd::move(outcome).as_Parsed().value;
     EXPECT_FALSE(known.matches()->contains("verbose"));
-    ASSERT_EQ(known.unknown().len(), 2u);
-    EXPECT_EQ(known.unknown()[0].as_os_str().to_str(), Some(ref<str>("-vx")));
-    EXPECT_EQ(known.unknown()[1].as_os_str().to_str(), Some(ref<str>("--other=value")));
+    ASSERT_EQ(known.unknown().len(), usize(2));
+    EXPECT_EQ(known.unknown()[usize()].as_os_str().to_str(), Some(ref<str>("-vx")));
+    EXPECT_EQ(known.unknown()[usize(1)].as_os_str().to_str(), Some(ref<str>("--other=value")));
 
     auto foreign_command = Command::make("other");
     auto foreign         = foreign_command.add_arg(Arg<bool>::flag("foreign"));
@@ -147,7 +147,7 @@ TEST(ArgparseParsing, ReturnsStructuredErrorsAndDisplayRequests) {
     ASSERT_TRUE(help->is_Display());
     EXPECT_EQ(help->as_Display().request.kind(), DisplayKind::Tag::Help);
     EXPECT_EQ(help->as_Display().request.target(), OutputTarget::Tag::Stdout);
-    EXPECT_EQ(help->as_Display().request.exit_code(), 0);
+    EXPECT_EQ(help->as_Display().request.exit_code(), i32());
 
     auto version = parser.parse_from(argv("tool", "--version"));
     ASSERT_TRUE(version.is_ok());

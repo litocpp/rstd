@@ -16,8 +16,9 @@ auto error_argv(Tokens... tokens) -> Vec<OsString> {
 
 TEST(ArgparseErrors, DistinguishesMissingTooFewTooManyAndDuplicate) {
     auto command = Command::make("tool");
-    command.add_arg(
-        Arg<String>::value("pair", string_parser()).long_name("pair").num_args(NumArgs::exact(2)));
+    command.add_arg(Arg<String>::value("pair", string_parser())
+                        .long_name("pair")
+                        .num_args(NumArgs::exact(usize(2))));
     command.add_arg(Arg<bool>::flag("flag").long_name("flag"));
     command.add_arg(Arg<String>::value("once", string_parser()).long_name("once"));
     auto built = rstd::move(command).build();
@@ -48,14 +49,14 @@ TEST(ArgparseErrors, ReportsNonUtf8SeparatelyWithValueIndex) {
     ASSERT_TRUE(built.is_ok());
     auto parser = rstd::move(built).unwrap();
 
-    u8   byte[] = { 0xFF };
-    auto args   = error_argv("tool");
-    args.push(OsString::from(ref<OsStr>::from_raw_parts(byte, 1)));
+    rstd::uint8_t byte[] = { 0xFF };
+    auto          args   = error_argv("tool");
+    args.push(OsString::from(ref<OsStr>::from_raw_parts(byte, usize(1))));
     auto result = parser.parse_from(rstd::move(args));
     ASSERT_TRUE(result.is_err());
     auto error = rstd::move(result).unwrap_err();
     ASSERT_TRUE(error.is_InvalidUtf8Value());
-    EXPECT_EQ(error.as_InvalidUtf8Value().index, 1u);
+    EXPECT_EQ(error.as_InvalidUtf8Value().index, usize(1));
     EXPECT_EQ(error.as_InvalidUtf8Value().value.as_os_str().data()[0], 0xFF);
 }
 
@@ -72,7 +73,7 @@ TEST(ArgparseErrors, KeepsGlobalIndicesAcrossSubcommands) {
     ASSERT_TRUE(result.is_err());
     auto error = rstd::move(result).unwrap_err();
     ASSERT_TRUE(error.is_UnknownArgument());
-    EXPECT_EQ(error.as_UnknownArgument().index, 2u);
+    EXPECT_EQ(error.as_UnknownArgument().index, usize(2));
     EXPECT_EQ(error.command_path(), "tool run");
     EXPECT_EQ(error.usage(), "Usage: tool run [OPTIONS]");
 }

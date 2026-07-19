@@ -56,11 +56,11 @@ public:
     using DestroyFn = void (*)(voidp);
 
 private:
-    static constexpr usize DETACHED = 1;
-    static constexpr usize ACCESS   = 2;
+    static constexpr usize DETACHED { rstd::size_t(1) };
+    static constexpr usize ACCESS { rstd::size_t(2) };
 
-    rstd::sync::atomic::Atomic<usize> m_strong { 1 };
-    rstd::sync::atomic::Atomic<usize> m_access_state { 0 };
+    rstd::sync::atomic::Atomic<usize> m_strong { usize(1) };
+    rstd::sync::atomic::Atomic<usize> m_access_state { usize() };
     TaskStateBase*                    m_task { nullptr };
     voidp                             m_storage_owner { nullptr };
     DestroyFn                         m_destroy_storage { nullptr };
@@ -88,14 +88,14 @@ public:
     }
 
     void inc_ref() noexcept {
-        auto previous = m_strong.fetch_add(1, rstd::sync::atomic::Ordering::Relaxed);
-        if (previous >= rstd::numeric_limits<usize>::max() / 2) {
+        auto previous = m_strong.fetch_add(usize(1), rstd::sync::atomic::Ordering::Relaxed);
+        if (previous >= usize::MAX / usize(2)) {
             rstd::panic { "TaskRefControl strong count overflow" };
         }
     }
 
     void dec_ref() noexcept {
-        if (m_strong.fetch_sub(1, rstd::sync::atomic::Ordering::AcqRel) == 1) {
+        if (m_strong.fetch_sub(usize(1), rstd::sync::atomic::Ordering::AcqRel) == usize(1)) {
             rstd::sync::atomic::fence(rstd::sync::atomic::Ordering::Acquire);
             m_destroy_storage(m_storage_owner);
         }
@@ -104,8 +104,8 @@ public:
     auto acquire() -> Option<TaskAccess> {
         inc_ref();
         auto state = m_access_state.load(rstd::sync::atomic::Ordering::Acquire);
-        while ((state & DETACHED) == 0) {
-            if (state > rstd::numeric_limits<usize>::max() - ACCESS) {
+        while ((state & DETACHED) == usize()) {
+            if (state > usize::MAX - ACCESS) {
                 rstd::panic { "TaskRefControl access count overflow" };
             }
             if (m_access_state.compare_exchange_weak(state,
@@ -125,7 +125,8 @@ public:
 
     void detach() {
         m_access_state.fetch_or(DETACHED, rstd::sync::atomic::Ordering::AcqRel);
-        while ((m_access_state.load(rstd::sync::atomic::Ordering::Acquire) & ~DETACHED) != 0) {
+        while ((m_access_state.load(rstd::sync::atomic::Ordering::Acquire) & ~DETACHED) !=
+               usize()) {
             thread::yield_now();
         }
     }
@@ -135,7 +136,7 @@ struct RuntimeWorkerId {
     usize index {};
 
     static constexpr auto current_thread() noexcept -> RuntimeWorkerId {
-        return RuntimeWorkerId { 0 };
+        return RuntimeWorkerId { usize() };
     }
 
     constexpr auto as_usize() const noexcept -> usize { return index; }
@@ -155,7 +156,7 @@ enum class TaskLifecycle
 };
 
 struct FacilityId {
-    usize value { 0 };
+    rstd::uintptr_t value {};
 
     friend constexpr auto operator==(FacilityId, FacilityId) noexcept -> bool = default;
 };
@@ -163,9 +164,9 @@ struct FacilityId {
 struct TaskControl {
     RuntimeWorkerId owner_worker {};
     TaskLifecycle   lifecycle { TaskLifecycle::Created };
-    u64             schedule_generation { 0 };
+    u64             schedule_generation {};
     FacilityId      facility_id {};
-    u64             facility_generation { 0 };
+    u64             facility_generation {};
     bool            wake_requested { false };
     bool            cancel_requested { false };
 };
@@ -260,7 +261,7 @@ public:
 class ScheduleTicket {
     TaskRef         m_task;
     RuntimeWorkerId m_owner;
-    u64             m_generation { 0 };
+    u64             m_generation {};
 
 public:
     ScheduleTicket() noexcept = default;
@@ -282,7 +283,7 @@ public:
 class RuntimeExecutionLease {
     TaskRef    m_task;
     TaskAccess m_access;
-    u64        m_generation { 0 };
+    u64        m_generation {};
 
 public:
     RuntimeExecutionLease() noexcept = default;
@@ -316,7 +317,7 @@ enum class FacilityEffect
 struct FacilityToken {
     FacilityId      facility_id;
     RuntimeWorkerId owner_worker;
-    u64             generation { 0 };
+    u64             generation {};
     FacilityEffect  effect { FacilityEffect::CompletionOnly };
 };
 
@@ -643,7 +644,7 @@ public:
         if (m_events.is_empty()) {
             return None();
         }
-        return Some(m_events.remove(0));
+        return Some(m_events.remove(usize()));
     }
 };
 
@@ -812,7 +813,7 @@ struct ReadyQueue {
         if (m_tickets.is_empty()) {
             return None();
         }
-        return Some(m_tickets.remove(0));
+        return Some(m_tickets.remove(usize()));
     }
 
     void clear() { m_tickets.clear(); }
@@ -905,7 +906,7 @@ struct WorkerInbox {
         if (m_commands.is_empty()) {
             return None();
         }
-        return Some(m_commands.remove(0));
+        return Some(m_commands.remove(usize()));
     }
 
     void clear() { m_commands.clear(); }
@@ -922,16 +923,17 @@ struct TaskRegistry {
 
     auto clone_all() const -> Vec<TaskRef> {
         auto tasks = Vec<TaskRef>::make();
-        for (usize i = 0; i < m_tasks.len(); ++i) {
-            tasks.push(m_tasks[i].clone());
+        for (rstd::size_t i = 0; i < m_tasks.len().to_primitive(); ++i) {
+            tasks.push(m_tasks[usize(i)].clone());
         }
         return tasks;
     }
 
     void remove(TaskRefControl* task) {
-        for (usize i = 0; i < m_tasks.len(); ++i) {
-            if (m_tasks[i].identity() == task) {
-                m_tasks.remove(i);
+        for (rstd::size_t i = 0; i < m_tasks.len().to_primitive(); ++i) {
+            auto index = usize(i);
+            if (m_tasks[index].identity() == task) {
+                m_tasks.remove(index);
                 return;
             }
         }
@@ -946,7 +948,7 @@ struct WorkerFields {
     WorkerLifecycle          m_lifecycle { WorkerLifecycle::Created };
     bool                     m_attached { false };
     bool                     m_pending_wake { false };
-    u64                      m_next_poll_key { 1 };
+    u64                      m_next_poll_key { rstd::uint64_t(1) };
 
     WorkerFields(): m_inbox(), m_poll_wake(None()), m_attached_thread(None()) {}
 };
@@ -1078,10 +1080,12 @@ public:
 
     auto allocate_poll_key(PollKeyKind kind) const -> PollKey {
         auto fields = m_state->m_fields.lock().unwrap_unchecked();
-        if (fields->m_next_poll_key == rstd::numeric_limits<u64>::max()) {
+        if (fields->m_next_poll_key == u64::MAX) {
             rstd::panic { "async worker exhausted Poll keys" };
         }
-        return PollKey { kind, fields->m_next_poll_key++ };
+        auto value = fields->m_next_poll_key;
+        ++fields->m_next_poll_key;
+        return PollKey { kind, value };
     }
 
     auto poll_capabilities() const -> PollCapabilities {
@@ -1186,8 +1190,8 @@ public:
 struct RuntimeSharedState {
     TaskRegistry      m_registry;
     RuntimeLifecycle  m_lifecycle { RuntimeLifecycle::Building };
-    usize             m_next_worker { 0 };
-    usize             m_running_workers { 0 };
+    usize             m_next_worker {};
+    usize             m_running_workers {};
     Option<io::Error> m_worker_start_error {};
 };
 
@@ -1208,14 +1212,14 @@ public:
           state(RuntimeSharedState {}),
           task_cvar(sync::Condvar::make()),
           worker_cvar(sync::Condvar::make()) {
-        for (usize i = 0; i < worker_count; ++i) {
-            m_workers.push(WorkerHandle::make(RuntimeWorkerId { i }));
+        for (rstd::size_t i = 0; i < worker_count.to_primitive(); ++i) {
+            m_workers.push(WorkerHandle::make(RuntimeWorkerId { usize(i) }));
         }
         if (kind == RuntimeKind::CurrentThread) {
             auto shared               = state.lock().unwrap_unchecked();
             shared->m_lifecycle       = RuntimeLifecycle::Running;
-            shared->m_running_workers = 1;
-            m_workers[0].start_current();
+            shared->m_running_workers = usize(1);
+            m_workers[usize()].start_current();
         }
     }
 
@@ -1229,25 +1233,25 @@ public:
 
     auto next_worker_locked(RuntimeSharedState& shared) const -> RuntimeWorkerId {
         auto worker          = RuntimeWorkerId { shared.m_next_worker % m_workers.len() };
-        shared.m_next_worker = (shared.m_next_worker + 1) % m_workers.len();
+        shared.m_next_worker = (shared.m_next_worker + usize(1)) % m_workers.len();
         return worker;
     }
 
     void request_worker_stop() const {
-        for (usize i = 0; i < m_workers.len(); ++i) {
-            m_workers[i].request_stop();
+        for (rstd::size_t i = 0; i < m_workers.len().to_primitive(); ++i) {
+            m_workers[usize(i)].request_stop();
         }
     }
 
     void clear_inbox() const {
-        for (usize i = 0; i < m_workers.len(); ++i) {
-            m_workers[i].clear_inbox();
+        for (rstd::size_t i = 0; i < m_workers.len().to_primitive(); ++i) {
+            m_workers[usize(i)].clear_inbox();
         }
     }
 };
 
 class RuntimeWorker {
-    static constexpr usize DEFAULT_COOPERATIVE_BUDGET { 64 };
+    static constexpr usize DEFAULT_COOPERATIVE_BUDGET { rstd::size_t(64) };
 
     RuntimeInner*     m_runtime;
     WorkerHandle      m_handle;
@@ -1280,10 +1284,10 @@ struct RuntimeInner {
 
     explicit RuntimeInner(RuntimeKind   kind         = RuntimeKind::CurrentThread,
                           RuntimeConfig config       = RuntimeConfig {},
-                          usize         worker_count = 0)
+                          usize         worker_count = usize())
         : m_kind(kind),
           m_config(config),
-          m_shared(kind == RuntimeKind::CurrentThread ? usize { 1 } : worker_count, kind),
+          m_shared(kind == RuntimeKind::CurrentThread ? usize(1) : worker_count, kind),
           self(sync::Weak<RuntimeInner>::make()) {}
 
     void init_self(sync::Weak<RuntimeInner> weak) { self = rstd::move(weak); }
@@ -1579,13 +1583,13 @@ inline auto RuntimeInner::complete_facility_batch(FacilityEventBatch batch)
 
 inline void TaskStateBase::complete_locked(TaskControl& state) {
     state.lifecycle = TaskLifecycle::Completed;
-    state.schedule_generation += 1;
-    state.facility_generation += 1;
+    ++state.schedule_generation;
+    ++state.facility_generation;
     state.wake_requested = false;
 }
 
 inline auto TaskStateBase::make_schedule_action(TaskControl& state, TaskRef task) -> TaskAction {
-    state.schedule_generation += 1;
+    ++state.schedule_generation;
     state.lifecycle = TaskLifecycle::Queued;
     return TaskAction::schedule(
         ScheduleTicket { rstd::move(task), state.owner_worker, state.schedule_generation });
@@ -1810,7 +1814,7 @@ inline auto TaskStateBase::end_runtime_execution(RuntimeExecutionLease lease,
             action = TaskAction::complete_value(rstd::move(self));
         } else if (completion_id.is_some()) {
             auto id = *completion_id;
-            state->facility_generation += 1;
+            ++state->facility_generation;
             state->facility_id    = id;
             state->lifecycle      = TaskLifecycle::Waiting;
             state->wake_requested = false;
@@ -1827,7 +1831,7 @@ inline auto TaskStateBase::end_runtime_execution(RuntimeExecutionLease lease,
                 rstd::panic { "runtime task submitted an unsupported completion facility" };
             }
             auto id = facility_request.id();
-            state->facility_generation += 1;
+            ++state->facility_generation;
             state->facility_id    = id;
             state->lifecycle      = TaskLifecycle::FacilityQueued;
             state->wake_requested = false;
@@ -1981,7 +1985,7 @@ inline auto TaskStateBase::end_facility_execution(FacilityExecutionLease lease,
                 rstd::panic { "external segment submitted an unsupported completion facility" };
             }
             auto id = facility_request.id();
-            state->facility_generation += 1;
+            ++state->facility_generation;
             state->facility_id    = id;
             state->lifecycle      = TaskLifecycle::FacilityQueued;
             state->wake_requested = false;
@@ -2148,12 +2152,12 @@ inline void RuntimeWorker::drain_ready() {
         return;
     }
     auto remaining = m_cooperative_budget;
-    while (remaining > 0) {
+    while (remaining > usize()) {
         auto next = m_ready.pop_front();
         if (next.is_none()) {
             return;
         }
-        remaining -= 1;
+        --remaining;
 
         auto ticket = rstd::move(next).unwrap_unchecked();
         auto task   = ticket.access_task();
@@ -2271,7 +2275,7 @@ inline void RuntimeWorker::run() {
 inline void RuntimeInner::worker_started() {
     {
         auto state = m_shared.state.lock().unwrap_unchecked();
-        state->m_running_workers += 1;
+        ++state->m_running_workers;
     }
     m_shared.worker_cvar.notify_all();
 }

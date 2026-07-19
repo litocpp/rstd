@@ -1,4 +1,5 @@
 export module rstd.core:iter.adapters;
+import :num.types;
 export import :iter.traits;
 
 namespace rstd::iter
@@ -76,11 +77,12 @@ struct Enumerate : DefaultInClass<Enumerate<I>, Iterator> {
     using Item = rstd::tuple<usize, typename I::Item>;
     I     i;
     usize count;
-    explicit Enumerate(I in): i(rstd::move(in)), count(0) {}
+    explicit Enumerate(I in): i(rstd::move(in)), count() {}
     auto next() -> Option<Item> {
         auto x = i.next();
         if (x.is_none()) return rstd::None();
-        usize idx = count++;
+        usize idx = count;
+        ++count;
         return rstd::Some(Item(idx, rstd::move(*x)));
     }
     auto size_hint() const -> SizeHint { return i.size_hint(); }
@@ -108,7 +110,7 @@ struct Take : DefaultInClass<Take<I>, Iterator> {
     usize n;
     Take(I in, usize cnt): i(rstd::move(in)), n(cnt) {}
     auto next() -> Option<Item> {
-        if (n == 0) return rstd::None();
+        if (n == usize()) return rstd::None();
         --n;
         return i.next();
     }
@@ -121,7 +123,7 @@ struct Skip : DefaultInClass<Skip<I>, Iterator> {
     usize n;
     Skip(I in, usize cnt): i(rstd::move(in)), n(cnt) {}
     auto next() -> Option<Item> {
-        while (n > 0) {
+        while (n != usize()) {
             auto x = i.next();
             --n;
             if (x.is_none()) return rstd::None();
@@ -180,7 +182,7 @@ struct StepBy : DefaultInClass<StepBy<I>, Iterator> {
             first = false;
             return i.next();
         }
-        for (usize k = 0; k + 1 < step; ++k)
+        for (rstd::size_t k = 0; k + rstd::size_t(1) < step.to_primitive(); ++k)
             if (i.next().is_none()) return rstd::None();
         return i.next();
     }

@@ -7,7 +7,7 @@ using rstd::string::String;
 
 TEST(OsStr, FromStr) {
     rstd::ref<OsStr> s("hello");
-    EXPECT_EQ(s.len(), 5u);
+    EXPECT_EQ(s.len(), rstd::usize(5));
     EXPECT_FALSE(s.is_empty());
 }
 
@@ -19,8 +19,8 @@ TEST(OsStr, ToStrValid) {
 }
 
 TEST(OsStr, ToStrInvalid) {
-    rstd::u8         bad[] = { 0xFF, 0xFE };
-    rstd::ref<OsStr> s(bad, 2);
+    rstd::uint8_t    bad[] = { 0xFF, 0xFE };
+    rstd::ref<OsStr> s(bad, rstd::usize(2));
     EXPECT_TRUE(s.to_str().is_none());
 }
 
@@ -31,37 +31,37 @@ TEST(OsStr, ToStringLossy) {
     EXPECT_EQ("hello", s1);
 
     // Invalid bytes become U+FFFD
-    rstd::u8         mixed[] = { 'h', 0xFF, 'i' };
-    rstd::ref<OsStr> invalid(mixed, 3);
+    rstd::uint8_t    mixed[] = { 'h', 0xFF, 'i' };
+    rstd::ref<OsStr> invalid(mixed, rstd::usize(3));
     auto             s2 = invalid.to_string_lossy();
     // "h" + U+FFFD (3 bytes) + "i" = 5 bytes
-    EXPECT_EQ(s2.len(), 5u); // 'h'(1) + U+FFFD(3) + 'i'(1)
+    EXPECT_EQ(s2.len(), rstd::usize(5)); // 'h'(1) + U+FFFD(3) + 'i'(1)
 }
 
 TEST(OsStr, PrefixAndSplitPreserveArbitraryBytes) {
-    rstd::u8         bytes[] = { '-', '-', 'n', 'a', 'm', 'e', '=', 0xFF };
-    rstd::ref<OsStr> value(bytes, 8);
+    rstd::uint8_t    bytes[] = { '-', '-', 'n', 'a', 'm', 'e', '=', 0xFF };
+    rstd::ref<OsStr> value(bytes, rstd::usize(8));
 
     EXPECT_TRUE(value.starts_with(rstd::ref<OsStr>("--")));
     auto stripped = value.strip_prefix(rstd::ref<OsStr>("--"));
     ASSERT_TRUE(stripped.is_some());
-    auto split = stripped->split_once('=');
+    auto split = stripped->split_once(rstd::u8('='));
     ASSERT_TRUE(split.is_some());
-    EXPECT_EQ(split->get<0>().to_str(), rstd::Some(rstd::ref<rstd::str>("name")));
-    EXPECT_EQ(split->get<1>().len(), 1u);
-    EXPECT_EQ(split->get<1>().data()[0], 0xFF);
+    EXPECT_EQ(split->template get<0>().to_str(), rstd::Some(rstd::ref<rstd::str>("name")));
+    EXPECT_EQ(split->template get<1>().len(), rstd::usize(1));
+    EXPECT_EQ(split->template get<1>().data()[0], 0xFF);
 }
 
 TEST(OsString, MakeEmpty) {
     auto s = OsString::make();
     EXPECT_TRUE(s.is_empty());
-    EXPECT_EQ(s.len(), 0u);
+    EXPECT_EQ(s.len(), rstd::usize());
 }
 
 TEST(OsString, FromString) {
     auto str = String::make("hello");
     auto os  = OsString::from(rstd::move(str));
-    EXPECT_EQ(os.len(), 5u);
+    EXPECT_EQ(os.len(), rstd::usize(5));
     auto r = os.as_os_str().to_str();
     ASSERT_TRUE(r.is_some());
     EXPECT_EQ(r.unwrap(), rstd::ref<rstd::str>("hello"));
@@ -69,13 +69,13 @@ TEST(OsString, FromString) {
 
 TEST(OsString, FromRefStr) {
     auto os = OsString::from(rstd::ref<rstd::str>("world"));
-    EXPECT_EQ(os.len(), 5u);
+    EXPECT_EQ(os.len(), rstd::usize(5));
 }
 
 TEST(OsString, FromRefOsStr) {
     rstd::ref<OsStr> r("test");
     auto             os = OsString::from(r);
-    EXPECT_EQ(os.len(), 4u);
+    EXPECT_EQ(os.len(), rstd::usize(4));
 }
 
 TEST(OsString, IntoStringValid) {
@@ -86,8 +86,8 @@ TEST(OsString, IntoStringValid) {
 }
 
 TEST(OsString, IntoStringInvalid) {
-    rstd::u8         bad[] = { 0xFF };
-    rstd::ref<OsStr> r(bad, 1);
+    rstd::uint8_t    bad[] = { 0xFF };
+    rstd::ref<OsStr> r(bad, rstd::usize(1));
     auto             os  = OsString::from(r);
     auto             res = os.into_string();
     EXPECT_TRUE(res.is_err());
@@ -97,16 +97,16 @@ TEST(OsString, TryIntoStringUsesOwnedConversion) {
     auto valid = OsString::from(rstd::ref<rstd::str>("utf8"));
     EXPECT_EQ("utf8", rstd::try_into<String>(rstd::move(valid)).unwrap());
 
-    rstd::u8         bad[] = { 0xFF };
-    rstd::ref<OsStr> bytes(bad, 1);
+    rstd::uint8_t    bad[] = { 0xFF };
+    rstd::ref<OsStr> bytes(bad, rstd::usize(1));
     auto             invalid = OsString::from(bytes);
-    EXPECT_EQ(rstd::try_from<String>(rstd::move(invalid)).unwrap_err().len(), 1u);
+    EXPECT_EQ(rstd::try_from<String>(rstd::move(invalid)).unwrap_err().len(), rstd::usize(1));
 }
 
 TEST(OsString, Push) {
     auto os = OsString::from(rstd::ref<rstd::str>("he"));
     os.push(rstd::ref<OsStr>("llo"));
-    EXPECT_EQ(os.len(), 5u);
+    EXPECT_EQ(os.len(), rstd::usize(5));
     auto s = os.as_os_str().to_str();
     ASSERT_TRUE(s.is_some());
     EXPECT_EQ(s.unwrap(), rstd::ref<rstd::str>("hello"));
@@ -122,5 +122,5 @@ TEST(OsString, Clear) {
 TEST(OsString, ImplicitConversion) {
     auto             os = OsString::from(rstd::ref<rstd::str>("conv"));
     rstd::ref<OsStr> r  = os; // implicit conversion
-    EXPECT_EQ(r.len(), 4u);
+    EXPECT_EQ(r.len(), rstd::usize(4));
 }

@@ -1,4 +1,7 @@
 export module rstd.core;
+export import :num.types;
+export import :num.literals;
+export import :num.integer_methods;
 export import :choice;
 export import :core;
 export import :array;
@@ -37,6 +40,3 @@ export import :ffi;
 export import :hash;
 export import :memchr;
 export import :char_;
-export import :f32_;
-export import :f64_;
-export import :int_;

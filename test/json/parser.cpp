@@ -34,26 +34,26 @@ TEST(JsonParser, ParsesScalarsAndNumberKinds) {
     EXPECT_EQ(parse(" true ").unwrap().as_bool(), Some(true));
     EXPECT_EQ(parse("false").unwrap().as_bool(), Some(false));
     EXPECT_EQ(parse("-7").unwrap().as_i64(), Some(i64(-7)));
-    EXPECT_EQ(parse("18446744073709551615").unwrap().as_u64(), Some(rstd::u64_::MAX));
+    EXPECT_EQ(parse("18446744073709551615").unwrap().as_u64(), Some(u64::MAX));
     EXPECT_TRUE(parse("18446744073709551616").unwrap().is_f64());
     EXPECT_TRUE(parse("-0").unwrap().is_f64());
     EXPECT_TRUE(parse("1.0").unwrap().is_f64());
     EXPECT_TRUE(parse("1e0").unwrap().is_f64());
-    EXPECT_EQ(parse("1e-400").unwrap().as_f64(), Some(0.0));
+    EXPECT_EQ(parse("1e-400").unwrap().as_f64(), Some(f64()));
 }
 
 TEST(JsonParser, RoundsDecimalFloatsLikeSerdeJson) {
-    EXPECT_EQ(parse("2.638344616030823e-256").unwrap().as_f64(), Some(2.638344616030823e-256));
-    EXPECT_EQ(parse("1009e-31").unwrap().as_f64(), Some(1.009e-28));
-    EXPECT_EQ(parse("1.7976931348623157e308").unwrap().as_f64(), Some(rstd::f64_::MAX));
+    EXPECT_EQ(parse("2.638344616030823e-256").unwrap().as_f64(), Some(f64(2.638344616030823e-256)));
+    EXPECT_EQ(parse("1009e-31").unwrap().as_f64(), Some(f64(1.009e-28)));
+    EXPECT_EQ(parse("1.7976931348623157e308").unwrap().as_f64(), Some(f64::MAX));
     EXPECT_TRUE(parse("1.7976931348623159e308").is_err());
 
-    EXPECT_EQ(parse("2.4703282292062327e-324").unwrap().as_f64(), Some(0.0));
+    EXPECT_EQ(parse("2.4703282292062327e-324").unwrap().as_f64(), Some(f64()));
     EXPECT_EQ(parse("2.4703282292062328e-324").unwrap().as_f64(),
               Some(rstd::bit_cast<f64>(u64(1))));
 
     auto negative_zero = parse("-1e-400000000000000000000").unwrap().as_f64().unwrap();
-    EXPECT_EQ(rstd::bit_cast<u64>(negative_zero), u64(1) << 63);
+    EXPECT_EQ(rstd::bit_cast<u64>(negative_zero), u64(1) << u64(63));
 }
 
 TEST(JsonParser, ParsesNestedContainersAndReplacesDuplicateKeys) {
@@ -82,15 +82,18 @@ TEST(JsonParser, AcceptsJsonWhitespaceRawUtf8AndAllSimpleEscapes) {
     EXPECT_TRUE(empty.is_array());
 
     auto           escaped    = parse(R"("\"\\\/\b\f\n\r\t")").unwrap();
-    const rstd::u8 expected[] = { '"', '\\', '/', 0x08, 0x0c, '\n', '\r', '\t' };
-    EXPECT_EQ(*escaped.as_str(), rstd::ref<rstd::str>(expected, sizeof(expected)));
+    const rstd::u8 expected[] = { u8('"'),  u8('\\'), u8('/'),  u8(0x08),
+                                  u8(0x0c), u8('\n'), u8('\r'), u8('\t') };
+    EXPECT_EQ(*escaped.as_str(),
+              rstd::ref<rstd::str>(
+                  rstd::slice<rstd::u8>::from_raw_parts(expected, usize(sizeof(expected)))));
 
     auto raw = parse("\"你好，JSON\"").unwrap();
     EXPECT_EQ(*raw.as_str(), rstd::ref<rstd::str>("你好，JSON"));
 
     auto empty_string = parse("\"\"").unwrap();
     ASSERT_TRUE(empty_string.as_str().is_some());
-    EXPECT_EQ((*empty_string.as_str()).size(), 0u);
+    EXPECT_EQ((*empty_string.as_str()).size(), usize());
 }
 
 TEST(JsonParser, RejectsInvalidGrammar) {
@@ -112,8 +115,9 @@ TEST(JsonParser, RejectsInvalidGrammar) {
     expect_syntax_error(R"("\uZZZZ")");
     expect_syntax_error("1e400");
 
-    const rstd::u8 control[] = { '"', 0x1f, '"' };
-    auto control_result = rstd::json::from_slice(rstd::slice<rstd::u8>::from_raw_parts(control, 3));
+    const rstd::u8 control[] = { u8('"'), u8(0x1f), u8('"') };
+    auto           control_result =
+        rstd::json::from_slice(rstd::slice<rstd::u8>::from_raw_parts(control, usize(3)));
     EXPECT_TRUE(control_result.is_err());
     EXPECT_TRUE(control_result.unwrap_err().is_syntax());
 }
@@ -128,7 +132,7 @@ TEST(JsonParser, CommentsRequireExplicitOption) {
                     .as_array()
                     .unwrap())
                   .len(),
-              3u);
+              usize(3));
     EXPECT_TRUE(rstd::json::from_str("1 // trailing", comments).is_ok());
 
     auto unterminated = rstd::json::from_str("/* unterminated", comments);
@@ -148,31 +152,33 @@ TEST(JsonParser, ClassifiesTruncatedInputAsEof) {
 
 TEST(JsonParser, EnforcesRecursionLimitAtContainerStart) {
     auto accepted = ::alloc::string::String::make();
-    for (usize i = 0; i < 127; ++i) accepted.push_back('[');
-    for (usize i = 0; i < 127; ++i) accepted.push_back(']');
+    for (usize i {}; i < usize(127); ++i) accepted.push_back('[');
+    for (usize i {}; i < usize(127); ++i) accepted.push_back(']');
     EXPECT_TRUE(rstd::json::from_str(accepted.as_str()).is_ok());
 
     auto rejected = ::alloc::string::String::make();
-    for (usize i = 0; i < 129; ++i) rejected.push_back('[');
+    for (usize i {}; i < usize(129); ++i) rejected.push_back('[');
     auto result = rstd::json::from_str(rejected.as_str());
     ASSERT_TRUE(result.is_err());
     auto error = result.unwrap_err();
     EXPECT_TRUE(error.is_syntax());
-    EXPECT_EQ(error.line(), 1u);
-    EXPECT_EQ(error.column(), 128u);
+    EXPECT_EQ(error.line(), usize(1));
+    EXPECT_EQ(error.column(), usize(128));
 }
 
 TEST(JsonParser, SliceAndFromStrTraitReuseParser) {
-    const rstd::u8 input[] = { '[', '1', ',', '2', ']' };
-    auto from_slice = rstd::json::from_slice(rstd::slice<rstd::u8>::from_raw_parts(input, 5));
+    const rstd::u8 input[] = { u8('['), u8('1'), u8(','), u8('2'), u8(']') };
+    auto           from_slice =
+        rstd::json::from_slice(rstd::slice<rstd::u8>::from_raw_parts(input, usize(5)));
     auto from_trait = rstd::from_str<Value>("[1,2]");
 
     ASSERT_TRUE(from_slice.is_ok());
     ASSERT_TRUE(from_trait.is_ok());
     EXPECT_EQ(*from_slice, *from_trait);
 
-    const rstd::u8 invalid[] = { 0xff };
-    auto invalid_result = rstd::json::from_slice(rstd::slice<rstd::u8>::from_raw_parts(invalid, 1));
+    const rstd::u8 invalid[] = { u8(0xff) };
+    auto           invalid_result =
+        rstd::json::from_slice(rstd::slice<rstd::u8>::from_raw_parts(invalid, usize(1)));
     EXPECT_TRUE(invalid_result.is_err());
     EXPECT_TRUE(invalid_result.unwrap_err().is_syntax());
 
@@ -186,8 +192,8 @@ TEST(JsonParser, TracksOneBasedLineAndColumn) {
     ASSERT_TRUE(result.is_err());
     auto error = result.unwrap_err();
     EXPECT_TRUE(error.is_syntax());
-    EXPECT_EQ(error.line(), 2u);
-    EXPECT_EQ(error.column(), 13u);
+    EXPECT_EQ(error.line(), usize(2));
+    EXPECT_EQ(error.column(), usize(13));
 
     auto message = rstd::format("{}", error);
     EXPECT_TRUE(rstd::str_::contains(message.as_str(), "line 2 column 13"));
@@ -195,29 +201,29 @@ TEST(JsonParser, TracksOneBasedLineAndColumn) {
 
 TEST(JsonParser, MatchesReferenceEofAndControlPositions) {
     auto list = parse("[").unwrap_err();
-    EXPECT_EQ(list.line(), 1u);
-    EXPECT_EQ(list.column(), 1u);
+    EXPECT_EQ(list.line(), usize(1));
+    EXPECT_EQ(list.column(), usize(1));
 
     auto number = parse("1.").unwrap_err();
-    EXPECT_EQ(number.line(), 1u);
-    EXPECT_EQ(number.column(), 2u);
+    EXPECT_EQ(number.line(), usize(1));
+    EXPECT_EQ(number.column(), usize(2));
 
     auto string = parse("\"").unwrap_err();
-    EXPECT_EQ(string.line(), 1u);
-    EXPECT_EQ(string.column(), 1u);
+    EXPECT_EQ(string.line(), usize(1));
+    EXPECT_EQ(string.column(), usize(1));
 
     auto newline = parse("\"\n\"").unwrap_err();
-    EXPECT_EQ(newline.line(), 2u);
-    EXPECT_EQ(newline.column(), 0u);
+    EXPECT_EQ(newline.line(), usize(2));
+    EXPECT_EQ(newline.column(), usize());
 
     auto surrogate = parse(R"("\uD83C\uFFFF")").unwrap_err();
-    EXPECT_EQ(surrogate.line(), 1u);
-    EXPECT_EQ(surrogate.column(), 13u);
+    EXPECT_EQ(surrogate.line(), usize(1));
+    EXPECT_EQ(surrogate.column(), usize(13));
 
     auto truncated_surrogate = parse(R"("\uD800)").unwrap_err();
     EXPECT_TRUE(truncated_surrogate.is_eof());
-    EXPECT_EQ(truncated_surrogate.column(), 7u);
+    EXPECT_EQ(truncated_surrogate.column(), usize(7));
 
     auto overflow = parse("1e400").unwrap_err();
-    EXPECT_EQ(overflow.column(), 5u);
+    EXPECT_EQ(overflow.column(), usize(5));
 }

@@ -2,6 +2,7 @@ module;
 #include <rstd/macro.hpp>
 #include <rstd/enum.hpp>
 export module rstd.core:option;
+import :num.types;
 import :enum_;
 export import :clone;
 export import :panicking;
@@ -111,7 +112,7 @@ struct option_storage : enum_detail::storage<NonePayload, SomePayload> {
 
     constexpr option_storage() noexcept = default;
 
-    template<usize I, typename... Args>
+    template<rstd::size_t I, typename... Args>
     explicit constexpr option_storage(enum_detail::in_place_index_t<I> in_place, Args&&... args)
         : base(in_place, rstd::forward<Args>(args)...) {}
 
@@ -153,8 +154,8 @@ struct option_storage<T&, NonePayload, SomePayload> {
     }
 
     [[nodiscard]]
-    constexpr usize index() const noexcept {
-        return is(enum_detail::in_place_index<1>) ? 1 : 0;
+    constexpr rstd::size_t index() const noexcept {
+        return is(enum_detail::in_place_index<1>) ? rstd::size_t(1) : rstd::size_t(0);
     }
 
     [[nodiscard]]
@@ -241,7 +242,7 @@ struct zero_niche_option_storage {
 
     [[nodiscard]]
     constexpr bool is(enum_detail::in_place_index_t<1>) const noexcept {
-        for (usize i = 0; i < sizeof(m_storage); i++) {
+        for (rstd::size_t i = 0; i < sizeof(m_storage); ++i) {
             if (m_storage[i] != rstd::byte(0)) {
                 return true;
             }
@@ -250,8 +251,8 @@ struct zero_niche_option_storage {
     }
 
     [[nodiscard]]
-    constexpr usize index() const noexcept {
-        return is(enum_detail::in_place_index<1>) ? 1 : 0;
+    constexpr rstd::size_t index() const noexcept {
+        return is(enum_detail::in_place_index<1>) ? rstd::size_t(1) : rstd::size_t(0);
     }
 
     [[nodiscard]]
@@ -309,7 +310,7 @@ private:
     }
 
     constexpr void _clear() noexcept {
-        for (usize i = 0; i < sizeof(m_storage); i++) {
+        for (rstd::size_t i = 0; i < sizeof(m_storage); ++i) {
             m_storage[i] = rstd::byte(0);
         }
     }

@@ -61,12 +61,14 @@ struct NativeSocketAddr {
 inline auto socket_addr_to_native(SocketAddr const& addr) noexcept -> NativeSocketAddr {
     auto out = NativeSocketAddr {};
     if (addr.is_ipv4()) {
-        auto native       = socket_libc::sockaddr_in {};
-        native.sin_family = socket_libc::AF_INET;
-        native.sin_port   = socket_libc::htons(addr.port());
-        native.sin_addr.s_addr =
-            socket_libc::htonl((u32(addr.octet(0)) << 24) | (u32(addr.octet(1)) << 16) |
-                               (u32(addr.octet(2)) << 8) | u32(addr.octet(3)));
+        auto native            = socket_libc::sockaddr_in {};
+        native.sin_family      = socket_libc::AF_INET;
+        native.sin_port        = socket_libc::htons(addr.port().to_primitive());
+        auto address           = (rstd::uint32_t(addr.octet(usize(0)).to_primitive()) << 24) |
+                                 (rstd::uint32_t(addr.octet(usize(1)).to_primitive()) << 16) |
+                                 (rstd::uint32_t(addr.octet(usize(2)).to_primitive()) << 8) |
+                                 rstd::uint32_t(addr.octet(usize(3)).to_primitive());
+        native.sin_addr.s_addr = socket_libc::htonl(address);
         *reinterpret_cast<socket_libc::sockaddr_in*>(&out.storage) = native;
         out.len                                                    = sizeof(native);
         return out;
@@ -74,11 +76,12 @@ inline auto socket_addr_to_native(SocketAddr const& addr) noexcept -> NativeSock
 
     auto native          = socket_libc::sockaddr_in6 {};
     native.sin6_family   = socket_libc::AF_INET6;
-    native.sin6_port     = socket_libc::htons(addr.port());
-    native.sin6_flowinfo = socket_libc::htonl(addr.flowinfo());
-    native.sin6_scope_id = addr.scope_id();
-    for (usize i = 0; i < 16; ++i) {
-        socket_libc::set_in6_addr_octet(native.sin6_addr, unsigned(i), addr.octet(i));
+    native.sin6_port     = socket_libc::htons(addr.port().to_primitive());
+    native.sin6_flowinfo = socket_libc::htonl(addr.flowinfo().to_primitive());
+    native.sin6_scope_id = addr.scope_id().to_primitive();
+    for (rstd::size_t i = 0; i < 16; ++i) {
+        socket_libc::set_in6_addr_octet(
+            native.sin6_addr, static_cast<unsigned int>(i), addr.octet(usize(i)).to_primitive());
     }
     *reinterpret_cast<socket_libc::sockaddr_in6*>(&out.storage) = native;
     out.len                                                     = sizeof(native);
@@ -99,7 +102,7 @@ inline auto socket_addr_from_native(const socket_libc::sockaddr* addr, socket_li
         auto        bits   = socket_libc::ntohl(native.sin_addr.s_addr);
         return Ok(SocketAddr::ipv4(
             Ipv4Addr::make(u8(bits >> 24), u8(bits >> 16), u8(bits >> 8), u8(bits)),
-            socket_libc::ntohs(native.sin_port)));
+            u16(socket_libc::ntohs(native.sin_port))));
     }
 
     if (addr->sa_family == socket_libc::AF_INET6) {
@@ -107,10 +110,12 @@ inline auto socket_addr_from_native(const socket_libc::sockaddr* addr, socket_li
             return Err(SocketError::from_kind(SocketErrorKind { SocketErrorKind::InvalidInput }));
         }
         auto const& native  = *reinterpret_cast<const socket_libc::sockaddr_in6*>(addr);
-        auto        segment = [&](usize index) {
-            auto high = socket_libc::in6_addr_octet(native.sin6_addr, unsigned(index * 2));
-            auto low  = socket_libc::in6_addr_octet(native.sin6_addr, unsigned(index * 2 + 1));
-            return u16((u16(high) << 8) | u16(low));
+        auto        segment = [&](rstd::size_t index) {
+            auto high =
+                socket_libc::in6_addr_octet(native.sin6_addr, static_cast<unsigned int>(index * 2));
+            auto low = socket_libc::in6_addr_octet(native.sin6_addr,
+                                                   static_cast<unsigned int>(index * 2 + 1));
+            return u16((rstd::uint16_t(high) << 8) | low);
         };
         auto ip = Ipv6Addr::make(segment(0),
                                  segment(1),
@@ -121,9 +126,9 @@ inline auto socket_addr_from_native(const socket_libc::sockaddr* addr, socket_li
                                  segment(6),
                                  segment(7));
         return Ok(SocketAddr::ipv6(ip,
-                                   socket_libc::ntohs(native.sin6_port),
-                                   socket_libc::ntohl(native.sin6_flowinfo),
-                                   native.sin6_scope_id));
+                                   u16(socket_libc::ntohs(native.sin6_port)),
+                                   u32(socket_libc::ntohl(native.sin6_flowinfo)),
+                                   u32(native.sin6_scope_id)));
     }
 
     return Err(SocketError::from_kind(SocketErrorKind { SocketErrorKind::Unsupported }));
@@ -208,9 +213,9 @@ export auto bind(SocketRawFd fd, SocketAddr const& addr) -> SocketResult<empty> 
 #endif
 }
 
-export auto listen(SocketRawFd fd, i32 backlog = 128) -> SocketResult<empty> {
+export auto listen(SocketRawFd fd, i32 backlog = i32(128)) -> SocketResult<empty> {
 #if RSTD_OS_UNIX
-    if (socket_libc::listen(fd, backlog) < 0) {
+    if (socket_libc::listen(fd, static_cast<int>(backlog.to_primitive())) < 0) {
         return Err(socket_last_error());
     }
     return Ok(empty {});
@@ -262,28 +267,27 @@ export auto accept(SocketRawFd fd) -> SocketResult<tuple<SocketOwnedFd, SocketAd
 #endif
 }
 
-export auto recv(SocketRawFd fd, u8* buf, usize len) -> SocketResult<usize> {
+export auto recv(SocketRawFd fd, mut_ref<byte[]> buf) -> SocketResult<usize> {
 #if RSTD_OS_UNIX
-    auto n = socket_libc::recv(fd, buf, len, 0);
+    auto n = socket_libc::recv(fd, buf.as_raw_ptr(), buf.len().to_primitive(), 0);
     if (n < 0) return Err(socket_last_error());
     return Ok(usize(n));
 #else
     (void)fd;
     (void)buf;
-    (void)len;
     return Err(socket_unsupported());
 #endif
 }
 
-export auto send(SocketRawFd fd, const u8* buf, usize len) -> SocketResult<usize> {
+export auto send(SocketRawFd fd, slice<byte> buf) -> SocketResult<usize> {
 #if RSTD_OS_UNIX
-    auto n = socket_libc::send(fd, buf, len, socket_libc::MSG_NOSIGNAL);
+    auto n = socket_libc::send(
+        fd, buf.as_raw_ptr(), buf.len().to_primitive(), socket_libc::MSG_NOSIGNAL);
     if (n < 0) return Err(socket_last_error());
     return Ok(usize(n));
 #else
     (void)fd;
     (void)buf;
-    (void)len;
     return Err(socket_unsupported());
 #endif
 }
@@ -307,7 +311,7 @@ export auto take_error(SocketRawFd fd) -> SocketResult<Option<SocketError>> {
         return Err(socket_last_error());
     }
     if (value == 0) return Ok(Option<SocketError> {});
-    return Ok(Some(SocketError::from_raw_os_error(value)));
+    return Ok(Some(SocketError::from_raw_os_error(i32(value))));
 #else
     (void)fd;
     return Err(socket_unsupported());

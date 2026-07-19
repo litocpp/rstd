@@ -52,7 +52,7 @@ export class Runtime {
 
     friend class RuntimeBuilder;
 
-    explicit Runtime(RuntimeKind kind, RuntimeConfig config, usize worker_count = 0)
+    explicit Runtime(RuntimeKind kind, RuntimeConfig config, usize worker_count = usize())
         : m_inner(sync::Arc<RuntimeInner>::make(kind, config, worker_count)),
           m_workers(Vec<thread::JoinHandle<void>>::make()),
           m_current_worker(None()) {
@@ -64,15 +64,16 @@ export class Runtime {
                                  RuntimeConfig         config) -> io::Result<Runtime> {
         auto runtime = Runtime { RuntimeKind::ThreadPool, config, worker_threads };
 
-        for (usize i = 0; i < worker_threads; ++i) {
-            auto inner   = runtime.m_inner.clone();
-            auto builder = thread::builder::Builder::make();
+        for (rstd::size_t i = 0; i < worker_threads.to_primitive(); ++i) {
+            auto inner     = runtime.m_inner.clone();
+            auto builder   = thread::builder::Builder::make();
+            auto worker_id = RuntimeWorkerId { usize(i) };
             if (thread_name.is_some()) {
                 builder.name(rstd::as<rstd::clone::Clone>(*thread_name).clone());
             }
 
-            auto worker = builder.spawn([inner = rstd::move(inner), i] {
-                inner->worker_loop(RuntimeWorkerId { i });
+            auto worker = builder.spawn([inner = rstd::move(inner), worker_id] {
+                inner->worker_loop(worker_id);
             });
 
             if (worker.is_err()) {
@@ -228,11 +229,11 @@ export class RuntimeBuilder {
 
 public:
     static auto current_thread() -> RuntimeBuilder {
-        return RuntimeBuilder { RuntimeKind::CurrentThread, 1 };
+        return RuntimeBuilder { RuntimeKind::CurrentThread, usize(1) };
     }
 
     static auto multi_thread() -> RuntimeBuilder {
-        return RuntimeBuilder { RuntimeKind::ThreadPool, 1 };
+        return RuntimeBuilder { RuntimeKind::ThreadPool, usize(1) };
     }
 
     auto worker_threads(usize n) -> RuntimeBuilder& {
@@ -266,7 +267,7 @@ public:
             return Ok(Runtime { RuntimeKind::CurrentThread, m_config });
         }
 
-        if (m_worker_threads == 0) {
+        if (m_worker_threads == usize()) {
             return Err(io::error::Error::from_kind(
                 io::error::ErrorKind { io::error::ErrorKind::InvalidInput }));
         }

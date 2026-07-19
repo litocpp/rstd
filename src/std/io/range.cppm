@@ -1,6 +1,3 @@
-module;
-#include <rstd/macro.hpp>
-
 export module rstd:io.range;
 export import :io.traits;
 export import rstd.alloc;
@@ -27,7 +24,7 @@ public:
     auto operator=(ReadRange&&) noexcept -> ReadRange& = default;
 
     static auto make(SharedReadAt source, u64 offset, u64 len) -> Result<ReadRange> {
-        if (len > u64(-1) - offset) {
+        if (len > u64::MAX - offset) {
             return Err(
                 error::Error::from_kind(error::ErrorKind { error::ErrorKind::InvalidInput }));
         }
@@ -49,15 +46,15 @@ public:
 
     auto offset() const noexcept -> u64 { return m_offset; }
     auto len() const noexcept -> u64 { return m_len; }
-    bool is_empty() const noexcept { return m_len == 0; }
+    bool is_empty() const noexcept { return m_len == u64 {}; }
 
 private:
     ReadRange(SharedReadAt source, u64 offset, u64 len)
         : m_source(rstd::move(source)), m_offset(offset), m_len(len) {}
 
     SharedReadAt m_source;
-    u64          m_offset { 0 };
-    u64          m_len { 0 };
+    u64          m_offset {};
+    u64          m_len {};
 };
 
 export class RangeReader {
@@ -68,33 +65,36 @@ public:
     auto operator=(RangeReader&&) noexcept -> RangeReader& = default;
 
     static auto make(SharedReadAt source, u64 offset, u64 len) -> Result<RangeReader> {
-        if (len > u64(-1) - offset) {
+        if (len > u64::MAX - offset) {
             return Err(
                 error::Error::from_kind(error::ErrorKind { error::ErrorKind::InvalidInput }));
         }
         return Ok(RangeReader(rstd::move(source), offset, len));
     }
 
-    auto read(u8* buf, usize len) -> Result<usize> {
-        if (m_position == m_len || len == 0) return Ok(usize(0));
+    auto read(mut_ref<byte[]> buf) -> Result<usize> {
+        if (m_position == m_len || buf.is_empty()) return Ok(usize {});
 
-        auto remaining = m_len - m_position;
-        auto requested = rstd::min(u64(len), remaining);
-        auto result    = m_source->read_at(buf, usize(requested), m_offset + m_position);
+        auto       remaining       = m_len - m_position;
+        auto const requested_count = rstd::min(
+            static_cast<rstd::uint64_t>(buf.len().to_primitive()), remaining.to_primitive());
+        usize requested(static_cast<rstd::size_t>(requested_count));
+        auto  destination = mut_ref<byte[]>::from_raw_parts(buf.as_raw_ptr(), requested);
+        auto  result      = m_source->read_at(destination, m_offset + m_position);
         if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
 
         auto read = rstd::move(result).unwrap_unchecked();
         if (read > requested) {
             return Err(error::Error::from_kind(error::ErrorKind { error::ErrorKind::InvalidData }));
         }
-        m_position += read;
+        m_position += u64(read.to_primitive());
         return Ok(read);
     }
 
     auto seek(SeekFrom pos) -> Result<u64> {
-        u64 next = 0;
+        u64 next {};
         switch (pos.which) {
-        case SeekFrom::Which::Start: next = u64(pos.offset); break;
+        case SeekFrom::Which::Start: next = pos.start; break;
         case SeekFrom::Which::Current: {
             auto result = add_offset(m_position, pos.offset);
             if (result.is_err()) return result;
@@ -115,7 +115,7 @@ public:
 
     auto position() const noexcept -> u64 { return m_position; }
     auto len() const noexcept -> u64 { return m_len; }
-    bool is_empty() const noexcept { return m_len == 0; }
+    bool is_empty() const noexcept { return m_len == u64 {}; }
 
 private:
     friend class ReadRange;
@@ -128,21 +128,18 @@ private:
     }
 
     static auto add_offset(u64 base, i64 offset) -> Result<u64> {
-        if (offset >= 0) {
-            auto positive = u64(offset);
-            if (positive > u64(-1) - base) return invalid_seek();
-            return Ok(base + positive);
+        auto const value = static_cast<rstd::int128_t>(base.to_primitive()) +
+                           static_cast<rstd::int128_t>(offset.to_primitive());
+        if (value < 0 || value > static_cast<rstd::int128_t>(~rstd::uint64_t(0))) {
+            return invalid_seek();
         }
-
-        auto magnitude = u64(-(offset + 1)) + 1;
-        if (magnitude > base) return invalid_seek();
-        return Ok(base - magnitude);
+        return Ok(u64(value));
     }
 
     SharedReadAt m_source;
-    u64          m_offset { 0 };
-    u64          m_len { 0 };
-    u64          m_position { 0 };
+    u64          m_offset {};
+    u64          m_len {};
+    u64          m_position {};
 };
 
 auto ReadRange::reader() const -> RangeReader {
@@ -160,7 +157,7 @@ namespace rstd
 
 template<>
 struct Impl<io::Read, io::RangeReader> : ImplBase<io::RangeReader> {
-    auto read(u8* buf, usize len) -> io::Result<usize> { return this->self().read(buf, len); }
+    auto read(mut_ref<byte[]> buf) -> io::Result<usize> { return this->self().read(buf); }
 };
 
 template<>

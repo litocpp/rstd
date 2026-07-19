@@ -1,5 +1,3 @@
-module;
-#include <rstd/macro.hpp>
 export module rstd:sync.mpsc.mpmc.waker;
 export import :sync.mpsc.mpmc.context;
 export import :sync.mpsc.mpmc.select;
@@ -51,9 +49,10 @@ struct Waker {
 
     /// Unregisters a select operation.
     auto unregister(Operation oper) -> Option<Entry> {
-        for (usize i = 0; i < selectors.len(); ++i) {
-            if (selectors[i].oper == oper) {
-                return Some(selectors.remove(i));
+        for (rstd::size_t i = 0; i < selectors.len().to_primitive(); ++i) {
+            auto index = usize(i);
+            if (selectors[index].oper == oper) {
+                return Some(selectors.remove(index));
             }
         }
         return None();
@@ -67,8 +66,9 @@ struct Waker {
 
         auto thread_id = thread::current().id();
 
-        for (usize i = 0; i < selectors.len(); ++i) {
-            auto& selector = selectors[i];
+        for (rstd::size_t i = 0; i < selectors.len().to_primitive(); ++i) {
+            auto  index    = usize(i);
+            auto& selector = selectors[index];
             // Does the entry belong to a different thread?
             if (selector.cx.thread_id() != thread_id) {
                 // Try selecting this operation.
@@ -79,7 +79,7 @@ struct Waker {
                     selector.cx.unpark();
 
                     // Remove the entry from the queue to keep it clean and improve performance.
-                    return Some(selectors.remove(i));
+                    return Some(selectors.remove(index));
                 }
             }
         }
@@ -89,8 +89,8 @@ struct Waker {
     /// Notifies all operations waiting to be ready.
     void notify() {
         // Drain observers
-        for (usize i = 0; i < observers.len(); ++i) {
-            auto& entry = observers[i];
+        for (rstd::size_t i = 0; i < observers.len().to_primitive(); ++i) {
+            auto& entry = observers[usize(i)];
             if (entry.cx.try_select(Selected::Op(entry.oper)).is_ok()) {
                 entry.cx.unpark();
             }
@@ -100,8 +100,8 @@ struct Waker {
 
     /// Notifies all registered operations that the channel is disconnected.
     void disconnect() {
-        for (usize i = 0; i < selectors.len(); ++i) {
-            auto& entry = selectors[i];
+        for (rstd::size_t i = 0; i < selectors.len().to_primitive(); ++i) {
+            auto& entry = selectors[usize(i)];
             if (entry.cx.try_select(Selected::Disconnected()).is_ok()) {
                 // Wake the thread up.
                 // Here we don't remove the entry from the queue. Registered threads must

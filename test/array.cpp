@@ -39,27 +39,27 @@ static_assert(rstd::Impled<rstd::array<int, 3>, rstd::ops::DerefMut>);
 TEST(Array, OwnsAndBorrowsFixedStorage) {
     auto values = rstd::array<int, 3> { 2, 3, 5 };
 
-    EXPECT_EQ(values.len(), 3u);
+    EXPECT_EQ(values.len(), usize(3));
     EXPECT_FALSE(values.is_empty());
-    EXPECT_EQ(values[1], 3);
+    EXPECT_EQ(values[usize(1)], 3);
 
     auto borrowed = values.as_slice();
-    EXPECT_EQ(borrowed.len(), 3u);
-    EXPECT_EQ(borrowed[2], 5);
+    EXPECT_EQ(borrowed.len(), usize(3));
+    EXPECT_EQ(borrowed[usize(2)], 5);
 
-    auto mutable_borrow = values.as_mut_slice();
-    mutable_borrow[1]   = 7;
-    EXPECT_EQ(values[1], 7);
+    auto mutable_borrow      = values.as_mut_slice();
+    mutable_borrow[usize(1)] = 7;
+    EXPECT_EQ(values[usize(1)], 7);
 
-    auto trait_borrow = rstd::as_mut<int[]>(values);
-    trait_borrow[1]   = 9;
-    EXPECT_EQ(values[1], 9);
+    auto trait_borrow      = rstd::as_mut<int[]>(values);
+    trait_borrow[usize(1)] = 9;
+    EXPECT_EQ(values[usize(1)], 9);
 
-    auto middle = values.get_mut(1);
+    auto middle = values.get_mut(usize(1));
     ASSERT_TRUE(middle.is_some());
     **middle = 11;
-    EXPECT_EQ(values[1], 11);
-    EXPECT_TRUE(values.get(3).is_none());
+    EXPECT_EQ(values[usize(1)], 11);
+    EXPECT_TRUE(values.get(usize(3)).is_none());
     EXPECT_EQ(**values.first(), 2);
     EXPECT_EQ(**values.last(), 5);
 }
@@ -67,10 +67,10 @@ TEST(Array, OwnsAndBorrowsFixedStorage) {
 TEST(Array, EmptyArrayDoesNotConstructElementStorage) {
     auto values = rstd::array<NoDefault, 0> {};
 
-    EXPECT_EQ(values.len(), 0u);
+    EXPECT_EQ(values.len(), usize());
     EXPECT_TRUE(values.is_empty());
     EXPECT_EQ(values.data(), nullptr);
-    EXPECT_EQ(values.as_slice().len(), 0u);
+    EXPECT_EQ(values.as_slice().len(), usize());
     EXPECT_TRUE(values.first().is_none());
     EXPECT_TRUE(values.last().is_none());
 
@@ -86,7 +86,7 @@ TEST(Array, IteratesByBorrowAndByValue) {
 
     EXPECT_EQ(**iter.next(), 1);
     EXPECT_EQ(**iter.next_back(), 3);
-    EXPECT_EQ(iter.len(), 1u);
+    EXPECT_EQ(iter.len(), usize(1));
 
     auto owned = rstd::move(values).into_iter();
     static_assert(rstd::Impled<decltype(owned), rstd::iter::DoubleEndedIterator>);
@@ -98,12 +98,12 @@ TEST(Array, IteratesByBorrowAndByValue) {
 }
 
 TEST(Array, ClonesElementsAndMapsOwnedValues) {
-    auto source     = rstd::array<CloneOnly, 2> { CloneOnly { 4 }, CloneOnly { 9 } };
-    auto cloned     = source.clone();
-    cloned[0].value = 7;
+    auto source           = rstd::array<CloneOnly, 2> { CloneOnly { 4 }, CloneOnly { 9 } };
+    auto cloned           = source.clone();
+    cloned[usize()].value = 7;
 
-    EXPECT_EQ(source[0].value, 4);
-    EXPECT_EQ(cloned[0].value, 7);
+    EXPECT_EQ(source[usize()].value, 4);
+    EXPECT_EQ(cloned[usize()].value, 7);
 
     auto mapped = rstd::move(cloned).map([](CloneOnly value) {
         return value.value * 2;
@@ -116,12 +116,12 @@ TEST(Array, ProducesElementReferencesAndGeneratedValues) {
     auto refs     = values.each_ref();
     auto refs_mut = values.each_mut();
 
-    EXPECT_EQ(*refs[0], 3);
-    *refs_mut[2] = 8;
-    EXPECT_EQ(values[2], 8);
+    EXPECT_EQ(*refs[usize()], 3);
+    *refs_mut[usize(2)] = 8;
+    EXPECT_EQ(values[usize(2)], 8);
 
     auto generated = rstd::array_::from_fn<4>([](usize index) {
-        return static_cast<int>(index * index);
+        return static_cast<int>((index * index).to_primitive());
     });
     EXPECT_EQ(generated, (rstd::array<int, 4> { 0, 1, 4, 9 }));
 }

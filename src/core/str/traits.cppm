@@ -1,4 +1,5 @@
 export module rstd.core:str.traits;
+import :num.types;
 export import :str.str;
 export import :result;
 
@@ -51,14 +52,15 @@ private:
 
 /// Validates a byte slice as UTF-8 and returns the first invalid byte offset on failure.
 export constexpr auto validate_utf8(slice<u8> bytes) noexcept -> Result<empty, Utf8Error> {
-    usize offset = 0;
-    while (offset < bytes.len()) {
-        auto [code_point, consumed] =
-            char_::decode_utf8(bytes.as_raw_ptr() + offset, bytes.len() - offset);
-        if (code_point == char_::REPLACEMENT && consumed <= 1 && bytes[offset] > 0x7F) {
-            return Err(Utf8Error { offset });
+    rstd::size_t offset = 0;
+    while (offset < bytes.len().to_primitive()) {
+        auto [code_point, consumed] = char_::decode_utf8(
+            bytes.as_raw_ptr() + offset, usize(bytes.len().to_primitive() - offset));
+        if (code_point == char_::REPLACEMENT && consumed <= usize(1) &&
+            bytes[usize(offset)].to_primitive() > 0x7F) {
+            return Err(Utf8Error { usize(offset) });
         }
-        offset += consumed;
+        offset += consumed.to_primitive();
     }
     return Ok(empty {});
 }
@@ -66,9 +68,10 @@ export constexpr auto validate_utf8(slice<u8> bytes) noexcept -> Result<empty, U
 /// Validates a byte slice as UTF-8 and returns a string slice on success.
 export constexpr auto from_utf8(slice<u8> bytes) noexcept -> Option<ref<str>> {
     if (validate_utf8(bytes).is_ok()) {
+        auto     raw = as_bytes(bytes);
         ref<str> r;
-        r.p      = bytes.as_raw_ptr();
-        r.length = bytes.len();
+        r.p      = raw.as_raw_ptr();
+        r.length = raw.len();
         return Some(rstd::move(r));
     }
     return None();
@@ -76,14 +79,16 @@ export constexpr auto from_utf8(slice<u8> bytes) noexcept -> Option<ref<str>> {
 
 /// Finds the byte offset of `needle` in `haystack`.
 export constexpr auto find(ref<str> haystack, ref<str> needle) noexcept -> Option<usize> {
-    if (needle.size() == 0) {
-        usize z = 0;
+    if (needle.size() == usize()) {
+        usize z;
         return Some(rstd::move(z));
     }
     if (needle.size() > haystack.size()) return None();
-    for (usize i = 0; i <= haystack.size() - needle.size(); i++) {
-        if (__builtin_memcmp(haystack.data() + i, needle.data(), needle.size()) == 0) {
-            usize r = i;
+    auto const limit = (haystack.size() - needle.size()).to_primitive();
+    for (rstd::size_t i = 0; i <= limit; ++i) {
+        if (__builtin_memcmp(haystack.data() + i, needle.data(), needle.size().to_primitive()) ==
+            0) {
+            usize r(i);
             return Some(rstd::move(r));
         }
     }

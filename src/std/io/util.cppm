@@ -1,5 +1,3 @@
-module;
-#include <rstd/macro.hpp>
 export module rstd:io.util;
 export import :io.traits;
 
@@ -41,21 +39,27 @@ export inline auto sink() noexcept -> Sink {
 export template<typename R, typename W>
     requires Impled<R, io::Read> && Impled<W, io::Write>
 auto copy(R& reader, W& writer) -> Result<u64> {
-    constexpr usize BUF_SIZE = DEFAULT_BUF_SIZE;
-    u8              buf[BUF_SIZE];
-    u64             total = 0;
+    constexpr rstd::size_t BUF_SIZE = DEFAULT_BUF_SIZE.to_primitive();
+    u8                     buf[BUF_SIZE];
+    u64                    total {};
     while (true) {
-        auto rres = as<Read>(reader).read(buf, BUF_SIZE);
+        auto values = mut_ref<u8[]>::from_raw_parts(buf, usize(BUF_SIZE));
+        auto rres   = as<Read>(reader).read(as_bytes_mut(values));
         if (rres.is_err()) {
             auto e = rres.unwrap_err_unchecked();
             if (e.kind() == error::ErrorKind { error::ErrorKind::Interrupted }) continue;
             return Err(rstd::move(e));
         }
         usize n = rres.unwrap_unchecked();
-        if (n == 0) break;
-        auto wres = io::write_all(writer, buf, n);
+        if (n == usize {}) break;
+        auto written_values = slice<u8>::from_raw_parts(buf, n);
+        auto wres           = io::write_all(writer, as_bytes(written_values));
         if (wres.is_err()) return Err(wres.unwrap_err_unchecked());
-        total += n;
+        auto updated = total.checked_add(u64(n.to_primitive()));
+        if (updated.is_none()) {
+            return Err(error::Error::from_kind(error::ErrorKind { error::ErrorKind::InvalidData }));
+        }
+        total = rstd::move(updated).unwrap_unchecked();
     }
     return Ok(total);
 }
@@ -68,39 +72,39 @@ namespace rstd
 
 template<>
 struct Impl<io::Read, io::Empty> : ImplBase<io::Empty> {
-    auto read(u8*, usize) -> io::Result<usize> { return Ok(usize(0)); }
+    auto read(mut_ref<byte[]>) -> io::Result<usize> { return Ok(usize {}); }
 };
 
 template<>
 struct Impl<io::BufRead, io::Empty> : ImplBase<io::Empty> {
     auto fill_buf() -> io::Result<slice<u8>> {
-        return Ok(slice<u8>::from_raw_parts(nullptr, usize(0)));
+        return Ok(slice<u8>::from_raw_parts(nullptr, usize {}));
     }
     auto consume(usize) -> void {}
 };
 
 template<>
 struct Impl<io::Write, io::Empty> : ImplBase<io::Empty> {
-    auto write(const u8*, usize len) -> io::Result<usize> { return Ok(len); }
+    auto write(slice<byte> buf) -> io::Result<usize> { return Ok(buf.len()); }
     auto flush() -> io::Result<empty> { return Ok(empty {}); }
 };
 
 template<>
 struct Impl<io::Seek, io::Empty> : ImplBase<io::Empty> {
-    auto seek(io::SeekFrom) -> io::Result<u64> { return Ok(u64(0)); }
+    auto seek(io::SeekFrom) -> io::Result<u64> { return Ok(u64 {}); }
 };
 
 template<>
 struct Impl<io::Read, io::Repeat> : ImplBase<io::Repeat> {
-    auto read(u8* buf, usize len) -> io::Result<usize> {
-        rstd::mem::memset(buf, int(this->self().byte), len);
-        return Ok(len);
+    auto read(mut_ref<byte[]> buf) -> io::Result<usize> {
+        rstd::mem::memset(buf.as_raw_ptr(), this->self().byte, buf.len());
+        return Ok(buf.len());
     }
 };
 
 template<>
 struct Impl<io::Write, io::Sink> : ImplBase<io::Sink> {
-    auto write(const u8*, usize len) -> io::Result<usize> { return Ok(len); }
+    auto write(slice<byte> buf) -> io::Result<usize> { return Ok(buf.len()); }
     auto flush() -> io::Result<empty> { return Ok(empty {}); }
 };
 

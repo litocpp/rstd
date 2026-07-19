@@ -93,7 +93,7 @@ public:
         : parser_(rstd::move(parser)),
           choices_(rstd::move(choices)),
           labels_(Vec<String>::with_capacity(choices_.len())) {
-        for (usize i = 0; i < choices_.len(); ++i) {
+        for (usize i {}; i < choices_.len(); ++i) {
             labels_.push(rstd::format("{}", choices_[i]));
         }
     }
@@ -106,7 +106,7 @@ public:
         auto parsed = parser_.parse(value);
         if (parsed.is_err()) return Err(rstd::move(parsed).unwrap_err());
         auto result = rstd::move(parsed).unwrap();
-        for (usize i = 0; i < choices_.len(); ++i) {
+        for (usize i {}; i < choices_.len(); ++i) {
             if (result == choices_[i]) return Ok(rstd::move(result));
         }
         return Err(ValueError::Message(String::make("value is not one of the allowed choices")));
@@ -114,7 +114,7 @@ public:
 
     auto possible_values() const -> Vec<String> {
         auto values = Vec<String>::with_capacity(labels_.len());
-        for (usize i = 0; i < labels_.len(); ++i) values.push(labels_[i].clone());
+        for (usize i {}; i < labels_.len(); ++i) values.push(labels_[i].clone());
         return values;
     }
 };

@@ -6,15 +6,21 @@ export namespace rstd::cppstd
 {
 
 inline auto as_str(std::string_view value) noexcept -> ref<str> {
-    return ref<str>::from_raw_parts(reinterpret_cast<const u8*>(value.data()), value.size());
+    return ref<str>::from_raw_parts(value.data(), usize(value.size()));
 }
 
 inline auto to_string(ref<str> value) -> std::string {
-    return { reinterpret_cast<const char*>(value.data()), value.size() };
+    auto result = std::string {};
+    result.reserve(value.size().to_primitive());
+    auto bytes = str_::as_bytes(value);
+    for (rstd::size_t index = 0; index != bytes.len().to_primitive(); ++index) {
+        result.push_back(static_cast<char>(bytes[usize(index)]));
+    }
+    return result;
 }
 
 inline auto as_string_view(ref<str> value) noexcept -> std::string_view {
-    return { reinterpret_cast<const char*>(value.data()), value.size() };
+    return { reinterpret_cast<const char*>(value.data()), value.size().to_primitive() };
 }
 
 inline auto to_string(const string::String& value) -> std::string {
@@ -30,7 +36,7 @@ template<>
 struct Impl<fmt::Display, std::string> : ImplBase<std::string> {
     auto fmt(fmt::Formatter& f) const -> bool {
         auto s = this->self();
-        return f.write_raw((const u8*)s.data(), s.size());
+        return f.write_raw(s.data(), s.size());
     }
 };
 
@@ -38,7 +44,7 @@ template<>
 struct Impl<fmt::Display, std::string_view> : ImplBase<std::string_view> {
     auto fmt(fmt::Formatter& f) const -> bool {
         auto s = this->self();
-        return f.write_raw((const u8*)s.data(), s.size());
+        return f.write_raw(s.data(), s.size());
     }
 };
 

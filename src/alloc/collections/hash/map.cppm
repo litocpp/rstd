@@ -39,7 +39,7 @@ class HashMapValuesMut;
 export template<typename K, typename V>
 class HashMapIter : public rstd::DefaultInClass<HashMapIter<K, V>, rstd::iter::Iterator> {
     const RawTable<K, V>* table;
-    usize                 index;
+    rstd::size_t          index;
     usize                 remaining;
 
 public:
@@ -50,7 +50,7 @@ public:
         : table(source), index(0), remaining(len) {}
 
     auto next() -> Option<Item> {
-        while (remaining != 0 && index < table->bucket_count()) {
+        while (remaining != usize {} && index < table->bucket_count().to_primitive()) {
             const auto& bucket = table->bucket(index++);
             if (bucket.state != BucketState::Full) continue;
             --remaining;
@@ -66,7 +66,7 @@ public:
 export template<typename K, typename V>
 class HashMapIterMut : public rstd::DefaultInClass<HashMapIterMut<K, V>, rstd::iter::Iterator> {
     RawTable<K, V>* table;
-    usize           index;
+    rstd::size_t    index;
     usize           remaining;
 
 public:
@@ -77,7 +77,7 @@ public:
         : table(source), index(0), remaining(len) {}
 
     auto next() -> Option<Item> {
-        while (remaining != 0 && index < table->bucket_count()) {
+        while (remaining != usize {} && index < table->bucket_count().to_primitive()) {
             auto& bucket = table->bucket(index++);
             if (bucket.state != BucketState::Full) continue;
             --remaining;
@@ -141,23 +141,21 @@ public:
 export template<typename K, typename V>
 class HashMapIntoIter : public rstd::DefaultInClass<HashMapIntoIter<K, V>, rstd::iter::Iterator> {
     RawTable<K, V> table;
-    usize          index;
+    rstd::size_t   index;
 
 public:
     using Item = rstd::tuple<K, V>;
     explicit HashMapIntoIter(RawTable<K, V> source): table(rstd::move(source)), index(0) {}
     auto next() -> Option<Item> {
-        while (index < table.bucket_count()) {
-            usize current = index++;
+        while (index < table.bucket_count().to_primitive()) {
+            rstd::size_t current = index++;
             if (table.bucket(current).state == BucketState::Full) {
-                return Some(table.remove(current));
+                return Some(table.remove(usize(current)));
             }
         }
         return None();
     }
-    auto size_hint() const -> rstd::iter::SizeHint {
-        return { table.len(), Some(usize(table.len())) };
-    }
+    auto size_hint() const -> rstd::iter::SizeHint { return { table.len(), Some(table.len()) }; }
     auto len() const noexcept -> usize { return table.len(); }
 };
 
@@ -169,9 +167,7 @@ class HashMap {
     S              hash_builder;
     Eq             equal;
 
-    auto hash_key(const K& key) const noexcept -> u64 {
-        return static_cast<u64>(hash_builder(key));
-    }
+    auto hash_key(const K& key) const noexcept -> u64 { return hash_builder(key); }
 
     auto find_index(const K& key) const -> Option<usize> {
         u64 hash = hash_key(key);
@@ -192,7 +188,9 @@ public:
 
     static auto make() -> HashMap { return {}; }
     static auto with_capacity(usize capacity) -> HashMap { return HashMap(capacity, S {}, Eq {}); }
-    static auto with_hasher(S hasher) -> HashMap { return HashMap(0, rstd::move(hasher), Eq {}); }
+    static auto with_hasher(S hasher) -> HashMap {
+        return HashMap(usize {}, rstd::move(hasher), Eq {});
+    }
     static auto with_capacity_and_hasher(usize capacity, S hasher) -> HashMap {
         return HashMap(capacity, rstd::move(hasher), Eq {});
     }
@@ -201,12 +199,12 @@ public:
         : table(capacity), hash_builder(rstd::move(hasher)), equal(rstd::move(equality)) {}
 
     auto len() const noexcept -> usize { return table.len(); }
-    auto is_empty() const noexcept -> bool { return table.len() == 0; }
+    auto is_empty() const noexcept -> bool { return table.len() == usize {}; }
     auto capacity() const noexcept -> usize { return table.capacity(); }
     auto hasher() const noexcept [[clang::lifetimebound]] -> const S& { return hash_builder; }
 
     void reserve(usize additional) { table.reserve(additional); }
-    void shrink_to_fit() { table.shrink_to(0); }
+    void shrink_to_fit() { table.shrink_to(usize {}); }
     void shrink_to(usize minimum) { table.shrink_to(minimum); }
     void clear() noexcept { table.clear(); }
 
@@ -259,10 +257,10 @@ public:
 
     template<typename F>
     void retain(F predicate) {
-        for (usize i = 0; i < table.bucket_count(); ++i) {
+        for (rstd::size_t i = 0; i < table.bucket_count().to_primitive(); ++i) {
             auto& bucket = table.bucket(i);
             if (bucket.state == BucketState::Full && ! predicate(bucket.key(), bucket.value())) {
-                (void)table.remove(i);
+                (void)table.remove(usize(i));
             }
         }
     }

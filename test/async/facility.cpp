@@ -40,10 +40,11 @@ auto consume_closed_queue(async::CompletionQueue<int> queue) -> async::coro<int>
     co_return *first_value + *second_value;
 }
 
-auto await_executor_once(async::AnyExecutor executor, std::atomic<u64>& thread_id)
+auto await_executor_once(async::AnyExecutor executor, std::atomic<rstd::uint64_t>& thread_id)
     -> async::coro<bool> {
     auto accepted = co_await executor;
-    thread_id.store(thread::current().id().as_u64().get(), std::memory_order_release);
+    thread_id.store(thread::current().id().as_u64().get().to_primitive(),
+                    std::memory_order_release);
     co_return accepted;
 }
 
@@ -61,12 +62,12 @@ auto await_executor_twice(async::AnyExecutor executor, std::atomic<int>& continu
 }
 
 auto sleep_and_mark(std::atomic<int>& completions) -> async::coro<void> {
-    co_await async::sleep(time::Duration::from_millis(1));
+    co_await async::sleep(time::Duration::from_millis(u64(1)));
     completions.fetch_add(1, std::memory_order_relaxed);
 }
 
 auto long_sleep() -> async::coro<void> {
-    co_await async::sleep(time::Duration::from_millis(60'000));
+    co_await async::sleep(time::Duration::from_millis(u64(60'000)));
 }
 
 template<typename T>
@@ -76,7 +77,7 @@ auto run_executor_until_finished(async::LocalExecutorContext& context,
     for (int attempt = 0; attempt < 1000 && ! handle.is_finished(); ++attempt) {
         ran += context.run_ready();
         if (! handle.is_finished()) {
-            thread::sleep(time::Duration::from_millis(1));
+            thread::sleep(time::Duration::from_millis(u64(1)));
         }
     }
     return ran;
@@ -107,7 +108,7 @@ TEST(RstdAsyncFacility, CompletionFromAnotherThreadWakesCurrentRuntime) {
                         while (! entered.load(std::memory_order_acquire)) {
                             hint::spin_loop();
                         }
-                        thread::sleep(time::Duration::from_millis(1));
+                        thread::sleep(time::Duration::from_millis(u64(1)));
                         return handle.complete(23).is_ok();
                     }).unwrap();
 
@@ -194,11 +195,11 @@ TEST(RstdAsyncFacility, ClosedExecutorDrainsAcceptedJobAndRejectsNewJob) {
 }
 
 TEST(RstdAsyncFacility, ExecutorAwaitUsesOneExternalJob) {
-    auto context   = async::LocalExecutorContext::make();
-    auto executor  = async::AnyExecutor::from_executor(context.executor());
-    auto runtime   = async::RuntimeBuilder::multi_thread().worker_threads(1).build().unwrap();
-    auto thread_id = std::atomic<u64> { 0 };
-    auto caller_id = thread::current().id().as_u64().get();
+    auto context  = async::LocalExecutorContext::make();
+    auto executor = async::AnyExecutor::from_executor(context.executor());
+    auto runtime  = async::RuntimeBuilder::multi_thread().worker_threads(usize(1)).build().unwrap();
+    auto thread_id = std::atomic<rstd::uint64_t> { 0 };
+    auto caller_id = thread::current().id().as_u64().get().to_primitive();
     auto joined    = runtime.spawn(await_executor_once(executor.clone(), thread_id));
 
     auto ran = run_executor_until_finished(context, joined);
@@ -212,9 +213,9 @@ TEST(RstdAsyncFacility, ExecutorAwaitUsesOneExternalJob) {
 }
 
 TEST(RstdAsyncFacility, ConsecutiveExecutorAwaitsIssueDistinctJobs) {
-    auto context       = async::LocalExecutorContext::make();
-    auto executor      = async::AnyExecutor::from_executor(context.executor());
-    auto runtime       = async::RuntimeBuilder::multi_thread().worker_threads(1).build().unwrap();
+    auto context  = async::LocalExecutorContext::make();
+    auto executor = async::AnyExecutor::from_executor(context.executor());
+    auto runtime  = async::RuntimeBuilder::multi_thread().worker_threads(usize(1)).build().unwrap();
     auto continuations = std::atomic<int> { 0 };
     auto joined        = runtime.spawn(await_executor_twice(executor.clone(), continuations));
 
@@ -232,7 +233,7 @@ TEST(RstdAsyncFacility, ClosedExecutorRejectsWithoutPostingJob) {
     auto context  = async::LocalExecutorContext::make();
     auto executor = async::AnyExecutor::from_executor(context.executor());
     context.close();
-    auto thread_id = std::atomic<u64> { 0 };
+    auto thread_id = std::atomic<rstd::uint64_t> { 0 };
 
     EXPECT_FALSE(async::block_on(await_executor_once(executor.clone(), thread_id)));
     EXPECT_EQ(context.run_ready(), usize { 0 });
@@ -248,8 +249,11 @@ TEST(RstdAsyncFacility, TimerCompletionReturnsThroughRuntimeQueue) {
 
 TEST(RstdAsyncFacility, RuntimeShutdownCancelsPendingTimer) {
     auto joined = [] {
-        auto runtime =
-            async::RuntimeBuilder::multi_thread().worker_threads(1).enable_time().build().unwrap();
+        auto runtime = async::RuntimeBuilder::multi_thread()
+                           .worker_threads(usize(1))
+                           .enable_time()
+                           .build()
+                           .unwrap();
         return runtime.spawn(long_sleep());
     }();
 

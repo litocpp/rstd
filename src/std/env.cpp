@@ -1,3 +1,5 @@
+module;
+
 module rstd;
 import :env;
 import :sys.pal;
@@ -21,9 +23,9 @@ void remove_var(const char* key) {
 
 auto args_os() -> ArgsOs {
     auto raw    = sys::pal::args_argc_argv();
-    auto len    = raw.argc < 0 ? usize(0) : static_cast<usize>(raw.argc);
-    auto values = Vec<ffi::OsString>::with_capacity(len);
-    for (isize i = 0; i < raw.argc; ++i) {
+    auto len    = raw.argc < 0 ? rstd::size_t(0) : static_cast<rstd::size_t>(raw.argc);
+    auto values = Vec<ffi::OsString>::with_capacity(usize(len));
+    for (rstd::size_t i = 0; i < len; ++i) {
         const char* value = raw.argv[i];
         if (value == nullptr) break;
         values.push(os_string_from_cstr(value));
@@ -36,7 +38,7 @@ auto args() -> Args {
 }
 
 void args_init(int argc, char const* const* argv) {
-    sys::pal::args_capture(static_cast<isize>(argc), argv);
+    sys::pal::args_capture(argc, argv);
 }
 
 } // namespace rstd::env

@@ -33,7 +33,7 @@ void exit_internal(int code) {
 }
 
 export auto getpid_internal() -> u32 {
-    return static_cast<u32>(libc::GetCurrentProcessId());
+    return u32(libc::GetCurrentProcessId());
 }
 
 export auto getenv_internal(const char* name) -> const char* {
@@ -50,18 +50,18 @@ export auto unsetenv_internal(const char* name) -> bool {
 
 /// Raw, system-provided command-line argument vector.
 export struct ArgcArgv {
-    isize              argc;
+    int                argc;
     char const* const* argv;
 };
 
 namespace args_detail
 {
-inline isize              g_argc = 0;
+inline int                g_argc = 0;
 inline char const* const* g_argv = nullptr;
 } // namespace args_detail
 
 /// Overrides the captured argc/argv (call from `main` on Windows).
-export void args_capture(isize argc, char const* const* argv) {
+export void args_capture(int argc, char const* const* argv) {
     args_detail::g_argc = argc;
     args_detail::g_argv = argv;
 }
@@ -69,7 +69,7 @@ export void args_capture(isize argc, char const* const* argv) {
 /// Returns the captured argc/argv, or `{0, nullptr}` if `args_capture` was not called.
 export auto args_argc_argv() -> ArgcArgv {
     if (args_detail::g_argv == nullptr)
-        return { static_cast<isize>(__argc), reinterpret_cast<char const* const*>(__argv) };
+        return { __argc, reinterpret_cast<char const* const*>(__argv) };
     return { args_detail::g_argc, args_detail::g_argv };
 }
 

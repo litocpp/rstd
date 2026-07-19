@@ -1,4 +1,5 @@
 #include <cstdlib>
+#include <string_view>
 #include <cstring>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -13,6 +14,29 @@ using rstd::io::SeekFrom;
 
 namespace
 {
+
+auto native_bytes(const void* data, rstd::size_t len) -> rstd::vec::Vec<rstd::u8> {
+    return rstd::vec::Vec<rstd::u8>::copy_from_bytes(rstd::slice<rstd::byte>::from_raw_parts(
+        static_cast<rstd::byte const*>(data), rstd::usize(len)));
+}
+
+auto write_native(File& file, const char* data, rstd::size_t len) -> rstd::io::Result<rstd::usize> {
+    return file.write(rstd::slice<rstd::byte>::from_raw_parts(
+        reinterpret_cast<rstd::byte const*>(data), rstd::usize(len)));
+}
+
+template<rstd::size_t N>
+auto raw_bytes(rstd::u8 (&values)[N]) -> rstd::mut_ref<rstd::byte[]> {
+    return rstd::as_bytes_mut(rstd::mut_ref<rstd::u8[]>::from_raw_parts(values, rstd::usize(N)));
+}
+
+auto equals_native(const rstd::u8* actual, const char* expected, rstd::size_t len) -> bool {
+    for (rstd::size_t index = 0; index != len; ++index) {
+        if (actual[index].to_primitive() != static_cast<rstd::uint8_t>(expected[index]))
+            return false;
+    }
+    return true;
+}
 
 // RAII helper for a unique temp-file path under /tmp.
 class TempPath {
@@ -42,10 +66,9 @@ TEST(Fs, CreateWriteReadRoundTrip) {
         ASSERT_TRUE(res.is_ok());
         auto f = rstd::move(res).unwrap_unchecked();
 
-        const char* payload = "hello world";
-        auto        wres    = f.write(reinterpret_cast<const rstd::u8*>(payload), 11);
+        auto wres = write_native(f, "hello world", 11);
         ASSERT_TRUE(wres.is_ok());
-        EXPECT_EQ(wres.unwrap_unchecked(), 11u);
+        EXPECT_EQ(wres.unwrap_unchecked(), rstd::usize(11));
 
         auto sres = f.sync_all();
         EXPECT_TRUE(sres.is_ok());
@@ -57,11 +80,31 @@ TEST(Fs, CreateWriteReadRoundTrip) {
         auto f = rstd::move(res).unwrap_unchecked();
 
         rstd::u8 buf[32] = {};
-        auto     rres    = f.read(buf, 32);
+        auto     rres    = f.read(raw_bytes(buf));
         ASSERT_TRUE(rres.is_ok());
-        EXPECT_EQ(rres.unwrap_unchecked(), 11u);
-        EXPECT_EQ(std::memcmp(buf, "hello world", 11), 0);
+        EXPECT_EQ(rres.unwrap_unchecked(), rstd::usize(11));
+        EXPECT_TRUE(equals_native(buf, "hello world", 11));
     }
+}
+
+TEST(Fs, ExternalRawBufferRoundTrip) {
+    TempPath tp;
+    auto     file = OpenOptions::make()
+                        .read(true)
+                        .write(true)
+                        .truncate(true)
+                        .open(tp.as_path())
+                        .unwrap_unchecked();
+
+    const rstd::byte input[] { 0, 127, 128, 255 };
+    auto             readable = rstd::slice<rstd::byte>::from_raw_parts(input, rstd::usize(4));
+    EXPECT_EQ(file.write(readable).unwrap_unchecked(), rstd::usize(4));
+    file.seek(SeekFrom::from_start(rstd::u64())).unwrap_unchecked();
+
+    rstd::byte output[4] {};
+    auto       writable = rstd::mut_ref<rstd::byte[]>::from_raw_parts(output, rstd::usize(4));
+    EXPECT_EQ(file.read(writable).unwrap_unchecked(), rstd::usize(4));
+    for (rstd::size_t index = 0; index < 4; ++index) EXPECT_EQ(output[index], input[index]);
 }
 
 TEST(Fs, OpenMissingReturnsNotFound) {
@@ -87,34 +130,33 @@ TEST(Fs, SeekRoundTrip) {
     ASSERT_TRUE(fres.is_ok());
     auto f = rstd::move(fres).unwrap_unchecked();
 
-    const char* payload = "0123456789";
-    f.write(reinterpret_cast<const rstd::u8*>(payload), 10).unwrap_unchecked();
+    write_native(f, "0123456789", 10).unwrap_unchecked();
 
-    auto pos = f.seek(SeekFrom::from_start(4));
+    auto pos = f.seek(SeekFrom::from_start(rstd::u64(4)));
     ASSERT_TRUE(pos.is_ok());
-    EXPECT_EQ(pos.unwrap_unchecked(), 4u);
+    EXPECT_EQ(pos.unwrap_unchecked(), rstd::u64(4));
 
     rstd::u8 buf[6] = {};
-    auto     n      = f.read(buf, 6).unwrap_unchecked();
-    EXPECT_EQ(n, 6u);
-    EXPECT_EQ(std::memcmp(buf, "456789", 6), 0);
+    auto     n      = f.read(raw_bytes(buf)).unwrap_unchecked();
+    EXPECT_EQ(n, rstd::usize(6));
+    EXPECT_TRUE(equals_native(buf, "456789", 6));
 
-    auto end_pos = f.seek(SeekFrom::from_end(0));
-    EXPECT_EQ(end_pos.unwrap_unchecked(), 10u);
+    auto end_pos = f.seek(SeekFrom::from_end(rstd::i64()));
+    EXPECT_EQ(end_pos.unwrap_unchecked(), rstd::u64(10));
 }
 
 TEST(Fs, SetLenTruncatesAndExtends) {
     TempPath tp;
     auto     f = File::create(tp.as_path()).unwrap_unchecked();
-    f.write(reinterpret_cast<const rstd::u8*>("0123456789"), 10).unwrap_unchecked();
+    write_native(f, "0123456789", 10).unwrap_unchecked();
 
-    EXPECT_TRUE(f.set_len(5).is_ok());
+    EXPECT_TRUE(f.set_len(rstd::u64(5)).is_ok());
 
     struct stat st {};
     ::stat(tp.c_str(), &st);
     EXPECT_EQ(st.st_size, 5);
 
-    EXPECT_TRUE(f.set_len(20).is_ok());
+    EXPECT_TRUE(f.set_len(rstd::u64(20)).is_ok());
     ::stat(tp.c_str(), &st);
     EXPECT_EQ(st.st_size, 20);
 }
@@ -131,37 +173,35 @@ TEST(Fs, TryCloneTwoHandlesSameFile) {
     auto     f2 = f1.try_clone().unwrap_unchecked();
     EXPECT_NE(f1.as_raw_fd(), f2.as_raw_fd());
 
-    f1.write(reinterpret_cast<const rstd::u8*>("ABCD"), 4).unwrap_unchecked();
+    write_native(f1, "ABCD", 4).unwrap_unchecked();
     f1.sync_all().unwrap_unchecked();
 
-    f2.seek(SeekFrom::from_start(0)).unwrap_unchecked();
+    f2.seek(SeekFrom::from_start(rstd::u64())).unwrap_unchecked();
     rstd::u8 buf[4] = {};
-    f2.read(buf, 4).unwrap_unchecked();
-    EXPECT_EQ(std::memcmp(buf, "ABCD", 4), 0);
+    f2.read(raw_bytes(buf)).unwrap_unchecked();
+    EXPECT_TRUE(equals_native(buf, "ABCD", 4));
 }
 
 TEST(Fs, AppendFlagPositionsAtEnd) {
     TempPath tp;
-    File::create(tp.as_path())
-        .unwrap_unchecked()
-        .write(reinterpret_cast<const rstd::u8*>("AAA"), 3)
-        .unwrap_unchecked();
+    auto     created = File::create(tp.as_path()).unwrap_unchecked();
+    write_native(created, "AAA", 3).unwrap_unchecked();
 
     auto f = OpenOptions::make().append(true).open(tp.as_path()).unwrap_unchecked();
-    f.write(reinterpret_cast<const rstd::u8*>("BBB"), 3).unwrap_unchecked();
+    write_native(f, "BBB", 3).unwrap_unchecked();
 
     auto     v      = File::open(tp.as_path()).unwrap_unchecked();
     rstd::u8 buf[6] = {};
-    auto     n      = v.read(buf, 6).unwrap_unchecked();
-    EXPECT_EQ(n, 6u);
-    EXPECT_EQ(std::memcmp(buf, "AAABBB", 6), 0);
+    auto     n      = v.read(raw_bytes(buf)).unwrap_unchecked();
+    EXPECT_EQ(n, rstd::usize(6));
+    EXPECT_TRUE(equals_native(buf, "AAABBB", 6));
 }
 
 TEST(FsMetadata, BasicStat) {
     TempPath tp;
     {
         auto f = File::create(tp.as_path()).unwrap_unchecked();
-        f.write(reinterpret_cast<const rstd::u8*>("hi!"), 3).unwrap_unchecked();
+        write_native(f, "hi!", 3).unwrap_unchecked();
     }
     auto f    = File::open(tp.as_path()).unwrap_unchecked();
     auto mres = f.metadata();
@@ -170,9 +210,9 @@ TEST(FsMetadata, BasicStat) {
     EXPECT_TRUE(m.is_file());
     EXPECT_FALSE(m.is_dir());
     EXPECT_FALSE(m.is_symlink());
-    EXPECT_EQ(m.len(), 3u);
-    EXPECT_GT(m.ino(), 0u);
-    EXPECT_NE(m.nlink(), 0u);
+    EXPECT_EQ(m.len(), rstd::u64(3));
+    EXPECT_GT(m.ino(), rstd::u64());
+    EXPECT_NE(m.nlink(), rstd::u64());
 }
 
 TEST(FsMetadata, DirectoryDetected) {
@@ -186,7 +226,7 @@ TEST(FsPermissions, ReadonlyToggle) {
     TempPath tp;
     {
         auto f = File::create(tp.as_path()).unwrap_unchecked();
-        f.write(reinterpret_cast<const rstd::u8*>("a"), 1).unwrap_unchecked();
+        write_native(f, "a", 1).unwrap_unchecked();
     }
     auto f0   = File::open(tp.as_path()).unwrap_unchecked();
     auto perm = f0.metadata().unwrap_unchecked().permissions();
@@ -195,10 +235,10 @@ TEST(FsPermissions, ReadonlyToggle) {
     EXPECT_TRUE(perm.readonly());
 
     auto f = OpenOptions::make().write(true).open(tp.as_path()).unwrap_unchecked();
-    EXPECT_TRUE(f.set_permissions(Permissions::from_mode(0444)).is_ok());
+    EXPECT_TRUE(f.set_permissions(Permissions::from_mode(rstd::u32(0444))).is_ok());
 
     auto m = f.metadata().unwrap_unchecked();
-    EXPECT_EQ(m.mode() & 0777u, 0444u);
+    EXPECT_EQ(m.mode() & rstd::u32(0777), rstd::u32(0444));
     EXPECT_TRUE(m.permissions().readonly());
 }
 
@@ -212,7 +252,7 @@ TEST(FsTimes, SetModifiedRoundTrip) {
                      .open(tp.as_path())
                      .unwrap_unchecked();
 
-    auto expected = rstd::time::Duration::from_secs(1577836800);
+    auto expected = rstd::time::Duration::from_secs(rstd::u64(1577836800));
     auto t        = rstd::time::SystemTime::unix_epoch() + expected;
     auto res      = f.set_modified(t);
     ASSERT_TRUE(res.is_ok());
@@ -241,17 +281,15 @@ TEST(FsFileType, EqualityForSameKind) {
 }
 
 TEST(FsFreeFn, WriteReadRoundTrip) {
-    TempPath    tp;
-    const char* msg   = "hello fs::write";
-    auto        slice = rstd::slice<rstd::u8>::from_raw_parts(
-        const_cast<rstd::u8*>(reinterpret_cast<const rstd::u8*>(msg)), 15);
-    ASSERT_TRUE(rstd::fs::write(tp.as_path(), slice).is_ok());
+    TempPath tp;
+    auto     bytes = native_bytes("hello fs::write", 15);
+    ASSERT_TRUE(rstd::fs::write(tp.as_path(), bytes.as_slice()).is_ok());
 
     auto v = rstd::fs::read(tp.as_path()).unwrap_unchecked();
-    EXPECT_EQ(v.len(), 15u);
+    EXPECT_EQ(v.len(), rstd::usize(15));
     auto s = rstd::fs::read_to_string(tp.as_path()).unwrap_unchecked();
-    EXPECT_EQ(s.len(), 15u);
-    EXPECT_EQ(std::memcmp(s.data(), msg, 15), 0);
+    EXPECT_EQ(s.len(), rstd::usize(15));
+    EXPECT_EQ(std::string_view(s.data(), s.len().to_primitive()), "hello fs::write");
 }
 
 TEST(FsFreeFn, MetadataAndExists) {
@@ -286,18 +324,17 @@ TEST(FsFreeFn, RenameMoves) {
 
 TEST(FsFreeFn, CopyDuplicates) {
     TempPath src;
-    auto     slice = rstd::slice<rstd::u8>::from_raw_parts(
-        const_cast<rstd::u8*>(reinterpret_cast<const rstd::u8*>("ABCDE")), 5);
-    rstd::fs::write(src.as_path(), slice).unwrap_unchecked();
+    auto     bytes = native_bytes("ABCDE", 5);
+    rstd::fs::write(src.as_path(), bytes.as_slice()).unwrap_unchecked();
 
     char dst_buf[] = "/tmp/rstd-fs-copy-XXXXXX";
     int  fd        = ::mkstemp(dst_buf);
     ::close(fd);
 
     auto n = rstd::fs::copy(src.as_path(), rstd::ref<rstd::path::Path>(dst_buf)).unwrap_unchecked();
-    EXPECT_EQ(n, 5u);
+    EXPECT_EQ(n, rstd::u64(5));
     auto v = rstd::fs::read(rstd::ref<rstd::path::Path>(dst_buf)).unwrap_unchecked();
-    EXPECT_EQ(v.len(), 5u);
+    EXPECT_EQ(v.len(), rstd::usize(5));
     ::unlink(dst_buf);
 }
 
@@ -345,7 +382,7 @@ TEST(FsFreeFn, ReadLink) {
                                     rstd::ref<rstd::path::Path>(link_path))
                     .is_ok());
     auto target = rstd::fs::read_link(rstd::ref<rstd::path::Path>(link_path)).unwrap_unchecked();
-    EXPECT_EQ(target.len(), std::strlen(src));
+    EXPECT_EQ(target.len(), rstd::usize(std::strlen(src)));
 
     ::unlink(link_path);
     ::unlink(src);
@@ -353,9 +390,10 @@ TEST(FsFreeFn, ReadLink) {
 
 TEST(FsFreeFn, SetPermissionsByPath) {
     TempPath tp;
-    EXPECT_TRUE(rstd::fs::set_permissions(tp.as_path(), Permissions::from_mode(0600)).is_ok());
+    EXPECT_TRUE(
+        rstd::fs::set_permissions(tp.as_path(), Permissions::from_mode(rstd::u32(0600))).is_ok());
     auto m = rstd::fs::metadata(tp.as_path()).unwrap_unchecked();
-    EXPECT_EQ(m.mode() & 0777u, 0600u);
+    EXPECT_EQ(m.mode() & rstd::u32(0777), rstd::u32(0600));
 }
 
 TEST(FsReadDir, IteratesEntries) {
@@ -365,17 +403,13 @@ TEST(FsReadDir, IteratesEntries) {
     // Create two files under base.
     rstd::path::PathBuf p1 = rstd::path::PathBuf::from(base);
     p1.push(rstd::ref<rstd::path::Path>("a"));
-    rstd::fs::write(p1,
-                    rstd::slice<rstd::u8>::from_raw_parts(
-                        const_cast<rstd::u8*>(reinterpret_cast<const rstd::u8*>("x")), 1))
-        .unwrap_unchecked();
+    auto first_data = native_bytes("x", 1);
+    rstd::fs::write(p1, first_data.as_slice()).unwrap_unchecked();
 
     rstd::path::PathBuf p2 = rstd::path::PathBuf::from(base);
     p2.push(rstd::ref<rstd::path::Path>("b"));
-    rstd::fs::write(p2,
-                    rstd::slice<rstd::u8>::from_raw_parts(
-                        const_cast<rstd::u8*>(reinterpret_cast<const rstd::u8*>("y")), 1))
-        .unwrap_unchecked();
+    auto second_data = native_bytes("y", 1);
+    rstd::fs::write(p2, second_data.as_slice()).unwrap_unchecked();
 
     auto rd    = rstd::fs::read_dir(rstd::ref<rstd::path::Path>(base)).unwrap_unchecked();
     int  count = 0;
@@ -407,10 +441,8 @@ TEST(FsReadDir, RemoveDirAllRecursive) {
     leaf.push(rstd::ref<rstd::path::Path>("sub"));
     leaf.push(rstd::ref<rstd::path::Path>("deeper"));
     leaf.push(rstd::ref<rstd::path::Path>("leaf"));
-    rstd::fs::write(leaf,
-                    rstd::slice<rstd::u8>::from_raw_parts(
-                        const_cast<rstd::u8*>(reinterpret_cast<const rstd::u8*>("z")), 1))
-        .unwrap_unchecked();
+    auto leaf_data = native_bytes("z", 1);
+    rstd::fs::write(leaf, leaf_data.as_slice()).unwrap_unchecked();
 
     EXPECT_TRUE(rstd::fs::remove_dir_all(rstd::ref<rstd::path::Path>(base)).is_ok());
     EXPECT_FALSE(rstd::fs::exists(rstd::ref<rstd::path::Path>(base)).unwrap_unchecked());
@@ -426,17 +458,19 @@ TEST(FsFile, ReadAtWriteAt) {
                      .open(tp.as_path())
                      .unwrap_unchecked();
 
-    EXPECT_TRUE(f.write_all_at(reinterpret_cast<const rstd::u8*>("HELLO"), 5, 100).is_ok());
+    auto hello = native_bytes("HELLO", 5);
+    EXPECT_TRUE(f.write_all_at(rstd::as_bytes(hello.as_slice()), rstd::u64(100)).is_ok());
     rstd::u8 buf[5] = {};
-    EXPECT_TRUE(f.read_exact_at(buf, 5, 100).is_ok());
-    EXPECT_EQ(std::memcmp(buf, "HELLO", 5), 0);
+    EXPECT_TRUE(f.read_exact_at(raw_bytes(buf), rstd::u64(100)).is_ok());
+    EXPECT_TRUE(equals_native(buf, "HELLO", 5));
 
     const auto& shared = f;
+    auto        world  = native_bytes("WORLD", 5);
     EXPECT_TRUE(
-        rstd::io::write_all_at(shared, reinterpret_cast<const rstd::u8*>("WORLD"), 5, 200).is_ok());
+        rstd::io::write_all_at(shared, rstd::as_bytes(world.as_slice()), rstd::u64(200)).is_ok());
     rstd::u8 trait_buf[5] = {};
-    EXPECT_TRUE(rstd::io::read_exact_at(shared, trait_buf, 5, 200).is_ok());
-    EXPECT_EQ(std::memcmp(trait_buf, "WORLD", 5), 0);
+    EXPECT_TRUE(rstd::io::read_exact_at(shared, raw_bytes(trait_buf), rstd::u64(200)).is_ok());
+    EXPECT_TRUE(equals_native(trait_buf, "WORLD", 5));
 }
 
 TEST(FsFile, FlockExclusiveBlocks) {
@@ -457,14 +491,12 @@ TEST(FsFile, FlockExclusiveBlocks) {
 
 TEST(Fs, ReadTraitImplCanBeUsed) {
     TempPath tp;
-    File::create(tp.as_path())
-        .unwrap_unchecked()
-        .write(reinterpret_cast<const rstd::u8*>("xyz"), 3)
-        .unwrap_unchecked();
+    auto     created = File::create(tp.as_path()).unwrap_unchecked();
+    write_native(created, "xyz", 3).unwrap_unchecked();
 
     auto     f      = File::open(tp.as_path()).unwrap_unchecked();
     rstd::u8 buf[8] = {};
-    auto     res    = rstd::as<rstd::io::Read>(f).read(buf, 8);
+    auto     res    = rstd::as<rstd::io::Read>(f).read(raw_bytes(buf));
     ASSERT_TRUE(res.is_ok());
-    EXPECT_EQ(res.unwrap_unchecked(), 3u);
+    EXPECT_EQ(res.unwrap_unchecked(), rstd::usize(3));
 }

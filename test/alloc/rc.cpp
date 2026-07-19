@@ -132,14 +132,14 @@ TEST(Rc, BasicConstruction) {
     auto    ptr = new int(42);
     Rc<int> rc(ptr);
     EXPECT_EQ(*rc, 42);
-    EXPECT_EQ(rc.strong_count(), 1);
-    EXPECT_EQ(rc.weak_count(), 0);
+    EXPECT_EQ(rc.strong_count(), usize(1));
+    EXPECT_EQ(rc.weak_count(), usize());
 }
 
 TEST(Rc, MakeRc) {
     auto rc = make_rc<std::string>("test");
     EXPECT_EQ(*rc, "test");
-    EXPECT_EQ(rc.strong_count(), 1);
+    EXPECT_EQ(rc.strong_count(), usize(1));
 }
 
 TEST(Rc, DerefIsImmutable) {
@@ -155,13 +155,13 @@ TEST(Rc, DerefIsImmutable) {
 TEST(Rc, CopyAndMove) {
     auto rc1 = make_rc<int>(42);
     auto rc2 = rc1;
-    EXPECT_EQ(rc1.strong_count(), 2);
-    EXPECT_EQ(rc2.strong_count(), 2);
+    EXPECT_EQ(rc1.strong_count(), usize(2));
+    EXPECT_EQ(rc2.strong_count(), usize(2));
 
     auto rc3 = std::move(rc2);
     EXPECT_EQ(rc2.get(), nullptr);
-    EXPECT_EQ(rc1.strong_count(), 2);
-    EXPECT_EQ(rc3.strong_count(), 2);
+    EXPECT_EQ(rc1.strong_count(), usize(2));
+    EXPECT_EQ(rc3.strong_count(), usize(2));
 }
 
 TEST(Rc, Destruction) {
@@ -177,14 +177,14 @@ TEST(Rc, WeakReference) {
     auto rc   = make_rc<int>(42);
     auto weak = rc.downgrade();
 
-    EXPECT_EQ(rc.strong_count(), 1);
-    EXPECT_EQ(rc.weak_count(), 1);
+    EXPECT_EQ(rc.strong_count(), usize(1));
+    EXPECT_EQ(rc.weak_count(), usize(1));
 
     {
         auto upgraded = weak.upgrade();
         ASSERT_TRUE(upgraded.is_some());
         EXPECT_EQ(**upgraded, 42);
-        EXPECT_EQ(rc.strong_count(), 2);
+        EXPECT_EQ(rc.strong_count(), usize(2));
     }
 
     rc            = Rc<int>(); // Reset original
@@ -205,14 +205,14 @@ TEST(Rc, CustomDeleter) {
 }
 
 TEST(Rc, ArraySupport) {
-    auto rc = make_rc<int[]>(3, 42);
+    auto rc = make_rc<int[]>(usize(3), 42);
     EXPECT_EQ(rc.get()[0], 42);
     EXPECT_EQ(rc.get()[1], 42);
     EXPECT_EQ(rc.get()[2], 42);
 }
 
 TEST(Rc, ArrayOfStructs) {
-    auto rc = make_rc<ArrayTestStruct[]>(3, ArrayTestStruct(42, "test"));
+    auto rc = make_rc<ArrayTestStruct[]>(usize(3), ArrayTestStruct(42, "test"));
 
     EXPECT_EQ(rc.get()[0], ArrayTestStruct(42, "test"));
     EXPECT_EQ(rc.get()[1], ArrayTestStruct(42, "test"));
@@ -290,8 +290,8 @@ TEST(Rc, CustomAllocatorSupportsArrayAndEmbedStorage) {
         TestAllocator<RcArrayDropProbe> allocator(&allocated, &deallocated);
         RcArrayDropProbe                initial { drops };
         {
-            auto array = allocate_make_rc<RcArrayDropProbe[]>(allocator, 2, initial);
-            EXPECT_EQ(array.as_ptr().len(), 2u);
+            auto array = allocate_make_rc<RcArrayDropProbe[]>(allocator, usize(2), initial);
+            EXPECT_EQ(array.as_ptr().len(), usize(2));
         }
         EXPECT_EQ(drops, 2);
     }
@@ -316,15 +316,15 @@ TEST(Rc, CustomAllocatorSupportsArrayAndEmbedStorage) {
 TEST(Rc, Size) {
     // Test size for single object
     auto rc_single = make_rc<int>(42);
-    EXPECT_EQ(rc_single.size(), 1);
+    EXPECT_EQ(rc_single.size(), usize(1));
 
     // Test size for array
-    auto rc_array = make_rc<int[]>(5, 42);
-    EXPECT_EQ(rc_array.size(), 5);
+    auto rc_array = make_rc<int[]>(usize(5), 42);
+    EXPECT_EQ(rc_array.size(), usize(5));
 
     // Test size for array of structs
-    auto rc_struct_array = make_rc<ArrayTestStruct[]>(3, ArrayTestStruct(42, "test"));
-    EXPECT_EQ(rc_struct_array.size(), 3);
+    auto rc_struct_array = make_rc<ArrayTestStruct[]>(usize(3), ArrayTestStruct(42, "test"));
+    EXPECT_EQ(rc_struct_array.size(), usize(3));
 }
 
 TEST(Rc, Constness) {
@@ -339,7 +339,7 @@ TEST(Rc, ConstConversionSharesAllocation) {
     Rc<const int> const_rc = rc;
 
     EXPECT_EQ(*const_rc, 42);
-    EXPECT_EQ(rc.strong_count(), 2u);
+    EXPECT_EQ(rc.strong_count(), usize(2));
     EXPECT_TRUE(Rc<int>::ptr_eq(rc, rc));
     static_assert(std::is_same_v<decltype(const_rc.get()), const int*>);
 }
@@ -359,10 +359,10 @@ TEST(Rc, ArrayMetadataDrivesLayoutAndDrop) {
     {
         RcArrayDropProbe initial { drops };
         {
-            auto rc = make_rc<RcArrayDropProbe[]>(3, initial);
-            EXPECT_EQ(rc.as_ptr().len(), 3u);
+            auto rc = make_rc<RcArrayDropProbe[]>(usize(3), initial);
+            EXPECT_EQ(rc.as_ptr().len(), usize(3));
             EXPECT_EQ(rstd::alloc::Layout::for_value(rc.as_ptr().as_ptr()).size,
-                      3 * sizeof(RcArrayDropProbe));
+                      usize(3 * sizeof(RcArrayDropProbe)));
         }
         EXPECT_EQ(drops, 3);
     }
@@ -374,12 +374,12 @@ TEST(Rc, WeakCountRemainsCorrectAfterValueDrop) {
     {
         auto rc = make_rc<int>(9);
         weak    = rc.downgrade();
-        EXPECT_EQ(weak.weak_count(), 1u);
+        EXPECT_EQ(weak.weak_count(), usize(1));
     }
 
     EXPECT_TRUE(weak.expired());
-    EXPECT_EQ(weak.strong_count(), 0u);
-    EXPECT_EQ(weak.weak_count(), 1u);
+    EXPECT_EQ(weak.strong_count(), usize());
+    EXPECT_EQ(weak.weak_count(), usize(1));
 }
 
 TEST(RcDyn, DispatchCopyWeakAndRawRoundtrip) {
@@ -387,12 +387,12 @@ TEST(RcDyn, DispatchCopyWeakAndRawRoundtrip) {
     auto rc    = make_rc<rstd::dyn<RcDynTrait>>(RcDynPayload { drops, 41 });
 
     EXPECT_EQ(rc->value(), 41);
-    EXPECT_EQ(reinterpret_cast<rstd::usize>(rc.as_ptr().as_raw_ptr()) % 64, 0u);
+    EXPECT_EQ(reinterpret_cast<rstd::uintptr_t>(rc.as_ptr().as_raw_ptr()) % 64, 0u);
 
     auto copy      = rc;
     auto weak      = rc.downgrade();
     auto weak_copy = weak;
-    EXPECT_EQ(weak.weak_count(), 2u);
+    EXPECT_EQ(weak.weak_count(), usize(2));
     {
         auto upgraded = weak.upgrade();
         ASSERT_TRUE(upgraded.is_some());

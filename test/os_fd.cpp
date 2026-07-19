@@ -114,15 +114,17 @@ TEST(Path, ToCStringRoundTrip) {
     ASSERT_TRUE(res.is_ok());
     auto cs    = rstd::move(res).unwrap_unchecked();
     auto bytes = cs.to_bytes();
-    ASSERT_EQ(bytes.len(), 12u); // "/tmp/example" length
+    ASSERT_EQ(bytes.len(), rstd::usize(12)); // "/tmp/example" length
     auto with_nul = cs.to_bytes_with_nul();
-    ASSERT_EQ(with_nul.len(), 13u); // includes trailing NUL
-    EXPECT_EQ(with_nul.p[12], 0);
+    ASSERT_EQ(with_nul.len(), rstd::usize(13)); // includes trailing NUL
+    EXPECT_EQ(with_nul.p[12], rstd::u8());
 }
 
 TEST(Path, ToCStringRejectsInteriorNul) {
-    rstd::u8                    buf[] = { '/', 't', 'm', 'p', 0, 'x' };
-    rstd::ref<rstd::path::Path> p     = rstd::ref<rstd::path::Path>::from_raw_parts(buf, 6);
-    auto                        res   = p.to_cstring();
+    auto raw = rstd::slice<rstd::byte>::from_raw_parts(
+        reinterpret_cast<rstd::byte const*>("/tmp\0x"), rstd::usize(6));
+    auto buf = rstd::vec::Vec<rstd::u8>::copy_from_bytes(raw);
+    auto p   = rstd::ref<rstd::path::Path>::from_raw_parts(buf.data(), buf.len());
+    auto res = p.to_cstring();
     EXPECT_TRUE(res.is_err());
 }

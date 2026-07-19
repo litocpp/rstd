@@ -1,20 +1,35 @@
 #include <gtest/gtest.h>
+#include <string>
 
 import rstd;
 
 using namespace rstd::prelude;
 
+namespace
+{
+
+auto to_std_string(const rstd::vec::Vec<rstd::u8>& bytes) -> std::string {
+    auto result = std::string {};
+    result.reserve(bytes.len().to_primitive());
+    for (auto index = rstd::usize(); index < bytes.len(); ++index) {
+        result.push_back(static_cast<char>(bytes[index].to_primitive()));
+    }
+    return result;
+}
+
+} // namespace
+
 TEST(Process, ExitStatusSuccess) {
-    auto s = rstd::process::ExitStatus::from_code(0);
+    auto s = rstd::process::ExitStatus::from_code(rstd::i32());
     EXPECT_TRUE(s.success());
     EXPECT_TRUE(s.code().is_some());
-    EXPECT_EQ(s.code().unwrap(), 0);
+    EXPECT_EQ(s.code().unwrap(), rstd::i32());
 }
 
 TEST(Process, ExitStatusFailure) {
-    auto s = rstd::process::ExitStatus::from_code(1);
+    auto s = rstd::process::ExitStatus::from_code(rstd::i32(1));
     EXPECT_FALSE(s.success());
-    EXPECT_EQ(s.code().unwrap(), 1);
+    EXPECT_EQ(s.code().unwrap(), rstd::i32(1));
 }
 
 TEST(Process, CommandStatusTrue) {
@@ -27,7 +42,7 @@ TEST(Process, CommandStatusFalse) {
     auto res = rstd::process::Command::make("false").status();
     ASSERT_TRUE(res.is_ok());
     EXPECT_FALSE(res.unwrap().success());
-    EXPECT_EQ(res.unwrap().code().unwrap(), 1);
+    EXPECT_EQ(res.unwrap().code().unwrap(), rstd::i32(1));
 }
 
 TEST(Process, CommandWithArgs) {
@@ -38,7 +53,7 @@ TEST(Process, CommandWithArgs) {
                    .spawn();
     ASSERT_TRUE(res.is_ok());
     auto child = res.unwrap();
-    EXPECT_GT(child.id(), 0u);
+    EXPECT_GT(child.id(), rstd::u32());
 
     auto status = child.wait();
     ASSERT_TRUE(status.is_ok());
@@ -52,9 +67,8 @@ TEST(Process, CommandOutput) {
     EXPECT_TRUE(out.status.success());
 
     // stdout should contain "hello\n"
-    EXPECT_GE(out.stdout_buf.len(), 5u);
-    auto* p = reinterpret_cast<const char*>(out.stdout_buf.begin());
-    EXPECT_EQ(std::string(p, out.stdout_buf.len()), "hello\n");
+    EXPECT_GE(out.stdout_buf.len(), rstd::usize(5));
+    EXPECT_EQ(to_std_string(out.stdout_buf), "hello\n");
 }
 
 TEST(Process, CommandOutputStderr) {
@@ -63,8 +77,7 @@ TEST(Process, CommandOutputStderr) {
     ASSERT_TRUE(res.is_ok());
     auto out = res.unwrap();
 
-    auto* p = reinterpret_cast<const char*>(out.stderr_buf.begin());
-    EXPECT_EQ(std::string(p, out.stderr_buf.len()), "err\n");
+    EXPECT_EQ(to_std_string(out.stderr_buf), "err\n");
 }
 
 TEST(Process, CommandNotFound) {
@@ -86,8 +99,9 @@ TEST(Process, ChildStdinWrite) {
     ASSERT_TRUE(stdin_opt.is_some());
     {
         auto stdin_h = stdin_opt.unwrap();
-        auto msg     = reinterpret_cast<const rstd::u8*>("hello pipe");
-        auto wres    = rstd::as<rstd::io::Write>(stdin_h).write(msg, 10);
+        auto raw     = rstd::slice<rstd::byte>::from_raw_parts(
+            reinterpret_cast<rstd::byte const*>("hello pipe"), rstd::usize(10));
+        auto wres = rstd::as<rstd::io::Write>(stdin_h).write(raw);
         ASSERT_TRUE(wres.is_ok());
     } // stdin_h dropped here, child sees EOF
 
@@ -97,10 +111,15 @@ TEST(Process, ChildStdinWrite) {
     {
         auto     stdout_h = stdout_opt.unwrap();
         rstd::u8 buf[64]  = {};
-        auto     rres     = rstd::as<rstd::io::Read>(stdout_h).read(buf, sizeof(buf));
+        auto     values = rstd::mut_ref<rstd::u8[]>::from_raw_parts(buf, rstd::usize(sizeof(buf)));
+        auto     rres   = rstd::as<rstd::io::Read>(stdout_h).read(rstd::as_bytes_mut(values));
         ASSERT_TRUE(rres.is_ok());
-        EXPECT_EQ(rres.unwrap(), 10u);
-        EXPECT_EQ(std::string(reinterpret_cast<char*>(buf), 10), "hello pipe");
+        EXPECT_EQ(rres.unwrap(), rstd::usize(10));
+        auto bytes = rstd::vec::Vec<rstd::u8>::make();
+        for (auto index = rstd::usize(); index < rstd::usize(10); ++index) {
+            bytes.emplace_back(buf[index.to_primitive()]);
+        }
+        EXPECT_EQ(to_std_string(bytes), "hello pipe");
     }
 
     auto status = child.wait();
@@ -118,8 +137,7 @@ TEST(Process, WaitWithOutput) {
     ASSERT_TRUE(out_res.is_ok());
     auto out = out_res.unwrap();
     EXPECT_TRUE(out.status.success());
-    auto* p = reinterpret_cast<const char*>(out.stdout_buf.begin());
-    EXPECT_EQ(std::string(p, out.stdout_buf.len()), "collected\n");
+    EXPECT_EQ(to_std_string(out.stdout_buf), "collected\n");
 }
 
 TEST(Process, StdioNull) {

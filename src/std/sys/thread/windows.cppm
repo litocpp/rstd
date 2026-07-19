@@ -55,7 +55,7 @@ export struct Thread {
     }
 
     static void set_name(ref<ffi::CStr> name) {
-        auto* p   = (const char*)name.p;
+        auto* p   = name.as_ptr();
         int   len = MultiByteToWideChar(M_CP_UTF8, 0, p, -1, nullptr, 0);
         if (len > 0) {
             auto* buf = (wchar_t*)rstd::sys::libc::malloc(sizeof(wchar_t) * (usize)len);

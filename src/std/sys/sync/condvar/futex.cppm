@@ -11,7 +11,7 @@ using Mutex = mutex::futex::Mutex;
 export class Condvar {
     Futex m_futex;
 
-    constexpr Condvar() noexcept: m_futex(0) {}
+    constexpr Condvar() noexcept: m_futex(pal::futex::Primitive {}) {}
 
 public:
     Condvar(const Condvar&)            = delete;
@@ -20,12 +20,16 @@ public:
     static auto make() noexcept -> Condvar { return {}; }
 
     void notify_one() noexcept {
-        m_futex.fetch_add(1, rstd::sync::atomic::Ordering::Relaxed);
+        m_futex.fetch_add(
+            pal::futex::Primitive(static_cast<pal::futex::Primitive::primitive_type>(1)),
+            rstd::sync::atomic::Ordering::Relaxed);
         pal::futex::futex_wake(&m_futex);
     }
 
     void notify_all() noexcept {
-        m_futex.fetch_add(1, rstd::sync::atomic::Ordering::Relaxed);
+        m_futex.fetch_add(
+            pal::futex::Primitive(static_cast<pal::futex::Primitive::primitive_type>(1)),
+            rstd::sync::atomic::Ordering::Relaxed);
         pal::futex::futex_wake_all(&m_futex);
     }
 

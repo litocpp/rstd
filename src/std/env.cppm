@@ -14,8 +14,8 @@ using namespace rstd::prelude;
 
 auto os_string_from_cstr(const char* s) -> OsString {
     auto len = rstd::strlen(s);
-    auto vec = Vec<u8>::with_capacity(len);
-    for (usize i = 0; i < len; i++) vec.push(static_cast<u8>(s[i]));
+    auto raw = slice<byte>::from_raw_parts(reinterpret_cast<byte const*>(s), usize(len));
+    auto vec = Vec<u8>::copy_from_bytes(raw);
     return OsString::from_encoded_bytes_unchecked(rstd::move(vec));
 }
 

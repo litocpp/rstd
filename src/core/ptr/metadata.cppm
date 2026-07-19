@@ -1,4 +1,5 @@
 export module rstd.core:ptr.metadata;
+import :num.types;
 export import :trait;
 
 // https://github.com/rust-lang/rfcs/blob/master/text/2580-ptr-meta.md

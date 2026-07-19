@@ -178,7 +178,7 @@ auto executor_endpoint_vtable() -> const RawFacilityEndpointVTable* {
 
 template<typename E>
 auto make_executor_endpoint(const sync::Arc<ExecutorAwaitShared<E>>& shared) -> FacilityEndpoint {
-    auto id    = reinterpret_cast<usize>(shared.as_ptr().as_raw_ptr());
+    auto id    = reinterpret_cast<rstd::uintptr_t>(shared.as_ptr().as_raw_ptr());
     auto owned = shared.clone();
     return FacilityEndpoint::from_raw(
         id,
@@ -250,7 +250,7 @@ struct LocalExecutorState {
         auto ready = take_ready();
         auto ran   = usize {};
         while (! ready.is_empty()) {
-            auto job = ready.remove(0);
+            auto job = ready.remove(usize());
             job.run();
             ++ran;
         }
@@ -323,7 +323,7 @@ public:
 
     auto run_ready() -> usize {
         if (! m_state) {
-            return 0;
+            return usize();
         }
         return m_state->run_ready();
     }

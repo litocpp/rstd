@@ -1,4 +1,5 @@
 export module rstd.core:ptr.dyn;
+import :num.types;
 export import :ptr.metadata;
 export import :core;
 export import :marker;
@@ -50,12 +51,12 @@ struct VTableStaticStorage {
     using ApiHelper = mtp::TraitApiHelper<T, typename source::api_owner>;
     using apis_t    = vtable_t::apis_t;
 
-    template<usize I, typename Fn>
+    template<rstd::size_t I, typename Fn>
     struct Wrap {
         static_assert(false);
     };
 
-    template<usize I, typename Ret, bool Ne, typename... Args>
+    template<rstd::size_t I, typename Ret, bool Ne, typename... Args>
     struct Wrap<I, Ret (*)(voidp, Args...) noexcept(Ne)> {
         static auto func(voidp p, Args... args) noexcept(Ne) {
             constexpr const auto api { ApiHelper::template get<I>() };
@@ -70,7 +71,7 @@ struct VTableStaticStorage {
         };
     };
 
-    template<usize I>
+    template<rstd::size_t I>
     consteval static auto convert() {
         // get api from Impl
         using FT = mtp::func_traits<mtp::rm_cv<decltype(ApiHelper::template get<I>())>>;
@@ -81,7 +82,7 @@ struct VTableStaticStorage {
         }
     }
 
-    template<usize... Is>
+    template<rstd::size_t... Is>
     consteval static auto convert_all(mtp::index_sequence<Is...>) {
         return apis_t { (convert<Is>())... };
     }
@@ -92,8 +93,8 @@ struct VTableStaticStorage {
                 static_cast<U*>(p)->~U();
             },
         .apis  = convert_all(mtp::make_index_sequence<mtp::tuple_size<apis_t>> {}),
-        .size  = sizeof(U),
-        .align = alignof(U),
+        .size  = usize(sizeof(U)),
+        .align = usize(alignof(U)),
     };
 };
 

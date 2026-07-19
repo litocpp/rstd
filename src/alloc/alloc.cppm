@@ -1,6 +1,3 @@
-module;
-#include <rstd/macro.hpp>
-
 export module rstd.alloc:alloc;
 export import rstd.core;
 
@@ -8,16 +5,17 @@ using namespace rstd::prelude;
 using rstd::mut_ptr;
 using rstd::alloc::Allocator;
 using rstd::alloc::AllocError;
+using rstd::alloc::Allocation;
 using rstd::alloc::Layout;
 using rstd::ptr_::non_null::NonNull;
 using rstd::result::Result;
 
 // External symbols to be implemented by the runtime
 extern "C" {
-void* __rstd_alloc(usize size, usize align);
-void  __rstd_dealloc(void* ptr, usize size, usize align);
-void* __rstd_realloc(void* ptr, usize old_size, usize align, usize new_size);
-void* __rstd_alloc_zeroed(usize size, usize align);
+void* __rstd_alloc(rstd::size_t size, rstd::size_t align);
+void  __rstd_dealloc(void* ptr, rstd::size_t size, rstd::size_t align);
+void* __rstd_realloc(void* ptr, rstd::size_t old_size, rstd::size_t align, rstd::size_t new_size);
+void* __rstd_alloc_zeroed(rstd::size_t size, rstd::size_t align);
 }
 
 namespace alloc
@@ -26,17 +24,17 @@ namespace alloc
 /// Allocates memory with the given layout using the global allocator.
 /// \param layout The memory layout describing size and alignment requirements.
 /// \return A mutable pointer to the allocated memory.
-export auto alloc(Layout layout) noexcept -> mut_ptr<u8> {
+export auto alloc(Layout layout) noexcept -> void* {
     layout = layout.cpp_layout();
-    return mut_ptr<u8>::from_raw_parts(static_cast<u8*>(__rstd_alloc(layout.size, layout.align)));
+    return __rstd_alloc(layout.size.to_primitive(), layout.align.to_primitive());
 }
 
 /// Deallocates memory previously allocated with the given layout.
 /// \param ptr The pointer to the memory to deallocate.
 /// \param layout The layout that was used to allocate the memory.
-export void dealloc(mut_ptr<u8> ptr, Layout layout) noexcept {
+export void dealloc(void* ptr, Layout layout) noexcept {
     layout = layout.cpp_layout();
-    __rstd_dealloc(ptr.as_raw_ptr(), layout.size, layout.align);
+    __rstd_dealloc(ptr, layout.size.to_primitive(), layout.align.to_primitive());
 }
 
 /// Reallocates memory to a new size, preserving existing data up to the minimum of old and new sizes.
@@ -44,19 +42,18 @@ export void dealloc(mut_ptr<u8> ptr, Layout layout) noexcept {
 /// \param layout The layout that was used for the original allocation.
 /// \param new_size The desired new size in bytes.
 /// \return A mutable pointer to the reallocated memory.
-export auto realloc(mut_ptr<u8> ptr, Layout layout, usize new_size) noexcept -> mut_ptr<u8> {
+export auto realloc(void* ptr, Layout layout, usize new_size) noexcept -> void* {
     layout = layout.cpp_layout();
-    return mut_ptr<u8>::from_raw_parts(
-        static_cast<u8*>(__rstd_realloc(ptr.as_raw_ptr(), layout.size, layout.align, new_size)));
+    return __rstd_realloc(
+        ptr, layout.size.to_primitive(), layout.align.to_primitive(), new_size.to_primitive());
 }
 
 /// Allocates zero-initialized memory with the given layout.
 /// \param layout The memory layout describing size and alignment requirements.
 /// \return A mutable pointer to the zero-initialized allocated memory.
-export auto alloc_zeroed(Layout layout) noexcept -> mut_ptr<u8> {
+export auto alloc_zeroed(Layout layout) noexcept -> void* {
     layout = layout.cpp_layout();
-    return mut_ptr<u8>::from_raw_parts(
-        static_cast<u8*>(__rstd_alloc_zeroed(layout.size, layout.align)));
+    return __rstd_alloc_zeroed(layout.size.to_primitive(), layout.align.to_primitive());
 }
 
 /// Aborts the process on memory allocation failure.
@@ -79,28 +76,22 @@ namespace alloc_ = alloc;
 template<>
 struct rstd::Impl<rstd::alloc::Allocator, alloc_::Global>
     : DefaultInImpl<rstd::alloc::Allocator, alloc_::Global> {
-    auto allocate(Layout layout) const -> Result<NonNull<u8[]>, AllocError> {
-        if (layout.size == 0) {
-            return Ok(NonNull<u8[]>::make_unchecked(layout.dangling().template cast_array<u8>()));
-        }
+    auto allocate(Layout layout) const -> Result<Allocation, AllocError> {
+        if (layout.size == usize()) return Ok(Allocation { layout.dangling(), layout.size });
         auto p = ::alloc::alloc(layout);
         if (p == nullptr) return Err(AllocError {});
-        return Ok(NonNull<u8[]>::make_unchecked(p.template cast_array<u8>(layout.size)));
+        return Ok(Allocation { p, layout.size });
     }
 
-    auto allocate_zeroed(Layout layout) const -> Result<NonNull<u8[]>, AllocError> {
-        if (layout.size == 0) {
-            return Ok(NonNull<u8[]>::make_unchecked(layout.dangling().template cast_array<u8>()));
-        }
+    auto allocate_zeroed(Layout layout) const -> Result<Allocation, AllocError> {
+        if (layout.size == usize()) return Ok(Allocation { layout.dangling(), layout.size });
         auto p = ::alloc::alloc_zeroed(layout);
         if (p == nullptr) return Err(AllocError {});
-        return Ok(NonNull<u8[]>::make_unchecked(p.template cast_array<u8>(layout.size)));
+        return Ok(Allocation { p, layout.size });
     }
 
-    void deallocate(NonNull<u8> ptr, Layout layout) const noexcept {
-        if (layout.size != 0) {
-            ::alloc::dealloc(ptr.as_mut_ptr(), layout.cpp_layout());
-        }
+    void deallocate(void* ptr, Layout layout) const noexcept {
+        if (layout.size != usize()) ::alloc::dealloc(ptr, layout.cpp_layout());
     }
 };
 

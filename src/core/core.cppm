@@ -1,4 +1,5 @@
 export module rstd.core:core;
+import :num.types;
 export import :ptr.metadata;
 export import :ptr.ptr;
 
@@ -41,28 +42,6 @@ struct AsCast<mut_ptr<T>, ptr<T>> {
         auto raw    = from.as_raw_ptr();
         using val_t = mtp::rm_const<mtp::rm_ext<mtp::rm_ptr<decltype(raw)>>>;
         return rstd::from_raw_parts_override<mut_ptr<T>>(&from, const_cast<val_t*>(raw));
-    }
-};
-
-template<typename To>
-struct AsCast<To*, u8*> {
-    static constexpr auto cast(u8* from) noexcept -> To* { return reinterpret_cast<To*>(from); }
-};
-template<typename To>
-struct AsCast<To*, u8 const*> {
-    static constexpr auto cast(u8 const* from) noexcept -> To* {
-        return reinterpret_cast<To*>(from);
-    }
-};
-
-template<typename From>
-struct AsCast<u8*, From*> {
-    static constexpr auto cast(u8* from) noexcept -> u8* { return reinterpret_cast<u8*>(from); }
-};
-template<typename From>
-struct AsCast<u8 const*, From*> {
-    static constexpr auto cast(From* from) noexcept -> u8 const* {
-        return reinterpret_cast<u8 const*>(from);
     }
 };
 

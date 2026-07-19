@@ -9,6 +9,10 @@ add_library(rstd::core ALIAS rstd.core)
 target_compile_features(rstd.core PUBLIC cxx_std_20)
 target_include_directories(rstd.core PUBLIC include)
 target_link_libraries(rstd.core PUBLIC rstd.basic PRIVATE "$<LINK_ONLY:rstd.runtime>")
+target_compile_definitions(
+  rstd.core
+  PRIVATE
+    "RSTD_CHECK_INTEGER_OVERFLOW=$<OR:$<CONFIG:Debug>,$<BOOL:${RSTD_CHECK_INTEGER_OVERFLOW}>>")
 target_sources(
   rstd.core
   PUBLIC FILE_SET
@@ -61,6 +65,10 @@ target_sources(
          ffi/mod.cppm
          ffi/c_str.cppm
          hash/mod.cppm
+         num/types.cppm
+         num/literals.cppm
+         num/integer_methods.cppm
+         num/convert.cppm
          num/mod.cppm
          num/bignum.cppm
          num/dec2flt.cppm
@@ -92,7 +100,4 @@ target_sources(
          sync/mod.cppm
          sync/atomic.cppm
          forward/mod.cppm
-         char.cppm
-         f32.cppm
-         f64.cppm
-         int.cppm)
+         char.cppm)

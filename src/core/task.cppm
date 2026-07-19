@@ -1,5 +1,3 @@
-module;
-#include <rstd/macro.hpp>
 export module rstd.core:task;
 export import :core;
 export import :panicking;

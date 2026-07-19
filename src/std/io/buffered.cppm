@@ -16,17 +16,18 @@ namespace rstd::io
 export template<typename R>
     requires Impled<R, io::Read>
 class BufReader {
-    R       inner_;
-    Vec<u8> buf_;
-    usize   pos_    = 0;
-    usize   filled_ = 0;
+    R            inner_;
+    Vec<u8>      buf_;
+    rstd::size_t pos_ {};
+    rstd::size_t filled_ {};
 
     // Refill buffer from inner.  Resets pos_ and filled_.
     auto fill_inner() -> Result<usize> {
-        pos_     = 0;
-        filled_  = 0;
-        auto res = as<Read>(inner_).read(buf_.begin(), buf_.len());
-        if (res.is_ok()) filled_ = res.unwrap_unchecked();
+        pos_        = 0;
+        filled_     = 0;
+        auto values = buf_.as_mut_slice().as_mut_ref();
+        auto res    = as<Read>(inner_).read(as_bytes_mut(values));
+        if (res.is_ok()) filled_ = res.unwrap_unchecked().to_primitive();
         return res;
     }
 
@@ -38,7 +39,7 @@ public:
     /// \param capacity The buffer size in bytes (defaults to DEFAULT_BUF_SIZE).
     explicit BufReader(R inner, usize capacity = DEFAULT_BUF_SIZE)
         : inner_(rstd::move(inner)), buf_(Vec<u8>::with_capacity(capacity)) {
-        for (usize i = 0; i < capacity; ++i) buf_.push(u8(0));
+        for (rstd::size_t i = 0; i < capacity.to_primitive(); ++i) buf_.push(u8 {});
     }
 
     /// Returns a reference to the underlying reader.
@@ -49,7 +50,8 @@ public:
     auto capacity() const noexcept -> usize { return buf_.len(); }
     /// Returns a slice of the buffered data that has been read but not yet consumed.
     auto buffer() const noexcept -> slice<u8> {
-        return slice<u8>::from_raw_parts(buf_.begin() + pos_, filled_ - pos_);
+        if (pos_ == filled_) return {};
+        return slice<u8>::from_raw_parts(buf_.begin() + pos_, usize(filled_ - pos_));
     }
 
     /// Discard the internal buffer (call after seeking inner directly).
@@ -69,25 +71,30 @@ class BufWriter {
     Vec<u8> buf_;
 
     auto flush_buf() -> Result<empty> {
-        usize rem = buf_.len();
-        usize off = 0;
-        while (rem > 0) {
-            auto res = as<Write>(inner_).write(buf_.begin() + off, rem);
+        auto         remaining = buf_.len().to_primitive();
+        rstd::size_t offset    = 0;
+        auto         bytes     = as_bytes(buf_.as_slice());
+        while (remaining != 0) {
+            auto pending =
+                slice<byte>::from_raw_parts(bytes.as_raw_ptr() + offset, usize(remaining));
+            auto res = as<Write>(inner_).write(pending);
             if (res.is_err()) {
-                // Remove already-written bytes.
-                if (off > 0) {
-                    usize left = buf_.len() - off;
-                    for (usize i = 0; i < left; ++i) buf_.begin()[i] = buf_.begin()[off + i];
-                    buf_.clear();
-                    for (usize i = 0; i < left; ++i) buf_.push(u8(0));
-                } else {
-                    buf_.clear();
+                if (offset != 0) {
+                    auto const left = buf_.len().to_primitive() - offset;
+                    for (rstd::size_t i = 0; i < left; ++i) {
+                        buf_.begin()[i] = buf_.begin()[offset + i];
+                    }
+                    for (rstd::size_t i = 0; i < offset; ++i) (void)buf_.pop();
                 }
                 return Err(res.unwrap_err_unchecked());
             }
-            usize n = res.unwrap_unchecked();
-            off += n;
-            rem -= n;
+            auto const written = res.unwrap_unchecked().to_primitive();
+            if (written == 0) return Err(error::Error_WRITE_ALL_EOF);
+            if (written > remaining) {
+                return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidData }));
+            }
+            offset += written;
+            remaining -= written;
         }
         buf_.clear();
         return Ok(empty {});
@@ -112,9 +119,7 @@ public:
     /// Returns the total capacity of the internal buffer.
     auto capacity() const noexcept -> usize { return buf_.capacity(); }
     /// Returns a slice of the buffered data that has not yet been flushed.
-    auto buffer() const noexcept -> slice<u8> {
-        return slice<u8>::from_raw_parts(buf_.begin(), buf_.len());
-    }
+    auto buffer() const noexcept -> slice<u8> { return buf_.as_slice(); }
 
     /// Consumes this BufWriter, flushing and returning the underlying writer.
     auto into_inner() && -> W { return rstd::move(inner_); }
@@ -129,21 +134,23 @@ namespace rstd
 template<typename R>
     requires Impled<R, io::Read>
 struct Impl<io::Read, io::BufReader<R>> : ImplBase<io::BufReader<R>> {
-    auto read(u8* buf, usize len) -> io::Result<usize> {
+    auto read(mut_ref<byte[]> buf) -> io::Result<usize> {
         auto& self = this->self();
+        if (buf.is_empty()) return Ok(usize {});
         // Bypass buffer for large reads when buffer is empty.
-        if (self.pos_ == self.filled_ && len >= self.buf_.len()) {
-            return as<io::Read>(self.inner_).read(buf, len);
+        if (self.pos_ == self.filled_ && buf.len() >= self.buf_.len()) {
+            return as<io::Read>(self.inner_).read(buf);
         }
         if (self.pos_ == self.filled_) {
             auto res = self.fill_inner();
             if (res.is_err()) return Err(res.unwrap_err_unchecked());
-            if (self.filled_ == 0) return Ok(usize(0));
+            if (self.filled_ == 0) return Ok(usize {});
         }
-        usize n = rstd::min(len, self.filled_ - self.pos_);
-        rstd::mem::memcpy(buf, self.buf_.begin() + self.pos_, n);
-        self.pos_ += n;
-        return Ok(n);
+        auto const count  = rstd::min(buf.len().to_primitive(), self.filled_ - self.pos_);
+        auto       source = slice<u8>::from_raw_parts(self.buf_.begin() + self.pos_, usize(count));
+        rstd::mem::memcpy(buf.as_raw_ptr(), as_bytes(source).as_raw_ptr(), usize(count));
+        self.pos_ += count;
+        return Ok(usize(count));
     }
 };
 
@@ -156,12 +163,14 @@ struct Impl<io::BufRead, io::BufReader<R>> : ImplBase<io::BufReader<R>> {
             auto res = self.fill_inner();
             if (res.is_err()) return Err(res.unwrap_err_unchecked());
         }
-        return Ok(
-            slice<u8>::from_raw_parts(self.buf_.begin() + self.pos_, self.filled_ - self.pos_));
+        if (self.pos_ == self.filled_) return Ok(slice<u8> {});
+        return Ok(slice<u8>::from_raw_parts(self.buf_.begin() + self.pos_,
+                                            usize(self.filled_ - self.pos_)));
     }
     auto consume(usize amt) -> void {
-        auto& self = this->self();
-        self.pos_  = rstd::min(self.pos_ + amt, self.filled_);
+        auto&      self      = this->self();
+        auto const available = self.filled_ - self.pos_;
+        self.pos_ += rstd::min(amt.to_primitive(), available);
     }
 };
 
@@ -178,17 +187,17 @@ struct Impl<io::Seek, io::BufReader<R>> : ImplBase<io::BufReader<R>> {
 template<typename W>
     requires Impled<W, io::Write>
 struct Impl<io::Write, io::BufWriter<W>> : ImplBase<io::BufWriter<W>> {
-    auto write(const u8* buf, usize len) -> io::Result<usize> {
+    auto write(slice<byte> buf) -> io::Result<usize> {
         auto& self = this->self();
-        if (self.buf_.len() + len > self.buf_.capacity()) {
+        if (self.buf_.len() + buf.len() > self.buf_.capacity()) {
             auto res = self.flush_buf();
             if (res.is_err()) return Err(res.unwrap_err_unchecked());
         }
-        if (len >= self.buf_.capacity()) {
-            return as<io::Write>(self.inner_).write(buf, len);
+        if (buf.len() >= self.buf_.capacity()) {
+            return as<io::Write>(self.inner_).write(buf);
         }
-        for (usize i = 0; i < len; ++i) self.buf_.push(u8(buf[i]));
-        return Ok(len);
+        self.buf_.extend_from_bytes(buf);
+        return Ok(buf.len());
     }
     auto flush() -> io::Result<empty> {
         auto& self = this->self();

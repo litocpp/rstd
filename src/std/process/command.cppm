@@ -1,5 +1,3 @@
-module;
-#include <rstd/macro.hpp>
 export module rstd:process.command;
 export import :process.exit_status;
 export import :io;
@@ -27,32 +25,32 @@ struct Child;
 ///
 /// Dropping this closes the pipe, causing the child to see EOF on its stdin.
 struct ChildStdin {
-    i32 fd { -1 };
+    int fd { -1 };
     ~ChildStdin();
     ChildStdin(ChildStdin&& o) noexcept: fd(o.fd) { o.fd = -1; }
     ChildStdin& operator=(ChildStdin&&) = delete;
     ChildStdin()                        = default;
-    explicit ChildStdin(i32 f): fd(f) {}
+    explicit ChildStdin(int f): fd(f) {}
 };
 
 /// A handle to a child process's standard output (read end of pipe).
 struct ChildStdout {
-    i32 fd { -1 };
+    int fd { -1 };
     ~ChildStdout();
     ChildStdout(ChildStdout&& o) noexcept: fd(o.fd) { o.fd = -1; }
     ChildStdout& operator=(ChildStdout&&) = delete;
     ChildStdout()                         = default;
-    explicit ChildStdout(i32 f): fd(f) {}
+    explicit ChildStdout(int f): fd(f) {}
 };
 
 /// A handle to a child process's standard error (read end of pipe).
 struct ChildStderr {
-    i32 fd { -1 };
+    int fd { -1 };
     ~ChildStderr();
     ChildStderr(ChildStderr&& o) noexcept: fd(o.fd) { o.fd = -1; }
     ChildStderr& operator=(ChildStderr&&) = delete;
     ChildStderr()                         = default;
-    explicit ChildStderr(i32 f): fd(f) {}
+    explicit ChildStderr(int f): fd(f) {}
 };
 
 } // namespace rstd::process
@@ -71,23 +69,23 @@ namespace rstd
 
 template<>
 struct Impl<io::Write, process::ChildStdin> : ImplBase<process::ChildStdin> {
-    auto write(const u8* buf, usize len) -> io::Result<usize> {
-        return sys::io::stdio::write_fd(this->self().fd, buf, len);
+    auto write(slice<byte> buf) -> io::Result<usize> {
+        return sys::io::stdio::write_fd(this->self().fd, buf);
     }
     auto flush() -> io::Result<empty> { return Ok(empty {}); }
 };
 
 template<>
 struct Impl<io::Read, process::ChildStdout> : ImplBase<process::ChildStdout> {
-    auto read(u8* buf, usize len) -> io::Result<usize> {
-        return sys::io::stdio::read_fd(this->self().fd, buf, len);
+    auto read(mut_ref<byte[]> buf) -> io::Result<usize> {
+        return sys::io::stdio::read_fd(this->self().fd, buf);
     }
 };
 
 template<>
 struct Impl<io::Read, process::ChildStderr> : ImplBase<process::ChildStderr> {
-    auto read(u8* buf, usize len) -> io::Result<usize> {
-        return sys::io::stdio::read_fd(this->self().fd, buf, len);
+    auto read(mut_ref<byte[]> buf) -> io::Result<usize> {
+        return sys::io::stdio::read_fd(this->self().fd, buf);
     }
 };
 
@@ -98,13 +96,13 @@ export namespace rstd::process
 
 /// A child process handle.
 struct Child {
-    i32                 pid { -1 };
+    int                 pid { -1 };
     Option<ChildStdin>  stdin_pipe;
     Option<ChildStdout> stdout_pipe;
     Option<ChildStderr> stderr_pipe;
 
     /// Returns the OS-assigned process ID.
-    auto id() const noexcept -> u32 { return static_cast<u32>(pid); }
+    auto id() const noexcept -> u32 { return u32(pid); }
 
     /// Takes ownership of the child's stdin pipe handle.
     auto take_stdin() -> Option<ChildStdin> { return stdin_pipe.take(); }

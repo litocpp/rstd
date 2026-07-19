@@ -39,7 +39,7 @@ TEST(Condvar, WaitTimeoutReportsElapsedTimeout) {
     auto cvar  = sync::Condvar {};
     auto guard = mutex.lock().unwrap();
 
-    auto result = cvar.wait_timeout(guard, time::Duration::from_millis(5));
+    auto result = cvar.wait_timeout(guard, time::Duration::from_millis(u64(5)));
 
     EXPECT_TRUE(result.timed_out());
     EXPECT_FALSE(*guard);
@@ -50,15 +50,15 @@ TEST(Condvar, WaitTimeoutWhileReturnsWhenPredicateClears) {
     auto worker = state.clone();
 
     auto handle = thread::spawn([worker = rstd::move(worker)] {
-                      thread::sleep(time::Duration::from_millis(5));
+                      thread::sleep(time::Duration::from_millis(u64(5)));
                       auto guard = worker->ready.lock().unwrap();
                       *guard     = true;
                       worker->cvar.notify_all();
                   }).unwrap();
 
-    auto guard = state->ready.lock().unwrap();
-    auto result =
-        state->cvar.wait_timeout_while(guard, time::Duration::from_millis(500), [](bool ready) {
+    auto guard  = state->ready.lock().unwrap();
+    auto result = state->cvar.wait_timeout_while(
+        guard, time::Duration::from_millis(u64(500)), [](bool ready) {
             return ! ready;
         });
 

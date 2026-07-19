@@ -13,18 +13,19 @@ using RawOsError = i32;
 
 auto last_os_error() noexcept -> RawOsError {
 #if RSTD_OS_UNIX
-    return libc::get_errno();
+    return RawOsError(static_cast<rstd::int32_t>(libc::get_errno()));
 #elif RSTD_OS_WINDOWS
-    return static_cast<RawOsError>(libc::GetLastError());
+    return RawOsError(static_cast<rstd::int32_t>(libc::GetLastError()));
 #else
-    return 0;
+    return RawOsError();
 #endif
 }
 
 auto decode_error_kind(RawOsError error) noexcept -> rstd::io::error::ErrorKind {
     using Kind = rstd::io::error::ErrorKind;
 #if RSTD_OS_UNIX
-    switch (error) {
+    auto native_error = static_cast<int>(error.to_primitive());
+    switch (native_error) {
     case libc::ENOENT: return Kind { Kind::NotFound };
     case libc::EACCES:
     case libc::EPERM: return Kind { Kind::PermissionDenied };
@@ -66,11 +67,13 @@ auto decode_error_kind(RawOsError error) noexcept -> rstd::io::error::ErrorKind 
     case libc::EINPROGRESS: return Kind { Kind::InProgress };
     default: break;
     }
-    if (error == libc::EWOULDBLOCK) return Kind { Kind::WouldBlock };
-    if (libc::HAS_ESTALE && error == libc::ESTALE) return Kind { Kind::StaleNetworkFileHandle };
-    if (libc::HAS_EDQUOT && error == libc::EDQUOT) return Kind { Kind::QuotaExceeded };
+    if (native_error == libc::EWOULDBLOCK) return Kind { Kind::WouldBlock };
+    if (libc::HAS_ESTALE && native_error == libc::ESTALE) {
+        return Kind { Kind::StaleNetworkFileHandle };
+    }
+    if (libc::HAS_EDQUOT && native_error == libc::EDQUOT) return Kind { Kind::QuotaExceeded };
 #elif RSTD_OS_WINDOWS
-    switch (static_cast<unsigned long>(error)) {
+    switch (static_cast<unsigned long>(error.to_primitive())) {
     case libc::ERROR_FILE_NOT_FOUND:
     case libc::ERROR_PATH_NOT_FOUND: return Kind { Kind::NotFound };
     case libc::ERROR_ACCESS_DENIED: return Kind { Kind::PermissionDenied };

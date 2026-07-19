@@ -88,7 +88,7 @@ auto wait_for_count(std::atomic<int>& value, int expected) -> bool {
         if (value.load(std::memory_order_acquire) == expected) {
             return true;
         }
-        thread::sleep(time::Duration::from_millis(1));
+        thread::sleep(time::Duration::from_millis(u64(1)));
     }
     return false;
 }
@@ -115,7 +115,7 @@ auto wait_for_flag(std::atomic<bool>& value) -> bool {
         if (value.load(std::memory_order_acquire)) {
             return true;
         }
-        thread::sleep(time::Duration::from_millis(1));
+        thread::sleep(time::Duration::from_millis(u64(1)));
     }
     return false;
 }
@@ -179,7 +179,7 @@ TEST(RstdAsyncConcurrency, MultipleCallersSubmitThroughWorkerInboxes) {
     constexpr int tasks_per_call = 64;
     constexpr int expected_tasks = callers * tasks_per_call;
     auto          completed      = std::atomic<int> { 0 };
-    auto runtime = async::RuntimeBuilder::multi_thread().worker_threads(4).build().unwrap();
+    auto runtime = async::RuntimeBuilder::multi_thread().worker_threads(usize(4)).build().unwrap();
     auto handle  = runtime.handle();
 
     auto first_handle  = handle.clone();
@@ -219,7 +219,7 @@ TEST(RstdAsyncConcurrency, ShutdownWaitsForRunningExternalSegment) {
     auto context  = async::LocalExecutorContext::make();
     auto executor = async::AnyExecutor::from_executor(context.executor());
     auto runtime  = Option<async::Runtime> { Some(
-        async::RuntimeBuilder::multi_thread().worker_threads(1).build().unwrap()) };
+        async::RuntimeBuilder::multi_thread().worker_threads(usize(1)).build().unwrap()) };
     auto entered  = std::atomic<bool> { false };
     auto release  = std::atomic<bool> { false };
     auto resumed  = std::atomic<bool> { false };
@@ -228,17 +228,17 @@ TEST(RstdAsyncConcurrency, ShutdownWaitsForRunningExternalSegment) {
         hold_external_segment(executor.clone(), entered, release, resumed, DropSignal { drops }));
     auto executor_thread = thread::spawn([&context] {
                                for (;;) {
-                                   if (context.run_ready() != 0) {
+                                   if (context.run_ready() != usize()) {
                                        return true;
                                    }
-                                   thread::sleep(time::Duration::from_millis(1));
+                                   thread::sleep(time::Duration::from_millis(u64(1)));
                                }
                            }).unwrap();
 
     ASSERT_TRUE(wait_for_flag(entered));
     EXPECT_EQ(drops.load(std::memory_order_acquire), 0);
     auto releaser = thread::spawn([&release] {
-                        thread::sleep(time::Duration::from_millis(2));
+                        thread::sleep(time::Duration::from_millis(u64(2)));
                         release.store(true, std::memory_order_release);
                     }).unwrap();
     runtime       = None();

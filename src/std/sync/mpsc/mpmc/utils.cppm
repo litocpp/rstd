@@ -1,5 +1,3 @@
-module;
-#include <rstd/macro.hpp>
 export module rstd:sync.mpsc.mpmc.utils;
 export import rstd.core;
 export import :thread;
@@ -21,31 +19,31 @@ struct alignas(64) CachePadded {
 };
 
 export class Backoff {
-    usize                step;
-    static constexpr u32 SPIN_LIMIT = 6;
+    rstd::uint32_t                  step {};
+    static constexpr rstd::uint32_t SPIN_LIMIT = 6;
 
 public:
-    Backoff(): step(0) {}
+    Backoff() = default;
 
     void spin_light() {
-        auto  limit = step < SPIN_LIMIT ? step : SPIN_LIMIT;
-        usize count = 1 << limit;
-        for (usize i = 0; i < count; ++i) {
+        auto         limit = step < SPIN_LIMIT ? step : SPIN_LIMIT;
+        rstd::size_t count = rstd::size_t(1) << limit;
+        for (rstd::size_t i = 0; i < count; ++i) {
             hint::spin_loop();
         }
-        step += 1;
+        ++step;
     }
 
     void spin_heavy() {
         if (step <= SPIN_LIMIT) {
-            usize count = 1 << step;
-            for (usize i = 0; i < count; ++i) {
+            rstd::size_t count = rstd::size_t(1) << step;
+            for (rstd::size_t i = 0; i < count; ++i) {
                 hint::spin_loop();
             }
         } else {
             thread::yield_now();
         }
-        step += 1;
+        ++step;
     }
 };
 

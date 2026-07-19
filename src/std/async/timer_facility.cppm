@@ -10,7 +10,7 @@ using namespace rstd;
 namespace rstd::async
 {
 
-inline constexpr usize TIMER_FACILITY_ID { rstd::numeric_limits<usize>::max() };
+inline constexpr rstd::uintptr_t TIMER_FACILITY_ID { ~rstd::uintptr_t(0) };
 
 struct TimerFacilityFields {
     WorkerHandle                    worker;

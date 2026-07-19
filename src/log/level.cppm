@@ -8,7 +8,7 @@ namespace rstd::log
 ///
 /// Discriminant values align with LevelFilter: Error=1, Warn=2, Info=3, Debug=4, Trace=5.
 /// Off=0 exists only in LevelFilter.
-export enum class Level : u32 {
+export enum class Level : rstd::uint32_t {
     Error = 1,
     Warn  = 2,
     Info  = 3,
@@ -17,7 +17,7 @@ export enum class Level : u32 {
 };
 
 /// A verbosity level filter that includes Off (disable all logging).
-export enum class LevelFilter : u32 {
+export enum class LevelFilter : rstd::uint32_t {
     Off   = 0,
     Error = 1,
     Warn  = 2,
@@ -37,56 +37,56 @@ namespace rstd::log
 
 /// Returns the uppercase string name for a Level.
 export [[nodiscard]]
-inline constexpr auto as_str(Level l) noexcept -> ref<str> {
-    return LEVEL_NAMES[static_cast<u32>(l)];
+inline auto as_str(Level l) noexcept -> ref<str> {
+    return LEVEL_NAMES[static_cast<rstd::uint32_t>(l)];
 }
 
 /// Returns the uppercase string name for a LevelFilter.
 export [[nodiscard]]
-inline constexpr auto as_str(LevelFilter f) noexcept -> ref<str> {
-    return LEVEL_NAMES[static_cast<u32>(f)];
+inline auto as_str(LevelFilter f) noexcept -> ref<str> {
+    return LEVEL_NAMES[static_cast<rstd::uint32_t>(f)];
 }
 
 // ── comparisons ───────────────────────────────────────────────────────────
 
 export [[nodiscard]]
 inline constexpr bool operator<=(Level l, LevelFilter f) noexcept {
-    return static_cast<u32>(l) <= static_cast<u32>(f);
+    return static_cast<rstd::uint32_t>(l) <= static_cast<rstd::uint32_t>(f);
 }
 
 export [[nodiscard]]
 inline constexpr bool operator<=(LevelFilter f, Level l) noexcept {
-    return static_cast<u32>(f) <= static_cast<u32>(l);
+    return static_cast<rstd::uint32_t>(f) <= static_cast<rstd::uint32_t>(l);
 }
 
 export [[nodiscard]]
 inline constexpr bool operator<(Level l, LevelFilter f) noexcept {
-    return static_cast<u32>(l) < static_cast<u32>(f);
+    return static_cast<rstd::uint32_t>(l) < static_cast<rstd::uint32_t>(f);
 }
 
 export [[nodiscard]]
 inline constexpr bool operator<(LevelFilter f, Level l) noexcept {
-    return static_cast<u32>(f) < static_cast<u32>(l);
+    return static_cast<rstd::uint32_t>(f) < static_cast<rstd::uint32_t>(l);
 }
 
 export [[nodiscard]]
 inline constexpr bool operator>=(Level l, LevelFilter f) noexcept {
-    return static_cast<u32>(l) >= static_cast<u32>(f);
+    return static_cast<rstd::uint32_t>(l) >= static_cast<rstd::uint32_t>(f);
 }
 
 export [[nodiscard]]
 inline constexpr bool operator>(Level l, LevelFilter f) noexcept {
-    return static_cast<u32>(l) > static_cast<u32>(f);
+    return static_cast<rstd::uint32_t>(l) > static_cast<rstd::uint32_t>(f);
 }
 
 export [[nodiscard]]
 inline constexpr bool operator==(Level l, LevelFilter f) noexcept {
-    return static_cast<u32>(l) == static_cast<u32>(f);
+    return static_cast<rstd::uint32_t>(l) == static_cast<rstd::uint32_t>(f);
 }
 
 export [[nodiscard]]
 inline constexpr bool operator!=(Level l, LevelFilter f) noexcept {
-    return static_cast<u32>(l) != static_cast<u32>(f);
+    return static_cast<rstd::uint32_t>(l) != static_cast<rstd::uint32_t>(f);
 }
 
 // ── conversions ───────────────────────────────────────────────────────────
@@ -94,14 +94,14 @@ inline constexpr bool operator!=(Level l, LevelFilter f) noexcept {
 /// Converts Level to its equivalent LevelFilter.
 export [[nodiscard]]
 inline constexpr auto to_level_filter(Level l) noexcept -> LevelFilter {
-    return static_cast<LevelFilter>(static_cast<u32>(l));
+    return static_cast<LevelFilter>(static_cast<rstd::uint32_t>(l));
 }
 
 /// Converts LevelFilter to Level, returning None if Off.
 export [[nodiscard]]
 inline constexpr auto to_level(LevelFilter f) noexcept -> Option<Level> {
     if (f == LevelFilter::Off) return None();
-    return Some(static_cast<Level>(static_cast<u32>(f)));
+    return Some(static_cast<Level>(static_cast<rstd::uint32_t>(f)));
 }
 
 // ── parse ─────────────────────────────────────────────────────────────────
@@ -109,13 +109,13 @@ inline constexpr auto to_level(LevelFilter f) noexcept -> Option<Level> {
 /// Parses a level name (case-insensitive). Returns None on failure.
 export [[nodiscard]]
 inline constexpr auto parse_level(ref<str> s) noexcept -> Option<Level> {
-    if (s.size() < 3 || s.size() > 5) return None();
+    if (s.size() < usize(3) || s.size() > usize(5)) return None();
     // Case-insensitive compare against known names
     auto cmp = [](ref<str> a, ref<str> b) -> bool {
         if (a.size() != b.size()) return false;
-        for (usize i = 0; i < a.size(); ++i) {
-            char ca = a.data()[i];
-            char cb = b.data()[i];
+        for (rstd::size_t i = 0; i < a.size().to_primitive(); ++i) {
+            char ca = static_cast<char>(a.data()[i]);
+            char cb = static_cast<char>(b.data()[i]);
             if (ca >= 'a' && ca <= 'z') ca = char(ca - 'a' + 'A');
             if (cb >= 'a' && cb <= 'z') cb = char(cb - 'a' + 'A');
             if (ca != cb) return false;
@@ -133,12 +133,12 @@ inline constexpr auto parse_level(ref<str> s) noexcept -> Option<Level> {
 /// Parses a level filter name (case-insensitive). Returns None on failure.
 export [[nodiscard]]
 inline constexpr auto parse_level_filter(ref<str> s) noexcept -> Option<LevelFilter> {
-    if (s.size() < 2 || s.size() > 5) return None();
+    if (s.size() < usize(2) || s.size() > usize(5)) return None();
     auto cmp = [](ref<str> a, ref<str> b) -> bool {
         if (a.size() != b.size()) return false;
-        for (usize i = 0; i < a.size(); ++i) {
-            char ca = a.data()[i];
-            char cb = b.data()[i];
+        for (rstd::size_t i = 0; i < a.size().to_primitive(); ++i) {
+            char ca = static_cast<char>(a.data()[i]);
+            char cb = static_cast<char>(b.data()[i]);
             if (ca >= 'a' && ca <= 'z') ca = char(ca - 'a' + 'A');
             if (cb >= 'a' && cb <= 'z') cb = char(cb - 'a' + 'A');
             if (ca != cb) return false;
@@ -164,7 +164,7 @@ template<>
 struct Impl<fmt::Display, log::Level> : ImplBase<log::Level> {
     auto fmt(fmt::Formatter& f) const -> bool {
         auto s = log::as_str(this->self());
-        return f.write_raw(s.data(), s.size());
+        return f.write_raw(s.data(), s.size().to_primitive());
     }
 };
 
@@ -172,7 +172,7 @@ template<>
 struct Impl<fmt::Display, log::LevelFilter> : ImplBase<log::LevelFilter> {
     auto fmt(fmt::Formatter& f) const -> bool {
         auto s = log::as_str(this->self());
-        return f.write_raw(s.data(), s.size());
+        return f.write_raw(s.data(), s.size().to_primitive());
     }
 };
 

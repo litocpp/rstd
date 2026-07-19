@@ -34,13 +34,13 @@ struct NotifyState {
     auto operator=(NotifyState&&) noexcept -> NotifyState& = default;
 
     static auto last_os_error() noexcept -> io::Error {
-        return io::Error::from_raw_os_error(libc::get_errno());
+        return io::Error::from_raw_os_error(i32(libc::get_errno()));
     }
 
     auto drain() -> io::Result<bool> {
 #if RSTD_OS_LINUX
-        bool any = false;
-        u8   buf[64] {};
+        bool          any = false;
+        rstd::uint8_t buf[64] {};
         for (;;) {
             auto n = libc::read(read_fd.as_raw_fd(), buf, sizeof(buf));
             if (n > 0) {
@@ -58,7 +58,7 @@ struct NotifyState {
             if (err == libc::EAGAIN || err == libc::EWOULDBLOCK) {
                 return Ok(any);
             }
-            return Err(io::Error::from_raw_os_error(err));
+            return Err(io::Error::from_raw_os_error(i32(err)));
         }
 #else
         return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
@@ -67,7 +67,7 @@ struct NotifyState {
 
     auto notify() -> io::Result<empty> {
 #if RSTD_OS_LINUX
-        u8 byte = 1;
+        rstd::uint8_t byte = 1;
         for (;;) {
             auto n = libc::write(write_fd.as_raw_fd(), &byte, 1);
             if (n == 1) {
@@ -81,7 +81,7 @@ struct NotifyState {
             if (err == libc::EAGAIN || err == libc::EWOULDBLOCK) {
                 return Ok(empty {});
             }
-            return Err(io::Error::from_raw_os_error(err));
+            return Err(io::Error::from_raw_os_error(i32(err)));
         }
 #else
         return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));

@@ -18,6 +18,11 @@ extern "C" void* rstd_thread_start(void* data);
 namespace rstd::sys::thread::unix
 {
 
+auto os_error(int code) noexcept -> rstd::io::error::Error {
+    return rstd::io::error::Error::from_raw_os_error(
+        rstd::io::error::RawOsError(static_cast<rstd::int32_t>(code)));
+}
+
 export struct Thread {
     pthread_t id;
 
@@ -25,8 +30,8 @@ export struct Thread {
         libc::pthread_attr_t attr {};
         rstd_assert_eq(libc::pthread_attr_init(&attr), 0);
 
-        if (stack != 0) {
-            rstd_assert_eq(libc::pthread_attr_setstacksize(&attr, stack), 0);
+        if (stack != usize {}) {
+            rstd_assert_eq(libc::pthread_attr_setstacksize(&attr, stack.to_primitive()), 0);
         }
 
         auto raw = rstd::move(init).into_raw();
@@ -39,7 +44,7 @@ export struct Thread {
         } else {
             Box<ThreadInit>::from_raw(raw);
             libc::pthread_attr_destroy(&attr);
-            return Err(rstd::io::error::Error::from_raw_os_error(ret));
+            return Err(os_error(ret));
         }
     }
 
@@ -47,7 +52,7 @@ export struct Thread {
         auto* ret = static_cast<voidp>(nullptr);
         auto  err = libc::pthread_join(id, &ret);
         if (err != 0) {
-            return Err(rstd::io::error::Error::from_raw_os_error(err));
+            return Err(os_error(err));
         }
         return Ok(ret);
     }
@@ -55,9 +60,9 @@ export struct Thread {
     auto detach() const -> rstd::io::Result<i32> {
         auto err = libc::pthread_detach(id);
         if (err != 0) {
-            return Err(rstd::io::error::Error::from_raw_os_error(err));
+            return Err(os_error(err));
         }
-        return Ok(0);
+        return Ok(i32 {});
     }
 
     static auto current() -> Thread { return Thread { .id = libc::pthread_self() }; }
@@ -67,11 +72,12 @@ export struct Thread {
     }
 
     static void set_name(ref<ffi::CStr> name) {
-        libc::pthread_setname_np(current().id, (char const*)name.p);
+        libc::pthread_setname_np(current().id, name.as_ptr());
     }
 
     static void sleep(rstd::time::Duration dur) {
-        libc::timespec ts { .tv_sec = (long)dur.as_secs(), .tv_nsec = (long)dur.subsec_nanos() };
+        libc::timespec ts { .tv_sec  = static_cast<long>(dur.as_secs().to_primitive()),
+                            .tv_nsec = static_cast<long>(dur.subsec_nanos().to_primitive()) };
         libc::nanosleep(&ts, nullptr);
     }
 
