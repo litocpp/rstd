@@ -1,30 +1,23 @@
 #pragma once
 
-#include <cstdint>
 #include <cstddef>
+#include <cstdint>
+
+import rstd.bench;
 
 namespace rstd_bench
 {
 
-struct BenchContext {
-    std::uint64_t m_iterations;
-    std::uint64_t m_items_processed { 0 };
-    std::uint64_t m_bytes_processed { 0 };
-    bool          m_quick { false };
-
-    auto iterations() const noexcept -> std::uint64_t { return m_iterations; }
-
-    void set_items_processed(std::uint64_t count) noexcept { m_items_processed = count; }
-
-    void set_bytes_processed(std::uint64_t count) noexcept { m_bytes_processed = count; }
+struct CaseRunResult {
+    rstd::Result<rstd::bench::BenchmarkResult, rstd::bench::BenchError> measurement;
+    bool                                                                ok;
 };
 
-using BenchFn = bool (*)(BenchContext&);
+using BenchFn = CaseRunResult (*)(rstd::bench::BenchConfig);
 
 struct BenchCase {
     const char*   m_suite;
     const char*   m_name;
-    std::uint64_t m_iterations;
     std::uint64_t m_quick_iterations;
     BenchFn       m_run;
 };
@@ -33,6 +26,19 @@ struct BenchList {
     const BenchCase* m_cases;
     std::size_t      m_len;
 };
+
+template<typename Operation, typename Validate>
+auto measure_case(const char*              name,
+                  rstd::bench::BenchConfig config,
+                  rstd::bench::RunConfig   run_config,
+                  Operation&&              operation,
+                  Validate&&               validate) -> CaseRunResult {
+    auto runner      = rstd::bench::Bench::new_(rstd::move(config));
+    auto measurement = runner.run(
+        rstd::ref<rstd::str>(name), rstd::forward<Operation>(operation), rstd::move(run_config));
+    auto const valid = rstd::forward<Validate>(validate)();
+    return { rstd::move(measurement), valid };
+}
 
 BenchList alloc_benchmarks();
 BenchList sync_benchmarks();

@@ -87,6 +87,18 @@ TEST(Result, UniquePtr) {
     EXPECT_EQ(up.unwrap().get(), nullptr);
 }
 
+TEST(Result, OkAndErrSupportMoveOnlyValues) {
+    int  value_drops = 0;
+    auto value       = Result<DropCounter, int>(Ok(DropCounter { value_drops })).ok();
+    ASSERT_TRUE(value.is_some());
+    EXPECT_EQ(value_drops, 0);
+
+    int  error_drops = 0;
+    auto error       = Result<int, DropCounter>(Err(DropCounter { error_drops })).err();
+    ASSERT_TRUE(error.is_some());
+    EXPECT_EQ(error_drops, 0);
+}
+
 TEST(Result, Reference) {
     Result<std::unique_ptr<int>, float> up     = Ok(std::make_unique<int>(3));
     auto                                up_ref = up.as_ref();

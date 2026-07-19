@@ -47,96 +47,122 @@ async::coro<int> join_many_spawned_children() {
 
     auto results = co_await async::join_all(rstd::move(handles));
     int  sum     = 0;
-    for (usize i = 0; i < results.len(); ++i) {
+    for (usize i; i < results.len(); ++i) {
         sum += results[i].unwrap_unchecked();
     }
     co_return sum;
 }
 
 async::coro<int> sleep_zero() {
-    co_await async::sleep(time::Duration::from_millis(0));
+    co_await async::sleep(time::Duration::from_millis(u64()));
     co_return 1;
 }
 
-auto current_thread_ready(rstd_bench::BenchContext& context) -> bool {
-    auto runtime = async::Runtime {};
-    auto sum     = std::uint64_t {};
-
-    for (std::uint64_t i = 0; i < context.iterations(); ++i) {
-        sum += runtime.block_on(ReadyInt {});
-        rstd::hint::black_box(sum);
-    }
-
-    context.set_items_processed(context.iterations());
-    return sum == context.iterations();
+auto current_thread_ready(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
+    auto runtime    = async::Runtime {};
+    auto sum        = std::uint64_t {};
+    auto calls      = std::uint64_t {};
+    auto run_config = bench::RunConfig { .items_per_iteration = u64(1) };
+    return rstd_bench::measure_case(
+        "current_thread_ready",
+        rstd::move(config),
+        rstd::move(run_config),
+        [&] {
+            sum += runtime.block_on(ReadyInt {});
+            ++calls;
+            rstd::hint::black_box(sum);
+        },
+        [&] {
+            return sum == calls;
+        });
 }
 
-auto current_thread_spawn_local_join(rstd_bench::BenchContext& context) -> bool {
-    auto runtime = async::Runtime {};
-    auto sum     = std::uint64_t {};
-
-    for (std::uint64_t i = 0; i < context.iterations(); ++i) {
-        sum += runtime.block_on(join_local_child());
-        rstd::hint::black_box(sum);
-    }
-
-    context.set_items_processed(context.iterations());
-    return sum == context.iterations();
+auto current_thread_spawn_local_join(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
+    auto runtime    = async::Runtime {};
+    auto sum        = std::uint64_t {};
+    auto calls      = std::uint64_t {};
+    auto run_config = bench::RunConfig { .items_per_iteration = u64(1) };
+    return rstd_bench::measure_case(
+        "current_thread_spawn_local_join",
+        rstd::move(config),
+        rstd::move(run_config),
+        [&] {
+            sum += runtime.block_on(join_local_child());
+            ++calls;
+            rstd::hint::black_box(sum);
+        },
+        [&] {
+            return sum == calls;
+        });
 }
 
-auto thread_pool_spawn_join(rstd_bench::BenchContext& context) -> bool {
-    auto runtime_result = async::RuntimeBuilder::multi_thread().worker_threads(2).build();
-    if (runtime_result.is_err()) {
-        return false;
-    }
-
-    auto runtime = rstd::move(runtime_result).unwrap_unchecked();
-    auto sum     = std::uint64_t {};
-    for (std::uint64_t i = 0; i < context.iterations(); ++i) {
-        sum += runtime.block_on(join_spawned_child());
-        rstd::hint::black_box(sum);
-    }
-
-    context.set_items_processed(context.iterations());
-    return sum == context.iterations();
+auto thread_pool_spawn_join(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
+    auto runtime    = async::RuntimeBuilder::multi_thread().worker_threads(usize(2)).build().ok();
+    auto sum        = std::uint64_t {};
+    auto calls      = std::uint64_t {};
+    bool valid      = runtime.is_some();
+    auto run_config = bench::RunConfig { .items_per_iteration = u64(1) };
+    return rstd_bench::measure_case(
+        "thread_pool_spawn_join_2",
+        rstd::move(config),
+        rstd::move(run_config),
+        [&] {
+            if (runtime.is_none()) return;
+            sum += runtime->block_on(join_spawned_child());
+            ++calls;
+            rstd::hint::black_box(sum);
+        },
+        [&] {
+            return valid && sum == calls;
+        });
 }
 
-auto thread_pool_join_many(rstd_bench::BenchContext& context) -> bool {
-    auto runtime_result = async::RuntimeBuilder::multi_thread().worker_threads(4).build();
-    if (runtime_result.is_err()) {
-        return false;
-    }
-
-    auto runtime = rstd::move(runtime_result).unwrap_unchecked();
-    auto sum     = std::uint64_t {};
-    for (std::uint64_t i = 0; i < context.iterations(); ++i) {
-        sum += runtime.block_on(join_many_spawned_children());
-        rstd::hint::black_box(sum);
-    }
-
-    context.set_items_processed(context.iterations() * 32);
-    return sum == context.iterations() * 496;
+auto thread_pool_join_many(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
+    auto runtime    = async::RuntimeBuilder::multi_thread().worker_threads(usize(4)).build().ok();
+    auto sum        = std::uint64_t {};
+    auto calls      = std::uint64_t {};
+    bool valid      = runtime.is_some();
+    auto run_config = bench::RunConfig { .items_per_iteration = u64(32) };
+    return rstd_bench::measure_case(
+        "thread_pool_join_many_4x32",
+        rstd::move(config),
+        rstd::move(run_config),
+        [&] {
+            if (runtime.is_none()) return;
+            sum += runtime->block_on(join_many_spawned_children());
+            ++calls;
+            rstd::hint::black_box(sum);
+        },
+        [&] {
+            return valid && sum == calls * 496;
+        });
 }
 
-auto timer_sleep_zero(rstd_bench::BenchContext& context) -> bool {
-    auto runtime = async::Runtime {};
-    auto sum     = std::uint64_t {};
-
-    for (std::uint64_t i = 0; i < context.iterations(); ++i) {
-        sum += runtime.block_on(sleep_zero());
-        rstd::hint::black_box(sum);
-    }
-
-    context.set_items_processed(context.iterations());
-    return sum == context.iterations();
+auto timer_sleep_zero(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
+    auto runtime    = async::Runtime {};
+    auto sum        = std::uint64_t {};
+    auto calls      = std::uint64_t {};
+    auto run_config = bench::RunConfig { .items_per_iteration = u64(1) };
+    return rstd_bench::measure_case(
+        "timer_sleep_zero",
+        rstd::move(config),
+        rstd::move(run_config),
+        [&] {
+            sum += runtime.block_on(sleep_zero());
+            ++calls;
+            rstd::hint::black_box(sum);
+        },
+        [&] {
+            return sum == calls;
+        });
 }
 
 const rstd_bench::BenchCase CASES[] = {
-    { "async", "current_thread_ready", 200'000, 1'000, &current_thread_ready },
-    { "async", "current_thread_spawn_local_join", 50'000, 500, &current_thread_spawn_local_join },
-    { "async", "thread_pool_spawn_join_2", 20'000, 200, &thread_pool_spawn_join },
-    { "async", "thread_pool_join_many_4x32", 2'000, 20, &thread_pool_join_many },
-    { "async", "timer_sleep_zero", 100'000, 500, &timer_sleep_zero },
+    { "async", "current_thread_ready", 1'000, &current_thread_ready },
+    { "async", "current_thread_spawn_local_join", 500, &current_thread_spawn_local_join },
+    { "async", "thread_pool_spawn_join_2", 200, &thread_pool_spawn_join },
+    { "async", "thread_pool_join_many_4x32", 20, &thread_pool_join_many },
+    { "async", "timer_sleep_zero", 500, &timer_sleep_zero },
 };
 
 } // namespace

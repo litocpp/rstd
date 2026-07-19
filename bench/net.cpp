@@ -66,8 +66,8 @@ async::coro<io::Result<bytes::BytesMut>> tcp_roundtrip(net::TcpListener& listene
     auto accepted_pair = rstd::move(accepted).unwrap_unchecked();
     auto server_stream = rstd::move(accepted_pair.template get<0>());
 
-    const u8 payload[] = { 'p', 'i', 'n', 'g' };
-    auto     bytes     = bytes::Bytes::copy_from_slice(slice<u8>::from_raw_parts(payload, 4));
+    const u8 payload[] = { u8('p'), u8('i'), u8('n'), u8('g') };
+    auto     bytes = bytes::Bytes::copy_from_slice(slice<u8>::from_raw_parts(payload, usize(4)));
     while (! bytes.is_empty()) {
         auto written = co_await write_some(client_stream, bytes);
         if (written.is_err()) {
@@ -76,13 +76,13 @@ async::coro<io::Result<bytes::BytesMut>> tcp_roundtrip(net::TcpListener& listene
         bytes.advance(rstd::move(written).unwrap_unchecked());
     }
 
-    auto received = bytes::BytesMut::with_capacity(4);
-    while (received.len() < 4) {
+    auto received = bytes::BytesMut::with_capacity(usize(4));
+    while (received.len() < usize(4)) {
         auto read = co_await read_some(server_stream, received);
         if (read.is_err()) {
             co_return Err(rstd::move(read).unwrap_err_unchecked());
         }
-        if (rstd::move(read).unwrap_unchecked() == 0) {
+        if (rstd::move(read).unwrap_unchecked() == usize()) {
             co_return Err(io::error::Error::from_kind(
                 io::error::ErrorKind { io::error::ErrorKind::UnexpectedEof }));
         }
@@ -91,41 +91,53 @@ async::coro<io::Result<bytes::BytesMut>> tcp_roundtrip(net::TcpListener& listene
     co_return Ok(rstd::move(received));
 }
 
-auto loopback_roundtrip_4b(rstd_bench::BenchContext& context) -> bool {
-    auto runtime = async::Runtime {};
+auto loopback_roundtrip_4b(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
+    auto runtime    = async::Runtime {};
+    bool valid      = true;
+    auto run_config = bench::RunConfig {
+        .items_per_iteration = u64(1),
+        .bytes_per_iteration = u64(4),
+    };
+    return rstd_bench::measure_case(
+        "loopback_roundtrip_4b",
+        rstd::move(config),
+        rstd::move(run_config),
+        [&] {
+            auto listener_result = net::TcpListener::bind(net::SocketAddr::ipv4_loopback(u16()));
+            if (listener_result.is_err()) {
+                valid = false;
+                return;
+            }
 
-    for (std::uint64_t i = 0; i < context.iterations(); ++i) {
-        auto listener_result = net::TcpListener::bind(net::SocketAddr::ipv4_loopback(0));
-        if (listener_result.is_err()) {
-            return false;
-        }
+            auto listener = rstd::move(listener_result).unwrap_unchecked();
+            auto addr     = listener.local_addr();
+            if (addr.is_err()) {
+                valid = false;
+                return;
+            }
 
-        auto listener = rstd::move(listener_result).unwrap_unchecked();
-        auto addr     = listener.local_addr();
-        if (addr.is_err()) {
-            return false;
-        }
+            auto result =
+                runtime.block_on(tcp_roundtrip(listener, rstd::move(addr).unwrap_unchecked()));
+            if (result.is_err()) {
+                valid = false;
+                return;
+            }
 
-        auto result =
-            runtime.block_on(tcp_roundtrip(listener, rstd::move(addr).unwrap_unchecked()));
-        if (result.is_err()) {
-            return false;
-        }
-
-        auto received = rstd::move(result).unwrap_unchecked();
-        if (received.len() != 4 || received[0] != u8('p') || received[3] != u8('g')) {
-            return false;
-        }
-        rstd::hint::black_box(received.len());
-    }
-
-    context.set_items_processed(context.iterations());
-    context.set_bytes_processed(context.iterations() * 4);
-    return true;
+            auto received = rstd::move(result).unwrap_unchecked();
+            if (received.len() != usize(4) || received[usize()] != u8('p') ||
+                received[usize(3)] != u8('g')) {
+                valid = false;
+                return;
+            }
+            rstd::hint::black_box(received.len());
+        },
+        [&] {
+            return valid;
+        });
 }
 
 const rstd_bench::BenchCase CASES[] = {
-    { "net", "loopback_roundtrip_4b", 500, 5, &loopback_roundtrip_4b },
+    { "net", "loopback_roundtrip_4b", 5, &loopback_roundtrip_4b },
 };
 
 } // namespace

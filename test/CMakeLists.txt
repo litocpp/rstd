@@ -126,6 +126,10 @@ target_link_libraries(rstd_try_coroutine_test PRIVATE rstd::core rstd.runtime
                                                       GTest::gtest_main)
 gtest_discover_tests(rstd_try_coroutine_test)
 
+add_executable(rstd_bench_test bench.cpp)
+target_link_libraries(rstd_bench_test PRIVATE rstd::bench GTest::gtest_main)
+gtest_discover_tests(rstd_bench_test)
+
 add_executable(rstd_lifetime_annotation_positive EXCLUDE_FROM_ALL lifetimebound_positive.cpp)
 target_link_libraries(rstd_lifetime_annotation_positive PRIVATE rstd::rstd)
 target_compile_options(

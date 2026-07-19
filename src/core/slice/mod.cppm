@@ -2,6 +2,20 @@ export module rstd.core:slice;
 import :num.types;
 export import :core;
 
+template<typename T, typename Compare>
+constexpr void slice_sift_down(T* data, rstd::size_t root, rstd::size_t end, Compare& compare) {
+    while (root * 2 + 1 < end) {
+        auto child = root * 2 + 1;
+        if (child + 1 < end && compare(data[child], data[child + 1])) ++child;
+        if (! compare(data[root], data[child])) return;
+
+        T value     = rstd::move(data[root]);
+        data[root]  = rstd::move(data[child]);
+        data[child] = rstd::move(value);
+        root        = child;
+    }
+}
+
 namespace rstd
 {
 
@@ -64,3 +78,36 @@ export constexpr auto u8_values(slice<byte> values [[clang::lifetimebound]]) noe
 }
 
 } // namespace rstd
+
+export namespace rstd::slice_
+{
+
+template<typename T, typename Compare>
+constexpr void sort_unstable_by(mut_ref<T[]> values, Compare compare) {
+    auto const length = values.len().to_primitive();
+    if (length < 2) return;
+
+    auto* data = values.as_raw_ptr();
+    for (auto root = length / 2; root > 0; --root) {
+        slice_sift_down(data, root - 1, length, compare);
+    }
+    for (auto end = length; end > 1; --end) {
+        T value       = rstd::move(data[0]);
+        data[0]       = rstd::move(data[end - 1]);
+        data[end - 1] = rstd::move(value);
+        slice_sift_down(data, 0, end - 1, compare);
+    }
+}
+
+template<typename T>
+constexpr void sort_unstable(mut_ref<T[]> values)
+    requires requires(const T& left, const T& right) {
+        { left < right } -> mtp::same_as<bool>;
+    }
+{
+    sort_unstable_by(values, [](const T& left, const T& right) {
+        return left < right;
+    });
+}
+
+} // namespace rstd::slice_

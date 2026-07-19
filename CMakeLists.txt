@@ -54,17 +54,82 @@ endif()
 # Add installation rules
 if(PROJECT_IS_TOP_LEVEL)
   include(GNUInstallDirs)
+  include(CMakePackageConfigHelpers)
+
+  set_target_properties(rstd.basic PROPERTIES EXPORT_NAME basic)
+  set_target_properties(rstd.runtime PROPERTIES EXPORT_NAME runtime)
+  set_target_properties(rstd.core PROPERTIES EXPORT_NAME core)
+  set_target_properties(rstd.alloc PROPERTIES EXPORT_NAME alloc)
+  set_target_properties(rstd.std PROPERTIES EXPORT_NAME rstd)
+  set_target_properties(rstd.bench PROPERTIES EXPORT_NAME bench)
+
   install(
-    TARGETS rstd.std rstd.runtime rstd.basic rstd.core rstd.alloc
+    TARGETS rstd.basic
+    EXPORT rstdTargets
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    FILE_SET modules DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rstd/modules/basic)
+  install(
+    TARGETS rstd.runtime
+    EXPORT rstdTargets
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    FILE_SET modules DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rstd/modules/runtime)
+  install(
+    TARGETS rstd.core
+    EXPORT rstdTargets
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    FILE_SET headers DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    FILE_SET modules DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rstd/modules/core)
+  install(
+    TARGETS rstd.alloc
+    EXPORT rstdTargets
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    FILE_SET modules DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rstd/modules/alloc)
+  install(
+    TARGETS rstd.std
+    EXPORT rstdTargets
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    FILE_SET modules DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rstd/modules/std)
   install(
     TARGETS rstd.argparse
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     FILE_SET modules DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rstd/modules/argparse)
+  install(
+    TARGETS rstd.bench
+    EXPORT rstdTargets
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    FILE_SET modules DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rstd/modules/bench)
+
+  configure_package_config_file(
+    cmake/rstdConfig.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/rstdConfig.cmake
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/rstd)
+  write_basic_package_version_file(
+    ${CMAKE_CURRENT_BINARY_DIR}/rstdConfigVersion.cmake
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion)
+  install(
+    EXPORT rstdTargets
+    NAMESPACE rstd::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/rstd
+    CXX_MODULES_DIRECTORY cxx-modules)
+  install(
+    FILES ${CMAKE_CURRENT_BINARY_DIR}/rstdConfig.cmake
+          ${CMAKE_CURRENT_BINARY_DIR}/rstdConfigVersion.cmake
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/rstd)
 endif()
 
 # Testing configuration

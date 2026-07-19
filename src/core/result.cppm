@@ -202,7 +202,7 @@ public:
     /// \return `Some(value)` if `Ok`, otherwise `None`.
     auto ok() -> Option<T> {
         if (is_ok()) {
-            return _get_move<0>();
+            return rstd::Some(_get_move<0>());
         } else
             return rstd::None();
     }
@@ -211,7 +211,7 @@ public:
     /// \return `Some(error)` if `Err`, otherwise `None`.
     auto err() -> Option<E> {
         if (is_err()) {
-            return _get_move<1>();
+            return rstd::Some(_get_move<1>());
         } else
             return rstd::None();
     }

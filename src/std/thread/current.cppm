@@ -81,6 +81,12 @@ export auto current() -> Thread {
     return thread;
 }
 
+/// Returns the current thread identifier without cloning its handle after initialization.
+export auto current_id() -> ThreadId {
+    if (auto current = id::get(); current.is_some()) return *current;
+    return current().id();
+}
+
 void drop_current() {
     auto current = CURRENT;
     if (current > DESTROYED) {

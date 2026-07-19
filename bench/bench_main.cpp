@@ -1,9 +1,13 @@
 #include "benchmark.hpp"
 
-#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+
+import rstd.json;
+
+using namespace rstd;
+using namespace rstd::prelude;
 
 #ifndef RSTD_BENCH_BUILD_TYPE
 #define RSTD_BENCH_BUILD_TYPE "unknown"
@@ -25,13 +29,16 @@ struct Options {
 };
 
 struct RunResult {
-    const rstd_bench::BenchCase* m_case {};
-    std::uint64_t                m_iterations {};
-    std::uint64_t                m_elapsed_ns {};
-    std::uint64_t                m_items {};
-    std::uint64_t                m_bytes {};
-    bool                         m_ok {};
+    const rstd_bench::BenchCase*   m_case;
+    Option<bench::BenchmarkResult> m_measurement;
+    Option<bench::BenchError>      m_error;
+    bool                           m_ok;
 };
+
+auto duration_ns(time::Duration value) -> u64 {
+    auto const nanos = value.as_nanos();
+    return nanos > u128(u64::MAX.to_primitive()) ? u64::MAX : u64(nanos.to_primitive());
+}
 
 auto parse_u64(const char* value) -> std::uint64_t {
     return static_cast<std::uint64_t>(std::strtoull(value, nullptr, 10));
@@ -61,82 +68,160 @@ auto parse_options(int argc, char** argv) -> Options {
     return options;
 }
 
-auto suite_matches(const Options& options, const rstd_bench::BenchCase& bench) -> bool {
+auto suite_matches(const Options& options, const rstd_bench::BenchCase& benchmark) -> bool {
     return std::strcmp(options.m_suite, "all") == 0 ||
-           std::strcmp(options.m_suite, bench.m_suite) == 0;
+           std::strcmp(options.m_suite, benchmark.m_suite) == 0;
 }
 
-auto selected_iterations(const Options& options, const rstd_bench::BenchCase& bench)
-    -> std::uint64_t {
-    if (options.m_iterations != 0) {
-        return options.m_iterations;
+auto make_config(const Options& options, const rstd_bench::BenchCase& benchmark)
+    -> bench::BenchConfig {
+    auto config = bench::BenchConfig {};
+    if (options.m_quick) {
+        config.epochs                 = usize(3);
+        config.exact_epoch_iterations = Some(u64(benchmark.m_quick_iterations));
+        config.warmup_iterations      = u64(1);
+        config.counter_mode           = bench::CounterMode::Disabled();
     }
-    return options.m_quick ? bench.m_quick_iterations : bench.m_iterations;
+    if (options.m_iterations != 0) {
+        config.exact_epoch_iterations = Some(u64(options.m_iterations));
+    }
+    return config;
 }
 
-auto run_case(const Options& options, const rstd_bench::BenchCase& bench) -> RunResult {
-    auto context = rstd_bench::BenchContext {
-        .m_iterations = selected_iterations(options, bench),
-        .m_quick      = options.m_quick,
-    };
-
-    auto started = std::chrono::steady_clock::now();
-    bool ok      = bench.m_run(context);
-    auto ended   = std::chrono::steady_clock::now();
-
-    auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(ended - started).count();
-
+auto run_case(const Options& options, const rstd_bench::BenchCase& benchmark) -> RunResult {
+    auto result = benchmark.m_run(make_config(options, benchmark));
+    if (result.measurement.is_err()) {
+        return RunResult {
+            .m_case        = &benchmark,
+            .m_measurement = None(),
+            .m_error       = Some(rstd::move(result.measurement).unwrap_err_unchecked()),
+            .m_ok          = false,
+        };
+    }
     return RunResult {
-        .m_case       = &bench,
-        .m_iterations = context.m_iterations,
-        .m_elapsed_ns = static_cast<std::uint64_t>(elapsed),
-        .m_items      = context.m_items_processed,
-        .m_bytes      = context.m_bytes_processed,
-        .m_ok         = ok,
+        .m_case        = &benchmark,
+        .m_measurement = Some(rstd::move(result.measurement).unwrap_unchecked()),
+        .m_error       = None(),
+        .m_ok          = result.ok,
     };
 }
 
 void print_result(const RunResult& result) {
-    double ns_per_iter = result.m_iterations == 0 ? 0.0
-                                                  : static_cast<double>(result.m_elapsed_ns) /
-                                                        static_cast<double>(result.m_iterations);
-    double total_ms    = static_cast<double>(result.m_elapsed_ns) / 1'000'000.0;
+    if (result.m_measurement.is_none()) {
+        std::printf("%-8s %-32s %10s %20s %13s failed\n",
+                    result.m_case->m_suite,
+                    result.m_case->m_name,
+                    "-",
+                    "-",
+                    "-");
+        return;
+    }
 
+    auto summary = result.m_measurement->summary();
+    auto total_ms =
+        static_cast<double>(duration_ns(summary.total_elapsed).to_primitive()) / 1'000'000.0;
     std::printf("%-8s %-32s %10llu %12.2f ns/op %10.3f ms %s\n",
                 result.m_case->m_suite,
                 result.m_case->m_name,
-                static_cast<unsigned long long>(result.m_iterations),
-                ns_per_iter,
+                static_cast<unsigned long long>(summary.total_iterations.to_primitive()),
+                summary.median_ns_per_unit.to_primitive(),
                 total_ms,
                 result.m_ok ? "ok" : "failed");
 }
 
-void write_json(FILE* file, const RunResult* results, std::size_t count) {
-    std::fprintf(file, "[\n");
-    for (std::size_t i = 0; i < count; ++i) {
-        const auto& result      = results[i];
-        double      ns_per_iter = result.m_iterations == 0
-                                      ? 0.0
-                                      : static_cast<double>(result.m_elapsed_ns) /
-                                            static_cast<double>(result.m_iterations);
-        std::fprintf(file,
-                     "  {\"suite\":\"%s\",\"name\":\"%s\",\"iterations\":%llu,"
-                     "\"elapsed_ns\":%llu,\"ns_per_iter\":%.3f,"
-                     "\"items\":%llu,\"bytes\":%llu,\"build_type\":\"%s\","
-                     "\"asan\":%s,\"ok\":%s}%s\n",
-                     result.m_case->m_suite,
-                     result.m_case->m_name,
-                     static_cast<unsigned long long>(result.m_iterations),
-                     static_cast<unsigned long long>(result.m_elapsed_ns),
-                     ns_per_iter,
-                     static_cast<unsigned long long>(result.m_items),
-                     static_cast<unsigned long long>(result.m_bytes),
-                     RSTD_BENCH_BUILD_TYPE,
-                     RSTD_BENCH_ASAN ? "true" : "false",
-                     result.m_ok ? "true" : "false",
-                     i + 1 == count ? "" : ",");
+auto json_u64(u64 value) -> json::Value {
+    return json::Value::Number(json::Number::from_u64(value));
+}
+
+auto json_i64(i64 value) -> json::Value {
+    return json::Value::Number(json::Number::from_i64(value));
+}
+
+auto json_f64(f64 value) -> json::Value {
+    auto number = json::Number::from_f64(value);
+    return number.is_some() ? json::Value::Number(*number) : json::Value::Null();
+}
+
+void add_optional_f64(json::Value& object, ref<str> key, Option<f64> value) {
+    object[key] = value.is_some() ? json_f64(*value) : json::Value::Null();
+}
+
+auto to_json(const RunResult& result) -> json::Value {
+    auto object          = json::Value {};
+    object["suite"]      = json::Value::String(String::make(result.m_case->m_suite));
+    object["name"]       = json::Value::String(String::make(result.m_case->m_name));
+    object["build_type"] = json::Value::String(String::make(RSTD_BENCH_BUILD_TYPE));
+    object["asan"]       = json::Value::Bool(RSTD_BENCH_ASAN != 0);
+    object["ok"]         = json::Value::Bool(result.m_ok);
+
+    if (result.m_measurement.is_none()) {
+        object["iterations"]   = json_u64(u64());
+        object["elapsed_ns"]   = json_u64(u64());
+        object["ns_per_iter"]  = json_f64(f64());
+        object["items"]        = json_u64(u64());
+        object["bytes"]        = json_u64(u64());
+        object["epochs"]       = json_u64(u64());
+        object["measurements"] = json::Value::Array(json::Array::make());
+        return object;
     }
-    std::fprintf(file, "]\n");
+
+    const auto& measurement = *result.m_measurement;
+    auto        summary     = measurement.summary();
+    auto        elapsed_ns  = duration_ns(summary.total_elapsed);
+    auto ns_per_iter      = summary.total_iterations == u64()
+                                ? f64()
+                                : f64(static_cast<double>(elapsed_ns.to_primitive()) /
+                                      static_cast<double>(summary.total_iterations.to_primitive()));
+    object["iterations"]  = json_u64(summary.total_iterations);
+    object["elapsed_ns"]  = json_u64(elapsed_ns);
+    object["ns_per_iter"] = json_f64(ns_per_iter);
+    object["items"]       = json_u64(summary.total_items);
+    object["bytes"]       = json_u64(summary.total_bytes);
+    object["epochs"]      = json_u64(u64(measurement.measurements().len().to_primitive()));
+    object["median_ns_per_unit"]  = json_f64(summary.median_ns_per_unit);
+    object["mdape"]               = json_f64(summary.median_absolute_percentage_error);
+    object["clock_resolution_ns"] = json_u64(duration_ns(measurement.clock_resolution()));
+    object["jitter_seed"]         = json_u64(measurement.config().jitter_seed);
+
+    auto epochs = json::Array::with_capacity(measurement.measurements().len());
+    for (usize index; index < measurement.measurements().len(); ++index) {
+        const auto& epoch         = measurement.measurements()[index];
+        auto        epoch_value   = json::Value {};
+        epoch_value["iterations"] = json_u64(epoch.iterations);
+        epoch_value["elapsed_ns"] = json_u64(duration_ns(epoch.elapsed));
+        epochs.push(rstd::move(epoch_value));
+    }
+    object["measurements"] = json::Value::Array(rstd::move(epochs));
+
+    const auto& availability = measurement.counter_availability();
+    if (availability.is_Disabled()) {
+        object["counter_availability"] = json::Value::String(String::make("disabled"));
+    } else if (availability.is_Available()) {
+        object["counter_availability"] = json::Value::String(String::make("available"));
+        object["counter_mask"] = json_u64(u64(availability.as_Available().mask.to_primitive()));
+    } else {
+        object["counter_availability"] = json::Value::String(String::make("unavailable"));
+        object["counter_error"] = json_i64(i64(availability.as_Unavailable().code.to_primitive()));
+    }
+    add_optional_f64(object, "instructions_per_unit", summary.instructions_per_unit);
+    add_optional_f64(object, "cycles_per_unit", summary.cycles_per_unit);
+    add_optional_f64(object, "instructions_per_cycle", summary.instructions_per_cycle);
+    add_optional_f64(object, "branches_per_unit", summary.branches_per_unit);
+    add_optional_f64(object, "branch_miss_ratio", summary.branch_miss_ratio);
+    return object;
+}
+
+auto write_json(const char* path, const Vec<RunResult>& results) -> bool {
+    auto values = json::Array::with_capacity(results.len());
+    for (const auto& result : results) values.push(to_json(result));
+    auto output = json::to_string(json::Value::Array(rstd::move(values)),
+                                  json::FormatOptions { .pretty = true });
+
+    auto* file = std::fopen(path, "w");
+    if (file == nullptr) return false;
+    auto const written = std::fwrite(output.data(), 1, output.size().to_primitive(), file);
+    auto const closed  = std::fclose(file);
+    return written == output.size().to_primitive() && closed == 0;
 }
 
 template<std::size_t N>
@@ -171,9 +256,8 @@ auto main(int argc, char** argv) -> int {
         return 0;
     }
 
-    RunResult   results[128] {};
-    std::size_t result_count = 0;
-    bool        all_ok       = true;
+    auto results = Vec<RunResult>::make();
+    bool all_ok  = true;
 
     std::printf(
         "%-8s %-32s %10s %20s %13s %s\n", "suite", "name", "iters", "time", "total", "status");
@@ -181,31 +265,22 @@ auto main(int argc, char** argv) -> int {
 
     for (std::size_t i = 0; i < 4; ++i) {
         for (std::size_t j = 0; j < lens[i]; ++j) {
-            const auto& bench = suites[i][j];
-            if (! suite_matches(options, bench)) {
-                continue;
-            }
-            auto result = run_case(options, bench);
+            const auto& benchmark = suites[i][j];
+            if (! suite_matches(options, benchmark)) continue;
+            auto result = run_case(options, benchmark);
             all_ok      = all_ok && result.m_ok;
             print_result(result);
-            results[result_count++] = result;
+            results.push(rstd::move(result));
         }
     }
 
-    if (options.m_json_path != nullptr) {
-        FILE* file = std::fopen(options.m_json_path, "w");
-        if (file == nullptr) {
-            std::fprintf(stderr, "failed to open json output: %s\n", options.m_json_path);
-            return 1;
-        }
-        write_json(file, results, result_count);
-        std::fclose(file);
+    if (options.m_json_path != nullptr && ! write_json(options.m_json_path, results)) {
+        std::fprintf(stderr, "failed to write json output: %s\n", options.m_json_path);
+        return 1;
     }
-
-    if (result_count == 0) {
+    if (results.is_empty()) {
         std::fprintf(stderr, "no benchmark cases selected\n");
         return 1;
     }
-
     return all_ok ? 0 : 1;
 }
