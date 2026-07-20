@@ -21,6 +21,8 @@ public:
         value.m_modified    = rstd::move(data.modified);
         value.m_created     = rstd::move(data.created);
         value.m_dev         = data.dev;
+        value.m_rdev_major  = data.rdev_major;
+        value.m_rdev_minor  = data.rdev_minor;
         value.m_ino         = data.ino;
         value.m_mode        = data.mode;
         value.m_nlink       = data.nlink;

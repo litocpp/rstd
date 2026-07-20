@@ -5,6 +5,11 @@ export import cppstd;
 export namespace rstd::cppstd
 {
 
+inline constexpr int IO_ERROR          = ::cppstd::IO_ERROR;
+inline constexpr int SEEK_FROM_START   = ::cppstd::SEEK_FROM_START;
+inline constexpr int SEEK_FROM_CURRENT = ::cppstd::SEEK_FROM_CURRENT;
+inline constexpr int SEEK_FROM_END     = ::cppstd::SEEK_FROM_END;
+
 inline auto as_str(std::string_view value) noexcept -> ref<str> {
     return ref<str>::from_raw_parts(value.data(), usize(value.size()));
 }

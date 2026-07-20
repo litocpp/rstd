@@ -100,6 +100,8 @@ export class Metadata {
     Option<rstd::time::SystemTime> m_modified {};
     Option<rstd::time::SystemTime> m_created {};
     u64                            m_dev {};
+    u32                            m_rdev_major {};
+    u32                            m_rdev_minor {};
     u64                            m_ino {};
     u32                            m_mode {};
     u64                            m_nlink {};
@@ -128,6 +130,8 @@ public:
     auto accessed() const -> FsResult<rstd::time::SystemTime> { return time_result(m_accessed); }
     auto created() const -> FsResult<rstd::time::SystemTime> { return time_result(m_created); }
     auto dev() const noexcept -> u64 { return m_dev; }
+    auto rdev_major() const noexcept -> u32 { return m_rdev_major; }
+    auto rdev_minor() const noexcept -> u32 { return m_rdev_minor; }
     auto ino() const noexcept -> u64 { return m_ino; }
     auto mode() const noexcept -> u32 { return m_mode; }
     auto nlink() const noexcept -> u64 { return m_nlink; }

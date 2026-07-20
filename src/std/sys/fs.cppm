@@ -51,6 +51,8 @@ export struct MetadataData {
     Option<rstd::time::SystemTime> modified {};
     Option<rstd::time::SystemTime> created {};
     u64                            dev {};
+    u32                            rdev_major {};
+    u32                            rdev_minor {};
     u64                            ino {};
     u32                            mode {};
     u64                            nlink {};
@@ -126,6 +128,8 @@ auto metadata_from_stat(libc::stat_t const& stat) -> MetadataData {
                                                               u32(stat.st_mtim.tv_nsec)),
         .created     = None(),
         .dev         = u64(stat.st_dev),
+        .rdev_major  = u32(libc::major(stat.st_rdev)),
+        .rdev_minor  = u32(libc::minor(stat.st_rdev)),
         .ino         = u64(stat.st_ino),
         .mode        = u32(mode),
         .nlink       = u64(stat.st_nlink),

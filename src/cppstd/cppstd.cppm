@@ -2,6 +2,7 @@ module;
 // c
 #include <cassert>
 #include <cctype>
+#include <cerrno>
 #include <cmath>
 #include <cstdarg>
 #include <cstdio>
@@ -98,6 +99,16 @@ export using ::FILE;
 export using ::va_list;
 export using ::time_t;
 export using ::clock_t;
+
+export namespace cppstd
+{
+
+inline constexpr int IO_ERROR          = EIO;
+inline constexpr int SEEK_FROM_START   = SEEK_SET;
+inline constexpr int SEEK_FROM_CURRENT = SEEK_CUR;
+inline constexpr int SEEK_FROM_END     = SEEK_END;
+
+} // namespace cppstd
 
 namespace std
 {
