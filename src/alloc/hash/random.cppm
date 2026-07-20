@@ -9,9 +9,9 @@ namespace rstd::hash
 
 constexpr auto mix_seed(u64 value) noexcept -> u64 {
     value ^= value >> u64(30);
-    value *= u64(0xbf58476d1ce4e5b9ULL);
+    value = value.wrapping_mul(u64(0xbf58476d1ce4e5b9ULL));
     value ^= value >> u64(27);
-    value *= u64(0x94d049bb133111ebULL);
+    value = value.wrapping_mul(u64(0x94d049bb133111ebULL));
     return value ^ (value >> u64(31));
 }
 
