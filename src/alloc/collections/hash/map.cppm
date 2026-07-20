@@ -167,9 +167,15 @@ class HashMap {
     S              hash_builder;
     Eq             equal;
 
-    auto hash_key(const K& key) const noexcept -> u64 { return hash_builder(key); }
+    auto hash_key(const K& key) const noexcept -> u64
+        requires rstd::hash::HashableBy<K, S>
+    {
+        return rstd::hash::hash_one(hash_builder, key);
+    }
 
-    auto find_index(const K& key) const -> Option<usize> {
+    auto find_index(const K& key) const -> Option<usize>
+        requires rstd::hash::HashableBy<K, S>
+    {
         u64 hash = hash_key(key);
         return table.find(hash, [&](const K& stored) {
             return equal(stored, key);
@@ -180,22 +186,37 @@ public:
     USE_TRAIT(HashMap)
     using IntoIter = HashMapIntoIter<K, V>;
 
-    HashMap(): table(), hash_builder(), equal() {}
+    HashMap()
+        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<S> && rstd::mtp::init<Eq>
+        : table(), hash_builder(), equal() {}
     HashMap(const HashMap&)                = delete;
     HashMap& operator=(const HashMap&)     = delete;
     HashMap(HashMap&&) noexcept            = default;
     HashMap& operator=(HashMap&&) noexcept = default;
 
-    static auto make() -> HashMap { return {}; }
-    static auto with_capacity(usize capacity) -> HashMap { return HashMap(capacity, S {}, Eq {}); }
-    static auto with_hasher(S hasher) -> HashMap {
+    static auto make() -> HashMap
+        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<S> && rstd::mtp::init<Eq>
+    {
+        return {};
+    }
+    static auto with_capacity(usize capacity) -> HashMap
+        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<S> && rstd::mtp::init<Eq>
+    {
+        return HashMap(capacity, S {}, Eq {});
+    }
+    static auto with_hasher(S hasher) -> HashMap
+        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<Eq>
+    {
         return HashMap(usize {}, rstd::move(hasher), Eq {});
     }
-    static auto with_capacity_and_hasher(usize capacity, S hasher) -> HashMap {
+    static auto with_capacity_and_hasher(usize capacity, S hasher) -> HashMap
+        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<Eq>
+    {
         return HashMap(capacity, rstd::move(hasher), Eq {});
     }
 
     HashMap(usize capacity, S hasher, Eq equality)
+        requires rstd::hash::HashBuilder<S>
         : table(capacity), hash_builder(rstd::move(hasher)), equal(rstd::move(equality)) {}
 
     auto len() const noexcept -> usize { return table.len(); }
@@ -208,7 +229,9 @@ public:
     void shrink_to(usize minimum) { table.shrink_to(minimum); }
     void clear() noexcept { table.clear(); }
 
-    auto insert(K key, V value) -> Option<V> {
+    auto insert(K key, V value) -> Option<V>
+        requires rstd::hash::HashableBy<K, S>
+    {
         u64  hash  = hash_key(key);
         auto found = table.find(hash, [&](const K& stored) {
             return equal(stored, key);
@@ -220,13 +243,17 @@ public:
         return None();
     }
 
-    auto get(const K& key) const [[clang::lifetimebound]] -> Option<rstd::ref<V>> {
+    auto get(const K& key) const [[clang::lifetimebound]] -> Option<rstd::ref<V>>
+        requires rstd::hash::HashableBy<K, S>
+    {
         auto found = find_index(key);
         if (found.is_none()) return None();
         return Some(rstd::ref<V>::from_raw_parts(rstd::addressof(table.bucket(*found).value())));
     }
 
-    auto get_mut(const K& key) [[clang::lifetimebound]] -> Option<rstd::mut_ref<V>> {
+    auto get_mut(const K& key) [[clang::lifetimebound]] -> Option<rstd::mut_ref<V>>
+        requires rstd::hash::HashableBy<K, S>
+    {
         auto found = find_index(key);
         if (found.is_none()) return None();
         return Some(
@@ -234,7 +261,9 @@ public:
     }
 
     auto get_key_value(const K& key) const [[clang::lifetimebound]]
-    -> Option<rstd::tuple<rstd::ref<K>, rstd::ref<V>>> {
+    -> Option<rstd::tuple<rstd::ref<K>, rstd::ref<V>>>
+        requires rstd::hash::HashableBy<K, S>
+    {
         auto found = find_index(key);
         if (found.is_none()) return None();
         const auto& bucket = table.bucket(*found);
@@ -243,14 +272,22 @@ public:
             rstd::ref<V>::from_raw_parts(rstd::addressof(bucket.value()))));
     }
 
-    auto contains_key(const K& key) const -> bool { return find_index(key).is_some(); }
+    auto contains_key(const K& key) const -> bool
+        requires rstd::hash::HashableBy<K, S>
+    {
+        return find_index(key).is_some();
+    }
 
-    auto remove_entry(const K& key) -> Option<Entry> {
+    auto remove_entry(const K& key) -> Option<Entry>
+        requires rstd::hash::HashableBy<K, S>
+    {
         auto found = find_index(key);
         return found.is_some() ? Some(table.remove(*found)) : None();
     }
 
-    auto remove(const K& key) -> Option<V> {
+    auto remove(const K& key) -> Option<V>
+        requires rstd::hash::HashableBy<K, S>
+    {
         auto entry = remove_entry(key);
         return entry.is_some() ? Some(rstd::move(entry->template get<1>())) : None();
     }
@@ -289,6 +326,7 @@ namespace rstd
 {
 
 template<typename K, typename V, typename S, typename Eq>
+    requires hash::HashableBy<K, S> && mtp::init<S> && mtp::init<Eq>
 struct Impl<iter::FromIterator<tuple<K, V>>, ::alloc::collections::HashMap<K, V, S, Eq>>
     : ImplBase<::alloc::collections::HashMap<K, V, S, Eq>> {
     template<typename It>

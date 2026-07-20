@@ -102,11 +102,60 @@ export struct Hash {
     template<typename Self, typename = void>
     struct Api {
         using Trait = Hash;
-        void hash(DefaultHasher& state) const noexcept { return trait_call<0>(this, state); }
     };
 
     template<typename T>
-    using Funcs = TraitFuncs<&T::hash>;
+    using Funcs = TraitFuncs<>;
+};
+
+export template<typename T, typename H>
+concept HashableWith = Impled<mtp::rm_cvf<T>, Hash> && Impled<mtp::rm_cvf<H>, Hasher> &&
+                       requires(mtp::rm_cvf<T> const& value, mtp::rm_cvf<H>& state) {
+                           { rstd::as<Hash>(value).hash(state) } noexcept -> mtp::same_as<void>;
+                       };
+
+export template<typename T, typename H>
+    requires HashableWith<T, H>
+void hash_into(const T& value, H& state) noexcept {
+    rstd::as<Hash>(value).hash(state);
+}
+
+export template<typename H>
+    requires Impled<mtp::rm_cvf<H>, Hasher>
+void write_bytes(H& state, slice<byte> bytes) noexcept {
+    rstd::as<Hasher>(state).write(bytes);
+}
+
+export template<typename H, typename T>
+    requires Impled<mtp::rm_cvf<H>, Hasher> &&
+             (num::Integer<mtp::rm_cvf<T>> || num::PrimitiveInteger<mtp::rm_cvf<T>>)
+void write_value(H& state, const T& value) noexcept {
+    auto const* source = reinterpret_cast<byte const*>(rstd::addressof(value));
+    write_bytes(state, slice<byte>::from_raw_parts(source, usize(sizeof(T))));
+}
+
+export struct BuildHasher {
+    template<typename Self, typename = void>
+    struct Api {
+        using Trait  = BuildHasher;
+        using Hasher = typename Impl<BuildHasher, Self>::Hasher;
+
+        auto build_hasher() const noexcept -> Hasher { return trait_call<0>(this); }
+    };
+
+    template<typename T>
+    using Funcs = TraitFuncs<&T::build_hasher>;
+};
+
+export template<typename H>
+    requires Impled<H, Hasher> && requires {
+        { H {} } noexcept;
+    }
+class BuildHasherDefault {
+public:
+    using Hasher = H;
+
+    auto build_hasher() const noexcept -> Hasher { return {}; }
 };
 
 } // namespace rstd::hash
@@ -125,9 +174,72 @@ struct Impl<hash::Hasher, T> : ImplBase<T> {
 };
 
 template<typename T>
-    requires(num::Numeric<T> || mtp::is_arithmetic<T> || mtp::is_ptr<T>)
+    requires(num::Integer<T> || num::PrimitiveInteger<T>)
 struct Impl<hash::Hash, T> : ImplBase<T> {
-    void hash(hash::DefaultHasher& state) const noexcept { state.write_value(this->self()); }
+    template<typename H>
+        requires Impled<H, hash::Hasher>
+    void hash(H& state) const noexcept {
+        hash::write_value(state, this->self());
+    }
+};
+
+template<>
+struct Impl<hash::Hash, bool> : ImplBase<bool> {
+    template<typename H>
+        requires Impled<H, hash::Hasher>
+    void hash(H& state) const noexcept {
+        byte const value = this->self() ? 1 : 0;
+        hash::write_bytes(state, slice<byte>::from_raw_parts(rstd::addressof(value), usize(1)));
+    }
+};
+
+template<typename T>
+    requires mtp::is_ptr<T>
+struct Impl<hash::Hash, T> : ImplBase<T> {
+    template<typename H>
+        requires Impled<H, hash::Hasher>
+    void hash(H& state) const noexcept {
+        auto const address = reinterpret_cast<uintptr_t>(this->self());
+        hash::write_value(state, address);
+    }
+};
+
+template<typename T>
+    requires requires(T const& builder) {
+        typename T::Hasher;
+        { builder.build_hasher() } noexcept -> mtp::same_as<typename T::Hasher>;
+        requires Impled<typename T::Hasher, hash::Hasher>;
+    }
+struct Impl<hash::BuildHasher, T> : ImplBase<T> {
+    using Hasher = typename T::Hasher;
+
+    auto build_hasher() const noexcept -> Hasher { return this->self().build_hasher(); }
 };
 
 } // namespace rstd
+
+namespace rstd::hash
+{
+
+export template<typename S>
+concept HashBuilder = Impled<mtp::rm_cvf<S>, BuildHasher> && requires {
+    typename Impl<BuildHasher, mtp::rm_cvf<S>>::Hasher;
+    requires Impled<typename Impl<BuildHasher, mtp::rm_cvf<S>>::Hasher, Hasher>;
+};
+
+export template<typename S>
+    requires HashBuilder<S>
+using HasherOf = typename Impl<BuildHasher, mtp::rm_cvf<S>>::Hasher;
+
+export template<typename T, typename S>
+concept HashableBy = HashBuilder<S> && HashableWith<T, HasherOf<S>>;
+
+export template<typename S, typename T>
+    requires HashableBy<T, S>
+auto hash_one(const S& builder, const T& value) noexcept -> u64 {
+    auto state = rstd::as<BuildHasher>(builder).build_hasher();
+    hash_into(value, state);
+    return rstd::as<Hasher>(state).finish();
+}
+
+} // namespace rstd::hash

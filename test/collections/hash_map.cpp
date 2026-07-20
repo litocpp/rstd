@@ -9,10 +9,47 @@ namespace
 {
 
 struct ConstantHasher {
-    template<typename T>
-    auto operator()(const T&) const noexcept -> u64 {
-        return u64(7);
+    void write(rstd::slice<rstd::byte>) noexcept {}
+    auto finish() const noexcept -> u64 { return u64(7); }
+};
+
+using ConstantBuildHasher = rstd::hash::BuildHasherDefault<ConstantHasher>;
+
+struct SeededHasher {
+    u64 value;
+
+    explicit SeededHasher(u64 seed) noexcept: value(seed) {}
+
+    void write(rstd::slice<rstd::byte> bytes) noexcept {
+        for (usize i {}; i < bytes.len(); ++i) value = value.wrapping_add(u64(bytes[i]));
     }
+
+    auto finish() const noexcept -> u64 { return value; }
+};
+
+struct SeededBuilder {
+    using Hasher = SeededHasher;
+
+    u64 seed;
+
+    auto build_hasher() const noexcept -> Hasher { return Hasher(seed); }
+};
+
+struct ExplicitBuilder {
+    u64 seed;
+};
+
+struct CapturingHasher {
+    rstd::byte   data[64] {};
+    rstd::size_t length {};
+
+    void write(rstd::slice<rstd::byte> bytes) noexcept {
+        for (rstd::size_t i = 0; i < bytes.len().to_primitive(); ++i) {
+            data[length++] = bytes[usize(i)];
+        }
+    }
+
+    auto finish() const noexcept -> u64 { return u64(length); }
 };
 
 struct TrackedHashValue {
@@ -52,7 +89,18 @@ namespace rstd
 
 template<>
 struct Impl<hash::Hash, HashKey> : ImplBase<HashKey> {
-    void hash(hash::DefaultHasher& state) const noexcept { state.write_value(this->self().id); }
+    template<typename H>
+        requires Impled<H, hash::Hasher>
+    void hash(H& state) const noexcept {
+        hash::write_value(state, this->self().id);
+    }
+};
+
+template<>
+struct Impl<hash::BuildHasher, ExplicitBuilder> : ImplBase<ExplicitBuilder> {
+    using Hasher = SeededHasher;
+
+    auto build_hasher() const noexcept -> Hasher { return Hasher(this->self().seed); }
 };
 
 } // namespace rstd
@@ -88,7 +136,7 @@ TEST(HashMap, BasicLookupReplacementAndCapacity) {
 }
 
 TEST(HashMap, CollisionChainsSurviveTombstonesAndRehash) {
-    auto map = HashMap<i32, i32, ConstantHasher>::with_capacity(usize(1));
+    auto map = HashMap<i32, i32, ConstantBuildHasher>::with_capacity(usize(1));
     for (i32 i {}; i < i32(300); i += i32(1)) map.insert(i, i * i32(2));
     for (i32 i {}; i < i32(150); i += i32(1)) {
         EXPECT_EQ(map.remove(i), Some(i * i32(2)));
@@ -203,6 +251,78 @@ TEST(HashMap, StringKeysUseTheirHashOwner) {
     map.insert(rstd::string::String::make("beta"), i32(2));
     auto key = rstd::string::String::make("alpha");
     EXPECT_EQ(**map.get(key), i32(1));
+}
+
+TEST(HashMap, CustomHashCombinesWithDifferentBuilders) {
+    HashKey first(i32(5), i32(10));
+    HashKey equivalent(i32(5), i32(20));
+
+    auto random = rstd::hash::RandomState(u64(11), u64(19));
+    EXPECT_EQ(rstd::hash::hash_one(random, first), rstd::hash::hash_one(random, equivalent));
+
+    auto seeded = SeededBuilder { u64(23) };
+    EXPECT_EQ(rstd::hash::hash_one(seeded, first), rstd::hash::hash_one(seeded, equivalent));
+
+    auto map = HashMap<HashKey, i32, SeededBuilder>::with_hasher(SeededBuilder { u64(23) });
+    map.insert(HashKey(i32(5), i32(30)), i32(7));
+    EXPECT_EQ(**map.get(first), i32(7));
+}
+
+TEST(HashMap, BuilderCreatesIndependentEquivalentStates) {
+    auto builder = SeededBuilder { u64(31) };
+    auto first   = rstd::hash::hash_one(builder, i32(7));
+    auto second  = rstd::hash::hash_one(builder, i32(7));
+    EXPECT_EQ(first, second);
+
+    auto other = SeededBuilder { u64(32) };
+    EXPECT_NE(first, rstd::hash::hash_one(other, i32(7)));
+}
+
+TEST(HashMap, ExplicitBuildHasherImplUsesTheCommonHashPath) {
+    auto builder = ExplicitBuilder { u64(37) };
+    EXPECT_EQ(rstd::hash::hash_one(builder, i32(9)), rstd::hash::hash_one(builder, i32(9)));
+
+    auto map = HashMap<HashKey, i32, ExplicitBuilder>::with_hasher(ExplicitBuilder { u64(37) });
+    map.insert(HashKey(i32(9), i32(1)), i32(11));
+    EXPECT_EQ(**map.get(HashKey(i32(9), i32(2))), i32(11));
+}
+
+TEST(Hash, FinishIsStableWithoutAdditionalWrites) {
+    rstd::hash::DefaultHasher state(u64(3), u64(5));
+    rstd::hash::write_value(state, i32(7));
+    auto first = state.finish();
+    EXPECT_EQ(first, state.finish());
+}
+
+TEST(HashMap, PointerKeysHashTheirAddress) {
+    int  marker = 0;
+    auto map    = HashMap<const void*, i32>::make();
+
+    map.insert(nullptr, i32(1));
+    map.insert(&marker, i32(2));
+
+    EXPECT_EQ(**map.get(nullptr), i32(1));
+    EXPECT_EQ(**map.get(&marker), i32(2));
+}
+
+TEST(Hash, StringHashPreservesFieldBoundaries) {
+    auto ab = rstd::string::String::make("ab");
+    auto c  = rstd::string::String::make("c");
+    auto a  = rstd::string::String::make("a");
+    auto bc = rstd::string::String::make("bc");
+
+    CapturingHasher left;
+    rstd::hash::hash_into(ab, left);
+    rstd::hash::hash_into(c, left);
+
+    CapturingHasher right;
+    rstd::hash::hash_into(a, right);
+    rstd::hash::hash_into(bc, right);
+
+    ASSERT_EQ(left.length, right.length);
+    bool differs = false;
+    for (rstd::size_t i = 0; i < left.length; ++i) differs |= left.data[i] != right.data[i];
+    EXPECT_TRUE(differs);
 }
 
 TEST(HashMap, CustomHashKeepsTheStoredEquivalentKey) {

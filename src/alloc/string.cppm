@@ -202,8 +202,12 @@ namespace rstd
 {
 template<>
 struct Impl<hash::Hash, String> : ImplBase<String> {
-    void hash(hash::DefaultHasher& state) const noexcept {
-        state.write(str_::as_bytes(this->self().as_str()));
+    template<typename H>
+        requires Impled<H, hash::Hasher>
+    void hash(H& state) const noexcept {
+        hash::write_bytes(state, str_::as_bytes(this->self().as_str()));
+        byte const separator = 0xff;
+        hash::write_bytes(state, slice<byte>::from_raw_parts(rstd::addressof(separator), usize(1)));
     }
 };
 

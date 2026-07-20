@@ -29,17 +29,12 @@ export class RandomState {
     u64 k1;
 
 public:
+    using Hasher = DefaultHasher;
+
     RandomState() noexcept: k0(next_seed()), k1(next_seed()) {}
     RandomState(u64 first, u64 second) noexcept: k0(first), k1(second) {}
 
-    template<typename K>
-    auto operator()(const K& key) const noexcept -> u64
-        requires rstd::Impled<K, Hash>
-    {
-        DefaultHasher state(k0, k1);
-        rstd::as<Hash>(key).hash(state);
-        return state.finish();
-    }
+    auto build_hasher() const noexcept -> Hasher { return Hasher(k0, k1); }
 };
 
 } // namespace rstd::hash

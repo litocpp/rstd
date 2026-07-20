@@ -237,6 +237,31 @@ add_rstd_compile_fail(
   Numeric.ConstexprOverflow
   "not a constant expression|constexpr variable")
 add_rstd_compile_fail(
+  rstd_compile_fail_hash_key_without_hash
+  compile_fail/hash_key_without_hash.cpp
+  Hash.KeyWithoutHash
+  "HashableBy|HashableWith|constraints not satisfied")
+add_rstd_compile_fail(
+  rstd_compile_fail_hash_builder_missing
+  compile_fail/hash_builder_missing.cpp
+  Hash.BuilderMissing
+  "HashBuilder|constraints not satisfied")
+add_rstd_compile_fail(
+  rstd_compile_fail_hash_builder_invalid_state
+  compile_fail/hash_builder_invalid_state.cpp
+  Hash.BuilderInvalidState
+  "HashBuilder|Hasher|constraints not satisfied")
+add_rstd_compile_fail(
+  rstd_compile_fail_hash_callable_builder
+  compile_fail/hash_callable_builder.cpp
+  Hash.CallableBuilder
+  "HashBuilder|constraints not satisfied")
+add_rstd_compile_fail(
+  rstd_compile_fail_hash_float_key
+  compile_fail/hash_float_key.cpp
+  Hash.FloatKey
+  "HashableBy|HashableWith|constraints not satisfied")
+add_rstd_compile_fail(
   rstd_compile_fail_lifetimebound_temporary_box
   compile_fail/lifetimebound_temporary_box.cpp
   LifetimeBound.TemporaryBox
