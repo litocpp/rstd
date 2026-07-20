@@ -139,6 +139,7 @@ export using std::exit;
 export using std::free;
 export using std::getenv;
 export using std::malloc;
+export using std::strtof;
 export using std::strtod;
 export using std::strtol;
 export using std::strtoul;
