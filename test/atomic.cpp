@@ -10,6 +10,22 @@ static_assert(std::is_same_v<Atomic<u32>::Native, rstd::uint32_t>);
 static_assert(std::is_same_v<Atomic<u64>::Native, rstd::uint64_t>);
 static_assert(std::is_same_v<Atomic<usize>::Native, rstd::size_t>);
 
+namespace
+{
+
+struct alignas(4) Pair {
+    float x;
+    float y;
+
+    friend constexpr bool operator==(Pair, Pair) = default;
+};
+
+static_assert(sizeof(Pair) == 8);
+static_assert(alignof(Pair) == 4);
+static_assert(alignof(Atomic<Pair>) == 8);
+
+} // namespace
+
 TEST(AtomicNumeric, LoadStoreExchangeAndCompareExchange) {
     auto value = Atomic<u32> { u32(1) };
     EXPECT_EQ(value.load(Ordering::Relaxed), u32(1));
@@ -46,4 +62,11 @@ TEST(AtomicNumeric, ExposesPrimitiveAddressForPalOwners) {
     static_assert(std::is_same_v<decltype(value.as_native_ptr()), rstd::uint32_t*>);
     EXPECT_NE(value.as_native_ptr(), nullptr);
     EXPECT_EQ(*value.as_native_ptr(), rstd::uint32_t(7));
+}
+
+TEST(AtomicNumeric, AlignsAggregateStorageForAtomicOperations) {
+    auto value = Atomic<Pair> { Pair { 1.0f, 2.0f } };
+    EXPECT_EQ(value.load(), (Pair { 1.0f, 2.0f }));
+    value.store(Pair { 3.0f, 4.0f });
+    EXPECT_EQ(value.load(), (Pair { 3.0f, 4.0f }));
 }

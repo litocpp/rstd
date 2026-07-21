@@ -55,7 +55,17 @@ public:
     using Native = typename StorageFor<T>::Type;
 
 private:
-    Native val {};
+    static constexpr auto storage_alignment = [] {
+        constexpr auto size      = sizeof(Native);
+        constexpr auto alignment = alignof(Native);
+        if constexpr ((size & (size - 1)) == 0 && size <= 16 && size > alignment) {
+            return size;
+        } else {
+            return alignment;
+        }
+    }();
+
+    alignas(storage_alignment) Native val {};
 
     static constexpr auto to_native(T value) noexcept -> Native {
         if constexpr (num::Numeric<T>) {
