@@ -9,14 +9,6 @@ if(NOT GTest_FOUND)
   FetchContent_MakeAvailable(googletest)
 endif()
 
-if(RSTD_USE_ASAN)
-  add_compile_options(-g -fsanitize=address -fsanitize=undefined
-                      -fsanitize-recover=address)
-
-  add_link_options(-fsanitize=address -fsanitize=undefined
-                   -fsanitize-recover=address)
-endif()
-
 set(
   RSTD_TEST_SOURCES
   trait.cpp
