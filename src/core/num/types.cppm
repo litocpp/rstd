@@ -390,6 +390,16 @@ public:
     auto as_mut_ptr() && -> Primitive*        = delete;
 
     [[nodiscard]]
+    constexpr auto min(Self rhs) const noexcept -> Self {
+        return value_ <= rhs.value_ ? self() : rhs;
+    }
+
+    [[nodiscard]]
+    constexpr auto max(Self rhs) const noexcept -> Self {
+        return value_ >= rhs.value_ ? self() : rhs;
+    }
+
+    [[nodiscard]]
     constexpr auto checked_add(Self rhs) const noexcept -> rstd::Option<Self>;
     [[nodiscard]]
     constexpr auto checked_sub(Self rhs) const noexcept -> rstd::Option<Self>;

@@ -113,6 +113,12 @@ static_assert(mtp::same_as<decltype((*static_cast<u8*>(nullptr))++), u8>);
 static_assert(mtp::same_as<decltype(--*static_cast<usize*>(nullptr)), usize&>);
 static_assert(mtp::same_as<decltype((*static_cast<usize*>(nullptr))--), usize>);
 static_assert(! std::is_convertible_v<int, usize>);
+static_assert(mtp::same_as<decltype(u32().min(u32())), u32>);
+static_assert(mtp::same_as<decltype(i64().max(i64())), i64>);
+static_assert((7_u32).min(3_u32) == 3_u32);
+static_assert((7_u32).max(3_u32) == 7_u32);
+static_assert(i32(-7).min(i32(-3)) == i32(-7));
+static_assert(i32(-7).max(i32(-3)) == i32(-3));
 
 consteval auto accepts_usize(usize value) -> usize {
     return value;
@@ -137,6 +143,13 @@ static_assert([] {
 TEST(IntConstruction, ExplicitPrimitiveWidths) {
     rstd::ptrdiff_t value = 7;
     EXPECT_EQ(usize(value), 7_usize);
+}
+
+TEST(IntOrdering, MinMaxReturnOrderedOperand) {
+    EXPECT_EQ(usize(240).min(usize(60)), usize(60));
+    EXPECT_EQ(usize(60).max(usize(240)), usize(240));
+    EXPECT_EQ(i16(-12).min(i16(5)), i16(-12));
+    EXPECT_EQ(i16(-12).max(i16(5)), i16(5));
 }
 
 TEST(IntIncrement, PrefixAndPostfixPreserveCppValueCategories) {
