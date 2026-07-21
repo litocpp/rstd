@@ -1,9 +1,9 @@
 module;
 #include <cassert>
-export module rstd:sync.mpsc.mpmc.select;
+export module rstd:sync.mpmc.select;
 export import rstd.core;
 
-namespace rstd::sync::mpsc::mpmc
+namespace rstd::sync::mpmc::detail
 {
 
 static_assert(sizeof(rstd::uintptr_t) <= sizeof(rstd::size_t));
@@ -60,4 +60,4 @@ export struct Selected {
     static Selected from_usize(usize v) { return Selected { v }; }
 };
 
-} // namespace rstd::sync::mpsc::mpmc
+} // namespace rstd::sync::mpmc::detail

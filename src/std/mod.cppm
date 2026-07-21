@@ -1,6 +1,7 @@
 /// The rstd standard library module, re-exporting all public submodules.
 export module rstd;
 export import rstd.core;
+export import rstd.error;
 export import :time;
 export import :forward;
 export import :sync;

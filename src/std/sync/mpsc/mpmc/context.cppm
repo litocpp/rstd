@@ -1,7 +1,7 @@
 module;
 #include <rstd/macro.hpp>
-export module rstd:sync.mpsc.mpmc.context;
-export import :sync.mpsc.mpmc.select;
+export module rstd:sync.mpmc.context;
+export import :sync.mpmc.select;
 export import rstd.core;
 export import :thread;
 export import :time;
@@ -9,16 +9,18 @@ import :forward;
 import rstd.alloc;
 
 using alloc::sync::Arc;
-using rstd::boxed::Box;
 using rstd::sync::atomic::Atomic;
 using rstd::sync::atomic::Ordering;
 
-namespace rstd::sync::mpsc::mpmc
+namespace rstd::sync::mpmc::detail
 {
 
-// Forward declare for ThreadId
 using thread::Thread;
-using thread::ThreadId;
+
+export inline auto current_thread_id() -> usize {
+    thread_local byte marker {};
+    return usize(reinterpret_cast<rstd::uintptr_t>(&marker));
+}
 
 struct Inner {
     /// Selected operation.
@@ -31,9 +33,9 @@ struct Inner {
     Thread thread;
 
     /// Thread id.
-    ThreadId thread_id;
+    usize thread_id;
 
-    Inner(ThreadId id, Thread t)
+    Inner(usize id, Thread t)
         : select(Selected::Waiting().val), packet(nullptr), thread(rstd::move(t)), thread_id(id) {}
 };
 
@@ -41,6 +43,11 @@ export class Context {
     Arc<Inner> inner;
 
     Context(Arc<Inner> inner): inner(rstd::move(inner)) {}
+
+    static auto cached_context() -> Option<Context>& {
+        thread_local Option<Context> cached = Some(Context::make());
+        return cached;
+    }
 
 public:
     USE_TRAIT(Context)
@@ -55,7 +62,28 @@ public:
     Context& operator=(Context&&) noexcept = default;
 
     static Context make() {
-        return Context { Arc<Inner>::make(thread::current().id(), thread::current()) };
+        return Context { Arc<Inner>::make(current_thread_id(), thread::current()) };
+    }
+
+    template<typename F>
+    static decltype(auto) with(F&& function) {
+        auto& cached = cached_context();
+        if (cached.is_none()) {
+            auto context = make();
+            return rstd::forward<F>(function)(context);
+        }
+
+        auto context = cached.take().unwrap_unchecked();
+        context.reset();
+        using R = decltype(rstd::forward<F>(function)(context));
+        if constexpr (rstd::mtp::same_as<R, void>) {
+            rstd::forward<F>(function)(context);
+            cached = Some(rstd::move(context));
+        } else {
+            R result = rstd::forward<F>(function)(context);
+            cached   = Some(rstd::move(context));
+            return result;
+        }
     }
 
     /// Resets `select` and `packet`.
@@ -67,7 +95,7 @@ public:
     /// Attempts to select an operation.
     auto try_select(Selected select) const -> Result<empty, Selected> {
         auto expected = Selected::Waiting().val;
-        auto result   = inner->select.compare_exchange_weak(
+        auto result   = inner->select.compare_exchange_strong(
             expected, select.val, Ordering::AcqRel, Ordering::Acquire);
         if (result) {
             return Ok(empty {});
@@ -118,7 +146,7 @@ public:
     void unpark() const { inner->thread.unpark(); }
 
     /// Returns the id of the thread this context belongs to.
-    auto thread_id() const -> ThreadId { return inner->thread_id; }
+    auto thread_id() const -> usize { return inner->thread_id; }
 };
 
-} // namespace rstd::sync::mpsc::mpmc
+} // namespace rstd::sync::mpmc::detail

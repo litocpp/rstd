@@ -1,6 +1,8 @@
-export module rstd:sync.mpsc.mpmc.waker;
-export import :sync.mpsc.mpmc.context;
-export import :sync.mpsc.mpmc.select;
+module;
+#include <rstd/macro.hpp>
+export module rstd:sync.mpmc.waker;
+export import :sync.mpmc.context;
+export import :sync.mpmc.select;
 export import :sync.mutex;
 import :forward;
 export import rstd.core;
@@ -10,7 +12,7 @@ using rstd::sync::atomic::Atomic;
 using rstd::sync::atomic::Ordering;
 using rstd::sync::Mutex;
 
-namespace rstd::sync::mpsc::mpmc
+namespace rstd::sync::mpmc::detail
 {
 
 /// Represents a thread blocked on a specific channel operation.
@@ -28,7 +30,7 @@ export struct Entry {
 };
 
 /// A queue of threads blocked on channel operations.
-struct Waker {
+export struct Waker {
     /// A list of select operations.
     Vec<Entry> selectors;
 
@@ -64,7 +66,7 @@ struct Waker {
             return None();
         }
 
-        auto thread_id = thread::current().id();
+        auto thread_id = current_thread_id();
 
         for (rstd::size_t i = 0; i < selectors.len().to_primitive(); ++i) {
             auto  index    = usize(i);
@@ -114,7 +116,10 @@ struct Waker {
         notify();
     }
 
-    ~Waker() {}
+    ~Waker() {
+        debug_assert(selectors.is_empty());
+        debug_assert(observers.is_empty());
+    }
 };
 
 /// A waker that can be shared among threads without locking.
@@ -168,7 +173,7 @@ public:
                         Ordering::SeqCst);
     }
 
-    ~SyncWaker() {}
+    ~SyncWaker() { debug_assert(is_empty_.load(Ordering::SeqCst)); }
 };
 
-} // namespace rstd::sync::mpsc::mpmc
+} // namespace rstd::sync::mpmc::detail

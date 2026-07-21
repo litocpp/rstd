@@ -1,8 +1,8 @@
-export module rstd:sync.mpsc.mpmc.utils;
+export module rstd:sync.mpmc.utils;
 export import rstd.core;
 export import :thread;
 
-namespace rstd::sync::mpsc::mpmc
+namespace rstd::sync::mpmc::detail
 {
 
 export template<typename T>
@@ -47,4 +47,4 @@ public:
     }
 };
 
-} // namespace rstd::sync::mpsc::mpmc
+} // namespace rstd::sync::mpmc::detail

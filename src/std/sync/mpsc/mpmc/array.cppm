@@ -1,10 +1,11 @@
 module;
 #include <rstd/macro.hpp>
-export module rstd:sync.mpsc.mpmc.array;
-export import :sync.mpsc.mpmc.context;
-export import :sync.mpsc.mpmc.select;
-export import :sync.mpsc.mpmc.utils;
-export import :sync.mpsc.mpmc.waker;
+export module rstd:sync.mpmc.array;
+export import :sync.mpmc.context;
+import :sync.mpmc.error;
+export import :sync.mpmc.select;
+export import :sync.mpmc.utils;
+export import :sync.mpmc.waker;
 export import rstd.core;
 import :forward;
 import rstd.alloc;
@@ -16,8 +17,10 @@ using rstd::sync::atomic::Ordering;
 using rstd::alloc::Allocator;
 using rstd_alloc::boxed::Box;
 
-namespace rstd::sync::mpsc::mpmc
+namespace rstd::sync::mpmc::detail
 {
+
+namespace channel_api = rstd::sync::mpmc;
 
 export struct ArrayToken {
     const void* slot;
@@ -28,6 +31,8 @@ export struct ArrayToken {
 
 export struct Token {
     ArrayToken array;
+
+    static Token default_token() { return Token { ArrayToken::default_token() }; }
 };
 
 template<typename T>
@@ -106,25 +111,25 @@ struct Channel {
             if (tail_val == stamp) {
                 usize new_tail;
                 if (index + usize(1) < cap) {
-                    new_tail = tail_val + usize(1);
+                    new_tail = tail_val.wrapping_add(usize(1));
                 } else {
-                    new_tail = (lap + one_lap) & ~(one_lap - usize(1));
+                    new_tail = lap.wrapping_add(one_lap);
                 }
 
                 if (tail->compare_exchange_weak(
                         tail_val, new_tail, Ordering::SeqCst, Ordering::Relaxed)) {
                     token.array.slot  = &slot;
-                    token.array.stamp = tail_val + usize(1);
+                    token.array.stamp = tail_val.wrapping_add(usize(1));
                     return true;
                 } else {
                     backoff.spin_light();
                     tail_val = tail->load(Ordering::Relaxed);
                 }
-            } else if (stamp + one_lap == tail_val + usize(1)) {
+            } else if (stamp.wrapping_add(one_lap) == tail_val.wrapping_add(usize(1))) {
                 fence(Ordering::SeqCst);
                 usize head_val = head->load(Ordering::Relaxed);
 
-                if (head_val + one_lap == tail_val) {
+                if (head_val.wrapping_add(one_lap) == tail_val) {
                     return false; // full
                 }
 
@@ -161,18 +166,18 @@ struct Channel {
             auto& slot  = buffer.as_ptr()[index];
             usize stamp = slot.stamp.load(Ordering::Acquire);
 
-            if (head_val + usize(1) == stamp) {
+            if (head_val.wrapping_add(usize(1)) == stamp) {
                 usize new_head;
                 if (index + usize(1) < cap) {
-                    new_head = head_val + usize(1);
+                    new_head = head_val.wrapping_add(usize(1));
                 } else {
-                    new_head = (lap + one_lap) & ~(one_lap - usize(1));
+                    new_head = lap.wrapping_add(one_lap);
                 }
 
                 if (head->compare_exchange_weak(
                         head_val, new_head, Ordering::SeqCst, Ordering::Relaxed)) {
                     token.array.slot  = &slot;
-                    token.array.stamp = head_val + one_lap;
+                    token.array.stamp = head_val.wrapping_add(one_lap);
                     return true;
                 } else {
                     backoff.spin_light();
@@ -208,76 +213,161 @@ struct Channel {
 
         auto* slot = static_cast<Slot<T>*>(const_cast<void*>(token.array.slot));
         T     msg  = rstd::move(slot->msg.assume_init_mut());
+        slot->msg.assume_init_drop();
         slot->stamp.store(token.array.stamp, Ordering::Release);
 
         senders.notify();
         return Ok(rstd::move(msg));
     }
 
-    bool try_send(T msg) {
-        Token token;
+    auto try_send(T msg) -> Result<empty, channel_api::TrySendError<T>> {
+        Token token = Token::default_token();
         if (start_send(token)) {
-            auto res = write(token, rstd::move(msg));
-            return res.is_ok();
+            auto result = write(token, rstd::move(msg));
+            if (result.is_ok()) return Ok(empty {});
+            return Err(channel_api::TrySendError<T>::Disconnected(
+                rstd::move(result).unwrap_err_unchecked()));
+        }
+        return Err(channel_api::TrySendError<T>::Full(rstd::move(msg)));
+    }
+
+    auto send(T msg, Option<time::Instant> deadline)
+        -> Result<empty, channel_api::SendTimeoutError<T>> {
+        Token token = Token::default_token();
+        while (true) {
+            if (start_send(token)) {
+                auto result = write(token, rstd::move(msg));
+                if (result.is_ok()) return Ok(empty {});
+                return Err(channel_api::SendTimeoutError<T>::Disconnected(
+                    rstd::move(result).unwrap_err_unchecked()));
+            }
+
+            if (deadline.is_some() && time::Instant::now() >= *deadline) {
+                return Err(channel_api::SendTimeoutError<T>::Timeout(rstd::move(msg)));
+            }
+
+            Context::with([&](const Context& cx) {
+                auto oper = Operation::hook(&token);
+                senders.register_op(oper, cx);
+                if (! is_full() || is_disconnected()) cx.try_select(Selected::Aborted());
+
+                auto selected = cx.wait_until(deadline);
+                if (selected.is_aborted() || selected.is_disconnected()) {
+                    senders.unregister(oper);
+                }
+            });
+        }
+    }
+
+    auto try_recv() -> Result<T, channel_api::TryRecvError> {
+        Token token = Token::default_token();
+        if (start_recv(token)) {
+            auto result = read(token);
+            if (result.is_ok()) return Ok(rstd::move(result).unwrap_unchecked());
+            return Err(channel_api::TryRecvError::Disconnected);
+        }
+        return Err(channel_api::TryRecvError::Empty);
+    }
+
+    auto recv(Option<time::Instant> deadline) -> Result<T, channel_api::RecvTimeoutError> {
+        Token token = Token::default_token();
+        while (true) {
+            if (start_recv(token)) {
+                auto result = read(token);
+                if (result.is_ok()) return Ok(rstd::move(result).unwrap_unchecked());
+                return Err(channel_api::RecvTimeoutError::Disconnected);
+            }
+
+            if (deadline.is_some() && time::Instant::now() >= *deadline) {
+                return Err(channel_api::RecvTimeoutError::Timeout);
+            }
+
+            Context::with([&](const Context& cx) {
+                auto oper = Operation::hook(&token);
+                receivers.register_op(oper, cx);
+                if (! is_empty() || is_disconnected()) cx.try_select(Selected::Aborted());
+
+                auto selected = cx.wait_until(deadline);
+                if (selected.is_aborted() || selected.is_disconnected()) {
+                    receivers.unregister(oper);
+                }
+            });
+        }
+    }
+
+    auto disconnect_senders() -> bool {
+        usize tail_val = tail->fetch_or(mark_bit, Ordering::SeqCst);
+        if ((tail_val & mark_bit) == usize()) {
+            receivers.disconnect();
+            return true;
         }
         return false;
     }
 
-    auto try_recv() -> Result<T, empty> {
-        Token token;
-        if (start_recv(token)) {
-            return read(token);
-        }
-        return Err(empty {});
+    auto disconnect_receivers() -> bool {
+        usize tail_val     = tail->fetch_or(mark_bit, Ordering::SeqCst);
+        bool  disconnected = (tail_val & mark_bit) == usize();
+        if (disconnected) senders.disconnect();
+        discard_all_messages(tail_val);
+        return disconnected;
     }
 
-    void disconnect() {
-        usize tail_val = tail->fetch_or(mark_bit, Ordering::SeqCst);
-        if ((tail_val & mark_bit) == usize()) {
-            senders.disconnect();
-            receivers.disconnect();
-        }
-    }
+    void discard_all_messages(usize tail_val) {
+        usize   head_val = head->load(Ordering::Relaxed);
+        Backoff backoff;
+        tail_val &= ~mark_bit;
 
-    ~Channel() {
-        usize h = head->load(Ordering::Relaxed);
-        usize t = tail->load(Ordering::Relaxed) & ~mark_bit;
-
-        while (h != t) {
-            usize index = h & (mark_bit - usize(1));
+        while (true) {
+            usize index = head_val & (mark_bit - usize(1));
+            usize lap   = head_val & ~(one_lap - usize(1));
             auto& slot  = buffer.as_mut_ptr()[index];
-            slot.msg.assume_init_drop();
+            usize stamp = slot.stamp.load(Ordering::Acquire);
 
-            if (index + usize(1) < cap) {
-                ++h;
+            if (head_val.wrapping_add(usize(1)) == stamp) {
+                if (index + usize(1) < cap) {
+                    head_val = head_val.wrapping_add(usize(1));
+                } else {
+                    head_val = lap.wrapping_add(one_lap);
+                }
+                slot.msg.assume_init_drop();
+            } else if (tail_val == head_val) {
+                return;
             } else {
-                h = (h + one_lap) & ~(one_lap - usize(1));
+                backoff.spin_heavy();
             }
         }
     }
 
+    ~Channel() = default;
+
     bool is_disconnected() const { return (tail->load(Ordering::SeqCst) & mark_bit) != usize(); }
     bool is_empty() const {
-        return (head->load(Ordering::SeqCst) == (tail->load(Ordering::SeqCst) & ~mark_bit));
+        usize head_val = head->load(Ordering::SeqCst);
+        usize tail_val = tail->load(Ordering::SeqCst);
+        return head_val == (tail_val & ~mark_bit);
     }
     bool is_full() const {
-        return (head->load(Ordering::SeqCst) + one_lap ==
-                (tail->load(Ordering::SeqCst) & ~mark_bit));
+        usize tail_val = tail->load(Ordering::SeqCst);
+        usize head_val = head->load(Ordering::SeqCst);
+        return head_val.wrapping_add(one_lap) == (tail_val & ~mark_bit);
     }
     usize len() const {
-        usize h = head->load(Ordering::SeqCst);
-        usize t = tail->load(Ordering::SeqCst) & ~mark_bit;
+        while (true) {
+            usize tail_val = tail->load(Ordering::SeqCst);
+            usize head_val = head->load(Ordering::SeqCst);
 
-        usize h_idx = h & (mark_bit - usize(1));
-        usize t_idx = t & (mark_bit - usize(1));
+            if (tail->load(Ordering::SeqCst) == tail_val) {
+                usize head_index = head_val & (mark_bit - usize(1));
+                usize tail_index = tail_val & (mark_bit - usize(1));
 
-        if (h_idx <= t_idx) {
-            return t_idx - h_idx;
-        } else {
-            return cap - h_idx + t_idx;
+                if (head_index < tail_index) return tail_index - head_index;
+                if (head_index > tail_index) return cap - head_index + tail_index;
+                if ((tail_val & ~mark_bit) == head_val) return usize();
+                return cap;
+            }
         }
     }
-    usize capacity() const { return cap; }
+    auto capacity() const -> Option<usize> { return Some<usize>(cap); }
 };
 
-} // namespace rstd::sync::mpsc::mpmc
+} // namespace rstd::sync::mpmc::detail

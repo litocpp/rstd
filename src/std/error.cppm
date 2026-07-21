@@ -14,8 +14,9 @@ export struct Error {
         //auto source() -> Dyn<Error> { return trait_call<0>(this); }
         // auto   provide(request: &mut Request) { ... }
     };
-    // template<typename T>
-    // using Funcs = TraitFuncs<&T::source>;
+
+    template<typename>
+    using Funcs = TraitFuncs<>;
 };
 
 } // namespace rstd::error

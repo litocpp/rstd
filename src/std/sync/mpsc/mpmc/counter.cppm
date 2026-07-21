@@ -1,12 +1,13 @@
-export module rstd:sync.mpsc.mpmc.counter;
+export module rstd:sync.mpmc.counter;
 import :forward;
+import :process;
 export import rstd.core;
 
 using rstd::boxed::Box;
 using rstd::sync::atomic::Atomic;
 using rstd::sync::atomic::Ordering;
 
-namespace rstd::sync::mpsc::mpmc
+namespace rstd::sync::mpmc::detail
 {
 
 constexpr usize COUNTER_MAX(isize::MAX.to_primitive());
@@ -55,8 +56,7 @@ public:
     Sender(Sender&& other) noexcept: counter_ptr(other.counter_ptr) { other.counter_ptr = nullptr; }
     Sender& operator=(Sender&& other) noexcept {
         if (this != &other) {
-            // We can't release here because we don't have the disconnect function.
-            // But Sender is meant to be used inside a wrapper that handles release.
+            if (counter_ptr) rstd::panic { "mpmc sender must be released before move assignment" };
             counter_ptr       = other.counter_ptr;
             other.counter_ptr = nullptr;
         }
@@ -70,9 +70,7 @@ public:
     auto acquire() const -> Sender<C> {
         if (! counter_ptr) rstd::panic { "Sender::acquire on null" };
         usize count = counter()->senders.fetch_add(usize(1), Ordering::Relaxed);
-        if (count > COUNTER_MAX) {
-            rstd::panic { "mpsc sender count overflow" };
-        }
+        if (count > COUNTER_MAX) rstd::process::abort();
         return Sender { counter_ptr };
     }
 
@@ -114,6 +112,8 @@ public:
     }
     Receiver& operator=(Receiver&& other) noexcept {
         if (this != &other) {
+            if (counter_ptr)
+                rstd::panic { "mpmc receiver must be released before move assignment" };
             counter_ptr       = other.counter_ptr;
             other.counter_ptr = nullptr;
         }
@@ -127,9 +127,7 @@ public:
     auto acquire() const -> Receiver<C> {
         if (! counter_ptr) rstd::panic { "Receiver::acquire on null" };
         usize count = counter()->receivers.fetch_add(usize(1), Ordering::Relaxed);
-        if (count > COUNTER_MAX) {
-            rstd::panic { "mpsc receiver count overflow" };
-        }
+        if (count > COUNTER_MAX) rstd::process::abort();
         return Receiver { counter_ptr };
     }
 
@@ -154,4 +152,4 @@ public:
     bool operator==(const Receiver& other) const { return counter_ptr == other.counter_ptr; }
 };
 
-} // namespace rstd::sync::mpsc::mpmc
+} // namespace rstd::sync::mpmc::detail

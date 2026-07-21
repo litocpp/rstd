@@ -1,258 +1,495 @@
-export module rstd:sync.mpsc;
-export import :sync.mpsc.mpmc;
+export module rstd:sync.mpmc;
+export import :sync.mpmc.error;
+export import :time;
 export import rstd.core;
+import :sync.mpmc.detail;
 
-namespace rstd::sync::mpsc
+namespace rstd::sync::mpmc
 {
 
-/// The receiving half of a channel, used to receive messages sent by `Sender` or `SyncSender`.
-/// \tparam T The type of values received through the channel.
-export template<typename T>
-class Receiver {
-    mpmc::Receiver<Box<mpmc::Channel<T>>>     inner_bounded;
-    mpmc::Receiver<Box<mpmc::ListChannel<T>>> inner_unbounded;
-    bool                                      is_bounded;
-
-public:
-    Receiver(mpmc::Receiver<Box<mpmc::Channel<T>>> i)
-        : inner_bounded(rstd::move(i)), is_bounded(true) {}
-    Receiver(mpmc::Receiver<Box<mpmc::ListChannel<T>>> i)
-        : inner_unbounded(rstd::move(i)), is_bounded(false) {}
-
-    /// Blocks the current thread until a message is received or the channel is disconnected.
-    /// \return Ok(value) on success, or Err on disconnection.
-    auto recv() -> Result<T, empty> {
-        if (is_bounded) {
-            mpmc::Token token;
-            if (inner_bounded->start_recv(token)) {
-                return inner_bounded->read(token);
-            }
-
-            auto cx   = mpmc::Context::make();
-            auto oper = mpmc::Operation::hook(this);
-            while (true) {
-                if (inner_bounded->start_recv(token)) {
-                    return inner_bounded->read(token);
-                }
-
-                cx.reset();
-                inner_bounded->receivers.register_op(oper, cx);
-                if (inner_bounded->start_recv(token)) {
-                    inner_bounded->receivers.unregister(oper);
-                    return inner_bounded->read(token);
-                }
-
-                auto sel = cx.wait_until(None());
-                inner_bounded->receivers.unregister(oper);
-
-                if (sel.is_disconnected()) {
-                    if (inner_bounded->start_recv(token)) {
-                        return inner_bounded->read(token);
-                    }
-                    return Err(empty {});
-                }
-            }
-        } else {
-            mpmc::ListToken token;
-            if (inner_unbounded->start_recv(token)) {
-                return inner_unbounded->read(token);
-            }
-
-            auto cx   = mpmc::Context::make();
-            auto oper = mpmc::Operation::hook(this);
-            while (true) {
-                if (inner_unbounded->start_recv(token)) {
-                    return inner_unbounded->read(token);
-                }
-
-                cx.reset();
-                inner_unbounded->receivers.register_op(oper, cx);
-                if (inner_unbounded->start_recv(token)) {
-                    inner_unbounded->receivers.unregister(oper);
-                    return inner_unbounded->read(token);
-                }
-
-                auto sel = cx.wait_until(None());
-                inner_unbounded->receivers.unregister(oper);
-
-                if (sel.is_disconnected()) {
-                    if (inner_unbounded->start_recv(token)) {
-                        return inner_unbounded->read(token);
-                    }
-                    return Err(empty {});
-                }
-            }
-        }
-    }
-
-    /// Attempts to receive a message without blocking.
-    /// \return Ok(value) if a message was available, or Err if the channel is empty or disconnected.
-    auto try_recv() -> Result<T, empty> {
-        if (is_bounded) {
-            mpmc::Token token;
-            if (inner_bounded->start_recv(token)) {
-                return inner_bounded->read(token);
-            }
-            return Err(empty {});
-        } else {
-            mpmc::ListToken token;
-            if (inner_unbounded->start_recv(token)) {
-                return inner_unbounded->read(token);
-            }
-            return Err(empty {});
-        }
-    }
-
-    ~Receiver() {
-        if (is_bounded) {
-            inner_bounded.release([](auto* chan_box) {
-                (*chan_box)->disconnect();
-            });
-        } else {
-            inner_unbounded.release([](auto* chan_box) {
-                (*chan_box)->disconnect();
-            });
-        }
-    }
-
-    Receiver(const Receiver&)                = delete;
-    Receiver& operator=(const Receiver&)     = delete;
-    Receiver(Receiver&&) noexcept            = default;
-    Receiver& operator=(Receiver&&) noexcept = default;
+enum class ChannelFlavor
+{
+    Array,
+    List,
+    Zero,
 };
 
-/// The sending half of an asynchronous (unbounded) channel.
-///
-/// Senders can be cloned to send from multiple threads.
-/// \tparam T The type of values sent through the channel.
+export template<typename T>
+class Receiver;
+
+export template<typename T>
+class Iter;
+
+export template<typename T>
+class TryIter;
+
+export template<typename T>
+class IntoIter;
+
 export template<typename T>
 class Sender {
-    mpmc::Sender<Box<mpmc::ListChannel<T>>> inner;
+    detail::Sender<Box<detail::Channel<T>>>     inner_array;
+    detail::Sender<Box<detail::ListChannel<T>>> inner_list;
+    detail::Sender<Box<detail::ZeroChannel<T>>> inner_zero;
+    ChannelFlavor                               flavor;
+
+    void release() {
+        switch (flavor) {
+        case ChannelFlavor::Array:
+            inner_array.release([](auto* channel) {
+                (*channel)->disconnect_senders();
+            });
+            break;
+        case ChannelFlavor::List:
+            inner_list.release([](auto* channel) {
+                (*channel)->disconnect_senders();
+            });
+            break;
+        case ChannelFlavor::Zero:
+            inner_zero.release([](auto* channel) {
+                (*channel)->disconnect();
+            });
+            break;
+        }
+    }
 
 public:
-    Sender(mpmc::Sender<Box<mpmc::ListChannel<T>>> i): inner(rstd::move(i)) {}
+    explicit Sender(detail::Sender<Box<detail::Channel<T>>> inner)
+        : inner_array(rstd::move(inner)), flavor(ChannelFlavor::Array) {}
 
-    /// Sends a value on this channel, returning Err(msg) if the receiver has disconnected.
-    /// \param msg The message to send.
-    auto send(T msg) -> Result<empty, T> {
-        mpmc::ListToken token {};
-        if (inner->start_send(token)) {
-            return inner->write(token, rstd::move(msg));
+    explicit Sender(detail::Sender<Box<detail::ListChannel<T>>> inner)
+        : inner_list(rstd::move(inner)), flavor(ChannelFlavor::List) {}
+
+    explicit Sender(detail::Sender<Box<detail::ZeroChannel<T>>> inner)
+        : inner_zero(rstd::move(inner)), flavor(ChannelFlavor::Zero) {}
+
+    auto try_send(T msg) const -> Result<empty, TrySendError<T>> {
+        switch (flavor) {
+        case ChannelFlavor::Array: return inner_array->try_send(rstd::move(msg));
+        case ChannelFlavor::List: return inner_list->try_send(rstd::move(msg));
+        case ChannelFlavor::Zero: return inner_zero->try_send(rstd::move(msg));
         }
-        return Err(rstd::move(msg));
+        rstd::panic { "invalid channel sender flavor" };
     }
 
-    ~Sender() {
-        inner.release([](auto* chan_box) {
-            (*chan_box)->disconnect();
-        });
+    auto send(T msg) const -> Result<empty, SendError<T>> {
+        Result<empty, SendTimeoutError<T>> result = [&] {
+            switch (flavor) {
+            case ChannelFlavor::Array: return inner_array->send(rstd::move(msg), None());
+            case ChannelFlavor::List: return inner_list->send(rstd::move(msg), None());
+            case ChannelFlavor::Zero: return inner_zero->send(rstd::move(msg), None());
+            }
+            rstd::panic { "invalid channel sender flavor" };
+        }();
+        if (result.is_ok()) return Ok(empty {});
+        return Err(SendError<T> { rstd::move(result).unwrap_err_unchecked().into_inner() });
     }
 
-    Sender(const Sender& other): inner(other.inner.acquire()) {}
-    Sender& operator=(const Sender& other) {
+    auto send_timeout(T msg, time::Duration timeout) const -> Result<empty, SendTimeoutError<T>> {
+        auto deadline = time::Instant::now().checked_add(timeout);
+        if (deadline.is_some()) return send_deadline(rstd::move(msg), *deadline);
+
+        auto result = send(rstd::move(msg));
+        if (result.is_ok()) return Ok(empty {});
+        return Err(SendTimeoutError<T>::from_send_error(rstd::move(result).unwrap_err_unchecked()));
+    }
+
+    auto send_deadline(T msg, time::Instant deadline) const -> Result<empty, SendTimeoutError<T>> {
+        switch (flavor) {
+        case ChannelFlavor::Array: return inner_array->send(rstd::move(msg), Some(deadline));
+        case ChannelFlavor::List: return inner_list->send(rstd::move(msg), Some(deadline));
+        case ChannelFlavor::Zero: return inner_zero->send(rstd::move(msg), Some(deadline));
+        }
+        rstd::panic { "invalid channel sender flavor" };
+    }
+
+    auto is_empty() const -> bool {
+        switch (flavor) {
+        case ChannelFlavor::Array: return inner_array->is_empty();
+        case ChannelFlavor::List: return inner_list->is_empty();
+        case ChannelFlavor::Zero: return inner_zero->is_empty();
+        }
+        rstd::panic { "invalid channel sender flavor" };
+    }
+
+    auto is_full() const -> bool {
+        switch (flavor) {
+        case ChannelFlavor::Array: return inner_array->is_full();
+        case ChannelFlavor::List: return inner_list->is_full();
+        case ChannelFlavor::Zero: return inner_zero->is_full();
+        }
+        rstd::panic { "invalid channel sender flavor" };
+    }
+
+    auto len() const -> usize {
+        switch (flavor) {
+        case ChannelFlavor::Array: return inner_array->len();
+        case ChannelFlavor::List: return inner_list->len();
+        case ChannelFlavor::Zero: return inner_zero->len();
+        }
+        rstd::panic { "invalid channel sender flavor" };
+    }
+
+    auto capacity() const -> Option<usize> {
+        switch (flavor) {
+        case ChannelFlavor::Array: return inner_array->capacity();
+        case ChannelFlavor::List: return inner_list->capacity();
+        case ChannelFlavor::Zero: return inner_zero->capacity();
+        }
+        rstd::panic { "invalid channel sender flavor" };
+    }
+
+    auto same_channel(const Sender& other) const -> bool {
+        if (flavor != other.flavor) return false;
+        switch (flavor) {
+        case ChannelFlavor::Array: return inner_array == other.inner_array;
+        case ChannelFlavor::List: return inner_list == other.inner_list;
+        case ChannelFlavor::Zero: return inner_zero == other.inner_zero;
+        }
+        return false;
+    }
+
+    ~Sender() { release(); }
+
+    Sender(const Sender& other): flavor(other.flavor) {
+        switch (flavor) {
+        case ChannelFlavor::Array: inner_array = other.inner_array.acquire(); break;
+        case ChannelFlavor::List: inner_list = other.inner_list.acquire(); break;
+        case ChannelFlavor::Zero: inner_zero = other.inner_zero.acquire(); break;
+        }
+    }
+
+    auto operator=(const Sender& other) -> Sender& {
         if (this != &other) {
-            inner.release([](auto* chan_box) {
-                (*chan_box)->disconnect();
-            });
-            inner = other.inner.acquire();
+            release();
+            flavor = other.flavor;
+            switch (flavor) {
+            case ChannelFlavor::Array: inner_array = other.inner_array.acquire(); break;
+            case ChannelFlavor::List: inner_list = other.inner_list.acquire(); break;
+            case ChannelFlavor::Zero: inner_zero = other.inner_zero.acquire(); break;
+            }
         }
         return *this;
     }
-    Sender(Sender&&) noexcept            = default;
-    Sender& operator=(Sender&&) noexcept = default;
+
+    Sender(Sender&& other) noexcept
+        : inner_array(rstd::move(other.inner_array)),
+          inner_list(rstd::move(other.inner_list)),
+          inner_zero(rstd::move(other.inner_zero)),
+          flavor(other.flavor) {}
+
+    auto operator=(Sender&& other) noexcept -> Sender& {
+        if (this != &other) {
+            release();
+            inner_array = rstd::move(other.inner_array);
+            inner_list  = rstd::move(other.inner_list);
+            inner_zero  = rstd::move(other.inner_zero);
+            flavor      = other.flavor;
+        }
+        return *this;
+    }
 };
 
-/// The sending half of a synchronous (bounded) channel.
-///
-/// Blocks when the buffer is full until space becomes available.
-/// \tparam T The type of values sent through the channel.
 export template<typename T>
-class SyncSender {
-    mpmc::Sender<Box<mpmc::Channel<T>>> inner;
+class Receiver {
+    detail::Receiver<Box<detail::Channel<T>>>     inner_array;
+    detail::Receiver<Box<detail::ListChannel<T>>> inner_list;
+    detail::Receiver<Box<detail::ZeroChannel<T>>> inner_zero;
+    ChannelFlavor                                 flavor;
+
+    void release() {
+        switch (flavor) {
+        case ChannelFlavor::Array:
+            inner_array.release([](auto* channel) {
+                (*channel)->disconnect_receivers();
+            });
+            break;
+        case ChannelFlavor::List:
+            inner_list.release([](auto* channel) {
+                (*channel)->disconnect_receivers();
+            });
+            break;
+        case ChannelFlavor::Zero:
+            inner_zero.release([](auto* channel) {
+                (*channel)->disconnect();
+            });
+            break;
+        }
+    }
 
 public:
-    SyncSender(mpmc::Sender<Box<mpmc::Channel<T>>> i): inner(rstd::move(i)) {}
+    explicit Receiver(detail::Receiver<Box<detail::Channel<T>>> inner)
+        : inner_array(rstd::move(inner)), flavor(ChannelFlavor::Array) {}
 
-    /// Sends a value on this channel, blocking if the buffer is full.
-    /// \param msg The message to send.
-    /// \return Err(msg) if the receiver has disconnected.
-    auto send(T msg) -> Result<empty, T> {
-        mpmc::Token token;
-        if (inner->start_send(token)) {
-            return inner->write(token, rstd::move(msg));
+    explicit Receiver(detail::Receiver<Box<detail::ListChannel<T>>> inner)
+        : inner_list(rstd::move(inner)), flavor(ChannelFlavor::List) {}
+
+    explicit Receiver(detail::Receiver<Box<detail::ZeroChannel<T>>> inner)
+        : inner_zero(rstd::move(inner)), flavor(ChannelFlavor::Zero) {}
+
+    auto try_recv() const -> Result<T, TryRecvError> {
+        switch (flavor) {
+        case ChannelFlavor::Array: return inner_array->try_recv();
+        case ChannelFlavor::List: return inner_list->try_recv();
+        case ChannelFlavor::Zero: return inner_zero->try_recv();
         }
+        rstd::panic { "invalid channel receiver flavor" };
+    }
 
-        auto cx   = mpmc::Context::make();
-        auto oper = mpmc::Operation::hook(this);
-        while (true) {
-            if (inner->start_send(token)) {
-                return inner->write(token, rstd::move(msg));
+    auto recv() const -> Result<T, RecvError> {
+        Result<T, RecvTimeoutError> result = [&] {
+            switch (flavor) {
+            case ChannelFlavor::Array: return inner_array->recv(None());
+            case ChannelFlavor::List: return inner_list->recv(None());
+            case ChannelFlavor::Zero: return inner_zero->recv(None());
             }
+            rstd::panic { "invalid channel receiver flavor" };
+        }();
+        if (result.is_ok()) return Ok(rstd::move(result).unwrap_unchecked());
+        return Err(RecvError {});
+    }
 
-            cx.reset();
-            inner->senders.register_op(oper, cx);
-            if (inner->start_send(token)) {
-                inner->senders.unregister(oper);
-                return inner->write(token, rstd::move(msg));
-            }
+    auto recv_timeout(time::Duration timeout) const -> Result<T, RecvTimeoutError> {
+        auto deadline = time::Instant::now().checked_add(timeout);
+        if (deadline.is_some()) return recv_deadline(*deadline);
 
-            auto sel = cx.wait_until(None());
-            inner->senders.unregister(oper);
+        auto result = recv();
+        if (result.is_ok()) return Ok(rstd::move(result).unwrap_unchecked());
+        return Err(RecvTimeoutError::Disconnected);
+    }
 
-            if (sel.is_disconnected()) {
-                return Err(rstd::move(msg));
-            }
+    auto recv_deadline(time::Instant deadline) const -> Result<T, RecvTimeoutError> {
+        switch (flavor) {
+        case ChannelFlavor::Array: return inner_array->recv(Some(deadline));
+        case ChannelFlavor::List: return inner_list->recv(Some(deadline));
+        case ChannelFlavor::Zero: return inner_zero->recv(Some(deadline));
+        }
+        rstd::panic { "invalid channel receiver flavor" };
+    }
+
+    auto is_empty() const -> bool {
+        switch (flavor) {
+        case ChannelFlavor::Array: return inner_array->is_empty();
+        case ChannelFlavor::List: return inner_list->is_empty();
+        case ChannelFlavor::Zero: return inner_zero->is_empty();
+        }
+        rstd::panic { "invalid channel receiver flavor" };
+    }
+
+    auto is_full() const -> bool {
+        switch (flavor) {
+        case ChannelFlavor::Array: return inner_array->is_full();
+        case ChannelFlavor::List: return inner_list->is_full();
+        case ChannelFlavor::Zero: return inner_zero->is_full();
+        }
+        rstd::panic { "invalid channel receiver flavor" };
+    }
+
+    auto len() const -> usize {
+        switch (flavor) {
+        case ChannelFlavor::Array: return inner_array->len();
+        case ChannelFlavor::List: return inner_list->len();
+        case ChannelFlavor::Zero: return inner_zero->len();
+        }
+        rstd::panic { "invalid channel receiver flavor" };
+    }
+
+    auto capacity() const -> Option<usize> {
+        switch (flavor) {
+        case ChannelFlavor::Array: return inner_array->capacity();
+        case ChannelFlavor::List: return inner_list->capacity();
+        case ChannelFlavor::Zero: return inner_zero->capacity();
+        }
+        rstd::panic { "invalid channel receiver flavor" };
+    }
+
+    auto same_channel(const Receiver& other) const -> bool {
+        if (flavor != other.flavor) return false;
+        switch (flavor) {
+        case ChannelFlavor::Array: return inner_array == other.inner_array;
+        case ChannelFlavor::List: return inner_list == other.inner_list;
+        case ChannelFlavor::Zero: return inner_zero == other.inner_zero;
+        }
+        return false;
+    }
+
+    auto iter() const -> Iter<T>;
+    auto try_iter() const -> TryIter<T>;
+    auto into_iter() const& -> Iter<T>;
+    auto into_iter() && -> IntoIter<T>;
+
+    ~Receiver() { release(); }
+
+    Receiver(const Receiver& other): flavor(other.flavor) {
+        switch (flavor) {
+        case ChannelFlavor::Array: inner_array = other.inner_array.acquire(); break;
+        case ChannelFlavor::List: inner_list = other.inner_list.acquire(); break;
+        case ChannelFlavor::Zero: inner_zero = other.inner_zero.acquire(); break;
         }
     }
 
-    /// Attempts to send a value without blocking.
-    /// \param msg The message to send.
-    /// \return Err(msg) if the buffer is full or the receiver has disconnected.
-    auto try_send(T msg) -> Result<empty, T> {
-        mpmc::Token token;
-        if (inner->start_send(token)) {
-            return inner->write(token, rstd::move(msg));
-        }
-        return Err(rstd::move(msg));
-    }
-
-    ~SyncSender() {
-        inner.release([](auto* chan_box) {
-            (*chan_box)->disconnect();
-        });
-    }
-
-    SyncSender(const SyncSender& other): inner(other.inner.acquire()) {}
-    SyncSender& operator=(const SyncSender& other) {
+    auto operator=(const Receiver& other) -> Receiver& {
         if (this != &other) {
-            inner.release([](auto* chan_box) {
-                (*chan_box)->disconnect();
-            });
-            inner = other.inner.acquire();
+            release();
+            flavor = other.flavor;
+            switch (flavor) {
+            case ChannelFlavor::Array: inner_array = other.inner_array.acquire(); break;
+            case ChannelFlavor::List: inner_list = other.inner_list.acquire(); break;
+            case ChannelFlavor::Zero: inner_zero = other.inner_zero.acquire(); break;
+            }
         }
         return *this;
     }
-    SyncSender(SyncSender&&) noexcept            = default;
-    SyncSender& operator=(SyncSender&&) noexcept = default;
+
+    Receiver(Receiver&& other) noexcept
+        : inner_array(rstd::move(other.inner_array)),
+          inner_list(rstd::move(other.inner_list)),
+          inner_zero(rstd::move(other.inner_zero)),
+          flavor(other.flavor) {}
+
+    auto operator=(Receiver&& other) noexcept -> Receiver& {
+        if (this != &other) {
+            release();
+            inner_array = rstd::move(other.inner_array);
+            inner_list  = rstd::move(other.inner_list);
+            inner_zero  = rstd::move(other.inner_zero);
+            flavor      = other.flavor;
+        }
+        return *this;
+    }
 };
 
-/// Creates an asynchronous (unbounded) channel, returning the sender and receiver halves.
-/// \tparam T The type of values to be sent through the channel.
+export template<typename T>
+class Iter : public DefaultInClass<Iter<T>, rstd::iter::Iterator> {
+    const Receiver<T>* receiver;
+
+public:
+    using Item = T;
+
+    explicit Iter(const Receiver<T>* receiver): receiver(receiver) {}
+
+    auto next() -> Option<T> {
+        auto result = receiver->recv();
+        if (result.is_err()) return None();
+        return Some(rstd::move(result).unwrap_unchecked());
+    }
+};
+
+export template<typename T>
+class TryIter : public DefaultInClass<TryIter<T>, rstd::iter::Iterator> {
+    const Receiver<T>* receiver;
+
+public:
+    using Item = T;
+
+    explicit TryIter(const Receiver<T>* receiver): receiver(receiver) {}
+
+    auto next() -> Option<T> {
+        auto result = receiver->try_recv();
+        if (result.is_err()) return None();
+        return Some(rstd::move(result).unwrap_unchecked());
+    }
+};
+
+export template<typename T>
+class IntoIter : public DefaultInClass<IntoIter<T>, rstd::iter::Iterator> {
+    Receiver<T> receiver;
+
+public:
+    using Item = T;
+
+    explicit IntoIter(Receiver<T> receiver): receiver(rstd::move(receiver)) {}
+
+    auto next() -> Option<T> {
+        auto result = receiver.recv();
+        if (result.is_err()) return None();
+        return Some(rstd::move(result).unwrap_unchecked());
+    }
+};
+
+template<typename T>
+auto Receiver<T>::iter() const -> Iter<T> {
+    return Iter<T> { this };
+}
+
+template<typename T>
+auto Receiver<T>::try_iter() const -> TryIter<T> {
+    return TryIter<T> { this };
+}
+
+template<typename T>
+auto Receiver<T>::into_iter() const& -> Iter<T> {
+    return iter();
+}
+
+template<typename T>
+auto Receiver<T>::into_iter() && -> IntoIter<T> {
+    return IntoIter<T> { rstd::move(*this) };
+}
+
 export template<typename T>
 auto channel() -> rstd::tuple<Sender<T>, Receiver<T>> {
-    auto chan   = mpmc::ListChannel<T>::make();
-    auto [s, r] = mpmc::new_counter(rstd::move(chan));
-    return { Sender<T>(rstd::move(s)), Receiver<T>(rstd::move(r)) };
+    auto channel        = detail::ListChannel<T>::make();
+    auto [sender, recv] = detail::new_counter(rstd::move(channel));
+    return { Sender<T>(rstd::move(sender)), Receiver<T>(rstd::move(recv)) };
 }
 
-/// Creates a synchronous (bounded) channel with the given buffer capacity.
-/// \tparam T The type of values to be sent through the channel.
-/// \param bound The maximum number of messages that can be buffered.
 export template<typename T>
-auto sync_channel(usize bound) -> rstd::tuple<SyncSender<T>, Receiver<T>> {
-    auto chan   = mpmc::Channel<T>::with_capacity(bound);
-    auto [s, r] = mpmc::new_counter(rstd::move(chan));
-    return { SyncSender<T>(rstd::move(s)), Receiver<T>(rstd::move(r)) };
+auto sync_channel(usize capacity) -> rstd::tuple<Sender<T>, Receiver<T>> {
+    if (capacity == usize()) {
+        auto channel        = detail::ZeroChannel<T>::make();
+        auto [sender, recv] = detail::new_counter(rstd::move(channel));
+        return { Sender<T>(rstd::move(sender)), Receiver<T>(rstd::move(recv)) };
+    }
+
+    auto channel        = detail::Channel<T>::with_capacity(capacity);
+    auto [sender, recv] = detail::new_counter(rstd::move(channel));
+    return { Sender<T>(rstd::move(sender)), Receiver<T>(rstd::move(recv)) };
 }
 
-} // namespace rstd::sync::mpsc
+} // namespace rstd::sync::mpmc
+
+namespace rstd
+{
+
+template<typename T>
+struct Impl<fmt::Debug, sync::mpmc::Sender<T>> : ImplBase<sync::mpmc::Sender<T>> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        constexpr char message[] = "Sender { .. }";
+        return formatter.write_raw(message, sizeof(message) - 1);
+    }
+};
+
+template<typename T>
+struct Impl<fmt::Debug, sync::mpmc::Receiver<T>> : ImplBase<sync::mpmc::Receiver<T>> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        constexpr char message[] = "Receiver { .. }";
+        return formatter.write_raw(message, sizeof(message) - 1);
+    }
+};
+
+template<typename T>
+struct Impl<fmt::Debug, sync::mpmc::Iter<T>> : ImplBase<sync::mpmc::Iter<T>> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        constexpr char message[] = "Iter { .. }";
+        return formatter.write_raw(message, sizeof(message) - 1);
+    }
+};
+
+template<typename T>
+struct Impl<fmt::Debug, sync::mpmc::TryIter<T>> : ImplBase<sync::mpmc::TryIter<T>> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        constexpr char message[] = "TryIter { .. }";
+        return formatter.write_raw(message, sizeof(message) - 1);
+    }
+};
+
+template<typename T>
+struct Impl<fmt::Debug, sync::mpmc::IntoIter<T>> : ImplBase<sync::mpmc::IntoIter<T>> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        constexpr char message[] = "IntoIter { .. }";
+        return formatter.write_raw(message, sizeof(message) - 1);
+    }
+};
+
+} // namespace rstd

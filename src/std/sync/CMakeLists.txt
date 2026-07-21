@@ -6,9 +6,11 @@ set(RSTD_SYNC_SOURCES
     sync/poison/once.cppm
     sync/mpsc/mod.cppm
     sync/mpsc/mpmc/mod.cppm
+    sync/mpsc/mpmc/error.cppm
     sync/mpsc/mpmc/counter.cppm
     sync/mpsc/mpmc/array.cppm
     sync/mpsc/mpmc/list.cppm
+    sync/mpsc/mpmc/zero.cppm
     sync/mpsc/mpmc/utils.cppm
     sync/mpsc/mpmc/context.cppm
     sync/mpsc/mpmc/waker.cppm
