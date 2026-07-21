@@ -11,17 +11,12 @@ export import :intrinsics;
 import :enum_;
 import :convert;
 
-#define RSTD_INT_ERROR_KINDS(V) \
-    V(Empty)                    \
-    V(InvalidDigit)             \
-    V(PosOverflow)              \
-    V(NegOverflow)              \
-    V(Zero)
-
 export namespace rstd::num
 {
 
-RSTD_TAG_ENUM(IntErrorKind, RSTD_INT_ERROR_KINDS)
+class IntErrorKind final {
+    RSTD_ENUM(IntErrorKind, (Empty), (InvalidDigit), (PosOverflow), (NegOverflow), (Zero))
+};
 
 class ParseIntError {
     IntErrorKind kind_;

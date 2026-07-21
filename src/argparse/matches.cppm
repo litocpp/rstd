@@ -27,13 +27,9 @@ struct MatchedArg {
 export namespace rstd::argparse
 {
 
-#define RSTD_ARGPARSE_VALUE_SOURCE_VARIANTS(V) \
-    V(DefaultValue)                            \
-    V(CommandLine)
-
-RSTD_TAG_ENUM_WITH_DEFAULT(ValueSource, RSTD_ARGPARSE_VALUE_SOURCE_VARIANTS, CommandLine)
-
-#undef RSTD_ARGPARSE_VALUE_SOURCE_VARIANTS
+class ValueSource final {
+    RSTD_ENUM_DEFAULT(ValueSource, (CommandLine), (DefaultValue), (CommandLine))
+};
 
 template<typename T>
 class Values : public DefaultInClass<Values<T>, iter::Iterator> {

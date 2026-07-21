@@ -70,8 +70,19 @@ inline constexpr auto None(T&& = {}) {
 
 using namespace rstd::prelude;
 using rstd::option::Option;
-namespace enum_detail = rstd::enum_detail;
-namespace mtp         = rstd::mtp;
+namespace mtp = rstd::mtp;
+
+template<rstd::size_t I>
+struct option_in_place_t {};
+
+template<rstd::size_t I>
+inline constexpr option_in_place_t<I> option_in_place {};
+
+enum class option_state : rstd::uint8_t
+{
+    None,
+    Some,
+};
 
 template<typename T>
 struct option_adapter_l1 {};
@@ -107,55 +118,123 @@ struct option_traits<const Option<T>&&> : option_traits<Option<T>> {
 };
 
 template<typename T, typename NonePayload, typename SomePayload>
-struct option_storage : enum_detail::storage<NonePayload, SomePayload> {
-    using base = enum_detail::storage<NonePayload, SomePayload>;
+struct option_storage {
+    using choice_type = rstd::Choice<rstd::choice_case<option_state::None, NonePayload>,
+                                     rstd::choice_case<option_state::Some, SomePayload>>;
 
-    constexpr option_storage() noexcept = default;
+    choice_type choice_;
+
+    constexpr option_storage() noexcept
+        : choice_(choice_type::template with<option_state::None>()) {}
 
     template<rstd::size_t I, typename... Args>
-    explicit constexpr option_storage(enum_detail::in_place_index_t<I> in_place, Args&&... args)
-        : base(in_place, rstd::forward<Args>(args)...) {}
+    explicit constexpr option_storage(option_in_place_t<I>, Args&&... args)
+        : choice_([](Args&&... inner) {
+              if constexpr (I == 0) {
+                  return choice_type::template with<option_state::None>(
+                      rstd::forward<Args>(inner)...);
+              } else {
+                  return choice_type::template with<option_state::Some>(
+                      rstd::forward<Args>(inner)...);
+              }
+          }(rstd::forward<Args>(args)...)) {}
 
-    using base::get;
-    using base::index;
-    using base::is;
-    using base::replace;
-    using base::valid;
+    template<rstd::size_t I, typename... Args>
+    constexpr void replace(option_in_place_t<I>, Args&&... args) {
+        if constexpr (I == 0) {
+            choice_.template set<option_state::None>(rstd::forward<Args>(args)...);
+        } else {
+            choice_.template set<option_state::Some>(rstd::forward<Args>(args)...);
+        }
+    }
+
+    template<rstd::size_t I>
+    [[nodiscard]]
+    constexpr auto is(option_in_place_t<I>) const noexcept -> bool {
+        if constexpr (I == 0)
+            return choice_.template is<option_state::None>();
+        else
+            return choice_.template is<option_state::Some>();
+    }
+
+    [[nodiscard]]
+    constexpr auto index() const noexcept -> rstd::size_t {
+        return choice_.index();
+    }
+    [[nodiscard]]
+    constexpr auto valid() const noexcept -> bool {
+        return true;
+    }
+
+    template<rstd::size_t I>
+    [[nodiscard]]
+    constexpr decltype(auto) get(option_in_place_t<I>) & noexcept {
+        if constexpr (I == 0)
+            return choice_.template as<option_state::None>();
+        else
+            return choice_.template as<option_state::Some>();
+    }
+
+    template<rstd::size_t I>
+    [[nodiscard]]
+    constexpr decltype(auto) get(option_in_place_t<I>) const& noexcept {
+        if constexpr (I == 0)
+            return choice_.template as<option_state::None>();
+        else
+            return choice_.template as<option_state::Some>();
+    }
+
+    template<rstd::size_t I>
+    [[nodiscard]]
+    constexpr decltype(auto) get(option_in_place_t<I>) && noexcept {
+        if constexpr (I == 0)
+            return rstd::move(choice_).template as<option_state::None>();
+        else
+            return rstd::move(choice_).template as<option_state::Some>();
+    }
+
+    template<rstd::size_t I>
+    [[nodiscard]]
+    constexpr decltype(auto) get(option_in_place_t<I>) const&& noexcept {
+        if constexpr (I == 0) {
+            return static_cast<choice_type const&&>(choice_).template as<option_state::None>();
+        } else {
+            return static_cast<choice_type const&&>(choice_).template as<option_state::Some>();
+        }
+    }
 };
 
 template<typename T, typename NonePayload, typename SomePayload>
 struct option_storage<T&, NonePayload, SomePayload> {
     constexpr option_storage() noexcept = default;
 
-    constexpr explicit option_storage(enum_detail::in_place_index_t<0>) noexcept
-        : none_(), some_() {}
+    constexpr explicit option_storage(option_in_place_t<0>) noexcept: none_(), some_() {}
 
     template<typename V>
-    explicit constexpr option_storage(enum_detail::in_place_index_t<1>, V&& val) noexcept
-        : none_(), some_() {
-        replace(enum_detail::in_place_index<1>, rstd::forward<V>(val));
+    explicit constexpr option_storage(option_in_place_t<1>, V&& val) noexcept: none_(), some_() {
+        replace(option_in_place<1>, rstd::forward<V>(val));
     }
 
-    constexpr void replace(enum_detail::in_place_index_t<0>) noexcept { some_.value = nullptr; }
+    constexpr void replace(option_in_place_t<0>) noexcept { some_.value = nullptr; }
 
     template<typename V>
-    constexpr void replace(enum_detail::in_place_index_t<1>, V&& val) noexcept {
+    constexpr void replace(option_in_place_t<1>, V&& val) noexcept {
         some_.value = rstd::forward<V>(val);
     }
 
     [[nodiscard]]
-    constexpr bool is(enum_detail::in_place_index_t<0>) const noexcept {
+    constexpr bool is(option_in_place_t<0>) const noexcept {
         return some_.value == nullptr;
     }
 
     [[nodiscard]]
-    constexpr bool is(enum_detail::in_place_index_t<1>) const noexcept {
+    constexpr bool is(option_in_place_t<1>) const noexcept {
         return some_.value != nullptr;
     }
 
     [[nodiscard]]
     constexpr rstd::size_t index() const noexcept {
-        return is(enum_detail::in_place_index<1>) ? rstd::size_t(1) : rstd::size_t(0);
+        return is(option_in_place<1>) ? rstd::size_t(1) : rstd::size_t(0);
     }
 
     [[nodiscard]]
@@ -164,42 +243,42 @@ struct option_storage<T&, NonePayload, SomePayload> {
     }
 
     [[nodiscard]]
-    constexpr NonePayload& get(enum_detail::in_place_index_t<0>) & noexcept {
+    constexpr NonePayload& get(option_in_place_t<0>) & noexcept {
         return none_;
     }
 
     [[nodiscard]]
-    constexpr NonePayload const& get(enum_detail::in_place_index_t<0>) const& noexcept {
+    constexpr NonePayload const& get(option_in_place_t<0>) const& noexcept {
         return none_;
     }
 
     [[nodiscard]]
-    constexpr NonePayload&& get(enum_detail::in_place_index_t<0>) && noexcept {
+    constexpr NonePayload&& get(option_in_place_t<0>) && noexcept {
         return rstd::move(none_);
     }
 
     [[nodiscard]]
-    constexpr NonePayload const&& get(enum_detail::in_place_index_t<0>) const&& noexcept {
+    constexpr NonePayload const&& get(option_in_place_t<0>) const&& noexcept {
         return rstd::move(none_);
     }
 
     [[nodiscard]]
-    constexpr SomePayload& get(enum_detail::in_place_index_t<1>) & noexcept {
+    constexpr SomePayload& get(option_in_place_t<1>) & noexcept {
         return some_;
     }
 
     [[nodiscard]]
-    constexpr SomePayload const& get(enum_detail::in_place_index_t<1>) const& noexcept {
+    constexpr SomePayload const& get(option_in_place_t<1>) const& noexcept {
         return some_;
     }
 
     [[nodiscard]]
-    constexpr SomePayload&& get(enum_detail::in_place_index_t<1>) && noexcept {
+    constexpr SomePayload&& get(option_in_place_t<1>) && noexcept {
         return rstd::move(some_);
     }
 
     [[nodiscard]]
-    constexpr SomePayload const&& get(enum_detail::in_place_index_t<1>) const&& noexcept {
+    constexpr SomePayload const&& get(option_in_place_t<1>) const&& noexcept {
         return rstd::move(some_);
     }
 
@@ -213,35 +292,35 @@ template<typename NonePayload, typename SomePayload>
 struct zero_niche_option_storage {
     constexpr zero_niche_option_storage() noexcept = default;
 
-    constexpr explicit zero_niche_option_storage(enum_detail::in_place_index_t<0>) noexcept {}
+    constexpr explicit zero_niche_option_storage(option_in_place_t<0>) noexcept {}
 
     template<typename V>
-    explicit constexpr zero_niche_option_storage(enum_detail::in_place_index_t<1>, V&& val) {
-        replace(enum_detail::in_place_index<1>, rstd::forward<V>(val));
+    explicit constexpr zero_niche_option_storage(option_in_place_t<1>, V&& val) {
+        replace(option_in_place<1>, rstd::forward<V>(val));
     }
 
-    constexpr void replace(enum_detail::in_place_index_t<0>) noexcept {
-        if (is(enum_detail::in_place_index<1>)) {
+    constexpr void replace(option_in_place_t<0>) noexcept {
+        if (is(option_in_place<1>)) {
             rstd::destroy_at(_some_ptr());
         }
         _clear();
     }
 
     template<typename V>
-    constexpr void replace(enum_detail::in_place_index_t<1>, V&& val) {
-        if (is(enum_detail::in_place_index<1>)) {
+    constexpr void replace(option_in_place_t<1>, V&& val) {
+        if (is(option_in_place<1>)) {
             rstd::destroy_at(_some_ptr());
         }
         rstd::construct_at(_some_ptr(), rstd::forward<V>(val));
     }
 
     [[nodiscard]]
-    constexpr bool is(enum_detail::in_place_index_t<0>) const noexcept {
-        return ! is(enum_detail::in_place_index<1>);
+    constexpr bool is(option_in_place_t<0>) const noexcept {
+        return ! is(option_in_place<1>);
     }
 
     [[nodiscard]]
-    constexpr bool is(enum_detail::in_place_index_t<1>) const noexcept {
+    constexpr bool is(option_in_place_t<1>) const noexcept {
         for (rstd::size_t i = 0; i < sizeof(m_storage); ++i) {
             if (m_storage[i] != rstd::byte(0)) {
                 return true;
@@ -252,7 +331,7 @@ struct zero_niche_option_storage {
 
     [[nodiscard]]
     constexpr rstd::size_t index() const noexcept {
-        return is(enum_detail::in_place_index<1>) ? rstd::size_t(1) : rstd::size_t(0);
+        return is(option_in_place<1>) ? rstd::size_t(1) : rstd::size_t(0);
     }
 
     [[nodiscard]]
@@ -261,42 +340,42 @@ struct zero_niche_option_storage {
     }
 
     [[nodiscard]]
-    constexpr NonePayload& get(enum_detail::in_place_index_t<0>) & noexcept {
+    constexpr NonePayload& get(option_in_place_t<0>) & noexcept {
         return none_;
     }
 
     [[nodiscard]]
-    constexpr NonePayload const& get(enum_detail::in_place_index_t<0>) const& noexcept {
+    constexpr NonePayload const& get(option_in_place_t<0>) const& noexcept {
         return none_;
     }
 
     [[nodiscard]]
-    constexpr NonePayload&& get(enum_detail::in_place_index_t<0>) && noexcept {
+    constexpr NonePayload&& get(option_in_place_t<0>) && noexcept {
         return rstd::move(none_);
     }
 
     [[nodiscard]]
-    constexpr NonePayload const&& get(enum_detail::in_place_index_t<0>) const&& noexcept {
+    constexpr NonePayload const&& get(option_in_place_t<0>) const&& noexcept {
         return rstd::move(none_);
     }
 
     [[nodiscard]]
-    constexpr SomePayload& get(enum_detail::in_place_index_t<1>) & noexcept {
+    constexpr SomePayload& get(option_in_place_t<1>) & noexcept {
         return *_some_ptr();
     }
 
     [[nodiscard]]
-    constexpr SomePayload const& get(enum_detail::in_place_index_t<1>) const& noexcept {
+    constexpr SomePayload const& get(option_in_place_t<1>) const& noexcept {
         return *_some_ptr();
     }
 
     [[nodiscard]]
-    constexpr SomePayload&& get(enum_detail::in_place_index_t<1>) && noexcept {
+    constexpr SomePayload&& get(option_in_place_t<1>) && noexcept {
         return rstd::move(*_some_ptr());
     }
 
     [[nodiscard]]
-    constexpr SomePayload const&& get(enum_detail::in_place_index_t<1>) const&& noexcept {
+    constexpr SomePayload const&& get(option_in_place_t<1>) const&& noexcept {
         return rstd::move(*_some_ptr());
     }
 
@@ -334,10 +413,6 @@ export using option::None;
 namespace rstd::option
 {
 
-#define RSTD_OPTION_VARIANTS(V) \
-    V(None, ())                 \
-    V(Some, (union_value_t value;))
-
 /// An optional value: either `Some(T)` or `None`.
 /// \tparam T The type of the contained value.
 export template<typename T>
@@ -348,28 +423,30 @@ class Option : public option_adapter<T> {
     using traits        = option_traits<Option<T>>;
     using union_value_t = typename traits::union_value_t;
 
-    RSTD_ENUM_VARIANT_TYPES(RSTD_OPTION_VARIANTS)
+    struct None_payload {};
+    struct Some_payload {
+        union_value_t value;
+    };
 
     using rstd_enum_storage_type = option_storage<T, None_payload, Some_payload>;
-
-    RSTD_ENUM_STORAGE(Option)
+    rstd_enum_storage_type rstd_enum_storage_;
 
     [[nodiscard]]
     constexpr auto _ptr() const noexcept -> union_value_t const* {
-        return rstd::addressof(rstd_enum_storage_.get(RSTD_ENUM_IN_PLACE(Some)).value);
+        return rstd::addressof(rstd_enum_storage_.get(option_in_place<1>).value);
     }
 
     [[nodiscard]]
     constexpr auto _ptr() noexcept -> union_value_t* {
-        return rstd::addressof(rstd_enum_storage_.get(RSTD_ENUM_IN_PLACE(Some)).value);
+        return rstd::addressof(rstd_enum_storage_.get(option_in_place<1>).value);
     }
 
     template<typename V>
     constexpr void _assign_val(V&& val) {
         if constexpr (mtp::is_ref<T>) {
-            rstd_enum_storage_.replace(RSTD_ENUM_IN_PLACE(Some), rstd::addressof(val));
+            rstd_enum_storage_.replace(option_in_place<1>, rstd::addressof(val));
         } else {
-            rstd_enum_storage_.replace(RSTD_ENUM_IN_PLACE(Some), rstd::forward<V>(val));
+            rstd_enum_storage_.replace(option_in_place<1>, rstd::forward<V>(val));
         }
     }
 
@@ -378,7 +455,7 @@ class Option : public option_adapter<T> {
         _assign_val(rstd::forward<V>(val));
     }
 
-    constexpr void _assign_none() { rstd_enum_storage_.replace(RSTD_ENUM_IN_PLACE(None)); }
+    constexpr void _assign_none() { rstd_enum_storage_.replace(option_in_place<0>); }
 
     template<typename U>
     [[gnu::always_inline]]
@@ -431,7 +508,7 @@ public:
 
     using value_type = T;
 
-    constexpr Option() noexcept: RSTD_ENUM_INIT(None) {}
+    constexpr Option() noexcept: rstd_enum_storage_(option_in_place<0>) {}
 
     constexpr inline Option(const Option&) noexcept
         requires mtp::triv_copy<union_value_t>
@@ -442,7 +519,7 @@ public:
 
     constexpr Option(Option&& o) noexcept(mtp::noex_move<union_value_t>)
         requires mtp::user_move<union_value_t>
-        : RSTD_ENUM_INIT(None) {
+        : rstd_enum_storage_(option_in_place<0>) {
         if (o.is_some()) {
             this->_construct_val(_get(rstd::move(o)));
         } else {
@@ -476,7 +553,7 @@ public:
     /// Returns `true` if the option contains a value.
     [[nodiscard]]
     constexpr auto is_some() const noexcept -> bool {
-        return rstd_enum_storage_.is(RSTD_ENUM_IN_PLACE(Some));
+        return rstd_enum_storage_.is(option_in_place<1>);
     }
 
     /// Returns `true` if the option is `None`.
@@ -664,18 +741,17 @@ public:
 private:
     template<typename U>
         requires mtp::init<T, U>
-    explicit constexpr Option(U&& val) noexcept(mtp::noex_init<T, U>): RSTD_ENUM_INIT(None) {
+    explicit constexpr Option(U&& val) noexcept(mtp::noex_init<T, U>)
+        : rstd_enum_storage_(option_in_place<0>) {
         this->_construct_val(rstd::forward<U>(val));
     }
 
     explicit constexpr Option(mtp::rm_ref<T>* ptr) noexcept
         requires mtp::is_ref<T>
-        : RSTD_ENUM_INIT(None) {
+        : rstd_enum_storage_(option_in_place<0>) {
         this->_construct_val(*ptr);
     }
 };
-
-#undef RSTD_OPTION_VARIANTS
 
 } // namespace rstd::option
 

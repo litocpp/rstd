@@ -152,6 +152,37 @@ function(add_rstd_compile_fail target source name expected_regex)
 endfunction()
 
 add_rstd_compile_fail(
+  rstd_compile_fail_choice_empty
+  compile_fail/choice_empty.cpp
+  Choice.Empty
+  "rstd::Choice requires at least one choice_case")
+add_rstd_compile_fail(
+  rstd_compile_fail_choice_mixed_tags
+  compile_fail/choice_mixed_tags.cpp
+  Choice.MixedTags
+  "all rstd::Choice tags must have the same type")
+add_rstd_compile_fail(
+  rstd_compile_fail_choice_duplicate_tags
+  compile_fail/choice_duplicate_tags.cpp
+  Choice.DuplicateTags
+  "all rstd::Choice tags must be unique")
+add_rstd_compile_fail(
+  rstd_compile_fail_choice_invalid_tag
+  compile_fail/choice_invalid_tag.cpp
+  Choice.InvalidTag
+  "the requested tag is not present in rstd::Choice")
+add_rstd_compile_fail(
+  rstd_compile_fail_choice_invalid_arguments
+  compile_fail/choice_invalid_arguments.cpp
+  Choice.InvalidArguments
+  "no matching function|constraints not satisfied")
+add_rstd_compile_fail(
+  rstd_compile_fail_choice_reference_payload
+  compile_fail/choice_reference_payload.cpp
+  Choice.ReferencePayload
+  "reference payloads are not supported by rstd::Choice")
+
+add_rstd_compile_fail(
   rstd_compile_fail_trait_impled_diagnostic
   compile_fail/trait_impled_diagnostic.cpp
   Trait.ImpledDiagnosticFailure

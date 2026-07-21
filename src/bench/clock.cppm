@@ -6,12 +6,12 @@ export import rstd;
 
 using namespace rstd::prelude;
 
-#define RSTD_BENCH_CLOCK_ERROR_VARIANTS(V) V(Stalled)
-
 export namespace rstd::bench
 {
 
-RSTD_TAG_ENUM(ClockError, RSTD_BENCH_CLOCK_ERROR_VARIANTS)
+class ClockError final {
+    RSTD_ENUM(ClockError, (Stalled))
+};
 
 struct MonotonicClock {
     using Trait                  = MonotonicClock;
@@ -69,5 +69,3 @@ struct Impl<bench::MonotonicClock, bench::SteadyClock>
     : LinkClassMethod<bench::MonotonicClock, bench::SteadyClock> {};
 
 } // namespace rstd
-
-#undef RSTD_BENCH_CLOCK_ERROR_VARIANTS

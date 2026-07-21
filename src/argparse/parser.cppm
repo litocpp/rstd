@@ -217,30 +217,18 @@ struct ParseRun {
     Vec<OsString>           unknown;
 };
 
-#define RSTD_ARGPARSE_RUN_OUTCOME_VARIANTS(V) \
-    V(Parsed, (ParseRun value;))              \
-    V(Display, (rstd::argparse::DisplayRequest value;))
-
 class RunOutcome;
 
 export namespace rstd::argparse
 {
 
-#define RSTD_ARGPARSE_DISPLAY_KIND_VARIANTS(V) \
-    V(Help)                                    \
-    V(Version)
+class DisplayKind final {
+    RSTD_ENUM_DEFAULT(DisplayKind, (Help), (Help), (Version))
+};
 
-RSTD_TAG_ENUM_WITH_DEFAULT(DisplayKind, RSTD_ARGPARSE_DISPLAY_KIND_VARIANTS, Help)
-
-#undef RSTD_ARGPARSE_DISPLAY_KIND_VARIANTS
-
-#define RSTD_ARGPARSE_OUTPUT_TARGET_VARIANTS(V) \
-    V(Stdout)                                   \
-    V(Stderr)
-
-RSTD_TAG_ENUM_WITH_DEFAULT(OutputTarget, RSTD_ARGPARSE_OUTPUT_TARGET_VARIANTS, Stdout)
-
-#undef RSTD_ARGPARSE_OUTPUT_TARGET_VARIANTS
+class OutputTarget final {
+    RSTD_ENUM_DEFAULT(OutputTarget, (Stdout), (Stdout), (Stderr))
+};
 
 class DisplayRequest {
     DisplayKind  kind_;
@@ -296,16 +284,10 @@ public:
     }
 };
 
-#define RSTD_ARGPARSE_PARSE_OUTCOME_VARIANTS(V) \
-    V(Parsed, (T value;))                       \
-    V(Display, (DisplayRequest request;))
-
 template<typename T>
 class ParseOutcome {
-    RSTD_ENUM_BODY(ParseOutcome, RSTD_ARGPARSE_PARSE_OUTCOME_VARIANTS)
+    RSTD_ENUM(ParseOutcome, (Parsed, (T value;)), (Display, (DisplayRequest request;)))
 };
-
-#undef RSTD_ARGPARSE_PARSE_OUTCOME_VARIANTS
 
 class Parser {
     Arc<CompiledCommand> schema_;
@@ -391,10 +373,10 @@ public:
 } // namespace rstd::argparse
 
 class RunOutcome {
-    RSTD_ENUM_BODY(RunOutcome, RSTD_ARGPARSE_RUN_OUTCOME_VARIANTS)
+    RSTD_ENUM(RunOutcome,
+              (Parsed, (ParseRun value;)),
+              (Display, (rstd::argparse::DisplayRequest value;)))
 };
-
-#undef RSTD_ARGPARSE_RUN_OUTCOME_VARIANTS
 
 void render_argument_line(String& output, const ArgSpec& argument) {
     output.push_str("  ");

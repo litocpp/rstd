@@ -12,18 +12,17 @@ using rstd::ffi::OsString;
 export namespace rstd::argparse
 {
 
-#define RSTD_ARGPARSE_ACTION_VARIANTS(V) \
-    V(Set)                               \
-    V(Append)                            \
-    V(SetTrue)                           \
-    V(SetFalse)                          \
-    V(Count)                             \
-    V(Help)                              \
-    V(Version)
-
-RSTD_TAG_ENUM_WITH_DEFAULT(ArgAction, RSTD_ARGPARSE_ACTION_VARIANTS, Set)
-
-#undef RSTD_ARGPARSE_ACTION_VARIANTS
+class ArgAction final {
+    RSTD_ENUM_DEFAULT(ArgAction,
+                      (Set),
+                      (Set),
+                      (Append),
+                      (SetTrue),
+                      (SetFalse),
+                      (Count),
+                      (Help),
+                      (Version))
+};
 
 class NumArgs {
     usize minimum_;

@@ -24,16 +24,15 @@ export auto operator==(const Value& left, const ::alloc::string::String& right) 
 export using Array = ::alloc::vec::Vec<Value>;
 export using Map   = ::alloc::collections::BTreeMap<::alloc::string::String, Value>;
 
-#define RSTD_JSON_VALUE_VARIANTS(V)             \
-    V(Null, ())                                 \
-    V(Bool, (bool value;))                      \
-    V(Number, (rstd::json::Number value;))      \
-    V(String, (::alloc::string::String value;)) \
-    V(Array, (rstd::json::Array value;))        \
-    V(Object, (rstd::json::Map value;))
-
 export class Value : public rstd::DefaultInClass<Value, rstd::clone::Clone> {
-    RSTD_ENUM_BODY_WITH_DEFAULT(Value, RSTD_JSON_VALUE_VARIANTS, Null)
+    RSTD_ENUM_DEFAULT(Value,
+                      (Null),
+                      (Null),
+                      (Bool, (bool value;)),
+                      (Number, (rstd::json::Number value;)),
+                      (String, (::alloc::string::String value;)),
+                      (Array, (rstd::json::Array value;)),
+                      (Object, (rstd::json::Map value;)))
 
 private:
     static auto null_sentinel() noexcept -> const Value& {
@@ -367,8 +366,6 @@ auto Value::clone() const -> Value {
     }
     rstd::panic { "invalid JSON value" };
 }
-
-#undef RSTD_JSON_VALUE_VARIANTS
 
 } // namespace rstd::json
 

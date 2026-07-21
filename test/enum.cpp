@@ -11,50 +11,46 @@ import rstd.core;
 namespace
 {
 
-#define MESSAGE_VARIANTS(V)  \
-    V(Quit, ())              \
-    V(Move, (int x; int y;)) \
-    V(Write, (std::string text;))
+class Message final {
+    RSTD_ENUM(Message, (Quit), (Move, (int x; int y;)), (Write, (std::string text;)))
+};
 
-RSTD_ENUM(Message, MESSAGE_VARIANTS)
+class DefaultMessage final {
+    RSTD_ENUM_DEFAULT(DefaultMessage,
+                      (Quit),
+                      (Quit),
+                      (Move, (int x; int y;)),
+                      (Write, (std::string text;)))
+};
 
-RSTD_ENUM_WITH_DEFAULT(DefaultMessage, MESSAGE_VARIANTS, Quit)
+class Box final {
+    RSTD_ENUM(Box, (Empty), (Value, (std::unique_ptr<int> value;)))
+};
 
-#define BOX_VARIANTS(V) \
-    V(Empty, ())        \
-    V(Value, (std::unique_ptr<int> value;))
+template<class T>
+class Maybe final {
+    RSTD_ENUM(Maybe, (None), (Some, (T value;)))
+};
 
-RSTD_ENUM(Box, BOX_VARIANTS)
+template<class T>
+class DefaultMaybe final {
+    RSTD_ENUM_DEFAULT(DefaultMaybe, (None), (None), (Some, (T value;)))
+};
 
-#define MAYBE_VARIANTS(V) \
-    V(None, ())           \
-    V(Some, (T value;))
+class Color final {
+    RSTD_ENUM(Color, (Red), (Green), (Blue))
+};
 
-RSTD_ENUM_TEMPLATE((class T), Maybe, MAYBE_VARIANTS)
+class DefaultColor final {
+    RSTD_ENUM_DEFAULT(DefaultColor, (Green), (Red), (Green), (Blue))
+};
 
-RSTD_ENUM_TEMPLATE_WITH_DEFAULT((class T), DefaultMaybe, MAYBE_VARIANTS, None)
-
-#define COLOR_VARIANTS(V) \
-    V(Red)                \
-    V(Green)              \
-    V(Blue)
-
-RSTD_TAG_ENUM(Color, COLOR_VARIANTS)
-
-RSTD_TAG_ENUM_WITH_DEFAULT(DefaultColor, COLOR_VARIANTS, Green)
-
-#define DEFAULT_POINTS_VARIANTS(V) \
-    V(Idle, ())                    \
-    V(Points, (int value;))
-
-RSTD_ENUM_WITH_DEFAULT(DefaultPoints, DEFAULT_POINTS_VARIANTS, Points, 5)
-
-#define INLINE_SCORE_VARIANTS(V) \
-    V(Idle, ())                  \
-    V(Points, (int value;))
+class DefaultPoints final {
+    RSTD_ENUM_DEFAULT(DefaultPoints, (Points, 5), (Idle), (Points, (int value;)))
+};
 
 class InlineScore {
-    RSTD_ENUM_BODY_WITH_DEFAULT(InlineScore, INLINE_SCORE_VARIANTS, Idle)
+    RSTD_ENUM_DEFAULT(InlineScore, (Idle), (Idle), (Points, (int value;)))
 
 private:
     int multiplier_ = 2;
@@ -68,6 +64,30 @@ public:
             return as_Points().value * multiplier_;
         }
         return 0;
+    }
+};
+
+struct EnumBase {
+    int base_value = 4;
+};
+
+class ExtendedMessage final : public EnumBase {
+    RSTD_ENUM(ExtendedMessage, (Idle), (Value, (int value;)))
+
+public:
+    [[nodiscard]]
+    constexpr auto total() const noexcept -> int {
+        return base_value + (is_Value() ? as_Value().value : 0);
+    }
+};
+
+class OverloadedFactory final {
+    RSTD_ENUM(OverloadedFactory, (Empty), (Value, (int value;)))
+
+public:
+    [[nodiscard]]
+    static constexpr auto Value(char value) noexcept -> Self {
+        return Self::Value(static_cast<int>(value));
     }
 };
 
@@ -94,6 +114,84 @@ struct NoThrowMovePayload {
     }
     ~NoThrowMovePayload() { --live_payloads; }
 };
+
+struct TrackedPayload {
+    static inline int live         = 0;
+    static inline int copies       = 0;
+    static inline int moves        = 0;
+    static inline int copy_assigns = 0;
+    static inline int move_assigns = 0;
+
+    int value;
+
+    explicit TrackedPayload(int value) noexcept: value(value) { ++live; }
+    TrackedPayload(TrackedPayload const& other) noexcept: value(other.value) {
+        ++live;
+        ++copies;
+    }
+    TrackedPayload(TrackedPayload&& other) noexcept: value(other.value) {
+        ++live;
+        ++moves;
+    }
+    auto operator=(TrackedPayload const& other) noexcept -> TrackedPayload& {
+        value = other.value;
+        ++copy_assigns;
+        return *this;
+    }
+    auto operator=(TrackedPayload&& other) noexcept -> TrackedPayload& {
+        value = other.value;
+        ++move_assigns;
+        return *this;
+    }
+    ~TrackedPayload() { --live; }
+};
+
+struct CopyOnlyPayload {
+    int value;
+
+    explicit CopyOnlyPayload(int value) noexcept: value(value) {}
+    CopyOnlyPayload(CopyOnlyPayload const&) noexcept                    = default;
+    CopyOnlyPayload(CopyOnlyPayload&&)                                  = delete;
+    auto operator=(CopyOnlyPayload const&) noexcept -> CopyOnlyPayload& = default;
+    auto operator=(CopyOnlyPayload&&) -> CopyOnlyPayload&               = delete;
+};
+
+struct MoveOnlyPayload {
+    int value;
+
+    explicit MoveOnlyPayload(int value) noexcept: value(value) {}
+    MoveOnlyPayload(MoveOnlyPayload const&)                        = delete;
+    MoveOnlyPayload(MoveOnlyPayload&&) noexcept                    = default;
+    auto operator=(MoveOnlyPayload const&) -> MoveOnlyPayload&     = delete;
+    auto operator=(MoveOnlyPayload&&) noexcept -> MoveOnlyPayload& = default;
+};
+
+struct ImmobilePayload {
+    int value;
+
+    explicit ImmobilePayload(int value) noexcept: value(value) {}
+    ImmobilePayload(ImmobilePayload const&)                    = delete;
+    ImmobilePayload(ImmobilePayload&&)                         = delete;
+    auto operator=(ImmobilePayload const&) -> ImmobilePayload& = delete;
+    auto operator=(ImmobilePayload&&) -> ImmobilePayload&      = delete;
+};
+
+struct NonTrivialDropPayload {
+    ~NonTrivialDropPayload() {}
+};
+
+enum class ChoiceTag : int
+{
+    Empty  = -4,
+    Number = 7,
+    Pair   = 31,
+};
+
+using DirectChoice = rstd::Choice<RSTD_CHOICE_TYPES((ChoiceTag::Empty, void),
+                                                    (ChoiceTag::Number, int),
+                                                    (ChoiceTag::Pair, int, std::string))>;
+
+using CommaTypeChoice = rstd::Choice<RSTD_CHOICE_TYPES((ChoiceTag::Pair, rstd::tuple<int, int>))>;
 
 auto score(const Message& message) -> int {
     int result = -1;
@@ -132,6 +230,192 @@ auto color_score(const Color& color) -> int {
 }
 
 } // namespace
+
+TEST(Choice, MapsArbitraryTagsAndPayloadShapes) {
+    static_assert(std::same_as<DirectChoice::Tag, ChoiceTag>);
+    static_assert(std::same_as<DirectChoice::TypeForTag<ChoiceTag::Empty>, void>);
+    static_assert(std::same_as<DirectChoice::TypeForTag<ChoiceTag::Number>, int>);
+    static_assert(
+        std::same_as<DirectChoice::TypeForTag<ChoiceTag::Pair>, rstd::tuple<int, std::string>>);
+
+    auto choice = DirectChoice::with<ChoiceTag::Number>(3);
+    EXPECT_EQ(choice.which(), ChoiceTag::Number);
+    EXPECT_EQ(choice.index(), 1u);
+    EXPECT_EQ(choice.as<ChoiceTag::Number>(), 3);
+
+    choice.set<ChoiceTag::Pair>(4, "value");
+    EXPECT_EQ(choice.which(), ChoiceTag::Pair);
+    EXPECT_EQ(choice.index(), 2u);
+    EXPECT_EQ(choice.as<ChoiceTag::Pair>().template get<0>(), 4);
+    EXPECT_EQ(choice.as<ChoiceTag::Pair>().template get<1>(), "value");
+
+    choice.set<ChoiceTag::Empty>();
+    EXPECT_TRUE(choice.is<ChoiceTag::Empty>());
+}
+
+TEST(Choice, PreservesReferenceCategoriesAndTriviality) {
+    using TrivialChoice =
+        rstd::Choice<RSTD_CHOICE_TYPES((ChoiceTag::Empty, void), (ChoiceTag::Number, int))>;
+    using TagChoice =
+        rstd::Choice<RSTD_CHOICE_TYPES((ChoiceTag::Empty, void), (ChoiceTag::Number, void))>;
+
+    static_assert(
+        std::same_as<decltype(rstd::declval<TrivialChoice&>().template as<ChoiceTag::Number>()),
+                     int&>);
+    static_assert(std::same_as<
+                  decltype(rstd::declval<TrivialChoice const&>().template as<ChoiceTag::Number>()),
+                  int const&>);
+    static_assert(
+        std::same_as<decltype(rstd::declval<TrivialChoice&&>().template as<ChoiceTag::Number>()),
+                     int&&>);
+    static_assert(std::same_as<
+                  decltype(rstd::declval<TrivialChoice const&&>().template as<ChoiceTag::Number>()),
+                  int const&&>);
+    static_assert(std::is_trivially_copy_constructible_v<TrivialChoice>);
+    static_assert(std::is_trivially_move_constructible_v<TrivialChoice>);
+    static_assert(std::is_trivially_copy_assignable_v<TrivialChoice>);
+    static_assert(std::is_trivially_move_assignable_v<TrivialChoice>);
+    static_assert(std::is_trivially_destructible_v<TrivialChoice>);
+    static_assert(sizeof(TagChoice) == sizeof(rstd::u8));
+    static_assert(
+        std::same_as<CommaTypeChoice::TypeForTag<ChoiceTag::Pair>, rstd::tuple<int, int>>);
+}
+
+TEST(Choice, PropagatesPayloadSpecialMemberCapabilities) {
+    enum class Tag
+    {
+        Value,
+        Empty
+    };
+    using CopyOnlyChoice =
+        rstd::Choice<RSTD_CHOICE_TYPES((Tag::Value, CopyOnlyPayload), (Tag::Empty, void))>;
+    using MoveOnlyChoice =
+        rstd::Choice<RSTD_CHOICE_TYPES((Tag::Value, MoveOnlyPayload), (Tag::Empty, void))>;
+    using ImmobileChoice =
+        rstd::Choice<RSTD_CHOICE_TYPES((Tag::Value, ImmobilePayload), (Tag::Empty, void))>;
+    using NonTrivialDropChoice =
+        rstd::Choice<RSTD_CHOICE_TYPES((Tag::Value, NonTrivialDropPayload), (Tag::Empty, void))>;
+
+    static_assert(std::is_copy_constructible_v<CopyOnlyChoice>);
+    static_assert(std::is_copy_assignable_v<CopyOnlyChoice>);
+    static_assert(! std::is_move_constructible_v<CopyOnlyChoice>);
+    static_assert(! std::is_move_assignable_v<CopyOnlyChoice>);
+
+    static_assert(! std::is_copy_constructible_v<MoveOnlyChoice>);
+    static_assert(! std::is_copy_assignable_v<MoveOnlyChoice>);
+    static_assert(std::is_move_constructible_v<MoveOnlyChoice>);
+    static_assert(std::is_move_assignable_v<MoveOnlyChoice>);
+
+    static_assert(! std::is_copy_constructible_v<ImmobileChoice>);
+    static_assert(! std::is_copy_assignable_v<ImmobileChoice>);
+    static_assert(! std::is_move_constructible_v<ImmobileChoice>);
+    static_assert(! std::is_move_assignable_v<ImmobileChoice>);
+    static_assert(! std::is_trivially_destructible_v<NonTrivialDropChoice>);
+
+    auto copy_source = CopyOnlyChoice::with<Tag::Value>(4);
+    auto copy_target = CopyOnlyChoice::with<Tag::Empty>();
+    copy_target      = copy_source;
+    EXPECT_EQ(copy_target.as<Tag::Value>().value, 4);
+
+    auto move_source = MoveOnlyChoice::with<Tag::Value>(7);
+    auto move_target = MoveOnlyChoice::with<Tag::Empty>();
+    move_target      = std::move(move_source);
+    EXPECT_EQ(move_target.as<Tag::Value>().value, 7);
+
+    auto immobile = ImmobileChoice::with<Tag::Value>(9);
+    EXPECT_EQ(immobile.as<Tag::Value>().value, 9);
+}
+
+TEST(Choice, SupportsConstexprConstructionAndSwitching) {
+    constexpr auto result = [] {
+        auto choice = DirectChoice::with<ChoiceTag::Number>(5);
+        choice.set<ChoiceTag::Pair>(8, "ok");
+        return choice.as<ChoiceTag::Pair>().template get<0>();
+    }();
+    static_assert(result == 8);
+}
+
+TEST(Choice, OwnsCopyMoveAndDestructionLifecycle) {
+    enum class Tag
+    {
+        Tracked,
+        Number
+    };
+    using Choice =
+        rstd::Choice<RSTD_CHOICE_TYPES((Tag::Tracked, TrackedPayload), (Tag::Number, int))>;
+
+    TrackedPayload::live         = 0;
+    TrackedPayload::copies       = 0;
+    TrackedPayload::moves        = 0;
+    TrackedPayload::copy_assigns = 0;
+    TrackedPayload::move_assigns = 0;
+
+    {
+        auto first = Choice::with<Tag::Tracked>(3);
+        EXPECT_EQ(TrackedPayload::live, 1);
+
+        auto copied = first;
+        EXPECT_EQ(TrackedPayload::live, 2);
+        EXPECT_EQ(TrackedPayload::copies, 1);
+
+        auto moved = std::move(copied);
+        EXPECT_EQ(TrackedPayload::live, 3);
+        EXPECT_EQ(TrackedPayload::moves, 1);
+
+        moved.set<Tag::Number>(7);
+        EXPECT_EQ(TrackedPayload::live, 2);
+        EXPECT_EQ(moved.as<Tag::Number>(), 7);
+    }
+
+    EXPECT_EQ(TrackedPayload::live, 0);
+}
+
+TEST(Choice, AssignsWithinAndAcrossActiveVariants) {
+    enum class Tag
+    {
+        Tracked,
+        Number
+    };
+    using Choice =
+        rstd::Choice<RSTD_CHOICE_TYPES((Tag::Tracked, TrackedPayload), (Tag::Number, int))>;
+
+    TrackedPayload::live         = 0;
+    TrackedPayload::copies       = 0;
+    TrackedPayload::moves        = 0;
+    TrackedPayload::copy_assigns = 0;
+    TrackedPayload::move_assigns = 0;
+
+    {
+        auto source = Choice::with<Tag::Tracked>(3);
+        auto same   = Choice::with<Tag::Tracked>(5);
+        auto other  = Choice::with<Tag::Number>(8);
+
+        same = source;
+        EXPECT_EQ(same.as<Tag::Tracked>().value, 3);
+        EXPECT_EQ(TrackedPayload::copy_assigns, 1);
+
+        other = source;
+        EXPECT_EQ(other.as<Tag::Tracked>().value, 3);
+        EXPECT_EQ(TrackedPayload::copies, 1);
+
+        same = std::move(source);
+        EXPECT_EQ(same.as<Tag::Tracked>().value, 3);
+        EXPECT_EQ(TrackedPayload::move_assigns, 1);
+
+        auto* source_alias = &source;
+        source             = *source_alias;
+        EXPECT_TRUE(source.is<Tag::Tracked>());
+        source = std::move(*source_alias);
+        EXPECT_TRUE(source.is<Tag::Tracked>());
+    }
+
+    EXPECT_EQ(TrackedPayload::live, 0);
+}
+
+TEST(Choice, RejectsWrongActiveTagAccess) {
+    auto choice = DirectChoice::with<ChoiceTag::Number>(3);
+    EXPECT_DEATH((void)choice.as<ChoiceTag::Pair>(), "");
+}
 
 TEST(Enum, ConstructsAndReadsPayload) {
     auto message = Message::Move(3, 4);
@@ -267,19 +551,31 @@ TEST(Enum, SupportsCustomClassWithInlineParts) {
     EXPECT_EQ(score.score(), 0);
 }
 
+TEST(Enum, SupportsInheritanceAndFactoryOverloads) {
+    auto extended = ExtendedMessage::Value(5);
+    EXPECT_EQ(extended.total(), 9);
+
+    auto overloaded = OverloadedFactory::Value('A');
+    EXPECT_EQ(overloaded.as_Value().value, 65);
+}
+
 TEST(Enum, ReplaceBuildsTemporaryBeforeDestroyingCurrentPayload) {
     static_assert(! rstd::mtp::noex_init<NoThrowMovePayload, FallibleArg>);
     static_assert(rstd::mtp::noex_move<NoThrowMovePayload>);
 
     {
-        auto storage = rstd::enum_detail::storage<NoThrowMovePayload>(
-            rstd::enum_detail::in_place_index<0>, FallibleArg { 1 });
+        enum class Tag
+        {
+            Value
+        };
+        using Choice = rstd::Choice<RSTD_CHOICE_TYPES((Tag::Value, NoThrowMovePayload))>;
+        auto storage = Choice::with<Tag::Value>(FallibleArg { 1 });
 
         NoThrowMovePayload::live_payloads_during_create = -1;
-        storage.replace(rstd::enum_detail::in_place_index<0>, FallibleArg { 2 });
+        storage.set<Tag::Value>(FallibleArg { 2 });
 
-        EXPECT_TRUE(storage.is(rstd::enum_detail::in_place_index<0>));
-        EXPECT_EQ(storage.get(rstd::enum_detail::in_place_index<0>).value, 2);
+        EXPECT_TRUE(storage.is<Tag::Value>());
+        EXPECT_EQ(storage.as<Tag::Value>().value, 2);
         EXPECT_EQ(NoThrowMovePayload::live_payloads_during_create, 1);
         EXPECT_EQ(NoThrowMovePayload::live_payloads, 1);
     }

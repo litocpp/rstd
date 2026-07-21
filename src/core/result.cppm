@@ -566,10 +566,6 @@ struct err_tag {};
 namespace rstd::result
 {
 
-#define RSTD_RESULT_VARIANTS(V)   \
-    V(Ok, (union_value_t value;)) \
-    V(Err, (union_error_t error;))
-
 /// A type that represents either success (`Ok`) or failure (`Err`).
 /// \tparam T The type of the success value.
 /// \tparam E The type of the error value.
@@ -583,51 +579,84 @@ class Result : public result_impl<T, E> {
     using union_value_t = typename traits::union_value_t;
     using union_error_t = typename traits::union_error_t;
 
-    RSTD_ENUM_VARIANT_TYPES(RSTD_RESULT_VARIANTS)
-    RSTD_ENUM_DEFAULT_STORAGE(RSTD_RESULT_VARIANTS)
-    RSTD_ENUM_STORAGE(Result)
+    enum class Tag : rstd::uint8_t
+    {
+        Ok,
+        Err,
+    };
+
+    struct Ok_payload {
+        union_value_t value;
+    };
+    struct Err_payload {
+        union_error_t error;
+    };
+
+    using rstd_enum_storage_type =
+        Choice<choice_case<Tag::Ok, Ok_payload>, choice_case<Tag::Err, Err_payload>>;
+    rstd_enum_storage_type rstd_enum_storage_;
+
+    template<typename V>
+    [[nodiscard]]
+    static constexpr auto make_ok(V&& val) -> rstd_enum_storage_type {
+        if constexpr (mtp::is_ref<T>) {
+            return rstd_enum_storage_type::template with<Tag::Ok>(rstd::addressof(val));
+        } else {
+            return rstd_enum_storage_type::template with<Tag::Ok>(rstd::forward<V>(val));
+        }
+    }
+
+    template<typename V>
+    [[nodiscard]]
+    static constexpr auto make_err(V&& err) -> rstd_enum_storage_type {
+        if constexpr (mtp::is_ref<E>) {
+            return rstd_enum_storage_type::template with<Tag::Err>(rstd::addressof(err));
+        } else {
+            return rstd_enum_storage_type::template with<Tag::Err>(rstd::forward<V>(err));
+        }
+    }
 
     [[nodiscard]]
     constexpr auto _value_ptr() noexcept -> union_value_t* {
-        return rstd::addressof(rstd_enum_storage_.get(RSTD_ENUM_IN_PLACE(Ok)).value);
+        return rstd::addressof(rstd_enum_storage_.template as<Tag::Ok>().value);
     }
 
     [[nodiscard]]
     constexpr auto _value_ptr() const noexcept -> union_value_t const* {
-        return rstd::addressof(rstd_enum_storage_.get(RSTD_ENUM_IN_PLACE(Ok)).value);
+        return rstd::addressof(rstd_enum_storage_.template as<Tag::Ok>().value);
     }
 
     [[nodiscard]]
     constexpr auto _error_ptr() noexcept -> union_error_t* {
-        return rstd::addressof(rstd_enum_storage_.get(RSTD_ENUM_IN_PLACE(Err)).error);
+        return rstd::addressof(rstd_enum_storage_.template as<Tag::Err>().error);
     }
 
     [[nodiscard]]
     constexpr auto _error_ptr() const noexcept -> union_error_t const* {
-        return rstd::addressof(rstd_enum_storage_.get(RSTD_ENUM_IN_PLACE(Err)).error);
+        return rstd::addressof(rstd_enum_storage_.template as<Tag::Err>().error);
     }
 
     template<typename V>
     constexpr void _replace_ok(V&& val) {
         if constexpr (mtp::is_ref<T>) {
-            rstd_enum_storage_.replace(RSTD_ENUM_IN_PLACE(Ok), rstd::addressof(val));
+            rstd_enum_storage_.template set<Tag::Ok>(rstd::addressof(val));
         } else {
-            rstd_enum_storage_.replace(RSTD_ENUM_IN_PLACE(Ok), rstd::forward<V>(val));
+            rstd_enum_storage_.template set<Tag::Ok>(rstd::forward<V>(val));
         }
     }
 
     template<typename V>
     constexpr void _replace_err(V&& err) {
         if constexpr (mtp::is_ref<E>) {
-            rstd_enum_storage_.replace(RSTD_ENUM_IN_PLACE(Err), rstd::addressof(err));
+            rstd_enum_storage_.template set<Tag::Err>(rstd::addressof(err));
         } else {
-            rstd_enum_storage_.replace(RSTD_ENUM_IN_PLACE(Err), rstd::forward<V>(err));
+            rstd_enum_storage_.template set<Tag::Err>(rstd::forward<V>(err));
         }
     }
 
     [[nodiscard]]
     constexpr auto _is_ok() const noexcept -> bool {
-        return rstd_enum_storage_.is(RSTD_ENUM_IN_PLACE(Ok));
+        return rstd_enum_storage_.template is<Tag::Ok>();
     }
 
 public:
@@ -648,48 +677,41 @@ public:
 
     constexpr Result() noexcept(mtp::noex_init<T>)
         requires mtp::init<T>
-        : RSTD_ENUM_INIT(Ok) {}
+        : rstd_enum_storage_(rstd_enum_storage_type::template with<Tag::Ok>()) {}
 
     // Ok ctor
-    constexpr Result(T&& val, ok_tag) noexcept(mtp::noex_init<T, T>) {
-        this->_construct_val(rstd::forward<T>(val));
-    }
+    constexpr Result(T&& val, ok_tag) noexcept(mtp::noex_init<T, T>)
+        : rstd_enum_storage_(make_ok(rstd::forward<T>(val))) {}
 
     // Err ctor
-    constexpr Result(E&& err, err_tag) noexcept(mtp::noex_init<E, E>) {
-        this->_construct_err(rstd::forward<E>(err));
-    }
+    constexpr Result(E&& err, err_tag) noexcept(mtp::noex_init<E, E>)
+        : rstd_enum_storage_(make_err(rstd::forward<E>(err))) {}
 
     // from Ok
     template<typename U>
     constexpr Result(U&& o) noexcept(mtp::noex_init<T, typename result_traits<U>::value_type>)
         requires mtp::init<UnknownErr, typename result_traits<U>::error_type> &&
                  mtp::init<T, typename result_traits<U>::value_type>
-    {
-        this->_construct_val(mtp::rm_cvf<U>::template _get<0>(rstd::forward<U>(o)));
-    }
+        : rstd_enum_storage_(make_ok(mtp::rm_cvf<U>::template _get<0>(rstd::forward<U>(o)))) {}
 
     // from Err
     template<typename U>
     constexpr Result(U&& o) noexcept(mtp::noex_init<E, typename result_traits<U>::error_type>)
         requires mtp::init<UnknownOk, typename result_traits<U>::value_type> &&
                  mtp::init<E, typename result_traits<U>::error_type>
-    {
-        this->_construct_err(mtp::rm_cvf<U>::template _get<1>(rstd::forward<U>(o)));
-    }
+        : rstd_enum_storage_(make_err(mtp::rm_cvf<U>::template _get<1>(rstd::forward<U>(o)))) {}
 
     constexpr inline Result(const Result&) = default;
 
-    constexpr inline Result(Result&& o) noexcept(mtp::noex_move<union_value_t> &&
-                                                 mtp::noex_move<union_error_t>)
+    constexpr inline Result(Result&& other) noexcept(mtp::noex_move<union_value_t> &&
+                                                     mtp::noex_move<union_error_t>)
         requires mtp::move<union_value_t> && mtp::move<union_error_t>
-        : rstd_enum_storage_() {
-        if (o.is_ok()) {
-            this->_construct_val(Result::template _get<0>(rstd::move(o)));
-        } else {
-            this->_construct_err(Result::template _get<1>(rstd::move(o)));
-        }
-    }
+        : rstd_enum_storage_([&other] {
+              if (other.is_ok()) {
+                  return make_ok(Result::template _get<0>(rstd::move(other)));
+              }
+              return make_err(Result::template _get<1>(rstd::move(other)));
+          }()) {}
 
     constexpr inline ~Result()
         requires(mtp::triv_drop<union_value_t> && mtp::triv_drop<union_error_t>)
@@ -792,8 +814,6 @@ public:
             return ! y.is_ok() && bool(x.template _get<1>() == y.template _get<1>());
     }
 };
-
-#undef RSTD_RESULT_VARIANTS
 
 /// Creates a `Result` in the `Ok` state containing the given value.
 /// \tparam T The success value type.

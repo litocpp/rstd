@@ -7,38 +7,37 @@ export import :clock;
 using namespace rstd::prelude;
 using rstd::sync::Arc;
 
-#define RSTD_BENCH_OVERFLOW_POLICY_VARIANTS(V) \
-    V(DropNewest)                              \
-    V(Grow)
-
-#define RSTD_BENCH_THREAD_POLICY_VARIANTS(V) \
-    V(Verify)                                \
-    V(Unchecked)
-
-#define RSTD_BENCH_PROBE_DIAGNOSTIC_VARIANTS(V) \
-    V(InvalidProbe, (u32 value;))               \
-    V(WrongThread, (u64 expected; u64 actual;)) \
-    V(ActiveSpanOverflow, (usize capacity;))    \
-    V(NonLifo, (u64 expected; u64 actual;))     \
-    V(ActiveSpansPending, (usize count;))       \
-    V(FrameAlreadyActive, ())                   \
-    V(NoActiveFrame, ())                        \
-    V(FrameStillActive, ())                     \
-    V(SequenceExhausted, ())                    \
-    V(ClockStalled, ())
-
-#define RSTD_BENCH_PROBE_ERROR_VARIANTS(V)   \
-    V(Diagnostic, (ProbeDiagnostic reason;)) \
-    V(ProbeIdExhausted, ())                  \
-    V(SchemaMismatch, ())
-
 export namespace rstd::bench::probe
 {
 
-RSTD_TAG_ENUM(OverflowPolicy, RSTD_BENCH_OVERFLOW_POLICY_VARIANTS)
-RSTD_TAG_ENUM(ThreadPolicy, RSTD_BENCH_THREAD_POLICY_VARIANTS)
-RSTD_ENUM(ProbeDiagnostic, RSTD_BENCH_PROBE_DIAGNOSTIC_VARIANTS)
-RSTD_ENUM(ProbeError, RSTD_BENCH_PROBE_ERROR_VARIANTS)
+class OverflowPolicy final {
+    RSTD_ENUM(OverflowPolicy, (DropNewest), (Grow))
+};
+
+class ThreadPolicy final {
+    RSTD_ENUM(ThreadPolicy, (Verify), (Unchecked))
+};
+
+class ProbeDiagnostic final {
+    RSTD_ENUM(ProbeDiagnostic,
+              (InvalidProbe, (u32 value;)),
+              (WrongThread, (u64 expected; u64 actual;)),
+              (ActiveSpanOverflow, (usize capacity;)),
+              (NonLifo, (u64 expected; u64 actual;)),
+              (ActiveSpansPending, (usize count;)),
+              (FrameAlreadyActive),
+              (NoActiveFrame),
+              (FrameStillActive),
+              (SequenceExhausted),
+              (ClockStalled))
+};
+
+class ProbeError final {
+    RSTD_ENUM(ProbeError,
+              (Diagnostic, (ProbeDiagnostic reason;)),
+              (ProbeIdExhausted),
+              (SchemaMismatch))
+};
 
 struct ProbeId {
     u32 value;
@@ -119,8 +118,3 @@ public:
 };
 
 } // namespace rstd::bench::probe
-
-#undef RSTD_BENCH_OVERFLOW_POLICY_VARIANTS
-#undef RSTD_BENCH_THREAD_POLICY_VARIANTS
-#undef RSTD_BENCH_PROBE_DIAGNOSTIC_VARIANTS
-#undef RSTD_BENCH_PROBE_ERROR_VARIANTS

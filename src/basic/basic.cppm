@@ -1,3 +1,5 @@
+module;
+#include <memory>
 export module rstd.basic:basic;
 export import :mtp;
 
@@ -41,8 +43,9 @@ constexpr T* construct_at(T* location,
                       "types must not use any arguments to initialize the "
                       "array");
         return new (loc) T[1]();
-    } else
-        return new (loc) T { rstd::forward<Args>(args)... };
+    } else {
+        return std::construct_at(location, rstd::forward<Args>(args)...);
+    }
 }
 /// Destroys the object at the given location by calling its destructor.
 /// \param location Pointer to the object to destroy.

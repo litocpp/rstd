@@ -10,37 +10,31 @@ using rstd::ffi::OsString;
 export namespace rstd::argparse
 {
 
-#define RSTD_ARGPARSE_VALUE_ERROR_VARIANTS(V) \
-    V(InvalidUtf8, ())                        \
-    V(Message, (String message;))
-
 class ValueError {
-    RSTD_ENUM_BODY(ValueError, RSTD_ARGPARSE_VALUE_ERROR_VARIANTS)
+    RSTD_ENUM(ValueError, (InvalidUtf8), (Message, (String message;)))
     [[nodiscard]]
     constexpr auto kind() const noexcept -> Tag {
         return tag();
     }
 };
 
-#define RSTD_ARGPARSE_DEFINITION_ERROR_VARIANTS(V)          \
-    V(InvalidCommandName, (String name;))                   \
-    V(InvalidArgumentId, (String id;))                      \
-    V(InvalidShortName, (char name;))                       \
-    V(InvalidLongName, (String name;))                      \
-    V(DuplicateArgumentId, (String id;))                    \
-    V(DuplicateOption, (String name;))                      \
-    V(InvalidValueCount, (String id;))                      \
-    V(IncompatibleAction, (String id;))                     \
-    V(InvalidDefaultValue, (String id; ValueError error;))  \
-    V(InvalidImplicitValue, (String id; ValueError error;)) \
-    V(InvalidGroup, (String id;))                           \
-    V(DuplicateGroupId, (String id;))                       \
-    V(ForeignKey, ())                                       \
-    V(InvalidRelation, ())                                  \
-    V(DuplicateSubcommand, (String name;))
-
 class DefinitionError {
-    RSTD_ENUM_BODY(DefinitionError, RSTD_ARGPARSE_DEFINITION_ERROR_VARIANTS)
+    RSTD_ENUM(DefinitionError,
+              (InvalidCommandName, (String name;)),
+              (InvalidArgumentId, (String id;)),
+              (InvalidShortName, (char name;)),
+              (InvalidLongName, (String name;)),
+              (DuplicateArgumentId, (String id;)),
+              (DuplicateOption, (String name;)),
+              (InvalidValueCount, (String id;)),
+              (IncompatibleAction, (String id;)),
+              (InvalidDefaultValue, (String id; ValueError error;)),
+              (InvalidImplicitValue, (String id; ValueError error;)),
+              (InvalidGroup, (String id;)),
+              (DuplicateGroupId, (String id;)),
+              (ForeignKey),
+              (InvalidRelation),
+              (DuplicateSubcommand, (String name;)))
     [[nodiscard]]
     constexpr auto kind() const noexcept -> Tag {
         return tag();
@@ -59,25 +53,24 @@ public:
     static auto make() -> ParseContext { return {}; }
 };
 
-#define RSTD_ARGPARSE_PARSE_ERROR_VARIANTS(V)                                                     \
-    V(UnknownArgument,                                                                            \
-      (ParseContext context; OsString token; usize index; Option<String> suggestion;))            \
-    V(MissingValue, (ParseContext context; String id; usize index;))                              \
-    V(TooFewValues, (ParseContext context; String id; usize minimum; usize actual; usize index;)) \
-    V(TooManyValues, (ParseContext context; String id; usize maximum; usize index;))              \
-    V(InvalidValue,                                                                               \
-      (ParseContext context; String id; OsString value; usize index; ValueError error;))          \
-    V(InvalidUtf8Value, (ParseContext context; String id; OsString value; usize index;))          \
-    V(DuplicateArgument, (ParseContext context; String id; usize index;))                         \
-    V(ArgumentConflict, (ParseContext context; String left; String right;))                       \
-    V(MissingRequiredArgument, (ParseContext context; String id;))                                \
-    V(MissingRequiredGroup, (ParseContext context; String id;))                                   \
-    V(MissingSubcommand, (ParseContext context; String command;))                                 \
-    V(InvalidSubcommand, (ParseContext context; OsString name; usize index;))                     \
-    V(UnexpectedPositional, (ParseContext context; OsString token; usize index;))
-
 class ParseError {
-    RSTD_ENUM_BODY(ParseError, RSTD_ARGPARSE_PARSE_ERROR_VARIANTS)
+    RSTD_ENUM(ParseError,
+              (UnknownArgument,
+               (ParseContext context; OsString token; usize index; Option<String> suggestion;)),
+              (MissingValue, (ParseContext context; String id; usize index;)),
+              (TooFewValues,
+               (ParseContext context; String id; usize minimum; usize actual; usize index;)),
+              (TooManyValues, (ParseContext context; String id; usize maximum; usize index;)),
+              (InvalidValue,
+               (ParseContext context; String id; OsString value; usize index; ValueError error;)),
+              (InvalidUtf8Value, (ParseContext context; String id; OsString value; usize index;)),
+              (DuplicateArgument, (ParseContext context; String id; usize index;)),
+              (ArgumentConflict, (ParseContext context; String left; String right;)),
+              (MissingRequiredArgument, (ParseContext context; String id;)),
+              (MissingRequiredGroup, (ParseContext context; String id;)),
+              (MissingSubcommand, (ParseContext context; String command;)),
+              (InvalidSubcommand, (ParseContext context; OsString name; usize index;)),
+              (UnexpectedPositional, (ParseContext context; OsString token; usize index;)))
 
     static auto UnknownArgument(OsString token, usize index, Option<String> suggestion) -> Self {
         return Self::UnknownArgument(
@@ -168,23 +161,13 @@ public:
     }
 };
 
-#define RSTD_ARGPARSE_MATCH_ACCESS_ERROR_VARIANTS(V) \
-    V(ForeignKey, ())                                \
-    V(WrongType, ())                                 \
-    V(IncompatibleAccessor, ())
-
 class MatchAccessError {
-    RSTD_ENUM_BODY(MatchAccessError, RSTD_ARGPARSE_MATCH_ACCESS_ERROR_VARIANTS)
+    RSTD_ENUM(MatchAccessError, (ForeignKey), (WrongType), (IncompatibleAccessor))
     [[nodiscard]]
     constexpr auto kind() const noexcept -> Tag {
         return tag();
     }
 };
-
-#undef RSTD_ARGPARSE_VALUE_ERROR_VARIANTS
-#undef RSTD_ARGPARSE_DEFINITION_ERROR_VARIANTS
-#undef RSTD_ARGPARSE_PARSE_ERROR_VARIANTS
-#undef RSTD_ARGPARSE_MATCH_ACCESS_ERROR_VARIANTS
 
 } // namespace rstd::argparse
 

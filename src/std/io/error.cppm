@@ -119,46 +119,26 @@ using namespace rstd::io::error;
 namespace rstd::io::error
 {
 
-#define RSTD_IO_ERROR_VARIANTS(V) \
-    V(Os, (RawOsError code;))     \
-    V(Kind, (ErrorKind kind;))    \
-    V(Message, (ErrorKind kind; const char* message;))
-
 /// The error type for I/O operations.
 export struct Error {
-private:
-    RSTD_ENUM_SELF(Error)
-    RSTD_ENUM_VARIANT_COUNT(RSTD_IO_ERROR_VARIANTS)
-    RSTD_ENUM_INDEX_TYPE()
-    RSTD_ENUM_PAYLOAD_TYPES(RSTD_IO_ERROR_VARIANTS)
-
-public:
-    RSTD_ENUM_TAG_TYPE(RSTD_IO_ERROR_VARIANTS)
-
-private:
-    RSTD_ENUM_DEFAULT_STORAGE(RSTD_IO_ERROR_VARIANTS)
-    RSTD_ENUM_STORAGE(Error)
-    RSTD_ENUM_ACCESSORS(RSTD_IO_ERROR_VARIANTS)
-
-public:
-    constexpr Error() noexcept: RSTD_ENUM_INIT(Kind, ErrorKind { ErrorKind::Uncategorized }) {}
+    RSTD_ENUM_DEFAULT(Error,
+                      (Kind, ErrorKind { ErrorKind::Uncategorized }),
+                      (Os, (RawOsError code;)),
+                      (Kind, (ErrorKind kind;)),
+                      (Message, (ErrorKind kind; const char* message;)))
 
     /// Construct from a raw OS error code (errno / GetLastError).
-    static auto from_raw_os_error(RawOsError code) noexcept -> Error {
-        return Error(RSTD_ENUM_IN_PLACE(Os), code);
-    }
+    static auto from_raw_os_error(RawOsError code) noexcept -> Error { return Error::Os(code); }
 
     /// Construct from the current platform error code.
     static auto last_os_error() noexcept -> Error;
 
     /// Construct from an ErrorKind.
-    static auto from_kind(ErrorKind k) noexcept -> Error {
-        return Error(RSTD_ENUM_IN_PLACE(Kind), k);
-    }
+    static auto from_kind(ErrorKind k) noexcept -> Error { return Error::Kind(k); }
 
     /// Construct a static-message error (no allocation).
     static constexpr auto new_const(ErrorKind k, const char* msg) noexcept -> Error {
-        return Error(RSTD_ENUM_IN_PLACE(Message), k, msg);
+        return Error::Message(k, msg);
     }
 
     /// Returns the ErrorKind for this error.
@@ -176,13 +156,8 @@ public:
         return nullptr;
     }
 
-    /// Returns the internal tag indicating the error representation.
-    RSTD_ENUM_OBSERVERS()
-
     friend bool operator==(const Error& a, const Error& b) noexcept { return a.kind() == b.kind(); }
 };
-
-#undef RSTD_IO_ERROR_VARIANTS
 
 /// Constant error for invalid UTF-8 data in a stream.
 export inline constexpr Error Error_INVALID_UTF8 =

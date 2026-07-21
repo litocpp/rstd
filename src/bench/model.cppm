@@ -6,38 +6,35 @@ export import :clock;
 
 using namespace rstd::prelude;
 
-#define RSTD_BENCH_COUNTER_MODE_VARIANTS(V) \
-    V(Disabled)                             \
-    V(Auto)                                 \
-    V(Required)
-
-#define RSTD_BENCH_COUNTER_AVAILABILITY_VARIANTS(V) \
-    V(Disabled, ())                                 \
-    V(Available, (u32 mask;))                       \
-    V(Unavailable, (i32 code;))
-
-#define RSTD_BENCH_CONFIG_ERROR_VARIANTS(V) \
-    V(ZeroEpochs)                           \
-    V(ZeroMinIterations)                    \
-    V(ZeroClockResolutionMultiple)          \
-    V(ZeroMaxEpochTime)                     \
-    V(InvalidEpochRange)                    \
-    V(InvalidBatch)
-
-#define RSTD_BENCH_ERROR_VARIANTS(V)             \
-    V(InvalidConfig, (BenchConfigError reason;)) \
-    V(Clock, (ClockError reason;))               \
-    V(IterationOverflow, ())                     \
-    V(OperationOptimizedAway, ())                \
-    V(CounterUnavailable, (i32 code;))
-
 export namespace rstd::bench
 {
 
-RSTD_TAG_ENUM(CounterMode, RSTD_BENCH_COUNTER_MODE_VARIANTS)
-RSTD_ENUM(CounterAvailability, RSTD_BENCH_COUNTER_AVAILABILITY_VARIANTS)
-RSTD_TAG_ENUM(BenchConfigError, RSTD_BENCH_CONFIG_ERROR_VARIANTS)
-RSTD_ENUM(BenchError, RSTD_BENCH_ERROR_VARIANTS)
+class CounterMode final {
+    RSTD_ENUM(CounterMode, (Disabled), (Auto), (Required))
+};
+
+class CounterAvailability final {
+    RSTD_ENUM(CounterAvailability, (Disabled), (Available, (u32 mask;)), (Unavailable, (i32 code;)))
+};
+
+class BenchConfigError final {
+    RSTD_ENUM(BenchConfigError,
+              (ZeroEpochs),
+              (ZeroMinIterations),
+              (ZeroClockResolutionMultiple),
+              (ZeroMaxEpochTime),
+              (InvalidEpochRange),
+              (InvalidBatch))
+};
+
+class BenchError final {
+    RSTD_ENUM(BenchError,
+              (InvalidConfig, (BenchConfigError reason;)),
+              (Clock, (ClockError reason;)),
+              (IterationOverflow),
+              (OperationOptimizedAway),
+              (CounterUnavailable, (i32 code;)))
+};
 
 struct CounterSet {
     Option<u64> page_faults;
@@ -148,8 +145,3 @@ public:
 };
 
 } // namespace rstd::bench
-
-#undef RSTD_BENCH_COUNTER_MODE_VARIANTS
-#undef RSTD_BENCH_COUNTER_AVAILABILITY_VARIANTS
-#undef RSTD_BENCH_CONFIG_ERROR_VARIANTS
-#undef RSTD_BENCH_ERROR_VARIANTS
