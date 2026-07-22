@@ -46,6 +46,8 @@ set(
   json/parser.cpp
   json/serialize.cpp
   json/module.cpp
+  toml/parser.cpp
+  toml/module.cpp
   iter/iterator.cpp
   sys/sync/mutex/futex.cpp
   thread/thread.cpp
@@ -100,11 +102,25 @@ target_sources(
   PRIVATE FILE_SET modules TYPE CXX_MODULES FILES log_module_check.cppm
           any_module_check.cppm)
 
-target_link_libraries(rstd_test PRIVATE rstd::rstd rstd::json rstd::log rstd::argparse
+target_link_libraries(rstd_test PRIVATE rstd::rstd rstd::json rstd::toml rstd::log rstd::argparse
                                         GTest::gtest_main)
 
 include(GoogleTest)
 gtest_discover_tests(rstd_test)
+
+add_executable(rstd_toml_test_decoder EXCLUDE_FROM_ALL toml/conformance_decoder.cpp)
+target_link_libraries(rstd_toml_test_decoder PRIVATE rstd::rstd rstd::json rstd::toml)
+
+set(RSTD_TOML_TEST_EXECUTABLE "" CACHE FILEPATH "Path to toml-test v2.2.0")
+add_custom_target(
+  rstd_toml_conformance
+  COMMAND
+    ${CMAKE_COMMAND}
+    "-DTOML_TEST_EXECUTABLE=${RSTD_TOML_TEST_EXECUTABLE}"
+    "-DDECODER=$<TARGET_FILE:rstd_toml_test_decoder>"
+    -P ${CMAKE_CURRENT_LIST_DIR}/toml/run_conformance.cmake
+  DEPENDS rstd_toml_test_decoder
+  USES_TERMINAL)
 
 add_executable(rstd_try_test try.cpp)
 target_sources(
