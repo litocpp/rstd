@@ -33,9 +33,9 @@ constexpr inline T exchange(T&  obj,
 /// \param args Arguments forwarded to the constructor.
 /// \return Pointer to the constructed object.
 export template<typename T, typename... Args>
-    requires(! mtp::is_array_dst<T>) && requires { new T { mtp::declval<Args>()... }; }
+    requires(! mtp::is_array_dst<T>) && requires { new T(mtp::declval<Args>()...); }
 constexpr T* construct_at(T* location,
-                          Args&&... args) noexcept(noexcept(new T { mtp::declval<Args>()... })) {
+                          Args&&... args) noexcept(noexcept(new T(mtp::declval<Args>()...))) {
     void* loc = location;
     if constexpr (mtp::is_array<T>) {
         static_assert(sizeof...(Args) == 0,

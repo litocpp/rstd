@@ -136,7 +136,22 @@ struct Payload {
     explicit Payload(int v): x(v) {}
 };
 
+struct ProtectedDefaultBase {
+protected:
+    ProtectedDefaultBase()  = default;
+    ~ProtectedDefaultBase() = default;
+};
+
+struct AggregateWithProtectedBase : ProtectedDefaultBase {
+    int value { 7 };
+};
+
 } // namespace
+
+TEST(Arc, ConstructsAggregateWithProtectedBase) {
+    auto value = Arc<AggregateWithProtectedBase>::make();
+    EXPECT_EQ(value->value, 7);
+}
 
 TEST(ArcBasic, MakeAndDeref) {
     auto a = Arc<int>::make(42);
