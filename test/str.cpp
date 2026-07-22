@@ -44,6 +44,31 @@ TEST(Str, Find) {
     EXPECT_EQ(z.unwrap(), usize());
 }
 
+TEST(Str, CheckedRangesAndAffixRemovalUseByteOffsets) {
+    auto value = rstd::ref<rstd::str>("a右bc右");
+
+    EXPECT_EQ(*rstd::str_::get(value, usize(1), usize(4)), rstd::ref<rstd::str>("右"));
+    EXPECT_TRUE(rstd::str_::get(value, usize(2), usize(4)).is_none());
+    EXPECT_EQ(*rstd::str_::strip_prefix(value, "a右"), rstd::ref<rstd::str>("bc右"));
+    EXPECT_EQ(*rstd::str_::strip_suffix(value, "右"), rstd::ref<rstd::str>("a右bc"));
+    EXPECT_TRUE(rstd::str_::strip_prefix(value, "右").is_none());
+}
+
+TEST(Str, SplitOnceAndReverseFindPreserveEmptySides) {
+    auto value = rstd::ref<rstd::str>("left::middle::right");
+
+    auto first = rstd::str_::split_once(value, "::");
+    ASSERT_TRUE(first.is_some());
+    EXPECT_EQ(first->template get<0>(), rstd::ref<rstd::str>("left"));
+    EXPECT_EQ(first->template get<1>(), rstd::ref<rstd::str>("middle::right"));
+
+    auto last = rstd::str_::rsplit_once(value, "::");
+    ASSERT_TRUE(last.is_some());
+    EXPECT_EQ(last->template get<0>(), rstd::ref<rstd::str>("left::middle"));
+    EXPECT_EQ(last->template get<1>(), rstd::ref<rstd::str>("right"));
+    EXPECT_EQ(*rstd::str_::rfind(value, ""), value.size());
+}
+
 TEST(Str, Trim) {
     EXPECT_EQ(rstd::str_::trim("  hello  "), rstd::ref<rstd::str>("hello"));
     EXPECT_EQ(rstd::str_::trim("\t\n hi \r\n"), rstd::ref<rstd::str>("hi"));

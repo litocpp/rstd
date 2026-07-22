@@ -95,4 +95,78 @@ export constexpr auto find(ref<str> haystack, ref<str> needle) noexcept -> Optio
     return None();
 }
 
+/// Returns the last byte offset of `needle` in `haystack`.
+export constexpr auto rfind(ref<str> haystack, ref<str> needle) noexcept -> Option<usize> {
+    if (needle.size() == usize()) return Some(haystack.size());
+    if (needle.size() > haystack.size()) return None();
+    auto offset = (haystack.size() - needle.size()).to_primitive();
+    for (;;) {
+        if (__builtin_memcmp(
+                haystack.data() + offset, needle.data(), needle.size().to_primitive()) == 0) {
+            return Some(usize(offset));
+        }
+        if (offset == 0) break;
+        --offset;
+    }
+    return None();
+}
+
+/// Returns a checked UTF-8 string slice over `[start, end)` byte offsets.
+export constexpr auto get(ref<str> value [[clang::lifetimebound]], usize start, usize end) noexcept
+    -> Option<ref<str>> {
+    if (start > end || end > value.size()) return None();
+    if (! is_char_boundary(value, start) || ! is_char_boundary(value, end)) return None();
+    auto* data = value.data();
+    if (start != usize()) data += start.to_primitive();
+    return Some(ref<str>::from_raw_parts(data, end - start));
+}
+
+/// Returns the suffix beginning at a checked UTF-8 byte offset.
+export constexpr auto get_from(ref<str> value [[clang::lifetimebound]], usize start) noexcept
+    -> Option<ref<str>> {
+    return get(value, start, value.size());
+}
+
+/// Returns the prefix ending at a checked UTF-8 byte offset.
+export constexpr auto get_to(ref<str> value [[clang::lifetimebound]], usize end) noexcept
+    -> Option<ref<str>> {
+    return get(value, usize(), end);
+}
+
+/// Removes `prefix` and returns the remaining suffix when it matches.
+export constexpr auto strip_prefix(ref<str> value [[clang::lifetimebound]],
+                                   ref<str> prefix) noexcept -> Option<ref<str>> {
+    if (! starts_with(value, prefix)) return None();
+    return get_from(value, prefix.size());
+}
+
+/// Removes `suffix` and returns the remaining prefix when it matches.
+export constexpr auto strip_suffix(ref<str> value [[clang::lifetimebound]],
+                                   ref<str> suffix) noexcept -> Option<ref<str>> {
+    if (! ends_with(value, suffix)) return None();
+    return get_to(value, value.size() - suffix.size());
+}
+
+/// Splits once at the first occurrence of `separator`.
+export constexpr auto split_once(ref<str> value [[clang::lifetimebound]],
+                                 ref<str> separator) noexcept
+    -> Option<rstd::tuple<ref<str>, ref<str>>> {
+    auto offset = find(value, separator);
+    if (offset.is_none()) return None();
+    auto left  = get_to(value, *offset).unwrap();
+    auto right = get_from(value, *offset + separator.size()).unwrap();
+    return Some(rstd::tuple<ref<str>, ref<str>>(left, right));
+}
+
+/// Splits once at the last occurrence of `separator`.
+export constexpr auto rsplit_once(ref<str> value [[clang::lifetimebound]],
+                                  ref<str> separator) noexcept
+    -> Option<rstd::tuple<ref<str>, ref<str>>> {
+    auto offset = rfind(value, separator);
+    if (offset.is_none()) return None();
+    auto left  = get_to(value, *offset).unwrap();
+    auto right = get_from(value, *offset + separator.size()).unwrap();
+    return Some(rstd::tuple<ref<str>, ref<str>>(left, right));
+}
+
 } // namespace rstd::str_

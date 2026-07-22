@@ -52,6 +52,26 @@ TEST(String, PushStrAppendsCompleteSlice) {
     EXPECT_EQ(text, rstd::ref<rstd::str>("left-右"));
 }
 
+TEST(String, ReserveInsertAndReplaceRangeRespectUtf8Boundaries) {
+    auto text = String::make("a右c");
+    text.reserve(usize(32));
+    EXPECT_GE(text.capacity(), usize(32) + text.len());
+
+    text.insert_str(usize(1), "中");
+    EXPECT_EQ(text, rstd::ref<rstd::str>("a中右c"));
+
+    text.insert(usize(4), U'!');
+    EXPECT_EQ(text, rstd::ref<rstd::str>("a中!右c"));
+
+    text.replace_range(usize(1), usize(5), "文");
+    EXPECT_EQ(text, rstd::ref<rstd::str>("a文右c"));
+}
+
+TEST(StringDeathTest, InsertRejectsNonBoundaryByteOffset) {
+    auto text = String::make("a右c");
+    EXPECT_DEATH(text.insert_str(usize(2), "x"), "is_char_boundary");
+}
+
 TEST(String, FromUtf8OwnsValidatedBytes) {
     auto valid = rstd::vec::Vec<rstd::u8> {};
     valid.push(u8('a'));

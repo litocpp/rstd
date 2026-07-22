@@ -60,8 +60,12 @@ export namespace collections
 {
 /// An ordered map backed by a B-tree.
 using rstd_alloc::collections::BTreeMap;
+/// An ordered set backed by a B-tree.
+using rstd_alloc::collections::BTreeSet;
 /// A hash map using open addressing.
 using rstd_alloc::collections::HashMap;
+/// A hash set using open addressing.
+using rstd_alloc::collections::HashSet;
 } // namespace collections
 
 // export namespace borrow = rstd_alloc::borrow;

@@ -43,6 +43,7 @@ target_sources(
          any.cppm
          trait.cppm
          marker.cppm
+         borrow.cppm
          convert.cppm
          clone.cppm
          clone_tuple.cppm
@@ -79,6 +80,7 @@ target_sources(
          num/nonzero.cppm
          num/niche_types.cppm
          num/integer.cppm
+         num/floating_parse.cppm
          slice/mod.cppm
          str/mod.cppm
          str/str.cppm

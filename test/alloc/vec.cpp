@@ -150,6 +150,44 @@ TEST(Vec, Remove) {
     EXPECT_EQ(v[usize(1)], 3);
 }
 
+TEST(Vec, RetainPreservesOrderAndDropsRemovedElements) {
+    struct Tracked {
+        int* drops;
+        int  value;
+
+        Tracked(int& count, int number): drops(&count), value(number) {}
+        Tracked(const Tracked&)            = delete;
+        Tracked& operator=(const Tracked&) = delete;
+        Tracked(Tracked&& other) noexcept: drops(other.drops), value(other.value) {
+            other.drops = nullptr;
+        }
+        Tracked& operator=(Tracked&&) = delete;
+        ~Tracked() {
+            if (drops != nullptr) ++*drops;
+        }
+    };
+
+    int  drops  = 0;
+    auto values = Vec<Tracked>::make();
+    for (int value = 0; value < 6; ++value) values.emplace_back(drops, value);
+
+    values.retain([](const Tracked& value) {
+        return value.value % 2 == 0;
+    });
+
+    ASSERT_EQ(values.len(), usize(3));
+    EXPECT_EQ(values[usize()].value, 0);
+    EXPECT_EQ(values[usize(1)].value, 2);
+    EXPECT_EQ(values[usize(2)].value, 4);
+    EXPECT_EQ(drops, 3);
+
+    values.retain([](const Tracked&) {
+        return false;
+    });
+    EXPECT_TRUE(values.is_empty());
+    EXPECT_EQ(drops, 6);
+}
+
 TEST(Vec, ReserveAndExtendFromSlice) {
     Vec<rstd::u8> v;
     v.reserve(usize(8));

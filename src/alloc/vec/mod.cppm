@@ -368,6 +368,26 @@ public:
         m_len = new_len;
     }
 
+    /// Retains only the elements for which `predicate` returns true, preserving their order.
+    template<typename F>
+    constexpr void retain(F predicate) {
+        auto*              values  = m_buf.ptr.as_mut_ptr().as_raw_ptr();
+        rstd::size_t       write   = 0;
+        const rstd::size_t old_len = m_len.to_primitive();
+        for (rstd::size_t read = 0; read < old_len; ++read) {
+            if (predicate(static_cast<const T&>(values[read]))) {
+                if (write != read) {
+                    new (values + write) T(rstd::move(values[read]));
+                    values[read].~T();
+                }
+                ++write;
+            } else {
+                values[read].~T();
+            }
+        }
+        m_len = usize(write);
+    }
+
     /// Resizes the vector to `new_len`, cloning `value` into newly-created slots.
     void resize(usize new_len, const T& value) {
         if (new_len <= m_len) {

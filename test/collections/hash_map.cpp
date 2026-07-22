@@ -253,6 +253,39 @@ TEST(HashMap, StringKeysUseTheirHashOwner) {
     EXPECT_EQ(**map.get(key), i32(1));
 }
 
+TEST(HashMap, BorrowedStringLookupAndRemoval) {
+    auto map = HashMap<rstd::string::String, i32>::make();
+    map.insert(rstd::string::String::make("alpha"), i32(1));
+    map.insert(rstd::string::String::make("beta"), i32(2));
+
+    EXPECT_TRUE(map.contains_key(rstd::ref<rstd::str>("alpha")));
+    EXPECT_EQ(**map.get(rstd::ref<rstd::str>("beta")), i32(2));
+
+    auto value = map.get_mut(rstd::ref<rstd::str>("alpha"));
+    ASSERT_TRUE(value.is_some());
+    **value = i32(10);
+
+    auto entry = map.get_key_value(rstd::ref<rstd::str>("alpha"));
+    ASSERT_TRUE(entry.is_some());
+    EXPECT_EQ(*entry->template get<0>(), rstd::ref<rstd::str>("alpha"));
+    EXPECT_EQ(*entry->template get<1>(), i32(10));
+    EXPECT_EQ(map.remove(rstd::ref<rstd::str>("alpha")), Some(i32(10)));
+    EXPECT_FALSE(map.contains_key(rstd::ref<rstd::str>("alpha")));
+}
+
+TEST(HashMap, ClonePreservesIndependentEntries) {
+    auto source = HashMap<rstd::string::String, rstd::string::String>::make();
+    source.insert(rstd::string::String::make("key"), rstd::string::String::make("value"));
+
+    auto cloned = source.clone();
+    auto value  = source.get_mut(rstd::ref<rstd::str>("key"));
+    ASSERT_TRUE(value.is_some());
+    (**value).push_back('!');
+
+    EXPECT_EQ(**source.get(rstd::ref<rstd::str>("key")), "value!");
+    EXPECT_EQ(**cloned.get(rstd::ref<rstd::str>("key")), "value");
+}
+
 TEST(HashMap, CustomHashCombinesWithDifferentBuilders) {
     HashKey first(i32(5), i32(10));
     HashKey equivalent(i32(5), i32(20));

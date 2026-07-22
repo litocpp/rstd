@@ -108,6 +108,8 @@ public:
     constexpr auto is_empty() const noexcept -> bool { return vec.len() == usize(); }
     /// Returns the current capacity in bytes.
     constexpr auto capacity() const noexcept -> usize { return vec.capacity(); }
+    /// Ensures that at least `additional` more bytes can be inserted without reallocating.
+    void reserve(usize additional) { vec.reserve(additional); }
     /// Clears the string, removing all bytes.
     constexpr void clear() { vec.clear(); }
 
@@ -119,6 +121,35 @@ public:
             rstd_assert(rstd::char_::is_char_boundary(vec.begin(), vec.len(), new_len));
             while (vec.len() > new_len) vec.pop();
         }
+    }
+
+    /// Replaces the UTF-8 byte range `[start, end)` with `replacement`.
+    void replace_range(usize start, usize end, ref<str> replacement) {
+        rstd_assert(start <= end && end <= vec.len());
+        auto current = as_str();
+        rstd_assert(rstd::str_::is_char_boundary(current, start));
+        rstd_assert(rstd::str_::is_char_boundary(current, end));
+
+        auto result = Vec<u8>::with_capacity(start + replacement.size() + vec.len() - end);
+        if (start != usize()) {
+            result.extend_from_bytes(slice<byte>::from_raw_parts(current.data(), start));
+        }
+        result.extend_from_bytes(rstd::str_::as_bytes(replacement));
+        if (end != vec.len()) {
+            result.extend_from_bytes(
+                slice<byte>::from_raw_parts(current.data() + end.to_primitive(), vec.len() - end));
+        }
+        vec = rstd::move(result);
+    }
+
+    /// Inserts a UTF-8 string slice at a checked byte boundary.
+    void insert_str(usize index, ref<str> value) { replace_range(index, index, value); }
+
+    /// Inserts a Unicode code point at a checked byte boundary.
+    void insert(usize index, char32_t code_point) {
+        u8   bytes[4];
+        auto length = rstd::char_::encode_utf8(code_point, bytes);
+        insert_str(index, ref<str>(slice<u8>::from_raw_parts(bytes, length)));
     }
 
     friend constexpr auto operator<=>(const String& a, const String& b) noexcept {
@@ -205,10 +236,13 @@ struct Impl<hash::Hash, String> : ImplBase<String> {
     template<typename H>
         requires Impled<H, hash::Hasher>
     void hash(H& state) const noexcept {
-        hash::write_bytes(state, str_::as_bytes(this->self().as_str()));
-        byte const separator = 0xff;
-        hash::write_bytes(state, slice<byte>::from_raw_parts(rstd::addressof(separator), usize(1)));
+        hash::hash_into(this->self().as_str(), state);
     }
+};
+
+template<>
+struct Impl<borrow::Borrow<str>, String> : ImplBase<String> {
+    auto borrow() const noexcept -> ref<str> { return this->self().as_str(); }
 };
 
 template<>

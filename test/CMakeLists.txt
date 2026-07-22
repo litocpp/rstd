@@ -40,7 +40,9 @@ set(
   alloc/sync.cpp
   alloc/string.cpp
   collections/btree_map.cpp
+  collections/btree_set.cpp
   collections/hash_map.cpp
+  collections/hash_set.cpp
   json/number.cpp
   json/value.cpp
   json/parser.cpp

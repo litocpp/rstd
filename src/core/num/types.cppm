@@ -1233,6 +1233,59 @@ public:
         return Self(__builtin_sqrt(value_));
     }
 
+    [[nodiscard]]
+    constexpr auto sin() const noexcept -> Self {
+        if constexpr (sizeof(Primitive) == 4) {
+            return Self(__builtin_sinf(value_));
+        } else {
+            return Self(__builtin_sin(value_));
+        }
+    }
+
+    [[nodiscard]]
+    constexpr auto cos() const noexcept -> Self {
+        if constexpr (sizeof(Primitive) == 4) {
+            return Self(__builtin_cosf(value_));
+        } else {
+            return Self(__builtin_cos(value_));
+        }
+    }
+
+    [[nodiscard]]
+    constexpr auto atan2(Self other) const noexcept -> Self {
+        if constexpr (sizeof(Primitive) == 4) {
+            return Self(__builtin_atan2f(value_, other.value_));
+        } else {
+            return Self(__builtin_atan2(value_, other.value_));
+        }
+    }
+
+    [[nodiscard]]
+    constexpr auto rem_euclid(Self rhs) const noexcept -> Self {
+        auto remainder = self() % rhs;
+        return remainder < Self() ? remainder + rhs.abs() : remainder;
+    }
+
+    [[nodiscard]]
+    constexpr auto next_up() const noexcept -> Self {
+        if (is_nan() || self() == Self::INFINITY_) return self();
+        if (value_ == Primitive()) return Self::from_bits(Bits(1));
+        auto bits = to_bits().to_primitive();
+        return Self::from_bits(Bits(value_ > Primitive() ? bits + 1 : bits - 1));
+    }
+
+    [[nodiscard]]
+    constexpr auto next_down() const noexcept -> Self {
+        if (is_nan() || self() == Self::NEG_INFINITY) return self();
+        if (value_ == Primitive()) {
+            using BitsPrimitive = typename Bits::primitive_type;
+            constexpr auto sign = BitsPrimitive(1) << (sizeof(Primitive) * 8 - 1);
+            return Self::from_bits(Bits(sign | BitsPrimitive(1)));
+        }
+        auto bits = to_bits().to_primitive();
+        return Self::from_bits(Bits(value_ > Primitive() ? bits - 1 : bits + 1));
+    }
+
     template<typename Exponent>
         requires rstd::mtp::same<rstd::mtp::rm_cvf<Exponent>, I32>
     [[nodiscard]]
@@ -1364,6 +1417,14 @@ public:
         return Self(Primitive(lhs.value_ / rhs.value_));
     }
 
+    friend constexpr auto operator%(Self lhs, Self rhs) noexcept -> Self {
+        if constexpr (sizeof(Primitive) == 4) {
+            return Self(__builtin_fmodf(lhs.value_, rhs.value_));
+        } else {
+            return Self(__builtin_fmod(lhs.value_, rhs.value_));
+        }
+    }
+
     friend constexpr auto operator-(Self value) noexcept -> Self { return Self(-value.value_); }
 
     constexpr auto operator+=(Self rhs) noexcept -> Self& {
@@ -1380,6 +1441,10 @@ public:
     }
     constexpr auto operator/=(Self rhs) noexcept -> Self& {
         self() = self() / rhs;
+        return self();
+    }
+    constexpr auto operator%=(Self rhs) noexcept -> Self& {
+        self() = self() % rhs;
         return self();
     }
 };

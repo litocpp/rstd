@@ -21,6 +21,8 @@ target_sources(
          collections/mod.cppm
          collections/btree/node.cppm
          collections/btree/map.cppm
+         collections/btree/set.cppm
          collections/hash/table.cppm
          collections/hash/map.cppm
+         collections/hash/set.cppm
          hash/random.cppm)

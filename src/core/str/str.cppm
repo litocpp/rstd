@@ -6,6 +6,7 @@ export import :slice;
 export import :fmt;
 export import :marker;
 export import :char_;
+export import :hash;
 
 namespace rstd::str_
 {
@@ -335,6 +336,17 @@ struct Impl<fmt::Debug, ref<str>> : ImplBase<ref<str>> {
         if (! f.write_raw(quote, rstd::size_t(1))) return false;
         if (! f.write_raw(this->self().data(), this->self().size().to_primitive())) return false;
         return f.write_raw(quote, rstd::size_t(1));
+    }
+};
+
+template<>
+struct Impl<hash::Hash, ref<str>> : ImplBase<ref<str>> {
+    template<typename H>
+        requires Impled<H, hash::Hasher>
+    void hash(H& state) const noexcept {
+        hash::write_bytes(state, str_::as_bytes(this->self()));
+        byte const separator = 0xff;
+        hash::write_bytes(state, slice<byte>::from_raw_parts(rstd::addressof(separator), usize(1)));
     }
 };
 

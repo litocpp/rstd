@@ -83,6 +83,48 @@ TEST(FloatMethods, RoundingMathAndClamp) {
     EXPECT_EQ((3.0_f64).clamp(1.0_f64, 2.0_f64), 2.0_f64);
 }
 
+TEST(FloatMethods, TrigonometryRemainderAndAdjacentValues) {
+    EXPECT_NEAR(rstd::f32::consts::FRAC_PI_2.sin().to_primitive(), 1.0f, 1e-6f);
+    EXPECT_NEAR(rstd::f64::consts::PI.cos().to_primitive(), -1.0, 1e-15);
+    EXPECT_NEAR((1.0_f64).atan2(1.0_f64).to_primitive(),
+                rstd::f64::consts::FRAC_PI_4.to_primitive(),
+                1e-15);
+    EXPECT_EQ(5.5_f32 % 2.0_f32, 1.5_f32);
+    EXPECT_EQ((-1.5_f32).rem_euclid(1.0_f32), 0.5_f32);
+    EXPECT_EQ((0.0_f32).next_up().to_bits(), 1_u32);
+    EXPECT_EQ((0.0_f32).next_down().to_bits(), 0x80000001_u32);
+    EXPECT_EQ(rstd::f32::MAX.next_up(), rstd::f32::INFINITY_);
+    EXPECT_EQ(rstd::f32::INFINITY_.next_up(), rstd::f32::INFINITY_);
+    EXPECT_TRUE(rstd::f32::NAN_.next_down().is_nan());
+}
+
+TEST(FloatFromStr, ParsesDecimalSpecialAndBoundaryValues) {
+    EXPECT_EQ(rstd::from_str<rstd::f32>("1.25").unwrap(), 1.25_f32);
+    EXPECT_EQ(rstd::from_str<rstd::f64>("-.5e2").unwrap(), -50.0_f64);
+    EXPECT_TRUE(rstd::from_str<rstd::f32>("inf").unwrap().is_infinite());
+    EXPECT_TRUE(rstd::from_str<rstd::f64>("-infinity").unwrap().is_sign_negative());
+    EXPECT_TRUE(rstd::from_str<rstd::f32>("NaN").unwrap().is_nan());
+    EXPECT_EQ(rstd::from_str<rstd::f64>("5e-324").unwrap().to_bits(), 1_u64);
+}
+
+TEST(FloatFromStr, ReportsEmptyInvalidAndOverflow) {
+    auto empty = rstd::from_str<rstd::f32>("");
+    ASSERT_TRUE(empty.is_err());
+    EXPECT_EQ(empty.unwrap_err().kind(), rstd::num::FloatErrorKind::Empty);
+
+    auto invalid = rstd::from_str<rstd::f64>("1.2x");
+    ASSERT_TRUE(invalid.is_err());
+    EXPECT_EQ(invalid.unwrap_err().kind(), rstd::num::FloatErrorKind::Invalid);
+
+    auto positive = rstd::from_str<rstd::f32>("1e100");
+    ASSERT_TRUE(positive.is_err());
+    EXPECT_EQ(positive.unwrap_err().kind(), rstd::num::FloatErrorKind::PosOverflow);
+
+    auto negative = rstd::from_str<rstd::f64>("-1e1000");
+    ASSERT_TRUE(negative.is_err());
+    EXPECT_EQ(negative.unwrap_err().kind(), rstd::num::FloatErrorKind::NegOverflow);
+}
+
 TEST(FloatConversion, CheckedAndLossyBoundaries) {
     EXPECT_EQ(rstd::try_from<rstd::u8>(42.0_f64).unwrap(), 42_u8);
     EXPECT_TRUE(rstd::try_from<rstd::u8>(42.5_f64).is_err());

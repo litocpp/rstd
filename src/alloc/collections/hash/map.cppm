@@ -15,7 +15,10 @@ namespace alloc::collections
 
 export template<typename K>
 struct DefaultHashEqual {
-    auto operator()(const K& left, const K& right) const noexcept -> bool { return left == right; }
+    template<typename Left, typename Right>
+    auto operator()(const Left& left, const Right& right) const noexcept -> bool {
+        return left == right;
+    }
 };
 
 export template<typename K,
@@ -182,6 +185,20 @@ class HashMap {
         });
     }
 
+    template<typename Q>
+    auto find_borrowed_index(ref<Q> key) const -> Option<usize>
+        requires rstd::Impled<K, rstd::borrow::Borrow<Q>> && rstd::hash::HashableBy<ref<Q>, S> &&
+                 requires(const Eq& equality, ref<Q> left, ref<Q> right) {
+                     { equality(left, right) } -> rstd::mtp::same_as<bool>;
+                 }
+    {
+        u64 hash = rstd::hash::hash_one(hash_builder, key);
+        return table.find(hash, [&](const K& stored) {
+            auto borrowed = rstd::as<rstd::borrow::Borrow<Q>>(stored).borrow();
+            return equal(borrowed, key);
+        });
+    }
+
 public:
     USE_TRAIT(HashMap)
     using IntoIter = HashMapIntoIter<K, V>;
@@ -224,6 +241,28 @@ public:
     auto capacity() const noexcept -> usize { return table.capacity(); }
     auto hasher() const noexcept [[clang::lifetimebound]] -> const S& { return hash_builder; }
 
+    auto clone() const -> HashMap
+        requires rstd::Impled<K, rstd::clone::Clone> && rstd::Impled<V, rstd::clone::Clone> &&
+                 rstd::Impled<S, rstd::clone::Clone> && rstd::Impled<Eq, rstd::clone::Clone>
+    {
+        auto result = HashMap(table.len(),
+                              rstd::as<rstd::clone::Clone>(hash_builder).clone(),
+                              rstd::as<rstd::clone::Clone>(equal).clone());
+        auto source = iter();
+        for (auto item = source.next(); item.is_some(); item = source.next()) {
+            result.insert(rstd::as<rstd::clone::Clone>(*item->template get<0>()).clone(),
+                          rstd::as<rstd::clone::Clone>(*item->template get<1>()).clone());
+        }
+        return result;
+    }
+
+    void clone_from(HashMap& source)
+        requires rstd::Impled<K, rstd::clone::Clone> && rstd::Impled<V, rstd::clone::Clone> &&
+                 rstd::Impled<S, rstd::clone::Clone> && rstd::Impled<Eq, rstd::clone::Clone>
+    {
+        *this = source.clone();
+    }
+
     void reserve(usize additional) { table.reserve(additional); }
     void shrink_to_fit() { table.shrink_to(usize {}); }
     void shrink_to(usize minimum) { table.shrink_to(minimum); }
@@ -251,10 +290,37 @@ public:
         return Some(rstd::ref<V>::from_raw_parts(rstd::addressof(table.bucket(*found).value())));
     }
 
+    template<typename Q>
+    auto get(ref<Q> key) const [[clang::lifetimebound]] -> Option<rstd::ref<V>>
+        requires(! rstd::mtp::same_as<K, ref<Q>>) && rstd::Impled<K, rstd::borrow::Borrow<Q>> &&
+                rstd::hash::HashableBy<ref<Q>, S> &&
+                requires(const Eq& equality, ref<Q> left, ref<Q> right) {
+                    { equality(left, right) } -> rstd::mtp::same_as<bool>;
+                }
+    {
+        auto found = find_borrowed_index(key);
+        if (found.is_none()) return None();
+        return Some(rstd::ref<V>::from_raw_parts(rstd::addressof(table.bucket(*found).value())));
+    }
+
     auto get_mut(const K& key) [[clang::lifetimebound]] -> Option<rstd::mut_ref<V>>
         requires rstd::hash::HashableBy<K, S>
     {
         auto found = find_index(key);
+        if (found.is_none()) return None();
+        return Some(
+            rstd::mut_ref<V>::from_raw_parts(rstd::addressof(table.bucket(*found).value())));
+    }
+
+    template<typename Q>
+    auto get_mut(ref<Q> key) [[clang::lifetimebound]] -> Option<rstd::mut_ref<V>>
+        requires(! rstd::mtp::same_as<K, ref<Q>>) && rstd::Impled<K, rstd::borrow::Borrow<Q>> &&
+                rstd::hash::HashableBy<ref<Q>, S> &&
+                requires(const Eq& equality, ref<Q> left, ref<Q> right) {
+                    { equality(left, right) } -> rstd::mtp::same_as<bool>;
+                }
+    {
+        auto found = find_borrowed_index(key);
         if (found.is_none()) return None();
         return Some(
             rstd::mut_ref<V>::from_raw_parts(rstd::addressof(table.bucket(*found).value())));
@@ -272,10 +338,38 @@ public:
             rstd::ref<V>::from_raw_parts(rstd::addressof(bucket.value()))));
     }
 
+    template<typename Q>
+    auto get_key_value(ref<Q> key) const [[clang::lifetimebound]]
+    -> Option<rstd::tuple<rstd::ref<K>, rstd::ref<V>>>
+        requires(! rstd::mtp::same_as<K, ref<Q>>) && rstd::Impled<K, rstd::borrow::Borrow<Q>> &&
+                rstd::hash::HashableBy<ref<Q>, S> &&
+                requires(const Eq& equality, ref<Q> left, ref<Q> right) {
+                    { equality(left, right) } -> rstd::mtp::same_as<bool>;
+                }
+    {
+        auto found = find_borrowed_index(key);
+        if (found.is_none()) return None();
+        const auto& bucket = table.bucket(*found);
+        return Some(rstd::tuple<rstd::ref<K>, rstd::ref<V>>(
+            rstd::ref<K>::from_raw_parts(rstd::addressof(bucket.key())),
+            rstd::ref<V>::from_raw_parts(rstd::addressof(bucket.value()))));
+    }
+
     auto contains_key(const K& key) const -> bool
         requires rstd::hash::HashableBy<K, S>
     {
         return find_index(key).is_some();
+    }
+
+    template<typename Q>
+    auto contains_key(ref<Q> key) const -> bool
+        requires(! rstd::mtp::same_as<K, ref<Q>>) && rstd::Impled<K, rstd::borrow::Borrow<Q>> &&
+                rstd::hash::HashableBy<ref<Q>, S> &&
+                requires(const Eq& equality, ref<Q> left, ref<Q> right) {
+                    { equality(left, right) } -> rstd::mtp::same_as<bool>;
+                }
+    {
+        return find_borrowed_index(key).is_some();
     }
 
     auto remove_entry(const K& key) -> Option<Entry>
@@ -285,8 +379,32 @@ public:
         return found.is_some() ? Some(table.remove(*found)) : None();
     }
 
+    template<typename Q>
+    auto remove_entry(ref<Q> key) -> Option<Entry>
+        requires(! rstd::mtp::same_as<K, ref<Q>>) && rstd::Impled<K, rstd::borrow::Borrow<Q>> &&
+                rstd::hash::HashableBy<ref<Q>, S> &&
+                requires(const Eq& equality, ref<Q> left, ref<Q> right) {
+                    { equality(left, right) } -> rstd::mtp::same_as<bool>;
+                }
+    {
+        auto found = find_borrowed_index(key);
+        return found.is_some() ? Some(table.remove(*found)) : None();
+    }
+
     auto remove(const K& key) -> Option<V>
         requires rstd::hash::HashableBy<K, S>
+    {
+        auto entry = remove_entry(key);
+        return entry.is_some() ? Some(rstd::move(entry->template get<1>())) : None();
+    }
+
+    template<typename Q>
+    auto remove(ref<Q> key) -> Option<V>
+        requires(! rstd::mtp::same_as<K, ref<Q>>) && rstd::Impled<K, rstd::borrow::Borrow<Q>> &&
+                rstd::hash::HashableBy<ref<Q>, S> &&
+                requires(const Eq& equality, ref<Q> left, ref<Q> right) {
+                    { equality(left, right) } -> rstd::mtp::same_as<bool>;
+                }
     {
         auto entry = remove_entry(key);
         return entry.is_some() ? Some(rstd::move(entry->template get<1>())) : None();

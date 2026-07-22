@@ -1,0 +1,161 @@
+export module rstd.core:num.floating_parse;
+import :num.types;
+export import :num.dec2flt;
+export import :str.traits;
+export import :fmt;
+
+export namespace rstd::num
+{
+
+enum class FloatErrorKind : rstd::uint8_t
+{
+    Empty,
+    Invalid,
+    PosOverflow,
+    NegOverflow
+};
+
+class ParseFloatError {
+    FloatErrorKind kind_;
+
+public:
+    explicit constexpr ParseFloatError(FloatErrorKind kind) noexcept: kind_(kind) {}
+    [[nodiscard]]
+    constexpr auto kind() const noexcept -> FloatErrorKind {
+        return kind_;
+    }
+};
+
+} // namespace rstd::num
+
+namespace rstd
+{
+
+template<num::Float T>
+struct Impl<str_::FromStr, T> {
+    using Err  = num::ParseFloatError;
+    using Self = T;
+
+    static constexpr auto is_digit(rstd::uint8_t value) noexcept -> bool {
+        return value >= '0' && value <= '9';
+    }
+
+    static auto error(num::FloatErrorKind kind) -> Result<Self, Err> {
+        return rstd::Err(num::ParseFloatError(kind));
+    }
+
+    static auto finish(f64 value, bool negative) -> Result<Self, Err> {
+        if constexpr (mtp::same_as<Self, f64>) {
+            return Ok(value);
+        } else {
+            auto primitive = static_cast<float>(value.to_primitive());
+            if (__builtin_isinf(primitive) && value.is_finite()) {
+                return error(negative ? num::FloatErrorKind::NegOverflow
+                                      : num::FloatErrorKind::PosOverflow);
+            }
+            return Ok(f32(primitive));
+        }
+    }
+
+    static auto from_str(ref<str> input) -> Result<Self, Err> {
+        if (input.size() == usize()) return error(num::FloatErrorKind::Empty);
+
+        rstd::size_t index    = 0;
+        bool         negative = false;
+        if (input.data()[0] == '+') {
+            index = 1;
+        } else if (input.data()[0] == '-') {
+            negative = true;
+            index    = 1;
+        }
+        if (index == input.size().to_primitive()) {
+            return error(num::FloatErrorKind::Invalid);
+        }
+
+        auto body = ref<str>::from_raw_parts(input.data() + index,
+                                             usize(input.size().to_primitive() - index));
+        if (body == "inf" || body == "infinity") {
+            return Ok(negative ? -Self::INFINITY_ : Self::INFINITY_);
+        }
+        if (body == "NaN") return Ok(negative ? -Self::NAN_ : Self::NAN_);
+
+        auto integer_begin = index;
+        while (index < input.size().to_primitive() && is_digit(input.data()[index])) ++index;
+        auto integer_end = index;
+
+        auto fraction_begin = index;
+        auto fraction_end   = index;
+        if (index < input.size().to_primitive() && input.data()[index] == '.') {
+            ++index;
+            fraction_begin = index;
+            while (index < input.size().to_primitive() && is_digit(input.data()[index])) ++index;
+            fraction_end = index;
+        }
+
+        if (integer_begin == integer_end && fraction_begin == fraction_end) {
+            return error(num::FloatErrorKind::Invalid);
+        }
+
+        i32 exponent {};
+        if (index < input.size().to_primitive() &&
+            (input.data()[index] == 'e' || input.data()[index] == 'E')) {
+            ++index;
+            bool exponent_negative = false;
+            if (index < input.size().to_primitive() &&
+                (input.data()[index] == '+' || input.data()[index] == '-')) {
+                exponent_negative = input.data()[index] == '-';
+                ++index;
+            }
+            if (index == input.size().to_primitive() || ! is_digit(input.data()[index])) {
+                return error(num::FloatErrorKind::Invalid);
+            }
+            rstd::int32_t raw_exponent = 0;
+            while (index < input.size().to_primitive() && is_digit(input.data()[index])) {
+                if (raw_exponent < 100000) {
+                    raw_exponent =
+                        raw_exponent * 10 + static_cast<rstd::int32_t>(input.data()[index] - '0');
+                }
+                ++index;
+            }
+            exponent = i32(exponent_negative ? -raw_exponent : raw_exponent);
+        }
+        if (index != input.size().to_primitive()) {
+            return error(num::FloatErrorKind::Invalid);
+        }
+
+        static constexpr byte ZERO[] = { '0' };
+        auto integer  = integer_begin == integer_end
+                            ? slice<byte>::from_raw_parts(ZERO, usize(1))
+                            : slice<byte>::from_raw_parts(input.data() + integer_begin,
+                                                          usize(integer_end - integer_begin));
+        auto fraction = slice<byte>::from_raw_parts(input.data() + fraction_begin,
+                                                    usize(fraction_end - fraction_begin));
+        auto parsed   = num::dec2flt::to_f64({
+            .integer  = integer,
+            .fraction = fraction,
+            .exponent = exponent,
+            .negative = negative,
+        });
+        if (parsed.is_err()) {
+            return error(negative ? num::FloatErrorKind::NegOverflow
+                                  : num::FloatErrorKind::PosOverflow);
+        }
+        return finish(parsed.unwrap(), negative);
+    }
+};
+
+template<>
+struct Impl<fmt::Display, num::ParseFloatError> : ImplBase<num::ParseFloatError> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        const char* message = "invalid float literal";
+        switch (this->self().kind()) {
+        case num::FloatErrorKind::Empty: message = "cannot parse float from empty string"; break;
+        case num::FloatErrorKind::Invalid: break;
+        case num::FloatErrorKind::PosOverflow: message = "float literal is too large"; break;
+        case num::FloatErrorKind::NegOverflow: message = "float literal is too small"; break;
+        }
+        return formatter.pad(message);
+    }
+};
+
+} // namespace rstd
