@@ -148,6 +148,15 @@ public:
         return Vec { RawVec<T>::with_capacity(capacity), usize() };
     }
 
+    /// Clones a borrowed slice into a new vector.
+    static auto from(slice<T> values) -> Self
+        requires Impled<T, Clone>
+    {
+        auto result = with_capacity(values.len());
+        result.extend_from_slice(values);
+        return result;
+    }
+
     /// Copies raw bytes into owned `u8` objects.
     static auto copy_from_bytes(slice<byte> source) -> Self
         requires mtp::same_as<T, u8>
@@ -282,29 +291,60 @@ public:
     constexpr void push_back(const T& value)
         requires Impled<T, Clone>
     {
-        if (m_len == m_buf.cap) {
-            m_buf.grow(m_buf.cap == usize() ? usize(4) : m_buf.cap * usize(2), m_len);
-        }
-        new (m_buf.ptr.as_mut_ptr().as_raw_ptr() + m_len.to_primitive())
-            T(as<Clone>(value).clone());
-        ++m_len;
+        extend_from_slice(slice<T>::from_raw_parts(rstd::addressof(value), usize(1)));
     }
 
     /// Removes the last element from the vector, discarding it.
     constexpr void pop_back() { (void)pop(); }
 
-    /// Appends a copy of all elements in `values`.
-    void extend_from_slice(slice<T> values) {
-        reserve(values.len());
-        auto* p = m_buf.ptr.as_mut_ptr().as_raw_ptr() + m_len.to_primitive();
-        for (rstd::size_t index = 0; index < values.len().to_primitive(); ++index) {
-            new (p + index) T(values[usize(index)]);
+    /// Appends a clone of all elements in `values`.
+    void extend_from_slice(slice<T> values)
+        requires Impled<T, Clone>
+    {
+        if (values.is_empty()) return;
+
+        bool         source_is_self = false;
+        rstd::size_t source_offset  = 0;
+        if (m_len != usize()) {
+            auto const buffer_address =
+                reinterpret_cast<uintptr_t>(m_buf.ptr.as_ptr().as_raw_ptr());
+            auto const source_address = reinterpret_cast<uintptr_t>(values.as_raw_ptr());
+            if (source_address >= buffer_address) {
+                auto const offset_bytes = source_address - buffer_address;
+                if (offset_bytes % sizeof(T) == 0) {
+                    source_offset = offset_bytes / sizeof(T);
+                    source_is_self =
+                        source_offset <= m_len.to_primitive() &&
+                        values.len().to_primitive() <= m_len.to_primitive() - source_offset;
+                }
+            }
         }
-        m_len += values.len();
+
+        reserve(values.len());
+
+        if (source_is_self) {
+            values = slice<T>::from_raw_parts(m_buf.ptr.as_ptr().as_raw_ptr() + source_offset,
+                                              values.len());
+        }
+
+        auto* destination = m_buf.ptr.as_mut_ptr().as_raw_ptr() + m_len.to_primitive();
+        if constexpr (Impled<T, rstd::Copy>) {
+            rstd::ptr_::copy_nonoverlapping(ptr<T>::from_raw_parts(values.as_raw_ptr()),
+                                            mut_ptr<T>::from_raw_parts(destination),
+                                            values.len());
+            m_len += values.len();
+        } else {
+            for (rstd::size_t index = 0; index < values.len().to_primitive(); ++index) {
+                new (destination + index) T(as<Clone>(values[usize(index)]).clone());
+                ++m_len;
+            }
+        }
     }
 
     /// Appends a copy of `count` elements starting at `values`.
-    void extend_from_slice(const T* values, usize count) {
+    void extend_from_slice(const T* values, usize count)
+        requires Impled<T, Clone>
+    {
         if (count == usize()) return;
         extend_from_slice(slice<T>::from_raw_parts(values, count));
     }
@@ -350,16 +390,25 @@ public:
         requires rstd::Impled<T, rstd::clone::Clone>
     {
         auto result = Vec::with_capacity(m_len);
-        for (rstd::size_t index = 0; index < m_len.to_primitive(); ++index) {
-            result.push(rstd::as<rstd::clone::Clone>((*this)[usize(index)]).clone());
-        }
+        result.extend_from_slice(as_slice());
         return result;
     }
 
-    void clone_from(Vec& source)
+    void clone_from(const Vec& source)
         requires rstd::Impled<T, rstd::clone::Clone>
     {
-        *this = source.clone();
+        if (this == rstd::addressof(source)) return;
+
+        truncate(source.len());
+        auto const initialized = m_len;
+        rstd::slice_::clone_from_slice(
+            mut_ref<T[]>::from_raw_parts(m_buf.ptr.as_mut_ptr().as_raw_ptr(), initialized),
+            slice<T>::from_raw_parts(source.data(), initialized));
+
+        if (initialized < source.len()) {
+            extend_from_slice(slice<T>::from_raw_parts(source.data() + initialized.to_primitive(),
+                                                       source.len() - initialized));
+        }
     }
 
     /// Clears the vector, destroying all elements but not deallocating memory.
@@ -402,19 +451,37 @@ public:
     }
 
     /// Resizes the vector to `new_len`, cloning `value` into newly-created slots.
-    void resize(usize new_len, const T& value) {
+    void resize(usize new_len, const T& value)
+        requires Impled<T, Clone>
+    {
         if (new_len <= m_len) {
             truncate(new_len);
             return;
         }
 
-        auto old_len = m_len;
-        reserve(new_len - m_len);
-        auto* p = m_buf.ptr.as_mut_ptr().as_raw_ptr();
-        for (rstd::size_t index = old_len.to_primitive(); index < new_len.to_primitive(); ++index) {
-            new (p + index) T(value);
+        auto         old_len       = m_len;
+        bool         value_is_self = false;
+        rstd::size_t value_offset  = 0;
+        if (m_len != usize()) {
+            auto const buffer_address =
+                reinterpret_cast<uintptr_t>(m_buf.ptr.as_ptr().as_raw_ptr());
+            auto const value_address = reinterpret_cast<uintptr_t>(rstd::addressof(value));
+            if (value_address >= buffer_address) {
+                auto const offset_bytes = value_address - buffer_address;
+                if (offset_bytes % sizeof(T) == 0) {
+                    value_offset  = offset_bytes / sizeof(T);
+                    value_is_self = value_offset < m_len.to_primitive();
+                }
+            }
         }
-        m_len = new_len;
+
+        reserve(new_len - m_len);
+        auto*       p      = m_buf.ptr.as_mut_ptr().as_raw_ptr();
+        auto const* source = value_is_self ? p + value_offset : rstd::addressof(value);
+        for (rstd::size_t index = old_len.to_primitive(); index < new_len.to_primitive(); ++index) {
+            new (p + index) T(as<Clone>(*source).clone());
+            ++m_len;
+        }
     }
 
     /// Removes and returns the element at the given index, shifting subsequent elements left.
@@ -518,6 +585,14 @@ struct Impl<T, ::alloc::vec::Vec<A>> : ImplBase<::alloc::vec::Vec<A>> {
             vec.push(rstd::move(ptr[usize(index)]));
         }
         return vec;
+    }
+};
+
+template<typename A, mtp::same_as<From<slice<A>>> T>
+    requires Impled<A, clone::Clone>
+struct Impl<T, ::alloc::vec::Vec<A>> : ImplBase<::alloc::vec::Vec<A>> {
+    static auto from(slice<A> values) -> ::alloc::vec::Vec<A> {
+        return ::alloc::vec::Vec<A>::from(values);
     }
 };
 

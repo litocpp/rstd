@@ -782,7 +782,7 @@ public:
 
     /// Overwrites this result with a clone of the source.
     /// \param source The result to clone from.
-    void clone_from(Result& source)
+    void clone_from(const Result& source)
         requires Impled<union_value_t, clone::Clone> && Impled<union_error_t, clone::Clone>
     {
         if (source.is_ok()) {

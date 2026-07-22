@@ -719,7 +719,7 @@ public:
 
     /// Overwrites this option with a clone of the source.
     /// \param source The option to clone from.
-    void clone_from(Option& source)
+    void clone_from(const Option& source)
         requires Impled<union_value_t, clone::Clone>
     {
         if (source.is_some()) {

@@ -22,6 +22,7 @@ set(
   argparse/lifecycle.cpp
   argparse/errors.cpp
   array.cpp
+  slice.cpp
   atomic.cpp
   deref.cpp
   result.cpp

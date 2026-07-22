@@ -32,7 +32,7 @@ template<typename T>
 struct Impl<Sized, T> {};
 
 template<typename T>
-    requires mtp::triv_copy<T> && mtp::triv_assign_copy<T>
+    requires mtp::triv_copyable<T> && mtp::triv_copy<T> && mtp::triv_assign_copy<T>
 struct Impl<Copy, T> {};
 
 static_assert(Impled<i32, Sized>);

@@ -85,7 +85,7 @@ public:
 
     auto clone() const -> Value;
 
-    void clone_from(Value& source) { *this = source.clone(); }
+    void clone_from(const Value& source) { *this = source.clone(); }
 
     [[nodiscard]]
     auto is_object() const noexcept -> bool {

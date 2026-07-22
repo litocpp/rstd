@@ -16,6 +16,7 @@ export import :num.dec2flt;
 export import :num.floating_parse;
 export import :convert;
 export import :slice;
+export import :slice.ops;
 export import :alloc;
 
 export import :ops;

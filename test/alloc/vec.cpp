@@ -37,8 +37,40 @@ struct SelfPointing {
     }
 };
 
+struct CloneTracked : rstd::DefaultInClass<CloneTracked, rstd::clone::Clone> {
+    int  value;
+    int* clones;
+    int* clone_froms;
+
+    CloneTracked(int value, int& clones, int& clone_froms)
+        : value(value), clones(&clones), clone_froms(&clone_froms) {}
+    CloneTracked(const CloneTracked&)                    = delete;
+    auto operator=(const CloneTracked&) -> CloneTracked& = delete;
+    CloneTracked(CloneTracked&&)                         = default;
+    auto operator=(CloneTracked&&) -> CloneTracked&      = default;
+
+    auto clone() const -> CloneTracked {
+        ++*clones;
+        return CloneTracked { value, *clones, *clone_froms };
+    }
+
+    void clone_from(const CloneTracked& source) {
+        value = source.value;
+        ++*clone_froms;
+    }
+};
+
+template<typename T>
+concept ConstructibleFromSlice = requires(rstd::slice<T> values) { Vec<T>::from(values); };
+
 static_assert(ConcreteCloneable<Vec<String>>);
 static_assert(! ConcreteCloneable<Vec<MoveOnly>>);
+static_assert(ConstructibleFromSlice<int>);
+static_assert(ConstructibleFromSlice<CloneTracked>);
+static_assert(! ConstructibleFromSlice<MoveOnly>);
+static_assert(rstd::Impled<Vec<int>, rstd::convert::From<rstd::slice<int>>>);
+static_assert(rstd::Impled<Vec<CloneTracked>, rstd::convert::From<rstd::slice<CloneTracked>>>);
+static_assert(! rstd::Impled<Vec<MoveOnly>, rstd::convert::From<rstd::slice<MoveOnly>>>);
 
 } // namespace
 
@@ -229,6 +261,146 @@ TEST(Vec, ReserveAndExtendFromSlice) {
     EXPECT_EQ(v[usize(2)], u8(3));
 }
 
+TEST(Vec, FromSliceOwnsIndependentCopy) {
+    int  source[] { 3, 5, 8 };
+    auto source_slice = rstd::slice<int>::from_raw_parts(source, usize(3));
+    auto values = rstd::Impl<rstd::convert::From<rstd::slice<int>>, Vec<int>>::from(source_slice);
+
+    ASSERT_EQ(values.len(), usize(3));
+    EXPECT_EQ(values.capacity(), usize(3));
+    EXPECT_EQ(values[usize()], 3);
+    EXPECT_EQ(values[usize(1)], 5);
+    EXPECT_EQ(values[usize(2)], 8);
+
+    source[1]        = 13;
+    values[usize(2)] = 21;
+    EXPECT_EQ(values[usize(1)], 5);
+    EXPECT_EQ(source[2], 8);
+}
+
+TEST(Vec, FromEmptySliceDoesNotAllocate) {
+    auto values = Vec<int>::from(rstd::slice<int>());
+    EXPECT_TRUE(values.is_empty());
+    EXPECT_EQ(values.capacity(), usize());
+}
+
+TEST(Vec, FromSliceSupportsCloneOnlyElements) {
+    int          clones      = 0;
+    int          clone_froms = 0;
+    CloneTracked source[] { CloneTracked { 2, clones, clone_froms },
+                            CloneTracked { 7, clones, clone_froms } };
+
+    auto values =
+        Vec<CloneTracked>::from(rstd::slice<CloneTracked>::from_raw_parts(source, usize(2)));
+
+    ASSERT_EQ(values.len(), usize(2));
+    EXPECT_EQ(values[usize()].value, 2);
+    EXPECT_EQ(values[usize(1)].value, 7);
+    EXPECT_EQ(clones, 2);
+    EXPECT_EQ(clone_froms, 0);
+}
+
+TEST(Vec, ExtendFromOwnSliceSurvivesGrowth) {
+    auto values = Vec<int>::with_capacity(usize(2));
+    values.push(1);
+    values.push(2);
+
+    values.extend_from_slice(values.as_slice());
+
+    ASSERT_EQ(values.len(), usize(4));
+    EXPECT_EQ(values[usize()], 1);
+    EXPECT_EQ(values[usize(1)], 2);
+    EXPECT_EQ(values[usize(2)], 1);
+    EXPECT_EQ(values[usize(3)], 2);
+}
+
+TEST(Vec, ExtendFromPointerClonesWithoutGrowth) {
+    int          clones      = 0;
+    int          clone_froms = 0;
+    CloneTracked source[] { CloneTracked { 3, clones, clone_froms },
+                            CloneTracked { 5, clones, clone_froms } };
+    auto         values     = Vec<CloneTracked>::with_capacity(usize(3));
+    auto*        allocation = values.data();
+
+    values.extend_from_slice(source, usize(2));
+
+    EXPECT_EQ(values.data(), allocation);
+    ASSERT_EQ(values.len(), usize(2));
+    EXPECT_EQ(values[usize()].value, 3);
+    EXPECT_EQ(values[usize(1)].value, 5);
+    EXPECT_EQ(clones, 2);
+    EXPECT_EQ(clone_froms, 0);
+}
+
+TEST(Vec, CloneFromReusesCapacityAndInitializedElements) {
+    int clones      = 0;
+    int clone_froms = 0;
+
+    auto source = Vec<CloneTracked>::make();
+    source.push(CloneTracked { 4, clones, clone_froms });
+    source.push(CloneTracked { 9, clones, clone_froms });
+    source.push(CloneTracked { 16, clones, clone_froms });
+
+    auto target = Vec<CloneTracked>::with_capacity(usize(4));
+    target.push(CloneTracked { 1, clones, clone_froms });
+    target.push(CloneTracked { 2, clones, clone_froms });
+    auto* allocation = target.data();
+
+    const auto& const_source = source;
+    target.clone_from(const_source);
+
+    EXPECT_EQ(target.data(), allocation);
+    ASSERT_EQ(target.len(), usize(3));
+    EXPECT_EQ(target[usize()].value, 4);
+    EXPECT_EQ(target[usize(1)].value, 9);
+    EXPECT_EQ(target[usize(2)].value, 16);
+    EXPECT_EQ(clone_froms, 2);
+    EXPECT_EQ(clones, 1);
+}
+
+TEST(Vec, CloneFromTruncatesLongerTarget) {
+    int clones      = 0;
+    int clone_froms = 0;
+
+    auto source = Vec<CloneTracked>::make();
+    source.push(CloneTracked { 6, clones, clone_froms });
+
+    auto target = Vec<CloneTracked>::with_capacity(usize(3));
+    target.push(CloneTracked { 1, clones, clone_froms });
+    target.push(CloneTracked { 2, clones, clone_froms });
+    target.push(CloneTracked { 3, clones, clone_froms });
+
+    target.clone_from(source);
+
+    ASSERT_EQ(target.len(), usize(1));
+    EXPECT_EQ(target[usize()].value, 6);
+    EXPECT_EQ(clone_froms, 1);
+    EXPECT_EQ(clones, 0);
+}
+
+TEST(Vec, CloneFromEqualLengthReusesEveryElement) {
+    int clones      = 0;
+    int clone_froms = 0;
+
+    auto source = Vec<CloneTracked>::make();
+    source.push(CloneTracked { 8, clones, clone_froms });
+    source.push(CloneTracked { 13, clones, clone_froms });
+
+    auto target = Vec<CloneTracked>::with_capacity(usize(2));
+    target.push(CloneTracked { 1, clones, clone_froms });
+    target.push(CloneTracked { 2, clones, clone_froms });
+    auto* allocation = target.data();
+
+    target.clone_from(source);
+
+    EXPECT_EQ(target.data(), allocation);
+    ASSERT_EQ(target.len(), usize(2));
+    EXPECT_EQ(target[usize()].value, 8);
+    EXPECT_EQ(target[usize(1)].value, 13);
+    EXPECT_EQ(clone_froms, 2);
+    EXPECT_EQ(clones, 0);
+}
+
 TEST(Vec, SpareCapacityAndSetLen) {
     auto v = Vec<rstd::u8>::with_capacity(usize(4));
 
@@ -261,6 +433,18 @@ TEST(Vec, Resize) {
     v.resize(usize(1), 0);
     EXPECT_EQ(v.len(), usize(1));
     EXPECT_EQ(v[usize()], 5);
+}
+
+TEST(Vec, ResizeFromOwnElementSurvivesGrowth) {
+    auto values = Vec<int>::with_capacity(usize(1));
+    values.push(17);
+
+    values.resize(usize(3), values[usize()]);
+
+    ASSERT_EQ(values.len(), usize(3));
+    EXPECT_EQ(values[usize()], 17);
+    EXPECT_EQ(values[usize(1)], 17);
+    EXPECT_EQ(values[usize(2)], 17);
 }
 
 TEST(Vec, CloneOwnsIndependentElements) {

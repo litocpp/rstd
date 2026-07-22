@@ -52,7 +52,7 @@ public:
 
     auto clone() const -> String { return String::make(as_str()); }
 
-    void clone_from(String& source) { *this = source.clone(); }
+    void clone_from(const String& source) { *this = source.clone(); }
 
     /// Creates a new `String` from a byte vector without checking UTF-8 validity.
     static auto from_utf8_unchecked(Vec<u8>&& bytes) -> String {

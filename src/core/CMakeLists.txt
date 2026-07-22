@@ -82,6 +82,7 @@ target_sources(
          num/integer.cppm
          num/floating_parse.cppm
          slice/mod.cppm
+         slice/ops.cppm
          str/mod.cppm
          str/str.cppm
          str/traits.cppm

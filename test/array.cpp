@@ -22,7 +22,7 @@ struct CloneOnly {
     auto operator=(CloneOnly&&) -> CloneOnly&      = default;
 
     auto clone() const -> CloneOnly { return CloneOnly { value }; }
-    void clone_from(CloneOnly& source) { *this = source.clone(); }
+    void clone_from(const CloneOnly& source) { *this = source.clone(); }
 };
 
 } // namespace

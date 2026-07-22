@@ -237,7 +237,7 @@ public:
         return clone_impl(mtp::make_index_sequence<N> {});
     }
 
-    constexpr void clone_from(array& source)
+    constexpr void clone_from(const array& source)
         requires Impled<T, clone::Clone> && mtp::assign_move<T>
     {
         *this = source.clone();

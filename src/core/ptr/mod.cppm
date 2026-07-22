@@ -8,6 +8,16 @@ export import :ptr.ptr;
 namespace rstd::ptr_
 {
 
+/// Copies `count` elements from `source` to non-overlapping storage at `destination`.
+/// Both ranges must be valid and suitably aligned for `T`.
+export template<typename T>
+    requires(! mtp::DST<T>)
+void copy_nonoverlapping(ptr<T> source, mut_ptr<T> destination, usize count) {
+    if (count == usize()) return;
+    auto const bytes = count * usize(sizeof(T));
+    __builtin_memcpy(destination.as_raw_ptr(), source.as_raw_ptr(), bytes.to_primitive());
+}
+
 /// Creates a null mutable raw pointer.
 /// \tparam T The pointee type.
 /// \return A null pointer of type `T*`.

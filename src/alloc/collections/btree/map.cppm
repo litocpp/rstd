@@ -652,7 +652,7 @@ public:
         return result;
     }
 
-    void clone_from(BTreeMap& source)
+    void clone_from(const BTreeMap& source)
         requires rstd::Impled<K, rstd::clone::Clone> && rstd::Impled<V, rstd::clone::Clone>
     {
         *this = source.clone();

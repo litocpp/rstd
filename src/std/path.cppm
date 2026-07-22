@@ -462,7 +462,7 @@ public:
 
     auto clone() const -> PathBuf { return PathBuf::from(as_path()); }
 
-    void clone_from(PathBuf& source) { *this = source.clone(); }
+    void clone_from(const PathBuf& source) { *this = source.clone(); }
 
     /// Consumes the `PathBuf` and returns the inner `OsString`.
     auto into_os_string() -> OsString { return rstd::move(inner); }

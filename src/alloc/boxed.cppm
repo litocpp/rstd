@@ -72,7 +72,7 @@ public:
     }
     /// Replaces the contents of this `Box` with a clone of the source.
     /// \param source The `Box` to clone from.
-    void clone_from(Self& source)
+    void clone_from(const Self& source)
         requires requires(Box b) { b.clone(); }
     {
         static_cast<void>(checked_ptr());
