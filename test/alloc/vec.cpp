@@ -22,6 +22,21 @@ struct MoveOnly {
     MoveOnly& operator=(MoveOnly&&)      = default;
 };
 
+struct SelfPointing {
+    int        value;
+    const int* value_ptr;
+
+    explicit SelfPointing(int value): value(value), value_ptr(&this->value) {}
+    SelfPointing(const SelfPointing&)            = delete;
+    SelfPointing& operator=(const SelfPointing&) = delete;
+    SelfPointing(SelfPointing&& other) noexcept: value(other.value), value_ptr(&value) {}
+    SelfPointing& operator=(SelfPointing&& other) noexcept {
+        value     = other.value;
+        value_ptr = &value;
+        return *this;
+    }
+};
+
 static_assert(ConcreteCloneable<Vec<String>>);
 static_assert(! ConcreteCloneable<Vec<MoveOnly>>);
 
@@ -61,6 +76,17 @@ TEST(Vec, Growth) {
     EXPECT_EQ(v[usize()], 1);
     EXPECT_EQ(v[usize(1)], 2);
     EXPECT_EQ(v[usize(2)], 3);
+}
+
+TEST(Vec, GrowthMovesNonTrivialElements) {
+    Vec<SelfPointing> values;
+    for (int value = 0; value < 9; ++value) values.emplace_back(value);
+
+    ASSERT_EQ(values.len(), usize(9));
+    for (usize index {}; index < values.len(); ++index) {
+        EXPECT_EQ(values[index].value, static_cast<int>(index.to_primitive()));
+        EXPECT_EQ(values[index].value_ptr, &values[index].value);
+    }
 }
 
 TEST(Vec, Indexing) {

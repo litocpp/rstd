@@ -32,7 +32,7 @@ struct RawVec {
     }
 
     /// Reallocates the storage to a new capacity.
-    void grow(usize new_cap) {
+    void grow(usize new_cap, usize len) {
         if (new_cap <= cap) return;
 
         auto new_layout = Layout::array<T>(new_cap).unwrap();
@@ -41,7 +41,7 @@ struct RawVec {
             auto res = as<Allocator>(::alloc::GLOBAL).allocate(new_layout);
             if (res.is_err()) handle_alloc_error(new_layout);
             ptr = NonNull<T>::make_unchecked(res.unwrap_unchecked().template as_mut_ptr<T>());
-        } else {
+        } else if constexpr (mtp::triv_copyable<T>) {
             auto old_layout = Layout::array<T>(cap).unwrap();
             auto old_ptr    = ptr.as_mut_ptr();
 
@@ -50,6 +50,19 @@ struct RawVec {
             if (res.is_err()) handle_alloc_error(new_layout);
 
             ptr = NonNull<T>::make_unchecked(res.unwrap_unchecked().template as_mut_ptr<T>());
+        } else {
+            auto old_layout = Layout::array<T>(cap).unwrap();
+            auto old_ptr    = ptr.as_mut_ptr().as_raw_ptr();
+            auto res        = as<Allocator>(::alloc::GLOBAL).allocate(new_layout);
+            if (res.is_err()) handle_alloc_error(new_layout);
+
+            auto new_ptr = res.unwrap_unchecked().template as_mut_ptr<T>().as_raw_ptr();
+            for (rstd::size_t index = 0; index < len.to_primitive(); ++index) {
+                rstd::construct_at(new_ptr + index, rstd::move(old_ptr[index]));
+                rstd::destroy_at(old_ptr + index);
+            }
+            as<Allocator>(::alloc::GLOBAL).deallocate(old_ptr, old_layout);
+            ptr = NonNull<T>::make_unchecked(mut_ptr<T>::from_raw_parts(new_ptr));
         }
         cap = new_cap;
     }
@@ -153,7 +166,7 @@ public:
         while (new_cap < required) {
             new_cap *= usize(2);
         }
-        m_buf.grow(new_cap);
+        m_buf.grow(new_cap, m_len);
     }
 
     /// Returns a slice containing the entire vector.
@@ -238,7 +251,7 @@ public:
     template<typename... Args>
     constexpr T& emplace_back(Args&&... args) {
         if (m_len == m_buf.cap) {
-            m_buf.grow(m_buf.cap == usize() ? usize(4) : m_buf.cap * usize(2));
+            m_buf.grow(m_buf.cap == usize() ? usize(4) : m_buf.cap * usize(2), m_len);
         }
         auto* slot = m_buf.ptr.as_mut_ptr().as_raw_ptr() + m_len.to_primitive();
         new (slot) T(rstd::forward<Args>(args)...);
@@ -270,7 +283,7 @@ public:
         requires Impled<T, Clone>
     {
         if (m_len == m_buf.cap) {
-            m_buf.grow(m_buf.cap == usize() ? usize(4) : m_buf.cap * usize(2));
+            m_buf.grow(m_buf.cap == usize() ? usize(4) : m_buf.cap * usize(2), m_len);
         }
         new (m_buf.ptr.as_mut_ptr().as_raw_ptr() + m_len.to_primitive())
             T(as<Clone>(value).clone());
