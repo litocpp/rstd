@@ -327,6 +327,8 @@ export using ProbeSession  = BasicProbeSession<SteadyClock>;
 export using ProbeRecorder = BasicProbeRecorder<SteadyClock>;
 export using SpanGuard     = BasicSpanGuard<SteadyClock>;
 
+template class BasicSpanGuard<SteadyClock>;
+
 export template<typename Recorder, typename Function>
 decltype(auto) measure(Recorder& recorder, ProbeId probe, Function&& function) {
     auto guard = recorder.span(probe);
