@@ -166,6 +166,19 @@ TEST(ArcBasic, DerefSupportsSharedMutation) {
     EXPECT_EQ(shared->x, 13);
 }
 
+TEST(ArcDyn, FnDispatchesThroughSharedHandle) {
+    int  calls    = 0;
+    auto callback = Arc<rstd::dyn<rstd::Fn<void(int)>>>::make([&calls](int value) {
+        calls += value;
+    });
+    auto shared   = callback.clone();
+
+    callback->operator()(2);
+    shared->operator()(3);
+
+    EXPECT_EQ(calls, 5);
+}
+
 TEST(ArcBasic, CopyIncrementsStrong) {
     auto a = Arc<int>::make(7);
     EXPECT_EQ(a.strong_count(), rstd::usize(1));

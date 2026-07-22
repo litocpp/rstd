@@ -63,7 +63,9 @@ struct Fn<R(Args...) noexcept(NoEx)> {
     struct Api {
         using Trait = Fn;
 
-        auto operator()(Args... args) const noexcept(NoEx) -> R;
+        auto operator()(Args... args) const noexcept(NoEx) -> R {
+            return trait_call<0>(this, rstd::forward<Args>(args)...);
+        }
     };
     template<typename T>
     using Funcs = TraitFuncs<&T::operator()>;
