@@ -1,6 +1,3 @@
-module;
-#include <chrono>
-
 export module rstd.alloc:hash.random;
 export import rstd.core;
 
@@ -18,10 +15,14 @@ constexpr auto mix_seed(u64 value) noexcept -> u64 {
 inline auto next_seed() noexcept -> u64 {
     constexpr auto                   increment = u64(0x9e3779b97f4a7c15ULL);
     static sync::atomic::Atomic<u64> counter { increment };
-    auto now = as_cast<u64>(std::chrono::high_resolution_clock::now().time_since_epoch().count());
+#if __has_builtin(__builtin_readcyclecounter)
+    auto entropy = u64(__builtin_readcyclecounter());
+#else
+    auto entropy = u64();
+#endif
     auto sequence = counter.fetch_add(increment, sync::atomic::Ordering::Relaxed);
     auto address  = as_cast<u64>(reinterpret_cast<rstd::uintptr_t>(&counter));
-    return mix_seed(now ^ sequence ^ address);
+    return mix_seed(entropy ^ sequence ^ address);
 }
 
 export class RandomState {

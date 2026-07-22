@@ -359,8 +359,7 @@ target_compile_options(
   rstd_compile_fail_lifetimebound_trait_proxy
   PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,Clang>:-Werror=return-stack-address>")
 
-if(OFF)
-add_executable(nostd nostd/main.cpp)
-target_link_libraries(nostd PRIVATE rstd::nostd)
-target_link_options(nostd PRIVATE -nostdlib++)
-endif()
+add_executable(rstd_nostd_test nostd/main.cpp)
+target_link_libraries(rstd_nostd_test PRIVATE rstd::nostd)
+target_link_options(rstd_nostd_test PRIVATE -nostdlib++)
+add_test(NAME Nostd.Runtime COMMAND rstd_nostd_test)
