@@ -91,9 +91,60 @@ auto condvar_ping_pong(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
         });
 }
 
+auto blocking_task_group_recreate(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
+    auto completed  = std::uint64_t {};
+    auto run_config = bench::RunConfig { .items_per_iteration = u64(4) };
+    return rstd_bench::measure_case(
+        "blocking_task_group_recreate",
+        rstd::move(config),
+        rstd::move(run_config),
+        [&] {
+            auto group = thread::BlockingTaskGroup<int>::make(usize(4), usize(4)).unwrap();
+            for (int index = 0; index < 4; ++index) {
+                group
+                    .submit([index] {
+                        return index;
+                    })
+                    .unwrap();
+            }
+            auto outcomes = rstd::move(group).join();
+            completed += outcomes.len().to_primitive();
+        },
+        [&] {
+            return completed != 0;
+        });
+}
+
+auto blocking_task_set_shared_pool(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
+    auto pool       = thread::ThreadPoolBuilder::make().worker_count(usize(4)).build().unwrap();
+    auto completed  = std::uint64_t {};
+    auto run_config = bench::RunConfig { .items_per_iteration = u64(4) };
+    return rstd_bench::measure_case(
+        "blocking_task_set_shared_pool",
+        rstd::move(config),
+        rstd::move(run_config),
+        [&] {
+            auto tasks = thread::BlockingTaskSet<int>::make(pool.handle(), usize(4)).unwrap();
+            for (int index = 0; index < 4; ++index) {
+                tasks
+                    .try_submit([index] {
+                        return index;
+                    })
+                    .unwrap();
+            }
+            tasks.close();
+            while (tasks.recv().is_some()) ++completed;
+        },
+        [&] {
+            return completed != 0;
+        });
+}
+
 const rstd_bench::BenchCase CASES[] = {
     { "sync", "mutex_lock_unlock", 5'000, &mutex_lock_unlock },
     { "sync", "condvar_ping_pong", 100, &condvar_ping_pong },
+    { "sync", "blocking_task_group_recreate", 10, &blocking_task_group_recreate },
+    { "sync", "blocking_task_set_shared_pool", 100, &blocking_task_set_shared_pool },
 };
 
 } // namespace

@@ -5,7 +5,9 @@ set(RSTD_THREAD_SOURCES
     thread/main_thread.cppm
     thread/builder.cppm
     thread/functions.cppm
+    thread/thread_pool.cppm
     thread/blocking_task_group.cppm
+    thread/blocking_task_set.cppm
     thread/join_handle.cppm
     thread/lifecycle.cppm
     thread/scoped.cppm

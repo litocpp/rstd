@@ -239,6 +239,74 @@ TEST(RstdAsyncFacility, ClosedExecutorRejectsWithoutPostingJob) {
     EXPECT_EQ(context.run_ready(), usize { 0 });
 }
 
+TEST(RstdAsyncFacility, ThreadPoolExecutorRunsAndCancelsJobsExactlyOnce) {
+    auto pool     = thread::ThreadPoolBuilder::make().worker_count(usize(1)).build().unwrap();
+    auto executor = async::ThreadPoolExecutor::from_handle(pool.handle());
+    auto entered  = std::atomic<bool> { false };
+    auto release  = std::atomic<bool> { false };
+    auto runs     = std::atomic<int> { 0 };
+    auto cancels  = std::atomic<int> { 0 };
+
+    EXPECT_TRUE(executor.post_job(async::ExecutorJob::make([&] {
+        entered.store(true, std::memory_order_release);
+        while (! release.load(std::memory_order_acquire)) hint::spin_loop();
+        runs.fetch_add(1, std::memory_order_relaxed);
+    })));
+    while (! entered.load(std::memory_order_acquire)) hint::spin_loop();
+    EXPECT_TRUE(executor.post_job(async::ExecutorJob::make(
+        [&] {
+            runs.fetch_add(10, std::memory_order_relaxed);
+        },
+        [&] {
+            cancels.fetch_add(1, std::memory_order_relaxed);
+        })));
+
+    EXPECT_EQ(pool.cancel_pending(), usize(1));
+    release.store(true, std::memory_order_release);
+    rstd::move(pool).join();
+    EXPECT_EQ(runs.load(std::memory_order_relaxed), 1);
+    EXPECT_EQ(cancels.load(std::memory_order_relaxed), 1);
+    EXPECT_TRUE(executor.is_closed());
+}
+
+TEST(RstdAsyncFacility, ThreadPoolExecutorRunsExternalSegmentOnPoolWorker) {
+    auto pool     = thread::ThreadPoolBuilder::make().worker_count(usize(1)).build().unwrap();
+    auto adapter  = async::ThreadPoolExecutor::from_handle(pool.handle());
+    auto executor = async::AnyExecutor::from_executor(adapter.clone());
+    auto runtime  = async::RuntimeBuilder::multi_thread().worker_threads(usize(1)).build().unwrap();
+    auto pool_id  = std::atomic<rstd::uint64_t> { 0 };
+    auto seen_id  = std::atomic<rstd::uint64_t> { 0 };
+
+    ASSERT_TRUE(adapter.post([&] {
+        pool_id.store(thread::current().id().as_u64().get().to_primitive(),
+                      std::memory_order_release);
+    }));
+    while (pool_id.load(std::memory_order_acquire) == 0) hint::spin_loop();
+
+    auto joined = runtime.spawn(await_executor_once(executor.clone(), seen_id));
+    for (int attempt = 0; attempt < 1000 && ! joined.is_finished(); ++attempt) {
+        thread::sleep(time::Duration::from_millis(u64(1)));
+    }
+    ASSERT_TRUE(joined.is_finished());
+    auto out = runtime.block_on(rstd::move(joined));
+    ASSERT_TRUE(out.is_ok());
+    EXPECT_TRUE(rstd::move(out).unwrap());
+    EXPECT_EQ(seen_id.load(std::memory_order_acquire), pool_id.load(std::memory_order_acquire));
+
+    rstd::move(pool).join();
+}
+
+TEST(RstdAsyncFacility, ClosedThreadPoolExecutorRejectsAwait) {
+    auto pool      = thread::ThreadPoolBuilder::make().worker_count(usize(1)).build().unwrap();
+    auto adapter   = async::ThreadPoolExecutor::from_handle(pool.handle());
+    auto executor  = async::AnyExecutor::from_executor(adapter.clone());
+    auto thread_id = std::atomic<rstd::uint64_t> { 0 };
+    pool.close();
+
+    EXPECT_FALSE(async::block_on(await_executor_once(executor.clone(), thread_id)));
+    rstd::move(pool).join();
+}
+
 TEST(RstdAsyncFacility, TimerCompletionReturnsThroughRuntimeQueue) {
     auto completions = std::atomic<int> { 0 };
     auto runtime     = async::RuntimeBuilder::current_thread().enable_time().build().unwrap();

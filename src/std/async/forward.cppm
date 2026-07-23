@@ -39,6 +39,8 @@ export class LocalExecutor;
 
 export class LocalExecutorContext;
 
+export class ThreadPoolExecutor;
+
 export class AnyExecutor;
 
 export class Runtime;

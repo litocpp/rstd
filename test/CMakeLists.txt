@@ -54,7 +54,9 @@ set(
   iter/iterator.cpp
   sys/sync/mutex/futex.cpp
   thread/thread.cpp
+  thread/thread_pool.cpp
   thread/blocking_task_group.cpp
+  thread/blocking_task_set.cpp
   num/nonzero.cpp
   thread.cpp
   async.cpp

@@ -2,8 +2,10 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string_view>
 
 import rstd.bench;
+import rstd.cppstd;
 
 namespace rstd_bench
 {
@@ -33,9 +35,10 @@ auto measure_case(const char*              name,
                   rstd::bench::RunConfig   run_config,
                   Operation&&              operation,
                   Validate&&               validate) -> CaseRunResult {
-    auto runner      = rstd::bench::Bench::new_(rstd::move(config));
-    auto measurement = runner.run(
-        rstd::ref<rstd::str>(name), rstd::forward<Operation>(operation), rstd::move(run_config));
+    auto runner         = rstd::bench::Bench::new_(rstd::move(config));
+    auto benchmark_name = rstd::cppstd::as_str(std::string_view(name)).unwrap_unchecked();
+    auto measurement =
+        runner.run(benchmark_name, rstd::forward<Operation>(operation), rstd::move(run_config));
     auto const valid = rstd::forward<Validate>(validate)();
     return { rstd::move(measurement), valid };
 }

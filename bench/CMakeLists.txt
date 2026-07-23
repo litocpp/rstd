@@ -6,7 +6,7 @@ add_executable(
   async.cpp
   net.cpp)
 
-target_link_libraries(rstd_bench PRIVATE rstd::rstd rstd::bench rstd::json)
+target_link_libraries(rstd_bench PRIVATE rstd::rstd rstd.cppstd rstd::bench rstd::json)
 
 if(CMAKE_BUILD_TYPE)
   set(RSTD_BENCH_BUILD_TYPE_VALUE "${CMAKE_BUILD_TYPE}")

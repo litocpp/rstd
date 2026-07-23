@@ -8,6 +8,7 @@ import rstd.json;
 
 using namespace rstd;
 using namespace rstd::prelude;
+using namespace rstd::literals;
 
 #ifndef RSTD_BENCH_BUILD_TYPE
 #define RSTD_BENCH_BUILD_TYPE "unknown"
@@ -147,67 +148,71 @@ void add_optional_f64(json::Value& object, ref<str> key, Option<f64> value) {
 }
 
 auto to_json(const RunResult& result) -> json::Value {
-    auto object          = json::Value {};
-    object["suite"]      = json::Value::String(String::make(result.m_case->m_suite));
-    object["name"]       = json::Value::String(String::make(result.m_case->m_name));
-    object["build_type"] = json::Value::String(String::make(RSTD_BENCH_BUILD_TYPE));
-    object["asan"]       = json::Value::Bool(RSTD_BENCH_ASAN != 0);
-    object["ok"]         = json::Value::Bool(result.m_ok);
+    auto object              = json::Value {};
+    object["suite"_str]      = json::Value::String(String::make(
+        rstd::cppstd::as_str(std::string_view(result.m_case->m_suite)).unwrap_unchecked()));
+    object["name"_str]       = json::Value::String(String::make(
+        rstd::cppstd::as_str(std::string_view(result.m_case->m_name)).unwrap_unchecked()));
+    object["build_type"_str] = json::Value::String(String::make(
+        rstd::cppstd::as_str(std::string_view(RSTD_BENCH_BUILD_TYPE)).unwrap_unchecked()));
+    object["asan"_str]       = json::Value::Bool(RSTD_BENCH_ASAN != 0);
+    object["ok"_str]         = json::Value::Bool(result.m_ok);
 
     if (result.m_measurement.is_none()) {
-        object["iterations"]   = json_u64(u64());
-        object["elapsed_ns"]   = json_u64(u64());
-        object["ns_per_iter"]  = json_f64(f64());
-        object["items"]        = json_u64(u64());
-        object["bytes"]        = json_u64(u64());
-        object["epochs"]       = json_u64(u64());
-        object["measurements"] = json::Value::Array(json::Array::make());
+        object["iterations"_str]   = json_u64(u64());
+        object["elapsed_ns"_str]   = json_u64(u64());
+        object["ns_per_iter"_str]  = json_f64(f64());
+        object["items"_str]        = json_u64(u64());
+        object["bytes"_str]        = json_u64(u64());
+        object["epochs"_str]       = json_u64(u64());
+        object["measurements"_str] = json::Value::Array(json::Array::make());
         return object;
     }
 
     const auto& measurement = *result.m_measurement;
     auto        summary     = measurement.summary();
     auto        elapsed_ns  = duration_ns(summary.total_elapsed);
-    auto ns_per_iter      = summary.total_iterations == u64()
-                                ? f64()
-                                : f64(static_cast<double>(elapsed_ns.to_primitive()) /
-                                      static_cast<double>(summary.total_iterations.to_primitive()));
-    object["iterations"]  = json_u64(summary.total_iterations);
-    object["elapsed_ns"]  = json_u64(elapsed_ns);
-    object["ns_per_iter"] = json_f64(ns_per_iter);
-    object["items"]       = json_u64(summary.total_items);
-    object["bytes"]       = json_u64(summary.total_bytes);
-    object["epochs"]      = json_u64(u64(measurement.measurements().len().to_primitive()));
-    object["median_ns_per_unit"]  = json_f64(summary.median_ns_per_unit);
-    object["mdape"]               = json_f64(summary.median_absolute_percentage_error);
-    object["clock_resolution_ns"] = json_u64(duration_ns(measurement.clock_resolution()));
-    object["jitter_seed"]         = json_u64(measurement.config().jitter_seed);
+    auto ns_per_iter = summary.total_iterations == u64()
+                           ? f64()
+                           : f64(static_cast<double>(elapsed_ns.to_primitive()) /
+                                 static_cast<double>(summary.total_iterations.to_primitive()));
+    object["iterations"_str]  = json_u64(summary.total_iterations);
+    object["elapsed_ns"_str]  = json_u64(elapsed_ns);
+    object["ns_per_iter"_str] = json_f64(ns_per_iter);
+    object["items"_str]       = json_u64(summary.total_items);
+    object["bytes"_str]       = json_u64(summary.total_bytes);
+    object["epochs"_str]      = json_u64(u64(measurement.measurements().len().to_primitive()));
+    object["median_ns_per_unit"_str]  = json_f64(summary.median_ns_per_unit);
+    object["mdape"_str]               = json_f64(summary.median_absolute_percentage_error);
+    object["clock_resolution_ns"_str] = json_u64(duration_ns(measurement.clock_resolution()));
+    object["jitter_seed"_str]         = json_u64(measurement.config().jitter_seed);
 
     auto epochs = json::Array::with_capacity(measurement.measurements().len());
     for (usize index; index < measurement.measurements().len(); ++index) {
-        const auto& epoch         = measurement.measurements()[index];
-        auto        epoch_value   = json::Value {};
-        epoch_value["iterations"] = json_u64(epoch.iterations);
-        epoch_value["elapsed_ns"] = json_u64(duration_ns(epoch.elapsed));
+        const auto& epoch             = measurement.measurements()[index];
+        auto        epoch_value       = json::Value {};
+        epoch_value["iterations"_str] = json_u64(epoch.iterations);
+        epoch_value["elapsed_ns"_str] = json_u64(duration_ns(epoch.elapsed));
         epochs.push(rstd::move(epoch_value));
     }
-    object["measurements"] = json::Value::Array(rstd::move(epochs));
+    object["measurements"_str] = json::Value::Array(rstd::move(epochs));
 
     const auto& availability = measurement.counter_availability();
     if (availability.is_Disabled()) {
-        object["counter_availability"] = json::Value::String(String::make("disabled"));
+        object["counter_availability"_str] = json::Value::String(String::make("disabled"_str));
     } else if (availability.is_Available()) {
-        object["counter_availability"] = json::Value::String(String::make("available"));
-        object["counter_mask"] = json_u64(u64(availability.as_Available().mask.to_primitive()));
+        object["counter_availability"_str] = json::Value::String(String::make("available"_str));
+        object["counter_mask"_str] = json_u64(u64(availability.as_Available().mask.to_primitive()));
     } else {
-        object["counter_availability"] = json::Value::String(String::make("unavailable"));
-        object["counter_error"] = json_i64(i64(availability.as_Unavailable().code.to_primitive()));
+        object["counter_availability"_str] = json::Value::String(String::make("unavailable"_str));
+        object["counter_error"_str] =
+            json_i64(i64(availability.as_Unavailable().code.to_primitive()));
     }
-    add_optional_f64(object, "instructions_per_unit", summary.instructions_per_unit);
-    add_optional_f64(object, "cycles_per_unit", summary.cycles_per_unit);
-    add_optional_f64(object, "instructions_per_cycle", summary.instructions_per_cycle);
-    add_optional_f64(object, "branches_per_unit", summary.branches_per_unit);
-    add_optional_f64(object, "branch_miss_ratio", summary.branch_miss_ratio);
+    add_optional_f64(object, "instructions_per_unit"_str, summary.instructions_per_unit);
+    add_optional_f64(object, "cycles_per_unit"_str, summary.cycles_per_unit);
+    add_optional_f64(object, "instructions_per_cycle"_str, summary.instructions_per_cycle);
+    add_optional_f64(object, "branches_per_unit"_str, summary.branches_per_unit);
+    add_optional_f64(object, "branch_miss_ratio"_str, summary.branch_miss_ratio);
     return object;
 }
 

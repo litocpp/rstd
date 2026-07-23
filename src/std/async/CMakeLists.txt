@@ -5,6 +5,7 @@ set(RSTD_ASYNC_SOURCES
     async/atomic_waker.cppm
     async/facility.cppm
     async/executor.cppm
+    async/thread_pool_executor.cppm
     async/awaitable.cppm
     async/task.cppm
     async/coro_driver.cppm

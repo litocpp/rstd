@@ -66,8 +66,8 @@ async::coro<io::Result<bytes::BytesMut>> tcp_roundtrip(net::TcpListener& listene
     auto accepted_pair = rstd::move(accepted).unwrap_unchecked();
     auto server_stream = rstd::move(accepted_pair.template get<0>());
 
-    const u8 payload[] = { u8('p'), u8('i'), u8('n'), u8('g') };
-    auto     bytes = bytes::Bytes::copy_from_slice(slice<u8>::from_raw_parts(payload, usize(4)));
+    const byte payload[] = { byte { 'p' }, byte { 'i' }, byte { 'n' }, byte { 'g' } };
+    auto       bytes = bytes::Bytes::copy_from_slice(slice<u8>::from_raw_parts(payload, usize(4)));
     while (! bytes.is_empty()) {
         auto written = co_await write_some(client_stream, bytes);
         if (written.is_err()) {
