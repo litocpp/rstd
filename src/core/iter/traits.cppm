@@ -101,6 +101,17 @@ using item_of = typename X::Item;
 namespace details
 {
 
+/// Proof used by allocation-owning collectors. Specializations must always return the same source
+/// and each yielded item must satisfy the published source-consumption ratio.
+export template<class I>
+struct InPlaceTraits {
+    using Source = void;
+
+    static constexpr bool  ENABLED   = false;
+    static constexpr usize EXPAND_BY = usize();
+    static constexpr usize MERGE_BY  = usize();
+};
+
 template<class T>
 struct is_rstd_borrow {
     static constexpr bool value = false;

@@ -816,4 +816,99 @@ struct Intersperse : DefaultInClass<Intersperse<I>, Iterator> {
     }
 };
 
+namespace details
+{
+
+export template<class I>
+struct ForwardInPlaceTraits {
+    using Inner  = InPlaceTraits<I>;
+    using Source = typename Inner::Source;
+
+    static constexpr bool  ENABLED   = Inner::ENABLED;
+    static constexpr usize EXPAND_BY = Inner::EXPAND_BY;
+    static constexpr usize MERGE_BY  = Inner::MERGE_BY;
+};
+
+export template<class I, class F>
+struct InPlaceTraits<Map<I, F>> : ForwardInPlaceTraits<I> {
+    static decltype(auto) source(Map<I, F>& value) { return InPlaceTraits<I>::source(value.i); }
+};
+
+export template<class I, class F>
+struct InPlaceTraits<MapWhile<I, F>> : ForwardInPlaceTraits<I> {
+    static decltype(auto) source(MapWhile<I, F>& value) {
+        return InPlaceTraits<I>::source(value.i);
+    }
+};
+
+export template<class I, class P>
+struct InPlaceTraits<Filter<I, P>> : ForwardInPlaceTraits<I> {
+    static decltype(auto) source(Filter<I, P>& value) { return InPlaceTraits<I>::source(value.i); }
+};
+
+export template<class I, class F>
+struct InPlaceTraits<FilterMap<I, F>> : ForwardInPlaceTraits<I> {
+    static decltype(auto) source(FilterMap<I, F>& value) {
+        return InPlaceTraits<I>::source(value.i);
+    }
+};
+
+export template<class I>
+struct InPlaceTraits<Enumerate<I>> : ForwardInPlaceTraits<I> {
+    static decltype(auto) source(Enumerate<I>& value) { return InPlaceTraits<I>::source(value.i); }
+};
+
+export template<class A, class B>
+struct InPlaceTraits<Zip<A, B>> : ForwardInPlaceTraits<A> {
+    static decltype(auto) source(Zip<A, B>& value) { return InPlaceTraits<A>::source(value.a); }
+};
+
+export template<class I>
+struct InPlaceTraits<Take<I>> : ForwardInPlaceTraits<I> {
+    static decltype(auto) source(Take<I>& value) { return InPlaceTraits<I>::source(value.i); }
+};
+
+export template<class I>
+struct InPlaceTraits<Skip<I>> : ForwardInPlaceTraits<I> {
+    static decltype(auto) source(Skip<I>& value) { return InPlaceTraits<I>::source(value.i); }
+};
+
+export template<class I, class P>
+struct InPlaceTraits<TakeWhile<I, P>> : ForwardInPlaceTraits<I> {
+    static decltype(auto) source(TakeWhile<I, P>& value) {
+        return InPlaceTraits<I>::source(value.i);
+    }
+};
+
+export template<class I, class P>
+struct InPlaceTraits<SkipWhile<I, P>> : ForwardInPlaceTraits<I> {
+    static decltype(auto) source(SkipWhile<I, P>& value) {
+        return InPlaceTraits<I>::source(value.i);
+    }
+};
+
+export template<class I>
+struct InPlaceTraits<Cloned<I>> : ForwardInPlaceTraits<I> {
+    static decltype(auto) source(Cloned<I>& value) { return InPlaceTraits<I>::source(value.i); }
+};
+
+export template<class I>
+struct InPlaceTraits<Copied<I>> : ForwardInPlaceTraits<I> {
+    static decltype(auto) source(Copied<I>& value) { return InPlaceTraits<I>::source(value.i); }
+};
+
+export template<class I, class F>
+struct InPlaceTraits<Inspect<I, F>> : ForwardInPlaceTraits<I> {
+    static decltype(auto) source(Inspect<I, F>& value) { return InPlaceTraits<I>::source(value.i); }
+};
+
+export template<class I, class St, class F>
+struct InPlaceTraits<Scan<I, St, F>> : ForwardInPlaceTraits<I> {
+    static decltype(auto) source(Scan<I, St, F>& value) {
+        return InPlaceTraits<I>::source(value.i);
+    }
+};
+
+} // namespace details
+
 } // namespace rstd::iter

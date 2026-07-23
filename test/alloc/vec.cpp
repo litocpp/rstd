@@ -113,6 +113,65 @@ struct CloneTracked : rstd::DefaultInClass<CloneTracked, rstd::clone::Clone> {
     }
 };
 
+struct InPlaceWide {
+    int first;
+    int second;
+    int third;
+};
+
+struct InPlaceNarrow {
+    int first;
+    int second;
+};
+
+struct alignas(8) InPlaceAlignedLong {
+    rstd::int64_t value;
+};
+
+struct InPlaceSourceTracked {
+    int        value;
+    const int* value_ptr;
+    int*       drops;
+
+    InPlaceSourceTracked(int value, int& drops)
+        : value(value), value_ptr(&this->value), drops(&drops) {}
+    InPlaceSourceTracked(const InPlaceSourceTracked&)                    = delete;
+    auto operator=(const InPlaceSourceTracked&) -> InPlaceSourceTracked& = delete;
+    InPlaceSourceTracked(InPlaceSourceTracked&& other) noexcept
+        : value(other.value), value_ptr(&value), drops(other.drops) {
+        other.drops = nullptr;
+    }
+    auto operator=(InPlaceSourceTracked&&) -> InPlaceSourceTracked& = delete;
+    ~InPlaceSourceTracked() {
+        if (drops != nullptr) ++*drops;
+    }
+};
+
+struct InPlaceDestinationTracked {
+    int        value;
+    const int* value_ptr;
+    int*       drops;
+
+    InPlaceDestinationTracked(int value, int& drops)
+        : value(value), value_ptr(&this->value), drops(&drops) {}
+    InPlaceDestinationTracked(const InPlaceDestinationTracked&)                    = delete;
+    auto operator=(const InPlaceDestinationTracked&) -> InPlaceDestinationTracked& = delete;
+    InPlaceDestinationTracked(InPlaceDestinationTracked&& other) noexcept
+        : value(other.value), value_ptr(&value), drops(other.drops) {
+        other.drops = nullptr;
+    }
+    auto operator=(InPlaceDestinationTracked&&) -> InPlaceDestinationTracked& = delete;
+    ~InPlaceDestinationTracked() {
+        if (drops != nullptr) ++*drops;
+    }
+};
+
+static_assert(sizeof(InPlaceWide) == 12);
+static_assert(sizeof(InPlaceNarrow) == 8);
+static_assert(alignof(InPlaceWide) == alignof(InPlaceNarrow));
+static_assert(sizeof(InPlaceSourceTracked) == sizeof(InPlaceDestinationTracked));
+static_assert(alignof(InPlaceSourceTracked) == alignof(InPlaceDestinationTracked));
+
 template<typename T>
 concept ConstructibleFromSlice = requires(rstd::slice<T> values) { Vec<T>::from(values); };
 
@@ -329,6 +388,471 @@ TEST(Vec, CollectReallocatesSparseAdvancedIntoIter) {
     EXPECT_EQ(values[usize()], 5);
     EXPECT_EQ(values[usize(1)], 6);
     EXPECT_EQ(values[usize(2)], 7);
+}
+
+TEST(Vec, IntoIterEndsYieldedSlotsAndTransfersRemainingOwnership) {
+    int drops = 0;
+    {
+        auto source = Vec<CollectMoveOnly>::with_capacity(usize(4));
+        for (int value = 0; value < 4; ++value) source.emplace_back(value, drops);
+        auto iterator = source.into_iter();
+        {
+            auto front = iterator.next();
+            auto back  = iterator.next_back();
+            ASSERT_TRUE(front.is_some());
+            ASSERT_TRUE(back.is_some());
+            EXPECT_EQ(front->value, 0);
+            EXPECT_EQ(back->value, 3);
+            EXPECT_EQ(front->value_ptr, &front->value);
+            EXPECT_EQ(back->value_ptr, &back->value);
+        }
+        EXPECT_EQ(drops, 2);
+
+        auto moved = rstd::move(iterator);
+        EXPECT_EQ(moved.len(), usize(2));
+        EXPECT_EQ(iterator.len(), usize());
+    }
+    EXPECT_EQ(drops, 4);
+}
+
+TEST(Vec, InPlaceCollectMapReusesAllocation) {
+    auto source = Vec<int>::with_capacity(usize(12));
+    source.push(3);
+    source.push(5);
+    source.push(8);
+    auto* allocation = source.data();
+
+    auto values = source.into_iter()
+                      .map([](int value) {
+                          return value * 2;
+                      })
+                      .collect<Vec<int>>();
+
+    EXPECT_EQ(values.data(), allocation);
+    EXPECT_EQ(values.capacity(), usize(12));
+    ASSERT_EQ(values.len(), usize(3));
+    EXPECT_EQ(values[usize()], 6);
+    EXPECT_EQ(values[usize(1)], 10);
+    EXPECT_EQ(values[usize(2)], 16);
+}
+
+TEST(Vec, InPlaceCollectReusesHalfConsumedDoubleEndedSource) {
+    auto source = Vec<int>::with_capacity(usize(8));
+    for (int value = 0; value < 6; ++value) source.push(rstd::move(value));
+    auto* allocation = source.data();
+    auto  iterator   = source.into_iter();
+    EXPECT_EQ(iterator.next(), rstd::Some(0));
+    EXPECT_EQ(iterator.next_back(), rstd::Some(5));
+
+    auto values = rstd::move(iterator)
+                      .map([](int value) {
+                          return value + 10;
+                      })
+                      .collect<Vec<int>>();
+
+    EXPECT_EQ(values.data(), allocation);
+    ASSERT_EQ(values.len(), usize(4));
+    EXPECT_EQ(values[usize()], 11);
+    EXPECT_EQ(values[usize(1)], 12);
+    EXPECT_EQ(values[usize(2)], 13);
+    EXPECT_EQ(values[usize(3)], 14);
+}
+
+TEST(Vec, InPlaceCollectAdapterPipelineCompactsInAllocation) {
+    auto source = Vec<int>::with_capacity(usize(10));
+    for (int value = 0; value < 8; ++value) source.push(rstd::move(value));
+    auto* allocation = source.data();
+    int   inspected  = 0;
+
+    auto values = source.into_iter()
+                      .map([](int value) {
+                          return value + 1;
+                      })
+                      .filter([](int value) {
+                          return value % 2 == 0;
+                      })
+                      .inspect([&inspected](int) {
+                          ++inspected;
+                      })
+                      .collect<Vec<int>>();
+
+    EXPECT_EQ(values.data(), allocation);
+    EXPECT_EQ(values.capacity(), usize(10));
+    EXPECT_EQ(inspected, 4);
+    ASSERT_EQ(values.len(), usize(4));
+    EXPECT_EQ(values[usize()], 2);
+    EXPECT_EQ(values[usize(1)], 4);
+    EXPECT_EQ(values[usize(2)], 6);
+    EXPECT_EQ(values[usize(3)], 8);
+}
+
+TEST(Vec, InPlaceCollectEmptyResultKeepsCompatibleAllocation) {
+    auto source = Vec<int>::with_capacity(usize(9));
+    source.push(1);
+    source.push(2);
+    source.push(3);
+    auto* allocation = source.data();
+
+    auto values = source.into_iter()
+                      .filter_map([](int) -> rstd::Option<int> {
+                          return rstd::None();
+                      })
+                      .collect<Vec<int>>();
+
+    EXPECT_TRUE(values.is_empty());
+    EXPECT_EQ(values.data(), allocation);
+    EXPECT_EQ(values.capacity(), usize(9));
+}
+
+TEST(Vec, InPlaceCollectPreservesPhysicalLayoutWithTrailingBytes) {
+    auto source = Vec<InPlaceWide>::with_capacity(usize(3));
+    source.push(InPlaceWide { 1, 2, 3 });
+    source.push(InPlaceWide { 4, 5, 6 });
+    source.push(InPlaceWide { 7, 8, 9 });
+    auto* allocation = source.data();
+
+    auto values = source.into_iter()
+                      .map([](InPlaceWide value) {
+                          return InPlaceNarrow { value.first, value.third };
+                      })
+                      .collect<Vec<InPlaceNarrow>>();
+
+    EXPECT_EQ(static_cast<void*>(values.data()), static_cast<void*>(allocation));
+    EXPECT_EQ(values.capacity(), usize(4));
+    ASSERT_EQ(values.len(), usize(3));
+    EXPECT_EQ(values[usize()].first, 1);
+    EXPECT_EQ(values[usize()].second, 3);
+    EXPECT_EQ(values[usize(2)].first, 7);
+    EXPECT_EQ(values[usize(2)].second, 9);
+
+    auto boxed = values.into_boxed_slice();
+    EXPECT_EQ(boxed.as_ptr().len(), usize(3));
+    EXPECT_EQ(boxed.as_ptr()[usize(1)].first, 4);
+    EXPECT_EQ(boxed.as_ptr()[usize(1)].second, 6);
+}
+
+TEST(Vec, InPlaceCollectedRemainderLayoutSupportsGrowth) {
+    auto source = Vec<InPlaceWide>::with_capacity(usize(3));
+    source.push(InPlaceWide { 1, 2, 3 });
+    source.push(InPlaceWide { 4, 5, 6 });
+    source.push(InPlaceWide { 7, 8, 9 });
+
+    auto values = source.into_iter()
+                      .map([](InPlaceWide value) {
+                          return InPlaceNarrow { value.first, value.third };
+                      })
+                      .collect<Vec<InPlaceNarrow>>();
+
+    ASSERT_EQ(values.capacity(), usize(4));
+    values.push(InPlaceNarrow { 10, 11 });
+    values.push(InPlaceNarrow { 12, 13 });
+
+    ASSERT_EQ(values.len(), usize(5));
+    EXPECT_GE(values.capacity(), usize(5));
+    EXPECT_EQ(values[usize()].first, 1);
+    EXPECT_EQ(values[usize(2)].second, 9);
+    EXPECT_EQ(values[usize(3)].first, 10);
+    EXPECT_EQ(values[usize(4)].second, 13);
+}
+
+TEST(Vec, InPlaceCollectMovesNonTrivialObjectsWithoutByteRelocation) {
+    int source_drops      = 0;
+    int destination_drops = 0;
+    {
+        auto source = Vec<InPlaceSourceTracked>::with_capacity(usize(6));
+        for (int value = 0; value < 6; ++value) source.emplace_back(value, source_drops);
+        auto* allocation = source.data();
+
+        auto values =
+            source.into_iter()
+                .map([&destination_drops](InPlaceSourceTracked value) {
+                    EXPECT_EQ(value.value_ptr, &value.value);
+                    return InPlaceDestinationTracked { value.value * 3, destination_drops };
+                })
+                .collect<Vec<InPlaceDestinationTracked>>();
+
+        EXPECT_EQ(static_cast<void*>(values.data()), static_cast<void*>(allocation));
+        EXPECT_EQ(source_drops, 6);
+        EXPECT_EQ(destination_drops, 0);
+        ASSERT_EQ(values.len(), usize(6));
+        for (usize index {}; index < values.len(); ++index) {
+            EXPECT_EQ(values[index].value, static_cast<int>(index.to_primitive()) * 3);
+            EXPECT_EQ(values[index].value_ptr, &values[index].value);
+        }
+    }
+    EXPECT_EQ(source_drops, 6);
+    EXPECT_EQ(destination_drops, 6);
+}
+
+TEST(Vec, InPlaceCollectTakeDropsSourceTail) {
+    int drops = 0;
+    {
+        auto source = Vec<CollectMoveOnly>::with_capacity(usize(6));
+        for (int value = 0; value < 6; ++value) source.emplace_back(value, drops);
+        auto* allocation = source.data();
+
+        auto values = source.into_iter().take(usize(2)).collect<Vec<CollectMoveOnly>>();
+
+        EXPECT_EQ(values.data(), allocation);
+        EXPECT_EQ(drops, 4);
+        ASSERT_EQ(values.len(), usize(2));
+        EXPECT_EQ(values[usize()].value, 0);
+        EXPECT_EQ(values[usize(1)].value, 1);
+    }
+    EXPECT_EQ(drops, 6);
+}
+
+TEST(Vec, InPlaceCollectZipUsesLeftAllocationAndDropsTails) {
+    auto left = Vec<int>::with_capacity(usize(8));
+    for (int value = 0; value < 5; ++value) left.push(rstd::move(value));
+    auto* left_allocation = left.data();
+
+    auto right = Vec<int>::make();
+    right.push(10);
+    right.push(20);
+    right.push(30);
+
+    auto values = left.into_iter()
+                      .zip(right.into_iter())
+                      .map([](auto pair) {
+                          return pair.template get<0>() + pair.template get<1>();
+                      })
+                      .collect<Vec<int>>();
+
+    EXPECT_EQ(values.data(), left_allocation);
+    ASSERT_EQ(values.len(), usize(3));
+    EXPECT_EQ(values[usize()], 10);
+    EXPECT_EQ(values[usize(1)], 21);
+    EXPECT_EQ(values[usize(2)], 32);
+}
+
+TEST(Vec, InPlaceCollectStatefulAdaptersPreserveStopSemantics) {
+    int drops = 0;
+    {
+        auto source = Vec<CollectMoveOnly>::with_capacity(usize(8));
+        for (int value = 0; value < 8; ++value) source.emplace_back(value, drops);
+        auto* allocation = source.data();
+
+        auto values = source.into_iter()
+                          .skip(usize(1))
+                          .skip_while([](const CollectMoveOnly& value) {
+                              return value.value < 3;
+                          })
+                          .take_while([](const CollectMoveOnly& value) {
+                              return value.value < 7;
+                          })
+                          .map_while([](CollectMoveOnly value) -> rstd::Option<CollectMoveOnly> {
+                              if (value.value == 5) return rstd::None();
+                              return rstd::Some(rstd::move(value));
+                          })
+                          .collect<Vec<CollectMoveOnly>>();
+
+        EXPECT_EQ(values.data(), allocation);
+        ASSERT_EQ(values.len(), usize(2));
+        EXPECT_EQ(values[usize()].value, 3);
+        EXPECT_EQ(values[usize(1)].value, 4);
+        EXPECT_EQ(drops, 6);
+    }
+    EXPECT_EQ(drops, 8);
+}
+
+TEST(Vec, InPlaceCollectEnumerateFilterMapAndScanReuseAllocation) {
+    auto source = Vec<int>::with_capacity(usize(8));
+    for (int value = 1; value <= 6; ++value) source.push(rstd::move(value));
+    auto* allocation = source.data();
+
+    auto values = source.into_iter()
+                      .enumerate()
+                      .filter_map([](auto indexed) -> rstd::Option<int> {
+                          auto index = indexed.template get<0>();
+                          auto value = indexed.template get<1>();
+                          if (index.to_primitive() % 2 != 0) return rstd::None();
+                          return rstd::Some(value);
+                      })
+                      .scan(0,
+                            [](int& total, int value) -> rstd::Option<int> {
+                                total += value;
+                                return rstd::Some(total);
+                            })
+                      .collect<Vec<int>>();
+
+    EXPECT_EQ(values.data(), allocation);
+    ASSERT_EQ(values.len(), usize(3));
+    EXPECT_EQ(values[usize()], 1);
+    EXPECT_EQ(values[usize(1)], 4);
+    EXPECT_EQ(values[usize(2)], 9);
+}
+
+TEST(Vec, InPlaceCollectCopiedAndClonedPropagateOwningSource) {
+    rstd::u64 backing[] { rstd::u64(3), rstd::u64(5), rstd::u64(8) };
+
+    auto copied_source = Vec<rstd::ref<rstd::u64>>::with_capacity(usize(4));
+    for (auto& value : backing) {
+        copied_source.push(rstd::ref<rstd::u64>::from_raw_parts(&value));
+    }
+    auto* copied_allocation = copied_source.data();
+    auto  copied            = copied_source.into_iter().copied().collect<Vec<rstd::u64>>();
+
+    EXPECT_EQ(static_cast<void*>(copied.data()), static_cast<void*>(copied_allocation));
+    ASSERT_EQ(copied.len(), usize(3));
+    EXPECT_EQ(copied[usize()], rstd::u64(3));
+    EXPECT_EQ(copied[usize(2)], rstd::u64(8));
+
+    auto cloned_source = Vec<rstd::ref<rstd::u64>>::with_capacity(usize(4));
+    for (auto& value : backing) {
+        cloned_source.push(rstd::ref<rstd::u64>::from_raw_parts(&value));
+    }
+    auto* cloned_allocation = cloned_source.data();
+    auto  cloned            = cloned_source.into_iter().cloned().collect<Vec<rstd::u64>>();
+
+    EXPECT_EQ(static_cast<void*>(cloned.data()), static_cast<void*>(cloned_allocation));
+    ASSERT_EQ(cloned.len(), usize(3));
+    EXPECT_EQ(cloned[usize(1)], rstd::u64(5));
+}
+
+TEST(Vec, InPlaceCollectFallsBackForIncompatibleLayout) {
+    auto source = Vec<int>::with_capacity(usize(5));
+    source.push(3);
+    source.push(5);
+    source.push(8);
+    auto* allocation = source.data();
+
+    auto values = source.into_iter()
+                      .map([](int value) {
+                          return InPlaceAlignedLong { value };
+                      })
+                      .collect<Vec<InPlaceAlignedLong>>();
+
+    EXPECT_NE(static_cast<void*>(values.data()), static_cast<void*>(allocation));
+    ASSERT_EQ(values.len(), usize(3));
+    EXPECT_EQ(values[usize()].value, 3);
+    EXPECT_EQ(values[usize(2)].value, 8);
+}
+
+TEST(Vec, InPlaceCollectFallsBackForPeekable) {
+    auto source = Vec<int>::with_capacity(usize(6));
+    source.push(2);
+    source.push(4);
+    source.push(6);
+    auto* allocation = source.data();
+
+    auto values = source.into_iter().peekable().collect<Vec<int>>();
+
+    EXPECT_NE(values.data(), allocation);
+    ASSERT_EQ(values.len(), usize(3));
+    EXPECT_EQ(values[usize()], 2);
+    EXPECT_EQ(values[usize(1)], 4);
+    EXPECT_EQ(values[usize(2)], 6);
+}
+
+TEST(Vec, InPlaceCollectUnsupportedAdaptersRemainCollectible) {
+    {
+        auto source = Vec<int>::with_capacity(usize(6));
+        source.push(1);
+        source.push(2);
+        source.push(3);
+        auto* allocation = source.data();
+        auto  values     = source.into_iter().fuse().collect<Vec<int>>();
+        EXPECT_NE(values.data(), allocation);
+        EXPECT_EQ(values.as_slice(), (rstd::array<int, 3> { 1, 2, 3 }.as_slice()));
+    }
+    {
+        auto source = Vec<int>::with_capacity(usize(6));
+        for (int value = 0; value < 5; ++value) source.push(rstd::move(value));
+        auto* allocation = source.data();
+        auto  values     = source.into_iter().step_by(usize(2)).collect<Vec<int>>();
+        EXPECT_NE(values.data(), allocation);
+        EXPECT_EQ(values.as_slice(), (rstd::array<int, 3> { 0, 2, 4 }.as_slice()));
+    }
+    {
+        auto source = Vec<int>::with_capacity(usize(6));
+        source.push(1);
+        source.push(2);
+        source.push(3);
+        auto* allocation = source.data();
+        auto  values     = source.into_iter().rev().collect<Vec<int>>();
+        EXPECT_NE(values.data(), allocation);
+        EXPECT_EQ(values.as_slice(), (rstd::array<int, 3> { 3, 2, 1 }.as_slice()));
+    }
+    {
+        auto first = Vec<int>::with_capacity(usize(4));
+        first.push(1);
+        first.push(2);
+        auto* first_allocation = first.data();
+        auto  second           = Vec<int>::make();
+        second.push(3);
+        second.push(4);
+        auto values = first.into_iter().chain(second.into_iter()).collect<Vec<int>>();
+        EXPECT_NE(values.data(), first_allocation);
+        EXPECT_EQ(values.as_slice(), (rstd::array<int, 4> { 1, 2, 3, 4 }.as_slice()));
+    }
+    {
+        auto source = Vec<int>::with_capacity(usize(4));
+        source.push(1);
+        source.push(2);
+        source.push(3);
+        auto* allocation = source.data();
+        auto  values     = source.into_iter().intersperse(0).collect<Vec<int>>();
+        EXPECT_NE(values.data(), allocation);
+        EXPECT_EQ(values.as_slice(), (rstd::array<int, 5> { 1, 0, 2, 0, 3 }.as_slice()));
+    }
+    {
+        auto source = Vec<Vec<int>>::with_capacity(usize(3));
+        for (int value = 1; value <= 3; ++value) {
+            auto inner = Vec<int>::make();
+            inner.push(rstd::move(value));
+            source.push(rstd::move(inner));
+        }
+        auto* allocation = source.data();
+        auto  values     = source.into_iter().flatten().collect<Vec<int>>();
+        EXPECT_NE(static_cast<void*>(values.data()), static_cast<void*>(allocation));
+        EXPECT_EQ(values.as_slice(), (rstd::array<int, 3> { 1, 2, 3 }.as_slice()));
+    }
+    {
+        auto source = Vec<int>::with_capacity(usize(3));
+        source.push(1);
+        source.push(2);
+        auto* allocation = source.data();
+        auto  values     = source.into_iter()
+                               .flat_map([](int value) {
+                              auto inner = Vec<int>::make();
+                              inner.emplace_back(value);
+                              inner.emplace_back(-value);
+                              return inner;
+                               })
+                               .collect<Vec<int>>();
+        EXPECT_NE(values.data(), allocation);
+        EXPECT_EQ(values.as_slice(), (rstd::array<int, 4> { 1, -1, 2, -2 }.as_slice()));
+    }
+}
+
+TEST(Vec, InPlaceCollectUsesByteStorageForU8Conversions) {
+    auto bytes = Vec<u8>::with_capacity(usize(8));
+    bytes.push(u8(3));
+    bytes.push(u8(5));
+    bytes.push(u8(8));
+    auto* allocation = bytes.data();
+
+    auto raw = bytes.into_iter()
+                   .map([](u8 value) {
+                       return value.to_byte();
+                   })
+                   .collect<Vec<rstd::byte>>();
+
+    EXPECT_EQ(raw.data(), allocation);
+    EXPECT_EQ(raw[usize()], rstd::byte { 3 });
+    EXPECT_EQ(raw[usize(1)], rstd::byte { 5 });
+    EXPECT_EQ(raw[usize(2)], rstd::byte { 8 });
+    auto* raw_allocation = raw.data();
+
+    auto logical = raw.into_iter()
+                       .map([](rstd::byte value) {
+                           return u8::from_byte(value);
+                       })
+                       .collect<Vec<u8>>();
+
+    EXPECT_EQ(logical.data(), raw_allocation);
+    EXPECT_EQ(logical.as_slice(), "\x03\x05\x08"_bytes);
 }
 
 TEST(Vec, Indexing) {

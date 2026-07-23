@@ -20,9 +20,12 @@ template<typename T>
 struct RawVec {
     NonNull<T> ptr;
     usize      cap;
+    Layout     allocation_layout;
 
     static constexpr usize MIN_NON_ZERO_CAP =
-        sizeof(T) == 1 ? usize(8) : (sizeof(T) <= 1024 ? usize(4) : usize(1));
+        sizeof(typename mut_ptr<T>::storage_type) == 1
+            ? usize(8)
+            : (sizeof(typename mut_ptr<T>::storage_type) <= 1024 ? usize(4) : usize(1));
 
     static auto with_capacity(usize capacity) -> RawVec {
         if (capacity == usize()) return RawVec();
@@ -31,7 +34,9 @@ struct RawVec {
         if (res.is_err()) handle_alloc_error(layout);
 
         auto p = res.unwrap_unchecked().template as_mut_ptr<T>();
-        return { .ptr = NonNull<T>::make_unchecked(p), .cap = capacity };
+        return { .ptr               = NonNull<T>::make_unchecked(p),
+                 .cap               = capacity,
+                 .allocation_layout = layout };
     }
 
     /// Reallocates the storage to a new capacity.
@@ -40,12 +45,12 @@ struct RawVec {
 
         auto new_layout = Layout::array<T>(new_cap).unwrap();
 
-        if (cap == usize()) {
+        if (allocation_layout.size == usize()) {
             auto res = as<Allocator>(::alloc::GLOBAL).allocate(new_layout);
             if (res.is_err()) handle_alloc_error(new_layout);
             ptr = NonNull<T>::make_unchecked(res.unwrap_unchecked().template as_mut_ptr<T>());
         } else if constexpr (mtp::triv_copyable<T>) {
-            auto old_layout = Layout::array<T>(cap).unwrap();
+            auto old_layout = allocation_layout;
             auto old_ptr    = ptr.as_mut_ptr();
 
             auto res =
@@ -54,7 +59,7 @@ struct RawVec {
 
             ptr = NonNull<T>::make_unchecked(res.unwrap_unchecked().template as_mut_ptr<T>());
         } else {
-            auto old_layout = Layout::array<T>(cap).unwrap();
+            auto old_layout = allocation_layout;
             auto old_ptr    = ptr.as_mut_ptr().as_raw_ptr();
             auto res        = as<Allocator>(::alloc::GLOBAL).allocate(new_layout);
             if (res.is_err()) handle_alloc_error(new_layout);
@@ -67,22 +72,26 @@ struct RawVec {
             as<Allocator>(::alloc::GLOBAL).deallocate(old_ptr, old_layout);
             ptr = NonNull<T>::make_unchecked(mut_ptr<T>::from_raw_parts(new_ptr));
         }
-        cap = new_cap;
+        cap               = new_cap;
+        allocation_layout = new_layout;
     }
 
     void shrink_to_fit(usize len) {
-        if (len == cap) return;
-        debug_assert(len < cap);
+        auto old_layout = allocation_layout;
+        auto new_layout = Layout::array<T>(len).unwrap();
+        if (old_layout.size == new_layout.size && old_layout.align == new_layout.align) {
+            cap = len;
+            return;
+        }
+        debug_assert(len <= cap);
 
-        auto old_layout = Layout::array<T>(cap).unwrap();
-        auto old_ptr    = ptr.as_mut_ptr().as_raw_ptr();
+        auto old_ptr = ptr.as_mut_ptr().as_raw_ptr();
         if (len == usize()) {
             as<Allocator>(::alloc::GLOBAL).deallocate(old_ptr, old_layout);
             reset_ptr();
             return;
         }
 
-        auto new_layout = Layout::array<T>(len).unwrap();
         if constexpr (mtp::triv_copyable<T>) {
             auto res = as<Allocator>(::alloc::GLOBAL).shrink(old_ptr, old_layout, new_layout);
             if (res.is_err()) handle_alloc_error(new_layout);
@@ -99,21 +108,22 @@ struct RawVec {
             as<Allocator>(::alloc::GLOBAL).deallocate(old_ptr, old_layout);
             ptr = NonNull<T>::make_unchecked(mut_ptr<T>::from_raw_parts(new_ptr));
         }
-        cap = len;
+        cap               = len;
+        allocation_layout = new_layout;
     }
 
     ~RawVec() {}
 
     void reset_ptr() {
         rstd::mem::fill(ptr, u8());
-        cap = usize();
+        cap               = usize();
+        allocation_layout = {};
     }
 
     void drop() {
         if (! rstd::mem::all(ptr, u8())) {
-            debug_assert(cap > usize());
-            auto layout = Layout::array<T>(cap).unwrap();
-            as<Allocator>(::alloc::GLOBAL).deallocate(ptr.as_raw_ptr(), layout);
+            debug_assert(allocation_layout.size > usize());
+            as<Allocator>(::alloc::GLOBAL).deallocate(ptr.as_raw_ptr(), allocation_layout);
         }
         reset_ptr();
     }
@@ -127,6 +137,14 @@ struct VecIntoIter;
 
 export template<typename T>
 class Vec;
+
+namespace details
+{
+struct InPlaceAccess;
+
+template<typename T>
+auto from_iter(VecIntoIter<T> iterator) -> Vec<T>;
+} // namespace details
 
 export template<typename T>
 class SpareSlot {
@@ -175,6 +193,10 @@ class Vec {
     usize     m_len;
 
     constexpr explicit Vec(RawVec<T> buf, usize len): m_buf(buf), m_len(len) {}
+
+    friend struct VecIntoIter<T>;
+    friend struct details::InPlaceAccess;
+    friend auto details::from_iter<T>(VecIntoIter<T> iterator) -> Vec<T>;
 
 public:
     USE_TRAIT(Vec)
@@ -232,7 +254,9 @@ public:
         if (length == usize()) return {};
 
         auto pointer = mut_ptr<T>::from_raw_parts(raw.as_raw_ptr());
-        return Vec { RawVec<T> { .ptr = NonNull<T>::make_unchecked(pointer), .cap = length },
+        return Vec { RawVec<T> { .ptr               = NonNull<T>::make_unchecked(pointer),
+                                 .cap               = length,
+                                 .allocation_layout = Layout::array<T>(length).unwrap() },
                      length };
     }
 
@@ -635,38 +659,327 @@ public:
 /// Owning iterator over a `Vec<T>`, yielding elements by value.
 export template<typename T>
 struct VecIntoIter : rstd::DefaultInClass<VecIntoIter<T>, rstd::iter::Iterator> {
+private:
+    RawVec<T> buffer_;
+    usize     front_;
+    usize     back_;
+
+    void drop_remaining() noexcept {
+        auto pointer = buffer_.ptr.as_mut_ptr();
+        for (auto index = front_; index < back_; ++index) {
+            rstd::ptr_::destroy(pointer.add(index));
+        }
+        front_ = back_;
+    }
+
+    auto take_buffer() noexcept -> RawVec<T> {
+        auto buffer = buffer_;
+        buffer_.reset_ptr();
+        front_ = usize();
+        back_  = usize();
+        return buffer;
+    }
+
+    friend auto details::from_iter<T>(VecIntoIter<T> iterator) -> Vec<T>;
+    friend struct details::InPlaceAccess;
+
+public:
     using Item                                = T;
     static constexpr bool PROVEN_DOUBLE_ENDED = true;
     static constexpr bool PROVEN_EXACT_SIZE   = true;
     static constexpr bool PROVEN_FUSED        = true;
     static constexpr bool PROVEN_TRUSTED_LEN  = true;
-    Vec<T>                vec;
-    usize                 idx;
 
-    explicit VecIntoIter(Vec<T> v): vec(rstd::move(v)), idx() {}
+    explicit VecIntoIter(Vec<T> value): buffer_(value.m_buf), front_(), back_(value.m_len) {
+        value.m_buf.reset_ptr();
+        value.m_len = usize();
+    }
+
+    VecIntoIter(const VecIntoIter&)                    = delete;
+    auto operator=(const VecIntoIter&) -> VecIntoIter& = delete;
+
+    VecIntoIter(VecIntoIter&& other) noexcept
+        : buffer_(other.buffer_), front_(other.front_), back_(other.back_) {
+        other.buffer_.reset_ptr();
+        other.front_ = usize();
+        other.back_  = usize();
+    }
+
+    auto operator=(VecIntoIter&& other) noexcept -> VecIntoIter& {
+        if (this == rstd::addressof(other)) return *this;
+        drop_remaining();
+        buffer_.drop();
+        buffer_ = other.buffer_;
+        front_  = other.front_;
+        back_   = other.back_;
+        other.buffer_.reset_ptr();
+        other.front_ = usize();
+        other.back_  = usize();
+        return *this;
+    }
+
+    ~VecIntoIter() {
+        drop_remaining();
+        buffer_.drop();
+    }
 
     auto next() -> rstd::Option<Item> {
-        if (idx >= vec.len()) return rstd::None();
-        T v = rstd::move(vec[idx]);
-        ++idx;
-        return rstd::Some(rstd::move(v));
+        if (front_ == back_) return rstd::None();
+        auto source = buffer_.ptr.as_mut_ptr().add(front_);
+        T    value  = rstd::ptr_::move_out(source);
+        rstd::ptr_::destroy(source);
+        ++front_;
+        return rstd::Some(rstd::move(value));
     }
 
     auto next_back() -> rstd::Option<Item> {
-        if (idx >= vec.len()) return rstd::None();
-        return vec.pop();
+        if (front_ == back_) return rstd::None();
+        --back_;
+        auto source = buffer_.ptr.as_mut_ptr().add(back_);
+        T    value  = rstd::ptr_::move_out(source);
+        rstd::ptr_::destroy(source);
+        return rstd::Some(rstd::move(value));
     }
 
     auto size_hint() const -> rstd::iter::SizeHint {
-        usize n = vec.len() - idx;
+        auto n = back_ - front_;
         return { n, rstd::Some(n) };
     }
 
-    auto len() const -> usize { return vec.len() - idx; }
+    auto len() const -> usize { return back_ - front_; }
 };
+
+} // namespace alloc::vec
+
+namespace rstd::iter::details
+{
+
+export template<typename T>
+struct InPlaceTraits<::alloc::vec::VecIntoIter<T>> {
+    using Source = ::alloc::vec::VecIntoIter<T>;
+
+    static constexpr bool  ENABLED   = true;
+    static constexpr usize EXPAND_BY = usize(1);
+    static constexpr usize MERGE_BY  = usize(1);
+
+    static auto source(Source& value) -> Source& { return value; }
+};
+
+} // namespace rstd::iter::details
+
+namespace alloc::vec
+{
 
 namespace details
 {
+
+struct InPlaceMapProbe {
+    auto operator()(int value) const -> int;
+};
+
+struct InPlacePredicateProbe {
+    auto operator()(int value) const -> bool;
+};
+
+struct InPlaceOptionProbe {
+    auto operator()(int value) const -> Option<int>;
+};
+
+struct InPlaceInspectProbe {
+    void operator()(int value) const;
+};
+
+struct InPlaceScanProbe {
+    auto operator()(int& state, int value) const -> Option<int>;
+};
+
+struct UnknownInPlaceProbe {
+    using Item = int;
+    auto next() -> Option<int>;
+};
+
+using InPlaceProbeRoot = VecIntoIter<int>;
+using InPlaceProbeMap =
+    decltype(mtp::declval<InPlaceProbeRoot>().map(mtp::declval<InPlaceMapProbe>()));
+using InPlaceProbeFilter =
+    decltype(mtp::declval<InPlaceProbeRoot>().filter(mtp::declval<InPlacePredicateProbe>()));
+using InPlaceProbeFilterMap =
+    decltype(mtp::declval<InPlaceProbeRoot>().filter_map(mtp::declval<InPlaceOptionProbe>()));
+using InPlaceProbeInspect =
+    decltype(mtp::declval<InPlaceProbeRoot>().inspect(mtp::declval<InPlaceInspectProbe>()));
+using InPlaceProbeScan =
+    decltype(mtp::declval<InPlaceProbeRoot>().scan(int(), mtp::declval<InPlaceScanProbe>()));
+
+static_assert(rstd::iter::details::InPlaceTraits<InPlaceProbeRoot>::ENABLED);
+static_assert(rstd::iter::details::InPlaceTraits<InPlaceProbeMap>::ENABLED);
+static_assert(rstd::iter::details::InPlaceTraits<InPlaceProbeFilter>::ENABLED);
+static_assert(rstd::iter::details::InPlaceTraits<InPlaceProbeFilterMap>::ENABLED);
+static_assert(rstd::iter::details::InPlaceTraits<
+              decltype(mtp::declval<InPlaceProbeRoot>().enumerate())>::ENABLED);
+static_assert(rstd::iter::details::InPlaceTraits<decltype(mtp::declval<InPlaceProbeRoot>().zip(
+                  mtp::declval<InPlaceProbeRoot>()))>::ENABLED);
+static_assert(rstd::iter::details::InPlaceTraits<
+              decltype(mtp::declval<InPlaceProbeRoot>().take(usize(1)))>::ENABLED);
+static_assert(rstd::iter::details::InPlaceTraits<
+              decltype(mtp::declval<InPlaceProbeRoot>().skip(usize(1)))>::ENABLED);
+static_assert(
+    rstd::iter::details::InPlaceTraits<decltype(mtp::declval<InPlaceProbeRoot>().take_while(
+        mtp::declval<InPlacePredicateProbe>()))>::ENABLED);
+static_assert(
+    rstd::iter::details::InPlaceTraits<decltype(mtp::declval<InPlaceProbeRoot>().skip_while(
+        mtp::declval<InPlacePredicateProbe>()))>::ENABLED);
+static_assert(
+    rstd::iter::details::InPlaceTraits<decltype(mtp::declval<InPlaceProbeRoot>().map_while(
+        mtp::declval<InPlaceOptionProbe>()))>::ENABLED);
+static_assert(rstd::iter::details::InPlaceTraits<InPlaceProbeInspect>::ENABLED);
+static_assert(rstd::iter::details::InPlaceTraits<InPlaceProbeScan>::ENABLED);
+static_assert(! rstd::iter::details::InPlaceTraits<UnknownInPlaceProbe>::ENABLED);
+static_assert(! rstd::iter::details::InPlaceTraits<
+              decltype(mtp::declval<InPlaceProbeRoot>().peekable())>::ENABLED);
+static_assert(! rstd::iter::details::InPlaceTraits<
+              decltype(mtp::declval<InPlaceProbeRoot>().fuse())>::ENABLED);
+static_assert(! rstd::iter::details::InPlaceTraits<
+              decltype(mtp::declval<InPlaceProbeRoot>().step_by(usize(2)))>::ENABLED);
+static_assert(! rstd::iter::details::InPlaceTraits<
+              decltype(mtp::declval<InPlaceProbeRoot>().rev())>::ENABLED);
+static_assert(! rstd::iter::details::InPlaceTraits<decltype(mtp::declval<InPlaceProbeRoot>().chain(
+                  mtp::declval<InPlaceProbeRoot>()))>::ENABLED);
+static_assert(! rstd::iter::details::InPlaceTraits<
+              decltype(mtp::declval<InPlaceProbeRoot>().intersperse(int()))>::ENABLED);
+
+struct InPlaceAccess {
+    template<typename T>
+    static auto allocation_base(VecIntoIter<T>& source) noexcept {
+        return source.buffer_.ptr.as_mut_ptr().as_raw_ptr();
+    }
+
+    template<typename T>
+    static auto allocation_layout(VecIntoIter<T>& source) noexcept -> Layout {
+        return source.buffer_.allocation_layout;
+    }
+
+    template<typename T>
+    static auto allocation_bytes(VecIntoIter<T>& source) noexcept -> byte* {
+        return reinterpret_cast<byte*>(allocation_base(source));
+    }
+
+    template<typename T>
+    static auto read_front(VecIntoIter<T>& source) noexcept -> usize {
+        return source.front_;
+    }
+
+    template<typename Destination, typename Source>
+    static auto finish(VecIntoIter<Source>& source, usize length) -> Vec<Destination> {
+        source.drop_remaining();
+        auto source_buffer = source.take_buffer();
+        if (source_buffer.allocation_layout.size == usize()) {
+            debug_assert(length == usize());
+            return Vec<Destination>();
+        }
+
+        using DestinationStorage = typename mut_ptr<Destination>::storage_type;
+        auto capacity = source_buffer.allocation_layout.size / usize(sizeof(DestinationStorage));
+        debug_assert(length <= capacity);
+
+        auto destination_buffer =
+            RawVec<Destination> { .ptr = source_buffer.ptr.template cast<Destination>(),
+                                  .cap = capacity,
+                                  .allocation_layout = source_buffer.allocation_layout };
+        source_buffer.reset_ptr();
+        return Vec<Destination>(destination_buffer, length);
+    }
+};
+
+template<typename T>
+class InPlaceDestinationGuard {
+    byte* allocation_;
+    usize length_;
+
+    auto slot(usize index) const noexcept -> mut_ptr<T> {
+        using Storage = typename mut_ptr<T>::storage_type;
+        auto* pointer =
+            reinterpret_cast<Storage*>(allocation_ + index.to_primitive() * sizeof(Storage));
+        return mut_ptr<T>::from_raw_parts(pointer);
+    }
+
+public:
+    explicit InPlaceDestinationGuard(byte* allocation): allocation_(allocation), length_() {}
+
+    InPlaceDestinationGuard(const InPlaceDestinationGuard&)                    = delete;
+    auto operator=(const InPlaceDestinationGuard&) -> InPlaceDestinationGuard& = delete;
+
+    ~InPlaceDestinationGuard() {
+        for (auto index = usize(); index < length_; ++index) {
+            rstd::ptr_::destroy(slot(index));
+        }
+    }
+
+    void push(T&& value) {
+        rstd::ptr_::construct(slot(length_), rstd::move(value));
+        ++length_;
+    }
+
+    auto len() const noexcept -> usize { return length_; }
+    void release() noexcept { length_ = usize(); }
+};
+
+template<typename Destination, typename I>
+constexpr bool in_place_collectible() {
+    using Traits = rstd::iter::details::InPlaceTraits<I>;
+    if constexpr (! Traits::ENABLED) {
+        return false;
+    } else {
+        using Source        = typename Traits::Source::Item;
+        using SourceStorage = typename mut_ptr<Source>::storage_type;
+        using DestStorage   = typename mut_ptr<Destination>::storage_type;
+
+        constexpr auto merge   = Traits::MERGE_BY.to_primitive();
+        constexpr auto expand  = Traits::EXPAND_BY.to_primitive();
+        constexpr auto maximum = usize::MAX.to_primitive();
+        if constexpr (merge == 0 || expand == 0 || alignof(SourceStorage) != alignof(DestStorage)) {
+            return false;
+        } else if constexpr (merge > maximum / sizeof(SourceStorage) ||
+                             expand > maximum / sizeof(DestStorage)) {
+            return false;
+        } else {
+            return sizeof(SourceStorage) * merge >= sizeof(DestStorage) * expand;
+        }
+    }
+}
+
+template<typename T, typename I>
+auto from_iter_in_place(I iterator) -> Vec<T> {
+    using Traits        = rstd::iter::details::InPlaceTraits<I>;
+    using Source        = typename Traits::Source::Item;
+    using SourceStorage = typename mut_ptr<Source>::storage_type;
+    using DestStorage   = typename mut_ptr<T>::storage_type;
+
+    auto& source      = Traits::source(iterator);
+    auto* source_base = InPlaceAccess::allocation_base(source);
+    auto  layout      = InPlaceAccess::allocation_layout(source);
+    auto* destination = InPlaceAccess::allocation_bytes(source);
+    auto  capacity    = layout.size / usize(sizeof(DestStorage));
+
+    InPlaceDestinationGuard<T> guard(destination);
+    for (;;) {
+        auto item = rstd::as<rstd::iter::Iterator>(iterator).next();
+        if (item.is_none()) break;
+
+        debug_assert(guard.len() < capacity, "InPlaceIterable exceeded destination capacity");
+        auto next_length = guard.len() + usize(1);
+        auto write_bytes = next_length * usize(sizeof(DestStorage));
+        auto read_bytes  = InPlaceAccess::read_front(source) * usize(sizeof(SourceStorage));
+        debug_assert(write_bytes <= read_bytes,
+                     "InPlaceIterable write cursor advanced beyond source read cursor");
+        guard.push(rstd::move(*item));
+    }
+
+    debug_assert(source_base == InPlaceAccess::allocation_base(source),
+                 "SourceIter changed its allocation");
+    auto result = InPlaceAccess::finish<T>(source, guard.len());
+    guard.release();
+    return result;
+}
 
 template<typename T, typename I>
 auto from_trusted_iter(I iterator) -> Vec<T> {
@@ -685,7 +998,9 @@ auto from_trusted_iter(I iterator) -> Vec<T> {
 
 template<typename T, typename I>
 auto from_iter(I iterator) -> Vec<T> {
-    if constexpr (rstd::Impled<I, rstd::iter::TrustedLen>) {
+    if constexpr (in_place_collectible<T, I>()) {
+        return from_iter_in_place<T>(rstd::move(iterator));
+    } else if constexpr (rstd::Impled<I, rstd::iter::TrustedLen>) {
         return from_trusted_iter<T>(rstd::move(iterator));
     } else {
         auto first = rstd::as<rstd::iter::Iterator>(iterator).next();
@@ -717,22 +1032,21 @@ auto from_iter(I iterator) -> Vec<T> {
 template<typename T>
 auto from_iter(VecIntoIter<T> iterator) -> Vec<T> {
     auto remaining = iterator.len();
-    if (iterator.idx == usize()) return rstd::move(iterator.vec);
+    if (iterator.front_ == usize()) {
+        return Vec<T>(iterator.take_buffer(), remaining);
+    }
 
-    if (remaining >= iterator.vec.capacity() / usize(2)) {
-        auto pointer = iterator.vec.as_mut_ptr();
-        for (auto index = usize(); index < iterator.idx; ++index) {
-            rstd::ptr_::destroy(pointer.add(index));
-        }
+    if (remaining >= iterator.buffer_.cap / usize(2)) {
+        auto pointer = iterator.buffer_.ptr.as_mut_ptr();
         for (auto index = usize(); index < remaining; ++index) {
-            auto source      = pointer.add(iterator.idx + index);
+            auto source      = pointer.add(iterator.front_ + index);
             auto destination = pointer.add(index);
             auto value       = rstd::ptr_::move_out(source);
             rstd::ptr_::construct(destination, rstd::move(value));
             rstd::ptr_::destroy(source);
         }
-        iterator.vec.set_len_unchecked(remaining);
-        return rstd::move(iterator.vec);
+        iterator.front_ = iterator.back_;
+        return Vec<T>(iterator.take_buffer(), remaining);
     }
 
     auto result = Vec<T>::make();
