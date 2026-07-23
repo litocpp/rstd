@@ -35,14 +35,12 @@ concept SliceCopyable = requires(rstd::mut_ref<T[]> destination, rstd::slice<T> 
 };
 
 template<typename Pointer>
-concept U8SliceRawParts = requires(Pointer pointer) {
-    rstd::slice<rstd::u8>::from_raw_parts(pointer, usize());
-};
+concept U8SliceRawParts =
+    requires(Pointer pointer) { rstd::slice<rstd::u8>::from_raw_parts(pointer, usize()); };
 
 template<typename Pointer>
-concept U8MutSliceRawParts = requires(Pointer pointer) {
-    rstd::mut_ref<rstd::u8[]>::from_raw_parts(pointer, usize());
-};
+concept U8MutSliceRawParts =
+    requires(Pointer pointer) { rstd::mut_ref<rstd::u8[]>::from_raw_parts(pointer, usize()); };
 
 static_assert(! rstd::mtp::triv_copyable<NonTrivialDrop>);
 static_assert(! rstd::Impled<NonTrivialDrop, rstd::Copy>);
@@ -59,6 +57,10 @@ static_assert(! U8SliceRawParts<rstd::u8*>);
 static_assert(! U8SliceRawParts<rstd::uint8_t*>);
 static_assert(! U8MutSliceRawParts<rstd::u8*>);
 static_assert(! U8MutSliceRawParts<rstd::uint8_t*>);
+static_assert(rstd::mtp::same_as<decltype(rstd::mtp::declval<rstd::slice<rstd::u8>>().begin()),
+                                 rstd::ptr<rstd::u8>>);
+static_assert(rstd::mtp::same_as<decltype(rstd::mtp::declval<rstd::mut_ref<rstd::u8[]>&>().begin()),
+                                 rstd::mut_ptr<rstd::u8>>);
 
 } // namespace
 
@@ -109,7 +111,7 @@ TEST(Slice, CopyFromSliceAcceptsEmptySlices) {
 
 TEST(Slice, U8ViewReadsAndWritesByteStorageByValue) {
     rstd::byte storage[] { rstd::byte { 1 }, rstd::byte { 2 }, rstd::byte { 255 } };
-    auto values = rstd::mut_ref<rstd::u8[]>::from_raw_parts(storage, usize(3));
+    auto       values = rstd::mut_ref<rstd::u8[]>::from_raw_parts(storage, usize(3));
 
     EXPECT_EQ(values[usize()], rstd::u8(1));
     values[usize(1)] = rstd::u8(128);
@@ -118,6 +120,20 @@ TEST(Slice, U8ViewReadsAndWritesByteStorageByValue) {
     auto immutable = values.as_ref();
     static_assert(rstd::mtp::same_as<decltype(immutable[usize()]), rstd::u8>);
     EXPECT_EQ(immutable[usize(2)], rstd::u8(255));
+}
+
+TEST(Slice, RangeForUsesLogicalU8ValuesAndProxies) {
+    rstd::byte storage[] { rstd::byte { 1 }, rstd::byte { 2 }, rstd::byte { 3 } };
+    auto       values = rstd::mut_ref<rstd::u8[]>::from_raw_parts(storage, usize(3));
+
+    for (auto value : values) value = rstd::u8(value.get().to_primitive() + 2);
+    EXPECT_EQ(storage[0], rstd::byte { 3 });
+    EXPECT_EQ(storage[2], rstd::byte { 5 });
+
+    auto immutable = values.as_ref();
+    auto total     = rstd::u8();
+    for (auto value : immutable) total += value;
+    EXPECT_EQ(total, rstd::u8(12));
 }
 
 TEST(Slice, CloneFromSliceReusesInitializedElements) {

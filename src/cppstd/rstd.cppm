@@ -4,6 +4,7 @@ module;
 export module rstd.cppstd;
 export import rstd;
 export import cppstd;
+export import :iter;
 
 export namespace rstd::cppstd
 {
@@ -14,8 +15,8 @@ inline constexpr int SEEK_FROM_CURRENT = ::cppstd::SEEK_FROM_CURRENT;
 inline constexpr int SEEK_FROM_END     = ::cppstd::SEEK_FROM_END;
 
 inline auto as_str(std::string_view value) noexcept -> Result<ref<str>, str_::Utf8Error> {
-    auto bytes = slice<u8>::from_raw_parts(reinterpret_cast<byte const*>(value.data()),
-                                            usize(value.size()));
+    auto bytes =
+        slice<u8>::from_raw_parts(reinterpret_cast<byte const*>(value.data()), usize(value.size()));
     return str_::from_utf8(bytes);
 }
 

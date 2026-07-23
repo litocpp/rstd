@@ -8,6 +8,11 @@ static_assert(rstd::mtp::same_as<decltype(rstd::mtp::declval<rstd::vec::Vec<rstd
 static_assert(
     rstd::mtp::same_as<decltype(rstd::mtp::declval<rstd::vec::Vec<rstd::u8> const&>().data()),
                        rstd::byte const*>);
+static_assert(rstd::mtp::same_as<decltype(rstd::mtp::declval<rstd::vec::Vec<rstd::u8>&>().begin()),
+                                 rstd::mut_ptr<rstd::u8>>);
+static_assert(
+    rstd::mtp::same_as<decltype(rstd::mtp::declval<rstd::vec::Vec<rstd::u8> const&>().begin()),
+                       rstd::ptr<rstd::u8>>);
 static_assert(! rstd::mtp::convertible_to<rstd::vec::SpareSlot<rstd::u8>, rstd::u8>);
 
 using namespace rstd::prelude;
@@ -41,6 +46,47 @@ struct SelfPointing {
         value     = other.value;
         value_ptr = &value;
         return *this;
+    }
+};
+
+struct HintedCollectIterator : rstd::DefaultInClass<HintedCollectIterator, rstd::iter::Iterator> {
+    using Item = int;
+
+    int  current;
+    int  end;
+    int* hint_calls;
+    bool report_remaining;
+
+    HintedCollectIterator(int end, int& hint_calls, bool report_remaining)
+        : current(0), end(end), hint_calls(&hint_calls), report_remaining(report_remaining) {}
+
+    auto next() -> rstd::Option<int> {
+        if (current == end) return rstd::None();
+        return rstd::Some(current++);
+    }
+
+    auto size_hint() const -> rstd::iter::SizeHint {
+        ++*hint_calls;
+        auto remaining = usize(static_cast<rstd::size_t>(end - current));
+        return { report_remaining ? remaining : usize(), rstd::None() };
+    }
+};
+
+struct CollectMoveOnly {
+    int        value;
+    const int* value_ptr;
+    int*       drops;
+
+    CollectMoveOnly(int value, int& drops): value(value), value_ptr(&this->value), drops(&drops) {}
+    CollectMoveOnly(const CollectMoveOnly&)                    = delete;
+    auto operator=(const CollectMoveOnly&) -> CollectMoveOnly& = delete;
+    CollectMoveOnly(CollectMoveOnly&& other) noexcept
+        : value(other.value), value_ptr(&value), drops(other.drops) {
+        other.drops = nullptr;
+    }
+    auto operator=(CollectMoveOnly&&) -> CollectMoveOnly& = delete;
+    ~CollectMoveOnly() {
+        if (drops != nullptr) ++*drops;
     }
 };
 
@@ -100,6 +146,27 @@ TEST(Vec, BasicPushPop) {
     EXPECT_EQ(v.len(), usize());
 }
 
+TEST(Vec, RangeForUsesLogicalElements) {
+    Vec<int> integers;
+    integers.push(1);
+    integers.push(2);
+    for (auto& value : integers) value *= 3;
+    EXPECT_EQ(integers[usize()], 3);
+    EXPECT_EQ(integers[usize(1)], 6);
+
+    Vec<u8> bytes;
+    bytes.push(u8(4));
+    bytes.push(u8(5));
+    for (auto value : bytes) value = u8(value.get().to_primitive() + 1);
+    EXPECT_EQ(bytes[usize()], u8(5));
+    EXPECT_EQ(bytes[usize(1)], u8(6));
+
+    auto const& immutable = bytes;
+    auto        total     = u8();
+    for (auto value : immutable) total += value;
+    EXPECT_EQ(total, u8(11));
+}
+
 TEST(Vec, Growth) {
     Vec<int> v = Vec<int>::with_capacity(usize(2));
     EXPECT_EQ(v.capacity(), usize(2));
@@ -126,6 +193,142 @@ TEST(Vec, GrowthMovesNonTrivialElements) {
         EXPECT_EQ(values[index].value, static_cast<int>(index.to_primitive()));
         EXPECT_EQ(values[index].value_ptr, &values[index].value);
     }
+}
+
+TEST(Vec, CollectUsesTrustedLengthAsExactCapacity) {
+    auto values = rstd::iter::range(0_i32, 10_i32).collect<Vec<i32>>();
+
+    EXPECT_EQ(values.len(), usize(10));
+    EXPECT_EQ(values.capacity(), usize(10));
+}
+
+TEST(Vec, CollectUsesGeneralIteratorLowerBoundAfterFirstItem) {
+    int  hint_calls = 0;
+    auto values     = HintedCollectIterator(10, hint_calls, true).collect<Vec<int>>();
+
+    EXPECT_EQ(values.len(), usize(10));
+    EXPECT_EQ(values.capacity(), usize(10));
+    EXPECT_GE(hint_calls, 1);
+
+    hint_calls = 0;
+    auto empty = HintedCollectIterator(0, hint_calls, true).collect<Vec<int>>();
+    EXPECT_TRUE(empty.is_empty());
+    EXPECT_EQ(empty.capacity(), usize());
+    EXPECT_EQ(hint_calls, 0);
+}
+
+TEST(Vec, CollectGrowsWhenGeneralIteratorUnderestimates) {
+    int  hint_calls = 0;
+    auto values     = HintedCollectIterator(10, hint_calls, false).collect<Vec<int>>();
+
+    ASSERT_EQ(values.len(), usize(10));
+    EXPECT_EQ(values.capacity(), usize(16));
+    for (int index = 0; index < 10; ++index) {
+        EXPECT_EQ(values[usize(static_cast<rstd::size_t>(index))], index);
+    }
+}
+
+TEST(Vec, CollectUsesElementSpecificMinimumCapacity) {
+    bool emitted = false;
+    auto values  = rstd::iter::from_fn([&emitted]() -> rstd::Option<u8> {
+                      if (emitted) return rstd::None();
+                      emitted = true;
+                      return rstd::Some(u8(7));
+                   }).collect<Vec<u8>>();
+
+    EXPECT_EQ(values.len(), usize(1));
+    EXPECT_EQ(values.capacity(), usize(8));
+    EXPECT_EQ(values[usize()], u8(7));
+}
+
+TEST(Vec, CollectReusesUnadvancedIntoIterAllocation) {
+    auto source = Vec<int>::with_capacity(usize(12));
+    source.push(3);
+    source.push(5);
+    source.push(8);
+    auto* allocation = source.data();
+
+    auto values = source.into_iter().collect<Vec<int>>();
+
+    EXPECT_EQ(values.data(), allocation);
+    EXPECT_EQ(values.capacity(), usize(12));
+    ASSERT_EQ(values.len(), usize(3));
+    EXPECT_EQ(values[usize()], 3);
+    EXPECT_EQ(values[usize(1)], 5);
+    EXPECT_EQ(values[usize(2)], 8);
+}
+
+TEST(Vec, CollectCompactsAdvancedIntoIterInPlace) {
+    int drops = 0;
+    {
+        auto source = Vec<CollectMoveOnly>::with_capacity(usize(8));
+        for (int value = 0; value < 8; ++value) source.emplace_back(value, drops);
+        auto* allocation = source.data();
+        auto  iterator   = source.into_iter();
+        {
+            auto first  = iterator.next();
+            auto second = iterator.next();
+            ASSERT_TRUE(first.is_some());
+            ASSERT_TRUE(second.is_some());
+            EXPECT_EQ(first->value, 0);
+            EXPECT_EQ(second->value, 1);
+        }
+        EXPECT_EQ(drops, 2);
+
+        auto values = rstd::move(iterator).collect<Vec<CollectMoveOnly>>();
+
+        EXPECT_EQ(values.data(), allocation);
+        EXPECT_EQ(values.capacity(), usize(8));
+        ASSERT_EQ(values.len(), usize(6));
+        for (usize index {}; index < values.len(); ++index) {
+            auto expected = static_cast<int>(index.to_primitive()) + 2;
+            EXPECT_EQ(values[index].value, expected);
+            EXPECT_EQ(values[index].value_ptr, &values[index].value);
+        }
+    }
+    EXPECT_EQ(drops, 8);
+}
+
+TEST(Vec, CollectCompactsWhenConsumedPrefixExceedsRemainder) {
+    int drops = 0;
+    {
+        auto source = Vec<CollectMoveOnly>::with_capacity(usize(3));
+        for (int value = 0; value < 3; ++value) source.emplace_back(value, drops);
+        auto* allocation = source.data();
+        auto  iterator   = source.into_iter();
+        {
+            auto first  = iterator.next();
+            auto second = iterator.next();
+            ASSERT_TRUE(first.is_some());
+            ASSERT_TRUE(second.is_some());
+        }
+
+        auto values = rstd::move(iterator).collect<Vec<CollectMoveOnly>>();
+
+        EXPECT_EQ(values.data(), allocation);
+        EXPECT_EQ(values.capacity(), usize(3));
+        ASSERT_EQ(values.len(), usize(1));
+        EXPECT_EQ(values[usize()].value, 2);
+        EXPECT_EQ(values[usize()].value_ptr, &values[usize()].value);
+    }
+    EXPECT_EQ(drops, 3);
+}
+
+TEST(Vec, CollectReallocatesSparseAdvancedIntoIter) {
+    auto source = Vec<int>::with_capacity(usize(8));
+    for (int value = 0; value < 8; ++value) source.push(rstd::move(value));
+    auto* allocation = source.data();
+    auto  iterator   = source.into_iter();
+    for (int count = 0; count < 5; ++count) ASSERT_TRUE(iterator.next().is_some());
+
+    auto values = rstd::move(iterator).collect<Vec<int>>();
+
+    EXPECT_NE(values.data(), allocation);
+    EXPECT_EQ(values.capacity(), usize(4));
+    ASSERT_EQ(values.len(), usize(3));
+    EXPECT_EQ(values[usize()], 5);
+    EXPECT_EQ(values[usize(1)], 6);
+    EXPECT_EQ(values[usize(2)], 7);
 }
 
 TEST(Vec, Indexing) {

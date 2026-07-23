@@ -164,6 +164,30 @@ public:
         return checked_ptr().as_mut_ptr();
     }
 
+    constexpr auto begin() noexcept [[clang::lifetimebound]] -> mut_ptr<mtp::rm_ext<T>>
+        requires mtp::is_array<T>
+    {
+        return mut_ptr<mtp::rm_ext<T>>::from_raw_parts(as_mut_ptr().as_raw_ptr());
+    }
+
+    constexpr auto end() noexcept [[clang::lifetimebound]] -> mut_ptr<mtp::rm_ext<T>>
+        requires mtp::is_array<T>
+    {
+        return begin().add(as_ptr().len());
+    }
+
+    constexpr auto begin() const noexcept [[clang::lifetimebound]] -> ptr<mtp::rm_ext<T>>
+        requires mtp::is_array<T>
+    {
+        return ptr<mtp::rm_ext<T>>::from_raw_parts(as_ptr().as_raw_ptr());
+    }
+
+    constexpr auto end() const noexcept [[clang::lifetimebound]] -> ptr<mtp::rm_ext<T>>
+        requires mtp::is_array<T>
+    {
+        return begin().add(as_ptr().len());
+    }
+
     /// Downcasts a boxed `Any` value to its concrete type.
     template<typename U>
     auto downcast() && -> Result<Box<U>, Box>
@@ -197,10 +221,75 @@ public:
         return from_raw(p);
     }
 };
+
+export template<typename T>
+class BoxIntoIter : public rstd::DefaultInClass<BoxIntoIter<T>, rstd::iter::Iterator> {
+    Box<T[]> values;
+    usize    front;
+    usize    back;
+
+public:
+    using Item                                = T;
+    static constexpr bool PROVEN_DOUBLE_ENDED = true;
+    static constexpr bool PROVEN_EXACT_SIZE   = true;
+    static constexpr bool PROVEN_FUSED        = true;
+    static constexpr bool PROVEN_TRUSTED_LEN  = true;
+
+    explicit BoxIntoIter(Box<T[]> source)
+        : values(rstd::move(source)), front(), back(values.as_ptr().len()) {}
+
+    auto next() -> Option<Item> {
+        if (front == back) return None();
+        auto element = values.begin().add(front++);
+        return Some(T(rstd::move(*element)));
+    }
+
+    auto next_back() -> Option<Item> {
+        if (front == back) return None();
+        auto element = values.begin().add(--back);
+        return Some(T(rstd::move(*element)));
+    }
+
+    auto size_hint() const -> rstd::iter::SizeHint {
+        auto length = len();
+        return { length, Some(length) };
+    }
+
+    auto len() const -> usize { return back - front; }
+};
 } // namespace alloc::boxed
 
 using ::alloc::boxed::Box;
 namespace rstd
 {
+
+template<typename T>
+struct Impl<iter::IntoIterator, ::alloc::boxed::Box<T[]>> : ImplBase<::alloc::boxed::Box<T[]>> {
+    using IntoIter = ::alloc::boxed::BoxIntoIter<T>;
+
+    auto into_iter() -> IntoIter { return IntoIter(rstd::move(this->self())); }
+};
+
+template<typename T>
+struct Impl<iter::IntoIterator, ref<::alloc::boxed::Box<T[]>>>
+    : ImplBase<ref<::alloc::boxed::Box<T[]>>> {
+    using IntoIter = iter::SliceIter<T>;
+
+    auto into_iter() -> IntoIter {
+        auto& source = *this->self();
+        return { source.begin(), source.end() };
+    }
+};
+
+template<typename T>
+struct Impl<iter::IntoIterator, mut_ref<::alloc::boxed::Box<T[]>>>
+    : ImplBase<mut_ref<::alloc::boxed::Box<T[]>>> {
+    using IntoIter = iter::SliceIterMut<T>;
+
+    auto into_iter() -> IntoIter {
+        auto& source = *this->self();
+        return { source.begin(), source.end() };
+    }
+};
 
 } // namespace rstd

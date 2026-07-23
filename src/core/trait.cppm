@@ -474,8 +474,8 @@ struct ImplBase<in_class_default_tag<A>> {
     friend struct Impl;
 
 private:
-    auto self() -> A& { return *static_cast<A*>(this); }
-    auto self() const -> A const& { return *static_cast<A const*>(this); }
+    constexpr auto self() -> A& { return *static_cast<A*>(this); }
+    constexpr auto self() const -> A const& { return *static_cast<A const*>(this); }
 };
 
 /// Checks whether type A implements all the given traits T.

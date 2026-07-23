@@ -17,7 +17,11 @@ class BTreeSetIntoIter : public rstd::DefaultInClass<BTreeSetIntoIter<K>, rstd::
     BTreeMapIntoIter<K, rstd::empty> inner;
 
 public:
-    using Item = K;
+    using Item                                = K;
+    static constexpr bool PROVEN_DOUBLE_ENDED = true;
+    static constexpr bool PROVEN_EXACT_SIZE   = true;
+    static constexpr bool PROVEN_FUSED        = true;
+    static constexpr bool PROVEN_TRUSTED_LEN  = true;
 
     explicit BTreeSetIntoIter(BTreeMapIntoIter<K, rstd::empty> iter): inner(rstd::move(iter)) {}
 
@@ -152,9 +156,25 @@ struct Impl<iter::FromIterator<K>, ::alloc::collections::BTreeSet<K>>
 template<typename K>
 struct Impl<iter::IntoIterator, ::alloc::collections::BTreeSet<K>>
     : ImplBase<::alloc::collections::BTreeSet<K>> {
-    auto into_iter() -> ::alloc::collections::BTreeSetIntoIter<K> {
-        return this->self().into_iter();
-    }
+    using IntoIter = ::alloc::collections::BTreeSetIntoIter<K>;
+
+    auto into_iter() -> IntoIter { return this->self().into_iter(); }
+};
+
+template<typename K>
+struct Impl<iter::IntoIterator, ref<::alloc::collections::BTreeSet<K>>>
+    : ImplBase<ref<::alloc::collections::BTreeSet<K>>> {
+    using IntoIter = ::alloc::collections::BTreeSetIter<K>;
+
+    auto into_iter() -> IntoIter { return this->self().as_raw_ptr()->iter(); }
+};
+
+template<typename K>
+struct Impl<iter::IntoIterator, mut_ref<::alloc::collections::BTreeSet<K>>>
+    : ImplBase<mut_ref<::alloc::collections::BTreeSet<K>>> {
+    using IntoIter = ::alloc::collections::BTreeSetIter<K>;
+
+    auto into_iter() -> IntoIter { return this->self().as_raw_ptr()->iter(); }
 };
 
 } // namespace rstd

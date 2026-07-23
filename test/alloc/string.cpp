@@ -7,6 +7,9 @@ using rstd::to_string;
 using namespace rstd::prelude;
 using namespace rstd::literals;
 
+static_assert(
+    rstd::mtp::same_as<decltype(rstd::mtp::declval<String const&>().begin()), rstd::ptr<rstd::u8>>);
+
 TEST(String, ToString) {
     int a = 10;
 
@@ -28,6 +31,16 @@ TEST(String, CloneCopiesBytes) {
     EXPECT_EQ(original, "hello!"_str);
     EXPECT_EQ(direct, "hello"_str);
     EXPECT_EQ(abstract, "hello"_str);
+}
+
+TEST(String, RangeForYieldsUtf8CodeUnits) {
+    auto text  = String::make("A右"_str);
+    auto bytes = rstd::vec::Vec<rstd::u8>::make();
+    for (auto value : text) bytes.push(u8(value.to_primitive()));
+
+    ASSERT_EQ(bytes.len(), usize(4));
+    EXPECT_EQ(bytes[usize()], u8('A'));
+    EXPECT_EQ(bytes[usize(1)], u8(0xe5));
 }
 
 TEST(String, BorrowedComparisonUsesAllBytes) {

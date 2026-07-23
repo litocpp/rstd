@@ -192,6 +192,28 @@ TEST(HashMap, IteratorsAndCollectPreserveAllEntries) {
     EXPECT_EQ(count, usize(256));
 }
 
+TEST(HashMap, IntoIteratorSupportsOwnedAndBorrowedRangeFor) {
+    auto map = HashMap<i32, i32>::make();
+    map.insert(1_i32, 10_i32);
+    map.insert(2_i32, 20_i32);
+
+    auto borrowed =
+        iter::into_iter(rstd::ref<HashMap<i32, i32>>::from_raw_parts(rstd::addressof(map)));
+    auto borrowed_total = i32();
+    for (auto [key, value] : borrowed) borrowed_total += *key + *value;
+    EXPECT_EQ(borrowed_total, 33_i32);
+
+    auto mutable_items =
+        iter::into_iter(rstd::mut_ref<HashMap<i32, i32>>::from_raw_parts(rstd::addressof(map)));
+    for (auto [key, value] : mutable_items) *value += *key;
+    EXPECT_EQ(**map.get(1_i32), 11_i32);
+    EXPECT_EQ(**map.get(2_i32), 22_i32);
+
+    auto owned_total = i32();
+    for (auto [key, value] : iter::into_iter(rstd::move(map))) owned_total += key + value;
+    EXPECT_EQ(owned_total, 36_i32);
+}
+
 TEST(HashMap, MoveOnlyValuesHaveBalancedLifetimes) {
     EXPECT_EQ(TrackedHashValue::live, 0);
     {

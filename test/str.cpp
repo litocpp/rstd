@@ -18,10 +18,17 @@ static_assert(BYTE_VIEW.len() == usize(3));
 static_assert(BYTE_VIEW[usize(2)] == rstd::u8(0xff));
 static_assert(UTF8_LITERAL.size() == usize(9));
 static_assert(rstd::str_::is_char_boundary(UTF8_LITERAL, usize(1)) == false);
+static_assert(rstd::mtp::same_as<decltype(UTF8_LITERAL.begin()), rstd::ptr<rstd::u8>>);
 
 TEST(Str, IsEmpty) {
     EXPECT_TRUE(rstd::str_::is_empty(""_str));
     EXPECT_FALSE(rstd::str_::is_empty("hi"_str));
+}
+
+TEST(Str, RangeForYieldsUtf8CodeUnits) {
+    auto total = rstd::u32();
+    for (auto value : "A右"_str) total += rstd::u32(value.to_primitive());
+    EXPECT_EQ(total, rstd::u32('A' + 0xe5 + 0x8f + 0xb3));
 }
 
 TEST(Str, IsAscii) {

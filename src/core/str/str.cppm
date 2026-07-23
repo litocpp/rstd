@@ -57,8 +57,8 @@ public:
         return u8::from_byte(p[index.to_primitive()]);
     }
 
-    constexpr auto begin() const { return p; }
-    constexpr auto end() const { return p + length.to_primitive(); }
+    constexpr auto begin() const -> ptr<u8> { return ptr<u8>::from_raw_parts(p); }
+    constexpr auto end() const -> ptr<u8> { return begin().add(length); }
 
     constexpr explicit operator bool() const { return p != nullptr; }
 
@@ -98,8 +98,8 @@ public:
     constexpr auto operator[](usize index) const noexcept -> u8 {
         return u8::from_byte(p[index.to_primitive()]);
     }
-    constexpr auto begin() const { return p; }
-    constexpr auto end() const { return p + length.to_primitive(); }
+    constexpr auto begin() const -> ptr<u8> { return ptr<u8>::from_raw_parts(p); }
+    constexpr auto end() const -> ptr<u8> { return begin().add(length); }
 
     constexpr explicit operator bool() const { return p != nullptr; }
 };
@@ -246,15 +246,14 @@ export constexpr auto split_at(ref<str> s [[clang::lifetimebound]], usize mid) n
 
 /// Returns the string with leading and trailing ASCII whitespace removed.
 export constexpr auto trim(ref<str> s [[clang::lifetimebound]]) noexcept -> ref<str> {
-    auto* b = s.data();
-    auto* e = b + s.size().to_primitive();
-    auto is_whitespace = [](byte value) constexpr {
+    auto* b             = s.data();
+    auto* e             = b + s.size().to_primitive();
+    auto  is_whitespace = [](byte value) constexpr {
         auto raw = u8::from_byte(value).to_primitive();
         return raw == ' ' || raw == '\t' || raw == '\n' || raw == '\r';
     };
     while (b < e && is_whitespace(*b)) ++b;
-    while (e > b && is_whitespace(*(e - 1)))
-        --e;
+    while (e > b && is_whitespace(*(e - 1))) --e;
     return ref<str>::from_raw_parts_unchecked(b, usize(e - b));
 }
 
@@ -342,8 +341,8 @@ template<fixed_string Str>
 inline constexpr auto BYTE_LITERAL_STORAGE = make_byte_literal<Str>();
 
 template<fixed_string Str>
-inline constexpr bool VALID_UTF8_LITERAL = char_::is_valid_utf8(
-    BYTE_LITERAL_STORAGE<Str>.data(), usize(BYTE_LITERAL_STORAGE<Str>.size()));
+inline constexpr bool VALID_UTF8_LITERAL =
+    char_::is_valid_utf8(BYTE_LITERAL_STORAGE<Str>.data(), usize(BYTE_LITERAL_STORAGE<Str>.size()));
 
 } // namespace rstd::str_
 

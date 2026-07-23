@@ -101,7 +101,11 @@ class Args : public DefaultInClass<Args, iter::Iterator> {
     friend auto args() -> Args;
 
 public:
-    using Item = String;
+    using Item                                = String;
+    static constexpr bool PROVEN_DOUBLE_ENDED = true;
+    static constexpr bool PROVEN_EXACT_SIZE   = true;
+    static constexpr bool PROVEN_FUSED        = true;
+    static constexpr bool PROVEN_TRUSTED_LEN  = true;
 
     auto next() -> Option<String> {
         auto value = inner_.next();

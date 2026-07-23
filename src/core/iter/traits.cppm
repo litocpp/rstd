@@ -57,17 +57,97 @@ template<class I>
 struct Intersperse;
 template<class I>
 struct ByRef;
-
 /// `(lower, upper)` bound on the number of remaining elements.
 export using SizeHint = rstd::tuple<usize, Option<usize>>;
 
-/// A type is iterable when it exposes a `next()` member returning an `Option`.
-export template<class X>
-concept has_next = requires(X& x) { x.next(); };
+export struct IteratorEnd {};
 
-/// `Item` of an iterator type, derived from its `next()` return.
+export template<class I>
+class IteratorLoop {
+    using Item = typename I::Item;
+
+    I*           iterator_;
+    Option<Item> item_;
+
+public:
+    constexpr explicit IteratorLoop(I& iterator [[clang::lifetimebound]])
+        : iterator_(rstd::addressof(iterator)), item_(iterator_->next()) {}
+
+    IteratorLoop(const IteratorLoop&)                    = delete;
+    auto operator=(const IteratorLoop&) -> IteratorLoop& = delete;
+    IteratorLoop(IteratorLoop&&)                         = default;
+    auto operator=(IteratorLoop&&) -> IteratorLoop&      = default;
+
+    friend constexpr auto operator==(const IteratorLoop& loop, IteratorEnd) noexcept -> bool {
+        return loop.item_.is_none();
+    }
+
+    constexpr void operator++() & { item_ = iterator_->next(); }
+
+    constexpr auto operator*() & -> Item { return item_.take().unwrap_unchecked(); }
+};
+
+/// A type is iterable when it exposes the complete `Iterator` required API.
 export template<class X>
-using item_of = typename decltype(mtp::declval<X&>().next())::value_type;
+concept has_next = requires(X& x) {
+    typename X::Item;
+    requires mtp::same_as<decltype(x.next()), Option<typename X::Item>>;
+};
+
+/// `Item` of an iterator type.
+export template<class X>
+using item_of = typename X::Item;
+
+namespace details
+{
+
+template<class T>
+struct is_rstd_borrow {
+    static constexpr bool value = false;
+};
+
+template<class T>
+struct is_rstd_borrow<ref<T>> {
+    static constexpr bool value = true;
+};
+
+template<class T>
+struct is_rstd_borrow<mut_ref<T>> {
+    static constexpr bool value = true;
+};
+
+template<class T>
+concept borrowed_item = mtp::is_ref<T> || is_rstd_borrow<mtp::rm_cvf<T>>::value;
+
+template<class T>
+constexpr decltype(auto) observe_item(T&& item) {
+    if constexpr (requires { *rstd::forward<T>(item); })
+        return *rstd::forward<T>(item);
+    else
+        return rstd::forward<T>(item);
+}
+
+template<class T>
+using observed_item_t = mtp::rm_cvf<decltype(observe_item(mtp::declval<T&>()))>;
+
+} // namespace details
+
+export template<has_next I>
+class IteratorLoopRange {
+    I* iterator_;
+
+public:
+    constexpr explicit IteratorLoopRange(I& iterator [[clang::lifetimebound]])
+        : iterator_(rstd::addressof(iterator)) {}
+
+    constexpr auto begin() & -> IteratorLoop<I> { return IteratorLoop<I>(*iterator_); }
+    constexpr auto end() & -> IteratorEnd { return {}; }
+};
+
+export template<has_next I>
+constexpr auto for_range(I& iterator [[clang::lifetimebound]]) -> IteratorLoopRange<I> {
+    return IteratorLoopRange<I>(iterator);
+}
 
 /// Trait for types that produce a sequence of values via `next()`.
 ///
@@ -103,15 +183,29 @@ struct FromIterator {
 /// Trait for types convertible into an iterator.
 export struct IntoIterator {
     template<typename Self, typename = void>
+        requires requires { typename Impl<IntoIterator, mtp::rm_cvf<Self>>::IntoIter; }
     struct Api {
         using Trait    = IntoIterator;
-        using IntoIter = typename Self::IntoIter;
+        using IntoIter = typename Impl<IntoIterator, mtp::rm_cvf<Self>>::IntoIter;
         using Item     = typename IntoIter::Item;
         auto into_iter() -> IntoIter { return trait_call<0>(this); }
     };
     template<class T>
     using Funcs = TraitFuncs<&T::into_iter>;
 };
+
+export template<typename T>
+using into_iter_t = typename Impl<IntoIterator, mtp::rm_cvf<T>>::IntoIter;
+
+export template<typename T>
+concept into_iterable = requires { typename Impl<IntoIterator, mtp::rm_cvf<T>>::IntoIter; } &&
+                        has_next<typename Impl<IntoIterator, mtp::rm_cvf<T>>::IntoIter>;
+
+export template<typename T>
+    requires(! mtp::is_ref<T>) && into_iterable<T>
+constexpr auto into_iter(T&& value) -> into_iter_t<T> {
+    return as<IntoIterator>(value).into_iter();
+}
 
 /// Iterators that can also yield elements from the back.
 export struct DoubleEndedIterator {
@@ -140,10 +234,20 @@ export struct ExactSizeIterator {
 
 /// Marker: `next()` keeps returning `None` after the first `None`.
 export struct FusedIterator {
-    static constexpr bool direct { true };
     template<typename Self, typename = void>
     struct Api {
         using Trait = FusedIterator;
+    };
+
+    template<typename>
+    using Funcs = TraitFuncs<>;
+};
+
+/// Marker: `size_hint()` reports the exact remaining length, or an overflowed upper bound.
+export struct TrustedLen {
+    template<typename Self, typename = void>
+    struct Api {
+        using Trait = TrustedLen;
     };
 
     template<typename>
@@ -170,18 +274,34 @@ struct Impl<iter::Iterator, X> : DefaultInImpl<iter::Iterator, X> {
     }
 };
 
-// Generic DoubleEnded/ExactSize Impls for iterators exposing next_back()/len().
 template<class X>
-    requires iter::has_next<X> && requires(X& x) { x.next_back(); }
+    requires iter::has_next<X>
+struct Impl<iter::IntoIterator, X> : ImplBase<X> {
+    using IntoIter = X;
+
+    auto into_iter() -> IntoIter { return rstd::move(this->self()); }
+};
+
+// Capability forwarding is opt-in: the iterator owner must explicitly publish each proof.
+template<class X>
+    requires iter::has_next<X> && requires { requires X::PROVEN_DOUBLE_ENDED; }
 struct Impl<iter::DoubleEndedIterator, X> : ImplBase<X> {
     auto next_back() { return this->self().next_back(); }
 };
 
 template<class X>
-    requires iter::has_next<X> && requires(const X& x) { x.len(); }
+    requires iter::has_next<X> && requires { requires X::PROVEN_EXACT_SIZE; }
 struct Impl<iter::ExactSizeIterator, X> : ImplBase<X> {
     auto len() const -> usize { return this->self().len(); }
 };
+
+template<class X>
+    requires iter::has_next<X> && requires { requires X::PROVEN_FUSED; }
+struct Impl<iter::FusedIterator, X> : ImplBase<X> {};
+
+template<class X>
+    requires iter::has_next<X> && requires { requires X::PROVEN_TRUSTED_LEN; }
+struct Impl<iter::TrustedLen, X> : ImplBase<X> {};
 
 // All provided Iterator methods. Pulled in-class by DefaultInClass<Self, Iterator>
 // so iterators get them as members and chaining needs no as<>().
@@ -195,6 +315,13 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
     using Self = mtp::trait_default_self_t<Tag>;
 
     auto size_hint() const -> iter::SizeHint { return { usize(), rstd::None() }; }
+
+    constexpr auto begin() & -> iter::IteratorLoop<Self> {
+        return iter::IteratorLoop<Self>(this->self());
+    }
+    constexpr auto end() & -> iter::IteratorEnd { return {}; }
+
+    constexpr auto into_iter() && -> Self { return rstd::move(this->self()); }
 
     // ---- consuming ----
     auto count() -> usize {
@@ -436,9 +563,11 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
     // Index (from the front) of the last element matching `pred`.
     // Requires DoubleEndedIterator + ExactSizeIterator.
     template<typename Pred>
+        requires Impled<Self, iter::DoubleEndedIterator> && Impled<Self, iter::ExactSizeIterator>
     auto rposition(Pred pred) -> Option<usize> {
-        usize i = this->self().len();
-        for (auto x = this->self().next_back(); x.is_some(); x = this->self().next_back()) {
+        usize i         = as<iter::ExactSizeIterator>(this->self()).len();
+        auto  backwards = as<iter::DoubleEndedIterator>(this->self());
+        for (auto x = backwards.next_back(); x.is_some(); x = backwards.next_back()) {
             --i;
             if (pred(*x)) return rstd::Some(i);
         }
@@ -446,10 +575,13 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
     }
 
     // The n-th element from the back. Requires DoubleEndedIterator.
-    auto nth_back(usize n) {
-        auto x = this->self().next_back();
+    auto nth_back(usize n)
+        requires Impled<Self, iter::DoubleEndedIterator>
+    {
+        auto backwards = as<iter::DoubleEndedIterator>(this->self());
+        auto x         = backwards.next_back();
         for (rstd::size_t i = 0; i < n.to_primitive() && x.is_some(); ++i)
-            x = this->self().next_back();
+            x = backwards.next_back();
         return x;
     }
 
@@ -543,6 +675,7 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
     }
 
     template<typename U>
+        requires iter::has_next<U>
     auto zip(U other) -> iter::Zip<Self, U> {
         return iter::Zip<Self, U>(rstd::move(this->self()), rstd::move(other));
     }
@@ -552,6 +685,7 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
     auto skip(usize n) -> iter::Skip<Self> { return iter::Skip<Self>(rstd::move(this->self()), n); }
 
     auto step_by(usize step) -> iter::StepBy<Self> {
+        if (step == usize()) rstd::panic("step_by called with step 0");
         return iter::StepBy<Self>(rstd::move(this->self()), step);
     }
 
@@ -565,27 +699,47 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
         return iter::SkipWhile<Self, Pred>(rstd::move(this->self()), rstd::move(p));
     }
 
-    template<typename U>
+    template<typename U, class S = Self>
+        requires iter::has_next<U> && mtp::same_as<typename U::Item, typename S::Item>
     auto chain(U other) -> iter::Chain<Self, U> {
         return iter::Chain<Self, U>(rstd::move(this->self()), rstd::move(other));
     }
 
-    auto rev() -> iter::Rev<Self> { return iter::Rev<Self>(rstd::move(this->self())); }
+    auto rev() -> iter::Rev<Self>
+        requires Impled<Self, iter::DoubleEndedIterator>
+    {
+        return iter::Rev<Self>(rstd::move(this->self()));
+    }
 
     auto peekable() -> iter::Peekable<Self> {
         return iter::Peekable<Self>(rstd::move(this->self()));
     }
 
-    auto flatten() -> iter::Flatten<Self> { return iter::Flatten<Self>(rstd::move(this->self())); }
+    template<class S = Self>
+        requires iter::into_iterable<typename S::Item>
+    auto flatten() -> iter::Flatten<Self> {
+        return iter::Flatten<Self>(rstd::move(this->self()));
+    }
 
-    template<typename F>
+    template<typename F, class S = Self, class Mapped = mtp::invoke_result_t<F&, typename S::Item>>
+        requires iter::into_iterable<Mapped>
     auto flat_map(F f) -> iter::FlatMap<Self, F> {
         return iter::FlatMap<Self, F>(rstd::move(this->self()), rstd::move(f));
     }
 
-    auto cloned() -> iter::Cloned<Self> { return iter::Cloned<Self>(rstd::move(this->self())); }
+    template<class S = Self>
+        requires iter::details::borrowed_item<typename S::Item> &&
+                 Impled<iter::details::observed_item_t<typename S::Item>, clone::Clone>
+    auto cloned() -> iter::Cloned<Self> {
+        return iter::Cloned<Self>(rstd::move(this->self()));
+    }
 
-    auto copied() -> iter::Copied<Self> { return iter::Copied<Self>(rstd::move(this->self())); }
+    template<class S = Self>
+        requires iter::details::borrowed_item<typename S::Item> &&
+                 mtp::copy<iter::details::observed_item_t<typename S::Item>>
+    auto copied() -> iter::Copied<Self> {
+        return iter::Copied<Self>(rstd::move(this->self()));
+    }
 
     template<typename F>
     auto inspect(F f) -> iter::Inspect<Self, F> {
@@ -599,9 +753,14 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
 
     auto fuse() -> iter::Fuse<Self> { return iter::Fuse<Self>(rstd::move(this->self())); }
 
-    auto cycle() -> iter::Cycle<Self> { return iter::Cycle<Self>(rstd::move(this->self())); }
+    auto cycle() -> iter::Cycle<Self>
+        requires Impled<Self, clone::Clone>
+    {
+        return iter::Cycle<Self>(rstd::move(this->self()));
+    }
 
     template<class S = Self>
+        requires Impled<typename S::Item, clone::Clone>
     auto intersperse(typename S::Item sep) -> iter::Intersperse<Self> {
         return iter::Intersperse<Self>(rstd::move(this->self()), rstd::move(sep));
     }

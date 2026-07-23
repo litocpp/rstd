@@ -196,6 +196,28 @@ TEST(BTreeMap, IteratorItemsSupportStructuredBindings) {
     EXPECT_EQ(value.value, 21);
 }
 
+TEST(BTreeMap, IntoIteratorSupportsOwnedAndBorrowedRangeFor) {
+    auto map = BTreeMap<i32, i32>::make();
+    map.insert(1_i32, 10_i32);
+    map.insert(2_i32, 20_i32);
+
+    auto borrowed =
+        rstd::iter::into_iter(rstd::ref<BTreeMap<i32, i32>>::from_raw_parts(rstd::addressof(map)));
+    auto borrowed_total = i32();
+    for (auto [key, value] : borrowed) borrowed_total += *key + *value;
+    EXPECT_EQ(borrowed_total, 33_i32);
+
+    auto mutable_items = rstd::iter::into_iter(
+        rstd::mut_ref<BTreeMap<i32, i32>>::from_raw_parts(rstd::addressof(map)));
+    for (auto [key, value] : mutable_items) *value += *key;
+    EXPECT_EQ(**map.get(1_i32), 11_i32);
+    EXPECT_EQ(**map.get(2_i32), 22_i32);
+
+    auto owned_total = i32();
+    for (auto [key, value] : map.into_iter()) owned_total += key + value;
+    EXPECT_EQ(owned_total, 36_i32);
+}
+
 TEST(BTreeMap, PopAndCollect) {
     auto map = iter::range(i32(), i32(100))
                    .map([](i32 key) {

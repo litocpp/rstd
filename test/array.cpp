@@ -43,7 +43,7 @@ static_assert(
                        rstd::byte const*>);
 
 static_assert([] {
-    auto values       = rstd::array<rstd::u8, 3> { rstd::u8(1), rstd::u8(2), rstd::u8(3) };
+    auto values      = rstd::array<rstd::u8, 3> { rstd::u8(1), rstd::u8(2), rstd::u8(3) };
     values[usize(1)] = rstd::u8(9);
     return values[usize()] == rstd::u8(1) && values[usize(1)] == rstd::u8(9) &&
            values.data()[2] == rstd::byte { 3 };
@@ -108,6 +108,17 @@ TEST(Array, IteratesByBorrowAndByValue) {
     EXPECT_EQ(owned.next_back(), Some(3));
     EXPECT_EQ(owned.next(), Some(2));
     EXPECT_TRUE(owned.next().is_none());
+}
+
+TEST(Array, U8RangeForUsesLogicalElements) {
+    auto values = rstd::array<rstd::u8, 3> { rstd::u8(2), rstd::u8(3), rstd::u8(5) };
+    for (auto value : values) value = rstd::u8(value.get().to_primitive() + 1);
+
+    const auto& immutable = values;
+    auto        total     = rstd::u8();
+    for (auto value : immutable) total += value;
+    EXPECT_EQ(total, rstd::u8(13));
+    EXPECT_EQ(values.data()[0], rstd::byte { 3 });
 }
 
 TEST(Array, ClonesElementsAndMapsOwnedValues) {

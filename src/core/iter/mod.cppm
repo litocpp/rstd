@@ -3,3 +3,4 @@ export import :iter.traits;
 export import :iter.adapters;
 export import :iter.sources;
 export import :iter.range;
+export import :iter.option_result;

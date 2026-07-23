@@ -9,7 +9,12 @@ namespace rstd::iter
 /// Half-open integer range `[start, end)`, analogous to Rust's `start..end`.
 export template<num::Integer T>
 struct Range : DefaultInClass<Range<T>, Iterator> {
-    using Item = T;
+    using Item                                = T;
+    static constexpr bool PROVEN_DOUBLE_ENDED = true;
+    static constexpr bool PROVEN_FUSED        = true;
+    static constexpr bool PROVEN_TRUSTED_LEN  = true;
+    static constexpr bool PROVEN_EXACT_SIZE =
+        sizeof(typename T::primitive_type) <= sizeof(rstd::size_t);
     T start;
     T fin;
 

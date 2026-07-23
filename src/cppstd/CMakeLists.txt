@@ -8,6 +8,7 @@ target_sources(
          CXX_MODULES
          FILES
          rstd.cppm
-         cppstd.cppm)
+         cppstd.cppm
+         iter.cppm)
 
 target_link_libraries(rstd.cppstd PUBLIC rstd.std)

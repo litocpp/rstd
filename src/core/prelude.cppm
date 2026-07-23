@@ -68,6 +68,8 @@ using rstd::iter::IntoIterator;
 using rstd::iter::FromIterator;
 using rstd::iter::DoubleEndedIterator;
 using rstd::iter::ExactSizeIterator;
+using rstd::iter::FusedIterator;
+using rstd::iter::TrustedLen;
 using rstd::iter::Range;
 using rstd::iter::range;
 } // namespace rstd::prelude

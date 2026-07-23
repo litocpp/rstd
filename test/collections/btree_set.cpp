@@ -37,3 +37,24 @@ TEST(BTreeSet, RetainCloneAndRemovalPreserveOwnership) {
     EXPECT_EQ(cloned.pop_first(), Some(i32()));
     EXPECT_EQ(cloned.pop_last(), Some(i32(98)));
 }
+
+TEST(BTreeSet, IntoIteratorSupportsOwnedAndBorrowedRangeFor) {
+    auto set = BTreeSet<i32>::make();
+    set.insert(1_i32);
+    set.insert(2_i32);
+
+    auto borrowed =
+        rstd::iter::into_iter(rstd::ref<BTreeSet<i32>>::from_raw_parts(rstd::addressof(set)));
+    auto borrowed_total = i32();
+    for (auto value : borrowed) borrowed_total += *value;
+    EXPECT_EQ(borrowed_total, 3_i32);
+
+    auto mutable_borrowed =
+        rstd::iter::into_iter(rstd::mut_ref<BTreeSet<i32>>::from_raw_parts(rstd::addressof(set)));
+    static_assert(rstd::mtp::same_as<typename decltype(mutable_borrowed)::Item, rstd::ref<i32>>);
+    EXPECT_EQ(mutable_borrowed.count(), 2_usize);
+
+    auto owned_total = i32();
+    for (auto value : rstd::iter::into_iter(rstd::move(set))) owned_total += value;
+    EXPECT_EQ(owned_total, 3_i32);
+}

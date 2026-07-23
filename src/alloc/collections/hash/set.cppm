@@ -17,7 +17,10 @@ class HashSetIntoIter : public rstd::DefaultInClass<HashSetIntoIter<K>, rstd::it
     HashMapIntoIter<K, rstd::empty> inner;
 
 public:
-    using Item = K;
+    using Item                               = K;
+    static constexpr bool PROVEN_EXACT_SIZE  = true;
+    static constexpr bool PROVEN_FUSED       = true;
+    static constexpr bool PROVEN_TRUSTED_LEN = true;
 
     explicit HashSetIntoIter(HashMapIntoIter<K, rstd::empty> iter): inner(rstd::move(iter)) {}
 
@@ -157,9 +160,25 @@ struct Impl<iter::FromIterator<K>, ::alloc::collections::HashSet<K, S, Eq>>
 template<typename K, typename S, typename Eq>
 struct Impl<iter::IntoIterator, ::alloc::collections::HashSet<K, S, Eq>>
     : ImplBase<::alloc::collections::HashSet<K, S, Eq>> {
-    auto into_iter() -> ::alloc::collections::HashSetIntoIter<K> {
-        return this->self().into_iter();
-    }
+    using IntoIter = ::alloc::collections::HashSetIntoIter<K>;
+
+    auto into_iter() -> IntoIter { return this->self().into_iter(); }
+};
+
+template<typename K, typename S, typename Eq>
+struct Impl<iter::IntoIterator, ref<::alloc::collections::HashSet<K, S, Eq>>>
+    : ImplBase<ref<::alloc::collections::HashSet<K, S, Eq>>> {
+    using IntoIter = ::alloc::collections::HashSetIter<K>;
+
+    auto into_iter() -> IntoIter { return this->self().as_raw_ptr()->iter(); }
+};
+
+template<typename K, typename S, typename Eq>
+struct Impl<iter::IntoIterator, mut_ref<::alloc::collections::HashSet<K, S, Eq>>>
+    : ImplBase<mut_ref<::alloc::collections::HashSet<K, S, Eq>>> {
+    using IntoIter = ::alloc::collections::HashSetIter<K>;
+
+    auto into_iter() -> IntoIter { return this->self().as_raw_ptr()->iter(); }
 };
 
 } // namespace rstd

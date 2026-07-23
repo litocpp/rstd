@@ -99,6 +99,7 @@ target_sources(
          iter/adapters.cppm
          iter/sources.cppm
          iter/range.cppm
+         iter/option_result.cppm
          mem/mod.cppm
          mem/manually_drop.cppm
          mem/maybe_uninit.cppm

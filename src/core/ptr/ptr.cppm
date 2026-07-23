@@ -265,8 +265,8 @@ struct ptr_base {
         auto result = *static_cast<Self const*>(this);
         if (bytes != usize()) {
             using RawByte = mtp::cond<Mutable, byte, mtp::add_const<byte>>;
-            auto raw = reinterpret_cast<RawByte*>(result.p) + bytes.to_primitive();
-            result.p = reinterpret_cast<value_type*>(raw);
+            auto raw      = reinterpret_cast<RawByte*>(result.p) + bytes.to_primitive();
+            result.p      = reinterpret_cast<value_type*>(raw);
         }
         return result;
     }
@@ -277,8 +277,8 @@ struct ptr_base {
         auto result = *static_cast<Self const*>(this);
         if (bytes != usize()) {
             using RawByte = mtp::cond<Mutable, byte, mtp::add_const<byte>>;
-            auto raw = reinterpret_cast<RawByte*>(result.p) - bytes.to_primitive();
-            result.p = reinterpret_cast<value_type*>(raw);
+            auto raw      = reinterpret_cast<RawByte*>(result.p) - bytes.to_primitive();
+            result.p      = reinterpret_cast<value_type*>(raw);
         }
         return result;
     }
@@ -380,7 +380,7 @@ struct ref<T> : ref_base<ref<T>, T, false> {
     using metadata_type = usize;
 
     storage_type const* p { nullptr };
-    metadata_type     length;
+    metadata_type       length;
 
     constexpr decltype(auto) element_at(usize index) const noexcept {
         if constexpr (mtp::same_as<element_type, u8>) {
@@ -402,6 +402,14 @@ struct ref<T> : ref_base<ref<T>, T, false> {
     }
 
     constexpr auto deref() const noexcept -> ref<T> { return *this; }
+
+    constexpr auto begin() const noexcept [[clang::lifetimebound]] -> ptr<element_type> {
+        return ptr<element_type>::from_raw_parts(p);
+    }
+
+    constexpr auto end() const noexcept [[clang::lifetimebound]] -> ptr<element_type> {
+        return begin().add(length);
+    }
 };
 
 template<typename T>
@@ -436,8 +444,7 @@ struct mut_ref<u8> : ref_base<mut_ref<u8>, u8, true> {
     constexpr mut_ref(mut_ref const&) noexcept = default;
     constexpr mut_ref(mut_ref&&) noexcept      = default;
 
-    static constexpr auto from_raw_parts(byte* value [[clang::lifetimebound]]) noexcept
-        -> mut_ref {
+    static constexpr auto from_raw_parts(byte* value [[clang::lifetimebound]]) noexcept -> mut_ref {
         return mut_ref(value);
     }
 
@@ -476,7 +483,7 @@ struct mut_ref<T> : ref_base<mut_ref<T>, T, true> {
     using value_type   = element_type;
 
     storage_type* p { nullptr };
-    usize       length;
+    usize         length;
 
     constexpr decltype(auto) element_at(usize index) const noexcept {
         if constexpr (mtp::same_as<element_type, u8>) {
@@ -488,6 +495,22 @@ struct mut_ref<T> : ref_base<mut_ref<T>, T, true> {
 
     constexpr auto deref() const noexcept -> ref<T> { return this->as_ref(); }
     constexpr auto deref_mut() noexcept -> mut_ref<T> { return *this; }
+
+    constexpr auto begin() noexcept [[clang::lifetimebound]] -> mut_ptr<element_type> {
+        return mut_ptr<element_type>::from_raw_parts(p);
+    }
+
+    constexpr auto end() noexcept [[clang::lifetimebound]] -> mut_ptr<element_type> {
+        return begin().add(length);
+    }
+
+    constexpr auto begin() const noexcept [[clang::lifetimebound]] -> ptr<element_type> {
+        return ptr<element_type>::from_raw_parts(p);
+    }
+
+    constexpr auto end() const noexcept [[clang::lifetimebound]] -> ptr<element_type> {
+        return begin().add(length);
+    }
 };
 
 template<typename T>
@@ -517,7 +540,7 @@ struct ptr<T> : ptr_base<ptr<T>, T, false> {
     using Self         = ptr;
 
     storage_type const* p { nullptr };
-    usize             length;
+    usize               length;
 
     constexpr decltype(auto) element_at(usize index) const noexcept {
         if constexpr (mtp::same_as<element_type, u8>) {
@@ -556,7 +579,7 @@ struct mut_ptr<T> : ptr_base<mut_ptr<T>, T, true> {
     using Self         = mut_ptr;
 
     storage_type* p { nullptr };
-    usize       length;
+    usize         length;
 
     constexpr decltype(auto) element_at(usize index) const noexcept {
         if constexpr (mtp::same_as<element_type, u8>) {

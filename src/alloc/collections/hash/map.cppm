@@ -46,7 +46,10 @@ class HashMapIter : public rstd::DefaultInClass<HashMapIter<K, V>, rstd::iter::I
     usize                 remaining;
 
 public:
-    using Item = rstd::tuple<rstd::ref<K>, rstd::ref<V>>;
+    using Item                               = rstd::tuple<rstd::ref<K>, rstd::ref<V>>;
+    static constexpr bool PROVEN_EXACT_SIZE  = true;
+    static constexpr bool PROVEN_FUSED       = true;
+    static constexpr bool PROVEN_TRUSTED_LEN = true;
     HashMapIter(const RawTable<K, V>* source [[clang::lifetimebound]]
                 ,
                 usize len)
@@ -73,7 +76,10 @@ class HashMapIterMut : public rstd::DefaultInClass<HashMapIterMut<K, V>, rstd::i
     usize           remaining;
 
 public:
-    using Item = rstd::tuple<rstd::ref<K>, rstd::mut_ref<V>>;
+    using Item                               = rstd::tuple<rstd::ref<K>, rstd::mut_ref<V>>;
+    static constexpr bool PROVEN_EXACT_SIZE  = true;
+    static constexpr bool PROVEN_FUSED       = true;
+    static constexpr bool PROVEN_TRUSTED_LEN = true;
     HashMapIterMut(RawTable<K, V>* source [[clang::lifetimebound]]
                    ,
                    usize len)
@@ -98,7 +104,10 @@ class HashMapKeys : public rstd::DefaultInClass<HashMapKeys<K, V>, rstd::iter::I
     HashMapIter<K, V> inner;
 
 public:
-    using Item = rstd::ref<K>;
+    using Item                               = rstd::ref<K>;
+    static constexpr bool PROVEN_EXACT_SIZE  = true;
+    static constexpr bool PROVEN_FUSED       = true;
+    static constexpr bool PROVEN_TRUSTED_LEN = true;
     explicit HashMapKeys(HashMapIter<K, V> iter [[clang::lifetimebound]])
         : inner(rstd::move(iter)) {}
     auto next() -> Option<Item> {
@@ -114,7 +123,10 @@ class HashMapValues : public rstd::DefaultInClass<HashMapValues<K, V>, rstd::ite
     HashMapIter<K, V> inner;
 
 public:
-    using Item = rstd::ref<V>;
+    using Item                               = rstd::ref<V>;
+    static constexpr bool PROVEN_EXACT_SIZE  = true;
+    static constexpr bool PROVEN_FUSED       = true;
+    static constexpr bool PROVEN_TRUSTED_LEN = true;
     explicit HashMapValues(HashMapIter<K, V> iter [[clang::lifetimebound]])
         : inner(rstd::move(iter)) {}
     auto next() -> Option<Item> {
@@ -130,7 +142,10 @@ class HashMapValuesMut : public rstd::DefaultInClass<HashMapValuesMut<K, V>, rst
     HashMapIterMut<K, V> inner;
 
 public:
-    using Item = rstd::mut_ref<V>;
+    using Item                               = rstd::mut_ref<V>;
+    static constexpr bool PROVEN_EXACT_SIZE  = true;
+    static constexpr bool PROVEN_FUSED       = true;
+    static constexpr bool PROVEN_TRUSTED_LEN = true;
     explicit HashMapValuesMut(HashMapIterMut<K, V> iter [[clang::lifetimebound]])
         : inner(rstd::move(iter)) {}
     auto next() -> Option<Item> {
@@ -147,7 +162,10 @@ class HashMapIntoIter : public rstd::DefaultInClass<HashMapIntoIter<K, V>, rstd:
     rstd::size_t   index;
 
 public:
-    using Item = rstd::tuple<K, V>;
+    using Item                               = rstd::tuple<K, V>;
+    static constexpr bool PROVEN_EXACT_SIZE  = true;
+    static constexpr bool PROVEN_FUSED       = true;
+    static constexpr bool PROVEN_TRUSTED_LEN = true;
     explicit HashMapIntoIter(RawTable<K, V> source): table(rstd::move(source)), index(0) {}
     auto next() -> Option<Item> {
         while (index < table.bucket_count().to_primitive()) {
@@ -460,9 +478,25 @@ struct Impl<iter::FromIterator<tuple<K, V>>, ::alloc::collections::HashMap<K, V,
 template<typename K, typename V, typename S, typename Eq>
 struct Impl<iter::IntoIterator, ::alloc::collections::HashMap<K, V, S, Eq>>
     : ImplBase<::alloc::collections::HashMap<K, V, S, Eq>> {
-    auto into_iter() -> ::alloc::collections::HashMapIntoIter<K, V> {
-        return this->self().into_iter();
-    }
+    using IntoIter = ::alloc::collections::HashMapIntoIter<K, V>;
+
+    auto into_iter() -> IntoIter { return this->self().into_iter(); }
+};
+
+template<typename K, typename V, typename S, typename Eq>
+struct Impl<iter::IntoIterator, ref<::alloc::collections::HashMap<K, V, S, Eq>>>
+    : ImplBase<ref<::alloc::collections::HashMap<K, V, S, Eq>>> {
+    using IntoIter = ::alloc::collections::HashMapIter<K, V>;
+
+    auto into_iter() -> IntoIter { return this->self().as_raw_ptr()->iter(); }
+};
+
+template<typename K, typename V, typename S, typename Eq>
+struct Impl<iter::IntoIterator, mut_ref<::alloc::collections::HashMap<K, V, S, Eq>>>
+    : ImplBase<mut_ref<::alloc::collections::HashMap<K, V, S, Eq>>> {
+    using IntoIter = ::alloc::collections::HashMapIterMut<K, V>;
+
+    auto into_iter() -> IntoIter { return this->self().as_raw_ptr()->iter_mut(); }
 };
 
 } // namespace rstd

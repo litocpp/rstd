@@ -114,6 +114,10 @@ target_link_libraries(rstd_test PRIVATE rstd::rstd rstd::json rstd::toml rstd::l
 include(GoogleTest)
 gtest_discover_tests(rstd_test)
 
+add_executable(rstd_cppstd_test cppstd/iter.cpp)
+target_link_libraries(rstd_cppstd_test PRIVATE rstd.cppstd GTest::gtest_main)
+gtest_discover_tests(rstd_cppstd_test)
+
 add_executable(rstd_toml_test_decoder EXCLUDE_FROM_ALL toml/conformance_decoder.cpp)
 target_link_libraries(rstd_toml_test_decoder PRIVATE rstd::rstd rstd::json rstd::toml)
 
@@ -366,6 +370,25 @@ add_rstd_compile_fail(
   "address of stack memory associated with local variable.*returned|returning address of local temporary object")
 target_compile_options(
   rstd_compile_fail_lifetimebound_trait_proxy
+  PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,Clang>:-Werror=return-stack-address>")
+
+add_rstd_compile_fail(
+  rstd_compile_fail_iter_lvalue_into_iter
+  compile_fail/iter_lvalue_into_iter.cpp
+  Iter.LvalueIntoIter
+  "no matching function for call to 'into_iter'|constraints not satisfied")
+add_rstd_compile_fail(
+  rstd_compile_fail_iter_member_only_flatten
+  compile_fail/iter_member_only_flatten.cpp
+  Iter.MemberOnlyFlatten
+  "no matching member function for call to 'flatten'|constraints not satisfied")
+add_rstd_compile_fail(
+  rstd_compile_fail_iter_escaping_for_range
+  compile_fail/iter_escaping_for_range.cpp
+  Iter.EscapingForRange
+  "address of stack memory associated with local variable.*returned|returning address of local temporary object")
+target_compile_options(
+  rstd_compile_fail_iter_escaping_for_range
   PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,Clang>:-Werror=return-stack-address>")
 
 add_executable(rstd_nostd_test nostd/main.cpp)

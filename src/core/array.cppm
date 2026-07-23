@@ -100,8 +100,7 @@ public:
         : m_storage { { rstd::forward<Us>(values)... } } {}
 
     template<typename... Us>
-        requires(N > 0 && mtp::same_as<T, u8> && sizeof...(Us) == N &&
-                 (mtp::init<T, Us &&> && ...))
+        requires(N > 0 && mtp::same_as<T, u8> && sizeof...(Us) == N && (mtp::init<T, Us &&> && ...))
     constexpr array(Us&&... values) noexcept((mtp::noex_init<T, Us&&> && ...))
         : m_storage { { u8(rstd::forward<Us>(values)).to_byte()... } } {}
 
@@ -113,8 +112,7 @@ public:
     constexpr auto len() const noexcept -> usize { return usize(N); }
     constexpr auto is_empty() const noexcept -> bool { return N == 0; }
 
-    constexpr auto data() noexcept [[clang::lifetimebound]]
-        -> typename mut_ptr<T>::value_type* {
+    constexpr auto data() noexcept [[clang::lifetimebound]] -> typename mut_ptr<T>::value_type* {
         if constexpr (N == 0) {
             return nullptr;
         } else {
@@ -173,9 +171,7 @@ public:
         return as_ptr().add(index).get();
     }
 
-    constexpr decltype(auto) operator[](usize index) [[clang::lifetimebound]] {
-        return at(index);
-    }
+    constexpr decltype(auto) operator[](usize index) [[clang::lifetimebound]] { return at(index); }
     constexpr decltype(auto) operator[](usize index) const [[clang::lifetimebound]] {
         return at(index);
     }
@@ -287,7 +283,11 @@ class ArrayIntoIter : public DefaultInClass<ArrayIntoIter<T, N>, iter::Iterator>
     rstd::size_t m_back { N };
 
 public:
-    using Item = T;
+    using Item                                = T;
+    static constexpr bool PROVEN_DOUBLE_ENDED = true;
+    static constexpr bool PROVEN_EXACT_SIZE   = true;
+    static constexpr bool PROVEN_FUSED        = true;
+    static constexpr bool PROVEN_TRUSTED_LEN  = true;
 
     explicit constexpr ArrayIntoIter(array<T, N> values): m_values(rstd::move(values)) {}
 
@@ -345,7 +345,23 @@ constexpr auto from_fn(F function) {
 
 template<typename T, rstd::size_t N>
 struct Impl<iter::IntoIterator, array<T, N>> : ImplBase<array<T, N>> {
-    auto into_iter() -> ArrayIntoIter<T, N> { return this->self().into_iter(); }
+    using IntoIter = ArrayIntoIter<T, N>;
+
+    auto into_iter() -> IntoIter { return this->self().into_iter(); }
+};
+
+template<typename T, rstd::size_t N>
+struct Impl<iter::IntoIterator, ref<array<T, N>>> : ImplBase<ref<array<T, N>>> {
+    using IntoIter = iter::SliceIter<T>;
+
+    auto into_iter() -> IntoIter { return this->self().as_raw_ptr()->iter(); }
+};
+
+template<typename T, rstd::size_t N>
+struct Impl<iter::IntoIterator, mut_ref<array<T, N>>> : ImplBase<mut_ref<array<T, N>>> {
+    using IntoIter = iter::SliceIterMut<T>;
+
+    auto into_iter() -> IntoIter { return this->self().as_raw_ptr()->iter_mut(); }
 };
 
 template<typename T, typename U, rstd::size_t N>

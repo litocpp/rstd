@@ -60,7 +60,11 @@ class BTreeMapIter : public rstd::DefaultInClass<BTreeMapIter<K, V>, rstd::iter:
     }
 
 public:
-    using Item = rstd::tuple<rstd::ref<K>, rstd::ref<V>>;
+    using Item                                = rstd::tuple<rstd::ref<K>, rstd::ref<V>>;
+    static constexpr bool PROVEN_DOUBLE_ENDED = true;
+    static constexpr bool PROVEN_EXACT_SIZE   = true;
+    static constexpr bool PROVEN_FUSED        = true;
+    static constexpr bool PROVEN_TRUSTED_LEN  = true;
 
     BTreeMapIter(const TreeNode* root [[clang::lifetimebound]]
                  ,
@@ -156,7 +160,11 @@ class BTreeMapIterMut : public rstd::DefaultInClass<BTreeMapIterMut<K, V>, rstd:
     }
 
 public:
-    using Item = rstd::tuple<rstd::ref<K>, rstd::mut_ref<V>>;
+    using Item                                = rstd::tuple<rstd::ref<K>, rstd::mut_ref<V>>;
+    static constexpr bool PROVEN_DOUBLE_ENDED = true;
+    static constexpr bool PROVEN_EXACT_SIZE   = true;
+    static constexpr bool PROVEN_FUSED        = true;
+    static constexpr bool PROVEN_TRUSTED_LEN  = true;
 
     BTreeMapIterMut(TreeNode* root [[clang::lifetimebound]]
                     ,
@@ -233,7 +241,11 @@ class BTreeMapKeys : public rstd::DefaultInClass<BTreeMapKeys<K, V>, rstd::iter:
     BTreeMapIter<K, V> inner;
 
 public:
-    using Item = rstd::ref<K>;
+    using Item                                = rstd::ref<K>;
+    static constexpr bool PROVEN_DOUBLE_ENDED = true;
+    static constexpr bool PROVEN_EXACT_SIZE   = true;
+    static constexpr bool PROVEN_FUSED        = true;
+    static constexpr bool PROVEN_TRUSTED_LEN  = true;
     explicit BTreeMapKeys(BTreeMapIter<K, V> iter [[clang::lifetimebound]])
         : inner(rstd::move(iter)) {}
     auto next() -> Option<Item> {
@@ -255,7 +267,11 @@ class BTreeMapValues : public rstd::DefaultInClass<BTreeMapValues<K, V>, rstd::i
     BTreeMapIter<K, V> inner;
 
 public:
-    using Item = rstd::ref<V>;
+    using Item                                = rstd::ref<V>;
+    static constexpr bool PROVEN_DOUBLE_ENDED = true;
+    static constexpr bool PROVEN_EXACT_SIZE   = true;
+    static constexpr bool PROVEN_FUSED        = true;
+    static constexpr bool PROVEN_TRUSTED_LEN  = true;
     explicit BTreeMapValues(BTreeMapIter<K, V> iter [[clang::lifetimebound]])
         : inner(rstd::move(iter)) {}
     auto next() -> Option<Item> {
@@ -278,7 +294,11 @@ class BTreeMapValuesMut
     BTreeMapIterMut<K, V> inner;
 
 public:
-    using Item = rstd::mut_ref<V>;
+    using Item                                = rstd::mut_ref<V>;
+    static constexpr bool PROVEN_DOUBLE_ENDED = true;
+    static constexpr bool PROVEN_EXACT_SIZE   = true;
+    static constexpr bool PROVEN_FUSED        = true;
+    static constexpr bool PROVEN_TRUSTED_LEN  = true;
     explicit BTreeMapValuesMut(BTreeMapIterMut<K, V> iter [[clang::lifetimebound]])
         : inner(rstd::move(iter)) {}
     auto next() -> Option<Item> {
@@ -300,7 +320,11 @@ class BTreeMapIntoIter : public rstd::DefaultInClass<BTreeMapIntoIter<K, V>, rst
     ::alloc::vec::VecIntoIter<rstd::tuple<K, V>> inner;
 
 public:
-    using Item = rstd::tuple<K, V>;
+    using Item                                = rstd::tuple<K, V>;
+    static constexpr bool PROVEN_DOUBLE_ENDED = true;
+    static constexpr bool PROVEN_EXACT_SIZE   = true;
+    static constexpr bool PROVEN_FUSED        = true;
+    static constexpr bool PROVEN_TRUSTED_LEN  = true;
     explicit BTreeMapIntoIter(Vec<Item> entries): inner(rstd::move(entries)) {}
     auto next() -> Option<Item> { return inner.next(); }
     auto next_back() -> Option<Item> { return inner.next_back(); }
@@ -888,9 +912,25 @@ struct Impl<iter::FromIterator<tuple<K, V>>, ::alloc::collections::BTreeMap<K, V
 template<typename K, typename V>
 struct Impl<iter::IntoIterator, ::alloc::collections::BTreeMap<K, V>>
     : ImplBase<::alloc::collections::BTreeMap<K, V>> {
-    auto into_iter() -> ::alloc::collections::BTreeMapIntoIter<K, V> {
-        return this->self().into_iter();
-    }
+    using IntoIter = ::alloc::collections::BTreeMapIntoIter<K, V>;
+
+    auto into_iter() -> IntoIter { return this->self().into_iter(); }
+};
+
+template<typename K, typename V>
+struct Impl<iter::IntoIterator, ref<::alloc::collections::BTreeMap<K, V>>>
+    : ImplBase<ref<::alloc::collections::BTreeMap<K, V>>> {
+    using IntoIter = ::alloc::collections::BTreeMapIter<K, V>;
+
+    auto into_iter() -> IntoIter { return this->self().as_raw_ptr()->iter(); }
+};
+
+template<typename K, typename V>
+struct Impl<iter::IntoIterator, mut_ref<::alloc::collections::BTreeMap<K, V>>>
+    : ImplBase<mut_ref<::alloc::collections::BTreeMap<K, V>>> {
+    using IntoIter = ::alloc::collections::BTreeMapIterMut<K, V>;
+
+    auto into_iter() -> IntoIter { return this->self().as_raw_ptr()->iter_mut(); }
 };
 
 } // namespace rstd

@@ -9,11 +9,13 @@ using rstd::boxed::Box;
 static_assert(rstd::Impled<Box<int>, rstd::ops::Deref>);
 static_assert(rstd::Impled<Box<int>, rstd::ops::DerefMut>);
 static_assert(sizeof(Box<int>) == sizeof(int*));
-static_assert(rstd::mtp::same_as<decltype(rstd::mtp::declval<Box<rstd::u8[]>&>().get()),
-                                 rstd::byte*>);
-static_assert(rstd::mtp::same_as<
-              decltype(rstd::mtp::declval<Box<rstd::u8[]> const&>().as_ptr().as_raw_ptr()),
-              rstd::byte const*>);
+static_assert(
+    rstd::mtp::same_as<decltype(rstd::mtp::declval<Box<rstd::u8[]>&>().get()), rstd::byte*>);
+static_assert(
+    rstd::mtp::same_as<decltype(rstd::mtp::declval<Box<rstd::u8[]> const&>().as_ptr().as_raw_ptr()),
+                       rstd::byte const*>);
+static_assert(rstd::mtp::same_as<decltype(rstd::mtp::declval<Box<rstd::u8[]>&>().begin()),
+                                 rstd::mut_ptr<rstd::u8>>);
 
 namespace
 {
@@ -121,6 +123,34 @@ TEST(BoxTest, U8SliceUsesByteStorageAndLogicalElementAccess) {
     boxed.as_mut_ptr()[rstd::usize()] = rstd::u8(7);
     EXPECT_EQ(boxed.get()[0], rstd::byte { 7 });
     EXPECT_EQ(boxed.as_ref()[rstd::usize()], rstd::u8(7));
+
+    for (auto value : boxed) value = rstd::u8(value.get().to_primitive() + 1);
+    EXPECT_EQ(boxed.get()[0], rstd::byte { 8 });
+    EXPECT_EQ(boxed.get()[2], rstd::byte { 6 });
+}
+
+TEST(BoxTest, SliceIntoIteratorPreservesOwnedAndBorrowedItems) {
+    auto values = rstd::vec::Vec<rstd::u8>::make();
+    values.push(rstd::u8(2));
+    values.push(rstd::u8(3));
+    values.push(rstd::u8(5));
+    auto boxed = values.into_boxed_slice();
+
+    auto borrowed =
+        rstd::iter::into_iter(rstd::ref<Box<rstd::u8[]>>::from_raw_parts(rstd::addressof(boxed)));
+    static_assert(rstd::mtp::same_as<typename decltype(borrowed)::Item, rstd::ref<rstd::u8>>);
+    EXPECT_EQ(**borrowed.next(), rstd::u8(2));
+
+    auto mutable_borrow = rstd::iter::into_iter(
+        rstd::mut_ref<Box<rstd::u8[]>>::from_raw_parts(rstd::addressof(boxed)));
+    **mutable_borrow.next() = rstd::u8(7);
+
+    auto owned = rstd::iter::into_iter(rstd::move(boxed));
+    static_assert(rstd::mtp::same_as<typename decltype(owned)::Item, rstd::u8>);
+    EXPECT_EQ(owned.next(), rstd::Some(rstd::u8(7)));
+    EXPECT_EQ(owned.next_back(), rstd::Some(rstd::u8(5)));
+    EXPECT_EQ(owned.next(), rstd::Some(rstd::u8(3)));
+    EXPECT_TRUE(owned.next().is_none());
 }
 
 TEST(BoxTest, DynDropUsesConcreteDropAndLayout) {

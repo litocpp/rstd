@@ -21,6 +21,9 @@ struct RawVec {
     NonNull<T> ptr;
     usize      cap;
 
+    static constexpr usize MIN_NON_ZERO_CAP =
+        sizeof(T) == 1 ? usize(8) : (sizeof(T) <= 1024 ? usize(4) : usize(1));
+
     static auto with_capacity(usize capacity) -> RawVec {
         if (capacity == usize()) return RawVec();
         auto layout = Layout::array<T>(capacity).unwrap();
@@ -253,13 +256,14 @@ public:
 
     /// Ensures that at least `additional` more elements can be inserted without reallocating.
     void reserve(usize additional) {
-        auto required = m_len + additional;
+        auto required_value = m_len.checked_add(additional);
+        if (required_value.is_none()) rstd::panic { "Vec capacity overflow" };
+        auto required = *required_value;
         if (required <= m_buf.cap) return;
 
-        auto new_cap = m_buf.cap == usize() ? usize(4) : m_buf.cap;
-        while (new_cap < required) {
-            new_cap *= usize(2);
-        }
+        auto new_cap = m_buf.cap.saturating_mul(usize(2));
+        if (new_cap < required) new_cap = required;
+        if (new_cap < RawVec<T>::MIN_NON_ZERO_CAP) new_cap = RawVec<T>::MIN_NON_ZERO_CAP;
         m_buf.grow(new_cap, m_len);
     }
 
@@ -297,10 +301,14 @@ public:
     }
 
     /// Returns the initialized contiguous storage as a raw pointer.
-    constexpr auto data() noexcept [[clang::lifetimebound]] { return begin(); }
+    constexpr auto data() noexcept [[clang::lifetimebound]] {
+        return m_buf.ptr.as_mut_ptr().as_raw_ptr();
+    }
 
     /// Returns the initialized contiguous storage as a raw pointer.
-    constexpr auto data() const noexcept [[clang::lifetimebound]] { return begin(); }
+    constexpr auto data() const noexcept [[clang::lifetimebound]] {
+        return m_buf.ptr.as_ptr().as_raw_ptr();
+    }
 
     /// Returns writable spare capacity after the initialized range.
     ///
@@ -327,20 +335,16 @@ public:
         m_buf.shrink_to_fit(m_len);
 
         auto length = m_len;
-        auto raw = length == usize() ? NonNull<T>::dangling().as_mut_ptr()
-                                     : m_buf.ptr.as_mut_ptr();
+        auto raw = length == usize() ? NonNull<T>::dangling().as_mut_ptr() : m_buf.ptr.as_mut_ptr();
         m_buf.reset_ptr();
         m_len = usize();
-        return Box<T[]>::from_raw(
-            mut_ptr<T[]>::from_raw_parts(raw.as_raw_ptr(), length));
+        return Box<T[]>::from_raw(mut_ptr<T[]>::from_raw_parts(raw.as_raw_ptr(), length));
     }
 
     /// Constructs an element in-place at the back of the vector.
     template<typename... Args>
     constexpr decltype(auto) emplace_back(Args&&... args) {
-        if (m_len == m_buf.cap) {
-            m_buf.grow(m_buf.cap == usize() ? usize(4) : m_buf.cap * usize(2), m_len);
-        }
+        if (m_len == m_buf.cap) reserve(usize(1));
         auto slot = m_buf.ptr.as_mut_ptr().add(m_len);
         rstd::ptr_::construct(slot, rstd::forward<Args>(args)...);
         ++m_len;
@@ -394,7 +398,7 @@ public:
             auto const source_address = reinterpret_cast<uintptr_t>(values.as_raw_ptr());
             if (source_address >= buffer_address) {
                 auto const offset_bytes = source_address - buffer_address;
-                using Storage = typename mut_ptr<T>::storage_type;
+                using Storage           = typename mut_ptr<T>::storage_type;
                 if (offset_bytes % sizeof(Storage) == 0) {
                     source_offset = offset_bytes / sizeof(Storage);
                     source_is_self =
@@ -413,9 +417,8 @@ public:
 
         auto destination = m_buf.ptr.as_mut_ptr().add(m_len);
         if constexpr (Impled<T, rstd::Copy>) {
-            rstd::ptr_::copy_nonoverlapping(ptr<T>::from_raw_parts(values.as_raw_ptr()),
-                                            destination,
-                                            values.len());
+            rstd::ptr_::copy_nonoverlapping(
+                ptr<T>::from_raw_parts(values.as_raw_ptr()), destination, values.len());
             m_len += values.len();
         } else {
             for (rstd::size_t index = 0; index < values.len().to_primitive(); ++index) {
@@ -526,8 +529,7 @@ public:
             auto read_ptr = values.add(usize(read));
             if (predicate(read_ptr.as_ptr().get())) {
                 if (write != read) {
-                    rstd::ptr_::construct(values.add(usize(write)),
-                                          rstd::ptr_::move_out(read_ptr));
+                    rstd::ptr_::construct(values.add(usize(write)), rstd::ptr_::move_out(read_ptr));
                     rstd::ptr_::destroy(read_ptr);
                 }
                 ++write;
@@ -604,20 +606,16 @@ public:
     }
 
     /// Returns a mutable iterator to the beginning.
-    constexpr auto begin() noexcept [[clang::lifetimebound]] {
-        return m_buf.ptr.as_mut_ptr().as_raw_ptr();
-    }
+    constexpr auto begin() noexcept [[clang::lifetimebound]] -> mut_ptr<T> { return as_mut_ptr(); }
     /// Returns a mutable iterator to the end.
-    constexpr auto end() noexcept [[clang::lifetimebound]] {
-        return m_buf.ptr.as_mut_ptr().as_raw_ptr() + m_len.to_primitive();
+    constexpr auto end() noexcept [[clang::lifetimebound]] -> mut_ptr<T> {
+        return as_mut_ptr().add(m_len);
     }
     /// Returns a const iterator to the beginning.
-    constexpr auto begin() const noexcept [[clang::lifetimebound]] {
-        return m_buf.ptr.as_ptr().as_raw_ptr();
-    }
+    constexpr auto begin() const noexcept [[clang::lifetimebound]] -> ptr<T> { return as_ptr(); }
     /// Returns a const iterator to the end.
-    constexpr auto end() const noexcept [[clang::lifetimebound]] {
-        return m_buf.ptr.as_ptr().as_raw_ptr() + m_len.to_primitive();
+    constexpr auto end() const noexcept [[clang::lifetimebound]] -> ptr<T> {
+        return as_ptr().add(m_len);
     }
 
     using IntoIter = VecIntoIter<T>;
@@ -637,9 +635,13 @@ public:
 /// Owning iterator over a `Vec<T>`, yielding elements by value.
 export template<typename T>
 struct VecIntoIter : rstd::DefaultInClass<VecIntoIter<T>, rstd::iter::Iterator> {
-    using Item = T;
-    Vec<T> vec;
-    usize  idx;
+    using Item                                = T;
+    static constexpr bool PROVEN_DOUBLE_ENDED = true;
+    static constexpr bool PROVEN_EXACT_SIZE   = true;
+    static constexpr bool PROVEN_FUSED        = true;
+    static constexpr bool PROVEN_TRUSTED_LEN  = true;
+    Vec<T>                vec;
+    usize                 idx;
 
     explicit VecIntoIter(Vec<T> v): vec(rstd::move(v)), idx() {}
 
@@ -662,6 +664,86 @@ struct VecIntoIter : rstd::DefaultInClass<VecIntoIter<T>, rstd::iter::Iterator> 
 
     auto len() const -> usize { return vec.len() - idx; }
 };
+
+namespace details
+{
+
+template<typename T, typename I>
+auto from_trusted_iter(I iterator) -> Vec<T> {
+    auto hint  = rstd::as<rstd::iter::Iterator>(iterator).size_hint();
+    auto upper = hint.template get<1>();
+    if (upper.is_none()) rstd::panic { "Vec capacity overflow" };
+    debug_assert(hint.template get<0>() == *upper);
+
+    auto result = Vec<T>::with_capacity(*upper);
+    for (auto item = rstd::as<rstd::iter::Iterator>(iterator).next(); item.is_some();
+         item      = rstd::as<rstd::iter::Iterator>(iterator).next()) {
+        result.push(rstd::move(*item));
+    }
+    return result;
+}
+
+template<typename T, typename I>
+auto from_iter(I iterator) -> Vec<T> {
+    if constexpr (rstd::Impled<I, rstd::iter::TrustedLen>) {
+        return from_trusted_iter<T>(rstd::move(iterator));
+    } else {
+        auto first = rstd::as<rstd::iter::Iterator>(iterator).next();
+        if (first.is_none()) return Vec<T>::make();
+
+        auto lower =
+            rstd::as<rstd::iter::Iterator>(iterator).size_hint().template get<0>().saturating_add(
+                usize(1));
+        auto initial_capacity =
+            lower < RawVec<T>::MIN_NON_ZERO_CAP ? RawVec<T>::MIN_NON_ZERO_CAP : lower;
+        auto result = Vec<T>::with_capacity(initial_capacity);
+        result.push(rstd::move(*first));
+
+        for (auto item = rstd::as<rstd::iter::Iterator>(iterator).next(); item.is_some();
+             item      = rstd::as<rstd::iter::Iterator>(iterator).next()) {
+            if (result.len() == result.capacity()) {
+                auto additional = rstd::as<rstd::iter::Iterator>(iterator)
+                                      .size_hint()
+                                      .template get<0>()
+                                      .saturating_add(usize(1));
+                result.reserve(additional);
+            }
+            result.push(rstd::move(*item));
+        }
+        return result;
+    }
+}
+
+template<typename T>
+auto from_iter(VecIntoIter<T> iterator) -> Vec<T> {
+    auto remaining = iterator.len();
+    if (iterator.idx == usize()) return rstd::move(iterator.vec);
+
+    if (remaining >= iterator.vec.capacity() / usize(2)) {
+        auto pointer = iterator.vec.as_mut_ptr();
+        for (auto index = usize(); index < iterator.idx; ++index) {
+            rstd::ptr_::destroy(pointer.add(index));
+        }
+        for (auto index = usize(); index < remaining; ++index) {
+            auto source      = pointer.add(iterator.idx + index);
+            auto destination = pointer.add(index);
+            auto value       = rstd::ptr_::move_out(source);
+            rstd::ptr_::construct(destination, rstd::move(value));
+            rstd::ptr_::destroy(source);
+        }
+        iterator.vec.set_len_unchecked(remaining);
+        return rstd::move(iterator.vec);
+    }
+
+    auto result = Vec<T>::make();
+    result.reserve(remaining);
+    for (auto item = iterator.next(); item.is_some(); item = iterator.next()) {
+        result.push(rstd::move(*item));
+    }
+    return result;
+}
+
+} // namespace details
 
 } // namespace alloc::vec
 
@@ -693,20 +775,34 @@ struct Impl<T, ::alloc::vec::Vec<A>> : ImplBase<::alloc::vec::Vec<A>> {
     }
 };
 
-// collect<Vec<A>>() builds a Vec by draining any iterator of A.
 template<typename A>
 struct Impl<iter::FromIterator<A>, ::alloc::vec::Vec<A>> : ImplBase<::alloc::vec::Vec<A>> {
     template<typename It>
     static auto from_iter(It it) -> ::alloc::vec::Vec<A> {
-        auto vec = ::alloc::vec::Vec<A>::make();
-        for (auto x = it.next(); x.is_some(); x = it.next()) vec.push(rstd::move(*x));
-        return vec;
+        return ::alloc::vec::details::from_iter<A>(rstd::move(it));
     }
 };
 
 template<typename A>
 struct Impl<iter::IntoIterator, ::alloc::vec::Vec<A>> : ImplBase<::alloc::vec::Vec<A>> {
-    auto into_iter() -> ::alloc::vec::VecIntoIter<A> { return this->self().into_iter(); }
+    using IntoIter = ::alloc::vec::VecIntoIter<A>;
+
+    auto into_iter() -> IntoIter { return this->self().into_iter(); }
+};
+
+template<typename A>
+struct Impl<iter::IntoIterator, ref<::alloc::vec::Vec<A>>> : ImplBase<ref<::alloc::vec::Vec<A>>> {
+    using IntoIter = iter::SliceIter<A>;
+
+    auto into_iter() -> IntoIter { return this->self().as_raw_ptr()->iter(); }
+};
+
+template<typename A>
+struct Impl<iter::IntoIterator, mut_ref<::alloc::vec::Vec<A>>>
+    : ImplBase<mut_ref<::alloc::vec::Vec<A>>> {
+    using IntoIter = iter::SliceIterMut<A>;
+
+    auto into_iter() -> IntoIter { return this->self().as_raw_ptr()->iter_mut(); }
 };
 
 } // namespace rstd
