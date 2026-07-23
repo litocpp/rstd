@@ -340,6 +340,11 @@ target_compile_options(
   rstd_compile_fail_lifetimebound_temporary_string_view
   PRIVATE "$<$<COMPILE_LANG_AND_ID:CXX,Clang>:-Werror=dangling>")
 add_rstd_compile_fail(
+  rstd_compile_fail_lifetimebound_temporary_mut_string_view
+  compile_fail/lifetimebound_temporary_mut_string_view.cpp
+  LifetimeBound.TemporaryMutStringView
+  "rvalue.*lvalue ref-qualifier|expects an lvalue")
+add_rstd_compile_fail(
   rstd_compile_fail_lifetimebound_temporary_array
   compile_fail/lifetimebound_temporary_array.cpp
   LifetimeBound.TemporaryArray

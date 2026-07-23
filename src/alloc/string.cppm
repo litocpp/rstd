@@ -111,6 +111,10 @@ public:
         return rstd::from_utf8_unchecked(vec.as_slice());
     }
 
+    constexpr auto as_mut_str() & noexcept [[clang::lifetimebound]] -> mut_ref<str> {
+        return rstd::from_utf8_unchecked_mut(vec.as_mut_slice().as_mut_ref());
+    }
+
     /// Returns the byte length of this string.
     constexpr auto len() const noexcept -> usize { return vec.len(); }
     /// Returns `true` if this string contains no bytes.
@@ -232,6 +236,20 @@ using ::alloc::string::ToString;
 
 namespace rstd
 {
+template<>
+struct Impl<ops::Deref, String> : ImplBase<String> {
+    using Target = str;
+
+    auto deref() const noexcept -> ref<Target> { return this->self().as_str(); }
+};
+
+template<>
+struct Impl<ops::DerefMut, String> : ImplBase<String> {
+    auto deref_mut() noexcept -> mut_ref<ops::deref_target_t<String>> {
+        return this->self().as_mut_str();
+    }
+};
+
 template<>
 struct Impl<hash::Hash, String> : ImplBase<String> {
     template<typename H>

@@ -80,8 +80,6 @@ template<>
 struct ref<ffi::OsStr> : ref_base<ref<ffi::OsStr>, byte[], false> {
     USE_TRAIT(ref)
 
-    using Target = ffi::OsStr;
-
     byte const* p { nullptr };
     usize       length {};
 
@@ -158,7 +156,7 @@ struct ref<ffi::OsStr> : ref_base<ref<ffi::OsStr>, byte[], false> {
 
     constexpr operator bool() const { return length != usize {} && p != nullptr; }
 
-    constexpr auto deref() const noexcept -> ref<Target> { return *this; }
+    constexpr auto deref() const noexcept -> ref<ffi::OsStr> { return *this; }
 
 private:
     constexpr ref(byte const* data [[clang::lifetimebound]], usize len) noexcept

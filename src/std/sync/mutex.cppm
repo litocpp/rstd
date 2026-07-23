@@ -27,8 +27,6 @@ class MutexGuard {
 public:
     USE_TRAIT(MutexGuard)
 
-    using Target = T;
-
     MutexGuard(sys_mutex_t* l, T* d): m_lock(l), m_data(d) { m_lock->lock(); }
 
     ~MutexGuard() {
@@ -82,3 +80,22 @@ public:
 };
 
 } // namespace rstd::sync
+
+namespace rstd
+{
+
+template<typename T>
+struct Impl<ops::Deref, sync::MutexGuard<T>> : ImplBase<sync::MutexGuard<T>> {
+    using Target = T;
+
+    auto deref() const noexcept -> ref<Target> { return this->self().deref(); }
+};
+
+template<typename T>
+struct Impl<ops::DerefMut, sync::MutexGuard<T>> : ImplBase<sync::MutexGuard<T>> {
+    auto deref_mut() noexcept -> mut_ref<ops::deref_target_t<sync::MutexGuard<T>>> {
+        return this->self().deref_mut();
+    }
+};
+
+} // namespace rstd

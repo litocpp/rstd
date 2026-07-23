@@ -242,8 +242,6 @@ template<>
 struct ref<path::Path> : ref_base<ref<path::Path>, byte[], false> {
     USE_TRAIT(ref)
 
-    using Target = path::Path;
-
     byte const* p { nullptr };
     usize       length {};
 
@@ -400,7 +398,7 @@ struct ref<path::Path> : ref_base<ref<path::Path>, byte[], false> {
 
     constexpr operator bool() const { return length != usize {} && p != nullptr; }
 
-    constexpr auto deref() const noexcept -> ref<Target> { return *this; }
+    constexpr auto deref() const noexcept -> ref<path::Path> { return *this; }
 };
 
 } // namespace rstd

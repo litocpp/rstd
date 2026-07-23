@@ -485,8 +485,8 @@ class Rc final : public DefaultInClass<Rc<T>, Clone> {
 public:
     USE_TRAIT(Rc)
 
-    using Target        = RcTarget<T>;
-    using value_t       = mtp::rm_ext<Target>;
+    using Pointee       = RcTarget<T>;
+    using value_t       = mtp::rm_ext<Pointee>;
     using const_value_t = mtp::add_const<value_t>;
 
     Rc() noexcept = default;
@@ -517,17 +517,17 @@ public:
     }
 
     explicit Rc(T* pointer)
-        requires Impled<Target, Sized>
+        requires Impled<Pointee, Sized>
         : Rc(pointer, mtp::default_delete<T>()) {}
 
     template<typename Deleter>
     Rc(T* pointer, Deleter&& deleter)
-        requires Impled<Target, Sized>
+        requires Impled<Pointee, Sized>
         : self(rc_external_data(pointer, rstd::forward<Deleter>(deleter))) {}
 
     template<typename Deleter, typename AllocatorType>
     Rc(T* pointer, Deleter&& deleter, AllocatorType allocator)
-        requires Impled<Target, Sized>
+        requires Impled<Pointee, Sized>
         : self(rc_external_data(pointer, rstd::forward<Deleter>(deleter), rstd::move(allocator))) {}
 
     auto clone() const noexcept(RC_COPY_NOEXCEPT) -> Rc {
@@ -562,7 +562,7 @@ public:
 
     auto size() const noexcept -> usize {
         if (self.header == nullptr) return usize();
-        if constexpr (mtp::DSTArray<Target>) {
+        if constexpr (mtp::DSTArray<Pointee>) {
             return self.metadata;
         } else {
             return usize(1);
@@ -571,24 +571,24 @@ public:
 
     explicit operator bool() const noexcept { return self.header != nullptr; }
 
-    auto as_ptr() const noexcept -> mut_ptr<Target> { return rc_pointer(self); }
+    auto as_ptr() const noexcept -> mut_ptr<Pointee> { return rc_pointer(self); }
 
     auto get() noexcept -> value_t*
-        requires(! mtp::is_const<T>) && (! mtp::DST<Target> || mtp::DSTArray<Target>)
+        requires(! mtp::is_const<T>) && (! mtp::DST<Pointee> || mtp::DSTArray<Pointee>)
     {
         return self.header == nullptr ? nullptr : as_ptr().as_raw_ptr();
     }
 
     auto get() const noexcept -> const_value_t*
-        requires(! mtp::DST<Target> || mtp::DSTArray<Target>)
+        requires(! mtp::DST<Pointee> || mtp::DSTArray<Pointee>)
     {
         return self.header == nullptr ? nullptr : as_ptr().as_raw_ptr();
     }
 
-    auto deref() const noexcept -> ref<Target> { return as_ptr().as_ref(); }
+    auto deref() const noexcept -> ref<Pointee> { return as_ptr().as_ref(); }
 
     auto to_const() const -> Rc<const T>
-        requires(! mtp::is_const<T>) && Impled<Target, Sized>
+        requires(! mtp::is_const<T>) && Impled<Pointee, Sized>
     {
         if (self.header != nullptr) self.header->inc_strong();
         return RcMakeHelper::make<const T>(rc_data<const T>(self.header, rc_pointer(self)));
@@ -669,3 +669,15 @@ void swap(Rc<T>& left, Rc<T>& right) noexcept {
 }
 
 } // namespace alloc::rc
+
+namespace rstd
+{
+
+template<typename T>
+struct Impl<ops::Deref, ::alloc::rc::Rc<T>> : ImplBase<::alloc::rc::Rc<T>> {
+    using Target = RcTarget<T>;
+
+    auto deref() const noexcept -> ref<Target> { return this->self().deref(); }
+};
+
+} // namespace rstd

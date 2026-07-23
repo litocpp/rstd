@@ -351,7 +351,6 @@ struct ref : ref_base<ref<T>, T, false> {
 
     USE_TRAIT(ref)
 
-    using Target       = T;
     using storage_type = ptr_detail::storage_type_t<T>;
 
     storage_type const* p { nullptr };
@@ -373,7 +372,6 @@ struct ref<T> : ref_base<ref<T>, T, false> {
 
     USE_TRAIT(ref)
 
-    using Target        = T;
     using element_type  = mtp::rm_ext<T>;
     using storage_type  = ptr_detail::storage_type_t<T>;
     using value_type    = element_type;
@@ -418,7 +416,6 @@ struct mut_ref : ref_base<mut_ref<T>, T, true> {
 
     USE_TRAIT(mut_ref)
 
-    using Target       = T;
     using storage_type = ptr_detail::storage_type_t<T>;
 
     storage_type* p { nullptr };
@@ -434,7 +431,6 @@ template<>
 struct mut_ref<u8> : ref_base<mut_ref<u8>, u8, true> {
     USE_TRAIT(mut_ref)
 
-    using Target       = u8;
     using storage_type = byte;
 
     byte* p { nullptr };
@@ -477,7 +473,6 @@ struct mut_ref<T> : ref_base<mut_ref<T>, T, true> {
 
     USE_TRAIT(mut_ref)
 
-    using Target       = T;
     using element_type = mtp::rm_ext<T>;
     using storage_type = ptr_detail::storage_type_t<T>;
     using value_type   = element_type;
@@ -510,6 +505,27 @@ struct mut_ref<T> : ref_base<mut_ref<T>, T, true> {
 
     constexpr auto end() const noexcept [[clang::lifetimebound]] -> ptr<element_type> {
         return begin().add(length);
+    }
+};
+
+template<typename T>
+struct Impl<ops::Deref, ref<T>> : ImplBase<ref<T>> {
+    using Target = T;
+
+    constexpr auto deref() const noexcept -> ref<Target> { return this->self().deref(); }
+};
+
+template<typename T>
+struct Impl<ops::Deref, mut_ref<T>> : ImplBase<mut_ref<T>> {
+    using Target = T;
+
+    constexpr auto deref() const noexcept -> ref<Target> { return this->self().deref(); }
+};
+
+template<typename T>
+struct Impl<ops::DerefMut, mut_ref<T>> : ImplBase<mut_ref<T>> {
+    constexpr auto deref_mut() noexcept -> mut_ref<ops::deref_target_t<mut_ref<T>>> {
+        return this->self().deref_mut();
     }
 };
 

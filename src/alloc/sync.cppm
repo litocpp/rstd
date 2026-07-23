@@ -176,7 +176,6 @@ class Arc : public DefaultInClass<Arc<T>, Clone> {
 public:
     USE_TRAIT(Arc)
 
-    using Target       = T;
     using element_type = T;
 
     constexpr Arc(const Arc&)            = delete;
@@ -391,3 +390,22 @@ auto Arc<T>::downgrade() const noexcept -> Weak<T> {
 }
 
 } // namespace alloc::sync
+
+namespace rstd
+{
+
+template<typename T>
+struct Impl<ops::Deref, ::alloc::sync::Arc<T>> : ImplBase<::alloc::sync::Arc<T>> {
+    using Target = T;
+
+    auto deref() const noexcept -> ref<Target> { return this->self().deref(); }
+};
+
+template<typename T>
+struct Impl<ops::DerefMut, ::alloc::sync::Arc<T>> : ImplBase<::alloc::sync::Arc<T>> {
+    auto deref_mut() const noexcept -> mut_ref<ops::deref_target_t<::alloc::sync::Arc<T>>> {
+        return this->self().deref_mut();
+    }
+};
+
+} // namespace rstd

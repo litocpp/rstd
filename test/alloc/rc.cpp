@@ -69,8 +69,8 @@ static_assert(sizeof(Weak<int[]>) == sizeof(rstd::mut_ptr<int[]>));
 static_assert(sizeof(RcDyn) == sizeof(RcDynPtr));
 static_assert(sizeof(RcDynWeak) == sizeof(RcDynPtr));
 static_assert(sizeof(RcDynRaw) == sizeof(RcDynPtr));
-static_assert(CanMakeRc<RcDyn::Target, RcDynPayload>);
-static_assert(! CanMakeRc<RcDyn::Target, RcDynNoTrait>);
+static_assert(CanMakeRc<rstd::ops::deref_target_t<RcDyn>, RcDynPayload>);
+static_assert(! CanMakeRc<rstd::ops::deref_target_t<RcDyn>, RcDynNoTrait>);
 
 struct TestStruct {
     int   value;

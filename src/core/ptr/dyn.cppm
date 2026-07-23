@@ -191,7 +191,6 @@ export using ptr_::dyn;
 
 template<typename A>
 struct ref<dyn<A>> : dyn_ptr_base<A const> {
-    using Target     = dyn<A>;
     using delegate_t = dyn_delegate<A const>;
 
     static auto from_raw_parts(delegate_t::ptr_t           p [[clang::lifetimebound]],
@@ -199,7 +198,7 @@ struct ref<dyn<A>> : dyn_ptr_base<A const> {
         return { { { .p = p, .vtable = v } } };
     }
 
-    constexpr auto deref() const noexcept -> ref<Target> { return *this; }
+    constexpr auto deref() const noexcept -> ref<dyn<A>> { return *this; }
 };
 template<typename A>
 struct ptr<dyn<A>> : dyn_ptr_base<A const> {
@@ -212,7 +211,6 @@ struct ptr<dyn<A>> : dyn_ptr_base<A const> {
 
 template<typename A>
 struct mut_ref<dyn<A>> : dyn_ptr_base<A> {
-    using Target     = dyn<A>;
     using delegate_t = dyn_delegate<A>;
 
     static auto from_raw_parts(delegate_t::ptr_t           p [[clang::lifetimebound]],
@@ -220,8 +218,8 @@ struct mut_ref<dyn<A>> : dyn_ptr_base<A> {
         return { { { .p = p, .vtable = v } } };
     }
 
-    constexpr auto deref() const noexcept -> ref<Target> { return this->as_ref(); }
-    constexpr auto deref_mut() noexcept -> mut_ref<Target> { return *this; }
+    constexpr auto deref() const noexcept -> ref<dyn<A>> { return this->as_ref(); }
+    constexpr auto deref_mut() noexcept -> mut_ref<dyn<A>> { return *this; }
 };
 template<typename A>
 struct mut_ptr<dyn<A>> : dyn_ptr_base<A> {

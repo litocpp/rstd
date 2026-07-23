@@ -201,8 +201,6 @@ class Vec {
 public:
     USE_TRAIT(Vec)
 
-    using Target = T[];
-
     /// Creates an empty `Vec` with no allocation.
     constexpr Vec(): m_buf(), m_len() {}
 
@@ -305,11 +303,11 @@ public:
         return mut_ptr<T[]>::from_raw_parts(m_buf.ptr.as_mut_ptr().as_raw_ptr(), m_len);
     }
 
-    constexpr auto deref() const noexcept [[clang::lifetimebound]] -> ref<Target> {
+    constexpr auto deref() const noexcept [[clang::lifetimebound]] -> ref<T[]> {
         return as_slice();
     }
 
-    constexpr auto deref_mut() noexcept [[clang::lifetimebound]] -> mut_ref<Target> {
+    constexpr auto deref_mut() noexcept [[clang::lifetimebound]] -> mut_ref<T[]> {
         return as_mut_slice().as_mut_ref();
     }
 
@@ -1063,6 +1061,20 @@ auto from_iter(VecIntoIter<T> iterator) -> Vec<T> {
 
 namespace rstd
 {
+template<typename A>
+struct Impl<ops::Deref, ::alloc::vec::Vec<A>> : ImplBase<::alloc::vec::Vec<A>> {
+    using Target = A[];
+
+    constexpr auto deref() const noexcept -> ref<Target> { return this->self().deref(); }
+};
+
+template<typename A>
+struct Impl<ops::DerefMut, ::alloc::vec::Vec<A>> : ImplBase<::alloc::vec::Vec<A>> {
+    constexpr auto deref_mut() noexcept -> mut_ref<ops::deref_target_t<::alloc::vec::Vec<A>>> {
+        return this->self().deref_mut();
+    }
+};
+
 template<typename U, mtp::same_as<cmp::PartialEq<::alloc::vec::Vec<U>>> T>
 struct Impl<T, ::alloc::vec::Vec<U>> : DefaultInImpl<T, ::alloc::vec::Vec<U>> {
     auto eq(const ::alloc::vec::Vec<U>& other) const noexcept -> bool {

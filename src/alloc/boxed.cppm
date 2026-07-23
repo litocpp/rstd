@@ -57,8 +57,6 @@ class Box {
 public:
     USE_TRAIT(Box)
 
-    using Target = T;
-
     ~Box() { drop(); }
     Box(const Box&) noexcept            = delete;
     Box& operator=(const Box&) noexcept = delete;
@@ -262,6 +260,20 @@ public:
 using ::alloc::boxed::Box;
 namespace rstd
 {
+
+template<typename T>
+struct Impl<ops::Deref, ::alloc::boxed::Box<T>> : ImplBase<::alloc::boxed::Box<T>> {
+    using Target = T;
+
+    constexpr auto deref() const noexcept -> ref<Target> { return this->self().deref(); }
+};
+
+template<typename T>
+struct Impl<ops::DerefMut, ::alloc::boxed::Box<T>> : ImplBase<::alloc::boxed::Box<T>> {
+    constexpr auto deref_mut() noexcept -> mut_ref<ops::deref_target_t<::alloc::boxed::Box<T>>> {
+        return this->self().deref_mut();
+    }
+};
 
 template<typename T>
 struct Impl<iter::IntoIterator, ::alloc::boxed::Box<T[]>> : ImplBase<::alloc::boxed::Box<T[]>> {

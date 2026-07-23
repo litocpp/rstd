@@ -7,8 +7,29 @@ using rstd::to_string;
 using namespace rstd::prelude;
 using namespace rstd::literals;
 
+template<typename T>
+concept HasArrowAsciiLowercase = requires(T& value) { value->make_ascii_lowercase(); };
+
+template<typename T>
+concept HasDirectAsciiLowercase = requires(T& value) { value.make_ascii_lowercase(); };
+
 static_assert(
     rstd::mtp::same_as<decltype(rstd::mtp::declval<String const&>().begin()), rstd::ptr<rstd::u8>>);
+static_assert(rstd::mtp::same_as<rstd::ops::deref_target_t<String>, rstd::str>);
+static_assert(rstd::Impled<String, rstd::ops::Deref>);
+static_assert(rstd::Impled<String, rstd::ops::DerefMut>);
+static_assert(HasArrowAsciiLowercase<String>);
+static_assert(! HasArrowAsciiLowercase<String const>);
+static_assert(! HasDirectAsciiLowercase<String>);
+static_assert(
+    rstd::mtp::same_as<decltype(*rstd::mtp::declval<String&>()), rstd::mut_ref<rstd::str>>);
+static_assert(
+    rstd::mtp::same_as<decltype(*rstd::mtp::declval<String const&>()), rstd::ref<rstd::str>>);
+static_assert(rstd::mtp::same_as<decltype(rstd::mtp::declval<String&>().as_mut_str()),
+                                 rstd::mut_ref<rstd::str>>);
+static_assert(requires(String const& value) {
+    { value->size() } -> rstd::mtp::same_as<usize>;
+});
 
 TEST(String, ToString) {
     int a = 10;
@@ -41,6 +62,32 @@ TEST(String, RangeForYieldsUtf8CodeUnits) {
     ASSERT_EQ(bytes.len(), usize(4));
     EXPECT_EQ(bytes[usize()], u8('A'));
     EXPECT_EQ(bytes[usize(1)], u8(0xe5));
+}
+
+TEST(String, DerefMutMakesAsciiLowercaseInPlace) {
+    auto text     = String::make("GRÜßE, JÜRGEN ❤\0Z"_str);
+    auto data     = text.data();
+    auto length   = text.len();
+    auto capacity = text.capacity();
+
+    text->make_ascii_lowercase();
+
+    EXPECT_EQ(text, "grÜße, jÜrgen ❤\0z"_str);
+    EXPECT_EQ(text.data(), data);
+    EXPECT_EQ(text.len(), length);
+    EXPECT_EQ(text.capacity(), capacity);
+    EXPECT_TRUE(rstd::str_::validate_utf8(rstd::str_::as_bytes(text.as_str())).is_ok());
+
+    text->make_ascii_lowercase();
+    EXPECT_EQ(text, "grÜße, jÜrgen ❤\0z"_str);
+
+    auto view = text.as_mut_str();
+    view.make_ascii_lowercase();
+    EXPECT_EQ(view.as_ref(), text.as_str());
+
+    auto empty = String::make();
+    empty->make_ascii_lowercase();
+    EXPECT_TRUE(empty.is_empty());
 }
 
 TEST(String, BorrowedComparisonUsesAllBytes) {

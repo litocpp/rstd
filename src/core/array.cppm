@@ -86,7 +86,6 @@ public:
     USE_TRAIT(array)
 
     using value_type = T;
-    using Target     = T[];
     using IntoIter   = ArrayIntoIter<T, N>;
 
     static constexpr rstd::size_t LENGTH = N;
@@ -154,10 +153,10 @@ public:
         return mut_ref<T[]>::from_raw_parts(data(), usize(N));
     }
 
-    constexpr auto deref() const noexcept [[clang::lifetimebound]] -> ref<Target> {
+    constexpr auto deref() const noexcept [[clang::lifetimebound]] -> ref<T[]> {
         return as_slice();
     }
-    constexpr auto deref_mut() noexcept [[clang::lifetimebound]] -> mut_ref<Target> {
+    constexpr auto deref_mut() noexcept [[clang::lifetimebound]] -> mut_ref<T[]> {
         return as_mut_slice();
     }
 
@@ -348,6 +347,20 @@ struct Impl<iter::IntoIterator, array<T, N>> : ImplBase<array<T, N>> {
     using IntoIter = ArrayIntoIter<T, N>;
 
     auto into_iter() -> IntoIter { return this->self().into_iter(); }
+};
+
+template<typename T, rstd::size_t N>
+struct Impl<ops::Deref, array<T, N>> : ImplBase<array<T, N>> {
+    using Target = T[];
+
+    constexpr auto deref() const noexcept -> ref<Target> { return this->self().deref(); }
+};
+
+template<typename T, rstd::size_t N>
+struct Impl<ops::DerefMut, array<T, N>> : ImplBase<array<T, N>> {
+    constexpr auto deref_mut() noexcept -> mut_ref<ops::deref_target_t<array<T, N>>> {
+        return this->self().deref_mut();
+    }
 };
 
 template<typename T, rstd::size_t N>

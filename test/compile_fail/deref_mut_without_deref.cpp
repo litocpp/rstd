@@ -1,12 +1,10 @@
 import rstd;
 
 struct MutOnly {
-    using Target = int;
-
     int* value;
 
-    auto deref_mut() noexcept -> rstd::mut_ref<Target> {
-        return rstd::mut_ref<Target>::from_raw_parts(value);
+    auto deref_mut() noexcept -> rstd::mut_ref<int> {
+        return rstd::mut_ref<int>::from_raw_parts(value);
     }
 };
 

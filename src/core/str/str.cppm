@@ -32,11 +32,11 @@ struct Impl<ptr_::Pointee, str_::Str> {
 };
 
 template<>
-struct ref<str_::Str> : ref_base<ref<str_::Str>, byte[], false> {
+struct ref<str_::Str> {
 public:
     USE_TRAIT(ref)
 
-    using Target = str_::Str;
+    using value_type = byte const;
 
     byte const* p { nullptr };
     usize       length {};
@@ -52,6 +52,8 @@ public:
     }
 
     constexpr auto size() const { return length; }
+    constexpr auto len() const noexcept -> usize { return length; }
+    constexpr auto is_empty() const noexcept -> bool { return length == usize(); }
     constexpr auto data() const { return p; }
     constexpr auto operator[](usize index) const noexcept -> u8 {
         return u8::from_byte(p[index.to_primitive()]);
@@ -60,9 +62,67 @@ public:
     constexpr auto begin() const -> ptr<u8> { return ptr<u8>::from_raw_parts(p); }
     constexpr auto end() const -> ptr<u8> { return begin().add(length); }
 
+    constexpr auto     metadata() const noexcept -> usize { return length; }
     constexpr explicit operator bool() const { return p != nullptr; }
 
-    constexpr auto deref() const noexcept -> ref<Target> { return *this; }
+    constexpr auto get() const noexcept -> Self { return *this; }
+    constexpr auto deref() const noexcept -> ref<str_::Str> { return *this; }
+    constexpr auto operator->() const noexcept -> Self const* { return this; }
+};
+
+template<>
+class mut_ref<str_::Str> {
+public:
+    USE_TRAIT(mut_ref)
+
+    constexpr mut_ref() noexcept = default;
+
+    static constexpr auto from_raw_parts_unchecked(byte* p [[clang::lifetimebound]],
+                                                   usize length) noexcept -> Self {
+        Self result;
+        result.p_      = p;
+        result.length_ = length;
+        return result;
+    }
+
+    constexpr auto size() const noexcept -> usize { return length_; }
+    constexpr auto len() const noexcept -> usize { return length_; }
+    constexpr auto is_empty() const noexcept -> bool { return length_ == usize(); }
+    constexpr auto data() const noexcept -> byte const* { return p_; }
+    constexpr auto operator[](usize index) const noexcept -> u8 {
+        return u8::from_byte(p_[index.to_primitive()]);
+    }
+
+    constexpr auto begin() const noexcept -> ptr<u8> { return ptr<u8>::from_raw_parts(p_); }
+    constexpr auto end() const noexcept -> ptr<u8> { return begin().add(length_); }
+
+    constexpr auto     metadata() const noexcept -> usize { return length_; }
+    constexpr explicit operator bool() const noexcept { return p_ != nullptr; }
+
+    constexpr auto as_ref() const noexcept -> ref<str_::Str> {
+        return ref<str_::Str>::from_raw_parts_unchecked(p_, length_);
+    }
+
+    constexpr auto get() const noexcept -> ref<str_::Str> { return as_ref(); }
+    constexpr auto get_mut() noexcept -> Self { return *this; }
+    constexpr auto deref() const noexcept -> ref<str_::Str> { return as_ref(); }
+    constexpr auto deref_mut() noexcept -> Self { return *this; }
+
+    constexpr auto operator->() noexcept -> Self* { return this; }
+    constexpr auto operator->() const noexcept -> Self const* { return this; }
+
+    constexpr void make_ascii_lowercase() noexcept {
+        for (rstd::size_t index = 0; index < length_.to_primitive(); ++index) {
+            auto const value = u8::from_byte(p_[index]).to_primitive();
+            if (value >= 'A' && value <= 'Z') {
+                p_[index] = byte { static_cast<rstd::uint8_t>(value + ('a' - 'A')) };
+            }
+        }
+    }
+
+private:
+    byte* p_ { nullptr };
+    usize length_ {};
 };
 
 /// Type alias for the unsized string type.
@@ -174,6 +234,11 @@ namespace rstd
 export constexpr auto from_utf8_unchecked(slice<u8> bytes [[clang::lifetimebound]]) noexcept
     -> ref<str> {
     return ref<str>::from_raw_parts_unchecked(bytes.as_raw_ptr(), bytes.len());
+}
+
+export constexpr auto from_utf8_unchecked_mut(mut_ref<u8[]> bytes [[clang::lifetimebound]]) noexcept
+    -> mut_ref<str> {
+    return mut_ref<str>::from_raw_parts_unchecked(bytes.as_raw_ptr(), bytes.len());
 }
 
 } // namespace rstd

@@ -6,6 +6,22 @@ import rstd;
 using namespace rstd::prelude;
 using namespace rstd::literals;
 
+template<typename T>
+concept HasMutableRawPointer = requires(T value) { value.as_mut_ptr(); };
+
+template<typename T>
+concept HasRawPointer = requires(T value) { value.as_raw_ptr(); };
+
+consteval bool mutable_str_ascii_lowercase_is_constexpr() {
+    rstd::byte storage[] = { rstd::byte { '@' }, rstd::byte { 'A' }, rstd::byte { 'Z' },
+                             rstd::byte { '[' }, rstd::byte { 'a' }, rstd::byte { 'z' } };
+    auto       bytes     = rstd::mut_ref<rstd::u8[]>::from_raw_parts(storage, usize(6));
+    auto       value     = rstd::from_utf8_unchecked_mut(bytes);
+    value.make_ascii_lowercase();
+    return value[usize()] == u8('@') && value[usize(1)] == u8('a') && value[usize(2)] == u8('z') &&
+           value[usize(3)] == u8('[') && value[usize(4)] == u8('a') && value[usize(5)] == u8('z');
+}
+
 inline constexpr auto BYTE_LITERAL = "a\0\xff"_b;
 inline constexpr auto BYTE_VIEW    = "a\0\xff"_bytes;
 inline constexpr auto UTF8_LITERAL = "é中😀"_str;
@@ -19,6 +35,14 @@ static_assert(BYTE_VIEW[usize(2)] == rstd::u8(0xff));
 static_assert(UTF8_LITERAL.size() == usize(9));
 static_assert(rstd::str_::is_char_boundary(UTF8_LITERAL, usize(1)) == false);
 static_assert(rstd::mtp::same_as<decltype(UTF8_LITERAL.begin()), rstd::ptr<rstd::u8>>);
+static_assert(mutable_str_ascii_lowercase_is_constexpr());
+static_assert(rstd::mtp::same_as<decltype(rstd::mtp::declval<rstd::mut_ref<rstd::str>>().data()),
+                                 rstd::byte const*>);
+static_assert(rstd::mtp::same_as<decltype(rstd::mtp::declval<rstd::mut_ref<rstd::str>>().begin()),
+                                 rstd::ptr<rstd::u8>>);
+static_assert(! HasMutableRawPointer<rstd::mut_ref<rstd::str>>);
+static_assert(! HasRawPointer<rstd::mut_ref<rstd::str>>);
+static_assert(! HasRawPointer<rstd::ref<rstd::str>>);
 
 TEST(Str, IsEmpty) {
     EXPECT_TRUE(rstd::str_::is_empty(""_str));
@@ -34,6 +58,24 @@ TEST(Str, RangeForYieldsUtf8CodeUnits) {
 TEST(Str, IsAscii) {
     EXPECT_TRUE(rstd::str_::is_ascii("hello"_str));
     EXPECT_FALSE(rstd::str_::is_ascii("héllo"_str));
+}
+
+TEST(Str, MutableViewMakesOnlyAsciiLowercase) {
+    rstd::byte storage[] = { rstd::byte { 'G' },  rstd::byte { 'R' },  rstd::byte { 0xc3 },
+                             rstd::byte { 0x9c }, rstd::byte { 0xc3 }, rstd::byte { 0x9f },
+                             rstd::byte { 'E' },  rstd::byte {},       rstd::byte { 'Z' } };
+    auto       bytes     = rstd::mut_ref<rstd::u8[]>::from_raw_parts(storage, usize(9));
+    auto       value     = rstd::from_utf8_unchecked_mut(bytes);
+
+    value->make_ascii_lowercase();
+
+    EXPECT_EQ(value.as_ref(), "grÜße\0z"_str);
+    EXPECT_EQ(value.size(), usize(9));
+    EXPECT_EQ(value.data(), storage);
+    EXPECT_EQ(storage[2], rstd::byte { 0xc3 });
+    EXPECT_EQ(storage[3], rstd::byte { 0x9c });
+    EXPECT_EQ(storage[4], rstd::byte { 0xc3 });
+    EXPECT_EQ(storage[5], rstd::byte { 0x9f });
 }
 
 TEST(Str, Contains) {

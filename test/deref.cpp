@@ -15,26 +15,22 @@ struct Payload {
 struct RefLike {
     USE_TRAIT(RefLike)
 
-    using Target = Payload;
-
     Payload* value;
 
-    auto deref() const noexcept -> rstd::ref<Target> {
-        return rstd::ref<Target>::from_raw_parts(value);
+    auto deref() const noexcept -> rstd::ref<Payload> {
+        return rstd::ref<Payload>::from_raw_parts(value);
     }
 
-    auto deref_mut() noexcept -> rstd::mut_ref<Target> {
-        return rstd::mut_ref<Target>::from_raw_parts(value);
+    auto deref_mut() noexcept -> rstd::mut_ref<Payload> {
+        return rstd::mut_ref<Payload>::from_raw_parts(value);
     }
 };
 
 struct SameNamedOnly {
-    using Target = Payload;
-
     Payload* value;
 
-    auto deref() const noexcept -> rstd::ref<Target> {
-        return rstd::ref<Target>::from_raw_parts(value);
+    auto deref() const noexcept -> rstd::ref<Payload> {
+        return rstd::ref<Payload>::from_raw_parts(value);
     }
 };
 
@@ -44,9 +40,83 @@ struct MissingTarget {
 
 } // namespace
 
+namespace deref_test
+{
+
+struct ExternalPayload {
+    int value;
+};
+
+struct ExternalRefLike {
+    USE_TRAIT(ExternalRefLike)
+
+    ExternalPayload* value;
+};
+
+} // namespace deref_test
+
+namespace rstd
+{
+
+template<>
+struct Impl<ops::Deref, ::RefLike> : ImplBase<::RefLike> {
+    using Target = ::Payload;
+
+    auto deref() const noexcept -> ref<Target> { return self().deref(); }
+};
+
+template<>
+struct Impl<ops::DerefMut, ::RefLike> : ImplBase<::RefLike> {
+    auto deref_mut() noexcept -> mut_ref<ops::deref_target_t<::RefLike>> {
+        return self().deref_mut();
+    }
+};
+
+template<>
+struct Impl<ops::Deref, deref_test::ExternalRefLike> : ImplBase<deref_test::ExternalRefLike> {
+    using Target = deref_test::ExternalPayload;
+
+    auto deref() const noexcept -> ref<Target> { return ref<Target>::from_raw_parts(self().value); }
+};
+
+template<>
+struct Impl<ops::DerefMut, deref_test::ExternalRefLike> : ImplBase<deref_test::ExternalRefLike> {
+    auto deref_mut() noexcept -> mut_ref<ops::deref_target_t<deref_test::ExternalRefLike>> {
+        return mut_ref<ops::deref_target_t<deref_test::ExternalRefLike>>::from_raw_parts(
+            self().value);
+    }
+};
+
+} // namespace rstd
+
+template<typename T>
+concept HasClassDerefTarget = requires { typename T::Target; };
+
+static_assert(! HasClassDerefTarget<RefLike>);
+static_assert(! HasClassDerefTarget<deref_test::ExternalRefLike>);
+static_assert(! HasClassDerefTarget<rstd::ref<Payload>>);
+static_assert(! HasClassDerefTarget<rstd::mut_ref<Payload>>);
+static_assert(! HasClassDerefTarget<rstd::array<int, 3>>);
+static_assert(! HasClassDerefTarget<::alloc::boxed::Box<int>>);
+static_assert(! HasClassDerefTarget<::alloc::vec::Vec<int>>);
+static_assert(! HasClassDerefTarget<::alloc::sync::Arc<int>>);
+static_assert(! HasClassDerefTarget<::alloc::rc::Rc<int>>);
+static_assert(! HasClassDerefTarget<::alloc::string::String>);
+static_assert(! HasClassDerefTarget<rstd::sync::MutexGuard<int>>);
+
+static_assert(rstd::mtp::same_as<rstd::ops::deref_target_t<rstd::ref<Payload>>, Payload>);
+static_assert(rstd::mtp::same_as<rstd::ops::deref_target_t<rstd::mut_ref<Payload>>, Payload>);
+static_assert(rstd::mtp::same_as<rstd::ops::deref_target_t<rstd::array<int, 3>>, int[]>);
+static_assert(rstd::mtp::same_as<rstd::ops::deref_target_t<::alloc::boxed::Box<int>>, int>);
+static_assert(rstd::mtp::same_as<rstd::ops::deref_target_t<::alloc::vec::Vec<int>>, int[]>);
+static_assert(rstd::mtp::same_as<rstd::ops::deref_target_t<::alloc::sync::Arc<int>>, int>);
+static_assert(rstd::mtp::same_as<rstd::ops::deref_target_t<::alloc::rc::Rc<int>>, int>);
+static_assert(rstd::mtp::same_as<rstd::ops::deref_target_t<::alloc::string::String>, rstd::str>);
+static_assert(rstd::mtp::same_as<rstd::ops::deref_target_t<rstd::sync::MutexGuard<int>>, int>);
+
 static_assert(rstd::Impled<RefLike, rstd::ops::Deref>);
 static_assert(rstd::Impled<RefLike, rstd::ops::DerefMut>);
-static_assert(rstd::Impled<SameNamedOnly, rstd::ops::Deref>);
+static_assert(! rstd::Impled<SameNamedOnly, rstd::ops::Deref>);
 static_assert(! rstd::Impled<MissingTarget, rstd::ops::Deref>);
 static_assert(rstd::Impled<rstd::ref<Payload>, rstd::ops::Deref>);
 static_assert(! rstd::Impled<rstd::ref<Payload>, rstd::ops::DerefMut>);
@@ -62,6 +132,10 @@ static_assert(rstd::Impled<rstd::ref<rstd::path::Path>, rstd::ops::Deref>);
 static_assert(rstd::Impled<rstd::ref<rstd::dyn<rstd::FnMut<void()>>>, rstd::ops::Deref>);
 static_assert(rstd::Impled<rstd::mut_ref<rstd::dyn<rstd::FnMut<void()>>>, rstd::ops::DerefMut>);
 static_assert(rstd::Impled<rstd::sync::MutexGuard<int>, rstd::ops::DerefMut>);
+static_assert(rstd::Impled<deref_test::ExternalRefLike, rstd::ops::Deref>);
+static_assert(rstd::Impled<deref_test::ExternalRefLike, rstd::ops::DerefMut>);
+static_assert(rstd::mtp::same_as<rstd::ops::deref_target_t<deref_test::ExternalRefLike>,
+                                 deref_test::ExternalPayload>);
 
 TEST(Deref, ConcreteTraitAndOperatorShareTarget) {
     Payload value { 7 };
@@ -75,6 +149,15 @@ TEST(Deref, ConcreteTraitAndOperatorShareTarget) {
 
     ref_like->value = 9;
     EXPECT_EQ(value.value, 9);
+}
+
+TEST(Deref, ExternalImplOwnsAssociatedTarget) {
+    deref_test::ExternalPayload value { 23 };
+    deref_test::ExternalRefLike ref_like { .value = &value };
+
+    EXPECT_EQ(ref_like->value, 23);
+    ref_like->value = 29;
+    EXPECT_EQ(value.value, 29);
 }
 
 TEST(Deref, ReferenceWrappersPreserveConstness) {

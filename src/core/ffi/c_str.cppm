@@ -61,8 +61,6 @@ template<>
 struct ref<CStr> {
     USE_TRAIT(ref)
 
-    using Target = CStr;
-
     char const* p { nullptr };
     usize       length {};
 
@@ -86,7 +84,7 @@ struct ref<CStr> {
         return str_::from_utf8(to_bytes());
     }
 
-    constexpr auto deref() const noexcept -> ref<Target> { return *this; }
+    constexpr auto deref() const noexcept -> ref<CStr> { return *this; }
 
     static constexpr auto from_raw_parts_unchecked(
         char const* data [[clang::lifetimebound]], usize len) noexcept -> ref<CStr> {
@@ -98,8 +96,6 @@ template<>
 struct mut_ref<CStr> {
     USE_TRAIT(mut_ref)
 
-    using Target = CStr;
-
     char* p { nullptr };
     usize length {};
 
@@ -110,10 +106,10 @@ struct mut_ref<CStr> {
     constexpr auto as_raw_ptr() const noexcept [[clang::lifetimebound]] -> char* { return p; }
     constexpr auto metadata() const noexcept -> usize { return length; }
 
-    constexpr auto deref() const noexcept -> ref<Target> {
+    constexpr auto deref() const noexcept -> ref<CStr> {
         return ref<CStr>::from_raw_parts_unchecked(p, length);
     }
-    constexpr auto deref_mut() noexcept -> mut_ref<Target> { return *this; }
+    constexpr auto deref_mut() noexcept -> mut_ref<CStr> { return *this; }
 };
 
 namespace ffi
