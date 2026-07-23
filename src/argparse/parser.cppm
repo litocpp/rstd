@@ -5,6 +5,7 @@ export module rstd.argparse:parser;
 export import :matches;
 
 using namespace rstd::prelude;
+using namespace rstd::literals;
 using rstd::collections::BTreeMap;
 using rstd::ffi::OsStr;
 using rstd::ffi::OsString;
@@ -12,6 +13,13 @@ using rstd::sync::Arc;
 
 auto clone_os(ref<OsStr> value) -> OsString {
     return OsString::from(value);
+}
+
+auto short_option_name(u8 value) -> Option<String> {
+    if (! value.is_ascii()) return None();
+    auto name = String::make("-"_str);
+    name.push_ascii(value);
+    return Some(rstd::move(name));
 }
 
 auto option_lookup_name(ref<OsStr> token) -> Option<ref<str>> {
@@ -72,22 +80,22 @@ auto suggest_option(const CompiledCommand& schema, ref<OsStr> token) -> Option<S
     for (usize slot {}; slot < schema.args.len(); ++slot) {
         const auto& argument = schema.args[slot];
         if (argument.short_name.is_some()) {
-            auto candidate = String::make("-");
-            candidate.push_back(*argument.short_name);
+            auto candidate = String::make("-"_str);
+            candidate.push_ascii(*argument.short_name);
             consider(rstd::move(candidate));
         }
         if (argument.long_name.is_some()) {
-            auto candidate = String::make("--");
+            auto candidate = String::make("--"_str);
             candidate.push_str(argument.long_name->as_str());
             consider(rstd::move(candidate));
         }
         for (usize alias {}; alias < argument.short_aliases.len(); ++alias) {
-            auto candidate = String::make("-");
+            auto candidate = String::make("-"_str);
             candidate.push_str(argument.short_aliases[alias].as_str());
             consider(rstd::move(candidate));
         }
         for (usize alias {}; alias < argument.aliases.len(); ++alias) {
-            auto candidate = String::make("--");
+            auto candidate = String::make("--"_str);
             candidate.push_str(argument.aliases[alias].as_str());
             consider(rstd::move(candidate));
         }
@@ -96,7 +104,7 @@ auto suggest_option(const CompiledCommand& schema, ref<OsStr> token) -> Option<S
 }
 
 auto is_option_like(ref<OsStr> token) -> bool {
-    return token.len() > usize(1) && rstd::byte_value(token.as_encoded_bytes()[usize()]) == u8('-');
+    return token.len() > usize(1) && token.as_encoded_bytes()[usize()] == u8('-');
 }
 
 auto count_positional_candidates(const CompiledCommand& schema,
@@ -107,8 +115,8 @@ auto count_positional_candidates(const CompiledCommand& schema,
     for (usize index = start; index < argv.len(); ++index) {
         auto token = argv[index].as_os_str();
         auto bytes = token.as_encoded_bytes();
-        if (options && token.len() == usize(2) && rstd::byte_value(bytes[usize()]) == u8('-') &&
-            rstd::byte_value(bytes[usize(1)]) == u8('-')) {
+        if (options && token.len() == usize(2) && bytes[usize()] == u8('-') &&
+            bytes[usize(1)] == u8('-')) {
             options = false;
             continue;
         }
@@ -126,12 +134,11 @@ auto count_positional_candidates(const CompiledCommand& schema,
                 }
                 continue;
             }
-            if (rstd::byte_value(bytes[usize()]) == u8('-') && token.len() > usize(1)) {
+            if (bytes[usize()] == u8('-') && token.len() > usize(1)) {
                 for (usize offset = usize(1); offset < token.len(); ++offset) {
-                    char name[3] = {
-                        '-', static_cast<char>(rstd::byte_value(bytes[offset]).to_primitive()), '\0'
-                    };
-                    auto slot = schema.option_index.get(ref<str>(name));
+                    auto name = short_option_name(bytes[offset]);
+                    if (name.is_none()) break;
+                    auto slot = schema.option_index.get(name->as_str());
                     if (slot.is_none()) break;
                     const auto& spec = schema.args[**slot];
                     if (spec.action.is_Set() || spec.action.is_Append()) {
@@ -197,9 +204,10 @@ auto apply_flag(const ArgSpec& spec, MatchedArg& matched, usize index)
                     OsString::make(),
                     index,
                     rstd::argparse::ValueError::Message(
-                        String::make("count argument has an invalid compiled type"))));
+                        String::make("count argument has an invalid compiled type"_str))));
             }
-            if (**count != u8::MAX) ++**count;
+            auto value = u8(**count);
+            if (value != u8::MAX) **count = value + u8(1);
         }
     }
     matched.indices.push(usize(index));
@@ -379,14 +387,14 @@ class RunOutcome {
 };
 
 void render_argument_line(String& output, const ArgSpec& argument) {
-    output.push_str("  ");
+    output.push_str("  "_str);
     if (argument.short_name.is_some()) {
-        output.push_back('-');
-        output.push_back(*argument.short_name);
-        if (argument.long_name.is_some()) output.push_str(", ");
+        output.push_ascii(u8('-'));
+        output.push_ascii(*argument.short_name);
+        if (argument.long_name.is_some()) output.push_str(", "_str);
     }
     if (argument.long_name.is_some()) {
-        output.push_str("--");
+        output.push_str("--"_str);
         output.push_str(argument.long_name->as_str());
     }
     if (argument.short_name.is_none() && argument.long_name.is_none()) {
@@ -394,24 +402,24 @@ void render_argument_line(String& output, const ArgSpec& argument) {
                                                        : argument.value_name.as_str());
     }
     if (! argument.help.is_empty()) {
-        output.push_str("\t");
+        output.push_str("\t"_str);
         output.push_str(argument.help.as_str());
     }
     if (argument.default_raw_value.is_some()) {
-        output.push_str(" [default: ");
+        output.push_str(" [default: "_str);
         auto default_value = argument.default_raw_value->as_os_str().to_string_lossy();
         output.push_str(default_value.as_str());
-        output.push_back(']');
+        output.push_ascii(u8(']'));
     }
     if (! argument.possible_values.is_empty()) {
-        output.push_str(" [possible values: ");
+        output.push_str(" [possible values: "_str);
         for (usize value {}; value < argument.possible_values.len(); ++value) {
-            if (value != usize()) output.push_str(", ");
+            if (value != usize()) output.push_str(", "_str);
             output.push_str(argument.possible_values[value].as_str());
         }
-        output.push_back(']');
+        output.push_ascii(u8(']'));
     }
-    output.push_back('\n');
+    output.push_ascii(u8('\n'));
 }
 
 auto rstd::argparse::Parser::render_usage() const -> String {
@@ -420,23 +428,23 @@ auto rstd::argparse::Parser::render_usage() const -> String {
 
 auto rstd::argparse::Parser::render_usage_for(ref<str> display_path) const -> String {
     auto output = rstd::format("Usage: {}", display_path);
-    if (! schema_->option_index.is_empty()) output.push_str(" [OPTIONS]");
+    if (! schema_->option_index.is_empty()) output.push_str(" [OPTIONS]"_str);
     for (usize i {}; i < schema_->positionals.len(); ++i) {
         const auto& argument = schema_->args[schema_->positionals[i]];
         if (! argument.required)
-            output.push_str(" [");
+            output.push_str(" ["_str);
         else
-            output.push_str(" <");
+            output.push_str(" <"_str);
         output.push_str(argument.value_name.is_empty() ? argument.id.as_str()
                                                        : argument.value_name.as_str());
-        output.push_back(argument.required ? '>' : ']');
+        output.push_ascii(argument.required ? u8('>') : u8(']'));
         if (argument.num_args.maximum().is_none() ||
             (argument.num_args.maximum().is_some() && *argument.num_args.maximum() > usize(1))) {
-            output.push_str("...");
+            output.push_str("..."_str);
         }
     }
     if (! schema_->subcommands.is_empty()) {
-        output.push_str(schema_->subcommand_required ? " <COMMAND>" : " [COMMAND]");
+        output.push_str(schema_->subcommand_required ? " <COMMAND>"_str : " [COMMAND]"_str);
     }
     return output;
 }
@@ -449,13 +457,13 @@ auto rstd::argparse::Parser::render_help_for(ref<str> display_path) const -> Str
     auto output = String::make();
     if (schema_->long_about.is_some()) {
         output.push_str(schema_->long_about->as_str());
-        output.push_str("\n\n");
+        output.push_str("\n\n"_str);
     } else if (schema_->about.is_some()) {
         output.push_str(schema_->about->as_str());
-        output.push_str("\n\n");
+        output.push_str("\n\n"_str);
     }
     output.push_str(render_usage_for(display_path).as_str());
-    output.push_str("\n");
+    output.push_str("\n"_str);
 
     auto render_section = [&](ref<str> heading, bool options, Option<ref<str>> custom) {
         bool wrote_heading = false;
@@ -469,17 +477,17 @@ auto rstd::argparse::Parser::render_help_for(ref<str> display_path) const -> Str
                                       : argument.help_heading.is_empty() && named == options;
             if (! selected) continue;
             if (! wrote_heading) {
-                output.push_str("\n");
+                output.push_str("\n"_str);
                 output.push_str(heading);
-                output.push_str(":\n");
+                output.push_str(":\n"_str);
                 wrote_heading = true;
             }
             render_argument_line(output, argument);
         }
     };
 
-    render_section("Arguments", false, None());
-    render_section("Options", true, None());
+    render_section("Arguments"_str, false, None());
+    render_section("Options"_str, true, None());
     for (usize i {}; i < schema_->args.len(); ++i) {
         const auto& argument = schema_->args[i];
         if (argument.hidden || argument.help_heading.is_empty()) continue;
@@ -496,21 +504,21 @@ auto rstd::argparse::Parser::render_help_for(ref<str> display_path) const -> Str
         }
     }
     if (! schema_->subcommands.is_empty()) {
-        output.push_str("\nSubcommands:\n");
+        output.push_str("\nSubcommands:\n"_str);
         for (usize i {}; i < schema_->subcommands.len(); ++i) {
-            output.push_str("  ");
+            output.push_str("  "_str);
             output.push_str(schema_->subcommands[i].name.as_str());
             if (schema_->subcommands[i].schema->about.is_some()) {
-                output.push_str("\t");
+                output.push_str("\t"_str);
                 output.push_str(schema_->subcommands[i].schema->about->as_str());
             }
-            output.push_back('\n');
+            output.push_ascii(u8('\n'));
         }
     }
     if (schema_->after_help.is_some()) {
-        output.push_str("\n");
+        output.push_str("\n"_str);
         output.push_str(schema_->after_help->as_str());
-        output.push_back('\n');
+        output.push_ascii(u8('\n'));
     }
     return output;
 }
@@ -644,15 +652,15 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
     while (index < argv.len()) {
         auto token = argv[index].as_os_str();
         auto bytes = token.as_encoded_bytes();
-        if (options && token.len() == usize(2) && rstd::byte_value(bytes[usize()]) == u8('-') &&
-            rstd::byte_value(bytes[usize(1)]) == u8('-')) {
+        if (options && token.len() == usize(2) && bytes[usize()] == u8('-') &&
+            bytes[usize(1)] == u8('-')) {
             options = false;
             ++index;
             continue;
         }
 
-        if (options && token.len() > usize(2) && rstd::byte_value(bytes[usize()]) == u8('-') &&
-            rstd::byte_value(bytes[usize(1)]) == u8('-')) {
+        if (options && token.len() > usize(2) && bytes[usize()] == u8('-') &&
+            bytes[usize(1)] == u8('-')) {
             auto slot = lookup_option(*schema_, token);
             if (slot.is_none()) {
                 if (known) {
@@ -675,7 +683,7 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
             continue;
         }
 
-        if (options && token.len() > usize(1) && rstd::byte_value(bytes[usize()]) == u8('-')) {
+        if (options && token.len() > usize(1) && bytes[usize()] == u8('-')) {
             auto exact = lookup_option(*schema_, token);
             if (exact.is_some()) {
                 auto result = consume_option(*exact, None());
@@ -687,10 +695,8 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
 
             bool cluster_known = true;
             for (usize offset = usize(1); offset < token.len();) {
-                char name[3] = { '-',
-                                 static_cast<char>(rstd::byte_value(bytes[offset]).to_primitive()),
-                                 '\0' };
-                auto slot    = schema_->option_index.get(ref<str>(name));
+                auto name = short_option_name(bytes[offset]);
+                auto slot = name.is_some() ? schema_->option_index.get(name->as_str()) : None();
                 if (slot.is_none()) {
                     cluster_known = false;
                     break;
@@ -710,19 +716,18 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
             }
 
             for (usize offset = usize(1); offset < token.len(); ++offset) {
-                char name[3] = { '-',
-                                 static_cast<char>(rstd::byte_value(bytes[offset]).to_primitive()),
-                                 '\0' };
-                auto slot    = schema_->option_index.get(ref<str>(name));
+                auto name    = short_option_name(bytes[offset]);
+                auto slot    = schema_->option_index.get(name->as_str());
                 const auto&          spec     = schema_->args[**slot];
                 Option<IndexedValue> attached = None();
                 if ((spec.action.is_Set() || spec.action.is_Append()) &&
                     offset + usize(1) < token.len()) {
-                    attached =
-                        Some(IndexedValue { clone_os(ref<OsStr>::from_raw_parts(
-                                                token.data() + (offset + usize(1)).to_primitive(),
-                                                token.len() - offset - usize(1))),
-                                            absolute(index) });
+                    auto remaining = slice<u8>::from_raw_parts(
+                        bytes.as_raw_ptr() + (offset + usize(1)).to_primitive(),
+                        token.len() - offset - usize(1));
+                    attached = Some(IndexedValue {
+                        clone_os(ref<OsStr>::from_encoded_bytes_unchecked(remaining)),
+                        absolute(index) });
                 }
                 auto result = consume_option(**slot, rstd::move(attached));
                 if (result.is_err()) return Err(rstd::move(result).unwrap_err());

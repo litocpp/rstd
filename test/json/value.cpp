@@ -3,6 +3,7 @@
 import rstd.json;
 
 using namespace rstd::prelude;
+using namespace rstd::literals;
 using rstd::json::Array;
 using rstd::json::Map;
 using rstd::json::Number;
@@ -22,18 +23,18 @@ TEST(JsonValue, ExposesVariantAccessors) {
     EXPECT_TRUE(number.is_number());
     EXPECT_EQ(number.as_i64(), Some(i64(-7)));
 
-    auto text = Value::String(String::make("hello"));
+    auto text = Value::String(String::make("hello"_str));
     EXPECT_TRUE(text.is_string());
     ASSERT_TRUE(text.as_str().is_some());
-    EXPECT_EQ(*text.as_str(), rstd::ref<rstd::str>("hello"));
+    EXPECT_EQ(*text.as_str(), "hello"_str);
 }
 
 TEST(JsonValue, ClonesRecursiveOwnership) {
     auto array = Array::make();
-    array.push(Value::String(String::make("first")));
+    array.push(Value::String(String::make("first"_str)));
 
     auto object = Map::make();
-    object.insert(String::make("items"), Value::Array(rstd::move(array)));
+    object.insert(String::make("items"_str), Value::Array(rstd::move(array)));
     auto value = Value::Object(rstd::move(object));
 
     auto direct   = value.clone();
@@ -41,99 +42,102 @@ TEST(JsonValue, ClonesRecursiveOwnership) {
     EXPECT_EQ(value, direct);
     EXPECT_EQ(value, abstract);
 
-    auto cloned_items = direct.get_mut(rstd::ref<rstd::str>("items"));
+    auto cloned_items = direct.get_mut("items"_str);
     ASSERT_TRUE(cloned_items.is_some());
     **cloned_items = Value::Null();
 
     EXPECT_NE(value, direct);
     EXPECT_EQ(value, abstract);
-    EXPECT_TRUE((**value.get(rstd::ref<rstd::str>("items"))).is_array());
+    EXPECT_TRUE((**value.get("items"_str)).is_array());
 }
 
 TEST(JsonValue, TakeLeavesNull) {
-    auto value = Value::String(String::make("owned"));
+    auto value = Value::String(String::make("owned"_str));
     auto taken = value.take();
 
     EXPECT_TRUE(value.is_null());
-    EXPECT_EQ(*taken.as_str(), rstd::ref<rstd::str>("owned"));
+    EXPECT_EQ(*taken.as_str(), "owned"_str);
 }
 
 TEST(JsonValue, IndexingMatchesReadAndWriteSemantics) {
     auto value      = Value::Null();
-    value["a"]["b"] = Value::Bool(true);
+    value["a"_str]["b"_str] = Value::Bool(true);
 
-    EXPECT_EQ(value["a"]["b"], true);
+    EXPECT_EQ(value["a"_str]["b"_str], true);
     const auto& read = value;
-    EXPECT_TRUE(read["missing"].is_null());
-    EXPECT_TRUE(read["a"]["missing"].is_null());
+    EXPECT_TRUE(read["missing"_str].is_null());
+    EXPECT_TRUE(read["a"_str]["missing"_str].is_null());
 
     auto array = Array::make();
-    array.push(Value::String(String::make("first")));
+    array.push(Value::String(String::make("first"_str)));
     auto array_value = Value::Array(rstd::move(array));
-    EXPECT_EQ(array_value[usize(0)], rstd::ref<rstd::str>("first"));
+    EXPECT_EQ(array_value[usize(0)], "first"_str);
     const auto& array_read = array_value;
     EXPECT_TRUE(array_read[usize(1)].is_null());
 }
 
 TEST(JsonValue, JsonPointerFollowsRfc6901Tokens) {
-    auto value = rstd::json::from_str(R"({"foo":["bar","baz"],"":0,"a/b":1,"m~n":2})").unwrap();
+    auto value =
+        rstd::json::from_str(R"({"foo":["bar","baz"],"":0,"a/b":1,"m~n":2})"_str)
+            .unwrap();
 
-    auto root = value.pointer("");
+    auto root = value.pointer(""_str);
     ASSERT_TRUE(root.is_some());
     EXPECT_EQ(**root, value);
 
-    auto first = value.pointer("/foo/0");
+    auto first = value.pointer("/foo/0"_str);
     ASSERT_TRUE(first.is_some());
-    EXPECT_EQ(**first, rstd::ref<rstd::str>("bar"));
+    EXPECT_EQ(**first, "bar"_str);
 
-    auto empty = value.pointer("/");
+    auto empty = value.pointer("/"_str);
     ASSERT_TRUE(empty.is_some());
     EXPECT_EQ(**empty, 0);
 
-    auto escaped_slash = value.pointer("/a~1b");
+    auto escaped_slash = value.pointer("/a~1b"_str);
     ASSERT_TRUE(escaped_slash.is_some());
     EXPECT_EQ(**escaped_slash, 1);
 
-    auto escaped_tilde = value.pointer("/m~0n");
+    auto escaped_tilde = value.pointer("/m~0n"_str);
     ASSERT_TRUE(escaped_tilde.is_some());
     EXPECT_EQ(**escaped_tilde, 2);
-    EXPECT_TRUE(value.pointer("foo").is_none());
-    EXPECT_TRUE(value.pointer("/foo/00").is_none());
-    EXPECT_TRUE(value.pointer("/foo/01").is_none());
-    EXPECT_TRUE(value.pointer("/foo/-").is_none());
-    EXPECT_TRUE(value.pointer("/foo/184467440737095516160").is_none());
+    EXPECT_TRUE(value.pointer("foo"_str).is_none());
+    EXPECT_TRUE(value.pointer("/foo/00"_str).is_none());
+    EXPECT_TRUE(value.pointer("/foo/01"_str).is_none());
+    EXPECT_TRUE(value.pointer("/foo/-"_str).is_none());
+    EXPECT_TRUE(value.pointer("/foo/184467440737095516160"_str).is_none());
 
-    **value.pointer_mut("/foo/1") = Value::String(String::make("changed"));
-    EXPECT_EQ(**value.pointer("/foo/1"), rstd::ref<rstd::str>("changed"));
+    **value.pointer_mut("/foo/1"_str) = Value::String(String::make("changed"_str));
+    EXPECT_EQ(**value.pointer("/foo/1"_str), "changed"_str);
 }
 
 TEST(JsonValue, PrimitiveConversionsDoNotUseSerialization) {
     auto integer = rstd::Impl<rstd::convert::From<i32>, Value>::from(i32(-9));
-    auto text    = rstd::Impl<rstd::convert::From<rstd::ref<rstd::str>>, Value>::from("text");
+    auto text =
+        rstd::Impl<rstd::convert::From<rstd::ref<rstd::str>>, Value>::from("text"_str);
     auto some    = rstd::Impl<rstd::convert::From<rstd::Option<i32>>, Value>::from(Some(i32(7)));
     auto none =
         rstd::Impl<rstd::convert::From<rstd::Option<i32>>, Value>::from(rstd::Option<i32>());
     auto non_finite = rstd::Impl<rstd::convert::From<f64>, Value>::from(f64::NAN_);
 
     EXPECT_EQ(integer, i32(-9));
-    EXPECT_EQ(text, rstd::ref<rstd::str>("text"));
+    EXPECT_EQ(text, "text"_str);
     EXPECT_EQ(some, i32(7));
     EXPECT_TRUE(none.is_null());
     EXPECT_TRUE(non_finite.is_null());
 }
 
 TEST(JsonValue, ObjectIterationAndRecursiveSortAreStable) {
-    auto value = rstd::json::from_str(R"({"z":{"d":1,"c":2},"a":0,"m":[]})").unwrap();
+    auto value = rstd::json::from_str(R"({"z":{"d":1,"c":2},"a":0,"m":[]})"_str).unwrap();
     value.sort_all_objects();
 
     auto keys = (**value.as_object()).keys();
-    EXPECT_EQ(**keys.next(), "a");
-    EXPECT_EQ(**keys.next(), "m");
-    EXPECT_EQ(**keys.next(), "z");
+    EXPECT_EQ(**keys.next(), "a"_str);
+    EXPECT_EQ(**keys.next(), "m"_str);
+    EXPECT_EQ(**keys.next(), "z"_str);
     EXPECT_TRUE(keys.next().is_none());
 
-    auto nested      = (**value.get("z")).as_object();
+    auto nested      = (**value.get("z"_str)).as_object();
     auto nested_keys = (**nested).keys();
-    EXPECT_EQ(**nested_keys.next(), "c");
-    EXPECT_EQ(**nested_keys.next(), "d");
+    EXPECT_EQ(**nested_keys.next(), "c"_str);
+    EXPECT_EQ(**nested_keys.next(), "d"_str);
 }

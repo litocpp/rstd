@@ -51,9 +51,9 @@ struct Impl<str_::FromStr, T> {
 
         rstd::size_t index    = 0;
         bool         negative = false;
-        if (input.data()[0] == '+') {
+        if (input[usize()] == u8('+')) {
             index = rstd::size_t(1);
-        } else if (input.data()[0] == '-') {
+        } else if (input[usize()] == u8('-')) {
             if constexpr (! T::IS_SIGNED) {
                 return error(num::IntErrorKind::InvalidDigit());
             } else {
@@ -70,7 +70,7 @@ struct Impl<str_::FromStr, T> {
         rstd::uint128_t value = 0;
 
         for (; index < input.size().to_primitive(); ++index) {
-            rstd::uint8_t const byte = input.data()[index];
+            rstd::uint8_t const byte = input[usize(index)].to_primitive();
             if (byte < '0' || byte > '9') {
                 return error(num::IntErrorKind::InvalidDigit());
             }
@@ -111,7 +111,7 @@ struct Impl<fmt::Display, num::ParseIntError> : ImplBase<num::ParseIntError> {
             break;
         case num::IntErrorKind::Tag::Zero: break;
         }
-        return formatter.pad(message);
+        return formatter.write_raw(message, rstd::strlen(message));
     }
 };
 

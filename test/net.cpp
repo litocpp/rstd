@@ -10,8 +10,8 @@ namespace
 {
 
 auto copied_bytes(const void* data, rstd::size_t len) -> bytes::Bytes {
-    return bytes::Bytes::copy_from_bytes(
-        slice<byte>::from_raw_parts(static_cast<byte const*>(data), usize(len)));
+    auto raw = slice<byte>::from_raw_parts(static_cast<byte const*>(data), usize(len));
+    return bytes::Bytes::copy_from_slice(rstd::as_u8_slice(raw));
 }
 
 struct WakerCounts {

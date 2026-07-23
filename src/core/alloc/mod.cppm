@@ -23,12 +23,14 @@ export struct Allocation {
 
     template<typename T>
     auto as_mut_ptr() const noexcept -> mut_ptr<T> {
-        return mut_ptr<T>::from_raw_parts(static_cast<T*>(pointer));
+        using Storage = typename mut_ptr<T>::storage_type;
+        return mut_ptr<T>::from_raw_parts(static_cast<Storage*>(pointer));
     }
 
     template<typename T>
     auto as_mut_slice(usize length) const noexcept -> mut_ptr<T[]> {
-        return mut_ptr<T[]>::from_raw_parts(static_cast<T*>(pointer), length);
+        using Storage = typename mut_ptr<T[]>::storage_type;
+        return mut_ptr<T[]>::from_raw_parts(static_cast<Storage*>(pointer), length);
     }
 };
 
@@ -126,7 +128,17 @@ public:
         -> Result<Allocation, AllocError> {
         debug_assert(new_layout.size <= old_layout.size,
                      "`new_layout.size` must be smaller than or equal to `old_layout.size`");
-        return allocator().allocate(new_layout);
+        if (new_layout.size == old_layout.size) {
+            return Ok(Allocation { ptr, new_layout.size });
+        }
+
+        auto new_res = allocator().allocate(new_layout);
+        if (new_res.is_ok()) {
+            auto new_ptr = new_res.unwrap_unchecked();
+            mem::memcpy(new_ptr.pointer, ptr, new_layout.size);
+            allocator().deallocate(ptr, old_layout);
+        }
+        return new_res;
     }
 };
 } // namespace rstd

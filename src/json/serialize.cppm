@@ -19,13 +19,14 @@ auto to_string(const Value& value, FormatOptions options) -> ::alloc::string::St
 
 using namespace rstd::prelude;
 using namespace rstd::json;
+using namespace rstd::literals;
 
 class Emitter {
     rstd::fmt::Formatter& formatter_;
     FormatOptions         options_;
 
     auto write(ref<str> value) -> bool {
-        return formatter_.write_raw(value.data(), value.size().to_primitive());
+        return formatter_.write_str(value);
     }
 
     auto write_byte(u8 value) -> bool {
@@ -43,49 +44,45 @@ class Emitter {
 
     auto write_string(ref<str> value) -> bool {
         if (! write_byte(u8('"'))) return false;
-        static constexpr char HEX[] = "0123456789abcdef";
+        static constexpr auto HEX = "0123456789abcdef"_str;
+        usize chunk_start {};
+        auto flush_chunk = [&](usize end) {
+            if (chunk_start == end) return true;
+            return write(ref<str>::from_raw_parts_unchecked(
+                value.data() + chunk_start.to_primitive(), end - chunk_start));
+        };
+
         for (usize i {}; i < value.size(); ++i) {
             const u8 byte = value[i];
+            ref<str> replacement;
             switch (byte.to_primitive()) {
-            case '"':
-                if (! write("\\\"")) return false;
-                break;
-            case '\\':
-                if (! write("\\\\")) return false;
-                break;
-            case '\b':
-                if (! write("\\b")) return false;
-                break;
-            case '\f':
-                if (! write("\\f")) return false;
-                break;
-            case '\n':
-                if (! write("\\n")) return false;
-                break;
-            case '\r':
-                if (! write("\\r")) return false;
-                break;
-            case '\t':
-                if (! write("\\t")) return false;
-                break;
+            case '"': replacement = "\\\""_str; break;
+            case '\\': replacement = "\\\\"_str; break;
+            case '\b': replacement = "\\b"_str; break;
+            case '\f': replacement = "\\f"_str; break;
+            case '\n': replacement = "\\n"_str; break;
+            case '\r': replacement = "\\r"_str; break;
+            case '\t': replacement = "\\t"_str; break;
             default:
                 if (byte < u8(0x20)) {
-                    const rstd::uint8_t escape[] = {
-                        '\\',
-                        'u',
-                        '0',
-                        '0',
-                        static_cast<rstd::uint8_t>(HEX[(byte >> u64(4)).to_primitive()]),
-                        static_cast<rstd::uint8_t>(HEX[(byte & u8(0x0f)).to_primitive()])
+                    if (! flush_chunk(i)) return false;
+                    auto escape = rstd::array<u8, 6> {
+                        u8('\\'),
+                        u8('u'),
+                        u8('0'),
+                        u8('0'),
+                        HEX[usize((byte >> u64(4)).to_primitive())],
+                        HEX[usize((byte & u8(0x0f)).to_primitive())]
                     };
-                    if (! formatter_.write_raw(escape, sizeof(escape))) return false;
-                } else if (! write_byte(byte)) {
-                    return false;
+                    if (! write(rstd::from_utf8_unchecked(escape.as_slice()))) return false;
+                    chunk_start = i + usize(1);
                 }
-                break;
+                continue;
             }
+            if (! flush_chunk(i) || ! write(replacement)) return false;
+            chunk_start = i + usize(1);
         }
-        return write_byte(u8('"'));
+        return flush_chunk(value.size()) && write_byte(u8('"'));
     }
 
     template<typename T>
@@ -151,7 +148,7 @@ class Emitter {
         for (auto item = iter.next(); item.is_some(); item = iter.next(), ++index) {
             if (options_.pretty && ! write_indent(depth + usize(1))) return false;
             if (! write_string((*item).template get<0>()->as_str())) return false;
-            if (! write(options_.pretty ? ": " : ":")) return false;
+            if (! write(options_.pretty ? ": "_str : ":"_str)) return false;
             if (! write_value(*(*item).template get<1>(), depth + usize(1))) return false;
             if (index + usize(1) != object.len() && ! write_byte(u8(','))) return false;
             if (options_.pretty && ! write_byte(u8('\n'))) return false;
@@ -167,10 +164,10 @@ public:
     auto write_value(const Value& value, usize depth = usize()) -> bool {
         RSTD_MATCH(value) {
             RSTD_CASE(Null) {
-                return write("null");
+                return write("null"_str);
             }
             RSTD_CASE(Bool, boolean) {
-                return write(boolean ? "true" : "false");
+                return write(boolean ? "true"_str : "false"_str);
             }
             RSTD_CASE(Number, number) {
                 return write_number(number);

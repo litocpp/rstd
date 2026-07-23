@@ -108,12 +108,12 @@ auto Child::wait_with_output() -> io::Result<Output> {
         ::alloc::vec::Vec<u8> buf;
 #if RSTD_OS_UNIX
         if (fd >= 0) {
-            rstd::uint8_t tmp[4096];
+            byte tmp[4096];
             while (true) {
                 auto n = libc::read(fd, tmp, sizeof(tmp));
                 if (n <= 0) break;
-                buf.extend_from_bytes(
-                    slice<byte>::from_raw_parts(tmp, usize(static_cast<rstd::size_t>(n))));
+                buf.extend_from_slice(
+                    slice<u8>::from_raw_parts(tmp, usize(static_cast<rstd::size_t>(n))));
             }
         }
 #endif
@@ -147,14 +147,14 @@ auto Spawn::spawn(rstd::process::Command& cmd)
     using namespace rstd::process;
 
     auto& prog     = cmd.program_;
-    auto  prog_ptr = reinterpret_cast<char const*>(prog.to_bytes_with_nul().p);
+    auto  prog_ptr = prog.as_ptr();
 
     // argv: [program, args..., nullptr]
     auto argc     = cmd.args_.len() + usize(2);
     auto argv_buf = ::alloc::vec::Vec<char*>::with_capacity(argc);
     argv_buf.push(const_cast<char*>(prog_ptr));
     for (rstd::size_t i = 0; i < cmd.args_.len().to_primitive(); ++i) {
-        auto ptr = reinterpret_cast<char const*>(cmd.args_.at(usize(i)).to_bytes_with_nul().p);
+        auto ptr = cmd.args_.at(usize(i)).as_ptr();
         argv_buf.push(const_cast<char*>(ptr));
     }
     argv_buf.push(nullptr);

@@ -2,6 +2,7 @@
 #include <memory>
 import rstd.core;
 using namespace rstd;
+using namespace rstd::literals;
 
 static_assert(mtp::same_as<decltype(Some(Some<int>(1))), Option<Option<int>>>);
 static_assert(mtp::same_as<decltype(Some(None<int>())), Option<Option<int>>>);
@@ -237,7 +238,7 @@ TEST(Option, DropsNonTrivialValue) {
 TEST(Option, ExpectUnwrap) {
     auto some = Some(42);
     EXPECT_EQ(some.unwrap(), 42);
-    EXPECT_EQ(some.expect("shouldn't fail"), 42);
+    EXPECT_EQ(some.expect("shouldn't fail"_str), 42);
 
     auto none = None<int>();
     EXPECT_DEATH(none.unwrap(), "");

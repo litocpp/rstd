@@ -34,10 +34,31 @@ concept SliceCopyable = requires(rstd::mut_ref<T[]> destination, rstd::slice<T> 
     rstd::slice_::copy_from_slice(destination, source);
 };
 
+template<typename Pointer>
+concept U8SliceRawParts = requires(Pointer pointer) {
+    rstd::slice<rstd::u8>::from_raw_parts(pointer, usize());
+};
+
+template<typename Pointer>
+concept U8MutSliceRawParts = requires(Pointer pointer) {
+    rstd::mut_ref<rstd::u8[]>::from_raw_parts(pointer, usize());
+};
+
 static_assert(! rstd::mtp::triv_copyable<NonTrivialDrop>);
 static_assert(! rstd::Impled<NonTrivialDrop, rstd::Copy>);
 static_assert(SliceCopyable<int>);
 static_assert(! SliceCopyable<CloneOnly>);
+static_assert(rstd::mtp::same_as<decltype(rstd::mtp::declval<rstd::slice<rstd::u8>>().as_raw_ptr()),
+                                 rstd::byte const*>);
+static_assert(
+    rstd::mtp::same_as<decltype(rstd::mtp::declval<rstd::mut_ref<rstd::u8[]>>().as_raw_ptr()),
+                       rstd::byte*>);
+static_assert(U8SliceRawParts<rstd::byte const*>);
+static_assert(U8MutSliceRawParts<rstd::byte*>);
+static_assert(! U8SliceRawParts<rstd::u8*>);
+static_assert(! U8SliceRawParts<rstd::uint8_t*>);
+static_assert(! U8MutSliceRawParts<rstd::u8*>);
+static_assert(! U8MutSliceRawParts<rstd::uint8_t*>);
 
 } // namespace
 
@@ -84,6 +105,19 @@ TEST(Slice, CopyFromSliceCopiesTypedElements) {
 
 TEST(Slice, CopyFromSliceAcceptsEmptySlices) {
     rstd::slice_::copy_from_slice(rstd::mut_ref<int[]>(), rstd::slice<int>());
+}
+
+TEST(Slice, U8ViewReadsAndWritesByteStorageByValue) {
+    rstd::byte storage[] { rstd::byte { 1 }, rstd::byte { 2 }, rstd::byte { 255 } };
+    auto values = rstd::mut_ref<rstd::u8[]>::from_raw_parts(storage, usize(3));
+
+    EXPECT_EQ(values[usize()], rstd::u8(1));
+    values[usize(1)] = rstd::u8(128);
+    EXPECT_EQ(storage[1], rstd::byte { 128 });
+
+    auto immutable = values.as_ref();
+    static_assert(rstd::mtp::same_as<decltype(immutable[usize()]), rstd::u8>);
+    EXPECT_EQ(immutable[usize(2)], rstd::u8(255));
 }
 
 TEST(Slice, CloneFromSliceReusesInitializedElements) {

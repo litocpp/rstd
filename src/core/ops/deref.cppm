@@ -57,24 +57,32 @@ export template<typename Self>
     requires Impled<Self, Deref> && (! ConstDerefMut<Self>)
 constexpr decltype(auto) deref_value(const Self& self) noexcept {
     auto target   = as<Deref>(self).deref();
-    using Pointee = mtp::rm_cv<mtp::rm_ptr<decltype(target.as_raw_ptr())>>;
-    if constexpr (mtp::is_void<Pointee>) {
-        using Delegate = mtp::rm_ref<decltype(target.operator*())>;
-        return Delegate { target.operator*() };
+    if constexpr (requires { target.get(); }) {
+        return target.get();
     } else {
-        return *target.as_raw_ptr();
+        using Pointee = mtp::rm_cv<mtp::rm_ptr<decltype(target.as_raw_ptr())>>;
+        if constexpr (mtp::is_void<Pointee>) {
+            using Delegate = mtp::rm_ref<decltype(target.operator*())>;
+            return Delegate { target.operator*() };
+        } else {
+            return *target.as_raw_ptr();
+        }
     }
 }
 
 export template<ConstDerefMut Self>
 constexpr decltype(auto) deref_value(const Self& self) noexcept {
     auto target   = self.deref_mut();
-    using Pointee = mtp::rm_cv<mtp::rm_ptr<decltype(target.as_raw_ptr())>>;
-    if constexpr (mtp::is_void<Pointee>) {
-        using Delegate = mtp::rm_ref<decltype(target.operator*())>;
-        return Delegate { target.operator*() };
+    if constexpr (requires { target.get_mut(); }) {
+        return target.get_mut();
     } else {
-        return *target.as_raw_ptr();
+        using Pointee = mtp::rm_cv<mtp::rm_ptr<decltype(target.as_raw_ptr())>>;
+        if constexpr (mtp::is_void<Pointee>) {
+            using Delegate = mtp::rm_ref<decltype(target.operator*())>;
+            return Delegate { target.operator*() };
+        } else {
+            return *target.as_raw_ptr();
+        }
     }
 }
 
@@ -82,12 +90,16 @@ export template<typename Self>
     requires Impled<Self, DerefMut>
 constexpr decltype(auto) deref_value(Self& self) noexcept {
     auto target   = as<DerefMut>(self).deref_mut();
-    using Pointee = mtp::rm_cv<mtp::rm_ptr<decltype(target.as_raw_ptr())>>;
-    if constexpr (mtp::is_void<Pointee>) {
-        using Delegate = mtp::rm_ref<decltype(target.operator*())>;
-        return Delegate { target.operator*() };
+    if constexpr (requires { target.get_mut(); }) {
+        return target.get_mut();
     } else {
-        return *target.as_raw_ptr();
+        using Pointee = mtp::rm_cv<mtp::rm_ptr<decltype(target.as_raw_ptr())>>;
+        if constexpr (mtp::is_void<Pointee>) {
+            using Delegate = mtp::rm_ref<decltype(target.operator*())>;
+            return Delegate { target.operator*() };
+        } else {
+            return *target.as_raw_ptr();
+        }
     }
 }
 

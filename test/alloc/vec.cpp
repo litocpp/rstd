@@ -3,8 +3,15 @@ import rstd;
 
 static_assert(rstd::Impled<rstd::vec::Vec<int>, rstd::ops::Deref>);
 static_assert(rstd::Impled<rstd::vec::Vec<int>, rstd::ops::DerefMut>);
+static_assert(rstd::mtp::same_as<decltype(rstd::mtp::declval<rstd::vec::Vec<rstd::u8>&>().data()),
+                                 rstd::byte*>);
+static_assert(
+    rstd::mtp::same_as<decltype(rstd::mtp::declval<rstd::vec::Vec<rstd::u8> const&>().data()),
+                       rstd::byte const*>);
+static_assert(! rstd::mtp::convertible_to<rstd::vec::SpareSlot<rstd::u8>, rstd::u8>);
 
 using namespace rstd::prelude;
+using namespace rstd::literals;
 using rstd::string::String;
 using rstd::vec::Vec;
 
@@ -169,6 +176,31 @@ TEST(Vec, IntoBoxedSlice) {
     EXPECT_EQ(rstd::alloc::Layout::for_value(b.as_ptr()).size, usize(2 * sizeof(int)));
 }
 
+TEST(Vec, BoxedSliceRoundTripTransfersExactAllocation) {
+    auto values = Vec<rstd::u8>::with_capacity(usize(3));
+    values.push(u8(3));
+    values.push(u8(5));
+    values.push(u8(8));
+    auto* allocation = values.data();
+
+    auto boxed = values.into_boxed_slice();
+    EXPECT_EQ(boxed.get(), allocation);
+
+    auto round_trip = Vec<rstd::u8>::from_boxed_slice(rstd::move(boxed));
+    EXPECT_EQ(round_trip.data(), allocation);
+    EXPECT_EQ(round_trip.capacity(), usize(3));
+    EXPECT_EQ(round_trip.as_slice(), "\x03\x05\x08"_bytes);
+}
+
+TEST(Vec, EmptyBoxedSliceRoundTripStaysEmpty) {
+    auto boxed = Vec<int>::make().into_boxed_slice();
+    EXPECT_EQ(boxed.as_ptr().len(), usize());
+
+    auto values = Vec<int>::from_boxed_slice(rstd::move(boxed));
+    EXPECT_TRUE(values.is_empty());
+    EXPECT_EQ(values.capacity(), usize());
+}
+
 TEST(Vec, BoxedSliceDropsEveryElement) {
     struct DropProbe {
         int* drops;
@@ -252,13 +284,30 @@ TEST(Vec, ReserveAndExtendFromSlice) {
     EXPECT_GE(v.capacity(), usize(8));
     EXPECT_EQ(v.len(), usize());
 
-    rstd::u8 data[] { u8(1), u8(2), u8(3) };
-    v.extend_from_slice(rstd::slice<rstd::u8>::from_raw_parts(data, usize(3)));
+    auto data = rstd::array<rstd::u8, 3> { u8(1), u8(2), u8(3) };
+    v.extend_from_slice(data.as_slice());
 
     EXPECT_EQ(v.len(), usize(3));
     EXPECT_EQ(v[usize()], u8(1));
     EXPECT_EQ(v[usize(1)], u8(2));
     EXPECT_EQ(v[usize(2)], u8(3));
+}
+
+TEST(Vec, U8GrowthKeepsByteStorageAndProxyWrites) {
+    auto values = Vec<rstd::u8>::with_capacity(usize(1));
+    for (rstd::uint16_t value = 0; value < 256; ++value) {
+        values.push(rstd::u8(static_cast<rstd::uint8_t>(value)));
+    }
+
+    ASSERT_EQ(values.len(), usize(256));
+    static_assert(rstd::mtp::same_as<decltype(values[usize()]), rstd::mut_ref<rstd::u8>>);
+    values[usize(128)] = rstd::u8(17);
+    EXPECT_EQ(values[usize(128)], rstd::u8(17));
+    EXPECT_EQ(values.data()[128], rstd::byte { 17 });
+
+    auto boxed = values.into_boxed_slice();
+    static_assert(rstd::mtp::same_as<decltype(boxed.get()), rstd::byte*>);
+    EXPECT_EQ(boxed.as_ptr()[usize(128)], rstd::u8(17));
 }
 
 TEST(Vec, FromSliceOwnsIndependentCopy) {
@@ -406,9 +455,9 @@ TEST(Vec, SpareCapacityAndSetLen) {
 
     auto spare = v.spare_capacity_mut();
     ASSERT_EQ(spare.len(), usize(4));
-    spare[usize()]  = u8(7);
-    spare[usize(1)] = u8(8);
-    spare[usize(2)] = u8(9);
+    spare[usize()].write(u8(7));
+    spare[usize(1)].write(u8(8));
+    spare[usize(2)].write(u8(9));
     v.set_len_unchecked(usize(3));
 
     EXPECT_EQ(v.len(), usize(3));
@@ -419,6 +468,36 @@ TEST(Vec, SpareCapacityAndSetLen) {
     v.truncate(usize(2));
     EXPECT_EQ(v.len(), usize(2));
     EXPECT_EQ(v[usize(1)], u8(8));
+
+    EXPECT_DEATH(v.spare_capacity_mut()[usize(2)].write(u8(1)),
+                 "Vec spare capacity index out of bounds");
+}
+
+TEST(Vec, SpareCapacityConstructsNonTrivialElements) {
+    struct Tracked {
+        int* drops;
+        int  value;
+
+        Tracked(int& count, int number): drops(&count), value(number) {}
+        Tracked(const Tracked&)            = delete;
+        Tracked& operator=(const Tracked&) = delete;
+        Tracked(Tracked&& other) noexcept: drops(other.drops), value(other.value) {
+            other.drops = nullptr;
+        }
+        ~Tracked() {
+            if (drops != nullptr) ++*drops;
+        }
+    };
+
+    int drops = 0;
+    {
+        auto values = Vec<Tracked>::with_capacity(usize(1));
+        values.spare_capacity_mut()[usize()].write(Tracked(drops, 7));
+        values.set_len_unchecked(usize(1));
+        EXPECT_EQ(values[usize()].value, 7);
+        EXPECT_EQ(drops, 0);
+    }
+    EXPECT_EQ(drops, 1);
 }
 
 TEST(Vec, Resize) {
@@ -449,18 +528,18 @@ TEST(Vec, ResizeFromOwnElementSurvivesGrowth) {
 
 TEST(Vec, CloneOwnsIndependentElements) {
     auto values = Vec<String>::make();
-    values.push(String::make("alpha"));
-    values.push(String::make("beta"));
+    values.push(String::make("alpha"_str));
+    values.push(String::make("beta"_str));
 
     auto direct   = values.clone();
     auto abstract = rstd::as<rstd::clone::Clone>(values).clone();
-    values[usize()].push_back('!');
+    values[usize()].push_ascii(u8('!'));
 
     ASSERT_EQ(direct.len(), usize(2));
     ASSERT_EQ(abstract.len(), usize(2));
-    EXPECT_EQ(values[usize()], "alpha!");
-    EXPECT_EQ(direct[usize()], "alpha");
-    EXPECT_EQ(direct[usize(1)], "beta");
-    EXPECT_EQ(abstract[usize()], "alpha");
-    EXPECT_EQ(abstract[usize(1)], "beta");
+    EXPECT_EQ(values[usize()], "alpha!"_str);
+    EXPECT_EQ(direct[usize()], "alpha"_str);
+    EXPECT_EQ(direct[usize(1)], "beta"_str);
+    EXPECT_EQ(abstract[usize()], "alpha"_str);
+    EXPECT_EQ(abstract[usize(1)], "beta"_str);
 }

@@ -198,7 +198,7 @@ constexpr auto Integer<Derived, Primitive, Tag>::to_le_bytes() const noexcept ->
     ByteArray bytes {};
     auto      bits = to_unsigned_bits(value_);
     for (rstd::size_t index = 0; index != sizeof(Primitive); ++index) {
-        bytes.data()[index] = U8(static_cast<rstd::uint8_t>(bits));
+        bytes[usize(index)] = U8(static_cast<rstd::uint8_t>(bits));
         bits >>= 8;
     }
     return bytes;
@@ -209,7 +209,8 @@ constexpr auto Integer<Derived, Primitive, Tag>::to_be_bytes() const noexcept ->
     ByteArray bytes {};
     auto      bits = to_unsigned_bits(value_);
     for (rstd::size_t index = 0; index != sizeof(Primitive); ++index) {
-        bytes.data()[sizeof(Primitive) - index - 1] = U8(static_cast<rstd::uint8_t>(bits));
+        bytes[usize(sizeof(Primitive) - index - 1)] =
+            U8(static_cast<rstd::uint8_t>(bits));
         bits >>= 8;
     }
     return bytes;
@@ -228,8 +229,8 @@ template<typename Derived, typename Primitive, typename Tag>
 constexpr auto Integer<Derived, Primitive, Tag>::from_le_bytes(ByteArray bytes) noexcept -> Self {
     unsigned_primitive_t<Primitive> bits = 0;
     for (rstd::size_t index = sizeof(Primitive); index != 0; --index) {
-        bits =
-            unsigned_primitive_t<Primitive>((bits << 8) | bytes.data()[index - 1].to_primitive());
+        bits = unsigned_primitive_t<Primitive>(
+            (bits << 8) | u8(bytes[usize(index - 1)]).to_primitive());
     }
     return Self(from_unsigned_bits<Primitive>(bits));
 }
@@ -238,7 +239,8 @@ template<typename Derived, typename Primitive, typename Tag>
 constexpr auto Integer<Derived, Primitive, Tag>::from_be_bytes(ByteArray bytes) noexcept -> Self {
     unsigned_primitive_t<Primitive> bits = 0;
     for (rstd::size_t index = 0; index != sizeof(Primitive); ++index) {
-        bits = unsigned_primitive_t<Primitive>((bits << 8) | bytes.data()[index].to_primitive());
+        bits = unsigned_primitive_t<Primitive>(
+            (bits << 8) | u8(bytes[usize(index)]).to_primitive());
     }
     return Self(from_unsigned_bits<Primitive>(bits));
 }

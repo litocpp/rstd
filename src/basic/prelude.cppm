@@ -46,7 +46,7 @@ export {
 #pragma GCC diagnostic pop
 
     /// Raw byte storage type.
-    using byte = uint8_t;
+    using std::byte;
 
     /// Mutable void pointer.
     using voidp = void*;

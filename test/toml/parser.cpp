@@ -3,18 +3,17 @@
 import rstd.toml;
 
 using namespace rstd::prelude;
+using namespace rstd::literals;
 using rstd::toml::Value;
 
 namespace
 {
 
-auto parse(const char* input) {
-    return rstd::toml::from_str(rstd::ref<rstd::str>(input));
-}
+auto parse(ref<str> input) { return rstd::toml::from_str(input); }
 
-auto member(const Value& value, const char* key) -> const Value& {
-    auto found = value.get(rstd::ref<rstd::str>(key));
-    EXPECT_TRUE(found.is_some()) << key;
+auto member(const Value& value, ref<str> key) -> const Value& {
+    auto found = value.get(key);
+    EXPECT_TRUE(found.is_some());
     return **found;
 }
 
@@ -36,7 +35,7 @@ sources = [
 
 [dependencies]
 support = { path = "../support", version = "0.2.0" }
-)");
+)"_str);
     if (result.is_err()) {
         auto parse_error = result.unwrap_err();
         FAIL() << "line " << parse_error.line().to_primitive() << " column "
@@ -45,18 +44,18 @@ support = { path = "../support", version = "0.2.0" }
     }
     auto document = result.unwrap();
 
-    const auto& package = member(document, "package");
-    EXPECT_EQ(*member(package, "name").as_str(), rstd::ref<rstd::str>("demo-base"));
+    const auto& package = member(document, "package"_str);
+    EXPECT_EQ(*member(package, "name"_str).as_str(), rstd::ref<rstd::str>("demo-base"_str));
 
-    const auto& library = member(document, "lib");
-    EXPECT_EQ(*member(library, "name").as_str(), rstd::ref<rstd::str>("demo.base"));
-    auto sources = member(library, "sources").as_array();
+    const auto& library = member(document, "lib"_str);
+    EXPECT_EQ(*member(library, "name"_str).as_str(), rstd::ref<rstd::str>("demo.base"_str));
+    auto sources = member(library, "sources"_str).as_array();
     ASSERT_TRUE(sources.is_some());
     ASSERT_EQ((**sources).len(), usize(3));
-    EXPECT_EQ(*(**sources)[usize(1)].as_str(), rstd::ref<rstd::str>("src/detail.cppm"));
+    EXPECT_EQ(*(**sources)[usize(1)].as_str(), rstd::ref<rstd::str>("src/detail.cppm"_str));
 
-    const auto& dependency = member(member(document, "dependencies"), "support");
-    EXPECT_EQ(*member(dependency, "path").as_str(), rstd::ref<rstd::str>("../support"));
+    const auto& dependency = member(member(document, "dependencies"_str), "support"_str);
+    EXPECT_EQ(*member(dependency, "path"_str).as_str(), rstd::ref<rstd::str>("../support"_str));
 }
 
 TEST(TomlParser, ParsesDottedKeysArraysOfTablesAndScalars) {
@@ -74,7 +73,7 @@ name = "first"
 
 [[target]]
 name = "second"
-)");
+)"_str);
     if (result.is_err()) {
         auto parse_error = result.unwrap_err();
         FAIL() << "line " << parse_error.line().to_primitive() << " column "
@@ -83,16 +82,16 @@ name = "second"
     }
     auto document = result.unwrap();
 
-    EXPECT_EQ(member(document, "count").as_integer(), Some(i64(-42)));
-    EXPECT_EQ(member(document, "ratio").as_float(), Some(f64(125)));
-    EXPECT_EQ(member(document, "mask").as_integer(), Some(i64(255)));
-    EXPECT_TRUE(member(document, "when").is_offset_datetime());
-    EXPECT_EQ(*member(member(document, "owner"), "name").as_str(), rstd::ref<rstd::str>("Tenon"));
+    EXPECT_EQ(member(document, "count"_str).as_integer(), Some(i64(-42)));
+    EXPECT_EQ(member(document, "ratio"_str).as_float(), Some(f64(125)));
+    EXPECT_EQ(member(document, "mask"_str).as_integer(), Some(i64(255)));
+    EXPECT_TRUE(member(document, "when"_str).is_offset_datetime());
+    EXPECT_EQ(*member(member(document, "owner"_str), "name"_str).as_str(), rstd::ref<rstd::str>("Tenon"_str));
 
-    auto targets = member(document, "target").as_array();
+    auto targets = member(document, "target"_str).as_array();
     ASSERT_TRUE(targets.is_some());
     ASSERT_EQ((**targets).len(), usize(2));
-    EXPECT_EQ(*member((**targets)[usize(1)], "name").as_str(), rstd::ref<rstd::str>("second"));
+    EXPECT_EQ(*member((**targets)[usize(1)], "name"_str).as_str(), rstd::ref<rstd::str>("second"_str));
 }
 
 TEST(TomlParser, DecodesStringsAndDateTimeKinds) {
@@ -107,7 +106,7 @@ date = 2026-07-22
 time = 03:04:05.5
 local = 2026-07-22 03:04:05
 offset = 2026-07-22T03:04:05-07:30
-)");
+)"_str);
     if (result.is_err()) {
         auto parse_error = result.unwrap_err();
         FAIL() << "line " << parse_error.line().to_primitive() << " column "
@@ -116,13 +115,13 @@ offset = 2026-07-22T03:04:05-07:30
     }
     auto document = result.unwrap();
 
-    EXPECT_EQ(*member(document, "escaped").as_str(), rstd::ref<rstd::str>("line\n你好"));
-    EXPECT_EQ(*member(document, "literal").as_str(), rstd::ref<rstd::str>(R"(C:\tools\tenon)"));
-    EXPECT_EQ(*member(document, "multiline").as_str(), rstd::ref<rstd::str>("first second\n"));
-    EXPECT_TRUE(member(document, "date").is_local_date());
-    EXPECT_TRUE(member(document, "time").is_local_time());
-    EXPECT_TRUE(member(document, "local").is_local_datetime());
-    EXPECT_TRUE(member(document, "offset").is_offset_datetime());
+    EXPECT_EQ(*member(document, "escaped"_str).as_str(), rstd::ref<rstd::str>("line\n你好"_str));
+    EXPECT_EQ(*member(document, "literal"_str).as_str(), rstd::ref<rstd::str>(R"(C:\tools\tenon)"_str));
+    EXPECT_EQ(*member(document, "multiline"_str).as_str(), rstd::ref<rstd::str>("first second\n"_str));
+    EXPECT_TRUE(member(document, "date"_str).is_local_date());
+    EXPECT_TRUE(member(document, "time"_str).is_local_time());
+    EXPECT_TRUE(member(document, "local"_str).is_local_datetime());
+    EXPECT_TRUE(member(document, "offset"_str).is_offset_datetime());
 }
 
 TEST(TomlParser, SupportsToml11ScalarAndContainerSyntax) {
@@ -137,54 +136,52 @@ inline = {
   # comment
   name = "demo",
 }
-)TOML");
+)TOML"_str);
     ASSERT_TRUE(result.is_ok());
     auto document = result.unwrap();
 
-    EXPECT_EQ(*member(document, "escaped").as_str(),
-              rstd::ref<rstd::str>("\x1b"
-                                   "A"));
-    EXPECT_EQ(member(document, "exponent").as_float(), Some(f64(3)));
-    EXPECT_EQ(member(document, "hex").as_integer(), Some(i64(3735928559)));
-    auto time = member(document, "time").as_local_time();
+    EXPECT_EQ(*member(document, "escaped"_str).as_str(),
+              rstd::ref<rstd::str>("\x1b"_str
+                                   "A"_str));
+    EXPECT_EQ(member(document, "exponent"_str).as_float(), Some(f64(3)));
+    EXPECT_EQ(member(document, "hex"_str).as_integer(), Some(i64(3735928559)));
+    auto time = member(document, "time"_str).as_local_time();
     ASSERT_TRUE(time.is_some());
     EXPECT_EQ(time->second, rstd::uint8_t {});
-    EXPECT_TRUE(member(document, "local").is_local_datetime());
-    EXPECT_EQ(*member(document, "quotes").as_str(), rstd::ref<rstd::str>("two quotes: \"\""));
-    EXPECT_EQ(*member(member(document, "inline"), "name").as_str(), rstd::ref<rstd::str>("demo"));
+    EXPECT_TRUE(member(document, "local"_str).is_local_datetime());
+    EXPECT_EQ(*member(document, "quotes"_str).as_str(), rstd::ref<rstd::str>("two quotes: \"\""_str));
+    EXPECT_EQ(*member(member(document, "inline"_str), "name"_str).as_str(), rstd::ref<rstd::str>("demo"_str));
 }
 
 TEST(TomlParser, RejectsDuplicateAndMalformedInput) {
-    EXPECT_TRUE(parse("name = 1\nname = 2\n").is_err());
-    EXPECT_TRUE(parse("[package]\n[package]\n").is_err());
-    EXPECT_TRUE(parse("value = 01\n").is_err());
-    EXPECT_TRUE(parse("value = [1 2]\n").is_err());
-    EXPECT_TRUE(parse("value = \"\\q\"\n").is_err());
-    EXPECT_TRUE(parse("value = +0x1\n").is_err());
-    EXPECT_TRUE(parse("value = 1e_2\n").is_err());
-    EXPECT_TRUE(parse("value = \"\x7f\"\n").is_err());
-    EXPECT_TRUE(parse("value = 1 # \x7f\n").is_err());
-    EXPECT_TRUE(parse("value = \"\"\"six quotes: \"\"\"\"\"\"\n").is_err());
+    EXPECT_TRUE(parse("name = 1\nname = 2\n"_str).is_err());
+    EXPECT_TRUE(parse("[package]\n[package]\n"_str).is_err());
+    EXPECT_TRUE(parse("value = 01\n"_str).is_err());
+    EXPECT_TRUE(parse("value = [1 2]\n"_str).is_err());
+    EXPECT_TRUE(parse("value = \"\\q\"\n"_str).is_err());
+    EXPECT_TRUE(parse("value = +0x1\n"_str).is_err());
+    EXPECT_TRUE(parse("value = 1e_2\n"_str).is_err());
+    EXPECT_TRUE(parse("value = \"\x7f\"\n"_str).is_err());
+    EXPECT_TRUE(parse("value = 1 # \x7f\n"_str).is_err());
+    EXPECT_TRUE(parse("value = \"\"\"six quotes: \"\"\"\"\"\"\n"_str).is_err());
 
-    auto trailing = parse("name = 1 unexpected\n");
+    auto trailing = parse("name = 1 unexpected\n"_str);
     ASSERT_TRUE(trailing.is_err());
     EXPECT_TRUE(trailing.unwrap_err().is_syntax());
     EXPECT_EQ(trailing.unwrap_err().line(), usize(1));
 }
 
 TEST(TomlParser, SliceAndFromStrTraitReuseDecoder) {
-    const rstd::u8 input[] = { u8('x'), u8(' '), u8('='), u8(' '), u8('1'), u8('\n') };
-    auto           from_slice =
-        rstd::toml::from_slice(rstd::slice<rstd::u8>::from_raw_parts(input, usize(sizeof(input))));
-    auto from_trait = rstd::from_str<Value>("x = 1\n");
+    auto from_slice = rstd::toml::from_slice("x = 1\n"_bytes);
+    auto from_trait = rstd::from_str<Value>("x = 1\n"_str);
 
     ASSERT_TRUE(from_slice.is_ok());
     ASSERT_TRUE(from_trait.is_ok());
     EXPECT_EQ(*from_slice, *from_trait);
 
-    const rstd::u8 invalid[]      = { u8(0xff) };
-    auto           invalid_result = rstd::toml::from_slice(
-        rstd::slice<rstd::u8>::from_raw_parts(invalid, usize(sizeof(invalid))));
+    rstd::byte invalid[] = { rstd::byte { 0xff } };
+    auto invalid_result =
+        rstd::toml::from_slice(rstd::slice<rstd::u8>::from_raw_parts(invalid, usize(1)));
     ASSERT_TRUE(invalid_result.is_err());
     EXPECT_TRUE(invalid_result.unwrap_err().is_syntax());
 }
@@ -214,58 +211,58 @@ name = "metal"
 name = "nail"
 [[products.tags]]
 name = "small"
-)");
+)"_str);
     ASSERT_TRUE(result.is_ok());
     auto document = result.unwrap();
 
-    const auto& service = member(document, "service");
-    EXPECT_EQ(member(service, "enabled").as_bool(), Some(true));
-    EXPECT_EQ(member(member(member(service, "api"), "http"), "port").as_integer(), Some(i64(8080)));
+    const auto& service = member(document, "service"_str);
+    EXPECT_EQ(member(service, "enabled"_str).as_bool(), Some(true));
+    EXPECT_EQ(member(member(member(service, "api"_str), "http"_str), "port"_str).as_integer(), Some(i64(8080)));
 
-    const auto& apple = member(member(document, "fruit"), "apple");
-    EXPECT_EQ(*member(apple, "color").as_str(), rstd::ref<rstd::str>("red"));
-    EXPECT_EQ(member(member(apple, "taste"), "sweet").as_bool(), Some(true));
-    EXPECT_EQ(member(member(apple, "texture"), "smooth").as_bool(), Some(true));
+    const auto& apple = member(member(document, "fruit"_str), "apple"_str);
+    EXPECT_EQ(*member(apple, "color"_str).as_str(), rstd::ref<rstd::str>("red"_str));
+    EXPECT_EQ(member(member(apple, "taste"_str), "sweet"_str).as_bool(), Some(true));
+    EXPECT_EQ(member(member(apple, "texture"_str), "smooth"_str).as_bool(), Some(true));
 
-    auto products = member(document, "products").as_array();
+    auto products = member(document, "products"_str).as_array();
     ASSERT_TRUE(products.is_some());
     ASSERT_EQ((**products).len(), usize(2));
-    EXPECT_EQ(*member((**products)[usize(1)], "name").as_str(), rstd::ref<rstd::str>("nail"));
-    auto tags = member((**products)[usize(1)], "tags").as_array();
+    EXPECT_EQ(*member((**products)[usize(1)], "name"_str).as_str(), rstd::ref<rstd::str>("nail"_str));
+    auto tags = member((**products)[usize(1)], "tags"_str).as_array();
     ASSERT_TRUE(tags.is_some());
     ASSERT_EQ((**tags).len(), usize(1));
-    EXPECT_EQ(*member((**tags)[usize()], "name").as_str(), rstd::ref<rstd::str>("small"));
+    EXPECT_EQ(*member((**tags)[usize()], "name"_str).as_str(), rstd::ref<rstd::str>("small"_str));
 }
 
 TEST(TomlParser, RejectsSealedAndRedefinedTableKinds) {
-    EXPECT_TRUE(parse("fruit.apple.color = \"red\"\n[fruit.apple]\n").is_err());
-    EXPECT_TRUE(parse("[product]\ntype = { name = \"Nail\" }\ntype.edible = false\n").is_err());
-    EXPECT_TRUE(parse("[product]\ntype.name = \"Nail\"\ntype = { edible = false }\n").is_err());
-    EXPECT_TRUE(parse("[[fruits]]\n[fruits]\n").is_err());
-    EXPECT_TRUE(parse("[fruits]\n[[fruits]]\n").is_err());
-    EXPECT_TRUE(parse("fruits = []\n[[fruits]]\n").is_err());
-    EXPECT_TRUE(parse("[fruit.physical]\ncolor = \"red\"\n[[fruit]]\n").is_err());
-    EXPECT_TRUE(parse("[[fruits]]\n[[fruits.tags]]\n[fruits.tags]\n").is_err());
-    EXPECT_TRUE(parse("[a.b.c]\nvalue = 1\n[a]\nb.c.other = 2\n").is_err());
-    EXPECT_TRUE(parse("[[a.b]]\nvalue = 1\n[a]\nb.other = 2\n").is_err());
+    EXPECT_TRUE(parse("fruit.apple.color = \"red\"\n[fruit.apple]\n"_str).is_err());
+    EXPECT_TRUE(parse("[product]\ntype = { name = \"Nail\" }\ntype.edible = false\n"_str).is_err());
+    EXPECT_TRUE(parse("[product]\ntype.name = \"Nail\"\ntype = { edible = false }\n"_str).is_err());
+    EXPECT_TRUE(parse("[[fruits]]\n[fruits]\n"_str).is_err());
+    EXPECT_TRUE(parse("[fruits]\n[[fruits]]\n"_str).is_err());
+    EXPECT_TRUE(parse("fruits = []\n[[fruits]]\n"_str).is_err());
+    EXPECT_TRUE(parse("[fruit.physical]\ncolor = \"red\"\n[[fruit]]\n"_str).is_err());
+    EXPECT_TRUE(parse("[[fruits]]\n[[fruits.tags]]\n[fruits.tags]\n"_str).is_err());
+    EXPECT_TRUE(parse("[a.b.c]\nvalue = 1\n[a]\nb.c.other = 2\n"_str).is_err());
+    EXPECT_TRUE(parse("[[a.b]]\nvalue = 1\n[a]\nb.other = 2\n"_str).is_err());
 }
 
 TEST(TomlParser, EnforcesInputValueAndDepthLimits) {
     auto input_options            = rstd::toml::ParseOptions {};
     input_options.max_input_bytes = usize(3);
-    auto input                    = rstd::toml::from_str("key = 1\n", input_options);
+    auto input                    = rstd::toml::from_str("key = 1\n"_str, input_options);
     ASSERT_TRUE(input.is_err());
     EXPECT_TRUE(input.unwrap_err().is_limit());
 
     auto value_options       = rstd::toml::ParseOptions {};
     value_options.max_values = usize(2);
-    auto values              = rstd::toml::from_str("values = [1, 2]\n", value_options);
+    auto values              = rstd::toml::from_str("values = [1, 2]\n"_str, value_options);
     ASSERT_TRUE(values.is_err());
     EXPECT_TRUE(values.unwrap_err().is_limit());
 
     auto depth_options      = rstd::toml::ParseOptions {};
     depth_options.max_depth = u8(1);
-    auto depth              = rstd::toml::from_str("values = [[]]\n", depth_options);
+    auto depth              = rstd::toml::from_str("values = [[]]\n"_str, depth_options);
     ASSERT_TRUE(depth.is_err());
     EXPECT_TRUE(depth.unwrap_err().is_limit());
 }

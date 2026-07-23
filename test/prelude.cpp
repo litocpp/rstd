@@ -1,3 +1,5 @@
+#include <cstddef>
+
 import rstd;
 
 using namespace rstd::prelude;
@@ -18,8 +20,7 @@ static_assert(rstd::mtp::same_as<rstd::intptr_t, __INTPTR_TYPE__>);
 static_assert(rstd::mtp::same_as<rstd::uintptr_t, __UINTPTR_TYPE__>);
 static_assert(rstd::mtp::same_as<rstd::int128_t, __int128>);
 static_assert(rstd::mtp::same_as<rstd::uint128_t, unsigned __int128>);
-static_assert(rstd::mtp::same_as<rstd::byte, rstd::uint8_t>);
-static_assert(rstd::mtp::same_as<rstd::byte, unsigned char>);
+static_assert(rstd::mtp::same_as<rstd::byte, std::byte>);
 
 static_assert(rstd::mtp::same_as<Box<int>, rstd::boxed::Box<int>>);
 static_assert(rstd::mtp::same_as<String, rstd::string::String>);

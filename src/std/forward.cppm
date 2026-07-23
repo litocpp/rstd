@@ -53,6 +53,8 @@ export namespace vec
 {
 /// A contiguous growable array type, analogous to Rust's `Vec<T>`.
 using rstd_alloc::vec::Vec;
+using rstd_alloc::vec::SpareCapacity;
+using rstd_alloc::vec::SpareSlot;
 } // namespace vec
 
 /// Ordered collection types.

@@ -42,14 +42,8 @@ public:
 
     static auto from_vec(Vec<u8>&& vec) -> Bytes { return Bytes { rstd::move(vec) }; }
 
-    static auto copy_from_bytes(slice<byte> source) -> Bytes {
-        return from_vec(Vec<u8>::copy_from_bytes(source));
-    }
-
     static auto copy_from_slice(slice<u8> src) -> Bytes {
-        auto vec = Vec<u8>::with_capacity(src.len());
-        vec.extend_from_slice(src);
-        return Bytes { rstd::move(vec) };
+        return Bytes { Vec<u8>::from(src) };
     }
 
     auto len() const noexcept -> usize { return usize(m_buf.len().to_primitive() - m_pos); }
@@ -57,7 +51,7 @@ public:
     auto capacity() const noexcept -> usize { return m_buf.capacity(); }
     auto is_empty() const noexcept -> bool { return len() == usize(); }
 
-    auto data() const noexcept -> const u8* {
+    auto data() const noexcept -> const byte* {
         auto* p = m_buf.data();
         return p == nullptr ? nullptr : p + m_pos;
     }
@@ -88,7 +82,7 @@ public:
 
     auto operator[](usize index) const -> u8 {
         if (index >= len()) rstd::panic { "Bytes index out of bounds" };
-        return data()[index.to_primitive()];
+        return u8::from_byte(data()[index.to_primitive()]);
     }
 };
 
@@ -126,11 +120,11 @@ public:
     auto capacity() const noexcept -> usize { return m_buf.capacity(); }
     auto is_empty() const noexcept -> bool { return len() == usize(); }
 
-    auto data() noexcept -> u8* {
+    auto data() noexcept -> byte* {
         auto* p = m_buf.data();
         return p == nullptr ? nullptr : p + m_pos;
     }
-    auto data() const noexcept -> const u8* {
+    auto data() const noexcept -> const byte* {
         auto* p = m_buf.data();
         return p == nullptr ? nullptr : p + m_pos;
     }
@@ -140,9 +134,9 @@ public:
         return slice<u8>::from_raw_parts(data(), len());
     }
 
-    auto as_mut_slice() noexcept [[clang::lifetimebound]] -> mut_ptr<u8[]> {
+    auto as_mut_slice() noexcept [[clang::lifetimebound]] -> mut_ref<u8[]> {
         if (is_empty()) return {};
-        return mut_ptr<u8[]>::from_raw_parts(data(), len());
+        return mut_ref<u8[]>::from_raw_parts(data(), len());
     }
 
     auto remaining() const noexcept -> usize { return len(); }
@@ -156,14 +150,15 @@ public:
 
     auto remaining_mut() const noexcept -> usize { return m_buf.capacity() - usize(m_end); }
 
-    auto chunk_mut() [[clang::lifetimebound]] -> mut_ptr<u8[]> {
+    auto chunk_mut() [[clang::lifetimebound]] -> mut_ref<u8[]> {
         if (remaining_mut() == usize()) {
             reserve(DEFAULT_CHUNK_CAPACITY);
         }
         if (m_buf.len() < m_buf.capacity()) {
             m_buf.resize(m_buf.capacity(), u8 {});
         }
-        return mut_ptr<u8[]>::from_raw_parts(m_buf.data() + m_end, m_buf.len() - usize(m_end));
+        return mut_ref<u8[]>::from_raw_parts(m_buf.data() + m_end,
+                                             m_buf.len() - usize(m_end));
     }
 
     void advance_mut(usize cnt) {
@@ -188,21 +183,6 @@ public:
         m_end = target.to_primitive();
     }
     void extend_from_slice(slice<u8> src) { put_slice(src); }
-    void extend_from_slice(const u8* src, usize count) {
-        if (count == usize()) return;
-        put_slice(slice<u8>::from_raw_parts(src, count));
-    }
-
-    void put_bytes(slice<byte> src) {
-        reserve(src.len());
-        auto const target = usize(m_end) + src.len();
-        if (m_buf.len() < target) m_buf.resize(target, u8 {});
-        for (u8 value : u8_values(src)) {
-            m_buf[usize(m_end)] = value;
-            ++m_end;
-        }
-    }
-
     void resize(usize new_len, u8 value) {
         if (m_pos != 0 && new_len > len()) {
             auto dst = Vec<u8>::with_capacity(new_len);
@@ -258,14 +238,14 @@ public:
         return Bytes::from_vec(rstd::move(vec));
     }
 
-    auto operator[](usize index) -> u8& {
+    auto operator[](usize index) -> mut_ref<u8> {
         if (index >= len()) rstd::panic { "BytesMut index out of bounds" };
-        return data()[index.to_primitive()];
+        return mut_ref<u8>::from_raw_parts(data() + index.to_primitive());
     }
 
     auto operator[](usize index) const -> u8 {
         if (index >= len()) rstd::panic { "BytesMut index out of bounds" };
-        return data()[index.to_primitive()];
+        return u8::from_byte(data()[index.to_primitive()]);
     }
 };
 

@@ -2,21 +2,22 @@
 import rstd;
 
 using namespace rstd::prelude;
+using namespace rstd::literals;
 using rstd::collections::BTreeSet;
 
 TEST(BTreeSet, IteratesInOrderAndSupportsBorrowedStringLookup) {
     auto set = BTreeSet<rstd::string::String>::make();
-    set.insert(rstd::string::String::make("gamma"));
-    set.insert(rstd::string::String::make("alpha"));
-    set.insert(rstd::string::String::make("beta"));
+    set.insert(rstd::string::String::make("gamma"_str));
+    set.insert(rstd::string::String::make("alpha"_str));
+    set.insert(rstd::string::String::make("beta"_str));
 
     auto iter = set.iter();
-    EXPECT_EQ(**iter.next(), rstd::ref<rstd::str>("alpha"));
-    EXPECT_EQ(**iter.next(), rstd::ref<rstd::str>("beta"));
-    EXPECT_EQ(**iter.next(), rstd::ref<rstd::str>("gamma"));
+    EXPECT_EQ(**iter.next(), "alpha"_str);
+    EXPECT_EQ(**iter.next(), "beta"_str);
+    EXPECT_EQ(**iter.next(), "gamma"_str);
     EXPECT_TRUE(iter.next().is_none());
-    EXPECT_TRUE(set.contains(rstd::ref<rstd::str>("beta")));
-    EXPECT_EQ(**set.get(rstd::ref<rstd::str>("gamma")), rstd::ref<rstd::str>("gamma"));
+    EXPECT_TRUE(set.contains("beta"_str));
+    EXPECT_EQ(**set.get("gamma"_str), "gamma"_str);
 }
 
 TEST(BTreeSet, RetainCloneAndRemovalPreserveOwnership) {

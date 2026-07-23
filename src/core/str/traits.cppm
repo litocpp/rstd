@@ -39,42 +39,94 @@ namespace rstd::str_
 
 export class Utf8Error {
 public:
-    constexpr explicit Utf8Error(usize valid_up_to) noexcept: valid_up_to_(valid_up_to) {}
+    constexpr Utf8Error(usize valid_up_to, Option<u8> error_len) noexcept
+        : valid_up_to_(valid_up_to), error_len_(rstd::move(error_len)) {}
 
     [[nodiscard]]
     constexpr auto valid_up_to() const noexcept -> usize {
         return valid_up_to_;
     }
 
+    [[nodiscard]]
+    constexpr auto error_len() const noexcept -> Option<u8> {
+        return error_len_;
+    }
+
 private:
     usize valid_up_to_;
+    Option<u8> error_len_;
 };
 
 /// Validates a byte slice as UTF-8 and returns the first invalid byte offset on failure.
 export constexpr auto validate_utf8(slice<u8> bytes) noexcept -> Result<empty, Utf8Error> {
+    auto const length = bytes.len().to_primitive();
+    auto value = [bytes](rstd::size_t index) constexpr {
+        return bytes[usize(index)].to_primitive();
+    };
+    auto invalid = [](rstd::size_t offset, rstd::uint8_t error_len) constexpr {
+        return Result<empty, Utf8Error>(
+            Err(Utf8Error(usize(offset), Some(u8(error_len)))));
+    };
+    auto incomplete = [](rstd::size_t offset) constexpr {
+        return Result<empty, Utf8Error>(Err(Utf8Error(usize(offset), None())));
+    };
+    auto continuation = [](rstd::uint8_t byte) constexpr {
+        return (byte & 0xc0u) == 0x80u;
+    };
+
     rstd::size_t offset = 0;
-    while (offset < bytes.len().to_primitive()) {
-        auto [code_point, consumed] = char_::decode_utf8(
-            bytes.as_raw_ptr() + offset, usize(bytes.len().to_primitive() - offset));
-        if (code_point == char_::REPLACEMENT && consumed <= usize(1) &&
-            bytes[usize(offset)].to_primitive() > 0x7F) {
-            return Err(Utf8Error { usize(offset) });
+    while (offset < length) {
+        auto const first = value(offset);
+        if (first <= 0x7f) {
+            ++offset;
+            continue;
         }
-        offset += consumed.to_primitive();
+
+        if (first >= 0xc2 && first <= 0xdf) {
+            if (offset + 1 >= length) return incomplete(offset);
+            if (! continuation(value(offset + 1))) return invalid(offset, 1);
+            offset += 2;
+            continue;
+        }
+
+        if (first >= 0xe0 && first <= 0xef) {
+            if (offset + 1 >= length) return incomplete(offset);
+            auto const second = value(offset + 1);
+            auto const valid_second = first == 0xe0 ? second >= 0xa0 && second <= 0xbf
+                                      : first == 0xed ? second >= 0x80 && second <= 0x9f
+                                                      : continuation(second);
+            if (! valid_second) return invalid(offset, 1);
+            if (offset + 2 >= length) return incomplete(offset);
+            if (! continuation(value(offset + 2))) return invalid(offset, 2);
+            offset += 3;
+            continue;
+        }
+
+        if (first >= 0xf0 && first <= 0xf4) {
+            if (offset + 1 >= length) return incomplete(offset);
+            auto const second = value(offset + 1);
+            auto const valid_second = first == 0xf0 ? second >= 0x90 && second <= 0xbf
+                                      : first == 0xf4 ? second >= 0x80 && second <= 0x8f
+                                                      : continuation(second);
+            if (! valid_second) return invalid(offset, 1);
+            if (offset + 2 >= length) return incomplete(offset);
+            if (! continuation(value(offset + 2))) return invalid(offset, 2);
+            if (offset + 3 >= length) return incomplete(offset);
+            if (! continuation(value(offset + 3))) return invalid(offset, 3);
+            offset += 4;
+            continue;
+        }
+
+        return invalid(offset, 1);
     }
     return Ok(empty {});
 }
 
 /// Validates a byte slice as UTF-8 and returns a string slice on success.
-export constexpr auto from_utf8(slice<u8> bytes) noexcept -> Option<ref<str>> {
-    if (validate_utf8(bytes).is_ok()) {
-        auto     raw = as_bytes(bytes);
-        ref<str> r;
-        r.p      = raw.as_raw_ptr();
-        r.length = raw.len();
-        return Some(rstd::move(r));
-    }
-    return None();
+export constexpr auto from_utf8(slice<u8> bytes) noexcept -> Result<ref<str>, Utf8Error> {
+    auto validation = validate_utf8(bytes);
+    if (validation.is_err()) return Err(rstd::move(validation).unwrap_err_unchecked());
+    return Ok(rstd::from_utf8_unchecked(bytes));
 }
 
 /// Finds the byte offset of `needle` in `haystack`.
@@ -118,7 +170,7 @@ export constexpr auto get(ref<str> value [[clang::lifetimebound]], usize start, 
     if (! is_char_boundary(value, start) || ! is_char_boundary(value, end)) return None();
     auto* data = value.data();
     if (start != usize()) data += start.to_primitive();
-    return Some(ref<str>::from_raw_parts(data, end - start));
+    return Some(ref<str>::from_raw_parts_unchecked(data, end - start));
 }
 
 /// Returns the suffix beginning at a checked UTF-8 byte offset.

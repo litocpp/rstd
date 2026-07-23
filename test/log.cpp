@@ -6,6 +6,7 @@ import rstd.alloc;
 import log_module_check;
 
 using namespace rstd::prelude;
+using namespace rstd::literals;
 using namespace rstd::log;
 
 // ── Level / LevelFilter ───────────────────────────────────────────────────
@@ -44,31 +45,31 @@ TEST(LogLevel, ToLevel) {
 // ── parse ─────────────────────────────────────────────────────────────────
 
 TEST(LogParse, LevelCaseInsensitive) {
-    EXPECT_EQ(parse_level("error").unwrap(), Level::Error);
-    EXPECT_EQ(parse_level("WARN").unwrap(), Level::Warn);
-    EXPECT_EQ(parse_level("Info").unwrap(), Level::Info);
-    EXPECT_EQ(parse_level("dEbUg").unwrap(), Level::Debug);
-    EXPECT_EQ(parse_level("trace").unwrap(), Level::Trace);
-    EXPECT_TRUE(parse_level("invalid").is_none());
+    EXPECT_EQ(parse_level("error"_str).unwrap(), Level::Error);
+    EXPECT_EQ(parse_level("WARN"_str).unwrap(), Level::Warn);
+    EXPECT_EQ(parse_level("Info"_str).unwrap(), Level::Info);
+    EXPECT_EQ(parse_level("dEbUg"_str).unwrap(), Level::Debug);
+    EXPECT_EQ(parse_level("trace"_str).unwrap(), Level::Trace);
+    EXPECT_TRUE(parse_level("invalid"_str).is_none());
 }
 
 TEST(LogParse, LevelFilterCaseInsensitive) {
-    EXPECT_EQ(parse_level_filter("off").unwrap(), LevelFilter::Off);
-    EXPECT_EQ(parse_level_filter("ERROR").unwrap(), LevelFilter::Error);
-    EXPECT_EQ(parse_level_filter("TRACE").unwrap(), LevelFilter::Trace);
-    EXPECT_TRUE(parse_level_filter("bad").is_none());
+    EXPECT_EQ(parse_level_filter("off"_str).unwrap(), LevelFilter::Off);
+    EXPECT_EQ(parse_level_filter("ERROR"_str).unwrap(), LevelFilter::Error);
+    EXPECT_EQ(parse_level_filter("TRACE"_str).unwrap(), LevelFilter::Trace);
+    EXPECT_TRUE(parse_level_filter("bad"_str).is_none());
 }
 
 // ── Metadata / Record ─────────────────────────────────────────────────────
 
 TEST(LogRecord, MetadataBuilder) {
-    auto m = MetadataBuilder().set_level(Level::Debug).set_target("test").build();
+    auto m = MetadataBuilder().set_level(Level::Debug).set_target("test"_str).build();
     EXPECT_EQ(m.lvl(), Level::Debug);
     EXPECT_EQ(m.tgt().size(), rstd::usize(4));
 }
 
 TEST(LogRecord, RecordBuilder) {
-    auto rec = RecordBuilder().set_level(Level::Error).set_target("my_mod").build();
+    auto rec = RecordBuilder().set_level(Level::Error).set_target("my_mod"_str).build();
     EXPECT_EQ(rec.lvl(), Level::Error);
     EXPECT_EQ(rec.target().size(), rstd::usize(6));
     EXPECT_EQ(rec.file(), nullptr);
@@ -92,7 +93,7 @@ TEST(LogMaxLevel, SetAndGet) {
 // ── EnvLogger filter parsing ──────────────────────────────────────────────
 
 TEST(LogEnvLogger, GlobalLevel) {
-    EnvLogger logger("debug");
+    EnvLogger logger("debug"_str);
     EXPECT_EQ(logger.filter(), LevelFilter::Debug);
     EXPECT_TRUE(logger.enabled(Metadata(Level::Debug, ref<str>())));
     EXPECT_TRUE(logger.enabled(Metadata(Level::Info, ref<str>())));
@@ -100,30 +101,30 @@ TEST(LogEnvLogger, GlobalLevel) {
 }
 
 TEST(LogEnvLogger, TargetLevel) {
-    EnvLogger logger("my_mod=trace");
-    EXPECT_TRUE(logger.enabled(Metadata(Level::Trace, "my_mod")));
-    EXPECT_TRUE(logger.enabled(Metadata(Level::Trace, "my_mod::sub")));
-    EXPECT_FALSE(logger.enabled(Metadata(Level::Trace, "other")));
+    EnvLogger logger("my_mod=trace"_str);
+    EXPECT_TRUE(logger.enabled(Metadata(Level::Trace, "my_mod"_str)));
+    EXPECT_TRUE(logger.enabled(Metadata(Level::Trace, "my_mod::sub"_str)));
+    EXPECT_FALSE(logger.enabled(Metadata(Level::Trace, "other"_str)));
 }
 
 TEST(LogEnvLogger, MixedRules) {
-    EnvLogger logger("debug, my_mod=warn");
+    EnvLogger logger("debug, my_mod=warn"_str);
     // global debug
-    EXPECT_TRUE(logger.enabled(Metadata(Level::Debug, "other")));
+    EXPECT_TRUE(logger.enabled(Metadata(Level::Debug, "other"_str)));
     // my_mod restricted to warn
-    EXPECT_TRUE(logger.enabled(Metadata(Level::Warn, "my_mod")));
-    EXPECT_FALSE(logger.enabled(Metadata(Level::Info, "my_mod")));
+    EXPECT_TRUE(logger.enabled(Metadata(Level::Warn, "my_mod"_str)));
+    EXPECT_FALSE(logger.enabled(Metadata(Level::Info, "my_mod"_str)));
 }
 
 TEST(LogEnvLogger, OffLevel) {
-    EnvLogger logger("error,my_mod=off");
-    EXPECT_FALSE(logger.enabled(Metadata(Level::Error, "my_mod")));
-    EXPECT_TRUE(logger.enabled(Metadata(Level::Error, "other")));
+    EnvLogger logger("error,my_mod=off"_str);
+    EXPECT_FALSE(logger.enabled(Metadata(Level::Error, "my_mod"_str)));
+    EXPECT_TRUE(logger.enabled(Metadata(Level::Error, "other"_str)));
 }
 
 TEST(LogEnvLogger, DefaultError) {
     // No rules set → default is Error
-    EnvLogger logger("");
+    EnvLogger logger(""_str);
     EXPECT_TRUE(logger.enabled(Metadata(Level::Error, ref<str>())));
     EXPECT_FALSE(logger.enabled(Metadata(Level::Warn, ref<str>())));
 }
@@ -249,23 +250,23 @@ TEST(LogMacroHelpers, LazyEvaluation) {
 
 TEST(LogMacroHelpers, TargetMacrosCompile) {
     set_max_level(LevelFilter::Trace);
-    rstd_error_t("my_mod", "targeted error: {}", "e");
-    rstd_warn_t("my_mod", "targeted warn: {}", "w");
-    rstd_info_t("my_mod", "targeted info: {}", "i");
-    rstd_debug_t("my_mod", "targeted debug: {}", "d");
-    rstd_trace_t("my_mod", "targeted trace: {}", "t");
+    rstd_error_t("my_mod"_str, "targeted error: {}", "e");
+    rstd_warn_t("my_mod"_str, "targeted warn: {}", "w");
+    rstd_info_t("my_mod"_str, "targeted info: {}", "i");
+    rstd_debug_t("my_mod"_str, "targeted debug: {}", "d");
+    rstd_trace_t("my_mod"_str, "targeted trace: {}", "t");
 }
 
 TEST(LogMacroHelpers, TargetMacrosFiltered) {
-    static EnvLogger logger("error,my_mod=off");
+    static EnvLogger logger("error,my_mod=off"_str);
     (void)set_logger(logger);
     set_max_level(LevelFilter::Trace);
 
     // my_mod is off, these should be filtered
-    rstd_error_t("my_mod", "should not appear");
-    rstd_warn_t("my_mod", "should not appear");
-    rstd_info_t("my_mod", "should not appear");
+    rstd_error_t("my_mod"_str, "should not appear");
+    rstd_warn_t("my_mod"_str, "should not appear");
+    rstd_info_t("my_mod"_str, "should not appear");
 
     // other targets are allowed at error
-    rstd_error_t("other", "other error ok");
+    rstd_error_t("other"_str, "other error ok");
 }

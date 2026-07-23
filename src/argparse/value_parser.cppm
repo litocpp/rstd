@@ -2,6 +2,7 @@ export module rstd.argparse:value_parser;
 export import :error;
 
 using namespace rstd::prelude;
+using namespace rstd::literals;
 using rstd::ffi::OsStr;
 using rstd::ffi::OsString;
 
@@ -55,7 +56,7 @@ public:
         if constexpr (Impled<ParseError, fmt::Display>) {
             return Err(ValueError::Message(rstd::format("{}", result.unwrap_err())));
         } else {
-            return Err(ValueError::Message(String::make("failed to parse argument value")));
+            return Err(ValueError::Message(String::make("failed to parse argument value"_str)));
         }
     }
 };
@@ -77,7 +78,7 @@ public:
         } else if constexpr (Impled<Error, fmt::Display>) {
             return Err(ValueError::Message(rstd::format("{}", result.unwrap_err())));
         } else {
-            return Err(ValueError::Message(String::make("failed to parse argument value")));
+            return Err(ValueError::Message(String::make("failed to parse argument value"_str)));
         }
     }
 };
@@ -109,7 +110,8 @@ public:
         for (usize i {}; i < choices_.len(); ++i) {
             if (result == choices_[i]) return Ok(rstd::move(result));
         }
-        return Err(ValueError::Message(String::make("value is not one of the allowed choices")));
+        return Err(
+            ValueError::Message(String::make("value is not one of the allowed choices"_str)));
     }
 
     auto possible_values() const -> Vec<String> {
@@ -238,7 +240,7 @@ public:
                 ErasedDefaultValueAdapter<T> { rstd::move(parsed).unwrap() }));
         } else {
             return Err(rstd::argparse::ValueError::Message(
-                String::make("default value type does not implement Clone")));
+                String::make("default value type does not implement Clone"_str)));
         }
     }
 

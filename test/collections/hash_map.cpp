@@ -2,6 +2,7 @@
 import rstd;
 
 using namespace rstd::prelude;
+using namespace rstd::literals;
 using rstd::collections::HashMap;
 namespace iter = rstd::iter;
 
@@ -9,7 +10,7 @@ namespace
 {
 
 struct ConstantHasher {
-    void write(rstd::slice<rstd::byte>) noexcept {}
+    void write(rstd::slice<rstd::u8>) noexcept {}
     auto finish() const noexcept -> u64 { return u64(7); }
 };
 
@@ -20,8 +21,10 @@ struct SeededHasher {
 
     explicit SeededHasher(u64 seed) noexcept: value(seed) {}
 
-    void write(rstd::slice<rstd::byte> bytes) noexcept {
-        for (usize i {}; i < bytes.len(); ++i) value = value.wrapping_add(u64(bytes[i]));
+    void write(rstd::slice<rstd::u8> bytes) noexcept {
+        for (usize i {}; i < bytes.len(); ++i) {
+            value = value.wrapping_add(u64(bytes[i].to_primitive()));
+        }
     }
 
     auto finish() const noexcept -> u64 { return value; }
@@ -43,9 +46,9 @@ struct CapturingHasher {
     rstd::byte   data[64] {};
     rstd::size_t length {};
 
-    void write(rstd::slice<rstd::byte> bytes) noexcept {
+    void write(rstd::slice<rstd::u8> bytes) noexcept {
         for (rstd::size_t i = 0; i < bytes.len().to_primitive(); ++i) {
-            data[length++] = bytes[usize(i)];
+            data[length++] = bytes[usize(i)].to_byte();
         }
     }
 
@@ -247,43 +250,43 @@ TEST(HashMap, RandomizedOperationsMatchModel) {
 
 TEST(HashMap, StringKeysUseTheirHashOwner) {
     auto map = HashMap<rstd::string::String, i32>::make();
-    map.insert(rstd::string::String::make("alpha"), i32(1));
-    map.insert(rstd::string::String::make("beta"), i32(2));
-    auto key = rstd::string::String::make("alpha");
+    map.insert(rstd::string::String::make("alpha"_str), i32(1));
+    map.insert(rstd::string::String::make("beta"_str), i32(2));
+    auto key = rstd::string::String::make("alpha"_str);
     EXPECT_EQ(**map.get(key), i32(1));
 }
 
 TEST(HashMap, BorrowedStringLookupAndRemoval) {
     auto map = HashMap<rstd::string::String, i32>::make();
-    map.insert(rstd::string::String::make("alpha"), i32(1));
-    map.insert(rstd::string::String::make("beta"), i32(2));
+    map.insert(rstd::string::String::make("alpha"_str), i32(1));
+    map.insert(rstd::string::String::make("beta"_str), i32(2));
 
-    EXPECT_TRUE(map.contains_key(rstd::ref<rstd::str>("alpha")));
-    EXPECT_EQ(**map.get(rstd::ref<rstd::str>("beta")), i32(2));
+    EXPECT_TRUE(map.contains_key(rstd::ref<rstd::str>("alpha"_str)));
+    EXPECT_EQ(**map.get(rstd::ref<rstd::str>("beta"_str)), i32(2));
 
-    auto value = map.get_mut(rstd::ref<rstd::str>("alpha"));
+    auto value = map.get_mut(rstd::ref<rstd::str>("alpha"_str));
     ASSERT_TRUE(value.is_some());
     **value = i32(10);
 
-    auto entry = map.get_key_value(rstd::ref<rstd::str>("alpha"));
+    auto entry = map.get_key_value(rstd::ref<rstd::str>("alpha"_str));
     ASSERT_TRUE(entry.is_some());
-    EXPECT_EQ(*entry->template get<0>(), rstd::ref<rstd::str>("alpha"));
+    EXPECT_EQ(*entry->template get<0>(), rstd::ref<rstd::str>("alpha"_str));
     EXPECT_EQ(*entry->template get<1>(), i32(10));
-    EXPECT_EQ(map.remove(rstd::ref<rstd::str>("alpha")), Some(i32(10)));
-    EXPECT_FALSE(map.contains_key(rstd::ref<rstd::str>("alpha")));
+    EXPECT_EQ(map.remove(rstd::ref<rstd::str>("alpha"_str)), Some(i32(10)));
+    EXPECT_FALSE(map.contains_key(rstd::ref<rstd::str>("alpha"_str)));
 }
 
 TEST(HashMap, ClonePreservesIndependentEntries) {
     auto source = HashMap<rstd::string::String, rstd::string::String>::make();
-    source.insert(rstd::string::String::make("key"), rstd::string::String::make("value"));
+    source.insert(rstd::string::String::make("key"_str), rstd::string::String::make("value"_str));
 
     auto cloned = source.clone();
-    auto value  = source.get_mut(rstd::ref<rstd::str>("key"));
+    auto value  = source.get_mut(rstd::ref<rstd::str>("key"_str));
     ASSERT_TRUE(value.is_some());
-    (**value).push_back('!');
+    (**value).push_ascii(u8('!'));
 
-    EXPECT_EQ(**source.get(rstd::ref<rstd::str>("key")), "value!");
-    EXPECT_EQ(**cloned.get(rstd::ref<rstd::str>("key")), "value");
+    EXPECT_EQ(**source.get(rstd::ref<rstd::str>("key"_str)), "value!"_str);
+    EXPECT_EQ(**cloned.get(rstd::ref<rstd::str>("key"_str)), "value"_str);
 }
 
 TEST(HashMap, CustomHashCombinesWithDifferentBuilders) {
@@ -339,10 +342,10 @@ TEST(HashMap, PointerKeysHashTheirAddress) {
 }
 
 TEST(Hash, StringHashPreservesFieldBoundaries) {
-    auto ab = rstd::string::String::make("ab");
-    auto c  = rstd::string::String::make("c");
-    auto a  = rstd::string::String::make("a");
-    auto bc = rstd::string::String::make("bc");
+    auto ab = rstd::string::String::make("ab"_str);
+    auto c  = rstd::string::String::make("c"_str);
+    auto a  = rstd::string::String::make("a"_str);
+    auto bc = rstd::string::String::make("bc"_str);
 
     CapturingHasher left;
     rstd::hash::hash_into(ab, left);

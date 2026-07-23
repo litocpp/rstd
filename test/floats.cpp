@@ -99,28 +99,28 @@ TEST(FloatMethods, TrigonometryRemainderAndAdjacentValues) {
 }
 
 TEST(FloatFromStr, ParsesDecimalSpecialAndBoundaryValues) {
-    EXPECT_EQ(rstd::from_str<rstd::f32>("1.25").unwrap(), 1.25_f32);
-    EXPECT_EQ(rstd::from_str<rstd::f64>("-.5e2").unwrap(), -50.0_f64);
-    EXPECT_TRUE(rstd::from_str<rstd::f32>("inf").unwrap().is_infinite());
-    EXPECT_TRUE(rstd::from_str<rstd::f64>("-infinity").unwrap().is_sign_negative());
-    EXPECT_TRUE(rstd::from_str<rstd::f32>("NaN").unwrap().is_nan());
-    EXPECT_EQ(rstd::from_str<rstd::f64>("5e-324").unwrap().to_bits(), 1_u64);
+    EXPECT_EQ(rstd::from_str<rstd::f32>("1.25"_str).unwrap(), 1.25_f32);
+    EXPECT_EQ(rstd::from_str<rstd::f64>("-.5e2"_str).unwrap(), -50.0_f64);
+    EXPECT_TRUE(rstd::from_str<rstd::f32>("inf"_str).unwrap().is_infinite());
+    EXPECT_TRUE(rstd::from_str<rstd::f64>("-infinity"_str).unwrap().is_sign_negative());
+    EXPECT_TRUE(rstd::from_str<rstd::f32>("NaN"_str).unwrap().is_nan());
+    EXPECT_EQ(rstd::from_str<rstd::f64>("5e-324"_str).unwrap().to_bits(), 1_u64);
 }
 
 TEST(FloatFromStr, ReportsEmptyInvalidAndOverflow) {
-    auto empty = rstd::from_str<rstd::f32>("");
+    auto empty = rstd::from_str<rstd::f32>(""_str);
     ASSERT_TRUE(empty.is_err());
     EXPECT_EQ(empty.unwrap_err().kind(), rstd::num::FloatErrorKind::Empty);
 
-    auto invalid = rstd::from_str<rstd::f64>("1.2x");
+    auto invalid = rstd::from_str<rstd::f64>("1.2x"_str);
     ASSERT_TRUE(invalid.is_err());
     EXPECT_EQ(invalid.unwrap_err().kind(), rstd::num::FloatErrorKind::Invalid);
 
-    auto positive = rstd::from_str<rstd::f32>("1e100");
+    auto positive = rstd::from_str<rstd::f32>("1e100"_str);
     ASSERT_TRUE(positive.is_err());
     EXPECT_EQ(positive.unwrap_err().kind(), rstd::num::FloatErrorKind::PosOverflow);
 
-    auto negative = rstd::from_str<rstd::f64>("-1e1000");
+    auto negative = rstd::from_str<rstd::f64>("-1e1000"_str);
     ASSERT_TRUE(negative.is_err());
     EXPECT_EQ(negative.unwrap_err().kind(), rstd::num::FloatErrorKind::NegOverflow);
 }

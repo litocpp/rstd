@@ -3,6 +3,8 @@ module;
 export module rstd:io.error;
 export import rstd.core;
 
+using namespace rstd::literals;
+
 namespace rstd::io::error
 {
 
@@ -62,50 +64,50 @@ export struct ErrorKind {
     /// Returns a string description of this error kind.
     auto as_str() const noexcept -> ref<str> {
         switch (code) {
-        case AddrInUse: return "address in use";
-        case AddrNotAvailable: return "address not available";
-        case AlreadyExists: return "entity already exists";
-        case ArgumentListTooLong: return "argument list too long";
-        case BrokenPipe: return "broken pipe";
-        case ConnectionAborted: return "connection aborted";
-        case ConnectionRefused: return "connection refused";
-        case ConnectionReset: return "connection reset";
-        case CrossesDevices: return "cross-device link or rename";
-        case Deadlock: return "deadlock";
-        case DirectoryNotEmpty: return "directory not empty";
-        case ExecutableFileBusy: return "executable file busy";
-        case FileTooLarge: return "file too large";
-        case FilesystemLoop: return "filesystem loop or indirection limit (e.g. symlink loop)";
-        case HostUnreachable: return "host unreachable";
-        case InProgress: return "in progress";
-        case Interrupted: return "operation interrupted";
-        case InvalidData: return "invalid data";
-        case InvalidFilename: return "invalid filename";
-        case InvalidInput: return "invalid input parameter";
-        case IsADirectory: return "is a directory";
-        case NetworkDown: return "network down";
-        case NetworkUnreachable: return "network unreachable";
-        case NotADirectory: return "not a directory";
-        case NotConnected: return "not connected";
-        case NotFound: return "entity not found";
-        case NotSeekable: return "seek on unseekable file";
-        case Other: return "other error";
-        case OutOfMemory: return "out of memory";
-        case PermissionDenied: return "permission denied";
-        case QuotaExceeded: return "quota exceeded";
-        case ReadOnlyFilesystem: return "read-only filesystem or storage medium";
-        case ResourceBusy: return "resource busy";
-        case StaleNetworkFileHandle: return "stale network file handle";
-        case StorageFull: return "no storage space";
-        case TimedOut: return "timed out";
-        case TooManyLinks: return "too many links";
-        case Uncategorized: return "uncategorized error";
-        case UnexpectedEof: return "unexpected end of file";
-        case Unsupported: return "unsupported";
-        case WouldBlock: return "operation would block";
-        case WriteZero: return "write zero";
+        case AddrInUse: return "address in use"_str;
+        case AddrNotAvailable: return "address not available"_str;
+        case AlreadyExists: return "entity already exists"_str;
+        case ArgumentListTooLong: return "argument list too long"_str;
+        case BrokenPipe: return "broken pipe"_str;
+        case ConnectionAborted: return "connection aborted"_str;
+        case ConnectionRefused: return "connection refused"_str;
+        case ConnectionReset: return "connection reset"_str;
+        case CrossesDevices: return "cross-device link or rename"_str;
+        case Deadlock: return "deadlock"_str;
+        case DirectoryNotEmpty: return "directory not empty"_str;
+        case ExecutableFileBusy: return "executable file busy"_str;
+        case FileTooLarge: return "file too large"_str;
+        case FilesystemLoop: return "filesystem loop or indirection limit (e.g. symlink loop)"_str;
+        case HostUnreachable: return "host unreachable"_str;
+        case InProgress: return "in progress"_str;
+        case Interrupted: return "operation interrupted"_str;
+        case InvalidData: return "invalid data"_str;
+        case InvalidFilename: return "invalid filename"_str;
+        case InvalidInput: return "invalid input parameter"_str;
+        case IsADirectory: return "is a directory"_str;
+        case NetworkDown: return "network down"_str;
+        case NetworkUnreachable: return "network unreachable"_str;
+        case NotADirectory: return "not a directory"_str;
+        case NotConnected: return "not connected"_str;
+        case NotFound: return "entity not found"_str;
+        case NotSeekable: return "seek on unseekable file"_str;
+        case Other: return "other error"_str;
+        case OutOfMemory: return "out of memory"_str;
+        case PermissionDenied: return "permission denied"_str;
+        case QuotaExceeded: return "quota exceeded"_str;
+        case ReadOnlyFilesystem: return "read-only filesystem or storage medium"_str;
+        case ResourceBusy: return "resource busy"_str;
+        case StaleNetworkFileHandle: return "stale network file handle"_str;
+        case StorageFull: return "no storage space"_str;
+        case TimedOut: return "timed out"_str;
+        case TooManyLinks: return "too many links"_str;
+        case Uncategorized: return "uncategorized error"_str;
+        case UnexpectedEof: return "unexpected end of file"_str;
+        case Unsupported: return "unsupported"_str;
+        case WouldBlock: return "operation would block"_str;
+        case WriteZero: return "write zero"_str;
         }
-        return "";
+        return ""_str;
     }
 
     friend bool operator==(ErrorKind a, ErrorKind b) noexcept { return a.code == b.code; }

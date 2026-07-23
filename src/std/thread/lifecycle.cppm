@@ -12,6 +12,7 @@ export import rstd.alloc;
 using alloc::sync::Arc;
 using rstd::thread::scoped::ScopeData;
 namespace imp = rstd::sys::thread;
+using namespace rstd::literals;
 
 namespace rstd::thread::lifecycle
 {
@@ -46,7 +47,7 @@ struct JoinInner {
         native.join();
 
         return packet.get_mut()
-            .expect("threads should not terminate unexpectedly")
+            .expect("threads should not terminate unexpectedly"_str)
             ->result.take()
             .unwrap();
     }

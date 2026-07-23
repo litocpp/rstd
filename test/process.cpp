@@ -4,6 +4,7 @@
 import rstd;
 
 using namespace rstd::prelude;
+using namespace rstd::literals;
 
 namespace
 {
@@ -33,22 +34,22 @@ TEST(Process, ExitStatusFailure) {
 }
 
 TEST(Process, CommandStatusTrue) {
-    auto res = rstd::process::Command::make("true").status();
+    auto res = rstd::process::Command::make("true"_str).status();
     ASSERT_TRUE(res.is_ok());
     EXPECT_TRUE(res.unwrap().success());
 }
 
 TEST(Process, CommandStatusFalse) {
-    auto res = rstd::process::Command::make("false").status();
+    auto res = rstd::process::Command::make("false"_str).status();
     ASSERT_TRUE(res.is_ok());
     EXPECT_FALSE(res.unwrap().success());
     EXPECT_EQ(res.unwrap().code().unwrap(), rstd::i32(1));
 }
 
 TEST(Process, CommandWithArgs) {
-    auto res = rstd::process::Command::make("echo")
-                   .arg("hello")
-                   .arg("world")
+    auto res = rstd::process::Command::make("echo"_str)
+                   .arg("hello"_str)
+                   .arg("world"_str)
                    .set_stdout(rstd::process::Stdio::piped())
                    .spawn();
     ASSERT_TRUE(res.is_ok());
@@ -61,7 +62,7 @@ TEST(Process, CommandWithArgs) {
 }
 
 TEST(Process, CommandOutput) {
-    auto res = rstd::process::Command::make("echo").arg("hello").output();
+    auto res = rstd::process::Command::make("echo"_str).arg("hello"_str).output();
     ASSERT_TRUE(res.is_ok());
     auto out = res.unwrap();
     EXPECT_TRUE(out.status.success());
@@ -73,7 +74,10 @@ TEST(Process, CommandOutput) {
 
 TEST(Process, CommandOutputStderr) {
     // sh -c 'echo err >&2'
-    auto res = rstd::process::Command::make("sh").arg("-c").arg("echo err >&2").output();
+    auto res = rstd::process::Command::make("sh"_str)
+                   .arg("-c"_str)
+                   .arg("echo err >&2"_str)
+                   .output();
     ASSERT_TRUE(res.is_ok());
     auto out = res.unwrap();
 
@@ -81,13 +85,13 @@ TEST(Process, CommandOutputStderr) {
 }
 
 TEST(Process, CommandNotFound) {
-    auto res = rstd::process::Command::make("nonexistent_program_xyz_12345").status();
+    auto res = rstd::process::Command::make("nonexistent_program_xyz_12345"_str).status();
     EXPECT_TRUE(res.is_err());
 }
 
 TEST(Process, ChildStdinWrite) {
     // cat reads from stdin and writes to stdout
-    auto res = rstd::process::Command::make("cat")
+    auto res = rstd::process::Command::make("cat"_str)
                    .set_stdin(rstd::process::Stdio::piped())
                    .set_stdout(rstd::process::Stdio::piped())
                    .spawn();
@@ -99,9 +103,7 @@ TEST(Process, ChildStdinWrite) {
     ASSERT_TRUE(stdin_opt.is_some());
     {
         auto stdin_h = stdin_opt.unwrap();
-        auto raw     = rstd::slice<rstd::byte>::from_raw_parts(
-            reinterpret_cast<rstd::byte const*>("hello pipe"), rstd::usize(10));
-        auto wres = rstd::as<rstd::io::Write>(stdin_h).write(raw);
+        auto wres = rstd::as<rstd::io::Write>(stdin_h).write("hello pipe"_bytes);
         ASSERT_TRUE(wres.is_ok());
     } // stdin_h dropped here, child sees EOF
 
@@ -109,15 +111,14 @@ TEST(Process, ChildStdinWrite) {
     auto stdout_opt = child.take_stdout();
     ASSERT_TRUE(stdout_opt.is_some());
     {
-        auto     stdout_h = stdout_opt.unwrap();
-        rstd::u8 buf[64]  = {};
-        auto     values = rstd::mut_ref<rstd::u8[]>::from_raw_parts(buf, rstd::usize(sizeof(buf)));
-        auto     rres   = rstd::as<rstd::io::Read>(stdout_h).read(rstd::as_bytes_mut(values));
+        auto stdout_h = stdout_opt.unwrap();
+        auto buf      = rstd::array<rstd::u8, 64> {};
+        auto rres     = rstd::as<rstd::io::Read>(stdout_h).read(buf.as_mut_slice());
         ASSERT_TRUE(rres.is_ok());
         EXPECT_EQ(rres.unwrap(), rstd::usize(10));
         auto bytes = rstd::vec::Vec<rstd::u8>::make();
         for (auto index = rstd::usize(); index < rstd::usize(10); ++index) {
-            bytes.emplace_back(buf[index.to_primitive()]);
+            bytes.emplace_back(buf[index]);
         }
         EXPECT_EQ(to_std_string(bytes), "hello pipe");
     }
@@ -128,8 +129,8 @@ TEST(Process, ChildStdinWrite) {
 }
 
 TEST(Process, WaitWithOutput) {
-    auto res = rstd::process::Command::make("echo")
-                   .arg("collected")
+    auto res = rstd::process::Command::make("echo"_str)
+                   .arg("collected"_str)
                    .set_stdout(rstd::process::Stdio::piped())
                    .spawn();
     ASSERT_TRUE(res.is_ok());
@@ -141,8 +142,8 @@ TEST(Process, WaitWithOutput) {
 }
 
 TEST(Process, StdioNull) {
-    auto res = rstd::process::Command::make("echo")
-                   .arg("silenced")
+    auto res = rstd::process::Command::make("echo"_str)
+                   .arg("silenced"_str)
                    .set_stdout(rstd::process::Stdio::null())
                    .status();
     ASSERT_TRUE(res.is_ok());

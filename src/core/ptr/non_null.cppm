@@ -49,7 +49,8 @@ struct NonNull {
     static auto without_provenance(num::nonzero::NonZero<usize> addr) noexcept -> NonNull<T>
         requires Impled<T, Sized>
     {
-        T* t = reinterpret_cast<T*>(addr.get().to_primitive());
+        using Storage = typename pointer_t::storage_type;
+        Storage* t = reinterpret_cast<Storage*>(addr.get().to_primitive());
         return { mut_ptr<T>::from_raw_parts(t) };
     }
 
@@ -58,7 +59,8 @@ struct NonNull {
     static auto dangling() noexcept -> NonNull<T>
         requires Impled<T, Sized>
     {
-        return { mut_ptr<T>::from_raw_parts(reinterpret_cast<T*>(alignof(T))) };
+        using Storage = typename pointer_t::storage_type;
+        return { mut_ptr<T>::from_raw_parts(reinterpret_cast<Storage*>(alignof(Storage))) };
     }
     /// @}
 

@@ -3,6 +3,7 @@
 import rstd;
 
 using namespace rstd;
+using namespace rstd::literals;
 using namespace rstd::prelude;
 using ::alloc::vec::Vec;
 
@@ -200,8 +201,7 @@ struct CounterStream {
 static_assert(Impled<CounterStream, future::Stream<int>>);
 
 struct MockAsyncIo {
-    const u8*       read_data;
-    usize           read_len;
+    slice<u8>       read_data;
     usize           read_pos { 0 };
     bytes::BytesMut written { bytes::BytesMut::make() };
     bool            read_pending { true };
@@ -218,9 +218,10 @@ struct MockAsyncIo {
             return task::Poll<io::Result<usize>>::Pending();
         }
 
-        auto remaining = stream.read_len - stream.read_pos;
-        buf.extend_from_slice(stream.read_data + stream.read_pos, remaining);
-        stream.read_pos = stream.read_len;
+        auto remaining = stream.read_data.len() - stream.read_pos;
+        buf.extend_from_slice(slice<u8>::from_raw_parts(
+            stream.read_data.as_raw_ptr() + stream.read_pos.to_primitive(), remaining));
+        stream.read_pos = stream.read_data.len();
         return task::Poll<io::Result<usize>>::Ready(Ok(remaining));
     }
 
@@ -233,7 +234,7 @@ struct MockAsyncIo {
             return task::Poll<io::Result<usize>>::Pending();
         }
 
-        stream.written.extend_from_slice(buf.data(), buf.len());
+        stream.written.extend_from_slice(buf.as_slice());
         return task::Poll<io::Result<usize>>::Ready(Ok(buf.len()));
     }
 
@@ -2237,7 +2238,7 @@ TEST(AsyncCoro, RuntimeHandleCloneSpawnsWhileCallerContinues) {
 
 TEST(AsyncCoro, MultiThreadRuntimeNamesWorkerThreads) {
     auto builder = async::RuntimeBuilder::multi_thread();
-    builder.worker_threads(2).thread_name(rstd::string::String::make("async-worker"));
+    builder.worker_threads(2).thread_name(rstd::string::String::make("async-worker"_str));
 
     auto runtime_result = builder.build();
     auto runtime        = runtime_result.unwrap();
@@ -2427,8 +2428,7 @@ TEST(AsyncCoro, StreamTraitPollNext) {
 }
 
 TEST(AsyncCoro, AsyncIoProtocolsUseBytesAndIoResult) {
-    u8   read_data[] { 'a', 'b', 'c' };
-    auto stream = MockAsyncIo { read_data, 3 };
+    auto stream = MockAsyncIo { "abc"_bytes };
     auto counts = WakerCounts {};
     auto waker  = task::Waker::from_raw(
         task::RawWaker::from_raw_parts(&counts, rstd::addressof(COUNT_WAKER_VTABLE)));
@@ -2445,11 +2445,10 @@ TEST(AsyncCoro, AsyncIoProtocolsUseBytesAndIoResult) {
     ASSERT_TRUE(read_result.is_ok());
     EXPECT_EQ(rstd::move(read_result).unwrap(), 3u);
     ASSERT_EQ(read_buf.len(), 3u);
-    EXPECT_EQ(read_buf[0], 'a');
-    EXPECT_EQ(read_buf[2], 'c');
+    EXPECT_EQ(read_buf[0], u8('a'));
+    EXPECT_EQ(read_buf[2], u8('c'));
 
-    u8   write_data[] { 'x', 'y' };
-    auto write_buf     = bytes::Bytes::copy_from_slice(slice<u8>::from_raw_parts(write_data, 2));
+    auto write_buf     = bytes::Bytes::copy_from_slice("xy"_bytes);
     auto write_pending = async::io::poll_write(stream, cx, write_buf);
     EXPECT_TRUE(write_pending.is_pending());
     EXPECT_EQ(counts.wake_refs.load(), 2);
@@ -2460,8 +2459,8 @@ TEST(AsyncCoro, AsyncIoProtocolsUseBytesAndIoResult) {
     ASSERT_TRUE(write_result.is_ok());
     EXPECT_EQ(rstd::move(write_result).unwrap(), 2u);
     ASSERT_EQ(stream.written.len(), 2u);
-    EXPECT_EQ(stream.written[0], 'x');
-    EXPECT_EQ(stream.written[1], 'y');
+    EXPECT_EQ(stream.written[0], u8('x'));
+    EXPECT_EQ(stream.written[1], u8('y'));
 
     auto flush = async::io::poll_flush(stream, cx);
     ASSERT_TRUE(flush.is_ready());
@@ -2475,25 +2474,23 @@ TEST(AsyncCoro, AsyncIoProtocolsUseBytesAndIoResult) {
 }
 
 TEST(AsyncCoro, AsyncIoHelpersReadWriteFlushShutdown) {
-    u8   read_data[] { 'a', 'b', 'c' };
-    auto stream   = MockAsyncIo { read_data, 3 };
+    auto stream   = MockAsyncIo { "abc"_bytes };
     auto read_buf = bytes::BytesMut::make();
 
     auto read_result = async::block_on(async::io::read(stream, read_buf));
     ASSERT_TRUE(read_result.is_ok());
     EXPECT_EQ(rstd::move(read_result).unwrap(), 3u);
     ASSERT_EQ(read_buf.len(), 3u);
-    EXPECT_EQ(read_buf[0], 'a');
-    EXPECT_EQ(read_buf[2], 'c');
+    EXPECT_EQ(read_buf[0], u8('a'));
+    EXPECT_EQ(read_buf[2], u8('c'));
 
-    u8   write_data[] { 'x', 'y' };
-    auto write_buf    = bytes::Bytes::copy_from_slice(slice<u8>::from_raw_parts(write_data, 2));
+    auto write_buf    = bytes::Bytes::copy_from_slice("xy"_bytes);
     auto write_result = async::block_on(async::io::write(stream, write_buf));
     ASSERT_TRUE(write_result.is_ok());
     EXPECT_EQ(rstd::move(write_result).unwrap(), 2u);
     ASSERT_EQ(stream.written.len(), 2u);
-    EXPECT_EQ(stream.written[0], 'x');
-    EXPECT_EQ(stream.written[1], 'y');
+    EXPECT_EQ(stream.written[0], u8('x'));
+    EXPECT_EQ(stream.written[1], u8('y'));
 
     auto flush_result = async::block_on(async::io::flush(stream));
     ASSERT_TRUE(flush_result.is_ok());
@@ -2505,21 +2502,19 @@ TEST(AsyncCoro, AsyncIoHelpersReadWriteFlushShutdown) {
 }
 
 TEST(AsyncCoro, AsyncIoReadExactReadsRequestedBytes) {
-    u8   read_data[] { 'q', 'w', 'e' };
-    auto stream   = MockAsyncIo { read_data, 3 };
+    auto stream   = MockAsyncIo { "qwe"_bytes };
     auto read_buf = bytes::BytesMut::make();
 
     auto result = async::block_on(async::io::read_exact(stream, read_buf, 3));
 
     ASSERT_TRUE(result.is_ok());
     ASSERT_EQ(read_buf.len(), 3u);
-    EXPECT_EQ(read_buf[0], 'q');
-    EXPECT_EQ(read_buf[2], 'e');
+    EXPECT_EQ(read_buf[0], u8('q'));
+    EXPECT_EQ(read_buf[2], u8('e'));
 }
 
 TEST(AsyncCoro, AsyncIoReadExactReportsUnexpectedEof) {
-    u8   read_data[] { 0 };
-    auto stream         = MockAsyncIo { read_data, 0 };
+    auto stream         = MockAsyncIo { ""_bytes };
     stream.read_pending = false;
     auto read_buf       = bytes::BytesMut::make();
 
@@ -2531,23 +2526,20 @@ TEST(AsyncCoro, AsyncIoReadExactReportsUnexpectedEof) {
 }
 
 TEST(AsyncCoro, AsyncIoWriteAllWritesFullBuffer) {
-    u8   read_data[] { 0 };
-    auto stream = MockAsyncIo { read_data, 0 };
-    u8   write_data[] { 'm', 'n', 'o' };
-    auto write_buf = bytes::Bytes::copy_from_slice(slice<u8>::from_raw_parts(write_data, 3));
+    auto stream    = MockAsyncIo { ""_bytes };
+    auto write_buf = bytes::Bytes::copy_from_slice("mno"_bytes);
 
     auto result = async::block_on(async::io::write_all(stream, write_buf));
 
     ASSERT_TRUE(result.is_ok());
     ASSERT_EQ(stream.written.len(), 3u);
-    EXPECT_EQ(stream.written[0], 'm');
-    EXPECT_EQ(stream.written[2], 'o');
+    EXPECT_EQ(stream.written[0], u8('m'));
+    EXPECT_EQ(stream.written[2], u8('o'));
 }
 
 TEST(AsyncCoro, AsyncIoWriteAllReportsWriteZero) {
     auto writer = ZeroAsyncWrite {};
-    u8   write_data[] { 'z' };
-    auto write_buf = bytes::Bytes::copy_from_slice(slice<u8>::from_raw_parts(write_data, 1));
+    auto write_buf = bytes::Bytes::copy_from_slice("z"_bytes);
 
     auto result = async::block_on(async::io::write_all(writer, write_buf));
 

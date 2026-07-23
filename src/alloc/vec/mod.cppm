@@ -67,6 +67,38 @@ struct RawVec {
         cap = new_cap;
     }
 
+    void shrink_to_fit(usize len) {
+        if (len == cap) return;
+        debug_assert(len < cap);
+
+        auto old_layout = Layout::array<T>(cap).unwrap();
+        auto old_ptr    = ptr.as_mut_ptr().as_raw_ptr();
+        if (len == usize()) {
+            as<Allocator>(::alloc::GLOBAL).deallocate(old_ptr, old_layout);
+            reset_ptr();
+            return;
+        }
+
+        auto new_layout = Layout::array<T>(len).unwrap();
+        if constexpr (mtp::triv_copyable<T>) {
+            auto res = as<Allocator>(::alloc::GLOBAL).shrink(old_ptr, old_layout, new_layout);
+            if (res.is_err()) handle_alloc_error(new_layout);
+            ptr = NonNull<T>::make_unchecked(res.unwrap_unchecked().template as_mut_ptr<T>());
+        } else {
+            auto res = as<Allocator>(::alloc::GLOBAL).allocate(new_layout);
+            if (res.is_err()) handle_alloc_error(new_layout);
+
+            auto new_ptr = res.unwrap_unchecked().template as_mut_ptr<T>().as_raw_ptr();
+            for (rstd::size_t index = 0; index < len.to_primitive(); ++index) {
+                rstd::construct_at(new_ptr + index, rstd::move(old_ptr[index]));
+                rstd::destroy_at(old_ptr + index);
+            }
+            as<Allocator>(::alloc::GLOBAL).deallocate(old_ptr, old_layout);
+            ptr = NonNull<T>::make_unchecked(mut_ptr<T>::from_raw_parts(new_ptr));
+        }
+        cap = len;
+    }
+
     ~RawVec() {}
 
     void reset_ptr() {
@@ -89,6 +121,48 @@ namespace alloc::vec
 
 export template<typename T>
 struct VecIntoIter;
+
+export template<typename T>
+class Vec;
+
+export template<typename T>
+class SpareSlot {
+    mut_ptr<T> slot_;
+
+    constexpr explicit SpareSlot(mut_ptr<T> slot) noexcept: slot_(slot) {}
+
+    template<typename>
+    friend class SpareCapacity;
+
+public:
+    template<typename... Args>
+    constexpr decltype(auto) write(Args&&... args) {
+        rstd::ptr_::construct(slot_, rstd::forward<Args>(args)...);
+        return slot_.as_mut_ref().get_mut();
+    }
+};
+
+/// A writable view over uninitialized vector capacity.
+export template<typename T>
+class SpareCapacity {
+    mut_ptr<T> pointer_;
+    usize      length_;
+
+    constexpr SpareCapacity(mut_ptr<T> pointer, usize length) noexcept
+        : pointer_(pointer), length_(length) {}
+
+    friend class Vec<T>;
+
+public:
+    constexpr SpareCapacity() noexcept = default;
+    constexpr auto len() const noexcept -> usize { return length_; }
+    constexpr auto is_empty() const noexcept -> bool { return length_ == usize(); }
+
+    constexpr auto operator[](usize index) const -> SpareSlot<T> {
+        if (index >= length_) rstd::panic { "Vec spare capacity index out of bounds" };
+        return SpareSlot<T>(pointer_.add(index));
+    }
+};
 
 /// A contiguous growable array type, analogous to Rust's `Vec<T>`.
 /// \tparam T The element type, which must be `Sized`.
@@ -146,6 +220,17 @@ public:
     /// \return A `Vec` with preallocated capacity.
     static auto with_capacity(usize capacity) -> Self {
         return Vec { RawVec<T>::with_capacity(capacity), usize() };
+    }
+
+    /// Takes ownership of a boxed slice without copying its elements.
+    static auto from_boxed_slice(Box<T[]>&& values) noexcept -> Self {
+        auto raw    = rstd::move(values).into_raw();
+        auto length = raw.len();
+        if (length == usize()) return {};
+
+        auto pointer = mut_ptr<T>::from_raw_parts(raw.as_raw_ptr());
+        return Vec { RawVec<T> { .ptr = NonNull<T>::make_unchecked(pointer), .cap = length },
+                     length };
     }
 
     /// Clones a borrowed slice into a new vector.
@@ -212,19 +297,18 @@ public:
     }
 
     /// Returns the initialized contiguous storage as a raw pointer.
-    constexpr auto data() noexcept [[clang::lifetimebound]] -> T* { return begin(); }
+    constexpr auto data() noexcept [[clang::lifetimebound]] { return begin(); }
 
     /// Returns the initialized contiguous storage as a raw pointer.
-    constexpr auto data() const noexcept [[clang::lifetimebound]] -> const T* { return begin(); }
+    constexpr auto data() const noexcept [[clang::lifetimebound]] { return begin(); }
 
     /// Returns writable spare capacity after the initialized range.
     ///
     /// The returned memory is uninitialized. After writing initialized values into it, callers must
     /// publish the written length with `set_len_unchecked`.
-    constexpr auto spare_capacity_mut() noexcept [[clang::lifetimebound]] -> mut_ptr<T[]> {
+    constexpr auto spare_capacity_mut() noexcept [[clang::lifetimebound]] -> SpareCapacity<T> {
         if (m_buf.cap == m_len) return {};
-        return mut_ptr<T[]>::from_raw_parts(
-            m_buf.ptr.as_mut_ptr().as_raw_ptr() + m_len.to_primitive(), m_buf.cap - m_len);
+        return SpareCapacity<T>(m_buf.ptr.as_mut_ptr().add(m_len), m_buf.cap - m_len);
     }
 
     /// Sets the vector length without initializing or dropping elements.
@@ -240,32 +324,27 @@ public:
     /// Converts this `Vec` into a `Box<T[]>`, transferring ownership of all elements.
     /// \return A boxed slice containing the vector's elements.
     auto into_boxed_slice() noexcept -> Box<T[]> {
-        auto length = m_len;
-        auto layout = Layout::array<T>(length).unwrap();
-        auto res    = as<Allocator>(GLOBAL).allocate(layout);
-        if (res.is_err()) handle_alloc_error(layout);
+        m_buf.shrink_to_fit(m_len);
 
-        auto* raw     = res.unwrap_unchecked().template as_mut_ptr<T>().as_raw_ptr();
-        auto* old_ptr = m_buf.ptr.as_mut_ptr().as_raw_ptr();
-        for (rstd::size_t index = 0; index < length.to_primitive(); ++index) {
-            new (raw + index) T(rstd::move(old_ptr[index]));
-            old_ptr[index].~T();
-        }
-        auto b = Box<T[]>::from_raw(mut_ptr<T[]>::from_raw_parts(raw, length));
-        m_len  = usize();
-        return b;
+        auto length = m_len;
+        auto raw = length == usize() ? NonNull<T>::dangling().as_mut_ptr()
+                                     : m_buf.ptr.as_mut_ptr();
+        m_buf.reset_ptr();
+        m_len = usize();
+        return Box<T[]>::from_raw(
+            mut_ptr<T[]>::from_raw_parts(raw.as_raw_ptr(), length));
     }
 
     /// Constructs an element in-place at the back of the vector.
     template<typename... Args>
-    constexpr T& emplace_back(Args&&... args) {
+    constexpr decltype(auto) emplace_back(Args&&... args) {
         if (m_len == m_buf.cap) {
             m_buf.grow(m_buf.cap == usize() ? usize(4) : m_buf.cap * usize(2), m_len);
         }
-        auto* slot = m_buf.ptr.as_mut_ptr().as_raw_ptr() + m_len.to_primitive();
-        new (slot) T(rstd::forward<Args>(args)...);
+        auto slot = m_buf.ptr.as_mut_ptr().add(m_len);
+        rstd::ptr_::construct(slot, rstd::forward<Args>(args)...);
         ++m_len;
-        return *slot;
+        return slot.as_mut_ref().get_mut();
     }
 
     /// Appends an element to the back of the vector by moving it.
@@ -279,9 +358,9 @@ public:
             return None();
         } else {
             --m_len;
-            T* p     = m_buf.ptr.as_mut_ptr().as_raw_ptr() + m_len.to_primitive();
-            T  value = rstd::move(*p);
-            p->~T();
+            auto p     = m_buf.ptr.as_mut_ptr().add(m_len);
+            T    value = rstd::ptr_::move_out(p);
+            rstd::ptr_::destroy(p);
             return Some(rstd::move(value));
         }
     }
@@ -291,7 +370,11 @@ public:
     constexpr void push_back(const T& value)
         requires Impled<T, Clone>
     {
-        extend_from_slice(slice<T>::from_raw_parts(rstd::addressof(value), usize(1)));
+        if constexpr (mtp::same_as<T, u8>) {
+            emplace_back(as<Clone>(value).clone());
+        } else {
+            extend_from_slice(slice<T>::from_raw_parts(rstd::addressof(value), usize(1)));
+        }
     }
 
     /// Removes the last element from the vector, discarding it.
@@ -311,8 +394,9 @@ public:
             auto const source_address = reinterpret_cast<uintptr_t>(values.as_raw_ptr());
             if (source_address >= buffer_address) {
                 auto const offset_bytes = source_address - buffer_address;
-                if (offset_bytes % sizeof(T) == 0) {
-                    source_offset = offset_bytes / sizeof(T);
+                using Storage = typename mut_ptr<T>::storage_type;
+                if (offset_bytes % sizeof(Storage) == 0) {
+                    source_offset = offset_bytes / sizeof(Storage);
                     source_is_self =
                         source_offset <= m_len.to_primitive() &&
                         values.len().to_primitive() <= m_len.to_primitive() - source_offset;
@@ -327,15 +411,16 @@ public:
                                               values.len());
         }
 
-        auto* destination = m_buf.ptr.as_mut_ptr().as_raw_ptr() + m_len.to_primitive();
+        auto destination = m_buf.ptr.as_mut_ptr().add(m_len);
         if constexpr (Impled<T, rstd::Copy>) {
             rstd::ptr_::copy_nonoverlapping(ptr<T>::from_raw_parts(values.as_raw_ptr()),
-                                            mut_ptr<T>::from_raw_parts(destination),
+                                            destination,
                                             values.len());
             m_len += values.len();
         } else {
             for (rstd::size_t index = 0; index < values.len().to_primitive(); ++index) {
-                new (destination + index) T(as<Clone>(values[usize(index)]).clone());
+                rstd::ptr_::construct(destination.add(usize(index)),
+                                      as<Clone>(values[usize(index)]).clone());
                 ++m_len;
             }
         }
@@ -343,7 +428,7 @@ public:
 
     /// Appends a copy of `count` elements starting at `values`.
     void extend_from_slice(const T* values, usize count)
-        requires Impled<T, Clone>
+        requires Impled<T, Clone> && (! mtp::same_as<T, u8>)
     {
         if (count == usize()) return;
         extend_from_slice(slice<T>::from_raw_parts(values, count));
@@ -353,29 +438,30 @@ public:
     void extend_from_bytes(slice<byte> values)
         requires mtp::same_as<T, u8>
     {
-        reserve(values.len());
-        for (u8 value : u8_values(values)) emplace_back(value);
+        extend_from_slice(as_u8_slice(values));
     }
 
     /// Returns a mutable reference to the element at the given index, panicking if out of bounds.
     /// \param index The index of the element.
     /// \return A mutable reference to the element.
-    constexpr T& at(usize index) [[clang::lifetimebound]] {
+    constexpr decltype(auto) at(usize index) [[clang::lifetimebound]] {
         if (index >= m_len) rstd::panic { "Vec index out of bounds" };
-        return m_buf.ptr.as_mut_ptr().as_raw_ptr()[index.to_primitive()];
+        return m_buf.ptr.as_mut_ptr().add(index).get();
     }
     /// Returns a const reference to the element at the given index, panicking if out of bounds.
     /// \param index The index of the element.
     /// \return A const reference to the element.
-    constexpr const T& at(usize index) const [[clang::lifetimebound]] {
+    constexpr decltype(auto) at(usize index) const [[clang::lifetimebound]] {
         if (index >= m_len) rstd::panic { "Vec index out of bounds" };
-        return m_buf.ptr.as_ptr().as_raw_ptr()[index.to_primitive()];
+        return m_buf.ptr.as_ptr().add(index).get();
     }
 
     /// Indexes into the vector, panicking if out of bounds.
-    constexpr T& operator[](usize index) [[clang::lifetimebound]] { return at(index); }
+    constexpr decltype(auto) operator[](usize index) [[clang::lifetimebound]] { return at(index); }
     /// Indexes into the vector (const), panicking if out of bounds.
-    constexpr const T& operator[](usize index) const [[clang::lifetimebound]] { return at(index); }
+    constexpr decltype(auto) operator[](usize index) const [[clang::lifetimebound]] {
+        return at(index);
+    }
 
     /// Returns the number of elements in the vector.
     /// \return The length of the vector.
@@ -413,9 +499,9 @@ public:
 
     /// Clears the vector, destroying all elements but not deallocating memory.
     constexpr void clear() {
-        auto* p = m_buf.ptr.as_mut_ptr().as_raw_ptr();
+        auto p = m_buf.ptr.as_mut_ptr();
         for (rstd::size_t index = 0; index < m_len.to_primitive(); ++index) {
-            p[index].~T();
+            rstd::ptr_::destroy(p.add(usize(index)));
         }
         m_len = usize();
     }
@@ -423,9 +509,9 @@ public:
     /// Shortens the vector, dropping elements after `new_len`.
     constexpr void truncate(usize new_len) {
         if (new_len >= m_len) return;
-        auto* p = m_buf.ptr.as_mut_ptr().as_raw_ptr();
+        auto p = m_buf.ptr.as_mut_ptr();
         for (rstd::size_t index = new_len.to_primitive(); index < m_len.to_primitive(); ++index) {
-            p[index].~T();
+            rstd::ptr_::destroy(p.add(usize(index)));
         }
         m_len = new_len;
     }
@@ -433,18 +519,20 @@ public:
     /// Retains only the elements for which `predicate` returns true, preserving their order.
     template<typename F>
     constexpr void retain(F predicate) {
-        auto*              values  = m_buf.ptr.as_mut_ptr().as_raw_ptr();
+        auto               values  = m_buf.ptr.as_mut_ptr();
         rstd::size_t       write   = 0;
         const rstd::size_t old_len = m_len.to_primitive();
         for (rstd::size_t read = 0; read < old_len; ++read) {
-            if (predicate(static_cast<const T&>(values[read]))) {
+            auto read_ptr = values.add(usize(read));
+            if (predicate(read_ptr.as_ptr().get())) {
                 if (write != read) {
-                    new (values + write) T(rstd::move(values[read]));
-                    values[read].~T();
+                    rstd::ptr_::construct(values.add(usize(write)),
+                                          rstd::ptr_::move_out(read_ptr));
+                    rstd::ptr_::destroy(read_ptr);
                 }
                 ++write;
             } else {
-                values[read].~T();
+                rstd::ptr_::destroy(read_ptr);
             }
         }
         m_len = usize(write);
@@ -459,28 +547,42 @@ public:
             return;
         }
 
-        auto         old_len       = m_len;
-        bool         value_is_self = false;
-        rstd::size_t value_offset  = 0;
-        if (m_len != usize()) {
-            auto const buffer_address =
-                reinterpret_cast<uintptr_t>(m_buf.ptr.as_ptr().as_raw_ptr());
-            auto const value_address = reinterpret_cast<uintptr_t>(rstd::addressof(value));
-            if (value_address >= buffer_address) {
-                auto const offset_bytes = value_address - buffer_address;
-                if (offset_bytes % sizeof(T) == 0) {
-                    value_offset  = offset_bytes / sizeof(T);
-                    value_is_self = value_offset < m_len.to_primitive();
+        auto old_len = m_len;
+        if constexpr (mtp::same_as<T, u8>) {
+            auto source = as<Clone>(value).clone();
+            reserve(new_len - m_len);
+            auto p = m_buf.ptr.as_mut_ptr();
+            for (rstd::size_t index = old_len.to_primitive(); index < new_len.to_primitive();
+                 ++index) {
+                rstd::ptr_::construct(p.add(usize(index)), source);
+                ++m_len;
+            }
+            return;
+        } else {
+            bool         value_is_self = false;
+            rstd::size_t value_offset  = 0;
+            if (m_len != usize()) {
+                auto const buffer_address =
+                    reinterpret_cast<uintptr_t>(m_buf.ptr.as_ptr().as_raw_ptr());
+                auto const value_address = reinterpret_cast<uintptr_t>(rstd::addressof(value));
+                if (value_address >= buffer_address) {
+                    auto const offset_bytes = value_address - buffer_address;
+                    if (offset_bytes % sizeof(T) == 0) {
+                        value_offset  = offset_bytes / sizeof(T);
+                        value_is_self = value_offset < m_len.to_primitive();
+                    }
                 }
             }
-        }
 
-        reserve(new_len - m_len);
-        auto*       p      = m_buf.ptr.as_mut_ptr().as_raw_ptr();
-        auto const* source = value_is_self ? p + value_offset : rstd::addressof(value);
-        for (rstd::size_t index = old_len.to_primitive(); index < new_len.to_primitive(); ++index) {
-            new (p + index) T(as<Clone>(*source).clone());
-            ++m_len;
+            reserve(new_len - m_len);
+            auto p = m_buf.ptr.as_mut_ptr();
+            for (rstd::size_t index = old_len.to_primitive(); index < new_len.to_primitive();
+                 ++index) {
+                auto const* source =
+                    value_is_self ? p.as_raw_ptr() + value_offset : rstd::addressof(value);
+                rstd::ptr_::construct(p.add(usize(index)), as<Clone>(*source).clone());
+                ++m_len;
+            }
         }
     }
 
@@ -489,13 +591,14 @@ public:
     /// \return The removed element.
     constexpr T remove(usize index) {
         if (index >= m_len) rstd::panic { "Vec index out of bounds" };
-        T     value = rstd::move(at(index));
-        auto* p     = m_buf.ptr.as_mut_ptr().as_raw_ptr();
+        auto p     = m_buf.ptr.as_mut_ptr();
+        T    value = rstd::ptr_::move_out(p.add(index));
         for (rstd::size_t current = index.to_primitive(); current + 1 < m_len.to_primitive();
              ++current) {
-            p[current] = rstd::move(p[current + 1]);
+            rstd::ptr_::write(p.add(usize(current)),
+                              rstd::ptr_::move_out(p.add(usize(current + 1))));
         }
-        p[m_len.to_primitive() - 1].~T();
+        rstd::ptr_::destroy(p.add(m_len - usize(1)));
         --m_len;
         return value;
     }
@@ -578,13 +681,7 @@ struct Impl<T, ::alloc::vec::Vec<U>> : DefaultInImpl<T, ::alloc::vec::Vec<U>> {
 template<typename A, mtp::same_as<From<::alloc::boxed::Box<A[]>>> T>
 struct Impl<T, ::alloc::vec::Vec<A>> : ImplBase<::alloc::vec::Vec<A>> {
     static auto from(::alloc::boxed::Box<A[]> b) -> ::alloc::vec::Vec<A> {
-        auto ptr = b.as_mut_ptr();
-        auto len = ptr.len();
-        auto vec = ::alloc::vec::Vec<A>::with_capacity(len);
-        for (rstd::size_t index = 0; index != len.to_primitive(); ++index) {
-            vec.push(rstd::move(ptr[usize(index)]));
-        }
-        return vec;
+        return ::alloc::vec::Vec<A>::from_boxed_slice(rstd::move(b));
     }
 };
 

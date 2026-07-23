@@ -6,11 +6,12 @@ import rstd;
 
 using namespace rstd::prelude;
 using namespace rstd::log;
+using namespace rstd::literals;
 
 // ── Filter rule ───────────────────────────────────────────────────────────
 
 struct FilterRule {
-    char         target[64] {};
+    byte         target[64] {};
     rstd::size_t target_len { 0 };
     LevelFilter  level { LevelFilter::Off };
 };
@@ -29,48 +30,45 @@ inline auto stderr_is_tty() noexcept -> bool {
 }
 
 inline auto parse_style(ref<str> s) noexcept -> Style {
-    auto eq_ci = [](ref<str> a, const char* b, rstd::size_t n) {
-        if (a.size().to_primitive() != n) return false;
-        for (rstd::size_t i = 0; i < n; ++i) {
-            char ca = static_cast<char>(a.data()[i]);
-            char cb = b[i];
-            if (ca >= 'A' && ca <= 'Z') ca = char(ca - 'A' + 'a');
-            if (cb >= 'A' && cb <= 'Z') cb = char(cb - 'A' + 'a');
+    auto eq_ci = [](ref<str> a, ref<str> b) {
+        if (a.size() != b.size()) return false;
+        for (rstd::size_t i = 0; i < a.size().to_primitive(); ++i) {
+            auto ca = a[usize(i)].to_primitive();
+            auto cb = b[usize(i)].to_primitive();
+            if (ca >= 'A' && ca <= 'Z') ca = static_cast<rstd::uint8_t>(ca - 'A' + 'a');
+            if (cb >= 'A' && cb <= 'Z') cb = static_cast<rstd::uint8_t>(cb - 'A' + 'a');
             if (ca != cb) return false;
         }
         return true;
     };
-    if (eq_ci(s, "always", 6)) return Style::Always;
-    if (eq_ci(s, "never", 5)) return Style::Never;
+    if (eq_ci(s, "always"_str)) return Style::Always;
+    if (eq_ci(s, "never"_str)) return Style::Never;
     return Style::Auto;
 }
 
-inline auto padded_level_str(Level l) noexcept -> const char* {
+inline auto padded_level_str(Level l) noexcept -> ref<str> {
     switch (l) {
-    case Level::Error: return "ERROR";
-    case Level::Warn: return "WARN ";
-    case Level::Info: return "INFO ";
-    case Level::Debug: return "DEBUG";
-    case Level::Trace: return "TRACE";
+    case Level::Error: return "ERROR"_str;
+    case Level::Warn: return "WARN "_str;
+    case Level::Info: return "INFO "_str;
+    case Level::Debug: return "DEBUG"_str;
+    case Level::Trace: return "TRACE"_str;
     }
-    return "?????";
+    return "?????"_str;
 }
 
-inline auto level_color(Level l) noexcept -> const char* {
+inline auto level_color(Level l) noexcept -> ref<str> {
     switch (l) {
-    case Level::Error: return "\x1b[31m";
-    case Level::Warn: return "\x1b[33m";
-    case Level::Info: return "\x1b[32m";
-    case Level::Debug: return "\x1b[34m";
-    case Level::Trace: return "\x1b[36m";
+    case Level::Error: return "\x1b[31m"_str;
+    case Level::Warn: return "\x1b[33m"_str;
+    case Level::Info: return "\x1b[32m"_str;
+    case Level::Debug: return "\x1b[34m"_str;
+    case Level::Trace: return "\x1b[36m"_str;
     }
-    return "";
+    return ""_str;
 }
 
-inline constexpr char         COLOR_RESET[]    = "\x1b[0m";
-inline constexpr rstd::size_t COLOR_PREFIX_LEN = 5; // "\x1b[XYm"
-inline constexpr rstd::size_t COLOR_RESET_LEN  = 4; // "\x1b[0m"
-inline constexpr rstd::size_t PADDED_LEVEL_LEN = 5;
+inline constexpr auto COLOR_RESET = "\x1b[0m"_str;
 
 // Extract a "module path" (namespace prefix) from a pretty function string,
 // matching Rust's module_path!() semantics: drop the trailing function name.
@@ -79,7 +77,12 @@ inline constexpr rstd::size_t PADDED_LEVEL_LEN = 5;
 // Note: C++20 module names are not surfaced in __PRETTY_FUNCTION__; the
 // linker-level "name@module.name" mangling is unavailable at compile time,
 // so we use the namespace path instead, which is the closest analogue.
-inline auto module_from_function(const char* fn) noexcept -> ref<str> {
+struct CharView {
+    const char*  data {};
+    rstd::size_t size {};
+};
+
+inline auto module_from_function(const char* fn) noexcept -> CharView {
     if (fn == nullptr || *fn == '\0') return {};
     const char* last_sep = nullptr;
     int         depth    = 0;
@@ -101,7 +104,7 @@ inline auto module_from_function(const char* fn) noexcept -> ref<str> {
     const char* start = last_sep;
     while (start > fn && *(start - 1) != ' ') --start;
     if (start >= last_sep) return {};
-    return ref<str>(start, usize(last_sep - start));
+    return { start, static_cast<rstd::size_t>(last_sep - start) };
 }
 
 namespace rstd::log
@@ -176,25 +179,25 @@ private:
     // ── parsing ───────────────────────────────────────────────────────────
 
     void parse_env() noexcept {
-        auto val = rstd::env::var("RSTD_LOG");
+        auto val = rstd::env::var("RSTD_LOG"_str);
         if (val.is_none()) return;
         parse_filters(val->as_str());
     }
 
     void parse_style_env() noexcept {
-        auto val = rstd::env::var("RSTD_LOG_STYLE");
+        auto val = rstd::env::var("RSTD_LOG_STYLE"_str);
         if (val.is_none()) return;
         style = ::parse_style(val->as_str());
     }
 
     void parse_filters(ref<str> input) noexcept {
-        const rstd::uint8_t* p     = input.data();
-        const rstd::uint8_t* end   = p + input.size().to_primitive();
-        const rstd::uint8_t* token = p;
+        const byte* p     = input.data();
+        const byte* end   = p + input.size().to_primitive();
+        const byte* token = p;
 
         while (p <= end) {
-            if (p == end || *p == ',') {
-                parse_one_rule(ref<str>(token, usize(p - token)));
+            if (p == end || u8::from_byte(*p) == u8(',')) {
+                parse_one_rule(ref<str>::from_raw_parts_unchecked(token, usize(p - token)));
                 token = p + 1;
             }
             ++p;
@@ -203,43 +206,48 @@ private:
 
     void parse_one_rule(ref<str> raw) noexcept {
         // trim spaces
-        const rstd::uint8_t* p   = raw.data();
-        const rstd::uint8_t* end = p + raw.size().to_primitive();
-        while (p < end && (*p == ' ' || *p == '\t')) ++p;
-        while (end > p && (*(end - 1) == ' ' || *(end - 1) == '\t')) --end;
+        const byte* p   = raw.data();
+        const byte* end = p + raw.size().to_primitive();
+        while (p < end && (u8::from_byte(*p) == u8(' ') || u8::from_byte(*p) == u8('\t'))) ++p;
+        while (end > p && (u8::from_byte(*(end - 1)) == u8(' ') ||
+                           u8::from_byte(*(end - 1)) == u8('\t'))) --end;
         if (p >= end) return;
 
         // find '='
-        const rstd::uint8_t* eq = p;
-        while (eq < end && *eq != '=') ++eq;
+        const byte* eq = p;
+        while (eq < end && u8::from_byte(*eq) != u8('=')) ++eq;
 
         if (eq < end) {
             // target=level
-            const rstd::uint8_t* t_end = eq;
-            while (t_end > p && (*(t_end - 1) == ' ' || *(t_end - 1) == '\t')) --t_end;
-            const rstd::uint8_t* l_beg = eq + 1;
-            while (l_beg < end && (*l_beg == ' ' || *l_beg == '\t')) ++l_beg;
+            const byte* t_end = eq;
+            while (t_end > p && (u8::from_byte(*(t_end - 1)) == u8(' ') ||
+                                 u8::from_byte(*(t_end - 1)) == u8('\t'))) --t_end;
+            const byte* l_beg = eq + 1;
+            while (l_beg < end && (u8::from_byte(*l_beg) == u8(' ') ||
+                                   u8::from_byte(*l_beg) == u8('\t'))) ++l_beg;
 
             if (rule_count < MAX_RULES) {
                 auto& rule = rules[rule_count++];
                 auto  tlen = static_cast<rstd::size_t>(t_end - p);
                 if (tlen >= sizeof(rule.target)) tlen = sizeof(rule.target) - 1;
                 __builtin_memcpy(rule.target, p, tlen);
-                rule.target[tlen] = '\0';
+                rule.target[tlen] = byte {};
                 rule.target_len   = tlen;
-                rule.level        = parse_level_filter(ref<str>(l_beg, usize(end - l_beg)))
-                                        .unwrap_or(LevelFilter::Trace);
+                rule.level = parse_level_filter(
+                                 ref<str>::from_raw_parts_unchecked(l_beg, usize(end - l_beg)))
+                                 .unwrap_or(LevelFilter::Trace);
             }
         } else {
             // global level directive
-            auto lf = parse_level_filter(ref<str>(p, usize(end - p)));
+            auto lf = parse_level_filter(
+                ref<str>::from_raw_parts_unchecked(p, usize(end - p)));
             if (lf.is_some()) {
                 default_level = lf.unwrap_unchecked();
             }
         }
     }
 
-    static auto match_prefix(ref<str> target, const char* prefix, rstd::size_t prefix_len) noexcept
+    static auto match_prefix(ref<str> target, const byte* prefix, rstd::size_t prefix_len) noexcept
         -> bool {
         if (prefix_len == 0) return true;
         if (target.size().to_primitive() < prefix_len) return false;
@@ -252,50 +260,50 @@ private:
         StderrWriter   w;
         fmt::Formatter f(&w, [](void* ctx, const rstd::uint8_t* p, rstd::size_t len) -> bool {
             auto* self  = static_cast<StderrWriter*>(ctx);
-            auto  bytes = slice<byte>::from_raw_parts(p, usize(len));
+            auto bytes = slice<u8>::from_raw_parts(reinterpret_cast<byte const*>(p), usize(len));
             while (! bytes.is_empty()) {
                 auto res = rstd::as<rstd::io::Write>(self->stderr).write(bytes);
                 if (res.is_err()) return false;
                 auto count = res.unwrap_unchecked().to_primitive();
                 if (count == 0 || count > bytes.len().to_primitive()) return false;
-                bytes = slice<byte>::from_raw_parts(bytes.as_raw_ptr() + count,
-                                                    usize(bytes.len().to_primitive() - count));
+                bytes = slice<u8>::from_raw_parts(bytes.as_raw_ptr() + count,
+                                                  usize(bytes.len().to_primitive() - count));
             }
             return true;
         });
 
-        f.write_raw("[", rstd::size_t(1));
+        f.write_str("["_str);
 
         char ts[20];
         rstd::time::format_rfc3339_utc_now(ts);
         f.write_raw(ts, rstd::size_t(20));
-        f.write_raw(" ", rstd::size_t(1));
+        f.write_str(" "_str);
 
         if (color_enabled) {
-            f.write_raw(level_color(r.lvl()), COLOR_PREFIX_LEN);
+            f.write_str(level_color(r.lvl()));
         }
-        f.write_raw(padded_level_str(r.lvl()), PADDED_LEVEL_LEN);
+        f.write_str(padded_level_str(r.lvl()));
         if (color_enabled) {
-            f.write_raw(COLOR_RESET, COLOR_RESET_LEN);
+            f.write_str(COLOR_RESET);
         }
 
         auto md = module_from_function(r.loc().function_name());
-        if (md.size() > usize()) {
-            f.write_raw(" ", rstd::size_t(1));
-            f.write_raw(md.data(), md.size().to_primitive());
+        if (md.size > 0) {
+            f.write_str(" "_str);
+            f.write_raw(md.data, md.size);
         }
 
         auto tgt = r.target();
         if (tgt.size() > usize()) {
-            f.write_raw(" ", rstd::size_t(1));
-            f.write_raw(tgt.data(), tgt.size().to_primitive());
+            f.write_str(" "_str);
+            f.write_str(tgt);
         }
 
-        f.write_raw("] ", rstd::size_t(2));
+        f.write_str("] "_str);
 
         r.args_().fmt(f);
 
-        f.write_raw("\n", rstd::size_t(1));
+        f.write_str("\n"_str);
     }
 };
 

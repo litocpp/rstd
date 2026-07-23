@@ -2,6 +2,7 @@
 import rstd;
 
 using namespace rstd::prelude;
+using namespace rstd::literals;
 using rstd::collections::BTreeMap;
 using rstd::string::String;
 namespace iter = rstd::iter;
@@ -322,15 +323,15 @@ TEST(BTreeMap, MoveOnlyKeysAndMapMovesRemainValid) {
 
 TEST(BTreeMap, BorrowedStringLookupAndRemoval) {
     auto map = BTreeMap<String, i32>::make();
-    map.insert(String::make("alpha"), i32(1));
-    map.insert(String::make("beta"), i32(2));
+    map.insert(String::make("alpha"_str), i32(1));
+    map.insert(String::make("beta"_str), i32(2));
 
-    auto alpha = ref<rstd::str>("alpha");
+    auto alpha = "alpha"_str;
     ASSERT_TRUE(map.contains_key(alpha));
     ASSERT_TRUE(map.get(alpha).is_some());
     EXPECT_EQ(**map.get(alpha), i32(1));
 
-    auto beta = ref<rstd::str>("beta");
+    auto beta = "beta"_str;
     ASSERT_TRUE(map.get_mut(beta).is_some());
     **map.get_mut(beta) = i32(20);
     EXPECT_EQ(map.remove(beta), Some(i32(20)));
@@ -339,17 +340,17 @@ TEST(BTreeMap, BorrowedStringLookupAndRemoval) {
 
 TEST(BTreeMap, CloneAndEqualityUseOwnedEntries) {
     auto map = BTreeMap<String, String>::make();
-    map.insert(String::make("a"), String::make("one"));
-    map.insert(String::make("b"), String::make("two"));
+    map.insert(String::make("a"_str), String::make("one"_str));
+    map.insert(String::make("b"_str), String::make("two"_str));
 
     auto direct   = map.clone();
     auto abstract = rstd::as<rstd::clone::Clone>(map).clone();
     EXPECT_EQ(map, direct);
     EXPECT_EQ(map, abstract);
 
-    **direct.get_mut(ref<rstd::str>("a")) = String::make("changed");
+    **direct.get_mut("a"_str) = String::make("changed"_str);
     EXPECT_NE(map, direct);
-    EXPECT_EQ(**map.get(ref<rstd::str>("a")), "one");
-    EXPECT_EQ(**direct.get(ref<rstd::str>("a")), "changed");
-    EXPECT_EQ(**abstract.get(ref<rstd::str>("a")), "one");
+    EXPECT_EQ(**map.get("a"_str), "one"_str);
+    EXPECT_EQ(**direct.get("a"_str), "changed"_str);
+    EXPECT_EQ(**abstract.get("a"_str), "one"_str);
 }

@@ -29,8 +29,11 @@ export enum class LevelFilter : rstd::uint32_t {
 } // namespace rstd::log
 
 using namespace rstd::prelude;
+using namespace rstd::literals;
 
-inline constexpr char const* LEVEL_NAMES[] = { "OFF", "ERROR", "WARN", "INFO", "DEBUG", "TRACE" };
+inline constexpr ref<str> LEVEL_NAMES[] = {
+    "OFF"_str, "ERROR"_str, "WARN"_str, "INFO"_str, "DEBUG"_str, "TRACE"_str
+};
 
 namespace rstd::log
 {
@@ -114,19 +117,19 @@ inline constexpr auto parse_level(ref<str> s) noexcept -> Option<Level> {
     auto cmp = [](ref<str> a, ref<str> b) -> bool {
         if (a.size() != b.size()) return false;
         for (rstd::size_t i = 0; i < a.size().to_primitive(); ++i) {
-            char ca = static_cast<char>(a.data()[i]);
-            char cb = static_cast<char>(b.data()[i]);
-            if (ca >= 'a' && ca <= 'z') ca = char(ca - 'a' + 'A');
-            if (cb >= 'a' && cb <= 'z') cb = char(cb - 'a' + 'A');
+            auto ca = a[usize(i)].to_primitive();
+            auto cb = b[usize(i)].to_primitive();
+            if (ca >= 'a' && ca <= 'z') ca = static_cast<rstd::uint8_t>(ca - 'a' + 'A');
+            if (cb >= 'a' && cb <= 'z') cb = static_cast<rstd::uint8_t>(cb - 'a' + 'A');
             if (ca != cb) return false;
         }
         return true;
     };
-    if (cmp(s, "ERROR")) return Some(Level::Error);
-    if (cmp(s, "WARN")) return Some(Level::Warn);
-    if (cmp(s, "INFO")) return Some(Level::Info);
-    if (cmp(s, "DEBUG")) return Some(Level::Debug);
-    if (cmp(s, "TRACE")) return Some(Level::Trace);
+    if (cmp(s, "ERROR"_str)) return Some(Level::Error);
+    if (cmp(s, "WARN"_str)) return Some(Level::Warn);
+    if (cmp(s, "INFO"_str)) return Some(Level::Info);
+    if (cmp(s, "DEBUG"_str)) return Some(Level::Debug);
+    if (cmp(s, "TRACE"_str)) return Some(Level::Trace);
     return None();
 }
 
@@ -137,20 +140,20 @@ inline constexpr auto parse_level_filter(ref<str> s) noexcept -> Option<LevelFil
     auto cmp = [](ref<str> a, ref<str> b) -> bool {
         if (a.size() != b.size()) return false;
         for (rstd::size_t i = 0; i < a.size().to_primitive(); ++i) {
-            char ca = static_cast<char>(a.data()[i]);
-            char cb = static_cast<char>(b.data()[i]);
-            if (ca >= 'a' && ca <= 'z') ca = char(ca - 'a' + 'A');
-            if (cb >= 'a' && cb <= 'z') cb = char(cb - 'a' + 'A');
+            auto ca = a[usize(i)].to_primitive();
+            auto cb = b[usize(i)].to_primitive();
+            if (ca >= 'a' && ca <= 'z') ca = static_cast<rstd::uint8_t>(ca - 'a' + 'A');
+            if (cb >= 'a' && cb <= 'z') cb = static_cast<rstd::uint8_t>(cb - 'a' + 'A');
             if (ca != cb) return false;
         }
         return true;
     };
-    if (cmp(s, "OFF")) return Some(LevelFilter::Off);
-    if (cmp(s, "ERROR")) return Some(LevelFilter::Error);
-    if (cmp(s, "WARN")) return Some(LevelFilter::Warn);
-    if (cmp(s, "INFO")) return Some(LevelFilter::Info);
-    if (cmp(s, "DEBUG")) return Some(LevelFilter::Debug);
-    if (cmp(s, "TRACE")) return Some(LevelFilter::Trace);
+    if (cmp(s, "OFF"_str)) return Some(LevelFilter::Off);
+    if (cmp(s, "ERROR"_str)) return Some(LevelFilter::Error);
+    if (cmp(s, "WARN"_str)) return Some(LevelFilter::Warn);
+    if (cmp(s, "INFO"_str)) return Some(LevelFilter::Info);
+    if (cmp(s, "DEBUG"_str)) return Some(LevelFilter::Debug);
+    if (cmp(s, "TRACE"_str)) return Some(LevelFilter::Trace);
     return None();
 }
 
@@ -164,7 +167,7 @@ template<>
 struct Impl<fmt::Display, log::Level> : ImplBase<log::Level> {
     auto fmt(fmt::Formatter& f) const -> bool {
         auto s = log::as_str(this->self());
-        return f.write_raw(s.data(), s.size().to_primitive());
+        return f.write_str(s);
     }
 };
 
@@ -172,7 +175,7 @@ template<>
 struct Impl<fmt::Display, log::LevelFilter> : ImplBase<log::LevelFilter> {
     auto fmt(fmt::Formatter& f) const -> bool {
         auto s = log::as_str(this->self());
-        return f.write_raw(s.data(), s.size().to_primitive());
+        return f.write_str(s);
     }
 };
 

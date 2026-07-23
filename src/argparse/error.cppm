@@ -5,6 +5,7 @@ export module rstd.argparse:error;
 export import rstd;
 
 using namespace rstd::prelude;
+using namespace rstd::literals;
 using rstd::ffi::OsString;
 
 export namespace rstd::argparse
@@ -22,7 +23,7 @@ class DefinitionError {
     RSTD_ENUM(DefinitionError,
               (InvalidCommandName, (String name;)),
               (InvalidArgumentId, (String id;)),
-              (InvalidShortName, (char name;)),
+              (InvalidShortName, (u8 name;)),
               (InvalidLongName, (String name;)),
               (DuplicateArgumentId, (String id;)),
               (DuplicateOption, (String name;)),
@@ -208,8 +209,11 @@ struct Impl<fmt::Display, argparse::DefinitionError> : ImplBase<argparse::Defini
             return formatter.write_fmt(
                 fmt::Arguments::make("invalid argument id '{}'", error.as_InvalidArgumentId().id));
         case argparse::DefinitionError::Tag::InvalidShortName:
-            return formatter.write_fmt(fmt::Arguments::make("invalid short option '-{}'",
-                                                            error.as_InvalidShortName().name));
+            {
+                auto name = String::make("-"_str);
+                name.push_ascii(error.as_InvalidShortName().name);
+                return formatter.write_fmt(fmt::Arguments::make("invalid short option '{}'", name));
+            }
         case argparse::DefinitionError::Tag::InvalidLongName:
             return formatter.write_fmt(fmt::Arguments::make("invalid long option '--{}'",
                                                             error.as_InvalidLongName().name));

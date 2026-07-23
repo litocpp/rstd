@@ -3,6 +3,7 @@
 import rstd;
 
 using namespace rstd::prelude;
+using namespace rstd::literals;
 
 static void iterate_invalid_unicode_arg() {
     const char  invalid[] = { 'v', static_cast<char>(0xff), '\0' };
@@ -15,7 +16,7 @@ static void iterate_invalid_unicode_arg() {
 }
 
 TEST(Env, VarNotFound) {
-    auto val = rstd::env::var("RSTD_TEST_NONEXISTENT_VAR_12345");
+    auto val = rstd::env::var("RSTD_TEST_NONEXISTENT_VAR_12345"_str);
     EXPECT_TRUE(val.is_none());
 }
 
@@ -25,42 +26,42 @@ TEST(Env, TempDir) {
 }
 
 TEST(Env, SetAndGet) {
-    rstd::env::set_var("RSTD_TEST_VAR", "hello");
-    auto val = rstd::env::var("RSTD_TEST_VAR");
+    rstd::env::set_var("RSTD_TEST_VAR"_str, "hello"_str);
+    auto val = rstd::env::var("RSTD_TEST_VAR"_str);
     ASSERT_TRUE(val.is_some());
-    EXPECT_EQ("hello", val.unwrap());
+    EXPECT_EQ("hello"_str, val.unwrap());
 }
 
 TEST(Env, VarOsPreservesInvalidUnicode) {
-    const char invalid[] = { 'v', static_cast<char>(0xff), '\0' };
-    rstd::env::set_var("RSTD_TEST_VAR_OS", invalid);
+    auto invalid = rstd::ref<rstd::ffi::OsStr>::from_encoded_bytes_unchecked("v\xff"_bytes);
+    rstd::env::set_var("RSTD_TEST_VAR_OS"_str, invalid);
 
-    auto value = rstd::env::var_os("RSTD_TEST_VAR_OS");
+    auto value = rstd::env::var_os("RSTD_TEST_VAR_OS"_str);
     ASSERT_TRUE(value.is_some());
     auto os_str = value->as_os_str();
     auto bytes  = os_str.as_encoded_bytes();
     ASSERT_EQ(bytes.len(), rstd::usize(2));
-    EXPECT_EQ(rstd::byte_value(bytes[rstd::usize()]), rstd::u8('v'));
-    EXPECT_EQ(rstd::byte_value(bytes[rstd::usize(1)]), rstd::u8(0xff));
+    EXPECT_EQ(bytes[rstd::usize()], rstd::u8('v'));
+    EXPECT_EQ(bytes[rstd::usize(1)], rstd::u8(0xff));
     EXPECT_TRUE(value->as_os_str().to_str().is_none());
 
-    rstd::env::remove_var("RSTD_TEST_VAR_OS");
+    rstd::env::remove_var("RSTD_TEST_VAR_OS"_str);
 }
 
 TEST(Env, RemoveVar) {
-    rstd::env::set_var("RSTD_TEST_REMOVE", "value");
-    ASSERT_TRUE(rstd::env::var("RSTD_TEST_REMOVE").is_some());
+    rstd::env::set_var("RSTD_TEST_REMOVE"_str, "value"_str);
+    ASSERT_TRUE(rstd::env::var("RSTD_TEST_REMOVE"_str).is_some());
 
-    rstd::env::remove_var("RSTD_TEST_REMOVE");
-    EXPECT_TRUE(rstd::env::var("RSTD_TEST_REMOVE").is_none());
+    rstd::env::remove_var("RSTD_TEST_REMOVE"_str);
+    EXPECT_TRUE(rstd::env::var("RSTD_TEST_REMOVE"_str).is_none());
 }
 
 TEST(Env, OverwriteVar) {
-    rstd::env::set_var("RSTD_TEST_OVERWRITE", "first");
-    rstd::env::set_var("RSTD_TEST_OVERWRITE", "second");
-    auto val = rstd::env::var("RSTD_TEST_OVERWRITE");
+    rstd::env::set_var("RSTD_TEST_OVERWRITE"_str, "first"_str);
+    rstd::env::set_var("RSTD_TEST_OVERWRITE"_str, "second"_str);
+    auto val = rstd::env::var("RSTD_TEST_OVERWRITE"_str);
     ASSERT_TRUE(val.is_some());
-    EXPECT_EQ("second", val.unwrap());
+    EXPECT_EQ("second"_str, val.unwrap());
 }
 
 TEST(Env, Args) {
@@ -79,16 +80,16 @@ TEST(Env, ArgsManualInit) {
 
     auto collected = rstd::env::args().collect<rstd::vec::Vec<rstd::string::String>>();
     ASSERT_EQ(collected.len(), rstd::usize(3));
-    EXPECT_EQ("prog", collected[rstd::usize()]);
-    EXPECT_EQ("--flag", collected[rstd::usize(1)]);
-    EXPECT_EQ("value", collected[rstd::usize(2)]);
+    EXPECT_EQ("prog"_str, collected[rstd::usize()]);
+    EXPECT_EQ("--flag"_str, collected[rstd::usize(1)]);
+    EXPECT_EQ("value"_str, collected[rstd::usize(2)]);
 
     // args() is an ExactSize + DoubleEnded iterator
     auto it = rstd::env::args();
     EXPECT_EQ(rstd::as<rstd::iter::ExactSizeIterator>(it).len(), rstd::usize(3));
     auto last = rstd::env::args().next_back();
     ASSERT_TRUE(last.is_some());
-    EXPECT_EQ("value", last.unwrap());
+    EXPECT_EQ("value"_str, last.unwrap());
 }
 
 TEST(Env, ArgsOsPreservesBytes) {
@@ -104,8 +105,8 @@ TEST(Env, ArgsOsPreservesBytes) {
     auto os_str = last->as_os_str();
     auto bytes  = os_str.as_encoded_bytes();
     ASSERT_EQ(bytes.len(), rstd::usize(2));
-    EXPECT_EQ(rstd::byte_value(bytes[rstd::usize()]), rstd::u8('v'));
-    EXPECT_EQ(rstd::byte_value(bytes[rstd::usize(1)]), rstd::u8(0xff));
+    EXPECT_EQ(bytes[rstd::usize()], rstd::u8('v'));
+    EXPECT_EQ(bytes[rstd::usize(1)], rstd::u8(0xff));
     EXPECT_TRUE(last->as_os_str().to_str().is_none());
 }
 

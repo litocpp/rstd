@@ -9,6 +9,11 @@ using rstd::boxed::Box;
 static_assert(rstd::Impled<Box<int>, rstd::ops::Deref>);
 static_assert(rstd::Impled<Box<int>, rstd::ops::DerefMut>);
 static_assert(sizeof(Box<int>) == sizeof(int*));
+static_assert(rstd::mtp::same_as<decltype(rstd::mtp::declval<Box<rstd::u8[]>&>().get()),
+                                 rstd::byte*>);
+static_assert(rstd::mtp::same_as<
+              decltype(rstd::mtp::declval<Box<rstd::u8[]> const&>().as_ptr().as_raw_ptr()),
+              rstd::byte const*>);
 
 namespace
 {
@@ -101,6 +106,21 @@ TEST(BoxTest, DynFnMutWithByteSliceDestructs) {
         callback->operator()(rstd::slice<rstd::byte>::from_raw_parts(&value, rstd::usize(1)));
     }
     EXPECT_EQ(seen, rstd::usize(1));
+}
+
+TEST(BoxTest, U8SliceUsesByteStorageAndLogicalElementAccess) {
+    auto values = rstd::vec::Vec<rstd::u8>::with_capacity(rstd::usize(3));
+    values.push(rstd::u8(2));
+    values.push(rstd::u8(3));
+    values.push(rstd::u8(5));
+
+    auto boxed = values.into_boxed_slice();
+    EXPECT_EQ(boxed.get()[1], rstd::byte { 3 });
+    EXPECT_EQ(boxed.as_ptr()[rstd::usize(2)], rstd::u8(5));
+
+    boxed.as_mut_ptr()[rstd::usize()] = rstd::u8(7);
+    EXPECT_EQ(boxed.get()[0], rstd::byte { 7 });
+    EXPECT_EQ(boxed.as_ref()[rstd::usize()], rstd::u8(7));
 }
 
 TEST(BoxTest, DynDropUsesConcreteDropAndLayout) {

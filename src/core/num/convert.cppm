@@ -396,14 +396,16 @@ struct AsCast<To, From> {
 template<>
 struct Impl<fmt::Display, num::TryFromIntError> : ImplBase<num::TryFromIntError> {
     auto fmt(fmt::Formatter& formatter) const -> bool {
-        return formatter.pad("out of range integral type conversion attempted");
+        return formatter.write_raw("out of range integral type conversion attempted",
+                                   sizeof("out of range integral type conversion attempted") - 1);
     }
 };
 
 template<>
 struct Impl<fmt::Display, num::TryFromFloatError> : ImplBase<num::TryFromFloatError> {
     auto fmt(fmt::Formatter& formatter) const -> bool {
-        return formatter.pad("inexact floating point conversion attempted");
+        return formatter.write_raw("inexact floating point conversion attempted",
+                                   sizeof("inexact floating point conversion attempted") - 1);
     }
 };
 } // namespace rstd

@@ -72,14 +72,14 @@ public:
         return Ok(RangeReader(rstd::move(source), offset, len));
     }
 
-    auto read(mut_ref<byte[]> buf) -> Result<usize> {
+    auto read(mut_ref<u8[]> buf) -> Result<usize> {
         if (m_position == m_len || buf.is_empty()) return Ok(usize {});
 
         auto       remaining       = m_len - m_position;
         auto const requested_count = rstd::min(
             static_cast<rstd::uint64_t>(buf.len().to_primitive()), remaining.to_primitive());
         usize requested(static_cast<rstd::size_t>(requested_count));
-        auto  destination = mut_ref<byte[]>::from_raw_parts(buf.as_raw_ptr(), requested);
+        auto  destination = mut_ref<u8[]>::from_raw_parts(buf.as_raw_ptr(), requested);
         auto  result      = m_source->read_at(destination, m_offset + m_position);
         if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
 
@@ -157,7 +157,7 @@ namespace rstd
 
 template<>
 struct Impl<io::Read, io::RangeReader> : ImplBase<io::RangeReader> {
-    auto read(mut_ref<byte[]> buf) -> io::Result<usize> { return this->self().read(buf); }
+    auto read(mut_ref<u8[]> buf) -> io::Result<usize> { return this->self().read(buf); }
 };
 
 template<>

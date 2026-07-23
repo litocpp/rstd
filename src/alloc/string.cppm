@@ -12,6 +12,22 @@ using namespace rstd::prelude;
 namespace alloc::string
 {
 
+export class FromUtf8Error {
+    Vec<u8>              bytes_;
+    rstd::str_::Utf8Error error_;
+
+public:
+    FromUtf8Error(Vec<u8>&& bytes, rstd::str_::Utf8Error error)
+        : bytes_(rstd::move(bytes)), error_(error) {}
+
+    auto as_bytes() const noexcept [[clang::lifetimebound]] -> slice<u8> {
+        return bytes_.as_slice();
+    }
+
+    auto into_bytes() && -> Vec<u8> { return rstd::move(bytes_); }
+    constexpr auto utf8_error() const noexcept -> rstd::str_::Utf8Error { return error_; }
+};
+
 /// Iterator over the Unicode scalar values of a UTF-8 byte range.
 export struct Chars : rstd::DefaultInClass<Chars, rstd::iter::Iterator> {
     using Item = u32;
@@ -44,11 +60,8 @@ public:
 
     /// Creates a `String` from a string slice (copies the bytes).
     static auto make(ref<str> s) -> String {
-        return String { Vec<u8>::copy_from_bytes(rstd::str_::as_bytes(s)) };
+        return String { Vec<u8>::from(rstd::str_::as_bytes(s)) };
     }
-
-    /// Creates a `String` from a null-terminated C string (copies the bytes).
-    static auto make(const char* s) -> String { return make(ref<str>(s)); }
 
     auto clone() const -> String { return String::make(as_str()); }
 
@@ -60,41 +73,36 @@ public:
     }
 
     /// Creates a new `String` from owned bytes after validating UTF-8.
-    static auto from_utf8(Vec<u8>&& bytes) -> Result<String, rstd::str_::Utf8Error> {
+    static auto from_utf8(Vec<u8>&& bytes) -> Result<String, FromUtf8Error> {
         auto validation = rstd::str_::validate_utf8(bytes.as_slice());
-        if (validation.is_err()) return Err(rstd::move(validation).unwrap_err());
+        if (validation.is_err()) {
+            return Err(FromUtf8Error(rstd::move(bytes),
+                                     rstd::move(validation).unwrap_err_unchecked()));
+        }
         return Ok(String { rstd::move(bytes) });
-    }
-
-    /// Returns a reference to the string as a `CStr`.
-    /// \return A `ref<CStr>` view of the string data.
-    auto as_ref() const noexcept [[clang::lifetimebound]] -> ref<ffi::CStr> {
-        auto p = reinterpret_cast<char const*>(vec.as_ptr().as_raw_ptr());
-        return ref<ffi::CStr>::from_raw_parts(p, vec.len());
     }
 
     /// Converts the `String` to a `ref<str>` string slice.
     operator ref<str>() const [[clang::lifetimebound]] { return as_str(); }
 
-    /// Appends a `char` to the end of this string.
-    void push_back(char c) { vec.push(u8(c)); }
-    /// Appends a byte to the end of this string.
-    void push_back(u8 c) { vec.push(rstd::move(c)); }
-
     /// Appends a UTF-8 string slice.
     void push_str(ref<str> value) {
         if (value.size() == usize()) return;
-        vec.extend_from_bytes(rstd::str_::as_bytes(value));
+        vec.extend_from_slice(rstd::str_::as_bytes(value));
+    }
+
+    /// Appends one ASCII byte while preserving the UTF-8 invariant.
+    void push_ascii(u8 value) {
+        if (! value.is_ascii()) rstd::panic("String::push_ascii requires ASCII");
+        vec.push(rstd::move(value));
     }
 
     /// Appends a Unicode code point, encoding as UTF-8.
     void push(char32_t cp) {
-        u8   buf[4];
+        byte buf[4] {};
         auto n = rstd::char_::encode_utf8(cp, buf);
-        for (rstd::size_t index = 0; index < n.to_primitive(); ++index) {
-            u8 b = buf[index];
-            vec.push(rstd::move(b));
-        }
+        rstd_assert(n != usize());
+        vec.extend_from_slice(slice<u8>::from_raw_parts(buf, n));
     }
 
     /// Returns a string slice of the entire `String`.
@@ -118,7 +126,8 @@ public:
     /// Panics if `new_len` is not on a UTF-8 character boundary.
     void truncate(usize new_len) {
         if (new_len < vec.len()) {
-            rstd_assert(rstd::char_::is_char_boundary(vec.begin(), vec.len(), new_len));
+            rstd_assert(rstd::char_::is_char_boundary(
+                vec.as_ptr().as_raw_ptr(), vec.len(), new_len));
             while (vec.len() > new_len) vec.pop();
         }
     }
@@ -132,12 +141,12 @@ public:
 
         auto result = Vec<u8>::with_capacity(start + replacement.size() + vec.len() - end);
         if (start != usize()) {
-            result.extend_from_bytes(slice<byte>::from_raw_parts(current.data(), start));
+            result.extend_from_slice(slice<u8>::from_raw_parts(current.data(), start));
         }
-        result.extend_from_bytes(rstd::str_::as_bytes(replacement));
+        result.extend_from_slice(rstd::str_::as_bytes(replacement));
         if (end != vec.len()) {
-            result.extend_from_bytes(
-                slice<byte>::from_raw_parts(current.data() + end.to_primitive(), vec.len() - end));
+            result.extend_from_slice(
+                slice<u8>::from_raw_parts(current.data() + end.to_primitive(), vec.len() - end));
         }
         vec = rstd::move(result);
     }
@@ -147,9 +156,10 @@ public:
 
     /// Inserts a Unicode code point at a checked byte boundary.
     void insert(usize index, char32_t code_point) {
-        u8   bytes[4];
+        byte bytes[4] {};
         auto length = rstd::char_::encode_utf8(code_point, bytes);
-        insert_str(index, ref<str>(slice<u8>::from_raw_parts(bytes, length)));
+        rstd_assert(length != usize());
+        insert_str(index, rstd::from_utf8_unchecked(slice<u8>::from_raw_parts(bytes, length)));
     }
 
     friend constexpr auto operator<=>(const String& a, const String& b) noexcept {
@@ -175,29 +185,24 @@ public:
         return a.size() == b.size() && rstd::mem::memcmp(a.begin(), b.begin(), a.size()) == 0;
     }
     friend bool operator==(ref<str> a, const String& b) noexcept { return b == a; }
-    friend bool operator==(char const* b, const String& a) noexcept {
-        const usize length(rstd::strlen(b));
-        return a.vec.len() == length && rstd::mem::memcmp(a.vec.begin(), b, length) == 0;
-    }
-
     /// Returns a raw pointer to the underlying byte buffer.
     /// \return A const pointer to the first byte.
-    constexpr auto as_raw_ptr() const noexcept [[clang::lifetimebound]] -> const u8* {
+    constexpr auto as_raw_ptr() const noexcept [[clang::lifetimebound]] -> const byte* {
         return vec.begin();
     }
 
     /// Returns a const iterator to the beginning of the string.
-    auto begin() const noexcept [[clang::lifetimebound]] -> const char* {
-        return reinterpret_cast<const char*>(vec.begin());
+    auto begin() const noexcept [[clang::lifetimebound]] -> const byte* {
+        return vec.begin();
     }
     /// Returns a const iterator to the end of the string.
-    auto end() const noexcept [[clang::lifetimebound]] -> const char* {
-        return reinterpret_cast<const char*>(vec.end());
+    auto end() const noexcept [[clang::lifetimebound]] -> const byte* {
+        return vec.end();
     }
-    /// Returns a pointer to the string data as a char array.
-    /// \return A const `char*` pointer to the data.
-    auto data() const noexcept [[clang::lifetimebound]] -> const char* {
-        return reinterpret_cast<const char*>(vec.as_ptr().as_raw_ptr());
+    /// Returns a pointer to the underlying byte storage.
+    /// \return A const `byte*` pointer to the data.
+    auto data() const noexcept [[clang::lifetimebound]] -> const byte* {
+        return vec.as_ptr().as_raw_ptr();
     }
     /// Returns the length of the string in bytes.
     /// \return The number of bytes in the string.
@@ -205,12 +210,14 @@ public:
 
     /// Returns an iterator over the bytes (`u8`) of the string.
     auto bytes() const [[clang::lifetimebound]] {
-        return rstd::iter::SliceIter<u8>(vec.begin(), vec.end()).copied();
+        return vec.iter().copied();
     }
     /// Returns an iterator over the Unicode scalar values of the string.
     auto chars() const [[clang::lifetimebound]] -> Chars {
         return Chars(rstd::str_::chars(as_str()));
     }
+
+    auto into_bytes() && -> Vec<u8> { return rstd::move(vec); }
 };
 
 /// A trait for converting a value to a `String`.
@@ -247,8 +254,8 @@ struct Impl<borrow::Borrow<str>, String> : ImplBase<String> {
 
 template<>
 struct Impl<fmt::Write, String> : ImplBase<String> {
-    auto write_str(const rstd::uint8_t* p, rstd::size_t len) -> bool {
-        this->self().push_str(ref<str>::from_raw_parts(p, usize(len)));
+    auto write_str(ref<str> const& value) -> bool {
+        this->self().push_str(value);
         return true;
     }
 };
@@ -263,27 +270,6 @@ struct Impl<fmt::Debug, String> : ImplBase<String> {
     auto fmt(fmt::Formatter& f) const -> bool {
         auto value = this->self().as_str();
         return as<fmt::Debug>(value).fmt(f);
-    }
-};
-
-// collect<String>() from an iterator of char or u8.
-template<>
-struct Impl<iter::FromIterator<char>, String> : ImplBase<String> {
-    template<typename It>
-    static auto from_iter(It it) -> String {
-        auto s = String::make();
-        for (auto x = it.next(); x.is_some(); x = it.next()) s.push_back(*x);
-        return s;
-    }
-};
-
-template<>
-struct Impl<iter::FromIterator<u8>, String> : ImplBase<String> {
-    template<typename It>
-    static auto from_iter(It it) -> String {
-        auto s = String::make();
-        for (auto x = it.next(); x.is_some(); x = it.next()) s.push_back(*x);
-        return s;
     }
 };
 
@@ -404,8 +390,8 @@ struct Impl<fmt::Display, char const[N]> : ImplBase<char const[N]> {
 template<>
 struct Impl<fmt::Debug, time::Duration> : ImplBase<time::Duration> {
     auto fmt(fmt::Formatter& f) const -> bool {
-        auto write_ascii = [&f](const char* value, rstd::size_t length) {
-            return f.write_raw(reinterpret_cast<const rstd::uint8_t*>(value), length);
+        auto write_ascii = [&f](auto const* value, rstd::size_t length) {
+            return f.write_raw(value, length);
         };
         auto&                d     = this->self();
         const rstd::uint64_t secs  = d.as_secs().to_primitive();
@@ -504,8 +490,7 @@ struct Impl<T, A> : DefaultInImpl<T, A> {
 template<mtp::same_as<Into<Vec<u8>>> T, mtp::same_as<String> A>
 struct Impl<T, A> : ImplBase<A> {
     auto into() -> Vec<u8> {
-        auto& a = this->self();
-        return rstd::move(a.vec);
+        return rstd::move(this->self()).into_bytes();
     }
 };
 

@@ -40,7 +40,7 @@ struct NotifyState {
     auto drain() -> io::Result<bool> {
 #if RSTD_OS_LINUX
         bool          any = false;
-        rstd::uint8_t buf[64] {};
+        byte buf[64] {};
         for (;;) {
             auto n = libc::read(read_fd.as_raw_fd(), buf, sizeof(buf));
             if (n > 0) {
@@ -67,9 +67,9 @@ struct NotifyState {
 
     auto notify() -> io::Result<empty> {
 #if RSTD_OS_LINUX
-        rstd::uint8_t byte = 1;
+        byte value { 1 };
         for (;;) {
-            auto n = libc::write(write_fd.as_raw_fd(), &byte, 1);
+            auto n = libc::write(write_fd.as_raw_fd(), &value, 1);
             if (n == 1) {
                 return Ok(empty {});
             }

@@ -15,8 +15,8 @@ enum class Error : rstd::uint8_t
 };
 
 struct Decimal {
-    slice<byte> integer;
-    slice<byte> fraction;
+    slice<u8> integer;
+    slice<u8> fraction;
     i32         exponent {};
     bool        negative = false;
 };
@@ -33,8 +33,8 @@ using DecimalBig                          = rstd::num::bignum::FixedBig<128>;
 
 auto digit_at(Decimal const& decimal, rstd::size_t index) noexcept -> rstd::uint8_t {
     const auto integer_len = decimal.integer.len().to_primitive();
-    if (index < integer_len) return decimal.integer[usize(index)];
-    return decimal.fraction[usize(index - integer_len)];
+    if (index < integer_len) return decimal.integer[usize(index)].to_primitive();
+    return decimal.fraction[usize(index - integer_len)].to_primitive();
 }
 
 auto signed_zero(bool negative) noexcept -> f64 {

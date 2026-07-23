@@ -1,12 +1,15 @@
 export module rstd:process.command;
 export import :process.exit_status;
 export import :io;
+export import :path;
 export import rstd.alloc;
 import :sys.io.stdio;
 
 using ::alloc::ffi::CString;
 using ::alloc::string::String;
 using ::alloc::vec::Vec;
+using rstd::ffi::OsStr;
+using rstd::path::Path;
 using namespace rstd::prelude;
 
 export namespace rstd::process
@@ -69,23 +72,23 @@ namespace rstd
 
 template<>
 struct Impl<io::Write, process::ChildStdin> : ImplBase<process::ChildStdin> {
-    auto write(slice<byte> buf) -> io::Result<usize> {
-        return sys::io::stdio::write_fd(this->self().fd, buf);
+    auto write(slice<u8> buf) -> io::Result<usize> {
+        return sys::io::stdio::write_fd(this->self().fd, as_bytes(buf));
     }
     auto flush() -> io::Result<empty> { return Ok(empty {}); }
 };
 
 template<>
 struct Impl<io::Read, process::ChildStdout> : ImplBase<process::ChildStdout> {
-    auto read(mut_ref<byte[]> buf) -> io::Result<usize> {
-        return sys::io::stdio::read_fd(this->self().fd, buf);
+    auto read(mut_ref<u8[]> buf) -> io::Result<usize> {
+        return sys::io::stdio::read_fd(this->self().fd, as_bytes_mut(buf));
     }
 };
 
 template<>
 struct Impl<io::Read, process::ChildStderr> : ImplBase<process::ChildStderr> {
-    auto read(mut_ref<byte[]> buf) -> io::Result<usize> {
-        return sys::io::stdio::read_fd(this->self().fd, buf);
+    auto read(mut_ref<u8[]> buf) -> io::Result<usize> {
+        return sys::io::stdio::read_fd(this->self().fd, as_bytes_mut(buf));
     }
 };
 
@@ -148,6 +151,10 @@ class Command {
 
     explicit Command(CString&& prog): program_(rstd::move(prog)) {}
 
+    static auto cstring(ref<OsStr> value) -> CString {
+        return CString::make(Vec<u8>::from(value.as_encoded_bytes())).unwrap();
+    }
+
 public:
     Command(Command&&) noexcept            = default;
     Command& operator=(Command&&) noexcept = default;
@@ -155,26 +162,25 @@ public:
     /// Creates a new `Command` for the given program.
     ///
     /// \param program  Path or name of the program to execute.
-    static auto make(const char* program) -> Command {
-        return Command(CString::from_raw_parts(program));
+    static auto make(ref<OsStr> program) -> Command {
+        return Command(cstring(program));
     }
 
     /// Adds an argument to pass to the program.
-    auto arg(const char* a) -> Command& {
-        args_.push(CString::from_raw_parts(a));
+    auto arg(ref<OsStr> value) -> Command& {
+        args_.push(cstring(value));
         return *this;
     }
 
     /// Sets an environment variable for the child process.
-    auto env(const char* key, const char* value) -> Command& {
-        env_actions_.push(
-            EnvAction { CString::from_raw_parts(key), Some(CString::from_raw_parts(value)) });
+    auto env(ref<OsStr> key, ref<OsStr> value) -> Command& {
+        env_actions_.push(EnvAction { cstring(key), Some(cstring(value)) });
         return *this;
     }
 
     /// Removes an environment variable for the child process.
-    auto env_remove(const char* key) -> Command& {
-        env_actions_.push(EnvAction { CString::from_raw_parts(key), Option<CString> {} });
+    auto env_remove(ref<OsStr> key) -> Command& {
+        env_actions_.push(EnvAction { cstring(key), Option<CString> {} });
         return *this;
     }
 
@@ -185,8 +191,8 @@ public:
     }
 
     /// Sets the working directory for the child process.
-    auto current_dir(const char* dir) -> Command& {
-        cwd_ = Some(CString::from_raw_parts(dir));
+    auto current_dir(ref<Path> dir) -> Command& {
+        cwd_ = Some(dir.to_cstring().unwrap());
         return *this;
     }
 

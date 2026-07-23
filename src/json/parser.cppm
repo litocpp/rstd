@@ -20,6 +20,7 @@ auto from_slice(slice<u8> input, ParseOptions options) -> ParseResult;
 
 using namespace rstd::prelude;
 using namespace rstd::json;
+using namespace rstd::literals;
 
 class Parser {
     ref<str>     input_;
@@ -189,8 +190,8 @@ class Parser {
                 take();
             }
             if (offset_ != chunk_start) {
-                output.push_str(ref<str>::from_raw_parts(input_.data() + chunk_start.to_primitive(),
-                                                         offset_ - chunk_start));
+                output.push_str(ref<str>::from_raw_parts_unchecked(
+                    input_.data() + chunk_start.to_primitive(), offset_ - chunk_start));
             }
             if (eof()) break;
 
@@ -206,14 +207,14 @@ class Parser {
             take();
             if (eof()) return Err(error(ErrorCode::EofWhileParsingString));
             switch (take().to_primitive()) {
-            case '"': output.push_back('"'); break;
-            case '\\': output.push_back('\\'); break;
-            case '/': output.push_back('/'); break;
-            case 'b': output.push_back(u8(0x08)); break;
-            case 'f': output.push_back(u8(0x0c)); break;
-            case 'n': output.push_back('\n'); break;
-            case 'r': output.push_back('\r'); break;
-            case 't': output.push_back('\t'); break;
+            case '"': output.push(U'"'); break;
+            case '\\': output.push(U'\\'); break;
+            case '/': output.push(U'/'); break;
+            case 'b': output.push(U'\b'); break;
+            case 'f': output.push(U'\f'); break;
+            case 'n': output.push(U'\n'); break;
+            case 'r': output.push(U'\r'); break;
+            case 't': output.push(U'\t'); break;
             case 'u': {
                 auto decoded = parse_unicode_escape(output);
                 if (decoded.is_err()) return Err(decoded.unwrap_err());
@@ -234,10 +235,10 @@ class Parser {
                      i32   exponent,
                      bool  negative) -> ParseResult {
         auto parsed = rstd::num::dec2flt::to_f64({
-            .integer  = slice<byte>::from_raw_parts(input_.data() + integer_begin.to_primitive(),
-                                                    integer_end - integer_begin),
-            .fraction = slice<byte>::from_raw_parts(input_.data() + fraction_begin.to_primitive(),
-                                                    fraction_end - fraction_begin),
+            .integer  = slice<u8>::from_raw_parts(input_.data() + integer_begin.to_primitive(),
+                                                  integer_end - integer_begin),
+            .fraction = slice<u8>::from_raw_parts(input_.data() + fraction_begin.to_primitive(),
+                                                  fraction_end - fraction_begin),
             .exponent = exponent,
             .negative = negative,
         });
@@ -447,9 +448,9 @@ public:
         if (eof()) return Err(error(ErrorCode::EofWhileParsingValue));
 
         switch (peek().to_primitive()) {
-        case 'n': return parse_ident("ull", Value::Null());
-        case 't': return parse_ident("rue", Value::Bool(true));
-        case 'f': return parse_ident("alse", Value::Bool(false));
+        case 'n': return parse_ident("ull"_str, Value::Null());
+        case 't': return parse_ident("rue"_str, Value::Bool(true));
+        case 'f': return parse_ident("alse"_str, Value::Bool(false));
         case '"': {
             auto value = parse_string();
             if (value.is_err()) return Err(value.unwrap_err());
@@ -491,10 +492,10 @@ auto from_slice(slice<u8> input) -> ParseResult {
 
 auto from_slice(slice<u8> input, ParseOptions options) -> ParseResult {
     auto text = str_::from_utf8(input);
-    if (text.is_none()) {
+    if (text.is_err()) {
         return Err(Parser::invalid_unicode_error());
     }
-    return from_str(*text, options);
+    return from_str(rstd::move(text).unwrap_unchecked(), options);
 }
 
 } // namespace rstd::json

@@ -2,6 +2,7 @@ export module rstd.argparse:command;
 export import :parser;
 
 using namespace rstd::prelude;
+using namespace rstd::literals;
 using rstd::collections::BTreeMap;
 using rstd::sync::atomic::Atomic;
 using rstd::sync::atomic::Ordering;
@@ -9,14 +10,14 @@ using rstd::sync::Arc;
 
 Atomic<u64> next_command_token { u64(1) };
 
-auto make_option_name(char short_name) -> String {
-    auto name = String::make("-");
-    name.push_back(short_name);
+auto make_option_name(u8 short_name) -> String {
+    auto name = String::make("-"_str);
+    name.push_ascii(short_name);
     return name;
 }
 
 auto make_option_name(ref<str> long_name) -> String {
-    auto name = String::make("--");
+    auto name = String::make("--"_str);
     name.push_str(long_name);
     return name;
 }
@@ -289,17 +290,17 @@ public:
         }
 
         if (auto_help_) {
-            auto help = Arg<bool>::help_action("help");
-            help.short_name('h');
-            help.long_name("help");
-            help.help("Print help");
+            auto help = Arg<bool>::help_action("help"_str);
+            help.short_name(u8('h'));
+            help.long_name("help"_str);
+            help.help("Print help"_str);
             add_arg(rstd::move(help));
         }
         if (auto_version_ && version_.is_some()) {
-            auto version = Arg<bool>::version_action("version");
-            version.short_name('V');
-            version.long_name("version");
-            version.help("Print version");
+            auto version = Arg<bool>::version_action("version"_str);
+            version.short_name(u8('V'));
+            version.long_name("version"_str);
+            version.help("Print version"_str);
             add_arg(rstd::move(version));
         }
 
@@ -354,9 +355,9 @@ public:
 
             bool has_option_name = false;
             if (argument.short_name.is_some()) {
-                const char short_name = *argument.short_name;
-                if (short_name < '!' || short_name > '~' || short_name == '-' ||
-                    short_name == '=') {
+                const u8 short_name = *argument.short_name;
+                if (short_name < u8('!') || short_name > u8('~') || short_name == u8('-') ||
+                    short_name == u8('=')) {
                     return Err(DefinitionError::InvalidShortName(short_name));
                 }
                 auto name = make_option_name(short_name);
@@ -379,9 +380,9 @@ public:
             for (usize alias_index {}; alias_index < argument.short_aliases.len(); ++alias_index) {
                 auto& alias = argument.short_aliases[alias_index];
                 if (! valid_long_name(alias.as_str())) {
-                    return Err(DefinitionError::InvalidShortName('-'));
+                    return Err(DefinitionError::InvalidShortName(u8('-')));
                 }
-                auto name = String::make("-");
+                auto name = String::make("-"_str);
                 name.push_str(alias.as_str());
                 if (option_index.insert(name.clone(), slot).is_some()) {
                     return Err(DefinitionError::DuplicateOption(rstd::move(name)));

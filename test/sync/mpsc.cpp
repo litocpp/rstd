@@ -5,6 +5,7 @@
 #include <vector>
 import rstd;
 using namespace rstd;
+using namespace rstd::literals;
 using namespace rstd::sync::mpmc;
 
 namespace
@@ -755,17 +756,17 @@ TEST(Mpmc, ErrorFormattingMatchesRustStd) {
     static_assert(Impled<TryRecvError, error::Error>);
     static_assert(Impled<RecvTimeoutError, error::Error>);
 
-    EXPECT_EQ(rstd::format("{}", RecvError {}), "receiving on a closed channel");
-    EXPECT_EQ(rstd::format("{:?}", TryRecvError::Empty), "Empty");
-    EXPECT_EQ(rstd::format("{}", RecvTimeoutError::Timeout), "timed out waiting on channel");
+    EXPECT_EQ(rstd::format("{}", RecvError {}), "receiving on a closed channel"_str);
+    EXPECT_EQ(rstd::format("{:?}", TryRecvError::Empty), "Empty"_str);
+    EXPECT_EQ(rstd::format("{}", RecvTimeoutError::Timeout), "timed out waiting on channel"_str);
 
     auto full = TrySendError<int>::Full(1);
-    EXPECT_EQ(rstd::format("{}", full), "sending on a full channel");
-    EXPECT_EQ(rstd::format("{:?}", full), "Full(..)");
+    EXPECT_EQ(rstd::format("{}", full), "sending on a full channel"_str);
+    EXPECT_EQ(rstd::format("{:?}", full), "Full(..)"_str);
 
     auto timeout = SendTimeoutError<int>::Timeout(2);
-    EXPECT_EQ(rstd::format("{}", timeout), "timed out waiting on send operation");
-    EXPECT_EQ(rstd::format("{:?}", timeout), "SendTimeoutError(..)");
+    EXPECT_EQ(rstd::format("{}", timeout), "timed out waiting on send operation"_str);
+    EXPECT_EQ(rstd::format("{:?}", timeout), "SendTimeoutError(..)"_str);
 }
 
 TEST(Mpmc, ZeroTrySendDistinguishesFullAndDisconnected) {

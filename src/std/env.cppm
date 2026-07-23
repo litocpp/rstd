@@ -8,14 +8,16 @@ export import rstd.alloc;
 using ::alloc::string::String;
 using ::alloc::vec::Vec;
 using rstd::path::PathBuf;
+using ::alloc::ffi::CString;
+using rstd::ffi::CStr;
+using rstd::ffi::OsStr;
 using rstd::ffi::OsString;
 
 using namespace rstd::prelude;
+using namespace rstd::literals;
 
 auto os_string_from_cstr(const char* s) -> OsString {
-    auto len = rstd::strlen(s);
-    auto raw = slice<byte>::from_raw_parts(reinterpret_cast<byte const*>(s), usize(len));
-    auto vec = Vec<u8>::copy_from_bytes(raw);
+    auto vec = Vec<u8>::from(CStr::from_ptr(s).to_bytes());
     return OsString::from_encoded_bytes_unchecked(rstd::move(vec));
 }
 
@@ -31,7 +33,7 @@ export namespace rstd::env
 /// Fetches the environment variable `key` without requiring Unicode.
 ///
 /// Returns `None` if the variable is not set.
-auto var_os(const char* key) -> Option<OsString>;
+auto var_os(ref<OsStr> key) -> Option<OsString>;
 
 /// Fetches the environment variable `key` from the current process.
 ///
@@ -40,7 +42,7 @@ auto var_os(const char* key) -> Option<OsString>;
 ///
 /// \param key  Null-terminated name of the environment variable.
 /// \return The value as a `String`, or `None`.
-auto var(const char* key) -> Option<String> {
+auto var(ref<OsStr> key) -> Option<String> {
     auto value = var_os(key);
     if (value.is_none()) return None();
     auto converted = rstd::move(value).unwrap().into_string();
@@ -51,21 +53,21 @@ auto var(const char* key) -> Option<String> {
 /// Returns the directory used for temporary files.
 auto temp_dir() -> PathBuf {
 #if RSTD_OS_UNIX
-    auto configured = var("TMPDIR");
+    auto configured = var("TMPDIR"_str);
     if (configured.is_some() && ! configured->is_empty()) {
         return PathBuf::from(rstd::move(configured).unwrap());
     }
-    return PathBuf::from("/tmp");
+    return PathBuf::from("/tmp"_str);
 #else
-    auto configured = var("TEMP");
+    auto configured = var("TEMP"_str);
     if (configured.is_some() && ! configured->is_empty()) {
         return PathBuf::from(rstd::move(configured).unwrap());
     }
-    configured = var("TMP");
+    configured = var("TMP"_str);
     if (configured.is_some() && ! configured->is_empty()) {
         return PathBuf::from(rstd::move(configured).unwrap());
     }
-    return PathBuf::from(".");
+    return PathBuf::from("."_str);
 #endif
 }
 
@@ -75,14 +77,14 @@ auto temp_dir() -> PathBuf {
 ///
 /// \param key    Null-terminated name of the environment variable.
 /// \param value  Null-terminated value to set.
-void set_var(const char* key, const char* value);
+void set_var(ref<OsStr> key, ref<OsStr> value);
 
 /// Removes the environment variable `key` from the current process.
 ///
 /// Not thread-safe on Unix platforms.
 ///
 /// \param key  Null-terminated name of the environment variable to remove.
-void remove_var(const char* key);
+void remove_var(ref<OsStr> key);
 
 /// An owning iterator over command-line arguments as platform-native strings.
 using ArgsOs = ::alloc::vec::VecIntoIter<OsString>;

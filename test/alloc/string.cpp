@@ -5,71 +5,71 @@ import rstd;
 using rstd::as;
 using rstd::to_string;
 using namespace rstd::prelude;
+using namespace rstd::literals;
 
 TEST(String, ToString) {
     int a = 10;
 
     auto a_str = to_string(a);
 
-    EXPECT_EQ("10", as<ToString>(a).to_string());
+    EXPECT_EQ("10"_str, as<ToString>(a).to_string());
     EXPECT_EQ(a_str, a_str);
-    EXPECT_EQ(a_str, "10");
-    EXPECT_EQ("10", a_str);
+    EXPECT_EQ(a_str, "10"_str);
+    EXPECT_EQ("10"_str, a_str);
 }
 
 TEST(String, CloneCopiesBytes) {
-    auto original = String::make("hello");
+    auto original = String::make("hello"_str);
     auto direct   = original.clone();
     auto abstract = rstd::as<rstd::clone::Clone>(original).clone();
 
-    original.push_back('!');
+    original.push_ascii(u8('!'));
 
-    EXPECT_EQ(original, "hello!");
-    EXPECT_EQ(direct, "hello");
-    EXPECT_EQ(abstract, "hello");
+    EXPECT_EQ(original, "hello!"_str);
+    EXPECT_EQ(direct, "hello"_str);
+    EXPECT_EQ(abstract, "hello"_str);
 }
 
 TEST(String, BorrowedComparisonUsesAllBytes) {
-    auto text = String::make("alpha");
+    auto text = String::make("alpha"_str);
 
-    EXPECT_LT(String::make(""), String::make("alpha"));
-    EXPECT_LT(String::make("a"), String::make("alpha"));
-    EXPECT_GT(String::make("alpha"), String::make("a"));
-    EXPECT_EQ(text, rstd::ref<rstd::str>("alpha"));
-    EXPECT_EQ(rstd::ref<rstd::str>("alpha"), text);
-    EXPECT_LT(text, rstd::ref<rstd::str>("beta"));
-    EXPECT_GT(rstd::ref<rstd::str>("beta"), text);
+    EXPECT_LT(String::make(""_str), String::make("alpha"_str));
+    EXPECT_LT(String::make("a"_str), String::make("alpha"_str));
+    EXPECT_GT(String::make("alpha"_str), String::make("a"_str));
+    EXPECT_EQ(text, "alpha"_str);
+    EXPECT_EQ("alpha"_str, text);
+    EXPECT_LT(text, "beta"_str);
+    EXPECT_GT("beta"_str, text);
 
-    const rstd::uint8_t embedded[] = { 'a', 0, 'b' };
-    auto                owned      = String::make(rstd::ref<rstd::str>(embedded, usize(3)));
-    EXPECT_EQ(owned, rstd::ref<rstd::str>(embedded, usize(3)));
-    EXPECT_NE(owned, rstd::ref<rstd::str>(embedded, usize(2)));
+    auto owned = String::make("a\0b"_str);
+    EXPECT_EQ(owned, "a\0b"_str);
+    EXPECT_NE(owned, "a\0"_str);
 }
 
 TEST(String, PushStrAppendsCompleteSlice) {
-    auto text = String::make("left");
-    text.push_str("-右");
-    EXPECT_EQ(text, rstd::ref<rstd::str>("left-右"));
+    auto text = String::make("left"_str);
+    text.push_str("-右"_str);
+    EXPECT_EQ(text, "left-右"_str);
 }
 
 TEST(String, ReserveInsertAndReplaceRangeRespectUtf8Boundaries) {
-    auto text = String::make("a右c");
+    auto text = String::make("a右c"_str);
     text.reserve(usize(32));
     EXPECT_GE(text.capacity(), usize(32) + text.len());
 
-    text.insert_str(usize(1), "中");
-    EXPECT_EQ(text, rstd::ref<rstd::str>("a中右c"));
+    text.insert_str(usize(1), "中"_str);
+    EXPECT_EQ(text, "a中右c"_str);
 
     text.insert(usize(4), U'!');
-    EXPECT_EQ(text, rstd::ref<rstd::str>("a中!右c"));
+    EXPECT_EQ(text, "a中!右c"_str);
 
-    text.replace_range(usize(1), usize(5), "文");
-    EXPECT_EQ(text, rstd::ref<rstd::str>("a文右c"));
+    text.replace_range(usize(1), usize(5), "文"_str);
+    EXPECT_EQ(text, "a文右c"_str);
 }
 
 TEST(StringDeathTest, InsertRejectsNonBoundaryByteOffset) {
-    auto text = String::make("a右c");
-    EXPECT_DEATH(text.insert_str(usize(2), "x"), "is_char_boundary");
+    auto text = String::make("a右c"_str);
+    EXPECT_DEATH(text.insert_str(usize(2), "x"_str), "is_char_boundary");
 }
 
 TEST(String, FromUtf8OwnsValidatedBytes) {
@@ -84,14 +84,19 @@ TEST(String, FromUtf8OwnsValidatedBytes) {
 
     auto text = String::from_utf8(rstd::move(valid));
     ASSERT_TRUE(text.is_ok());
-    EXPECT_EQ(text.unwrap(), rstd::ref<rstd::str>("a右�"));
+    EXPECT_EQ(text.unwrap(), "a右�"_str);
 
     auto invalid = rstd::vec::Vec<rstd::u8> {};
     invalid.push(u8('a'));
     invalid.push(u8(0xff));
     auto error = String::from_utf8(rstd::move(invalid));
     ASSERT_TRUE(error.is_err());
-    EXPECT_EQ(error.unwrap_err().valid_up_to(), usize(1));
+    auto invalid_error = rstd::move(error).unwrap_err();
+    EXPECT_EQ(invalid_error.utf8_error().valid_up_to(), usize(1));
+    EXPECT_EQ(invalid_error.utf8_error().error_len(), Some(u8(1)));
+    ASSERT_EQ(invalid_error.as_bytes().len(), usize(2));
+    EXPECT_EQ(invalid_error.as_bytes()[usize()], u8('a'));
+    EXPECT_EQ(invalid_error.as_bytes()[usize(1)], u8(0xff));
 
     auto incomplete = rstd::vec::Vec<rstd::u8> {};
     incomplete.push(u8('a'));
@@ -99,7 +104,9 @@ TEST(String, FromUtf8OwnsValidatedBytes) {
     incomplete.push(u8(0x82));
     auto incomplete_error = String::from_utf8(rstd::move(incomplete));
     ASSERT_TRUE(incomplete_error.is_err());
-    EXPECT_EQ(incomplete_error.unwrap_err().valid_up_to(), usize(1));
+    auto incomplete_utf8_error = incomplete_error.unwrap_err().utf8_error();
+    EXPECT_EQ(incomplete_utf8_error.valid_up_to(), usize(1));
+    EXPECT_TRUE(incomplete_utf8_error.error_len().is_none());
 
     auto overlong = rstd::vec::Vec<rstd::u8> {};
     overlong.push(u8('a'));
@@ -107,5 +114,7 @@ TEST(String, FromUtf8OwnsValidatedBytes) {
     overlong.push(u8(0xaf));
     auto overlong_error = String::from_utf8(rstd::move(overlong));
     ASSERT_TRUE(overlong_error.is_err());
-    EXPECT_EQ(overlong_error.unwrap_err().valid_up_to(), usize(1));
+    auto overlong_utf8_error = overlong_error.unwrap_err().utf8_error();
+    EXPECT_EQ(overlong_utf8_error.valid_up_to(), usize(1));
+    EXPECT_EQ(overlong_utf8_error.error_len(), Some(u8(1)));
 }

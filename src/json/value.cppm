@@ -5,6 +5,8 @@ export module rstd.json:value;
 export import :number;
 export import rstd.alloc;
 
+using namespace rstd::literals;
+
 namespace rstd::json
 {
 
@@ -58,23 +60,23 @@ private:
     }
 
     static auto decode_pointer_token(ref<str> token) -> ::alloc::string::String {
-        auto decoded = ::alloc::string::String::make();
+        auto decoded = ::alloc::vec::Vec<u8>::with_capacity(token.size());
         for (usize i {}; i < token.size(); ++i) {
             if (token[i] == u8('~') && i + usize(1) < token.size()) {
                 if (token[i + usize(1)] == u8('0')) {
-                    decoded.push_back('~');
+                    decoded.push(u8('~'));
                     ++i;
                     continue;
                 }
                 if (token[i + usize(1)] == u8('1')) {
-                    decoded.push_back('/');
+                    decoded.push(u8('/'));
                     ++i;
                     continue;
                 }
             }
-            decoded.push_back(token[i]);
+            decoded.push(token[i]);
         }
-        return decoded;
+        return ::alloc::string::String::from_utf8_unchecked(rstd::move(decoded));
     }
 
 public:
@@ -272,10 +274,11 @@ public:
         while (start <= path.size()) {
             usize end = start;
             while (end < path.size() && path[end] != u8('/')) ++end;
-            auto token = ref<str>::from_raw_parts(path.data() + start.to_primitive(), end - start);
+            auto token =
+                ref<str>::from_raw_parts_unchecked(path.data() + start.to_primitive(), end - start);
 
             if (current->is_Object()) {
-                if (str_::contains(token, "~")) {
+                if (str_::contains(token, "~"_str)) {
                     auto decoded = decode_pointer_token(token);
                     auto next    = current->get(decoded.as_str());
                     if (next.is_none()) return None();
@@ -313,10 +316,11 @@ public:
         while (start <= path.size()) {
             usize end = start;
             while (end < path.size() && path[end] != u8('/')) ++end;
-            auto token = ref<str>::from_raw_parts(path.data() + start.to_primitive(), end - start);
+            auto token =
+                ref<str>::from_raw_parts_unchecked(path.data() + start.to_primitive(), end - start);
 
             if (current->is_Object()) {
-                if (str_::contains(token, "~")) {
+                if (str_::contains(token, "~"_str)) {
                     auto decoded = decode_pointer_token(token);
                     auto next    = current->get_mut(decoded.as_str());
                     if (next.is_none()) return None();

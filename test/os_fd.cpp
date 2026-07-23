@@ -3,6 +3,8 @@
 #include <gtest/gtest.h>
 import rstd;
 
+using namespace rstd::literals;
+
 using rstd::os::fd::BorrowedFd;
 using rstd::os::fd::AsFd;
 using rstd::os::fd::AsRawFd;
@@ -109,7 +111,7 @@ TEST(Fd, InvalidRawFdPanics) {
 }
 
 TEST(Path, ToCStringRoundTrip) {
-    rstd::ref<rstd::path::Path> p("/tmp/example");
+    rstd::ref<rstd::path::Path> p("/tmp/example"_str);
     auto                        res = p.to_cstring();
     ASSERT_TRUE(res.is_ok());
     auto cs    = rstd::move(res).unwrap_unchecked();
@@ -117,14 +119,13 @@ TEST(Path, ToCStringRoundTrip) {
     ASSERT_EQ(bytes.len(), rstd::usize(12)); // "/tmp/example" length
     auto with_nul = cs.to_bytes_with_nul();
     ASSERT_EQ(with_nul.len(), rstd::usize(13)); // includes trailing NUL
-    EXPECT_EQ(with_nul.p[12], rstd::u8());
+    EXPECT_EQ(with_nul[rstd::usize(12)], rstd::u8());
 }
 
 TEST(Path, ToCStringRejectsInteriorNul) {
-    auto raw = rstd::slice<rstd::byte>::from_raw_parts(
-        reinterpret_cast<rstd::byte const*>("/tmp\0x"), rstd::usize(6));
-    auto buf = rstd::vec::Vec<rstd::u8>::copy_from_bytes(raw);
-    auto p   = rstd::ref<rstd::path::Path>::from_raw_parts(buf.data(), buf.len());
+    auto buf = rstd::vec::Vec<rstd::u8>::from("/tmp\0x"_bytes);
+    auto os  = rstd::ref<rstd::ffi::OsStr>::from_encoded_bytes_unchecked(buf.as_slice());
+    auto p   = rstd::ref<rstd::path::Path>(os);
     auto res = p.to_cstring();
     EXPECT_TRUE(res.is_err());
 }

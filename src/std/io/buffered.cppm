@@ -26,7 +26,7 @@ class BufReader {
         pos_        = 0;
         filled_     = 0;
         auto values = buf_.as_mut_slice().as_mut_ref();
-        auto res    = as<Read>(inner_).read(as_bytes_mut(values));
+        auto res    = as<Read>(inner_).read(values);
         if (res.is_ok()) filled_ = res.unwrap_unchecked().to_primitive();
         return res;
     }
@@ -73,10 +73,10 @@ class BufWriter {
     auto flush_buf() -> Result<empty> {
         auto         remaining = buf_.len().to_primitive();
         rstd::size_t offset    = 0;
-        auto         bytes     = as_bytes(buf_.as_slice());
+        auto         bytes     = buf_.as_slice();
         while (remaining != 0) {
             auto pending =
-                slice<byte>::from_raw_parts(bytes.as_raw_ptr() + offset, usize(remaining));
+                slice<u8>::from_raw_parts(bytes.as_raw_ptr() + offset, usize(remaining));
             auto res = as<Write>(inner_).write(pending);
             if (res.is_err()) {
                 if (offset != 0) {
@@ -134,7 +134,7 @@ namespace rstd
 template<typename R>
     requires Impled<R, io::Read>
 struct Impl<io::Read, io::BufReader<R>> : ImplBase<io::BufReader<R>> {
-    auto read(mut_ref<byte[]> buf) -> io::Result<usize> {
+    auto read(mut_ref<u8[]> buf) -> io::Result<usize> {
         auto& self = this->self();
         if (buf.is_empty()) return Ok(usize {});
         // Bypass buffer for large reads when buffer is empty.
@@ -148,7 +148,7 @@ struct Impl<io::Read, io::BufReader<R>> : ImplBase<io::BufReader<R>> {
         }
         auto const count  = rstd::min(buf.len().to_primitive(), self.filled_ - self.pos_);
         auto       source = slice<u8>::from_raw_parts(self.buf_.begin() + self.pos_, usize(count));
-        rstd::mem::memcpy(buf.as_raw_ptr(), as_bytes(source).as_raw_ptr(), usize(count));
+        rstd::mem::memcpy(buf.as_raw_ptr(), source.as_raw_ptr(), usize(count));
         self.pos_ += count;
         return Ok(usize(count));
     }
@@ -187,7 +187,7 @@ struct Impl<io::Seek, io::BufReader<R>> : ImplBase<io::BufReader<R>> {
 template<typename W>
     requires Impled<W, io::Write>
 struct Impl<io::Write, io::BufWriter<W>> : ImplBase<io::BufWriter<W>> {
-    auto write(slice<byte> buf) -> io::Result<usize> {
+    auto write(slice<u8> buf) -> io::Result<usize> {
         auto& self = this->self();
         if (self.buf_.len() + buf.len() > self.buf_.capacity()) {
             auto res = self.flush_buf();
@@ -196,7 +196,7 @@ struct Impl<io::Write, io::BufWriter<W>> : ImplBase<io::BufWriter<W>> {
         if (buf.len() >= self.buf_.capacity()) {
             return as<io::Write>(self.inner_).write(buf);
         }
-        self.buf_.extend_from_bytes(buf);
+        self.buf_.extend_from_slice(buf);
         return Ok(buf.len());
     }
     auto flush() -> io::Result<empty> {

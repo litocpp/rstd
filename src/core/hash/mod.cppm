@@ -1,6 +1,7 @@
 export module rstd.core:hash;
 import :num.types;
 import :core;
+import :slice;
 export import :trait;
 
 namespace rstd::hash
@@ -52,10 +53,10 @@ public:
           tail_len(0),
           length() {}
 
-    void write(slice<byte> bytes) noexcept {
+    void write(slice<u8> bytes) noexcept {
         length += bytes.len();
         for (rstd::size_t i = 0; i < bytes.len().to_primitive(); ++i) {
-            auto const value = u64(bytes[usize(i)]);
+            auto const value = u64(bytes[usize(i)].to_primitive());
             tail |= value << u64(tail_len * 8);
             if (++tail_len == 8) {
                 compress(tail);
@@ -68,7 +69,7 @@ public:
     template<typename T>
     void write_value(const T& value) noexcept {
         auto const* source = reinterpret_cast<byte const*>(rstd::addressof(value));
-        write(slice<byte>::from_raw_parts(source, usize(sizeof(T))));
+        write(as_u8_slice(slice<byte>::from_raw_parts(source, usize(sizeof(T)))));
     }
 
     auto finish() const noexcept -> u64 {
@@ -90,7 +91,7 @@ export struct Hasher {
     template<typename Self, typename = void>
     struct Api {
         using Trait = Hasher;
-        void write(slice<byte> bytes) noexcept { return trait_call<0>(this, bytes); }
+        void write(slice<u8> bytes) noexcept { return trait_call<0>(this, bytes); }
         auto finish() const noexcept -> u64 { return trait_call<1>(this); }
     };
 
@@ -120,10 +121,10 @@ void hash_into(const T& value, H& state) noexcept {
     rstd::as<Hash>(value).hash(state);
 }
 
-export template<typename H>
+template<typename H>
     requires Impled<mtp::rm_cvf<H>, Hasher>
 void write_bytes(H& state, slice<byte> bytes) noexcept {
-    rstd::as<Hasher>(state).write(bytes);
+    rstd::as<Hasher>(state).write(as_u8_slice(bytes));
 }
 
 export template<typename H, typename T>
@@ -164,12 +165,12 @@ namespace rstd
 {
 
 template<typename T>
-    requires requires(T& state, slice<byte> bytes) {
+    requires requires(T& state, slice<u8> bytes) {
         { state.write(bytes) } noexcept;
         { state.finish() } noexcept;
     }
 struct Impl<hash::Hasher, T> : ImplBase<T> {
-    void write(slice<byte> bytes) noexcept { this->self().write(bytes); }
+    void write(slice<u8> bytes) noexcept { this->self().write(bytes); }
     auto finish() const noexcept -> u64 { return this->self().finish(); }
 };
 
@@ -188,7 +189,7 @@ struct Impl<hash::Hash, bool> : ImplBase<bool> {
     template<typename H>
         requires Impled<H, hash::Hasher>
     void hash(H& state) const noexcept {
-        byte const value = this->self() ? 1 : 0;
+        byte const value { static_cast<uint8_t>(this->self() ? 1 : 0) };
         hash::write_bytes(state, slice<byte>::from_raw_parts(rstd::addressof(value), usize(1)));
     }
 };

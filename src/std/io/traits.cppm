@@ -16,7 +16,7 @@ using error::ErrorKind;
 
 // ── Read ──────────────────────────────────────────────────────────────────
 /// Trait for objects that can be read from.
-/// Required method: `read(mut_ref<byte[]> buf) -> Result<usize>`
+/// Required method: `read(mut_ref<u8[]> buf) -> Result<usize>`
 ///   - Returns Ok(0) at EOF or on an empty buffer.
 ///   - May return fewer bytes than the buffer length without being at EOF.
 ///   - EINTR is the caller's responsibility to retry.
@@ -28,7 +28,7 @@ export struct Read {
     struct Api {
         using Trait = Read;
         /// Reads bytes into `buf` and returns the number of bytes read.
-        auto read(mut_ref<byte[]> buf) -> Result<usize>;
+        auto read(mut_ref<u8[]> buf) -> Result<usize>;
     };
 
     template<typename T>
@@ -38,7 +38,7 @@ export struct Read {
 // ── Write ─────────────────────────────────────────────────────────────────
 /// Trait for objects that can be written to.
 /// Required methods:
-///   `write(slice<byte> buf) -> Result<usize>` — write some bytes
+///   `write(slice<u8> buf) -> Result<usize>` — write some bytes
 ///   `flush()               -> Result<empty>`  — flush buffers
 export struct Write {
     using Trait                  = Write;
@@ -47,7 +47,7 @@ export struct Write {
     template<typename Self, typename Delegate = void>
     struct Api {
         using Trait = Write;
-        auto write(slice<byte> buf) -> Result<usize>;
+        auto write(slice<u8> buf) -> Result<usize>;
         auto flush() -> Result<empty>;
     };
 
@@ -101,7 +101,7 @@ export struct ReadAt {
     template<typename Self, typename Delegate = void>
     struct Api {
         using Trait = ReadAt;
-        auto read_at(mut_ref<byte[]> buf, u64 offset) const -> Result<usize> {
+        auto read_at(mut_ref<u8[]> buf, u64 offset) const -> Result<usize> {
             return trait_call<0>(this, buf, offset);
         }
     };
@@ -118,7 +118,7 @@ export struct WriteAt {
     template<typename Self, typename Delegate = void>
     struct Api {
         using Trait = WriteAt;
-        auto write_at(slice<byte> buf, u64 offset) const -> Result<usize> {
+        auto write_at(slice<u8> buf, u64 offset) const -> Result<usize> {
             return trait_call<0>(this, buf, offset);
         }
     };
@@ -135,7 +135,7 @@ export struct ReadSeek {
     template<typename Self, typename Delegate = void>
     struct Api {
         using Trait = ReadSeek;
-        auto read(mut_ref<byte[]> buf) -> Result<usize> { return trait_call<0>(this, buf); }
+        auto read(mut_ref<u8[]> buf) -> Result<usize> { return trait_call<0>(this, buf); }
         auto seek(SeekFrom pos) -> Result<u64> { return trait_call<1>(this, pos); }
     };
 
@@ -151,7 +151,7 @@ export struct WriteSeek {
     template<typename Self, typename Delegate = void>
     struct Api {
         using Trait = WriteSeek;
-        auto write(slice<byte> buf) -> Result<usize> { return trait_call<0>(this, buf); }
+        auto write(slice<u8> buf) -> Result<usize> { return trait_call<0>(this, buf); }
         auto flush() -> Result<empty> { return trait_call<1>(this); }
         auto seek(SeekFrom pos) -> Result<u64> { return trait_call<2>(this, pos); }
     };
@@ -168,8 +168,8 @@ export struct ReadWriteSeek {
     template<typename Self, typename Delegate = void>
     struct Api {
         using Trait = ReadWriteSeek;
-        auto read(mut_ref<byte[]> buf) -> Result<usize> { return trait_call<0>(this, buf); }
-        auto write(slice<byte> buf) -> Result<usize> { return trait_call<1>(this, buf); }
+        auto read(mut_ref<u8[]> buf) -> Result<usize> { return trait_call<0>(this, buf); }
+        auto write(slice<u8> buf) -> Result<usize> { return trait_call<1>(this, buf); }
         auto flush() -> Result<empty> { return trait_call<2>(this); }
         auto seek(SeekFrom pos) -> Result<u64> { return trait_call<3>(this, pos); }
     };
@@ -204,7 +204,7 @@ export struct BufRead {
 /// Retries short writes until the buffer has been written.
 export template<typename W>
     requires Impled<W, Write>
-auto write_all(W& w, slice<byte> buf) -> Result<empty> {
+auto write_all(W& w, slice<u8> buf) -> Result<empty> {
     while (! buf.is_empty()) {
         auto res = as<Write>(w).write(buf);
         if (res.is_err()) return Err(res.unwrap_err_unchecked());
@@ -215,8 +215,8 @@ auto write_all(W& w, slice<byte> buf) -> Result<empty> {
         if (written > buf.len().to_primitive()) {
             return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidData }));
         }
-        buf = slice<byte>::from_raw_parts(buf.as_raw_ptr() + written,
-                                          usize(buf.len().to_primitive() - written));
+        buf = slice<u8>::from_raw_parts(buf.as_raw_ptr() + written,
+                                        usize(buf.len().to_primitive() - written));
     }
     return Ok(empty {});
 }
@@ -225,7 +225,7 @@ auto write_all(W& w, slice<byte> buf) -> Result<empty> {
 /// Retries short reads until the buffer has been filled.
 export template<typename R>
     requires Impled<R, Read>
-auto read_exact(R& r, mut_ref<byte[]> buf) -> Result<empty> {
+auto read_exact(R& r, mut_ref<u8[]> buf) -> Result<empty> {
     while (! buf.is_empty()) {
         auto res = as<Read>(r).read(buf);
         if (res.is_err()) {
@@ -238,8 +238,8 @@ auto read_exact(R& r, mut_ref<byte[]> buf) -> Result<empty> {
         if (read > buf.len().to_primitive()) {
             return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidData }));
         }
-        buf = mut_ref<byte[]>::from_raw_parts(buf.as_raw_ptr() + read,
-                                              usize(buf.len().to_primitive() - read));
+        buf = mut_ref<u8[]>::from_raw_parts(buf.as_raw_ptr() + read,
+                                            usize(buf.len().to_primitive() - read));
     }
     return Ok(empty {});
 }
@@ -263,7 +263,7 @@ auto stream_position(S& s) -> Result<u64> {
 /// Fills the buffer without changing the source cursor.
 export template<typename R>
     requires Impled<R, ReadAt>
-auto read_exact_at(const R& r, mut_ref<byte[]> buf, u64 offset) -> Result<empty> {
+auto read_exact_at(const R& r, mut_ref<u8[]> buf, u64 offset) -> Result<empty> {
     while (! buf.is_empty()) {
         auto res = as<ReadAt>(r).read_at(buf, offset);
         if (res.is_err()) {
@@ -280,8 +280,8 @@ auto read_exact_at(const R& r, mut_ref<byte[]> buf, u64 offset) -> Result<empty>
         if (next_offset.is_none()) {
             return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidData }));
         }
-        buf    = mut_ref<byte[]>::from_raw_parts(buf.as_raw_ptr() + read,
-                                                 usize(buf.len().to_primitive() - read));
+        buf    = mut_ref<u8[]>::from_raw_parts(buf.as_raw_ptr() + read,
+                                               usize(buf.len().to_primitive() - read));
         offset = rstd::move(next_offset).unwrap_unchecked();
     }
     return Ok(empty {});
@@ -290,7 +290,7 @@ auto read_exact_at(const R& r, mut_ref<byte[]> buf, u64 offset) -> Result<empty>
 /// Writes the whole buffer without changing the destination cursor.
 export template<typename W>
     requires Impled<W, WriteAt>
-auto write_all_at(const W& w, slice<byte> buf, u64 offset) -> Result<empty> {
+auto write_all_at(const W& w, slice<u8> buf, u64 offset) -> Result<empty> {
     while (! buf.is_empty()) {
         auto res = as<WriteAt>(w).write_at(buf, offset);
         if (res.is_err()) {
@@ -307,8 +307,8 @@ auto write_all_at(const W& w, slice<byte> buf, u64 offset) -> Result<empty> {
         if (next_offset.is_none()) {
             return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidData }));
         }
-        buf    = slice<byte>::from_raw_parts(buf.as_raw_ptr() + written,
-                                             usize(buf.len().to_primitive() - written));
+        buf    = slice<u8>::from_raw_parts(buf.as_raw_ptr() + written,
+                                           usize(buf.len().to_primitive() - written));
         offset = rstd::move(next_offset).unwrap_unchecked();
     }
     return Ok(empty {});
@@ -322,7 +322,7 @@ namespace rstd
 template<typename T>
     requires Impled<T, io::Read> && Impled<T, io::Seek>
 struct Impl<io::ReadSeek, T> : ImplBase<T> {
-    auto read(mut_ref<byte[]> buf) -> io::Result<usize> {
+    auto read(mut_ref<u8[]> buf) -> io::Result<usize> {
         return as<io::Read>(this->self()).read(buf);
     }
     auto seek(io::SeekFrom pos) -> io::Result<u64> { return as<io::Seek>(this->self()).seek(pos); }
@@ -331,7 +331,7 @@ struct Impl<io::ReadSeek, T> : ImplBase<T> {
 template<typename T>
     requires Impled<T, io::Write> && Impled<T, io::Seek>
 struct Impl<io::WriteSeek, T> : ImplBase<T> {
-    auto write(slice<byte> buf) -> io::Result<usize> {
+    auto write(slice<u8> buf) -> io::Result<usize> {
         return as<io::Write>(this->self()).write(buf);
     }
     auto flush() -> io::Result<empty> { return as<io::Write>(this->self()).flush(); }
@@ -341,10 +341,10 @@ struct Impl<io::WriteSeek, T> : ImplBase<T> {
 template<typename T>
     requires Impled<T, io::Read> && Impled<T, io::Write> && Impled<T, io::Seek>
 struct Impl<io::ReadWriteSeek, T> : ImplBase<T> {
-    auto read(mut_ref<byte[]> buf) -> io::Result<usize> {
+    auto read(mut_ref<u8[]> buf) -> io::Result<usize> {
         return as<io::Read>(this->self()).read(buf);
     }
-    auto write(slice<byte> buf) -> io::Result<usize> {
+    auto write(slice<u8> buf) -> io::Result<usize> {
         return as<io::Write>(this->self()).write(buf);
     }
     auto flush() -> io::Result<empty> { return as<io::Write>(this->self()).flush(); }

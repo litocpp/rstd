@@ -102,7 +102,7 @@ public:
         if (res.is_err()) handle_alloc_error(layout);
 
         auto p = res.unwrap_unchecked().template as_mut_ptr<T>();
-        new (p.as_raw_ptr()) T(rstd::forward<Args>(args)...);
+        rstd::ptr_::construct(p, rstd::forward<Args>(args)...);
         return from_raw(p);
     }
 
@@ -136,7 +136,7 @@ public:
 
     /// Returns a raw pointer to the contained value.
     /// \return A non-null raw pointer to the heap-allocated value.
-    constexpr auto get() noexcept [[clang::lifetimebound]] -> mut_ptr<T>::value_type* {
+    constexpr auto get() noexcept [[clang::lifetimebound]] {
         return checked_ptr().as_mut_ptr().as_raw_ptr();
     }
 
@@ -189,11 +189,11 @@ public:
         auto res = as<Allocator>(GLOBAL).allocate(layout);
         if (res.is_err()) handle_alloc_error(layout);
 
-        auto* raw = res.unwrap_unchecked().template as_mut_ptr<V>().as_raw_ptr();
+        auto raw = res.unwrap_unchecked().template as_mut_ptr<V>();
         for (rstd::size_t index = 0; index < length.to_primitive(); ++index) {
-            new (raw + index) V(old[usize(index)]);
+            rstd::ptr_::construct(raw.add(usize(index)), old[usize(index)]);
         }
-        auto p = mut_ptr<T>::from_raw_parts(raw, length);
+        auto p = mut_ptr<T>::from_raw_parts(raw.as_raw_ptr(), length);
         return from_raw(p);
     }
 };

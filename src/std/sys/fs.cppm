@@ -19,6 +19,8 @@ using rstd::os::fd::OwnedFd;
 using rstd::os::fd::RawFd;
 using rstd::path::Path;
 using rstd::path::PathBuf;
+using rstd::ffi::CStr;
+using rstd::ffi::OsString;
 using rstd::sys::libc::DIR;
 using ::alloc::ffi::CString;
 using ::alloc::string::String;
@@ -193,7 +195,7 @@ export auto open(ref<Path> path, OpenOptionsData const& options) -> Result<Owned
     auto flags    = access.unwrap_unchecked() | creation.unwrap_unchecked() |
                     static_cast<int>(options.custom_flags.to_primitive()) | libc::O_CLOEXEC;
     auto value    = rstd::move(path_value).unwrap_unchecked();
-    auto raw_path = reinterpret_cast<const char*>(value.to_bytes_with_nul().p);
+    auto raw_path = value.as_ptr();
     while (true) {
         auto fd =
             libc::open(raw_path, flags, static_cast<libc::mode_t>(options.mode.to_primitive()));
@@ -383,7 +385,7 @@ export auto metadata(ref<Path> path, bool follow) -> Result<MetadataData> {
     auto path_value = path_cstring(path);
     if (path_value.is_err()) return Err(path_value.unwrap_err_unchecked());
     auto         value    = rstd::move(path_value).unwrap_unchecked();
-    auto         raw_path = reinterpret_cast<const char*>(value.to_bytes_with_nul().p);
+    auto         raw_path = value.as_ptr();
     libc::stat_t stat {};
     auto         result = follow ? libc::stat(raw_path, &stat) : libc::lstat(raw_path, &stat);
     if (result < 0) return Err(last_error());
@@ -413,7 +415,7 @@ export auto set_permissions(ref<Path> path, u32 mode) -> Result<empty> {
     auto path_value = path_cstring(path);
     if (path_value.is_err()) return Err(path_value.unwrap_err_unchecked());
     auto value    = rstd::move(path_value).unwrap_unchecked();
-    auto raw_path = reinterpret_cast<const char*>(value.to_bytes_with_nul().p);
+    auto raw_path = value.as_ptr();
     if (libc::chmod(raw_path, static_cast<libc::mode_t>(mode.to_primitive())) < 0) {
         return Err(last_error());
     }
@@ -454,7 +456,7 @@ auto run_path(ref<Path> path, int (*operation)(const char*)) -> Result<empty> {
     auto path_value = path_cstring(path);
     if (path_value.is_err()) return Err(path_value.unwrap_err_unchecked());
     auto value = rstd::move(path_value).unwrap_unchecked();
-    if (operation(reinterpret_cast<const char*>(value.to_bytes_with_nul().p)) < 0) {
+    if (operation(value.as_ptr()) < 0) {
         return Err(last_error());
     }
     return Ok(empty {});
@@ -474,8 +476,7 @@ auto run_paths(ref<Path> first, ref<Path> second, int (*operation)(const char*, 
     if (second_value.is_err()) return Err(second_value.unwrap_err_unchecked());
     auto first_path  = rstd::move(first_value).unwrap_unchecked();
     auto second_path = rstd::move(second_value).unwrap_unchecked();
-    if (operation(reinterpret_cast<const char*>(first_path.to_bytes_with_nul().p),
-                  reinterpret_cast<const char*>(second_path.to_bytes_with_nul().p)) < 0) {
+    if (operation(first_path.as_ptr(), second_path.as_ptr()) < 0) {
         return Err(last_error());
     }
     return Ok(empty {});
@@ -532,7 +533,7 @@ export auto read_link(ref<Path> path) -> Result<PathBuf> {
     auto path_value = path_cstring(path);
     if (path_value.is_err()) return Err(path_value.unwrap_err_unchecked());
     auto value    = rstd::move(path_value).unwrap_unchecked();
-    auto raw_path = reinterpret_cast<const char*>(value.to_bytes_with_nul().p);
+    auto raw_path = value.as_ptr();
 
     rstd::size_t capacity = 256;
     while (true) {
@@ -544,7 +545,8 @@ export auto read_link(ref<Path> path) -> Result<PathBuf> {
         auto length = static_cast<rstd::size_t>(count);
         if (length < capacity) {
             while (bytes.len().to_primitive() > length) (void)bytes.pop();
-            return Ok(PathBuf::from(String::from_utf8_unchecked(rstd::move(bytes))));
+            return Ok(PathBuf::from(
+                OsString::from_encoded_bytes_unchecked(rstd::move(bytes))));
         }
         capacity *= 2;
     }
@@ -559,14 +561,11 @@ export auto canonicalize(ref<Path> path) -> Result<PathBuf> {
     auto path_value = path_cstring(path);
     if (path_value.is_err()) return Err(path_value.unwrap_err_unchecked());
     auto value = rstd::move(path_value).unwrap_unchecked();
-    auto raw = libc::realpath(reinterpret_cast<const char*>(value.to_bytes_with_nul().p), nullptr);
+    auto raw = libc::realpath(value.as_ptr(), nullptr);
     if (! raw) return Err(last_error());
-    rstd::size_t len = 0;
-    while (raw[len] != 0) ++len;
-    auto bytes = Vec<u8>::copy_from_bytes(
-        slice<byte>::from_raw_parts(reinterpret_cast<byte const*>(raw), usize(len)));
+    auto bytes = Vec<u8>::from(CStr::from_ptr(raw).to_bytes());
     libc::free(raw);
-    return Ok(PathBuf::from(String::from_utf8_unchecked(rstd::move(bytes))));
+    return Ok(PathBuf::from(OsString::from_encoded_bytes_unchecked(rstd::move(bytes))));
 #else
     (void)path;
     return Err(unsupported_error());
@@ -578,7 +577,7 @@ export auto create_dir(ref<Path> path) -> Result<empty> {
     auto path_value = path_cstring(path);
     if (path_value.is_err()) return Err(path_value.unwrap_err_unchecked());
     auto value = rstd::move(path_value).unwrap_unchecked();
-    if (libc::mkdir(reinterpret_cast<const char*>(value.to_bytes_with_nul().p), 0777) < 0) {
+    if (libc::mkdir(value.as_ptr(), 0777) < 0) {
         return Err(last_error());
     }
     return Ok(empty {});
@@ -593,7 +592,7 @@ export auto open_directory(ref<Path> path) -> Result<void*> {
     auto path_value = path_cstring(path);
     if (path_value.is_err()) return Err(path_value.unwrap_err_unchecked());
     auto value     = rstd::move(path_value).unwrap_unchecked();
-    auto directory = libc::opendir(reinterpret_cast<const char*>(value.to_bytes_with_nul().p));
+    auto directory = libc::opendir(value.as_ptr());
     if (! directory) return Err(last_error());
     return Ok(static_cast<void*>(directory));
 #else
@@ -616,10 +615,7 @@ export auto read_directory(void* handle) -> Option<Result<DirectoryEntryData>> {
         auto name = entry->d_name;
         if (name[0] == '.' && (name[1] == 0 || (name[1] == '.' && name[2] == 0))) continue;
 
-        rstd::size_t len = 0;
-        while (name[len] != 0) ++len;
-        auto bytes = Vec<u8>::copy_from_bytes(
-            slice<byte>::from_raw_parts(reinterpret_cast<byte const*>(name), usize(len)));
+        auto bytes = Vec<u8>::from(CStr::from_ptr(name).to_bytes());
         return Some(Result<DirectoryEntryData>(Ok(DirectoryEntryData {
             .name      = rstd::move(bytes),
             .file_type = file_type_from_dirent(entry->d_type),

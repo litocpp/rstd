@@ -78,7 +78,10 @@ set(
   floats.cpp
   ints.cpp
   str.cpp
+  str_literal_cross_tu.cpp
+  str_literal_cross_tu_provider.cpp
   ffi/os_str.cpp
+  ffi/c_str.cpp
   path.cpp
   prelude.cpp
   log.cpp)
@@ -258,6 +261,11 @@ add_rstd_compile_fail(
   compile_fail/numeric_implicit_primitive.cpp
   Numeric.ImplicitPrimitive
   "no viable conversion|cannot initialize|explicit constructor")
+add_rstd_compile_fail(
+  rstd_compile_fail_invalid_utf8_literal
+  compile_fail/invalid_utf8_literal.cpp
+  Str.InvalidUtf8Literal
+  "rstd string literal must be valid UTF-8")
 add_rstd_compile_fail(
   rstd_compile_fail_numeric_increment
   compile_fail/numeric_increment.cpp

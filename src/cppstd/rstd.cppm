@@ -1,3 +1,6 @@
+module;
+#include <bit>
+
 export module rstd.cppstd;
 export import rstd;
 export import cppstd;
@@ -10,8 +13,10 @@ inline constexpr int SEEK_FROM_START   = ::cppstd::SEEK_FROM_START;
 inline constexpr int SEEK_FROM_CURRENT = ::cppstd::SEEK_FROM_CURRENT;
 inline constexpr int SEEK_FROM_END     = ::cppstd::SEEK_FROM_END;
 
-inline auto as_str(std::string_view value) noexcept -> ref<str> {
-    return ref<str>::from_raw_parts(value.data(), usize(value.size()));
+inline auto as_str(std::string_view value) noexcept -> Result<ref<str>, str_::Utf8Error> {
+    auto bytes = slice<u8>::from_raw_parts(reinterpret_cast<byte const*>(value.data()),
+                                            usize(value.size()));
+    return str_::from_utf8(bytes);
 }
 
 inline auto to_string(ref<str> value) -> std::string {
@@ -19,7 +24,7 @@ inline auto to_string(ref<str> value) -> std::string {
     result.reserve(value.size().to_primitive());
     auto bytes = str_::as_bytes(value);
     for (rstd::size_t index = 0; index != bytes.len().to_primitive(); ++index) {
-        result.push_back(static_cast<char>(bytes[usize(index)]));
+        result.push_back(std::bit_cast<char>(bytes[usize(index)].to_primitive()));
     }
     return result;
 }
@@ -55,12 +60,14 @@ struct Impl<fmt::Display, std::string_view> : ImplBase<std::string_view> {
 
 template<>
 struct Impl<convert::From<string::String>, std::string> : ImplBase<std::string> {
-    static auto from(const string::String& s) -> std::string { return { s.begin(), s.end() }; }
+    static auto from(const string::String& s) -> std::string { return cppstd::to_string(s); }
 };
 
 template<>
 struct Impl<convert::From<string::String>, std::string_view> : ImplBase<std::string_view> {
-    static auto from(const string::String& s) -> std::string { return { s.begin(), s.end() }; }
+    static auto from(const string::String& s) -> std::string_view {
+        return cppstd::as_string_view(s.as_str());
+    }
 };
 
 } // namespace rstd

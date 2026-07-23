@@ -32,14 +32,16 @@ export struct Layout {
 
     template<typename T>
     static constexpr auto make() -> Layout {
-        return Layout { .size = usize(sizeof(T)), .align = usize(alignof(T)) };
+        using Storage = typename mut_ptr<T>::storage_type;
+        return Layout { .size = usize(sizeof(Storage)), .align = usize(alignof(Storage)) };
     }
 
     template<typename T>
     static constexpr auto array(usize n) -> Option<Layout> {
-        auto size = n.checked_mul(usize(sizeof(T)));
+        using Storage = typename mut_ptr<T>::storage_type;
+        auto size      = n.checked_mul(usize(sizeof(Storage)));
         if (size.is_none()) return None();
-        return from_size_align(rstd::move(size).unwrap_unchecked(), usize(alignof(T)));
+        return from_size_align(rstd::move(size).unwrap_unchecked(), usize(alignof(Storage)));
     }
 
     template<typename T>

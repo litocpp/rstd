@@ -105,7 +105,7 @@ auto TcpStream::shutdown() -> io::Result<empty> {
 
 auto TcpStream::try_read(bytes::BytesMut& buf) -> io::Result<usize> {
     auto chunk  = buf.chunk_mut();
-    auto result = socket::recv(m_fd.as_raw_fd(), as_bytes_mut(chunk.as_mut_ref()));
+    auto result = socket::recv(m_fd.as_raw_fd(), as_bytes_mut(chunk));
     if (result.is_ok()) {
         auto n = rstd::move(result).unwrap_unchecked();
         buf.advance_mut(n);
@@ -136,7 +136,7 @@ auto TcpStream::poll_read(mut_ref<TcpStream> self, task::Context& cx, bytes::Byt
     auto  event  = Option<async::ReadyEvent> {};
     while (true) {
         auto chunk  = buf.chunk_mut();
-        auto result = socket::recv(stream.m_fd.as_raw_fd(), as_bytes_mut(chunk.as_mut_ref()));
+        auto result = socket::recv(stream.m_fd.as_raw_fd(), as_bytes_mut(chunk));
         if (result.is_ok()) {
             auto n = rstd::move(result).unwrap_unchecked();
             buf.advance_mut(n);

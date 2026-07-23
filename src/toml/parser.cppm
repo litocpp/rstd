@@ -22,12 +22,25 @@ auto from_slice(slice<u8> input, ParseOptions options) -> ParseResult;
 
 using namespace rstd::prelude;
 using namespace rstd::toml;
+using namespace rstd::literals;
 
 namespace
 {
 
 using String = ::alloc::string::String;
 using Path   = ::alloc::vec::Vec<String>;
+using Bytes  = ::alloc::vec::Vec<u8>;
+
+void push_scalar(Bytes& output, char32_t value) {
+    byte bytes[4] {};
+    auto length = rstd::char_::encode_utf8(value, bytes);
+    if (length == usize()) rstd::panic("invalid Unicode scalar");
+    output.extend_from_slice(slice<u8>::from_raw_parts(bytes, length));
+}
+
+auto finish_string(Bytes&& output) -> String {
+    return String::from_utf8_unchecked(rstd::move(output));
+}
 
 constexpr auto is_horizontal(u8 byte) noexcept -> bool {
     return byte == u8(' ') || byte == u8('\t');
@@ -127,7 +140,8 @@ class TomlParser {
 
     [[nodiscard]]
     auto view(usize begin, usize end) const noexcept -> ref<str> {
-        return ref<str>::from_raw_parts(input_.data() + begin.to_primitive(), end - begin);
+        return ref<str>::from_raw_parts_unchecked(input_.data() + begin.to_primitive(),
+                                                  end - begin);
     }
 
     [[nodiscard]]
@@ -243,24 +257,24 @@ private:
             }
         }
 
-        auto output = String::make();
+        auto output = Bytes::make();
         while (! eof()) {
             if (peek() == u8('"')) {
                 if (! multiline) {
                     take();
-                    return Ok(rstd::move(output));
+                    return Ok(finish_string(rstd::move(output)));
                 }
                 usize quotes {};
                 while (peek(quotes) == u8('"')) ++quotes;
                 if (quotes > usize(5)) return Err(error(TomlErrorCode::InvalidString));
                 if (quotes >= usize(3) && quotes <= usize(5)) {
                     for (usize index {}; index < quotes - usize(3); ++index) {
-                        output.push_back(u8('"'));
+                        output.push(u8('"'));
                     }
                     for (usize index {}; index < quotes; ++index) take();
-                    return Ok(rstd::move(output));
+                    return Ok(finish_string(rstd::move(output)));
                 }
-                output.push_back(take());
+                output.push(take());
                 continue;
             }
 
@@ -298,30 +312,30 @@ private:
                 }
                 const auto escaped = take();
                 switch (escaped.to_primitive()) {
-                case 'b': output.push_back(u8('\b')); break;
-                case 't': output.push_back(u8('\t')); break;
-                case 'n': output.push_back(u8('\n')); break;
-                case 'f': output.push_back(u8('\f')); break;
-                case 'r': output.push_back(u8('\r')); break;
-                case 'e': output.push_back(u8(0x1b)); break;
-                case '"': output.push_back(u8('"')); break;
-                case '\\': output.push_back(u8('\\')); break;
+                case 'b': output.push(u8('\b')); break;
+                case 't': output.push(u8('\t')); break;
+                case 'n': output.push(u8('\n')); break;
+                case 'f': output.push(u8('\f')); break;
+                case 'r': output.push(u8('\r')); break;
+                case 'e': output.push(u8(0x1b)); break;
+                case '"': output.push(u8('"')); break;
+                case '\\': output.push(u8('\\')); break;
                 case 'x': {
                     auto scalar = parse_unicode_escape(usize(2));
                     if (scalar.is_err()) return Err(scalar.unwrap_err());
-                    output.push(scalar.unwrap());
+                    push_scalar(output, scalar.unwrap());
                     break;
                 }
                 case 'u': {
                     auto scalar = parse_unicode_escape(usize(4));
                     if (scalar.is_err()) return Err(scalar.unwrap_err());
-                    output.push(scalar.unwrap());
+                    push_scalar(output, scalar.unwrap());
                     break;
                 }
                 case 'U': {
                     auto scalar = parse_unicode_escape(usize(8));
                     if (scalar.is_err()) return Err(scalar.unwrap_err());
-                    output.push(scalar.unwrap());
+                    push_scalar(output, scalar.unwrap());
                     break;
                 }
                 default: return Err(error(TomlErrorCode::InvalidEscape));
@@ -333,19 +347,19 @@ private:
                 return Err(error(TomlErrorCode::InvalidString));
             }
             if (multiline && peek() == u8('\n')) {
-                output.push_back(take());
+                output.push(take());
                 continue;
             }
             if (multiline && peek() == u8('\r') && peek(usize(1)) == u8('\n')) {
                 take();
                 take();
-                output.push_back(u8('\n'));
+                output.push(u8('\n'));
                 continue;
             }
             if ((peek() < u8(0x20) && peek() != u8('\t')) || peek() == u8(0x7f)) {
                 return Err(error(TomlErrorCode::InvalidString));
             }
-            output.push_back(take());
+            output.push(take());
         }
         return Err(error(TomlErrorCode::UnexpectedEnd));
     }
@@ -366,41 +380,41 @@ private:
             }
         }
 
-        auto output = String::make();
+        auto output = Bytes::make();
         while (! eof()) {
             if (peek() == u8('\'')) {
                 if (! multiline) {
                     take();
-                    return Ok(rstd::move(output));
+                    return Ok(finish_string(rstd::move(output)));
                 }
                 usize quotes {};
                 while (peek(quotes) == u8('\'')) ++quotes;
                 if (quotes > usize(5)) return Err(error(TomlErrorCode::InvalidString));
                 if (quotes >= usize(3) && quotes <= usize(5)) {
                     for (usize index {}; index < quotes - usize(3); ++index) {
-                        output.push_back(u8('\''));
+                        output.push(u8('\''));
                     }
                     for (usize index {}; index < quotes; ++index) take();
-                    return Ok(rstd::move(output));
+                    return Ok(finish_string(rstd::move(output)));
                 }
             }
             if (! multiline && (peek() == u8('\n') || peek() == u8('\r'))) {
                 return Err(error(TomlErrorCode::InvalidString));
             }
             if (multiline && peek() == u8('\n')) {
-                output.push_back(take());
+                output.push(take());
                 continue;
             }
             if (multiline && peek() == u8('\r') && peek(usize(1)) == u8('\n')) {
                 take();
                 take();
-                output.push_back(u8('\n'));
+                output.push(u8('\n'));
                 continue;
             }
             if ((peek() < u8(0x20) && peek() != u8('\t')) || peek() == u8(0x7f)) {
                 return Err(error(TomlErrorCode::InvalidString));
             }
-            output.push_back(take());
+            output.push(take());
         }
         return Err(error(TomlErrorCode::UnexpectedEnd));
     }
@@ -509,11 +523,11 @@ private:
 
     [[nodiscard]]
     auto parse_integer(ref<str> token) -> ParseResult {
-        auto normalized = String::make();
+        auto normalized = Bytes::with_capacity(token.size());
         for (usize index {}; index < token.size(); ++index) {
-            if (token[index] != u8('_')) normalized.push_back(token[index]);
+            if (token[index] != u8('_')) normalized.push(token[index]);
         }
-        auto  text = normalized.as_str();
+        auto  text = rstd::from_utf8_unchecked(normalized.as_slice());
         usize index {};
         bool  negative {};
         bool  signed_value {};
@@ -561,20 +575,20 @@ private:
 
     [[nodiscard]]
     auto parse_float(ref<str> token) -> ParseResult {
-        if (token == ref<str>("inf") || token == ref<str>("+inf")) {
+        if (token == "inf"_str || token == "+inf"_str) {
             return Ok(Value::Float(f64::INFINITY_));
         }
-        if (token == ref<str>("-inf")) return Ok(Value::Float(f64::NEG_INFINITY));
-        if (token == ref<str>("nan") || token == ref<str>("+nan")) {
+        if (token == "-inf"_str) return Ok(Value::Float(f64::NEG_INFINITY));
+        if (token == "nan"_str || token == "+nan"_str) {
             return Ok(Value::Float(f64::NAN_));
         }
-        if (token == ref<str>("-nan")) return Ok(Value::Float(-f64::NAN_));
+        if (token == "-nan"_str) return Ok(Value::Float(-f64::NAN_));
 
-        auto normalized = String::make();
+        auto normalized = Bytes::with_capacity(token.size());
         for (usize index {}; index < token.size(); ++index) {
-            if (token[index] != u8('_')) normalized.push_back(token[index]);
+            if (token[index] != u8('_')) normalized.push(token[index]);
         }
-        auto  text = normalized.as_str();
+        auto  text = rstd::from_utf8_unchecked(normalized.as_slice());
         usize cursor {};
         bool  negative {};
         if (text[cursor] == u8('+') || text[cursor] == u8('-')) {
@@ -627,10 +641,10 @@ private:
         }
 
         auto result = rstd::num::dec2flt::to_f64({
-            .integer  = slice<byte>::from_raw_parts(text.data() + integer_begin.to_primitive(),
-                                                    integer_end - integer_begin),
-            .fraction = slice<byte>::from_raw_parts(text.data() + fraction_begin.to_primitive(),
-                                                    fraction_end - fraction_begin),
+            .integer  = slice<u8>::from_raw_parts(text.data() + integer_begin.to_primitive(),
+                                                  integer_end - integer_begin),
+            .fraction = slice<u8>::from_raw_parts(text.data() + fraction_begin.to_primitive(),
+                                                  fraction_end - fraction_begin),
             .exponent = exponent,
             .negative = negative,
         });
@@ -805,8 +819,8 @@ private:
         while (end > begin && is_horizontal(input_[end - usize(1)])) --end;
         if (begin == end) return Err(error(TomlErrorCode::ExpectedValue));
         auto token = view(begin, end);
-        if (token == ref<str>("true")) return Ok(Value::Boolean(true));
-        if (token == ref<str>("false")) return Ok(Value::Boolean(false));
+        if (token == "true"_str) return Ok(Value::Boolean(true));
+        if (token == "false"_str) return Ok(Value::Boolean(false));
         if ((token.size() >= usize(5) && token[usize(2)] == u8(':')) ||
             (token.size() >= usize(10) && token[usize(4)] == u8('-'))) {
             return parse_datetime(token);
@@ -829,8 +843,8 @@ private:
                 break;
             }
         }
-        if (token == ref<str>("inf") || token == ref<str>("+inf") || token == ref<str>("-inf") ||
-            token == ref<str>("nan") || token == ref<str>("+nan") || token == ref<str>("-nan")) {
+        if (token == "inf"_str || token == "+inf"_str || token == "-inf"_str ||
+            token == "nan"_str || token == "+nan"_str || token == "-nan"_str) {
             is_float = true;
         }
         return is_float ? parse_float(token) : parse_integer(token);
@@ -1094,8 +1108,8 @@ auto from_slice(slice<u8> input) -> ParseResult {
 
 auto from_slice(slice<u8> input, ParseOptions options) -> ParseResult {
     auto text = str_::from_utf8(input);
-    if (text.is_none()) return Err(TomlParser::invalid_utf8_error());
-    return from_str(*text, options);
+    if (text.is_err()) return Err(TomlParser::invalid_utf8_error());
+    return from_str(rstd::move(text).unwrap_unchecked(), options);
 }
 
 } // namespace rstd::toml

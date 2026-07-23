@@ -187,9 +187,7 @@ export struct UpperExp {
     using Funcs = TraitFuncs<&T::fmt>;
 };
 
-/// Trait for a byte-oriented output sink used by the formatting machinery.
-///
-/// Implementors provide `write_str(const rstd::uint8_t* p, rstd::size_t len)` to accept raw bytes.
+/// Trait for a UTF-8 text sink used by the formatting machinery.
 export struct Write {
     using Trait                  = Write;
     static constexpr bool direct = false;
@@ -197,7 +195,7 @@ export struct Write {
     template<typename Self, typename = void>
     struct Api {
         using Trait = Write;
-        auto write_str(const rstd::uint8_t* p, rstd::size_t len) -> bool;
+        auto write_str(ref<str_::Str> const& value) -> bool;
     };
 
     template<typename T>
@@ -211,7 +209,8 @@ export struct Write {
 export struct Formatter {
 private:
     void* _writer;
-    auto (*_write_func)(void*, const rstd::uint8_t*, rstd::size_t) -> bool;
+    auto (*_write_func)(void*, ref<str_::Str> const&) -> bool;
+    auto (*_raw_write_func)(void*, const rstd::uint8_t*, rstd::size_t) -> bool;
     FormattingOptions _options {};
 
 public:
@@ -219,20 +218,19 @@ public:
         requires Impled<W, Write>
     constexpr Formatter(W& writer) noexcept
         : _writer(rstd::addressof(writer)),
-          _write_func([](void* w, const rstd::uint8_t* p, rstd::size_t len) {
-              return as<Write>(*static_cast<W*>(w)).write_str(p, len);
-          }) {}
+          _write_func([](void* w, ref<str_::Str> const& value) {
+              return as<Write>(*static_cast<W*>(w)).write_str(value);
+          }),
+          _raw_write_func(nullptr) {}
 
     // Raw construction from type-erased writer (used by panic infrastructure).
     Formatter(void* writer, bool (*write_func)(void*, const rstd::uint8_t*, rstd::size_t)) noexcept
-        : _writer(writer), _write_func(write_func) {}
+        : _writer(writer), _write_func(nullptr), _raw_write_func(write_func) {}
 
-    auto write_raw(const rstd::uint8_t* p, rstd::size_t len) -> bool {
-        return _write_func(_writer, p, len);
-    }
-    auto write_raw(const char* p, rstd::size_t len) -> bool {
-        return write_raw(reinterpret_cast<const rstd::uint8_t*>(p), len);
-    }
+    auto write_str(ref<str_::Str> const& value) -> bool;
+    auto write_raw(const rstd::uint8_t* p, rstd::size_t len) -> bool;
+    auto write_raw(const rstd::byte* p, rstd::size_t len) -> bool;
+    auto write_raw(const char* p, rstd::size_t len) -> bool;
     auto write_fmt(struct Arguments args) -> bool;
     auto pad(ref<str_::Str> value) -> bool;
 
@@ -332,7 +330,7 @@ private:
 
 /// A pre-compiled set of format arguments: a format string plus its type-erased Argument array.
 export struct Arguments {
-    const rstd::uint8_t* fmt_ptr;
+    const char*          fmt_ptr;
     rstd::size_t         fmt_len;
     const Argument*      args_ptr;
     rstd::size_t         args_len;
@@ -361,7 +359,7 @@ using namespace rstd::fmt;
 template<rstd::size_t N>
 struct ArgumentsStorage {
     Argument             storage[N == 0 ? 1 : N];
-    const rstd::uint8_t* fmt_ptr;
+    const char*          fmt_ptr;
     rstd::size_t         fmt_len;
 
     constexpr operator Arguments() const noexcept { return { fmt_ptr, fmt_len, storage, N }; }
@@ -442,9 +440,7 @@ struct FormatString {
         check_format_string(s, N - 1, sizeof...(Args));
     }
 
-    auto data() const noexcept -> const rstd::uint8_t* {
-        return reinterpret_cast<const rstd::uint8_t*>(_ptr);
-    }
+    auto data() const noexcept -> const char* { return _ptr; }
     auto size() const noexcept -> rstd::size_t { return _len; }
 };
 

@@ -5,6 +5,7 @@ export module rstd.bench:model;
 export import :clock;
 
 using namespace rstd::prelude;
+using namespace rstd::literals;
 
 export namespace rstd::bench
 {
@@ -72,7 +73,7 @@ struct BenchConfig {
 };
 
 struct RunConfig {
-    String unit { String::make("op") };
+    String unit { String::make("op"_str) };
     f64    batch { f64(1.0) };
     u64    items_per_iteration {};
     u64    bytes_per_iteration {};

@@ -313,7 +313,8 @@ public:
         if (is_ok()) {
             return _get_move<0>();
         } else {
-            unwrap_failed("called `Result::unwrap()` on an `Err` value", _get<1>());
+            using namespace rstd::literals;
+            unwrap_failed("called `Result::unwrap()` on an `Err` value"_str, _get<1>());
             rstd::unreachable();
         }
     }
@@ -348,7 +349,8 @@ public:
         if (is_err()) {
             return _get_move<1>();
         } else {
-            unwrap_failed("called `Result::unwrap_err()` on an `Ok` value", _get<1>());
+            using namespace rstd::literals;
+            unwrap_failed("called `Result::unwrap_err()` on an `Ok` value"_str, _get<1>());
             rstd::unreachable();
         }
     }

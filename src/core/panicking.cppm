@@ -41,21 +41,26 @@ struct panic {
 
 template<typename... Ts>
 panic(fmt::format_string<Ts...>, Ts&&...) -> panic<Ts...>;
+template<rstd::size_t N>
+panic(const char (&)[N], panic_::SrcLoc = {}) -> panic<>;
 panic(ref<str>, panic_::SrcLoc = {}) -> panic<>;
 
 // Overload for runtime ref<str> (no compile-time format checking).
 // Used when the message is already a pre-built string (e.g. unwrap_failed).
 template<>
 struct panic<> {
+    template<rstd::size_t N>
+    [[gnu::always_inline]] [[noreturn]]
+    inline panic(const char (&msg)[N], panic_::SrcLoc loc = {}) {
+        panic_fmt({ msg, N - 1, nullptr, 0 }, panic_::Location::from(loc.val));
+    }
+
     [[gnu::always_inline]] [[noreturn]]
     inline panic(ref<str> msg, panic_::SrcLoc loc = {}) {
         // Wrap the str bytes as a single Display argument.
         fmt::Argument         arg     = fmt::Argument::make(msg);
         static constexpr char fmt_s[] = "{}";
-        panic_fmt({ reinterpret_cast<rstd::uint8_t const*>(fmt_s),
-                    rstd::size_t(2),
-                    &arg,
-                    rstd::size_t(1) },
+        panic_fmt({ fmt_s, rstd::size_t(2), &arg, rstd::size_t(1) },
                   panic_::Location::from(loc.val));
     }
 };

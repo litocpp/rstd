@@ -5,6 +5,7 @@ export module rstd.argparse:arg;
 export import :value_parser;
 
 using namespace rstd::prelude;
+using namespace rstd::literals;
 using rstd::any::TypeId;
 using rstd::ffi::OsStr;
 using rstd::ffi::OsString;
@@ -88,7 +89,7 @@ class Arg;
 
 struct ArgSpec {
     String                               id;
-    Option<char>                         short_name;
+    Option<u8>                           short_name;
     Option<String>                       long_name;
     Vec<String>                          short_aliases;
     Vec<String>                          aliases;
@@ -117,7 +118,7 @@ class NoValueParser {
 public:
     auto parse(ref<OsStr>) const -> Result<T, rstd::argparse::ValueError> {
         return Err(rstd::argparse::ValueError::Message(
-            String::make("argument action does not accept a value")));
+            String::make("argument action does not accept a value"_str)));
     }
 };
 
@@ -136,7 +137,7 @@ export namespace rstd::argparse
 template<typename T>
 class Arg {
     String                   id_;
-    Option<char>             short_name_;
+    Option<u8>               short_name_;
     Option<String>           long_name_;
     Vec<String>              short_aliases_;
     Vec<String>              aliases_;
@@ -224,11 +225,11 @@ public:
                      NumArgs::exact(usize()) };
     }
 
-    auto short_name(char name) & -> Arg& {
-        short_name_ = Some(char(name));
+    auto short_name(u8 name) & -> Arg& {
+        short_name_ = Some(name);
         return *this;
     }
-    auto short_name(char name) && -> Arg&& {
+    auto short_name(u8 name) && -> Arg&& {
         short_name(name);
         return rstd::move(*this);
     }

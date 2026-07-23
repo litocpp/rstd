@@ -58,8 +58,8 @@ export auto memcpy(voidp dst, const_voidp src, usize len) noexcept -> voidp {
 /// \return `true` if every byte matches, `false` otherwise.
 export template<typename T>
 constexpr auto all(T const& src, u8 val) noexcept -> bool {
-    rstd::uint8_t bytes[sizeof(T)];
-    for (rstd::size_t i = 0; i < sizeof(T); ++i) bytes[i] = val.to_primitive();
+    byte bytes[sizeof(T)];
+    for (rstd::size_t i = 0; i < sizeof(T); ++i) bytes[i] = val.to_byte();
     return __builtin_memcmp(rstd::addressof(src), bytes, sizeof(T)) == 0;
 }
 
@@ -71,7 +71,7 @@ export template<mtp::triv_copy T>
 constexpr void fill(T& src, u8 val) noexcept {
     if (mtp::is_constant_evaluated()) {
         auto p = reinterpret_cast<byte*>(rstd::addressof(src));
-        for (rstd::size_t i = 0; i < sizeof(T); ++i) p[i] = val.to_primitive();
+        for (rstd::size_t i = 0; i < sizeof(T); ++i) p[i] = val.to_byte();
     } else {
         rstd::mem::memset(static_cast<voidp>(rstd::addressof(src)), val, usize(sizeof(T)));
     }

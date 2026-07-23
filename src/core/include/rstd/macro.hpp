@@ -149,21 +149,21 @@
 
 #define rstd_error(...)                                            \
     do {                                                           \
-        if (rstd::log::log_enabled(rstd::log::Level::Error, "")) { \
+        if (rstd::log::log_enabled(rstd::log::Level::Error, rstd::ref<rstd::str>())) { \
             rstd::log::error(__VA_ARGS__);                         \
         }                                                          \
     } while (0)
 
 #define rstd_warn(...)                                            \
     do {                                                          \
-        if (rstd::log::log_enabled(rstd::log::Level::Warn, "")) { \
+        if (rstd::log::log_enabled(rstd::log::Level::Warn, rstd::ref<rstd::str>())) { \
             rstd::log::warn(__VA_ARGS__);                         \
         }                                                         \
     } while (0)
 
 #define rstd_info(...)                                            \
     do {                                                          \
-        if (rstd::log::log_enabled(rstd::log::Level::Info, "")) { \
+        if (rstd::log::log_enabled(rstd::log::Level::Info, rstd::ref<rstd::str>())) { \
             rstd::log::info(__VA_ARGS__);                         \
         }                                                         \
     } while (0)
@@ -173,7 +173,7 @@
 #else
 #define rstd_debug(...)                                            \
     do {                                                           \
-        if (rstd::log::log_enabled(rstd::log::Level::Debug, "")) { \
+        if (rstd::log::log_enabled(rstd::log::Level::Debug, rstd::ref<rstd::str>())) { \
             rstd::log::debug(__VA_ARGS__);                         \
         }                                                          \
     } while (0)
@@ -181,7 +181,7 @@
 
 #define rstd_trace(...)                                            \
     do {                                                           \
-        if (rstd::log::log_enabled(rstd::log::Level::Trace, "")) { \
+        if (rstd::log::log_enabled(rstd::log::Level::Trace, rstd::ref<rstd::str>())) { \
             rstd::log::trace(__VA_ARGS__);                         \
         }                                                          \
     } while (0)

@@ -9,64 +9,80 @@ namespace rstd::iter
 /// Iterator over `&T` of a contiguous range, yielding `ref<T>`.
 export template<class T>
 struct SliceIter : DefaultInClass<SliceIter<T>, Iterator> {
-    using Item = ref<T>;
+    using Item        = ref<T>;
+    using raw_pointer = typename ptr<T>::value_type*;
 
-    const T* cur;
-    const T* fin;
+    ptr<T> cur;
+    ptr<T> fin;
 
-    constexpr SliceIter(const T* begin [[clang::lifetimebound]],
-                        const T* end [[clang::lifetimebound]])
+    constexpr SliceIter(raw_pointer begin [[clang::lifetimebound]],
+                        raw_pointer end [[clang::lifetimebound]])
+        : cur(ptr<T>::from_raw_parts(begin)), fin(ptr<T>::from_raw_parts(end)) {}
+
+    constexpr SliceIter(ptr<T> begin [[clang::lifetimebound]], ptr<T> end [[clang::lifetimebound]])
         : cur(begin), fin(end) {}
 
     constexpr auto next() -> Option<Item> {
         if (cur == fin) return rstd::None();
-        auto* p = cur++;
-        return rstd::Some(ref<T>::from_raw_parts(p));
+        auto p = cur;
+        ++cur;
+        return rstd::Some(p.as_ref());
     }
 
     constexpr auto next_back() -> Option<Item> {
         if (cur == fin) return rstd::None();
         --fin;
-        return rstd::Some(ref<T>::from_raw_parts(fin));
+        return rstd::Some(fin.as_ref());
     }
 
     constexpr auto size_hint() const -> SizeHint {
-        usize n(static_cast<rstd::size_t>(fin - cur));
+        usize n(static_cast<rstd::size_t>(cur.distance_to(fin)));
         return { n, rstd::Some(n) };
     }
 
-    constexpr auto len() const -> usize { return usize(fin - cur); }
+    constexpr auto len() const -> usize {
+        return usize(static_cast<rstd::size_t>(cur.distance_to(fin)));
+    }
 };
 
 /// Iterator over `&mut T` of a contiguous range, yielding `mut_ref<T>`.
 export template<class T>
 struct SliceIterMut : DefaultInClass<SliceIterMut<T>, Iterator> {
-    using Item = mut_ref<T>;
+    using Item        = mut_ref<T>;
+    using raw_pointer = typename mut_ptr<T>::value_type*;
 
-    T* cur;
-    T* fin;
+    mut_ptr<T> cur;
+    mut_ptr<T> fin;
 
-    constexpr SliceIterMut(T* begin [[clang::lifetimebound]], T* end [[clang::lifetimebound]])
+    constexpr SliceIterMut(raw_pointer begin [[clang::lifetimebound]],
+                           raw_pointer end [[clang::lifetimebound]])
+        : cur(mut_ptr<T>::from_raw_parts(begin)), fin(mut_ptr<T>::from_raw_parts(end)) {}
+
+    constexpr SliceIterMut(mut_ptr<T> begin [[clang::lifetimebound]],
+                           mut_ptr<T> end [[clang::lifetimebound]])
         : cur(begin), fin(end) {}
 
     constexpr auto next() -> Option<Item> {
         if (cur == fin) return rstd::None();
-        auto* p = cur++;
-        return rstd::Some(mut_ref<T>::from_raw_parts(p));
+        auto p = cur;
+        ++cur;
+        return rstd::Some(p.as_mut_ref());
     }
 
     constexpr auto next_back() -> Option<Item> {
         if (cur == fin) return rstd::None();
         --fin;
-        return rstd::Some(mut_ref<T>::from_raw_parts(fin));
+        return rstd::Some(fin.as_mut_ref());
     }
 
     constexpr auto size_hint() const -> SizeHint {
-        usize n(static_cast<rstd::size_t>(fin - cur));
+        usize n(static_cast<rstd::size_t>(cur.distance_to(fin)));
         return { n, rstd::Some(n) };
     }
 
-    constexpr auto len() const -> usize { return usize(fin - cur); }
+    constexpr auto len() const -> usize {
+        return usize(static_cast<rstd::size_t>(cur.distance_to(fin)));
+    }
 };
 
 /// Iterator that yields nothing.

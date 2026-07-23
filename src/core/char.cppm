@@ -36,30 +36,28 @@ constexpr auto len_utf8(char32_t c) noexcept -> usize {
 /// \param c    The code point to encode.
 /// \param buf  Output buffer (must have room for at least `len_utf8(c)` bytes).
 /// \return Number of bytes written (1–4), or 0 on invalid code point.
-template<typename Byte>
-    requires(mtp::same_as<Byte, u8> || mtp::same_as<Byte, rstd::uint8_t>)
-constexpr auto encode_utf8(char32_t c, Byte* buf) noexcept -> usize {
+constexpr auto encode_utf8(char32_t c, byte* buf) noexcept -> usize {
     if (c <= 0x7F) {
-        buf[0] = Byte(static_cast<rstd::uint8_t>(c));
+        buf[0] = byte(static_cast<rstd::uint8_t>(c));
         return usize(1);
     }
     if (c <= 0x7FF) {
-        buf[0] = Byte(static_cast<rstd::uint8_t>(0xC0 | (c >> 6)));
-        buf[1] = Byte(static_cast<rstd::uint8_t>(0x80 | (c & 0x3F)));
+        buf[0] = byte(static_cast<rstd::uint8_t>(0xC0 | (c >> 6)));
+        buf[1] = byte(static_cast<rstd::uint8_t>(0x80 | (c & 0x3F)));
         return usize(2);
     }
     if (c <= 0xFFFF) {
         if (c >= 0xD800 && c <= 0xDFFF) return usize();
-        buf[0] = Byte(static_cast<rstd::uint8_t>(0xE0 | (c >> 12)));
-        buf[1] = Byte(static_cast<rstd::uint8_t>(0x80 | ((c >> 6) & 0x3F)));
-        buf[2] = Byte(static_cast<rstd::uint8_t>(0x80 | (c & 0x3F)));
+        buf[0] = byte(static_cast<rstd::uint8_t>(0xE0 | (c >> 12)));
+        buf[1] = byte(static_cast<rstd::uint8_t>(0x80 | ((c >> 6) & 0x3F)));
+        buf[2] = byte(static_cast<rstd::uint8_t>(0x80 | (c & 0x3F)));
         return usize(3);
     }
     if (c <= 0x10FFFF) {
-        buf[0] = Byte(static_cast<rstd::uint8_t>(0xF0 | (c >> 18)));
-        buf[1] = Byte(static_cast<rstd::uint8_t>(0x80 | ((c >> 12) & 0x3F)));
-        buf[2] = Byte(static_cast<rstd::uint8_t>(0x80 | ((c >> 6) & 0x3F)));
-        buf[3] = Byte(static_cast<rstd::uint8_t>(0x80 | (c & 0x3F)));
+        buf[0] = byte(static_cast<rstd::uint8_t>(0xF0 | (c >> 18)));
+        buf[1] = byte(static_cast<rstd::uint8_t>(0x80 | ((c >> 12) & 0x3F)));
+        buf[2] = byte(static_cast<rstd::uint8_t>(0x80 | ((c >> 6) & 0x3F)));
+        buf[3] = byte(static_cast<rstd::uint8_t>(0x80 | (c & 0x3F)));
         return usize(4);
     }
     return usize();
@@ -71,23 +69,11 @@ constexpr auto encode_utf8(char32_t c, Byte* buf) noexcept -> usize {
 /// \param len  Number of available bytes.
 /// \return `{code_point, bytes_consumed}`.
 ///         On invalid/incomplete sequence, returns `{REPLACEMENT, 1}` (skip one byte).
-template<typename Byte>
-    requires(mtp::same_as<Byte, u8> || mtp::same_as<Byte, rstd::uint8_t>)
-constexpr auto byte_value(Byte byte) noexcept -> rstd::uint8_t {
-    if constexpr (mtp::same_as<Byte, u8>) {
-        return byte.to_primitive();
-    } else {
-        return byte;
-    }
-}
-
-template<typename Byte>
-    requires(mtp::same_as<Byte, u8> || mtp::same_as<Byte, rstd::uint8_t>)
-constexpr auto decode_utf8(const Byte* ptr, usize len) noexcept -> rstd::tuple<char32_t, usize> {
+constexpr auto decode_utf8(const byte* ptr, usize len) noexcept -> rstd::tuple<char32_t, usize> {
     auto const available = len.to_primitive();
     if (available == 0) return { REPLACEMENT, usize() };
 
-    rstd::uint8_t const b0 = byte_value(ptr[0]);
+    rstd::uint8_t const b0 = u8::from_byte(ptr[0]).to_primitive();
 
     // 1-byte (ASCII)
     if (b0 <= 0x7F) {
@@ -115,7 +101,7 @@ constexpr auto decode_utf8(const Byte* ptr, usize len) noexcept -> rstd::tuple<c
 
     // Consume continuation bytes.
     for (rstd::size_t i = 1; i < seq_len; ++i) {
-        rstd::uint8_t const b = byte_value(ptr[i]);
+        rstd::uint8_t const b = u8::from_byte(ptr[i]).to_primitive();
         if ((b & 0xC0) != 0x80) return { REPLACEMENT, usize(1) };
         cp = (cp << 6) | (b & 0x3F);
     }
@@ -133,36 +119,32 @@ constexpr auto decode_utf8(const Byte* ptr, usize len) noexcept -> rstd::tuple<c
 }
 
 /// Returns `true` if the byte is a UTF-8 continuation byte (10xxxxxx).
-template<typename Byte>
-    requires(mtp::same_as<Byte, u8> || mtp::same_as<Byte, rstd::uint8_t>)
-constexpr auto is_continuation(Byte byte) noexcept -> bool {
-    return (byte_value(byte) & 0xC0) == 0x80;
+constexpr auto is_continuation(u8 value) noexcept -> bool {
+    return (value.to_primitive() & 0xC0) == 0x80;
 }
 
 /// Returns `true` if position `pos` is on a UTF-8 character boundary
 /// within the byte sequence `[ptr, ptr+len)`.
 ///
 /// Positions 0 and `len` are always boundaries.
-template<typename Byte>
-    requires(mtp::same_as<Byte, u8> || mtp::same_as<Byte, rstd::uint8_t>)
-constexpr auto is_char_boundary(const Byte* ptr, usize len, usize pos) noexcept -> bool {
+constexpr auto is_char_boundary(const byte* ptr, usize len, usize pos) noexcept -> bool {
     if (pos == usize() || pos == len) return true;
     if (pos > len) return false;
-    return ! is_continuation(ptr[pos.to_primitive()]);
+    return ! is_continuation(u8::from_byte(ptr[pos.to_primitive()]));
 }
 
 /// Validates that a byte sequence is well-formed UTF-8.
 ///
 /// \return `true` if all bytes form valid UTF-8.
-template<typename Byte>
-    requires(mtp::same_as<Byte, u8> || mtp::same_as<Byte, rstd::uint8_t>)
-constexpr auto is_valid_utf8(const Byte* ptr, usize len) noexcept -> bool {
+constexpr auto is_valid_utf8(const byte* ptr, usize len) noexcept -> bool {
     rstd::size_t i         = 0;
     auto const   available = len.to_primitive();
     while (i < available) {
         auto [cp, n]        = decode_utf8(ptr + i, usize(available - i));
         auto const consumed = n.to_primitive();
-        if (cp == REPLACEMENT && (consumed <= 1 && (i >= available || byte_value(ptr[i]) > 0x7F))) {
+        if (cp == REPLACEMENT &&
+            (consumed <= 1 &&
+             (i >= available || u8::from_byte(ptr[i]).to_primitive() > 0x7F))) {
             return false;
         }
         i += consumed;

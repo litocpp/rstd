@@ -35,6 +35,19 @@ static_assert(rstd::Impled<rstd::array<int, 3>, rstd::convert::AsRef<int[]>>);
 static_assert(rstd::Impled<rstd::array<int, 3>, rstd::convert::AsMut<int[]>>);
 static_assert(rstd::Impled<rstd::array<int, 3>, rstd::ops::Deref>);
 static_assert(rstd::Impled<rstd::array<int, 3>, rstd::ops::DerefMut>);
+static_assert(sizeof(rstd::array<rstd::u8, 4>) == sizeof(rstd::byte) * 4);
+static_assert(rstd::mtp::same_as<decltype(rstd::mtp::declval<rstd::array<rstd::u8, 4>&>().data()),
+                                 rstd::byte*>);
+static_assert(
+    rstd::mtp::same_as<decltype(rstd::mtp::declval<rstd::array<rstd::u8, 4> const&>().data()),
+                       rstd::byte const*>);
+
+static_assert([] {
+    auto values       = rstd::array<rstd::u8, 3> { rstd::u8(1), rstd::u8(2), rstd::u8(3) };
+    values[usize(1)] = rstd::u8(9);
+    return values[usize()] == rstd::u8(1) && values[usize(1)] == rstd::u8(9) &&
+           values.data()[2] == rstd::byte { 3 };
+}());
 
 TEST(Array, OwnsAndBorrowsFixedStorage) {
     auto values = rstd::array<int, 3> { 2, 3, 5 };
@@ -132,4 +145,17 @@ TEST(Array, SupportsStructuredBindings) {
     EXPECT_EQ(first, 8);
     EXPECT_EQ(second, 13);
     EXPECT_EQ(third, 21);
+}
+
+TEST(Array, U8UsesByteStorageWithLogicalIteration) {
+    auto values = rstd::array<rstd::u8, 3> { rstd::u8(4), rstd::u8(5), rstd::u8(6) };
+    auto iter   = values.iter_mut();
+
+    **iter.next() = rstd::u8(9);
+    EXPECT_EQ(values[usize()], rstd::u8(9));
+    EXPECT_EQ(values.data()[usize(1).to_primitive()], rstd::byte { 5 });
+
+    auto owned = rstd::move(values).into_iter();
+    EXPECT_EQ(owned.next(), rstd::Some(rstd::u8(9)));
+    EXPECT_EQ(owned.next_back(), rstd::Some(rstd::u8(6)));
 }

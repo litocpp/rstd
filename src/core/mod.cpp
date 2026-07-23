@@ -66,6 +66,27 @@ void panic_invalid_float_clamp() {
 namespace rstd::fmt
 {
 
+auto Formatter::write_str(ref<str> const& value) -> bool {
+    if (_write_func != nullptr) return _write_func(_writer, value);
+    return _raw_write_func(_writer,
+                           reinterpret_cast<rstd::uint8_t const*>(value.data()),
+                           value.size().to_primitive());
+}
+
+auto Formatter::write_raw(const rstd::byte* data, rstd::size_t length) -> bool {
+    auto bytes = slice<u8>::from_raw_parts(data, usize(length));
+    if (! char_::is_valid_utf8(data, usize(length))) return false;
+    return write_str(rstd::from_utf8_unchecked(bytes));
+}
+
+auto Formatter::write_raw(const rstd::uint8_t* data, rstd::size_t length) -> bool {
+    return write_raw(reinterpret_cast<rstd::byte const*>(data), length);
+}
+
+auto Formatter::write_raw(const char* data, rstd::size_t length) -> bool {
+    return write_raw(reinterpret_cast<rstd::byte const*>(data), length);
+}
+
 // ── Spec parser ───────────────────────────────────────────────────────────
 // Parses the content between '{' ... '}' after any arg-id and ':'.
 // Syntax: [[fill]align][sign][#][0][width][.precision][type]
@@ -252,17 +273,17 @@ auto Formatter::pad(ref<str> value) -> bool {
 
 // ── Formatter::write_fmt ──────────────────────────────────────────────────
 auto Formatter::write_fmt(Arguments args) -> bool {
-    rstd::size_t         arg_idx = 0;
-    const rstd::uint8_t* p       = args.fmt_ptr;
-    const rstd::uint8_t* end     = args.fmt_ptr + args.fmt_len;
-    const rstd::uint8_t* last    = p;
+    rstd::size_t arg_idx = 0;
+    const char*  p       = args.fmt_ptr;
+    const char*  end     = args.fmt_ptr + args.fmt_len;
+    const char*  last    = p;
 
     while (p < end) {
         if (*p == '{') {
             if (p + 1 < end && *(p + 1) == '{') {
                 // Escaped {{
                 if (p > last && ! write_raw(last, p - last)) return false;
-                constexpr rstd::uint8_t LEFT_BRACE[] = { '{' };
+                constexpr char LEFT_BRACE[] = { '{' };
                 if (! write_raw(LEFT_BRACE, sizeof(LEFT_BRACE))) return false;
                 p += 2;
                 last = p;
@@ -273,10 +294,10 @@ auto Formatter::write_fmt(Arguments args) -> bool {
             p++; // skip '{'
 
             // Scan to matching '}'.
-            const char* inner = reinterpret_cast<const char*>(p);
+            const char* inner = p;
             while (p < end && *p != '}') p++;
             if (p >= end) return false; // unmatched '{'
-            const char* inner_end = reinterpret_cast<const char*>(p);
+            const char* inner_end = p;
             p++;
             last = p;
 
@@ -300,7 +321,7 @@ auto Formatter::write_fmt(Arguments args) -> bool {
             if (p + 1 < end && *(p + 1) == '}') {
                 // Escaped }}
                 if (p > last && ! write_raw(last, p - last)) return false;
-                constexpr rstd::uint8_t RIGHT_BRACE[] = { '}' };
+                constexpr char RIGHT_BRACE[] = { '}' };
                 if (! write_raw(RIGHT_BRACE, sizeof(RIGHT_BRACE))) return false;
                 p += 2;
                 last = p;

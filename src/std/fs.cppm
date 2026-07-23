@@ -201,17 +201,17 @@ public:
     static auto create_new(ref<Path> path) -> FsResult<File>;
     static auto options() noexcept -> OpenOptions { return OpenOptions::make(); }
 
-    auto read(mut_ref<byte[]> buffer) -> FsResult<usize>;
-    auto write(slice<byte> buffer) -> FsResult<usize>;
+    auto read(mut_ref<u8[]> buffer) -> FsResult<usize>;
+    auto write(slice<u8> buffer) -> FsResult<usize>;
     auto flush() -> FsResult<empty>;
     auto seek(SeekFrom position) -> FsResult<u64>;
     auto sync_all() -> FsResult<empty>;
     auto sync_data() -> FsResult<empty>;
     auto set_len(u64 size) -> FsResult<empty>;
-    auto read_at(mut_ref<byte[]> buffer, u64 offset) const -> FsResult<usize>;
-    auto write_at(slice<byte> buffer, u64 offset) const -> FsResult<usize>;
-    auto read_exact_at(mut_ref<byte[]> buffer, u64 offset) const -> FsResult<empty>;
-    auto write_all_at(slice<byte> buffer, u64 offset) const -> FsResult<empty>;
+    auto read_at(mut_ref<u8[]> buffer, u64 offset) const -> FsResult<usize>;
+    auto write_at(slice<u8> buffer, u64 offset) const -> FsResult<usize>;
+    auto read_exact_at(mut_ref<u8[]> buffer, u64 offset) const -> FsResult<empty>;
+    auto write_all_at(slice<u8> buffer, u64 offset) const -> FsResult<empty>;
     auto lock() -> FsResult<empty>;
     auto lock_shared() -> FsResult<empty>;
     auto try_lock() -> FsResult<empty>;
@@ -306,12 +306,12 @@ struct Impl<os::fd::FromRawFd, fs::File> {
 
 template<>
 struct Impl<io::Read, fs::File> : ImplBase<fs::File> {
-    auto read(mut_ref<byte[]> buffer) -> io::Result<usize> { return this->self().read(buffer); }
+    auto read(mut_ref<u8[]> buffer) -> io::Result<usize> { return this->self().read(buffer); }
 };
 
 template<>
 struct Impl<io::Write, fs::File> : ImplBase<fs::File> {
-    auto write(slice<byte> buffer) -> io::Result<usize> { return this->self().write(buffer); }
+    auto write(slice<u8> buffer) -> io::Result<usize> { return this->self().write(buffer); }
     auto flush() -> io::Result<empty> { return this->self().flush(); }
 };
 
@@ -322,14 +322,14 @@ struct Impl<io::Seek, fs::File> : ImplBase<fs::File> {
 
 template<>
 struct Impl<io::ReadAt, fs::File> : ImplBase<fs::File> {
-    auto read_at(mut_ref<byte[]> buffer, u64 offset) const -> io::Result<usize> {
+    auto read_at(mut_ref<u8[]> buffer, u64 offset) const -> io::Result<usize> {
         return this->self().read_at(buffer, offset);
     }
 };
 
 template<>
 struct Impl<io::WriteAt, fs::File> : ImplBase<fs::File> {
-    auto write_at(slice<byte> buffer, u64 offset) const -> io::Result<usize> {
+    auto write_at(slice<u8> buffer, u64 offset) const -> io::Result<usize> {
         return this->self().write_at(buffer, offset);
     }
 };

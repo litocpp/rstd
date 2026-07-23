@@ -1042,7 +1042,34 @@ public:
         static const U32  BITS;                                                                \
     }
 
-RSTD_INTEGER_TYPE(U8, rstd::uint8_t, u8_tag);
+struct U8 final : Integer<U8, rstd::uint8_t, u8_tag> {
+    using Base                = Integer<U8, rstd::uint8_t, u8_tag>;
+    constexpr U8() noexcept   = default;
+    explicit constexpr U8(rstd::uint8_t value) noexcept: Base(value) {}
+
+    template<RawInteger Source>
+        requires(! rstd::mtp::same<rstd::mtp::rm_cvf<Source>, bool>)
+    explicit constexpr U8(Source value) noexcept: Base(static_cast<rstd::uint8_t>(value)) {}
+
+    static constexpr auto from_byte(rstd::byte value) noexcept -> U8 {
+        return U8(static_cast<rstd::uint8_t>(value));
+    }
+
+    constexpr auto to_byte() const noexcept -> rstd::byte {
+        return rstd::byte { to_primitive() };
+    }
+
+    constexpr auto is_ascii() const noexcept -> bool { return to_primitive() <= 0x7f; }
+
+    static const U8  MIN;
+    static const U8  MAX;
+    static const U32 BITS;
+
+private:
+    using Base::as_mut_ptr;
+    using Base::as_ptr;
+};
+
 RSTD_INTEGER_TYPE(U16, rstd::uint16_t, u16_tag);
 RSTD_INTEGER_TYPE(U32, rstd::uint32_t, u32_tag);
 RSTD_INTEGER_TYPE(U64, rstd::uint64_t, u64_tag);
@@ -1064,7 +1091,10 @@ RSTD_INTEGER_TYPE(Isize, rstd::ptrdiff_t, isize_tag);
         static_cast<rstd::uint32_t>(sizeof(PRIMITIVE) * 8)            \
     }
 
-RSTD_INTEGER_CONSTANTS(U8, rstd::uint8_t);
+inline constexpr U8  U8::MIN { raw_integer_min<rstd::uint8_t>() };
+inline constexpr U8  U8::MAX { raw_integer_max<rstd::uint8_t>() };
+inline constexpr U32 U8::BITS { static_cast<rstd::uint32_t>(sizeof(rstd::uint8_t) * 8) };
+
 RSTD_INTEGER_CONSTANTS(U16, rstd::uint16_t);
 RSTD_INTEGER_CONSTANTS(U32, rstd::uint32_t);
 RSTD_INTEGER_CONSTANTS(U64, rstd::uint64_t);

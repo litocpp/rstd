@@ -23,6 +23,17 @@ inline constexpr bool has_wrapper_layout =
     std::is_trivially_destructible_v<Wrapper>;
 
 static_assert(has_wrapper_layout<u8, rstd::uint8_t>);
+static_assert(u8::from_byte(rstd::byte { 0xff }).to_primitive() == rstd::uint8_t(0xff));
+static_assert(u8::from_byte(rstd::byte { 0x80 }).to_byte() == rstd::byte { 0x80 });
+
+template<typename T>
+concept exposes_primitive_pointer = requires(T& value) {
+    value.as_ptr();
+    value.as_mut_ptr();
+};
+
+static_assert(! exposes_primitive_pointer<u8>);
+static_assert(exposes_primitive_pointer<u16>);
 static_assert(has_wrapper_layout<u16, rstd::uint16_t>);
 static_assert(has_wrapper_layout<u32, rstd::uint32_t>);
 static_assert(has_wrapper_layout<u64, rstd::uint64_t>);
@@ -261,31 +272,33 @@ static_assert(u128::BITS == 128_u32);
 static_assert(i128::MIN + 1_i128 == -i128::MAX);
 
 TEST(IntFromStr, ParsesPrimitiveIntegerBoundaries) {
-    EXPECT_EQ(from_str<i8>("-128").unwrap(), i8::MIN);
-    EXPECT_EQ(from_str<i8>("+127").unwrap(), i8::MAX);
-    EXPECT_EQ(from_str<u8>("255").unwrap(), u8::MAX);
-    EXPECT_EQ(from_str<i32>("-0").unwrap(), i32());
-    EXPECT_EQ(from_str<i64>("-9223372036854775808").unwrap(), i64::MIN);
-    EXPECT_EQ(from_str<u64>("18446744073709551615").unwrap(), u64::MAX);
-    EXPECT_EQ(from_str<i128>("-170141183460469231731687303715884105728").unwrap(), i128::MIN);
-    EXPECT_EQ(from_str<u128>("340282366920938463463374607431768211455").unwrap(), u128::MAX);
+    EXPECT_EQ(from_str<i8>("-128"_str).unwrap(), i8::MIN);
+    EXPECT_EQ(from_str<i8>("+127"_str).unwrap(), i8::MAX);
+    EXPECT_EQ(from_str<u8>("255"_str).unwrap(), u8::MAX);
+    EXPECT_EQ(from_str<i32>("-0"_str).unwrap(), i32());
+    EXPECT_EQ(from_str<i64>("-9223372036854775808"_str).unwrap(), i64::MIN);
+    EXPECT_EQ(from_str<u64>("18446744073709551615"_str).unwrap(), u64::MAX);
+    EXPECT_EQ(from_str<i128>("-170141183460469231731687303715884105728"_str).unwrap(),
+              i128::MIN);
+    EXPECT_EQ(from_str<u128>("340282366920938463463374607431768211455"_str).unwrap(),
+              u128::MAX);
 }
 
 TEST(IntFromStr, ReportsRustCompatibleErrorKinds) {
-    auto empty = from_str<i32>("").unwrap_err();
+    auto empty = from_str<i32>(""_str).unwrap_err();
     EXPECT_TRUE(empty.kind()->is_Empty());
-    EXPECT_EQ(rstd::format("{}", empty), "cannot parse integer from empty string");
-    EXPECT_EQ(rstd::format("{:?}", empty), "ParseIntError { kind: Empty }");
+    EXPECT_EQ(rstd::format("{}", empty), "cannot parse integer from empty string"_str);
+    EXPECT_EQ(rstd::format("{:?}", empty), "ParseIntError { kind: Empty }"_str);
 
-    auto invalid = from_str<i32>(" 1").unwrap_err();
+    auto invalid = from_str<i32>(" 1"_str).unwrap_err();
     EXPECT_TRUE(invalid.kind()->is_InvalidDigit());
-    EXPECT_EQ(rstd::format("{}", invalid), "invalid digit found in string");
+    EXPECT_EQ(rstd::format("{}", invalid), "invalid digit found in string"_str);
 
-    EXPECT_TRUE(from_str<u32>("-1").unwrap_err().kind()->is_InvalidDigit());
-    EXPECT_TRUE(from_str<i32>("+").unwrap_err().kind()->is_InvalidDigit());
-    EXPECT_TRUE(from_str<i8>("128").unwrap_err().kind()->is_PosOverflow());
-    EXPECT_TRUE(from_str<i8>("-129").unwrap_err().kind()->is_NegOverflow());
-    EXPECT_TRUE(from_str<u128>("340282366920938463463374607431768211456")
+    EXPECT_TRUE(from_str<u32>("-1"_str).unwrap_err().kind()->is_InvalidDigit());
+    EXPECT_TRUE(from_str<i32>("+"_str).unwrap_err().kind()->is_InvalidDigit());
+    EXPECT_TRUE(from_str<i8>("128"_str).unwrap_err().kind()->is_PosOverflow());
+    EXPECT_TRUE(from_str<i8>("-129"_str).unwrap_err().kind()->is_NegOverflow());
+    EXPECT_TRUE(from_str<u128>("340282366920938463463374607431768211456"_str)
                     .unwrap_err()
                     .kind()
                     ->is_PosOverflow());
@@ -310,7 +323,7 @@ TEST(IntTryFrom, ChecksPrimitiveIntegerRanges) {
     EXPECT_EQ(as_cast<u8>(rstd::int16_t(-1)), u8::MAX);
 
     auto error = try_from<u8>(u16(256)).unwrap_err();
-    EXPECT_EQ(format("{}", error), "out of range integral type conversion attempted");
+    EXPECT_EQ(format("{}", error), "out of range integral type conversion attempted"_str);
 }
 
 TEST(IntArithmetic, CheckedOverflowingSaturatingAndWrapping) {

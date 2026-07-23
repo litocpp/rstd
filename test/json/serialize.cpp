@@ -4,6 +4,7 @@ import rstd.json;
 
 using namespace rstd;
 using namespace rstd::json;
+using namespace rstd::literals;
 
 namespace
 {
@@ -15,12 +16,12 @@ auto text(const ::alloc::string::String& value) -> std::string {
 } // namespace
 
 TEST(JsonSerialize, WritesCompactSortedJson) {
-    auto value = from_str(R"({"z":[true,null,"line\n"],"a":1.0})").unwrap();
+    auto value = from_str(R"({"z":[true,null,"line\n"],"a":1.0})"_str).unwrap();
     EXPECT_EQ(text(to_string(value)), R"({"a":1.0,"z":[true,null,"line\n"]})");
 }
 
 TEST(JsonSerialize, WritesPrettyJsonWithRequestedIndent) {
-    auto value  = from_str(R"({"z":[true,null],"a":1})").unwrap();
+    auto value  = from_str(R"({"z":[true,null],"a":1})"_str).unwrap();
     auto output = to_string(value, FormatOptions { .pretty = true, .indent = usize(4) });
     EXPECT_EQ(text(output),
               "{\n"
@@ -34,7 +35,7 @@ TEST(JsonSerialize, WritesPrettyJsonWithRequestedIndent) {
 
 TEST(JsonSerialize, EscapesStringsAndPreservesUtf8) {
     auto value =
-        from_str(R"({"text":"quote:\" slash:/ backslash:\\ controls:\b\f\n\r\t\u0001 utf8:雪"})")
+        from_str(R"({"text":"quote:\" slash:/ backslash:\\ controls:\b\f\n\r\t\u0001 utf8:雪"})"_str)
             .unwrap();
     EXPECT_EQ(text(to_string(value)),
               R"({"text":"quote:\" slash:/ backslash:\\ controls:\b\f\n\r\t\u0001 utf8:雪"})");
@@ -42,7 +43,7 @@ TEST(JsonSerialize, EscapesStringsAndPreservesUtf8) {
 
 TEST(JsonSerialize, FormatsNumberKindsAndRoundTrips) {
     auto value =
-        from_str(R"([0,-1,18446744073709551615,-0,1.0,1.25,5e-324,1.7976931348623157e308])")
+        from_str(R"([0,-1,18446744073709551615,-0,1.0,1.25,5e-324,1.7976931348623157e308])"_str)
             .unwrap();
     auto output = to_string(value);
     EXPECT_EQ(text(output),
@@ -51,7 +52,7 @@ TEST(JsonSerialize, FormatsNumberKindsAndRoundTrips) {
 }
 
 TEST(JsonSerialize, DisplayUsesTheSameEmitter) {
-    auto value = from_str(R"({"a":[1]})").unwrap();
+    auto value = from_str(R"({"a":[1]})"_str).unwrap();
     EXPECT_EQ(text(rstd::format("{}", value)), R"({"a":[1]})");
     EXPECT_EQ(text(rstd::format("{:#}", value)), "{\n  \"a\": [\n    1\n  ]\n}");
 }

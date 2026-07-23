@@ -7,18 +7,31 @@ import :sys.pal;
 namespace rstd::env
 {
 
-auto var_os(const char* key) -> Option<ffi::OsString> {
-    auto* value = sys::pal::getenv_internal(key);
+namespace
+{
+
+auto cstring(ref<ffi::OsStr> value) -> CString {
+    return CString::make(Vec<u8>::from(value.as_encoded_bytes())).unwrap();
+}
+
+} // namespace
+
+auto var_os(ref<ffi::OsStr> key) -> Option<ffi::OsString> {
+    auto key_value = cstring(key);
+    auto* value = sys::pal::getenv_internal(key_value.as_ptr());
     if (value == nullptr) return None();
     return Some(os_string_from_cstr(value));
 }
 
-void set_var(const char* key, const char* value) {
-    sys::pal::setenv_internal(key, value);
+void set_var(ref<ffi::OsStr> key, ref<ffi::OsStr> value) {
+    auto key_value = cstring(key);
+    auto env_value = cstring(value);
+    sys::pal::setenv_internal(key_value.as_ptr(), env_value.as_ptr());
 }
 
-void remove_var(const char* key) {
-    sys::pal::unsetenv_internal(key);
+void remove_var(ref<ffi::OsStr> key) {
+    auto key_value = cstring(key);
+    sys::pal::unsetenv_internal(key_value.as_ptr());
 }
 
 auto args_os() -> ArgsOs {

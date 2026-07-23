@@ -468,7 +468,7 @@ TEST(Iter, ByRef) {
 }
 
 TEST(Iter, StringCharsBytes) {
-    auto s   = String::make("abc");
+    auto s   = String::make("abc"_str);
     auto cnt = s.chars().count();
     EXPECT_EQ(cnt, 3_usize);
 
@@ -479,7 +479,7 @@ TEST(Iter, StringCharsBytes) {
                    .sum();
     EXPECT_EQ(sum, 294_i32);
 
-    // collect chars back into a String
-    auto upper = String::make("hi").bytes().collect<String>();
+    auto bytes = String::make("hi"_str).bytes().collect<Vec<u8>>();
+    auto upper = String::from_utf8(rstd::move(bytes)).unwrap();
     EXPECT_EQ(upper.len(), 2_usize);
 }
