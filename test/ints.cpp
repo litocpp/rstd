@@ -278,10 +278,8 @@ TEST(IntFromStr, ParsesPrimitiveIntegerBoundaries) {
     EXPECT_EQ(from_str<i32>("-0"_str).unwrap(), i32());
     EXPECT_EQ(from_str<i64>("-9223372036854775808"_str).unwrap(), i64::MIN);
     EXPECT_EQ(from_str<u64>("18446744073709551615"_str).unwrap(), u64::MAX);
-    EXPECT_EQ(from_str<i128>("-170141183460469231731687303715884105728"_str).unwrap(),
-              i128::MIN);
-    EXPECT_EQ(from_str<u128>("340282366920938463463374607431768211455"_str).unwrap(),
-              u128::MAX);
+    EXPECT_EQ(from_str<i128>("-170141183460469231731687303715884105728"_str).unwrap(), i128::MIN);
+    EXPECT_EQ(from_str<u128>("340282366920938463463374607431768211455"_str).unwrap(), u128::MAX);
 }
 
 TEST(IntFromStr, ReportsRustCompatibleErrorKinds) {

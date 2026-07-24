@@ -10,7 +10,9 @@ using rstd::io::error::Error;
 using rstd::io::error::ErrorKind;
 using rstd::vec::Vec;
 
-auto native_bytes(slice<u8> value) -> Vec<u8> { return Vec<u8>::from(value); }
+auto native_bytes(slice<u8> value) -> Vec<u8> {
+    return Vec<u8>::from(value);
+}
 
 template<rstd::size_t N>
 auto logical_bytes(const byte (&values)[N]) -> slice<u8> {
@@ -133,13 +135,13 @@ TEST(Io, WriteAll) {
 
 struct MemRead {
     const byte* data;
-    usize     len;
-    usize     pos {};
+    usize       len;
+    usize       pos {};
 };
 
 struct MemReadAt {
     const byte* data;
-    usize     len;
+    usize       len;
 
     auto read_at(mut_ref<u8[]> buf, u64 offset) const -> io::Result<usize> {
         auto position = try_from<usize>(offset);
@@ -272,7 +274,7 @@ TEST(Io, PrintlnSmoke) {
 // ── Cursor<Vec<u8>> ───────────────────────────────────────────────────────
 
 TEST(Io, CursorVecRead) {
-    Vec<u8>  v      = Vec<u8>::with_capacity(usize(5));
+    Vec<u8> v = Vec<u8>::with_capacity(usize(5));
     for (u8 value : { u8(1), u8(2), u8(3), u8(4), u8(5) }) v.push(rstd::move(value));
     auto cur = io::Cursor<Vec<u8>>(rstd::move(v));
     byte buf[3] {};
@@ -351,10 +353,10 @@ TEST(Io, CursorVecBufRead) {
 
 TEST(Io, CursorSliceRead) {
     const byte data[] = { byte { 10 }, byte { 20 }, byte { 30 } };
-    auto     sl     = slice<u8>::from_raw_parts(data, usize(3));
-    auto     cur    = io::Cursor<slice<u8>>(sl);
-    byte     buf[2] {};
-    auto     res = as<io::Read>(cur).read(logical_bytes(buf));
+    auto       sl     = slice<u8>::from_raw_parts(data, usize(3));
+    auto       cur    = io::Cursor<slice<u8>>(sl);
+    byte       buf[2] {};
+    auto       res = as<io::Read>(cur).read(logical_bytes(buf));
     EXPECT_TRUE(res.is_ok());
     EXPECT_EQ(u8::from_byte(buf[0]), u8(10));
     EXPECT_EQ(u8::from_byte(buf[1]), u8(20));
@@ -365,7 +367,7 @@ TEST(Io, CursorSliceRead) {
 
 TEST(Io, BufReaderBasic) {
     // Use Cursor<Vec<u8>> as the inner reader.
-    Vec<u8>  v      = Vec<u8>::with_capacity(usize(6));
+    Vec<u8> v = Vec<u8>::with_capacity(usize(6));
     for (u8 value : { u8(1), u8(2), u8(3), u8(4), u8(5), u8(6) }) {
         v.push(rstd::move(value));
     }
@@ -398,9 +400,9 @@ TEST(Io, BufReaderFillBuf) {
 
 TEST(Io, BufWriterBasic) {
     // Use Cursor<Vec<u8>> as sink.
-    auto     sink_cur = io::Cursor<Vec<u8>>(Vec<u8>::with_capacity(usize()));
-    auto     bw       = io::BufWriter<io::Cursor<Vec<u8>>>(rstd::move(sink_cur), usize(8));
-    auto     res      = as<io::Write>(bw).write("abc"_bytes);
+    auto sink_cur = io::Cursor<Vec<u8>>(Vec<u8>::with_capacity(usize()));
+    auto bw       = io::BufWriter<io::Cursor<Vec<u8>>>(rstd::move(sink_cur), usize(8));
+    auto res      = as<io::Write>(bw).write("abc"_bytes);
     EXPECT_TRUE(res.is_ok());
     EXPECT_EQ(res.unwrap_unchecked(), usize(3));
     // Flush to push data to inner.
@@ -436,8 +438,8 @@ TEST(Io, RepeatRead) {
 
 TEST(Io, SinkWrite) {
     const byte msg[] { byte { 1 }, byte { 2 }, byte { 3 } };
-    auto s   = io::sink();
-    auto res = as<io::Write>(s).write(logical_bytes(msg));
+    auto       s   = io::sink();
+    auto       res = as<io::Write>(s).write(logical_bytes(msg));
     EXPECT_TRUE(res.is_ok());
     EXPECT_EQ(res.unwrap_unchecked(), usize(3));
 }

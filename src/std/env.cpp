@@ -17,8 +17,8 @@ auto cstring(ref<ffi::OsStr> value) -> CString {
 } // namespace
 
 auto var_os(ref<ffi::OsStr> key) -> Option<ffi::OsString> {
-    auto key_value = cstring(key);
-    auto* value = sys::pal::getenv_internal(key_value.as_ptr());
+    auto  key_value = cstring(key);
+    auto* value     = sys::pal::getenv_internal(key_value.as_ptr());
     if (value == nullptr) return None();
     return Some(os_string_from_cstr(value));
 }

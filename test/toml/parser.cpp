@@ -9,7 +9,9 @@ using rstd::toml::Value;
 namespace
 {
 
-auto parse(ref<str> input) { return rstd::toml::from_str(input); }
+auto parse(ref<str> input) {
+    return rstd::toml::from_str(input);
+}
 
 auto member(const Value& value, ref<str> key) -> const Value& {
     auto found = value.get(key);
@@ -86,12 +88,14 @@ name = "second"
     EXPECT_EQ(member(document, "ratio"_str).as_float(), Some(f64(125)));
     EXPECT_EQ(member(document, "mask"_str).as_integer(), Some(i64(255)));
     EXPECT_TRUE(member(document, "when"_str).is_offset_datetime());
-    EXPECT_EQ(*member(member(document, "owner"_str), "name"_str).as_str(), rstd::ref<rstd::str>("Tenon"_str));
+    EXPECT_EQ(*member(member(document, "owner"_str), "name"_str).as_str(),
+              rstd::ref<rstd::str>("Tenon"_str));
 
     auto targets = member(document, "target"_str).as_array();
     ASSERT_TRUE(targets.is_some());
     ASSERT_EQ((**targets).len(), usize(2));
-    EXPECT_EQ(*member((**targets)[usize(1)], "name"_str).as_str(), rstd::ref<rstd::str>("second"_str));
+    EXPECT_EQ(*member((**targets)[usize(1)], "name"_str).as_str(),
+              rstd::ref<rstd::str>("second"_str));
 }
 
 TEST(TomlParser, DecodesStringsAndDateTimeKinds) {
@@ -116,8 +120,10 @@ offset = 2026-07-22T03:04:05-07:30
     auto document = result.unwrap();
 
     EXPECT_EQ(*member(document, "escaped"_str).as_str(), rstd::ref<rstd::str>("line\n你好"_str));
-    EXPECT_EQ(*member(document, "literal"_str).as_str(), rstd::ref<rstd::str>(R"(C:\tools\tenon)"_str));
-    EXPECT_EQ(*member(document, "multiline"_str).as_str(), rstd::ref<rstd::str>("first second\n"_str));
+    EXPECT_EQ(*member(document, "literal"_str).as_str(),
+              rstd::ref<rstd::str>(R"(C:\tools\tenon)"_str));
+    EXPECT_EQ(*member(document, "multiline"_str).as_str(),
+              rstd::ref<rstd::str>("first second\n"_str));
     EXPECT_TRUE(member(document, "date"_str).is_local_date());
     EXPECT_TRUE(member(document, "time"_str).is_local_time());
     EXPECT_TRUE(member(document, "local"_str).is_local_datetime());
@@ -149,8 +155,10 @@ inline = {
     ASSERT_TRUE(time.is_some());
     EXPECT_EQ(time->second, rstd::uint8_t {});
     EXPECT_TRUE(member(document, "local"_str).is_local_datetime());
-    EXPECT_EQ(*member(document, "quotes"_str).as_str(), rstd::ref<rstd::str>("two quotes: \"\""_str));
-    EXPECT_EQ(*member(member(document, "inline"_str), "name"_str).as_str(), rstd::ref<rstd::str>("demo"_str));
+    EXPECT_EQ(*member(document, "quotes"_str).as_str(),
+              rstd::ref<rstd::str>("two quotes: \"\""_str));
+    EXPECT_EQ(*member(member(document, "inline"_str), "name"_str).as_str(),
+              rstd::ref<rstd::str>("demo"_str));
 }
 
 TEST(TomlParser, RejectsDuplicateAndMalformedInput) {
@@ -180,7 +188,7 @@ TEST(TomlParser, SliceAndFromStrTraitReuseDecoder) {
     EXPECT_EQ(*from_slice, *from_trait);
 
     rstd::byte invalid[] = { rstd::byte { 0xff } };
-    auto invalid_result =
+    auto       invalid_result =
         rstd::toml::from_slice(rstd::slice<rstd::u8>::from_raw_parts(invalid, usize(1)));
     ASSERT_TRUE(invalid_result.is_err());
     EXPECT_TRUE(invalid_result.unwrap_err().is_syntax());
@@ -217,7 +225,8 @@ name = "small"
 
     const auto& service = member(document, "service"_str);
     EXPECT_EQ(member(service, "enabled"_str).as_bool(), Some(true));
-    EXPECT_EQ(member(member(member(service, "api"_str), "http"_str), "port"_str).as_integer(), Some(i64(8080)));
+    EXPECT_EQ(member(member(member(service, "api"_str), "http"_str), "port"_str).as_integer(),
+              Some(i64(8080)));
 
     const auto& apple = member(member(document, "fruit"_str), "apple"_str);
     EXPECT_EQ(*member(apple, "color"_str).as_str(), rstd::ref<rstd::str>("red"_str));
@@ -227,7 +236,8 @@ name = "small"
     auto products = member(document, "products"_str).as_array();
     ASSERT_TRUE(products.is_some());
     ASSERT_EQ((**products).len(), usize(2));
-    EXPECT_EQ(*member((**products)[usize(1)], "name"_str).as_str(), rstd::ref<rstd::str>("nail"_str));
+    EXPECT_EQ(*member((**products)[usize(1)], "name"_str).as_str(),
+              rstd::ref<rstd::str>("nail"_str));
     auto tags = member((**products)[usize(1)], "tags"_str).as_array();
     ASSERT_TRUE(tags.is_some());
     ASSERT_EQ((**tags).len(), usize(1));

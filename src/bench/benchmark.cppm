@@ -16,7 +16,7 @@ class BasicBench {
     Option<time::Duration> resolution_;
     u64                    jitter_state_;
 
-    auto clock() const noexcept { return as<MonotonicClock>(clock_); }
+    decltype(auto) clock() const noexcept { return as<MonotonicClock>(clock_); }
 
     auto next_jitter() noexcept -> f64 {
         auto value = jitter_state_.to_primitive();

@@ -31,9 +31,8 @@ export enum class LevelFilter : rstd::uint32_t {
 using namespace rstd::prelude;
 using namespace rstd::literals;
 
-inline constexpr ref<str> LEVEL_NAMES[] = {
-    "OFF"_str, "ERROR"_str, "WARN"_str, "INFO"_str, "DEBUG"_str, "TRACE"_str
-};
+inline constexpr ref<str> LEVEL_NAMES[] = { "OFF"_str,  "ERROR"_str, "WARN"_str,
+                                            "INFO"_str, "DEBUG"_str, "TRACE"_str };
 
 namespace rstd::log
 {

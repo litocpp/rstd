@@ -18,8 +18,8 @@ TEST(ArgparseSubcommands, OwnsSchemaAndReturnsRecursiveMatches) {
     auto serve = Command::make("serve"_str);
     serve.about("Run the server"_str);
     serve.alias("s"_str);
-    auto port =
-        serve.add_arg(Arg<String>::value("port"_str, string_parser()).long_name("port"_str).required());
+    auto port = serve.add_arg(
+        Arg<String>::value("port"_str, string_parser()).long_name("port"_str).required());
 
     auto root = Command::make("tool"_str);
     root.require_subcommand();

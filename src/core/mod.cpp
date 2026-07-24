@@ -68,9 +68,8 @@ namespace rstd::fmt
 
 auto Formatter::write_str(ref<str> const& value) -> bool {
     if (_write_func != nullptr) return _write_func(_writer, value);
-    return _raw_write_func(_writer,
-                           reinterpret_cast<rstd::uint8_t const*>(value.data()),
-                           value.size().to_primitive());
+    return _raw_write_func(
+        _writer, reinterpret_cast<rstd::uint8_t const*>(value.data()), value.size().to_primitive());
 }
 
 auto Formatter::write_raw(const rstd::byte* data, rstd::size_t length) -> bool {

@@ -42,9 +42,7 @@ public:
 
     static auto from_vec(Vec<u8>&& vec) -> Bytes { return Bytes { rstd::move(vec) }; }
 
-    static auto copy_from_slice(slice<u8> src) -> Bytes {
-        return Bytes { Vec<u8>::from(src) };
-    }
+    static auto copy_from_slice(slice<u8> src) -> Bytes { return Bytes { Vec<u8>::from(src) }; }
 
     auto len() const noexcept -> usize { return usize(m_buf.len().to_primitive() - m_pos); }
     auto size() const noexcept -> usize { return len(); }
@@ -157,8 +155,7 @@ public:
         if (m_buf.len() < m_buf.capacity()) {
             m_buf.resize(m_buf.capacity(), u8 {});
         }
-        return mut_ref<u8[]>::from_raw_parts(m_buf.data() + m_end,
-                                             m_buf.len() - usize(m_end));
+        return mut_ref<u8[]>::from_raw_parts(m_buf.data() + m_end, m_buf.len() - usize(m_end));
     }
 
     void advance_mut(usize cnt) {

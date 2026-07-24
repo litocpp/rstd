@@ -101,6 +101,9 @@ struct Impl<fmt::Debug, json::Error> : ImplBase<json::Error> {
     }
 };
 
+template<>
+struct Impl<error::Error, json::Error> : DefaultInImpl<error::Error, json::Error> {};
+
 } // namespace rstd
 
 namespace rstd

@@ -39,7 +39,7 @@ struct NotifyState {
 
     auto drain() -> io::Result<bool> {
 #if RSTD_OS_LINUX
-        bool          any = false;
+        bool any = false;
         byte buf[64] {};
         for (;;) {
             auto n = libc::read(read_fd.as_raw_fd(), buf, sizeof(buf));

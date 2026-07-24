@@ -102,7 +102,9 @@ TEST(CppStdIter, IteratorRangeSupportsRangesAlgorithmsAndMoveOnlyValues) {
 
     auto visited_range = iter::as_range(iter::range(1_i32, 4_i32));
     auto sum           = i32();
-    std::ranges::for_each(visited_range, [&](i32 value) { sum += value; });
+    std::ranges::for_each(visited_range, [&](i32 value) {
+        sum += value;
+    });
     EXPECT_EQ(sum, 6_i32);
 
     auto move_range = iter::as_range(iter::once(MoveOnly(7)));
@@ -148,8 +150,8 @@ TEST(CppStdIter, FromRangePreservesReferenceAndCapabilities) {
     EXPECT_EQ(range.next_back(), rstd::Some<int&>(values[2]));
     EXPECT_EQ(range.len(), 1_usize);
 
-    auto const& immutable = values;
-    auto const_range      = iter::from_range(immutable);
+    auto const& immutable   = values;
+    auto        const_range = iter::from_range(immutable);
     static_assert(rstd::mtp::same_as<typename decltype(const_range)::Item, const int&>);
     EXPECT_EQ(*const_range.next(), 7);
 
@@ -173,27 +175,37 @@ TEST(CppStdIter, FromRangeAcceptsBorrowedRvaluesAndRejectsOwningRvalues) {
 
 TEST(CppStdIter, CollectsStandardSequenceContainersInInputOrder) {
     auto vector = iter::range(0_i32, 4_i32)
-                      .map([](i32 value) { return value.to_primitive(); })
+                      .map([](i32 value) {
+                          return value.to_primitive();
+                      })
                       .collect<std::vector<int>>();
     EXPECT_EQ(vector, (std::vector<int> { 0, 1, 2, 3 }));
 
     auto deque = iter::range(0_i32, 3_i32)
-                     .map([](i32 value) { return value.to_primitive(); })
+                     .map([](i32 value) {
+                         return value.to_primitive();
+                     })
                      .collect<std::deque<int>>();
     EXPECT_EQ(deque, (std::deque<int> { 0, 1, 2 }));
 
     auto list = iter::range(0_i32, 3_i32)
-                    .map([](i32 value) { return value.to_primitive(); })
+                    .map([](i32 value) {
+                        return value.to_primitive();
+                    })
                     .collect<std::list<int>>();
     EXPECT_EQ(list, (std::list<int> { 0, 1, 2 }));
 
     auto forward = iter::range(0_i32, 3_i32)
-                       .map([](i32 value) { return value.to_primitive(); })
+                       .map([](i32 value) {
+                           return value.to_primitive();
+                       })
                        .collect<std::forward_list<int>>();
     EXPECT_EQ(forward, (std::forward_list<int> { 0, 1, 2 }));
 
     auto string = iter::range(0_i32, 3_i32)
-                      .map([](i32 value) { return static_cast<char>('a' + value.to_primitive()); })
+                      .map([](i32 value) {
+                          return static_cast<char>('a' + value.to_primitive());
+                      })
                       .collect<std::string>();
     EXPECT_EQ(string, "abc");
 }
@@ -246,7 +258,9 @@ TEST(CppStdIter, CollectsMoveOnlyItemsAndUsesLowerSizeHintForReserve) {
 
 TEST(CppStdIter, CollectsStandardContainerAdaptersWithTheirNativeOrder) {
     auto source = [] {
-        return iter::range(0_i32, 4_i32).map([](i32 value) { return value.to_primitive(); });
+        return iter::range(0_i32, 4_i32).map([](i32 value) {
+            return value.to_primitive();
+        });
     };
 
     auto queue = source().collect<std::queue<int>>();

@@ -88,8 +88,7 @@ public:
         return make(Vec<u8>(rstd::into(rstd::move(value))));
     }
 
-    static auto from_vec_with_nul(Vec<u8>&& bytes)
-        -> Result<CString, FromVecWithNulError> {
+    static auto from_vec_with_nul(Vec<u8>&& bytes) -> Result<CString, FromVecWithNulError> {
         auto const len = bytes.len().to_primitive();
         if (len == 0 || bytes[usize(len - 1)] != u8()) {
             auto error = rstd::ffi::FromBytesWithNulError::not_nul_terminated();
@@ -130,8 +129,8 @@ public:
 
     auto to_bytes() const noexcept [[clang::lifetimebound]] -> slice<u8> {
         auto pointer = inner.as_ptr();
-        return slice<u8>::from_raw_parts(
-            reinterpret_cast<byte const*>(pointer.as_raw_ptr()), pointer.len() - usize(1));
+        return slice<u8>::from_raw_parts(reinterpret_cast<byte const*>(pointer.as_raw_ptr()),
+                                         pointer.len() - usize(1));
     }
 
     auto to_bytes_with_nul() const noexcept [[clang::lifetimebound]] -> slice<u8> {
@@ -141,9 +140,9 @@ public:
     }
 
     auto into_bytes() && -> Vec<u8> {
-        auto pointer = inner.as_ptr();
-        auto result  = Vec<u8>::with_capacity(pointer.len() - usize(1));
-        auto const* chars = pointer.as_raw_ptr();
+        auto        pointer = inner.as_ptr();
+        auto        result  = Vec<u8>::with_capacity(pointer.len() - usize(1));
+        auto const* chars   = pointer.as_raw_ptr();
         for (rstd::size_t index = 0; index + 1 < pointer.len().to_primitive(); ++index) {
             result.push(u8(std::bit_cast<rstd::uint8_t>(chars[index])));
         }
@@ -154,14 +153,14 @@ public:
 
     auto clone() const -> CString {
         auto pointer = inner.as_ptr();
-        auto chars = Vec<char>::from(
-            slice<char>::from_raw_parts(pointer.as_raw_ptr(), pointer.len()));
+        auto chars =
+            Vec<char>::from(slice<char>::from_raw_parts(pointer.as_raw_ptr(), pointer.len()));
         return CString(chars.into_boxed_slice());
     }
 };
 
 export class IntoStringError {
-    CString             inner_;
+    CString               inner_;
     rstd::str_::Utf8Error error_;
 
 public:
@@ -170,13 +169,17 @@ public:
 
     auto utf8_error() const noexcept -> rstd::str_::Utf8Error { return error_; }
     auto into_cstring() && -> CString { return rstd::move(inner_); }
+
+private:
+    template<typename, typename>
+    friend struct rstd::Impl;
 };
 
 auto CString::into_string() && -> Result<String, IntoStringError> {
     auto validation = rstd::str_::validate_utf8(to_bytes());
     if (validation.is_err()) {
-        return Err(IntoStringError(rstd::move(*this),
-                                   rstd::move(validation).unwrap_err_unchecked()));
+        return Err(
+            IntoStringError(rstd::move(*this), rstd::move(validation).unwrap_err_unchecked()));
     }
     return Ok(String::from_utf8_unchecked(rstd::move(*this).into_bytes()));
 }
@@ -196,6 +199,76 @@ struct Impl<Clone, CString> : DefaultInImpl<Clone, CString> {
 template<mtp::same_as<AsRef<ffi::CStr>> T, mtp::same_as<CString> A>
 struct Impl<T, A> : ImplBase<A> {
     auto as_ref() const noexcept -> ref<ffi::CStr> { return this->self().as_ref(); }
+};
+
+template<>
+struct Impl<fmt::Display, ::alloc::ffi::NulError> : ImplBase<::alloc::ffi::NulError> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        return formatter.write_fmt(fmt::Arguments::make(
+            "nul byte found in provided data at position: {}", this->self().nul_position()));
+    }
+};
+
+template<>
+struct Impl<fmt::Debug, ::alloc::ffi::NulError> : ImplBase<::alloc::ffi::NulError> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        return formatter.write_fmt(
+            fmt::Arguments::make("NulError({})", this->self().nul_position()));
+    }
+};
+
+template<>
+struct Impl<error::Error, ::alloc::ffi::NulError>
+    : DefaultInImpl<error::Error, ::alloc::ffi::NulError> {};
+
+template<>
+struct Impl<fmt::Display, ::alloc::ffi::FromVecWithNulError>
+    : ImplBase<::alloc::ffi::FromVecWithNulError> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        auto error = this->self().error();
+        return as<fmt::Display>(error).fmt(formatter);
+    }
+};
+
+template<>
+struct Impl<fmt::Debug, ::alloc::ffi::FromVecWithNulError>
+    : ImplBase<::alloc::ffi::FromVecWithNulError> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        constexpr char prefix[] = "FromVecWithNulError { error: ";
+        if (! formatter.write_raw(prefix, sizeof(prefix) - 1)) return false;
+        auto error = this->self().error();
+        if (! as<fmt::Debug>(error).fmt(formatter)) return false;
+        return formatter.write_raw(" }", 2);
+    }
+};
+
+template<>
+struct Impl<error::Error, ::alloc::ffi::FromVecWithNulError>
+    : DefaultInImpl<error::Error, ::alloc::ffi::FromVecWithNulError> {};
+
+template<>
+struct Impl<fmt::Display, ::alloc::ffi::IntoStringError> : ImplBase<::alloc::ffi::IntoStringError> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        constexpr char message[] = "C string contained non-utf8 bytes";
+        return formatter.write_raw(message, sizeof(message) - 1);
+    }
+};
+
+template<>
+struct Impl<fmt::Debug, ::alloc::ffi::IntoStringError> : ImplBase<::alloc::ffi::IntoStringError> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        constexpr char prefix[] = "IntoStringError { error: ";
+        if (! formatter.write_raw(prefix, sizeof(prefix) - 1)) return false;
+        if (! as<fmt::Debug>(this->self().error_).fmt(formatter)) return false;
+        return formatter.write_raw(" }", 2);
+    }
+};
+
+template<>
+struct Impl<error::Error, ::alloc::ffi::IntoStringError> : ImplBase<::alloc::ffi::IntoStringError> {
+    auto source() const noexcept -> Option<error::ErrorRef> {
+        return Some(dyn<error::Error>::from_ref(this->self().error_));
+    }
 };
 
 } // namespace rstd

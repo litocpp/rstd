@@ -143,7 +143,7 @@ TEST(ArgparseDefinition, RejectsBuiltinCollisionsAndInvalidImplicitValues) {
 TEST(ArgparseDefinition, RejectsInvalidGroupsAndAmbiguousPositionals) {
     {
         auto command = Command::make("tool"_str);
-        auto value = command.add_arg(Arg<bool>::flag("value"_str).long_name("value"_str));
+        auto value   = command.add_arg(Arg<bool>::flag("value"_str).long_name("value"_str));
         command.add_group(ArgGroup::make("group"_str).arg(value).arg(value));
         auto result = rstd::move(command).build();
         ASSERT_TRUE(result.is_err());
@@ -151,10 +151,8 @@ TEST(ArgparseDefinition, RejectsInvalidGroupsAndAmbiguousPositionals) {
     }
     {
         auto command = Command::make("tool"_str);
-        command.add_arg(
-            Arg<String>::value("first"_str, string_parser()).num_args(NumArgs::any()));
-        command.add_arg(
-            Arg<String>::value("second"_str, string_parser()).num_args(NumArgs::any()));
+        command.add_arg(Arg<String>::value("first"_str, string_parser()).num_args(NumArgs::any()));
+        command.add_arg(Arg<String>::value("second"_str, string_parser()).num_args(NumArgs::any()));
         auto result = rstd::move(command).build();
         ASSERT_TRUE(result.is_err());
         EXPECT_TRUE(result.unwrap_err().is_InvalidValueCount());

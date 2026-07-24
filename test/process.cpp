@@ -74,10 +74,8 @@ TEST(Process, CommandOutput) {
 
 TEST(Process, CommandOutputStderr) {
     // sh -c 'echo err >&2'
-    auto res = rstd::process::Command::make("sh"_str)
-                   .arg("-c"_str)
-                   .arg("echo err >&2"_str)
-                   .output();
+    auto res =
+        rstd::process::Command::make("sh"_str).arg("-c"_str).arg("echo err >&2"_str).output();
     ASSERT_TRUE(res.is_ok());
     auto out = res.unwrap();
 
@@ -103,7 +101,7 @@ TEST(Process, ChildStdinWrite) {
     ASSERT_TRUE(stdin_opt.is_some());
     {
         auto stdin_h = stdin_opt.unwrap();
-        auto wres = rstd::as<rstd::io::Write>(stdin_h).write("hello pipe"_bytes);
+        auto wres    = rstd::as<rstd::io::Write>(stdin_h).write("hello pipe"_bytes);
         ASSERT_TRUE(wres.is_ok());
     } // stdin_h dropped here, child sees EOF
 

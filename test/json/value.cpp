@@ -60,7 +60,7 @@ TEST(JsonValue, TakeLeavesNull) {
 }
 
 TEST(JsonValue, IndexingMatchesReadAndWriteSemantics) {
-    auto value      = Value::Null();
+    auto value              = Value::Null();
     value["a"_str]["b"_str] = Value::Bool(true);
 
     EXPECT_EQ(value["a"_str]["b"_str], true);
@@ -77,9 +77,7 @@ TEST(JsonValue, IndexingMatchesReadAndWriteSemantics) {
 }
 
 TEST(JsonValue, JsonPointerFollowsRfc6901Tokens) {
-    auto value =
-        rstd::json::from_str(R"({"foo":["bar","baz"],"":0,"a/b":1,"m~n":2})"_str)
-            .unwrap();
+    auto value = rstd::json::from_str(R"({"foo":["bar","baz"],"":0,"a/b":1,"m~n":2})"_str).unwrap();
 
     auto root = value.pointer(""_str);
     ASSERT_TRUE(root.is_some());
@@ -112,8 +110,7 @@ TEST(JsonValue, JsonPointerFollowsRfc6901Tokens) {
 
 TEST(JsonValue, PrimitiveConversionsDoNotUseSerialization) {
     auto integer = rstd::Impl<rstd::convert::From<i32>, Value>::from(i32(-9));
-    auto text =
-        rstd::Impl<rstd::convert::From<rstd::ref<rstd::str>>, Value>::from("text"_str);
+    auto text    = rstd::Impl<rstd::convert::From<rstd::ref<rstd::str>>, Value>::from("text"_str);
     auto some    = rstd::Impl<rstd::convert::From<rstd::Option<i32>>, Value>::from(Some(i32(7)));
     auto none =
         rstd::Impl<rstd::convert::From<rstd::Option<i32>>, Value>::from(rstd::Option<i32>());

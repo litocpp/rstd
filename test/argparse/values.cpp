@@ -96,19 +96,21 @@ TEST(ArgparseValues, BuildsAndReusesImplicitAndDefaultValues) {
 
 TEST(ArgparseValues, UsesExactShortAliasBeforeClusterAndSupportsHyphenValues) {
     auto command = Command::make("tool"_str);
-    auto exact   = command.add_arg(Arg<String>::value("exact"_str, string_parser()).short_alias("abc"_str));
-    auto a       = command.add_arg(Arg<bool>::flag("a"_str).short_name(u8('a')));
-    auto b       = command.add_arg(Arg<bool>::flag("b"_str).short_name(u8('b')));
-    auto c       = command.add_arg(Arg<bool>::flag("c"_str).short_name(u8('c')));
-    auto negative = command.add_arg(
-        Arg<String>::value("negative"_str, string_parser()).long_name("number"_str).allow_hyphen_values());
+    auto exact =
+        command.add_arg(Arg<String>::value("exact"_str, string_parser()).short_alias("abc"_str));
+    auto a        = command.add_arg(Arg<bool>::flag("a"_str).short_name(u8('a')));
+    auto b        = command.add_arg(Arg<bool>::flag("b"_str).short_name(u8('b')));
+    auto c        = command.add_arg(Arg<bool>::flag("c"_str).short_name(u8('c')));
+    auto negative = command.add_arg(Arg<String>::value("negative"_str, string_parser())
+                                        .long_name("number"_str)
+                                        .allow_hyphen_values());
     auto disabled = command.add_arg(Arg<bool>::set_false("disabled"_str).long_name("disabled"_str));
     auto built    = rstd::move(command).build();
     ASSERT_TRUE(built.is_ok());
     auto parser = rstd::move(built).unwrap();
 
-    auto result =
-        parser.parse_from(value_argv("tool"_str, "-abc"_str, "value"_str, "--number"_str, "-12"_str, "--disabled"_str));
+    auto result = parser.parse_from(value_argv(
+        "tool"_str, "-abc"_str, "value"_str, "--number"_str, "-12"_str, "--disabled"_str));
     ASSERT_TRUE(result.is_ok());
     auto outcome        = rstd::move(result).unwrap();
     auto matches        = rstd::move(outcome).as_Parsed().value;
@@ -131,9 +133,9 @@ TEST(ArgparseValues, ValidatesChoices) {
     choices.push(String::make("fast"_str));
     choices.push(String::make("safe"_str));
     auto command = Command::make("tool"_str);
-    auto mode    = command.add_arg(
-        Arg<String>::value("mode"_str, choice_parser<String>(string_parser(), rstd::move(choices))));
-    auto built = rstd::move(command).build();
+    auto mode    = command.add_arg(Arg<String>::value(
+        "mode"_str, choice_parser<String>(string_parser(), rstd::move(choices))));
+    auto built   = rstd::move(command).build();
     ASSERT_TRUE(built.is_ok());
     auto parser = rstd::move(built).unwrap();
 
@@ -146,15 +148,16 @@ TEST(ArgparseValues, ValidatesChoices) {
 
 TEST(ArgparseValues, ReservesVariadicTokensForFollowingPositionals) {
     auto command = Command::make("tool"_str);
-    auto leading =
-        command.add_arg(Arg<String>::value("leading"_str, string_parser()).num_args(NumArgs::any()));
-    auto tag      = command.add_arg(Arg<String>::value("tag"_str, string_parser()).long_name("tag"_str));
+    auto leading = command.add_arg(
+        Arg<String>::value("leading"_str, string_parser()).num_args(NumArgs::any()));
+    auto tag = command.add_arg(Arg<String>::value("tag"_str, string_parser()).long_name("tag"_str));
     auto trailing = command.add_arg(Arg<String>::value("trailing"_str, string_parser()).required());
     auto built    = rstd::move(command).build();
     ASSERT_TRUE(built.is_ok());
     auto parser = rstd::move(built).unwrap();
 
-    auto result = parser.parse_from(value_argv("tool"_str, "first"_str, "--tag"_str, "x"_str, "last"_str));
+    auto result =
+        parser.parse_from(value_argv("tool"_str, "first"_str, "--tag"_str, "x"_str, "last"_str));
     ASSERT_TRUE(result.is_ok());
     auto outcome        = rstd::move(result).unwrap();
     auto matches        = rstd::move(outcome).as_Parsed().value;
@@ -181,7 +184,8 @@ TEST(ArgparseValues, RejectsIncompatibleAccessorsAndFormatsCustomErrors) {
     ASSERT_TRUE(built.is_ok());
     auto parser = rstd::move(built).unwrap();
 
-    auto valid = parser.parse_from(value_argv("tool"_str, "--repeated"_str, "one"_str, "value"_str));
+    auto valid =
+        parser.parse_from(value_argv("tool"_str, "--repeated"_str, "one"_str, "value"_str));
     ASSERT_TRUE(valid.is_err());
     auto error = rstd::move(valid).unwrap_err();
     ASSERT_TRUE(error.is_InvalidValue());

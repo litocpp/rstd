@@ -1,5 +1,5 @@
 export module rstd.core:any;
-import :num.types;
+export import :type_id;
 export import :ptr;
 
 using namespace rstd::prelude;
@@ -7,41 +7,25 @@ using namespace rstd::prelude;
 export namespace rstd::any
 {
 
-class TypeId {
-    template<typename T>
-    struct Token {
-        static inline const u8 value {};
-    };
-
-    const void* value_;
-
-    explicit constexpr TypeId(const void* value) noexcept: value_(value) {}
-
-public:
-    template<typename T>
-    static auto of() noexcept -> TypeId {
-        using U = mtp::rm_cvf<T>;
-        return TypeId { rstd::addressof(Token<U>::value) };
-    }
-
-    friend constexpr auto operator==(TypeId, TypeId) noexcept -> bool = default;
-};
-
 struct Any {
     template<typename Self, typename = void>
     struct Api {
         using Trait = Any;
 
-        auto type_id() const noexcept -> TypeId { return trait_call<0>(this); }
+        auto type_id() const noexcept -> TypeId {
+            static_assert(mtp::same_as<Self, dyn_tag>);
+            auto delegate = static_cast<const ptr_::dyn_delegate<Any>*>(this);
+            return delegate->vtable->concrete_type_id;
+        }
     };
 
-    template<typename T>
-    using Funcs = TraitFuncs<&T::type_id>;
+    template<typename>
+    using Funcs = TraitFuncs<>;
 };
 
 template<typename T>
 auto is(ref<dyn<Any>> value) noexcept -> bool {
-    return value->type_id() == TypeId::of<T>();
+    return value.concrete_type_id() == TypeId::of<T>();
 }
 
 template<typename T>
@@ -53,7 +37,7 @@ template<typename T>
 auto downcast_ref(ref<dyn<Any>> value [[clang::lifetimebound]]) noexcept -> Option<ref<T>> {
     if (! is<T>(value)) return None();
     using Storage = typename ref<T>::storage_type;
-    auto result = ref<T>::from_raw_parts(static_cast<const Storage*>(value.as_raw_ptr()));
+    auto result   = ref<T>::from_raw_parts(static_cast<const Storage*>(value.as_raw_ptr()));
     return Some(rstd::move(result));
 }
 
@@ -61,7 +45,7 @@ template<typename T>
 auto downcast_mut(mut_ref<dyn<Any>> value [[clang::lifetimebound]]) noexcept -> Option<mut_ref<T>> {
     if (! is<T>(value)) return None();
     using Storage = typename mut_ref<T>::storage_type;
-    auto result = mut_ref<T>::from_raw_parts(static_cast<Storage*>(value.as_raw_ptr()));
+    auto result   = mut_ref<T>::from_raw_parts(static_cast<Storage*>(value.as_raw_ptr()));
     return Some(rstd::move(result));
 }
 

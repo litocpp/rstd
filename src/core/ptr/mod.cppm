@@ -24,7 +24,7 @@ export template<typename T, typename... Args>
     requires(! mtp::DST<T>)
 constexpr void construct(mut_ptr<T> destination, Args&&... args) {
     if constexpr (mtp::same_as<T, u8>) {
-        auto value                  = u8(rstd::forward<Args>(args)...);
+        auto value                = u8(rstd::forward<Args>(args)...);
         *destination.as_raw_ptr() = value.to_byte();
     } else {
         rstd::construct_at(destination.as_raw_ptr(), rstd::forward<Args>(args)...);

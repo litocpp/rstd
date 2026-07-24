@@ -1,5 +1,6 @@
 export module rstd.core:num.floating_parse;
 import :num.types;
+import :error.trait;
 export import :num.dec2flt;
 export import :str.traits;
 export import :fmt;
@@ -78,8 +79,8 @@ struct Impl<str_::FromStr, T> {
             return error(num::FloatErrorKind::Invalid);
         }
 
-        auto body = ref<str>::from_raw_parts_unchecked(
-            input.data() + index, usize(input.size().to_primitive() - index));
+        auto body = ref<str>::from_raw_parts_unchecked(input.data() + index,
+                                                       usize(input.size().to_primitive() - index));
         if (body == "inf"_str || body == "infinity"_str) {
             return Ok(negative ? -Self::INFINITY_ : Self::INFINITY_);
         }
@@ -118,8 +119,8 @@ struct Impl<str_::FromStr, T> {
             rstd::int32_t raw_exponent = 0;
             while (index < input.size().to_primitive() && is_digit(byte_at(index))) {
                 if (raw_exponent < 100000) {
-                    raw_exponent = raw_exponent * 10 +
-                                   static_cast<rstd::int32_t>(byte_at(index) - '0');
+                    raw_exponent =
+                        raw_exponent * 10 + static_cast<rstd::int32_t>(byte_at(index) - '0');
                 }
                 ++index;
             }
@@ -162,6 +163,28 @@ struct Impl<fmt::Display, num::ParseFloatError> : ImplBase<num::ParseFloatError>
         }
         return formatter.write_raw(message, rstd::strlen(message));
     }
+};
+
+template<>
+struct Impl<fmt::Debug, num::ParseFloatError> : ImplBase<num::ParseFloatError> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        const char* kind = "Invalid";
+        switch (this->self().kind()) {
+        case num::FloatErrorKind::Empty: kind = "Empty"; break;
+        case num::FloatErrorKind::Invalid: break;
+        case num::FloatErrorKind::PosOverflow: kind = "PosOverflow"; break;
+        case num::FloatErrorKind::NegOverflow: kind = "NegOverflow"; break;
+        }
+        constexpr char prefix[] = "ParseFloatError { kind: ";
+        if (! formatter.write_raw(prefix, sizeof(prefix) - 1)) return false;
+        if (! formatter.write_raw(kind, rstd::strlen(kind))) return false;
+        return formatter.write_raw(" }", 2);
+    }
+};
+
+template<>
+struct Impl<error::Error, num::ParseFloatError> : ImplBase<num::ParseFloatError> {
+    auto source() const noexcept -> Option<error::ErrorRef> { return None(); }
 };
 
 } // namespace rstd

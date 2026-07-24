@@ -10,7 +10,9 @@ using rstd::json::Value;
 namespace
 {
 
-auto parse(ref<str> input) { return rstd::json::from_str(input); }
+auto parse(ref<str> input) {
+    return rstd::json::from_str(input);
+}
 
 void expect_syntax_error(ref<str> input) {
     auto result = parse(input);
@@ -72,8 +74,7 @@ TEST(JsonParser, ParsesNestedContainersAndReplacesDuplicateKeys) {
 }
 
 TEST(JsonParser, DecodesStringEscapesAndUnicode) {
-    auto value =
-        parse(R"("quote:\" slash:\/ line:\n bmp:\u00e9 pair:\ud83d\ude00")"_str).unwrap();
+    auto value = parse(R"("quote:\" slash:\/ line:\n bmp:\u00e9 pair:\ud83d\ude00")"_str).unwrap();
     ASSERT_TRUE(value.as_str().is_some());
     EXPECT_EQ(*value.as_str(), "quote:\" slash:/ line:\n bmp:é pair:😀"_str);
 }
@@ -121,8 +122,7 @@ TEST(JsonParser, CommentsRequireExplicitOption) {
     const auto comments = rstd::json::ParseOptions { .allow_comments = true };
 
     EXPECT_TRUE(parse("/* comment */ null"_str).is_err());
-    EXPECT_TRUE(
-        rstd::json::from_str("/* comment */ null"_str, comments).unwrap().is_null());
+    EXPECT_TRUE(rstd::json::from_str("/* comment */ null"_str, comments).unwrap().is_null());
     EXPECT_EQ((*rstd::json::from_str("[1, // line\n 2, /* block */ 3]"_str, comments)
                     .unwrap()
                     .as_array()
@@ -171,7 +171,7 @@ TEST(JsonParser, SliceAndFromStrTraitReuseParser) {
     EXPECT_EQ(*from_slice, *from_trait);
 
     rstd::byte invalid[] = { rstd::byte { 0xff } };
-    auto invalid_result =
+    auto       invalid_result =
         rstd::json::from_slice(rstd::slice<rstd::u8>::from_raw_parts(invalid, usize(1)));
     EXPECT_TRUE(invalid_result.is_err());
     EXPECT_TRUE(invalid_result.unwrap_err().is_syntax());

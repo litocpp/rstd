@@ -861,14 +861,6 @@ struct TestExecutorContext {
     }
 };
 
-template<>
-struct rstd::Impl<rstd::async::Executor, TestExecutor>
-    : rstd::LinkClassMethod<rstd::async::Executor, TestExecutor> {};
-
-template<>
-struct rstd::Impl<rstd::async::ExecutorContext, TestExecutorContext>
-    : rstd::LinkClassMethod<rstd::async::ExecutorContext, TestExecutorContext> {};
-
 struct RejectSecondExecutorState {
     sync::Mutex<Vec<async::ExecutorJob>> jobs;
     sync::Mutex<usize>                   posts;
@@ -942,10 +934,6 @@ struct RejectSecondExecutorContext {
         return *posts;
     }
 };
-
-template<>
-struct rstd::Impl<rstd::async::Executor, RejectSecondExecutor>
-    : rstd::LinkClassMethod<rstd::async::Executor, RejectSecondExecutor> {};
 
 TEST(AsyncCoro, PollHelpers) {
     auto ready = task::Poll<int>::Ready(3);

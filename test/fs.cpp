@@ -33,9 +33,8 @@ auto raw_bytes(rstd::array<rstd::u8, N>& values) -> rstd::mut_ref<rstd::u8[]> {
 }
 
 template<rstd::size_t N>
-auto equals_native(const rstd::array<rstd::u8, N>& actual,
-                   const char*                       expected,
-                   rstd::size_t                     len) -> bool {
+auto equals_native(const rstd::array<rstd::u8, N>& actual, const char* expected, rstd::size_t len)
+    -> bool {
     for (rstd::size_t index = 0; index != len; ++index) {
         if (actual[rstd::usize(index)].to_primitive() !=
             static_cast<rstd::uint8_t>(expected[index]))
@@ -107,7 +106,7 @@ TEST(Fs, ExternalRawBufferRoundTrip) {
     const rstd::byte input[] {
         rstd::byte { 0 }, rstd::byte { 127 }, rstd::byte { 128 }, rstd::byte { 255 }
     };
-    auto             readable = rstd::slice<rstd::byte>::from_raw_parts(input, rstd::usize(4));
+    auto readable = rstd::slice<rstd::byte>::from_raw_parts(input, rstd::usize(4));
     EXPECT_EQ(file.write(rstd::as_u8_slice(readable)).unwrap_unchecked(), rstd::usize(4));
     file.seek(SeekFrom::from_start(rstd::u64())).unwrap_unchecked();
 
@@ -387,8 +386,7 @@ TEST(FsFreeFn, ReadLink) {
     ::close(lf);
     ::unlink(link_path);
 
-    EXPECT_TRUE(rstd::fs::soft_link(path_from_c_str(src), path_from_c_str(link_path))
-                    .is_ok());
+    EXPECT_TRUE(rstd::fs::soft_link(path_from_c_str(src), path_from_c_str(link_path)).is_ok());
     auto target = rstd::fs::read_link(path_from_c_str(link_path)).unwrap_unchecked();
     EXPECT_EQ(target.len(), rstd::usize(std::strlen(src)));
 
@@ -474,8 +472,7 @@ TEST(FsFile, ReadAtWriteAt) {
 
     const auto& shared = f;
     auto        world  = native_bytes("WORLD", 5);
-    EXPECT_TRUE(
-        rstd::io::write_all_at(shared, world.as_slice(), rstd::u64(200)).is_ok());
+    EXPECT_TRUE(rstd::io::write_all_at(shared, world.as_slice(), rstd::u64(200)).is_ok());
     auto trait_buf = rstd::array<rstd::u8, 5> {};
     EXPECT_TRUE(rstd::io::read_exact_at(shared, raw_bytes(trait_buf), rstd::u64(200)).is_ok());
     EXPECT_TRUE(equals_native(trait_buf, "WORLD", 5));

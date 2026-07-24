@@ -235,26 +235,26 @@ struct Impl<fmt::Debug, sync::mpmc::RecvTimeoutError> : ImplBase<sync::mpmc::Rec
 
 template<typename T>
 struct Impl<error::Error, sync::mpmc::SendError<T>>
-    : LinkClassMethod<error::Error, sync::mpmc::SendError<T>> {};
+    : DefaultInImpl<error::Error, sync::mpmc::SendError<T>> {};
 
 template<typename T>
 struct Impl<error::Error, sync::mpmc::TrySendError<T>>
-    : LinkClassMethod<error::Error, sync::mpmc::TrySendError<T>> {};
+    : DefaultInImpl<error::Error, sync::mpmc::TrySendError<T>> {};
 
 template<typename T>
 struct Impl<error::Error, sync::mpmc::SendTimeoutError<T>>
-    : LinkClassMethod<error::Error, sync::mpmc::SendTimeoutError<T>> {};
+    : DefaultInImpl<error::Error, sync::mpmc::SendTimeoutError<T>> {};
 
 template<>
 struct Impl<error::Error, sync::mpmc::RecvError>
-    : LinkClassMethod<error::Error, sync::mpmc::RecvError> {};
+    : DefaultInImpl<error::Error, sync::mpmc::RecvError> {};
 
 template<>
 struct Impl<error::Error, sync::mpmc::TryRecvError>
-    : LinkClassMethod<error::Error, sync::mpmc::TryRecvError> {};
+    : DefaultInImpl<error::Error, sync::mpmc::TryRecvError> {};
 
 template<>
 struct Impl<error::Error, sync::mpmc::RecvTimeoutError>
-    : LinkClassMethod<error::Error, sync::mpmc::RecvTimeoutError> {};
+    : DefaultInImpl<error::Error, sync::mpmc::RecvTimeoutError> {};
 
 } // namespace rstd

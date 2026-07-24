@@ -25,9 +25,7 @@ class Emitter {
     rstd::fmt::Formatter& formatter_;
     FormatOptions         options_;
 
-    auto write(ref<str> value) -> bool {
-        return formatter_.write_str(value);
-    }
+    auto write(ref<str> value) -> bool { return formatter_.write_str(value); }
 
     auto write_byte(u8 value) -> bool {
         auto const byte = value.to_primitive();
@@ -45,8 +43,8 @@ class Emitter {
     auto write_string(ref<str> value) -> bool {
         if (! write_byte(u8('"'))) return false;
         static constexpr auto HEX = "0123456789abcdef"_str;
-        usize chunk_start {};
-        auto flush_chunk = [&](usize end) {
+        usize                 chunk_start {};
+        auto                  flush_chunk = [&](usize end) {
             if (chunk_start == end) return true;
             return write(ref<str>::from_raw_parts_unchecked(
                 value.data() + chunk_start.to_primitive(), end - chunk_start));
@@ -66,14 +64,13 @@ class Emitter {
             default:
                 if (byte < u8(0x20)) {
                     if (! flush_chunk(i)) return false;
-                    auto escape = rstd::array<u8, 6> {
-                        u8('\\'),
-                        u8('u'),
-                        u8('0'),
-                        u8('0'),
-                        HEX[usize((byte >> u64(4)).to_primitive())],
-                        HEX[usize((byte & u8(0x0f)).to_primitive())]
-                    };
+                    auto escape =
+                        rstd::array<u8, 6> { u8('\\'),
+                                             u8('u'),
+                                             u8('0'),
+                                             u8('0'),
+                                             HEX[usize((byte >> u64(4)).to_primitive())],
+                                             HEX[usize((byte & u8(0x0f)).to_primitive())] };
                     if (! write(rstd::from_utf8_unchecked(escape.as_slice()))) return false;
                     chunk_start = i + usize(1);
                 }

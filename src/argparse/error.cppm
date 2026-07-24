@@ -208,12 +208,11 @@ struct Impl<fmt::Display, argparse::DefinitionError> : ImplBase<argparse::Defini
         case argparse::DefinitionError::Tag::InvalidArgumentId:
             return formatter.write_fmt(
                 fmt::Arguments::make("invalid argument id '{}'", error.as_InvalidArgumentId().id));
-        case argparse::DefinitionError::Tag::InvalidShortName:
-            {
-                auto name = String::make("-"_str);
-                name.push_ascii(error.as_InvalidShortName().name);
-                return formatter.write_fmt(fmt::Arguments::make("invalid short option '{}'", name));
-            }
+        case argparse::DefinitionError::Tag::InvalidShortName: {
+            auto name = String::make("-"_str);
+            name.push_ascii(error.as_InvalidShortName().name);
+            return formatter.write_fmt(fmt::Arguments::make("invalid short option '{}'", name));
+        }
         case argparse::DefinitionError::Tag::InvalidLongName:
             return formatter.write_fmt(fmt::Arguments::make("invalid long option '--{}'",
                                                             error.as_InvalidLongName().name));
@@ -230,15 +229,11 @@ struct Impl<fmt::Display, argparse::DefinitionError> : ImplBase<argparse::Defini
             return formatter.write_fmt(fmt::Arguments::make("incompatible action for argument '{}'",
                                                             error.as_IncompatibleAction().id));
         case argparse::DefinitionError::Tag::InvalidDefaultValue:
-            return formatter.write_fmt(
-                fmt::Arguments::make("invalid default value for argument '{}': {}",
-                                     error.as_InvalidDefaultValue().id,
-                                     error.as_InvalidDefaultValue().error));
+            return formatter.write_fmt(fmt::Arguments::make(
+                "invalid default value for argument '{}'", error.as_InvalidDefaultValue().id));
         case argparse::DefinitionError::Tag::InvalidImplicitValue:
-            return formatter.write_fmt(
-                fmt::Arguments::make("invalid implicit value for argument '{}': {}",
-                                     error.as_InvalidImplicitValue().id,
-                                     error.as_InvalidImplicitValue().error));
+            return formatter.write_fmt(fmt::Arguments::make(
+                "invalid implicit value for argument '{}'", error.as_InvalidImplicitValue().id));
         case argparse::DefinitionError::Tag::InvalidGroup:
             return formatter.write_fmt(
                 fmt::Arguments::make("invalid argument group '{}'", error.as_InvalidGroup().id));
@@ -291,10 +286,9 @@ struct Impl<fmt::Display, argparse::ParseError> : ImplBase<argparse::ParseError>
                                                             error.as_TooManyValues().id));
         case argparse::ParseError::Tag::InvalidValue:
             return formatter.write_fmt(
-                fmt::Arguments::make("invalid value '{}' for argument '{}': {}",
+                fmt::Arguments::make("invalid value '{}' for argument '{}'",
                                      error.as_InvalidValue().value.as_os_str(),
-                                     error.as_InvalidValue().id,
-                                     error.as_InvalidValue().error));
+                                     error.as_InvalidValue().id));
         case argparse::ParseError::Tag::InvalidUtf8Value:
             return formatter.write_fmt(
                 fmt::Arguments::make("value '{}' for argument '{}' is not valid UTF-8",
@@ -362,5 +356,36 @@ struct Impl<fmt::Debug, argparse::MatchAccessError> : ImplBase<argparse::MatchAc
         return as<fmt::Display>(this->self()).fmt(formatter);
     }
 };
+
+template<>
+struct Impl<error::Error, argparse::ValueError>
+    : DefaultInImpl<error::Error, argparse::ValueError> {};
+
+template<>
+struct Impl<error::Error, argparse::DefinitionError> : ImplBase<argparse::DefinitionError> {
+    auto source() const noexcept -> Option<error::ErrorRef> {
+        const auto& value = this->self();
+        switch (value.tag()) {
+        case argparse::DefinitionError::Tag::InvalidDefaultValue:
+            return Some(dyn<error::Error>::from_ref(value.as_InvalidDefaultValue().error));
+        case argparse::DefinitionError::Tag::InvalidImplicitValue:
+            return Some(dyn<error::Error>::from_ref(value.as_InvalidImplicitValue().error));
+        default: return None();
+        }
+    }
+};
+
+template<>
+struct Impl<error::Error, argparse::ParseError> : ImplBase<argparse::ParseError> {
+    auto source() const noexcept -> Option<error::ErrorRef> {
+        const auto& value = this->self();
+        if (value.tag() != argparse::ParseError::Tag::InvalidValue) return None();
+        return Some(dyn<error::Error>::from_ref(value.as_InvalidValue().error));
+    }
+};
+
+template<>
+struct Impl<error::Error, argparse::MatchAccessError>
+    : DefaultInImpl<error::Error, argparse::MatchAccessError> {};
 
 } // namespace rstd

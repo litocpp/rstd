@@ -7,10 +7,10 @@ using rstd::ffi::CStr;
 using rstd::ffi::FromBytesWithNulError;
 using rstd::ffi::CString;
 
-static_assert(rstd::mtp::same_as<decltype(rstd::mtp::declval<rstd::ref<CStr>>().as_ptr()),
-                                 char const*>);
-static_assert(rstd::mtp::same_as<decltype(rstd::mtp::declval<CString const&>().as_ptr()),
-                                 char const*>);
+static_assert(
+    rstd::mtp::same_as<decltype(rstd::mtp::declval<rstd::ref<CStr>>().as_ptr()), char const*>);
+static_assert(
+    rstd::mtp::same_as<decltype(rstd::mtp::declval<CString const&>().as_ptr()), char const*>);
 
 namespace
 {
@@ -40,16 +40,16 @@ TEST(CStr, CheckedBorrowRequiresOneTrailingNul) {
 
 TEST(CStr, CheckedBorrowReportsInteriorAndMissingNul) {
     char interior[] { 'a', '\0', 'b', '\0' };
-    auto interior_result = CStr::from_chars_with_nul(
-        rstd::slice<char>::from_raw_parts(interior, rstd::usize(4)));
+    auto interior_result =
+        CStr::from_chars_with_nul(rstd::slice<char>::from_raw_parts(interior, rstd::usize(4)));
     ASSERT_TRUE(interior_result.is_err());
     auto interior_error = interior_result.unwrap_err_unchecked();
     EXPECT_EQ(interior_error.kind(), FromBytesWithNulError::Kind::InteriorNul);
     EXPECT_EQ(interior_error.nul_position(), rstd::Some(rstd::usize(1)));
 
     char missing[] { 'a', 'b' };
-    auto missing_result = CStr::from_chars_with_nul(
-        rstd::slice<char>::from_raw_parts(missing, rstd::usize(2)));
+    auto missing_result =
+        CStr::from_chars_with_nul(rstd::slice<char>::from_raw_parts(missing, rstd::usize(2)));
     ASSERT_TRUE(missing_result.is_err());
     EXPECT_EQ(missing_result.unwrap_err_unchecked().kind(),
               FromBytesWithNulError::Kind::NotNulTerminated);
@@ -76,8 +76,7 @@ TEST(CString, ConstructionErrorsRetainInputOwner) {
     auto with_nul = CString::from_vec_with_nul(bytes("abc"_bytes));
     ASSERT_TRUE(with_nul.is_err());
     auto with_nul_error = rstd::move(with_nul).unwrap_err_unchecked();
-    EXPECT_EQ(with_nul_error.error().kind(),
-              FromBytesWithNulError::Kind::NotNulTerminated);
+    EXPECT_EQ(with_nul_error.error().kind(), FromBytesWithNulError::Kind::NotNulTerminated);
     EXPECT_EQ(rstd::move(with_nul_error).into_bytes().as_slice(), "abc"_bytes);
 }
 

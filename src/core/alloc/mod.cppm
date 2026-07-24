@@ -2,6 +2,7 @@ module;
 #include <rstd/macro.hpp>
 export module rstd.core:alloc;
 import :num.types;
+import :error.trait;
 export import :alloc.global;
 export import :alloc.layout;
 export import :ptr.non_null;
@@ -84,6 +85,26 @@ using alloc::Allocator;
 using alloc::AllocError;
 using alloc::Allocation;
 using alloc::Layout;
+
+template<>
+struct Impl<fmt::Display, alloc::AllocError> : ImplBase<alloc::AllocError> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        return formatter.write_raw("memory allocation failed",
+                                   sizeof("memory allocation failed") - 1);
+    }
+};
+
+template<>
+struct Impl<fmt::Debug, alloc::AllocError> : ImplBase<alloc::AllocError> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        return formatter.write_raw("AllocError", sizeof("AllocError") - 1);
+    }
+};
+
+template<>
+struct Impl<error::Error, alloc::AllocError> : ImplBase<alloc::AllocError> {
+    auto source() const noexcept -> Option<error::ErrorRef> { return None(); }
+};
 
 template<typename Tag>
     requires mtp::trait_default_tag<Tag>

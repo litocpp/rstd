@@ -113,14 +113,19 @@ TEST(Path, HasRoot) {
 }
 
 TEST(Path, StartsWithComponentBoundary) {
-    EXPECT_TRUE(rstd::ref<Path>("/assets/scene.json"_str).starts_with(rstd::ref<Path>("/assets"_str)));
-    EXPECT_TRUE(rstd::ref<Path>("/assets/scene.json"_str).starts_with(rstd::ref<Path>("/assets/"_str)));
-    EXPECT_FALSE(rstd::ref<Path>("/assets/scene.json"_str).starts_with(rstd::ref<Path>("/asset"_str)));
-    EXPECT_FALSE(rstd::ref<Path>("/assets/scene.json"_str).starts_with(rstd::ref<Path>("assets"_str)));
+    EXPECT_TRUE(
+        rstd::ref<Path>("/assets/scene.json"_str).starts_with(rstd::ref<Path>("/assets"_str)));
+    EXPECT_TRUE(
+        rstd::ref<Path>("/assets/scene.json"_str).starts_with(rstd::ref<Path>("/assets/"_str)));
+    EXPECT_FALSE(
+        rstd::ref<Path>("/assets/scene.json"_str).starts_with(rstd::ref<Path>("/asset"_str)));
+    EXPECT_FALSE(
+        rstd::ref<Path>("/assets/scene.json"_str).starts_with(rstd::ref<Path>("assets"_str)));
 }
 
 TEST(Path, StripPrefix) {
-    auto stripped = rstd::ref<Path>("/assets/scene.json"_str).strip_prefix(rstd::ref<Path>("/assets"_str));
+    auto stripped =
+        rstd::ref<Path>("/assets/scene.json"_str).strip_prefix(rstd::ref<Path>("/assets"_str));
     ASSERT_TRUE(stripped.is_some());
     EXPECT_EQ((*stripped).to_str().unwrap(), "scene.json"_str);
 }
@@ -130,17 +135,19 @@ TEST(Path, StripPrefixRootAndExact) {
     ASSERT_TRUE(root.is_some());
     EXPECT_EQ((*root).to_str().unwrap(), "test/haha/foo.txt"_str);
 
-    auto exact =
-        rstd::ref<Path>("/test/haha/foo.txt/"_str).strip_prefix(rstd::ref<Path>("/test/haha/foo.txt"_str));
+    auto exact = rstd::ref<Path>("/test/haha/foo.txt/"_str)
+                     .strip_prefix(rstd::ref<Path>("/test/haha/foo.txt"_str));
     ASSERT_TRUE(exact.is_some());
     EXPECT_TRUE((*exact).is_empty());
 }
 
 TEST(Path, StripPrefixMismatch) {
-    EXPECT_TRUE(
-        rstd::ref<Path>("/assets/scene.json"_str).strip_prefix(rstd::ref<Path>("/asset"_str)).is_none());
-    EXPECT_TRUE(
-        rstd::ref<Path>("/assets/scene.json"_str).strip_prefix(rstd::ref<Path>("assets"_str)).is_none());
+    EXPECT_TRUE(rstd::ref<Path>("/assets/scene.json"_str)
+                    .strip_prefix(rstd::ref<Path>("/asset"_str))
+                    .is_none());
+    EXPECT_TRUE(rstd::ref<Path>("/assets/scene.json"_str)
+                    .strip_prefix(rstd::ref<Path>("assets"_str))
+                    .is_none());
 }
 
 // ── PathBuf ──────────────────────────────────────────────────────────────

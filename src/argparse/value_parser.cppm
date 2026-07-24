@@ -149,17 +149,6 @@ auto choice_parser(P parser, Vec<T> choices) -> ChoiceValueParser<T, P>
 
 } // namespace rstd::argparse
 
-namespace rstd
-{
-
-template<typename T, typename P>
-    requires requires(const P& parser, ref<ffi::OsStr> value) { parser.parse(value); } &&
-             mtp::same_as<decltype(mtp::declval<const P&>().parse(mtp::declval<ref<ffi::OsStr>>())),
-                          Result<T, argparse::ValueError>>
-struct Impl<argparse::ValueParser<T>, P> : LinkClassMethod<argparse::ValueParser<T>, P> {};
-
-} // namespace rstd
-
 struct ErasedDefaultValue {
     template<typename Self, typename = void>
     struct Api {
@@ -186,15 +175,6 @@ public:
 
     auto type_id() const noexcept -> rstd::any::TypeId { return rstd::any::TypeId::of<T>(); }
 };
-
-namespace rstd
-{
-
-template<typename T>
-struct Impl<::ErasedDefaultValue, ::ErasedDefaultValueAdapter<T>>
-    : LinkClassMethod<::ErasedDefaultValue, ::ErasedDefaultValueAdapter<T>> {};
-
-} // namespace rstd
 
 struct ErasedValueParser {
     template<typename Self, typename = void>
@@ -246,12 +226,3 @@ public:
 
     auto type_id() const noexcept -> rstd::any::TypeId { return rstd::any::TypeId::of<T>(); }
 };
-
-namespace rstd
-{
-
-template<typename T>
-struct Impl<::ErasedValueParser, ::ErasedValueParserAdapter<T>>
-    : LinkClassMethod<::ErasedValueParser, ::ErasedValueParserAdapter<T>> {};
-
-} // namespace rstd

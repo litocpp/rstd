@@ -35,7 +35,8 @@ TEST(JsonSerialize, WritesPrettyJsonWithRequestedIndent) {
 
 TEST(JsonSerialize, EscapesStringsAndPreservesUtf8) {
     auto value =
-        from_str(R"({"text":"quote:\" slash:/ backslash:\\ controls:\b\f\n\r\t\u0001 utf8:雪"})"_str)
+        from_str(
+            R"({"text":"quote:\" slash:/ backslash:\\ controls:\b\f\n\r\t\u0001 utf8:雪"})"_str)
             .unwrap();
     EXPECT_EQ(text(to_string(value)),
               R"({"text":"quote:\" slash:/ backslash:\\ controls:\b\f\n\r\t\u0001 utf8:雪"})");

@@ -27,7 +27,29 @@ struct MoveOnlyValue {
 
 TEST(Any, TypeIdIsStableAcrossModuleBoundary) {
     EXPECT_EQ(rstd::any::TypeId::of<int>(), any_int_type_id_from_module());
+    EXPECT_EQ(rstd::any::TypeId::of<rstd::u8>(), any_u8_type_id_from_module());
     EXPECT_NE(rstd::any::TypeId::of<int>(), rstd::any::TypeId::of<unsigned>());
+}
+
+TEST(Any, BoxedU8KeepsTypeAcrossVecMove) {
+    auto boxed = Box<dyn<rstd::any::Any>>::make(rstd::u8(1));
+    EXPECT_TRUE(rstd::any::is<rstd::u8>(boxed.as_ref()));
+
+    auto values = Vec<Box<dyn<rstd::any::Any>>>::make();
+    values.push(rstd::move(boxed));
+    EXPECT_TRUE(rstd::any::is<rstd::u8>(values[rstd::usize()].as_ref()));
+
+    auto value = rstd::any::downcast_mut<rstd::u8>(values[rstd::usize()].deref_mut());
+    ASSERT_TRUE(value.is_some());
+    EXPECT_EQ(**value, rstd::u8(1));
+}
+
+TEST(Any, OwningDowncastRestoresSpecializedStoragePointer) {
+    auto erased   = Box<dyn<rstd::any::Any>>::make(rstd::u8(7));
+    auto concrete = rstd::move(erased).downcast<rstd::u8>();
+
+    ASSERT_TRUE(concrete.is_ok());
+    EXPECT_EQ(**concrete, rstd::u8(7));
 }
 
 TEST(Any, BorrowedDowncastChecksType) {

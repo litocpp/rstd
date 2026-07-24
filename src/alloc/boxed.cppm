@@ -112,13 +112,14 @@ public:
     static auto make(U&& in) -> Box
         requires(! Impled<T, Sized> && mtp::dyn_traits<T>::template Impled<U>)
     {
-        auto layout = Layout::make<U>();
-        auto res    = as<Allocator>(GLOBAL).allocate(layout);
+        using Concrete = mtp::rm_cvf<U>;
+        auto layout    = Layout::make<Concrete>();
+        auto res       = as<Allocator>(GLOBAL).allocate(layout);
         if (res.is_err()) handle_alloc_error(layout);
 
-        auto p = res.unwrap_unchecked().template as_mut_ptr<U>();
-        new (p.as_raw_ptr()) U(rstd::forward<U>(in));
-        return from_raw(T::from_ptr(p.as_raw_ptr()));
+        auto p = res.unwrap_unchecked().template as_mut_ptr<Concrete>();
+        new (p.as_raw_ptr()) Concrete(rstd::forward<U>(in));
+        return from_raw(T::from_ptr(p));
     }
 
     /// Constructs a `Box` from a raw mutable pointer.
@@ -194,7 +195,21 @@ public:
         if (! rstd::any::is<U>(as_ref())) return Err(rstd::move(*this));
 
         auto raw      = rstd::move(*this).into_raw();
-        auto concrete = mut_ptr<U>::from_raw_parts(static_cast<U*>(raw.as_raw_ptr()));
+        using Storage = typename mut_ptr<U>::storage_type;
+        auto concrete = mut_ptr<U>::from_raw_parts(static_cast<Storage*>(raw.as_raw_ptr()));
+        return Ok(Box<U>::from_raw(concrete));
+    }
+
+    /// Downcasts a boxed `Error` value to its concrete error type.
+    template<typename U>
+    auto downcast() && -> Result<Box<U>, Box>
+        requires mtp::same_as<T, rstd::dyn<rstd::error::Error>> && Impled<U, rstd::error::Error>
+    {
+        if (! rstd::error::is<U>(as_ref())) return Err(rstd::move(*this));
+
+        auto raw      = rstd::move(*this).into_raw();
+        using Storage = typename mut_ptr<U>::storage_type;
+        auto concrete = mut_ptr<U>::from_raw_parts(static_cast<Storage*>(raw.as_raw_ptr()));
         return Ok(Box<U>::from_raw(concrete));
     }
 
@@ -301,6 +316,24 @@ struct Impl<iter::IntoIterator, mut_ref<::alloc::boxed::Box<T[]>>>
     auto into_iter() -> IntoIter {
         auto& source = *this->self();
         return { source.begin(), source.end() };
+    }
+};
+
+template<>
+struct Impl<fmt::Display, ::alloc::boxed::Box<dyn<error::Error>>>
+    : ImplBase<::alloc::boxed::Box<dyn<error::Error>>> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        auto value = this->self().as_ref();
+        return as<fmt::Display>(value).fmt(formatter);
+    }
+};
+
+template<>
+struct Impl<fmt::Debug, ::alloc::boxed::Box<dyn<error::Error>>>
+    : ImplBase<::alloc::boxed::Box<dyn<error::Error>>> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        auto value = this->self().as_ref();
+        return as<fmt::Debug>(value).fmt(formatter);
     }
 };
 

@@ -75,9 +75,8 @@ class BufWriter {
         rstd::size_t offset    = 0;
         auto         bytes     = buf_.as_slice();
         while (remaining != 0) {
-            auto pending =
-                slice<u8>::from_raw_parts(bytes.as_raw_ptr() + offset, usize(remaining));
-            auto res = as<Write>(inner_).write(pending);
+            auto pending = slice<u8>::from_raw_parts(bytes.as_raw_ptr() + offset, usize(remaining));
+            auto res     = as<Write>(inner_).write(pending);
             if (res.is_err()) {
                 if (offset != 0) {
                     auto const left = buf_.len().to_primitive() - offset;

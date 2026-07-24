@@ -716,8 +716,8 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
             }
 
             for (usize offset = usize(1); offset < token.len(); ++offset) {
-                auto name    = short_option_name(bytes[offset]);
-                auto slot    = schema_->option_index.get(name->as_str());
+                auto                 name     = short_option_name(bytes[offset]);
+                auto                 slot     = schema_->option_index.get(name->as_str());
                 const auto&          spec     = schema_->args[**slot];
                 Option<IndexedValue> attached = None();
                 if ((spec.action.is_Set() || spec.action.is_Append()) &&

@@ -117,7 +117,7 @@ class IteratorOverRange : public DefaultInClass<IteratorOverRange<B, E>, Iterato
     }
 
 public:
-    using Item = std::iter_reference_t<B>;
+    using Item                                = std::iter_reference_t<B>;
     static constexpr bool PROVEN_DOUBLE_ENDED = DOUBLE_ENDED;
     static constexpr bool PROVEN_EXACT_SIZE   = EXACT_SIZE;
     static constexpr bool PROVEN_FUSED        = true;
@@ -169,7 +169,7 @@ constexpr auto from_range(R& range [[clang::lifetimebound]]) {
     using Iterator = std::ranges::iterator_t<R>;
     using Sentinel = std::ranges::sentinel_t<R>;
     return IteratorOverRange<Iterator, Sentinel>(std::ranges::begin(range),
-                                                  std::ranges::end(range));
+                                                 std::ranges::end(range));
 }
 
 export template<std::ranges::input_range R>
@@ -178,7 +178,7 @@ constexpr auto from_range(R&& range [[clang::lifetimebound]]) {
     using Iterator = std::ranges::iterator_t<R>;
     using Sentinel = std::ranges::sentinel_t<R>;
     return IteratorOverRange<Iterator, Sentinel>(std::ranges::begin(range),
-                                                  std::ranges::end(range));
+                                                 std::ranges::end(range));
 }
 
 } // namespace rstd::iter
@@ -247,8 +247,7 @@ export namespace rstd
 {
 
 template<class T, class Alloc>
-struct Impl<iter::FromIterator<T>, std::vector<T, Alloc>>
-    : ImplBase<std::vector<T, Alloc>> {
+struct Impl<iter::FromIterator<T>, std::vector<T, Alloc>> : ImplBase<std::vector<T, Alloc>> {
     template<class I>
     static auto from_iter(I iterator) -> std::vector<T, Alloc> {
         return iter::details::collect_back<std::vector<T, Alloc>>(rstd::move(iterator));
@@ -360,8 +359,7 @@ struct Impl<iter::FromIterator<tuple<K, V>>, std::unordered_map<K, V, Hash, Equa
 };
 
 template<class K, class V, class Hash, class Equal, class Alloc>
-struct Impl<iter::FromIterator<tuple<K, V>>,
-            std::unordered_multimap<K, V, Hash, Equal, Alloc>>
+struct Impl<iter::FromIterator<tuple<K, V>>, std::unordered_multimap<K, V, Hash, Equal, Alloc>>
     : ImplBase<std::unordered_multimap<K, V, Hash, Equal, Alloc>> {
     template<class I>
     static auto from_iter(I iterator) -> std::unordered_multimap<K, V, Hash, Equal, Alloc> {
@@ -371,8 +369,7 @@ struct Impl<iter::FromIterator<tuple<K, V>>,
 };
 
 template<class T, class Container>
-struct Impl<iter::FromIterator<T>, std::queue<T, Container>>
-    : ImplBase<std::queue<T, Container>> {
+struct Impl<iter::FromIterator<T>, std::queue<T, Container>> : ImplBase<std::queue<T, Container>> {
     template<class I>
     static auto from_iter(I iterator) -> std::queue<T, Container> {
         return iter::details::collect_adapter<std::queue<T, Container>>(rstd::move(iterator));
@@ -380,8 +377,7 @@ struct Impl<iter::FromIterator<T>, std::queue<T, Container>>
 };
 
 template<class T, class Container>
-struct Impl<iter::FromIterator<T>, std::stack<T, Container>>
-    : ImplBase<std::stack<T, Container>> {
+struct Impl<iter::FromIterator<T>, std::stack<T, Container>> : ImplBase<std::stack<T, Container>> {
     template<class I>
     static auto from_iter(I iterator) -> std::stack<T, Container> {
         return iter::details::collect_adapter<std::stack<T, Container>>(rstd::move(iterator));

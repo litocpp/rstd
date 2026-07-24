@@ -38,7 +38,8 @@ TEST(ArgparseErrors, DistinguishesMissingTooFewTooManyAndDuplicate) {
     ASSERT_TRUE(too_many.is_err());
     EXPECT_TRUE(too_many.unwrap_err().is_TooManyValues());
 
-    auto duplicate = parser.parse_from(error_argv("tool"_str, "--once"_str, "one"_str, "--once"_str, "two"_str));
+    auto duplicate =
+        parser.parse_from(error_argv("tool"_str, "--once"_str, "one"_str, "--once"_str, "two"_str));
     ASSERT_TRUE(duplicate.is_err());
     EXPECT_TRUE(duplicate.unwrap_err().is_DuplicateArgument());
 }
@@ -59,8 +60,7 @@ TEST(ArgparseErrors, ReportsNonUtf8SeparatelyWithValueIndex) {
     auto error = rstd::move(result).unwrap_err();
     ASSERT_TRUE(error.is_InvalidUtf8Value());
     EXPECT_EQ(error.as_InvalidUtf8Value().index, usize(1));
-    EXPECT_EQ(error.as_InvalidUtf8Value().value.as_os_str().as_encoded_bytes()[usize()],
-              u8(0xFF));
+    EXPECT_EQ(error.as_InvalidUtf8Value().value.as_os_str().as_encoded_bytes()[usize()], u8(0xFF));
 }
 
 TEST(ArgparseErrors, KeepsGlobalIndicesAcrossSubcommands) {

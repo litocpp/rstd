@@ -111,6 +111,9 @@ struct Impl<fmt::Debug, toml::Error> : ImplBase<toml::Error> {
     }
 };
 
+template<>
+struct Impl<error::Error, toml::Error> : DefaultInImpl<error::Error, toml::Error> {};
+
 auto Impl<fmt::Display, toml::Error>::fmt(fmt::Formatter& formatter) const -> bool {
     const char* message = "TOML syntax error";
     switch (this->self().code_) {

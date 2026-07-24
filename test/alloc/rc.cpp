@@ -47,13 +47,6 @@ struct RcDynEmptyPayload {
 
 struct RcDynNoTrait {};
 
-template<>
-struct rstd::Impl<RcDynTrait, RcDynPayload> : rstd::LinkClassMethod<RcDynTrait, RcDynPayload> {};
-
-template<>
-struct rstd::Impl<RcDynTrait, RcDynEmptyPayload>
-    : rstd::LinkClassMethod<RcDynTrait, RcDynEmptyPayload> {};
-
 using RcDyn     = Rc<rstd::dyn<RcDynTrait>>;
 using RcDynWeak = Weak<rstd::dyn<RcDynTrait>>;
 using RcDynRaw  = RcRaw<rstd::dyn<RcDynTrait>>;

@@ -41,9 +41,7 @@ public:
 
     auto as_cstr() const noexcept { return inner.as_ref(); }
 
-    auto as_str() const noexcept -> ref<str> {
-        return rstd::from_utf8_unchecked(inner.to_bytes());
-    }
+    auto as_str() const noexcept -> ref<str> { return rstd::from_utf8_unchecked(inner.to_bytes()); }
 };
 
 } // namespace sys::thread::thread_name_string
@@ -52,8 +50,11 @@ using rstd_alloc::string::String;
 using sys::thread::thread_name_string::ThreadNameString;
 
 template<>
-struct Impl<convert::From<String>, ThreadNameString>
-    : LinkClassMethod<convert::From<String>, ThreadNameString> {};
+struct Impl<convert::From<String>, ThreadNameString> {
+    static auto from(String value) -> ThreadNameString {
+        return ThreadNameString::from(rstd::move(value));
+    }
+};
 
 template<>
 struct Impl<clone::Clone, ThreadNameString> : DefaultInImpl<clone::Clone, ThreadNameString> {

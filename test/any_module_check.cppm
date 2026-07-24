@@ -5,3 +5,7 @@ import rstd;
 export auto any_int_type_id_from_module() noexcept -> rstd::any::TypeId {
     return rstd::any::TypeId::of<int>();
 }
+
+export auto any_u8_type_id_from_module() noexcept -> rstd::any::TypeId {
+    return rstd::any::TypeId::of<rstd::u8>();
+}

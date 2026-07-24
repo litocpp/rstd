@@ -39,12 +39,3 @@ public:
 };
 
 } // namespace rstd::async
-
-namespace rstd
-{
-
-template<>
-struct Impl<async::Executor, async::ThreadPoolExecutor>
-    : LinkClassMethod<async::Executor, async::ThreadPoolExecutor> {};
-
-} // namespace rstd

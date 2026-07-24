@@ -82,25 +82,6 @@ struct TestClassFields {
     explicit TestClassFields(int v = 0): value(v) {}
 };
 
-struct TestClass;
-
-template<>
-struct rstd::Impl<CloneTrait, TestClass> : rstd::LinkClassMethod<CloneTrait, TestClass> {};
-
-template<>
-struct rstd::Impl<DisplayTrait, TestClass> : rstd::LinkClassMethod<DisplayTrait, TestClass> {};
-
-template<>
-struct rstd::Impl<AddableTrait, TestClass> : rstd::LinkClassMethod<AddableTrait, TestClass> {};
-
-template<>
-struct rstd::Impl<MultiplyableTrait, TestClass>
-    : rstd::LinkClassMethod<MultiplyableTrait, TestClass> {};
-
-template<>
-struct rstd::Impl<StringConverterTrait, TestClass>
-    : rstd::LinkClassMethod<StringConverterTrait, TestClass> {};
-
 struct TestClass : public TestClassFields {
     using TestClassFields::TestClassFields;
 

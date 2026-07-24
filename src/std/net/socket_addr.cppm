@@ -9,7 +9,7 @@ export class Ipv4Addr {
 
 public:
     static constexpr auto make(u8 a, u8 b, u8 c, u8 d) noexcept -> Ipv4Addr {
-        auto out        = Ipv4Addr {};
+        auto out               = Ipv4Addr {};
         out.m_octets[usize()]  = a;
         out.m_octets[usize(1)] = b;
         out.m_octets[usize(2)] = c;
@@ -22,12 +22,9 @@ public:
     }
     static constexpr auto any() noexcept -> Ipv4Addr { return make(u8(), u8(), u8(), u8()); }
 
-    constexpr auto octet(usize index) const noexcept -> u8 {
-        return m_octets[index];
-    }
+    constexpr auto octet(usize index) const noexcept -> u8 { return m_octets[index]; }
 
-    friend constexpr auto operator==(Ipv4Addr const& left, Ipv4Addr const& right) noexcept
-        -> bool {
+    friend constexpr auto operator==(Ipv4Addr const& left, Ipv4Addr const& right) noexcept -> bool {
         for (rstd::size_t index = 0; index < 4; ++index) {
             if (left.m_octets[usize(index)] != right.m_octets[usize(index)]) return false;
         }
@@ -44,7 +41,7 @@ public:
         auto out      = Ipv6Addr {};
         u16  parts[8] = { a, b, c, d, e, f, g, h };
         for (rstd::size_t i = 0; i < 8; ++i) {
-            auto part               = parts[i].to_primitive();
+            auto part                      = parts[i].to_primitive();
             out.m_octets[usize(i * 2)]     = u8(part >> 8);
             out.m_octets[usize(i * 2 + 1)] = u8(part);
         }
@@ -58,12 +55,9 @@ public:
         return make(u16(), u16(), u16(), u16(), u16(), u16(), u16(), u16());
     }
 
-    constexpr auto octet(usize index) const noexcept -> u8 {
-        return m_octets[index];
-    }
+    constexpr auto octet(usize index) const noexcept -> u8 { return m_octets[index]; }
 
-    friend constexpr auto operator==(Ipv6Addr const& left, Ipv6Addr const& right) noexcept
-        -> bool {
+    friend constexpr auto operator==(Ipv6Addr const& left, Ipv6Addr const& right) noexcept -> bool {
         for (rstd::size_t index = 0; index < 16; ++index) {
             if (left.m_octets[usize(index)] != right.m_octets[usize(index)]) return false;
         }
@@ -78,11 +72,11 @@ export class SocketAddr {
         V6
     };
 
-    Kind m_kind { Kind::V4 };
+    Kind          m_kind { Kind::V4 };
     array<u8, 16> m_octets {};
-    u16  m_port {};
-    u32  m_flowinfo {};
-    u32  m_scope_id {};
+    u16           m_port {};
+    u32           m_flowinfo {};
+    u32           m_scope_id {};
 
 public:
     static constexpr auto ipv4(Ipv4Addr ip, u16 port) noexcept -> SocketAddr {
@@ -114,9 +108,7 @@ public:
 
     constexpr auto is_ipv4() const noexcept -> bool { return m_kind == Kind::V4; }
     constexpr auto is_ipv6() const noexcept -> bool { return m_kind == Kind::V6; }
-    constexpr auto octet(usize index) const noexcept -> u8 {
-        return m_octets[index];
-    }
+    constexpr auto octet(usize index) const noexcept -> u8 { return m_octets[index]; }
     constexpr auto port() const noexcept -> u16 { return m_port; }
     constexpr auto flowinfo() const noexcept -> u32 { return m_flowinfo; }
     constexpr auto scope_id() const noexcept -> u32 { return m_scope_id; }

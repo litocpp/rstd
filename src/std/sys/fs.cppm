@@ -545,8 +545,7 @@ export auto read_link(ref<Path> path) -> Result<PathBuf> {
         auto length = static_cast<rstd::size_t>(count);
         if (length < capacity) {
             while (bytes.len().to_primitive() > length) (void)bytes.pop();
-            return Ok(PathBuf::from(
-                OsString::from_encoded_bytes_unchecked(rstd::move(bytes))));
+            return Ok(PathBuf::from(OsString::from_encoded_bytes_unchecked(rstd::move(bytes))));
         }
         capacity *= 2;
     }
@@ -561,7 +560,7 @@ export auto canonicalize(ref<Path> path) -> Result<PathBuf> {
     auto path_value = path_cstring(path);
     if (path_value.is_err()) return Err(path_value.unwrap_err_unchecked());
     auto value = rstd::move(path_value).unwrap_unchecked();
-    auto raw = libc::realpath(value.as_ptr(), nullptr);
+    auto raw   = libc::realpath(value.as_ptr(), nullptr);
     if (! raw) return Err(last_error());
     auto bytes = Vec<u8>::from(CStr::from_ptr(raw).to_bytes());
     libc::free(raw);

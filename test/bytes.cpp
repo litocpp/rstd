@@ -82,8 +82,8 @@ TEST(Bytes, CopyFromSliceAndAdvance) {
 
 TEST(Bytes, CopiesLogicalValuesFromPhysicalByteStorage) {
     rstd::byte data[] { byte { 0x61 }, byte {}, byte { 0xff } };
-    auto raw   = slice<rstd::byte>::from_raw_parts(data, usize(3));
-    auto bytes = Bytes::copy_from_slice(rstd::as_u8_slice(raw));
+    auto       raw   = slice<rstd::byte>::from_raw_parts(data, usize(3));
+    auto       bytes = Bytes::copy_from_slice(rstd::as_u8_slice(raw));
 
     ASSERT_EQ(bytes.len(), usize(3));
     EXPECT_EQ(bytes[usize()], u8('a'));

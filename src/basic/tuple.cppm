@@ -93,6 +93,7 @@ public:
 
     /// Constructs the tuple
     constexpr tuple(Ts const&... ts) noexcept((mtp::noex_init<Ts, Ts> && ...))
+        requires(sizeof...(Ts) > 0)
         : impl(rstd::forward<Ts>(ts)...) {}
 
     /// Constructs the tuple from individual element values.

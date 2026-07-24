@@ -19,8 +19,9 @@ TEST(ArgparseParsing, ParsesOptionsPositionalsClustersAndAttachedValues) {
     auto command = Command::make("tool"_str);
     auto input   = command.add_arg(
         Arg<String>::value("input"_str, string_parser()).value_name("INPUT"_str).required());
-    auto output = command.add_arg(
-        Arg<String>::value("output"_str, string_parser()).short_name(u8('o')).long_name("output"_str));
+    auto output  = command.add_arg(Arg<String>::value("output"_str, string_parser())
+                                       .short_name(u8('o'))
+                                       .long_name("output"_str));
     auto verbose = command.add_arg(Arg<u8>::count("verbose"_str).short_name(u8('v')));
 
     auto built = rstd::move(command).build();
@@ -51,15 +52,17 @@ TEST(ArgparseParsing, ParsesOptionsPositionalsClustersAndAttachedValues) {
 
 TEST(ArgparseParsing, SupportsLongEqualsEndOfOptionsAndDefaults) {
     auto command = Command::make("tool"_str);
-    auto mode    = command.add_arg(
-        Arg<String>::value("mode"_str, string_parser()).long_name("mode"_str).default_value("safe"_str));
-    auto input = command.add_arg(Arg<String>::value("input"_str, string_parser()));
+    auto mode    = command.add_arg(Arg<String>::value("mode"_str, string_parser())
+                                       .long_name("mode"_str)
+                                       .default_value("safe"_str));
+    auto input   = command.add_arg(Arg<String>::value("input"_str, string_parser()));
 
     auto built = rstd::move(command).build();
     ASSERT_TRUE(built.is_ok());
     auto parser = rstd::move(built).unwrap();
 
-    auto explicit_result = parser.parse_from(argv("tool"_str, "--mode=fast"_str, "--"_str, "-input"_str));
+    auto explicit_result =
+        parser.parse_from(argv("tool"_str, "--mode=fast"_str, "--"_str, "-input"_str));
     ASSERT_TRUE(explicit_result.is_ok());
     auto explicit_outcome = rstd::move(explicit_result).unwrap();
     auto explicit_matches = rstd::move(explicit_outcome).as_Parsed().value;

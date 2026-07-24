@@ -55,14 +55,6 @@ struct ArcDynEmptyPayload {
     auto value() const noexcept -> int { return 7; }
 };
 
-template<>
-struct rstd::Impl<ArcDynTrait, ArcDynPayload> : rstd::LinkClassMethod<ArcDynTrait, ArcDynPayload> {
-};
-
-template<>
-struct rstd::Impl<ArcDynTrait, ArcDynEmptyPayload>
-    : rstd::LinkClassMethod<ArcDynTrait, ArcDynEmptyPayload> {};
-
 using ArcDyn     = Arc<rstd::dyn<ArcDynTrait>>;
 using ArcDynWeak = Weak<rstd::dyn<ArcDynTrait>>;
 using ArcDynRaw  = ArcRaw<rstd::dyn<ArcDynTrait>>;

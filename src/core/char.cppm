@@ -143,8 +143,7 @@ constexpr auto is_valid_utf8(const byte* ptr, usize len) noexcept -> bool {
         auto [cp, n]        = decode_utf8(ptr + i, usize(available - i));
         auto const consumed = n.to_primitive();
         if (cp == REPLACEMENT &&
-            (consumed <= 1 &&
-             (i >= available || u8::from_byte(ptr[i]).to_primitive() > 0x7F))) {
+            (consumed <= 1 && (i >= available || u8::from_byte(ptr[i]).to_primitive() > 0x7F))) {
             return false;
         }
         i += consumed;

@@ -3,6 +3,7 @@
 import rstd.bench;
 
 using namespace rstd::prelude;
+using namespace rstd::literals;
 
 namespace
 {
@@ -34,19 +35,6 @@ struct CountingClock {
 };
 
 } // namespace
-
-namespace rstd
-{
-
-template<>
-struct Impl<bench::MonotonicClock, FakeClock> : LinkClassMethod<bench::MonotonicClock, FakeClock> {
-};
-
-template<>
-struct Impl<bench::MonotonicClock, CountingClock>
-    : LinkClassMethod<bench::MonotonicClock, CountingClock> {};
-
-} // namespace rstd
 
 TEST(Slice, SortUnstableUsesPublicSliceOwner) {
     int  values[] { 5, 1, 4, 2, 3 };
@@ -83,7 +71,7 @@ TEST(Bench, ExactIterationsExcludeWarmupAndPreserveEpochs) {
 
     auto operations = u64();
     auto bench      = rstd::bench::BasicBench<FakeClock>(FakeClock {}, rstd::move(config));
-    auto result     = bench.run("exact", [&] {
+    auto result     = bench.run("exact"_str, [&] {
         ++operations;
         rstd::hint::black_box(operations);
     });
@@ -115,7 +103,7 @@ TEST(Bench, AdaptiveIterationsReachTargetEpoch) {
     auto operations = u64();
     auto bench = rstd::bench::BasicBench<CountingClock>(CountingClock { .operations = &operations },
                                                         rstd::move(config));
-    auto result = bench.run("adaptive", [&] {
+    auto result = bench.run("adaptive"_str, [&] {
         ++operations;
         rstd::hint::black_box(operations);
     });
@@ -138,7 +126,7 @@ TEST(Bench, RejectsZeroMaximumEpochAndRepeatedZeroElapsed) {
     config.counter_mode = rstd::bench::CounterMode::Disabled();
     auto clock          = FakeClock { .tick = u64() };
     auto bench          = rstd::bench::BasicBench<FakeClock>(rstd::move(clock), rstd::move(config));
-    auto result         = bench.run("zero", [] {
+    auto result         = bench.run("zero"_str, [] {
     });
     ASSERT_TRUE(result.is_err());
     EXPECT_TRUE(result.unwrap_err_unchecked().is_OperationOptimizedAway());
@@ -150,7 +138,7 @@ TEST(Bench, RequiredCountersReflectBackendAvailability) {
     config.exact_epoch_iterations = Some(u64(1));
     auto bench = rstd::bench::BasicBench<FakeClock>(FakeClock {}, rstd::move(config));
 
-    auto result = bench.run("required", [] {
+    auto result = bench.run("required"_str, [] {
     });
 
     if (result.is_err()) {
@@ -166,20 +154,20 @@ TEST(Bench, RequiredCountersReflectBackendAvailability) {
 
 TEST(BenchProbe, RegistryIsIdempotentAndOwnsLabels) {
     auto registry = rstd::bench::probe::ProbeRegistry::new_();
-    auto first    = registry.register_probe("load.mesh").unwrap();
-    auto second   = registry.register_probe("load.mesh").unwrap();
+    auto first    = registry.register_probe("load.mesh"_str).unwrap();
+    auto second   = registry.register_probe("load.mesh"_str).unwrap();
     auto schema   = rstd::move(registry).freeze();
 
     EXPECT_EQ(first, second);
     ASSERT_EQ(schema.deref()->len(), usize(1));
     ASSERT_TRUE(schema.deref()->label(first).is_some());
-    EXPECT_TRUE(schema.deref()->label(first).unwrap() == "load.mesh");
+    EXPECT_TRUE(schema.deref()->label(first).unwrap() == "load.mesh"_str);
 }
 
 TEST(BenchProbe, GuardMoveNestedSpansAndFrameUseStructuredSamples) {
     auto registry = rstd::bench::probe::ProbeRegistry::new_();
-    auto parent   = registry.register_probe("render").unwrap();
-    auto child    = registry.register_probe("render.visibility").unwrap();
+    auto parent   = registry.register_probe("render"_str).unwrap();
+    auto child    = registry.register_probe("render.visibility"_str).unwrap();
     auto session  = rstd::bench::probe::BasicProbeSession<FakeClock>(rstd::move(registry).freeze(),
                                                                      FakeClock {});
     auto recorder = session.recorder();
@@ -207,7 +195,7 @@ TEST(BenchProbe, GuardMoveNestedSpansAndFrameUseStructuredSamples) {
 
 TEST(BenchProbe, DropNewestReportsLossAndRecycleReusesCapacity) {
     auto registry = rstd::bench::probe::ProbeRegistry::new_();
-    auto probe    = registry.register_probe("load.asset").unwrap();
+    auto probe    = registry.register_probe("load.asset"_str).unwrap();
     auto session  = rstd::bench::probe::BasicProbeSession<FakeClock>(rstd::move(registry).freeze(),
                                                                      FakeClock {});
     auto config   = rstd::bench::probe::RecorderConfig {};
@@ -228,7 +216,7 @@ TEST(BenchProbe, DropNewestReportsLossAndRecycleReusesCapacity) {
 
 TEST(BenchProbe, NonLifoFinishIsExplicitAndStickyAtBoundary) {
     auto registry = rstd::bench::probe::ProbeRegistry::new_();
-    auto probe    = registry.register_probe("nested").unwrap();
+    auto probe    = registry.register_probe("nested"_str).unwrap();
     auto session  = rstd::bench::probe::BasicProbeSession<FakeClock>(rstd::move(registry).freeze(),
                                                                      FakeClock {});
     auto recorder = session.recorder();
@@ -249,7 +237,7 @@ TEST(BenchProbe, NonLifoFinishIsExplicitAndStickyAtBoundary) {
 
 TEST(BenchProbe, InvalidProbeAndActiveCapacityReturnDiagnostics) {
     auto registry = rstd::bench::probe::ProbeRegistry::new_();
-    auto probe    = registry.register_probe("valid").unwrap();
+    auto probe    = registry.register_probe("valid"_str).unwrap();
     auto session  = rstd::bench::probe::BasicProbeSession<FakeClock>(rstd::move(registry).freeze(),
                                                                      FakeClock {});
     auto config   = rstd::bench::probe::RecorderConfig {};
@@ -277,7 +265,7 @@ TEST(BenchProbe, InvalidProbeAndActiveCapacityReturnDiagnostics) {
 
 TEST(BenchProbe, PendingSpanAndWrongThreadAreReportedAtBoundaries) {
     auto registry = rstd::bench::probe::ProbeRegistry::new_();
-    auto probe    = registry.register_probe("thread-bound").unwrap();
+    auto probe    = registry.register_probe("thread-bound"_str).unwrap();
     auto session  = rstd::bench::probe::BasicProbeSession<FakeClock>(rstd::move(registry).freeze(),
                                                                      FakeClock {});
     auto recorder = session.recorder();
@@ -301,7 +289,7 @@ TEST(BenchProbe, PendingSpanAndWrongThreadAreReportedAtBoundaries) {
 
 TEST(BenchProbe, SessionRecordersShareSchemaAndCollectorTimeline) {
     auto registry = rstd::bench::probe::ProbeRegistry::new_();
-    auto probe    = registry.register_probe("shared").unwrap();
+    auto probe    = registry.register_probe("shared"_str).unwrap();
     auto schema   = rstd::move(registry).freeze();
     auto session  = rstd::bench::probe::BasicProbeSession<FakeClock>(schema.clone(), FakeClock {});
     auto first    = session.recorder();
@@ -329,8 +317,8 @@ TEST(BenchProbe, SessionRecordersShareSchemaAndCollectorTimeline) {
 
 TEST(BenchProbe, CollectorComputesNestedExclusiveFrameAndTextReport) {
     auto registry = rstd::bench::probe::ProbeRegistry::new_();
-    auto parent   = registry.register_probe("frame").unwrap();
-    auto child    = registry.register_probe("frame.draw").unwrap();
+    auto parent   = registry.register_probe("frame"_str).unwrap();
+    auto child    = registry.register_probe("frame.draw"_str).unwrap();
     auto schema   = rstd::move(registry).freeze();
     auto session  = rstd::bench::probe::BasicProbeSession<FakeClock>(schema.clone(), FakeClock {});
     auto recorder = session.recorder();
@@ -362,6 +350,6 @@ TEST(BenchProbe, CollectorComputesNestedExclusiveFrameAndTextReport) {
     ASSERT_TRUE(rstd::bench::probe::write_text(output, report).is_ok());
     EXPECT_GT(output.get_ref().len(), usize());
     auto text = rstd::str_::from_utf8(output.get_ref().as_slice()).unwrap();
-    EXPECT_TRUE(rstd::str_::find(text, "frame=12").is_some());
-    EXPECT_TRUE(rstd::str_::find(text, "diagnostic=no_active_frame").is_some());
+    EXPECT_TRUE(rstd::str_::find(text, "frame=12"_str).is_some());
+    EXPECT_TRUE(rstd::str_::find(text, "diagnostic=no_active_frame"_str).is_some());
 }

@@ -3,10 +3,8 @@ import :num.types;
 export import :core;
 
 template<typename T, typename Compare>
-constexpr void slice_sift_down(rstd::mut_ref<T[]> data,
-                               rstd::size_t       root,
-                               rstd::size_t       end,
-                               Compare&           compare) {
+constexpr void
+slice_sift_down(rstd::mut_ref<T[]> data, rstd::size_t root, rstd::size_t end, Compare& compare) {
     while (root * 2 + 1 < end) {
         auto child = root * 2 + 1;
         if (child + 1 < end && compare(data[rstd::usize(child)], data[rstd::usize(child + 1)])) {
@@ -14,10 +12,10 @@ constexpr void slice_sift_down(rstd::mut_ref<T[]> data,
         }
         if (! compare(data[rstd::usize(root)], data[rstd::usize(child)])) return;
 
-        T value                       = rstd::move(data[rstd::usize(root)]);
-        data[rstd::usize(root)]       = rstd::move(data[rstd::usize(child)]);
-        data[rstd::usize(child)]      = rstd::move(value);
-        root                          = child;
+        T value                  = rstd::move(data[rstd::usize(root)]);
+        data[rstd::usize(root)]  = rstd::move(data[rstd::usize(child)]);
+        data[rstd::usize(child)] = rstd::move(value);
+        root                     = child;
     }
 }
 
@@ -61,9 +59,9 @@ constexpr void sort_unstable_by(mut_ref<T[]> values, Compare compare) {
         slice_sift_down(values, root - 1, length, compare);
     }
     for (auto end = length; end > 1; --end) {
-        T value                        = rstd::move(values[usize()]);
-        values[usize()]                = rstd::move(values[usize(end - 1)]);
-        values[usize(end - 1)]         = rstd::move(value);
+        T value                = rstd::move(values[usize()]);
+        values[usize()]        = rstd::move(values[usize(end - 1)]);
+        values[usize(end - 1)] = rstd::move(value);
         slice_sift_down(values, 0, end - 1, compare);
     }
 }

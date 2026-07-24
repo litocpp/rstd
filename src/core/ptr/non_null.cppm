@@ -50,7 +50,7 @@ struct NonNull {
         requires Impled<T, Sized>
     {
         using Storage = typename pointer_t::storage_type;
-        Storage* t = reinterpret_cast<Storage*>(addr.get().to_primitive());
+        Storage* t    = reinterpret_cast<Storage*>(addr.get().to_primitive());
         return { mut_ptr<T>::from_raw_parts(t) };
     }
 

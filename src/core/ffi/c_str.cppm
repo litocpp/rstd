@@ -2,6 +2,7 @@ module;
 #include <rstd/macro.hpp>
 export module rstd.core:ffi.c_str;
 import :num.types;
+import :error.trait;
 export import :marker;
 export import :str.traits;
 
@@ -47,6 +48,59 @@ using rstd::ffi::CStr;
 namespace rstd
 {
 
+namespace c_str_error_detail
+{
+auto write_usize(fmt::Formatter& formatter, usize value) -> bool {
+    char buffer[32];
+    auto size = rstd::size_t();
+    auto raw  = value.to_primitive();
+    do {
+        buffer[size++] = static_cast<char>('0' + raw % 10);
+        raw /= 10;
+    } while (raw != 0);
+    for (rstd::size_t left = 0, right = size - 1; left < right; ++left, --right) {
+        auto value    = buffer[left];
+        buffer[left]  = buffer[right];
+        buffer[right] = value;
+    }
+    return formatter.write_raw(buffer, size);
+}
+} // namespace c_str_error_detail
+
+template<>
+struct Impl<fmt::Display, ffi::FromBytesWithNulError> : ImplBase<ffi::FromBytesWithNulError> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        if (this->self().kind() == ffi::FromBytesWithNulError::Kind::InteriorNul) {
+            constexpr char prefix[] =
+                "data provided contains an interior nul byte at byte position ";
+            if (! formatter.write_raw(prefix, sizeof(prefix) - 1)) return false;
+            return c_str_error_detail::write_usize(formatter, *this->self().nul_position());
+        }
+        constexpr char message[] = "data provided is not nul terminated";
+        return formatter.write_raw(message, sizeof(message) - 1);
+    }
+};
+
+template<>
+struct Impl<fmt::Debug, ffi::FromBytesWithNulError> : ImplBase<ffi::FromBytesWithNulError> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        if (this->self().kind() == ffi::FromBytesWithNulError::Kind::InteriorNul) {
+            constexpr char prefix[] = "InteriorNul { position: ";
+            if (! formatter.write_raw(prefix, sizeof(prefix) - 1)) return false;
+            if (! c_str_error_detail::write_usize(formatter, *this->self().nul_position()))
+                return false;
+            return formatter.write_raw(" }", 2);
+        }
+        constexpr char message[] = "NotNulTerminated";
+        return formatter.write_raw(message, sizeof(message) - 1);
+    }
+};
+
+template<>
+struct Impl<error::Error, ffi::FromBytesWithNulError> : ImplBase<ffi::FromBytesWithNulError> {
+    auto source() const noexcept -> Option<error::ErrorRef> { return None(); }
+};
+
 template<>
 struct Impl<Sized, CStr> {
     ~Impl() = delete;
@@ -67,9 +121,7 @@ struct ref<CStr> {
     constexpr auto count_bytes() const noexcept -> usize { return length; }
     constexpr auto is_empty() const noexcept -> bool { return length == usize(); }
     constexpr auto as_ptr() const noexcept [[clang::lifetimebound]] -> char const* { return p; }
-    constexpr auto as_raw_ptr() const noexcept [[clang::lifetimebound]] -> char const* {
-        return p;
-    }
+    constexpr auto as_raw_ptr() const noexcept [[clang::lifetimebound]] -> char const* { return p; }
     constexpr auto metadata() const noexcept -> usize { return length; }
 
     auto to_bytes() const noexcept [[clang::lifetimebound]] -> slice<u8> {
@@ -86,8 +138,8 @@ struct ref<CStr> {
 
     constexpr auto deref() const noexcept -> ref<CStr> { return *this; }
 
-    static constexpr auto from_raw_parts_unchecked(
-        char const* data [[clang::lifetimebound]], usize len) noexcept -> ref<CStr> {
+    static constexpr auto from_raw_parts_unchecked(char const* data [[clang::lifetimebound]],
+                                                   usize       len) noexcept -> ref<CStr> {
         return { .p = data, .length = len };
     }
 };
@@ -124,8 +176,8 @@ public:
         return from_ptr_with_nul_unchecked(data, usize(rstd::strlen(data)));
     }
 
-    static constexpr auto from_ptr_with_nul_unchecked(
-        char const* data [[clang::lifetimebound]], usize length) noexcept -> ref<CStr> {
+    static constexpr auto from_ptr_with_nul_unchecked(char const* data [[clang::lifetimebound]],
+                                                      usize       length) noexcept -> ref<CStr> {
         return ref<CStr>::from_raw_parts_unchecked(data, length);
     }
 

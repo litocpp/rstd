@@ -93,11 +93,11 @@ public:
 private:
     constexpr auto remaining_start() const noexcept -> rstd::size_t;
 
-    byte const*          m_path { nullptr };
-    rstd::size_t         m_len {};
-    rstd::size_t         m_pos {};
-    bool                 m_root_pending { false };
-    bool                 m_cur_pending { false };
+    byte const*  m_path { nullptr };
+    rstd::size_t m_len {};
+    rstd::size_t m_pos {};
+    bool         m_root_pending { false };
+    bool         m_cur_pending { false };
 };
 
 export class PathBuf;
@@ -119,10 +119,10 @@ struct Impl<ptr_::Pointee, path::Path> {
 
 #if defined(RSTD_OS_WINDOWS)
 inline constexpr u8   PATH_SEP         = u8('\\');
-inline constexpr bool          HAS_DRIVE_PREFIX = true;
+inline constexpr bool HAS_DRIVE_PREFIX = true;
 #else
 inline constexpr u8   PATH_SEP         = u8('/');
-inline constexpr bool          HAS_DRIVE_PREFIX = false;
+inline constexpr bool HAS_DRIVE_PREFIX = false;
 #endif
 
 namespace path_detail
@@ -151,8 +151,7 @@ constexpr auto root_len(byte const* p, rstd::size_t len) -> rstd::size_t {
 #endif
 }
 
-constexpr auto skip_seps(byte const* p, rstd::size_t len, rstd::size_t pos)
-    -> rstd::size_t {
+constexpr auto skip_seps(byte const* p, rstd::size_t len, rstd::size_t pos) -> rstd::size_t {
     while (pos < len && is_sep(value(p[pos]))) ++pos;
     return pos;
 }
@@ -256,8 +255,7 @@ struct ref<path::Path> : ref_base<ref<path::Path>, byte[], false> {
 
     /// Returns the underlying `OsStr`.
     constexpr auto as_os_str() const noexcept -> ref<OsStr> {
-        return ref<OsStr>::from_encoded_bytes_unchecked(
-            slice<u8>::from_raw_parts(p, length));
+        return ref<OsStr>::from_encoded_bytes_unchecked(slice<u8>::from_raw_parts(p, length));
     }
 
     /// Attempts to yield a `ref<str>` if the path is valid UTF-8.
@@ -346,8 +344,7 @@ struct ref<path::Path> : ref_base<ref<path::Path>, byte[], false> {
         // so "/" stays as "/" rather than becoming ""
         rstd::size_t pi = i;
         while (pi > 1 && path_detail::is_sep(path_detail::value(p[pi - 1]))) --pi;
-        auto os = ref<OsStr>::from_encoded_bytes_unchecked(
-            slice<u8>::from_raw_parts(p, usize(pi)));
+        auto os = ref<OsStr>::from_encoded_bytes_unchecked(slice<u8>::from_raw_parts(p, usize(pi)));
         ref<path::Path> r(os);
         return Some(rstd::move(r));
     }
@@ -380,10 +377,9 @@ struct ref<path::Path> : ref_base<ref<path::Path>, byte[], false> {
             }
         }
         if (dot == name_len || dot == 0) return None();
-        auto bytes = name.as_encoded_bytes();
-        ref<OsStr> r = ref<OsStr>::from_encoded_bytes_unchecked(
-            slice<u8>::from_raw_parts(bytes.as_raw_ptr() + dot + 1,
-                                      usize(name_len - dot - 1)));
+        auto       bytes = name.as_encoded_bytes();
+        ref<OsStr> r     = ref<OsStr>::from_encoded_bytes_unchecked(
+            slice<u8>::from_raw_parts(bytes.as_raw_ptr() + dot + 1, usize(name_len - dot - 1)));
         return Some(rstd::move(r));
     }
 
@@ -510,9 +506,8 @@ struct Impl<fmt::Display, ref<path::Path>> : ImplBase<ref<path::Path>> {
         auto         bytes = os.as_encoded_bytes();
         rstd::size_t index = 0;
         while (index < s.len().to_primitive()) {
-            auto [cp, n] =
-                char_::decode_utf8(bytes.as_raw_ptr() + index,
-                                   usize(s.len().to_primitive() - index));
+            auto [cp, n] = char_::decode_utf8(bytes.as_raw_ptr() + index,
+                                              usize(s.len().to_primitive() - index));
             byte buf[4];
             auto wrote = char_::encode_utf8(cp, buf);
             if (! f.write_raw(buf, wrote.to_primitive())) return false;

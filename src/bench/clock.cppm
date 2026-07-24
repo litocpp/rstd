@@ -60,12 +60,3 @@ public:
 };
 
 } // namespace rstd::bench
-
-namespace rstd
-{
-
-template<>
-struct Impl<bench::MonotonicClock, bench::SteadyClock>
-    : LinkClassMethod<bench::MonotonicClock, bench::SteadyClock> {};
-
-} // namespace rstd

@@ -39,7 +39,7 @@ export struct Layout {
     template<typename T>
     static constexpr auto array(usize n) -> Option<Layout> {
         using Storage = typename mut_ptr<T>::storage_type;
-        auto size      = n.checked_mul(usize(sizeof(Storage)));
+        auto size     = n.checked_mul(usize(sizeof(Storage)));
         if (size.is_none()) return None();
         return from_size_align(rstd::move(size).unwrap_unchecked(), usize(alignof(Storage)));
     }

@@ -281,6 +281,9 @@ struct Impl<fmt::Debug, io::error::Error> : ImplBase<io::error::Error> {
     }
 };
 
+template<>
+struct Impl<error::Error, io::error::Error> : DefaultInImpl<error::Error, io::error::Error> {};
+
 } // namespace rstd
 
 namespace rstd::io

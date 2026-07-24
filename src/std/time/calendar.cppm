@@ -447,11 +447,31 @@ struct Impl<fmt::Display, time::IndeterminateOffset> : ImplBase<time::Indetermin
 };
 
 template<>
+struct Impl<fmt::Debug, time::ComponentRange> : ImplBase<time::ComponentRange> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        if (this->self().is_conditional()) {
+            return formatter.write_fmt(fmt::Arguments::make(
+                "ComponentRange {{ name: {:?}, conditional: true }}", this->self().name()));
+        }
+        return formatter.write_fmt(fmt::Arguments::make(
+            "ComponentRange {{ name: {:?}, conditional: false }}", this->self().name()));
+    }
+};
+
+template<>
+struct Impl<fmt::Debug, time::IndeterminateOffset> : ImplBase<time::IndeterminateOffset> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        constexpr char message[] = "IndeterminateOffset";
+        return formatter.write_raw(message, sizeof(message) - 1);
+    }
+};
+
+template<>
 struct Impl<error::Error, time::ComponentRange>
-    : LinkClassMethod<error::Error, time::ComponentRange> {};
+    : DefaultInImpl<error::Error, time::ComponentRange> {};
 
 template<>
 struct Impl<error::Error, time::IndeterminateOffset>
-    : LinkClassMethod<error::Error, time::IndeterminateOffset> {};
+    : DefaultInImpl<error::Error, time::IndeterminateOffset> {};
 
 } // namespace rstd

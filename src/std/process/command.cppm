@@ -162,9 +162,7 @@ public:
     /// Creates a new `Command` for the given program.
     ///
     /// \param program  Path or name of the program to execute.
-    static auto make(ref<OsStr> program) -> Command {
-        return Command(cstring(program));
-    }
+    static auto make(ref<OsStr> program) -> Command { return Command(cstring(program)); }
 
     /// Adds an argument to pass to the program.
     auto arg(ref<OsStr> value) -> Command& {

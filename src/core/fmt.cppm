@@ -330,10 +330,10 @@ private:
 
 /// A pre-compiled set of format arguments: a format string plus its type-erased Argument array.
 export struct Arguments {
-    const char*          fmt_ptr;
-    rstd::size_t         fmt_len;
-    const Argument*      args_ptr;
-    rstd::size_t         args_len;
+    const char*     fmt_ptr;
+    rstd::size_t    fmt_len;
+    const Argument* args_ptr;
+    rstd::size_t    args_len;
 
     auto fmt(Formatter& f) const -> bool { return f.write_fmt(*this); }
 
@@ -358,9 +358,9 @@ using namespace rstd::fmt;
 /// trivial-copy POD valid for zero-arg formats.
 template<rstd::size_t N>
 struct ArgumentsStorage {
-    Argument             storage[N == 0 ? 1 : N];
-    const char*          fmt_ptr;
-    rstd::size_t         fmt_len;
+    Argument     storage[N == 0 ? 1 : N];
+    const char*  fmt_ptr;
+    rstd::size_t fmt_len;
 
     constexpr operator Arguments() const noexcept { return { fmt_ptr, fmt_len, storage, N }; }
 };

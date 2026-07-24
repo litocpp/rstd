@@ -90,8 +90,8 @@ struct ref<ffi::OsStr> : ref_base<ref<ffi::OsStr>, byte[], false> {
     /// Construct from a `ref<str>` (UTF-8 is always valid OS bytes).
     constexpr ref(ref<str> s [[clang::lifetimebound]]) noexcept: p(s.data()), length(s.size()) {}
 
-    static constexpr auto from_encoded_bytes_unchecked(
-        slice<u8> bytes [[clang::lifetimebound]]) noexcept -> Self {
+    static constexpr auto from_encoded_bytes_unchecked(slice<u8> bytes
+                                                       [[clang::lifetimebound]]) noexcept -> Self {
         return { ffi::os_string_platform::Slice::from_encoded_bytes_unchecked(bytes) };
     }
 
@@ -195,8 +195,7 @@ public:
 
     /// Creates an `OsString` by copying a `ref<OsStr>`.
     static auto from(ref<OsStr> s) -> OsString {
-        return OsString { os_string_platform::Buf(
-            Vec<u8>::from(s.as_encoded_bytes())) };
+        return OsString { os_string_platform::Buf(Vec<u8>::from(s.as_encoded_bytes())) };
     }
 
     /// Creates an `OsString` from raw bytes without validation.
@@ -261,9 +260,8 @@ struct Impl<fmt::Display, ref<ffi::OsStr>> : ImplBase<ref<ffi::OsStr>> {
         auto         bytes = s.as_encoded_bytes();
         rstd::size_t index = 0;
         while (index < s.len().to_primitive()) {
-            auto [cp, n] =
-                char_::decode_utf8(bytes.as_raw_ptr() + index,
-                                   usize(s.len().to_primitive() - index));
+            auto [cp, n] = char_::decode_utf8(bytes.as_raw_ptr() + index,
+                                              usize(s.len().to_primitive() - index));
             byte buf[4];
             auto wrote = char_::encode_utf8(cp, buf);
             if (! f.write_raw(buf, wrote.to_primitive())) return false;

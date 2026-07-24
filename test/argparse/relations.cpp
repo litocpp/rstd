@@ -64,10 +64,12 @@ TEST(ArgparseRelations, ValidatesConflictsAndRequirementsAfterRecognition) {
 
 TEST(ArgparseRelations, DefaultsDoNotParticipateInRelations) {
     auto command = Command::make("tool"_str);
-    auto left    = command.add_arg(
-        Arg<String>::value("left"_str, string_parser()).long_name("left"_str).default_value("left"_str));
-    auto right = command.add_arg(
-        Arg<String>::value("right"_str, string_parser()).long_name("right"_str).default_value("right"_str));
+    auto left    = command.add_arg(Arg<String>::value("left"_str, string_parser())
+                                       .long_name("left"_str)
+                                       .default_value("left"_str));
+    auto right   = command.add_arg(Arg<String>::value("right"_str, string_parser())
+                                       .long_name("right"_str)
+                                       .default_value("right"_str));
     command.add_group(ArgGroup::make("selection"_str).arg(left).arg(right).multiple(false));
     auto built = rstd::move(command).build();
     ASSERT_TRUE(built.is_ok());
@@ -76,8 +78,8 @@ TEST(ArgparseRelations, DefaultsDoNotParticipateInRelations) {
     EXPECT_TRUE(parser.parse_from(relation_argv("tool"_str)).is_ok());
     EXPECT_TRUE(parser.parse_from(relation_argv("tool"_str, "--left"_str, "selected"_str)).is_ok());
 
-    auto conflict =
-        parser.parse_from(relation_argv("tool"_str, "--left"_str, "selected"_str, "--right"_str, "selected"_str));
+    auto conflict = parser.parse_from(
+        relation_argv("tool"_str, "--left"_str, "selected"_str, "--right"_str, "selected"_str));
     ASSERT_TRUE(conflict.is_err());
     EXPECT_TRUE(conflict.unwrap_err().is_ArgumentConflict());
 }

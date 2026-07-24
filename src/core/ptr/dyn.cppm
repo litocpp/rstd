@@ -1,5 +1,6 @@
 export module rstd.core:ptr.dyn;
 import :num.types;
+import :type_id;
 export import :ptr.metadata;
 export import :core;
 export import :marker;
@@ -26,6 +27,33 @@ using rstd::ptr_::dyn;
 using rstd::ptr_::dyn_delegate;
 
 template<typename T>
+struct VTable;
+
+template<typename T, typename U>
+struct VTableStaticStorage;
+
+template<typename Traits>
+struct SuperVTables;
+
+template<>
+struct SuperVTables<rstd::TraitList<>> {
+    template<typename Super>
+    constexpr auto get() const noexcept -> VTable<Super> const* {
+        static_assert(mtp::dependent_false<Super>, "trait is not a direct supertrait");
+    }
+};
+
+template<typename... Traits>
+struct SuperVTables<rstd::TraitList<Traits...>> {
+    rstd::tuple<VTable<Traits> const*...> values;
+
+    template<typename Super>
+    constexpr auto get() const noexcept -> VTable<Super> const* {
+        return rstd::get<VTable<Super> const*>(values);
+    }
+};
+
+template<typename T>
 struct VTable {
     static_assert(! mtp::is_const<T>);
     using trait_api_t = T::template Api<dyn_tag>;
@@ -34,13 +62,16 @@ struct VTable {
     using api_tuple_t =
         decltype(mtp::to_dyn(mtp::TraitApiHelper<T, trait_api_t>::template make<Tuple>()));
 
-    using apis_t = api_tuple_t<rstd::tuple>;
-    using drop_t = void (*)(voidp);
+    using apis_t          = api_tuple_t<rstd::tuple>;
+    using drop_t          = void (*)(voidp);
+    using super_vtables_t = SuperVTables<mtp::trait_super_traits_t<T>>;
 
-    drop_t drop;
-    apis_t apis;
-    usize  size;
-    usize  align;
+    drop_t            drop;
+    apis_t            apis;
+    super_vtables_t   super_vtables;
+    rstd::any::TypeId concrete_type_id;
+    usize             size;
+    usize             align;
 };
 
 template<typename T, typename U>
@@ -87,14 +118,27 @@ struct VTableStaticStorage {
         return apis_t { (convert<Is>())... };
     }
 
+    template<typename... Supers>
+    consteval static auto make_super_vtables(rstd::TraitList<Supers...>) {
+        using result_t = SuperVTables<rstd::TraitList<Supers...>>;
+        if constexpr (sizeof...(Supers) == 0) {
+            return result_t {};
+        } else {
+            return result_t { .values = {
+                                  rstd::addressof(VTableStaticStorage<Supers, U>::vtable)... } };
+        }
+    }
+
     static constexpr const VTable<T> vtable {
         .drop =
             [](voidp p) {
                 static_cast<U*>(p)->~U();
             },
-        .apis  = convert_all(mtp::make_index_sequence<mtp::tuple_size<apis_t>> {}),
-        .size  = usize(sizeof(U)),
-        .align = usize(alignof(U)),
+        .apis             = convert_all(mtp::make_index_sequence<mtp::tuple_size<apis_t>> {}),
+        .super_vtables    = make_super_vtables(mtp::trait_super_traits_t<T> {}),
+        .concrete_type_id = rstd::any::TypeId::of<U>(),
+        .size             = usize(sizeof(U)),
+        .align            = usize(alignof(U)),
     };
 };
 
@@ -107,21 +151,26 @@ struct rstd::ptr_::dyn_delegate : public mtp::rm_cv<T>::template Api<dyn_tag> {
 
     using trait_t  = mtp::rm_cv<T>;
     using vtable_t = VTable<trait_t>;
-    using ptr_t    = mtp::add_ptr<mtp::follow_const_t<T, void>>;
+    using ptr_t    = voidp;
 
     ptr_t           p;
     vtable_t const* vtable;
 
-    template<typename U>
-    static auto from_raw_ptr(U* p) noexcept -> dyn_delegate {
+    template<typename U, typename Storage>
+    static auto from_storage_ptr(Storage* p) noexcept -> dyn_delegate {
         using class_t = mtp::rm_cv<U>;
         using source  = mtp::trait_impl_source<trait_t, class_t>;
         if constexpr (! source::value) {
             static_assert(mtp::check_trait_or_diagnose<trait_t, class_t>());
         } else {
-            return { .p      = static_cast<ptr_t>(p),
+            return { .p      = const_cast<voidp>(static_cast<const void*>(p)),
                      .vtable = rstd::addressof(VTableStaticStorage<trait_t, class_t>::vtable) };
         }
+    }
+
+    template<typename U>
+    static auto from_raw_ptr(U* p) noexcept -> dyn_delegate {
+        return from_storage_ptr<U>(p);
     }
 
     auto operator==(std::nullptr_t) const noexcept -> bool { return p == nullptr; }
@@ -131,17 +180,19 @@ template<typename A>
 struct dyn_ptr_base {
     using value_type              = A;
     using trait_t                 = mtp::rm_const<A>;
-    using delegate_t              = mtp::follow_const_t<A, dyn_delegate<A>>;
+    using delegate_storage_t      = dyn_delegate<trait_t>;
+    using delegate_t              = mtp::follow_const_t<A, delegate_storage_t>;
+    using raw_ptr_t               = mtp::add_ptr<mtp::follow_const_t<A, void>>;
     static constexpr bool Mutable = (! mtp::is_const<A>);
 
     friend struct dyn_ptr_base<const trait_t>;
 
 private:
-    dyn_delegate<A> d;
+    delegate_storage_t d;
 
 public:
     constexpr dyn_ptr_base() noexcept: d {} {}
-    constexpr dyn_ptr_base(dyn_delegate<A> d) noexcept: d(d) {}
+    constexpr dyn_ptr_base(delegate_storage_t d) noexcept: d(d) {}
     constexpr dyn_ptr_base(const dyn_ptr_base&)            = default;
     constexpr dyn_ptr_base(dyn_ptr_base&&)                 = default;
     constexpr dyn_ptr_base& operator=(const dyn_ptr_base&) = default;
@@ -178,9 +229,19 @@ public:
         d.vtable = nullptr;
     }
 
-    constexpr auto as_raw_ptr() const noexcept -> delegate_t::ptr_t { return d.p; }
+    constexpr auto as_raw_ptr() const noexcept -> raw_ptr_t { return d.p; }
 
     constexpr auto metadata() const noexcept -> delegate_t::vtable_t const* { return d.vtable; }
+
+    constexpr auto concrete_type_id() const noexcept -> rstd::any::TypeId {
+        return d.vtable->concrete_type_id;
+    }
+
+    template<typename Super, rstd::size_t I, typename... Args>
+    constexpr decltype(auto) call_super(Args&&... args) const {
+        auto super = d.vtable->super_vtables.template get<Super>();
+        return rstd::get<I>(super->apis)(d.p, rstd::forward<Args>(args)...);
+    }
 };
 
 namespace rstd
@@ -191,21 +252,23 @@ export using ptr_::dyn;
 
 template<typename A>
 struct ref<dyn<A>> : dyn_ptr_base<A const> {
-    using delegate_t = dyn_delegate<A const>;
+    using delegate_t = dyn_delegate<A>;
+    using raw_ptr_t  = typename dyn_ptr_base<A const>::raw_ptr_t;
 
-    static auto from_raw_parts(delegate_t::ptr_t           p [[clang::lifetimebound]],
-                               delegate_t::vtable_t const* v) -> ref {
-        return { { { .p = p, .vtable = v } } };
+    static auto from_raw_parts(raw_ptr_t p [[clang::lifetimebound]], delegate_t::vtable_t const* v)
+        -> ref {
+        return { { { .p = const_cast<voidp>(p), .vtable = v } } };
     }
 
     constexpr auto deref() const noexcept -> ref<dyn<A>> { return *this; }
 };
 template<typename A>
 struct ptr<dyn<A>> : dyn_ptr_base<A const> {
-    using delegate_t = dyn_delegate<A const>;
-    static auto from_raw_parts(delegate_t::ptr_t           p [[clang::lifetimebound]],
-                               delegate_t::vtable_t const* v) -> ptr {
-        return { { { .p = p, .vtable = v } } };
+    using delegate_t = dyn_delegate<A>;
+    using raw_ptr_t  = typename dyn_ptr_base<A const>::raw_ptr_t;
+    static auto from_raw_parts(raw_ptr_t p [[clang::lifetimebound]], delegate_t::vtable_t const* v)
+        -> ptr {
+        return { { { .p = const_cast<voidp>(p), .vtable = v } } };
     }
 };
 
@@ -250,6 +313,12 @@ struct dyn {
     static constexpr auto from_ptr(T* in [[clang::lifetimebound]]) noexcept {
         using ptr_t = mtp::cond<mtp::is_const<T>, ptr<dyn>, mut_ptr<dyn>>;
         return ptr_t { { { ptr_t::delegate_t::from_raw_ptr(in) } } };
+    }
+
+    template<typename T>
+    static constexpr auto from_ptr(mut_ptr<T> in [[clang::lifetimebound]]) noexcept {
+        using ptr_t = mut_ptr<dyn>;
+        return ptr_t { { { ptr_t::delegate_t::template from_storage_ptr<T>(in.as_raw_ptr()) } } };
     }
 
     template<typename T>

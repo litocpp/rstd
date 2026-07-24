@@ -13,6 +13,7 @@ set(
   RSTD_TEST_SOURCES
   trait.cpp
   any.cpp
+  error.cpp
   argparse/definition.cpp
   argparse/parsing.cpp
   argparse/relations.cpp
@@ -108,7 +109,7 @@ target_compile_definitions(
 target_sources(
   rstd_test
   PRIVATE FILE_SET modules TYPE CXX_MODULES FILES log_module_check.cppm
-          any_module_check.cppm)
+          any_module_check.cppm error_module_check.cppm)
 
 target_link_libraries(rstd_test PRIVATE rstd::rstd rstd::json rstd::toml rstd::log rstd::argparse
                                         GTest::gtest_main)
@@ -227,6 +228,11 @@ add_rstd_compile_fail(
   compile_fail/trait_direct_api_mismatch.cpp
   Trait.DirectApiMismatchFailure
   "rstd::Impled failed: direct trait implementation does not satisfy trait API")
+add_rstd_compile_fail(
+  rstd_compile_fail_error_missing_supertrait
+  compile_fail/error_missing_supertrait.cpp
+  Error.MissingSuperTrait
+  "rstd::Impled failed: a required supertrait is not implemented")
 add_rstd_compile_fail(
   rstd_compile_fail_try_unsupported_source
   compile_fail/try_unsupported_source.cpp

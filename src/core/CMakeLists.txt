@@ -40,7 +40,10 @@ target_sources(
          prelude.cppm
          core.cppm
          array.cppm
+         type_id.cppm
          any.cppm
+         error_trait.cppm
+         error.cppm
          trait.cppm
          marker.cppm
          borrow.cppm

@@ -294,7 +294,7 @@ auto copy(ref<Path> from, ref<Path> to) -> FsResult<u64> {
     auto destination = rstd::move(destination_result).unwrap_unchecked();
 
     byte chunk[8192];
-    u64 total {};
+    u64  total {};
     while (true) {
         auto values      = mut_ref<u8[]>::from_raw_parts(chunk, usize(8192));
         auto read_result = source.read(values);

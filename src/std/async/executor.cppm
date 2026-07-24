@@ -339,19 +339,6 @@ public:
 
 } // namespace rstd::async
 
-namespace rstd
-{
-
-template<>
-struct Impl<async::Executor, async::LocalExecutor>
-    : LinkClassMethod<async::Executor, async::LocalExecutor> {};
-
-template<>
-struct Impl<async::ExecutorContext, async::LocalExecutorContext>
-    : LinkClassMethod<async::ExecutorContext, async::LocalExecutorContext> {};
-
-} // namespace rstd
-
 namespace rstd::async
 {
 
@@ -428,12 +415,3 @@ struct AwaitableTraits<AnyExecutor> {
 };
 
 } // namespace rstd::async
-
-namespace rstd
-{
-
-template<>
-struct Impl<async::Executor, async::AnyExecutor>
-    : LinkClassMethod<async::Executor, async::AnyExecutor> {};
-
-} // namespace rstd

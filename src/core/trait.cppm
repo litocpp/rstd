@@ -9,6 +9,10 @@ namespace rstd
 export template<auto... Api>
 struct TraitFuncs {};
 
+/// A compile-time list of traits required by another trait.
+export template<typename... Traits>
+struct TraitList {};
+
 /// The trait implementation specialization point.
 /// Users specialize this struct to implement trait T for type A.
 /// \tparam T The trait type to implement.
@@ -61,14 +65,10 @@ struct default_tag {};
 export template<typename T>
 struct in_class_default_tag {};
 
-struct in_class_tag {};
-
 struct dyn_tag {};
 
 namespace mtp
 {
-
-struct ImplHelper;
 
 struct api_check_tag {};
 
@@ -102,8 +102,6 @@ struct TraitFuncsHelper<TraitFuncs<Api...>> {
 template<typename T>
 struct ImplWithPtr {
     rstd::uintptr_t ptr_;
-
-    friend struct ImplHelper;
 
     template<typename P>
     constexpr ImplWithPtr(P* p) noexcept: ptr_(rstd::bit_cast<rstd::uintptr_t>(p)) {}
@@ -166,13 +164,6 @@ struct DynHelper {
     }
 };
 
-struct ImplHelper {
-    template<typename T>
-    static auto& get_self(T* t) noexcept {
-        return t->self();
-    }
-};
-
 template<typename...>
 constexpr bool dependent_false = false;
 
@@ -192,8 +183,22 @@ enum class trait_impl_failure_reason
     ExternalUnavailable,
     ExternalApiMismatch,
     InClassApiMismatch,
-    DirectApiMismatch
+    DirectApiMismatch,
+    MissingSuperTrait
 };
+
+template<typename Trait, typename = void>
+struct trait_super_traits {
+    using type = TraitList<>;
+};
+
+template<typename Trait>
+struct trait_super_traits<Trait, mtp::void_t<typename Trait::SuperTraits>> {
+    using type = typename Trait::SuperTraits;
+};
+
+template<typename Trait>
+using trait_super_traits_t = typename trait_super_traits<Trait>::type;
 
 template<typename Trait, typename A>
 using external_trait_impl_t = Impl<Trait, A>;
@@ -351,6 +356,9 @@ template<typename Trait, typename A, trait_impl_kind Kind>
 struct trait_impl_source_for;
 
 template<typename Trait, typename A>
+struct trait_impl_source;
+
+template<typename Trait, typename A>
 struct trait_impl_source_for<Trait, A, trait_impl_kind::Dyn> {
     using api_owner              = dyn_tag;
     static constexpr auto kind   = trait_impl_kind::Dyn;
@@ -397,8 +405,27 @@ struct trait_impl_source_for<Trait, A, trait_impl_kind::None> {
     static constexpr auto reason = trait_impl_failure_reason::NoImpl;
 };
 
+template<typename Traits, typename A>
+struct trait_list_implemented;
+
+template<typename... Traits, typename A>
+struct trait_list_implemented<TraitList<Traits...>, A> {
+    static constexpr bool value = (trait_impl_source<Traits, A>::value && ...);
+};
+
 template<typename Trait, typename A>
-struct trait_impl_source : trait_impl_source_for<Trait, A, select_trait_impl_kind<Trait, A>()> {};
+struct trait_impl_source : trait_impl_source_for<Trait, A, select_trait_impl_kind<Trait, A>()> {
+private:
+    using own = trait_impl_source_for<Trait, A, select_trait_impl_kind<Trait, A>()>;
+
+public:
+    static constexpr bool super_traits_ok =
+        trait_list_implemented<trait_super_traits_t<Trait>, A>::value;
+    static constexpr bool value = super_traits_ok && own::value;
+    static constexpr auto reason =
+        ! super_traits_ok ? trait_impl_failure_reason::MissingSuperTrait
+                          : (own::value ? trait_impl_failure_reason::None : own::reason);
+};
 
 template<typename Trait, typename A, trait_impl_failure_reason Reason>
 struct trait_impl_failure;
@@ -435,6 +462,13 @@ template<typename Trait, typename A>
 struct trait_impl_failure<Trait, A, trait_impl_failure_reason::DirectApiMismatch> {
     static_assert(dependent_false<Trait, A>,
                   "rstd::Impled failed: direct trait implementation does not satisfy trait API");
+    static constexpr bool value = false;
+};
+
+template<typename Trait, typename A>
+struct trait_impl_failure<Trait, A, trait_impl_failure_reason::MissingSuperTrait> {
+    static_assert(dependent_false<Trait, A>,
+                  "rstd::Impled failed: a required supertrait is not implemented");
     static constexpr bool value = false;
 };
 
@@ -496,14 +530,7 @@ using DefaultInClass = Impl<T, in_class_default_tag<Self>>;
 export template<typename T, typename Self>
 using DefaultInImpl = Impl<T, default_tag<Self>>;
 
-/// Adapts a concrete type's members through an external Impl wrapper.
-/// \tparam T The trait type.
-/// \tparam A The concrete type whose methods satisfy the trait.
-export template<typename T, typename A>
-struct LinkClassMethod : mtp::ImplWithPtr<A>, mtp::rm_cv<T>::template Api<A, in_class_tag> {};
-
-/// Dispatches a trait method call to the appropriate Impl, handling static, dynamic, and in-class
-/// dispatch.
+/// Dispatches a trait method call to the appropriate Impl, handling static and dynamic dispatch.
 /// \tparam I The index of the method in the trait's API function list.
 /// \tparam TApi The trait API type (deduced from self).
 /// \param self Pointer to the trait API object.
@@ -527,14 +554,6 @@ inline constexpr decltype(auto) trait_call(TApi* self, Args&&... args) {
 
         const auto* apis = mtp::DynHelper::get_apis(dyn);
         return rstd::get<I>(*apis)(mtp::DynHelper::get_self(dyn), rstd::forward<Args>(args)...);
-    } else if constexpr (mtp::same_as<Delegate, in_class_tag>) {
-        constexpr const auto api { mtp::TraitApiHelper<Trait, TClass>::template get<I>() };
-
-        auto impl_in_class =
-            static_cast<mtp::follow_const_t<TApi, LinkClassMethod<Trait, TClass>>*>(self);
-
-        const auto self_ = rstd::addressof(mtp::ImplHelper::get_self(impl_in_class));
-        return (self_->*api)(rstd::forward<Args>(args)...);
     } else {
         constexpr const auto api { mtp::TraitApiHelper<Trait, TImpl>::template get<I>() };
 

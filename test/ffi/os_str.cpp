@@ -32,7 +32,7 @@ TEST(OsStr, ToStringLossy) {
 
     // Invalid bytes become U+FFFD
     auto invalid = rstd::ref<OsStr>::from_encoded_bytes_unchecked("h\xffi"_bytes);
-    auto             s2 = invalid.to_string_lossy();
+    auto s2      = invalid.to_string_lossy();
     // "h" + U+FFFD (3 bytes) + "i" = 5 bytes
     EXPECT_EQ(s2.len(), rstd::usize(5)); // 'h'(1) + U+FFFD(3) + 'i'(1)
 }
@@ -84,9 +84,9 @@ TEST(OsString, IntoStringValid) {
 }
 
 TEST(OsString, IntoStringInvalid) {
-    auto r = rstd::ref<OsStr>::from_encoded_bytes_unchecked("\xff"_bytes);
-    auto             os  = OsString::from(r);
-    auto             res = os.into_string();
+    auto r   = rstd::ref<OsStr>::from_encoded_bytes_unchecked("\xff"_bytes);
+    auto os  = OsString::from(r);
+    auto res = os.into_string();
     EXPECT_TRUE(res.is_err());
 }
 
@@ -94,8 +94,8 @@ TEST(OsString, TryIntoStringUsesOwnedConversion) {
     auto valid = OsString::from("utf8"_str);
     EXPECT_EQ("utf8"_str, rstd::try_into<String>(rstd::move(valid)).unwrap());
 
-    auto bytes = rstd::ref<OsStr>::from_encoded_bytes_unchecked("\xff"_bytes);
-    auto             invalid = OsString::from(bytes);
+    auto bytes   = rstd::ref<OsStr>::from_encoded_bytes_unchecked("\xff"_bytes);
+    auto invalid = OsString::from(bytes);
     EXPECT_EQ(rstd::try_from<String>(rstd::move(invalid)).unwrap_err().len(), rstd::usize(1));
 }
 

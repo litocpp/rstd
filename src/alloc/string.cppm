@@ -285,6 +285,30 @@ struct Impl<fmt::Debug, String> : ImplBase<String> {
     }
 };
 
+template<>
+struct Impl<fmt::Display, ::alloc::string::FromUtf8Error>
+    : ImplBase<::alloc::string::FromUtf8Error> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        auto error = this->self().utf8_error();
+        return as<fmt::Display>(error).fmt(formatter);
+    }
+};
+
+template<>
+struct Impl<fmt::Debug, ::alloc::string::FromUtf8Error> : ImplBase<::alloc::string::FromUtf8Error> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        constexpr char prefix[] = "FromUtf8Error { error: ";
+        if (! formatter.write_raw(prefix, sizeof(prefix) - 1)) return false;
+        auto error = this->self().utf8_error();
+        if (! as<fmt::Debug>(error).fmt(formatter)) return false;
+        return formatter.write_raw(" }", 2);
+    }
+};
+
+template<>
+struct Impl<error::Error, ::alloc::string::FromUtf8Error>
+    : DefaultInImpl<error::Error, ::alloc::string::FromUtf8Error> {};
+
 } // namespace rstd
 
 namespace rstd::fmt

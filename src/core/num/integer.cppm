@@ -3,6 +3,7 @@ module;
 
 export module rstd.core:num.integer;
 import :num.types;
+import :error.trait;
 export import :num.convert;
 export import :option;
 export import :str.traits;
@@ -141,6 +142,11 @@ struct Impl<fmt::Debug, num::ParseIntError> : ImplBase<num::ParseIntError> {
         if (! as<fmt::Debug>(*this->self().kind()).fmt(formatter)) return false;
         return formatter.write_raw(reinterpret_cast<rstd::uint8_t const*>(" }"), rstd::size_t(2));
     }
+};
+
+template<>
+struct Impl<error::Error, num::ParseIntError> : ImplBase<num::ParseIntError> {
+    auto source() const noexcept -> Option<error::ErrorRef> { return None(); }
 };
 
 } // namespace rstd

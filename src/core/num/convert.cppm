@@ -3,6 +3,7 @@ module;
 
 export module rstd.core:num.convert;
 import :num.types;
+import :error.trait;
 export import :convert;
 export import :fmt;
 
@@ -407,5 +408,29 @@ struct Impl<fmt::Display, num::TryFromFloatError> : ImplBase<num::TryFromFloatEr
         return formatter.write_raw("inexact floating point conversion attempted",
                                    sizeof("inexact floating point conversion attempted") - 1);
     }
+};
+
+template<>
+struct Impl<fmt::Debug, num::TryFromIntError> : ImplBase<num::TryFromIntError> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        return formatter.write_raw("TryFromIntError", sizeof("TryFromIntError") - 1);
+    }
+};
+
+template<>
+struct Impl<fmt::Debug, num::TryFromFloatError> : ImplBase<num::TryFromFloatError> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        return formatter.write_raw("TryFromFloatError", sizeof("TryFromFloatError") - 1);
+    }
+};
+
+template<>
+struct Impl<error::Error, num::TryFromIntError> : ImplBase<num::TryFromIntError> {
+    auto source() const noexcept -> Option<error::ErrorRef> { return None(); }
+};
+
+template<>
+struct Impl<error::Error, num::TryFromFloatError> : ImplBase<num::TryFromFloatError> {
+    auto source() const noexcept -> Option<error::ErrorRef> { return None(); }
 };
 } // namespace rstd

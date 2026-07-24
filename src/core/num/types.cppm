@@ -1043,8 +1043,8 @@ public:
     }
 
 struct U8 final : Integer<U8, rstd::uint8_t, u8_tag> {
-    using Base                = Integer<U8, rstd::uint8_t, u8_tag>;
-    constexpr U8() noexcept   = default;
+    using Base              = Integer<U8, rstd::uint8_t, u8_tag>;
+    constexpr U8() noexcept = default;
     explicit constexpr U8(rstd::uint8_t value) noexcept: Base(value) {}
 
     template<RawInteger Source>
@@ -1055,9 +1055,7 @@ struct U8 final : Integer<U8, rstd::uint8_t, u8_tag> {
         return U8(static_cast<rstd::uint8_t>(value));
     }
 
-    constexpr auto to_byte() const noexcept -> rstd::byte {
-        return rstd::byte { to_primitive() };
-    }
+    constexpr auto to_byte() const noexcept -> rstd::byte { return rstd::byte { to_primitive() }; }
 
     constexpr auto is_ascii() const noexcept -> bool { return to_primitive() <= 0x7f; }
 

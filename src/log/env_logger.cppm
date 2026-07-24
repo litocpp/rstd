@@ -209,8 +209,9 @@ private:
         const byte* p   = raw.data();
         const byte* end = p + raw.size().to_primitive();
         while (p < end && (u8::from_byte(*p) == u8(' ') || u8::from_byte(*p) == u8('\t'))) ++p;
-        while (end > p && (u8::from_byte(*(end - 1)) == u8(' ') ||
-                           u8::from_byte(*(end - 1)) == u8('\t'))) --end;
+        while (end > p &&
+               (u8::from_byte(*(end - 1)) == u8(' ') || u8::from_byte(*(end - 1)) == u8('\t')))
+            --end;
         if (p >= end) return;
 
         // find '='
@@ -221,10 +222,12 @@ private:
             // target=level
             const byte* t_end = eq;
             while (t_end > p && (u8::from_byte(*(t_end - 1)) == u8(' ') ||
-                                 u8::from_byte(*(t_end - 1)) == u8('\t'))) --t_end;
+                                 u8::from_byte(*(t_end - 1)) == u8('\t')))
+                --t_end;
             const byte* l_beg = eq + 1;
-            while (l_beg < end && (u8::from_byte(*l_beg) == u8(' ') ||
-                                   u8::from_byte(*l_beg) == u8('\t'))) ++l_beg;
+            while (l_beg < end &&
+                   (u8::from_byte(*l_beg) == u8(' ') || u8::from_byte(*l_beg) == u8('\t')))
+                ++l_beg;
 
             if (rule_count < MAX_RULES) {
                 auto& rule = rules[rule_count++];
@@ -233,14 +236,13 @@ private:
                 __builtin_memcpy(rule.target, p, tlen);
                 rule.target[tlen] = byte {};
                 rule.target_len   = tlen;
-                rule.level = parse_level_filter(
-                                 ref<str>::from_raw_parts_unchecked(l_beg, usize(end - l_beg)))
-                                 .unwrap_or(LevelFilter::Trace);
+                rule.level        = parse_level_filter(
+                                        ref<str>::from_raw_parts_unchecked(l_beg, usize(end - l_beg)))
+                                        .unwrap_or(LevelFilter::Trace);
             }
         } else {
             // global level directive
-            auto lf = parse_level_filter(
-                ref<str>::from_raw_parts_unchecked(p, usize(end - p)));
+            auto lf = parse_level_filter(ref<str>::from_raw_parts_unchecked(p, usize(end - p)));
             if (lf.is_some()) {
                 default_level = lf.unwrap_unchecked();
             }
@@ -260,7 +262,7 @@ private:
         StderrWriter   w;
         fmt::Formatter f(&w, [](void* ctx, const rstd::uint8_t* p, rstd::size_t len) -> bool {
             auto* self  = static_cast<StderrWriter*>(ctx);
-            auto bytes = slice<u8>::from_raw_parts(reinterpret_cast<byte const*>(p), usize(len));
+            auto  bytes = slice<u8>::from_raw_parts(reinterpret_cast<byte const*>(p), usize(len));
             while (! bytes.is_empty()) {
                 auto res = rstd::as<rstd::io::Write>(self->stderr).write(bytes);
                 if (res.is_err()) return false;

@@ -17,8 +17,8 @@ enum class Error : rstd::uint8_t
 struct Decimal {
     slice<u8> integer;
     slice<u8> fraction;
-    i32         exponent {};
-    bool        negative = false;
+    i32       exponent {};
+    bool      negative = false;
 };
 
 auto to_f64(Decimal decimal) -> Result<f64, Error>;
