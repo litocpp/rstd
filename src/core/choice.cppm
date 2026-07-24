@@ -484,6 +484,20 @@ struct case_at_impl<0, Case, Rest...> {
 template<rstd::size_t I, typename... Cases>
 using case_at_t = typename case_at_impl<I, Cases...>::type;
 
+template<auto V, typename First, typename... Rest>
+consteval auto case_index() -> rstd::size_t {
+    static_assert((First::value == V) || ((Rest::value == V) || ...),
+                  "the requested tag is not present in rstd::Choice");
+    constexpr typename First::tag_type tags[] = { First::value, Rest::value... };
+    for (rstd::size_t i = 0; i < 1 + sizeof...(Rest); ++i) {
+        if (tags[i] == V) return i;
+    }
+    return 1 + sizeof...(Rest);
+}
+
+template<auto V, typename First, typename... Rest>
+using case_for_t = case_at_t<case_index<V, First, Rest...>(), First, Rest...>;
+
 template<typename...>
 inline constexpr bool dependent_false = false;
 
@@ -580,20 +594,12 @@ private:
     static_assert(tags_are_unique(), "all rstd::Choice tags must be unique");
 
     template<Tag V>
-    static constexpr bool has_tag = (First::value == V) || ((Rest::value == V) || ...);
-
-    template<Tag V>
     static consteval auto index_for() -> rstd::size_t {
-        static_assert(has_tag<V>, "the requested tag is not present in rstd::Choice");
-        constexpr Tag tags[] = { First::value, Rest::value... };
-        for (rstd::size_t i = 0; i < case_count; ++i) {
-            if (tags[i] == V) return i;
-        }
-        return case_count;
+        return choice_detail::case_index<V, First, Rest...>();
     }
 
     template<Tag V>
-    using case_for = choice_detail::case_at_t<index_for<V>(), First, Rest...>;
+    using case_for = choice_detail::case_for_t<V, First, Rest...>;
 
     template<Tag V>
     using stored_for = choice_detail::case_stored_t<case_for<V>>;

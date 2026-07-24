@@ -1,4 +1,5 @@
 export module rstd.core:slice.ops;
+import :num.types;
 export import :slice;
 export import :clone;
 export import :marker;

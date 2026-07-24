@@ -971,12 +971,15 @@ export using std::weak_ordering;
 // operators in __gnu_cxx::; those are still reachable via ADL through the
 // vector type even with these std exports active.
 export using std::operator+;
+// Clang 18 rejects imported using declarations when libstdc++ redeclares these as friends.
+#if ! (defined(__clang__) && __clang_major__ == 18 && defined(_GLIBCXX_RELEASE))
 export using std::operator==;
 export using std::operator!=;
 export using std::operator<;
 export using std::operator<=;
 export using std::operator>;
 export using std::operator>=;
+#endif
 export using std::operator<<;
 export using std::operator>>;
 export using std::operator|;

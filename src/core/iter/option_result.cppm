@@ -1,4 +1,5 @@
 export module rstd.core:iter.option_result;
+import :num.types;
 export import :iter.sources;
 export import :result;
 
