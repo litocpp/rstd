@@ -178,8 +178,20 @@ template<typename R>
 struct Impl<io::Seek, io::BufReader<R>> : ImplBase<io::BufReader<R>> {
     auto seek(io::SeekFrom pos) -> io::Result<u64> {
         auto& self = this->self();
-        self.discard_buffer();
-        return as<io::Seek>(self.inner_).seek(pos);
+        if (pos.which == io::SeekFrom::Which::Current) {
+            auto const unread = self.filled_ - self.pos_;
+            auto const offset = static_cast<rstd::int128_t>(pos.offset.to_primitive()) -
+                                static_cast<rstd::int128_t>(unread);
+            if (offset < static_cast<rstd::int128_t>(i64::MIN.to_primitive()) ||
+                offset > static_cast<rstd::int128_t>(i64::MAX.to_primitive())) {
+                return Err(io::error::Error::from_kind(
+                    io::error::ErrorKind { io::error::ErrorKind::InvalidInput }));
+            }
+            pos = io::SeekFrom::from_current(i64(static_cast<rstd::int64_t>(offset)));
+        }
+        auto result = as<io::Seek>(self.inner_).seek(pos);
+        if (result.is_ok()) self.discard_buffer();
+        return result;
     }
 };
 

@@ -258,6 +258,54 @@ TEST(Io, ReadSeekHandleDispatchesBothCapabilities) {
     EXPECT_EQ(handle->seek(SeekFrom::from_start(u64())).unwrap_unchecked(), u64());
 }
 
+TEST(Io, BufReaderSeekUsesLogicalPosition) {
+    auto source = native_bytes("0123456789"_bytes);
+    auto reader = io::BufReader(io::Cursor<Vec<u8>>(rstd::move(source)), usize(4));
+
+    byte prefix[2] {};
+    EXPECT_EQ(as<io::Read>(reader).read(logical_bytes(prefix)).unwrap_unchecked(), usize(2));
+    EXPECT_FALSE(rstd::mem::memcmp(prefix, "01"_bytes.as_raw_ptr(), usize(2)));
+
+    EXPECT_EQ(as<io::Seek>(reader).seek(SeekFrom::from_current(i64(1))).unwrap_unchecked(), u64(3));
+    byte current[1] {};
+    EXPECT_EQ(as<io::Read>(reader).read(logical_bytes(current)).unwrap_unchecked(), usize(1));
+    EXPECT_EQ(current[0], byte { '3' });
+
+    EXPECT_EQ(as<io::Seek>(reader).seek(SeekFrom::from_start(u64(1))).unwrap_unchecked(), u64(1));
+    EXPECT_EQ(as<io::Read>(reader).read(logical_bytes(current)).unwrap_unchecked(), usize(1));
+    EXPECT_EQ(current[0], byte { '1' });
+
+    EXPECT_EQ(as<io::Seek>(reader).seek(SeekFrom::from_end(i64(-1))).unwrap_unchecked(), u64(9));
+    EXPECT_EQ(as<io::Read>(reader).read(logical_bytes(current)).unwrap_unchecked(), usize(1));
+    EXPECT_EQ(current[0], byte { '9' });
+}
+
+TEST(Io, BufferedRangeHandlePreservesRandomAccessReads) {
+    auto source_bytes = native_bytes("0123456789abcdefghijklmnopqrstuv"_bytes);
+    auto source   = io::SharedReadAt::make(MemReadAt { source_bytes.data(), source_bytes.len() });
+    auto range    = io::ReadRange::make(rstd::move(source), u64(2), u64(24)).unwrap_unchecked();
+    auto buffered = io::BufReader(rstd::move(range).into_reader(), usize(8));
+    auto reader   = io::ReadSeekHandle::make(rstd::move(buffered));
+
+    for (rstd::size_t index = 0; index < 24; ++index) {
+        if (index % 3 == 0) {
+            auto const peek = (index + 5) % 24;
+            EXPECT_EQ(reader->seek(SeekFrom::from_start(u64(peek))).unwrap_unchecked(), u64(peek));
+            byte value[1] {};
+            EXPECT_EQ(reader->read(logical_bytes(value)).unwrap_unchecked(), usize(1));
+            EXPECT_EQ(u8::from_byte(value[0]).to_primitive(),
+                      source_bytes[usize(peek + 2)].get().to_primitive());
+            EXPECT_EQ(reader->seek(SeekFrom::from_start(u64(index))).unwrap_unchecked(),
+                      u64(index));
+        }
+
+        byte value[1] {};
+        EXPECT_EQ(reader->read(logical_bytes(value)).unwrap_unchecked(), usize(1));
+        EXPECT_EQ(u8::from_byte(value[0]).to_primitive(),
+                  source_bytes[usize(index + 2)].get().to_primitive());
+    }
+}
+
 // ── Stdio smoke tests ─────────────────────────────────────────────────────
 
 TEST(Io, EprintSmoke) {
