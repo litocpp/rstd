@@ -198,5 +198,40 @@ export struct SystemTime {
     }
 };
 
+static auto filetime_value(FILETIME value) noexcept -> u64 {
+    return (u64(value.dwHighDateTime) << u64(32)) | u64(value.dwLowDateTime);
+}
+
+static auto make_filetime(u64 value) noexcept -> FILETIME {
+    auto const raw = value.to_primitive();
+    return { .dwLowDateTime  = static_cast<DWORD>(raw),
+             .dwHighDateTime = static_cast<DWORD>(raw >> 32) };
+}
+
+export auto local_offset_at_unix_time(i64 seconds) noexcept -> Option<i32> {
+    auto instant = SystemTime::from_unix_time(seconds, u32());
+    if (instant.is_none()) return None();
+
+    auto       utc_file = make_filetime(instant->intervals);
+    SYSTEMTIME utc {};
+    if (! FileTimeToSystemTime(&utc_file, &utc)) return None();
+
+    SYSTEMTIME local {};
+    if (! SystemTimeToTzSpecificLocalTime(nullptr, &utc, &local)) return None();
+
+    FILETIME normalized_utc {};
+    FILETIME normalized_local {};
+    if (! SystemTimeToFileTime(&utc, &normalized_utc) ||
+        ! SystemTimeToFileTime(&local, &normalized_local)) {
+        return None();
+    }
+
+    auto const difference =
+        i128(filetime_value(normalized_local)) - i128(filetime_value(normalized_utc));
+    auto offset = rstd::try_from<i32>(difference / i128(10'000'000));
+    if (offset.is_err()) return None();
+    return Some(offset.unwrap());
+}
+
 } // namespace rstd::sys::pal::windows::time
 #endif

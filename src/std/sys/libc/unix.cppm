@@ -379,6 +379,10 @@ inline auto gmtime_utc(::time_t secs) noexcept -> ::tm {
     return out;
 }
 
+inline auto localtime_into(::time_t secs, ::tm& out) noexcept -> bool {
+    return ::localtime_r(&secs, &out) != nullptr;
+}
+
 using ::isatty;
 
 // ── Process ──────────────────────────────────────────────────────────────

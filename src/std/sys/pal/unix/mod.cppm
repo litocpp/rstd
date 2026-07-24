@@ -12,6 +12,7 @@ export using pal::unix::sync::mutex::Mutex;
 export using pal::unix::sync::condvar::Condvar;
 export using pal::unix::time::Instant;
 export using pal::unix::time::SystemTime;
+export using pal::unix::time::local_offset_at_unix_time;
 
 export [[noreturn]]
 void abort_internal() {

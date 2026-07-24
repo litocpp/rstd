@@ -32,6 +32,7 @@ target_sources(
          FILES
          mod.cppm
          time.cppm
+         time/calendar.cppm
          alloc.cppm
          forward.cppm
          error.cppm

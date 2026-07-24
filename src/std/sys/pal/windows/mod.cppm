@@ -19,6 +19,7 @@ export using pal::windows::sync::mutex::Mutex;
 export using pal::windows::sync::condvar::Condvar;
 export using pal::windows::time::Instant;
 export using pal::windows::time::SystemTime;
+export using pal::windows::time::local_offset_at_unix_time;
 
 export [[noreturn]]
 void abort_internal() {

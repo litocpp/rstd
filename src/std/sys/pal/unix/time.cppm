@@ -168,5 +168,17 @@ export struct SystemTime {
     friend auto operator<=>(SystemTime a, SystemTime b) noexcept { return a.t <=> b.t; }
 };
 
+export auto local_offset_at_unix_time(i64 seconds) noexcept -> Option<i32> {
+    auto native = rstd::try_from<libc::time_t>(seconds);
+    if (native.is_err()) return None();
+
+    libc::tm local {};
+    if (! libc::localtime_into(native.unwrap(), local)) return None();
+
+    auto offset = rstd::try_from<i32>(local.tm_gmtoff);
+    if (offset.is_err()) return None();
+    return Some(offset.unwrap());
+}
+
 } // namespace rstd::sys::pal::unix::time
 #endif

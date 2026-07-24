@@ -86,6 +86,7 @@ using ::DWORD;
 using ::BOOL;
 using ::LARGE_INTEGER;
 using ::FILETIME;
+using ::SYSTEMTIME;
 using ::SRWLOCK;
 using ::CONDITION_VARIABLE;
 
@@ -156,6 +157,9 @@ using ::WakeByAddressAll;
 using ::QueryPerformanceFrequency;
 using ::QueryPerformanceCounter;
 using ::GetSystemTimeAsFileTime;
+using ::FileTimeToSystemTime;
+using ::SystemTimeToFileTime;
+using ::SystemTimeToTzSpecificLocalTime;
 
 inline auto gmtime_utc(::time_t secs) noexcept -> ::tm {
     ::tm out {};

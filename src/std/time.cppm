@@ -2,6 +2,7 @@ module;
 #include <rstd/macro.hpp>
 export module rstd:time;
 export import rstd.core;
+export import :time.calendar;
 import :sys.pal;
 import :sys.libc.std;
 #if RSTD_OS_UNIX
@@ -15,11 +16,6 @@ namespace rstd::time
 
 /// A span of time, with nanosecond precision.
 export using rstd::time::Duration;
-
-export struct UnixTime {
-    i64 seconds {};
-    u32 nanoseconds {};
-};
 
 /// A measurement of a monotonically nondecreasing clock.
 export struct Instant {
@@ -135,6 +131,11 @@ export struct SystemTime {
     }
 };
 
+inline auto OffsetDateTime::now_utc() noexcept -> OffsetDateTime {
+    auto const timestamp = SystemTime::now().as_unix_time();
+    return OffsetDateTime::from_unix_time(timestamp.seconds, timestamp.nanoseconds).unwrap();
+}
+
 /// Writes the current UTC time as RFC3339 (`YYYY-MM-DDTHH:MM:SSZ`) into `out` (exactly 20 bytes, no terminator).
 export inline auto format_rfc3339_utc_now(char out[20]) noexcept -> void {
     auto secs = sys::libc::time(nullptr);
@@ -163,3 +164,18 @@ export inline auto format_rfc3339_utc_now(char out[20]) noexcept -> void {
 }
 
 } // namespace rstd::time
+
+namespace rstd
+{
+
+template<>
+struct Impl<convert::TryFrom<time::SystemTime>, time::OffsetDateTime> {
+    using Error = time::ComponentRange;
+
+    static auto try_from(time::SystemTime value) -> Result<time::OffsetDateTime, Error> {
+        auto const timestamp = value.as_unix_time();
+        return time::OffsetDateTime::from_unix_time(timestamp.seconds, timestamp.nanoseconds);
+    }
+};
+
+} // namespace rstd
