@@ -3,6 +3,7 @@ module;
 #include <rstd/macro.hpp>
 export module rstd.core:str.str;
 import :num.types;
+import :intrinsics;
 export import :slice;
 export import :fmt;
 export import :marker;
@@ -137,7 +138,7 @@ public:
         -> Option<tuple<ref<str>, ref<str>>>;
 
     constexpr auto split_at(usize index) const noexcept -> tuple<ref<str>, ref<str>> {
-        if (! is_char_boundary(index)) __builtin_trap();
+        if (! is_char_boundary(index)) rstd::intrinsics::abort();
         auto* right = p;
         if (index != usize()) right += index.to_primitive();
         return { ref<str>::from_raw_parts_unchecked(p, index),

@@ -1,6 +1,7 @@
 export module rstd.core:num.dec2flt;
 import :num.types;
 import :num.bignum;
+import :intrinsics;
 import :result;
 import :str.str;
 import rstd.basic;
@@ -65,7 +66,7 @@ auto divide(DecimalBig numerator, DecimalBig const& denominator) -> Division {
     if (numerator.compare(denominator) < 0) return { quotient, numerator };
 
     const rstd::size_t shift = numerator.bit_length() - denominator.bit_length();
-    if (shift >= 64) __builtin_trap();
+    if (shift >= 64) rstd::intrinsics::abort();
     for (rstd::size_t current = shift + 1; current != 0; --current) {
         const rstd::size_t bit    = current - 1;
         DecimalBig         scaled = denominator;

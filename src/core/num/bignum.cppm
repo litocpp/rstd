@@ -1,6 +1,7 @@
 export module rstd.core:num.bignum;
 import :num.types;
 import :array;
+import :intrinsics;
 import rstd.basic;
 
 namespace rstd::num::bignum
@@ -13,7 +14,7 @@ class FixedBig {
 
     [[noreturn]]
     static void capacity_error() {
-        __builtin_trap();
+        rstd::intrinsics::abort();
     }
 
 public:

@@ -1,5 +1,6 @@
 export module rstd.core:fmt.floating;
 import :num.types;
+import :intrinsics;
 export import :fmt;
 import :num.flt2dec;
 
@@ -21,17 +22,17 @@ void append(rstd::uint8_t*       buffer,
             rstd::size_t&        len,
             const rstd::uint8_t* source,
             rstd::size_t         source_len) noexcept {
-    if (len + source_len > BUFFER_SIZE) __builtin_trap();
+    if (len + source_len > BUFFER_SIZE) rstd::intrinsics::abort();
     for (rstd::size_t i = 0; i < source_len; ++i) buffer[len++] = source[i];
 }
 
 void append(rstd::uint8_t* buffer, rstd::size_t& len, rstd::uint8_t value) noexcept {
-    if (len == BUFFER_SIZE) __builtin_trap();
+    if (len == BUFFER_SIZE) rstd::intrinsics::abort();
     buffer[len++] = value;
 }
 
 void append_zeros(rstd::uint8_t* buffer, rstd::size_t& len, rstd::size_t count) noexcept {
-    if (len + count > BUFFER_SIZE) __builtin_trap();
+    if (len + count > BUFFER_SIZE) rstd::intrinsics::abort();
     for (rstd::size_t i = 0; i < count; ++i) buffer[len++] = '0';
 }
 

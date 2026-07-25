@@ -1,12 +1,13 @@
 export module rstd.core:num.literals;
 import :num.types;
+import :intrinsics;
 
 namespace rstd::num::detail
 {
 
 [[noreturn]]
 inline void invalid_numeric_literal() {
-    __builtin_trap();
+    rstd::intrinsics::abort();
 }
 
 template<typename T, char... Characters>
