@@ -28,20 +28,6 @@ public:
     constexpr auto utf8_error() const noexcept -> rstd::str_::Utf8Error { return error_; }
 };
 
-/// Iterator over the Unicode scalar values of a UTF-8 byte range.
-export struct Chars : rstd::DefaultInClass<Chars, rstd::iter::Iterator> {
-    using Item                         = u32;
-    static constexpr bool PROVEN_FUSED = true;
-    rstd::str_::Chars     inner;
-
-    explicit Chars(rstd::str_::Chars chars): inner(chars) {}
-
-    auto next() -> rstd::Option<u32> {
-        if (inner.is_empty()) return rstd::None();
-        return rstd::Some(u32(inner.next_unchecked()));
-    }
-};
-
 /// A UTF-8 encoded, growable string, analogous to Rust's `String`.
 export class String {
     Vec<u8> vec;
@@ -60,9 +46,7 @@ public:
     static auto make() -> String { return {}; }
 
     /// Creates a `String` from a string slice (copies the bytes).
-    static auto make(ref<str> s) -> String {
-        return String { Vec<u8>::from(rstd::str_::as_bytes(s)) };
-    }
+    static auto make(ref<str> s) -> String { return String { Vec<u8>::from(s.as_bytes()) }; }
 
     auto clone() const -> String { return String::make(as_str()); }
 
@@ -89,7 +73,7 @@ public:
     /// Appends a UTF-8 string slice.
     void push_str(ref<str> value) {
         if (value.size() == usize()) return;
-        vec.extend_from_slice(rstd::str_::as_bytes(value));
+        vec.extend_from_slice(value.as_bytes());
     }
 
     /// Appends one ASCII byte while preserving the UTF-8 invariant.
@@ -108,11 +92,11 @@ public:
 
     /// Returns a string slice of the entire `String`.
     auto as_str() const noexcept [[clang::lifetimebound]] -> ref<str> {
-        return rstd::from_utf8_unchecked(vec.as_slice());
+        return rstd::str_::from_utf8_unchecked(vec.as_slice());
     }
 
     constexpr auto as_mut_str() & noexcept [[clang::lifetimebound]] -> mut_ref<str> {
-        return rstd::from_utf8_unchecked_mut(vec.as_mut_slice().as_mut_ref());
+        return rstd::str_::from_utf8_unchecked_mut(vec.as_mut_slice().as_mut_ref());
     }
 
     /// Returns the byte length of this string.
@@ -131,8 +115,7 @@ public:
     /// Panics if `new_len` is not on a UTF-8 character boundary.
     void truncate(usize new_len) {
         if (new_len < vec.len()) {
-            rstd_assert(
-                rstd::char_::is_char_boundary(vec.as_ptr().as_raw_ptr(), vec.len(), new_len));
+            rstd_assert(as_str().is_char_boundary(new_len));
             while (vec.len() > new_len) vec.pop();
         }
     }
@@ -141,14 +124,14 @@ public:
     void replace_range(usize start, usize end, ref<str> replacement) {
         rstd_assert(start <= end && end <= vec.len());
         auto current = as_str();
-        rstd_assert(rstd::str_::is_char_boundary(current, start));
-        rstd_assert(rstd::str_::is_char_boundary(current, end));
+        rstd_assert(current.is_char_boundary(start));
+        rstd_assert(current.is_char_boundary(end));
 
         auto result = Vec<u8>::with_capacity(start + replacement.size() + vec.len() - end);
         if (start != usize()) {
             result.extend_from_slice(slice<u8>::from_raw_parts(current.data(), start));
         }
-        result.extend_from_slice(rstd::str_::as_bytes(replacement));
+        result.extend_from_slice(replacement.as_bytes());
         if (end != vec.len()) {
             result.extend_from_slice(
                 slice<u8>::from_raw_parts(current.data() + end.to_primitive(), vec.len() - end));
@@ -164,7 +147,8 @@ public:
         byte bytes[4] {};
         auto length = rstd::char_::encode_utf8(code_point, bytes);
         rstd_assert(length != usize());
-        insert_str(index, rstd::from_utf8_unchecked(slice<u8>::from_raw_parts(bytes, length)));
+        insert_str(index,
+                   rstd::str_::from_utf8_unchecked(slice<u8>::from_raw_parts(bytes, length)));
     }
 
     friend constexpr auto operator<=>(const String& a, const String& b) noexcept {
@@ -185,9 +169,7 @@ public:
         return rstd::lexicographical_compare_three_way(
             a.begin(), a.end(), b_str.begin(), b_str.end());
     }
-    friend bool operator==(const String& a, ref<str> b) noexcept {
-        return a.size() == b.size() && rstd::mem::memcmp(a.data(), b.data(), a.size()) == 0;
-    }
+    friend bool operator==(const String& a, ref<str> b) noexcept { return a.as_str() == b; }
     friend bool operator==(ref<str> a, const String& b) noexcept { return b == a; }
     /// Returns a raw pointer to the underlying byte buffer.
     /// \return A const pointer to the first byte.
@@ -207,13 +189,6 @@ public:
     /// Returns the length of the string in bytes.
     /// \return The number of bytes in the string.
     constexpr auto size() const noexcept -> usize { return vec.len(); }
-
-    /// Returns an iterator over the bytes (`u8`) of the string.
-    auto bytes() const [[clang::lifetimebound]] { return vec.iter().copied(); }
-    /// Returns an iterator over the Unicode scalar values of the string.
-    auto chars() const [[clang::lifetimebound]] -> Chars {
-        return Chars(rstd::str_::chars(as_str()));
-    }
 
     auto into_bytes() && -> Vec<u8> { return rstd::move(vec); }
 };

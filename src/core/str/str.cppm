@@ -16,10 +16,16 @@ export struct Str {
     ~Str() = delete;
 };
 
+export struct Bytes;
+export struct Chars;
+
 } // namespace rstd::str_
 
 namespace rstd
 {
+
+/// Type alias for the unsized string type.
+export using str = str_::Str;
 
 template<>
 struct Impl<Sized, str_::Str> {
@@ -60,7 +66,97 @@ public:
     }
 
     constexpr auto begin() const -> ptr<u8> { return ptr<u8>::from_raw_parts(p); }
-    constexpr auto end() const -> ptr<u8> { return begin().add(length); }
+    constexpr auto end() const -> ptr<u8> {
+        if (is_empty()) return begin();
+        return begin().add(length);
+    }
+
+    constexpr auto is_ascii() const noexcept -> bool {
+        for (rstd::size_t index = 0; index < length.to_primitive(); ++index) {
+            if (u8::from_byte(p[index]).to_primitive() > 0x7f) return false;
+        }
+        return true;
+    }
+
+    constexpr auto is_char_boundary(usize index) const noexcept -> bool {
+        return char_::is_char_boundary(p, length, index);
+    }
+
+    constexpr auto as_bytes() const noexcept -> slice<u8> {
+        if (is_empty()) return {};
+        return slice<u8>::from_raw_parts(p, length);
+    }
+
+    constexpr auto bytes() const noexcept -> str_::Bytes;
+    constexpr auto chars() const noexcept -> str_::Chars;
+
+    constexpr auto contains(ref<str> pattern) const noexcept -> bool {
+        if (pattern.is_empty()) return true;
+        if (pattern.len() > length) return false;
+        auto const limit = (length - pattern.len()).to_primitive();
+        for (rstd::size_t index = 0; index <= limit; ++index) {
+            auto matches = true;
+            for (rstd::size_t pattern_index = 0; pattern_index < pattern.len().to_primitive();
+                 ++pattern_index) {
+                if (p[index + pattern_index] != pattern.data()[pattern_index]) {
+                    matches = false;
+                    break;
+                }
+            }
+            if (matches) return true;
+        }
+        return false;
+    }
+
+    constexpr auto starts_with(ref<str> pattern) const noexcept -> bool {
+        if (pattern.is_empty()) return true;
+        if (pattern.len() > length) return false;
+        for (rstd::size_t index = 0; index < pattern.len().to_primitive(); ++index) {
+            if (p[index] != pattern.data()[index]) return false;
+        }
+        return true;
+    }
+
+    constexpr auto ends_with(ref<str> pattern) const noexcept -> bool {
+        if (pattern.is_empty()) return true;
+        if (pattern.len() > length) return false;
+        auto const offset = (length - pattern.len()).to_primitive();
+        for (rstd::size_t index = 0; index < pattern.len().to_primitive(); ++index) {
+            if (p[offset + index] != pattern.data()[index]) return false;
+        }
+        return true;
+    }
+
+    constexpr auto find(ref<str> pattern) const noexcept -> Option<usize>;
+    constexpr auto rfind(ref<str> pattern) const noexcept -> Option<usize>;
+    constexpr auto get(usize start, usize end) const noexcept -> Option<ref<str>>;
+    constexpr auto strip_prefix(ref<str> pattern) const noexcept -> Option<ref<str>>;
+    constexpr auto strip_suffix(ref<str> pattern) const noexcept -> Option<ref<str>>;
+    constexpr auto split_once(ref<str> pattern) const noexcept -> Option<tuple<ref<str>, ref<str>>>;
+    constexpr auto rsplit_once(ref<str> pattern) const noexcept
+        -> Option<tuple<ref<str>, ref<str>>>;
+
+    constexpr auto split_at(usize index) const noexcept -> tuple<ref<str>, ref<str>> {
+        if (! is_char_boundary(index)) __builtin_trap();
+        auto* right = p;
+        if (index != usize()) right += index.to_primitive();
+        return { ref<str>::from_raw_parts_unchecked(p, index),
+                 ref<str>::from_raw_parts_unchecked(right, length - index) };
+    }
+
+    constexpr auto trim_ascii() const noexcept -> ref<str> {
+        auto is_whitespace = [](byte value) constexpr {
+            auto const raw = u8::from_byte(value).to_primitive();
+            return raw == 0x09 || raw == 0x0a || raw == 0x0c || raw == 0x0d || raw == 0x20;
+        };
+        rstd::size_t begin_index = 0;
+        auto         end_index   = length.to_primitive();
+        while (begin_index < end_index && is_whitespace(p[begin_index])) ++begin_index;
+        while (end_index > begin_index && is_whitespace(p[end_index - 1])) --end_index;
+        auto* begin_ptr = p;
+        if (begin_index != 0) begin_ptr += begin_index;
+        return ref<str>::from_raw_parts_unchecked(begin_ptr, usize(end_index - begin_index));
+    }
 
     constexpr auto     metadata() const noexcept -> usize { return length; }
     constexpr explicit operator bool() const { return p != nullptr; }
@@ -94,7 +190,10 @@ public:
     }
 
     constexpr auto begin() const noexcept -> ptr<u8> { return ptr<u8>::from_raw_parts(p_); }
-    constexpr auto end() const noexcept -> ptr<u8> { return begin().add(length_); }
+    constexpr auto end() const noexcept -> ptr<u8> {
+        if (is_empty()) return begin();
+        return begin().add(length_);
+    }
 
     constexpr auto     metadata() const noexcept -> usize { return length_; }
     constexpr explicit operator bool() const noexcept { return p_ != nullptr; }
@@ -111,6 +210,35 @@ public:
     constexpr auto operator->() noexcept -> Self* { return this; }
     constexpr auto operator->() const noexcept -> Self const* { return this; }
 
+    constexpr auto is_ascii() const noexcept -> bool { return as_ref().is_ascii(); }
+    constexpr auto is_char_boundary(usize index) const noexcept -> bool {
+        return as_ref().is_char_boundary(index);
+    }
+    constexpr auto as_bytes() const noexcept -> slice<u8> { return as_ref().as_bytes(); }
+    constexpr auto bytes() const noexcept -> str_::Bytes;
+    constexpr auto chars() const noexcept -> str_::Chars;
+    constexpr auto contains(ref<str> pattern) const noexcept -> bool {
+        return as_ref().contains(pattern);
+    }
+    constexpr auto starts_with(ref<str> pattern) const noexcept -> bool {
+        return as_ref().starts_with(pattern);
+    }
+    constexpr auto ends_with(ref<str> pattern) const noexcept -> bool {
+        return as_ref().ends_with(pattern);
+    }
+    constexpr auto find(ref<str> pattern) const noexcept -> Option<usize>;
+    constexpr auto rfind(ref<str> pattern) const noexcept -> Option<usize>;
+    constexpr auto get(usize start, usize end) const noexcept -> Option<ref<str>>;
+    constexpr auto strip_prefix(ref<str> pattern) const noexcept -> Option<ref<str>>;
+    constexpr auto strip_suffix(ref<str> pattern) const noexcept -> Option<ref<str>>;
+    constexpr auto split_once(ref<str> pattern) const noexcept -> Option<tuple<ref<str>, ref<str>>>;
+    constexpr auto rsplit_once(ref<str> pattern) const noexcept
+        -> Option<tuple<ref<str>, ref<str>>>;
+    constexpr auto split_at(usize index) const noexcept -> tuple<ref<str>, ref<str>> {
+        return as_ref().split_at(index);
+    }
+    constexpr auto trim_ascii() const noexcept -> ref<str> { return as_ref().trim_ascii(); }
+
     constexpr void make_ascii_lowercase() noexcept {
         for (rstd::size_t index = 0; index < length_.to_primitive(); ++index) {
             auto const value = u8::from_byte(p_[index]).to_primitive();
@@ -125,14 +253,14 @@ private:
     usize length_ {};
 };
 
-/// Type alias for the unsized string type.
-export using str = str_::Str;
-
 /// Compares two string slices for equality by value.
 export [[nodiscard]]
 constexpr bool operator==(ref<str> a, ref<str> b) noexcept {
-    return a.size() == b.size() &&
-           __builtin_memcmp(a.data(), b.data(), a.size().to_primitive()) == 0;
+    if (a.size() != b.size()) return false;
+    for (rstd::size_t index = 0; index < a.size().to_primitive(); ++index) {
+        if (a.data()[index] != b.data()[index]) return false;
+    }
+    return true;
 }
 
 template<>
@@ -159,75 +287,17 @@ public:
         return u8::from_byte(p[index.to_primitive()]);
     }
     constexpr auto begin() const -> ptr<u8> { return ptr<u8>::from_raw_parts(p); }
-    constexpr auto end() const -> ptr<u8> { return begin().add(length); }
+    constexpr auto end() const -> ptr<u8> {
+        if (length == usize()) return begin();
+        return begin().add(length);
+    }
 
     constexpr explicit operator bool() const { return p != nullptr; }
 };
 
 } // namespace rstd
 
-// ── Chars: UTF-8 code point iterator ─────────────────────────────────────
 namespace rstd::str_
-{
-
-/// A hand-rolled iterator over Unicode code points in a UTF-8 string slice.
-///
-/// Supports `next()` for manual iteration and `begin()`/`end()` for range-for.
-export struct Chars {
-    byte const* _ptr;
-    byte const* _end;
-
-    /// Returns `true` if there are no remaining code points.
-    constexpr auto is_empty() const noexcept -> bool { return _ptr >= _end; }
-
-    /// Decodes and returns the next code point, advancing the position.
-    /// Returns `char_::REPLACEMENT` with no advance if already at end.
-    /// Use `is_empty()` to check before calling.
-    constexpr auto next_unchecked() noexcept -> char32_t {
-        auto [cp, n] = char_::decode_utf8(_ptr, usize(_end - _ptr));
-        _ptr += n.to_primitive();
-        return cp;
-    }
-
-    /// Returns the unconsumed portion of the string.
-    constexpr auto as_str() const noexcept -> ref<str> {
-        return ref<str>::from_raw_parts_unchecked(_ptr, usize(_end - _ptr));
-    }
-
-    // ── range-for support ────────────────────────────────────────────
-    struct Sentinel {};
-
-    struct Iterator {
-        Chars*   chars;
-        char32_t current { 0 };
-        bool     done { false };
-
-        constexpr Iterator(Chars* c): chars(c) { advance(); }
-
-        constexpr void advance() {
-            if (chars->_ptr >= chars->_end) {
-                done = true;
-                return;
-            }
-            current = chars->next_unchecked();
-        }
-
-        constexpr auto operator*() const -> char32_t { return current; }
-        constexpr auto operator++() -> Iterator& {
-            advance();
-            return *this;
-        }
-        constexpr auto operator!=(Sentinel) const -> bool { return ! done; }
-    };
-
-    constexpr auto begin() -> Iterator { return Iterator { this }; }
-    constexpr auto end() -> Sentinel { return {}; }
-};
-
-} // namespace rstd::str_
-
-// ── ref<str> additional methods (no Option dependency) ───────────────────
-namespace rstd
 {
 
 /// Creates a string slice from a byte slice without UTF-8 validation.
@@ -241,110 +311,6 @@ export constexpr auto from_utf8_unchecked_mut(mut_ref<u8[]> bytes [[clang::lifet
     return mut_ref<str>::from_raw_parts_unchecked(bytes.as_raw_ptr(), bytes.len());
 }
 
-} // namespace rstd
-
-namespace rstd::str_
-{
-
-/// Returns `true` if the string is empty (zero bytes).
-export constexpr auto is_empty(ref<str> s) noexcept -> bool {
-    return s.size() == usize();
-}
-
-/// Returns `true` if all bytes are ASCII.
-export constexpr auto is_ascii(ref<str> s) noexcept -> bool {
-    for (rstd::size_t i = 0; i < s.size().to_primitive(); ++i) {
-        if (u8::from_byte(s.data()[i]).to_primitive() > 0x7F) return false;
-    }
-    return true;
-}
-
-/// Returns `true` if `pos` is on a UTF-8 character boundary.
-export constexpr auto is_char_boundary(ref<str> s, usize pos) noexcept -> bool {
-    return char_::is_char_boundary(s.data(), s.size(), pos);
-}
-
-/// Returns the UTF-8 byte slice of the string.
-export constexpr auto as_bytes(ref<str> s [[clang::lifetimebound]]) noexcept -> slice<u8> {
-    if (s.size() == usize()) return {};
-    return slice<u8>::from_raw_parts(s.data(), s.size());
-}
-
-/// Returns a `Chars` iterator over the string's Unicode code points.
-export constexpr auto chars(ref<str> s [[clang::lifetimebound]]) noexcept -> Chars {
-    return { s.data(), s.data() + s.size().to_primitive() };
-}
-
-/// Returns `true` if `needle` is a substring of `haystack`.
-export constexpr auto contains(ref<str> haystack, ref<str> needle) noexcept -> bool {
-    if (needle.size() == usize()) return true;
-    if (needle.size() > haystack.size()) return false;
-    auto const limit = (haystack.size() - needle.size()).to_primitive();
-    for (rstd::size_t i = 0; i <= limit; ++i) {
-        if (__builtin_memcmp(haystack.data() + i, needle.data(), needle.size().to_primitive()) == 0)
-            return true;
-    }
-    return false;
-}
-
-/// Returns `true` if the string starts with `prefix`.
-export constexpr auto starts_with(ref<str> s, ref<str> prefix) noexcept -> bool {
-    if (prefix.size() > s.size()) return false;
-    return __builtin_memcmp(s.data(), prefix.data(), prefix.size().to_primitive()) == 0;
-}
-
-/// Returns `true` if the string ends with `suffix`.
-export constexpr auto ends_with(ref<str> s, ref<str> suffix) noexcept -> bool {
-    if (suffix.size() > s.size()) return false;
-    return __builtin_memcmp(s.data() + (s.size() - suffix.size()).to_primitive(),
-                            suffix.data(),
-                            suffix.size().to_primitive()) == 0;
-}
-
-/// Splits the string at the given byte position.
-export constexpr auto split_at(ref<str> s [[clang::lifetimebound]], usize mid) noexcept
-    -> rstd::tuple<ref<str>, ref<str>> {
-    if (! is_char_boundary(s, mid)) __builtin_trap();
-    return { ref<str>::from_raw_parts_unchecked(s.data(), mid),
-             ref<str>::from_raw_parts_unchecked(s.data() + mid.to_primitive(), s.size() - mid) };
-}
-
-/// Returns the string with leading and trailing ASCII whitespace removed.
-export constexpr auto trim(ref<str> s [[clang::lifetimebound]]) noexcept -> ref<str> {
-    auto* b             = s.data();
-    auto* e             = b + s.size().to_primitive();
-    auto  is_whitespace = [](byte value) constexpr {
-        auto raw = u8::from_byte(value).to_primitive();
-        return raw == ' ' || raw == '\t' || raw == '\n' || raw == '\r';
-    };
-    while (b < e && is_whitespace(*b)) ++b;
-    while (e > b && is_whitespace(*(e - 1))) --e;
-    return ref<str>::from_raw_parts_unchecked(b, usize(e - b));
-}
-
-/// Extracts the last `count` path components from a path string.
-/// \param path The path string to extract from.
-/// \param count The number of trailing path components to extract.
-/// \return A string slice containing the last `count` components.
-export constexpr auto extract_last(ref<str> path [[clang::lifetimebound]], usize count)
-    -> ref<str> {
-    auto pos = path.size();
-    while (pos != usize()) {
-        auto const index = (pos - usize(1)).to_primitive();
-        auto const value = u8::from_byte(path.data()[index]).to_primitive();
-        if (value == '/' || value == '\\') {
-            --count;
-        }
-        if (count != usize()) {
-            --pos;
-        } else {
-            break;
-        }
-    }
-    auto begin = path.begin() + pos.to_primitive();
-    auto size  = static_cast<rstd::size_t>(path.end() - begin);
-    return ref<str>::from_raw_parts_unchecked(begin, usize(size));
-}
 } // namespace rstd::str_
 
 namespace rstd
@@ -370,7 +336,7 @@ struct Impl<hash::Hash, ref<str>> : ImplBase<ref<str>> {
     template<typename H>
         requires Impled<H, hash::Hasher>
     void hash(H& state) const noexcept {
-        rstd::as<hash::Hasher>(state).write(str_::as_bytes(this->self()));
+        rstd::as<hash::Hasher>(state).write(this->self().as_bytes());
         byte const separator { 0xff };
         rstd::as<hash::Hasher>(state).write(
             slice<u8>::from_raw_parts(rstd::addressof(separator), usize(1)));

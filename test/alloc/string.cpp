@@ -13,6 +13,12 @@ concept HasArrowAsciiLowercase = requires(T& value) { value->make_ascii_lowercas
 template<typename T>
 concept HasDirectAsciiLowercase = requires(T& value) { value.make_ascii_lowercase(); };
 
+template<typename T>
+concept HasDirectStrIterators = requires(const T& value) {
+    value.bytes();
+    value.chars();
+};
+
 static_assert(
     rstd::mtp::same_as<decltype(rstd::mtp::declval<String const&>().begin()), rstd::ptr<rstd::u8>>);
 static_assert(rstd::mtp::same_as<rstd::ops::deref_target_t<String>, rstd::str>);
@@ -21,6 +27,7 @@ static_assert(rstd::Impled<String, rstd::ops::DerefMut>);
 static_assert(HasArrowAsciiLowercase<String>);
 static_assert(! HasArrowAsciiLowercase<String const>);
 static_assert(! HasDirectAsciiLowercase<String>);
+static_assert(! HasDirectStrIterators<String>);
 static_assert(
     rstd::mtp::same_as<decltype(*rstd::mtp::declval<String&>()), rstd::mut_ref<rstd::str>>);
 static_assert(
@@ -29,6 +36,18 @@ static_assert(rstd::mtp::same_as<decltype(rstd::mtp::declval<String&>().as_mut_s
                                  rstd::mut_ref<rstd::str>>);
 static_assert(requires(String const& value) {
     { value->size() } -> rstd::mtp::same_as<usize>;
+    { value->contains("text"_str) } -> rstd::mtp::same_as<bool>;
+    value->find("text"_str);
+    value->get(usize(), usize());
+    value->bytes();
+    value->chars();
+});
+static_assert(requires(String& value) {
+    { value->contains("text"_str) } -> rstd::mtp::same_as<bool>;
+    value->find("text"_str);
+    value->get(usize(), usize());
+    value->bytes();
+    value->chars();
 });
 
 TEST(String, ToString) {
@@ -76,7 +95,7 @@ TEST(String, DerefMutMakesAsciiLowercaseInPlace) {
     EXPECT_EQ(text.data(), data);
     EXPECT_EQ(text.len(), length);
     EXPECT_EQ(text.capacity(), capacity);
-    EXPECT_TRUE(rstd::str_::validate_utf8(rstd::str_::as_bytes(text.as_str())).is_ok());
+    EXPECT_TRUE(rstd::str_::validate_utf8(text.as_str().as_bytes()).is_ok());
 
     text->make_ascii_lowercase();
     EXPECT_EQ(text, "grÜße, jÜrgen ❤\0z"_str);
@@ -88,6 +107,25 @@ TEST(String, DerefMutMakesAsciiLowercaseInPlace) {
     auto empty = String::make();
     empty->make_ascii_lowercase();
     EXPECT_TRUE(empty.is_empty());
+}
+
+TEST(String, DerefSharesStrQueriesWithoutChangingStorage) {
+    auto        text      = String::make("  left::右  "_str);
+    auto        data      = text.data();
+    auto        length    = text.len();
+    auto        capacity  = text.capacity();
+    const auto& immutable = text;
+
+    EXPECT_TRUE(text->contains("::"_str));
+    EXPECT_EQ(*text->find("右"_str), usize(8));
+    EXPECT_EQ(text->trim_ascii(), "left::右"_str);
+    EXPECT_TRUE(immutable->contains("left"_str));
+    EXPECT_EQ(*immutable->get(usize(2), usize(8)), "left::"_str);
+
+    EXPECT_EQ(text.data(), data);
+    EXPECT_EQ(text.len(), length);
+    EXPECT_EQ(text.capacity(), capacity);
+    EXPECT_EQ(text, "  left::右  "_str);
 }
 
 TEST(String, BorrowedComparisonUsesAllBytes) {

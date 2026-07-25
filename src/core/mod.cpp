@@ -75,7 +75,7 @@ auto Formatter::write_str(ref<str> const& value) -> bool {
 auto Formatter::write_raw(const rstd::byte* data, rstd::size_t length) -> bool {
     auto bytes = slice<u8>::from_raw_parts(data, usize(length));
     if (! char_::is_valid_utf8(data, usize(length))) return false;
-    return write_str(rstd::from_utf8_unchecked(bytes));
+    return write_str(rstd::str_::from_utf8_unchecked(bytes));
 }
 
 auto Formatter::write_raw(const rstd::uint8_t* data, rstd::size_t length) -> bool {
@@ -232,12 +232,9 @@ auto Formatter::pad(ref<str> value) -> bool {
 
     const rstd::size_t maximum =
         has_prec() ? static_cast<rstd::size_t>(precision()) : value.size().to_primitive();
-    auto         iterator = str_::chars(value);
+    auto         iterator = value.chars();
     rstd::size_t chars    = 0;
-    while (! iterator.is_empty() && chars < maximum) {
-        iterator.next_unchecked();
-        ++chars;
-    }
+    while (chars < maximum && iterator.next().is_some()) ++chars;
     const rstd::size_t bytes =
         value.size().to_primitive() - iterator.as_str().size().to_primitive();
 

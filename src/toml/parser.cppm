@@ -527,7 +527,7 @@ private:
         for (usize index {}; index < token.size(); ++index) {
             if (token[index] != u8('_')) normalized.push(token[index]);
         }
-        auto  text = rstd::from_utf8_unchecked(normalized.as_slice());
+        auto  text = rstd::str_::from_utf8_unchecked(normalized.as_slice());
         usize index {};
         bool  negative {};
         bool  signed_value {};
@@ -588,7 +588,7 @@ private:
         for (usize index {}; index < token.size(); ++index) {
             if (token[index] != u8('_')) normalized.push(token[index]);
         }
-        auto  text = rstd::from_utf8_unchecked(normalized.as_slice());
+        auto  text = rstd::str_::from_utf8_unchecked(normalized.as_slice());
         usize cursor {};
         bool  negative {};
         if (text[cursor] == u8('+') || text[cursor] == u8('-')) {

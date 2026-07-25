@@ -6,7 +6,7 @@ using namespace rstd::prelude;
 template<typename Writer>
     requires Impled<Writer, rstd::io::Write>
 auto write_probe_text_line(Writer& writer, String line) -> rstd::io::Result<empty> {
-    return rstd::io::write_all(writer, rstd::str_::as_bytes(line.as_str()));
+    return rstd::io::write_all(writer, line.as_str().as_bytes());
 }
 
 auto format_probe_diagnostic(const rstd::bench::probe::ProbeDiagnostic& diagnostic) -> String {

@@ -190,7 +190,7 @@ TEST(JsonParser, TracksOneBasedLineAndColumn) {
     EXPECT_EQ(error.column(), usize(13));
 
     auto message = rstd::format("{}", error);
-    EXPECT_TRUE(rstd::str_::contains(message.as_str(), "line 2 column 13"_str));
+    EXPECT_TRUE(message.as_str().contains("line 2 column 13"_str));
 }
 
 TEST(JsonParser, MatchesReferenceEofAndControlPositions) {

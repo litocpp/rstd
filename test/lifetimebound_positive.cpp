@@ -28,7 +28,7 @@ int main() {
     auto source_item = source_iter.next();
 
     auto text_values = "ok"_bytes;
-    auto raw_bytes   = rstd::str_::as_bytes(rstd::from_utf8_unchecked(text_values));
+    auto raw_bytes   = rstd::str_::from_utf8_unchecked(text_values).as_bytes();
 
     auto map = rstd::collections::BTreeMap<int, int>::make();
     map.insert(1, 11);

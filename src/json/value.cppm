@@ -278,7 +278,7 @@ public:
                 ref<str>::from_raw_parts_unchecked(path.data() + start.to_primitive(), end - start);
 
             if (current->is_Object()) {
-                if (str_::contains(token, "~"_str)) {
+                if (token.contains("~"_str)) {
                     auto decoded = decode_pointer_token(token);
                     auto next    = current->get(decoded.as_str());
                     if (next.is_none()) return None();
@@ -320,7 +320,7 @@ public:
                 ref<str>::from_raw_parts_unchecked(path.data() + start.to_primitive(), end - start);
 
             if (current->is_Object()) {
-                if (str_::contains(token, "~"_str)) {
+                if (token.contains("~"_str)) {
                     auto decoded = decode_pointer_token(token);
                     auto next    = current->get_mut(decoded.as_str());
                     if (next.is_none()) return None();

@@ -3,6 +3,8 @@ import :num.types;
 import :error.trait;
 export import :str.str;
 export import :result;
+export import :iter.traits;
+export import :iter.adapters;
 
 namespace rstd::str_
 {
@@ -22,6 +24,101 @@ export struct FromStr {
 };
 } // namespace rstd::str_
 
+namespace rstd::str_
+{
+
+export struct Bytes : DefaultInClass<Bytes, iter::Iterator> {
+    using Item                                = u8;
+    static constexpr bool PROVEN_DOUBLE_ENDED = true;
+    static constexpr bool PROVEN_EXACT_SIZE   = true;
+    static constexpr bool PROVEN_FUSED        = true;
+    static constexpr bool PROVEN_TRUSTED_LEN  = true;
+
+    constexpr explicit Bytes(ref<str> value): remaining_(value) {}
+
+    constexpr auto next() -> Option<Item> {
+        if (remaining_.is_empty()) return None();
+        auto value = remaining_[usize()];
+        if (remaining_.len() == usize(1)) {
+            remaining_ = ref<str>::from_raw_parts_unchecked(remaining_.data() + 1, usize());
+        } else {
+            remaining_ = ref<str>::from_raw_parts_unchecked(remaining_.data() + 1,
+                                                            remaining_.len() - usize(1));
+        }
+        return Some(value);
+    }
+
+    constexpr auto next_back() -> Option<Item> {
+        if (remaining_.is_empty()) return None();
+        auto const index = remaining_.len() - usize(1);
+        auto       value = remaining_[index];
+        remaining_       = ref<str>::from_raw_parts_unchecked(remaining_.data(), index);
+        return Some(value);
+    }
+
+    constexpr auto size_hint() const -> iter::SizeHint {
+        return { remaining_.len(), Some(remaining_.len()) };
+    }
+
+    constexpr auto len() const -> usize { return remaining_.len(); }
+
+private:
+    ref<str> remaining_;
+};
+
+export struct Chars : DefaultInClass<Chars, iter::Iterator> {
+    using Item                         = u32;
+    static constexpr bool PROVEN_FUSED = true;
+
+    constexpr explicit Chars(ref<str> value): remaining_(value) {}
+
+    constexpr auto next() -> Option<Item> {
+        if (remaining_.is_empty()) return None();
+        auto [code_point, length] = char_::decode_utf8(remaining_.data(), remaining_.len());
+        if (length == remaining_.len()) {
+            remaining_ = ref<str>::from_raw_parts_unchecked(
+                remaining_.data() + length.to_primitive(), usize());
+        } else {
+            remaining_ = ref<str>::from_raw_parts_unchecked(
+                remaining_.data() + length.to_primitive(), remaining_.len() - length);
+        }
+        return Some(u32(code_point));
+    }
+
+    constexpr auto size_hint() const -> iter::SizeHint {
+        auto const bytes = remaining_.len().to_primitive();
+        return { usize(bytes / 4 + (bytes % 4 != 0)), Some(remaining_.len()) };
+    }
+
+    constexpr auto as_str() const noexcept -> ref<str> { return remaining_; }
+
+private:
+    ref<str> remaining_;
+};
+
+} // namespace rstd::str_
+
+namespace rstd
+{
+
+constexpr auto ref<str>::bytes() const noexcept -> str_::Bytes {
+    return str_::Bytes(*this);
+}
+
+constexpr auto ref<str>::chars() const noexcept -> str_::Chars {
+    return str_::Chars(*this);
+}
+
+constexpr auto mut_ref<str>::bytes() const noexcept -> str_::Bytes {
+    return as_ref().bytes();
+}
+
+constexpr auto mut_ref<str>::chars() const noexcept -> str_::Chars {
+    return as_ref().chars();
+}
+
+} // namespace rstd
+
 namespace rstd
 {
 /// Parses a string slice into the specified type.
@@ -35,7 +132,6 @@ auto from_str(ref<str> str) {
 
 } // namespace rstd
 
-// ── str functions that return Option ─────────────────────────────────────
 namespace rstd::str_
 {
 
@@ -127,35 +223,38 @@ export constexpr auto validate_utf8(slice<u8> bytes) noexcept -> Result<empty, U
 export constexpr auto from_utf8(slice<u8> bytes) noexcept -> Result<ref<str>, Utf8Error> {
     auto validation = validate_utf8(bytes);
     if (validation.is_err()) return Err(rstd::move(validation).unwrap_err_unchecked());
-    return Ok(rstd::from_utf8_unchecked(bytes));
+    return Ok(str_::from_utf8_unchecked(bytes));
 }
 
-/// Finds the byte offset of `needle` in `haystack`.
-export constexpr auto find(ref<str> haystack, ref<str> needle) noexcept -> Option<usize> {
-    if (needle.size() == usize()) {
+} // namespace rstd::str_
+
+namespace rstd
+{
+
+constexpr auto ref<str>::find(ref<str> pattern) const noexcept -> Option<usize> {
+    if (pattern.is_empty()) {
         usize z;
         return Some(rstd::move(z));
     }
-    if (needle.size() > haystack.size()) return None();
-    auto const limit = (haystack.size() - needle.size()).to_primitive();
-    for (rstd::size_t i = 0; i <= limit; ++i) {
-        if (__builtin_memcmp(haystack.data() + i, needle.data(), needle.size().to_primitive()) ==
-            0) {
-            usize r(i);
+    if (pattern.len() > length) return None();
+    auto const limit = (length - pattern.len()).to_primitive();
+    for (rstd::size_t index = 0; index <= limit; ++index) {
+        auto candidate = ref<str>::from_raw_parts_unchecked(p + index, length - usize(index));
+        if (candidate.starts_with(pattern)) {
+            usize r(index);
             return Some(rstd::move(r));
         }
     }
     return None();
 }
 
-/// Returns the last byte offset of `needle` in `haystack`.
-export constexpr auto rfind(ref<str> haystack, ref<str> needle) noexcept -> Option<usize> {
-    if (needle.size() == usize()) return Some(haystack.size());
-    if (needle.size() > haystack.size()) return None();
-    auto offset = (haystack.size() - needle.size()).to_primitive();
+constexpr auto ref<str>::rfind(ref<str> pattern) const noexcept -> Option<usize> {
+    if (pattern.is_empty()) return Some(usize(length.to_primitive()));
+    if (pattern.len() > length) return None();
+    auto offset = (length - pattern.len()).to_primitive();
     for (;;) {
-        if (__builtin_memcmp(
-                haystack.data() + offset, needle.data(), needle.size().to_primitive()) == 0) {
+        auto candidate = ref<str>::from_raw_parts_unchecked(p + offset, length - usize(offset));
+        if (candidate.starts_with(pattern)) {
             return Some(usize(offset));
         }
         if (offset == 0) break;
@@ -164,65 +263,73 @@ export constexpr auto rfind(ref<str> haystack, ref<str> needle) noexcept -> Opti
     return None();
 }
 
-/// Returns a checked UTF-8 string slice over `[start, end)` byte offsets.
-export constexpr auto get(ref<str> value [[clang::lifetimebound]], usize start, usize end) noexcept
-    -> Option<ref<str>> {
-    if (start > end || end > value.size()) return None();
-    if (! is_char_boundary(value, start) || ! is_char_boundary(value, end)) return None();
-    auto* data = value.data();
+constexpr auto ref<str>::get(usize start, usize end) const noexcept -> Option<ref<str>> {
+    if (start > end || end > length) return None();
+    if (! is_char_boundary(start) || ! is_char_boundary(end)) return None();
+    auto* data = p;
     if (start != usize()) data += start.to_primitive();
     return Some(ref<str>::from_raw_parts_unchecked(data, end - start));
 }
 
-/// Returns the suffix beginning at a checked UTF-8 byte offset.
-export constexpr auto get_from(ref<str> value [[clang::lifetimebound]], usize start) noexcept
-    -> Option<ref<str>> {
-    return get(value, start, value.size());
+constexpr auto ref<str>::strip_prefix(ref<str> pattern) const noexcept -> Option<ref<str>> {
+    if (! starts_with(pattern)) return None();
+    return get(pattern.len(), length);
 }
 
-/// Returns the prefix ending at a checked UTF-8 byte offset.
-export constexpr auto get_to(ref<str> value [[clang::lifetimebound]], usize end) noexcept
-    -> Option<ref<str>> {
-    return get(value, usize(), end);
+constexpr auto ref<str>::strip_suffix(ref<str> pattern) const noexcept -> Option<ref<str>> {
+    if (! ends_with(pattern)) return None();
+    return get(usize(), length - pattern.len());
 }
 
-/// Removes `prefix` and returns the remaining suffix when it matches.
-export constexpr auto strip_prefix(ref<str> value [[clang::lifetimebound]],
-                                   ref<str> prefix) noexcept -> Option<ref<str>> {
-    if (! starts_with(value, prefix)) return None();
-    return get_from(value, prefix.size());
-}
-
-/// Removes `suffix` and returns the remaining prefix when it matches.
-export constexpr auto strip_suffix(ref<str> value [[clang::lifetimebound]],
-                                   ref<str> suffix) noexcept -> Option<ref<str>> {
-    if (! ends_with(value, suffix)) return None();
-    return get_to(value, value.size() - suffix.size());
-}
-
-/// Splits once at the first occurrence of `separator`.
-export constexpr auto split_once(ref<str> value [[clang::lifetimebound]],
-                                 ref<str> separator) noexcept
+constexpr auto ref<str>::split_once(ref<str> pattern) const noexcept
     -> Option<rstd::tuple<ref<str>, ref<str>>> {
-    auto offset = find(value, separator);
+    auto offset = find(pattern);
     if (offset.is_none()) return None();
-    auto left  = get_to(value, *offset).unwrap();
-    auto right = get_from(value, *offset + separator.size()).unwrap();
+    auto left  = get(usize(), *offset).unwrap();
+    auto right = get(*offset + pattern.len(), length).unwrap();
     return Some(rstd::tuple<ref<str>, ref<str>>(left, right));
 }
 
-/// Splits once at the last occurrence of `separator`.
-export constexpr auto rsplit_once(ref<str> value [[clang::lifetimebound]],
-                                  ref<str> separator) noexcept
+constexpr auto ref<str>::rsplit_once(ref<str> pattern) const noexcept
     -> Option<rstd::tuple<ref<str>, ref<str>>> {
-    auto offset = rfind(value, separator);
+    auto offset = rfind(pattern);
     if (offset.is_none()) return None();
-    auto left  = get_to(value, *offset).unwrap();
-    auto right = get_from(value, *offset + separator.size()).unwrap();
+    auto left  = get(usize(), *offset).unwrap();
+    auto right = get(*offset + pattern.len(), length).unwrap();
     return Some(rstd::tuple<ref<str>, ref<str>>(left, right));
 }
 
-} // namespace rstd::str_
+constexpr auto mut_ref<str>::find(ref<str> pattern) const noexcept -> Option<usize> {
+    return as_ref().find(pattern);
+}
+
+constexpr auto mut_ref<str>::rfind(ref<str> pattern) const noexcept -> Option<usize> {
+    return as_ref().rfind(pattern);
+}
+
+constexpr auto mut_ref<str>::get(usize start, usize end) const noexcept -> Option<ref<str>> {
+    return as_ref().get(start, end);
+}
+
+constexpr auto mut_ref<str>::strip_prefix(ref<str> pattern) const noexcept -> Option<ref<str>> {
+    return as_ref().strip_prefix(pattern);
+}
+
+constexpr auto mut_ref<str>::strip_suffix(ref<str> pattern) const noexcept -> Option<ref<str>> {
+    return as_ref().strip_suffix(pattern);
+}
+
+constexpr auto mut_ref<str>::split_once(ref<str> pattern) const noexcept
+    -> Option<rstd::tuple<ref<str>, ref<str>>> {
+    return as_ref().split_once(pattern);
+}
+
+constexpr auto mut_ref<str>::rsplit_once(ref<str> pattern) const noexcept
+    -> Option<rstd::tuple<ref<str>, ref<str>>> {
+    return as_ref().rsplit_once(pattern);
+}
+
+} // namespace rstd
 
 namespace rstd
 {

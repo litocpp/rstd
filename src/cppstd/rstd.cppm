@@ -23,7 +23,7 @@ inline auto as_str(std::string_view value) noexcept -> Result<ref<str>, str_::Ut
 inline auto to_string(ref<str> value) -> std::string {
     auto result = std::string {};
     result.reserve(value.size().to_primitive());
-    auto bytes = str_::as_bytes(value);
+    auto bytes = value.as_bytes();
     for (rstd::size_t index = 0; index != bytes.len().to_primitive(); ++index) {
         result.push_back(std::bit_cast<char>(bytes[usize(index)].to_primitive()));
     }

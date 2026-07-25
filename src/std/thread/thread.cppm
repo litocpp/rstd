@@ -41,7 +41,9 @@ public:
 
     auto as_cstr() const noexcept { return inner.as_ref(); }
 
-    auto as_str() const noexcept -> ref<str> { return rstd::from_utf8_unchecked(inner.to_bytes()); }
+    auto as_str() const noexcept -> ref<str> {
+        return rstd::str_::from_utf8_unchecked(inner.to_bytes());
+    }
 };
 
 } // namespace sys::thread::thread_name_string

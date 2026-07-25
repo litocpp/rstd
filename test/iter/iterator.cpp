@@ -1098,17 +1098,18 @@ TEST(Iter, ByRef) {
 
 TEST(Iter, StringCharsBytes) {
     auto s   = String::make("abc"_str);
-    auto cnt = s.chars().count();
+    auto cnt = s->chars().count();
     EXPECT_EQ(cnt, 3_usize);
 
-    auto sum = s.bytes()
+    auto sum = s->bytes()
                    .map([](u8 b) {
                        return rstd::convert::into<i32>(b);
                    })
                    .sum();
     EXPECT_EQ(sum, 294_i32);
 
-    auto bytes = String::make("hi"_str).bytes().collect<Vec<u8>>();
+    auto text  = String::make("hi"_str);
+    auto bytes = text->bytes().collect<Vec<u8>>();
     auto upper = String::from_utf8(rstd::move(bytes)).unwrap();
     EXPECT_EQ(upper.len(), 2_usize);
 }

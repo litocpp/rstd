@@ -350,6 +350,6 @@ TEST(BenchProbe, CollectorComputesNestedExclusiveFrameAndTextReport) {
     ASSERT_TRUE(rstd::bench::probe::write_text(output, report).is_ok());
     EXPECT_GT(output.get_ref().len(), usize());
     auto text = rstd::str_::from_utf8(output.get_ref().as_slice()).unwrap();
-    EXPECT_TRUE(rstd::str_::find(text, "frame=12"_str).is_some());
-    EXPECT_TRUE(rstd::str_::find(text, "diagnostic=no_active_frame"_str).is_some());
+    EXPECT_TRUE(text.find("frame=12"_str).is_some());
+    EXPECT_TRUE(text.find("diagnostic=no_active_frame"_str).is_some());
 }

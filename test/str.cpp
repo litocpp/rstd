@@ -16,10 +16,19 @@ consteval bool mutable_str_ascii_lowercase_is_constexpr() {
     rstd::byte storage[] = { rstd::byte { '@' }, rstd::byte { 'A' }, rstd::byte { 'Z' },
                              rstd::byte { '[' }, rstd::byte { 'a' }, rstd::byte { 'z' } };
     auto       bytes     = rstd::mut_ref<rstd::u8[]>::from_raw_parts(storage, usize(6));
-    auto       value     = rstd::from_utf8_unchecked_mut(bytes);
+    auto       value     = rstd::str_::from_utf8_unchecked_mut(bytes);
     value.make_ascii_lowercase();
     return value[usize()] == u8('@') && value[usize(1)] == u8('a') && value[usize(2)] == u8('z') &&
            value[usize(3)] == u8('[') && value[usize(4)] == u8('a') && value[usize(5)] == u8('z');
+}
+
+consteval bool str_view_methods_are_constexpr() {
+    auto value = " a右b "_str;
+    auto range = value.get(usize(2), usize(5));
+    auto found = value.find("右"_str);
+    return value.contains("右"_str) && value.starts_with(" "_str) && value.ends_with(" "_str) &&
+           found.is_some() && *found == usize(2) && range.is_some() && *range == "右"_str &&
+           value.trim_ascii() == "a右b"_str;
 }
 
 inline constexpr auto BYTE_LITERAL = "a\0\xff"_b;
@@ -33,9 +42,10 @@ static_assert(BYTE_LITERAL[2] == rstd::byte { 0xff });
 static_assert(BYTE_VIEW.len() == usize(3));
 static_assert(BYTE_VIEW[usize(2)] == rstd::u8(0xff));
 static_assert(UTF8_LITERAL.size() == usize(9));
-static_assert(rstd::str_::is_char_boundary(UTF8_LITERAL, usize(1)) == false);
+static_assert(UTF8_LITERAL.is_char_boundary(usize(1)) == false);
 static_assert(rstd::mtp::same_as<decltype(UTF8_LITERAL.begin()), rstd::ptr<rstd::u8>>);
 static_assert(mutable_str_ascii_lowercase_is_constexpr());
+static_assert(str_view_methods_are_constexpr());
 static_assert(rstd::mtp::same_as<decltype(rstd::mtp::declval<rstd::mut_ref<rstd::str>>().data()),
                                  rstd::byte const*>);
 static_assert(rstd::mtp::same_as<decltype(rstd::mtp::declval<rstd::mut_ref<rstd::str>>().begin()),
@@ -45,8 +55,8 @@ static_assert(! HasRawPointer<rstd::mut_ref<rstd::str>>);
 static_assert(! HasRawPointer<rstd::ref<rstd::str>>);
 
 TEST(Str, IsEmpty) {
-    EXPECT_TRUE(rstd::str_::is_empty(""_str));
-    EXPECT_FALSE(rstd::str_::is_empty("hi"_str));
+    EXPECT_TRUE(""_str.is_empty());
+    EXPECT_FALSE("hi"_str.is_empty());
 }
 
 TEST(Str, RangeForYieldsUtf8CodeUnits) {
@@ -55,9 +65,26 @@ TEST(Str, RangeForYieldsUtf8CodeUnits) {
     EXPECT_EQ(total, rstd::u32('A' + 0xe5 + 0x8f + 0xb3));
 }
 
+TEST(Str, EmptyViewMethodsAvoidStorageAccess) {
+    auto value = rstd::ref<rstd::str>();
+
+    EXPECT_TRUE(value.is_empty());
+    EXPECT_TRUE(value.is_ascii());
+    EXPECT_TRUE(value.is_char_boundary(usize()));
+    EXPECT_TRUE(value.contains(""_str));
+    EXPECT_TRUE(value.starts_with(""_str));
+    EXPECT_TRUE(value.ends_with(""_str));
+    EXPECT_EQ(value.as_bytes().len(), usize());
+    EXPECT_EQ(value.trim_ascii(), ""_str);
+
+    auto [left, right] = value.split_at(usize());
+    EXPECT_TRUE(left.is_empty());
+    EXPECT_TRUE(right.is_empty());
+}
+
 TEST(Str, IsAscii) {
-    EXPECT_TRUE(rstd::str_::is_ascii("hello"_str));
-    EXPECT_FALSE(rstd::str_::is_ascii("héllo"_str));
+    EXPECT_TRUE("hello"_str.is_ascii());
+    EXPECT_FALSE("héllo"_str.is_ascii());
 }
 
 TEST(Str, MutableViewMakesOnlyAsciiLowercase) {
@@ -65,7 +92,7 @@ TEST(Str, MutableViewMakesOnlyAsciiLowercase) {
                              rstd::byte { 0x9c }, rstd::byte { 0xc3 }, rstd::byte { 0x9f },
                              rstd::byte { 'E' },  rstd::byte {},       rstd::byte { 'Z' } };
     auto       bytes     = rstd::mut_ref<rstd::u8[]>::from_raw_parts(storage, usize(9));
-    auto       value     = rstd::from_utf8_unchecked_mut(bytes);
+    auto       value     = rstd::str_::from_utf8_unchecked_mut(bytes);
 
     value->make_ascii_lowercase();
 
@@ -78,31 +105,48 @@ TEST(Str, MutableViewMakesOnlyAsciiLowercase) {
     EXPECT_EQ(storage[5], rstd::byte { 0x9f });
 }
 
+TEST(Str, MutableViewDelegatesSharedMethods) {
+    rstd::byte storage[] = { rstd::byte { ' ' },  rstd::byte { 'A' },  rstd::byte { 0xe5 },
+                             rstd::byte { 0x8f }, rstd::byte { 0xb3 }, rstd::byte { ' ' } };
+    auto       bytes     = rstd::mut_ref<rstd::u8[]>::from_raw_parts(storage, usize(6));
+    auto       value     = rstd::str_::from_utf8_unchecked_mut(bytes);
+
+    EXPECT_TRUE(value.contains("A右"_str));
+    EXPECT_EQ(*value.find("右"_str), usize(2));
+    EXPECT_EQ(value.trim_ascii(), "A右"_str);
+    EXPECT_EQ(*value.get(usize(1), usize(5)), "A右"_str);
+    EXPECT_EQ(value.as_bytes()[usize(2)], u8(0xe5));
+}
+
 TEST(Str, Contains) {
-    EXPECT_TRUE(rstd::str_::contains("hello world"_str, "world"_str));
-    EXPECT_TRUE(rstd::str_::contains("hello"_str, ""_str));
-    EXPECT_FALSE(rstd::str_::contains("hello"_str, "xyz"_str));
+    EXPECT_TRUE("hello world"_str.contains("world"_str));
+    EXPECT_TRUE("hello"_str.contains(""_str));
+    EXPECT_TRUE("a\0b"_str.contains("\0b"_str));
+    EXPECT_TRUE("same"_str.contains("same"_str));
+    EXPECT_FALSE("hello"_str.contains("xyz"_str));
+    EXPECT_FALSE("hi"_str.contains("longer"_str));
 }
 
 TEST(Str, StartsWith) {
-    EXPECT_TRUE(rstd::str_::starts_with("hello world"_str, "hello"_str));
-    EXPECT_FALSE(rstd::str_::starts_with("hello"_str, "world"_str));
-    EXPECT_TRUE(rstd::str_::starts_with("hello"_str, ""_str));
+    EXPECT_TRUE("hello world"_str.starts_with("hello"_str));
+    EXPECT_FALSE("hello"_str.starts_with("world"_str));
+    EXPECT_TRUE("hello"_str.starts_with(""_str));
 }
 
 TEST(Str, EndsWith) {
-    EXPECT_TRUE(rstd::str_::ends_with("hello world"_str, "world"_str));
-    EXPECT_FALSE(rstd::str_::ends_with("hello"_str, "world"_str));
+    EXPECT_TRUE("hello world"_str.ends_with("world"_str));
+    EXPECT_FALSE("hello"_str.ends_with("world"_str));
+    EXPECT_TRUE(""_str.ends_with(""_str));
 }
 
 TEST(Str, Find) {
-    auto r = rstd::str_::find("hello world"_str, "world"_str);
+    auto r = "hello world"_str.find("world"_str);
     ASSERT_TRUE(r.is_some());
     EXPECT_EQ(r.unwrap(), usize(6));
 
-    EXPECT_TRUE(rstd::str_::find("hello"_str, "xyz"_str).is_none());
+    EXPECT_TRUE("hello"_str.find("xyz"_str).is_none());
 
-    auto z = rstd::str_::find("hello"_str, ""_str);
+    auto z = "hello"_str.find(""_str);
     ASSERT_TRUE(z.is_some());
     EXPECT_EQ(z.unwrap(), usize());
 }
@@ -110,44 +154,86 @@ TEST(Str, Find) {
 TEST(Str, CheckedRangesAndAffixRemovalUseByteOffsets) {
     auto value = "a右bc右"_str;
 
-    EXPECT_EQ(*rstd::str_::get(value, usize(1), usize(4)), "右"_str);
-    EXPECT_TRUE(rstd::str_::get(value, usize(2), usize(4)).is_none());
-    EXPECT_EQ(*rstd::str_::strip_prefix(value, "a右"_str), "bc右"_str);
-    EXPECT_EQ(*rstd::str_::strip_suffix(value, "右"_str), "a右bc"_str);
-    EXPECT_TRUE(rstd::str_::strip_prefix(value, "右"_str).is_none());
+    EXPECT_EQ(*value.get(usize(1), usize(4)), "右"_str);
+    EXPECT_TRUE(value.get(usize(2), usize(4)).is_none());
+    EXPECT_TRUE(value.get(usize(4), usize(2)).is_none());
+    EXPECT_TRUE(value.get(usize(), usize(99)).is_none());
+    EXPECT_EQ(*value.strip_prefix("a右"_str), "bc右"_str);
+    EXPECT_EQ(*value.strip_suffix("右"_str), "a右bc"_str);
+    EXPECT_TRUE(value.strip_prefix("右"_str).is_none());
+    EXPECT_EQ(*value.strip_prefix(""_str), value);
+    EXPECT_EQ(*value.strip_suffix(""_str), value);
 }
 
 TEST(Str, SplitOnceAndReverseFindPreserveEmptySides) {
     auto value = "left::middle::right"_str;
 
-    auto first = rstd::str_::split_once(value, "::"_str);
+    auto first = value.split_once("::"_str);
     ASSERT_TRUE(first.is_some());
     EXPECT_EQ(first->template get<0>(), "left"_str);
     EXPECT_EQ(first->template get<1>(), "middle::right"_str);
 
-    auto last = rstd::str_::rsplit_once(value, "::"_str);
+    auto last = value.rsplit_once("::"_str);
     ASSERT_TRUE(last.is_some());
     EXPECT_EQ(last->template get<0>(), "left::middle"_str);
     EXPECT_EQ(last->template get<1>(), "right"_str);
-    EXPECT_EQ(*rstd::str_::rfind(value, ""_str), value.size());
+    EXPECT_EQ(*value.rfind(""_str), value.size());
+
+    auto empty_first = value.split_once(""_str).unwrap();
+    EXPECT_EQ(empty_first.template get<0>(), ""_str);
+    EXPECT_EQ(empty_first.template get<1>(), value);
+
+    auto empty_last = value.rsplit_once(""_str).unwrap();
+    EXPECT_EQ(empty_last.template get<0>(), value);
+    EXPECT_EQ(empty_last.template get<1>(), ""_str);
 }
 
-TEST(Str, Trim) {
-    EXPECT_EQ(rstd::str_::trim("  hello  "_str), "hello"_str);
-    EXPECT_EQ(rstd::str_::trim("\t\n hi \r\n"_str), "hi"_str);
-    EXPECT_EQ(rstd::str_::trim(""_str), ""_str);
+TEST(Str, TrimAscii) {
+    EXPECT_EQ("  hello  "_str.trim_ascii(), "hello"_str);
+    EXPECT_EQ("\t\n\f hi \r\n"_str.trim_ascii(), "hi"_str);
+    EXPECT_EQ(""_str.trim_ascii(), ""_str);
+    EXPECT_EQ(" \t\n\f\r "_str.trim_ascii(), ""_str);
+    EXPECT_EQ("\vtext\v"_str.trim_ascii(), "\vtext\v"_str);
+    EXPECT_EQ("　text　"_str.trim_ascii(), "　text　"_str);
 }
 
 TEST(Str, SplitAt) {
-    auto [a, b] = rstd::str_::split_at("hello"_str, usize(2));
+    auto [a, b] = "hello"_str.split_at(usize(2));
     EXPECT_EQ(a, "he"_str);
     EXPECT_EQ(b, "llo"_str);
+
+    auto [empty_left, whole] = "右"_str.split_at(usize());
+    EXPECT_EQ(empty_left, ""_str);
+    EXPECT_EQ(whole, "右"_str);
+}
+
+TEST(StrDeathTest, SplitAtRejectsNonBoundaryByteOffset) {
+    EXPECT_DEATH("右"_str.split_at(usize(1)), "");
+}
+
+TEST(Str, BytesIsAnExactDoubleEndedIterator) {
+    auto bytes = "a\0右"_str.bytes();
+
+    EXPECT_EQ(bytes.len(), usize(5));
+    EXPECT_EQ(bytes.next().unwrap(), u8('a'));
+    EXPECT_EQ(bytes.next_back().unwrap(), u8(0xb3));
+    EXPECT_EQ(bytes.len(), usize(3));
+
+    auto remaining = bytes.collect<rstd::vec::Vec<u8>>();
+    ASSERT_EQ(remaining.len(), usize(3));
+    EXPECT_EQ(remaining[usize()], u8());
+    EXPECT_EQ(remaining[usize(1)], u8(0xe5));
+    EXPECT_EQ(remaining[usize(2)], u8(0x8f));
+
+    auto empty = ""_str.bytes();
+    EXPECT_TRUE(empty.next().is_none());
+    EXPECT_TRUE(empty.next().is_none());
 }
 
 TEST(Str, CharsAscii) {
     std::vector<char32_t> cps;
-    auto                  it = rstd::str_::chars("ABC"_str);
-    for (auto c : it) cps.push_back(c);
+    auto                  it = "ABC"_str.chars();
+    for (auto c : it) cps.push_back(static_cast<char32_t>(c.to_primitive()));
     ASSERT_EQ(cps.size(), 3u);
     EXPECT_EQ(cps[0], U'A');
     EXPECT_EQ(cps[1], U'B');
@@ -157,7 +243,8 @@ TEST(Str, CharsAscii) {
 TEST(Str, CharsMultibyte) {
     // "中文" = 2 code points, 6 bytes
     std::vector<char32_t> cps;
-    for (auto c : rstd::str_::chars("\xe4\xb8\xad\xe6\x96\x87"_str)) cps.push_back(c);
+    auto                  chars = "\xe4\xb8\xad\xe6\x96\x87"_str.chars();
+    for (auto c : chars) cps.push_back(static_cast<char32_t>(c.to_primitive()));
     ASSERT_EQ(cps.size(), 2u);
     EXPECT_EQ(cps[0], char32_t(0x4E2D)); // 中
     EXPECT_EQ(cps[1], char32_t(0x6587)); // 文
@@ -166,7 +253,8 @@ TEST(Str, CharsMultibyte) {
 TEST(Str, CharsEmoji) {
     // "😀" = 1 code point, 4 bytes
     std::vector<char32_t> cps;
-    for (auto c : rstd::str_::chars("\xf0\x9f\x98\x80"_str)) cps.push_back(c);
+    auto                  chars = "\xf0\x9f\x98\x80"_str.chars();
+    for (auto c : chars) cps.push_back(static_cast<char32_t>(c.to_primitive()));
     ASSERT_EQ(cps.size(), 1u);
     EXPECT_EQ(cps[0], char32_t(0x1F600));
 }
@@ -184,12 +272,15 @@ TEST(Str, FromUtf8Invalid) {
 }
 
 TEST(Str, CharsExposesUnconsumedString) {
-    auto chars = rstd::str_::chars("é中x"_str);
+    auto chars = "é中x"_str.chars();
     EXPECT_EQ(chars.as_str(), "é中x"_str);
-    EXPECT_EQ(chars.next_unchecked(), U'é');
+    EXPECT_EQ(chars.next().unwrap(), u32(U'é'));
     EXPECT_EQ(chars.as_str(), "中x"_str);
-    EXPECT_EQ(chars.next_unchecked(), U'中');
+    EXPECT_EQ(chars.next().unwrap(), u32(U'中'));
     EXPECT_EQ(chars.as_str(), "x"_str);
+    EXPECT_EQ(chars.next().unwrap(), u32(U'x'));
+    EXPECT_TRUE(chars.next().is_none());
+    EXPECT_TRUE(chars.next().is_none());
 }
 
 TEST(String, MakeFromStr) {

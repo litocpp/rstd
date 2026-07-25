@@ -71,7 +71,7 @@ class Emitter {
                                              u8('0'),
                                              HEX[usize((byte >> u64(4)).to_primitive())],
                                              HEX[usize((byte & u8(0x0f)).to_primitive())] };
-                    if (! write(rstd::from_utf8_unchecked(escape.as_slice()))) return false;
+                    if (! write(rstd::str_::from_utf8_unchecked(escape.as_slice()))) return false;
                     chunk_start = i + usize(1);
                 }
                 continue;
