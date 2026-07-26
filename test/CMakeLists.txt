@@ -117,6 +117,12 @@ target_link_libraries(rstd_test PRIVATE rstd::rstd rstd::json rstd::toml rstd::l
 include(GoogleTest)
 gtest_discover_tests(rstd_test)
 
+if(TARGET rstd.dlopn)
+  add_executable(rstd_dlopn_test dlopn.cpp)
+  target_link_libraries(rstd_dlopn_test PRIVATE rstd::dlopn GTest::gtest_main)
+  gtest_discover_tests(rstd_dlopn_test)
+endif()
+
 add_executable(rstd_cppstd_test cppstd/iter.cpp)
 target_link_libraries(rstd_cppstd_test PRIVATE rstd.cppstd GTest::gtest_main)
 gtest_discover_tests(rstd_cppstd_test)

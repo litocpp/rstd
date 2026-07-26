@@ -61,6 +61,9 @@ if(PROJECT_IS_TOP_LEVEL)
   set_target_properties(rstd.core PROPERTIES EXPORT_NAME core)
   set_target_properties(rstd.alloc PROPERTIES EXPORT_NAME alloc)
   set_target_properties(rstd.std PROPERTIES EXPORT_NAME rstd)
+  if(TARGET rstd.dlopn)
+    set_target_properties(rstd.dlopn PROPERTIES EXPORT_NAME dlopn)
+  endif()
   set_target_properties(rstd.bench PROPERTIES EXPORT_NAME bench)
 
   install(
@@ -99,6 +102,15 @@ if(PROJECT_IS_TOP_LEVEL)
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     FILE_SET modules DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rstd/modules/std)
+  if(TARGET rstd.dlopn)
+    install(
+      TARGETS rstd.dlopn
+      EXPORT rstdTargets
+      RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+      LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+      ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+      FILE_SET modules DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rstd/modules/dlopn)
+  endif()
   install(
     TARGETS rstd.argparse
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
