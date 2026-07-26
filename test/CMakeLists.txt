@@ -71,6 +71,9 @@ set(
   bytes.cpp
   sync/mutex.cpp
   sync/condvar.cpp
+  sync/once.cpp
+  sync/once_lock.cpp
+  sync/lazy_lock.cpp
   sync/mpsc.cpp
   time.cpp
   fmt.cpp
@@ -264,6 +267,16 @@ add_rstd_compile_fail(
   compile_fail/deref_mut_without_deref.cpp
   Deref.DerefMutWithoutDerefFailure
   "constraints not satisfied|Impled.*Deref")
+add_rstd_compile_fail(
+  rstd_compile_fail_once_lock_temporary_borrow
+  compile_fail/once_lock_temporary_borrow.cpp
+  OnceLock.TemporaryBorrowFailure
+  "deleted function|get.*deleted")
+add_rstd_compile_fail(
+  rstd_compile_fail_lazy_lock_temporary_borrow
+  compile_fail/lazy_lock_temporary_borrow.cpp
+  LazyLock.TemporaryBorrowFailure
+  "deleted function|force.*deleted")
 add_rstd_compile_fail(
   rstd_compile_fail_numeric_mixed_native_arithmetic
   compile_fail/numeric_mixed_native_arithmetic.cpp

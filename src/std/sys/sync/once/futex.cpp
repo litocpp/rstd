@@ -4,92 +4,92 @@ import :sys.sync.once.futex;
 
 namespace rstd::sys::sync::once::futex
 {
-CompletionGuard::CompletionGuard(Futex* state_and_queued, Primitive set_state_on_drop_to)
-    : state_and_queued(state_and_queued), set_state_on_drop_to(set_state_on_drop_to) {
-}
-
-CompletionGuard::~CompletionGuard() {
-    if ((state_and_queued->exchange(set_state_on_drop_to, rstd::sync::atomic::Ordering::Release) &
-         QUEUED) != Primitive()) {
-        pal::futex::futex_wake_all(state_and_queued);
-    }
-}
-
-Once::Once(): state_and_queued(INCOMPLETE) {
-}
-
-bool Once::is_completed() const {
+auto Once::is_completed() const noexcept -> bool {
     return state_and_queued.load(rstd::sync::atomic::Ordering::Acquire) == COMPLETE;
 }
 
-void Once::wait(bool ignore_poisoning) {
+void Once::wait() const {
     Primitive state_and_queued = this->state_and_queued.load(rstd::sync::atomic::Ordering::Acquire);
     while (true) {
-        Primitive state  = state_and_queued & STATE_MASK;
-        bool      queued = (state_and_queued & QUEUED) != Primitive();
+        Primitive const state  = state_and_queued & STATE_MASK;
+        bool const      queued = (state_and_queued & QUEUED) != Primitive {};
         if (state == COMPLETE) return;
-        if (state == POISONED) {
-            if (! ignore_poisoning) {
-                panic { "Once instance has previously been poisoned" };
+
+        if (! queued) {
+            auto expected = state_and_queued;
+            auto desired  = state_and_queued | QUEUED;
+            if (! this->state_and_queued.compare_exchange_weak(
+                    expected,
+                    desired,
+                    rstd::sync::atomic::Ordering::Relaxed,
+                    rstd::sync::atomic::Ordering::Acquire)) {
+                state_and_queued = expected;
+                continue;
             }
-        } else {
-            if (! queued) {
-                state_and_queued += QUEUED;
-                if (this->state_and_queued.compare_exchange_weak(
-                        state,
-                        state_and_queued,
-                        rstd::sync::atomic::Ordering::Relaxed,
-                        rstd::sync::atomic::Ordering::Acquire)) {
-                    continue;
-                }
-            }
-            pal::futex::futex_wait(&this->state_and_queued, state_and_queued, rstd::None());
-            state_and_queued = this->state_and_queued.load(rstd::sync::atomic::Ordering::Acquire);
+            state_and_queued = desired;
         }
+
+        pal::futex::futex_wait(&this->state_and_queued, state_and_queued, rstd::None());
+        state_and_queued = this->state_and_queued.load(rstd::sync::atomic::Ordering::Acquire);
     }
 }
 
-/*
-void Once::call(bool ignore_poisoning, Dyn<FnMut, void(OnceState&)> f) {
-    Primitive state_and_queued = this->state_and_queued.load(std::memory_order_acquire);
+void Once::call(void* context, Callback callback) const {
+    Primitive state_and_queued = this->state_and_queued.load(rstd::sync::atomic::Ordering::Acquire);
     while (true) {
-        Primitive state  = state_and_queued & STATE_MASK;
-        bool      queued = state_and_queued & QUEUED;
-        switch (state) {
-        case COMPLETE: return;
-        case POISONED:
-            if (! ignore_poisoning) {
-                throw std::runtime_error("Once instance has previously been poisoned");
-            }
-            // fall through to INCOMPLETE
-        case INCOMPLETE: {
-            Primitive next = RUNNING + (queued ? QUEUED : 0);
+        Primitive const state  = state_and_queued & STATE_MASK;
+        bool const      queued = (state_and_queued & QUEUED) != Primitive {};
+
+        if (state == COMPLETE) return;
+
+        if (state == INCOMPLETE) {
+            auto expected = state_and_queued;
+            auto next     = RUNNING | (queued ? QUEUED : Primitive {});
             if (this->state_and_queued.compare_exchange_weak(
-                    state_and_queued, next, std::memory_order_acquire, std::memory_order_acquire)) {
-                CompletionGuard waiter_queue(&this->state_and_queued, POISONED);
-                OnceState       f_state;
-                f(f_state);
-                waiter_queue.set_state_on_drop_to = f_state.set_state_to.load();
+                    expected,
+                    next,
+                    rstd::sync::atomic::Ordering::Acquire,
+                    rstd::sync::atomic::Ordering::Acquire)) {
+                callback(context);
+                if ((this->state_and_queued.exchange(COMPLETE,
+                                                     rstd::sync::atomic::Ordering::Release) &
+                     QUEUED) != Primitive {}) {
+                    pal::futex::futex_wake_all(&this->state_and_queued);
+                }
                 return;
             }
+            state_and_queued = expected;
             continue;
         }
-        default:
-            assert(state == RUNNING);
-            if (! queued) {
-                state_and_queued += QUEUED;
-                if (this->state_and_queued.compare_exchange_weak(state,
-                                                                 state_and_queued,
-                                                                 std::memory_order_relaxed,
-                                                                 std::memory_order_acquire)) {
-                    continue;
-                }
+
+        if (! queued) {
+            auto expected = state_and_queued;
+            auto desired  = state_and_queued | QUEUED;
+            if (! this->state_and_queued.compare_exchange_weak(
+                    expected,
+                    desired,
+                    rstd::sync::atomic::Ordering::Relaxed,
+                    rstd::sync::atomic::Ordering::Acquire)) {
+                state_and_queued = expected;
+                continue;
             }
-            futex_wait(&this->state_and_queued, state_and_queued, nullptr);
-            state_and_queued = this->state_and_queued.load(std::memory_order_acquire);
-            break;
+            state_and_queued = desired;
         }
+
+        pal::futex::futex_wait(&this->state_and_queued, state_and_queued, rstd::None());
+        state_and_queued = this->state_and_queued.load(rstd::sync::atomic::Ordering::Acquire);
     }
 }
-    */
+
+auto Once::state() & noexcept -> ExclusiveState {
+    auto const state = state_and_queued.load(rstd::sync::atomic::Ordering::Relaxed);
+    if (state == COMPLETE) return ExclusiveState::Complete;
+    return ExclusiveState::Incomplete;
+}
+
+void Once::set_state(ExclusiveState state) & noexcept {
+    auto primitive = INCOMPLETE;
+    if (state == ExclusiveState::Complete) primitive = COMPLETE;
+    state_and_queued.store(primitive, rstd::sync::atomic::Ordering::Relaxed);
+}
 } // namespace rstd::sys::sync::once::futex

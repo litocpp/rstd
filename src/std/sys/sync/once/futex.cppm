@@ -7,45 +7,40 @@ namespace rstd::sys::sync::once::futex
 using Primitive = pal::futex::Primitive;
 using Futex     = pal::futex::Futex;
 
-constexpr Primitive INCOMPLETE {};
-constexpr Primitive POISONED { static_cast<Primitive::primitive_type>(1) };
-constexpr Primitive RUNNING { static_cast<Primitive::primitive_type>(2) };
-constexpr Primitive COMPLETE { static_cast<Primitive::primitive_type>(3) };
+constexpr Primitive COMPLETE {};
+constexpr Primitive RUNNING { static_cast<Primitive::primitive_type>(1) };
+constexpr Primitive INCOMPLETE { static_cast<Primitive::primitive_type>(3) };
 constexpr Primitive QUEUED { static_cast<Primitive::primitive_type>(4) };
-constexpr Primitive STATE_MASK { static_cast<Primitive::primitive_type>(0x11) };
+constexpr Primitive STATE_MASK { static_cast<Primitive::primitive_type>(0b11) };
 
-class OnceState {
-public:
-    OnceState(): poisoned(false), set_state_to(INCOMPLETE) {}
+static_assert((COMPLETE & STATE_MASK) == COMPLETE);
+static_assert((RUNNING & STATE_MASK) == RUNNING);
+static_assert((INCOMPLETE & STATE_MASK) == INCOMPLETE);
+static_assert((QUEUED & STATE_MASK) == Primitive {});
 
-    bool is_poisoned() const { return poisoned; }
-
-    void poison() { set_state_to.store(POISONED, rstd::sync::atomic::Ordering::Relaxed); }
-
-private:
-    bool  poisoned;
-    Futex set_state_to;
+export enum class ExclusiveState {
+    Incomplete,
+    Complete,
 };
 
-class CompletionGuard {
+export using Callback = void (*)(void*);
+
+export class Once {
 public:
-    CompletionGuard(Futex* state_and_queued, Primitive set_state_on_drop_to);
-    ~CompletionGuard();
+    constexpr Once() noexcept: state_and_queued(INCOMPLETE) {}
+    Once(Once const&)                    = delete;
+    auto operator=(Once const&) -> Once& = delete;
+    Once(Once&&)                         = delete;
+    auto operator=(Once&&) -> Once&      = delete;
+
+    auto is_completed() const noexcept -> bool;
+    void wait() const;
+    void call(void* context, Callback callback) const;
+
+    auto state() & noexcept -> ExclusiveState;
+    void set_state(ExclusiveState state) & noexcept;
 
 private:
-    Futex*    state_and_queued;
-    Primitive set_state_on_drop_to;
-};
-
-class Once {
-public:
-    Once();
-
-    bool is_completed() const;
-    void wait(bool ignore_poisoning);
-    // void call(bool ignore_poisoning, Dyn<FnMut, void(OnceState&)> f);
-
-private:
-    Futex state_and_queued;
+    mutable Futex state_and_queued;
 };
 } // namespace rstd::sys::sync::once::futex

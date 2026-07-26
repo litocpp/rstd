@@ -1,6 +1,7 @@
 /// The synchronization primitives module: mutexes, channels, and reference-counted pointers.
 export module rstd:sync;
 export import :sync.poison;
+export import :sync.once;
 export import :sync.mutex;
 export import :sync.condvar;
 export import :sync.mpmc;
