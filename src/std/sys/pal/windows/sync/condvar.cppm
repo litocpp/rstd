@@ -14,7 +14,7 @@ namespace rstd::sys::pal::windows::sync::condvar
 {
 
 static auto dur2timeout(rstd::time::Duration dur) noexcept -> DWORD {
-    auto ms = dur.as_millis();
+    auto ms = dur.as_millis().to_primitive();
     if (ms >= M_INFINITE) return M_INFINITE - 1;
     return static_cast<DWORD>(ms);
 }

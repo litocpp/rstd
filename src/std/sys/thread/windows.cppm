@@ -25,7 +25,7 @@ export struct Thread {
         auto raw = rstd::move(init).into_raw();
 
         auto h = CreateThread(nullptr,
-                              stack,
+                              stack.to_primitive(),
                               rstd_thread_start_win,
                               raw.p,
                               M_STACK_SIZE_PARAM_IS_A_RESERVATION,
@@ -51,14 +51,15 @@ export struct Thread {
         if (CloseHandle(handle) == 0) {
             return Err(rstd::io::error::Error::from_raw_os_error((i32)GetLastError()));
         }
-        return Ok(0);
+        return Ok(i32(0));
     }
 
     static void set_name(ref<ffi::CStr> name) {
         auto* p   = name.as_ptr();
         int   len = MultiByteToWideChar(M_CP_UTF8, 0, p, -1, nullptr, 0);
         if (len > 0) {
-            auto* buf = (wchar_t*)rstd::sys::libc::malloc(sizeof(wchar_t) * (usize)len);
+            auto* buf = (wchar_t*)rstd::sys::libc::malloc(
+                sizeof(wchar_t) * static_cast<rstd::size_t>(len));
             if (buf) {
                 MultiByteToWideChar(M_CP_UTF8, 0, p, -1, buf, len);
                 SetThreadDescription(GetCurrentThread(), buf);
@@ -68,7 +69,7 @@ export struct Thread {
     }
 
     static void sleep(rstd::time::Duration dur) {
-        auto ms = dur.as_millis();
+        auto ms = dur.as_millis().to_primitive();
         if (ms >= M_INFINITE) {
             Sleep(M_INFINITE - 1);
         } else {

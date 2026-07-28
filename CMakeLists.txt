@@ -5,6 +5,21 @@ project(
   DESCRIPTION "Rust-like std for C++"
   LANGUAGES CXX)
 
+if(WIN32
+   AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang"
+   AND CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC"
+   AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "GNU")
+  execute_process(
+    COMMAND ${CMAKE_CXX_COMPILER} -rtlib=compiler-rt --print-libgcc-file-name
+    RESULT_VARIABLE RSTD_COMPILER_RT_RESULT
+    OUTPUT_VARIABLE RSTD_COMPILER_RT_PATH
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+  if(NOT RSTD_COMPILER_RT_RESULT EQUAL 0 OR NOT EXISTS "${RSTD_COMPILER_RT_PATH}")
+    message(FATAL_ERROR "Unable to locate the Clang compiler runtime library")
+  endif()
+  get_filename_component(RSTD_COMPILER_RT_LIBRARY "${RSTD_COMPILER_RT_PATH}" NAME_WLE)
+endif()
+
 option(RSTD_BUILD_TESTING "Build tests" ${PROJECT_IS_TOP_LEVEL})
 option(RSTD_BUILD_BENCHMARKS "Build rstd benchmark executables" OFF)
 option(RSTD_BENCHMARKS_IN_CTEST "Register benchmark smoke tests in ctest" OFF)

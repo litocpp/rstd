@@ -66,7 +66,6 @@ set(
   async/facility.cpp
   async/frame.cpp
   async/lifecycle.cpp
-  async/poll.cpp
   async/runtime.cpp
   bytes.cpp
   sync/mutex.cpp
@@ -78,7 +77,6 @@ set(
   time.cpp
   fmt.cpp
   io.cpp
-  net.cpp
   env.cpp
   char.cpp
   floats.cpp
@@ -100,7 +98,12 @@ if(UNIX)
     sys/sync/mutex/pthread.cpp
     process.cpp
     os_fd.cpp
-    fs.cpp)
+    fs.cpp
+    net.cpp)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  list(APPEND RSTD_TEST_SOURCES async/poll.cpp)
 endif()
 
 add_executable(rstd_test ${RSTD_TEST_SOURCES})

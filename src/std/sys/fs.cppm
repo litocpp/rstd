@@ -21,7 +21,6 @@ using rstd::path::Path;
 using rstd::path::PathBuf;
 using rstd::ffi::CStr;
 using rstd::ffi::OsString;
-using rstd::sys::libc::DIR;
 using ::alloc::ffi::CString;
 using ::alloc::string::String;
 using ::alloc::vec::Vec;
@@ -87,6 +86,7 @@ auto path_cstring(ref<Path> path) -> Result<CString> {
 
 #if RSTD_OS_UNIX
 namespace libc = rstd::sys::libc;
+using rstd::sys::libc::DIR;
 
 auto last_error() noexcept -> Error {
     return Error::from_raw_os_error(i32(libc::get_errno()));

@@ -3,6 +3,7 @@
 #include <vector>
 
 #include <gtest/gtest.h>
+#include <rstd/macro.hpp>
 import rstd;
 import rstd.core;
 
@@ -117,11 +118,21 @@ TEST(Time, DurationCheckedArithmeticPreservesBoundaries) {
 }
 
 TEST(Time, UnixTimestampCheckedArithmeticCoversSignedLimits) {
+#if RSTD_OS_WINDOWS
+    auto tick = Duration::from_nanos(u64(100));
+    auto maximum =
+        SystemTime::from_unix_time(i64(1'833'029'933'770), u32(955'161'500)).unwrap();
+    EXPECT_TRUE(maximum.checked_add(tick).is_none());
+
+    auto minimum = SystemTime::from_unix_time(i64(-11'644'473'600), u32()).unwrap();
+    EXPECT_TRUE(minimum.checked_sub(tick).is_none());
+#else
     auto maximum = SystemTime::from_unix_time(i64::MAX, NANOS_PER_SEC - u32(1)).unwrap();
     EXPECT_TRUE(maximum.checked_add(Duration_NANOSECOND).is_none());
 
     auto minimum = SystemTime::from_unix_time(i64::MIN, u32()).unwrap();
     EXPECT_TRUE(minimum.checked_sub(Duration_NANOSECOND).is_none());
+#endif
 }
 
 TEST(Time, MonthRange) {

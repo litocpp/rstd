@@ -16,6 +16,12 @@
 #define RSTD_OS_UNIX 1
 #endif
 
+#if defined(_MSC_VER)
+#define RSTD_ATTR_NO_UNIQUE_ADDRESS [[msvc::no_unique_address]]
+#else
+#define RSTD_ATTR_NO_UNIQUE_ADDRESS [[no_unique_address]]
+#endif
+
 #define RSTD_DETAIL_PARTIAL_EQ_OPERATORS()                                  \
     template<typename _USE_TRAIT_T>                                         \
         requires rstd::Impled<Self, rstd::cmp::PartialEq<_USE_TRAIT_T>>     \

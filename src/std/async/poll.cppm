@@ -473,10 +473,19 @@ public:
 };
 
 struct PollWakeState {
+#if RSTD_OS_LINUX
     os::fd::OwnedFd fd;
 
     explicit PollWakeState(os::fd::OwnedFd fd): fd(rstd::move(fd)) {}
+#elif RSTD_OS_WINDOWS
+    sync::Mutex<bool> notified;
+    sync::Condvar     cvar;
+
+    PollWakeState(): notified(false), cvar(sync::Condvar::make()) {}
+#endif
 };
+
+export class Poll;
 
 export class PollWake {
     sync::Arc<PollWakeState> m_state;
@@ -501,6 +510,13 @@ public:
             return Ok(empty {});
         }
         return Err(io::Error::last_os_error());
+#elif RSTD_OS_WINDOWS
+        {
+            auto notified = m_state->notified.lock().unwrap_unchecked();
+            *notified     = true;
+        }
+        m_state->cvar.notify_one();
+        return Ok(empty {});
 #else
         return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
 #endif
@@ -537,29 +553,41 @@ export class PollState {
     Vec<PollTimer>        m_timers;
 #if RSTD_OS_LINUX
     Vec<libc::epoll_event> m_backend_events;
+#elif RSTD_OS_WINDOWS
+    sync::Arc<PollWakeState> m_wake_state;
 #endif
 
+#if RSTD_OS_LINUX
     PollState(os::fd::OwnedFd poll_fd, os::fd::OwnedFd wake_fd, os::fd::OwnedFd timer_fd)
         : m_kind(PollStateKind::Active),
           m_poll_fd(rstd::move(poll_fd)),
           m_wake_fd(rstd::move(wake_fd)),
           m_timer_fd(rstd::move(timer_fd)),
           m_registrations(Vec<PollRegistration>::make()),
-          m_timers(Vec<PollTimer>::make())
-#if RSTD_OS_LINUX
-          ,
+          m_timers(Vec<PollTimer>::make()),
           m_backend_events(Vec<libc::epoll_event>::make())
-#endif
     {
-#if RSTD_OS_LINUX
         m_backend_events.resize(usize(64), libc::epoll_event {});
-#endif
     }
+#elif RSTD_OS_WINDOWS
+    explicit PollState(sync::Arc<PollWakeState> wake_state)
+        : m_kind(PollStateKind::Active),
+          m_registrations(Vec<PollRegistration>::make()),
+          m_timers(Vec<PollTimer>::make()),
+          m_wake_state(rstd::move(wake_state)) {}
+#endif
 
     friend class Poll;
 
 public:
+#if RSTD_OS_WINDOWS
+    PollState()
+        : m_registrations(Vec<PollRegistration>::make()),
+          m_timers(Vec<PollTimer>::make()),
+          m_wake_state(sync::Arc<PollWakeState>::make()) {}
+#else
     PollState()                                        = default;
+#endif
     PollState(const PollState&)                        = delete;
     auto operator=(const PollState&) -> PollState&     = delete;
     PollState(PollState&&) noexcept                    = default;
@@ -598,8 +626,8 @@ export class Poll {
 #endif
     }
 
-    static auto duration_to_timespec(time::Duration duration) noexcept -> libc::timespec_t {
-        return libc::timespec_t {
+    static auto duration_to_timespec(time::Duration duration) noexcept -> libc::timespec {
+        return libc::timespec {
             .tv_sec  = static_cast<libc::time_t>(duration.as_secs().to_primitive()),
             .tv_nsec = static_cast<long>(duration.subsec_nanos().to_primitive()),
         };
@@ -711,6 +739,9 @@ export class Poll {
             return Err(last_os_error());
         }
         return Ok(empty {});
+#elif RSTD_OS_WINDOWS
+        (void)state;
+        return Ok(empty {});
 #else
         (void)state;
         return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
@@ -768,6 +799,10 @@ public:
         return Ok(PollInit {
             PollState { rstd::move(owned_poll), rstd::move(owned_wake), rstd::move(owned_timer) },
             PollWake { rstd::move(wake_state) } });
+#elif RSTD_OS_WINDOWS
+        auto wake_state = sync::Arc<PollWakeState>::make();
+        return Ok(PollInit { PollState { wake_state.clone() },
+                             PollWake { rstd::move(wake_state) } });
 #else
         return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
 #endif
@@ -777,6 +812,8 @@ public:
 #if RSTD_OS_LINUX
         return PollCapabilities::of(PollCapability::Readiness) | PollCapability::Timer |
                PollCapability::Wake;
+#elif RSTD_OS_WINDOWS
+        return PollCapabilities::of(PollCapability::Timer) | PollCapability::Wake;
 #else
         return PollCapabilities::none();
 #endif
@@ -934,6 +971,48 @@ public:
                                                 registration->owner.clone()));
                 }
             }
+        }
+        return Ok(rstd::move(batch));
+#elif RSTD_OS_WINDOWS
+        if (state.m_kind == PollStateKind::Closed) {
+            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected }));
+        }
+
+        state.m_kind = PollStateKind::Waiting;
+        auto woke    = false;
+        {
+            auto notified = state.m_wake_state->notified.lock().unwrap_unchecked();
+            if (timeout == PollTimeout::Infinite && ! *notified) {
+                if (state.m_timers.is_empty()) {
+                    state.m_wake_state->cvar.wait_while(notified, [](bool value) {
+                        return ! value;
+                    });
+                } else {
+                    auto deadline = state.m_timers[usize()].deadline;
+                    for (rstd::size_t i = 1; i < state.m_timers.len().to_primitive(); ++i) {
+                        auto index = usize(i);
+                        if (state.m_timers[index].deadline < deadline) {
+                            deadline = state.m_timers[index].deadline;
+                        }
+                    }
+
+                    auto now = time::Instant::now();
+                    if (deadline > now) {
+                        (void)state.m_wake_state->cvar.wait_timeout_while(
+                            notified, deadline - now, [](bool value) { return ! value; });
+                    }
+                }
+            }
+            woke      = *notified;
+            *notified = false;
+        }
+        state.m_kind = PollStateKind::Active;
+
+        auto batch = PollBatch {};
+        if (woke) batch.push(PollEvent::wake());
+        auto collected = collect_expired_timers(state, batch);
+        if (collected.is_err()) {
+            return Err(rstd::move(collected).unwrap_err_unchecked());
         }
         return Ok(rstd::move(batch));
 #else

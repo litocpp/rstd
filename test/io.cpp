@@ -1,7 +1,11 @@
 #include <cerrno>
 #include <gtest/gtest.h>
+#include <rstd/macro.hpp>
 import rstd;
 import rstd.core;
+#if RSTD_OS_WINDOWS
+extern "C" __declspec(dllimport) void __stdcall SetLastError(unsigned long error);
+#endif
 
 using namespace rstd;
 using namespace rstd::io;
@@ -55,9 +59,17 @@ TEST(Io, ErrorFromOsError) {
 }
 
 TEST(Io, LastOsError) {
+#if RSTD_OS_WINDOWS
+    SetLastError(2);
+#else
     errno  = ENOENT;
+#endif
     auto e = Error::last_os_error();
+#if RSTD_OS_WINDOWS
+    EXPECT_EQ(e.raw_os_error().unwrap_unchecked(), i32(2));
+#else
     EXPECT_EQ(e.raw_os_error().unwrap_unchecked(), i32(ENOENT));
+#endif
     EXPECT_EQ(e.kind(), ErrorKind { ErrorKind::NotFound });
 }
 

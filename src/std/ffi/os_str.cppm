@@ -1,8 +1,5 @@
 module;
 #include <rstd/macro.hpp>
-#if RSTD_OS_WINDOWS
-#error "rstd::ffi::OsStr requires a Windows platform encoding owner"
-#endif
 export module rstd:ffi.os_str;
 export import :io;
 export import rstd.alloc;
@@ -55,7 +52,8 @@ public:
 /// An unsized, platform-native string type.
 ///
 /// On Unix this is an arbitrary byte sequence (often UTF-8).
-/// On Windows this would be WTF-8 (not yet implemented).
+/// On Windows this stores the encoded byte representation used at rstd API
+/// boundaries; Win32 wide conversions happen at OS call sites.
 export struct OsStr {
     ~OsStr() = delete;
 };
@@ -171,6 +169,7 @@ export namespace rstd::ffi
 /// An owned, platform-native string.
 ///
 /// On Unix this wraps `Vec<u8>`. Analogous to Rust's `OsString`.
+/// On Windows this currently uses the same encoded-byte storage.
 class OsString {
     os_string_platform::Buf inner;
 

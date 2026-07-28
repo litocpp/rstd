@@ -283,7 +283,7 @@ struct option_storage<T&, NonePayload, SomePayload> {
     }
 
 private:
-    [[no_unique_address]]
+    RSTD_ATTR_NO_UNIQUE_ADDRESS
     NonePayload none_;
     SomePayload some_;
 };
@@ -394,7 +394,7 @@ private:
         }
     }
 
-    [[no_unique_address]]
+    RSTD_ATTR_NO_UNIQUE_ADDRESS
     NonePayload none_;
     alignas(SomePayload) rstd::byte m_storage[sizeof(SomePayload)] {};
 };

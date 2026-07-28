@@ -897,12 +897,28 @@ export using std::source_location;
 namespace ranges
 {
 export using std::ranges::begin;
+export using std::ranges::borrowed_range;
+export using std::ranges::contiguous_range;
 export using std::ranges::data;
 export using std::ranges::distance;
 export using std::ranges::end;
+export using std::ranges::find;
+export using std::ranges::find_if;
+export using std::ranges::for_each;
+export using std::ranges::forward_range;
+export using std::ranges::input_range;
+export using std::ranges::iter_move;
+export using std::ranges::iterator_t;
+export using std::ranges::max;
+export using std::ranges::next;
+export using std::ranges::random_access_range;
 export using std::ranges::range;
 export using std::ranges::range_value_t;
+export using std::ranges::sentinel_t;
 export using std::ranges::size;
+export using std::ranges::view;
+export using std::ranges::view_interface;
+export using std::ranges::viewable_range;
 } // namespace ranges
 namespace ranges::views
 {

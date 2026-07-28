@@ -34,7 +34,11 @@ struct NotifyState {
     auto operator=(NotifyState&&) noexcept -> NotifyState& = default;
 
     static auto last_os_error() noexcept -> io::Error {
+#if RSTD_OS_LINUX
         return io::Error::from_raw_os_error(i32(libc::get_errno()));
+#else
+        return io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported });
+#endif
     }
 
     auto drain() -> io::Result<bool> {

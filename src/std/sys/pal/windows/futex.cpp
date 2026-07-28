@@ -14,7 +14,7 @@ namespace rstd::sys::pal::windows::futex
 {
 using rstd::sync::atomic::Atomic;
 
-bool wait_on_address(const void* address, const void* compare, usize size, DWORD timeout) {
+bool wait_on_address(const void* address, const void* compare, rstd::size_t size, DWORD timeout) {
     return WaitOnAddress(const_cast<void*>(address), const_cast<void*>(compare), size, timeout) ==
            M_TRUE;
 }
@@ -29,7 +29,7 @@ void wake_by_address_all(const void* address) {
 
 template<typename T>
 bool futex_wait(const Atomic<T>* futex, T expected, Option<Duration> timeout) {
-    DWORD timeout_ms = timeout ? static_cast<DWORD>(timeout->as_millis()) : M_INFINITE;
+    DWORD timeout_ms = timeout ? static_cast<DWORD>(timeout->as_millis().to_primitive()) : M_INFINITE;
 
     bool result = wait_on_address(futex, &expected, sizeof(T), timeout_ms);
     return result || GetLastError() != M_ERROR_TIMEOUT;

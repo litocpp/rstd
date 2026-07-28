@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <rstd/macro.hpp>
 import rstd;
 
 using rstd::path::Component;
@@ -9,7 +10,13 @@ using namespace rstd::literals;
 // ── ref<Path> ────────────────────────────────────────────────────────────
 
 TEST(Path, IsAbsolute) {
+#if RSTD_OS_WINDOWS
+    EXPECT_TRUE(rstd::ref<Path>(R"(C:\usr\bin)"_str).is_absolute());
+    EXPECT_TRUE(rstd::ref<Path>(R"(\\server\share)"_str).is_absolute());
+    EXPECT_FALSE(rstd::ref<Path>("/usr/bin"_str).is_absolute());
+#else
     EXPECT_TRUE(rstd::ref<Path>("/usr/bin"_str).is_absolute());
+#endif
     EXPECT_FALSE(rstd::ref<Path>("relative/path"_str).is_absolute());
     EXPECT_FALSE(rstd::ref<Path>(""_str).is_absolute());
 }
@@ -160,17 +167,31 @@ TEST(PathBuf, MakeEmpty) {
 static_assert(rstd::Impled<PathBuf, rstd::clone::Clone>);
 
 TEST(PathBuf, CloneOwnsIndependentStorage) {
+#if RSTD_OS_WINDOWS
+    auto original = PathBuf::from(R"(C:\tmp\original)"_str);
+#else
     auto original = PathBuf::from("/tmp/original"_str);
+#endif
     auto cloned   = original.clone();
     cloned.push(rstd::ref<Path>("child"_str));
 
+#if RSTD_OS_WINDOWS
+    EXPECT_EQ(original.as_path().to_str().unwrap(), R"(C:\tmp\original)"_str);
+    EXPECT_EQ(cloned.as_path().to_str().unwrap(), R"(C:\tmp\original\child)"_str);
+#else
     EXPECT_EQ(original.as_path().to_str().unwrap(), "/tmp/original"_str);
     EXPECT_EQ(cloned.as_path().to_str().unwrap(), "/tmp/original/child"_str);
+#endif
 }
 
 TEST(PathBuf, FromStr) {
+#if RSTD_OS_WINDOWS
+    auto p = PathBuf::from(R"(C:\usr\bin)"_str);
+    EXPECT_EQ(p.len(), rstd::usize(10));
+#else
     auto p = PathBuf::from("/usr/bin"_str);
     EXPECT_EQ(p.len(), rstd::usize(8));
+#endif
     EXPECT_TRUE(p.as_path().is_absolute());
 }
 
@@ -180,27 +201,52 @@ TEST(PathBuf, FromPath) {
 }
 
 TEST(PathBuf, Push) {
+#if RSTD_OS_WINDOWS
+    auto p = PathBuf::from(R"(C:\usr)"_str);
+#else
     auto p = PathBuf::from("/usr"_str);
+#endif
     p.push(rstd::ref<Path>("bin"_str));
     auto s = p.as_path().to_str();
     ASSERT_TRUE(s.is_some());
+#if RSTD_OS_WINDOWS
+    EXPECT_EQ(*s, R"(C:\usr\bin)"_str);
+#else
     EXPECT_EQ(*s, "/usr/bin"_str);
+#endif
 }
 
 TEST(PathBuf, PushAbsolute) {
+#if RSTD_OS_WINDOWS
+    auto p = PathBuf::from(R"(C:\usr)"_str);
+    p.push(rstd::ref<Path>(R"(D:\etc)"_str));
+#else
     auto p = PathBuf::from("/usr"_str);
     p.push(rstd::ref<Path>("/etc"_str));
+#endif
     auto s = p.as_path().to_str();
     ASSERT_TRUE(s.is_some());
+#if RSTD_OS_WINDOWS
+    EXPECT_EQ(*s, R"(D:\etc)"_str);
+#else
     EXPECT_EQ(*s, "/etc"_str);
+#endif
 }
 
 TEST(PathBuf, PushNoDoubleSep) {
+#if RSTD_OS_WINDOWS
+    auto p = PathBuf::from(R"(C:\usr\)"_str);
+#else
     auto p = PathBuf::from("/usr/"_str);
+#endif
     p.push(rstd::ref<Path>("bin"_str));
     auto s = p.as_path().to_str();
     ASSERT_TRUE(s.is_some());
+#if RSTD_OS_WINDOWS
+    EXPECT_EQ(*s, R"(C:\usr\bin)"_str);
+#else
     EXPECT_EQ(*s, "/usr/bin"_str);
+#endif
 }
 
 TEST(PathBuf, Pop) {
@@ -212,11 +258,20 @@ TEST(PathBuf, Pop) {
 }
 
 TEST(PathBuf, Join) {
+#if RSTD_OS_WINDOWS
+    auto p      = PathBuf::from(R"(C:\usr)"_str);
+    auto joined = p.join(rstd::ref<Path>(R"(local\bin)"_str));
+#else
     auto p      = PathBuf::from("/usr"_str);
     auto joined = p.join(rstd::ref<Path>("local/bin"_str));
+#endif
     auto s      = joined.as_path().to_str();
     ASSERT_TRUE(s.is_some());
+#if RSTD_OS_WINDOWS
+    EXPECT_EQ(*s, R"(C:\usr\local\bin)"_str);
+#else
     EXPECT_EQ(*s, "/usr/local/bin"_str);
+#endif
 }
 
 TEST(PathBuf, ImplicitConversion) {
