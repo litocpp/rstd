@@ -22,6 +22,7 @@ set(RSTD_PRIVATE_MODULE_SOURCES
 set(RSTD_SYS_SOURCES
     sys/io/stdio.cppm
     sys/libc/mod.cppm
+    sys/libc/linux.cppm
     sys/libc/pthread.cppm
     sys/libc/unix.cppm
     sys/libc/windows.cppm
@@ -29,6 +30,7 @@ set(RSTD_SYS_SOURCES
     sys/pal/mod.cppm
     sys/pal/poll.cppm
     sys/pal/poll_types.cppm
+    sys/pal/linux/io_uring.cppm
     sys/pal/linux/poll.cppm
     sys/pal/unix/mod.cppm
     sys/pal/unix/socket.cppm

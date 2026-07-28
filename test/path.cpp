@@ -172,7 +172,7 @@ TEST(PathBuf, CloneOwnsIndependentStorage) {
 #else
     auto original = PathBuf::from("/tmp/original"_str);
 #endif
-    auto cloned   = original.clone();
+    auto cloned = original.clone();
     cloned.push(rstd::ref<Path>("child"_str));
 
 #if RSTD_OS_WINDOWS
@@ -265,7 +265,7 @@ TEST(PathBuf, Join) {
     auto p      = PathBuf::from("/usr"_str);
     auto joined = p.join(rstd::ref<Path>("local/bin"_str));
 #endif
-    auto s      = joined.as_path().to_str();
+    auto s = joined.as_path().to_str();
     ASSERT_TRUE(s.is_some());
 #if RSTD_OS_WINDOWS
     EXPECT_EQ(*s, R"(C:\usr\local\bin)"_str);

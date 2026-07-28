@@ -62,7 +62,7 @@ TEST(Io, LastOsError) {
 #if RSTD_OS_WINDOWS
     SetLastError(2);
 #else
-    errno  = ENOENT;
+    errno = ENOENT;
 #endif
     auto e = Error::last_os_error();
 #if RSTD_OS_WINDOWS

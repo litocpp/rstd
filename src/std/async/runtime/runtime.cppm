@@ -17,6 +17,7 @@ namespace rstd::async
 {
 
 export class RuntimeBuilder;
+struct RuntimeBuilderConfigAccess;
 
 export class RuntimeHandle {
     sync::Weak<RuntimeInner> m_inner;
@@ -177,15 +178,15 @@ public:
             }
         }
 
-        auto attachment   = CurrentThreadWorkerAttachment { runtime->m_shared.worker_handle(
+        auto attachment = CurrentThreadWorkerAttachment { runtime->m_shared.worker_handle(
             RuntimeWorkerId::current_thread()) };
-        auto scope        = RuntimeScope { *runtime };
-        auto worker_scope = RuntimeWorkerScope { RuntimeWorkerId::current_thread() };
+        auto scope      = RuntimeScope { *runtime };
         if (m_current_worker.is_none()) {
             m_current_worker = Some(Box<RuntimeWorker>::make(
                 *runtime, runtime->m_shared.worker_handle(RuntimeWorkerId::current_thread())));
         }
-        auto* worker = m_current_worker->get();
+        auto* worker       = m_current_worker->get();
+        auto  worker_scope = RuntimeWorkerScope { RuntimeWorkerId::current_thread(), worker };
         if (! worker->poll_initialized()) {
             rstd::panic { "async runtime worker Poll is unavailable or already attached" };
         }
@@ -226,6 +227,8 @@ export class RuntimeBuilder {
           m_worker_threads(worker_threads),
           m_thread_name(None()),
           m_config(RuntimeConfig {}) {}
+
+    friend struct RuntimeBuilderConfigAccess;
 
 public:
     static auto current_thread() -> RuntimeBuilder {
@@ -273,6 +276,12 @@ public:
         }
 
         return Runtime::make_thread_pool(m_worker_threads, m_thread_name, m_config);
+    }
+};
+
+struct RuntimeBuilderConfigAccess {
+    static void set_io_backend(RuntimeBuilder& builder, IoBackendPreference preference) {
+        builder.m_config.io_backend = preference;
     }
 };
 

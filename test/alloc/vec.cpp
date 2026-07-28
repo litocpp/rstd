@@ -1241,6 +1241,24 @@ TEST(Vec, Resize) {
     EXPECT_EQ(v[usize()], 5);
 }
 
+TEST(Vec, ResizeU8FillsNewRange) {
+    auto values = Vec<u8>::make();
+    values.push(u8(1));
+    values.resize(usize(4096), u8(0xab));
+
+    ASSERT_EQ(values.len(), usize(4096));
+    EXPECT_EQ(values[usize()], u8(1));
+    EXPECT_EQ(values[usize(1)], u8(0xab));
+    EXPECT_EQ(values[usize(4095)], u8(0xab));
+
+    values.truncate(usize(2));
+    values.resize(usize(16), u8(0x5a));
+    ASSERT_EQ(values.len(), usize(16));
+    EXPECT_EQ(values[usize(1)], u8(0xab));
+    EXPECT_EQ(values[usize(2)], u8(0x5a));
+    EXPECT_EQ(values[usize(15)], u8(0x5a));
+}
+
 TEST(Vec, ResizeFromOwnElementSurvivesGrowth) {
     auto values = Vec<int>::with_capacity(usize(1));
     values.push(17);

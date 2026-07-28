@@ -14,18 +14,18 @@ inline constexpr rstd::uintptr_t TIMER_FACILITY_ID { ~rstd::uintptr_t(0) };
 
 struct TimerFacilityFields {
     WorkerHandle                    worker;
-    PollKey                         key;
+    TimerKey                        key;
     Option<FacilityCompletionToken> token;
     bool                            active { true };
 
-    TimerFacilityFields(WorkerHandle worker, PollKey key, FacilityCompletionToken token)
+    TimerFacilityFields(WorkerHandle worker, TimerKey key, FacilityCompletionToken token)
         : worker(rstd::move(worker)), key(key), token(Some(rstd::move(token))) {}
 };
 
 struct TimerFacilityState {
     sync::Mutex<TimerFacilityFields> fields;
 
-    TimerFacilityState(WorkerHandle worker, PollKey key, FacilityCompletionToken token)
+    TimerFacilityState(WorkerHandle worker, TimerKey key, FacilityCompletionToken token)
         : fields(TimerFacilityFields { rstd::move(worker), key, rstd::move(token) }) {}
 };
 
@@ -161,7 +161,7 @@ public:
 
         auto identity = token.token();
         auto worker   = rstd::move(current).unwrap_unchecked();
-        auto key      = worker.allocate_poll_key(PollKeyKind::Timer);
+        auto key      = worker.allocate_timer_key();
         auto state    = TimerFacilityArc::make(worker.clone(), key, rstd::move(token));
         auto command  = PollCommand::arm_timer(key, deadline, make_timer_facility_owner(state));
         auto result   = worker.submit_poll(rstd::move(command));

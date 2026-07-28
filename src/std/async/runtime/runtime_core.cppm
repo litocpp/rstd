@@ -17,8 +17,12 @@ using rstd::async::PollCapabilities;
 using rstd::async::PollCommand;
 using rstd::async::PollEventData;
 using rstd::async::PollEventKind;
-using rstd::async::PollKey;
-using rstd::async::PollKeyKind;
+using rstd::async::PollEventOwner;
+using rstd::async::OperationKey;
+using rstd::async::RegistrationKey;
+using rstd::async::SourceKey;
+using rstd::async::TimerKey;
+using rstd::async::IoBackendPreference;
 using rstd::async::PollState;
 using rstd::async::PollTimeout;
 using rstd::async::PollWake;
@@ -26,6 +30,7 @@ using rstd::async::PollWake;
 struct RuntimeInner;
 struct TaskStateBase;
 class TaskRefControl;
+class RuntimeWorker;
 
 class TaskAccess {
     TaskRefControl* m_control { nullptr };
@@ -174,6 +179,7 @@ struct TaskControl {
 inline thread_local RuntimeInner*   CURRENT_RUNTIME { nullptr };
 inline thread_local RuntimeWorkerId CURRENT_RUNTIME_WORKER {};
 inline thread_local bool            CURRENT_RUNTIME_WORKER_ACTIVE { false };
+inline thread_local RuntimeWorker*  CURRENT_RUNTIME_WORKER_CONTEXT { nullptr };
 
 inline thread_local async::ExecutionDomainKind CURRENT_EXECUTION_DOMAIN {
     async::ExecutionDomainKind::RuntimeWorker
@@ -223,10 +229,13 @@ enum class WorkerAttachResult
 };
 
 struct RuntimeConfig {
-    bool enable_io { false };
-    bool enable_time { false };
+    bool                enable_io { false };
+    bool                enable_time { false };
+    IoBackendPreference io_backend { IoBackendPreference::Auto };
 
-    static constexpr auto all() noexcept -> RuntimeConfig { return RuntimeConfig { true, true }; }
+    static constexpr auto all() noexcept -> RuntimeConfig {
+        return RuntimeConfig { true, true, IoBackendPreference::Auto };
+    }
 };
 
 class TaskRef {
@@ -948,7 +957,10 @@ struct WorkerFields {
     WorkerLifecycle          m_lifecycle { WorkerLifecycle::Created };
     bool                     m_attached { false };
     bool                     m_pending_wake { false };
-    u64                      m_next_poll_key { rstd::uint64_t(1) };
+    u32                      m_next_operation_key {};
+    u32                      m_next_registration_key {};
+    u32                      m_next_timer_key {};
+    u32                      m_next_source_key {};
 
     WorkerFields(): m_inbox(), m_poll_wake(None()), m_attached_thread(None()) {}
 };
@@ -987,6 +999,10 @@ public:
     auto clone() const -> WorkerHandle { return WorkerHandle { m_id, m_state.clone() }; }
 
     auto id() const noexcept -> RuntimeWorkerId { return m_id; }
+
+    auto is_same(const WorkerHandle& other) const noexcept -> bool {
+        return m_id == other.m_id && sync::Arc<WorkerState>::ptr_eq(m_state, other.m_state);
+    }
 
     auto attach(thread::ThreadId id) const -> WorkerAttachResult {
         auto fields = m_state->m_fields.lock().unwrap_unchecked();
@@ -1078,14 +1094,36 @@ public:
         return Ok(empty {});
     }
 
-    auto allocate_poll_key(PollKeyKind kind) const -> PollKey {
+    auto allocate_operation_key() const -> OperationKey {
         auto fields = m_state->m_fields.lock().unwrap_unchecked();
-        if (fields->m_next_poll_key == u64::MAX) {
-            rstd::panic { "async worker exhausted Poll keys" };
+        if (fields->m_next_operation_key == u32::MAX) {
+            rstd::panic { "async worker exhausted operation keys" };
         }
-        auto value = fields->m_next_poll_key;
-        ++fields->m_next_poll_key;
-        return PollKey { kind, value };
+        return OperationKey { fields->m_next_operation_key++, u32(1) };
+    }
+
+    auto allocate_registration_key() const -> RegistrationKey {
+        auto fields = m_state->m_fields.lock().unwrap_unchecked();
+        if (fields->m_next_registration_key == u32::MAX) {
+            rstd::panic { "async worker exhausted registration keys" };
+        }
+        return RegistrationKey { fields->m_next_registration_key++, u32(1) };
+    }
+
+    auto allocate_timer_key() const -> TimerKey {
+        auto fields = m_state->m_fields.lock().unwrap_unchecked();
+        if (fields->m_next_timer_key == u32::MAX) {
+            rstd::panic { "async worker exhausted timer keys" };
+        }
+        return TimerKey { fields->m_next_timer_key++, u32(1) };
+    }
+
+    auto allocate_source_key() const -> SourceKey {
+        auto fields = m_state->m_fields.lock().unwrap_unchecked();
+        if (fields->m_next_source_key == u32::MAX) {
+            rstd::panic { "async worker exhausted IO source keys" };
+        }
+        return SourceKey { fields->m_next_source_key++, u32(1) };
     }
 
     auto poll_capabilities() const -> PollCapabilities {
@@ -1256,12 +1294,14 @@ class RuntimeWorker {
     RuntimeInner*     m_runtime;
     WorkerHandle      m_handle;
     ReadyQueue        m_ready;
+    Vec<PollCommand>  m_local_poll_commands;
     Option<PollState> m_poll_state;
     Option<io::Error> m_poll_init_error;
     usize             m_cooperative_budget { DEFAULT_COOPERATIVE_BUDGET };
     bool              m_stop_requested { false };
 
     void drain_inbox();
+    void drain_local_poll();
     void apply_poll(PollCommand command);
     void dispatch_poll_batch(PollBatch batch);
     void poll_backend(PollTimeout timeout);
@@ -1271,6 +1311,14 @@ public:
     ~RuntimeWorker();
 
     auto poll_initialized() const noexcept -> bool { return m_poll_state.is_some(); }
+    auto reserve_operation(PollEventOwner owner) -> io::Result<OperationKey>;
+    void abandon_operation(OperationKey key);
+    auto defer_poll(PollCommand command) -> Result<empty, PollCommand>;
+    auto enqueue_ready(ScheduleTicket ticket) -> Result<empty, ScheduleTicket>;
+    auto complete_facility(FacilityEvent event) -> Result<empty, FacilityEvent>;
+    auto matches(const WorkerHandle& handle) const noexcept -> bool {
+        return m_handle.is_same(handle);
+    }
     void drain_ready();
     void wait_for_work();
     void run();
@@ -1297,12 +1345,19 @@ struct RuntimeInner {
     auto is_thread_pool() const -> bool { return m_kind == RuntimeKind::ThreadPool; }
 
     auto io_enabled() const -> bool { return m_config.enable_io; }
+    auto io_backend_preference() const noexcept -> IoBackendPreference {
+        return m_config.io_backend;
+    }
 
     auto time_enabled() const -> bool { return m_config.enable_time; }
 
     auto current_poll_worker() -> io::Result<WorkerHandle>;
+    auto reserve_current_operation(PollEventOwner owner) -> io::Result<OperationKey>;
+    void abandon_current_operation(OperationKey key);
+    auto defer_current_poll(PollCommand command) -> Result<empty, PollCommand>;
 
     void spawn(TaskRef task);
+    auto schedule(ScheduleTicket ticket) -> Result<empty, ScheduleTicket>;
     auto lifecycle() -> RuntimeLifecycle;
     auto is_running() -> bool;
     auto is_stopping() -> bool;
@@ -1500,12 +1555,46 @@ inline void RuntimeInner::spawn(TaskRef task) {
     (*access)->apply(rstd::move(action));
 }
 
+inline auto RuntimeInner::schedule(ScheduleTicket ticket) -> Result<empty, ScheduleTicket> {
+    auto owner = ticket.owner();
+    if (CURRENT_RUNTIME == this && CURRENT_RUNTIME_WORKER_CONTEXT != nullptr &&
+        current_execution_domain() == async::ExecutionDomainKind::RuntimeWorker &&
+        current_runtime_worker_id() == owner) {
+        return CURRENT_RUNTIME_WORKER_CONTEXT->enqueue_ready(rstd::move(ticket));
+    }
+    return m_shared.worker(owner).schedule(rstd::move(ticket));
+}
+
 inline auto RuntimeInner::current_poll_worker() -> io::Result<WorkerHandle> {
     if (CURRENT_RUNTIME != this || ! has_current_runtime_worker() ||
         current_execution_domain() != async::ExecutionDomainKind::RuntimeWorker) {
         return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
     }
     return Ok(m_shared.worker_handle(current_runtime_worker_id()));
+}
+
+inline auto RuntimeInner::reserve_current_operation(PollEventOwner owner)
+    -> io::Result<OperationKey> {
+    if (CURRENT_RUNTIME != this || CURRENT_RUNTIME_WORKER_CONTEXT == nullptr ||
+        current_execution_domain() != async::ExecutionDomainKind::RuntimeWorker) {
+        return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
+    }
+    return CURRENT_RUNTIME_WORKER_CONTEXT->reserve_operation(rstd::move(owner));
+}
+
+inline void RuntimeInner::abandon_current_operation(OperationKey key) {
+    if (CURRENT_RUNTIME != this || CURRENT_RUNTIME_WORKER_CONTEXT == nullptr) {
+        rstd::panic { "operation abandoned outside its runtime worker" };
+    }
+    CURRENT_RUNTIME_WORKER_CONTEXT->abandon_operation(key);
+}
+
+inline auto RuntimeInner::defer_current_poll(PollCommand command) -> Result<empty, PollCommand> {
+    if (CURRENT_RUNTIME != this || CURRENT_RUNTIME_WORKER_CONTEXT == nullptr ||
+        current_execution_domain() != async::ExecutionDomainKind::RuntimeWorker) {
+        return Err(rstd::move(command));
+    }
+    return CURRENT_RUNTIME_WORKER_CONTEXT->defer_poll(rstd::move(command));
 }
 
 inline auto RuntimeInner::lifecycle() -> RuntimeLifecycle {
@@ -1532,6 +1621,11 @@ inline void RuntimeInner::retire(TaskRefControl* task) {
 
 inline auto RuntimeInner::complete_facility(FacilityEvent event) -> Result<empty, FacilityEvent> {
     auto owner = event.token().owner_worker;
+    if (CURRENT_RUNTIME == this && CURRENT_RUNTIME_WORKER_CONTEXT != nullptr &&
+        current_execution_domain() == async::ExecutionDomainKind::RuntimeWorker &&
+        current_runtime_worker_id() == owner) {
+        return CURRENT_RUNTIME_WORKER_CONTEXT->complete_facility(rstd::move(event));
+    }
     return m_shared.worker(owner).complete_facility(rstd::move(event));
 }
 
@@ -1622,14 +1716,13 @@ inline void TaskStateBase::apply(TaskAction action) {
     case TaskActionKind::None: return;
     case TaskActionKind::Schedule: {
         auto ticket = action.take_ticket();
-        auto owner  = ticket.owner();
         auto rt     = runtime.upgrade();
         if (! rt) {
             auto task = ticket.take_task();
             task.abort();
             return;
         }
-        auto submitted = rt->m_shared.worker(owner).schedule(rstd::move(ticket));
+        auto submitted = rt->schedule(rstd::move(ticket));
         if (submitted.is_err()) {
             auto rejected = rstd::move(submitted).unwrap_err_unchecked();
             auto task     = rejected.take_task();
@@ -2059,9 +2152,10 @@ inline RuntimeWorker::RuntimeWorker(RuntimeInner& runtime, WorkerHandle handle)
     : m_runtime(rstd::addressof(runtime)),
       m_handle(rstd::move(handle)),
       m_ready(),
+      m_local_poll_commands(Vec<PollCommand>::make()),
       m_poll_state(None()),
       m_poll_init_error(None()) {
-    auto initialized = AsyncPoll::init();
+    auto initialized = AsyncPoll::init(runtime.io_backend_preference());
     if (initialized.is_err()) {
         m_poll_init_error = Some(rstd::move(initialized).unwrap_err_unchecked());
         return;
@@ -2078,7 +2172,48 @@ inline RuntimeWorker::RuntimeWorker(RuntimeInner& runtime, WorkerHandle handle)
     m_poll_state = Some(rstd::move(poll.state));
 }
 
+inline auto RuntimeWorker::reserve_operation(PollEventOwner owner) -> io::Result<OperationKey> {
+    if (m_poll_state.is_none() || m_stop_requested) {
+        return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected }));
+    }
+    if (AsyncPoll::has_recycled_operation(*m_poll_state)) {
+        return Ok(AsyncPoll::reserve_recycled_operation(*m_poll_state, rstd::move(owner)));
+    }
+    auto key = m_handle.allocate_operation_key();
+    if (! AsyncPoll::reserve_fresh_operation(*m_poll_state, key, rstd::move(owner))) {
+        return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
+    }
+    return Ok(key);
+}
+
+inline auto RuntimeWorker::defer_poll(PollCommand command) -> Result<empty, PollCommand> {
+    if (m_poll_state.is_none() || m_stop_requested) return Err(rstd::move(command));
+    m_local_poll_commands.push(rstd::move(command));
+    return Ok(empty {});
+}
+
+inline auto RuntimeWorker::enqueue_ready(ScheduleTicket ticket) -> Result<empty, ScheduleTicket> {
+    if (m_stop_requested) return Err(rstd::move(ticket));
+    m_ready.push(rstd::move(ticket));
+    return Ok(empty {});
+}
+
+inline auto RuntimeWorker::complete_facility(FacilityEvent event) -> Result<empty, FacilityEvent> {
+    if (m_stop_requested) return Err(rstd::move(event));
+    auto task = event.access_task();
+    if (task.is_some()) {
+        (*task)->complete_facility(rstd::move(event));
+    }
+    return Ok(empty {});
+}
+
+inline void RuntimeWorker::abandon_operation(OperationKey key) {
+    if (m_poll_state.is_none()) return;
+    (void)AsyncPoll::abandon_operation(*m_poll_state, key);
+}
+
 inline RuntimeWorker::~RuntimeWorker() {
+    drain_local_poll();
     m_handle.clear_poll();
     if (m_poll_state.is_some()) {
         dispatch_poll_batch(AsyncPoll::shutdown(*m_poll_state));
@@ -2123,8 +2258,16 @@ inline void RuntimeWorker::drain_inbox() {
     }
 }
 
+inline void RuntimeWorker::drain_local_poll() {
+    for (rstd::size_t i = 0; i < m_local_poll_commands.len().to_primitive(); ++i) {
+        apply_poll(rstd::move(m_local_poll_commands[usize(i)]));
+    }
+    m_local_poll_commands.clear();
+}
+
 inline void RuntimeWorker::apply_poll(PollCommand command) {
     if (m_poll_state.is_none()) {
+        if (! command.can_dispatch_error()) return;
         auto event = rstd::move(command).into_error_event(
             io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected }));
         event.dispatch();
@@ -2141,7 +2284,9 @@ inline void RuntimeWorker::apply_poll(PollCommand command) {
     }
 
     auto rejected = applied.take_command();
-    auto event    = rstd::move(rejected).into_error_event(applied.take_error());
+    auto error    = applied.take_error();
+    if (! rejected.can_dispatch_error()) return;
+    auto event = rstd::move(rejected).into_error_event(rstd::move(error));
     event.dispatch();
 }
 
@@ -2171,6 +2316,7 @@ inline void RuntimeWorker::drain_ready() {
         }
 
         poll_runtime_task(rstd::move(lease).unwrap_unchecked());
+        drain_local_poll();
         drain_inbox();
     }
 }
@@ -2213,17 +2359,22 @@ struct RuntimeScope {
 
 struct RuntimeWorkerScope {
     RuntimeWorkerId previous_worker;
+    RuntimeWorker*  previous_context;
     bool            previous_active;
 
-    explicit RuntimeWorkerScope(RuntimeWorkerId worker)
-        : previous_worker(CURRENT_RUNTIME_WORKER), previous_active(CURRENT_RUNTIME_WORKER_ACTIVE) {
-        CURRENT_RUNTIME_WORKER        = worker;
-        CURRENT_RUNTIME_WORKER_ACTIVE = true;
+    RuntimeWorkerScope(RuntimeWorkerId worker, RuntimeWorker* context)
+        : previous_worker(CURRENT_RUNTIME_WORKER),
+          previous_context(CURRENT_RUNTIME_WORKER_CONTEXT),
+          previous_active(CURRENT_RUNTIME_WORKER_ACTIVE) {
+        CURRENT_RUNTIME_WORKER         = worker;
+        CURRENT_RUNTIME_WORKER_ACTIVE  = true;
+        CURRENT_RUNTIME_WORKER_CONTEXT = context;
     }
 
     ~RuntimeWorkerScope() {
-        CURRENT_RUNTIME_WORKER        = previous_worker;
-        CURRENT_RUNTIME_WORKER_ACTIVE = previous_active;
+        CURRENT_RUNTIME_WORKER         = previous_worker;
+        CURRENT_RUNTIME_WORKER_ACTIVE  = previous_active;
+        CURRENT_RUNTIME_WORKER_CONTEXT = previous_context;
     }
 };
 
@@ -2244,7 +2395,7 @@ inline void RuntimeInner::worker_loop(RuntimeWorkerId worker) {
 
 inline void RuntimeWorker::run() {
     auto scope        = RuntimeScope { *m_runtime };
-    auto worker_scope = RuntimeWorkerScope { m_handle.id() };
+    auto worker_scope = RuntimeWorkerScope { m_handle.id(), this };
 
     if (! m_handle.begin_start()) {
         m_handle.finish_stop();

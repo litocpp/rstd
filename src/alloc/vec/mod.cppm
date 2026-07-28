@@ -575,12 +575,9 @@ public:
         if constexpr (mtp::same_as<T, u8>) {
             auto source = as<Clone>(value).clone();
             reserve(new_len - m_len);
-            auto p = m_buf.ptr.as_mut_ptr();
-            for (rstd::size_t index = old_len.to_primitive(); index < new_len.to_primitive();
-                 ++index) {
-                rstd::ptr_::construct(p.add(usize(index)), source);
-                ++m_len;
-            }
+            auto count = new_len - old_len;
+            rstd::mem::memset(m_buf.ptr.as_mut_ptr().add(old_len).as_raw_ptr(), source, count);
+            m_len = new_len;
             return;
         } else {
             bool         value_is_self = false;

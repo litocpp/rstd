@@ -2,19 +2,15 @@ module;
 #include <rstd/macro.hpp>
 
 #ifdef RSTD_OS_LINUX
-#include <linux/futex.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
-#include <sys/syscall.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
-#include <sys/epoll.h>
-#include <sys/eventfd.h>
 #include <sys/file.h>
+#include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/sysmacros.h>
-#include <sys/timerfd.h>
 #include <unistd.h>
 #include <sched.h>
 #include <stdlib.h>
@@ -30,12 +26,6 @@ module;
 export module rstd:sys.libc.unix;
 
 #ifdef RSTD_OS_LINUX
-inline constexpr auto _SYS_futex              = SYS_futex;
-inline constexpr auto _FUTEX_WAIT_BITSET      = FUTEX_WAIT_BITSET;
-inline constexpr auto _FUTEX_PRIVATE_FLAG     = FUTEX_PRIVATE_FLAG;
-inline constexpr auto _FUTEX_WAKE             = FUTEX_WAKE;
-inline constexpr auto _FUTEX_BITSET_MATCH_ANY = FUTEX_BITSET_MATCH_ANY;
-
 inline constexpr auto _CLOCK_MONOTONIC = CLOCK_MONOTONIC;
 inline constexpr auto _CLOCK_REALTIME  = CLOCK_REALTIME;
 
@@ -96,6 +86,7 @@ inline constexpr auto _EIO          = EIO;
 inline constexpr auto _EINPROGRESS  = EINPROGRESS;
 inline constexpr auto _EALREADY     = EALREADY;
 inline constexpr auto _EISCONN      = EISCONN;
+inline constexpr auto _ECANCELED    = ECANCELED;
 
 inline constexpr auto _SIGKILL = SIGKILL;
 
@@ -120,41 +111,27 @@ inline constexpr auto _SEEK_SET        = SEEK_SET;
 inline constexpr auto _SEEK_CUR        = SEEK_CUR;
 inline constexpr auto _SEEK_END        = SEEK_END;
 
-inline constexpr auto _AF_INET      = AF_INET;
-inline constexpr auto _AF_INET6     = AF_INET6;
-inline constexpr auto _SOCK_STREAM  = SOCK_STREAM;
-inline constexpr auto _SOL_SOCKET   = SOL_SOCKET;
-inline constexpr auto _SO_REUSEADDR = SO_REUSEADDR;
-inline constexpr auto _SO_ERROR     = SO_ERROR;
-inline constexpr auto _IPPROTO_TCP  = IPPROTO_TCP;
-inline constexpr auto _TCP_NODELAY  = TCP_NODELAY;
-inline constexpr auto _SHUT_WR      = SHUT_WR;
+inline constexpr auto _AF_INET       = AF_INET;
+inline constexpr auto _AF_INET6      = AF_INET6;
+inline constexpr auto _SOCK_STREAM   = SOCK_STREAM;
+inline constexpr auto _SOCK_CLOEXEC  = SOCK_CLOEXEC;
+inline constexpr auto _SOCK_NONBLOCK = SOCK_NONBLOCK;
+inline constexpr auto _SOL_SOCKET    = SOL_SOCKET;
+inline constexpr auto _SO_REUSEADDR  = SO_REUSEADDR;
+inline constexpr auto _SO_ERROR      = SO_ERROR;
+inline constexpr auto _IPPROTO_TCP   = IPPROTO_TCP;
+inline constexpr auto _TCP_NODELAY   = TCP_NODELAY;
+inline constexpr auto _SHUT_WR       = SHUT_WR;
 #ifdef MSG_NOSIGNAL
 inline constexpr auto _MSG_NOSIGNAL = MSG_NOSIGNAL;
 #else
 inline constexpr auto _MSG_NOSIGNAL = 0;
 #endif
 
-inline constexpr auto _EPOLL_CLOEXEC = EPOLL_CLOEXEC;
-inline constexpr auto _EPOLLIN       = EPOLLIN;
-inline constexpr auto _EPOLLOUT      = EPOLLOUT;
-inline constexpr auto _EPOLLONESHOT  = EPOLLONESHOT;
-#ifdef EPOLLRDHUP
-inline constexpr auto _EPOLLRDHUP     = EPOLLRDHUP;
-inline constexpr bool _HAS_EPOLLRDHUP = true;
-#else
-inline constexpr auto _EPOLLRDHUP     = 0;
-inline constexpr bool _HAS_EPOLLRDHUP = false;
-#endif
-inline constexpr auto _EPOLLHUP      = EPOLLHUP;
-inline constexpr auto _EPOLLERR      = EPOLLERR;
-inline constexpr auto _EPOLL_CTL_ADD = EPOLL_CTL_ADD;
-inline constexpr auto _EPOLL_CTL_MOD = EPOLL_CTL_MOD;
-inline constexpr auto _EPOLL_CTL_DEL = EPOLL_CTL_DEL;
-inline constexpr auto _EFD_NONBLOCK  = EFD_NONBLOCK;
-inline constexpr auto _EFD_CLOEXEC   = EFD_CLOEXEC;
-inline constexpr auto _TFD_NONBLOCK  = TFD_NONBLOCK;
-inline constexpr auto _TFD_CLOEXEC   = TFD_CLOEXEC;
+inline constexpr auto _PROT_READ  = PROT_READ;
+inline constexpr auto _PROT_WRITE = PROT_WRITE;
+inline constexpr auto _MAP_SHARED = MAP_SHARED;
+inline void* const    _MAP_FAILED = MAP_FAILED;
 
 inline constexpr auto _S_IFMT   = S_IFMT;
 inline constexpr auto _S_IFREG  = S_IFREG;
@@ -180,11 +157,6 @@ inline constexpr auto _LOCK_UN = LOCK_UN;
 
 inline constexpr auto _UTIME_OMIT = UTIME_OMIT;
 
-#undef SYS_futex
-#undef FUTEX_WAIT_BITSET
-#undef FUTEX_PRIVATE_FLAG
-#undef FUTEX_WAKE
-#undef FUTEX_BITSET_MATCH_ANY
 #undef CLOCK_MONOTONIC
 #undef CLOCK_REALTIME
 #undef ENOENT
@@ -232,6 +204,7 @@ inline constexpr auto _UTIME_OMIT = UTIME_OMIT;
 #undef EINPROGRESS
 #undef EALREADY
 #undef EISCONN
+#undef ECANCELED
 #undef SIGKILL
 #undef O_CLOEXEC
 #undef O_NONBLOCK
@@ -256,6 +229,8 @@ inline constexpr auto _UTIME_OMIT = UTIME_OMIT;
 #undef AF_INET
 #undef AF_INET6
 #undef SOCK_STREAM
+#undef SOCK_CLOEXEC
+#undef SOCK_NONBLOCK
 #undef SOL_SOCKET
 #undef SO_REUSEADDR
 #undef SO_ERROR
@@ -263,20 +238,10 @@ inline constexpr auto _UTIME_OMIT = UTIME_OMIT;
 #undef TCP_NODELAY
 #undef SHUT_WR
 #undef MSG_NOSIGNAL
-#undef EPOLL_CLOEXEC
-#undef EPOLLIN
-#undef EPOLLOUT
-#undef EPOLLONESHOT
-#undef EPOLLRDHUP
-#undef EPOLLHUP
-#undef EPOLLERR
-#undef EPOLL_CTL_ADD
-#undef EPOLL_CTL_MOD
-#undef EPOLL_CTL_DEL
-#undef EFD_NONBLOCK
-#undef EFD_CLOEXEC
-#undef TFD_NONBLOCK
-#undef TFD_CLOEXEC
+#undef PROT_READ
+#undef PROT_WRITE
+#undef MAP_SHARED
+#undef MAP_FAILED
 #undef S_IFMT
 #undef S_IFREG
 #undef S_IFDIR
@@ -314,19 +279,12 @@ inline auto _rstd_dev_minor(::dev_t d) noexcept -> unsigned int {
 export namespace rstd::sys::libc
 {
 
-using ::syscall;
 using ::sched_yield;
 using ::posix_memalign;
 using ::htons;
 using ::htonl;
 using ::ntohs;
 using ::ntohl;
-
-inline constexpr auto SYS_futex              = _SYS_futex;
-inline constexpr auto FUTEX_WAIT_BITSET      = _FUTEX_WAIT_BITSET;
-inline constexpr auto FUTEX_PRIVATE_FLAG     = _FUTEX_PRIVATE_FLAG;
-inline constexpr auto FUTEX_WAKE             = _FUTEX_WAKE;
-inline constexpr auto FUTEX_BITSET_MATCH_ANY = _FUTEX_BITSET_MATCH_ANY;
 
 using ::clock_gettime;
 using ::nanosleep;
@@ -380,6 +338,7 @@ inline constexpr auto EIO             = _EIO;
 inline constexpr auto EINPROGRESS     = _EINPROGRESS;
 inline constexpr auto EALREADY        = _EALREADY;
 inline constexpr auto EISCONN         = _EISCONN;
+inline constexpr auto ECANCELED       = _ECANCELED;
 
 inline auto gmtime_utc(::time_t secs) noexcept -> ::tm {
     ::tm out {};
@@ -424,6 +383,8 @@ using ::pwrite;
 using ::fsync;
 using ::fdatasync;
 using ::ftruncate;
+using ::mmap;
+using ::munmap;
 using ::unlink;
 using ::rmdir;
 using ::link;
@@ -458,12 +419,6 @@ using ::shutdown;
 using ::getsockopt;
 using ::getsockname;
 using ::getpeername;
-using ::epoll_create1;
-using ::epoll_ctl;
-using ::epoll_wait;
-using ::eventfd;
-using ::timerfd_create;
-using ::timerfd_settime;
 
 // ── Type aliases ─────────────────────────────────────────────────────────
 using ::mode_t;
@@ -492,7 +447,6 @@ using stat_t = struct ::stat;
 /// `struct timespec` aliased to avoid the `struct` keyword leaking into call sites.
 using timespec_t   = struct ::timespec;
 using itimerspec_t = struct ::itimerspec;
-using epoll_event  = struct ::epoll_event;
 
 inline constexpr auto SIGKILL    = _SIGKILL;
 inline constexpr auto O_CLOEXEC  = _O_CLOEXEC;
@@ -518,13 +472,15 @@ inline constexpr auto SEEK_SET        = _SEEK_SET;
 inline constexpr auto SEEK_CUR        = _SEEK_CUR;
 inline constexpr auto SEEK_END        = _SEEK_END;
 
-// ── Sockets / epoll ─────────────────────────────────────────────────────
-inline constexpr auto AF_INET      = _AF_INET;
-inline constexpr auto AF_INET6     = _AF_INET6;
-inline constexpr auto SOCK_STREAM  = _SOCK_STREAM;
-inline constexpr auto SOL_SOCKET   = _SOL_SOCKET;
-inline constexpr auto SO_REUSEADDR = _SO_REUSEADDR;
-inline constexpr auto SO_ERROR     = _SO_ERROR;
+// ── Sockets ─────────────────────────────────────────────────────────────
+inline constexpr auto AF_INET       = _AF_INET;
+inline constexpr auto AF_INET6      = _AF_INET6;
+inline constexpr auto SOCK_STREAM   = _SOCK_STREAM;
+inline constexpr auto SOCK_CLOEXEC  = _SOCK_CLOEXEC;
+inline constexpr auto SOCK_NONBLOCK = _SOCK_NONBLOCK;
+inline constexpr auto SOL_SOCKET    = _SOL_SOCKET;
+inline constexpr auto SO_REUSEADDR  = _SO_REUSEADDR;
+inline constexpr auto SO_ERROR      = _SO_ERROR;
 [[maybe_unused]]
 inline constexpr auto IPPROTO_TCP = _IPPROTO_TCP;
 inline constexpr auto TCP_NODELAY = _TCP_NODELAY;
@@ -533,26 +489,11 @@ inline constexpr auto SHUT_WR = _SHUT_WR;
 [[maybe_unused]]
 inline constexpr auto MSG_NOSIGNAL = _MSG_NOSIGNAL;
 
-[[maybe_unused]]
-inline constexpr auto EPOLL_CLOEXEC  = _EPOLL_CLOEXEC;
-inline constexpr auto EPOLLIN        = _EPOLLIN;
-inline constexpr auto EPOLLOUT       = _EPOLLOUT;
-inline constexpr auto EPOLLONESHOT   = _EPOLLONESHOT;
-inline constexpr auto EPOLLRDHUP     = _EPOLLRDHUP;
-inline constexpr auto HAS_EPOLLRDHUP = _HAS_EPOLLRDHUP;
-inline constexpr auto EPOLLHUP       = _EPOLLHUP;
-inline constexpr auto EPOLLERR       = _EPOLLERR;
-inline constexpr auto EPOLL_CTL_ADD  = _EPOLL_CTL_ADD;
-inline constexpr auto EPOLL_CTL_MOD  = _EPOLL_CTL_MOD;
-inline constexpr auto EPOLL_CTL_DEL  = _EPOLL_CTL_DEL;
-[[maybe_unused]]
-inline constexpr auto EFD_NONBLOCK = _EFD_NONBLOCK;
-[[maybe_unused]]
-inline constexpr auto EFD_CLOEXEC = _EFD_CLOEXEC;
-[[maybe_unused]]
-inline constexpr auto TFD_NONBLOCK = _TFD_NONBLOCK;
-[[maybe_unused]]
-inline constexpr auto TFD_CLOEXEC = _TFD_CLOEXEC;
+// ── Memory mapping ──────────────────────────────────────────────────────
+inline constexpr auto PROT_READ  = _PROT_READ;
+inline constexpr auto PROT_WRITE = _PROT_WRITE;
+inline constexpr auto MAP_SHARED = _MAP_SHARED;
+inline void* const    MAP_FAILED = _MAP_FAILED;
 
 // ── Stat mode masks ──────────────────────────────────────────────────────
 inline constexpr auto S_IFMT   = _S_IFMT;

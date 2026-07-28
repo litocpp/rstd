@@ -6,6 +6,10 @@ add_executable(
   async.cpp
   net.cpp)
 
+target_sources(
+  rstd_bench
+  PRIVATE FILE_SET modules TYPE CXX_MODULES FILES async_bench_tools.cppm)
+
 target_link_libraries(rstd_bench PRIVATE rstd::rstd rstd.cppstd rstd::bench rstd::json)
 
 if(CMAKE_BUILD_TYPE)

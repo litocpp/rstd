@@ -23,6 +23,7 @@ namespace
 
 struct Options {
     const char*   m_suite { "all" };
+    const char*   m_case { nullptr };
     const char*   m_json_path { nullptr };
     std::uint64_t m_iterations { 0 };
     bool          m_quick { false };
@@ -51,6 +52,8 @@ auto parse_options(int argc, char** argv) -> Options {
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--suite") == 0 && i + 1 < argc) {
             options.m_suite = argv[++i];
+        } else if (std::strcmp(argv[i], "--case") == 0 && i + 1 < argc) {
+            options.m_case = argv[++i];
         } else if (std::strcmp(argv[i], "--iterations") == 0 && i + 1 < argc) {
             options.m_iterations = parse_u64(argv[++i]);
         } else if (std::strcmp(argv[i], "--json") == 0 && i + 1 < argc) {
@@ -60,8 +63,8 @@ auto parse_options(int argc, char** argv) -> Options {
         } else if (std::strcmp(argv[i], "--list") == 0) {
             options.m_list = true;
         } else if (std::strcmp(argv[i], "--help") == 0) {
-            std::printf("usage: rstd_bench [--suite all|alloc|sync|async|net] [--quick] "
-                        "[--iterations N] [--json PATH] [--list]\n");
+            std::printf("usage: rstd_bench [--suite all|alloc|sync|async|net] [--case NAME] "
+                        "[--quick] [--iterations N] [--json PATH] [--list]\n");
             std::exit(0);
         }
     }
@@ -72,6 +75,11 @@ auto parse_options(int argc, char** argv) -> Options {
 auto suite_matches(const Options& options, const rstd_bench::BenchCase& benchmark) -> bool {
     return std::strcmp(options.m_suite, "all") == 0 ||
            std::strcmp(options.m_suite, benchmark.m_suite) == 0;
+}
+
+auto benchmark_matches(const Options& options, const rstd_bench::BenchCase& benchmark) -> bool {
+    return suite_matches(options, benchmark) &&
+           (options.m_case == nullptr || std::strcmp(options.m_case, benchmark.m_name) == 0);
 }
 
 auto make_config(const Options& options, const rstd_bench::BenchCase& benchmark)
@@ -107,10 +115,11 @@ auto run_case(const Options& options, const rstd_bench::BenchCase& benchmark) ->
     };
 }
 
-void print_result(const RunResult& result) {
+void print_result(const RunResult& result, int name_width) {
     if (result.m_measurement.is_none()) {
-        std::printf("%-8s %-32s %10s %20s %13s failed\n",
+        std::printf("%-8s %-*s %10s %20s %13s failed\n",
                     result.m_case->m_suite,
+                    name_width,
                     result.m_case->m_name,
                     "-",
                     "-",
@@ -121,8 +130,9 @@ void print_result(const RunResult& result) {
     auto summary = result.m_measurement->summary();
     auto total_ms =
         static_cast<double>(duration_ns(summary.total_elapsed).to_primitive()) / 1'000'000.0;
-    std::printf("%-8s %-32s %10llu %12.2f ns/op %10.3f ms %s\n",
+    std::printf("%-8s %-*s %10llu %14.2f ns/op %10.3f ms %s\n",
                 result.m_case->m_suite,
+                name_width,
                 result.m_case->m_name,
                 static_cast<unsigned long long>(summary.total_iterations.to_primitive()),
                 summary.median_ns_per_unit.to_primitive(),
@@ -253,7 +263,7 @@ auto main(int argc, char** argv) -> int {
     if (options.m_list) {
         for (std::size_t i = 0; i < 4; ++i) {
             for (std::size_t j = 0; j < lens[i]; ++j) {
-                if (suite_matches(options, suites[i][j])) {
+                if (benchmark_matches(options, suites[i][j])) {
                     std::printf("%s.%s\n", suites[i][j].m_suite, suites[i][j].m_name);
                 }
             }
@@ -263,18 +273,34 @@ auto main(int argc, char** argv) -> int {
 
     auto results = Vec<RunResult>::make();
     bool all_ok  = true;
+    int  name_width { 32 };
 
-    std::printf(
-        "%-8s %-32s %10s %20s %13s %s\n", "suite", "name", "iters", "time", "total", "status");
+    for (std::size_t i = 0; i < 4; ++i) {
+        for (std::size_t j = 0; j < lens[i]; ++j) {
+            const auto& benchmark = suites[i][j];
+            if (! benchmark_matches(options, benchmark)) continue;
+            auto const width = static_cast<int>(std::strlen(benchmark.m_name));
+            if (width > name_width) name_width = width;
+        }
+    }
+
+    std::printf("%-8s %-*s %10s %20s %13s %s\n",
+                "suite",
+                name_width,
+                "name",
+                "iters",
+                "time",
+                "total",
+                "status");
     std::printf("build=%s asan=%s\n", RSTD_BENCH_BUILD_TYPE, RSTD_BENCH_ASAN ? "true" : "false");
 
     for (std::size_t i = 0; i < 4; ++i) {
         for (std::size_t j = 0; j < lens[i]; ++j) {
             const auto& benchmark = suites[i][j];
-            if (! suite_matches(options, benchmark)) continue;
+            if (! benchmark_matches(options, benchmark)) continue;
             auto result = run_case(options, benchmark);
             all_ok      = all_ok && result.m_ok;
-            print_result(result);
+            print_result(result, name_width);
             results.push(rstd::move(result));
         }
     }

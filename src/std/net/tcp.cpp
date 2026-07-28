@@ -18,11 +18,16 @@ inline auto tcp_is_would_block(rstd::io::Error const& error) noexcept -> bool {
 }
 
 auto tcp_detach_owned_socket(rstd::os::socket::OwnedSocket socket,
-                             rstd::async::Registration     registration)
+                             rstd::async::Registration     registration,
+                             rstd::async::CompletionSource completion_source)
     -> rstd::async::coro<rstd::io::Result<rstd::os::socket::OwnedSocket>> {
     auto deregistered = co_await rstd::move(registration).deregister();
     if (deregistered.is_err()) {
         co_return rstd::Err(rstd::move(deregistered).unwrap_err_unchecked());
+    }
+    auto released = co_await rstd::move(completion_source).release();
+    if (released.is_err()) {
+        co_return rstd::Err(rstd::move(released).unwrap_err_unchecked());
     }
     co_return rstd::Ok(rstd::move(socket));
 }
@@ -64,7 +69,10 @@ auto TcpStream::into_owned_socket() && -> async::coro<io::Result<os::socket::Own
         co_return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
     }
 #endif
-    co_return co_await tcp_detach_owned_socket(rstd::move(m_socket), rstd::move(m_registration));
+    m_read_operation  = None<async::IoOperation>();
+    m_write_operation = None<async::IoOperation>();
+    co_return co_await tcp_detach_owned_socket(
+        rstd::move(m_socket), rstd::move(m_registration), rstd::move(m_completion_source));
 }
 
 #if RSTD_OS_UNIX
@@ -217,7 +225,8 @@ auto TcpListener::into_owned_socket() && -> async::coro<io::Result<os::socket::O
         co_return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
     }
 #endif
-    co_return co_await tcp_detach_owned_socket(rstd::move(m_socket), rstd::move(m_registration));
+    co_return co_await tcp_detach_owned_socket(
+        rstd::move(m_socket), rstd::move(m_registration), rstd::move(m_completion_source));
 }
 
 #if RSTD_OS_UNIX

@@ -6,6 +6,7 @@ export import :io.error;
 export import :net.socket_addr;
 export import :os.socket;
 import :sys.libc;
+import :sys.pal.poll.types;
 import rstd.core;
 
 namespace rstd::sys::pal::unix::socket
@@ -22,7 +23,7 @@ using rstd::os::socket::RawSocket;
 namespace libc = rstd::sys::libc;
 
 #if RSTD_OS_UNIX
-struct NativeSocketAddr {
+export struct NativeSocketAddr {
     libc::sockaddr_storage storage {};
     libc::socklen_t        len {};
 };
@@ -31,17 +32,34 @@ auto last_error() noexcept -> Error {
     return Error::last_os_error();
 }
 
+export auto addr_to_native(const rstd::sys::pal::poll::SocketAddress& address) noexcept
+    -> NativeSocketAddr;
+
 auto addr_to_native(SocketAddr const& addr) noexcept -> NativeSocketAddr {
+    auto portable = rstd::sys::pal::poll::SocketAddress {
+        .ipv6     = addr.is_ipv6(),
+        .port     = addr.port(),
+        .flowinfo = addr.flowinfo(),
+        .scope_id = addr.scope_id(),
+    };
+    for (rstd::size_t i = 0; i < 16; ++i) {
+        portable.octets[i] = addr.octet(usize(i));
+    }
+    return addr_to_native(portable);
+}
+
+export auto addr_to_native(const rstd::sys::pal::poll::SocketAddress& address) noexcept
+    -> NativeSocketAddr {
     auto out = NativeSocketAddr {};
-    if (addr.is_ipv4()) {
+    if (! address.ipv6) {
         auto native            = libc::sockaddr_in {};
         native.sin_family      = libc::AF_INET;
-        native.sin_port        = libc::htons(addr.port().to_primitive());
-        auto address           = (rstd::uint32_t(addr.octet(usize(0)).to_primitive()) << 24) |
-                                 (rstd::uint32_t(addr.octet(usize(1)).to_primitive()) << 16) |
-                                 (rstd::uint32_t(addr.octet(usize(2)).to_primitive()) << 8) |
-                                 rstd::uint32_t(addr.octet(usize(3)).to_primitive());
-        native.sin_addr.s_addr = libc::htonl(address);
+        native.sin_port        = libc::htons(address.port.to_primitive());
+        auto bits              = (rstd::uint32_t(address.octets[0].to_primitive()) << 24) |
+                                 (rstd::uint32_t(address.octets[1].to_primitive()) << 16) |
+                                 (rstd::uint32_t(address.octets[2].to_primitive()) << 8) |
+                                 rstd::uint32_t(address.octets[3].to_primitive());
+        native.sin_addr.s_addr = libc::htonl(bits);
         *reinterpret_cast<libc::sockaddr_in*>(&out.storage) = native;
         out.len                                             = sizeof(native);
         return out;
@@ -49,12 +67,12 @@ auto addr_to_native(SocketAddr const& addr) noexcept -> NativeSocketAddr {
 
     auto native          = libc::sockaddr_in6 {};
     native.sin6_family   = libc::AF_INET6;
-    native.sin6_port     = libc::htons(addr.port().to_primitive());
-    native.sin6_flowinfo = libc::htonl(addr.flowinfo().to_primitive());
-    native.sin6_scope_id = addr.scope_id().to_primitive();
+    native.sin6_port     = libc::htons(address.port.to_primitive());
+    native.sin6_flowinfo = libc::htonl(address.flowinfo.to_primitive());
+    native.sin6_scope_id = address.scope_id.to_primitive();
     for (rstd::size_t i = 0; i < 16; ++i) {
         libc::set_in6_addr_octet(
-            native.sin6_addr, static_cast<unsigned int>(i), addr.octet(usize(i)).to_primitive());
+            native.sin6_addr, static_cast<unsigned int>(i), address.octets[i].to_primitive());
     }
     *reinterpret_cast<libc::sockaddr_in6*>(&out.storage) = native;
     out.len                                              = sizeof(native);

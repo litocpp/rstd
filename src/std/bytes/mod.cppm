@@ -171,12 +171,11 @@ public:
     }
 
     void put_slice(slice<u8> src) {
+        if (src.is_empty()) return;
         reserve(src.len());
         auto const target = usize(m_end) + src.len();
-        if (m_buf.len() < target) m_buf.resize(target, u8 {});
-        for (rstd::size_t index = 0; index < src.len().to_primitive(); ++index) {
-            m_buf[usize(m_end + index)] = src[usize(index)];
-        }
+        rstd::mem::memcpy(m_buf.data() + m_end, src.as_raw_ptr(), src.len());
+        if (m_buf.len() < target) m_buf.set_len_unchecked(target);
         m_end = target.to_primitive();
     }
     void extend_from_slice(slice<u8> src) { put_slice(src); }
@@ -194,10 +193,8 @@ public:
         auto const new_end = m_pos + new_len.to_primitive();
         if (new_end > m_buf.len().to_primitive()) {
             m_buf.resize(usize(new_end), value);
-        } else {
-            for (rstd::size_t index = old_end; index < new_end; ++index) {
-                m_buf[usize(index)] = value;
-            }
+        } else if (new_end > old_end) {
+            rstd::mem::memset(m_buf.data() + old_end, value, usize(new_end - old_end));
         }
         m_end = new_end;
     }

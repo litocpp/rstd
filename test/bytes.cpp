@@ -52,6 +52,26 @@ TEST(BytesMut, AppendsAfterWritableChunkAtTheLogicalEnd) {
     }
 }
 
+TEST(BytesMut, ResizeFillsLogicalGrowth) {
+    auto buf = BytesMut::with_capacity(usize(8));
+    buf.put_slice("ab"_bytes);
+
+    buf.resize(usize(6), u8(0x7f));
+    ASSERT_EQ(buf.len(), usize(6));
+    EXPECT_EQ(buf[usize()], u8('a'));
+    EXPECT_EQ(buf[usize(1)], u8('b'));
+    for (rstd::size_t index = 2; index < 6; ++index) {
+        EXPECT_EQ(buf[usize(index)], u8(0x7f));
+    }
+
+    buf.truncate(usize(3));
+    buf.resize(usize(5), u8(0x55));
+    ASSERT_EQ(buf.len(), usize(5));
+    EXPECT_EQ(buf[usize(2)], u8(0x7f));
+    EXPECT_EQ(buf[usize(3)], u8(0x55));
+    EXPECT_EQ(buf[usize(4)], u8(0x55));
+}
+
 TEST(BytesMut, AdvanceAndSplitTo) {
     rstd::byte data[] { byte { 1 }, byte { 2 }, byte { 3 }, byte { 4 }, byte { 5 } };
     auto       buf = BytesMut::make();

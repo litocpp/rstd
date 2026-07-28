@@ -3,6 +3,9 @@ module;
 module rstd;
 import :sys.pal.unix.futex;
 import :sys.libc.std;
+#if RSTD_OS_LINUX
+import :sys.libc.linux;
+#endif
 #if RSTD_OS_UNIX
 import :sys.libc.unix;
 #endif

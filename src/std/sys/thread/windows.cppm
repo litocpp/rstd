@@ -58,8 +58,8 @@ export struct Thread {
         auto* p   = name.as_ptr();
         int   len = MultiByteToWideChar(M_CP_UTF8, 0, p, -1, nullptr, 0);
         if (len > 0) {
-            auto* buf = (wchar_t*)rstd::sys::libc::malloc(
-                sizeof(wchar_t) * static_cast<rstd::size_t>(len));
+            auto* buf =
+                (wchar_t*)rstd::sys::libc::malloc(sizeof(wchar_t) * static_cast<rstd::size_t>(len));
             if (buf) {
                 MultiByteToWideChar(M_CP_UTF8, 0, p, -1, buf, len);
                 SetThreadDescription(GetCurrentThread(), buf);

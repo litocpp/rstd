@@ -119,9 +119,8 @@ TEST(Time, DurationCheckedArithmeticPreservesBoundaries) {
 
 TEST(Time, UnixTimestampCheckedArithmeticCoversSignedLimits) {
 #if RSTD_OS_WINDOWS
-    auto tick = Duration::from_nanos(u64(100));
-    auto maximum =
-        SystemTime::from_unix_time(i64(1'833'029'933'770), u32(955'161'500)).unwrap();
+    auto tick    = Duration::from_nanos(u64(100));
+    auto maximum = SystemTime::from_unix_time(i64(1'833'029'933'770), u32(955'161'500)).unwrap();
     EXPECT_TRUE(maximum.checked_add(tick).is_none());
 
     auto minimum = SystemTime::from_unix_time(i64(-11'644'473'600), u32()).unwrap();

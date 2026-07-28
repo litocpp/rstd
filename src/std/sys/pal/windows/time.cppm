@@ -226,10 +226,9 @@ export auto local_offset_at_unix_time(i64 seconds) noexcept -> Option<i32> {
         return None();
     }
 
-    auto const difference =
-        signed_widen(filetime_value(normalized_local)) -
-        signed_widen(filetime_value(normalized_utc));
-    auto offset = rstd::try_from<i32>(difference / i128(10'000'000));
+    auto const difference = signed_widen(filetime_value(normalized_local)) -
+                            signed_widen(filetime_value(normalized_utc));
+    auto       offset     = rstd::try_from<i32>(difference / i128(10'000'000));
     if (offset.is_err()) return None();
     return Some(offset.unwrap());
 }

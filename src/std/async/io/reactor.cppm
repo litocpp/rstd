@@ -50,7 +50,7 @@ struct RegistrationFields {
     usize                        write_waiter_id {};
     usize                        next_waiter_id { rstd::size_t(1) };
     Option<WorkerHandle>         worker {};
-    Option<PollKey>              key {};
+    Option<RegistrationKey>      key {};
     Option<io::Error>            error {};
     Option<task::Waker>          deregister_waker {};
     Option<io::Error>            deregister_error {};
@@ -71,19 +71,19 @@ struct RegistrationState {
 
 struct TimerFields {
     WorkerHandle        worker;
-    PollKey             key;
+    TimerKey            key;
     Option<task::Waker> waker;
     Option<io::Error>   error {};
     bool                active { true };
 
-    TimerFields(WorkerHandle worker, PollKey key, task::Waker waker)
+    TimerFields(WorkerHandle worker, TimerKey key, task::Waker waker)
         : worker(rstd::move(worker)), key(key), waker(Some(rstd::move(waker))) {}
 };
 
 struct TimerState {
     sync::Mutex<TimerFields> fields;
 
-    TimerState(WorkerHandle worker, PollKey key, task::Waker waker)
+    TimerState(WorkerHandle worker, TimerKey key, task::Waker waker)
         : fields(TimerFields { rstd::move(worker), key, rstd::move(waker) }) {}
 };
 
@@ -112,7 +112,7 @@ void wake_all(Vec<task::Waker>& wakers) {
 void fail_registration(const RegistrationArc& state, io::Error error) {
     auto wakers           = Vec<task::Waker>::make();
     auto tokens           = Vec<FacilityCompletionToken>::make();
-    auto key              = PollKey {};
+    auto key              = RegistrationKey {};
     auto completion_error = io::Error { error };
     {
         auto fields = state->fields.lock().unwrap_unchecked();
@@ -308,7 +308,7 @@ void handle_registration_event(const RegistrationArc& state, PollEventData data)
     if (data.kind() != PollEventKind::Readiness) return;
 
     auto ready = data.readiness();
-    auto key   = data.key();
+    auto key   = data.registration_key();
 
     auto wakers  = Vec<task::Waker>::make();
     auto tokens  = Vec<FacilityCompletionToken>::make();
@@ -507,7 +507,7 @@ auto submit_registration_readiness(const RegistrationArc&  state,
             if (! bound.poll_capabilities().contains(PollCapability::Readiness)) {
                 return FacilityCompletionSubmitResult::unsupported(rstd::move(token));
             }
-            auto key        = bound.allocate_poll_key(PollKeyKind::Registration);
+            auto key        = bound.allocate_registration_key();
             fields->worker  = Some(bound.clone());
             fields->key     = Some(key);
             worker          = Some(rstd::move(bound));
@@ -596,7 +596,7 @@ auto poll_registration_readiness(const RegistrationArc& state,
                 return task::Poll<io::Result<ReadyEvent>>::Ready(
                     Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported })));
             }
-            auto key       = bound.allocate_poll_key(PollKeyKind::Registration);
+            auto key       = bound.allocate_registration_key();
             fields->worker = Some(bound.clone());
             fields->key    = Some(key);
             worker         = Some(rstd::move(bound));
@@ -803,7 +803,7 @@ public:
         if (current.is_err()) return Err(rstd::move(current).unwrap_err_unchecked());
 
         auto worker    = rstd::move(current).unwrap_unchecked();
-        auto key       = worker.allocate_poll_key(PollKeyKind::Timer);
+        auto key       = worker.allocate_timer_key();
         auto state     = TimerArc::make(worker.clone(), key, rstd::move(waker));
         auto command   = PollCommand::arm_timer(key, deadline, make_timer_owner(state));
         auto submitted = worker.submit_poll(rstd::move(command));

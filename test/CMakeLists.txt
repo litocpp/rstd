@@ -114,10 +114,12 @@ target_compile_definitions(
   PRIVATE
     "RSTD_TEST_CHECK_INTEGER_OVERFLOW=$<OR:$<CONFIG:Debug>,$<BOOL:${RSTD_CHECK_INTEGER_OVERFLOW}>>")
 
-target_sources(
-  rstd_test
-  PRIVATE FILE_SET modules TYPE CXX_MODULES FILES log_module_check.cppm
-          any_module_check.cppm error_module_check.cppm)
+set(RSTD_TEST_MODULES log_module_check.cppm any_module_check.cppm error_module_check.cppm)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  list(APPEND RSTD_TEST_MODULES async/io_backend.cppm)
+endif()
+
+target_sources(rstd_test PRIVATE FILE_SET modules TYPE CXX_MODULES FILES ${RSTD_TEST_MODULES})
 
 target_link_libraries(rstd_test PRIVATE rstd::rstd rstd::json rstd::toml rstd::log rstd::argparse
                                         GTest::gtest_main)
