@@ -495,12 +495,18 @@ auto submit_registration_readiness(const RegistrationArc&  state,
 
         if (fields->worker.is_some() && fields->key.is_some()) {
             worker = Some(fields->worker->clone());
+            if (! worker->poll_capabilities().contains(PollCapability::Readiness)) {
+                return FacilityCompletionSubmitResult::unsupported(rstd::move(token));
+            }
         } else if (CURRENT_RUNTIME != nullptr && has_current_runtime_worker()) {
             auto current = CURRENT_RUNTIME->current_poll_worker();
             if (current.is_err()) {
                 return FacilityCompletionSubmitResult::rejected(rstd::move(token));
             }
-            auto bound      = rstd::move(current).unwrap_unchecked();
+            auto bound = rstd::move(current).unwrap_unchecked();
+            if (! bound.poll_capabilities().contains(PollCapability::Readiness)) {
+                return FacilityCompletionSubmitResult::unsupported(rstd::move(token));
+            }
             auto key        = bound.allocate_poll_key(PollKeyKind::Registration);
             fields->worker  = Some(bound.clone());
             fields->key     = Some(key);
@@ -572,7 +578,11 @@ auto poll_registration_readiness(const RegistrationArc& state,
         }
 
         if (fields->worker.is_some() && fields->key.is_some()) {
-            worker  = Some(fields->worker->clone());
+            worker = Some(fields->worker->clone());
+            if (! worker->poll_capabilities().contains(PollCapability::Readiness)) {
+                return task::Poll<io::Result<ReadyEvent>>::Ready(
+                    Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported })));
+            }
             command = Some(PollCommand::update_interest(
                 *fields->key, registration_interest(*fields), make_registration_owner(state)));
         } else if (CURRENT_RUNTIME != nullptr && has_current_runtime_worker()) {
@@ -581,7 +591,11 @@ auto poll_registration_readiness(const RegistrationArc& state,
                 return task::Poll<io::Result<ReadyEvent>>::Ready(
                     Err(rstd::move(current).unwrap_err_unchecked()));
             }
-            auto bound     = rstd::move(current).unwrap_unchecked();
+            auto bound = rstd::move(current).unwrap_unchecked();
+            if (! bound.poll_capabilities().contains(PollCapability::Readiness)) {
+                return task::Poll<io::Result<ReadyEvent>>::Ready(
+                    Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported })));
+            }
             auto key       = bound.allocate_poll_key(PollKeyKind::Registration);
             fields->worker = Some(bound.clone());
             fields->key    = Some(key);
@@ -908,6 +922,25 @@ public:
             return AwaitTransition::continue_();
         }
         if (! runtime->io_enabled()) {
+            m_facility_result.insert(
+                Output(Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }))));
+            m_completed = true;
+            return AwaitTransition::continue_();
+        }
+        if (! has_current_runtime_worker()) {
+            m_facility_result.insert(
+                Output(Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected }))));
+            m_completed = true;
+            return AwaitTransition::continue_();
+        }
+        auto worker = runtime->current_poll_worker();
+        if (worker.is_err()) {
+            m_facility_result.insert(Output(Err(rstd::move(worker).unwrap_err_unchecked())));
+            m_completed = true;
+            return AwaitTransition::continue_();
+        }
+        if (! rstd::move(worker).unwrap_unchecked().poll_capabilities().contains(
+                PollCapability::Readiness)) {
             m_facility_result.insert(
                 Output(Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }))));
             m_completed = true;

@@ -187,7 +187,7 @@ public:
                 future.completed = true;
                 return task::Poll<Output>::Ready(Err(rstd::move(result).unwrap_err_unchecked()));
             }
-            if (rstd::move(result).unwrap_unchecked() == 0) {
+            if (rstd::move(result).unwrap_unchecked() == usize()) {
                 future.completed = true;
                 return task::Poll<Output>::Ready(Err(::rstd::io::error::Error_READ_EXACT_EOF));
             }
@@ -224,9 +224,10 @@ public:
         }
 
         while (future.written < future.buf->len()) {
-            auto remaining = bytes::Bytes::copy_from_slice(slice<u8>::from_raw_parts(
-                future.buf->data() + future.written, future.buf->len() - future.written));
-            auto out       = poll_write(*future.writer, cx, remaining);
+            auto remaining = bytes::Bytes::copy_from_slice(
+                slice<u8>::from_raw_parts(future.buf->data() + future.written.to_primitive(),
+                                          future.buf->len() - future.written));
+            auto out = poll_write(*future.writer, cx, remaining);
             if (out.is_pending()) {
                 return task::Poll<Output>::Pending();
             }
@@ -238,7 +239,7 @@ public:
             }
 
             auto n = rstd::move(result).unwrap_unchecked();
-            if (n == 0) {
+            if (n == usize()) {
                 future.completed = true;
                 return task::Poll<Output>::Ready(Err(::rstd::io::error::Error_WRITE_ALL_EOF));
             }

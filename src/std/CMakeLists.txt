@@ -21,6 +21,9 @@ add_subdirectory(os)
 add_library(rstd.std STATIC)
 target_compile_features(rstd.std PUBLIC cxx_std_20)
 target_link_libraries(rstd.std PUBLIC rstd.core rstd.alloc)
+if(WIN32)
+  target_link_libraries(rstd.std PRIVATE ws2_32)
+endif()
 set_target_properties(rstd.std PROPERTIES OUTPUT_NAME rstd)
 
 target_sources(
@@ -61,4 +64,4 @@ target_sources(
           ${RSTD_PRIVATE_MODULE_SOURCES})
 
 target_sources(rstd.std PRIVATE ${RSTD_PRIVATE_SOURCES} mod.cpp process/process.cpp fs.cpp env.cpp
-                                os/fd.cpp)
+                                os/fd.cpp os/handle.cpp os/socket.cpp)

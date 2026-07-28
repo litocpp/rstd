@@ -1,9 +1,13 @@
+module;
+#include <rstd/macro.hpp>
+
 export module rstd:net.tcp;
 export import :async;
 export import :bytes;
 export import :io;
 import :net.socket_addr;
 import :os.fd;
+import :os.socket;
 
 using namespace rstd::prelude;
 
@@ -11,15 +15,18 @@ namespace rstd::net
 {
 
 export class TcpStream {
-    os::fd::OwnedFd     m_fd;
-    async::Registration m_registration;
-    usize               m_read_waiter_id {};
-    usize               m_write_waiter_id {};
+    os::socket::OwnedSocket    m_socket;
+    async::Registration        m_registration;
+    async::CompletionSource    m_completion_source;
+    Option<async::IoOperation> m_read_operation {};
+    Option<async::IoOperation> m_write_operation {};
 
     friend class TcpListener;
 
-    TcpStream(os::fd::OwnedFd fd, async::Registration registration)
-        : m_fd(rstd::move(fd)), m_registration(rstd::move(registration)) {}
+    TcpStream(os::socket::OwnedSocket socket, async::Registration registration)
+        : m_socket(rstd::move(socket)),
+          m_registration(rstd::move(registration)),
+          m_completion_source(async::CompletionSource::socket(m_socket.as_socket())) {}
 
 public:
     TcpStream(const TcpStream&)                        = delete;
@@ -28,9 +35,12 @@ public:
     auto operator=(TcpStream&&) noexcept -> TcpStream& = default;
 
     static auto connect(SocketAddr addr) -> async::coro<io::Result<TcpStream>>;
+    static auto from_owned_socket(os::socket::OwnedSocket socket) -> io::Result<TcpStream>;
+    auto        into_owned_socket() && -> async::coro<io::Result<os::socket::OwnedSocket>>;
+#if RSTD_OS_UNIX
     static auto from_owned_fd(os::fd::OwnedFd fd) -> io::Result<TcpStream>;
-
-    auto into_owned_fd() && -> async::coro<io::Result<os::fd::OwnedFd>>;
+    auto        into_owned_fd() && -> async::coro<io::Result<os::fd::OwnedFd>>;
+#endif
     auto local_addr() const -> io::Result<SocketAddr>;
     auto peer_addr() const -> io::Result<SocketAddr>;
     auto take_error() -> io::Result<Option<io::Error>>;
@@ -56,11 +66,14 @@ public:
 };
 
 export class TcpListener {
-    os::fd::OwnedFd     m_fd;
-    async::Registration m_registration;
+    os::socket::OwnedSocket m_socket;
+    async::Registration     m_registration;
+    async::CompletionSource m_completion_source;
 
-    TcpListener(os::fd::OwnedFd fd, async::Registration registration)
-        : m_fd(rstd::move(fd)), m_registration(rstd::move(registration)) {}
+    TcpListener(os::socket::OwnedSocket socket, async::Registration registration)
+        : m_socket(rstd::move(socket)),
+          m_registration(rstd::move(registration)),
+          m_completion_source(async::CompletionSource::socket(m_socket.as_socket())) {}
 
 public:
     TcpListener(const TcpListener&)                        = delete;
@@ -69,9 +82,12 @@ public:
     auto operator=(TcpListener&&) noexcept -> TcpListener& = default;
 
     static auto bind(SocketAddr addr) -> io::Result<TcpListener>;
+    static auto from_owned_socket(os::socket::OwnedSocket socket) -> io::Result<TcpListener>;
+    auto        into_owned_socket() && -> async::coro<io::Result<os::socket::OwnedSocket>>;
+#if RSTD_OS_UNIX
     static auto from_owned_fd(os::fd::OwnedFd fd) -> io::Result<TcpListener>;
-
-    auto into_owned_fd() && -> async::coro<io::Result<os::fd::OwnedFd>>;
+    auto        into_owned_fd() && -> async::coro<io::Result<os::fd::OwnedFd>>;
+#endif
     auto local_addr() const -> io::Result<SocketAddr>;
 
     auto ready(async::Interest interest) -> async::ReadinessFuture {

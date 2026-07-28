@@ -6,17 +6,20 @@ export import :io.error;
 export import :async.readiness;
 export import :time;
 export import rstd.core;
+import :net.socket_addr;
 import :os.fd;
-import :sys.libc;
-import :sync;
+import :sys.pal.poll;
 import rstd.alloc;
 
 using namespace rstd;
 using ::alloc::vec::Vec;
-namespace libc = rstd::sys::libc;
+namespace pal_poll = rstd::sys::pal::poll;
 
 namespace rstd::async
 {
+
+using IoError     = io::error::Error;
+using IoErrorKind = io::error::ErrorKind;
 
 inline constexpr u64 POLL_WAKE_KEY {};
 inline constexpr u64 POLL_TIMER_KEY = u64::MAX;
@@ -95,16 +98,27 @@ export struct PollKey {
 export enum class PollOperationKind {
     Read,
     Write,
+    Connect,
+    Accept,
+};
+
+export enum class PollSourceKind {
+    File,
+    Socket,
 };
 
 export class PollOperation {
     PollOperationKind m_kind { PollOperationKind::Read };
+    PollSourceKind    m_source_kind { PollSourceKind::File };
     os::fd::RawFd     m_fd { os::fd::INVALID_RAW_FD };
+    os::fd::RawFd     m_secondary_fd { os::fd::INVALID_RAW_FD };
     void*             m_mut_data { nullptr };
     const void*       m_const_data { nullptr };
     usize             m_len {};
     Option<u64>       m_offset {};
     u32               m_flags {};
+    net::SocketAddr   m_address {};
+    u64               m_source_key {};
 
 public:
     static auto
@@ -117,6 +131,13 @@ public:
         operation.m_len      = len;
         operation.m_offset   = rstd::move(offset);
         operation.m_flags    = flags;
+        return operation;
+    }
+
+    static auto read_socket(os::fd::RawFd fd, void* data, usize len, u32 flags = u32())
+        -> PollOperation {
+        auto operation          = read(fd, data, len, None(), flags);
+        operation.m_source_kind = PollSourceKind::Socket;
         return operation;
     }
 
@@ -135,36 +156,80 @@ public:
         return operation;
     }
 
+    static auto write_socket(os::fd::RawFd fd, const void* data, usize len, u32 flags = u32())
+        -> PollOperation {
+        auto operation          = write(fd, data, len, None(), flags);
+        operation.m_source_kind = PollSourceKind::Socket;
+        return operation;
+    }
+
+    static auto connect_socket(os::fd::RawFd fd, net::SocketAddr address) -> PollOperation {
+        auto operation          = PollOperation {};
+        operation.m_kind        = PollOperationKind::Connect;
+        operation.m_source_kind = PollSourceKind::Socket;
+        operation.m_fd          = fd;
+        operation.m_address     = address;
+        return operation;
+    }
+
+    static auto accept_socket(os::fd::RawFd   fd,
+                              os::fd::RawFd   accepted_fd,
+                              net::SocketAddr address,
+                              void*           address_buffer,
+                              usize           address_buffer_len) -> PollOperation {
+        auto operation           = PollOperation {};
+        operation.m_kind         = PollOperationKind::Accept;
+        operation.m_source_kind  = PollSourceKind::Socket;
+        operation.m_fd           = fd;
+        operation.m_secondary_fd = accepted_fd;
+        operation.m_address      = address;
+        operation.m_mut_data     = address_buffer;
+        operation.m_len          = address_buffer_len;
+        return operation;
+    }
+
     auto kind() const noexcept -> PollOperationKind { return m_kind; }
+    auto source_kind() const noexcept -> PollSourceKind { return m_source_kind; }
     auto fd() const noexcept -> os::fd::RawFd { return m_fd; }
+    auto secondary_fd() const noexcept -> os::fd::RawFd { return m_secondary_fd; }
     auto mutable_data() const noexcept -> void* { return m_mut_data; }
     auto const_data() const noexcept -> const void* { return m_const_data; }
     auto len() const noexcept -> usize { return m_len; }
     auto offset() const noexcept -> const Option<u64>& { return m_offset; }
     auto flags() const noexcept -> u32 { return m_flags; }
+    auto address() const noexcept -> net::SocketAddr { return m_address; }
+    auto source_key() const noexcept -> u64 { return m_source_key; }
+    void set_source_key(u64 source_key) noexcept { m_source_key = source_key; }
 };
 
 export class PollCompletion {
-    isize             m_result {};
-    u32               m_flags {};
-    Option<io::Error> m_error {};
+    isize                 m_result {};
+    u32                   m_flags {};
+    Option<IoError>       m_error {};
+    Option<os::fd::RawFd> m_resource {};
 
-    PollCompletion(isize result, u32 flags, Option<io::Error> error)
-        : m_result(result), m_flags(flags), m_error(rstd::move(error)) {}
+    PollCompletion(isize result, u32 flags, Option<IoError> error, Option<os::fd::RawFd> resource)
+        : m_result(result),
+          m_flags(flags),
+          m_error(rstd::move(error)),
+          m_resource(rstd::move(resource)) {}
 
 public:
-    static auto success(isize result, u32 flags = u32()) -> PollCompletion {
-        return PollCompletion { result, flags, None() };
+    static auto success(isize result, u32 flags = u32(), Option<os::fd::RawFd> resource = None())
+        -> PollCompletion {
+        return PollCompletion { result, flags, None(), rstd::move(resource) };
     }
 
-    static auto failure(io::Error error, u32 flags = u32()) -> PollCompletion {
-        return PollCompletion { isize(), flags, Some(rstd::move(error)) };
+    static auto failure(IoError error, u32 flags = u32()) -> PollCompletion {
+        return PollCompletion { isize(), flags, Some(rstd::move(error)), None() };
     }
 
     auto is_error() const noexcept -> bool { return m_error.is_some(); }
     auto result() const noexcept -> isize { return m_result; }
     auto flags() const noexcept -> u32 { return m_flags; }
-    auto take_error() -> io::Error { return m_error.take().unwrap_unchecked(); }
+    auto take_error() -> IoError { return m_error.take().unwrap_unchecked(); }
+    auto has_resource() const noexcept -> bool { return m_resource.is_some(); }
+    auto take_resource() -> os::fd::RawFd { return m_resource.take().unwrap_unchecked(); }
 };
 
 export class PollEventData {
@@ -172,7 +237,7 @@ export class PollEventData {
     PollKey                m_key {};
     Option<Ready>          m_readiness {};
     Option<PollCompletion> m_completion {};
-    Option<io::Error>      m_backend_error {};
+    Option<IoError>        m_backend_error {};
 
     explicit PollEventData(PollEventKind kind, PollKey key = {}): m_kind(kind), m_key(key) {}
 
@@ -191,7 +256,7 @@ public:
         return PollEventData { PollEventKind::Deregistered, key };
     }
 
-    static auto deregistered(PollKey key, io::Error error) -> PollEventData {
+    static auto deregistered(PollKey key, IoError error) -> PollEventData {
         auto data            = PollEventData { PollEventKind::Deregistered, key };
         data.m_backend_error = Some(rstd::move(error));
         return data;
@@ -207,7 +272,7 @@ public:
         return PollEventData { PollEventKind::Timer, key };
     }
 
-    static auto backend_error(PollKey key, io::Error error) -> PollEventData {
+    static auto backend_error(PollKey key, IoError error) -> PollEventData {
         auto data            = PollEventData { PollEventKind::BackendError, key };
         data.m_backend_error = Some(rstd::move(error));
         return data;
@@ -218,7 +283,7 @@ public:
     auto readiness() const -> Ready { return *m_readiness; }
     auto take_completion() -> PollCompletion { return m_completion.take().unwrap_unchecked(); }
     auto has_backend_error() const noexcept -> bool { return m_backend_error.is_some(); }
-    auto take_backend_error() -> io::Error { return m_backend_error.take().unwrap_unchecked(); }
+    auto take_backend_error() -> IoError { return m_backend_error.take().unwrap_unchecked(); }
 };
 
 export struct RawPollEventOwner;
@@ -399,7 +464,7 @@ public:
     auto owner() const -> const PollEventOwner& { return *m_owner; }
     auto take_owner() -> PollEventOwner { return m_owner.take().unwrap_unchecked(); }
 
-    auto into_error_event(io::Error error) -> PollEvent {
+    auto into_error_event(IoError error) -> PollEvent {
         return PollEvent::owned(PollEventData::backend_error(m_key, rstd::move(error)),
                                 take_owner());
     }
@@ -414,7 +479,7 @@ export enum class PollApplyStatus {
 export class PollApplyResult {
     PollApplyStatus     m_status { PollApplyStatus::Accepted };
     Option<PollCommand> m_command {};
-    Option<io::Error>   m_error {};
+    Option<IoError>     m_error {};
     Option<PollEvent>   m_event {};
 
     explicit PollApplyResult(PollApplyStatus status): m_status(status) {}
@@ -422,7 +487,7 @@ export class PollApplyResult {
     explicit PollApplyResult(PollEvent event)
         : m_status(PollApplyStatus::Accepted), m_event(Some(rstd::move(event))) {}
 
-    PollApplyResult(PollApplyStatus status, PollCommand command, io::Error error)
+    PollApplyResult(PollApplyStatus status, PollCommand command, IoError error)
         : m_status(status),
           m_command(Some(rstd::move(command))),
           m_error(Some(rstd::move(error))) {}
@@ -436,7 +501,7 @@ public:
         return PollApplyResult { rstd::move(event) };
     }
 
-    static auto rejected(PollCommand command, io::Error error) -> PollApplyResult {
+    static auto rejected(PollCommand command, IoError error) -> PollApplyResult {
         return PollApplyResult { PollApplyStatus::Rejected,
                                  rstd::move(command),
                                  rstd::move(error) };
@@ -445,15 +510,14 @@ public:
     static auto unsupported(PollCommand command) -> PollApplyResult {
         return PollApplyResult { PollApplyStatus::Unsupported,
                                  rstd::move(command),
-                                 io::Error::from_kind(
-                                     io::ErrorKind { io::ErrorKind::Unsupported }) };
+                                 IoError::from_kind(IoErrorKind { IoErrorKind::Unsupported }) };
     }
 
     auto status() const noexcept -> PollApplyStatus { return m_status; }
     auto has_event() const noexcept -> bool { return m_event.is_some(); }
     auto take_event() -> PollEvent { return m_event.take().unwrap_unchecked(); }
     auto take_command() -> PollCommand { return m_command.take().unwrap_unchecked(); }
-    auto take_error() -> io::Error { return m_error.take().unwrap_unchecked(); }
+    auto take_error() -> IoError { return m_error.take().unwrap_unchecked(); }
 };
 
 export class PollBatch {
@@ -472,25 +536,12 @@ public:
     }
 };
 
-struct PollWakeState {
-#if RSTD_OS_LINUX
-    os::fd::OwnedFd fd;
-
-    explicit PollWakeState(os::fd::OwnedFd fd): fd(rstd::move(fd)) {}
-#elif RSTD_OS_WINDOWS
-    sync::Mutex<bool> notified;
-    sync::Condvar     cvar;
-
-    PollWakeState(): notified(false), cvar(sync::Condvar::make()) {}
-#endif
-};
-
 export class Poll;
 
 export class PollWake {
-    sync::Arc<PollWakeState> m_state;
+    pal_poll::PollWake m_inner;
 
-    explicit PollWake(sync::Arc<PollWakeState> state): m_state(rstd::move(state)) {}
+    explicit PollWake(pal_poll::PollWake inner): m_inner(rstd::move(inner)) {}
 
     friend class Poll;
 
@@ -500,27 +551,9 @@ public:
     PollWake(PollWake&&) noexcept                    = default;
     auto operator=(PollWake&&) noexcept -> PollWake& = default;
 
-    auto clone() const -> PollWake { return PollWake { m_state.clone() }; }
+    auto clone() const -> PollWake { return PollWake { m_inner.clone() }; }
 
-    auto wake() const -> io::Result<empty> {
-#if RSTD_OS_LINUX
-        auto value = rstd::uint64_t(1);
-        auto rc    = libc::write(m_state->fd.as_raw_fd(), &value, sizeof(value));
-        if (rc == static_cast<decltype(rc)>(sizeof(value)) || libc::get_errno() == libc::EAGAIN) {
-            return Ok(empty {});
-        }
-        return Err(io::Error::last_os_error());
-#elif RSTD_OS_WINDOWS
-        {
-            auto notified = m_state->notified.lock().unwrap_unchecked();
-            *notified     = true;
-        }
-        m_state->cvar.notify_one();
-        return Ok(empty {});
-#else
-        return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
-#endif
-    }
+    auto wake() const -> io::Result<empty> { return m_inner.wake(); }
 };
 
 struct PollRegistration {
@@ -528,7 +561,7 @@ struct PollRegistration {
     os::fd::RawFd  fd;
     Interest       interest;
     PollEventOwner owner;
-    rstd::uint32_t backend_events {};
+    rstd::uint8_t  backend_interest_bits {};
     bool           backend_registered { false };
 
     PollRegistration(PollKey key, os::fd::RawFd fd, Interest interest, PollEventOwner owner)
@@ -544,50 +577,34 @@ struct PollTimer {
         : key(key), deadline(deadline), owner(rstd::move(owner)) {}
 };
 
-export class PollState {
-    PollStateKind         m_kind { PollStateKind::Closed };
-    os::fd::OwnedFd       m_poll_fd {};
-    os::fd::OwnedFd       m_wake_fd {};
-    os::fd::OwnedFd       m_timer_fd {};
-    Vec<PollRegistration> m_registrations;
-    Vec<PollTimer>        m_timers;
-#if RSTD_OS_LINUX
-    Vec<libc::epoll_event> m_backend_events;
-#elif RSTD_OS_WINDOWS
-    sync::Arc<PollWakeState> m_wake_state;
-#endif
+struct PollPendingOperation {
+    PollKey        key;
+    PollEventOwner owner;
 
-#if RSTD_OS_LINUX
-    PollState(os::fd::OwnedFd poll_fd, os::fd::OwnedFd wake_fd, os::fd::OwnedFd timer_fd)
+    PollPendingOperation(PollKey key, PollEventOwner owner): key(key), owner(rstd::move(owner)) {}
+};
+
+export class PollState {
+    PollStateKind             m_kind { PollStateKind::Closed };
+    pal_poll::Poller          m_backend {};
+    Vec<PollRegistration>     m_registrations;
+    Vec<PollPendingOperation> m_operations;
+    Vec<PollTimer>            m_timers;
+
+    explicit PollState(pal_poll::Poller backend)
         : m_kind(PollStateKind::Active),
-          m_poll_fd(rstd::move(poll_fd)),
-          m_wake_fd(rstd::move(wake_fd)),
-          m_timer_fd(rstd::move(timer_fd)),
+          m_backend(rstd::move(backend)),
           m_registrations(Vec<PollRegistration>::make()),
-          m_timers(Vec<PollTimer>::make()),
-          m_backend_events(Vec<libc::epoll_event>::make())
-    {
-        m_backend_events.resize(usize(64), libc::epoll_event {});
-    }
-#elif RSTD_OS_WINDOWS
-    explicit PollState(sync::Arc<PollWakeState> wake_state)
-        : m_kind(PollStateKind::Active),
-          m_registrations(Vec<PollRegistration>::make()),
-          m_timers(Vec<PollTimer>::make()),
-          m_wake_state(rstd::move(wake_state)) {}
-#endif
+          m_operations(Vec<PollPendingOperation>::make()),
+          m_timers(Vec<PollTimer>::make()) {}
 
     friend class Poll;
 
 public:
-#if RSTD_OS_WINDOWS
     PollState()
         : m_registrations(Vec<PollRegistration>::make()),
-          m_timers(Vec<PollTimer>::make()),
-          m_wake_state(sync::Arc<PollWakeState>::make()) {}
-#else
-    PollState()                                        = default;
-#endif
+          m_operations(Vec<PollPendingOperation>::make()),
+          m_timers(Vec<PollTimer>::make()) {}
     PollState(const PollState&)                        = delete;
     auto operator=(const PollState&) -> PollState&     = delete;
     PollState(PollState&&) noexcept                    = default;
@@ -604,65 +621,49 @@ export struct PollInit {
 };
 
 export class Poll {
-    static auto last_os_error() noexcept -> io::Error { return io::Error::last_os_error(); }
-
-    static void drain_wake(os::fd::RawFd fd) noexcept {
-#if RSTD_OS_LINUX
-        auto value = rstd::uint64_t {};
-        while (libc::read(fd, &value, sizeof(value)) > 0) {
-        }
-#else
-        (void)fd;
-#endif
+    static auto backend_interest(Interest interest) noexcept -> pal_poll::Interest {
+        return pal_poll::Interest { interest.m_bits.to_primitive() };
     }
 
-    static void drain_timer(os::fd::RawFd fd) noexcept {
-#if RSTD_OS_LINUX
-        auto value = rstd::uint64_t {};
-        while (libc::read(fd, &value, sizeof(value)) > 0) {
-        }
-#else
-        (void)fd;
-#endif
+    static auto backend_ready(pal_poll::Ready ready) noexcept -> Ready {
+        return Ready { u8(ready.bits) };
     }
 
-    static auto duration_to_timespec(time::Duration duration) noexcept -> libc::timespec {
-        return libc::timespec {
-            .tv_sec  = static_cast<libc::time_t>(duration.as_secs().to_primitive()),
-            .tv_nsec = static_cast<long>(duration.subsec_nanos().to_primitive()),
+    static auto backend_operation(PollKey key, const PollOperation& operation)
+        -> pal_poll::Operation {
+        auto kind = pal_poll::OperationKind::Read;
+        switch (operation.kind()) {
+        case PollOperationKind::Read: kind = pal_poll::OperationKind::Read; break;
+        case PollOperationKind::Write: kind = pal_poll::OperationKind::Write; break;
+        case PollOperationKind::Connect: kind = pal_poll::OperationKind::Connect; break;
+        case PollOperationKind::Accept: kind = pal_poll::OperationKind::Accept; break;
+        }
+        auto source_address = operation.address();
+        auto address        = pal_poll::SocketAddress {
+            .ipv6     = source_address.is_ipv6(),
+            .port     = source_address.port(),
+            .flowinfo = source_address.flowinfo(),
+            .scope_id = source_address.scope_id(),
         };
-    }
-
-    static auto backend_interest(Interest interest) noexcept -> rstd::uint32_t {
-        rstd::uint32_t events {};
-#if RSTD_OS_LINUX
-        if (interest.is_readable()) {
-            events |= libc::EPOLLIN;
-            if (libc::HAS_EPOLLRDHUP) events |= libc::EPOLLRDHUP;
+        for (rstd::size_t i = 0; i < 16; ++i) {
+            address.octets[i] = source_address.octet(usize(i));
         }
-        if (interest.is_writable()) events |= libc::EPOLLOUT;
-#else
-        (void)interest;
-#endif
-        return events;
-    }
-
-    static auto backend_ready(rstd::uint32_t events) noexcept -> Ready {
-        auto ready = Ready {};
-#if RSTD_OS_LINUX
-        if ((events & libc::EPOLLIN) != 0) ready |= Ready::readable();
-        if ((events & libc::EPOLLOUT) != 0) ready |= Ready::writable();
-        if (libc::HAS_EPOLLRDHUP && (events & libc::EPOLLRDHUP) != 0) {
-            ready |= Ready::read_closed();
-        }
-        if ((events & libc::EPOLLHUP) != 0) {
-            ready |= Ready::read_closed() | Ready::write_closed();
-        }
-        if ((events & libc::EPOLLERR) != 0) ready |= Ready::error();
-#else
-        (void)events;
-#endif
-        return ready;
+        return pal_poll::Operation {
+            .kind             = kind,
+            .source_kind      = operation.source_kind() == PollSourceKind::Socket
+                                    ? pal_poll::SourceKind::Socket
+                                    : pal_poll::SourceKind::File,
+            .handle           = operation.fd(),
+            .secondary_handle = operation.secondary_fd(),
+            .source_key       = operation.source_key(),
+            .operation_key    = key.value,
+            .mutable_data     = operation.mutable_data(),
+            .const_data       = operation.const_data(),
+            .len              = operation.len(),
+            .offset           = operation.offset().clone(),
+            .flags            = operation.flags(),
+            .address          = address,
+        };
     }
 
     static auto find_registration(PollState& state, PollKey key) -> PollRegistration* {
@@ -677,75 +678,71 @@ export class Poll {
     static auto update_registration(PollState&        state,
                                     PollRegistration& registration,
                                     Interest          interest) -> io::Result<empty> {
-#if RSTD_OS_LINUX
-        auto events = backend_interest(interest);
-        if (events == registration.backend_events && registration.backend_registered) {
+        auto backend = backend_interest(interest);
+        if (backend.bits == registration.backend_interest_bits && registration.backend_registered) {
             registration.interest = interest;
             return Ok(empty {});
         }
 
-        if (events == 0) {
-            if (registration.backend_registered && libc::epoll_ctl(state.m_poll_fd.as_raw_fd(),
-                                                                   libc::EPOLL_CTL_DEL,
-                                                                   registration.fd,
-                                                                   nullptr) < 0) {
-                return Err(last_os_error());
+        if (backend.is_empty()) {
+            if (registration.backend_registered) {
+                auto removed = state.m_backend.deregister_readiness(registration.fd);
+                if (removed.is_err()) {
+                    return Err(rstd::move(removed).unwrap_err_unchecked());
+                }
             }
-            registration.interest           = interest;
-            registration.backend_events     = 0;
-            registration.backend_registered = false;
+            registration.interest              = interest;
+            registration.backend_interest_bits = 0;
+            registration.backend_registered    = false;
             return Ok(empty {});
         }
 
-        auto event     = libc::epoll_event {};
-        event.events   = events | libc::EPOLLERR | libc::EPOLLHUP;
-        event.data.u64 = registration.key.value.to_primitive();
-        auto operation =
-            registration.backend_registered ? libc::EPOLL_CTL_MOD : libc::EPOLL_CTL_ADD;
-        if (libc::epoll_ctl(state.m_poll_fd.as_raw_fd(), operation, registration.fd, &event) < 0) {
-            return Err(last_os_error());
+        auto updated =
+            registration.backend_registered
+                ? state.m_backend.update_readiness(registration.key.value, registration.fd, backend)
+                : state.m_backend.register_readiness(
+                      registration.key.value, registration.fd, backend);
+        if (updated.is_err()) {
+            return Err(rstd::move(updated).unwrap_err_unchecked());
         }
 
-        registration.interest           = interest;
-        registration.backend_events     = events;
-        registration.backend_registered = true;
+        registration.interest              = interest;
+        registration.backend_interest_bits = backend.bits;
+        registration.backend_registered    = true;
         return Ok(empty {});
-#else
-        (void)state;
-        (void)registration;
-        (void)interest;
-        return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
-#endif
     }
 
-    static auto update_timer(PollState& state) -> io::Result<empty> {
-#if RSTD_OS_LINUX
-        auto spec = libc::itimerspec_t {};
-        if (! state.m_timers.is_empty()) {
-            auto deadline = state.m_timers[usize()].deadline;
-            for (rstd::size_t i = 1; i < state.m_timers.len().to_primitive(); ++i) {
-                auto index = usize(i);
-                if (state.m_timers[index].deadline < deadline) {
-                    deadline = state.m_timers[index].deadline;
-                }
+    static auto find_operation(PollState& state, PollKey key) -> PollPendingOperation* {
+        for (rstd::size_t i = 0; i < state.m_operations.len().to_primitive(); ++i) {
+            if (state.m_operations[usize(i)].key == key) {
+                return rstd::addressof(state.m_operations[usize(i)]);
             }
+        }
+        return nullptr;
+    }
 
-            auto now      = time::Instant::now();
-            auto duration = deadline <= now ? time::Duration::from_nanos(u64(1)) : deadline - now;
-            spec.it_value = duration_to_timespec(duration);
+    static auto take_operation(PollState& state, PollKey key) -> Option<PollPendingOperation> {
+        for (rstd::size_t i = 0; i < state.m_operations.len().to_primitive(); ++i) {
+            auto index = usize(i);
+            if (state.m_operations[index].key == key) {
+                return Some(state.m_operations.remove(index));
+            }
+        }
+        return None<PollPendingOperation>();
+    }
+
+    static auto next_timer_duration(const PollState& state) -> Option<time::Duration> {
+        if (state.m_timers.is_empty()) return None<time::Duration>();
+
+        auto deadline = state.m_timers[usize()].deadline;
+        for (rstd::size_t i = 1; i < state.m_timers.len().to_primitive(); ++i) {
+            auto index = usize(i);
+            if (state.m_timers[index].deadline < deadline)
+                deadline = state.m_timers[index].deadline;
         }
 
-        if (libc::timerfd_settime(state.m_timer_fd.as_raw_fd(), 0, &spec, nullptr) < 0) {
-            return Err(last_os_error());
-        }
-        return Ok(empty {});
-#elif RSTD_OS_WINDOWS
-        (void)state;
-        return Ok(empty {});
-#else
-        (void)state;
-        return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
-#endif
+        auto now = time::Instant::now();
+        return Some(deadline <= now ? time::Duration {} : deadline - now);
     }
 
     static auto collect_expired_timers(PollState& state, PollBatch& batch) -> io::Result<empty> {
@@ -760,70 +757,80 @@ export class Poll {
                 ++i;
             }
         }
-        return update_timer(state);
+        return Ok(empty {});
+    }
+
+    static void
+    append_backend_batch(PollState& state, pal_poll::Batch backend_batch, PollBatch& batch) {
+        for (rstd::size_t i = 0; i < backend_batch.len().to_primitive(); ++i) {
+            auto& event = backend_batch[usize(i)];
+            if (event.kind == pal_poll::EventKind::Wake) {
+                batch.push(PollEvent::wake());
+                continue;
+            }
+            if (event.kind == pal_poll::EventKind::Readiness) {
+                auto  key          = PollKey { PollKeyKind::Registration, event.source_key };
+                auto* registration = find_registration(state, key);
+                if (registration != nullptr) {
+                    auto ready = backend_ready(event.ready);
+                    if (! ready.is_empty()) {
+                        batch.push(PollEvent::owned(PollEventData::readiness(key, ready),
+                                                    registration->owner.clone()));
+                    }
+                }
+                continue;
+            }
+            if (event.kind == pal_poll::EventKind::Completion) {
+                auto key       = PollKey { PollKeyKind::Operation, event.operation_key };
+                auto operation = take_operation(state, key);
+                if (operation.is_none()) continue;
+                auto pending  = rstd::move(operation).unwrap_unchecked();
+                auto resource = event.resource == os::fd::INVALID_RAW_FD ? None<os::fd::RawFd>()
+                                                                         : Some(event.resource);
+                auto completion =
+                    event.error.is_some()
+                        ? PollCompletion::failure(IoError::from_raw_os_error(*event.error),
+                                                  event.flags)
+                        : PollCompletion::success(event.result, event.flags, rstd::move(resource));
+                batch.push(PollEvent::owned(PollEventData::completion(key, rstd::move(completion)),
+                                            rstd::move(pending.owner)));
+            }
+        }
     }
 
 public:
     static auto init() -> io::Result<PollInit> {
-#if RSTD_OS_LINUX
-        auto poll_fd = libc::epoll_create1(libc::EPOLL_CLOEXEC);
-        if (poll_fd < 0) return Err(last_os_error());
-        auto owned_poll = os::fd::OwnedFd::from_raw_fd(poll_fd);
-
-        auto wake_fd = libc::eventfd(0, libc::EFD_NONBLOCK | libc::EFD_CLOEXEC);
-        if (wake_fd < 0) return Err(last_os_error());
-        auto owned_wake = os::fd::OwnedFd::from_raw_fd(wake_fd);
-        auto wake_send  = owned_wake.try_clone();
-        if (wake_send.is_err()) return Err(rstd::move(wake_send).unwrap_err_unchecked());
-
-        auto timer_fd =
-            libc::timerfd_create(libc::CLOCK_MONOTONIC, libc::TFD_NONBLOCK | libc::TFD_CLOEXEC);
-        if (timer_fd < 0) return Err(last_os_error());
-        auto owned_timer = os::fd::OwnedFd::from_raw_fd(timer_fd);
-
-        auto event     = libc::epoll_event {};
-        event.events   = libc::EPOLLIN;
-        event.data.u64 = POLL_WAKE_KEY.to_primitive();
-        if (libc::epoll_ctl(poll_fd, libc::EPOLL_CTL_ADD, wake_fd, &event) < 0) {
-            return Err(last_os_error());
+        auto initialized = pal_poll::Poller::init();
+        if (initialized.is_err()) {
+            return Err(rstd::move(initialized).unwrap_err_unchecked());
         }
-
-        auto timer_event     = libc::epoll_event {};
-        timer_event.events   = libc::EPOLLIN;
-        timer_event.data.u64 = POLL_TIMER_KEY.to_primitive();
-        if (libc::epoll_ctl(poll_fd, libc::EPOLL_CTL_ADD, timer_fd, &timer_event) < 0) {
-            return Err(last_os_error());
-        }
-
-        auto wake_state = sync::Arc<PollWakeState>::make(rstd::move(wake_send).unwrap_unchecked());
-        return Ok(PollInit {
-            PollState { rstd::move(owned_poll), rstd::move(owned_wake), rstd::move(owned_timer) },
-            PollWake { rstd::move(wake_state) } });
-#elif RSTD_OS_WINDOWS
-        auto wake_state = sync::Arc<PollWakeState>::make();
-        return Ok(PollInit { PollState { wake_state.clone() },
-                             PollWake { rstd::move(wake_state) } });
-#else
-        return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
-#endif
+        auto backend = rstd::move(initialized).unwrap_unchecked();
+        return Ok(PollInit { PollState { rstd::move(backend.poller) },
+                             PollWake { rstd::move(backend.wake) } });
     }
 
     static auto capabilities(const PollState&) noexcept -> PollCapabilities {
-#if RSTD_OS_LINUX
-        return PollCapabilities::of(PollCapability::Readiness) | PollCapability::Timer |
-               PollCapability::Wake;
-#elif RSTD_OS_WINDOWS
-        return PollCapabilities::of(PollCapability::Timer) | PollCapability::Wake;
-#else
-        return PollCapabilities::none();
-#endif
+        auto backend = pal_poll::Poller::capabilities();
+        auto result  = PollCapabilities::none();
+        if (backend.contains(pal_poll::Capability::Readiness)) {
+            result = result | PollCapability::Readiness;
+        }
+        if (backend.contains(pal_poll::Capability::Completion)) {
+            result = result | PollCapability::Completion;
+        }
+        if (backend.contains(pal_poll::Capability::Timer)) {
+            result = result | PollCapability::Timer;
+        }
+        if (backend.contains(pal_poll::Capability::Wake)) {
+            result = result | PollCapability::Wake;
+        }
+        return result;
     }
 
     static auto apply(PollState& state, PollCommand command) -> PollApplyResult {
         if (state.m_kind == PollStateKind::Closed || ! command.key().is_valid()) {
             return PollApplyResult::rejected(
-                rstd::move(command),
-                io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
+                rstd::move(command), IoError::from_kind(IoErrorKind { IoErrorKind::InvalidInput }));
         }
 
         switch (command.kind()) {
@@ -832,7 +839,7 @@ public:
                 find_registration(state, command.key()) != nullptr) {
                 return PollApplyResult::rejected(
                     rstd::move(command),
-                    io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
+                    IoError::from_kind(IoErrorKind { IoErrorKind::InvalidInput }));
             }
 
             auto registration = PollRegistration {
@@ -850,8 +857,7 @@ public:
             auto* registration = find_registration(state, command.key());
             if (registration == nullptr) {
                 return PollApplyResult::rejected(
-                    rstd::move(command),
-                    io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotFound }));
+                    rstd::move(command), IoError::from_kind(IoErrorKind { IoErrorKind::NotFound }));
             }
             auto updated = update_registration(state, *registration, command.interest());
             if (updated.is_err()) {
@@ -877,36 +883,55 @@ public:
             return PollApplyResult::accepted(
                 PollEvent::owned(PollEventData::deregistered(command.key()), command.take_owner()));
         }
-        case PollCommandKind::SubmitOperation:
-        case PollCommandKind::CancelOperation:
+        case PollCommandKind::SubmitOperation: {
             if (command.key().kind != PollKeyKind::Operation) {
                 return PollApplyResult::rejected(
                     rstd::move(command),
-                    io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
+                    IoError::from_kind(IoErrorKind { IoErrorKind::InvalidInput }));
             }
-            return PollApplyResult::unsupported(rstd::move(command));
+            if (find_operation(state, command.key()) != nullptr) {
+                return PollApplyResult::rejected(
+                    rstd::move(command),
+                    IoError::from_kind(IoErrorKind { IoErrorKind::InvalidInput }));
+            }
+            auto submitted = state.m_backend.submit_operation(
+                backend_operation(command.key(), command.operation()));
+            if (submitted.is_err()) {
+                return PollApplyResult::rejected(rstd::move(command),
+                                                 rstd::move(submitted).unwrap_err_unchecked());
+            }
+            state.m_operations.push(PollPendingOperation { command.key(), command.take_owner() });
+            return PollApplyResult::accepted();
+        }
+        case PollCommandKind::CancelOperation: {
+            if (command.key().kind != PollKeyKind::Operation) {
+                return PollApplyResult::rejected(
+                    rstd::move(command),
+                    IoError::from_kind(IoErrorKind { IoErrorKind::InvalidInput }));
+            }
+            auto canceled = state.m_backend.cancel_operation(command.key().value);
+            if (canceled.is_err()) {
+                return PollApplyResult::rejected(rstd::move(command),
+                                                 rstd::move(canceled).unwrap_err_unchecked());
+            }
+            return PollApplyResult::accepted();
+        }
         case PollCommandKind::ArmTimer: {
             if (command.key().kind != PollKeyKind::Timer) {
                 return PollApplyResult::rejected(
                     rstd::move(command),
-                    io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
+                    IoError::from_kind(IoErrorKind { IoErrorKind::InvalidInput }));
             }
             for (rstd::size_t i = 0; i < state.m_timers.len().to_primitive(); ++i) {
                 if (state.m_timers[usize(i)].key == command.key()) {
                     return PollApplyResult::rejected(
                         rstd::move(command),
-                        io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
+                        IoError::from_kind(IoErrorKind { IoErrorKind::InvalidInput }));
                 }
             }
 
             state.m_timers.push(
                 PollTimer { command.key(), command.deadline(), command.owner().clone() });
-            auto updated = update_timer(state);
-            if (updated.is_err()) {
-                state.m_timers.pop();
-                return PollApplyResult::rejected(rstd::move(command),
-                                                 rstd::move(updated).unwrap_err_unchecked());
-            }
             return PollApplyResult::accepted();
         }
         case PollCommandKind::CancelTimer:
@@ -914,11 +939,6 @@ public:
                 auto index = usize(i);
                 if (state.m_timers[index].key != command.key()) continue;
                 state.m_timers.remove(index);
-                auto updated = update_timer(state);
-                if (updated.is_err()) {
-                    return PollApplyResult::rejected(rstd::move(command),
-                                                     rstd::move(updated).unwrap_err_unchecked());
-                }
                 return PollApplyResult::accepted();
             }
             return PollApplyResult::accepted();
@@ -927,124 +947,57 @@ public:
     }
 
     static auto poll(PollState& state, PollTimeout timeout) -> io::Result<PollBatch> {
-#if RSTD_OS_LINUX
         if (state.m_kind == PollStateKind::Closed) {
-            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected }));
+            return Err(IoError::from_kind(IoErrorKind { IoErrorKind::NotConnected }));
         }
 
         state.m_kind = PollStateKind::Waiting;
-        auto wait_ms = timeout == PollTimeout::Immediate ? 0 : -1;
-        int  count {};
-        do {
-            count = libc::epoll_wait(state.m_poll_fd.as_raw_fd(),
-                                     state.m_backend_events.data(),
-                                     static_cast<int>(state.m_backend_events.len().to_primitive()),
-                                     wait_ms);
-        } while (count < 0 && libc::get_errno() == libc::EINTR);
+        auto waited =
+            state.m_backend.wait(timeout == PollTimeout::Immediate ? pal_poll::WaitMode::Immediate
+                                                                   : pal_poll::WaitMode::Infinite,
+                                 next_timer_duration(state));
         state.m_kind = PollStateKind::Active;
-
-        if (count < 0) return Err(last_os_error());
+        if (waited.is_err()) return Err(rstd::move(waited).unwrap_err_unchecked());
 
         auto batch = PollBatch {};
-        for (int i = 0; i < count; ++i) {
-            auto& event = state.m_backend_events[usize(i)];
-            if (event.data.u64 == POLL_WAKE_KEY.to_primitive()) {
-                drain_wake(state.m_wake_fd.as_raw_fd());
-                batch.push(PollEvent::wake());
-                continue;
-            }
-            if (event.data.u64 == POLL_TIMER_KEY.to_primitive()) {
-                drain_timer(state.m_timer_fd.as_raw_fd());
-                auto collected = collect_expired_timers(state, batch);
-                if (collected.is_err()) {
-                    return Err(rstd::move(collected).unwrap_err_unchecked());
-                }
-                continue;
-            }
-
-            auto  key          = PollKey { PollKeyKind::Registration, u64(event.data.u64) };
-            auto* registration = find_registration(state, key);
-            if (registration != nullptr) {
-                auto ready = backend_ready(event.events);
-                if (! ready.is_empty()) {
-                    batch.push(PollEvent::owned(PollEventData::readiness(key, ready),
-                                                registration->owner.clone()));
-                }
-            }
-        }
-        return Ok(rstd::move(batch));
-#elif RSTD_OS_WINDOWS
-        if (state.m_kind == PollStateKind::Closed) {
-            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected }));
-        }
-
-        state.m_kind = PollStateKind::Waiting;
-        auto woke    = false;
-        {
-            auto notified = state.m_wake_state->notified.lock().unwrap_unchecked();
-            if (timeout == PollTimeout::Infinite && ! *notified) {
-                if (state.m_timers.is_empty()) {
-                    state.m_wake_state->cvar.wait_while(notified, [](bool value) {
-                        return ! value;
-                    });
-                } else {
-                    auto deadline = state.m_timers[usize()].deadline;
-                    for (rstd::size_t i = 1; i < state.m_timers.len().to_primitive(); ++i) {
-                        auto index = usize(i);
-                        if (state.m_timers[index].deadline < deadline) {
-                            deadline = state.m_timers[index].deadline;
-                        }
-                    }
-
-                    auto now = time::Instant::now();
-                    if (deadline > now) {
-                        (void)state.m_wake_state->cvar.wait_timeout_while(
-                            notified, deadline - now, [](bool value) { return ! value; });
-                    }
-                }
-            }
-            woke      = *notified;
-            *notified = false;
-        }
-        state.m_kind = PollStateKind::Active;
-
-        auto batch = PollBatch {};
-        if (woke) batch.push(PollEvent::wake());
+        append_backend_batch(state, rstd::move(waited).unwrap_unchecked(), batch);
         auto collected = collect_expired_timers(state, batch);
         if (collected.is_err()) {
             return Err(rstd::move(collected).unwrap_err_unchecked());
         }
         return Ok(rstd::move(batch));
-#else
-        (void)state;
-        (void)timeout;
-        return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
-#endif
     }
 
     static auto shutdown(PollState& state) -> PollBatch {
         auto batch = PollBatch {};
         if (state.m_kind == PollStateKind::Closed) return batch;
         state.m_kind = PollStateKind::Draining;
+        (void)state.m_backend.begin_shutdown();
+        while (! state.m_operations.is_empty()) {
+            auto waited =
+                state.m_backend.wait(pal_poll::WaitMode::Infinite, None<time::Duration>());
+            if (waited.is_err()) {
+                rstd::panic { "async Poll backend failed while draining operations" };
+            }
+            append_backend_batch(state, rstd::move(waited).unwrap_unchecked(), batch);
+        }
         while (! state.m_registrations.is_empty()) {
             auto registration = state.m_registrations.pop().unwrap_unchecked();
-            batch.push(PollEvent::owned(
-                PollEventData::deregistered(
-                    registration.key,
-                    io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected })),
-                rstd::move(registration.owner)));
+            batch.push(
+                PollEvent::owned(PollEventData::deregistered(
+                                     registration.key,
+                                     IoError::from_kind(IoErrorKind { IoErrorKind::NotConnected })),
+                                 rstd::move(registration.owner)));
         }
         while (! state.m_timers.is_empty()) {
             auto timer = state.m_timers.pop().unwrap_unchecked();
             batch.push(PollEvent::owned(
                 PollEventData::backend_error(
-                    timer.key, io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected })),
+                    timer.key, IoError::from_kind(IoErrorKind { IoErrorKind::NotConnected })),
                 rstd::move(timer.owner)));
         }
-        state.m_poll_fd  = os::fd::OwnedFd {};
-        state.m_wake_fd  = os::fd::OwnedFd {};
-        state.m_timer_fd = os::fd::OwnedFd {};
-        state.m_kind     = PollStateKind::Closed;
+        state.m_backend = pal_poll::Poller {};
+        state.m_kind    = PollStateKind::Closed;
         return batch;
     }
 };

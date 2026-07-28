@@ -14,6 +14,7 @@ set(RSTD_ASYNC_SOURCES
     async/select.cppm
     async/oneshot.cppm
     async/io.cppm
+    async/io_operation.cppm
     async/readiness.cppm
     async/poll.cppm
     async/timer_facility.cppm

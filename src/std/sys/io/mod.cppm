@@ -105,6 +105,23 @@ auto decode_error_kind(RawOsError error) noexcept -> rstd::io::error::ErrorKind 
     case libc::ERROR_NOT_SUPPORTED:
     case libc::ERROR_CALL_NOT_IMPLEMENTED: return Kind { Kind::Unsupported };
     case libc::ERROR_IO_PENDING: return Kind { Kind::InProgress };
+    case libc::WSAEACCES: return Kind { Kind::PermissionDenied };
+    case libc::WSAECONNREFUSED: return Kind { Kind::ConnectionRefused };
+    case libc::WSAECONNRESET: return Kind { Kind::ConnectionReset };
+    case libc::WSAEHOSTUNREACH: return Kind { Kind::HostUnreachable };
+    case libc::WSAENETUNREACH: return Kind { Kind::NetworkUnreachable };
+    case libc::WSAECONNABORTED: return Kind { Kind::ConnectionAborted };
+    case libc::WSAENOTCONN: return Kind { Kind::NotConnected };
+    case libc::WSAEADDRINUSE: return Kind { Kind::AddrInUse };
+    case libc::WSAEADDRNOTAVAIL: return Kind { Kind::AddrNotAvailable };
+    case libc::WSAENETDOWN: return Kind { Kind::NetworkDown };
+    case libc::WSAEWOULDBLOCK: return Kind { Kind::WouldBlock };
+    case libc::WSAETIMEDOUT: return Kind { Kind::TimedOut };
+    case libc::WSAEINVAL: return Kind { Kind::InvalidInput };
+    case libc::WSAENOBUFS: return Kind { Kind::OutOfMemory };
+    case libc::WSAEALREADY:
+    case libc::WSAEINPROGRESS: return Kind { Kind::InProgress };
+    case libc::WSAEOPNOTSUPP: return Kind { Kind::Unsupported };
     default: break;
     }
 #endif

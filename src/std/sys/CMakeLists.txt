@@ -27,13 +27,19 @@ set(RSTD_SYS_SOURCES
     sys/libc/windows.cppm
     sys/libc/libc.cppm
     sys/pal/mod.cppm
+    sys/pal/poll.cppm
+    sys/pal/poll_types.cppm
+    sys/pal/linux/poll.cppm
     sys/pal/unix/mod.cppm
+    sys/pal/unix/socket.cppm
     sys/pal/unix/futex.cppm
     sys/pal/unix/time.cppm
     sys/pal/unix/sync/mutex.cppm
     sys/pal/unix/sync/condvar.cppm
     sys/pal/unix/sync/mod.cppm
     sys/pal/windows/mod.cppm
+    sys/pal/windows/socket.cppm
+    sys/pal/windows/poll.cppm
     sys/pal/windows/futex.cppm
     sys/pal/windows/time.cppm
     sys/pal/windows/sync/mod.cppm

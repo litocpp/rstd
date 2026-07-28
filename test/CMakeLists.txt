@@ -64,9 +64,11 @@ set(
   async/abort_on_drop.cpp
   async/concurrency.cpp
   async/facility.cpp
+  async/io_operation.cpp
   async/frame.cpp
   async/lifecycle.cpp
   async/runtime.cpp
+  net_completion.cpp
   bytes.cpp
   sync/mutex.cpp
   sync/condvar.cpp

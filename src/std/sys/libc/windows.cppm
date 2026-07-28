@@ -2,6 +2,7 @@ module;
 #include <rstd/macro.hpp>
 
 #ifdef RSTD_OS_WINDOWS
+#include <winsock2.h>
 #include <windows.h>
 #include <synchapi.h>
 #include <time.h>
@@ -41,6 +42,23 @@ inline constexpr auto _ERROR_OUTOFMEMORY                = ERROR_OUTOFMEMORY;
 inline constexpr auto _ERROR_NOT_SUPPORTED              = ERROR_NOT_SUPPORTED;
 inline constexpr auto _ERROR_CALL_NOT_IMPLEMENTED       = ERROR_CALL_NOT_IMPLEMENTED;
 inline constexpr auto _ERROR_IO_PENDING                 = ERROR_IO_PENDING;
+inline constexpr auto _WSAEACCES                        = WSAEACCES;
+inline constexpr auto _WSAECONNREFUSED                  = WSAECONNREFUSED;
+inline constexpr auto _WSAECONNRESET                    = WSAECONNRESET;
+inline constexpr auto _WSAEHOSTUNREACH                  = WSAEHOSTUNREACH;
+inline constexpr auto _WSAENETUNREACH                   = WSAENETUNREACH;
+inline constexpr auto _WSAECONNABORTED                  = WSAECONNABORTED;
+inline constexpr auto _WSAENOTCONN                      = WSAENOTCONN;
+inline constexpr auto _WSAEADDRINUSE                    = WSAEADDRINUSE;
+inline constexpr auto _WSAEADDRNOTAVAIL                 = WSAEADDRNOTAVAIL;
+inline constexpr auto _WSAENETDOWN                      = WSAENETDOWN;
+inline constexpr auto _WSAEWOULDBLOCK                   = WSAEWOULDBLOCK;
+inline constexpr auto _WSAETIMEDOUT                     = WSAETIMEDOUT;
+inline constexpr auto _WSAEINVAL                        = WSAEINVAL;
+inline constexpr auto _WSAENOBUFS                       = WSAENOBUFS;
+inline constexpr auto _WSAEALREADY                      = WSAEALREADY;
+inline constexpr auto _WSAEINPROGRESS                   = WSAEINPROGRESS;
+inline constexpr auto _WSAEOPNOTSUPP                    = WSAEOPNOTSUPP;
 
 #undef ERROR_FILE_NOT_FOUND
 #undef ERROR_PATH_NOT_FOUND
@@ -73,6 +91,23 @@ inline constexpr auto _ERROR_IO_PENDING                 = ERROR_IO_PENDING;
 #undef ERROR_NOT_SUPPORTED
 #undef ERROR_CALL_NOT_IMPLEMENTED
 #undef ERROR_IO_PENDING
+#undef WSAEACCES
+#undef WSAECONNREFUSED
+#undef WSAECONNRESET
+#undef WSAEHOSTUNREACH
+#undef WSAENETUNREACH
+#undef WSAECONNABORTED
+#undef WSAENOTCONN
+#undef WSAEADDRINUSE
+#undef WSAEADDRNOTAVAIL
+#undef WSAENETDOWN
+#undef WSAEWOULDBLOCK
+#undef WSAETIMEDOUT
+#undef WSAEINVAL
+#undef WSAENOBUFS
+#undef WSAEALREADY
+#undef WSAEINPROGRESS
+#undef WSAEOPNOTSUPP
 #endif
 export module rstd:sys.libc.windows;
 
@@ -137,6 +172,23 @@ inline constexpr auto ERROR_OUTOFMEMORY                = _ERROR_OUTOFMEMORY;
 inline constexpr auto ERROR_NOT_SUPPORTED              = _ERROR_NOT_SUPPORTED;
 inline constexpr auto ERROR_CALL_NOT_IMPLEMENTED       = _ERROR_CALL_NOT_IMPLEMENTED;
 inline constexpr auto ERROR_IO_PENDING                 = _ERROR_IO_PENDING;
+inline constexpr auto WSAEACCES                        = _WSAEACCES;
+inline constexpr auto WSAECONNREFUSED                  = _WSAECONNREFUSED;
+inline constexpr auto WSAECONNRESET                    = _WSAECONNRESET;
+inline constexpr auto WSAEHOSTUNREACH                  = _WSAEHOSTUNREACH;
+inline constexpr auto WSAENETUNREACH                   = _WSAENETUNREACH;
+inline constexpr auto WSAECONNABORTED                  = _WSAECONNABORTED;
+inline constexpr auto WSAENOTCONN                      = _WSAENOTCONN;
+inline constexpr auto WSAEADDRINUSE                    = _WSAEADDRINUSE;
+inline constexpr auto WSAEADDRNOTAVAIL                 = _WSAEADDRNOTAVAIL;
+inline constexpr auto WSAENETDOWN                      = _WSAENETDOWN;
+inline constexpr auto WSAEWOULDBLOCK                   = _WSAEWOULDBLOCK;
+inline constexpr auto WSAETIMEDOUT                     = _WSAETIMEDOUT;
+inline constexpr auto WSAEINVAL                        = _WSAEINVAL;
+inline constexpr auto WSAENOBUFS                       = _WSAENOBUFS;
+inline constexpr auto WSAEALREADY                      = _WSAEALREADY;
+inline constexpr auto WSAEINPROGRESS                   = _WSAEINPROGRESS;
+inline constexpr auto WSAEOPNOTSUPP                    = _WSAEOPNOTSUPP;
 
 // ── Synchronization — SRWLock ────────────────────────────────────────────
 using ::AcquireSRWLockExclusive;

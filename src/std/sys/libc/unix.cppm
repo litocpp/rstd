@@ -94,6 +94,8 @@ inline constexpr auto _ENOMEM       = ENOMEM;
 inline constexpr auto _ENOBUFS      = ENOBUFS;
 inline constexpr auto _EIO          = EIO;
 inline constexpr auto _EINPROGRESS  = EINPROGRESS;
+inline constexpr auto _EALREADY     = EALREADY;
+inline constexpr auto _EISCONN      = EISCONN;
 
 inline constexpr auto _SIGKILL = SIGKILL;
 
@@ -136,6 +138,7 @@ inline constexpr auto _MSG_NOSIGNAL = 0;
 inline constexpr auto _EPOLL_CLOEXEC = EPOLL_CLOEXEC;
 inline constexpr auto _EPOLLIN       = EPOLLIN;
 inline constexpr auto _EPOLLOUT      = EPOLLOUT;
+inline constexpr auto _EPOLLONESHOT  = EPOLLONESHOT;
 #ifdef EPOLLRDHUP
 inline constexpr auto _EPOLLRDHUP     = EPOLLRDHUP;
 inline constexpr bool _HAS_EPOLLRDHUP = true;
@@ -227,6 +230,8 @@ inline constexpr auto _UTIME_OMIT = UTIME_OMIT;
 #undef ENOBUFS
 #undef EIO
 #undef EINPROGRESS
+#undef EALREADY
+#undef EISCONN
 #undef SIGKILL
 #undef O_CLOEXEC
 #undef O_NONBLOCK
@@ -261,6 +266,7 @@ inline constexpr auto _UTIME_OMIT = UTIME_OMIT;
 #undef EPOLL_CLOEXEC
 #undef EPOLLIN
 #undef EPOLLOUT
+#undef EPOLLONESHOT
 #undef EPOLLRDHUP
 #undef EPOLLHUP
 #undef EPOLLERR
@@ -372,6 +378,8 @@ inline constexpr auto ENOMEM          = _ENOMEM;
 inline constexpr auto ENOBUFS         = _ENOBUFS;
 inline constexpr auto EIO             = _EIO;
 inline constexpr auto EINPROGRESS     = _EINPROGRESS;
+inline constexpr auto EALREADY        = _EALREADY;
+inline constexpr auto EISCONN         = _EISCONN;
 
 inline auto gmtime_utc(::time_t secs) noexcept -> ::tm {
     ::tm out {};
@@ -529,6 +537,7 @@ inline constexpr auto MSG_NOSIGNAL = _MSG_NOSIGNAL;
 inline constexpr auto EPOLL_CLOEXEC  = _EPOLL_CLOEXEC;
 inline constexpr auto EPOLLIN        = _EPOLLIN;
 inline constexpr auto EPOLLOUT       = _EPOLLOUT;
+inline constexpr auto EPOLLONESHOT   = _EPOLLONESHOT;
 inline constexpr auto EPOLLRDHUP     = _EPOLLRDHUP;
 inline constexpr auto HAS_EPOLLRDHUP = _HAS_EPOLLRDHUP;
 inline constexpr auto EPOLLHUP       = _EPOLLHUP;
