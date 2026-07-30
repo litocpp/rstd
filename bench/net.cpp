@@ -91,7 +91,8 @@ async::coro<io::Result<bytes::BytesMut>> tcp_roundtrip(net::TcpListener& listene
     co_return Ok(rstd::move(received));
 }
 
-auto loopback_roundtrip_4b(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
+auto tcp_connect_accept_readiness_roundtrip_4b(bench::BenchConfig config, const char* name)
+    -> rstd_bench::CaseRunResult {
     auto runtime    = async::Runtime {};
     bool valid      = true;
     auto run_config = bench::RunConfig {
@@ -99,7 +100,7 @@ auto loopback_roundtrip_4b(bench::BenchConfig config) -> rstd_bench::CaseRunResu
         .bytes_per_iteration = u64(4),
     };
     return rstd_bench::measure_case(
-        "loopback_roundtrip_4b",
+        name,
         rstd::move(config),
         rstd::move(run_config),
         [&] {
@@ -137,7 +138,10 @@ auto loopback_roundtrip_4b(bench::BenchConfig config) -> rstd_bench::CaseRunResu
 }
 
 const rstd_bench::BenchCase CASES[] = {
-    { "net", "loopback_roundtrip_4b", 5, &loopback_roundtrip_4b },
+    { "net",
+      "tcp_connect_accept_readiness_roundtrip_4b",
+      5,
+      &tcp_connect_accept_readiness_roundtrip_4b },
 };
 
 } // namespace

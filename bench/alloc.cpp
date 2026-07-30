@@ -11,7 +11,7 @@ using ::alloc::vec::Vec;
 namespace
 {
 
-auto string_clone(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
+auto string_clone(bench::BenchConfig config, const char* name) -> rstd_bench::CaseRunResult {
     auto source     = String::make("benchmark string payload used by rstd clone measurements"_str);
     auto total      = std::uint64_t {};
     auto calls      = std::uint64_t {};
@@ -21,7 +21,7 @@ auto string_clone(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
         .bytes_per_iteration = u64(source.len().to_primitive()),
     };
     return rstd_bench::measure_case(
-        "string_clone",
+        name,
         rstd::move(config),
         rstd::move(run_config),
         [&] {
@@ -38,7 +38,8 @@ auto string_clone(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
         });
 }
 
-auto vec_push_reserved(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
+auto vec_push_reserved(bench::BenchConfig config, const char* name)
+    -> rstd_bench::CaseRunResult {
     auto total      = std::uint64_t {};
     auto calls      = std::uint64_t {};
     bool valid      = true;
@@ -47,7 +48,7 @@ auto vec_push_reserved(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
         .bytes_per_iteration = u64(64 * sizeof(int)),
     };
     return rstd_bench::measure_case(
-        "vec_push_reserved_64",
+        name,
         rstd::move(config),
         rstd::move(run_config),
         [&] {
@@ -67,7 +68,8 @@ auto vec_push_reserved(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
         });
 }
 
-auto bytes_extend_freeze(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
+auto bytes_extend_freeze(bench::BenchConfig config, const char* name)
+    -> rstd_bench::CaseRunResult {
     byte payload[64] {};
     for (rstd::size_t index = 0; index < 64; ++index) {
         payload[index] = byte { static_cast<std::uint8_t>(index) };
@@ -80,7 +82,7 @@ auto bytes_extend_freeze(bench::BenchConfig config) -> rstd_bench::CaseRunResult
         .bytes_per_iteration = u64(64),
     };
     return rstd_bench::measure_case(
-        "bytes_extend_freeze_64",
+        name,
         rstd::move(config),
         rstd::move(run_config),
         [&] {

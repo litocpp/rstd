@@ -21,12 +21,13 @@ struct PingPongState {
     PingPongState(): m_fields(PingPongFields {}), m_cvar() {}
 };
 
-auto mutex_lock_unlock(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
+auto mutex_lock_unlock(bench::BenchConfig config, const char* name)
+    -> rstd_bench::CaseRunResult {
     auto mutex      = sync::Mutex<std::uint64_t>(0);
     auto calls      = std::uint64_t {};
     auto run_config = bench::RunConfig { .items_per_iteration = u64(1) };
     return rstd_bench::measure_case(
-        "mutex_lock_unlock",
+        name,
         rstd::move(config),
         rstd::move(run_config),
         [&] {
@@ -41,7 +42,8 @@ auto mutex_lock_unlock(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
         });
 }
 
-auto condvar_ping_pong(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
+auto condvar_ping_pong(bench::BenchConfig config, const char* name)
+    -> rstd_bench::CaseRunResult {
     auto state      = sync::Arc<PingPongState>::make();
     auto worker     = state.clone();
     auto spawned    = thread::spawn([worker = rstd::move(worker)] {
@@ -62,7 +64,7 @@ auto condvar_ping_pong(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
     auto calls      = std::uint64_t {};
     auto run_config = bench::RunConfig { .items_per_iteration = u64(2) };
     return rstd_bench::measure_case(
-        "condvar_ping_pong",
+        name,
         rstd::move(config),
         rstd::move(run_config),
         [&] {
@@ -91,11 +93,12 @@ auto condvar_ping_pong(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
         });
 }
 
-auto blocking_task_group_recreate(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
+auto blocking_task_group_recreate(bench::BenchConfig config, const char* name)
+    -> rstd_bench::CaseRunResult {
     auto completed  = std::uint64_t {};
     auto run_config = bench::RunConfig { .items_per_iteration = u64(4) };
     return rstd_bench::measure_case(
-        "blocking_task_group_recreate",
+        name,
         rstd::move(config),
         rstd::move(run_config),
         [&] {
@@ -115,12 +118,13 @@ auto blocking_task_group_recreate(bench::BenchConfig config) -> rstd_bench::Case
         });
 }
 
-auto blocking_task_set_shared_pool(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
+auto blocking_task_set_shared_pool(bench::BenchConfig config, const char* name)
+    -> rstd_bench::CaseRunResult {
     auto pool       = thread::ThreadPoolBuilder::make().worker_count(usize(4)).build().unwrap();
     auto completed  = std::uint64_t {};
     auto run_config = bench::RunConfig { .items_per_iteration = u64(4) };
     return rstd_bench::measure_case(
-        "blocking_task_set_shared_pool",
+        name,
         rstd::move(config),
         rstd::move(run_config),
         [&] {

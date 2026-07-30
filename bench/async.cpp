@@ -2,10 +2,8 @@
 
 #if RSTD_OS_LINUX
 #include <cerrno>
-#include <fcntl.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
-#include <sys/epoll.h>
 #include <sys/socket.h>
 #endif
 
@@ -413,248 +411,6 @@ auto run_sync_loopback_concurrent(const sync::Arc<SyncConcurrentState>& state, u
     return guard->valid;
 }
 
-enum class EpollLoopPhase
-{
-    ClientWrite,
-    ServerRead,
-    ServerWrite,
-    ClientRead,
-};
-
-enum class EpollDriveStatus
-{
-    Complete,
-    Pending,
-    Failed,
-};
-
-struct EpollDriveResult {
-    EpollDriveStatus      status;
-    os::socket::RawSocket socket { os::socket::INVALID_RAW_SOCKET };
-    std::uint32_t         events {};
-};
-
-struct EpollLoopConnection {
-    SyncLoopbackStreams   streams;
-    EpollLoopPhase        phase { EpollLoopPhase::ClientWrite };
-    rstd::size_t          offset {};
-    usize                 remaining {};
-    os::socket::RawSocket registered_socket { os::socket::INVALID_RAW_SOCKET };
-
-    explicit EpollLoopConnection(SyncLoopbackStreams streams): streams(rstd::move(streams)) {}
-};
-
-struct EpollLoopContext {
-    os::fd::OwnedFd          poll_fd;
-    Vec<EpollLoopConnection> connections;
-
-    EpollLoopContext(os::fd::OwnedFd poll_fd, Vec<EpollLoopConnection> connections)
-        : poll_fd(rstd::move(poll_fd)), connections(rstd::move(connections)) {}
-};
-
-auto set_sync_nonblocking(os::socket::RawSocket socket) -> bool {
-    auto flags = ::fcntl(socket, F_GETFL, 0);
-    return flags >= 0 && ::fcntl(socket, F_SETFL, flags | O_NONBLOCK) == 0;
-}
-
-auto open_epoll_loop_context(rstd::size_t concurrency, rstd::size_t payload_len)
-    -> io::Result<EpollLoopContext> {
-    auto raw_poll_fd = ::epoll_create1(EPOLL_CLOEXEC);
-    if (raw_poll_fd < 0) return Err(io::error::Error::last_os_error());
-
-    auto poll_fd     = os::fd::OwnedFd::from_raw_fd(raw_poll_fd);
-    auto connections = Vec<EpollLoopConnection>::with_capacity(usize(concurrency));
-    for (rstd::size_t index = 0; index < concurrency; ++index) {
-        auto opened = open_sync_loopback_streams(payload_len);
-        if (opened.is_err()) return Err(rstd::move(opened).unwrap_err_unchecked());
-        auto streams = rstd::move(opened).unwrap_unchecked();
-        if (! set_sync_nonblocking(streams.client.as_raw_socket()) ||
-            ! set_sync_nonblocking(streams.server.as_raw_socket())) {
-            return Err(io::error::Error::last_os_error());
-        }
-        connections.push(EpollLoopConnection { rstd::move(streams) });
-    }
-    return Ok(EpollLoopContext { rstd::move(poll_fd), rstd::move(connections) });
-}
-
-auto epoll_pending(os::socket::RawSocket socket, std::uint32_t events) -> EpollDriveResult {
-    return EpollDriveResult {
-        .status = EpollDriveStatus::Pending,
-        .socket = socket,
-        .events = events,
-    };
-}
-
-auto drive_epoll_connection(EpollLoopConnection& connection, const bytes::Bytes& payload)
-    -> EpollDriveResult {
-    while (connection.remaining != usize()) {
-        auto result = ::ssize_t {};
-        switch (connection.phase) {
-        case EpollLoopPhase::ClientWrite:
-            result = ::send(connection.streams.client.as_raw_socket(),
-                            payload.data() + connection.offset,
-                            payload.len().to_primitive() - connection.offset,
-                            MSG_NOSIGNAL);
-            if (result > 0) {
-                connection.offset += static_cast<rstd::size_t>(result);
-                if (connection.offset == payload.len().to_primitive()) {
-                    connection.offset = 0;
-                    connection.phase  = EpollLoopPhase::ServerRead;
-                }
-                continue;
-            }
-            if (result < 0 && errno == EINTR) continue;
-            if (result < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-                return epoll_pending(connection.streams.client.as_raw_socket(), EPOLLOUT);
-            }
-            return EpollDriveResult { .status = EpollDriveStatus::Failed };
-
-        case EpollLoopPhase::ServerRead:
-            result =
-                ::recv(connection.streams.server.as_raw_socket(),
-                       connection.streams.server_received.data() + connection.offset,
-                       connection.streams.server_received.len().to_primitive() - connection.offset,
-                       0);
-            if (result > 0) {
-                connection.offset += static_cast<rstd::size_t>(result);
-                if (connection.offset == connection.streams.server_received.len().to_primitive()) {
-                    if (connection.streams.server_received[usize()] != payload[usize()] ||
-                        connection.streams.server_received[payload.len() - usize(1)] !=
-                            payload[payload.len() - usize(1)]) {
-                        return EpollDriveResult { .status = EpollDriveStatus::Failed };
-                    }
-                    connection.offset = 0;
-                    connection.phase  = EpollLoopPhase::ServerWrite;
-                }
-                continue;
-            }
-            if (result < 0 && errno == EINTR) continue;
-            if (result < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-                return epoll_pending(connection.streams.server.as_raw_socket(), EPOLLIN);
-            }
-            return EpollDriveResult { .status = EpollDriveStatus::Failed };
-
-        case EpollLoopPhase::ServerWrite:
-            result = ::send(connection.streams.server.as_raw_socket(),
-                            payload.data() + connection.offset,
-                            payload.len().to_primitive() - connection.offset,
-                            MSG_NOSIGNAL);
-            if (result > 0) {
-                connection.offset += static_cast<rstd::size_t>(result);
-                if (connection.offset == payload.len().to_primitive()) {
-                    connection.offset = 0;
-                    connection.phase  = EpollLoopPhase::ClientRead;
-                }
-                continue;
-            }
-            if (result < 0 && errno == EINTR) continue;
-            if (result < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-                return epoll_pending(connection.streams.server.as_raw_socket(), EPOLLOUT);
-            }
-            return EpollDriveResult { .status = EpollDriveStatus::Failed };
-
-        case EpollLoopPhase::ClientRead:
-            result =
-                ::recv(connection.streams.client.as_raw_socket(),
-                       connection.streams.client_received.data() + connection.offset,
-                       connection.streams.client_received.len().to_primitive() - connection.offset,
-                       0);
-            if (result > 0) {
-                connection.offset += static_cast<rstd::size_t>(result);
-                if (connection.offset == connection.streams.client_received.len().to_primitive()) {
-                    if (connection.streams.client_received[usize()] != payload[usize()] ||
-                        connection.streams.client_received[payload.len() - usize(1)] !=
-                            payload[payload.len() - usize(1)]) {
-                        return EpollDriveResult { .status = EpollDriveStatus::Failed };
-                    }
-                    connection.offset = 0;
-                    connection.phase  = EpollLoopPhase::ClientWrite;
-                    --connection.remaining;
-                }
-                continue;
-            }
-            if (result < 0 && errno == EINTR) continue;
-            if (result < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-                return epoll_pending(connection.streams.client.as_raw_socket(), EPOLLIN);
-            }
-            return EpollDriveResult { .status = EpollDriveStatus::Failed };
-        }
-    }
-    return EpollDriveResult { .status = EpollDriveStatus::Complete };
-}
-
-auto disarm_epoll_connection(EpollLoopContext& context, EpollLoopConnection& connection) -> bool {
-    if (connection.registered_socket == os::socket::INVALID_RAW_SOCKET) return true;
-    auto const registered        = connection.registered_socket;
-    connection.registered_socket = os::socket::INVALID_RAW_SOCKET;
-    return ::epoll_ctl(context.poll_fd.as_raw_fd(), EPOLL_CTL_DEL, registered, nullptr) == 0;
-}
-
-auto arm_epoll_connection(EpollLoopContext& context, usize index, EpollDriveResult pending)
-    -> bool {
-    auto& connection = context.connections[index];
-    if (connection.registered_socket != os::socket::INVALID_RAW_SOCKET &&
-        connection.registered_socket != pending.socket &&
-        ! disarm_epoll_connection(context, connection)) {
-        return false;
-    }
-
-    auto event     = epoll_event {};
-    event.events   = pending.events | EPOLLONESHOT;
-    event.data.u64 = index.to_primitive();
-    auto operation = connection.registered_socket == os::socket::INVALID_RAW_SOCKET ? EPOLL_CTL_ADD
-                                                                                    : EPOLL_CTL_MOD;
-    if (::epoll_ctl(context.poll_fd.as_raw_fd(), operation, pending.socket, &event) != 0) {
-        return false;
-    }
-    connection.registered_socket = pending.socket;
-    return true;
-}
-
-auto run_epoll_loopback(EpollLoopContext& context, const bytes::Bytes& payload, usize count)
-    -> bool {
-    usize completed {};
-    for (usize index {}; index < context.connections.len(); ++index) {
-        auto& connection = context.connections[index];
-        if (connection.registered_socket != os::socket::INVALID_RAW_SOCKET) return false;
-        connection.phase     = EpollLoopPhase::ClientWrite;
-        connection.offset    = 0;
-        connection.remaining = count;
-        auto driven          = drive_epoll_connection(connection, payload);
-        if (driven.status == EpollDriveStatus::Failed) return false;
-        if (driven.status == EpollDriveStatus::Complete) {
-            ++completed;
-        } else if (! arm_epoll_connection(context, index, driven)) {
-            return false;
-        }
-    }
-
-    while (completed != context.connections.len()) {
-        epoll_event events[LOOPBACK_CONCURRENCY] {};
-        int         ready;
-        do {
-            ready = ::epoll_wait(
-                context.poll_fd.as_raw_fd(), events, static_cast<int>(LOOPBACK_CONCURRENCY), -1);
-        } while (ready < 0 && errno == EINTR);
-        if (ready < 0) return false;
-
-        for (int event_index = 0; event_index < ready; ++event_index) {
-            auto index = usize(static_cast<rstd::size_t>(events[event_index].data.u64));
-            if (index >= context.connections.len()) return false;
-            auto& connection = context.connections[index];
-            auto  driven     = drive_epoll_connection(connection, payload);
-            if (driven.status == EpollDriveStatus::Failed) return false;
-            if (driven.status == EpollDriveStatus::Complete) {
-                if (! disarm_epoll_connection(context, connection)) return false;
-                ++completed;
-            } else if (! arm_epoll_connection(context, index, driven)) {
-                return false;
-            }
-        }
-    }
-    return true;
-}
-
 enum class IoOperationConsumer
 {
     Direct,
@@ -751,34 +507,8 @@ auto run_operation_reads(Vec<OperationReadPair>& pairs,
     co_return Ok(empty {});
 }
 
-auto operation_read_case_name(rstd::size_t queue_depth, bool pending, IoOperationConsumer consumer)
-    -> const char* {
-    if (consumer == IoOperationConsumer::Direct) {
-        if (pending) {
-            if (queue_depth == 1) return "io_operation_direct_pending_qd1";
-            if (queue_depth == 4) return "io_operation_direct_pending_qd4";
-            if (queue_depth == 16) return "io_operation_direct_pending_qd16";
-            return "io_operation_direct_pending_qd64";
-        }
-        if (queue_depth == 1) return "io_operation_direct_immediate_qd1";
-        if (queue_depth == 4) return "io_operation_direct_immediate_qd4";
-        if (queue_depth == 16) return "io_operation_direct_immediate_qd16";
-        return "io_operation_direct_immediate_qd64";
-    }
-    if (pending) {
-        if (queue_depth == 1) return "io_operation_future_pending_qd1";
-        if (queue_depth == 4) return "io_operation_future_pending_qd4";
-        if (queue_depth == 16) return "io_operation_future_pending_qd16";
-        return "io_operation_future_pending_qd64";
-    }
-    if (queue_depth == 1) return "io_operation_future_immediate_qd1";
-    if (queue_depth == 4) return "io_operation_future_immediate_qd4";
-    if (queue_depth == 16) return "io_operation_future_immediate_qd16";
-    return "io_operation_future_immediate_qd64";
-}
-
 template<rstd::size_t QueueDepth, bool Pending, IoOperationConsumer Consumer>
-auto io_operation_read(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
+auto io_operation_read(bench::BenchConfig config, const char* name) -> rstd_bench::CaseRunResult {
     auto runtime = make_io_runtime(IoBackend::NativeCompletion).ok();
     auto pairs   = make_operation_read_pairs(QueueDepth).ok();
     bool valid   = runtime.is_some() && pairs.is_some();
@@ -796,7 +526,7 @@ auto io_operation_read(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
         .bytes_per_iteration = u64(batch),
     };
     return rstd_bench::measure_case(
-        operation_read_case_name(QueueDepth, Pending, Consumer),
+        name,
         rstd::move(config),
         rstd::move(run_config),
         [&] {
@@ -820,13 +550,14 @@ auto io_operation_read(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
 }
 #endif
 
-auto current_thread_ready(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
+auto current_thread_ready(bench::BenchConfig config, const char* name)
+    -> rstd_bench::CaseRunResult {
     auto runtime    = async::Runtime {};
     auto sum        = std::uint64_t {};
     auto calls      = std::uint64_t {};
     auto run_config = bench::RunConfig { .items_per_iteration = u64(1) };
     return rstd_bench::measure_case(
-        "current_thread_ready",
+        name,
         rstd::move(config),
         rstd::move(run_config),
         [&] {
@@ -839,13 +570,14 @@ auto current_thread_ready(bench::BenchConfig config) -> rstd_bench::CaseRunResul
         });
 }
 
-auto current_thread_spawn_local_join(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
+auto current_thread_spawn_local_join(bench::BenchConfig config, const char* name)
+    -> rstd_bench::CaseRunResult {
     auto runtime    = async::Runtime {};
     auto sum        = std::uint64_t {};
     auto calls      = std::uint64_t {};
     auto run_config = bench::RunConfig { .items_per_iteration = u64(1) };
     return rstd_bench::measure_case(
-        "current_thread_spawn_local_join",
+        name,
         rstd::move(config),
         rstd::move(run_config),
         [&] {
@@ -858,14 +590,15 @@ auto current_thread_spawn_local_join(bench::BenchConfig config) -> rstd_bench::C
         });
 }
 
-auto thread_pool_spawn_join(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
+auto thread_pool_spawn_join(bench::BenchConfig config, const char* name)
+    -> rstd_bench::CaseRunResult {
     auto runtime    = async::RuntimeBuilder::multi_thread().worker_threads(usize(2)).build().ok();
     auto sum        = std::uint64_t {};
     auto calls      = std::uint64_t {};
     bool valid      = runtime.is_some();
     auto run_config = bench::RunConfig { .items_per_iteration = u64(1) };
     return rstd_bench::measure_case(
-        "thread_pool_spawn_join_2",
+        name,
         rstd::move(config),
         rstd::move(run_config),
         [&] {
@@ -879,14 +612,15 @@ auto thread_pool_spawn_join(bench::BenchConfig config) -> rstd_bench::CaseRunRes
         });
 }
 
-auto thread_pool_join_many(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
+auto thread_pool_join_many(bench::BenchConfig config, const char* name)
+    -> rstd_bench::CaseRunResult {
     auto runtime    = async::RuntimeBuilder::multi_thread().worker_threads(usize(4)).build().ok();
     auto sum        = std::uint64_t {};
     auto calls      = std::uint64_t {};
     bool valid      = runtime.is_some();
     auto run_config = bench::RunConfig { .items_per_iteration = u64(32) };
     return rstd_bench::measure_case(
-        "thread_pool_join_many_4x32",
+        name,
         rstd::move(config),
         rstd::move(run_config),
         [&] {
@@ -900,13 +634,13 @@ auto thread_pool_join_many(bench::BenchConfig config) -> rstd_bench::CaseRunResu
         });
 }
 
-auto timer_sleep_zero(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
+auto timer_sleep_zero(bench::BenchConfig config, const char* name) -> rstd_bench::CaseRunResult {
     auto runtime    = async::Runtime {};
     auto sum        = std::uint64_t {};
     auto calls      = std::uint64_t {};
     auto run_config = bench::RunConfig { .items_per_iteration = u64(1) };
     return rstd_bench::measure_case(
-        "timer_sleep_zero",
+        name,
         rstd::move(config),
         rstd::move(run_config),
         [&] {
@@ -1013,103 +747,18 @@ auto io_loopback_ping_pong_sync_4way(bench::BenchConfig config,
         });
 }
 
-auto io_loopback_ping_pong_sync_1b(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong_sync(rstd::move(config), 1, "io_loopback_ping_pong_sync_1b");
-}
-
-auto io_loopback_ping_pong_sync_1kib(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong_sync(rstd::move(config), KIB, "io_loopback_ping_pong_sync_1kib");
-}
-
-auto io_loopback_ping_pong_sync_16kib(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong_sync(
-        rstd::move(config), KIB * 16, "io_loopback_ping_pong_sync_16kib");
-}
-
-auto io_loopback_ping_pong_sync_4way_1b(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong_sync_4way(
-        rstd::move(config), 1, "io_loopback_ping_pong_sync_4way_1b");
-}
-
-auto io_loopback_ping_pong_sync_4way_1kib(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong_sync_4way(
-        rstd::move(config), KIB, "io_loopback_ping_pong_sync_4way_1kib");
-}
-
-auto io_loopback_ping_pong_sync_4way_16kib(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong_sync_4way(
-        rstd::move(config), KIB * 16, "io_loopback_ping_pong_sync_4way_16kib");
-}
-
-auto io_loopback_ping_pong_epoll_loop(bench::BenchConfig config,
-                                      rstd::size_t       payload_len,
-                                      rstd::size_t       concurrency,
-                                      const char*        name) -> rstd_bench::CaseRunResult {
-    auto opened  = open_epoll_loop_context(concurrency, payload_len);
-    auto context = rstd::move(opened).ok();
-    auto payload = loopback_payload(payload_len);
-    bool valid   = context.is_some() && run_epoll_loopback(*context, payload, usize(1));
-
-    auto calls      = std::uint64_t {};
-    auto roundtrips = std::uint64_t {};
-    auto run_config = loopback_run_config(concurrency, payload_len);
-    return rstd_bench::measure_case(
-        name,
-        rstd::move(config),
-        rstd::move(run_config),
-        [&] {
-            if (! valid) {
-                rstd::hint::black_box(valid);
-                return;
-            }
-            valid = run_epoll_loopback(*context, payload, usize(LOOPBACK_BATCH));
-            if (! valid) return;
-            ++calls;
-            roundtrips += LOOPBACK_BATCH * concurrency;
-            rstd::hint::black_box(roundtrips);
-        },
-        [&] {
-            return valid && calls != 0 && roundtrips == calls * LOOPBACK_BATCH * concurrency;
-        });
-}
-
-auto io_loopback_ping_pong_epoll_loop_1b(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong_epoll_loop(
-        rstd::move(config), 1, 1, "io_loopback_ping_pong_epoll_loop_1b");
-}
-
-auto io_loopback_ping_pong_epoll_loop_4way_1b(bench::BenchConfig config)
+template<rstd::size_t PayloadLen>
+auto io_loopback_ping_pong_sync_case(bench::BenchConfig config, const char* name)
     -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong_epoll_loop(
-        rstd::move(config), 1, LOOPBACK_CONCURRENCY, "io_loopback_ping_pong_epoll_loop_4way_1b");
+    return io_loopback_ping_pong_sync(rstd::move(config), PayloadLen, name);
 }
 
-auto io_loopback_ping_pong_epoll_loop_1kib(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong_epoll_loop(
-        rstd::move(config), KIB, 1, "io_loopback_ping_pong_epoll_loop_1kib");
-}
-
-auto io_loopback_ping_pong_epoll_loop_4way_1kib(bench::BenchConfig config)
+template<rstd::size_t PayloadLen>
+auto io_loopback_ping_pong_sync_4way_case(bench::BenchConfig config, const char* name)
     -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong_epoll_loop(rstd::move(config),
-                                            KIB,
-                                            LOOPBACK_CONCURRENCY,
-                                            "io_loopback_ping_pong_epoll_loop_4way_1kib");
+    return io_loopback_ping_pong_sync_4way(rstd::move(config), PayloadLen, name);
 }
 
-auto io_loopback_ping_pong_epoll_loop_16kib(bench::BenchConfig config)
-    -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong_epoll_loop(
-        rstd::move(config), KIB * 16, 1, "io_loopback_ping_pong_epoll_loop_16kib");
-}
-
-auto io_loopback_ping_pong_epoll_loop_4way_16kib(bench::BenchConfig config)
-    -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong_epoll_loop(rstd::move(config),
-                                            KIB * 16,
-                                            LOOPBACK_CONCURRENCY,
-                                            "io_loopback_ping_pong_epoll_loop_4way_16kib");
-}
 #endif
 
 auto io_loopback_ping_pong(bench::BenchConfig config,
@@ -1313,127 +962,23 @@ auto io_loopback_ping_pong_4worker(bench::BenchConfig config,
         });
 }
 
-auto io_loopback_ping_pong_1b(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong(rstd::move(config), 1, "io_loopback_ping_pong_1b");
-}
-
-auto io_loopback_ping_pong_1kib(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong(rstd::move(config), KIB, "io_loopback_ping_pong_1kib");
-}
-
-auto io_loopback_ping_pong_16kib(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong(rstd::move(config), KIB * 16, "io_loopback_ping_pong_16kib");
-}
-
-auto io_loopback_ping_pong_4way_1b(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong_4way(rstd::move(config), 1, "io_loopback_ping_pong_4way_1b");
-}
-
-auto io_loopback_ping_pong_4way_1kib(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong_4way(rstd::move(config), KIB, "io_loopback_ping_pong_4way_1kib");
-}
-
-auto io_loopback_ping_pong_4way_16kib(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong_4way(
-        rstd::move(config), KIB * 16, "io_loopback_ping_pong_4way_16kib");
-}
-
-auto io_loopback_ping_pong_async_4worker_1b(bench::BenchConfig config)
+template<rstd::size_t PayloadLen, IoBackend Backend = IoBackend::Auto>
+auto io_loopback_ping_pong_case(bench::BenchConfig config, const char* name)
     -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong_4worker(
-        rstd::move(config), 1, "io_loopback_ping_pong_async_4worker_1b");
+    return io_loopback_ping_pong(rstd::move(config), PayloadLen, name, Backend);
 }
 
-auto io_loopback_ping_pong_async_4worker_1kib(bench::BenchConfig config)
+template<rstd::size_t PayloadLen, IoBackend Backend = IoBackend::Auto>
+auto io_loopback_ping_pong_4way_case(bench::BenchConfig config, const char* name)
     -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong_4worker(
-        rstd::move(config), KIB, "io_loopback_ping_pong_async_4worker_1kib");
+    return io_loopback_ping_pong_4way(rstd::move(config), PayloadLen, name, Backend);
 }
 
-auto io_loopback_ping_pong_async_4worker_16kib(bench::BenchConfig config)
+template<rstd::size_t PayloadLen>
+auto io_loopback_ping_pong_4worker_case(bench::BenchConfig config, const char* name)
     -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong_4worker(
-        rstd::move(config), KIB * 16, "io_loopback_ping_pong_async_4worker_16kib");
+    return io_loopback_ping_pong_4worker(rstd::move(config), PayloadLen, name);
 }
-
-#if RSTD_OS_LINUX
-auto io_loopback_ping_pong_native_1b(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong(
-        rstd::move(config), 1, "io_loopback_ping_pong_native_1b", IoBackend::NativeCompletion);
-}
-
-auto io_loopback_ping_pong_native_1kib(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong(
-        rstd::move(config), KIB, "io_loopback_ping_pong_native_1kib", IoBackend::NativeCompletion);
-}
-
-auto io_loopback_ping_pong_native_16kib(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong(rstd::move(config),
-                                 KIB * 16,
-                                 "io_loopback_ping_pong_native_16kib",
-                                 IoBackend::NativeCompletion);
-}
-
-auto io_loopback_ping_pong_native_4way_1b(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong_4way(
-        rstd::move(config), 1, "io_loopback_ping_pong_native_4way_1b", IoBackend::NativeCompletion);
-}
-
-auto io_loopback_ping_pong_native_4way_1kib(bench::BenchConfig config)
-    -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong_4way(rstd::move(config),
-                                      KIB,
-                                      "io_loopback_ping_pong_native_4way_1kib",
-                                      IoBackend::NativeCompletion);
-}
-
-auto io_loopback_ping_pong_native_4way_16kib(bench::BenchConfig config)
-    -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong_4way(rstd::move(config),
-                                      KIB * 16,
-                                      "io_loopback_ping_pong_native_4way_16kib",
-                                      IoBackend::NativeCompletion);
-}
-
-auto io_loopback_ping_pong_epoll_1b(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong(
-        rstd::move(config), 1, "io_loopback_ping_pong_epoll_1b", IoBackend::ReadinessEmulation);
-}
-
-auto io_loopback_ping_pong_epoll_1kib(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong(
-        rstd::move(config), KIB, "io_loopback_ping_pong_epoll_1kib", IoBackend::ReadinessEmulation);
-}
-
-auto io_loopback_ping_pong_epoll_16kib(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong(rstd::move(config),
-                                 KIB * 16,
-                                 "io_loopback_ping_pong_epoll_16kib",
-                                 IoBackend::ReadinessEmulation);
-}
-
-auto io_loopback_ping_pong_epoll_4way_1b(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong_4way(rstd::move(config),
-                                      1,
-                                      "io_loopback_ping_pong_epoll_4way_1b",
-                                      IoBackend::ReadinessEmulation);
-}
-
-auto io_loopback_ping_pong_epoll_4way_1kib(bench::BenchConfig config) -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong_4way(rstd::move(config),
-                                      KIB,
-                                      "io_loopback_ping_pong_epoll_4way_1kib",
-                                      IoBackend::ReadinessEmulation);
-}
-
-auto io_loopback_ping_pong_epoll_4way_16kib(bench::BenchConfig config)
-    -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong_4way(rstd::move(config),
-                                      KIB * 16,
-                                      "io_loopback_ping_pong_epoll_4way_16kib",
-                                      IoBackend::ReadinessEmulation);
-}
-#endif
 
 const rstd_bench::BenchCase CASES[] = {
     { "async", "current_thread_ready", 1'000, &current_thread_ready },
@@ -1442,87 +987,89 @@ const rstd_bench::BenchCase CASES[] = {
     { "async", "thread_pool_join_many_4x32", 20, &thread_pool_join_many },
     { "async", "timer_sleep_zero", 500, &timer_sleep_zero },
 #if RSTD_OS_LINUX
-    { "async", "io_loopback_ping_pong_sync_1b", 5, &io_loopback_ping_pong_sync_1b },
-    { "async", "io_loopback_ping_pong_sync_4way_1b", 5, &io_loopback_ping_pong_sync_4way_1b },
-    { "async", "io_loopback_ping_pong_epoll_loop_1b", 5, &io_loopback_ping_pong_epoll_loop_1b },
     { "async",
-      "io_loopback_ping_pong_epoll_loop_4way_1b",
+      "io_loopback_ping_pong_sync_1b",
       5,
-      &io_loopback_ping_pong_epoll_loop_4way_1b },
+      &io_loopback_ping_pong_sync_case<1> },
+    { "async",
+      "io_loopback_ping_pong_sync_4way_1b",
+      5,
+      &io_loopback_ping_pong_sync_4way_case<1> },
+    { "async",
+      "io_loopback_ping_pong_sync_1kib",
+      5,
+      &io_loopback_ping_pong_sync_case<KIB> },
+    { "async",
+      "io_loopback_ping_pong_sync_4way_1kib",
+      5,
+      &io_loopback_ping_pong_sync_4way_case<KIB> },
+    { "async",
+      "io_loopback_ping_pong_sync_16kib",
+      5,
+      &io_loopback_ping_pong_sync_case<KIB * 16> },
+    { "async",
+      "io_loopback_ping_pong_sync_4way_16kib",
+      5,
+      &io_loopback_ping_pong_sync_4way_case<KIB * 16> },
 #endif
-    { "async", "io_loopback_ping_pong_1b", 5, &io_loopback_ping_pong_1b },
-    { "async", "io_loopback_ping_pong_4way_1b", 5, &io_loopback_ping_pong_4way_1b },
+    { "async", "io_loopback_ping_pong_1b", 5, &io_loopback_ping_pong_case<1> },
+    { "async", "io_loopback_ping_pong_4way_1b", 5, &io_loopback_ping_pong_4way_case<1> },
     { "async",
       "io_loopback_ping_pong_async_4worker_1b",
       5,
-      &io_loopback_ping_pong_async_4worker_1b },
-#if RSTD_OS_LINUX
-    { "async", "io_loopback_ping_pong_sync_1kib", 5, &io_loopback_ping_pong_sync_1kib },
-    { "async", "io_loopback_ping_pong_sync_4way_1kib", 5, &io_loopback_ping_pong_sync_4way_1kib },
-    { "async", "io_loopback_ping_pong_epoll_loop_1kib", 5, &io_loopback_ping_pong_epoll_loop_1kib },
-    { "async",
-      "io_loopback_ping_pong_epoll_loop_4way_1kib",
-      5,
-      &io_loopback_ping_pong_epoll_loop_4way_1kib },
-#endif
-    { "async", "io_loopback_ping_pong_1kib", 5, &io_loopback_ping_pong_1kib },
-    { "async", "io_loopback_ping_pong_4way_1kib", 5, &io_loopback_ping_pong_4way_1kib },
+      &io_loopback_ping_pong_4worker_case<1> },
+    { "async", "io_loopback_ping_pong_1kib", 5, &io_loopback_ping_pong_case<KIB> },
+    { "async", "io_loopback_ping_pong_4way_1kib", 5, &io_loopback_ping_pong_4way_case<KIB> },
     { "async",
       "io_loopback_ping_pong_async_4worker_1kib",
       5,
-      &io_loopback_ping_pong_async_4worker_1kib },
-#if RSTD_OS_LINUX
-    { "async", "io_loopback_ping_pong_sync_16kib", 5, &io_loopback_ping_pong_sync_16kib },
-    { "async", "io_loopback_ping_pong_sync_4way_16kib", 5, &io_loopback_ping_pong_sync_4way_16kib },
+      &io_loopback_ping_pong_4worker_case<KIB> },
+    { "async", "io_loopback_ping_pong_16kib", 5, &io_loopback_ping_pong_case<KIB * 16> },
     { "async",
-      "io_loopback_ping_pong_epoll_loop_16kib",
+      "io_loopback_ping_pong_4way_16kib",
       5,
-      &io_loopback_ping_pong_epoll_loop_16kib },
-    { "async",
-      "io_loopback_ping_pong_epoll_loop_4way_16kib",
-      5,
-      &io_loopback_ping_pong_epoll_loop_4way_16kib },
-#endif
-    { "async", "io_loopback_ping_pong_16kib", 5, &io_loopback_ping_pong_16kib },
-    { "async", "io_loopback_ping_pong_4way_16kib", 5, &io_loopback_ping_pong_4way_16kib },
+      &io_loopback_ping_pong_4way_case<KIB * 16> },
     { "async",
       "io_loopback_ping_pong_async_4worker_16kib",
       5,
-      &io_loopback_ping_pong_async_4worker_16kib },
+      &io_loopback_ping_pong_4worker_case<KIB * 16> },
 #if RSTD_OS_LINUX
-    { "async", "io_loopback_ping_pong_native_1b", 5, &io_loopback_ping_pong_native_1b },
-    { "async", "io_loopback_ping_pong_native_4way_1b", 5, &io_loopback_ping_pong_native_4way_1b },
-    { "async", "io_loopback_ping_pong_native_1kib", 5, &io_loopback_ping_pong_native_1kib },
     { "async",
-      "io_loopback_ping_pong_native_4way_1kib",
+      "io_loopback_ping_pong_native_1b",
       5,
-      &io_loopback_ping_pong_native_4way_1kib },
-    { "async", "io_loopback_ping_pong_native_16kib", 5, &io_loopback_ping_pong_native_16kib },
+      &io_loopback_ping_pong_case<1, IoBackend::NativeCompletion> },
+    { "async",
+      "io_loopback_ping_pong_native_4way_1b",
+      5,
+      &io_loopback_ping_pong_4way_case<1, IoBackend::NativeCompletion> },
+    { "async",
+      "io_loopback_ping_pong_native_16kib",
+      5,
+      &io_loopback_ping_pong_case<KIB * 16, IoBackend::NativeCompletion> },
     { "async",
       "io_loopback_ping_pong_native_4way_16kib",
       5,
-      &io_loopback_ping_pong_native_4way_16kib },
-    { "async", "io_loopback_ping_pong_epoll_1b", 5, &io_loopback_ping_pong_epoll_1b },
-    { "async", "io_loopback_ping_pong_epoll_4way_1b", 5, &io_loopback_ping_pong_epoll_4way_1b },
-    { "async", "io_loopback_ping_pong_epoll_1kib", 5, &io_loopback_ping_pong_epoll_1kib },
-    { "async", "io_loopback_ping_pong_epoll_4way_1kib", 5, &io_loopback_ping_pong_epoll_4way_1kib },
-    { "async", "io_loopback_ping_pong_epoll_16kib", 5, &io_loopback_ping_pong_epoll_16kib },
+      &io_loopback_ping_pong_4way_case<KIB * 16, IoBackend::NativeCompletion> },
+    { "async",
+      "io_loopback_ping_pong_epoll_1b",
+      5,
+      &io_loopback_ping_pong_case<1, IoBackend::ReadinessEmulation> },
+    { "async",
+      "io_loopback_ping_pong_epoll_4way_1b",
+      5,
+      &io_loopback_ping_pong_4way_case<1, IoBackend::ReadinessEmulation> },
+    { "async",
+      "io_loopback_ping_pong_epoll_16kib",
+      5,
+      &io_loopback_ping_pong_case<KIB * 16, IoBackend::ReadinessEmulation> },
     { "async",
       "io_loopback_ping_pong_epoll_4way_16kib",
       5,
-      &io_loopback_ping_pong_epoll_4way_16kib },
+      &io_loopback_ping_pong_4way_case<KIB * 16, IoBackend::ReadinessEmulation> },
     { "async",
       "io_operation_direct_immediate_qd1",
       2,
       &io_operation_read<1, false, IoOperationConsumer::Direct> },
-    { "async",
-      "io_operation_direct_immediate_qd4",
-      2,
-      &io_operation_read<4, false, IoOperationConsumer::Direct> },
-    { "async",
-      "io_operation_direct_immediate_qd16",
-      2,
-      &io_operation_read<16, false, IoOperationConsumer::Direct> },
     { "async",
       "io_operation_direct_immediate_qd64",
       2,
@@ -1532,14 +1079,6 @@ const rstd_bench::BenchCase CASES[] = {
       2,
       &io_operation_read<1, true, IoOperationConsumer::Direct> },
     { "async",
-      "io_operation_direct_pending_qd4",
-      2,
-      &io_operation_read<4, true, IoOperationConsumer::Direct> },
-    { "async",
-      "io_operation_direct_pending_qd16",
-      2,
-      &io_operation_read<16, true, IoOperationConsumer::Direct> },
-    { "async",
       "io_operation_direct_pending_qd64",
       2,
       &io_operation_read<64, true, IoOperationConsumer::Direct> },
@@ -1548,14 +1087,6 @@ const rstd_bench::BenchCase CASES[] = {
       2,
       &io_operation_read<1, false, IoOperationConsumer::Future> },
     { "async",
-      "io_operation_future_immediate_qd4",
-      2,
-      &io_operation_read<4, false, IoOperationConsumer::Future> },
-    { "async",
-      "io_operation_future_immediate_qd16",
-      2,
-      &io_operation_read<16, false, IoOperationConsumer::Future> },
-    { "async",
       "io_operation_future_immediate_qd64",
       2,
       &io_operation_read<64, false, IoOperationConsumer::Future> },
@@ -1563,14 +1094,6 @@ const rstd_bench::BenchCase CASES[] = {
       "io_operation_future_pending_qd1",
       2,
       &io_operation_read<1, true, IoOperationConsumer::Future> },
-    { "async",
-      "io_operation_future_pending_qd4",
-      2,
-      &io_operation_read<4, true, IoOperationConsumer::Future> },
-    { "async",
-      "io_operation_future_pending_qd16",
-      2,
-      &io_operation_read<16, true, IoOperationConsumer::Future> },
     { "async",
       "io_operation_future_pending_qd64",
       2,

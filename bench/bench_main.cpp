@@ -98,7 +98,7 @@ auto make_config(const Options& options, const rstd_bench::BenchCase& benchmark)
 }
 
 auto run_case(const Options& options, const rstd_bench::BenchCase& benchmark) -> RunResult {
-    auto result = benchmark.m_run(make_config(options, benchmark));
+    auto result = benchmark.m_run(make_config(options, benchmark), benchmark.m_name);
     if (result.measurement.is_err()) {
         return RunResult {
             .m_case        = &benchmark,

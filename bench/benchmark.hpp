@@ -15,7 +15,7 @@ struct CaseRunResult {
     bool                                                                ok;
 };
 
-using BenchFn = CaseRunResult (*)(rstd::bench::BenchConfig);
+using BenchFn = CaseRunResult (*)(rstd::bench::BenchConfig, const char*);
 
 struct BenchCase {
     const char*   m_suite;
