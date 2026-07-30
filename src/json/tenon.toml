@@ -1,0 +1,35 @@
+[package]
+name = "rstd-json"
+version.workspace = true
+module = "rstd.json"
+
+[library]
+archive = "rstd.json"
+discovery = "explicit"
+sources = [
+  "error.cppm",
+  "mod.cppm",
+  "number.cppm",
+  "parser.cppm",
+  "serialize.cppm",
+  "value.cppm",
+]
+
+[usage]
+private-options = [
+  "-fPIC",
+  "-Wall",
+  "-Wpedantic",
+  "-Wno-gnu-statement-expression",
+  "-Wno-deprecated-declarations",
+  "-Wunknown-attributes",
+  "-fsized-deallocation",
+]
+
+[dependencies.rstd-core]
+path = "../.."
+visibility = "public"
+
+[dependencies.rstd-std]
+path = "../.."
+visibility = "public"

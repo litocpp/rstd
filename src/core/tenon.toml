@@ -1,0 +1,107 @@
+[package]
+name = "rstd-core"
+version.workspace = true
+module = "rstd.core"
+
+[library]
+archive = "rstd.core"
+discovery = "explicit"
+sources = [
+  "alloc/global.cppm",
+  "alloc/layout.cppm",
+  "alloc/mod.cppm",
+  "any.cppm",
+  "array.cppm",
+  "borrow.cppm",
+  "char.cppm",
+  "choice.cppm",
+  "clone.cppm",
+  "clone_tuple.cppm",
+  "cmp.cppm",
+  "convert.cppm",
+  "core.cppm",
+  "enum.cppm",
+  "error.cppm",
+  "error_trait.cppm",
+  "ffi/c_str.cppm",
+  "ffi/mod.cppm",
+  "fmt.cppm",
+  "fmt/float.cppm",
+  "forward/mod.cppm",
+  "future.cppm",
+  "hash/mod.cppm",
+  "hint.cppm",
+  "intrinsics/mod.cppm",
+  "iter/adapters.cppm",
+  "iter/mod.cppm",
+  "iter/option_result.cppm",
+  "iter/range.cppm",
+  "iter/sources.cppm",
+  "iter/traits.cppm",
+  "marker.cppm",
+  "mem/drop_guard.cppm",
+  "mem/manually_drop.cppm",
+  "mem/maybe_uninit.cppm",
+  "mem/mod.cppm",
+  "memchr.cppm",
+  "mod.cpp",
+  "mod.cppm",
+  "num/bignum.cppm",
+  "num/convert.cppm",
+  "num/dec2flt.cppm",
+  "num/floating_parse.cppm",
+  "num/flt2dec.cppm",
+  "num/integer.cppm",
+  "num/integer_methods.cppm",
+  "num/literals.cppm",
+  "num/mod.cppm",
+  "num/niche_types.cppm",
+  "num/nonzero.cppm",
+  "num/types.cppm",
+  "ops/deref.cppm",
+  "ops/function.cppm",
+  "ops/mod.cppm",
+  "option.cppm",
+  "panic.cppm",
+  "panicking.cppm",
+  "prelude.cppm",
+  "ptr/dyn.cppm",
+  "ptr/metadata.cppm",
+  "ptr/mod.cppm",
+  "ptr/non_null.cppm",
+  "ptr/ptr.cppm",
+  "result.cppm",
+  "slice/mod.cppm",
+  "slice/ops.cppm",
+  "str/mod.cppm",
+  "str/str.cppm",
+  "str/traits.cppm",
+  "sync/atomic.cppm",
+  "sync/mod.cppm",
+  "task.cppm",
+  "time.cppm",
+  "trait.cppm",
+  "try.cppm",
+  "type_id.cppm",
+]
+
+[usage]
+public-include-directories = ["include"]
+private-definitions = ["RSTD_CHECK_INTEGER_OVERFLOW=0"]
+private-options = [
+  "-fPIC",
+  "-Wall",
+  "-Wpedantic",
+  "-Wno-gnu-statement-expression",
+  "-Wno-deprecated-declarations",
+  "-Wunknown-attributes",
+  "-fsized-deallocation",
+]
+
+[dependencies.rstd-basic]
+path = "../.."
+visibility = "public"
+
+[dependencies.rstd-runtime]
+path = "../.."
+visibility = "private"

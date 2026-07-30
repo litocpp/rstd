@@ -38,8 +38,7 @@ auto string_clone(bench::BenchConfig config, const char* name) -> rstd_bench::Ca
         });
 }
 
-auto vec_push_reserved(bench::BenchConfig config, const char* name)
-    -> rstd_bench::CaseRunResult {
+auto vec_push_reserved(bench::BenchConfig config, const char* name) -> rstd_bench::CaseRunResult {
     auto total      = std::uint64_t {};
     auto calls      = std::uint64_t {};
     bool valid      = true;
@@ -68,8 +67,7 @@ auto vec_push_reserved(bench::BenchConfig config, const char* name)
         });
 }
 
-auto bytes_extend_freeze(bench::BenchConfig config, const char* name)
-    -> rstd_bench::CaseRunResult {
+auto bytes_extend_freeze(bench::BenchConfig config, const char* name) -> rstd_bench::CaseRunResult {
     byte payload[64] {};
     for (rstd::size_t index = 0; index < 64; ++index) {
         payload[index] = byte { static_cast<std::uint8_t>(index) };

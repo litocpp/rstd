@@ -1,0 +1,34 @@
+[package]
+name = "rstd-toml"
+version.workspace = true
+module = "rstd.toml"
+
+[library]
+archive = "rstd.toml"
+discovery = "explicit"
+sources = [
+  "datetime.cppm",
+  "error.cppm",
+  "mod.cppm",
+  "parser.cppm",
+  "value.cppm",
+]
+
+[usage]
+private-options = [
+  "-fPIC",
+  "-Wall",
+  "-Wpedantic",
+  "-Wno-gnu-statement-expression",
+  "-Wno-deprecated-declarations",
+  "-Wunknown-attributes",
+  "-fsized-deallocation",
+]
+
+[dependencies.rstd-alloc]
+path = "../.."
+visibility = "public"
+
+[dependencies.rstd-core]
+path = "../.."
+visibility = "public"

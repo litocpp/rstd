@@ -1,0 +1,28 @@
+[package]
+name = "rstd-cppstd"
+version.workspace = true
+module = "rstd.cppstd"
+
+[library]
+archive = "rstd.cppstd"
+discovery = "explicit"
+sources = [
+  "cppstd.cppm",
+  "iter.cppm",
+  "rstd.cppm",
+]
+
+[usage]
+private-options = [
+  "-fPIC",
+  "-Wall",
+  "-Wpedantic",
+  "-Wno-gnu-statement-expression",
+  "-Wno-deprecated-declarations",
+  "-Wunknown-attributes",
+  "-fsized-deallocation",
+]
+
+[dependencies.rstd-std]
+path = "../.."
+visibility = "public"

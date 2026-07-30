@@ -1,0 +1,47 @@
+[package]
+name = "rstd-benchmark"
+version.workspace = true
+module = "rstd"
+
+[executable]
+name = "rstd_bench"
+discovery = "explicit"
+sources = [
+  "alloc.cpp",
+  "async.cpp",
+  "async_bench_tools.cppm",
+  "bench_main.cpp",
+  "net.cpp",
+  "sync.cpp",
+]
+
+[usage]
+private-definitions = [
+  "RSTD_BENCH_BUILD_TYPE=\"Tenon\"",
+  "RSTD_BENCH_ASAN=0",
+]
+private-options = [
+  "-fPIC",
+  "-Wall",
+  "-Wpedantic",
+  "-Wno-gnu-statement-expression",
+  "-Wno-deprecated-declarations",
+  "-Wunknown-attributes",
+  "-fsized-deallocation",
+]
+
+[dependencies.rstd-bench]
+path = ".."
+visibility = "private"
+
+[dependencies.rstd-cppstd]
+path = ".."
+visibility = "private"
+
+[dependencies.rstd-json]
+path = ".."
+visibility = "private"
+
+[dependencies.rstd-std]
+path = ".."
+visibility = "private"

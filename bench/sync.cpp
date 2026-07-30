@@ -21,8 +21,7 @@ struct PingPongState {
     PingPongState(): m_fields(PingPongFields {}), m_cvar() {}
 };
 
-auto mutex_lock_unlock(bench::BenchConfig config, const char* name)
-    -> rstd_bench::CaseRunResult {
+auto mutex_lock_unlock(bench::BenchConfig config, const char* name) -> rstd_bench::CaseRunResult {
     auto mutex      = sync::Mutex<std::uint64_t>(0);
     auto calls      = std::uint64_t {};
     auto run_config = bench::RunConfig { .items_per_iteration = u64(1) };
@@ -42,8 +41,7 @@ auto mutex_lock_unlock(bench::BenchConfig config, const char* name)
         });
 }
 
-auto condvar_ping_pong(bench::BenchConfig config, const char* name)
-    -> rstd_bench::CaseRunResult {
+auto condvar_ping_pong(bench::BenchConfig config, const char* name) -> rstd_bench::CaseRunResult {
     auto state      = sync::Arc<PingPongState>::make();
     auto worker     = state.clone();
     auto spawned    = thread::spawn([worker = rstd::move(worker)] {

@@ -1,0 +1,28 @@
+[package]
+name = "rstd-basic"
+version.workspace = true
+module = "rstd.basic"
+
+[library]
+archive = "rstd.basic"
+discovery = "explicit"
+sources = [
+  "basic.cppm",
+  "mod.cppm",
+  "mtp.cppm",
+  "mtp.std.cppm",
+  "panic_info.cppm",
+  "prelude.cppm",
+  "tuple.cppm",
+]
+
+[usage]
+private-options = [
+  "-fPIC",
+  "-Wall",
+  "-Wpedantic",
+  "-Wno-gnu-statement-expression",
+  "-Wno-deprecated-declarations",
+  "-Wunknown-attributes",
+  "-fsized-deallocation",
+]

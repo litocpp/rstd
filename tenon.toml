@@ -1,0 +1,18 @@
+[workspace]
+members = [
+  "src/basic",
+  "src/runtime",
+  "src/core",
+  "src/alloc",
+  "src/std",
+  "src/bench",
+  "src/cppstd",
+  "src/json",
+  "src/toml",
+  "src/nostd",
+  "bench",
+]
+default-members = ["bench"]
+
+[workspace.package]
+version = "0.1.0"

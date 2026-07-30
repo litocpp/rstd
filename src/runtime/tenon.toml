@@ -1,0 +1,27 @@
+[package]
+name = "rstd-runtime"
+version.workspace = true
+module = "rstd.runtime"
+
+[library]
+archive = "rstd.runtime"
+discovery = "explicit"
+sources = [
+  "mod.cpp",
+  "mod.cppm",
+]
+
+[usage]
+private-options = [
+  "-fPIC",
+  "-Wall",
+  "-Wpedantic",
+  "-Wno-gnu-statement-expression",
+  "-Wno-deprecated-declarations",
+  "-Wunknown-attributes",
+  "-fsized-deallocation",
+]
+
+[dependencies.rstd-basic]
+path = "../.."
+visibility = "public"

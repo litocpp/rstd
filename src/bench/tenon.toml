@@ -1,0 +1,37 @@
+[package]
+name = "rstd-bench"
+version.workspace = true
+module = "rstd.bench"
+
+[library]
+archive = "rstd.bench"
+discovery = "explicit"
+sources = [
+  "benchmark.cppm",
+  "clock.cppm",
+  "counters.cppm",
+  "mod.cppm",
+  "model.cppm",
+  "probe/collector.cppm",
+  "probe/mod.cppm",
+  "probe/model.cppm",
+  "probe/recorder.cppm",
+  "probe/registry.cppm",
+  "probe/report.cppm",
+  "statistics.cppm",
+]
+
+[usage]
+private-options = [
+  "-fPIC",
+  "-Wall",
+  "-Wpedantic",
+  "-Wno-gnu-statement-expression",
+  "-Wno-deprecated-declarations",
+  "-Wunknown-attributes",
+  "-fsized-deallocation",
+]
+
+[dependencies.rstd-std]
+path = "../.."
+visibility = "public"
