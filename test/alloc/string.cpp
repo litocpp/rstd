@@ -150,6 +150,20 @@ TEST(String, PushStrAppendsCompleteSlice) {
     EXPECT_EQ(text, "left-右"_str);
 }
 
+TEST(String, PushAsciiAcceptsCharacterLiterals) {
+    auto text = String::make();
+    text.push_ascii('A');
+    text.push_ascii('\n');
+
+    EXPECT_EQ(text, "A\n"_str);
+}
+
+TEST(StringDeathTest, PushAsciiRejectsNonAsciiChar) {
+    auto text = String::make();
+    EXPECT_DEATH(text.push_ascii(static_cast<char>(0xff)),
+                 "String::push_ascii requires ASCII");
+}
+
 TEST(String, ReserveInsertAndReplaceRangeRespectUtf8Boundaries) {
     auto text = String::make("a右c"_str);
     text.reserve(usize(32));

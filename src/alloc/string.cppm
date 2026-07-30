@@ -82,6 +82,8 @@ public:
         vec.push(rstd::move(value));
     }
 
+    void push_ascii(char value) { push_ascii(u8(value)); }
+
     /// Appends a Unicode code point, encoding as UTF-8.
     void push(char32_t cp) {
         byte buf[4] {};
