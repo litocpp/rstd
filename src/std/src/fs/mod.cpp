@@ -200,6 +200,69 @@ auto write(ref<Path> path, slice<u8> contents) -> FsResult<empty> {
     return io::write_all(file, contents);
 }
 
+auto write_atomic(ref<Path> path, slice<u8> contents) -> FsResult<empty> {
+    auto parent = path.parent();
+    auto name   = path.file_name();
+    if (parent.is_none() || name.is_none()) {
+        return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
+    }
+
+    auto temp_file = Option<File> {};
+    auto temp_path = rstd::path::PathBuf::make();
+    for (usize index {}; index < usize(64); ++index) {
+        auto temp_name = rstd::ffi::OsString::from(*name);
+        auto suffix    = rstd::format(".tmp.{}", index);
+        temp_name.push(rstd::ref<rstd::ffi::OsStr>(suffix.as_str()));
+        auto candidate = rstd::path::PathBuf::from(*parent).join(
+            rstd::path::PathBuf::from(rstd::move(temp_name)).as_path());
+        auto created = File::create_new(candidate.as_path());
+        if (created.is_ok()) {
+            temp_path = rstd::move(candidate);
+            temp_file = Some(rstd::move(created).unwrap_unchecked());
+            break;
+        }
+        auto error = rstd::move(created).unwrap_err_unchecked();
+        if (error.kind() != ErrorKind { ErrorKind::AlreadyExists }) {
+            return Err(rstd::move(error));
+        }
+    }
+    if (temp_file.is_none()) {
+        return Err(Error::new_const(ErrorKind { ErrorKind::AlreadyExists },
+                                    "cannot allocate a sibling temporary file"));
+    }
+
+    auto written = io::write_all(*temp_file, contents);
+    if (written.is_err()) {
+        auto error = rstd::move(written).unwrap_err_unchecked();
+        temp_file  = None();
+        (void)remove_file(temp_path.as_path());
+        return Err(rstd::move(error));
+    }
+    auto flushed = (*temp_file).flush();
+    if (flushed.is_err()) {
+        auto error = rstd::move(flushed).unwrap_err_unchecked();
+        temp_file  = None();
+        (void)remove_file(temp_path.as_path());
+        return Err(rstd::move(error));
+    }
+    auto synced = (*temp_file).sync_all();
+    if (synced.is_err()) {
+        auto error = rstd::move(synced).unwrap_err_unchecked();
+        temp_file  = None();
+        (void)remove_file(temp_path.as_path());
+        return Err(rstd::move(error));
+    }
+
+    temp_file     = None();
+    auto replaced = rename(temp_path.as_path(), path);
+    if (replaced.is_err()) {
+        auto error = rstd::move(replaced).unwrap_err_unchecked();
+        (void)remove_file(temp_path.as_path());
+        return Err(rstd::move(error));
+    }
+    return Ok(empty {});
+}
+
 auto metadata(ref<Path> path) -> FsResult<Metadata> {
     return metadata_result(sys_fs::metadata(path, true));
 }

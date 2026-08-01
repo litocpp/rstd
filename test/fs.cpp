@@ -301,6 +301,51 @@ TEST(FsFreeFn, WriteReadRoundTrip) {
     EXPECT_EQ(s, "hello fs::write"_str);
 }
 
+TEST(FsFreeFn, WriteAtomicCreatesAndReplaces) {
+    TempPath tp;
+    ::unlink(tp.c_str());
+
+    auto long_bytes = native_bytes("long atomic contents", 20);
+    ASSERT_TRUE(rstd::fs::write_atomic(tp.as_path(), long_bytes.as_slice()).is_ok());
+    EXPECT_EQ(rstd::fs::read_to_string(tp.as_path()).unwrap_unchecked(),
+              "long atomic contents"_str);
+
+    auto short_bytes = native_bytes("short", 5);
+    ASSERT_TRUE(rstd::fs::write_atomic(tp.as_path(), short_bytes.as_slice()).is_ok());
+    EXPECT_EQ(rstd::fs::read_to_string(tp.as_path()).unwrap_unchecked(), "short"_str);
+
+    auto empty_bytes = native_bytes("", 0);
+    ASSERT_TRUE(rstd::fs::write_atomic(tp.as_path(), empty_bytes.as_slice()).is_ok());
+    EXPECT_TRUE(rstd::fs::read(tp.as_path()).unwrap_unchecked().is_empty());
+}
+
+TEST(FsFreeFn, WriteAtomicSkipsExistingTemp) {
+    TempPath tp;
+    auto     collision       = std::string(tp.c_str()) + ".tmp.0";
+    auto     collision_path  = path_from_c_str(collision.c_str());
+    auto     collision_bytes = native_bytes("occupied", 8);
+    ASSERT_TRUE(rstd::fs::write(collision_path, collision_bytes.as_slice()).is_ok());
+
+    auto contents = native_bytes("replacement", 11);
+    ASSERT_TRUE(rstd::fs::write_atomic(tp.as_path(), contents.as_slice()).is_ok());
+    EXPECT_EQ(rstd::fs::read_to_string(tp.as_path()).unwrap_unchecked(), "replacement"_str);
+    EXPECT_EQ(rstd::fs::read_to_string(collision_path).unwrap_unchecked(), "occupied"_str);
+
+    ::unlink(collision.c_str());
+}
+
+TEST(FsFreeFn, WriteAtomicCleansTempWhenReplaceFails) {
+    char directory[] = "/tmp/rstd-fs-atomic-dir-XXXXXX";
+    ASSERT_NE(::mkdtemp(directory), nullptr);
+    auto destination = path_from_c_str(directory);
+    auto contents    = native_bytes("cannot replace directory", 24);
+    EXPECT_TRUE(rstd::fs::write_atomic(destination, contents.as_slice()).is_err());
+
+    auto temp = std::string(directory) + ".tmp.0";
+    EXPECT_EQ(::access(temp.c_str(), F_OK), -1);
+    EXPECT_EQ(::rmdir(directory), 0);
+}
+
 TEST(FsFreeFn, MetadataAndExists) {
     TempPath tp;
     EXPECT_TRUE(rstd::fs::exists(tp.as_path()).unwrap_unchecked());
