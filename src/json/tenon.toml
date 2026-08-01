@@ -5,15 +5,7 @@ module = "rstd.json"
 
 [library]
 archive = "rstd.json"
-discovery = "explicit"
-sources = [
-  "error.cppm",
-  "mod.cppm",
-  "number.cppm",
-  "parser.cppm",
-  "serialize.cppm",
-  "value.cppm",
-]
+discovery = "module"
 
 [usage]
 private-options = [

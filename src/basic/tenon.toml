@@ -5,16 +5,7 @@ module = "rstd.basic"
 
 [library]
 archive = "rstd.basic"
-discovery = "explicit"
-sources = [
-  "basic.cppm",
-  "mod.cppm",
-  "mtp.cppm",
-  "mtp.std.cppm",
-  "panic_info.cppm",
-  "prelude.cppm",
-  "tuple.cppm",
-]
+discovery = "module"
 
 [usage]
 private-options = [

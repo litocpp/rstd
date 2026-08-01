@@ -1,23 +1,3 @@
-set(RSTD_PRIVATE_SOURCES)
-set(RSTD_PRIVATE_MODULE_SOURCES)
-set(RSTD_SYS_SOURCES)
-set(RSTD_IO_SOURCES)
-set(RSTD_THREAD_SOURCES)
-set(RSTD_SYNC_SOURCES)
-set(RSTD_ASYNC_SOURCES)
-set(RSTD_BYTES_SOURCES)
-set(RSTD_NET_SOURCES)
-set(RSTD_OS_SOURCES)
-
-add_subdirectory(sys)
-add_subdirectory(io)
-add_subdirectory(thread)
-add_subdirectory(sync)
-add_subdirectory(async)
-add_subdirectory(bytes)
-add_subdirectory(net)
-add_subdirectory(os)
-
 add_library(rstd.std STATIC)
 target_compile_features(rstd.std PUBLIC cxx_std_20)
 target_link_libraries(rstd.std PUBLIC rstd.core rstd.alloc)
@@ -33,35 +13,160 @@ target_sources(
          TYPE
          CXX_MODULES
          FILES
-         mod.cppm
-         time.cppm
-         time/calendar.cppm
-         alloc.cppm
-         forward.cppm
-         error.cppm
-         panicking.cppm
-         process/mod.cppm
-         process/exit_status.cppm
-         process/command.cppm
-         env.cppm
-         path.cppm
-         fs/types.cppm
-         fs.cppm
-         ffi/mod.cppm
-         ffi/os_str.cppm
-         ${RSTD_OS_SOURCES}
-         ${RSTD_SYS_SOURCES}
-         ${RSTD_IO_SOURCES}
-         ${RSTD_THREAD_SOURCES}
-         ${RSTD_SYNC_SOURCES}
-         ${RSTD_ASYNC_SOURCES}
-         ${RSTD_BYTES_SOURCES}
-         ${RSTD_NET_SOURCES})
+         src/lib.cppm
+         src/time/mod.cppm
+         src/time/calendar.cppm
+         src/alloc.cppm
+         src/forward.cppm
+         src/error.cppm
+         src/panicking.cppm
+         src/process/mod.cppm
+         src/process/exit_status.cppm
+         src/process/command.cppm
+         src/env.cppm
+         src/path.cppm
+         src/fs/types.cppm
+         src/fs/mod.cppm
+         src/ffi/mod.cppm
+         src/ffi/os_str.cppm
+         src/os/mod.cppm
+         src/os/fd.cppm
+         src/os/handle.cppm
+         src/os/socket.cppm
+         src/sys/io/stdio.cppm
+         src/sys/libc/mod.cppm
+         src/sys/libc/linux.cppm
+         src/sys/libc/pthread.cppm
+         src/sys/libc/unix.cppm
+         src/sys/libc/windows.cppm
+         src/sys/libc/std.cppm
+         src/sys/pal/mod.cppm
+         src/sys/pal/poll/mod.cppm
+         src/sys/pal/poll/types.cppm
+         src/sys/pal/linux/io_uring.cppm
+         src/sys/pal/linux/poll.cppm
+         src/sys/pal/unix/mod.cppm
+         src/sys/pal/unix/socket.cppm
+         src/sys/pal/unix/futex.cppm
+         src/sys/pal/unix/time.cppm
+         src/sys/pal/unix/sync/mutex.cppm
+         src/sys/pal/unix/sync/condvar.cppm
+         src/sys/pal/unix/sync/mod.cppm
+         src/sys/pal/windows/mod.cppm
+         src/sys/pal/windows/socket.cppm
+         src/sys/pal/windows/poll.cppm
+         src/sys/pal/windows/futex.cppm
+         src/sys/pal/windows/time.cppm
+         src/sys/pal/windows/sync/mod.cppm
+         src/sys/pal/windows/sync/mutex.cppm
+         src/sys/pal/windows/sync/condvar.cppm
+         src/sys/sync/once_box.cppm
+         src/sys/sync/mutex/mod.cppm
+         src/sys/sync/mutex/futex.cppm
+         src/sys/sync/mutex/pthread.cppm
+         src/sys/sync/condvar/mod.cppm
+         src/sys/sync/condvar/futex.cppm
+         src/sys/sync/condvar/pthread.cppm
+         src/sys/sync/once/mod.cppm
+         src/sys/sync/once/futex.cppm
+         src/sys/sync/thread_parking/mod.cppm
+         src/sys/sync/thread_parking/futex.cppm
+         src/sys/sync/thread_parking/pthread.cppm
+         src/sys/thread/mod.cppm
+         src/sys/thread/unix.cppm
+         src/sys/thread/windows.cppm
+         src/io/mod.cppm
+         src/io/error.cppm
+         src/io/traits.cppm
+         src/io/buffered.cppm
+         src/io/cursor.cppm
+         src/io/range.cppm
+         src/io/util.cppm
+         src/io/stdio.cppm
+         src/thread/mod.cppm
+         src/thread/id.cppm
+         src/thread/thread.cppm
+         src/thread/main_thread.cppm
+         src/thread/builder.cppm
+         src/thread/functions.cppm
+         src/thread/thread_pool.cppm
+         src/thread/blocking_task_group.cppm
+         src/thread/blocking_task_set.cppm
+         src/thread/join_handle.cppm
+         src/thread/lifecycle.cppm
+         src/thread/scoped.cppm
+         src/thread/forward.cppm
+         src/thread/current.cppm
+         src/sync/mod.cppm
+         src/sync/once.cppm
+         src/sync/mutex.cppm
+         src/sync/condvar.cppm
+         src/sync/poison.cppm
+         src/sync/mpmc/mod.cppm
+         src/sync/mpmc/detail.cppm
+         src/sync/mpmc/error.cppm
+         src/sync/mpmc/counter.cppm
+         src/sync/mpmc/array.cppm
+         src/sync/mpmc/list.cppm
+         src/sync/mpmc/zero.cppm
+         src/sync/mpmc/utils.cppm
+         src/sync/mpmc/context.cppm
+         src/sync/mpmc/waker.cppm
+         src/sync/mpmc/select.cppm
+         src/async/mod.cppm
+         src/async/forward.cppm
+         src/async/terminal.cppm
+         src/async/atomic_waker.cppm
+         src/async/facility.cppm
+         src/async/awaitable.cppm
+         src/async/task.cppm
+         src/async/executor.cppm
+         src/async/thread_pool_executor.cppm
+         src/async/coro_driver.cppm
+         src/async/runtime_driver.cppm
+         src/async/runtime_core.cppm
+         src/async/spawn.cppm
+         src/async/runtime.cppm
+         src/async/join.cppm
+         src/async/select.cppm
+         src/async/oneshot.cppm
+         src/async/notify.cppm
+         src/async/completion.cppm
+         src/async/completion_queue.cppm
+         src/async/io.cppm
+         src/async/io_operation.cppm
+         src/async/readiness.cppm
+         src/async/poll.cppm
+         src/async/reactor.cppm
+         src/async/timer_facility.cppm
+         src/async/time.cppm
+         src/bytes.cppm
+         src/net/mod.cppm
+         src/net/socket_addr.cppm
+         src/net/tcp.cppm)
 
 target_sources(
   rstd.std
   PRIVATE FILE_SET private_modules TYPE CXX_MODULES FILES
-          ${RSTD_PRIVATE_MODULE_SOURCES})
+          src/sys/mod.cppm
+          src/sys/fs.cppm
+          src/sys/socket.cppm
+          src/sys/io/mod.cppm)
 
-target_sources(rstd.std PRIVATE ${RSTD_PRIVATE_SOURCES} mod.cpp process/process.cpp fs.cpp env.cpp
-                                os/fd.cpp os/handle.cpp os/socket.cpp)
+target_sources(
+  rstd.std
+  PRIVATE src/sys/pal/unix/futex.cpp
+          src/sys/pal/windows/futex.cpp
+          src/sys/sync/once/futex.cpp
+          src/sys/sync/thread_parking/futex.cpp
+          src/sys/sync/thread_parking/pthread.cpp
+          src/io/error.cpp
+          src/thread/mod.cpp
+          src/net/tcp.cpp
+          src/lib.cpp
+          src/process/mod.cpp
+          src/fs/mod.cpp
+          src/env.cpp
+          src/os/fd.cpp
+          src/os/handle.cpp
+          src/os/socket.cpp)

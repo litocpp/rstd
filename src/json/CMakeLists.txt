@@ -10,9 +10,9 @@ target_sources(
          TYPE
          CXX_MODULES
          FILES
-         mod.cppm
-         number.cppm
-         error.cppm
-         value.cppm
-         parser.cppm
-         serialize.cppm)
+         src/lib.cppm
+         src/number.cppm
+         src/error.cppm
+         src/value.cppm
+         src/parser.cppm
+         src/serialize.cppm)

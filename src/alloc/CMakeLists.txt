@@ -8,21 +8,21 @@ target_sources(
          TYPE
          CXX_MODULES
          FILES
-         mod.cppm
-         alloc.cppm
-         rc.cppm
-         string.cppm
-         str.cppm
-         boxed.cppm
-         sync.cppm
-         ffi/mod.cppm
-         ffi/c_str.cppm
-         vec/mod.cppm
-         collections/mod.cppm
-         collections/btree/node.cppm
-         collections/btree/map.cppm
-         collections/btree/set.cppm
-         collections/hash/table.cppm
-         collections/hash/map.cppm
-         collections/hash/set.cppm
-         hash/random.cppm)
+         src/lib.cppm
+         src/alloc.cppm
+         src/rc.cppm
+         src/string.cppm
+         src/str.cppm
+         src/boxed.cppm
+         src/sync.cppm
+         src/ffi/mod.cppm
+         src/ffi/c_str.cppm
+         src/vec.cppm
+         src/collections/mod.cppm
+         src/collections/btree_node.cppm
+         src/collections/btree_map.cppm
+         src/collections/btree_set.cppm
+         src/collections/hash_table.cppm
+         src/collections/hash_map.cppm
+         src/collections/hash_set.cppm
+         src/hash/random.cppm)

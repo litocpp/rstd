@@ -13,10 +13,10 @@ target_sources(
          TYPE
          CXX_MODULES
          FILES
-         mod.cppm
-         prelude.cppm
-         basic.cppm
-         mtp.cppm
-         mtp.std.cppm
-         tuple.cppm
-         panic_info.cppm)
+         src/lib.cppm
+         src/prelude.cppm
+         src/basic.cppm
+         src/mtp/mod.cppm
+         src/mtp/std.cppm
+         src/tuple.cppm
+         src/panic_info.cppm)

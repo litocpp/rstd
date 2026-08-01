@@ -10,15 +10,15 @@ target_sources(
          TYPE
          CXX_MODULES
          FILES
-         mod.cppm
-         clock.cppm
-         model.cppm
-         statistics.cppm
-         counters.cppm
-         benchmark.cppm
-         probe/mod.cppm
-         probe/model.cppm
-         probe/registry.cppm
-         probe/recorder.cppm
-         probe/collector.cppm
-         probe/report.cppm)
+         src/lib.cppm
+         src/clock.cppm
+         src/model.cppm
+         src/statistics.cppm
+         src/counters.cppm
+         src/benchmark.cppm
+         src/probe/mod.cppm
+         src/probe/model.cppm
+         src/probe/registry.cppm
+         src/probe/recorder.cppm
+         src/probe/collector.cppm
+         src/probe/report.cppm)

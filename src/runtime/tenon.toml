@@ -5,11 +5,7 @@ module = "rstd.runtime"
 
 [library]
 archive = "rstd.runtime"
-discovery = "explicit"
-sources = [
-  "mod.cpp",
-  "mod.cppm",
-]
+discovery = "module"
 
 [usage]
 private-options = [

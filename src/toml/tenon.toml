@@ -5,14 +5,7 @@ module = "rstd.toml"
 
 [library]
 archive = "rstd.toml"
-discovery = "explicit"
-sources = [
-  "datetime.cppm",
-  "error.cppm",
-  "mod.cppm",
-  "parser.cppm",
-  "value.cppm",
-]
+discovery = "module"
 
 [usage]
 private-options = [

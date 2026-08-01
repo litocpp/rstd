@@ -5,27 +5,7 @@ module = "rstd.alloc"
 
 [library]
 archive = "rstd.alloc"
-discovery = "explicit"
-sources = [
-  "alloc.cppm",
-  "boxed.cppm",
-  "collections/btree/map.cppm",
-  "collections/btree/node.cppm",
-  "collections/btree/set.cppm",
-  "collections/hash/map.cppm",
-  "collections/hash/set.cppm",
-  "collections/hash/table.cppm",
-  "collections/mod.cppm",
-  "ffi/c_str.cppm",
-  "ffi/mod.cppm",
-  "hash/random.cppm",
-  "mod.cppm",
-  "rc.cppm",
-  "str.cppm",
-  "string.cppm",
-  "sync.cppm",
-  "vec/mod.cppm",
-]
+discovery = "module"
 
 [usage]
 private-options = [

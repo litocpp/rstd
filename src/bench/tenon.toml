@@ -5,21 +5,7 @@ module = "rstd.bench"
 
 [library]
 archive = "rstd.bench"
-discovery = "explicit"
-sources = [
-  "benchmark.cppm",
-  "clock.cppm",
-  "counters.cppm",
-  "mod.cppm",
-  "model.cppm",
-  "probe/collector.cppm",
-  "probe/mod.cppm",
-  "probe/model.cppm",
-  "probe/recorder.cppm",
-  "probe/registry.cppm",
-  "probe/report.cppm",
-  "statistics.cppm",
-]
+discovery = "module"
 
 [usage]
 private-options = [
