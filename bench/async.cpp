@@ -1,3 +1,5 @@
+module;
+
 #include <rstd/macro.hpp>
 
 #if RSTD_OS_LINUX
@@ -7,8 +9,7 @@
 #include <sys/socket.h>
 #endif
 
-#include "benchmark.hpp"
-
+module rstd.benchmark;
 import rstd;
 
 using namespace rstd;

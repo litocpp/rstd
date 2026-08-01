@@ -1,5 +1,4 @@
-#include "benchmark.hpp"
-
+module rstd.benchmark;
 import rstd;
 
 using namespace rstd;

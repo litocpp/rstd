@@ -4,11 +4,12 @@ add_executable(
   alloc.cpp
   sync.cpp
   async.cpp
-  net.cpp)
+  net.cpp
+  benchmark.cpp)
 
 target_sources(
   rstd_bench
-  PRIVATE FILE_SET modules TYPE CXX_MODULES FILES async_bench_tools.cppm)
+  PRIVATE FILE_SET modules TYPE CXX_MODULES FILES async_bench_tools.cppm benchmark.cppm)
 
 target_link_libraries(rstd_bench PRIVATE rstd::rstd rstd.cppstd rstd::bench rstd::json)
 

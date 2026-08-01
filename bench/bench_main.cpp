@@ -1,9 +1,8 @@
-#include "benchmark.hpp"
-
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
+import rstd.benchmark;
 import rstd.json;
 
 using namespace rstd;

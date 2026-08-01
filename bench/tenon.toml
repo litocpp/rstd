@@ -10,6 +10,8 @@ sources = [
   "alloc.cpp",
   "async.cpp",
   "async_bench_tools.cppm",
+  "benchmark.cpp",
+  "benchmark.cppm",
   "bench_main.cpp",
   "net.cpp",
   "sync.cpp",
