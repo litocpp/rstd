@@ -362,6 +362,9 @@ using ::posix_spawn_file_actions_destroy;
 using ::posix_spawn_file_actions_addclose;
 using ::posix_spawn_file_actions_adddup2;
 using ::posix_spawn_file_actions_addopen;
+#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__)
+using ::posix_spawn_file_actions_addchdir_np;
+#endif
 using ::posix_spawnattr_t;
 using ::posix_spawnattr_init;
 using ::posix_spawnattr_destroy;

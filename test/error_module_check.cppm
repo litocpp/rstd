@@ -1,4 +1,4 @@
-export module rstd.test.error_module_check;
+export module rstd.tests.error_module_check;
 import rstd.error;
 import rstd;
 

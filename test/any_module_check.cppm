@@ -1,4 +1,4 @@
-export module rstd.test.any_module_check;
+export module rstd.tests.any_module_check;
 
 import rstd;
 

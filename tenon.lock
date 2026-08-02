@@ -104,6 +104,25 @@
     },
     {
       "dependencies": [
+        "rstd-std"
+      ],
+      "manifest": "src/test/tenon.toml",
+      "name": "rstd-test",
+      "source": "path+.",
+      "version": "0.1.0"
+    },
+    {
+      "dependencies": [
+        "rstd-std",
+        "rstd-test"
+      ],
+      "manifest": "test/tenon.toml",
+      "name": "rstd-tests",
+      "source": "path+.",
+      "version": "0.1.0"
+    },
+    {
+      "dependencies": [
         "rstd-alloc",
         "rstd-core"
       ],
@@ -125,6 +144,8 @@
     "rstd-nostd",
     "rstd-runtime",
     "rstd-std",
+    "rstd-test",
+    "rstd-tests",
     "rstd-toml"
   ],
   "sources": [

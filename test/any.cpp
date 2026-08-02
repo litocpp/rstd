@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
 import rstd;
-import rstd.test.any_module_check;
+import rstd.tests.any_module_check;
 
 using namespace rstd::prelude;
 

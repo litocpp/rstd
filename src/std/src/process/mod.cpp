@@ -163,6 +163,20 @@ auto Spawn::spawn(rstd::process::Command& cmd)
     libc::posix_spawn_file_actions_t actions;
     libc::posix_spawn_file_actions_init(&actions);
 
+    if (cmd.cwd_.is_some()) {
+#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__)
+        auto error = libc::posix_spawn_file_actions_addchdir_np(&actions, cmd.cwd_->as_ptr());
+        if (error != 0) {
+            libc::posix_spawn_file_actions_destroy(&actions);
+            return Err(rstd::io::error::Error::from_raw_os_error(i32(error)));
+        }
+#else
+        libc::posix_spawn_file_actions_destroy(&actions);
+        return Err(rstd::io::error::Error::from_kind(
+            rstd::io::error::ErrorKind { rstd::io::error::ErrorKind::Unsupported }));
+#endif
+    }
+
     int stdin_pipe[2]  = { -1, -1 };
     int stdout_pipe[2] = { -1, -1 };
     int stderr_pipe[2] = { -1, -1 };

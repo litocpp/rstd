@@ -3,7 +3,7 @@
 import rstd;
 import rstd.argparse;
 import rstd.json;
-import rstd.test.error_module_check;
+import rstd.tests.error_module_check;
 import rstd.toml;
 
 using namespace rstd;

@@ -1,4 +1,4 @@
-export module rstd.test.cppstd_module_check;
+export module rstd.tests.cppstd_module_check;
 
 import rstd.cppstd;
 

@@ -127,6 +127,28 @@ target_link_libraries(rstd_test PRIVATE rstd::rstd rstd::json rstd::toml rstd::l
 include(GoogleTest)
 gtest_discover_tests(rstd_test)
 
+add_executable(rstd_test_library_test test_library.cpp)
+target_link_libraries(rstd_test_library_test PRIVATE rstd::test)
+add_test(NAME RstdTest.LibraryPass
+         COMMAND rstd_test_library_test --filter passes)
+add_test(NAME RstdTest.LibraryFailure
+         COMMAND rstd_test_library_test --filter expectation-fails)
+set_tests_properties(RstdTest.LibraryFailure PROPERTIES WILL_FAIL TRUE)
+add_test(NAME RstdTest.LibraryEarlyReturn
+         COMMAND rstd_test_library_test --filter returns-early)
+set_tests_properties(RstdTest.LibraryEarlyReturn PROPERTIES WILL_FAIL TRUE)
+add_test(NAME RstdTest.LibraryList COMMAND rstd_test_library_test --list)
+set_tests_properties(RstdTest.LibraryList PROPERTIES PASS_REGULAR_EXPRESSION
+                                                     "library.passes")
+add_test(NAME RstdTest.LibraryNoMatch
+         COMMAND rstd_test_library_test --filter missing)
+set_tests_properties(RstdTest.LibraryNoMatch PROPERTIES WILL_FAIL TRUE)
+
+add_executable(rstd_test_library_duplicate_test test_library_duplicate.cpp)
+target_link_libraries(rstd_test_library_duplicate_test PRIVATE rstd::test)
+add_test(NAME RstdTest.LibraryDuplicate COMMAND rstd_test_library_duplicate_test)
+set_tests_properties(RstdTest.LibraryDuplicate PROPERTIES WILL_FAIL TRUE)
+
 if(TARGET rstd.dlopn)
   add_executable(rstd_dlopn_test dlopn.cpp)
   target_link_libraries(rstd_dlopn_test PRIVATE rstd::dlopn GTest::gtest_main)

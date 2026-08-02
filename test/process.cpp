@@ -82,6 +82,15 @@ TEST(Process, CommandOutputStderr) {
     EXPECT_EQ(to_std_string(out.stderr_buf), "err\n");
 }
 
+TEST(Process, CommandCurrentDirectory) {
+    auto directory = rstd::path::PathBuf::from("/tmp"_str);
+    auto res = rstd::process::Command::make("pwd"_str).current_dir(directory.as_path()).output();
+    ASSERT_TRUE(res.is_ok());
+    auto out = res.unwrap();
+    EXPECT_TRUE(out.status.success());
+    EXPECT_EQ(to_std_string(out.stdout_buf), "/tmp\n");
+}
+
 TEST(Process, CommandNotFound) {
     auto res = rstd::process::Command::make("nonexistent_program_xyz_12345"_str).status();
     EXPECT_TRUE(res.is_err());

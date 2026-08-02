@@ -1,0 +1,28 @@
+[package]
+name = "rstd-tests"
+version.workspace = true
+module = "rstd.tests"
+
+[test]
+name = "rstd-tests"
+discovery = "explicit"
+sources = ["tenon_main.cpp"]
+
+[usage]
+private-options = [
+  "-fPIC",
+  "-Wall",
+  "-Wpedantic",
+  "-Wno-gnu-statement-expression",
+  "-Wno-deprecated-declarations",
+  "-Wunknown-attributes",
+  "-fsized-deallocation",
+]
+
+[dependencies.rstd-std]
+path = "../src/std"
+visibility = "private"
+
+[dependencies.rstd-test]
+path = "../src/test"
+visibility = "private"
