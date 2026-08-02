@@ -4,6 +4,7 @@ members = [
   "src/runtime",
   "src/core",
   "src/alloc",
+  "src/argparse",
   "src/std",
   "src/bench",
   "src/cppstd",

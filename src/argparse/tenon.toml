@@ -1,0 +1,23 @@
+[package]
+name = "rstd-argparse"
+version.workspace = true
+module = "rstd.argparse"
+
+[library]
+archive = "rstd.argparse"
+discovery = "module"
+
+[usage]
+private-options = [
+  "-fPIC",
+  "-Wall",
+  "-Wpedantic",
+  "-Wno-gnu-statement-expression",
+  "-Wno-deprecated-declarations",
+  "-Wunknown-attributes",
+  "-fsized-deallocation",
+]
+
+[dependencies.rstd-std]
+path = "../.."
+visibility = "public"

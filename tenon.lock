@@ -11,6 +11,15 @@
       "version": "0.1.0"
     },
     {
+      "dependencies": [
+        "rstd-std"
+      ],
+      "manifest": "src/argparse/tenon.toml",
+      "name": "rstd-argparse",
+      "source": "path+.",
+      "version": "0.1.0"
+    },
+    {
       "dependencies": [],
       "manifest": "src/basic/tenon.toml",
       "name": "rstd-basic",
@@ -106,6 +115,7 @@
   ],
   "roots": [
     "rstd-alloc",
+    "rstd-argparse",
     "rstd-basic",
     "rstd-bench",
     "rstd-benchmark",
