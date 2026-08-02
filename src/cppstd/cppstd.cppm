@@ -12,6 +12,7 @@ module;
 
 // c++11
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <bitset>
 #include <chrono>
@@ -996,6 +997,7 @@ export using std::operator<=;
 export using std::operator>;
 export using std::operator>=;
 #endif
+export using std::operator<=>;
 export using std::operator<<;
 export using std::operator>>;
 export using std::operator|;

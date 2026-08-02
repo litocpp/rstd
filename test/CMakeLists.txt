@@ -134,6 +134,9 @@ if(TARGET rstd.dlopn)
 endif()
 
 add_executable(rstd_cppstd_test cppstd/iter.cpp)
+target_sources(
+  rstd_cppstd_test
+  PRIVATE FILE_SET modules TYPE CXX_MODULES FILES cppstd/module_check.cppm)
 target_link_libraries(rstd_cppstd_test PRIVATE rstd.cppstd GTest::gtest_main)
 gtest_discover_tests(rstd_cppstd_test)
 
