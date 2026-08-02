@@ -142,14 +142,20 @@ class RawTable {
         if (buckets == usize()) {
             return data == nullptr && items == usize() && deleted == usize();
         }
-        if (data == nullptr || (buckets & (buckets - usize(1))) != usize()) return false;
+        return data != nullptr && (buckets & (buckets - usize(1))) == usize() &&
+               items + deleted <= capacity();
+    }
+
+    // A full audit is linear in bucket count and must not run after every mutation.
+    bool audit_valid() const noexcept {
+        if (! valid()) return false;
         usize full_count    = usize();
         usize deleted_count = usize();
         for (rstd::size_t i = 0; i < buckets.to_primitive(); ++i) {
             if (data[i].state == BucketState::Full) ++full_count;
             if (data[i].state == BucketState::Deleted) ++deleted_count;
         }
-        return full_count == items && deleted_count == deleted && items + deleted <= capacity();
+        return full_count == items && deleted_count == deleted;
     }
 
 public:
@@ -214,7 +220,7 @@ public:
         usize count = buckets == usize() ? bucket_count_for(required) : buckets;
         while (max_items(count) < required) count *= usize(2);
         rehash(count);
-        debug_assert(valid());
+        debug_assert(audit_valid());
     }
 
     void insert(u64 hash, K key, V value) {
@@ -235,13 +241,13 @@ public:
         for (rstd::size_t i = 0; i < buckets.to_primitive(); ++i) data[i].clear();
         items   = usize();
         deleted = usize();
-        debug_assert(valid());
+        debug_assert(audit_valid());
     }
 
     void shrink_to(usize minimum) {
         usize required = items > minimum ? items : minimum;
         usize count    = bucket_count_for(required);
         if (count < buckets || deleted != usize()) rehash(count);
-        debug_assert(valid());
+        debug_assert(audit_valid());
     }
 };

@@ -160,8 +160,7 @@ TEST(String, PushAsciiAcceptsCharacterLiterals) {
 
 TEST(StringDeathTest, PushAsciiRejectsNonAsciiChar) {
     auto text = String::make();
-    EXPECT_DEATH(text.push_ascii(static_cast<char>(0xff)),
-                 "String::push_ascii requires ASCII");
+    EXPECT_DEATH(text.push_ascii(static_cast<char>(0xff)), "String::push_ascii requires ASCII");
 }
 
 TEST(String, ReserveInsertAndReplaceRangeRespectUtf8Boundaries) {

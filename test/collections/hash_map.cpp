@@ -242,7 +242,7 @@ TEST(HashMap, RandomizedOperationsMatchModel) {
     auto                   map   = HashMap<i32, i32>::make();
 
     for (i32 operation {}; operation < i32(12000); operation += i32(1)) {
-        state    = state * u32(1664525u) + u32(1013904223u);
+        state    = state.wrapping_mul(u32(1664525u)).wrapping_add(u32(1013904223u));
         i32  key = as_cast<i32>((state >> u64(7)) % u32(static_cast<rstd::uint32_t>(key_count)));
         auto model_index = static_cast<rstd::size_t>(key.to_primitive());
         if (state % u32(3) == u32()) {
