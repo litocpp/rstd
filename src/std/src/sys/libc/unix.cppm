@@ -372,6 +372,7 @@ using ::environ;
 using ::mkstemp;
 using ::mkdtemp;
 using ::waitpid;
+inline constexpr auto WNOHANG_ = WNOHANG;
 using ::pipe;
 using ::pipe2;
 using ::close;

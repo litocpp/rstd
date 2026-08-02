@@ -1,6 +1,6 @@
 module;
 #include <rstd/macro.hpp>
-export module try_module_check;
+export module rstd.tests.try_module_check;
 import rstd.core;
 
 export auto try_module_check(bool success) -> rstd::Result<int, int> {

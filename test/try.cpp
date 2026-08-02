@@ -1,9 +1,9 @@
-#include <gtest/gtest.h>
+#include <rstd/test/gtest.hpp>
 #include <memory>
 #include <string>
 #include <rstd/macro.hpp>
 import rstd.core;
-import try_module_check;
+import rstd.tests.try_module_check;
 
 using namespace rstd;
 

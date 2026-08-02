@@ -1,6 +1,7 @@
 module;
 #include <rstd/macro.hpp>
-#include <gtest/gtest.h>
+#include <rstd/test/gtest.hpp>
+#include <atomic>
 #include <thread>
 
 module rstd;

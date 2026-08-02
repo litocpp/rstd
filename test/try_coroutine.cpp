@@ -1,6 +1,6 @@
 #include <coroutine>
 #include <exception>
-#include <gtest/gtest.h>
+#include <rstd/test/gtest.hpp>
 #include <optional>
 #include <rstd/macro.hpp>
 #include <string>

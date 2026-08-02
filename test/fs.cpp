@@ -1,9 +1,10 @@
 #include <cstdlib>
+#include <string>
 #include <string_view>
 #include <cstring>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <gtest/gtest.h>
+#include <rstd/test/gtest.hpp>
 import rstd;
 
 using rstd::fs::File;

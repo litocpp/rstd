@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+#include <rstd/test/gtest.hpp>
 import rstd;
 
 static_assert(rstd::Impled<rstd::vec::Vec<int>, rstd::ops::Deref>);

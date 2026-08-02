@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+#include <rstd/test/gtest.hpp>
 #include <string>
 
 import rstd;
@@ -91,6 +91,31 @@ TEST(Process, CommandCurrentDirectory) {
     EXPECT_EQ(to_std_string(out.stdout_buf), "/tmp\n");
 }
 
+TEST(Process, ChildTryWait) {
+    auto child = rstd::process::Command::make("sh"_str)
+                     .arg("-c"_str)
+                     .arg("sleep 0.02; exit 7"_str)
+                     .spawn();
+    ASSERT_TRUE(child.is_ok());
+    auto running = rstd::move(child).unwrap();
+    auto first   = running.try_wait();
+    ASSERT_TRUE(first.is_ok());
+
+    auto status = rstd::Option<rstd::process::ExitStatus> {};
+    for (int attempt = 0; attempt < 100 && status.is_none(); ++attempt) {
+        rstd::thread::sleep(rstd::time::Duration::from_millis(rstd::u64(1)));
+        auto waited = running.try_wait();
+        ASSERT_TRUE(waited.is_ok());
+        status = rstd::move(waited).unwrap();
+    }
+    ASSERT_TRUE(status.is_some());
+    ASSERT_TRUE(status->code().is_some());
+    EXPECT_EQ(*status->code(), rstd::i32(7));
+    auto waited = running.wait();
+    ASSERT_TRUE(waited.is_ok());
+    EXPECT_EQ(*waited->code(), rstd::i32(7));
+}
+
 TEST(Process, CommandNotFound) {
     auto res = rstd::process::Command::make("nonexistent_program_xyz_12345"_str).status();
     EXPECT_TRUE(res.is_err());
@@ -146,6 +171,18 @@ TEST(Process, WaitWithOutput) {
     auto out = out_res.unwrap();
     EXPECT_TRUE(out.status.success());
     EXPECT_EQ(to_std_string(out.stdout_buf), "collected\n");
+}
+
+TEST(Process, WaitWithLargeOutputOnBothPipes) {
+    auto res = rstd::process::Command::make("sh"_str)
+                   .arg("-c"_str)
+                   .arg("head -c 131072 /dev/zero; head -c 131072 /dev/zero >&2"_str)
+                   .output();
+    ASSERT_TRUE(res.is_ok());
+    auto out = res.unwrap();
+    EXPECT_TRUE(out.status.success());
+    EXPECT_EQ(out.stdout_buf.len(), rstd::usize(131072));
+    EXPECT_EQ(out.stderr_buf.len(), rstd::usize(131072));
 }
 
 TEST(Process, StdioNull) {

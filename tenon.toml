@@ -11,9 +11,15 @@ members = [
   "src/cppstd",
   "src/json",
   "src/toml",
+  "src/log",
+  "src/dlopn",
   "src/nostd",
   "bench",
   "test",
+  "test/dlopn-runtime",
+  "test/compile_fail",
+  "test/nostd",
+  "test/toml",
 ]
 default-members = ["bench"]
 

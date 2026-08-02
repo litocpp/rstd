@@ -103,6 +103,7 @@ struct Child {
     Option<ChildStdin>  stdin_pipe;
     Option<ChildStdout> stdout_pipe;
     Option<ChildStderr> stderr_pipe;
+    Option<ExitStatus>  status;
 
     /// Returns the OS-assigned process ID.
     auto id() const noexcept -> u32 { return u32(pid); }
@@ -117,6 +118,9 @@ struct Child {
     /// Waits for the child to exit and returns its status.
     auto wait() -> io::Result<ExitStatus>;
 
+    /// Checks whether the child has exited without blocking.
+    auto try_wait() -> io::Result<Option<ExitStatus>>;
+
     /// Sends SIGKILL to the child process.
     auto kill() -> io::Result<rstd::empty>;
 
@@ -128,7 +132,8 @@ struct Child {
         : pid(o.pid),
           stdin_pipe(o.stdin_pipe.take()),
           stdout_pipe(o.stdout_pipe.take()),
-          stderr_pipe(o.stderr_pipe.take()) {
+          stderr_pipe(o.stderr_pipe.take()),
+          status(o.status.take()) {
         o.pid = -1;
     }
     Child& operator=(Child&&) = delete;

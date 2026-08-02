@@ -1,13 +1,26 @@
-#include <gtest/gtest.h>
+#include <rstd/test/gtest.hpp>
 
 import rstd.log;
 import rstd.core;
 import rstd.alloc;
-import log_module_check;
+import rstd.tests.log_module_check;
 
 using namespace rstd::prelude;
 using namespace rstd::literals;
 using namespace rstd::log;
+
+namespace
+{
+
+class MaxLevelGuard {
+    LevelFilter saved_;
+
+public:
+    explicit MaxLevelGuard(LevelFilter value): saved_(max_level()) { set_max_level(value); }
+    ~MaxLevelGuard() { set_max_level(saved_); }
+};
+
+} // namespace
 
 // ── Level / LevelFilter ───────────────────────────────────────────────────
 
@@ -145,7 +158,7 @@ TEST(LogGlobal, SetLoggerOnce) {
 TEST(LogMacros, Compile) {
     // These should compile and not crash.
     // Since no logger is set (or it might be), they should be no-ops after level check.
-    set_max_level(LevelFilter::Trace);
+    auto max_level_guard = MaxLevelGuard(LevelFilter::Trace);
     error("error message: {}", "one");
     warn("warn message: {}", "two");
     info("info message: {}", "three");
@@ -154,13 +167,13 @@ TEST(LogMacros, Compile) {
 }
 
 TEST(LogMacros, NoArgs) {
-    set_max_level(LevelFilter::Trace);
+    auto max_level_guard = MaxLevelGuard(LevelFilter::Trace);
     error("no args error");
     info("no args info");
 }
 
 TEST(LogMacros, FilteredOut) {
-    set_max_level(LevelFilter::Error);
+    auto max_level_guard = MaxLevelGuard(LevelFilter::Error);
     // These should be skipped due to level filter
     trace("should not appear");
     debug("should not appear");
@@ -171,7 +184,7 @@ TEST(LogMacros, FilteredOut) {
 }
 
 TEST(LogMacros, TargetCompile) {
-    set_max_level(LevelFilter::Trace);
+    auto max_level_guard = MaxLevelGuard(LevelFilter::Trace);
     error("my_mod", "targeted error: {}", "e");
     warn("my_mod", "targeted warn: {}", "w");
     info("my_mod", "targeted info: {}", "i");
@@ -180,7 +193,7 @@ TEST(LogMacros, TargetCompile) {
 }
 
 TEST(LogMacros, TargetNoArgs) {
-    set_max_level(LevelFilter::Trace);
+    auto max_level_guard = MaxLevelGuard(LevelFilter::Trace);
     error("my_mod", "targeted error no args");
     info("my_mod", "targeted info no args");
 }
@@ -188,7 +201,7 @@ TEST(LogMacros, TargetNoArgs) {
 TEST(LogMacros, ModuleNameInOutput) {
     static EnvLogger logger;
     (void)set_logger(logger);
-    set_max_level(LevelFilter::Trace);
+    auto max_level_guard = MaxLevelGuard(LevelFilter::Trace);
     log_module_check::emit_from_module();
 }
 
@@ -197,7 +210,7 @@ TEST(LogMacros, ModuleNameInOutput) {
 #include <rstd/macro.hpp>
 
 TEST(LogMacroHelpers, LevelFiltering) {
-    set_max_level(LevelFilter::Warn);
+    auto max_level_guard = MaxLevelGuard(LevelFilter::Warn);
     // These are above the max level, macro guard skips them entirely
     rstd_info("should not run");
     rstd_debug("should not run");
@@ -209,7 +222,7 @@ TEST(LogMacroHelpers, LevelFiltering) {
 }
 
 TEST(LogMacroHelpers, NoArgs) {
-    set_max_level(LevelFilter::Trace);
+    auto max_level_guard = MaxLevelGuard(LevelFilter::Trace);
     rstd_error("no arg error");
     rstd_warn("no arg warn");
     rstd_info("no arg info");
@@ -218,7 +231,7 @@ TEST(LogMacroHelpers, NoArgs) {
 }
 
 TEST(LogMacroHelpers, FormatArgs) {
-    set_max_level(LevelFilter::Trace);
+    auto max_level_guard = MaxLevelGuard(LevelFilter::Trace);
     rstd_error("fmt: {}", "e");
     rstd_warn("fmt: {}", "w");
     rstd_info("fmt: {}", "i");
@@ -229,7 +242,7 @@ TEST(LogMacroHelpers, FormatArgs) {
 TEST(LogMacroHelpers, LazyEvaluation) {
     static EnvLogger logger;
     (void)set_logger(logger);
-    set_max_level(LevelFilter::Error);
+    auto max_level_guard = MaxLevelGuard(LevelFilter::Error);
 
     bool called      = false;
     auto side_effect = [&] {
@@ -249,7 +262,7 @@ TEST(LogMacroHelpers, LazyEvaluation) {
 // ── Target-specific macros ────────────────────────────────────────────────
 
 TEST(LogMacroHelpers, TargetMacrosCompile) {
-    set_max_level(LevelFilter::Trace);
+    auto max_level_guard = MaxLevelGuard(LevelFilter::Trace);
     rstd_error_t("my_mod"_str, "targeted error: {}", "e");
     rstd_warn_t("my_mod"_str, "targeted warn: {}", "w");
     rstd_info_t("my_mod"_str, "targeted info: {}", "i");
@@ -260,7 +273,7 @@ TEST(LogMacroHelpers, TargetMacrosCompile) {
 TEST(LogMacroHelpers, TargetMacrosFiltered) {
     static EnvLogger logger("error,my_mod=off"_str);
     (void)set_logger(logger);
-    set_max_level(LevelFilter::Trace);
+    auto max_level_guard = MaxLevelGuard(LevelFilter::Trace);
 
     // my_mod is off, these should be filtered
     rstd_error_t("my_mod"_str, "should not appear");

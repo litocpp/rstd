@@ -6,8 +6,10 @@ module = "rstd.test"
 [library]
 archive = "rstd.test"
 discovery = "module"
+sources = ["src/compat.cpp"]
 
 [usage]
+public-include-directories = ["include"]
 private-options = [
   "-fPIC",
   "-Wall",

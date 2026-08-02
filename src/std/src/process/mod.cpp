@@ -63,6 +63,8 @@ Child::~Child() {
 
 auto Child::wait() -> io::Result<ExitStatus> {
 #if RSTD_OS_UNIX
+    if (status.is_some()) return Ok(status.take().unwrap());
+
     // Drop stdin pipe so child sees EOF.
     stdin_pipe = {};
 
@@ -78,6 +80,35 @@ auto Child::wait() -> io::Result<ExitStatus> {
     }
     pid = -1;
     return Ok(ExitStatus::from_raw(i32(status)));
+#else
+    return Err(
+        io::error::Error::from_kind(io::error::ErrorKind { io::error::ErrorKind::Unsupported }));
+#endif
+}
+
+auto Child::try_wait() -> io::Result<Option<ExitStatus>> {
+#if RSTD_OS_UNIX
+    if (status.is_some()) return Ok(Some(*status));
+    if (pid <= 0) {
+        return Err(io::error::Error::from_kind(
+            io::error::ErrorKind { io::error::ErrorKind::InvalidInput }));
+    }
+
+    int status_value = 0;
+    while (true) {
+        auto ret = libc::waitpid(pid, &status_value, libc::WNOHANG_);
+        if (ret == 0) return Ok(None());
+        if (ret == -1) {
+            auto err = libc::get_errno();
+            if (err == libc::EINTR) continue;
+            return Err(io::error::Error::from_raw_os_error(i32(err)));
+        }
+        break;
+    }
+    pid         = -1;
+    auto exited = ExitStatus::from_raw(i32(status_value));
+    status      = Some(exited);
+    return Ok(Some(exited));
 #else
     return Err(
         io::error::Error::from_kind(io::error::ErrorKind { io::error::ErrorKind::Unsupported }));
@@ -123,8 +154,19 @@ auto Child::wait_with_output() -> io::Result<Output> {
     int out_fd = stdout_pipe.is_some() ? (*stdout_pipe).fd : -1;
     int err_fd = stderr_pipe.is_some() ? (*stderr_pipe).fd : -1;
 
+    auto stderr_reader = rstd::thread::spawn([err_fd, &read_all]() { return read_all(err_fd); });
+    if (stderr_reader.is_err()) {
+        (void)kill();
+        auto out_buf = read_all(out_fd);
+        auto err_buf = read_all(err_fd);
+        stdout_pipe  = {};
+        stderr_pipe  = {};
+        (void)wait();
+        return Err(stderr_reader.unwrap_err());
+    }
+
     auto out_buf = read_all(out_fd);
-    auto err_buf = read_all(err_fd);
+    auto err_buf = rstd::move(stderr_reader).unwrap().join().unwrap();
     stdout_pipe  = {};
     stderr_pipe  = {};
 

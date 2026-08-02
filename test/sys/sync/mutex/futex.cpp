@@ -1,5 +1,5 @@
 module;
-#include <gtest/gtest.h>
+#include <rstd/test/gtest.hpp>
 #include <thread>
 
 module rstd;

@@ -9,7 +9,6 @@ discovery = "module"
 
 [usage]
 public-include-directories = ["include"]
-private-definitions = ["RSTD_CHECK_INTEGER_OVERFLOW=0"]
 private-options = [
   "-fPIC",
   "-Wall",

@@ -1,0 +1,292 @@
+[package]
+name = "rstd-compile-tests"
+version.workspace = true
+
+[compile-test]
+
+[[compile-test.cases]]
+name = "Choice.Empty"
+source = "choice_empty.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd::Choice requires at least one choice_case"]
+
+[[compile-test.cases]]
+name = "Choice.MixedTags"
+source = "choice_mixed_tags.cpp"
+outcome = "failure"
+diagnostic-contains = ["all rstd::Choice tags must have the same type"]
+
+[[compile-test.cases]]
+name = "Choice.DuplicateTags"
+source = "choice_duplicate_tags.cpp"
+outcome = "failure"
+diagnostic-contains = ["all rstd::Choice tags must be unique"]
+
+[[compile-test.cases]]
+name = "Choice.InvalidTag"
+source = "choice_invalid_tag.cpp"
+outcome = "failure"
+diagnostic-contains = ["the requested tag is not present in rstd::Choice"]
+
+[[compile-test.cases]]
+name = "Choice.InvalidArguments"
+source = "choice_invalid_arguments.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["no matching function", "constraints not satisfied"]
+
+[[compile-test.cases]]
+name = "Choice.ReferencePayload"
+source = "choice_reference_payload.cpp"
+outcome = "failure"
+diagnostic-contains = ["reference payloads are not supported by rstd::Choice"]
+
+[[compile-test.cases]]
+name = "Trait.ImpledDiagnosticFailure"
+source = "trait_impled_diagnostic.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd::Impled failed: no external Impl or complete in-class trait API"]
+
+[[compile-test.cases]]
+name = "Trait.InClassApiMismatchFailure"
+source = "trait_in_class_api_mismatch.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd::Impled failed: in-class implementation does not satisfy trait API"]
+
+[[compile-test.cases]]
+name = "Trait.ExternalApiMismatchFailure"
+source = "trait_external_api_mismatch.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd::Impled failed: external Impl does not satisfy trait API"]
+
+[[compile-test.cases]]
+name = "Trait.ExternalConstApiMismatchFailure"
+source = "trait_external_const_api_mismatch.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd::Impled failed: external Impl does not satisfy trait API"]
+
+[[compile-test.cases]]
+name = "Trait.DirectApiMismatchFailure"
+source = "trait_direct_api_mismatch.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd::Impled failed: direct trait implementation does not satisfy trait API"]
+
+[[compile-test.cases]]
+name = "Error.MissingSuperTrait"
+source = "error_missing_supertrait.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd::Impled failed: a required supertrait is not implemented"]
+
+[[compile-test.cases]]
+name = "Try.UnsupportedSourceFailure"
+source = "try_unsupported_source.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd_try requires rstd::Result or rstd::Option"]
+
+[[compile-test.cases]]
+name = "Try.OptionToResultFailure"
+source = "try_option_to_result.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["no viable conversion", "could not convert"]
+
+[[compile-test.cases]]
+name = "Try.ResultToOptionFailure"
+source = "try_result_to_option.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["no viable conversion", "could not convert"]
+
+[[compile-test.cases]]
+name = "Try.IncompatibleErrorFailure"
+source = "try_incompatible_error.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["no viable conversion", "could not convert"]
+
+[[compile-test.cases]]
+name = "Deref.DerefMutWithoutDerefFailure"
+source = "deref_mut_without_deref.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["constraints not satisfied", "Deref"]
+
+[[compile-test.cases]]
+name = "OnceLock.TemporaryBorrowFailure"
+source = "once_lock_temporary_borrow.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["deleted function", "deleted"]
+
+[[compile-test.cases]]
+name = "LazyLock.TemporaryBorrowFailure"
+source = "lazy_lock_temporary_borrow.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["deleted function", "deleted"]
+
+[[compile-test.cases]]
+name = "Numeric.MixedNativeArithmetic"
+source = "numeric_mixed_native_arithmetic.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["invalid operands to binary expression", "no viable overloaded"]
+
+[[compile-test.cases]]
+name = "Numeric.ImplicitNarrowing"
+source = "numeric_implicit_narrowing.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["no viable conversion", "cannot initialize"]
+
+[[compile-test.cases]]
+name = "Numeric.ImplicitPrimitive"
+source = "numeric_implicit_primitive.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["no viable conversion", "cannot initialize", "explicit constructor"]
+
+[[compile-test.cases]]
+name = "Str.InvalidUtf8Literal"
+source = "invalid_utf8_literal.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd string literal must be valid UTF-8"]
+
+[[compile-test.cases]]
+name = "Numeric.SignedIncrement"
+source = "numeric_increment.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["cannot increment", "invalid argument type", "constraints not satisfied"]
+
+[[compile-test.cases]]
+name = "Numeric.TemporaryIncrement"
+source = "numeric_temporary_increment.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["cannot increment", "invalid argument type", "no viable overloaded", "candidate function not viable", "expects an lvalue"]
+
+[[compile-test.cases]]
+name = "Numeric.LiteralOutOfRange"
+source = "numeric_literal_out_of_range.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["not a constant expression", "consteval function"]
+
+[[compile-test.cases]]
+name = "Numeric.ConstexprOverflow"
+source = "numeric_constexpr_overflow.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["not a constant expression", "constexpr variable"]
+
+[[compile-test.cases]]
+name = "Hash.KeyWithoutHash"
+source = "hash_key_without_hash.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["HashableBy", "HashableWith", "constraints not satisfied"]
+
+[[compile-test.cases]]
+name = "Hash.BuilderMissing"
+source = "hash_builder_missing.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["HashBuilder", "constraints not satisfied"]
+
+[[compile-test.cases]]
+name = "Hash.BuilderInvalidState"
+source = "hash_builder_invalid_state.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["HashBuilder", "Hasher", "constraints not satisfied"]
+
+[[compile-test.cases]]
+name = "Hash.CallableBuilder"
+source = "hash_callable_builder.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["HashBuilder", "constraints not satisfied"]
+
+[[compile-test.cases]]
+name = "Hash.FloatKey"
+source = "hash_float_key.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["HashableBy", "HashableWith", "constraints not satisfied"]
+
+[[compile-test.cases]]
+name = "LifetimeBound.TemporaryBox"
+source = "lifetimebound_temporary_box.cpp"
+outcome = "failure"
+options = ["-Werror=dangling"]
+diagnostic-contains-any = ["temporary whose address is used", "will be destroyed at the end of the full-expression"]
+
+[[compile-test.cases]]
+name = "LifetimeBound.TemporaryVec"
+source = "lifetimebound_temporary_vec.cpp"
+outcome = "failure"
+options = ["-Werror=dangling"]
+diagnostic-contains-any = ["temporary whose address is used", "will be destroyed at the end of the full-expression"]
+
+[[compile-test.cases]]
+name = "LifetimeBound.TemporaryStringView"
+source = "lifetimebound_temporary_string_view.cpp"
+outcome = "failure"
+options = ["-Werror=dangling"]
+diagnostic-contains-any = ["temporary whose address is used", "will be destroyed at the end of the full-expression"]
+
+[[compile-test.cases]]
+name = "LifetimeBound.TemporaryMutStringView"
+source = "lifetimebound_temporary_mut_string_view.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["lvalue ref-qualifier", "expects an lvalue"]
+
+[[compile-test.cases]]
+name = "LifetimeBound.TemporaryArray"
+source = "lifetimebound_temporary_array.cpp"
+outcome = "failure"
+options = ["-Werror=dangling"]
+diagnostic-contains-any = ["temporary whose address is used", "will be destroyed at the end of the full-expression"]
+
+[[compile-test.cases]]
+name = "LifetimeBound.TemporaryOwnedFd"
+source = "lifetimebound_temporary_owned_fd.cpp"
+outcome = "failure"
+options = ["-Werror=dangling"]
+diagnostic-contains-any = ["temporary whose address is used", "will be destroyed at the end of the full-expression"]
+
+[[compile-test.cases]]
+name = "LifetimeBound.TemporaryFile"
+source = "lifetimebound_temporary_file.cpp"
+outcome = "failure"
+options = ["-Werror=dangling"]
+diagnostic-contains-any = ["temporary whose address is used", "will be destroyed at the end of the full-expression"]
+
+[[compile-test.cases]]
+name = "LifetimeBound.TraitProxy"
+source = "lifetimebound_trait_proxy.cpp"
+outcome = "failure"
+options = ["-Werror=return-stack-address"]
+diagnostic-contains-any = ["address of stack memory associated with local variable", "returning address of local temporary object"]
+
+[[compile-test.cases]]
+name = "Iter.LvalueIntoIter"
+source = "iter_lvalue_into_iter.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["no matching function for call to 'into_iter'", "constraints not satisfied"]
+
+[[compile-test.cases]]
+name = "Iter.MemberOnlyFlatten"
+source = "iter_member_only_flatten.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["no matching member function for call to 'flatten'", "constraints not satisfied"]
+
+[[compile-test.cases]]
+name = "Iter.EscapingForRange"
+source = "iter_escaping_for_range.cpp"
+outcome = "failure"
+options = ["-Werror=return-stack-address"]
+diagnostic-contains-any = ["address of stack memory associated with local variable", "returning address of local temporary object"]
+
+[[compile-test.cases]]
+name = "LifetimeBound.Positive"
+source = "lifetimebound_positive.cpp"
+outcome = "success"
+options = ["-Werror=dangling"]
+
+[usage]
+private-options = [
+  "-fPIC",
+  "-Wall",
+  "-Wpedantic",
+  "-Wno-gnu-statement-expression",
+  "-Wno-deprecated-declarations",
+  "-Wunknown-attributes",
+  "-fsized-deallocation",
+]
+
+[dependencies.rstd-std]
+path = "../../src/std"
+visibility = "private"

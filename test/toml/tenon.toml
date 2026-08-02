@@ -1,0 +1,35 @@
+[package]
+name = "rstd-toml-conformance-tests"
+version.workspace = true
+
+[test]
+name = "rstd-toml-conformance-tests"
+discovery = "explicit"
+sources = ["conformance_decoder.cpp"]
+
+[usage]
+private-options = [
+  "-fPIC",
+  "-Wall",
+  "-Wpedantic",
+  "-Wno-gnu-statement-expression",
+  "-Wno-deprecated-declarations",
+  "-Wunknown-attributes",
+  "-fsized-deallocation",
+]
+
+[dependencies.rstd-std]
+path = "../../src/std"
+visibility = "private"
+
+[dependencies.rstd-json]
+path = "../../src/json"
+visibility = "private"
+
+[dependencies.rstd-toml]
+path = "../../src/toml"
+visibility = "private"
+
+[dependencies.rstd-test]
+path = "../../src/test"
+visibility = "private"

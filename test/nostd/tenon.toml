@@ -1,0 +1,28 @@
+[package]
+name = "rstd-nostd-tests"
+version.workspace = true
+
+[test]
+name = "rstd-nostd-tests"
+discovery = "explicit"
+sources = ["main.cpp"]
+
+[usage]
+private-options = [
+  "-fPIC",
+  "-Wall",
+  "-Wpedantic",
+  "-Wno-gnu-statement-expression",
+  "-Wno-deprecated-declarations",
+  "-Wunknown-attributes",
+  "-fsized-deallocation",
+]
+private-linker-options = ["-nostdlib++"]
+
+[dependencies.rstd-nostd]
+path = "../../src/nostd"
+visibility = "runtime"
+
+[dependencies.rstd-std]
+path = "../../src/std"
+visibility = "private"

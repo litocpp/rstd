@@ -2,7 +2,7 @@
 #include <thread>
 #include <vector>
 
-#include <gtest/gtest.h>
+#include <rstd/test/gtest.hpp>
 #include <rstd/macro.hpp>
 import rstd;
 import rstd.core;

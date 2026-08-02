@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+#include <rstd/test/gtest.hpp>
 import rstd.dlopn;
 
 TEST(Dlopn, ExportsRawApi) {

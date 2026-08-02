@@ -1,4 +1,4 @@
-export module log_module_check;
+export module rstd.tests.log_module_check;
 import rstd.log;
 
 namespace log_module_check

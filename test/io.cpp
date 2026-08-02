@@ -1,5 +1,6 @@
 #include <cerrno>
-#include <gtest/gtest.h>
+#include <initializer_list>
+#include <rstd/test/gtest.hpp>
 #include <rstd/macro.hpp>
 import rstd;
 import rstd.core;

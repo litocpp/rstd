@@ -1,4 +1,12 @@
-#include <gtest/gtest.h>
+#include <rstd/test/gtest.hpp>
+
+#ifndef RSTD_TEST_CHECK_INTEGER_OVERFLOW
+#ifdef NDEBUG
+#define RSTD_TEST_CHECK_INTEGER_OVERFLOW 0
+#else
+#define RSTD_TEST_CHECK_INTEGER_OVERFLOW 1
+#endif
+#endif
 #include <type_traits>
 import rstd;
 

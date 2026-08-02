@@ -30,7 +30,11 @@ enum class FpCategory : rstd::uint8_t
 }
 
 #ifndef RSTD_CHECK_INTEGER_OVERFLOW
-#error "RSTD_CHECK_INTEGER_OVERFLOW must be defined by the rstd.core target"
+#ifdef NDEBUG
+#define RSTD_CHECK_INTEGER_OVERFLOW 0
+#else
+#define RSTD_CHECK_INTEGER_OVERFLOW 1
+#endif
 #endif
 
 inline constexpr bool CHECK_INTEGER_OVERFLOW = RSTD_CHECK_INTEGER_OVERFLOW;

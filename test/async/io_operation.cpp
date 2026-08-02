@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+#include <rstd/test/gtest.hpp>
 #include <atomic>
 #include <cstdlib>
 
@@ -323,6 +323,8 @@ TEST(RstdAsyncIoOperation, TimedOutReadCancelsAndLeavesSocketUsable) {
                                                  time::Duration::from_millis(u64(2))));
 
     EXPECT_TRUE(timed.is_err());
+    auto released = runtime.block_on(rstd::move(source).release());
+    ASSERT_TRUE(released.is_ok());
     auto result = runtime.block_on(completion_round_trip(sockets.first, sockets.second));
     ASSERT_TRUE(result.is_ok());
     EXPECT_EQ(rstd::move(result).unwrap_unchecked().len(), usize(4));

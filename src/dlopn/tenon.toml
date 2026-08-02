@@ -1,0 +1,26 @@
+[package]
+name = "rstd-dlopn"
+version.workspace = true
+module = "rstd.dlopn"
+target = { os = "linux" }
+
+[library]
+archive = "rstd.dlopn"
+discovery = "explicit"
+sources = ["mod.cppm", "dlopn.cpp"]
+
+[usage]
+private-options = [
+  "-fPIC",
+  "-Wall",
+  "-Wpedantic",
+  "-Wno-gnu-statement-expression",
+  "-Wno-deprecated-declarations",
+  "-Wunknown-attributes",
+  "-fsized-deallocation",
+]
+private-linker-options = ["-ldl"]
+
+[dependencies.rstd-std]
+path = "../.."
+visibility = "public"

@@ -1,4 +1,5 @@
-#include <gtest/gtest.h>
+#include <rstd/test/gtest.hpp>
+#include <atomic>
 
 import rstd;
 

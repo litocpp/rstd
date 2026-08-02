@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+#include <rstd/test/gtest.hpp>
 #include <rstd/macro.hpp>
 
 #include <type_traits>

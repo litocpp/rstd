@@ -20,9 +20,7 @@ if(WIN32
   get_filename_component(RSTD_COMPILER_RT_LIBRARY "${RSTD_COMPILER_RT_PATH}" NAME_WLE)
 endif()
 
-option(RSTD_BUILD_TESTING "Build tests" ${PROJECT_IS_TOP_LEVEL})
 option(RSTD_BUILD_BENCHMARKS "Build rstd benchmark executables" OFF)
-option(RSTD_BENCHMARKS_IN_CTEST "Register benchmark smoke tests in ctest" OFF)
 option(RSTD_USE_ASAN "asan" OFF)
 option(RSTD_CHECK_INTEGER_OVERFLOW
        "Enable integer overflow checks in non-Debug builds" OFF)
@@ -52,12 +50,6 @@ if(PROJECT_IS_TOP_LEVEL)
   add_compile_options("$<$<COMPILE_LANG_AND_ID:CXX,GNU>:${GNU_OPTS}>")
   add_compile_options("$<$<COMPILE_LANG_AND_ID:CXX,Clang>:${CLANG_OPTS}>")
   add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:${ALL_OPTS}>")
-endif()
-
-
-
-if(RSTD_BUILD_TESTING OR RSTD_BENCHMARKS_IN_CTEST)
-  include(CTest)
 endif()
 
 add_subdirectory(src)
@@ -157,9 +149,4 @@ if(PROJECT_IS_TOP_LEVEL)
     FILES ${CMAKE_CURRENT_BINARY_DIR}/rstdConfig.cmake
           ${CMAKE_CURRENT_BINARY_DIR}/rstdConfigVersion.cmake
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/rstd)
-endif()
-
-# Testing configuration
-if(RSTD_BUILD_TESTING AND BUILD_TESTING)
-  add_subdirectory(test)
 endif()

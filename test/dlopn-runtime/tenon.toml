@@ -1,0 +1,29 @@
+[package]
+name = "rstd-dlopn-tests"
+version.workspace = true
+module = "rstd.tests.dlopn"
+target = { os = "linux" }
+
+[test]
+name = "rstd-dlopn-tests"
+discovery = "explicit"
+sources = ["main.cpp", "dlopn.cpp"]
+
+[usage]
+private-options = [
+  "-fPIC",
+  "-Wall",
+  "-Wpedantic",
+  "-Wno-gnu-statement-expression",
+  "-Wno-deprecated-declarations",
+  "-Wunknown-attributes",
+  "-fsized-deallocation",
+]
+
+[dependencies.rstd-dlopn]
+path = "../../src/dlopn"
+visibility = "private"
+
+[dependencies.rstd-test]
+path = "../../src/test"
+visibility = "private"

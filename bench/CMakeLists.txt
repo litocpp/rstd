@@ -22,8 +22,3 @@ endif()
 target_compile_definitions(
   rstd_bench PRIVATE RSTD_BENCH_BUILD_TYPE="${RSTD_BENCH_BUILD_TYPE_VALUE}"
                      RSTD_BENCH_ASAN=$<BOOL:${RSTD_USE_ASAN}>)
-
-if(RSTD_BENCHMARKS_IN_CTEST)
-  add_test(NAME rstd_bench_quick COMMAND rstd_bench --suite all --quick)
-  set_tests_properties(rstd_bench_quick PROPERTIES LABELS benchmark)
-endif()

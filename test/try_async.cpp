@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+#include <rstd/test/gtest.hpp>
 #include <string>
 #include <rstd/macro.hpp>
 import rstd;
