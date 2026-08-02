@@ -114,6 +114,26 @@ TEST(Path, ComponentsLeadingCurDir) {
     EXPECT_TRUE(c.next().is_none());
 }
 
+TEST(Path, ValueEqualityUsesComponents) {
+    auto left  = PathBuf::from("a//./b/"_str);
+    auto right = PathBuf::from("a/b"_str);
+    EXPECT_TRUE(left.as_path() == right.as_path());
+    EXPECT_FALSE(left.as_path() == rstd::ref<Path>("a/c"_str));
+    EXPECT_FALSE(rstd::ref<Path>("a/../b"_str) == rstd::ref<Path>("b"_str));
+    EXPECT_TRUE(rstd::ref<Path>(""_str) == rstd::ref<Path>(""_str));
+}
+
+TEST(Path, ValueEqualitySupportsNonUtf8) {
+    auto left = rstd::ref<Path>(
+        rstd::ref<rstd::ffi::OsStr>::from_encoded_bytes_unchecked("a/\xff"_bytes));
+    auto same = rstd::ref<Path>(
+        rstd::ref<rstd::ffi::OsStr>::from_encoded_bytes_unchecked("a/\xff"_bytes));
+    auto different = rstd::ref<Path>(
+        rstd::ref<rstd::ffi::OsStr>::from_encoded_bytes_unchecked("a/\xfe"_bytes));
+    EXPECT_TRUE(left == same);
+    EXPECT_FALSE(left == different);
+}
+
 TEST(Path, HasRoot) {
     EXPECT_TRUE(rstd::ref<Path>("/usr"_str).has_root());
     EXPECT_FALSE(rstd::ref<Path>("usr"_str).has_root());

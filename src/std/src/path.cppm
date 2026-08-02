@@ -295,6 +295,19 @@ struct ref<path::Path> : ref_base<ref<path::Path>, byte[], false> {
         return path::Components(p, length);
     }
 
+    constexpr auto operator==(ref<path::Path> other) const noexcept -> bool {
+        auto left  = components();
+        auto right = other.components();
+        while (true) {
+            auto left_component  = left.next();
+            auto right_component = right.next();
+            if (left_component.is_none() || right_component.is_none()) {
+                return left_component.is_none() && right_component.is_none();
+            }
+            if (! (*left_component == *right_component)) return false;
+        }
+    }
+
     /// Returns `true` when `base` is a component-wise prefix of this path.
     constexpr auto starts_with(ref<path::Path> base) const noexcept -> bool {
         auto iter   = components();
