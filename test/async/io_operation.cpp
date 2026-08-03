@@ -7,6 +7,7 @@
 #include <ws2tcpip.h>
 #include <windows.h>
 #else
+#include <fcntl.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #endif
@@ -376,6 +377,91 @@ TEST(RstdAsyncIoOperation, RuntimeShutdownDrainsPendingRead) {
 }
 
 #if defined(__linux__)
+auto read_file_one(os::fd::RawFd fd) -> async::coro<io::Result<async::IoCompletion>> {
+    auto source = async::CompletionSource::file(os::fd::BorrowedFd::borrow_raw(fd));
+    co_return co_await async::IoOperation::read(source, usize(1));
+}
+
+void restore_io_uring_environment(Option<ffi::OsString> previous) {
+    if (previous.is_some()) {
+        env::set_var("RSTD_ASYNC_DISABLE_IO_URING"_str, previous->as_os_str());
+    } else {
+        env::remove_var("RSTD_ASYNC_DISABLE_IO_URING"_str);
+    }
+}
+
+TEST(RstdAsyncIoOperation, BuilderSnapshotsDisabledIoUringEnvironment) {
+    auto previous = env::var_os("RSTD_ASYNC_DISABLE_IO_URING"_str);
+    env::set_var("RSTD_ASYNC_DISABLE_IO_URING"_str, "0"_str);
+    auto builder = async::RuntimeBuilder::current_thread();
+    restore_io_uring_environment(rstd::move(previous));
+
+    builder.enable_io();
+    auto built = builder.build();
+    ASSERT_TRUE(built.is_ok());
+    auto runtime = rstd::move(built).unwrap_unchecked();
+
+    auto pair = make_socket_pair();
+    ASSERT_TRUE(pair.is_some());
+    auto sockets       = rstd::move(pair).unwrap_unchecked();
+    auto socket_result = runtime.block_on(completion_round_trip(sockets.first, sockets.second));
+    ASSERT_TRUE(socket_result.is_ok());
+    EXPECT_EQ(rstd::move(socket_result).unwrap_unchecked().len(), usize(4));
+
+    auto raw_file = ::open("/dev/null", O_RDONLY | O_CLOEXEC);
+    ASSERT_GE(raw_file, 0);
+    auto file        = os::fd::OwnedFd::from_raw_fd(raw_file);
+    auto file_result = runtime.block_on(read_file_one(file.as_raw_fd()));
+    ASSERT_TRUE(file_result.is_err());
+    EXPECT_EQ(rstd::move(file_result).unwrap_err_unchecked().kind(),
+              io::error::ErrorKind { io::error::ErrorKind::Unsupported });
+}
+
+TEST(RstdAsyncIoOperation, DefaultRuntimeSnapshotsDisabledIoUringEnvironment) {
+    auto previous = env::var_os("RSTD_ASYNC_DISABLE_IO_URING"_str);
+    env::set_var("RSTD_ASYNC_DISABLE_IO_URING"_str, "1"_str);
+    auto runtime = async::Runtime {};
+    restore_io_uring_environment(rstd::move(previous));
+
+    auto raw_file = ::open("/dev/null", O_RDONLY | O_CLOEXEC);
+    ASSERT_GE(raw_file, 0);
+    auto file        = os::fd::OwnedFd::from_raw_fd(raw_file);
+    auto file_result = runtime.block_on(read_file_one(file.as_raw_fd()));
+    ASSERT_TRUE(file_result.is_err());
+    EXPECT_EQ(rstd::move(file_result).unwrap_err_unchecked().kind(),
+              io::error::ErrorKind { io::error::ErrorKind::Unsupported });
+}
+
+TEST(RstdAsyncIoOperation, BuilderIgnoresEnvironmentChangesAfterConstruction) {
+    auto raw_file = ::open("/dev/null", O_RDONLY | O_CLOEXEC);
+    ASSERT_GE(raw_file, 0);
+    auto file = os::fd::OwnedFd::from_raw_fd(raw_file);
+
+    auto previous = env::var_os("RSTD_ASYNC_DISABLE_IO_URING"_str);
+    env::remove_var("RSTD_ASYNC_DISABLE_IO_URING"_str);
+    auto probe_builder = async::RuntimeBuilder::current_thread();
+    probe_builder.enable_io();
+    auto probe_runtime = probe_builder.build().unwrap();
+    auto probe_result  = probe_runtime.block_on(read_file_one(file.as_raw_fd()));
+    if (probe_result.is_err()) {
+        auto error = rstd::move(probe_result).unwrap_err_unchecked();
+        restore_io_uring_environment(rstd::move(previous));
+        if (error.kind() == io::error::ErrorKind { io::error::ErrorKind::Unsupported }) {
+            GTEST_SKIP() << "io_uring is unavailable";
+        }
+        FAIL() << "native file completion probe failed";
+    }
+
+    auto builder = async::RuntimeBuilder::current_thread();
+    builder.enable_io();
+    env::set_var("RSTD_ASYNC_DISABLE_IO_URING"_str, "1"_str);
+    auto runtime     = builder.build().unwrap();
+    auto file_result = runtime.block_on(read_file_one(file.as_raw_fd()));
+    restore_io_uring_environment(rstd::move(previous));
+
+    ASSERT_TRUE(file_result.is_ok());
+}
+
 auto file_completion_round_trip(os::fd::BorrowedFd fd) -> async::coro<io::Result<bytes::Bytes>> {
     auto source = async::CompletionSource::file(fd);
     auto write =

@@ -226,7 +226,7 @@ export class RuntimeBuilder {
         : m_kind(kind),
           m_worker_threads(worker_threads),
           m_thread_name(None()),
-          m_config(RuntimeConfig {}) {}
+          m_config(RuntimeConfig::disabled()) {}
 
     friend struct RuntimeBuilderConfigAccess;
 

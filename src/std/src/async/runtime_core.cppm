@@ -1,13 +1,18 @@
+module;
+#include <rstd/macro.hpp>
+
 export module rstd:async.runtime_core;
 import :async.awaitable;
 import :async.facility;
 import :async.forward;
 import :async.poll;
+import :env;
 import rstd.alloc;
 import :sync;
 import :thread;
 
 using namespace rstd;
+using namespace rstd::literals;
 
 using ::alloc::vec::Vec;
 using AsyncPoll = rstd::async::Poll;
@@ -228,13 +233,26 @@ enum class WorkerAttachResult
     Closed,
 };
 
-struct RuntimeConfig {
-    bool                enable_io { false };
-    bool                enable_time { false };
-    IoBackendPreference io_backend { IoBackendPreference::Auto };
+auto default_io_backend_preference() -> IoBackendPreference {
+#if RSTD_OS_LINUX
+    if (rstd::env::var_os("RSTD_ASYNC_DISABLE_IO_URING"_str).is_some()) {
+        return IoBackendPreference::ReadinessEmulationRequired;
+    }
+#endif
+    return IoBackendPreference::Auto;
+}
 
-    static constexpr auto all() noexcept -> RuntimeConfig {
-        return RuntimeConfig { true, true, IoBackendPreference::Auto };
+struct RuntimeConfig {
+    bool                enable_io;
+    bool                enable_time;
+    IoBackendPreference io_backend;
+
+    static auto disabled() -> RuntimeConfig {
+        return RuntimeConfig { false, false, default_io_backend_preference() };
+    }
+
+    static auto all() -> RuntimeConfig {
+        return RuntimeConfig { true, true, default_io_backend_preference() };
     }
 };
 
@@ -1330,9 +1348,7 @@ struct RuntimeInner {
     RuntimeShared            m_shared;
     sync::Weak<RuntimeInner> self;
 
-    explicit RuntimeInner(RuntimeKind   kind         = RuntimeKind::CurrentThread,
-                          RuntimeConfig config       = RuntimeConfig {},
-                          usize         worker_count = usize())
+    explicit RuntimeInner(RuntimeKind kind, RuntimeConfig config, usize worker_count)
         : m_kind(kind),
           m_config(config),
           m_shared(kind == RuntimeKind::CurrentThread ? usize(1) : worker_count, kind),
