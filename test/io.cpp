@@ -86,8 +86,8 @@ TEST(Io, ErrorOsDisplay) {
 }
 
 TEST(Io, ErrorMessage) {
-    static_assert(io::error::Error_READ_EXACT_EOF.tag() == Error::Tag::Message);
     auto e = io::error::Error_READ_EXACT_EOF;
+    EXPECT_EQ(e.tag(), Error::Tag::Message);
     EXPECT_EQ(e.kind(), ErrorKind { ErrorKind::UnexpectedEof });
     EXPECT_EQ(rstd::format("{}", e), "failed to fill whole buffer"_str);
 }
