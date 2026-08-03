@@ -12,7 +12,7 @@ namespace rstd::test::gtest
 Descriptor* registry_head {};
 
 struct DeathState {
-    String        program;
+    String         program;
     Option<String> case_name;
     Option<usize>  index;
 };
@@ -20,8 +20,7 @@ struct DeathState {
 DeathState death_state;
 
 auto raw_str(const char* value, unsigned long length) noexcept -> ref<str> {
-    return ref<str>::from_raw_parts_unchecked(
-        reinterpret_cast<const byte*>(value), usize(length));
+    return ref<str>::from_raw_parts_unchecked(reinterpret_cast<const byte*>(value), usize(length));
 }
 
 auto raw_str(const char* value) noexcept -> ref<str> {
@@ -63,7 +62,7 @@ rstd::test::gtest::Registrar::Registrar(Descriptor* descriptor) noexcept {
     auto* head = __atomic_load_n(&registry_head, __ATOMIC_RELAXED);
     do {
         descriptor->next = head;
-    } while (!__atomic_compare_exchange_n(
+    } while (! __atomic_compare_exchange_n(
         &registry_head, &head, descriptor, false, __ATOMIC_RELEASE, __ATOMIC_RELAXED));
 }
 
@@ -154,9 +153,8 @@ auto rstd::test::gtest::record_assertion(bool        success,
     fail_current(raw_str(expression), file, line, fatal);
 }
 
-auto rstd::test::gtest::float_equal(double left,
-                                    double right,
-                                    bool   single_precision) noexcept -> bool {
+auto rstd::test::gtest::float_equal(double left, double right, bool single_precision) noexcept
+    -> bool {
     if (left == right) return true;
     auto difference = __builtin_fabs(left - right);
     auto magnitude  = __builtin_fmax(__builtin_fabs(left), __builtin_fabs(right));
@@ -164,13 +162,13 @@ auto rstd::test::gtest::float_equal(double left,
     return difference <= epsilon * 4.0 * __builtin_fmax(1.0, magnitude);
 }
 
-auto rstd::test::gtest::float_near(double left,
-                                   double right,
-                                   double absolute_error) noexcept -> bool {
+auto rstd::test::gtest::float_near(double left, double right, double absolute_error) noexcept
+    -> bool {
     return absolute_error >= 0.0 && __builtin_fabs(left - right) <= absolute_error;
 }
 
-[[noreturn]] auto rstd::test::gtest::death_survived() noexcept -> void {
+[[noreturn]]
+auto rstd::test::gtest::death_survived() noexcept -> void {
     process::exit(i32(86));
 }
 
@@ -184,9 +182,9 @@ auto configure_death(const char*   program,
                      bool          has_case,
                      unsigned long index) noexcept -> void {
     death_state = DeathState {
-        .program = String::make(raw_str(program, program_length)),
+        .program   = String::make(raw_str(program, program_length)),
         .case_name = has_case ? Some(String::make(raw_str(case_name, case_length))) : None(),
-        .index = has_case ? Some(usize(index)) : None(),
+        .index     = has_case ? Some(usize(index)) : None(),
     };
 }
 
@@ -194,7 +192,8 @@ auto death_child_active() noexcept -> bool {
     return death_state.case_name.is_some() && death_state.index.is_some();
 }
 
-[[noreturn]] auto finish_death_child() noexcept -> void {
+[[noreturn]]
+auto finish_death_child() noexcept -> void {
     process::exit(i32(87));
 }
 
@@ -256,14 +255,14 @@ auto rstd::test::gtest::death_begin(const char* pattern, const char* file, int l
     }
     auto output = rstd::move(captured).unwrap();
     auto code   = output.status.code();
-    auto died   = !output.status.success() &&
-                (code.is_none() || (*code != i32(86) && *code != i32(87)));
-    if (!died) {
+    auto died =
+        ! output.status.success() && (code.is_none() || (*code != i32(86) && *code != i32(87)));
+    if (! died) {
         fail_current("death statement returned normally"_str, file, line, false);
         return DeathDecision::Skip;
     }
     auto expected = raw_str(pattern);
-    if (!output_contains(output.stderr_buf, expected)) {
+    if (! output_contains(output.stderr_buf, expected)) {
         fail_current("death output did not contain expected text"_str, file, line, false);
     }
     return DeathDecision::Skip;

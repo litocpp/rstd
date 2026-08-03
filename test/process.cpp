@@ -92,10 +92,8 @@ TEST(Process, CommandCurrentDirectory) {
 }
 
 TEST(Process, ChildTryWait) {
-    auto child = rstd::process::Command::make("sh"_str)
-                     .arg("-c"_str)
-                     .arg("sleep 0.02; exit 7"_str)
-                     .spawn();
+    auto child =
+        rstd::process::Command::make("sh"_str).arg("-c"_str).arg("sleep 0.02; exit 7"_str).spawn();
     ASSERT_TRUE(child.is_ok());
     auto running = rstd::move(child).unwrap();
     auto first   = running.try_wait();

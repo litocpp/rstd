@@ -154,7 +154,9 @@ auto Child::wait_with_output() -> io::Result<Output> {
     int out_fd = stdout_pipe.is_some() ? (*stdout_pipe).fd : -1;
     int err_fd = stderr_pipe.is_some() ? (*stderr_pipe).fd : -1;
 
-    auto stderr_reader = rstd::thread::spawn([err_fd, &read_all]() { return read_all(err_fd); });
+    auto stderr_reader = rstd::thread::spawn([err_fd, &read_all]() {
+        return read_all(err_fd);
+    });
     if (stderr_reader.is_err()) {
         (void)kill();
         auto out_buf = read_all(out_fd);

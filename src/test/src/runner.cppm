@@ -13,7 +13,7 @@ namespace rstd::test
 {
 
 struct RunOptions {
-    String        program;
+    String         program;
     Option<String> filter;
     Option<String> death_case;
     Option<usize>  death_index;
@@ -114,8 +114,8 @@ auto validate_suites(slice<TestSuite> suites) -> Result<empty, String> {
 }
 
 auto raw_str(const char* value) noexcept -> ref<str> {
-    return ref<str>::from_raw_parts_unchecked(
-        reinterpret_cast<const byte*>(value), usize(__builtin_strlen(value)));
+    return ref<str>::from_raw_parts_unchecked(reinterpret_cast<const byte*>(value),
+                                              usize(__builtin_strlen(value)));
 }
 
 auto descriptor_name(const gtest::Descriptor& descriptor) -> String {
@@ -196,7 +196,7 @@ auto finish_run(const RunOptions& options, const RunCounts& counts) -> i32 {
 auto prepare_run() -> Result<RunOptions, String> {
     auto parsed = parse_options();
     if (parsed.is_err()) return Err(rstd::move(parsed).unwrap_err());
-    auto options = rstd::move(parsed).unwrap();
+    auto options     = rstd::move(parsed).unwrap();
     auto case_name   = options.death_case.is_some() ? options.death_case->as_str() : ref<str> {};
     auto death_index = options.death_index.is_some() ? *options.death_index : usize {};
     gtest::configure_death(reinterpret_cast<const char*>(options.program.as_str().data()),
@@ -229,7 +229,7 @@ auto run(slice<TestSuite> suites) -> i32 {
     for (const auto& suite : suites) {
         for (const auto& test_case : suite.cases) {
             auto name = full_name(suite, test_case);
-            if (!selected(options, name.as_str())) continue;
+            if (! selected(options, name.as_str())) continue;
             ++counts.executed;
             if (options.list) {
                 io::println("{}", name.as_str());
@@ -263,7 +263,7 @@ auto run_registered() -> i32 {
     auto counts      = RunCounts {};
     for (const auto* descriptor : descriptors) {
         auto name = descriptor_name(*descriptor);
-        if (!selected(options, name.as_str())) continue;
+        if (! selected(options, name.as_str())) continue;
         ++counts.executed;
         if (options.list) {
             io::println("{}", name.as_str());
@@ -271,7 +271,7 @@ auto run_registered() -> i32 {
         }
 
         io::println("[run] {}", name.as_str());
-        auto context = TestContext(raw_str(descriptor->suite), raw_str(descriptor->name));
+        auto context  = TestContext(raw_str(descriptor->suite), raw_str(descriptor->name));
         auto previous = replace_test_context(rstd::addressof(context));
         descriptor->function();
         (void)replace_test_context(previous);

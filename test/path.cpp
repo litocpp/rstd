@@ -124,12 +124,12 @@ TEST(Path, ValueEqualityUsesComponents) {
 }
 
 TEST(Path, ValueEqualitySupportsNonUtf8) {
-    auto left = rstd::ref<Path>(
-        rstd::ref<rstd::ffi::OsStr>::from_encoded_bytes_unchecked("a/\xff"_bytes));
-    auto same = rstd::ref<Path>(
-        rstd::ref<rstd::ffi::OsStr>::from_encoded_bytes_unchecked("a/\xff"_bytes));
-    auto different = rstd::ref<Path>(
-        rstd::ref<rstd::ffi::OsStr>::from_encoded_bytes_unchecked("a/\xfe"_bytes));
+    auto left =
+        rstd::ref<Path>(rstd::ref<rstd::ffi::OsStr>::from_encoded_bytes_unchecked("a/\xff"_bytes));
+    auto same =
+        rstd::ref<Path>(rstd::ref<rstd::ffi::OsStr>::from_encoded_bytes_unchecked("a/\xff"_bytes));
+    auto different =
+        rstd::ref<Path>(rstd::ref<rstd::ffi::OsStr>::from_encoded_bytes_unchecked("a/\xfe"_bytes));
     EXPECT_TRUE(left == same);
     EXPECT_FALSE(left == different);
 }

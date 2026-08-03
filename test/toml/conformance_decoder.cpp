@@ -144,8 +144,8 @@ auto convert(const Toml& value) -> Json {
 }
 
 auto read_input() -> rstd::Result<rstd::vec::Vec<rstd::u8>, rstd::io::error::Error> {
-    auto       input = rstd::io::stdin();
-    auto       bytes = rstd::vec::Vec<rstd::u8>::make();
+    auto input  = rstd::io::stdin();
+    auto bytes  = rstd::vec::Vec<rstd::u8>::make();
     auto buffer = rstd::array<rstd::u8, 8192> {};
     for (;;) {
         auto read = rstd::as<rstd::io::Read>(input).read(buffer.as_mut_slice());
@@ -179,14 +179,12 @@ TEST(TomlConformance, Version220) {
         GTEST_SKIP() << "RSTD_TOML_TEST_EXECUTABLE is not configured";
     }
 
-    auto version =
-        rstd::process::Command::make(configured->as_str()).arg("version"_str).output();
+    auto version = rstd::process::Command::make(configured->as_str()).arg("version"_str).output();
     if (version.is_err()) {
         FAIL() << "toml-test version failed";
     }
     auto version_text = rstd::string::String::from_utf8(rstd::move(version->stdout_buf));
-    if (version_text.is_err() ||
-        ! version_text->as_str().starts_with("toml-test v2.2.0;"_str)) {
+    if (version_text.is_err() || ! version_text->as_str().starts_with("toml-test v2.2.0;"_str)) {
         FAIL() << "expected toml-test v2.2.0";
     }
 
