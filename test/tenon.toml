@@ -101,7 +101,13 @@ sources = [
 ]
 source-groups = [
   { sources = ["sys/sync/condvar/pthread.cpp", "sys/sync/mutex/pthread.cpp", "process.cpp", "os_fd.cpp", "fs.cpp", "net.cpp"], target = { family = "unix" } },
-  { sources = ["async/io_backend.cppm", "async/poll.cpp"], target = { os = "linux" } },
+  { sources = ["async/poll.cpp"], target = { os = "linux" } },
+]
+
+[[test.attach]]
+package = "rstd-std"
+source-groups = [
+  { sources = ["async/io_backend.cppm"], target = { os = "linux" } },
 ]
 
 [usage]
