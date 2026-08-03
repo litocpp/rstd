@@ -132,8 +132,7 @@ auto rstd::test::gtest::Message::operator<<(float value) noexcept -> Message& {
 }
 
 auto rstd::test::gtest::Message::operator<<(double value) noexcept -> Message& {
-    (void)value;
-    append("<double>", 8);
+    append_formatted(*this, value);
     return *this;
 }
 

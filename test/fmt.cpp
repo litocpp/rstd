@@ -10,6 +10,10 @@ static_assert(Impled<f32, fmt::Display>);
 static_assert(Impled<f32, fmt::Debug>);
 static_assert(Impled<f64, fmt::LowerExp>);
 static_assert(Impled<f64, fmt::UpperExp>);
+static_assert(Impled<double, fmt::Display>);
+static_assert(Impled<double, fmt::Debug>);
+static_assert(Impled<double, fmt::LowerExp>);
+static_assert(Impled<double, fmt::UpperExp>);
 
 TEST(Fmt, Basic) {
     auto s = rstd::format("Hello, {}!", "world"_str);
@@ -52,6 +56,11 @@ TEST(Fmt, FloatDisplayAndDebug) {
     EXPECT_EQ(rstd::format("{:?} {:?} {:?} {:?}", f64(1.0), f64(1e16), f64(1e-4), f64(1e-5)),
               "1.0 1e16 0.0001 1e-5"_str);
     EXPECT_EQ(rstd::format("{}", f32(1.2345678f)), "1.2345678"_str);
+}
+
+TEST(Fmt, NativeDouble) {
+    EXPECT_EQ(rstd::format("{} {:?} {:.3e} {:E}", 1.25, 1e-5, 42.0, 0.0042),
+              "1.25 1e-5 4.200e1 4.2E-3"_str);
 }
 
 TEST(Fmt, FloatPrecisionAndExponent) {

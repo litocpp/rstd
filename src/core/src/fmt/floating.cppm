@@ -10,6 +10,18 @@ namespace rstd::fmt::float_detail
 template<typename T>
 concept Float = num::flt2dec::Float<T>;
 
+template<typename T>
+concept FormattableFloat = Float<T> || rstd::mtp::same<rstd::mtp::rm_cvf<T>, double>;
+
+template<FormattableFloat T>
+constexpr auto normalize(T value) noexcept {
+    if constexpr (Float<T>) {
+        return value;
+    } else {
+        return rstd::f64(value);
+    }
+}
+
 constexpr rstd::size_t BUFFER_SIZE = 1536;
 
 struct Rendered {
@@ -203,31 +215,35 @@ auto write(Formatter& formatter, T value, Presentation presentation) -> bool {
 namespace rstd
 {
 
-template<fmt::float_detail::Float T>
+template<fmt::float_detail::FormattableFloat T>
 struct Impl<fmt::Display, T> : ImplBase<T> {
     auto fmt(fmt::Formatter& formatter) const -> bool {
-        return fmt::float_detail::write(formatter, this->self(), fmt::Presentation::Display);
+        return fmt::float_detail::write(
+            formatter, fmt::float_detail::normalize(this->self()), fmt::Presentation::Display);
     }
 };
 
-template<fmt::float_detail::Float T>
+template<fmt::float_detail::FormattableFloat T>
 struct Impl<fmt::Debug, T> : ImplBase<T> {
     auto fmt(fmt::Formatter& formatter) const -> bool {
-        return fmt::float_detail::write(formatter, this->self(), fmt::Presentation::Debug);
+        return fmt::float_detail::write(
+            formatter, fmt::float_detail::normalize(this->self()), fmt::Presentation::Debug);
     }
 };
 
-template<fmt::float_detail::Float T>
+template<fmt::float_detail::FormattableFloat T>
 struct Impl<fmt::LowerExp, T> : ImplBase<T> {
     auto fmt(fmt::Formatter& formatter) const -> bool {
-        return fmt::float_detail::write(formatter, this->self(), fmt::Presentation::LowerExp);
+        return fmt::float_detail::write(
+            formatter, fmt::float_detail::normalize(this->self()), fmt::Presentation::LowerExp);
     }
 };
 
-template<fmt::float_detail::Float T>
+template<fmt::float_detail::FormattableFloat T>
 struct Impl<fmt::UpperExp, T> : ImplBase<T> {
     auto fmt(fmt::Formatter& formatter) const -> bool {
-        return fmt::float_detail::write(formatter, this->self(), fmt::Presentation::UpperExp);
+        return fmt::float_detail::write(
+            formatter, fmt::float_detail::normalize(this->self()), fmt::Presentation::UpperExp);
     }
 };
 
