@@ -583,22 +583,24 @@ public:
 
     /// Returns the contained value, consuming the option. Panics with the given message if `None`.
     /// \param msg The panic message to display if the value is `None`.
+    /// \param loc The automatically captured caller location.
     /// \return The contained value.
-    auto expect(ref<str> msg) -> T {
+    auto expect(ref<str> msg, rstd::panic_::SrcLoc loc = {}) -> T {
         if (this->is_some()) {
             return _get_move(*this);
         }
-        rstd::panic("{}", msg);
+        rstd::panic { msg, loc };
         rstd::unreachable();
     }
 
     /// Returns the contained value, consuming the option. Panics if the value is `None`.
+    /// \param loc The automatically captured caller location.
     /// \return The contained value.
-    auto unwrap() -> T {
+    auto unwrap(rstd::panic_::SrcLoc loc = {}) -> T {
         if (this->is_some()) {
             return _get_move(*this);
         }
-        rstd::panic("called `Option::unwrap()` on a `None` value");
+        rstd::panic { "called `Option::unwrap()` on a `None` value", loc };
         rstd::unreachable();
     }
 

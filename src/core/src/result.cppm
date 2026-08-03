@@ -79,9 +79,9 @@ export using result::Err;
 
 } // namespace rstd
 
-template<typename E>
-auto unwrap_failed(ref<str> msg, E& e) {
-    rstd::panic { msg };
+[[noreturn]]
+auto unwrap_failed(ref<str> msg, rstd::panic_::SrcLoc loc) -> void {
+    rstd::panic { msg, loc };
 }
 
 template<typename T, typename E>
@@ -297,24 +297,26 @@ public:
 
     /// Returns the contained `Ok` value. Panics with the given message if `Err`.
     /// \param msg The panic message to display on failure.
+    /// \param loc The automatically captured caller location.
     /// \return The contained `Ok` value.
-    auto expect(ref<str> msg) -> T {
+    auto expect(ref<str> msg, rstd::panic_::SrcLoc loc = {}) -> T {
         if (is_ok()) {
             return _get_move<0>();
         } else {
-            unwrap_failed(msg, _get<1>());
+            unwrap_failed(msg, loc);
             rstd::unreachable();
         }
     }
 
     /// Returns the contained `Ok` value. Panics if the result is `Err`.
+    /// \param loc The automatically captured caller location.
     /// \return The contained `Ok` value.
-    auto unwrap() -> T {
+    auto unwrap(rstd::panic_::SrcLoc loc = {}) -> T {
         if (is_ok()) {
             return _get_move<0>();
         } else {
             using namespace rstd::literals;
-            unwrap_failed("called `Result::unwrap()` on an `Err` value"_str, _get<1>());
+            unwrap_failed("called `Result::unwrap()` on an `Err` value"_str, loc);
             rstd::unreachable();
         }
     }
@@ -333,10 +335,11 @@ public:
 
     /// Returns the contained `Err` value. Panics with the given message if `Ok`.
     /// \param msg The panic message to display on failure.
+    /// \param loc The automatically captured caller location.
     /// \return The contained `Err` value.
-    auto expect_err(ref<str> msg) -> E {
+    auto expect_err(ref<str> msg, rstd::panic_::SrcLoc loc = {}) -> E {
         if (is_ok()) {
-            unwrap_failed(msg, _get<0>());
+            unwrap_failed(msg, loc);
             rstd::unreachable();
         } else {
             return _get_move<1>();
@@ -344,13 +347,14 @@ public:
     }
 
     /// Returns the contained `Err` value. Panics if the result is `Ok`.
+    /// \param loc The automatically captured caller location.
     /// \return The contained `Err` value.
-    auto unwrap_err() -> E {
+    auto unwrap_err(rstd::panic_::SrcLoc loc = {}) -> E {
         if (is_err()) {
             return _get_move<1>();
         } else {
             using namespace rstd::literals;
-            unwrap_failed("called `Result::unwrap_err()` on an `Ok` value"_str, _get<1>());
+            unwrap_failed("called `Result::unwrap_err()` on an `Ok` value"_str, loc);
             rstd::unreachable();
         }
     }

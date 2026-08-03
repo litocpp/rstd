@@ -5,6 +5,7 @@
 
 import rstd;
 using namespace rstd;
+using namespace rstd::literals;
 
 namespace
 {
@@ -49,6 +50,16 @@ TEST(Result, BasicOperations) {
     EXPECT_TRUE(x.is_ok());
     EXPECT_FALSE(x.is_err());
     EXPECT_EQ(x.unwrap(), 3);
+}
+
+TEST(Result, PanicUsesCallerLocation) {
+    Result<int, int> error = Err(7);
+    EXPECT_DEATH(error.unwrap(), "test/result.cpp:");
+    EXPECT_DEATH(error.expect("failed"_str), "test/result.cpp:");
+
+    Result<int, int> value = Ok(7);
+    EXPECT_DEATH(value.unwrap_err(), "test/result.cpp:");
+    EXPECT_DEATH(value.expect_err("failed"_str), "test/result.cpp:");
 }
 
 TEST(Result, CloneOperations) {
