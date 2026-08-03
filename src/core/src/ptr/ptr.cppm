@@ -5,6 +5,7 @@ import :num.types;
 export import :ptr.metadata;
 export import :ops.deref;
 export import :cmp;
+export import :marker;
 
 namespace rstd
 {
@@ -610,6 +611,15 @@ struct mut_ptr<T> : ptr_base<mut_ptr<T>, T, true> {
 /// \tparam T The element type.
 export template<typename T>
 using slice = ref<T[]>;
+
+template<typename T>
+struct Impl<Copy, ptr<T>> {};
+
+template<typename T>
+struct Impl<Copy, mut_ptr<T>> {};
+
+template<typename T>
+struct Impl<Copy, ref<T>> {};
 
 } // namespace rstd
 

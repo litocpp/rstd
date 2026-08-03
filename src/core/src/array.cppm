@@ -7,6 +7,7 @@ export import :clone;
 export import :cmp;
 export import :convert;
 export import :iter;
+export import :marker;
 export import :option;
 export import :panicking;
 export import :slice;
@@ -341,6 +342,16 @@ constexpr auto from_fn(F function) {
 }
 
 } // namespace array_
+
+template<typename T, rstd::size_t N>
+    requires Impled<T, clone::Clone>
+struct Impl<clone::Clone, array<T, N>> : DefaultInImpl<clone::Clone, array<T, N>> {
+    constexpr auto clone() const -> array<T, N> { return this->self().clone(); }
+};
+
+template<typename T, rstd::size_t N>
+    requires Impled<T, Copy>
+struct Impl<Copy, array<T, N>> {};
 
 template<typename T, rstd::size_t N>
 struct Impl<iter::IntoIterator, array<T, N>> : ImplBase<array<T, N>> {

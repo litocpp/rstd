@@ -34,6 +34,7 @@ using rstd::TraitFuncs;
 using rstd::DefaultInClass;
 using rstd::DefaultInImpl;
 
+using rstd::Copy;
 using rstd::Send;
 using rstd::Sized;
 using rstd::Sync;
