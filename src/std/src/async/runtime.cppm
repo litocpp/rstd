@@ -8,6 +8,7 @@ import :io;
 import rstd.alloc;
 import :sync;
 import :thread;
+import :time;
 
 using ::alloc::vec::Vec;
 using ::alloc::string::String;
@@ -44,6 +45,15 @@ public:
         auto driver = make_runtime_driver(into_coro(rstd::move(awaitable)));
         return ::spawn_driver_on(*inner.as_ptr().as_raw_ptr(), rstd::move(driver));
     }
+
+    template<typename F>
+    auto spawn_blocking(F&& function) const -> io::Result<JoinHandle<mtp::invoke_result_t<F>>> {
+        auto inner = m_inner.upgrade();
+        if (! inner) {
+            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected }));
+        }
+        return ::spawn_blocking_on(*inner.as_ptr().as_raw_ptr(), rstd::forward<F>(function));
+    }
 };
 
 export class Runtime {
@@ -52,9 +62,14 @@ export class Runtime {
     Option<Box<RuntimeWorker>>    m_current_worker;
 
     friend class RuntimeBuilder;
+    friend struct RuntimeBuilderConfigAccess;
 
-    explicit Runtime(RuntimeKind kind, RuntimeConfig config, usize worker_count = usize())
-        : m_inner(sync::Arc<RuntimeInner>::make(kind, config, worker_count)),
+    explicit Runtime(RuntimeKind    kind,
+                     RuntimeConfig  config,
+                     usize          worker_count = usize(),
+                     Option<String> thread_name  = None())
+        : m_inner(
+              sync::Arc<RuntimeInner>::make(kind, config, worker_count, rstd::move(thread_name))),
           m_workers(Vec<thread::JoinHandle<void>>::make()),
           m_current_worker(None()) {
         m_inner->init_self(m_inner.downgrade());
@@ -63,7 +78,12 @@ export class Runtime {
     static auto make_thread_pool(usize                 worker_threads,
                                  Option<String> const& thread_name,
                                  RuntimeConfig         config) -> io::Result<Runtime> {
-        auto runtime = Runtime { RuntimeKind::ThreadPool, config, worker_threads };
+        auto runtime = Runtime { RuntimeKind::ThreadPool,
+                                 config,
+                                 worker_threads,
+                                 thread_name.is_some()
+                                     ? Some(rstd::as<rstd::clone::Clone>(*thread_name).clone())
+                                     : None<String>() };
 
         for (rstd::size_t i = 0; i < worker_threads.to_primitive(); ++i) {
             auto inner     = runtime.m_inner.clone();
@@ -100,7 +120,9 @@ export class Runtime {
             return;
         }
 
+        m_inner->begin_blocking_shutdown();
         m_inner->abort_all_tasks();
+        m_inner->join_blocking_pool();
         m_inner->stop_workers();
         while (! m_workers.is_empty()) {
             auto worker = rstd::move(m_workers.pop()).unwrap_unchecked();
@@ -145,6 +167,11 @@ public:
         }
         auto driver = make_runtime_driver(into_coro(rstd::move(awaitable)));
         return ::spawn_driver_on(*m_inner.as_ptr().as_raw_ptr(), rstd::move(driver));
+    }
+
+    template<typename F>
+    auto spawn_blocking(F&& function) -> io::Result<JoinHandle<mtp::invoke_result_t<F>>> {
+        return ::spawn_blocking_on(*m_inner.as_ptr().as_raw_ptr(), rstd::forward<F>(function));
     }
 
     template<AwaitableInput A>
@@ -244,6 +271,11 @@ public:
         return *this;
     }
 
+    auto max_blocking_threads(usize n) -> RuntimeBuilder& {
+        m_config.max_blocking_threads = n;
+        return *this;
+    }
+
     auto thread_name(String name) -> RuntimeBuilder& {
         m_thread_name = Some(rstd::move(name));
         return *this;
@@ -266,8 +298,17 @@ public:
     }
 
     auto build() -> io::Result<Runtime> {
+        if (m_config.max_blocking_threads == usize()) {
+            return Err(io::error::Error::from_kind(
+                io::error::ErrorKind { io::error::ErrorKind::InvalidInput }));
+        }
         if (m_kind == RuntimeKind::CurrentThread) {
-            return Ok(Runtime { RuntimeKind::CurrentThread, m_config });
+            return Ok(Runtime { RuntimeKind::CurrentThread,
+                                m_config,
+                                usize(),
+                                m_thread_name.is_some()
+                                    ? Some(rstd::as<rstd::clone::Clone>(*m_thread_name).clone())
+                                    : None<String>() });
         }
 
         if (m_worker_threads == usize()) {
@@ -282,6 +323,18 @@ public:
 struct RuntimeBuilderConfigAccess {
     static void set_io_backend(RuntimeBuilder& builder, IoBackendPreference preference) {
         builder.m_config.io_backend = preference;
+    }
+
+    static auto blocking_thread_count(const Runtime& runtime) -> usize {
+        return runtime.m_inner->blocking_thread_count();
+    }
+
+    static void set_blocking_keep_alive(Runtime& runtime, time::Duration keep_alive) {
+        runtime.m_inner->set_blocking_keep_alive(keep_alive);
+    }
+
+    static void fail_next_blocking_spawn(Runtime& runtime) {
+        runtime.m_inner->fail_next_blocking_spawn();
     }
 };
 

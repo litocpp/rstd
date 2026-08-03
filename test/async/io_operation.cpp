@@ -382,6 +382,17 @@ auto read_file_one(os::fd::RawFd fd) -> async::coro<io::Result<async::IoCompleti
     co_return co_await async::IoOperation::read(source, usize(1));
 }
 
+auto start_file_read(os::fd::RawFd fd, std::atomic<bool>& started)
+    -> async::coro<io::Result<async::IoCompletion>> {
+    started.store(true, std::memory_order_release);
+    co_return co_await read_file_one(fd);
+}
+
+auto wait_for_file_submission(std::atomic<bool>& started) -> async::coro<void> {
+    while (! started.load(std::memory_order_acquire)) co_await async::yield_now();
+    co_await async::yield_now();
+}
+
 void restore_io_uring_environment(Option<ffi::OsString> previous) {
     if (previous.is_some()) {
         env::set_var("RSTD_ASYNC_DISABLE_IO_URING"_str, previous->as_os_str());
@@ -412,9 +423,8 @@ TEST(RstdAsyncIoOperation, BuilderSnapshotsDisabledIoUringEnvironment) {
     ASSERT_GE(raw_file, 0);
     auto file        = os::fd::OwnedFd::from_raw_fd(raw_file);
     auto file_result = runtime.block_on(read_file_one(file.as_raw_fd()));
-    ASSERT_TRUE(file_result.is_err());
-    EXPECT_EQ(rstd::move(file_result).unwrap_err_unchecked().kind(),
-              io::error::ErrorKind { io::error::ErrorKind::Unsupported });
+    ASSERT_TRUE(file_result.is_ok());
+    EXPECT_EQ(rstd::move(file_result).unwrap_unchecked().transferred(), usize());
 }
 
 TEST(RstdAsyncIoOperation, DefaultRuntimeSnapshotsDisabledIoUringEnvironment) {
@@ -427,9 +437,8 @@ TEST(RstdAsyncIoOperation, DefaultRuntimeSnapshotsDisabledIoUringEnvironment) {
     ASSERT_GE(raw_file, 0);
     auto file        = os::fd::OwnedFd::from_raw_fd(raw_file);
     auto file_result = runtime.block_on(read_file_one(file.as_raw_fd()));
-    ASSERT_TRUE(file_result.is_err());
-    EXPECT_EQ(rstd::move(file_result).unwrap_err_unchecked().kind(),
-              io::error::ErrorKind { io::error::ErrorKind::Unsupported });
+    ASSERT_TRUE(file_result.is_ok());
+    EXPECT_EQ(rstd::move(file_result).unwrap_unchecked().transferred(), usize());
 }
 
 TEST(RstdAsyncIoOperation, BuilderIgnoresEnvironmentChangesAfterConstruction) {
@@ -439,19 +448,6 @@ TEST(RstdAsyncIoOperation, BuilderIgnoresEnvironmentChangesAfterConstruction) {
 
     auto previous = env::var_os("RSTD_ASYNC_DISABLE_IO_URING"_str);
     env::remove_var("RSTD_ASYNC_DISABLE_IO_URING"_str);
-    auto probe_builder = async::RuntimeBuilder::current_thread();
-    probe_builder.enable_io();
-    auto probe_runtime = probe_builder.build().unwrap();
-    auto probe_result  = probe_runtime.block_on(read_file_one(file.as_raw_fd()));
-    if (probe_result.is_err()) {
-        auto error = rstd::move(probe_result).unwrap_err_unchecked();
-        restore_io_uring_environment(rstd::move(previous));
-        if (error.kind() == io::error::ErrorKind { io::error::ErrorKind::Unsupported }) {
-            GTEST_SKIP() << "io_uring is unavailable";
-        }
-        FAIL() << "native file completion probe failed";
-    }
-
     auto builder = async::RuntimeBuilder::current_thread();
     builder.enable_io();
     env::set_var("RSTD_ASYNC_DISABLE_IO_URING"_str, "1"_str);
@@ -480,20 +476,14 @@ auto file_completion_round_trip(os::fd::BorrowedFd fd) -> async::coro<io::Result
     co_return Ok(rstd::move(read).unwrap_unchecked().into_data());
 }
 
-TEST(RstdAsyncIoOperation, LinuxFileReadWriteCompletesThroughIoUring) {
-    char path[] = "/tmp/rstd-io-uring-XXXXXX";
+void verify_file_completion_round_trip(async::Runtime runtime) {
+    char path[] = "/tmp/rstd-file-completion-XXXXXX";
     auto raw_fd = ::mkstemp(path);
     ASSERT_GE(raw_fd, 0);
     ASSERT_EQ(::unlink(path), 0);
-    auto fd      = os::fd::OwnedFd::from_raw_fd(raw_fd);
-    auto runtime = async::RuntimeBuilder::current_thread().enable_io().build().unwrap();
+    auto fd = os::fd::OwnedFd::from_raw_fd(raw_fd);
 
     auto result = runtime.block_on(file_completion_round_trip(fd.as_fd()));
-    if (result.is_err() && result.unwrap_err_unchecked().kind() ==
-                               io::error::ErrorKind { io::error::ErrorKind::Unsupported }) {
-        GTEST_SKIP() << "io_uring is unavailable";
-    }
-
     ASSERT_TRUE(result.is_ok());
     auto data = rstd::move(result).unwrap_unchecked();
     ASSERT_EQ(data.len(), usize(4));
@@ -501,6 +491,65 @@ TEST(RstdAsyncIoOperation, LinuxFileReadWriteCompletesThroughIoUring) {
     EXPECT_EQ(data[usize(1)], u8('i'));
     EXPECT_EQ(data[usize(2)], u8('l'));
     EXPECT_EQ(data[usize(3)], u8('e'));
+}
+
+TEST(RstdAsyncIoOperation, LinuxFileReadWriteCompletesWithDefaultBackend) {
+    verify_file_completion_round_trip(
+        async::RuntimeBuilder::current_thread().enable_io().build().unwrap());
+}
+
+TEST(RstdAsyncIoOperation, LinuxFileReadWriteCompletesWithIoUringDisabled) {
+    auto previous = env::var_os("RSTD_ASYNC_DISABLE_IO_URING"_str);
+    env::set_var("RSTD_ASYNC_DISABLE_IO_URING"_str, "1"_str);
+    auto current = async::RuntimeBuilder::current_thread().enable_io().build().unwrap();
+    auto pooled =
+        async::RuntimeBuilder::multi_thread().worker_threads(usize(2)).enable_io().build().unwrap();
+    restore_io_uring_environment(rstd::move(previous));
+
+    verify_file_completion_round_trip(rstd::move(current));
+    verify_file_completion_round_trip(rstd::move(pooled));
+}
+
+TEST(RstdAsyncIoOperation, QueuedBlockingFileReadCanBeCancelled) {
+    char path[] = "/tmp/rstd-file-cancel-XXXXXX";
+    auto raw_fd = ::mkstemp(path);
+    ASSERT_GE(raw_fd, 0);
+    ASSERT_EQ(::unlink(path), 0);
+    auto fd = os::fd::OwnedFd::from_raw_fd(raw_fd);
+    ASSERT_EQ(::write(fd.as_raw_fd(), "x", 1), 1);
+    ASSERT_EQ(::lseek(fd.as_raw_fd(), 0, SEEK_SET), 0);
+
+    auto previous = env::var_os("RSTD_ASYNC_DISABLE_IO_URING"_str);
+    env::set_var("RSTD_ASYNC_DISABLE_IO_URING"_str, "1"_str);
+    auto runtime = async::RuntimeBuilder::current_thread()
+                       .max_blocking_threads(usize(1))
+                       .enable_io()
+                       .build()
+                       .unwrap();
+    restore_io_uring_environment(rstd::move(previous));
+
+    auto blocker_entered = std::atomic<bool> { false };
+    auto blocker_release = std::atomic<bool> { false };
+    auto blocker         = runtime.spawn_blocking([&] {
+        blocker_entered.store(true, std::memory_order_release);
+        while (! blocker_release.load(std::memory_order_acquire)) hint::spin_loop();
+    });
+    ASSERT_TRUE(blocker.is_ok());
+    while (! blocker_entered.load(std::memory_order_acquire)) hint::spin_loop();
+
+    auto file_started = std::atomic<bool> { false };
+    auto file_task    = runtime.spawn(start_file_read(fd.as_raw_fd(), file_started));
+    runtime.block_on(wait_for_file_submission(file_started));
+    file_task.abort();
+    runtime.block_on(async::yield_now());
+    blocker_release.store(true, std::memory_order_release);
+    auto blocker_result = runtime.block_on(rstd::move(blocker).unwrap_unchecked());
+    ASSERT_TRUE(blocker_result.is_ok());
+    auto file_result = runtime.block_on(rstd::move(file_task));
+    ASSERT_TRUE(file_result.is_err());
+    EXPECT_TRUE(rstd::move(file_result).unwrap_err_unchecked().is_aborted());
+
+    EXPECT_EQ(::lseek(fd.as_raw_fd(), 0, SEEK_CUR), 0);
 }
 #endif
 

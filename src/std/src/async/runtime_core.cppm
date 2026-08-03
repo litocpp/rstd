@@ -3,6 +3,7 @@ module;
 
 export module rstd:async.runtime_core;
 import :async.awaitable;
+import :async.blocking_pool;
 import :async.facility;
 import :async.forward;
 import :async.poll;
@@ -15,6 +16,7 @@ using namespace rstd;
 using namespace rstd::literals;
 
 using ::alloc::vec::Vec;
+using ::alloc::string::String;
 using AsyncPoll = rstd::async::Poll;
 using rstd::async::PollApplyStatus;
 using rstd::async::PollBatch;
@@ -243,18 +245,31 @@ auto default_io_backend_preference() -> IoBackendPreference {
 }
 
 struct RuntimeConfig {
+    static constexpr usize DEFAULT_MAX_BLOCKING_THREADS { rstd::size_t(512) };
+
     bool                enable_io;
     bool                enable_time;
     IoBackendPreference io_backend;
+    usize               max_blocking_threads;
 
     static auto disabled() -> RuntimeConfig {
-        return RuntimeConfig { false, false, default_io_backend_preference() };
+        return RuntimeConfig {
+            false, false, default_io_backend_preference(), DEFAULT_MAX_BLOCKING_THREADS
+        };
     }
 
     static auto all() -> RuntimeConfig {
-        return RuntimeConfig { true, true, default_io_backend_preference() };
+        return RuntimeConfig {
+            true, true, default_io_backend_preference(), DEFAULT_MAX_BLOCKING_THREADS
+        };
     }
 };
+
+auto blocking_thread_name(Option<String> name) -> Option<String> {
+    if (name.is_none()) return Some(String::make("rstd-blocking"_str));
+    name->push_str("-blocking"_str);
+    return name;
+}
 
 class TaskRef {
     TaskRefControl* control { nullptr };
@@ -1343,14 +1358,20 @@ public:
 };
 
 struct RuntimeInner {
-    RuntimeKind              m_kind;
-    RuntimeConfig            m_config;
-    RuntimeShared            m_shared;
-    sync::Weak<RuntimeInner> self;
+    RuntimeKind                m_kind;
+    RuntimeConfig              m_config;
+    async::RuntimeBlockingPool m_blocking_pool;
+    RuntimeShared              m_shared;
+    sync::Weak<RuntimeInner>   self;
 
-    explicit RuntimeInner(RuntimeKind kind, RuntimeConfig config, usize worker_count)
+    explicit RuntimeInner(RuntimeKind    kind,
+                          RuntimeConfig  config,
+                          usize          worker_count,
+                          Option<String> thread_name)
         : m_kind(kind),
           m_config(config),
+          m_blocking_pool(config.max_blocking_threads,
+                          blocking_thread_name(rstd::move(thread_name))),
           m_shared(kind == RuntimeKind::CurrentThread ? usize(1) : worker_count, kind),
           self(sync::Weak<RuntimeInner>::make()) {}
 
@@ -1366,6 +1387,16 @@ struct RuntimeInner {
     }
 
     auto time_enabled() const -> bool { return m_config.enable_time; }
+
+    auto blocking_spawner() const -> async::BlockingSpawner { return m_blocking_pool.spawner(); }
+    auto blocking_thread_count() const -> usize { return m_blocking_pool.thread_count(); }
+    void set_blocking_keep_alive(time::Duration keep_alive) {
+        m_blocking_pool.set_keep_alive(keep_alive);
+    }
+    void fail_next_blocking_spawn() { m_blocking_pool.fail_next_spawn(); }
+    auto submit_blocking(async::BlockingJob job) -> io::Result<async::BlockingJobCancellation>;
+    void begin_blocking_shutdown() { m_blocking_pool.begin_shutdown(); }
+    void join_blocking_pool() { m_blocking_pool.join(); }
 
     auto current_poll_worker() -> io::Result<WorkerHandle>;
     auto reserve_current_operation(PollEventOwner owner) -> io::Result<OperationKey>;
@@ -1569,6 +1600,14 @@ inline void RuntimeInner::spawn(TaskRef task) {
     }
     auto action = (*access)->activate(task.clone(), *owner);
     (*access)->apply(rstd::move(action));
+}
+
+inline auto RuntimeInner::submit_blocking(async::BlockingJob job)
+    -> io::Result<async::BlockingJobCancellation> {
+    if (! is_running()) {
+        return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected }));
+    }
+    return blocking_spawner().submit(rstd::move(job));
 }
 
 inline auto RuntimeInner::schedule(ScheduleTicket ticket) -> Result<empty, ScheduleTicket> {
@@ -2171,7 +2210,8 @@ inline RuntimeWorker::RuntimeWorker(RuntimeInner& runtime, WorkerHandle handle)
       m_local_poll_commands(Vec<PollCommand>::make()),
       m_poll_state(None()),
       m_poll_init_error(None()) {
-    auto initialized = AsyncPoll::init(runtime.io_backend_preference());
+    auto initialized = rstd::async::PollRuntimeAccess::init(runtime.io_backend_preference(),
+                                                            runtime.blocking_spawner());
     if (initialized.is_err()) {
         m_poll_init_error = Some(rstd::move(initialized).unwrap_err_unchecked());
         return;

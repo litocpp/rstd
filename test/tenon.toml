@@ -66,6 +66,7 @@ sources = [
   "async/frame.cpp",
   "async/lifecycle.cpp",
   "async/runtime.cpp",
+  "async/spawn_blocking.cpp",
   "net_completion.cpp",
   "bytes.cpp",
   "sync/mutex.cpp",

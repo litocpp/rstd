@@ -1,5 +1,6 @@
 module;
 #include <rstd/test/gtest.hpp>
+#include <atomic>
 #include <fcntl.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -8,7 +9,11 @@ export module rstd:async.io_backend_tests;
 import :async.io_operation;
 import :async.poll;
 import :async.runtime;
+import :async.spawn;
 import :sys.pal.poll.types;
+import :thread;
+import :time;
+import rstd.alloc;
 
 using namespace rstd;
 
@@ -62,6 +67,32 @@ void dispatch_all(async::PollBatch batch) {
 auto read_one(os::fd::RawFd fd) -> async::coro<io::Result<async::IoCompletion>> {
     auto source = async::CompletionSource::socket(os::fd::BorrowedFd::borrow_raw(fd));
     co_return co_await async::IoOperation::read(source, usize(1));
+}
+
+auto read_file_one(os::fd::RawFd fd) -> async::coro<io::Result<async::IoCompletion>> {
+    auto source = async::CompletionSource::file(os::fd::BorrowedFd::borrow_raw(fd));
+    co_return co_await async::IoOperation::read(source, usize(1));
+}
+
+void verify_runtime_file_backend(async::IoBackendPreference preference,
+                                 bool                       expect_blocking_thread) {
+    auto builder = async::RuntimeBuilder::current_thread();
+    builder.enable_io();
+    async::RuntimeBuilderConfigAccess::set_io_backend(builder, preference);
+    auto built = builder.build();
+    if (built.is_err()) {
+        GTEST_SKIP() << "requested runtime backend is unavailable";
+    }
+    auto runtime = rstd::move(built).unwrap_unchecked();
+    EXPECT_EQ(async::RuntimeBuilderConfigAccess::blocking_thread_count(runtime), usize());
+
+    auto raw_fd = ::open("/dev/null", O_RDONLY | O_CLOEXEC);
+    ASSERT_GE(raw_fd, 0);
+    auto file   = os::fd::OwnedFd::from_raw_fd(raw_fd);
+    auto result = runtime.block_on(read_file_one(file.as_raw_fd()));
+    ASSERT_TRUE(result.is_ok());
+    EXPECT_EQ(async::RuntimeBuilderConfigAccess::blocking_thread_count(runtime) != usize(),
+              expect_blocking_thread);
 }
 
 void verify_runtime_backend(async::IoBackendPreference preference) {
@@ -253,6 +284,86 @@ TEST(RstdAsyncIoBackend, RuntimeUsesNativeCompletionPreference) {
 
 TEST(RstdAsyncIoBackend, RuntimeUsesReadinessEmulationPreference) {
     verify_runtime_backend(async::IoBackendPreference::ReadinessEmulationRequired);
+}
+
+TEST(RstdAsyncIoBackend, NativeFileCompletionKeepsBlockingPoolLazy) {
+    verify_runtime_file_backend(async::IoBackendPreference::NativeCompletionRequired, false);
+}
+
+TEST(RstdAsyncIoBackend, ReadinessFileCompletionStartsSharedBlockingPool) {
+    verify_runtime_file_backend(async::IoBackendPreference::ReadinessEmulationRequired, true);
+}
+
+TEST(RstdAsyncBlockingPool, GrowsToConfiguredLimit) {
+    auto runtime =
+        async::RuntimeBuilder::current_thread().max_blocking_threads(usize(2)).build().unwrap();
+    auto entered = std::atomic<size_t> { 0 };
+    auto release = std::atomic<bool> { false };
+    auto jobs    = Vec<async::JoinHandle<void>>::make();
+    for (auto index = usize(); index < usize(4); ++index) {
+        auto submitted = runtime.spawn_blocking([&] {
+            entered.fetch_add(1, std::memory_order_release);
+            while (! release.load(std::memory_order_acquire)) hint::spin_loop();
+        });
+        ASSERT_TRUE(submitted.is_ok());
+        jobs.push(rstd::move(submitted).unwrap_unchecked());
+    }
+
+    while (entered.load(std::memory_order_acquire) != 2) hint::spin_loop();
+    EXPECT_EQ(async::RuntimeBuilderConfigAccess::blocking_thread_count(runtime), usize(2));
+    release.store(true, std::memory_order_release);
+    while (! jobs.is_empty()) {
+        EXPECT_TRUE(runtime.block_on(rstd::move(jobs.pop()).unwrap_unchecked()).is_ok());
+    }
+}
+
+TEST(RstdAsyncBlockingPool, IdleWorkerExpiresAndRestarts) {
+    auto runtime =
+        async::RuntimeBuilder::current_thread().max_blocking_threads(usize(1)).build().unwrap();
+    async::RuntimeBuilderConfigAccess::set_blocking_keep_alive(runtime,
+                                                               time::Duration::from_millis(u64(2)));
+    auto first = runtime.spawn_blocking([] {
+        return thread::current().id();
+    });
+    ASSERT_TRUE(first.is_ok());
+    auto first_result = runtime.block_on(rstd::move(first).unwrap_unchecked());
+    ASSERT_TRUE(first_result.is_ok());
+
+    auto started = time::Instant::now();
+    while (async::RuntimeBuilderConfigAccess::blocking_thread_count(runtime) != usize() &&
+           started.elapsed() < time::Duration::from_secs(u64(1))) {
+        thread::yield_now();
+    }
+    ASSERT_EQ(async::RuntimeBuilderConfigAccess::blocking_thread_count(runtime), usize());
+
+    auto second = runtime.spawn_blocking([] {
+        return thread::current().id();
+    });
+    ASSERT_TRUE(second.is_ok());
+    auto second_result = runtime.block_on(rstd::move(second).unwrap_unchecked());
+    ASSERT_TRUE(second_result.is_ok());
+    EXPECT_NE(rstd::move(first_result).unwrap_unchecked(),
+              rstd::move(second_result).unwrap_unchecked());
+}
+
+TEST(RstdAsyncBlockingPool, FirstWorkerSpawnFailureRejectsSubmission) {
+    auto runtime = async::RuntimeBuilder::current_thread().build().unwrap();
+    async::RuntimeBuilderConfigAccess::fail_next_blocking_spawn(runtime);
+    auto ran       = false;
+    auto submitted = runtime.spawn_blocking([&] {
+        ran = true;
+    });
+    ASSERT_TRUE(submitted.is_err());
+    EXPECT_EQ(rstd::move(submitted).unwrap_err_unchecked().kind(),
+              io::ErrorKind { io::ErrorKind::Other });
+    EXPECT_FALSE(ran);
+    EXPECT_EQ(async::RuntimeBuilderConfigAccess::blocking_thread_count(runtime), usize());
+
+    auto rejected = runtime.spawn_blocking([] {
+    });
+    ASSERT_TRUE(rejected.is_err());
+    EXPECT_EQ(rstd::move(rejected).unwrap_err_unchecked().kind(),
+              io::ErrorKind { io::ErrorKind::NotConnected });
 }
 
 TEST(RstdAsyncIoBackend, NativeCancellationContract) {

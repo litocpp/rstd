@@ -6,6 +6,8 @@ export import :io.error;
 export import :async.readiness;
 export import :time;
 export import rstd.core;
+import :async.blocking_file_completion;
+import :async.blocking_pool;
 import :net.socket_addr;
 import :os.fd;
 import :sys.pal.poll;
@@ -1044,6 +1046,7 @@ struct OccupiedOperationSlot {
     bool           submitted { false };
     bool           cancel_requested { false };
     bool           cancel_issued { false };
+    bool           blocking_file { false };
 };
 
 using OperationSlot = Choice<choice_case<OperationSlotTag::Free, FreeOperationSlot>,
@@ -1125,10 +1128,11 @@ public:
 
     auto contains(OperationKey key) -> bool { return slot(key) != nullptr; }
 
-    auto mark_submitted(OperationKey key) -> bool {
+    auto mark_submitted(OperationKey key, bool blocking_file = false) -> bool {
         auto* occupied = slot(key);
         if (occupied == nullptr || occupied->submitted) return false;
-        occupied->submitted = true;
+        occupied->submitted     = true;
+        occupied->blocking_file = blocking_file;
         return true;
     }
 
@@ -1137,14 +1141,14 @@ public:
         if (occupied != nullptr) occupied->cancel_requested = true;
     }
 
-    auto begin_cancel(OperationKey key) -> bool {
+    auto begin_cancel(OperationKey key) -> Option<bool> {
         auto* occupied = slot(key);
         if (occupied == nullptr || ! occupied->submitted || ! occupied->cancel_requested ||
             occupied->cancel_issued) {
-            return false;
+            return None<bool>();
         }
         occupied->cancel_issued = true;
-        return true;
+        return Some(occupied->blocking_file);
     }
 
     auto is_submitted(OperationKey key) -> bool {
@@ -1164,15 +1168,17 @@ public:
 };
 
 export class PollState {
-    PollStateKind     m_kind { PollStateKind::Closed };
-    pal_poll::Poller  m_backend {};
-    RegistrationSlots m_registrations;
-    OperationSlots    m_operations;
-    Vec<PollTimer>    m_timers;
+    PollStateKind                        m_kind { PollStateKind::Closed };
+    pal_poll::Poller                     m_backend {};
+    Option<BlockingFileCompletionDriver> m_blocking_file;
+    RegistrationSlots                    m_registrations;
+    OperationSlots                       m_operations;
+    Vec<PollTimer>                       m_timers;
 
-    explicit PollState(pal_poll::Poller backend)
+    explicit PollState(pal_poll::Poller backend, Option<BlockingFileCompletionDriver> blocking_file)
         : m_kind(PollStateKind::Active),
           m_backend(rstd::move(backend)),
+          m_blocking_file(rstd::move(blocking_file)),
           m_registrations(),
           m_operations(),
           m_timers(Vec<PollTimer>::make()) {}
@@ -1180,7 +1186,11 @@ export class PollState {
     friend class Poll;
 
 public:
-    PollState(): m_registrations(), m_operations(), m_timers(Vec<PollTimer>::make()) {}
+    PollState()
+        : m_blocking_file(None()),
+          m_registrations(),
+          m_operations(),
+          m_timers(Vec<PollTimer>::make()) {}
     PollState(const PollState&)                        = delete;
     auto operator=(const PollState&) -> PollState&     = delete;
     PollState(PollState&&) noexcept                    = default;
@@ -1188,6 +1198,8 @@ public:
 
     auto kind() const noexcept -> PollStateKind { return m_kind; }
 };
+
+struct PollRuntimeAccess;
 
 export struct PollInit {
     PollState state;
@@ -1197,9 +1209,16 @@ export struct PollInit {
 };
 
 export class Poll {
+    friend struct PollRuntimeAccess;
+
     static void cancel_backend_operation(PollState& state, OperationKey key) {
-        if (! state.m_operations.begin_cancel(key)) return;
-        (void)state.m_backend.cancel_operation(key.encode());
+        auto blocking_file = state.m_operations.begin_cancel(key);
+        if (blocking_file.is_none()) return;
+        if (*blocking_file) {
+            state.m_blocking_file->cancel(key.encode());
+        } else {
+            (void)state.m_backend.cancel_operation(key.encode());
+        }
     }
 
     static auto backend_interest(Interest interest) noexcept -> pal_poll::Interest {
@@ -1257,6 +1276,22 @@ export class Poll {
                                                operation.len());
         }
         rstd::unreachable();
+    }
+
+    static auto blocking_file_operation(OperationKey key, const PollOperation& operation)
+        -> BlockingFileOperation {
+        return BlockingFileOperation {
+            operation.kind() == PollOperationKind::Read ? BlockingFileOperationKind::Read
+                                                        : BlockingFileOperationKind::Write,
+            operation.fd(),
+            operation.source_key().encode(),
+            key.encode(),
+            operation.kind() == PollOperationKind::Read ? operation.mutable_data()
+                                                        : const_cast<void*>(operation.const_data()),
+            operation.len(),
+            operation.offset().clone(),
+            operation.flags(),
+        };
     }
 
     static auto find_registration(PollState& state, RegistrationKey key) -> PollRegistration* {
@@ -1367,8 +1402,27 @@ export class Poll {
         }
     }
 
-public:
-    static auto init(IoBackendPreference preference = IoBackendPreference::Auto)
+    static void append_blocking_file_batch(PollState& state, PollBatch& batch) {
+        if (state.m_blocking_file.is_none()) return;
+        auto completions = state.m_blocking_file->drain();
+        for (auto index = usize(); index < completions.len(); ++index) {
+            auto completion = rstd::move(completions[index]);
+            auto key        = OperationKey::decode(completion.operation_key);
+            auto owner      = state.m_operations.take_owner(key);
+            if (owner.is_none()) continue;
+            auto result = rstd::move(completion.result);
+            auto record = result.is_err()
+                              ? PollCompletion::failure(rstd::move(result).unwrap_err_unchecked(),
+                                                        completion.flags)
+                              : PollCompletion::success(
+                                    isize(rstd::move(result).unwrap_unchecked().to_primitive()),
+                                    completion.flags);
+            batch.push(PollEvent::owned(PollEventData::completion(key, rstd::move(record)),
+                                        rstd::move(owner).unwrap_unchecked()));
+        }
+    }
+
+    static auto initialize(IoBackendPreference preference, Option<BlockingSpawner> blocking_spawner)
         -> io::Result<PollInit> {
         auto backend_preference = pal_poll::BackendPreference::Auto;
         if (preference == IoBackendPreference::NativeCompletionRequired) {
@@ -1380,9 +1434,25 @@ public:
         if (initialized.is_err()) {
             return Err(rstd::move(initialized).unwrap_err_unchecked());
         }
-        auto backend = rstd::move(initialized).unwrap_unchecked();
-        return Ok(PollInit { PollState { rstd::move(backend.poller) },
+        auto backend       = rstd::move(initialized).unwrap_unchecked();
+        auto blocking_file = Option<BlockingFileCompletionDriver> {};
+#if RSTD_OS_LINUX
+        if (! backend.poller.capabilities().contains(pal_poll::Capability::FileCompletion) &&
+            blocking_spawner.is_some()) {
+            blocking_file = Some(BlockingFileCompletionDriver {
+                rstd::move(blocking_spawner).unwrap_unchecked(), backend.wake.clone() });
+        }
+#else
+        (void)blocking_spawner;
+#endif
+        return Ok(PollInit { PollState { rstd::move(backend.poller), rstd::move(blocking_file) },
                              PollWake { rstd::move(backend.wake) } });
+    }
+
+public:
+    static auto init(IoBackendPreference preference = IoBackendPreference::Auto)
+        -> io::Result<PollInit> {
+        return initialize(preference, None<BlockingSpawner>());
     }
 
     static auto capabilities(const PollState& state) noexcept -> PollCapabilities {
@@ -1395,6 +1465,9 @@ public:
             result = result | PollCapability::SocketCompletion;
         }
         if (backend.contains(pal_poll::Capability::FileCompletion)) {
+            result = result | PollCapability::FileCompletion;
+        }
+        if (state.m_blocking_file.is_some()) {
             result = result | PollCapability::FileCompletion;
         }
         if (backend.contains(pal_poll::Capability::Timer)) {
@@ -1510,8 +1583,13 @@ public:
                 state.m_operations.is_submitted(key)) {
                 return PollApplyResult::accepted();
             }
+            auto use_blocking_file = command.operation().source_kind() == PollSourceKind::File &&
+                                     state.m_blocking_file.is_some();
             auto submitted =
-                state.m_backend.submit_operation(backend_operation(key, command.operation()));
+                use_blocking_file
+                    ? state.m_blocking_file->submit(
+                          blocking_file_operation(key, command.operation()))
+                    : state.m_backend.submit_operation(backend_operation(key, command.operation()));
             if (submitted.is_err()) {
                 auto error = rstd::move(submitted).unwrap_err_unchecked();
                 auto owner = state.m_operations.take_owner(key);
@@ -1520,7 +1598,7 @@ public:
                     PollEvent::owned(PollEventData::backend_error(key, rstd::move(error)),
                                      rstd::move(owner).unwrap_unchecked()));
             }
-            if (! state.m_operations.mark_submitted(key)) {
+            if (! state.m_operations.mark_submitted(key, use_blocking_file)) {
                 rstd::panic { "accepted backend operation lost its owner slot" };
             }
             cancel_backend_operation(state, key);
@@ -1538,6 +1616,12 @@ public:
                 return PollApplyResult::rejected(
                     rstd::move(command),
                     IoError::from_kind(IoErrorKind { IoErrorKind::InvalidInput }));
+            }
+            if (state.m_blocking_file.is_some() &&
+                state.m_blocking_file->source_active(command.source_key().encode())) {
+                return PollApplyResult::rejected(
+                    rstd::move(command),
+                    IoError::from_kind(IoErrorKind { IoErrorKind::ResourceBusy }));
             }
             auto released = state.m_backend.release_completion_source(command.source_key().encode(),
                                                                       command.fd());
@@ -1588,6 +1672,16 @@ public:
             return Err(IoError::from_kind(IoErrorKind { IoErrorKind::NotConnected }));
         }
 
+        auto batch = PollBatch {};
+        append_blocking_file_batch(state, batch);
+        if (! batch.is_empty()) {
+            auto collected = collect_expired_timers(state, batch);
+            if (collected.is_err()) {
+                return Err(rstd::move(collected).unwrap_err_unchecked());
+            }
+            return Ok(rstd::move(batch));
+        }
+
         state.m_kind = PollStateKind::Waiting;
         auto waited =
             state.m_backend.wait(timeout == PollTimeout::Immediate ? pal_poll::WaitMode::Immediate
@@ -1596,8 +1690,8 @@ public:
         state.m_kind = PollStateKind::Active;
         if (waited.is_err()) return Err(rstd::move(waited).unwrap_err_unchecked());
 
-        auto batch = PollBatch {};
         append_backend_batch(state, rstd::move(waited).unwrap_unchecked(), batch);
+        append_blocking_file_batch(state, batch);
         auto collected = collect_expired_timers(state, batch);
         if (collected.is_err()) {
             return Err(rstd::move(collected).unwrap_err_unchecked());
@@ -1610,6 +1704,10 @@ public:
         if (state.m_kind == PollStateKind::Closed) return batch;
         state.m_kind = PollStateKind::Draining;
         (void)state.m_backend.begin_shutdown();
+        if (state.m_blocking_file.is_some()) {
+            state.m_blocking_file->cancel_all();
+            append_blocking_file_batch(state, batch);
+        }
         while (! state.m_operations.is_empty()) {
             auto waited =
                 state.m_backend.wait(pal_poll::WaitMode::Infinite, None<time::Duration>());
@@ -1617,6 +1715,7 @@ public:
                 rstd::panic { "async Poll backend failed while draining operations" };
             }
             append_backend_batch(state, rstd::move(waited).unwrap_unchecked(), batch);
+            append_blocking_file_batch(state, batch);
         }
         while (! state.m_registrations.is_empty()) {
             auto registration = state.m_registrations.take_any().unwrap_unchecked();
@@ -1633,9 +1732,17 @@ public:
                     timer.key, IoError::from_kind(IoErrorKind { IoErrorKind::NotConnected })),
                 rstd::move(timer.owner)));
         }
-        state.m_backend = pal_poll::Poller {};
-        state.m_kind    = PollStateKind::Closed;
+        state.m_blocking_file = None<BlockingFileCompletionDriver>();
+        state.m_backend       = pal_poll::Poller {};
+        state.m_kind          = PollStateKind::Closed;
         return batch;
+    }
+};
+
+struct PollRuntimeAccess {
+    static auto init(IoBackendPreference preference, BlockingSpawner blocking_spawner)
+        -> io::Result<PollInit> {
+        return Poll::initialize(preference, Some(rstd::move(blocking_spawner)));
     }
 };
 

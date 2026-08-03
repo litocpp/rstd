@@ -39,7 +39,7 @@ struct JoinInner {
 
     USE_TRAIT(JoinInner)
 
-    auto is_finished() const -> bool { return packet->strong_count() == 1; }
+    auto is_finished() const -> bool { return packet.strong_count() == usize(1); }
 
     auto thread() const -> Thread const& { return thread_; }
 

@@ -1,5 +1,7 @@
 export module rstd:async.spawn;
 export import :async.awaitable;
+export import :io;
+import :async.blocking_pool;
 import :async.runtime_core;
 import :async.facility;
 import :async.runtime_driver;
@@ -13,15 +15,54 @@ using rstd::async::JoinError;
 
 struct JoinHandleFactory;
 
+class JoinCancellation {
+    enum class Tag
+    {
+        Task,
+        Blocking,
+    };
+
+    using Storage = Choice<choice_case<Tag::Task, TaskRef>,
+                           choice_case<Tag::Blocking, rstd::async::BlockingJobCancellation>>;
+
+    Storage m_storage;
+
+    explicit JoinCancellation(Storage storage): m_storage(rstd::move(storage)) {}
+
+public:
+    static auto task(TaskRef task) -> JoinCancellation {
+        return JoinCancellation { Storage::with<Tag::Task>(rstd::move(task)) };
+    }
+
+    static auto blocking(rstd::async::BlockingJobCancellation cancellation) -> JoinCancellation {
+        return JoinCancellation { Storage::with<Tag::Blocking>(rstd::move(cancellation)) };
+    }
+
+    auto clone() const -> JoinCancellation {
+        if (m_storage.is<Tag::Task>()) {
+            return task(m_storage.as<Tag::Task>().clone());
+        }
+        return blocking(m_storage.as<Tag::Blocking>().clone());
+    }
+
+    void abort() const {
+        if (m_storage.is<Tag::Task>()) {
+            m_storage.as<Tag::Task>().abort();
+        } else {
+            (void)m_storage.as<Tag::Blocking>().cancel();
+        }
+    }
+};
+
 template<typename T>
 struct JoinState {
     using Stored = mtp::void_empty_t<T>;
     using Output = Result<Stored, JoinError>;
 
     struct Fields {
-        TerminalCell<Output> terminal;
-        Option<task::Waker>  waker;
-        Option<TaskRef>      task;
+        TerminalCell<Output>     terminal;
+        Option<task::Waker>      waker;
+        Option<JoinCancellation> cancellation;
     };
 
     sync::Mutex<Fields> fields;
@@ -29,9 +70,17 @@ struct JoinState {
 
     JoinState(): fields(Fields {}), ready_cvar(sync::Condvar::make()) {}
 
-    void set_task(TaskRef task) {
-        auto f  = fields.lock().unwrap_unchecked();
-        f->task = Some(rstd::move(task));
+    void set_task(TaskRef task) { set_cancellation(JoinCancellation::task(rstd::move(task))); }
+
+    void set_blocking(rstd::async::BlockingJobCancellation cancellation) {
+        set_cancellation(JoinCancellation::blocking(rstd::move(cancellation)));
+    }
+
+    void set_cancellation(JoinCancellation cancellation) {
+        auto f = fields.lock().unwrap_unchecked();
+        if (f->terminal.is_pending()) {
+            f->cancellation = Some(rstd::move(cancellation));
+        }
     }
 
     auto complete_value(Stored in) -> Option<task::Waker> {
@@ -41,8 +90,8 @@ struct JoinState {
             if (! f->terminal.publish(Output { Ok(rstd::move(in)) })) {
                 return None();
             }
-            f->task = None();
-            waker   = f->waker.take();
+            f->cancellation = None<JoinCancellation>();
+            waker           = f->waker.take();
         }
         ready_cvar.notify_all();
         return waker;
@@ -55,8 +104,8 @@ struct JoinState {
             if (! f->terminal.publish(Output { Err(JoinError {}) })) {
                 return None();
             }
-            f->task = None();
-            waker   = f->waker.take();
+            f->cancellation = None<JoinCancellation>();
+            waker           = f->waker.take();
         }
         ready_cvar.notify_all();
         return waker;
@@ -97,15 +146,15 @@ struct JoinState {
     }
 
     void abort_task() {
-        auto task = Option<TaskRef> {};
+        auto cancellation = Option<JoinCancellation> {};
         {
             auto f = fields.lock().unwrap_unchecked();
-            if (f->task.is_some()) {
-                task = Some(f->task->clone());
+            if (f->cancellation.is_some()) {
+                cancellation = Some(f->cancellation->clone());
             }
         }
-        if (task.is_some()) {
-            task->abort();
+        if (cancellation.is_some()) {
+            cancellation->abort();
         }
     }
 };
@@ -139,6 +188,10 @@ public:
 template<typename T>
 auto spawn_driver_on(RuntimeInner& runtime, rstd::async::RuntimeCoroDriver<T> driver)
     -> rstd::async::JoinHandle<T>;
+
+template<typename F>
+auto spawn_blocking_on(RuntimeInner& runtime, F&& function)
+    -> io::Result<rstd::async::JoinHandle<mtp::invoke_result_t<F>>>;
 
 namespace rstd::async
 {
@@ -395,6 +448,36 @@ auto spawn_driver_on(RuntimeInner& runtime, rstd::async::RuntimeCoroDriver<T> dr
     return JoinHandleFactory::make<T>(rstd::move(join));
 }
 
+template<typename F>
+auto spawn_blocking_on(RuntimeInner& runtime, F&& function)
+    -> io::Result<rstd::async::JoinHandle<mtp::invoke_result_t<F>>> {
+    using Output = mtp::invoke_result_t<F>;
+    using Stored = mtp::void_empty_t<Output>;
+
+    auto join = sync::Arc<JoinState<Output>>::make();
+    auto job  = rstd::async::BlockingJob::make(
+        [join = join.clone(), function = mtp::rm_cvf<F>(rstd::forward<F>(function))]() mutable {
+            auto waker = Option<task::Waker> {};
+            if constexpr (mtp::is_void<Output>) {
+                function();
+                waker = join->complete_value(Stored {});
+            } else {
+                waker = join->complete_value(function());
+            }
+            if (waker.is_some()) rstd::move(*waker).wake();
+        },
+        [join = join.clone()]() mutable {
+            auto waker = join->complete_abort();
+            if (waker.is_some()) rstd::move(*waker).wake();
+        });
+    auto submitted = runtime.submit_blocking(rstd::move(job));
+    if (submitted.is_err()) {
+        return Err(rstd::move(submitted).unwrap_err_unchecked());
+    }
+    join->set_blocking(rstd::move(submitted).unwrap_unchecked());
+    return Ok(JoinHandleFactory::make<Output>(rstd::move(join)));
+}
+
 namespace rstd::async
 {
 
@@ -419,6 +502,15 @@ auto spawn_local(A awaitable) -> JoinHandle<await_output_t<A>> {
     }
     auto driver = make_runtime_driver(into_coro(rstd::move(awaitable)));
     return spawn_driver_on(*runtime, rstd::move(driver));
+}
+
+export template<typename F>
+auto spawn_blocking(F&& function) -> io::Result<JoinHandle<mtp::invoke_result_t<F>>> {
+    auto* runtime = CURRENT_RUNTIME;
+    if (runtime == nullptr) {
+        rstd::panic { "spawn_blocking called without an async runtime" };
+    }
+    return ::spawn_blocking_on(*runtime, rstd::forward<F>(function));
 }
 
 } // namespace rstd::async

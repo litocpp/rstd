@@ -124,6 +124,8 @@ target_sources(
          src/async/thread_pool_executor.cppm
          src/async/coro_driver.cppm
          src/async/runtime_driver.cppm
+         src/async/blocking_pool.cppm
+         src/async/blocking_file_completion.cppm
          src/async/runtime_core.cppm
          src/async/spawn.cppm
          src/async/runtime.cppm
