@@ -533,6 +533,11 @@ constexpr decltype(auto) forward_like(T&& x) noexcept {
 namespace rstd
 {
 
+export template<auto Value>
+struct choice_tag {
+    static constexpr auto value = Value;
+};
+
 export template<auto TagValue, typename... PayloadTypes>
 struct choice_case {
     static_assert(sizeof...(PayloadTypes) > 0,
@@ -606,6 +611,109 @@ private:
 
     template<rstd::size_t I>
     using stored_at = choice_detail::case_stored_t<choice_detail::case_at_t<I, First, Rest...>>;
+
+    template<rstd::size_t I>
+    using case_at = choice_detail::case_at_t<I, First, Rest...>;
+
+    template<rstd::size_t I, typename Self, typename Visitor>
+    static consteval auto case_invocable() -> bool {
+        constexpr auto value = case_at<I>::value;
+        if constexpr (mtp::same_as<typename case_at<I>::payload_type, void>) {
+            return requires(Visitor&& visitor) {
+                rstd::forward<Visitor>(visitor)(choice_tag<value> {});
+            };
+        } else {
+            return requires(Self&& self, Visitor&& visitor) {
+                rstd::forward<Visitor>(visitor)(
+                    choice_tag<value> {},
+                    rstd::forward<Self>(self).storage_.get(choice_detail::in_place_index<I>));
+            };
+        }
+    }
+
+    template<rstd::size_t I, typename Self, typename Visitor>
+    static consteval auto all_cases_invocable() -> bool {
+        if constexpr (! case_invocable<I, Self, Visitor>()) {
+            return false;
+        } else if constexpr (I + 1 < case_count) {
+            return all_cases_invocable<I + 1, Self, Visitor>();
+        } else {
+            return true;
+        }
+    }
+
+    template<rstd::size_t I, typename Self, typename Visitor>
+    static constexpr decltype(auto)
+    invoke_case(Self&& self, Visitor&& visitor) noexcept(case_noexcept<I, Self, Visitor>()) {
+        constexpr auto value = case_at<I>::value;
+        if constexpr (mtp::same_as<typename case_at<I>::payload_type, void>) {
+            return rstd::forward<Visitor>(visitor)(choice_tag<value> {});
+        } else {
+            return rstd::forward<Visitor>(visitor)(
+                choice_tag<value> {},
+                rstd::forward<Self>(self).storage_.get(choice_detail::in_place_index<I>));
+        }
+    }
+
+    template<rstd::size_t I, typename Self, typename Visitor>
+    static consteval auto case_noexcept() -> bool {
+        constexpr auto value = case_at<I>::value;
+        if constexpr (mtp::same_as<typename case_at<I>::payload_type, void>) {
+            return noexcept(rstd::forward<Visitor>(mtp::declval<Visitor>())(choice_tag<value> {}));
+        } else {
+            return noexcept(rstd::forward<Visitor>(mtp::declval<Visitor>())(
+                choice_tag<value> {},
+                rstd::forward<Self>(mtp::declval<Self>())
+                    .storage_.get(choice_detail::in_place_index<I>)));
+        }
+    }
+
+    template<rstd::size_t I, typename Result, typename Self, typename Visitor>
+    static consteval auto all_case_results_match() -> bool {
+        if constexpr (! mtp::same_as<decltype(invoke_case<I>(mtp::declval<Self>(),
+                                                             mtp::declval<Visitor>())),
+                                     Result>) {
+            return false;
+        } else if constexpr (I + 1 < case_count) {
+            return all_case_results_match<I + 1, Result, Self, Visitor>();
+        } else {
+            return true;
+        }
+    }
+
+    template<typename Self, typename Visitor>
+    static consteval auto valid_visitor() -> bool {
+        if constexpr (! all_cases_invocable<0, Self, Visitor>()) {
+            return false;
+        } else {
+            using Result = decltype(invoke_case<0>(mtp::declval<Self>(), mtp::declval<Visitor>()));
+            return all_case_results_match<0, Result, Self, Visitor>();
+        }
+    }
+
+    template<rstd::size_t I, typename Self, typename Visitor>
+    static consteval auto all_cases_noexcept() -> bool {
+        if constexpr (! case_noexcept<I, Self, Visitor>()) {
+            return false;
+        } else if constexpr (I + 1 < case_count) {
+            return all_cases_noexcept<I + 1, Self, Visitor>();
+        } else {
+            return true;
+        }
+    }
+
+    template<rstd::size_t I, typename Self, typename Visitor>
+    static constexpr decltype(auto)
+    visit_active(Self&& self, Visitor&& visitor) noexcept(all_cases_noexcept<0, Self, Visitor>()) {
+        if (self.storage_.index() == I) {
+            return invoke_case<I>(rstd::forward<Self>(self), rstd::forward<Visitor>(visitor));
+        }
+        if constexpr (I + 1 < case_count) {
+            return visit_active<I + 1>(rstd::forward<Self>(self), rstd::forward<Visitor>(visitor));
+        } else {
+            enum_detail::bad_enum_state();
+        }
+    }
 
     template<rstd::size_t I, typename... Args>
         requires mtp::init<stored_at<I>, Args...>
@@ -721,6 +829,34 @@ public:
                                   rstd::forward<Args>(args)...))) {
         storage_.replace(choice_detail::in_place_index<index_for<V>()>,
                          rstd::forward<Args>(args)...);
+    }
+
+    template<typename Visitor>
+        requires(valid_visitor<Choice&, Visitor>())
+    constexpr decltype(auto)
+    visit(Visitor&& visitor) & noexcept(all_cases_noexcept<0, Choice&, Visitor>()) {
+        return visit_active<0>(*this, rstd::forward<Visitor>(visitor));
+    }
+
+    template<typename Visitor>
+        requires(valid_visitor<const Choice&, Visitor>())
+    constexpr decltype(auto)
+    visit(Visitor&& visitor) const& noexcept(all_cases_noexcept<0, const Choice&, Visitor>()) {
+        return visit_active<0>(*this, rstd::forward<Visitor>(visitor));
+    }
+
+    template<typename Visitor>
+        requires(valid_visitor<Choice &&, Visitor>())
+    constexpr decltype(auto)
+    visit(Visitor&& visitor) && noexcept(all_cases_noexcept<0, Choice&&, Visitor>()) {
+        return visit_active<0>(rstd::move(*this), rstd::forward<Visitor>(visitor));
+    }
+
+    template<typename Visitor>
+        requires(valid_visitor<const Choice &&, Visitor>())
+    constexpr decltype(auto)
+    visit(Visitor&& visitor) const&& noexcept(all_cases_noexcept<0, const Choice&&, Visitor>()) {
+        return visit_active<0>(static_cast<const Choice&&>(*this), rstd::forward<Visitor>(visitor));
     }
 };
 

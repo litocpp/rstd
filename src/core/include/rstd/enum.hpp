@@ -95,6 +95,50 @@
             .template as<Tag::Name>();                                       \
     }
 
+#define RSTD_ENUM_DETAIL_VISIT                                                                   \
+    template<typename rstd_enum_detail_Visitor>                                                  \
+        requires requires(rstd_enum_choice_type& choice, rstd_enum_detail_Visitor&& visitor) {   \
+            choice.visit(::rstd::forward<rstd_enum_detail_Visitor>(visitor));                    \
+        }                                                                                        \
+    constexpr decltype(auto) visit(rstd_enum_detail_Visitor&& visitor) & noexcept(               \
+        noexcept(rstd_enum_choice_.visit(::rstd::forward<rstd_enum_detail_Visitor>(visitor)))) { \
+        return rstd_enum_choice_.visit(::rstd::forward<rstd_enum_detail_Visitor>(visitor));      \
+    }                                                                                            \
+                                                                                                 \
+    template<typename rstd_enum_detail_Visitor>                                                  \
+        requires requires(const rstd_enum_choice_type& choice,                                   \
+                          rstd_enum_detail_Visitor&&   visitor) {                                \
+            choice.visit(::rstd::forward<rstd_enum_detail_Visitor>(visitor));                    \
+        }                                                                                        \
+    constexpr decltype(auto) visit(rstd_enum_detail_Visitor&& visitor) const& noexcept(          \
+        noexcept(rstd_enum_choice_.visit(::rstd::forward<rstd_enum_detail_Visitor>(visitor)))) { \
+        return rstd_enum_choice_.visit(::rstd::forward<rstd_enum_detail_Visitor>(visitor));      \
+    }                                                                                            \
+                                                                                                 \
+    template<typename rstd_enum_detail_Visitor>                                                  \
+        requires requires(rstd_enum_choice_type&& choice, rstd_enum_detail_Visitor&& visitor) {  \
+            ::rstd::move(choice).visit(::rstd::forward<rstd_enum_detail_Visitor>(visitor));      \
+        }                                                                                        \
+    constexpr decltype(auto) visit(rstd_enum_detail_Visitor&& visitor) && noexcept(              \
+        noexcept(::rstd::move(rstd_enum_choice_)                                                 \
+                     .visit(::rstd::forward<rstd_enum_detail_Visitor>(visitor)))) {              \
+        return ::rstd::move(rstd_enum_choice_)                                                   \
+            .visit(::rstd::forward<rstd_enum_detail_Visitor>(visitor));                          \
+    }                                                                                            \
+                                                                                                 \
+    template<typename rstd_enum_detail_Visitor>                                                  \
+        requires requires(const rstd_enum_choice_type&& choice,                                  \
+                          rstd_enum_detail_Visitor&&    visitor) {                               \
+            static_cast<const rstd_enum_choice_type&&>(choice).visit(                            \
+                ::rstd::forward<rstd_enum_detail_Visitor>(visitor));                             \
+        }                                                                                        \
+    constexpr decltype(auto) visit(rstd_enum_detail_Visitor&& visitor) const&& noexcept(         \
+        noexcept(static_cast<const rstd_enum_choice_type&&>(rstd_enum_choice_)                   \
+                     .visit(::rstd::forward<rstd_enum_detail_Visitor>(visitor)))) {              \
+        return static_cast<const rstd_enum_choice_type&&>(rstd_enum_choice_)                     \
+            .visit(::rstd::forward<rstd_enum_detail_Visitor>(visitor));                          \
+    }
+
 #define RSTD_ENUM_DETAIL_MEMBERS(ClassName, ...)                                               \
 public:                                                                                        \
     using Self                                              = ClassName;                       \
@@ -140,6 +184,7 @@ public:                                                                         
         RSTD_ENUM_DETAIL_PREDICATE_ENTRY, RSTD_DETAIL_FOR_EACH_SEPARATOR_NONE, __VA_ARGS__)    \
     RSTD_DETAIL_FOR_EACH(                                                                      \
         RSTD_ENUM_DETAIL_ACCESSOR_ENTRY, RSTD_DETAIL_FOR_EACH_SEPARATOR_NONE, __VA_ARGS__)     \
+    RSTD_ENUM_DETAIL_VISIT                                                                     \
     [[nodiscard]]                                                                              \
     constexpr auto index() const noexcept -> ::rstd::size_t {                                  \
         return rstd_enum_choice_.index();                                                      \

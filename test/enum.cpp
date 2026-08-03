@@ -193,6 +193,45 @@ using DirectChoice = rstd::Choice<RSTD_CHOICE_TYPES((ChoiceTag::Empty, void),
 
 using CommaTypeChoice = rstd::Choice<RSTD_CHOICE_TYPES((ChoiceTag::Pair, rstd::tuple<int, int>))>;
 
+enum class DuplicateChoiceTag
+{
+    First,
+    Second,
+};
+
+using DuplicateChoice = rstd::Choice<RSTD_CHOICE_TYPES((DuplicateChoiceTag::First, int),
+                                                       (DuplicateChoiceTag::Second, int))>;
+
+template<typename Choice, typename Visitor>
+concept Visitable = requires(Choice&& choice, Visitor&& visitor) {
+    std::forward<Choice>(choice).visit(std::forward<Visitor>(visitor));
+};
+
+struct MissingChoiceCaseVisitor {
+    auto operator()(rstd::choice_tag<ChoiceTag::Empty>) const -> int { return 0; }
+};
+
+struct MismatchedChoiceResultVisitor {
+    auto operator()(rstd::choice_tag<ChoiceTag::Empty>) const -> int { return 0; }
+    auto operator()(rstd::choice_tag<ChoiceTag::Number>, int&) const -> long { return 0; }
+    auto operator()(rstd::choice_tag<ChoiceTag::Pair>, rstd::tuple<int, std::string>&) const
+        -> int {
+        return 0;
+    }
+};
+
+struct NoexceptChoiceVisitor {
+    template<auto Tag, typename... Payload>
+    auto operator()(rstd::choice_tag<Tag>, Payload&&...) const noexcept -> int {
+        return 0;
+    }
+};
+
+static_assert(! Visitable<DirectChoice&, MissingChoiceCaseVisitor>);
+static_assert(! Visitable<DirectChoice&, MismatchedChoiceResultVisitor>);
+static_assert(Visitable<DirectChoice&, NoexceptChoiceVisitor>);
+static_assert(noexcept(rstd::declval<DirectChoice&>().visit(NoexceptChoiceVisitor {})));
+
 auto score(const Message& message) -> int {
     int result = -1;
 
@@ -333,6 +372,56 @@ TEST(Choice, SupportsConstexprConstructionAndSwitching) {
         return choice.as<ChoiceTag::Pair>().template get<0>();
     }();
     static_assert(result == 8);
+}
+
+TEST(Choice, VisitsCasesWithTagsAndForwardedPayloads) {
+    auto choice = DirectChoice::with<ChoiceTag::Number>(5);
+    auto result = choice.visit([]<auto Tag>(rstd::choice_tag<Tag>, auto&&... payload) -> int {
+        if constexpr (Tag == ChoiceTag::Empty) {
+            return 0;
+        } else {
+            auto& value = std::get<0>(std::forward_as_tuple(payload...));
+            if constexpr (Tag == ChoiceTag::Number) {
+                if constexpr (! std::is_const_v<std::remove_reference_t<decltype(value)>>) {
+                    value += 2;
+                }
+                return value;
+            } else {
+                return value.template get<0>();
+            }
+        }
+    });
+
+    EXPECT_EQ(result, 7);
+    EXPECT_EQ(choice.as<ChoiceTag::Number>(), 7);
+
+    choice.set<ChoiceTag::Empty>();
+    EXPECT_EQ(choice.visit(NoexceptChoiceVisitor {}), 0);
+}
+
+TEST(Choice, DistinguishesCasesWithTheSamePayloadType) {
+    auto choice = DuplicateChoice::with<DuplicateChoiceTag::Second>(8);
+    auto result = choice.visit([]<auto Tag>(rstd::choice_tag<Tag>, int& value) -> int {
+        if constexpr (Tag == DuplicateChoiceTag::First) return 1;
+        return value;
+    });
+
+    EXPECT_EQ(result, 8);
+}
+
+TEST(Choice, PreservesVisitReferenceCategories) {
+    auto choice  = DuplicateChoice::with<DuplicateChoiceTag::First>(11);
+    auto visitor = []<auto Tag>(rstd::choice_tag<Tag>, auto&& value) -> decltype(auto) {
+        return std::forward<decltype(value)>(value);
+    };
+
+    static_assert(std::same_as<decltype(choice.visit(visitor)), int&>);
+    static_assert(std::same_as<decltype(std::as_const(choice).visit(visitor)), const int&>);
+    static_assert(std::same_as<decltype(std::move(choice).visit(visitor)), int&&>);
+
+    auto& value = choice.visit(visitor);
+    value       = 13;
+    EXPECT_EQ(choice.as<DuplicateChoiceTag::First>(), 13);
 }
 
 TEST(Choice, OwnsCopyMoveAndDestructionLifecycle) {
@@ -483,6 +572,51 @@ TEST(Enum, SupportsMoveOnlyPayload) {
 
     ASSERT_NE(taken, nullptr);
     EXPECT_EQ(*taken, 42);
+}
+
+TEST(Enum, VisitsWithGenericCallable) {
+    auto message = Message::Move(4, 6);
+    auto score   = message.visit([]<auto Tag>(rstd::choice_tag<Tag>, auto&&... payload) -> int {
+        if constexpr (Tag == Message::Tag::Quit) {
+            return 0;
+        } else {
+            auto&& value = std::get<0>(std::forward_as_tuple(payload...));
+            if constexpr (Tag == Message::Tag::Move) {
+                return value.x + value.y;
+            } else {
+                return static_cast<int>(value.text.size());
+            }
+        }
+    });
+    EXPECT_EQ(score, 10);
+
+    auto color       = Color::Blue();
+    auto color_value = color.visit([]<auto Tag>(rstd::choice_tag<Tag>) -> int {
+        if constexpr (Tag == Color::Tag::Red) return 1;
+        if constexpr (Tag == Color::Tag::Green) return 2;
+        return 3;
+    });
+    EXPECT_EQ(color_value, 3);
+}
+
+TEST(Enum, MovesPayloadThroughRvalueVisit) {
+    auto box   = Box::Value(std::make_unique<int>(17));
+    auto value = std::move(box).visit(
+        []<auto Tag>(rstd::choice_tag<Tag>, auto&&... payload) -> std::unique_ptr<int> {
+            if constexpr (Tag == Box::Tag::Empty) {
+                return {};
+            } else {
+                auto&& value = std::get<0>(std::forward_as_tuple(payload...));
+                if constexpr (std::is_const_v<std::remove_reference_t<decltype(value)>>) {
+                    return {};
+                } else {
+                    return std::move(value.value);
+                }
+            }
+        });
+
+    ASSERT_NE(value, nullptr);
+    EXPECT_EQ(*value, 17);
 }
 
 TEST(Enum, SupportsTemplateEnum) {
