@@ -16,8 +16,8 @@ export namespace rstd::process
 {
 
 struct EnvAction {
-    CString         key;
-    Option<CString> value; // None = remove
+    Vec<u8>         key;
+    Option<Vec<u8>> value;
 };
 
 // forwards
@@ -177,13 +177,14 @@ public:
 
     /// Sets an environment variable for the child process.
     auto env(ref<OsStr> key, ref<OsStr> value) -> Command& {
-        env_actions_.push(EnvAction { cstring(key), Some(cstring(value)) });
+        env_actions_.push(EnvAction { Vec<u8>::from(key.as_encoded_bytes()),
+                                      Some(Vec<u8>::from(value.as_encoded_bytes())) });
         return *this;
     }
 
     /// Removes an environment variable for the child process.
     auto env_remove(ref<OsStr> key) -> Command& {
-        env_actions_.push(EnvAction { cstring(key), Option<CString> {} });
+        env_actions_.push(EnvAction { Vec<u8>::from(key.as_encoded_bytes()), Option<Vec<u8>> {} });
         return *this;
     }
 

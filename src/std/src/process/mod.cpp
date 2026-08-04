@@ -185,6 +185,78 @@ auto Child::wait_with_output() -> io::Result<Output> {
 namespace rstd::sys::process_impl
 {
 
+#if RSTD_OS_UNIX
+auto invalid_environment() -> rstd::io::error::Error {
+    return rstd::io::error::Error::from_kind(
+        rstd::io::error::ErrorKind { rstd::io::error::ErrorKind::InvalidInput });
+}
+
+auto valid_environment_key(slice<u8> key) -> bool {
+    if (key.is_empty()) return false;
+    for (auto value : key) {
+        if (value == u8() || value == u8('=')) return false;
+    }
+    return true;
+}
+
+auto valid_environment_value(slice<u8> value) -> bool {
+    for (auto byte : value) {
+        if (byte == u8()) return false;
+    }
+    return true;
+}
+
+auto environment_key_matches(const ::alloc::ffi::CString& entry, slice<u8> key) -> bool {
+    auto bytes = entry.to_bytes();
+    if (bytes.len() <= key.len() || bytes[key.len()] != u8('=')) return false;
+    for (auto index = usize(); index < key.len(); ++index) {
+        if (bytes[index] != key[index]) return false;
+    }
+    return true;
+}
+
+auto environment_entry(slice<u8> key, slice<u8> value)
+    -> rstd::result::Result<::alloc::ffi::CString, rstd::io::error::Error> {
+    auto bytes = ::alloc::vec::Vec<u8>::with_capacity(key.len() + value.len() + usize(1));
+    bytes.extend_from_slice(key);
+    bytes.push(u8('='));
+    bytes.extend_from_slice(value);
+    auto entry = ::alloc::ffi::CString::make(rstd::move(bytes));
+    if (entry.is_err()) return Err(invalid_environment());
+    return Ok(rstd::move(entry).unwrap());
+}
+
+auto child_environment(bool clear, const ::alloc::vec::Vec<rstd::process::EnvAction>& actions)
+    -> rstd::result::Result<::alloc::vec::Vec<::alloc::ffi::CString>, rstd::io::error::Error> {
+    auto result = ::alloc::vec::Vec<::alloc::ffi::CString>::make();
+    if (! clear) {
+        for (auto current = libc::environ; current != nullptr && *current != nullptr; ++current) {
+            result.push(::alloc::ffi::CString::from_raw_parts(*current));
+        }
+    }
+
+    for (const auto& action : actions) {
+        if (! valid_environment_key(action.key.as_slice()) ||
+            (action.value.is_some() && ! valid_environment_value(action.value->as_slice()))) {
+            return Err(invalid_environment());
+        }
+
+        for (auto index = result.len(); index != usize();) {
+            --index;
+            if (environment_key_matches(result[index], action.key.as_slice())) {
+                (void)result.remove(index);
+            }
+        }
+        if (action.value.is_some()) {
+            auto entry = environment_entry(action.key.as_slice(), action.value->as_slice());
+            if (entry.is_err()) return Err(rstd::move(entry).unwrap_err());
+            result.push(rstd::move(entry).unwrap());
+        }
+    }
+    return Ok(rstd::move(result));
+}
+#endif
+
 auto Spawn::spawn(rstd::process::Command& cmd)
     -> rstd::result::Result<rstd::process::Child, rstd::io::error::Error> {
 #if RSTD_OS_UNIX
@@ -260,11 +332,39 @@ auto Spawn::spawn(rstd::process::Command& cmd)
     }
 
     {
-        libc::pid_t child_pid = -1;
-        char**      envp      = libc::environ;
+        auto environment = child_environment(cmd.env_clear_, cmd.env_actions_);
+        if (environment.is_err()) {
+            libc::posix_spawn_file_actions_destroy(&actions);
+            if (stdin_pipe[0] >= 0) {
+                libc::close(stdin_pipe[0]);
+                libc::close(stdin_pipe[1]);
+            }
+            if (stdout_pipe[0] >= 0) {
+                libc::close(stdout_pipe[0]);
+                libc::close(stdout_pipe[1]);
+            }
+            if (stderr_pipe[0] >= 0) {
+                libc::close(stderr_pipe[0]);
+                libc::close(stderr_pipe[1]);
+            }
+            return Err(rstd::move(environment).unwrap_err());
+        }
+        auto environment_values = rstd::move(environment).unwrap();
+        auto environment_pointers =
+            ::alloc::vec::Vec<char*>::with_capacity(environment_values.len() + usize(1));
+        for (const auto& value : environment_values) {
+            environment_pointers.push(const_cast<char*>(value.as_ptr()));
+        }
+        environment_pointers.push(nullptr);
 
-        int err =
-            libc::posix_spawnp(&child_pid, prog_ptr, &actions, nullptr, argv_buf.begin(), envp);
+        libc::pid_t child_pid = -1;
+
+        int err = libc::posix_spawnp(&child_pid,
+                                     prog_ptr,
+                                     &actions,
+                                     nullptr,
+                                     argv_buf.begin(),
+                                     environment_pointers.begin());
         libc::posix_spawn_file_actions_destroy(&actions);
 
         if (err != 0) {

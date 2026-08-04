@@ -82,6 +82,66 @@ TEST(Process, CommandOutputStderr) {
     EXPECT_EQ(to_std_string(out.stderr_buf), "err\n");
 }
 
+TEST(Process, CommandEnvironmentInheritsByDefault) {
+    auto result = rstd::process::Command::make("/bin/sh"_str)
+                      .arg("-c"_str)
+                      .arg("test -n \"${PATH+x}\""_str)
+                      .status();
+    ASSERT_TRUE(result.is_ok());
+    EXPECT_TRUE(result->success());
+}
+
+TEST(Process, CommandEnvironmentUsesLastOverride) {
+    auto result = rstd::process::Command::make("/bin/sh"_str)
+                      .arg("-c"_str)
+                      .arg("test \"$RSTD_PROCESS_ENV_OVERRIDE\" = second"_str)
+                      .env("RSTD_PROCESS_ENV_OVERRIDE"_str, "first"_str)
+                      .env("RSTD_PROCESS_ENV_OVERRIDE"_str, "second"_str)
+                      .status();
+    ASSERT_TRUE(result.is_ok());
+    EXPECT_TRUE(result->success());
+}
+
+TEST(Process, CommandEnvironmentCanRemoveInheritedValue) {
+    auto result = rstd::process::Command::make("/usr/bin/env"_str).env_remove("PATH"_str).output();
+    ASSERT_TRUE(result.is_ok());
+    EXPECT_TRUE(result->status.success());
+    auto environment = to_std_string(result->stdout_buf);
+    EXPECT_NE(environment.rfind("PATH=", 0), std::size_t {});
+    EXPECT_EQ(environment.find("\nPATH="), std::string::npos);
+}
+
+TEST(Process, CommandEnvironmentCanClearAndAddValues) {
+    auto result = rstd::process::Command::make("/usr/bin/env"_str)
+                      .env_clear()
+                      .env("RSTD_PROCESS_ENV_ONLY"_str, "value"_str)
+                      .output();
+    ASSERT_TRUE(result.is_ok());
+    EXPECT_TRUE(result->status.success());
+    EXPECT_EQ(to_std_string(result->stdout_buf), "RSTD_PROCESS_ENV_ONLY=value\n");
+}
+
+TEST(Process, CommandEnvironmentDoesNotMutateParent) {
+    constexpr auto key = "RSTD_PROCESS_ENV_PARENT_GUARD"_str;
+    ASSERT_TRUE(rstd::env::var(key).is_none());
+    auto result = rstd::process::Command::make("/bin/true"_str).env(key, "child"_str).status();
+    ASSERT_TRUE(result.is_ok());
+    EXPECT_TRUE(result->success());
+    EXPECT_TRUE(rstd::env::var(key).is_none());
+}
+
+TEST(Process, CommandEnvironmentRejectsNul) {
+    auto bytes = rstd::vec::Vec<rstd::u8>::make();
+    bytes.push(rstd::u8('x'));
+    bytes.push(rstd::u8());
+    bytes.push(rstd::u8('y'));
+    auto value  = rstd::ffi::OsString::from_encoded_bytes_unchecked(rstd::move(bytes));
+    auto result = rstd::process::Command::make("/bin/true"_str)
+                      .env("RSTD_PROCESS_ENV_NUL"_str, value.as_os_str())
+                      .status();
+    EXPECT_TRUE(result.is_err());
+}
+
 TEST(Process, CommandCurrentDirectory) {
     auto directory = rstd::path::PathBuf::from("/tmp"_str);
     auto res = rstd::process::Command::make("pwd"_str).current_dir(directory.as_path()).output();
