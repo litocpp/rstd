@@ -46,6 +46,8 @@ inline constexpr auto _IORING_OFF_SQ_RING      = IORING_OFF_SQ_RING;
 inline constexpr auto _IORING_OFF_CQ_RING      = IORING_OFF_CQ_RING;
 inline constexpr auto _IORING_OFF_SQES         = IORING_OFF_SQES;
 inline constexpr auto _IORING_FEAT_SINGLE_MMAP = IORING_FEAT_SINGLE_MMAP;
+inline constexpr auto _IORING_REGISTER_EVENTFD = IORING_REGISTER_EVENTFD;
+inline constexpr auto _IORING_REGISTER_PROBE   = IORING_REGISTER_PROBE;
 inline constexpr auto _IO_URING_OP_SUPPORTED   = IO_URING_OP_SUPPORTED;
 
 #undef SYS_futex
@@ -75,6 +77,8 @@ inline constexpr auto _IO_URING_OP_SUPPORTED   = IO_URING_OP_SUPPORTED;
 #undef IORING_OFF_CQ_RING
 #undef IORING_OFF_SQES
 #undef IORING_FEAT_SINGLE_MMAP
+#undef IORING_REGISTER_EVENTFD
+#undef IORING_REGISTER_PROBE
 #undef IO_URING_OP_SUPPORTED
 #endif
 
@@ -135,8 +139,8 @@ inline constexpr auto IORING_OP_SEND          = ::IORING_OP_SEND;
 inline constexpr auto IORING_OP_CONNECT       = ::IORING_OP_CONNECT;
 inline constexpr auto IORING_OP_ACCEPT        = ::IORING_OP_ACCEPT;
 inline constexpr auto IORING_OP_ASYNC_CANCEL  = ::IORING_OP_ASYNC_CANCEL;
-inline constexpr auto IORING_REGISTER_EVENTFD = ::IORING_REGISTER_EVENTFD;
-inline constexpr auto IORING_REGISTER_PROBE   = ::IORING_REGISTER_PROBE;
+inline constexpr auto IORING_REGISTER_EVENTFD = _IORING_REGISTER_EVENTFD;
+inline constexpr auto IORING_REGISTER_PROBE   = _IORING_REGISTER_PROBE;
 inline constexpr auto IORING_OFF_SQ_RING      = _IORING_OFF_SQ_RING;
 inline constexpr auto IORING_OFF_CQ_RING      = _IORING_OFF_CQ_RING;
 inline constexpr auto IORING_OFF_SQES         = _IORING_OFF_SQES;
