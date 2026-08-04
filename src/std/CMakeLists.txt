@@ -34,6 +34,10 @@ target_sources(
          src/os/handle.cppm
          src/os/socket.cppm
          src/sys/io/stdio.cppm
+         src/sys/mod.cppm
+         src/sys/fs.cppm
+         src/sys/socket.cppm
+         src/sys/io/mod.cppm
          src/sys/libc/mod.cppm
          src/sys/libc/linux.cppm
          src/sys/libc/pthread.cppm
@@ -146,14 +150,6 @@ target_sources(
          src/net/mod.cppm
          src/net/socket_addr.cppm
          src/net/tcp.cppm)
-
-target_sources(
-  rstd.std
-  PRIVATE FILE_SET private_modules TYPE CXX_MODULES FILES
-          src/sys/mod.cppm
-          src/sys/fs.cppm
-          src/sys/socket.cppm
-          src/sys/io/mod.cppm)
 
 target_sources(
   rstd.std
