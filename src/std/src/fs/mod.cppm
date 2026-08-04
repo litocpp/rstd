@@ -203,6 +203,7 @@ public:
 
     auto read(mut_ref<u8[]> buffer) -> FsResult<usize>;
     auto write(slice<u8> buffer) -> FsResult<usize>;
+    auto write_all(slice<u8> buffer) -> FsResult<empty>;
     auto flush() -> FsResult<empty>;
     auto seek(SeekFrom position) -> FsResult<u64>;
     auto sync_all() -> FsResult<empty>;

@@ -79,6 +79,10 @@ auto File::write(slice<u8> buffer) -> FsResult<usize> {
     return sys_fs::write(m_fd.as_raw_fd(), as_bytes(buffer));
 }
 
+auto File::write_all(slice<u8> buffer) -> FsResult<empty> {
+    return io::write_all(*this, buffer);
+}
+
 auto File::flush() -> FsResult<empty> {
     return Ok(empty {});
 }

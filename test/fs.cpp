@@ -95,6 +95,18 @@ TEST(Fs, CreateWriteReadRoundTrip) {
     }
 }
 
+TEST(Fs, WriteAllReadRoundTrip) {
+    TempPath tp;
+    auto     file  = File::create(tp.as_path()).unwrap_unchecked();
+    auto     bytes = native_bytes("complete write", 14);
+    ASSERT_TRUE(file.write_all(bytes.as_slice()).is_ok());
+
+    file.seek(SeekFrom::from_start(rstd::u64())).unwrap_unchecked();
+    auto buffer = rstd::array<rstd::u8, 14> {};
+    EXPECT_EQ(file.read(raw_bytes(buffer)).unwrap_unchecked(), rstd::usize(14));
+    EXPECT_TRUE(equals_native(buffer, "complete write", 14));
+}
+
 TEST(Fs, ExternalRawBufferRoundTrip) {
     TempPath tp;
     auto     file = OpenOptions::make()
