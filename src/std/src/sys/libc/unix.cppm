@@ -23,6 +23,15 @@ module;
 #include <dirent.h>
 #endif
 
+#if defined(RSTD_OS_LINUX) && defined(__GLIBC__)
+#include <gnu/libc-version.h>
+
+extern "C" int posix_spawn_file_actions_addchdir_np(posix_spawn_file_actions_t*,
+                                                    const char*) noexcept __attribute__((weak));
+extern "C" int posix_spawn_file_actions_addchdir(posix_spawn_file_actions_t*, const char*) noexcept
+    __attribute__((weak));
+#endif
+
 export module rstd:sys.libc.unix;
 
 #ifdef RSTD_OS_LINUX
@@ -362,12 +371,12 @@ using ::posix_spawn_file_actions_destroy;
 using ::posix_spawn_file_actions_addclose;
 using ::posix_spawn_file_actions_adddup2;
 using ::posix_spawn_file_actions_addopen;
-#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__)
-using ::posix_spawn_file_actions_addchdir_np;
-#endif
 using ::posix_spawnattr_t;
 using ::posix_spawnattr_init;
 using ::posix_spawnattr_destroy;
+using ::fork;
+using ::chdir;
+using ::execvp;
 using ::environ;
 using ::mkstemp;
 using ::mkdtemp;
@@ -397,6 +406,42 @@ using ::readlink;
 using ::realpath;
 using ::open;
 using ::fcntl;
+
+using PosixSpawnAddChdir = int (*)(posix_spawn_file_actions_t*, const char*);
+
+inline auto get_posix_spawn_addchdir() noexcept -> PosixSpawnAddChdir {
+#if defined(__GLIBC__)
+    if (::posix_spawn_file_actions_addchdir_np != nullptr) {
+        return ::posix_spawn_file_actions_addchdir_np;
+    }
+    if (::posix_spawn_file_actions_addchdir != nullptr) {
+        return ::posix_spawn_file_actions_addchdir;
+    }
+#endif
+    return nullptr;
+}
+
+inline auto posix_spawn_reports_exec_error() noexcept -> bool {
+#if defined(__GLIBC__)
+    const auto* version = ::gnu_get_libc_version();
+    auto        major   = 0U;
+    auto        minor   = 0U;
+    while (*version >= '0' && *version <= '9') {
+        major = major * 10U + static_cast<unsigned>(*version - '0');
+        ++version;
+    }
+    if (*version == '.') {
+        ++version;
+        while (*version >= '0' && *version <= '9') {
+            minor = minor * 10U + static_cast<unsigned>(*version - '0');
+            ++version;
+        }
+    }
+    return major > 2U || (major == 2U && minor >= 24U);
+#else
+    return true;
+#endif
+}
 using ::chmod;
 using ::fchmod;
 using ::mkdir;

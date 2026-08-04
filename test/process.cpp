@@ -151,6 +151,27 @@ TEST(Process, CommandCurrentDirectory) {
     EXPECT_EQ(to_std_string(out.stdout_buf), "/tmp\n");
 }
 
+TEST(Process, CommandCurrentDirectoryReportsSpawnFailure) {
+    auto directory = rstd::path::PathBuf::from("/rstd-directory-that-does-not-exist"_str);
+    auto result    = rstd::process::Command::make("pwd"_str)
+                         .current_dir(directory.as_path())
+                         .env("PATH"_str, "/usr/bin"_str)
+                         .status();
+    EXPECT_TRUE(result.is_err());
+}
+
+TEST(Process, CommandCurrentDirectoryWorksWithForkExecFallback) {
+    auto directory = rstd::path::PathBuf::from("/tmp"_str);
+    auto result    = rstd::process::Command::make("pwd"_str)
+                         .current_dir(directory.as_path())
+                         .env("PATH"_str, "/usr/bin"_str)
+                         .output();
+    ASSERT_TRUE(result.is_ok());
+    auto output = result.unwrap();
+    EXPECT_TRUE(output.status.success());
+    EXPECT_EQ(to_std_string(output.stdout_buf), "/tmp\n");
+}
+
 TEST(Process, ChildTryWait) {
     auto child =
         rstd::process::Command::make("sh"_str).arg("-c"_str).arg("sleep 0.02; exit 7"_str).spawn();
