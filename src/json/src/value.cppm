@@ -23,9 +23,12 @@ export auto operator==(const Value& left, f32 right) noexcept -> bool;
 export auto operator==(const Value& left, f64 right) noexcept -> bool;
 export auto operator==(const Value& left, ref<str> right) noexcept -> bool;
 export auto operator==(const Value& left, const ::alloc::string::String& right) noexcept -> bool;
+/// An ordered sequence of JSON values.
 export using Array = ::alloc::vec::Vec<Value>;
-export using Map   = ::alloc::collections::BTreeMap<::alloc::string::String, Value>;
+/// A JSON object keyed by owned UTF-8 strings.
+export using Map = ::alloc::collections::BTreeMap<::alloc::string::String, Value>;
 
+/// A dynamically typed JSON value.
 export class Value : public rstd::DefaultInClass<Value, rstd::clone::Clone> {
     RSTD_ENUM_DEFAULT(Value,
                       (Null),

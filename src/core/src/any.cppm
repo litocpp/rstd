@@ -7,6 +7,7 @@ using namespace rstd::prelude;
 export namespace rstd::any
 {
 
+/// A type-erased trait that exposes the concrete value's runtime `TypeId`.
 struct Any {
     template<typename Self, typename = void>
     struct Api {
@@ -23,16 +24,19 @@ struct Any {
     using Funcs = TraitFuncs<>;
 };
 
+/// Returns whether the shared type-erased value contains `T`.
 template<typename T>
 auto is(ref<dyn<Any>> value) noexcept -> bool {
     return value.concrete_type_id() == TypeId::of<T>();
 }
 
+/// Returns whether the mutable type-erased value contains `T`.
 template<typename T>
 auto is(mut_ref<dyn<Any>> value) noexcept -> bool {
     return is<T>(value.as_ref());
 }
 
+/// Borrows the stored value as `T`, or returns `None` when the type differs.
 template<typename T>
 auto downcast_ref(ref<dyn<Any>> value [[clang::lifetimebound]]) noexcept -> Option<ref<T>> {
     if (! is<T>(value)) return None();
@@ -41,6 +45,7 @@ auto downcast_ref(ref<dyn<Any>> value [[clang::lifetimebound]]) noexcept -> Opti
     return Some(rstd::move(result));
 }
 
+/// Mutably borrows the stored value as `T`, or returns `None` when the type differs.
 template<typename T>
 auto downcast_mut(mut_ref<dyn<Any>> value [[clang::lifetimebound]]) noexcept -> Option<mut_ref<T>> {
     if (! is<T>(value)) return None();

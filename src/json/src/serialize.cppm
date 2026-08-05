@@ -7,12 +7,17 @@ export import :value;
 export namespace rstd::json
 {
 
+/// Options that control JSON text formatting.
 struct FormatOptions {
-    bool  pretty { false };
+    /// Writes indented multi-line JSON when enabled.
+    bool pretty { false };
+    /// Sets the number of spaces used for each indentation level.
     usize indent { 2 };
 };
 
+/// Serializes a JSON value to compact text.
 auto to_string(const Value& value) -> ::alloc::string::String;
+/// Serializes a JSON value using explicit formatting options.
 auto to_string(const Value& value, FormatOptions options) -> ::alloc::string::String;
 
 } // namespace rstd::json

@@ -1,3 +1,4 @@
+//! Core language-independent types, traits, containers, and utilities for rstd.
 export module rstd.core;
 export import :num.types;
 export import :num.literals;

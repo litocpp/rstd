@@ -6,6 +6,7 @@ using namespace rstd;
 namespace rstd::async
 {
 
+/// Stores one task waker and coordinates concurrent registration and wake-up.
 export class AtomicWaker {
     static constexpr usize WAITING {};
     static constexpr usize REGISTERING { static_cast<usize::primitive_type>(0b01) };
@@ -15,6 +16,7 @@ export class AtomicWaker {
     Option<task::Waker>         m_waker {};
 
 public:
+    /// Creates an empty waker slot.
     AtomicWaker() = default;
 
     AtomicWaker(const AtomicWaker&)                    = delete;
@@ -24,6 +26,7 @@ public:
 
     ~AtomicWaker() = default;
 
+    /// Registers the waker to notify on the next wake-up.
     void register_waker(const task::Waker& waker) {
         auto expected = WAITING;
         if (m_state.compare_exchange_strong(expected,
@@ -61,6 +64,7 @@ public:
         }
     }
 
+    /// Registers the waker carried by a polling context.
     void register_context(task::Context& cx) { register_waker(cx.waker()); }
 
 private:
@@ -76,6 +80,7 @@ private:
     }
 
 public:
+    /// Wakes and removes the currently registered waker, if any.
     void wake() {
         auto waker = take_waker();
         if (waker.is_some()) {

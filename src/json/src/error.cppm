@@ -34,12 +34,14 @@ class Parser;
 export namespace rstd::json
 {
 
+/// The broad category of a JSON parse error.
 enum class Category : rstd::uint8_t
 {
     Syntax,
     Eof,
 };
 
+/// A JSON parse error with its one-based source location.
 class Error {
     ErrorCode code_;
     usize     line_;
@@ -53,15 +55,18 @@ class Error {
     friend struct rstd::Impl;
 
 public:
+    /// Returns the one-based line containing the error.
     [[nodiscard]]
     constexpr auto line() const noexcept -> usize {
         return line_;
     }
+    /// Returns the one-based column containing the error.
     [[nodiscard]]
     constexpr auto column() const noexcept -> usize {
         return column_;
     }
 
+    /// Classifies the error as syntax-related or caused by unexpected end of input.
     [[nodiscard]]
     constexpr auto classify() const noexcept -> Category {
         switch (code_) {
@@ -74,10 +79,12 @@ public:
         }
     }
 
+    /// Returns whether this is a syntax error.
     [[nodiscard]]
     constexpr auto is_syntax() const noexcept -> bool {
         return classify() == Category::Syntax;
     }
+    /// Returns whether parsing failed because input ended early.
     [[nodiscard]]
     constexpr auto is_eof() const noexcept -> bool {
         return classify() == Category::Eof;

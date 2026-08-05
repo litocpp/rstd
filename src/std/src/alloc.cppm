@@ -1,2 +1,2 @@
-/// Memory allocation APIs and global allocator support.
+//! Memory allocation APIs and global allocator support.
 export module rstd:alloc;

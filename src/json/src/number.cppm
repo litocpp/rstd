@@ -4,6 +4,7 @@ export import rstd.core;
 export namespace rstd::json
 {
 
+/// A finite JSON number stored as an unsigned integer, signed integer, or floating-point value.
 class Number {
     enum class Representation : rstd::uint8_t
     {
@@ -28,23 +29,27 @@ public:
     constexpr Number(Number&&) noexcept            = default;
     constexpr Number& operator=(Number&&) noexcept = default;
 
+    /// Creates a number from an unsigned 64-bit integer.
     [[nodiscard]]
     static constexpr auto from_u64(u64 value) noexcept -> Number {
         return Number(value);
     }
 
+    /// Creates a number from a signed 64-bit integer.
     [[nodiscard]]
     static constexpr auto from_i64(i64 value) noexcept -> Number {
         if (value < i64 {}) return Number(value);
         return Number(rstd::as_cast<u64>(value));
     }
 
+    /// Creates a number from a finite floating-point value.
     [[nodiscard]]
     static auto from_f64(f64 value) noexcept -> Option<Number> {
         if (! value.is_finite()) return None();
         return Some(Number(value));
     }
 
+    /// Returns whether the number can be represented as an `i64`.
     [[nodiscard]]
     constexpr auto is_i64() const noexcept -> bool {
         return value_.index() == 1 ||
@@ -52,15 +57,18 @@ public:
                 value_.as<Representation::Unsigned>() <= rstd::as_cast<u64>(i64::MAX));
     }
 
+    /// Returns whether the number is stored as an unsigned integer.
     [[nodiscard]]
     constexpr auto is_u64() const noexcept -> bool {
         return value_.index() == 0;
     }
+    /// Returns whether the number is stored as a floating-point value.
     [[nodiscard]]
     constexpr auto is_f64() const noexcept -> bool {
         return value_.index() == 2;
     }
 
+    /// Returns the number as an `i64` when it is in range.
     [[nodiscard]]
     constexpr auto as_i64() const noexcept -> Option<i64> {
         if (value_.index() == 1) return Some(i64(value_.as<Representation::Signed>()));
@@ -71,12 +79,14 @@ public:
         return None();
     }
 
+    /// Returns the number as a `u64` when it is stored unsigned.
     [[nodiscard]]
     constexpr auto as_u64() const noexcept -> Option<u64> {
         if (value_.index() == 0) return Some(u64(value_.as<Representation::Unsigned>()));
         return None();
     }
 
+    /// Converts the stored number to an `f64`.
     [[nodiscard]]
     constexpr auto as_f64() const noexcept -> Option<f64> {
         switch (value_.index()) {

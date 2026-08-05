@@ -21,7 +21,7 @@ namespace rstd::fmt
 
 {
 
-/// Forward declaration of the Formatter used during format output.
+// Forward declaration of the formatter used during format output.
 export struct Formatter;
 
 // Forward declarations consumed by the `Arguments::make` factory below.

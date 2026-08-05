@@ -1,3 +1,4 @@
+//! Heap-backed containers, strings, reference counting, and allocation utilities.
 export module rstd.alloc;
 export import :alloc;
 export import :rc;

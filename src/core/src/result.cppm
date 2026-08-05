@@ -844,8 +844,7 @@ constexpr auto Err(TErr&& val) -> Result<T, TErr> {
 
 template<typename T, typename E>
 struct option_adapter_l1<rstd::result::Result<T, E>> {
-    /// Transposes an `Option<Result<T, E>>` into a `Result<Option<T>, E>`.
-    /// \return `Ok(Some(v))` if `Some(Ok(v))`, `Err(e)` if `Some(Err(e))`, or `Ok(None)` if `None`.
+    // Transposes an Option<Result<T, E>> into a Result<Option<T>, E>.
     constexpr auto transpose() -> rstd::result::Result<Option<T>, E> {
         auto&& self = static_cast<Option<rstd::result::Result<T, E>>&&>(*this);
         if (self.is_some()) {

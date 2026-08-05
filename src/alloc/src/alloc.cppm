@@ -63,16 +63,15 @@ void handle_alloc_error(Layout layout) {
     rstd::panic { "memory allocation failed" };
 }
 
-/// The global memory allocator.
+// Forward declaration of the global memory allocator.
 export struct Global;
 
 } // namespace alloc
 
 namespace alloc_ = alloc;
 
-/// Impl before Global definition — methods live here, not on Global.
-/// Inherits DefaultInImpl so default grow/shrink/grow_zeroed call back
-/// through impl_() which constructs Impl directly (no trait_call).
+// Keep this implementation before Global so the default operations dispatch
+// through impl_() without constructing the trait object.
 template<>
 struct rstd::Impl<rstd::alloc::Allocator, alloc_::Global>
     : DefaultInImpl<rstd::alloc::Allocator, alloc_::Global> {

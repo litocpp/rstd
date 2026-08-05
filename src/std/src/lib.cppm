@@ -1,4 +1,4 @@
-/// The rstd standard library module, re-exporting all public submodules.
+//! The rstd standard library module, re-exporting all public submodules.
 export module rstd;
 export import rstd.core;
 export import rstd.error;

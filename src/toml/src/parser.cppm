@@ -5,17 +5,26 @@ export import :error;
 export namespace rstd::toml
 {
 
+/// The result of parsing a TOML document.
 using ParseResult = rstd::Result<Value, Error>;
 
+/// Resource limits applied while parsing TOML input.
 struct ParseOptions {
-    u8    max_depth { 128 };
+    /// The maximum nested array or inline-table depth.
+    u8 max_depth { 128 };
+    /// The maximum accepted input size in bytes.
     usize max_input_bytes { usize(16 * 1024 * 1024) };
+    /// The maximum number of values created by one parse.
     usize max_values { usize(1024 * 1024) };
 };
 
+/// Parses a TOML document from UTF-8 text.
 auto from_str(ref<str> input) -> ParseResult;
+/// Parses a TOML document from UTF-8 text using explicit resource limits.
 auto from_str(ref<str> input, ParseOptions options) -> ParseResult;
+/// Validates UTF-8 bytes and parses a TOML document.
 auto from_slice(slice<u8> input) -> ParseResult;
+/// Validates UTF-8 bytes and parses a TOML document using explicit resource limits.
 auto from_slice(slice<u8> input, ParseOptions options) -> ParseResult;
 
 } // namespace rstd::toml

@@ -12,19 +12,24 @@ using namespace rstd::prelude;
 namespace alloc::string
 {
 
+/// An error that retains the original bytes when UTF-8 validation fails.
 export class FromUtf8Error {
     Vec<u8>               bytes_;
     rstd::str_::Utf8Error error_;
 
 public:
+    /// Creates an error from the rejected bytes and their validation error.
     FromUtf8Error(Vec<u8>&& bytes, rstd::str_::Utf8Error error)
         : bytes_(rstd::move(bytes)), error_(error) {}
 
+    /// Returns the rejected byte sequence.
     auto as_bytes() const noexcept [[clang::lifetimebound]] -> slice<u8> {
         return bytes_.as_slice();
     }
 
-    auto           into_bytes() && -> Vec<u8> { return rstd::move(bytes_); }
+    /// Recovers ownership of the rejected byte sequence.
+    auto into_bytes() && -> Vec<u8> { return rstd::move(bytes_); }
+    /// Returns the UTF-8 validation error.
     constexpr auto utf8_error() const noexcept -> rstd::str_::Utf8Error { return error_; }
 };
 

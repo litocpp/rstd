@@ -32,6 +32,7 @@ class TomlParser;
 export namespace rstd::toml
 {
 
+/// The broad category of a TOML parse error.
 enum class ErrorCategory : rstd::uint8_t
 {
     Syntax,
@@ -39,6 +40,7 @@ enum class ErrorCategory : rstd::uint8_t
     Limit,
 };
 
+/// A TOML parse error with its source location and byte offset.
 class Error {
     TomlErrorCode code_;
     usize         line_;
@@ -53,21 +55,25 @@ class Error {
     friend struct rstd::Impl;
 
 public:
+    /// Returns the one-based line containing the error.
     [[nodiscard]]
     constexpr auto line() const noexcept -> usize {
         return line_;
     }
 
+    /// Returns the one-based column containing the error.
     [[nodiscard]]
     constexpr auto column() const noexcept -> usize {
         return column_;
     }
 
+    /// Returns the zero-based byte offset of the error.
     [[nodiscard]]
     constexpr auto offset() const noexcept -> usize {
         return offset_;
     }
 
+    /// Classifies the error as syntax, unexpected end of input, or a resource limit.
     [[nodiscard]]
     constexpr auto classify() const noexcept -> ErrorCategory {
         if (code_ == TomlErrorCode::UnexpectedEnd) return ErrorCategory::Eof;
@@ -78,16 +84,19 @@ public:
         return ErrorCategory::Syntax;
     }
 
+    /// Returns whether this is a syntax error.
     [[nodiscard]]
     constexpr auto is_syntax() const noexcept -> bool {
         return classify() == ErrorCategory::Syntax;
     }
 
+    /// Returns whether parsing failed because input ended early.
     [[nodiscard]]
     constexpr auto is_eof() const noexcept -> bool {
         return classify() == ErrorCategory::Eof;
     }
 
+    /// Returns whether parsing exceeded a configured resource limit.
     [[nodiscard]]
     constexpr auto is_limit() const noexcept -> bool {
         return classify() == ErrorCategory::Limit;

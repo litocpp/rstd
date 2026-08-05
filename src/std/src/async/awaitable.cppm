@@ -30,6 +30,7 @@ public:
     constexpr auto waker() const noexcept -> const task::Waker& { return m_poll_context->waker(); }
 };
 
+/// Resolves the future type produced by an `IntoFuture` implementation.
 export template<typename A>
 using into_future_t = typename mtp::rm_cvf<A>::Future;
 
@@ -87,6 +88,7 @@ struct AwaitableTraits;
 template<typename A>
 concept InternalAwaitable = requires { typename AwaitableTraits<mtp::rm_cvf<A>>::Output; };
 
+/// A trait for values that can be converted into a pollable future.
 export struct IntoFuture {
     template<class Self, class Delegate = void>
     struct Api {
@@ -129,9 +131,11 @@ struct AwaitOutput<A> {
     using type = future::future_output_t<into_future_t<A>>;
 };
 
+/// Resolves the value produced by awaiting an awaitable input.
 export template<typename A>
 using await_output_t = typename AwaitOutput<A>::type;
 
+/// Accepts native awaitables, futures, and values implementing `IntoFuture`.
 export template<typename A>
 concept AwaitableInput = InternalAwaitable<A> || FutureInput<A> || IntoFutureInput<A>;
 
