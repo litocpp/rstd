@@ -382,6 +382,10 @@ public:
     }
 };
 
+// Clang 22 can crash under -Wuninitialized when consumers instantiate constrained members from the BMI.
+template class Arg<bool>;
+template class Arg<u8>;
+
 } // namespace rstd::argparse
 
 template<typename T>
