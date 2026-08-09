@@ -97,7 +97,12 @@ TEST(Fs, CreateWriteReadRoundTrip) {
 
 TEST(Fs, WriteAllReadRoundTrip) {
     TempPath tp;
-    auto     file  = File::create(tp.as_path()).unwrap_unchecked();
+    auto     file  = OpenOptions::make()
+                         .read(true)
+                         .write(true)
+                         .truncate(true)
+                         .open(tp.as_path())
+                         .unwrap_unchecked();
     auto     bytes = native_bytes("complete write", 14);
     ASSERT_TRUE(file.write_all(bytes.as_slice()).is_ok());
 
