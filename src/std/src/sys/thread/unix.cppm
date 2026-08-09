@@ -82,6 +82,11 @@ export struct Thread {
     }
 
     static void yield_now() { libc::sched_yield(); }
+
+    static auto available_parallelism() -> Option<usize> {
+        auto count = libc::online_processor_count();
+        return count > 0 ? Some(usize(static_cast<rstd::size_t>(count))) : None();
+    }
 };
 
 }; // namespace rstd::sys::thread::unix

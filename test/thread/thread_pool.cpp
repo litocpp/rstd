@@ -5,6 +5,12 @@ import rstd;
 
 using namespace rstd;
 
+TEST(Thread, AvailableParallelismIsNonZero) {
+    auto parallelism = thread::available_parallelism();
+    ASSERT_TRUE(parallelism.is_ok());
+    EXPECT_GT(parallelism.unwrap_unchecked().get(), usize());
+}
+
 TEST(ThreadPool, RejectsZeroWorkers) {
     EXPECT_TRUE(thread::ThreadPoolBuilder::make().worker_count(usize()).build().is_err());
 }

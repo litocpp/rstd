@@ -122,6 +122,7 @@ using ::BOOL;
 using ::LARGE_INTEGER;
 using ::FILETIME;
 using ::SYSTEMTIME;
+using ::SYSTEM_INFO;
 using ::SRWLOCK;
 using ::CONDITION_VARIABLE;
 
@@ -228,6 +229,7 @@ using ::Sleep;
 using ::SwitchToThread;
 using ::GetCurrentThread;
 using ::SetThreadDescription;
+using ::GetSystemInfo;
 
 // ── IO ───────────────────────────────────────────────────────────────────
 using ::GetStdHandle;

@@ -12,7 +12,13 @@ namespace rstd::sys::thread
 {
 #if RSTD_OS_LINUX
 using unix::Thread;
+inline auto available_parallelism() -> Option<usize> {
+    return unix::Thread::available_parallelism();
+}
 #elif RSTD_OS_WINDOWS
 using windows::Thread;
+inline auto available_parallelism() -> Option<usize> {
+    return windows::Thread::available_parallelism();
+}
 #endif
 } // namespace rstd::sys::thread

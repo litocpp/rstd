@@ -78,6 +78,13 @@ export struct Thread {
     }
 
     static void yield_now() { SwitchToThread(); }
+
+    static auto available_parallelism() -> Option<usize> {
+        auto information = SYSTEM_INFO {};
+        GetSystemInfo(&information);
+        auto count = information.dwNumberOfProcessors;
+        return count > 0 ? Some(usize(static_cast<rstd::size_t>(count))) : None();
+    }
 };
 
 } // namespace rstd::sys::thread::windows

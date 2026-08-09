@@ -166,6 +166,10 @@ inline constexpr auto _LOCK_UN = LOCK_UN;
 
 inline constexpr auto _UTIME_OMIT = UTIME_OMIT;
 
+inline auto _rstd_online_processor_count() noexcept -> long {
+    return ::sysconf(_SC_NPROCESSORS_ONLN);
+}
+
 #undef CLOCK_MONOTONIC
 #undef CLOCK_REALTIME
 #undef ENOENT
@@ -215,6 +219,7 @@ inline constexpr auto _UTIME_OMIT = UTIME_OMIT;
 #undef EISCONN
 #undef ECANCELED
 #undef SIGKILL
+#undef _SC_NPROCESSORS_ONLN
 #undef O_CLOEXEC
 #undef O_NONBLOCK
 #undef O_RDONLY
@@ -289,6 +294,9 @@ export namespace rstd::sys::libc
 {
 
 using ::sched_yield;
+inline auto online_processor_count() noexcept -> long {
+    return _rstd_online_processor_count();
+}
 using ::posix_memalign;
 using ::htons;
 using ::htonl;

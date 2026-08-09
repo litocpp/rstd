@@ -46,4 +46,14 @@ export inline void unpark(const Thread& thread) {
     thread.unpark();
 }
 
+/// Returns the number of hardware threads available to this process.
+export inline auto available_parallelism() -> io::Result<rstd::num::nonzero::NonZero<usize>> {
+    auto count = sys::thread::available_parallelism();
+    if (count.is_none()) {
+        return Err(io::Error::new_const(io::ErrorKind { io::ErrorKind::Other },
+                                        "available parallelism is unknown"));
+    }
+    return Ok(rstd::num::nonzero::NonZero<usize>::make_unchecked(*count));
+}
+
 } // namespace rstd::thread
