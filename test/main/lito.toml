@@ -1,0 +1,155 @@
+[package]
+name = "rstd-tests"
+version.workspace = true
+module = "rstd.tests"
+
+[test]
+name = "rstd-tests"
+discovery = "explicit"
+sources = [
+  "tenon_main.cpp",
+  "test_macro.cpp",
+  "trait.cpp",
+  "any.cpp",
+  "error.cpp",
+  "argparse/definition.cpp",
+  "argparse/parsing.cpp",
+  "argparse/relations.cpp",
+  "argparse/subcommands.cpp",
+  "argparse/values.cpp",
+  "argparse/help.cpp",
+  "argparse/lifecycle.cpp",
+  "argparse/errors.cpp",
+  "array.cpp",
+  "slice.cpp",
+  "atomic.cpp",
+  "deref.cpp",
+  "result.cpp",
+  "try_async.cpp",
+  "compile.cpp",
+  "option.cpp",
+  "clone.cpp",
+  "clone_tuple.cpp",
+  "convert.cpp",
+  "enum.cpp",
+  "hint.cpp",
+  "alloc/rc.cpp",
+  "alloc/str.cpp",
+  "alloc/boxed.cpp",
+  "alloc/vec.cpp",
+  "alloc/sync.cpp",
+  "alloc/string.cpp",
+  "collections/btree_map.cpp",
+  "collections/btree_set.cpp",
+  "collections/hash_map.cpp",
+  "collections/hash_set.cpp",
+  "json/number.cpp",
+  "json/value.cpp",
+  "json/parser.cpp",
+  "json/serialize.cpp",
+  "json/module.cpp",
+  "toml/parser.cpp",
+  "toml/module.cpp",
+  "iter/iterator.cpp",
+  "sys/sync/mutex/futex.cpp",
+  "thread/thread.cpp",
+  "thread/thread_pool.cpp",
+  "thread/blocking_task_group.cpp",
+  "thread/blocking_task_set.cpp",
+  "num/nonzero.cpp",
+  "thread.cpp",
+  "async.cpp",
+  "async/abort_on_drop.cpp",
+  "async/concurrency.cpp",
+  "async/facility.cpp",
+  "async/io_operation.cpp",
+  "async/frame.cpp",
+  "async/lifecycle.cpp",
+  "async/runtime.cpp",
+  "async/spawn_blocking.cpp",
+  "net_completion.cpp",
+  "bytes.cpp",
+  "sync/mutex.cpp",
+  "sync/condvar.cpp",
+  "sync/once.cpp",
+  "sync/once_lock.cpp",
+  "sync/lazy_lock.cpp",
+  "sync/mpsc.cpp",
+  "time.cpp",
+  "fmt.cpp",
+  "io.cpp",
+  "env.cpp",
+  "char.cpp",
+  "floats.cpp",
+  "ints.cpp",
+  "str.cpp",
+  "str_literal_cross_tu.cpp",
+  "str_literal_cross_tu_provider.cpp",
+  "ffi/os_str.cpp",
+  "ffi/c_str.cpp",
+  "path.cpp",
+  "prelude.cpp",
+  "log.cpp",
+  "log_module_check.cppm",
+  "any_module_check.cppm",
+  "error_module_check.cppm",
+  "cppstd/iter.cpp",
+  "cppstd/module_check.cppm",
+  "try.cpp",
+  "try_module_check.cppm",
+  "try_coroutine.cpp",
+  "bench.cpp",
+]
+source-groups = [
+  { sources = ["sys/sync/condvar/pthread.cpp", "sys/sync/mutex/pthread.cpp", "process.cpp", "os_fd.cpp", "fs.cpp", "net.cpp"], target = { family = "unix" } },
+  { sources = ["async/poll.cpp"], target = { os = "linux" } },
+]
+
+[[test.attach]]
+package = "rstd-std"
+source-groups = [
+  { sources = ["async/io_backend.cppm"], target = { os = "linux" } },
+]
+
+[usage]
+private-options = [
+  "-fPIC",
+  "-Wall",
+  "-Wpedantic",
+  "-Wno-gnu-statement-expression",
+  "-Wno-deprecated-declarations",
+  "-Wunknown-attributes",
+  "-fsized-deallocation",
+]
+
+[dependencies.rstd-std]
+path = "../../src/std"
+visibility = "private"
+
+[dependencies.rstd-test]
+path = "../../src/test"
+visibility = "private"
+
+[dependencies.rstd-json]
+path = "../../src/json"
+visibility = "private"
+
+[dependencies.rstd-toml]
+path = "../../src/toml"
+visibility = "private"
+
+[dependencies.rstd-log]
+path = "../../src/log"
+visibility = "private"
+
+[dependencies.rstd-argparse]
+path = "../../src/argparse"
+visibility = "private"
+
+[dependencies.rstd-cppstd]
+path = "../../src/cppstd"
+visibility = "private"
+
+[dependencies.rstd-bench]
+path = "../../src/bench"
+visibility = "private"

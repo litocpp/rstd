@@ -16,13 +16,12 @@ members = [
   "src/dlopn",
   "src/nostd",
   "bench",
-  "test",
-  "test/dlopn-runtime",
-  "test/compile_fail",
-  "test/nostd",
-  "test/toml",
 ]
 default-members = ["bench"]
 
 [workspace.package]
 version = "0.1.0"
+
+[profile]
+exceptions = false
+rtti = false

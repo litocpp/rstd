@@ -51,9 +51,9 @@
       "dependencies": [
         "rstd-std"
       ],
-      "manifest": "test/compile_fail/lito.toml",
+      "manifest": "compile_fail/lito.toml",
       "name": "rstd-compile-tests",
-      "source": "path+.",
+      "source": "path+test",
       "version": "0.1.0"
     },
     {
@@ -89,9 +89,9 @@
         "rstd-dlopn",
         "rstd-test"
       ],
-      "manifest": "test/dlopn-runtime/lito.toml",
+      "manifest": "dlopn-runtime/lito.toml",
       "name": "rstd-dlopn-tests",
-      "source": "path+.",
+      "source": "path+test",
       "version": "0.1.0"
     },
     {
@@ -126,9 +126,9 @@
         "rstd-nostd",
         "rstd-std"
       ],
-      "manifest": "test/nostd/lito.toml",
+      "manifest": "nostd/lito.toml",
       "name": "rstd-nostd-tests",
-      "source": "path+.",
+      "source": "path+test",
       "version": "0.1.0"
     },
     {
@@ -170,9 +170,9 @@
         "rstd-test",
         "rstd-toml"
       ],
-      "manifest": "test/lito.toml",
+      "manifest": "main/lito.toml",
       "name": "rstd-tests",
-      "source": "path+.",
+      "source": "path+test",
       "version": "0.1.0"
     },
     {
@@ -192,9 +192,9 @@
         "rstd-test",
         "rstd-toml"
       ],
-      "manifest": "test/toml/lito.toml",
+      "manifest": "toml/lito.toml",
       "name": "rstd-toml-conformance-tests",
-      "source": "path+.",
+      "source": "path+test",
       "version": "0.1.0"
     }
   ],
@@ -224,6 +224,10 @@
     {
       "kind": "path",
       "path": "."
+    },
+    {
+      "kind": "path",
+      "path": "test"
     }
   ],
   "version": 4
