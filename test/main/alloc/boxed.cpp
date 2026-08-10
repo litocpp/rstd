@@ -97,6 +97,16 @@ TEST(BoxTest, DynArrowKeepsDelegateAliveForFullExpression) {
     EXPECT_EQ(calls, 1);
 }
 
+TEST(BoxTest, DynFnMutPreservesReferenceArguments) {
+    int  value    = 41;
+    auto callback = Box<rstd::dyn<rstd::FnMut<void(int&)>>>::make([](int& current) {
+        ++current;
+    });
+
+    callback->operator()(value);
+    EXPECT_EQ(value, 42);
+}
+
 TEST(BoxTest, DynFnMutWithByteSliceDestructs) {
     rstd::usize seen {};
     {

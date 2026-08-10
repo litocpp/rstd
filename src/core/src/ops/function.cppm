@@ -23,7 +23,7 @@ consteval auto once_owned_callable() -> bool {
 
 template<typename R, bool NoEx, typename F, typename... Args>
     requires(once_callable<F, R, NoEx, Args...>())
-constexpr auto invoke_once(F&& callable, Args... args) noexcept(NoEx) -> R {
+constexpr auto invoke_once(F&& callable, Args&&... args) noexcept(NoEx) -> R {
     return rstd::forward<F>(callable)(rstd::forward<Args>(args)...);
 }
 
