@@ -1,6 +1,5 @@
 [package]
 name = "rstd-dlopn-tests"
-version.workspace = true
 module = "rstd.tests.dlopn"
 target = { os = "linux" }
 

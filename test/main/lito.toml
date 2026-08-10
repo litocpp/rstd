@@ -1,6 +1,5 @@
 [package]
 name = "rstd-tests"
-version.workspace = true
 module = "rstd.tests"
 
 [test]

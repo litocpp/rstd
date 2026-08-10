@@ -1,6 +1,5 @@
 [package]
 name = "rstd-compile-tests"
-version.workspace = true
 
 [compile-test]
 

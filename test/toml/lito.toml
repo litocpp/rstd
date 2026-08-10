@@ -1,6 +1,5 @@
 [package]
 name = "rstd-toml-conformance-tests"
-version.workspace = true
 
 [test]
 name = "rstd-toml-conformance-tests"

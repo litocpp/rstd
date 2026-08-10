@@ -1,6 +1,5 @@
 [package]
 name = "rstd-nostd-tests"
-version.workspace = true
 
 [test]
 name = "rstd-nostd-tests"
