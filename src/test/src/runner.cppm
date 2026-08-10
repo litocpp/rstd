@@ -12,13 +12,36 @@ using namespace rstd::literals;
 namespace rstd::test
 {
 
-struct RunOptions {
-    String         program;
-    Option<String> filter;
-    Option<String> death_case;
-    Option<usize>  death_index;
-    bool           list {};
+enum class FilterSyntax
+{
+    Substring,
+    GoogleTest,
 };
+
+struct TestFilter {
+    String       expression;
+    FilterSyntax syntax { FilterSyntax::Substring };
+};
+
+struct RunOptions {
+    String             program;
+    Option<TestFilter> filter;
+    Option<String>     death_case;
+    Option<usize>      death_index;
+    bool               list {};
+};
+
+auto set_filter(RunOptions& options, String expression, FilterSyntax syntax)
+    -> Result<empty, String> {
+    if (options.filter.is_some()) {
+        return Err(String::make("test filter may only be provided once"_str));
+    }
+    options.filter = Some(TestFilter {
+        .expression = rstd::move(expression),
+        .syntax     = syntax,
+    });
+    return Ok(empty {});
+}
 
 auto parse_index(ref<str> value) -> Result<usize, String> {
     if (value.is_empty()) return Err(String::make("death index must not be empty"_str));
@@ -44,10 +67,16 @@ auto parse_options() -> Result<RunOptions, String> {
         if (argument->as_str() == "--filter"_str) {
             auto value = arguments.next();
             if (value.is_none()) return Err(String::make("--filter requires a value"_str));
-            if (options.filter.is_some()) {
-                return Err(String::make("--filter may only be provided once"_str));
-            }
-            options.filter = Some(rstd::move(value).unwrap());
+            auto selected = set_filter(
+                options, rstd::move(value).unwrap(), FilterSyntax::Substring);
+            if (selected.is_err()) return Err(rstd::move(selected).unwrap_err());
+            continue;
+        }
+        if (auto value = argument->as_str().strip_prefix("--gtest_filter="_str);
+            value.is_some()) {
+            auto selected =
+                set_filter(options, String::make(*value), FilterSyntax::GoogleTest);
+            if (selected.is_err()) return Err(rstd::move(selected).unwrap_err());
             continue;
         }
         if (argument->as_str() == "--rstd-test-death-case"_str) {
@@ -154,9 +183,62 @@ auto collect_registered() -> Result<Vec<gtest::Descriptor*>, String> {
     return Ok(rstd::move(result));
 }
 
+auto wildcard_matches(ref<str> pattern, ref<str> value) -> bool {
+    auto pattern_index = usize {};
+    auto value_index   = usize {};
+    auto star          = Option<usize> {};
+    auto retry         = usize {};
+    while (value_index < value.len()) {
+        if (pattern_index < pattern.len() &&
+            (pattern[pattern_index] == u8('?') || pattern[pattern_index] == value[value_index])) {
+            ++pattern_index;
+            ++value_index;
+            continue;
+        }
+        if (pattern_index < pattern.len() && pattern[pattern_index] == u8('*')) {
+            star  = Some(pattern_index);
+            retry = value_index;
+            ++pattern_index;
+            continue;
+        }
+        if (star.is_none()) return false;
+        pattern_index = *star + usize(1);
+        ++retry;
+        value_index = retry;
+    }
+    while (pattern_index < pattern.len() && pattern[pattern_index] == u8('*')) ++pattern_index;
+    return pattern_index == pattern.len();
+}
+
+auto pattern_list_matches(ref<str> patterns, ref<str> name) -> bool {
+    auto remaining = patterns;
+    while (true) {
+        auto separated = remaining.split_once(":"_str);
+        auto pattern = separated.is_some() ? separated->template get<0>() : remaining;
+        if (wildcard_matches(pattern, name)) return true;
+        if (separated.is_none()) return false;
+        remaining = separated->template get<1>();
+    }
+}
+
+auto gtest_filter_matches(ref<str> expression, ref<str> name) -> bool {
+    auto separated = expression.split_once("-"_str);
+    auto positive  = separated.is_some() ? separated->template get<0>() : expression;
+    auto negative  = separated.is_some() ? separated->template get<1>() : ref<str> {};
+    if (positive.is_empty()) positive = "*"_str;
+    return pattern_list_matches(positive, name) &&
+           (negative.is_empty() || ! pattern_list_matches(negative, name));
+}
+
 auto selected(const RunOptions& options, ref<str> name) -> bool {
     if (options.death_case.is_some()) return name == options.death_case->as_str();
-    return options.filter.is_none() || name.contains(options.filter->as_str());
+    if (options.filter.is_none()) return true;
+    switch (options.filter->syntax) {
+    case FilterSyntax::Substring: return name.contains(options.filter->expression.as_str());
+    case FilterSyntax::GoogleTest:
+        return gtest_filter_matches(options.filter->expression.as_str(), name);
+    }
+    return false;
 }
 
 struct RunCounts {
