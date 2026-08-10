@@ -30,6 +30,77 @@ auto string_from_os_string(OsString value) -> String {
 export namespace rstd::env
 {
 
+/// The error returned when a path list contains a platform separator that
+/// cannot be represented by `join_paths()`.
+struct JoinPathsError {};
+
+/// An owning iterator over paths parsed from a platform-native path list.
+using SplitPaths = ::alloc::vec::VecIntoIter<PathBuf>;
+
+/// Parses a platform-native path list using the host `PATH` conventions.
+auto split_paths(ref<OsStr> unparsed) -> SplitPaths {
+    auto result = Vec<PathBuf>::make();
+    auto bytes  = unparsed.as_encoded_bytes();
+    auto part   = Vec<u8>::make();
+#if RSTD_OS_WINDOWS
+    auto quoted = false;
+    for (auto value : bytes) {
+        if (value == u8('"')) {
+            quoted = ! quoted;
+        } else if (value == u8(';') && ! quoted) {
+            result.push(PathBuf::from(OsString::from_encoded_bytes_unchecked(rstd::move(part))));
+            part = Vec<u8>::make();
+        } else {
+            part.emplace_back(value);
+        }
+    }
+#else
+    for (auto value : bytes) {
+        if (value == u8(':')) {
+            result.push(PathBuf::from(OsString::from_encoded_bytes_unchecked(rstd::move(part))));
+            part = Vec<u8>::make();
+        } else {
+            part.emplace_back(value);
+        }
+    }
+#endif
+    result.push(PathBuf::from(OsString::from_encoded_bytes_unchecked(rstd::move(part))));
+    return result.into_iter();
+}
+
+/// Joins paths using the host `PATH` conventions.
+auto join_paths(slice<PathBuf> paths) -> Result<OsString, JoinPathsError> {
+    auto result = OsString::make();
+    for (rstd::size_t index = 0; index < paths.len().to_primitive(); ++index) {
+        auto path  = paths[usize(index)].as_path();
+        auto os    = path.as_os_str();
+        auto bytes = os.as_encoded_bytes();
+        if (index != 0) {
+#if RSTD_OS_WINDOWS
+            result.push(";"_str);
+#else
+            result.push(":"_str);
+#endif
+        }
+#if RSTD_OS_WINDOWS
+        auto quote = false;
+        for (auto value : bytes) {
+            if (value == u8('"')) return Err(JoinPathsError {});
+            if (value == u8(';')) quote = true;
+        }
+        if (quote) result.push("\""_str);
+        result.push(ref<OsStr>::from_encoded_bytes_unchecked(bytes));
+        if (quote) result.push("\""_str);
+#else
+        for (auto value : bytes) {
+            if (value == u8(':')) return Err(JoinPathsError {});
+        }
+        result.push(ref<OsStr>::from_encoded_bytes_unchecked(bytes));
+#endif
+    }
+    return Ok(rstd::move(result));
+}
+
 /// Fetches the environment variable `key` without requiring Unicode.
 ///
 /// Returns `None` if the variable is not set.
@@ -141,3 +212,30 @@ auto args() -> Args;
 void args_init(int argc, char const* const* argv);
 
 } // namespace rstd::env
+
+namespace rstd
+{
+
+template<>
+struct Impl<fmt::Display, env::JoinPathsError> : ImplBase<env::JoinPathsError> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+#if RSTD_OS_WINDOWS
+        return formatter.write_str("path segment contains double quote"_str);
+#else
+        return formatter.write_str("path segment contains separator ':'"_str);
+#endif
+    }
+};
+
+template<>
+struct Impl<fmt::Debug, env::JoinPathsError> : ImplBase<env::JoinPathsError> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        return formatter.write_str("JoinPathsError"_str);
+    }
+};
+
+template<>
+struct Impl<error::Error, env::JoinPathsError> : DefaultInImpl<error::Error, env::JoinPathsError> {
+};
+
+} // namespace rstd

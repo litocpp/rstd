@@ -1,4 +1,5 @@
 #include <rstd/test/gtest.hpp>
+#include <rstd/macro.hpp>
 
 import rstd;
 
@@ -23,6 +24,38 @@ TEST(Env, VarNotFound) {
 TEST(Env, TempDir) {
     auto path = rstd::env::temp_dir();
     EXPECT_FALSE(path.is_empty());
+}
+
+TEST(Env, SplitAndJoinPaths) {
+#if RSTD_OS_WINDOWS
+    auto value = rstd::ffi::OsString::from(R"(C:\bin;"D:\tool;bin";;relative)"_str);
+#else
+    auto value = rstd::ffi::OsString::from("/bin:/usr/bin::relative"_str);
+#endif
+    auto paths =
+        rstd::env::split_paths(value.as_os_str()).collect<rstd::vec::Vec<rstd::path::PathBuf>>();
+    ASSERT_EQ(paths.len(), rstd::usize(4));
+    EXPECT_TRUE(paths[rstd::usize(2)].is_empty());
+
+    auto joined = rstd::env::join_paths(paths.as_slice());
+    ASSERT_TRUE(joined.is_ok());
+    auto round_trip =
+        rstd::env::split_paths(joined->as_os_str()).collect<rstd::vec::Vec<rstd::path::PathBuf>>();
+    ASSERT_EQ(round_trip.len(), paths.len());
+    for (auto index = rstd::usize(); index < paths.len(); ++index) {
+        EXPECT_EQ(round_trip[index].as_path().as_os_str().as_encoded_bytes(),
+                  paths[index].as_path().as_os_str().as_encoded_bytes());
+    }
+}
+
+TEST(Env, JoinPathsRejectsInvalidSegment) {
+    auto paths = rstd::vec::Vec<rstd::path::PathBuf>::make();
+#if RSTD_OS_WINDOWS
+    paths.push(rstd::path::PathBuf::from("bad\"path"_str));
+#else
+    paths.push(rstd::path::PathBuf::from("bad:path"_str));
+#endif
+    EXPECT_TRUE(rstd::env::join_paths(paths.as_slice()).is_err());
 }
 
 TEST(Env, SetAndGet) {
