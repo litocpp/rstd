@@ -42,9 +42,9 @@
         "rstd-json",
         "rstd-std"
       ],
-      "manifest": "bench/lito.toml",
+      "manifest": "lito.toml",
       "name": "rstd-benchmark",
-      "source": "path+.",
+      "source": "path+benches",
       "version": "0.1.0"
     },
     {
@@ -219,6 +219,10 @@
     {
       "kind": "path",
       "path": "."
+    },
+    {
+      "kind": "path",
+      "path": "benches"
     },
     {
       "kind": "path",

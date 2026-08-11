@@ -15,9 +15,7 @@ members = [
   "src/log",
   "src/dlopn",
   "src/nostd",
-  "bench",
 ]
-default-members = ["bench"]
 
 [workspace.package]
 version = "0.1.0"
