@@ -22,16 +22,6 @@ private-definitions = [
   "RSTD_BENCH_BUILD_TYPE=\"Lito\"",
   "RSTD_BENCH_ASAN=0",
 ]
-private-options = [
-  "-fPIC",
-  "-Wall",
-  "-Wpedantic",
-  "-Wno-gnu-statement-expression",
-  "-Wno-deprecated-declarations",
-  "-Wunknown-attributes",
-  "-fsized-deallocation",
-]
-
 [dependencies.rstd-bench]
 path = ".."
 visibility = "private"

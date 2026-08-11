@@ -11,16 +11,6 @@ sources = ["src/compat.cpp"]
 
 [usage]
 public-include-directories = ["include"]
-private-options = [
-  "-fPIC",
-  "-Wall",
-  "-Wpedantic",
-  "-Wno-gnu-statement-expression",
-  "-Wno-deprecated-declarations",
-  "-Wunknown-attributes",
-  "-fsized-deallocation",
-]
-
 [dependencies.rstd-std]
 path = "../std"
 visibility = "public"

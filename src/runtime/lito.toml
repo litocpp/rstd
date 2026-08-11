@@ -8,17 +8,6 @@ module = "rstd.runtime"
 archive = "rstd.runtime"
 discovery = "module"
 
-[usage]
-private-options = [
-  "-fPIC",
-  "-Wall",
-  "-Wpedantic",
-  "-Wno-gnu-statement-expression",
-  "-Wno-deprecated-declarations",
-  "-Wunknown-attributes",
-  "-fsized-deallocation",
-]
-
 [dependencies.rstd-basic]
 path = "../.."
 visibility = "public"

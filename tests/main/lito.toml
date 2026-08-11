@@ -110,17 +110,6 @@ source-groups = [
   { sources = ["async/io_backend.cppm"], target = { os = "linux" } },
 ]
 
-[usage]
-private-options = [
-  "-fPIC",
-  "-Wall",
-  "-Wpedantic",
-  "-Wno-gnu-statement-expression",
-  "-Wno-deprecated-declarations",
-  "-Wunknown-attributes",
-  "-fsized-deallocation",
-]
-
 [dependencies.rstd-std]
 path = "../../src/std"
 visibility = "private"

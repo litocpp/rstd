@@ -8,17 +8,6 @@ module = "rstd.toml"
 archive = "rstd.toml"
 discovery = "module"
 
-[usage]
-private-options = [
-  "-fPIC",
-  "-Wall",
-  "-Wpedantic",
-  "-Wno-gnu-statement-expression",
-  "-Wno-deprecated-declarations",
-  "-Wunknown-attributes",
-  "-fsized-deallocation",
-]
-
 [dependencies.rstd-alloc]
 path = "../.."
 visibility = "public"
