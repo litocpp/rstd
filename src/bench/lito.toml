@@ -1,9 +1,10 @@
 [package]
 name = "rstd-bench"
 version.workspace = true
-module = "rstd.bench"
 
-[library]
+[lib]
+name = "rstd-bench"
+module = "rstd.bench"
 archive = "rstd.bench"
 discovery = "module"
 

@@ -1,9 +1,10 @@
 [package]
 name = "rstd-std"
 version.workspace = true
-module = "rstd"
 
-[library]
+[lib]
+name = "rstd-std"
+module = "rstd"
 archive = "rstd"
 discovery = "module"
 

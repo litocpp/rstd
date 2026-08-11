@@ -1,7 +1,7 @@
 [package]
 name = "rstd-nostd-tests"
 
-[test]
+[[test]]
 name = "rstd-nostd-tests"
 discovery = "explicit"
 sources = ["main.cpp"]

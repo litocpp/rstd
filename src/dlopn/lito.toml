@@ -1,10 +1,11 @@
 [package]
 name = "rstd-dlopn"
 version.workspace = true
-module = "rstd.dlopn"
 target = { os = "linux" }
 
-[library]
+[lib]
+name = "rstd-dlopn"
+module = "rstd.dlopn"
 archive = "rstd.dlopn"
 discovery = "explicit"
 sources = ["mod.cppm", "dlopn.cpp"]

@@ -1,9 +1,10 @@
 [package]
 name = "rstd-cppstd"
 version.workspace = true
-module = "rstd.cppstd"
 
-[library]
+[lib]
+name = "rstd-cppstd"
+module = "rstd.cppstd"
 archive = "rstd.cppstd"
 discovery = "explicit"
 sources = [

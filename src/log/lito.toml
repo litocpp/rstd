@@ -1,9 +1,10 @@
 [package]
 name = "rstd-log"
 version.workspace = true
-module = "rstd.log"
 
-[library]
+[lib]
+name = "rstd-log"
+module = "rstd.log"
 archive = "rstd.log"
 discovery = "explicit"
 sources = [

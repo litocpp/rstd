@@ -1,9 +1,10 @@
 [package]
 name = "rstd-nostd"
 version.workspace = true
-module = "rstd.nostd"
 
-[library]
+[lib]
+name = "rstd-nostd"
+module = "rstd.nostd"
 archive = "rstd.nostd"
 discovery = "explicit"
 sources = [

@@ -1,9 +1,10 @@
 [package]
 name = "rstd-runtime"
 version.workspace = true
-module = "rstd.runtime"
 
-[library]
+[lib]
+name = "rstd-runtime"
+module = "rstd.runtime"
 archive = "rstd.runtime"
 discovery = "module"
 

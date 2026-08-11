@@ -1,12 +1,10 @@
 [package]
-name = "rstd-dlopn-tests"
-module = "rstd.tests.dlopn"
-target = { os = "linux" }
+name = "rstd-toml-conformance-tests"
 
-[test]
-name = "rstd-dlopn-tests"
+[[test]]
+name = "rstd-toml-conformance-tests"
 discovery = "explicit"
-sources = ["main.cpp", "dlopn.cpp"]
+sources = ["conformance_decoder.cpp"]
 
 [usage]
 private-options = [
@@ -19,8 +17,16 @@ private-options = [
   "-fsized-deallocation",
 ]
 
-[dependencies.rstd-dlopn]
-path = "../../src/dlopn"
+[dependencies.rstd-std]
+path = "../../src/std"
+visibility = "private"
+
+[dependencies.rstd-json]
+path = "../../src/json"
+visibility = "private"
+
+[dependencies.rstd-toml]
+path = "../../src/toml"
 visibility = "private"
 
 [dependencies.rstd-test]

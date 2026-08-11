@@ -1,9 +1,10 @@
 [package]
 name = "rstd-argparse"
 version.workspace = true
-module = "rstd.argparse"
 
-[library]
+[lib]
+name = "rstd-argparse"
+module = "rstd.argparse"
 archive = "rstd.argparse"
 discovery = "module"
 

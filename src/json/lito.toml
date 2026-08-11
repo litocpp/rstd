@@ -1,9 +1,10 @@
 [package]
 name = "rstd-json"
 version.workspace = true
-module = "rstd.json"
 
-[library]
+[lib]
+name = "rstd-json"
+module = "rstd.json"
 archive = "rstd.json"
 discovery = "module"
 

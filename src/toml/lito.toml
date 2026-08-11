@@ -1,9 +1,10 @@
 [package]
 name = "rstd-toml"
 version.workspace = true
-module = "rstd.toml"
 
-[library]
+[lib]
+name = "rstd-toml"
+module = "rstd.toml"
 archive = "rstd.toml"
 discovery = "module"
 

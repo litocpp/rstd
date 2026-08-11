@@ -1,9 +1,10 @@
 [package]
 name = "rstd-alloc"
 version.workspace = true
-module = "rstd.alloc"
 
-[library]
+[lib]
+name = "rstd-alloc"
+module = "rstd.alloc"
 archive = "rstd.alloc"
 discovery = "module"
 

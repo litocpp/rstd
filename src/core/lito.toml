@@ -1,9 +1,10 @@
 [package]
 name = "rstd-core"
 version.workspace = true
-module = "rstd.core"
 
-[library]
+[lib]
+name = "rstd-core"
+module = "rstd.core"
 archive = "rstd.core"
 discovery = "module"
 

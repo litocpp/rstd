@@ -1,9 +1,9 @@
 [package]
 name = "rstd-benchmark"
 version.workspace = true
-module = "rstd"
 
-[executable]
+[[bench]]
+module = "rstd"
 name = "rstd_bench"
 discovery = "explicit"
 sources = [
@@ -19,7 +19,7 @@ sources = [
 
 [usage]
 private-definitions = [
-  "RSTD_BENCH_BUILD_TYPE=\"Tenon\"",
+  "RSTD_BENCH_BUILD_TYPE=\"Lito\"",
   "RSTD_BENCH_ASAN=0",
 ]
 private-options = [

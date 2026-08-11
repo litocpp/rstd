@@ -1,8 +1,8 @@
 [package]
 name = "rstd-tests"
-module = "rstd.tests"
 
-[test]
+[[test]]
+module = "rstd.tests"
 name = "rstd-tests"
 discovery = "explicit"
 sources = [

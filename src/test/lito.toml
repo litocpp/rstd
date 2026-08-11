@@ -1,9 +1,10 @@
 [package]
 name = "rstd-test"
 version.workspace = true
-module = "rstd.test"
 
-[library]
+[lib]
+name = "rstd-test"
+module = "rstd.test"
 archive = "rstd.test"
 discovery = "module"
 sources = ["src/compat.cpp"]
