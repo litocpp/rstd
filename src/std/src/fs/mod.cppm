@@ -28,6 +28,12 @@ export class File;
 export class Metadata;
 export class ReadDir;
 
+export enum class WriteOutcome {
+    Created,
+    Replaced,
+    Unchanged,
+};
+
 export class FileType {
     FileTypeKind m_kind { FileTypeKind::Unknown };
 
@@ -235,6 +241,7 @@ export auto read(ref<Path> path) -> FsResult<Vec<u8>>;
 export auto read_to_string(ref<Path> path) -> FsResult<String>;
 export auto write(ref<Path> path, slice<u8> contents) -> FsResult<empty>;
 export auto write_atomic(ref<Path> path, slice<u8> contents) -> FsResult<empty>;
+export auto write_atomic_if_changed(ref<Path> path, slice<u8> contents) -> FsResult<WriteOutcome>;
 export auto metadata(ref<Path> path) -> FsResult<Metadata>;
 export auto symlink_metadata(ref<Path> path) -> FsResult<Metadata>;
 export auto exists(ref<Path> path) -> FsResult<bool>;

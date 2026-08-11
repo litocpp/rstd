@@ -267,6 +267,32 @@ auto write_atomic(ref<Path> path, slice<u8> contents) -> FsResult<empty> {
     return Ok(empty {});
 }
 
+auto write_atomic_if_changed(ref<Path> path, slice<u8> contents) -> FsResult<WriteOutcome> {
+    auto current = read(path);
+    if (current.is_ok()) {
+        auto bytes = rstd::move(current).unwrap_unchecked();
+        if (bytes.len() == contents.len()) {
+            auto equal = true;
+            for (auto index = usize(); index < bytes.len(); ++index) {
+                if (bytes[index] == contents[index]) continue;
+                equal = false;
+                break;
+            }
+            if (equal) return Ok(WriteOutcome::Unchanged);
+        }
+
+        auto written = write_atomic(path, contents);
+        if (written.is_err()) return Err(rstd::move(written).unwrap_err_unchecked());
+        return Ok(WriteOutcome::Replaced);
+    }
+
+    auto error = rstd::move(current).unwrap_err_unchecked();
+    if (error.kind() != ErrorKind { ErrorKind::NotFound }) return Err(rstd::move(error));
+    auto written = write_atomic(path, contents);
+    if (written.is_err()) return Err(rstd::move(written).unwrap_err_unchecked());
+    return Ok(WriteOutcome::Created);
+}
+
 auto metadata(ref<Path> path) -> FsResult<Metadata> {
     return metadata_result(sys_fs::metadata(path, true));
 }

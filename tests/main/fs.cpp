@@ -337,6 +337,38 @@ TEST(FsFreeFn, WriteAtomicCreatesAndReplaces) {
     EXPECT_TRUE(rstd::fs::read(tp.as_path()).unwrap_unchecked().is_empty());
 }
 
+TEST(FsFreeFn, WriteAtomicIfChangedReportsOutcomeAndPreservesUnchangedFile) {
+    TempPath tp;
+    ::unlink(tp.c_str());
+
+    auto initial = native_bytes("initial", 7);
+    auto created = rstd::fs::write_atomic_if_changed(tp.as_path(), initial.as_slice());
+    ASSERT_TRUE(created.is_ok());
+    EXPECT_EQ(created.unwrap_unchecked(), rstd::fs::WriteOutcome::Created);
+
+    auto replacement = native_bytes("replacement", 11);
+    auto replaced    = rstd::fs::write_atomic_if_changed(tp.as_path(), replacement.as_slice());
+    ASSERT_TRUE(replaced.is_ok());
+    EXPECT_EQ(replaced.unwrap_unchecked(), rstd::fs::WriteOutcome::Replaced);
+
+    auto before    = rstd::fs::metadata(tp.as_path()).unwrap_unchecked();
+    auto unchanged = rstd::fs::write_atomic_if_changed(tp.as_path(), replacement.as_slice());
+    ASSERT_TRUE(unchanged.is_ok());
+    EXPECT_EQ(unchanged.unwrap_unchecked(), rstd::fs::WriteOutcome::Unchanged);
+    auto after = rstd::fs::metadata(tp.as_path()).unwrap_unchecked();
+    EXPECT_EQ(after.ino(), before.ino());
+    EXPECT_EQ(after.modified().unwrap_unchecked(), before.modified().unwrap_unchecked());
+    EXPECT_EQ(rstd::fs::read_to_string(tp.as_path()).unwrap_unchecked(), "replacement"_str);
+
+    auto empty   = native_bytes("", 0);
+    auto emptied = rstd::fs::write_atomic_if_changed(tp.as_path(), empty.as_slice());
+    ASSERT_TRUE(emptied.is_ok());
+    EXPECT_EQ(emptied.unwrap_unchecked(), rstd::fs::WriteOutcome::Replaced);
+    auto empty_again = rstd::fs::write_atomic_if_changed(tp.as_path(), empty.as_slice());
+    ASSERT_TRUE(empty_again.is_ok());
+    EXPECT_EQ(empty_again.unwrap_unchecked(), rstd::fs::WriteOutcome::Unchanged);
+}
+
 TEST(FsFreeFn, WriteAtomicSkipsExistingTemp) {
     TempPath tp;
     auto     collision       = std::string(tp.c_str()) + ".tmp.0";
