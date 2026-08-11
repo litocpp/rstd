@@ -3,9 +3,9 @@
 /.cache
 /compile_commands.json
 /CMakeUserPresets.json
-/tenon.lock.tmp.*
 /doc/html
 /doc/doxygen-awesome-css
 /std
 /gcc
 /record
+/benches/lito.lock

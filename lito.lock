@@ -37,18 +37,6 @@
     },
     {
       "dependencies": [
-        "rstd-bench",
-        "rstd-cppstd",
-        "rstd-json",
-        "rstd-std"
-      ],
-      "manifest": "lito.toml",
-      "name": "rstd-benchmark",
-      "source": "path+benches",
-      "version": "0.1.0"
-    },
-    {
-      "dependencies": [
         "rstd-std"
       ],
       "manifest": "compile_fail/lito.toml",
@@ -198,7 +186,6 @@
     "rstd-argparse",
     "rstd-basic",
     "rstd-bench",
-    "rstd-benchmark",
     "rstd-compile-tests",
     "rstd-core",
     "rstd-cppstd",
@@ -219,10 +206,6 @@
     {
       "kind": "path",
       "path": "."
-    },
-    {
-      "kind": "path",
-      "path": "benches"
     },
     {
       "kind": "path",
