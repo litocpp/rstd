@@ -6,7 +6,6 @@ version.workspace = true
 name = "rstd-toml"
 module = "rstd.toml"
 archive = "rstd.toml"
-discovery = "module"
 
 [dependencies.rstd-alloc]
 path = "../.."

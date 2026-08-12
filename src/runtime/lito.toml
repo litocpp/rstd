@@ -6,7 +6,6 @@ version.workspace = true
 name = "rstd-runtime"
 module = "rstd.runtime"
 archive = "rstd.runtime"
-discovery = "module"
 
 [dependencies.rstd-basic]
 path = "../.."

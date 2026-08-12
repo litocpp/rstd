@@ -7,7 +7,6 @@ target = { os = "linux" }
 name = "rstd-dlopn"
 module = "rstd.dlopn"
 archive = "rstd.dlopn"
-discovery = "explicit"
 sources = ["mod.cppm", "dlopn.cpp"]
 
 [usage]

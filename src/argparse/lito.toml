@@ -6,7 +6,6 @@ version.workspace = true
 name = "rstd-argparse"
 module = "rstd.argparse"
 archive = "rstd.argparse"
-discovery = "module"
 
 [dependencies.rstd-std]
 path = "../.."

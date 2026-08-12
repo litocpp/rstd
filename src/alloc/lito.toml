@@ -6,7 +6,6 @@ version.workspace = true
 name = "rstd-alloc"
 module = "rstd.alloc"
 archive = "rstd.alloc"
-discovery = "module"
 
 [dependencies.rstd-core]
 path = "../.."

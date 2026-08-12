@@ -3,7 +3,6 @@ name = "rstd-nostd-tests"
 
 [[test]]
 name = "rstd-nostd-tests"
-discovery = "explicit"
 sources = ["main.cpp"]
 link-stdlib = false
 

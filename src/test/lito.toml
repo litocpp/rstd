@@ -6,8 +6,6 @@ version.workspace = true
 name = "rstd-test"
 module = "rstd.test"
 archive = "rstd.test"
-discovery = "module"
-sources = ["src/compat.cpp"]
 
 [usage]
 public-include-directories = ["include"]

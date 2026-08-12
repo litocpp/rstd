@@ -6,7 +6,6 @@ version.workspace = true
 name = "rstd-json"
 module = "rstd.json"
 archive = "rstd.json"
-discovery = "module"
 
 [dependencies.rstd-core]
 path = "../.."

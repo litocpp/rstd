@@ -6,7 +6,6 @@ version.workspace = true
 name = "rstd-core"
 module = "rstd.core"
 archive = "rstd.core"
-discovery = "module"
 
 [usage]
 public-include-directories = ["include"]

@@ -3,7 +3,6 @@ name = "rstd-toml-conformance-tests"
 
 [[test]]
 name = "rstd-toml-conformance-tests"
-discovery = "explicit"
 sources = ["conformance_decoder.cpp"]
 
 [dependencies.rstd-std]

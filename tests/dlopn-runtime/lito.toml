@@ -5,7 +5,6 @@ target = { os = "linux" }
 [[test]]
 module = "rstd.tests.dlopn"
 name = "rstd-dlopn-tests"
-discovery = "explicit"
 sources = ["main.cpp", "dlopn.cpp"]
 
 [dependencies.rstd-dlopn]

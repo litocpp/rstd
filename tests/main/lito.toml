@@ -4,7 +4,6 @@ name = "rstd-tests"
 [[test]]
 module = "rstd.tests"
 name = "rstd-tests"
-discovery = "explicit"
 sources = [
   "tenon_main.cpp",
   "test_macro.cpp",

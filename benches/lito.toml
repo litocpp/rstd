@@ -5,7 +5,6 @@ version = "0.1.0"
 [[bench]]
 module = "rstd"
 name = "rstd_bench"
-discovery = "explicit"
 sources = [
   "alloc.cpp",
   "async.cpp",

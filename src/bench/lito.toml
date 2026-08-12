@@ -6,7 +6,6 @@ version.workspace = true
 name = "rstd-bench"
 module = "rstd.bench"
 archive = "rstd.bench"
-discovery = "module"
 
 [dependencies.rstd-std]
 path = "../.."

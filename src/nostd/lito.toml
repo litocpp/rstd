@@ -6,7 +6,6 @@ version.workspace = true
 name = "rstd-nostd"
 module = "rstd.nostd"
 archive = "rstd.nostd"
-discovery = "explicit"
 sources = [
   "cxa.cpp",
   "new.cpp",

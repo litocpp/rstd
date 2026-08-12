@@ -6,7 +6,6 @@ version.workspace = true
 name = "rstd-log"
 module = "rstd.log"
 archive = "rstd.log"
-discovery = "explicit"
 sources = [
   "mod.cppm",
   "level.cppm",

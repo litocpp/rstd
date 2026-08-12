@@ -6,4 +6,3 @@ version.workspace = true
 name = "rstd-basic"
 module = "rstd.basic"
 archive = "rstd.basic"
-discovery = "module"

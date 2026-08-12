@@ -6,7 +6,6 @@ version.workspace = true
 name = "rstd-cppstd"
 module = "rstd.cppstd"
 archive = "rstd.cppstd"
-discovery = "explicit"
 sources = [
   "cppstd.cppm",
   "iter.cppm",
