@@ -115,7 +115,7 @@ inline void unreachable() {
 
 /// Swaps the values of `a` and `b`.
 export template<typename T>
-void swap(T& a, T& b) noexcept(mtp::noex_copy<T>) {
+void swap(T& a, T& b) noexcept(mtp::noex_copy_v<T>) {
     T t(a);
     a = b;
     b = t;

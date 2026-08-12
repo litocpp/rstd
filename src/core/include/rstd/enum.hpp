@@ -32,14 +32,14 @@
     static constexpr auto Name() noexcept -> Self {      \
         return Self(rstd_enum_in_place_t<Tag::Name> {}); \
     }
-#define RSTD_ENUM_DETAIL_FACTORY_PAYLOAD(Name)                                      \
-    template<typename... rstd_enum_detail_Args>                                     \
-        requires ::rstd::mtp::init<Name##_payload, rstd_enum_detail_Args...>        \
-    [[nodiscard]]                                                                   \
-    static constexpr auto Name(rstd_enum_detail_Args&&... args) noexcept(           \
-        ::rstd::mtp::noex_init<Name##_payload, rstd_enum_detail_Args...>) -> Self { \
-        return Self(rstd_enum_in_place_t<Tag::Name> {},                             \
-                    ::rstd::forward<rstd_enum_detail_Args>(args)...);               \
+#define RSTD_ENUM_DETAIL_FACTORY_PAYLOAD(Name)                                        \
+    template<typename... rstd_enum_detail_Args>                                       \
+        requires ::rstd::mtp::init<Name##_payload, rstd_enum_detail_Args...>          \
+    [[nodiscard]]                                                                     \
+    static constexpr auto Name(rstd_enum_detail_Args&&... args) noexcept(             \
+        ::rstd::mtp::noex_init_v<Name##_payload, rstd_enum_detail_Args...>) -> Self { \
+        return Self(rstd_enum_in_place_t<Tag::Name> {},                               \
+                    ::rstd::forward<rstd_enum_detail_Args>(args)...);                 \
     }
 
 #define RSTD_ENUM_DETAIL_REPLACE_ENTRY(entry) \

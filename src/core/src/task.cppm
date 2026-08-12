@@ -29,14 +29,14 @@ public:
     Poll(const Poll&)            = delete;
     Poll& operator=(const Poll&) = delete;
 
-    constexpr Poll(Poll&& other) noexcept(mtp::noex_move<T>): m_ready(other.m_ready) {
+    constexpr Poll(Poll&& other) noexcept(mtp::noex_move_v<T>): m_ready(other.m_ready) {
         if (m_ready) {
             rstd::construct_at(ptr(), rstd::move(*other.ptr()));
             other.drop_value();
         }
     }
 
-    constexpr auto operator=(Poll&& other) noexcept(mtp::noex_move<T>) -> Poll& {
+    constexpr auto operator=(Poll&& other) noexcept(mtp::noex_move_v<T>) -> Poll& {
         if (this != &other) {
             drop_value();
             m_ready = other.m_ready;

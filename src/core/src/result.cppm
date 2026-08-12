@@ -681,36 +681,36 @@ public:
         return ! is_ok();
     }
 
-    constexpr Result() noexcept(mtp::noex_init<T>)
+    constexpr Result() noexcept(mtp::noex_init_v<T>)
         requires mtp::init<T>
         : rstd_enum_storage_(rstd_enum_storage_type::template with<Tag::Ok>()) {}
 
     // Ok ctor
-    constexpr Result(T&& val, ok_tag) noexcept(mtp::noex_init<T, T>)
+    constexpr Result(T&& val, ok_tag) noexcept(mtp::noex_init_v<T, T>)
         : rstd_enum_storage_(make_ok(rstd::forward<T>(val))) {}
 
     // Err ctor
-    constexpr Result(E&& err, err_tag) noexcept(mtp::noex_init<E, E>)
+    constexpr Result(E&& err, err_tag) noexcept(mtp::noex_init_v<E, E>)
         : rstd_enum_storage_(make_err(rstd::forward<E>(err))) {}
 
     // from Ok
     template<typename U>
-    constexpr Result(U&& o) noexcept(mtp::noex_init<T, typename result_traits<U>::value_type>)
+    constexpr Result(U&& o) noexcept(mtp::noex_init_v<T, typename result_traits<U>::value_type>)
         requires mtp::init<UnknownErr, typename result_traits<U>::error_type> &&
                  mtp::init<T, typename result_traits<U>::value_type>
         : rstd_enum_storage_(make_ok(mtp::rm_cvf<U>::template _get<0>(rstd::forward<U>(o)))) {}
 
     // from Err
     template<typename U>
-    constexpr Result(U&& o) noexcept(mtp::noex_init<E, typename result_traits<U>::error_type>)
+    constexpr Result(U&& o) noexcept(mtp::noex_init_v<E, typename result_traits<U>::error_type>)
         requires mtp::init<UnknownOk, typename result_traits<U>::value_type> &&
                  mtp::init<E, typename result_traits<U>::error_type>
         : rstd_enum_storage_(make_err(mtp::rm_cvf<U>::template _get<1>(rstd::forward<U>(o)))) {}
 
     constexpr inline Result(const Result&) = default;
 
-    constexpr inline Result(Result&& other) noexcept(mtp::noex_move<union_value_t> &&
-                                                     mtp::noex_move<union_error_t>)
+    constexpr inline Result(Result&& other) noexcept(mtp::noex_move_v<union_value_t> &&
+                                                     mtp::noex_move_v<union_error_t>)
         requires mtp::move<union_value_t> && mtp::move<union_error_t>
         : rstd_enum_storage_([&other] {
               if (other.is_ok()) {
@@ -729,8 +729,8 @@ public:
 
     Result& operator=(const Result&) = delete;
 
-    constexpr inline Result& operator=(Result&& o) noexcept(mtp::noex_move<union_value_t> &&
-                                                            mtp::noex_move<union_error_t>)
+    constexpr inline Result& operator=(Result&& o) noexcept(mtp::noex_move_v<union_value_t> &&
+                                                            mtp::noex_move_v<union_error_t>)
         requires mtp::triv_assign_move<typename traits::union_value_t> &&
                  mtp::triv_assign_move<typename traits::union_error_t>
     {
@@ -745,10 +745,10 @@ public:
     }
 
     constexpr Result&
-    operator=(Result&& o) noexcept(mtp::noex_move<typename traits::union_value_t> &&
-                                   mtp::noex_move<typename traits::union_value_t> &&
-                                   mtp::noex_assign_move<typename traits::union_error_t> &&
-                                   mtp::noex_assign_move<typename traits::union_error_t>)
+    operator=(Result&& o) noexcept(mtp::noex_move_v<typename traits::union_value_t> &&
+                                   mtp::noex_move_v<typename traits::union_value_t> &&
+                                   mtp::noex_assign_move_v<typename traits::union_error_t> &&
+                                   mtp::noex_assign_move_v<typename traits::union_error_t>)
         requires(! (mtp::triv_assign_move<typename traits::union_value_t> &&
                     mtp::triv_assign_move<typename traits::union_error_t>)) &&
                 (mtp::assign_move<typename traits::union_value_t> &&

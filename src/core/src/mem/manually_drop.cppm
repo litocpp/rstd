@@ -59,25 +59,25 @@ class ManuallyDrop<T> {
     friend class ManuallyDrop<void>;
     ManuallyDropData<T> d;
 
-    constexpr ManuallyDrop(T&& v) noexcept(mtp::noex_move<T>) {
+    constexpr ManuallyDrop(T&& v) noexcept(mtp::noex_move_v<T>) {
         rstd::construct_at(d.storage_loc(), rstd::forward<T>(v));
     }
 
 public:
-    constexpr static auto make(T&& v) noexcept(mtp::noex_move<T>) -> ManuallyDrop {
+    constexpr static auto make(T&& v) noexcept(mtp::noex_move_v<T>) -> ManuallyDrop {
         return { rstd::forward<T>(v) };
     }
-    constexpr ManuallyDrop(const ManuallyDrop& o) noexcept(mtp::noex_copy<T>) {
+    constexpr ManuallyDrop(const ManuallyDrop& o) noexcept(mtp::noex_copy_v<T>) {
         rstd::construct_at(d.storage_loc(), *o);
     }
-    constexpr ManuallyDrop(ManuallyDrop&& o) noexcept(mtp::noex_move<T>) {
+    constexpr ManuallyDrop(ManuallyDrop&& o) noexcept(mtp::noex_move_v<T>) {
         rstd::construct_at(d.storage_loc(), rstd::move(*o));
     }
-    constexpr ManuallyDrop& operator=(const ManuallyDrop& o) noexcept(mtp::noex_assign_copy<T>) {
+    constexpr ManuallyDrop& operator=(const ManuallyDrop& o) noexcept(mtp::noex_assign_copy_v<T>) {
         rstd::destroy_at(d.storage_loc());
         rstd::construct_at(d.storage_loc(), rstd::move(*o));
     }
-    constexpr ManuallyDrop& operator=(ManuallyDrop&& o) noexcept(mtp::noex_assign_move<T>) {
+    constexpr ManuallyDrop& operator=(ManuallyDrop&& o) noexcept(mtp::noex_assign_move_v<T>) {
         rstd::destroy_at(d.storage_loc());
         rstd::construct_at(d.storage_loc(), rstd::move(*o));
     }

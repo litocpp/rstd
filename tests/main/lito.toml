@@ -96,6 +96,8 @@ sources = [
   "cppstd/module_check.cppm",
   "try.cpp",
   "try_module_check.cppm",
+  "noexcept_module_check.cppm",
+  "noexcept_module_check.cpp",
   "try_coroutine.cpp",
   "bench.cpp",
 ]

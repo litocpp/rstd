@@ -16,10 +16,10 @@ struct tuple_impl;
 
 template<size_t... Is, typename... Ts>
 struct tuple_impl<mtp::index_sequence<Is...>, Ts...> : tuple_leaf<Is, Ts>... {
-    constexpr tuple_impl() noexcept((mtp::triv_init<Ts> && ...)) = default;
+    constexpr tuple_impl() noexcept((mtp::triv_init_v<Ts> && ...)) = default;
 
     template<typename... Us>
-    constexpr tuple_impl(Us&&... us) noexcept((mtp::noex_init<Ts, Us> && ...))
+    constexpr tuple_impl(Us&&... us) noexcept((mtp::noex_init_v<Ts, Us> && ...))
         : tuple_leaf<Is, Ts>(rstd::forward<Us>(us))... {}
 };
 
@@ -89,17 +89,17 @@ public:
     /// The number of elements.
     static constexpr size_t size = sizeof...(Ts);
 
-    constexpr tuple() noexcept((mtp::triv_init<Ts> && ...)) = default;
+    constexpr tuple() noexcept((mtp::triv_init_v<Ts> && ...)) = default;
 
     /// Constructs the tuple
-    constexpr tuple(Ts const&... ts) noexcept((mtp::noex_init<Ts, Ts> && ...))
+    constexpr tuple(Ts const&... ts) noexcept((mtp::noex_init_v<Ts, Ts> && ...))
         requires(sizeof...(Ts) > 0)
         : impl(rstd::forward<Ts>(ts)...) {}
 
     /// Constructs the tuple from individual element values.
     template<typename... Us>
         requires(sizeof...(Us) == sizeof...(Ts)) && (sizeof...(Us) > 0)
-    constexpr tuple(Us&&... us) noexcept((mtp::noex_init<Ts, Us> && ...))
+    constexpr tuple(Us&&... us) noexcept((mtp::noex_init_v<Ts, Us> && ...))
         : impl(rstd::forward<Us>(us)...) {}
 
     constexpr tuple(const tuple&)            = default;

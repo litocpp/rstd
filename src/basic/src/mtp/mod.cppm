@@ -440,7 +440,10 @@ concept triv = __is_trivial(T);
 
 /// Is trivially constructible
 export template<typename T, typename... Args>
-concept triv_init = __is_trivially_constructible(T, Args...);
+inline constexpr bool triv_init_v = __is_trivially_constructible(T, Args...);
+
+export template<typename T, typename... Args>
+concept triv_init = triv_init_v<T, Args...>;
 
 /// Is trivially destructible
 export template<typename T>
@@ -480,35 +483,56 @@ concept triv_assign_move = triv_assign<add_ref<T>, add_ref_rv<T>>;
 
 /// Is nothrow constructible
 export template<typename T, typename... Args>
-concept noex_init = __is_nothrow_constructible(T, Args...);
+inline constexpr bool noex_init_v = __is_nothrow_constructible(T, Args...);
+
+export template<typename T, typename... Args>
+concept noex_init = noex_init_v<T, Args...>;
 
 /// Is nothrow assignable
 export template<typename T, typename U>
-concept noex_assign = __is_nothrow_assignable(T, U);
+inline constexpr bool noex_assign_v = __is_nothrow_assignable(T, U);
+
+export template<typename T, typename U>
+concept noex_assign = noex_assign_v<T, U>;
 
 /// Is nothrow copy construcible
 export template<typename T>
-concept noex_copy = noex_init<T, add_ref<add_const<T>>>;
+inline constexpr bool noex_copy_v = noex_init_v<T, add_ref<add_const<T>>>;
+
+export template<typename T>
+concept noex_copy = noex_copy_v<T>;
 
 /// Is nothrow move construcible
 export template<typename T>
-concept noex_move = noex_init<T, add_ref_rv<T>>;
+inline constexpr bool noex_move_v = noex_init_v<T, add_ref_rv<T>>;
+
+export template<typename T>
+concept noex_move = noex_move_v<T>;
 
 /// Is nothrow copy assignable
 export template<typename T>
-concept noex_assign_copy = noex_assign<add_ref<T>, add_ref<add_const<T>>>;
+inline constexpr bool noex_assign_copy_v = noex_assign_v<add_ref<T>, add_ref<add_const<T>>>;
+
+export template<typename T>
+concept noex_assign_copy = noex_assign_copy_v<T>;
 /// Is nothrow move assignable
 export template<typename T>
-concept noex_assign_move = noex_assign<add_ref<T>, add_ref_rv<T>>;
+inline constexpr bool noex_assign_move_v = noex_assign_v<add_ref<T>, add_ref_rv<T>>;
+
+export template<typename T>
+concept noex_assign_move = noex_assign_move_v<T>;
 
 /// Is no throw destructible
 export template<typename T>
-concept noex_drop =
+inline constexpr bool noex_drop_v =
 #if __has_builtin(__is_nothrow_destructible)
     __is_nothrow_destructible(T);
 #else
     noexcept(declval<T&>().~T());
 #endif
+
+export template<typename T>
+concept noex_drop = noex_drop_v<T>;
 /// @}
 
 /// \name User

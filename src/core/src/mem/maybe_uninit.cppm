@@ -29,7 +29,7 @@ public:
     constexpr MaybeUninit() noexcept = default;
 
 private:
-    constexpr explicit MaybeUninit(T&& val) noexcept(mtp::noex_move<T>) {
+    constexpr explicit MaybeUninit(T&& val) noexcept(mtp::noex_move_v<T>) {
         rstd::construct_at(ptr(), rstd::forward<T>(val));
     }
 
@@ -50,7 +50,7 @@ public:
     ///
     /// Note that dropping a `MaybeUninit<T>` will never call `T`'s destructor.
     /// It is your responsibility to make sure `T` gets destroyed if it got initialized.
-    constexpr static auto make(T&& val) noexcept(mtp::noex_move<T>) -> MaybeUninit {
+    constexpr static auto make(T&& val) noexcept(mtp::noex_move_v<T>) -> MaybeUninit {
         return MaybeUninit(rstd::forward<T>(val));
     }
 
@@ -79,7 +79,7 @@ public:
     /// not to use this twice unless you want to skip running the destructor.
     /// For your convenience, this also returns a mutable reference to the
     /// (now safely initialized) contents.
-    constexpr auto write(T&& val) noexcept(mtp::noex_move<T>) -> T& {
+    constexpr auto write(T&& val) noexcept(mtp::noex_move_v<T>) -> T& {
         rstd::construct_at(ptr(), rstd::forward<T>(val));
         return *ptr();
     }

@@ -96,12 +96,12 @@ public:
     template<typename... Us>
         requires(N > 0 && ! mtp::same_as<T, u8> && sizeof...(Us) == N &&
                  (mtp::init<T, Us &&> && ...))
-    constexpr array(Us&&... values) noexcept((mtp::noex_init<T, Us&&> && ...))
+    constexpr array(Us&&... values) noexcept((mtp::noex_init_v<T, Us&&> && ...))
         : m_storage { { rstd::forward<Us>(values)... } } {}
 
     template<typename... Us>
         requires(N > 0 && mtp::same_as<T, u8> && sizeof...(Us) == N && (mtp::init<T, Us &&> && ...))
-    constexpr array(Us&&... values) noexcept((mtp::noex_init<T, Us&&> && ...))
+    constexpr array(Us&&... values) noexcept((mtp::noex_init_v<T, Us&&> && ...))
         : m_storage { { u8(rstd::forward<Us>(values)).to_byte()... } } {}
 
     constexpr array(const array&)                    = default;

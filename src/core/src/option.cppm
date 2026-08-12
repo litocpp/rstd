@@ -517,7 +517,7 @@ public:
         requires mtp::triv_move<union_value_t>
     = default;
 
-    constexpr Option(Option&& o) noexcept(mtp::noex_move<union_value_t>)
+    constexpr Option(Option&& o) noexcept(mtp::noex_move_v<union_value_t>)
         requires mtp::user_move<union_value_t>
         : rstd_enum_storage_(option_in_place<0>) {
         if (o.is_some()) {
@@ -536,7 +536,7 @@ public:
         requires mtp::triv_assign_move<union_value_t>
     = default;
 
-    constexpr Option& operator=(Option&& v) noexcept(mtp::noex_move<union_value_t>)
+    constexpr Option& operator=(Option&& v) noexcept(mtp::noex_move_v<union_value_t>)
         requires mtp::user_move<union_value_t>
     {
         if (this == rstd::addressof(v)) {
@@ -736,14 +736,14 @@ public:
     }
 
     template<typename U>
-    static constexpr auto make_with(U&& val) noexcept(mtp::noex_init<T, U>) {
+    static constexpr auto make_with(U&& val) noexcept(mtp::noex_init_v<T, U>) {
         return Option(rstd::forward<U>(val));
     }
 
 private:
     template<typename U>
         requires mtp::init<T, U>
-    explicit constexpr Option(U&& val) noexcept(mtp::noex_init<T, U>)
+    explicit constexpr Option(U&& val) noexcept(mtp::noex_init_v<T, U>)
         : rstd_enum_storage_(option_in_place<0>) {
         this->_construct_val(rstd::forward<U>(val));
     }

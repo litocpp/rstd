@@ -59,13 +59,13 @@ union union_pack<Base, T, Rest...> {
     template<rstd::size_t I, typename... Args>
         requires(I == Base) && mtp::init<T, Args...>
     explicit constexpr union_pack(in_place_index_t<I>,
-                                  Args&&... args) noexcept(mtp::noex_init<T, Args...>)
+                                  Args&&... args) noexcept(mtp::noex_init_v<T, Args...>)
         : head(rstd::forward<Args>(args)...) {}
 
     template<rstd::size_t I, typename... Args>
         requires(I > Base) && mtp::init<type_at_t<I - Base, T, Rest...>, Args...>
     explicit constexpr union_pack(in_place_index_t<I>, Args&&... args) noexcept(
-        mtp::noex_init<type_at_t<I - Base, T, Rest...>, Args...>)
+        mtp::noex_init_v<type_at_t<I - Base, T, Rest...>, Args...>)
         : tail(in_place_index<I>, rstd::forward<Args>(args)...) {}
 
     constexpr union_pack(union_pack const&)
@@ -91,7 +91,7 @@ union union_pack<Base, T, Rest...> {
 
     template<rstd::size_t I, typename... Args>
     constexpr void
-    construct(Args&&... args) noexcept(mtp::noex_init<type_at_t<I - Base, T, Rest...>, Args...>) {
+    construct(Args&&... args) noexcept(mtp::noex_init_v<type_at_t<I - Base, T, Rest...>, Args...>) {
         if constexpr (I == Base) {
             rstd::construct_at(rstd::addressof(head), rstd::forward<Args>(args)...);
         } else {
@@ -181,7 +181,7 @@ class storage {
     }
 
     template<rstd::size_t I>
-    constexpr void move_impl(storage&& other) noexcept((mtp::noex_move<Ts> && ...)) {
+    constexpr void move_impl(storage&& other) noexcept((mtp::noex_move_v<Ts> && ...)) {
         if constexpr (I < count) {
             if (other.index_ == static_cast<index_type>(I)) {
                 construct(in_place_index<I>, rstd::move(other.data_).template get<I>());
@@ -194,7 +194,7 @@ class storage {
     }
 
     template<rstd::size_t I>
-    constexpr void copy_assign_impl(storage const& other) noexcept((mtp::noex_assign_copy<Ts> &&
+    constexpr void copy_assign_impl(storage const& other) noexcept((mtp::noex_assign_copy_v<Ts> &&
                                                                     ...)) {
         if constexpr (I < count) {
             if (index_ == static_cast<index_type>(I)) {
@@ -208,7 +208,8 @@ class storage {
     }
 
     template<rstd::size_t I>
-    constexpr void move_assign_impl(storage&& other) noexcept((mtp::noex_assign_move<Ts> && ...)) {
+    constexpr void move_assign_impl(storage&& other) noexcept((mtp::noex_assign_move_v<Ts> &&
+                                                               ...)) {
         if constexpr (I < count) {
             if (index_ == static_cast<index_type>(I)) {
                 data_.template get<I>() = rstd::move(other.data_).template get<I>();
@@ -224,7 +225,7 @@ class storage {
         requires(I < count) && mtp::init<type_at_t<I, Ts...>, Args...>
     constexpr void
     construct(in_place_index_t<I>,
-              Args&&... args) noexcept(mtp::noex_init<type_at_t<I, Ts...>, Args...>) {
+              Args&&... args) noexcept(mtp::noex_init_v<type_at_t<I, Ts...>, Args...>) {
         data_.template construct<I>(rstd::forward<Args>(args)...);
         index_ = static_cast<index_type>(I);
     }
@@ -235,7 +236,7 @@ public:
     template<rstd::size_t I, typename... Args>
         requires(I < count) && mtp::init<type_at_t<I, Ts...>, Args...>
     explicit constexpr storage(in_place_index_t<I>, Args&&... args) noexcept(
-        mtp::noex_init<type_at_t<I, Ts...>, Args...>)
+        mtp::noex_init_v<type_at_t<I, Ts...>, Args...>)
         : data_(in_place_index<I>, rstd::forward<Args>(args)...),
           index_(static_cast<index_type>(I)) {}
 
@@ -257,7 +258,7 @@ public:
         requires(mtp::triv_move<Ts> && ...)
     = default;
 
-    constexpr storage(storage&& other) noexcept((mtp::noex_move<Ts> && ...))
+    constexpr storage(storage&& other) noexcept((mtp::noex_move_v<Ts> && ...))
         requires((mtp::move<Ts> && ...) && ! (mtp::triv_move<Ts> && ...))
         : data_(), index_(invalid_index) {
         move_impl<0>(rstd::move(other));
@@ -282,8 +283,8 @@ public:
                  (mtp::triv_assign_copy<Ts> && ...))
     = default;
 
-    constexpr auto operator=(storage const& rhs) noexcept((mtp::noex_copy<Ts> && ...) &&
-                                                          (mtp::noex_assign_copy<Ts> && ...))
+    constexpr auto operator=(storage const& rhs) noexcept((mtp::noex_copy_v<Ts> && ...) &&
+                                                          (mtp::noex_assign_copy_v<Ts> && ...))
         -> storage&
         requires((mtp::copy<Ts> && ...) && (mtp::assign_copy<Ts> && ...) &&
                  ! (mtp::triv_assign_copy<Ts> && ...))
@@ -311,8 +312,9 @@ public:
                  (mtp::triv_assign_move<Ts> && ...))
     = default;
 
-    constexpr auto operator=(storage&& rhs) noexcept((mtp::noex_move<Ts> && ...) &&
-                                                     (mtp::noex_assign_move<Ts> && ...)) -> storage&
+    constexpr auto operator=(storage&& rhs) noexcept((mtp::noex_move_v<Ts> && ...) &&
+                                                     (mtp::noex_assign_move_v<Ts> && ...))
+        -> storage&
         requires((mtp::move<Ts> && ...) && (mtp::assign_move<Ts> && ...) &&
                  ! (mtp::triv_assign_move<Ts> && ...))
     {
@@ -332,8 +334,9 @@ public:
 
     template<rstd::size_t I, typename... Args>
         requires(I < count) && mtp::init<type_at_t<I, Ts...>, Args...>
-    constexpr void replace(in_place_index_t<I>,
-                           Args&&... args) noexcept(mtp::noex_init<type_at_t<I, Ts...>, Args...>) {
+    constexpr void
+    replace(in_place_index_t<I>,
+            Args&&... args) noexcept(mtp::noex_init_v<type_at_t<I, Ts...>, Args...>) {
         using next_type = type_at_t<I, Ts...>;
         if constexpr (mtp::noex_init<next_type, Args...>) {
             destroy();
@@ -718,7 +721,7 @@ private:
     template<rstd::size_t I, typename... Args>
         requires mtp::init<stored_at<I>, Args...>
     explicit constexpr Choice(choice_detail::in_place_index_t<I>,
-                              Args&&... args) noexcept(mtp::noex_init<stored_at<I>, Args...>)
+                              Args&&... args) noexcept(mtp::noex_init_v<stored_at<I>, Args...>)
         : storage_(choice_detail::in_place_index<I>, rstd::forward<Args>(args)...) {}
 
     storage_type storage_;
@@ -762,7 +765,7 @@ public:
     template<Tag V, typename... Args>
         requires mtp::init<stored_for<V>, Args...>
     [[nodiscard]]
-    static constexpr auto with(Args&&... args) noexcept(mtp::noex_init<stored_for<V>, Args...>)
+    static constexpr auto with(Args&&... args) noexcept(mtp::noex_init_v<stored_for<V>, Args...>)
         -> Choice {
         return Choice(choice_detail::in_place_index<index_for<V>()>, rstd::forward<Args>(args)...);
     }
