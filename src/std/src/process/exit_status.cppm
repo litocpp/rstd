@@ -60,6 +60,18 @@ struct Output {
     Vec<u8>    stderr_buf;
 };
 
+enum class OutputStream
+{
+    Stdout,
+    Stderr,
+};
+
+struct OutputObserver {
+    void* context {};
+    /// May be called concurrently for stdout and stderr. The chunk is only valid during the call.
+    void (*notify)(void*, OutputStream, slice<u8>) noexcept {};
+};
+
 /// Describes how to configure a child process's standard I/O stream.
 struct Stdio {
     enum Kind : rstd::uint8_t

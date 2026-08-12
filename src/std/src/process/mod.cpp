@@ -132,10 +132,14 @@ auto Child::kill() -> io::Result<rstd::empty> {
 }
 
 auto Child::wait_with_output() -> io::Result<Output> {
+    return wait_with_output(OutputObserver {});
+}
+
+auto Child::wait_with_output(OutputObserver observer) -> io::Result<Output> {
     // Drop stdin so child sees EOF.
     stdin_pipe = {};
 
-    auto read_all = [](int fd) -> ::alloc::vec::Vec<u8> {
+    auto read_all = [observer](int fd, OutputStream stream) -> ::alloc::vec::Vec<u8> {
         ::alloc::vec::Vec<u8> buf;
 #if RSTD_OS_UNIX
         if (fd >= 0) {
@@ -143,8 +147,9 @@ auto Child::wait_with_output() -> io::Result<Output> {
             while (true) {
                 auto n = libc::read(fd, tmp, sizeof(tmp));
                 if (n <= 0) break;
-                buf.extend_from_slice(
-                    slice<u8>::from_raw_parts(tmp, usize(static_cast<rstd::size_t>(n))));
+                auto chunk = slice<u8>::from_raw_parts(tmp, usize(static_cast<rstd::size_t>(n)));
+                if (observer.notify != nullptr) observer.notify(observer.context, stream, chunk);
+                buf.extend_from_slice(chunk);
             }
         }
 #endif
@@ -155,19 +160,19 @@ auto Child::wait_with_output() -> io::Result<Output> {
     int err_fd = stderr_pipe.is_some() ? (*stderr_pipe).fd : -1;
 
     auto stderr_reader = rstd::thread::spawn([err_fd, &read_all]() {
-        return read_all(err_fd);
+        return read_all(err_fd, OutputStream::Stderr);
     });
     if (stderr_reader.is_err()) {
         (void)kill();
-        auto out_buf = read_all(out_fd);
-        auto err_buf = read_all(err_fd);
+        auto out_buf = read_all(out_fd, OutputStream::Stdout);
+        auto err_buf = read_all(err_fd, OutputStream::Stderr);
         stdout_pipe  = {};
         stderr_pipe  = {};
         (void)wait();
         return Err(stderr_reader.unwrap_err());
     }
 
-    auto out_buf = read_all(out_fd);
+    auto out_buf = read_all(out_fd, OutputStream::Stdout);
     auto err_buf = rstd::move(stderr_reader).unwrap().join().unwrap();
     stdout_pipe  = {};
     stderr_pipe  = {};

@@ -127,6 +127,10 @@ struct Child {
     /// Waits for the child and collects all remaining stdout/stderr.
     auto wait_with_output() -> io::Result<Output>;
 
+    /// Waits for the child, collects stdout/stderr, and forwards chunks while they arrive.
+    /// Stdout and stderr notifications may run concurrently.
+    auto wait_with_output(OutputObserver observer) -> io::Result<Output>;
+
     ~Child();
     Child(Child&& o) noexcept
         : pid(o.pid),
@@ -233,6 +237,16 @@ public:
         auto child  = spawn();
         if (child.is_err()) return Err(child.unwrap_err());
         return child.unwrap().wait_with_output();
+    }
+
+    /// Executes the command, collecting output while forwarding chunks to an observer.
+    /// Stdout and stderr notifications may run concurrently.
+    auto output(OutputObserver observer) -> io::Result<Output> {
+        cfg_stdout_ = Stdio::piped();
+        cfg_stderr_ = Stdio::piped();
+        auto child  = spawn();
+        if (child.is_err()) return Err(child.unwrap_err());
+        return child.unwrap().wait_with_output(observer);
     }
 };
 

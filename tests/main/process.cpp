@@ -18,6 +18,20 @@ auto to_std_string(const rstd::vec::Vec<rstd::u8>& bytes) -> std::string {
     return result;
 }
 
+struct ObservedOutput {
+    rstd::vec::Vec<rstd::u8> standard_output;
+    rstd::vec::Vec<rstd::u8> standard_error;
+};
+
+void observe_output(void*                       raw_context,
+                    rstd::process::OutputStream stream,
+                    rstd::slice<rstd::u8>       bytes) noexcept {
+    auto& output = *static_cast<ObservedOutput*>(raw_context);
+    auto& target = stream == rstd::process::OutputStream::Stdout ? output.standard_output
+                                                                 : output.standard_error;
+    target.extend_from_slice(bytes);
+}
+
 } // namespace
 
 TEST(Process, ExitStatusSuccess) {
@@ -80,6 +94,23 @@ TEST(Process, CommandOutputStderr) {
     auto out = res.unwrap();
 
     EXPECT_EQ(to_std_string(out.stderr_buf), "err\n");
+}
+
+TEST(Process, CommandOutputObserverForwardsAndCollectsBothStreams) {
+    auto observed = ObservedOutput {};
+    auto result   = rstd::process::Command::make("sh"_str)
+                        .arg("-c"_str)
+                        .arg("printf out; printf err >&2"_str)
+                        .output(rstd::process::OutputObserver {
+                            .context = &observed,
+                            .notify  = observe_output,
+                        });
+    ASSERT_TRUE(result.is_ok());
+    EXPECT_TRUE(result->status.success());
+    EXPECT_EQ(to_std_string(result->stdout_buf), "out");
+    EXPECT_EQ(to_std_string(result->stderr_buf), "err");
+    EXPECT_EQ(to_std_string(observed.standard_output), "out");
+    EXPECT_EQ(to_std_string(observed.standard_error), "err");
 }
 
 TEST(Process, CommandEnvironmentInheritsByDefault) {
