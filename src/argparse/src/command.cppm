@@ -1,4 +1,5 @@
 export module rstd.argparse:command;
+export import :command_key;
 export import :parser;
 
 using namespace rstd::prelude;
@@ -153,6 +154,11 @@ public:
     Command& operator=(Command&&)      = default;
 
     static auto make(ref<str> name) -> Command { return Command { name }; }
+
+    [[nodiscard]]
+    auto key() const noexcept -> CommandKey {
+        return CommandKey { command_token_ };
+    }
 
     auto about(ref<str> text) & -> Command& {
         about_ = Some(String::make(text));

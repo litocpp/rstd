@@ -67,6 +67,34 @@ TEST(ArgparseLifecycle, MatchesOutlivesParserAndParserIsReusable) {
     EXPECT_EQ(***first_value, "first"_str);
 }
 
+TEST(ArgparseLifecycle, CommandKeyOutlivesParser) {
+    auto child      = Command::make("run"_str);
+    auto child_key  = child.key();
+    auto copied_key = child_key;
+    auto root       = Command::make("tool"_str);
+    root.add_subcommand(rstd::move(child));
+
+    Option<Matches> saved = None();
+    {
+        auto built = rstd::move(root).build();
+        ASSERT_TRUE(built.is_ok());
+        auto parser = rstd::move(built).unwrap();
+        auto result = parser.parse_from(lifecycle_argv("tool"_str, "run"_str));
+        ASSERT_TRUE(result.is_ok());
+        auto outcome = rstd::move(result).unwrap();
+        saved        = Some(rstd::move(outcome).as_Parsed().value);
+
+        auto repeated = parser.parse_from(lifecycle_argv("tool"_str, "run"_str));
+        ASSERT_TRUE(repeated.is_ok());
+        auto repeated_outcome = rstd::move(repeated).unwrap();
+        auto repeated_matches = rstd::move(repeated_outcome).as_Parsed().value;
+        EXPECT_TRUE(repeated_matches.subcommand_matches(child_key).is_some());
+    }
+
+    ASSERT_TRUE(saved.is_some());
+    EXPECT_TRUE(saved->subcommand_matches(copied_key).is_some());
+}
+
 TEST(ArgparseLifecycle, CleansProvisionalTypedValuesAfterValidationFailure) {
     int  drops   = 0;
     auto command = Command::make("tool"_str);

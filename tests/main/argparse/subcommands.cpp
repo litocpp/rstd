@@ -18,7 +18,8 @@ TEST(ArgparseSubcommands, OwnsSchemaAndReturnsRecursiveMatches) {
     auto serve = Command::make("serve"_str);
     serve.about("Run the server"_str);
     serve.alias("s"_str);
-    auto port = serve.add_arg(
+    auto serve_command = serve.key();
+    auto port          = serve.add_arg(
         Arg<String>::value("port"_str, string_parser()).long_name("port"_str).required());
 
     auto root = Command::make("tool"_str);
@@ -34,12 +35,49 @@ TEST(ArgparseSubcommands, OwnsSchemaAndReturnsRecursiveMatches) {
     auto matches = rstd::move(outcome).as_Parsed().value;
     auto child   = matches.subcommand_matches("serve"_str);
     ASSERT_TRUE(child.is_some());
+    auto typed_child = matches.subcommand_matches(serve_command);
+    ASSERT_TRUE(typed_child.is_some());
     auto value = (*child)->get_one(port);
     ASSERT_TRUE(value.is_ok());
     ASSERT_TRUE(value->is_some());
     EXPECT_EQ(***value, "8080"_str);
     ASSERT_TRUE(matches.subcommand().is_some());
     EXPECT_EQ(matches.subcommand()->get<0>(), "serve"_str);
+}
+
+TEST(ArgparseSubcommands, TypedKeysMatchOnlyTheSelectedDirectChild) {
+    auto leaf     = Command::make("leaf"_str);
+    auto leaf_key = leaf.key();
+
+    auto branch     = Command::make("branch"_str);
+    auto branch_key = branch.key();
+    branch.add_subcommand(rstd::move(leaf));
+
+    auto sibling     = Command::make("sibling"_str);
+    auto sibling_key = sibling.key();
+
+    auto foreign     = Command::make("foreign"_str);
+    auto foreign_key = foreign.key();
+
+    auto root = Command::make("tool"_str);
+    root.require_subcommand();
+    root.add_subcommand(rstd::move(branch));
+    root.add_subcommand(rstd::move(sibling));
+    auto built = rstd::move(root).build();
+    ASSERT_TRUE(built.is_ok());
+    auto parser = rstd::move(built).unwrap();
+
+    auto result = parser.parse_from(subcommand_argv("tool"_str, "branch"_str, "leaf"_str));
+    ASSERT_TRUE(result.is_ok());
+    auto outcome = rstd::move(result).unwrap();
+    auto matches = rstd::move(outcome).as_Parsed().value;
+
+    auto selected = matches.subcommand_matches(branch_key);
+    ASSERT_TRUE(selected.is_some());
+    EXPECT_TRUE(matches.subcommand_matches(sibling_key).is_none());
+    EXPECT_TRUE(matches.subcommand_matches(foreign_key).is_none());
+    EXPECT_TRUE(matches.subcommand_matches(leaf_key).is_none());
+    EXPECT_TRUE((*selected)->subcommand_matches(leaf_key).is_some());
 }
 
 TEST(ArgparseSubcommands, ValidatesRequiredAndInvalidSubcommands) {

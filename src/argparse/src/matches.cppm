@@ -3,6 +3,7 @@ module;
 
 export module rstd.argparse:matches;
 export import :arg;
+export import :command_key;
 import :schema;
 
 using namespace rstd::prelude;
@@ -165,6 +166,14 @@ public:
             return None();
         }
         return Some(subcommand_matches_->as_ref());
+    }
+
+    [[nodiscard]]
+    auto subcommand_matches(const CommandKey& key) const -> Option<ref<Matches>> {
+        if (subcommand_matches_.is_none()) return None();
+        auto child = subcommand_matches_->as_ref();
+        if (child->schema_->command_token != key.command_) return None();
+        return Some(child);
     }
 };
 

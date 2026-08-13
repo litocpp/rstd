@@ -14,6 +14,7 @@ target_sources(
          src/error.cppm
          src/value_parser.cppm
          src/arg.cppm
+         src/command_key.cppm
          src/schema.cppm
          src/matches.cppm
          src/parser.cppm
