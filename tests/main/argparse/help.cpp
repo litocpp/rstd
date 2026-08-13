@@ -36,6 +36,7 @@ TEST(ArgparseHelp, RendersDeterministicSchemaOwnedHelpUsageAndVersion) {
             .default_value("safe"_str));
     command.add_arg(Arg<bool>::flag("secret"_str).long_name("secret"_str).hidden());
     command.add_subcommand(Command::make("run"_str).about("Run it"_str));
+    command.add_subcommand(Command::make("inspect"_str).about("Inspect it"_str));
 
     auto built = rstd::move(command).build();
     ASSERT_TRUE(built.is_ok());
@@ -49,17 +50,18 @@ TEST(ArgparseHelp, RendersDeterministicSchemaOwnedHelpUsageAndVersion) {
               "Usage: tool [OPTIONS] <INPUT> [COMMAND]\n"_str
               "\n"_str
               "Arguments:\n"_str
-              "  INPUT\tInput file\n"_str
+              "  INPUT  Input file\n"_str
               "\n"_str
               "Options:\n"_str
-              "  -h, --help\tPrint help\n"_str
-              "  -V, --version\tPrint version\n"_str
+              "  -h, --help     Print help\n"_str
+              "  -V, --version  Print version\n"_str
               "\n"_str
               "Tuning:\n"_str
-              "  --mode\tExecution mode [default: safe] [possible values: fast, safe]\n"_str
+              "  --mode  Execution mode [default: safe] [possible values: fast, safe]\n"_str
               "\n"_str
               "Subcommands:\n"_str
-              "  run\tRun it\n"_str
+              "  run      Run it\n"_str
+              "  inspect  Inspect it\n"_str
               "\n"_str
               "More details\n"_str);
 }

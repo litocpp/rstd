@@ -386,23 +386,36 @@ class RunOutcome {
               (Display, (rstd::argparse::DisplayRequest value;)))
 };
 
-void render_argument_line(String& output, const ArgSpec& argument) {
-    output.push_str("  "_str);
+auto argument_label(const ArgSpec& argument) -> String {
+    auto label = String::make();
     if (argument.short_name.is_some()) {
-        output.push_ascii(u8('-'));
-        output.push_ascii(*argument.short_name);
-        if (argument.long_name.is_some()) output.push_str(", "_str);
+        label.push_ascii(u8('-'));
+        label.push_ascii(*argument.short_name);
+        if (argument.long_name.is_some()) label.push_str(", "_str);
     }
     if (argument.long_name.is_some()) {
-        output.push_str("--"_str);
-        output.push_str(argument.long_name->as_str());
+        label.push_str("--"_str);
+        label.push_str(argument.long_name->as_str());
     }
     if (argument.short_name.is_none() && argument.long_name.is_none()) {
-        output.push_str(argument.value_name.is_empty() ? argument.id.as_str()
-                                                       : argument.value_name.as_str());
+        label.push_str(argument.value_name.is_empty() ? argument.id.as_str()
+                                                      : argument.value_name.as_str());
     }
+    return label;
+}
+
+void render_detail_padding(String& output, usize label_width, usize section_width) {
+    for (usize width = label_width; width < section_width + usize(2); ++width) {
+        output.push_ascii(u8(' '));
+    }
+}
+
+void render_argument_line(String& output, const ArgSpec& argument, usize section_width) {
+    auto label = argument_label(argument);
+    output.push_str("  "_str);
+    output.push_str(label.as_str());
     if (! argument.help.is_empty()) {
-        output.push_str("\t"_str);
+        render_detail_padding(output, label.size(), section_width);
         output.push_str(argument.help.as_str());
     }
     if (argument.default_raw_value.is_some()) {
@@ -466,23 +479,33 @@ auto rstd::argparse::Parser::render_help_for(ref<str> display_path) const -> Str
     output.push_str("\n"_str);
 
     auto render_section = [&](ref<str> heading, bool options, Option<ref<str>> custom) {
+        auto selected_argument = [&](const ArgSpec& argument) {
+            const bool named = argument.short_name.is_some() || argument.long_name.is_some() ||
+                               ! argument.short_aliases.is_empty() || ! argument.aliases.is_empty();
+            return ! argument.hidden &&
+                   (custom.is_some() ? argument.help_heading.as_str() == *custom
+                                     : argument.help_heading.is_empty() && named == options);
+        };
+
+        usize section_width {};
+        for (usize i {}; i < schema_->args.len(); ++i) {
+            const auto& argument = schema_->args[i];
+            if (! selected_argument(argument)) continue;
+            auto label = argument_label(argument);
+            if (label.size() > section_width) section_width = label.size();
+        }
+
         bool wrote_heading = false;
         for (usize i {}; i < schema_->args.len(); ++i) {
             const auto& argument = schema_->args[i];
-            if (argument.hidden) continue;
-            const bool named = argument.short_name.is_some() || argument.long_name.is_some() ||
-                               ! argument.short_aliases.is_empty() || ! argument.aliases.is_empty();
-            const bool selected = custom.is_some()
-                                      ? argument.help_heading.as_str() == *custom
-                                      : argument.help_heading.is_empty() && named == options;
-            if (! selected) continue;
+            if (! selected_argument(argument)) continue;
             if (! wrote_heading) {
                 output.push_str("\n"_str);
                 output.push_str(heading);
                 output.push_str(":\n"_str);
                 wrote_heading = true;
             }
-            render_argument_line(output, argument);
+            render_argument_line(output, argument, section_width);
         }
     };
 
@@ -505,11 +528,16 @@ auto rstd::argparse::Parser::render_help_for(ref<str> display_path) const -> Str
     }
     if (! schema_->subcommands.is_empty()) {
         output.push_str("\nSubcommands:\n"_str);
+        usize section_width {};
+        for (usize i {}; i < schema_->subcommands.len(); ++i) {
+            auto width = schema_->subcommands[i].name.size();
+            if (width > section_width) section_width = width;
+        }
         for (usize i {}; i < schema_->subcommands.len(); ++i) {
             output.push_str("  "_str);
             output.push_str(schema_->subcommands[i].name.as_str());
             if (schema_->subcommands[i].schema->about.is_some()) {
-                output.push_str("\t"_str);
+                render_detail_padding(output, schema_->subcommands[i].name.size(), section_width);
                 output.push_str(schema_->subcommands[i].schema->about->as_str());
             }
             output.push_ascii(u8('\n'));
