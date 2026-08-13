@@ -21,6 +21,15 @@ TEST(Path, IsAbsolute) {
     EXPECT_FALSE(rstd::ref<Path>(""_str).is_absolute());
 }
 
+TEST(Path, IsSafeRelative) {
+    EXPECT_TRUE(rstd::ref<Path>("sources/archive"_str).is_safe_relative());
+    EXPECT_TRUE(rstd::ref<Path>("./sources/archive"_str).is_safe_relative());
+    EXPECT_TRUE(rstd::ref<Path>(""_str).is_safe_relative());
+    EXPECT_FALSE(rstd::ref<Path>("../archive"_str).is_safe_relative());
+    EXPECT_FALSE(rstd::ref<Path>("sources/../../archive"_str).is_safe_relative());
+    EXPECT_FALSE(rstd::ref<Path>("/sources/archive"_str).is_safe_relative());
+}
+
 TEST(Path, Parent) {
     auto p = rstd::ref<Path>("/usr/bin/ls"_str).parent();
     ASSERT_TRUE(p.is_some());

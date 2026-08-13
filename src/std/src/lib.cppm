@@ -9,6 +9,7 @@ export import :thread;
 export import :async;
 export import :io;
 export import :bytes;
+export import :crypto;
 export import :net;
 export import :os;
 export import :process;

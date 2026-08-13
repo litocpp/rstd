@@ -290,6 +290,16 @@ struct ref<path::Path> : ref_base<ref<path::Path>, byte[], false> {
         return path_detail::root_len(p, length.to_primitive()) != 0;
     }
 
+    /// Returns `true` if the path is relative and cannot escape its joining directory.
+    constexpr auto is_safe_relative() const noexcept -> bool {
+        if (is_absolute() || has_root()) return false;
+        auto values = components();
+        for (auto value = values.next(); value.is_some(); value = values.next()) {
+            if (value->is_root_dir() || value->is_parent_dir()) return false;
+        }
+        return true;
+    }
+
     /// Produces an iterator over the path components.
     constexpr auto components() const noexcept -> path::Components {
         return path::Components(p, length);
