@@ -16,8 +16,31 @@ struct InnerError {
 
 struct OuterError {
     int value;
+};
 
-    OuterError(InnerError&& error): value(error.value + 10) {}
+struct DirectIntoInnerError {
+    std::unique_ptr<int> value;
+};
+
+struct DirectIntoOuterError {
+    std::unique_ptr<int> value;
+};
+
+struct FallibleInnerError {
+    int value;
+};
+
+struct FallibleConvertedError {
+    int value;
+};
+
+struct ConversionError {
+    int value;
+};
+
+struct FallibleParentError {
+    bool conversion_failed;
+    int  value;
 };
 
 struct CallableError {
@@ -44,6 +67,35 @@ struct DropProbe {
     }
 };
 
+} // namespace
+
+template<>
+struct rstd::Impl<rstd::convert::From<InnerError>, OuterError> {
+    static auto from(InnerError error) -> OuterError { return OuterError { error.value + 10 }; }
+};
+
+template<>
+struct rstd::Impl<rstd::convert::Into<DirectIntoOuterError>, DirectIntoInnerError>
+    : rstd::ImplBase<DirectIntoInnerError> {
+    auto into() -> DirectIntoOuterError {
+        return DirectIntoOuterError { rstd::move(this->self().value) };
+    }
+};
+
+template<>
+struct rstd::Impl<rstd::convert::TryFrom<FallibleInnerError>, FallibleConvertedError> {
+    using Error = ConversionError;
+
+    static auto try_from(FallibleInnerError error)
+        -> rstd::Result<FallibleConvertedError, ConversionError> {
+        if (error.value < 0) return rstd::Err(ConversionError { -error.value });
+        return rstd::Ok(FallibleConvertedError { error.value });
+    }
+};
+
+namespace
+{
+
 auto make_result(bool success, int& calls) -> Result<int, int> {
     ++calls;
     if (success) {
@@ -61,6 +113,26 @@ auto propagate_result(bool success, int& calls, int& continued) -> Result<long, 
 auto convert_error() -> Result<long, OuterError> {
     auto value = rstd_try((Result<int, InnerError> { Err(InnerError { 4 }) }));
     return Ok(static_cast<long>(value));
+}
+
+auto convert_direct_into_error() -> Result<int, DirectIntoOuterError> {
+    auto value = rstd_try((Result<int, DirectIntoInnerError> {
+        Err(DirectIntoInnerError { std::make_unique<int>(17) }),
+    }));
+    return Ok(value);
+}
+
+auto parent_from_conversion_error(ConversionError error) -> FallibleParentError {
+    return FallibleParentError { true, error.value };
+}
+
+auto convert_fallible_error(int value) -> Result<int, FallibleParentError> {
+    auto converted = rstd_try(
+        rstd::try_into<FallibleConvertedError>(FallibleInnerError { value }),
+        [](ConversionError error) {
+            return parent_from_conversion_error(error);
+        });
+    return Err(FallibleParentError { false, converted.value });
 }
 
 auto consume_result_lvalue(Result<std::unique_ptr<int>, int>& source) -> Result<int, int> {
@@ -217,11 +289,30 @@ TEST(Try, ResultReturnsEarlyOnFailure) {
     EXPECT_EQ(continued, 0);
 }
 
-TEST(Try, ResultConvertsErrorThroughPublicConstructor) {
+TEST(Try, ResultConvertsErrorThroughFromAndInto) {
     auto result = convert_error();
 
     ASSERT_TRUE(result.is_err());
     EXPECT_EQ(result.unwrap_err().value, 14);
+}
+
+TEST(Try, ResultConvertsMoveOnlyErrorThroughDirectInto) {
+    auto result = convert_direct_into_error();
+
+    ASSERT_TRUE(result.is_err());
+    EXPECT_EQ(*result.unwrap_err().value, 17);
+}
+
+TEST(Try, FallibleErrorConversionIsExplicit) {
+    auto converted = convert_fallible_error(8);
+    ASSERT_TRUE(converted.is_err());
+    EXPECT_FALSE(converted.unwrap_err().conversion_failed);
+    EXPECT_EQ(converted.unwrap_err().value, 8);
+
+    auto failed = convert_fallible_error(-9);
+    ASSERT_TRUE(failed.is_err());
+    EXPECT_TRUE(failed.unwrap_err().conversion_failed);
+    EXPECT_EQ(failed.unwrap_err().value, 9);
 }
 
 TEST(Try, ResultConsumesMoveOnlyLvalue) {
@@ -436,6 +527,19 @@ TEST(Try, WorksFromModuleGlobalFragment) {
     auto failure = try_module_check(false);
     ASSERT_TRUE(failure.is_err());
     EXPECT_EQ(failure.unwrap_err(), 7);
+}
+
+TEST(Try, ModuleErrorConversionPreservesTypedSource) {
+    auto result = try_module_error_conversion();
+
+    ASSERT_TRUE(result.is_err());
+    auto error = rstd::move(result).unwrap_err();
+    ASSERT_TRUE(error.is_Child());
+    EXPECT_EQ(error.as_Child().source.value, 23);
+    auto source = rstd::as<rstd::error::Error>(error).source();
+    ASSERT_TRUE(source.is_some());
+    EXPECT_TRUE(rstd::error::is<TryModuleInnerError>(*source));
+    EXPECT_EQ((**rstd::error::downcast_ref<TryModuleInnerError>(*source)).value, 23);
 }
 
 } // namespace

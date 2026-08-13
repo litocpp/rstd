@@ -100,6 +100,24 @@ outcome = "failure"
 diagnostic-contains-any = ["no viable conversion", "could not convert"]
 
 [[compile-test.cases]]
+name = "Try.ConstructorOnlyErrorFailure"
+source = "try_constructor_only_error.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["no viable conversion", "could not convert"]
+
+[[compile-test.cases]]
+name = "Try.FallibleErrorConversionFailure"
+source = "try_fallible_error_conversion.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["no viable conversion", "could not convert"]
+
+[[compile-test.cases]]
+name = "Try.OrdinaryErrDoesNotUseInto"
+source = "err_does_not_use_into.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["no viable conversion", "could not convert"]
+
+[[compile-test.cases]]
 name = "Deref.DerefMutWithoutDerefFailure"
 source = "deref_mut_without_deref.cpp"
 outcome = "failure"

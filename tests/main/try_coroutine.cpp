@@ -66,9 +66,17 @@ struct InnerError {
 
 struct OuterError {
     int value;
-
-    OuterError(InnerError&& error): value(error.value + 10) {}
 };
+
+} // namespace
+
+template<>
+struct rstd::Impl<rstd::convert::From<InnerError>, OuterError> {
+    static auto from(InnerError error) -> OuterError { return OuterError { error.value + 10 }; }
+};
+
+namespace
+{
 
 auto child_result(bool success, int& calls) -> Result<int, int> {
     ++calls;
@@ -129,7 +137,7 @@ TEST(Try, CoreCoroutineTransformsError) {
     EXPECT_EQ(result.unwrap_err(), "8");
 }
 
-TEST(Try, CoreCoroutineConvertsErrorThroughPublicConstructor) {
+TEST(Try, CoreCoroutineConvertsErrorThroughFromAndInto) {
     auto result = convert_coro_error().take();
 
     ASSERT_TRUE(result.is_err());

@@ -8,7 +8,7 @@ link-stdlib = false
 
 [dependencies.rstd-nostd]
 path = "../../src/nostd"
-visibility = "runtime"
+visibility = "link"
 
 [dependencies.rstd-std]
 path = "../../src/std"

@@ -1,4 +1,5 @@
 export module rstd.core:try_;
+import :convert;
 import :option;
 import :result;
 
@@ -6,6 +7,39 @@ namespace rstd::try_
 {
 
 export struct NoneFailure {};
+
+/// Owns a failed Result's error until it is returned as an exact or Into-backed Result error.
+export template<typename E>
+class ResultResidual {
+    E error_;
+
+public:
+    explicit constexpr ResultResidual(E&& error): error_(rstd::move(error)) {}
+
+    template<typename T, typename F>
+        requires mtp::same_as<E, F> || Impled<E, convert::Into<F>>
+    constexpr operator result::Result<T, F>() && {
+        if constexpr (mtp::same_as<E, F>) {
+            return Err(rstd::move(error_));
+        } else {
+            return Err(rstd::into<F>(rstd::move(error_)));
+        }
+    }
+};
+
+export template<typename E>
+class ResultResidual<E&> {
+    E* error_;
+
+public:
+    explicit constexpr ResultResidual(E& error): error_(rstd::addressof(error)) {}
+
+    template<typename T, typename F>
+        requires mtp::same_as<E&, F>
+    constexpr operator result::Result<T, F>() && {
+        return Err<E&>(*error_);
+    }
+};
 
 export template<typename T>
 class Output {
@@ -71,7 +105,8 @@ constexpr decltype(auto) finish(Output<T>&& output) {
 export template<TrySource T>
 constexpr auto take_residual(T&& source) {
     if constexpr (ResultSource<T>) {
-        return Err(rstd::forward<T>(source).unwrap_err_unchecked());
+        using Error = typename mtp::rm_cvf<T>::error_type;
+        return ResultResidual<Error> { rstd::forward<T>(source).unwrap_err_unchecked() };
     } else {
         return None();
     }
