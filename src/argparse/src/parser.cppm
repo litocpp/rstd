@@ -641,6 +641,33 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString>      argv,
         return None();
     };
 
+    auto next_positional = [&](usize input_index, bool parse_options) -> Option<usize> {
+        auto position = positional;
+        while (position < schema_->positionals.len()) {
+            auto slot    = schema_->positionals[position];
+            auto maximum = schema_->args[slot].num_args.maximum();
+            if (maximum.is_some() && matched[slot].typed_values.len() >= *maximum) {
+                ++position;
+                continue;
+            }
+            if (position + usize(1) < schema_->positionals.len() &&
+                matched[slot].typed_values.len() >= schema_->args[slot].num_args.minimum() &&
+                count_positional_candidates(*schema_, argv, input_index, parse_options) <=
+                    schema_->positional_reserve[position]) {
+                ++position;
+                continue;
+            }
+            return Some(position);
+        }
+        return None();
+    };
+
+    auto positional_accepts_hyphen = [&](usize input_index) {
+        auto position = next_positional(input_index, options);
+        return position.is_some() &&
+               schema_->args[schema_->positionals[*position]].allow_hyphen_values;
+    };
+
     auto consume_option =
         [&](usize slot, Option<IndexedValue> attached) -> Result<Option<RunOutcome>, ParseError> {
         const auto& spec  = schema_->args[slot];
@@ -716,25 +743,28 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString>      argv,
         if (options && token.len() > usize(2) && bytes[usize()] == u8('-') &&
             bytes[usize(1)] == u8('-')) {
             auto slot = lookup_option(*schema_, token);
-            if (slot.is_none()) {
+            if (slot.is_none() && ! positional_accepts_hyphen(index)) {
                 if (known) {
                     unknown.push(clone_os(token));
                     ++index;
                     continue;
+                } else {
+                    return Err(ParseError::UnknownArgument(
+                        clone_os(token), absolute(index), suggest_option(*schema_, token)));
                 }
-                return Err(ParseError::UnknownArgument(
-                    clone_os(token), absolute(index), suggest_option(*schema_, token)));
             }
-            Option<IndexedValue> attached = None();
-            if (auto split = token.split_once(u8('=')); split.is_some()) {
-                attached =
-                    Some(IndexedValue { clone_os(split->template get<1>()), absolute(index) });
+            if (slot.is_some()) {
+                Option<IndexedValue> attached = None();
+                if (auto split = token.split_once(u8('=')); split.is_some()) {
+                    attached =
+                        Some(IndexedValue { clone_os(split->template get<1>()), absolute(index) });
+                }
+                auto result = consume_option(*slot, rstd::move(attached));
+                if (result.is_err()) return Err(rstd::move(result).unwrap_err());
+                if (result->is_some()) return Ok(rstd::move(**result));
+                ++index;
+                continue;
             }
-            auto result = consume_option(*slot, rstd::move(attached));
-            if (result.is_err()) return Err(rstd::move(result).unwrap_err());
-            if (result->is_some()) return Ok(rstd::move(**result));
-            ++index;
-            continue;
         }
 
         if (options && token.len() > usize(1) && bytes[usize()] == u8('-')) {
@@ -759,37 +789,39 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString>      argv,
                 if (spec.action.is_Set() || spec.action.is_Append()) break;
                 ++offset;
             }
-            if (! cluster_known) {
+            if (! cluster_known && ! positional_accepts_hyphen(index)) {
                 if (known) {
                     unknown.push(clone_os(token));
                     ++index;
                     continue;
+                } else {
+                    return Err(ParseError::UnknownArgument(
+                        clone_os(token), absolute(index), suggest_option(*schema_, token)));
                 }
-                return Err(ParseError::UnknownArgument(
-                    clone_os(token), absolute(index), suggest_option(*schema_, token)));
             }
-
-            for (usize offset = usize(1); offset < token.len(); ++offset) {
-                auto                 name     = short_option_name(bytes[offset]);
-                auto                 slot     = schema_->option_index.get(name->as_str());
-                const auto&          spec     = schema_->args[**slot];
-                Option<IndexedValue> attached = None();
-                if ((spec.action.is_Set() || spec.action.is_Append()) &&
-                    offset + usize(1) < token.len()) {
-                    auto remaining = slice<u8>::from_raw_parts(
-                        bytes.as_raw_ptr() + (offset + usize(1)).to_primitive(),
-                        token.len() - offset - usize(1));
-                    attached = Some(IndexedValue {
-                        clone_os(ref<OsStr>::from_encoded_bytes_unchecked(remaining)),
-                        absolute(index) });
+            if (cluster_known) {
+                for (usize offset = usize(1); offset < token.len(); ++offset) {
+                    auto                 name     = short_option_name(bytes[offset]);
+                    auto                 slot     = schema_->option_index.get(name->as_str());
+                    const auto&          spec     = schema_->args[**slot];
+                    Option<IndexedValue> attached = None();
+                    if ((spec.action.is_Set() || spec.action.is_Append()) &&
+                        offset + usize(1) < token.len()) {
+                        auto remaining = slice<u8>::from_raw_parts(
+                            bytes.as_raw_ptr() + (offset + usize(1)).to_primitive(),
+                            token.len() - offset - usize(1));
+                        attached = Some(IndexedValue {
+                            clone_os(ref<OsStr>::from_encoded_bytes_unchecked(remaining)),
+                            absolute(index) });
+                    }
+                    auto result = consume_option(**slot, rstd::move(attached));
+                    if (result.is_err()) return Err(rstd::move(result).unwrap_err());
+                    if (result->is_some()) return Ok(rstd::move(**result));
+                    if (spec.action.is_Set() || spec.action.is_Append()) break;
                 }
-                auto result = consume_option(**slot, rstd::move(attached));
-                if (result.is_err()) return Err(rstd::move(result).unwrap_err());
-                if (result->is_some()) return Ok(rstd::move(**result));
-                if (spec.action.is_Set() || spec.action.is_Append()) break;
+                ++index;
+                continue;
             }
-            ++index;
-            continue;
         }
 
         if (options) {
@@ -827,23 +859,8 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString>      argv,
             }
         }
 
-        while (positional < schema_->positionals.len()) {
-            auto slot    = schema_->positionals[positional];
-            auto maximum = schema_->args[slot].num_args.maximum();
-            if (maximum.is_some() && matched[slot].typed_values.len() >= *maximum) {
-                ++positional;
-                continue;
-            }
-            if (positional + usize(1) < schema_->positionals.len() &&
-                matched[slot].typed_values.len() >= schema_->args[slot].num_args.minimum() &&
-                count_positional_candidates(*schema_, argv, index, options) <=
-                    schema_->positional_reserve[positional]) {
-                ++positional;
-                continue;
-            }
-            break;
-        }
-        if (positional == schema_->positionals.len()) {
+        auto selected_position = next_positional(index, options);
+        if (selected_position.is_none()) {
             if (known) {
                 unknown.push(clone_os(token));
                 ++index;
@@ -854,7 +871,8 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString>      argv,
             }
             return Err(ParseError::UnexpectedPositional(clone_os(token), absolute(index)));
         }
-        auto slot = schema_->positionals[positional];
+        positional = *selected_position;
+        auto slot  = schema_->positionals[positional];
         if (auto error =
                 push_value(schema_->args[slot], matched[slot], clone_os(token), absolute(index));
             error.is_some()) {

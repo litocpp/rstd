@@ -128,6 +128,32 @@ TEST(ArgparseValues, UsesExactShortAliasBeforeClusterAndSupportsHyphenValues) {
     (void)c;
 }
 
+TEST(ArgparseValues, SupportsHyphenValuesForPositionalsAfterKnownOptions) {
+    auto command = Command::make("tool"_str);
+    auto force   = command.add_arg(Arg<bool>::flag("force"_str).long_name("force"_str));
+    auto key     = command.add_arg(Arg<String>::value("key"_str, string_parser()).required());
+    auto value   = command.add_arg(
+        Arg<String>::value("value"_str, string_parser()).required().allow_hyphen_values());
+    auto built = rstd::move(command).build();
+    ASSERT_TRUE(built.is_ok());
+    auto parser = rstd::move(built).unwrap();
+
+    auto result =
+        parser.parse_from(value_argv("tool"_str, "--force"_str, "lock.path"_str, "-1"_str));
+    ASSERT_TRUE(result.is_ok());
+    auto outcome = rstd::move(result).unwrap();
+    auto matches = rstd::move(outcome).as_Parsed().value;
+    EXPECT_TRUE(***matches.get_one(force));
+    EXPECT_EQ(***matches.get_one(key), "lock.path"_str);
+    EXPECT_EQ(***matches.get_one(value), "-1"_str);
+
+    auto long_value = parser.parse_from(value_argv("tool"_str, "lock.path"_str, "--literal"_str));
+    ASSERT_TRUE(long_value.is_ok());
+    auto long_outcome = rstd::move(long_value).unwrap();
+    auto long_matches = rstd::move(long_outcome).as_Parsed().value;
+    EXPECT_EQ(***long_matches.get_one(value), "--literal"_str);
+}
+
 TEST(ArgparseValues, ValidatesChoices) {
     auto choices = Vec<String>::make();
     choices.push(String::make("fast"_str));
