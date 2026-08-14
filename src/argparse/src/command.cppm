@@ -26,10 +26,11 @@ auto make_option_name(ref<str> long_name) -> String {
 auto valid_long_name(ref<str> name) noexcept -> bool {
     if (name.size() == usize()) return false;
     for (usize i {}; i < name.size(); ++i) {
-        const u8   byte = name[i];
-        const bool valid =
-            (byte >= u8('a') && byte <= u8('z')) || (byte >= u8('A') && byte <= u8('Z')) ||
-            (byte >= u8('0') && byte <= u8('9')) || byte == u8('-') || byte == u8('_');
+        const u8   byte  = name[i];
+        const bool valid = (byte >= u8('a') && byte <= u8('z')) ||
+                           (byte >= u8('A') && byte <= u8('Z')) ||
+                           (byte >= u8('0') && byte <= u8('9')) || byte == u8('-') ||
+                           byte == u8('_') || byte == u8('.');
         if (! valid) return false;
     }
     return true;

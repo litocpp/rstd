@@ -81,6 +81,21 @@ TEST(ArgparseParsing, SupportsLongEqualsEndOfOptionsAndDefaults) {
     EXPECT_TRUE(default_matches.value_source("mode"_str)->is_DefaultValue());
 }
 
+TEST(ArgparseParsing, SupportsDottedLongOptions) {
+    auto command  = Command::make("tool"_str);
+    auto compiler = command.add_arg(
+        Arg<String>::value("toolchain-cxx"_str, string_parser()).long_name("toolchain.cxx"_str));
+    auto built = rstd::move(command).build();
+    ASSERT_TRUE(built.is_ok());
+    auto parsed = built->parse_from(argv("tool"_str, "--toolchain.cxx=clang++-22"_str));
+    ASSERT_TRUE(parsed.is_ok());
+    auto matches = rstd::move(parsed).unwrap().as_Parsed().value;
+    auto value   = matches.get_one(compiler);
+    ASSERT_TRUE(value.is_ok());
+    ASSERT_TRUE(value->is_some());
+    EXPECT_EQ(***value, "clang++-22"_str);
+}
+
 TEST(ArgparseParsing, PreservesNonUtf8Values) {
     auto command = Command::make("tool"_str);
     auto value   = command.add_arg(Arg<OsString>::value("value"_str, os_string_parser()));
