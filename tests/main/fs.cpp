@@ -8,6 +8,8 @@
 import rstd;
 
 using rstd::fs::File;
+using rstd::fs::FileLock;
+using rstd::fs::FileLockMode;
 using rstd::fs::FileType;
 using rstd::fs::OpenOptions;
 using rstd::fs::Permissions;
@@ -587,6 +589,53 @@ TEST(FsFile, FlockExclusiveBlocks) {
     EXPECT_TRUE(f1.unlock().is_ok());
     EXPECT_TRUE(f2.try_lock().is_ok());
     EXPECT_TRUE(f2.unlock().is_ok());
+}
+
+TEST(FsFileLock, ExclusiveGuardBlocksAndReleases) {
+    TempPath tp;
+    auto     guard =
+        FileLock::acquire(File::open(tp.as_path()).unwrap_unchecked(), FileLockMode::Exclusive)
+            .unwrap_unchecked();
+    auto blocked =
+        FileLock::try_acquire(File::open(tp.as_path()).unwrap_unchecked(), FileLockMode::Exclusive)
+            .unwrap_unchecked();
+    EXPECT_TRUE(blocked.is_none());
+
+    auto file = rstd::move(guard).unlock().unwrap_unchecked();
+    auto acquired =
+        FileLock::try_acquire(File::open(tp.as_path()).unwrap_unchecked(), FileLockMode::Exclusive)
+            .unwrap_unchecked();
+    EXPECT_TRUE(acquired.is_some());
+    EXPECT_TRUE(file.metadata().is_ok());
+}
+
+TEST(FsFileLock, SharedGuardsCoexistAndBlockExclusive) {
+    TempPath tp;
+    auto     first =
+        FileLock::acquire(File::open(tp.as_path()).unwrap_unchecked(), FileLockMode::Shared)
+            .unwrap_unchecked();
+    auto second =
+        FileLock::try_acquire(File::open(tp.as_path()).unwrap_unchecked(), FileLockMode::Shared)
+            .unwrap_unchecked();
+    ASSERT_TRUE(second.is_some());
+    auto blocked =
+        FileLock::try_acquire(File::open(tp.as_path()).unwrap_unchecked(), FileLockMode::Exclusive)
+            .unwrap_unchecked();
+    EXPECT_TRUE(blocked.is_none());
+}
+
+TEST(FsFileLock, MovingGuardPreservesLockLifetime) {
+    TempPath tp;
+    auto     original =
+        FileLock::acquire(File::open(tp.as_path()).unwrap_unchecked(), FileLockMode::Exclusive)
+            .unwrap_unchecked();
+    auto moved = rstd::move(original);
+    EXPECT_TRUE(moved.file()->metadata().is_ok());
+    EXPECT_TRUE(moved.file_mut()->metadata().is_ok());
+    auto blocked =
+        FileLock::try_acquire(File::open(tp.as_path()).unwrap_unchecked(), FileLockMode::Exclusive)
+            .unwrap_unchecked();
+    EXPECT_TRUE(blocked.is_none());
 }
 
 TEST(Fs, ReadTraitImplCanBeUsed) {

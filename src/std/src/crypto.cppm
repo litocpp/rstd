@@ -30,33 +30,23 @@ constexpr std::uint32_t SHA256_CONSTANTS[] = {
     0xc67178f2u,
 };
 
-auto sha256(slice<u8> input) noexcept -> array<u8, 32> {
-    std::uint32_t state[] = {
+class Sha256 {
+    std::uint32_t state_[8] = {
         0x6a09e667u, 0xbb67ae85u, 0x3c6ef372u, 0xa54ff53au,
         0x510e527fu, 0x9b05688cu, 0x1f83d9abu, 0x5be0cd19u,
     };
-    const auto    length     = static_cast<std::uint64_t>(input.len().to_primitive());
-    const auto    padded     = ((length + 9u + 63u) / 64u) * 64u;
-    const auto    bit_length = length * 8u;
-    std::uint32_t words[64] {};
+    std::uint8_t  block_[64] {};
+    std::uint64_t length_ {};
+    std::uint32_t block_length_ {};
 
-    const auto padded_byte = [&](std::uint64_t index) noexcept -> std::uint8_t {
-        if (index < length) return input[usize(index)].to_primitive();
-        if (index == length) return 0x80u;
-        if (index >= padded - 8u) {
-            const auto shift = static_cast<std::uint32_t>((padded - 1u - index) * 8u);
-            return static_cast<std::uint8_t>((bit_length >> shift) & 0xffu);
-        }
-        return 0u;
-    };
-
-    for (std::uint64_t offset {}; offset < padded; offset += 64u) {
+    void transform() noexcept {
+        std::uint32_t words[64] {};
         for (std::uint32_t index {}; index < 16u; ++index) {
-            const auto position = offset + static_cast<std::uint64_t>(index) * 4u;
-            words[index]        = (static_cast<std::uint32_t>(padded_byte(position)) << 24u) |
-                                  (static_cast<std::uint32_t>(padded_byte(position + 1u)) << 16u) |
-                                  (static_cast<std::uint32_t>(padded_byte(position + 2u)) << 8u) |
-                                  static_cast<std::uint32_t>(padded_byte(position + 3u));
+            const auto position = index * 4u;
+            words[index]        = (static_cast<std::uint32_t>(block_[position]) << 24u) |
+                                  (static_cast<std::uint32_t>(block_[position + 1u]) << 16u) |
+                                  (static_cast<std::uint32_t>(block_[position + 2u]) << 8u) |
+                                  static_cast<std::uint32_t>(block_[position + 3u]);
         }
         for (std::uint32_t index = 16u; index < 64u; ++index) {
             const auto previous = words[index - 15u];
@@ -67,14 +57,14 @@ auto sha256(slice<u8> input) noexcept -> array<u8, 32> {
             words[index]      = words[index - 16u] + first + words[index - 7u] + second;
         }
 
-        auto a = state[0];
-        auto b = state[1];
-        auto c = state[2];
-        auto d = state[3];
-        auto e = state[4];
-        auto f = state[5];
-        auto g = state[6];
-        auto h = state[7];
+        auto a = state_[0];
+        auto b = state_[1];
+        auto c = state_[2];
+        auto d = state_[3];
+        auto e = state_[4];
+        auto f = state_[5];
+        auto g = state_[6];
+        auto h = state_[7];
         for (std::uint32_t index {}; index < 64u; ++index) {
             const auto sigma_one =
                 rotate_right(e, 6u) ^ rotate_right(e, 11u) ^ rotate_right(e, 25u);
@@ -93,36 +83,76 @@ auto sha256(slice<u8> input) noexcept -> array<u8, 32> {
             b                   = a;
             a                   = first + second;
         }
-        state[0] += a;
-        state[1] += b;
-        state[2] += c;
-        state[3] += d;
-        state[4] += e;
-        state[5] += f;
-        state[6] += g;
-        state[7] += h;
+        state_[0] += a;
+        state_[1] += b;
+        state_[2] += c;
+        state_[3] += d;
+        state_[4] += e;
+        state_[5] += f;
+        state_[6] += g;
+        state_[7] += h;
     }
 
-    auto result = array<u8, 32> {};
-    for (std::uint32_t index {}; index < 8u; ++index) {
-        for (std::uint32_t byte_index {}; byte_index < 4u; ++byte_index) {
-            const auto shift                       = 24u - byte_index * 8u;
-            result[usize(index * 4u + byte_index)] = u8((state[index] >> shift) & 0xffu);
+public:
+    static auto make() noexcept -> Sha256 { return {}; }
+
+    void update(slice<u8> input) noexcept {
+        const auto length = static_cast<std::uint64_t>(input.len().to_primitive());
+        length_ += length;
+        for (std::uint64_t index {}; index < length; ++index) {
+            block_[block_length_++] = input[usize(index)].to_primitive();
+            if (block_length_ != 64u) continue;
+            transform();
+            block_length_ = 0u;
         }
     }
-    return result;
+
+    auto finalize() && noexcept -> array<u8, 32> {
+        const auto bit_length   = length_ * 8u;
+        block_[block_length_++] = 0x80u;
+        if (block_length_ > 56u) {
+            while (block_length_ < 64u) block_[block_length_++] = 0u;
+            transform();
+            block_length_ = 0u;
+        }
+        while (block_length_ < 56u) block_[block_length_++] = 0u;
+        for (std::uint32_t index {}; index < 8u; ++index) {
+            const auto shift    = 56u - index * 8u;
+            block_[56u + index] = static_cast<std::uint8_t>((bit_length >> shift) & 0xffu);
+        }
+        transform();
+
+        auto result = array<u8, 32> {};
+        for (std::uint32_t index {}; index < 8u; ++index) {
+            for (std::uint32_t byte_index {}; byte_index < 4u; ++byte_index) {
+                const auto shift                       = 24u - byte_index * 8u;
+                result[usize(index * 4u + byte_index)] = u8((state_[index] >> shift) & 0xffu);
+            }
+        }
+        return result;
+    }
+};
+
+auto sha256(slice<u8> input) noexcept -> array<u8, 32> {
+    auto state = Sha256::make();
+    state.update(input);
+    return rstd::move(state).finalize();
 }
 
-auto sha256_hex(slice<u8> input) -> String {
+auto sha256_hex(array<u8, 32> digest) -> String {
     static constexpr char digits[] = "0123456789abcdef";
     auto                  result   = String::make();
     result.reserve(usize(64));
-    for (const auto value : sha256(input)) {
+    for (const auto value : digest) {
         const auto byte = value.get().to_primitive();
         result.push_ascii(digits[byte >> 4u]);
         result.push_ascii(digits[byte & 0x0fu]);
     }
     return result;
+}
+
+auto sha256_hex(slice<u8> input) -> String {
+    return sha256_hex(sha256(input));
 }
 
 auto sha256_hex(ref<str> input) -> String {

@@ -5,7 +5,7 @@ import :fs.types;
 import :io;
 import :os.fd;
 import :path;
-import :sys.libc.unix;
+import :sys.libc;
 import :time;
 import rstd.alloc;
 
@@ -24,6 +24,7 @@ using rstd::ffi::OsString;
 using ::alloc::ffi::CString;
 using ::alloc::string::String;
 using ::alloc::vec::Vec;
+namespace libc = rstd::sys::libc;
 
 template<typename T>
 using Result = rstd::io::Result<T>;
@@ -85,7 +86,6 @@ auto path_cstring(ref<Path> path) -> Result<CString> {
 }
 
 #if RSTD_OS_UNIX
-namespace libc = rstd::sys::libc;
 using rstd::sys::libc::DIR;
 
 auto last_error() noexcept -> Error {
@@ -356,6 +356,33 @@ export auto lock(RawFd fd, LockMode mode) -> Result<empty> {
             continue;
         }
         if (error == libc::EWOULDBLOCK &&
+            (mode == LockMode::TryExclusive || mode == LockMode::TryShared)) {
+            return Err(Error::from_kind(ErrorKind { ErrorKind::WouldBlock }));
+        }
+        return Err(Error::from_raw_os_error(i32(error)));
+    }
+    return Ok(empty {});
+#elif RSTD_OS_WINDOWS
+    auto overlapped = libc::OVERLAPPED {};
+    if (mode == LockMode::Unlock) {
+        if (! libc::UnlockFileEx(
+                static_cast<libc::HANDLE>(fd), 0, 0xffffffffu, 0xffffffffu, &overlapped)) {
+            return Err(Error::from_raw_os_error(i32(libc::GetLastError())));
+        }
+        return Ok(empty {});
+    }
+
+    auto flags = libc::DWORD {};
+    if (mode == LockMode::Exclusive || mode == LockMode::TryExclusive) {
+        flags |= libc::LOCKFILE_EXCLUSIVE_LOCK;
+    }
+    if (mode == LockMode::TryExclusive || mode == LockMode::TryShared) {
+        flags |= libc::LOCKFILE_FAIL_IMMEDIATELY;
+    }
+    if (! libc::LockFileEx(
+            static_cast<libc::HANDLE>(fd), flags, 0, 0xffffffffu, 0xffffffffu, &overlapped)) {
+        auto error = libc::GetLastError();
+        if (error == libc::ERROR_LOCK_VIOLATION &&
             (mode == LockMode::TryExclusive || mode == LockMode::TryShared)) {
             return Err(Error::from_kind(ErrorKind { ErrorKind::WouldBlock }));
         }

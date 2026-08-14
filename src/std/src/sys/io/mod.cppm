@@ -104,6 +104,7 @@ auto decode_error_kind(RawOsError error) noexcept -> rstd::io::error::ErrorKind 
     case libc::ERROR_OUTOFMEMORY: return Kind { Kind::OutOfMemory };
     case libc::ERROR_NOT_SUPPORTED:
     case libc::ERROR_CALL_NOT_IMPLEMENTED: return Kind { Kind::Unsupported };
+    case libc::ERROR_LOCK_VIOLATION: return Kind { Kind::WouldBlock };
     case libc::ERROR_IO_PENDING: return Kind { Kind::InProgress };
     case libc::WSAEACCES: return Kind { Kind::PermissionDenied };
     case libc::WSAECONNREFUSED: return Kind { Kind::ConnectionRefused };

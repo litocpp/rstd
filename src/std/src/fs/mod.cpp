@@ -162,6 +162,30 @@ auto File::try_clone() const -> FsResult<File> {
     return Ok(File { rstd::move(result).unwrap_unchecked() });
 }
 
+auto FileLock::acquire(File file, FileLockMode mode) -> FsResult<FileLock> {
+    auto result = mode == FileLockMode::Exclusive ? file.lock() : file.lock_shared();
+    if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
+    return Ok(FileLock { rstd::move(file) });
+}
+
+auto FileLock::try_acquire(File file, FileLockMode mode) -> FsResult<Option<FileLock>> {
+    auto result = mode == FileLockMode::Exclusive ? file.try_lock() : file.try_lock_shared();
+    if (result.is_err()) {
+        auto error = rstd::move(result).unwrap_err_unchecked();
+        if (error.kind() == ErrorKind { ErrorKind::WouldBlock }) {
+            return Ok(Option<FileLock> {});
+        }
+        return Err(rstd::move(error));
+    }
+    return Ok(Some(FileLock { rstd::move(file) }));
+}
+
+auto FileLock::unlock() && -> FsResult<File> {
+    auto result = m_file.unlock();
+    if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
+    return Ok(rstd::move(m_file));
+}
+
 auto read_to_end(File& file, Vec<u8>& output) -> FsResult<usize> {
     byte  chunk[4096];
     usize total {};

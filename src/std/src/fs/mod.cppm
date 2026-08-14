@@ -25,8 +25,14 @@ inline constexpr u32 PERMISSION_WRITE_MASK { rstd::uint32_t(0222) };
 class MetadataFactory;
 
 export class File;
+export class FileLock;
 export class Metadata;
 export class ReadDir;
+
+export enum class FileLockMode {
+    Shared,
+    Exclusive,
+};
 
 export enum class WriteOutcome {
     Created,
@@ -235,6 +241,30 @@ public:
     auto into_raw_fd() && noexcept -> RawFd { return rstd::move(m_fd).into_raw_fd(); }
 
     static auto from_raw_fd(RawFd fd) noexcept -> File { return File { OwnedFd::from_raw_fd(fd) }; }
+};
+
+export class FileLock {
+    File m_file;
+
+    explicit FileLock(File file) noexcept: m_file(rstd::move(file)) {}
+
+public:
+    FileLock(FileLock const&)                        = delete;
+    auto operator=(FileLock const&) -> FileLock&     = delete;
+    FileLock(FileLock&&) noexcept                    = default;
+    auto operator=(FileLock&&) noexcept -> FileLock& = default;
+    ~FileLock()                                      = default;
+
+    static auto acquire(File file, FileLockMode mode) -> FsResult<FileLock>;
+    static auto try_acquire(File file, FileLockMode mode) -> FsResult<Option<FileLock>>;
+
+    auto file() const noexcept -> ref<File> {
+        return ref<File>::from_raw_parts(rstd::addressof(m_file));
+    }
+    auto file_mut() noexcept -> mut_ref<File> {
+        return mut_ref<File>::from_raw_parts(rstd::addressof(m_file));
+    }
+    auto unlock() && -> FsResult<File>;
 };
 
 export auto read(ref<Path> path) -> FsResult<Vec<u8>>;

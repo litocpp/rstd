@@ -42,6 +42,10 @@ inline constexpr auto _ERROR_OUTOFMEMORY                = ERROR_OUTOFMEMORY;
 inline constexpr auto _ERROR_NOT_SUPPORTED              = ERROR_NOT_SUPPORTED;
 inline constexpr auto _ERROR_CALL_NOT_IMPLEMENTED       = ERROR_CALL_NOT_IMPLEMENTED;
 inline constexpr auto _ERROR_IO_PENDING                 = ERROR_IO_PENDING;
+inline constexpr auto _ERROR_LOCK_VIOLATION             = ERROR_LOCK_VIOLATION;
+inline constexpr auto _LOCKFILE_FAIL_IMMEDIATELY        = LOCKFILE_FAIL_IMMEDIATELY;
+inline constexpr auto _LOCKFILE_EXCLUSIVE_LOCK          = LOCKFILE_EXCLUSIVE_LOCK;
+inline constexpr auto _DUPLICATE_SAME_ACCESS            = DUPLICATE_SAME_ACCESS;
 inline constexpr auto _WSAEACCES                        = WSAEACCES;
 inline constexpr auto _WSAECONNREFUSED                  = WSAECONNREFUSED;
 inline constexpr auto _WSAECONNRESET                    = WSAECONNRESET;
@@ -91,6 +95,10 @@ inline constexpr auto _WSAEOPNOTSUPP                    = WSAEOPNOTSUPP;
 #undef ERROR_NOT_SUPPORTED
 #undef ERROR_CALL_NOT_IMPLEMENTED
 #undef ERROR_IO_PENDING
+#undef ERROR_LOCK_VIOLATION
+#undef LOCKFILE_FAIL_IMMEDIATELY
+#undef LOCKFILE_EXCLUSIVE_LOCK
+#undef DUPLICATE_SAME_ACCESS
 #undef WSAEACCES
 #undef WSAECONNREFUSED
 #undef WSAECONNRESET
@@ -123,6 +131,7 @@ using ::LARGE_INTEGER;
 using ::FILETIME;
 using ::SYSTEMTIME;
 using ::SYSTEM_INFO;
+using ::OVERLAPPED;
 using ::SRWLOCK;
 using ::CONDITION_VARIABLE;
 
@@ -173,6 +182,7 @@ inline constexpr auto ERROR_OUTOFMEMORY                = _ERROR_OUTOFMEMORY;
 inline constexpr auto ERROR_NOT_SUPPORTED              = _ERROR_NOT_SUPPORTED;
 inline constexpr auto ERROR_CALL_NOT_IMPLEMENTED       = _ERROR_CALL_NOT_IMPLEMENTED;
 inline constexpr auto ERROR_IO_PENDING                 = _ERROR_IO_PENDING;
+inline constexpr auto ERROR_LOCK_VIOLATION             = _ERROR_LOCK_VIOLATION;
 inline constexpr auto WSAEACCES                        = _WSAEACCES;
 inline constexpr auto WSAECONNREFUSED                  = _WSAECONNREFUSED;
 inline constexpr auto WSAECONNRESET                    = _WSAECONNRESET;
@@ -224,6 +234,8 @@ inline auto gmtime_utc(::time_t secs) noexcept -> ::tm {
 using ::CreateThread;
 using ::WaitForSingleObject;
 using ::CloseHandle;
+using ::DuplicateHandle;
+using ::GetCurrentProcess;
 using ::GetCurrentThreadId;
 using ::Sleep;
 using ::SwitchToThread;
@@ -235,6 +247,11 @@ using ::GetSystemInfo;
 using ::GetStdHandle;
 using ::WriteFile;
 using ::ReadFile;
+using ::LockFileEx;
+using ::UnlockFileEx;
+inline constexpr auto LOCKFILE_FAIL_IMMEDIATELY = _LOCKFILE_FAIL_IMMEDIATELY;
+inline constexpr auto LOCKFILE_EXCLUSIVE_LOCK   = _LOCKFILE_EXCLUSIVE_LOCK;
+inline constexpr auto DUPLICATE_SAME_ACCESS     = _DUPLICATE_SAME_ACCESS;
 using ::GetConsoleMode;
 using ::_isatty;
 using ::_fileno;
