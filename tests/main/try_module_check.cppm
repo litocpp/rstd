@@ -37,7 +37,8 @@ struct Impl<fmt::Debug, TryModuleInnerError> : ImplBase<TryModuleInnerError> {
 };
 
 template<>
-struct Impl<error::Error, TryModuleInnerError> : DefaultInImpl<error::Error, TryModuleInnerError> {};
+struct Impl<error::Error, TryModuleInnerError> : DefaultInImpl<error::Error, TryModuleInnerError> {
+};
 
 template<>
 struct Impl<fmt::Display, TryModuleOuterError> : ImplBase<TryModuleOuterError> {

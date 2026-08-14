@@ -67,15 +67,13 @@ auto parse_options() -> Result<RunOptions, String> {
         if (argument->as_str() == "--filter"_str) {
             auto value = arguments.next();
             if (value.is_none()) return Err(String::make("--filter requires a value"_str));
-            auto selected = set_filter(
-                options, rstd::move(value).unwrap(), FilterSyntax::Substring);
+            auto selected =
+                set_filter(options, rstd::move(value).unwrap(), FilterSyntax::Substring);
             if (selected.is_err()) return Err(rstd::move(selected).unwrap_err());
             continue;
         }
-        if (auto value = argument->as_str().strip_prefix("--gtest_filter="_str);
-            value.is_some()) {
-            auto selected =
-                set_filter(options, String::make(*value), FilterSyntax::GoogleTest);
+        if (auto value = argument->as_str().strip_prefix("--gtest_filter="_str); value.is_some()) {
+            auto selected = set_filter(options, String::make(*value), FilterSyntax::GoogleTest);
             if (selected.is_err()) return Err(rstd::move(selected).unwrap_err());
             continue;
         }
@@ -214,7 +212,7 @@ auto pattern_list_matches(ref<str> patterns, ref<str> name) -> bool {
     auto remaining = patterns;
     while (true) {
         auto separated = remaining.split_once(":"_str);
-        auto pattern = separated.is_some() ? separated->template get<0>() : remaining;
+        auto pattern   = separated.is_some() ? separated->template get<0>() : remaining;
         if (wildcard_matches(pattern, name)) return true;
         if (separated.is_none()) return false;
         remaining = separated->template get<1>();

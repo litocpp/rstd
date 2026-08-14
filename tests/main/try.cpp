@@ -127,11 +127,10 @@ auto parent_from_conversion_error(ConversionError error) -> FallibleParentError 
 }
 
 auto convert_fallible_error(int value) -> Result<int, FallibleParentError> {
-    auto converted = rstd_try(
-        rstd::try_into<FallibleConvertedError>(FallibleInnerError { value }),
-        [](ConversionError error) {
-            return parent_from_conversion_error(error);
-        });
+    auto converted = rstd_try(rstd::try_into<FallibleConvertedError>(FallibleInnerError { value }),
+                              [](ConversionError error) {
+                                  return parent_from_conversion_error(error);
+                              });
     return Err(FallibleParentError { false, converted.value });
 }
 

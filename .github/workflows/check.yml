@@ -16,7 +16,8 @@ jobs:
       - name: Install format dependencies
         run: |
           python3 -m pip install --user clang-format==22.1.5
+          curl -fsSL https://raw.githubusercontent.com/litocpp/lito/main/install.sh | bash
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Check formatting
-        run: scripts/format.sh --check
+        run: lito format --check
