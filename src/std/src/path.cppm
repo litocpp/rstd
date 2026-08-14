@@ -515,6 +515,41 @@ public:
     operator ref<Path>() const noexcept [[clang::lifetimebound]] { return as_path(); }
 };
 
+/// Computes a lexical path from `base` to `target` without accessing the filesystem.
+auto lexically_relative(ref<Path> base, ref<Path> target) -> Option<PathBuf> {
+    if (base.is_absolute() != target.is_absolute() || base.has_root() != target.has_root()) {
+        return None();
+    }
+    auto base_parts   = Vec<OsString>::make();
+    auto target_parts = Vec<OsString>::make();
+    auto append_parts = [](ref<Path> value, Vec<OsString>& output) -> bool {
+        auto components = value.components();
+        for (auto component = components.next(); component.is_some();
+             component      = components.next()) {
+            if (component->is_root_dir() || component->is_cur_dir()) continue;
+            if (component->is_parent_dir()) return false;
+            output.push(OsString::from(component->as_os_str()));
+        }
+        return true;
+    };
+    if (! append_parts(base, base_parts) || ! append_parts(target, target_parts)) return None();
+
+    auto common = usize {};
+    while (common < base_parts.len() && common < target_parts.len() &&
+           base_parts[common].as_os_str().as_encoded_bytes() ==
+               target_parts[common].as_os_str().as_encoded_bytes()) {
+        ++common;
+    }
+    auto result = PathBuf::make();
+    for (auto index = common; index < base_parts.len(); ++index) {
+        result.push(PathBuf::from(".."_str).as_path());
+    }
+    for (auto index = common; index < target_parts.len(); ++index) {
+        result.push(PathBuf::from(OsString::from(target_parts[index].as_os_str())).as_path());
+    }
+    return Some(result.is_empty() ? PathBuf::from("."_str) : rstd::move(result));
+}
+
 } // namespace rstd::path
 
 // ── Display for ref<Path> ────────────────────────────────────────────────

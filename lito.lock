@@ -8,6 +8,7 @@
       ],
       "manifest": "src/alloc/lito.toml",
       "name": "rstd-alloc",
+      "runtime-dependencies": [],
       "source": {
         "kind": "path",
         "path": "."
@@ -20,6 +21,7 @@
       ],
       "manifest": "src/argparse/lito.toml",
       "name": "rstd-argparse",
+      "runtime-dependencies": [],
       "source": {
         "kind": "path",
         "path": "."
@@ -30,6 +32,7 @@
       "dependencies": [],
       "manifest": "src/basic/lito.toml",
       "name": "rstd-basic",
+      "runtime-dependencies": [],
       "source": {
         "kind": "path",
         "path": "."
@@ -42,6 +45,7 @@
       ],
       "manifest": "src/bench/lito.toml",
       "name": "rstd-bench",
+      "runtime-dependencies": [],
       "source": {
         "kind": "path",
         "path": "."
@@ -54,6 +58,7 @@
       ],
       "manifest": "compile_fail/lito.toml",
       "name": "rstd-compile-tests",
+      "runtime-dependencies": [],
       "source": {
         "kind": "path",
         "path": "tests"
@@ -66,6 +71,7 @@
       ],
       "manifest": "src/core/lito.toml",
       "name": "rstd-core",
+      "runtime-dependencies": [],
       "source": {
         "kind": "path",
         "path": "."
@@ -78,6 +84,7 @@
       ],
       "manifest": "src/cppstd/lito.toml",
       "name": "rstd-cppstd",
+      "runtime-dependencies": [],
       "source": {
         "kind": "path",
         "path": "."
@@ -90,6 +97,7 @@
       ],
       "manifest": "src/dlopn/lito.toml",
       "name": "rstd-dlopn",
+      "runtime-dependencies": [],
       "source": {
         "kind": "path",
         "path": "."
@@ -103,6 +111,7 @@
       ],
       "manifest": "dlopn-runtime/lito.toml",
       "name": "rstd-dlopn-tests",
+      "runtime-dependencies": [],
       "source": {
         "kind": "path",
         "path": "tests"
@@ -115,6 +124,7 @@
       ],
       "manifest": "src/json/lito.toml",
       "name": "rstd-json",
+      "runtime-dependencies": [],
       "source": {
         "kind": "path",
         "path": "."
@@ -128,6 +138,7 @@
       ],
       "manifest": "src/log/lito.toml",
       "name": "rstd-log",
+      "runtime-dependencies": [],
       "source": {
         "kind": "path",
         "path": "."
@@ -138,6 +149,7 @@
       "dependencies": [],
       "manifest": "src/nostd/lito.toml",
       "name": "rstd-nostd",
+      "runtime-dependencies": [],
       "source": {
         "kind": "path",
         "path": "."
@@ -151,6 +163,7 @@
       ],
       "manifest": "nostd/lito.toml",
       "name": "rstd-nostd-tests",
+      "runtime-dependencies": [],
       "source": {
         "kind": "path",
         "path": "tests"
@@ -162,6 +175,7 @@
       ],
       "manifest": "src/runtime/lito.toml",
       "name": "rstd-runtime",
+      "runtime-dependencies": [],
       "source": {
         "kind": "path",
         "path": "."
@@ -175,6 +189,7 @@
       ],
       "manifest": "src/std/lito.toml",
       "name": "rstd-std",
+      "runtime-dependencies": [],
       "source": {
         "kind": "path",
         "path": "."
@@ -187,6 +202,7 @@
       ],
       "manifest": "src/test/lito.toml",
       "name": "rstd-test",
+      "runtime-dependencies": [],
       "source": {
         "kind": "path",
         "path": "."
@@ -206,6 +222,7 @@
       ],
       "manifest": "main/lito.toml",
       "name": "rstd-tests",
+      "runtime-dependencies": [],
       "source": {
         "kind": "path",
         "path": "tests"
@@ -218,6 +235,7 @@
       ],
       "manifest": "src/toml/lito.toml",
       "name": "rstd-toml",
+      "runtime-dependencies": [],
       "source": {
         "kind": "path",
         "path": "."
@@ -233,11 +251,12 @@
       ],
       "manifest": "toml/lito.toml",
       "name": "rstd-toml-conformance-tests",
+      "runtime-dependencies": [],
       "source": {
         "kind": "path",
         "path": "tests"
       }
     }
   ],
-  "version": 5
+  "version": 6
 }

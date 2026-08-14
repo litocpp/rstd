@@ -303,6 +303,39 @@ TEST(PathBuf, Join) {
 #endif
 }
 
+TEST(Path, LexicallyRelativePreservesCommonPrefix) {
+#if RSTD_OS_WINDOWS
+    auto base     = PathBuf::from(R"(C:\root\bin\nested)"_str);
+    auto target   = PathBuf::from(R"(C:\root\packages\tool\bin\nested\tool.exe)"_str);
+    auto relative = rstd::path::lexically_relative(base.as_path(), target.as_path());
+    ASSERT_TRUE(relative.is_some());
+    EXPECT_EQ(relative->as_path().to_str().unwrap(),
+              R"(..\..\packages\tool\bin\nested\tool.exe)"_str);
+#else
+    auto base     = PathBuf::from("/root/bin/nested"_str);
+    auto target   = PathBuf::from("/root/packages/tool/bin/nested/tool"_str);
+    auto relative = rstd::path::lexically_relative(base.as_path(), target.as_path());
+    ASSERT_TRUE(relative.is_some());
+    EXPECT_EQ(relative->as_path().to_str().unwrap(), "../../packages/tool/bin/nested/tool"_str);
+#endif
+    auto same = rstd::path::lexically_relative(target.as_path(), target.as_path());
+    ASSERT_TRUE(same.is_some());
+    EXPECT_EQ(same->as_path().to_str().unwrap(), "."_str);
+}
+
+TEST(Path, LexicallyRelativeRejectsIncompatiblePaths) {
+#if RSTD_OS_WINDOWS
+    auto absolute = PathBuf::from(R"(C:\root\tool)"_str);
+#else
+    auto absolute = PathBuf::from("/root/tool"_str);
+#endif
+    auto relative = PathBuf::from("root/tool"_str);
+    EXPECT_TRUE(rstd::path::lexically_relative(absolute.as_path(), relative.as_path()).is_none());
+    EXPECT_TRUE(
+        rstd::path::lexically_relative(rstd::ref<Path>("root/../tool"_str), relative.as_path())
+            .is_none());
+}
+
 TEST(PathBuf, ImplicitConversion) {
     auto            buf = PathBuf::from("/tmp"_str);
     rstd::ref<Path> r   = buf;
