@@ -48,6 +48,7 @@ sources = [
   "json/serialize.cpp",
   "json/module.cpp",
   "toml/parser.cpp",
+  "toml/serialize.cpp",
   "toml/module.cpp",
   "iter/iterator.cpp",
   "sys/sync/mutex/futex.cpp",

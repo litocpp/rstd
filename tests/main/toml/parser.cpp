@@ -276,3 +276,36 @@ TEST(TomlParser, EnforcesInputValueAndDepthLimits) {
     ASSERT_TRUE(depth.is_err());
     EXPECT_TRUE(depth.unwrap_err().is_limit());
 }
+
+TEST(TomlParser, ParsesStandaloneKeysValuesAndAssignments) {
+    auto key =
+        rstd::toml::parse_key_path(R"(patch."https://example.com/source?left=right".path)"_str);
+    ASSERT_TRUE(key.is_ok());
+    ASSERT_EQ(key->len(), usize(3));
+    EXPECT_EQ((*key)[usize()].as_str(), "patch"_str);
+    EXPECT_EQ((*key)[usize(1)].as_str(), "https://example.com/source?left=right"_str);
+    EXPECT_EQ((*key)[usize(2)].as_str(), "path"_str);
+
+    auto value = rstd::toml::parse_value(R"([true, 7, { name = "demo" }])"_str);
+    ASSERT_TRUE(value.is_ok());
+    ASSERT_TRUE(value->is_array());
+    EXPECT_EQ((**value->as_array()).len(), usize(3));
+
+    auto assignment = rstd::toml::parse_assignment(
+        R"(patch."https://example.com/source?left=right".path = "../source")"_str);
+    ASSERT_TRUE(assignment.is_ok());
+    ASSERT_EQ(assignment->key.len(), usize(3));
+    EXPECT_EQ(assignment->key[usize(1)].as_str(), "https://example.com/source?left=right"_str);
+    EXPECT_EQ(assignment->value.as_str(), Some("../source"_str));
+
+    auto assignment_text = rstd::toml::parse_assignment_text(
+        R"(patch."https://example.com/source?left=right".path = ../source)"_str);
+    ASSERT_TRUE(assignment_text.is_ok());
+    EXPECT_EQ(assignment_text->key[usize(1)].as_str(), "https://example.com/source?left=right"_str);
+    EXPECT_EQ(assignment_text->value.as_str(), "../source"_str);
+
+    EXPECT_TRUE(rstd::toml::parse_key_path("key trailing"_str).is_err());
+    EXPECT_TRUE(rstd::toml::parse_value("true false"_str).is_err());
+    EXPECT_TRUE(rstd::toml::parse_assignment("key = 1\nother = 2"_str).is_err());
+    EXPECT_TRUE(rstd::toml::parse_assignment_text("key = "_str).is_err());
+}

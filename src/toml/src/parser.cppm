@@ -1,12 +1,34 @@
 export module rstd.toml:parser;
+import rstd.alloc;
 export import :value;
 export import :error;
+
+using ::alloc::boxed::Box;
+using ::alloc::collections::BTreeMap;
+using ::alloc::string::String;
+using ::alloc::vec::Vec;
+using namespace rstd::prelude;
 
 export namespace rstd::toml
 {
 
 /// The result of parsing a TOML document.
 using ParseResult = rstd::Result<Value, Error>;
+
+/// An owned TOML dotted key.
+using KeyPath = Vec<String>;
+
+/// One TOML dotted-key assignment.
+struct Assignment {
+    KeyPath key;
+    Value   value;
+};
+
+/// One TOML dotted key followed by an unparsed assignment value.
+struct AssignmentText {
+    KeyPath key;
+    String  value;
+};
 
 /// Resource limits applied while parsing TOML input.
 struct ParseOptions {
@@ -26,19 +48,22 @@ auto from_str(ref<str> input, ParseOptions options) -> ParseResult;
 auto from_slice(slice<u8> input) -> ParseResult;
 /// Validates UTF-8 bytes and parses a TOML document using explicit resource limits.
 auto from_slice(slice<u8> input, ParseOptions options) -> ParseResult;
+/// Parses one TOML dotted key and consumes the complete input.
+auto parse_key_path(ref<str> input) -> rstd::Result<KeyPath, Error>;
+/// Parses one TOML value and consumes the complete input.
+auto parse_value(ref<str> input) -> ParseResult;
+/// Parses one TOML dotted-key assignment and consumes the complete input.
+auto parse_assignment(ref<str> input) -> rstd::Result<Assignment, Error>;
+/// Parses one TOML dotted key and returns the unparsed non-empty assignment value.
+auto parse_assignment_text(ref<str> input) -> rstd::Result<AssignmentText, Error>;
 
 } // namespace rstd::toml
 
-using namespace rstd::prelude;
 using namespace rstd::toml;
 using namespace rstd::literals;
 
-namespace
-{
-
-using String = ::alloc::string::String;
-using Path   = ::alloc::vec::Vec<String>;
-using Bytes  = ::alloc::vec::Vec<u8>;
+using Path  = KeyPath;
+using Bytes = Vec<u8>;
 
 void push_scalar(Bytes& output, char32_t value) {
     byte bytes[4] {};
@@ -89,8 +114,6 @@ constexpr auto days_in_month(uint16_t year, uint8_t month) noexcept -> uint8_t {
     return uint8_t(DAYS[month - 1]);
 }
 
-} // namespace
-
 enum class DefinitionKind : rstd::uint8_t
 {
     ImplicitTable,
@@ -102,13 +125,11 @@ enum class DefinitionKind : rstd::uint8_t
 };
 
 struct DefinitionNode {
-    DefinitionKind kind { DefinitionKind::ImplicitTable };
-    ::alloc::collections::BTreeMap<String, ::alloc::boxed::Box<DefinitionNode>> children {
-        ::alloc::collections::BTreeMap<String, ::alloc::boxed::Box<DefinitionNode>>::make()
+    DefinitionKind                        kind { DefinitionKind::ImplicitTable };
+    BTreeMap<String, Box<DefinitionNode>> children {
+        BTreeMap<String, Box<DefinitionNode>>::make()
     };
-    ::alloc::vec::Vec<::alloc::boxed::Box<DefinitionNode>> array_items {
-        ::alloc::vec::Vec<::alloc::boxed::Box<DefinitionNode>>::make()
-    };
+    Vec<Box<DefinitionNode>> array_items { Vec<Box<DefinitionNode>>::make() };
 
     explicit DefinitionNode(DefinitionKind value) noexcept: kind(value) {}
 };
@@ -499,7 +520,7 @@ private:
                     return Err(error(TomlErrorCode::TableRedefinition));
                 }
                 table->children.insert(path[index].clone(),
-                                       ::alloc::boxed::Box<DefinitionNode>::make(missing_kind));
+                                       Box<DefinitionNode>::make(missing_kind));
                 child = table->children.get_mut(path[index].as_str());
             }
             auto* node = (**child).get();
@@ -909,8 +930,7 @@ private:
             return Some(error(TomlErrorCode::DuplicateKey));
         }
         const auto kind = value.is_Table() ? DefinitionKind::InlineTable : DefinitionKind::Value;
-        definition_parent.unwrap()->children.insert(
-            key.clone(), ::alloc::boxed::Box<DefinitionNode>::make(kind));
+        definition_parent.unwrap()->children.insert(key.clone(), Box<DefinitionNode>::make(kind));
         parent.unwrap()->insert(key.clone(), rstd::move(value));
         return None();
     }
@@ -1038,10 +1058,9 @@ private:
         auto  definition_existing = definition_parent.unwrap()->children.get_mut(key.as_str());
         if (array) {
             if (definition_existing.is_none()) {
-                auto definition =
-                    ::alloc::boxed::Box<DefinitionNode>::make(DefinitionKind::ArrayOfTables);
+                auto definition = Box<DefinitionNode>::make(DefinitionKind::ArrayOfTables);
                 definition->array_items.push(
-                    ::alloc::boxed::Box<DefinitionNode>::make(DefinitionKind::ExplicitTable));
+                    Box<DefinitionNode>::make(DefinitionKind::ExplicitTable));
                 definition_parent.unwrap()->children.insert(key.clone(), rstd::move(definition));
                 auto items = Array::make();
                 items.push(Value::Table(Table::make()));
@@ -1050,8 +1069,7 @@ private:
                        existing.is_some() && (**existing).is_Array()) {
                 (**definition_existing)
                     .get()
-                    ->array_items.push(
-                        ::alloc::boxed::Box<DefinitionNode>::make(DefinitionKind::ExplicitTable));
+                    ->array_items.push(Box<DefinitionNode>::make(DefinitionKind::ExplicitTable));
                 (**existing).as_Array().value.push(Value::Table(Table::make()));
             } else {
                 return Some(error(TomlErrorCode::TableRedefinition));
@@ -1059,8 +1077,7 @@ private:
         } else {
             if (definition_existing.is_none()) {
                 definition_parent.unwrap()->children.insert(
-                    key.clone(),
-                    ::alloc::boxed::Box<DefinitionNode>::make(DefinitionKind::ExplicitTable));
+                    key.clone(), Box<DefinitionNode>::make(DefinitionKind::ExplicitTable));
                 parent.unwrap()->insert(key.clone(), Value::Table(Table::make()));
             } else if ((**definition_existing).get()->kind == DefinitionKind::ImplicitTable &&
                        existing.is_some() && (**existing).is_Table()) {
@@ -1081,6 +1098,80 @@ public:
           remaining_depth_(options.max_depth),
           max_input_bytes_(options.max_input_bytes),
           remaining_values_(options.max_values) {}
+
+    [[nodiscard]]
+    auto parse_standalone_key() -> Result<KeyPath, Error> {
+        if (input_.size() > max_input_bytes_) {
+            return Err(error(TomlErrorCode::ResourceLimitExceeded));
+        }
+        consume_horizontal();
+        auto key = parse_key_path();
+        if (key.is_err()) return Err(rstd::move(key).unwrap_err());
+        consume_horizontal();
+        if (! eof()) return Err(error(TomlErrorCode::ExpectedLineEnd));
+        return key;
+    }
+
+    [[nodiscard]]
+    auto parse_standalone_value() -> ParseResult {
+        if (remaining_depth_ == u8()) {
+            return Err(error(TomlErrorCode::RecursionLimitExceeded));
+        }
+        if (input_.size() > max_input_bytes_) {
+            return Err(error(TomlErrorCode::ResourceLimitExceeded));
+        }
+        consume_horizontal();
+        auto value = parse_value();
+        if (value.is_err()) return Err(rstd::move(value).unwrap_err());
+        consume_horizontal();
+        if (! eof()) return Err(error(TomlErrorCode::ExpectedLineEnd));
+        return value;
+    }
+
+    [[nodiscard]]
+    auto parse_standalone_assignment() -> Result<Assignment, Error> {
+        if (remaining_depth_ == u8()) {
+            return Err(error(TomlErrorCode::RecursionLimitExceeded));
+        }
+        if (input_.size() > max_input_bytes_) {
+            return Err(error(TomlErrorCode::ResourceLimitExceeded));
+        }
+        consume_horizontal();
+        auto key = parse_key_path();
+        if (key.is_err()) return Err(rstd::move(key).unwrap_err());
+        consume_horizontal();
+        if (eof() || peek() != u8('=')) return Err(error(TomlErrorCode::ExpectedEquals));
+        take();
+        consume_horizontal();
+        auto value = parse_value();
+        if (value.is_err()) return Err(rstd::move(value).unwrap_err());
+        consume_horizontal();
+        if (! eof()) return Err(error(TomlErrorCode::ExpectedLineEnd));
+        return Ok(
+            Assignment { .key = rstd::move(key).unwrap(), .value = rstd::move(value).unwrap() });
+    }
+
+    [[nodiscard]]
+    auto parse_standalone_assignment_text() -> Result<AssignmentText, Error> {
+        if (input_.size() > max_input_bytes_) {
+            return Err(error(TomlErrorCode::ResourceLimitExceeded));
+        }
+        consume_horizontal();
+        auto key = parse_key_path();
+        if (key.is_err()) return Err(rstd::move(key).unwrap_err());
+        consume_horizontal();
+        if (eof() || peek() != u8('=')) return Err(error(TomlErrorCode::ExpectedEquals));
+        take();
+        consume_horizontal();
+        auto begin = offset_;
+        auto end   = input_.size();
+        while (end > begin && is_horizontal(input_[end - usize(1)])) --end;
+        if (begin == end) return Err(error(TomlErrorCode::ExpectedValue));
+        return Ok(AssignmentText {
+            .key   = rstd::move(key).unwrap(),
+            .value = String::make(view(begin, end)),
+        });
+    }
 
     [[nodiscard]]
     auto parse() -> ParseResult {
@@ -1119,6 +1210,22 @@ auto from_slice(slice<u8> input, ParseOptions options) -> ParseResult {
     auto text = str_::from_utf8(input);
     if (text.is_err()) return Err(TomlParser::invalid_utf8_error());
     return from_str(rstd::move(text).unwrap_unchecked(), options);
+}
+
+auto parse_key_path(ref<str> input) -> rstd::Result<KeyPath, Error> {
+    return TomlParser(input, {}).parse_standalone_key();
+}
+
+auto parse_value(ref<str> input) -> ParseResult {
+    return TomlParser(input, {}).parse_standalone_value();
+}
+
+auto parse_assignment(ref<str> input) -> rstd::Result<Assignment, Error> {
+    return TomlParser(input, {}).parse_standalone_assignment();
+}
+
+auto parse_assignment_text(ref<str> input) -> rstd::Result<AssignmentText, Error> {
+    return TomlParser(input, {}).parse_standalone_assignment_text();
 }
 
 } // namespace rstd::toml

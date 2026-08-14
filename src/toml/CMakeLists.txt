@@ -14,4 +14,5 @@ target_sources(
          src/datetime.cppm
          src/error.cppm
          src/value.cppm
-         src/parser.cppm)
+         src/parser.cppm
+         src/serialize.cppm)
