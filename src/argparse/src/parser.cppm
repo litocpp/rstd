@@ -305,8 +305,16 @@ class Parser {
 
     auto run(Vec<OsString> argv, bool known, usize index_offset) const
         -> Result<RunOutcome, ParseError>;
-    auto run_impl(Vec<OsString> argv, bool known, usize index_offset, ref<str> display_path) const
+    auto run_with_globals(Vec<OsString>      argv,
+                          bool               known,
+                          usize              index_offset,
+                          Arc<GlobalMatches> global_matches) const
         -> Result<RunOutcome, ParseError>;
+    auto run_impl(Vec<OsString>      argv,
+                  bool               known,
+                  usize              index_offset,
+                  ref<str>           display_path,
+                  Arc<GlobalMatches> global_matches) const -> Result<RunOutcome, ParseError>;
     [[nodiscard]]
     auto render_usage_for(ref<str> display_path) const -> String;
     [[nodiscard]]
@@ -568,9 +576,18 @@ auto rstd::argparse::Parser::render_error(const ParseError& error) const -> Erro
 
 auto rstd::argparse::Parser::run(Vec<OsString> argv, bool known, usize index_offset) const
     -> Result<RunOutcome, ParseError> {
+    return run_with_globals(rstd::move(argv), known, index_offset, Arc<GlobalMatches>::make());
+}
+
+auto rstd::argparse::Parser::run_with_globals(Vec<OsString>      argv,
+                                              bool               known,
+                                              usize              index_offset,
+                                              Arc<GlobalMatches> global_matches) const
+    -> Result<RunOutcome, ParseError> {
     auto display_path = argv.is_empty() ? schema_->command_path.clone()
                                         : argv[usize()].as_os_str().to_string_lossy();
-    auto result       = run_impl(rstd::move(argv), known, index_offset, display_path.as_str());
+    auto result       = run_impl(
+        rstd::move(argv), known, index_offset, display_path.as_str(), rstd::move(global_matches));
     if (result.is_ok()) return result;
     auto error = rstd::move(result).unwrap_err();
     if (error.command_path().size() == usize()) {
@@ -579,14 +596,23 @@ auto rstd::argparse::Parser::run(Vec<OsString> argv, bool known, usize index_off
     return Err(rstd::move(error));
 }
 
-auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
-                                      bool          known,
-                                      usize         index_offset,
-                                      ref<str>      display_path) const
+auto rstd::argparse::Parser::run_impl(Vec<OsString>      argv,
+                                      bool               known,
+                                      usize              index_offset,
+                                      ref<str>           display_path,
+                                      Arc<GlobalMatches> global_matches) const
     -> Result<RunOutcome, ParseError> {
     auto matched = Vec<MatchedArg>::with_capacity(schema_->args.len());
     for (usize slot {}; slot < schema_->args.len(); ++slot) {
         matched.push(MatchedArg {});
+        const auto& spec = schema_->args[slot];
+        if (spec.global && spec.owner_command == schema_->command_token) {
+            global_matches.deref_mut()->args.push(GlobalMatchedArg {
+                .schema  = schema_.clone(),
+                .slot    = slot,
+                .matched = MatchedArg {},
+            });
+        }
     }
     auto                 unknown            = Vec<OsString>::make();
     Option<String>       subcommand_name    = None();
@@ -779,8 +805,8 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
                     child_argv.push(clone_os(argv[child_index].as_os_str()));
                 }
                 auto child_parser = Parser { subcommand.schema.clone() };
-                auto child_result =
-                    child_parser.run(rstd::move(child_argv), known, absolute(index));
+                auto child_result = child_parser.run_with_globals(
+                    rstd::move(child_argv), known, absolute(index), global_matches.clone());
                 if (child_result.is_err()) {
                     return Err(rstd::move(child_result).unwrap_err());
                 }
@@ -866,6 +892,36 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
         }
     }
 
+    for (usize slot {}; slot < schema_->args.len(); ++slot) {
+        const auto& spec = schema_->args[slot];
+        if (! spec.global || matched[slot].occurrences == usize()) continue;
+        for (auto& global : global_matches.deref_mut()->args) {
+            if (global.schema->command_token != spec.owner_command ||
+                global.slot != spec.owner_slot) {
+                continue;
+            }
+            if (global.matched.occurrences == usize() ||
+                (global.matched.from_default && ! matched[slot].from_default)) {
+                global.matched = rstd::move(matched[slot]);
+            }
+            break;
+        }
+    }
+
+    auto relation_value = [&](usize slot) -> ref<MatchedArg> {
+        const auto& spec = schema_->args[slot];
+        if (! spec.global) {
+            return ref<MatchedArg>::from_raw_parts(rstd::addressof(matched[slot]));
+        }
+        for (const auto& global : global_matches->args) {
+            if (global.schema->command_token == spec.owner_command &&
+                global.slot == spec.owner_slot) {
+                return ref<MatchedArg>::from_raw_parts(rstd::addressof(global.matched));
+            }
+        }
+        rstd::unreachable();
+    };
+
     for (usize group_slot {}; group_slot < schema_->groups.len(); ++group_slot) {
         const auto& group = schema_->groups[group_slot];
         usize       present {};
@@ -873,7 +929,7 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
         usize       second {};
         for (usize member_index {}; member_index < group.members.len(); ++member_index) {
             const usize member = group.members[member_index];
-            if (! relation_present(matched[member])) continue;
+            if (! relation_present(*relation_value(member))) continue;
             if (present == usize())
                 first = member;
             else if (present == usize(1))
@@ -891,7 +947,8 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
 
     for (usize relation {}; relation < schema_->conflicts.len(); ++relation) {
         const auto& conflict = schema_->conflicts[relation];
-        if (relation_present(matched[conflict.left]) && relation_present(matched[conflict.right])) {
+        if (relation_present(*relation_value(conflict.left)) &&
+            relation_present(*relation_value(conflict.right))) {
             return Err(ParseError::ArgumentConflict(schema_->args[conflict.left].id.clone(),
                                                     schema_->args[conflict.right].id.clone()));
         }
@@ -899,9 +956,9 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
 
     for (usize relation {}; relation < schema_->requirements.len(); ++relation) {
         const auto& requirement = schema_->requirements[relation];
-        if (! relation_present(matched[requirement.source])) continue;
+        if (! relation_present(*relation_value(requirement.source))) continue;
         if (! requirement.target_is_group) {
-            if (! relation_present(matched[requirement.target])) {
+            if (! relation_present(*relation_value(requirement.target))) {
                 return Err(ParseError::MissingRequiredArgument(
                     schema_->args[requirement.target].id.clone()));
             }
@@ -910,7 +967,7 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
         const auto& group   = schema_->groups[requirement.target];
         bool        present = false;
         for (usize member_index {}; member_index < group.members.len(); ++member_index) {
-            if (relation_present(matched[group.members[member_index]])) {
+            if (relation_present(*relation_value(group.members[member_index]))) {
                 present = true;
                 break;
             }
@@ -922,10 +979,11 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString> argv,
         return Err(ParseError::MissingSubcommand(schema_->name.clone()));
     }
 
-    auto matches = Matches { schema_.clone(),
-                             rstd::move(matched),
-                             rstd::move(subcommand_name),
-                             rstd::move(subcommand_matches) };
+    auto matches            = Matches { schema_.clone(),
+                                        rstd::move(matched),
+                                        rstd::move(subcommand_name),
+                                        rstd::move(subcommand_matches) };
+    matches.global_matches_ = Some(rstd::move(global_matches));
     return Ok(RunOutcome::Parsed(ParseRun { rstd::move(matches), rstd::move(unknown) }));
 }
 

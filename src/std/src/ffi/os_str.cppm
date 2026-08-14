@@ -176,6 +176,8 @@ class OsString {
     explicit OsString(os_string_platform::Buf&& value): inner(rstd::move(value)) {}
 
 public:
+    USE_TRAIT(OsString)
+
     OsString()                               = default;
     OsString(OsString&&) noexcept            = default;
     OsString& operator=(OsString&&) noexcept = default;
@@ -196,6 +198,10 @@ public:
     static auto from(ref<OsStr> s) -> OsString {
         return OsString { os_string_platform::Buf(Vec<u8>::from(s.as_encoded_bytes())) };
     }
+
+    auto clone() const -> OsString { return from(as_os_str()); }
+
+    void clone_from(const OsString& source) { *this = source.clone(); }
 
     /// Creates an `OsString` from raw bytes without validation.
     static auto from_encoded_bytes_unchecked(Vec<u8>&& bytes) -> OsString {

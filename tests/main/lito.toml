@@ -14,6 +14,7 @@ sources = [
   "argparse/parsing.cpp",
   "argparse/relations.cpp",
   "argparse/subcommands.cpp",
+  "argparse/global.cpp",
   "argparse/values.cpp",
   "argparse/help.cpp",
   "argparse/lifecycle.cpp",

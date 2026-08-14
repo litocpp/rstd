@@ -35,6 +35,54 @@ auto valid_long_name(ref<str> name) noexcept -> bool {
     return true;
 }
 
+auto clone_action(const rstd::argparse::ArgAction& action) -> rstd::argparse::ArgAction {
+    using Action = rstd::argparse::ArgAction;
+    switch (action.tag()) {
+    case Action::Tag::Set: return Action::Set();
+    case Action::Tag::Append: return Action::Append();
+    case Action::Tag::SetTrue: return Action::SetTrue();
+    case Action::Tag::SetFalse: return Action::SetFalse();
+    case Action::Tag::Count: return Action::Count();
+    case Action::Tag::Help: return Action::Help();
+    case Action::Tag::Version: return Action::Version();
+    }
+    rstd::unreachable();
+}
+
+auto clone_arg_spec(const ArgSpec& argument) -> ArgSpec {
+    return ArgSpec {
+        .id                  = argument.id.clone(),
+        .short_name          = argument.short_name,
+        .long_name           = argument.long_name.clone(),
+        .short_aliases       = argument.short_aliases.clone(),
+        .aliases             = argument.aliases.clone(),
+        .help                = argument.help.clone(),
+        .value_name          = argument.value_name.clone(),
+        .help_heading        = argument.help_heading.clone(),
+        .possible_values     = argument.possible_values.clone(),
+        .num_args            = argument.num_args,
+        .action              = clone_action(argument.action),
+        .required            = argument.required,
+        .hidden              = argument.hidden,
+        .allow_hyphen_values = argument.allow_hyphen_values,
+        .global              = argument.global,
+        .type_id             = argument.type_id,
+        .parser              = argument.parser.clone(),
+        .default_raw_value   = argument.default_raw_value.clone(),
+        .default_value       = argument.default_value.clone(),
+        .implicit_raw_value  = argument.implicit_raw_value.clone(),
+        .implicit_value      = argument.implicit_value.clone(),
+        .owner_command       = argument.owner_command,
+        .owner_slot          = argument.owner_slot,
+    };
+}
+
+auto clone_globals(const Vec<ArgSpec>& arguments) -> Vec<ArgSpec> {
+    auto result = Vec<ArgSpec>::with_capacity(arguments.len());
+    for (const auto& argument : arguments) result.push(clone_arg_spec(argument));
+    return result;
+}
+
 void prefix_command_path(Arc<CompiledCommand>& schema, ref<str> parent) {
     auto  borrowed       = schema.get_mut();
     auto& command        = *borrowed.unwrap();
@@ -290,9 +338,26 @@ public:
         return rstd::move(*this);
     }
 
-    auto build() && -> Result<Parser, DefinitionError> {
+private:
+    auto build_with_globals(Vec<ArgSpec> inherited_globals) -> Result<Parser, DefinitionError> {
         if (name_.is_empty()) {
             return Err(DefinitionError::InvalidCommandName(name_.clone()));
+        }
+
+        const usize local_args = args_.len();
+        for (usize slot {}; slot < local_args; ++slot) {
+            args_[slot].owner_command = command_token_;
+            args_[slot].owner_slot    = slot;
+        }
+        for (auto& inherited : inherited_globals) {
+            bool shadowed = false;
+            for (usize slot {}; slot < local_args; ++slot) {
+                if (args_[slot].id.as_str() == inherited.id.as_str()) {
+                    shadowed = true;
+                    break;
+                }
+            }
+            if (! shadowed) args_.push(rstd::move(inherited));
         }
 
         if (auto_help_) {
@@ -325,6 +390,9 @@ public:
             if (! argument.num_args.valid()) {
                 return Err(DefinitionError::InvalidValueCount(argument.id.clone()));
             }
+            if (argument.global && argument.required) {
+                return Err(DefinitionError::IncompatibleAction(argument.id.clone()));
+            }
 
             const bool takes_value = argument.action.is_Set() || argument.action.is_Append();
             if (takes_value && argument.num_args.maximum().is_some() &&
@@ -337,7 +405,7 @@ public:
                 return Err(DefinitionError::IncompatibleAction(argument.id.clone()));
             }
 
-            if (argument.default_raw_value.is_some()) {
+            if (argument.default_raw_value.is_some() && argument.default_value.is_none()) {
                 auto parsed =
                     argument.parser->parse_default(argument.default_raw_value->as_os_str());
                 if (parsed.is_err()) {
@@ -346,7 +414,7 @@ public:
                 }
                 argument.default_value = Some(rstd::move(parsed).unwrap());
             }
-            if (argument.implicit_raw_value.is_some()) {
+            if (argument.implicit_raw_value.is_some() && argument.implicit_value.is_none()) {
                 if (! takes_value || argument.num_args.minimum() != usize()) {
                     return Err(DefinitionError::IncompatibleAction(argument.id.clone()));
                 }
@@ -495,10 +563,14 @@ public:
 
         auto subcommands      = Vec<CompiledSubcommand>::with_capacity(subcommands_.len());
         auto subcommand_index = BTreeMap<String, usize>::make();
+        auto globals          = Vec<ArgSpec>::make();
+        for (const auto& argument : args_) {
+            if (argument.global) globals.push(clone_arg_spec(argument));
+        }
         for (usize subcommand_slot {}; subcommand_slot < subcommands_.len(); ++subcommand_slot) {
             auto& command = subcommands_[subcommand_slot];
             auto  aliases = rstd::move(command.aliases_);
-            auto  built   = rstd::move(command).build();
+            auto  built   = command.build_with_globals(clone_globals(globals));
             if (built.is_err()) return Err(rstd::move(built).unwrap_err());
             auto parser = rstd::move(built).unwrap();
             prefix_command_path(parser.schema_, name_.as_str());
@@ -535,6 +607,11 @@ public:
                                                  subcommand_required_,
                                                  command_token_);
         return Ok(Parser { rstd::move(schema) });
+    }
+
+public:
+    auto build() && -> Result<Parser, DefinitionError> {
+        return build_with_globals(Vec<ArgSpec>::make());
     }
 };
 

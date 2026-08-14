@@ -25,6 +25,19 @@ struct MatchedArg {
           occurrence_ends(Vec<usize>::make()) {}
 };
 
+struct GlobalMatchedArg {
+    Arc<CompiledCommand> schema;
+    usize                slot;
+    MatchedArg           matched;
+};
+
+struct GlobalMatches {
+    Vec<GlobalMatchedArg> args;
+
+    GlobalMatches(): args(Vec<GlobalMatchedArg>::make()) {}
+    explicit GlobalMatches(Vec<GlobalMatchedArg> values): args(rstd::move(values)) {}
+};
+
 export namespace rstd::argparse
 {
 
@@ -55,10 +68,11 @@ public:
 };
 
 class Matches {
-    Arc<CompiledCommand> schema_;
-    Vec<MatchedArg>      args_;
-    Option<String>       subcommand_name_;
-    Option<Box<Matches>> subcommand_matches_;
+    Arc<CompiledCommand>       schema_;
+    Vec<MatchedArg>            args_;
+    Option<Arc<GlobalMatches>> global_matches_;
+    Option<String>             subcommand_name_;
+    Option<Box<Matches>>       subcommand_matches_;
 
     Matches(Arc<CompiledCommand> schema,
             Vec<MatchedArg>      args,
@@ -66,10 +80,36 @@ class Matches {
             Option<Box<Matches>> subcommand_matches)
         : schema_(rstd::move(schema)),
           args_(rstd::move(args)),
+          global_matches_(None()),
           subcommand_name_(rstd::move(subcommand_name)),
           subcommand_matches_(rstd::move(subcommand_matches)) {}
 
     friend class Parser;
+
+    auto global_match(u64 command, usize slot) const -> Option<ref<GlobalMatchedArg>> {
+        if (global_matches_.is_none()) return None();
+        bool visible = false;
+        for (const auto& spec : schema_->args) {
+            if (spec.global && spec.owner_command == command && spec.owner_slot == slot) {
+                visible = true;
+                break;
+            }
+        }
+        if (! visible) return None();
+        for (const auto& argument : (*global_matches_)->args) {
+            if (argument.schema->command_token == command && argument.slot == slot) {
+                return Some(ref<GlobalMatchedArg>::from_raw_parts(rstd::addressof(argument)));
+            }
+        }
+        return None();
+    }
+
+    auto global_match(ref<str> id) const -> Option<ref<GlobalMatchedArg>> {
+        auto slot = schema_->id_index.get(id);
+        if (slot.is_none() || ! schema_->args[**slot].global) return None();
+        const auto& spec = schema_->args[**slot];
+        return global_match(spec.owner_command, spec.owner_slot);
+    }
 
 public:
     Matches(const Matches&)            = delete;
@@ -79,77 +119,126 @@ public:
 
     template<typename T>
     auto get_one(const ArgKey<T>& key) const -> Result<Option<ref<T>>, MatchAccessError> {
-        if (key.command_ != schema_->command_token || key.slot_ >= schema_->args.len()) {
-            return Err(MatchAccessError::ForeignKey());
+        ref<ArgSpec>    spec;
+        ref<MatchedArg> matched;
+        if (key.command_ == schema_->command_token && key.slot_ < schema_->args.len() &&
+            ! schema_->args[key.slot_].global) {
+            spec    = ref<ArgSpec>::from_raw_parts(rstd::addressof(schema_->args[key.slot_]));
+            matched = ref<MatchedArg>::from_raw_parts(rstd::addressof(args_[key.slot_]));
+        } else {
+            auto global = global_match(key.command_, key.slot_);
+            if (global.is_none()) return Err(MatchAccessError::ForeignKey());
+            spec = ref<ArgSpec>::from_raw_parts(
+                rstd::addressof((*global)->schema->args[(*global)->slot]));
+            matched = ref<MatchedArg>::from_raw_parts(rstd::addressof((*global)->matched));
         }
-        const auto& spec = schema_->args[key.slot_];
-        if (spec.type_id != any::TypeId::of<T>()) {
+        if (spec->type_id != any::TypeId::of<T>()) {
             return Err(MatchAccessError::WrongType());
         }
-        if (spec.action.is_Append() ||
-            (spec.num_args.maximum().is_none() || *spec.num_args.maximum() > usize(1))) {
+        if (spec->action.is_Append() ||
+            (spec->num_args.maximum().is_none() || *spec->num_args.maximum() > usize(1))) {
             return Err(MatchAccessError::IncompatibleAccessor());
         }
-        const auto& matched = args_[key.slot_];
-        if (matched.typed_values.is_empty()) return Ok(None());
-        auto value = any::downcast_ref<T>(matched.typed_values[usize()].as_ref());
+        if (matched->typed_values.is_empty()) return Ok(None());
+        auto value = any::downcast_ref<T>(matched->typed_values[usize()].as_ref());
         if (value.is_none()) return Err(MatchAccessError::WrongType());
         return Ok(rstd::move(value));
     }
 
     template<typename T>
     auto get_many(const ArgKey<T>& key) const -> Result<Option<Values<T>>, MatchAccessError> {
-        if (key.command_ != schema_->command_token || key.slot_ >= schema_->args.len()) {
-            return Err(MatchAccessError::ForeignKey());
+        ref<ArgSpec>    spec;
+        ref<MatchedArg> matched;
+        if (key.command_ == schema_->command_token && key.slot_ < schema_->args.len() &&
+            ! schema_->args[key.slot_].global) {
+            spec    = ref<ArgSpec>::from_raw_parts(rstd::addressof(schema_->args[key.slot_]));
+            matched = ref<MatchedArg>::from_raw_parts(rstd::addressof(args_[key.slot_]));
+        } else {
+            auto global = global_match(key.command_, key.slot_);
+            if (global.is_none()) return Err(MatchAccessError::ForeignKey());
+            spec = ref<ArgSpec>::from_raw_parts(
+                rstd::addressof((*global)->schema->args[(*global)->slot]));
+            matched = ref<MatchedArg>::from_raw_parts(rstd::addressof((*global)->matched));
         }
-        const auto& spec = schema_->args[key.slot_];
-        if (spec.type_id != any::TypeId::of<T>()) {
+        if (spec->type_id != any::TypeId::of<T>()) {
             return Err(MatchAccessError::WrongType());
         }
-        const auto& matched = args_[key.slot_];
-        if (matched.typed_values.is_empty()) return Ok(None());
-        return Ok(Some(Values<T> { matched.typed_values.as_slice() }));
+        if (matched->typed_values.is_empty()) return Ok(None());
+        return Ok(Some(Values<T> { matched->typed_values.as_slice() }));
     }
 
     [[nodiscard]]
     auto contains(ref<str> id) const -> bool {
         auto slot = schema_->id_index.get(id);
-        return slot.is_some() && args_[**slot].occurrences != usize();
+        if (slot.is_some() && ! schema_->args[**slot].global) {
+            return args_[**slot].occurrences != usize();
+        }
+        auto global = global_match(id);
+        return global.is_some() && (*global)->matched.occurrences != usize();
     }
 
     [[nodiscard]]
     auto occurrences(ref<str> id) const -> usize {
         auto slot = schema_->id_index.get(id);
-        return slot.is_some() ? args_[**slot].occurrences : usize();
+        if (slot.is_some() && ! schema_->args[**slot].global) return args_[**slot].occurrences;
+        auto global = global_match(id);
+        return global.is_some() ? (*global)->matched.occurrences : usize();
     }
 
     [[nodiscard]]
     auto value_source(ref<str> id) const -> Option<ValueSource> {
-        auto slot = schema_->id_index.get(id);
-        if (slot.is_none() || args_[**slot].occurrences == usize()) return None();
-        return args_[**slot].from_default ? Some(ValueSource::DefaultValue())
-                                          : Some(ValueSource::CommandLine());
+        auto            slot = schema_->id_index.get(id);
+        ref<MatchedArg> matched;
+        if (slot.is_some() && ! schema_->args[**slot].global) {
+            matched = ref<MatchedArg>::from_raw_parts(rstd::addressof(args_[**slot]));
+        } else {
+            auto global = global_match(id);
+            if (global.is_none()) return None();
+            matched = ref<MatchedArg>::from_raw_parts(rstd::addressof((*global)->matched));
+        }
+        if (matched->occurrences == usize()) return None();
+        return matched->from_default ? Some(ValueSource::DefaultValue())
+                                     : Some(ValueSource::CommandLine());
     }
 
     [[nodiscard]]
     auto raw_values(ref<str> id) const -> Option<slice<OsString>> {
         auto slot = schema_->id_index.get(id);
-        if (slot.is_none() || args_[**slot].raw_values.is_empty()) return None();
-        return Some(args_[**slot].raw_values.as_slice());
+        if (slot.is_some() && ! schema_->args[**slot].global) {
+            return args_[**slot].raw_values.is_empty() ? None()
+                                                       : Some(args_[**slot].raw_values.as_slice());
+        }
+        auto global = global_match(id);
+        return global.is_none() || (*global)->matched.raw_values.is_empty()
+                   ? None()
+                   : Some((*global)->matched.raw_values.as_slice());
     }
 
     [[nodiscard]]
     auto indices(ref<str> id) const -> Option<slice<usize>> {
         auto slot = schema_->id_index.get(id);
-        if (slot.is_none() || args_[**slot].indices.is_empty()) return None();
-        return Some(args_[**slot].indices.as_slice());
+        if (slot.is_some() && ! schema_->args[**slot].global) {
+            return args_[**slot].indices.is_empty() ? None()
+                                                    : Some(args_[**slot].indices.as_slice());
+        }
+        auto global = global_match(id);
+        return global.is_none() || (*global)->matched.indices.is_empty()
+                   ? None()
+                   : Some((*global)->matched.indices.as_slice());
     }
 
     [[nodiscard]]
     auto occurrence_ends(ref<str> id) const -> Option<slice<usize>> {
         auto slot = schema_->id_index.get(id);
-        if (slot.is_none() || args_[**slot].occurrence_ends.is_empty()) return None();
-        return Some(args_[**slot].occurrence_ends.as_slice());
+        if (slot.is_some() && ! schema_->args[**slot].global) {
+            return args_[**slot].occurrence_ends.is_empty()
+                       ? None()
+                       : Some(args_[**slot].occurrence_ends.as_slice());
+        }
+        auto global = global_match(id);
+        return global.is_none() || (*global)->matched.occurrence_ends.is_empty()
+                   ? None()
+                   : Some((*global)->matched.occurrence_ends.as_slice());
     }
 
     [[nodiscard]]

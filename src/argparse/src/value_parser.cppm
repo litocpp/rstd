@@ -186,7 +186,7 @@ struct ErasedValueParser {
             return rstd::trait_call<0>(this, value);
         }
         auto parse_default(ref<OsStr> value) const
-            -> Result<Box<dyn<ErasedDefaultValue>>, rstd::argparse::ValueError> {
+            -> Result<rstd::sync::Arc<dyn<ErasedDefaultValue>>, rstd::argparse::ValueError> {
             return rstd::trait_call<1>(this, value);
         }
         auto type_id() const noexcept -> rstd::any::TypeId { return rstd::trait_call<2>(this); }
@@ -212,11 +212,11 @@ public:
     }
 
     auto parse_default(ref<OsStr> value) const
-        -> Result<Box<dyn<ErasedDefaultValue>>, rstd::argparse::ValueError> {
+        -> Result<rstd::sync::Arc<dyn<ErasedDefaultValue>>, rstd::argparse::ValueError> {
         if constexpr (Impled<T, rstd::clone::Clone>) {
             auto parsed = parser_->parse(value);
             if (parsed.is_err()) return Err(rstd::move(parsed).unwrap_err());
-            return Ok(Box<dyn<ErasedDefaultValue>>::make(
+            return Ok(rstd::sync::Arc<dyn<ErasedDefaultValue>>::make(
                 ErasedDefaultValueAdapter<T> { rstd::move(parsed).unwrap() }));
         } else {
             return Err(rstd::argparse::ValueError::Message(

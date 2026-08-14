@@ -76,6 +76,20 @@ TEST(OsString, FromRefOsStr) {
     EXPECT_EQ(os.len(), rstd::usize(4));
 }
 
+TEST(OsString, ClonePreservesArbitraryBytesAndOwnership) {
+    auto bytes = rstd::ref<OsStr>::from_encoded_bytes_unchecked("a\xff"_bytes);
+    auto value = OsString::from(bytes);
+    auto copy  = value.clone();
+
+    value.clear();
+    EXPECT_TRUE(value.is_empty());
+    EXPECT_EQ(copy.as_os_str().as_encoded_bytes(), bytes.as_encoded_bytes());
+
+    auto assigned = OsString::from("old"_str);
+    assigned.clone_from(copy);
+    EXPECT_EQ(assigned.as_os_str().as_encoded_bytes(), bytes.as_encoded_bytes());
+}
+
 TEST(OsString, IntoStringValid) {
     auto os  = OsString::from("utf8"_str);
     auto res = os.into_string();

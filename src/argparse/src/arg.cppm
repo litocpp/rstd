@@ -9,6 +9,7 @@ using namespace rstd::literals;
 using rstd::any::TypeId;
 using rstd::ffi::OsStr;
 using rstd::ffi::OsString;
+using rstd::sync::Arc;
 
 export namespace rstd::argparse
 {
@@ -102,12 +103,15 @@ struct ArgSpec {
     bool                                 required;
     bool                                 hidden;
     bool                                 allow_hyphen_values;
+    bool                                 global;
     TypeId                               type_id;
-    Box<dyn<ErasedValueParser>>          parser;
+    Arc<dyn<ErasedValueParser>>          parser;
     Option<OsString>                     default_raw_value;
-    Option<Box<dyn<ErasedDefaultValue>>> default_value;
+    Option<Arc<dyn<ErasedDefaultValue>>> default_value;
     Option<OsString>                     implicit_raw_value;
-    Option<Box<dyn<ErasedDefaultValue>>> implicit_value;
+    Option<Arc<dyn<ErasedDefaultValue>>> implicit_value;
+    u64                                  owner_command;
+    usize                                owner_slot;
 };
 
 template<typename T>
@@ -150,6 +154,7 @@ class Arg {
     bool                     required_ { false };
     bool                     hidden_ { false };
     bool                     allow_hyphen_values_ { false };
+    bool                     global_ { false };
     Box<dyn<ValueParser<T>>> parser_;
     Option<OsString>         default_raw_value_;
     Option<OsString>         implicit_raw_value_;
@@ -305,6 +310,14 @@ public:
         hidden(value);
         return rstd::move(*this);
     }
+    auto global(bool value = true) & -> Arg& {
+        global_ = value;
+        return *this;
+    }
+    auto global(bool value = true) && -> Arg&& {
+        global(value);
+        return rstd::move(*this);
+    }
     auto allow_hyphen_values(bool value = true) & -> Arg& {
         allow_hyphen_values_ = value;
         return *this;
@@ -390,7 +403,7 @@ template class Arg<u8>;
 
 template<typename T>
 auto erase_arg(rstd::argparse::Arg<T>&& argument) -> ArgSpec {
-    auto parser = Box<dyn<ErasedValueParser>>::make(
+    auto parser = Arc<dyn<ErasedValueParser>>::make(
         ErasedValueParserAdapter<T> { rstd::move(argument.parser_) });
     return ArgSpec {
         .id                  = rstd::move(argument.id_),
@@ -407,11 +420,14 @@ auto erase_arg(rstd::argparse::Arg<T>&& argument) -> ArgSpec {
         .required            = argument.required_,
         .hidden              = argument.hidden_,
         .allow_hyphen_values = argument.allow_hyphen_values_,
+        .global              = argument.global_,
         .type_id             = TypeId::of<T>(),
         .parser              = rstd::move(parser),
         .default_raw_value   = rstd::move(argument.default_raw_value_),
         .default_value       = None(),
         .implicit_raw_value  = rstd::move(argument.implicit_raw_value_),
         .implicit_value      = None(),
+        .owner_command       = u64(),
+        .owner_slot          = usize(),
     };
 }
