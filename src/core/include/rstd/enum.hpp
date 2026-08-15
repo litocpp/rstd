@@ -137,6 +137,26 @@
                      .visit(::rstd::forward<rstd_enum_detail_Visitor>(visitor)))) {              \
         return static_cast<const rstd_enum_choice_type&&>(rstd_enum_choice_)                     \
             .visit(::rstd::forward<rstd_enum_detail_Visitor>(visitor));                          \
+    }                                                                                            \
+                                                                                                 \
+    template<typename rstd_enum_detail_Visitor>                                                  \
+        requires requires(rstd_enum_choice_type& choice, rstd_enum_detail_Visitor&& visitor) {   \
+            choice.visit_mut(::rstd::forward<rstd_enum_detail_Visitor>(visitor));                \
+        }                                                                                        \
+    constexpr decltype(auto) visit_mut(rstd_enum_detail_Visitor&& visitor) & noexcept(noexcept(  \
+        rstd_enum_choice_.visit_mut(::rstd::forward<rstd_enum_detail_Visitor>(visitor)))) {      \
+        return rstd_enum_choice_.visit_mut(::rstd::forward<rstd_enum_detail_Visitor>(visitor));  \
+    }                                                                                            \
+                                                                                                 \
+    template<typename rstd_enum_detail_Visitor>                                                  \
+        requires requires(rstd_enum_choice_type&& choice, rstd_enum_detail_Visitor&& visitor) {  \
+            ::rstd::move(choice).visit_mut(::rstd::forward<rstd_enum_detail_Visitor>(visitor));  \
+        }                                                                                        \
+    constexpr decltype(auto) visit_mut(rstd_enum_detail_Visitor&& visitor) && noexcept(          \
+        noexcept(::rstd::move(rstd_enum_choice_)                                                 \
+                     .visit_mut(::rstd::forward<rstd_enum_detail_Visitor>(visitor)))) {          \
+        return ::rstd::move(rstd_enum_choice_)                                                   \
+            .visit_mut(::rstd::forward<rstd_enum_detail_Visitor>(visitor));                      \
     }
 
 #define RSTD_ENUM_DETAIL_MEMBERS(ClassName, ...)                                               \

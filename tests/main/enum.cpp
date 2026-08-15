@@ -207,6 +207,11 @@ concept Visitable = requires(Choice&& choice, Visitor&& visitor) {
     std::forward<Choice>(choice).visit(std::forward<Visitor>(visitor));
 };
 
+template<typename Choice, typename Visitor>
+concept MutVisitable = requires(Choice&& choice, Visitor&& visitor) {
+    std::forward<Choice>(choice).visit_mut(std::forward<Visitor>(visitor));
+};
+
 struct MissingChoiceCaseVisitor {
     auto operator()(rstd::choice_tag<ChoiceTag::Empty>) const -> int { return 0; }
 };
@@ -231,6 +236,11 @@ static_assert(! Visitable<DirectChoice&, MissingChoiceCaseVisitor>);
 static_assert(! Visitable<DirectChoice&, MismatchedChoiceResultVisitor>);
 static_assert(Visitable<DirectChoice&, NoexceptChoiceVisitor>);
 static_assert(noexcept(rstd::declval<DirectChoice&>().visit(NoexceptChoiceVisitor {})));
+static_assert(MutVisitable<DirectChoice&, NoexceptChoiceVisitor>);
+static_assert(MutVisitable<DirectChoice&&, NoexceptChoiceVisitor>);
+static_assert(! MutVisitable<const DirectChoice&, NoexceptChoiceVisitor>);
+static_assert(! MutVisitable<const DirectChoice&&, NoexceptChoiceVisitor>);
+static_assert(noexcept(rstd::declval<DirectChoice&>().visit_mut(NoexceptChoiceVisitor {})));
 
 auto score(const Message& message) -> int {
     int result = -1;
@@ -397,6 +407,28 @@ TEST(Choice, VisitsCasesWithTagsAndForwardedPayloads) {
 
     choice.set<ChoiceTag::Empty>();
     EXPECT_EQ(choice.visit(NoexceptChoiceVisitor {}), 0);
+}
+
+TEST(Choice, VisitMutAcceptsMutableOnlyGenericVisitor) {
+    auto choice = DuplicateChoice::with<DuplicateChoiceTag::First>(8);
+    auto result = choice.visit_mut([]<auto Tag>(rstd::choice_tag<Tag>, auto& value) {
+        value += Tag == DuplicateChoiceTag::First ? 2 : 4;
+        return value;
+    });
+
+    EXPECT_EQ(result, 10);
+    EXPECT_EQ(choice.as<DuplicateChoiceTag::First>(), 10);
+}
+
+TEST(Choice, VisitMutPreservesRvaluePayloads) {
+    auto choice  = DuplicateChoice::with<DuplicateChoiceTag::Second>(8);
+    auto visitor = []<auto Tag>(rstd::choice_tag<Tag>, auto&& value) -> decltype(auto) {
+        return std::forward<decltype(value)>(value);
+    };
+
+    static_assert(std::same_as<decltype(std::move(choice).visit_mut(visitor)), int&&>);
+    auto&& value = std::move(choice).visit_mut(visitor);
+    EXPECT_EQ(value, 8);
 }
 
 TEST(Choice, DistinguishesCasesWithTheSamePayloadType) {
@@ -597,6 +629,27 @@ TEST(Enum, VisitsWithGenericCallable) {
         return 3;
     });
     EXPECT_EQ(color_value, 3);
+}
+
+TEST(Enum, VisitMutAcceptsMutableOnlyGenericVisitor) {
+    auto message = Message::Move(4, 6);
+    auto score   = message.visit_mut([]<auto Tag>(rstd::choice_tag<Tag>, auto&... payload) -> int {
+        if constexpr (Tag == Message::Tag::Quit) {
+            return 0;
+        } else {
+            auto& value = std::get<0>(std::forward_as_tuple(payload...));
+            if constexpr (Tag == Message::Tag::Move) {
+                value.x += 3;
+                return value.x + value.y;
+            } else {
+                value.text += "!";
+                return static_cast<int>(value.text.size());
+            }
+        }
+    });
+
+    EXPECT_EQ(score, 13);
+    EXPECT_EQ(message.as_Move().x, 7);
 }
 
 TEST(Enum, MovesPayloadThroughRvalueVisit) {

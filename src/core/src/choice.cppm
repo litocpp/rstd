@@ -842,6 +842,13 @@ public:
     }
 
     template<typename Visitor>
+        requires(valid_visitor<Choice&, Visitor>())
+    constexpr decltype(auto)
+    visit_mut(Visitor&& visitor) & noexcept(all_cases_noexcept<0, Choice&, Visitor>()) {
+        return visit_active<0>(*this, rstd::forward<Visitor>(visitor));
+    }
+
+    template<typename Visitor>
         requires(valid_visitor<const Choice&, Visitor>())
     constexpr decltype(auto)
     visit(Visitor&& visitor) const& noexcept(all_cases_noexcept<0, const Choice&, Visitor>()) {
@@ -852,6 +859,13 @@ public:
         requires(valid_visitor<Choice &&, Visitor>())
     constexpr decltype(auto)
     visit(Visitor&& visitor) && noexcept(all_cases_noexcept<0, Choice&&, Visitor>()) {
+        return visit_active<0>(rstd::move(*this), rstd::forward<Visitor>(visitor));
+    }
+
+    template<typename Visitor>
+        requires(valid_visitor<Choice &&, Visitor>())
+    constexpr decltype(auto)
+    visit_mut(Visitor&& visitor) && noexcept(all_cases_noexcept<0, Choice&&, Visitor>()) {
         return visit_active<0>(rstd::move(*this), rstd::forward<Visitor>(visitor));
     }
 
