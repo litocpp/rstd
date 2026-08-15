@@ -19,6 +19,7 @@ class TestContext {
     bool           skipped_ {};
     bool           report_ { true };
     Option<String> skip_message_;
+    Vec<String>    traces_;
 
 public:
     TestContext(ref<str> suite, ref<str> case_name, bool report = true)
@@ -38,8 +39,10 @@ public:
         fatal_         = fatal_ || fatal;
         auto file_text = ref<str>::from_raw_parts_unchecked(reinterpret_cast<const byte*>(file),
                                                             usize(__builtin_strlen(file)));
-        if (report_)
+        if (report_) {
             io::eprintln("[failure] {}.{} {}:{}: {}", suite_, case_, file_text, line, message);
+            for (const auto& trace : traces_) io::eprintln("  trace: {}", trace.as_str());
+        }
     }
 
     auto skip_at(ref<str> message, const char* file, int line) -> void {
@@ -58,6 +61,10 @@ public:
     auto skip_message() const noexcept -> Option<ref<str>> {
         if (skip_message_.is_none()) return None();
         return Some(skip_message_->as_str());
+    }
+    auto push_trace(ref<str> message) -> void { traces_.push(String::make(message)); }
+    auto pop_trace() -> void {
+        if (! traces_.is_empty()) (void)traces_.pop();
     }
     auto full_name() const -> String { return rstd::format("{}.{}", suite_, case_); }
     auto next_death_index() noexcept -> usize {

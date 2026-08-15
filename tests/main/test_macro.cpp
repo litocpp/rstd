@@ -1,5 +1,7 @@
 #include <rstd/test/gtest.hpp>
 
+#include <string>
+
 import rstd;
 import rstd.test;
 
@@ -26,6 +28,13 @@ auto fail_helper(bool& reached) noexcept -> void {
 
 auto skip_helper(bool& reached) noexcept -> void {
     GTEST_SKIP() << "intentional skip " << 4;
+    reached = true;
+}
+
+auto diagnostic_helper(bool& reached) noexcept -> void {
+    SCOPED_TRACE(std::string("trace context"));
+    EXPECT_TRUE(false) << std::string("nonfatal detail");
+    ADD_FAILURE() << std::string("explicit detail");
     reached = true;
 }
 
@@ -107,4 +116,15 @@ TEST(MacroControl, SkipStopsHelper) {
     EXPECT_FALSE(reached);
     EXPECT_TRUE(context.skipped());
     EXPECT_TRUE(context.skip_message().is_some());
+}
+
+TEST(MacroControl, DiagnosticsRemainNonfatal) {
+    auto context  = rstd::test::TestContext("MacroFixture"_str, "Diagnostics"_str, false);
+    auto previous = rstd::test::replace_test_context(rstd::addressof(context));
+    auto reached  = false;
+    diagnostic_helper(reached);
+    (void)rstd::test::replace_test_context(previous);
+    EXPECT_TRUE(reached);
+    EXPECT_EQ(context.failures(), rstd::usize(2));
+    EXPECT_FALSE(context.fatal());
 }

@@ -140,8 +140,25 @@ auto rstd::test::gtest::ResultHelper::operator=(const Message& message) const no
     if (kind_ == ResultKind::Skip) {
         skip_current(text.as_str(), file_, line_);
     } else {
-        fail_current(text.as_str(), file_, line_, true);
+        fail_current(text.as_str(), file_, line_, fatal_);
     }
+}
+
+rstd::test::gtest::Expectation::~Expectation() noexcept {
+    if (success_) return;
+    auto text = message_text(message_, expression_);
+    fail_current(text.as_str(), file_, line_, false);
+}
+
+rstd::test::gtest::ScopedTrace::ScopedTrace(const Message& message) noexcept {
+    auto* context = current_test_context();
+    if (context == nullptr) return;
+    context->push_trace(message_text(message, "trace").as_str());
+}
+
+rstd::test::gtest::ScopedTrace::~ScopedTrace() noexcept {
+    auto* context = current_test_context();
+    if (context != nullptr) context->pop_trace();
 }
 
 auto rstd::test::gtest::record_assertion(bool        success,
