@@ -7,6 +7,15 @@ using namespace rstd::prelude;
 export namespace rstd::test
 {
 
+class Test {
+protected:
+    Test() noexcept = default;
+    ~Test() noexcept = default;
+
+    auto SetUp() noexcept -> void {}
+    auto TearDown() noexcept -> void {}
+};
+
 class TestContext;
 thread_local TestContext* active_test_context {};
 

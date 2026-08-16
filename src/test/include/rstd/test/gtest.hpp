@@ -145,6 +145,19 @@ auto configure_death(const char*   program,
 auto death_child_active() noexcept -> bool;
 [[noreturn]]
 auto finish_death_child() noexcept -> void;
+auto fixture_body_allowed() noexcept -> bool;
+
+template<typename FixtureCase>
+auto run_fixture_case(FixtureCase instance) noexcept -> void {
+    instance.run_set_up();
+    if (fixture_body_allowed()) instance.run_body();
+    instance.run_tear_down();
+}
+
+template<typename FixtureCase>
+auto run_fixture_case() noexcept -> void {
+    run_fixture_case(FixtureCase {});
+}
 
 } // namespace rstd::test::gtest
 
@@ -158,6 +171,16 @@ auto finish_death_child() noexcept -> void;
 #define RSTD_TEST_DESCRIPTOR_(suite, name)       RSTD_TEST_DESCRIPTOR_INNER_(suite, name)
 #define RSTD_TEST_REGISTRAR_INNER_(suite, name)  rstd_test_registrar_##suite##_##name
 #define RSTD_TEST_REGISTRAR_(suite, name)        RSTD_TEST_REGISTRAR_INNER_(suite, name)
+#define RSTD_TEST_FIXTURE_CLASS_INNER_(fixture, name) rstd_test_fixture_##fixture##_##name
+#define RSTD_TEST_FIXTURE_CLASS_(fixture, name) RSTD_TEST_FIXTURE_CLASS_INNER_(fixture, name)
+#define RSTD_TEST_FIXTURE_DESCRIPTOR_INNER_(fixture, name) \
+    rstd_test_fixture_descriptor_##fixture##_##name
+#define RSTD_TEST_FIXTURE_DESCRIPTOR_(fixture, name) \
+    RSTD_TEST_FIXTURE_DESCRIPTOR_INNER_(fixture, name)
+#define RSTD_TEST_FIXTURE_REGISTRAR_INNER_(fixture, name) \
+    rstd_test_fixture_registrar_##fixture##_##name
+#define RSTD_TEST_FIXTURE_REGISTRAR_(fixture, name) \
+    RSTD_TEST_FIXTURE_REGISTRAR_INNER_(fixture, name)
 
 #define TEST(suite, name)                                                                  \
     static void RSTD_TEST_FUNCTION_(suite, name)() noexcept;                               \
@@ -171,6 +194,33 @@ auto finish_death_child() noexcept -> void;
         RSTD_TEST_REGISTRAR_(suite, name) { &RSTD_TEST_DESCRIPTOR_(suite, name) };         \
     }                                                                                      \
     static void RSTD_TEST_FUNCTION_(suite, name)() noexcept
+
+#define TEST_F(fixture, name)                                                                 \
+    class RSTD_TEST_FIXTURE_CLASS_(fixture, name) final : public fixture                       \
+    {                                                                                          \
+    public:                                                                                    \
+        static void Run() noexcept {                                                           \
+            ::rstd::test::gtest::run_fixture_case<                                             \
+                RSTD_TEST_FIXTURE_CLASS_(fixture, name)>();                                     \
+        }                                                                                      \
+        void run_set_up() noexcept { this->SetUp(); }                                           \
+        void run_body() noexcept { TestBody(); }                                                \
+        void run_tear_down() noexcept { this->TearDown(); }                                     \
+                                                                                               \
+    private:                                                                                   \
+        void TestBody() noexcept;                                                              \
+    };                                                                                         \
+    namespace                                                                                  \
+    {                                                                                          \
+    ::rstd::test::gtest::Descriptor RSTD_TEST_FIXTURE_DESCRIPTOR_(fixture, name) {             \
+        RSTD_TEST_STRINGIFY_(fixture), RSTD_TEST_STRINGIFY_(name), __FILE__, __LINE__,         \
+        &RSTD_TEST_FIXTURE_CLASS_(fixture, name)::Run,                                         \
+    };                                                                                         \
+    ::rstd::test::gtest::Registrar RSTD_TEST_FIXTURE_REGISTRAR_(fixture, name) {               \
+        &RSTD_TEST_FIXTURE_DESCRIPTOR_(fixture, name)                                          \
+    };                                                                                         \
+    }                                                                                          \
+    void RSTD_TEST_FIXTURE_CLASS_(fixture, name)::TestBody() noexcept
 
 #define RSTD_TEST_EXPECT_BOOL_(expression, expected) \
     ::rstd::test::gtest::Expectation(                \

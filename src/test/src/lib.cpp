@@ -70,6 +70,11 @@ auto rstd::test::gtest::registered_head() noexcept -> Descriptor* {
     return __atomic_load_n(&registry_head, __ATOMIC_ACQUIRE);
 }
 
+auto rstd::test::gtest::fixture_body_allowed() noexcept -> bool {
+    auto* context = current_test_context();
+    return context == nullptr || (! context->fatal() && ! context->skipped());
+}
+
 auto rstd::test::gtest::Message::append(const char* value, unsigned long length) noexcept -> void {
     if (value == nullptr || length == 0 || length_ == sizeof(bytes_) - 1) return;
     auto available = sizeof(bytes_) - 1 - length_;
