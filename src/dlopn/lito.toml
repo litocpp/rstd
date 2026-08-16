@@ -10,7 +10,7 @@ archive = "rstd.dlopn"
 sources = ["mod.cppm", "dlopn.cpp"]
 
 [usage]
-private-linker-options = ["-ldl"]
+system-libraries = ["dl"]
 
 [dependencies.rstd-std]
 path = "../.."
