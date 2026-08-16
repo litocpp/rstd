@@ -8,4 +8,5 @@
 /std
 /gcc
 /record
-/benches/lito.lock
+lito.lock
+
