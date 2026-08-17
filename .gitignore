@@ -1,4 +1,5 @@
 /build
+/.lito
 /.vscode
 /.cache
 /compile_commands.json

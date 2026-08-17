@@ -149,8 +149,8 @@ TEST(Macro, AllPassing) {
     EXPECT_FLOAT_EQ(1.0f, 1.0f);
     EXPECT_DOUBLE_EQ(2.0, 2.0);
     EXPECT_NEAR(3.0, 3.01, 0.02);
-    EXPECT_DEATH(rstd::process::abort(), "");
-    EXPECT_DEATH(rstd::process::abort(), "");
+    EXPECT_DEATH(rstd::process::exit(i32(1)), "");
+    EXPECT_DEATH(rstd::process::exit(i32(1)), "");
     SUCCEED();
 }
 
