@@ -1,3 +1,5 @@
+#include <rstd/macro.hpp>
+#if RSTD_OS_UNIX && ! RSTD_OS_WINDOWS
 #include <rstd/test/gtest.hpp>
 #include <string>
 
@@ -303,3 +305,4 @@ TEST(Process, StdioNull) {
     ASSERT_TRUE(res.is_ok());
     EXPECT_TRUE(res.unwrap().success());
 }
+#endif

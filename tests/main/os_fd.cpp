@@ -1,3 +1,5 @@
+#include <rstd/macro.hpp>
+#if RSTD_OS_UNIX && ! RSTD_OS_WINDOWS
 #include <fcntl.h>
 #include <unistd.h>
 #include <rstd/test/gtest.hpp>
@@ -129,3 +131,4 @@ TEST(Path, ToCStringRejectsInteriorNul) {
     auto res = p.to_cstring();
     EXPECT_TRUE(res.is_err());
 }
+#endif

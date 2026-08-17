@@ -1,11 +1,15 @@
 module;
+#include <rstd/macro.hpp>
+#if RSTD_OS_LINUX
 #include <rstd/test/gtest.hpp>
 #include <atomic>
 #include <fcntl.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#endif
 
 export module rstd:async.io_backend_tests;
+#if RSTD_OS_LINUX
 import :async.io_operation;
 import :async.poll;
 import :async.runtime;
@@ -529,3 +533,4 @@ TEST(RstdAsyncIoBackend, ReadinessEmulationRejectsFileOperations) {
 }
 
 } // namespace
+#endif

@@ -102,18 +102,20 @@ sources = [
   "noexcept_module_check.cpp",
   "try_coroutine.cpp",
   "bench.cpp",
-]
-source-groups = [
-  { sources = ["sys/sync/condvar/pthread.cpp", "sys/sync/mutex/pthread.cpp", "process.cpp", "os_fd.cpp", "fs.cpp", "net.cpp"], target = { family = "unix" } },
-  { sources = ["process_windows.cpp", "fs_windows.cpp"], target = { family = "windows" } },
-  { sources = ["async/poll.cpp"], target = { os = "linux" } },
+  "sys/sync/condvar/pthread.cpp",
+  "sys/sync/mutex/pthread.cpp",
+  "process.cpp",
+  "os_fd.cpp",
+  "fs.cpp",
+  "net.cpp",
+  "process_windows.cpp",
+  "fs_windows.cpp",
+  "async/poll.cpp",
 ]
 
 [[test.attach]]
 package = "rstd-std"
-source-groups = [
-  { sources = ["async/io_backend.cppm"], target = { os = "linux" } },
-]
+sources = ["async/io_backend.cppm"]
 
 [dependencies.rstd-std]
 path = "../../src/std"

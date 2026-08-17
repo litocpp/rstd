@@ -1,3 +1,5 @@
+#include <rstd/macro.hpp>
+#if RSTD_OS_WINDOWS
 #include <rstd/test/gtest.hpp>
 
 #include <string>
@@ -107,3 +109,4 @@ TEST(ProcessWindows, CommandNotFound) {
     EXPECT_TRUE(
         rstd::process::Command::make("rstd-program-that-does-not-exist.exe"_str).status().is_err());
 }
+#endif

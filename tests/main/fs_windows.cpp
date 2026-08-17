@@ -1,3 +1,5 @@
+#include <rstd/macro.hpp>
+#if RSTD_OS_WINDOWS
 #include <rstd/test/gtest.hpp>
 
 import rstd;
@@ -110,3 +112,4 @@ TEST(FsWindows, MissingFileReturnsNotFound) {
     ASSERT_TRUE(result.is_err());
     EXPECT_EQ(result.unwrap_err().kind().code, rstd::io::error::ErrorKind::NotFound);
 }
+#endif

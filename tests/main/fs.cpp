@@ -1,3 +1,5 @@
+#include <rstd/macro.hpp>
+#if RSTD_OS_UNIX && ! RSTD_OS_WINDOWS
 #include <cstdlib>
 #include <string>
 #include <string_view>
@@ -673,3 +675,4 @@ TEST(Fs, ReadTraitImplCanBeUsed) {
     ASSERT_TRUE(res.is_ok());
     EXPECT_EQ(res.unwrap_unchecked(), rstd::usize(3));
 }
+#endif

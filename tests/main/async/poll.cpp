@@ -1,3 +1,5 @@
+#include <rstd/macro.hpp>
+#if RSTD_OS_LINUX
 #include <fcntl.h>
 #include <unistd.h>
 #include <rstd/test/gtest.hpp>
@@ -153,3 +155,4 @@ TEST(RstdAsyncPoll, ShutdownCancelsReadinessDuringTaskTransition) {
 }
 
 } // namespace
+#endif

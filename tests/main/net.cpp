@@ -1,3 +1,5 @@
+#include <rstd/macro.hpp>
+#if RSTD_OS_UNIX && ! RSTD_OS_WINDOWS
 #include <fcntl.h>
 #include <rstd/test/gtest.hpp>
 #include <atomic>
@@ -461,3 +463,4 @@ TEST(NetTcp, RepeatedWouldBlockWaitsForNextReadiness) {
     ASSERT_EQ(received.len(), usize(1));
     EXPECT_EQ(received[usize()], u8('b'));
 }
+#endif
