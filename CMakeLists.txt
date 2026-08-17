@@ -73,6 +73,9 @@ if(PROJECT_IS_TOP_LEVEL)
   include(GNUInstallDirs)
   include(CMakePackageConfigHelpers)
 
+  install(FILES LICENSE-MIT LICENSE-APACHE
+          DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/rstd)
+
   set_target_properties(rstd.basic PROPERTIES EXPORT_NAME basic)
   set_target_properties(rstd.runtime PROPERTIES EXPORT_NAME runtime)
   set_target_properties(rstd.core PROPERTIES EXPORT_NAME core)

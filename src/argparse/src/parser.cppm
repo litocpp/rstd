@@ -433,7 +433,7 @@ void render_argument_line(String& output, const ArgSpec& argument, usize section
         output.push_ascii(u8(']'));
     }
     if (! argument.possible_values.is_empty()) {
-        output.push_str(" [possible values: "_str);
+        output.push_str(" ["_str);
         for (usize value {}; value < argument.possible_values.len(); ++value) {
             if (value != usize()) output.push_str(", "_str);
             output.push_str(argument.possible_values[value].as_str());

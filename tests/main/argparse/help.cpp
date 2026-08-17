@@ -57,7 +57,7 @@ TEST(ArgparseHelp, RendersDeterministicSchemaOwnedHelpUsageAndVersion) {
               "  -V, --version  Print version\n"_str
               "\n"_str
               "Tuning:\n"_str
-              "  --mode  Execution mode [default: safe] [possible values: fast, safe]\n"_str
+              "  --mode  Execution mode [default: safe] [fast, safe]\n"_str
               "\n"_str
               "Subcommands:\n"_str
               "  run      Run it\n"_str
