@@ -221,8 +221,8 @@ TEST(MacroControl, DiagnosticsRemainNonfatal) {
 TEST(MacroControl, FixtureRunnerSkipsBodyAfterFatalSetupAndRunsTeardown) {
     auto context  = rstd::test::TestContext("MacroFixture"_str, "FatalSetup"_str, false);
     auto previous = rstd::test::replace_test_context(rstd::addressof(context));
-    auto body      = false;
-    auto teardown  = false;
+    auto body     = false;
+    auto teardown = false;
     rstd::test::gtest::run_fixture_case(FatalSetupFixtureCase { body, teardown });
     (void)rstd::test::replace_test_context(previous);
     EXPECT_FALSE(body);
@@ -233,8 +233,8 @@ TEST(MacroControl, FixtureRunnerSkipsBodyAfterFatalSetupAndRunsTeardown) {
 TEST(MacroControl, FixtureRunnerSkipsBodyAfterSkippedSetupAndRunsTeardown) {
     auto context  = rstd::test::TestContext("MacroFixture"_str, "SkippedSetup"_str, false);
     auto previous = rstd::test::replace_test_context(rstd::addressof(context));
-    auto body      = false;
-    auto teardown  = false;
+    auto body     = false;
+    auto teardown = false;
     rstd::test::gtest::run_fixture_case(SkippedSetupFixtureCase { body, teardown });
     (void)rstd::test::replace_test_context(previous);
     EXPECT_FALSE(body);
@@ -245,8 +245,8 @@ TEST(MacroControl, FixtureRunnerSkipsBodyAfterSkippedSetupAndRunsTeardown) {
 TEST(MacroControl, FixtureRunnerRunsTeardownAfterFatalBody) {
     auto context  = rstd::test::TestContext("MacroFixture"_str, "FatalBody"_str, false);
     auto previous = rstd::test::replace_test_context(rstd::addressof(context));
-    auto after     = false;
-    auto teardown  = false;
+    auto after    = false;
+    auto teardown = false;
     rstd::test::gtest::run_fixture_case(FatalBodyFixtureCase { after, teardown });
     (void)rstd::test::replace_test_context(previous);
     EXPECT_FALSE(after);

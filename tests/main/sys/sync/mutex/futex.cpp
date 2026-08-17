@@ -1,6 +1,7 @@
 module;
 #include <rstd/test/gtest.hpp>
 #include <thread>
+#include <vector>
 
 module rstd;
 import :sys.sync.mutex.futex;

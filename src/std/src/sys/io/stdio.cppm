@@ -46,19 +46,15 @@ export auto read_fd(int fd, mut_ref<byte[]> buf) noexcept -> Result<usize> {
 #elif RSTD_OS_WINDOWS
 
 export auto write_fd(int fd, slice<byte> buf) noexcept -> Result<usize> {
-    HANDLE h;
-    switch (fd) {
-    case 1: h = GetStdHandle(M_STD_OUTPUT_HANDLE); break;
-    case 2: h = GetStdHandle(M_STD_ERROR_HANDLE); break;
-    default: return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
-    }
+    auto   raw = _get_osfhandle(fd);
+    HANDLE h   = raw == -1 ? M_INVALID_HANDLE_VALUE : reinterpret_cast<HANDLE>(raw);
     if (h == M_INVALID_HANDLE_VALUE || h == nullptr) {
-        return Err(
-            Error::from_raw_os_error(static_cast<rstd::io::error::RawOsError>(GetLastError())));
+        return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
     }
     DWORD written = 0;
-    if (! WriteFile(
-            h, buf.as_raw_ptr(), static_cast<DWORD>(buf.len().to_primitive()), &written, nullptr)) {
+    auto  length  = buf.len().to_primitive();
+    if (length > 0x7ffff000u) length = 0x7ffff000u;
+    if (! WriteFile(h, buf.as_raw_ptr(), static_cast<DWORD>(length), &written, nullptr)) {
         return Err(
             Error::from_raw_os_error(static_cast<rstd::io::error::RawOsError>(GetLastError())));
     }
@@ -66,22 +62,18 @@ export auto write_fd(int fd, slice<byte> buf) noexcept -> Result<usize> {
 }
 
 export auto read_fd(int fd, mut_ref<byte[]> buf) noexcept -> Result<usize> {
-    if (fd != 0) {
+    auto   raw = _get_osfhandle(fd);
+    HANDLE h   = raw == -1 ? M_INVALID_HANDLE_VALUE : reinterpret_cast<HANDLE>(raw);
+    if (h == M_INVALID_HANDLE_VALUE || h == nullptr) {
         return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
     }
-    HANDLE h = GetStdHandle(M_STD_INPUT_HANDLE);
-    if (h == M_INVALID_HANDLE_VALUE || h == nullptr) {
-        return Err(
-            Error::from_raw_os_error(static_cast<rstd::io::error::RawOsError>(GetLastError())));
-    }
     DWORD read_bytes = 0;
-    if (! ReadFile(h,
-                   buf.as_raw_ptr(),
-                   static_cast<DWORD>(buf.len().to_primitive()),
-                   &read_bytes,
-                   nullptr)) {
-        return Err(
-            Error::from_raw_os_error(static_cast<rstd::io::error::RawOsError>(GetLastError())));
+    auto  length     = buf.len().to_primitive();
+    if (length > 0x7ffff000u) length = 0x7ffff000u;
+    if (! ReadFile(h, buf.as_raw_ptr(), static_cast<DWORD>(length), &read_bytes, nullptr)) {
+        auto error = GetLastError();
+        if (error == ERROR_BROKEN_PIPE) return Ok(usize());
+        return Err(Error::from_raw_os_error(static_cast<rstd::io::error::RawOsError>(error)));
     }
     return Ok(usize(read_bytes));
 }

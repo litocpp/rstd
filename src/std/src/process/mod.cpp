@@ -3,6 +3,7 @@ module;
 
 module rstd;
 import :sys.libc;
+import :sys.io.stdio;
 import :sys.pal;
 
 using namespace rstd::prelude;
@@ -43,22 +44,33 @@ namespace rstd::process
 ChildStdin::~ChildStdin() {
 #if RSTD_OS_UNIX
     if (fd >= 0) libc::close(fd);
+#elif RSTD_OS_WINDOWS
+    if (fd >= 0) libc::_close(fd);
 #endif
 }
 ChildStdout::~ChildStdout() {
 #if RSTD_OS_UNIX
     if (fd >= 0) libc::close(fd);
+#elif RSTD_OS_WINDOWS
+    if (fd >= 0) libc::_close(fd);
 #endif
 }
 ChildStderr::~ChildStderr() {
 #if RSTD_OS_UNIX
     if (fd >= 0) libc::close(fd);
+#elif RSTD_OS_WINDOWS
+    if (fd >= 0) libc::_close(fd);
 #endif
 }
 
 // ── Child ────────────────────────────────────────────────────────────────
 
 Child::~Child() {
+#if RSTD_OS_WINDOWS
+    if (process_handle != nullptr) {
+        (void)libc::CloseHandle(static_cast<libc::HANDLE>(process_handle));
+    }
+#endif
 }
 
 auto Child::wait() -> io::Result<ExitStatus> {
@@ -80,6 +92,27 @@ auto Child::wait() -> io::Result<ExitStatus> {
     }
     pid = -1;
     return Ok(ExitStatus::from_raw(i32(status)));
+#elif RSTD_OS_WINDOWS
+    if (status.is_some()) return Ok(*status);
+    if (process_handle == nullptr) {
+        return Err(io::error::Error::from_kind(
+            io::error::ErrorKind { io::error::ErrorKind::InvalidInput }));
+    }
+    stdin_pipe  = {};
+    auto handle = static_cast<libc::HANDLE>(process_handle);
+    if (libc::WaitForSingleObject(handle, libc::M_INFINITE) != libc::M_WAIT_OBJECT_0) {
+        return Err(io::error::Error::from_raw_os_error(i32(libc::GetLastError())));
+    }
+    auto code = libc::DWORD {};
+    if (! libc::GetExitCodeProcess(handle, &code)) {
+        return Err(io::error::Error::from_raw_os_error(i32(libc::GetLastError())));
+    }
+    (void)libc::CloseHandle(handle);
+    process_handle = nullptr;
+    pid            = -1;
+    auto exited    = ExitStatus::from_code(i32(static_cast<rstd::int32_t>(code)));
+    status         = Some(exited);
+    return Ok(exited);
 #else
     return Err(
         io::error::Error::from_kind(io::error::ErrorKind { io::error::ErrorKind::Unsupported }));
@@ -109,6 +142,24 @@ auto Child::try_wait() -> io::Result<Option<ExitStatus>> {
     auto exited = ExitStatus::from_raw(i32(status_value));
     status      = Some(exited);
     return Ok(Some(exited));
+#elif RSTD_OS_WINDOWS
+    if (status.is_some()) return Ok(Some(*status));
+    if (process_handle == nullptr) {
+        return Err(io::error::Error::from_kind(
+            io::error::ErrorKind { io::error::ErrorKind::InvalidInput }));
+    }
+    auto handle = static_cast<libc::HANDLE>(process_handle);
+    auto code   = libc::DWORD {};
+    if (! libc::GetExitCodeProcess(handle, &code)) {
+        return Err(io::error::Error::from_raw_os_error(i32(libc::GetLastError())));
+    }
+    if (code == libc::M_STILL_ACTIVE) return Ok(None());
+    (void)libc::CloseHandle(handle);
+    process_handle = nullptr;
+    pid            = -1;
+    auto exited    = ExitStatus::from_code(i32(static_cast<rstd::int32_t>(code)));
+    status         = Some(exited);
+    return Ok(Some(exited));
 #else
     return Err(
         io::error::Error::from_kind(io::error::ErrorKind { io::error::ErrorKind::Unsupported }));
@@ -123,6 +174,15 @@ auto Child::kill() -> io::Result<rstd::empty> {
     }
     if (libc::kill(pid, libc::SIGKILL) == -1) {
         return Err(io::error::Error::from_raw_os_error(i32(libc::get_errno())));
+    }
+    return Ok(rstd::empty {});
+#elif RSTD_OS_WINDOWS
+    if (process_handle == nullptr) {
+        return Err(io::error::Error::from_kind(
+            io::error::ErrorKind { io::error::ErrorKind::InvalidInput }));
+    }
+    if (! libc::TerminateProcess(static_cast<libc::HANDLE>(process_handle), 1)) {
+        return Err(io::error::Error::from_raw_os_error(i32(libc::GetLastError())));
     }
     return Ok(rstd::empty {});
 #else
@@ -148,6 +208,19 @@ auto Child::wait_with_output(OutputObserver observer) -> io::Result<Output> {
                 auto n = libc::read(fd, tmp, sizeof(tmp));
                 if (n <= 0) break;
                 auto chunk = slice<u8>::from_raw_parts(tmp, usize(static_cast<rstd::size_t>(n)));
+                if (observer.notify != nullptr) observer.notify(observer.context, stream, chunk);
+                buf.extend_from_slice(chunk);
+            }
+        }
+#elif RSTD_OS_WINDOWS
+        if (fd >= 0) {
+            byte tmp[4096];
+            while (true) {
+                auto chunk_buffer = mut_ref<u8[]>::from_raw_parts(
+                    tmp, usize(static_cast<rstd::size_t>(sizeof(tmp))));
+                auto read = rstd::sys::io::stdio::read_fd(fd, as_bytes_mut(chunk_buffer));
+                if (read.is_err() || *read == usize()) break;
+                auto chunk = slice<u8>::from_raw_parts(tmp, *read);
                 if (observer.notify != nullptr) observer.notify(observer.context, stream, chunk);
                 buf.extend_from_slice(chunk);
             }
@@ -458,6 +531,218 @@ auto fork_exec(const SpawnContext& context)
 }
 #endif
 
+#if RSTD_OS_WINDOWS
+auto windows_process_error() -> rstd::io::error::Error {
+    return rstd::io::error::Error::from_raw_os_error(i32(libc::GetLastError()));
+}
+
+auto invalid_process_input() -> rstd::io::error::Error {
+    return rstd::io::error::Error::from_kind(
+        rstd::io::error::ErrorKind { rstd::io::error::ErrorKind::InvalidInput });
+}
+
+auto wide_string(slice<u8> value)
+    -> rstd::result::Result<::alloc::vec::Vec<wchar_t>, rstd::io::error::Error> {
+    if (value.len().to_primitive() > 0x7fffffff) return Err(invalid_process_input());
+    for (auto byte : value) {
+        if (byte == u8()) return Err(invalid_process_input());
+    }
+    if (value.is_empty()) return Ok(::alloc::vec::Vec<wchar_t>::make());
+
+    auto input    = reinterpret_cast<const char*>(value.as_raw_ptr());
+    auto count    = static_cast<int>(value.len().to_primitive());
+    auto required = libc::MultiByteToWideChar(
+        libc::M_CP_UTF8, libc::M_MB_ERR_INVALID_CHARS, input, count, nullptr, 0);
+    if (required <= 0) return Err(windows_process_error());
+    auto result =
+        ::alloc::vec::Vec<wchar_t>::with_capacity(usize(static_cast<rstd::size_t>(required)));
+    result.resize(usize(static_cast<rstd::size_t>(required)), wchar_t {});
+    if (libc::MultiByteToWideChar(libc::M_CP_UTF8,
+                                  libc::M_MB_ERR_INVALID_CHARS,
+                                  input,
+                                  count,
+                                  result.as_mut_ptr(),
+                                  required) != required) {
+        return Err(windows_process_error());
+    }
+    return Ok(rstd::move(result));
+}
+
+void append_wide_argument(::alloc::vec::Vec<wchar_t>& command, slice<wchar_t> argument) {
+    auto quote = argument.is_empty();
+    for (auto value : argument) {
+        if (value == L' ' || value == L'\t' || value == L'"') {
+            quote = true;
+            break;
+        }
+    }
+    if (! quote) {
+        command.extend_from_slice(argument);
+        return;
+    }
+
+    command.push(L'"');
+    auto slashes = rstd::size_t {};
+    for (auto value : argument) {
+        if (value == L'\\') {
+            ++slashes;
+            continue;
+        }
+        if (value == L'"') {
+            for (rstd::size_t index = 0; index < slashes * 2 + 1; ++index) command.push(L'\\');
+            command.push(L'"');
+        } else {
+            for (rstd::size_t index = 0; index < slashes; ++index) command.push(L'\\');
+            command.push(static_cast<wchar_t>(value));
+        }
+        slashes = 0;
+    }
+    for (rstd::size_t index = 0; index < slashes * 2; ++index) command.push(L'\\');
+    command.push(L'"');
+}
+
+auto command_line(const ::alloc::ffi::CString&                    program,
+                  const ::alloc::vec::Vec<::alloc::ffi::CString>& arguments)
+    -> rstd::result::Result<::alloc::vec::Vec<wchar_t>, rstd::io::error::Error> {
+    auto program_wide = wide_string(program.to_bytes());
+    if (program_wide.is_err()) return Err(rstd::move(program_wide).unwrap_err());
+    auto result = ::alloc::vec::Vec<wchar_t>::make();
+    append_wide_argument(result, program_wide->as_slice());
+    for (const auto& argument : arguments) {
+        auto converted = wide_string(argument.to_bytes());
+        if (converted.is_err()) return Err(rstd::move(converted).unwrap_err());
+        result.push(L' ');
+        append_wide_argument(result, converted->as_slice());
+    }
+    result.push(L'\0');
+    return Ok(rstd::move(result));
+}
+
+struct WideEnvironmentEntry {
+    ::alloc::vec::Vec<wchar_t> value;
+    usize                      key_length {};
+};
+
+auto environment_key_length(slice<wchar_t> entry) -> usize {
+    auto start = entry.is_empty() || entry[usize()] != L'=' ? usize() : usize(1);
+    for (auto index = start; index < entry.len(); ++index) {
+        if (entry[index] == L'=') return index;
+    }
+    return entry.len();
+}
+
+auto same_environment_key(const WideEnvironmentEntry& entry, slice<wchar_t> key) -> bool {
+    if (entry.key_length != key.len()) return false;
+    return libc::CompareStringOrdinal(entry.value.as_ptr(),
+                                      static_cast<int>(entry.key_length.to_primitive()),
+                                      key.as_raw_ptr(),
+                                      static_cast<int>(key.len().to_primitive()),
+                                      libc::M_TRUE) == libc::M_CSTR_EQUAL;
+}
+
+auto child_environment(bool clear, const ::alloc::vec::Vec<rstd::process::EnvAction>& actions)
+    -> rstd::result::Result<::alloc::vec::Vec<wchar_t>, rstd::io::error::Error> {
+    auto entries = ::alloc::vec::Vec<WideEnvironmentEntry>::make();
+    if (! clear) {
+        auto block = libc::GetEnvironmentStringsW();
+        if (block == nullptr) return Err(windows_process_error());
+        auto current = block;
+        while (*current != L'\0') {
+            auto length = rstd::size_t {};
+            while (current[length] != L'\0') ++length;
+            auto value = ::alloc::vec::Vec<wchar_t>::from(
+                slice<wchar_t>::from_raw_parts(current, usize(length)));
+            auto key_length = environment_key_length(value.as_slice());
+            entries.push(WideEnvironmentEntry { rstd::move(value), key_length });
+            current += length + 1;
+        }
+        (void)libc::FreeEnvironmentStringsW(block);
+    }
+
+    for (const auto& action : actions) {
+        if (action.key.is_empty()) return Err(invalid_process_input());
+        for (auto byte : action.key) {
+            if (byte == u8() || byte == u8('=')) return Err(invalid_process_input());
+        }
+        auto key = wide_string(action.key.as_slice());
+        if (key.is_err()) return Err(rstd::move(key).unwrap_err());
+        for (auto index = entries.len(); index != usize();) {
+            --index;
+            if (same_environment_key(entries[index], key->as_slice())) (void)entries.remove(index);
+        }
+        if (action.value.is_none()) continue;
+        auto value = wide_string(action.value->as_slice());
+        if (value.is_err()) return Err(rstd::move(value).unwrap_err());
+        auto entry =
+            ::alloc::vec::Vec<wchar_t>::with_capacity(key->len() + value->len() + usize(1));
+        entry.extend_from_slice(key->as_slice());
+        entry.push(L'=');
+        entry.extend_from_slice(value->as_slice());
+        entries.push(WideEnvironmentEntry { rstd::move(entry), key->len() });
+    }
+
+    auto result = ::alloc::vec::Vec<wchar_t>::make();
+    for (const auto& entry : entries) {
+        result.extend_from_slice(entry.value.as_slice());
+        result.push(L'\0');
+    }
+    result.push(L'\0');
+    if (entries.is_empty()) result.push(L'\0');
+    return Ok(rstd::move(result));
+}
+
+struct WindowsPipe {
+    libc::HANDLE child { libc::M_INVALID_HANDLE_VALUE };
+    int          parent { -1 };
+};
+
+void close_windows_pipe(WindowsPipe& pipe) {
+    if (pipe.child != libc::M_INVALID_HANDLE_VALUE) (void)libc::CloseHandle(pipe.child);
+    if (pipe.parent >= 0) libc::_close(pipe.parent);
+    pipe.child  = libc::M_INVALID_HANDLE_VALUE;
+    pipe.parent = -1;
+}
+
+auto windows_pipe(bool child_reads, libc::SECURITY_ATTRIBUTES& security)
+    -> rstd::result::Result<WindowsPipe, rstd::io::error::Error> {
+    auto read_handle  = libc::M_INVALID_HANDLE_VALUE;
+    auto write_handle = libc::M_INVALID_HANDLE_VALUE;
+    if (! libc::CreatePipe(&read_handle, &write_handle, &security, 0)) {
+        return Err(windows_process_error());
+    }
+    auto child  = child_reads ? read_handle : write_handle;
+    auto parent = child_reads ? write_handle : read_handle;
+    if (! libc::SetHandleInformation(parent, libc::M_HANDLE_FLAG_INHERIT, 0)) {
+        auto error = windows_process_error();
+        (void)libc::CloseHandle(read_handle);
+        (void)libc::CloseHandle(write_handle);
+        return Err(rstd::move(error));
+    }
+    auto flags = (child_reads ? libc::M_O_WRONLY : libc::M_O_RDONLY) | libc::M_O_BINARY;
+    auto fd    = libc::_open_osfhandle(reinterpret_cast<rstd::intptr_t>(parent), flags);
+    if (fd < 0) {
+        auto error = invalid_process_input();
+        (void)libc::CloseHandle(parent);
+        (void)libc::CloseHandle(child);
+        return Err(rstd::move(error));
+    }
+    return Ok(WindowsPipe { child, fd });
+}
+
+auto null_handle(bool input, libc::SECURITY_ATTRIBUTES& security)
+    -> rstd::result::Result<libc::HANDLE, rstd::io::error::Error> {
+    auto handle = libc::CreateFileW(L"NUL",
+                                    input ? libc::M_GENERIC_READ : libc::M_GENERIC_WRITE,
+                                    libc::M_FILE_SHARE_READ | libc::M_FILE_SHARE_WRITE,
+                                    &security,
+                                    libc::M_OPEN_EXISTING,
+                                    libc::M_FILE_ATTRIBUTE_NORMAL,
+                                    nullptr);
+    if (handle == libc::M_INVALID_HANDLE_VALUE) return Err(windows_process_error());
+    return Ok(handle);
+}
+#endif
+
 auto Spawn::spawn(rstd::process::Command& cmd)
     -> rstd::result::Result<rstd::process::Child, rstd::io::error::Error> {
 #if RSTD_OS_UNIX
@@ -592,6 +877,192 @@ auto Spawn::spawn(rstd::process::Command& cmd)
     if (stdin_pipe[1] >= 0) child.stdin_pipe = Some(ChildStdin(stdin_pipe[1]));
     if (stdout_pipe[0] >= 0) child.stdout_pipe = Some(ChildStdout(stdout_pipe[0]));
     if (stderr_pipe[0] >= 0) child.stderr_pipe = Some(ChildStderr(stderr_pipe[0]));
+    return Ok(rstd::move(child));
+#elif RSTD_OS_WINDOWS
+    using namespace rstd::process;
+
+    auto security                 = libc::SECURITY_ATTRIBUTES {};
+    security.nLength              = sizeof(security);
+    security.bInheritHandle       = libc::M_TRUE;
+    security.lpSecurityDescriptor = nullptr;
+
+    auto stdin_pipe  = WindowsPipe {};
+    auto stdout_pipe = WindowsPipe {};
+    auto stderr_pipe = WindowsPipe {};
+    auto null_stdin  = libc::M_INVALID_HANDLE_VALUE;
+    auto null_stdout = libc::M_INVALID_HANDLE_VALUE;
+    auto null_stderr = libc::M_INVALID_HANDLE_VALUE;
+
+    auto cleanup = [&] {
+        close_windows_pipe(stdin_pipe);
+        close_windows_pipe(stdout_pipe);
+        close_windows_pipe(stderr_pipe);
+        if (null_stdin != libc::M_INVALID_HANDLE_VALUE) (void)libc::CloseHandle(null_stdin);
+        if (null_stdout != libc::M_INVALID_HANDLE_VALUE) (void)libc::CloseHandle(null_stdout);
+        if (null_stderr != libc::M_INVALID_HANDLE_VALUE) (void)libc::CloseHandle(null_stderr);
+        null_stdin  = libc::M_INVALID_HANDLE_VALUE;
+        null_stdout = libc::M_INVALID_HANDLE_VALUE;
+        null_stderr = libc::M_INVALID_HANDLE_VALUE;
+    };
+
+    if (cmd.cfg_stdin_.kind == Stdio::Piped_) {
+        auto created = windows_pipe(true, security);
+        if (created.is_err()) return Err(rstd::move(created).unwrap_err());
+        stdin_pipe = rstd::move(created).unwrap();
+    }
+    if (cmd.cfg_stdout_.kind == Stdio::Piped_) {
+        auto created = windows_pipe(false, security);
+        if (created.is_err()) {
+            auto error = rstd::move(created).unwrap_err();
+            cleanup();
+            return Err(rstd::move(error));
+        }
+        stdout_pipe = rstd::move(created).unwrap();
+    }
+    if (cmd.cfg_stderr_.kind == Stdio::Piped_) {
+        auto created = windows_pipe(false, security);
+        if (created.is_err()) {
+            auto error = rstd::move(created).unwrap_err();
+            cleanup();
+            return Err(rstd::move(error));
+        }
+        stderr_pipe = rstd::move(created).unwrap();
+    }
+
+    auto startup    = libc::STARTUPINFOW {};
+    startup.cb      = sizeof(startup);
+    startup.dwFlags = libc::M_STARTF_USESTDHANDLES;
+
+    if (cmd.cfg_stdin_.kind == Stdio::Piped_) {
+        startup.hStdInput = stdin_pipe.child;
+    } else if (cmd.cfg_stdin_.kind == Stdio::Null_) {
+        auto opened = null_handle(true, security);
+        if (opened.is_err()) {
+            auto error = rstd::move(opened).unwrap_err();
+            cleanup();
+            return Err(rstd::move(error));
+        }
+        null_stdin        = opened.unwrap();
+        startup.hStdInput = null_stdin;
+    } else {
+        startup.hStdInput = libc::GetStdHandle(libc::M_STD_INPUT_HANDLE);
+    }
+
+    if (cmd.cfg_stdout_.kind == Stdio::Piped_) {
+        startup.hStdOutput = stdout_pipe.child;
+    } else if (cmd.cfg_stdout_.kind == Stdio::Null_) {
+        auto opened = null_handle(false, security);
+        if (opened.is_err()) {
+            auto error = rstd::move(opened).unwrap_err();
+            cleanup();
+            return Err(rstd::move(error));
+        }
+        null_stdout        = opened.unwrap();
+        startup.hStdOutput = null_stdout;
+    } else {
+        startup.hStdOutput = libc::GetStdHandle(libc::M_STD_OUTPUT_HANDLE);
+    }
+
+    if (cmd.cfg_stderr_.kind == Stdio::Piped_) {
+        startup.hStdError = stderr_pipe.child;
+    } else if (cmd.cfg_stderr_.kind == Stdio::Null_) {
+        auto opened = null_handle(false, security);
+        if (opened.is_err()) {
+            auto error = rstd::move(opened).unwrap_err();
+            cleanup();
+            return Err(rstd::move(error));
+        }
+        null_stderr       = opened.unwrap();
+        startup.hStdError = null_stderr;
+    } else {
+        startup.hStdError = libc::GetStdHandle(libc::M_STD_ERROR_HANDLE);
+    }
+
+    auto line = command_line(cmd.program_, cmd.args_);
+    if (line.is_err()) {
+        auto error = rstd::move(line).unwrap_err();
+        cleanup();
+        return Err(rstd::move(error));
+    }
+    auto environment = Option<::alloc::vec::Vec<wchar_t>> {};
+    if (cmd.env_clear_ || ! cmd.env_actions_.is_empty()) {
+        auto built = child_environment(cmd.env_clear_, cmd.env_actions_);
+        if (built.is_err()) {
+            auto error = rstd::move(built).unwrap_err();
+            cleanup();
+            return Err(rstd::move(error));
+        }
+        environment = Some(rstd::move(built).unwrap());
+    }
+
+    auto directory = Option<::alloc::vec::Vec<wchar_t>> {};
+    if (cmd.cwd_.is_some()) {
+        auto converted = wide_string(cmd.cwd_->to_bytes());
+        if (converted.is_err()) {
+            auto error = rstd::move(converted).unwrap_err();
+            cleanup();
+            return Err(rstd::move(error));
+        }
+        converted->push(L'\0');
+        directory = Some(rstd::move(converted).unwrap());
+    }
+
+    auto process_info        = libc::PROCESS_INFORMATION {};
+    auto environment_pointer = environment.is_some()
+                                   ? static_cast<void*>(environment->as_mut_ptr().as_raw_ptr())
+                                   : nullptr;
+    auto directory_pointer   = directory.is_some() ? directory->as_ptr().as_raw_ptr() : nullptr;
+    if (! libc::CreateProcessW(nullptr,
+                               line->as_mut_ptr(),
+                               nullptr,
+                               nullptr,
+                               libc::M_TRUE,
+                               libc::M_CREATE_UNICODE_ENVIRONMENT,
+                               environment_pointer,
+                               directory_pointer,
+                               &startup,
+                               &process_info)) {
+        auto error = windows_process_error();
+        cleanup();
+        return Err(rstd::move(error));
+    }
+
+    if (stdin_pipe.child != libc::M_INVALID_HANDLE_VALUE) {
+        (void)libc::CloseHandle(stdin_pipe.child);
+        stdin_pipe.child = libc::M_INVALID_HANDLE_VALUE;
+    }
+    if (stdout_pipe.child != libc::M_INVALID_HANDLE_VALUE) {
+        (void)libc::CloseHandle(stdout_pipe.child);
+        stdout_pipe.child = libc::M_INVALID_HANDLE_VALUE;
+    }
+    if (stderr_pipe.child != libc::M_INVALID_HANDLE_VALUE) {
+        (void)libc::CloseHandle(stderr_pipe.child);
+        stderr_pipe.child = libc::M_INVALID_HANDLE_VALUE;
+    }
+    if (null_stdin != libc::M_INVALID_HANDLE_VALUE) (void)libc::CloseHandle(null_stdin);
+    if (null_stdout != libc::M_INVALID_HANDLE_VALUE) (void)libc::CloseHandle(null_stdout);
+    if (null_stderr != libc::M_INVALID_HANDLE_VALUE) (void)libc::CloseHandle(null_stderr);
+    null_stdin  = libc::M_INVALID_HANDLE_VALUE;
+    null_stdout = libc::M_INVALID_HANDLE_VALUE;
+    null_stderr = libc::M_INVALID_HANDLE_VALUE;
+    (void)libc::CloseHandle(process_info.hThread);
+
+    auto child           = Child {};
+    child.pid            = static_cast<int>(process_info.dwProcessId);
+    child.process_handle = process_info.hProcess;
+    if (stdin_pipe.parent >= 0) {
+        child.stdin_pipe  = Some(ChildStdin(stdin_pipe.parent));
+        stdin_pipe.parent = -1;
+    }
+    if (stdout_pipe.parent >= 0) {
+        child.stdout_pipe  = Some(ChildStdout(stdout_pipe.parent));
+        stdout_pipe.parent = -1;
+    }
+    if (stderr_pipe.parent >= 0) {
+        child.stderr_pipe  = Some(ChildStderr(stderr_pipe.parent));
+        stderr_pipe.parent = -1;
+    }
+    cleanup();
     return Ok(rstd::move(child));
 #else
     return Err(rstd::io::error::Error::from_kind(

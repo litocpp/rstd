@@ -3,6 +3,7 @@ module;
 #include <rstd/test/gtest.hpp>
 #include <atomic>
 #include <thread>
+#include <vector>
 
 module rstd;
 #if RSTD_OS_UNIX && ! RSTD_OS_WINDOWS

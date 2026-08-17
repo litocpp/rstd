@@ -6,6 +6,7 @@ module;
 #include <mswsock.h>
 #include <windows.h>
 #include <limits.h>
+#pragma comment(lib, "ws2_32.lib")
 #endif
 
 export module rstd:sys.pal.windows.socket;

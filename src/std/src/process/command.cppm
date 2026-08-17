@@ -1,3 +1,6 @@
+module;
+#include <rstd/macro.hpp>
+
 export module rstd:process.command;
 export import :process.exit_status;
 export import :io;
@@ -99,7 +102,10 @@ export namespace rstd::process
 
 /// A child process handle.
 struct Child {
-    int                 pid { -1 };
+    int pid { -1 };
+#if RSTD_OS_WINDOWS
+    void* process_handle { nullptr };
+#endif
     Option<ChildStdin>  stdin_pipe;
     Option<ChildStdout> stdout_pipe;
     Option<ChildStderr> stderr_pipe;
@@ -134,11 +140,17 @@ struct Child {
     ~Child();
     Child(Child&& o) noexcept
         : pid(o.pid),
+#if RSTD_OS_WINDOWS
+          process_handle(o.process_handle),
+#endif
           stdin_pipe(o.stdin_pipe.take()),
           stdout_pipe(o.stdout_pipe.take()),
           stderr_pipe(o.stderr_pipe.take()),
           status(o.status.take()) {
         o.pid = -1;
+#if RSTD_OS_WINDOWS
+        o.process_handle = nullptr;
+#endif
     }
     Child& operator=(Child&&) = delete;
     Child()                   = default;

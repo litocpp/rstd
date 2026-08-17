@@ -1,4 +1,9 @@
 #include <rstd/test/gtest.hpp>
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#endif
 
 import rstd;
 import rstd.test;
@@ -203,6 +208,12 @@ auto configure_death(const char*   program,
                      unsigned long case_length,
                      bool          has_case,
                      unsigned long index) noexcept -> void {
+#if defined(_WIN32)
+    if (has_case) {
+        auto previous = SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+        (void)SetErrorMode(previous | SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+    }
+#endif
     death_state = DeathState {
         .program   = String::make(raw_str(program, program_length)),
         .case_name = has_case ? Some(String::make(raw_str(case_name, case_length))) : None(),

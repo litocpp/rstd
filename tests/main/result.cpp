@@ -54,12 +54,12 @@ TEST(Result, BasicOperations) {
 
 TEST(Result, PanicUsesCallerLocation) {
     Result<int, int> error = Err(7);
-    EXPECT_DEATH(error.unwrap(), "test/result.cpp:");
-    EXPECT_DEATH(error.expect("failed"_str), "test/result.cpp:");
+    EXPECT_DEATH(error.unwrap(), "result.cpp:");
+    EXPECT_DEATH(error.expect("failed"_str), "result.cpp:");
 
     Result<int, int> value = Ok(7);
-    EXPECT_DEATH(value.unwrap_err(), "test/result.cpp:");
-    EXPECT_DEATH(value.expect_err("failed"_str), "test/result.cpp:");
+    EXPECT_DEATH(value.unwrap_err(), "result.cpp:");
+    EXPECT_DEATH(value.expect_err("failed"_str), "result.cpp:");
 }
 
 TEST(Result, CloneOperations) {

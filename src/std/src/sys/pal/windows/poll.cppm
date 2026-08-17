@@ -12,13 +12,10 @@ export import :sys.pal.poll.types;
 import :sys.pal.windows.socket;
 import rstd.alloc;
 
-namespace rstd::sys::pal::windows::poll
-{
-
 namespace windows_socket = rstd::sys::pal::windows::socket;
 
-using ::alloc::sync::Arc;
 using ::alloc::boxed::Box;
+using ::alloc::vec::Vec;
 using rstd::io::error::Error;
 using rstd::io::error::ErrorKind;
 using rstd::sys::pal::poll::Batch;
@@ -31,7 +28,9 @@ using rstd::sys::pal::poll::Operation;
 using rstd::sys::pal::poll::OperationKind;
 using rstd::sys::pal::poll::SourceKind;
 using rstd::sys::pal::poll::WaitMode;
-using ::alloc::vec::Vec;
+
+namespace rstd::sys::pal::windows::poll
+{
 
 inline constexpr ULONG_PTR WAKE_KEY = 0;
 
@@ -116,6 +115,23 @@ class NativeOperationTable {
 public:
     NativeOperationTable(): m_pages(Vec<Box<Page>>::make()) {}
 
+    NativeOperationTable(const NativeOperationTable&)                    = delete;
+    auto operator=(const NativeOperationTable&) -> NativeOperationTable& = delete;
+
+    NativeOperationTable(NativeOperationTable&& other) noexcept
+        : m_pages(rstd::move(other.m_pages)), m_len(other.m_len) {
+        other.m_len = usize();
+    }
+
+    auto operator=(NativeOperationTable&& other) noexcept -> NativeOperationTable& {
+        if (this == &other) return *this;
+        if (! is_empty()) rstd::panic { "cannot replace a non-empty IOCP operation table" };
+        m_pages     = rstd::move(other.m_pages);
+        m_len       = other.m_len;
+        other.m_len = usize();
+        return *this;
+    }
+
     ~NativeOperationTable() {
         if (! is_empty()) rstd::panic { "IOCP native operation table was not drained" };
     }
@@ -172,10 +188,10 @@ public:
 };
 
 export class PollWake {
-    Arc<PortState> m_state;
+    ::alloc::sync::Arc<PortState> m_state;
 
 public:
-    explicit PollWake(Arc<PortState> state): m_state(rstd::move(state)) {}
+    explicit PollWake(::alloc::sync::Arc<PortState> state): m_state(rstd::move(state)) {}
 
     PollWake(const PollWake&)                        = delete;
     auto operator=(const PollWake&) -> PollWake&     = delete;
@@ -195,9 +211,10 @@ public:
 export struct PollInit;
 
 export class Poller {
-    Option<Arc<PortState>> m_state {};
-    NativeOperationTable   m_operations;
-    Vec<AssociatedSource>  m_sources;
+    Option<::alloc::sync::Arc<PortState>> m_state {};
+    NativeOperationTable                  m_operations;
+    Vec<AssociatedSource>                 m_sources;
+    Vec<HANDLE>                           m_associated_handles;
 
     static auto timeout_millis(WaitMode mode, Option<time::Duration> next_timer) noexcept -> DWORD {
         if (mode == WaitMode::Immediate) return 0;
@@ -243,13 +260,25 @@ export class Poller {
                 return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
             }
         }
+        auto known_association = false;
+        for (auto associated_handle : m_associated_handles) {
+            if (associated_handle == handle) {
+                known_association = true;
+                break;
+            }
+        }
         auto associated =
             CreateIoCompletionPort(handle, port(), static_cast<ULONG_PTR>(key.to_primitive()), 0);
         if (associated == nullptr) {
-            return Err(Error::from_raw_os_error(i32(GetLastError())));
-        }
-        if (associated != port()) {
-            return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
+            auto error = GetLastError();
+            if (error != ERROR_INVALID_PARAMETER || ! known_association) {
+                return Err(Error::from_raw_os_error(i32(error)));
+            }
+        } else {
+            if (associated != port()) {
+                return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
+            }
+            if (! known_association) m_associated_handles.emplace_back(handle);
         }
         source = AssociatedSource { handle, generation, usize(), true };
         return Ok(rstd::addressof(source));
@@ -264,16 +293,20 @@ export class Poller {
     }
 
 public:
-    Poller(): m_operations(), m_sources(Vec<AssociatedSource>::make()) {}
+    Poller()
+        : m_operations(),
+          m_sources(Vec<AssociatedSource>::make()),
+          m_associated_handles(Vec<HANDLE>::make()) {}
     Poller(const Poller&)                        = delete;
     auto operator=(const Poller&) -> Poller&     = delete;
     Poller(Poller&&) noexcept                    = default;
     auto operator=(Poller&&) noexcept -> Poller& = default;
 
-    explicit Poller(Arc<PortState> state)
+    explicit Poller(::alloc::sync::Arc<PortState> state)
         : m_state(Some(rstd::move(state))),
           m_operations(),
-          m_sources(Vec<AssociatedSource>::make()) {}
+          m_sources(Vec<AssociatedSource>::make()),
+          m_associated_handles(Vec<HANDLE>::make()) {}
 
     static auto init(BackendPreference preference) -> io::Result<PollInit>;
 
@@ -542,7 +575,7 @@ inline auto Poller::init(BackendPreference preference) -> io::Result<PollInit> {
     auto port = CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 1);
     if (port == nullptr) return Err(Error::last_os_error());
 
-    auto state = Arc<PortState>::make(port);
+    auto state = ::alloc::sync::Arc<PortState>::make(port);
     return Ok(PollInit { Poller { state.clone() }, PollWake { rstd::move(state) } });
 }
 

@@ -9,7 +9,7 @@ export namespace rstd::test
 
 class Test {
 protected:
-    Test() noexcept = default;
+    Test() noexcept  = default;
     ~Test() noexcept = default;
 
     auto SetUp() noexcept -> void {}

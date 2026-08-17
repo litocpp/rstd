@@ -241,8 +241,8 @@ TEST(Option, ExpectUnwrap) {
     EXPECT_EQ(some.expect("shouldn't fail"_str), 42);
 
     auto none = None<int>();
-    EXPECT_DEATH(none.unwrap(), "test/option.cpp:");
-    EXPECT_DEATH(none.expect("failed"_str), "test/option.cpp:");
+    EXPECT_DEATH(none.unwrap(), "option.cpp:");
+    EXPECT_DEATH(none.expect("failed"_str), "option.cpp:");
 }
 
 TEST(Option, OkOr) {

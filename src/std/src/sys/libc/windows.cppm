@@ -7,6 +7,7 @@ module;
 #include <synchapi.h>
 #include <time.h>
 #include <io.h>
+#include <fcntl.h>
 #include <process.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -134,6 +135,12 @@ using ::SYSTEM_INFO;
 using ::OVERLAPPED;
 using ::SRWLOCK;
 using ::CONDITION_VARIABLE;
+using ::BY_HANDLE_FILE_INFORMATION;
+using ::FILE_BASIC_INFO;
+using ::WIN32_FIND_DATAW;
+using ::STARTUPINFOW;
+using ::PROCESS_INFORMATION;
+using ::SECURITY_ATTRIBUTES;
 
 // ── Constants ────────────────────────────────────────────────────────────
 constexpr auto    M_TRUE                              = TRUE;
@@ -147,6 +154,48 @@ constexpr auto    M_STD_OUTPUT_HANDLE                 = STD_OUTPUT_HANDLE;
 constexpr auto    M_STD_ERROR_HANDLE                  = STD_ERROR_HANDLE;
 constexpr auto    M_STACK_SIZE_PARAM_IS_A_RESERVATION = STACK_SIZE_PARAM_IS_A_RESERVATION;
 constexpr auto    M_CP_UTF8                           = CP_UTF8;
+constexpr auto    M_MB_ERR_INVALID_CHARS              = MB_ERR_INVALID_CHARS;
+constexpr auto    M_WC_ERR_INVALID_CHARS              = WC_ERR_INVALID_CHARS;
+constexpr auto    M_GENERIC_READ                      = GENERIC_READ;
+constexpr auto    M_GENERIC_WRITE                     = GENERIC_WRITE;
+constexpr auto    M_FILE_APPEND_DATA                  = FILE_APPEND_DATA;
+constexpr auto    M_FILE_READ_ATTRIBUTES              = FILE_READ_ATTRIBUTES;
+constexpr auto    M_FILE_SHARE_READ                   = FILE_SHARE_READ;
+constexpr auto    M_FILE_SHARE_WRITE                  = FILE_SHARE_WRITE;
+constexpr auto    M_FILE_SHARE_DELETE                 = FILE_SHARE_DELETE;
+constexpr auto    M_CREATE_NEW                        = CREATE_NEW;
+constexpr auto    M_CREATE_ALWAYS                     = CREATE_ALWAYS;
+constexpr auto    M_OPEN_EXISTING                     = OPEN_EXISTING;
+constexpr auto    M_OPEN_ALWAYS                       = OPEN_ALWAYS;
+constexpr auto    M_TRUNCATE_EXISTING                 = TRUNCATE_EXISTING;
+constexpr auto    M_FILE_ATTRIBUTE_READONLY           = FILE_ATTRIBUTE_READONLY;
+constexpr auto    M_FILE_ATTRIBUTE_DIRECTORY          = FILE_ATTRIBUTE_DIRECTORY;
+constexpr auto    M_FILE_ATTRIBUTE_REPARSE_POINT      = FILE_ATTRIBUTE_REPARSE_POINT;
+constexpr auto    M_FILE_ATTRIBUTE_NORMAL             = FILE_ATTRIBUTE_NORMAL;
+constexpr auto    M_INVALID_FILE_ATTRIBUTES           = INVALID_FILE_ATTRIBUTES;
+constexpr auto    M_FILE_FLAG_BACKUP_SEMANTICS        = FILE_FLAG_BACKUP_SEMANTICS;
+constexpr auto    M_FILE_FLAG_OPEN_REPARSE_POINT      = FILE_FLAG_OPEN_REPARSE_POINT;
+constexpr auto    M_FILE_BEGIN                        = FILE_BEGIN;
+constexpr auto    M_FILE_CURRENT                      = FILE_CURRENT;
+constexpr auto    M_FILE_END                          = FILE_END;
+constexpr auto    M_MOVEFILE_REPLACE_EXISTING         = MOVEFILE_REPLACE_EXISTING;
+constexpr auto    M_SYMBOLIC_LINK_FLAG_DIRECTORY      = SYMBOLIC_LINK_FLAG_DIRECTORY;
+constexpr auto    M_SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE =
+    SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
+constexpr auto M_FILE_NAME_NORMALIZED       = FILE_NAME_NORMALIZED;
+constexpr auto M_VOLUME_NAME_DOS            = VOLUME_NAME_DOS;
+constexpr auto M_FILE_BASIC_INFO_CLASS      = FileBasicInfo;
+constexpr auto M_ERROR_HANDLE_EOF           = ERROR_HANDLE_EOF;
+constexpr auto M_ERROR_NO_MORE_FILES        = ERROR_NO_MORE_FILES;
+constexpr auto M_STARTF_USESTDHANDLES       = STARTF_USESTDHANDLES;
+constexpr auto M_CREATE_UNICODE_ENVIRONMENT = CREATE_UNICODE_ENVIRONMENT;
+constexpr auto M_HANDLE_FLAG_INHERIT        = HANDLE_FLAG_INHERIT;
+constexpr auto M_WAIT_OBJECT_0              = WAIT_OBJECT_0;
+constexpr auto M_STILL_ACTIVE               = STILL_ACTIVE;
+constexpr auto M_CSTR_EQUAL                 = CSTR_EQUAL;
+constexpr auto M_O_RDONLY                   = _O_RDONLY;
+constexpr auto M_O_WRONLY                   = _O_WRONLY;
+constexpr auto M_O_BINARY                   = _O_BINARY;
 
 // ── Error ────────────────────────────────────────────────────────────────
 using ::GetLastError;
@@ -247,6 +296,27 @@ using ::GetSystemInfo;
 using ::GetStdHandle;
 using ::WriteFile;
 using ::ReadFile;
+using ::CreateFileW;
+using ::SetFilePointerEx;
+using ::FlushFileBuffers;
+using ::SetEndOfFile;
+using ::GetOverlappedResult;
+using ::GetFileInformationByHandle;
+using ::GetFileInformationByHandleEx;
+using ::SetFileInformationByHandle;
+using ::GetFileAttributesW;
+using ::SetFileAttributesW;
+using ::SetFileTime;
+using ::DeleteFileW;
+using ::RemoveDirectoryW;
+using ::MoveFileExW;
+using ::CreateHardLinkW;
+using ::CreateSymbolicLinkW;
+using ::GetFinalPathNameByHandleW;
+using ::CreateDirectoryW;
+using ::FindFirstFileW;
+using ::FindNextFileW;
+using ::FindClose;
 using ::LockFileEx;
 using ::UnlockFileEx;
 inline constexpr auto LOCKFILE_FAIL_IMMEDIATELY = _LOCKFILE_FAIL_IMMEDIATELY;
@@ -258,15 +328,27 @@ using ::_fileno;
 
 // ── String ───────────────────────────────────────────────────────────────
 using ::MultiByteToWideChar;
+using ::WideCharToMultiByte;
 
 // ── Process ──────────────────────────────────────────────────────────────
 using ::RaiseFailFastException;
 using ::ExitProcess;
 using ::GetCurrentProcessId;
+using ::CreatePipe;
+using ::SetHandleInformation;
+using ::CreateProcessW;
+using ::GetExitCodeProcess;
+using ::TerminateProcess;
+using ::GetEnvironmentStringsW;
+using ::FreeEnvironmentStringsW;
+using ::CompareStringOrdinal;
 using ::GetEnvironmentVariableA;
 using ::SetEnvironmentVariableA;
 
 using ::_putenv_s;
+using ::_open_osfhandle;
+using ::_get_osfhandle;
+using ::_close;
 
 } // namespace rstd::sys::libc
 #endif

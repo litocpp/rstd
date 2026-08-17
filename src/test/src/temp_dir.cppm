@@ -11,7 +11,7 @@ namespace rstd::test
 
 rstd::sync::atomic::Atomic<usize> temp_directory_sequence;
 
-auto report_temp_directory_cleanup_failure(ref<rstd::path::Path> path,
+auto report_temp_directory_cleanup_failure(ref<rstd::path::Path>         path,
                                            const rstd::io::error::Error& error) noexcept -> void {
     auto message = rstd::format("cannot remove temporary directory '{}': {}", path, error);
     if (current_test_context() != nullptr) {
@@ -42,8 +42,8 @@ class TempDir {
     }
 
 public:
-    TempDir() noexcept = default;
-    TempDir(const TempDir&) = delete;
+    TempDir() noexcept                         = default;
+    TempDir(const TempDir&)                    = delete;
     auto operator=(const TempDir&) -> TempDir& = delete;
 
     TempDir(TempDir&& other) noexcept: path_(rstd::move(other.path_)) { other.path_ = None(); }
@@ -62,15 +62,15 @@ public:
         constexpr auto attempt_limit = usize(1024);
         auto           base          = rstd::env::temp_dir();
         for (auto attempt = usize {}; attempt < attempt_limit; ++attempt) {
-            auto sequence = temp_directory_sequence.fetch_add(
-                usize(1), rstd::sync::atomic::Ordering::Relaxed);
-            auto name = rstd::format("rstd-test-{}-{}", rstd::process::id(), sequence);
-            auto path = base.join(rstd::path::PathBuf::from(name.as_str()).as_path());
+            auto sequence =
+                temp_directory_sequence.fetch_add(usize(1), rstd::sync::atomic::Ordering::Relaxed);
+            auto name   = rstd::format("rstd-test-{}-{}", rstd::process::id(), sequence);
+            auto path   = base.join(rstd::path::PathBuf::from(name.as_str()).as_path());
             auto result = rstd::fs::create_dir(path.as_path());
             if (result.is_ok()) return Ok(TempDir(rstd::move(path)));
             auto error = rstd::move(result).unwrap_err();
-            if (error.kind() != rstd::io::error::ErrorKind {
-                                    rstd::io::error::ErrorKind::AlreadyExists }) {
+            if (error.kind() !=
+                rstd::io::error::ErrorKind { rstd::io::error::ErrorKind::AlreadyExists }) {
                 return Err(rstd::move(error));
             }
         }
