@@ -3,9 +3,9 @@ module;
 export module rstd:sys.pal;
 
 #if RSTD_OS_UNIX
-export import :sys.pal.unix;
+import :sys.pal.unix;
 #elif RSTD_OS_WINDOWS
-export import :sys.pal.windows;
+import :sys.pal.windows;
 #endif
 
 export namespace rstd::sys::pal

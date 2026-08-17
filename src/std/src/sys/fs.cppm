@@ -4,19 +4,19 @@ export module rstd:sys.fs;
 export import :sys.fs.contract;
 
 #if RSTD_OS_UNIX
-export import :sys.fs.unix;
+import :sys.fs.unix;
 namespace rstd::sys::fs
 {
 namespace backend = unix;
 }
 #elif RSTD_OS_WINDOWS
-export import :sys.fs.windows;
+import :sys.fs.windows;
 namespace rstd::sys::fs
 {
 namespace backend = windows;
 }
 #else
-export import :sys.fs.unsupported;
+import :sys.fs.unsupported;
 namespace rstd::sys::fs
 {
 namespace backend = unsupported;

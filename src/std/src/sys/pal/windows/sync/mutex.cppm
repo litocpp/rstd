@@ -1,6 +1,6 @@
 export module rstd:sys.pal.windows.sync.mutex;
 
-export import rstd.core;
+import rstd.core;
 import :sys.libc.windows;
 
 using namespace rstd::sys::libc;
@@ -18,14 +18,10 @@ public:
     Mutex& operator=(const Mutex&) = delete;
 
     static constexpr auto make() noexcept -> Mutex { return {}; }
-
-    auto raw() noexcept -> SRWLOCK* { return &srwlock; }
-
-    void lock() noexcept { AcquireSRWLockExclusive(&srwlock); }
-
-    auto try_lock() noexcept -> bool { return TryAcquireSRWLockExclusive(&srwlock) != 0; }
-
-    void unlock() noexcept { ReleaseSRWLockExclusive(&srwlock); }
+    auto                  raw() noexcept -> SRWLOCK*;
+    void                  lock() noexcept;
+    auto                  try_lock() noexcept -> bool;
+    void                  unlock() noexcept;
 };
 
 } // namespace rstd::sys::pal::windows::sync::mutex

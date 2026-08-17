@@ -3,13 +3,13 @@ module;
 export module rstd:sys.sync.thread_parking;
 
 #if RSTD_OS_LINUX || RSTD_OS_WINDOWS
-export import :sys.sync.thread_parking.futex;
+import :sys.sync.thread_parking.futex;
 namespace rstd::sys::sync::thread_parking
 {
 namespace backend = futex;
 }
 #else
-export import :sys.sync.thread_parking.pthread;
+import :sys.sync.thread_parking.pthread;
 namespace rstd::sys::sync::thread_parking
 {
 namespace backend = pthread;

@@ -4,9 +4,9 @@ module;
 export module rstd:sys.pal.poll;
 export import :sys.pal.poll.types;
 #if RSTD_OS_LINUX
-export import :sys.pal.linux.poll;
+import :sys.pal.linux.poll;
 #elif RSTD_OS_WINDOWS
-export import :sys.pal.windows.poll;
+import :sys.pal.windows.poll;
 #endif
 
 export namespace rstd::sys::pal::poll

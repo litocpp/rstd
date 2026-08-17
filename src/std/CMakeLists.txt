@@ -26,8 +26,19 @@ if(WIN32)
     src/sys/sync/condvar/futex.cppm
     src/sys/sync/thread_parking/futex.cppm
     src/sys/thread/windows.cppm)
-  list(APPEND rstd_std_platform_sources src/sys/pal/windows/futex.cpp
-       src/sys/sync/thread_parking/futex.cpp)
+  list(
+    APPEND
+    rstd_std_platform_sources
+    src/sys/fs/windows.cpp
+    src/sys/pal/windows/futex.cpp
+    src/sys/pal/windows/mod.cpp
+    src/sys/pal/windows/time.cpp
+    src/sys/pal/windows/sync/mutex.cpp
+    src/sys/pal/windows/sync/condvar.cpp
+    src/sys/sync/mutex/futex.cpp
+    src/sys/sync/condvar/futex.cpp
+    src/sys/sync/thread_parking/futex.cpp
+    src/sys/thread/windows.cpp)
 elseif(UNIX)
   list(
     APPEND
@@ -43,6 +54,15 @@ elseif(UNIX)
     src/sys/pal/unix/sync/condvar.cppm
     src/sys/pal/unix/sync/mod.cppm
     src/sys/thread/unix.cppm)
+  list(
+    APPEND
+    rstd_std_platform_sources
+    src/sys/fs/unix.cpp
+    src/sys/pal/unix/mod.cpp
+    src/sys/pal/unix/time.cpp
+    src/sys/pal/unix/sync/mutex.cpp
+    src/sys/pal/unix/sync/condvar.cpp
+    src/sys/thread/unix.cpp)
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     list(
       APPEND
@@ -53,8 +73,13 @@ elseif(UNIX)
       src/sys/sync/mutex/futex.cppm
       src/sys/sync/condvar/futex.cppm
       src/sys/sync/thread_parking/futex.cppm)
-    list(APPEND rstd_std_platform_sources src/sys/pal/unix/futex.cpp
-         src/sys/sync/thread_parking/futex.cpp)
+    list(
+      APPEND
+      rstd_std_platform_sources
+      src/sys/pal/unix/futex.cpp
+      src/sys/sync/mutex/futex.cpp
+      src/sys/sync/condvar/futex.cpp
+      src/sys/sync/thread_parking/futex.cpp)
   else()
     list(
       APPEND
@@ -62,10 +87,16 @@ elseif(UNIX)
       src/sys/sync/mutex/pthread.cppm
       src/sys/sync/condvar/pthread.cppm
       src/sys/sync/thread_parking/pthread.cppm)
-    list(APPEND rstd_std_platform_sources src/sys/sync/thread_parking/pthread.cpp)
+    list(
+      APPEND
+      rstd_std_platform_sources
+      src/sys/sync/mutex/pthread.cpp
+      src/sys/sync/condvar/pthread.cpp
+      src/sys/sync/thread_parking/pthread.cpp)
   endif()
 else()
   list(APPEND rstd_std_platform_modules src/sys/fs/unsupported.cppm)
+  list(APPEND rstd_std_platform_sources src/sys/fs/unsupported.cpp)
 endif()
 
 target_sources(

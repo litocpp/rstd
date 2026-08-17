@@ -1,22 +1,14 @@
-module;
-#include <rstd/macro.hpp>
 export module rstd:sys.pal.windows.sync.condvar;
 
-export import :sys.pal.windows.sync.mutex;
-export import rstd.core;
+import :sys.pal.windows.sync.mutex;
 import :sys.libc.windows;
+import rstd.core;
 
 using namespace rstd::sys::libc;
 using namespace rstd::sys::pal::windows::sync::mutex;
 
 namespace rstd::sys::pal::windows::sync::condvar
 {
-
-static auto dur2timeout(rstd::time::Duration dur) noexcept -> DWORD {
-    auto ms = dur.as_millis().to_primitive();
-    if (ms >= M_INFINITE) return M_INFINITE - 1;
-    return static_cast<DWORD>(ms);
-}
 
 export class Condvar {
     CONDITION_VARIABLE inner;
@@ -28,22 +20,10 @@ public:
     Condvar& operator=(const Condvar&) = delete;
 
     static constexpr auto make() noexcept -> Condvar { return {}; }
-
-    void notify_one() noexcept { WakeConditionVariable(&inner); }
-
-    void notify_all() noexcept { WakeAllConditionVariable(&inner); }
-
-    void wait(Mutex& mutex) noexcept {
-        [[maybe_unused]]
-        auto r = SleepConditionVariableSRW(&inner, mutex.raw(), M_INFINITE, 0);
-        debug_assert(r != 0);
-    }
-
-    // Returns true if notified, false if timed out
-    auto wait_timeout(Mutex& mutex, rstd::time::Duration timeout) noexcept -> bool {
-        auto r = SleepConditionVariableSRW(&inner, mutex.raw(), dur2timeout(timeout), 0);
-        return r != 0;
-    }
+    void                  notify_one() noexcept;
+    void                  notify_all() noexcept;
+    void                  wait(Mutex& mutex) noexcept;
+    auto                  wait_timeout(Mutex& mutex, rstd::time::Duration timeout) noexcept -> bool;
 };
 
 } // namespace rstd::sys::pal::windows::sync::condvar

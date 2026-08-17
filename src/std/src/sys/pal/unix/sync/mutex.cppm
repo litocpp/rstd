@@ -1,9 +1,7 @@
-module;
-#include <rstd/macro.hpp>
 export module rstd:sys.pal.unix.sync.mutex;
 
-export import :sys.libc.pthread;
-export import rstd.core;
+import :sys.libc.pthread;
+import rstd.core;
 
 using namespace rstd::sys::libc;
 
@@ -14,35 +12,19 @@ export class Mutex {
     pthread_mutex_t inner;
 
 public:
-    Mutex() noexcept: inner(pthread_mutex_initializer()) {}
-
-    ~Mutex() noexcept { pthread_mutex_destroy(&inner); }
+    Mutex() noexcept;
+    ~Mutex() noexcept;
 
     Mutex(const Mutex&)            = delete;
     Mutex(Mutex&&)                 = delete;
     Mutex& operator=(const Mutex&) = delete;
     Mutex& operator=(Mutex&&)      = delete;
 
-    static auto make() noexcept -> Mutex { return {}; }
-
-    auto raw() noexcept -> pthread_mutex_t* { return &inner; }
-
-    void lock() noexcept {
-        auto r = pthread_mutex_lock(raw());
-        if (r != 0) {
-            // TODO: from_raw_parts_os_error
-            // error = Error::from_raw_parts_os_error(r);
-            panic { "failed to lock mutex" };
-        }
-    }
-
-    auto try_lock() noexcept -> bool { return pthread_mutex_trylock(raw()) == 0; }
-
-    void unlock() noexcept {
-        [[maybe_unused]]
-        auto r = pthread_mutex_unlock(raw());
-        debug_assert_eq(r, 0);
-    }
+    static auto make() noexcept -> Mutex;
+    auto        raw() noexcept -> pthread_mutex_t*;
+    void        lock() noexcept;
+    auto        try_lock() noexcept -> bool;
+    void        unlock() noexcept;
 };
 
 static_assert(mtp::triv_copy<mut_ptr<Mutex>>);

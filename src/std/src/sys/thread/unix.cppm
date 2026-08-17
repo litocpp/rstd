@@ -1,90 +1,29 @@
-module;
-#include <rstd/macro.hpp>
 export module rstd:sys.thread.unix;
+
 export import :sys.libc;
 export import :io;
-import :forward;
 export import :thread.thread;
 export import rstd.alloc;
 
-using namespace rstd::sys::libc;
 using rstd_alloc::boxed::Box;
 using rstd::thread::ThreadInit;
-
-extern "C" void* rstd_thread_start(void* data);
+using namespace rstd::sys::libc;
 
 namespace rstd::sys::thread::unix
 {
 
-auto os_error(int code) noexcept -> rstd::io::error::Error {
-    return rstd::io::error::Error::from_raw_os_error(
-        rstd::io::error::RawOsError(static_cast<rstd::int32_t>(code)));
-}
-
 export struct Thread {
     pthread_t id;
 
-    static auto make(usize stack, Box<ThreadInit>&& init) -> rstd::io::Result<Thread> {
-        libc::pthread_attr_t attr {};
-        rstd_assert_eq(libc::pthread_attr_init(&attr), 0);
-
-        if (stack != usize {}) {
-            rstd_assert_eq(libc::pthread_attr_setstacksize(&attr, stack.to_primitive()), 0);
-        }
-
-        auto raw = rstd::move(init).into_raw();
-
-        auto native = libc::pthread_t {};
-        auto ret    = libc::pthread_create(&native, &attr, rstd_thread_start, raw.p);
-        if (ret == 0) {
-            rstd_assert_eq(libc::pthread_attr_destroy(&attr), 0);
-            return Ok(Thread { .id = native });
-        } else {
-            Box<ThreadInit>::from_raw(raw);
-            libc::pthread_attr_destroy(&attr);
-            return Err(os_error(ret));
-        }
-    }
-
-    auto join() const -> rstd::io::Result<voidp> {
-        auto* ret = static_cast<voidp>(nullptr);
-        auto  err = libc::pthread_join(id, &ret);
-        if (err != 0) {
-            return Err(os_error(err));
-        }
-        return Ok(ret);
-    }
-
-    auto detach() const -> rstd::io::Result<i32> {
-        auto err = libc::pthread_detach(id);
-        if (err != 0) {
-            return Err(os_error(err));
-        }
-        return Ok(i32 {});
-    }
-
-    static auto current() -> Thread { return Thread { .id = libc::pthread_self() }; }
-
-    auto operator==(const Thread& other) const -> bool {
-        return libc::pthread_equal(id, other.id) != 0;
-    }
-
-    static void set_name(ref<ffi::CStr> name) {
-        libc::pthread_setname_np(current().id, name.as_ptr());
-    }
-
-    static void sleep(rstd::time::Duration dur) {
-        libc::timespec ts { .tv_sec  = static_cast<long>(dur.as_secs().to_primitive()),
-                            .tv_nsec = static_cast<long>(dur.subsec_nanos().to_primitive()) };
-        libc::nanosleep(&ts, nullptr);
-    }
-
-    static void yield_now() { libc::sched_yield(); }
-
-    static auto available_parallelism() -> Option<usize> {
-        auto count = libc::online_processor_count();
-        return count > 0 ? Some(usize(static_cast<rstd::size_t>(count))) : None();
-    }
+    static auto make(usize stack, Box<ThreadInit>&& init) -> rstd::io::Result<Thread>;
+    auto        join() const -> rstd::io::Result<voidp>;
+    auto        detach() const -> rstd::io::Result<i32>;
+    static auto current() -> Thread;
+    auto        operator==(const Thread& other) const -> bool;
+    static void set_name(ref<ffi::CStr> name);
+    static void sleep(rstd::time::Duration dur);
+    static void yield_now();
+    static auto available_parallelism() -> Option<usize>;
 };
 
-}; // namespace rstd::sys::thread::unix
+} // namespace rstd::sys::thread::unix
