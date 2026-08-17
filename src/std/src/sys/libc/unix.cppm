@@ -1,7 +1,4 @@
 module;
-#include <rstd/macro.hpp>
-
-#ifdef RSTD_OS_LINUX
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/wait.h>
@@ -21,9 +18,8 @@ module;
 #include <spawn.h>
 #include <fcntl.h>
 #include <dirent.h>
-#endif
 
-#if defined(RSTD_OS_LINUX) && defined(__GLIBC__)
+#if defined(__GLIBC__)
 #include <gnu/libc-version.h>
 
 extern "C" int posix_spawn_file_actions_addchdir_np(posix_spawn_file_actions_t*,
@@ -34,7 +30,6 @@ extern "C" int posix_spawn_file_actions_addchdir(posix_spawn_file_actions_t*, co
 
 export module rstd:sys.libc.unix;
 
-#ifdef RSTD_OS_LINUX
 inline constexpr auto _CLOCK_MONOTONIC = CLOCK_MONOTONIC;
 inline constexpr auto _CLOCK_REALTIME  = CLOCK_REALTIME;
 
@@ -616,4 +611,3 @@ inline auto wait_termsig(int status) -> int {
 }
 
 } // namespace rstd::sys::libc
-#endif

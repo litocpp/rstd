@@ -1,13 +1,10 @@
 module;
-#include <rstd/macro.hpp>
-#if RSTD_OS_WINDOWS
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <mswsock.h>
 #include <windows.h>
 #include <limits.h>
 #pragma comment(lib, "ws2_32.lib")
-#endif
 
 export module rstd:sys.pal.windows.socket;
 export import :io.error;
@@ -29,7 +26,6 @@ using rstd::os::socket::OwnedSocket;
 using rstd::os::socket::RawSocket;
 using rstd::sys::pal::poll::SocketAddress;
 
-#if RSTD_OS_WINDOWS
 struct WinsockState {
     int error {};
 
@@ -423,6 +419,4 @@ export auto peer_addr(RawSocket socket) -> Result<SocketAddr> {
     }
     return addr_from_native(reinterpret_cast<const sockaddr*>(&native.storage), native.len);
 }
-#endif
-
 } // namespace rstd::sys::pal::windows::socket

@@ -2,7 +2,6 @@ module;
 #include <rstd/macro.hpp>
 export module rstd:sys.pal.windows.sync.condvar;
 
-#if RSTD_OS_WINDOWS
 export import :sys.pal.windows.sync.mutex;
 export import rstd.core;
 import :sys.libc.windows;
@@ -48,4 +47,3 @@ public:
 };
 
 } // namespace rstd::sys::pal::windows::sync::condvar
-#endif

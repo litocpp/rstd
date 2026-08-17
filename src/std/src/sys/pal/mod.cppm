@@ -2,45 +2,34 @@ module;
 #include <rstd/macro.hpp>
 export module rstd:sys.pal;
 
+#if RSTD_OS_UNIX
 export import :sys.pal.unix;
+#elif RSTD_OS_WINDOWS
 export import :sys.pal.windows;
+#endif
 
 export namespace rstd::sys::pal
 {
 #if RSTD_OS_UNIX
-namespace futex = pal::unix::futex;
-using unix::Mutex;
-using unix::Condvar;
-using unix::Instant;
-using unix::SystemTime;
-using unix::local_offset_at_unix_time;
-using unix::abort_internal;
-using unix::exit_internal;
-using unix::getpid_internal;
-using unix::getenv_internal;
-using unix::setenv_internal;
-using unix::unsetenv_internal;
-using unix::ArgcArgv;
-using unix::args_capture;
-using unix::args_argc_argv;
-
+namespace backend = unix;
 #elif RSTD_OS_WINDOWS
-
-namespace futex = pal::windows::futex;
-using windows::Mutex;
-using windows::Condvar;
-using windows::Instant;
-using windows::SystemTime;
-using windows::local_offset_at_unix_time;
-using windows::abort_internal;
-using windows::exit_internal;
-using windows::getpid_internal;
-using windows::getenv_internal;
-using windows::setenv_internal;
-using windows::unsetenv_internal;
-using windows::ArgcArgv;
-using windows::args_capture;
-using windows::args_argc_argv;
+namespace backend = windows;
 #endif
+
+namespace futex = backend::futex;
+using backend::Mutex;
+using backend::Condvar;
+using backend::Instant;
+using backend::SystemTime;
+using backend::local_offset_at_unix_time;
+using backend::abort_internal;
+using backend::exit_internal;
+using backend::getpid_internal;
+using backend::getenv_internal;
+using backend::setenv_internal;
+using backend::unsetenv_internal;
+using backend::ArgcArgv;
+using backend::args_capture;
+using backend::args_argc_argv;
 
 } // namespace rstd::sys::pal

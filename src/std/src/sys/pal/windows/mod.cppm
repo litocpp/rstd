@@ -1,16 +1,11 @@
 module;
-#include <rstd/macro.hpp>
-
-#if RSTD_OS_WINDOWS
 #include <process.h>
 #include <stdlib.h>
-#endif
 export module rstd:sys.pal.windows;
 export import :sys.pal.windows.futex;
 export import :sys.pal.windows.sync;
 export import :sys.pal.windows.time;
 
-#if RSTD_OS_WINDOWS
 import :sys.libc.windows;
 
 namespace rstd::sys::pal::windows
@@ -75,4 +70,3 @@ export auto args_argc_argv() -> ArgcArgv {
 }
 
 } // namespace rstd::sys::pal::windows
-#endif

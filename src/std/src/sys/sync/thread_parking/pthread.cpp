@@ -1,9 +1,5 @@
-module;
-#include <rstd/macro.hpp>
 module rstd;
 import :sys.sync.thread_parking.pthread;
-
-#if RSTD_OS_UNIX && ! RSTD_OS_LINUX
 
 using rstd::sync::atomic::Ordering;
 
@@ -86,4 +82,3 @@ void Parker::unpark() {
 }
 
 } // namespace rstd::sys::sync::thread_parking::pthread
-#endif

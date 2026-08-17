@@ -1,12 +1,8 @@
 module;
-#include <rstd/macro.hpp>
-#if RSTD_OS_WINDOWS
 #pragma comment(lib, "synchronization")
-#endif
 module rstd;
 import :sys.pal.windows.futex;
 
-#if RSTD_OS_WINDOWS
 import :sys.libc.windows;
 using namespace rstd::sys::libc;
 
@@ -55,5 +51,3 @@ template bool futex_wake<u8>(const Atomic<u8>*);
 template void futex_wake_all<u32>(const Atomic<u32>*);
 template void futex_wake_all<u8>(const Atomic<u8>*);
 } // namespace rstd::sys::pal::windows::futex
-
-#endif

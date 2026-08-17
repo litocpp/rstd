@@ -1,10 +1,6 @@
-module;
-#include <rstd/macro.hpp>
-
 export module rstd:sys.pal.linux.poll;
 export import :sys.pal.poll.types;
 
-#if RSTD_OS_LINUX
 import :sys.libc;
 import :sys.pal.linux.io_uring;
 import :sys.pal.unix.socket;
@@ -843,4 +839,3 @@ inline auto Poller::init(BackendPreference preference) -> io::Result<PollInit> {
 }
 
 } // namespace rstd::sys::pal::linux::poll
-#endif

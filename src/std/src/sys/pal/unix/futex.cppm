@@ -1,8 +1,5 @@
-module;
-#include <rstd/macro.hpp>
 export module rstd:sys.pal.unix.futex;
 
-#if RSTD_OS_UNIX
 export import rstd.core;
 using rstd::sync::atomic::Atomic;
 
@@ -23,4 +20,3 @@ export bool futex_wake(Futex* futex);
 export void futex_wake_all(Futex* futex);
 
 } // namespace rstd::sys::pal::unix::futex
-#endif

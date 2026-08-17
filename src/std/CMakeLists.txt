@@ -6,6 +6,68 @@ if(WIN32)
 endif()
 set_target_properties(rstd.std PROPERTIES OUTPUT_NAME rstd)
 
+set(rstd_std_platform_modules)
+set(rstd_std_platform_sources)
+if(WIN32)
+  list(
+    APPEND
+    rstd_std_platform_modules
+    src/sys/fs/windows.cppm
+    src/sys/libc/windows.cppm
+    src/sys/pal/windows/mod.cppm
+    src/sys/pal/windows/socket.cppm
+    src/sys/pal/windows/poll.cppm
+    src/sys/pal/windows/futex.cppm
+    src/sys/pal/windows/time.cppm
+    src/sys/pal/windows/sync/mod.cppm
+    src/sys/pal/windows/sync/mutex.cppm
+    src/sys/pal/windows/sync/condvar.cppm
+    src/sys/sync/mutex/futex.cppm
+    src/sys/sync/condvar/futex.cppm
+    src/sys/sync/thread_parking/futex.cppm
+    src/sys/thread/windows.cppm)
+  list(APPEND rstd_std_platform_sources src/sys/pal/windows/futex.cpp
+       src/sys/sync/thread_parking/futex.cpp)
+elseif(UNIX)
+  list(
+    APPEND
+    rstd_std_platform_modules
+    src/sys/fs/unix.cppm
+    src/sys/libc/pthread.cppm
+    src/sys/libc/unix.cppm
+    src/sys/pal/unix/mod.cppm
+    src/sys/pal/unix/socket.cppm
+    src/sys/pal/unix/futex.cppm
+    src/sys/pal/unix/time.cppm
+    src/sys/pal/unix/sync/mutex.cppm
+    src/sys/pal/unix/sync/condvar.cppm
+    src/sys/pal/unix/sync/mod.cppm
+    src/sys/thread/unix.cppm)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    list(
+      APPEND
+      rstd_std_platform_modules
+      src/sys/libc/linux.cppm
+      src/sys/pal/linux/io_uring.cppm
+      src/sys/pal/linux/poll.cppm
+      src/sys/sync/mutex/futex.cppm
+      src/sys/sync/condvar/futex.cppm
+      src/sys/sync/thread_parking/futex.cppm)
+    list(APPEND rstd_std_platform_sources src/sys/pal/unix/futex.cpp
+         src/sys/sync/thread_parking/futex.cpp)
+  else()
+    list(
+      APPEND
+      rstd_std_platform_modules
+      src/sys/sync/mutex/pthread.cppm
+      src/sys/sync/condvar/pthread.cppm
+      src/sys/sync/thread_parking/pthread.cppm)
+    list(APPEND rstd_std_platform_sources src/sys/sync/thread_parking/pthread.cpp)
+  endif()
+else()
+  list(APPEND rstd_std_platform_modules src/sys/fs/unsupported.cppm)
+endif()
+
 target_sources(
   rstd.std
   PUBLIC FILE_SET
@@ -37,52 +99,20 @@ target_sources(
          src/sys/mod.cppm
          src/sys/fs.cppm
          src/sys/fs/contract.cppm
-         src/sys/fs/unix.cppm
-         src/sys/fs/windows.cppm
-         src/sys/fs/unsupported.cppm
          src/sys/socket.cppm
          src/sys/io/mod.cppm
          src/sys/libc/mod.cppm
-         src/sys/libc/linux.cppm
-         src/sys/libc/pthread.cppm
-         src/sys/libc/unix.cppm
-         src/sys/libc/windows.cppm
          src/sys/libc/std.cppm
          src/sys/pal/mod.cppm
          src/sys/pal/poll/mod.cppm
          src/sys/pal/poll/types.cppm
-         src/sys/pal/linux/io_uring.cppm
-         src/sys/pal/linux/poll.cppm
-         src/sys/pal/unix/mod.cppm
-         src/sys/pal/unix/socket.cppm
-         src/sys/pal/unix/futex.cppm
-         src/sys/pal/unix/time.cppm
-         src/sys/pal/unix/sync/mutex.cppm
-         src/sys/pal/unix/sync/condvar.cppm
-         src/sys/pal/unix/sync/mod.cppm
-         src/sys/pal/windows/mod.cppm
-         src/sys/pal/windows/socket.cppm
-         src/sys/pal/windows/poll.cppm
-         src/sys/pal/windows/futex.cppm
-         src/sys/pal/windows/time.cppm
-         src/sys/pal/windows/sync/mod.cppm
-         src/sys/pal/windows/sync/mutex.cppm
-         src/sys/pal/windows/sync/condvar.cppm
          src/sys/sync/once_box.cppm
          src/sys/sync/mutex/mod.cppm
-         src/sys/sync/mutex/futex.cppm
-         src/sys/sync/mutex/pthread.cppm
          src/sys/sync/condvar/mod.cppm
-         src/sys/sync/condvar/futex.cppm
-         src/sys/sync/condvar/pthread.cppm
          src/sys/sync/once/mod.cppm
          src/sys/sync/once/futex.cppm
          src/sys/sync/thread_parking/mod.cppm
-         src/sys/sync/thread_parking/futex.cppm
-         src/sys/sync/thread_parking/pthread.cppm
          src/sys/thread/mod.cppm
-         src/sys/thread/unix.cppm
-         src/sys/thread/windows.cppm
          src/io/mod.cppm
          src/io/error.cppm
          src/io/traits.cppm
@@ -154,15 +184,12 @@ target_sources(
          src/crypto.cppm
          src/net/mod.cppm
          src/net/socket_addr.cppm
-         src/net/tcp.cppm)
+         src/net/tcp.cppm
+         ${rstd_std_platform_modules})
 
 target_sources(
   rstd.std
-  PRIVATE src/sys/pal/unix/futex.cpp
-          src/sys/pal/windows/futex.cpp
-          src/sys/sync/once/futex.cpp
-          src/sys/sync/thread_parking/futex.cpp
-          src/sys/sync/thread_parking/pthread.cpp
+  PRIVATE src/sys/sync/once/futex.cpp
           src/io/error.cpp
           src/thread/mod.cpp
           src/net/tcp.cpp
@@ -172,4 +199,5 @@ target_sources(
           src/env.cpp
           src/os/fd.cpp
           src/os/handle.cpp
-          src/os/socket.cpp)
+          src/os/socket.cpp
+          ${rstd_std_platform_sources})

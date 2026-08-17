@@ -1,7 +1,4 @@
 module;
-#include <rstd/macro.hpp>
-
-#if RSTD_OS_LINUX
 #include <linux/futex.h>
 #include <linux/io_uring.h>
 #include <sys/epoll.h>
@@ -80,11 +77,9 @@ inline constexpr auto _IO_URING_OP_SUPPORTED   = IO_URING_OP_SUPPORTED;
 #undef IORING_REGISTER_EVENTFD
 #undef IORING_REGISTER_PROBE
 #undef IO_URING_OP_SUPPORTED
-#endif
 
 export module rstd:sys.libc.linux;
 
-#if RSTD_OS_LINUX
 export namespace rstd::sys::libc
 {
 
@@ -167,4 +162,3 @@ inline auto io_uring_register(int fd, unsigned int opcode, void* argument, unsig
 }
 
 } // namespace rstd::sys::libc
-#endif

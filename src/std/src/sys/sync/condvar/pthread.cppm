@@ -1,8 +1,5 @@
-module;
-#include <rstd/macro.hpp>
 export module rstd:sys.sync.condvar.pthread;
 
-#if RSTD_OS_UNIX && ! RSTD_OS_WINDOWS
 export import :sys.pal;
 export import :sys.sync.mutex.pthread;
 export import :sys.sync.once_box;
@@ -68,4 +65,3 @@ private:
 };
 
 } // namespace rstd::sys::sync::condvar::pthread
-#endif

@@ -1,9 +1,5 @@
-module;
-#include <rstd/macro.hpp>
 export module rstd:sys.pal.windows.futex;
 export import rstd.core;
-
-#if RSTD_OS_WINDOWS
 
 using rstd::sync::atomic::Atomic;
 namespace rstd::sys::pal::windows::futex
@@ -26,4 +22,3 @@ export {
     void futex_wake_all(const Atomic<T>* futex);
 }
 } // namespace rstd::sys::pal::windows::futex
-#endif

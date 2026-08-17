@@ -2,7 +2,6 @@ module;
 #include <rstd/macro.hpp>
 export module rstd:sys.pal.unix.sync.condvar;
 
-#if RSTD_OS_UNIX
 export import :sys.libc.pthread;
 export import :sys.libc.std;
 export import :sys.libc.unix;
@@ -103,4 +102,3 @@ public:
 };
 
 } // namespace rstd::sys::pal::unix::sync::condvar
-#endif

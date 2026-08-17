@@ -1,21 +1,13 @@
 module;
-#include <rstd/macro.hpp>
 module rstd;
 import :sys.pal.unix.futex;
 import :sys.libc.std;
-#if RSTD_OS_LINUX
 import :sys.libc.linux;
-#endif
-#if RSTD_OS_UNIX
 import :sys.libc.unix;
-#endif
 using namespace rstd::sys::libc;
 
-#if RSTD_OS_UNIX
 namespace rstd::sys::pal::unix::futex
 {
-
-#if RSTD_OS_LINUX
 
 bool futex_wait(Futex* futex, Primitive expected, Option<Duration> timeout) {
     Option<libc::timespec> ts;
@@ -67,7 +59,4 @@ void futex_wake_all(Futex* futex) {
             i32::MAX.to_primitive());
 }
 
-#endif
-
 } // namespace rstd::sys::pal::unix::futex
-#endif

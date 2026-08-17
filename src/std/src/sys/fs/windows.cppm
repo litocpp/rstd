@@ -1,5 +1,3 @@
-module;
-#include <rstd/macro.hpp>
 export module rstd:sys.fs.windows;
 import :sys.fs.contract;
 import :fs.types;
@@ -9,8 +7,6 @@ import :path;
 import :sys.libc;
 import :time;
 import rstd.alloc;
-
-#if RSTD_OS_WINDOWS
 
 namespace rstd::sys::fs::windows
 {
@@ -653,5 +649,3 @@ public:
 };
 
 } // namespace rstd::sys::fs::windows
-
-#endif

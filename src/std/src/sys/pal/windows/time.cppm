@@ -1,8 +1,5 @@
-module;
-#include <rstd/macro.hpp>
 export module rstd:sys.pal.windows.time;
 
-#if RSTD_OS_WINDOWS
 import rstd.core;
 import :sys.libc.windows;
 
@@ -234,4 +231,3 @@ export auto local_offset_at_unix_time(i64 seconds) noexcept -> Option<i32> {
 }
 
 } // namespace rstd::sys::pal::windows::time
-#endif

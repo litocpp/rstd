@@ -1,8 +1,5 @@
-module;
-#include <rstd/macro.hpp>
 export module rstd:sys.pal.unix.time;
 
-#if RSTD_OS_UNIX
 import rstd.core;
 import :sys.libc.std;
 import :sys.libc.unix;
@@ -181,4 +178,3 @@ export auto local_offset_at_unix_time(i64 seconds) noexcept -> Option<i32> {
 }
 
 } // namespace rstd::sys::pal::unix::time
-#endif

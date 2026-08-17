@@ -1,5 +1,3 @@
-module;
-#include <rstd/macro.hpp>
 export module rstd:sys.fs.unsupported;
 import :sys.fs.contract;
 import :fs.types;
@@ -7,8 +5,6 @@ import :io;
 import :os.fd;
 import :path;
 import :time;
-
-#if ! RSTD_OS_UNIX && ! RSTD_OS_WINDOWS
 
 namespace rstd::sys::fs::unsupported
 {
@@ -178,5 +174,3 @@ public:
 };
 
 } // namespace rstd::sys::fs::unsupported
-
-#endif

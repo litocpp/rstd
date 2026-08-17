@@ -1,8 +1,5 @@
-module;
-#include <rstd/macro.hpp>
 export module rstd:sys.sync.thread_parking.pthread;
 
-#if RSTD_OS_UNIX && ! RSTD_OS_LINUX
 export import :sys.pal;
 export import rstd.core;
 
@@ -29,4 +26,3 @@ public:
     void unpark();
 };
 } // namespace rstd::sys::sync::thread_parking::pthread
-#endif

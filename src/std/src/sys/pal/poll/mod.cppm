@@ -3,20 +3,23 @@ module;
 
 export module rstd:sys.pal.poll;
 export import :sys.pal.poll.types;
+#if RSTD_OS_LINUX
 export import :sys.pal.linux.poll;
+#elif RSTD_OS_WINDOWS
 export import :sys.pal.windows.poll;
+#endif
 
 export namespace rstd::sys::pal::poll
 {
 
 #if RSTD_OS_LINUX
-using Poller   = rstd::sys::pal::linux::poll::Poller;
-using PollWake = rstd::sys::pal::linux::poll::PollWake;
-using PollInit = rstd::sys::pal::linux::poll::PollInit;
+namespace backend = rstd::sys::pal::linux::poll;
 #elif RSTD_OS_WINDOWS
-using Poller   = rstd::sys::pal::windows::poll::Poller;
-using PollWake = rstd::sys::pal::windows::poll::PollWake;
-using PollInit = rstd::sys::pal::windows::poll::PollInit;
+namespace backend = rstd::sys::pal::windows::poll;
 #endif
+
+using backend::Poller;
+using backend::PollWake;
+using backend::PollInit;
 
 } // namespace rstd::sys::pal::poll

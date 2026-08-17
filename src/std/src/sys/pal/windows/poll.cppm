@@ -1,14 +1,10 @@
 module;
-#include <rstd/macro.hpp>
-#if RSTD_OS_WINDOWS
 #include <winsock2.h>
 #include <windows.h>
-#endif
 
 export module rstd:sys.pal.windows.poll;
 export import :sys.pal.poll.types;
 
-#if RSTD_OS_WINDOWS
 import :sys.pal.windows.socket;
 import rstd.alloc;
 
@@ -580,4 +576,3 @@ inline auto Poller::init(BackendPreference preference) -> io::Result<PollInit> {
 }
 
 } // namespace rstd::sys::pal::windows::poll
-#endif

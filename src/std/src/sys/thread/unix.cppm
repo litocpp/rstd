@@ -7,8 +7,6 @@ import :forward;
 export import :thread.thread;
 export import rstd.alloc;
 
-#if RSTD_OS_LINUX
-
 using namespace rstd::sys::libc;
 using rstd_alloc::boxed::Box;
 using rstd::thread::ThreadInit;
@@ -90,5 +88,3 @@ export struct Thread {
 };
 
 }; // namespace rstd::sys::thread::unix
-
-#endif

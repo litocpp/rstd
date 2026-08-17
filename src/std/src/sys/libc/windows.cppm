@@ -1,7 +1,4 @@
 module;
-#include <rstd/macro.hpp>
-
-#ifdef RSTD_OS_WINDOWS
 #include <winsock2.h>
 #include <windows.h>
 #include <synchapi.h>
@@ -117,10 +114,8 @@ inline constexpr auto _WSAEOPNOTSUPP                    = WSAEOPNOTSUPP;
 #undef WSAEALREADY
 #undef WSAEINPROGRESS
 #undef WSAEOPNOTSUPP
-#endif
 export module rstd:sys.libc.windows;
 
-#ifdef RSTD_OS_WINDOWS
 export namespace rstd::sys::libc
 {
 
@@ -351,4 +346,3 @@ using ::_get_osfhandle;
 using ::_close;
 
 } // namespace rstd::sys::libc
-#endif

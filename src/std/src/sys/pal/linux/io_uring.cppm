@@ -1,10 +1,6 @@
-module;
-#include <rstd/macro.hpp>
-
 export module rstd:sys.pal.linux.io_uring;
 export import :sys.pal.poll.types;
 
-#if RSTD_OS_LINUX
 import :sys.libc;
 import :sys.pal.unix.socket;
 import rstd.alloc;
@@ -487,4 +483,3 @@ public:
 };
 
 } // namespace rstd::sys::pal::linux::io_uring
-#endif

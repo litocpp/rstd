@@ -1,8 +1,5 @@
-module;
-#include <rstd/macro.hpp>
 export module rstd:sys.thread.windows;
 
-#if RSTD_OS_WINDOWS
 export import :io;
 export import :sys.libc.std;
 export import :sys.libc.windows;
@@ -88,4 +85,3 @@ export struct Thread {
 };
 
 } // namespace rstd::sys::thread::windows
-#endif

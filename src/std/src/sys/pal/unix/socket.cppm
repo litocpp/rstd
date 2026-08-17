@@ -1,6 +1,3 @@
-module;
-#include <rstd/macro.hpp>
-
 export module rstd:sys.pal.unix.socket;
 export import :io.error;
 export import :net.socket_addr;
@@ -22,7 +19,6 @@ using rstd::os::socket::OwnedSocket;
 using rstd::os::socket::RawSocket;
 namespace libc = rstd::sys::libc;
 
-#if RSTD_OS_UNIX
 export struct NativeSocketAddr {
     libc::sockaddr_storage storage {};
     libc::socklen_t        len {};
@@ -264,6 +260,4 @@ export auto peer_addr(RawSocket socket) -> Result<SocketAddr> {
     }
     return addr_from_native(reinterpret_cast<const libc::sockaddr*>(&native.storage), native.len);
 }
-#endif
-
 } // namespace rstd::sys::pal::unix::socket

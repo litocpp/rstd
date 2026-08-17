@@ -1,8 +1,5 @@
-module;
-#include <rstd/macro.hpp>
 export module rstd:sys.pal.windows.sync.mutex;
 
-#if RSTD_OS_WINDOWS
 export import rstd.core;
 import :sys.libc.windows;
 
@@ -32,4 +29,3 @@ public:
 };
 
 } // namespace rstd::sys::pal::windows::sync::mutex
-#endif
