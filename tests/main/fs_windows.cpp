@@ -69,6 +69,27 @@ TEST(FsWindows, DirectoryCopyRenameAndHardLink) {
     EXPECT_EQ(count, rstd::usize(3));
 }
 
+TEST(FsWindows, ReadDirMoveTransfersDirectoryState) {
+    auto temporary = rstd::test::TempDir::make().unwrap();
+    auto source    = child_path(temporary.path(), "source"_str);
+    auto target    = child_path(temporary.path(), "target"_str);
+    rstd::fs::create_dir(source.as_path()).unwrap();
+    rstd::fs::create_dir(target.as_path()).unwrap();
+
+    auto entry = child_path(source.as_path(), "entry"_str);
+    rstd::fs::write(entry.as_path(), "x"_bytes).unwrap();
+
+    auto source_entries = rstd::fs::read_dir(source.as_path()).unwrap();
+    auto moved_entries  = rstd::move(source_entries);
+    auto target_entries = rstd::fs::read_dir(target.as_path()).unwrap();
+    target_entries      = rstd::move(moved_entries);
+
+    EXPECT_TRUE(source_entries.next().is_none());
+    EXPECT_TRUE(moved_entries.next().is_none());
+    ASSERT_TRUE(target_entries.next().is_some());
+    EXPECT_TRUE(target_entries.next().is_none());
+}
+
 TEST(FsWindows, AtomicWriteReportsChanges) {
     auto temporary = rstd::test::TempDir::make().unwrap();
     auto path      = child_path(temporary.path(), "atomic.txt"_str);

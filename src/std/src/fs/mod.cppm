@@ -4,6 +4,7 @@ export import :io;
 export import :path;
 export import :time;
 import :os.fd;
+import :sys.fs;
 
 using rstd::io::Error;
 using rstd::io::ErrorKind;
@@ -304,12 +305,11 @@ public:
 };
 
 export class ReadDir {
-    void*               m_handle { nullptr };
-    rstd::path::PathBuf m_parent;
+    rstd::sys::fs::Directory m_directory;
+    rstd::path::PathBuf      m_parent;
 
-    ReadDir(void* handle, rstd::path::PathBuf parent) noexcept
-        : m_handle(handle), m_parent(rstd::move(parent)) {}
-    void        close() noexcept;
+    ReadDir(rstd::sys::fs::Directory directory, rstd::path::PathBuf parent) noexcept
+        : m_directory(rstd::move(directory)), m_parent(rstd::move(parent)) {}
     friend auto read_dir(ref<Path> path) -> FsResult<ReadDir>;
 
 public:

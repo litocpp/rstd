@@ -448,31 +448,21 @@ auto DirEntry::metadata() const -> FsResult<Metadata> {
 }
 
 ReadDir::ReadDir(ReadDir&& other) noexcept
-    : m_handle(other.m_handle), m_parent(rstd::move(other.m_parent)) {
-    other.m_handle = nullptr;
+    : m_directory(rstd::move(other.m_directory)), m_parent(rstd::move(other.m_parent)) {
 }
 
 auto ReadDir::operator=(ReadDir&& other) noexcept -> ReadDir& {
     if (this != &other) {
-        close();
-        m_handle       = other.m_handle;
-        m_parent       = rstd::move(other.m_parent);
-        other.m_handle = nullptr;
+        m_directory = rstd::move(other.m_directory);
+        m_parent    = rstd::move(other.m_parent);
     }
     return *this;
 }
 
-ReadDir::~ReadDir() {
-    close();
-}
-
-void ReadDir::close() noexcept {
-    sys_fs::close_directory(m_handle);
-    m_handle = nullptr;
-}
+ReadDir::~ReadDir() = default;
 
 auto ReadDir::next() -> Option<FsResult<DirEntry>> {
-    auto result = sys_fs::read_directory(m_handle);
+    auto result = m_directory.next();
     if (result.is_none()) return None();
     auto entry_result = rstd::move(result).unwrap_unchecked();
     if (entry_result.is_err()) {
@@ -487,7 +477,7 @@ auto ReadDir::next() -> Option<FsResult<DirEntry>> {
 }
 
 auto read_dir(ref<Path> path) -> FsResult<ReadDir> {
-    auto result = sys_fs::open_directory(path);
+    auto result = sys_fs::Directory::open(path);
     if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
 
     auto parent = rstd::path::PathBuf::from(rstd::ffi::OsString::from(path.as_os_str()));

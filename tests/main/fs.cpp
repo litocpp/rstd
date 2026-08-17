@@ -531,6 +531,30 @@ TEST(FsReadDir, IteratesEntries) {
     EXPECT_FALSE(rstd::fs::exists(path_from_c_str(base)).unwrap_unchecked());
 }
 
+TEST(FsReadDir, MoveTransfersDirectoryState) {
+    char source_base[] = "/tmp/rstd-fs-readdir-move-source-XXXXXX";
+    char target_base[] = "/tmp/rstd-fs-readdir-move-target-XXXXXX";
+    ASSERT_NE(::mkdtemp(source_base), nullptr);
+    ASSERT_NE(::mkdtemp(target_base), nullptr);
+
+    auto source_file = rstd::path::PathBuf::from(path_from_c_str(source_base));
+    source_file.push(rstd::ref<rstd::path::Path>("entry"_str));
+    rstd::fs::write(source_file.as_path(), native_bytes("x", 1).as_slice()).unwrap_unchecked();
+
+    auto source = rstd::fs::read_dir(path_from_c_str(source_base)).unwrap_unchecked();
+    auto moved  = rstd::move(source);
+    auto target = rstd::fs::read_dir(path_from_c_str(target_base)).unwrap_unchecked();
+    target      = rstd::move(moved);
+
+    EXPECT_TRUE(source.next().is_none());
+    EXPECT_TRUE(moved.next().is_none());
+    ASSERT_TRUE(target.next().is_some());
+    EXPECT_TRUE(target.next().is_none());
+
+    rstd::fs::remove_dir_all(path_from_c_str(source_base)).unwrap_unchecked();
+    rstd::fs::remove_dir_all(path_from_c_str(target_base)).unwrap_unchecked();
+}
+
 TEST(FsReadDir, RemoveDirAllRecursive) {
     char base[] = "/tmp/rstd-fs-rda-XXXXXX";
     ::mkdtemp(base);

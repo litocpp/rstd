@@ -36,6 +36,10 @@ target_sources(
          src/sys/io/stdio.cppm
          src/sys/mod.cppm
          src/sys/fs.cppm
+         src/sys/fs/contract.cppm
+         src/sys/fs/unix.cppm
+         src/sys/fs/windows.cppm
+         src/sys/fs/unsupported.cppm
          src/sys/socket.cppm
          src/sys/io/mod.cppm
          src/sys/libc/mod.cppm
