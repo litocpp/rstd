@@ -1,2 +1,10 @@
-add_library(rstd.nostd STATIC new.cpp cxa.cpp)
+set(RSTD_NOSTD_SOURCES cxa.cpp)
+if(NOT RSTD_USE_ASAN)
+  list(APPEND RSTD_NOSTD_SOURCES new.cpp)
+endif()
+
+add_library(rstd.nostd STATIC ${RSTD_NOSTD_SOURCES})
 target_compile_features(rstd.nostd PUBLIC cxx_std_20)
+if(RSTD_USE_ASAN)
+  target_link_libraries(rstd.nostd PRIVATE rstd.asan)
+endif()

@@ -21,9 +21,19 @@ if(WIN32
 endif()
 
 option(RSTD_BUILD_BENCHMARKS "Build rstd benchmark executables" OFF)
-option(RSTD_USE_ASAN "asan" OFF)
+option(RSTD_USE_ASAN "Build rstd and its consumers with AddressSanitizer" OFF)
 option(RSTD_CHECK_INTEGER_OVERFLOW
        "Enable integer overflow checks in non-Debug builds" OFF)
+
+if(RSTD_USE_ASAN)
+  if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    message(FATAL_ERROR "RSTD_USE_ASAN requires Clang or GCC")
+  endif()
+  add_library(rstd.asan INTERFACE)
+  target_compile_options(rstd.asan INTERFACE -fsanitize=address
+                                             -fno-omit-frame-pointer)
+  target_link_options(rstd.asan INTERFACE -fsanitize=address)
+endif()
 
 set(ALL_OPTS
   -Wall

@@ -19,5 +19,8 @@ add_library(rstd.nostd_ INTERFACE)
 add_library(rstd::nostd ALIAS rstd.nostd_)
 
 target_link_libraries(rstd.nostd_ INTERFACE rstd.std rstd.alloc rstd.core rstd.runtime rstd.nostd)
+if(RSTD_USE_ASAN)
+  target_link_libraries(rstd.nostd_ INTERFACE rstd.asan)
+endif()
 
 add_subdirectory(cppstd)

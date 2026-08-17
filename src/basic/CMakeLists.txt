@@ -1,5 +1,8 @@
 add_library(rstd.basic STATIC)
 target_compile_features(rstd.basic PUBLIC cxx_std_20)
+if(RSTD_USE_ASAN)
+  target_link_libraries(rstd.basic PUBLIC "$<BUILD_INTERFACE:rstd.asan>")
+endif()
 if(RSTD_COMPILER_RT_LIBRARY)
   target_link_libraries(
     rstd.basic
