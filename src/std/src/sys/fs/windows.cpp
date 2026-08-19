@@ -53,6 +53,37 @@ auto path_wide(ref<Path> path) -> Result<Vec<wchar_t>> {
         return Err(windows_error());
     }
     result[usize(static_cast<rstd::size_t>(required))] = L'\0';
+
+    auto length = usize(static_cast<rstd::size_t>(required));
+    auto slash  = [](wchar_t value) noexcept {
+        return value == L'\\' || value == L'/';
+    };
+    auto drive_absolute = length >= usize(3) &&
+                          ((result[usize()] >= L'A' && result[usize()] <= L'Z') ||
+                           (result[usize()] >= L'a' && result[usize()] <= L'z')) &&
+                          result[usize(1)] == L':' && slash(result[usize(2)]);
+    auto unc_absolute   = length >= usize(3) && slash(result[usize()]) && slash(result[usize(1)]) &&
+                          result[usize(2)] != L'?';
+    if ((drive_absolute || unc_absolute) && length >= usize(248)) {
+        auto extended = Vec<wchar_t>::with_capacity(length + usize(9));
+        extended.push(L'\\');
+        extended.push(L'\\');
+        extended.push(L'?');
+        extended.push(L'\\');
+        auto start = usize {};
+        if (unc_absolute) {
+            extended.push(L'U');
+            extended.push(L'N');
+            extended.push(L'C');
+            extended.push(L'\\');
+            start = usize(2);
+        }
+        for (auto index = start; index < length; ++index) {
+            extended.push(result[index] == L'/' ? L'\\' : result[index]);
+        }
+        extended.push(L'\0');
+        return Ok(rstd::move(extended));
+    }
     return Ok(rstd::move(result));
 }
 

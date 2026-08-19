@@ -506,11 +506,38 @@ auto remove_dir_all(ref<Path> path) -> FsResult<empty> {
         auto type_result = entry.file_type();
         if (type_result.is_err()) return Err(rstd::move(type_result).unwrap_err_unchecked());
 
-        FsResult<empty> result = type_result.unwrap_unchecked().is_dir()
+        auto type = type_result.unwrap_unchecked();
+#if defined(_WIN32)
+        if (! type.is_dir()) {
+            auto child_metadata = symlink_metadata(child.as_path());
+            if (child_metadata.is_err()) {
+                return Err(rstd::move(child_metadata).unwrap_err_unchecked());
+            }
+            auto permissions = child_metadata.unwrap_unchecked().permissions();
+            if (permissions.readonly()) {
+                permissions.set_readonly(false);
+                auto changed = set_permissions(child.as_path(), permissions);
+                if (changed.is_err()) return Err(rstd::move(changed).unwrap_err_unchecked());
+            }
+        }
+#endif
+        FsResult<empty> result = type.is_dir()
                                      ? remove_dir_all(rstd::ref<rstd::path::Path>(child.as_path()))
                                      : remove_file(rstd::ref<rstd::path::Path>(child.as_path()));
         if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
     }
+#if defined(_WIN32)
+    auto directory_metadata = symlink_metadata(path);
+    if (directory_metadata.is_err()) {
+        return Err(rstd::move(directory_metadata).unwrap_err_unchecked());
+    }
+    auto permissions = directory_metadata.unwrap_unchecked().permissions();
+    if (permissions.readonly()) {
+        permissions.set_readonly(false);
+        auto changed = set_permissions(path, permissions);
+        if (changed.is_err()) return Err(rstd::move(changed).unwrap_err_unchecked());
+    }
+#endif
     return remove_dir(path);
 }
 

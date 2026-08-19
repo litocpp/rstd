@@ -112,4 +112,23 @@ TEST(FsWindows, MissingFileReturnsNotFound) {
     ASSERT_TRUE(result.is_err());
     EXPECT_EQ(result.unwrap_err().kind().code, rstd::io::error::ErrorKind::NotFound);
 }
+
+TEST(FsWindows, LongPathsAndReadonlyTreesAreRemovable) {
+    auto temporary = rstd::test::TempDir::make().unwrap();
+    auto root      = child_path(temporary.path(), "long-tree"_str);
+    auto directory = root.clone();
+    for (auto index = rstd::usize {}; index < rstd::usize(9); ++index) {
+        directory =
+            child_path(directory.as_path(), "segment_abcdefghijklmnopqrstuvwxyz0123456789"_str);
+    }
+    rstd::fs::create_dir_all(directory.as_path()).unwrap();
+    auto file = child_path(directory.as_path(), "readonly.txt"_str);
+    rstd::fs::write(file.as_path(), "long path"_bytes).unwrap();
+    EXPECT_EQ(rstd::fs::read_to_string(file.as_path()).unwrap(), "long path"_str);
+    auto permissions = rstd::fs::metadata(file.as_path()).unwrap().permissions();
+    permissions.set_readonly(true);
+    rstd::fs::set_permissions(file.as_path(), permissions).unwrap();
+    EXPECT_TRUE(rstd::fs::remove_dir_all(root.as_path()).is_ok());
+    EXPECT_FALSE(rstd::fs::exists(root.as_path()).unwrap());
+}
 #endif
