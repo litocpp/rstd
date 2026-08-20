@@ -73,6 +73,13 @@ TEST(JsonParser, ParsesNestedContainersAndReplacesDuplicateKeys) {
     EXPECT_EQ(**first, "a"_str);
 }
 
+TEST(JsonParser, RejectsDuplicateKeysWhenRequested) {
+    auto result = rstd::json::from_str(R"({"a":1,"a":2})"_str,
+                                       rstd::json::ParseOptions { .reject_duplicate_keys = true });
+    ASSERT_TRUE(result.is_err());
+    EXPECT_EQ(result.unwrap_err().classify(), Category::Syntax);
+}
+
 TEST(JsonParser, DecodesStringEscapesAndUnicode) {
     auto value = parse(R"("quote:\" slash:\/ line:\n bmp:\u00e9 pair:\ud83d\ude00")"_str).unwrap();
     ASSERT_TRUE(value.as_str().is_some());

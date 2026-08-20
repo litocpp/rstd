@@ -21,6 +21,7 @@ enum class ErrorCode : rstd::uint8_t
     NumberOutOfRange,
     InvalidUnicodeCodePoint,
     ControlCharacterWhileParsingString,
+    DuplicateObjectKey,
     KeyMustBeAString,
     LoneLeadingSurrogateInHexEscape,
     TrailingComma,
@@ -136,6 +137,7 @@ auto Impl<fmt::Display, json::Error>::fmt(fmt::Formatter& formatter) const -> bo
     case ErrorCode::ControlCharacterWhileParsingString:
         message = "control character (\\u0000-\\u001F) found while parsing a string";
         break;
+    case ErrorCode::DuplicateObjectKey: message = "duplicate object key"; break;
     case ErrorCode::KeyMustBeAString: message = "key must be a string"; break;
     case ErrorCode::LoneLeadingSurrogateInHexEscape:
         message = "lone leading surrogate in hex escape";

@@ -12,6 +12,8 @@ using ParseResult = rstd::Result<Value, Error>;
 struct ParseOptions {
     /// Allows line and block comments when enabled.
     bool allow_comments { false };
+    /// Rejects repeated keys in the same object when enabled.
+    bool reject_duplicate_keys { false };
 };
 
 /// Parses one JSON value from UTF-8 text.
@@ -422,7 +424,10 @@ class Parser {
             take();
             auto value = parse_value();
             if (value.is_err()) return Err(value.unwrap_err());
-            values.insert(key.unwrap(), value.unwrap());
+            auto replaced = values.insert(key.unwrap(), value.unwrap());
+            if (options_.reject_duplicate_keys && replaced.is_some()) {
+                return Err(error(ErrorCode::DuplicateObjectKey));
+            }
             if (auto failure = consume_whitespace(); failure.is_some()) return Err(*failure);
 
             if (eof()) return Err(error(ErrorCode::EofWhileParsingObject));
