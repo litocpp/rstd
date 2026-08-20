@@ -2,6 +2,7 @@ module;
 #include <compare>
 #include <cstdint>
 #include <cstddef>
+#include <initializer_list>
 #include <tuple>
 #include <source_location>
 export module rstd.basic:prelude;
@@ -63,6 +64,9 @@ export {
     /// Captures information about the source code location.
     using std::source_location;
 
+    /// Provides access to an array created by list initialization.
+    using std::initializer_list;
+
     /// Extracts the I-th element from a tuple-like type.
     using std::get;
     /// Provides the type of the I-th element in a tuple-like type.
@@ -114,6 +118,7 @@ using rstd::emptyT;
 
 using std::nullptr_t;
 using std::source_location;
+using rstd::initializer_list;
 
 using std::tuple_element;
 using std::tuple_size;
