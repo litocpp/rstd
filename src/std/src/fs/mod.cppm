@@ -30,6 +30,26 @@ export class FileLock;
 export class Metadata;
 export class ReadDir;
 
+export class TempDir {
+    Option<rstd::path::PathBuf> m_path;
+
+    explicit TempDir(rstd::path::PathBuf path): m_path(Some(rstd::move(path))) {}
+    auto close_best_effort() noexcept -> void;
+
+public:
+    TempDir() noexcept                         = default;
+    TempDir(const TempDir&)                    = delete;
+    auto operator=(const TempDir&) -> TempDir& = delete;
+    TempDir(TempDir&& other) noexcept;
+    auto operator=(TempDir&& other) noexcept -> TempDir&;
+    ~TempDir() noexcept;
+
+    static auto make(ref<str> prefix) -> FsResult<TempDir>;
+    auto        path() const noexcept -> ref<Path> { return m_path->as_path(); }
+    auto        close() -> FsResult<empty>;
+    auto        keep() -> rstd::path::PathBuf;
+};
+
 export enum class FileLockMode {
     Shared,
     Exclusive,

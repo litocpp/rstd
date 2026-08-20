@@ -129,6 +129,17 @@ TEST(TempDir, OwnsMovesClosesAndKeepsDirectories) {
     EXPECT_TRUE(rstd::fs::remove_dir_all(kept_path.as_path()).is_ok());
 }
 
+TEST(TempDir, FilesystemTemporaryDirectoryOwnsCleanup) {
+    auto path = rstd::path::PathBuf::make();
+    {
+        auto temporary = rstd::fs::TempDir::make("rstd-fs-test"_str);
+        ASSERT_TRUE(temporary.is_ok());
+        path = rstd::path::PathBuf::from(temporary->path());
+        EXPECT_TRUE(rstd::fs::exists(path.as_path()).unwrap());
+    }
+    EXPECT_FALSE(rstd::fs::exists(path.as_path()).unwrap());
+}
+
 TEST(Macro, AllPassing) {
     auto value = 1;
     EXPECT_TRUE(value == 1);

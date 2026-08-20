@@ -2,6 +2,8 @@ module;
 
 module rstd;
 import :fs;
+import :env;
+import :process;
 import :sys.fs;
 
 using namespace rstd::prelude;
@@ -9,6 +11,62 @@ namespace sys_fs = rstd::sys::fs;
 
 namespace rstd::fs
 {
+
+rstd::sync::atomic::Atomic<usize> temp_directory_sequence;
+
+auto TempDir::close_best_effort() noexcept -> void {
+    if (m_path.is_none()) return;
+    if (remove_dir_all(m_path->as_path()).is_ok()) m_path = None();
+}
+
+TempDir::TempDir(TempDir&& other) noexcept: m_path(rstd::move(other.m_path)) {
+    other.m_path = None();
+}
+
+auto TempDir::operator=(TempDir&& other) noexcept -> TempDir& {
+    if (this == rstd::addressof(other)) return *this;
+    close_best_effort();
+    m_path       = rstd::move(other.m_path);
+    other.m_path = None();
+    return *this;
+}
+
+TempDir::~TempDir() noexcept {
+    close_best_effort();
+}
+
+auto TempDir::make(ref<str> prefix) -> FsResult<TempDir> {
+    constexpr auto attempt_limit = usize(1024);
+    auto           base          = rstd::env::temp_dir();
+    for (auto attempt = usize {}; attempt < attempt_limit; ++attempt) {
+        auto sequence =
+            temp_directory_sequence.fetch_add(usize(1), rstd::sync::atomic::Ordering::Relaxed);
+        auto name    = rstd::format("{}-{}-{}", prefix, rstd::process::id(), sequence);
+        auto path    = base.join(rstd::path::PathBuf::from(name.as_str()).as_path());
+        auto created = create_dir(path.as_path());
+        if (created.is_ok()) return Ok(TempDir(rstd::move(path)));
+        auto error = rstd::move(created).unwrap_err();
+        if (error.kind() != ErrorKind { ErrorKind::AlreadyExists }) {
+            return Err(rstd::move(error));
+        }
+    }
+    return Err(Error::new_const(ErrorKind { ErrorKind::AlreadyExists },
+                                "cannot create a unique temporary directory"));
+}
+
+auto TempDir::close() -> FsResult<empty> {
+    if (m_path.is_none()) return Ok(empty {});
+    auto removed = remove_dir_all(m_path->as_path());
+    if (removed.is_err()) return Err(rstd::move(removed).unwrap_err());
+    m_path = None();
+    return Ok(empty {});
+}
+
+auto TempDir::keep() -> rstd::path::PathBuf {
+    auto path = rstd::move(m_path).unwrap();
+    m_path    = None();
+    return path;
+}
 
 class MetadataFactory {
 public:
