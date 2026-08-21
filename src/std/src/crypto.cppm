@@ -1,6 +1,7 @@
 module;
 #include <cstddef>
 #include <cstdint>
+#include <rstd/enum.hpp>
 
 export module rstd:crypto;
 
@@ -12,6 +13,70 @@ using ::alloc::string::String;
 
 export namespace rstd::crypto
 {
+
+class Sha256DigestParseError {
+    RSTD_ENUM(Sha256DigestParseError, (Length, (usize actual;)), (Character, (usize index;)))
+};
+
+class Sha256Digest : public DefaultInClass<Sha256Digest, Clone> {
+    array<u8, 32> bytes_;
+
+public:
+    static auto from_bytes(array<u8, 32> bytes) noexcept -> Sha256Digest {
+        auto result   = Sha256Digest {};
+        result.bytes_ = rstd::move(bytes);
+        return result;
+    }
+
+    static auto parse_hex(ref<str> value) -> Result<Sha256Digest, Sha256DigestParseError> {
+        if (value.len() != usize(64)) {
+            return Err(Sha256DigestParseError::Length(value.len()));
+        }
+        auto bytes  = array<u8, 32> {};
+        auto nibble = [](u8 value) -> Option<u8> {
+            const auto byte = value.to_primitive();
+            if (byte >= '0' && byte <= '9') return Some(u8(byte - '0'));
+            if (byte >= 'a' && byte <= 'f') return Some(u8(byte - 'a' + 10));
+            if (byte >= 'A' && byte <= 'F') return Some(u8(byte - 'A' + 10));
+            return None();
+        };
+        for (usize index {}; index < usize(32); ++index) {
+            auto high = nibble(value[index * usize(2)]);
+            if (high.is_none()) {
+                return Err(Sha256DigestParseError::Character(index * usize(2)));
+            }
+            auto low = nibble(value[index * usize(2) + usize(1)]);
+            if (low.is_none()) {
+                return Err(Sha256DigestParseError::Character(index * usize(2) + usize(1)));
+            }
+            bytes[index] = u8((high->to_primitive() << 4u) | low->to_primitive());
+        }
+        return Ok(from_bytes(rstd::move(bytes)));
+    }
+
+    auto as_bytes() const noexcept -> slice<u8> { return bytes_.as_slice(); }
+
+    auto to_hex() const -> String {
+        static constexpr char digits[] = "0123456789abcdef";
+        auto                  result   = String::make();
+        result.reserve(usize(64));
+        for (const auto value : bytes_) {
+            const auto byte = value.to_primitive();
+            result.push_ascii(digits[byte >> 4u]);
+            result.push_ascii(digits[byte & 0x0fu]);
+        }
+        return result;
+    }
+
+    auto clone() const -> Sha256Digest { return from_bytes(bytes_); }
+
+    friend auto operator==(const Sha256Digest& left, const Sha256Digest& right) noexcept -> bool {
+        for (usize index {}; index < usize(32); ++index) {
+            if (left.bytes_[index] != right.bytes_[index]) return false;
+        }
+        return true;
+    }
+};
 
 constexpr auto rotate_right(std::uint32_t value, std::uint32_t count) noexcept -> std::uint32_t {
     return (value >> count) | (value << (32u - count));
@@ -131,6 +196,10 @@ public:
         }
         return result;
     }
+
+    auto finalize_digest() && noexcept -> Sha256Digest {
+        return Sha256Digest::from_bytes(rstd::move(*this).finalize());
+    }
 };
 
 auto sha256(slice<u8> input) noexcept -> array<u8, 32> {
@@ -159,4 +228,93 @@ auto sha256_hex(ref<str> input) -> String {
     return sha256_hex(input.as_bytes());
 }
 
+auto sha256_digest(slice<u8> input) noexcept -> Sha256Digest {
+    return Sha256Digest::from_bytes(sha256(input));
+}
+
+auto sha256_digest(ref<str> input) noexcept -> Sha256Digest {
+    return sha256_digest(input.as_bytes());
+}
+
 } // namespace rstd::crypto
+
+export namespace rstd
+{
+
+template<>
+struct Impl<str_::FromStr, crypto::Sha256Digest> {
+    using Err = crypto::Sha256DigestParseError;
+
+    static auto from_str(ref<str> value) -> Result<crypto::Sha256Digest, Err> {
+        return crypto::Sha256Digest::parse_hex(value);
+    }
+};
+
+template<>
+struct Impl<convert::TryFrom<ref<str>>, crypto::Sha256Digest> {
+    using Error = crypto::Sha256DigestParseError;
+
+    static auto try_from(ref<str> value) -> Result<crypto::Sha256Digest, Error> {
+        return rstd::from_str<crypto::Sha256Digest>(value);
+    }
+};
+
+template<>
+struct Impl<fmt::Display, crypto::Sha256Digest> : ImplBase<crypto::Sha256Digest> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        static constexpr char digits[] = "0123456789abcdef";
+        for (const auto value : this->self().as_bytes()) {
+            const auto byte = value.to_primitive();
+            if (! formatter.write_raw(&digits[byte >> 4u], 1) ||
+                ! formatter.write_raw(&digits[byte & 0x0fu], 1)) {
+                return false;
+            }
+        }
+        return true;
+    }
+};
+
+template<>
+struct Impl<fmt::Debug, crypto::Sha256Digest> : ImplBase<crypto::Sha256Digest> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        return as<fmt::Display>(this->self()).fmt(formatter);
+    }
+};
+
+template<>
+struct Impl<fmt::Display, crypto::Sha256DigestParseError>
+    : ImplBase<crypto::Sha256DigestParseError> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        const auto& error = this->self();
+        if (error.is_Length()) {
+            return formatter.write_fmt(fmt::Arguments::make(
+                "SHA-256 digest must contain 64 hexadecimal characters; found {}",
+                error.as_Length().actual));
+        }
+        return formatter.write_fmt(
+            fmt::Arguments::make("SHA-256 digest contains a non-hexadecimal character at byte {}",
+                                 error.as_Character().index));
+    }
+};
+
+template<>
+struct Impl<fmt::Debug, crypto::Sha256DigestParseError> : ImplBase<crypto::Sha256DigestParseError> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        return as<fmt::Display>(this->self()).fmt(formatter);
+    }
+};
+
+template<>
+struct Impl<error::Error, crypto::Sha256DigestParseError>
+    : DefaultInImpl<error::Error, crypto::Sha256DigestParseError> {};
+
+template<>
+struct Impl<hash::Hash, crypto::Sha256Digest> : ImplBase<crypto::Sha256Digest> {
+    template<typename H>
+        requires Impled<H, hash::Hasher>
+    void hash(H& state) const noexcept {
+        rstd::as<hash::Hasher>(state).write(this->self().as_bytes());
+    }
+};
+
+} // namespace rstd
