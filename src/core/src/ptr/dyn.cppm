@@ -89,7 +89,7 @@ struct VTableStaticStorage {
 
     template<rstd::size_t I, typename Ret, bool Ne, typename... Args>
     struct Wrap<I, Ret (*)(voidp, Args...) noexcept(Ne)> {
-        static auto func(voidp p, Args... args) noexcept(Ne) {
+        static auto func(voidp p, Args... args) noexcept(Ne) -> Ret {
             constexpr const auto api { ApiHelper::template get<I>() };
             if constexpr (source::kind == mtp::trait_impl_kind::Direct ||
                           source::kind == mtp::trait_impl_kind::InClass) {

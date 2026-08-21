@@ -76,6 +76,29 @@ struct EmptyNonDirectTrait {
 
 static_assert(! rstd::Impled<int, EmptyNonDirectTrait>);
 
+struct MutableReferenceTrait {
+    template<typename T, typename = void>
+    struct Api {
+        using Trait = MutableReferenceTrait;
+        auto value() -> int& { return rstd::trait_call<0>(this); }
+    };
+
+    template<typename T>
+    using Funcs = rstd::TraitFuncs<&T::value>;
+};
+
+struct MutableReferenceValue {
+    int value;
+};
+
+template<>
+struct rstd::Impl<MutableReferenceTrait, MutableReferenceValue>
+    : rstd::ImplBase<MutableReferenceValue> {
+    auto value() -> int& { return this->self().value; }
+};
+
+static_assert(rstd::Impled<MutableReferenceValue, MutableReferenceTrait>);
+
 // Base structure for fields
 struct TestClassFields {
     int value;
@@ -176,6 +199,15 @@ TEST(Trait, DynamicDispatchTest) {
     std::ostringstream oss;
     dyn->display(oss);
     EXPECT_EQ(oss.str(), "TestClass(42)");
+}
+
+TEST(Trait, DynamicDispatchPreservesReferenceReturn) {
+    MutableReferenceValue value { 42 };
+    auto                  dynamic = rstd::dyn<MutableReferenceTrait>::from_ref(value);
+
+    dynamic->value() = 73;
+
+    EXPECT_EQ(value.value, 73);
 }
 
 TEST(Trait, ComplexTrait) {
