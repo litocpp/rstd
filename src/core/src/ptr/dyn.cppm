@@ -32,6 +32,11 @@ struct VTable;
 template<typename T, typename U>
 struct VTableStaticStorage;
 
+template<typename U>
+void dyn_drop(voidp p) {
+    static_cast<U*>(p)->~U();
+}
+
 template<typename Traits>
 struct SuperVTables;
 
@@ -82,32 +87,31 @@ struct VTableStaticStorage {
     using ApiHelper = mtp::TraitApiHelper<T, typename source::api_owner>;
     using apis_t    = vtable_t::apis_t;
 
-    template<rstd::size_t I, typename Fn>
-    struct Wrap {
-        static_assert(false);
-    };
+    template<rstd::size_t I, typename Ret, bool Ne, typename... Args>
+    static auto thunk(voidp p, Args... args) noexcept(Ne) -> Ret {
+        constexpr const auto api { ApiHelper::template get<I>() };
+        if constexpr (source::kind == mtp::trait_impl_kind::Direct ||
+                      source::kind == mtp::trait_impl_kind::InClass) {
+            auto self { static_cast<U*>(p) };
+            return (self->*api)(rstd::forward<Args>(args)...);
+        } else {
+            impl_t self { static_cast<U*>(p) };
+            return (self.*api)(rstd::forward<Args>(args)...);
+        }
+    }
 
     template<rstd::size_t I, typename Ret, bool Ne, typename... Args>
-    struct Wrap<I, Ret (*)(voidp, Args...) noexcept(Ne)> {
-        static auto func(voidp p, Args... args) noexcept(Ne) -> Ret {
-            constexpr const auto api { ApiHelper::template get<I>() };
-            if constexpr (source::kind == mtp::trait_impl_kind::Direct ||
-                          source::kind == mtp::trait_impl_kind::InClass) {
-                auto self { static_cast<U*>(p) };
-                return (self->*api)(rstd::forward<Args>(args)...);
-            } else {
-                impl_t self { static_cast<U*>(p) };
-                return (self.*api)(rstd::forward<Args>(args)...);
-            }
-        };
-    };
+    consteval static auto make_thunk(Ret (*)(voidp, Args...) noexcept(Ne)) {
+        return &thunk<I, Ret, Ne, Args...>;
+    }
 
     template<rstd::size_t I>
     consteval static auto convert() {
         // get api from Impl
         using FT = mtp::func_traits<mtp::rm_cv<decltype(ApiHelper::template get<I>())>>;
         if constexpr (FT::is_member) {
-            return &Wrap<I, typename FT::to_dyn>::func;
+            using dyn_fn_t = typename FT::to_dyn;
+            return make_thunk<I>(static_cast<dyn_fn_t>(nullptr));
         } else {
             return ApiHelper::template get<I>();
         }
@@ -130,10 +134,7 @@ struct VTableStaticStorage {
     }
 
     static constexpr const VTable<T> vtable {
-        .drop =
-            [](voidp p) {
-                static_cast<U*>(p)->~U();
-            },
+        .drop             = &dyn_drop<U>,
         .apis             = convert_all(mtp::make_index_sequence<mtp::tuple_size<apis_t>> {}),
         .super_vtables    = make_super_vtables(mtp::trait_super_traits_t<T> {}),
         .concrete_type_id = rstd::any::TypeId::of<U>(),
