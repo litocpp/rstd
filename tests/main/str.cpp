@@ -219,7 +219,7 @@ TEST(Str, BytesIsAnExactDoubleEndedIterator) {
     EXPECT_EQ(bytes.next_back().unwrap(), u8(0xb3));
     EXPECT_EQ(bytes.len(), usize(3));
 
-    auto remaining = bytes.collect<rstd::vec::Vec<u8>>();
+    auto remaining = rstd::move(bytes).collect<rstd::vec::Vec<u8>>();
     ASSERT_EQ(remaining.len(), usize(3));
     EXPECT_EQ(remaining[usize()], u8());
     EXPECT_EQ(remaining[usize(1)], u8(0xe5));

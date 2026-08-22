@@ -648,7 +648,7 @@ public:
         return { begin(), end() };
     }
     /// Consumes the vector, returning an iterator over owned `T`.
-    auto into_iter() -> VecIntoIter<T> { return VecIntoIter<T>(rstd::move(*this)); }
+    auto into_iter() && -> VecIntoIter<T> { return VecIntoIter<T>(rstd::move(*this)); }
 };
 
 /// Owning iterator over a `Vec<T>`, yielding elements by value.
@@ -1107,10 +1107,25 @@ struct Impl<iter::FromIterator<A>, ::alloc::vec::Vec<A>> : ImplBase<::alloc::vec
 };
 
 template<typename A>
+struct Impl<iter::Extend<A>, ::alloc::vec::Vec<A>> : ImplBase<::alloc::vec::Vec<A>> {
+    template<iter::has_next It>
+    static void extend(::alloc::vec::Vec<A>& collection, It iterator) {
+        collection.reserve(as<iter::Iterator>(iterator).size_hint().template get<0>());
+        for (auto item = as<iter::Iterator>(iterator).next(); item.is_some();
+             item      = as<iter::Iterator>(iterator).next())
+            collection.push(rstd::move(*item));
+    }
+
+    static void extend_one(::alloc::vec::Vec<A>& collection, A&& item) {
+        collection.push(rstd::move(item));
+    }
+};
+
+template<typename A>
 struct Impl<iter::IntoIterator, ::alloc::vec::Vec<A>> : ImplBase<::alloc::vec::Vec<A>> {
     using IntoIter = ::alloc::vec::VecIntoIter<A>;
 
-    auto into_iter() -> IntoIter { return this->self().into_iter(); }
+    auto into_iter() -> IntoIter { return rstd::move(this->self()).into_iter(); }
 };
 
 template<typename A>

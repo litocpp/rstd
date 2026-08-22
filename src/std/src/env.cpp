@@ -43,7 +43,7 @@ auto args_os() -> ArgsOs {
         if (value == nullptr) break;
         values.push(os_string_from_cstr(value));
     }
-    return values.into_iter();
+    return rstd::move(values).into_iter();
 }
 
 auto args() -> Args {

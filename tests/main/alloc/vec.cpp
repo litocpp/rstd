@@ -307,7 +307,7 @@ TEST(Vec, CollectReusesUnadvancedIntoIterAllocation) {
     source.push(8);
     auto* allocation = source.data();
 
-    auto values = source.into_iter().collect<Vec<int>>();
+    auto values = rstd::move(source).into_iter().collect<Vec<int>>();
 
     EXPECT_EQ(values.data(), allocation);
     EXPECT_EQ(values.capacity(), usize(12));
@@ -323,7 +323,7 @@ TEST(Vec, CollectCompactsAdvancedIntoIterInPlace) {
         auto source = Vec<CollectMoveOnly>::with_capacity(usize(8));
         for (int value = 0; value < 8; ++value) source.emplace_back(value, drops);
         auto* allocation = source.data();
-        auto  iterator   = source.into_iter();
+        auto  iterator   = rstd::move(source).into_iter();
         {
             auto first  = iterator.next();
             auto second = iterator.next();
@@ -354,7 +354,7 @@ TEST(Vec, CollectCompactsWhenConsumedPrefixExceedsRemainder) {
         auto source = Vec<CollectMoveOnly>::with_capacity(usize(3));
         for (int value = 0; value < 3; ++value) source.emplace_back(value, drops);
         auto* allocation = source.data();
-        auto  iterator   = source.into_iter();
+        auto  iterator   = rstd::move(source).into_iter();
         {
             auto first  = iterator.next();
             auto second = iterator.next();
@@ -377,7 +377,7 @@ TEST(Vec, CollectReallocatesSparseAdvancedIntoIter) {
     auto source = Vec<int>::with_capacity(usize(8));
     for (int value = 0; value < 8; ++value) source.push(rstd::move(value));
     auto* allocation = source.data();
-    auto  iterator   = source.into_iter();
+    auto  iterator   = rstd::move(source).into_iter();
     for (int count = 0; count < 5; ++count) ASSERT_TRUE(iterator.next().is_some());
 
     auto values = rstd::move(iterator).collect<Vec<int>>();
@@ -395,7 +395,7 @@ TEST(Vec, IntoIterEndsYieldedSlotsAndTransfersRemainingOwnership) {
     {
         auto source = Vec<CollectMoveOnly>::with_capacity(usize(4));
         for (int value = 0; value < 4; ++value) source.emplace_back(value, drops);
-        auto iterator = source.into_iter();
+        auto iterator = rstd::move(source).into_iter();
         {
             auto front = iterator.next();
             auto back  = iterator.next_back();
@@ -422,7 +422,8 @@ TEST(Vec, InPlaceCollectMapReusesAllocation) {
     source.push(8);
     auto* allocation = source.data();
 
-    auto values = source.into_iter()
+    auto values = rstd::move(source)
+                      .into_iter()
                       .map([](int value) {
                           return value * 2;
                       })
@@ -440,7 +441,7 @@ TEST(Vec, InPlaceCollectReusesHalfConsumedDoubleEndedSource) {
     auto source = Vec<int>::with_capacity(usize(8));
     for (int value = 0; value < 6; ++value) source.push(rstd::move(value));
     auto* allocation = source.data();
-    auto  iterator   = source.into_iter();
+    auto  iterator   = rstd::move(source).into_iter();
     EXPECT_EQ(iterator.next(), rstd::Some(0));
     EXPECT_EQ(iterator.next_back(), rstd::Some(5));
 
@@ -464,7 +465,8 @@ TEST(Vec, InPlaceCollectAdapterPipelineCompactsInAllocation) {
     auto* allocation = source.data();
     int   inspected  = 0;
 
-    auto values = source.into_iter()
+    auto values = rstd::move(source)
+                      .into_iter()
                       .map([](int value) {
                           return value + 1;
                       })
@@ -493,7 +495,8 @@ TEST(Vec, InPlaceCollectEmptyResultKeepsCompatibleAllocation) {
     source.push(3);
     auto* allocation = source.data();
 
-    auto values = source.into_iter()
+    auto values = rstd::move(source)
+                      .into_iter()
                       .filter_map([](int) -> rstd::Option<int> {
                           return rstd::None();
                       })
@@ -511,7 +514,8 @@ TEST(Vec, InPlaceCollectPreservesPhysicalLayoutWithTrailingBytes) {
     source.push(InPlaceWide { 7, 8, 9 });
     auto* allocation = source.data();
 
-    auto values = source.into_iter()
+    auto values = rstd::move(source)
+                      .into_iter()
                       .map([](InPlaceWide value) {
                           return InPlaceNarrow { value.first, value.third };
                       })
@@ -537,7 +541,8 @@ TEST(Vec, InPlaceCollectedRemainderLayoutSupportsGrowth) {
     source.push(InPlaceWide { 4, 5, 6 });
     source.push(InPlaceWide { 7, 8, 9 });
 
-    auto values = source.into_iter()
+    auto values = rstd::move(source)
+                      .into_iter()
                       .map([](InPlaceWide value) {
                           return InPlaceNarrow { value.first, value.third };
                       })
@@ -564,7 +569,8 @@ TEST(Vec, InPlaceCollectMovesNonTrivialObjectsWithoutByteRelocation) {
         auto* allocation = source.data();
 
         auto values =
-            source.into_iter()
+            rstd::move(source)
+                .into_iter()
                 .map([&destination_drops](InPlaceSourceTracked value) {
                     EXPECT_EQ(value.value_ptr, &value.value);
                     return InPlaceDestinationTracked { value.value * 3, destination_drops };
@@ -591,7 +597,7 @@ TEST(Vec, InPlaceCollectTakeDropsSourceTail) {
         for (int value = 0; value < 6; ++value) source.emplace_back(value, drops);
         auto* allocation = source.data();
 
-        auto values = source.into_iter().take(usize(2)).collect<Vec<CollectMoveOnly>>();
+        auto values = rstd::move(source).into_iter().take(usize(2)).collect<Vec<CollectMoveOnly>>();
 
         EXPECT_EQ(values.data(), allocation);
         EXPECT_EQ(drops, 4);
@@ -612,8 +618,9 @@ TEST(Vec, InPlaceCollectZipUsesLeftAllocationAndDropsTails) {
     right.push(20);
     right.push(30);
 
-    auto values = left.into_iter()
-                      .zip(right.into_iter())
+    auto values = rstd::move(left)
+                      .into_iter()
+                      .zip(rstd::move(right).into_iter())
                       .map([](auto pair) {
                           return pair.template get<0>() + pair.template get<1>();
                       })
@@ -633,7 +640,8 @@ TEST(Vec, InPlaceCollectStatefulAdaptersPreserveStopSemantics) {
         for (int value = 0; value < 8; ++value) source.emplace_back(value, drops);
         auto* allocation = source.data();
 
-        auto values = source.into_iter()
+        auto values = rstd::move(source)
+                          .into_iter()
                           .skip(usize(1))
                           .skip_while([](const CollectMoveOnly& value) {
                               return value.value < 3;
@@ -661,7 +669,8 @@ TEST(Vec, InPlaceCollectEnumerateFilterMapAndScanReuseAllocation) {
     for (int value = 1; value <= 6; ++value) source.push(rstd::move(value));
     auto* allocation = source.data();
 
-    auto values = source.into_iter()
+    auto values = rstd::move(source)
+                      .into_iter()
                       .enumerate()
                       .filter_map([](auto indexed) -> rstd::Option<int> {
                           auto index = indexed.template get<0>();
@@ -691,7 +700,7 @@ TEST(Vec, InPlaceCollectCopiedAndClonedPropagateOwningSource) {
         copied_source.push(rstd::ref<rstd::u64>::from_raw_parts(&value));
     }
     auto* copied_allocation = copied_source.data();
-    auto  copied            = copied_source.into_iter().copied().collect<Vec<rstd::u64>>();
+    auto  copied = rstd::move(copied_source).into_iter().copied().collect<Vec<rstd::u64>>();
 
     EXPECT_EQ(static_cast<void*>(copied.data()), static_cast<void*>(copied_allocation));
     ASSERT_EQ(copied.len(), usize(3));
@@ -703,7 +712,7 @@ TEST(Vec, InPlaceCollectCopiedAndClonedPropagateOwningSource) {
         cloned_source.push(rstd::ref<rstd::u64>::from_raw_parts(&value));
     }
     auto* cloned_allocation = cloned_source.data();
-    auto  cloned            = cloned_source.into_iter().cloned().collect<Vec<rstd::u64>>();
+    auto  cloned = rstd::move(cloned_source).into_iter().cloned().collect<Vec<rstd::u64>>();
 
     EXPECT_EQ(static_cast<void*>(cloned.data()), static_cast<void*>(cloned_allocation));
     ASSERT_EQ(cloned.len(), usize(3));
@@ -717,7 +726,8 @@ TEST(Vec, InPlaceCollectFallsBackForIncompatibleLayout) {
     source.push(8);
     auto* allocation = source.data();
 
-    auto values = source.into_iter()
+    auto values = rstd::move(source)
+                      .into_iter()
                       .map([](int value) {
                           return InPlaceAlignedLong { value };
                       })
@@ -736,7 +746,7 @@ TEST(Vec, InPlaceCollectFallsBackForPeekable) {
     source.push(6);
     auto* allocation = source.data();
 
-    auto values = source.into_iter().peekable().collect<Vec<int>>();
+    auto values = rstd::move(source).into_iter().peekable().collect<Vec<int>>();
 
     EXPECT_NE(values.data(), allocation);
     ASSERT_EQ(values.len(), usize(3));
@@ -752,7 +762,7 @@ TEST(Vec, InPlaceCollectUnsupportedAdaptersRemainCollectible) {
         source.push(2);
         source.push(3);
         auto* allocation = source.data();
-        auto  values     = source.into_iter().fuse().collect<Vec<int>>();
+        auto  values     = rstd::move(source).into_iter().fuse().collect<Vec<int>>();
         EXPECT_NE(values.data(), allocation);
         EXPECT_EQ(values.as_slice(), (rstd::array<int, 3> { 1, 2, 3 }.as_slice()));
     }
@@ -760,7 +770,7 @@ TEST(Vec, InPlaceCollectUnsupportedAdaptersRemainCollectible) {
         auto source = Vec<int>::with_capacity(usize(6));
         for (int value = 0; value < 5; ++value) source.push(rstd::move(value));
         auto* allocation = source.data();
-        auto  values     = source.into_iter().step_by(usize(2)).collect<Vec<int>>();
+        auto  values     = rstd::move(source).into_iter().step_by(usize(2)).collect<Vec<int>>();
         EXPECT_NE(values.data(), allocation);
         EXPECT_EQ(values.as_slice(), (rstd::array<int, 3> { 0, 2, 4 }.as_slice()));
     }
@@ -770,7 +780,7 @@ TEST(Vec, InPlaceCollectUnsupportedAdaptersRemainCollectible) {
         source.push(2);
         source.push(3);
         auto* allocation = source.data();
-        auto  values     = source.into_iter().rev().collect<Vec<int>>();
+        auto  values     = rstd::move(source).into_iter().rev().collect<Vec<int>>();
         EXPECT_NE(values.data(), allocation);
         EXPECT_EQ(values.as_slice(), (rstd::array<int, 3> { 3, 2, 1 }.as_slice()));
     }
@@ -782,7 +792,8 @@ TEST(Vec, InPlaceCollectUnsupportedAdaptersRemainCollectible) {
         auto  second           = Vec<int>::make();
         second.push(3);
         second.push(4);
-        auto values = first.into_iter().chain(second.into_iter()).collect<Vec<int>>();
+        auto values =
+            rstd::move(first).into_iter().chain(rstd::move(second).into_iter()).collect<Vec<int>>();
         EXPECT_NE(values.data(), first_allocation);
         EXPECT_EQ(values.as_slice(), (rstd::array<int, 4> { 1, 2, 3, 4 }.as_slice()));
     }
@@ -792,7 +803,7 @@ TEST(Vec, InPlaceCollectUnsupportedAdaptersRemainCollectible) {
         source.push(2);
         source.push(3);
         auto* allocation = source.data();
-        auto  values     = source.into_iter().intersperse(0).collect<Vec<int>>();
+        auto  values     = rstd::move(source).into_iter().intersperse(0).collect<Vec<int>>();
         EXPECT_NE(values.data(), allocation);
         EXPECT_EQ(values.as_slice(), (rstd::array<int, 5> { 1, 0, 2, 0, 3 }.as_slice()));
     }
@@ -804,7 +815,7 @@ TEST(Vec, InPlaceCollectUnsupportedAdaptersRemainCollectible) {
             source.push(rstd::move(inner));
         }
         auto* allocation = source.data();
-        auto  values     = source.into_iter().flatten().collect<Vec<int>>();
+        auto  values     = rstd::move(source).into_iter().flatten().collect<Vec<int>>();
         EXPECT_NE(static_cast<void*>(values.data()), static_cast<void*>(allocation));
         EXPECT_EQ(values.as_slice(), (rstd::array<int, 3> { 1, 2, 3 }.as_slice()));
     }
@@ -813,7 +824,8 @@ TEST(Vec, InPlaceCollectUnsupportedAdaptersRemainCollectible) {
         source.push(1);
         source.push(2);
         auto* allocation = source.data();
-        auto  values     = source.into_iter()
+        auto  values     = rstd::move(source)
+                               .into_iter()
                                .flat_map([](int value) {
                               auto inner = Vec<int>::make();
                               inner.emplace_back(value);
@@ -833,7 +845,8 @@ TEST(Vec, InPlaceCollectUsesByteStorageForU8Conversions) {
     bytes.push(u8(8));
     auto* allocation = bytes.data();
 
-    auto raw = bytes.into_iter()
+    auto raw = rstd::move(bytes)
+                   .into_iter()
                    .map([](u8 value) {
                        return value.to_byte();
                    })
@@ -845,7 +858,8 @@ TEST(Vec, InPlaceCollectUsesByteStorageForU8Conversions) {
     EXPECT_EQ(raw[usize(2)], rstd::byte { 8 });
     auto* raw_allocation = raw.data();
 
-    auto logical = raw.into_iter()
+    auto logical = rstd::move(raw)
+                       .into_iter()
                        .map([](rstd::byte value) {
                            return u8::from_byte(value);
                        })

@@ -235,7 +235,7 @@ public:
         return { as_mut_ptr(), as_mut_ptr().add(usize(N)) };
     }
 
-    auto into_iter() -> IntoIter;
+    auto into_iter() && -> IntoIter;
 
     constexpr auto clone() const -> array
         requires Impled<T, clone::Clone>
@@ -313,7 +313,7 @@ public:
 };
 
 template<typename T, rstd::size_t N>
-auto array<T, N>::into_iter() -> IntoIter {
+auto array<T, N>::into_iter() && -> IntoIter {
     return IntoIter { rstd::move(*this) };
 }
 
@@ -357,7 +357,7 @@ template<typename T, rstd::size_t N>
 struct Impl<iter::IntoIterator, array<T, N>> : ImplBase<array<T, N>> {
     using IntoIter = ArrayIntoIter<T, N>;
 
-    auto into_iter() -> IntoIter { return this->self().into_iter(); }
+    auto into_iter() -> IntoIter { return rstd::move(this->self()).into_iter(); }
 };
 
 template<typename T, rstd::size_t N>

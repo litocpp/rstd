@@ -175,6 +175,14 @@ auto propagate_option(bool success, int& continued) -> Option<long> {
     return Some(static_cast<long>(value + 1));
 }
 
+auto propagate_control_flow(bool success, int& continued) -> ops::ControlFlow<int, int> {
+    using Flow  = ops::ControlFlow<int, int>;
+    auto source = success ? Flow::Continue(8) : Flow::Break(13);
+    auto value  = rstd_try(rstd::move(source));
+    ++continued;
+    return Flow::Continue(value + 1);
+}
+
 auto consume_option_lvalue(Option<std::unique_ptr<int>>& source) -> Option<int> {
     auto value = rstd_try(source);
     return Some(*value);
@@ -385,6 +393,20 @@ TEST(Try, OptionPropagatesNoneWithoutContinuing) {
 
     auto failure = propagate_option(false, continued);
     EXPECT_TRUE(failure.is_none());
+    EXPECT_EQ(continued, 1);
+}
+
+TEST(Try, ControlFlowPropagatesBreakWithoutContinuing) {
+    int continued = 0;
+
+    auto success = propagate_control_flow(true, continued);
+    ASSERT_TRUE(success.is_continue());
+    EXPECT_EQ(rstd::move(success).continue_value_unchecked(), 9);
+    EXPECT_EQ(continued, 1);
+
+    auto failure = propagate_control_flow(false, continued);
+    ASSERT_TRUE(failure.is_break());
+    EXPECT_EQ(rstd::move(failure).break_value_unchecked(), 13);
     EXPECT_EQ(continued, 1);
 }
 

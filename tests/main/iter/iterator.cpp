@@ -114,6 +114,24 @@ concept CanCopyItems = requires(T&& value) { rstd::forward<T>(value).copied(); }
 template<class T>
 concept CanCloneItems = requires(T&& value) { rstd::forward<T>(value).cloned(); };
 
+template<class T>
+concept CanMap = requires(T&& value) {
+    rstd::forward<T>(value).map([](auto item) {
+        return item;
+    });
+};
+
+template<class T>
+concept CanCollectVec = requires(T&& value) {
+    rstd::forward<T>(value).template collect<Vec<typename rstd::mtp::rm_ref<T>::Item>>();
+};
+
+template<class T>
+concept CanByRef = requires(T&& value) { rstd::forward<T>(value).by_ref(); };
+
+template<class T>
+concept CanAdvanceBack = requires(T& value) { value.advance_back_by(1_usize); };
+
 struct MemberOnlyIterator {
     using Item = i32;
 
@@ -125,6 +143,16 @@ struct MemberOnlyIterator {
         value += 1_i32;
         return Some(current);
     }
+};
+
+struct CountingIntoIterable {
+    int* calls;
+    i32  start;
+    i32  end;
+};
+
+struct ExtendOnly {
+    Vec<i32> values;
 };
 
 template<typename T>
@@ -146,6 +174,29 @@ struct Impl<iter::DoubleEndedIterator, ExternalDoubleEnded> : ImplBase<ExternalD
 template<>
 struct Impl<iter::ExactSizeIterator, ExternalDoubleEnded> : ImplBase<ExternalDoubleEnded> {
     auto len() const -> usize { return this->self().remaining(); }
+};
+
+template<>
+struct Impl<iter::IntoIterator, CountingIntoIterable> : ImplBase<CountingIntoIterable> {
+    using IntoIter = iter::Range<i32>;
+
+    auto into_iter() -> IntoIter {
+        ++*this->self().calls;
+        return iter::range(this->self().start, this->self().end);
+    }
+};
+
+template<>
+struct Impl<iter::Extend<i32>, ExtendOnly> : ImplBase<ExtendOnly> {
+    template<iter::has_next I>
+    static void extend(ExtendOnly& collection, I iterator) {
+        for (auto item = iterator.next(); item.is_some(); item = iterator.next())
+            collection.values.push(rstd::move(*item));
+    }
+
+    static void extend_one(ExtendOnly& collection, i32&& item) {
+        collection.values.push(rstd::move(item));
+    }
 };
 
 } // namespace rstd
@@ -321,6 +372,14 @@ TEST(Iter, CapabilitiesAreExplicitAndPropagateByContract) {
     static_assert(! ConstRangeFor<Range>);
     static_assert(! CanCallMemberIntoIter<Range&>);
     static_assert(CanCallMemberIntoIter<Range>);
+    static_assert(! CanCallMemberIntoIter<Vec<i32>&>);
+    static_assert(CanCallMemberIntoIter<Vec<i32>>);
+    static_assert(! CanMap<Range&>);
+    static_assert(CanMap<Range>);
+    static_assert(! CanCollectVec<Range&>);
+    static_assert(CanCollectVec<Range>);
+    static_assert(CanByRef<Range&>);
+    static_assert(! CanByRef<Range>);
     static_assert(! rstd::mtp::copy<iter::IteratorLoop<Range>>);
     static_assert(rstd::Impled<Range, iter::DoubleEndedIterator>);
     static_assert(rstd::Impled<Range, iter::ExactSizeIterator>);
@@ -371,6 +430,7 @@ TEST(Iter, CapabilitiesAreExplicitAndPropagateByContract) {
     static_assert(! CanIntoIter<Range&>);
     static_assert(! CanFlatten<decltype(iter::once(MemberOnlyIntoIterable()))>);
     static_assert(! CanRev<FromFn>);
+    static_assert(! CanAdvanceBack<FromFn>);
 }
 
 TEST(Iter, SizeHintsTrackPartialConsumption) {
@@ -666,7 +726,8 @@ TEST(Iter, VecIntoIter) {
     v.push(5_i32);
     v.push(6_i32);
     v.push(7_i32);
-    auto out = v.into_iter()
+    auto out = rstd::move(v)
+                   .into_iter()
                    .filter([](const i32& x) {
                        return x != 6_i32;
                    })
@@ -768,7 +829,7 @@ TEST(Iter, FlatMapFlatten) {
     Vec<rstd::iter::Range<i32>> vr;
     vr.push(iter::range(0_i32, 2_i32));
     vr.push(iter::range(10_i32, 12_i32));
-    auto b = vr.into_iter().flatten().collect<Vec<i32>>();
+    auto b = rstd::move(vr).into_iter().flatten().collect<Vec<i32>>();
     ASSERT_EQ(b.len(), 4_usize);
     EXPECT_EQ(b[0_usize], 0_i32);
     EXPECT_EQ(b[2_usize], 10_i32);
@@ -994,6 +1055,225 @@ TEST(Iter, ReduceMinByKeyTryFoldEq) {
     EXPECT_TRUE(iter::range(0_i32, 3_i32).ne(iter::range(1_i32, 4_i32)));
 }
 
+TEST(Iter, IntoIteratorBoundariesNormalizeOnce) {
+    int  calls {};
+    auto chained = iter::range(0_i32, 2_i32)
+                       .chain(CountingIntoIterable { &calls, 10_i32, 12_i32 })
+                       .collect<Vec<i32>>();
+    EXPECT_EQ(calls, 1);
+    ASSERT_EQ(chained.len(), 4_usize);
+    EXPECT_EQ(chained[0_usize], 0_i32);
+    EXPECT_EQ(chained[2_usize], 10_i32);
+
+    auto right = Vec<i32>::make();
+    right.push(10_i32);
+    right.push(20_i32);
+    auto zipped = iter::range(0_i32, 2_i32)
+                      .zip(rstd::move(right))
+                      .map([](auto values) {
+                          return values.template get<0>() + values.template get<1>();
+                      })
+                      .collect<Vec<i32>>();
+    EXPECT_EQ(zipped.as_slice(), (rstd::array<i32, 2> { 10_i32, 21_i32 }.as_slice()));
+
+    EXPECT_TRUE(iter::once(7_i32).eq(Some(7_i32)));
+}
+
+TEST(Iter, TryFoldSupportsOptionResultAndControlFlow) {
+    auto option =
+        iter::range(1_i32, 5_i32).try_fold(0_i32, [](i32 total, i32 value) -> Option<i32> {
+            return value == 3_i32 ? None() : Some(total + value);
+        });
+    EXPECT_TRUE(option.is_none());
+
+    auto result_iterator = iter::range(0_i32, 5_i32);
+    auto result =
+        result_iterator.try_fold(0_i32, [](i32 total, i32 value) -> rstd::Result<i32, i32> {
+            if (value == 2_i32) return rstd::Err(41_i32);
+            return rstd::Ok(total + value);
+        });
+    ASSERT_TRUE(result.is_err());
+    EXPECT_EQ(rstd::move(result).unwrap_err(), 41_i32);
+    EXPECT_EQ(result_iterator.next(), Some(3_i32));
+
+    i32  referenced_error = 43_i32;
+    auto reference_result =
+        iter::range(0_i32, 3_i32)
+            .try_fold(0_i32, [&referenced_error](i32 total, i32 value) -> rstd::Result<i32, i32&> {
+                if (value == 1_i32) return rstd::Err<i32&>(referenced_error);
+                return rstd::Ok(total + value);
+            });
+    ASSERT_TRUE(reference_result.is_err());
+    reference_result.unwrap_err() = 47_i32;
+    EXPECT_EQ(referenced_error, 47_i32);
+
+    auto flow_iterator = iter::range(0_i32, 5_i32);
+    auto flow =
+        flow_iterator.try_fold(0_i32, [](i32 total, i32 value) -> rstd::ops::ControlFlow<i32, i32> {
+            if (value == 2_i32) return rstd::ops::ControlFlow<i32, i32>::Break(total);
+            return rstd::ops::ControlFlow<i32, i32>::Continue(total + value);
+        });
+    ASSERT_TRUE(flow.is_break());
+    EXPECT_EQ(rstd::move(flow).break_value_unchecked(), 1_i32);
+    EXPECT_EQ(flow_iterator.next(), Some(3_i32));
+
+    auto for_each_iterator = iter::range(0_i32, 5_i32);
+    auto for_each = for_each_iterator.try_for_each([](i32 value) -> rstd::Result<rstd::empty, i32> {
+        if (value == 1_i32) return rstd::Err(19_i32);
+        return rstd::Ok(rstd::empty {});
+    });
+    ASSERT_TRUE(for_each.is_err());
+    EXPECT_EQ(rstd::move(for_each).unwrap_err(), 19_i32);
+    EXPECT_EQ(for_each_iterator.next(), Some(2_i32));
+
+    auto move_only = iter::once(2_i32).try_fold(
+        MoveOnlyItem(3_i32), [](MoveOnlyItem total, i32 value) -> Option<MoveOnlyItem> {
+            total.value += value;
+            return Some(rstd::move(total));
+        });
+    ASSERT_TRUE(move_only.is_some());
+    EXPECT_EQ(move_only->value, 5_i32);
+
+    auto move_only_break = iter::once(7_i32).try_fold(
+        i32(), [](i32, i32 value) -> rstd::ops::ControlFlow<MoveOnlyItem, i32> {
+            return rstd::ops::ControlFlow<MoveOnlyItem, i32>::Break(MoveOnlyItem(value));
+        });
+    ASSERT_TRUE(move_only_break.is_break());
+    EXPECT_EQ(rstd::move(move_only_break).break_value_unchecked().value, 7_i32);
+}
+
+TEST(Iter, AdapterDriversMatchNextOrderAndRemainder) {
+    int  mapped {};
+    int  filtered {};
+    int  inspected {};
+    int  folded {};
+    auto pipeline = iter::range(0_i32, 6_i32)
+                        .map([&mapped](i32 value) {
+                            ++mapped;
+                            return value + 1_i32;
+                        })
+                        .filter([&filtered](const i32& value) {
+                            ++filtered;
+                            return value % 2_i32 == i32();
+                        })
+                        .inspect([&inspected](const i32&) {
+                            ++inspected;
+                        })
+                        .chain(iter::once(8_i32));
+    auto stopped =
+        pipeline.try_fold(0_i32, [&folded](i32 total, i32 value) -> rstd::Result<i32, i32> {
+            ++folded;
+            if (value == 4_i32) return rstd::Err(37_i32);
+            return rstd::Ok(total + value);
+        });
+    ASSERT_TRUE(stopped.is_err());
+    EXPECT_EQ(rstd::move(stopped).unwrap_err(), 37_i32);
+    EXPECT_EQ(mapped, 4);
+    EXPECT_EQ(filtered, 4);
+    EXPECT_EQ(inspected, 2);
+    EXPECT_EQ(folded, 2);
+    EXPECT_EQ(pipeline.next(), Some(6_i32));
+    EXPECT_EQ(pipeline.next(), Some(8_i32));
+
+    auto total = iter::range(0_i32, 3_i32)
+                     .map([](i32 value) {
+                         return value + 1_i32;
+                     })
+                     .chain(iter::range(4_i32, 6_i32))
+                     .fold(0_i32, [](i32 sum, i32 value) {
+                         return sum + value;
+                     });
+    EXPECT_EQ(total, 15_i32);
+}
+
+TEST(Iter, PartialConsumersPreserveRemainder) {
+    auto all = iter::range(0_i32, 5_i32);
+    EXPECT_FALSE(all.all([](i32 value) {
+        return value < 2_i32;
+    }));
+    EXPECT_EQ(all.next(), Some(3_i32));
+
+    auto any = iter::range(0_i32, 5_i32);
+    EXPECT_TRUE(any.any([](i32 value) {
+        return value == 1_i32;
+    }));
+    EXPECT_EQ(any.next(), Some(2_i32));
+
+    auto found = iter::range(0_i32, 5_i32);
+    EXPECT_EQ(found.find([](const i32& value) {
+        return value == 2_i32;
+    }),
+              Some(2_i32));
+    EXPECT_EQ(found.next(), Some(3_i32));
+}
+
+TEST(Iter, DoubleEndedProvidedMethodsPreserveOrderAndRemainder) {
+    auto advanced = iter::range(0_i32, 5_i32);
+    EXPECT_TRUE(advanced.advance_back_by(2_usize).is_ok());
+    EXPECT_EQ(advanced.next_back(), Some(2_i32));
+    auto not_advanced = advanced.advance_back_by(5_usize);
+    ASSERT_TRUE(not_advanced.is_err());
+    EXPECT_EQ(rstd::move(not_advanced).unwrap_err().get(), 3_usize);
+
+    auto reverse_fold = iter::range(0_i32, 5_i32);
+    auto folded = reverse_fold.try_rfold(0_i32, [](i32 total, i32 value) -> rstd::Result<i32, i32> {
+        if (value == 2_i32) return rstd::Err(29_i32);
+        return rstd::Ok(total * 10_i32 + value);
+    });
+    ASSERT_TRUE(folded.is_err());
+    EXPECT_EQ(rstd::move(folded).unwrap_err(), 29_i32);
+    EXPECT_EQ(reverse_fold.next_back(), Some(1_i32));
+
+    EXPECT_EQ(iter::range(1_i32, 4_i32)
+                  .rfold(0_i32,
+                         [](i32 total, i32 value) {
+                             return total * 10_i32 + value;
+                         }),
+              321_i32);
+
+    auto found = iter::range(0_i32, 5_i32);
+    EXPECT_EQ(found.rfind([](const i32& value) {
+        return value == 2_i32;
+    }),
+              Some(2_i32));
+    EXPECT_EQ(found.next_back(), Some(1_i32));
+
+    auto exact = iter::range(0_i32, 2_i32);
+    EXPECT_FALSE(exact.is_empty());
+    EXPECT_EQ(exact.next(), Some(0_i32));
+    EXPECT_FALSE(exact.is_empty());
+    EXPECT_EQ(exact.next_back(), Some(1_i32));
+    EXPECT_TRUE(exact.is_empty());
+}
+
+TEST(Iter, ExtendAndFromIteratorOwnCollectionConstruction) {
+    auto values = Vec<i32>::make();
+    values.push(9_i32);
+    iter::extend(values, iter::range(0_i32, 3_i32));
+    EXPECT_EQ(values.as_slice(), (rstd::array<i32, 4> { 9_i32, 0_i32, 1_i32, 2_i32 }.as_slice()));
+
+    auto collected = iter::from_iter<Vec<i32>>(Some(7_i32));
+    EXPECT_EQ(collected.as_slice(), (rstd::array<i32, 1> { 7_i32 }.as_slice()));
+
+    auto partitioned = iter::range(0_i32, 5_i32).partition<ExtendOnly>([](const i32& value) {
+        return value % 2_i32 == i32();
+    });
+    EXPECT_EQ(partitioned.template get<0>().values.as_slice(),
+              (rstd::array<i32, 3> { 0_i32, 2_i32, 4_i32 }.as_slice()));
+    EXPECT_EQ(partitioned.template get<1>().values.as_slice(),
+              (rstd::array<i32, 2> { 1_i32, 3_i32 }.as_slice()));
+
+    auto unzipped = iter::range(0_i32, 3_i32)
+                        .map([](i32 value) {
+                            return rstd::tuple<i32, i32>(value, value + 10_i32);
+                        })
+                        .unzip<ExtendOnly, ExtendOnly>();
+    EXPECT_EQ(unzipped.template get<0>().values.as_slice(),
+              (rstd::array<i32, 3> { 0_i32, 1_i32, 2_i32 }.as_slice()));
+    EXPECT_EQ(unzipped.template get<1>().values.as_slice(),
+              (rstd::array<i32, 3> { 10_i32, 11_i32, 12_i32 }.as_slice()));
+}
+
 TEST(Iter, VecClonedDoubleEnded) {
     Vec<i32> v;
     v.push(1_i32);
@@ -1041,9 +1321,11 @@ TEST(Iter, RpositionNthBackAdvanceBy) {
     EXPECT_EQ(iter::range(0_i32, 5_i32).nth_back(1_usize), Some(3_i32));
 
     auto it = iter::range(0_i32, 5_i32);
-    EXPECT_EQ(it.advance_by(2_usize), 2_usize);
+    EXPECT_TRUE(it.advance_by(2_usize).is_ok());
     EXPECT_EQ(it.next(), Some(2_i32));
-    EXPECT_EQ(it.advance_by(100_usize), 2_usize); // only 3,4 remain
+    auto remaining = it.advance_by(100_usize);
+    ASSERT_TRUE(remaining.is_err());
+    EXPECT_EQ(rstd::move(remaining).unwrap_err().get(), 98_usize);
 }
 
 TEST(Iter, IsSorted) {
@@ -1090,7 +1372,7 @@ TEST(Iter, ByRef) {
     EXPECT_EQ(first_two[0_usize], 0_i32);
     EXPECT_EQ(first_two[1_usize], 1_i32);
 
-    auto rest = it.collect<Vec<i32>>(); // continues from where by_ref left off
+    auto rest = rstd::move(it).collect<Vec<i32>>(); // continues from where by_ref left off
     ASSERT_EQ(rest.len(), 8_usize);
     EXPECT_EQ(rest[0_usize], 2_i32);
     EXPECT_EQ(rest[7_usize], 9_i32);

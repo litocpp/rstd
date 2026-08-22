@@ -101,7 +101,7 @@ public:
 
     template<typename F>
     void retain(F predicate) {
-        auto source = map.into_iter();
+        auto source = rstd::move(map).into_iter();
         map         = BTreeMap<K, rstd::empty>::make();
         for (auto item = source.next(); item.is_some(); item = source.next()) {
             auto key = rstd::move(item->template get<0>());
@@ -132,7 +132,7 @@ public:
     }
 
     auto iter() const [[clang::lifetimebound]] -> BTreeSetIter<K> { return map.keys(); }
-    auto into_iter() -> IntoIter { return IntoIter(map.into_iter()); }
+    auto into_iter() && -> IntoIter { return IntoIter(rstd::move(map).into_iter()); }
 };
 
 } // namespace alloc::collections
@@ -146,10 +146,22 @@ struct Impl<iter::FromIterator<K>, ::alloc::collections::BTreeSet<K>>
     template<typename It>
     static auto from_iter(It iter) -> ::alloc::collections::BTreeSet<K> {
         auto set = ::alloc::collections::BTreeSet<K>::make();
-        for (auto item = iter.next(); item.is_some(); item = iter.next()) {
-            set.insert(rstd::move(*item));
-        }
+        Impl<iter::Extend<K>, ::alloc::collections::BTreeSet<K>>::extend(set, rstd::move(iter));
         return set;
+    }
+};
+
+template<typename K>
+struct Impl<iter::Extend<K>, ::alloc::collections::BTreeSet<K>>
+    : ImplBase<::alloc::collections::BTreeSet<K>> {
+    template<iter::has_next It>
+    static void extend(::alloc::collections::BTreeSet<K>& set, It iterator) {
+        for (auto item = iterator.next(); item.is_some(); item = iterator.next())
+            extend_one(set, rstd::move(*item));
+    }
+
+    static void extend_one(::alloc::collections::BTreeSet<K>& set, K&& item) {
+        set.insert(rstd::move(item));
     }
 };
 
@@ -158,7 +170,7 @@ struct Impl<iter::IntoIterator, ::alloc::collections::BTreeSet<K>>
     : ImplBase<::alloc::collections::BTreeSet<K>> {
     using IntoIter = ::alloc::collections::BTreeSetIntoIter<K>;
 
-    auto into_iter() -> IntoIter { return this->self().into_iter(); }
+    auto into_iter() -> IntoIter { return rstd::move(this->self()).into_iter(); }
 };
 
 template<typename K>

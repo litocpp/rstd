@@ -294,10 +294,9 @@ struct ref<path::Path> : ref_base<ref<path::Path>, byte[], false> {
     constexpr auto is_safe_relative() const noexcept -> bool {
         if (is_absolute() || has_root()) return false;
         auto values = components();
-        for (auto value = values.next(); value.is_some(); value = values.next()) {
-            if (value->is_root_dir() || value->is_parent_dir()) return false;
-        }
-        return true;
+        return as<iter::Iterator>(values).all([](path::Component value) {
+            return ! value.is_root_dir() && ! value.is_parent_dir();
+        });
     }
 
     /// Produces an iterator over the path components.
@@ -308,40 +307,28 @@ struct ref<path::Path> : ref_base<ref<path::Path>, byte[], false> {
     constexpr auto operator==(ref<path::Path> other) const noexcept -> bool {
         auto left  = components();
         auto right = other.components();
-        while (true) {
-            auto left_component  = left.next();
-            auto right_component = right.next();
-            if (left_component.is_none() || right_component.is_none()) {
-                return left_component.is_none() && right_component.is_none();
-            }
-            if (! (*left_component == *right_component)) return false;
-        }
+        return as<iter::Iterator>(left).eq(rstd::move(right));
     }
 
     /// Returns `true` when `base` is a component-wise prefix of this path.
     constexpr auto starts_with(ref<path::Path> base) const noexcept -> bool {
         auto iter   = components();
         auto prefix = base.components();
-        while (true) {
-            auto b = prefix.next();
-            if (b.is_none()) return true;
-            auto s = iter.next();
-            if (s.is_none()) return false;
-            if (! (*s == *b)) return false;
-        }
+        return as<iter::Iterator>(prefix).all([&iter](path::Component expected) {
+            auto value = iter.next();
+            return value.is_some() && *value == expected;
+        });
     }
 
     /// Strips `base` as a component-wise prefix and returns the remaining path.
     constexpr auto strip_prefix(ref<path::Path> base) const noexcept -> Option<ref<path::Path>> {
-        auto iter   = components();
-        auto prefix = base.components();
-        while (true) {
-            auto b = prefix.next();
-            if (b.is_none()) return Some(iter.as_path());
-            auto s = iter.next();
-            if (s.is_none()) return None();
-            if (! (*s == *b)) return None();
-        }
+        auto iter    = components();
+        auto prefix  = base.components();
+        auto matches = as<iter::Iterator>(prefix).all([&iter](path::Component expected) {
+            auto value = iter.next();
+            return value.is_some() && *value == expected;
+        });
+        return matches ? Some(iter.as_path()) : None();
     }
 
     /// Returns the parent path (everything before the last component).
@@ -524,11 +511,10 @@ auto lexically_relative(ref<Path> base, ref<Path> target) -> Option<PathBuf> {
     auto target_parts = Vec<OsString>::make();
     auto append_parts = [](ref<Path> value, Vec<OsString>& output) -> bool {
         auto components = value.components();
-        for (auto component = components.next(); component.is_some();
-             component      = components.next()) {
-            if (component->is_root_dir() || component->is_cur_dir()) continue;
-            if (component->is_parent_dir()) return false;
-            output.push(OsString::from(component->as_os_str()));
+        for (auto component : iter::for_range(components)) {
+            if (component.is_root_dir() || component.is_cur_dir()) continue;
+            if (component.is_parent_dir()) return false;
+            output.push(OsString::from(component.as_os_str()));
         }
         return true;
     };

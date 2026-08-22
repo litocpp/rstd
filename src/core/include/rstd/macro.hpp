@@ -107,7 +107,7 @@
     __extension__({                                                             \
         auto&& rstd_try_result_ = (EXPR);                                       \
         static_assert(::rstd::try_::TrySource<decltype(rstd_try_result_)>,      \
-                      "rstd_try requires rstd::Result or rstd::Option");        \
+                      "rstd_try requires rstd::Result, rstd::Option, or rstd::ops::ControlFlow"); \
         if (! ::rstd::try_::is_success(rstd_try_result_)) {                     \
             RETURN ::rstd::try_::take_residual(::rstd::move(rstd_try_result_)); \
         }                                                                       \
@@ -118,7 +118,7 @@
     __extension__({                                                                             \
         auto&& rstd_try_result_ = (EXPR);                                                       \
         static_assert(::rstd::try_::TrySource<decltype(rstd_try_result_)>,                      \
-                      "rstd_try requires rstd::Result or rstd::Option");                        \
+                      "rstd_try requires rstd::Result, rstd::Option, or rstd::ops::ControlFlow"); \
         if (! ::rstd::try_::is_success(rstd_try_result_)) {                                     \
             auto&& _e = ::rstd::try_::take_failure(::rstd::move(rstd_try_result_));             \
             RETURN ::rstd::try_::into_residual(                                                 \

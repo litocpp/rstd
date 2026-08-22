@@ -854,7 +854,7 @@ public:
     }
 
     using IntoIter = BTreeMapIntoIter<K, V>;
-    auto into_iter() -> IntoIter {
+    auto into_iter() && -> IntoIter {
         auto entries = Vec<Entry>::with_capacity(length);
         if (root.is_some()) drain_node(rstd::move(*root.take()), entries);
         length = usize();
@@ -902,10 +902,23 @@ struct Impl<iter::FromIterator<tuple<K, V>>, ::alloc::collections::BTreeMap<K, V
     template<typename It>
     static auto from_iter(It iter) -> ::alloc::collections::BTreeMap<K, V> {
         auto map = ::alloc::collections::BTreeMap<K, V>::make();
-        for (auto item = iter.next(); item.is_some(); item = iter.next()) {
-            map.insert(rstd::move(item->template get<0>()), rstd::move(item->template get<1>()));
-        }
+        Impl<iter::Extend<tuple<K, V>>, ::alloc::collections::BTreeMap<K, V>>::extend(
+            map, rstd::move(iter));
         return map;
+    }
+};
+
+template<typename K, typename V>
+struct Impl<iter::Extend<tuple<K, V>>, ::alloc::collections::BTreeMap<K, V>>
+    : ImplBase<::alloc::collections::BTreeMap<K, V>> {
+    template<iter::has_next It>
+    static void extend(::alloc::collections::BTreeMap<K, V>& map, It iterator) {
+        for (auto item = iterator.next(); item.is_some(); item = iterator.next())
+            extend_one(map, rstd::move(*item));
+    }
+
+    static void extend_one(::alloc::collections::BTreeMap<K, V>& map, tuple<K, V>&& item) {
+        map.insert(rstd::move(item.template get<0>()), rstd::move(item.template get<1>()));
     }
 };
 
@@ -914,7 +927,7 @@ struct Impl<iter::IntoIterator, ::alloc::collections::BTreeMap<K, V>>
     : ImplBase<::alloc::collections::BTreeMap<K, V>> {
     using IntoIter = ::alloc::collections::BTreeMapIntoIter<K, V>;
 
-    auto into_iter() -> IntoIter { return this->self().into_iter(); }
+    auto into_iter() -> IntoIter { return rstd::move(this->self()).into_iter(); }
 };
 
 template<typename K, typename V>

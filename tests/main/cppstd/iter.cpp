@@ -91,6 +91,43 @@ TEST(CppStdIter, IteratorRangeModelsSinglePassInputRange) {
     EXPECT_EQ(sum, 10_i32);
 }
 
+TEST(CppStdIter, AsRangeAcceptsOwnedAndBorrowedIntoIteratorSources) {
+    auto owned = rstd::vec::Vec<i32>::make();
+    owned.push(1_i32);
+    owned.push(2_i32);
+    auto owned_range = iter::as_range(rstd::move(owned));
+    EXPECT_EQ(std::ranges::distance(owned_range), 2);
+
+    auto borrowed = rstd::vec::Vec<i32>::make();
+    borrowed.push(3_i32);
+    borrowed.push(5_i32);
+    auto borrowed_range =
+        iter::as_range(rstd::ref<rstd::vec::Vec<i32>>::from_raw_parts(rstd::addressof(borrowed)));
+    auto sum = i32();
+    for (auto value : borrowed_range) sum += *value;
+    EXPECT_EQ(sum, 8_i32);
+}
+
+TEST(CppStdIter, ExtendOwnsStandardCollectionInsertion) {
+    auto vector = std::vector<int> { 9 };
+    iter::extend(vector, iter::range(0_i32, 3_i32).map([](i32 value) {
+        return value.to_primitive();
+    }));
+    EXPECT_EQ(vector, (std::vector<int> { 9, 0, 1, 2 }));
+
+    auto forward = std::forward_list<int> { 7 };
+    iter::extend(forward, iter::range(1_i32, 3_i32).map([](i32 value) {
+        return value.to_primitive();
+    }));
+    EXPECT_EQ(forward, (std::forward_list<int> { 7, 1, 2 }));
+
+    auto map = std::map<int, int> { { 1, 10 } };
+    iter::extend(
+        map,
+        iter::once(rstd::tuple<int, int>(2, 20)).chain(iter::once(rstd::tuple<int, int>(1, 11))));
+    EXPECT_EQ(map, (std::map<int, int> { { 1, 10 }, { 2, 20 } }));
+}
+
 TEST(CppStdIter, IteratorRangeSupportsRangesAlgorithmsAndMoveOnlyValues) {
     auto range = iter::as_range(iter::range(1_i32, 6_i32));
     EXPECT_EQ(std::ranges::max(range), 5_i32);

@@ -5,6 +5,16 @@ using namespace rstd::prelude;
 using namespace rstd::literals;
 using rstd::collections::BTreeSet;
 
+TEST(BTreeSet, ExtendIgnoresDuplicatesAndKeepsOrder) {
+    auto set = BTreeSet<i32>::make();
+    set.insert(2_i32);
+    rstd::iter::extend(set, rstd::iter::range(0_i32, 4_i32));
+
+    EXPECT_EQ(set.len(), 4_usize);
+    EXPECT_EQ(**set.first(), 0_i32);
+    EXPECT_EQ(**set.last(), 3_i32);
+}
+
 TEST(BTreeSet, IteratesInOrderAndSupportsBorrowedStringLookup) {
     auto set = BTreeSet<rstd::string::String>::make();
     set.insert(rstd::string::String::make("gamma"_str));
@@ -52,7 +62,7 @@ TEST(BTreeSet, IntoIteratorSupportsOwnedAndBorrowedRangeFor) {
     auto mutable_borrowed =
         rstd::iter::into_iter(rstd::mut_ref<BTreeSet<i32>>::from_raw_parts(rstd::addressof(set)));
     static_assert(rstd::mtp::same_as<typename decltype(mutable_borrowed)::Item, rstd::ref<i32>>);
-    EXPECT_EQ(mutable_borrowed.count(), 2_usize);
+    EXPECT_EQ(rstd::move(mutable_borrowed).count(), 2_usize);
 
     auto owned_total = i32();
     for (auto value : rstd::iter::into_iter(rstd::move(set))) owned_total += value;

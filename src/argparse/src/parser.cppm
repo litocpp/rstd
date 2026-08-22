@@ -353,25 +353,19 @@ public:
     auto parse_known_from(Vec<OsString> argv) const
         -> Result<ParseOutcome<KnownMatches>, ParseError>;
     template<typename I>
-        requires Impled<I, iter::IntoIterator> && (! mtp::same_as<mtp::rm_cvf<I>, Vec<OsString>>)
+        requires iter::into_iterable<I> &&
+                 mtp::same_as<typename iter::into_iter_t<I>::Item, OsString> &&
+                 (! mtp::same_as<mtp::rm_cvf<I>, Vec<OsString>>)
     auto parse_from(I argv) const -> Result<ParseOutcome<Matches>, ParseError> {
-        auto iterator = as<iter::IntoIterator>(argv).into_iter();
-        static_assert(mtp::same_as<typename decltype(iterator)::Item, OsString>);
-        auto values = Vec<OsString>::make();
-        for (auto value = iterator.next(); value.is_some(); value = iterator.next()) {
-            values.push(rstd::move(*value));
-        }
+        auto values = iter::from_iter<Vec<OsString>>(rstd::move(argv));
         return parse_from(rstd::move(values));
     }
     template<typename I>
-        requires Impled<I, iter::IntoIterator> && (! mtp::same_as<mtp::rm_cvf<I>, Vec<OsString>>)
+        requires iter::into_iterable<I> &&
+                 mtp::same_as<typename iter::into_iter_t<I>::Item, OsString> &&
+                 (! mtp::same_as<mtp::rm_cvf<I>, Vec<OsString>>)
     auto parse_known_from(I argv) const -> Result<ParseOutcome<KnownMatches>, ParseError> {
-        auto iterator = as<iter::IntoIterator>(argv).into_iter();
-        static_assert(mtp::same_as<typename decltype(iterator)::Item, OsString>);
-        auto values = Vec<OsString>::make();
-        for (auto value = iterator.next(); value.is_some(); value = iterator.next()) {
-            values.push(rstd::move(*value));
-        }
+        auto values = iter::from_iter<Vec<OsString>>(rstd::move(argv));
         return parse_known_from(rstd::move(values));
     }
     auto parse_env() const -> Result<ParseOutcome<Matches>, ParseError>;
@@ -846,12 +840,8 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString>      argv,
                 if (child_outcome.is_Display()) {
                     return Ok(RunOutcome::Display(rstd::move(child_outcome).as_Display().value));
                 }
-                auto child         = rstd::move(child_outcome).as_Parsed().value;
-                auto child_unknown = rstd::move(child.unknown).into_iter();
-                for (auto value = child_unknown.next(); value.is_some();
-                     value      = child_unknown.next()) {
-                    unknown.push(rstd::move(*value));
-                }
+                auto child = rstd::move(child_outcome).as_Parsed().value;
+                iter::extend(unknown, rstd::move(child.unknown));
                 subcommand_name    = Some(subcommand.name.clone());
                 subcommand_matches = Some(Box<Matches>::make(rstd::move(child.matches)));
                 index              = argv.len();
@@ -1030,10 +1020,7 @@ auto rstd::argparse::Parser::parse_known_from(Vec<OsString> argv) const
 }
 
 auto rstd::argparse::Parser::parse_env() const -> Result<ParseOutcome<Matches>, ParseError> {
-    auto argv = Vec<OsString>::make();
     auto args = rstd::env::args_os();
-    for (auto value = args.next(); value.is_some(); value = args.next()) {
-        argv.push(rstd::move(*value));
-    }
+    auto argv = rstd::move(args).collect<Vec<OsString>>();
     return parse_from(rstd::move(argv));
 }

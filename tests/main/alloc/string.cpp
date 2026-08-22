@@ -50,6 +50,14 @@ static_assert(requires(String& value) {
     value->chars();
 });
 
+TEST(String, CollectAndExtendChars) {
+    auto value = rstd::iter::once(U'a').chain(rstd::iter::once(U'ß')).collect<String>();
+    EXPECT_EQ(value.as_str(), "aß"_str);
+
+    rstd::iter::extend(value, rstd::iter::once(U'界'));
+    EXPECT_EQ(value.as_str(), "aß界"_str);
+}
+
 TEST(String, ToString) {
     int a = 10;
 

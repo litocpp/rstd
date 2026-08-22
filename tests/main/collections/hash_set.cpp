@@ -5,6 +5,16 @@ using namespace rstd::prelude;
 using namespace rstd::literals;
 using rstd::collections::HashSet;
 
+TEST(HashSet, ExtendIgnoresDuplicates) {
+    auto set = HashSet<i32>::make();
+    set.insert(2_i32);
+    rstd::iter::extend(set, rstd::iter::range(0_i32, 4_i32));
+
+    EXPECT_EQ(set.len(), 4_usize);
+    EXPECT_TRUE(set.contains(0_i32));
+    EXPECT_TRUE(set.contains(3_i32));
+}
+
 TEST(HashSet, InsertBorrowRemoveAndRetain) {
     auto set = HashSet<rstd::string::String>::with_capacity(usize(2));
 
@@ -31,7 +41,7 @@ TEST(HashSet, CloneAndOwningIterationAreIndependent) {
     EXPECT_TRUE(source.remove(rstd::ref<rstd::str>("alpha"_str)));
     EXPECT_TRUE(cloned.contains(rstd::ref<rstd::str>("alpha"_str)));
 
-    auto  values = cloned.into_iter();
+    auto  values = rstd::move(cloned).into_iter();
     usize count {};
     for (auto value = values.next(); value.is_some(); value = values.next()) ++count;
     EXPECT_EQ(count, usize(2));
@@ -52,7 +62,7 @@ TEST(HashSet, IntoIteratorSupportsOwnedAndBorrowedRangeFor) {
     auto mutable_borrowed =
         rstd::iter::into_iter(rstd::mut_ref<HashSet<i32>>::from_raw_parts(rstd::addressof(set)));
     static_assert(rstd::mtp::same_as<typename decltype(mutable_borrowed)::Item, rstd::ref<i32>>);
-    EXPECT_EQ(mutable_borrowed.count(), 2_usize);
+    EXPECT_EQ(rstd::move(mutable_borrowed).count(), 2_usize);
 
     auto owned_total = i32();
     for (auto value : rstd::iter::into_iter(rstd::move(set))) owned_total += value;

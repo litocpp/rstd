@@ -79,7 +79,7 @@ diagnostic-contains = ["rstd::Impled failed: a required supertrait is not implem
 name = "Try.UnsupportedSourceFailure"
 source = "try_unsupported_source.cpp"
 outcome = "failure"
-diagnostic-contains = ["rstd_try requires rstd::Result or rstd::Option"]
+diagnostic-contains = ["rstd_try requires rstd::Result, rstd::Option, or rstd::ops::ControlFlow"]
 
 [[compile-test.cases]]
 name = "Try.OptionToResultFailure"
@@ -273,6 +273,30 @@ name = "Iter.LvalueIntoIter"
 source = "iter_lvalue_into_iter.cpp"
 outcome = "failure"
 diagnostic-contains-any = ["no matching function for call to 'into_iter'", "constraints not satisfied"]
+
+[[compile-test.cases]]
+name = "Iter.LvalueConsumingAdapter"
+source = "iter_lvalue_consuming_adapter.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["expects an rvalue", "rvalue ref-qualifier"]
+
+[[compile-test.cases]]
+name = "Iter.LvalueCollect"
+source = "iter_lvalue_collect.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["expects an rvalue", "rvalue ref-qualifier"]
+
+[[compile-test.cases]]
+name = "Iter.LvalueVecIntoIter"
+source = "iter_lvalue_vec_into_iter.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["expects an rvalue", "rvalue ref-qualifier"]
+
+[[compile-test.cases]]
+name = "Iter.TemporaryByRef"
+source = "iter_temporary_by_ref.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["deleted function", "deleted"]
 
 [[compile-test.cases]]
 name = "Iter.MemberOnlyFlatten"

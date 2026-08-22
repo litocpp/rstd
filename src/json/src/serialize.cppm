@@ -130,10 +130,10 @@ class Emitter {
         if (array.is_empty()) return write_byte(u8(']'));
 
         if (options_.pretty && ! write_byte(u8('\n'))) return false;
-        for (usize i {}; i < array.len(); ++i) {
+        for (auto [index, value] : array.iter().enumerate()) {
             if (options_.pretty && ! write_indent(depth + usize(1))) return false;
-            if (! write_value(array[i], depth + usize(1))) return false;
-            if (i + usize(1) != array.len() && ! write_byte(u8(','))) return false;
+            if (! write_value(*value, depth + usize(1))) return false;
+            if (index + usize(1) != array.len() && ! write_byte(u8(','))) return false;
             if (options_.pretty && ! write_byte(u8('\n'))) return false;
         }
         if (options_.pretty && ! write_indent(depth)) return false;
@@ -145,13 +145,12 @@ class Emitter {
         if (object.is_empty()) return write_byte(u8('}'));
 
         if (options_.pretty && ! write_byte(u8('\n'))) return false;
-        usize index {};
-        auto  iter = object.iter();
-        for (auto item = iter.next(); item.is_some(); item = iter.next(), ++index) {
+        for (auto [index, item] : object.iter().enumerate()) {
+            auto [key, value] = item;
             if (options_.pretty && ! write_indent(depth + usize(1))) return false;
-            if (! write_string((*item).template get<0>()->as_str())) return false;
+            if (! write_string(key->as_str())) return false;
             if (! write(options_.pretty ? ": "_str : ":"_str)) return false;
-            if (! write_value(*(*item).template get<1>(), depth + usize(1))) return false;
+            if (! write_value(*value, depth + usize(1))) return false;
             if (index + usize(1) != object.len() && ! write_byte(u8(','))) return false;
             if (options_.pretty && ! write_byte(u8('\n'))) return false;
         }

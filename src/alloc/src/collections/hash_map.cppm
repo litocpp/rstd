@@ -453,7 +453,7 @@ public:
     auto values_mut() [[clang::lifetimebound]] -> HashMapValuesMut<K, V> {
         return HashMapValuesMut<K, V>(iter_mut());
     }
-    auto into_iter() -> IntoIter { return IntoIter(rstd::move(table)); }
+    auto into_iter() && -> IntoIter { return IntoIter(rstd::move(table)); }
 };
 
 } // namespace alloc::collections
@@ -468,10 +468,24 @@ struct Impl<iter::FromIterator<tuple<K, V>>, ::alloc::collections::HashMap<K, V,
     template<typename It>
     static auto from_iter(It iter) -> ::alloc::collections::HashMap<K, V, S, Eq> {
         auto map = ::alloc::collections::HashMap<K, V, S, Eq>::make();
-        for (auto item = iter.next(); item.is_some(); item = iter.next()) {
-            map.insert(rstd::move(item->template get<0>()), rstd::move(item->template get<1>()));
-        }
+        Impl<iter::Extend<tuple<K, V>>, ::alloc::collections::HashMap<K, V, S, Eq>>::extend(
+            map, rstd::move(iter));
         return map;
+    }
+};
+
+template<typename K, typename V, typename S, typename Eq>
+    requires hash::HashableBy<K, S> && mtp::init<S> && mtp::init<Eq>
+struct Impl<iter::Extend<tuple<K, V>>, ::alloc::collections::HashMap<K, V, S, Eq>>
+    : ImplBase<::alloc::collections::HashMap<K, V, S, Eq>> {
+    template<iter::has_next It>
+    static void extend(::alloc::collections::HashMap<K, V, S, Eq>& map, It iterator) {
+        for (auto item = iterator.next(); item.is_some(); item = iterator.next())
+            extend_one(map, rstd::move(*item));
+    }
+
+    static void extend_one(::alloc::collections::HashMap<K, V, S, Eq>& map, tuple<K, V>&& item) {
+        map.insert(rstd::move(item.template get<0>()), rstd::move(item.template get<1>()));
     }
 };
 
@@ -480,7 +494,7 @@ struct Impl<iter::IntoIterator, ::alloc::collections::HashMap<K, V, S, Eq>>
     : ImplBase<::alloc::collections::HashMap<K, V, S, Eq>> {
     using IntoIter = ::alloc::collections::HashMapIntoIter<K, V>;
 
-    auto into_iter() -> IntoIter { return this->self().into_iter(); }
+    auto into_iter() -> IntoIter { return rstd::move(this->self()).into_iter(); }
 };
 
 template<typename K, typename V, typename S, typename Eq>

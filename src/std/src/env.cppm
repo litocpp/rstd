@@ -65,7 +65,7 @@ auto split_paths(ref<OsStr> unparsed) -> SplitPaths {
     }
 #endif
     result.push(PathBuf::from(OsString::from_encoded_bytes_unchecked(rstd::move(part))));
-    return result.into_iter();
+    return rstd::move(result).into_iter();
 }
 
 /// Joins paths using the host `PATH` conventions.

@@ -108,6 +108,18 @@ struct Impl<hash::BuildHasher, ExplicitBuilder> : ImplBase<ExplicitBuilder> {
 
 } // namespace rstd
 
+TEST(HashMap, ExtendUsesMapDuplicateSemantics) {
+    auto map = HashMap<i32, i32>::make();
+    map.insert(1_i32, 10_i32);
+    auto entries = iter::once(rstd::tuple<i32, i32>(2_i32, 20_i32))
+                       .chain(iter::once(rstd::tuple<i32, i32>(1_i32, 11_i32)));
+    iter::extend(map, rstd::move(entries));
+
+    EXPECT_EQ(map.len(), 2_usize);
+    EXPECT_EQ(**map.get(1_i32), 11_i32);
+    EXPECT_EQ(**map.get(2_i32), 20_i32);
+}
+
 TEST(HashMap, BasicLookupReplacementAndCapacity) {
     auto map = HashMap<i32, i32>::make();
     EXPECT_EQ(map.capacity(), usize());
@@ -185,7 +197,7 @@ TEST(HashMap, IteratorsAndCollectPreserveAllEntries) {
         EXPECT_EQ(**map.get(i), i + i32(11));
     }
 
-    auto owned = map.into_iter();
+    auto owned = rstd::move(map).into_iter();
     EXPECT_TRUE(map.is_empty());
     usize count {};
     for (auto item = owned.next(); item.is_some(); item = owned.next()) ++count;

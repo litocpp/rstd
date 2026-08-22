@@ -228,10 +228,7 @@ public:
         if (is_Array()) {
             for (auto& value : as_Array().value) value.sort_all_objects();
         } else if (is_Object()) {
-            auto values = as_Object().value.values_mut();
-            for (auto value = values.next(); value.is_some(); value = values.next()) {
-                (**value).sort_all_objects();
-            }
+            for (auto value : as_Object().value.values_mut()) value->sort_all_objects();
         }
     }
 

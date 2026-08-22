@@ -77,9 +77,11 @@ public:
     constexpr auto end() const -> StandardIteratorEnd { return {}; }
 };
 
-export template<has_next I>
-constexpr auto as_range(I iterator) -> IteratorRange<I> {
-    return IteratorRange<I>(rstd::move(iterator));
+export template<typename Source>
+    requires(! mtp::is_ref<Source>) && into_iterable<Source>
+constexpr auto as_range(Source&& source) -> IteratorRange<into_iter_t<Source>> {
+    auto iterator = into_iter(rstd::forward<Source>(source));
+    return IteratorRange<decltype(iterator)>(rstd::move(iterator));
 }
 
 template<class B>
@@ -187,57 +189,83 @@ namespace rstd::iter::details
 {
 
 template<class C, class I>
-auto collect_back(I iterator) -> C {
-    auto collection = C {};
+void extend_back(C& collection, I iterator) {
     if constexpr (requires(C& c, std::size_t size) { c.reserve(size); }) {
         auto const lower = iterator.size_hint().template get<0>().to_primitive();
-        collection.reserve(lower);
+        collection.reserve(collection.size() + lower);
     }
     for (auto item = iterator.next(); item.is_some(); item = iterator.next())
         collection.push_back(rstd::move(*item));
+}
+
+template<class C, class I>
+auto collect_back(I iterator) -> C {
+    auto collection = C {};
+    extend_back(collection, rstd::move(iterator));
     return collection;
+}
+
+template<class C, class I>
+void extend_forward_list(C& collection, I iterator) {
+    auto tail = collection.before_begin();
+    for (auto next = collection.begin(); next != collection.end(); ++next) ++tail;
+    for (auto item = iterator.next(); item.is_some(); item = iterator.next())
+        tail = collection.insert_after(tail, rstd::move(*item));
 }
 
 template<class C, class I>
 auto collect_forward_list(I iterator) -> C {
     auto collection = C {};
-    auto tail       = collection.before_begin();
-    for (auto item = iterator.next(); item.is_some(); item = iterator.next())
-        tail = collection.insert_after(tail, rstd::move(*item));
+    extend_forward_list(collection, rstd::move(iterator));
     return collection;
+}
+
+template<class C, class I>
+void extend_insert(C& collection, I iterator) {
+    if constexpr (requires(C& c, std::size_t size) { c.reserve(size); }) {
+        auto const lower = iterator.size_hint().template get<0>().to_primitive();
+        collection.reserve(collection.size() + lower);
+    }
+    for (auto item = iterator.next(); item.is_some(); item = iterator.next())
+        collection.insert(rstd::move(*item));
 }
 
 template<class C, class I>
 auto collect_insert(I iterator) -> C {
     auto collection = C {};
-    if constexpr (requires(C& c, std::size_t size) { c.reserve(size); }) {
-        auto const lower = iterator.size_hint().template get<0>().to_primitive();
-        collection.reserve(lower);
-    }
-    for (auto item = iterator.next(); item.is_some(); item = iterator.next())
-        collection.insert(rstd::move(*item));
+    extend_insert(collection, rstd::move(iterator));
     return collection;
 }
 
 template<class C, class I>
-auto collect_map(I iterator) -> C {
-    auto collection = C {};
+void extend_map(C& collection, I iterator) {
     if constexpr (requires(C& c, std::size_t size) { c.reserve(size); }) {
         auto const lower = iterator.size_hint().template get<0>().to_primitive();
-        collection.reserve(lower);
+        collection.reserve(collection.size() + lower);
     }
     for (auto item = iterator.next(); item.is_some(); item = iterator.next()) {
         collection.emplace(rstd::move(item->template get<0>()),
                            rstd::move(item->template get<1>()));
     }
+}
+
+template<class C, class I>
+auto collect_map(I iterator) -> C {
+    auto collection = C {};
+    extend_map(collection, rstd::move(iterator));
     return collection;
+}
+
+template<class C, class I>
+void extend_adapter(C& collection, I iterator) {
+    for (auto item = iterator.next(); item.is_some(); item = iterator.next())
+        collection.push(rstd::move(*item));
 }
 
 template<class C, class I>
 auto collect_adapter(I iterator) -> C {
     auto collection = C {};
-    for (auto item = iterator.next(); item.is_some(); item = iterator.next())
-        collection.push(rstd::move(*item));
+    extend_adapter(collection, rstd::move(iterator));
     return collection;
 }
 
@@ -255,6 +283,17 @@ struct Impl<iter::FromIterator<T>, std::vector<T, Alloc>> : ImplBase<std::vector
 };
 
 template<class T, class Alloc>
+struct Impl<iter::Extend<T>, std::vector<T, Alloc>> : ImplBase<std::vector<T, Alloc>> {
+    template<iter::has_next I>
+    static void extend(std::vector<T, Alloc>& collection, I iterator) {
+        iter::details::extend_back(collection, rstd::move(iterator));
+    }
+    static void extend_one(std::vector<T, Alloc>& collection, T&& item) {
+        collection.push_back(rstd::move(item));
+    }
+};
+
+template<class T, class Alloc>
 struct Impl<iter::FromIterator<T>, std::deque<T, Alloc>> : ImplBase<std::deque<T, Alloc>> {
     template<class I>
     static auto from_iter(I iterator) -> std::deque<T, Alloc> {
@@ -263,10 +302,32 @@ struct Impl<iter::FromIterator<T>, std::deque<T, Alloc>> : ImplBase<std::deque<T
 };
 
 template<class T, class Alloc>
+struct Impl<iter::Extend<T>, std::deque<T, Alloc>> : ImplBase<std::deque<T, Alloc>> {
+    template<iter::has_next I>
+    static void extend(std::deque<T, Alloc>& collection, I iterator) {
+        iter::details::extend_back(collection, rstd::move(iterator));
+    }
+    static void extend_one(std::deque<T, Alloc>& collection, T&& item) {
+        collection.push_back(rstd::move(item));
+    }
+};
+
+template<class T, class Alloc>
 struct Impl<iter::FromIterator<T>, std::list<T, Alloc>> : ImplBase<std::list<T, Alloc>> {
     template<class I>
     static auto from_iter(I iterator) -> std::list<T, Alloc> {
         return iter::details::collect_back<std::list<T, Alloc>>(rstd::move(iterator));
+    }
+};
+
+template<class T, class Alloc>
+struct Impl<iter::Extend<T>, std::list<T, Alloc>> : ImplBase<std::list<T, Alloc>> {
+    template<iter::has_next I>
+    static void extend(std::list<T, Alloc>& collection, I iterator) {
+        iter::details::extend_back(collection, rstd::move(iterator));
+    }
+    static void extend_one(std::list<T, Alloc>& collection, T&& item) {
+        collection.push_back(rstd::move(item));
     }
 };
 
@@ -280,6 +341,19 @@ struct Impl<iter::FromIterator<T>, std::forward_list<T, Alloc>>
     }
 };
 
+template<class T, class Alloc>
+struct Impl<iter::Extend<T>, std::forward_list<T, Alloc>> : ImplBase<std::forward_list<T, Alloc>> {
+    template<iter::has_next I>
+    static void extend(std::forward_list<T, Alloc>& collection, I iterator) {
+        iter::details::extend_forward_list(collection, rstd::move(iterator));
+    }
+    static void extend_one(std::forward_list<T, Alloc>& collection, T&& item) {
+        auto tail = collection.before_begin();
+        for (auto next = collection.begin(); next != collection.end(); ++next) ++tail;
+        collection.insert_after(tail, rstd::move(item));
+    }
+};
+
 template<class Char, class Traits, class Alloc>
 struct Impl<iter::FromIterator<Char>, std::basic_string<Char, Traits, Alloc>>
     : ImplBase<std::basic_string<Char, Traits, Alloc>> {
@@ -287,6 +361,18 @@ struct Impl<iter::FromIterator<Char>, std::basic_string<Char, Traits, Alloc>>
     static auto from_iter(I iterator) -> std::basic_string<Char, Traits, Alloc> {
         return iter::details::collect_back<std::basic_string<Char, Traits, Alloc>>(
             rstd::move(iterator));
+    }
+};
+
+template<class Char, class Traits, class Alloc>
+struct Impl<iter::Extend<Char>, std::basic_string<Char, Traits, Alloc>>
+    : ImplBase<std::basic_string<Char, Traits, Alloc>> {
+    template<iter::has_next I>
+    static void extend(std::basic_string<Char, Traits, Alloc>& collection, I iterator) {
+        iter::details::extend_back(collection, rstd::move(iterator));
+    }
+    static void extend_one(std::basic_string<Char, Traits, Alloc>& collection, Char&& item) {
+        collection.push_back(rstd::move(item));
     }
 };
 
@@ -300,12 +386,35 @@ struct Impl<iter::FromIterator<T>, std::set<T, Compare, Alloc>>
 };
 
 template<class T, class Compare, class Alloc>
+struct Impl<iter::Extend<T>, std::set<T, Compare, Alloc>> : ImplBase<std::set<T, Compare, Alloc>> {
+    template<iter::has_next I>
+    static void extend(std::set<T, Compare, Alloc>& collection, I iterator) {
+        iter::details::extend_insert(collection, rstd::move(iterator));
+    }
+    static void extend_one(std::set<T, Compare, Alloc>& collection, T&& item) {
+        collection.insert(rstd::move(item));
+    }
+};
+
+template<class T, class Compare, class Alloc>
 struct Impl<iter::FromIterator<T>, std::multiset<T, Compare, Alloc>>
     : ImplBase<std::multiset<T, Compare, Alloc>> {
     template<class I>
     static auto from_iter(I iterator) -> std::multiset<T, Compare, Alloc> {
         return iter::details::collect_insert<std::multiset<T, Compare, Alloc>>(
             rstd::move(iterator));
+    }
+};
+
+template<class T, class Compare, class Alloc>
+struct Impl<iter::Extend<T>, std::multiset<T, Compare, Alloc>>
+    : ImplBase<std::multiset<T, Compare, Alloc>> {
+    template<iter::has_next I>
+    static void extend(std::multiset<T, Compare, Alloc>& collection, I iterator) {
+        iter::details::extend_insert(collection, rstd::move(iterator));
+    }
+    static void extend_one(std::multiset<T, Compare, Alloc>& collection, T&& item) {
+        collection.insert(rstd::move(item));
     }
 };
 
@@ -320,12 +429,36 @@ struct Impl<iter::FromIterator<T>, std::unordered_set<T, Hash, Equal, Alloc>>
 };
 
 template<class T, class Hash, class Equal, class Alloc>
+struct Impl<iter::Extend<T>, std::unordered_set<T, Hash, Equal, Alloc>>
+    : ImplBase<std::unordered_set<T, Hash, Equal, Alloc>> {
+    template<iter::has_next I>
+    static void extend(std::unordered_set<T, Hash, Equal, Alloc>& collection, I iterator) {
+        iter::details::extend_insert(collection, rstd::move(iterator));
+    }
+    static void extend_one(std::unordered_set<T, Hash, Equal, Alloc>& collection, T&& item) {
+        collection.insert(rstd::move(item));
+    }
+};
+
+template<class T, class Hash, class Equal, class Alloc>
 struct Impl<iter::FromIterator<T>, std::unordered_multiset<T, Hash, Equal, Alloc>>
     : ImplBase<std::unordered_multiset<T, Hash, Equal, Alloc>> {
     template<class I>
     static auto from_iter(I iterator) -> std::unordered_multiset<T, Hash, Equal, Alloc> {
         return iter::details::collect_insert<std::unordered_multiset<T, Hash, Equal, Alloc>>(
             rstd::move(iterator));
+    }
+};
+
+template<class T, class Hash, class Equal, class Alloc>
+struct Impl<iter::Extend<T>, std::unordered_multiset<T, Hash, Equal, Alloc>>
+    : ImplBase<std::unordered_multiset<T, Hash, Equal, Alloc>> {
+    template<iter::has_next I>
+    static void extend(std::unordered_multiset<T, Hash, Equal, Alloc>& collection, I iterator) {
+        iter::details::extend_insert(collection, rstd::move(iterator));
+    }
+    static void extend_one(std::unordered_multiset<T, Hash, Equal, Alloc>& collection, T&& item) {
+        collection.insert(rstd::move(item));
     }
 };
 
@@ -339,12 +472,36 @@ struct Impl<iter::FromIterator<tuple<K, V>>, std::map<K, V, Compare, Alloc>>
 };
 
 template<class K, class V, class Compare, class Alloc>
+struct Impl<iter::Extend<tuple<K, V>>, std::map<K, V, Compare, Alloc>>
+    : ImplBase<std::map<K, V, Compare, Alloc>> {
+    template<iter::has_next I>
+    static void extend(std::map<K, V, Compare, Alloc>& collection, I iterator) {
+        iter::details::extend_map(collection, rstd::move(iterator));
+    }
+    static void extend_one(std::map<K, V, Compare, Alloc>& collection, tuple<K, V>&& item) {
+        collection.emplace(rstd::move(item.template get<0>()), rstd::move(item.template get<1>()));
+    }
+};
+
+template<class K, class V, class Compare, class Alloc>
 struct Impl<iter::FromIterator<tuple<K, V>>, std::multimap<K, V, Compare, Alloc>>
     : ImplBase<std::multimap<K, V, Compare, Alloc>> {
     template<class I>
     static auto from_iter(I iterator) -> std::multimap<K, V, Compare, Alloc> {
         return iter::details::collect_map<std::multimap<K, V, Compare, Alloc>>(
             rstd::move(iterator));
+    }
+};
+
+template<class K, class V, class Compare, class Alloc>
+struct Impl<iter::Extend<tuple<K, V>>, std::multimap<K, V, Compare, Alloc>>
+    : ImplBase<std::multimap<K, V, Compare, Alloc>> {
+    template<iter::has_next I>
+    static void extend(std::multimap<K, V, Compare, Alloc>& collection, I iterator) {
+        iter::details::extend_map(collection, rstd::move(iterator));
+    }
+    static void extend_one(std::multimap<K, V, Compare, Alloc>& collection, tuple<K, V>&& item) {
+        collection.emplace(rstd::move(item.template get<0>()), rstd::move(item.template get<1>()));
     }
 };
 
@@ -359,12 +516,38 @@ struct Impl<iter::FromIterator<tuple<K, V>>, std::unordered_map<K, V, Hash, Equa
 };
 
 template<class K, class V, class Hash, class Equal, class Alloc>
+struct Impl<iter::Extend<tuple<K, V>>, std::unordered_map<K, V, Hash, Equal, Alloc>>
+    : ImplBase<std::unordered_map<K, V, Hash, Equal, Alloc>> {
+    template<iter::has_next I>
+    static void extend(std::unordered_map<K, V, Hash, Equal, Alloc>& collection, I iterator) {
+        iter::details::extend_map(collection, rstd::move(iterator));
+    }
+    static void extend_one(std::unordered_map<K, V, Hash, Equal, Alloc>& collection,
+                           tuple<K, V>&&                                 item) {
+        collection.emplace(rstd::move(item.template get<0>()), rstd::move(item.template get<1>()));
+    }
+};
+
+template<class K, class V, class Hash, class Equal, class Alloc>
 struct Impl<iter::FromIterator<tuple<K, V>>, std::unordered_multimap<K, V, Hash, Equal, Alloc>>
     : ImplBase<std::unordered_multimap<K, V, Hash, Equal, Alloc>> {
     template<class I>
     static auto from_iter(I iterator) -> std::unordered_multimap<K, V, Hash, Equal, Alloc> {
         return iter::details::collect_map<std::unordered_multimap<K, V, Hash, Equal, Alloc>>(
             rstd::move(iterator));
+    }
+};
+
+template<class K, class V, class Hash, class Equal, class Alloc>
+struct Impl<iter::Extend<tuple<K, V>>, std::unordered_multimap<K, V, Hash, Equal, Alloc>>
+    : ImplBase<std::unordered_multimap<K, V, Hash, Equal, Alloc>> {
+    template<iter::has_next I>
+    static void extend(std::unordered_multimap<K, V, Hash, Equal, Alloc>& collection, I iterator) {
+        iter::details::extend_map(collection, rstd::move(iterator));
+    }
+    static void extend_one(std::unordered_multimap<K, V, Hash, Equal, Alloc>& collection,
+                           tuple<K, V>&&                                      item) {
+        collection.emplace(rstd::move(item.template get<0>()), rstd::move(item.template get<1>()));
     }
 };
 
@@ -377,10 +560,32 @@ struct Impl<iter::FromIterator<T>, std::queue<T, Container>> : ImplBase<std::que
 };
 
 template<class T, class Container>
+struct Impl<iter::Extend<T>, std::queue<T, Container>> : ImplBase<std::queue<T, Container>> {
+    template<iter::has_next I>
+    static void extend(std::queue<T, Container>& collection, I iterator) {
+        iter::details::extend_adapter(collection, rstd::move(iterator));
+    }
+    static void extend_one(std::queue<T, Container>& collection, T&& item) {
+        collection.push(rstd::move(item));
+    }
+};
+
+template<class T, class Container>
 struct Impl<iter::FromIterator<T>, std::stack<T, Container>> : ImplBase<std::stack<T, Container>> {
     template<class I>
     static auto from_iter(I iterator) -> std::stack<T, Container> {
         return iter::details::collect_adapter<std::stack<T, Container>>(rstd::move(iterator));
+    }
+};
+
+template<class T, class Container>
+struct Impl<iter::Extend<T>, std::stack<T, Container>> : ImplBase<std::stack<T, Container>> {
+    template<iter::has_next I>
+    static void extend(std::stack<T, Container>& collection, I iterator) {
+        iter::details::extend_adapter(collection, rstd::move(iterator));
+    }
+    static void extend_one(std::stack<T, Container>& collection, T&& item) {
+        collection.push(rstd::move(item));
     }
 };
 
@@ -391,6 +596,18 @@ struct Impl<iter::FromIterator<T>, std::priority_queue<T, Container, Compare>>
     static auto from_iter(I iterator) -> std::priority_queue<T, Container, Compare> {
         return iter::details::collect_adapter<std::priority_queue<T, Container, Compare>>(
             rstd::move(iterator));
+    }
+};
+
+template<class T, class Container, class Compare>
+struct Impl<iter::Extend<T>, std::priority_queue<T, Container, Compare>>
+    : ImplBase<std::priority_queue<T, Container, Compare>> {
+    template<iter::has_next I>
+    static void extend(std::priority_queue<T, Container, Compare>& collection, I iterator) {
+        iter::details::extend_adapter(collection, rstd::move(iterator));
+    }
+    static void extend_one(std::priority_queue<T, Container, Compare>& collection, T&& item) {
+        collection.push(rstd::move(item));
     }
 };
 

@@ -751,6 +751,114 @@ struct FlatMap : DefaultInClass<FlatMap<I, F>, Iterator> {
     auto size_hint() const -> SizeHint { return inner.size_hint(); }
 };
 
+template<class I, class Mapper>
+struct IteratorDriver<Map<I, Mapper>> {
+    template<typename B, typename F>
+    static auto fold(Map<I, Mapper>& iterator, B init, F& function) -> B {
+        auto step = [&iterator, &function](B accumulator, typename I::Item item) -> B {
+            decltype(auto) mapped = iterator.f(rstd::forward<typename I::Item>(item));
+            return function(rstd::move(accumulator),
+                            rstd::forward<typename Map<I, Mapper>::Item>(mapped));
+        };
+        return IteratorDriver<I>::fold(iterator.i, rstd::move(init), step);
+    }
+
+    template<typename B, typename F>
+    static auto try_fold(Map<I, Mapper>& iterator, B init, F& function) {
+        auto step = [&iterator, &function](B accumulator, typename I::Item item) {
+            decltype(auto) mapped = iterator.f(rstd::forward<typename I::Item>(item));
+            return function(rstd::move(accumulator),
+                            rstd::forward<typename Map<I, Mapper>::Item>(mapped));
+        };
+        return IteratorDriver<I>::try_fold(iterator.i, rstd::move(init), step);
+    }
+};
+
+template<class I, class Predicate>
+struct IteratorDriver<Filter<I, Predicate>> {
+    template<typename B, typename F>
+    static auto fold(Filter<I, Predicate>& iterator, B init, F& function) -> B {
+        auto step = [&iterator, &function](B accumulator, typename I::Item item) -> B {
+            if (iterator.pred(item)) {
+                return function(rstd::move(accumulator), rstd::forward<typename I::Item>(item));
+            }
+            return accumulator;
+        };
+        return IteratorDriver<I>::fold(iterator.i, rstd::move(init), step);
+    }
+
+    template<typename B, typename F>
+    static auto try_fold(Filter<I, Predicate>& iterator, B init, F& function) {
+        using R   = decltype(function(rstd::move(init), mtp::declval<typename I::Item>()));
+        auto step = [&iterator, &function](B accumulator, typename I::Item item) -> R {
+            if (iterator.pred(item)) {
+                return function(rstd::move(accumulator), rstd::forward<typename I::Item>(item));
+            }
+            return try_::from_output<R>(rstd::move(accumulator));
+        };
+        return IteratorDriver<I>::try_fold(iterator.i, rstd::move(init), step);
+    }
+};
+
+template<class A, class B>
+struct IteratorDriver<Chain<A, B>> {
+    template<typename Accumulator, typename F>
+    static auto fold(Chain<A, B>& iterator, Accumulator init, F& function) -> Accumulator {
+        auto accumulator = rstd::move(init);
+        if (! iterator.a_done) {
+            accumulator = IteratorDriver<A>::fold(iterator.a, rstd::move(accumulator), function);
+            iterator.a_done = true;
+        }
+        if (! iterator.b_done) {
+            accumulator = IteratorDriver<B>::fold(iterator.b, rstd::move(accumulator), function);
+            iterator.b_done = true;
+        }
+        return accumulator;
+    }
+
+    template<typename Accumulator, typename F>
+    static auto try_fold(Chain<A, B>& iterator, Accumulator init, F& function) {
+        using R          = decltype(function(rstd::move(init), mtp::declval<typename A::Item>()));
+        auto accumulator = rstd::move(init);
+        if (! iterator.a_done) {
+            auto result =
+                IteratorDriver<A>::try_fold(iterator.a, rstd::move(accumulator), function);
+            if (! try_::is_success(result)) return result;
+            accumulator     = try_::finish(try_::take_output(rstd::move(result)));
+            iterator.a_done = true;
+        }
+        if (! iterator.b_done) {
+            auto result =
+                IteratorDriver<B>::try_fold(iterator.b, rstd::move(accumulator), function);
+            if (! try_::is_success(result)) return result;
+            accumulator     = try_::finish(try_::take_output(rstd::move(result)));
+            iterator.b_done = true;
+        }
+        return try_::from_output<R>(rstd::move(accumulator));
+    }
+};
+
+template<class I, class Inspector>
+struct IteratorDriver<Inspect<I, Inspector>> {
+    template<typename B, typename F>
+    static auto fold(Inspect<I, Inspector>& iterator, B init, F& function) -> B {
+        auto step = [&iterator, &function](B accumulator, typename I::Item item) -> B {
+            iterator.f(item);
+            return function(rstd::move(accumulator), rstd::forward<typename I::Item>(item));
+        };
+        return IteratorDriver<I>::fold(iterator.i, rstd::move(init), step);
+    }
+
+    template<typename B, typename F>
+    static auto try_fold(Inspect<I, Inspector>& iterator, B init, F& function) {
+        auto step = [&iterator, &function](B accumulator, typename I::Item item) {
+            iterator.f(item);
+            return function(rstd::move(accumulator), rstd::forward<typename I::Item>(item));
+        };
+        return IteratorDriver<I>::try_fold(iterator.i, rstd::move(init), step);
+    }
+};
+
 // Borrows an iterator by pointer so it can be partially consumed without moving.
 template<class I>
 struct ByRef : DefaultInClass<ByRef<I>, Iterator> {

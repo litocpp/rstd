@@ -46,6 +46,18 @@ static_assert(! ConcreteCloneable<BTreeMap<MoveOnlyKey, i32>>);
 
 } // namespace
 
+TEST(BTreeMap, ExtendUsesMapDuplicateSemantics) {
+    auto map = BTreeMap<i32, i32>::make();
+    map.insert(1_i32, 10_i32);
+    auto entries = iter::once(rstd::tuple<i32, i32>(2_i32, 20_i32))
+                       .chain(iter::once(rstd::tuple<i32, i32>(1_i32, 11_i32)));
+    iter::extend(map, rstd::move(entries));
+
+    EXPECT_EQ(map.len(), 2_usize);
+    EXPECT_EQ(**map.get(1_i32), 11_i32);
+    EXPECT_EQ(**map.get(2_i32), 20_i32);
+}
+
 TEST(BTreeMap, BasicLookupAndReplacement) {
     auto map = BTreeMap<i32, i32>::make();
     EXPECT_TRUE(map.is_empty());
@@ -149,7 +161,7 @@ TEST(BTreeMap, MutableAndOwningIterators) {
     for (auto item = values.next(); item.is_some(); item = values.next()) **item += i32(1);
     EXPECT_EQ(**map.get(i32(10)), i32(1001));
 
-    auto owned = map.into_iter();
+    auto owned = rstd::move(map).into_iter();
     EXPECT_TRUE(map.is_empty());
     for (i32 expected {}; expected < i32(64); expected += i32(1)) {
         auto item = owned.next();
@@ -189,7 +201,7 @@ TEST(BTreeMap, IteratorItemsSupportStructuredBindings) {
         EXPECT_EQ(value->value, 21);
     }
 
-    auto item = map.into_iter().next();
+    auto item = rstd::move(map).into_iter().next();
     ASSERT_TRUE(item.is_some());
     auto [key, value] = item.unwrap();
     EXPECT_EQ(key, i32(2));
@@ -214,7 +226,7 @@ TEST(BTreeMap, IntoIteratorSupportsOwnedAndBorrowedRangeFor) {
     EXPECT_EQ(**map.get(2_i32), 22_i32);
 
     auto owned_total = i32();
-    for (auto [key, value] : map.into_iter()) owned_total += key + value;
+    for (auto [key, value] : rstd::move(map).into_iter()) owned_total += key + value;
     EXPECT_EQ(owned_total, 36_i32);
 }
 

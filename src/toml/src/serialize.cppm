@@ -203,13 +203,12 @@ class TomlEmitter {
 
     auto write_inline_table(const Table& table) -> bool {
         write_ascii('{');
-        usize index {};
-        auto  iterator = table.iter();
-        for (auto item = iterator.next(); item.is_some(); item = iterator.next(), ++index) {
+        for (auto [index, item] : table.iter().enumerate()) {
+            auto [key, value] = item;
             if (index != usize()) write(", "_str);
-            write_key((*item).template get<0>()->as_str());
+            write_key(key->as_str());
             write(" = "_str);
-            if (! write_inline_value(*(*item).template get<1>())) return false;
+            if (! write_inline_value(*value)) return false;
         }
         write_ascii('}');
         return true;
@@ -217,9 +216,9 @@ class TomlEmitter {
 
     auto write_array(const Array& array) -> bool {
         write_ascii('[');
-        for (usize index {}; index < array.len(); ++index) {
+        for (auto [index, value] : array.iter().enumerate()) {
             if (index != usize()) write(", "_str);
-            if (! write_inline_value(array[index])) return false;
+            if (! write_inline_value(*value)) return false;
         }
         write_ascii(']');
         return true;
@@ -279,11 +278,10 @@ class TomlEmitter {
     }
 
     auto write_assignments(const Table& table) -> bool {
-        auto iterator = table.iter();
-        for (auto item = iterator.next(); item.is_some(); item = iterator.next()) {
-            const auto& value = *(*item).template get<1>();
+        for (auto [key, value_ref] : table.iter()) {
+            const auto& value = *value_ref;
             if (is_child(value)) continue;
-            write_key((*item).template get<0>()->as_str());
+            write_key(key->as_str());
             write(" = "_str);
             if (! write_inline_value(value)) return false;
             write_ascii('\n');
@@ -299,11 +297,10 @@ class TomlEmitter {
     }
 
     auto write_children(const Table& table, KeyPath& path) -> bool {
-        auto iterator = table.iter();
-        for (auto item = iterator.next(); item.is_some(); item = iterator.next()) {
-            const auto& value = *(*item).template get<1>();
+        for (auto [key, value_ref] : table.iter()) {
+            const auto& value = *value_ref;
             if (! is_child(value)) continue;
-            path.push((*item).template get<0>()->clone());
+            path.push(key->clone());
             if (value.is_table()) {
                 begin_section(path, false);
                 if (! write_assignments(**value.as_table()) ||

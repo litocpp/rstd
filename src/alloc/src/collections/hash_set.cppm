@@ -135,7 +135,7 @@ public:
     }
 
     auto iter() const [[clang::lifetimebound]] -> HashSetIter<K> { return map.keys(); }
-    auto into_iter() -> IntoIter { return IntoIter(map.into_iter()); }
+    auto into_iter() && -> IntoIter { return IntoIter(rstd::move(map).into_iter()); }
 };
 
 } // namespace alloc::collections
@@ -150,10 +150,24 @@ struct Impl<iter::FromIterator<K>, ::alloc::collections::HashSet<K, S, Eq>>
     template<typename It>
     static auto from_iter(It iter) -> ::alloc::collections::HashSet<K, S, Eq> {
         auto set = ::alloc::collections::HashSet<K, S, Eq>::make();
-        for (auto item = iter.next(); item.is_some(); item = iter.next()) {
-            set.insert(rstd::move(*item));
-        }
+        Impl<iter::Extend<K>, ::alloc::collections::HashSet<K, S, Eq>>::extend(set,
+                                                                               rstd::move(iter));
         return set;
+    }
+};
+
+template<typename K, typename S, typename Eq>
+    requires hash::HashableBy<K, S> && mtp::init<S> && mtp::init<Eq>
+struct Impl<iter::Extend<K>, ::alloc::collections::HashSet<K, S, Eq>>
+    : ImplBase<::alloc::collections::HashSet<K, S, Eq>> {
+    template<iter::has_next It>
+    static void extend(::alloc::collections::HashSet<K, S, Eq>& set, It iterator) {
+        for (auto item = iterator.next(); item.is_some(); item = iterator.next())
+            extend_one(set, rstd::move(*item));
+    }
+
+    static void extend_one(::alloc::collections::HashSet<K, S, Eq>& set, K&& item) {
+        set.insert(rstd::move(item));
     }
 };
 
@@ -162,7 +176,7 @@ struct Impl<iter::IntoIterator, ::alloc::collections::HashSet<K, S, Eq>>
     : ImplBase<::alloc::collections::HashSet<K, S, Eq>> {
     using IntoIter = ::alloc::collections::HashSetIntoIter<K>;
 
-    auto into_iter() -> IntoIter { return this->self().into_iter(); }
+    auto into_iter() -> IntoIter { return rstd::move(this->self()).into_iter(); }
 };
 
 template<typename K, typename S, typename Eq>
