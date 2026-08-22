@@ -283,6 +283,24 @@ TEST(Str, CharsExposesUnconsumedString) {
     EXPECT_TRUE(chars.next().is_none());
 }
 
+TEST(Str, CharIndicesUsesUtf8ByteOffsets) {
+    auto indices = "a右😀"_str.char_indices();
+
+    auto first = indices.next().unwrap();
+    EXPECT_EQ(first.template get<0>(), usize());
+    EXPECT_EQ(first.template get<1>(), u32(U'a'));
+    EXPECT_EQ(indices.as_str(), "右😀"_str);
+
+    auto second = indices.next().unwrap();
+    EXPECT_EQ(second.template get<0>(), usize(1));
+    EXPECT_EQ(second.template get<1>(), u32(U'右'));
+
+    auto third = indices.next().unwrap();
+    EXPECT_EQ(third.template get<0>(), usize(4));
+    EXPECT_EQ(third.template get<1>(), u32(U'😀'));
+    EXPECT_TRUE(indices.next().is_none());
+}
+
 TEST(String, MakeFromStr) {
     auto s = rstd::string::String::make("hello"_str);
     EXPECT_EQ(s.len(), usize(5));

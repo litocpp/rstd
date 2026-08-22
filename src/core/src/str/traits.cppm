@@ -96,6 +96,39 @@ private:
     ref<str> remaining_;
 };
 
+export struct CharIndices : DefaultInClass<CharIndices, iter::Iterator> {
+    using Item                         = tuple<usize, u32>;
+    static constexpr bool PROVEN_FUSED = true;
+
+    constexpr explicit CharIndices(ref<str> value): remaining_(value) {}
+
+    constexpr auto next() -> Option<Item> {
+        if (remaining_.is_empty()) return None();
+        auto [code_point, length] = char_::decode_utf8(remaining_.data(), remaining_.len());
+        auto const offset         = byte_offset_;
+        byte_offset_ += length;
+        if (length == remaining_.len()) {
+            remaining_ = ref<str>::from_raw_parts_unchecked(
+                remaining_.data() + length.to_primitive(), usize());
+        } else {
+            remaining_ = ref<str>::from_raw_parts_unchecked(
+                remaining_.data() + length.to_primitive(), remaining_.len() - length);
+        }
+        return Some(Item(offset, u32(code_point)));
+    }
+
+    constexpr auto size_hint() const -> iter::SizeHint {
+        auto const bytes = remaining_.len().to_primitive();
+        return { usize(bytes / 4 + (bytes % 4 != 0)), Some(remaining_.len()) };
+    }
+
+    constexpr auto as_str() const noexcept -> ref<str> { return remaining_; }
+
+private:
+    ref<str> remaining_;
+    usize    byte_offset_ {};
+};
+
 } // namespace rstd::str_
 
 namespace rstd
@@ -109,12 +142,20 @@ constexpr auto ref<str>::chars() const noexcept -> str_::Chars {
     return str_::Chars(*this);
 }
 
+constexpr auto ref<str>::char_indices() const noexcept -> str_::CharIndices {
+    return str_::CharIndices(*this);
+}
+
 constexpr auto mut_ref<str>::bytes() const noexcept -> str_::Bytes {
     return as_ref().bytes();
 }
 
 constexpr auto mut_ref<str>::chars() const noexcept -> str_::Chars {
     return as_ref().chars();
+}
+
+constexpr auto mut_ref<str>::char_indices() const noexcept -> str_::CharIndices {
+    return as_ref().char_indices();
 }
 
 } // namespace rstd

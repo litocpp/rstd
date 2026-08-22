@@ -46,3 +46,4 @@ export import :ffi;
 export import :hash;
 export import :memchr;
 export import :char_;
+export import :ascii;

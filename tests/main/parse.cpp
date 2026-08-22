@@ -1,6 +1,7 @@
 #include <rstd/test/gtest.hpp>
 
-import rstd.parse;
+import rstd.parse.core;
+import rstd.parse.alloc;
 
 using namespace rstd::literals;
 using namespace rstd::parse;
@@ -26,8 +27,9 @@ struct StalledRule {
 
     constexpr auto id() const noexcept -> RuleId { return RuleId("stalled"_str); }
 
-    template<typename T, typename ObserverType>
-    auto match(Driver<T, ObserverType>& driver) -> Match<Span> {
+    template<typename T, typename Adapter, typename ObserverType>
+    auto match(Driver<T, Adapter, ObserverType>& driver)
+        -> Match<Span, typename Adapter::error_type> {
         auto position = driver.cursor().position();
         return rstd::Ok(rstd::Some(Span { .begin = position, .end = position }));
     }
@@ -70,9 +72,7 @@ TEST(Parse, CommitStopsOrderedChoice) {
 }
 
 TEST(Parse, RepeatAndOptionalOwnTheirValues) {
-    auto digit  = atomic(RuleId("digit"_str), [](rstd::u8 value) {
-        return value >= rstd::u8('0') && value <= rstd::u8('9');
-    });
+    auto digit  = atomic(RuleId("digit"_str), ascii::digit);
     auto digits = repeat_one(RuleId("digits"_str), rstd::move(digit));
     auto sign   = optional(RuleId("sign"_str), text(RuleId("minus"_str), "-"_str));
     auto rule   = seq(RuleId("number"_str), rstd::move(sign), rstd::move(digits));
@@ -161,11 +161,12 @@ TEST(Parse, DelimitedAndSeparatedKeepOnlyValues) {
 }
 
 TEST(Parse, SeparatedDoesNotConsumeTrailingSeparator) {
-    auto         item  = text(RuleId("item"_str), "a"_str);
-    auto         comma = text(RuleId("comma"_str), ","_str);
-    auto         rule  = separated_one(RuleId("items"_str), rstd::move(item), rstd::move(comma));
-    NoopObserver observer;
-    Driver       driver(text_input("a,"_str), SourceId("fixture"_str), observer);
+    auto           item  = text(RuleId("item"_str), "a"_str);
+    auto           comma = text(RuleId("comma"_str), ","_str);
+    auto           rule  = separated_one(RuleId("items"_str), rstd::move(item), rstd::move(comma));
+    NoopObserver   observer;
+    RuntimeAdapter adapter(SourceId("fixture"_str));
+    Driver         driver(text_input("a,"_str), adapter, observer);
 
     auto result = driver.apply(rule);
 
@@ -216,4 +217,73 @@ TEST(Parse, RepeatRejectsAFalseProgressDeclarationAtRuntime) {
 
     ASSERT_TRUE(result.is_err());
     EXPECT_EQ(result.unwrap_err().diagnostic().kind(), ErrorKind::Stalled);
+}
+
+TEST(Parse, AsciiPredicatesComposeWithoutRules) {
+    constexpr auto bare_key = any_of(ascii::alnum, one_of(rstd::u8('_'), rstd::u8('-')));
+
+    static_assert(ascii::digit(rstd::u8('0')));
+    static_assert(ascii::hex_digit(rstd::u8('F')));
+    static_assert(! ascii::digit(rstd::u8('a')));
+    static_assert(bare_key(rstd::u8('_')));
+    static_assert(bare_key(rstd::u8('z')));
+    static_assert(! bare_key(rstd::u8('.')));
+
+    EXPECT_EQ(*rstd::ascii::digit_value(rstd::u8('f'), rstd::u8(16)), rstd::u8(15));
+    EXPECT_TRUE(rstd::ascii::digit_value(rstd::u8('2'), rstd::u8(2)).is_none());
+
+    for (rstd::uint16_t raw = 0; raw <= 0xff; ++raw) {
+        auto const value = rstd::u8(static_cast<rstd::uint8_t>(raw));
+        EXPECT_EQ(rstd::ascii::is_digit(value), raw >= '0' && raw <= '9');
+        EXPECT_EQ(rstd::ascii::is_alpha(value),
+                  (raw >= 'a' && raw <= 'z') || (raw >= 'A' && raw <= 'Z'));
+        EXPECT_EQ(rstd::ascii::is_space(value),
+                  raw == ' ' || raw == '\t' || raw == '\n' || raw == '\r' || raw == '\v' ||
+                      raw == '\f');
+    }
+}
+
+TEST(Parse, ConsumeFragmentsOwnRollbackAndSpans) {
+    TextCursor cursor(text_input("12ab"_str));
+
+    auto digits = consume_while_one(cursor, ascii::digit);
+    ASSERT_TRUE(digits.is_some());
+    EXPECT_EQ(*digits, (Span { .begin = rstd::usize(), .end = rstd::usize(2) }));
+
+    auto before = cursor.position();
+    auto failed = consume_n(cursor, rstd::usize(3), ascii::alpha);
+    EXPECT_TRUE(failed.is_none());
+    EXPECT_EQ(cursor.position(), before);
+    EXPECT_EQ(cursor.furthest_position(), rstd::usize(4));
+
+    auto literal = consume_literal(cursor, "ab"_str);
+    ASSERT_TRUE(literal.is_some());
+    EXPECT_EQ(cursor.text(*literal), "ab"_str);
+    EXPECT_TRUE(cursor.is_eof());
+}
+
+TEST(Parse, FixedCollectionReportsCapacityThroughAdapter) {
+    auto digit  = atomic(RuleId("digit"_str), ascii::digit);
+    auto digits = repeat_one_fixed<2>(RuleId("digits"_str), rstd::move(digit));
+
+    auto result = parse(text_input("123"_str), digits);
+
+    ASSERT_TRUE(result.is_err());
+    EXPECT_EQ(result.unwrap_err().kind, ErrorKind::Capacity);
+}
+
+TEST(Parse, FixedAndVecCollectionsPreserveTheSameGrammarResult) {
+    auto fixed_digit  = atomic(RuleId("digit"_str), ascii::digit);
+    auto fixed_digits = repeat_one_fixed<3>(RuleId("digits"_str), rstd::move(fixed_digit));
+    auto fixed        = parse(text_input("123x"_str), fixed_digits).unwrap().unwrap();
+
+    auto vec_digit  = atomic(RuleId("digit"_str), ascii::digit);
+    auto vec_digits = repeat_one(RuleId("digits"_str), rstd::move(vec_digit));
+    auto dynamic =
+        parse(text_input("123x"_str), SourceId("fixture"_str), vec_digits).unwrap().unwrap();
+
+    ASSERT_EQ(fixed.len(), dynamic.len());
+    for (rstd::usize index {}; index < fixed.len(); ++index) {
+        EXPECT_EQ(fixed[index], dynamic[index]);
+    }
 }

@@ -1,4 +1,4 @@
-export module rstd.parse:error;
+export module rstd.parse.alloc:error;
 export import :source;
 
 using namespace rstd::prelude;
@@ -6,12 +6,6 @@ using ::alloc::string::String;
 
 export namespace rstd::parse
 {
-
-enum class ErrorKind : rstd::uint8_t
-{
-    Expected,
-    Stalled,
-};
 
 class Diagnostic {
     SourceId       source_;
@@ -39,20 +33,17 @@ public:
     explicit ParseError(Diagnostic diagnostic);
 
     static auto expected(SourceId source, Span span, RuleId rule) -> ParseError;
-
     static auto stalled(SourceId source, Span span, RuleId rule) -> ParseError;
+    static auto capacity(SourceId source, Span span, RuleId rule) -> ParseError;
 
     auto diagnostic() const noexcept [[clang::lifetimebound]] -> const Diagnostic& {
         return diagnostic_;
     }
 };
 
-template<typename T>
-using Match = Result<Option<T>, ParseError>;
-
 } // namespace rstd::parse
 
-namespace rstd
+export namespace rstd
 {
 
 template<>

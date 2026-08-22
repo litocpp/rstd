@@ -1,7 +1,7 @@
 export module rstd.json:parser;
 export import :value;
 export import :error;
-import rstd.parse;
+import rstd.parse.core;
 
 export namespace rstd::json
 {
@@ -31,6 +31,7 @@ auto from_slice(slice<u8> input, ParseOptions options) -> ParseResult;
 using namespace rstd::prelude;
 using namespace rstd::json;
 using namespace rstd::literals;
+using ::alloc::string::String;
 
 class Parser {
     rstd::parse::TextCursor cursor_;
@@ -119,19 +120,11 @@ class Parser {
     }
 
     [[nodiscard]]
-    static auto hex_value(u8 byte) noexcept -> Option<u8> {
-        if (byte >= u8('0') && byte <= u8('9')) return Some(byte - u8('0'));
-        if (byte >= u8('a') && byte <= u8('f')) return Some(byte - u8('a') + u8(10));
-        if (byte >= u8('A') && byte <= u8('F')) return Some(byte - u8('A') + u8(10));
-        return None();
-    }
-
-    [[nodiscard]]
     auto parse_hex_escape() -> Result<u16, Error> {
         u16 value {};
         for (usize i {}; i < usize(4); ++i) {
             if (eof()) return Err(error(ErrorCode::EofWhileParsingString));
-            auto digit = hex_value(peek());
+            auto digit = rstd::ascii::digit_value(peek(), u8(16));
             if (digit.is_none()) return Err(error(ErrorCode::InvalidEscape));
             take();
             value = (value << u64(4)) | rstd::as_cast<u16>(*digit);
@@ -140,7 +133,7 @@ class Parser {
     }
 
     [[nodiscard]]
-    auto parse_unicode_escape(::alloc::string::String& output) -> Result<empty, Error> {
+    auto parse_unicode_escape(String& output) -> Result<empty, Error> {
         auto first_result = parse_hex_escape();
         if (first_result.is_err()) return Err(first_result.unwrap_err());
         const u16 first = first_result.unwrap();
@@ -179,9 +172,9 @@ class Parser {
     }
 
     [[nodiscard]]
-    auto parse_string() -> Result<::alloc::string::String, Error> {
+    auto parse_string() -> Result<String, Error> {
         take();
-        auto output = ::alloc::string::String::make();
+        auto output = String::make();
 
         while (! eof()) {
             auto chunk_start = cursor_.checkpoint();
@@ -257,13 +250,11 @@ class Parser {
         auto integer_begin = cursor_.checkpoint();
         if (peek() == u8('0')) {
             take();
-            if (! eof() && peek() >= u8('0') && peek() <= u8('9')) {
+            if (! eof() && rstd::ascii::is_digit(peek())) {
                 return Err(error(ErrorCode::InvalidNumber));
             }
         } else if (peek() >= u8('1') && peek() <= u8('9')) {
-            do {
-                take();
-            } while (! eof() && peek() >= u8('0') && peek() <= u8('9'));
+            rstd::parse::consume_while(cursor_, rstd::parse::ascii::digit);
         } else {
             return Err(error(ErrorCode::InvalidNumber));
         }
@@ -275,14 +266,9 @@ class Parser {
             floating = true;
             take();
             if (eof()) return Err(error(ErrorCode::EofWhileParsingValue));
-            if (peek() < u8('0') || peek() > u8('9')) {
-                return Err(error(ErrorCode::InvalidNumber));
-            }
-            auto fraction_begin = cursor_.checkpoint();
-            do {
-                take();
-            } while (! eof() && peek() >= u8('0') && peek() <= u8('9'));
-            fraction = cursor_.span_from(fraction_begin);
+            auto digits = rstd::parse::consume_while_one(cursor_, rstd::parse::ascii::digit);
+            if (digits.is_none()) return Err(error(ErrorCode::InvalidNumber));
+            fraction = *digits;
         }
 
         i32 exponent {};
@@ -295,16 +281,15 @@ class Parser {
                 take();
             }
             if (eof()) return Err(error(ErrorCode::EofWhileParsingValue));
-            if (peek() < u8('0') || peek() > u8('9')) {
-                return Err(error(ErrorCode::InvalidNumber));
-            }
-            do {
+            auto digits = rstd::parse::consume_while_one(cursor_, rstd::parse::ascii::digit);
+            if (digits.is_none()) return Err(error(ErrorCode::InvalidNumber));
+            auto exponent_digits = cursor_.view(*digits);
+            for (auto digit : exponent_digits) {
                 if (exponent < i32(10'000)) {
-                    exponent = exponent * i32(10) + rstd::as_cast<i32>(peek() - u8('0'));
+                    exponent = exponent * i32(10) + rstd::as_cast<i32>(digit - u8('0'));
                     if (exponent > i32(10'000)) exponent = i32(10'000);
                 }
-                take();
-            } while (! eof() && peek() >= u8('0') && peek() <= u8('9'));
+            }
             if (exponent_negative) exponent = -exponent;
         }
 

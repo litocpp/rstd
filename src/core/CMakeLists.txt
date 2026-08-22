@@ -111,4 +111,5 @@ target_sources(
          src/sync/mod.cppm
          src/sync/atomic.cppm
          src/forward.cppm
-         src/char_.cppm)
+         src/char_.cppm
+         src/ascii.cppm)

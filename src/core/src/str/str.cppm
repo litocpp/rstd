@@ -19,6 +19,7 @@ export struct Str {
 
 export struct Bytes;
 export struct Chars;
+export struct CharIndices;
 
 } // namespace rstd::str_
 
@@ -90,6 +91,7 @@ public:
 
     constexpr auto bytes() const noexcept -> str_::Bytes;
     constexpr auto chars() const noexcept -> str_::Chars;
+    constexpr auto char_indices() const noexcept -> str_::CharIndices;
 
     constexpr auto contains(ref<str> pattern) const noexcept -> bool {
         if (pattern.is_empty()) return true;
@@ -218,6 +220,7 @@ public:
     constexpr auto as_bytes() const noexcept -> slice<u8> { return as_ref().as_bytes(); }
     constexpr auto bytes() const noexcept -> str_::Bytes;
     constexpr auto chars() const noexcept -> str_::Chars;
+    constexpr auto char_indices() const noexcept -> str_::CharIndices;
     constexpr auto contains(ref<str> pattern) const noexcept -> bool {
         return as_ref().contains(pattern);
     }

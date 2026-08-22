@@ -160,6 +160,48 @@ outcome = "failure"
 diagnostic-contains = ["rstd string literal must be valid UTF-8"]
 
 [[compile-test.cases]]
+name = "Regex.UnclosedGroup"
+source = "regex_unclosed_group.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd regex syntax error", "RegexErrorKind::UnclosedGroup, 0"]
+
+[[compile-test.cases]]
+name = "Regex.UnclosedClass"
+source = "regex_unclosed_class.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd regex syntax error", "RegexErrorKind::UnclosedClass, 0"]
+
+[[compile-test.cases]]
+name = "Regex.InvalidEscape"
+source = "regex_invalid_escape.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd regex syntax error", "RegexErrorKind::InvalidEscape, 1"]
+
+[[compile-test.cases]]
+name = "Regex.InvalidRange"
+source = "regex_invalid_range.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd regex syntax error", "RegexErrorKind::InvalidRange, 4"]
+
+[[compile-test.cases]]
+name = "Regex.InvalidRepeat"
+source = "regex_invalid_repeat.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd regex syntax error", "RegexErrorKind::InvalidRepeat, 1"]
+
+[[compile-test.cases]]
+name = "Regex.DuplicateCaptureName"
+source = "regex_duplicate_capture.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd regex syntax error", "RegexErrorKind::DuplicateCaptureName, 10"]
+
+[[compile-test.cases]]
+name = "Regex.UnsupportedConstruct"
+source = "regex_unsupported_construct.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd regex syntax error", "RegexErrorKind::UnsupportedConstruct, 4"]
+
+[[compile-test.cases]]
 name = "Numeric.SignedIncrement"
 source = "numeric_increment.cpp"
 outcome = "failure"
@@ -319,4 +361,8 @@ options = ["-Werror=dangling"]
 
 [dependencies.rstd-std]
 path = "../../src/std"
+visibility = "private"
+
+[dependencies.rstd-parse]
+path = "../../src/parse"
 visibility = "private"

@@ -1,6 +1,7 @@
 export module rstd.core:num.floating_parse;
 import :num.types;
 import :error.trait;
+import :ascii;
 export import :num.dec2flt;
 export import :str.traits;
 export import :fmt;
@@ -38,10 +39,6 @@ template<num::Float T>
 struct Impl<str_::FromStr, T> {
     using Err  = num::ParseFloatError;
     using Self = T;
-
-    static constexpr auto is_digit(rstd::uint8_t value) noexcept -> bool {
-        return value >= '0' && value <= '9';
-    }
 
     static auto error(num::FloatErrorKind kind) -> Result<Self, Err> {
         return rstd::Err(num::ParseFloatError(kind));
@@ -87,7 +84,7 @@ struct Impl<str_::FromStr, T> {
         if (body == "NaN"_str) return Ok(negative ? -Self::NAN_ : Self::NAN_);
 
         auto integer_begin = index;
-        while (index < input.size().to_primitive() && is_digit(byte_at(index))) ++index;
+        while (index < input.size().to_primitive() && ascii::is_digit(u8(byte_at(index)))) ++index;
         auto integer_end = index;
 
         auto fraction_begin = index;
@@ -95,7 +92,9 @@ struct Impl<str_::FromStr, T> {
         if (index < input.size().to_primitive() && byte_at(index) == '.') {
             ++index;
             fraction_begin = index;
-            while (index < input.size().to_primitive() && is_digit(byte_at(index))) ++index;
+            while (index < input.size().to_primitive() && ascii::is_digit(u8(byte_at(index)))) {
+                ++index;
+            }
             fraction_end = index;
         }
 
@@ -113,11 +112,11 @@ struct Impl<str_::FromStr, T> {
                 exponent_negative = byte_at(index) == '-';
                 ++index;
             }
-            if (index == input.size().to_primitive() || ! is_digit(byte_at(index))) {
+            if (index == input.size().to_primitive() || ! ascii::is_digit(u8(byte_at(index)))) {
                 return error(num::FloatErrorKind::Invalid);
             }
             rstd::int32_t raw_exponent = 0;
-            while (index < input.size().to_primitive() && is_digit(byte_at(index))) {
+            while (index < input.size().to_primitive() && ascii::is_digit(u8(byte_at(index)))) {
                 if (raw_exponent < 100000) {
                     raw_exponent =
                         raw_exponent * 10 + static_cast<rstd::int32_t>(byte_at(index) - '0');

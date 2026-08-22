@@ -1,6 +1,6 @@
 export module rstd.toml:parser;
 import rstd.alloc;
-import rstd.parse;
+import rstd.parse.core;
 export import :value;
 export import :error;
 
@@ -82,25 +82,11 @@ constexpr auto is_horizontal(u8 byte) noexcept -> bool {
 }
 
 constexpr auto is_bare_key(u8 byte) noexcept -> bool {
-    return (byte >= u8('a') && byte <= u8('z')) || (byte >= u8('A') && byte <= u8('Z')) ||
-           (byte >= u8('0') && byte <= u8('9')) || byte == u8('_') || byte == u8('-');
-}
-
-constexpr auto is_digit(u8 byte) noexcept -> bool {
-    return byte >= u8('0') && byte <= u8('9');
-}
-
-constexpr auto hex_digit(u8 byte) noexcept -> Option<u8> {
-    if (byte >= u8('0') && byte <= u8('9')) return Some(byte - u8('0'));
-    if (byte >= u8('a') && byte <= u8('f')) return Some(byte - u8('a') + u8(10));
-    if (byte >= u8('A') && byte <= u8('F')) return Some(byte - u8('A') + u8(10));
-    return None();
+    return rstd::ascii::is_alnum(byte) || byte == u8('_') || byte == u8('-');
 }
 
 constexpr auto digit_for_base(u8 byte, u8 base) noexcept -> Option<u8> {
-    auto value = hex_digit(byte);
-    if (value.is_none() || *value >= base) return None();
-    return value;
+    return rstd::ascii::digit_value(byte, base);
 }
 
 constexpr auto is_leap_year(uint16_t year) noexcept -> bool {
@@ -170,9 +156,7 @@ public:
     }
 
 private:
-    void consume_horizontal() noexcept {
-        while (! eof() && is_horizontal(peek())) take();
-    }
+    void consume_horizontal() noexcept { rstd::parse::skip_while(cursor_, is_horizontal); }
 
     auto consume_comment() noexcept -> Option<Error> {
         if (eof() || peek() != u8('#')) return None();
@@ -186,25 +170,7 @@ private:
         return None();
     }
 
-    auto consume_document_trivia() noexcept -> Option<Error> {
-        for (;;) {
-            consume_horizontal();
-            if (auto failure = consume_comment(); failure.is_some()) return failure;
-            if (eof()) return None();
-            if (peek() == u8('\n')) {
-                take();
-                continue;
-            }
-            if (peek() == u8('\r') && peek(usize(1)) == u8('\n')) {
-                take();
-                take();
-                continue;
-            }
-            return None();
-        }
-    }
-
-    auto consume_array_trivia() noexcept -> Option<Error> {
+    auto consume_trivia() noexcept -> Option<Error> {
         for (;;) {
             consume_horizontal();
             if (auto failure = consume_comment(); failure.is_some()) return failure;
@@ -244,7 +210,7 @@ private:
         rstd::uint32_t value {};
         for (usize index {}; index < digits; ++index) {
             if (eof()) return Err(error(TomlErrorCode::UnexpectedEnd));
-            auto digit = hex_digit(peek());
+            auto digit = rstd::ascii::digit_value(peek(), u8(16));
             if (digit.is_none()) return Err(error(TomlErrorCode::InvalidUnicode));
             take();
             value = value * 16 + digit->to_primitive();
@@ -440,7 +406,7 @@ private:
         if (peek() == u8('\'')) return parse_literal_string(false);
         if (! is_bare_key(peek())) return Err(error(TomlErrorCode::ExpectedKey));
         auto begin = cursor_.checkpoint();
-        while (! eof() && is_bare_key(peek())) take();
+        rstd::parse::consume_while(cursor_, is_bare_key);
         return Ok(String::make(cursor_.consumed_text(begin)));
     }
 
@@ -610,7 +576,7 @@ private:
             ++cursor;
         }
         const usize integer_begin = cursor;
-        while (cursor < text.size() && is_digit(text[cursor])) ++cursor;
+        while (cursor < text.size() && rstd::ascii::is_digit(text[cursor])) ++cursor;
         const usize integer_end = cursor;
         if (integer_end == integer_begin ||
             (integer_end - integer_begin > usize(1) && text[integer_begin] == u8('0'))) {
@@ -622,7 +588,7 @@ private:
         if (cursor < text.size() && text[cursor] == u8('.')) {
             ++cursor;
             fraction_begin = cursor;
-            while (cursor < text.size() && is_digit(text[cursor])) ++cursor;
+            while (cursor < text.size() && rstd::ascii::is_digit(text[cursor])) ++cursor;
             fraction_end = cursor;
             if (fraction_begin == fraction_end) return Err(error(TomlErrorCode::InvalidNumber));
         }
@@ -637,11 +603,11 @@ private:
                 exponent_negative = text[cursor] == u8('-');
                 ++cursor;
             }
-            if (cursor == text.size() || ! is_digit(text[cursor])) {
+            if (cursor == text.size() || ! rstd::ascii::is_digit(text[cursor])) {
                 return Err(error(TomlErrorCode::InvalidNumber));
             }
             rstd::int32_t raw_exponent {};
-            while (cursor < text.size() && is_digit(text[cursor])) {
+            while (cursor < text.size() && rstd::ascii::is_digit(text[cursor])) {
                 if (raw_exponent < 100000) {
                     raw_exponent = raw_exponent * 10 + static_cast<rstd::int32_t>(
                                                            (text[cursor] - u8('0')).to_primitive());
@@ -672,8 +638,8 @@ private:
 
     [[nodiscard]]
     static auto parse_two(ref<str> token, usize offset) noexcept -> Option<uint8_t> {
-        if (offset + usize(2) > token.size() || ! is_digit(token[offset]) ||
-            ! is_digit(token[offset + usize(1)])) {
+        if (offset + usize(2) > token.size() || ! rstd::ascii::is_digit(token[offset]) ||
+            ! rstd::ascii::is_digit(token[offset + usize(1)])) {
             return None();
         }
         return Some(uint8_t((token[offset] - u8('0')).to_primitive() * 10 +
@@ -685,7 +651,7 @@ private:
         if (offset + usize(4) > token.size()) return None();
         rstd::uint16_t value {};
         for (usize index {}; index < usize(4); ++index) {
-            if (! is_digit(token[offset + index])) return None();
+            if (! rstd::ascii::is_digit(token[offset + index])) return None();
             value = static_cast<rstd::uint16_t>(value * 10 +
                                                 (token[offset + index] - u8('0')).to_primitive());
         }
@@ -731,7 +697,7 @@ private:
             if (! has_seconds) return Err(error(TomlErrorCode::InvalidDateTime));
             ++end;
             usize digits {};
-            while (end < token.size() && is_digit(token[end])) {
+            while (end < token.size() && rstd::ascii::is_digit(token[end])) {
                 if (digits < usize(9)) {
                     nanosecond =
                         nanosecond * uint32_t(10) + uint32_t((token[end] - u8('0')).to_primitive());
@@ -871,7 +837,7 @@ private:
         }
         --remaining_depth_;
         take();
-        if (auto failure = consume_array_trivia(); failure.is_some()) return Err(*failure);
+        if (auto failure = consume_trivia(); failure.is_some()) return Err(*failure);
         auto values = Array::make();
         if (! eof() && peek() == u8(']')) {
             take();
@@ -882,7 +848,7 @@ private:
             auto value = parse_value();
             if (value.is_err()) return Err(value.unwrap_err());
             values.push(value.unwrap());
-            if (auto failure = consume_array_trivia(); failure.is_some()) return Err(*failure);
+            if (auto failure = consume_trivia(); failure.is_some()) return Err(*failure);
             if (eof()) return Err(error(TomlErrorCode::UnexpectedEnd));
             if (peek() == u8(']')) {
                 take();
@@ -891,7 +857,7 @@ private:
             }
             if (peek() != u8(',')) return Err(error(TomlErrorCode::ExpectedCommaOrEnd));
             take();
-            if (auto failure = consume_array_trivia(); failure.is_some()) return Err(*failure);
+            if (auto failure = consume_trivia(); failure.is_some()) return Err(*failure);
             if (! eof() && peek() == u8(']')) {
                 take();
                 ++remaining_depth_;
@@ -926,7 +892,7 @@ private:
         }
         --remaining_depth_;
         take();
-        if (auto failure = consume_array_trivia(); failure.is_some()) return Err(*failure);
+        if (auto failure = consume_trivia(); failure.is_some()) return Err(*failure);
         auto table      = Table::make();
         auto definition = DefinitionNode(DefinitionKind::InlineTable);
         if (! eof() && peek() == u8('}')) {
@@ -937,10 +903,10 @@ private:
         for (;;) {
             auto path = parse_key_path();
             if (path.is_err()) return Err(path.unwrap_err());
-            if (auto failure = consume_array_trivia(); failure.is_some()) return Err(*failure);
+            if (auto failure = consume_trivia(); failure.is_some()) return Err(*failure);
             if (eof() || peek() != u8('=')) return Err(error(TomlErrorCode::ExpectedEquals));
             take();
-            if (auto failure = consume_array_trivia(); failure.is_some()) return Err(*failure);
+            if (auto failure = consume_trivia(); failure.is_some()) return Err(*failure);
             auto value = parse_value();
             if (value.is_err()) return Err(value.unwrap_err());
             auto owned_path = path.unwrap();
@@ -948,7 +914,7 @@ private:
                 failure.is_some()) {
                 return Err(*failure);
             }
-            if (auto failure = consume_array_trivia(); failure.is_some()) return Err(*failure);
+            if (auto failure = consume_trivia(); failure.is_some()) return Err(*failure);
             if (eof()) return Err(error(TomlErrorCode::UnexpectedEnd));
             if (peek() == u8('}')) {
                 take();
@@ -957,7 +923,7 @@ private:
             }
             if (peek() != u8(',')) return Err(error(TomlErrorCode::ExpectedCommaOrEnd));
             take();
-            if (auto failure = consume_array_trivia(); failure.is_some()) return Err(*failure);
+            if (auto failure = consume_trivia(); failure.is_some()) return Err(*failure);
             if (! eof() && peek() == u8('}')) {
                 take();
                 ++remaining_depth_;
@@ -1164,11 +1130,11 @@ public:
         if (cursor_.len() > max_input_bytes_) {
             return Err(error(TomlErrorCode::ResourceLimitExceeded));
         }
-        if (auto failure = consume_document_trivia(); failure.is_some()) return Err(*failure);
+        if (auto failure = consume_trivia(); failure.is_some()) return Err(*failure);
         while (! eof()) {
             Option<Error> failure = peek() == u8('[') ? parse_header() : parse_assignment();
             if (failure.is_some()) return Err(*failure);
-            if (auto trivia = consume_document_trivia(); trivia.is_some()) return Err(*trivia);
+            if (auto trivia = consume_trivia(); trivia.is_some()) return Err(*trivia);
         }
         return Ok(Value::Table(rstd::move(root_)));
     }

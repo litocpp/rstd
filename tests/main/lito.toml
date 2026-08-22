@@ -90,6 +90,7 @@ sources = [
   "ffi/c_str.cpp",
   "path.cpp",
   "parse.cpp",
+  "regex.cpp",
   "serde.cpp",
   "serde_fixture.cppm",
   "serde_cross_format.cpp",

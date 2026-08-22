@@ -1,4 +1,4 @@
 export module rstd.parse;
-export import :source;
-export import :error;
-export import :rule;
+export import rstd.parse.core;
+export import rstd.parse.alloc;
+export import rstd.parse.regex;

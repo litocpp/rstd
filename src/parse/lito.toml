@@ -7,6 +7,10 @@ name = "rstd-parse"
 module = "rstd.parse"
 archive = "rstd.parse"
 
+[dependencies.rstd-core]
+path = "../.."
+visibility = "public"
+
 [dependencies.rstd-alloc]
 path = "../.."
 visibility = "public"

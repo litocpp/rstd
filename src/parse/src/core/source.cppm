@@ -1,23 +1,10 @@
-export module rstd.parse:source;
-export import rstd.alloc;
+export module rstd.parse.core:source;
+export import rstd.core;
 
 using namespace rstd::prelude;
-using ::alloc::string::String;
 
 export namespace rstd::parse
 {
-
-class SourceId {
-    String value_;
-
-public:
-    SourceId();
-    explicit SourceId(ref<str> value);
-    explicit SourceId(String value);
-
-    auto as_str() const noexcept [[clang::lifetimebound]] -> ref<str>;
-    auto clone() const -> SourceId;
-};
 
 struct Span {
     usize begin {};
@@ -59,7 +46,7 @@ public:
 
 using TextInput = Input<u8>;
 
-inline auto text_input(ref<str> input) noexcept -> TextInput {
+constexpr auto text_input(ref<str> input) noexcept -> TextInput {
     return TextInput(input.as_bytes());
 }
 
@@ -95,6 +82,12 @@ public:
     constexpr auto len() const noexcept -> usize { return input_.len(); }
     constexpr auto remaining() const noexcept -> usize { return len() - position_; }
     constexpr auto is_eof() const noexcept -> bool { return position_ == input_.values().len(); }
+
+    constexpr auto remaining_input() const noexcept [[clang::lifetimebound]] -> slice<T> {
+        if (is_eof()) return {};
+        return slice<T>::from_raw_parts(input_.values().as_raw_ptr() + position_.to_primitive(),
+                                        remaining());
+    }
 
     constexpr auto checkpoint() const noexcept -> Checkpoint { return Checkpoint(this, position_); }
 
@@ -139,6 +132,13 @@ public:
         return value;
     }
 
+    constexpr auto advance(usize count) noexcept -> bool {
+        if (count > remaining()) return false;
+        position_ += count;
+        if (position_ > furthest_) furthest_ = position_;
+        return true;
+    }
+
     constexpr auto source_position(usize offset) const noexcept -> SourcePosition
         requires mtp::same_as<T, u8>
     {
@@ -173,6 +173,13 @@ public:
         requires mtp::same_as<T, u8>
     {
         return text(span_from(checkpoint));
+    }
+
+    constexpr auto remaining_text() const noexcept [[clang::lifetimebound]] -> ref<str>
+        requires mtp::same_as<T, u8>
+    {
+        auto bytes = remaining_input();
+        return ref<str>::from_raw_parts_unchecked(bytes.as_raw_ptr(), bytes.len());
     }
 };
 
