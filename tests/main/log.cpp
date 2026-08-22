@@ -1,6 +1,7 @@
 #include <rstd/test/gtest.hpp>
 
 import rstd.log;
+import rstd;
 import rstd.core;
 import rstd.alloc;
 import rstd.tests.log_module_check;
@@ -198,11 +199,37 @@ TEST(LogMacros, TargetNoArgs) {
     info("my_mod", "targeted info no args");
 }
 
-TEST(LogMacros, ModuleNameInOutput) {
+TEST(LogMacros, ExplicitModuleTargetCompiles) {
     static EnvLogger logger;
     (void)set_logger(logger);
     auto max_level_guard = MaxLevelGuard(LevelFilter::Trace);
-    log_module_check::emit_from_module();
+    log_module_check::emit_with_target();
+}
+
+TEST(LogEnvLogger, OutputOmitsImplicitTarget) {
+    EXPECT_DEATH(
+        {
+            EnvLogger logger("trace"_str);
+            auto      arguments = rstd::fmt::Arguments::make("{}", "untargeted message");
+            logger.log(Record { Metadata { Level::Info, ref<str>() },
+                                arguments,
+                                rstd::panic_::Location::from(source_location::current()) });
+            rstd::process::exit(i32(1));
+        },
+        "INFO ] untargeted message");
+}
+
+TEST(LogEnvLogger, OutputUsesExplicitTarget) {
+    EXPECT_DEATH(
+        {
+            EnvLogger logger("trace"_str);
+            auto      arguments = rstd::fmt::Arguments::make("{}", "targeted message");
+            logger.log(Record { Metadata { Level::Info, "explicit.target"_str },
+                                arguments,
+                                rstd::panic_::Location::from(source_location::current()) });
+            rstd::process::exit(i32(1));
+        },
+        "INFO  explicit.target] targeted message");
 }
 
 // ── Convenience macros (rstd_*) ───────────────────────────────────────────

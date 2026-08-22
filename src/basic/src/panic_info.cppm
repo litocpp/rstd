@@ -3,23 +3,8 @@ export import :prelude;
 
 namespace rstd::panic_
 {
-#ifdef __clang__
-using sl_type = rstd::source_location;
-#else
-struct source_location {
-    static consteval source_location current() noexcept { return {}; }
-
-    constexpr uint32_t    line() const noexcept { return 0u; }
-    constexpr uint32_t    column() const noexcept { return 0u; }
-    constexpr const char* file_name() const noexcept { return ""; }
-    constexpr const char* function_name() const noexcept { return ""; }
-};
-
-using sl_type = source_location;
-#endif
 // Cross-ABI-safe location type.
-// Extends Rust's core::panic::Location (file/line/col) with function_name,
-// useful for logging's module_path-like display.
+// Extends Rust's core::panic::Location (file/line/col) with function_name.
 // POD struct — safe to pass across extern "C" boundaries.
 /// A cross-ABI-safe source location, analogous to Rust's `core::panic::Location`.
 export struct Location {
@@ -30,7 +15,7 @@ export struct Location {
 
     /// Returns the file name where this location was captured.
     constexpr auto file_name() const noexcept -> const char* { return _file; }
-    /// Returns the pretty function name (compiler-defined, may include module info on Clang C++20 modules).
+    /// Returns the compiler-defined function name.
     constexpr auto function_name() const noexcept -> const char* { return _function; }
     /// Returns the line number.
     constexpr auto line() const noexcept -> uint32_t { return _line; }
@@ -38,7 +23,7 @@ export struct Location {
     constexpr auto column() const noexcept -> uint32_t { return _col; }
 
     /// Creates a `Location` from a `source_location`.
-    static constexpr auto from(sl_type sl) noexcept -> Location {
+    static constexpr auto from(rstd::source_location sl) noexcept -> Location {
         return { sl.file_name(),
                  sl.function_name(),
                  static_cast<uint32_t>(sl.line()),
@@ -63,21 +48,13 @@ export struct PanicInfo {
     bool force_no_backtrace = false;
 };
 
-// Consteval wrapper for source_location.
-//
-// Placing source_location::current() inside a *consteval* constructor ensures the
-// call-site location is captured correctly on both Clang and GCC, even when the
-// outer function is itself a function template.  Use as a trailing default parameter:
-//
-//   [[noreturn]] void foo(int x, SrcLoc loc = {});
-//
-// The caller writes just `foo(42)` and gets the right location automatically.
 /// Consteval wrapper for `source_location` to capture the caller's location as a default parameter.
 export struct SrcLoc {
     /// The captured source location value.
-    sl_type val;
+    rstd::source_location val;
     /// Implicitly captures the caller's source location at compile time.
-    consteval SrcLoc(sl_type v = sl_type::current()) noexcept: val(v) {}
+    consteval SrcLoc(rstd::source_location value = rstd::source_location::current()) noexcept
+        : val(value) {}
 };
 
 } // namespace rstd::panic_

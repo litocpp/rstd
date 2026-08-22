@@ -1,10 +1,39 @@
-module;
-#include <memory>
 export module rstd.basic:basic;
+import :std;
 export import :mtp;
 
 namespace rstd
 {
+
+export template<typename T>
+struct default_delete {
+    constexpr default_delete() noexcept = default;
+
+    template<typename U>
+        requires mtp::convertible_to<U*, T*>
+    constexpr default_delete(const default_delete<U>&) noexcept {}
+
+    constexpr void operator()(T* pointer) const noexcept {
+        static_assert(sizeof(T) > 0, "cannot delete an incomplete type");
+        delete pointer;
+    }
+};
+
+export template<typename T>
+struct default_delete<T[]> {
+    constexpr default_delete() noexcept = default;
+
+    template<typename U>
+        requires mtp::convertible_to<U (*)[], T (*)[]>
+    constexpr default_delete(const default_delete<U[]>&) noexcept {}
+
+    template<typename U>
+        requires mtp::convertible_to<U (*)[], T (*)[]>
+    constexpr void operator()(U* pointer) const noexcept {
+        static_assert(sizeof(T) > 0, "cannot delete an incomplete type");
+        delete[] pointer;
+    }
+};
 
 /// Obtains the actual address of an object, even if `operator&` is overloaded.
 /// \param val Reference to the object.
@@ -39,7 +68,7 @@ constexpr T* construct_at(T* location,
     void* loc = location;
     if constexpr (mtp::is_array<T>) {
         static_assert(sizeof...(Args) == 0,
-                      "std::construct_at for array "
+                      "rstd::construct_at for array "
                       "types must not use any arguments to initialize the "
                       "array");
         return new (loc) T[1]();

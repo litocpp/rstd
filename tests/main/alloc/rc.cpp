@@ -88,6 +88,11 @@ struct TestAllocator {
 
     TestAllocator(bool* alloc, bool* dealloc): used_allocate(alloc), used_deallocate(dealloc) {}
 
+    template<typename U>
+    auto rebind() const -> TestAllocator<U> {
+        return { used_allocate, used_deallocate };
+    }
+
     T* allocate(size_t n) {
         if (used_allocate) *used_allocate = true;
         return static_cast<T*>(::operator new(n * sizeof(T)));
@@ -160,7 +165,7 @@ TEST(Rc, CopyAndMove) {
 TEST(Rc, Destruction) {
     bool destroyed = false;
     {
-        auto rc = make_rc<TestStruct>(42, &destroyed);
+        auto rc = Rc<TestStruct>(new TestStruct(42, &destroyed));
         EXPECT_FALSE(destroyed);
     }
     EXPECT_TRUE(destroyed);

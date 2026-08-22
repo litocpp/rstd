@@ -90,6 +90,8 @@ sources = [
   "ffi/c_str.cpp",
   "path.cpp",
   "prelude.cpp",
+  "source_location.cpp",
+  "source_location_module_check.cppm",
   "log.cpp",
   "log_module_check.cppm",
   "any_module_check.cppm",

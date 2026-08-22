@@ -1,6 +1,6 @@
 export module rstd.basic:mtp;
 export import :prelude;
-export import :mtp.std;
+export import :std;
 
 /// @cond undocumented
 

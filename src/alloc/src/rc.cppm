@@ -26,9 +26,6 @@ class RcRaw;
 
 } // namespace alloc::rc
 
-template<typename AllocatorType, typename T>
-using rc_rebind_alloc = typename mtp::allocator_traits<AllocatorType>::template rebind_alloc<T>;
-
 constexpr bool RC_COPY_NOEXCEPT { false };
 
 void rc_increase_count(usize& count) {
@@ -158,7 +155,7 @@ struct RcAllocatorHeader : RcHeader {
 
     static void release_self(RcHeader* header) noexcept {
         auto* self      = static_cast<RcAllocatorHeader*>(header);
-        auto  allocator = rc_rebind_alloc<AllocatorType, RcAllocatorHeader>(self->allocator);
+        auto  allocator = self->allocator.template rebind<RcAllocatorHeader>();
         rstd::destroy_at(self);
         allocator.deallocate(self, 1);
     }
@@ -179,8 +176,8 @@ struct RcEmbeddedAllocatorHeader : RcHeader {
     }
 
     static void release_self(RcHeader* header) noexcept {
-        auto* self     = static_cast<RcEmbeddedAllocatorHeader*>(header);
-        auto allocator = rc_rebind_alloc<AllocatorType, RcEmbeddedAllocatorHeader>(self->allocator);
+        auto* self      = static_cast<RcEmbeddedAllocatorHeader*>(header);
+        auto  allocator = self->allocator.template rebind<RcEmbeddedAllocatorHeader>();
         rstd::destroy_at(self);
         allocator.deallocate(self, 1);
     }
@@ -227,7 +224,7 @@ struct RcDeleterAllocatorHeader : RcHeader {
 
     static void release_self(RcHeader* header) noexcept {
         auto* self      = static_cast<RcDeleterAllocatorHeader*>(header);
-        auto  allocator = rc_rebind_alloc<AllocatorType, RcDeleterAllocatorHeader>(self->allocator);
+        auto  allocator = self->allocator.template rebind<RcDeleterAllocatorHeader>();
         rstd::destroy_at(self);
         allocator.deallocate(self, 1);
     }
@@ -283,7 +280,7 @@ auto rc_allocate_array(usize count, Value const& initial) -> RcAllocation<Elemen
 template<typename T, typename AllocatorType, typename... Args>
 auto rc_allocate_separate_value_with(AllocatorType allocator, Args&&... args) -> RcAllocation<T> {
     using Header           = RcAllocatorHeader<T, AllocatorType>;
-    auto  header_allocator = rc_rebind_alloc<AllocatorType, Header>(allocator);
+    auto  header_allocator = allocator.template rebind<Header>();
     auto* header           = header_allocator.allocate(1);
     rstd::construct_at(header, allocator, usize(1));
     auto* value   = header->allocator.allocate(1);
@@ -298,7 +295,7 @@ auto rc_allocate_separate_value_with(AllocatorType allocator, Args&&... args) ->
 template<typename T, typename AllocatorType, typename... Args>
 auto rc_allocate_embedded_value_with(AllocatorType allocator, Args&&... args) -> RcAllocation<T> {
     using Header           = RcEmbeddedAllocatorHeader<T, AllocatorType>;
-    auto  header_allocator = rc_rebind_alloc<AllocatorType, Header>(allocator);
+    auto  header_allocator = allocator.template rebind<Header>();
     auto* header           = header_allocator.allocate(1);
     rstd::construct_at(header, allocator);
     auto pointer = mut_ptr<T>::from_raw_parts(static_cast<T*>(header->value));
@@ -321,7 +318,7 @@ template<typename Element, typename AllocatorType, typename Value>
 auto rc_allocate_array_with(AllocatorType allocator, usize count, Value const& initial)
     -> RcAllocation<Element[]> {
     using Header           = RcAllocatorHeader<Element, AllocatorType>;
-    auto  header_allocator = rc_rebind_alloc<AllocatorType, Header>(allocator);
+    auto  header_allocator = allocator.template rebind<Header>();
     auto* header           = header_allocator.allocate(1);
     rstd::construct_at(header, allocator, count);
     auto* value   = header->allocator.allocate(count.to_primitive());
@@ -347,7 +344,7 @@ template<typename T, typename Deleter, typename AllocatorType>
 auto rc_external_data(T* pointer, Deleter&& deleter, AllocatorType allocator) -> RcData<T> {
     using StoredDeleter    = mtp::rm_cvf<Deleter>;
     using Header           = RcDeleterAllocatorHeader<T, StoredDeleter, AllocatorType>;
-    auto  header_allocator = rc_rebind_alloc<AllocatorType, Header>(allocator);
+    auto  header_allocator = allocator.template rebind<Header>();
     auto* header           = header_allocator.allocate(1);
     rstd::construct_at(header, pointer, rstd::forward<Deleter>(deleter), rstd::move(allocator));
     auto value_pointer = mut_ptr<RcTarget<T>>::from_raw_parts(const_cast<RcTarget<T>*>(pointer));
@@ -518,7 +515,7 @@ public:
 
     explicit Rc(T* pointer)
         requires Impled<Pointee, Sized>
-        : Rc(pointer, mtp::default_delete<T>()) {}
+        : Rc(pointer, rstd::default_delete<T>()) {}
 
     template<typename Deleter>
     Rc(T* pointer, Deleter&& deleter)
