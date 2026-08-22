@@ -1,5 +1,6 @@
 export module rstd.toml:parser;
 import rstd.alloc;
+import rstd.parse;
 export import :value;
 export import :error;
 
@@ -135,48 +136,31 @@ struct DefinitionNode {
 };
 
 class TomlParser {
-    ref<str>       input_;
-    usize          offset_ {};
-    usize          line_ { 1 };
-    usize          column_ { 1 };
-    u8             remaining_depth_;
-    usize          max_input_bytes_;
-    usize          remaining_values_;
-    Table          root_ { Table::make() };
-    DefinitionNode definitions_ { DefinitionKind::ExplicitTable };
-    Path           current_path_ { Path::make() };
+    rstd::parse::TextCursor cursor_;
+    u8                      remaining_depth_;
+    usize                   max_input_bytes_;
+    usize                   remaining_values_;
+    Table                   root_ { Table::make() };
+    DefinitionNode          definitions_ { DefinitionKind::ExplicitTable };
+    Path                    current_path_ { Path::make() };
 
     [[nodiscard]]
     auto eof() const noexcept -> bool {
-        return offset_ == input_.size();
+        return cursor_.is_eof();
     }
 
     [[nodiscard]]
     auto peek(usize ahead = usize()) const noexcept -> u8 {
-        return offset_ + ahead < input_.size() ? input_[offset_ + ahead] : u8();
+        auto value = cursor_.peek(ahead);
+        return value.is_none() ? u8() : value->get();
     }
 
-    auto take() noexcept -> u8 {
-        auto byte = input_[offset_];
-        ++offset_;
-        if (byte == u8('\n')) {
-            ++line_;
-            column_ = usize(1);
-        } else {
-            ++column_;
-        }
-        return byte;
-    }
-
-    [[nodiscard]]
-    auto view(usize begin, usize end) const noexcept -> ref<str> {
-        return ref<str>::from_raw_parts_unchecked(input_.data() + begin.to_primitive(),
-                                                  end - begin);
-    }
+    auto take() noexcept -> u8 { return cursor_.take()->get(); }
 
     [[nodiscard]]
     auto error(TomlErrorCode code) const noexcept -> Error {
-        return Error(code, line_, column_, offset_);
+        auto location = cursor_.source_position();
+        return Error(code, location.line, location.column, cursor_.position());
     }
 
 public:
@@ -455,9 +439,9 @@ private:
         if (peek() == u8('"')) return parse_basic_string(false);
         if (peek() == u8('\'')) return parse_literal_string(false);
         if (! is_bare_key(peek())) return Err(error(TomlErrorCode::ExpectedKey));
-        const usize begin = offset_;
+        auto begin = cursor_.checkpoint();
         while (! eof() && is_bare_key(peek())) take();
-        return Ok(String::make(view(begin, offset_)));
+        return Ok(String::make(cursor_.consumed_text(begin)));
     }
 
     [[nodiscard]]
@@ -840,15 +824,15 @@ private:
 
     [[nodiscard]]
     auto parse_scalar() -> ParseResult {
-        const usize begin = offset_;
+        auto begin = cursor_.checkpoint();
         while (! eof() && peek() != u8(',') && peek() != u8(']') && peek() != u8('}') &&
                peek() != u8('#') && peek() != u8('\n') && peek() != u8('\r')) {
             take();
         }
-        usize end = offset_;
-        while (end > begin && is_horizontal(input_[end - usize(1)])) --end;
-        if (begin == end) return Err(error(TomlErrorCode::ExpectedValue));
-        auto token = view(begin, end);
+        auto span = cursor_.span_from(begin);
+        while (! span.is_empty() && is_horizontal(cursor_.input()[span.end - usize(1)])) --span.end;
+        if (span.is_empty()) return Err(error(TomlErrorCode::ExpectedValue));
+        auto token = cursor_.text(span);
         if (token == "true"_str) return Ok(Value::Boolean(true));
         if (token == "false"_str) return Ok(Value::Boolean(false));
         if ((token.size() >= usize(5) && token[usize(2)] == u8(':')) ||
@@ -1094,14 +1078,14 @@ private:
 
 public:
     explicit TomlParser(ref<str> input, ParseOptions options) noexcept
-        : input_(input),
+        : cursor_(rstd::parse::text_input(input)),
           remaining_depth_(options.max_depth),
           max_input_bytes_(options.max_input_bytes),
           remaining_values_(options.max_values) {}
 
     [[nodiscard]]
     auto parse_standalone_key() -> Result<KeyPath, Error> {
-        if (input_.size() > max_input_bytes_) {
+        if (cursor_.len() > max_input_bytes_) {
             return Err(error(TomlErrorCode::ResourceLimitExceeded));
         }
         consume_horizontal();
@@ -1117,7 +1101,7 @@ public:
         if (remaining_depth_ == u8()) {
             return Err(error(TomlErrorCode::RecursionLimitExceeded));
         }
-        if (input_.size() > max_input_bytes_) {
+        if (cursor_.len() > max_input_bytes_) {
             return Err(error(TomlErrorCode::ResourceLimitExceeded));
         }
         consume_horizontal();
@@ -1133,7 +1117,7 @@ public:
         if (remaining_depth_ == u8()) {
             return Err(error(TomlErrorCode::RecursionLimitExceeded));
         }
-        if (input_.size() > max_input_bytes_) {
+        if (cursor_.len() > max_input_bytes_) {
             return Err(error(TomlErrorCode::ResourceLimitExceeded));
         }
         consume_horizontal();
@@ -1153,7 +1137,7 @@ public:
 
     [[nodiscard]]
     auto parse_standalone_assignment_text() -> Result<AssignmentText, Error> {
-        if (input_.size() > max_input_bytes_) {
+        if (cursor_.len() > max_input_bytes_) {
             return Err(error(TomlErrorCode::ResourceLimitExceeded));
         }
         consume_horizontal();
@@ -1163,13 +1147,12 @@ public:
         if (eof() || peek() != u8('=')) return Err(error(TomlErrorCode::ExpectedEquals));
         take();
         consume_horizontal();
-        auto begin = offset_;
-        auto end   = input_.size();
-        while (end > begin && is_horizontal(input_[end - usize(1)])) --end;
-        if (begin == end) return Err(error(TomlErrorCode::ExpectedValue));
+        auto span = rstd::parse::Span { .begin = cursor_.position(), .end = cursor_.len() };
+        while (! span.is_empty() && is_horizontal(cursor_.input()[span.end - usize(1)])) --span.end;
+        if (span.is_empty()) return Err(error(TomlErrorCode::ExpectedValue));
         return Ok(AssignmentText {
             .key   = rstd::move(key).unwrap(),
-            .value = String::make(view(begin, end)),
+            .value = String::make(cursor_.text(span)),
         });
     }
 
@@ -1178,7 +1161,7 @@ public:
         if (remaining_depth_ == u8()) {
             return Err(error(TomlErrorCode::RecursionLimitExceeded));
         }
-        if (input_.size() > max_input_bytes_) {
+        if (cursor_.len() > max_input_bytes_) {
             return Err(error(TomlErrorCode::ResourceLimitExceeded));
         }
         if (auto failure = consume_document_trivia(); failure.is_some()) return Err(*failure);

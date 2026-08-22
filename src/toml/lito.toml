@@ -14,3 +14,11 @@ visibility = "public"
 [dependencies.rstd-core]
 path = "../.."
 visibility = "public"
+
+[dependencies.rstd-serde]
+path = "../serde"
+visibility = "public"
+
+[dependencies.rstd-parse]
+path = "../parse"
+visibility = "private"

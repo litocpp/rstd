@@ -1,0 +1,12 @@
+[package]
+name = "rstd-parse"
+version.workspace = true
+
+[lib]
+name = "rstd-parse"
+module = "rstd.parse"
+archive = "rstd.parse"
+
+[dependencies.rstd-alloc]
+path = "../.."
+visibility = "public"

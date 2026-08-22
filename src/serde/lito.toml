@@ -1,0 +1,12 @@
+[package]
+name = "rstd-serde"
+version.workspace = true
+
+[lib]
+name = "rstd-serde"
+module = "rstd.serde"
+archive = "rstd.serde"
+
+[dependencies.rstd-alloc]
+path = "../.."
+visibility = "public"

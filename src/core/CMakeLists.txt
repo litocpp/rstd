@@ -95,6 +95,7 @@ target_sources(
          src/ptr/metadata.cppm
          src/ptr/ptr.cppm
          src/ops/mod.cppm
+         src/ops/control_flow.cppm
          src/ops/deref.cppm
          src/ops/function.cppm
          src/iter/mod.cppm

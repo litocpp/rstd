@@ -46,6 +46,7 @@ sources = [
   "json/value.cpp",
   "json/parser.cpp",
   "json/serialize.cpp",
+  "json/typed.cpp",
   "json/module.cpp",
   "toml/parser.cpp",
   "toml/serialize.cpp",
@@ -88,6 +89,10 @@ sources = [
   "ffi/os_str.cpp",
   "ffi/c_str.cpp",
   "path.cpp",
+  "parse.cpp",
+  "serde.cpp",
+  "serde_fixture.cppm",
+  "serde_cross_format.cpp",
   "prelude.cpp",
   "source_location.cpp",
   "source_location_module_check.cppm",
@@ -132,6 +137,14 @@ visibility = "private"
 
 [dependencies.rstd-toml]
 path = "../../src/toml"
+visibility = "private"
+
+[dependencies.rstd-parse]
+path = "../../src/parse"
+visibility = "private"
+
+[dependencies.rstd-serde]
+path = "../../src/serde"
 visibility = "private"
 
 [dependencies.rstd-log]

@@ -179,6 +179,16 @@ TEST(TomlParser, RejectsDuplicateAndMalformedInput) {
     EXPECT_EQ(trailing.unwrap_err().line(), usize(1));
 }
 
+TEST(TomlParser, TracksOneBasedLineColumnAndByteOffset) {
+    auto result = rstd::toml::from_str("good = 1\nbad @\n"_str);
+
+    ASSERT_TRUE(result.is_err());
+    auto error = rstd::move(result).unwrap_err();
+    EXPECT_EQ(error.line(), usize(2));
+    EXPECT_EQ(error.column(), usize(5));
+    EXPECT_EQ(error.offset(), usize(13));
+}
+
 TEST(TomlParser, SliceAndFromStrTraitReuseDecoder) {
     auto from_slice = rstd::toml::from_slice("x = 1\n"_bytes);
     auto from_trait = rstd::from_str<Value>("x = 1\n"_str);

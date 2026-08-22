@@ -1,6 +1,7 @@
 export module rstd.json:parser;
 export import :value;
 export import :error;
+import rstd.parse;
 
 export namespace rstd::json
 {
@@ -32,39 +33,28 @@ using namespace rstd::json;
 using namespace rstd::literals;
 
 class Parser {
-    ref<str>     input_;
-    usize        offset_ { 0 };
-    usize        line_ { 1 };
-    usize        column_ { 1 };
-    u8           remaining_depth_ { 128 };
-    ParseOptions options_;
+    rstd::parse::TextCursor cursor_;
+    u8                      remaining_depth_ { 128 };
+    ParseOptions            options_;
 
     [[nodiscard]]
     auto eof() const noexcept -> bool {
-        return offset_ == input_.size();
+        return cursor_.is_eof();
     }
 
     [[nodiscard]]
     auto peek() const noexcept -> u8 {
-        return eof() ? u8() : input_[offset_];
+        auto value = cursor_.peek();
+        return value.is_none() ? u8() : value->get();
     }
 
     [[nodiscard]]
     auto peek_next() const noexcept -> u8 {
-        return offset_ + usize(1) >= input_.size() ? u8() : input_[offset_ + usize(1)];
+        auto value = cursor_.peek(usize(1));
+        return value.is_none() ? u8() : value->get();
     }
 
-    auto take() noexcept -> u8 {
-        const u8 byte = input_[offset_];
-        ++offset_;
-        if (byte == u8('\n')) {
-            ++line_;
-            column_ = usize(1);
-        } else {
-            ++column_;
-        }
-        return byte;
-    }
+    auto take() noexcept -> u8 { return cursor_.take()->get(); }
 
     auto consume_whitespace() noexcept -> Option<Error> {
         while (! eof()) {
@@ -84,16 +74,17 @@ class Parser {
                 if (peek_next() == u8('*')) {
                     take();
                     take();
+                    bool closed = false;
                     while (! eof()) {
                         if (peek() == u8('*') && peek_next() == u8('/')) {
                             take();
                             take();
+                            closed = true;
                             break;
                         }
                         take();
                     }
-                    if (eof() && (offset_ < usize(2) || input_[offset_ - usize(2)] != u8('*') ||
-                                  input_[offset_ - usize(1)] != u8('/'))) {
+                    if (! closed) {
                         return Some(error(ErrorCode::EofWhileParsingComment));
                     }
                     break;
@@ -106,15 +97,14 @@ class Parser {
 
     [[nodiscard]]
     auto error(ErrorCode code) const noexcept -> Error {
-        if (eof()) {
-            return Error(code, line_, column_ - usize(1));
-        }
-        return Error(code, line_, column_);
+        const auto location = cursor_.source_position();
+        return Error(code, location.line, eof() ? location.column - usize(1) : location.column);
     }
 
     [[nodiscard]]
     auto error_after_consumed(ErrorCode code) const noexcept -> Error {
-        return Error(code, line_, column_ - usize(1));
+        const auto location = cursor_.source_position();
+        return Error(code, location.line, location.column - usize(1));
     }
 
     [[nodiscard]]
@@ -194,14 +184,11 @@ class Parser {
         auto output = ::alloc::string::String::make();
 
         while (! eof()) {
-            const usize chunk_start = offset_;
+            auto chunk_start = cursor_.checkpoint();
             while (! eof() && peek() != u8('"') && peek() != u8('\\') && peek() >= u8(0x20)) {
                 take();
             }
-            if (offset_ != chunk_start) {
-                output.push_str(ref<str>::from_raw_parts_unchecked(
-                    input_.data() + chunk_start.to_primitive(), offset_ - chunk_start));
-            }
+            output.push_str(cursor_.consumed_text(chunk_start));
             if (eof()) break;
 
             const u8 byte = peek();
@@ -237,17 +224,12 @@ class Parser {
     }
 
     [[nodiscard]]
-    auto parse_float(usize integer_begin,
-                     usize integer_end,
-                     usize fraction_begin,
-                     usize fraction_end,
-                     i32   exponent,
-                     bool  negative) -> ParseResult {
+    auto
+    parse_float(rstd::parse::Span integer, rstd::parse::Span fraction, i32 exponent, bool negative)
+        -> ParseResult {
         auto parsed = rstd::num::dec2flt::to_f64({
-            .integer  = slice<u8>::from_raw_parts(input_.data() + integer_begin.to_primitive(),
-                                                  integer_end - integer_begin),
-            .fraction = slice<u8>::from_raw_parts(input_.data() + fraction_begin.to_primitive(),
-                                                  fraction_end - fraction_begin),
+            .integer  = cursor_.view(integer),
+            .fraction = cursor_.view(fraction),
             .exponent = exponent,
             .negative = negative,
         });
@@ -272,7 +254,7 @@ class Parser {
             if (eof()) return Err(error(ErrorCode::EofWhileParsingValue));
         }
 
-        const usize integer_begin = offset_;
+        auto integer_begin = cursor_.checkpoint();
         if (peek() == u8('0')) {
             take();
             if (! eof() && peek() >= u8('0') && peek() <= u8('9')) {
@@ -285,11 +267,10 @@ class Parser {
         } else {
             return Err(error(ErrorCode::InvalidNumber));
         }
-        const usize integer_end = offset_;
+        const auto integer = cursor_.span_from(integer_begin);
 
-        bool  floating       = false;
-        usize fraction_begin = integer_end;
-        usize fraction_end   = integer_end;
+        bool              floating = false;
+        rstd::parse::Span fraction { .begin = integer.end, .end = integer.end };
         if (! eof() && peek() == u8('.')) {
             floating = true;
             take();
@@ -297,11 +278,11 @@ class Parser {
             if (peek() < u8('0') || peek() > u8('9')) {
                 return Err(error(ErrorCode::InvalidNumber));
             }
-            fraction_begin = offset_;
+            auto fraction_begin = cursor_.checkpoint();
             do {
                 take();
             } while (! eof() && peek() >= u8('0') && peek() <= u8('9'));
-            fraction_end = offset_;
+            fraction = cursor_.span_from(fraction_begin);
         }
 
         i32 exponent {};
@@ -328,15 +309,15 @@ class Parser {
         }
 
         if (floating) {
-            return parse_float(
-                integer_begin, integer_end, fraction_begin, fraction_end, exponent, negative);
+            return parse_float(integer, fraction, exponent, negative);
         }
 
-        usize digits = integer_begin;
+        auto  digits_view = cursor_.view(integer);
+        usize digits {};
         u64   magnitude {};
         bool  overflow = false;
-        for (; digits < integer_end; ++digits) {
-            const u64 digit = rstd::as_cast<u64>(input_[digits] - u8('0'));
+        for (; digits < digits_view.len(); ++digits) {
+            const u64 digit = rstd::as_cast<u64>(digits_view[digits] - u8('0'));
             if (magnitude > (u64::MAX - digit) / u64(10)) {
                 overflow = true;
                 break;
@@ -344,19 +325,25 @@ class Parser {
             magnitude = magnitude * u64(10) + digit;
         }
         if (overflow) {
-            return parse_float(
-                integer_begin, integer_end, integer_end, integer_end, i32(), negative);
+            return parse_float(integer,
+                               rstd::parse::Span { .begin = integer.end, .end = integer.end },
+                               i32(),
+                               negative);
         }
 
         if (! negative) return Ok(Value::Number(Number::from_u64(magnitude)));
         if (magnitude == u64()) {
-            return parse_float(
-                integer_begin, integer_end, integer_end, integer_end, i32(), negative);
+            return parse_float(integer,
+                               rstd::parse::Span { .begin = integer.end, .end = integer.end },
+                               i32(),
+                               negative);
         }
         const u64 min_magnitude = rstd::as_cast<u64>(i64::MAX) + u64(1);
         if (magnitude > min_magnitude) {
-            return parse_float(
-                integer_begin, integer_end, integer_end, integer_end, i32(), negative);
+            return parse_float(integer,
+                               rstd::parse::Span { .begin = integer.end, .end = integer.end },
+                               i32(),
+                               negative);
         }
         const i64 signed_value =
             magnitude == min_magnitude ? i64::MIN : -rstd::as_cast<i64>(magnitude);
@@ -447,7 +434,7 @@ class Parser {
 
 public:
     explicit Parser(ref<str> input, ParseOptions options = {}) noexcept
-        : input_(input), options_(options) {}
+        : cursor_(rstd::parse::text_input(input)), options_(options) {}
 
     [[nodiscard]]
     static auto invalid_unicode_error() noexcept -> Error {

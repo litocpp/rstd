@@ -1,7 +1,7 @@
 add_library(rstd.toml STATIC)
 add_library(rstd::toml ALIAS rstd.toml)
 target_compile_features(rstd.toml PUBLIC cxx_std_20)
-target_link_libraries(rstd.toml PUBLIC rstd.core rstd.alloc)
+target_link_libraries(rstd.toml PUBLIC rstd.core rstd.alloc rstd.serde PRIVATE rstd.parse)
 
 target_sources(
   rstd.toml
@@ -15,4 +15,5 @@ target_sources(
          src/error.cppm
          src/value.cppm
          src/parser.cppm
-         src/serialize.cppm)
+         src/serialize.cppm
+         src/typed.cppm)
