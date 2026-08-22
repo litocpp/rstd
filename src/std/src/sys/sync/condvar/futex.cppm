@@ -1,6 +1,7 @@
 export module rstd:sys.sync.condvar.futex;
 export import :sys.pal;
 export import :sys.sync.mutex.futex;
+export import rstd.core;
 
 namespace rstd::sys::sync::condvar::futex
 {

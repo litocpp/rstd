@@ -10,7 +10,6 @@ import :sys.pal.unix.sync.mutex;
 import rstd.core;
 
 using namespace rstd::sys::libc;
-using namespace rstd::sys::pal::unix::sync::mutex;
 
 namespace rstd::sys::pal::unix::sync::condvar
 {
@@ -64,13 +63,13 @@ void Condvar::notify_all() noexcept {
     debug_assert_eq(r, 0);
 }
 
-void Condvar::wait(Mutex& mutex) noexcept {
+void Condvar::wait(mutex::Mutex& mutex) noexcept {
     [[maybe_unused]]
     auto r = pthread_cond_wait(raw(), mutex.raw());
     debug_assert_eq(r, 0);
 }
 
-auto Condvar::wait_timeout(Mutex& mutex, rstd::time::Duration timeout) noexcept -> bool {
+auto Condvar::wait_timeout(mutex::Mutex& mutex, rstd::time::Duration timeout) noexcept -> bool {
     timespec ts {
         .tv_sec  = static_cast<time_t>(timeout.as_secs().to_primitive()),
         .tv_nsec = static_cast<long>(timeout.subsec_nanos().to_primitive()),

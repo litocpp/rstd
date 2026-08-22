@@ -8,7 +8,6 @@ import rstd.core;
 import :sys.libc.windows;
 
 using namespace rstd::sys::libc;
-using namespace rstd::sys::pal::windows::sync::mutex;
 
 namespace rstd::sys::pal::windows::sync::condvar
 {
@@ -27,13 +26,13 @@ void Condvar::notify_all() noexcept {
     WakeAllConditionVariable(&inner);
 }
 
-void Condvar::wait(Mutex& mutex) noexcept {
+void Condvar::wait(mutex::Mutex& mutex) noexcept {
     [[maybe_unused]]
     auto r = SleepConditionVariableSRW(&inner, mutex.raw(), M_INFINITE, 0);
     debug_assert(r != 0);
 }
 
-auto Condvar::wait_timeout(Mutex& mutex, rstd::time::Duration timeout) noexcept -> bool {
+auto Condvar::wait_timeout(mutex::Mutex& mutex, rstd::time::Duration timeout) noexcept -> bool {
     auto r = SleepConditionVariableSRW(&inner, mutex.raw(), dur2timeout(timeout), 0);
     return r != 0;
 }

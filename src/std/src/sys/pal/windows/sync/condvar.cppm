@@ -5,7 +5,6 @@ import :sys.libc.windows;
 import rstd.core;
 
 using namespace rstd::sys::libc;
-using namespace rstd::sys::pal::windows::sync::mutex;
 
 namespace rstd::sys::pal::windows::sync::condvar
 {
@@ -22,8 +21,8 @@ public:
     static constexpr auto make() noexcept -> Condvar { return {}; }
     void                  notify_one() noexcept;
     void                  notify_all() noexcept;
-    void                  wait(Mutex& mutex) noexcept;
-    auto                  wait_timeout(Mutex& mutex, rstd::time::Duration timeout) noexcept -> bool;
+    void                  wait(mutex::Mutex& mutex) noexcept;
+    auto wait_timeout(mutex::Mutex& mutex, rstd::time::Duration timeout) noexcept -> bool;
 };
 
 } // namespace rstd::sys::pal::windows::sync::condvar

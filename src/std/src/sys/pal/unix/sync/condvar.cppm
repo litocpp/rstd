@@ -5,7 +5,6 @@ import :sys.pal.unix.sync.mutex;
 import rstd.core;
 
 using namespace rstd::sys::libc;
-using namespace rstd::sys::pal::unix::sync::mutex;
 
 namespace rstd::sys::pal::unix::sync::condvar
 {
@@ -27,8 +26,8 @@ public:
     void        init() noexcept;
     void        notify_one() noexcept;
     void        notify_all() noexcept;
-    void        wait(Mutex& mutex) noexcept;
-    auto        wait_timeout(Mutex& mutex, rstd::time::Duration timeout) noexcept -> bool;
+    void        wait(mutex::Mutex& mutex) noexcept;
+    auto        wait_timeout(mutex::Mutex& mutex, rstd::time::Duration timeout) noexcept -> bool;
 };
 
 } // namespace rstd::sys::pal::unix::sync::condvar
