@@ -4,8 +4,10 @@ export module rstd:sys.pal;
 
 #if RSTD_OS_UNIX
 import :sys.pal.unix;
+import :sys.pal.unix.futex;
 #elif RSTD_OS_WINDOWS
 import :sys.pal.windows;
+import :sys.pal.windows.futex;
 #endif
 
 export namespace rstd::sys::pal
@@ -16,7 +18,18 @@ namespace backend = unix;
 namespace backend = windows;
 #endif
 
-namespace futex = backend::futex;
+namespace futex
+{
+using backend::futex::Duration;
+using backend::futex::Primitive;
+using backend::futex::Futex;
+using backend::futex::SmallPrimitive;
+using backend::futex::SmallFutex;
+using backend::futex::futex_wait;
+using backend::futex::futex_wake;
+using backend::futex::futex_wake_all;
+} // namespace futex
+
 using backend::Mutex;
 using backend::Condvar;
 using backend::Instant;
