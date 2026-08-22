@@ -51,56 +51,34 @@ public:
     static auto make() -> String { return {}; }
 
     /// Creates a `String` from a string slice (copies the bytes).
-    static auto make(ref<str> s) -> String { return String { Vec<u8>::from(s.as_bytes()) }; }
+    static auto make(ref<str> s) -> String;
 
-    auto clone() const -> String { return String::make(as_str()); }
+    auto clone() const -> String;
 
-    void clone_from(const String& source) { *this = source.clone(); }
+    void clone_from(const String& source);
 
     /// Creates a new `String` from a byte vector without checking UTF-8 validity.
-    static auto from_utf8_unchecked(Vec<u8>&& bytes) -> String {
-        return String { rstd::move(bytes) };
-    }
+    static auto from_utf8_unchecked(Vec<u8>&& bytes) -> String;
 
     /// Creates a new `String` from owned bytes after validating UTF-8.
-    static auto from_utf8(Vec<u8>&& bytes) -> Result<String, FromUtf8Error> {
-        auto validation = rstd::str_::validate_utf8(bytes.as_slice());
-        if (validation.is_err()) {
-            return Err(
-                FromUtf8Error(rstd::move(bytes), rstd::move(validation).unwrap_err_unchecked()));
-        }
-        return Ok(String { rstd::move(bytes) });
-    }
+    static auto from_utf8(Vec<u8>&& bytes) -> Result<String, FromUtf8Error>;
 
     /// Converts the `String` to a `ref<str>` string slice.
-    operator ref<str>() const [[clang::lifetimebound]] { return as_str(); }
+    operator ref<str>() const [[clang::lifetimebound]];
 
     /// Appends a UTF-8 string slice.
-    void push_str(ref<str> value) {
-        if (value.size() == usize()) return;
-        vec.extend_from_slice(value.as_bytes());
-    }
+    void push_str(ref<str> value);
 
     /// Appends one ASCII byte while preserving the UTF-8 invariant.
-    void push_ascii(u8 value) {
-        if (! value.is_ascii()) rstd::panic("String::push_ascii requires ASCII");
-        vec.push(rstd::move(value));
-    }
+    void push_ascii(u8 value);
 
-    void push_ascii(char value) { push_ascii(u8(value)); }
+    void push_ascii(char value);
 
     /// Appends a Unicode code point, encoding as UTF-8.
-    void push(char32_t cp) {
-        byte buf[4] {};
-        auto n = rstd::char_::encode_utf8(cp, buf);
-        rstd_assert(n != usize());
-        vec.extend_from_slice(slice<u8>::from_raw_parts(buf, n));
-    }
+    void push(char32_t cp);
 
     /// Returns a string slice of the entire `String`.
-    auto as_str() const noexcept [[clang::lifetimebound]] -> ref<str> {
-        return rstd::str_::from_utf8_unchecked(vec.as_slice());
-    }
+    auto as_str() const noexcept [[clang::lifetimebound]] -> ref<str>;
 
     constexpr auto as_mut_str() & noexcept [[clang::lifetimebound]] -> mut_ref<str> {
         return rstd::str_::from_utf8_unchecked_mut(vec.as_mut_slice().as_mut_ref());
@@ -113,50 +91,23 @@ public:
     /// Returns the current capacity in bytes.
     constexpr auto capacity() const noexcept -> usize { return vec.capacity(); }
     /// Ensures that at least `additional` more bytes can be inserted without reallocating.
-    void reserve(usize additional) { vec.reserve(additional); }
+    void reserve(usize additional);
     /// Clears the string, removing all bytes.
     constexpr void clear() { vec.clear(); }
 
     /// Truncates the string to `new_len` bytes.
     ///
     /// Panics if `new_len` is not on a UTF-8 character boundary.
-    void truncate(usize new_len) {
-        if (new_len < vec.len()) {
-            rstd_assert(as_str().is_char_boundary(new_len));
-            while (vec.len() > new_len) vec.pop();
-        }
-    }
+    void truncate(usize new_len);
 
     /// Replaces the UTF-8 byte range `[start, end)` with `replacement`.
-    void replace_range(usize start, usize end, ref<str> replacement) {
-        rstd_assert(start <= end && end <= vec.len());
-        auto current = as_str();
-        rstd_assert(current.is_char_boundary(start));
-        rstd_assert(current.is_char_boundary(end));
-
-        auto result = Vec<u8>::with_capacity(start + replacement.size() + vec.len() - end);
-        if (start != usize()) {
-            result.extend_from_slice(slice<u8>::from_raw_parts(current.data(), start));
-        }
-        result.extend_from_slice(replacement.as_bytes());
-        if (end != vec.len()) {
-            result.extend_from_slice(
-                slice<u8>::from_raw_parts(current.data() + end.to_primitive(), vec.len() - end));
-        }
-        vec = rstd::move(result);
-    }
+    void replace_range(usize start, usize end, ref<str> replacement);
 
     /// Inserts a UTF-8 string slice at a checked byte boundary.
-    void insert_str(usize index, ref<str> value) { replace_range(index, index, value); }
+    void insert_str(usize index, ref<str> value);
 
     /// Inserts a Unicode code point at a checked byte boundary.
-    void insert(usize index, char32_t code_point) {
-        byte bytes[4] {};
-        auto length = rstd::char_::encode_utf8(code_point, bytes);
-        rstd_assert(length != usize());
-        insert_str(index,
-                   rstd::str_::from_utf8_unchecked(slice<u8>::from_raw_parts(bytes, length)));
-    }
+    void insert(usize index, char32_t code_point);
 
     friend constexpr auto operator<=>(const String& a, const String& b) noexcept {
         return rstd::lexicographical_compare_three_way(
@@ -185,19 +136,17 @@ public:
     }
 
     /// Returns a const iterator to the beginning of the string.
-    auto begin() const noexcept [[clang::lifetimebound]] -> ptr<u8> { return vec.begin(); }
+    auto begin() const noexcept [[clang::lifetimebound]] -> ptr<u8>;
     /// Returns a const iterator to the end of the string.
-    auto end() const noexcept [[clang::lifetimebound]] -> ptr<u8> { return vec.end(); }
+    auto end() const noexcept [[clang::lifetimebound]] -> ptr<u8>;
     /// Returns a pointer to the underlying byte storage.
     /// \return A const `byte*` pointer to the data.
-    auto data() const noexcept [[clang::lifetimebound]] -> const byte* {
-        return vec.as_ptr().as_raw_ptr();
-    }
+    auto data() const noexcept [[clang::lifetimebound]] -> const byte*;
     /// Returns the length of the string in bytes.
     /// \return The number of bytes in the string.
     constexpr auto size() const noexcept -> usize { return vec.len(); }
 
-    auto into_bytes() && -> Vec<u8> { return rstd::move(vec); }
+    auto into_bytes() && -> Vec<u8>;
 };
 
 /// A trait for converting a value to a `String`.
@@ -243,14 +192,12 @@ template<>
 struct Impl<ops::Deref, String> : ImplBase<String> {
     using Target = str;
 
-    auto deref() const noexcept -> ref<Target> { return this->self().as_str(); }
+    auto deref() const noexcept -> ref<Target>;
 };
 
 template<>
 struct Impl<ops::DerefMut, String> : ImplBase<String> {
-    auto deref_mut() noexcept -> mut_ref<ops::deref_target_t<String>> {
-        return this->self().as_mut_str();
-    }
+    auto deref_mut() noexcept -> mut_ref<ops::deref_target_t<String>>;
 };
 
 template<>
@@ -264,48 +211,33 @@ struct Impl<hash::Hash, String> : ImplBase<String> {
 
 template<>
 struct Impl<borrow::Borrow<str>, String> : ImplBase<String> {
-    auto borrow() const noexcept -> ref<str> { return this->self().as_str(); }
+    auto borrow() const noexcept -> ref<str>;
 };
 
 template<>
 struct Impl<fmt::Write, String> : ImplBase<String> {
-    auto write_str(ref<str> const& value) -> bool {
-        this->self().push_str(value);
-        return true;
-    }
+    auto write_str(ref<str> const& value) -> bool;
 };
 
 template<>
 struct Impl<fmt::Display, String> : ImplBase<String> {
-    auto fmt(fmt::Formatter& f) const -> bool { return f.pad(this->self().as_str()); }
+    auto fmt(fmt::Formatter& formatter) const -> bool;
 };
 
 template<>
 struct Impl<fmt::Debug, String> : ImplBase<String> {
-    auto fmt(fmt::Formatter& f) const -> bool {
-        auto value = this->self().as_str();
-        return as<fmt::Debug>(value).fmt(f);
-    }
+    auto fmt(fmt::Formatter& formatter) const -> bool;
 };
 
 template<>
 struct Impl<fmt::Display, ::alloc::string::FromUtf8Error>
     : ImplBase<::alloc::string::FromUtf8Error> {
-    auto fmt(fmt::Formatter& formatter) const -> bool {
-        auto error = this->self().utf8_error();
-        return as<fmt::Display>(error).fmt(formatter);
-    }
+    auto fmt(fmt::Formatter& formatter) const -> bool;
 };
 
 template<>
 struct Impl<fmt::Debug, ::alloc::string::FromUtf8Error> : ImplBase<::alloc::string::FromUtf8Error> {
-    auto fmt(fmt::Formatter& formatter) const -> bool {
-        constexpr char prefix[] = "FromUtf8Error { error: ";
-        if (! formatter.write_raw(prefix, sizeof(prefix) - 1)) return false;
-        auto error = this->self().utf8_error();
-        if (! as<fmt::Debug>(error).fmt(formatter)) return false;
-        return formatter.write_raw(" }", 2);
-    }
+    auto fmt(fmt::Formatter& formatter) const -> bool;
 };
 
 template<>
@@ -392,20 +324,12 @@ struct Impl<fmt::Debug, T> : ImplBase<T> {
 
 template<>
 struct Impl<fmt::Display, char const*> : ImplBase<char const*> {
-    auto fmt(fmt::Formatter& f) const -> bool {
-        auto s = this->self();
-        return f.write_raw(reinterpret_cast<const rstd::uint8_t*>(s), rstd::strlen(s));
-    }
+    auto fmt(fmt::Formatter& formatter) const -> bool;
 };
 
 template<>
 struct Impl<fmt::Debug, char const*> : ImplBase<char const*> {
-    auto fmt(fmt::Formatter& f) const -> bool {
-        constexpr rstd::uint8_t QUOTE[] = { '"' };
-        f.write_raw(QUOTE, sizeof(QUOTE));
-        as<fmt::Display>(this->self()).fmt(f);
-        return f.write_raw(QUOTE, sizeof(QUOTE));
-    }
+    auto fmt(fmt::Formatter& formatter) const -> bool;
 };
 
 template<rstd::size_t N>
@@ -428,78 +352,7 @@ struct Impl<fmt::Display, char const[N]> : ImplBase<char const[N]> {
 // Debug format matches Rust: "1.5s", "500ms", "1.234µs", "789ns".
 template<>
 struct Impl<fmt::Debug, time::Duration> : ImplBase<time::Duration> {
-    auto fmt(fmt::Formatter& f) const -> bool {
-        auto write_ascii = [&f](auto const* value, rstd::size_t length) {
-            return f.write_raw(value, length);
-        };
-        auto&                d     = this->self();
-        const rstd::uint64_t secs  = d.as_secs().to_primitive();
-        const rstd::uint32_t nanos = d.subsec_nanos().to_primitive();
-        if (secs > 0) {
-            // Render as seconds with up to 9 decimal places, trimming trailing zeros.
-            auto s = rstd::format("{}", secs);
-            write_ascii(s.data(), s.size().to_primitive());
-            if (nanos != 0) {
-                // Produce 9-digit fractional part then strip trailing zeros.
-                char           frac[10];
-                rstd::uint32_t n = nanos;
-                for (int i = 8; i >= 0; --i) {
-                    frac[i] = char('0' + n % 10);
-                    n /= 10;
-                }
-                frac[9] = '\0';
-                int len = 9;
-                while (len > 1 && frac[len - 1] == '0') --len;
-                write_ascii(".", 1);
-                write_ascii(frac, static_cast<rstd::size_t>(len));
-            }
-            return write_ascii("s", 1);
-        } else if (nanos >= time::NANOS_PER_MILLI.to_primitive()) {
-            // milliseconds
-            rstd::uint32_t ms  = nanos / time::NANOS_PER_MILLI.to_primitive();
-            rstd::uint32_t rem = nanos % time::NANOS_PER_MILLI.to_primitive();
-            auto           s   = rstd::format("{}", ms);
-            write_ascii(s.data(), s.size().to_primitive());
-            if (rem != 0) {
-                char           frac[7];
-                rstd::uint32_t r = rem;
-                for (int i = 5; i >= 0; --i) {
-                    frac[i] = char('0' + r % 10);
-                    r /= 10;
-                }
-                frac[6] = '\0';
-                int len = 6;
-                while (len > 1 && frac[len - 1] == '0') --len;
-                write_ascii(".", 1);
-                write_ascii(frac, static_cast<rstd::size_t>(len));
-            }
-            return write_ascii("ms", 2);
-        } else if (nanos >= time::NANOS_PER_MICRO.to_primitive()) {
-            // microseconds — use ASCII "us" (µ is multi-byte, avoid encoding issues)
-            rstd::uint32_t us  = nanos / time::NANOS_PER_MICRO.to_primitive();
-            rstd::uint32_t rem = nanos % time::NANOS_PER_MICRO.to_primitive();
-            auto           s   = rstd::format("{}", us);
-            write_ascii(s.data(), s.size().to_primitive());
-            if (rem != 0) {
-                char           frac[4];
-                rstd::uint32_t r = rem;
-                for (int i = 2; i >= 0; --i) {
-                    frac[i] = char('0' + r % 10);
-                    r /= 10;
-                }
-                frac[3] = '\0';
-                int len = 3;
-                while (len > 1 && frac[len - 1] == '0') --len;
-                write_ascii(".", 1);
-                write_ascii(frac, static_cast<rstd::size_t>(len));
-            }
-            return write_ascii("us", 2);
-        } else {
-            auto s = rstd::format("{}", nanos);
-            write_ascii(s.data(), s.size().to_primitive());
-            return write_ascii("ns", 2);
-        }
-    }
+    auto fmt(fmt::Formatter& formatter) const -> bool;
 };
 
 template<mtp::same_as<ToString> T, Impled<fmt::Display> A>
