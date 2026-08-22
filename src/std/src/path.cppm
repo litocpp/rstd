@@ -80,7 +80,7 @@ private:
     ref<OsStr>    m_os {};
 };
 
-export class Components {
+export class Components : public DefaultInClass<Components, iter::Iterator> {
 public:
     using Item = Component;
 

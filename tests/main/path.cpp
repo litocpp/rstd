@@ -123,6 +123,16 @@ TEST(Path, ComponentsLeadingCurDir) {
     EXPECT_TRUE(c.next().is_none());
 }
 
+TEST(Path, ComponentsSupportsRangeFor) {
+    auto components = rstd::ref<Path>("/tmp/example"_str).components();
+    auto count      = rstd::usize {};
+    for (auto component : components) {
+        EXPECT_FALSE(component.is_cur_dir());
+        ++count;
+    }
+    EXPECT_EQ(count, rstd::usize(3));
+}
+
 TEST(Path, ValueEqualityUsesComponents) {
     auto left  = PathBuf::from("a//./b/"_str);
     auto right = PathBuf::from("a/b"_str);
