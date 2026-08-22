@@ -324,7 +324,7 @@ public:
     auto metadata() const -> FsResult<Metadata>;
 };
 
-export class ReadDir {
+export class ReadDir : public DefaultInClass<ReadDir, iter::Iterator> {
     rstd::sys::fs::Directory m_directory;
     rstd::path::PathBuf      m_parent;
 
@@ -333,6 +333,8 @@ export class ReadDir {
     friend auto read_dir(ref<Path> path) -> FsResult<ReadDir>;
 
 public:
+    using Item = FsResult<DirEntry>;
+
     ReadDir() noexcept             = default;
     ReadDir(ReadDir const&)        = delete;
     auto operator=(ReadDir const&) = delete;

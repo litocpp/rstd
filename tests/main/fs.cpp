@@ -518,10 +518,7 @@ TEST(FsReadDir, IteratesEntries) {
 
     auto rd    = rstd::fs::read_dir(path_from_c_str(base)).unwrap_unchecked();
     int  count = 0;
-    while (true) {
-        auto opt = rd.next();
-        if (opt.is_none()) break;
-        auto er = rstd::move(opt).unwrap_unchecked();
+    for (auto er : rd) {
         ASSERT_TRUE(er.is_ok());
         auto e = rstd::move(er).unwrap_unchecked();
         EXPECT_TRUE(e.file_type().unwrap_unchecked().is_file());
