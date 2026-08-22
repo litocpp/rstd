@@ -651,6 +651,10 @@ public:
     auto into_iter() && -> VecIntoIter<T> { return VecIntoIter<T>(rstd::move(*this)); }
 };
 
+export extern template class Vec<f64>;
+export extern template class Vec<u8>;
+export extern template class Vec<usize>;
+
 /// Owning iterator over a `Vec<T>`, yielding elements by value.
 export template<typename T>
 struct VecIntoIter : rstd::DefaultInClass<VecIntoIter<T>, rstd::iter::Iterator> {

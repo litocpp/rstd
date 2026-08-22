@@ -246,6 +246,13 @@ struct Impl<error::Error, ::alloc::string::FromUtf8Error>
 
 } // namespace rstd
 
+namespace alloc::vec
+{
+
+export extern template class Vec<alloc::string::String>;
+
+}
+
 namespace rstd::fmt
 {
 

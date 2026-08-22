@@ -272,3 +272,10 @@ struct Impl<error::Error, ::alloc::ffi::IntoStringError> : ImplBase<::alloc::ffi
 };
 
 } // namespace rstd
+
+namespace alloc::vec
+{
+
+export extern template class Vec<alloc::ffi::CString>;
+
+}
