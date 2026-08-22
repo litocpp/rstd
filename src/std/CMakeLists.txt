@@ -212,7 +212,6 @@ target_sources(
          src/async/timer_facility.cppm
          src/async/time.cppm
          src/bytes.cppm
-         src/crypto.cppm
          src/net/mod.cppm
          src/net/socket_addr.cppm
          src/net/tcp.cppm
