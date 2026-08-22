@@ -14,6 +14,7 @@ namespace rstd::toml
 class ValueSerializer;
 class ValueSequenceSerializer;
 class ValueMapSerializer;
+class ValueEnumAccess;
 
 class ValueSerializer {
     serde::DataPath path_;
@@ -31,6 +32,9 @@ public:
     auto serialize_none() -> result_type {
         return Err(serde::Error::unsupported(path_.clone(), "TOML has no null representation"_str));
     }
+    auto serialize_unit() -> result_type {
+        return Err(serde::Error::unsupported(path_.clone(), "TOML has no unit representation"_str));
+    }
     auto serialize_bool(bool value) -> result_type { return Ok(Value::Boolean(value)); }
     auto serialize_i64(i64 value) -> result_type { return Ok(Value::Integer(value)); }
     auto serialize_u64(u64 value) -> result_type {
@@ -43,10 +47,34 @@ public:
     auto serialize_string(ref<str> value) -> result_type {
         return Ok(Value::String(String::make(value)));
     }
+    auto serialize_bytes(slice<u8> value) -> result_type {
+        auto bytes = Array::with_capacity(value.len());
+        for (auto byte : value) bytes.push(Value::Integer(rstd::as_cast<i64>(byte)));
+        return Ok(Value::Array(rstd::move(bytes)));
+    }
 
     template<typename T>
     auto serialize_some(const T& value) -> result_type {
         return serde::serialize(*this, value);
+    }
+
+    template<typename T>
+    auto serialize_newtype(ref<str>, const T& value) -> result_type {
+        return serde::serialize(*this, value);
+    }
+
+    auto serialize_unit_variant(ref<str> variant) -> result_type {
+        return Ok(Value::String(String::make(variant)));
+    }
+
+    template<typename T>
+    auto serialize_newtype_variant(ref<str> variant, const T& value) -> result_type {
+        auto serializer = ValueSerializer(path_.with_variant(variant));
+        auto encoded    = serde::serialize(serializer, value);
+        if (encoded.is_err()) return encoded;
+        auto table = Table::make();
+        table.insert(String::make(variant), rstd::move(encoded).unwrap_unchecked());
+        return Ok(Value::Table(rstd::move(table)));
     }
 
     auto begin_sequence(usize) -> Result<ValueSequenceSerializer, serde::Error>;
@@ -240,11 +268,13 @@ class ValueDeserializer {
 
     friend class ValueSequenceAccess;
     friend class ValueMapAccess;
+    friend class ValueEnumAccess;
 
 public:
     using error_type    = serde::Error;
     using sequence_type = ValueSequenceAccess;
     using map_type      = ValueMapAccess;
+    using enum_type     = ValueEnumAccess;
 
     explicit ValueDeserializer(const Value& value)
         : value_(ref<Value>::from_raw_parts(rstd::addressof(value))) {}
@@ -255,6 +285,9 @@ public:
         auto value = value_->as_bool();
         if (value.is_none()) return Err(mismatch(serde::ValueKind::Boolean));
         return Ok(*value);
+    }
+    auto deserialize_unit() -> Result<empty, serde::Error> {
+        return Err(mismatch(serde::ValueKind::Unit));
     }
     auto deserialize_i64() -> Result<i64, serde::Error> {
         auto value = value_->as_integer();
@@ -277,6 +310,18 @@ public:
         if (value.is_none()) return Err(mismatch(serde::ValueKind::String));
         return Ok(String::make(*value));
     }
+    auto deserialize_bytes() -> Result<::alloc::vec::Vec<u8>, serde::Error> {
+        auto values = value_->as_array();
+        if (values.is_none()) return Err(mismatch(serde::ValueKind::Bytes));
+        auto bytes = ::alloc::vec::Vec<u8>::make();
+        for (usize index {}; index < values->get().len(); ++index) {
+            auto child = ValueDeserializer(values->get()[index], path_.with_index(index));
+            auto byte  = serde::deserialize<u8>(child);
+            if (byte.is_err()) return Err(rstd::move(byte).unwrap_err_unchecked());
+            bytes.push(rstd::move(byte).unwrap_unchecked());
+        }
+        return Ok(rstd::move(bytes));
+    }
 
     template<typename T>
     auto deserialize_option() -> Result<Option<T>, serde::Error> {
@@ -286,8 +331,15 @@ public:
         return Ok(Some(rstd::move(value).unwrap_unchecked()));
     }
 
+    template<typename T>
+    auto deserialize_newtype(ref<str>) -> Result<T, serde::Error> {
+        return serde::deserialize<T>(*this);
+    }
+
     auto begin_sequence() -> Result<ValueSequenceAccess, serde::Error>;
     auto begin_map() -> Result<ValueMapAccess, serde::Error>;
+    auto begin_enum() -> Result<ValueEnumAccess, serde::Error>;
+    auto ignore_value() -> Result<empty, serde::Error> { return Ok(empty {}); }
     auto invalid_value(ref<str> message) const -> serde::Error {
         return serde::Error::invalid_value(path_.clone(), message);
     }
@@ -301,8 +353,14 @@ public:
     auto unknown_field(ref<str> field) const -> serde::Error {
         return serde::Error::unknown_field(path_.clone(), field);
     }
+    auto unknown_variant(ref<str> variant) const -> serde::Error {
+        return serde::Error::unknown_variant(path_.clone(), variant);
+    }
     auto duplicate_field(ref<str> field) const -> serde::Error {
         return serde::Error::duplicate_field(path_.clone(), field);
+    }
+    auto invariant(ref<str> message) const -> serde::Error {
+        return serde::Error::invariant(path_.clone(), message);
     }
     auto unsupported(ref<str> message) const -> serde::Error {
         return serde::Error::unsupported(path_.clone(), message);
@@ -351,6 +409,8 @@ class ValueSequenceAccess {
     bool            ended_ {};
 
 public:
+    using error_type = serde::Error;
+
     ValueSequenceAccess(slice<Value> values, serde::DataPath path)
         : values_(values), path_(rstd::move(path)) {}
 
@@ -389,6 +449,8 @@ class ValueMapAccess {
     bool                        ended_ {};
 
 public:
+    using error_type = serde::Error;
+
     ValueMapAccess(const Table& values, serde::DataPath path)
         : entries_(values.iter()), path_(path.clone()), value_path_(rstd::move(path)) {}
 
@@ -426,6 +488,15 @@ public:
         return decoded;
     }
 
+    auto ignore_value() -> Result<empty, serde::Error> {
+        if (ended_) return Err(serde::Error::invariant(path_.clone(), "map already ended"_str));
+        if (pending_value_.is_none()) {
+            return Err(serde::Error::invariant(path_.clone(), "map key is missing"_str));
+        }
+        pending_value_ = None();
+        return Ok(empty {});
+    }
+
     auto end() -> Result<empty, serde::Error> {
         if (ended_) return Err(serde::Error::invariant(path_.clone(), "map already ended"_str));
         if (pending_value_.is_some()) {
@@ -436,6 +507,47 @@ public:
         }
         ended_ = true;
         return Ok(empty {});
+    }
+};
+
+class ValueEnumAccess {
+    String             variant_;
+    Option<ref<Value>> value_;
+    serde::DataPath    path_;
+    bool               consumed_ {};
+
+public:
+    using error_type = serde::Error;
+
+    ValueEnumAccess(String variant, Option<ref<Value>> value, serde::DataPath path)
+        : variant_(rstd::move(variant)), value_(value), path_(rstd::move(path)) {}
+
+    auto variant() const noexcept [[clang::lifetimebound]] -> ref<str> { return variant_.as_str(); }
+
+    auto unit() -> Result<empty, serde::Error> {
+        if (consumed_) {
+            return Err(serde::Error::invariant(path_.clone(), "enum already consumed"_str));
+        }
+        if (value_.is_some()) {
+            return Err(serde::Error::invalid_value(path_.with_variant(variant_.as_str()),
+                                                   "enum variant has an unexpected payload"_str));
+        }
+        consumed_ = true;
+        return Ok(empty {});
+    }
+
+    template<typename T>
+    auto value() -> Result<T, serde::Error> {
+        if (consumed_) {
+            return Err(serde::Error::invariant(path_.clone(), "enum already consumed"_str));
+        }
+        if (value_.is_none()) {
+            return Err(serde::Error::invalid_value(path_.with_variant(variant_.as_str()),
+                                                   "enum variant payload is missing"_str));
+        }
+        consumed_  = true;
+        auto child = ValueDeserializer(**value_, path_.with_variant(variant_.as_str()));
+        return serde::deserialize<T>(child);
     }
 };
 
@@ -450,6 +562,25 @@ inline auto ValueDeserializer::begin_map() -> Result<ValueMapAccess, serde::Erro
     if (values.is_none()) return Err(mismatch(serde::ValueKind::Map));
     return Ok(ValueMapAccess(values->get(), path_.clone()));
 }
+
+inline auto ValueDeserializer::begin_enum() -> Result<ValueEnumAccess, serde::Error> {
+    auto name = value_->as_str();
+    if (name.is_some()) {
+        return Ok(ValueEnumAccess(String::make(*name), None(), path_.clone()));
+    }
+    auto values = value_->as_table();
+    if (values.is_none()) return Err(mismatch(serde::ValueKind::Enum));
+    auto entries = values->get().iter();
+    auto entry   = entries.next();
+    if (entry.is_none() || entries.next().is_some()) {
+        return Err(invalid_value("externally tagged enum must contain exactly one variant"_str));
+    }
+    auto [variant, payload] = *entry;
+    return Ok(ValueEnumAccess(variant->clone(), Some<ref<Value>>(payload), path_.clone()));
+}
+
+static_assert(serde::Serializer<ValueSerializer>);
+static_assert(serde::Deserializer<ValueDeserializer>);
 
 export class DecodeError {
     Option<Error>        syntax_;

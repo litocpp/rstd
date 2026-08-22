@@ -12,17 +12,21 @@ export namespace rstd::serde
 enum class TokenKind : rstd::uint8_t
 {
     Null,
+    Unit,
     Bool,
     I64,
     U64,
     F64,
     String,
+    Bytes,
     SomeStart,
     SomeEnd,
     SequenceStart,
     SequenceEnd,
     MapStart,
     MapEnd,
+    EnumStart,
+    EnumEnd,
 };
 
 class Token {
@@ -33,6 +37,7 @@ class Token {
     f64       f64_value_ {};
     usize     len_ {};
     String    string_value_;
+    Vec<u8>   bytes_value_;
 
     explicit Token(TokenKind kind): kind_(kind) {}
 
@@ -68,6 +73,11 @@ public:
         token.string_value_ = String::make(value);
         return token;
     }
+    static auto bytes(slice<u8> value) -> Token {
+        auto token         = Token(TokenKind::Bytes);
+        token.bytes_value_ = Vec<u8>::from(value);
+        return token;
+    }
     static auto marker(TokenKind kind) -> Token { return Token(kind); }
     static auto container(TokenKind kind, usize len) -> Token {
         auto token = Token(kind);
@@ -84,11 +94,15 @@ public:
     auto           as_str() const noexcept [[clang::lifetimebound]] -> ref<str> {
         return string_value_.as_str();
     }
+    auto as_bytes() const noexcept [[clang::lifetimebound]] -> slice<u8> {
+        return bytes_value_.as_slice();
+    }
 };
 
 class TokenSerializer;
 class TokenSequence;
 class TokenMap;
+class TokenEnumAccess;
 
 class TokenSerializer {
     Vec<Token>* tokens_;
@@ -110,11 +124,13 @@ public:
     auto is_complete() const noexcept -> bool { return *open_compounds_ == usize(); }
 
     auto serialize_none() -> result_type;
+    auto serialize_unit() -> result_type;
     auto serialize_bool(bool value) -> result_type;
     auto serialize_i64(i64 value) -> result_type;
     auto serialize_u64(u64 value) -> result_type;
     auto serialize_f64(f64 value) -> result_type;
     auto serialize_string(ref<str> value) -> result_type;
+    auto serialize_bytes(slice<u8> value) -> result_type;
 
     template<typename T>
     auto serialize_some(const T& value) -> result_type {
@@ -123,6 +139,30 @@ public:
         auto result = serde::serialize(child, value);
         if (result.is_err()) return result;
         tokens_->push(Token::marker(TokenKind::SomeEnd));
+        return Ok(empty {});
+    }
+
+    template<typename T>
+    auto serialize_newtype(ref<str>, const T& value) -> result_type {
+        return serde::serialize(*this, value);
+    }
+
+    auto serialize_unit_variant(ref<str> variant) -> result_type {
+        tokens_->push(Token::marker(TokenKind::EnumStart));
+        tokens_->push(Token::string(variant));
+        tokens_->push(Token::marker(TokenKind::Unit));
+        tokens_->push(Token::marker(TokenKind::EnumEnd));
+        return Ok(empty {});
+    }
+
+    template<typename T>
+    auto serialize_newtype_variant(ref<str> variant, const T& value) -> result_type {
+        tokens_->push(Token::marker(TokenKind::EnumStart));
+        tokens_->push(Token::string(variant));
+        auto child  = TokenSerializer(*tokens_, *open_compounds_, path_.with_variant(variant));
+        auto result = serde::serialize(child, value);
+        if (result.is_err()) return result;
+        tokens_->push(Token::marker(TokenKind::EnumEnd));
         return Ok(empty {});
     }
 
@@ -141,8 +181,14 @@ public:
     auto unknown_field(ref<str> field) const -> Error {
         return Error::unknown_field(path_.clone(), field);
     }
+    auto unknown_variant(ref<str> variant) const -> Error {
+        return Error::unknown_variant(path_.clone(), variant);
+    }
     auto duplicate_field(ref<str> field) const -> Error {
         return Error::duplicate_field(path_.clone(), field);
+    }
+    auto invariant(ref<str> message) const -> Error {
+        return Error::invariant(path_.clone(), message);
     }
     auto unsupported(ref<str> message) const -> Error {
         return Error::unsupported(path_.clone(), message);
@@ -247,6 +293,11 @@ inline auto TokenSerializer::serialize_none() -> result_type {
     return Ok(empty {});
 }
 
+inline auto TokenSerializer::serialize_unit() -> result_type {
+    tokens_->push(Token::marker(TokenKind::Unit));
+    return Ok(empty {});
+}
+
 inline auto TokenSerializer::serialize_bool(bool value) -> result_type {
     tokens_->push(Token::boolean(value));
     return Ok(empty {});
@@ -269,6 +320,11 @@ inline auto TokenSerializer::serialize_f64(f64 value) -> result_type {
 
 inline auto TokenSerializer::serialize_string(ref<str> value) -> result_type {
     tokens_->push(Token::string(value));
+    return Ok(empty {});
+}
+
+inline auto TokenSerializer::serialize_bytes(slice<u8> value) -> result_type {
+    tokens_->push(Token::bytes(value));
     return Ok(empty {});
 }
 
@@ -316,28 +372,34 @@ class TokenDeserializer {
     static auto actual_kind(TokenKind kind) noexcept -> ValueKind {
         switch (kind) {
         case TokenKind::Null: return ValueKind::Null;
+        case TokenKind::Unit: return ValueKind::Unit;
         case TokenKind::Bool: return ValueKind::Boolean;
         case TokenKind::I64: return ValueKind::SignedInteger;
         case TokenKind::U64: return ValueKind::UnsignedInteger;
         case TokenKind::F64: return ValueKind::Float;
         case TokenKind::String: return ValueKind::String;
+        case TokenKind::Bytes: return ValueKind::Bytes;
         case TokenKind::SomeStart:
         case TokenKind::SomeEnd: return ValueKind::Enum;
         case TokenKind::SequenceStart:
         case TokenKind::SequenceEnd: return ValueKind::Sequence;
         case TokenKind::MapStart:
         case TokenKind::MapEnd: return ValueKind::Map;
+        case TokenKind::EnumStart:
+        case TokenKind::EnumEnd: return ValueKind::Enum;
         }
         rstd::unreachable();
     }
 
     friend class TokenSequenceAccess;
     friend class TokenMapAccess;
+    friend class TokenEnumAccess;
 
 public:
     using error_type    = Error;
     using sequence_type = TokenSequenceAccess;
     using map_type      = TokenMapAccess;
+    using enum_type     = TokenEnumAccess;
 
     explicit TokenDeserializer(slice<Token> tokens): tokens_(tokens) {}
     TokenDeserializer(const TokenDeserializer&)                    = delete;
@@ -360,8 +422,14 @@ public:
     auto unknown_field(ref<str> field) const -> Error {
         return Error::unknown_field(path_.clone(), field);
     }
+    auto unknown_variant(ref<str> variant) const -> Error {
+        return Error::unknown_variant(path_.clone(), variant);
+    }
     auto duplicate_field(ref<str> field) const -> Error {
         return Error::duplicate_field(path_.clone(), field);
+    }
+    auto invariant(ref<str> message) const -> Error {
+        return Error::invariant(path_.clone(), message);
     }
     auto unsupported(ref<str> message) const -> Error {
         return Error::unsupported(path_.clone(), message);
@@ -376,6 +444,11 @@ public:
         auto token = take(TokenKind::Bool, ValueKind::Boolean);
         if (token.is_err()) return Err(rstd::move(token).unwrap_err_unchecked());
         return Ok(token->get().as_bool());
+    }
+    auto deserialize_unit() -> Result<empty, Error> {
+        auto token = take(TokenKind::Unit, ValueKind::Unit);
+        if (token.is_err()) return Err(rstd::move(token).unwrap_err_unchecked());
+        return Ok(empty {});
     }
     auto deserialize_i64() -> Result<i64, Error> {
         auto token = take(TokenKind::I64, ValueKind::SignedInteger);
@@ -396,6 +469,11 @@ public:
         auto token = take(TokenKind::String, ValueKind::String);
         if (token.is_err()) return Err(rstd::move(token).unwrap_err_unchecked());
         return Ok(String::make(token->get().as_str()));
+    }
+    auto deserialize_bytes() -> Result<Vec<u8>, Error> {
+        auto token = take(TokenKind::Bytes, ValueKind::Bytes);
+        if (token.is_err()) return Err(rstd::move(token).unwrap_err_unchecked());
+        return Ok(Vec<u8>::from(token->get().as_bytes()));
     }
 
     template<typename T>
@@ -419,8 +497,15 @@ public:
         return Ok(Some(rstd::move(value).unwrap_unchecked()));
     }
 
+    template<typename T>
+    auto deserialize_newtype(ref<str>) -> Result<T, Error> {
+        return serde::deserialize<T>(*this);
+    }
+
     auto begin_sequence() -> Result<TokenSequenceAccess, Error>;
     auto begin_map() -> Result<TokenMapAccess, Error>;
+    auto begin_enum() -> Result<TokenEnumAccess, Error>;
+    auto ignore_value() -> Result<empty, Error>;
 };
 
 class TokenSequenceAccess {
@@ -431,6 +516,8 @@ class TokenSequenceAccess {
     bool         ended_ {};
 
 public:
+    using error_type = Error;
+
     TokenSequenceAccess(slice<Token> tokens, usize& position, DataPath path)
         : tokens_(tokens), position_(&position), path_(rstd::move(path)) {}
 
@@ -467,6 +554,8 @@ class TokenMapAccess {
     bool         ended_ {};
 
 public:
+    using error_type = Error;
+
     TokenMapAccess(slice<Token> tokens, usize& position, DataPath path)
         : tokens_(tokens),
           position_(&position),
@@ -502,6 +591,16 @@ public:
         return value;
     }
 
+    auto ignore_value() -> Result<empty, Error> {
+        if (ended_) return Err(Error::invariant(path_.clone(), "map already ended"_str));
+        if (! pending_) return Err(Error::invariant(path_.clone(), "map key is missing"_str));
+        auto child  = TokenDeserializer(tokens_, *position_, value_path_.clone());
+        auto result = child.ignore_value();
+        if (result.is_err()) return result;
+        pending_ = false;
+        return Ok(empty {});
+    }
+
     auto end() -> Result<empty, Error> {
         if (ended_) return Err(Error::invariant(path_.clone(), "map already ended"_str));
         if (pending_) return Err(Error::invariant(path_.clone(), "map value is missing"_str));
@@ -512,6 +611,52 @@ public:
         ++*position_;
         ended_ = true;
         return Ok(empty {});
+    }
+};
+
+class TokenEnumAccess {
+    slice<Token> tokens_;
+    usize*       position_;
+    DataPath     path_;
+    String       variant_;
+    bool         consumed_ {};
+
+    auto finish() -> Result<empty, Error> {
+        auto child = TokenDeserializer(tokens_, *position_, path_.with_variant(variant_.as_str()));
+        auto end   = child.take(TokenKind::EnumEnd, ValueKind::Enum);
+        if (end.is_err()) return Err(rstd::move(end).unwrap_err_unchecked());
+        consumed_ = true;
+        return Ok(empty {});
+    }
+
+public:
+    using error_type = Error;
+
+    TokenEnumAccess(slice<Token> tokens, usize& position, DataPath path, String variant)
+        : tokens_(tokens),
+          position_(&position),
+          path_(rstd::move(path)),
+          variant_(rstd::move(variant)) {}
+
+    auto variant() const noexcept [[clang::lifetimebound]] -> ref<str> { return variant_.as_str(); }
+
+    auto unit() -> Result<empty, Error> {
+        if (consumed_) return Err(Error::invariant(path_.clone(), "enum already consumed"_str));
+        auto child  = TokenDeserializer(tokens_, *position_, path_.with_variant(variant_.as_str()));
+        auto result = child.deserialize_unit();
+        if (result.is_err()) return result;
+        return finish();
+    }
+
+    template<typename T>
+    auto value() -> Result<T, Error> {
+        if (consumed_) return Err(Error::invariant(path_.clone(), "enum already consumed"_str));
+        auto child  = TokenDeserializer(tokens_, *position_, path_.with_variant(variant_.as_str()));
+        auto result = serde::deserialize<T>(child);
+        if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
+        auto end = finish();
+        if (end.is_err()) return Err(rstd::move(end).unwrap_err_unchecked());
+        return result;
     }
 };
 
@@ -526,6 +671,79 @@ inline auto TokenDeserializer::begin_map() -> Result<TokenMapAccess, Error> {
     if (start.is_err()) return Err(rstd::move(start).unwrap_err_unchecked());
     return Ok(TokenMapAccess(tokens_, *position_, path_.clone()));
 }
+
+inline auto TokenDeserializer::begin_enum() -> Result<TokenEnumAccess, Error> {
+    auto start = take(TokenKind::EnumStart, ValueKind::Enum);
+    if (start.is_err()) return Err(rstd::move(start).unwrap_err_unchecked());
+    auto variant = take(TokenKind::String, ValueKind::String);
+    if (variant.is_err()) return Err(rstd::move(variant).unwrap_err_unchecked());
+    return Ok(
+        TokenEnumAccess(tokens_, *position_, path_.clone(), String::make(variant->get().as_str())));
+}
+
+inline auto TokenDeserializer::ignore_value() -> Result<empty, Error> {
+    auto token = peek();
+    if (token.is_none()) return Err(Error::unexpected_end(path_.clone()));
+    switch (token->get().kind()) {
+    case TokenKind::Null:
+    case TokenKind::Unit:
+    case TokenKind::Bool:
+    case TokenKind::I64:
+    case TokenKind::U64:
+    case TokenKind::F64:
+    case TokenKind::String:
+    case TokenKind::Bytes: ++*position_; return Ok(empty {});
+    case TokenKind::SomeStart: {
+        ++*position_;
+        auto value = ignore_value();
+        if (value.is_err()) return value;
+        auto end = take(TokenKind::SomeEnd, ValueKind::Enum);
+        if (end.is_err()) return Err(rstd::move(end).unwrap_err_unchecked());
+        return Ok(empty {});
+    }
+    case TokenKind::SequenceStart: {
+        ++*position_;
+        while (*position_ < tokens_.len() && tokens_[*position_].kind() != TokenKind::SequenceEnd) {
+            auto value = ignore_value();
+            if (value.is_err()) return value;
+        }
+        auto end = take(TokenKind::SequenceEnd, ValueKind::Sequence);
+        if (end.is_err()) return Err(rstd::move(end).unwrap_err_unchecked());
+        return Ok(empty {});
+    }
+    case TokenKind::MapStart: {
+        ++*position_;
+        while (*position_ < tokens_.len() && tokens_[*position_].kind() != TokenKind::MapEnd) {
+            auto key = ignore_value();
+            if (key.is_err()) return key;
+            auto value = ignore_value();
+            if (value.is_err()) return value;
+        }
+        auto end = take(TokenKind::MapEnd, ValueKind::Map);
+        if (end.is_err()) return Err(rstd::move(end).unwrap_err_unchecked());
+        return Ok(empty {});
+    }
+    case TokenKind::EnumStart: {
+        ++*position_;
+        auto variant = take(TokenKind::String, ValueKind::String);
+        if (variant.is_err()) return Err(rstd::move(variant).unwrap_err_unchecked());
+        auto value = ignore_value();
+        if (value.is_err()) return value;
+        auto end = take(TokenKind::EnumEnd, ValueKind::Enum);
+        if (end.is_err()) return Err(rstd::move(end).unwrap_err_unchecked());
+        return Ok(empty {});
+    }
+    case TokenKind::SomeEnd:
+    case TokenKind::SequenceEnd:
+    case TokenKind::MapEnd:
+    case TokenKind::EnumEnd:
+        return Err(Error::invariant(path_.clone(), "unexpected compound end token"_str));
+    }
+    rstd::unreachable();
+}
+
+static_assert(Serializer<TokenSerializer>);
+static_assert(Deserializer<TokenDeserializer>);
 
 template<typename T>
 auto to_tokens(const T& value) -> Result<Vec<Token>, Error> {

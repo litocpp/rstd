@@ -1,6 +1,9 @@
 #include <rstd/test/gtest.hpp>
+#include <rstd/enum.hpp>
 
 import rstd.serde;
+import rstd.json;
+import rstd.toml;
 
 using namespace rstd::literals;
 using ::alloc::string::String;
@@ -34,6 +37,26 @@ struct DomainValue {
 };
 
 struct UnfinishedSequence {};
+
+struct Blob {
+    Vec<rstd::u8> bytes;
+};
+
+struct Identifier {
+    rstd::u64 value;
+};
+
+class Event final {
+    RSTD_ENUM(Event, (Idle), (Count, (rstd::u64 value;)))
+};
+
+struct FlexibleRecord {
+    String               name;
+    rstd::Option<String> note;
+    rstd::u64            retries;
+};
+
+struct InvalidRecordSchema {};
 
 enum class Mode : rstd::uint8_t
 {
@@ -137,6 +160,112 @@ struct rstd::Impl<rstd::serde::Serialize, Mode> {
     template<typename Serializer>
     static decltype(auto) serialize(Serializer& serializer, Mode value) {
         return serializer.serialize_string(value == Mode::Debug ? "debug"_str : "release"_str);
+    }
+};
+
+template<>
+struct rstd::Impl<rstd::serde::Serialize, Blob> {
+    template<typename Serializer>
+    static decltype(auto) serialize(Serializer& serializer, const Blob& value) {
+        return serializer.serialize_bytes(value.bytes.as_slice());
+    }
+};
+
+template<>
+struct rstd::Impl<rstd::serde::Deserialize, Blob> {
+    template<typename Deserializer>
+    static auto deserialize(Deserializer& deserializer)
+        -> rstd::Result<Blob, typename Deserializer::error_type> {
+        auto bytes = deserializer.deserialize_bytes();
+        if (bytes.is_err()) return rstd::Err(rstd::move(bytes).unwrap_err_unchecked());
+        return rstd::Ok(Blob { rstd::move(bytes).unwrap_unchecked() });
+    }
+};
+
+template<>
+struct rstd::Impl<rstd::serde::Serialize, Identifier> {
+    template<typename Serializer>
+    static decltype(auto) serialize(Serializer& serializer, Identifier value) {
+        return serializer.serialize_newtype("Identifier"_str, value.value);
+    }
+};
+
+template<>
+struct rstd::Impl<rstd::serde::Deserialize, Identifier> {
+    template<typename Deserializer>
+    static auto deserialize(Deserializer& deserializer)
+        -> rstd::Result<Identifier, typename Deserializer::error_type> {
+        auto value = deserializer.template deserialize_newtype<rstd::u64>("Identifier"_str);
+        if (value.is_err()) return rstd::Err(rstd::move(value).unwrap_err_unchecked());
+        return rstd::Ok(Identifier { rstd::move(value).unwrap_unchecked() });
+    }
+};
+
+template<>
+struct rstd::Impl<rstd::serde::Serialize, Event> {
+    template<typename Serializer>
+    static decltype(auto) serialize(Serializer& serializer, const Event& value) {
+        if (value.is_Idle()) return serializer.serialize_unit_variant("Idle"_str);
+        return serializer.serialize_newtype_variant("Count"_str, value.as_Count().value);
+    }
+};
+
+template<>
+struct rstd::Impl<rstd::serde::Deserialize, Event> {
+    template<typename Deserializer>
+    static auto deserialize(Deserializer& deserializer)
+        -> rstd::Result<Event, typename Deserializer::error_type> {
+        auto started = deserializer.begin_enum();
+        if (started.is_err()) return rstd::Err(rstd::move(started).unwrap_err_unchecked());
+        auto value = rstd::move(started).unwrap_unchecked();
+        if (value.variant() == "Idle"_str) {
+            auto unit = value.unit();
+            if (unit.is_err()) return rstd::Err(rstd::move(unit).unwrap_err_unchecked());
+            return rstd::Ok(Event::Idle());
+        }
+        if (value.variant() == "Count"_str) {
+            auto count = value.template value<rstd::u64>();
+            if (count.is_err()) return rstd::Err(rstd::move(count).unwrap_err_unchecked());
+            return rstd::Ok(Event::Count(rstd::move(count).unwrap_unchecked()));
+        }
+        return rstd::Err(deserializer.unknown_variant(value.variant()));
+    }
+};
+
+template<>
+struct rstd::Impl<rstd::serde::Deserialize, FlexibleRecord> {
+    template<typename Deserializer>
+    static auto deserialize(Deserializer& deserializer)
+        -> rstd::Result<FlexibleRecord, typename Deserializer::error_type> {
+        const rstd::ref<rstd::str> aliases[] = { "legacy-name"_str };
+        auto                       name      = rstd::serde::RequiredField<String>(
+            "name"_str, rstd::slice<rstd::ref<rstd::str>>::from_raw_parts(aliases, rstd::usize(1)));
+        auto note    = rstd::serde::OptionalField<String>("note"_str);
+        auto retries = rstd::serde::DefaultedField<rstd::u64>("retries"_str, rstd::u64(3));
+        auto result  = rstd::serde::deserialize_record(
+            deserializer, rstd::serde::UnknownFieldPolicy::Ignore, name, note, retries);
+        if (result.is_err()) return rstd::Err(rstd::move(result).unwrap_err_unchecked());
+        auto required = name.take(deserializer);
+        if (required.is_err()) return rstd::Err(rstd::move(required).unwrap_err_unchecked());
+        return rstd::Ok(FlexibleRecord {
+            rstd::move(required).unwrap_unchecked(), note.take(), retries.take() });
+    }
+};
+
+template<>
+struct rstd::Impl<rstd::serde::Deserialize, InvalidRecordSchema> {
+    template<typename Deserializer>
+    static auto deserialize(Deserializer& deserializer)
+        -> rstd::Result<InvalidRecordSchema, typename Deserializer::error_type> {
+        const rstd::ref<rstd::str> aliases[] = { "second"_str };
+        auto                       first     = rstd::serde::RequiredField<String>(
+            "first"_str,
+            rstd::slice<rstd::ref<rstd::str>>::from_raw_parts(aliases, rstd::usize(1)));
+        auto second = rstd::serde::RequiredField<String>("second"_str);
+        auto result = rstd::serde::deserialize_record(
+            deserializer, rstd::serde::UnknownFieldPolicy::Reject, first, second);
+        if (result.is_err()) return rstd::Err(rstd::move(result).unwrap_err_unchecked());
+        return rstd::Ok(InvalidRecordSchema {});
     }
 };
 
@@ -299,6 +428,163 @@ TEST(Serde, ExplicitEnumRepresentationRoundtrip) {
 
     ASSERT_TRUE(decoded.is_ok());
     EXPECT_EQ(*decoded, Mode::Release);
+}
+
+TEST(Serde, UnitBytesAndNewtypeTokenRoundtrip) {
+    auto unit = rstd::serde::to_tokens(rstd::empty {});
+    ASSERT_TRUE(unit.is_ok());
+    auto unit_tokens = rstd::move(unit).unwrap_unchecked();
+    EXPECT_TRUE(rstd::serde::from_tokens<rstd::empty>(unit_tokens.as_slice()).is_ok());
+
+    auto bytes = Vec<rstd::u8>::make();
+    bytes.push(rstd::u8(1));
+    bytes.push(rstd::u8(255));
+    auto encoded_blob = rstd::serde::to_tokens(Blob { rstd::move(bytes) });
+    ASSERT_TRUE(encoded_blob.is_ok());
+    auto blob_tokens  = rstd::move(encoded_blob).unwrap_unchecked();
+    auto decoded_blob = rstd::serde::from_tokens<Blob>(blob_tokens.as_slice());
+    ASSERT_TRUE(decoded_blob.is_ok());
+    ASSERT_EQ(decoded_blob->bytes.len(), rstd::usize(2));
+    EXPECT_EQ(decoded_blob->bytes[rstd::usize()], rstd::u8(1));
+    EXPECT_EQ(decoded_blob->bytes[rstd::usize(1)], rstd::u8(255));
+
+    auto encoded_id = rstd::serde::to_tokens(Identifier { rstd::u64(42) });
+    ASSERT_TRUE(encoded_id.is_ok());
+    auto id_tokens  = rstd::move(encoded_id).unwrap_unchecked();
+    auto decoded_id = rstd::serde::from_tokens<Identifier>(id_tokens.as_slice());
+    ASSERT_TRUE(decoded_id.is_ok());
+    EXPECT_EQ(decoded_id->value, rstd::u64(42));
+}
+
+TEST(Serde, EnumAccessDistinguishesUnitAndNewtypeVariants) {
+    auto idle = rstd::serde::to_tokens(Event::Idle());
+    ASSERT_TRUE(idle.is_ok());
+    auto idle_tokens = rstd::move(idle).unwrap_unchecked();
+    auto idle_value  = rstd::serde::from_tokens<Event>(idle_tokens.as_slice());
+    ASSERT_TRUE(idle_value.is_ok());
+    EXPECT_TRUE(idle_value->is_Idle());
+
+    auto count = rstd::serde::to_tokens(Event::Count(rstd::u64(7)));
+    ASSERT_TRUE(count.is_ok());
+    auto count_tokens = rstd::move(count).unwrap_unchecked();
+    auto count_value  = rstd::serde::from_tokens<Event>(count_tokens.as_slice());
+    ASSERT_TRUE(count_value.is_ok());
+    ASSERT_TRUE(count_value->is_Count());
+    EXPECT_EQ(count_value->as_Count().value, rstd::u64(7));
+}
+
+TEST(Serde, RecordPolicySupportsAliasOptionalDefaultAndIgnoredFields) {
+    auto decoded = rstd::json::decode<FlexibleRecord>(
+        R"({"legacy-name":"worker","future":{"nested":[1,2]}})"_str);
+    ASSERT_TRUE(decoded.is_ok());
+    EXPECT_EQ(decoded->name.as_str(), "worker"_str);
+    EXPECT_TRUE(decoded->note.is_none());
+    EXPECT_EQ(decoded->retries, rstd::u64(3));
+
+    auto present =
+        rstd::json::decode<FlexibleRecord>(R"({"name":"worker","note":"ready","retries":5})"_str);
+    ASSERT_TRUE(present.is_ok());
+    ASSERT_TRUE(present->note.is_some());
+    EXPECT_EQ(present->note->as_str(), "ready"_str);
+    EXPECT_EQ(present->retries, rstd::u64(5));
+}
+
+TEST(Serde, TokenIgnoredValueConsumesNestedCompounds) {
+    auto tokens = Vec<rstd::serde::Token>::make();
+    tokens.push(rstd::serde::Token::container(rstd::serde::TokenKind::MapStart, rstd::usize(2)));
+    tokens.push(rstd::serde::Token::string("legacy-name"_str));
+    tokens.push(rstd::serde::Token::string("worker"_str));
+    tokens.push(rstd::serde::Token::string("future"_str));
+    tokens.push(
+        rstd::serde::Token::container(rstd::serde::TokenKind::SequenceStart, rstd::usize(1)));
+    tokens.push(rstd::serde::Token::container(rstd::serde::TokenKind::MapStart, rstd::usize(1)));
+    tokens.push(rstd::serde::Token::string("nested"_str));
+    tokens.push(rstd::serde::Token::unsigned_integer(rstd::u64(1)));
+    tokens.push(rstd::serde::Token::marker(rstd::serde::TokenKind::MapEnd));
+    tokens.push(rstd::serde::Token::marker(rstd::serde::TokenKind::SequenceEnd));
+    tokens.push(rstd::serde::Token::marker(rstd::serde::TokenKind::MapEnd));
+
+    auto decoded = rstd::serde::from_tokens<FlexibleRecord>(tokens.as_slice());
+    ASSERT_TRUE(decoded.is_ok());
+    EXPECT_EQ(decoded->name.as_str(), "worker"_str);
+    EXPECT_EQ(decoded->retries, rstd::u64(3));
+}
+
+TEST(Serde, RecordPolicyRejectsOverlappingAliases) {
+    auto decoded = rstd::json::decode<InvalidRecordSchema>("{}"_str);
+    ASSERT_TRUE(decoded.is_err());
+    auto error = rstd::move(decoded).unwrap_err_unchecked();
+    ASSERT_TRUE(error.data_error().is_some());
+    EXPECT_EQ(error.data_error()->get().kind(), rstd::serde::ErrorKind::Invariant);
+}
+
+TEST(Serde, JsonAndTomlShareBytesNewtypeAndEnumContracts) {
+    auto bytes = Vec<rstd::u8>::make();
+    bytes.push(rstd::u8(1));
+    bytes.push(rstd::u8(255));
+    auto blob = Blob { rstd::move(bytes) };
+
+    auto json_blob = rstd::json::to_value(blob);
+    ASSERT_TRUE(json_blob.is_ok());
+    auto decoded_json_blob = rstd::json::decode_value<Blob>(*json_blob);
+    ASSERT_TRUE(decoded_json_blob.is_ok());
+    EXPECT_EQ(decoded_json_blob->bytes[rstd::usize(1)], rstd::u8(255));
+
+    auto toml_blob = rstd::toml::to_value(blob);
+    ASSERT_TRUE(toml_blob.is_ok());
+    auto decoded_toml_blob = rstd::toml::decode_value<Blob>(*toml_blob);
+    ASSERT_TRUE(decoded_toml_blob.is_ok());
+    EXPECT_EQ(decoded_toml_blob->bytes[rstd::usize(1)], rstd::u8(255));
+
+    auto json_id = rstd::json::to_value(Identifier { rstd::u64(9) });
+    ASSERT_TRUE(json_id.is_ok());
+    auto decoded_json_id = rstd::json::decode_value<Identifier>(*json_id);
+    ASSERT_TRUE(decoded_json_id.is_ok());
+    EXPECT_EQ(decoded_json_id->value, rstd::u64(9));
+
+    auto json_event = rstd::json::to_value(Event::Count(rstd::u64(11)));
+    ASSERT_TRUE(json_event.is_ok());
+    auto decoded_json_event = rstd::json::decode_value<Event>(*json_event);
+    ASSERT_TRUE(decoded_json_event.is_ok());
+    ASSERT_TRUE(decoded_json_event->is_Count());
+    EXPECT_EQ(decoded_json_event->as_Count().value, rstd::u64(11));
+
+    auto toml_event = rstd::toml::to_value(Event::Idle());
+    ASSERT_TRUE(toml_event.is_ok());
+    auto decoded_toml_event = rstd::toml::decode_value<Event>(*toml_event);
+    ASSERT_TRUE(decoded_toml_event.is_ok());
+    EXPECT_TRUE(decoded_toml_event->is_Idle());
+}
+
+TEST(Serde, JsonSupportsUnitWhileTomlRejectsItExplicitly) {
+    auto json_unit = rstd::json::to_value(rstd::empty {});
+    ASSERT_TRUE(json_unit.is_ok());
+    EXPECT_TRUE(rstd::json::decode_value<rstd::empty>(*json_unit).is_ok());
+
+    auto toml_unit = rstd::toml::to_value(rstd::empty {});
+    ASSERT_TRUE(toml_unit.is_err());
+    EXPECT_EQ(toml_unit.unwrap_err().kind(), rstd::serde::ErrorKind::Unsupported);
+}
+
+TEST(Serde, EnumErrorsCarryVariantPaths) {
+    auto payload = rstd::json::decode<Event>(R"({"Count":"many"})"_str);
+    ASSERT_TRUE(payload.is_err());
+    auto payload_result = rstd::move(payload).unwrap_err_unchecked();
+    auto payload_error  = payload_result.data_error();
+    ASSERT_TRUE(payload_error.is_some());
+    ASSERT_EQ(payload_error->get().path().segments().len(), rstd::usize(1));
+    EXPECT_EQ(payload_error->get().path().segments()[rstd::usize()].kind(),
+              rstd::serde::PathSegmentKind::Variant);
+    EXPECT_EQ(*payload_error->get().path().segments()[rstd::usize()].name(), "Count"_str);
+
+    auto variant = rstd::json::decode<Event>(R"("Future")"_str);
+    ASSERT_TRUE(variant.is_err());
+    auto variant_result = rstd::move(variant).unwrap_err_unchecked();
+    auto variant_error  = variant_result.data_error();
+    ASSERT_TRUE(variant_error.is_some());
+    EXPECT_EQ(variant_error->get().kind(), rstd::serde::ErrorKind::UnknownVariant);
+    ASSERT_EQ(variant_error->get().path().segments().len(), rstd::usize(1));
+    EXPECT_EQ(*variant_error->get().path().segments()[rstd::usize()].name(), "Future"_str);
 }
 
 TEST(Serde, DomainConversionErrorRemainsADataSource) {

@@ -103,6 +103,15 @@ auto Error::unknown_field(DataPath path, ref<str> field) -> Error {
                  None());
 }
 
+auto Error::unknown_variant(DataPath path, ref<str> variant) -> Error {
+    return Error(ErrorKind::UnknownVariant,
+                 path.with_variant(variant),
+                 None(),
+                 None(),
+                 Some(String::make(variant)),
+                 None());
+}
+
 auto Error::duplicate_field(DataPath path, ref<str> field) -> Error {
     return Error(ErrorKind::DuplicateField,
                  path.with_field(field),
@@ -146,6 +155,7 @@ auto Error::unexpected_end(DataPath path) -> Error {
 auto value_kind_name(ValueKind kind) noexcept -> ref<str> {
     switch (kind) {
     case ValueKind::Null: return "null"_str;
+    case ValueKind::Unit: return "unit"_str;
     case ValueKind::Boolean: return "boolean"_str;
     case ValueKind::SignedInteger: return "signed integer"_str;
     case ValueKind::UnsignedInteger: return "unsigned integer"_str;
@@ -179,6 +189,7 @@ auto Impl<fmt::Display, serde::Error>::fmt(fmt::Formatter& formatter) const -> b
         case serde::ErrorKind::TypeMismatch: break;
         case serde::ErrorKind::MissingField: text = "missing field"_str; break;
         case serde::ErrorKind::UnknownField: text = "unknown field"_str; break;
+        case serde::ErrorKind::UnknownVariant: text = "unknown variant"_str; break;
         case serde::ErrorKind::DuplicateField: text = "duplicate field"_str; break;
         case serde::ErrorKind::InvalidValue: text = "invalid value"_str; break;
         case serde::ErrorKind::Invariant: text = "serde protocol invariant failed"_str; break;

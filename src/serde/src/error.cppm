@@ -12,6 +12,7 @@ export namespace rstd::serde
 enum class ValueKind : rstd::uint8_t
 {
     Null,
+    Unit,
     Boolean,
     SignedInteger,
     UnsignedInteger,
@@ -78,6 +79,7 @@ enum class ErrorKind : rstd::uint8_t
     TypeMismatch,
     MissingField,
     UnknownField,
+    UnknownVariant,
     DuplicateField,
     InvalidValue,
     Invariant,
@@ -104,6 +106,7 @@ public:
     static auto type_mismatch(DataPath path, ValueKind expected, ValueKind actual) -> Error;
     static auto missing_field(DataPath path, ref<str> field) -> Error;
     static auto unknown_field(DataPath path, ref<str> field) -> Error;
+    static auto unknown_variant(DataPath path, ref<str> variant) -> Error;
     static auto duplicate_field(DataPath path, ref<str> field) -> Error;
     static auto invalid_value(DataPath path, ref<str> message) -> Error;
     template<typename Source>

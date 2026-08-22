@@ -6,8 +6,42 @@ using namespace rstd::prelude;
 using namespace rstd::literals;
 using ::alloc::string::String;
 
+export namespace rstd::serde
+{
+
+struct Ignored {};
+
+} // namespace rstd::serde
+
 namespace rstd
 {
+
+template<>
+struct Impl<serde::Serialize, empty> {
+    template<typename Serializer>
+    static decltype(auto) serialize(Serializer& serializer, empty) {
+        return serializer.serialize_unit();
+    }
+};
+
+template<>
+struct Impl<serde::Deserialize, empty> {
+    template<typename Deserializer>
+    static decltype(auto) deserialize(Deserializer& deserializer) {
+        return deserializer.deserialize_unit();
+    }
+};
+
+template<>
+struct Impl<serde::Deserialize, serde::Ignored> {
+    template<typename Deserializer>
+    static auto deserialize(Deserializer& deserializer)
+        -> Result<serde::Ignored, typename Deserializer::error_type> {
+        auto result = deserializer.ignore_value();
+        if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
+        return Ok(serde::Ignored {});
+    }
+};
 
 template<>
 struct Impl<serde::Serialize, bool> {
