@@ -579,6 +579,12 @@ auto decode_value(const Value& value) -> Result<T, serde::Error> {
 }
 
 export template<typename T>
+auto decode_value(const Value& value, serde::DataPath path) -> Result<T, serde::Error> {
+    auto deserializer = ValueDeserializer(value, rstd::move(path));
+    return serde::deserialize<T>(deserializer);
+}
+
+export template<typename T>
 auto encode(const T& value, FormatOptions options = {}) -> Result<String, serde::Error> {
     auto encoded = to_value(value);
     if (encoded.is_err()) return Err(rstd::move(encoded).unwrap_err_unchecked());

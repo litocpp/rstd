@@ -42,6 +42,32 @@ TEST(SerdeCrossFormat, TomlDataErrorKeepsNestedPath) {
     EXPECT_EQ(path[rstd::usize(1)].index(), rstd::usize(1));
 }
 
+TEST(SerdeCrossFormat, ValueDecodePreservesCallerRootPath) {
+    auto json = rstd::json::from_str("{\"name\":\"server\",\"ports\":[80,\"https\"]}"_str);
+    ASSERT_TRUE(json.is_ok());
+    auto json_result = rstd::json::decode_value<rstd::tests::WireConfig>(
+        *json, rstd::serde::DataPath().with_field("catalog"_str));
+    ASSERT_TRUE(json_result.is_err());
+    auto json_error = rstd::move(json_result).unwrap_err_unchecked();
+    auto json_path  = json_error.path().segments();
+    ASSERT_EQ(json_path.len(), rstd::usize(3));
+    EXPECT_EQ(json_path[rstd::usize()].name().unwrap(), "catalog"_str);
+    EXPECT_EQ(json_path[rstd::usize(1)].name().unwrap(), "ports"_str);
+    EXPECT_EQ(json_path[rstd::usize(2)].index(), rstd::usize(1));
+
+    auto toml = rstd::toml::from_str("name = \"server\"\nports = [80, \"https\"]\n"_str);
+    ASSERT_TRUE(toml.is_ok());
+    auto toml_result = rstd::toml::decode_value<rstd::tests::WireConfig>(
+        *toml, rstd::serde::DataPath().with_field("catalog"_str));
+    ASSERT_TRUE(toml_result.is_err());
+    auto toml_error = rstd::move(toml_result).unwrap_err_unchecked();
+    auto toml_path  = toml_error.path().segments();
+    ASSERT_EQ(toml_path.len(), rstd::usize(3));
+    EXPECT_EQ(toml_path[rstd::usize()].name().unwrap(), "catalog"_str);
+    EXPECT_EQ(toml_path[rstd::usize(1)].name().unwrap(), "ports"_str);
+    EXPECT_EQ(toml_path[rstd::usize(2)].index(), rstd::usize(1));
+}
+
 TEST(SerdeCrossFormat, TomlRejectsUnrepresentableUnsignedInteger) {
     auto value  = rstd::u64::MAX;
     auto result = rstd::toml::to_value(value);
