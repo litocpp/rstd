@@ -10,13 +10,14 @@ namespace rstd::slice_::detail
 {
 
 [[noreturn]]
-inline void split_index_out_of_bounds() {
-    rstd::panic { "slice split index out of bounds" };
+inline void
+split_index_out_of_bounds(rstd::source_location loc = rstd::source_location::current()) {
+    rstd::panic_message("slice split index out of bounds", loc);
 }
 
 [[noreturn]]
-inline void length_mismatch() {
-    rstd::panic { "source and destination slices have different lengths" };
+inline void length_mismatch(rstd::source_location loc = rstd::source_location::current()) {
+    rstd::panic_message("source and destination slices have different lengths", loc);
 }
 
 } // namespace rstd::slice_::detail

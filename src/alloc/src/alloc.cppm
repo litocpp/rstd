@@ -59,8 +59,9 @@ export auto alloc_zeroed(Layout layout) noexcept -> void* {
 /// Aborts the process on memory allocation failure.
 /// \param layout The layout of the allocation that failed.
 export [[gnu::cold]]
-void handle_alloc_error(Layout layout) {
-    rstd::panic { "memory allocation failed" };
+void handle_alloc_error(Layout                layout,
+                        rstd::source_location loc = rstd::source_location::current()) {
+    rstd::panic_message("memory allocation failed", loc);
 }
 
 // Forward declaration of the global memory allocator.

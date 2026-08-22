@@ -23,8 +23,8 @@ class Box {
     Option<NonNull<T>> m_ptr;
 
     [[noreturn]]
-    static void panic_moved() {
-        rstd::panic { "Box used after move" };
+    static void panic_moved(rstd::source_location loc = rstd::source_location::current()) {
+        rstd::panic_message("Box used after move", loc);
     }
 
     [[nodiscard]]

@@ -1468,7 +1468,8 @@ struct TaskStateBase {
 };
 
 inline void TaskStateBase::run_facility_execution(FacilityExecutionToken, TaskAccess) {
-    rstd::panic { "async task cannot resume on external executor" };
+    rstd::panic_message("async task cannot resume on external executor",
+                        rstd::source_location::current());
 }
 
 inline auto TaskStateBase::submit_completion_facility(FacilityCompletionToken token)
@@ -1478,7 +1479,8 @@ inline auto TaskStateBase::submit_completion_facility(FacilityCompletionToken to
 
 inline auto TaskStateBase::submit_facility(FacilityTicket, FacilityRequest)
     -> FacilitySubmitResult {
-    rstd::panic { "async task cannot submit an execution facility" };
+    rstd::panic_message("async task cannot submit an execution facility",
+                        rstd::source_location::current());
 }
 
 inline auto rstd::async::FacilityJob::operator=(FacilityJob&& other) noexcept -> FacilityJob& {

@@ -303,13 +303,13 @@ template<typename Tag>
 using signed_integer_t = typename integer_type<typename signed_tag<Tag>::type>::type;
 
 [[noreturn]]
-void panic_overflow();
+void panic_overflow(rstd::source_location loc = rstd::source_location::current());
 [[noreturn]]
-void panic_divide_by_zero();
+void panic_divide_by_zero(rstd::source_location loc = rstd::source_location::current());
 [[noreturn]]
-void panic_invalid_shift();
+void panic_invalid_shift(rstd::source_location loc = rstd::source_location::current());
 [[noreturn]]
-void panic_invalid_float_clamp();
+void panic_invalid_float_clamp(rstd::source_location loc = rstd::source_location::current());
 
 template<typename Primitive>
 constexpr auto add_with_overflow(Primitive lhs, Primitive rhs) noexcept

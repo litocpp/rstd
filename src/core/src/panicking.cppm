@@ -11,13 +11,23 @@ namespace rstd
 /// \param args The formatted message arguments.
 /// \param loc The source location of the panic.
 export [[noreturn]]
-void panic_fmt(fmt::Arguments args, panic_::Location loc);
+void panic_fmt(fmt::Arguments args, source_location loc);
 
 /// Triggers a non-unwinding panic for noexcept or FFI contexts.
 /// \param args The formatted message arguments.
 /// \param loc The source location of the panic.
 export [[noreturn]]
-void panic_fmt_nounwind(fmt::Arguments args, panic_::Location loc);
+void panic_fmt_nounwind(fmt::Arguments args, source_location loc);
+
+/// Triggers a panic with an already constructed message and source location.
+export [[noreturn]]
+void panic_message(ref<str> message, source_location loc);
+
+export template<rstd::size_t N>
+[[noreturn]]
+inline void panic_message(const char (&message)[N], source_location loc) {
+    panic_fmt({ message, N - 1, nullptr, 0 }, loc);
+}
 
 /// Compile-time-checked panic with format string support.
 ///
@@ -30,11 +40,9 @@ struct panic {
     inline panic(fmt::format_string<Args...> fmt_str, Args&&... args, panic_::SrcLoc loc = {}) {
         if constexpr (sizeof...(Args) > 0) {
             fmt::Argument arg_array[] = { fmt::Argument::make(args)... };
-            panic_fmt({ fmt_str.data(), fmt_str.size(), arg_array, sizeof...(Args) },
-                      panic_::Location::from(loc.val));
+            panic_fmt({ fmt_str.data(), fmt_str.size(), arg_array, sizeof...(Args) }, loc.val);
         } else {
-            panic_fmt({ fmt_str.data(), fmt_str.size(), nullptr, 0 },
-                      panic_::Location::from(loc.val));
+            panic_fmt({ fmt_str.data(), fmt_str.size(), nullptr, 0 }, loc.val);
         }
     }
 };
@@ -52,16 +60,12 @@ struct panic<> {
     template<rstd::size_t N>
     [[gnu::always_inline]] [[noreturn]]
     inline panic(const char (&msg)[N], panic_::SrcLoc loc = {}) {
-        panic_fmt({ msg, N - 1, nullptr, 0 }, panic_::Location::from(loc.val));
+        panic_message(msg, loc.val);
     }
 
     [[gnu::always_inline]] [[noreturn]]
     inline panic(ref<str> msg, panic_::SrcLoc loc = {}) {
-        // Wrap the str bytes as a single Display argument.
-        fmt::Argument         arg     = fmt::Argument::make(msg);
-        static constexpr char fmt_s[] = "{}";
-        panic_fmt({ fmt_s, rstd::size_t(2), &arg, rstd::size_t(1) },
-                  panic_::Location::from(loc.val));
+        panic_message(msg, loc.val);
     }
 };
 

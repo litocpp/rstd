@@ -22,45 +22,51 @@ bool panic_write_fmt(void const* data, void* ctx, rstd::panic_::WriteFn write) {
 namespace rstd
 {
 
-void panic_fmt(fmt::Arguments args, panic_::Location loc) {
+void panic_fmt(fmt::Arguments args, source_location loc) {
     auto info = PanicInfo {
         .data     = &args,
         .fmt      = panic_write_fmt,
-        .location = loc,
+        .location = panic_::Location::from(loc),
     };
     rstd_panic_impl(info);
 }
 
-void panic_fmt_nounwind(fmt::Arguments args, panic_::Location loc) {
+void panic_fmt_nounwind(fmt::Arguments args, source_location loc) {
     auto info = PanicInfo {
         .data       = &args,
         .fmt        = panic_write_fmt,
-        .location   = loc,
+        .location   = panic_::Location::from(loc),
         .can_unwind = false,
     };
     rstd_panic_impl(info);
 }
 
+void panic_message(ref<str> message, source_location loc) {
+    fmt::Argument         argument = fmt::Argument::make(message);
+    static constexpr char format[] = "{}";
+    panic_fmt({ format, rstd::size_t(2), &argument, rstd::size_t(1) }, loc);
+}
+
 } // namespace rstd
 
 [[noreturn]]
-void panic_overflow() {
-    rstd::panic { "attempt to perform integer arithmetic with overflow" };
+void panic_overflow(rstd::source_location loc) {
+    rstd::panic_message("attempt to perform integer arithmetic with overflow", loc);
 }
 
 [[noreturn]]
-void panic_divide_by_zero() {
-    rstd::panic { "attempt to divide by zero" };
+void panic_divide_by_zero(rstd::source_location loc) {
+    rstd::panic_message("attempt to divide by zero", loc);
 }
 
 [[noreturn]]
-void panic_invalid_shift() {
-    rstd::panic { "attempt to shift with overflow" };
+void panic_invalid_shift(rstd::source_location loc) {
+    rstd::panic_message("attempt to shift with overflow", loc);
 }
 
 [[noreturn]]
-void panic_invalid_float_clamp() {
-    rstd::panic { "min > max, or either was NaN" };
+void panic_invalid_float_clamp(rstd::source_location loc) {
+    rstd::panic_message("min > max, or either was NaN", loc);
 }
 
 namespace rstd::fmt
