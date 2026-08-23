@@ -524,21 +524,18 @@ public:
 
     /// Clears the vector, destroying all elements but not deallocating memory.
     constexpr void clear() {
-        auto p = m_buf.ptr.as_mut_ptr();
-        for (rstd::size_t index = 0; index < m_len.to_primitive(); ++index) {
-            rstd::ptr_::destroy(p.add(usize(index)));
-        }
-        m_len = usize();
+        auto values = as_mut_slice();
+        m_len       = usize();
+        rstd::ptr_::drop_in_place(values);
     }
 
     /// Shortens the vector, dropping elements after `new_len`.
     constexpr void truncate(usize new_len) {
         if (new_len >= m_len) return;
-        auto p = m_buf.ptr.as_mut_ptr();
-        for (rstd::size_t index = new_len.to_primitive(); index < m_len.to_primitive(); ++index) {
-            rstd::ptr_::destroy(p.add(usize(index)));
-        }
-        m_len = new_len;
+        auto values = mut_ptr<T[]>::from_raw_parts(m_buf.ptr.as_mut_ptr().add(new_len).as_raw_ptr(),
+                                                   m_len - new_len);
+        m_len       = new_len;
+        rstd::ptr_::drop_in_place(values);
     }
 
     /// Retains only the elements for which `predicate` returns true, preserving their order.
@@ -664,11 +661,10 @@ private:
     usize     back_;
 
     void drop_remaining() noexcept {
-        auto pointer = buffer_.ptr.as_mut_ptr();
-        for (auto index = front_; index < back_; ++index) {
-            rstd::ptr_::destroy(pointer.add(index));
-        }
+        auto values = mut_ptr<T[]>::from_raw_parts(
+            buffer_.ptr.as_mut_ptr().add(front_).as_raw_ptr(), back_ - front_);
         front_ = back_;
+        rstd::ptr_::drop_in_place(values);
     }
 
     auto take_buffer() noexcept -> RawVec<T> {

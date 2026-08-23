@@ -631,7 +631,7 @@ export template<typename T>
 void drop_in_place(mut_ptr<T> pointer) noexcept {
     if constexpr (mtp::DSTArray<T>) {
         using Element = mtp::rm_ext<T>;
-        if constexpr (! mtp::same_as<Element, u8>) {
+        if constexpr (! mtp::triv_drop<Element>) {
             auto* data = pointer.as_raw_ptr();
             for (rstd::size_t i = 0; i < pointer.len().to_primitive(); ++i) {
                 rstd::destroy_at(data + i);
@@ -639,7 +639,7 @@ void drop_in_place(mut_ptr<T> pointer) noexcept {
         }
     } else if constexpr (mtp::DST<T>) {
         pointer.metadata()->drop(pointer.as_raw_ptr());
-    } else if constexpr (! mtp::same_as<T, u8>) {
+    } else if constexpr (! mtp::triv_drop<T>) {
         rstd::destroy_at(pointer.as_raw_ptr());
     }
 }

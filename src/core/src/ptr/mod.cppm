@@ -35,7 +35,7 @@ constexpr void construct(mut_ptr<T> destination, Args&&... args) {
 export template<typename T>
     requires(! mtp::DST<T>)
 constexpr void destroy(mut_ptr<T> destination) noexcept {
-    if constexpr (! mtp::same_as<T, u8>) rstd::destroy_at(destination.as_raw_ptr());
+    if constexpr (! mtp::triv_drop<T>) rstd::destroy_at(destination.as_raw_ptr());
 }
 
 /// Moves one logical element out of initialized storage.

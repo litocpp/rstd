@@ -1019,6 +1019,27 @@ TEST(Vec, RetainPreservesOrderAndDropsRemovedElements) {
     EXPECT_EQ(drops, 6);
 }
 
+TEST(Vec, ClearAndTruncateDropOnlyRemovedNonTrivialElements) {
+    int  drops  = 0;
+    auto values = Vec<CollectMoveOnly>::make();
+    for (int value = 0; value < 5; ++value) values.emplace_back(value, drops);
+
+    values.truncate(usize(3));
+    EXPECT_EQ(values.len(), usize(3));
+    EXPECT_EQ(drops, 2);
+
+    values.truncate(usize(4));
+    EXPECT_EQ(values.len(), usize(3));
+    EXPECT_EQ(drops, 2);
+
+    values.clear();
+    EXPECT_TRUE(values.is_empty());
+    EXPECT_EQ(drops, 5);
+
+    values.clear();
+    EXPECT_EQ(drops, 5);
+}
+
 TEST(Vec, ReserveAndExtendFromSlice) {
     Vec<rstd::u8> v;
     v.reserve(usize(8));
