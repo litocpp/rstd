@@ -2,6 +2,7 @@
 #include <rstd/enum.hpp>
 
 import rstd.serde;
+import rstd.serde.token;
 import rstd.json;
 import rstd.toml;
 

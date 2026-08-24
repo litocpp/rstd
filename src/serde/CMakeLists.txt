@@ -3,7 +3,7 @@ add_library(rstd::serde ALIAS rstd.serde)
 target_compile_features(rstd.serde PUBLIC cxx_std_20)
 target_link_libraries(rstd.serde PUBLIC rstd.alloc)
 
-target_sources(rstd.serde PRIVATE src/error.cpp)
+target_sources(rstd.serde PRIVATE src/error.cpp src/lib.cpp src/token.cpp)
 
 target_sources(
   rstd.serde
