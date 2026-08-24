@@ -20,6 +20,36 @@ using namespace rstd::literals;
 using rstd::string::String;
 using rstd::vec::Vec;
 
+struct VecAllocatorState {
+    int allocations;
+    int deallocations;
+};
+
+struct VecTestAllocator {
+    VecAllocatorState* state;
+};
+
+namespace rstd
+{
+
+template<>
+struct Impl<alloc::Allocator, ::VecTestAllocator>
+    : DefaultInImpl<alloc::Allocator, ::VecTestAllocator> {
+    auto allocate(alloc::Layout layout) const -> Result<alloc::Allocation, alloc::AllocError> {
+        ++this->self().state->allocations;
+        return as<alloc::Allocator>(::alloc::GLOBAL).allocate(layout);
+    }
+
+    void deallocate(void* pointer, alloc::Layout layout) const noexcept {
+        ++this->self().state->deallocations;
+        as<alloc::Allocator>(::alloc::GLOBAL).deallocate(pointer, layout);
+    }
+};
+
+} // namespace rstd
+
+static_assert(sizeof(Vec<int>) == sizeof(void*) * 5);
+
 namespace
 {
 
@@ -1322,4 +1352,63 @@ TEST(Vec, CloneOwnsIndependentElements) {
     EXPECT_EQ(direct[usize(1)], "beta"_str);
     EXPECT_EQ(abstract[usize()], "alpha"_str);
     EXPECT_EQ(abstract[usize(1)], "beta"_str);
+}
+
+TEST(Vec, StatefulAllocatorOwnsBufferAcrossMoveAndIteration) {
+    VecAllocatorState first {};
+    VecAllocatorState second {};
+
+    {
+        auto source =
+            Vec<int, VecTestAllocator>::with_capacity_in(usize(2), VecTestAllocator { &first });
+        source.push(1);
+        source.push(2);
+        source.push(3);
+
+        auto destination =
+            Vec<int, VecTestAllocator>::with_capacity_in(usize(1), VecTestAllocator { &second });
+        destination.push(9);
+        destination = rstd::move(source);
+
+        EXPECT_EQ(destination.allocator().state, &first);
+        auto iterator = rstd::move(destination).into_iter();
+        EXPECT_EQ(iterator.next().unwrap(), 1);
+    }
+
+    EXPECT_EQ(first.allocations, first.deallocations);
+    EXPECT_EQ(second.allocations, second.deallocations);
+    EXPECT_GT(first.allocations, 1);
+}
+
+TEST(Vec, CloneInSelectsDestinationAllocator) {
+    VecAllocatorState source_state {};
+    VecAllocatorState clone_state {};
+
+    {
+        auto source = Vec<int, VecTestAllocator>::with_capacity_in(
+            usize(2), VecTestAllocator { &source_state });
+        source.push(4);
+        source.push(7);
+
+        auto clone = source.clone_in(VecTestAllocator { &clone_state });
+        EXPECT_EQ(clone.allocator().state, &clone_state);
+        ASSERT_EQ(clone.len(), usize(2));
+        EXPECT_EQ(clone[usize()], 4);
+        EXPECT_EQ(clone[usize(1)], 7);
+    }
+
+    EXPECT_EQ(source_state.allocations, source_state.deallocations);
+    EXPECT_EQ(clone_state.allocations, clone_state.deallocations);
+}
+
+TEST(Vec, FromIterInUsesSelectedAllocator) {
+    VecAllocatorState state {};
+    {
+        auto values = Vec<i32, VecTestAllocator>::from_iter_in(rstd::iter::range(0_i32, 5_i32),
+                                                               VecTestAllocator { &state });
+        EXPECT_EQ(values.allocator().state, &state);
+        ASSERT_EQ(values.len(), usize(5));
+        EXPECT_EQ(values[usize(4)], 4_i32);
+    }
+    EXPECT_EQ(state.allocations, state.deallocations);
 }

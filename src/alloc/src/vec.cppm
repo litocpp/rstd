@@ -15,28 +15,54 @@ using rstd::ptr_::non_null::NonNull;
 using namespace rstd::prelude;
 
 /// A low-level utility for managing the backing storage of a `Vec`.
-/// It handles allocation and deallocation of raw memory via global allocator.
-template<typename T>
+template<typename T, typename A>
 struct RawVec {
-    NonNull<T> ptr;
-    usize      cap;
-    Layout     allocation_layout;
+    NonNull<T>                    ptr;
+    usize                         cap;
+    Layout                        allocation_layout;
+    RSTD_ATTR_NO_UNIQUE_ADDRESS A allocator;
 
     static constexpr usize MIN_NON_ZERO_CAP =
         sizeof(typename mut_ptr<T>::storage_type) == 1
             ? usize(8)
             : (sizeof(typename mut_ptr<T>::storage_type) <= 1024 ? usize(4) : usize(1));
 
-    static auto with_capacity(usize capacity) -> RawVec {
-        if (capacity == usize()) return RawVec();
+    constexpr explicit RawVec(A allocator)
+        : ptr(), cap(), allocation_layout(), allocator(rstd::move(allocator)) {}
+
+    constexpr RawVec(NonNull<T> ptr, usize cap, Layout layout, A allocator)
+        : ptr(ptr), cap(cap), allocation_layout(layout), allocator(rstd::move(allocator)) {}
+
+    RawVec(const RawVec&)                    = delete;
+    auto operator=(const RawVec&) -> RawVec& = delete;
+
+    constexpr RawVec(RawVec&& other)
+        : ptr(other.ptr),
+          cap(other.cap),
+          allocation_layout(other.allocation_layout),
+          allocator(rstd::move(other.allocator)) {
+        other.reset_ptr();
+    }
+
+    constexpr auto operator=(RawVec&& other) -> RawVec& {
+        if (this == rstd::addressof(other)) return *this;
+        drop();
+        ptr               = other.ptr;
+        cap               = other.cap;
+        allocation_layout = other.allocation_layout;
+        allocator         = rstd::move(other.allocator);
+        other.reset_ptr();
+        return *this;
+    }
+
+    static auto with_capacity(usize capacity, A allocator) -> RawVec {
+        if (capacity == usize()) return RawVec(rstd::move(allocator));
         auto layout = Layout::array<T>(capacity).unwrap();
-        auto res    = as<Allocator>(::alloc::GLOBAL).allocate(layout);
+        auto res    = as<Allocator>(allocator).allocate(layout);
         if (res.is_err()) handle_alloc_error(layout);
 
         auto p = res.unwrap_unchecked().template as_mut_ptr<T>();
-        return { .ptr               = NonNull<T>::make_unchecked(p),
-                 .cap               = capacity,
-                 .allocation_layout = layout };
+        return RawVec(NonNull<T>::make_unchecked(p), capacity, layout, rstd::move(allocator));
     }
 
     /// Reallocates the storage to a new capacity.
@@ -46,22 +72,21 @@ struct RawVec {
         auto new_layout = Layout::array<T>(new_cap).unwrap();
 
         if (allocation_layout.size == usize()) {
-            auto res = as<Allocator>(::alloc::GLOBAL).allocate(new_layout);
+            auto res = as<Allocator>(allocator).allocate(new_layout);
             if (res.is_err()) handle_alloc_error(new_layout);
             ptr = NonNull<T>::make_unchecked(res.unwrap_unchecked().template as_mut_ptr<T>());
         } else if constexpr (mtp::triv_copyable<T>) {
             auto old_layout = allocation_layout;
             auto old_ptr    = ptr.as_mut_ptr();
 
-            auto res =
-                as<Allocator>(::alloc::GLOBAL).grow(old_ptr.as_raw_ptr(), old_layout, new_layout);
+            auto res = as<Allocator>(allocator).grow(old_ptr.as_raw_ptr(), old_layout, new_layout);
             if (res.is_err()) handle_alloc_error(new_layout);
 
             ptr = NonNull<T>::make_unchecked(res.unwrap_unchecked().template as_mut_ptr<T>());
         } else {
             auto old_layout = allocation_layout;
             auto old_ptr    = ptr.as_mut_ptr().as_raw_ptr();
-            auto res        = as<Allocator>(::alloc::GLOBAL).allocate(new_layout);
+            auto res        = as<Allocator>(allocator).allocate(new_layout);
             if (res.is_err()) handle_alloc_error(new_layout);
 
             auto new_ptr = res.unwrap_unchecked().template as_mut_ptr<T>().as_raw_ptr();
@@ -69,7 +94,7 @@ struct RawVec {
                 rstd::construct_at(new_ptr + index, rstd::move(old_ptr[index]));
                 rstd::destroy_at(old_ptr + index);
             }
-            as<Allocator>(::alloc::GLOBAL).deallocate(old_ptr, old_layout);
+            as<Allocator>(allocator).deallocate(old_ptr, old_layout);
             ptr = NonNull<T>::make_unchecked(mut_ptr<T>::from_raw_parts(new_ptr));
         }
         cap               = new_cap;
@@ -87,17 +112,17 @@ struct RawVec {
 
         auto old_ptr = ptr.as_mut_ptr().as_raw_ptr();
         if (len == usize()) {
-            as<Allocator>(::alloc::GLOBAL).deallocate(old_ptr, old_layout);
+            as<Allocator>(allocator).deallocate(old_ptr, old_layout);
             reset_ptr();
             return;
         }
 
         if constexpr (mtp::triv_copyable<T>) {
-            auto res = as<Allocator>(::alloc::GLOBAL).shrink(old_ptr, old_layout, new_layout);
+            auto res = as<Allocator>(allocator).shrink(old_ptr, old_layout, new_layout);
             if (res.is_err()) handle_alloc_error(new_layout);
             ptr = NonNull<T>::make_unchecked(res.unwrap_unchecked().template as_mut_ptr<T>());
         } else {
-            auto res = as<Allocator>(::alloc::GLOBAL).allocate(new_layout);
+            auto res = as<Allocator>(allocator).allocate(new_layout);
             if (res.is_err()) handle_alloc_error(new_layout);
 
             auto new_ptr = res.unwrap_unchecked().template as_mut_ptr<T>().as_raw_ptr();
@@ -105,7 +130,7 @@ struct RawVec {
                 rstd::construct_at(new_ptr + index, rstd::move(old_ptr[index]));
                 rstd::destroy_at(old_ptr + index);
             }
-            as<Allocator>(::alloc::GLOBAL).deallocate(old_ptr, old_layout);
+            as<Allocator>(allocator).deallocate(old_ptr, old_layout);
             ptr = NonNull<T>::make_unchecked(mut_ptr<T>::from_raw_parts(new_ptr));
         }
         cap               = len;
@@ -123,7 +148,7 @@ struct RawVec {
     void drop() {
         if (! rstd::mem::all(ptr, u8())) {
             debug_assert(allocation_layout.size > usize());
-            as<Allocator>(::alloc::GLOBAL).deallocate(ptr.as_raw_ptr(), allocation_layout);
+            as<Allocator>(allocator).deallocate(ptr.as_raw_ptr(), allocation_layout);
         }
         reset_ptr();
     }
@@ -132,18 +157,18 @@ struct RawVec {
 namespace alloc::vec
 {
 
-export template<typename T>
+export template<typename T, typename A = ::alloc::Global>
 struct VecIntoIter;
 
-export template<typename T>
+export template<typename T, typename A = ::alloc::Global>
 class Vec;
 
 namespace details
 {
 struct InPlaceAccess;
 
-template<typename T>
-auto from_iter(VecIntoIter<T> iterator) -> Vec<T>;
+template<typename T, typename A>
+auto from_iter(VecIntoIter<T, A> iterator) -> Vec<T, A>;
 } // namespace details
 
 export template<typename T>
@@ -172,7 +197,8 @@ class SpareCapacity {
     constexpr SpareCapacity(mut_ptr<T> pointer, usize length) noexcept
         : pointer_(pointer), length_(length) {}
 
-    friend class Vec<T>;
+    template<typename, typename>
+    friend class Vec;
 
 public:
     constexpr SpareCapacity() noexcept = default;
@@ -187,44 +213,41 @@ public:
 
 /// A contiguous growable array type, analogous to Rust's `Vec<T>`.
 /// \tparam T The element type, which must be `Sized`.
-export template<typename T>
+export template<typename T, typename A>
 class Vec {
-    RawVec<T> m_buf;
-    usize     m_len;
+    RawVec<T, A> m_buf;
+    usize        m_len;
 
-    constexpr explicit Vec(RawVec<T> buf, usize len): m_buf(buf), m_len(len) {}
+    constexpr explicit Vec(RawVec<T, A> buf, usize len): m_buf(rstd::move(buf)), m_len(len) {}
 
-    friend struct VecIntoIter<T>;
+    friend struct VecIntoIter<T, A>;
     friend struct details::InPlaceAccess;
-    friend auto details::from_iter<T>(VecIntoIter<T> iterator) -> Vec<T>;
+    friend auto details::from_iter<T, A>(VecIntoIter<T, A> iterator) -> Vec<T, A>;
 
 public:
     USE_TRAIT(Vec)
 
     /// Creates an empty `Vec` with no allocation.
-    constexpr Vec(): m_buf(), m_len() {}
+    constexpr Vec(): m_buf(A {}), m_len() {}
+
+    constexpr explicit Vec(A allocator): m_buf(rstd::move(allocator)), m_len() {}
 
     // no copy
     constexpr Vec(const Self&)            = delete;
     constexpr Vec& operator=(const Self&) = delete;
 
     // move
-    constexpr Vec(Self&& o) noexcept: m_buf(o.m_buf), m_len(o.m_len) {
-        o.m_buf.reset_ptr();
-        o.m_len = usize();
-    }
-    constexpr Vec& operator=(Self&& o) noexcept {
+    constexpr Vec(Self&& o): m_buf(rstd::move(o.m_buf)), m_len(o.m_len) { o.m_len = usize(); }
+    constexpr Vec& operator=(Self&& o) {
         if (this != &o) {
             // clean
             clear();
             m_buf.drop();
 
             // assign
-            m_buf = o.m_buf;
+            m_buf = rstd::move(o.m_buf);
             m_len = o.m_len;
 
-            // move
-            o.m_buf.reset_ptr();
             o.m_len = usize();
         }
         return *this;
@@ -238,23 +261,40 @@ public:
     /// Creates a new empty `Vec`.
     /// \return An empty `Vec`.
     static constexpr auto make() -> Self { return {}; }
+    static constexpr auto new_in(A allocator) -> Self { return Self(rstd::move(allocator)); }
     /// Creates a new empty `Vec` with at least the specified capacity.
     /// \param capacity The minimum number of elements the `Vec` can hold without reallocating.
     /// \return A `Vec` with preallocated capacity.
-    static auto with_capacity(usize capacity) -> Self {
-        return Vec { RawVec<T>::with_capacity(capacity), usize() };
+    static auto with_capacity(usize capacity) -> Self { return with_capacity_in(capacity, A {}); }
+
+    static auto with_capacity_in(usize capacity, A allocator) -> Self {
+        return Vec { RawVec<T, A>::with_capacity(capacity, rstd::move(allocator)), usize() };
+    }
+
+    template<rstd::iter::has_next I>
+    static auto from_iter_in(I iterator, A allocator) -> Self {
+        auto result = Self::new_in(rstd::move(allocator));
+        result.reserve(rstd::as<rstd::iter::Iterator>(iterator).size_hint().template get<0>());
+        for (auto item = rstd::as<rstd::iter::Iterator>(iterator).next(); item.is_some();
+             item      = rstd::as<rstd::iter::Iterator>(iterator).next()) {
+            result.push(rstd::move(*item));
+        }
+        return result;
     }
 
     /// Takes ownership of a boxed slice without copying its elements.
-    static auto from_boxed_slice(Box<T[]>&& values) noexcept -> Self {
+    static auto from_boxed_slice(Box<T[]>&& values) noexcept -> Self
+        requires mtp::same_as<A, ::alloc::Global>
+    {
         auto raw    = rstd::move(values).into_raw();
         auto length = raw.len();
         if (length == usize()) return {};
 
         auto pointer = mut_ptr<T>::from_raw_parts(raw.as_raw_ptr());
-        return Vec { RawVec<T> { .ptr               = NonNull<T>::make_unchecked(pointer),
-                                 .cap               = length,
-                                 .allocation_layout = Layout::array<T>(length).unwrap() },
+        return Vec { RawVec<T, A>(NonNull<T>::make_unchecked(pointer),
+                                  length,
+                                  Layout::array<T>(length).unwrap(),
+                                  A {}),
                      length };
     }
 
@@ -285,7 +325,7 @@ public:
 
         auto new_cap = m_buf.cap.saturating_mul(usize(2));
         if (new_cap < required) new_cap = required;
-        if (new_cap < RawVec<T>::MIN_NON_ZERO_CAP) new_cap = RawVec<T>::MIN_NON_ZERO_CAP;
+        if (new_cap < RawVec<T, A>::MIN_NON_ZERO_CAP) new_cap = RawVec<T, A>::MIN_NON_ZERO_CAP;
         m_buf.grow(new_cap, m_len);
     }
 
@@ -353,7 +393,9 @@ public:
 
     /// Converts this `Vec` into a `Box<T[]>`, transferring ownership of all elements.
     /// \return A boxed slice containing the vector's elements.
-    auto into_boxed_slice() noexcept -> Box<T[]> {
+    auto into_boxed_slice() noexcept -> Box<T[]>
+        requires mtp::same_as<A, ::alloc::Global>
+    {
         m_buf.shrink_to_fit(m_len);
 
         auto length = m_len;
@@ -494,15 +536,25 @@ public:
     /// Returns the number of elements the vector can hold without reallocating.
     /// \return The current capacity.
     constexpr usize capacity() const { return m_buf.cap; }
+    constexpr auto  allocator() const noexcept [[clang::lifetimebound]] -> const A& {
+        return m_buf.allocator;
+    }
     /// Returns `true` if the vector contains no elements.
     constexpr bool is_empty() const { return m_len == usize(); }
 
-    auto clone() const -> Vec
+    auto clone_in(A allocator) const -> Vec
         requires rstd::Impled<T, rstd::clone::Clone>
     {
-        auto result = Vec::with_capacity(m_len);
+        auto result = Vec::with_capacity_in(m_len, rstd::move(allocator));
         result.extend_from_slice(as_slice());
         return result;
+    }
+
+    auto clone() const -> Vec
+        requires rstd::Impled<T, rstd::clone::Clone> &&
+                 requires(const A& allocator) { A(allocator); }
+    {
+        return clone_in(A(m_buf.allocator));
     }
 
     void clone_from(const Vec& source)
@@ -634,7 +686,7 @@ public:
         return as_ptr().add(m_len);
     }
 
-    using IntoIter = VecIntoIter<T>;
+    using IntoIter = VecIntoIter<T, A>;
 
     /// Returns an iterator over `&T`.
     auto iter() const [[clang::lifetimebound]] -> rstd::iter::SliceIter<T> {
@@ -645,7 +697,7 @@ public:
         return { begin(), end() };
     }
     /// Consumes the vector, returning an iterator over owned `T`.
-    auto into_iter() && -> VecIntoIter<T> { return VecIntoIter<T>(rstd::move(*this)); }
+    auto into_iter() && -> VecIntoIter<T, A> { return VecIntoIter<T, A>(rstd::move(*this)); }
 };
 
 export extern template class Vec<f64>;
@@ -653,12 +705,12 @@ export extern template class Vec<u8>;
 export extern template class Vec<usize>;
 
 /// Owning iterator over a `Vec<T>`, yielding elements by value.
-export template<typename T>
-struct VecIntoIter : rstd::DefaultInClass<VecIntoIter<T>, rstd::iter::Iterator> {
+export template<typename T, typename A>
+struct VecIntoIter : rstd::DefaultInClass<VecIntoIter<T, A>, rstd::iter::Iterator> {
 private:
-    RawVec<T> buffer_;
-    usize     front_;
-    usize     back_;
+    RawVec<T, A> buffer_;
+    usize        front_;
+    usize        back_;
 
     void drop_remaining() noexcept {
         auto values = mut_ptr<T[]>::from_raw_parts(
@@ -667,47 +719,45 @@ private:
         rstd::ptr_::drop_in_place(values);
     }
 
-    auto take_buffer() noexcept -> RawVec<T> {
-        auto buffer = buffer_;
-        buffer_.reset_ptr();
-        front_ = usize();
-        back_  = usize();
+    auto take_buffer() -> RawVec<T, A> {
+        auto buffer = rstd::move(buffer_);
+        front_      = usize();
+        back_       = usize();
         return buffer;
     }
 
-    friend auto details::from_iter<T>(VecIntoIter<T> iterator) -> Vec<T>;
+    friend auto details::from_iter<T, A>(VecIntoIter<T, A> iterator) -> Vec<T, A>;
     friend struct details::InPlaceAccess;
 
 public:
     using Item                                = T;
+    using AllocatorType                       = A;
     static constexpr bool PROVEN_DOUBLE_ENDED = true;
     static constexpr bool PROVEN_EXACT_SIZE   = true;
     static constexpr bool PROVEN_FUSED        = true;
     static constexpr bool PROVEN_TRUSTED_LEN  = true;
 
-    explicit VecIntoIter(Vec<T> value): buffer_(value.m_buf), front_(), back_(value.m_len) {
-        value.m_buf.reset_ptr();
+    explicit VecIntoIter(Vec<T, A> value)
+        : buffer_(rstd::move(value.m_buf)), front_(), back_(value.m_len) {
         value.m_len = usize();
     }
 
     VecIntoIter(const VecIntoIter&)                    = delete;
     auto operator=(const VecIntoIter&) -> VecIntoIter& = delete;
 
-    VecIntoIter(VecIntoIter&& other) noexcept
-        : buffer_(other.buffer_), front_(other.front_), back_(other.back_) {
-        other.buffer_.reset_ptr();
+    VecIntoIter(VecIntoIter&& other)
+        : buffer_(rstd::move(other.buffer_)), front_(other.front_), back_(other.back_) {
         other.front_ = usize();
         other.back_  = usize();
     }
 
-    auto operator=(VecIntoIter&& other) noexcept -> VecIntoIter& {
+    auto operator=(VecIntoIter&& other) -> VecIntoIter& {
         if (this == rstd::addressof(other)) return *this;
         drop_remaining();
         buffer_.drop();
-        buffer_ = other.buffer_;
-        front_  = other.front_;
-        back_   = other.back_;
-        other.buffer_.reset_ptr();
+        buffer_      = rstd::move(other.buffer_);
+        front_       = other.front_;
+        back_        = other.back_;
         other.front_ = usize();
         other.back_  = usize();
         return *this;
@@ -749,9 +799,9 @@ public:
 namespace rstd::iter::details
 {
 
-export template<typename T>
-struct InPlaceTraits<::alloc::vec::VecIntoIter<T>> {
-    using Source = ::alloc::vec::VecIntoIter<T>;
+export template<typename T, typename A>
+struct InPlaceTraits<::alloc::vec::VecIntoIter<T, A>> {
+    using Source = ::alloc::vec::VecIntoIter<T, A>;
 
     static constexpr bool  ENABLED   = true;
     static constexpr usize EXPAND_BY = usize(1);
@@ -843,33 +893,33 @@ static_assert(! rstd::iter::details::InPlaceTraits<
               decltype(mtp::declval<InPlaceProbeRoot>().intersperse(int()))>::ENABLED);
 
 struct InPlaceAccess {
-    template<typename T>
-    static auto allocation_base(VecIntoIter<T>& source) noexcept {
+    template<typename T, typename A>
+    static auto allocation_base(VecIntoIter<T, A>& source) noexcept {
         return source.buffer_.ptr.as_mut_ptr().as_raw_ptr();
     }
 
-    template<typename T>
-    static auto allocation_layout(VecIntoIter<T>& source) noexcept -> Layout {
+    template<typename T, typename A>
+    static auto allocation_layout(VecIntoIter<T, A>& source) noexcept -> Layout {
         return source.buffer_.allocation_layout;
     }
 
-    template<typename T>
-    static auto allocation_bytes(VecIntoIter<T>& source) noexcept -> byte* {
+    template<typename T, typename A>
+    static auto allocation_bytes(VecIntoIter<T, A>& source) noexcept -> byte* {
         return reinterpret_cast<byte*>(allocation_base(source));
     }
 
-    template<typename T>
-    static auto read_front(VecIntoIter<T>& source) noexcept -> usize {
+    template<typename T, typename A>
+    static auto read_front(VecIntoIter<T, A>& source) noexcept -> usize {
         return source.front_;
     }
 
-    template<typename Destination, typename Source>
-    static auto finish(VecIntoIter<Source>& source, usize length) -> Vec<Destination> {
+    template<typename Destination, typename Source, typename A>
+    static auto finish(VecIntoIter<Source, A>& source, usize length) -> Vec<Destination, A> {
         source.drop_remaining();
         auto source_buffer = source.take_buffer();
         if (source_buffer.allocation_layout.size == usize()) {
             debug_assert(length == usize());
-            return Vec<Destination>();
+            return Vec<Destination, A>::new_in(rstd::move(source_buffer.allocator));
         }
 
         using DestinationStorage = typename mut_ptr<Destination>::storage_type;
@@ -877,11 +927,12 @@ struct InPlaceAccess {
         debug_assert(length <= capacity);
 
         auto destination_buffer =
-            RawVec<Destination> { .ptr = source_buffer.ptr.template cast<Destination>(),
-                                  .cap = capacity,
-                                  .allocation_layout = source_buffer.allocation_layout };
+            RawVec<Destination, A>(source_buffer.ptr.template cast<Destination>(),
+                                   capacity,
+                                   source_buffer.allocation_layout,
+                                   rstd::move(source_buffer.allocator));
         source_buffer.reset_ptr();
-        return Vec<Destination>(destination_buffer, length);
+        return Vec<Destination, A>(rstd::move(destination_buffer), length);
     }
 };
 
@@ -943,7 +994,7 @@ constexpr bool in_place_collectible() {
 }
 
 template<typename T, typename I>
-auto from_iter_in_place(I iterator) -> Vec<T> {
+auto from_iter_in_place(I iterator) {
     using Traits        = rstd::iter::details::InPlaceTraits<I>;
     using Source        = typename Traits::Source::Item;
     using SourceStorage = typename mut_ptr<Source>::storage_type;
@@ -1004,9 +1055,10 @@ auto from_iter(I iterator) -> Vec<T> {
         auto lower =
             rstd::as<rstd::iter::Iterator>(iterator).size_hint().template get<0>().saturating_add(
                 usize(1));
-        auto initial_capacity =
-            lower < RawVec<T>::MIN_NON_ZERO_CAP ? RawVec<T>::MIN_NON_ZERO_CAP : lower;
-        auto result = Vec<T>::with_capacity(initial_capacity);
+        auto initial_capacity = lower < RawVec<T, ::alloc::Global>::MIN_NON_ZERO_CAP
+                                    ? RawVec<T, ::alloc::Global>::MIN_NON_ZERO_CAP
+                                    : lower;
+        auto result           = Vec<T>::with_capacity(initial_capacity);
         result.push(rstd::move(*first));
 
         for (auto item = rstd::as<rstd::iter::Iterator>(iterator).next(); item.is_some();
@@ -1024,14 +1076,14 @@ auto from_iter(I iterator) -> Vec<T> {
     }
 }
 
-template<typename T>
-auto from_iter(VecIntoIter<T> iterator) -> Vec<T> {
+template<typename T, typename A>
+auto from_iter(VecIntoIter<T, A> iterator) -> Vec<T, A> {
     auto remaining = iterator.len();
     if (iterator.front_ == usize()) {
-        return Vec<T>(iterator.take_buffer(), remaining);
+        return Vec<T, A>(iterator.take_buffer(), remaining);
     }
 
-    if (remaining >= iterator.buffer_.cap / usize(2)) {
+    const auto compact = [&]() -> Vec<T, A> {
         auto pointer = iterator.buffer_.ptr.as_mut_ptr();
         for (auto index = usize(); index < remaining; ++index) {
             auto source      = pointer.add(iterator.front_ + index);
@@ -1041,15 +1093,23 @@ auto from_iter(VecIntoIter<T> iterator) -> Vec<T> {
             rstd::ptr_::destroy(source);
         }
         iterator.front_ = iterator.back_;
-        return Vec<T>(iterator.take_buffer(), remaining);
+        return Vec<T, A>(iterator.take_buffer(), remaining);
+    };
+
+    if constexpr (! requires(const A& allocator) { A(allocator); }) {
+        return compact();
+    } else if (remaining >= iterator.buffer_.cap / usize(2)) {
+        return compact();
     }
 
-    auto result = Vec<T>::make();
-    result.reserve(remaining);
-    for (auto item = iterator.next(); item.is_some(); item = iterator.next()) {
-        result.push(rstd::move(*item));
+    if constexpr (requires(const A& allocator) { A(allocator); }) {
+        auto result = Vec<T, A>::new_in(A(iterator.buffer_.allocator));
+        result.reserve(remaining);
+        for (auto item = iterator.next(); item.is_some(); item = iterator.next()) {
+            result.push(rstd::move(*item));
+        }
+        return result;
     }
-    return result;
 }
 
 } // namespace details
@@ -1058,23 +1118,23 @@ auto from_iter(VecIntoIter<T> iterator) -> Vec<T> {
 
 namespace rstd
 {
-template<typename A>
-struct Impl<ops::Deref, ::alloc::vec::Vec<A>> : ImplBase<::alloc::vec::Vec<A>> {
-    using Target = A[];
+template<typename E, typename A>
+struct Impl<ops::Deref, ::alloc::vec::Vec<E, A>> : ImplBase<::alloc::vec::Vec<E, A>> {
+    using Target = E[];
 
     constexpr auto deref() const noexcept -> ref<Target> { return this->self().deref(); }
 };
 
-template<typename A>
-struct Impl<ops::DerefMut, ::alloc::vec::Vec<A>> : ImplBase<::alloc::vec::Vec<A>> {
-    constexpr auto deref_mut() noexcept -> mut_ref<ops::deref_target_t<::alloc::vec::Vec<A>>> {
+template<typename E, typename A>
+struct Impl<ops::DerefMut, ::alloc::vec::Vec<E, A>> : ImplBase<::alloc::vec::Vec<E, A>> {
+    constexpr auto deref_mut() noexcept -> mut_ref<ops::deref_target_t<::alloc::vec::Vec<E, A>>> {
         return this->self().deref_mut();
     }
 };
 
-template<typename U, mtp::same_as<cmp::PartialEq<::alloc::vec::Vec<U>>> T>
-struct Impl<T, ::alloc::vec::Vec<U>> : DefaultInImpl<T, ::alloc::vec::Vec<U>> {
-    auto eq(const ::alloc::vec::Vec<U>& other) const noexcept -> bool {
+template<typename U, typename A, mtp::same_as<cmp::PartialEq<::alloc::vec::Vec<U, A>>> T>
+struct Impl<T, ::alloc::vec::Vec<U, A>> : DefaultInImpl<T, ::alloc::vec::Vec<U, A>> {
+    auto eq(const ::alloc::vec::Vec<U, A>& other) const noexcept -> bool {
         if (this->self().len() != other.len()) return false;
         for (rstd::size_t index = 0; index < this->self().len().to_primitive(); ++index) {
             if (! (this->self()[usize(index)] == other[usize(index)])) return false;
@@ -1106,39 +1166,40 @@ struct Impl<iter::FromIterator<A>, ::alloc::vec::Vec<A>> : ImplBase<::alloc::vec
     }
 };
 
-template<typename A>
-struct Impl<iter::Extend<A>, ::alloc::vec::Vec<A>> : ImplBase<::alloc::vec::Vec<A>> {
+template<typename E, typename A>
+struct Impl<iter::Extend<E>, ::alloc::vec::Vec<E, A>> : ImplBase<::alloc::vec::Vec<E, A>> {
     template<iter::has_next It>
-    static void extend(::alloc::vec::Vec<A>& collection, It iterator) {
+    static void extend(::alloc::vec::Vec<E, A>& collection, It iterator) {
         collection.reserve(as<iter::Iterator>(iterator).size_hint().template get<0>());
         for (auto item = as<iter::Iterator>(iterator).next(); item.is_some();
              item      = as<iter::Iterator>(iterator).next())
             collection.push(rstd::move(*item));
     }
 
-    static void extend_one(::alloc::vec::Vec<A>& collection, A&& item) {
+    static void extend_one(::alloc::vec::Vec<E, A>& collection, E&& item) {
         collection.push(rstd::move(item));
     }
 };
 
-template<typename A>
-struct Impl<iter::IntoIterator, ::alloc::vec::Vec<A>> : ImplBase<::alloc::vec::Vec<A>> {
-    using IntoIter = ::alloc::vec::VecIntoIter<A>;
+template<typename E, typename A>
+struct Impl<iter::IntoIterator, ::alloc::vec::Vec<E, A>> : ImplBase<::alloc::vec::Vec<E, A>> {
+    using IntoIter = ::alloc::vec::VecIntoIter<E, A>;
 
     auto into_iter() -> IntoIter { return rstd::move(this->self()).into_iter(); }
 };
 
-template<typename A>
-struct Impl<iter::IntoIterator, ref<::alloc::vec::Vec<A>>> : ImplBase<ref<::alloc::vec::Vec<A>>> {
-    using IntoIter = iter::SliceIter<A>;
+template<typename E, typename A>
+struct Impl<iter::IntoIterator, ref<::alloc::vec::Vec<E, A>>>
+    : ImplBase<ref<::alloc::vec::Vec<E, A>>> {
+    using IntoIter = iter::SliceIter<E>;
 
     auto into_iter() -> IntoIter { return this->self().as_raw_ptr()->iter(); }
 };
 
-template<typename A>
-struct Impl<iter::IntoIterator, mut_ref<::alloc::vec::Vec<A>>>
-    : ImplBase<mut_ref<::alloc::vec::Vec<A>>> {
-    using IntoIter = iter::SliceIterMut<A>;
+template<typename E, typename A>
+struct Impl<iter::IntoIterator, mut_ref<::alloc::vec::Vec<E, A>>>
+    : ImplBase<mut_ref<::alloc::vec::Vec<E, A>>> {
+    using IntoIter = iter::SliceIterMut<E>;
 
     auto into_iter() -> IntoIter { return this->self().as_raw_ptr()->iter_mut(); }
 };

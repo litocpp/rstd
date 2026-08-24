@@ -36,6 +36,7 @@ sources = [
   "alloc/str.cpp",
   "alloc/boxed.cpp",
   "alloc/vec.cpp",
+  "alloc/arena.cpp",
   "alloc/sync.cpp",
   "alloc/string.cpp",
   "collections/btree_map.cpp",

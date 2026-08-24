@@ -11,6 +11,7 @@ target_sources(
          FILES
          src/lib.cppm
          src/alloc.cppm
+         src/arena.cppm
          src/rc.cppm
          src/string.cppm
          src/str.cppm
