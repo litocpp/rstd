@@ -7,3 +7,4 @@ export import :value;
 export import :parser;
 export import :serialize;
 export import :typed;
+export import :direct;

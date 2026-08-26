@@ -31,6 +31,7 @@ enum class ErrorCode : rstd::uint8_t
 };
 
 class Parser;
+class JsonReader;
 
 export namespace rstd::json
 {
@@ -52,6 +53,7 @@ class Error {
         : code_(code), line_(line), column_(column) {}
 
     friend class ::Parser;
+    friend class ::JsonReader;
     template<typename, typename>
     friend struct rstd::Impl;
 

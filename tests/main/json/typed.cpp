@@ -124,6 +124,29 @@ TEST(JsonTyped, SeparatesSyntaxAndDataErrors) {
     EXPECT_EQ(path[rstd::usize(1)].index(), rstd::usize(1));
 }
 
+TEST(JsonTyped, DirectDecodeBuildsOnlyTheRequestedType) {
+    auto decoded = rstd::json::decode_direct<JsonConfig>(
+        R"({"name":"server","ports":[80,443],"note":null})"_str);
+    ASSERT_TRUE(decoded.is_ok());
+    EXPECT_EQ(decoded->name.as_str(), "server"_str);
+    ASSERT_EQ(decoded->ports.len(), rstd::usize(2));
+    EXPECT_EQ(decoded->ports[rstd::usize(1)], rstd::u64(443));
+    EXPECT_TRUE(decoded->note.is_none());
+
+    auto syntax = rstd::json::decode_direct<JsonConfig>("{"_str);
+    ASSERT_TRUE(syntax.is_err());
+    EXPECT_TRUE(syntax.unwrap_err().source().is_some());
+
+    auto data = rstd::json::decode_direct<JsonConfig>(
+        R"({"name":"server","ports":[80,"https"],"note":null})"_str);
+    ASSERT_TRUE(data.is_err());
+    auto error = rstd::move(data).unwrap_err_unchecked();
+    auto path  = error.path().segments();
+    ASSERT_EQ(path.len(), rstd::usize(2));
+    EXPECT_EQ(path[rstd::usize()].name().unwrap(), "ports"_str);
+    EXPECT_EQ(path[rstd::usize(1)].index(), rstd::usize(1));
+}
+
 TEST(JsonTyped, MissingAndUnknownFieldsAreOwnedByExplicitImpl) {
     auto missing = rstd::json::decode<JsonConfig>(R"({"ports":[]})"_str);
     ASSERT_TRUE(missing.is_err());
