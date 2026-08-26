@@ -12,6 +12,19 @@ namespace rstd
 // TODO: gcc bug
 // we can't use export using namespace xxx;
 
+export namespace alloc
+{
+using rstd_alloc::allocator_ref;
+using rstd_alloc::ArenaAllocator;
+using rstd_alloc::ArenaStats;
+using rstd_alloc::BumpArena;
+using rstd_alloc::Global;
+using rstd_alloc::GLOBAL;
+using rstd_alloc::RecyclingArena;
+using rstd_alloc::RecyclingArenaAllocator;
+using rstd_alloc::RecyclingArenaStats;
+} // namespace alloc
+
 /// Smart pointer types for heap allocation.
 export namespace boxed
 {

@@ -104,4 +104,48 @@ export struct Global {};
 /// The singleton instance of the global allocator.
 export Global GLOBAL {};
 
+/// Borrows an allocator through its runtime trait interface.
+export template<typename A>
+    requires rstd::Impled<A, Allocator>
+auto allocator_ref(A& allocator [[clang::lifetimebound]]) noexcept -> ref<dyn<Allocator>> {
+    return dyn<Allocator>::from_ref(allocator).as_ref();
+}
+
 } // namespace alloc
+
+template<>
+struct rstd::Impl<rstd::alloc::Allocator, rstd::ref<rstd::dyn<rstd::alloc::Allocator>>>
+    : rstd::ImplBase<rstd::ref<rstd::dyn<rstd::alloc::Allocator>>> {
+private:
+    using Self = rstd::ref<rstd::dyn<rstd::alloc::Allocator>>;
+
+    auto allocator() const noexcept -> Self { return this->self(); }
+
+public:
+    auto allocate(Layout layout) const -> Result<Allocation, AllocError> {
+        return allocator()->allocate(layout);
+    }
+
+    auto allocate_zeroed(Layout layout) const -> Result<Allocation, AllocError> {
+        return allocator()->allocate_zeroed(layout);
+    }
+
+    void deallocate(void* ptr, Layout layout) const noexcept {
+        allocator()->deallocate(ptr, layout);
+    }
+
+    auto grow(void* ptr, Layout old_layout, Layout new_layout) const
+        -> Result<Allocation, AllocError> {
+        return allocator()->grow(ptr, old_layout, new_layout);
+    }
+
+    auto grow_zeroed(void* ptr, Layout old_layout, Layout new_layout) const
+        -> Result<Allocation, AllocError> {
+        return allocator()->grow_zeroed(ptr, old_layout, new_layout);
+    }
+
+    auto shrink(void* ptr, Layout old_layout, Layout new_layout) const
+        -> Result<Allocation, AllocError> {
+        return allocator()->shrink(ptr, old_layout, new_layout);
+    }
+};

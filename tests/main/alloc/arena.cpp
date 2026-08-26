@@ -152,6 +152,23 @@ TEST(RecyclingArena, VecGrowthMakesOldBuffersReusable) {
     EXPECT_EQ(upstream.allocations, upstream.deallocations);
 }
 
+TEST(RecyclingArena, SupportsRuntimeAllocatorReferences) {
+    alloc::RecyclingArena arena(usize(1024));
+    auto                  concrete  = arena.allocator();
+    auto                  allocator = rstd::alloc::allocator_ref(concrete);
+    using Allocator                 = ref<dyn<rstd::alloc::Allocator>>;
+
+    static_assert(rstd::Impled<Allocator, rstd::alloc::Allocator>);
+    {
+        auto values = alloc::vec::Vec<int, Allocator>::with_capacity_in(usize(1), allocator);
+        for (auto value = 0; value < 32; ++value) values.emplace_back(value);
+        EXPECT_EQ(values.len(), usize(32));
+        EXPECT_EQ(values[usize(17)], 17);
+        EXPECT_GT(arena.stats().live_bytes, usize {});
+    }
+    EXPECT_EQ(arena.stats().live_bytes, usize {});
+}
+
 TEST(RecyclingArena, DeallocationDoesNotGrowMetadata) {
     alloc::RecyclingArena arena(usize(4096));
     auto                  allocator = arena.allocator();
