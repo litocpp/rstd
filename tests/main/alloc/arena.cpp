@@ -125,11 +125,37 @@ TEST(RecyclingArena, ReusesReleasedLayoutsAndDropsAllSlabs) {
         EXPECT_EQ(arena.stats().reused_bytes, usize(128));
         EXPECT_EQ(arena.stats().live_bytes, usize(128));
         EXPECT_EQ(arena.stats().peak_live_bytes, usize(128));
-        EXPECT_EQ(upstream.allocations, 1);
+        EXPECT_EQ(arena.stats().metadata_blocks, usize(1));
+        EXPECT_GE(arena.stats().metadata_reserved_bytes, arena.stats().metadata_used_bytes);
+        EXPECT_EQ(upstream.allocations, 2);
         rstd::as<rstd::alloc::Allocator>(allocator).deallocate(second.pointer, layout);
         EXPECT_EQ(arena.stats().live_bytes, usize());
     }
     EXPECT_EQ(upstream.allocations, upstream.deallocations);
+}
+
+TEST(RecyclingArena, SeparatesRecycledAllocationsBySizeAndAlignment) {
+    alloc::RecyclingArena arena(usize(1024));
+    auto                  allocator = arena.allocator();
+    auto const small   = rstd::alloc::Layout::from_size_align(usize(32), usize(8)).unwrap();
+    auto const aligned = rstd::alloc::Layout::from_size_align(usize(32), usize(64)).unwrap();
+    auto const large   = rstd::alloc::Layout::from_size_align(usize(64), usize(8)).unwrap();
+
+    auto small_value   = rstd::as<rstd::alloc::Allocator>(allocator).allocate(small).unwrap();
+    auto aligned_value = rstd::as<rstd::alloc::Allocator>(allocator).allocate(aligned).unwrap();
+    auto large_value   = rstd::as<rstd::alloc::Allocator>(allocator).allocate(large).unwrap();
+    rstd::as<rstd::alloc::Allocator>(allocator).deallocate(small_value.pointer, small);
+    rstd::as<rstd::alloc::Allocator>(allocator).deallocate(aligned_value.pointer, aligned);
+    rstd::as<rstd::alloc::Allocator>(allocator).deallocate(large_value.pointer, large);
+
+    EXPECT_EQ(arena.stats().layout_classes, usize(3));
+    EXPECT_GE(arena.stats().recycled_capacity, usize(3));
+    EXPECT_EQ(rstd::as<rstd::alloc::Allocator>(allocator).allocate(aligned).unwrap().pointer,
+              aligned_value.pointer);
+    EXPECT_EQ(rstd::as<rstd::alloc::Allocator>(allocator).allocate(small).unwrap().pointer,
+              small_value.pointer);
+    EXPECT_EQ(rstd::as<rstd::alloc::Allocator>(allocator).allocate(large).unwrap().pointer,
+              large_value.pointer);
 }
 
 TEST(RecyclingArena, VecGrowthMakesOldBuffersReusable) {
@@ -178,12 +204,17 @@ TEST(RecyclingArena, DeallocationDoesNotGrowMetadata) {
     for (auto index = usize {}; index < usize(64); ++index) {
         values.push(rstd::as<rstd::alloc::Allocator>(allocator).allocate(layout).unwrap());
     }
+    auto capacity          = arena.stats().recycled_capacity;
+    auto metadata_reserved = arena.stats().metadata_reserved_bytes;
     for (auto value : values) {
         rstd::as<rstd::alloc::Allocator>(allocator).deallocate(value.pointer, layout);
     }
 
     EXPECT_EQ(arena.stats().live_bytes, usize {});
     EXPECT_EQ(arena.stats().free_bytes, usize(64 * 32));
+    EXPECT_EQ(arena.stats().layout_classes, usize(1));
+    EXPECT_EQ(arena.stats().recycled_capacity, capacity);
+    EXPECT_EQ(arena.stats().metadata_reserved_bytes, metadata_reserved);
 }
 
 TEST(RecyclingArena, OwnsRcControlBlocksThroughRstdAllocator) {

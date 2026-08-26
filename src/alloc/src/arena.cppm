@@ -35,6 +35,11 @@ export struct RecyclingArenaStats {
     usize large_slabs;
     usize allocations;
     usize reuses;
+    usize layout_classes;
+    usize recycled_capacity;
+    usize metadata_used_bytes;
+    usize metadata_reserved_bytes;
+    usize metadata_blocks;
 };
 
 struct ArenaSlab {
@@ -44,9 +49,11 @@ struct ArenaSlab {
     bool   large;
 };
 
-struct RecycledAllocation {
-    void*  pointer;
-    Layout layout;
+template<typename A>
+struct RecycledLayoutClass {
+    Layout                    layout;
+    alloc::vec::Vec<void*, A> pointers;
+    usize                     physical_allocations;
 };
 
 export template<typename Upstream>
@@ -213,15 +220,21 @@ public:
 
 export template<typename Upstream = Global>
 class RecyclingArena {
-    static constexpr usize NO_SLAB = usize::MAX;
+    static constexpr usize NO_SLAB            = usize::MAX;
+    static constexpr usize METADATA_SLAB_SIZE = usize(64 * 1024);
 
-    RSTD_ATTR_NO_UNIQUE_ADDRESS Upstream upstream_;
-    alloc::vec::Vec<ArenaSlab>           slabs_;
-    alloc::vec::Vec<RecycledAllocation>  free_;
-    usize                                slab_size_;
-    usize                                current_slab_;
-    usize                                physical_allocations_;
-    RecyclingArenaStats                  stats_;
+    using MetadataUpstream  = rstd::ref<rstd::dyn<Allocator>>;
+    using MetadataArena     = BumpArena<MetadataUpstream>;
+    using MetadataAllocator = ArenaAllocator<MetadataUpstream>;
+    using LayoutClass       = RecycledLayoutClass<MetadataAllocator>;
+
+    RSTD_ATTR_NO_UNIQUE_ADDRESS Upstream            upstream_;
+    MetadataArena                                   metadata_;
+    alloc::vec::Vec<ArenaSlab>                      slabs_;
+    alloc::vec::Vec<LayoutClass, MetadataAllocator> recycled_;
+    usize                                           slab_size_;
+    usize                                           current_slab_;
+    RecyclingArenaStats                             stats_;
 
     auto allocate_upstream(Layout layout) -> Result<Allocation, AllocError> {
         return as<Allocator>(upstream_).allocate(layout);
@@ -248,28 +261,49 @@ class RecyclingArena {
         }
     }
 
-    auto prepare_fresh_allocation() -> void {
-        auto required = physical_allocations_ + usize(1);
-        if (free_.capacity() < required) free_.reserve(required - free_.len());
-        physical_allocations_ = required;
+    auto recycled_class(Layout layout) const noexcept -> Option<usize> {
+        for (auto index = usize {}; index < recycled_.len(); ++index) {
+            if (recycled_[index].layout.size == layout.size &&
+                recycled_[index].layout.align == layout.align) {
+                return Some(index);
+            }
+        }
+        return None();
+    }
+
+    auto prepare_fresh_allocation(Layout layout) -> void {
+        auto found = recycled_class(layout);
+        if (found.is_none()) {
+            recycled_.push(LayoutClass {
+                .layout = layout,
+                .pointers =
+                    alloc::vec::Vec<void*, MetadataAllocator>::new_in(metadata_.allocator()),
+                .physical_allocations = usize {},
+            });
+            found                 = Some(recycled_.len() - usize(1));
+            stats_.layout_classes = recycled_.len();
+        }
+        auto& recycled = recycled_[*found];
+        auto  required = recycled.physical_allocations + usize(1);
+        if (recycled.pointers.capacity() < required) {
+            auto previous = recycled.pointers.capacity();
+            recycled.pointers.reserve(required - recycled.pointers.len());
+            stats_.recycled_capacity += recycled.pointers.capacity() - previous;
+        }
+        recycled.physical_allocations = required;
     }
 
     auto reuse(Layout layout) -> Option<Allocation> {
-        for (auto index = usize {}; index < free_.len(); ++index) {
-            if (free_[index].layout.size != layout.size ||
-                free_[index].layout.align != layout.align) {
-                continue;
-            }
-            auto value = rstd::move(free_[index]);
-            auto last  = free_.pop().unwrap();
-            if (index < free_.len()) free_[index] = rstd::move(last);
-            stats_.free_bytes -= layout.size;
-            stats_.reused_bytes += layout.size;
-            ++stats_.reuses;
-            record_allocation(layout);
-            return Some(Allocation { value.pointer, layout.size });
-        }
-        return None();
+        auto found = recycled_class(layout);
+        if (found.is_none()) return None();
+        auto& recycled = recycled_[*found];
+        if (recycled.pointers.is_empty()) return None();
+        auto pointer = recycled.pointers.pop().unwrap();
+        stats_.free_bytes -= layout.size;
+        stats_.reused_bytes += layout.size;
+        ++stats_.reuses;
+        record_allocation(layout);
+        return Some(Allocation { pointer, layout.size });
     }
 
     auto allocate_large(Layout layout) -> Result<Allocation, AllocError> {
@@ -278,7 +312,7 @@ class RecyclingArena {
         auto value = allocation.unwrap_unchecked();
         slabs_.emplace_back(ArenaSlab {
             .pointer = value.pointer, .layout = layout, .cursor = layout.size, .large = true });
-        prepare_fresh_allocation();
+        prepare_fresh_allocation(layout);
         stats_.reserved_bytes += layout.size;
         ++stats_.large_slabs;
         record_allocation(layout);
@@ -298,7 +332,7 @@ class RecyclingArena {
         ++stats_.ordinary_slabs;
         auto* pointer = try_allocate(slabs_[current_slab_], request);
         debug_assert(pointer != nullptr);
-        prepare_fresh_allocation();
+        prepare_fresh_allocation(request);
         record_allocation(request);
         return Ok(Allocation { pointer, request.size });
     }
@@ -306,11 +340,11 @@ class RecyclingArena {
 public:
     explicit RecyclingArena(usize slab_size = usize(64 * 1024), Upstream upstream = Upstream {})
         : upstream_(rstd::move(upstream)),
+          metadata_(METADATA_SLAB_SIZE, allocator_ref(upstream_)),
           slabs_(),
-          free_(),
+          recycled_(metadata_.allocator()),
           slab_size_(slab_size < usize(1024) ? usize(1024) : slab_size),
           current_slab_(NO_SLAB),
-          physical_allocations_(),
           stats_() {}
 
     RecyclingArena(const RecyclingArena&)                    = delete;
@@ -337,7 +371,7 @@ public:
             auto& slab = slabs_[current_slab_];
             if (layout.align <= slab.layout.align) {
                 if (auto* pointer = try_allocate(slab, layout); pointer != nullptr) {
-                    prepare_fresh_allocation();
+                    prepare_fresh_allocation(layout);
                     record_allocation(layout);
                     return Ok(Allocation { pointer, layout.size });
                 }
@@ -351,8 +385,11 @@ public:
         debug_assert(stats_.live_bytes >= layout.size);
         stats_.live_bytes -= layout.size;
         stats_.free_bytes += layout.size;
-        debug_assert(free_.len() < free_.capacity());
-        free_.push(RecycledAllocation { .pointer = pointer, .layout = layout });
+        auto recycled = recycled_class(layout);
+        debug_assert(recycled.is_some());
+        auto& values = recycled_[recycled.unwrap_unchecked()].pointers;
+        debug_assert(values.len() < values.capacity());
+        values.push(rstd::move(pointer));
     }
 
     constexpr auto allocator() noexcept [[clang::lifetimebound]]
@@ -366,7 +403,14 @@ public:
         return upstream_.statistics();
     }
 
-    constexpr auto stats() const noexcept -> RecyclingArenaStats { return stats_; }
+    auto stats() const noexcept -> RecyclingArenaStats {
+        auto result                    = stats_;
+        auto metadata                  = metadata_.stats();
+        result.metadata_used_bytes     = metadata.used_bytes;
+        result.metadata_reserved_bytes = metadata.reserved_bytes;
+        result.metadata_blocks         = metadata.ordinary_slabs + metadata.large_slabs;
+        return result;
+    }
 };
 
 } // namespace alloc
