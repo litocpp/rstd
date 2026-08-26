@@ -163,6 +163,12 @@ public:
         return ArenaAllocator<Upstream>(*this);
     }
 
+    auto upstream_statistics() const
+        requires requires(const Upstream& upstream) { upstream.statistics(); }
+    {
+        return upstream_.statistics();
+    }
+
     constexpr auto stats() const noexcept -> ArenaStats { return stats_; }
 };
 

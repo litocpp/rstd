@@ -12,6 +12,7 @@ if(WIN32)
   list(
     APPEND
     rstd_std_platform_modules
+    src/alloc/windows.cppm
     src/sys/fs/windows.cppm
     src/sys/libc/windows.cppm
     src/sys/pal/windows/mod.cppm
@@ -29,6 +30,7 @@ if(WIN32)
   list(
     APPEND
     rstd_std_platform_sources
+    src/alloc/windows.cpp
     src/sys/fs/windows.cpp
     src/sys/pal/windows/futex.cpp
     src/sys/pal/windows/mod.cpp
@@ -43,6 +45,7 @@ elseif(UNIX)
   list(
     APPEND
     rstd_std_platform_modules
+    src/alloc/unix.cppm
     src/sys/fs/unix.cppm
     src/sys/libc/pthread.cppm
     src/sys/libc/unix.cppm
@@ -57,6 +60,7 @@ elseif(UNIX)
   list(
     APPEND
     rstd_std_platform_sources
+    src/alloc/unix.cpp
     src/sys/fs/unix.cpp
     src/sys/pal/unix/mod.cpp
     src/sys/pal/unix/time.cpp
@@ -109,7 +113,9 @@ target_sources(
          src/lib.cppm
          src/time/mod.cppm
          src/time/calendar.cppm
-         src/alloc.cppm
+         src/alloc/mod.cppm
+         src/alloc/shared_arena.cppm
+         src/alloc/virtual_memory.cppm
          src/forward.cppm
          src/error.cppm
          src/panicking.cppm

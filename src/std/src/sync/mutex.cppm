@@ -64,8 +64,14 @@ class Mutex {
 
 public:
     /// Creates a new mutex wrapping the given data.
-    /// \param initial_data The initial value to protect.
-    Mutex(T initial_data): m_lock(sys_mutex_t::make()), m_data(rstd::move(initial_data)) {}
+    template<typename... Args>
+    explicit Mutex(Args&&... args)
+        : m_lock(sys_mutex_t::make()), m_data(rstd::forward<Args>(args)...) {}
+
+    Mutex(const Mutex&)                    = delete;
+    auto operator=(const Mutex&) -> Mutex& = delete;
+    Mutex(Mutex&&)                         = delete;
+    auto operator=(Mutex&&) -> Mutex&      = delete;
 
     /// Acquires the mutex, blocking the current thread until it is able to do so.
     /// \return A MutexGuard providing mutable access to the protected data.
