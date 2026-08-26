@@ -147,6 +147,23 @@ TEST(JsonTyped, DirectDecodeBuildsOnlyTheRequestedType) {
     EXPECT_EQ(path[rstd::usize(1)].index(), rstd::usize(1));
 }
 
+TEST(JsonTyped, DirectEncodeStreamsExplicitFields) {
+    auto ports = Vec<rstd::u64>::make();
+    ports.push(rstd::u64(80));
+    ports.push(rstd::u64(443));
+    auto config = JsonConfig { String::make("server"_str), rstd::move(ports), rstd::None() };
+
+    auto encoded = rstd::json::encode_direct(config);
+    ASSERT_TRUE(encoded.is_ok());
+    EXPECT_EQ(text(*encoded), R"({"name":"server","ports":[80,443],"note":null})");
+
+    auto decoded = rstd::json::decode_direct<JsonConfig>(encoded->as_str());
+    ASSERT_TRUE(decoded.is_ok());
+    EXPECT_EQ(decoded->name.as_str(), "server"_str);
+    EXPECT_EQ(decoded->ports[rstd::usize(1)], rstd::u64(443));
+    EXPECT_TRUE(decoded->note.is_none());
+}
+
 TEST(JsonTyped, MissingAndUnknownFieldsAreOwnedByExplicitImpl) {
     auto missing = rstd::json::decode<JsonConfig>(R"({"ports":[]})"_str);
     ASSERT_TRUE(missing.is_err());
