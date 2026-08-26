@@ -336,10 +336,7 @@ auto TokenSequenceAccess::end() -> Result<empty, Error> {
 }
 
 TokenMapAccess::TokenMapAccess(slice<Token> tokens, usize& position, DataPath path)
-    : tokens_(tokens),
-      position_(&position),
-      path_(path.clone()),
-      value_path_(rstd::move(path)) {
+    : tokens_(tokens), position_(&position), path_(path.clone()), value_path_(rstd::move(path)) {
 }
 
 auto TokenMapAccess::ignore_value() -> Result<empty, Error> {

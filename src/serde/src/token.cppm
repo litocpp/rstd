@@ -63,8 +63,8 @@ public:
     constexpr auto as_u64() const noexcept -> u64 { return u64_value_; }
     constexpr auto as_f64() const noexcept -> f64 { return f64_value_; }
     constexpr auto len() const noexcept -> usize { return len_; }
-    auto as_str() const noexcept [[clang::lifetimebound]] -> ref<str>;
-    auto as_bytes() const noexcept [[clang::lifetimebound]] -> slice<u8>;
+    auto           as_str() const noexcept [[clang::lifetimebound]] -> ref<str>;
+    auto           as_bytes() const noexcept [[clang::lifetimebound]] -> slice<u8>;
 };
 
 class TokenSerializer;
@@ -229,8 +229,8 @@ class TokenDeserializer {
 
     TokenDeserializer(slice<Token> tokens, usize& position, DataPath path);
 
-    auto peek() const noexcept -> Option<ref<Token>>;
-    auto take(TokenKind expected, ValueKind expected_kind) -> Result<ref<Token>, Error>;
+    auto        peek() const noexcept -> Option<ref<Token>>;
+    auto        take(TokenKind expected, ValueKind expected_kind) -> Result<ref<Token>, Error>;
     static auto actual_kind(TokenKind kind) noexcept -> ValueKind;
 
     friend class TokenSequenceAccess;

@@ -3,7 +3,7 @@ add_library(rstd::json ALIAS rstd.json)
 target_compile_features(rstd.json PUBLIC cxx_std_20)
 target_link_libraries(rstd.json PUBLIC rstd.core rstd.std rstd.serde PRIVATE rstd.parse)
 
-target_sources(rstd.json PRIVATE src/parser.cpp)
+target_sources(rstd.json PRIVATE src/parser.cpp src/reader.cpp)
 
 target_sources(
   rstd.json
@@ -17,5 +17,7 @@ target_sources(
          src/error.cppm
          src/value.cppm
          src/parser.cppm
+         src/reader.cppm
          src/serialize.cppm
-         src/typed.cppm)
+         src/typed.cppm
+         src/direct.cppm)
