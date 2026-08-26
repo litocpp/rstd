@@ -1,4 +1,5 @@
 export module rstd.core:ascii;
+import :num.types;
 export import :option;
 
 export namespace rstd::ascii
