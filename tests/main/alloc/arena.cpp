@@ -101,3 +101,63 @@ TEST(Arena, VecGrowthRetainsPreviousBuffersUntilArenaDrop) {
     }
     EXPECT_EQ(upstream.allocations, upstream.deallocations);
 }
+
+TEST(RecyclingArena, ReusesReleasedLayoutsAndDropsAllSlabs) {
+    ArenaUpstreamState upstream {};
+    {
+        alloc::RecyclingArena arena(usize(1024), ArenaTestUpstream { &upstream });
+        auto                  allocator = arena.allocator();
+        auto const layout = rstd::alloc::Layout::from_size_align(usize(128), usize(16)).unwrap();
+
+        auto first = rstd::as<rstd::alloc::Allocator>(allocator).allocate(layout).unwrap();
+        rstd::as<rstd::alloc::Allocator>(allocator).deallocate(first.pointer, layout);
+        auto second = rstd::as<rstd::alloc::Allocator>(allocator).allocate(layout).unwrap();
+
+        EXPECT_EQ(first.pointer, second.pointer);
+        EXPECT_EQ(arena.stats().reuses, usize(1));
+        EXPECT_EQ(arena.stats().reused_bytes, usize(128));
+        EXPECT_EQ(arena.stats().live_bytes, usize(128));
+        EXPECT_EQ(arena.stats().peak_live_bytes, usize(128));
+        EXPECT_EQ(upstream.allocations, 1);
+        rstd::as<rstd::alloc::Allocator>(allocator).deallocate(second.pointer, layout);
+        EXPECT_EQ(arena.stats().live_bytes, usize());
+    }
+    EXPECT_EQ(upstream.allocations, upstream.deallocations);
+}
+
+TEST(RecyclingArena, VecGrowthMakesOldBuffersReusable) {
+    ArenaUpstreamState upstream {};
+    {
+        alloc::RecyclingArena arena(usize(1024), ArenaTestUpstream { &upstream });
+        using Allocator = decltype(arena.allocator());
+        auto values =
+            alloc::vec::Vec<int, Allocator>::with_capacity_in(usize(1), arena.allocator());
+        values.push(1);
+        values.push(2);
+        values.push(3);
+
+        auto reused =
+            alloc::vec::Vec<int, Allocator>::with_capacity_in(usize(1), arena.allocator());
+        reused.push(4);
+        EXPECT_GE(arena.stats().reuses, usize(1));
+        EXPECT_EQ(reused[usize {}], 4);
+    }
+    EXPECT_EQ(upstream.allocations, upstream.deallocations);
+}
+
+TEST(RecyclingArena, DeallocationDoesNotGrowMetadata) {
+    alloc::RecyclingArena arena(usize(4096));
+    auto                  allocator = arena.allocator();
+    auto const layout = rstd::alloc::Layout::from_size_align(usize(32), usize(8)).unwrap();
+    auto       values = alloc::vec::Vec<rstd::alloc::Allocation>();
+
+    for (auto index = usize {}; index < usize(64); ++index) {
+        values.push(rstd::as<rstd::alloc::Allocator>(allocator).allocate(layout).unwrap());
+    }
+    for (auto value : values) {
+        rstd::as<rstd::alloc::Allocator>(allocator).deallocate(value.pointer, layout);
+    }
+
+    EXPECT_EQ(arena.stats().live_bytes, usize {});
+    EXPECT_EQ(arena.stats().free_bytes, usize(64 * 32));
+}

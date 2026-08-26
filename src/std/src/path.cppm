@@ -449,6 +449,8 @@ public:
         return ref<Path>(inner.as_os_str());
     }
 
+    auto capacity() const noexcept -> usize { return inner.capacity(); }
+
     auto clone() const -> PathBuf { return PathBuf::from(as_path()); }
 
     void clone_from(const PathBuf& source) { *this = source.clone(); }

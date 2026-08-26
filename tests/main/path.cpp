@@ -201,6 +201,7 @@ TEST(Path, StripPrefixMismatch) {
 TEST(PathBuf, MakeEmpty) {
     auto p = PathBuf::make();
     EXPECT_TRUE(p.is_empty());
+    EXPECT_EQ(p.capacity(), rstd::usize {});
 }
 
 static_assert(rstd::Impled<PathBuf, rstd::clone::Clone>);
@@ -232,6 +233,7 @@ TEST(PathBuf, FromStr) {
     EXPECT_EQ(p.len(), rstd::usize(8));
 #endif
     EXPECT_TRUE(p.as_path().is_absolute());
+    EXPECT_GE(p.capacity(), p.len());
 }
 
 TEST(PathBuf, FromPath) {
