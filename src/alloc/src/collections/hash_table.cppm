@@ -70,12 +70,13 @@ public:
     }
 };
 
-template<typename K, typename V>
+template<typename K, typename V, typename A = ::alloc::Global>
 class RawTable {
-    Bucket<K, V>* data;
-    usize         buckets;
-    usize         items;
-    usize         deleted;
+    Bucket<K, V>*                 data;
+    usize                         buckets;
+    usize                         items;
+    usize                         deleted;
+    RSTD_ATTR_NO_UNIQUE_ADDRESS A allocator;
 
     static auto max_items(usize bucket_count) noexcept -> usize {
         return bucket_count - bucket_count / usize(8);
@@ -91,7 +92,7 @@ class RawTable {
     void allocate(usize count) {
         if (count == usize()) return;
         auto layout = Layout::array<Bucket<K, V>>(count).unwrap();
-        auto result = as<Allocator>(::alloc::GLOBAL).allocate(layout);
+        auto result = as<Allocator>(allocator).allocate(layout);
         if (result.is_err()) ::alloc::handle_alloc_error(layout);
         data    = result.unwrap_unchecked().template as_mut_ptr<Bucket<K, V>>().as_raw_ptr();
         buckets = count;
@@ -102,7 +103,7 @@ class RawTable {
         if (data == nullptr) return;
         for (rstd::size_t i = 0; i < buckets.to_primitive(); ++i) rstd::destroy_at(data + i);
         auto layout = Layout::array<Bucket<K, V>>(buckets).unwrap();
-        as<Allocator>(::alloc::GLOBAL).deallocate(data, layout);
+        as<Allocator>(allocator).deallocate(data, layout);
         data    = nullptr;
         buckets = usize();
         items   = usize();
@@ -126,7 +127,7 @@ class RawTable {
     }
 
     void rehash(usize count) {
-        RawTable replacement;
+        RawTable replacement { A(allocator) };
         replacement.allocate(count);
         for (rstd::size_t i = 0; i < buckets.to_primitive(); ++i) {
             if (data[i].state != BucketState::Full) continue;
@@ -159,12 +160,29 @@ class RawTable {
     }
 
 public:
-    RawTable(): data(nullptr), buckets(usize()), items(usize()), deleted(usize()) {}
-    explicit RawTable(usize capacity): RawTable() { allocate(bucket_count_for(capacity)); }
+    RawTable()
+        requires rstd::mtp::init<A>
+        : RawTable(A {}) {}
+    explicit RawTable(A allocator)
+        : data(nullptr),
+          buckets(usize()),
+          items(usize()),
+          deleted(usize()),
+          allocator(rstd::move(allocator)) {}
+    RawTable(usize capacity, A allocator): RawTable(rstd::move(allocator)) {
+        allocate(bucket_count_for(capacity));
+    }
+    explicit RawTable(usize capacity)
+        requires rstd::mtp::init<A>
+        : RawTable(capacity, A {}) {}
     RawTable(const RawTable&)            = delete;
     RawTable& operator=(const RawTable&) = delete;
     RawTable(RawTable&& other) noexcept
-        : data(other.data), buckets(other.buckets), items(other.items), deleted(other.deleted) {
+        : data(other.data),
+          buckets(other.buckets),
+          items(other.items),
+          deleted(other.deleted),
+          allocator(rstd::move(other.allocator)) {
         other.data    = nullptr;
         other.buckets = usize();
         other.items   = usize();
@@ -177,6 +195,7 @@ public:
             buckets       = other.buckets;
             items         = other.items;
             deleted       = other.deleted;
+            allocator     = rstd::move(other.allocator);
             other.data    = nullptr;
             other.buckets = usize();
             other.items   = usize();
@@ -187,6 +206,7 @@ public:
     ~RawTable() { release(); }
 
     auto len() const noexcept -> usize { return items; }
+    auto allocator_ref() const noexcept [[clang::lifetimebound]] -> const A& { return allocator; }
     auto bucket_count() const noexcept -> usize { return buckets; }
     auto capacity() const noexcept -> usize { return max_items(buckets); }
     auto bucket(rstd::size_t index) noexcept -> Bucket<K, V>& { return data[index]; }

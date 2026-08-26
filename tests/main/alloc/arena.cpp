@@ -15,6 +15,13 @@ struct ArenaTestUpstream {
 
 struct ArenaFailingUpstream {};
 
+struct ArenaRcProbe {
+    int* drops;
+
+    explicit ArenaRcProbe(int& drops): drops(&drops) {}
+    ~ArenaRcProbe() { ++*drops; }
+};
+
 namespace rstd
 {
 
@@ -160,4 +167,35 @@ TEST(RecyclingArena, DeallocationDoesNotGrowMetadata) {
 
     EXPECT_EQ(arena.stats().live_bytes, usize {});
     EXPECT_EQ(arena.stats().free_bytes, usize(64 * 32));
+}
+
+TEST(RecyclingArena, OwnsRcControlBlocksThroughRstdAllocator) {
+    alloc::RecyclingArena arena(usize(1024));
+    auto                  drops = 0;
+    {
+        auto value = alloc::rc::make_rc_in<ArenaRcProbe>(arena.allocator(), drops);
+        auto clone = value.clone();
+        EXPECT_EQ(clone->drops, &drops);
+        EXPECT_GT(arena.stats().live_bytes, usize {});
+    }
+    EXPECT_EQ(drops, 1);
+    EXPECT_EQ(arena.stats().live_bytes, usize {});
+}
+
+TEST(RecyclingArena, OwnsHashMapBucketsThroughRstdAllocator) {
+    alloc::RecyclingArena arena(usize(1024));
+    using Allocator = decltype(arena.allocator());
+    using Map       = rstd::collections::HashMap<int,
+                                                 int,
+                                                 rstd::hash::RandomState,
+                                                 ::alloc::collections::DefaultHashEqual<int>,
+                                                 Allocator>;
+    {
+        auto values = Map::new_in(arena.allocator());
+        for (auto value = 0; value < 32; ++value) values.insert(value, value * 2);
+        EXPECT_EQ(values.len(), usize(32));
+        EXPECT_EQ(**values.get(17), 34);
+        EXPECT_GT(arena.stats().live_bytes, usize {});
+    }
+    EXPECT_EQ(arena.stats().live_bytes, usize {});
 }

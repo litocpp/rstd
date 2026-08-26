@@ -183,6 +183,29 @@ struct RcEmbeddedAllocatorHeader : RcHeader {
     }
 };
 
+template<typename T, typename AllocatorType>
+struct RcEmbeddedTraitAllocatorHeader : RcHeader {
+    AllocatorType allocator;
+    alignas(T) rstd::byte storage[sizeof(T)];
+
+    explicit RcEmbeddedTraitAllocatorHeader(AllocatorType allocator)
+        : RcHeader(nullptr,
+                   false,
+                   &rc_retain_embedded_value,
+                   &RcEmbeddedTraitAllocatorHeader::release_self),
+          allocator(rstd::move(allocator)) {
+        value = storage;
+    }
+
+    static void release_self(RcHeader* header) noexcept {
+        auto* self      = static_cast<RcEmbeddedTraitAllocatorHeader*>(header);
+        auto  allocator = rstd::move(self->allocator);
+        rstd::destroy_at(self);
+        rstd::as<Allocator>(allocator).deallocate(self,
+                                                  Layout::make<RcEmbeddedTraitAllocatorHeader>());
+    }
+};
+
 template<typename T, typename Deleter>
 struct RcDeleterHeader : RcHeader {
     Deleter deleter;
@@ -298,6 +321,19 @@ auto rc_allocate_embedded_value_with(AllocatorType allocator, Args&&... args) ->
     auto  header_allocator = allocator.template rebind<Header>();
     auto* header           = header_allocator.allocate(1);
     rstd::construct_at(header, allocator);
+    auto pointer = mut_ptr<T>::from_raw_parts(static_cast<T*>(header->value));
+    rstd::construct_at(pointer.as_raw_ptr(), rstd::forward<Args>(args)...);
+    return RcAllocation<T> { .header = header, .pointer = pointer };
+}
+
+template<typename T, typename AllocatorType, typename... Args>
+auto rc_allocate_embedded_value_in(AllocatorType allocator, Args&&... args) -> RcAllocation<T> {
+    using Header = RcEmbeddedTraitAllocatorHeader<T, AllocatorType>;
+    auto layout  = Layout::make<Header>();
+    auto result  = rstd::as<Allocator>(allocator).allocate(layout);
+    if (result.is_err()) ::alloc::handle_alloc_error(layout);
+    auto* header = result.unwrap_unchecked().template as_mut_ptr<Header>().as_raw_ptr();
+    rstd::construct_at(header, rstd::move(allocator));
     auto pointer = mut_ptr<T>::from_raw_parts(static_cast<T*>(header->value));
     rstd::construct_at(pointer.as_raw_ptr(), rstd::forward<Args>(args)...);
     return RcAllocation<T> { .header = header, .pointer = pointer };
@@ -634,6 +670,14 @@ export template<typename T,
     requires Impled<T, Sized>
 auto allocate_make_rc(AllocatorType const& allocator, Args&&... args) -> Rc<T> {
     auto allocation = rc_allocate_value_with<T, Policy>(allocator, rstd::forward<Args>(args)...);
+    return RcMakeHelper::make<T>(rc_data<T>(allocation.header, allocation.pointer));
+}
+
+export template<typename T, typename AllocatorType, typename... Args>
+    requires Impled<T, Sized> && Impled<AllocatorType, Allocator>
+auto make_rc_in(AllocatorType allocator, Args&&... args) -> Rc<T> {
+    auto allocation =
+        rc_allocate_embedded_value_in<T>(rstd::move(allocator), rstd::forward<Args>(args)...);
     return RcMakeHelper::make<T>(rc_data<T>(allocation.header, allocation.pointer));
 }
 

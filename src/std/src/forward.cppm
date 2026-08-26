@@ -24,6 +24,7 @@ export namespace rc
 {
 using rstd_alloc::rc::allocate_make_rc;
 using rstd_alloc::rc::make_rc;
+using rstd_alloc::rc::make_rc_in;
 using rstd_alloc::rc::RcRaw;
 using rstd_alloc::rc::StoragePolicy;
 using rstd_alloc::rc::Weak;

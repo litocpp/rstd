@@ -24,33 +24,34 @@ struct DefaultHashEqual {
 export template<typename K,
                 typename V,
                 typename S  = rstd::hash::RandomState,
-                typename Eq = DefaultHashEqual<K>>
+                typename Eq = DefaultHashEqual<K>,
+                typename A  = ::alloc::Global>
 class HashMap;
-export template<typename K, typename V>
+export template<typename K, typename V, typename A = ::alloc::Global>
 class HashMapIter;
-export template<typename K, typename V>
+export template<typename K, typename V, typename A = ::alloc::Global>
 class HashMapIterMut;
-export template<typename K, typename V>
+export template<typename K, typename V, typename A = ::alloc::Global>
 class HashMapIntoIter;
-export template<typename K, typename V>
+export template<typename K, typename V, typename A = ::alloc::Global>
 class HashMapKeys;
-export template<typename K, typename V>
+export template<typename K, typename V, typename A = ::alloc::Global>
 class HashMapValues;
-export template<typename K, typename V>
+export template<typename K, typename V, typename A = ::alloc::Global>
 class HashMapValuesMut;
 
-export template<typename K, typename V>
-class HashMapIter : public rstd::DefaultInClass<HashMapIter<K, V>, rstd::iter::Iterator> {
-    const RawTable<K, V>* table;
-    rstd::size_t          index;
-    usize                 remaining;
+export template<typename K, typename V, typename A>
+class HashMapIter : public rstd::DefaultInClass<HashMapIter<K, V, A>, rstd::iter::Iterator> {
+    const RawTable<K, V, A>* table;
+    rstd::size_t             index;
+    usize                    remaining;
 
 public:
     using Item                               = rstd::tuple<rstd::ref<K>, rstd::ref<V>>;
     static constexpr bool PROVEN_EXACT_SIZE  = true;
     static constexpr bool PROVEN_FUSED       = true;
     static constexpr bool PROVEN_TRUSTED_LEN = true;
-    HashMapIter(const RawTable<K, V>* source [[clang::lifetimebound]]
+    HashMapIter(const RawTable<K, V, A>* source [[clang::lifetimebound]]
                 ,
                 usize len)
         : table(source), index(0), remaining(len) {}
@@ -69,18 +70,18 @@ public:
     auto len() const noexcept -> usize { return remaining; }
 };
 
-export template<typename K, typename V>
-class HashMapIterMut : public rstd::DefaultInClass<HashMapIterMut<K, V>, rstd::iter::Iterator> {
-    RawTable<K, V>* table;
-    rstd::size_t    index;
-    usize           remaining;
+export template<typename K, typename V, typename A>
+class HashMapIterMut : public rstd::DefaultInClass<HashMapIterMut<K, V, A>, rstd::iter::Iterator> {
+    RawTable<K, V, A>* table;
+    rstd::size_t       index;
+    usize              remaining;
 
 public:
     using Item                               = rstd::tuple<rstd::ref<K>, rstd::mut_ref<V>>;
     static constexpr bool PROVEN_EXACT_SIZE  = true;
     static constexpr bool PROVEN_FUSED       = true;
     static constexpr bool PROVEN_TRUSTED_LEN = true;
-    HashMapIterMut(RawTable<K, V>* source [[clang::lifetimebound]]
+    HashMapIterMut(RawTable<K, V, A>* source [[clang::lifetimebound]]
                    ,
                    usize len)
         : table(source), index(0), remaining(len) {}
@@ -99,16 +100,16 @@ public:
     auto len() const noexcept -> usize { return remaining; }
 };
 
-export template<typename K, typename V>
-class HashMapKeys : public rstd::DefaultInClass<HashMapKeys<K, V>, rstd::iter::Iterator> {
-    HashMapIter<K, V> inner;
+export template<typename K, typename V, typename A>
+class HashMapKeys : public rstd::DefaultInClass<HashMapKeys<K, V, A>, rstd::iter::Iterator> {
+    HashMapIter<K, V, A> inner;
 
 public:
     using Item                               = rstd::ref<K>;
     static constexpr bool PROVEN_EXACT_SIZE  = true;
     static constexpr bool PROVEN_FUSED       = true;
     static constexpr bool PROVEN_TRUSTED_LEN = true;
-    explicit HashMapKeys(HashMapIter<K, V> iter [[clang::lifetimebound]])
+    explicit HashMapKeys(HashMapIter<K, V, A> iter [[clang::lifetimebound]])
         : inner(rstd::move(iter)) {}
     auto next() -> Option<Item> {
         auto item = inner.next();
@@ -118,16 +119,16 @@ public:
     auto len() const noexcept -> usize { return inner.len(); }
 };
 
-export template<typename K, typename V>
-class HashMapValues : public rstd::DefaultInClass<HashMapValues<K, V>, rstd::iter::Iterator> {
-    HashMapIter<K, V> inner;
+export template<typename K, typename V, typename A>
+class HashMapValues : public rstd::DefaultInClass<HashMapValues<K, V, A>, rstd::iter::Iterator> {
+    HashMapIter<K, V, A> inner;
 
 public:
     using Item                               = rstd::ref<V>;
     static constexpr bool PROVEN_EXACT_SIZE  = true;
     static constexpr bool PROVEN_FUSED       = true;
     static constexpr bool PROVEN_TRUSTED_LEN = true;
-    explicit HashMapValues(HashMapIter<K, V> iter [[clang::lifetimebound]])
+    explicit HashMapValues(HashMapIter<K, V, A> iter [[clang::lifetimebound]])
         : inner(rstd::move(iter)) {}
     auto next() -> Option<Item> {
         auto item = inner.next();
@@ -137,16 +138,17 @@ public:
     auto len() const noexcept -> usize { return inner.len(); }
 };
 
-export template<typename K, typename V>
-class HashMapValuesMut : public rstd::DefaultInClass<HashMapValuesMut<K, V>, rstd::iter::Iterator> {
-    HashMapIterMut<K, V> inner;
+export template<typename K, typename V, typename A>
+class HashMapValuesMut
+    : public rstd::DefaultInClass<HashMapValuesMut<K, V, A>, rstd::iter::Iterator> {
+    HashMapIterMut<K, V, A> inner;
 
 public:
     using Item                               = rstd::mut_ref<V>;
     static constexpr bool PROVEN_EXACT_SIZE  = true;
     static constexpr bool PROVEN_FUSED       = true;
     static constexpr bool PROVEN_TRUSTED_LEN = true;
-    explicit HashMapValuesMut(HashMapIterMut<K, V> iter [[clang::lifetimebound]])
+    explicit HashMapValuesMut(HashMapIterMut<K, V, A> iter [[clang::lifetimebound]])
         : inner(rstd::move(iter)) {}
     auto next() -> Option<Item> {
         auto item = inner.next();
@@ -156,17 +158,18 @@ public:
     auto len() const noexcept -> usize { return inner.len(); }
 };
 
-export template<typename K, typename V>
-class HashMapIntoIter : public rstd::DefaultInClass<HashMapIntoIter<K, V>, rstd::iter::Iterator> {
-    RawTable<K, V> table;
-    rstd::size_t   index;
+export template<typename K, typename V, typename A>
+class HashMapIntoIter
+    : public rstd::DefaultInClass<HashMapIntoIter<K, V, A>, rstd::iter::Iterator> {
+    RawTable<K, V, A> table;
+    rstd::size_t      index;
 
 public:
     using Item                               = rstd::tuple<K, V>;
     static constexpr bool PROVEN_EXACT_SIZE  = true;
     static constexpr bool PROVEN_FUSED       = true;
     static constexpr bool PROVEN_TRUSTED_LEN = true;
-    explicit HashMapIntoIter(RawTable<K, V> source): table(rstd::move(source)), index(0) {}
+    explicit HashMapIntoIter(RawTable<K, V, A> source): table(rstd::move(source)), index(0) {}
     auto next() -> Option<Item> {
         while (index < table.bucket_count().to_primitive()) {
             rstd::size_t current = index++;
@@ -180,13 +183,13 @@ public:
     auto len() const noexcept -> usize { return table.len(); }
 };
 
-export template<typename K, typename V, typename S, typename Eq>
+export template<typename K, typename V, typename S, typename Eq, typename A>
 class HashMap {
     using Entry = rstd::tuple<K, V>;
 
-    RawTable<K, V> table;
-    S              hash_builder;
-    Eq             equal;
+    RawTable<K, V, A> table;
+    S                 hash_builder;
+    Eq                equal;
 
     auto hash_key(const K& key) const noexcept -> u64
         requires rstd::hash::HashableBy<K, S>
@@ -219,10 +222,11 @@ class HashMap {
 
 public:
     USE_TRAIT(HashMap)
-    using IntoIter = HashMapIntoIter<K, V>;
+    using IntoIter = HashMapIntoIter<K, V, A>;
 
     HashMap()
-        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<S> && rstd::mtp::init<Eq>
+        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<S> && rstd::mtp::init<Eq> &&
+                     rstd::mtp::init<A>
         : table(), hash_builder(), equal() {}
     HashMap(const HashMap&)                = delete;
     HashMap& operator=(const HashMap&)     = delete;
@@ -230,42 +234,67 @@ public:
     HashMap& operator=(HashMap&&) noexcept = default;
 
     static auto make() -> HashMap
-        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<S> && rstd::mtp::init<Eq>
+        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<S> && rstd::mtp::init<Eq> &&
+                 rstd::mtp::init<A>
     {
         return {};
     }
     static auto with_capacity(usize capacity) -> HashMap
-        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<S> && rstd::mtp::init<Eq>
+        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<S> && rstd::mtp::init<Eq> &&
+                 rstd::mtp::init<A>
     {
-        return HashMap(capacity, S {}, Eq {});
+        return HashMap(capacity, S {}, Eq {}, A {});
     }
     static auto with_hasher(S hasher) -> HashMap
-        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<Eq>
+        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<Eq> && rstd::mtp::init<A>
     {
-        return HashMap(usize {}, rstd::move(hasher), Eq {});
+        return HashMap(usize {}, rstd::move(hasher), Eq {}, A {});
     }
     static auto with_capacity_and_hasher(usize capacity, S hasher) -> HashMap
-        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<Eq>
+        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<Eq> && rstd::mtp::init<A>
     {
-        return HashMap(capacity, rstd::move(hasher), Eq {});
+        return HashMap(capacity, rstd::move(hasher), Eq {}, A {});
+    }
+
+    static auto new_in(A allocator) -> HashMap
+        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<S> && rstd::mtp::init<Eq>
+    {
+        return HashMap(usize {}, S {}, Eq {}, rstd::move(allocator));
+    }
+
+    static auto with_capacity_in(usize capacity, A allocator) -> HashMap
+        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<S> && rstd::mtp::init<Eq>
+    {
+        return HashMap(capacity, S {}, Eq {}, rstd::move(allocator));
     }
 
     HashMap(usize capacity, S hasher, Eq equality)
+        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<A>
+        : HashMap(capacity, rstd::move(hasher), rstd::move(equality), A {}) {}
+
+    HashMap(usize capacity, S hasher, Eq equality, A allocator)
         requires rstd::hash::HashBuilder<S>
-        : table(capacity), hash_builder(rstd::move(hasher)), equal(rstd::move(equality)) {}
+        : table(capacity, rstd::move(allocator)),
+          hash_builder(rstd::move(hasher)),
+          equal(rstd::move(equality)) {}
 
     auto len() const noexcept -> usize { return table.len(); }
     auto is_empty() const noexcept -> bool { return table.len() == usize {}; }
     auto capacity() const noexcept -> usize { return table.capacity(); }
     auto hasher() const noexcept [[clang::lifetimebound]] -> const S& { return hash_builder; }
+    auto allocator() const noexcept [[clang::lifetimebound]] -> const A& {
+        return table.allocator_ref();
+    }
 
     auto clone() const -> HashMap
         requires rstd::Impled<K, rstd::clone::Clone> && rstd::Impled<V, rstd::clone::Clone> &&
-                 rstd::Impled<S, rstd::clone::Clone> && rstd::Impled<Eq, rstd::clone::Clone>
+                 rstd::Impled<S, rstd::clone::Clone> && rstd::Impled<Eq, rstd::clone::Clone> &&
+                 rstd::mtp::copy<A>
     {
         auto result = HashMap(table.len(),
                               rstd::as<rstd::clone::Clone>(hash_builder).clone(),
-                              rstd::as<rstd::clone::Clone>(equal).clone());
+                              rstd::as<rstd::clone::Clone>(equal).clone(),
+                              A(table.allocator_ref()));
         auto source = iter();
         for (auto item = source.next(); item.is_some(); item = source.next()) {
             result.insert(rstd::as<rstd::clone::Clone>(*item->template get<0>()).clone(),
@@ -276,7 +305,8 @@ public:
 
     void clone_from(HashMap& source)
         requires rstd::Impled<K, rstd::clone::Clone> && rstd::Impled<V, rstd::clone::Clone> &&
-                 rstd::Impled<S, rstd::clone::Clone> && rstd::Impled<Eq, rstd::clone::Clone>
+                 rstd::Impled<S, rstd::clone::Clone> && rstd::Impled<Eq, rstd::clone::Clone> &&
+                 rstd::mtp::copy<A>
     {
         *this = source.clone();
     }
@@ -438,20 +468,20 @@ public:
         }
     }
 
-    auto iter() const [[clang::lifetimebound]] -> HashMapIter<K, V> {
+    auto iter() const [[clang::lifetimebound]] -> HashMapIter<K, V, A> {
         return { rstd::addressof(table), table.len() };
     }
-    auto iter_mut() [[clang::lifetimebound]] -> HashMapIterMut<K, V> {
+    auto iter_mut() [[clang::lifetimebound]] -> HashMapIterMut<K, V, A> {
         return { rstd::addressof(table), table.len() };
     }
-    auto keys() const [[clang::lifetimebound]] -> HashMapKeys<K, V> {
-        return HashMapKeys<K, V>(iter());
+    auto keys() const [[clang::lifetimebound]] -> HashMapKeys<K, V, A> {
+        return HashMapKeys<K, V, A>(iter());
     }
-    auto values() const [[clang::lifetimebound]] -> HashMapValues<K, V> {
-        return HashMapValues<K, V>(iter());
+    auto values() const [[clang::lifetimebound]] -> HashMapValues<K, V, A> {
+        return HashMapValues<K, V, A>(iter());
     }
-    auto values_mut() [[clang::lifetimebound]] -> HashMapValuesMut<K, V> {
-        return HashMapValuesMut<K, V>(iter_mut());
+    auto values_mut() [[clang::lifetimebound]] -> HashMapValuesMut<K, V, A> {
+        return HashMapValuesMut<K, V, A>(iter_mut());
     }
     auto into_iter() && -> IntoIter { return IntoIter(rstd::move(table)); }
 };
@@ -474,41 +504,41 @@ struct Impl<iter::FromIterator<tuple<K, V>>, ::alloc::collections::HashMap<K, V,
     }
 };
 
-template<typename K, typename V, typename S, typename Eq>
+template<typename K, typename V, typename S, typename Eq, typename A>
     requires hash::HashableBy<K, S> && mtp::init<S> && mtp::init<Eq>
-struct Impl<iter::Extend<tuple<K, V>>, ::alloc::collections::HashMap<K, V, S, Eq>>
-    : ImplBase<::alloc::collections::HashMap<K, V, S, Eq>> {
+struct Impl<iter::Extend<tuple<K, V>>, ::alloc::collections::HashMap<K, V, S, Eq, A>>
+    : ImplBase<::alloc::collections::HashMap<K, V, S, Eq, A>> {
     template<iter::has_next It>
-    static void extend(::alloc::collections::HashMap<K, V, S, Eq>& map, It iterator) {
+    static void extend(::alloc::collections::HashMap<K, V, S, Eq, A>& map, It iterator) {
         for (auto item = iterator.next(); item.is_some(); item = iterator.next())
             extend_one(map, rstd::move(*item));
     }
 
-    static void extend_one(::alloc::collections::HashMap<K, V, S, Eq>& map, tuple<K, V>&& item) {
+    static void extend_one(::alloc::collections::HashMap<K, V, S, Eq, A>& map, tuple<K, V>&& item) {
         map.insert(rstd::move(item.template get<0>()), rstd::move(item.template get<1>()));
     }
 };
 
-template<typename K, typename V, typename S, typename Eq>
-struct Impl<iter::IntoIterator, ::alloc::collections::HashMap<K, V, S, Eq>>
-    : ImplBase<::alloc::collections::HashMap<K, V, S, Eq>> {
-    using IntoIter = ::alloc::collections::HashMapIntoIter<K, V>;
+template<typename K, typename V, typename S, typename Eq, typename A>
+struct Impl<iter::IntoIterator, ::alloc::collections::HashMap<K, V, S, Eq, A>>
+    : ImplBase<::alloc::collections::HashMap<K, V, S, Eq, A>> {
+    using IntoIter = ::alloc::collections::HashMapIntoIter<K, V, A>;
 
     auto into_iter() -> IntoIter { return rstd::move(this->self()).into_iter(); }
 };
 
-template<typename K, typename V, typename S, typename Eq>
-struct Impl<iter::IntoIterator, ref<::alloc::collections::HashMap<K, V, S, Eq>>>
-    : ImplBase<ref<::alloc::collections::HashMap<K, V, S, Eq>>> {
-    using IntoIter = ::alloc::collections::HashMapIter<K, V>;
+template<typename K, typename V, typename S, typename Eq, typename A>
+struct Impl<iter::IntoIterator, ref<::alloc::collections::HashMap<K, V, S, Eq, A>>>
+    : ImplBase<ref<::alloc::collections::HashMap<K, V, S, Eq, A>>> {
+    using IntoIter = ::alloc::collections::HashMapIter<K, V, A>;
 
     auto into_iter() -> IntoIter { return this->self().as_raw_ptr()->iter(); }
 };
 
-template<typename K, typename V, typename S, typename Eq>
-struct Impl<iter::IntoIterator, mut_ref<::alloc::collections::HashMap<K, V, S, Eq>>>
-    : ImplBase<mut_ref<::alloc::collections::HashMap<K, V, S, Eq>>> {
-    using IntoIter = ::alloc::collections::HashMapIterMut<K, V>;
+template<typename K, typename V, typename S, typename Eq, typename A>
+struct Impl<iter::IntoIterator, mut_ref<::alloc::collections::HashMap<K, V, S, Eq, A>>>
+    : ImplBase<mut_ref<::alloc::collections::HashMap<K, V, S, Eq, A>>> {
+    using IntoIter = ::alloc::collections::HashMapIterMut<K, V, A>;
 
     auto into_iter() -> IntoIter { return this->self().as_raw_ptr()->iter_mut(); }
 };
