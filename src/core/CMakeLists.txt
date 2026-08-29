@@ -25,8 +25,7 @@ target_sources(
          BASE_DIRS
          include
          FILES
-         include/rstd/enum.hpp
-         include/rstd/macro.hpp)
+         include/rstd/enum.hpp)
 
 target_sources(rstd.core PRIVATE src/lib.cpp)
 target_sources(

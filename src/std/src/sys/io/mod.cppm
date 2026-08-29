@@ -2,9 +2,11 @@ module;
 #include <rstd/macro.hpp>
 export module rstd:sys.io;
 import :io.error;
+#if RSTD_OS_UNIX || RSTD_OS_WINDOWS
 import :sys.libc;
 
 namespace libc = rstd::sys::libc;
+#endif
 
 export namespace rstd::sys::io
 {

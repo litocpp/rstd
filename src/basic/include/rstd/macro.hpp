@@ -1,5 +1,21 @@
 #pragma once
 
+#if defined(__wasm__)
+#define RSTD_ARCH_WASM 1
+#endif
+
+#if defined(__wasm32__)
+#define RSTD_ARCH_WASM32 1
+#endif
+
+#if defined(__wasi__)
+#define RSTD_OS_WASI 1
+#endif
+
+#if defined(__EMSCRIPTEN__)
+#define RSTD_OS_EMSCRIPTEN 1
+#endif
+
 #if defined(_WIN32)
 #define RSTD_OS_WINDOWS 1
 #endif
@@ -14,6 +30,11 @@
 
 #if defined(__unix__) || defined(__APPLE__)
 #define RSTD_OS_UNIX 1
+#endif
+
+#if !defined(RSTD_OS_WINDOWS) && !defined(RSTD_OS_LINUX) && !defined(RSTD_OS_APPLE) && \
+    !defined(RSTD_OS_WASI) && !defined(RSTD_OS_EMSCRIPTEN) && !defined(RSTD_OS_UNIX)
+#define RSTD_OS_UNKNOWN 1
 #endif
 
 #if defined(_MSC_VER)

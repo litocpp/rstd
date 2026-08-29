@@ -4,11 +4,13 @@ export module rstd:time;
 export import rstd.core;
 export import :time.calendar;
 import :sys.pal;
+#if ! RSTD_OS_UNKNOWN
 import :sys.libc.std;
 #if RSTD_OS_UNIX
 import :sys.libc.unix;
 #elif RSTD_OS_WINDOWS
 import :sys.libc.windows;
+#endif
 #endif
 
 namespace rstd::time
@@ -138,6 +140,10 @@ inline auto OffsetDateTime::now_utc() noexcept -> OffsetDateTime {
 
 /// Writes the current UTC time as RFC3339 (`YYYY-MM-DDTHH:MM:SSZ`) into `out` (exactly 20 bytes, no terminator).
 export inline auto format_rfc3339_utc_now(char out[20]) noexcept -> void {
+#if RSTD_OS_UNKNOWN
+    (void)out;
+    rstd::panic { "system time is unsupported" };
+#else
     auto secs = sys::libc::time(nullptr);
     auto tmv  = sys::libc::gmtime_utc(secs);
 
@@ -161,6 +167,7 @@ export inline auto format_rfc3339_utc_now(char out[20]) noexcept -> void {
     out[16] = ':';
     w2(out + 17, tmv.tm_sec);
     out[19] = 'Z';
+#endif
 }
 
 } // namespace rstd::time

@@ -8,3 +8,6 @@ authors.workspace = true
 name = "rstd-basic"
 module = "rstd.basic"
 archive = "rstd.basic"
+
+[usage]
+public-include-directories = ["include"]

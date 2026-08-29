@@ -1,0 +1,20 @@
+[package]
+name = "rstd-wasm-basic"
+version = "0.1.0"
+
+[profile.base]
+exceptions = false
+rtti = false
+
+[[bin]]
+name = "rstd-wasm-basic"
+sources = ["main.cpp"]
+link-stdlib = false
+
+[dependencies.rstd-alloc]
+path = "../../src/alloc"
+visibility = "private"
+
+[dependencies.rstd-std]
+path = "../../src/std"
+visibility = "private"

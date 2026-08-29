@@ -1,9 +1,12 @@
 module;
+#include <rstd/macro.hpp>
 
 module rstd;
 import :fs;
+#if ! RSTD_OS_UNKNOWN
 import :env;
 import :process;
+#endif
 import :sys.fs;
 
 using namespace rstd::prelude;
@@ -36,6 +39,10 @@ TempDir::~TempDir() noexcept {
 }
 
 auto TempDir::make(ref<str> prefix) -> FsResult<TempDir> {
+#if RSTD_OS_UNKNOWN
+    (void)prefix;
+    return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
+#else
     constexpr auto attempt_limit = usize(1024);
     auto           base          = rstd::env::temp_dir();
     for (auto attempt = usize {}; attempt < attempt_limit; ++attempt) {
@@ -52,6 +59,7 @@ auto TempDir::make(ref<str> prefix) -> FsResult<TempDir> {
     }
     return Err(Error::new_const(ErrorKind { ErrorKind::AlreadyExists },
                                 "cannot create a unique temporary directory"));
+#endif
 }
 
 auto TempDir::close() -> FsResult<empty> {

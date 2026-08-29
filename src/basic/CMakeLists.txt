@@ -1,5 +1,9 @@
 add_library(rstd.basic STATIC)
 target_compile_features(rstd.basic PUBLIC cxx_std_20)
+target_include_directories(
+  rstd.basic
+  PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+         $<INSTALL_INTERFACE:include>)
 if(RSTD_USE_ASAN)
   target_link_libraries(rstd.basic PUBLIC "$<BUILD_INTERFACE:rstd.asan>")
 endif()
@@ -9,6 +13,16 @@ if(RSTD_COMPILER_RT_LIBRARY)
     PUBLIC "$<BUILD_INTERFACE:${RSTD_COMPILER_RT_PATH}>"
            "$<INSTALL_INTERFACE:${RSTD_COMPILER_RT_LIBRARY}.lib>")
 endif()
+target_sources(
+  rstd.basic
+  PUBLIC FILE_SET
+         headers
+         TYPE
+         HEADERS
+         BASE_DIRS
+         include
+         FILES
+         include/rstd/macro.hpp)
 target_sources(
   rstd.basic
   PUBLIC FILE_SET
