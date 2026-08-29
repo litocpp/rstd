@@ -96,6 +96,9 @@ TEST(Convert, Basic) {
     b   = rstd::into(c);
     EXPECT_EQ(c.a, a.a);
     EXPECT_EQ(c.a, b.a);
+    const C const_c { 123 };
+    auto    const_a = rstd::into<A>(const_c);
+    EXPECT_EQ(const_a.a, 123);
     D d { 321 };
     a = d.into();
     EXPECT_EQ(a.a, 321);

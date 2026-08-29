@@ -129,7 +129,13 @@ struct AsMut {
 /// \return The converted value of type T.
 export template<typename T, typename F>
 auto into(F&& val) -> T {
-    return as<Into<T>>(val).into();
+    using Target = mtp::rm_cvf<T>;
+    if constexpr (mtp::is_const<mtp::rm_ref<F>>) {
+        auto copy = val;
+        return as<Into<Target>>(copy).into();
+    } else {
+        return as<Into<Target>>(val).into();
+    }
 }
 
 /// Attempts to construct T from value through TryFrom.
