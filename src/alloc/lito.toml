@@ -11,8 +11,10 @@ archive = "rstd.alloc"
 
 [dependencies.rstd-core]
 path = "../.."
+version = "0.1.0"
 visibility = "public"
 
 [dependencies.rstd-runtime]
 path = "../.."
+version = "0.1.0"
 visibility = "private"

@@ -11,8 +11,10 @@ archive = "rstd.parse"
 
 [dependencies.rstd-core]
 path = "../.."
+version = "0.1.0"
 visibility = "public"
 
 [dependencies.rstd-alloc]
 path = "../.."
+version = "0.1.0"
 visibility = "public"

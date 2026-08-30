@@ -16,4 +16,5 @@ system-libraries = ["dl"]
 
 [dependencies.rstd-std]
 path = "../.."
+version = "0.1.0"
 visibility = "public"
