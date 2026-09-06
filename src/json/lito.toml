@@ -12,19 +12,18 @@ archive = "rstd.json"
 [dependencies.rstd-core]
 path = "../.."
 version = "0.1.0"
-visibility = "public"
+pub = true
 
 [dependencies.rstd-std]
 path = "../.."
 version = "0.1.0"
-visibility = "public"
+pub = true
 
 [dependencies.rstd-serde]
 path = "../serde"
 version = "0.1.0"
-visibility = "public"
+pub = true
 
 [dependencies.rstd-parse]
 path = "../parse"
 version = "0.1.0"
-visibility = "private"

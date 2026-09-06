@@ -12,4 +12,4 @@ archive = "rstd.serde"
 [dependencies.rstd-alloc]
 path = "../.."
 version = "0.1.0"
-visibility = "public"
+pub = true

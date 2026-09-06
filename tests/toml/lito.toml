@@ -7,16 +7,12 @@ sources = ["conformance_decoder.cpp"]
 
 [dependencies.rstd-std]
 path = "../../src/std"
-visibility = "private"
 
 [dependencies.rstd-json]
 path = "../../src/json"
-visibility = "private"
 
 [dependencies.rstd-toml]
 path = "../../src/toml"
-visibility = "private"
 
 [dependencies.rstd-test]
 path = "../../src/test"
-visibility = "private"

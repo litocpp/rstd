@@ -14,4 +14,4 @@ public-include-directories = ["include"]
 [dependencies.rstd-std]
 path = "../std"
 version = "0.1.0"
-visibility = "public"
+pub = true

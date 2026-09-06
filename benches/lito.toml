@@ -23,16 +23,12 @@ private-definitions = [
 ]
 [dependencies.rstd-bench]
 path = ".."
-visibility = "private"
 
 [dependencies.rstd-cppstd]
 path = ".."
-visibility = "private"
 
 [dependencies.rstd-json]
 path = ".."
-visibility = "private"
 
 [dependencies.rstd-std]
 path = ".."
-visibility = "private"

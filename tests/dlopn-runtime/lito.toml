@@ -9,8 +9,6 @@ sources = ["main.cpp", "dlopn.cpp"]
 
 [dependencies.rstd-dlopn]
 path = "../../src/dlopn"
-visibility = "private"
 
 [dependencies.rstd-test]
 path = "../../src/test"
-visibility = "private"

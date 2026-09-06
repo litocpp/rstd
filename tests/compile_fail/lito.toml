@@ -361,8 +361,6 @@ options = ["-Werror=dangling"]
 
 [dependencies.rstd-std]
 path = "../../src/std"
-visibility = "private"
 
 [dependencies.rstd-parse]
 path = "../../src/parse"
-visibility = "private"

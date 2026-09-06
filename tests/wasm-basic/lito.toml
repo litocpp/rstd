@@ -13,8 +13,6 @@ link-stdlib = false
 
 [dependencies.rstd-alloc]
 path = "../../src/alloc"
-visibility = "private"
 
 [dependencies.rstd-std]
 path = "../../src/std"
-visibility = "private"

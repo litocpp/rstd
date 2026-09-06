@@ -129,40 +129,30 @@ sources = ["async/io_backend.cppm"]
 
 [dependencies.rstd-std]
 path = "../../src/std"
-visibility = "private"
 
 [dependencies.rstd-test]
 path = "../../src/test"
-visibility = "private"
 
 [dependencies.rstd-json]
 path = "../../src/json"
-visibility = "private"
 
 [dependencies.rstd-toml]
 path = "../../src/toml"
-visibility = "private"
 
 [dependencies.rstd-parse]
 path = "../../src/parse"
-visibility = "private"
 
 [dependencies.rstd-serde]
 path = "../../src/serde"
-visibility = "private"
 
 [dependencies.rstd-log]
 path = "../../src/log"
-visibility = "private"
 
 [dependencies.rstd-argparse]
 path = "../../src/argparse"
-visibility = "private"
 
 [dependencies.rstd-cppstd]
 path = "../../src/cppstd"
-visibility = "private"
 
 [dependencies.rstd-bench]
 path = "../../src/bench"
-visibility = "private"
