@@ -1,7 +1,8 @@
 module;
+#include <rstd/macro.hpp>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
-#if defined(__APPLE__)
+#if RSTD_VENDOR_APPLE
 #include <arpa/inet.h>
 #endif
 #include <sys/wait.h>
@@ -35,7 +36,7 @@ extern "C" int posix_spawn_file_actions_addchdir(posix_spawn_file_actions_t*, co
 
 export module rstd:sys.libc.unix;
 
-#if defined(__APPLE__)
+#if RSTD_VENDOR_APPLE
 inline constexpr auto _RSTD_CLOCK_MONOTONIC = CLOCK_MONOTONIC;
 inline constexpr auto _RSTD_CLOCK_REALTIME  = CLOCK_REALTIME;
 #else
@@ -128,7 +129,7 @@ inline constexpr auto _SEEK_END        = SEEK_END;
 inline constexpr auto _AF_INET       = AF_INET;
 inline constexpr auto _AF_INET6      = AF_INET6;
 inline constexpr auto _SOCK_STREAM   = SOCK_STREAM;
-#if defined(__APPLE__)
+#if RSTD_VENDOR_APPLE
 inline constexpr auto _SOCK_CLOEXEC  = 0;
 inline constexpr auto _SOCK_NONBLOCK = 0;
 #else
@@ -308,7 +309,7 @@ inline auto online_processor_count() noexcept -> long {
     return _rstd_online_processor_count();
 }
 using ::posix_memalign;
-#if defined(__APPLE__)
+#if RSTD_VENDOR_APPLE
 // macOS exposes these as byte-swap macros in <machine/endian.h>; provide
 // functions so call sites in socket.cppm can use `libc::htons(...)`.
 #undef htons
@@ -329,7 +330,7 @@ using ::ntohl;
 using ::clock_gettime;
 using ::nanosleep;
 using ::gmtime_r;
-#if defined(__APPLE__)
+#if RSTD_VENDOR_APPLE
 using ::clockid_t;
 inline constexpr ::clockid_t CLOCK_MONOTONIC = static_cast<::clockid_t>(_RSTD_CLOCK_MONOTONIC);
 inline constexpr ::clockid_t CLOCK_REALTIME  = static_cast<::clockid_t>(_RSTD_CLOCK_REALTIME);
@@ -414,7 +415,7 @@ using ::posix_spawnattr_destroy;
 using ::fork;
 using ::chdir;
 using ::execvp;
-#if defined(__APPLE__)
+#if RSTD_VENDOR_APPLE
 extern "C" char** environ;
 #else
 using ::environ;
@@ -424,7 +425,7 @@ using ::mkdtemp;
 using ::waitpid;
 inline constexpr auto WNOHANG_ = WNOHANG;
 using ::pipe;
-#if !defined(__APPLE__)
+#if !RSTD_VENDOR_APPLE
 using ::pipe2;
 #endif
 using ::close;
@@ -437,7 +438,7 @@ using ::lseek;
 using ::pread;
 using ::pwrite;
 using ::fsync;
-#if defined(__APPLE__)
+#if RSTD_VENDOR_APPLE
 inline auto fdatasync(int fd) noexcept -> int { return ::fsync(fd); }
 #else
 using ::fdatasync;
@@ -542,7 +543,7 @@ inline void set_in6_addr_octet(::in6_addr& addr, unsigned int index, unsigned ch
 using stat_t = struct ::stat;
 /// `struct timespec` aliased to avoid the `struct` keyword leaking into call sites.
 using timespec_t   = struct ::timespec;
-#if defined(__APPLE__)
+#if RSTD_VENDOR_APPLE
 struct itimerspec { ::timespec it_interval; ::timespec it_value; };
 using itimerspec_t = itimerspec;
 #else
@@ -580,7 +581,7 @@ inline constexpr auto SOCK_STREAM   = _SOCK_STREAM;
 inline constexpr auto SOCK_CLOEXEC  = _SOCK_CLOEXEC;
 inline constexpr auto SOCK_NONBLOCK = _SOCK_NONBLOCK;
 
-#if defined(__APPLE__)
+#if RSTD_VENDOR_APPLE
 /// macOS has no `pipe2` syscall; emulate it with `pipe` + `fcntl`.
 inline auto pipe2(int fds[2], int flags) noexcept -> int {
     constexpr int supported_flags = O_CLOEXEC | O_NONBLOCK;

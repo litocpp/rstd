@@ -22,7 +22,7 @@ extern "C" int __cxa_thread_atexit(Dtor dtor, void* obj, void* dso_symbol) noexc
     return __cxa_thread_atexit_impl(dtor, obj, dso_symbol);
 }
 
-#if defined(__APPLE__)
+#if __is_target_vendor(apple)
 // `__cxa_thread_atexit_impl` is a glibc-only ABI entry point that is not
 // exported by Apple's runtime. Register thread-local destructors through a
 // per-thread keyed list so `thread_local` objects are torn down at thread exit.

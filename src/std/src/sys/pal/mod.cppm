@@ -5,7 +5,9 @@ import rstd.core;
 
 #if RSTD_OS_UNIX
 import :sys.pal.unix;
+#if RSTD_OS_LINUX
 import :sys.pal.unix.futex;
+#endif
 export namespace rstd::sys::pal
 {
 namespace backend = unix;
@@ -127,7 +129,7 @@ using backend::Instant;
 using backend::SystemTime;
 using backend::local_offset_at_unix_time;
 
-#if ! RSTD_OS_UNKNOWN
+#if RSTD_OS_LINUX || RSTD_OS_WINDOWS
 namespace futex
 {
 using backend::futex::Duration;
@@ -139,7 +141,9 @@ using backend::futex::futex_wait;
 using backend::futex::futex_wake;
 using backend::futex::futex_wake_all;
 } // namespace futex
+#endif
 
+#if ! RSTD_OS_UNKNOWN
 using backend::Mutex;
 using backend::Condvar;
 using backend::abort_internal;

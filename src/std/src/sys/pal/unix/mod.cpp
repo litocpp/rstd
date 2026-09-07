@@ -1,3 +1,5 @@
+module;
+#include <rstd/macro.hpp>
 module rstd;
 import :sys.pal.unix;
 import :sys.libc;
@@ -41,7 +43,7 @@ namespace args_detail
 inline int                g_argc {};
 inline char const* const* g_argv = nullptr;
 
-#if defined(__APPLE__)
+#if RSTD_VENDOR_APPLE
 extern "C" char*** _NSGetArgv(void);
 extern "C" int*   _NSGetArgc(void);
 

@@ -24,15 +24,19 @@
 #define RSTD_OS_LINUX 1
 #endif
 
-#if defined(__APPLE__)
-#define RSTD_OS_APPLE 1
+#if __is_target_vendor(apple)
+#define RSTD_VENDOR_APPLE 1
 #endif
 
-#if defined(__unix__) || defined(__APPLE__)
+#if __is_target_os(macos)
+#define RSTD_OS_MACOS 1
+#endif
+
+#if defined(__unix__) || defined(RSTD_VENDOR_APPLE)
 #define RSTD_OS_UNIX 1
 #endif
 
-#if !defined(RSTD_OS_WINDOWS) && !defined(RSTD_OS_LINUX) && !defined(RSTD_OS_APPLE) && \
+#if !defined(RSTD_OS_WINDOWS) && !defined(RSTD_OS_LINUX) && !defined(RSTD_OS_MACOS) && \
     !defined(RSTD_OS_WASI) && !defined(RSTD_OS_EMSCRIPTEN) && !defined(RSTD_OS_UNIX)
 #define RSTD_OS_UNKNOWN 1
 #endif

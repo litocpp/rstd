@@ -44,7 +44,7 @@ inline auto errno() noexcept -> int {
     return *__errno_location();
 #elif defined(RSTD_OS_WINDOWS)
     return *_errno();
-#elif defined(RSTD_OS_APPLE)
+#elif defined(RSTD_VENDOR_APPLE)
     return *__error();
 #else
 #error "rstd: unsupported platform for errno()"

@@ -1,3 +1,5 @@
+module;
+#include <rstd/macro.hpp>
 module rstd;
 
 import :sys.pal.unix.time;
@@ -18,7 +20,7 @@ auto Timespec::checked_seconds(rstd::int128_t value) noexcept -> Option<i64> {
 
 auto Timespec::now(int clock_id) noexcept -> Timespec {
     libc::timespec ts;
-#if defined(__APPLE__)
+#if RSTD_VENDOR_APPLE
     libc::clock_gettime(static_cast<libc::clockid_t>(clock_id), &ts);
 #else
     libc::clock_gettime(clock_id, &ts);

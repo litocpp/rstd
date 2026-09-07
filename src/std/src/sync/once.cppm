@@ -8,8 +8,8 @@ namespace rstd::sync
 {
 namespace once_detail
 {
-using SysOnce        = rstd::sys::sync::once::futex::Once;
-using ExclusiveState = rstd::sys::sync::once::futex::ExclusiveState;
+using SysOnce        = rstd::sys::sync::once::backend::Once;
+using ExclusiveState = rstd::sys::sync::once::backend::ExclusiveState;
 } // namespace once_detail
 
 export class OnceState {

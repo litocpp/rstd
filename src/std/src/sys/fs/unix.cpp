@@ -1,3 +1,5 @@
+module;
+#include <rstd/macro.hpp>
 module rstd;
 import :sys.fs.unix;
 import :sys.fs.contract;
@@ -8,7 +10,7 @@ import :path;
 import :sys.libc;
 import :time;
 import rstd.alloc;
-#if defined(__APPLE__)
+#if RSTD_VENDOR_APPLE
 #define _RSTD_STAT_ATIM st_atimespec
 #define _RSTD_STAT_MTIM st_mtimespec
 #else

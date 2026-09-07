@@ -107,3 +107,61 @@ TEST(Thread, ThreadHandleId) {
     auto join_result = rstd::move(handle).join();
     ASSERT_TRUE(join_result.is_ok());
 }
+
+TEST(Thread, ParkConsumesPreexistingNotification) {
+    auto handle = thread::spawn([] {
+                      auto current = thread::current();
+                      thread::unpark(current);
+                      thread::park();
+                  }).unwrap();
+
+    EXPECT_TRUE(rstd::move(handle).join().is_ok());
+}
+
+TEST(Thread, UnparkWakesParkedThread) {
+    auto state         = std::atomic<int> {};
+    auto handle        = thread::spawn([&state] {
+                      state.store(1);
+                      thread::park();
+                      state.store(2);
+                         }).unwrap();
+    auto parked_thread = handle.thread();
+
+    while (state.load() != 1) thread::yield_now();
+    thread::unpark(parked_thread);
+
+    EXPECT_TRUE(rstd::move(handle).join().is_ok());
+    EXPECT_EQ(state.load(), 2);
+}
+
+TEST(Thread, ParkTimeoutReturns) {
+    auto handle = thread::spawn([] {
+                      thread::park_timeout(time::Duration::from_millis(u64(10)));
+                  }).unwrap();
+
+    EXPECT_TRUE(rstd::move(handle).join().is_ok());
+}
+
+TEST(Thread, UnparkStoresSingleNotification) {
+    auto ready         = std::atomic<bool> {};
+    auto start         = std::atomic<bool> {};
+    auto handle        = thread::spawn([&ready, &start] {
+                      ready.store(true);
+                      while (! start.load()) thread::yield_now();
+
+                      thread::park();
+                      auto before = time::Instant::now();
+                      thread::park_timeout(time::Duration::from_millis(u64(40)));
+                      return before.elapsed() >= time::Duration::from_millis(u64(10));
+                         }).unwrap();
+    auto parked_thread = handle.thread();
+
+    while (! ready.load()) thread::yield_now();
+    thread::unpark(parked_thread);
+    thread::unpark(parked_thread);
+    start.store(true);
+
+    auto result = rstd::move(handle).join();
+    ASSERT_TRUE(result.is_ok());
+    EXPECT_TRUE(result.unwrap_unchecked());
+}

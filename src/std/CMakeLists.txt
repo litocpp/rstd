@@ -23,6 +23,7 @@ if(WIN32)
     src/sys/pal/windows/sync/mod.cppm
     src/sys/pal/windows/sync/mutex.cppm
     src/sys/pal/windows/sync/condvar.cppm
+    src/sys/sync/once/futex.cppm
     src/sys/sync/mutex/futex.cppm
     src/sys/sync/condvar/futex.cppm
     src/sys/sync/thread_parking/futex.cppm
@@ -37,6 +38,7 @@ if(WIN32)
     src/sys/pal/windows/time.cpp
     src/sys/pal/windows/sync/mutex.cpp
     src/sys/pal/windows/sync/condvar.cpp
+    src/sys/sync/once/futex.cpp
     src/sys/sync/mutex/futex.cpp
     src/sys/sync/condvar/futex.cpp
     src/sys/sync/thread_parking/futex.cpp
@@ -51,7 +53,6 @@ elseif(UNIX)
     src/sys/libc/unix.cppm
     src/sys/pal/unix/mod.cppm
     src/sys/pal/unix/socket.cppm
-    src/sys/pal/unix/futex.cppm
     src/sys/pal/unix/time.cppm
     src/sys/pal/unix/sync/mutex.cppm
     src/sys/pal/unix/sync/condvar.cppm
@@ -74,6 +75,8 @@ elseif(UNIX)
       src/sys/libc/linux.cppm
       src/sys/pal/linux/io_uring.cppm
       src/sys/pal/linux/poll.cppm
+      src/sys/pal/unix/futex.cppm
+      src/sys/sync/once/futex.cppm
       src/sys/sync/mutex/futex.cppm
       src/sys/sync/condvar/futex.cppm
       src/sys/sync/thread_parking/futex.cppm)
@@ -81,6 +84,7 @@ elseif(UNIX)
       APPEND
       rstd_std_platform_sources
       src/sys/pal/unix/futex.cpp
+      src/sys/sync/once/futex.cpp
       src/sys/sync/mutex/futex.cpp
       src/sys/sync/condvar/futex.cpp
       src/sys/sync/thread_parking/futex.cpp)
@@ -96,24 +100,29 @@ elseif(UNIX)
       src/sys/sync/mutex/pthread.cpp
       src/sys/sync/condvar/pthread.cpp)
     if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+      list(APPEND rstd_std_platform_modules src/sys/pal/macos/poll.cppm)
+    endif()
+    if(APPLE)
       list(
         APPEND
         rstd_std_platform_modules
-        src/sys/pal/macos/poll.cppm
-        src/sys/sync/thread_parking/futex.cppm)
+        src/sys/sync/once/queue.cppm
+        src/sys/sync/thread_parking/darwin.cppm)
       list(
         APPEND
         rstd_std_platform_sources
-        src/sys/pal/unix/futex.cpp
-        src/sys/sync/thread_parking/futex.cpp)
+        src/sys/sync/once/queue.cpp
+        src/sys/sync/thread_parking/darwin.cpp)
     else()
       list(
         APPEND
         rstd_std_platform_modules
+        src/sys/sync/once/queue.cppm
         src/sys/sync/thread_parking/pthread.cppm)
       list(
         APPEND
         rstd_std_platform_sources
+        src/sys/sync/once/queue.cpp
         src/sys/sync/thread_parking/pthread.cpp)
     endif()
   endif()
@@ -166,7 +175,6 @@ target_sources(
          src/sys/sync/mutex/mod.cppm
          src/sys/sync/condvar/mod.cppm
          src/sys/sync/once/mod.cppm
-         src/sys/sync/once/futex.cppm
          src/sys/sync/thread_parking/mod.cppm
          src/sys/thread/mod.cppm
          src/io/mod.cppm
@@ -244,8 +252,7 @@ target_sources(
 
 target_sources(
   rstd.std
-  PRIVATE src/sys/sync/once/futex.cpp
-          src/io/error.cpp
+  PRIVATE src/io/error.cpp
           src/thread/mod.cpp
           src/net/tcp.cpp
           src/lib.cpp

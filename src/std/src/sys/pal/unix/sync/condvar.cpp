@@ -32,7 +32,7 @@ auto Condvar::raw() noexcept -> pthread_cond_t* {
 }
 
 void Condvar::init() noexcept {
-#if RSTD_OS_APPLE
+#if RSTD_VENDOR_APPLE
     auto r = pthread_cond_init(raw(), nullptr);
     rstd_assert_eq(r, 0);
 #else
@@ -74,7 +74,7 @@ auto Condvar::wait_timeout(mutex::Mutex& mutex, rstd::time::Duration timeout) no
         .tv_sec  = static_cast<time_t>(timeout.as_secs().to_primitive()),
         .tv_nsec = static_cast<long>(timeout.subsec_nanos().to_primitive()),
     };
-#if RSTD_OS_APPLE
+#if RSTD_VENDOR_APPLE
     auto r = pthread_cond_timedwait_relative_np(raw(), mutex.raw(), &ts);
 #else
     clock_gettime(CLOCK_MONOTONIC, &ts);

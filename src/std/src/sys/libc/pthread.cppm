@@ -21,7 +21,7 @@ using ::pthread_cond_wait;
 using ::pthread_condattr_destroy;
 using ::pthread_condattr_init;
 using ::pthread_condattr_t;
-#if RSTD_OS_APPLE
+#if RSTD_VENDOR_APPLE
 using ::pthread_cond_timedwait_relative_np;
 #else
 using ::pthread_condattr_setclock;
@@ -39,7 +39,7 @@ using ::pthread_self;
 using ::pthread_equal;
 using ::pthread_t;
 
-#if RSTD_OS_LINUX || RSTD_OS_APPLE
+#if RSTD_OS_LINUX || RSTD_VENDOR_APPLE
 using ::pthread_setname_np;
 #endif
 

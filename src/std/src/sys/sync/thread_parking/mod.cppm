@@ -2,7 +2,13 @@ module;
 #include <rstd/macro.hpp>
 export module rstd:sys.sync.thread_parking;
 
-#if RSTD_OS_LINUX || RSTD_OS_WINDOWS || RSTD_OS_APPLE
+#if RSTD_VENDOR_APPLE
+import :sys.sync.thread_parking.darwin;
+namespace rstd::sys::sync::thread_parking
+{
+namespace backend = darwin;
+}
+#elif RSTD_OS_LINUX || RSTD_OS_WINDOWS
 import :sys.sync.thread_parking.futex;
 namespace rstd::sys::sync::thread_parking
 {
