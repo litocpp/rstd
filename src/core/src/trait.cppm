@@ -75,7 +75,7 @@ struct api_check_tag {};
 template<typename Ret>
 [[noreturn]]
 auto trait_check_return() -> Ret {
-    __builtin_unreachable();
+    rstd::unreachable();
 }
 
 template<typename T>

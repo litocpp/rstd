@@ -28,12 +28,12 @@ extern "C" int __cxa_thread_atexit(Dtor dtor, void* obj, void* dso_symbol) noexc
 // per-thread keyed list so `thread_local` objects are torn down at thread exit.
 #include <pthread.h>
 struct TsdRecord {
-    Dtor          dtor;
-    void*         obj;
-    TsdRecord*    next;
+    Dtor       dtor;
+    void*      obj;
+    TsdRecord* next;
 };
-static pthread_key_t   g_tsd_key;
-static pthread_once_t  g_tsd_once = PTHREAD_ONCE_INIT;
+static pthread_key_t  g_tsd_key;
+static pthread_once_t g_tsd_once = PTHREAD_ONCE_INIT;
 
 extern "C" void rstd_tsd_run(void* raw) {
     auto* record = static_cast<TsdRecord*>(raw);
@@ -54,9 +54,9 @@ extern "C" int __cxa_thread_atexit_impl(Dtor dtor, void* obj, void*) {
     auto* head   = static_cast<TsdRecord*>(pthread_getspecific(g_tsd_key));
     auto* record = static_cast<TsdRecord*>(malloc(sizeof(TsdRecord)));
     if (record == nullptr) return -1;
-    record->dtor  = dtor;
-    record->obj   = obj;
-    record->next  = head;
+    record->dtor = dtor;
+    record->obj  = obj;
+    record->next = head;
     (void)pthread_setspecific(g_tsd_key, record);
     return 0;
 }

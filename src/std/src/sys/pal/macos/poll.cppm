@@ -154,9 +154,9 @@ export class PollWake {
 public:
     explicit PollWake(Arc<WakeState> state): m_state(rstd::move(state)) {}
 
-    PollWake(const PollWake&)                    = delete;
-    auto operator=(const PollWake&) -> PollWake& = delete;
-    PollWake(PollWake&&) noexcept                = default;
+    PollWake(const PollWake&)                        = delete;
+    auto operator=(const PollWake&) -> PollWake&     = delete;
+    PollWake(PollWake&&) noexcept                    = default;
     auto operator=(PollWake&&) noexcept -> PollWake& = default;
 
     auto clone() const -> PollWake { return PollWake { m_state.clone() }; }
@@ -174,14 +174,14 @@ public:
 export struct PollInit;
 
 export class Poller {
-    os::fd::OwnedFd        m_poll_fd;
-    os::fd::OwnedFd        m_wake_read;
-    Option<time::Duration> m_armed_timer {};
-    Vec<MacosSource>       m_sources;
+    os::fd::OwnedFd            m_poll_fd;
+    os::fd::OwnedFd            m_wake_read;
+    Option<time::Duration>     m_armed_timer {};
+    Vec<MacosSource>           m_sources;
     Vec<CompletionSourceIndex> m_completion_sources;
-    EmulatedOperations     m_operations;
-    Vec<Event>             m_ready_events;
-    usize                  m_ready_cursor {};
+    EmulatedOperations         m_operations;
+    Vec<Event>                 m_ready_events;
+    usize                      m_ready_cursor {};
 
     static auto ready_from_kqueue(const struct kevent& event) noexcept -> Ready {
         auto ready = Ready {};
@@ -220,13 +220,8 @@ export class Poller {
                    static_cast<intptr_t>(duration_to_ms(*timeout)),
                    reinterpret_cast<void*>(static_cast<uintptr_t>(TIMER_KEY)));
         } else {
-            EV_SET(&change,
-                   static_cast<uintptr_t>(TIMER_KEY),
-                   EVFILT_TIMER,
-                   EV_DELETE,
-                   0,
-                   0,
-                   nullptr);
+            EV_SET(
+                &change, static_cast<uintptr_t>(TIMER_KEY), EVFILT_TIMER, EV_DELETE, 0, 0, nullptr);
         }
         if (::kevent(m_poll_fd.as_raw_fd(), &change, 1, nullptr, 0, nullptr) < 0) {
             return Err(Error::last_os_error());
@@ -323,9 +318,9 @@ export class Poller {
     }
 
     static void remove_source_if_idle(MacosSource& source) {
-        if (source.registered_read || source.registered_write ||
-            source.readiness_key.is_some() || source.completion_source_key.is_some() ||
-            ! source.reads.is_empty() || ! source.writes.is_empty()) {
+        if (source.registered_read || source.registered_write || source.readiness_key.is_some() ||
+            source.completion_source_key.is_some() || ! source.reads.is_empty() ||
+            ! source.writes.is_empty()) {
             return;
         }
         auto slot       = native_source_slot(source.native_key);
@@ -388,12 +383,12 @@ export class Poller {
     }
 
     auto refresh_source(MacosSource& source) -> io::Result<empty> {
-        auto interest = combined_interest(source);
+        auto interest   = combined_interest(source);
         auto want_read  = interest.is_readable();
         auto want_write = interest.is_writable();
 
         struct kevent changes[4];
-        int           n = 0;
+        int           n            = 0;
         const bool    change_read  = want_read != source.registered_read;
         const bool    change_write = want_write != source.registered_write;
 
@@ -571,9 +566,9 @@ public:
           m_completion_sources(Vec<CompletionSourceIndex>::make()),
           m_operations(),
           m_ready_events(Vec<Event>::make()) {}
-    Poller(const Poller&)                    = delete;
-    auto operator=(const Poller&) -> Poller& = delete;
-    Poller(Poller&&) noexcept                = default;
+    Poller(const Poller&)                        = delete;
+    auto operator=(const Poller&) -> Poller&     = delete;
+    Poller(Poller&&) noexcept                    = default;
     auto operator=(Poller&&) noexcept -> Poller& = default;
 
     Poller(os::fd::OwnedFd poll_fd, os::fd::OwnedFd wake_read)
@@ -712,9 +707,7 @@ public:
         return empty {};
     }
 
-    auto has_pending_operations() const noexcept -> bool {
-        return ! m_operations.is_empty();
-    }
+    auto has_pending_operations() const noexcept -> bool { return ! m_operations.is_empty(); }
 
     auto wait(WaitMode mode, Option<time::Duration> next_timer) -> io::Result<Batch> {
         auto batch = Batch {};
@@ -724,9 +717,9 @@ public:
         auto armed = arm_timer(next_timer);
         if (armed.is_err()) return Err(rstd::move(armed).unwrap_err_unchecked());
 
-        struct kevent events[Batch::capacity()];
+        struct kevent   events[Batch::capacity()];
         struct timespec zero {};
-        const auto* timeout = mode == WaitMode::Immediate ? &zero : nullptr;
+        const auto*     timeout = mode == WaitMode::Immediate ? &zero : nullptr;
 
         int count {};
         do {
@@ -740,9 +733,8 @@ public:
         if (count < 0) return Err(Error::last_os_error());
 
         for (int i = 0; i < count; ++i) {
-            auto& event = events[i];
-            auto  native_key =
-                rstd::uint64_t(reinterpret_cast<uintptr_t>(event.udata));
+            auto& event      = events[i];
+            auto  native_key = rstd::uint64_t(reinterpret_cast<uintptr_t>(event.udata));
 
             if (event.filter == EVFILT_TIMER && native_key == TIMER_KEY) {
                 m_armed_timer = None<time::Duration>();

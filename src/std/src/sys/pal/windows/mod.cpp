@@ -12,13 +12,13 @@ namespace rstd::sys::pal::windows
 [[noreturn]]
 void abort_internal() {
     libc::RaiseFailFastException(nullptr, nullptr, 0x2);
-    __builtin_unreachable();
+    rstd::unreachable();
 }
 
 [[noreturn]]
 void exit_internal(int code) {
     libc::ExitProcess(static_cast<unsigned>(code));
-    __builtin_unreachable();
+    rstd::unreachable();
 }
 
 auto getpid_internal() -> u32 {

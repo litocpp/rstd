@@ -391,15 +391,15 @@ concept formattable =
 
 [[noreturn]]
 inline void fmt_unmatched_left_brace() {
-    __builtin_unreachable();
+    rstd::unreachable();
 }
 [[noreturn]]
 inline void fmt_unmatched_right_brace() {
-    __builtin_unreachable();
+    rstd::unreachable();
 }
 [[noreturn]]
 inline void fmt_too_few_args() {
-    __builtin_unreachable();
+    rstd::unreachable();
 }
 
 consteval void check_format_string(const char* s, rstd::size_t n, rstd::size_t n_args) {

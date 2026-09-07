@@ -166,7 +166,7 @@ class Date {
             }
             remaining -= count;
         }
-        __builtin_unreachable();
+        rstd::unreachable();
     }
 
     constexpr auto days_since_unix_epoch() const noexcept -> i64 {

@@ -126,9 +126,9 @@ inline constexpr auto _SEEK_SET        = SEEK_SET;
 inline constexpr auto _SEEK_CUR        = SEEK_CUR;
 inline constexpr auto _SEEK_END        = SEEK_END;
 
-inline constexpr auto _AF_INET       = AF_INET;
-inline constexpr auto _AF_INET6      = AF_INET6;
-inline constexpr auto _SOCK_STREAM   = SOCK_STREAM;
+inline constexpr auto _AF_INET     = AF_INET;
+inline constexpr auto _AF_INET6    = AF_INET6;
+inline constexpr auto _SOCK_STREAM = SOCK_STREAM;
 #if RSTD_VENDOR_APPLE
 inline constexpr auto _SOCK_CLOEXEC  = 0;
 inline constexpr auto _SOCK_NONBLOCK = 0;
@@ -136,12 +136,12 @@ inline constexpr auto _SOCK_NONBLOCK = 0;
 inline constexpr auto _SOCK_CLOEXEC  = SOCK_CLOEXEC;
 inline constexpr auto _SOCK_NONBLOCK = SOCK_NONBLOCK;
 #endif
-inline constexpr auto _SOL_SOCKET    = SOL_SOCKET;
-inline constexpr auto _SO_REUSEADDR  = SO_REUSEADDR;
-inline constexpr auto _SO_ERROR      = SO_ERROR;
-inline constexpr auto _IPPROTO_TCP   = IPPROTO_TCP;
-inline constexpr auto _TCP_NODELAY   = TCP_NODELAY;
-inline constexpr auto _SHUT_WR       = SHUT_WR;
+inline constexpr auto _SOL_SOCKET   = SOL_SOCKET;
+inline constexpr auto _SO_REUSEADDR = SO_REUSEADDR;
+inline constexpr auto _SO_ERROR     = SO_ERROR;
+inline constexpr auto _IPPROTO_TCP  = IPPROTO_TCP;
+inline constexpr auto _TCP_NODELAY  = TCP_NODELAY;
+inline constexpr auto _SHUT_WR      = SHUT_WR;
 #ifdef MSG_NOSIGNAL
 inline constexpr auto _MSG_NOSIGNAL = MSG_NOSIGNAL;
 #else
@@ -316,10 +316,18 @@ using ::posix_memalign;
 #undef htonl
 #undef ntohs
 #undef ntohl
-inline auto htons(uint16_t value) noexcept -> uint16_t { return __builtin_bswap16(value); }
-inline auto htonl(uint32_t value) noexcept -> uint32_t { return __builtin_bswap32(value); }
-inline auto ntohs(uint16_t value) noexcept -> uint16_t { return __builtin_bswap16(value); }
-inline auto ntohl(uint32_t value) noexcept -> uint32_t { return __builtin_bswap32(value); }
+inline auto htons(uint16_t value) noexcept -> uint16_t {
+    return __builtin_bswap16(value);
+}
+inline auto htonl(uint32_t value) noexcept -> uint32_t {
+    return __builtin_bswap32(value);
+}
+inline auto ntohs(uint16_t value) noexcept -> uint16_t {
+    return __builtin_bswap16(value);
+}
+inline auto ntohl(uint32_t value) noexcept -> uint32_t {
+    return __builtin_bswap32(value);
+}
 #else
 using ::htons;
 using ::htonl;
@@ -338,54 +346,54 @@ inline constexpr ::clockid_t CLOCK_REALTIME  = static_cast<::clockid_t>(_RSTD_CL
 inline constexpr auto CLOCK_MONOTONIC = _CLOCK_MONOTONIC;
 inline constexpr auto CLOCK_REALTIME  = _CLOCK_REALTIME;
 #endif
-inline constexpr auto EAGAIN          = _EAGAIN;
-inline constexpr auto ENOENT          = _ENOENT;
-inline constexpr auto EACCES          = _EACCES;
-inline constexpr auto EPERM           = _EPERM;
-inline constexpr auto ECONNREFUSED    = _ECONNREFUSED;
-inline constexpr auto ECONNRESET      = _ECONNRESET;
-inline constexpr auto EHOSTUNREACH    = _EHOSTUNREACH;
-inline constexpr auto ENETUNREACH     = _ENETUNREACH;
-inline constexpr auto ECONNABORTED    = _ECONNABORTED;
-inline constexpr auto ENOTCONN        = _ENOTCONN;
-inline constexpr auto EADDRINUSE      = _EADDRINUSE;
-inline constexpr auto EADDRNOTAVAIL   = _EADDRNOTAVAIL;
-inline constexpr auto ENETDOWN        = _ENETDOWN;
-inline constexpr auto EPIPE           = _EPIPE;
-inline constexpr auto EEXIST          = _EEXIST;
-inline constexpr auto EWOULDBLOCK     = _EWOULDBLOCK;
-inline constexpr auto ENOTDIR         = _ENOTDIR;
-inline constexpr auto EISDIR          = _EISDIR;
-inline constexpr auto ENOTEMPTY       = _ENOTEMPTY;
-inline constexpr auto EROFS           = _EROFS;
-inline constexpr auto ELOOP           = _ELOOP;
-inline constexpr auto ESTALE          = _ESTALE;
-inline constexpr auto HAS_ESTALE      = _HAS_ESTALE;
-inline constexpr auto EINVAL          = _EINVAL;
-inline constexpr auto ETIMEDOUT       = _ETIMEDOUT;
-inline constexpr auto ENOSPC          = _ENOSPC;
-inline constexpr auto ESPIPE          = _ESPIPE;
-inline constexpr auto EDQUOT          = _EDQUOT;
-inline constexpr auto HAS_EDQUOT      = _HAS_EDQUOT;
-inline constexpr auto EFBIG           = _EFBIG;
-inline constexpr auto EBUSY           = _EBUSY;
-inline constexpr auto ETXTBSY         = _ETXTBSY;
-inline constexpr auto EDEADLK         = _EDEADLK;
-inline constexpr auto EXDEV           = _EXDEV;
-inline constexpr auto EMLINK          = _EMLINK;
-inline constexpr auto ENAMETOOLONG    = _ENAMETOOLONG;
-inline constexpr auto E2BIG           = _E2BIG;
-inline constexpr auto EINTR           = _EINTR;
-inline constexpr auto ENOSYS          = _ENOSYS;
-inline constexpr auto EOPNOTSUPP      = _EOPNOTSUPP;
-inline constexpr auto EAFNOSUPPORT    = _EAFNOSUPPORT;
-inline constexpr auto ENOMEM          = _ENOMEM;
-inline constexpr auto ENOBUFS         = _ENOBUFS;
-inline constexpr auto EIO             = _EIO;
-inline constexpr auto EINPROGRESS     = _EINPROGRESS;
-inline constexpr auto EALREADY        = _EALREADY;
-inline constexpr auto EISCONN         = _EISCONN;
-inline constexpr auto ECANCELED       = _ECANCELED;
+inline constexpr auto EAGAIN        = _EAGAIN;
+inline constexpr auto ENOENT        = _ENOENT;
+inline constexpr auto EACCES        = _EACCES;
+inline constexpr auto EPERM         = _EPERM;
+inline constexpr auto ECONNREFUSED  = _ECONNREFUSED;
+inline constexpr auto ECONNRESET    = _ECONNRESET;
+inline constexpr auto EHOSTUNREACH  = _EHOSTUNREACH;
+inline constexpr auto ENETUNREACH   = _ENETUNREACH;
+inline constexpr auto ECONNABORTED  = _ECONNABORTED;
+inline constexpr auto ENOTCONN      = _ENOTCONN;
+inline constexpr auto EADDRINUSE    = _EADDRINUSE;
+inline constexpr auto EADDRNOTAVAIL = _EADDRNOTAVAIL;
+inline constexpr auto ENETDOWN      = _ENETDOWN;
+inline constexpr auto EPIPE         = _EPIPE;
+inline constexpr auto EEXIST        = _EEXIST;
+inline constexpr auto EWOULDBLOCK   = _EWOULDBLOCK;
+inline constexpr auto ENOTDIR       = _ENOTDIR;
+inline constexpr auto EISDIR        = _EISDIR;
+inline constexpr auto ENOTEMPTY     = _ENOTEMPTY;
+inline constexpr auto EROFS         = _EROFS;
+inline constexpr auto ELOOP         = _ELOOP;
+inline constexpr auto ESTALE        = _ESTALE;
+inline constexpr auto HAS_ESTALE    = _HAS_ESTALE;
+inline constexpr auto EINVAL        = _EINVAL;
+inline constexpr auto ETIMEDOUT     = _ETIMEDOUT;
+inline constexpr auto ENOSPC        = _ENOSPC;
+inline constexpr auto ESPIPE        = _ESPIPE;
+inline constexpr auto EDQUOT        = _EDQUOT;
+inline constexpr auto HAS_EDQUOT    = _HAS_EDQUOT;
+inline constexpr auto EFBIG         = _EFBIG;
+inline constexpr auto EBUSY         = _EBUSY;
+inline constexpr auto ETXTBSY       = _ETXTBSY;
+inline constexpr auto EDEADLK       = _EDEADLK;
+inline constexpr auto EXDEV         = _EXDEV;
+inline constexpr auto EMLINK        = _EMLINK;
+inline constexpr auto ENAMETOOLONG  = _ENAMETOOLONG;
+inline constexpr auto E2BIG         = _E2BIG;
+inline constexpr auto EINTR         = _EINTR;
+inline constexpr auto ENOSYS        = _ENOSYS;
+inline constexpr auto EOPNOTSUPP    = _EOPNOTSUPP;
+inline constexpr auto EAFNOSUPPORT  = _EAFNOSUPPORT;
+inline constexpr auto ENOMEM        = _ENOMEM;
+inline constexpr auto ENOBUFS       = _ENOBUFS;
+inline constexpr auto EIO           = _EIO;
+inline constexpr auto EINPROGRESS   = _EINPROGRESS;
+inline constexpr auto EALREADY      = _EALREADY;
+inline constexpr auto EISCONN       = _EISCONN;
+inline constexpr auto ECANCELED     = _ECANCELED;
 
 inline auto gmtime_utc(::time_t secs) noexcept -> ::tm {
     ::tm out {};
@@ -425,7 +433,7 @@ using ::mkdtemp;
 using ::waitpid;
 inline constexpr auto WNOHANG_ = WNOHANG;
 using ::pipe;
-#if !RSTD_VENDOR_APPLE
+#if ! RSTD_VENDOR_APPLE
 using ::pipe2;
 #endif
 using ::close;
@@ -439,7 +447,9 @@ using ::pread;
 using ::pwrite;
 using ::fsync;
 #if RSTD_VENDOR_APPLE
-inline auto fdatasync(int fd) noexcept -> int { return ::fsync(fd); }
+inline auto fdatasync(int fd) noexcept -> int {
+    return ::fsync(fd);
+}
 #else
 using ::fdatasync;
 #endif
@@ -542,9 +552,12 @@ inline void set_in6_addr_octet(::in6_addr& addr, unsigned int index, unsigned ch
 /// `struct stat` aliased to avoid clash with the `::stat()` function.
 using stat_t = struct ::stat;
 /// `struct timespec` aliased to avoid the `struct` keyword leaking into call sites.
-using timespec_t   = struct ::timespec;
+using timespec_t = struct ::timespec;
 #if RSTD_VENDOR_APPLE
-struct itimerspec { ::timespec it_interval; ::timespec it_value; };
+struct itimerspec {
+    ::timespec it_interval;
+    ::timespec it_value;
+};
 using itimerspec_t = itimerspec;
 #else
 using itimerspec_t = struct ::itimerspec;
@@ -601,26 +614,22 @@ inline auto pipe2(int fds[2], int flags) noexcept -> int {
 
     if (flags & O_CLOEXEC) {
         const int fd0_flags = ::fcntl(fds[0], F_GETFD, 0);
-        if (fd0_flags < 0 || ::fcntl(fds[0], F_SETFD, fd0_flags | FD_CLOEXEC) < 0)
-            return fail();
+        if (fd0_flags < 0 || ::fcntl(fds[0], F_SETFD, fd0_flags | FD_CLOEXEC) < 0) return fail();
         const int fd1_flags = ::fcntl(fds[1], F_GETFD, 0);
-        if (fd1_flags < 0 || ::fcntl(fds[1], F_SETFD, fd1_flags | FD_CLOEXEC) < 0)
-            return fail();
+        if (fd1_flags < 0 || ::fcntl(fds[1], F_SETFD, fd1_flags | FD_CLOEXEC) < 0) return fail();
     }
     if (flags & O_NONBLOCK) {
         const int fd0_flags = ::fcntl(fds[0], F_GETFL, 0);
-        if (fd0_flags < 0 || ::fcntl(fds[0], F_SETFL, fd0_flags | O_NONBLOCK) < 0)
-            return fail();
+        if (fd0_flags < 0 || ::fcntl(fds[0], F_SETFL, fd0_flags | O_NONBLOCK) < 0) return fail();
         const int fd1_flags = ::fcntl(fds[1], F_GETFL, 0);
-        if (fd1_flags < 0 || ::fcntl(fds[1], F_SETFL, fd1_flags | O_NONBLOCK) < 0)
-            return fail();
+        if (fd1_flags < 0 || ::fcntl(fds[1], F_SETFL, fd1_flags | O_NONBLOCK) < 0) return fail();
     }
     return 0;
 }
 #endif
-inline constexpr auto SOL_SOCKET    = _SOL_SOCKET;
-inline constexpr auto SO_REUSEADDR  = _SO_REUSEADDR;
-inline constexpr auto SO_ERROR      = _SO_ERROR;
+inline constexpr auto SOL_SOCKET   = _SOL_SOCKET;
+inline constexpr auto SO_REUSEADDR = _SO_REUSEADDR;
+inline constexpr auto SO_ERROR     = _SO_ERROR;
 [[maybe_unused]]
 inline constexpr auto IPPROTO_TCP = _IPPROTO_TCP;
 inline constexpr auto TCP_NODELAY = _TCP_NODELAY;

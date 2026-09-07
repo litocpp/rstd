@@ -45,7 +45,7 @@ inline char const* const* g_argv = nullptr;
 
 #if RSTD_VENDOR_APPLE
 extern "C" char*** _NSGetArgv(void);
-extern "C" int*   _NSGetArgc(void);
+extern "C" int*    _NSGetArgc(void);
 
 [[gnu::constructor]]
 void rstd_capture_args_apple() {

@@ -30,7 +30,7 @@ auto direct_value_kind(JsonValueKind kind) noexcept -> serde::ValueKind {
     case JsonValueKind::Array: return serde::ValueKind::Sequence;
     case JsonValueKind::Object: return serde::ValueKind::Map;
     }
-    __builtin_unreachable();
+    rstd::unreachable();
 }
 
 class DirectDeserializer {

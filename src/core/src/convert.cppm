@@ -223,17 +223,17 @@ namespace rstd
 
 template<>
 struct Impl<fmt::Display, convert::Infallible> : ImplBase<convert::Infallible> {
-    auto fmt(fmt::Formatter&) const -> bool { __builtin_unreachable(); }
+    auto fmt(fmt::Formatter&) const -> bool { rstd::unreachable(); }
 };
 
 template<>
 struct Impl<fmt::Debug, convert::Infallible> : ImplBase<convert::Infallible> {
-    auto fmt(fmt::Formatter&) const -> bool { __builtin_unreachable(); }
+    auto fmt(fmt::Formatter&) const -> bool { rstd::unreachable(); }
 };
 
 template<>
 struct Impl<error::Error, convert::Infallible> : ImplBase<convert::Infallible> {
-    auto source() const noexcept -> Option<error::ErrorRef> { __builtin_unreachable(); }
+    auto source() const noexcept -> Option<error::ErrorRef> { rstd::unreachable(); }
 };
 
 template<typename T, typename Self>

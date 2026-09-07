@@ -77,7 +77,7 @@ public:
         case JsonValueKind::Array: return parse_array();
         case JsonValueKind::Object: return parse_object();
         }
-        __builtin_unreachable();
+        rstd::unreachable();
     }
 
     auto parse() -> ParseResult {

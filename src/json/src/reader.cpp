@@ -429,7 +429,7 @@ auto JsonReader::skip_value() -> Result<empty, rstd::json::Error> {
         }
     }
     }
-    __builtin_unreachable();
+    rstd::unreachable();
 }
 
 auto JsonReader::finish() -> Result<empty, rstd::json::Error> {
