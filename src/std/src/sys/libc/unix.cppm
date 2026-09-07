@@ -1,13 +1,18 @@
 module;
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#if defined(__APPLE__)
+#include <arpa/inet.h>
+#endif
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <sys/file.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#if defined(__linux__)
 #include <sys/sysmacros.h>
+#endif
 #include <unistd.h>
 #include <sched.h>
 #include <stdlib.h>
@@ -30,8 +35,13 @@ extern "C" int posix_spawn_file_actions_addchdir(posix_spawn_file_actions_t*, co
 
 export module rstd:sys.libc.unix;
 
+#if defined(__APPLE__)
+inline constexpr auto _RSTD_CLOCK_MONOTONIC = CLOCK_MONOTONIC;
+inline constexpr auto _RSTD_CLOCK_REALTIME  = CLOCK_REALTIME;
+#else
 inline constexpr auto _CLOCK_MONOTONIC = CLOCK_MONOTONIC;
 inline constexpr auto _CLOCK_REALTIME  = CLOCK_REALTIME;
+#endif
 
 inline constexpr auto _ENOENT        = ENOENT;
 inline constexpr auto _EACCES        = EACCES;
@@ -118,8 +128,13 @@ inline constexpr auto _SEEK_END        = SEEK_END;
 inline constexpr auto _AF_INET       = AF_INET;
 inline constexpr auto _AF_INET6      = AF_INET6;
 inline constexpr auto _SOCK_STREAM   = SOCK_STREAM;
+#if defined(__APPLE__)
+inline constexpr auto _SOCK_CLOEXEC  = 0;
+inline constexpr auto _SOCK_NONBLOCK = 0;
+#else
 inline constexpr auto _SOCK_CLOEXEC  = SOCK_CLOEXEC;
 inline constexpr auto _SOCK_NONBLOCK = SOCK_NONBLOCK;
+#endif
 inline constexpr auto _SOL_SOCKET    = SOL_SOCKET;
 inline constexpr auto _SO_REUSEADDR  = SO_REUSEADDR;
 inline constexpr auto _SO_ERROR      = SO_ERROR;
@@ -293,16 +308,35 @@ inline auto online_processor_count() noexcept -> long {
     return _rstd_online_processor_count();
 }
 using ::posix_memalign;
+#if defined(__APPLE__)
+// macOS exposes these as byte-swap macros in <machine/endian.h>; provide
+// functions so call sites in socket.cppm can use `libc::htons(...)`.
+#undef htons
+#undef htonl
+#undef ntohs
+#undef ntohl
+inline auto htons(uint16_t value) noexcept -> uint16_t { return __builtin_bswap16(value); }
+inline auto htonl(uint32_t value) noexcept -> uint32_t { return __builtin_bswap32(value); }
+inline auto ntohs(uint16_t value) noexcept -> uint16_t { return __builtin_bswap16(value); }
+inline auto ntohl(uint32_t value) noexcept -> uint32_t { return __builtin_bswap32(value); }
+#else
 using ::htons;
 using ::htonl;
 using ::ntohs;
 using ::ntohl;
+#endif
 
 using ::clock_gettime;
 using ::nanosleep;
 using ::gmtime_r;
+#if defined(__APPLE__)
+using ::clockid_t;
+inline constexpr ::clockid_t CLOCK_MONOTONIC = static_cast<::clockid_t>(_RSTD_CLOCK_MONOTONIC);
+inline constexpr ::clockid_t CLOCK_REALTIME  = static_cast<::clockid_t>(_RSTD_CLOCK_REALTIME);
+#else
 inline constexpr auto CLOCK_MONOTONIC = _CLOCK_MONOTONIC;
 inline constexpr auto CLOCK_REALTIME  = _CLOCK_REALTIME;
+#endif
 inline constexpr auto EAGAIN          = _EAGAIN;
 inline constexpr auto ENOENT          = _ENOENT;
 inline constexpr auto EACCES          = _EACCES;
@@ -380,13 +414,19 @@ using ::posix_spawnattr_destroy;
 using ::fork;
 using ::chdir;
 using ::execvp;
+#if defined(__APPLE__)
+extern "C" char** environ;
+#else
 using ::environ;
+#endif
 using ::mkstemp;
 using ::mkdtemp;
 using ::waitpid;
 inline constexpr auto WNOHANG_ = WNOHANG;
 using ::pipe;
+#if !defined(__APPLE__)
 using ::pipe2;
+#endif
 using ::close;
 using ::dup;
 using ::dup2;
@@ -397,7 +437,11 @@ using ::lseek;
 using ::pread;
 using ::pwrite;
 using ::fsync;
+#if defined(__APPLE__)
+inline auto fdatasync(int fd) noexcept -> int { return ::fsync(fd); }
+#else
 using ::fdatasync;
+#endif
 using ::ftruncate;
 using ::mmap;
 using ::munmap;
@@ -498,7 +542,12 @@ inline void set_in6_addr_octet(::in6_addr& addr, unsigned int index, unsigned ch
 using stat_t = struct ::stat;
 /// `struct timespec` aliased to avoid the `struct` keyword leaking into call sites.
 using timespec_t   = struct ::timespec;
+#if defined(__APPLE__)
+struct itimerspec { ::timespec it_interval; ::timespec it_value; };
+using itimerspec_t = itimerspec;
+#else
 using itimerspec_t = struct ::itimerspec;
+#endif
 
 inline constexpr auto SIGKILL    = _SIGKILL;
 inline constexpr auto O_CLOEXEC  = _O_CLOEXEC;
@@ -530,6 +579,44 @@ inline constexpr auto AF_INET6      = _AF_INET6;
 inline constexpr auto SOCK_STREAM   = _SOCK_STREAM;
 inline constexpr auto SOCK_CLOEXEC  = _SOCK_CLOEXEC;
 inline constexpr auto SOCK_NONBLOCK = _SOCK_NONBLOCK;
+
+#if defined(__APPLE__)
+/// macOS has no `pipe2` syscall; emulate it with `pipe` + `fcntl`.
+inline auto pipe2(int fds[2], int flags) noexcept -> int {
+    constexpr int supported_flags = O_CLOEXEC | O_NONBLOCK;
+    if ((flags & ~supported_flags) != 0) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (::pipe(fds) != 0) return -1;
+
+    auto fail = [&]() noexcept -> int {
+        const int error = errno;
+        ::close(fds[0]);
+        ::close(fds[1]);
+        errno = error;
+        return -1;
+    };
+
+    if (flags & O_CLOEXEC) {
+        const int fd0_flags = ::fcntl(fds[0], F_GETFD, 0);
+        if (fd0_flags < 0 || ::fcntl(fds[0], F_SETFD, fd0_flags | FD_CLOEXEC) < 0)
+            return fail();
+        const int fd1_flags = ::fcntl(fds[1], F_GETFD, 0);
+        if (fd1_flags < 0 || ::fcntl(fds[1], F_SETFD, fd1_flags | FD_CLOEXEC) < 0)
+            return fail();
+    }
+    if (flags & O_NONBLOCK) {
+        const int fd0_flags = ::fcntl(fds[0], F_GETFL, 0);
+        if (fd0_flags < 0 || ::fcntl(fds[0], F_SETFL, fd0_flags | O_NONBLOCK) < 0)
+            return fail();
+        const int fd1_flags = ::fcntl(fds[1], F_GETFL, 0);
+        if (fd1_flags < 0 || ::fcntl(fds[1], F_SETFL, fd1_flags | O_NONBLOCK) < 0)
+            return fail();
+    }
+    return 0;
+}
+#endif
 inline constexpr auto SOL_SOCKET    = _SOL_SOCKET;
 inline constexpr auto SO_REUSEADDR  = _SO_REUSEADDR;
 inline constexpr auto SO_ERROR      = _SO_ERROR;

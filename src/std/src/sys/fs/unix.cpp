@@ -8,6 +8,13 @@ import :path;
 import :sys.libc;
 import :time;
 import rstd.alloc;
+#if defined(__APPLE__)
+#define _RSTD_STAT_ATIM st_atimespec
+#define _RSTD_STAT_MTIM st_mtimespec
+#else
+#define _RSTD_STAT_ATIM st_atim
+#define _RSTD_STAT_MTIM st_mtim
+#endif
 
 namespace rstd::sys::fs::unix
 {
@@ -75,10 +82,10 @@ auto metadata_from_stat(libc::stat_t const& stat) -> MetadataData {
         .file_type   = file_type_from_mode(mode),
         .len         = u64(stat.st_size),
         .permissions = u32(mode & 0777u),
-        .accessed    = rstd::time::SystemTime::from_unix_time(i64(stat.st_atim.tv_sec),
-                                                              u32(stat.st_atim.tv_nsec)),
-        .modified    = rstd::time::SystemTime::from_unix_time(i64(stat.st_mtim.tv_sec),
-                                                              u32(stat.st_mtim.tv_nsec)),
+        .accessed    = rstd::time::SystemTime::from_unix_time(i64(stat._RSTD_STAT_ATIM.tv_sec),
+                                                              u32(stat._RSTD_STAT_ATIM.tv_nsec)),
+        .modified    = rstd::time::SystemTime::from_unix_time(i64(stat._RSTD_STAT_MTIM.tv_sec),
+                                                              u32(stat._RSTD_STAT_MTIM.tv_nsec)),
         .created     = None(),
         .dev         = u64(stat.st_dev),
         .rdev_major  = u32(libc::major(stat.st_rdev)),

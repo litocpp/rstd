@@ -7,6 +7,8 @@ export import :sys.pal.poll.types;
 import :sys.pal.linux.poll;
 #elif RSTD_OS_WINDOWS
 import :sys.pal.windows.poll;
+#elif RSTD_OS_APPLE
+import :sys.pal.macos.poll;
 #endif
 
 export namespace rstd::sys::pal::poll
@@ -16,6 +18,8 @@ export namespace rstd::sys::pal::poll
 namespace backend = rstd::sys::pal::linux::poll;
 #elif RSTD_OS_WINDOWS
 namespace backend = rstd::sys::pal::windows::poll;
+#elif RSTD_OS_APPLE
+namespace backend = rstd::sys::pal::macos::poll;
 #endif
 
 using backend::Poller;

@@ -63,7 +63,12 @@ auto Thread::operator==(const Thread& other) const -> bool {
 }
 
 void Thread::set_name(ref<ffi::CStr> name) {
+#if defined(__APPLE__)
+    // macOS only allows naming the current thread; its API has no thread id.
+    libc::pthread_setname_np(name.as_ptr());
+#else
     libc::pthread_setname_np(current().id, name.as_ptr());
+#endif
 }
 
 void Thread::sleep(rstd::time::Duration dur) {
