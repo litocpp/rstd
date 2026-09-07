@@ -89,14 +89,33 @@ elseif(UNIX)
       APPEND
       rstd_std_platform_modules
       src/sys/sync/mutex/pthread.cppm
-      src/sys/sync/condvar/pthread.cppm
-      src/sys/sync/thread_parking/pthread.cppm)
+      src/sys/sync/condvar/pthread.cppm)
     list(
       APPEND
       rstd_std_platform_sources
       src/sys/sync/mutex/pthread.cpp
-      src/sys/sync/condvar/pthread.cpp
-      src/sys/sync/thread_parking/pthread.cpp)
+      src/sys/sync/condvar/pthread.cpp)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+      list(
+        APPEND
+        rstd_std_platform_modules
+        src/sys/pal/macos/poll.cppm
+        src/sys/sync/thread_parking/futex.cppm)
+      list(
+        APPEND
+        rstd_std_platform_sources
+        src/sys/pal/unix/futex.cpp
+        src/sys/sync/thread_parking/futex.cpp)
+    else()
+      list(
+        APPEND
+        rstd_std_platform_modules
+        src/sys/sync/thread_parking/pthread.cppm)
+      list(
+        APPEND
+        rstd_std_platform_sources
+        src/sys/sync/thread_parking/pthread.cpp)
+    endif()
   endif()
 else()
   list(APPEND rstd_std_platform_modules src/sys/fs/unsupported.cppm)

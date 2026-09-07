@@ -39,7 +39,7 @@ using ::pthread_self;
 using ::pthread_equal;
 using ::pthread_t;
 
-#if RSTD_OS_LINUX
+#if RSTD_OS_LINUX || RSTD_OS_APPLE
 using ::pthread_setname_np;
 #endif
 

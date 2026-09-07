@@ -41,6 +41,16 @@ namespace args_detail
 inline int                g_argc {};
 inline char const* const* g_argv = nullptr;
 
+#if defined(__APPLE__)
+extern "C" char*** _NSGetArgv(void);
+extern "C" int*   _NSGetArgc(void);
+
+[[gnu::constructor]]
+void rstd_capture_args_apple() {
+    g_argc = *_NSGetArgc();
+    g_argv = const_cast<char const* const*>(*_NSGetArgv());
+}
+#else
 extern "C" inline void rstd_capture_args(int argc, char** argv, char**) {
     g_argc = argc;
     g_argv = argv;
@@ -50,6 +60,7 @@ using init_fn_t = void (*)(int, char**, char**);
 
 [[gnu::used, gnu::retain, gnu::section(".init_array.00099")]]
 inline init_fn_t rstd_args_init_entry = &rstd_capture_args;
+#endif
 } // namespace args_detail
 
 void args_capture(int argc, char const* const* argv) {

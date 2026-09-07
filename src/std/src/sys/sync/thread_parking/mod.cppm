@@ -2,7 +2,7 @@ module;
 #include <rstd/macro.hpp>
 export module rstd:sys.sync.thread_parking;
 
-#if RSTD_OS_LINUX || RSTD_OS_WINDOWS
+#if RSTD_OS_LINUX || RSTD_OS_WINDOWS || RSTD_OS_APPLE
 import :sys.sync.thread_parking.futex;
 namespace rstd::sys::sync::thread_parking
 {

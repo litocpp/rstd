@@ -3,7 +3,7 @@ name = "rstd-dlopn"
 version.workspace = true
 license.workspace = true
 authors.workspace = true
-target = { os = "linux" }
+target = { os = ["linux", "macos"] }
 
 [lib]
 name = "rstd-dlopn"
@@ -12,6 +12,9 @@ archive = "rstd.dlopn"
 sources = ["mod.cppm", "dlopn.cpp"]
 
 [usage]
+[[when]]
+condition = 'target.os == "linux"'
+[when.usage]
 system-libraries = ["dl"]
 
 [dependencies.rstd-std]
