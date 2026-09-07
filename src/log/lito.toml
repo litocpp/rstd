@@ -17,12 +17,6 @@ sources = [
   "env_logger.cppm",
 ]
 
-[dependencies.rstd-core]
-path = "../.."
-version = "0.1.0"
-pub = true
-
-[dependencies.rstd-std]
-path = "../.."
-version = "0.1.0"
-pub = true
+[dependencies]
+rstd-core = { workspace = true, pub = true }
+rstd-std = { workspace = true, pub = true }

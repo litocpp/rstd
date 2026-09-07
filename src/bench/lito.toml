@@ -9,7 +9,5 @@ name = "rstd-bench"
 module = "rstd.bench"
 archive = "rstd.bench"
 
-[dependencies.rstd-std]
-path = "../.."
-version = "0.1.0"
-pub = true
+[dependencies]
+rstd-std = { workspace = true, pub = true }

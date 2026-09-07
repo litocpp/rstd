@@ -9,7 +9,5 @@ name = "rstd-runtime"
 module = "rstd.runtime"
 archive = "rstd.runtime"
 
-[dependencies.rstd-basic]
-path = "../.."
-version = "0.1.0"
-pub = true
+[dependencies]
+rstd-basic = { workspace = true, pub = true }

@@ -11,11 +11,6 @@ archive = "rstd.core"
 
 [usage]
 public-include-directories = ["include"]
-[dependencies.rstd-basic]
-path = "../.."
-version = "0.1.0"
-pub = true
-
-[dependencies.rstd-runtime]
-path = "../.."
-version = "0.1.0"
+[dependencies]
+rstd-basic = { workspace = true, pub = true }
+rstd-runtime = { workspace = true }

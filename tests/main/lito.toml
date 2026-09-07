@@ -127,32 +127,14 @@ sources = [
 package = "rstd-std"
 sources = ["async/io_backend.cppm"]
 
-[dependencies.rstd-std]
-path = "../../src/std"
-
-[dependencies.rstd-test]
-path = "../../src/test"
-
-[dependencies.rstd-json]
-path = "../../src/json"
-
-[dependencies.rstd-toml]
-path = "../../src/toml"
-
-[dependencies.rstd-parse]
-path = "../../src/parse"
-
-[dependencies.rstd-serde]
-path = "../../src/serde"
-
-[dependencies.rstd-log]
-path = "../../src/log"
-
-[dependencies.rstd-argparse]
-path = "../../src/argparse"
-
-[dependencies.rstd-cppstd]
-path = "../../src/cppstd"
-
-[dependencies.rstd-bench]
-path = "../../src/bench"
+[dependencies]
+rstd-std = { path = "../../src/std" }
+rstd-test = { path = "../../src/test" }
+rstd-json = { path = "../../src/json" }
+rstd-toml = { path = "../../src/toml" }
+rstd-parse = { path = "../../src/parse" }
+rstd-serde = { path = "../../src/serde" }
+rstd-log = { path = "../../src/log" }
+rstd-argparse = { path = "../../src/argparse" }
+rstd-cppstd = { path = "../../src/cppstd" }
+rstd-bench = { path = "../../src/bench" }

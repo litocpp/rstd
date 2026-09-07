@@ -9,12 +9,6 @@ name = "rstd-parse"
 module = "rstd.parse"
 archive = "rstd.parse"
 
-[dependencies.rstd-core]
-path = "../.."
-version = "0.1.0"
-pub = true
-
-[dependencies.rstd-alloc]
-path = "../.."
-version = "0.1.0"
-pub = true
+[dependencies]
+rstd-core = { workspace = true, pub = true }
+rstd-alloc = { workspace = true, pub = true }

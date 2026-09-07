@@ -5,14 +5,8 @@ name = "rstd-toml-conformance-tests"
 name = "rstd-toml-conformance-tests"
 sources = ["conformance_decoder.cpp"]
 
-[dependencies.rstd-std]
-path = "../../src/std"
-
-[dependencies.rstd-json]
-path = "../../src/json"
-
-[dependencies.rstd-toml]
-path = "../../src/toml"
-
-[dependencies.rstd-test]
-path = "../../src/test"
+[dependencies]
+rstd-std = { path = "../../src/std" }
+rstd-json = { path = "../../src/json" }
+rstd-toml = { path = "../../src/toml" }
+rstd-test = { path = "../../src/test" }

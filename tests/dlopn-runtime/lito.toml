@@ -7,8 +7,6 @@ module = "rstd.tests.dlopn"
 name = "rstd-dlopn-tests"
 sources = ["main.cpp", "dlopn.cpp"]
 
-[dependencies.rstd-dlopn]
-path = "../../src/dlopn"
-
-[dependencies.rstd-test]
-path = "../../src/test"
+[dependencies]
+rstd-dlopn = { path = "../../src/dlopn" }
+rstd-test = { path = "../../src/test" }

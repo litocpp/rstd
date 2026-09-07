@@ -21,14 +21,8 @@ private-definitions = [
   "RSTD_BENCH_BUILD_TYPE=\"Lito\"",
   "RSTD_BENCH_ASAN=0",
 ]
-[dependencies.rstd-bench]
-path = ".."
-
-[dependencies.rstd-cppstd]
-path = ".."
-
-[dependencies.rstd-json]
-path = ".."
-
-[dependencies.rstd-std]
-path = ".."
+[dependencies]
+rstd-bench = { path = ".." }
+rstd-cppstd = { path = ".." }
+rstd-json = { path = ".." }
+rstd-std = { path = ".." }

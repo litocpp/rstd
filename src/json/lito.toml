@@ -9,21 +9,8 @@ name = "rstd-json"
 module = "rstd.json"
 archive = "rstd.json"
 
-[dependencies.rstd-core]
-path = "../.."
-version = "0.1.0"
-pub = true
-
-[dependencies.rstd-std]
-path = "../.."
-version = "0.1.0"
-pub = true
-
-[dependencies.rstd-serde]
-path = "../serde"
-version = "0.1.0"
-pub = true
-
-[dependencies.rstd-parse]
-path = "../parse"
-version = "0.1.0"
+[dependencies]
+rstd-core = { workspace = true, pub = true }
+rstd-std = { workspace = true, pub = true }
+rstd-serde = { workspace = true, pub = true }
+rstd-parse = { workspace = true }

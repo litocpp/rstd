@@ -359,8 +359,6 @@ source = "lifetimebound_positive.cpp"
 outcome = "success"
 options = ["-Werror=dangling"]
 
-[dependencies.rstd-std]
-path = "../../src/std"
-
-[dependencies.rstd-parse]
-path = "../../src/parse"
+[dependencies]
+rstd-std = { path = "../../src/std" }
+rstd-parse = { path = "../../src/parse" }

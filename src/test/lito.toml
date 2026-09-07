@@ -11,7 +11,5 @@ archive = "rstd.test"
 
 [usage]
 public-include-directories = ["include"]
-[dependencies.rstd-std]
-path = "../std"
-version = "0.1.0"
-pub = true
+[dependencies]
+rstd-std = { workspace = true, pub = true }
