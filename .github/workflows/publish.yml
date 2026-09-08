@@ -1,0 +1,67 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rstd-registry-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish packages
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Publish packages
+        uses: hypengw/lito-action@v0.1.0
+        with:
+          command: publish
+          token: ${{ secrets.LITO_TOKEN }}
+          packages: |
+            rstd-basic
+            rstd-nostd
+            rstd-runtime
+            rstd-core
+            rstd-alloc
+            rstd-parse
+            rstd-serde
+            rstd-std
+            rstd-argparse
+            rstd-bench
+            rstd-test
+            rstd-cppstd
+            rstd-dlopn
+            rstd-log
+            rstd-json
+            rstd-toml
+          publish-interval-seconds: 20
+
+  release:
+    name: Release
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs: publish
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Publish immutable release
+        uses: ncipollo/release-action@v1
+        with:
+          generateReleaseNotes: true
+          immutableCreate: true
+          tag: ${{ github.ref_name }}
