@@ -157,7 +157,7 @@ TEST(Process, CommandEnvironmentCanClearAndAddValues) {
 TEST(Process, CommandEnvironmentDoesNotMutateParent) {
     constexpr auto key = "RSTD_PROCESS_ENV_PARENT_GUARD"_str;
     ASSERT_TRUE(rstd::env::var(key).is_none());
-    auto result = rstd::process::Command::make("/bin/true"_str).env(key, "child"_str).status();
+    auto result = rstd::process::Command::make("true"_str).env(key, "child"_str).status();
     ASSERT_TRUE(result.is_ok());
     EXPECT_TRUE(result->success());
     EXPECT_TRUE(rstd::env::var(key).is_none());
@@ -176,12 +176,12 @@ TEST(Process, CommandEnvironmentRejectsNul) {
 }
 
 TEST(Process, CommandCurrentDirectory) {
-    auto directory = rstd::path::PathBuf::from("/tmp"_str);
+    auto directory = rstd::path::PathBuf::from("/"_str);
     auto res = rstd::process::Command::make("pwd"_str).current_dir(directory.as_path()).output();
     ASSERT_TRUE(res.is_ok());
     auto out = res.unwrap();
     EXPECT_TRUE(out.status.success());
-    EXPECT_EQ(to_std_string(out.stdout_buf), "/tmp\n");
+    EXPECT_EQ(to_std_string(out.stdout_buf), "/\n");
 }
 
 TEST(Process, CommandCurrentDirectoryReportsSpawnFailure) {
@@ -194,15 +194,15 @@ TEST(Process, CommandCurrentDirectoryReportsSpawnFailure) {
 }
 
 TEST(Process, CommandCurrentDirectoryWorksWithForkExecFallback) {
-    auto directory = rstd::path::PathBuf::from("/tmp"_str);
+    auto directory = rstd::path::PathBuf::from("/"_str);
     auto result    = rstd::process::Command::make("pwd"_str)
                          .current_dir(directory.as_path())
-                         .env("PATH"_str, "/usr/bin"_str)
+                         .env("PATH"_str, "/bin:/usr/bin"_str)
                          .output();
     ASSERT_TRUE(result.is_ok());
     auto output = result.unwrap();
     EXPECT_TRUE(output.status.success());
-    EXPECT_EQ(to_std_string(output.stdout_buf), "/tmp\n");
+    EXPECT_EQ(to_std_string(output.stdout_buf), "/\n");
 }
 
 TEST(Process, ChildTryWait) {

@@ -1,6 +1,7 @@
 #include <rstd/test/gtest.hpp>
 
 #include <atomic>
+#include <cstdlib>
 #include <thread>
 #include <type_traits>
 #include <vector>

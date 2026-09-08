@@ -1,4 +1,5 @@
 #include <rstd/test/gtest.hpp>
+#include <type_traits>
 #include <utility>
 namespace
 {

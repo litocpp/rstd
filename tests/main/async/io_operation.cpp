@@ -122,8 +122,19 @@ auto make_socket_pair() -> Option<NativeSocketPair> {
     return Some(NativeSocketPair { socket_fd(client), socket_fd(accepted) });
 #else
     int sockets[2] = { -1, -1 };
-    if (::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0, sockets) != 0) {
+    if (::socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) != 0) {
         return None<NativeSocketPair>();
+    }
+    for (auto socket : sockets) {
+        const auto status_flags     = ::fcntl(socket, F_GETFL, 0);
+        const auto descriptor_flags = ::fcntl(socket, F_GETFD, 0);
+        if (status_flags < 0 || descriptor_flags < 0 ||
+            ::fcntl(socket, F_SETFL, status_flags | O_NONBLOCK) != 0 ||
+            ::fcntl(socket, F_SETFD, descriptor_flags | FD_CLOEXEC) != 0) {
+            ::close(sockets[0]);
+            ::close(sockets[1]);
+            return None<NativeSocketPair>();
+        }
     }
     return Some(NativeSocketPair { sockets[0], sockets[1] });
 #endif
@@ -133,7 +144,12 @@ auto native_send(os::fd::RawFd fd, const char* data, int len) -> int {
 #if defined(_WIN32)
     return ::send(reinterpret_cast<SOCKET>(fd), data, len, 0);
 #else
-    return static_cast<int>(::send(fd, data, static_cast<size_t>(len), MSG_NOSIGNAL));
+#if defined(MSG_NOSIGNAL)
+    constexpr auto flags = MSG_NOSIGNAL;
+#else
+    constexpr auto flags = 0;
+#endif
+    return static_cast<int>(::send(fd, data, static_cast<size_t>(len), flags));
 #endif
 }
 
