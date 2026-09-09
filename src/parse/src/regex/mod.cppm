@@ -218,7 +218,9 @@ inline constexpr auto compile = []() consteval {
 template<str_::fixed_string Pattern, Options OptionsValue>
 constexpr auto consume(TextCursor& cursor, Regex<Pattern, OptionsValue> expression) noexcept
     -> Option<Span> {
-    auto match = expression.prefix(cursor.remaining_text());
+    auto remaining = cursor.remaining_text();
+    if (remaining.is_err()) return None();
+    auto match = expression.prefix(*remaining);
     if (match.is_none()) return None();
     auto const begin = cursor.position();
     cursor.advance(match->span().len());
@@ -229,12 +231,16 @@ template<str_::fixed_string Pattern, Options OptionsValue>
 constexpr auto consume_captures(TextCursor&                  cursor,
                                 Regex<Pattern, OptionsValue> expression) noexcept
     -> Option<Captures<Pattern, OptionsValue>> {
-    auto captures = expression.prefix_captures(cursor.remaining_text());
+    auto input = cursor.text(Span { usize(), cursor.len() });
+    if (input.is_err()) return None();
+    auto remaining = input->get(cursor.position(), cursor.len());
+    if (remaining.is_none()) return None();
+    auto captures = expression.prefix_captures(*remaining);
     if (captures.is_none()) return None();
     auto const begin  = cursor.position();
     auto const length = captures->template get<0>()->span().len();
     cursor.advance(length);
-    return Some(captures->rebased(cursor.text(Span { usize(), cursor.len() }), begin));
+    return Some(captures->rebased(*input, begin));
 }
 
 } // namespace rstd::parse::regex

@@ -173,7 +173,7 @@ auto JsonReader::parse_string() -> Result<String, rstd::json::Error> {
         while (! eof() && peek() != u8('"') && peek() != u8('\\') && peek() >= u8(0x20)) {
             take();
         }
-        output.push_str(cursor_.consumed_text(chunk_start));
+        output.push_str(cursor_.consumed_text(chunk_start).unwrap());
         if (eof()) break;
         const u8 byte = peek();
         if (byte == u8('"')) {

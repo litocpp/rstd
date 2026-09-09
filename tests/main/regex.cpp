@@ -108,6 +108,26 @@ TEST(Regex, CursorCapturesAreRebasedToTheOriginalInput) {
     EXPECT_EQ(cursor.position(), usize(5));
 }
 
+TEST(Regex, CursorRejectsInvalidTextWithoutConsumption) {
+    constexpr auto expression = regex::compile<"(.)">;
+    auto           cursor     = rstd::parse::TextCursor(rstd::parse::text_input("中z"_str));
+    ASSERT_TRUE(cursor.advance(usize(1)));
+    EXPECT_TRUE(regex::consume(cursor, expression).is_none());
+    EXPECT_TRUE(regex::consume_captures(cursor, expression).is_none());
+    EXPECT_EQ(cursor.position(), usize(1));
+    ASSERT_TRUE(cursor.advance(usize(2)));
+    auto captures = regex::consume_captures(cursor, expression);
+    ASSERT_TRUE(captures.is_some());
+    EXPECT_EQ(captures->template get<1>()->text(), "z"_str);
+    EXPECT_EQ(captures->template get<1>()->start(), usize(3));
+
+    auto raw   = rstd::array<rstd::u8, 1> { rstd::u8(0xff) };
+    auto bytes = rstd::parse::TextCursor(rstd::parse::Input<rstd::u8>(raw.as_slice()));
+    EXPECT_TRUE(regex::consume(bytes, expression).is_none());
+    EXPECT_TRUE(regex::consume_captures(bytes, expression).is_none());
+    EXPECT_EQ(bytes.position(), usize());
+}
+
 TEST(Regex, AmbiguousRepeatsUseTheBoundedNfaExecutor) {
     constexpr auto expression = regex::compile<"(a|aa)*b">;
     constexpr auto input      = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"

@@ -189,7 +189,12 @@ class PatternParser {
             fail(RegexErrorKind::UnexpectedEnd, position());
             return char32_t();
         }
-        auto const remaining  = cursor_.remaining_text();
+        auto remaining_result = cursor_.remaining_text();
+        if (remaining_result.is_err()) {
+            fail(RegexErrorKind::InvalidUtf8, position());
+            return char32_t();
+        }
+        auto const remaining  = *remaining_result;
         auto       indices    = remaining.char_indices();
         auto const code_point = get<1>(indices.next().unwrap_unchecked());
         auto const length     = remaining.len() - indices.as_str().len();

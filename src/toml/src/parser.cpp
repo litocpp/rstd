@@ -356,7 +356,7 @@ private:
         if (! is_bare_key(peek())) return Err(error(TomlErrorCode::ExpectedKey));
         auto begin = cursor_.checkpoint();
         rstd::parse::consume_while(cursor_, is_bare_key);
-        return Ok(String::make(cursor_.consumed_text(begin)));
+        return Ok(String::make(cursor_.consumed_text(begin).unwrap()));
     }
 
     [[nodiscard]]
@@ -747,7 +747,7 @@ private:
         auto span = cursor_.span_from(begin);
         while (! span.is_empty() && is_horizontal(cursor_.input()[span.end - usize(1)])) --span.end;
         if (span.is_empty()) return Err(error(TomlErrorCode::ExpectedValue));
-        auto token = cursor_.text(span);
+        auto token = cursor_.text(span).unwrap();
         if (token == "true"_str) return Ok(Value::Boolean(true));
         if (token == "false"_str) return Ok(Value::Boolean(false));
         if ((token.size() >= usize(5) && token[usize(2)] == u8(':')) ||
@@ -1067,7 +1067,7 @@ public:
         if (span.is_empty()) return Err(error(TomlErrorCode::ExpectedValue));
         return Ok(AssignmentText {
             .key   = rstd::move(key).unwrap(),
-            .value = String::make(cursor_.text(span)),
+            .value = String::make(cursor_.text(span).unwrap()),
         });
     }
 

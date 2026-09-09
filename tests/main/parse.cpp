@@ -5,6 +5,125 @@ import rstd.parse.alloc;
 
 using namespace rstd::literals;
 using namespace rstd::parse;
+using namespace rstd::prelude;
+
+TEST(Parse, PositionedCursorRestoresNewlineState) {
+    PositionedCursor cursor(text_input("a\r\nb\rc\n"_str));
+    auto             start = cursor.checkpoint();
+    ASSERT_TRUE(cursor.advance(usize(2)));
+    EXPECT_EQ(cursor.source_position(), (SourcePosition { usize(2), usize(1) }));
+    auto after_cr = cursor.checkpoint();
+    EXPECT_FALSE(cursor.advance(cursor.len()));
+    EXPECT_EQ(cursor.position(), usize(2));
+    EXPECT_EQ(cursor.source_position(), (SourcePosition { usize(2), usize(1) }));
+    ASSERT_TRUE(consume_literal(cursor, "\nb\rc\n"_str).is_some());
+    EXPECT_EQ(cursor.source_position(), (SourcePosition { usize(4), usize(1) }));
+    EXPECT_TRUE(cursor.is_eof());
+    EXPECT_FALSE(cursor.advance(usize(1)));
+    EXPECT_TRUE(cursor.take().is_none());
+    EXPECT_EQ(cursor.source_position(), (SourcePosition { usize(4), usize(1) }));
+    cursor.rewind(after_cr);
+    ASSERT_TRUE(cursor.take().is_some());
+    EXPECT_EQ(cursor.source_position(), (SourcePosition { usize(2), usize(1) }));
+    cursor.rewind(after_cr);
+    EXPECT_TRUE(consume_literal(cursor, "\nx"_str).is_none());
+    EXPECT_EQ(cursor.position(), usize(2));
+    EXPECT_EQ(cursor.source_position(), (SourcePosition { usize(2), usize(1) }));
+    cursor.rewind(start);
+    EXPECT_EQ(cursor.source_position(), SourcePosition {});
+    EXPECT_EQ(cursor.furthest_position(), cursor.len());
+    ASSERT_TRUE(cursor.advance(cursor.len()));
+    EXPECT_EQ(cursor.source_position(), (SourcePosition { usize(4), usize(1) }));
+}
+
+TEST(Parse, SingleLineAdvancePreservesBoundariesAndCarriageReturnState) {
+    PositionedCursor cursor(text_input("\rX\n"_str));
+    ASSERT_TRUE(cursor.advance(usize(1)));
+    auto start = cursor.checkpoint();
+    EXPECT_FALSE(cursor.advance_single_line_unchecked(usize(3)));
+    EXPECT_EQ(cursor.position(), usize(1));
+    EXPECT_TRUE(cursor.advance_single_line_unchecked(usize()));
+    EXPECT_TRUE(cursor.advance_single_line_unchecked(usize(1)));
+    EXPECT_EQ(cursor.source_position(), (SourcePosition { usize(2), usize(2) }));
+    ASSERT_TRUE(cursor.advance(usize(1)));
+    EXPECT_EQ(cursor.source_position(), (SourcePosition { usize(3), usize(1) }));
+    cursor.rewind(start);
+    EXPECT_EQ(cursor.source_position(), (SourcePosition { usize(2), usize(1) }));
+    EXPECT_EQ(cursor.furthest_position(), usize(3));
+}
+
+TEST(Parse, PositionedCursorBatchAndByteConsumptionAgree) {
+    TextCursor legacy(text_input("a\rb"_str));
+    ASSERT_TRUE(legacy.advance(usize(2)));
+    EXPECT_EQ(legacy.source_position(), (SourcePosition { usize(1), usize(3) }));
+    PositionedCursor empty(text_input(""_str));
+    EXPECT_TRUE(empty.is_eof());
+    EXPECT_TRUE(empty.advance(usize()));
+    EXPECT_FALSE(empty.advance(usize(1)));
+    EXPECT_EQ(empty.source_position(), SourcePosition {});
+    auto             input = text_input("\r\n\r\n中\n\rX"_str);
+    PositionedCursor bytes(input);
+    PositionedCursor batch(input);
+    for (usize offset {}; offset <= input.len(); ++offset) {
+        EXPECT_EQ(bytes.source_position(), batch.source_position(offset));
+        if (! bytes.is_eof()) (void)bytes.take();
+    }
+    ASSERT_TRUE(batch.advance(input.len()));
+    EXPECT_EQ(bytes.source_position(), batch.source_position());
+    auto begin = batch.checkpoint();
+    EXPECT_EQ(consume_while(batch,
+                            [](u8) {
+                                return true;
+                            })
+                  .len(),
+              usize());
+    EXPECT_EQ(batch.span_from(begin).len(), usize());
+    EXPECT_TRUE(batch.advance(usize()));
+
+    PositionedCursor other(input);
+    EXPECT_DEATH(other.rewind(begin), "checkpoint belongs to another cursor");
+    EXPECT_DEATH((void)other.span_from(begin), "invalid parse checkpoint span");
+}
+
+TEST(Parse, TextViewsValidateBytesAndCodepointBoundaries) {
+    TextCursor text_cursor(text_input("a中z"_str));
+    auto       valid = text_cursor.text({ usize(1), usize(4) });
+    ASSERT_TRUE(valid.is_ok());
+    EXPECT_EQ(*valid, "中"_str);
+    EXPECT_EQ(valid->as_bytes().as_raw_ptr(), text_cursor.input().as_raw_ptr() + 1);
+    EXPECT_TRUE(text_cursor.text({ usize(1), usize(3) }).is_err());
+    EXPECT_TRUE(text_cursor.text({ usize(2), usize(4) }).is_err());
+    EXPECT_TRUE(text_cursor.text({ usize(2), usize(2) }).is_err());
+    EXPECT_TRUE(text_cursor.text({ usize(4), usize(4) }).is_ok());
+    ASSERT_TRUE(text_cursor.advance(usize(2)));
+    EXPECT_TRUE(text_cursor.remaining_text().is_err());
+
+    auto       raw = array<u8, 4> { u8('a'), u8(0xff), u8(0xe4), u8(0xb8) };
+    TextCursor bytes(Input<u8>(raw.as_slice()));
+    EXPECT_TRUE(bytes.remaining_text().is_err());
+    EXPECT_EQ(bytes.text({ usize(), usize(1) }).unwrap(), "a"_str);
+    EXPECT_TRUE(bytes.text({ usize(2), usize(4) }).is_err());
+    auto begin = bytes.checkpoint();
+    EXPECT_EQ(consume_while(bytes,
+                            [](u8) {
+                                return true;
+                            })
+                  .len(),
+              raw.len());
+    EXPECT_EQ(bytes.consumed(begin).len(), raw.len());
+    EXPECT_TRUE(bytes.consumed_text(begin).is_err());
+    EXPECT_TRUE(bytes.remaining_text().is_ok());
+}
+
+static_assert([] {
+    PositionedCursor cursor(text_input("x\r\n"_str));
+    (void)cursor.advance(usize(2));
+    auto checkpoint = cursor.checkpoint();
+    (void)cursor.take();
+    cursor.rewind(checkpoint);
+    (void)cursor.take();
+    return cursor.source_position() == SourcePosition { usize(2), usize(1) };
+}());
 
 namespace
 {
@@ -128,7 +247,7 @@ TEST(Parse, CursorOwnsLookaheadSpansAndConsumedViews) {
 
     (void)cursor.take();
     (void)cursor.take();
-    EXPECT_EQ(cursor.consumed_text(begin), "ab"_str);
+    EXPECT_EQ(cursor.consumed_text(begin).unwrap(), "ab"_str);
     EXPECT_EQ(cursor.view(cursor.span_from(begin)).len(), rstd::usize(2));
     EXPECT_EQ(cursor.remaining(), rstd::usize(2));
     EXPECT_EQ(cursor.source_position(),
@@ -258,7 +377,7 @@ TEST(Parse, ConsumeFragmentsOwnRollbackAndSpans) {
 
     auto literal = consume_literal(cursor, "ab"_str);
     ASSERT_TRUE(literal.is_some());
-    EXPECT_EQ(cursor.text(*literal), "ab"_str);
+    EXPECT_EQ(cursor.text(*literal).unwrap(), "ab"_str);
     EXPECT_TRUE(cursor.is_eof());
 }
 
