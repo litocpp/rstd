@@ -20,18 +20,18 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.1"
+version = "0.1.2"
 license = "MIT OR Apache-2.0"
 authors = ["hypengw <hypengwip@gmail.com>"]
 
 [workspace.dependencies]
-rstd-basic = { path = "src/basic", version = "0.1.1" }
-rstd-runtime = { path = "src/runtime", version = "0.1.1" }
-rstd-core = { path = "src/core", version = "0.1.1" }
-rstd-alloc = { path = "src/alloc", version = "0.1.1" }
-rstd-parse = { path = "src/parse", version = "0.1.1" }
-rstd-serde = { path = "src/serde", version = "0.1.1" }
-rstd-std = { path = "src/std", version = "0.1.1" }
+rstd-basic = { path = "src/basic", version = "0.1.2" }
+rstd-runtime = { path = "src/runtime", version = "0.1.2" }
+rstd-core = { path = "src/core", version = "0.1.2" }
+rstd-alloc = { path = "src/alloc", version = "0.1.2" }
+rstd-parse = { path = "src/parse", version = "0.1.2" }
+rstd-serde = { path = "src/serde", version = "0.1.2" }
+rstd-std = { path = "src/std", version = "0.1.2" }
 
 [profile.base]
 exceptions = false
