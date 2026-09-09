@@ -4,10 +4,17 @@ module;
 
 #include <initializer_list>
 #include <compare>
-#include <iterator>
-#include <memory>
 #include <new>
+#include <type_traits>
 #include <utility>
+
+#if defined(_LIBCPP_VERSION) && __has_include(<__memory/construct_at.h>)
+#include <__memory/construct_at.h>
+#elif defined(__GLIBCXX__) && __has_include(<bits/stl_construct.h>)
+#include <bits/stl_construct.h>
+#else
+#include <memory>
+#endif
 
 export module rstd.basic:std;
 
@@ -22,7 +29,6 @@ export using std::get;
 export using std::strong_ordering;
 export using std::compare_three_way;
 export using std::nullptr_t;
-export using std::iter_value_t;
 export using std::construct_at;
 } // namespace std
 
@@ -83,6 +89,5 @@ using std::invoke_result;
 using std::invoke_result_t;
 using std::is_invocable;
 using std::is_invocable_v;
-using std::iter_value_t;
 
 } // namespace rstd::mtp

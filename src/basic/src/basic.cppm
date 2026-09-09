@@ -165,8 +165,8 @@ constexpr auto lexicographical_compare_three_way(InputIter1 first1,
                                                  Compare    comp) {
     if constexpr (mtp::is_ptr<InputIter1> && mtp::is_ptr<InputIter2>) {
         if (! mtp::is_constant_evaluated()) {
-            using T1 = std::iter_value_t<InputIter1>;
-            using T2 = std::iter_value_t<InputIter2>;
+            using T1 = mtp::rm_cv<mtp::rm_ptr<InputIter1>>;
+            using T2 = mtp::rm_cv<mtp::rm_ptr<InputIter2>>;
 
             if constexpr (mtp::same<T1, T2> && rstd::is_raw_int<T1> && sizeof(T1) == 1) {
                 auto len1    = last1 - first1;
