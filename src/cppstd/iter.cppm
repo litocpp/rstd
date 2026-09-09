@@ -1,20 +1,3 @@
-module;
-#include <iterator>
-#include <deque>
-#include <forward_list>
-#include <list>
-#include <map>
-#include <queue>
-#include <ranges>
-#include <set>
-#include <stack>
-#include <string>
-#include <type_traits>
-#include <unordered_map>
-#include <unordered_set>
-#include <utility>
-#include <vector>
-
 export module rstd.cppstd:iter;
 import rstd;
 import cppstd;

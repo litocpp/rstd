@@ -19,6 +19,7 @@ module;
 #include <condition_variable>
 #include <deque>
 #include <fstream>
+#include <forward_list>
 #include <functional>
 #include <future>
 #include <initializer_list>
@@ -934,6 +935,15 @@ export using std::construct_at;
 
 // <iterator>
 export using std::iter_value_t;
+export using std::iter_reference_t;
+export using std::input_iterator_tag;
+export using std::input_iterator;
+export using std::bidirectional_iterator;
+export using std::sentinel_for;
+export using std::sized_sentinel_for;
+
+// <forward_list>
+export using std::forward_list;
 
 // <span>
 export using std::as_bytes;
