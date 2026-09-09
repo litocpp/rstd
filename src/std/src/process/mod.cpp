@@ -5,6 +5,7 @@ module rstd;
 import :sys.libc;
 import :sys.io.stdio;
 import :sys.pal;
+import :sys.os_str.windows;
 
 using namespace rstd::prelude;
 namespace libc = rstd::sys::libc;
@@ -263,6 +264,29 @@ auto Child::wait_with_output(OutputObserver observer) -> io::Result<Output> {
 namespace rstd::sys::process_impl
 {
 
+auto environment_keys_equal(ref<ffi::OsStr> left, ref<ffi::OsStr> right) -> bool {
+#if RSTD_OS_WINDOWS
+    auto wide = [](ref<ffi::OsStr> value) {
+        auto result = ::alloc::vec::Vec<wchar_t>::make();
+        auto units  = rstd::os::windows::ffi::OsStrExt::encode_wide(value);
+        while (auto unit = units.next()) result.push(static_cast<wchar_t>(unit->to_primitive()));
+        return result;
+    };
+    auto a = wide(left);
+    auto b = wide(right);
+    if (a.is_empty() || b.is_empty()) return a.is_empty() && b.is_empty();
+    auto compared = libc::CompareStringOrdinal(a.as_ptr(),
+                                               static_cast<int>(a.len().to_primitive()),
+                                               b.as_ptr(),
+                                               static_cast<int>(b.len().to_primitive()),
+                                               libc::M_TRUE);
+    if (compared == 0) rstd::panic("comparing environment keys failed");
+    return compared == libc::M_CSTR_EQUAL;
+#else
+    return left == right;
+#endif
+}
+
 #if RSTD_OS_UNIX
 auto invalid_environment() -> rstd::io::error::Error {
     return rstd::io::error::Error::from_kind(
@@ -314,19 +338,21 @@ auto child_environment(bool clear, const ::alloc::vec::Vec<rstd::process::EnvAct
     }
 
     for (const auto& action : actions) {
-        if (! valid_environment_key(action.key.as_slice()) ||
-            (action.value.is_some() && ! valid_environment_value(action.value->as_slice()))) {
+        if (! valid_environment_key(action.key.as_os_str().as_encoded_bytes()) ||
+            (action.value.is_some() &&
+             ! valid_environment_value(action.value->as_os_str().as_encoded_bytes()))) {
             return Err(invalid_environment());
         }
 
         for (auto index = result.len(); index != usize();) {
             --index;
-            if (environment_key_matches(result[index], action.key.as_slice())) {
+            if (environment_key_matches(result[index], action.key.as_os_str().as_encoded_bytes())) {
                 (void)result.remove(index);
             }
         }
         if (action.value.is_some()) {
-            auto entry = environment_entry(action.key.as_slice(), action.value->as_slice());
+            auto entry = environment_entry(action.key.as_os_str().as_encoded_bytes(),
+                                           action.value->as_os_str().as_encoded_bytes());
             if (entry.is_err()) return Err(rstd::move(entry).unwrap_err());
             result.push(rstd::move(entry).unwrap());
         }
@@ -541,31 +567,8 @@ auto invalid_process_input() -> rstd::io::error::Error {
         rstd::io::error::ErrorKind { rstd::io::error::ErrorKind::InvalidInput });
 }
 
-auto wide_string(slice<u8> value)
-    -> rstd::result::Result<::alloc::vec::Vec<wchar_t>, rstd::io::error::Error> {
-    if (value.len().to_primitive() > 0x7fffffff) return Err(invalid_process_input());
-    for (auto byte : value) {
-        if (byte == u8()) return Err(invalid_process_input());
-    }
-    if (value.is_empty()) return Ok(::alloc::vec::Vec<wchar_t>::make());
-
-    auto input    = reinterpret_cast<const char*>(value.as_raw_ptr());
-    auto count    = static_cast<int>(value.len().to_primitive());
-    auto required = libc::MultiByteToWideChar(
-        libc::M_CP_UTF8, libc::M_MB_ERR_INVALID_CHARS, input, count, nullptr, 0);
-    if (required <= 0) return Err(windows_process_error());
-    auto result =
-        ::alloc::vec::Vec<wchar_t>::with_capacity(usize(static_cast<rstd::size_t>(required)));
-    result.resize(usize(static_cast<rstd::size_t>(required)), wchar_t {});
-    if (libc::MultiByteToWideChar(libc::M_CP_UTF8,
-                                  libc::M_MB_ERR_INVALID_CHARS,
-                                  input,
-                                  count,
-                                  result.as_mut_ptr(),
-                                  required) != required) {
-        return Err(windows_process_error());
-    }
-    return Ok(rstd::move(result));
+auto wide_string(ref<rstd::ffi::OsStr> value) -> rstd::io::Result<::alloc::vec::Vec<wchar_t>> {
+    return rstd::sys::os_str::windows::to_wide(value, false);
 }
 
 void append_wide_argument(::alloc::vec::Vec<wchar_t>& command, slice<wchar_t> argument) {
@@ -601,15 +604,15 @@ void append_wide_argument(::alloc::vec::Vec<wchar_t>& command, slice<wchar_t> ar
     command.push(L'"');
 }
 
-auto command_line(const ::alloc::ffi::CString&                    program,
-                  const ::alloc::vec::Vec<::alloc::ffi::CString>& arguments)
+auto command_line(const rstd::ffi::OsString&                    program,
+                  const ::alloc::vec::Vec<rstd::ffi::OsString>& arguments)
     -> rstd::result::Result<::alloc::vec::Vec<wchar_t>, rstd::io::error::Error> {
-    auto program_wide = wide_string(program.to_bytes());
+    auto program_wide = wide_string(program.as_os_str());
     if (program_wide.is_err()) return Err(rstd::move(program_wide).unwrap_err());
     auto result = ::alloc::vec::Vec<wchar_t>::make();
     append_wide_argument(result, program_wide->as_slice());
     for (const auto& argument : arguments) {
-        auto converted = wide_string(argument.to_bytes());
+        auto converted = wide_string(argument.as_os_str());
         if (converted.is_err()) return Err(rstd::move(converted).unwrap_err());
         result.push(L' ');
         append_wide_argument(result, converted->as_slice());
@@ -661,17 +664,17 @@ auto child_environment(bool clear, const ::alloc::vec::Vec<rstd::process::EnvAct
 
     for (const auto& action : actions) {
         if (action.key.is_empty()) return Err(invalid_process_input());
-        for (auto byte : action.key) {
+        for (auto byte : action.key.as_os_str().as_encoded_bytes()) {
             if (byte == u8() || byte == u8('=')) return Err(invalid_process_input());
         }
-        auto key = wide_string(action.key.as_slice());
+        auto key = wide_string(action.key.as_os_str());
         if (key.is_err()) return Err(rstd::move(key).unwrap_err());
         for (auto index = entries.len(); index != usize();) {
             --index;
             if (same_environment_key(entries[index], key->as_slice())) (void)entries.remove(index);
         }
         if (action.value.is_none()) continue;
-        auto value = wide_string(action.value->as_slice());
+        auto value = wide_string(action.value->as_os_str());
         if (value.is_err()) return Err(rstd::move(value).unwrap_err());
         auto entry =
             ::alloc::vec::Vec<wchar_t>::with_capacity(key->len() + value->len() + usize(1));
@@ -748,15 +751,34 @@ auto Spawn::spawn(rstd::process::Command& cmd)
 #if RSTD_OS_UNIX
     using namespace rstd::process;
 
-    auto& prog     = cmd.program_;
-    auto  prog_ptr = prog.as_ptr();
+    const auto cstring = [](ref<ffi::OsStr> value) -> rstd::io::Result<::alloc::ffi::CString> {
+        auto result = ::alloc::ffi::CString::make(Vec<u8>::from(value.as_encoded_bytes()));
+        if (result.is_err()) return Err(invalid_environment());
+        return Ok(rstd::move(result).unwrap_unchecked());
+    };
+    auto program = cstring(cmd.program_.as_os_str());
+    if (program.is_err()) return Err(rstd::move(program).unwrap_err_unchecked());
+    auto prog      = rstd::move(program).unwrap_unchecked();
+    auto prog_ptr  = prog.as_ptr();
+    auto arguments = Vec<::alloc::ffi::CString>::with_capacity(cmd.args_.len());
+    for (const auto& argument : cmd.args_) {
+        auto converted = cstring(argument.as_os_str());
+        if (converted.is_err()) return Err(rstd::move(converted).unwrap_err_unchecked());
+        arguments.push(rstd::move(converted).unwrap_unchecked());
+    }
+    auto directory = Option<::alloc::ffi::CString> {};
+    if (cmd.cwd_.is_some()) {
+        auto converted = cstring(cmd.cwd_->as_path().as_os_str());
+        if (converted.is_err()) return Err(rstd::move(converted).unwrap_err_unchecked());
+        directory = Some(rstd::move(converted).unwrap_unchecked());
+    }
 
     // argv: [program, args..., nullptr]
     auto argc     = cmd.args_.len() + usize(2);
     auto argv_buf = ::alloc::vec::Vec<char*>::with_capacity(argc);
     argv_buf.push(const_cast<char*>(prog_ptr));
     for (rstd::size_t i = 0; i < cmd.args_.len().to_primitive(); ++i) {
-        auto ptr = cmd.args_.at(usize(i)).as_ptr();
+        auto ptr = arguments.at(usize(i)).as_ptr();
         argv_buf.push(const_cast<char*>(ptr));
     }
     argv_buf.push(nullptr);
@@ -822,9 +844,11 @@ auto Spawn::spawn(rstd::process::Command& cmd)
 
     auto path_changed = cmd.env_clear_;
     for (const auto& action : cmd.env_actions_) {
-        if (action.key.len() == usize(4) && action.key[usize {}] == u8('P') &&
-            action.key[usize(1)] == u8('A') && action.key[usize(2)] == u8('T') &&
-            action.key[usize(3)] == u8('H')) {
+        if (action.key.len() == usize(4) &&
+            action.key.as_os_str().as_encoded_bytes()[usize {}] == u8('P') &&
+            action.key.as_os_str().as_encoded_bytes()[usize(1)] == u8('A') &&
+            action.key.as_os_str().as_encoded_bytes()[usize(2)] == u8('T') &&
+            action.key.as_os_str().as_encoded_bytes()[usize(3)] == u8('H')) {
             path_changed = true;
             break;
         }
@@ -841,7 +865,7 @@ auto Spawn::spawn(rstd::process::Command& cmd)
         .program       = prog_ptr,
         .arguments     = argv_buf.begin(),
         .environment   = environment_pointers.begin(),
-        .directory     = cmd.cwd_.is_some() ? cmd.cwd_->as_ptr() : nullptr,
+        .directory     = directory.is_some() ? directory->as_ptr() : nullptr,
         .stdin_config  = cmd.cfg_stdin_,
         .stdout_config = cmd.cfg_stdout_,
         .stderr_config = cmd.cfg_stderr_,
@@ -997,7 +1021,7 @@ auto Spawn::spawn(rstd::process::Command& cmd)
 
     auto directory = Option<::alloc::vec::Vec<wchar_t>> {};
     if (cmd.cwd_.is_some()) {
-        auto converted = wide_string(cmd.cwd_->to_bytes());
+        auto converted = wide_string(cmd.cwd_->as_path().as_os_str());
         if (converted.is_err()) {
             auto error = rstd::move(converted).unwrap_err();
             cleanup();

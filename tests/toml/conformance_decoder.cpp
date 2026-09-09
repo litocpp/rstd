@@ -174,12 +174,12 @@ auto decode() -> int {
 }
 
 TEST(TomlConformance, Version220) {
-    auto configured = rstd::env::var("RSTD_TOML_TEST_EXECUTABLE"_str);
+    auto configured = rstd::env::var_os("RSTD_TOML_TEST_EXECUTABLE"_str);
     if (configured.is_none() || configured->is_empty()) {
         GTEST_SKIP() << "RSTD_TOML_TEST_EXECUTABLE is not configured";
     }
 
-    auto version = rstd::process::Command::make(configured->as_str()).arg("version"_str).output();
+    auto version = rstd::process::Command::make(configured->as_os_str()).arg("version"_str).output();
     if (version.is_err()) {
         FAIL() << "toml-test version failed";
     }
@@ -191,7 +191,7 @@ TEST(TomlConformance, Version220) {
     auto arguments = rstd::env::args();
     auto program   = arguments.next();
     ASSERT_TRUE(program.is_some());
-    auto status = rstd::process::Command::make(configured->as_str())
+    auto status = rstd::process::Command::make(configured->as_os_str())
                       .arg("test"_str)
                       .arg("-toml"_str)
                       .arg("1.1"_str)

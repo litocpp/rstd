@@ -14,6 +14,17 @@ using rstd::ptr_::non_null::NonNull;
 
 using namespace rstd::prelude;
 
+export namespace alloc::collections
+{
+enum class TryReserveError
+{
+    CapacityOverflow,
+    AllocError
+};
+}
+
+using alloc::collections::TryReserveError;
+
 /// A low-level utility for managing the backing storage of a `Vec`.
 template<typename T, typename A>
 struct RawVec {
@@ -66,28 +77,30 @@ struct RawVec {
     }
 
     /// Reallocates the storage to a new capacity.
-    void grow(usize new_cap, usize len) {
-        if (new_cap <= cap) return;
+    auto try_grow(usize new_cap, usize len) -> Result<empty, TryReserveError> {
+        if (new_cap <= cap) return Ok(empty {});
 
-        auto new_layout = Layout::array<T>(new_cap).unwrap();
+        auto checked_layout = Layout::array<T>(new_cap);
+        if (checked_layout.is_none()) return Err(TryReserveError::CapacityOverflow);
+        auto new_layout = checked_layout.unwrap_unchecked();
 
         if (allocation_layout.size == usize()) {
             auto res = as<Allocator>(allocator).allocate(new_layout);
-            if (res.is_err()) handle_alloc_error(new_layout);
+            if (res.is_err()) return Err(TryReserveError::AllocError);
             ptr = NonNull<T>::make_unchecked(res.unwrap_unchecked().template as_mut_ptr<T>());
         } else if constexpr (mtp::triv_copyable<T>) {
             auto old_layout = allocation_layout;
             auto old_ptr    = ptr.as_mut_ptr();
 
             auto res = as<Allocator>(allocator).grow(old_ptr.as_raw_ptr(), old_layout, new_layout);
-            if (res.is_err()) handle_alloc_error(new_layout);
+            if (res.is_err()) return Err(TryReserveError::AllocError);
 
             ptr = NonNull<T>::make_unchecked(res.unwrap_unchecked().template as_mut_ptr<T>());
         } else {
             auto old_layout = allocation_layout;
             auto old_ptr    = ptr.as_mut_ptr().as_raw_ptr();
             auto res        = as<Allocator>(allocator).allocate(new_layout);
-            if (res.is_err()) handle_alloc_error(new_layout);
+            if (res.is_err()) return Err(TryReserveError::AllocError);
 
             auto new_ptr = res.unwrap_unchecked().template as_mut_ptr<T>().as_raw_ptr();
             for (rstd::size_t index = 0; index < len.to_primitive(); ++index) {
@@ -99,19 +112,24 @@ struct RawVec {
         }
         cap               = new_cap;
         allocation_layout = new_layout;
+        return Ok(empty {});
     }
 
-    void shrink_to_fit(usize len) {
+    void grow(usize new_cap, usize len) {
+        if (try_grow(new_cap, len).is_err()) rstd::panic { "Vec allocation failed" };
+    }
+
+    void shrink_to(usize capacity, usize len) {
         auto old_layout = allocation_layout;
-        auto new_layout = Layout::array<T>(len).unwrap();
+        auto new_layout = Layout::array<T>(capacity).unwrap();
         if (old_layout.size == new_layout.size && old_layout.align == new_layout.align) {
-            cap = len;
+            cap = capacity;
             return;
         }
-        debug_assert(len <= cap);
+        debug_assert(len <= capacity && capacity <= cap);
 
         auto old_ptr = ptr.as_mut_ptr().as_raw_ptr();
-        if (len == usize()) {
+        if (capacity == usize()) {
             as<Allocator>(allocator).deallocate(old_ptr, old_layout);
             reset_ptr();
             return;
@@ -133,9 +151,11 @@ struct RawVec {
             as<Allocator>(allocator).deallocate(old_ptr, old_layout);
             ptr = NonNull<T>::make_unchecked(mut_ptr<T>::from_raw_parts(new_ptr));
         }
-        cap               = len;
+        cap               = capacity;
         allocation_layout = new_layout;
     }
+
+    void shrink_to_fit(usize len) { shrink_to(len, len); }
 
     ~RawVec() {}
 
@@ -327,6 +347,34 @@ public:
         if (new_cap < required) new_cap = required;
         if (new_cap < RawVec<T, A>::MIN_NON_ZERO_CAP) new_cap = RawVec<T, A>::MIN_NON_ZERO_CAP;
         m_buf.grow(new_cap, m_len);
+    }
+
+    auto try_reserve_exact(usize additional) -> Result<empty, TryReserveError> {
+        auto required = m_len.checked_add(additional);
+        if (required.is_none()) return Err(TryReserveError::CapacityOverflow);
+        return m_buf.try_grow(*required, m_len);
+    }
+
+    auto try_reserve(usize additional) -> Result<empty, TryReserveError> {
+        auto required = m_len.checked_add(additional);
+        if (required.is_none()) return Err(TryReserveError::CapacityOverflow);
+        if (*required <= m_buf.cap) return Ok(empty {});
+        auto capacity = m_buf.cap.saturating_mul(usize(2));
+        if (capacity < *required) capacity = *required;
+        if (capacity < RawVec<T, A>::MIN_NON_ZERO_CAP) capacity = RawVec<T, A>::MIN_NON_ZERO_CAP;
+        return m_buf.try_grow(capacity, m_len);
+    }
+
+    void reserve_exact(usize additional) {
+        if (try_reserve_exact(additional).is_err()) rstd::panic { "Vec allocation failed" };
+    }
+
+    void shrink_to_fit() { m_buf.shrink_to_fit(m_len); }
+
+    void shrink_to(usize minimum_capacity) {
+        auto capacity = minimum_capacity < m_len ? m_len : minimum_capacity;
+        if (capacity >= m_buf.cap) return;
+        m_buf.shrink_to(capacity, m_len);
     }
 
     /// Returns a slice containing the entire vector.

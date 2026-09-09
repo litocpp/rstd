@@ -30,6 +30,44 @@ auto string_from_os_string(OsString value) -> String {
 export namespace rstd::env
 {
 
+struct VarError {
+    enum class Kind
+    {
+        NotPresent,
+        NotUnicode
+    };
+    Kind             kind;
+    Option<OsString> value;
+};
+
+using VarsOs = ::alloc::vec::VecIntoIter<tuple<OsString, OsString>>;
+auto vars_os() -> VarsOs;
+
+/// An owned environment snapshot, checked for Unicode during iteration.
+class Vars : public DefaultInClass<Vars, iter::Iterator> {
+    VarsOs inner_;
+
+public:
+    using Item = tuple<String, String>;
+    explicit Vars(VarsOs inner): inner_(rstd::move(inner)) {}
+
+    auto next() -> Option<Item> {
+        auto value = inner_.next();
+        if (value.is_none()) return None();
+        auto key  = rstd::move(value->template get<0>()).into_string();
+        auto text = rstd::move(value->template get<1>()).into_string();
+        if (key.is_err() || text.is_err()) panic("environment variable is not valid Unicode");
+        return Some(Item(rstd::move(key).unwrap_unchecked(), rstd::move(text).unwrap_unchecked()));
+    }
+
+    auto size_hint() const -> iter::SizeHint { return inner_.size_hint(); }
+};
+
+/// Panics during iteration if a name or value is not Unicode. Use `vars_os()` to preserve it.
+auto vars() -> Vars {
+    return Vars(vars_os());
+}
+
 /// The error returned when a path list contains a platform separator that
 /// cannot be represented by `join_paths()`.
 struct JoinPathsError {};
@@ -108,33 +146,31 @@ auto var_os(ref<OsStr> key) -> Option<OsString>;
 
 /// Fetches the environment variable `key` from the current process.
 ///
-/// Returns `None` if the variable is not set.
-/// Panics if the value is not valid Unicode; use `var_os()` to preserve it.
-///
-/// \param key  Null-terminated name of the environment variable.
-/// \return The value as a `String`, or `None`.
-auto var(ref<OsStr> key) -> Option<String> {
+/// Distinguishes an absent variable from a non-Unicode value.
+auto var(ref<OsStr> key) -> Result<String, VarError> {
     auto value = var_os(key);
-    if (value.is_none()) return None();
+    if (value.is_none()) return Err(VarError { VarError::Kind::NotPresent, None() });
     auto converted = rstd::move(value).unwrap().into_string();
-    if (converted.is_err()) rstd::panic("environment value is not valid Unicode");
-    return Some(rstd::move(converted).unwrap());
+    if (converted.is_err())
+        return Err(VarError { VarError::Kind::NotUnicode,
+                              Some(rstd::move(converted).unwrap_err_unchecked()) });
+    return Ok(rstd::move(converted).unwrap_unchecked());
 }
 
 /// Returns the directory used for temporary files.
 auto temp_dir() -> PathBuf {
 #if RSTD_OS_UNIX
-    auto configured = var("TMPDIR"_str);
+    auto configured = var_os("TMPDIR"_str);
     if (configured.is_some() && ! configured->is_empty()) {
         return PathBuf::from(rstd::move(configured).unwrap());
     }
     return PathBuf::from("/tmp"_str);
 #else
-    auto configured = var("TEMP"_str);
+    auto configured = var_os("TEMP"_str);
     if (configured.is_some() && ! configured->is_empty()) {
         return PathBuf::from(rstd::move(configured).unwrap());
     }
-    configured = var("TMP"_str);
+    configured = var_os("TMP"_str);
     if (configured.is_some() && ! configured->is_empty()) {
         return PathBuf::from(rstd::move(configured).unwrap());
     }
@@ -146,15 +182,14 @@ auto temp_dir() -> PathBuf {
 ///
 /// Not thread-safe on Unix platforms.
 ///
-/// \param key    Null-terminated name of the environment variable.
-/// \param value  Null-terminated value to set.
+/// Panics if the name is empty or contains NUL or '=', or the value contains NUL.
 void set_var(ref<OsStr> key, ref<OsStr> value);
 
 /// Removes the environment variable `key` from the current process.
 ///
 /// Not thread-safe on Unix platforms.
 ///
-/// \param key  Null-terminated name of the environment variable to remove.
+/// Panics if the name is empty or contains NUL or '='.
 void remove_var(ref<OsStr> key);
 
 /// An owning iterator over command-line arguments as platform-native strings.
@@ -209,12 +244,26 @@ auto args() -> Args;
 
 /// Manually provides `argc`/`argv` (e.g. from `main`) for platforms where automatic
 /// startup capture is unavailable. Safe to call before `args()`.
+/// Windows always reads the native wide command line and ignores this fallback.
 void args_init(int argc, char const* const* argv);
 
 } // namespace rstd::env
 
 namespace rstd
 {
+
+template<>
+struct Impl<fmt::Display, env::VarError> : ImplBase<env::VarError> {
+    auto fmt(fmt::Formatter& output) const -> bool {
+        return output.write_str(this->self().kind == env::VarError::Kind::NotPresent
+                                    ? "environment variable not found"_str
+                                    : "environment variable is not Unicode"_str);
+    }
+};
+template<>
+struct Impl<fmt::Debug, env::VarError> : Impl<fmt::Display, env::VarError> {};
+template<>
+struct Impl<error::Error, env::VarError> : DefaultInImpl<error::Error, env::VarError> {};
 
 template<>
 struct Impl<fmt::Display, env::JoinPathsError> : ImplBase<env::JoinPathsError> {

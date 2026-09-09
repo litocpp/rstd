@@ -6,6 +6,7 @@ import rstd;
 using namespace rstd::prelude;
 using namespace rstd::literals;
 
+#if RSTD_OS_UNIX
 static void iterate_invalid_unicode_arg() {
     const char  invalid[] = { 'v', static_cast<char>(0xff), '\0' };
     const char* argv[]    = { "prog", invalid };
@@ -15,10 +16,27 @@ static void iterate_invalid_unicode_arg() {
     (void)args.next();
     (void)args.next();
 }
+#endif
+
+TEST(Env, UnicodeSnapshotOwnsValues) {
+    constexpr auto key = "RSTD_TEST_UNICODE_SNAPSHOT"_str;
+    rstd::env::set_var(key, "路径"_str);
+    auto values = rstd::env::vars();
+    rstd::env::remove_var(key);
+    auto found = false;
+    while (auto entry = values.next()) {
+        if (entry->template get<0>() == key) {
+            EXPECT_EQ(entry->template get<1>(), "路径"_str);
+            found = true;
+        }
+    }
+    EXPECT_TRUE(found);
+}
 
 TEST(Env, VarNotFound) {
     auto val = rstd::env::var("RSTD_TEST_NONEXISTENT_VAR_12345"_str);
-    EXPECT_TRUE(val.is_none());
+    EXPECT_TRUE(val.is_err());
+    EXPECT_EQ(val.unwrap_err().kind, rstd::env::VarError::Kind::NotPresent);
 }
 
 TEST(Env, TempDir) {
@@ -61,11 +79,12 @@ TEST(Env, JoinPathsRejectsInvalidSegment) {
 TEST(Env, SetAndGet) {
     rstd::env::set_var("RSTD_TEST_VAR"_str, "hello"_str);
     auto val = rstd::env::var("RSTD_TEST_VAR"_str);
-    ASSERT_TRUE(val.is_some());
+    ASSERT_TRUE(val.is_ok());
     EXPECT_EQ("hello"_str, val.unwrap());
 }
 
 TEST(Env, VarOsPreservesInvalidUnicode) {
+#if RSTD_OS_UNIX
     auto invalid = rstd::ref<rstd::ffi::OsStr>::from_encoded_bytes_unchecked("v\xff"_bytes);
     rstd::env::set_var("RSTD_TEST_VAR_OS"_str, invalid);
 
@@ -77,23 +96,27 @@ TEST(Env, VarOsPreservesInvalidUnicode) {
     EXPECT_EQ(bytes[rstd::usize()], rstd::u8('v'));
     EXPECT_EQ(bytes[rstd::usize(1)], rstd::u8(0xff));
     EXPECT_TRUE(value->as_os_str().to_str().is_none());
+    auto text = rstd::env::var("RSTD_TEST_VAR_OS"_str);
+    ASSERT_TRUE(text.is_err());
+    EXPECT_EQ(text.unwrap_err().kind, rstd::env::VarError::Kind::NotUnicode);
 
     rstd::env::remove_var("RSTD_TEST_VAR_OS"_str);
+#endif
 }
 
 TEST(Env, RemoveVar) {
     rstd::env::set_var("RSTD_TEST_REMOVE"_str, "value"_str);
-    ASSERT_TRUE(rstd::env::var("RSTD_TEST_REMOVE"_str).is_some());
+    ASSERT_TRUE(rstd::env::var("RSTD_TEST_REMOVE"_str).is_ok());
 
     rstd::env::remove_var("RSTD_TEST_REMOVE"_str);
-    EXPECT_TRUE(rstd::env::var("RSTD_TEST_REMOVE"_str).is_none());
+    EXPECT_TRUE(rstd::env::var("RSTD_TEST_REMOVE"_str).is_err());
 }
 
 TEST(Env, OverwriteVar) {
     rstd::env::set_var("RSTD_TEST_OVERWRITE"_str, "first"_str);
     rstd::env::set_var("RSTD_TEST_OVERWRITE"_str, "second"_str);
     auto val = rstd::env::var("RSTD_TEST_OVERWRITE"_str);
-    ASSERT_TRUE(val.is_some());
+    ASSERT_TRUE(val.is_ok());
     EXPECT_EQ("second"_str, val.unwrap());
 }
 
@@ -107,6 +130,7 @@ TEST(Env, Args) {
     EXPECT_GT(first.unwrap().len(), rstd::usize()); // program path is non-empty
 }
 
+#if RSTD_OS_UNIX
 TEST(Env, ArgsManualInit) {
     const char* argv[] = { "prog", "--flag", "value" };
     rstd::env::args_init(3, argv);
@@ -145,6 +169,22 @@ TEST(Env, ArgsOsPreservesBytes) {
 
 TEST(Env, ArgsRejectInvalidUnicodeDuringIteration) {
     EXPECT_DEATH(iterate_invalid_unicode_arg(), "not valid Unicode");
+}
+#endif
+
+TEST(Env, VariablesSnapshotOwnsValues) {
+    rstd::env::set_var("RSTD_SNAPSHOT_TEST"_str, "value"_str);
+    auto variables = rstd::env::vars_os();
+    rstd::env::remove_var("RSTD_SNAPSHOT_TEST"_str);
+    auto found = false;
+    while (auto item = variables.next()) {
+        if (item->template get<0>().as_os_str() ==
+            rstd::ref<rstd::ffi::OsStr>("RSTD_SNAPSHOT_TEST"_str)) {
+            EXPECT_EQ(item->template get<1>().as_os_str().to_str().unwrap(), "value"_str);
+            found = true;
+        }
+    }
+    EXPECT_TRUE(found);
 }
 
 TEST(Process, Id) {

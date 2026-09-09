@@ -135,6 +135,20 @@ TEST(Process, CommandEnvironmentUsesLastOverride) {
     EXPECT_TRUE(result->success());
 }
 
+TEST(Process, CommandEnvironmentGettersReflectFinalState) {
+    auto command = rstd::process::Command::make("program"_str);
+    command.env("RSTD_STATE"_str, "first"_str).env("RSTD_STATE"_str, "second"_str);
+    ASSERT_EQ(command.get_envs().len(), rstd::usize(1));
+    EXPECT_EQ(command.get_envs()[rstd::usize()].value->as_os_str().to_str().unwrap(), "second"_str);
+    command.env_remove("RSTD_STATE"_str);
+    ASSERT_EQ(command.get_envs().len(), rstd::usize(1));
+    EXPECT_TRUE(command.get_envs()[rstd::usize()].value.is_none());
+    command.env("RSTD_STATE"_str, "third"_str).env_clear();
+    EXPECT_TRUE(command.get_envs().is_empty());
+    command.env("RSTD_STATE"_str, "last"_str).env_remove("RSTD_STATE"_str);
+    EXPECT_TRUE(command.get_envs().is_empty());
+}
+
 TEST(Process, CommandEnvironmentCanRemoveInheritedValue) {
     auto result = rstd::process::Command::make("/usr/bin/env"_str).env_remove("PATH"_str).output();
     ASSERT_TRUE(result.is_ok());
@@ -156,11 +170,11 @@ TEST(Process, CommandEnvironmentCanClearAndAddValues) {
 
 TEST(Process, CommandEnvironmentDoesNotMutateParent) {
     constexpr auto key = "RSTD_PROCESS_ENV_PARENT_GUARD"_str;
-    ASSERT_TRUE(rstd::env::var(key).is_none());
+    ASSERT_TRUE(rstd::env::var(key).is_err());
     auto result = rstd::process::Command::make("true"_str).env(key, "child"_str).status();
     ASSERT_TRUE(result.is_ok());
     EXPECT_TRUE(result->success());
-    EXPECT_TRUE(rstd::env::var(key).is_none());
+    EXPECT_TRUE(rstd::env::var(key).is_err());
 }
 
 TEST(Process, CommandEnvironmentRejectsNul) {
@@ -182,6 +196,32 @@ TEST(Process, CommandCurrentDirectory) {
     auto out = res.unwrap();
     EXPECT_TRUE(out.status.success());
     EXPECT_EQ(to_std_string(out.stdout_buf), "/\n");
+}
+
+TEST(Process, NativeProgramArgumentsEnvironmentAndDirectory) {
+    using rstd::os::unix::ffi::OsStrExt;
+    auto temporary = rstd::fs::TempDir::make("rstd-native-process"_str).unwrap();
+    auto directory = rstd::path::PathBuf::from(temporary.path().as_os_str().to_os_string());
+    directory.push(rstd::ref<rstd::path::Path>(OsStrExt::from_bytes("cwd-\xff"_bytes)));
+    ASSERT_TRUE(rstd::fs::create_dir(directory.as_path()).is_ok());
+    auto executable =
+        directory.join(rstd::ref<rstd::path::Path>(OsStrExt::from_bytes("sh-\xfe"_bytes)));
+    ASSERT_TRUE(rstd::fs::soft_link("/bin/sh"_str, executable.as_path()).is_ok());
+    auto argument = OsStrExt::from_bytes("arg-\xff"_bytes);
+    auto value    = OsStrExt::from_bytes("env-\xfe"_bytes);
+    auto command  = rstd::process::Command::make(executable.as_path().as_os_str());
+    command.arg("-c"_str)
+        .arg("printf '%s|%s' \"$1\" \"$RSTD_NATIVE_VALUE\""_str)
+        .arg("sh"_str)
+        .arg(argument)
+        .env("RSTD_NATIVE_VALUE"_str, value)
+        .current_dir(directory.as_path());
+    EXPECT_EQ(command.get_program(), executable.as_path().as_os_str());
+    EXPECT_EQ(command.get_current_dir().unwrap().as_os_str(), directory.as_path().as_os_str());
+    auto output = command.output();
+    ASSERT_TRUE(output.is_ok());
+    EXPECT_TRUE(output->status.success());
+    EXPECT_EQ(output->stdout_buf.as_slice(), "arg-\xff|env-\xfe"_bytes);
 }
 
 TEST(Process, CommandCurrentDirectoryReportsSpawnFailure) {
@@ -231,6 +271,21 @@ TEST(Process, ChildTryWait) {
 TEST(Process, CommandNotFound) {
     auto res = rstd::process::Command::make("nonexistent_program_xyz_12345"_str).status();
     EXPECT_TRUE(res.is_err());
+}
+
+TEST(Process, NativeCommandRejectsNulAtSpawn) {
+    auto invalid = rstd::ref<rstd::ffi::OsStr>("bad\0value"_str);
+    auto program = rstd::process::Command::make(invalid);
+    EXPECT_EQ(program.get_program().as_encoded_bytes(), invalid.as_encoded_bytes());
+    EXPECT_TRUE(program.spawn().is_err());
+    auto argument = rstd::process::Command::make("true"_str);
+    argument.arg(invalid);
+    EXPECT_EQ(argument.get_args().len(), rstd::usize(1));
+    EXPECT_TRUE(argument.spawn().is_err());
+    auto cwd = rstd::process::Command::make("true"_str);
+    cwd.current_dir(rstd::ref<rstd::path::Path>(invalid));
+    EXPECT_TRUE(cwd.get_current_dir().is_some());
+    EXPECT_TRUE(cwd.spawn().is_err());
 }
 
 TEST(Process, ChildStdinWrite) {

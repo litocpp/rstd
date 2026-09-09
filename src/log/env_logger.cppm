@@ -142,13 +142,13 @@ private:
     // ── parsing ───────────────────────────────────────────────────────────
 
     void parse_env() noexcept {
-        auto val = rstd::env::var("RSTD_LOG"_str);
+        auto val = rstd::env::var("RSTD_LOG"_str).ok();
         if (val.is_none()) return;
         parse_filters(val->as_str());
     }
 
     void parse_style_env() noexcept {
-        auto val = rstd::env::var("RSTD_LOG_STYLE"_str);
+        auto val = rstd::env::var("RSTD_LOG_STYLE"_str).ok();
         if (val.is_none()) return;
         style = ::parse_style(val->as_str());
     }

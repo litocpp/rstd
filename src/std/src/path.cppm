@@ -16,6 +16,22 @@ using namespace rstd::literals;
 namespace rstd::path
 {
 
+export constexpr auto is_separator(char32_t value) noexcept -> bool {
+#if RSTD_OS_WINDOWS
+    return value == U'/' || value == U'\\';
+#else
+    return value == U'/';
+#endif
+}
+
+#if RSTD_OS_WINDOWS
+export inline constexpr char32_t MAIN_SEPARATOR     = U'\\';
+export inline constexpr ref<str> MAIN_SEPARATOR_STR = "\\"_str;
+#else
+export inline constexpr char32_t MAIN_SEPARATOR     = U'/';
+export inline constexpr ref<str> MAIN_SEPARATOR_STR = "/"_str;
+#endif
+
 /// An unsized path type, analogous to Rust's `std::path::Path`.
 ///
 /// Internally an `OsStr`. This is a borrowed, unsized type — use
@@ -129,11 +145,7 @@ namespace path_detail
 {
 
 constexpr bool is_sep(u8 c) {
-#if defined(RSTD_OS_WINDOWS)
-    return c == u8('/') || c == u8('\\');
-#else
-    return c == u8('/');
-#endif
+    return path::is_separator(static_cast<char32_t>(c.to_primitive()));
 }
 
 constexpr auto value(byte source) -> u8 {
@@ -547,19 +559,8 @@ namespace rstd
 template<>
 struct Impl<fmt::Display, ref<path::Path>> : ImplBase<ref<path::Path>> {
     auto fmt(fmt::Formatter& f) const -> bool {
-        auto&        s     = this->self();
-        auto         os    = s.as_os_str();
-        auto         bytes = os.as_encoded_bytes();
-        rstd::size_t index = 0;
-        while (index < s.len().to_primitive()) {
-            auto [cp, n] = char_::decode_utf8(bytes.as_raw_ptr() + index,
-                                              usize(s.len().to_primitive() - index));
-            byte buf[4];
-            auto wrote = char_::encode_utf8(cp, buf);
-            if (! f.write_raw(buf, wrote.to_primitive())) return false;
-            index += n.to_primitive();
-        }
-        return true;
+        auto display = this->self().as_os_str().display();
+        return as<fmt::Display>(display).fmt(f);
     }
 };
 

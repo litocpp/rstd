@@ -21,8 +21,9 @@ using rstd::string::String;
 using rstd::vec::Vec;
 
 struct VecAllocatorState {
-    int allocations;
-    int deallocations;
+    int  allocations;
+    int  deallocations;
+    bool fail {};
 };
 
 struct VecTestAllocator {
@@ -36,6 +37,7 @@ template<>
 struct Impl<alloc::Allocator, ::VecTestAllocator>
     : DefaultInImpl<alloc::Allocator, ::VecTestAllocator> {
     auto allocate(alloc::Layout layout) const -> Result<alloc::Allocation, alloc::AllocError> {
+        if (this->self().state->fail) return Err(alloc::AllocError {});
         ++this->self().state->allocations;
         return as<alloc::Allocator>(::alloc::GLOBAL).allocate(layout);
     }
@@ -49,6 +51,28 @@ struct Impl<alloc::Allocator, ::VecTestAllocator>
 } // namespace rstd
 
 static_assert(sizeof(Vec<int>) == sizeof(void*) * 5);
+
+TEST(Vec, FailedReservationPreservesAllocationAndElements) {
+    VecAllocatorState state {};
+    auto              value =
+        Vec<int, VecTestAllocator>::with_capacity_in(rstd::usize(2), VecTestAllocator { &state });
+    value.push(7);
+    value.push(9);
+    auto pointer = value.data();
+    state.fail   = true;
+    auto result  = value.try_reserve_exact(rstd::usize(20));
+    ASSERT_TRUE(result.is_err());
+    EXPECT_EQ(result.unwrap_err(), ::alloc::collections::TryReserveError::AllocError);
+    EXPECT_EQ(value.data(), pointer);
+    EXPECT_EQ(value.len(), rstd::usize(2));
+    EXPECT_EQ(value[rstd::usize()], 7);
+    EXPECT_EQ(value[rstd::usize(1)], 9);
+    state.fail = false;
+    EXPECT_TRUE(value.try_reserve(rstd::usize(20)).is_ok());
+    value.shrink_to(rstd::usize(4));
+    EXPECT_EQ(value.len(), rstd::usize(2));
+    EXPECT_GE(value.capacity(), rstd::usize(4));
+}
 
 namespace
 {

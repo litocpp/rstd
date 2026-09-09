@@ -3,6 +3,8 @@ module;
 export module rstd:ffi.os_str;
 export import :io;
 export import rstd.alloc;
+import :ffi.os_str.platform;
+import :ffi.os_str.encoding;
 
 using ::alloc::vec::Vec;
 using ::alloc::string::String;
@@ -11,52 +13,16 @@ using namespace rstd::prelude;
 namespace rstd::ffi
 {
 
-namespace os_string_platform
-{
-
-struct Slice {
-    byte const* data {};
-    usize       length {};
-
-    static constexpr auto from_encoded_bytes_unchecked(slice<u8> bytes) noexcept -> Slice {
-        return { bytes.as_raw_ptr(), bytes.len() };
-    }
-
-    constexpr auto as_encoded_bytes() const noexcept -> slice<u8> {
-        return slice<u8>::from_raw_parts(data, length);
-    }
-};
-
-class Buf {
-    Vec<u8> inner_;
-
-public:
-    Buf() = default;
-    explicit Buf(Vec<u8>&& inner): inner_(rstd::move(inner)) {}
-
-    static auto from_encoded_bytes_unchecked(Vec<u8>&& bytes) -> Buf {
-        return Buf(rstd::move(bytes));
-    }
-
-    auto as_slice() const noexcept [[clang::lifetimebound]] -> Slice {
-        return Slice::from_encoded_bytes_unchecked(inner_.as_slice());
-    }
-
-    auto into_inner() && -> Vec<u8> { return rstd::move(inner_); }
-    auto inner() noexcept -> Vec<u8>& { return inner_; }
-    auto inner() const noexcept -> Vec<u8> const& { return inner_; }
-};
-
-} // namespace os_string_platform
-
 /// An unsized, platform-native string type.
 ///
 /// On Unix this is an arbitrary byte sequence (often UTF-8).
-/// On Windows this stores the encoded byte representation used at rstd API
-/// boundaries; Win32 wide conversions happen at OS call sites.
+/// On Windows this stores WTF-8, preserving unpaired UTF-16 surrogates.
 export struct OsStr {
     ~OsStr() = delete;
 };
+
+export class OsString;
+export struct Display;
 
 } // namespace rstd::ffi
 
@@ -109,23 +75,47 @@ struct ref<ffi::OsStr> : ref_base<ref<ffi::OsStr>, byte[], false> {
 
     /// Converts to a `String`, replacing invalid UTF-8 with U+FFFD.
     auto to_string_lossy() const -> String {
-        auto         buf   = String::make();
-        rstd::size_t index = 0;
-        while (index < length.to_primitive()) {
-            auto [cp, n] = char_::decode_utf8(p + index, usize(length.to_primitive() - index));
-            if (cp == char_::REPLACEMENT && n == usize(1) &&
-                u8::from_byte(p[index]).to_primitive() > 0x7F) {
-                // Invalid byte — emit replacement character
-                buf.push(char_::REPLACEMENT);
-            } else {
-                buf.push(cp);
-            }
-            index += n.to_primitive();
+        auto buf   = String::make();
+        auto index = usize();
+        while (index < length) {
+            buf.push(ffi::os_encoding::decode_lossy(
+                as_encoded_bytes(), index, ffi::os_string_platform::USE_WTF8));
         }
         return buf;
     }
 
     constexpr auto len() const noexcept -> usize { return length; }
+    auto           to_os_string() const -> ffi::OsString;
+    auto           display() const noexcept [[clang::lifetimebound]] -> ffi::Display;
+    auto           to_ascii_lowercase() const -> ffi::OsString;
+    auto           to_ascii_uppercase() const -> ffi::OsString;
+    constexpr auto is_ascii() const noexcept -> bool {
+        for (auto value : as_encoded_bytes())
+            if (value > u8(127)) return false;
+        return true;
+    }
+    constexpr auto eq_ignore_ascii_case(ref<ffi::OsStr> other) const noexcept -> bool {
+        if (length != other.length) return false;
+        const auto lower = [](unsigned value) {
+            return value >= 'A' && value <= 'Z' ? value + 32 : value;
+        };
+        for (auto index = usize(); index < length; ++index)
+            if (lower(as_encoded_bytes()[index].to_primitive()) !=
+                lower(other.as_encoded_bytes()[index].to_primitive()))
+                return false;
+        return true;
+    }
+    constexpr auto operator==(ref<ffi::OsStr> other) const noexcept -> bool {
+        return as_encoded_bytes() == other.as_encoded_bytes();
+    }
+    constexpr auto operator<=>(ref<ffi::OsStr> other) const noexcept {
+        auto common = length < other.length ? length : other.length;
+        for (auto index = usize(); index < common; ++index) {
+            auto order = as_encoded_bytes()[index] <=> other.as_encoded_bytes()[index];
+            if (order != 0) return order;
+        }
+        return length <=> other.length;
+    }
     constexpr auto is_empty() const noexcept -> bool { return length == usize {}; }
     constexpr auto starts_with(ref<ffi::OsStr> prefix) const noexcept -> bool {
         if (prefix.len() > length) return false;
@@ -142,6 +132,7 @@ struct ref<ffi::OsStr> : ref_base<ref<ffi::OsStr>, byte[], false> {
 
     constexpr auto split_once(u8 delimiter) const noexcept
         -> Option<tuple<ref<ffi::OsStr>, ref<ffi::OsStr>>> {
+        if (delimiter > u8(127)) rstd::panic { "OsStr::split_once requires an ASCII delimiter" };
         for (rstd::size_t i = 0; i < length.to_primitive(); ++i) {
             if (u8::from_byte(p[i]) == delimiter) {
                 return Some(tuple<ref<ffi::OsStr>, ref<ffi::OsStr>>(
@@ -166,10 +157,14 @@ private:
 export namespace rstd::ffi
 {
 
+struct Display {
+    ref<OsStr> value;
+};
+
 /// An owned, platform-native string.
 ///
 /// On Unix this wraps `Vec<u8>`. Analogous to Rust's `OsString`.
-/// On Windows this currently uses the same encoded-byte storage.
+/// On Windows this uses WTF-8 encoded storage.
 class OsString {
     os_string_platform::Buf inner;
 
@@ -184,6 +179,9 @@ public:
 
     /// Creates an empty `OsString`.
     static auto make() -> OsString { return {}; }
+    static auto with_capacity(usize capacity) -> OsString {
+        return from_encoded_bytes_unchecked(Vec<u8>::with_capacity(capacity));
+    }
 
     /// Creates an `OsString` from a `String` (zero-cost move on Unix).
     static auto from(String&& s) -> OsString {
@@ -203,7 +201,7 @@ public:
 
     void clone_from(const OsString& source) { *this = source.clone(); }
 
-    /// Creates an `OsString` from raw bytes without validation.
+    /// Bytes must use this platform's encoding; Windows requires valid WTF-8.
     static auto from_encoded_bytes_unchecked(Vec<u8>&& bytes) -> OsString {
         return OsString { os_string_platform::Buf::from_encoded_bytes_unchecked(
             rstd::move(bytes)) };
@@ -225,13 +223,35 @@ public:
         return Err(from_encoded_bytes_unchecked(rstd::move(bytes)));
     }
 
-    /// Appends an `OsStr` to this string.
-    void push(ref<OsStr> s) { inner.inner().extend_from_slice(s.as_encoded_bytes()); }
+    auto into_encoded_bytes() && -> Vec<u8> { return rstd::move(inner).into_inner(); }
 
-    auto len() const noexcept -> usize { return inner.inner().len(); }
-    auto is_empty() const noexcept -> bool { return inner.inner().is_empty(); }
-    auto capacity() const noexcept -> usize { return inner.inner().capacity(); }
-    void clear() { inner.inner().clear(); }
+    /// Appends an `OsStr` to this string.
+    void push(ref<OsStr> s) { inner.push(s.as_encoded_bytes()); }
+
+    auto len() const noexcept -> usize { return inner.len(); }
+    auto is_empty() const noexcept -> bool { return len() == usize(); }
+    auto capacity() const noexcept -> usize { return inner.capacity(); }
+    void clear() { inner.clear(); }
+    void reserve(usize additional) { inner.reserve(additional); }
+    void reserve_exact(usize additional) { inner.reserve_exact(additional); }
+    auto try_reserve(usize additional) { return inner.try_reserve(additional); }
+    auto try_reserve_exact(usize additional) { return inner.try_reserve_exact(additional); }
+    void shrink_to_fit() { inner.shrink_to_fit(); }
+    void shrink_to(usize capacity) { inner.shrink_to(capacity); }
+    void truncate(usize length) { inner.truncate(length); }
+    void make_ascii_lowercase() { inner.ascii_case(false); }
+    void make_ascii_uppercase() { inner.ascii_case(true); }
+    auto is_ascii() const noexcept -> bool { return as_os_str().is_ascii(); }
+    auto eq_ignore_ascii_case(ref<OsStr> other) const noexcept -> bool {
+        return as_os_str().eq_ignore_ascii_case(other);
+    }
+    auto operator==(const OsString& other) const noexcept -> bool {
+        return as_os_str() == other.as_os_str();
+    }
+    auto operator==(ref<OsStr> other) const noexcept -> bool { return as_os_str() == other; }
+    auto operator<=>(const OsString& other) const noexcept {
+        return as_os_str() <=> other.as_os_str();
+    }
 
     /// Implicit conversion to `ref<OsStr>`.
     operator ref<OsStr>() const noexcept [[clang::lifetimebound]] { return as_os_str(); }
@@ -241,6 +261,23 @@ public:
 
 namespace rstd
 {
+
+inline auto ref<ffi::OsStr>::to_os_string() const -> ffi::OsString {
+    return ffi::OsString::from(*this);
+}
+inline auto ref<ffi::OsStr>::display() const noexcept -> ffi::Display {
+    return { *this };
+}
+inline auto ref<ffi::OsStr>::to_ascii_lowercase() const -> ffi::OsString {
+    auto result = to_os_string();
+    result.make_ascii_lowercase();
+    return result;
+}
+inline auto ref<ffi::OsStr>::to_ascii_uppercase() const -> ffi::OsString {
+    auto result = to_os_string();
+    result.make_ascii_uppercase();
+    return result;
+}
 
 template<>
 struct Impl<convert::TryFrom<ffi::OsString>, ::alloc::string::String> {
@@ -253,24 +290,20 @@ struct Impl<convert::TryFrom<ffi::OsString>, ::alloc::string::String> {
 
 } // namespace rstd
 
-// ── Display for ref<OsStr> ───────────────────────────────────────────────
 namespace rstd
 {
 
 template<>
-struct Impl<fmt::Display, ref<ffi::OsStr>> : ImplBase<ref<ffi::OsStr>> {
+struct Impl<fmt::Display, ffi::Display> : ImplBase<ffi::Display> {
     auto fmt(fmt::Formatter& f) const -> bool {
-        // Print as UTF-8 lossy — valid bytes pass through, invalid → replacement
-        auto&        s     = this->self();
-        auto         bytes = s.as_encoded_bytes();
-        rstd::size_t index = 0;
-        while (index < s.len().to_primitive()) {
-            auto [cp, n] = char_::decode_utf8(bytes.as_raw_ptr() + index,
-                                              usize(s.len().to_primitive() - index));
+        auto bytes = this->self().value.as_encoded_bytes();
+        auto index = usize();
+        while (index < bytes.len()) {
+            auto cp =
+                ffi::os_encoding::decode_lossy(bytes, index, ffi::os_string_platform::USE_WTF8);
             byte buf[4];
             auto wrote = char_::encode_utf8(cp, buf);
             if (! f.write_raw(buf, wrote.to_primitive())) return false;
-            index += n.to_primitive();
         }
         return true;
     }
@@ -280,8 +313,28 @@ template<>
 struct Impl<fmt::Debug, ref<ffi::OsStr>> : ImplBase<ref<ffi::OsStr>> {
     auto fmt(fmt::Formatter& f) const -> bool {
         f.write_raw("\"", 1);
-        as<fmt::Display>(this->self()).fmt(f);
+        auto display = this->self().display();
+        if (! as<fmt::Display>(display).fmt(f)) return false;
         return f.write_raw("\"", 1);
+    }
+};
+
+template<>
+struct Impl<hash::Hash, ref<ffi::OsStr>> : ImplBase<ref<ffi::OsStr>> {
+    template<typename H>
+        requires Impled<H, hash::Hasher>
+    void hash(H& state) const noexcept {
+        hash::hash_into(this->self().len(), state);
+        as<hash::Hasher>(state).write(this->self().as_encoded_bytes());
+    }
+};
+
+template<>
+struct Impl<hash::Hash, ffi::OsString> : ImplBase<ffi::OsString> {
+    template<typename H>
+        requires Impled<H, hash::Hasher>
+    void hash(H& state) const noexcept {
+        hash::hash_into(this->self().as_os_str(), state);
     }
 };
 

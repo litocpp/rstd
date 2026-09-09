@@ -156,10 +156,16 @@ target_sources(
          src/fs/mod.cppm
          src/ffi/mod.cppm
          src/ffi/os_str.cppm
+         src/ffi/os_str/encoding.cppm
+         src/ffi/os_str/platform.cppm
+         src/sys/os_str/windows.cppm
+         src/sys/args/windows.cppm
          src/os/mod.cppm
          src/os/fd.cppm
          src/os/handle.cppm
          src/os/socket.cppm
+         src/os/unix/ffi.cppm
+         src/os/windows/ffi.cppm
          src/sys/io/stdio.cppm
          src/sys/mod.cppm
          src/sys/fs.cppm

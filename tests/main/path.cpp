@@ -2,6 +2,13 @@
 #include <rstd/macro.hpp>
 import rstd;
 
+TEST(Path, PublicSeparatorsPreserveUnicode) {
+    EXPECT_TRUE(rstd::path::is_separator(U'/'));
+    EXPECT_FALSE(rstd::path::is_separator(U'界'));
+    EXPECT_FALSE(rstd::path::is_separator(U'／'));
+    EXPECT_TRUE(rstd::path::is_separator(rstd::path::MAIN_SEPARATOR));
+}
+
 using rstd::path::Component;
 using rstd::path::Path;
 using rstd::path::PathBuf;

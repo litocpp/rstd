@@ -5,6 +5,7 @@ import :fs.types;
 import :io;
 import :os.fd;
 import :path;
+import :sys.os_str.windows;
 import :sys.libc;
 import :time;
 import rstd.alloc;
@@ -31,30 +32,12 @@ inline auto windows_error() noexcept -> Error {
 }
 
 auto path_wide(ref<Path> path) -> Result<Vec<wchar_t>> {
-    auto os    = path.as_os_str();
-    auto bytes = os.as_encoded_bytes();
-    if (bytes.is_empty() || bytes.len().to_primitive() > 0x7fffffff) {
+    if (path.as_os_str().is_empty())
         return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
-    }
-    auto input    = reinterpret_cast<const char*>(bytes.as_raw_ptr());
-    auto count    = static_cast<int>(bytes.len().to_primitive());
-    auto required = libc::MultiByteToWideChar(
-        libc::M_CP_UTF8, libc::M_MB_ERR_INVALID_CHARS, input, count, nullptr, 0);
-    if (required <= 0) return Err(windows_error());
-
-    auto result = Vec<wchar_t>::with_capacity(usize(static_cast<rstd::size_t>(required) + 1));
-    result.resize(usize(static_cast<rstd::size_t>(required) + 1), wchar_t {});
-    if (libc::MultiByteToWideChar(libc::M_CP_UTF8,
-                                  libc::M_MB_ERR_INVALID_CHARS,
-                                  input,
-                                  count,
-                                  result.as_mut_ptr(),
-                                  required) != required) {
-        return Err(windows_error());
-    }
-    result[usize(static_cast<rstd::size_t>(required))] = L'\0';
-
-    auto length = usize(static_cast<rstd::size_t>(required));
+    auto converted = rstd::sys::os_str::windows::to_wide(path.as_os_str());
+    if (converted.is_err()) return Err(rstd::move(converted).unwrap_err_unchecked());
+    auto result = rstd::move(converted).unwrap_unchecked();
+    auto length = result.len() - usize(1);
     auto slash  = [](wchar_t value) noexcept {
         return value == L'\\' || value == L'/';
     };
@@ -83,31 +66,6 @@ auto path_wide(ref<Path> path) -> Result<Vec<wchar_t>> {
         }
         extended.push(L'\0');
         return Ok(rstd::move(extended));
-    }
-    return Ok(rstd::move(result));
-}
-
-auto utf8_from_wide(const wchar_t* data, rstd::size_t length) -> Result<Vec<u8>> {
-    if (length > 0x7fffffff) {
-        return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidData }));
-    }
-    if (length == 0) return Ok(Vec<u8>::make());
-    auto count    = static_cast<int>(length);
-    auto required = libc::WideCharToMultiByte(
-        libc::M_CP_UTF8, libc::M_WC_ERR_INVALID_CHARS, data, count, nullptr, 0, nullptr, nullptr);
-    if (required <= 0) return Err(windows_error());
-
-    auto result = Vec<u8>::with_capacity(usize(static_cast<rstd::size_t>(required)));
-    result.resize(usize(static_cast<rstd::size_t>(required)), u8 {});
-    if (libc::WideCharToMultiByte(libc::M_CP_UTF8,
-                                  libc::M_WC_ERR_INVALID_CHARS,
-                                  data,
-                                  count,
-                                  reinterpret_cast<char*>(result.as_mut_ptr().as_raw_ptr()),
-                                  required,
-                                  nullptr,
-                                  nullptr) != required) {
-        return Err(windows_error());
     }
     return Ok(rstd::move(result));
 }
@@ -218,9 +176,9 @@ auto path_from_handle(libc::HANDLE handle) -> Result<PathBuf> {
                        wide[usize(2)] == L'?' && wide[usize(3)] == L'\\') {
                 start = 4;
             }
-            auto bytes = utf8_from_wide(wide.as_ptr() + start, length - start);
-            if (bytes.is_err()) return Err(rstd::move(bytes).unwrap_err_unchecked());
-            auto encoded = rstd::move(bytes).unwrap_unchecked();
+            auto native =
+                rstd::sys::os_str::windows::from_wide(wide.as_ptr() + start, usize(length - start));
+            auto encoded = rstd::move(native).into_encoded_bytes();
             if (unc) {
                 auto prefixed = Vec<u8>::with_capacity(encoded.len() + usize(2));
                 prefixed.push(u8('\\'));
@@ -659,13 +617,9 @@ auto Directory::next() -> Option<Result<DirectoryEntryData>> {
         }
         auto length = rstd::size_t {};
         while (name[length] != L'\0') ++length;
-        auto converted = utf8_from_wide(name, length);
-        if (converted.is_err()) {
-            return Some(
-                Result<DirectoryEntryData>(Err(rstd::move(converted).unwrap_err_unchecked())));
-        }
+        auto converted = rstd::sys::os_str::windows::from_wide(name, usize(length));
         return Some(Result<DirectoryEntryData>(Ok(DirectoryEntryData {
-            .name      = rstd::move(converted).unwrap_unchecked(),
+            .name      = rstd::move(converted).into_encoded_bytes(),
             .file_type = file_type_from_attributes(m_entry.dwFileAttributes),
         })));
     }

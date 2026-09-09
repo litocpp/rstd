@@ -12,15 +12,17 @@ using ::alloc::ffi::CString;
 using ::alloc::string::String;
 using ::alloc::vec::Vec;
 using rstd::ffi::OsStr;
+using rstd::ffi::OsString;
 using rstd::path::Path;
+using rstd::path::PathBuf;
 using namespace rstd::prelude;
 
 export namespace rstd::process
 {
 
 struct EnvAction {
-    Vec<u8>         key;
-    Option<Vec<u8>> value;
+    OsString         key;
+    Option<OsString> value;
 };
 
 // forwards
@@ -63,6 +65,8 @@ struct ChildStderr {
 
 namespace rstd::sys::process_impl
 {
+auto environment_keys_equal(ref<ffi::OsStr> left, ref<ffi::OsStr> right) -> bool;
+
 struct Spawn {
     static auto spawn(rstd::process::Command& cmd)
         -> rstd::result::Result<rstd::process::Child, rstd::io::error::Error>;
@@ -159,10 +163,10 @@ struct Child {
 /// A process builder, providing fine-grained control over how a new process
 /// should be spawned. Analogous to Rust's `std::process::Command`.
 class Command {
-    CString         program_;
-    Vec<CString>    args_ {};
+    OsString        program_;
+    Vec<OsString>   args_ {};
     Vec<EnvAction>  env_actions_ {};
-    Option<CString> cwd_ {};
+    Option<PathBuf> cwd_ {};
     Stdio           cfg_stdin_ { Stdio::inherit() };
     Stdio           cfg_stdout_ { Stdio::inherit() };
     Stdio           cfg_stderr_ { Stdio::inherit() };
@@ -170,11 +174,7 @@ class Command {
 
     friend sys::process_impl::Spawn;
 
-    explicit Command(CString&& prog): program_(rstd::move(prog)) {}
-
-    static auto cstring(ref<OsStr> value) -> CString {
-        return CString::make(Vec<u8>::from(value.as_encoded_bytes())).unwrap();
-    }
+    explicit Command(OsString prog): program_(rstd::move(prog)) {}
 
 public:
     Command(Command&&) noexcept            = default;
@@ -183,36 +183,74 @@ public:
     /// Creates a new `Command` for the given program.
     ///
     /// \param program  Path or name of the program to execute.
-    static auto make(ref<OsStr> program) -> Command { return Command(cstring(program)); }
+    static auto make(ref<OsStr> program) -> Command { return Command(program.to_os_string()); }
 
     /// Adds an argument to pass to the program.
     auto arg(ref<OsStr> value) -> Command& {
-        args_.push(cstring(value));
+        args_.push(value.to_os_string());
         return *this;
     }
 
     /// Sets an environment variable for the child process.
     auto env(ref<OsStr> key, ref<OsStr> value) -> Command& {
-        env_actions_.push(EnvAction { Vec<u8>::from(key.as_encoded_bytes()),
-                                      Some(Vec<u8>::from(value.as_encoded_bytes())) });
+        for (auto& action : env_actions_) {
+            if (sys::process_impl::environment_keys_equal(action.key.as_os_str(), key)) {
+                action.value = Some(value.to_os_string());
+                return *this;
+            }
+        }
+        env_actions_.push(EnvAction { key.to_os_string(), Some(value.to_os_string()) });
         return *this;
     }
 
     /// Removes an environment variable for the child process.
     auto env_remove(ref<OsStr> key) -> Command& {
-        env_actions_.push(EnvAction { Vec<u8>::from(key.as_encoded_bytes()), Option<Vec<u8>> {} });
+        for (auto index = usize(); index < env_actions_.len(); ++index) {
+            if (sys::process_impl::environment_keys_equal(env_actions_[index].key.as_os_str(),
+                                                          key)) {
+                if (env_clear_)
+                    (void)env_actions_.remove(index);
+                else
+                    env_actions_[index].value = None();
+                return *this;
+            }
+        }
+        if (! env_clear_) env_actions_.push(EnvAction { key.to_os_string(), None() });
         return *this;
     }
 
     /// Clears all environment variables for the child process.
     auto env_clear() -> Command& {
         env_clear_ = true;
+        env_actions_.clear();
         return *this;
     }
 
     /// Sets the working directory for the child process.
     auto current_dir(ref<Path> dir) -> Command& {
-        cwd_ = Some(dir.to_cstring().unwrap());
+        cwd_ = Some(PathBuf::from(dir.as_os_str().to_os_string()));
+        return *this;
+    }
+
+    auto get_program() const noexcept [[clang::lifetimebound]] -> ref<OsStr> {
+        return program_.as_os_str();
+    }
+    auto get_args() const noexcept [[clang::lifetimebound]] -> slice<OsString> {
+        return args_.as_slice();
+    }
+    auto get_envs() const noexcept [[clang::lifetimebound]] -> slice<EnvAction> {
+        return env_actions_.as_slice();
+    }
+    auto get_current_dir() const noexcept [[clang::lifetimebound]] -> Option<ref<Path>> {
+        return cwd_.is_some() ? Some(cwd_->as_path()) : None();
+    }
+    auto args(slice<OsString> values) -> Command& {
+        for (const auto& value : values) arg(value.as_os_str());
+        return *this;
+    }
+    auto envs(slice<tuple<OsString, OsString>> values) -> Command& {
+        for (const auto& value : values)
+            env(value.template get<0>().as_os_str(), value.template get<1>().as_os_str());
         return *this;
     }
 

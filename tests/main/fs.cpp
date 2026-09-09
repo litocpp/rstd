@@ -71,6 +71,37 @@ private:
 
 } // namespace
 
+TEST(Fs, NativeFilenameRoundTrip) {
+    using rstd::os::unix::ffi::OsStrExt;
+    auto temporary = rstd::fs::TempDir::make("rstd-native-fs"_str).unwrap();
+    auto root      = rstd::path::PathBuf::from(temporary.path().as_os_str().to_os_string());
+    auto name      = OsStrExt::from_bytes("file-\xff"_bytes);
+    auto source    = root.join(rstd::ref<rstd::path::Path>(name));
+    auto destination =
+        root.join(rstd::ref<rstd::path::Path>(OsStrExt::from_bytes("copy-\xfe"_bytes)));
+    auto renamed =
+        root.join(rstd::ref<rstd::path::Path>(OsStrExt::from_bytes("rename-\xfd"_bytes)));
+    auto link = root.join("link"_str);
+    ASSERT_TRUE(rstd::fs::write(source.as_path(), "content"_bytes).is_ok());
+    EXPECT_EQ(rstd::fs::read(source.as_path()).unwrap().as_slice(), "content"_bytes);
+    EXPECT_TRUE(rstd::fs::copy(source.as_path(), destination.as_path()).is_ok());
+    EXPECT_TRUE(rstd::fs::rename(destination.as_path(), renamed.as_path()).is_ok());
+    ASSERT_TRUE(rstd::fs::soft_link(source.as_path(), link.as_path()).is_ok());
+    auto target = rstd::fs::read_link(link.as_path()).unwrap();
+    EXPECT_EQ(target.as_path().as_os_str(), source.as_path().as_os_str());
+    auto canonical = rstd::fs::canonicalize(source.as_path()).unwrap();
+    EXPECT_EQ(canonical.as_path().file_name().unwrap(), name);
+    auto entries = rstd::fs::read_dir(root.as_path()).unwrap();
+    auto found   = false;
+    while (auto entry = entries.next()) {
+        ASSERT_TRUE(entry->is_ok());
+        auto filename = entry->unwrap().file_name();
+        if (filename.as_os_str() == name) found = true;
+    }
+    EXPECT_TRUE(found);
+    EXPECT_TRUE(rstd::fs::remove_file(renamed.as_path()).is_ok());
+}
+
 TEST(Fs, CreateWriteReadRoundTrip) {
     TempPath tp;
     {

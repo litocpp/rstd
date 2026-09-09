@@ -125,7 +125,7 @@ sources = [
 
 [[test.attach]]
 package = "rstd-std"
-sources = ["async/io_backend.cppm"]
+sources = ["async/io_backend.cppm", "ffi/os_encoding.cppm"]
 
 [dependencies]
 rstd-std = { path = "../../src/std" }
