@@ -179,7 +179,8 @@ TEST(TomlConformance, Version220) {
         GTEST_SKIP() << "RSTD_TOML_TEST_EXECUTABLE is not configured";
     }
 
-    auto version = rstd::process::Command::make(configured->as_os_str()).arg("version"_str).output();
+    auto version =
+        rstd::process::Command::make(configured->as_os_str()).arg("version"_str).output();
     if (version.is_err()) {
         FAIL() << "toml-test version failed";
     }

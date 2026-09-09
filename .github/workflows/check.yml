@@ -13,11 +13,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install format dependencies
-        run: |
-          python3 -m pip install --user clang-format==22.1.5
-          curl -fsSL https://raw.githubusercontent.com/litocpp/lito/main/install.sh | bash
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Install clang-format
+        run: python3 -m pip install --user clang-format==22.1.5
 
       - name: Check formatting
-        run: lito format --check
+        uses: hypengw/lito-action@v0.1.0
+        with:
+          command: format-check
