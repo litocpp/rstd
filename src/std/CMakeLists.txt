@@ -259,6 +259,7 @@ target_sources(
 target_sources(
   rstd.std
   PRIVATE src/io/error.cpp
+          src/async/runtime_core.cpp
           src/thread/mod.cpp
           src/net/tcp.cpp
           src/lib.cpp
