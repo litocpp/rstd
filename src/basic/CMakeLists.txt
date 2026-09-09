@@ -22,6 +22,7 @@ target_sources(
          BASE_DIRS
          include
          FILES
+         include/rstd/for_each.hpp
          include/rstd/macro.hpp)
 target_sources(
   rstd.basic

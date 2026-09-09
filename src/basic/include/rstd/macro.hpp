@@ -104,29 +104,7 @@
 #define RSTD_DETAIL_FOR_EACH_SEPARATOR_COMMA() ,
 #define RSTD_DETAIL_FOR_EACH_SEPARATOR_NONE()
 
-#define RSTD_DETAIL_FOR_EACH(macro, separator, ...) \
-    __VA_OPT__(                                     \
-        RSTD_DETAIL_FOR_EACH_EXPAND(RSTD_DETAIL_FOR_EACH_HELPER(macro, separator, __VA_ARGS__)))
-
-#define RSTD_DETAIL_FOR_EACH_HELPER(macro, separator, first, ...) \
-    macro(first) __VA_OPT__(separator()) __VA_OPT__(              \
-        RSTD_DETAIL_FOR_EACH_AGAIN RSTD_DETAIL_FOR_EACH_PARENS(macro, separator, __VA_ARGS__))
-#define RSTD_DETAIL_FOR_EACH_PARENS  ()
-#define RSTD_DETAIL_FOR_EACH_AGAIN() RSTD_DETAIL_FOR_EACH_HELPER
-
-#define RSTD_DETAIL_FOR_EACH_EXPAND(...)                         \
-    RSTD_DETAIL_FOR_EACH_EXPAND_4(RSTD_DETAIL_FOR_EACH_EXPAND_4( \
-        RSTD_DETAIL_FOR_EACH_EXPAND_4(RSTD_DETAIL_FOR_EACH_EXPAND_4(__VA_ARGS__))))
-#define RSTD_DETAIL_FOR_EACH_EXPAND_4(...)                       \
-    RSTD_DETAIL_FOR_EACH_EXPAND_3(RSTD_DETAIL_FOR_EACH_EXPAND_3( \
-        RSTD_DETAIL_FOR_EACH_EXPAND_3(RSTD_DETAIL_FOR_EACH_EXPAND_3(__VA_ARGS__))))
-#define RSTD_DETAIL_FOR_EACH_EXPAND_3(...)                       \
-    RSTD_DETAIL_FOR_EACH_EXPAND_2(RSTD_DETAIL_FOR_EACH_EXPAND_2( \
-        RSTD_DETAIL_FOR_EACH_EXPAND_2(RSTD_DETAIL_FOR_EACH_EXPAND_2(__VA_ARGS__))))
-#define RSTD_DETAIL_FOR_EACH_EXPAND_2(...)                       \
-    RSTD_DETAIL_FOR_EACH_EXPAND_1(RSTD_DETAIL_FOR_EACH_EXPAND_1( \
-        RSTD_DETAIL_FOR_EACH_EXPAND_1(RSTD_DETAIL_FOR_EACH_EXPAND_1(__VA_ARGS__))))
-#define RSTD_DETAIL_FOR_EACH_EXPAND_1(...) __VA_ARGS__
+#include <rstd/for_each.hpp>
 
 #define RSTD_DETAIL_TRY_BODY_1(EXPR, RETURN)                                    \
     __extension__({                                                             \
