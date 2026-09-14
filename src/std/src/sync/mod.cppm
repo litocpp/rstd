@@ -5,6 +5,7 @@ export import :sync.once;
 export import :sync.mutex;
 export import :sync.condvar;
 export import :sync.mpmc;
+export import :sync.spsc;
 import rstd.alloc;
 
 namespace rstd::sync

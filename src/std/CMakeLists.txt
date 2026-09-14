@@ -206,6 +206,7 @@ target_sources(
          src/thread/forward.cppm
          src/thread/current.cppm
          src/sync/mod.cppm
+         src/sync/spsc.cppm
          src/sync/once.cppm
          src/sync/mutex.cppm
          src/sync/condvar.cppm

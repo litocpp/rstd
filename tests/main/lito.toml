@@ -79,6 +79,7 @@ sources = [
   "sync/once_lock.cpp",
   "sync/lazy_lock.cpp",
   "sync/mpsc.cpp",
+  "sync/spsc.cpp",
   "time.cpp",
   "fmt.cpp",
   "io.cpp",
