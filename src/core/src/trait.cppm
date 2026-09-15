@@ -101,14 +101,17 @@ struct TraitFuncsHelper<TraitFuncs<Api...>> {
 
 template<typename T>
 struct ImplWithPtr {
-    rstd::uintptr_t ptr_;
+    T* ptr_;
 
-    template<typename P>
-    constexpr ImplWithPtr(P* p) noexcept: ptr_(rstd::bit_cast<rstd::uintptr_t>(p)) {}
+    constexpr ImplWithPtr(T* p) noexcept: ptr_(p) {}
+
+    constexpr ImplWithPtr(const T* p) noexcept
+        requires(! mtp::is_const<T> && ! mtp::is_func<T>)
+        : ptr_(const_cast<T*>(p)) {}
 
 protected:
-    constexpr auto self() noexcept -> T& { return *rstd::bit_cast<T*>(ptr_); }
-    constexpr auto self() const noexcept -> T const& { return *rstd::bit_cast<T const*>(ptr_); }
+    constexpr auto self() noexcept -> T& { return *ptr_; }
+    constexpr auto self() const noexcept -> T const& { return *ptr_; }
 };
 
 template<template<typename, typename> class T, typename A, typename B>

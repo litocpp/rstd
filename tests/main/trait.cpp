@@ -99,6 +99,63 @@ struct rstd::Impl<MutableReferenceTrait, MutableReferenceValue>
 
 static_assert(rstd::Impled<MutableReferenceValue, MutableReferenceTrait>);
 
+struct ConstexprReceiverTrait {
+    template<typename T, typename = void>
+    struct Api {
+        using Trait = ConstexprReceiverTrait;
+        constexpr auto read() const -> int { return rstd::trait_call<0>(this); }
+        constexpr auto write(int value) -> void { return rstd::trait_call<1>(this, value); }
+    };
+
+    template<typename T>
+    using Funcs = rstd::TraitFuncs<&T::read, &T::write>;
+};
+
+struct ConstexprReceiver : ConstexprReceiverTrait::Api<ConstexprReceiver> {
+    int value;
+
+    explicit constexpr ConstexprReceiver(int input): value(input) {}
+};
+
+template<>
+struct rstd::Impl<ConstexprReceiverTrait, ConstexprReceiver> : rstd::ImplBase<ConstexprReceiver> {
+    constexpr auto read() const -> int { return this->self().value; }
+    constexpr auto write(int value) -> void { this->self().value = value; }
+};
+
+consteval auto constexpr_mutable_receiver() -> bool {
+    ConstexprReceiver value { 7 };
+    auto              impl   = rstd::as<ConstexprReceiverTrait>(value);
+    auto              copied = impl;
+    copied.write(11);
+    const auto& readonly   = value;
+    const auto  const_impl = rstd::as<ConstexprReceiverTrait>(readonly);
+    return impl.read() == 11 && const_impl.read() == 11 && readonly.read() == 11;
+}
+
+consteval auto constexpr_const_receiver() -> bool {
+    const ConstexprReceiver value { 19 };
+    const auto              impl = rstd::as<ConstexprReceiverTrait>(value);
+    return impl.read() == 19 && value.read() == 19;
+}
+
+static_assert(constexpr_mutable_receiver());
+static_assert(constexpr_const_receiver());
+
+TEST(Trait, TypedReceiverPreservesMutableAndConstAccess) {
+    ConstexprReceiver value { 7 };
+    auto              impl = rstd::as<ConstexprReceiverTrait>(value);
+    impl.write(11);
+    EXPECT_EQ(value.value, 11);
+    const auto& readonly   = value;
+    const auto  const_impl = rstd::as<ConstexprReceiverTrait>(readonly);
+    EXPECT_EQ(const_impl.read(), 11);
+    EXPECT_EQ(readonly.read(), 11);
+    const ConstexprReceiver constant { 19 };
+    EXPECT_EQ(rstd::as<ConstexprReceiverTrait>(constant).read(), 19);
+    EXPECT_EQ(constant.read(), 19);
+}
+
 // Base structure for fields
 struct TestClassFields {
     int value;
