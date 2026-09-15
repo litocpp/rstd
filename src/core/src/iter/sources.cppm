@@ -93,6 +93,34 @@ struct SliceIterMut : DefaultInClass<SliceIterMut<T>, Iterator> {
     }
 };
 
+template<typename I>
+struct SliceTraversal {
+    static auto advance(I& iterator, usize n) -> Result<empty, num::nonzero::NonZero<usize>> {
+        auto length = iterator.len();
+        if (n > length) {
+            iterator.cur = iterator.fin;
+            return Err(num::nonzero::NonZero<usize>::make_unchecked(n - length));
+        }
+        if (n != usize()) iterator.cur = iterator.cur.add(n);
+        return Ok(empty {});
+    }
+    static auto count(I& iterator) -> usize {
+        auto length  = iterator.len();
+        iterator.cur = iterator.fin;
+        return length;
+    }
+    static auto last(I& iterator) -> Option<typename I::Item> {
+        auto item    = iterator.next_back();
+        iterator.cur = iterator.fin;
+        return item;
+    }
+};
+
+template<typename T>
+struct IteratorTraversal<SliceIter<T>> : SliceTraversal<SliceIter<T>> {};
+template<typename T>
+struct IteratorTraversal<SliceIterMut<T>> : SliceTraversal<SliceIterMut<T>> {};
+
 /// Iterator that yields nothing.
 export template<class T>
 struct Empty : DefaultInClass<Empty<T>, Iterator> {

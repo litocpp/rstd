@@ -3,6 +3,9 @@
 #include <deque>
 #include <forward_list>
 #include <list>
+#include <sstream>
+#include <iterator>
+#include <ranges>
 #include <map>
 #include <queue>
 #include <set>
@@ -89,6 +92,43 @@ TEST(CppStdIter, IteratorRangeModelsSinglePassInputRange) {
     auto sum = i32();
     for (auto value : range) sum += value;
     EXPECT_EQ(sum, 10_i32);
+}
+
+TEST(CppStdIter, SizeTracksCachedAndRemainingItems) {
+    auto unbounded = std::views::iota(0);
+    auto infinite  = iter::from_range(unbounded);
+    static_assert(! rstd::Impled<decltype(infinite), iter::DoubleEndedIterator>);
+    EXPECT_EQ(*infinite.next(), 0);
+    EXPECT_EQ(*infinite.next(), 1);
+    std::vector<bool> bits { true, false };
+    auto              proxies = iter::from_range(bits);
+    auto              bit     = proxies.next();
+    *bit                      = false;
+    EXPECT_FALSE(bits[0]);
+    std::list<int> values { 1, 2, 3 };
+    auto           source = iter::from_range(values);
+    static_assert(rstd::Impled<decltype(source), iter::ExactSizeIterator>);
+    EXPECT_EQ(source.len(), 3_usize);
+    EXPECT_EQ(*source.next(), 1);
+    EXPECT_EQ(source.len(), 2_usize);
+    auto range = iter::as_range(rstd::move(source));
+    static_assert(std::ranges::sized_range<decltype(range)>);
+    static_assert(! std::ranges::forward_range<decltype(range)>);
+    EXPECT_EQ(range.size(), std::size_t(2));
+    auto cursor = range.begin();
+    (void)range.begin();
+    EXPECT_EQ(range.size(), std::size_t(2));
+    ++cursor;
+    EXPECT_EQ(range.size(), std::size_t(1));
+    ++cursor;
+    EXPECT_EQ(range.size(), std::size_t(0));
+
+    using Input = std::ranges::subrange<std::istream_iterator<int>, std::istream_iterator<int>>;
+    static_assert(! CanFromRange<Input&>);
+    auto mapped = iter::from_range(values).map([](int& value) -> int& {
+        return value;
+    });
+    EXPECT_EQ(rstd::addressof(*mapped.next()), rstd::addressof(values.front()));
 }
 
 TEST(CppStdIter, AsRangeAcceptsOwnedAndBorrowedIntoIteratorSources) {

@@ -58,6 +58,11 @@ public:
 
     constexpr auto begin() -> Cursor { return Cursor(this); }
     constexpr auto end() const -> StandardIteratorEnd { return {}; }
+    constexpr auto size() const -> std::size_t
+        requires Impled<I, ExactSizeIterator>
+    {
+        return as<ExactSizeIterator>(iterator_).len().to_primitive() + (item_.is_some() ? 1 : 0);
+    }
 };
 
 export template<typename Source>
@@ -67,29 +72,36 @@ constexpr auto as_range(Source&& source) -> IteratorRange<into_iter_t<Source>> {
     return IteratorRange<decltype(iterator)>(rstd::move(iterator));
 }
 
-template<class B>
-inline constexpr bool range_double_ended = std::bidirectional_iterator<B>;
+template<class B, class E>
+inline constexpr bool range_double_ended =
+    std::bidirectional_iterator<B> && (std::is_same_v<B, E> || std::sized_sentinel_for<E, B>);
 
 template<class B, class E>
 inline constexpr bool range_exact_size = std::sized_sentinel_for<E, B>;
 
-export template<class B, class E>
-    requires std::input_iterator<B> && std::sentinel_for<E, B>
-class IteratorOverRange : public DefaultInClass<IteratorOverRange<B, E>, Iterator> {
-    static constexpr bool DOUBLE_ENDED = range_double_ended<B>;
-    static constexpr bool EXACT_SIZE   = range_exact_size<B, E>;
+template<class B>
+concept stable_range_item =
+    std::forward_iterator<B> || std::is_same_v<std::iter_reference_t<B>, std::iter_value_t<B>>;
+
+export template<class B, class E, bool Sized = range_exact_size<B, E>>
+    requires std::input_iterator<B> && std::sentinel_for<E, B> && stable_range_item<B>
+class IteratorOverRange : public DefaultInClass<IteratorOverRange<B, E, Sized>, Iterator> {
+    static constexpr bool DOUBLE_ENDED = range_double_ended<B, E>;
+    static constexpr bool EXACT_SIZE   = Sized;
 
     using EndState = std::conditional_t<DOUBLE_ENDED, B, E>;
 
     static constexpr auto make_end(B begin, E end) -> EndState {
-        if constexpr (DOUBLE_ENDED)
+        if constexpr (std::is_same_v<B, E>)
+            return end;
+        else if constexpr (DOUBLE_ENDED)
             return std::ranges::next(begin, end);
         else
             return end;
     }
 
     static constexpr auto make_length(const B& begin, const E& end) -> Option<usize> {
-        if constexpr (EXACT_SIZE) {
+        if constexpr (range_exact_size<B, E>) {
             auto const distance = end - begin;
             return Some(usize(static_cast<rstd::size_t>(distance)));
         } else {
@@ -109,7 +121,12 @@ public:
     static constexpr bool PROVEN_TRUSTED_LEN  = EXACT_SIZE;
 
     constexpr IteratorOverRange(B begin, E end)
+        requires(! Sized || range_exact_size<B, E>)
         : front_(begin), end_(make_end(begin, end)), remaining_(make_length(begin, end)) {}
+
+    constexpr IteratorOverRange(B begin, E end, usize size)
+        requires(Sized)
+        : front_(begin), end_(make_end(begin, end)), remaining_(Some(size)) {}
 
     constexpr auto next() -> Option<Item> {
         if (front_ == end_) return None();
@@ -150,20 +167,25 @@ private:
 };
 
 export template<std::ranges::input_range R>
+    requires stable_range_item<std::ranges::iterator_t<R>>
 constexpr auto from_range(R& range [[clang::lifetimebound]]) {
     using Iterator = std::ranges::iterator_t<R>;
     using Sentinel = std::ranges::sentinel_t<R>;
-    return IteratorOverRange<Iterator, Sentinel>(std::ranges::begin(range),
-                                                 std::ranges::end(range));
+    if constexpr (std::ranges::sized_range<R>) {
+        auto size = usize(static_cast<rstd::size_t>(std::ranges::size(range)));
+        return IteratorOverRange<Iterator, Sentinel, true>(
+            std::ranges::begin(range), std::ranges::end(range), size);
+    } else {
+        return IteratorOverRange<Iterator, Sentinel>(std::ranges::begin(range),
+                                                     std::ranges::end(range));
+    }
 }
 
 export template<std::ranges::input_range R>
-    requires std::ranges::borrowed_range<R> && (! std::is_lvalue_reference_v<R>)
+    requires std::ranges::borrowed_range<R> && (! std::is_lvalue_reference_v<R>) &&
+             stable_range_item<std::ranges::iterator_t<R>>
 constexpr auto from_range(R&& range [[clang::lifetimebound]]) {
-    using Iterator = std::ranges::iterator_t<R>;
-    using Sentinel = std::ranges::sentinel_t<R>;
-    return IteratorOverRange<Iterator, Sentinel>(std::ranges::begin(range),
-                                                 std::ranges::end(range));
+    return from_range(range);
 }
 
 } // namespace rstd::iter

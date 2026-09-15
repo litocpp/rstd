@@ -918,6 +918,7 @@ export using std::ranges::range;
 export using std::ranges::range_value_t;
 export using std::ranges::sentinel_t;
 export using std::ranges::size;
+export using std::ranges::sized_range;
 export using std::ranges::view;
 export using std::ranges::view_interface;
 export using std::ranges::viewable_range;
@@ -935,6 +936,7 @@ export using std::construct_at;
 
 // <iterator>
 export using std::iter_value_t;
+export using std::forward_iterator;
 export using std::iter_reference_t;
 export using std::input_iterator_tag;
 export using std::input_iterator;

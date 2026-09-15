@@ -75,6 +75,36 @@ public:
     constexpr bool contains(const T& v) const { return v >= start && v < fin; }
 };
 
+template<num::Integer T>
+    requires Range<T>::PROVEN_EXACT_SIZE
+struct IteratorTraversal<Range<T>> {
+    static auto advance(Range<T>& iterator, usize n)
+        -> Result<empty, num::nonzero::NonZero<usize>> {
+        auto length = iterator.len();
+        if (n >= length) {
+            iterator.start = iterator.fin;
+            if (n > length) return Err(num::nonzero::NonZero<usize>::make_unchecked(n - length));
+            return Ok(empty {});
+        }
+        using P = typename T::primitive_type;
+        using U = typename T::Unsigned::primitive_type;
+        // Unsigned arithmetic handles ranges spanning the signed zero boundary.
+        auto bits      = U(U(iterator.start.to_primitive()) + U(n.to_primitive()));
+        iterator.start = T(static_cast<P>(bits));
+        return Ok(empty {});
+    }
+    static auto count(Range<T>& iterator) -> usize {
+        auto length    = iterator.len();
+        iterator.start = iterator.fin;
+        return length;
+    }
+    static auto last(Range<T>& iterator) -> Option<T> {
+        auto item      = iterator.next_back();
+        iterator.start = iterator.fin;
+        return item;
+    }
+};
+
 /// Creates the range `[start, end)`.
 export template<num::Integer T>
 constexpr auto range(T start, T end) -> Range<T> {

@@ -143,6 +143,9 @@ constexpr decltype(auto) observe_item(T&& item) {
 template<class T>
 using observed_item_t = mtp::rm_cvf<decltype(observe_item(mtp::declval<T&>()))>;
 
+template<class T>
+using aggregate_item_t = mtp::cond<borrowed_item<T>, observed_item_t<T>, mtp::rm_cvf<T>>;
+
 } // namespace details
 
 export template<has_next I>
@@ -200,6 +203,22 @@ struct Extend {
     template<typename Self, typename = void>
     struct Api {
         using Trait = Extend;
+    };
+};
+
+export template<typename A>
+struct Sum {
+    template<typename Self, typename = void>
+    struct Api {
+        using Trait = Sum;
+    };
+};
+
+export template<typename A>
+struct Product {
+    template<typename Self, typename = void>
+    struct Api {
+        using Trait = Product;
     };
 };
 
@@ -352,6 +371,29 @@ auto iterator_try_fold(I& iterator, B init, F& function) {
     return IteratorDriver<I>::try_fold(iterator, rstd::move(init), function);
 }
 
+// Source owners may specialize consumption without bypassing adapter side effects.
+template<has_next I>
+struct IteratorTraversal {
+    static auto advance(I& iterator, usize n) -> Result<empty, num::nonzero::NonZero<usize>> {
+        for (usize advanced; advanced < n; ++advanced)
+            if (iterator.next().is_none())
+                return Err(num::nonzero::NonZero<usize>::make_unchecked(n - advanced));
+        return Ok(empty {});
+    }
+    static auto count(I& iterator) -> usize {
+        usize count;
+        while (iterator.next().is_some()) ++count;
+        return count;
+    }
+    static auto last(I& iterator) -> Option<typename I::Item> {
+        auto last = iterator.next();
+        if (last.is_none()) return last;
+        for (auto item = iterator.next(); item.is_some(); item = iterator.next())
+            last = rstd::move(item);
+        return last;
+    }
+};
+
 template<typename I>
     requires Impled<I, DoubleEndedIterator>
 auto double_ended_advance_by(I& iterator, usize n) -> Result<empty, num::nonzero::NonZero<usize>> {
@@ -404,6 +446,18 @@ auto double_ended_fold(I& iterator, B init, F& function) -> B {
         accumulator = function(rstd::move(accumulator), rstd::forward<typename I::Item>(*item));
     return accumulator;
 }
+
+template<typename I>
+struct ReverseIteratorDriver {
+    template<typename B, typename F>
+    static auto fold(I& iterator, B init, F& function) -> B {
+        return double_ended_fold(iterator, rstd::move(init), function);
+    }
+    template<typename B, typename F>
+    static auto try_fold(I& iterator, B init, F& function) {
+        return double_ended_try_fold(iterator, rstd::move(init), function);
+    }
+};
 
 template<typename I, typename Pred>
     requires Impled<I, DoubleEndedIterator>
@@ -498,23 +552,14 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
     constexpr auto into_iter() && -> Self { return rstd::move(this->self()); }
 
     // ---- consuming ----
-    auto count() && -> usize {
-        usize n;
-        while (this->self().next().is_some()) ++n;
-        return n;
-    }
+    auto count() && -> usize { return iter::IteratorTraversal<Self>::count(this->self()); }
 
-    auto last() && {
-        auto out = this->self().next();
-        for (auto x = this->self().next(); x.is_some(); x = this->self().next())
-            out = rstd::move(x);
-        return out;
-    }
+    auto last() && { return iter::IteratorTraversal<Self>::last(this->self()); }
 
     auto nth(usize n) & {
-        auto x = this->self().next();
-        for (rstd::size_t i = 0; i < n.to_primitive() && x.is_some(); ++i) x = this->self().next();
-        return x;
+        using Return = Option<typename Self::Item>;
+        if (iter::IteratorTraversal<Self>::advance(this->self(), n).is_err()) return Return(None());
+        return this->self().next();
     }
 
     auto nth(usize n) && { return static_cast<Impl&>(*this).nth(n); }
@@ -528,30 +573,34 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
     auto reduce(F f) && {
         auto first = this->self().next();
         if (first.is_none()) return first;
-        auto acc = rstd::move(*first);
+        auto acc = rstd::move(first);
         for (auto x = this->self().next(); x.is_some(); x = this->self().next())
-            acc = f(rstd::move(acc), rstd::move(*x));
-        return rstd::Some(rstd::move(acc));
+            acc = rstd::Some<typename Self::Item>(f(rstd::forward<typename Self::Item>(*acc),
+                                                    rstd::forward<typename Self::Item>(*x)));
+        return acc;
     }
 
     template<typename F>
     void for_each(F f) && {
-        for (auto x = this->self().next(); x.is_some(); x = this->self().next())
-            f(rstd::forward<typename Self::Item>(*x));
+        auto step = [&f](empty, typename Self::Item item) {
+            f(rstd::forward<typename Self::Item>(item));
+            return empty {};
+        };
+        (void)iter::iterator_fold(this->self(), empty {}, step);
     }
 
+    template<typename S = void>
     auto sum() && {
-        typename Self::Item acc {};
-        for (auto x = this->self().next(); x.is_some(); x = this->self().next())
-            acc = acc + rstd::move(*x);
-        return acc;
+        using Target = mtp::
+            cond<mtp::same_as<S, void>, iter::details::aggregate_item_t<typename Self::Item>, S>;
+        return Impl<iter::Sum<typename Self::Item>, Target>::sum(rstd::move(this->self()));
     }
 
+    template<typename P = void>
     auto product() && {
-        typename Self::Item acc { 1 };
-        for (auto x = this->self().next(); x.is_some(); x = this->self().next())
-            acc = acc * rstd::move(*x);
-        return acc;
+        using Target = mtp::
+            cond<mtp::same_as<P, void>, iter::details::aggregate_item_t<typename Self::Item>, P>;
+        return Impl<iter::Product<typename Self::Item>, Target>::product(rstd::move(this->self()));
     }
 
     template<typename Pred>
@@ -630,6 +679,7 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
 
     auto min() && {
         auto best = this->self().next();
+        if (best.is_none()) return best;
         for (auto x = this->self().next(); x.is_some(); x = this->self().next())
             if (*x < *best) best = rstd::move(x);
         return best;
@@ -637,6 +687,7 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
 
     auto max() && {
         auto best = this->self().next();
+        if (best.is_none()) return best;
         for (auto x = this->self().next(); x.is_some(); x = this->self().next())
             if (! (*x < *best)) best = rstd::move(x);
         return best;
@@ -704,13 +755,30 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
     template<typename U>
         requires(! mtp::is_ref<U>) && iter::into_iterable<U>
     auto eq(U&& source) && -> bool {
+        return static_cast<Impl&&>(*this).eq_by(rstd::forward<U>(source),
+                                                [](const auto& a, const auto& b) {
+                                                    return a == b;
+                                                });
+    }
+
+    template<typename U, typename F>
+        requires(! mtp::is_ref<U>) && iter::into_iterable<U>
+    auto eq_by(U&& source, F equal) && -> bool {
         auto other = iter::into_iter(rstd::forward<U>(source));
         for (;;) {
             auto a = this->self().next();
             auto b = other.next();
             if (a.is_none() || b.is_none()) return a.is_none() && b.is_none();
-            if (! (*a == *b)) return false;
+            if (! equal(rstd::forward<typename Self::Item>(*a),
+                        rstd::forward<typename decltype(other)::Item>(*b)))
+                return false;
         }
+    }
+
+    template<typename U, typename F>
+        requires(! mtp::is_ref<U>) && iter::into_iterable<U>
+    auto ne_by(U&& source, F equal) && -> bool {
+        return ! static_cast<Impl&&>(*this).eq_by(rstd::forward<U>(source), rstd::move(equal));
     }
 
     template<typename U>
@@ -720,9 +788,21 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
     }
 
     // Lexicographic ordering against another IntoIterator source.
-    template<typename U>
-        requires(! mtp::is_ref<U>) && iter::into_iterable<U>
+    template<typename U, class S = Self>
+        requires(! mtp::is_ref<U>) && iter::into_iterable<U> &&
+                requires(const typename S::Item& a, const typename iter::into_iter_t<U>::Item& b) {
+                    { a <=> b } -> mtp::same_as<rstd::strong_ordering>;
+                }
     auto cmp(U&& source) && -> rstd::strong_ordering {
+        return static_cast<Impl&&>(*this).cmp_by(
+            rstd::forward<U>(source), [](const auto& a, const auto& b) -> rstd::strong_ordering {
+                return a <=> b;
+            });
+    }
+
+    template<typename U, typename F>
+        requires(! mtp::is_ref<U>) && iter::into_iterable<U>
+    auto cmp_by(U&& source, F compare) && -> rstd::strong_ordering {
         auto other = iter::into_iter(rstd::forward<U>(source));
         for (;;) {
             auto a = this->self().next();
@@ -730,40 +810,65 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
             if (a.is_none() && b.is_none()) return rstd::strong_ordering::equal;
             if (a.is_none()) return rstd::strong_ordering::less;
             if (b.is_none()) return rstd::strong_ordering::greater;
-            if (*a < *b) return rstd::strong_ordering::less;
-            if (*b < *a) return rstd::strong_ordering::greater;
+            auto order = compare(rstd::forward<typename Self::Item>(*a),
+                                 rstd::forward<typename decltype(other)::Item>(*b));
+            static_assert(mtp::same_as<decltype(order), rstd::strong_ordering>);
+            if (order != 0) return order;
+        }
+    }
+
+    template<typename U>
+        requires(! mtp::is_ref<U>) && iter::into_iterable<U>
+    auto partial_cmp(U&& source) && -> rstd::partial_ordering {
+        return static_cast<Impl&&>(*this).partial_cmp_by(
+            rstd::forward<U>(source), [](const auto& a, const auto& b) -> rstd::partial_ordering {
+                return a <=> b;
+            });
+    }
+
+    template<typename U, typename F>
+        requires(! mtp::is_ref<U>) && iter::into_iterable<U>
+    auto partial_cmp_by(U&& source, F compare) && -> rstd::partial_ordering {
+        auto other = iter::into_iter(rstd::forward<U>(source));
+        for (;;) {
+            auto a = this->self().next();
+            auto b = other.next();
+            if (a.is_none() && b.is_none()) return rstd::partial_ordering::equivalent;
+            if (a.is_none()) return rstd::partial_ordering::less;
+            if (b.is_none()) return rstd::partial_ordering::greater;
+            rstd::partial_ordering order =
+                compare(rstd::forward<typename Self::Item>(*a),
+                        rstd::forward<typename decltype(other)::Item>(*b));
+            if (order != 0) return order;
         }
     }
 
     template<typename U>
         requires(! mtp::is_ref<U>) && iter::into_iterable<U>
     auto lt(U&& other) && -> bool {
-        return static_cast<Impl&&>(*this).cmp(rstd::forward<U>(other)) ==
-               rstd::strong_ordering::less;
+        return static_cast<Impl&&>(*this).partial_cmp(rstd::forward<U>(other)) < 0;
     }
     template<typename U>
         requires(! mtp::is_ref<U>) && iter::into_iterable<U>
     auto le(U&& other) && -> bool {
-        return static_cast<Impl&&>(*this).cmp(rstd::forward<U>(other)) !=
-               rstd::strong_ordering::greater;
+        return static_cast<Impl&&>(*this).partial_cmp(rstd::forward<U>(other)) <= 0;
     }
     template<typename U>
         requires(! mtp::is_ref<U>) && iter::into_iterable<U>
     auto gt(U&& other) && -> bool {
-        return static_cast<Impl&&>(*this).cmp(rstd::forward<U>(other)) ==
-               rstd::strong_ordering::greater;
+        return static_cast<Impl&&>(*this).partial_cmp(rstd::forward<U>(other)) > 0;
     }
     template<typename U>
         requires(! mtp::is_ref<U>) && iter::into_iterable<U>
     auto ge(U&& other) && -> bool {
-        return static_cast<Impl&&>(*this).cmp(rstd::forward<U>(other)) !=
-               rstd::strong_ordering::less;
+        return static_cast<Impl&&>(*this).partial_cmp(rstd::forward<U>(other)) >= 0;
     }
 
     // compare(a, b) -> strong_ordering; returns the minimum (first on ties).
     template<typename F>
     auto min_by(F compare) && {
         auto best = this->self().next();
+        if (best.is_none()) return best;
         for (auto x = this->self().next(); x.is_some(); x = this->self().next())
             if (compare(*best, *x) == rstd::strong_ordering::greater) best = rstd::move(x);
         return best;
@@ -773,6 +878,7 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
     template<typename F>
     auto max_by(F compare) && {
         auto best = this->self().next();
+        if (best.is_none()) return best;
         for (auto x = this->self().next(); x.is_some(); x = this->self().next())
             if (compare(*best, *x) != rstd::strong_ordering::greater) best = rstd::move(x);
         return best;
@@ -820,7 +926,7 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
     auto try_rfold(B init, F f) &
         requires Impled<Self, iter::DoubleEndedIterator>
     {
-        return iter::double_ended_try_fold(this->self(), rstd::move(init), f);
+        return iter::ReverseIteratorDriver<Self>::try_fold(this->self(), rstd::move(init), f);
     }
 
     template<typename B, typename F>
@@ -834,7 +940,7 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
     auto rfold(B init, F f) && -> B
         requires Impled<Self, iter::DoubleEndedIterator>
     {
-        return iter::double_ended_fold(this->self(), rstd::move(init), f);
+        return iter::ReverseIteratorDriver<Self>::fold(this->self(), rstd::move(init), f);
     }
 
     template<typename Pred>
@@ -852,12 +958,7 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
     }
 
     auto advance_by(usize n) & -> Result<empty, num::nonzero::NonZero<usize>> {
-        for (auto advanced = usize(); advanced < n; ++advanced) {
-            if (this->self().next().is_none()) {
-                return Err(num::nonzero::NonZero<usize>::make_unchecked(n - advanced));
-            }
-        }
-        return Ok(empty {});
+        return iter::IteratorTraversal<Self>::advance(this->self(), n);
     }
 
     auto advance_by(usize n) && -> Result<empty, num::nonzero::NonZero<usize>> {
@@ -871,10 +972,17 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
     }
 
     auto is_sorted() && -> bool {
+        return static_cast<Impl&&>(*this).is_sorted_by([](const auto& a, const auto& b) {
+            return a <= b;
+        });
+    }
+
+    template<typename F>
+    auto is_sorted_by(F ordered) && -> bool {
         auto prev = this->self().next();
         if (prev.is_none()) return true;
         for (auto x = this->self().next(); x.is_some(); x = this->self().next()) {
-            if (*x < *prev) return false;
+            if (! ordered(*prev, *x)) return false;
             prev = rstd::move(x);
         }
         return true;
@@ -999,13 +1107,13 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
     }
 
     template<class S = Self>
-        requires iter::into_iterable<typename S::Item>
+        requires(! mtp::is_ref<typename S::Item>) && iter::into_iterable<typename S::Item>
     auto flatten() && -> iter::Flatten<Self> {
         return iter::Flatten<Self>(rstd::move(this->self()));
     }
 
     template<typename F, class S = Self, class Mapped = mtp::invoke_result_t<F&, typename S::Item>>
-        requires iter::into_iterable<Mapped>
+        requires(! mtp::is_ref<Mapped>) && iter::into_iterable<Mapped>
     auto flat_map(F f) && -> iter::FlatMap<Self, F> {
         return iter::FlatMap<Self, F>(rstd::move(this->self()), rstd::move(f));
     }

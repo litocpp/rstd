@@ -103,6 +103,7 @@ target_sources(
          src/iter/sources.cppm
          src/iter/range.cppm
          src/iter/option_result.cppm
+         src/iter/accumulation.cppm
          src/mem/mod.cppm
          src/mem/manually_drop.cppm
          src/mem/maybe_uninit.cppm

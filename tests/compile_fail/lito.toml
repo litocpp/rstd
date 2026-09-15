@@ -359,6 +359,18 @@ source = "lifetimebound_positive.cpp"
 outcome = "success"
 options = ["-Werror=dangling"]
 
+[[compile-test.cases]]
+name = "Iter.FloatTotalCmp"
+source = "iter_float_total_cmp.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["constraints not satisfied", "no matching member function"]
+
+[[compile-test.cases]]
+name = "Iter.NativeRefFlatten"
+source = "iter_native_ref_flatten.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["constraints not satisfied", "no matching member function"]
+
 [dependencies]
 rstd-std = { path = "../../src/std" }
 rstd-parse = { path = "../../src/parse" }

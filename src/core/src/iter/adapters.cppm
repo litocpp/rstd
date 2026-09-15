@@ -18,7 +18,7 @@ struct Map : DefaultInClass<Map<I, F>, Iterator> {
     auto next() -> Option<Item> {
         auto x = as<Iterator>(i).next();
         if (x.is_none()) return rstd::None();
-        return rstd::Some(f(rstd::move(*x)));
+        return rstd::Some<Item>(f(rstd::forward<typename I::Item>(*x)));
     }
     auto size_hint() const -> SizeHint { return as<Iterator>(i).size_hint(); }
     auto next_back() -> Option<Item>
@@ -26,7 +26,7 @@ struct Map : DefaultInClass<Map<I, F>, Iterator> {
     {
         auto x = as<DoubleEndedIterator>(i).next_back();
         if (x.is_none()) return rstd::None();
-        return rstd::Some(f(rstd::move(*x)));
+        return rstd::Some<Item>(f(rstd::forward<typename I::Item>(*x)));
     }
     auto len() const -> usize
         requires Impled<I, ExactSizeIterator>
@@ -44,7 +44,7 @@ struct MapWhile : DefaultInClass<MapWhile<I, F>, Iterator> {
     auto next() -> Option<Item> {
         auto x = i.next();
         if (x.is_none()) return rstd::None();
-        return f(rstd::move(*x));
+        return f(rstd::forward<typename I::Item>(*x));
     }
     auto size_hint() const -> SizeHint { return { usize(), i.size_hint().template get<1>() }; }
 };
@@ -83,7 +83,7 @@ struct FilterMap : DefaultInClass<FilterMap<I, F>, Iterator> {
     FilterMap(I in, F fn): i(rstd::move(in)), f(rstd::move(fn)) {}
     auto next() -> Option<Item> {
         for (auto x = i.next(); x.is_some(); x = i.next()) {
-            auto r = f(rstd::move(*x));
+            auto r = f(rstd::forward<typename I::Item>(*x));
             if (r.is_some()) return r;
         }
         return rstd::None();
@@ -93,7 +93,7 @@ struct FilterMap : DefaultInClass<FilterMap<I, F>, Iterator> {
     {
         auto backwards = as<DoubleEndedIterator>(i);
         for (auto x = backwards.next_back(); x.is_some(); x = backwards.next_back()) {
-            auto result = f(rstd::move(*x));
+            auto result = f(rstd::forward<typename I::Item>(*x));
             if (result.is_some()) return result;
         }
         return rstd::None();
@@ -117,7 +117,7 @@ struct Enumerate : DefaultInClass<Enumerate<I>, Iterator> {
         if (x.is_none()) return rstd::None();
         usize idx = count;
         ++count;
-        return rstd::Some(Item(idx, rstd::move(*x)));
+        return rstd::Some(Item(idx, rstd::forward<typename I::Item>(*x)));
     }
     auto size_hint() const -> SizeHint { return i.size_hint(); }
     auto next_back() -> Option<Item>
@@ -126,7 +126,7 @@ struct Enumerate : DefaultInClass<Enumerate<I>, Iterator> {
         auto remaining = as<ExactSizeIterator>(i).len();
         auto x         = as<DoubleEndedIterator>(i).next_back();
         if (x.is_none()) return rstd::None();
-        return rstd::Some(Item(count + remaining - usize(1), rstd::move(*x)));
+        return rstd::Some(Item(count + remaining - usize(1), rstd::forward<typename I::Item>(*x)));
     }
     auto len() const -> usize
         requires Impled<I, ExactSizeIterator>
@@ -153,7 +153,8 @@ struct Zip : DefaultInClass<Zip<A, B>, Iterator> {
         if (x.is_none()) return rstd::None();
         auto y = b.next();
         if (y.is_none()) return rstd::None();
-        return rstd::Some(Item(rstd::move(*x), rstd::move(*y)));
+        return rstd::Some(
+            Item(rstd::forward<typename A::Item>(*x), rstd::forward<typename B::Item>(*y)));
     }
     auto next_back() -> Option<Item>
         requires PROVEN_DOUBLE_ENDED
@@ -174,7 +175,8 @@ struct Zip : DefaultInClass<Zip<A, B>, Iterator> {
         if (x.is_none()) return rstd::None();
         auto y = b_back.next_back();
         if (y.is_none()) return rstd::None();
-        return rstd::Some(Item(rstd::move(*x), rstd::move(*y)));
+        return rstd::Some(
+            Item(rstd::forward<typename A::Item>(*x), rstd::forward<typename B::Item>(*y)));
     }
     auto size_hint() const -> SizeHint {
         auto a_hint = a.size_hint();
@@ -533,7 +535,7 @@ struct Scan : DefaultInClass<Scan<I, St, F>, Iterator> {
     auto next() -> Option<Item> {
         auto x = i.next();
         if (x.is_none()) return rstd::None();
-        return f(st, rstd::move(*x));
+        return f(st, rstd::forward<typename I::Item>(*x));
     }
     auto size_hint() const -> SizeHint { return { usize(), i.size_hint().template get<1>() }; }
 };
@@ -590,6 +592,25 @@ struct Peekable : DefaultInClass<Peekable<I>, Iterator> {
         if (peeked.is_none()) peeked = rstd::Some(i.next());
         if (peeked->is_none()) return nullptr;
         return rstd::addressof(**peeked);
+    }
+    // Cached pointers expire when the cached item is consumed or this adapter is moved.
+    auto peek_mut() -> mtp::rm_ref<Item>* {
+        if (peeked.is_none()) peeked = rstd::Some(i.next());
+        if (peeked->is_none()) return nullptr;
+        return rstd::addressof(**peeked);
+    }
+    template<typename P>
+    auto next_if(P predicate) -> Option<Item> {
+        auto value = next();
+        if (value.is_some() && predicate(*value)) return value;
+        peeked = Some(rstd::move(value));
+        return None();
+    }
+    template<typename T>
+    auto next_if_eq(const T& expected) -> Option<Item> {
+        return next_if([&](const auto& value) {
+            return value == expected;
+        });
     }
     auto size_hint() const -> SizeHint {
         if (peeked.is_some() && peeked->is_none()) return { usize(), rstd::Some(usize()) };
@@ -690,7 +711,7 @@ struct Flatten : DefaultInClass<Flatten<I>, Iterator> {
             }
             auto outer = i.next();
             if (outer.is_none()) break;
-            front = rstd::Some(iter::into_iter(rstd::move(*outer)));
+            front = rstd::Some(iter::into_iter(rstd::forward<Outer>(*outer)));
         }
 
         if (back.is_none()) return rstd::None();
@@ -710,7 +731,7 @@ struct Flatten : DefaultInClass<Flatten<I>, Iterator> {
             }
             auto outer = as<DoubleEndedIterator>(i).next_back();
             if (outer.is_none()) break;
-            back = rstd::Some(iter::into_iter(rstd::move(*outer)));
+            back = rstd::Some(iter::into_iter(rstd::forward<Outer>(*outer)));
         }
 
         if (front.is_none()) return rstd::None();
@@ -880,6 +901,77 @@ struct ByRef : DefaultInClass<ByRef<I>, Iterator> {
         requires Impled<I, ExactSizeIterator>
     {
         return as<ExactSizeIterator>(*inner).len();
+    }
+};
+
+template<class I>
+struct IteratorDriver<ByRef<I>> {
+    template<typename B, typename F>
+    static auto fold(ByRef<I>& iterator, B init, F& function) -> B {
+        return IteratorDriver<I>::fold(*iterator.inner, rstd::move(init), function);
+    }
+    template<typename B, typename F>
+    static auto try_fold(ByRef<I>& iterator, B init, F& function) {
+        return IteratorDriver<I>::try_fold(*iterator.inner, rstd::move(init), function);
+    }
+};
+
+template<class I>
+struct IteratorTraversal<ByRef<I>> {
+    static auto advance(ByRef<I>& iterator, usize n) {
+        return IteratorTraversal<I>::advance(*iterator.inner, n);
+    }
+    static auto count(ByRef<I>& iterator) -> usize {
+        return IteratorTraversal<I>::count(*iterator.inner);
+    }
+    static auto last(ByRef<I>& iterator) -> Option<typename I::Item> {
+        return IteratorTraversal<I>::last(*iterator.inner);
+    }
+};
+
+template<class I, class Mapper>
+struct ReverseIteratorDriver<Map<I, Mapper>> {
+    template<typename B, typename F>
+    static auto fold(Map<I, Mapper>& iterator, B init, F& function) -> B {
+        auto step = [&iterator, &function](B accumulator, typename I::Item item) -> B {
+            decltype(auto) mapped = iterator.f(rstd::forward<typename I::Item>(item));
+            return function(rstd::move(accumulator),
+                            rstd::forward<typename Map<I, Mapper>::Item>(mapped));
+        };
+        return ReverseIteratorDriver<I>::fold(iterator.i, rstd::move(init), step);
+    }
+    template<typename B, typename F>
+    static auto try_fold(Map<I, Mapper>& iterator, B init, F& function) {
+        auto step = [&iterator, &function](B accumulator, typename I::Item item) {
+            decltype(auto) mapped = iterator.f(rstd::forward<typename I::Item>(item));
+            return function(rstd::move(accumulator),
+                            rstd::forward<typename Map<I, Mapper>::Item>(mapped));
+        };
+        return ReverseIteratorDriver<I>::try_fold(iterator.i, rstd::move(init), step);
+    }
+};
+
+template<class I>
+struct IteratorDriver<Rev<I>> {
+    template<typename B, typename F>
+    static auto fold(Rev<I>& iterator, B init, F& function) -> B {
+        return ReverseIteratorDriver<I>::fold(iterator.i, rstd::move(init), function);
+    }
+    template<typename B, typename F>
+    static auto try_fold(Rev<I>& iterator, B init, F& function) {
+        return ReverseIteratorDriver<I>::try_fold(iterator.i, rstd::move(init), function);
+    }
+};
+
+template<class I>
+struct ReverseIteratorDriver<Rev<I>> {
+    template<typename B, typename F>
+    static auto fold(Rev<I>& iterator, B init, F& function) -> B {
+        return IteratorDriver<I>::fold(iterator.i, rstd::move(init), function);
+    }
+    template<typename B, typename F>
+    static auto try_fold(Rev<I>& iterator, B init, F& function) {
+        return IteratorDriver<I>::try_fold(iterator.i, rstd::move(init), function);
     }
 };
 

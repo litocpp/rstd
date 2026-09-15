@@ -67,6 +67,8 @@ using rstd::str;
 using rstd::iter::Iterator;
 using rstd::iter::IntoIterator;
 using rstd::iter::FromIterator;
+using rstd::iter::Sum;
+using rstd::iter::Product;
 using rstd::iter::DoubleEndedIterator;
 using rstd::iter::ExactSizeIterator;
 using rstd::iter::FusedIterator;

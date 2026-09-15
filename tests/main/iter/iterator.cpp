@@ -49,6 +49,25 @@ struct MoveOnlyItem {
     auto operator=(MoveOnlyItem&&) -> MoveOnlyItem&      = default;
 };
 
+struct CollectDrop {
+    int* drops;
+    explicit CollectDrop(int& count): drops(&count) {}
+    CollectDrop(const CollectDrop&) = delete;
+    CollectDrop(CollectDrop&& other): drops(rstd::exchange(other.drops, nullptr)) {}
+    auto operator=(CollectDrop&& other) -> CollectDrop& {
+        if (drops) ++*drops;
+        drops = rstd::exchange(other.drops, nullptr);
+        return *this;
+    }
+    ~CollectDrop() {
+        if (drops) ++*drops;
+    }
+};
+
+struct Total {
+    i64 value;
+};
+
 struct RvalueCallable {
     auto operator()() & -> MoveOnlyItem = delete;
     auto operator()() && -> MoveOnlyItem { return MoveOnlyItem(11_i32); }
@@ -201,12 +220,279 @@ struct Impl<iter::Extend<i32>, ExtendOnly> : ImplBase<ExtendOnly> {
 
 } // namespace rstd
 
+template<>
+struct rstd::Impl<iter::Sum<i32>, Total> : rstd::ImplBase<Total> {
+    template<iter::has_next I>
+    static auto sum(I input) -> Total {
+        return { rstd::move(input).fold(0_i64, [](i64 total, i32 value) {
+            return total + rstd::into<i64>(value);
+        }) };
+    }
+};
+
+TEST(Iter, NativeReferenceMapPreservesIdentity) {
+    i32  value = 7_i32;
+    auto make  = [&value] {
+        return iter::from_fn([&value]() -> Option<i32&> {
+                   return Some<i32&>(value);
+               })
+            .take(2_usize)
+            .map([](i32& item) -> i32& {
+                return item;
+            });
+    };
+    auto mapped = make();
+    auto item   = mapped.next();
+    EXPECT_EQ(rstd::addressof(*item), rstd::addressof(value));
+    *item = 9_i32;
+    EXPECT_EQ(make().fold(0_i32,
+                          [](i32 sum, i32& item) {
+                              return sum + item;
+                          }),
+              18_i32);
+}
+
 TEST(Iter, RangeCollect) {
     auto v = iter::range(0_i32, 5_i32).collect<Vec<i32>>();
     ASSERT_EQ(v.len(), 5_usize);
     for (auto i = i32(); i < 5_i32; i += 1_i32) {
         EXPECT_EQ(v[rstd::try_from<usize>(i).unwrap()], i);
     }
+}
+
+TEST(Iter, FallibleCollectStopsAtFirstFailureAndPreservesRemainder) {
+    for (auto stop : iter::range(0_i32, 4_i32)) {
+        int  calls = 0;
+        auto values =
+            iter::range(0_i32, 4_i32).map([&](i32 value) -> rstd::Result<MoveOnlyItem, i32> {
+                ++calls;
+                if (value == stop) return rstd::Err(value);
+                return rstd::Ok(MoveOnlyItem(value));
+            });
+        auto result = values.by_ref().collect<rstd::Result<Vec<MoveOnlyItem>, i32>>();
+        ASSERT_TRUE(result.is_err());
+        EXPECT_EQ(result.unwrap_err(), stop);
+        EXPECT_EQ(calls, stop.to_primitive() + 1);
+        auto remaining = values.next();
+        if (stop == 3_i32)
+            EXPECT_TRUE(remaining.is_none());
+        else
+            EXPECT_EQ(remaining->unwrap().value, stop + 1_i32);
+    }
+    auto empty = iter::empty<rstd::Result<i32, i32>>().collect<rstd::Result<Vec<i32>, i32>>();
+    ASSERT_TRUE(empty.is_ok());
+    EXPECT_TRUE(empty->is_empty());
+    auto success = iter::range(0_i32, 3_i32)
+                       .map([](i32 value) -> Option<i32> {
+                           return Some(value);
+                       })
+                       .collect<Option<Vec<i32>>>();
+    ASSERT_TRUE(success.is_some());
+    EXPECT_EQ(success->len(), 3_usize);
+    auto missing = iter::range(0_i32, 4_i32).map([](i32 value) -> Option<i32> {
+        return value == 1_i32 ? None() : Some(value);
+    });
+    EXPECT_TRUE(missing.by_ref().collect<Option<Vec<i32>>>().is_none());
+    EXPECT_EQ(missing.next()->unwrap(), 2_i32);
+
+    i32  error     = 17_i32;
+    auto reference = iter::once(0_i32)
+                         .map([&](i32) -> rstd::Result<i32, i32&> {
+                             return rstd::Err<i32&>(error);
+                         })
+                         .collect<rstd::Result<Vec<i32>, i32&>>();
+    EXPECT_EQ(rstd::addressof(reference.unwrap_err()), rstd::addressof(error));
+}
+
+TEST(Iter, NativeReferencesSurviveAdapters) {
+    const i32 constant  = 13_i32;
+    auto      immutable = iter::from_fn([&]() -> Option<const i32&> {
+                         return Some<const i32&>(constant);
+                          })
+                              .take(1_usize)
+                              .map([](const i32& item) -> const i32& {
+                             return item;
+                              });
+    EXPECT_EQ(rstd::addressof(*immutable.next()), rstd::addressof(constant));
+    i32  value  = 3_i32;
+    auto source = [&] {
+        return iter::from_fn([&]() -> Option<i32&> {
+                   return Some<i32&>(value);
+               })
+            .take(3_usize);
+    };
+    auto filtered = source().filter_map([](i32& value) {
+        return Some<i32&>(value);
+    });
+    EXPECT_EQ(rstd::addressof(*filtered.next()), rstd::addressof(value));
+    auto mapped = source().map_while([](i32& value) {
+        return Some<i32&>(value);
+    });
+    EXPECT_EQ(rstd::addressof(*mapped.next()), rstd::addressof(value));
+    auto indexed = source().enumerate().next();
+    EXPECT_EQ(rstd::addressof(indexed->template get<1>()), rstd::addressof(value));
+    auto zipped = source().zip(source()).next();
+    EXPECT_EQ(rstd::addressof(zipped->template get<0>()), rstd::addressof(value));
+    auto reduced = source().reduce([](i32&, i32& right) -> i32& {
+        return right;
+    });
+    EXPECT_EQ(rstd::addressof(*reduced), rstd::addressof(value));
+    auto scanned = source().scan(0_i32, [](i32& state, i32& item) {
+        state += item;
+        return Some<i32&>(item);
+    });
+    EXPECT_EQ(rstd::addressof(*scanned.next()), rstd::addressof(value));
+}
+
+TEST(Iter, AggregationAndPartialComparison) {
+    EXPECT_EQ(iter::once(Some(3_i32)).sum(), Some(3_i32));
+    EXPECT_EQ(iter::empty<i32>().sum(), 0_i32);
+    EXPECT_EQ(iter::empty<i32>().product(), 1_i32);
+    EXPECT_TRUE(iter::once(1_i32).ne_by(iter::once(2_i32), [](i32 a, i32 b) {
+        return a == b;
+    }));
+    EXPECT_EQ(iter::once(1_i32).partial_cmp_by(iter::once(2_i32),
+                                               [](i32, i32) {
+                                                   return rstd::partial_ordering::unordered;
+                                               }),
+              rstd::partial_ordering::unordered);
+    EXPECT_EQ(iter::range(1_i32, 4_i32).sum<Total>().value, 6_i64);
+    EXPECT_EQ(iter::range(1_i32, 4_i32).sum<i32>(), 6_i32);
+    EXPECT_EQ(iter::range(1_i32, 4_i32).product<i32>(), 6_i32);
+    i32 value = 3_i32;
+    EXPECT_EQ(iter::from_fn([&]() -> Option<i32&> {
+                  return Some<i32&>(value);
+              })
+                  .take(2_usize)
+                  .sum(),
+              6_i32);
+    auto optional = iter::range(1_i32, 4_i32)
+                        .map([](i32 v) {
+                            return Some(v);
+                        })
+                        .product<Option<i32>>();
+    EXPECT_EQ(optional, Some(6_i32));
+    auto fallible = iter::range(0_i32, 4_i32).map([](i32 v) -> rstd::Result<i32, i32> {
+        if (v == 2_i32) return rstd::Err(19_i32);
+        return rstd::Ok(v);
+    });
+    auto sum      = fallible.by_ref().sum<rstd::Result<i32, i32>>();
+    EXPECT_EQ(sum.unwrap_err(), 19_i32);
+    EXPECT_EQ(fallible.next()->unwrap(), 3_i32);
+    EXPECT_TRUE(iter::range(0_i32, 3_i32).eq_by(iter::range(1_i32, 4_i32), [](i32 a, i32 b) {
+        return a + 1_i32 == b;
+    }));
+    EXPECT_TRUE(iter::range(0_i32, 3_i32).is_sorted_by([](i32 a, i32 b) {
+        return a < b;
+    }));
+    EXPECT_EQ(iter::once(1_i32).cmp_by(iter::once(2_i32),
+                                       [](i32 a, i32 b) {
+                                           return a <=> b;
+                                       }),
+              rstd::strong_ordering::less);
+    auto nan = f64(__builtin_nan(""));
+    EXPECT_EQ(iter::once(nan).partial_cmp(iter::once(f64(1))), rstd::partial_ordering::unordered);
+    EXPECT_FALSE(iter::once(nan).le(iter::once(f64(1))));
+    EXPECT_FALSE(iter::once(nan).ge(iter::once(f64(1))));
+    EXPECT_FALSE(iter::once(nan).chain(iter::once(f64(1))).is_sorted());
+}
+
+TEST(Iter, FailedCollectionDestroysPartialOutputOnce) {
+    int  drops  = 0;
+    int  calls  = 0;
+    auto values = iter::range(0_i32, 4_i32).map([&](i32 value) -> rstd::Result<CollectDrop, i32> {
+        ++calls;
+        if (value == 2_i32) return rstd::Err(11_i32);
+        return rstd::Ok(CollectDrop(drops));
+    });
+    auto result = values.by_ref().collect<rstd::Result<Vec<CollectDrop>, i32>>();
+    EXPECT_TRUE(result.is_err());
+    EXPECT_EQ(drops, 2);
+    EXPECT_EQ(calls, 3);
+    auto remainder = values.next();
+    EXPECT_EQ(calls, 4);
+    EXPECT_EQ(drops, 2);
+    remainder = None();
+    EXPECT_EQ(drops, 3);
+}
+
+TEST(Iter, ReverseDriverMatchesPullAndKeepsReferenceIdentity) {
+    Vec<i32> values;
+    values.push(1_i32);
+    values.push(2_i32);
+    values.push(3_i32);
+    int  calls   = 0;
+    auto mapped  = values.iter_mut().map([&](auto value) -> i32& {
+        ++calls;
+        return *value;
+    });
+    auto stopped = mapped.try_rfold(0_i32, [](i32 total, i32& value) -> Option<i32> {
+        if (value == 2_i32) return None();
+        return Some(total + value);
+    });
+    EXPECT_TRUE(stopped.is_none());
+    EXPECT_EQ(calls, 2);
+    EXPECT_EQ(rstd::addressof(*mapped.next()), rstd::addressof(values[0_usize]));
+    EXPECT_EQ(calls, 3);
+    auto total = values.iter()
+                     .map([](auto v) {
+                         return *v;
+                     })
+                     .rev()
+                     .fold(0_i32, [](i32 total, i32 v) {
+                         return total * 10_i32 + v;
+                     });
+    EXPECT_EQ(total, 321_i32);
+}
+
+TEST(Iter, PeekableConditionalConsumption) {
+    auto values        = iter::range(0_i32, 3_i32).peekable();
+    *values.peek_mut() = 7_i32;
+    EXPECT_TRUE(values.next_if_eq(0_i32).is_none());
+    EXPECT_EQ(values.next_if_eq(7_i32), Some(7_i32));
+    EXPECT_TRUE(values
+                    .next_if([](i32 v) {
+                        return v > 1_i32;
+                    })
+                    .is_none());
+    EXPECT_EQ(values.next_back(), Some(2_i32));
+    EXPECT_EQ(values.next(), Some(1_i32));
+    EXPECT_EQ(values.peek_mut(), nullptr);
+    EXPECT_TRUE(values.next_if_eq(0_i32).is_none());
+}
+
+TEST(Iter, SourceFastPathsPreserveStateAndEffects) {
+    auto range = iter::range(i32::MIN, i32::MAX);
+    EXPECT_EQ(range.nth(usize(2147483648ULL)), Some(0_i32));
+    EXPECT_EQ(range.next(), Some(1_i32));
+    auto small   = iter::range(0_i32, 3_i32);
+    auto missing = small.advance_by(5_usize);
+    EXPECT_TRUE(missing.is_err());
+    EXPECT_TRUE(small.next().is_none());
+    EXPECT_EQ(iter::range(3_i32, 0_i32).count(), 0_usize);
+    Vec<i32> values;
+    values.push(1_i32);
+    values.push(2_i32);
+    values.push(3_i32);
+    auto slice = values.iter();
+    EXPECT_EQ(*slice.nth(1_usize).unwrap(), 2_i32);
+    EXPECT_EQ(rstd::as<iter::Iterator>(slice).count(), 1_usize);
+    auto last = values.iter().last();
+    EXPECT_EQ(**last, 3_i32);
+    int effects = 0;
+    EXPECT_EQ(values.iter()
+                  .inspect([&](auto) {
+                      ++effects;
+                  })
+                  .count(),
+              3_usize);
+    EXPECT_EQ(effects, 3);
+    auto nonfused = iter::from_fn([state = 0]() mutable -> Option<i32> {
+        if (state++ == 0) return None();
+        return Some(1_i32);
+    });
+    EXPECT_TRUE(nonfused.by_ref().min().is_none());
+    EXPECT_EQ(nonfused.next(), Some(1_i32));
 }
 
 TEST(Iter, LanguageRangeForConsumesIterator) {
