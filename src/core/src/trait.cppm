@@ -341,18 +341,25 @@ consteval bool check_trait_apis_quiet() {
 }
 
 template<typename Trait, typename A>
-consteval auto select_trait_impl_kind() -> trait_impl_kind {
+consteval auto select_trait_impl_candidate_kind() -> trait_impl_kind {
     if constexpr (mtp::same_as<A, dyn_tag>) {
         return trait_impl_kind::Dyn;
     } else if constexpr (mtp::is_direct_trait<Trait>) {
         return trait_impl_kind::Direct;
     } else if constexpr (has_external_trait_impl<Trait, A>) {
         return trait_impl_kind::External;
-    } else if constexpr (has_in_class_trait_candidate<Trait, A>) {
-        return trait_impl_kind::InClass;
     } else {
-        return trait_impl_kind::None;
+        return trait_impl_kind::InClass;
     }
+}
+
+template<typename Trait, typename A>
+consteval auto select_trait_impl_kind() -> trait_impl_kind {
+    constexpr auto kind = select_trait_impl_candidate_kind<Trait, A>();
+    if constexpr (kind == trait_impl_kind::InClass) {
+        if constexpr (! has_in_class_trait_candidate<Trait, A>) return trait_impl_kind::None;
+    }
+    return kind;
 }
 
 template<typename Trait, typename A, trait_impl_kind Kind>
@@ -589,7 +596,25 @@ inline constexpr decltype(auto) trait_static_call(Args&&... args) {
     }
 }
 
-/// Casts an lvalue reference to a trait view, returning the Impl wrapper for trait T.
+/// Forms a trait view without validating its API or supertraits.
+/// Default implementations use this to avoid re-entering their enclosing trait check.
+export template<typename T, typename A>
+[[gnu::always_inline]]
+inline constexpr decltype(auto) as_impl(A& t [[clang::lifetimebound]]) noexcept {
+    using class_t       = mtp::rm_cvf<A>;
+    constexpr auto kind = mtp::select_trait_impl_candidate_kind<T, class_t>();
+    if constexpr (kind == mtp::trait_impl_kind::Direct || kind == mtp::trait_impl_kind::InClass) {
+        return t;
+    } else if constexpr (kind == mtp::trait_impl_kind::Dyn) {
+        using ret_t = mtp::follow_const_t<A, dyn_tag>;
+        return ret_t { rstd::addressof(t) };
+    } else {
+        using ret_t = mtp::follow_const_t<A, Impl<T, class_t>>;
+        return ret_t { rstd::addressof(t) };
+    }
+}
+
+/// Checks the trait implementation and delegates to as_impl.
 /// Only accepts lvalues to prevent stack-use-after-scope.
 /// \tparam T The trait type to cast to.
 /// \tparam A The concrete type (deduced).
@@ -602,12 +627,8 @@ inline constexpr decltype(auto) as(A& t [[clang::lifetimebound]]) noexcept {
     using source  = mtp::trait_impl_source<T, class_t>;
     if constexpr (! source::value) {
         static_assert(mtp::check_trait_or_diagnose<T, class_t>());
-    } else if constexpr (source::kind == mtp::trait_impl_kind::Direct ||
-                         source::kind == mtp::trait_impl_kind::InClass) {
-        return t;
     } else {
-        using ret_t = mtp::follow_const_t<A, typename source::api_owner>;
-        return ret_t { rstd::addressof(t) };
+        return as_impl<T>(t);
     }
 }
 

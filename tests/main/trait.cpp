@@ -349,19 +349,19 @@ TEST(Trait, ConstDynTest) {
 }
 
 struct InClass {
-    int  a;
-    auto clone() const -> InClass { return { a }; }
+    int            a;
+    constexpr auto clone() const -> InClass { return { a }; }
 };
 
 struct InClassDef : rstd::DefaultInClass<InClassDef, rstd::clone::Clone> {
     int a;
-    InClassDef()                                     = default;
-    InClassDef(const InClassDef&)                    = delete;
-    InClassDef(InClassDef&&)                         = default;
-    auto operator=(const InClassDef&) -> InClassDef& = delete;
-    auto operator=(InClassDef&&) -> InClassDef&      = default;
+    constexpr InClassDef()                                     = default;
+    InClassDef(const InClassDef&)                              = delete;
+    constexpr InClassDef(InClassDef&&)                         = default;
+    auto           operator=(const InClassDef&) -> InClassDef& = delete;
+    constexpr auto operator=(InClassDef&&) -> InClassDef&      = default;
 
-    auto clone() const -> InClassDef {
+    constexpr auto clone() const -> InClassDef {
         InClassDef o {};
         o.a = a;
         return o;
@@ -370,7 +370,7 @@ struct InClassDef : rstd::DefaultInClass<InClassDef, rstd::clone::Clone> {
 
 template<>
 struct rstd::Impl<rstd::clone::Clone, InClass> : rstd::DefaultInImpl<rstd::clone::Clone, InClass> {
-    auto clone() const -> InClass { return this->self().clone(); }
+    constexpr auto clone() const -> InClass { return this->self().clone(); }
 };
 
 struct NotClone {
@@ -390,6 +390,36 @@ struct NotClone {
 
 static_assert(rstd::Impled<InClassDef, rstd::clone::Clone>);
 static_assert(! rstd::Impled<NotClone, rstd::clone::Clone>);
+
+constexpr auto constexpr_default_clone_from() -> bool {
+    int       value  = 1;
+    const int source = 7;
+    rstd::as<rstd::clone::Clone>(value).clone_from(source);
+    if (value != 7 || rstd::as<rstd::clone::Clone>(source).clone() != 7) return false;
+
+    InClass       external { 2 };
+    const InClass external_source { 11 };
+    rstd::as<rstd::clone::Clone>(external).clone_from(external_source);
+    if (external.a != 11) return false;
+
+    InClassDef local {};
+    InClassDef local_source {};
+    local_source.a = 19;
+    rstd::as<rstd::clone::Clone>(local).clone_from(local_source);
+    const auto& readonly = local;
+    static_assert(
+        rstd::mtp::same_as<decltype(rstd::as_impl<rstd::clone::Clone>(local)), InClassDef&>);
+    static_assert(rstd::mtp::same_as<decltype(rstd::as_impl<rstd::clone::Clone>(readonly)),
+                                     const InClassDef&>);
+    return readonly.a == 19 && rstd::as<rstd::clone::Clone>(readonly).clone().a == 19;
+}
+
+static_assert(rstd::Impled<int, rstd::clone::Clone>);
+static_assert(constexpr_default_clone_from());
+
+TEST(Trait, ConstexprDefaultCloneFrom) {
+    EXPECT_TRUE(constexpr_default_clone_from());
+}
 
 TEST(Trait, InClass) {
     {

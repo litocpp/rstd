@@ -14,9 +14,9 @@ export struct Clone {
     template<typename Self, typename = void>
     struct Api {
         using Trait = Clone;
-        auto clone() const -> Self { return trait_call<0>(this); }
+        constexpr auto clone() const -> Self { return trait_call<0>(this); }
 
-        void clone_from(const Self& source) { return trait_call<1>(this, source); }
+        constexpr void clone_from(const Self& source) { return trait_call<1>(this, source); }
     };
 
     template<class T>
@@ -32,20 +32,22 @@ template<typename Tag>
 struct Impl<clone::Clone, Tag> : ImplBase<Tag> {
     using Self = mtp::trait_default_self_t<Tag>;
 
-    void clone_from(const Self& source) { this->self() = as<clone::Clone>(source).clone(); }
+    constexpr void clone_from(const Self& source) {
+        this->self() = as_impl<clone::Clone>(source).clone();
+    }
 };
 
 template<typename Self>
     requires(! mtp::trait_default_tag<Self>) &&
             (mtp::is_arithmetic<Self> || mtp::is_ptr<Self> || mtp::copy<Self>)
 struct Impl<clone::Clone, Self> : DefaultInImpl<clone::Clone, Self> {
-    auto clone() const -> Self { return this->self(); }
+    constexpr auto clone() const -> Self { return this->self(); }
 };
 
 template<typename Self>
     requires(! mtp::trait_default_tag<Self>) && mtp::is_tuple<Self> && (! mtp::copy<Self>)
 struct Impl<clone::Clone, Self> : DefaultInImpl<clone::Clone, Self> {
-    auto clone() const -> Self {
+    constexpr auto clone() const -> Self {
         auto& self = this->self();
         return rstd::apply(
             [](const auto&... elements) -> Self {
