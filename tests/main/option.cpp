@@ -35,6 +35,83 @@ struct DropCounter {
 
 } // namespace
 
+struct TakeOnlyValue {
+    int* live;
+    int* drops;
+
+    constexpr TakeOnlyValue(int& live_count, int& drop_count)
+        : live(&live_count), drops(&drop_count) {
+        ++*live;
+    }
+    TakeOnlyValue(const TakeOnlyValue&)                    = delete;
+    auto operator=(const TakeOnlyValue&) -> TakeOnlyValue& = delete;
+    auto operator=(TakeOnlyValue&&) -> TakeOnlyValue&      = delete;
+    constexpr TakeOnlyValue(TakeOnlyValue&& other) noexcept: live(other.live), drops(other.drops) {
+        ++*live;
+        other.drops = nullptr;
+    }
+    constexpr ~TakeOnlyValue() {
+        --*live;
+        if (drops) ++*drops;
+    }
+};
+
+constexpr auto take_nonassignable_callback() -> bool {
+    int  calls    = 0;
+    auto callback = [&] {
+        return ++calls;
+    };
+    static_assert(mtp::triv_move<decltype(callback)>);
+    static_assert(! mtp::assign_move<decltype(callback)>);
+    auto value = Some(callback);
+    auto taken = value.take();
+    if (value.is_some() || taken.is_none() || (*taken)() != 1) return false;
+    auto empty = value.take();
+    return value.is_none() && empty.is_none() && calls == 1;
+}
+
+constexpr auto take_preserves_lifetimes() -> bool {
+    int live  = 0;
+    int drops = 0;
+    {
+        auto value = Some(TakeOnlyValue(live, drops));
+        if (live != 1 || drops != 0) return false;
+        {
+            auto taken = value.take();
+            if (value.is_some() || taken.is_none() || live != 1 || drops != 0) return false;
+            auto empty = value.take();
+            if (empty.is_some() || live != 1 || drops != 0) return false;
+        }
+        if (live != 0 || drops != 1) return false;
+    }
+    return live == 0 && drops == 1;
+}
+
+constexpr auto take_preserves_reference() -> bool {
+    int  target = 3;
+    auto value  = Some<int&>(target);
+    auto taken  = value.take();
+    if (value.is_some() || taken.is_none() || rstd::addressof(*taken) != &target) return false;
+    *taken = 7;
+    return target == 7 && value.take().is_none();
+}
+
+static_assert(take_nonassignable_callback());
+static_assert(take_preserves_lifetimes());
+static_assert(take_preserves_reference());
+
+TEST(Option, TakeNonassignableCallback) {
+    EXPECT_TRUE(take_nonassignable_callback());
+}
+
+TEST(Option, TakePreservesLifetimes) {
+    EXPECT_TRUE(take_preserves_lifetimes());
+}
+
+TEST(Option, TakePreservesReference) {
+    EXPECT_TRUE(take_preserves_reference());
+}
+
 TEST(Option, Basic) {
     Option<int> none;
     EXPECT_TRUE(none.is_none());

@@ -662,7 +662,11 @@ public:
 
     /// Takes the value out of the option, leaving `None` in its place.
     /// \return The previously contained `Option`.
-    constexpr auto take() -> Option<T> { return rstd::exchange(*this, option::None()); }
+    constexpr auto take() -> Option<T> {
+        Option result(rstd::move(*this));
+        this->_assign_none();
+        return result;
+    }
 
     /// Inserts a value into the option, replacing any previous value.
     template<typename U>
