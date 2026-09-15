@@ -1,10 +1,78 @@
 #include <rstd/test/gtest.hpp>
 
 import rstd.toml;
+import rstd.serde;
 import rstd;
 
 using namespace rstd::prelude;
 using namespace rstd::literals;
+
+struct KindObservation {
+    rstd::serde::ValueKind kind;
+    bool                   stable {};
+    Option<String>         text;
+    Vec<String>            items;
+};
+
+namespace rstd
+{
+template<>
+struct Impl<serde::Deserialize, KindObservation> {
+    template<typename D>
+    static auto deserialize(D& decoder) -> Result<KindObservation, typename D::error_type> {
+        auto result   = KindObservation { .kind = decoder.kind() };
+        result.stable = result.kind == decoder.kind();
+        if (result.kind == serde::ValueKind::String) {
+            auto text = decoder.deserialize_string();
+            if (text.is_err()) return Err(rstd::move(text).unwrap_err());
+            result.text = Some(rstd::move(text).unwrap());
+        } else if (result.kind == serde::ValueKind::Sequence) {
+            auto items = serde::deserialize<Vec<String>>(decoder);
+            if (items.is_err()) return Err(rstd::move(items).unwrap_err());
+            result.items = rstd::move(items).unwrap();
+        }
+        return Ok(rstd::move(result));
+    }
+};
+} // namespace rstd
+
+TEST(TomlSerialize, DeserializerKindDoesNotConsumeValue) {
+    auto parsed = rstd::toml::from_str(R"(
+text = "value"
+flag = false
+count = -7
+ratio = 1.25
+items = ["one"]
+record = { name = "nested" }
+date = 2026-09-15
+)"_str);
+    ASSERT_TRUE(parsed.is_ok());
+    using Kind = rstd::serde::ValueKind;
+    struct Case {
+        ref<str> key;
+        Kind     kind;
+    };
+    const Case cases[] = {
+        { "text"_str, Kind::String },         { "flag"_str, Kind::Boolean },
+        { "count"_str, Kind::SignedInteger }, { "ratio"_str, Kind::Float },
+        { "items"_str, Kind::Sequence },      { "record"_str, Kind::Map },
+        { "date"_str, Kind::Extension },
+    };
+    for (const auto& item : cases) {
+        auto observed = rstd::toml::decode_value<KindObservation>(**parsed->get(item.key));
+        ASSERT_TRUE(observed.is_ok());
+        EXPECT_EQ(observed->kind, item.kind);
+        EXPECT_TRUE(observed->stable);
+    }
+    auto text = rstd::toml::decode_value<KindObservation>(**parsed->get("text"_str));
+    ASSERT_TRUE(text.is_ok());
+    ASSERT_TRUE(text->text.is_some());
+    EXPECT_EQ(text->text->as_str(), "value"_str);
+    auto items = rstd::toml::decode_value<KindObservation>(**parsed->get("items"_str));
+    ASSERT_TRUE(items.is_ok());
+    ASSERT_EQ(items->items.len(), usize(1));
+    EXPECT_EQ(items->items[usize {}].as_str(), "one"_str);
+}
 
 TEST(TomlSerialize, RoundTripsCanonicalDocument) {
     auto parsed = rstd::toml::from_str(R"(

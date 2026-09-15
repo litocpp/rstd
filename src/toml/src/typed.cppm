@@ -281,6 +281,8 @@ public:
     ValueDeserializer(const Value& value, serde::DataPath path)
         : value_(ref<Value>::from_raw_parts(rstd::addressof(value))), path_(rstd::move(path)) {}
 
+    auto kind() const noexcept -> serde::ValueKind { return actual_kind(*value_); }
+
     auto deserialize_bool() -> Result<bool, serde::Error> {
         auto value = value_->as_bool();
         if (value.is_none()) return Err(mismatch(serde::ValueKind::Boolean));
