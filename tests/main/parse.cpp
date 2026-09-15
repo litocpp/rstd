@@ -7,6 +7,107 @@ using namespace rstd::literals;
 using namespace rstd::parse;
 using namespace rstd::prelude;
 
+TEST(Parse, CompleteInputLiteralDoesNotDistinguishTruncationFromMismatch) {
+    auto rule   = text(RuleId("terminator"_str), "\r\n"_str);
+    auto inputs = array<ref<str>, 3> { ""_str, "\r"_str, "\rx"_str };
+    for (auto input : inputs) {
+        BasicAdapter adapter;
+        NoopObserver observer;
+        Driver       driver(text_input(input), adapter, observer);
+        auto         result = driver.apply(rule);
+        ASSERT_TRUE(result.is_ok());
+        EXPECT_TRUE(result->is_none());
+        EXPECT_EQ(driver.cursor().position(), usize());
+    }
+    auto complete = parse(text_input("\r\n"_str), rule);
+    ASSERT_TRUE(complete.is_ok());
+    ASSERT_TRUE(complete->is_some());
+    EXPECT_EQ(complete->unwrap(), (Span { usize(), usize(2) }));
+}
+
+TEST(Parse, CompleteInputChoiceMayAcceptShorterPrefixAtBufferEnd) {
+    auto rule        = choice(RuleId("choice"_str),
+                              text(RuleId("long"_str), "ab"_str),
+                              text(RuleId("short"_str), "a"_str));
+    auto short_input = parse(text_input("a"_str), rule);
+    ASSERT_TRUE(short_input.is_ok());
+    ASSERT_TRUE(short_input->is_some());
+    EXPECT_EQ(short_input->unwrap().len(), usize(1));
+    auto full_input = parse(text_input("ab"_str), rule);
+    ASSERT_TRUE(full_input.is_ok());
+    ASSERT_TRUE(full_input->is_some());
+    EXPECT_EQ(full_input->unwrap().len(), usize(2));
+}
+
+TEST(Parse, CompleteInputEndMeansSliceEndNotTransportEof) {
+    auto rule =
+        seq(RuleId("terminated"_str), text(RuleId("prefix"_str), "a"_str), end(RuleId("end"_str)));
+    auto at_end = parse(text_input("a"_str), rule);
+    ASSERT_TRUE(at_end.is_ok());
+    EXPECT_TRUE(at_end->is_some());
+    auto extended = parse(text_input("ab"_str), rule);
+    ASSERT_TRUE(extended.is_ok());
+    EXPECT_TRUE(extended->is_none());
+}
+
+TEST(Parse, ReplayingGrowingSlicesRepeatsPredicateWork) {
+    auto input  = "aaaaaaaa"_str;
+    int  visits = 0;
+    auto rule =
+        repeat_one_fixed<8>(RuleId("letters"_str), atomic(RuleId("letter"_str), [&](u8 byte) {
+                                ++visits;
+                                return byte == u8('a');
+                            }));
+    for (usize size(1); size <= input.len(); ++size) {
+        auto prefix = Input<u8>(slice<u8>::from_raw_parts(input.as_bytes().as_raw_ptr(), size));
+        auto result = parse(prefix, rule);
+        ASSERT_TRUE(result.is_ok());
+        ASSERT_TRUE(result->is_some());
+        EXPECT_EQ(result->unwrap().len(), size);
+    }
+    EXPECT_EQ(visits, 36);
+    visits      = 0;
+    auto result = parse(text_input(input), rule);
+    ASSERT_TRUE(result.is_ok());
+    ASSERT_TRUE(result->is_some());
+    EXPECT_EQ(visits, 8);
+}
+
+TEST(Parse, ParentMismatchRewindsInputButNotMappingSideEffects) {
+    int  calls  = 0;
+    auto mapped = map(RuleId("mapped"_str), text(RuleId("prefix"_str), "a"_str), [&](Span span) {
+        ++calls;
+        return span;
+    });
+    auto rule =
+        seq(RuleId("sequence"_str), rstd::move(mapped), text(RuleId("suffix"_str), "b"_str));
+    BasicAdapter adapter;
+    NoopObserver observer;
+    Driver       driver(text_input("a"_str), adapter, observer);
+    auto         result = driver.apply(rule);
+    ASSERT_TRUE(result.is_ok());
+    EXPECT_TRUE(result->is_none());
+    EXPECT_EQ(driver.cursor().position(), usize());
+    EXPECT_EQ(calls, 1);
+}
+
+TEST(Parse, SuccessfulPrefixLeavesFollowingMessageInCursor) {
+    auto         rule = text(RuleId("line"_str), "a\r\n"_str);
+    BasicAdapter adapter;
+    NoopObserver observer;
+    Driver       driver(text_input("a\r\na\r\n"_str), adapter, observer);
+    auto         first = driver.apply(rule);
+    ASSERT_TRUE(first.is_ok());
+    ASSERT_TRUE(first->is_some());
+    EXPECT_EQ(first->unwrap(), (Span { usize(), usize(3) }));
+    EXPECT_EQ(driver.cursor().remaining_text().unwrap(), "a\r\n"_str);
+    auto second = driver.apply(rule);
+    ASSERT_TRUE(second.is_ok());
+    ASSERT_TRUE(second->is_some());
+    EXPECT_EQ(second->unwrap(), (Span { usize(3), usize(6) }));
+    EXPECT_TRUE(driver.cursor().is_eof());
+}
+
 TEST(Parse, PositionedCursorRestoresNewlineState) {
     PositionedCursor cursor(text_input("a\r\nb\rc\n"_str));
     auto             start = cursor.checkpoint();

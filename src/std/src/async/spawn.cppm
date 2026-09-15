@@ -325,6 +325,7 @@ struct DriverTaskState : TaskStateBase {
         if (ready.is_none()) {
             rstd::panic { "async coroutine task completed without a value" };
         }
+        driver.release_frame();
         auto join_waker = join->complete_value(rstd::move(ready).unwrap_unchecked());
         if (join_waker.is_some()) {
             rstd::move(*join_waker).wake();
@@ -332,6 +333,7 @@ struct DriverTaskState : TaskStateBase {
     }
 
     void complete_abort() override {
+        driver.release_frame();
         auto join_waker = join->complete_abort();
         if (join_waker.is_some()) {
             rstd::move(*join_waker).wake();

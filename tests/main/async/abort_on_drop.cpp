@@ -32,6 +32,37 @@ auto ready_value() -> async::coro<int> {
     co_return 17;
 }
 
+struct RetainWaker {
+    using Output = void;
+    Option<task::Waker>* retained;
+
+    auto poll(mut_ref<RetainWaker> self, task::Context& cx) -> task::Poll<void> {
+        self->retained->insert(cx.waker().clone());
+        return task::Poll<void>::Pending();
+    }
+};
+
+auto retained_task(Option<task::Waker>& retained, std::atomic<bool>& dropped) -> async::coro<void> {
+    auto flag = DropFlag { &dropped };
+    co_await RetainWaker { &retained };
+}
+
+TEST(RstdAsyncAbortOnDrop, AbortReleasesFrameBeforeJoinWithRetainedWaker) {
+    auto runtime  = async::RuntimeBuilder::current_thread().build().unwrap();
+    auto retained = Option<task::Waker> {};
+    auto dropped  = std::atomic<bool> { false };
+    auto handle   = runtime.spawn(retained_task(retained, dropped));
+    for (int i = 0; i < 10 && retained.is_none(); ++i) runtime.block_on(async::yield_now());
+    ASSERT_TRUE(retained.is_some());
+    handle.abort();
+    auto joined = runtime.block_on(rstd::move(handle));
+    ASSERT_TRUE(joined.is_err());
+    EXPECT_TRUE(joined.unwrap_err().is_aborted());
+    EXPECT_TRUE(dropped.load(std::memory_order_acquire));
+    retained->wake_by_ref();
+    runtime.block_on(async::yield_now());
+}
+
 auto wait_for(std::atomic<bool>& value) -> bool {
     for (int i = 0; i < 1000; ++i) {
         if (value.load(std::memory_order_acquire)) return true;
