@@ -1,3 +1,16 @@
+<release version="0.1.3" date="2026-09-15">
+  <description>
+    <ul>
+      <li>Add an SPSC ring buffer.</li>
+      <li>Extend iterators.</li>
+      <li>Refactor traits.</li>
+      <li>Expose TOML deserializer value kinds.</li>
+      <li>Fix option take.</li>
+      <li>Fix coroutine cleanup.</li>
+      <li>Preserve child exit status.</li>
+    </ul>
+  </description>
+</release>
 <release version="0.1.2" date="2026-09-09">
   <description>
     <ul>
