@@ -266,11 +266,38 @@ TEST(Process, ChildTryWait) {
     auto waited = running.wait();
     ASSERT_TRUE(waited.is_ok());
     EXPECT_EQ(*waited->code(), rstd::i32(7));
+    EXPECT_EQ(running.wait().unwrap().code().unwrap(), i32(7));
+    EXPECT_EQ(running.try_wait().unwrap().unwrap().code().unwrap(), i32(7));
 }
 
 TEST(Process, CommandNotFound) {
     auto res = rstd::process::Command::make("nonexistent_program_xyz_12345"_str).status();
     EXPECT_TRUE(res.is_err());
+}
+
+TEST(Process, ChildWaitRetainsExitStatus) {
+    using Command = rstd::process::Command;
+    auto child    = Command::make("sh"_str).arg("-c"_str).arg("exit 7"_str).spawn().unwrap();
+    EXPECT_EQ(child.wait().unwrap().code().unwrap(), i32(7));
+    auto repeated = child.wait();
+    ASSERT_TRUE(repeated.is_ok());
+    EXPECT_EQ(repeated->code().unwrap(), i32(7));
+    auto polled = child.try_wait();
+    ASSERT_TRUE(polled.is_ok());
+    ASSERT_TRUE(polled->is_some());
+    EXPECT_EQ((*polled)->code().unwrap(), i32(7));
+    EXPECT_TRUE(child.kill().is_ok());
+    EXPECT_EQ(child.wait().unwrap().code().unwrap(), i32(7));
+}
+
+TEST(Process, ChildInvalidWaitDoesNotReapAnotherChild) {
+    using Command = rstd::process::Command;
+    auto child    = Command::make("sh"_str).arg("-c"_str).arg("exit 9"_str).spawn().unwrap();
+    rstd::process::Child empty;
+    EXPECT_TRUE(empty.wait().is_err());
+    auto waited = child.wait();
+    ASSERT_TRUE(waited.is_ok());
+    EXPECT_EQ(waited->code().unwrap(), i32(9));
 }
 
 TEST(Process, NativeCommandRejectsNulAtSpawn) {

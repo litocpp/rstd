@@ -76,14 +76,18 @@ Child::~Child() {
 
 auto Child::wait() -> io::Result<ExitStatus> {
 #if RSTD_OS_UNIX
-    if (status.is_some()) return Ok(status.take().unwrap());
+    if (status.is_some()) return Ok(*status);
+    if (pid <= 0) {
+        return Err(io::error::Error::from_kind(
+            io::error::ErrorKind { io::error::ErrorKind::InvalidInput }));
+    }
 
     // Drop stdin pipe so child sees EOF.
     stdin_pipe = {};
 
-    int status = 0;
+    int status_value = 0;
     while (true) {
-        auto ret = libc::waitpid(pid, &status, 0);
+        auto ret = libc::waitpid(pid, &status_value, 0);
         if (ret == -1) {
             auto err = libc::get_errno();
             if (err == libc::EINTR) continue;
@@ -91,8 +95,10 @@ auto Child::wait() -> io::Result<ExitStatus> {
         }
         break;
     }
-    pid = -1;
-    return Ok(ExitStatus::from_raw(i32(status)));
+    pid         = -1;
+    auto exited = ExitStatus::from_raw(i32(status_value));
+    status      = Some(exited);
+    return Ok(exited);
 #elif RSTD_OS_WINDOWS
     if (status.is_some()) return Ok(*status);
     if (process_handle == nullptr) {
@@ -169,6 +175,7 @@ auto Child::try_wait() -> io::Result<Option<ExitStatus>> {
 
 auto Child::kill() -> io::Result<rstd::empty> {
 #if RSTD_OS_UNIX
+    if (status.is_some()) return Ok(rstd::empty {});
     if (pid <= 0) {
         return Err(io::error::Error::from_kind(
             io::error::ErrorKind { io::error::ErrorKind::InvalidInput }));
