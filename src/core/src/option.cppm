@@ -595,7 +595,7 @@ public:
     /// Returns the contained value, consuming the option. Panics if the value is `None`.
     /// \param loc The automatically captured caller location.
     /// \return The contained value.
-    auto unwrap(rstd::source_location loc = rstd::source_location::current()) -> T {
+    constexpr auto unwrap(rstd::source_location loc = rstd::source_location::current()) -> T {
         if (this->is_some()) {
             return _get_move(*this);
         }

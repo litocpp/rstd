@@ -21,9 +21,9 @@ struct SuccessItems : DefaultInClass<SuccessItems<I>, Iterator> {
     static constexpr bool PROVEN_FUSED = true;
     SuccessState<I>*      state;
 
-    explicit SuccessItems(SuccessState<I>& value): state(rstd::addressof(value)) {}
+    explicit constexpr SuccessItems(SuccessState<I>& value): state(rstd::addressof(value)) {}
 
-    auto next() -> Option<Item> {
+    constexpr auto next() -> Option<Item> {
         if (state->done) return None();
         auto value = state->source.next();
         if (value.is_none()) {
@@ -38,14 +38,14 @@ struct SuccessItems : DefaultInClass<SuccessItems<I>, Iterator> {
         return Some<Item>(try_::finish(try_::take_output(rstd::forward<typename I::Item>(*value))));
     }
 
-    auto size_hint() const -> SizeHint {
+    constexpr auto size_hint() const -> SizeHint {
         if (state->done) return { usize(), Some(usize()) };
         return { usize(), as<Iterator>(state->source).size_hint().template get<1>() };
     }
 };
 
 template<typename R, has_next I, typename F>
-auto process_successes(I& source, F function) -> R {
+constexpr auto process_successes(I& source, F function) -> R {
     SuccessState<I> state { source, None() };
     auto            output = function(SuccessItems<I>(state));
     if (state.failure.is_some()) return try_::from_residual<R>(rstd::move(*state.failure));
@@ -138,7 +138,7 @@ namespace rstd
 template<typename T, typename B>
 struct Impl<iter::Sum<Option<T>>, Option<B>> : ImplBase<Option<B>> {
     template<iter::has_next I>
-    static auto sum(I source) -> Option<B> {
+    static constexpr auto sum(I source) -> Option<B> {
         return iter::process_successes<Option<B>>(source, [](auto values) {
             return Impl<iter::Sum<T>, B>::sum(rstd::move(values));
         });
@@ -148,7 +148,7 @@ struct Impl<iter::Sum<Option<T>>, Option<B>> : ImplBase<Option<B>> {
 template<typename T, typename E, typename B>
 struct Impl<iter::Sum<Result<T, E>>, Result<B, E>> : ImplBase<Result<B, E>> {
     template<iter::has_next I>
-    static auto sum(I source) -> Result<B, E> {
+    static constexpr auto sum(I source) -> Result<B, E> {
         return iter::process_successes<Result<B, E>>(source, [](auto values) {
             return Impl<iter::Sum<T>, B>::sum(rstd::move(values));
         });
@@ -158,7 +158,7 @@ struct Impl<iter::Sum<Result<T, E>>, Result<B, E>> : ImplBase<Result<B, E>> {
 template<typename T, typename B>
 struct Impl<iter::Product<Option<T>>, Option<B>> : ImplBase<Option<B>> {
     template<iter::has_next I>
-    static auto product(I source) -> Option<B> {
+    static constexpr auto product(I source) -> Option<B> {
         return iter::process_successes<Option<B>>(source, [](auto values) {
             return Impl<iter::Product<T>, B>::product(rstd::move(values));
         });
@@ -168,7 +168,7 @@ struct Impl<iter::Product<Option<T>>, Option<B>> : ImplBase<Option<B>> {
 template<typename T, typename E, typename B>
 struct Impl<iter::Product<Result<T, E>>, Result<B, E>> : ImplBase<Result<B, E>> {
     template<iter::has_next I>
-    static auto product(I source) -> Result<B, E> {
+    static constexpr auto product(I source) -> Result<B, E> {
         return iter::process_successes<Result<B, E>>(source, [](auto values) {
             return Impl<iter::Product<T>, B>::product(rstd::move(values));
         });
@@ -178,7 +178,7 @@ struct Impl<iter::Product<Result<T, E>>, Result<B, E>> : ImplBase<Result<B, E>> 
 template<typename T, typename B>
 struct Impl<iter::FromIterator<Option<T>>, Option<B>> : ImplBase<Option<B>> {
     template<iter::has_next I>
-    static auto from_iter(I source) -> Option<B> {
+    static constexpr auto from_iter(I source) -> Option<B> {
         return iter::process_successes<Option<B>>(source, [](auto values) {
             return iter::from_iter<B>(rstd::move(values));
         });
@@ -188,7 +188,7 @@ struct Impl<iter::FromIterator<Option<T>>, Option<B>> : ImplBase<Option<B>> {
 template<typename T, typename E, typename B>
 struct Impl<iter::FromIterator<Result<T, E>>, Result<B, E>> : ImplBase<Result<B, E>> {
     template<iter::has_next I>
-    static auto from_iter(I source) -> Result<B, E> {
+    static constexpr auto from_iter(I source) -> Result<B, E> {
         return iter::process_successes<Result<B, E>>(source, [](auto values) {
             return iter::from_iter<B>(rstd::move(values));
         });
@@ -199,7 +199,7 @@ template<typename T>
 struct Impl<iter::IntoIterator, Option<T>> : ImplBase<Option<T>> {
     using IntoIter = iter::OptionIntoIter<T>;
 
-    auto into_iter() -> IntoIter { return IntoIter(rstd::move(this->self())); }
+    constexpr auto into_iter() -> IntoIter { return IntoIter(rstd::move(this->self())); }
 };
 
 template<typename T>
@@ -207,7 +207,9 @@ template<typename T>
 struct Impl<iter::IntoIterator, ref<Option<T>>> : ImplBase<ref<Option<T>>> {
     using IntoIter = iter::OptionIntoIter<iter::detail::ImmutableOptionItem<T>>;
 
-    auto into_iter() -> IntoIter { return IntoIter(iter::detail::borrow_option(this->self())); }
+    constexpr auto into_iter() -> IntoIter {
+        return IntoIter(iter::detail::borrow_option(this->self()));
+    }
 };
 
 template<typename T>
@@ -215,14 +217,16 @@ template<typename T>
 struct Impl<iter::IntoIterator, mut_ref<Option<T>>> : ImplBase<mut_ref<Option<T>>> {
     using IntoIter = iter::OptionIntoIter<iter::detail::MutableOptionItem<T>>;
 
-    auto into_iter() -> IntoIter { return IntoIter(iter::detail::borrow_option_mut(this->self())); }
+    constexpr auto into_iter() -> IntoIter {
+        return IntoIter(iter::detail::borrow_option_mut(this->self()));
+    }
 };
 
 template<typename T, typename E>
 struct Impl<iter::IntoIterator, Result<T, E>> : ImplBase<Result<T, E>> {
     using IntoIter = iter::OptionIntoIter<T>;
 
-    auto into_iter() -> IntoIter {
+    constexpr auto into_iter() -> IntoIter {
         auto source = rstd::move(this->self());
         return IntoIter(source.ok());
     }
@@ -233,7 +237,9 @@ template<typename T, typename E>
 struct Impl<iter::IntoIterator, ref<Result<T, E>>> : ImplBase<ref<Result<T, E>>> {
     using IntoIter = iter::OptionIntoIter<iter::detail::ImmutableOptionItem<T>>;
 
-    auto into_iter() -> IntoIter { return IntoIter(iter::detail::borrow_result(this->self())); }
+    constexpr auto into_iter() -> IntoIter {
+        return IntoIter(iter::detail::borrow_result(this->self()));
+    }
 };
 
 template<typename T, typename E>
@@ -241,7 +247,9 @@ template<typename T, typename E>
 struct Impl<iter::IntoIterator, mut_ref<Result<T, E>>> : ImplBase<mut_ref<Result<T, E>>> {
     using IntoIter = iter::OptionIntoIter<iter::detail::MutableOptionItem<T>>;
 
-    auto into_iter() -> IntoIter { return IntoIter(iter::detail::borrow_result_mut(this->self())); }
+    constexpr auto into_iter() -> IntoIter {
+        return IntoIter(iter::detail::borrow_result_mut(this->self()));
+    }
 };
 
 } // namespace rstd

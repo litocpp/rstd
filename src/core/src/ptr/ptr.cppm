@@ -39,7 +39,7 @@ using storage_type_t = typename storage_type<mtp::rm_ext<T>>::type;
 } // namespace ptr_detail
 
 template<typename T, typename U>
-auto from_raw_parts(U* self) noexcept -> T {
+constexpr auto from_raw_parts(U* self) noexcept -> T {
     if constexpr (requires { T::from_raw_parts(self->as_raw_ptr(), self->metadata()); }) {
         return T::from_raw_parts(self->as_raw_ptr(), self->metadata());
     } else {
@@ -48,7 +48,7 @@ auto from_raw_parts(U* self) noexcept -> T {
 }
 
 template<typename T, typename U, typename P>
-auto from_raw_parts_override(U* self, P ptr) noexcept -> T {
+constexpr auto from_raw_parts_override(U* self, P ptr) noexcept -> T {
     if constexpr (requires { self->metadata(); })
         return T::from_raw_parts(ptr, self->metadata());
     else

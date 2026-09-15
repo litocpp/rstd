@@ -10,7 +10,7 @@ template<typename A, typename B>
             mtp::same_as<iter::details::aggregate_item_t<A>, B>
 struct Impl<iter::Sum<A>, B> : ImplBase<B> {
     template<iter::has_next I>
-    static auto sum(I source) -> B {
+    static constexpr auto sum(I source) -> B {
         auto step = [](B total, A item) {
             return total + iter::details::observe_item(item);
         };
@@ -23,7 +23,7 @@ template<typename A, typename B>
             mtp::same_as<iter::details::aggregate_item_t<A>, B>
 struct Impl<iter::Product<A>, B> : ImplBase<B> {
     template<iter::has_next I>
-    static auto product(I source) -> B {
+    static constexpr auto product(I source) -> B {
         auto step = [](B total, A item) {
             return total * iter::details::observe_item(item);
         };

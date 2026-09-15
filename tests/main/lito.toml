@@ -55,6 +55,7 @@ sources = [
   "toml/serialize.cpp",
   "toml/module.cpp",
   "iter/iterator.cpp",
+  "iter/constexpr.cpp",
   "sys/sync/mutex/futex.cpp",
   "thread/thread.cpp",
   "thread/thread_pool.cpp",

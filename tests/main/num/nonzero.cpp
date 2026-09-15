@@ -20,6 +20,39 @@ static_assert(has_nonzero_niche<i64>);
 static_assert(has_nonzero_niche<i128>);
 static_assert(has_nonzero_niche<isize>);
 
+template<typename T>
+constexpr auto unchecked_nonzero_roundtrip() -> bool {
+    if (NonZero<T>::make_unchecked(T(1)).get() != T(1)) return false;
+    if (NonZero<T>::make_unchecked(T::MAX).get() != T::MAX) return false;
+    if constexpr (T::MIN != T()) {
+        if (NonZero<T>::make_unchecked(T::MIN).get() != T::MIN) return false;
+    }
+    return true;
+}
+
+template<typename... Ts>
+constexpr auto unchecked_nonzero_roundtrips() -> bool {
+    return (unchecked_nonzero_roundtrip<Ts>() && ...);
+}
+
+static_assert(
+    unchecked_nonzero_roundtrips<u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize>());
+
+TEST(NonZero, UncheckedRoundtrip) {
+    EXPECT_TRUE((unchecked_nonzero_roundtrips<u8,
+                                              u16,
+                                              u32,
+                                              u64,
+                                              u128,
+                                              usize,
+                                              i8,
+                                              i16,
+                                              i32,
+                                              i64,
+                                              i128,
+                                              isize>()));
+}
+
 TEST(NonZero, Basic) {
     auto non = NonZero<u32>::make(u32());
     auto ok  = NonZero<u32>::make(u32(1));

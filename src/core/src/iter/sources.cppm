@@ -95,7 +95,8 @@ struct SliceIterMut : DefaultInClass<SliceIterMut<T>, Iterator> {
 
 template<typename I>
 struct SliceTraversal {
-    static auto advance(I& iterator, usize n) -> Result<empty, num::nonzero::NonZero<usize>> {
+    static constexpr auto advance(I& iterator, usize n)
+        -> Result<empty, num::nonzero::NonZero<usize>> {
         auto length = iterator.len();
         if (n > length) {
             iterator.cur = iterator.fin;
@@ -104,12 +105,12 @@ struct SliceTraversal {
         if (n != usize()) iterator.cur = iterator.cur.add(n);
         return Ok(empty {});
     }
-    static auto count(I& iterator) -> usize {
+    static constexpr auto count(I& iterator) -> usize {
         auto length  = iterator.len();
         iterator.cur = iterator.fin;
         return length;
     }
-    static auto last(I& iterator) -> Option<typename I::Item> {
+    static constexpr auto last(I& iterator) -> Option<typename I::Item> {
         auto item    = iterator.next_back();
         iterator.cur = iterator.fin;
         return item;
@@ -145,14 +146,14 @@ struct Once : DefaultInClass<Once<T>, Iterator> {
     static constexpr bool PROVEN_FUSED        = true;
     static constexpr bool PROVEN_TRUSTED_LEN  = true;
     Option<T>             val;
-    explicit Once(T v): val(rstd::Some(rstd::move(v))) {}
-    auto next() -> Option<Item> { return val.take(); }
-    auto next_back() -> Option<Item> { return val.take(); }
-    auto size_hint() const -> SizeHint {
+    explicit constexpr Once(T v): val(rstd::Some(rstd::move(v))) {}
+    constexpr auto next() -> Option<Item> { return val.take(); }
+    constexpr auto next_back() -> Option<Item> { return val.take(); }
+    constexpr auto size_hint() const -> SizeHint {
         usize n = val.is_some() ? usize(1) : usize();
         return { n, rstd::Some(n) };
     }
-    auto len() const -> usize { return val.is_some() ? usize(1) : usize(); }
+    constexpr auto len() const -> usize { return val.is_some() ? usize(1) : usize(); }
 };
 
 /// Iterator that calls a closure once, when its item is requested.
@@ -166,23 +167,23 @@ struct OnceWith : DefaultInClass<OnceWith<F>, Iterator> {
 
     Option<F> function;
 
-    explicit OnceWith(F f): function(rstd::Some(rstd::move(f))) {}
+    explicit constexpr OnceWith(F f): function(rstd::Some(rstd::move(f))) {}
 
-    auto next() -> Option<Item> {
+    constexpr auto next() -> Option<Item> {
         auto f = function.take();
         if (f.is_none()) return rstd::None();
         decltype(auto) value = rstd::move(*f)();
         return rstd::Some<Item>(rstd::forward<Item>(value));
     }
 
-    auto next_back() -> Option<Item> { return next(); }
+    constexpr auto next_back() -> Option<Item> { return next(); }
 
-    auto size_hint() const -> SizeHint {
+    constexpr auto size_hint() const -> SizeHint {
         auto length = function.is_some() ? usize(1) : usize();
         return { length, rstd::Some(length) };
     }
 
-    auto len() const -> usize { return function.is_some() ? usize(1) : usize(); }
+    constexpr auto len() const -> usize { return function.is_some() ? usize(1) : usize(); }
 };
 
 /// Iterator that endlessly repeats a value (clones each time).
@@ -193,10 +194,10 @@ struct Repeat : DefaultInClass<Repeat<T>, Iterator> {
     static constexpr bool PROVEN_FUSED        = true;
     static constexpr bool PROVEN_TRUSTED_LEN  = true;
     T                     val;
-    explicit Repeat(T v): val(rstd::move(v)) {}
-    auto next() -> Option<Item> { return rstd::Some(as<clone::Clone>(val).clone()); }
-    auto next_back() -> Option<Item> { return next(); }
-    auto size_hint() const -> SizeHint { return { usize::MAX, rstd::None() }; }
+    explicit constexpr Repeat(T v): val(rstd::move(v)) {}
+    constexpr auto next() -> Option<Item> { return rstd::Some(as<clone::Clone>(val).clone()); }
+    constexpr auto next_back() -> Option<Item> { return next(); }
+    constexpr auto size_hint() const -> SizeHint { return { usize::MAX, rstd::None() }; }
 };
 
 /// Iterator that calls a closure for every requested item.
@@ -208,14 +209,14 @@ struct RepeatWith : DefaultInClass<RepeatWith<F>, Iterator> {
 
     F function;
 
-    explicit RepeatWith(F f): function(rstd::move(f)) {}
+    explicit constexpr RepeatWith(F f): function(rstd::move(f)) {}
 
-    auto next() -> Option<Item> {
+    constexpr auto next() -> Option<Item> {
         decltype(auto) value = function();
         return rstd::Some<Item>(rstd::forward<Item>(value));
     }
 
-    auto size_hint() const -> SizeHint { return { usize::MAX, rstd::None() }; }
+    constexpr auto size_hint() const -> SizeHint { return { usize::MAX, rstd::None() }; }
 };
 
 /// Iterator that calls a closure returning `Option<T>` until it yields `None`.
@@ -223,8 +224,8 @@ export template<class F>
 struct FromFn : DefaultInClass<FromFn<F>, Iterator> {
     using Item = typename decltype(mtp::declval<F&>()())::value_type;
     F f;
-    explicit FromFn(F fn): f(rstd::move(fn)) {}
-    auto next() -> Option<Item> { return f(); }
+    explicit constexpr FromFn(F fn): f(rstd::move(fn)) {}
+    constexpr auto next() -> Option<Item> { return f(); }
 };
 
 /// Iterator produced by repeatedly applying `succ` to the previous element.
@@ -234,8 +235,8 @@ struct Successors : DefaultInClass<Successors<T, F>, Iterator> {
     static constexpr bool PROVEN_FUSED = true;
     Option<T>             next_val;
     F                     succ;
-    Successors(Option<T> first, F f): next_val(rstd::move(first)), succ(rstd::move(f)) {}
-    auto next() -> Option<Item> {
+    constexpr Successors(Option<T> first, F f): next_val(rstd::move(first)), succ(rstd::move(f)) {}
+    constexpr auto next() -> Option<Item> {
         auto cur = next_val.take();
         if (cur.is_some()) next_val = succ(*cur);
         return cur;
@@ -248,39 +249,39 @@ constexpr auto empty() -> Empty<T> {
 }
 
 export template<class T>
-auto once(T v) -> Once<T> {
+constexpr auto once(T v) -> Once<T> {
     return Once<T>(rstd::move(v));
 }
 
 export template<class F>
-auto once_with(F f) -> OnceWith<F> {
+constexpr auto once_with(F f) -> OnceWith<F> {
     return OnceWith<F>(rstd::move(f));
 }
 
 export template<class T>
     requires Impled<T, clone::Clone>
-auto repeat(T v) -> Repeat<T> {
+constexpr auto repeat(T v) -> Repeat<T> {
     return Repeat<T>(rstd::move(v));
 }
 
 export template<class F>
-auto repeat_with(F f) -> RepeatWith<F> {
+constexpr auto repeat_with(F f) -> RepeatWith<F> {
     return RepeatWith<F>(rstd::move(f));
 }
 
 export template<class F>
-auto from_fn(F f) -> FromFn<F> {
+constexpr auto from_fn(F f) -> FromFn<F> {
     return FromFn<F>(rstd::move(f));
 }
 
 export template<class T, class F>
-auto successors(Option<T> first, F f) -> Successors<T, F> {
+constexpr auto successors(Option<T> first, F f) -> Successors<T, F> {
     return Successors<T, F>(rstd::move(first), rstd::move(f));
 }
 
 /// Iterator over `&T` of a `slice<T>`.
 export template<class T>
-auto from_slice(slice<T> s [[clang::lifetimebound]]) -> SliceIter<T> {
+constexpr auto from_slice(slice<T> s [[clang::lifetimebound]]) -> SliceIter<T> {
     auto* p = s.as_raw_ptr();
     if (s.is_empty()) return { p, p };
     return { p, p + s.len().to_primitive() };
@@ -288,13 +289,13 @@ auto from_slice(slice<T> s [[clang::lifetimebound]]) -> SliceIter<T> {
 
 /// Iterator over `&T` of a C array.
 export template<class T, rstd::size_t N>
-auto from_array(const T (&arr [[clang::lifetimebound]])[N]) -> SliceIter<T> {
+constexpr auto from_array(const T (&arr [[clang::lifetimebound]])[N]) -> SliceIter<T> {
     return { arr, arr + N };
 }
 
 /// Iterator over `&mut T` of a C array.
 export template<class T, rstd::size_t N>
-auto from_array_mut(T (&arr [[clang::lifetimebound]])[N]) -> SliceIterMut<T> {
+constexpr auto from_array_mut(T (&arr [[clang::lifetimebound]])[N]) -> SliceIterMut<T> {
     return { arr, arr + N };
 }
 
@@ -307,14 +308,14 @@ template<typename T>
 struct Impl<iter::IntoIterator, ref<T[]>> : ImplBase<ref<T[]>> {
     using IntoIter = iter::SliceIter<T>;
 
-    auto into_iter() -> IntoIter { return iter::from_slice(this->self()); }
+    constexpr auto into_iter() -> IntoIter { return iter::from_slice(this->self()); }
 };
 
 template<typename T>
 struct Impl<iter::IntoIterator, mut_ref<T[]>> : ImplBase<mut_ref<T[]>> {
     using IntoIter = iter::SliceIterMut<T>;
 
-    auto into_iter() -> IntoIter {
+    constexpr auto into_iter() -> IntoIter {
         auto& source = this->self();
         auto* data   = source.as_raw_ptr();
         return { data, data + source.len().to_primitive() };

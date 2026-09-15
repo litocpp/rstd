@@ -59,11 +59,8 @@ struct NonZero<T> {
     }
 
     constexpr static auto make_unchecked(T n) -> Self {
-        if (auto opt = make(n)) {
-            return *opt;
-        } else {
-            unreachable();
-        }
+        if (n == T()) unreachable();
+        return rstd::bit_cast<Self>(n);
     }
 
     constexpr auto get() const noexcept -> T {

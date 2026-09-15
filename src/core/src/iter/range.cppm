@@ -78,7 +78,7 @@ public:
 template<num::Integer T>
     requires Range<T>::PROVEN_EXACT_SIZE
 struct IteratorTraversal<Range<T>> {
-    static auto advance(Range<T>& iterator, usize n)
+    static constexpr auto advance(Range<T>& iterator, usize n)
         -> Result<empty, num::nonzero::NonZero<usize>> {
         auto length = iterator.len();
         if (n >= length) {
@@ -93,12 +93,12 @@ struct IteratorTraversal<Range<T>> {
         iterator.start = T(static_cast<P>(bits));
         return Ok(empty {});
     }
-    static auto count(Range<T>& iterator) -> usize {
+    static constexpr auto count(Range<T>& iterator) -> usize {
         auto length    = iterator.len();
         iterator.start = iterator.fin;
         return length;
     }
-    static auto last(Range<T>& iterator) -> Option<T> {
+    static constexpr auto last(Range<T>& iterator) -> Option<T> {
         auto item      = iterator.next_back();
         iterator.start = iterator.fin;
         return item;

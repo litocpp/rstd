@@ -310,7 +310,7 @@ public:
     /// Returns the contained `Ok` value. Panics if the result is `Err`.
     /// \param loc The automatically captured caller location.
     /// \return The contained `Ok` value.
-    auto unwrap(rstd::source_location loc = rstd::source_location::current()) -> T {
+    constexpr auto unwrap(rstd::source_location loc = rstd::source_location::current()) -> T {
         if (is_ok()) {
             return _get_move<0>();
         } else {
@@ -347,7 +347,7 @@ public:
     /// Returns the contained `Err` value. Panics if the result is `Ok`.
     /// \param loc The automatically captured caller location.
     /// \return The contained `Err` value.
-    auto unwrap_err(rstd::source_location loc = rstd::source_location::current()) -> E {
+    constexpr auto unwrap_err(rstd::source_location loc = rstd::source_location::current()) -> E {
         if (is_err()) {
             return _get_move<1>();
         } else {
@@ -423,7 +423,7 @@ public:
 
     /// Returns the contained `Ok` value without checking. Undefined behavior if `Err`.
     /// \return The contained `Ok` value.
-    auto unwrap_unchecked() -> T {
+    constexpr auto unwrap_unchecked() -> T {
         if (is_ok()) {
             return _get_move<0>();
         } else {
@@ -433,7 +433,7 @@ public:
 
     /// Returns the contained `Err` value without checking. Undefined behavior if `Ok`.
     /// \return The contained `Err` value.
-    auto unwrap_err_unchecked() -> E {
+    constexpr auto unwrap_err_unchecked() -> E {
         if (is_err()) {
             return _get_move<1>();
         } else {
