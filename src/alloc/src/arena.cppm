@@ -4,6 +4,7 @@ module;
 export module rstd.alloc:arena;
 export import :alloc;
 export import :vec;
+import :range;
 
 using namespace rstd::prelude;
 
@@ -43,10 +44,10 @@ export struct RecyclingArenaStats {
 };
 
 struct ArenaSlab {
-    void*  pointer;
-    Layout layout;
-    usize  cursor;
-    bool   large;
+    void*              pointer;
+    Layout             layout;
+    BumpRangeAllocator ranges;
+    bool               large;
 };
 
 template<typename A>
@@ -114,32 +115,27 @@ class BumpArena {
     }
 
     auto try_allocate(ArenaSlab& slab, Layout layout) noexcept -> void* {
-        auto const base    = reinterpret_cast<uintptr_t>(slab.pointer);
-        auto const current = base + slab.cursor.to_primitive();
-        auto const mask    = layout.align.to_primitive() - 1;
-        if (current > uintptr_t(-1) - mask) return nullptr;
-        auto const aligned  = (current + mask) & ~mask;
-        auto const padding  = usize(aligned - current);
-        auto const occupied = padding.checked_add(layout.size);
-        if (occupied.is_none()) return nullptr;
-        auto const remaining = slab.layout.size - slab.cursor;
-        if (*occupied > remaining) return nullptr;
-
-        slab.cursor += *occupied;
+        const auto before = slab.ranges.statistics().occupied_bytes;
+        auto result = slab.ranges.allocate(layout.size.to_primitive(), layout.align.to_primitive());
+        if (result.is_err()) return nullptr;
+        const auto range   = result.unwrap_unchecked();
+        auto       padding = usize(range.offset - before);
         stats_.used_bytes += layout.size;
         stats_.padding_bytes += padding;
         if (stats_.used_bytes > stats_.peak_used_bytes) {
             stats_.peak_used_bytes = stats_.used_bytes;
         }
-        return reinterpret_cast<void*>(aligned);
+        return static_cast<rstd::uint8_t*>(slab.pointer) + range.offset;
     }
 
     auto allocate_large(Layout layout) -> Result<Allocation, AllocError> {
         auto allocation = allocate_upstream(layout);
         if (allocation.is_err()) return allocation;
         auto value = allocation.unwrap_unchecked();
-        slabs_.emplace_back(ArenaSlab {
-            .pointer = value.pointer, .layout = layout, .cursor = layout.size, .large = true });
+        slabs_.emplace_back(ArenaSlab { .pointer = value.pointer,
+                                        .layout  = layout,
+                                        .ranges  = BumpRangeAllocator(layout.size.to_primitive()),
+                                        .large   = true });
         stats_.used_bytes += layout.size;
         stats_.reserved_bytes += layout.size;
         ++stats_.large_slabs;
@@ -156,8 +152,10 @@ class BumpArena {
         if (allocation.is_err()) return allocation;
 
         auto value = allocation.unwrap_unchecked();
-        slabs_.emplace_back(ArenaSlab {
-            .pointer = value.pointer, .layout = layout, .cursor = usize(), .large = false });
+        slabs_.emplace_back(ArenaSlab { .pointer = value.pointer,
+                                        .layout  = layout,
+                                        .ranges  = BumpRangeAllocator(layout.size.to_primitive()),
+                                        .large   = false });
         current_slab_ = slabs_.len() - usize(1);
         stats_.reserved_bytes += layout.size;
         ++stats_.ordinary_slabs;
@@ -241,16 +239,9 @@ class RecyclingArena {
     }
 
     auto try_allocate(ArenaSlab& slab, Layout layout) noexcept -> void* {
-        auto const base    = reinterpret_cast<uintptr_t>(slab.pointer);
-        auto const current = base + slab.cursor.to_primitive();
-        auto const mask    = layout.align.to_primitive() - 1;
-        if (current > uintptr_t(-1) - mask) return nullptr;
-        auto const aligned  = (current + mask) & ~mask;
-        auto const padding  = usize(aligned - current);
-        auto const occupied = padding.checked_add(layout.size);
-        if (occupied.is_none() || *occupied > slab.layout.size - slab.cursor) return nullptr;
-        slab.cursor += *occupied;
-        return reinterpret_cast<void*>(aligned);
+        auto result = slab.ranges.allocate(layout.size.to_primitive(), layout.align.to_primitive());
+        if (result.is_err()) return nullptr;
+        return static_cast<rstd::uint8_t*>(slab.pointer) + result.unwrap_unchecked().offset;
     }
 
     auto record_allocation(Layout layout) noexcept -> void {
@@ -310,8 +301,10 @@ class RecyclingArena {
         auto allocation = allocate_upstream(layout);
         if (allocation.is_err()) return allocation;
         auto value = allocation.unwrap_unchecked();
-        slabs_.emplace_back(ArenaSlab {
-            .pointer = value.pointer, .layout = layout, .cursor = layout.size, .large = true });
+        slabs_.emplace_back(ArenaSlab { .pointer = value.pointer,
+                                        .layout  = layout,
+                                        .ranges  = BumpRangeAllocator(layout.size.to_primitive()),
+                                        .large   = true });
         prepare_fresh_allocation(layout);
         stats_.reserved_bytes += layout.size;
         ++stats_.large_slabs;
@@ -325,8 +318,10 @@ class RecyclingArena {
         auto       allocation = allocate_upstream(layout);
         if (allocation.is_err()) return allocation;
         auto value = allocation.unwrap_unchecked();
-        slabs_.emplace_back(ArenaSlab {
-            .pointer = value.pointer, .layout = layout, .cursor = usize {}, .large = false });
+        slabs_.emplace_back(ArenaSlab { .pointer = value.pointer,
+                                        .layout  = layout,
+                                        .ranges  = BumpRangeAllocator(layout.size.to_primitive()),
+                                        .large   = false });
         current_slab_ = slabs_.len() - usize(1);
         stats_.reserved_bytes += layout.size;
         ++stats_.ordinary_slabs;

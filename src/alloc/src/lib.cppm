@@ -11,3 +11,7 @@ export import :string;
 export import :sync;
 export import :collections;
 export import :hash.random;
+export import :range;
+export import :range_arena;
+export import :range_stack;
+export import :range_ring;

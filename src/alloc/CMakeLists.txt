@@ -12,6 +12,10 @@ target_sources(
          src/lib.cppm
          src/alloc.cppm
          src/arena.cppm
+         src/range.cppm
+         src/range_stack.cppm
+         src/range_ring.cppm
+         src/range_arena.cppm
          src/rc.cppm
          src/string.cppm
          src/str.cppm

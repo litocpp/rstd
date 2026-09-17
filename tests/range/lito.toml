@@ -1,0 +1,8 @@
+[package]
+name = "rstd-range-tests"
+[[test]]
+name = "rstd-range-tests"
+sources = ["main.cpp", "range.cpp", "trace.cpp", "linear.cpp"]
+[dependencies]
+rstd-std = { path = "../../src/std" }
+rstd-test = { path = "../../src/test" }

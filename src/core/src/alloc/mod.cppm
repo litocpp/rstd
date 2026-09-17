@@ -142,7 +142,12 @@ public:
         -> Result<Allocation, AllocError> {
         debug_assert(new_layout.size >= old_layout.size,
                      "`new_layout.size` must be greater than or equal to `old_layout.size`");
-        return allocator().allocate_zeroed(new_layout);
+        auto result = allocator().allocate_zeroed(new_layout);
+        if (result.is_ok() && old_layout.size != usize()) {
+            mem::memcpy(result.unwrap_unchecked().pointer, ptr, old_layout.size);
+            allocator().deallocate(ptr, old_layout);
+        }
+        return result;
     }
 
     auto shrink(void* ptr, Layout old_layout, Layout new_layout) const
