@@ -60,6 +60,22 @@ TEST(Range, ModelAndCoalescing) {
                 live.push(rstd::move(value));
             }
         }
+        alloc::RangeSize expected_bytes = 0;
+        for (const auto& v : live) expected_bytes += v.size;
+        const auto counts   = ranges.counters();
+        const auto detailed = ranges.statistics();
+        EXPECT_EQ(counts.allocation_count, live.len().to_primitive());
+        EXPECT_EQ(counts.requested_bytes, expected_bytes);
+        EXPECT_EQ(counts.occupied_bytes, expected_bytes);
+        EXPECT_EQ(counts.padding_bytes, 0u);
+        EXPECT_EQ(counts.free_bytes, 4096 - expected_bytes);
+        EXPECT_EQ(counts.capacity, detailed.capacity);
+        EXPECT_EQ(counts.allocation_count, detailed.allocation_count);
+        EXPECT_EQ(counts.requested_bytes, detailed.requested_bytes);
+        EXPECT_EQ(counts.occupied_bytes, detailed.occupied_bytes);
+        EXPECT_EQ(counts.free_bytes, detailed.free_bytes);
+        EXPECT_EQ(counts.metadata_bytes, detailed.metadata_bytes);
+        EXPECT_EQ(counts.search_steps, detailed.search_steps);
     }
     for (auto& v : live) EXPECT_TRUE(ranges.deallocate(v.id).is_ok());
     EXPECT_EQ(ranges.statistics().largest_free_range, 4096u);
@@ -95,8 +111,12 @@ TEST(Range, MetadataFailureDoesNotDamageAllocations) {
     alloc::vec::Vec<alloc::RangeAllocation> live;
     bool                                    failed = false;
     for (unsigned i = 0; i < 100; ++i) {
+        auto before = ranges.counters();
         auto result = ranges.allocate(3, 8);
         if (result.is_err()) {
+            EXPECT_EQ(ranges.counters().allocation_count, before.allocation_count);
+            EXPECT_EQ(ranges.counters().requested_bytes, before.requested_bytes);
+            EXPECT_EQ(ranges.counters().free_bytes, before.free_bytes);
             failed = true;
             break;
         }
@@ -168,4 +188,35 @@ TEST(Range, CpuMetadataFailureAndFailedGrowth) {
     arena.deallocate(allocation.pointer, small);
     EXPECT_EQ(calls, state.calls);
     EXPECT_EQ(arena.statistics().allocation_count, 0u);
+}
+
+TEST(Range, CountersResetAndFailureAtomicity) {
+    RangeFailState        state;
+    alloc::RangeAllocator ranges(4096, RangeMetadata { &state });
+    EXPECT_EQ(ranges.counters().free_bytes, 4096u);
+    auto first     = ranges.allocate(13, 16).unwrap_unchecked();
+    auto before    = ranges.counters();
+    state.fail     = true;
+    auto oversized = ranges.allocate(4096, 1);
+    EXPECT_TRUE(oversized.is_err());
+    EXPECT_TRUE(ranges.deallocate(alloc::RangeId {}).is_err());
+    EXPECT_EQ(ranges.counters().requested_bytes, before.requested_bytes);
+    EXPECT_EQ(ranges.counters().allocation_count, before.allocation_count);
+    auto calls = state.calls;
+    for (unsigned i = 0; i < 100; ++i) EXPECT_EQ(ranges.counters().allocation_count, 1u);
+    EXPECT_TRUE(ranges.deallocate(first.id).is_ok());
+    EXPECT_EQ(calls, state.calls);
+    EXPECT_EQ(ranges.counters().free_bytes, 4096u);
+    state.fail       = false;
+    auto live        = ranges.allocate(31, 8).unwrap_unchecked();
+    auto retained    = ranges.counters().metadata_bytes;
+    auto reset_calls = state.calls;
+    state.fail       = true;
+    ranges.reset();
+    EXPECT_EQ(state.calls, reset_calls);
+    EXPECT_FALSE(ranges.get(live.id).is_some());
+    EXPECT_EQ(ranges.counters().allocation_count, 0u);
+    EXPECT_EQ(ranges.counters().free_bytes, 4096u);
+    EXPECT_EQ(ranges.counters().metadata_bytes, retained);
+    EXPECT_FALSE(ranges.get(first.id).is_some());
 }

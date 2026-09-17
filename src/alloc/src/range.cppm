@@ -44,6 +44,17 @@ struct RangeAllocation {
     RangeSize size {};
 };
 
+struct RangeCounters {
+    RangeSize capacity {};
+    RangeSize requested_bytes {};
+    RangeSize occupied_bytes {};
+    RangeSize padding_bytes {};
+    RangeSize free_bytes {};
+    RangeSize allocation_count {};
+    RangeSize metadata_bytes {};
+    RangeSize search_steps {};
+};
+
 struct RangeStatistics {
     RangeSize capacity {};
     RangeSize requested_bytes {};
@@ -324,19 +335,25 @@ public:
         head_ = spare_ = none;
         used_ = count_ = 0;
     }
-    auto statistics() const noexcept -> RangeStatistics {
-        RangeSize largest = head_ == none ? capacity_ : 0;
-        for (auto i = head_; i != none; i = node(i).next)
-            if (node(i).free && node(i).size > largest) largest = node(i).size;
+    /// Constant-time counters; detailed free-range scans belong to statistics().
+    auto counters() const noexcept -> RangeCounters {
         return { capacity_,
                  used_,
                  used_,
                  0,
                  capacity_ - used_,
-                 largest,
                  count_,
                  sizeof(*this) + RangeSize(nodes_.capacity().to_primitive()) * sizeof(Node),
                  searches_ };
+    }
+    auto statistics() const noexcept -> RangeStatistics {
+        RangeSize largest = head_ == none ? capacity_ : 0;
+        for (auto i = head_; i != none; i = node(i).next)
+            if (node(i).free && node(i).size > largest) largest = node(i).size;
+        const auto counts = counters();
+        return { counts.capacity,         counts.requested_bytes, counts.occupied_bytes,
+                 counts.padding_bytes,    counts.free_bytes,      largest,
+                 counts.allocation_count, counts.metadata_bytes,  counts.search_steps };
     }
 };
 } // namespace alloc
