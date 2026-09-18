@@ -46,7 +46,9 @@ target_sources(
          src/trait.cppm
          src/marker.cppm
          src/borrow.cppm
-         src/convert.cppm
+         src/convert/base.cppm
+         src/convert/try.cppm
+         src/convert/mod.cppm
          src/clone.cppm
          src/clone_tuple.cppm
          src/option.cppm

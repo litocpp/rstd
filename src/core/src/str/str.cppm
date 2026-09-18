@@ -4,6 +4,7 @@ module;
 export module rstd.core:str.str;
 import :num.types;
 import :intrinsics;
+import :convert.base;
 export import :slice;
 export import :fmt;
 export import :marker;
@@ -50,6 +51,8 @@ public:
     usize       length {};
 
     constexpr ref() noexcept = default;
+
+    auto into() const { return convert::into(Self(*this)); }
 
     static constexpr auto from_raw_parts_unchecked(value_type* p [[clang::lifetimebound]],
                                                    usize       length) noexcept -> Self {

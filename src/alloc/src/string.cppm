@@ -168,6 +168,11 @@ using ::alloc::string::ToString;
 namespace rstd
 {
 template<>
+struct Impl<convert::From<ref<str>>, String> {
+    static auto from(ref<str> value) -> String { return String::make(value); }
+};
+
+template<>
 struct Impl<iter::Extend<char32_t>, String> : ImplBase<String> {
     template<iter::has_next It>
     static void extend(String& string, It iterator) {
