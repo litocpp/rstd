@@ -8,6 +8,7 @@ sources = [
   "tenon_main.cpp",
   "test_macro.cpp",
   "trait.cpp",
+  "func_traits.cpp",
   "any.cpp",
   "error.cpp",
   "argparse/definition.cpp",

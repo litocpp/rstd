@@ -686,102 +686,146 @@ concept complete_or_unbounded =
 /// \name traits
 /// @{
 
-/// Extracts metadata from function pointer and member function pointer types.
-export template<typename T>
-struct func_traits {
-    static_assert(false);
+template<typename R, bool Noexcept, typename... Args>
+struct func_metadata {
+    using metadata                            = func_metadata;
+    using ret                                 = R;
+    using signature                           = R(Args...);
+    static constexpr rstd::size_t arity       = sizeof...(Args);
+    static constexpr bool         is_noexcept = Noexcept;
+    static constexpr bool         is_member   = false;
+
+    template<rstd::size_t I>
+        requires(I < arity)
+    using argument = __type_pack_element<I, Args...>;
 };
-/// @}
 
-} // namespace rstd::mtp
+template<typename T, typename = void>
+struct func_signature {};
 
-namespace rstd::mtp
-{
+template<typename R, typename... Args, bool Ne>
+struct func_signature<R(Args...) noexcept(Ne)> : func_metadata<R, Ne, Args...> {};
 
-template<typename T, typename Ret, typename... Args, bool Ne>
-struct func_traits<Ret (*)(T, Args...) noexcept(Ne)> {
-    static constexpr bool is_member = false;
-
-    using ret     = Ret;
+template<typename T, typename R, typename... Args, bool Ne>
+struct func_signature<R (*)(T, Args...) noexcept(Ne)> : func_metadata<R, Ne, T, Args...> {
     using primary = mtp::cond<mtp::is_ptr<T>, void, T>;
-
-    using to_dyn = Ret (*)(voidp, Args...) noexcept(Ne);
+    using to_dyn  = R (*)(voidp, Args...) noexcept(Ne);
 };
 
-template<typename Ret, bool Ne>
-struct func_traits<Ret (*)(void) noexcept(Ne)> {
-    static constexpr bool is_member = false;
-
-    using ret     = Ret;
+template<typename R, bool Ne>
+struct func_signature<R (*)() noexcept(Ne)> : func_metadata<R, Ne> {
     using primary = void;
-
-    using to_dyn = Ret (*)(void) noexcept(Ne);
+    using to_dyn  = R (*)() noexcept(Ne);
 };
 
-template<typename T, typename Ret, typename... Args, bool Ne>
-struct func_traits<Ret (T::*)(Args...) noexcept(Ne)> {
+template<typename C, typename R, typename... Args, bool Ne>
+struct func_signature<R (C::*)(Args...) noexcept(Ne)> : func_metadata<R, Ne, Args...> {
     static constexpr bool is_member = true;
-
-    using ret     = Ret;
-    using primary = T&;
-
-    using to_dyn = Ret (*)(voidp, Args...) noexcept(Ne);
+    using owner                     = C;
+    using primary                   = C&;
+    using to_dyn                    = R (*)(voidp, Args...) noexcept(Ne);
 };
 
-template<typename T, typename Ret, typename... Args, bool Ne>
-struct func_traits<Ret (T::*)(Args...) & noexcept(Ne)> {
+template<typename C, typename R, typename... Args, bool Ne>
+struct func_signature<R (C::*)(Args...) & noexcept(Ne)> : func_metadata<R, Ne, Args...> {
     static constexpr bool is_member = true;
-
-    using ret     = Ret;
-    using primary = T&;
-
-    using to_dyn = Ret (*)(voidp, Args...) noexcept(Ne);
+    using owner                     = C;
+    using primary                   = C&;
+    using to_dyn                    = R (*)(voidp, Args...) noexcept(Ne);
 };
 
-template<typename T, typename Ret, typename... Args, bool Ne>
-struct func_traits<Ret (T::*)(Args...) && noexcept(Ne)> {
+template<typename C, typename R, typename... Args, bool Ne>
+struct func_signature<R (C::*)(Args...) && noexcept(Ne)> : func_metadata<R, Ne, Args...> {
     static constexpr bool is_member = true;
-
-    using ret     = Ret;
-    using primary = T&&;
-
-    using to_dyn = Ret (*)(voidp, Args...) noexcept(Ne);
+    using owner                     = C;
+    using primary                   = C&&;
+    using to_dyn                    = R (*)(voidp, Args...) noexcept(Ne);
 };
 
-template<typename T, typename Ret, typename... Args, bool Ne>
-struct func_traits<Ret (T::*)(Args...) const noexcept(Ne)> {
+template<typename C, typename R, typename... Args, bool Ne>
+struct func_signature<R (C::*)(Args...) const noexcept(Ne)> : func_metadata<R, Ne, Args...> {
     static constexpr bool is_member = true;
-
-    using ret     = Ret;
-    using primary = const T&;
-
-    using to_dyn = Ret (*)(voidp, Args...) noexcept(Ne);
+    using owner                     = C;
+    using primary                   = const C&;
+    using to_dyn                    = R (*)(voidp, Args...) noexcept(Ne);
 };
 
-template<typename T, typename Ret, typename... Args, bool Ne>
-struct func_traits<Ret (T::*)(Args...) const & noexcept(Ne)> {
+template<typename C, typename R, typename... Args, bool Ne>
+struct func_signature<R (C::*)(Args...) const & noexcept(Ne)> : func_metadata<R, Ne, Args...> {
     static constexpr bool is_member = true;
-
-    using ret     = Ret;
-    using primary = const T&;
-
-    using to_dyn = Ret (*)(voidp, Args...) noexcept(Ne);
+    using owner                     = C;
+    using primary                   = const C&;
+    using to_dyn                    = R (*)(voidp, Args...) noexcept(Ne);
 };
 
-template<typename T, typename Ret, typename... Args, bool Ne>
-struct func_traits<Ret (T::*)(Args...) const && noexcept(Ne)> {
+template<typename C, typename R, typename... Args, bool Ne>
+struct func_signature<R (C::*)(Args...) const && noexcept(Ne)> : func_metadata<R, Ne, Args...> {
     static constexpr bool is_member = true;
-
-    using ret     = Ret;
-    using primary = const T&&;
-
-    using to_dyn = Ret (*)(voidp, Args...) noexcept(Ne);
+    using owner                     = C;
+    using primary                   = const C&&;
+    using to_dyn                    = R (*)(voidp, Args...) noexcept(Ne);
 };
 
-} // namespace rstd::mtp
+template<typename C, typename R, typename... Args, bool Ne>
+struct func_signature<R (C::*)(Args...) volatile noexcept(Ne)> : func_metadata<R, Ne, Args...> {
+    static constexpr bool is_member = true;
+    using owner                     = C;
+    using primary                   = volatile C&;
+    using to_dyn                    = R (*)(voidp, Args...) noexcept(Ne);
+};
 
-namespace rstd::mtp
-{
+template<typename C, typename R, typename... Args, bool Ne>
+struct func_signature<R (C::*)(Args...) volatile & noexcept(Ne)> : func_metadata<R, Ne, Args...> {
+    static constexpr bool is_member = true;
+    using owner                     = C;
+    using primary                   = volatile C&;
+    using to_dyn                    = R (*)(voidp, Args...) noexcept(Ne);
+};
+
+template<typename C, typename R, typename... Args, bool Ne>
+struct func_signature<R (C::*)(Args...) volatile && noexcept(Ne)> : func_metadata<R, Ne, Args...> {
+    static constexpr bool is_member = true;
+    using owner                     = C;
+    using primary                   = volatile C&&;
+    using to_dyn                    = R (*)(voidp, Args...) noexcept(Ne);
+};
+
+template<typename C, typename R, typename... Args, bool Ne>
+struct func_signature<R (C::*)(Args...) const volatile noexcept(Ne)>
+    : func_metadata<R, Ne, Args...> {
+    static constexpr bool is_member = true;
+    using owner                     = C;
+    using primary                   = const volatile C&;
+    using to_dyn                    = R (*)(voidp, Args...) noexcept(Ne);
+};
+
+template<typename C, typename R, typename... Args, bool Ne>
+struct func_signature<R (C::*)(Args...) const volatile & noexcept(Ne)>
+    : func_metadata<R, Ne, Args...> {
+    static constexpr bool is_member = true;
+    using owner                     = C;
+    using primary                   = const volatile C&;
+    using to_dyn                    = R (*)(voidp, Args...) noexcept(Ne);
+};
+
+template<typename C, typename R, typename... Args, bool Ne>
+struct func_signature<R (C::*)(Args...) const volatile && noexcept(Ne)>
+    : func_metadata<R, Ne, Args...> {
+    static constexpr bool is_member = true;
+    using owner                     = C;
+    using primary                   = const volatile C&&;
+    using to_dyn                    = R (*)(voidp, Args...) noexcept(Ne);
+};
+
+template<typename F>
+struct func_signature<F, void_t<decltype(&F::operator())>>
+    : func_signature<decltype(&F::operator())>::metadata {};
+
+/// Describes function types, pointers and unambiguous function objects.
+/// Argument metadata excludes the implicit object; pointer erasure keeps its own primary/to_dyn convention.
+export template<typename T>
+struct func_traits : func_signature<rm_cvf<T>> {};
+/// @}
 
 template<rstd::size_t I, auto First, auto... Rest>
 consteval auto get_auto_impl() {
