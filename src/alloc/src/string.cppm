@@ -246,6 +246,17 @@ struct Impl<error::Error, ::alloc::string::FromUtf8Error>
 
 } // namespace rstd
 
+export namespace rstd::literals
+{
+
+/// Creates an owned UTF-8 string from a string literal.
+template<str_::fixed_string Str>
+auto operator""_Str() -> ::alloc::string::String {
+    return ::alloc::string::String::make(operator""_str < Str>());
+}
+
+} // namespace rstd::literals
+
 namespace alloc::vec
 {
 

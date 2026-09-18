@@ -307,6 +307,27 @@ TEST(String, MakeFromStr) {
     EXPECT_EQ("hello"_str, s);
 }
 
+TEST(String, OwnedLiteralPreservesBytes) {
+    static_assert(rstd::mtp::same_as<decltype("text"_Str), String>);
+    EXPECT_TRUE(""_Str.is_empty());
+    EXPECT_EQ("hello"_Str.as_str(), "hello"_str);
+    EXPECT_EQ("你好"_Str.as_str(), "你好"_str);
+    EXPECT_EQ("a\0b"_Str.as_str(), "a\0b"_str);
+    EXPECT_EQ("a\0b"_Str.len(), usize(3));
+    EXPECT_EQ(R"(raw\text)"_Str.as_str(), R"(raw\text)"_str);
+    EXPECT_EQ("joined "
+              "text"_Str.as_str(),
+              "joined text"_str);
+}
+
+TEST(String, OwnedLiteralsHaveIndependentStorage) {
+    auto first  = "text"_Str;
+    auto second = "text"_Str;
+    first.push_str(" appended"_str);
+    EXPECT_EQ(first.as_str(), "text appended"_str);
+    EXPECT_EQ(second.as_str(), "text"_str);
+}
+
 TEST(String, MakeFromRefStr) {
     auto r = "world"_str;
     auto s = rstd::string::String::make(r);
