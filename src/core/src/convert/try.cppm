@@ -69,6 +69,50 @@ auto try_into(F&& value) {
         return as<TryInto<Target>>(value).try_into();
     }
 }
+
+template<typename T>
+struct TryIntoWrapper {
+    T self;
+
+    template<typename U, typename E>
+        requires Impled<T, convert::TryInto<U>> &&
+                 mtp::same_as<E, typename convert::TryInto<U>::template Api<mtp::rm_cvf<T>>::Error>
+    operator Result<U, E>() {
+        using Source = mtp::rm_ref<T>;
+        if constexpr (Impled<U, convert::TryFrom<Source>>) {
+            return Impl<convert::TryFrom<Source>, U>::try_from(rstd::move(self));
+        } else {
+            using Trait = convert::TryInto<U>;
+            if constexpr (mtp::is_const<Source>) {
+                if constexpr (Impled<T, Copy>) {
+                    auto tmp = self;
+                    return as<Trait>(tmp).try_into();
+                } else if constexpr (Impled<T, clone::Clone>) {
+                    auto tmp = as<clone::Clone>(self).clone();
+                    return as<Trait>(tmp).try_into();
+                } else {
+                    auto tmp = self;
+                    return as<Trait>(tmp).try_into();
+                }
+            } else {
+                return as<Trait>(self).try_into();
+            }
+        }
+    }
+
+    TryIntoWrapper(T&& value): self(rstd::forward<T>(value)) {}
+    TryIntoWrapper(const TryIntoWrapper&)            = delete;
+    TryIntoWrapper& operator=(const TryIntoWrapper&) = delete;
+    TryIntoWrapper(TryIntoWrapper&&)                 = default;
+    TryIntoWrapper& operator=(TryIntoWrapper&&)      = default;
+};
+
+/// Defers conversion to the target Result, owning rvalues or borrowing lvalues.
+export template<typename... Targets, typename T>
+    requires(sizeof...(Targets) == 0)
+auto try_into(T&& value) -> TryIntoWrapper<T> {
+    return { rstd::forward<T>(value) };
+}
 } // namespace rstd::convert
 
 namespace rstd

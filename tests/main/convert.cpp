@@ -133,3 +133,53 @@ TEST(Convert, InfallibleAndIdentityConversionsUseTryFrom) {
     static_assert(rstd::mtp::same_as<IdentityResult, rstd::Result<A, rstd::convert::Infallible>>);
     EXPECT_EQ(rstd::try_from<A>(A { 12 }).unwrap().a, 12);
 }
+
+TEST(Convert, DeferredTryIntoPreservesSuccessAndError) {
+    rstd::Result<Checked, ConvertError> success = rstd::try_into(42);
+    EXPECT_EQ(success.unwrap().value, 42);
+
+    rstd::Result<Checked, ConvertError> failure = rstd::try_into(-3);
+    EXPECT_EQ(failure.unwrap_err().value, -3);
+
+    rstd::Result<A, rstd::convert::Infallible> infallible = rstd::try_into(B { 91 });
+    EXPECT_EQ(infallible.unwrap().a, 91);
+
+    using Wrapper = decltype(rstd::try_into(42));
+    static_assert(rstd::mtp::convertible_to<Wrapper, rstd::Result<Checked, ConvertError>>);
+    static_assert(! rstd::mtp::convertible_to<Wrapper, rstd::Result<Checked, int>>);
+    static_assert(! rstd::mtp::convertible_to<Wrapper, Checked>);
+    static_assert(rstd::mtp::same_as<decltype(rstd::try_into<A>(A {})),
+                                     rstd::Result<A, rstd::convert::Infallible>>);
+}
+
+TEST(Convert, DeferredTryIntoStoresValuesAndBorrowsReferences) {
+    auto                                stored = rstd::try_into(TryIntoOnly { 19 });
+    rstd::Result<Checked, ConvertError> owned  = stored;
+    EXPECT_EQ(owned.unwrap().value, 19);
+
+    int  value                                 = 7;
+    auto borrowed                              = rstd::try_into(value);
+    value                                      = 8;
+    rstd::Result<Checked, ConvertError> result = borrowed;
+    EXPECT_EQ(result.unwrap().value, 8);
+
+    const int                           constant = 9;
+    rstd::Result<Checked, ConvertError> copied   = rstd::try_into(constant);
+    EXPECT_EQ(copied.unwrap().value, 9);
+    EXPECT_EQ(constant, 9);
+
+    const TryIntoOnly                   source { 10 };
+    rstd::Result<Checked, ConvertError> cloned = rstd::try_into(source);
+    EXPECT_EQ(cloned.unwrap().value, 10);
+    EXPECT_EQ(source.value, 10);
+}
+
+TEST(Convert, DeferredTryIntoOwnsMoveOnlySources) {
+    using namespace rstd::literals;
+
+    auto stored = rstd::try_into("owned"_Str);
+    static_assert(! rstd::mtp::copy<decltype(stored)>);
+    auto                                                           moved  = rstd::move(stored);
+    rstd::Result<rstd::prelude::String, rstd::convert::Infallible> result = moved;
+    EXPECT_EQ(result.unwrap().as_str(), "owned"_str);
+}
