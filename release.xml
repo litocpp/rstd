@@ -1,3 +1,14 @@
+<release version="0.1.4" date="2026-09-19">
+  <description>
+    <ul>
+      <li>Add range allocators.</li>
+      <li>Extend callable traits.</li>
+      <li>Add owned string literals.</li>
+      <li>Add str into conversion.</li>
+      <li>Add deferred try_into conversion.</li>
+    </ul>
+  </description>
+</release>
 <release version="0.1.3" date="2026-09-15">
   <description>
     <ul>
