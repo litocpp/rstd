@@ -5,6 +5,47 @@ export import :clone;
 export import :marker;
 import :panicking;
 import :ptr;
+import :option;
+
+namespace rstd
+{
+
+template<typename Self, typename T, bool Mutable>
+constexpr auto ref_base<Self, T, Mutable>::first() const noexcept -> Option<ref<element_type>>
+    requires mtp::DSTArray<T>
+{
+    if (is_empty()) return None();
+    return Some(ptr<element_type>::from_raw_parts(as_raw_ptr()).as_ref());
+}
+
+template<typename Self, typename T, bool Mutable>
+constexpr auto ref_base<Self, T, Mutable>::last() const noexcept -> Option<ref<element_type>>
+    requires mtp::DSTArray<T>
+{
+    if (is_empty()) return None();
+    return Some(ptr<element_type>::from_raw_parts(as_raw_ptr()).add(len() - usize(1)).as_ref());
+}
+
+template<typename Self, typename T, bool Mutable>
+constexpr auto ref_base<Self, T, Mutable>::first_mut() const noexcept
+    -> Option<mut_ref<element_type>>
+    requires Mutable && mtp::DSTArray<T>
+{
+    if (is_empty()) return None();
+    return Some(mut_ptr<element_type>::from_raw_parts(as_raw_ptr()).as_mut_ref());
+}
+
+template<typename Self, typename T, bool Mutable>
+constexpr auto ref_base<Self, T, Mutable>::last_mut() const noexcept
+    -> Option<mut_ref<element_type>>
+    requires Mutable && mtp::DSTArray<T>
+{
+    if (is_empty()) return None();
+    return Some(
+        mut_ptr<element_type>::from_raw_parts(as_raw_ptr()).add(len() - usize(1)).as_mut_ref());
+}
+
+} // namespace rstd
 
 namespace rstd::slice_::detail
 {
@@ -24,6 +65,13 @@ inline void length_mismatch(rstd::source_location loc = rstd::source_location::c
 
 export namespace rstd::slice_
 {
+
+template<typename T>
+constexpr void swap(mut_ref<T[]> values, usize a, usize b) {
+    if (a >= values.len() || b >= values.len()) rstd::panic("slice swap index out of bounds");
+    auto pointer = mut_ptr<T>::from_raw_parts(values.as_raw_ptr());
+    ptr_::swap(pointer.add(a), pointer.add(b));
+}
 
 template<typename T>
 constexpr auto split_at_mut(mut_ref<T[]> values [[clang::lifetimebound]], usize mid)

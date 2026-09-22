@@ -92,9 +92,9 @@ public:
     constexpr tuple() noexcept((mtp::triv_init_v<Ts> && ...)) = default;
 
     /// Constructs the tuple
-    constexpr tuple(Ts const&... ts) noexcept((mtp::noex_init_v<Ts, Ts> && ...))
+    constexpr tuple(Ts const&... ts) noexcept((mtp::noex_init_v<Ts, Ts const&> && ...))
         requires(sizeof...(Ts) > 0)
-        : impl(rstd::forward<Ts>(ts)...) {}
+        : impl(ts...) {}
 
     /// Constructs the tuple from individual element values.
     template<typename... Us>

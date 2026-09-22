@@ -20,6 +20,47 @@ using namespace rstd::literals;
 using rstd::string::String;
 using rstd::vec::Vec;
 
+template<typename T>
+concept MutableVecEndpoints = requires(T& value) {
+    value.first_mut();
+    value.last_mut();
+};
+static_assert(MutableVecEndpoints<Vec<int>>);
+static_assert(! MutableVecEndpoints<const Vec<int>>);
+
+TEST(Vec, EndpointsBorrowWithoutRemovingElements) {
+    Vec<Box<int>> values;
+    EXPECT_TRUE(values.first().is_none());
+    EXPECT_TRUE(values.last().is_none());
+    EXPECT_TRUE(values.first_mut().is_none());
+    EXPECT_TRUE(values.last_mut().is_none());
+    values.push(Box<int>::make(3));
+    EXPECT_EQ(values.first()->as_raw_ptr(), values.last()->as_raw_ptr());
+    values.push(Box<int>::make(5));
+    const auto& readonly = values;
+    EXPECT_EQ(readonly.first()->as_raw_ptr(), values.data());
+    EXPECT_EQ(readonly.last()->as_raw_ptr(), values.data() + 1);
+    *values.last_mut()->get_mut() = 9;
+    EXPECT_EQ(*readonly.last()->get(), 9);
+    EXPECT_EQ(values.len(), 2_usize);
+}
+
+TEST(Vec, ByteEndpointsPreserveProxyStorage) {
+    Vec<u8> values;
+    EXPECT_TRUE(values.last_mut().is_none());
+    values.push(u8(1));
+    values.push(u8(2));
+    auto first = values.first_mut().unwrap();
+    auto last  = values.last_mut().unwrap();
+    first      = u8(7);
+    last       = u8(9);
+    EXPECT_EQ(values.first()->get(), u8(7));
+    EXPECT_EQ(values.last()->get(), u8(9));
+    EXPECT_EQ(first.as_raw_ptr(), values.data());
+    EXPECT_EQ(last.as_raw_ptr(), values.data() + 1);
+    EXPECT_EQ(values.len(), 2_usize);
+}
+
 struct VecAllocatorState {
     int  allocations;
     int  deallocations;

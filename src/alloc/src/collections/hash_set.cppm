@@ -70,6 +70,13 @@ public:
         return HashSet(HashMap<K, rstd::empty, S, Eq>::with_hasher(rstd::move(hasher)));
     }
 
+    static auto with_hasher_and_equal(S hasher, Eq equal) -> HashSet
+        requires rstd::hash::HashBuilder<S>
+    {
+        return HashSet(
+            HashMap<K, rstd::empty, S, Eq>(usize(), rstd::move(hasher), rstd::move(equal)));
+    }
+
     auto len() const noexcept -> usize { return map.len(); }
     auto is_empty() const noexcept -> bool { return map.is_empty(); }
     auto capacity() const noexcept -> usize { return map.capacity(); }

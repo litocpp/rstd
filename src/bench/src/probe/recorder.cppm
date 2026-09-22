@@ -92,8 +92,8 @@ struct ProbeRecorderState {
         auto const sequence = next_sequence;
         ++next_sequence;
         auto parent = Option<u64> {};
-        if (! active.is_empty()) {
-            parent = Some(u64(active[active.len() - usize(1)].sequence.to_primitive()));
+        if (auto last = active.last(); last.is_some()) {
+            parent = Some(u64(last->get().sequence.to_primitive()));
         }
         active.push(ActiveSpan {
             .probe           = probe,
@@ -120,8 +120,7 @@ struct ProbeRecorderState {
 
         auto optional_diagnostic = Option<ProbeDiagnostic> {};
         if (index + usize(1) != active.len()) {
-            auto value =
-                ProbeDiagnostic::NonLifo(active[active.len() - usize(1)].sequence, sequence);
+            auto value = ProbeDiagnostic::NonLifo(active.last().unwrap().get().sequence, sequence);
             remember(value);
             optional_diagnostic = Some(rstd::move(value));
         }

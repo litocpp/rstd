@@ -12,10 +12,9 @@ slice_sift_down(rstd::mut_ref<T[]> data, rstd::size_t root, rstd::size_t end, Co
         }
         if (! compare(data[rstd::usize(root)], data[rstd::usize(child)])) return;
 
-        T value                  = rstd::move(data[rstd::usize(root)]);
-        data[rstd::usize(root)]  = rstd::move(data[rstd::usize(child)]);
-        data[rstd::usize(child)] = rstd::move(value);
-        root                     = child;
+        auto pointer = rstd::mut_ptr<T>::from_raw_parts(data.as_raw_ptr());
+        rstd::ptr_::swap(pointer.add(rstd::usize(root)), pointer.add(rstd::usize(child)));
+        root = child;
     }
 }
 
@@ -59,9 +58,8 @@ constexpr void sort_unstable_by(mut_ref<T[]> values, Compare compare) {
         slice_sift_down(values, root - 1, length, compare);
     }
     for (auto end = length; end > 1; --end) {
-        T value                = rstd::move(values[usize()]);
-        values[usize()]        = rstd::move(values[usize(end - 1)]);
-        values[usize(end - 1)] = rstd::move(value);
+        auto pointer = mut_ptr<T>::from_raw_parts(values.as_raw_ptr());
+        ptr_::swap(pointer, pointer.add(usize(end - 1)));
         slice_sift_down(values, 0, end - 1, compare);
     }
 }
@@ -74,6 +72,13 @@ constexpr void sort_unstable(mut_ref<T[]> values)
 {
     sort_unstable_by(values, [](const T& left, const T& right) {
         return left < right;
+    });
+}
+
+template<typename T, typename F>
+constexpr void sort_unstable_by_key(mut_ref<T[]> values, F key) {
+    sort_unstable_by(values, [&key](const T& a, const T& b) {
+        return key(a) < key(b);
     });
 }
 

@@ -77,7 +77,7 @@ public:
     auto next() -> Option<Item> {
         if (remaining == usize()) return None();
         for (;;) {
-            auto& frame = front[front.len() - usize(1)];
+            auto& frame = front.last_mut().unwrap().get_mut();
             auto* node  = frame.node;
             if (node->leaf) {
                 if (frame.index == node->len) {
@@ -105,7 +105,7 @@ public:
     auto next_back() -> Option<Item> {
         if (remaining == usize()) return None();
         for (;;) {
-            auto& frame = back[back.len() - usize(1)];
+            auto& frame = back.last_mut().unwrap().get_mut();
             auto* node  = frame.node;
             if (node->leaf) {
                 if (frame.index == usize()) {
@@ -177,7 +177,7 @@ public:
     auto next() -> Option<Item> {
         if (remaining == usize()) return None();
         for (;;) {
-            auto& frame = front[front.len() - usize(1)];
+            auto& frame = front.last_mut().unwrap().get_mut();
             auto* node  = frame.node;
             if (node->leaf) {
                 if (frame.index == node->len) {
@@ -206,7 +206,7 @@ public:
     auto next_back() -> Option<Item> {
         if (remaining == usize()) return None();
         for (;;) {
-            auto& frame = back[back.len() - usize(1)];
+            auto& frame = back.last_mut().unwrap().get_mut();
             auto* node  = frame.node;
             if (node->leaf) {
                 if (frame.index == usize()) {

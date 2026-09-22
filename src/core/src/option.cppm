@@ -537,7 +537,8 @@ public:
     = default;
 
     constexpr Option& operator=(Option&& v) noexcept(mtp::noex_move_v<union_value_t>)
-        requires mtp::user_move<union_value_t>
+        requires mtp::init<union_value_t, union_value_t&&> &&
+                 (! mtp::triv_assign_move<union_value_t>)
     {
         if (this == rstd::addressof(v)) {
             return *this;

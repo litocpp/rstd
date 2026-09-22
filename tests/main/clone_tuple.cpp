@@ -26,6 +26,13 @@ struct CloneOnly : DefaultInClass<CloneOnly, Clone> {
 
 } // namespace
 
+TEST(CloneTuple, CopiesConstElementArguments) {
+    const rstd::i32 first(1), second(2);
+    auto            value = rstd::tuple<rstd::i32, rstd::i32>(first, second);
+    EXPECT_EQ(value.template get<0>(), first);
+    EXPECT_EQ(value.template get<1>(), second);
+}
+
 TEST(CloneTuple, CopyConstructionAndAssignmentCloneEveryElement) {
     int  clones = 0;
     auto source = rstd::make_clone_tuple(CloneOnly { 1, clones }, CloneOnly { 2, clones });

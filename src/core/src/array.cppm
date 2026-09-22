@@ -10,7 +10,7 @@ export import :iter;
 export import :marker;
 export import :option;
 export import :panicking;
-export import :slice;
+export import :slice.ops;
 export import rstd.basic;
 
 namespace rstd
@@ -187,26 +187,18 @@ public:
     }
 
     constexpr auto first() const noexcept [[clang::lifetimebound]] -> Option<ref<T>> {
-        return get(usize());
+        return as_slice().first();
     }
     constexpr auto first_mut() noexcept [[clang::lifetimebound]] -> Option<mut_ref<T>> {
-        return get_mut(usize());
+        return as_mut_slice().first_mut();
     }
 
     constexpr auto last() const noexcept [[clang::lifetimebound]] -> Option<ref<T>> {
-        if constexpr (N == 0) {
-            return None();
-        } else {
-            return Some(as_ptr().add(usize(N - 1)).as_ref());
-        }
+        return as_slice().last();
     }
 
     constexpr auto last_mut() noexcept [[clang::lifetimebound]] -> Option<mut_ref<T>> {
-        if constexpr (N == 0) {
-            return None();
-        } else {
-            return Some(as_mut_ptr().add(usize(N - 1)).as_mut_ref());
-        }
+        return as_mut_slice().last_mut();
     }
 
     template<rstd::size_t I>

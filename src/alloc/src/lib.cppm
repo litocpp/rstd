@@ -5,6 +5,8 @@ export import :rc;
 export import :str;
 export import :boxed;
 export import :vec;
+export import :slice;
+export import :iter;
 export import :arena;
 export import :ffi;
 export import :string;

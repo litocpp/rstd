@@ -17,7 +17,7 @@ struct SuccessState {
 
 template<has_next I>
 struct SuccessItems : DefaultInClass<SuccessItems<I>, Iterator> {
-    using Item                         = try_::output_t<typename I::Item>;
+    using Item                         = checked_item_t<try_::output_t<typename I::Item>>;
     static constexpr bool PROVEN_FUSED = true;
     SuccessState<I>*      state;
 
@@ -54,7 +54,7 @@ constexpr auto process_successes(I& source, F function) -> R {
 
 export template<typename T>
 struct OptionIntoIter : DefaultInClass<OptionIntoIter<T>, Iterator> {
-    using Item                                = T;
+    using Item                                = checked_item_t<T>;
     static constexpr bool PROVEN_DOUBLE_ENDED = true;
     static constexpr bool PROVEN_EXACT_SIZE   = true;
     static constexpr bool PROVEN_FUSED        = true;
@@ -79,53 +79,37 @@ namespace detail
 {
 
 template<typename T>
-using ImmutableOptionItem = mtp::cond<mtp::same_as<T, u8>, const T&, ref<T>>;
+using ImmutableOptionItem = ref<T>;
 
 template<typename T>
-using MutableOptionItem = mtp::cond<mtp::same_as<T, u8>, T&, mut_ref<T>>;
+using MutableOptionItem = mut_ref<T>;
 
 template<typename T>
 constexpr auto borrow_option(ref<Option<T>> source) -> Option<ImmutableOptionItem<T>> {
     auto const* option = source.as_raw_ptr();
     if (option->is_none()) return None();
-    if constexpr (mtp::same_as<T, u8>) {
-        return Some<const T&>(**option);
-    } else {
-        return Some(ref<T>::from_raw_parts(rstd::addressof(**option)));
-    }
+    return Some(ref<T>::from_raw_parts(rstd::addressof(**option)));
 }
 
 template<typename T>
 constexpr auto borrow_option_mut(mut_ref<Option<T>> source) -> Option<MutableOptionItem<T>> {
     auto* option = source.as_raw_ptr();
     if (option->is_none()) return None();
-    if constexpr (mtp::same_as<T, u8>) {
-        return Some<T&>(**option);
-    } else {
-        return Some(mut_ref<T>::from_raw_parts(rstd::addressof(**option)));
-    }
+    return Some(mut_ref<T>::from_raw_parts(rstd::addressof(**option)));
 }
 
 template<typename T, typename E>
 constexpr auto borrow_result(ref<Result<T, E>> source) -> Option<ImmutableOptionItem<T>> {
     auto const* result = source.as_raw_ptr();
     if (result->is_err()) return None();
-    if constexpr (mtp::same_as<T, u8>) {
-        return Some<const T&>(**result);
-    } else {
-        return Some(ref<T>::from_raw_parts(rstd::addressof(**result)));
-    }
+    return Some(ref<T>::from_raw_parts(rstd::addressof(**result)));
 }
 
 template<typename T, typename E>
 constexpr auto borrow_result_mut(mut_ref<Result<T, E>> source) -> Option<MutableOptionItem<T>> {
     auto* result = source.as_raw_ptr();
     if (result->is_err()) return None();
-    if constexpr (mtp::same_as<T, u8>) {
-        return Some<T&>(**result);
-    } else {
-        return Some(mut_ref<T>::from_raw_parts(rstd::addressof(**result)));
-    }
+    return Some(mut_ref<T>::from_raw_parts(rstd::addressof(**result)));
 }
 
 } // namespace detail
@@ -195,7 +179,7 @@ struct Impl<iter::FromIterator<Result<T, E>>, Result<B, E>> : ImplBase<Result<B,
     }
 };
 
-template<typename T>
+template<iter::valid_item T>
 struct Impl<iter::IntoIterator, Option<T>> : ImplBase<Option<T>> {
     using IntoIter = iter::OptionIntoIter<T>;
 
@@ -203,7 +187,8 @@ struct Impl<iter::IntoIterator, Option<T>> : ImplBase<Option<T>> {
 };
 
 template<typename T>
-    requires(! mtp::is_ref<T>)
+    requires(! mtp::is_ref<T>) &&
+            requires(const T& value) { ref<T>::from_raw_parts(rstd::addressof(value)); }
 struct Impl<iter::IntoIterator, ref<Option<T>>> : ImplBase<ref<Option<T>>> {
     using IntoIter = iter::OptionIntoIter<iter::detail::ImmutableOptionItem<T>>;
 
@@ -213,7 +198,8 @@ struct Impl<iter::IntoIterator, ref<Option<T>>> : ImplBase<ref<Option<T>>> {
 };
 
 template<typename T>
-    requires(! mtp::is_ref<T>)
+    requires(! mtp::is_ref<T>) &&
+            requires(T& value) { mut_ref<T>::from_raw_parts(rstd::addressof(value)); }
 struct Impl<iter::IntoIterator, mut_ref<Option<T>>> : ImplBase<mut_ref<Option<T>>> {
     using IntoIter = iter::OptionIntoIter<iter::detail::MutableOptionItem<T>>;
 
@@ -222,7 +208,7 @@ struct Impl<iter::IntoIterator, mut_ref<Option<T>>> : ImplBase<mut_ref<Option<T>
     }
 };
 
-template<typename T, typename E>
+template<iter::valid_item T, typename E>
 struct Impl<iter::IntoIterator, Result<T, E>> : ImplBase<Result<T, E>> {
     using IntoIter = iter::OptionIntoIter<T>;
 
@@ -233,7 +219,8 @@ struct Impl<iter::IntoIterator, Result<T, E>> : ImplBase<Result<T, E>> {
 };
 
 template<typename T, typename E>
-    requires(! mtp::is_ref<T>)
+    requires(! mtp::is_ref<T>) &&
+            requires(const T& value) { ref<T>::from_raw_parts(rstd::addressof(value)); }
 struct Impl<iter::IntoIterator, ref<Result<T, E>>> : ImplBase<ref<Result<T, E>>> {
     using IntoIter = iter::OptionIntoIter<iter::detail::ImmutableOptionItem<T>>;
 
@@ -243,7 +230,8 @@ struct Impl<iter::IntoIterator, ref<Result<T, E>>> : ImplBase<ref<Result<T, E>>>
 };
 
 template<typename T, typename E>
-    requires(! mtp::is_ref<T>)
+    requires(! mtp::is_ref<T>) &&
+            requires(T& value) { mut_ref<T>::from_raw_parts(rstd::addressof(value)); }
 struct Impl<iter::IntoIterator, mut_ref<Result<T, E>>> : ImplBase<mut_ref<Result<T, E>>> {
     using IntoIter = iter::OptionIntoIter<iter::detail::MutableOptionItem<T>>;
 

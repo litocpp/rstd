@@ -7,7 +7,7 @@ namespace rstd::iter
 
 template<class I, class F>
 struct Map : DefaultInClass<Map<I, F>, Iterator> {
-    using Item                                = mtp::invoke_result_t<F&, typename I::Item>;
+    using Item = checked_item_t<mtp::invoke_result_t<F&, typename I::Item>>;
     static constexpr bool PROVEN_DOUBLE_ENDED = Impled<I, DoubleEndedIterator>;
     static constexpr bool PROVEN_EXACT_SIZE   = Impled<I, ExactSizeIterator>;
     static constexpr bool PROVEN_FUSED        = Impled<I, FusedIterator>;
@@ -37,7 +37,7 @@ struct Map : DefaultInClass<Map<I, F>, Iterator> {
 
 template<class I, class F>
 struct MapWhile : DefaultInClass<MapWhile<I, F>, Iterator> {
-    using Item = typename mtp::invoke_result_t<F&, typename I::Item>::value_type;
+    using Item = checked_item_t<typename mtp::invoke_result_t<F&, typename I::Item>::value_type>;
     I i;
     F f;
     constexpr MapWhile(I in, F fn): i(rstd::move(in)), f(rstd::move(fn)) {}
@@ -79,7 +79,7 @@ struct Filter : DefaultInClass<Filter<I, P>, Iterator> {
 
 template<class I, class F>
 struct FilterMap : DefaultInClass<FilterMap<I, F>, Iterator> {
-    using Item = typename mtp::invoke_result_t<F&, typename I::Item>::value_type;
+    using Item = checked_item_t<typename mtp::invoke_result_t<F&, typename I::Item>::value_type>;
     static constexpr bool PROVEN_DOUBLE_ENDED = Impled<I, DoubleEndedIterator>;
     static constexpr bool PROVEN_FUSED        = Impled<I, FusedIterator>;
     I                     i;
@@ -534,7 +534,8 @@ struct Inspect : DefaultInClass<Inspect<I, F>, Iterator> {
 
 template<class I, class St, class F>
 struct Scan : DefaultInClass<Scan<I, St, F>, Iterator> {
-    using Item = typename mtp::invoke_result_t<F&, St&, typename I::Item>::value_type;
+    using Item =
+        checked_item_t<typename mtp::invoke_result_t<F&, St&, typename I::Item>::value_type>;
     I  i;
     St st;
     F  f;
@@ -982,6 +983,77 @@ struct ReverseIteratorDriver<Rev<I>> {
     template<typename B, typename F>
     static constexpr auto try_fold(Rev<I>& iterator, B init, F& function) {
         return IteratorDriver<I>::try_fold(iterator.i, rstd::move(init), function);
+    }
+};
+
+template<class I, class F>
+struct IntersperseWith : DefaultInClass<IntersperseWith<I, F>, Iterator> {
+    using Item                         = typename I::Item;
+    static constexpr bool PROVEN_FUSED = true;
+    Fuse<I>               source;
+    F                     factory;
+    Option<Item>          pending;
+    bool                  started = false;
+
+    constexpr IntersperseWith(I input, F function)
+        : source(rstd::move(input)), factory(rstd::move(function)), pending(None()) {
+        static_assert(mtp::same_as<decltype(factory()), Item>);
+    }
+
+    constexpr auto next() -> Option<Item> {
+        if (! started) {
+            started = true;
+            return source.next();
+        }
+        if (pending.is_some()) return pending.take();
+        pending = source.next();
+        if (pending.is_none()) return None();
+        return Some<Item>(factory());
+    }
+
+    constexpr auto size_hint() const -> SizeHint {
+        auto hint  = source.size_hint();
+        auto count = [this](usize n) -> Option<usize> {
+            auto extra = n - ((! started && n != usize()) ? usize(1) : usize());
+            if (pending.is_some()) {
+                if (extra == usize::MAX) return None();
+                ++extra;
+            }
+            if (extra > usize::MAX - n) return None();
+            return Some(n + extra);
+        };
+        auto upper = hint.template get<1>();
+        if (upper.is_some()) upper = count(*upper);
+        return { count(hint.template get<0>()).unwrap_or(usize::MAX), rstd::move(upper) };
+    }
+};
+
+template<class I>
+struct DefaultIfEmpty : DefaultInClass<DefaultIfEmpty<I>, Iterator> {
+    using Item                         = typename I::Item;
+    static constexpr bool PROVEN_FUSED = true;
+    Fuse<I>               source;
+    Option<Item>          fallback;
+    bool                  started = false;
+
+    constexpr DefaultIfEmpty(I input, Item value)
+        : source(rstd::move(input)), fallback(Some<Item>(rstd::forward<Item>(value))) {}
+    constexpr auto next() -> Option<Item> {
+        auto item = source.next();
+        if (! started) {
+            started = true;
+            if (item.is_none()) return fallback.take();
+        }
+        return item;
+    }
+    constexpr auto size_hint() const -> SizeHint {
+        auto hint = source.size_hint();
+        if (! started) {
+            if (hint.template get<0>() == usize()) hint.template get<0>() = usize(1);
+            auto& upper = hint.template get<1>();
+            if (upper.is_some() && *upper == usize()) upper = Some(usize(1));
+        }
+        return hint;
     }
 };
 

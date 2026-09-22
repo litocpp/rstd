@@ -7,9 +7,35 @@ namespace rstd::iter
 
 struct StandardIteratorEnd {};
 
+template<typename T>
+struct StandardRangeItem {
+    using Type = T;
+    static constexpr auto get(T value) -> T { return rstd::move(value); }
+};
+
+template<typename T>
+struct StandardRangeItem<T&> {
+    using Type = mut_ref<T>;
+    static constexpr auto get(T& value) -> Type
+        requires requires { Type::from_raw_parts(rstd::addressof(value)); }
+    {
+        return Type::from_raw_parts(rstd::addressof(value));
+    }
+};
+
+template<typename T>
+struct StandardRangeItem<const T&> {
+    using Type = ref<T>;
+    static constexpr auto get(const T& value) -> Type
+        requires requires { Type::from_raw_parts(rstd::addressof(value)); }
+    {
+        return Type::from_raw_parts(rstd::addressof(value));
+    }
+};
+
 export template<class I>
 class IteratorRange : public std::ranges::view_interface<IteratorRange<I>> {
-    using Item = typename I::Item;
+    using Item = checked_item_t<typename I::Item>;
 
     I            iterator_;
     Option<Item> item_;
@@ -81,7 +107,9 @@ inline constexpr bool range_exact_size = std::sized_sentinel_for<E, B>;
 
 template<class B>
 concept stable_range_item =
-    std::forward_iterator<B> || std::is_same_v<std::iter_reference_t<B>, std::iter_value_t<B>>;
+    (std::forward_iterator<B> || std::is_same_v<std::iter_reference_t<B>, std::iter_value_t<B>>) &&
+    valid_item<typename StandardRangeItem<std::iter_reference_t<B>>::Type> &&
+    requires(B iterator) { StandardRangeItem<std::iter_reference_t<B>>::get(*iterator); };
 
 export template<class B, class E, bool Sized = range_exact_size<B, E>>
     requires std::input_iterator<B> && std::sentinel_for<E, B> && stable_range_item<B>
@@ -114,7 +142,7 @@ class IteratorOverRange : public DefaultInClass<IteratorOverRange<B, E, Sized>, 
     }
 
 public:
-    using Item                                = std::iter_reference_t<B>;
+    using Item = checked_item_t<typename StandardRangeItem<std::iter_reference_t<B>>::Type>;
     static constexpr bool PROVEN_DOUBLE_ENDED = DOUBLE_ENDED;
     static constexpr bool PROVEN_EXACT_SIZE   = EXACT_SIZE;
     static constexpr bool PROVEN_FUSED        = true;
@@ -130,7 +158,7 @@ public:
 
     constexpr auto next() -> Option<Item> {
         if (front_ == end_) return None();
-        Item item = *front_;
+        Item item = StandardRangeItem<std::iter_reference_t<B>>::get(*front_);
         ++front_;
         decrement_length();
         return Some<Item>(rstd::forward<Item>(item));
@@ -142,7 +170,7 @@ public:
         if (front_ == end_) return None();
         --end_;
         decrement_length();
-        Item item = *end_;
+        Item item = StandardRangeItem<std::iter_reference_t<B>>::get(*end_);
         return Some<Item>(rstd::forward<Item>(item));
     }
 

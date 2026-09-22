@@ -485,7 +485,7 @@ public:
         if (inner.len() != usize {}) {
             auto os_str = inner.as_os_str();
             auto bytes  = os_str.as_encoded_bytes();
-            if (! path_detail::is_sep(bytes[bytes.len() - usize(1)])) {
+            if (! path_detail::is_sep(bytes.last().unwrap().get())) {
                 array<u8, 1> separator(PATH_SEP);
                 inner.push(ref<OsStr>::from_encoded_bytes_unchecked(separator.as_slice()));
             }

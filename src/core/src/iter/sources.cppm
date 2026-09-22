@@ -125,7 +125,7 @@ struct IteratorTraversal<SliceIterMut<T>> : SliceTraversal<SliceIterMut<T>> {};
 /// Iterator that yields nothing.
 export template<class T>
 struct Empty : DefaultInClass<Empty<T>, Iterator> {
-    using Item                                = T;
+    using Item                                = checked_item_t<T>;
     static constexpr bool PROVEN_DOUBLE_ENDED = true;
     static constexpr bool PROVEN_EXACT_SIZE   = true;
     static constexpr bool PROVEN_FUSED        = true;
@@ -140,7 +140,7 @@ struct Empty : DefaultInClass<Empty<T>, Iterator> {
 /// Iterator that yields a single value exactly once.
 export template<class T>
 struct Once : DefaultInClass<Once<T>, Iterator> {
-    using Item                                = T;
+    using Item                                = checked_item_t<T>;
     static constexpr bool PROVEN_DOUBLE_ENDED = true;
     static constexpr bool PROVEN_EXACT_SIZE   = true;
     static constexpr bool PROVEN_FUSED        = true;
@@ -159,7 +159,7 @@ struct Once : DefaultInClass<Once<T>, Iterator> {
 /// Iterator that calls a closure once, when its item is requested.
 export template<class F>
 struct OnceWith : DefaultInClass<OnceWith<F>, Iterator> {
-    using Item                                = decltype(mtp::declval<F&&>()());
+    using Item                                = checked_item_t<decltype(mtp::declval<F&&>()())>;
     static constexpr bool PROVEN_DOUBLE_ENDED = true;
     static constexpr bool PROVEN_EXACT_SIZE   = true;
     static constexpr bool PROVEN_FUSED        = true;
@@ -189,7 +189,7 @@ struct OnceWith : DefaultInClass<OnceWith<F>, Iterator> {
 /// Iterator that endlessly repeats a value (clones each time).
 export template<class T>
 struct Repeat : DefaultInClass<Repeat<T>, Iterator> {
-    using Item                                = T;
+    using Item                                = checked_item_t<T>;
     static constexpr bool PROVEN_DOUBLE_ENDED = true;
     static constexpr bool PROVEN_FUSED        = true;
     static constexpr bool PROVEN_TRUSTED_LEN  = true;
@@ -203,7 +203,7 @@ struct Repeat : DefaultInClass<Repeat<T>, Iterator> {
 /// Iterator that calls a closure for every requested item.
 export template<class F>
 struct RepeatWith : DefaultInClass<RepeatWith<F>, Iterator> {
-    using Item                               = decltype(mtp::declval<F&>()());
+    using Item                               = checked_item_t<decltype(mtp::declval<F&>()())>;
     static constexpr bool PROVEN_FUSED       = true;
     static constexpr bool PROVEN_TRUSTED_LEN = true;
 
@@ -222,7 +222,7 @@ struct RepeatWith : DefaultInClass<RepeatWith<F>, Iterator> {
 /// Iterator that calls a closure returning `Option<T>` until it yields `None`.
 export template<class F>
 struct FromFn : DefaultInClass<FromFn<F>, Iterator> {
-    using Item = typename decltype(mtp::declval<F&>()())::value_type;
+    using Item = checked_item_t<typename decltype(mtp::declval<F&>()())::value_type>;
     F f;
     explicit constexpr FromFn(F fn): f(rstd::move(fn)) {}
     constexpr auto next() -> Option<Item> { return f(); }
@@ -231,7 +231,7 @@ struct FromFn : DefaultInClass<FromFn<F>, Iterator> {
 /// Iterator produced by repeatedly applying `succ` to the previous element.
 export template<class T, class F>
 struct Successors : DefaultInClass<Successors<T, F>, Iterator> {
-    using Item                         = T;
+    using Item                         = checked_item_t<T>;
     static constexpr bool PROVEN_FUSED = true;
     Option<T>             next_val;
     F                     succ;

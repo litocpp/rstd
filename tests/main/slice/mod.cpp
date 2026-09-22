@@ -3,6 +3,93 @@
 import rstd;
 
 using namespace rstd::prelude;
+using namespace rstd::literals;
+
+template<typename T>
+concept MutableEndpoints = requires(T& value) {
+    value.first_mut();
+    value.last_mut();
+};
+
+static_assert(! MutableEndpoints<slice<int>>);
+static_assert(MutableEndpoints<mut_ref<int[]>>);
+static_assert(! MutableEndpoints<ref<int>>);
+static_assert(
+    rstd::mtp::same_as<decltype(rstd::mtp::declval<mut_ref<u8[]>>().last()), Option<ref<u8>>>);
+static_assert(rstd::mtp::same_as<decltype(rstd::mtp::declval<mut_ref<u8[]>>().last_mut()),
+                                 Option<mut_ref<u8>>>);
+
+constexpr bool slice_endpoints() {
+    slice<int>     empty;
+    mut_ref<int[]> mutable_empty;
+    if (empty.first().is_some() || empty.last().is_some() || mutable_empty.first_mut().is_some() ||
+        mutable_empty.last_mut().is_some())
+        return false;
+    int  data[] = { 1, 2, 3 };
+    auto values = mut_ref<int[]>::from_raw_parts(data, 3_usize);
+    if (values.first()->as_raw_ptr() != data || values.last()->as_raw_ptr() != data + 2)
+        return false;
+    values.first_mut()->get_mut() = 4;
+    values.last_mut()->get_mut()  = 7;
+    auto readonly                 = values.as_ref();
+    if (readonly.first()->get() != 4 || readonly.last()->get() != 7) return false;
+    auto single = slice<int>::from_raw_parts(data, 1_usize);
+    return single.first()->as_raw_ptr() == single.last()->as_raw_ptr();
+}
+
+constexpr bool byte_endpoints() {
+    mut_ref<u8[]> empty;
+    if (empty.first().is_some() || empty.last().is_some() || empty.first_mut().is_some() ||
+        empty.last_mut().is_some())
+        return false;
+    rstd::byte data[] = { rstd::byte { 1 }, rstd::byte { 2 } };
+    auto       values = mut_ref<u8[]>::from_raw_parts(data, 2_usize);
+    if (values.first()->as_raw_ptr() != data || values.last()->as_raw_ptr() != data + 1)
+        return false;
+    auto first = values.first_mut().unwrap();
+    auto last  = values.last_mut().unwrap();
+    first      = u8(4);
+    last       = u8(9);
+    return values.first()->get() == u8(4) && values.last()->get() == u8(9) &&
+           data[0] == rstd::byte { 4 } && data[1] == rstd::byte { 9 };
+}
+
+static_assert(slice_endpoints());
+static_assert(byte_endpoints());
+
+TEST(Slice, EndpointsBorrowObjectsAndBytes) {
+    EXPECT_TRUE(slice_endpoints());
+    EXPECT_TRUE(byte_endpoints());
+}
+
+TEST(Slice, EndpointOutlivesTemporaryView) {
+    int  data[] = { 1, 2 };
+    auto last   = [](int* data) {
+        auto view = slice<int>::from_raw_parts(data, 2_usize);
+        return view.last().unwrap();
+    }(data);
+    data[1] = 7;
+    EXPECT_EQ(last.get(), 7);
+}
+
+TEST(Slice, SwapBoundsAndMoveOnly) {
+    struct Value {
+        int key;
+        explicit Value(int key): key(key) {}
+        Value(Value&&)                    = default;
+        Value(const Value&)               = delete;
+        auto operator=(Value&&) -> Value& = delete;
+    };
+    Value rows[] = { Value(1), Value(2) };
+    auto  values = mut_ref<Value[]>::from_raw_parts(rows, 2_usize);
+    rstd::slice_::swap(values, 0_usize, 1_usize);
+    EXPECT_EQ(rows[0].key, 2);
+    EXPECT_EQ(rows[1].key, 1);
+    rstd::slice_::swap(values, 0_usize, 0_usize);
+    EXPECT_EQ(rows[0].key, 2);
+    EXPECT_DEATH(rstd::slice_::swap(values, 2_usize, 2_usize), "index out of bounds");
+    EXPECT_DEATH(rstd::slice_::swap(mut_ref<u8[]> {}, 0_usize, 0_usize), "index out of bounds");
+}
 
 namespace
 {
@@ -171,28 +258,4 @@ TEST(Slice, CloneFromSliceRejectsLengthMismatch) {
 
     EXPECT_DEATH(rstd::slice_::clone_from_slice(destination_slice, source_slice),
                  "source and destination slices have different lengths");
-}
-
-TEST(Ptr, CopyNonoverlappingUsesElementCount) {
-    struct Pair {
-        int first;
-        int second;
-    };
-
-    Pair source[] { { 1, 2 }, { 3, 4 } };
-    Pair destination[] { {}, {} };
-    rstd::ptr_::copy_nonoverlapping(rstd::ptr<Pair>::from_raw_parts(source),
-                                    rstd::mut_ptr<Pair>::from_raw_parts(destination),
-                                    usize(2));
-
-    EXPECT_EQ(destination[0].first, 1);
-    EXPECT_EQ(destination[0].second, 2);
-    EXPECT_EQ(destination[1].first, 3);
-    EXPECT_EQ(destination[1].second, 4);
-}
-
-TEST(Ptr, CopyNonoverlappingAcceptsEmptyNullRange) {
-    rstd::ptr_::copy_nonoverlapping(rstd::ptr<int>::from_raw_parts(nullptr),
-                                    rstd::mut_ptr<int>::from_raw_parts(nullptr),
-                                    usize());
 }

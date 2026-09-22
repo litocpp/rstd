@@ -230,24 +230,24 @@ struct rstd::Impl<iter::Sum<i32>, Total> : rstd::ImplBase<Total> {
     }
 };
 
-TEST(Iter, NativeReferenceMapPreservesIdentity) {
+TEST(Iter, BorrowMapPreservesIdentity) {
     i32  value = 7_i32;
     auto make  = [&value] {
-        return iter::from_fn([&value]() -> Option<i32&> {
-                   return Some<i32&>(value);
+        return iter::from_fn([&value] {
+                   return Some(mut_ref<i32>::from_raw_parts(&value));
                })
             .take(2_usize)
-            .map([](i32& item) -> i32& {
+            .map([](mut_ref<i32> item) {
                 return item;
             });
     };
     auto mapped = make();
     auto item   = mapped.next();
-    EXPECT_EQ(rstd::addressof(*item), rstd::addressof(value));
-    *item = 9_i32;
+    EXPECT_EQ(item->as_raw_ptr(), rstd::addressof(value));
+    **item = 9_i32;
     EXPECT_EQ(make().fold(0_i32,
-                          [](i32 sum, i32& item) {
-                              return sum + item;
+                          [](i32 sum, mut_ref<i32> item) {
+                              return sum + *item;
                           }),
               18_i32);
 }
@@ -304,44 +304,44 @@ TEST(Iter, FallibleCollectStopsAtFirstFailureAndPreservesRemainder) {
     EXPECT_EQ(rstd::addressof(reference.unwrap_err()), rstd::addressof(error));
 }
 
-TEST(Iter, NativeReferencesSurviveAdapters) {
+TEST(Iter, BorrowsSurviveAdapters) {
     const i32 constant  = 13_i32;
-    auto      immutable = iter::from_fn([&]() -> Option<const i32&> {
-                         return Some<const i32&>(constant);
+    auto      immutable = iter::from_fn([&] {
+                         return Some(ref<i32>::from_raw_parts(&constant));
                           })
                               .take(1_usize)
-                              .map([](const i32& item) -> const i32& {
+                              .map([](ref<i32> item) {
                              return item;
                               });
-    EXPECT_EQ(rstd::addressof(*immutable.next()), rstd::addressof(constant));
+    EXPECT_EQ(immutable.next()->as_raw_ptr(), rstd::addressof(constant));
     i32  value  = 3_i32;
     auto source = [&] {
-        return iter::from_fn([&]() -> Option<i32&> {
-                   return Some<i32&>(value);
+        return iter::from_fn([&] {
+                   return Some(mut_ref<i32>::from_raw_parts(&value));
                })
             .take(3_usize);
     };
-    auto filtered = source().filter_map([](i32& value) {
-        return Some<i32&>(value);
+    auto filtered = source().filter_map([](mut_ref<i32> value) {
+        return Some(value);
     });
-    EXPECT_EQ(rstd::addressof(*filtered.next()), rstd::addressof(value));
-    auto mapped = source().map_while([](i32& value) {
-        return Some<i32&>(value);
+    EXPECT_EQ(filtered.next()->as_raw_ptr(), rstd::addressof(value));
+    auto mapped = source().map_while([](mut_ref<i32> value) {
+        return Some(value);
     });
-    EXPECT_EQ(rstd::addressof(*mapped.next()), rstd::addressof(value));
+    EXPECT_EQ(mapped.next()->as_raw_ptr(), rstd::addressof(value));
     auto indexed = source().enumerate().next();
-    EXPECT_EQ(rstd::addressof(indexed->template get<1>()), rstd::addressof(value));
+    EXPECT_EQ(indexed->template get<1>().as_raw_ptr(), rstd::addressof(value));
     auto zipped = source().zip(source()).next();
-    EXPECT_EQ(rstd::addressof(zipped->template get<0>()), rstd::addressof(value));
-    auto reduced = source().reduce([](i32&, i32& right) -> i32& {
+    EXPECT_EQ(zipped->template get<0>().as_raw_ptr(), rstd::addressof(value));
+    auto reduced = source().reduce([](mut_ref<i32>, mut_ref<i32> right) {
         return right;
     });
-    EXPECT_EQ(rstd::addressof(*reduced), rstd::addressof(value));
-    auto scanned = source().scan(0_i32, [](i32& state, i32& item) {
-        state += item;
-        return Some<i32&>(item);
+    EXPECT_EQ(reduced->as_raw_ptr(), rstd::addressof(value));
+    auto scanned = source().scan(0_i32, [](i32& state, mut_ref<i32> item) {
+        state += *item;
+        return Some(item);
     });
-    EXPECT_EQ(rstd::addressof(*scanned.next()), rstd::addressof(value));
+    EXPECT_EQ(scanned.next()->as_raw_ptr(), rstd::addressof(value));
 }
 
 TEST(Iter, AggregationAndPartialComparison) {
@@ -360,8 +360,8 @@ TEST(Iter, AggregationAndPartialComparison) {
     EXPECT_EQ(iter::range(1_i32, 4_i32).sum<i32>(), 6_i32);
     EXPECT_EQ(iter::range(1_i32, 4_i32).product<i32>(), 6_i32);
     i32 value = 3_i32;
-    EXPECT_EQ(iter::from_fn([&]() -> Option<i32&> {
-                  return Some<i32&>(value);
+    EXPECT_EQ(iter::from_fn([&] {
+                  return Some(ref<i32>::from_raw_parts(&value));
               })
                   .take(2_usize)
                   .sum(),
@@ -422,17 +422,17 @@ TEST(Iter, ReverseDriverMatchesPullAndKeepsReferenceIdentity) {
     values.push(2_i32);
     values.push(3_i32);
     int  calls   = 0;
-    auto mapped  = values.iter_mut().map([&](auto value) -> i32& {
+    auto mapped  = values.iter_mut().map([&](mut_ref<i32> value) {
         ++calls;
-        return *value;
+        return value;
     });
-    auto stopped = mapped.try_rfold(0_i32, [](i32 total, i32& value) -> Option<i32> {
-        if (value == 2_i32) return None();
-        return Some(total + value);
+    auto stopped = mapped.try_rfold(0_i32, [](i32 total, mut_ref<i32> value) -> Option<i32> {
+        if (*value == 2_i32) return None();
+        return Some(total + *value);
     });
     EXPECT_TRUE(stopped.is_none());
     EXPECT_EQ(calls, 2);
-    EXPECT_EQ(rstd::addressof(*mapped.next()), rstd::addressof(values[0_usize]));
+    EXPECT_EQ(mapped.next()->as_raw_ptr(), rstd::addressof(values[0_usize]));
     EXPECT_EQ(calls, 3);
     auto total = values.iter()
                      .map([](auto v) {
@@ -1263,30 +1263,21 @@ TEST(Iter, OptionAndResultAreZeroOrOneItemIterators) {
     EXPECT_EQ(*optional, 13_i32);
 
     auto byte_optional = Some(rstd::u8(3));
-    auto byte_borrowed =
-        iter::into_iter(ref<Option<rstd::u8>>::from_raw_parts(rstd::addressof(byte_optional)));
-    static_assert(rstd::mtp::same_as<typename decltype(byte_borrowed)::Item, const rstd::u8&>);
-    EXPECT_EQ(*byte_borrowed.next(), rstd::u8(3));
-
-    auto byte_mutable = iter::into_iter(
-        rstd::mut_ref<Option<rstd::u8>>::from_raw_parts(rstd::addressof(byte_optional)));
-    static_assert(rstd::mtp::same_as<typename decltype(byte_mutable)::Item, rstd::u8&>);
-    auto byte_item = byte_mutable.next();
-    ASSERT_TRUE(byte_item.is_some());
-    *byte_item = rstd::u8(5);
-    EXPECT_EQ(*byte_optional, rstd::u8(5));
+    static_assert(! iter::into_iterable<ref<Option<u8>>>);
+    static_assert(! iter::into_iterable<mut_ref<Option<u8>>>);
+    auto byte_owned = iter::into_iter(rstd::move(byte_optional));
+    static_assert(rstd::mtp::same_as<typename decltype(byte_owned)::Item, u8>);
+    EXPECT_EQ(*byte_owned.next(), u8(3));
 
     auto result = rstd::Result<i32, i32>(rstd::Ok(17_i32));
     auto borrowed_result =
         iter::once(ref<rstd::Result<i32, i32>>::from_raw_parts(rstd::addressof(result))).flatten();
     EXPECT_EQ(**borrowed_result.next(), 17_i32);
 
-    auto byte_result          = rstd::Result<rstd::u8, i32>(rstd::Ok(rstd::u8(7)));
-    auto byte_result_borrowed = iter::into_iter(
-        ref<rstd::Result<rstd::u8, i32>>::from_raw_parts(rstd::addressof(byte_result)));
-    static_assert(
-        rstd::mtp::same_as<typename decltype(byte_result_borrowed)::Item, const rstd::u8&>);
-    EXPECT_EQ(*byte_result_borrowed.next(), rstd::u8(7));
+    auto byte_result = rstd::Result<rstd::u8, i32>(rstd::Ok(rstd::u8(7)));
+    static_assert(! iter::into_iterable<ref<rstd::Result<u8, i32>>>);
+    static_assert(! iter::into_iterable<mut_ref<rstd::Result<u8, i32>>>);
+    EXPECT_EQ(*iter::into_iter(rstd::move(byte_result)).next(), u8(7));
 
     auto mutable_result =
         iter::once(rstd::mut_ref<rstd::Result<i32, i32>>::from_raw_parts(rstd::addressof(result)))

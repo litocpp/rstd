@@ -87,6 +87,7 @@ target_sources(
          src/num/floating_parse.cppm
          src/slice/mod.cppm
          src/slice/ops.cppm
+         src/slice/iter.cppm
          src/str/mod.cppm
          src/str/str.cppm
          src/str/traits.cppm
@@ -107,6 +108,7 @@ target_sources(
          src/iter/option_result.cppm
          src/iter/accumulation.cppm
          src/mem/mod.cppm
+         src/mem/swap.cppm
          src/mem/manually_drop.cppm
          src/mem/maybe_uninit.cppm
          src/mem/drop_guard.cppm

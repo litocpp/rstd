@@ -2,6 +2,7 @@ module;
 #include <rstd/macro.hpp>
 export module rstd.core:ptr.ptr;
 import :num.types;
+import :mem.swap;
 export import :ptr.metadata;
 export import :ops.deref;
 export import :cmp;
@@ -136,6 +137,16 @@ struct ref_base {
     {
         return len() == usize();
     }
+
+    // Endpoints borrow the backing storage, not the view object; empty views return None.
+    constexpr auto first() const noexcept -> Option<ref<element_type>>
+        requires mtp::DSTArray<T>;
+    constexpr auto last() const noexcept -> Option<ref<element_type>>
+        requires mtp::DSTArray<T>;
+    constexpr auto first_mut() const noexcept -> Option<mut_ref<element_type>>
+        requires Mutable && mtp::DSTArray<T>;
+    constexpr auto last_mut() const noexcept -> Option<mut_ref<element_type>>
+        requires Mutable && mtp::DSTArray<T>;
 
     static constexpr auto from_raw_parts(value_type* p [[clang::lifetimebound]],
                                          usize       length) noexcept -> Self
@@ -625,6 +636,15 @@ struct Impl<Copy, ref<T>> {};
 
 namespace rstd::ptr_
 {
+
+/// Swaps initialized elements in non-overlapping storage, or does nothing for equal pointers.
+/// Moves and destructors must not throw.
+export template<typename T>
+    requires(! mtp::DST<T>) && mtp::init<T, T&&>
+constexpr void swap(mut_ptr<T> a, mut_ptr<T> b) noexcept {
+    if (a.as_raw_ptr() == b.as_raw_ptr()) return;
+    rstd::mem::swap(*a.as_raw_ptr(), *b.as_raw_ptr());
+}
 
 /// Destroys the pointee without deallocating its storage.
 export template<typename T>

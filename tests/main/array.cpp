@@ -45,8 +45,15 @@ static_assert(
 static_assert([] {
     auto values      = rstd::array<rstd::u8, 3> { rstd::u8(1), rstd::u8(2), rstd::u8(3) };
     values[usize(1)] = rstd::u8(9);
-    return values[usize()] == rstd::u8(1) && values[usize(1)] == rstd::u8(9) &&
-           values.data()[2] == rstd::byte { 3 };
+    auto first       = values.first_mut().unwrap();
+    auto last        = values.last_mut().unwrap();
+    first            = rstd::u8(4);
+    last             = rstd::u8(7);
+    auto empty       = rstd::array<rstd::u8, 0> {};
+    return values.first()->get() == rstd::u8(4) && values[usize(1)] == rstd::u8(9) &&
+           values.last()->get() == rstd::u8(7) && values.data()[2] == rstd::byte { 7 } &&
+           empty.first().is_none() && empty.last().is_none() && empty.first_mut().is_none() &&
+           empty.last_mut().is_none();
 }());
 
 TEST(Array, OwnsAndBorrowsFixedStorage) {
@@ -75,6 +82,10 @@ TEST(Array, OwnsAndBorrowsFixedStorage) {
     EXPECT_TRUE(values.get(usize(3)).is_none());
     EXPECT_EQ(**values.first(), 2);
     EXPECT_EQ(**values.last(), 5);
+    values.first_mut()->get_mut() = 13;
+    values.last_mut()->get_mut()  = 17;
+    EXPECT_EQ(**values.first(), 13);
+    EXPECT_EQ(**values.last(), 17);
 }
 
 TEST(Array, EmptyArrayDoesNotConstructElementStorage) {
@@ -86,6 +97,8 @@ TEST(Array, EmptyArrayDoesNotConstructElementStorage) {
     EXPECT_EQ(values.as_slice().len(), usize());
     EXPECT_TRUE(values.first().is_none());
     EXPECT_TRUE(values.last().is_none());
+    EXPECT_TRUE(values.first_mut().is_none());
+    EXPECT_TRUE(values.last_mut().is_none());
 
     auto mapped = rstd::move(values).map([](NoDefault) {
         return 1;

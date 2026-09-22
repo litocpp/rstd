@@ -4,7 +4,7 @@ members = [
   "main",
   "range",
   "dlopn-runtime",
-  "compile_fail",
+  "compile",
   "nostd",
   "toml",
 ]

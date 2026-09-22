@@ -1,0 +1,369 @@
+[package]
+name = "rstd-compile-tests"
+
+[compile-test]
+
+[[compile-test.cases]]
+name = "Choice.DuplicateTags"
+source = "choice/duplicate_tags.cpp"
+outcome = "failure"
+diagnostic-contains = ["all rstd::Choice tags must be unique"]
+
+[[compile-test.cases]]
+name = "Choice.Empty"
+source = "choice/empty.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd::Choice requires at least one choice_case"]
+
+[[compile-test.cases]]
+name = "Choice.InvalidArguments"
+source = "choice/invalid_arguments.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["no matching function", "constraints not satisfied"]
+
+[[compile-test.cases]]
+name = "Choice.InvalidTag"
+source = "choice/invalid_tag.cpp"
+outcome = "failure"
+diagnostic-contains = ["the requested tag is not present in rstd::Choice"]
+
+[[compile-test.cases]]
+name = "Choice.MixedTags"
+source = "choice/mixed_tags.cpp"
+outcome = "failure"
+diagnostic-contains = ["all rstd::Choice tags must have the same type"]
+
+[[compile-test.cases]]
+name = "Choice.ReferencePayload"
+source = "choice/reference_payload.cpp"
+outcome = "failure"
+diagnostic-contains = ["reference payloads are not supported by rstd::Choice"]
+
+[[compile-test.cases]]
+name = "Error.MissingSuperTrait"
+source = "error/missing_supertrait.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd::Impled failed: a required supertrait is not implemented"]
+
+[[compile-test.cases]]
+name = "Hash.BuilderInvalidState"
+source = "hash/builder_invalid_state.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["HashBuilder", "Hasher", "constraints not satisfied"]
+
+[[compile-test.cases]]
+name = "Hash.BuilderMissing"
+source = "hash/builder_missing.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["HashBuilder", "constraints not satisfied"]
+
+[[compile-test.cases]]
+name = "Hash.CallableBuilder"
+source = "hash/callable_builder.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["HashBuilder", "constraints not satisfied"]
+
+[[compile-test.cases]]
+name = "Hash.FloatKey"
+source = "hash/float_key.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["HashableBy", "HashableWith", "constraints not satisfied"]
+
+[[compile-test.cases]]
+name = "Hash.KeyWithoutHash"
+source = "hash/key_without_hash.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["HashableBy", "HashableWith", "constraints not satisfied"]
+
+[[compile-test.cases]]
+name = "Iter.CoreOnly"
+source = "iter/core_only.cpp"
+outcome = "success"
+
+[[compile-test.cases]]
+name = "Iter.EscapingForRange"
+source = "iter/escaping_for_range.cpp"
+outcome = "failure"
+options = ["-Werror=return-stack-address"]
+diagnostic-contains-any = ["address of stack memory associated with local variable", "returning address of local temporary object"]
+
+[[compile-test.cases]]
+name = "Iter.FloatTotalCmp"
+source = "iter/float_total_cmp.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["constraints not satisfied", "no matching member function"]
+
+[[compile-test.cases]]
+name = "Iter.GroupJoinBorrowedResult"
+source = "iter/group_join_borrowed_result.cpp"
+outcome = "failure"
+diagnostic-contains = ["join results must not borrow internal storage"]
+
+[[compile-test.cases]]
+name = "Iter.JoinBorrowedResult"
+source = "iter/join_borrowed_result.cpp"
+outcome = "failure"
+diagnostic-contains = ["join results must not borrow internal storage"]
+
+[[compile-test.cases]]
+name = "Iter.OwningItemBorrowedKey"
+source = "iter/owning_item_borrowed_key.cpp"
+outcome = "failure"
+diagnostic-contains = ["owning items require independent owning keys"]
+
+[[compile-test.cases]]
+name = "Iter.RawItemFromFn"
+source = "iter/raw_from_fn.cpp"
+outcome = "failure"
+diagnostic-contains = ["constraints not satisfied"]
+
+[[compile-test.cases]]
+name = "Iter.RawItemMap"
+source = "iter/raw_map.cpp"
+outcome = "failure"
+diagnostic-contains = ["constraints not satisfied"]
+
+[[compile-test.cases]]
+name = "Iter.RawItemOnceWithMutable"
+source = "iter/raw_once_with_mutable.cpp"
+outcome = "failure"
+diagnostic-contains = ["constraints not satisfied"]
+
+[[compile-test.cases]]
+name = "Iter.TryFindNonBool"
+source = "iter/try_find_non_bool.cpp"
+outcome = "failure"
+diagnostic-contains = ["static assertion failed"]
+
+[[compile-test.cases]]
+name = "Iter.TryReduceWrongOutput"
+source = "iter/try_reduce_wrong_output.cpp"
+outcome = "failure"
+diagnostic-contains = ["static assertion failed"]
+
+[[compile-test.cases]]
+name = "LifetimeBound.Positive"
+source = "lifetime/positive.cpp"
+outcome = "success"
+options = ["-Werror=dangling"]
+
+[[compile-test.cases]]
+name = "LifetimeBound.TemporaryArray"
+source = "lifetime/temporary_array.cpp"
+outcome = "failure"
+options = ["-Werror=dangling"]
+diagnostic-contains-any = ["temporary whose address is used", "will be destroyed at the end of the full-expression"]
+
+[[compile-test.cases]]
+name = "LifetimeBound.TemporaryBox"
+source = "lifetime/temporary_box.cpp"
+outcome = "failure"
+options = ["-Werror=dangling"]
+diagnostic-contains-any = ["temporary whose address is used", "will be destroyed at the end of the full-expression"]
+
+[[compile-test.cases]]
+name = "LifetimeBound.TemporaryFile"
+source = "lifetime/temporary_file.cpp"
+outcome = "failure"
+options = ["-Werror=dangling"]
+diagnostic-contains-any = ["temporary whose address is used", "will be destroyed at the end of the full-expression"]
+
+[[compile-test.cases]]
+name = "LifetimeBound.TemporaryMutStringView"
+source = "lifetime/temporary_mut_string_view.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["lvalue ref-qualifier", "expects an lvalue"]
+
+[[compile-test.cases]]
+name = "LifetimeBound.TemporaryOwnedFd"
+source = "lifetime/temporary_owned_fd.cpp"
+outcome = "failure"
+options = ["-Werror=dangling"]
+diagnostic-contains-any = ["temporary whose address is used", "will be destroyed at the end of the full-expression"]
+
+[[compile-test.cases]]
+name = "LifetimeBound.TemporaryStringView"
+source = "lifetime/temporary_string_view.cpp"
+outcome = "failure"
+options = ["-Werror=dangling"]
+diagnostic-contains-any = ["temporary whose address is used", "will be destroyed at the end of the full-expression"]
+
+[[compile-test.cases]]
+name = "LifetimeBound.TemporaryVec"
+source = "lifetime/temporary_vec.cpp"
+outcome = "failure"
+options = ["-Werror=dangling"]
+diagnostic-contains-any = ["temporary whose address is used", "will be destroyed at the end of the full-expression"]
+
+[[compile-test.cases]]
+name = "LifetimeBound.TraitProxy"
+source = "lifetime/trait_proxy.cpp"
+outcome = "failure"
+options = ["-Werror=return-stack-address"]
+diagnostic-contains-any = ["address of stack memory associated with local variable", "returning address of local temporary object"]
+
+[[compile-test.cases]]
+name = "Numeric.ConstexprOverflow"
+source = "num/constexpr_overflow.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["not a constant expression", "constexpr variable"]
+
+[[compile-test.cases]]
+name = "Numeric.ImplicitNarrowing"
+source = "num/implicit_narrowing.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["no viable conversion", "cannot initialize"]
+
+[[compile-test.cases]]
+name = "Numeric.LiteralOutOfRange"
+source = "num/literal_out_of_range.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["not a constant expression", "consteval function"]
+
+[[compile-test.cases]]
+name = "Deref.DerefMutWithoutDerefFailure"
+source = "ops/deref_mut_without_deref.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["constraints not satisfied", "Deref"]
+
+[[compile-test.cases]]
+name = "Regex.DuplicateCaptureName"
+source = "regex/duplicate_capture.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd regex syntax error", "RegexErrorKind::DuplicateCaptureName, 10"]
+
+[[compile-test.cases]]
+name = "Regex.InvalidEscape"
+source = "regex/invalid_escape.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd regex syntax error", "RegexErrorKind::InvalidEscape, 1"]
+
+[[compile-test.cases]]
+name = "Regex.InvalidRange"
+source = "regex/invalid_range.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd regex syntax error", "RegexErrorKind::InvalidRange, 4"]
+
+[[compile-test.cases]]
+name = "Regex.InvalidRepeat"
+source = "regex/invalid_repeat.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd regex syntax error", "RegexErrorKind::InvalidRepeat, 1"]
+
+[[compile-test.cases]]
+name = "Regex.UnclosedClass"
+source = "regex/unclosed_class.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd regex syntax error", "RegexErrorKind::UnclosedClass, 0"]
+
+[[compile-test.cases]]
+name = "Regex.UnclosedGroup"
+source = "regex/unclosed_group.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd regex syntax error", "RegexErrorKind::UnclosedGroup, 0"]
+
+[[compile-test.cases]]
+name = "Regex.UnsupportedConstruct"
+source = "regex/unsupported_construct.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd regex syntax error", "RegexErrorKind::UnsupportedConstruct, 4"]
+
+[[compile-test.cases]]
+name = "Try.OrdinaryErrDoesNotUseInto"
+source = "result/err_does_not_use_into.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["no viable conversion", "could not convert"]
+
+[[compile-test.cases]]
+name = "Slice.CachedSortBorrowedKey"
+source = "slice/cached_sort_borrowed_key.cpp"
+outcome = "failure"
+diagnostic-contains = ["owning items require independent owning keys"]
+
+[[compile-test.cases]]
+name = "Str.InvalidUtf8Literal"
+source = "str/invalid_utf8_literal.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd string literal must be valid UTF-8"]
+
+[[compile-test.cases]]
+name = "LazyLock.TemporaryBorrowFailure"
+source = "sync/lazy_lock_temporary_borrow.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["deleted function", "deleted"]
+
+[[compile-test.cases]]
+name = "OnceLock.TemporaryBorrowFailure"
+source = "sync/once_lock_temporary_borrow.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["deleted function", "deleted"]
+
+[[compile-test.cases]]
+name = "Trait.DirectApiMismatchFailure"
+source = "trait/direct_api_mismatch.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd::Impled failed: direct trait implementation does not satisfy trait API"]
+
+[[compile-test.cases]]
+name = "Trait.ExternalApiMismatchFailure"
+source = "trait/external_api_mismatch.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd::Impled failed: external Impl does not satisfy trait API"]
+
+[[compile-test.cases]]
+name = "Trait.ExternalConstApiMismatchFailure"
+source = "trait/external_const_api_mismatch.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd::Impled failed: external Impl does not satisfy trait API"]
+
+[[compile-test.cases]]
+name = "Trait.ImpledDiagnosticFailure"
+source = "trait/impled_diagnostic.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd::Impled failed: no external Impl or complete in-class trait API"]
+
+[[compile-test.cases]]
+name = "Trait.InClassApiMismatchFailure"
+source = "trait/in_class_api_mismatch.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd::Impled failed: in-class implementation does not satisfy trait API"]
+
+[[compile-test.cases]]
+name = "Try.ConstructorOnlyErrorFailure"
+source = "try/constructor_only_error.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["no viable conversion", "could not convert"]
+
+[[compile-test.cases]]
+name = "Try.FallibleErrorConversionFailure"
+source = "try/fallible_error_conversion.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["no viable conversion", "could not convert"]
+
+[[compile-test.cases]]
+name = "Try.IncompatibleErrorFailure"
+source = "try/incompatible_error.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["no viable conversion", "could not convert"]
+
+[[compile-test.cases]]
+name = "Try.OptionToResultFailure"
+source = "try/option_to_result.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["no viable conversion", "could not convert"]
+
+[[compile-test.cases]]
+name = "Try.ResultToOptionFailure"
+source = "try/result_to_option.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["no viable conversion", "could not convert"]
+
+[[compile-test.cases]]
+name = "Try.UnsupportedSourceFailure"
+source = "try/unsupported_source.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd_try requires rstd::Result, rstd::Option, or rstd::ops::ControlFlow"]
+
+[dependencies]
+rstd-std = { path = "../../src/std" }
+rstd-parse = { path = "../../src/parse" }

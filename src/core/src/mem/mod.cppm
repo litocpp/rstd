@@ -4,6 +4,7 @@ import :num.types;
 export import :mem.manually_drop;
 export import :mem.maybe_uninit;
 export import :mem.drop_guard;
+export import :mem.swap;
 
 namespace rstd::mem
 {

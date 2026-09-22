@@ -8,6 +8,28 @@ static_assert(mtp::same_as<decltype(Some(Some<int>(1))), Option<Option<int>>>);
 static_assert(mtp::same_as<decltype(Some(None<int>())), Option<Option<int>>>);
 static_assert(mtp::same_as<decltype(None(None<int>())), Option<Option<int>>>);
 static_assert(sizeof(Option<int&>) == sizeof(int*));
+
+struct TrivialMoveWithoutAssignment {
+    int value;
+    explicit constexpr TrivialMoveWithoutAssignment(int n): value(n) {}
+    constexpr TrivialMoveWithoutAssignment(TrivialMoveWithoutAssignment&&)          = default;
+    TrivialMoveWithoutAssignment(const TrivialMoveWithoutAssignment&)               = delete;
+    auto operator=(TrivialMoveWithoutAssignment&&) -> TrivialMoveWithoutAssignment& = delete;
+};
+
+constexpr auto option_reconstructs_trivial_move() -> bool {
+    Option<TrivialMoveWithoutAssignment> value = Some(TrivialMoveWithoutAssignment(1));
+    value                                      = Some(TrivialMoveWithoutAssignment(2));
+    value                                      = rstd::move(value);
+    if (value->value != 2) return false;
+    value = None<TrivialMoveWithoutAssignment>();
+    return value.is_none();
+}
+static_assert(option_reconstructs_trivial_move());
+
+TEST(Option, ReconstructsTriviallyMovableNonassignableValue) {
+    EXPECT_TRUE(option_reconstructs_trivial_move());
+}
 static_assert(sizeof(Option<num::nonzero::NonZero<u64>>) == sizeof(u64));
 static_assert(sizeof(Option<ptr_::non_null::NonNull<int>>) == sizeof(ptr_::non_null::NonNull<int>));
 

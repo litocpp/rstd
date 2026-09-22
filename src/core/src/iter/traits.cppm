@@ -57,12 +57,24 @@ template<class I>
 struct Cycle;
 template<class I>
 struct Intersperse;
+template<class I, class F>
+struct IntersperseWith;
+template<class I>
+struct DefaultIfEmpty;
+export enum class SingleError { Empty, Multiple };
 template<class I>
 struct ByRef;
 /// `(lower, upper)` bound on the number of remaining elements.
 export using SizeHint = rstd::tuple<usize, Option<usize>>;
 
 export struct IteratorEnd {};
+
+/// Iterator items are values or explicit borrow types, never C++ references.
+export template<typename T>
+concept valid_item = ! mtp::is_ref<T>;
+
+export template<valid_item T>
+using checked_item_t = T;
 
 export template<class I>
 class IteratorLoop {
@@ -93,6 +105,7 @@ public:
 export template<class X>
 concept has_next = requires(X& x) {
     typename X::Item;
+    requires valid_item<typename X::Item>;
     requires mtp::same_as<decltype(x.next()), Option<typename X::Item>>;
 };
 
@@ -130,7 +143,7 @@ struct is_rstd_borrow<mut_ref<T>> {
 };
 
 template<class T>
-concept borrowed_item = mtp::is_ref<T> || is_rstd_borrow<mtp::rm_cvf<T>>::value;
+concept borrowed_item = is_rstd_borrow<mtp::rm_cvf<T>>::value;
 
 template<class T>
 constexpr decltype(auto) observe_item(T&& item) {
@@ -174,7 +187,7 @@ export struct Iterator {
     template<typename Self, typename = void>
     struct Api {
         using Trait = Iterator;
-        using Item  = typename Self::Item;
+        using Item  = checked_item_t<typename Self::Item>;
 
         constexpr auto next() -> Option<Item> { return trait_call<0>(this); }
         constexpr auto size_hint() const -> SizeHint { return trait_call<1>(this); }
@@ -229,7 +242,7 @@ export struct IntoIterator {
     struct Api {
         using Trait    = IntoIterator;
         using IntoIter = typename Impl<IntoIterator, mtp::rm_cvf<Self>>::IntoIter;
-        using Item     = typename IntoIter::Item;
+        using Item     = checked_item_t<typename IntoIter::Item>;
         constexpr auto into_iter() -> IntoIter { return trait_call<0>(this); }
     };
     template<class T>
@@ -360,6 +373,9 @@ struct IteratorDriver {
         return try_::from_output<R>(rstd::move(accumulator));
     }
 };
+
+template<typename R, has_next I, typename F>
+constexpr auto process_successes(I& source, F function) -> R;
 
 template<has_next I, typename B, typename F>
 constexpr auto iterator_fold(I& iterator, B init, F& function) -> B {
@@ -700,6 +716,97 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
     template<typename B>
     constexpr auto collect() && -> B {
         return iter::from_iter<B>(rstd::move(this->self()));
+    }
+
+    template<typename S = Self>
+    constexpr auto single() && -> Result<typename S::Item, iter::SingleError> {
+        auto first = this->self().next();
+        if (first.is_none()) return Err(iter::SingleError::Empty);
+        if (this->self().next().is_some()) return Err(iter::SingleError::Multiple);
+        return Ok<typename S::Item>(rstd::forward<typename S::Item>(*first));
+    }
+
+    template<typename S = Self>
+    constexpr auto default_if_empty(typename S::Item fallback) && -> iter::DefaultIfEmpty<Self> {
+        return iter::DefaultIfEmpty<Self>(rstd::move(this->self()),
+                                          rstd::forward<typename S::Item>(fallback));
+    }
+
+    template<typename B>
+    constexpr auto try_collect() & {
+        using R = try_::change_output_t<typename Self::Item, B>;
+        return iter::process_successes<R>(this->self(), [](auto values) {
+            return iter::from_iter<B>(rstd::move(values));
+        });
+    }
+
+    template<typename B>
+    constexpr auto try_collect() && {
+        return static_cast<Impl&>(*this).template try_collect<B>();
+    }
+
+    template<typename B>
+    constexpr auto collect_into(B& collection [[clang::lifetimebound]]) && -> B& {
+        iter::extend(collection, rstd::move(this->self()));
+        return collection;
+    }
+
+    template<typename Pred>
+    constexpr auto is_partitioned(Pred predicate) && -> bool {
+        bool tail = false;
+        for (auto item = this->self().next(); item.is_some(); item = this->self().next()) {
+            if (predicate(rstd::forward<typename Self::Item>(*item))) {
+                if (tail) return false;
+            } else {
+                tail = true;
+            }
+        }
+        return true;
+    }
+
+    template<typename F>
+    constexpr auto try_find(F predicate) & {
+        using Item = typename Self::Item;
+        using R    = decltype(predicate(mtp::declval<const mtp::rm_ref<Item>&>()));
+        static_assert(mtp::same_as<try_::output_t<R>, bool>);
+        using Found = try_::change_output_t<R, Option<Item>>;
+        for (auto item = this->self().next(); item.is_some(); item = this->self().next()) {
+            const auto& observed = *item;
+            auto        result   = predicate(observed);
+            if (! try_::is_success(result))
+                return try_::from_residual<Found>(try_::take_residual(rstd::move(result)));
+            if (try_::finish(try_::take_output(rstd::move(result))))
+                return try_::from_output<Found>(rstd::move(item));
+        }
+        return try_::from_output<Found>(Option<Item>(None()));
+    }
+
+    template<typename F>
+    constexpr auto try_find(F predicate) && {
+        return static_cast<Impl&>(*this).try_find(rstd::move(predicate));
+    }
+
+    template<typename F>
+    constexpr auto try_reduce(F function) & {
+        using Item = typename Self::Item;
+        using R    = decltype(function(mtp::declval<Item>(), mtp::declval<Item>()));
+        static_assert(mtp::same_as<try_::output_t<R>, Item>);
+        using Reduced = try_::change_output_t<R, Option<Item>>;
+        auto first    = this->self().next();
+        if (first.is_none()) return try_::from_output<Reduced>(rstd::move(first));
+        auto step = [&function](Option<Item> accumulator, Item item) -> Reduced {
+            auto result = function(rstd::forward<Item>(*accumulator), rstd::forward<Item>(item));
+            if (! try_::is_success(result))
+                return try_::from_residual<Reduced>(try_::take_residual(rstd::move(result)));
+            return try_::from_output<Reduced>(
+                Some<Item>(try_::finish(try_::take_output(rstd::move(result)))));
+        };
+        return iter::iterator_try_fold(this->self(), rstd::move(first), step);
+    }
+
+    template<typename F>
+    constexpr auto try_reduce(F function) && {
+        return static_cast<Impl&>(*this).try_reduce(rstd::move(function));
     }
 
     template<typename B, typename F>
@@ -1160,6 +1267,11 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
         requires Impled<typename S::Item, clone::Clone>
     constexpr auto intersperse(typename S::Item sep) && -> iter::Intersperse<Self> {
         return iter::Intersperse<Self>(rstd::move(this->self()), rstd::move(sep));
+    }
+
+    template<typename F>
+    constexpr auto intersperse_with(F factory) && -> iter::IntersperseWith<Self, F> {
+        return iter::IntersperseWith<Self, F>(rstd::move(this->self()), rstd::move(factory));
     }
 };
 

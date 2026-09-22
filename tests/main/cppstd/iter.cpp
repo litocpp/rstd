@@ -125,10 +125,10 @@ TEST(CppStdIter, SizeTracksCachedAndRemainingItems) {
 
     using Input = std::ranges::subrange<std::istream_iterator<int>, std::istream_iterator<int>>;
     static_assert(! CanFromRange<Input&>);
-    auto mapped = iter::from_range(values).map([](int& value) -> int& {
+    auto mapped = iter::from_range(values).map([](mut_ref<int> value) {
         return value;
     });
-    EXPECT_EQ(rstd::addressof(*mapped.next()), rstd::addressof(values.front()));
+    EXPECT_EQ(mapped.next()->as_raw_ptr(), rstd::addressof(values.front()));
 }
 
 TEST(CppStdIter, AsRangeAcceptsOwnedAndBorrowedIntoIteratorSources) {
@@ -216,20 +216,20 @@ TEST(CppStdIter, IteratorRangePreservesRstdBorrowItems) {
 TEST(CppStdIter, FromRangePreservesReferenceAndCapabilities) {
     auto values = std::vector<int> { 2, 3, 5 };
     auto range  = iter::from_range(values);
-    static_assert(rstd::mtp::same_as<typename decltype(range)::Item, int&>);
+    static_assert(rstd::mtp::same_as<typename decltype(range)::Item, mut_ref<int>>);
     static_assert(rstd::Impled<decltype(range), iter::DoubleEndedIterator>);
     static_assert(rstd::Impled<decltype(range), iter::ExactSizeIterator>);
 
     auto first = range.next();
     ASSERT_TRUE(first.is_some());
-    *first = 7;
+    **first = 7;
     EXPECT_EQ(values[0], 7);
-    EXPECT_EQ(range.next_back(), rstd::Some<int&>(values[2]));
+    EXPECT_EQ(range.next_back()->as_raw_ptr(), &values[2]);
     EXPECT_EQ(range.len(), 1_usize);
 
     auto const& immutable   = values;
     auto        const_range = iter::from_range(immutable);
-    static_assert(rstd::mtp::same_as<typename decltype(const_range)::Item, const int&>);
+    static_assert(rstd::mtp::same_as<typename decltype(const_range)::Item, ref<int>>);
     EXPECT_EQ(*const_range.next(), 7);
 
     auto copied = iter::from_range(values).copied();
@@ -248,6 +248,8 @@ TEST(CppStdIter, FromRangeAcceptsBorrowedRvaluesAndRejectsOwningRvalues) {
 
     static_assert(CanFromRange<std::span<int>>);
     static_assert(! CanFromRange<std::vector<int>>);
+    static_assert(! CanFromRange<std::vector<u8>&>);
+    static_assert(! CanFromRange<const std::vector<u8>&>);
 }
 
 TEST(CppStdIter, CollectsStandardSequenceContainersInInputOrder) {

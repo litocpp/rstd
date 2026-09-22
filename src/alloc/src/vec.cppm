@@ -399,6 +399,21 @@ public:
         return as_mut_slice().as_mut_ref();
     }
 
+    /// Borrows an endpoint without removing it; empty vectors return None.
+    /// The borrow is invalidated by destruction, reallocation, or removal of the element.
+    constexpr auto first() const noexcept [[clang::lifetimebound]] -> Option<ref<T>> {
+        return as_slice().first();
+    }
+    constexpr auto last() const noexcept [[clang::lifetimebound]] -> Option<ref<T>> {
+        return as_slice().last();
+    }
+    constexpr auto first_mut() noexcept [[clang::lifetimebound]] -> Option<mut_ref<T>> {
+        return as_mut_slice().as_mut_ref().first_mut();
+    }
+    constexpr auto last_mut() noexcept [[clang::lifetimebound]] -> Option<mut_ref<T>> {
+        return as_mut_slice().as_mut_ref().last_mut();
+    }
+
     /// Returns a const pointer to the first element of the vector.
     /// \return A const pointer to the underlying buffer.
     constexpr auto as_ptr() const noexcept [[clang::lifetimebound]] -> ptr<T> {

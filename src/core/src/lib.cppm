@@ -20,6 +20,7 @@ export import :num.floating_parse;
 export import :convert;
 export import :slice;
 export import :slice.ops;
+export import :slice.iter;
 export import :alloc;
 
 export import :ops;

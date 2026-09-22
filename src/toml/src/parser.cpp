@@ -389,10 +389,11 @@ private:
             }
             if (item->is_Array()) {
                 auto& array = item->as_Array().value;
-                if (array.len() == usize() || ! array[array.len() - usize(1)].is_Table()) {
+                auto  last  = array.last_mut();
+                if (last.is_none() || ! last->get().is_Table()) {
                     return Err(error(TomlErrorCode::TableRedefinition));
                 }
-                table = rstd::addressof(array[array.len() - usize(1)].as_Table().value);
+                table = rstd::addressof(last->get_mut().as_Table().value);
                 continue;
             }
             return Err(error(TomlErrorCode::TableRedefinition));
@@ -431,7 +432,7 @@ private:
                 if (node->array_items.is_empty()) {
                     return Err(error(TomlErrorCode::TableRedefinition));
                 }
-                table = node->array_items[node->array_items.len() - usize(1)].get();
+                table = node->array_items.last_mut().unwrap().get_mut().get();
                 continue;
             }
             if (node->kind != DefinitionKind::ImplicitTable &&
@@ -823,7 +824,7 @@ private:
         if (definition_parent.is_err()) return Some(definition_parent.unwrap_err());
         auto parent = resolve_table(table, path, path.len() - usize(1));
         if (parent.is_err()) return Some(parent.unwrap_err());
-        auto& key = path[path.len() - usize(1)];
+        const auto& key = path.last().unwrap().get();
         if (definition_parent.unwrap()->children.get(key.as_str()).is_some() ||
             parent.unwrap()->get(key.as_str()).is_some()) {
             return Some(error(TomlErrorCode::DuplicateKey));
@@ -952,9 +953,9 @@ private:
         if (definition_parent.is_err()) return Some(definition_parent.unwrap_err());
         auto parent = resolve_table(root_, owned_path, owned_path.len() - usize(1));
         if (parent.is_err()) return Some(parent.unwrap_err());
-        auto& key                 = owned_path[owned_path.len() - usize(1)];
-        auto  existing            = parent.unwrap()->get_mut(key.as_str());
-        auto  definition_existing = definition_parent.unwrap()->children.get_mut(key.as_str());
+        const auto& key          = owned_path.last().unwrap().get();
+        auto        existing     = parent.unwrap()->get_mut(key.as_str());
+        auto definition_existing = definition_parent.unwrap()->children.get_mut(key.as_str());
         if (array) {
             if (definition_existing.is_none()) {
                 auto definition = Box<DefinitionNode>::make(DefinitionKind::ArrayOfTables);

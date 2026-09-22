@@ -116,20 +116,29 @@ struct SourceTraits;
 template<typename T>
 struct SourceTraits<option::Option<T>> {
     using Output = T;
+    template<typename U>
+    using WithOutput = option::Option<U>;
 };
 
 template<typename T, typename E>
 struct SourceTraits<result::Result<T, E>> {
     using Output = T;
+    template<typename U>
+    using WithOutput = result::Result<U, E>;
 };
 
 template<typename B, typename C>
 struct SourceTraits<ops::ControlFlow<B, C>> {
     using Output = C;
+    template<typename U>
+    using WithOutput = ops::ControlFlow<B, U>;
 };
 
 export template<TrySource T>
 using output_t = typename SourceTraits<mtp::rm_cvf<T>>::Output;
+
+export template<TrySource T, typename U>
+using change_output_t = typename SourceTraits<mtp::rm_cvf<T>>::template WithOutput<U>;
 
 export template<TrySource T>
 [[nodiscard]]

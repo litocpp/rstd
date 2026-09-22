@@ -24,6 +24,15 @@ target_sources(
          src/ffi/mod.cppm
          src/ffi/c_str.cppm
          src/vec.cppm
+         src/slice.cppm
+         src/iter/mod.cppm
+         src/iter/storage.cppm
+         src/iter/chunk.cppm
+         src/iter/unique.cppm
+         src/iter/tail.cppm
+         src/iter/set.cppm
+         src/iter/group.cppm
+         src/iter/join.cppm
          src/collections/mod.cppm
          src/collections/btree_node.cppm
          src/collections/btree_map.cppm
@@ -31,4 +40,5 @@ target_sources(
          src/collections/hash_table.cppm
          src/collections/hash_map.cppm
          src/collections/hash_set.cppm
+         src/collections/vec_deque.cppm
          src/hash/random.cppm)
