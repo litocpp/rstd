@@ -152,6 +152,227 @@ TEST(Bench, RequiredCountersReflectBackendAvailability) {
     EXPECT_TRUE(measured.measurements()[usize()].counters.instructions.is_some());
 }
 
+struct BenchLifetimeState {
+    u64   now;
+    usize setups;
+    usize calls;
+    usize input_drops;
+    usize output_drops;
+    usize live_inputs;
+    usize live_outputs;
+    usize maximum_inputs;
+    bool  borrowed {};
+    bool  wrong_drop_order {};
+};
+
+struct BenchInput {
+    BenchLifetimeState* state;
+
+    explicit BenchInput(BenchLifetimeState& state): state(&state) {
+        state.now += u64(10);
+        ++state.setups;
+        ++state.live_inputs;
+        if (state.live_inputs > state.maximum_inputs) state.maximum_inputs = state.live_inputs;
+    }
+    BenchInput(const BenchInput&) = delete;
+    BenchInput(BenchInput&& other) noexcept: state(other.state) { other.state = nullptr; }
+    auto operator=(BenchInput&&) -> BenchInput& = delete;
+    ~BenchInput() {
+        if (! state) return;
+        if (state->borrowed && state->live_outputs != usize()) state->wrong_drop_order = true;
+        state->now += u64(100);
+        ++state->input_drops;
+        --state->live_inputs;
+    }
+};
+
+struct BenchOutput {
+    BenchLifetimeState* state;
+
+    explicit BenchOutput(BenchLifetimeState& state): state(&state) { ++state.live_outputs; }
+    BenchOutput(const BenchOutput&) = delete;
+    BenchOutput(BenchOutput&& other) noexcept: state(other.state) { other.state = nullptr; }
+    auto operator=(BenchOutput&&) -> BenchOutput& = delete;
+    ~BenchOutput() {
+        if (! state) return;
+        state->now += u64(1000);
+        ++state->output_drops;
+        --state->live_outputs;
+    }
+};
+
+auto lifecycle_bench_config() -> rstd::bench::BenchConfig {
+    auto config                   = rstd::bench::BenchConfig {};
+    config.epochs                 = usize(2);
+    config.exact_epoch_iterations = Some(u64(5));
+    config.warmup_iterations      = u64(2);
+    config.counter_mode           = rstd::bench::CounterMode::Disabled();
+    return config;
+}
+
+TEST(Bench, BatchedBorrowKeepsPreparationAndDropsOutsideTiming) {
+    auto state  = BenchLifetimeState { .borrowed = true };
+    auto runner = rstd::bench::BasicBench<CountingClock>(CountingClock { &state.now },
+                                                         lifecycle_bench_config());
+    auto result = runner.run_batched_ref(
+        "borrow"_str,
+        [&] {
+            return BenchInput(state);
+        },
+        [&](BenchInput& input) {
+            EXPECT_EQ(input.state, &state);
+            ++state.calls;
+            ++state.now;
+            return BenchOutput(state);
+        },
+        { .max_items = usize(3) });
+    ASSERT_TRUE(result.is_ok());
+    const auto& measured = result.unwrap_unchecked();
+    EXPECT_EQ(measured.scope(), rstd::bench::MeasurementScope::BatchedRef);
+    EXPECT_EQ(*measured.batch_size(), usize(3));
+    for (const auto& epoch : measured.measurements()) {
+        EXPECT_EQ(epoch.elapsed.as_nanos(), u128(5));
+        EXPECT_EQ(epoch.iterations, u64(5));
+    }
+    EXPECT_EQ(state.setups, usize(12));
+    EXPECT_EQ(state.calls, usize(12));
+    EXPECT_EQ(state.input_drops, usize(12));
+    EXPECT_EQ(state.output_drops, usize(12));
+    EXPECT_EQ(state.maximum_inputs, usize(3));
+    EXPECT_EQ(state.live_inputs, usize());
+    EXPECT_EQ(state.live_outputs, usize());
+    EXPECT_FALSE(state.wrong_drop_order);
+}
+
+TEST(Bench, ConsumedInputDropsInsideTimingButOutputDropsOutside) {
+    auto state  = BenchLifetimeState {};
+    auto runner = rstd::bench::BasicBench<CountingClock>(CountingClock { &state.now },
+                                                         lifecycle_bench_config());
+    auto result = runner.run_batched(
+        "owned"_str,
+        [&] {
+            return BenchInput(state);
+        },
+        [&](BenchInput input) {
+            ++state.calls;
+            ++state.now;
+            return BenchOutput(*input.state);
+        },
+        { .max_items = usize(3) });
+    ASSERT_TRUE(result.is_ok());
+    auto measured = rstd::move(result).unwrap_unchecked();
+    for (const auto& epoch : measured.measurements()) {
+        EXPECT_EQ(epoch.elapsed.as_nanos(), u128(505));
+    }
+    EXPECT_EQ(state.input_drops, usize(12));
+    EXPECT_EQ(state.output_drops, usize(12));
+    EXPECT_EQ(state.live_inputs, usize());
+    EXPECT_EQ(state.live_outputs, usize());
+}
+
+TEST(Bench, RepeatedOutputDestructionIsMeasured) {
+    auto state  = BenchLifetimeState {};
+    auto runner = rstd::bench::BasicBench<CountingClock>(CountingClock { &state.now },
+                                                         lifecycle_bench_config());
+    auto result = runner.run("repeated"_str, [&] {
+        ++state.now;
+        return BenchOutput(state);
+    });
+    ASSERT_TRUE(result.is_ok());
+    auto measured = rstd::move(result).unwrap_unchecked();
+    for (const auto& epoch : measured.measurements()) {
+        EXPECT_EQ(epoch.elapsed.as_nanos(), u128(5005));
+    }
+    EXPECT_TRUE(measured.batch_size().is_none());
+    EXPECT_EQ(state.output_drops, usize(12));
+}
+
+TEST(Bench, BatchedVoidAndClockFailureReleaseInputs) {
+    auto state               = BenchLifetimeState {};
+    auto config              = lifecycle_bench_config();
+    config.warmup_iterations = u64();
+    auto runner = rstd::bench::BasicBench<CountingClock>(CountingClock { &state.now }, config);
+    auto result = runner.run_batched_ref(
+        "void"_str,
+        [&] {
+            return BenchInput(state);
+        },
+        [&](BenchInput&) {
+            ++state.now;
+        },
+        { .max_items = usize(2) });
+    ASSERT_TRUE(result.is_ok());
+    EXPECT_EQ(state.input_drops, usize(10));
+    EXPECT_EQ(state.output_drops, usize());
+    EXPECT_EQ(state.maximum_inputs, usize(2));
+    EXPECT_EQ(result.unwrap_unchecked().measurements()[usize()].elapsed.as_nanos(), u128(5));
+
+    auto failed = runner.run_batched_ref(
+        "backwards"_str,
+        [&] {
+            return BenchInput(state);
+        },
+        [&](BenchInput&) {
+            state.now = u64();
+            return BenchOutput(state);
+        },
+        { .max_items = usize(2) });
+    ASSERT_TRUE(failed.is_err());
+    EXPECT_TRUE(failed.unwrap_err_unchecked().is_Clock());
+    EXPECT_EQ(state.live_inputs, usize());
+    EXPECT_EQ(state.live_outputs, usize());
+}
+
+TEST(Bench, BatchLimitsRejectBeforeSetupAndAdaptiveUsesOperationTime) {
+    auto state                    = BenchLifetimeState {};
+    auto config                   = lifecycle_bench_config();
+    config.exact_epoch_iterations = None();
+    config.warmup_iterations      = u64();
+    config.min_epoch_time         = rstd::time::Duration::from_nanos(u64(10));
+    config.max_epoch_time         = config.min_epoch_time;
+    auto runner = rstd::bench::BasicBench<CountingClock>(CountingClock { &state.now }, config);
+    auto setup  = [&] {
+        return BenchInput(state);
+    };
+    auto op = [&](BenchInput&) {
+        ++state.calls;
+        ++state.now;
+    };
+    auto zero = runner.run_batched_ref("zero"_str, setup, op, { .max_items = usize() });
+    EXPECT_TRUE(zero.is_err());
+    auto overflow = runner.run_batched_ref("overflow"_str, setup, op, { .max_items = usize::MAX });
+    EXPECT_TRUE(overflow.is_err());
+    EXPECT_EQ(state.setups, usize());
+    auto result = runner.run_batched_ref("adaptive"_str, setup, op, { .max_items = usize(3) });
+    ASSERT_TRUE(result.is_ok());
+    auto measured = rstd::move(result).unwrap_unchecked();
+    for (const auto& epoch : measured.measurements()) {
+        EXPECT_EQ(epoch.elapsed.as_nanos(), u128(epoch.iterations.to_primitive()));
+        EXPECT_GE(epoch.iterations, u64(7));
+    }
+    EXPECT_EQ(state.input_drops, state.setups);
+    EXPECT_EQ(state.calls, state.setups);
+}
+
+TEST(Bench, BatchedByteValuesKeepOwnedStorage) {
+    auto  config = lifecycle_bench_config();
+    auto  runner = rstd::bench::BasicBench<FakeClock>(FakeClock {}, config);
+    usize calls;
+    auto  result = runner.run_batched(
+        "bytes"_str,
+        [] {
+            return u8(7);
+        },
+        [&](u8 value) {
+            ++calls;
+            EXPECT_EQ(value, u8(7));
+            return value + u8(1);
+        },
+        { .max_items = usize(3) });
+    ASSERT_TRUE(result.is_ok());
+    EXPECT_EQ(calls, usize(12));
+}
+
 TEST(BenchProbe, RegistryIsIdempotentAndOwnsLabels) {
     auto registry = rstd::bench::probe::ProbeRegistry::new_();
     auto first    = registry.register_probe("load.mesh"_str).unwrap();

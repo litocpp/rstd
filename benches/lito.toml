@@ -3,26 +3,35 @@ name = "rstd-benchmark"
 version = "0.1.0"
 
 [[bench]]
-module = "rstd"
+module = "rstd_benches"
 name = "rstd_bench"
 sources = [
   "alloc.cpp",
-  "async.cpp",
-  "async_bench_tools.cppm",
-  "benchmark.cpp",
-  "benchmark.cppm",
-  "bench_main.cpp",
+  "iter.cpp",
+  "slice.cpp",
+  "async/support.cppm",
+  "async/runtime.cpp",
+  "async/loopback.cpp",
+  "async/io_operation.cpp",
+  "support/mod.cppm",
+  "support/runner.cpp",
+  "support/registry.cpp",
+  "support/report.cpp",
+  "main.cpp",
   "net.cpp",
   "sync.cpp",
 ]
 
-[usage]
-private-definitions = [
-  "RSTD_BENCH_BUILD_TYPE=\"Lito\"",
-  "RSTD_BENCH_ASAN=0",
-]
+[[bench.attach]]
+package = "rstd-std"
+sources = ["async_bench_tools.cppm"]
+
+[profile.base]
+exceptions = false
+rtti = false
+
 [dependencies]
 rstd-bench = { path = ".." }
-rstd-cppstd = { path = ".." }
+rstd-argparse = { path = ".." }
 rstd-json = { path = ".." }
 rstd-std = { path = ".." }

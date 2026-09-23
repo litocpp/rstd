@@ -9,92 +9,15 @@ module;
 #include <sys/socket.h>
 #endif
 
-module rstd.benchmark;
+module rstd_benches;
+import rstd.bench;
 import rstd;
+import :async.support;
 
 using namespace rstd;
 using namespace rstd::prelude;
+using namespace rstd::literals;
 using ::alloc::vec::Vec;
-
-namespace
-{
-
-extern "C" void rstd_async_bench_set_io_backend(async::RuntimeBuilder& builder, int backend);
-
-enum class IoBackend
-{
-    Auto,
-    NativeCompletion,
-    ReadinessEmulation,
-};
-
-auto make_io_runtime(IoBackend backend) -> io::Result<async::Runtime> {
-    auto builder = async::RuntimeBuilder::current_thread();
-    builder.enable_io();
-    rstd_async_bench_set_io_backend(builder, static_cast<int>(backend));
-    return builder.build();
-}
-
-auto make_thread_pool_io_runtime(IoBackend backend, usize worker_threads)
-    -> io::Result<async::Runtime> {
-    auto builder = async::RuntimeBuilder::multi_thread();
-    builder.worker_threads(worker_threads).enable_io();
-    rstd_async_bench_set_io_backend(builder, static_cast<int>(backend));
-    return builder.build();
-}
-
-inline constexpr rstd::size_t LOOPBACK_BATCH       = 64;
-inline constexpr rstd::size_t LOOPBACK_CONCURRENCY = 4;
-inline constexpr rstd::size_t KIB                  = 1024;
-
-struct ReadyInt {
-    using Output = int;
-
-    auto poll(mut_ref<ReadyInt>, task::Context&) -> task::Poll<int> {
-        return task::Poll<int>::Ready(1);
-    }
-};
-
-async::coro<int> child_value() {
-    co_await async::yield_now();
-    co_return 1;
-}
-
-async::coro<int> indexed_child_value(int value) {
-    co_await async::yield_now();
-    co_return value;
-}
-
-async::coro<int> join_local_child() {
-    auto handle = async::spawn_local(child_value());
-    auto result = co_await rstd::move(handle);
-    co_return result.unwrap_unchecked();
-}
-
-async::coro<int> join_spawned_child() {
-    auto handle = async::spawn(child_value());
-    auto result = co_await rstd::move(handle);
-    co_return result.unwrap_unchecked();
-}
-
-async::coro<int> join_many_spawned_children() {
-    auto handles = Vec<async::JoinHandle<int>>::make();
-    for (int i = 0; i < 32; ++i) {
-        handles.push(async::spawn(indexed_child_value(i)));
-    }
-
-    auto results = co_await async::join_all(rstd::move(handles));
-    int  sum     = 0;
-    for (usize i; i < results.len(); ++i) {
-        sum += results[i].unwrap_unchecked();
-    }
-    co_return sum;
-}
-
-async::coro<int> sleep_zero() {
-    co_await async::sleep(time::Duration::from_millis(u64()));
-    co_return 1;
-}
 
 struct LoopbackStreams {
     net::TcpStream  client;
@@ -360,11 +283,11 @@ auto sync_loopback_ping_pong(SyncLoopbackStreams& streams, const bytes::Bytes& p
 }
 
 struct SyncConcurrentFields {
-    std::uint64_t generation {};
-    usize         count {};
-    usize         completed {};
-    bool          stop {};
-    bool          valid { true };
+    rstd::uint64_t generation {};
+    usize          count {};
+    usize          completed {};
+    bool           stop {};
+    bool           valid { true };
 };
 
 struct SyncConcurrentState {
@@ -374,11 +297,34 @@ struct SyncConcurrentState {
     SyncConcurrentState(): fields(SyncConcurrentFields {}), changed() {}
 };
 
+struct SyncWorkers {
+    sync::Arc<SyncConcurrentState> state;
+    Vec<thread::JoinHandle<bool>>  handles;
+
+    auto finish() -> Result<empty, String> {
+        {
+            auto guard  = state->fields.lock().unwrap();
+            guard->stop = true;
+            state->changed.notify_all();
+        }
+        auto failures = usize();
+        for (usize i; i < handles.len(); ++i) {
+            auto result = rstd::move(handles[i]).join();
+            if (result.is_err() || ! *result) ++failures;
+        }
+        handles.clear();
+        if (failures != usize())
+            return Err(rstd::format("{} loopback workers failed to join", failures));
+        return Ok(empty {});
+    }
+    ~SyncWorkers() { (void)finish(); }
+};
+
 auto sync_loopback_worker(sync::Arc<SyncConcurrentState> state,
                           SyncLoopbackStreams            streams,
                           rstd::size_t                   payload_len) -> bool {
-    auto          payload    = loopback_payload(payload_len);
-    std::uint64_t generation = 0;
+    auto           payload    = loopback_payload(payload_len);
+    rstd::uint64_t generation = 0;
     while (true) {
         usize count;
         {
@@ -412,260 +358,23 @@ auto run_sync_loopback_concurrent(const sync::Arc<SyncConcurrentState>& state, u
     return guard->valid;
 }
 
-enum class IoOperationConsumer
-{
-    Direct,
-    Future,
-};
-
-struct FutureIoOperation {
-    using Output = async::IoOperation::Output;
-
-    async::IoOperation operation;
-
-    auto poll(mut_ref<FutureIoOperation> self, task::Context& cx) -> task::Poll<Output> {
-        return future::poll(self->operation, cx);
-    }
-};
-
-struct OperationReadPair {
-    os::socket::OwnedSocket reader;
-    os::socket::OwnedSocket writer;
-    async::CompletionSource source;
-
-    OperationReadPair(os::socket::OwnedSocket reader, os::socket::OwnedSocket writer)
-        : reader(rstd::move(reader)),
-          writer(rstd::move(writer)),
-          source(async::CompletionSource::socket(this->reader.as_socket())) {}
-};
-
-auto make_operation_read_pairs(rstd::size_t queue_depth) -> io::Result<Vec<OperationReadPair>> {
-    auto pairs = Vec<OperationReadPair>::with_capacity(usize(queue_depth));
-    for (rstd::size_t index = 0; index < queue_depth; ++index) {
-        int sockets[2] = { -1, -1 };
-        if (::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0, sockets) != 0) {
-            return Err(io::error::Error::last_os_error());
-        }
-        pairs.push(OperationReadPair {
-            os::socket::OwnedSocket::from_raw_socket(sockets[0]),
-            os::socket::OwnedSocket::from_raw_socket(sockets[1]),
-        });
-    }
-    return Ok(rstd::move(pairs));
-}
-
-auto send_operation_read_bytes(Vec<OperationReadPair>& pairs) -> io::Result<empty> {
-    constexpr char VALUE = 'q';
-    for (usize index {}; index < pairs.len(); ++index) {
-        ::ssize_t sent;
-        do {
-            sent = ::send(pairs[index].writer.as_raw_socket(), &VALUE, 1, MSG_NOSIGNAL);
-        } while (sent < 0 && errno == EINTR);
-        if (sent != 1) return Err(io::error::Error::last_os_error());
-    }
-    return Ok(empty {});
-}
-
-auto run_operation_reads(Vec<OperationReadPair>& pairs,
-                         usize                   rounds,
-                         bool                    pending,
-                         IoOperationConsumer     consumer) -> async::coro<io::Result<empty>> {
-    for (usize round {}; round < rounds; ++round) {
-        if (! pending) {
-            auto sent = send_operation_read_bytes(pairs);
-            if (sent.is_err()) co_return Err(rstd::move(sent).unwrap_err_unchecked());
-        }
-
-        auto handles =
-            Vec<async::JoinHandle<async::IoOperation::Output>>::with_capacity(pairs.len());
-        for (usize index {}; index < pairs.len(); ++index) {
-            auto operation = async::IoOperation::read(pairs[index].source, usize(1));
-            if (consumer == IoOperationConsumer::Direct) {
-                handles.push(async::spawn_local(rstd::move(operation)));
-            } else {
-                handles.push(async::spawn_local(FutureIoOperation { rstd::move(operation) }));
-            }
-        }
-
-        if (pending) {
-            co_await async::yield_now();
-            auto sent = send_operation_read_bytes(pairs);
-            if (sent.is_err()) co_return Err(rstd::move(sent).unwrap_err_unchecked());
-        }
-
-        auto joined = co_await async::join_all(rstd::move(handles));
-        for (usize index {}; index < joined.len(); ++index) {
-            if (joined[index].is_err()) co_return Err(invalid_loopback_data());
-            auto result = rstd::move(joined[index]).unwrap_unchecked();
-            if (result.is_err()) co_return Err(rstd::move(result).unwrap_err_unchecked());
-            auto completion = rstd::move(result).unwrap_unchecked();
-            if (completion.transferred() != usize(1) || completion.data().len() != usize(1) ||
-                completion.data()[usize()] != u8('q')) {
-                co_return Err(invalid_loopback_data());
-            }
-        }
-    }
-    co_return Ok(empty {});
-}
-
-template<rstd::size_t QueueDepth, bool Pending, IoOperationConsumer Consumer>
-auto io_operation_read(bench::BenchConfig config, const char* name) -> rstd_bench::CaseRunResult {
-    auto runtime = make_io_runtime(IoBackend::NativeCompletion).ok();
-    auto pairs   = make_operation_read_pairs(QueueDepth).ok();
-    bool valid   = runtime.is_some() && pairs.is_some();
-    if (valid) {
-        auto primed = runtime->block_on(run_operation_reads(*pairs, usize(1), Pending, Consumer));
-        valid       = primed.is_ok();
-    }
-
-    auto       calls      = std::uint64_t {};
-    auto       operations = std::uint64_t {};
-    auto const batch      = LOOPBACK_BATCH * QueueDepth;
-    auto       run_config = bench::RunConfig {
-        .batch               = f64(static_cast<double>(batch)),
-        .items_per_iteration = u64(batch),
-        .bytes_per_iteration = u64(batch),
-    };
-    return rstd_bench::measure_case(
-        name,
-        rstd::move(config),
-        rstd::move(run_config),
-        [&] {
-            if (! valid) {
-                rstd::hint::black_box(valid);
-                return;
-            }
-            auto result = runtime->block_on(
-                run_operation_reads(*pairs, usize(LOOPBACK_BATCH), Pending, Consumer));
-            if (result.is_err()) {
-                valid = false;
-                return;
-            }
-            ++calls;
-            operations += batch;
-            rstd::hint::black_box(operations);
-        },
-        [&] {
-            return valid && calls != 0 && operations == calls * batch;
-        });
-}
 #endif
-
-auto current_thread_ready(bench::BenchConfig config, const char* name)
-    -> rstd_bench::CaseRunResult {
-    auto runtime    = async::Runtime {};
-    auto sum        = std::uint64_t {};
-    auto calls      = std::uint64_t {};
-    auto run_config = bench::RunConfig { .items_per_iteration = u64(1) };
-    return rstd_bench::measure_case(
-        name,
-        rstd::move(config),
-        rstd::move(run_config),
-        [&] {
-            sum += runtime.block_on(ReadyInt {});
-            ++calls;
-            rstd::hint::black_box(sum);
-        },
-        [&] {
-            return sum == calls;
-        });
-}
-
-auto current_thread_spawn_local_join(bench::BenchConfig config, const char* name)
-    -> rstd_bench::CaseRunResult {
-    auto runtime    = async::Runtime {};
-    auto sum        = std::uint64_t {};
-    auto calls      = std::uint64_t {};
-    auto run_config = bench::RunConfig { .items_per_iteration = u64(1) };
-    return rstd_bench::measure_case(
-        name,
-        rstd::move(config),
-        rstd::move(run_config),
-        [&] {
-            sum += runtime.block_on(join_local_child());
-            ++calls;
-            rstd::hint::black_box(sum);
-        },
-        [&] {
-            return sum == calls;
-        });
-}
-
-auto thread_pool_spawn_join(bench::BenchConfig config, const char* name)
-    -> rstd_bench::CaseRunResult {
-    auto runtime    = async::RuntimeBuilder::multi_thread().worker_threads(usize(2)).build().ok();
-    auto sum        = std::uint64_t {};
-    auto calls      = std::uint64_t {};
-    bool valid      = runtime.is_some();
-    auto run_config = bench::RunConfig { .items_per_iteration = u64(1) };
-    return rstd_bench::measure_case(
-        name,
-        rstd::move(config),
-        rstd::move(run_config),
-        [&] {
-            if (runtime.is_none()) return;
-            sum += runtime->block_on(join_spawned_child());
-            ++calls;
-            rstd::hint::black_box(sum);
-        },
-        [&] {
-            return valid && sum == calls;
-        });
-}
-
-auto thread_pool_join_many(bench::BenchConfig config, const char* name)
-    -> rstd_bench::CaseRunResult {
-    auto runtime    = async::RuntimeBuilder::multi_thread().worker_threads(usize(4)).build().ok();
-    auto sum        = std::uint64_t {};
-    auto calls      = std::uint64_t {};
-    bool valid      = runtime.is_some();
-    auto run_config = bench::RunConfig { .items_per_iteration = u64(32) };
-    return rstd_bench::measure_case(
-        name,
-        rstd::move(config),
-        rstd::move(run_config),
-        [&] {
-            if (runtime.is_none()) return;
-            sum += runtime->block_on(join_many_spawned_children());
-            ++calls;
-            rstd::hint::black_box(sum);
-        },
-        [&] {
-            return valid && sum == calls * 496;
-        });
-}
-
-auto timer_sleep_zero(bench::BenchConfig config, const char* name) -> rstd_bench::CaseRunResult {
-    auto runtime    = async::Runtime {};
-    auto sum        = std::uint64_t {};
-    auto calls      = std::uint64_t {};
-    auto run_config = bench::RunConfig { .items_per_iteration = u64(1) };
-    return rstd_bench::measure_case(
-        name,
-        rstd::move(config),
-        rstd::move(run_config),
-        [&] {
-            sum += runtime.block_on(sleep_zero());
-            ++calls;
-            rstd::hint::black_box(sum);
-        },
-        [&] {
-            return sum == calls;
-        });
-}
 
 #if RSTD_OS_LINUX
 auto io_loopback_ping_pong_sync(bench::BenchConfig config,
                                 rstd::size_t       payload_len,
                                 const char*        name) -> rstd_bench::CaseRunResult {
-    auto opened  = open_sync_loopback_streams(payload_len);
+    auto opened = open_sync_loopback_streams(payload_len);
+    if (opened.is_err())
+        return rstd_bench::failed(rstd::format("connection failed: {}", opened.unwrap_err()));
     auto streams = rstd::move(opened).ok();
     auto payload = loopback_payload(payload_len);
     bool valid   = streams.is_some() && sync_loopback_ping_pong(*streams, payload, usize(1));
 
-    auto calls      = std::uint64_t {};
-    auto roundtrips = std::uint64_t {};
-    auto run_config = loopback_run_config(1, payload_len);
+    auto operation_error = Option<String> {};
+    auto calls           = rstd::uint64_t {};
+    auto roundtrips      = rstd::uint64_t {};
+    auto run_config      = loopback_run_config(1, payload_len);
     return rstd_bench::measure_case(
         name,
         rstd::move(config),
@@ -681,41 +390,47 @@ auto io_loopback_ping_pong_sync(bench::BenchConfig config,
             roundtrips += LOOPBACK_BATCH;
             rstd::hint::black_box(roundtrips);
         },
-        [&] {
-            return valid && calls != 0 && roundtrips == calls * LOOPBACK_BATCH;
+        [&]() -> Result<empty, String> {
+            if (operation_error.is_some()) return Err(rstd::move(*operation_error));
+            if (! (valid && calls != 0 && roundtrips == calls * LOOPBACK_BATCH))
+                return Err(String::make(rstd_bench::text("validation failed")));
+            return Ok(empty {});
         });
 }
 
 auto io_loopback_ping_pong_sync_4way(bench::BenchConfig config,
                                      rstd::size_t       payload_len,
                                      const char*        name) -> rstd_bench::CaseRunResult {
-    auto state   = sync::Arc<SyncConcurrentState>::make();
-    auto handles = Vec<thread::JoinHandle<bool>>::with_capacity(usize(LOOPBACK_CONCURRENCY));
-    bool valid   = true;
+    auto state = sync::Arc<SyncConcurrentState>::make();
+    auto workers =
+        SyncWorkers { state.clone(),
+                      Vec<thread::JoinHandle<bool>>::with_capacity(usize(LOOPBACK_CONCURRENCY)) };
+    auto& handles = workers.handles;
+    bool  valid   = true;
 
     for (rstd::size_t index = 0; index < LOOPBACK_CONCURRENCY; ++index) {
         auto opened = open_sync_loopback_streams(payload_len);
-        if (opened.is_err()) {
-            valid = false;
-            break;
-        }
+        if (opened.is_err())
+            return rstd_bench::failed(rstd::format("connection failed: {}", opened.unwrap_err()),
+                                      workers.finish());
         auto worker_state = state.clone();
         auto spawned      = thread::spawn([state   = rstd::move(worker_state),
                                            streams = rstd::move(opened).unwrap_unchecked(),
                                            payload_len]() mutable {
             return sync_loopback_worker(rstd::move(state), rstd::move(streams), payload_len);
         });
-        if (spawned.is_err()) {
-            valid = false;
-            break;
-        }
+        if (spawned.is_err())
+            return rstd_bench::failed(rstd::format("spawn failed: {}", spawned.unwrap_err()),
+                                      workers.finish());
         handles.push(rstd::move(spawned).unwrap_unchecked());
     }
-    if (valid) valid = run_sync_loopback_concurrent(state, usize(1));
+    if (! run_sync_loopback_concurrent(state, usize(1)))
+        return rstd_bench::failed("loopback priming failed"_Str, workers.finish());
 
-    auto calls      = std::uint64_t {};
-    auto roundtrips = std::uint64_t {};
-    auto run_config = loopback_run_config(LOOPBACK_CONCURRENCY, payload_len);
+    auto operation_error = Option<String> {};
+    auto calls           = rstd::uint64_t {};
+    auto roundtrips      = rstd::uint64_t {};
+    auto run_config      = loopback_run_config(LOOPBACK_CONCURRENCY, payload_len);
     return rstd_bench::measure_case(
         name,
         rstd::move(config),
@@ -731,20 +446,15 @@ auto io_loopback_ping_pong_sync_4way(bench::BenchConfig config,
             roundtrips += LOOPBACK_BATCH * LOOPBACK_CONCURRENCY;
             rstd::hint::black_box(roundtrips);
         },
+        [&]() -> Result<empty, String> {
+            if (operation_error.is_some()) return Err(rstd::move(*operation_error));
+            if (! (valid && calls != 0 &&
+                   roundtrips == calls * LOOPBACK_BATCH * LOOPBACK_CONCURRENCY))
+                return Err(String::make(rstd_bench::text("validation failed")));
+            return Ok(empty {});
+        },
         [&] {
-            {
-                auto guard  = state->fields.lock().unwrap_unchecked();
-                guard->stop = true;
-                state->changed.notify_all();
-            }
-
-            bool joined = handles.len() == usize(LOOPBACK_CONCURRENCY);
-            for (usize index {}; index < handles.len(); ++index) {
-                auto result = rstd::move(handles[index]).join();
-                if (result.is_err() || ! rstd::move(result).unwrap_unchecked()) joined = false;
-            }
-            return valid && joined && calls != 0 &&
-                   roundtrips == calls * LOOPBACK_BATCH * LOOPBACK_CONCURRENCY;
+            return workers.finish();
         });
 }
 
@@ -766,16 +476,17 @@ auto io_loopback_ping_pong(bench::BenchConfig config,
                            rstd::size_t       payload_len,
                            const char*        name,
                            IoBackend backend = IoBackend::Auto) -> rstd_bench::CaseRunResult {
-    auto runtime  = make_io_runtime(backend).ok();
+    auto runtime = make_io_runtime(backend);
+    if (runtime.is_err()) return runtime_failure(runtime.unwrap_err());
     auto listener = Option<net::TcpListener> {};
     auto streams  = Option<LoopbackStreams> {};
     auto payload  = loopback_payload(payload_len);
-    bool valid    = runtime.is_some();
+    bool valid    = true;
 
     if (valid) {
         auto bound = net::TcpListener::bind(net::SocketAddr::ipv4_loopback(u16()));
         if (bound.is_err()) {
-            valid = false;
+            return rstd_bench::failed(rstd::format("bind failed: {}", bound.unwrap_err()));
         } else {
             listener = Some(rstd::move(bound).unwrap_unchecked());
         }
@@ -783,12 +494,13 @@ auto io_loopback_ping_pong(bench::BenchConfig config,
     if (valid) {
         auto address = listener->local_addr();
         if (address.is_err()) {
-            valid = false;
+            return rstd_bench::failed(rstd::format("address failed: {}", address.unwrap_err()));
         } else {
             auto opened = runtime->block_on(open_loopback_streams(
                 *listener, rstd::move(address).unwrap_unchecked(), payload_len));
             if (opened.is_err()) {
-                valid = false;
+                return rstd_bench::failed(
+                    rstd::format("connection failed: {}", opened.unwrap_err()));
             } else {
                 streams = Some(rstd::move(opened).unwrap_unchecked());
             }
@@ -796,12 +508,14 @@ auto io_loopback_ping_pong(bench::BenchConfig config,
     }
     if (valid) {
         auto primed = runtime->block_on(loopback_ping_pong(*streams, payload, usize(1)));
-        valid       = primed.is_ok();
+        if (primed.is_err())
+            return rstd_bench::failed(rstd::format("priming failed: {}", primed.unwrap_err()));
     }
 
-    auto calls      = std::uint64_t {};
-    auto roundtrips = std::uint64_t {};
-    auto run_config = loopback_run_config(1, payload_len);
+    auto operation_error = Option<String> {};
+    auto calls           = rstd::uint64_t {};
+    auto roundtrips      = rstd::uint64_t {};
+    auto run_config      = loopback_run_config(1, payload_len);
     return rstd_bench::measure_case(
         name,
         rstd::move(config),
@@ -814,15 +528,19 @@ auto io_loopback_ping_pong(bench::BenchConfig config,
             auto result =
                 runtime->block_on(loopback_ping_pong(*streams, payload, usize(LOOPBACK_BATCH)));
             if (result.is_err()) {
-                valid = false;
+                operation_error = Some(rstd::format("operation failed: {}", result.unwrap_err()));
+                valid           = false;
                 return;
             }
             ++calls;
             roundtrips += LOOPBACK_BATCH;
             rstd::hint::black_box(roundtrips);
         },
-        [&] {
-            return valid && calls != 0 && roundtrips == calls * LOOPBACK_BATCH;
+        [&]() -> Result<empty, String> {
+            if (operation_error.is_some()) return Err(rstd::move(*operation_error));
+            if (! (valid && calls != 0 && roundtrips == calls * LOOPBACK_BATCH))
+                return Err(String::make(rstd_bench::text("validation failed")));
+            return Ok(empty {});
         });
 }
 
@@ -830,16 +548,17 @@ auto io_loopback_ping_pong_4way(bench::BenchConfig config,
                                 rstd::size_t       payload_len,
                                 const char*        name,
                                 IoBackend backend = IoBackend::Auto) -> rstd_bench::CaseRunResult {
-    auto runtime  = make_io_runtime(backend).ok();
+    auto runtime = make_io_runtime(backend);
+    if (runtime.is_err()) return runtime_failure(runtime.unwrap_err());
     auto listener = Option<net::TcpListener> {};
     auto streams  = Vec<LoopbackStreams>::with_capacity(usize(LOOPBACK_CONCURRENCY));
     auto payload  = loopback_payload(payload_len);
-    bool valid    = runtime.is_some();
+    bool valid    = true;
 
     if (valid) {
         auto bound = net::TcpListener::bind(net::SocketAddr::ipv4_loopback(u16()));
         if (bound.is_err()) {
-            valid = false;
+            return rstd_bench::failed(rstd::format("bind failed: {}", bound.unwrap_err()));
         } else {
             listener = Some(rstd::move(bound).unwrap_unchecked());
         }
@@ -848,7 +567,7 @@ auto io_loopback_ping_pong_4way(bench::BenchConfig config,
     if (valid) {
         auto result = listener->local_addr();
         if (result.is_err()) {
-            valid = false;
+            return rstd_bench::failed(rstd::format("address failed: {}", result.unwrap_err()));
         } else {
             address = Some(rstd::move(result).unwrap_unchecked());
         }
@@ -856,19 +575,21 @@ auto io_loopback_ping_pong_4way(bench::BenchConfig config,
     for (rstd::size_t index = 0; valid && index < LOOPBACK_CONCURRENCY; ++index) {
         auto opened = runtime->block_on(open_loopback_streams(*listener, *address, payload_len));
         if (opened.is_err()) {
-            valid = false;
+            return rstd_bench::failed(rstd::format("connection failed: {}", opened.unwrap_err()));
         } else {
             streams.push(rstd::move(opened).unwrap_unchecked());
         }
     }
     if (valid) {
         auto primed = runtime->block_on(loopback_ping_pong_concurrent(streams, payload, usize(1)));
-        valid       = primed.is_ok();
+        if (primed.is_err())
+            return rstd_bench::failed(rstd::format("priming failed: {}", primed.unwrap_err()));
     }
 
-    auto calls      = std::uint64_t {};
-    auto roundtrips = std::uint64_t {};
-    auto run_config = loopback_run_config(LOOPBACK_CONCURRENCY, payload_len);
+    auto operation_error = Option<String> {};
+    auto calls           = rstd::uint64_t {};
+    auto roundtrips      = rstd::uint64_t {};
+    auto run_config      = loopback_run_config(LOOPBACK_CONCURRENCY, payload_len);
     return rstd_bench::measure_case(
         name,
         rstd::move(config),
@@ -881,16 +602,20 @@ auto io_loopback_ping_pong_4way(bench::BenchConfig config,
             auto result = runtime->block_on(
                 loopback_ping_pong_concurrent(streams, payload, usize(LOOPBACK_BATCH)));
             if (result.is_err()) {
-                valid = false;
+                operation_error = Some(rstd::format("operation failed: {}", result.unwrap_err()));
+                valid           = false;
                 return;
             }
             ++calls;
             roundtrips += LOOPBACK_BATCH * LOOPBACK_CONCURRENCY;
             rstd::hint::black_box(roundtrips);
         },
-        [&] {
-            return valid && calls != 0 &&
-                   roundtrips == calls * LOOPBACK_BATCH * LOOPBACK_CONCURRENCY;
+        [&]() -> Result<empty, String> {
+            if (operation_error.is_some()) return Err(rstd::move(*operation_error));
+            if (! (valid && calls != 0 &&
+                   roundtrips == calls * LOOPBACK_BATCH * LOOPBACK_CONCURRENCY))
+                return Err(String::make(rstd_bench::text("validation failed")));
+            return Ok(empty {});
         });
 }
 
@@ -899,16 +624,17 @@ auto io_loopback_ping_pong_4worker(bench::BenchConfig config,
                                    const char*        name,
                                    IoBackend          backend = IoBackend::Auto)
     -> rstd_bench::CaseRunResult {
-    auto runtime  = make_thread_pool_io_runtime(backend, usize(LOOPBACK_CONCURRENCY)).ok();
+    auto runtime = make_thread_pool_io_runtime(backend, usize(LOOPBACK_CONCURRENCY));
+    if (runtime.is_err()) return runtime_failure(runtime.unwrap_err());
     auto listener = Option<net::TcpListener> {};
     auto streams  = Vec<LoopbackStreams>::with_capacity(usize(LOOPBACK_CONCURRENCY));
     auto payload  = loopback_payload(payload_len);
-    bool valid    = runtime.is_some();
+    bool valid    = true;
 
     if (valid) {
         auto bound = net::TcpListener::bind(net::SocketAddr::ipv4_loopback(u16()));
         if (bound.is_err()) {
-            valid = false;
+            return rstd_bench::failed(rstd::format("bind failed: {}", bound.unwrap_err()));
         } else {
             listener = Some(rstd::move(bound).unwrap_unchecked());
         }
@@ -917,7 +643,7 @@ auto io_loopback_ping_pong_4worker(bench::BenchConfig config,
     if (valid) {
         auto result = listener->local_addr();
         if (result.is_err()) {
-            valid = false;
+            return rstd_bench::failed(rstd::format("address failed: {}", result.unwrap_err()));
         } else {
             address = Some(rstd::move(result).unwrap_unchecked());
         }
@@ -925,19 +651,21 @@ auto io_loopback_ping_pong_4worker(bench::BenchConfig config,
     for (rstd::size_t index = 0; valid && index < LOOPBACK_CONCURRENCY; ++index) {
         auto opened = runtime->block_on(open_loopback_streams(*listener, *address, payload_len));
         if (opened.is_err()) {
-            valid = false;
+            return rstd_bench::failed(rstd::format("connection failed: {}", opened.unwrap_err()));
         } else {
             streams.push(rstd::move(opened).unwrap_unchecked());
         }
     }
     if (valid) {
         auto primed = run_loopback_ping_pong_thread_pool(*runtime, streams, payload, usize(1));
-        valid       = primed.is_ok();
+        if (primed.is_err())
+            return rstd_bench::failed(rstd::format("priming failed: {}", primed.unwrap_err()));
     }
 
-    auto calls      = std::uint64_t {};
-    auto roundtrips = std::uint64_t {};
-    auto run_config = loopback_run_config(LOOPBACK_CONCURRENCY, payload_len);
+    auto operation_error = Option<String> {};
+    auto calls           = rstd::uint64_t {};
+    auto roundtrips      = rstd::uint64_t {};
+    auto run_config      = loopback_run_config(LOOPBACK_CONCURRENCY, payload_len);
     return rstd_bench::measure_case(
         name,
         rstd::move(config),
@@ -950,16 +678,20 @@ auto io_loopback_ping_pong_4worker(bench::BenchConfig config,
             auto result = run_loopback_ping_pong_thread_pool(
                 *runtime, streams, payload, usize(LOOPBACK_BATCH));
             if (result.is_err()) {
-                valid = false;
+                operation_error = Some(rstd::format("operation failed: {}", result.unwrap_err()));
+                valid           = false;
                 return;
             }
             ++calls;
             roundtrips += LOOPBACK_BATCH * LOOPBACK_CONCURRENCY;
             rstd::hint::black_box(roundtrips);
         },
-        [&] {
-            return valid && calls != 0 &&
-                   roundtrips == calls * LOOPBACK_BATCH * LOOPBACK_CONCURRENCY;
+        [&]() -> Result<empty, String> {
+            if (operation_error.is_some()) return Err(rstd::move(*operation_error));
+            if (! (valid && calls != 0 &&
+                   roundtrips == calls * LOOPBACK_BATCH * LOOPBACK_CONCURRENCY))
+                return Err(String::make(rstd_bench::text("validation failed")));
+            return Ok(empty {});
         });
 }
 
@@ -982,11 +714,6 @@ auto io_loopback_ping_pong_4worker_case(bench::BenchConfig config, const char* n
 }
 
 const rstd_bench::BenchCase CASES[] = {
-    { "async", "current_thread_ready", 1'000, &current_thread_ready },
-    { "async", "current_thread_spawn_local_join", 500, &current_thread_spawn_local_join },
-    { "async", "thread_pool_spawn_join_2", 200, &thread_pool_spawn_join },
-    { "async", "thread_pool_join_many_4x32", 20, &thread_pool_join_many },
-    { "async", "timer_sleep_zero", 500, &timer_sleep_zero },
 #if RSTD_OS_LINUX
     { "async", "io_loopback_ping_pong_sync_1b", 5, &io_loopback_ping_pong_sync_case<1> },
     { "async", "io_loopback_ping_pong_sync_4way_1b", 5, &io_loopback_ping_pong_sync_4way_case<1> },
@@ -1052,48 +779,9 @@ const rstd_bench::BenchCase CASES[] = {
       "io_loopback_ping_pong_epoll_4way_16kib",
       5,
       &io_loopback_ping_pong_4way_case<KIB * 16, IoBackend::ReadinessEmulation> },
-    { "async",
-      "io_operation_direct_immediate_qd1",
-      2,
-      &io_operation_read<1, false, IoOperationConsumer::Direct> },
-    { "async",
-      "io_operation_direct_immediate_qd64",
-      2,
-      &io_operation_read<64, false, IoOperationConsumer::Direct> },
-    { "async",
-      "io_operation_direct_pending_qd1",
-      2,
-      &io_operation_read<1, true, IoOperationConsumer::Direct> },
-    { "async",
-      "io_operation_direct_pending_qd64",
-      2,
-      &io_operation_read<64, true, IoOperationConsumer::Direct> },
-    { "async",
-      "io_operation_future_immediate_qd1",
-      2,
-      &io_operation_read<1, false, IoOperationConsumer::Future> },
-    { "async",
-      "io_operation_future_immediate_qd64",
-      2,
-      &io_operation_read<64, false, IoOperationConsumer::Future> },
-    { "async",
-      "io_operation_future_pending_qd1",
-      2,
-      &io_operation_read<1, true, IoOperationConsumer::Future> },
-    { "async",
-      "io_operation_future_pending_qd64",
-      2,
-      &io_operation_read<64, true, IoOperationConsumer::Future> },
 #endif
 };
 
-} // namespace
-
-namespace rstd_bench
-{
-
-auto async_benchmarks() -> BenchList {
-    return BenchList { CASES, sizeof(CASES) / sizeof(CASES[0]) };
+auto rstd_bench::async_loopback_benchmarks() -> BenchList {
+    return { CASES, sizeof(CASES) / sizeof(CASES[0]) };
 }
-
-} // namespace rstd_bench

@@ -1,4 +1,5 @@
-module rstd.benchmark;
+module rstd_benches;
+import rstd.bench;
 import rstd;
 
 using namespace rstd;
@@ -93,7 +94,7 @@ async::coro<io::Result<bytes::BytesMut>> tcp_roundtrip(net::TcpListener& listene
 auto tcp_connect_accept_readiness_roundtrip_4b(bench::BenchConfig config, const char* name)
     -> rstd_bench::CaseRunResult {
     auto runtime    = async::Runtime {};
-    bool valid      = true;
+    auto failure    = Option<String> {};
     auto run_config = bench::RunConfig {
         .items_per_iteration = u64(1),
         .bytes_per_iteration = u64(4),
@@ -103,36 +104,38 @@ auto tcp_connect_accept_readiness_roundtrip_4b(bench::BenchConfig config, const 
         rstd::move(config),
         rstd::move(run_config),
         [&] {
+            if (failure.is_some()) return;
             auto listener_result = net::TcpListener::bind(net::SocketAddr::ipv4_loopback(u16()));
             if (listener_result.is_err()) {
-                valid = false;
+                failure = Some(rstd::format("bind failed: {}", listener_result.unwrap_err()));
                 return;
             }
 
             auto listener = rstd::move(listener_result).unwrap_unchecked();
             auto addr     = listener.local_addr();
             if (addr.is_err()) {
-                valid = false;
+                failure = Some(rstd::format("local address failed: {}", addr.unwrap_err()));
                 return;
             }
 
             auto result =
                 runtime.block_on(tcp_roundtrip(listener, rstd::move(addr).unwrap_unchecked()));
             if (result.is_err()) {
-                valid = false;
+                failure = Some(rstd::format("roundtrip failed: {}", result.unwrap_err()));
                 return;
             }
 
             auto received = rstd::move(result).unwrap_unchecked();
             if (received.len() != usize(4) || received[usize()] != u8('p') ||
                 received[usize(3)] != u8('g')) {
-                valid = false;
+                failure = Some(String::make(rstd_bench::text("invalid loopback response")));
                 return;
             }
             rstd::hint::black_box(received.len());
         },
-        [&] {
-            return valid;
+        [&]() -> Result<empty, String> {
+            if (failure.is_some()) return Err(rstd::move(*failure));
+            return Ok(empty {});
         });
 }
 

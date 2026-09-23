@@ -1,0 +1,28 @@
+[package]
+name = "rstd-bench-runner-tests"
+version = "0.1.0"
+source-root = "../.."
+
+[[test]]
+name = "bench-runner"
+module = "rstd_benches"
+link-stdlib = false
+sources = [
+  "benches/support/mod.cppm",
+  "benches/support/runner.cpp",
+  "benches/support/report.cpp",
+  "tests/benches/main.cpp",
+  "tests/benches/registry.cpp",
+]
+
+[profile.base]
+exceptions = false
+rtti = false
+
+[dependencies]
+rstd-std = { path = "../.." }
+rstd-test = { path = "../.." }
+rstd-bench = { path = "../.." }
+rstd-argparse = { path = "../.." }
+rstd-json = { path = "../.." }
+rstd-nostd = { path = "../..", usage = "link" }

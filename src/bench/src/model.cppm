@@ -84,6 +84,22 @@ struct RunConfig {
     }
 };
 
+enum class MeasurementScope
+{
+    Repeated,
+    Batched,
+    BatchedRef
+};
+
+struct BatchConfig {
+    usize max_items { usize(32) };
+
+    auto validate() const noexcept -> Result<empty, BenchConfigError> {
+        if (max_items == usize()) return Err(BenchConfigError::InvalidBatch());
+        return Ok(empty {});
+    }
+};
+
 struct EpochMeasurement {
     time::Duration elapsed;
     u64            iterations;
@@ -115,6 +131,8 @@ class BenchmarkResult {
     time::Duration        clock_resolution_;
     CounterAvailability   counter_availability_;
     Vec<EpochMeasurement> measurements_;
+    MeasurementScope      scope_;
+    Option<usize>         batch_size_;
 
 public:
     BenchmarkResult(String                name,
@@ -122,17 +140,23 @@ public:
                     BenchConfig           config,
                     time::Duration        clock_resolution,
                     CounterAvailability   counter_availability,
-                    Vec<EpochMeasurement> measurements)
+                    Vec<EpochMeasurement> measurements,
+                    MeasurementScope      scope      = MeasurementScope::Repeated,
+                    Option<usize>         batch_size = None())
         : name_(rstd::move(name)),
           run_config_(rstd::move(run_config)),
           config_(rstd::move(config)),
           clock_resolution_(clock_resolution),
           counter_availability_(rstd::move(counter_availability)),
-          measurements_(rstd::move(measurements)) {}
+          measurements_(rstd::move(measurements)),
+          scope_(scope),
+          batch_size_(batch_size) {}
 
     auto name() const noexcept -> ref<str> { return name_.as_str(); }
     auto unit() const noexcept -> ref<str> { return run_config_.unit.as_str(); }
     auto batch() const noexcept -> f64 { return run_config_.batch; }
+    auto scope() const noexcept -> MeasurementScope { return scope_; }
+    auto batch_size() const noexcept -> Option<usize> { return batch_size_; }
     auto config() const noexcept -> const BenchConfig& { return config_; }
     auto run_config() const noexcept -> const RunConfig& { return run_config_; }
     auto clock_resolution() const noexcept -> time::Duration { return clock_resolution_; }

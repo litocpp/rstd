@@ -18,6 +18,21 @@ using namespace rstd::prelude;
 namespace rstd::bench
 {
 
+void merge_counters(CounterSet& total, const CounterSet& part) noexcept {
+    auto merge = [](Option<u64>& target, const Option<u64>& value) {
+        if (target.is_some() && value.is_some())
+            *target = target->saturating_add(*value);
+        else
+            target = None();
+    };
+    merge(total.page_faults, part.page_faults);
+    merge(total.cpu_cycles, part.cpu_cycles);
+    merge(total.context_switches, part.context_switches);
+    merge(total.instructions, part.instructions);
+    merge(total.branch_instructions, part.branch_instructions);
+    merge(total.branch_misses, part.branch_misses);
+}
+
 class CounterBackend {
     static constexpr rstd::size_t COUNTER_COUNT = 6;
 
