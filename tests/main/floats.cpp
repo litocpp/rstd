@@ -98,6 +98,25 @@ TEST(FloatMethods, TrigonometryRemainderAndAdjacentValues) {
     EXPECT_TRUE(rstd::f32::NAN_.next_down().is_nan());
 }
 
+TEST(FloatMethods, TangentAndInverseTrigonometry) {
+    EXPECT_NEAR((0.5_f32).tan().to_primitive(), std::tan(0.5f), 1e-7f);
+    EXPECT_NEAR((0.5_f64).tan().to_primitive(), std::tan(0.5), 1e-15);
+    EXPECT_NEAR((0.5_f32).asin().to_primitive(), std::asin(0.5f), 1e-7f);
+    EXPECT_NEAR((0.5_f64).asin().to_primitive(), std::asin(0.5), 1e-15);
+    EXPECT_NEAR((0.5_f32).atan().to_primitive(), std::atan(0.5f), 1e-7f);
+    EXPECT_NEAR((0.5_f64).atan().to_primitive(), std::atan(0.5), 1e-15);
+    EXPECT_TRUE((-0.0_f32).tan().is_sign_negative());
+    EXPECT_TRUE((-0.0_f64).asin().is_sign_negative());
+    EXPECT_TRUE((-0.0_f64).atan().is_sign_negative());
+    EXPECT_TRUE((2.0_f32).asin().is_nan());
+    EXPECT_TRUE((2.0_f64).asin().is_nan());
+    EXPECT_TRUE(rstd::f32::NAN_.atan().is_nan());
+    EXPECT_TRUE(rstd::f64::INFINITY_.tan().is_nan());
+    EXPECT_NEAR(rstd::f64::INFINITY_.atan().to_primitive(),
+                rstd::f64::consts::FRAC_PI_2.to_primitive(),
+                1e-15);
+}
+
 TEST(FloatFromStr, ParsesDecimalSpecialAndBoundaryValues) {
     EXPECT_EQ(rstd::from_str<rstd::f32>("1.25"_str).unwrap(), 1.25_f32);
     EXPECT_EQ(rstd::from_str<rstd::f64>("-.5e2"_str).unwrap(), -50.0_f64);

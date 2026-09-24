@@ -1293,6 +1293,30 @@ public:
     }
 
     [[nodiscard]]
+    constexpr auto tan() const noexcept -> Self {
+        if constexpr (sizeof(Primitive) == 4)
+            return Self(__builtin_tanf(value_));
+        else
+            return Self(__builtin_tan(value_));
+    }
+
+    [[nodiscard]]
+    constexpr auto asin() const noexcept -> Self {
+        if constexpr (sizeof(Primitive) == 4)
+            return Self(__builtin_asinf(value_));
+        else
+            return Self(__builtin_asin(value_));
+    }
+
+    [[nodiscard]]
+    constexpr auto atan() const noexcept -> Self {
+        if constexpr (sizeof(Primitive) == 4)
+            return Self(__builtin_atanf(value_));
+        else
+            return Self(__builtin_atan(value_));
+    }
+
+    [[nodiscard]]
     constexpr auto rem_euclid(Self rhs) const noexcept -> Self {
         auto remainder = self() % rhs;
         return remainder < Self() ? remainder + rhs.abs() : remainder;
