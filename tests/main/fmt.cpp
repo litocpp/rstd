@@ -50,6 +50,69 @@ TEST(Fmt, IntegerTypes) {
     EXPECT_EQ(s, "Values: -42, 123456789, 0, -1"_str);
 }
 
+TEST(Fmt, IntegerHex) {
+    EXPECT_EQ(rstd::format("{:x} {:X} {:#x} {:#X}", u32(48879), u32(48879), u32(48879), u32(48879)),
+              "beef BEEF 0xbeef 0xBEEF"_str);
+    EXPECT_EQ(rstd::format("{:x} {:#X}", u8(), u64()), "0 0x0"_str);
+    EXPECT_EQ(rstd::format("{:x} {:X} {:x}", 255, 48879u, usize(42)), "ff BEEF 2a"_str);
+    EXPECT_EQ(rstd::format("{:x} {:x} {:x} {:x}", i8(-1), i16(-1), i32(-1), i64(-1)),
+              "ff ffff ffffffff ffffffffffffffff"_str);
+    EXPECT_EQ(rstd::format("{:x} {:x} {:x}", i8::MIN, i64::MIN, i128::MIN),
+              "80 8000000000000000 80000000000000000000000000000000"_str);
+    EXPECT_EQ(rstd::format("{:x} {:X}", u128::MAX, i128(-1)),
+              "ffffffffffffffffffffffffffffffff FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"_str);
+    EXPECT_EQ(rstd::format("{:x}", static_cast<rstd::int16_t>(-2)), "fffe"_str);
+}
+
+TEST(Fmt, IntegerHexPadding) {
+    EXPECT_EQ(rstd::format("{:08x} {:#08x} {:+#08X}", u32(42), u32(42), u32(42)),
+              "0000002a 0x00002a +0x0002A"_str);
+    EXPECT_EQ(rstd::format("{:6x}|{:<6X}|{:_^7x}", u32(42), u32(42), u32(42)),
+              "    2a|2A    |__2a___"_str);
+    EXPECT_EQ(rstd::format("{:0>8x}|{:0>#8x}|{:<#08x}", u32(42), u32(42), u32(42)),
+              "0000002a|00000x2a|0x00002a"_str);
+    EXPECT_EQ(rstd::format("{:#02x} {:+#06x} {:.4x}", u32(255), u8(), u32(42)),
+              "0xff +0x000 2a"_str);
+    EXPECT_EQ(rstd::format("{:+#08x}", i8(-1)), "+0x000ff"_str);
+}
+
+struct HexOnly {
+    u32 value;
+};
+
+namespace rstd
+{
+template<>
+struct Impl<fmt::LowerHex, HexOnly> : ImplBase<HexOnly> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        return as<fmt::LowerHex>(this->self().value).fmt(formatter);
+    }
+};
+} // namespace rstd
+
+TEST(Fmt, HexTraitDispatchAndWriterFailure) {
+    EXPECT_EQ(rstd::format("{:#06x}", HexOnly { u32(42) }), "0x002a"_str);
+    auto reject = [](void*, const rstd::uint8_t*, rstd::size_t) -> bool {
+        return false;
+    };
+    fmt::Formatter formatter(nullptr, reject);
+    auto           value = u32(42);
+    EXPECT_FALSE(as<fmt::LowerHex>(value).fmt(formatter));
+
+    auto options = fmt::FormattingOptions {};
+    options.set_width(8).set_flag(fmt::FormattingOptions::ALTERNATE);
+    options.set_presentation(fmt::Presentation::LowerHex);
+    EXPECT_FALSE(options.is_debug());
+    EXPECT_EQ(options.presentation(), fmt::Presentation::LowerHex);
+    options.set_presentation(fmt::Presentation::UpperHex);
+    EXPECT_FALSE(options.is_debug());
+    EXPECT_EQ(options.presentation(), fmt::Presentation::UpperHex);
+    options.set_presentation(fmt::Presentation::Debug);
+    EXPECT_TRUE(options.is_debug());
+    EXPECT_TRUE(options.alternate());
+    EXPECT_EQ(options.width, 8);
+}
+
 TEST(Fmt, FloatDisplayAndDebug) {
     EXPECT_EQ(rstd::format("{} {} {}", f64(1.0), f64(1e20), f64(1e-7)),
               "1 100000000000000000000 0.0000001"_str);

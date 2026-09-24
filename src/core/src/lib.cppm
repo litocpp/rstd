@@ -14,6 +14,7 @@ export import :trait;
 export import :borrow;
 export import :cmp;
 export import :fmt;
+export import :fmt.integer;
 export import :fmt.floating;
 export import :num.dec2flt;
 export import :num.floating_parse;

@@ -1,6 +1,7 @@
 module rstd.core;
 import :core;
 import :fmt;
+import :fmt.integer;
 import :num.types;
 import :panicking;
 import :str.str;
@@ -67,6 +68,26 @@ void panic_invalid_shift(rstd::source_location loc) {
 [[noreturn]]
 void panic_invalid_float_clamp(rstd::source_location loc) {
     rstd::panic_message("min > max, or either was NaN", loc);
+}
+
+auto write_hex(rstd::fmt::Formatter& formatter, rstd::uint128_t value, bool upper) -> bool {
+    const char*   digits = upper ? "0123456789ABCDEF" : "0123456789abcdef";
+    rstd::uint8_t buffer[32];
+    auto          offset = sizeof(buffer);
+    do {
+        buffer[--offset] = static_cast<rstd::uint8_t>(digits[static_cast<unsigned>(value & 15)]);
+        value >>= 4;
+    } while (value != 0);
+
+    rstd::uint8_t prefix[3];
+    rstd::size_t  length = 0;
+    if (formatter.sign_plus()) prefix[length++] = '+';
+    if (formatter.alternate()) {
+        prefix[length++] = '0';
+        prefix[length++] = 'x';
+    }
+    return formatter.pad_numeric(
+        prefix, length, buffer + offset, sizeof(buffer) - offset, 0, nullptr, 0);
 }
 
 namespace rstd::fmt
@@ -174,7 +195,8 @@ auto parse_spec(const char* b, const char* e) -> FormattingOptions {
         case '?': opts.set_presentation(Presentation::Debug); break;
         case 'e': opts.set_presentation(Presentation::LowerExp); break;
         case 'E': opts.set_presentation(Presentation::UpperExp); break;
-        // 'b' 'd' 'o' 'x' 'X' 'p' 's' — reserved for P2
+        case 'x': opts.set_presentation(Presentation::LowerHex); break;
+        case 'X': opts.set_presentation(Presentation::UpperHex); break;
         default: break;
         }
     }

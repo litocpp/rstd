@@ -58,6 +58,7 @@ target_sources(
          src/task.cppm
          src/future.cppm
          src/fmt/mod.cppm
+         src/fmt/integer.cppm
          src/fmt/floating.cppm
          src/panic.cppm
          src/panicking.cppm

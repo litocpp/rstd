@@ -36,7 +36,14 @@ using format_string = FormatString<typename FmtId<Args>::type...>;
 export enum class Align : rstd::uint32_t { None = 0, Left = 1, Right = 2, Center = 3 };
 
 /// Formatting trait selected by the placeholder's type specifier.
-export enum class Presentation : rstd::uint8_t { Display, Debug, LowerExp, UpperExp };
+export enum class Presentation : rstd::uint8_t {
+    Display,
+    Debug,
+    LowerExp,
+    UpperExp,
+    LowerHex,
+    UpperHex
+};
 
 /// Options that control how values are formatted (fill, align, width, precision, flags).
 ///
@@ -47,11 +54,9 @@ export enum class Presentation : rstd::uint8_t { Display, Debug, LowerExp, Upper
 ///   [24]     sign_minus  (-)
 ///   [25]     alternate   (#)
 ///   [26]     zero_pad    (0)
-///   [27]     debug       (?)
+///   [27,30,31] presentation discriminator (?, e, E, x, X)
 ///   [28]     has_width
 ///   [29]     has_precision
-///   [30]     lower_exp   (e)
-///   [31]     upper_exp   (E)
 export struct FormattingOptions {
     rstd::uint32_t flags     = static_cast<rstd::uint32_t>(' ');
     rstd::uint16_t width     = 0;
@@ -69,6 +74,8 @@ export struct FormattingOptions {
     static constexpr rstd::uint32_t HAS_PREC          = 1u << 29u;
     static constexpr rstd::uint32_t LOWER_EXP         = 1u << 30u;
     static constexpr rstd::uint32_t UPPER_EXP         = 1u << 31u;
+    static constexpr rstd::uint32_t LOWER_HEX         = DEBUG | LOWER_EXP;
+    static constexpr rstd::uint32_t UPPER_HEX         = DEBUG | UPPER_EXP;
     static constexpr rstd::uint32_t PRESENTATION_MASK = DEBUG | LOWER_EXP | UPPER_EXP;
 
     constexpr auto fill() const noexcept -> char { return char(flags & FILL_MASK); }
@@ -77,12 +84,18 @@ export struct FormattingOptions {
     constexpr auto sign_minus() const noexcept -> bool { return bool(flags & SIGN_MINUS); }
     constexpr auto alternate() const noexcept -> bool { return bool(flags & ALTERNATE); }
     constexpr auto zero_pad() const noexcept -> bool { return bool(flags & ZERO_PAD); }
-    constexpr auto is_debug() const noexcept -> bool { return bool(flags & DEBUG); }
+    constexpr auto is_debug() const noexcept -> bool {
+        return presentation() == Presentation::Debug;
+    }
     constexpr auto presentation() const noexcept -> Presentation {
-        if (flags & DEBUG) return Presentation::Debug;
-        if (flags & LOWER_EXP) return Presentation::LowerExp;
-        if (flags & UPPER_EXP) return Presentation::UpperExp;
-        return Presentation::Display;
+        switch (flags & PRESENTATION_MASK) {
+        case DEBUG: return Presentation::Debug;
+        case LOWER_EXP: return Presentation::LowerExp;
+        case UPPER_EXP: return Presentation::UpperExp;
+        case LOWER_HEX: return Presentation::LowerHex;
+        case UPPER_HEX: return Presentation::UpperHex;
+        default: return Presentation::Display;
+        }
     }
     constexpr auto has_width() const noexcept -> bool { return bool(flags & HAS_WIDTH); }
     constexpr auto has_prec() const noexcept -> bool { return bool(flags & HAS_PREC); }
@@ -116,6 +129,8 @@ export struct FormattingOptions {
         case Presentation::Debug: flags |= DEBUG; break;
         case Presentation::LowerExp: flags |= LOWER_EXP; break;
         case Presentation::UpperExp: flags |= UPPER_EXP; break;
+        case Presentation::LowerHex: flags |= LOWER_HEX; break;
+        case Presentation::UpperHex: flags |= UPPER_HEX; break;
         }
         return *this;
     }
@@ -180,6 +195,36 @@ export struct UpperExp {
     template<typename Self, typename = void>
     struct Api {
         using Trait = UpperExp;
+        auto fmt(Formatter& f) const -> bool;
+    };
+
+    template<typename T>
+    using Funcs = TraitFuncs<&T::fmt>;
+};
+
+/// Lower-case hexadecimal formatting, invoked via `{:x}`.
+export struct LowerHex {
+    using Trait                  = LowerHex;
+    static constexpr bool direct = false;
+
+    template<typename Self, typename = void>
+    struct Api {
+        using Trait = LowerHex;
+        auto fmt(Formatter& f) const -> bool;
+    };
+
+    template<typename T>
+    using Funcs = TraitFuncs<&T::fmt>;
+};
+
+/// Upper-case hexadecimal formatting, invoked via `{:X}`.
+export struct UpperHex {
+    using Trait                  = UpperHex;
+    static constexpr bool direct = false;
+
+    template<typename Self, typename = void>
+    struct Api {
+        using Trait = UpperHex;
         auto fmt(Formatter& f) const -> bool;
     };
 
@@ -268,7 +313,7 @@ public:
     }
 };
 
-/// A type-erased formatting argument that can dispatch to Display or Debug.
+/// A type-erased formatting argument dispatched by the selected presentation.
 ///
 /// Created via `Argument::make(val)` and used internally by the format machinery.
 export struct Argument {
@@ -277,11 +322,11 @@ private:
     auto (*_fmt_func)(const void*, Formatter&) -> bool;
 
 public:
-    // Construct from any type that implements Display and/or Debug.
+    // Construct from any type that implements a formatting trait.
     // Dispatches through the formatting trait selected by the placeholder.
     template<typename T>
         requires(Impled<T, Display> || Impled<T, Debug> || Impled<T, LowerExp> ||
-                 Impled<T, UpperExp>)
+                 Impled<T, UpperExp> || Impled<T, LowerHex> || Impled<T, UpperHex>)
     static auto make(const T& val) -> Argument {
         return { rstd::addressof(val), [](const void* p, Formatter& f) -> bool {
                     const T& self = *static_cast<const T*>(p);
@@ -301,6 +346,18 @@ public:
                     case Presentation::UpperExp:
                         if constexpr (Impled<T, UpperExp>) {
                             return as<UpperExp>(self).fmt(f);
+                        } else {
+                            return false;
+                        }
+                    case Presentation::LowerHex:
+                        if constexpr (Impled<T, LowerHex>) {
+                            return as<LowerHex>(self).fmt(f);
+                        } else {
+                            return false;
+                        }
+                    case Presentation::UpperHex:
+                        if constexpr (Impled<T, UpperHex>) {
+                            return as<UpperHex>(self).fmt(f);
                         } else {
                             return false;
                         }
@@ -378,11 +435,11 @@ constexpr auto Arguments::make(format_string<Args...> fmt_str, Args&&... args) n
     };
 }
 
-/// Checks whether a type can be formatted, i.e. it implements Display or Debug.
+/// Checks whether a type implements a formatting trait.
 /// \tparam Tp The type to check.
 export template<typename Tp, typename CharT = char>
-concept formattable =
-    Impled<Tp, Display> || Impled<Tp, Debug> || Impled<Tp, LowerExp> || Impled<Tp, UpperExp>;
+concept formattable = Impled<Tp, Display> || Impled<Tp, Debug> || Impled<Tp, LowerExp> ||
+                      Impled<Tp, UpperExp> || Impled<Tp, LowerHex> || Impled<Tp, UpperHex>;
 
 // ── Compile-time format string validation ─────────────────────────────────
 // These sentinel functions are non-constexpr on purpose: calling them inside
