@@ -68,6 +68,15 @@ TEST(Time, SystemTime) {
     EXPECT_GE(res.unwrap().as_nanos(), u128());
 }
 
+TEST(Time, MonotonicEpoch) {
+    auto before = Instant::now();
+    auto after  = Instant::now();
+    EXPECT_GE(after.duration_since_epoch(), before.duration_since_epoch());
+    auto advanced = before + Duration::from_secs(u64(2));
+    EXPECT_EQ(advanced.duration_since_epoch() - before.duration_since_epoch(),
+              Duration::from_secs(u64(2)));
+}
+
 TEST(Time, UnixEpoch) {
     auto epoch = SystemTime::unix_epoch();
     auto zero  = epoch.duration_since(epoch);

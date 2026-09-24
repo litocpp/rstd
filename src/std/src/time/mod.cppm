@@ -26,6 +26,12 @@ export struct Instant {
     /// Returns an instant corresponding to "now".
     static auto now() noexcept -> Instant { return { sys::pal::Instant::now() }; }
 
+    /// Returns the duration from the platform monotonic clock's unspecified origin.
+    /// Values are not wall-clock timestamps and must not be persisted across boots.
+    auto duration_since_epoch() const noexcept -> Duration {
+        return inner.duration_since(sys::pal::Instant {});
+    }
+
     /// Returns the amount of time elapsed since this instant was created.
     auto elapsed() const noexcept -> Duration { return inner.elapsed(); }
 
