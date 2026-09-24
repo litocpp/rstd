@@ -97,6 +97,58 @@ TEST(Path, SetExtensionReusesAllocation) {
     EXPECT_EQ(path.as_path().to_str().unwrap(), "a.pkg"_str);
 }
 
+TEST(Path, NormalizeLexically) {
+    struct Case {
+        rstd::ref<rstd::str> input, expected;
+    };
+    const Case cases[] = {
+        { ""_str, ""_str },
+        { "."_str, "."_str },
+        { "a/.."_str, ""_str },
+        { "a/b/.."_str, "a"_str },
+        { "./a/.."_str, "."_str },
+        { "/assets/fonts/./a/../b.ttf"_str, "/assets/fonts/b.ttf"_str },
+        { "./fonts//a.ttf"_str, "./fonts/a.ttf"_str },
+        { "fonts/."_str, "fonts"_str },
+        { "fonts/"_str, "fonts"_str },
+        { "/"_str, "/"_str },
+        { "/a/.."_str, "/"_str },
+    };
+    for (const auto& value : cases) {
+        auto result = rstd::ref<Path>(value.input).normalize_lexically();
+        ASSERT_TRUE(result.is_ok());
+        auto path = rstd::move(result).unwrap();
+        EXPECT_EQ(path.as_path(), rstd::ref<Path>(value.expected));
+#if ! RSTD_OS_WINDOWS
+        EXPECT_EQ(path.as_path().to_str().unwrap(), value.expected);
+#endif
+    }
+}
+
+TEST(Path, NormalizeLexicallyRejectsEscapingParents) {
+    const rstd::ref<rstd::str> inputs[] = { ".."_str,     "../a"_str,       "a/../../b"_str,
+                                            "../../"_str, "/../a"_str,      "/a/../.."_str,
+                                            "./.."_str,   "./a/../../b"_str };
+    for (auto input : inputs) {
+        EXPECT_TRUE(rstd::ref<Path>(input).normalize_lexically().is_err());
+    }
+}
+
+TEST(Path, NativePathOperationsPreserveBytes) {
+    const rstd::byte input[] = { rstd::byte('/'), rstd::byte(0xff), rstd::byte('/'),
+                                 rstd::byte('.'), rstd::byte('/'),  rstd::byte('a'),
+                                 rstd::byte('.'), rstd::byte('x') };
+    auto             os      = rstd::ref<rstd::ffi::OsStr>::from_encoded_bytes_unchecked(
+        rstd::slice<rstd::u8>::from_raw_parts(input, rstd::usize(sizeof(input))));
+    auto path = rstd::ref<Path>(os).normalize_lexically().unwrap();
+    EXPECT_TRUE(path.set_extension(rstd::ref<rstd::ffi::OsStr>("pkg"_str)));
+    const rstd::byte expected[] = { rstd::byte('/'), rstd::byte(0xff), rstd::byte('/'),
+                                    rstd::byte('a'), rstd::byte('.'),  rstd::byte('p'),
+                                    rstd::byte('k'), rstd::byte('g') };
+    EXPECT_EQ(path.as_path().as_os_str().as_encoded_bytes(),
+              rstd::slice<rstd::u8>::from_raw_parts(expected, rstd::usize(sizeof(expected))));
+}
+
 TEST(Path, IsSafeRelative) {
     EXPECT_TRUE(rstd::ref<Path>("sources/archive"_str).is_safe_relative());
     EXPECT_TRUE(rstd::ref<Path>("./sources/archive"_str).is_safe_relative());

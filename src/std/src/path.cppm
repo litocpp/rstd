@@ -117,6 +117,7 @@ private:
 };
 
 export class PathBuf;
+export struct NormalizeError {};
 
 } // namespace rstd::path
 
@@ -315,6 +316,9 @@ struct ref<path::Path> : ref_base<ref<path::Path>, byte[], false> {
     constexpr auto components() const noexcept -> path::Components {
         return path::Components(p, length);
     }
+
+    /// Normalizes components without filesystem access; errors on escaping the lexical root.
+    auto normalize_lexically() const -> Result<path::PathBuf, path::NormalizeError>;
 
     constexpr auto operator==(ref<path::Path> other) const noexcept -> bool {
         auto left  = components();
@@ -589,6 +593,47 @@ auto lexically_relative(ref<Path> base, ref<Path> target) -> Option<PathBuf> {
 // ── Display for ref<Path> ────────────────────────────────────────────────
 namespace rstd
 {
+
+auto ref<path::Path>::normalize_lexically() const -> Result<path::PathBuf, path::NormalizeError> {
+    auto lexical = path::PathBuf::make();
+    auto values  = components();
+    auto root    = usize {};
+    bool first   = true;
+    while (auto component = values.next()) {
+        if (first && component->is_root_dir()) {
+            auto length = path_detail::root_len(p, len().to_primitive());
+            lexical = path::PathBuf::from(ref<path::Path>(ref<OsStr>::from_encoded_bytes_unchecked(
+                slice<u8>::from_raw_parts(p, usize(length)))));
+            root    = lexical.len();
+        } else if (first && component->is_cur_dir()) {
+            lexical.push(ref<path::Path>(component->as_os_str()));
+            root = lexical.len();
+        } else if (component->is_parent_dir()) {
+            if (lexical.len() == root) return Err(path::NormalizeError {});
+            (void)lexical.pop();
+        } else if (component->is_normal()) {
+            lexical.push(ref<path::Path>(component->as_os_str()));
+        }
+        first = false;
+    }
+    return Ok(rstd::move(lexical));
+}
+
+template<>
+struct Impl<fmt::Display, path::NormalizeError> : ImplBase<path::NormalizeError> {
+    auto fmt(fmt::Formatter& f) const -> bool {
+        return f.write_str("path contains a parent directory that escapes the lexical root"_str);
+    }
+};
+
+template<>
+struct Impl<fmt::Debug, path::NormalizeError> : ImplBase<path::NormalizeError> {
+    auto fmt(fmt::Formatter& f) const -> bool { return f.write_str("NormalizeError"_str); }
+};
+
+template<>
+struct Impl<error::Error, path::NormalizeError>
+    : DefaultInImpl<error::Error, path::NormalizeError> {};
 
 template<>
 struct Impl<fmt::Display, ref<path::Path>> : ImplBase<ref<path::Path>> {
