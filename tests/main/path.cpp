@@ -58,8 +58,37 @@ TEST(Path, ParentRelative) {
 }
 
 TEST(Path, ParentNoSep) {
-    // Single component, no parent
-    EXPECT_TRUE(rstd::ref<Path>("file.txt"_str).parent().is_none());
+    auto parent = rstd::ref<Path>("file.txt"_str).parent();
+    ASSERT_TRUE(parent.is_some());
+    EXPECT_TRUE(parent->is_empty());
+}
+
+TEST(Path, PopComponents) {
+    struct Case {
+        rstd::ref<rstd::str> input, expected;
+        bool                 removed;
+    };
+    const Case cases[] = {
+        { ""_str, ""_str, false },      { "/"_str, "/"_str, false },
+        { "a"_str, ""_str, true },      { "a/"_str, ""_str, true },
+        { "."_str, ""_str, true },      { ".."_str, ""_str, true },
+        { "a/."_str, ""_str, true },    { "a/b/./"_str, "a"_str, true },
+        { "a/./b"_str, "a"_str, true }, { "a/../b"_str, "a/.."_str, true },
+        { "./a"_str, "."_str, true },   { "/a"_str, "/"_str, true },
+        { "/."_str, "/."_str, false },  { "a/.."_str, "a"_str, true },
+    };
+    for (const auto& value : cases) {
+        auto path     = PathBuf::from(value.input);
+        auto capacity = path.capacity();
+        EXPECT_EQ(path.pop(), value.removed);
+        EXPECT_EQ(path.as_path().to_str().unwrap(), value.expected);
+        EXPECT_EQ(path.capacity(), capacity);
+    }
+    auto path = PathBuf::from("a/b"_str);
+    EXPECT_TRUE(path.pop());
+    EXPECT_TRUE(path.pop());
+    EXPECT_FALSE(path.pop());
+    EXPECT_TRUE(path.is_empty());
 }
 
 TEST(Path, FileName) {

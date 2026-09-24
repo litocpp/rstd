@@ -347,28 +347,22 @@ struct ref<path::Path> : ref_base<ref<path::Path>, byte[], false> {
     ///
     /// Returns `None` for root or empty paths.
     constexpr auto parent() const noexcept -> Option<ref<path::Path>> {
-        if (length == usize {}) return None();
-        auto const path_len = length.to_primitive();
-
-        // Find where the file name starts
-        auto i = path_detail::file_name_start(p, path_len);
-
-        if (i == path_len) {
-            // No file name (all separators, e.g. "/") → no parent
-            return None();
+        auto                    values = components();
+        auto                    end    = usize {};
+        Option<ref<path::Path>> parent;
+        while (auto component = values.next()) {
+            if (component->is_root_dir()) {
+                end = usize(path_detail::root_len(p, length.to_primitive()));
+                continue;
+            }
+            parent = Some(ref<path::Path>(
+                ref<OsStr>::from_encoded_bytes_unchecked(slice<u8>::from_raw_parts(p, end))));
+            end    = length - values.as_path().len();
+            while (end > usize {} &&
+                   path_detail::is_sep(path_detail::value(p[end.to_primitive() - 1])))
+                --end;
         }
-        if (i == 0) {
-            // No separator found → single component, no parent
-            return None();
-        }
-
-        // Strip trailing separators from parent, but keep at least one char
-        // so "/" stays as "/" rather than becoming ""
-        rstd::size_t pi = i;
-        while (pi > 1 && path_detail::is_sep(path_detail::value(p[pi - 1]))) --pi;
-        auto os = ref<OsStr>::from_encoded_bytes_unchecked(slice<u8>::from_raw_parts(p, usize(pi)));
-        ref<path::Path> r(os);
-        return Some(rstd::move(r));
+        return parent;
     }
 
     /// Returns the final component of the path (file or directory name).
@@ -497,8 +491,7 @@ public:
     auto pop() -> bool {
         auto p = as_path().parent();
         if (p.is_none()) return false;
-        auto parent = *p;
-        inner       = OsString::from(parent.as_os_str());
+        inner.truncate(p->len());
         return true;
     }
 
