@@ -113,6 +113,67 @@ TEST(Fmt, HexTraitDispatchAndWriterFailure) {
     EXPECT_EQ(options.width, 8);
 }
 
+TEST(Fmt, IntegerOctal) {
+    EXPECT_EQ(rstd::format("{:o} {:#o} {:o} {:#o}", u32(255), u32(255), u8(), u64()),
+              "377 0o377 0 0o0"_str);
+    EXPECT_EQ(rstd::format("{:o} {:o} {:o}", 511, 64u, usize(8)), "777 100 10"_str);
+    EXPECT_EQ(rstd::format("{:o} {:o} {:o} {:o}", i8(-1), i16(-1), i32(-1), i64(-1)),
+              "377 177777 37777777777 1777777777777777777777"_str);
+    EXPECT_EQ(rstd::format("{:o} {:o} {:o}", i8::MIN, i64::MIN, i128::MIN),
+              "200 1000000000000000000000 2000000000000000000000000000000000000000000"_str);
+    EXPECT_EQ(
+        rstd::format("{:o} {:o}", u128::MAX, i128(-1)),
+        "3777777777777777777777777777777777777777777 3777777777777777777777777777777777777777777"_str);
+    EXPECT_EQ(rstd::format("{:o}", static_cast<rstd::int16_t>(-2)), "177776"_str);
+}
+
+TEST(Fmt, IntegerOctalPadding) {
+    EXPECT_EQ(rstd::format("{:08o} {:#08o} {:+#08o}", u32(255), u32(255), u32(255)),
+              "00000377 0o000377 +0o00377"_str);
+    EXPECT_EQ(rstd::format("{:6o}|{:<6o}|{:_^8o}", u32(255), u32(255), u32(255)),
+              "   377|377   |__377___"_str);
+    EXPECT_EQ(rstd::format("{:0>#8o}|{:<#08o}", u32(255), u32(255)), "0000o377|0o000377"_str);
+    EXPECT_EQ(rstd::format("{:#02o} {:+#06o} {:.5o}", u32(255), u8(), u32(255)),
+              "0o377 +0o000 377"_str);
+    EXPECT_EQ(rstd::format("{:+#08o}", i8(-1)), "+0o00377"_str);
+}
+
+struct OctalOnly {
+    u32 value;
+};
+
+namespace rstd
+{
+template<>
+struct Impl<fmt::Octal, OctalOnly> : ImplBase<OctalOnly> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        return as<fmt::Octal>(this->self().value).fmt(formatter);
+    }
+};
+} // namespace rstd
+
+TEST(Fmt, OctalTraitDispatchAndWriterFailure) {
+    EXPECT_EQ(rstd::format("{:#06o}", OctalOnly { u32(255) }), "0o0377"_str);
+    auto reject = [](void*, const rstd::uint8_t*, rstd::size_t) -> bool {
+        return false;
+    };
+    fmt::Formatter formatter(nullptr, reject);
+    auto           value = u32(255);
+    EXPECT_FALSE(as<fmt::Octal>(value).fmt(formatter));
+
+    auto options = fmt::FormattingOptions {};
+    options.set_width(8).set_flag(fmt::FormattingOptions::ALTERNATE);
+    options.set_presentation(fmt::Presentation::Octal);
+    EXPECT_FALSE(options.is_debug());
+    EXPECT_EQ(options.presentation(), fmt::Presentation::Octal);
+    options.set_presentation(fmt::Presentation::UpperHex);
+    EXPECT_EQ(options.presentation(), fmt::Presentation::UpperHex);
+    options.set_presentation(fmt::Presentation::Octal);
+    EXPECT_EQ(options.presentation(), fmt::Presentation::Octal);
+    EXPECT_TRUE(options.alternate());
+    EXPECT_EQ(options.width, 8);
+}
+
 TEST(Fmt, FloatDisplayAndDebug) {
     EXPECT_EQ(rstd::format("{} {} {}", f64(1.0), f64(1e20), f64(1e-7)),
               "1 100000000000000000000 0.0000001"_str);

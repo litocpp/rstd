@@ -70,13 +70,19 @@ void panic_invalid_float_clamp(rstd::source_location loc) {
     rstd::panic_message("min > max, or either was NaN", loc);
 }
 
-auto write_hex(rstd::fmt::Formatter& formatter, rstd::uint128_t value, bool upper) -> bool {
-    const char*   digits = upper ? "0123456789ABCDEF" : "0123456789abcdef";
-    rstd::uint8_t buffer[32];
+auto write_integer_radix(rstd::fmt::Formatter&   formatter,
+                         rstd::uint128_t         value,
+                         rstd::fmt::Presentation presentation) -> bool {
+    const bool     octal = presentation == rstd::fmt::Presentation::Octal;
+    const unsigned shift = octal ? 3 : 4;
+    const unsigned mask  = (1u << shift) - 1;
+    const char*    digits =
+        presentation == rstd::fmt::Presentation::UpperHex ? "0123456789ABCDEF" : "0123456789abcdef";
+    rstd::uint8_t buffer[(128 + 2) / 3];
     auto          offset = sizeof(buffer);
     do {
-        buffer[--offset] = static_cast<rstd::uint8_t>(digits[static_cast<unsigned>(value & 15)]);
-        value >>= 4;
+        buffer[--offset] = static_cast<rstd::uint8_t>(digits[static_cast<unsigned>(value & mask)]);
+        value >>= shift;
     } while (value != 0);
 
     rstd::uint8_t prefix[3];
@@ -84,7 +90,7 @@ auto write_hex(rstd::fmt::Formatter& formatter, rstd::uint128_t value, bool uppe
     if (formatter.sign_plus()) prefix[length++] = '+';
     if (formatter.alternate()) {
         prefix[length++] = '0';
-        prefix[length++] = 'x';
+        prefix[length++] = octal ? 'o' : 'x';
     }
     return formatter.pad_numeric(
         prefix, length, buffer + offset, sizeof(buffer) - offset, 0, nullptr, 0);
@@ -197,6 +203,7 @@ auto parse_spec(const char* b, const char* e) -> FormattingOptions {
         case 'E': opts.set_presentation(Presentation::UpperExp); break;
         case 'x': opts.set_presentation(Presentation::LowerHex); break;
         case 'X': opts.set_presentation(Presentation::UpperHex); break;
+        case 'o': opts.set_presentation(Presentation::Octal); break;
         default: break;
         }
     }

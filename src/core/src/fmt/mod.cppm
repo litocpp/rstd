@@ -42,7 +42,8 @@ export enum class Presentation : rstd::uint8_t {
     LowerExp,
     UpperExp,
     LowerHex,
-    UpperHex
+    UpperHex,
+    Octal
 };
 
 /// Options that control how values are formatted (fill, align, width, precision, flags).
@@ -54,7 +55,7 @@ export enum class Presentation : rstd::uint8_t {
 ///   [24]     sign_minus  (-)
 ///   [25]     alternate   (#)
 ///   [26]     zero_pad    (0)
-///   [27,30,31] presentation discriminator (?, e, E, x, X)
+///   [27,30,31] presentation discriminator (?, e, E, x, X, o)
 ///   [28]     has_width
 ///   [29]     has_precision
 export struct FormattingOptions {
@@ -76,6 +77,7 @@ export struct FormattingOptions {
     static constexpr rstd::uint32_t UPPER_EXP         = 1u << 31u;
     static constexpr rstd::uint32_t LOWER_HEX         = DEBUG | LOWER_EXP;
     static constexpr rstd::uint32_t UPPER_HEX         = DEBUG | UPPER_EXP;
+    static constexpr rstd::uint32_t OCTAL             = LOWER_EXP | UPPER_EXP;
     static constexpr rstd::uint32_t PRESENTATION_MASK = DEBUG | LOWER_EXP | UPPER_EXP;
 
     constexpr auto fill() const noexcept -> char { return char(flags & FILL_MASK); }
@@ -94,6 +96,7 @@ export struct FormattingOptions {
         case UPPER_EXP: return Presentation::UpperExp;
         case LOWER_HEX: return Presentation::LowerHex;
         case UPPER_HEX: return Presentation::UpperHex;
+        case OCTAL: return Presentation::Octal;
         default: return Presentation::Display;
         }
     }
@@ -131,6 +134,7 @@ export struct FormattingOptions {
         case Presentation::UpperExp: flags |= UPPER_EXP; break;
         case Presentation::LowerHex: flags |= LOWER_HEX; break;
         case Presentation::UpperHex: flags |= UPPER_HEX; break;
+        case Presentation::Octal: flags |= OCTAL; break;
         }
         return *this;
     }
@@ -232,6 +236,21 @@ export struct UpperHex {
     using Funcs = TraitFuncs<&T::fmt>;
 };
 
+/// Octal formatting, invoked via `{:o}`.
+export struct Octal {
+    using Trait                  = Octal;
+    static constexpr bool direct = false;
+
+    template<typename Self, typename = void>
+    struct Api {
+        using Trait = Octal;
+        auto fmt(Formatter& f) const -> bool;
+    };
+
+    template<typename T>
+    using Funcs = TraitFuncs<&T::fmt>;
+};
+
 /// Trait for a UTF-8 text sink used by the formatting machinery.
 export struct Write {
     using Trait                  = Write;
@@ -326,7 +345,8 @@ public:
     // Dispatches through the formatting trait selected by the placeholder.
     template<typename T>
         requires(Impled<T, Display> || Impled<T, Debug> || Impled<T, LowerExp> ||
-                 Impled<T, UpperExp> || Impled<T, LowerHex> || Impled<T, UpperHex>)
+                 Impled<T, UpperExp> || Impled<T, LowerHex> || Impled<T, UpperHex> ||
+                 Impled<T, Octal>)
     static auto make(const T& val) -> Argument {
         return { rstd::addressof(val), [](const void* p, Formatter& f) -> bool {
                     const T& self = *static_cast<const T*>(p);
@@ -358,6 +378,12 @@ public:
                     case Presentation::UpperHex:
                         if constexpr (Impled<T, UpperHex>) {
                             return as<UpperHex>(self).fmt(f);
+                        } else {
+                            return false;
+                        }
+                    case Presentation::Octal:
+                        if constexpr (Impled<T, Octal>) {
+                            return as<Octal>(self).fmt(f);
                         } else {
                             return false;
                         }
@@ -438,8 +464,9 @@ constexpr auto Arguments::make(format_string<Args...> fmt_str, Args&&... args) n
 /// Checks whether a type implements a formatting trait.
 /// \tparam Tp The type to check.
 export template<typename Tp, typename CharT = char>
-concept formattable = Impled<Tp, Display> || Impled<Tp, Debug> || Impled<Tp, LowerExp> ||
-                      Impled<Tp, UpperExp> || Impled<Tp, LowerHex> || Impled<Tp, UpperHex>;
+concept formattable =
+    Impled<Tp, Display> || Impled<Tp, Debug> || Impled<Tp, LowerExp> || Impled<Tp, UpperExp> ||
+    Impled<Tp, LowerHex> || Impled<Tp, UpperHex> || Impled<Tp, Octal>;
 
 // ── Compile-time format string validation ─────────────────────────────────
 // These sentinel functions are non-constexpr on purpose: calling them inside
