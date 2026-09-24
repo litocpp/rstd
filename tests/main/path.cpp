@@ -28,6 +28,75 @@ TEST(Path, IsAbsolute) {
     EXPECT_FALSE(rstd::ref<Path>(""_str).is_absolute());
 }
 
+TEST(Path, SetExtension) {
+    struct Case {
+        rstd::ref<rstd::str> input, extension, expected;
+        bool                 changed;
+    };
+    const Case cases[] = {
+        { "scene.json"_str, "pkg"_str, "scene.pkg"_str, true },
+        { "archive.tar.gz"_str, ""_str, "archive.tar"_str, true },
+        { ".hidden"_str, "pkg"_str, ".hidden.pkg"_str, true },
+        { "file."_str, "json"_str, "file.json"_str, true },
+        { "dir.name/file"_str, "json"_str, "dir.name/file.json"_str, true },
+        { "dir/file/"_str, "pkg"_str, "dir/file.pkg"_str, true },
+        { ""_str, "pkg"_str, ""_str, false },
+        { "/"_str, "pkg"_str, "/"_str, false },
+        { "."_str, "pkg"_str, "."_str, false },
+        { "a/.."_str, "pkg"_str, "a/.."_str, false },
+        { "dir/file/."_str, "pkg"_str, "dir/file.pkg"_str, true },
+        { "a.txt"_str, "tar.gz"_str, "a.tar.gz"_str, true },
+        { ".."_str, "pkg"_str, ".."_str, false },
+    };
+    for (const auto& value : cases) {
+        auto path = PathBuf::from(value.input);
+        EXPECT_EQ(path.set_extension(rstd::ref<rstd::ffi::OsStr>(value.extension)), value.changed);
+        EXPECT_EQ(path.as_path().to_str().unwrap(), value.expected);
+    }
+    auto alias = PathBuf::from("name.pkg"_str);
+    EXPECT_TRUE(alias.set_extension(*alias.as_path().extension()));
+    EXPECT_EQ(alias.as_path().to_str().unwrap(), "name.pkg"_str);
+    auto whole = PathBuf::from("name.pkg"_str);
+    EXPECT_TRUE(whole.set_extension(*whole.as_path().file_name()));
+    EXPECT_EQ(whole.as_path().to_str().unwrap(), "name.name.pkg"_str);
+}
+
+TEST(Path, FileStem) {
+    EXPECT_EQ(rstd::ref<Path>("file.tar.gz"_str).file_stem()->to_str().unwrap(), "file.tar"_str);
+    EXPECT_EQ(rstd::ref<Path>(".hidden"_str).file_stem()->to_str().unwrap(), ".hidden"_str);
+    EXPECT_EQ(rstd::ref<Path>("file."_str).file_stem()->to_str().unwrap(), "file"_str);
+    EXPECT_EQ(rstd::ref<Path>("dir/file/."_str).file_name()->to_str().unwrap(), "file"_str);
+    EXPECT_EQ(rstd::ref<Path>("dir/file/."_str).file_stem()->to_str().unwrap(), "file"_str);
+    EXPECT_TRUE(rstd::ref<Path>("."_str).file_stem().is_none());
+    EXPECT_TRUE(rstd::ref<Path>(".."_str).file_name().is_none());
+    EXPECT_TRUE(rstd::ref<Path>(".."_str).extension().is_none());
+    EXPECT_TRUE(rstd::ref<Path>("/"_str).file_stem().is_none());
+}
+
+TEST(Path, SetExtensionRejectsSeparators) {
+    auto path = PathBuf::from("name.txt"_str);
+    EXPECT_DEATH(path.set_extension(rstd::ref<rstd::ffi::OsStr>("a/b"_str)),
+                 "extension cannot contain path separators");
+    auto empty = PathBuf::make();
+    EXPECT_DEATH(empty.set_extension(rstd::ref<rstd::ffi::OsStr>("/"_str)),
+                 "extension cannot contain path separators");
+#if RSTD_OS_WINDOWS
+    EXPECT_DEATH(path.set_extension(rstd::ref<rstd::ffi::OsStr>("a\\b"_str)),
+                 "extension cannot contain path separators");
+#endif
+}
+
+TEST(Path, SetExtensionReusesAllocation) {
+    auto path     = PathBuf::from("a.very_long_extension"_str);
+    auto before   = path.as_path().as_os_str();
+    auto address  = before.as_encoded_bytes().as_raw_ptr();
+    auto capacity = path.capacity();
+    EXPECT_TRUE(path.set_extension(rstd::ref<rstd::ffi::OsStr>("pkg"_str)));
+    EXPECT_EQ(path.as_path().as_os_str().as_encoded_bytes().as_raw_ptr(), address);
+    EXPECT_EQ(path.capacity(), capacity);
+    EXPECT_EQ(path.as_path().to_str().unwrap(), "a.pkg"_str);
+}
+
 TEST(Path, IsSafeRelative) {
     EXPECT_TRUE(rstd::ref<Path>("sources/archive"_str).is_safe_relative());
     EXPECT_TRUE(rstd::ref<Path>("./sources/archive"_str).is_safe_relative());

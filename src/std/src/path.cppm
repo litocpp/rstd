@@ -367,15 +367,27 @@ struct ref<path::Path> : ref_base<ref<path::Path>, byte[], false> {
 
     /// Returns the final component of the path (file or directory name).
     constexpr auto file_name() const noexcept -> Option<ref<OsStr>> {
-        if (length == usize {}) return None();
-        auto const   path_len = length.to_primitive();
-        rstd::size_t start    = path_detail::file_name_start(p, path_len);
-        rstd::size_t end      = path_len;
-        while (end > start && path_detail::is_sep(path_detail::value(p[end - 1]))) --end;
-        if (end <= start) return None();
-        ref<OsStr> r = ref<OsStr>::from_encoded_bytes_unchecked(
-            slice<u8>::from_raw_parts(p + start, usize(end - start)));
-        return Some(rstd::move(r));
+        Option<ref<OsStr>> name;
+        auto               values = components();
+        while (auto component = values.next())
+            name = component->is_normal() ? Some(component->as_os_str()) : None();
+        return name;
+    }
+
+    /// Returns the file name without its final extension.
+    constexpr auto file_stem() const noexcept -> Option<ref<OsStr>> {
+        auto name = file_name();
+        if (name.is_none()) return None();
+        auto bytes = name->as_encoded_bytes();
+        auto end   = bytes.len();
+        for (auto i = end; i > usize(1); --i) {
+            if (bytes[i - usize(1)] == u8('.')) {
+                end = i - usize(1);
+                break;
+            }
+        }
+        return Some(ref<OsStr>::from_encoded_bytes_unchecked(
+            slice<u8>::from_raw_parts(bytes.as_raw_ptr(), end)));
     }
 
     /// Returns the extension of the file name (after the last `.`).
@@ -503,6 +515,35 @@ public:
     }
 
     auto len() const noexcept -> usize { return inner.len(); }
+    /// Replaces the final component's extension, without a leading dot.
+    /// Returns false without a file stem; panics if the extension contains a separator.
+    auto set_extension(ref<OsStr> extension) -> bool {
+        for (auto byte : extension.as_encoded_bytes())
+            if (path_detail::is_sep(byte))
+                rstd::panic { "extension cannot contain path separators" };
+        auto stem = as_path().file_stem();
+        if (stem.is_none()) return false;
+        auto stem_bytes = stem->as_encoded_bytes();
+        auto path_os    = inner.as_os_str();
+        auto bytes      = path_os.as_encoded_bytes();
+        auto end        = usize(stem_bytes.as_raw_ptr() - bytes.as_raw_ptr()) + stem_bytes.len();
+        auto start      = reinterpret_cast<rstd::uintptr_t>(bytes.as_raw_ptr());
+        auto source = reinterpret_cast<rstd::uintptr_t>(extension.as_encoded_bytes().as_raw_ptr());
+        // C++ permits an extension borrowed from this path; truncation would invalidate it.
+        if (! extension.is_empty() && source >= start &&
+            source - start < bytes.len().to_primitive()) {
+            auto owned = extension.to_os_string();
+            return set_extension(owned.as_os_str());
+        }
+        inner.truncate(end);
+        if (! extension.is_empty()) {
+            inner.reserve_exact(extension.len() + usize(1));
+            inner.push(ref<OsStr>("."_str));
+            inner.push(extension);
+        }
+        return true;
+    }
+
     auto is_empty() const noexcept -> bool { return inner.is_empty(); }
 
     /// Implicit conversion to `ref<Path>`.
