@@ -270,11 +270,11 @@ struct Impl<fmt::Display, argparse::ParseError> : ImplBase<argparse::ParseError>
             if (error.as_UnknownArgument().suggestion.is_some()) {
                 return formatter.write_fmt(
                     fmt::Arguments::make("unknown argument '{}'; did you mean '{}'?",
-                                         error.as_UnknownArgument().token.as_os_str(),
+                                         error.as_UnknownArgument().token.as_os_str().display(),
                                          *error.as_UnknownArgument().suggestion));
             }
             return formatter.write_fmt(fmt::Arguments::make(
-                "unknown argument '{}'", error.as_UnknownArgument().token.as_os_str()));
+                "unknown argument '{}'", error.as_UnknownArgument().token.as_os_str().display()));
         case argparse::ParseError::Tag::MissingValue:
             return formatter.write_fmt(fmt::Arguments::make("missing value for argument '{}'",
                                                             error.as_MissingValue().id));
@@ -287,12 +287,12 @@ struct Impl<fmt::Display, argparse::ParseError> : ImplBase<argparse::ParseError>
         case argparse::ParseError::Tag::InvalidValue:
             return formatter.write_fmt(
                 fmt::Arguments::make("invalid value '{}' for argument '{}'",
-                                     error.as_InvalidValue().value.as_os_str(),
+                                     error.as_InvalidValue().value.as_os_str().display(),
                                      error.as_InvalidValue().id));
         case argparse::ParseError::Tag::InvalidUtf8Value:
             return formatter.write_fmt(
                 fmt::Arguments::make("value '{}' for argument '{}' is not valid UTF-8",
-                                     error.as_InvalidUtf8Value().value.as_os_str(),
+                                     error.as_InvalidUtf8Value().value.as_os_str().display(),
                                      error.as_InvalidUtf8Value().id));
         case argparse::ParseError::Tag::DuplicateArgument:
             return formatter.write_fmt(fmt::Arguments::make(
@@ -312,12 +312,13 @@ struct Impl<fmt::Display, argparse::ParseError> : ImplBase<argparse::ParseError>
             return formatter.write_fmt(fmt::Arguments::make("command '{}' requires a subcommand",
                                                             error.as_MissingSubcommand().command));
         case argparse::ParseError::Tag::InvalidSubcommand:
-            return formatter.write_fmt(fmt::Arguments::make(
-                "invalid subcommand '{}'", error.as_InvalidSubcommand().name.as_os_str()));
+            return formatter.write_fmt(
+                fmt::Arguments::make("invalid subcommand '{}'",
+                                     error.as_InvalidSubcommand().name.as_os_str().display()));
         case argparse::ParseError::Tag::UnexpectedPositional:
             return formatter.write_fmt(
                 fmt::Arguments::make("unexpected positional argument '{}'",
-                                     error.as_UnexpectedPositional().token.as_os_str()));
+                                     error.as_UnexpectedPositional().token.as_os_str().display()));
         }
         return false;
     }

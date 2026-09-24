@@ -8,6 +8,38 @@ using namespace rstd::literals;
 using rstd::ffi::OsStr;
 using rstd::ffi::OsString;
 
+TEST(ArgparseErrors, FormatsOsValuesWithoutTruncatingMessages) {
+    auto unknown = ParseError::UnknownArgument(OsString::from("--oops"_str), usize(1), None());
+    EXPECT_EQ(rstd::format("{}", unknown), "unknown argument '--oops'"_str);
+    auto suggested =
+        ParseError::UnknownArgument(OsString::from("--oops"_str), usize(1), Some("--help"_Str));
+    EXPECT_EQ(rstd::format("{}", suggested),
+              "unknown argument '--oops'; did you mean '--help'?"_str);
+    auto invalid = ParseError::InvalidValue(
+        "count"_Str, OsString::from("bad"_str), usize(1), ValueError::Message("not a number"_Str));
+    EXPECT_EQ(rstd::format("{}", invalid), "invalid value 'bad' for argument 'count'"_str);
+    auto subcommand = ParseError::InvalidSubcommand(OsString::from("wrong"_str), usize(1));
+    EXPECT_EQ(rstd::format("{}", subcommand), "invalid subcommand 'wrong'"_str);
+    auto positional = ParseError::UnexpectedPositional(OsString::from("extra"_str), usize(1));
+    EXPECT_EQ(rstd::format("{}", positional), "unexpected positional argument 'extra'"_str);
+    array<u8, 1> bytes { u8(255) };
+    auto         utf8 = ParseError::InvalidUtf8Value(
+        "text"_Str,
+        OsString::from(ref<OsStr>::from_encoded_bytes_unchecked(bytes.as_slice())),
+        usize(1));
+    EXPECT_EQ(rstd::format("{}", utf8),
+              "value '\xef\xbf\xbd' for argument 'text' is not valid UTF-8"_str);
+}
+
+TEST(ArgparseErrors, RenderedUnknownArgumentIncludesUsageAndExitCode) {
+    auto parser = Command::make("tool"_str).build().unwrap();
+    auto error  = ParseError::UnknownArgument(OsString::from("--wrong"_str), usize(1), None());
+    auto report = parser.render_error(error);
+    EXPECT_EQ(report.text(), "error: unknown argument '--wrong'\n\nUsage: tool [OPTIONS]\n"_str);
+    EXPECT_EQ(report.exit_code(), i32(2));
+    EXPECT_EQ(report.target(), OutputTarget::Tag::Stderr);
+}
+
 template<typename... Tokens>
 auto error_argv(Tokens... tokens) -> Vec<OsString> {
     auto values = Vec<OsString>::make();
