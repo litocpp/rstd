@@ -1,3 +1,17 @@
+<release version="0.1.5" date="2026-09-24">
+  <description>
+    <ul>
+      <li>Add iterator queries.</li>
+      <li>Add stable slice sorting.</li>
+      <li>Add batched benchmarks.</li>
+      <li>Add hexadecimal and octal integer formatting.</li>
+      <li>Extend path operations.</li>
+      <li>Add instant duration since monotonic origin.</li>
+      <li>Add tan, asin, atan.</li>
+      <li>Fix OS string display in argparse errors.</li>
+    </ul>
+  </description>
+</release>
 <release version="0.1.4" date="2026-09-19">
   <description>
     <ul>
