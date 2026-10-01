@@ -1218,6 +1218,14 @@ public:
     }
 
     [[nodiscard]]
+    constexpr auto copysign(Self sign) const noexcept -> Self {
+        if constexpr (sizeof(Primitive) == 4)
+            return Self(__builtin_copysignf(value_, sign.value_));
+        else
+            return Self(__builtin_copysign(value_, sign.value_));
+    }
+
+    [[nodiscard]]
     constexpr auto min(Self rhs) const noexcept -> Self {
         return Self(__builtin_fmin(value_, rhs.value_));
     }
@@ -1266,6 +1274,14 @@ public:
     }
 
     [[nodiscard]]
+    constexpr auto cbrt() const noexcept -> Self {
+        if constexpr (sizeof(Primitive) == 4)
+            return Self(__builtin_cbrtf(value_));
+        else
+            return Self(__builtin_cbrt(value_));
+    }
+
+    [[nodiscard]]
     constexpr auto sin() const noexcept -> Self {
         if constexpr (sizeof(Primitive) == 4) {
             return Self(__builtin_sinf(value_));
@@ -1309,11 +1325,67 @@ public:
     }
 
     [[nodiscard]]
+    constexpr auto acos() const noexcept -> Self {
+        if constexpr (sizeof(Primitive) == 4)
+            return Self(__builtin_acosf(value_));
+        else
+            return Self(__builtin_acos(value_));
+    }
+
+    [[nodiscard]]
     constexpr auto atan() const noexcept -> Self {
         if constexpr (sizeof(Primitive) == 4)
             return Self(__builtin_atanf(value_));
         else
             return Self(__builtin_atan(value_));
+    }
+
+    [[nodiscard]]
+    constexpr auto sinh() const noexcept -> Self {
+        if constexpr (sizeof(Primitive) == 4)
+            return Self(__builtin_sinhf(value_));
+        else
+            return Self(__builtin_sinh(value_));
+    }
+
+    [[nodiscard]]
+    constexpr auto cosh() const noexcept -> Self {
+        if constexpr (sizeof(Primitive) == 4)
+            return Self(__builtin_coshf(value_));
+        else
+            return Self(__builtin_cosh(value_));
+    }
+
+    [[nodiscard]]
+    constexpr auto tanh() const noexcept -> Self {
+        if constexpr (sizeof(Primitive) == 4)
+            return Self(__builtin_tanhf(value_));
+        else
+            return Self(__builtin_tanh(value_));
+    }
+
+    [[nodiscard]]
+    constexpr auto asinh() const noexcept -> Self {
+        if constexpr (sizeof(Primitive) == 4)
+            return Self(__builtin_asinhf(value_));
+        else
+            return Self(__builtin_asinh(value_));
+    }
+
+    [[nodiscard]]
+    constexpr auto acosh() const noexcept -> Self {
+        if constexpr (sizeof(Primitive) == 4)
+            return Self(__builtin_acoshf(value_));
+        else
+            return Self(__builtin_acosh(value_));
+    }
+
+    [[nodiscard]]
+    constexpr auto atanh() const noexcept -> Self {
+        if constexpr (sizeof(Primitive) == 4)
+            return Self(__builtin_atanhf(value_));
+        else
+            return Self(__builtin_atanh(value_));
     }
 
     [[nodiscard]]
@@ -1388,12 +1460,28 @@ public:
     }
 
     [[nodiscard]]
+    constexpr auto exp_m1() const noexcept -> Self {
+        if constexpr (sizeof(Primitive) == 4)
+            return Self(__builtin_expm1f(value_));
+        else
+            return Self(__builtin_expm1(value_));
+    }
+
+    [[nodiscard]]
     constexpr auto ln() const noexcept -> Self {
         if constexpr (sizeof(Primitive) == 4) {
             return Self(__builtin_logf(value_));
         } else {
             return Self(__builtin_log(value_));
         }
+    }
+
+    [[nodiscard]]
+    constexpr auto ln_1p() const noexcept -> Self {
+        if constexpr (sizeof(Primitive) == 4)
+            return Self(__builtin_log1pf(value_));
+        else
+            return Self(__builtin_log1p(value_));
     }
 
     [[nodiscard]]

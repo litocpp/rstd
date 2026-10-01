@@ -117,6 +117,125 @@ TEST(FloatMethods, TangentAndInverseTrigonometry) {
                 1e-15);
 }
 
+static_assert((0.0_f32).copysign(-0.0_f32).to_bits() == 0x80000000_u32);
+static_assert((-0.0_f64).copysign(0.0_f64).to_bits() == 0_u64);
+static_assert(rstd::f32::from_bits(0x7fc01234_u32).copysign(-0.0_f32).to_bits() == 0xffc01234_u32);
+static_assert(rstd::f64::from_bits(0x7ff8000000001234_u64).copysign(-0.0_f64).to_bits() ==
+              0xfff8000000001234_u64);
+
+template<typename T>
+void check_float_copysign() {
+    using Bits                  = typename T::Bits;
+    using RawBits               = typename Bits::primitive_type;
+    constexpr auto sign_mask    = RawBits(1) << (sizeof(RawBits) * 8 - 1);
+    constexpr auto nan_bits     = sizeof(RawBits) == 4 ? 0x7fc01234ull : 0x7ff8000000001234ull;
+    auto           nan          = T::from_bits(Bits(static_cast<RawBits>(nan_bits)));
+    auto           negative_nan = T::from_bits(Bits(static_cast<RawBits>(nan_bits) | sign_mask));
+
+    EXPECT_EQ(T(3.5).copysign(T(-1)), T(-3.5));
+    EXPECT_EQ(T(-3.5).copysign(T(1)), T(3.5));
+    EXPECT_EQ(T(0).copysign(T(-0.0)).to_bits(), Bits(sign_mask));
+    EXPECT_EQ(T(-0.0).copysign(T(0)).to_bits(), Bits(0));
+    EXPECT_EQ(T::INFINITY_.copysign(T(-0.0)), T::NEG_INFINITY);
+    EXPECT_EQ(T::NEG_INFINITY.copysign(T(0)), T::INFINITY_);
+    EXPECT_EQ(nan.copysign(T(-1)).to_bits(), negative_nan.to_bits());
+    EXPECT_EQ(negative_nan.copysign(T(1)).to_bits(), nan.to_bits());
+    EXPECT_EQ(T(3.5).copysign(negative_nan), T(-3.5));
+    EXPECT_EQ(T(-3.5).copysign(nan), T(3.5));
+}
+
+TEST(FloatMethods, CopySignPreservesMagnitudeAndPayload) {
+    check_float_copysign<rstd::f32>();
+    check_float_copysign<rstd::f64>();
+}
+
+template<typename T>
+void check_float_math_values() {
+    constexpr double tolerance = sizeof(typename T::primitive_type) == 4 ? 1e-6 : 1e-14;
+    EXPECT_NEAR(T(0.5).acos().to_primitive(), 1.0471975511965977, tolerance);
+    EXPECT_NEAR(T(-8).cbrt().to_primitive(), -2.0, tolerance);
+    EXPECT_NEAR(T(1).sinh().to_primitive(), 1.1752011936438014, tolerance);
+    EXPECT_NEAR(T(1).cosh().to_primitive(), 1.5430806348152437, tolerance);
+    EXPECT_NEAR(T(1).tanh().to_primitive(), 0.7615941559557649, tolerance);
+    EXPECT_NEAR(T(2).asinh().to_primitive(), 1.4436354751788103, tolerance);
+    EXPECT_NEAR(T(2).acosh().to_primitive(), 1.3169578969248167, tolerance);
+    EXPECT_NEAR(T(0.5).atanh().to_primitive(), 0.5493061443340548, tolerance);
+    EXPECT_NEAR(T(1).exp_m1().to_primitive(), 1.7182818284590452, tolerance);
+    EXPECT_NEAR(T(1).ln_1p().to_primitive(), 0.6931471805599453, tolerance);
+
+    auto tiny = T(sizeof(typename T::primitive_type) == 4 ? 1e-8 : 1e-20);
+    EXPECT_NEAR((tiny.exp_m1() / tiny).to_primitive(), 1.0, tolerance);
+    EXPECT_NEAR((tiny.ln_1p() / tiny).to_primitive(), 1.0, tolerance);
+    EXPECT_NEAR(((-tiny).exp_m1() / -tiny).to_primitive(), 1.0, tolerance);
+    EXPECT_NEAR(((-tiny).ln_1p() / -tiny).to_primitive(), 1.0, tolerance);
+    EXPECT_NEAR((tiny.asinh() / tiny).to_primitive(), 1.0, tolerance);
+    EXPECT_NEAR(T(60).sinh().asinh().to_primitive(), 60.0, tolerance * 60);
+    EXPECT_NEAR(T(60).cosh().acosh().to_primitive(), 60.0, tolerance * 60);
+}
+
+TEST(FloatMethods, RootsHyperbolicAndSmallArguments) {
+    check_float_math_values<rstd::f32>();
+    check_float_math_values<rstd::f64>();
+}
+
+template<typename T>
+void check_float_math_boundaries() {
+    auto zero              = T(0);
+    auto negative_zero     = T(-0.0);
+    auto infinity          = T::INFINITY_;
+    auto negative_infinity = T::NEG_INFINITY;
+    auto nan               = T::NAN_;
+
+    constexpr T (T::* zero_preserving_functions[])() const noexcept = {
+        &T::cbrt, &T::sinh, &T::tanh, &T::asinh, &T::atanh, &T::exp_m1, &T::ln_1p,
+    };
+    for (auto function : zero_preserving_functions) {
+        EXPECT_EQ((zero.*function)().to_bits(), zero.to_bits());
+        EXPECT_EQ((negative_zero.*function)().to_bits(), negative_zero.to_bits());
+    }
+    EXPECT_EQ(T(1).acos(), zero);
+    EXPECT_EQ(T(1).acosh(), zero);
+    EXPECT_EQ(zero.cosh(), T(1));
+    EXPECT_EQ(infinity.cbrt(), infinity);
+    EXPECT_EQ(negative_infinity.cbrt(), negative_infinity);
+    EXPECT_EQ(infinity.sinh(), infinity);
+    EXPECT_EQ(negative_infinity.sinh(), negative_infinity);
+    EXPECT_EQ(infinity.cosh(), infinity);
+    EXPECT_EQ(negative_infinity.cosh(), infinity);
+    EXPECT_EQ(infinity.tanh(), T(1));
+    EXPECT_EQ(negative_infinity.tanh(), T(-1));
+    EXPECT_EQ(infinity.asinh(), infinity);
+    EXPECT_EQ(negative_infinity.asinh(), negative_infinity);
+    EXPECT_EQ(infinity.acosh(), infinity);
+    EXPECT_EQ(T(1).atanh(), infinity);
+    EXPECT_EQ(T(-1).atanh(), negative_infinity);
+    EXPECT_EQ(infinity.exp_m1(), infinity);
+    EXPECT_EQ(negative_infinity.exp_m1(), T(-1));
+    EXPECT_EQ(infinity.ln_1p(), infinity);
+    EXPECT_EQ(T(-1).ln_1p(), negative_infinity);
+    EXPECT_TRUE(T(2).acos().is_nan());
+    EXPECT_TRUE(T(-2).acos().is_nan());
+    EXPECT_TRUE(T(0.5).acosh().is_nan());
+    EXPECT_TRUE(negative_infinity.acosh().is_nan());
+    EXPECT_TRUE(T(2).atanh().is_nan());
+    EXPECT_TRUE(T(-2).atanh().is_nan());
+    EXPECT_TRUE(infinity.atanh().is_nan());
+    EXPECT_TRUE(T(-2).ln_1p().is_nan());
+
+    constexpr T (T::* functions[])() const noexcept = {
+        &T::acos,  &T::cbrt,  &T::sinh,  &T::cosh,   &T::tanh,
+        &T::asinh, &T::acosh, &T::atanh, &T::exp_m1, &T::ln_1p,
+    };
+    for (auto function : functions) {
+        EXPECT_TRUE((nan.*function)().is_nan());
+    }
+}
+
+TEST(FloatMethods, MathDomainsAndSpecialValues) {
+    check_float_math_boundaries<rstd::f32>();
+    check_float_math_boundaries<rstd::f64>();
+}
+
 TEST(FloatFromStr, ParsesDecimalSpecialAndBoundaryValues) {
     EXPECT_EQ(rstd::from_str<rstd::f32>("1.25"_str).unwrap(), 1.25_f32);
     EXPECT_EQ(rstd::from_str<rstd::f64>("-.5e2"_str).unwrap(), -50.0_f64);
