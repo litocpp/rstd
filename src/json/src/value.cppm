@@ -62,6 +62,15 @@ private:
         return Some(rstd::move(value));
     }
 
+    static auto valid_pointer_escapes(ref<str> path) -> bool {
+        for (usize i {}; i < path.size(); ++i) {
+            if (path[i] != u8('~')) continue;
+            ++i;
+            if (i == path.size() || (path[i] != u8('0') && path[i] != u8('1'))) return false;
+        }
+        return true;
+    }
+
     static auto decode_pointer_token(ref<str> token) -> ::alloc::string::String {
         auto decoded = ::alloc::vec::Vec<u8>::with_capacity(token.size());
         for (usize i {}; i < token.size(); ++i) {
@@ -267,7 +276,7 @@ public:
         if (path.size() == usize()) {
             return Some(ref<Value>::from_raw_parts(rstd::addressof(*this)));
         }
-        if (path[usize()] != u8('/')) return None();
+        if (path[usize()] != u8('/') || ! valid_pointer_escapes(path)) return None();
 
         const Value* current = this;
         usize        start   = usize(1);
@@ -309,7 +318,7 @@ public:
         if (path.size() == usize()) {
             return Some(mut_ref<Value>::from_raw_parts(rstd::addressof(*this)));
         }
-        if (path[usize()] != u8('/')) return None();
+        if (path[usize()] != u8('/') || ! valid_pointer_escapes(path)) return None();
 
         Value* current = this;
         usize  start   = usize(1);

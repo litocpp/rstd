@@ -97,6 +97,48 @@ public:
         }
     }
 
+    /// Compares stored numeric values without rounding integers to floating point.
+    /// Unlike operator==, this ignores the storage representation and the sign of zero.
+    [[nodiscard]]
+    constexpr auto numeric_cmp(const Number& other) const noexcept -> strong_ordering {
+        if (is_f64()) {
+            if (other.is_f64()) {
+                auto left  = as_f64().unwrap();
+                auto right = other.as_f64().unwrap();
+                if (left < right) return strong_ordering::less;
+                if (left > right) return strong_ordering::greater;
+                return strong_ordering::equal;
+            }
+            auto reversed = other.numeric_cmp(*this);
+            if (reversed < 0) return strong_ordering::greater;
+            if (reversed > 0) return strong_ordering::less;
+            return strong_ordering::equal;
+        }
+        if (! other.is_f64()) {
+            if (is_u64() && other.is_u64()) return *as_u64() <=> *other.as_u64();
+            if (is_u64()) return strong_ordering::greater;
+            if (other.is_u64()) return strong_ordering::less;
+            return *as_i64() <=> *other.as_i64();
+        }
+        auto real = other.as_f64().unwrap();
+        if (is_u64()) {
+            if (real < f64()) return strong_ordering::greater;
+            if (real >= f64(0x1p64)) return strong_ordering::less;
+            auto integer  = rstd::as_cast<u64>(real);
+            auto compared = *as_u64() <=> integer;
+            if (compared != 0) return compared;
+            return real == rstd::as_cast<f64>(integer) ? strong_ordering::equal
+                                                       : strong_ordering::less;
+        }
+        if (real >= f64()) return strong_ordering::less;
+        if (real < f64(-0x1p63)) return strong_ordering::greater;
+        auto integer  = rstd::as_cast<i64>(real);
+        auto compared = *as_i64() <=> integer;
+        if (compared != 0) return compared;
+        return real == rstd::as_cast<f64>(integer) ? strong_ordering::equal
+                                                   : strong_ordering::greater;
+    }
+
     friend constexpr auto operator==(const Number& left, const Number& right) noexcept -> bool {
         if (left.value_.index() != right.value_.index()) return false;
         switch (left.value_.index()) {

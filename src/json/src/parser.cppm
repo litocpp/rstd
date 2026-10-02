@@ -14,6 +14,8 @@ struct ParseOptions {
     bool allow_comments { false };
     /// Rejects repeated keys in the same object when enabled.
     bool reject_duplicate_keys { false };
+    /// Rejects integer tokens outside i64/u64 instead of converting them to f64.
+    bool reject_integer_overflow { false };
 };
 
 /// Parses one JSON value from UTF-8 text.

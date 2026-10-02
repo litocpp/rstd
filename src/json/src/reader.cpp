@@ -289,6 +289,7 @@ auto JsonReader::parse_number() -> Result<rstd::json::Number, rstd::json::Error>
         magnitude = magnitude * u64(10) + value;
     }
     if (overflow) {
+        if (options_.reject_integer_overflow) return Err(error(ErrorCode::NumberOutOfRange));
         return parse_float(integer,
                            rstd::parse::Span { .begin = integer.end, .end = integer.end },
                            i32(),
@@ -303,6 +304,7 @@ auto JsonReader::parse_number() -> Result<rstd::json::Number, rstd::json::Error>
     }
     const u64 min_magnitude = rstd::as_cast<u64>(i64::MAX) + u64(1);
     if (magnitude > min_magnitude) {
+        if (options_.reject_integer_overflow) return Err(error(ErrorCode::NumberOutOfRange));
         return parse_float(integer,
                            rstd::parse::Span { .begin = integer.end, .end = integer.end },
                            i32(),

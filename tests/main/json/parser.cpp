@@ -169,6 +169,22 @@ TEST(JsonParser, EnforcesRecursionLimitAtContainerStart) {
     EXPECT_EQ(error.column(), usize(128));
 }
 
+TEST(JsonParser, RejectsIntegerOverflowWhenRequested) {
+    rstd::json::ParseOptions exact { .reject_integer_overflow = true };
+    auto                     unsigned_max = rstd::json::from_str("18446744073709551615"_str, exact);
+    auto                     signed_min   = rstd::json::from_str("-9223372036854775808"_str, exact);
+    ASSERT_TRUE(unsigned_max.is_ok());
+    ASSERT_TRUE(signed_min.is_ok());
+    EXPECT_EQ(unsigned_max->as_u64(), Some(u64::MAX));
+    EXPECT_EQ(signed_min->as_i64(), Some(i64::MIN));
+    EXPECT_TRUE(rstd::json::from_str("18446744073709551616"_str, exact).is_err());
+    EXPECT_TRUE(rstd::json::from_str("-9223372036854775809"_str, exact).is_err());
+    EXPECT_TRUE(rstd::json::from_str("1e20"_str, exact).unwrap().is_f64());
+    EXPECT_TRUE(rstd::json::from_str("-0"_str, exact).unwrap().is_f64());
+    EXPECT_TRUE(parse("18446744073709551616"_str).unwrap().is_f64());
+    EXPECT_TRUE(parse("-9223372036854775809"_str).unwrap().is_f64());
+}
+
 TEST(JsonParser, SliceAndFromStrTraitReuseParser) {
     auto from_slice = rstd::json::from_slice("[1,2]"_bytes);
     auto from_trait = rstd::from_str<Value>("[1,2]"_str);

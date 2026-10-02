@@ -108,6 +108,22 @@ TEST(JsonValue, JsonPointerFollowsRfc6901Tokens) {
     EXPECT_EQ(**value.pointer("/foo/1"_str), "changed"_str);
 }
 
+TEST(JsonValue, RejectsInvalidPointerEscapes) {
+    auto value = rstd::json::from_str(R"({"a~2":1,"a~":2,"~1":3,"":4,"items":[5]})"_str).unwrap();
+    EXPECT_TRUE(value.pointer("/a~2"_str).is_none());
+    EXPECT_TRUE(value.pointer_mut("/a~2"_str).is_none());
+    EXPECT_TRUE(value.pointer("/a~"_str).is_none());
+    EXPECT_TRUE(value.pointer_mut("/a~"_str).is_none());
+    EXPECT_EQ(**value.pointer("/a~02"_str), 1);
+    EXPECT_EQ(**value.pointer("/a~0"_str), 2);
+    EXPECT_EQ(**value.pointer("/~01"_str), 3);
+    **value.pointer_mut("/~01"_str) = Value::Bool(true);
+    EXPECT_EQ(**value.pointer("/~01"_str), true);
+    EXPECT_EQ(**value.pointer("/"_str), 4);
+    EXPECT_TRUE(value.pointer_mut("/items/00"_str).is_none());
+    EXPECT_TRUE(value.pointer_mut("/items/-"_str).is_none());
+}
+
 TEST(JsonValue, PrimitiveConversionsDoNotUseSerialization) {
     auto integer = rstd::Impl<rstd::convert::From<i32>, Value>::from(i32(-9));
     auto text    = rstd::Impl<rstd::convert::From<rstd::ref<rstd::str>>, Value>::from("text"_str);
