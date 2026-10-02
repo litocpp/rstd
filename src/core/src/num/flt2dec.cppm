@@ -11,6 +11,7 @@ export template<typename T>
 concept Float = mtp::any<T, f32, f64>;
 
 export enum class Category : rstd::uint8_t { Nan, Infinite, Zero, Finite };
+export enum class TieBreaking : rstd::uint8_t { AwayFromZero, ToEven };
 
 export constexpr rstd::size_t MAX_SIG_DIGITS = 17;
 export constexpr rstd::size_t DIGIT_CAPACITY = 1024;
@@ -214,7 +215,7 @@ struct Digits {
     rstd::int16_t exponent;
 };
 
-auto format_shortest(Decoded const& decoded, rstd::uint8_t* buffer) -> Digits {
+auto format_shortest(Decoded const& decoded, rstd::uint8_t* buffer, TieBreaking ties) -> Digits {
     rstd::int16_t k = estimate_scaling_factor(decoded.mant + decoded.plus, decoded.exponent);
 
     FloatBig mant  = FloatBig::from_u64(decoded.mant);
@@ -276,7 +277,9 @@ auto format_shortest(Decoded const& decoded, rstd::uint8_t* buffer) -> Digits {
 
     FloatBig twice_mant = mant;
     twice_mant.mul_pow2(1);
-    if (up && (! down || twice_mant.compare(scale) >= 0)) {
+    const auto comparison = twice_mant.compare(scale);
+    const bool round_tie  = ties == TieBreaking::AwayFromZero || (buffer[len - 1] & 1) != 0;
+    if (up && (! down || comparison > 0 || (comparison == 0 && round_tie))) {
         if (const rstd::uint8_t carry = round_up(buffer, len); carry != 0) {
             buffer[len++] = carry;
             ++k;
@@ -371,11 +374,11 @@ namespace rstd::num::flt2dec
 {
 
 export template<Float T>
-auto shortest(T value) -> ShortestDecimal {
+auto shortest(T value, TieBreaking ties = TieBreaking::AwayFromZero) -> ShortestDecimal {
     const auto decoded = decode(value);
     auto       result  = make_decimal<MAX_SIG_DIGITS>(decoded);
     if (decoded.category == Category::Finite) {
-        const auto digits = format_shortest(decoded.finite, result.digits.data());
+        const auto digits = format_shortest(decoded.finite, result.digits.data(), ties);
         result.len        = digits.len;
         result.exponent   = digits.exponent;
     }
