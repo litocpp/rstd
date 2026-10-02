@@ -101,15 +101,18 @@ public:
     constexpr auto position(usize offset) const noexcept -> SourcePosition {
         return { line_, offset - line_start_ + usize(1) };
     }
-    constexpr void advance(slice<u8> bytes, usize start) noexcept {
+    template<typename T>
+    constexpr void advance(slice<T> bytes, usize start) noexcept
+        requires(mtp::same_as<T, u8> || mtp::same_as<T, u16>)
+    {
         for (usize index {}; index < bytes.len(); ++index) {
             auto value  = bytes[index];
             auto offset = start + index;
-            if (value == u8('\r')) {
+            if (value == T('\r')) {
                 ++line_;
                 line_start_      = offset + usize(1);
                 carriage_return_ = true;
-            } else if (value == u8('\n')) {
+            } else if (value == T('\n')) {
                 if (! carriage_return_ || line_start_ != offset) ++line_;
                 line_start_      = offset + usize(1);
                 carriage_return_ = false;
@@ -235,7 +238,7 @@ public:
     }
 
     constexpr auto source_position(usize offset) const noexcept -> SourcePosition
-        requires mtp::same_as<T, u8>
+        requires(mtp::same_as<T, u8> || mtp::same_as<T, u16>)
     {
         if (offset > input_.values().len()) rstd::panic("parse source offset is out of bounds");
         if constexpr (mtp::same_as<Position, LinePosition>) {
@@ -246,7 +249,7 @@ public:
             // Preserve LF-only diagnostics for existing untracked text parsers.
             auto result = SourcePosition {};
             for (usize index {}; index < offset; ++index) {
-                if (input_.values()[index] == u8('\n')) {
+                if (input_.values()[index] == T('\n')) {
                     ++result.line;
                     result.column = usize(1);
                 } else {
@@ -258,7 +261,7 @@ public:
     }
 
     constexpr auto source_position() const noexcept -> SourcePosition
-        requires mtp::same_as<T, u8>
+        requires(mtp::same_as<T, u8> || mtp::same_as<T, u16>)
     {
         if constexpr (mtp::same_as<Position, LinePosition>)
             return tracking_.position(position_);

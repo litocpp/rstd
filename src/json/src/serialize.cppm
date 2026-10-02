@@ -3,6 +3,7 @@ module;
 
 export module rstd.json:serialize;
 export import :value;
+import :string;
 export import rstd.serde;
 
 export namespace rstd::json
@@ -51,45 +52,8 @@ class Emitter {
     }
 
     auto write_string(ref<str> value) -> bool {
-        if (! write_byte(u8('"'))) return false;
-        static constexpr auto HEX = "0123456789abcdef"_str;
-        usize                 chunk_start {};
-        auto                  flush_chunk = [&](usize end) {
-            if (chunk_start == end) return true;
-            return write(ref<str>::from_raw_parts_unchecked(
-                value.data() + chunk_start.to_primitive(), end - chunk_start));
-        };
-
-        for (usize i {}; i < value.size(); ++i) {
-            const u8 byte = value[i];
-            ref<str> replacement;
-            switch (byte.to_primitive()) {
-            case '"': replacement = "\\\""_str; break;
-            case '\\': replacement = "\\\\"_str; break;
-            case '\b': replacement = "\\b"_str; break;
-            case '\f': replacement = "\\f"_str; break;
-            case '\n': replacement = "\\n"_str; break;
-            case '\r': replacement = "\\r"_str; break;
-            case '\t': replacement = "\\t"_str; break;
-            default:
-                if (byte < u8(0x20)) {
-                    if (! flush_chunk(i)) return false;
-                    auto escape =
-                        rstd::array<u8, 6> { u8('\\'),
-                                             u8('u'),
-                                             u8('0'),
-                                             u8('0'),
-                                             HEX[usize((byte >> u64(4)).to_primitive())],
-                                             HEX[usize((byte & u8(0x0f)).to_primitive())] };
-                    if (! write(rstd::str_::from_utf8_unchecked(escape.as_slice()))) return false;
-                    chunk_start = i + usize(1);
-                }
-                continue;
-            }
-            if (! flush_chunk(i) || ! write(replacement)) return false;
-            chunk_start = i + usize(1);
-        }
-        return flush_chunk(value.size()) && write_byte(u8('"'));
+        auto quoted = rstd::json::quote_string(value);
+        return write(quoted.as_str());
     }
 
     template<typename T>

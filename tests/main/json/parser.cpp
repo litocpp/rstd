@@ -1,6 +1,7 @@
 #include <rstd/test/gtest.hpp>
 
 import rstd.json;
+import rstd.parse.core;
 
 using namespace rstd::prelude;
 using namespace rstd::literals;
@@ -243,4 +244,129 @@ TEST(JsonParser, MatchesReferenceEofAndControlPositions) {
 
     auto overflow = parse("1e400"_str).unwrap_err();
     EXPECT_EQ(overflow.column(), usize(5));
+}
+
+TEST(JsonReader, PreservesUtf16CodeUnitsAndTextualMemberOrder) {
+    rstd::json::Reader reader(R"({"z":"\ud800x\udc00","a":"雪😀","z":-0})"_str);
+    ASSERT_TRUE(reader.begin_object().is_ok());
+    bool first = true;
+    auto key   = reader.next_object_key_units(first).unwrap().unwrap();
+    ASSERT_EQ(key.len(), usize(1));
+    EXPECT_EQ(key[usize()], u16('z'));
+    auto units = reader.parse_string_units().unwrap();
+    ASSERT_EQ(units.len(), usize(3));
+    EXPECT_EQ(units[usize()], u16(0xd800));
+    EXPECT_EQ(units[usize(1)], u16('x'));
+    EXPECT_EQ(units[usize(2)], u16(0xdc00));
+    EXPECT_EQ(reader.next_object_key(first).unwrap().unwrap().as_str(), "a"_str);
+    units = reader.parse_string_units().unwrap();
+    ASSERT_EQ(units.len(), usize(3));
+    EXPECT_EQ(units[usize()], u16(0x96ea));
+    EXPECT_EQ(units[usize(1)], u16(0xd83d));
+    EXPECT_EQ(units[usize(2)], u16(0xde00));
+    EXPECT_EQ(reader.next_object_key(first).unwrap().unwrap().as_str(), "z"_str);
+    EXPECT_TRUE(reader.parse_f64().unwrap().is_sign_negative());
+    EXPECT_TRUE(reader.next_object_key(first).unwrap().is_none());
+    EXPECT_TRUE(reader.finish().is_ok());
+}
+
+TEST(JsonReader, BorrowsUtf16AndEscapesWithoutNormalizingSurrogates) {
+    rstd::array<u16, 5> input { u16('"'), u16(0xd800), u16('x'), u16(0xdc00), u16('"') };
+    rstd::json::Reader  reader(input.as_slice());
+    auto                decoded = reader.parse_string_units().unwrap();
+    ASSERT_EQ(decoded.len(), usize(3));
+    EXPECT_EQ(decoded[usize()], u16(0xd800));
+    EXPECT_EQ(decoded[usize(1)], u16('x'));
+    EXPECT_EQ(decoded[usize(2)], u16(0xdc00));
+    EXPECT_TRUE(reader.finish().is_ok());
+    rstd::json::Reader strict(input.as_slice());
+    EXPECT_EQ(strict.parse_string().unwrap_err().code(),
+              rstd::json::ErrorCode::InvalidUnicodeCodePoint);
+}
+
+TEST(JsonReader, FloatOverflowIsExplicitAndGrammarRemainsStrict) {
+    using rstd::json::FloatOverflow;
+    rstd::json::Reader finite("1e400"_str);
+    EXPECT_EQ(finite.parse_f64().unwrap_err().code(), rstd::json::ErrorCode::NumberOutOfRange);
+    rstd::json::Reader positive("1e400"_str);
+    EXPECT_EQ(positive.parse_f64(FloatOverflow::Infinity).unwrap(), f64::INFINITY_);
+    rstd::array<u16, 6> negative_input {
+        u16('-'), u16('1'), u16('e'), u16('4'), u16('0'), u16('0')
+    };
+    rstd::json::Reader negative(negative_input.as_slice());
+    EXPECT_EQ(negative.parse_f64(FloatOverflow::Infinity).unwrap(), f64::NEG_INFINITY);
+    EXPECT_TRUE(negative.finish().is_ok());
+    rstd::json::Reader invalid("01"_str);
+    EXPECT_EQ(invalid.parse_f64(FloatOverflow::Infinity).unwrap_err().code(),
+              rstd::json::ErrorCode::InvalidNumber);
+    rstd::json::Reader rounded("9007199254740993"_str);
+    EXPECT_EQ(rounded.parse_f64().unwrap(), f64(9007199254740992.0));
+    rstd::json::Reader subnormal("2.4703282292062328e-324"_str);
+    EXPECT_EQ(rstd::bit_cast<u64>(subnormal.parse_f64().unwrap()), u64(1));
+}
+
+TEST(JsonReader, ReportsOffsetsAndConfigurableRecursionBudget) {
+    rstd::array<u16, 6> input { u16('['), u16('\n'), u16(' '), u16('1'), u16(','), u16(']') };
+    rstd::json::Reader  reader(input.as_slice());
+    auto                error = reader.skip_value().unwrap_err();
+    EXPECT_EQ(error.code(), rstd::json::ErrorCode::TrailingComma);
+    EXPECT_EQ(error.offset(), usize(5));
+    EXPECT_EQ(error.line(), usize(2));
+    EXPECT_EQ(error.column(), usize(4));
+    rstd::json::Reader limited("[[0]]"_str, { .max_depth = usize(2) });
+    auto               limit = limited.skip_value().unwrap_err();
+    EXPECT_TRUE(limit.is_limit());
+    EXPECT_EQ(limit.offset(), usize(1));
+    EXPECT_TRUE(rstd::json::from_str("[[0]]"_str, { .max_depth = usize(3) }).is_ok());
+    rstd::json::Reader zero("[]"_str, { .max_depth = usize() });
+    EXPECT_TRUE(zero.begin_array().unwrap_err().is_limit());
+}
+
+TEST(JsonReader, Utf16CursorTracksLineEndingsAndRewinds) {
+    rstd::array<u16, 6> input { u16('a'), u16('\r'), u16('\n'), u16(0xd800), u16('\n'), u16('b') };
+    rstd::parse::Cursor<u16, rstd::parse::LinePosition> cursor { rstd::parse::Input<u16>(
+        input.as_slice()) };
+    ASSERT_TRUE(cursor.advance(usize(3)));
+    auto checkpoint = cursor.checkpoint();
+    EXPECT_EQ(cursor.source_position(), (rstd::parse::SourcePosition { usize(2), usize(1) }));
+    ASSERT_TRUE(cursor.advance(usize(2)));
+    EXPECT_EQ(cursor.source_position(), (rstd::parse::SourcePosition { usize(3), usize(1) }));
+    cursor.rewind(checkpoint);
+    EXPECT_EQ(cursor.source_position(), (rstd::parse::SourcePosition { usize(2), usize(1) }));
+    EXPECT_EQ(cursor.source_position(usize(6)),
+              (rstd::parse::SourcePosition { usize(3), usize(2) }));
+}
+
+TEST(JsonReader, CombinesRawAndEscapedUtf16SurrogatesForScalarStrings) {
+    rstd::array<u16, 9> input { u16('"'), u16(0xd83d), u16('\\'), u16('u'), u16('d'),
+                                u16('e'), u16('0'),    u16('0'),  u16('"') };
+    rstd::json::Reader  reader(input.as_slice());
+    EXPECT_EQ(reader.parse_string().unwrap().as_str(), "😀"_str);
+    EXPECT_TRUE(reader.finish().is_ok());
+    rstd::array<u16, 13> object { u16('{'), u16('"'), u16(0xd83d), u16('\\'), u16('u'),
+                                  u16('d'), u16('e'), u16('0'),    u16('0'),  u16('"'),
+                                  u16(':'), u16('0'), u16('}') };
+    rstd::json::Reader   map(object.as_slice());
+    ASSERT_TRUE(map.begin_object().is_ok());
+    bool first = true;
+    EXPECT_EQ(map.next_object_key(first).unwrap().unwrap().as_str(), "😀"_str);
+    EXPECT_TRUE(map.parse_f64().is_ok());
+    EXPECT_TRUE(map.next_object_key(first).unwrap().is_none());
+}
+
+TEST(JsonReader, LongSignificandCanCancelLargeExponent) {
+    auto input = ::alloc::string::String::make("1"_str);
+    for (usize index {}; index < usize(10001); ++index) input.push(U'0');
+    input.push_str("e-10001"_str);
+    rstd::json::Reader reader(input.as_str());
+    EXPECT_EQ(reader.parse_f64().unwrap(), f64(1.0));
+    EXPECT_EQ(rstd::json::from_str(input.as_str()).unwrap().as_f64(), Some(f64(1.0)));
+}
+
+TEST(JsonParser, ReportsTheInvalidUtf8ByteOffset) {
+    auto error = rstd::json::from_slice("null\n\xff"_bytes).unwrap_err();
+    EXPECT_EQ(error.code(), rstd::json::ErrorCode::InvalidUnicodeCodePoint);
+    EXPECT_EQ(error.offset(), usize(5));
+    EXPECT_EQ(error.line(), usize(2));
+    EXPECT_EQ(error.column(), usize(1));
 }

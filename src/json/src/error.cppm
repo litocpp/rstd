@@ -4,6 +4,13 @@ import rstd.alloc;
 
 using namespace rstd::prelude;
 
+class Parser;
+
+export namespace rstd::json
+{
+
+class Reader;
+
 enum class ErrorCode : rstd::uint8_t
 {
     EofWhileParsingList,
@@ -30,12 +37,6 @@ enum class ErrorCode : rstd::uint8_t
     RecursionLimitExceeded,
 };
 
-class Parser;
-class JsonReader;
-
-export namespace rstd::json
-{
-
 /// The broad category of a JSON parse error.
 enum class Category : rstd::uint8_t
 {
@@ -48,16 +49,24 @@ class Error {
     ErrorCode code_;
     usize     line_;
     usize     column_;
+    usize     offset_;
 
-    constexpr Error(ErrorCode code, usize line, usize column) noexcept
-        : code_(code), line_(line), column_(column) {}
+    constexpr Error(ErrorCode code, usize line, usize column, usize offset = usize()) noexcept
+        : code_(code), line_(line), column_(column), offset_(offset) {}
 
     friend class ::Parser;
-    friend class ::JsonReader;
+    friend class Reader;
     template<typename, typename>
     friend struct rstd::Impl;
 
 public:
+    constexpr auto code() const noexcept -> ErrorCode { return code_; }
+    /// Returns the byte or UTF-16 code-unit offset at the failure.
+    constexpr auto offset() const noexcept -> usize { return offset_; }
+    constexpr auto is_limit() const noexcept -> bool {
+        return code_ == ErrorCode::RecursionLimitExceeded;
+    }
+
     /// Returns the one-based line containing the error.
     [[nodiscard]]
     constexpr auto line() const noexcept -> usize {
@@ -95,6 +104,8 @@ public:
 };
 
 } // namespace rstd::json
+
+using ErrorCode = rstd::json::ErrorCode;
 
 namespace rstd
 {

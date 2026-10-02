@@ -1,6 +1,7 @@
 module rstd.json;
 import :parser;
 import :reader;
+import rstd.parse.core;
 
 using namespace rstd::prelude;
 using namespace rstd::json;
@@ -46,8 +47,10 @@ class Parser {
 public:
     explicit Parser(ref<str> input, ParseOptions options = {}) noexcept: reader_(input, options) {}
 
-    static auto invalid_unicode_error() noexcept -> Error {
-        return Error(ErrorCode::InvalidUnicodeCodePoint, usize(1), usize(1));
+    static auto invalid_unicode_error(slice<u8> input, usize offset) noexcept -> Error {
+        rstd::parse::TextCursor cursor { rstd::parse::Input<u8>(input) };
+        auto                    location = cursor.source_position(offset);
+        return Error(ErrorCode::InvalidUnicodeCodePoint, location.line, location.column, offset);
     }
 
     auto parse_value() -> ParseResult {
@@ -106,7 +109,8 @@ auto from_slice(slice<u8> input) -> ParseResult {
 
 auto from_slice(slice<u8> input, ParseOptions options) -> ParseResult {
     auto text = str_::from_utf8(input);
-    if (text.is_err()) return Err(Parser::invalid_unicode_error());
+    if (text.is_err())
+        return Err(Parser::invalid_unicode_error(input, text.unwrap_err_unchecked().valid_up_to()));
     return from_str(rstd::move(text).unwrap_unchecked(), options);
 }
 

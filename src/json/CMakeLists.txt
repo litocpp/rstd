@@ -18,6 +18,7 @@ target_sources(
          src/value.cppm
          src/parser.cppm
          src/reader.cppm
+         src/string.cppm
          src/serialize.cppm
          src/typed.cppm
          src/direct.cppm)

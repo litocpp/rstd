@@ -58,3 +58,27 @@ TEST(JsonSerialize, DisplayUsesTheSameEmitter) {
     EXPECT_EQ(text(rstd::format("{}", value)), R"({"a":[1]})");
     EXPECT_EQ(text(rstd::format("{:#}", value)), "{\n  \"a\": [\n    1\n  ]\n}");
 }
+
+TEST(JsonSerialize, QuotesUtf16AndRoundTripsEveryCodeUnit) {
+    rstd::array<u16, 9> units { u16(0xd800), u16('x'), u16(0xdc00), u16(0xd83d), u16(0xde00),
+                                u16('\n'),   u16(),    u16('"'),    u16('\\') };
+    auto                quoted = quote_string(units.as_slice());
+    const auto          prefix = "\"\\ud800x\\udc00"_str;
+    for (usize index {}; index < prefix.size(); ++index)
+        EXPECT_EQ(quoted[index], rstd::as_cast<u16>(prefix[index]));
+    EXPECT_EQ(quoted[usize(14)], u16(0xd83d));
+    EXPECT_EQ(quoted[usize(15)], u16(0xde00));
+    rstd::json::Reader reader(quoted.as_slice());
+    auto               decoded = reader.parse_string_units().unwrap();
+    ASSERT_EQ(decoded.len(), units.as_slice().len());
+    for (usize index {}; index < decoded.len(); ++index) EXPECT_EQ(decoded[index], units[index]);
+    EXPECT_TRUE(reader.finish().is_ok());
+    rstd::array all = rstd::array<u16, 65536> {};
+    for (usize index {}; index < all.as_slice().len(); ++index)
+        all[index] = rstd::as_cast<u16>(index);
+    auto               exhaustive = quote_string(all.as_slice());
+    rstd::json::Reader exhaustive_reader(exhaustive.as_slice());
+    auto               roundtrip = exhaustive_reader.parse_string_units().unwrap();
+    ASSERT_EQ(roundtrip.len(), all.as_slice().len());
+    for (usize index {}; index < roundtrip.len(); ++index) ASSERT_EQ(roundtrip[index], all[index]);
+}

@@ -16,6 +16,8 @@ struct ParseOptions {
     bool reject_duplicate_keys { false };
     /// Rejects integer tokens outside i64/u64 instead of converting them to f64.
     bool reject_integer_overflow { false };
+    /// Sets the recursion budget, including the outermost value.
+    usize max_depth { 128 };
 };
 
 /// Parses one JSON value from UTF-8 text.
