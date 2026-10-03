@@ -2,6 +2,8 @@ import rstd;
 
 using namespace rstd::literals;
 
+int test_aligned_new();
+
 [[gnu::noinline]]
 auto initial_value() noexcept -> rstd::i32 {
     return rstd::i32(42);
@@ -21,5 +23,5 @@ int main() {
     values.insert(rstd::i32(7), rstd::i32(11));
     auto value = values.get(rstd::i32(7));
     if (value.is_none() || **value != rstd::i32(11)) return 3;
-    return 0;
+    return test_aligned_new();
 }

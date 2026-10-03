@@ -3,7 +3,7 @@ name = "rstd-nostd-tests"
 
 [[test]]
 name = "rstd-nostd-tests"
-sources = ["main.cpp"]
+sources = ["main.cpp", "aligned_new.cpp"]
 link-stdlib = false
 
 [dependencies]
