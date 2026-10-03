@@ -12,6 +12,7 @@ export import :async.io;
 export import :async.io_operation;
 export import :async.reactor;
 export import :async.notify;
+export import :async.signal;
 export import :async.completion;
 export import :async.completion_queue;
 export import :async.spawn;

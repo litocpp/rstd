@@ -19,6 +19,7 @@ export import :async;
 export import :net;
 export import :os;
 export import :process;
+export import :signal;
 export import :env;
 export import :alloc;
 #endif

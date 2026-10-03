@@ -148,6 +148,9 @@ target_sources(
          src/error.cppm
          src/panicking.cppm
          src/process/mod.cppm
+         src/signal/mod.cppm
+         src/sys/signal/mod.cppm
+         src/async/signal.cppm
          src/process/exit_status.cppm
          src/process/command.cppm
          src/env.cppm
@@ -265,6 +268,8 @@ target_sources(
           src/net/tcp.cpp
           src/lib.cpp
           src/process/mod.cpp
+          src/signal/mod.cpp
+          src/sys/signal/mod.cpp
           src/fs/mod.cpp
           src/env.cpp
           src/os/fd.cpp

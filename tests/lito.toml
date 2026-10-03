@@ -7,4 +7,5 @@ members = [
   "compile",
   "nostd",
   "toml",
+  "signal",
 ]
