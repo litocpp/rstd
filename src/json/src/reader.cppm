@@ -93,6 +93,9 @@ public:
     auto reject_duplicate_keys() const noexcept -> bool { return options_.reject_duplicate_keys; }
 };
 
+/// Consumes one DOM value from an existing reader without finishing its enclosing document.
+auto read_value(Reader& reader) -> ParseResult;
+
 } // namespace rstd::json
 
 using JsonReader    = rstd::json::Reader;

@@ -176,3 +176,25 @@ TEST(JsonTyped, MissingAndUnknownFieldsAreOwnedByExplicitImpl) {
     EXPECT_EQ(unknown.unwrap_err().data_error()->get().kind(),
               rstd::serde::ErrorKind::UnknownField);
 }
+TEST(JsonTyped, DynamicValuesComposeWithTypedMaps) {
+    auto input =
+        R"({"data":{"integer":18446744073709551615,"values":[null,true,-3,0.5,"text"]}})"_str;
+    auto decoded = rstd::json::decode_direct<rstd::json::Map>(input);
+    ASSERT_TRUE(decoded.is_ok());
+    auto& value = decoded->get("data"_str).unwrap().get();
+    EXPECT_TRUE(value.get("integer"_str)->get().as_u64().unwrap() == rstd::u64::MAX);
+    auto encoded = rstd::json::encode_direct(*decoded);
+    ASSERT_TRUE(encoded.is_ok());
+    auto roundtrip = rstd::json::from_str(encoded->as_str()).unwrap();
+    EXPECT_TRUE(roundtrip == rstd::json::from_str(input).unwrap());
+    auto dom = rstd::json::decode_value<rstd::json::Map>(roundtrip);
+    ASSERT_TRUE(dom.is_ok());
+    EXPECT_TRUE(rstd::json::to_value(*dom).unwrap() == roundtrip);
+    EXPECT_TRUE(rstd::json::decode_direct<rstd::json::Value>("[0] trailing"_str).is_err());
+    EXPECT_TRUE(
+        rstd::json::decode_direct<rstd::json::Value>("[[0]]"_str, { .max_depth = rstd::usize(1) })
+            .is_err());
+    EXPECT_TRUE(rstd::json::decode_direct<rstd::json::Value>(R"({"x":1,"x":2})"_str,
+                                                             { .reject_duplicate_keys = true })
+                    .is_err());
+}

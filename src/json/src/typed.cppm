@@ -267,6 +267,8 @@ public:
     ValueDeserializer(const Value& value, serde::DataPath path)
         : value_(ref<Value>::from_raw_parts(rstd::addressof(value))), path_(rstd::move(path)) {}
 
+    auto deserialize_json_value() -> Result<Value, serde::Error> { return Ok(value_->clone()); }
+
     auto deserialize_bool() -> Result<bool, serde::Error> {
         auto value = value_->as_bool();
         if (value.is_none()) return Err(mismatch(serde::ValueKind::Boolean));
@@ -606,6 +608,35 @@ auto decode(ref<str> input, ParseOptions options = {}) -> Result<T, DecodeError>
 
 namespace rstd
 {
+
+template<>
+struct Impl<serde::Deserialize, json::Value> {
+    template<typename Deserializer>
+        requires requires(Deserializer& input) { input.deserialize_json_value(); }
+    static auto deserialize(Deserializer& input)
+        -> Result<json::Value, typename Deserializer::error_type> {
+        return input.deserialize_json_value();
+    }
+};
+
+template<>
+struct Impl<serde::Serialize, json::Value> {
+    template<typename Serializer>
+    static auto serialize(Serializer& output, const json::Value& value) ->
+        typename Serializer::result_type {
+        if (value.is_null()) return output.serialize_unit();
+        if (value.is_boolean()) return output.serialize_bool(*value.as_bool());
+        if (value.is_string()) return output.serialize_string(*value.as_str());
+        if (value.is_number()) {
+            auto number = value.as_number().unwrap();
+            if (number->is_u64()) return output.serialize_u64(*number->as_u64());
+            if (number->is_f64()) return output.serialize_f64(*number->as_f64());
+            return output.serialize_i64(*number->as_i64());
+        }
+        if (value.is_array()) return serde::serialize(output, value.as_array()->get());
+        return serde::serialize(output, value.as_object()->get());
+    }
+};
 
 template<>
 struct Impl<fmt::Display, json::DecodeError> : ImplBase<json::DecodeError> {

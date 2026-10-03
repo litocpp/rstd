@@ -68,6 +68,10 @@ public:
     DirectDeserializer(JsonReader& reader, serde::DataPath path)
         : reader_(rstd::addressof(reader)), path_(rstd::move(path)) {}
 
+    auto deserialize_json_value() -> Result<Value, serde::Error> {
+        return syntax(read_value(*reader_));
+    }
+
     auto deserialize_unit() -> Result<empty, serde::Error> {
         auto kind = reader_->value_kind();
         if (kind.is_err()) {

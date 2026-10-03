@@ -8,7 +8,7 @@ using namespace rstd::json;
 using namespace rstd::literals;
 
 class Parser {
-    JsonReader reader_;
+    JsonReader& reader_;
 
     auto parse_array() -> ParseResult {
         auto begun = reader_.begin_array();
@@ -45,7 +45,7 @@ class Parser {
     }
 
 public:
-    explicit Parser(ref<str> input, ParseOptions options = {}) noexcept: reader_(input, options) {}
+    explicit Parser(JsonReader& reader) noexcept: reader_(reader) {}
 
     static auto invalid_unicode_error(slice<u8> input, usize offset) noexcept -> Error {
         rstd::parse::TextCursor cursor { rstd::parse::Input<u8>(input) };
@@ -96,11 +96,16 @@ namespace rstd::json
 {
 
 auto from_str(ref<str> input) -> ParseResult {
-    return Parser(input).parse();
+    return from_str(input, {});
 }
 
 auto from_str(ref<str> input, ParseOptions options) -> ParseResult {
-    return Parser(input, options).parse();
+    JsonReader reader(input, options);
+    return Parser(reader).parse();
+}
+
+auto read_value(Reader& reader) -> ParseResult {
+    return Parser(reader).parse_value();
 }
 
 auto from_slice(slice<u8> input) -> ParseResult {
