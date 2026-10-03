@@ -83,7 +83,15 @@ class TomlEmitter {
     void write_string(ref<str> value) {
         static constexpr auto HEX = "0123456789abcdef"_str;
         write_ascii('"');
-        for (auto current : value.as_bytes()) {
+        usize start {};
+        for (auto [index, current] : value.bytes().enumerate()) {
+            if (current >= u8(0x20) && current != u8(0x7f) && current != u8('"') &&
+                current != u8('\\')) {
+                continue;
+            }
+            // ASCII escape boundaries never split a UTF-8 code point.
+            write(value.get(start, index).unwrap());
+            start = index + usize(1);
             switch (current.to_primitive()) {
             case '"': write("\\\""_str); break;
             case '\\': write("\\\\"_str); break;
@@ -93,17 +101,14 @@ class TomlEmitter {
             case '\f': write("\\f"_str); break;
             case '\r': write("\\r"_str); break;
             default:
-                if (current < u8(0x20) || current == u8(0x7f)) {
-                    write("\\u00"_str);
-                    write_ascii(
-                        static_cast<char>(HEX[usize(current.to_primitive() >> 4)].to_primitive()));
-                    write_ascii(static_cast<char>(
-                        HEX[usize(current.to_primitive() & 0x0f)].to_primitive()));
-                } else {
-                    output_.push_ascii(current);
-                }
+                write("\\u00"_str);
+                write_ascii(
+                    static_cast<char>(HEX[usize(current.to_primitive() >> 4)].to_primitive()));
+                write_ascii(
+                    static_cast<char>(HEX[usize(current.to_primitive() & 0x0f)].to_primitive()));
             }
         }
+        write(value.get(start, value.len()).unwrap());
         write_ascii('"');
     }
 

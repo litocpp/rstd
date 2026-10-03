@@ -148,3 +148,64 @@ TEST(TomlSerialize, EncodesDottedKeys) {
     EXPECT_EQ(rstd::toml::to_key_string(*key).as_str(),
               R"(patch."https://example.com/a=b".path)"_str);
 }
+
+TEST(TomlSerialize, EncodesUtf8StringsWithEscapes) {
+    struct Case {
+        ref<str> value;
+        ref<str> encoded;
+    };
+    const Case cases[] = {
+        { ""_str, R"("")"_str },
+        { "ascii"_str, R"("ascii")"_str },
+        { "é中文😀"_str, R"("é中文😀")"_str },
+        { "\n中文\t😀\r"_str, R"("\n中文\t😀\r")"_str },
+        { "é\"\\中\b\f文"_str, R"("é\"\\中\b\f文")"_str },
+        { "\x00中\x01文\x1f😀\x7f"_str, R"("\u0000中\u0001文\u001f😀\u007f")"_str },
+    };
+    for (const auto& item : cases) {
+        auto value   = rstd::toml::Value::String(String::make(item.value));
+        auto encoded = rstd::toml::to_value_string(value);
+        ASSERT_TRUE(encoded.is_ok());
+        EXPECT_EQ(encoded->as_str(), item.encoded);
+        auto document = rstd::format("value = {}\n", encoded->as_str());
+        auto parsed   = rstd::toml::from_str(document.as_str());
+        ASSERT_TRUE(parsed.is_ok());
+        EXPECT_EQ(**parsed->get("value"_str), value);
+    }
+}
+
+TEST(TomlSerialize, RoundTripsUtf8KeysAndDocuments) {
+    auto parsed = rstd::toml::from_str(R"(
+"中文\n键" = "é中文😀\t\"\\"
+"数组" = ["中文", "😀\n"]
+"内联" = { "é\"键" = "值\u007f" }
+
+["表😀"."子表"]
+"键" = "文\n字"
+
+[["列表"]]
+"名字" = "第一个"
+)"_str);
+    ASSERT_TRUE(parsed.is_ok());
+    auto encoded = rstd::toml::to_string(*parsed);
+    ASSERT_TRUE(encoded.is_ok());
+    EXPECT_TRUE(encoded->as_str().contains(R"("中文\n键")"_str));
+    EXPECT_TRUE(encoded->as_str().contains(R"(["表😀"."子表"])"_str));
+    auto reparsed = rstd::toml::from_str(encoded->as_str());
+    ASSERT_TRUE(reparsed.is_ok());
+    EXPECT_EQ(*reparsed, *parsed);
+    auto repeated = rstd::toml::to_string(*reparsed);
+    ASSERT_TRUE(repeated.is_ok());
+    EXPECT_EQ(*repeated, *encoded);
+}
+
+TEST(TomlSerialize, EncodesUtf8DottedKeysWithEscapes) {
+    auto source = R"("中文"."é\"键"."😀\\\n")"_str;
+    auto key    = rstd::toml::parse_key_path(source);
+    ASSERT_TRUE(key.is_ok());
+    auto encoded = rstd::toml::to_key_string(*key);
+    EXPECT_EQ(encoded.as_str(), source);
+    auto reparsed = rstd::toml::parse_key_path(encoded.as_str());
+    ASSERT_TRUE(reparsed.is_ok());
+    EXPECT_EQ(*reparsed, *key);
+}
