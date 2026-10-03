@@ -106,8 +106,8 @@ TEST(BenchRunner, RealCasesPreserveScopesAndProduceThroughput) {
     auto created = make_suite();
     ASSERT_TRUE(created.is_ok());
     auto suite = rstd::move(created).unwrap();
-    EXPECT_EQ(suite.len(), usize(48));
-    const ref<str> groups[] { "alloc"_str, "slice"_str, "map"_str };
+    EXPECT_EQ(suite.len(), usize(81));
+    const ref<str> groups[] { "alloc"_str, "slice"_str, "map"_str, "set"_str };
     usize          cases;
     for (auto group : groups) {
         bench::RunnerOptions options;
@@ -138,7 +138,7 @@ TEST(BenchRunner, RealCasesPreserveScopesAndProduceThroughput) {
             if (group == "alloc"_str) EXPECT_TRUE(rendered.as_str().contains("bytes/s"_str));
         }
     }
-    EXPECT_EQ(cases, usize(36));
+    EXPECT_EQ(cases, usize(102));
 }
 
 TEST(BenchRunner, RealMapDiagnosticsSeparateSetupFromOperations) {
@@ -151,9 +151,14 @@ TEST(BenchRunner, RealMapDiagnosticsSeparateSetupFromOperations) {
     auto                report = bench::Runner(rstd::move(options)).diagnose(suite, u64(2), sink);
     ASSERT_TRUE(report.is_ok());
     EXPECT_TRUE(report->passed());
-    EXPECT_EQ(report->results.len(), usize(8));
-    usize lookups, zero_hits;
+    EXPECT_EQ(report->results.len(), usize(16));
+    usize lookups, zero_hits, skipped;
     for (const auto& result : report->results) {
+        if (result.descriptor.implementation == "cppstd"_str) {
+            EXPECT_TRUE(result.outcome.is_Skipped());
+            ++skipped;
+            continue;
+        }
         ASSERT_TRUE(result.outcome.is_Diagnosed());
         const auto& measured = result.outcome.as_Diagnosed().measurement;
         ASSERT_TRUE(measured.allocations.is_some());
@@ -180,6 +185,45 @@ TEST(BenchRunner, RealMapDiagnosticsSeparateSetupFromOperations) {
     }
     EXPECT_EQ(lookups, usize(6));
     EXPECT_EQ(zero_hits, usize(2));
+    EXPECT_EQ(skipped, usize(8));
+}
+
+TEST(BenchRunner, CollectionPairsShareInputsAndHashPolicy) {
+    bench::Suite suite;
+    ASSERT_TRUE(add_collection_cases(suite).is_ok());
+    ASSERT_EQ(suite.len(), usize(32));
+    for (usize i; i < suite.len(); i += usize(2)) {
+        const auto& local    = suite.descriptor(i);
+        const auto& standard = suite.descriptor(i + usize(1));
+        EXPECT_EQ(local.implementation, "rstd"_str);
+        EXPECT_EQ(standard.implementation, "cppstd"_str);
+        EXPECT_EQ(local.suite, standard.suite);
+        EXPECT_EQ(standard.name, rstd::format("{}/cppstd", local.name));
+        ASSERT_EQ(local.parameters.len(), standard.parameters.len());
+        for (usize j; j < local.parameters.len(); ++j) {
+            const auto& a = local.parameters[j];
+            const auto& b = standard.parameters[j];
+            EXPECT_EQ(a.name, b.name);
+            if (a.name == "allocator"_str) {
+                EXPECT_EQ(a.value.as_Text().value, "alloc::Global"_str);
+                EXPECT_EQ(b.value.as_Text().value, "std::allocator"_str);
+            } else if (a.value.is_Unsigned()) {
+                ASSERT_TRUE(b.value.is_Unsigned());
+                EXPECT_EQ(a.value.as_Unsigned().value, b.value.as_Unsigned().value);
+            } else {
+                ASSERT_TRUE(a.value.is_Text());
+                ASSERT_TRUE(b.value.is_Text());
+                EXPECT_EQ(a.value.as_Text().value, b.value.as_Text().value);
+            }
+        }
+    }
+    bench::RunnerOptions options;
+    options.suite = Some("set"_Str);
+    bench::NullReporter sink;
+    auto                report = bench::Runner(rstd::move(options)).diagnose(suite, u64(1), sink);
+    ASSERT_TRUE(report.is_ok());
+    ASSERT_EQ(report->results.len(), usize(16));
+    for (const auto& result : report->results) EXPECT_TRUE(result.outcome.is_Skipped());
 }
 
 TEST(BenchRunner, RealAllocDiagnosticsDoNotPretendToMeasureUnsupportedWindows) {

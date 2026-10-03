@@ -3,6 +3,7 @@ module;
 
 module rstd_benches;
 import rstd;
+import rstd.cppstd;
 import rstd.bench;
 
 using namespace rstd::prelude;
@@ -47,7 +48,7 @@ auto sort_input() -> Vec<SortValue> {
     return values;
 }
 
-auto valid_sort(const Vec<SortValue>& values, const Vec<SortValue>& seed) -> bool {
+auto valid_sort(const Vec<SortValue>& values, const Vec<SortValue>& seed, bool stable) -> bool {
     if (values.len() != seed.len()) return false;
     auto seen = Vec<bool>::make();
     for (usize i; i < seed.len(); ++i) seen.push(false);
@@ -60,20 +61,43 @@ auto valid_sort(const Vec<SortValue>& values, const Vec<SortValue>& seed) -> boo
         if (i == usize()) continue;
         const auto& previous = values[i - usize(1)];
         if (sort_key(previous) > sort_key(value) ||
-            (sort_key(previous) == sort_key(value) && previous.ordinal > value.ordinal))
+            (stable && sort_key(previous) == sort_key(value) && previous.ordinal > value.ordinal))
             return false;
     }
     return true;
 }
 
-template<bool Cached, int Distribution>
+enum class SortKind
+{
+    Stable,
+    Cached,
+    Unstable
+};
+
+template<SortKind Kind, bool Cppstd, int Distribution>
 struct SortSession {
     Vec<SortValue> seed;
     Vec<SortValue> checked;
     auto           operation() const {
         return [](Vec<SortValue>& input) {
-            if constexpr (Cached)
+            if constexpr (Cppstd) {
+                auto  values = input.as_mut_slice().as_mut_ref();
+                auto* first  = values.as_raw_ptr();
+                auto* last   = first + values.len().to_primitive();
+                auto  less   = [](const SortValue& a, const SortValue& b) {
+                    return sort_key(a) < sort_key(b);
+                };
+                if constexpr (Kind == SortKind::Stable)
+                    std::stable_sort(first, last, less);
+                else
+                    std::sort(first, last, less);
+            } else if constexpr (Kind == SortKind::Cached)
                 rstd::slice_::sort_by_cached_key(input.as_mut_slice().as_mut_ref(), sort_key);
+            else if constexpr (Kind == SortKind::Unstable)
+                rstd::slice_::sort_unstable_by(input.as_mut_slice().as_mut_ref(),
+                                               [](const SortValue& a, const SortValue& b) {
+                                                   return sort_key(a) < sort_key(b);
+                                               });
             else
                 rstd::slice_::sort_by(input.as_mut_slice().as_mut_ref(),
                                       [](const SortValue& a, const SortValue& b) {
@@ -86,8 +110,9 @@ struct SortSession {
         auto operation = this->operation();
         checked        = copy_values(seed);
         operation(checked);
-        if (! valid_sort(checked, seed)) return Err("stable sort precheck failed"_Str);
-        if constexpr (Cached) {
+        if (! valid_sort(checked, seed, Kind != SortKind::Unstable))
+            return Err("sort order, permutation or stability precheck failed"_Str);
+        if constexpr (Kind == SortKind::Cached) {
             auto counted = copy_values(seed);
             auto calls   = usize();
             rstd::slice_::sort_by_cached_key(counted.as_mut_slice().as_mut_ref(),
@@ -114,25 +139,43 @@ struct SortSession {
     auto finish() -> Result<empty, String> { return Ok(empty {}); }
 };
 
-template<bool Cached, int Distribution>
+template<SortKind Kind, bool Cppstd, int Distribution>
 auto add_sort(bench::Suite& suite, ref<str> name) -> Result<empty, String> {
+    auto label      = Cppstd ? rstd::format("{}/cppstd", name) : String::make(name);
     auto descriptor = make_descriptor(
         "slice"_str,
-        name,
+        label.as_str(),
         u64(5),
         parameter("n"_str, u64(1024)),
         parameter("distribution"_str, Distribution == 1 ? "sorted"_str : "lcg-seed-123"_str));
     if constexpr (Distribution == 2) descriptor.parameters.push(parameter("keys"_str, u64(8)));
+    descriptor.implementation = Cppstd ? "cppstd"_Str : "rstd"_Str;
+    descriptor.parameters.push(parameter("storage"_str, "Vec<SortValue>"_str));
+    descriptor.parameters.push(parameter("key"_str, "lcg-8/u64"_str));
+    descriptor.parameters.push(
+        parameter("ordering"_str, Kind == SortKind::Unstable ? "unstable"_str : "stable"_str));
+    descriptor.parameters.push(parameter(
+        "key_evaluation"_str, Kind == SortKind::Cached ? "cached"_str : "per-comparison"_str));
     return suite.add(rstd::move(descriptor), bench::factory([] {
-                         return Result<SortSession<Cached, Distribution>, String>(
-                             Ok(SortSession<Cached, Distribution> { sort_input<Distribution>() }));
+                         using Session = SortSession<Kind, Cppstd, Distribution>;
+                         return Result<Session, String>(Ok(Session { sort_input<Distribution>() }));
                      }));
 }
+
+template<int Distribution>
+auto add_sort_distribution(bench::Suite& suite, ref<str> distribution) -> Result<empty, String> {
+    auto stable   = rstd::format("stable_sort_{}", distribution);
+    auto unstable = rstd::format("unstable_sort_{}", distribution);
+    auto cached   = rstd::format("cached_key_{}", distribution);
+    rstd_try((add_sort<SortKind::Stable, false, Distribution>(suite, stable.as_str())));
+    rstd_try((add_sort<SortKind::Stable, true, Distribution>(suite, stable.as_str())));
+    rstd_try((add_sort<SortKind::Unstable, false, Distribution>(suite, unstable.as_str())));
+    rstd_try((add_sort<SortKind::Unstable, true, Distribution>(suite, unstable.as_str())));
+    return add_sort<SortKind::Cached, false, Distribution>(suite, cached.as_str());
+}
+
 auto rstd_bench::register_slice(bench::Suite& suite) -> Result<empty, String> {
-    rstd_try((add_sort<false, 0>(suite, "stable_sort_random"_str)));
-    rstd_try((add_sort<true, 0>(suite, "cached_key_random"_str)));
-    rstd_try((add_sort<false, 1>(suite, "stable_sort_sorted"_str)));
-    rstd_try((add_sort<true, 1>(suite, "cached_key_sorted"_str)));
-    rstd_try((add_sort<false, 2>(suite, "stable_sort_duplicates"_str)));
-    return add_sort<true, 2>(suite, "cached_key_duplicates"_str);
+    rstd_try(add_sort_distribution<0>(suite, "random"_str));
+    rstd_try(add_sort_distribution<1>(suite, "sorted"_str));
+    return add_sort_distribution<2>(suite, "duplicates"_str);
 }

@@ -8,6 +8,7 @@ name = "rstd_bench"
 sources = [
   "alloc.cpp",
   "domains.cpp",
+  "collections.cpp",
   "iter.cpp",
   "slice.cpp",
   "async/support.cppm",
@@ -33,6 +34,7 @@ exceptions = false
 rtti = false
 
 [dependencies]
+rstd-cppstd = { path = ".." }
 rstd-bench = { path = ".." }
 rstd-argparse = { path = ".." }
 rstd-json = { path = ".." }

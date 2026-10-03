@@ -138,6 +138,7 @@ auto register_async_loopback(rstd::bench::Suite& suite) -> Result<empty, String>
 auto register_async_io(rstd::bench::Suite& suite) -> Result<empty, String>;
 auto register_net(rstd::bench::Suite& suite) -> Result<empty, String>;
 auto add_domain_cases(rstd::bench::Suite& suite) -> Result<empty, String>;
+auto add_collection_cases(rstd::bench::Suite& suite) -> Result<empty, String>;
 
 struct Options {
     String                      suite;

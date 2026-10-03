@@ -6,7 +6,6 @@ source-root = "../.."
 [[test]]
 name = "bench-runner"
 module = "rstd_benches"
-link-stdlib = false
 sources = [
   "benches/support/mod.cppm",
   "benches/support/report.cpp",
@@ -15,6 +14,7 @@ sources = [
   "benches/alloc.cpp",
   "benches/slice.cpp",
   "benches/domains.cpp",
+  "benches/collections.cpp",
   "tests/benches/main.cpp",
   "tests/benches/framework.cpp",
   "tests/benches/console.cpp",
@@ -29,10 +29,10 @@ exceptions = false
 rtti = false
 
 [dependencies]
+rstd-cppstd = { path = "../.." }
 rstd-std = { path = "../.." }
 rstd-test = { path = "../.." }
 rstd-bench = { path = "../.." }
 rstd-argparse = { path = "../.." }
 rstd-json = { path = "../.." }
 rstd-toml = { path = "../.." }
-rstd-nostd = { path = "../..", usage = "link" }
