@@ -1,3 +1,6 @@
+module;
+#include <rstd/macro.hpp>
+
 module rstd_benches;
 import rstd;
 import rstd.bench;
@@ -40,13 +43,13 @@ auto pipeline_sum(slice<i32> input) -> i64 {
 }
 
 template<bool Pipeline, rstd::size_t Size>
-auto map_filter_sum(bench::BenchConfig config, const char* name) -> CaseRunResult {
+auto map_filter_sum(bench::Bench& runner, ref<str> name) -> CaseRunResult {
     auto input = input_values(usize(Size));
     if (pipeline_sum<true>(input.as_slice()) != pipeline_sum<false>(input.as_slice()))
         return failed("sum precheck failed"_Str);
     return measure_case(
         name,
-        rstd::move(config),
+        runner,
         { .items_per_iteration = u64(Size) },
         [&] {
             return pipeline_sum<Pipeline>(rstd::hint::black_box(input.as_slice()));
@@ -74,14 +77,14 @@ auto find_value(slice<i32> input, i32 wanted) -> Option<i32> {
 }
 
 template<bool Pipeline, int Wanted>
-auto find_case(bench::BenchConfig config, const char* name) -> CaseRunResult {
+auto find_case(bench::Bench& runner, ref<str> name) -> CaseRunResult {
     auto input  = input_values(usize(1024));
     auto wanted = i32(Wanted);
     if (find_value<true>(input.as_slice(), wanted) != find_value<false>(input.as_slice(), wanted))
         return failed("find precheck failed"_Str);
     return measure_case(
         name,
-        rstd::move(config),
+        runner,
         { .items_per_iteration = u64(Wanted < 0 ? 1024 : Wanted + 1) },
         [&] {
             return find_value<Pipeline>(rstd::hint::black_box(input.as_slice()),
@@ -111,13 +114,13 @@ auto chunk_sum(slice<i32> input) -> i64 {
 }
 
 template<bool Owned>
-auto chunks_case(bench::BenchConfig config, const char* name) -> CaseRunResult {
+auto chunks_case(bench::Bench& runner, ref<str> name) -> CaseRunResult {
     auto input = input_values(usize(1024));
     if (chunk_sum<true>(input.as_slice()) != chunk_sum<false>(input.as_slice()))
         return failed("chunk precheck failed"_Str);
     return measure_case(
         name,
-        rstd::move(config),
+        runner,
         { .items_per_iteration = u64(1024) },
         [&] {
             return chunk_sum<Owned>(rstd::hint::black_box(input.as_slice()));
@@ -155,7 +158,7 @@ auto group_values(slice<i32> input) {
 }
 
 template<bool Pipeline, int Keys>
-auto group_case(bench::BenchConfig config, const char* name) -> CaseRunResult {
+auto group_case(bench::Bench& runner, ref<str> name) -> CaseRunResult {
     auto input = group_input();
     auto a     = group_values<true, Keys>(input.as_slice());
     auto b     = group_values<false, Keys>(input.as_slice());
@@ -165,7 +168,7 @@ auto group_case(bench::BenchConfig config, const char* name) -> CaseRunResult {
             return failed("group membership precheck failed"_Str);
     return measure_case(
         name,
-        rstd::move(config),
+        runner,
         { .items_per_iteration = u64(1024) },
         [&] {
             return group_values<Pipeline, Keys>(rstd::hint::black_box(input.as_slice()));
@@ -217,14 +220,14 @@ auto count_values(slice<i32> input) -> Vec<rstd::tuple<i32, usize>> {
 }
 
 template<bool Pipeline, int Keys>
-auto count_case(bench::BenchConfig config, const char* name) -> CaseRunResult {
+auto count_case(bench::Bench& runner, ref<str> name) -> CaseRunResult {
     auto input = group_input();
     auto a     = count_values<true, Keys>(input.as_slice());
     auto b     = count_values<false, Keys>(input.as_slice());
     if (a.as_slice() != b.as_slice()) return failed("count precheck failed"_Str);
     return measure_case(
         name,
-        rstd::move(config),
+        runner,
         { .items_per_iteration = u64(1024) },
         [&] {
             return count_values<Pipeline, Keys>(rstd::hint::black_box(input.as_slice()));
@@ -234,77 +237,113 @@ auto count_case(bench::BenchConfig config, const char* name) -> CaseRunResult {
         });
 }
 
-const BenchCase CASES[] = {
-    { "iter",
-      "count_by_8",
-      10,
-      &count_case<true, 8>,
-      { .n = 1024, .keys = 8, .distribution = "lcg-seed-123" } },
-    { "loop",
-      "count_by_8",
-      10,
-      &count_case<false, 8>,
-      { .n = 1024, .keys = 8, .distribution = "lcg-seed-123" } },
-    { "iter",
-      "count_by_256",
-      10,
-      &count_case<true, 256>,
-      { .n = 1024, .keys = 256, .distribution = "lcg-seed-123" } },
-    { "loop",
-      "count_by_256",
-      10,
-      &count_case<false, 256>,
-      { .n = 1024, .keys = 256, .distribution = "lcg-seed-123" } },
-    { "iter",
-      "map_filter_sum_64",
-      1000,
-      &map_filter_sum<true, 64>,
-      { .n = 64, .distribution = "ascending" } },
-    { "loop",
-      "map_filter_sum_64",
-      1000,
-      &map_filter_sum<false, 64>,
-      { .n = 64, .distribution = "ascending" } },
-    { "iter",
-      "map_filter_sum_1024",
-      1000,
-      &map_filter_sum<true, 1024>,
-      { .n = 1024, .distribution = "ascending" } },
-    { "loop",
-      "map_filter_sum_1024",
-      1000,
-      &map_filter_sum<false, 1024>,
-      { .n = 1024, .distribution = "ascending" } },
-    { "iter", "find_first", 1000, &find_case<true, 0>, { .n = 1024 } },
-    { "loop", "find_first", 1000, &find_case<false, 0>, { .n = 1024 } },
-    { "iter", "find_middle", 1000, &find_case<true, 512>, { .n = 1024 } },
-    { "loop", "find_middle", 1000, &find_case<false, 512>, { .n = 1024 } },
-    { "iter", "find_missing", 1000, &find_case<true, -1>, { .n = 1024 } },
-    { "loop", "find_missing", 1000, &find_case<false, -1>, { .n = 1024 } },
-    { "iter", "chunks_owned", 50, &chunks_case<true>, { .n = 1024 } },
-    { "slice", "chunks_view", 1000, &chunks_case<false>, { .n = 1024 } },
-    { "iter",
-      "group_by_8",
-      10,
-      &group_case<true, 8>,
-      { .n = 1024, .keys = 8, .distribution = "lcg-seed-123" } },
-    { "loop",
-      "group_by_8",
-      10,
-      &group_case<false, 8>,
-      { .n = 1024, .keys = 8, .distribution = "lcg-seed-123" } },
-    { "iter",
-      "group_by_256",
-      10,
-      &group_case<true, 256>,
-      { .n = 1024, .keys = 256, .distribution = "lcg-seed-123" } },
-    { "loop",
-      "group_by_256",
-      10,
-      &group_case<false, 256>,
-      { .n = 1024, .keys = 256, .distribution = "lcg-seed-123" } },
-};
+auto rstd_bench::register_iter(rstd::bench::Suite& suite) -> Result<empty, String> {
+    using namespace rstd_bench;
+    using namespace rstd::literals;
 
-auto rstd_bench::iter_benchmarks() -> BenchList {
-    return { CASES, sizeof(CASES) / sizeof(CASES[0]) };
+    rstd_try(suite.add_function(make_descriptor("iter"_str,
+                                                "count_by_8"_str,
+                                                u64(10),
+                                                parameter("n"_str, u64(1024)),
+                                                parameter("keys"_str, u64(8)),
+                                                parameter("distribution"_str, "lcg-seed-123"_str)),
+                                &count_case<true, 8>));
+    rstd_try(suite.add_function(make_descriptor("loop"_str,
+                                                "count_by_8"_str,
+                                                u64(10),
+                                                parameter("n"_str, u64(1024)),
+                                                parameter("keys"_str, u64(8)),
+                                                parameter("distribution"_str, "lcg-seed-123"_str)),
+                                &count_case<false, 8>));
+    rstd_try(suite.add_function(make_descriptor("iter"_str,
+                                                "count_by_256"_str,
+                                                u64(10),
+                                                parameter("n"_str, u64(1024)),
+                                                parameter("keys"_str, u64(256)),
+                                                parameter("distribution"_str, "lcg-seed-123"_str)),
+                                &count_case<true, 256>));
+    rstd_try(suite.add_function(make_descriptor("loop"_str,
+                                                "count_by_256"_str,
+                                                u64(10),
+                                                parameter("n"_str, u64(1024)),
+                                                parameter("keys"_str, u64(256)),
+                                                parameter("distribution"_str, "lcg-seed-123"_str)),
+                                &count_case<false, 256>));
+    rstd_try(suite.add_function(make_descriptor("iter"_str,
+                                                "map_filter_sum_64"_str,
+                                                u64(1000),
+                                                parameter("n"_str, u64(64)),
+                                                parameter("distribution"_str, "ascending"_str)),
+                                &map_filter_sum<true, 64>));
+    rstd_try(suite.add_function(make_descriptor("loop"_str,
+                                                "map_filter_sum_64"_str,
+                                                u64(1000),
+                                                parameter("n"_str, u64(64)),
+                                                parameter("distribution"_str, "ascending"_str)),
+                                &map_filter_sum<false, 64>));
+    rstd_try(suite.add_function(make_descriptor("iter"_str,
+                                                "map_filter_sum_1024"_str,
+                                                u64(1000),
+                                                parameter("n"_str, u64(1024)),
+                                                parameter("distribution"_str, "ascending"_str)),
+                                &map_filter_sum<true, 1024>));
+    rstd_try(suite.add_function(make_descriptor("loop"_str,
+                                                "map_filter_sum_1024"_str,
+                                                u64(1000),
+                                                parameter("n"_str, u64(1024)),
+                                                parameter("distribution"_str, "ascending"_str)),
+                                &map_filter_sum<false, 1024>));
+    rstd_try(suite.add_function(
+        make_descriptor("iter"_str, "find_first"_str, u64(1000), parameter("n"_str, u64(1024))),
+        &find_case<true, 0>));
+    rstd_try(suite.add_function(
+        make_descriptor("loop"_str, "find_first"_str, u64(1000), parameter("n"_str, u64(1024))),
+        &find_case<false, 0>));
+    rstd_try(suite.add_function(
+        make_descriptor("iter"_str, "find_middle"_str, u64(1000), parameter("n"_str, u64(1024))),
+        &find_case<true, 512>));
+    rstd_try(suite.add_function(
+        make_descriptor("loop"_str, "find_middle"_str, u64(1000), parameter("n"_str, u64(1024))),
+        &find_case<false, 512>));
+    rstd_try(suite.add_function(
+        make_descriptor("iter"_str, "find_missing"_str, u64(1000), parameter("n"_str, u64(1024))),
+        &find_case<true, -1>));
+    rstd_try(suite.add_function(
+        make_descriptor("loop"_str, "find_missing"_str, u64(1000), parameter("n"_str, u64(1024))),
+        &find_case<false, -1>));
+    rstd_try(suite.add_function(
+        make_descriptor("iter"_str, "chunks_owned"_str, u64(50), parameter("n"_str, u64(1024))),
+        &chunks_case<true>));
+    rstd_try(suite.add_function(
+        make_descriptor("slice"_str, "chunks_view"_str, u64(1000), parameter("n"_str, u64(1024))),
+        &chunks_case<false>));
+    rstd_try(suite.add_function(make_descriptor("iter"_str,
+                                                "group_by_8"_str,
+                                                u64(10),
+                                                parameter("n"_str, u64(1024)),
+                                                parameter("keys"_str, u64(8)),
+                                                parameter("distribution"_str, "lcg-seed-123"_str)),
+                                &group_case<true, 8>));
+    rstd_try(suite.add_function(make_descriptor("loop"_str,
+                                                "group_by_8"_str,
+                                                u64(10),
+                                                parameter("n"_str, u64(1024)),
+                                                parameter("keys"_str, u64(8)),
+                                                parameter("distribution"_str, "lcg-seed-123"_str)),
+                                &group_case<false, 8>));
+    rstd_try(suite.add_function(make_descriptor("iter"_str,
+                                                "group_by_256"_str,
+                                                u64(10),
+                                                parameter("n"_str, u64(1024)),
+                                                parameter("keys"_str, u64(256)),
+                                                parameter("distribution"_str, "lcg-seed-123"_str)),
+                                &group_case<true, 256>));
+    rstd_try(suite.add_function(make_descriptor("loop"_str,
+                                                "group_by_256"_str,
+                                                u64(10),
+                                                parameter("n"_str, u64(1024)),
+                                                parameter("keys"_str, u64(256)),
+                                                parameter("distribution"_str, "lcg-seed-123"_str)),
+                                &group_case<false, 256>));
+    return Ok(empty {});
 }

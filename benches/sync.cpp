@@ -1,3 +1,6 @@
+module;
+#include <rstd/macro.hpp>
+
 module rstd_benches;
 import rstd.bench;
 import rstd;
@@ -43,13 +46,13 @@ struct PingPongWorker {
     ~PingPongWorker() { (void)finish(); }
 };
 
-auto mutex_lock_unlock(bench::BenchConfig config, const char* name) -> rstd_bench::CaseRunResult {
+auto mutex_lock_unlock(bench::Bench& runner, ref<str> name) -> rstd_bench::CaseRunResult {
     auto mutex      = sync::Mutex<rstd::uint64_t>(0);
     auto calls      = rstd::uint64_t {};
     auto run_config = bench::RunConfig { .items_per_iteration = u64(1) };
     return rstd_bench::measure_case(
         name,
-        rstd::move(config),
+        runner,
         rstd::move(run_config),
         [&] {
             auto guard = mutex.lock().unwrap_unchecked();
@@ -63,7 +66,7 @@ auto mutex_lock_unlock(bench::BenchConfig config, const char* name) -> rstd_benc
         });
 }
 
-auto condvar_ping_pong(bench::BenchConfig config, const char* name) -> rstd_bench::CaseRunResult {
+auto condvar_ping_pong(bench::Bench& runner, ref<str> name) -> rstd_bench::CaseRunResult {
     auto state   = sync::Arc<PingPongState>::make();
     auto worker  = state.clone();
     auto spawned = thread::spawn([worker = rstd::move(worker)] {
@@ -86,7 +89,7 @@ auto condvar_ping_pong(bench::BenchConfig config, const char* name) -> rstd_benc
     auto run_config   = bench::RunConfig { .items_per_iteration = u64(2) };
     return rstd_bench::measure_case(
         name,
-        rstd::move(config),
+        runner,
         rstd::move(run_config),
         [&] {
             auto guard         = state->m_fields.lock().unwrap_unchecked();
@@ -113,14 +116,14 @@ auto task_validation(Option<String>& error, bool valid) -> Result<empty, String>
     return Ok(empty {});
 }
 
-auto blocking_task_group_recreate(bench::BenchConfig config, const char* name)
+auto blocking_task_group_recreate(bench::Bench& runner, ref<str> name)
     -> rstd_bench::CaseRunResult {
     auto completed = usize();
     auto calls     = usize();
     auto error     = Option<String> {};
     return rstd_bench::measure_case(
         name,
-        rstd::move(config),
+        runner,
         { .items_per_iteration = u64(4) },
         [&] {
             if (error.is_some()) return;
@@ -161,7 +164,7 @@ auto blocking_task_group_recreate(bench::BenchConfig config, const char* name)
         });
 }
 
-auto blocking_task_set_shared_pool(bench::BenchConfig config, const char* name)
+auto blocking_task_set_shared_pool(bench::Bench& runner, ref<str> name)
     -> rstd_bench::CaseRunResult {
     auto built = thread::ThreadPoolBuilder::make().worker_count(usize(4)).build();
     if (built.is_err())
@@ -172,7 +175,7 @@ auto blocking_task_set_shared_pool(bench::BenchConfig config, const char* name)
     auto error     = Option<String> {};
     return rstd_bench::measure_case(
         name,
-        rstd::move(config),
+        runner,
         { .items_per_iteration = u64(4) },
         [&] {
             if (error.is_some()) return;
@@ -215,20 +218,26 @@ auto blocking_task_set_shared_pool(bench::BenchConfig config, const char* name)
         });
 }
 
-const rstd_bench::BenchCase CASES[] = {
-    { "sync", "mutex_lock_unlock", 5'000, &mutex_lock_unlock },
-    { "sync", "condvar_ping_pong", 100, &condvar_ping_pong },
-    { "sync", "blocking_task_group_recreate", 10, &blocking_task_group_recreate },
-    { "sync", "blocking_task_set_shared_pool", 100, &blocking_task_set_shared_pool },
-};
-
 } // namespace
 
 namespace rstd_bench
 {
 
-auto sync_benchmarks() -> BenchList {
-    return BenchList { CASES, sizeof(CASES) / sizeof(CASES[0]) };
+auto register_sync(rstd::bench::Suite& suite) -> Result<empty, String> {
+    using namespace rstd_bench;
+    using namespace rstd::literals;
+
+    rstd_try(suite.add_function(make_descriptor("sync"_str, "mutex_lock_unlock"_str, u64(5'000)),
+                                &mutex_lock_unlock));
+    rstd_try(suite.add_function(make_descriptor("sync"_str, "condvar_ping_pong"_str, u64(100)),
+                                &condvar_ping_pong));
+    rstd_try(
+        suite.add_function(make_descriptor("sync"_str, "blocking_task_group_recreate"_str, u64(10)),
+                           &blocking_task_group_recreate));
+    rstd_try(suite.add_function(
+        make_descriptor("sync"_str, "blocking_task_set_shared_pool"_str, u64(100)),
+        &blocking_task_set_shared_pool));
+    return Ok(empty {});
 }
 
 } // namespace rstd_bench

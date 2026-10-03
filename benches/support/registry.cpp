@@ -1,16 +1,22 @@
+module;
+#include <rstd/macro.hpp>
+
 module rstd_benches;
 import rstd;
+import rstd.bench;
 
 using namespace rstd::prelude;
 
-auto rstd_bench::registry() -> Vec<BenchCase> {
-    const BenchList groups[] = { alloc_benchmarks(),         iter_benchmarks(),
-                                 slice_benchmarks(),         sync_benchmarks(),
-                                 async_runtime_benchmarks(), async_loopback_benchmarks(),
-                                 async_io_benchmarks(),      net_benchmarks() };
-    auto            cases    = Vec<BenchCase>::make();
-    for (const auto& group : groups)
-        for (rstd::size_t index = 0; index < group.m_len; ++index)
-            cases.emplace_back(group.m_cases[index]);
-    return cases;
+auto rstd_bench::make_suite() -> Result<rstd::bench::Suite, String> {
+    rstd::bench::Suite suite;
+    rstd_try(register_alloc(suite));
+    rstd_try(register_iter(suite));
+    rstd_try(register_slice(suite));
+    rstd_try(register_sync(suite));
+    rstd_try(register_async_runtime(suite));
+    rstd_try(register_async_loopback(suite));
+    rstd_try(register_async_io(suite));
+    rstd_try(register_net(suite));
+    rstd_try(add_domain_cases(suite));
+    return Ok(rstd::move(suite));
 }

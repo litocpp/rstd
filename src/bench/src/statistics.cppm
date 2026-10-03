@@ -52,6 +52,8 @@ auto BenchmarkResult::summary() const -> BenchmarkSummary {
     auto per_unit         = Vec<f64>::with_capacity(measurements_.len());
     auto total_elapsed    = time::Duration_ZERO;
     auto total_iterations = u64();
+    auto item_rates       = Vec<f64>::with_capacity(measurements_.len());
+    auto byte_rates       = Vec<f64>::with_capacity(measurements_.len());
 
     f64 sum;
     f64 minimum = f64::INFINITY_;
@@ -61,10 +63,10 @@ auto BenchmarkResult::summary() const -> BenchmarkSummary {
     f64  cycles;
     f64  branches;
     f64  branch_misses;
-    bool has_instructions  = false;
-    bool has_cycles        = false;
-    bool has_branches      = false;
-    bool has_branch_misses = false;
+    bool has_instructions  = ! measurements_.is_empty();
+    bool has_cycles        = ! measurements_.is_empty();
+    bool has_branches      = ! measurements_.is_empty();
+    bool has_branch_misses = ! measurements_.is_empty();
 
     for (const auto& measurement : measurements_) {
         auto value = bench_duration_ns(measurement.elapsed) /
@@ -76,26 +78,34 @@ auto BenchmarkResult::summary() const -> BenchmarkSummary {
         maximum = maximum.max(value);
         total_elapsed += measurement.elapsed;
         total_iterations = bench_saturating_add(total_iterations, measurement.iterations);
+        auto elapsed     = bench_duration_ns(measurement.elapsed);
+        if (elapsed > f64()) {
+            auto rate = f64(measurement.iterations.to_primitive()) * f64(1'000'000'000.0) / elapsed;
+            if (run_config_.items_per_iteration != u64())
+                item_rates.push(rate * f64(run_config_.items_per_iteration.to_primitive()));
+            if (run_config_.bytes_per_iteration != u64())
+                byte_rates.push(rate * f64(run_config_.bytes_per_iteration.to_primitive()));
+        }
 
         if (measurement.counters.instructions.is_some()) {
-            has_instructions = true;
             instructions +=
                 f64(static_cast<double>(measurement.counters.instructions->to_primitive()));
-        }
+        } else
+            has_instructions = false;
         if (measurement.counters.cpu_cycles.is_some()) {
-            has_cycles = true;
             cycles += f64(static_cast<double>(measurement.counters.cpu_cycles->to_primitive()));
-        }
+        } else
+            has_cycles = false;
         if (measurement.counters.branch_instructions.is_some()) {
-            has_branches = true;
             branches +=
                 f64(static_cast<double>(measurement.counters.branch_instructions->to_primitive()));
-        }
+        } else
+            has_branches = false;
         if (measurement.counters.branch_misses.is_some()) {
-            has_branch_misses = true;
             branch_misses +=
                 f64(static_cast<double>(measurement.counters.branch_misses->to_primitive()));
-        }
+        } else
+            has_branch_misses = false;
     }
 
     auto median_values = Vec<f64>::with_capacity(per_unit.len());
@@ -140,6 +150,14 @@ auto BenchmarkResult::summary() const -> BenchmarkSummary {
         .branch_miss_ratio      = has_branches && has_branch_misses && branches != f64()
                                       ? Some(branch_misses / branches)
                                       : None(),
+        .median_items_per_second =
+            item_rates.len() == measurements_.len() && ! item_rates.is_empty()
+                ? Some(median(rstd::move(item_rates)))
+                : None(),
+        .median_bytes_per_second =
+            byte_rates.len() == measurements_.len() && ! byte_rates.is_empty()
+                ? Some(median(rstd::move(byte_rates)))
+                : None(),
     };
 }
 

@@ -1,5 +1,6 @@
 export module rstd.bench:benchmark;
 export import :statistics;
+export import :collector;
 import :counters;
 
 using namespace rstd::prelude;
@@ -21,12 +22,12 @@ constexpr bool bench_borrowed_output<rstd::mut_ref<T>> = true;
 namespace rstd::bench
 {
 
-export template<typename Clock>
-    requires Impled<Clock, MonotonicClock>
+export template<typename Clock, typename Collector = PmuCollector>
+    requires Impled<Clock, MonotonicClock> && MeasurementCollector<Collector>
 class BasicBench {
     Clock                  clock_;
     BenchConfig            config_;
-    CounterBackend         counters_;
+    Collector              counters_;
     Option<time::Duration> resolution_;
     u64                    jitter_state_;
 
@@ -98,15 +99,15 @@ class BasicBench {
             }
             resolution_ = Some(rstd::move(resolution).unwrap_unchecked());
         }
-        counters_.calibrate_measurement([this] {
+        auto probe = [this] {
             rstd::hint::black_box(clock().now_ns());
             rstd::hint::black_box(clock().now_ns());
-        });
-        auto resolution   = *resolution_;
-        auto availability = counters_.availability();
-        if (config_.counter_mode.is_Required() && availability.is_Unavailable()) {
-            return Err(BenchError::CounterUnavailable(availability.as_Unavailable().code));
+        };
+        if constexpr (requires { counters_.calibrate(probe); }) {
+            auto calibrated = counters_.calibrate(probe);
+            if (calibrated.is_err()) return Err(rstd::move(calibrated).unwrap_err());
         }
+        auto resolution = *resolution_;
 
         if (config_.warmup_iterations != u64()) {
             auto warmed = driver(config_.warmup_iterations, false);
@@ -166,29 +167,53 @@ class BasicBench {
                                   counters_.availability(),
                                   rstd::move(measurements),
                                   scope,
-                                  batch_size));
+                                  batch_size,
+                                  counters_.identity()));
     }
     template<typename Op>
     auto measure(u64 iterations, bool timed, Op&& op) -> Result<EpochMeasurement, BenchError> {
-        if (timed) counters_.begin_measure();
-        auto started   = timed ? clock().now_ns() : u64();
-        auto remaining = iterations.to_primitive();
-        while (remaining-- > 0) op();
-        auto ended    = timed ? clock().now_ns() : u64();
-        auto counters = CounterSet {};
         if (timed) {
-            auto result = counters_.end_measure(iterations);
-            if (result.is_err() && config_.counter_mode.is_Required()) {
-                return Err(
-                    BenchError::CounterUnavailable(rstd::move(result).unwrap_err_unchecked()));
-            }
-            if (result.is_ok()) counters = rstd::move(result).unwrap_unchecked();
+            auto started = counters_.begin();
+            if (started.is_err()) return Err(rstd::move(started).unwrap_err());
         }
+        auto               started   = timed ? clock().now_ns() : u64();
+        auto               remaining = iterations.to_primitive();
+        Option<BenchError> failure;
+        u64                attempted;
+        while (remaining-- > 0) {
+            if constexpr (mtp::is_void<decltype(op())>)
+                op();
+            else {
+                ++attempted;
+                auto result = op();
+                if (result.is_err()) {
+                    failure = Some(rstd::move(result).unwrap_err());
+                    break;
+                }
+            }
+        }
+        auto ended    = timed ? clock().now_ns() : u64();
+        auto counters = WindowMeasurement {};
+        if (timed) {
+            auto result = counters_.end(failure.is_some() ? attempted : iterations);
+            if (result.is_err()) {
+                if (failure.is_some())
+                    return Err(join_collector_errors(rstd::move(failure).unwrap(),
+                                                     rstd::move(result).unwrap_err()));
+                if (ended < started)
+                    return Err(join_collector_errors(BenchError::Clock(ClockError::Stalled()),
+                                                     rstd::move(result).unwrap_err()));
+                return Err(rstd::move(result).unwrap_err());
+            }
+            counters = rstd::move(result).unwrap();
+        }
+        if (failure.is_some()) return Err(rstd::move(failure).unwrap());
         if (ended < started) return Err(BenchError::Clock(ClockError::Stalled()));
         return Ok(EpochMeasurement {
             .elapsed    = time::Duration::from_nanos(ended - started),
             .iterations = iterations,
-            .counters   = rstd::move(counters),
+            .counters   = rstd::move(counters.counters),
+            .metrics    = rstd::move(counters.metrics),
         });
     }
 
@@ -255,6 +280,11 @@ class BasicBench {
                     total.counters = rstd::move(part.counters);
                 else
                     merge_counters(total.counters, part.counters);
+                if (! first && total.metrics.len() != part.metrics.len())
+                    return Err(BenchError::Collector(
+                        String::make("metric coverage changed between windows"_str)));
+                auto metrics = merge_metrics(total.metrics, rstd::move(part.metrics));
+                if (metrics.is_err()) return Err(rstd::move(metrics).unwrap_err());
                 first = false;
                 remaining -= u64(count.to_primitive());
             }
@@ -269,9 +299,16 @@ class BasicBench {
 
 public:
     explicit BasicBench(Clock clock, BenchConfig config = {})
+        requires requires { Collector(config.counter_mode); }
         : clock_(rstd::move(clock)),
           config_(rstd::move(config)),
           counters_(config_.counter_mode),
+          jitter_state_(config_.jitter_seed == u64() ? u64(123) : config_.jitter_seed) {}
+
+    BasicBench(Clock clock, Collector collector, BenchConfig config = {})
+        : clock_(rstd::move(clock)),
+          config_(rstd::move(config)),
+          counters_(rstd::move(collector)),
           jitter_state_(config_.jitter_seed == u64() ? u64(123) : config_.jitter_seed) {}
 
     static auto new_(BenchConfig config = {}) -> BasicBench
@@ -292,6 +329,21 @@ public:
                     op();
                 else
                     rstd::hint::black_box(op());
+            });
+        };
+        return run_driver(name, driver, rstd::move(run_config), MeasurementScope::Repeated, None());
+    }
+
+    template<typename Op>
+    auto run_fallible(ref<str> name, Op&& op, RunConfig run_config = {})
+        -> Result<BenchmarkResult, BenchError> {
+        auto driver = [&](u64 iterations, bool timed) {
+            return measure(iterations, timed, [&]() -> Result<empty, BenchError> {
+                auto result = op();
+                if (result.is_err())
+                    return Err(BenchError::Operation(rstd::move(result).unwrap_err()));
+                rstd::hint::black_box(rstd::move(result).unwrap());
+                return Ok(empty {});
             });
         };
         return run_driver(name, driver, rstd::move(run_config), MeasurementScope::Repeated, None());

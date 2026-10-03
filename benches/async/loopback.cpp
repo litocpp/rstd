@@ -361,9 +361,8 @@ auto run_sync_loopback_concurrent(const sync::Arc<SyncConcurrentState>& state, u
 #endif
 
 #if RSTD_OS_LINUX
-auto io_loopback_ping_pong_sync(bench::BenchConfig config,
-                                rstd::size_t       payload_len,
-                                const char*        name) -> rstd_bench::CaseRunResult {
+auto io_loopback_ping_pong_sync(bench::Bench& runner, rstd::size_t payload_len, ref<str> name)
+    -> rstd_bench::CaseRunResult {
     auto opened = open_sync_loopback_streams(payload_len);
     if (opened.is_err())
         return rstd_bench::failed(rstd::format("connection failed: {}", opened.unwrap_err()));
@@ -377,7 +376,7 @@ auto io_loopback_ping_pong_sync(bench::BenchConfig config,
     auto run_config      = loopback_run_config(1, payload_len);
     return rstd_bench::measure_case(
         name,
-        rstd::move(config),
+        runner,
         rstd::move(run_config),
         [&] {
             if (! valid) {
@@ -398,9 +397,8 @@ auto io_loopback_ping_pong_sync(bench::BenchConfig config,
         });
 }
 
-auto io_loopback_ping_pong_sync_4way(bench::BenchConfig config,
-                                     rstd::size_t       payload_len,
-                                     const char*        name) -> rstd_bench::CaseRunResult {
+auto io_loopback_ping_pong_sync_4way(bench::Bench& runner, rstd::size_t payload_len, ref<str> name)
+    -> rstd_bench::CaseRunResult {
     auto state = sync::Arc<SyncConcurrentState>::make();
     auto workers =
         SyncWorkers { state.clone(),
@@ -433,7 +431,7 @@ auto io_loopback_ping_pong_sync_4way(bench::BenchConfig config,
     auto run_config      = loopback_run_config(LOOPBACK_CONCURRENCY, payload_len);
     return rstd_bench::measure_case(
         name,
-        rstd::move(config),
+        runner,
         rstd::move(run_config),
         [&] {
             if (! valid) {
@@ -459,23 +457,23 @@ auto io_loopback_ping_pong_sync_4way(bench::BenchConfig config,
 }
 
 template<rstd::size_t PayloadLen>
-auto io_loopback_ping_pong_sync_case(bench::BenchConfig config, const char* name)
+auto io_loopback_ping_pong_sync_case(bench::Bench& runner, ref<str> name)
     -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong_sync(rstd::move(config), PayloadLen, name);
+    return io_loopback_ping_pong_sync(runner, PayloadLen, name);
 }
 
 template<rstd::size_t PayloadLen>
-auto io_loopback_ping_pong_sync_4way_case(bench::BenchConfig config, const char* name)
+auto io_loopback_ping_pong_sync_4way_case(bench::Bench& runner, ref<str> name)
     -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong_sync_4way(rstd::move(config), PayloadLen, name);
+    return io_loopback_ping_pong_sync_4way(runner, PayloadLen, name);
 }
 
 #endif
 
-auto io_loopback_ping_pong(bench::BenchConfig config,
-                           rstd::size_t       payload_len,
-                           const char*        name,
-                           IoBackend backend = IoBackend::Auto) -> rstd_bench::CaseRunResult {
+auto io_loopback_ping_pong(bench::Bench& runner,
+                           rstd::size_t  payload_len,
+                           ref<str>      name,
+                           IoBackend     backend = IoBackend::Auto) -> rstd_bench::CaseRunResult {
     auto runtime = make_io_runtime(backend);
     if (runtime.is_err()) return runtime_failure(runtime.unwrap_err());
     auto listener = Option<net::TcpListener> {};
@@ -518,7 +516,7 @@ auto io_loopback_ping_pong(bench::BenchConfig config,
     auto run_config      = loopback_run_config(1, payload_len);
     return rstd_bench::measure_case(
         name,
-        rstd::move(config),
+        runner,
         rstd::move(run_config),
         [&] {
             if (! valid) {
@@ -544,9 +542,9 @@ auto io_loopback_ping_pong(bench::BenchConfig config,
         });
 }
 
-auto io_loopback_ping_pong_4way(bench::BenchConfig config,
-                                rstd::size_t       payload_len,
-                                const char*        name,
+auto io_loopback_ping_pong_4way(bench::Bench& runner,
+                                rstd::size_t  payload_len,
+                                ref<str>      name,
                                 IoBackend backend = IoBackend::Auto) -> rstd_bench::CaseRunResult {
     auto runtime = make_io_runtime(backend);
     if (runtime.is_err()) return runtime_failure(runtime.unwrap_err());
@@ -592,7 +590,7 @@ auto io_loopback_ping_pong_4way(bench::BenchConfig config,
     auto run_config      = loopback_run_config(LOOPBACK_CONCURRENCY, payload_len);
     return rstd_bench::measure_case(
         name,
-        rstd::move(config),
+        runner,
         rstd::move(run_config),
         [&] {
             if (! valid) {
@@ -619,10 +617,10 @@ auto io_loopback_ping_pong_4way(bench::BenchConfig config,
         });
 }
 
-auto io_loopback_ping_pong_4worker(bench::BenchConfig config,
-                                   rstd::size_t       payload_len,
-                                   const char*        name,
-                                   IoBackend          backend = IoBackend::Auto)
+auto io_loopback_ping_pong_4worker(bench::Bench& runner,
+                                   rstd::size_t  payload_len,
+                                   ref<str>      name,
+                                   IoBackend     backend = IoBackend::Auto)
     -> rstd_bench::CaseRunResult {
     auto runtime = make_thread_pool_io_runtime(backend, usize(LOOPBACK_CONCURRENCY));
     if (runtime.is_err()) return runtime_failure(runtime.unwrap_err());
@@ -668,7 +666,7 @@ auto io_loopback_ping_pong_4worker(bench::BenchConfig config,
     auto run_config      = loopback_run_config(LOOPBACK_CONCURRENCY, payload_len);
     return rstd_bench::measure_case(
         name,
-        rstd::move(config),
+        runner,
         rstd::move(run_config),
         [&] {
             if (! valid) {
@@ -696,92 +694,98 @@ auto io_loopback_ping_pong_4worker(bench::BenchConfig config,
 }
 
 template<rstd::size_t PayloadLen, IoBackend Backend = IoBackend::Auto>
-auto io_loopback_ping_pong_case(bench::BenchConfig config, const char* name)
-    -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong(rstd::move(config), PayloadLen, name, Backend);
+auto io_loopback_ping_pong_case(bench::Bench& runner, ref<str> name) -> rstd_bench::CaseRunResult {
+    return io_loopback_ping_pong(runner, PayloadLen, name, Backend);
 }
 
 template<rstd::size_t PayloadLen, IoBackend Backend = IoBackend::Auto>
-auto io_loopback_ping_pong_4way_case(bench::BenchConfig config, const char* name)
+auto io_loopback_ping_pong_4way_case(bench::Bench& runner, ref<str> name)
     -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong_4way(rstd::move(config), PayloadLen, name, Backend);
+    return io_loopback_ping_pong_4way(runner, PayloadLen, name, Backend);
 }
 
 template<rstd::size_t PayloadLen>
-auto io_loopback_ping_pong_4worker_case(bench::BenchConfig config, const char* name)
+auto io_loopback_ping_pong_4worker_case(bench::Bench& runner, ref<str> name)
     -> rstd_bench::CaseRunResult {
-    return io_loopback_ping_pong_4worker(rstd::move(config), PayloadLen, name);
+    return io_loopback_ping_pong_4worker(runner, PayloadLen, name);
 }
 
-const rstd_bench::BenchCase CASES[] = {
-#if RSTD_OS_LINUX
-    { "async", "io_loopback_ping_pong_sync_1b", 5, &io_loopback_ping_pong_sync_case<1> },
-    { "async", "io_loopback_ping_pong_sync_4way_1b", 5, &io_loopback_ping_pong_sync_4way_case<1> },
-    { "async", "io_loopback_ping_pong_sync_1kib", 5, &io_loopback_ping_pong_sync_case<KIB> },
-    { "async",
-      "io_loopback_ping_pong_sync_4way_1kib",
-      5,
-      &io_loopback_ping_pong_sync_4way_case<KIB> },
-    { "async", "io_loopback_ping_pong_sync_16kib", 5, &io_loopback_ping_pong_sync_case<KIB * 16> },
-    { "async",
-      "io_loopback_ping_pong_sync_4way_16kib",
-      5,
-      &io_loopback_ping_pong_sync_4way_case<KIB * 16> },
-#endif
-    { "async", "io_loopback_ping_pong_1b", 5, &io_loopback_ping_pong_case<1> },
-    { "async", "io_loopback_ping_pong_4way_1b", 5, &io_loopback_ping_pong_4way_case<1> },
-    { "async",
-      "io_loopback_ping_pong_async_4worker_1b",
-      5,
-      &io_loopback_ping_pong_4worker_case<1> },
-    { "async", "io_loopback_ping_pong_1kib", 5, &io_loopback_ping_pong_case<KIB> },
-    { "async", "io_loopback_ping_pong_4way_1kib", 5, &io_loopback_ping_pong_4way_case<KIB> },
-    { "async",
-      "io_loopback_ping_pong_async_4worker_1kib",
-      5,
-      &io_loopback_ping_pong_4worker_case<KIB> },
-    { "async", "io_loopback_ping_pong_16kib", 5, &io_loopback_ping_pong_case<KIB * 16> },
-    { "async", "io_loopback_ping_pong_4way_16kib", 5, &io_loopback_ping_pong_4way_case<KIB * 16> },
-    { "async",
-      "io_loopback_ping_pong_async_4worker_16kib",
-      5,
-      &io_loopback_ping_pong_4worker_case<KIB * 16> },
-#if RSTD_OS_LINUX
-    { "async",
-      "io_loopback_ping_pong_native_1b",
-      5,
-      &io_loopback_ping_pong_case<1, IoBackend::NativeCompletion> },
-    { "async",
-      "io_loopback_ping_pong_native_4way_1b",
-      5,
-      &io_loopback_ping_pong_4way_case<1, IoBackend::NativeCompletion> },
-    { "async",
-      "io_loopback_ping_pong_native_16kib",
-      5,
-      &io_loopback_ping_pong_case<KIB * 16, IoBackend::NativeCompletion> },
-    { "async",
-      "io_loopback_ping_pong_native_4way_16kib",
-      5,
-      &io_loopback_ping_pong_4way_case<KIB * 16, IoBackend::NativeCompletion> },
-    { "async",
-      "io_loopback_ping_pong_epoll_1b",
-      5,
-      &io_loopback_ping_pong_case<1, IoBackend::ReadinessEmulation> },
-    { "async",
-      "io_loopback_ping_pong_epoll_4way_1b",
-      5,
-      &io_loopback_ping_pong_4way_case<1, IoBackend::ReadinessEmulation> },
-    { "async",
-      "io_loopback_ping_pong_epoll_16kib",
-      5,
-      &io_loopback_ping_pong_case<KIB * 16, IoBackend::ReadinessEmulation> },
-    { "async",
-      "io_loopback_ping_pong_epoll_4way_16kib",
-      5,
-      &io_loopback_ping_pong_4way_case<KIB * 16, IoBackend::ReadinessEmulation> },
-#endif
-};
+auto rstd_bench::register_async_loopback(rstd::bench::Suite& suite) -> Result<empty, String> {
+    using namespace rstd_bench;
+    using namespace rstd::literals;
 
-auto rstd_bench::async_loopback_benchmarks() -> BenchList {
-    return { CASES, sizeof(CASES) / sizeof(CASES[0]) };
+#if RSTD_OS_LINUX
+    rstd_try(suite.add_function(
+        make_descriptor("async"_str, "io_loopback_ping_pong_sync_1b"_str, u64(5)),
+        &io_loopback_ping_pong_sync_case<1>));
+    rstd_try(suite.add_function(
+        make_descriptor("async"_str, "io_loopback_ping_pong_sync_4way_1b"_str, u64(5)),
+        &io_loopback_ping_pong_sync_4way_case<1>));
+    rstd_try(suite.add_function(
+        make_descriptor("async"_str, "io_loopback_ping_pong_sync_1kib"_str, u64(5)),
+        &io_loopback_ping_pong_sync_case<KIB>));
+    rstd_try(suite.add_function(
+        make_descriptor("async"_str, "io_loopback_ping_pong_sync_4way_1kib"_str, u64(5)),
+        &io_loopback_ping_pong_sync_4way_case<KIB>));
+    rstd_try(suite.add_function(
+        make_descriptor("async"_str, "io_loopback_ping_pong_sync_16kib"_str, u64(5)),
+        &io_loopback_ping_pong_sync_case<KIB * 16>));
+    rstd_try(suite.add_function(
+        make_descriptor("async"_str, "io_loopback_ping_pong_sync_4way_16kib"_str, u64(5)),
+        &io_loopback_ping_pong_sync_4way_case<KIB * 16>));
+#endif
+    rstd_try(
+        suite.add_function(make_descriptor("async"_str, "io_loopback_ping_pong_1b"_str, u64(5)),
+                           &io_loopback_ping_pong_case<1>));
+    rstd_try(suite.add_function(
+        make_descriptor("async"_str, "io_loopback_ping_pong_4way_1b"_str, u64(5)),
+        &io_loopback_ping_pong_4way_case<1>));
+    rstd_try(suite.add_function(
+        make_descriptor("async"_str, "io_loopback_ping_pong_async_4worker_1b"_str, u64(5)),
+        &io_loopback_ping_pong_4worker_case<1>));
+    rstd_try(
+        suite.add_function(make_descriptor("async"_str, "io_loopback_ping_pong_1kib"_str, u64(5)),
+                           &io_loopback_ping_pong_case<KIB>));
+    rstd_try(suite.add_function(
+        make_descriptor("async"_str, "io_loopback_ping_pong_4way_1kib"_str, u64(5)),
+        &io_loopback_ping_pong_4way_case<KIB>));
+    rstd_try(suite.add_function(
+        make_descriptor("async"_str, "io_loopback_ping_pong_async_4worker_1kib"_str, u64(5)),
+        &io_loopback_ping_pong_4worker_case<KIB>));
+    rstd_try(
+        suite.add_function(make_descriptor("async"_str, "io_loopback_ping_pong_16kib"_str, u64(5)),
+                           &io_loopback_ping_pong_case<KIB * 16>));
+    rstd_try(suite.add_function(
+        make_descriptor("async"_str, "io_loopback_ping_pong_4way_16kib"_str, u64(5)),
+        &io_loopback_ping_pong_4way_case<KIB * 16>));
+    rstd_try(suite.add_function(
+        make_descriptor("async"_str, "io_loopback_ping_pong_async_4worker_16kib"_str, u64(5)),
+        &io_loopback_ping_pong_4worker_case<KIB * 16>));
+#if RSTD_OS_LINUX
+    rstd_try(suite.add_function(
+        make_descriptor("async"_str, "io_loopback_ping_pong_native_1b"_str, u64(5)),
+        &io_loopback_ping_pong_case<1, IoBackend::NativeCompletion>));
+    rstd_try(suite.add_function(
+        make_descriptor("async"_str, "io_loopback_ping_pong_native_4way_1b"_str, u64(5)),
+        &io_loopback_ping_pong_4way_case<1, IoBackend::NativeCompletion>));
+    rstd_try(suite.add_function(
+        make_descriptor("async"_str, "io_loopback_ping_pong_native_16kib"_str, u64(5)),
+        &io_loopback_ping_pong_case<KIB * 16, IoBackend::NativeCompletion>));
+    rstd_try(suite.add_function(
+        make_descriptor("async"_str, "io_loopback_ping_pong_native_4way_16kib"_str, u64(5)),
+        &io_loopback_ping_pong_4way_case<KIB * 16, IoBackend::NativeCompletion>));
+    rstd_try(suite.add_function(
+        make_descriptor("async"_str, "io_loopback_ping_pong_epoll_1b"_str, u64(5)),
+        &io_loopback_ping_pong_case<1, IoBackend::ReadinessEmulation>));
+    rstd_try(suite.add_function(
+        make_descriptor("async"_str, "io_loopback_ping_pong_epoll_4way_1b"_str, u64(5)),
+        &io_loopback_ping_pong_4way_case<1, IoBackend::ReadinessEmulation>));
+    rstd_try(suite.add_function(
+        make_descriptor("async"_str, "io_loopback_ping_pong_epoll_16kib"_str, u64(5)),
+        &io_loopback_ping_pong_case<KIB * 16, IoBackend::ReadinessEmulation>));
+    rstd_try(suite.add_function(
+        make_descriptor("async"_str, "io_loopback_ping_pong_epoll_4way_16kib"_str, u64(5)),
+        &io_loopback_ping_pong_4way_case<KIB * 16, IoBackend::ReadinessEmulation>));
+#endif
+    return Ok(empty {});
 }

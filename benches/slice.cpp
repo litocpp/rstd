@@ -1,3 +1,6 @@
+module;
+#include <rstd/macro.hpp>
+
 module rstd_benches;
 import rstd;
 import rstd.bench;
@@ -64,74 +67,72 @@ auto valid_sort(const Vec<SortValue>& values, const Vec<SortValue>& seed) -> boo
 }
 
 template<bool Cached, int Distribution>
-auto stable_sort_case(bench::BenchConfig config, const char* name) -> CaseRunResult {
-    auto seed      = sort_input<Distribution>();
-    auto operation = [](Vec<SortValue>& input) {
-        if constexpr (Cached)
-            rstd::slice_::sort_by_cached_key(input.as_mut_slice().as_mut_ref(), sort_key);
-        else
-            rstd::slice_::sort_by(input.as_mut_slice().as_mut_ref(),
-                                  [](const SortValue& a, const SortValue& b) {
-                                      return sort_key(a) <=> sort_key(b);
-                                  });
-    };
-    auto checked = copy_values(seed);
-    operation(checked);
-    if (! valid_sort(checked, seed)) return failed("stable sort precheck failed"_Str);
-    if constexpr (Cached) {
-        auto counted = copy_values(seed);
-        auto calls   = usize();
-        rstd::slice_::sort_by_cached_key(counted.as_mut_slice().as_mut_ref(),
-                                         [&](const SortValue& value) {
-                                             ++calls;
-                                             return sort_key(value);
-                                         });
-        if (calls != seed.len()) return failed("cached key count precheck failed"_Str);
+struct SortSession {
+    Vec<SortValue> seed;
+    Vec<SortValue> checked;
+    auto           operation() const {
+        return [](Vec<SortValue>& input) {
+            if constexpr (Cached)
+                rstd::slice_::sort_by_cached_key(input.as_mut_slice().as_mut_ref(), sort_key);
+            else
+                rstd::slice_::sort_by(input.as_mut_slice().as_mut_ref(),
+                                      [](const SortValue& a, const SortValue& b) {
+                                          return sort_key(a) <=> sort_key(b);
+                                      });
+        };
     }
-    auto runner = bench::Bench::new_(rstd::move(config));
-    return complete_measurement(runner.run_batched_ref(text(name),
-                                                       [&] {
-                                                           return copy_values(seed);
-                                                       },
-                                                       operation,
-                                                       {},
-                                                       { .items_per_iteration = u64(1024) }),
-                                true);
-}
 
-const BenchCase CASES[] = {
-    { "slice",
-      "stable_sort_random",
-      5,
-      &stable_sort_case<false, 0>,
-      { .n = 1024, .distribution = "lcg-seed-123" } },
-    { "slice",
-      "cached_key_random",
-      5,
-      &stable_sort_case<true, 0>,
-      { .n = 1024, .distribution = "lcg-seed-123" } },
-    { "slice",
-      "stable_sort_sorted",
-      5,
-      &stable_sort_case<false, 1>,
-      { .n = 1024, .distribution = "sorted" } },
-    { "slice",
-      "cached_key_sorted",
-      5,
-      &stable_sort_case<true, 1>,
-      { .n = 1024, .distribution = "sorted" } },
-    { "slice",
-      "stable_sort_duplicates",
-      5,
-      &stable_sort_case<false, 2>,
-      { .n = 1024, .keys = 8, .distribution = "lcg-seed-123" } },
-    { "slice",
-      "cached_key_duplicates",
-      5,
-      &stable_sort_case<true, 2>,
-      { .n = 1024, .keys = 8, .distribution = "lcg-seed-123" } },
+    auto check() -> Result<empty, String> {
+        auto operation = this->operation();
+        checked        = copy_values(seed);
+        operation(checked);
+        if (! valid_sort(checked, seed)) return Err("stable sort precheck failed"_Str);
+        if constexpr (Cached) {
+            auto counted = copy_values(seed);
+            auto calls   = usize();
+            rstd::slice_::sort_by_cached_key(counted.as_mut_slice().as_mut_ref(),
+                                             [&](const SortValue& value) {
+                                                 ++calls;
+                                                 return sort_key(value);
+                                             });
+            if (calls != seed.len()) return Err("cached key count precheck failed"_Str);
+        }
+
+        return Ok(empty {});
+    }
+    auto run(bench::Bench& engine, ref<str> name)
+        -> Result<bench::BenchmarkResult, bench::BenchError> {
+        auto workload = bench::batched_ref(
+            [this] {
+                return copy_values(seed);
+            },
+            operation(),
+            {},
+            { .items_per_iteration = u64(1024) });
+        return workload.run(engine, name);
+    }
+    auto finish() -> Result<empty, String> { return Ok(empty {}); }
 };
 
-auto rstd_bench::slice_benchmarks() -> BenchList {
-    return { CASES, sizeof(CASES) / sizeof(CASES[0]) };
+template<bool Cached, int Distribution>
+auto add_sort(bench::Suite& suite, ref<str> name) -> Result<empty, String> {
+    auto descriptor = make_descriptor(
+        "slice"_str,
+        name,
+        u64(5),
+        parameter("n"_str, u64(1024)),
+        parameter("distribution"_str, Distribution == 1 ? "sorted"_str : "lcg-seed-123"_str));
+    if constexpr (Distribution == 2) descriptor.parameters.push(parameter("keys"_str, u64(8)));
+    return suite.add(rstd::move(descriptor), bench::factory([] {
+                         return Result<SortSession<Cached, Distribution>, String>(
+                             Ok(SortSession<Cached, Distribution> { sort_input<Distribution>() }));
+                     }));
+}
+auto rstd_bench::register_slice(bench::Suite& suite) -> Result<empty, String> {
+    rstd_try((add_sort<false, 0>(suite, "stable_sort_random"_str)));
+    rstd_try((add_sort<true, 0>(suite, "cached_key_random"_str)));
+    rstd_try((add_sort<false, 1>(suite, "stable_sort_sorted"_str)));
+    rstd_try((add_sort<true, 1>(suite, "cached_key_sorted"_str)));
+    rstd_try((add_sort<false, 2>(suite, "stable_sort_duplicates"_str)));
+    return add_sort<true, 2>(suite, "cached_key_duplicates"_str);
 }

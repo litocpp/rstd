@@ -9,9 +9,18 @@ module = "rstd_benches"
 link-stdlib = false
 sources = [
   "benches/support/mod.cppm",
-  "benches/support/runner.cpp",
   "benches/support/report.cpp",
+  "benches/support/console.cpp",
+  "benches/support/runner.cpp",
+  "benches/alloc.cpp",
+  "benches/slice.cpp",
+  "benches/domains.cpp",
   "tests/benches/main.cpp",
+  "tests/benches/framework.cpp",
+  "tests/benches/console.cpp",
+  "tests/benches/allocation.cpp",
+  "tests/benches/diagnostic.cpp",
+  "tests/main/bench.cpp",
   "tests/benches/registry.cpp",
 ]
 
@@ -25,4 +34,5 @@ rstd-test = { path = "../.." }
 rstd-bench = { path = "../.." }
 rstd-argparse = { path = "../.." }
 rstd-json = { path = "../.." }
+rstd-toml = { path = "../.." }
 rstd-nostd = { path = "../..", usage = "link" }

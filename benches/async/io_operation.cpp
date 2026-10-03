@@ -119,7 +119,7 @@ auto run_operation_reads(Vec<OperationReadPair>& pairs,
 }
 
 template<rstd::size_t QueueDepth, bool Pending, IoOperationConsumer Consumer>
-auto io_operation_read(bench::BenchConfig config, const char* name) -> rstd_bench::CaseRunResult {
+auto io_operation_read(bench::Bench& runner, ref<str> name) -> rstd_bench::CaseRunResult {
     auto runtime = make_io_runtime(IoBackend::NativeCompletion);
     if (runtime.is_err()) return runtime_failure(runtime.unwrap_err());
     auto pairs = make_operation_read_pairs(QueueDepth);
@@ -143,7 +143,7 @@ auto io_operation_read(bench::BenchConfig config, const char* name) -> rstd_benc
     };
     return rstd_bench::measure_case(
         name,
-        rstd::move(config),
+        runner,
         rstd::move(run_config),
         [&] {
             if (! valid) {
@@ -170,48 +170,35 @@ auto io_operation_read(bench::BenchConfig config, const char* name) -> rstd_benc
 }
 #endif
 
+auto rstd_bench::register_async_io(rstd::bench::Suite& suite) -> Result<empty, String> {
+    using namespace rstd_bench;
+    using namespace rstd::literals;
 #if RSTD_OS_LINUX
-const rstd_bench::BenchCase CASES[] = {
-    { "async",
-      "io_operation_direct_immediate_qd1",
-      2,
-      &io_operation_read<1, false, IoOperationConsumer::Direct> },
-    { "async",
-      "io_operation_direct_immediate_qd64",
-      2,
-      &io_operation_read<64, false, IoOperationConsumer::Direct> },
-    { "async",
-      "io_operation_direct_pending_qd1",
-      2,
-      &io_operation_read<1, true, IoOperationConsumer::Direct> },
-    { "async",
-      "io_operation_direct_pending_qd64",
-      2,
-      &io_operation_read<64, true, IoOperationConsumer::Direct> },
-    { "async",
-      "io_operation_future_immediate_qd1",
-      2,
-      &io_operation_read<1, false, IoOperationConsumer::Future> },
-    { "async",
-      "io_operation_future_immediate_qd64",
-      2,
-      &io_operation_read<64, false, IoOperationConsumer::Future> },
-    { "async",
-      "io_operation_future_pending_qd1",
-      2,
-      &io_operation_read<1, true, IoOperationConsumer::Future> },
-    { "async",
-      "io_operation_future_pending_qd64",
-      2,
-      &io_operation_read<64, true, IoOperationConsumer::Future> },
-};
 
+    rstd_try(suite.add_function(
+        make_descriptor("async"_str, "io_operation_direct_immediate_qd1"_str, u64(2)),
+        &io_operation_read<1, false, IoOperationConsumer::Direct>));
+    rstd_try(suite.add_function(
+        make_descriptor("async"_str, "io_operation_direct_immediate_qd64"_str, u64(2)),
+        &io_operation_read<64, false, IoOperationConsumer::Direct>));
+    rstd_try(suite.add_function(
+        make_descriptor("async"_str, "io_operation_direct_pending_qd1"_str, u64(2)),
+        &io_operation_read<1, true, IoOperationConsumer::Direct>));
+    rstd_try(suite.add_function(
+        make_descriptor("async"_str, "io_operation_direct_pending_qd64"_str, u64(2)),
+        &io_operation_read<64, true, IoOperationConsumer::Direct>));
+    rstd_try(suite.add_function(
+        make_descriptor("async"_str, "io_operation_future_immediate_qd1"_str, u64(2)),
+        &io_operation_read<1, false, IoOperationConsumer::Future>));
+    rstd_try(suite.add_function(
+        make_descriptor("async"_str, "io_operation_future_immediate_qd64"_str, u64(2)),
+        &io_operation_read<64, false, IoOperationConsumer::Future>));
+    rstd_try(suite.add_function(
+        make_descriptor("async"_str, "io_operation_future_pending_qd1"_str, u64(2)),
+        &io_operation_read<1, true, IoOperationConsumer::Future>));
+    rstd_try(suite.add_function(
+        make_descriptor("async"_str, "io_operation_future_pending_qd64"_str, u64(2)),
+        &io_operation_read<64, true, IoOperationConsumer::Future>));
 #endif
-
-auto rstd_bench::async_io_benchmarks() -> BenchList {
-#if RSTD_OS_LINUX
-    return { CASES, sizeof(CASES) / sizeof(CASES[0]) };
-#else
-    return { nullptr, 0 };
-#endif
+    return Ok(empty {});
 }

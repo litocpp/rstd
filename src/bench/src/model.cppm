@@ -34,8 +34,41 @@ class BenchError final {
               (Clock, (ClockError reason;)),
               (IterationOverflow),
               (OperationOptimizedAway),
+              (Collector, (String reason;)),
+              (Operation, (String reason;)),
               (CounterUnavailable, (i32 code;)))
 };
+
+auto describe_error(const BenchError& error) -> String;
+
+enum class MetricUnit
+{
+    Count,
+    Bytes,
+    Nanoseconds
+};
+enum class MetricAggregation
+{
+    Sum,
+    Maximum,
+    Last
+};
+enum class MetricDirection
+{
+    Lower,
+    Higher,
+    Neutral
+};
+
+struct MetricSample {
+    String            name;
+    MetricUnit        unit;
+    MetricAggregation aggregation;
+    MetricDirection   direction;
+    u64               value;
+};
+
+auto merge_metrics(Vec<MetricSample>& total, Vec<MetricSample> part) -> Result<empty, BenchError>;
 
 struct CounterSet {
     Option<u64> page_faults;
@@ -54,20 +87,19 @@ struct BenchConfig {
     Option<u64>    exact_epoch_iterations { None() };
     u64            warmup_iterations {};
     usize          clock_resolution_multiple { usize(1000) };
-    CounterMode    counter_mode { CounterMode::Auto() };
+    CounterMode    counter_mode { CounterMode::Disabled() };
     u64            jitter_seed { u64(123) };
 
     auto validate() const noexcept -> Result<empty, BenchConfigError> {
         if (epochs == usize()) return Err(BenchConfigError::ZeroEpochs());
         if (min_epoch_iterations == u64()) return Err(BenchConfigError::ZeroMinIterations());
+        if (exact_epoch_iterations.is_some() && *exact_epoch_iterations == u64())
+            return Err(BenchConfigError::ZeroMinIterations());
         if (clock_resolution_multiple == usize()) {
             return Err(BenchConfigError::ZeroClockResolutionMultiple());
         }
         if (max_epoch_time.is_zero()) return Err(BenchConfigError::ZeroMaxEpochTime());
         if (min_epoch_time > max_epoch_time) return Err(BenchConfigError::InvalidEpochRange());
-        if (exact_epoch_iterations.is_some() && *exact_epoch_iterations == u64()) {
-            return Err(BenchConfigError::ZeroMinIterations());
-        }
         return Ok(empty {});
     }
 };
@@ -101,9 +133,15 @@ struct BatchConfig {
 };
 
 struct EpochMeasurement {
-    time::Duration elapsed;
-    u64            iterations;
-    CounterSet     counters;
+    time::Duration    elapsed;
+    u64               iterations;
+    CounterSet        counters;
+    Vec<MetricSample> metrics;
+};
+
+struct WindowMeasurement {
+    CounterSet        counters;
+    Vec<MetricSample> metrics;
 };
 
 struct BenchmarkSummary {
@@ -122,6 +160,8 @@ struct BenchmarkSummary {
     Option<f64>    instructions_per_cycle;
     Option<f64>    branches_per_unit;
     Option<f64>    branch_miss_ratio;
+    Option<f64>    median_items_per_second;
+    Option<f64>    median_bytes_per_second;
 };
 
 class BenchmarkResult {
@@ -133,6 +173,7 @@ class BenchmarkResult {
     Vec<EpochMeasurement> measurements_;
     MeasurementScope      scope_;
     Option<usize>         batch_size_;
+    String                collector_identity_;
 
 public:
     BenchmarkResult(String                name,
@@ -141,8 +182,9 @@ public:
                     time::Duration        clock_resolution,
                     CounterAvailability   counter_availability,
                     Vec<EpochMeasurement> measurements,
-                    MeasurementScope      scope      = MeasurementScope::Repeated,
-                    Option<usize>         batch_size = None())
+                    MeasurementScope      scope              = MeasurementScope::Repeated,
+                    Option<usize>         batch_size         = None(),
+                    String                collector_identity = {})
         : name_(rstd::move(name)),
           run_config_(rstd::move(run_config)),
           config_(rstd::move(config)),
@@ -150,9 +192,11 @@ public:
           counter_availability_(rstd::move(counter_availability)),
           measurements_(rstd::move(measurements)),
           scope_(scope),
-          batch_size_(batch_size) {}
+          batch_size_(batch_size),
+          collector_identity_(rstd::move(collector_identity)) {}
 
     auto name() const noexcept -> ref<str> { return name_.as_str(); }
+    auto collector_identity() const noexcept -> ref<str> { return collector_identity_.as_str(); }
     auto unit() const noexcept -> ref<str> { return run_config_.unit.as_str(); }
     auto batch() const noexcept -> f64 { return run_config_.batch; }
     auto scope() const noexcept -> MeasurementScope { return scope_; }
@@ -167,6 +211,7 @@ public:
         return measurements_.as_slice();
     }
     auto summary() const -> BenchmarkSummary;
+    auto same_measurement_config(const BenchmarkResult& other) const -> bool;
 };
 
 } // namespace rstd::bench

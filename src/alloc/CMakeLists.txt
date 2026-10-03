@@ -11,6 +11,7 @@ target_sources(
          FILES
          src/lib.cppm
          src/alloc.cppm
+         src/tracking.cppm
          src/arena.cppm
          src/range.cppm
          src/range_stack.cppm

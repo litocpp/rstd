@@ -1,3 +1,6 @@
+module;
+#include <rstd/macro.hpp>
+
 module rstd_benches;
 import rstd.bench;
 import rstd;
@@ -91,7 +94,7 @@ async::coro<io::Result<bytes::BytesMut>> tcp_roundtrip(net::TcpListener& listene
     co_return Ok(rstd::move(received));
 }
 
-auto tcp_connect_accept_readiness_roundtrip_4b(bench::BenchConfig config, const char* name)
+auto tcp_connect_accept_readiness_roundtrip_4b(bench::Bench& runner, ref<str> name)
     -> rstd_bench::CaseRunResult {
     auto runtime    = async::Runtime {};
     auto failure    = Option<String> {};
@@ -101,7 +104,7 @@ auto tcp_connect_accept_readiness_roundtrip_4b(bench::BenchConfig config, const 
     };
     return rstd_bench::measure_case(
         name,
-        rstd::move(config),
+        runner,
         rstd::move(run_config),
         [&] {
             if (failure.is_some()) return;
@@ -139,20 +142,19 @@ auto tcp_connect_accept_readiness_roundtrip_4b(bench::BenchConfig config, const 
         });
 }
 
-const rstd_bench::BenchCase CASES[] = {
-    { "net",
-      "tcp_connect_accept_readiness_roundtrip_4b",
-      5,
-      &tcp_connect_accept_readiness_roundtrip_4b },
-};
-
 } // namespace
 
 namespace rstd_bench
 {
 
-auto net_benchmarks() -> BenchList {
-    return BenchList { CASES, sizeof(CASES) / sizeof(CASES[0]) };
+auto register_net(rstd::bench::Suite& suite) -> Result<empty, String> {
+    using namespace rstd_bench;
+    using namespace rstd::literals;
+
+    rstd_try(suite.add_function(
+        make_descriptor("net"_str, "tcp_connect_accept_readiness_roundtrip_4b"_str, u64(5)),
+        &tcp_connect_accept_readiness_roundtrip_4b));
+    return Ok(empty {});
 }
 
 } // namespace rstd_bench

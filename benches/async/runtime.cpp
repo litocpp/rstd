@@ -68,15 +68,14 @@ async::coro<int> sleep_zero() {
     co_return 1;
 }
 
-auto current_thread_ready(bench::BenchConfig config, const char* name)
-    -> rstd_bench::CaseRunResult {
+auto current_thread_ready(bench::Bench& runner, ref<str> name) -> rstd_bench::CaseRunResult {
     auto runtime    = async::Runtime {};
     auto sum        = rstd::uint64_t {};
     auto calls      = rstd::uint64_t {};
     auto run_config = bench::RunConfig { .items_per_iteration = u64(1) };
     return rstd_bench::measure_case(
         name,
-        rstd::move(config),
+        runner,
         rstd::move(run_config),
         [&] {
             sum += runtime.block_on(ReadyInt {});
@@ -88,7 +87,7 @@ auto current_thread_ready(bench::BenchConfig config, const char* name)
         });
 }
 
-auto current_thread_spawn_local_join(bench::BenchConfig config, const char* name)
+auto current_thread_spawn_local_join(bench::Bench& runner, ref<str> name)
     -> rstd_bench::CaseRunResult {
     auto runtime    = async::Runtime {};
     auto sum        = rstd::uint64_t {};
@@ -97,7 +96,7 @@ auto current_thread_spawn_local_join(bench::BenchConfig config, const char* name
     auto run_config = bench::RunConfig { .items_per_iteration = u64(1) };
     return rstd_bench::measure_case(
         name,
-        rstd::move(config),
+        runner,
         rstd::move(run_config),
         [&] {
             if (! valid) return;
@@ -117,8 +116,7 @@ auto current_thread_spawn_local_join(bench::BenchConfig config, const char* name
         });
 }
 
-auto thread_pool_spawn_join(bench::BenchConfig config, const char* name)
-    -> rstd_bench::CaseRunResult {
+auto thread_pool_spawn_join(bench::Bench& runner, ref<str> name) -> rstd_bench::CaseRunResult {
     auto runtime = async::RuntimeBuilder::multi_thread().worker_threads(usize(2)).build();
     if (runtime.is_err()) return runtime_failure(runtime.unwrap_err());
     auto sum        = rstd::uint64_t {};
@@ -127,7 +125,7 @@ auto thread_pool_spawn_join(bench::BenchConfig config, const char* name)
     auto run_config = bench::RunConfig { .items_per_iteration = u64(1) };
     return rstd_bench::measure_case(
         name,
-        rstd::move(config),
+        runner,
         rstd::move(run_config),
         [&] {
             if (! valid) return;
@@ -147,8 +145,7 @@ auto thread_pool_spawn_join(bench::BenchConfig config, const char* name)
         });
 }
 
-auto thread_pool_join_many(bench::BenchConfig config, const char* name)
-    -> rstd_bench::CaseRunResult {
+auto thread_pool_join_many(bench::Bench& runner, ref<str> name) -> rstd_bench::CaseRunResult {
     auto runtime = async::RuntimeBuilder::multi_thread().worker_threads(usize(4)).build();
     if (runtime.is_err()) return runtime_failure(runtime.unwrap_err());
     auto sum        = rstd::uint64_t {};
@@ -157,7 +154,7 @@ auto thread_pool_join_many(bench::BenchConfig config, const char* name)
     auto run_config = bench::RunConfig { .items_per_iteration = u64(32) };
     return rstd_bench::measure_case(
         name,
-        rstd::move(config),
+        runner,
         rstd::move(run_config),
         [&] {
             if (! valid) return;
@@ -178,14 +175,14 @@ auto thread_pool_join_many(bench::BenchConfig config, const char* name)
         });
 }
 
-auto timer_sleep_zero(bench::BenchConfig config, const char* name) -> rstd_bench::CaseRunResult {
+auto timer_sleep_zero(bench::Bench& runner, ref<str> name) -> rstd_bench::CaseRunResult {
     auto runtime    = async::Runtime {};
     auto sum        = rstd::uint64_t {};
     auto calls      = rstd::uint64_t {};
     auto run_config = bench::RunConfig { .items_per_iteration = u64(1) };
     return rstd_bench::measure_case(
         name,
-        rstd::move(config),
+        runner,
         rstd::move(run_config),
         [&] {
             sum += runtime.block_on(sleep_zero());
@@ -197,14 +194,23 @@ auto timer_sleep_zero(bench::BenchConfig config, const char* name) -> rstd_bench
         });
 }
 
-const rstd_bench::BenchCase CASES[] = {
-    { "async", "current_thread_ready", 1'000, &current_thread_ready },
-    { "async", "current_thread_spawn_local_join", 500, &current_thread_spawn_local_join },
-    { "async", "thread_pool_spawn_join_2", 200, &thread_pool_spawn_join },
-    { "async", "thread_pool_join_many_4x32", 20, &thread_pool_join_many },
-    { "async", "timer_sleep_zero", 500, &timer_sleep_zero },
-};
+auto rstd_bench::register_async_runtime(rstd::bench::Suite& suite) -> Result<empty, String> {
+    using namespace rstd_bench;
+    using namespace rstd::literals;
 
-auto rstd_bench::async_runtime_benchmarks() -> BenchList {
-    return { CASES, sizeof(CASES) / sizeof(CASES[0]) };
+    rstd_try(
+        suite.add_function(make_descriptor("async"_str, "current_thread_ready"_str, u64(1'000)),
+                           &current_thread_ready));
+    rstd_try(suite.add_function(
+        make_descriptor("async"_str, "current_thread_spawn_local_join"_str, u64(500)),
+        &current_thread_spawn_local_join));
+    rstd_try(
+        suite.add_function(make_descriptor("async"_str, "thread_pool_spawn_join_2"_str, u64(200)),
+                           &thread_pool_spawn_join));
+    rstd_try(
+        suite.add_function(make_descriptor("async"_str, "thread_pool_join_many_4x32"_str, u64(20)),
+                           &thread_pool_join_many));
+    rstd_try(suite.add_function(make_descriptor("async"_str, "timer_sleep_zero"_str, u64(500)),
+                                &timer_sleep_zero));
+    return Ok(empty {});
 }

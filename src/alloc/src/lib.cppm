@@ -1,6 +1,7 @@
 //! Heap-backed containers, strings, reference counting, and allocation utilities.
 export module rstd.alloc;
 export import :alloc;
+export import :tracking;
 export import :rc;
 export import :str;
 export import :boxed;

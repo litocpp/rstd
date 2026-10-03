@@ -7,6 +7,7 @@ module = "rstd_benches"
 name = "rstd_bench"
 sources = [
   "alloc.cpp",
+  "domains.cpp",
   "iter.cpp",
   "slice.cpp",
   "async/support.cppm",
@@ -14,9 +15,10 @@ sources = [
   "async/loopback.cpp",
   "async/io_operation.cpp",
   "support/mod.cppm",
+  "support/report.cpp",
+  "support/console.cpp",
   "support/runner.cpp",
   "support/registry.cpp",
-  "support/report.cpp",
   "main.cpp",
   "net.cpp",
   "sync.cpp",
@@ -34,4 +36,5 @@ rtti = false
 rstd-bench = { path = ".." }
 rstd-argparse = { path = ".." }
 rstd-json = { path = ".." }
+rstd-toml = { path = ".." }
 rstd-std = { path = ".." }
