@@ -129,15 +129,8 @@ struct option_storage {
 
     template<rstd::size_t I, typename... Args>
     explicit constexpr option_storage(option_in_place_t<I>, Args&&... args)
-        : choice_([](Args&&... inner) {
-              if constexpr (I == 0) {
-                  return choice_type::template with<option_state::None>(
-                      rstd::forward<Args>(inner)...);
-              } else {
-                  return choice_type::template with<option_state::Some>(
-                      rstd::forward<Args>(inner)...);
-              }
-          }(rstd::forward<Args>(args)...)) {}
+        : choice_(choice_type::template with<I == 0 ? option_state::None : option_state::Some>(
+              rstd::forward<Args>(args)...)) {}
 
     template<rstd::size_t I, typename... Args>
     constexpr void replace(option_in_place_t<I>, Args&&... args) {

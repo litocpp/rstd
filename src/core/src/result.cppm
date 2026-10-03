@@ -619,6 +619,13 @@ class Result : public result_impl<T, E> {
         }
     }
 
+    static constexpr auto move_storage(Result&& other) -> rstd_enum_storage_type {
+        if (other.is_ok()) {
+            return make_ok(Result::template _get<0>(rstd::move(other)));
+        }
+        return make_err(Result::template _get<1>(rstd::move(other)));
+    }
+
     [[nodiscard]]
     constexpr auto _value_ptr() noexcept -> union_value_t* {
         return rstd::addressof(rstd_enum_storage_.template as<Tag::Ok>().value);
@@ -709,12 +716,7 @@ public:
     constexpr inline Result(Result&& other) noexcept(mtp::noex_move_v<union_value_t> &&
                                                      mtp::noex_move_v<union_error_t>)
         requires mtp::move<union_value_t> && mtp::move<union_error_t>
-        : rstd_enum_storage_([&other] {
-              if (other.is_ok()) {
-                  return make_ok(Result::template _get<0>(rstd::move(other)));
-              }
-              return make_err(Result::template _get<1>(rstd::move(other)));
-          }()) {}
+        : rstd_enum_storage_(move_storage(rstd::move(other))) {}
 
     constexpr inline ~Result()
         requires(mtp::triv_drop<union_value_t> && mtp::triv_drop<union_error_t>)
