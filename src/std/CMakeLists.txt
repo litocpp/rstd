@@ -267,6 +267,7 @@ target_sources(
           src/async/runtime_core.cpp
           src/thread/mod.cpp
           src/net/tcp.cpp
+          src/net/socket_addr.cpp
           src/lib.cpp
           src/process/mod.cpp
           src/signal/mod.cpp

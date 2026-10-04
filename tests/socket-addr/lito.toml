@@ -1,0 +1,16 @@
+[package]
+name = "rstd-socket-addr-tests"
+
+[[test]]
+name = "rstd-socket-addr-tests"
+sources = ["main.cpp"]
+link-stdlib = false
+
+[profile.base]
+exceptions = false
+rtti = false
+
+[dependencies]
+rstd-std = { path = "../../src/std" }
+rstd-test = { path = "../../src/test" }
+rstd-nostd = { path = "../../src/nostd", usage = "link" }

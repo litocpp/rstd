@@ -3,6 +3,7 @@ import rstd.core;
 
 namespace rstd::net
 {
+export enum class AddrParseError { Invalid };
 
 export class Ipv4Addr {
     array<u8, 4> m_octets {};
@@ -79,6 +80,7 @@ export class SocketAddr {
     u32           m_scope_id {};
 
 public:
+    static auto           parse(ref<str> text) -> Result<SocketAddr, AddrParseError>;
     static constexpr auto ipv4(Ipv4Addr ip, u16 port) noexcept -> SocketAddr {
         auto out   = SocketAddr {};
         out.m_kind = Kind::V4;
@@ -127,3 +129,34 @@ public:
 };
 
 } // namespace rstd::net
+
+namespace rstd
+{
+template<>
+struct Impl<str_::FromStr, net::SocketAddr> {
+    using Err = net::AddrParseError;
+    static auto from_str(ref<str> input) -> Result<net::SocketAddr, Err> {
+        return net::SocketAddr::parse(input);
+    }
+};
+
+template<>
+struct Impl<fmt::Display, net::AddrParseError> : ImplBase<net::AddrParseError> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        constexpr char message[] = "invalid socket address syntax";
+        return formatter.write_raw(message, sizeof(message) - 1);
+    }
+};
+
+template<>
+struct Impl<fmt::Debug, net::AddrParseError> : ImplBase<net::AddrParseError> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        constexpr char message[] = "AddrParseError(Socket)";
+        return formatter.write_raw(message, sizeof(message) - 1);
+    }
+};
+
+template<>
+struct Impl<error::Error, net::AddrParseError> : DefaultInImpl<error::Error, net::AddrParseError> {
+};
+} // namespace rstd
