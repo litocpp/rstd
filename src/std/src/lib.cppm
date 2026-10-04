@@ -9,6 +9,7 @@ export import :time;
 export import :forward;
 export import :io;
 export import :bytes;
+export import :random;
 export import :path;
 export import :panicking;
 export import :fs;

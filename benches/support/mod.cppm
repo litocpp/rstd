@@ -132,6 +132,7 @@ auto measure_case(ref<str>               name,
 auto register_alloc(rstd::bench::Suite& suite) -> Result<empty, String>;
 auto register_iter(rstd::bench::Suite& suite) -> Result<empty, String>;
 auto register_slice(rstd::bench::Suite& suite) -> Result<empty, String>;
+auto register_random(rstd::bench::Suite& suite) -> Result<empty, String>;
 auto register_sync(rstd::bench::Suite& suite) -> Result<empty, String>;
 auto register_async_runtime(rstd::bench::Suite& suite) -> Result<empty, String>;
 auto register_async_loopback(rstd::bench::Suite& suite) -> Result<empty, String>;

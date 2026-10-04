@@ -495,6 +495,7 @@ export using std::reverse;
 export using std::rotate;
 export using std::search;
 export using std::sort;
+export using std::shuffle;
 export using std::stable_sort;
 export using std::swap_ranges;
 export using std::transform;

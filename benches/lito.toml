@@ -11,6 +11,7 @@ sources = [
   "collections.cpp",
   "iter.cpp",
   "slice.cpp",
+  "random.cpp",
   "async/support.cppm",
   "async/runtime.cpp",
   "async/loopback.cpp",

@@ -27,7 +27,7 @@ target_sources(
          FILES
          include/rstd/enum.hpp)
 
-target_sources(rstd.core PRIVATE src/lib.cpp)
+target_sources(rstd.core PRIVATE src/lib.cpp src/random/seed.cpp)
 target_sources(
   rstd.core
   PUBLIC FILE_SET
@@ -74,6 +74,13 @@ target_sources(
          src/ffi/mod.cppm
          src/ffi/c_str.cppm
          src/hash.cppm
+         src/random/mod.cppm
+         src/random/source.cppm
+         src/random/seed.cppm
+         src/random/engine.cppm
+         src/random/uniform.cppm
+         src/random/normal.cppm
+         src/random/sequence.cppm
          src/num/types.cppm
          src/num/literals.cppm
          src/num/integer_methods.cppm

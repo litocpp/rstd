@@ -139,6 +139,8 @@ target_sources(
          CXX_MODULES
          FILES
          src/lib.cppm
+         src/random/mod.cppm
+         src/sys/random/mod.cppm
          src/time/mod.cppm
          src/time/calendar.cppm
          src/alloc/mod.cppm
@@ -264,6 +266,8 @@ target_sources(
 target_sources(
   rstd.std
   PRIVATE src/io/error.cpp
+          src/random/mod.cpp
+          src/sys/random/mod.cpp
           src/async/runtime_core.cpp
           src/thread/mod.cpp
           src/net/tcp.cpp

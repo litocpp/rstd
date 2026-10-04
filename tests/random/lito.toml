@@ -1,0 +1,14 @@
+[package]
+name = "rstd-random-tests"
+
+[[test]]
+name = "rstd-random-tests"
+sources = ["main.cpp", "engine.cpp", "oracle.cpp", "distribution.cpp", "sequence.cpp"]
+
+[[test.attach]]
+package = "rstd-std"
+sources = ["system.cppm"]
+
+[dependencies]
+rstd-std = { path = "../../src/std" }
+rstd-test = { path = "../../src/test" }
