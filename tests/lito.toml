@@ -1,6 +1,8 @@
 [workspace]
 name = "rstd-tests"
 members = [
+  "budget",
+  "alloc-failure",
   "main",
   "range",
   "dlopn-runtime",

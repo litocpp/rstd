@@ -71,18 +71,26 @@ auto arc_header(mut_ptr<T> pointer) noexcept -> ArcHeader* {
 }
 
 template<typename T, typename... Args>
-auto arc_allocate_value(Args&&... args) -> mut_ptr<T> {
+auto arc_try_allocate_value(Args&&... args) -> Result<mut_ptr<T>, rstd::alloc::AllocError> {
     auto value_layout = Layout::make<T>();
     auto allocation   = arc_allocation_layout(value_layout);
     auto result       = rstd::as<Allocator>(::alloc::GLOBAL).allocate(allocation.layout);
-    if (result.is_err()) ::alloc::handle_alloc_error(allocation.layout);
+    if (result.is_err()) return Err(rstd::alloc::AllocError {});
 
     auto* base   = static_cast<rstd::byte*>(result.unwrap_unchecked().pointer);
     auto* header = rstd::construct_at(reinterpret_cast<ArcHeader*>(base));
     (void)header;
     auto* value = reinterpret_cast<T*>(base + allocation.value_offset.to_primitive());
     rstd::construct_at(value, rstd::forward<Args>(args)...);
-    return mut_ptr<T>::from_raw_parts(value);
+    return Ok(mut_ptr<T>::from_raw_parts(value));
+}
+
+template<typename T, typename... Args>
+auto arc_allocate_value(Args&&... args) -> mut_ptr<T> {
+    auto result = arc_try_allocate_value<T>(rstd::forward<Args>(args)...);
+    if (result.is_err())
+        ::alloc::handle_alloc_error(arc_allocation_layout(Layout::make<T>()).layout);
+    return result.unwrap_unchecked();
 }
 
 template<typename T>
@@ -204,6 +212,16 @@ public:
         }
     }
 
+    /// Returns `AllocError` on allocation failure; constructor exceptions are not converted.
+    template<typename... Args>
+    static auto try_make(Args&&... args) -> Result<Arc, rstd::alloc::AllocError>
+        requires Impled<T, Sized>
+    {
+        auto result = arc_try_allocate_value<T>(rstd::forward<Args>(args)...);
+        if (result.is_err()) return Err(rstd::alloc::AllocError {});
+        return Ok(Arc { ArcData<T> { .pointer = result.unwrap_unchecked() } });
+    }
+
     template<typename... Args>
     static auto make(Args&&... args) -> Arc
         requires Impled<T, Sized>
@@ -211,6 +229,19 @@ public:
         return Arc { ArcData<T> {
             .pointer = arc_allocate_value<T>(rstd::forward<Args>(args)...),
         } };
+    }
+
+    /// Allocation failure leaves the input untouched.
+    template<typename U>
+    static auto try_make(U&& value) -> Result<Arc, rstd::alloc::AllocError>
+        requires(! Impled<T, Sized>) && Impled<mtp::rm_cvf<U>, Sized> &&
+                mtp::dyn_traits<T>::template
+    Impled<mtp::rm_cvf<U>> {
+        using Concrete = mtp::rm_cvf<U>;
+        auto result    = arc_try_allocate_value<Concrete>(rstd::forward<U>(value));
+        if (result.is_err()) return Err(rstd::alloc::AllocError {});
+        return Ok(
+            Arc { ArcData<T> { .pointer = T::from_ptr(result.unwrap_unchecked().as_raw_ptr()) } });
     }
 
     template<typename U>

@@ -1,0 +1,9 @@
+[package]
+name = "rstd-budget-tests"
+
+[[test]]
+name = "budget"
+sources = ["main.cpp"]
+
+[dependencies]
+rstd-std = { path = "../../src/std" }

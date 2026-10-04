@@ -144,6 +144,7 @@ target_sources(
          src/time/mod.cppm
          src/time/calendar.cppm
          src/alloc/mod.cppm
+         src/alloc/budget.cppm
          src/alloc/shared_arena.cppm
          src/alloc/virtual_memory.cppm
          src/forward.cppm

@@ -1,0 +1,13 @@
+[package]
+name = "rstd-alloc-failure-tests"
+target = { os = "linux" }
+
+[[test]]
+name = "alloc-failure"
+sources = ["main.cpp"]
+
+[usage]
+linker-options = ["-Wl,--wrap=__rstd_alloc"]
+
+[dependencies]
+rstd-std = { path = "../../src/std" }

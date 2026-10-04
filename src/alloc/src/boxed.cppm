@@ -90,36 +90,54 @@ public:
     /// Allocates memory on the heap and constructs `T` in place with the given arguments.
     /// \tparam Args The constructor argument types.
     /// \param args The arguments forwarded to the constructor of `T`.
-    /// \return A `Box` owning the newly allocated value.
+    /// Returns `AllocError` on allocation failure; constructor exceptions are not converted.
+    template<typename... Args>
+    static auto try_make(Args&&... args) -> Result<Box, rstd::alloc::AllocError>
+        requires Impled<T, Sized>
+    {
+        auto res = as<Allocator>(GLOBAL).allocate(Layout::make<T>());
+        if (res.is_err()) return Err(rstd::alloc::AllocError {});
+        auto p = res.unwrap_unchecked().template as_mut_ptr<T>();
+        rstd::ptr_::construct(p, rstd::forward<Args>(args)...);
+        return Ok(from_raw(p));
+    }
+
     template<typename... Args>
     static auto make(Args&&... args) -> Box
         requires Impled<T, Sized>
     {
-        auto layout = Layout::make<T>();
-        auto res    = as<Allocator>(GLOBAL).allocate(layout);
-        if (res.is_err()) handle_alloc_error(layout);
-
-        auto p = res.unwrap_unchecked().template as_mut_ptr<T>();
-        rstd::ptr_::construct(p, rstd::forward<Args>(args)...);
-        return from_raw(p);
+        auto result = try_make(rstd::forward<Args>(args)...);
+        if (result.is_err()) handle_alloc_error(Layout::make<T>());
+        return result.unwrap_unchecked();
     }
 
     /// Allocates memory on the heap for a dynamically-sized trait object.
     /// \tparam U The concrete type that implements the trait `T`.
     /// \param in The value to box as a trait object.
-    /// \return A `Box` owning the trait object.
+    /// Returns `AllocError` on allocation failure without moving from the input.
     template<typename U>
-    static auto make(U&& in) -> Box
-        requires(! Impled<T, Sized> && mtp::dyn_traits<T>::template Impled<U>)
-    {
+    static auto try_make(U&& in) -> Result<Box, rstd::alloc::AllocError>
+        requires(! Impled<T, Sized>) && Impled<mtp::rm_cvf<U>, Sized> &&
+                mtp::dyn_traits<T>::template
+    Impled<mtp::rm_cvf<U>> {
         using Concrete = mtp::rm_cvf<U>;
         auto layout    = Layout::make<Concrete>();
         auto res       = as<Allocator>(GLOBAL).allocate(layout);
-        if (res.is_err()) handle_alloc_error(layout);
+        if (res.is_err()) return Err(rstd::alloc::AllocError {});
 
         auto p = res.unwrap_unchecked().template as_mut_ptr<Concrete>();
         new (p.as_raw_ptr()) Concrete(rstd::forward<U>(in));
-        return from_raw(T::from_ptr(p));
+        return Ok(from_raw(T::from_ptr(p)));
+    }
+
+    template<typename U>
+    static auto make(U&& in) -> Box
+        requires(! Impled<T, Sized>) && Impled<mtp::rm_cvf<U>, Sized> &&
+                mtp::dyn_traits<T>::template
+    Impled<mtp::rm_cvf<U>> {
+        auto result = try_make(rstd::forward<U>(in));
+        if (result.is_err()) handle_alloc_error(Layout::make<mtp::rm_cvf<U>>());
+        return result.unwrap_unchecked();
     }
 
     /// Constructs a `Box` from a raw mutable pointer.
