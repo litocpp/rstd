@@ -112,7 +112,8 @@ struct JoinState {
     }
 
     auto poll(task::Context& cx) -> task::Poll<Output> {
-        auto f = fields.lock().unwrap_unchecked();
+        Option<task::Waker> discarded;
+        auto                f = fields.lock().unwrap_unchecked();
         if (f->terminal.is_ready()) {
             return task::Poll<Output>::Ready(f->terminal.take());
         }
@@ -122,7 +123,10 @@ struct JoinState {
         if (f->terminal.is_closed()) {
             rstd::panic { "JoinHandle polled after close" };
         }
-        f->waker = Some(cx.waker().clone());
+        if (f->waker.is_none() || ! f->waker->will_wake(cx.waker())) {
+            discarded = f->waker.take();
+            f->waker  = Some(cx.waker().clone());
+        }
         return task::Poll<Output>::Pending();
     }
 

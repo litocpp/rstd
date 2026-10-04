@@ -244,6 +244,7 @@ target_sources(
          src/async/join.cppm
          src/async/select.cppm
          src/async/oneshot.cppm
+         src/async/mutex.cppm
          src/async/notify.cppm
          src/async/completion.cppm
          src/async/completion_queue.cppm
