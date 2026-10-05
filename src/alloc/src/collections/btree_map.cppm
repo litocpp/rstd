@@ -19,6 +19,8 @@ struct BTreeMapFrame {
 namespace alloc::collections
 {
 
+struct BTreeMapTestAccess;
+
 export template<typename K, typename V>
 class BTreeMap;
 export template<typename K, typename V>
@@ -334,6 +336,8 @@ public:
 
 export template<typename K, typename V>
 class BTreeMap {
+    friend struct BTreeMapTestAccess;
+
     using TreeNode = Node<K, V>;
     using Entry    = rstd::tuple<K, V>;
 
@@ -358,12 +362,14 @@ class BTreeMap {
     }
 
     static void insert_edge(TreeNode& node, usize index, Box<TreeNode> edge, usize active) {
+        debug_assert(! node.leaf && active < usize(EDGE_COUNT) && index <= active);
         for (auto current = active; current > index; --current)
             node.move_edge(current - usize(1), current);
         node.write_edge(index, rstd::move(edge));
     }
 
     static auto remove_edge(TreeNode& node, usize index, usize active) -> Box<TreeNode> {
+        debug_assert(! node.leaf && active <= usize(EDGE_COUNT) && index < active);
         auto removed = node.take_edge(index);
         for (auto current = index; current + usize(1) < active; ++current)
             node.move_edge(current + usize(1), current);
@@ -371,8 +377,10 @@ class BTreeMap {
     }
 
     static void split_child(TreeNode& parent, usize child_index) {
-        auto* child   = parent.child(child_index);
-        auto  sibling = Box<TreeNode>::make(child->leaf);
+        debug_assert(! parent.leaf && parent.len < usize(CAPACITY) && child_index <= parent.len);
+        auto* child = parent.child(child_index);
+        debug_assert(child->len == usize(CAPACITY));
+        auto sibling = Box<TreeNode>::make(child->leaf);
 
         for (usize i {}; i < usize(B - 1); ++i) {
             auto entry = child->take_entry(usize(B) + i);
@@ -428,10 +436,13 @@ class BTreeMap {
     }
 
     static void borrow_from_previous(TreeNode& parent, usize child_index) {
-        auto* child         = parent.child(child_index);
-        auto* sibling       = parent.child(child_index - usize(1));
-        auto  parent_entry  = parent.take_entry(child_index - usize(1));
-        auto  sibling_entry = sibling->remove_entry(sibling->len - usize(1));
+        debug_assert(! parent.leaf && child_index != usize() && child_index <= parent.len);
+        auto* child   = parent.child(child_index);
+        auto* sibling = parent.child(child_index - usize(1));
+        debug_assert(child->len < usize(CAPACITY) && sibling->len >= usize(B));
+        debug_assert(child->leaf == sibling->leaf);
+        auto parent_entry  = parent.take_entry(child_index - usize(1));
+        auto sibling_entry = sibling->remove_entry(sibling->len - usize(1));
 
         child->insert_entry(usize(),
                             rstd::move(parent_entry.template get<0>()),
@@ -447,10 +458,13 @@ class BTreeMap {
     }
 
     static void borrow_from_next(TreeNode& parent, usize child_index) {
-        auto* child         = parent.child(child_index);
-        auto* sibling       = parent.child(child_index + usize(1));
-        auto  parent_entry  = parent.take_entry(child_index);
-        auto  sibling_entry = sibling->remove_entry(usize());
+        debug_assert(! parent.leaf && child_index < parent.len);
+        auto* child   = parent.child(child_index);
+        auto* sibling = parent.child(child_index + usize(1));
+        debug_assert(child->len < usize(CAPACITY) && sibling->len >= usize(B));
+        debug_assert(child->leaf == sibling->leaf);
+        auto parent_entry  = parent.take_entry(child_index);
+        auto sibling_entry = sibling->remove_entry(usize());
 
         child->insert_entry(child->len,
                             rstd::move(parent_entry.template get<0>()),
@@ -466,6 +480,11 @@ class BTreeMap {
     }
 
     static auto merge_children(TreeNode& parent, usize left_index) -> TreeNode& {
+        debug_assert(! parent.leaf && left_index < parent.len);
+        debug_assert(parent.child(left_index)->leaf == parent.child(left_index + usize(1))->leaf);
+        debug_assert(parent.child(left_index)->len + parent.child(left_index + usize(1))->len +
+                         usize(1) <=
+                     usize(CAPACITY));
         usize old_parent_len = parent.len;
         auto  right     = remove_edge(parent, left_index + usize(1), old_parent_len + usize(1));
         auto* left      = parent.child(left_index);
@@ -590,56 +609,6 @@ class BTreeMap {
         drain_node(rstd::move(child), output);
     }
 
-    static bool validate_node(const TreeNode& node,
-                              bool            is_root,
-                              const K*        lower,
-                              const K*        upper,
-                              usize           depth,
-                              usize&          leaf_depth,
-                              bool&           saw_leaf,
-                              usize&          count) {
-        if (node.len > usize(CAPACITY) || (! is_root && node.len < usize(B - 1))) return false;
-        if (! node.leaf && node.len == usize()) return false;
-        for (usize i {}; i < node.len; ++i) {
-            const auto& key = node.key(i);
-            if (lower != nullptr && ! (*lower < key)) return false;
-            if (upper != nullptr && ! (key < *upper)) return false;
-            if (i != usize() && ! (node.key(i - usize(1)) < key)) return false;
-        }
-        count += node.len;
-        if (node.leaf) {
-            if (saw_leaf && leaf_depth != depth) return false;
-            leaf_depth = depth;
-            saw_leaf   = true;
-            return true;
-        }
-        for (usize i {}; i <= node.len; ++i) {
-            const K* child_lower = i == usize() ? lower : rstd::addressof(node.key(i - usize(1)));
-            const K* child_upper = i == node.len ? upper : rstd::addressof(node.key(i));
-            if (! validate_node(*node.child(i),
-                                false,
-                                child_lower,
-                                child_upper,
-                                depth + usize(1),
-                                leaf_depth,
-                                saw_leaf,
-                                count)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    bool valid() const {
-        if (root.is_none()) return length == usize();
-        usize leaf_depth {};
-        usize count {};
-        bool  saw_leaf = false;
-        return validate_node(
-                   *root_node(), true, nullptr, nullptr, usize(), leaf_depth, saw_leaf, count) &&
-               count == length;
-    }
-
 public:
     USE_TRAIT(BTreeMap)
 
@@ -696,9 +665,7 @@ public:
             split_child(*new_root.get(), usize());
             root = Some(rstd::move(new_root));
         }
-        auto old = insert_non_full(*root_node(), rstd::move(key), rstd::move(value));
-        debug_assert(valid());
-        return old;
+        return insert_non_full(*root_node(), rstd::move(key), rstd::move(value));
     }
 
     template<typename Q>
@@ -782,7 +749,6 @@ public:
         auto removed = remove_from_node(*root_node(), key);
         if (removed.is_some()) --length;
         normalize_root();
-        debug_assert(valid());
         return removed;
     }
 
@@ -824,7 +790,6 @@ public:
         auto entry = remove_min(*root_node());
         --length;
         normalize_root();
-        debug_assert(valid());
         return Some(rstd::move(entry));
     }
 
@@ -833,7 +798,6 @@ public:
         auto entry = remove_max(*root_node());
         --length;
         normalize_root();
-        debug_assert(valid());
         return Some(rstd::move(entry));
     }
 

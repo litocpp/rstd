@@ -1,3 +1,6 @@
+module;
+#include <rstd/macro.hpp>
+
 export module rstd.alloc:collections.btree_node;
 export import :boxed;
 export import rstd.core;
@@ -80,6 +83,7 @@ public:
     }
 
     void insert_entry(usize index, K key, V value) {
+        debug_assert(len < usize(CAPACITY) && index <= len);
         for (rstd::size_t current = len.to_primitive(); current > index.to_primitive(); --current)
             move_entry(usize(current - 1), usize(current));
         write_entry(index, rstd::move(key), rstd::move(value));
@@ -87,6 +91,7 @@ public:
     }
 
     auto remove_entry(usize index) -> rstd::tuple<K, V> {
+        debug_assert(index < len);
         auto removed = take_entry(index);
         for (rstd::size_t current = index.to_primitive(); current + 1 < len.to_primitive();
              ++current)

@@ -1,0 +1,25 @@
+[package]
+name = "rstd-btree-tests"
+source-root = "../.."
+
+[[test]]
+name = "rstd-btree-tests"
+sources = [
+  "tests/btree/main.cpp",
+  "tests/main/collections/btree_map.cpp",
+  "tests/main/collections/btree_set.cpp",
+]
+
+[[test.attach]]
+package = "rstd-alloc"
+sources = ["tests/main/collections/btree.cppm"]
+
+[profile.base]
+exceptions = false
+rtti = false
+
+[dependencies]
+rstd-alloc = { path = "../../src/alloc" }
+rstd-std = { path = "../../src/std" }
+rstd-test = { path = "../../src/test" }
+rstd-nostd = { path = "../../src/nostd", usage = "link" }
