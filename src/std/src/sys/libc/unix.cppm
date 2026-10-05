@@ -45,6 +45,7 @@ inline constexpr auto _CLOCK_REALTIME  = CLOCK_REALTIME;
 #endif
 
 inline constexpr auto _ENOENT        = ENOENT;
+inline constexpr auto _EBADF         = EBADF;
 inline constexpr auto _EACCES        = EACCES;
 inline constexpr auto _EPERM         = EPERM;
 inline constexpr auto _ECONNREFUSED  = ECONNREFUSED;
@@ -184,6 +185,7 @@ inline auto _rstd_online_processor_count() noexcept -> long {
 #undef CLOCK_MONOTONIC
 #undef CLOCK_REALTIME
 #undef ENOENT
+#undef EBADF
 #undef EACCES
 #undef EPERM
 #undef ECONNREFUSED
@@ -348,6 +350,7 @@ inline constexpr auto CLOCK_REALTIME  = _CLOCK_REALTIME;
 #endif
 inline constexpr auto EAGAIN        = _EAGAIN;
 inline constexpr auto ENOENT        = _ENOENT;
+inline constexpr auto EBADF         = _EBADF;
 inline constexpr auto EACCES        = _EACCES;
 inline constexpr auto EPERM         = _EPERM;
 inline constexpr auto ECONNREFUSED  = _ECONNREFUSED;

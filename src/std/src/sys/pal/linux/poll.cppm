@@ -390,7 +390,10 @@ export class Poller {
             if (source.registered &&
                 libc::epoll_ctl(m_poll_fd.as_raw_fd(), libc::EPOLL_CTL_DEL, source.fd, nullptr) <
                     0) {
-                return Err(Error::last_os_error());
+                auto error = libc::get_errno();
+                // Closing the descriptor already removes its epoll entry.
+                if (error != libc::EBADF && error != libc::ENOENT)
+                    return Err(Error::from_raw_os_error(i32(error)));
             }
             source.registered = false;
             return Ok(empty {});

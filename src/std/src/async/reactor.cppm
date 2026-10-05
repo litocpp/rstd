@@ -451,15 +451,15 @@ auto make_timer_owner(const TimerArc& state) -> PollEventOwner {
 auto try_registration_readiness(const RegistrationArc& state, Interest interest)
     -> Option<io::Result<ReadyEvent>> {
     auto fields = state->fields.lock().unwrap_unchecked();
-    auto ready  = fields->ready.for_interest(interest);
-    if (! ready.is_empty()) {
-        return Some(io::Result<ReadyEvent>(Ok(ReadyEvent { ready, fields->tick })));
-    }
     if (fields->closed) {
         auto error = fields->error.is_some()
                          ? io::Error { *fields->error }
                          : io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected });
         return Some(io::Result<ReadyEvent>(Err(rstd::move(error))));
+    }
+    auto ready = fields->ready.for_interest(interest);
+    if (! ready.is_empty()) {
+        return Some(io::Result<ReadyEvent>(Ok(ReadyEvent { ready, fields->tick })));
     }
     return None();
 }
@@ -552,16 +552,16 @@ auto poll_registration_readiness(const RegistrationArc& state,
     auto command = Option<PollCommand> {};
     {
         auto fields = state->fields.lock().unwrap_unchecked();
-        auto ready  = fields->ready.for_interest(interest);
-        if (! ready.is_empty()) {
-            return task::Poll<io::Result<ReadyEvent>>::Ready(
-                Ok(ReadyEvent { ready, fields->tick }));
-        }
         if (fields->closed) {
             auto error = fields->error.is_some()
                              ? io::Error { *fields->error }
                              : io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected });
             return task::Poll<io::Result<ReadyEvent>>::Ready(Err(rstd::move(error)));
+        }
+        auto ready = fields->ready.for_interest(interest);
+        if (! ready.is_empty()) {
+            return task::Poll<io::Result<ReadyEvent>>::Ready(
+                Ok(ReadyEvent { ready, fields->tick }));
         }
 
         if (waiter_id == usize()) {

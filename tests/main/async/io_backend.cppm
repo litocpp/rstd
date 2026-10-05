@@ -507,6 +507,65 @@ TEST(RstdAsyncIoBackend, ReadinessEmulationSharesExplicitReadinessSource) {
     dispatch_all(async::Poll::shutdown(poll.state));
 }
 
+void verify_closed_readiness_reuse(bool reuse_before_deregister) {
+    auto initialized = async::Poll::init(async::IoBackendPreference::ReadinessEmulationRequired);
+    ASSERT_TRUE(initialized.is_ok());
+    auto poll = rstd::move(initialized).unwrap();
+    int  fds[2];
+    ASSERT_EQ(::pipe2(fds, O_NONBLOCK | O_CLOEXEC), 0);
+    auto          old_fd = fds[0];
+    auto          reader = Some(os::fd::OwnedFd::from_raw_fd(fds[0]));
+    auto          writer = os::fd::OwnedFd::from_raw_fd(fds[1]);
+    auto          key    = async::RegistrationKey { u32(), u32(1) };
+    CapturedEvent capture {};
+    auto          registered =
+        async::Poll::apply(poll.state,
+                           async::PollCommand::register_source(
+                               key, old_fd, async::Interest::readable(), capture_owner(capture)));
+    ASSERT_EQ(registered.status(), async::PollApplyStatus::Accepted);
+    reader                  = None();
+    auto replacement_reader = None<os::fd::OwnedFd>();
+    auto replacement_writer = None<os::fd::OwnedFd>();
+    auto replace            = [&] {
+        if (::pipe2(fds, O_NONBLOCK | O_CLOEXEC) != 0) return false;
+        replacement_reader = Some(os::fd::OwnedFd::from_raw_fd(fds[0]));
+        replacement_writer = Some(os::fd::OwnedFd::from_raw_fd(fds[1]));
+        return fds[0] == old_fd;
+    };
+    if (reuse_before_deregister) ASSERT_TRUE(replace());
+    auto removed = async::Poll::apply(
+        poll.state, async::PollCommand::deregister_source(key, capture_owner(capture)));
+    ASSERT_EQ(removed.status(), async::PollApplyStatus::Accepted);
+    ASSERT_TRUE(removed.has_event());
+    removed.take_event().dispatch();
+    ASSERT_TRUE(capture.value.is_some());
+    EXPECT_FALSE(capture.value->has_backend_error());
+    if (! reuse_before_deregister) ASSERT_TRUE(replace());
+    capture.value    = None();
+    auto replacement = async::Poll::apply(
+        poll.state,
+        async::PollCommand::register_source(async::RegistrationKey { u32(), u32(2) },
+                                            old_fd,
+                                            async::Interest::readable(),
+                                            capture_owner(capture)));
+    ASSERT_EQ(replacement.status(), async::PollApplyStatus::Accepted);
+    ASSERT_EQ(::write(replacement_writer->as_raw_fd(), "r", 1), 1);
+    auto ready = async::Poll::poll(poll.state, async::PollTimeout::Infinite);
+    ASSERT_TRUE(ready.is_ok());
+    dispatch_all(rstd::move(ready).unwrap());
+    ASSERT_TRUE(capture.value.is_some());
+    EXPECT_EQ(capture.value->kind(), async::PollEventKind::Readiness);
+    dispatch_all(async::Poll::shutdown(poll.state));
+}
+
+TEST(RstdAsyncIoBackend, ClosedReadinessDescriptorCanBeReused) {
+    verify_closed_readiness_reuse(false);
+}
+
+TEST(RstdAsyncIoBackend, ReusedDescriptorBeforeReadinessDeregister) {
+    verify_closed_readiness_reuse(true);
+}
+
 TEST(RstdAsyncIoBackend, ReadinessEmulationRejectsFileOperations) {
     auto initialized = async::Poll::init(async::IoBackendPreference::ReadinessEmulationRequired);
     ASSERT_TRUE(initialized.is_ok());
