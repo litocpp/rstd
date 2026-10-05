@@ -1,3 +1,21 @@
+<release version="0.1.6" date="2026-10-05">
+  <description>
+    <ul>
+      <li>Add random sources, Mersenne Twister engines, SeedSeq and distributions.</li>
+      <li>Add BudgetAllocator and fallible Box and Arc construction with try_make.</li>
+      <li>Add signal subscriptions and async Ctrl+C, including Windows support.</li>
+      <li>Add async Mutex and future by_ref.</li>
+      <li>Add SocketAddr parsing and FromStr.</li>
+      <li>Add Unix process group extensions and Linux PidFd support.</li>
+      <li>Add JSON Reader, quote_string, numeric comparison and Value serde support.</li>
+      <li>Add benchmark Suite, Runner, allocation diagnostics and cppstd comparisons.</li>
+      <li>Extend floating-point math and fix shortest decimal tie breaking.</li>
+      <li>Fix TOML Unicode serialization and aligned allocation for small alignments.</li>
+      <li>Simplify Option and Result construction.</li>
+      <li>Fix reactor readiness and epoll deregistration.</li>
+    </ul>
+  </description>
+</release>
 <release version="0.1.5" date="2026-09-24">
   <description>
     <ul>
