@@ -6,6 +6,9 @@ import :sys.libc;
 import :sys.io.stdio;
 import :sys.pal;
 import :sys.os_str.windows;
+#if RSTD_OS_LINUX
+import :sys.process.linux;
+#endif
 
 using namespace rstd::prelude;
 namespace libc = rstd::sys::libc;
@@ -84,6 +87,14 @@ auto Child::wait() -> io::Result<ExitStatus> {
 
     // Drop stdin pipe so child sees EOF.
     stdin_pipe = {};
+#if RSTD_OS_LINUX
+    if (pidfd_.is_some()) {
+        auto result = pidfd_->wait();
+        if (result.is_err()) return Err(rstd::move(result).unwrap_err());
+        status = Some(result.unwrap());
+        return result;
+    }
+#endif
 
     int status_value = 0;
     while (true) {
@@ -95,7 +106,6 @@ auto Child::wait() -> io::Result<ExitStatus> {
         }
         break;
     }
-    pid         = -1;
     auto exited = ExitStatus::from_raw(i32(status_value));
     status      = Some(exited);
     return Ok(exited);
@@ -129,6 +139,13 @@ auto Child::wait() -> io::Result<ExitStatus> {
 auto Child::try_wait() -> io::Result<Option<ExitStatus>> {
 #if RSTD_OS_UNIX
     if (status.is_some()) return Ok(Some(*status));
+#if RSTD_OS_LINUX
+    if (pidfd_.is_some()) {
+        auto result = pidfd_->try_wait();
+        if (result.is_ok() && result->is_some()) status = Some(**result);
+        return result;
+    }
+#endif
     if (pid <= 0) {
         return Err(io::error::Error::from_kind(
             io::error::ErrorKind { io::error::ErrorKind::InvalidInput }));
@@ -145,7 +162,6 @@ auto Child::try_wait() -> io::Result<Option<ExitStatus>> {
         }
         break;
     }
-    pid         = -1;
     auto exited = ExitStatus::from_raw(i32(status_value));
     status      = Some(exited);
     return Ok(Some(exited));
@@ -173,17 +189,30 @@ auto Child::try_wait() -> io::Result<Option<ExitStatus>> {
 #endif
 }
 
-auto Child::kill() -> io::Result<rstd::empty> {
 #if RSTD_OS_UNIX
-    if (status.is_some()) return Ok(rstd::empty {});
-    if (pid <= 0) {
+auto Child::send_signal(i32 signal, bool group) const -> io::Result<empty> {
+    if (status.is_some()) return Ok(empty {});
+    if (pid <= 0)
         return Err(io::error::Error::from_kind(
             io::error::ErrorKind { io::error::ErrorKind::InvalidInput }));
+#if RSTD_OS_LINUX
+    if (pidfd_.is_some()) {
+        auto error =
+            sys::process::pidfd_send_signal(pidfd_->as_raw_fd(), signal.to_primitive(), group);
+        if (error) return Err(io::error::Error::from_raw_os_error(i32(error)));
+        return Ok(empty {});
     }
-    if (libc::kill(pid, libc::SIGKILL) == -1) {
-        return Err(io::error::Error::from_raw_os_error(i32(libc::get_errno())));
-    }
-    return Ok(rstd::empty {});
+#endif
+    auto result =
+        group ? libc::killpg(pid, signal.to_primitive()) : libc::kill(pid, signal.to_primitive());
+    if (result < 0) return Err(io::error::Error::from_raw_os_error(i32(libc::get_errno())));
+    return Ok(empty {});
+}
+#endif
+
+auto Child::kill() -> io::Result<rstd::empty> {
+#if RSTD_OS_UNIX
+    return send_signal(i32(libc::SIGKILL), false);
 #elif RSTD_OS_WINDOWS
     if (process_handle == nullptr) {
         return Err(io::error::Error::from_kind(
@@ -265,6 +294,13 @@ auto Child::wait_with_output(OutputObserver observer) -> io::Result<Output> {
 }
 
 } // namespace rstd::process
+
+#if RSTD_OS_UNIX
+auto rstd::os::unix::process::ChildExt::kill_process_group(rstd::process::Child& child)
+    -> io::Result<empty> {
+    return child.send_signal(i32(libc::SIGKILL), true);
+}
+#endif
 
 // ── sys::process_impl::spawn ─────────────────────────────────────────────
 
@@ -379,6 +415,10 @@ struct SpawnContext {
     int*                 stdout_pipe {};
     int*                 stderr_pipe {};
     bool                 requires_fork {};
+    Option<i32>          process_group;
+#if RSTD_OS_LINUX
+    Option<rstd::os::linux::process::PidFd>* pidfd {};
+#endif
 };
 
 struct ChildSpawnError {
@@ -423,6 +463,9 @@ auto add_null_action(libc::posix_spawn_file_actions_t* actions, int target, int 
 auto try_posix_spawn(const SpawnContext& context)
     -> rstd::result::Result<Option<libc::pid_t>, rstd::io::error::Error> {
     if (context.requires_fork || ! libc::posix_spawn_reports_exec_error()) return Ok(None());
+#if RSTD_OS_LINUX
+    if (context.pidfd != nullptr) return Ok(None());
+#endif
 
     auto addchdir = libc::PosixSpawnAddChdir {};
     if (context.directory != nullptr) {
@@ -453,11 +496,27 @@ auto try_posix_spawn(const SpawnContext& context)
     }
     if (error == 0 && addchdir != nullptr) error = addchdir(&actions, context.directory);
 
-    auto child_pid = libc::pid_t(-1);
-    if (error == 0) {
-        error = libc::posix_spawnp(
-            &child_pid, context.program, &actions, nullptr, context.arguments, context.environment);
+    auto                    child_pid = libc::pid_t(-1);
+    libc::posix_spawnattr_t attributes;
+    auto                    attributes_ready = false;
+    if (error == 0 && context.process_group.is_some()) {
+        error            = libc::posix_spawnattr_init(&attributes);
+        attributes_ready = error == 0;
+        if (error == 0)
+            error =
+                libc::posix_spawnattr_setpgroup(&attributes, context.process_group->to_primitive());
+        if (error == 0)
+            error = libc::posix_spawnattr_setflags(&attributes, libc::POSIX_SPAWN_SETPGROUP_);
     }
+    if (error == 0) {
+        error = libc::posix_spawnp(&child_pid,
+                                   context.program,
+                                   &actions,
+                                   attributes_ready ? &attributes : nullptr,
+                                   context.arguments,
+                                   context.environment);
+    }
+    if (attributes_ready) libc::posix_spawnattr_destroy(&attributes);
     libc::posix_spawn_file_actions_destroy(&actions);
     if (error != 0) {
         return Err(rstd::io::error::Error::from_raw_os_error(i32(error)));
@@ -504,10 +563,21 @@ auto fork_exec(const SpawnContext& context)
     if (libc::pipe2(error_pipe, libc::O_CLOEXEC) == -1) {
         return Err(rstd::io::error::Error::from_raw_os_error(i32(libc::get_errno())));
     }
+#if RSTD_OS_LINUX
+    int pidfd_channel[2] = { -1, -1 };
+    if (context.pidfd && rstd::sys::process::pidfd_channel(pidfd_channel) < 0) {
+        auto error = libc::get_errno();
+        close_pipe(error_pipe);
+        return Err(rstd::io::error::Error::from_raw_os_error(i32(error)));
+    }
+#endif
 
     auto child_pid = libc::fork();
     if (child_pid == -1) {
         auto error = libc::get_errno();
+#if RSTD_OS_LINUX
+        close_pipe(pidfd_channel);
+#endif
         libc::close(error_pipe[0]);
         libc::close(error_pipe[1]);
         return Err(rstd::io::error::Error::from_raw_os_error(i32(error)));
@@ -515,6 +585,20 @@ auto fork_exec(const SpawnContext& context)
 
     if (child_pid == 0) {
         libc::close(error_pipe[0]);
+#if RSTD_OS_LINUX
+        if (context.pidfd) {
+            libc::close(pidfd_channel[0]);
+            auto error = rstd::sys::process::send_current_pidfd(pidfd_channel[1]);
+            libc::close(pidfd_channel[1]);
+            if (error) {
+                libc::get_errno() = error;
+                child_spawn_failure(error_pipe[1]);
+            }
+        }
+#endif
+        if (context.process_group.is_some() &&
+            libc::setpgid(0, context.process_group->to_primitive()) != 0)
+            child_spawn_failure(error_pipe[1]);
         if (context.directory != nullptr && libc::chdir(context.directory) == -1) {
             child_spawn_failure(error_pipe[1]);
         }
@@ -541,6 +625,15 @@ auto fork_exec(const SpawnContext& context)
     }
 
     libc::close(error_pipe[1]);
+#if RSTD_OS_LINUX
+    if (context.pidfd) {
+        libc::close(pidfd_channel[1]);
+        int fd = -1;
+        (void)rstd::sys::process::receive_pidfd(pidfd_channel[0], fd);
+        libc::close(pidfd_channel[0]);
+        if (fd >= 0) context.pidfd->insert(rstd::os::linux::process::PidFd::from_raw_fd(fd));
+    }
+#endif
     auto message  = ChildSpawnError {};
     auto received = decltype(libc::read(error_pipe[0], &message, sizeof(message))) {};
     do {
@@ -868,6 +961,9 @@ auto Spawn::spawn(rstd::process::Command& cmd)
         }
     }
 
+#if RSTD_OS_LINUX
+    Option<rstd::os::linux::process::PidFd> pidfd;
+#endif
     auto context = SpawnContext {
         .program       = prog_ptr,
         .arguments     = argv_buf.begin(),
@@ -880,6 +976,10 @@ auto Spawn::spawn(rstd::process::Command& cmd)
         .stdout_pipe   = stdout_pipe,
         .stderr_pipe   = stderr_pipe,
         .requires_fork = path_changed && ! program_is_path,
+        .process_group = cmd.process_group_,
+#if RSTD_OS_LINUX
+        .pidfd = cmd.create_pidfd_ ? &pidfd : nullptr,
+#endif
     };
 
     auto spawned = try_posix_spawn(context);
@@ -905,6 +1005,9 @@ auto Spawn::spawn(rstd::process::Command& cmd)
 
     Child child;
     child.pid = child_pid;
+#if RSTD_OS_LINUX
+    child.pidfd_ = rstd::move(pidfd);
+#endif
     if (stdin_pipe[1] >= 0) child.stdin_pipe = Some(ChildStdin(stdin_pipe[1]));
     if (stdout_pipe[0] >= 0) child.stdout_pipe = Some(ChildStdout(stdout_pipe[0]));
     if (stderr_pipe[0] >= 0) child.stderr_pipe = Some(ChildStderr(stderr_pipe[0]));

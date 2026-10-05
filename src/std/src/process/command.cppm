@@ -5,8 +5,27 @@ export module rstd:process.command;
 export import :process.exit_status;
 export import :io;
 export import :path;
+export import :os.fd;
 export import rstd.alloc;
 import :sys.io.stdio;
+#if RSTD_OS_LINUX
+export import :os.linux.pidfd;
+#endif
+
+#if RSTD_OS_UNIX
+export namespace rstd::os::unix::process
+{
+struct CommandExt;
+struct ChildExt;
+} // namespace rstd::os::unix::process
+#endif
+#if RSTD_OS_LINUX
+export namespace rstd::os::linux::process
+{
+struct CommandExt;
+struct ChildExt;
+} // namespace rstd::os::linux::process
+#endif
 
 using ::alloc::ffi::CString;
 using ::alloc::string::String;
@@ -39,6 +58,12 @@ struct ChildStdin {
     ChildStdin& operator=(ChildStdin&&) = delete;
     ChildStdin()                        = default;
     explicit ChildStdin(int f): fd(f) {}
+#if RSTD_OS_UNIX
+    auto as_raw_fd() const noexcept -> os::fd::RawFd { return fd; }
+    auto as_fd() const noexcept [[clang::lifetimebound]] -> os::fd::BorrowedFd {
+        return os::fd::BorrowedFd::borrow_raw(fd);
+    }
+#endif
 };
 
 /// A handle to a child process's standard output (read end of pipe).
@@ -49,6 +74,12 @@ struct ChildStdout {
     ChildStdout& operator=(ChildStdout&&) = delete;
     ChildStdout()                         = default;
     explicit ChildStdout(int f): fd(f) {}
+#if RSTD_OS_UNIX
+    auto as_raw_fd() const noexcept -> os::fd::RawFd { return fd; }
+    auto as_fd() const noexcept [[clang::lifetimebound]] -> os::fd::BorrowedFd {
+        return os::fd::BorrowedFd::borrow_raw(fd);
+    }
+#endif
 };
 
 /// A handle to a child process's standard error (read end of pipe).
@@ -59,6 +90,12 @@ struct ChildStderr {
     ChildStderr& operator=(ChildStderr&&) = delete;
     ChildStderr()                         = default;
     explicit ChildStderr(int f): fd(f) {}
+#if RSTD_OS_UNIX
+    auto as_raw_fd() const noexcept -> os::fd::RawFd { return fd; }
+    auto as_fd() const noexcept [[clang::lifetimebound]] -> os::fd::BorrowedFd {
+        return os::fd::BorrowedFd::borrow_raw(fd);
+    }
+#endif
 };
 
 } // namespace rstd::process
@@ -106,6 +143,20 @@ export namespace rstd::process
 
 /// A child process handle.
 struct Child {
+private:
+    friend sys::process_impl::Spawn;
+#if RSTD_OS_UNIX
+    friend os::unix::process::ChildExt;
+#endif
+#if RSTD_OS_LINUX
+    friend os::linux::process::ChildExt;
+    Option<os::linux::process::PidFd> pidfd_;
+#endif
+#if RSTD_OS_UNIX
+    auto send_signal(i32 signal, bool group) const -> io::Result<empty>;
+#endif
+
+public:
     int pid { -1 };
 #if RSTD_OS_WINDOWS
     void* process_handle { nullptr };
@@ -143,7 +194,11 @@ struct Child {
 
     ~Child();
     Child(Child&& o) noexcept
-        : pid(o.pid),
+        :
+#if RSTD_OS_LINUX
+          pidfd_(o.pidfd_.take()),
+#endif
+          pid(o.pid),
 #if RSTD_OS_WINDOWS
           process_handle(o.process_handle),
 #endif
@@ -171,6 +226,14 @@ class Command {
     Stdio           cfg_stdout_ { Stdio::inherit() };
     Stdio           cfg_stderr_ { Stdio::inherit() };
     bool            env_clear_ { false };
+#if RSTD_OS_UNIX
+    Option<i32> process_group_;
+    friend os::unix::process::CommandExt;
+#endif
+#if RSTD_OS_LINUX
+    bool create_pidfd_ { false };
+    friend os::linux::process::CommandExt;
+#endif
 
     friend sys::process_impl::Spawn;
 

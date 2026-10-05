@@ -171,6 +171,10 @@ target_sources(
          src/os/handle.cppm
          src/os/socket.cppm
          src/os/unix/ffi.cppm
+         src/os/unix/process.cppm
+         src/os/linux/process.cppm
+         src/os/linux/pidfd.cppm
+         src/sys/process/linux.cppm
          src/os/windows/ffi.cppm
          src/sys/io/stdio.cppm
          src/sys/mod.cppm
@@ -280,6 +284,7 @@ target_sources(
           src/fs/mod.cpp
           src/env.cpp
           src/os/fd.cpp
+          src/os/linux/process.cpp
           src/os/handle.cpp
           src/os/socket.cpp
           ${rstd_std_platform_sources})
