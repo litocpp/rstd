@@ -1,0 +1,11 @@
+[package]
+name = "rstd-signal-windows-tests"
+target = { os = "windows" }
+
+[[test]]
+name = "signal-windows"
+sources = ["main.cpp"]
+link-stdlib = false
+
+[dependencies]
+rstd-std = { path = "../../src/std" }

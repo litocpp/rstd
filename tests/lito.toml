@@ -10,6 +10,7 @@ members = [
   "nostd",
   "toml",
   "signal",
+  "signal-windows",
   "random",
   "random/core-only",
 ]

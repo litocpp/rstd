@@ -14,6 +14,7 @@ export class SignalKind {
 public:
     static auto interrupt() noexcept -> SignalKind;
     /// Rejects uncatchable, synchronous fault, and realtime signals.
+    /// Windows accepts only CTRL_C_EVENT (0), not C runtime signal numbers.
     static auto           from_raw(i32 number) -> io::Result<SignalKind>;
     auto                  as_raw() const noexcept -> i32 { return i32(m_number); }
     friend constexpr auto operator==(SignalKind, SignalKind) noexcept -> bool = default;
@@ -97,8 +98,11 @@ public:
 
 /// Registration is effective before return. Repeated signals may be coalesced.
 /// Concurrent external sigaction changes and use after fork without exec are unsupported.
-/// Linux is supported; other targets return Unsupported. Thread signal masks are unchanged.
-/// A shared dispatcher, two close-on-exec descriptors, and fixed handler state remain
+/// Linux signals and Windows console Ctrl+C are supported. Thread signal masks are unchanged.
+/// Windows adds/removes only its own handler; other handlers and the ignore flag are untouched.
+/// Changing the attached console while subscribed is unsupported. A later handler may consume
+/// Ctrl+C first. Close, logoff, shutdown and Ctrl+Break events are not intercepted.
+/// A shared dispatcher, its wakeup descriptors/event, and fixed handler state remain
 /// alive until process exit. No subscription or runtime is retained after closure.
 /// Failed restoration retains an inactive handler safely; close() can retry. After a
 /// failed registration rollback, subscribing and closing the same kind retries restoration.

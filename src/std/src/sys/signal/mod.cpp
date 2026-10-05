@@ -7,6 +7,8 @@ module;
 #include <pthread.h>
 #include <signal.h>
 #include <unistd.h>
+#elif RSTD_OS_WINDOWS
+#include <windows.h>
 #endif
 
 module rstd;
@@ -161,6 +163,93 @@ auto restore(int number) -> rstd::io::Result<empty> {
     if (! installed[number]) return Ok(empty {});
     if (::sigaction(number, &previous[number], nullptr) < 0) return Err(os_error(errno));
     installed[number] = false;
+    return Ok(empty {});
+}
+#elif RSTD_OS_WINDOWS
+// Published resources outlive removed handlers that may still be executing.
+alignas(8) static LONG64 interrupt_sequence {};
+static HANDLE wake_event {};
+static bool   installed {};
+static void (*dispatch_events)(int) {};
+
+static auto os_error(DWORD code) -> rstd::io::Error {
+    return rstd::io::Error::from_raw_os_error(i32(code));
+}
+
+static BOOL WINAPI handle_signal(DWORD kind) {
+    if (kind != CTRL_C_EVENT) return FALSE;
+    ::InterlockedIncrement64(&interrupt_sequence);
+    ::SetEvent(wake_event);
+    return TRUE;
+}
+
+static DWORD WINAPI dispatch_loop(void*) {
+    for (;;) {
+        auto result = ::WaitForSingleObject(wake_event, INFINITE);
+        if (result != WAIT_OBJECT_0) {
+            dispatch_events(static_cast<int>(::GetLastError()));
+            return 0;
+        }
+        dispatch_events(0);
+    }
+}
+
+auto available() noexcept -> bool {
+    return true;
+}
+auto same_process() noexcept -> bool {
+    return true;
+}
+auto supported(int number) noexcept -> bool {
+    return number == CTRL_C_EVENT;
+}
+auto interrupt_number() noexcept -> int {
+    return CTRL_C_EVENT;
+}
+auto terminate_number() noexcept -> int {
+    return -1;
+}
+auto hangup_number() noexcept -> int {
+    return -1;
+}
+auto user1_number() noexcept -> int {
+    return -1;
+}
+auto user2_number() noexcept -> int {
+    return -1;
+}
+auto sequence(int) noexcept -> unsigned long long {
+    return static_cast<unsigned long long>(
+        ::InterlockedCompareExchange64(&interrupt_sequence, 0, 0));
+}
+
+auto start(void (*dispatch)(int)) -> rstd::io::Result<empty> {
+    if (wake_event) return Ok(empty {});
+    wake_event = ::CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    if (! wake_event) return Err(os_error(::GetLastError()));
+    dispatch_events = dispatch;
+    auto thread     = ::CreateThread(nullptr, 0, dispatch_loop, nullptr, 0, nullptr);
+    if (! thread) {
+        auto error = ::GetLastError();
+        ::CloseHandle(wake_event);
+        wake_event = nullptr;
+        return Err(os_error(error));
+    }
+    ::CloseHandle(thread);
+    return Ok(empty {});
+}
+
+auto install(int) -> rstd::io::Result<empty> {
+    if (installed) return Ok(empty {});
+    if (! ::SetConsoleCtrlHandler(handle_signal, TRUE)) return Err(os_error(::GetLastError()));
+    installed = true;
+    return Ok(empty {});
+}
+
+auto restore(int) -> rstd::io::Result<empty> {
+    if (! installed) return Ok(empty {});
+    if (! ::SetConsoleCtrlHandler(handle_signal, FALSE)) return Err(os_error(::GetLastError()));
+    installed = false;
     return Ok(empty {});
 }
 #else

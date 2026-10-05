@@ -79,17 +79,21 @@ auto SignalKind::from_raw(i32 number) -> io::Result<SignalKind> {
     if (! backend::supported(number.to_primitive())) return Err(error(io::ErrorKind::InvalidInput));
     return Ok(SignalKind { number.to_primitive() });
 }
+static auto platform_kind(int number) -> io::Result<SignalKind> {
+    if (number < 0) return Err(error(io::ErrorKind::Unsupported));
+    return SignalKind::from_raw(i32(number));
+}
 auto unix::terminate() -> io::Result<SignalKind> {
-    return SignalKind::from_raw(i32(backend::terminate_number()));
+    return platform_kind(backend::terminate_number());
 }
 auto unix::hangup() -> io::Result<SignalKind> {
-    return SignalKind::from_raw(i32(backend::hangup_number()));
+    return platform_kind(backend::hangup_number());
 }
 auto unix::user1() -> io::Result<SignalKind> {
-    return SignalKind::from_raw(i32(backend::user1_number()));
+    return platform_kind(backend::user1_number());
 }
 auto unix::user2() -> io::Result<SignalKind> {
-    return SignalKind::from_raw(i32(backend::user2_number()));
+    return platform_kind(backend::user2_number());
 }
 
 auto subscribe(slice<SignalKind> kinds) -> io::Result<Subscription> {
