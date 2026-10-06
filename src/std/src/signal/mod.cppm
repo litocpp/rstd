@@ -26,6 +26,10 @@ auto terminate() -> io::Result<SignalKind>;
 auto hangup() -> io::Result<SignalKind>;
 auto user1() -> io::Result<SignalKind>;
 auto user2() -> io::Result<SignalKind>;
+auto child() -> io::Result<SignalKind>;
+auto window_change() -> io::Result<SignalKind>;
+auto pipe() -> io::Result<SignalKind>;
+auto quit() -> io::Result<SignalKind>;
 } // namespace unix
 
 struct Interest {
@@ -72,10 +76,9 @@ public:
     auto poll_recv(task::Context& cx) -> task::Poll<io::Result<Option<SignalKind>>>;
 };
 
-/// Independent, move-only signal subscription. close() restores the previous OS
-/// disposition on the last subscription and reports restoration errors.
-/// Destruction attempts restoration but cannot report failure; use close() when
-/// restoration must be checked. Receivers remain valid and observe closure.
+/// Independent, move-only signal subscription. Closing or destroying it removes
+/// only this subscription, never the process-wide OS handler.
+/// Receivers remain valid and observe closure.
 export class Subscription {
     sync::Arc<SubscriptionState> m_state;
     explicit Subscription(sync::Arc<SubscriptionState> state): m_state(rstd::move(state)) {}
@@ -92,24 +95,28 @@ public:
     auto receiver() const -> io::Result<Receiver>;
     auto try_recv() const -> io::Result<Option<SignalKind>>;
     auto recv() const -> io::Result<Option<SignalKind>>;
-    /// Wakes receivers with None, discards pending events, and allows retry on error.
+    /// Idempotently wakes receivers with None and discards pending events.
+    /// Returns Unsupported after fork without exec, without touching inherited locks.
     auto close() const -> io::Result<empty>;
 };
 
 /// Registration is effective before return. Repeated signals may be coalesced.
 /// Concurrent external sigaction changes and use after fork without exec are unsupported.
-/// Linux signals and Windows console Ctrl+C are supported. Thread signal masks are unchanged.
-/// Windows adds/removes only its own handler; other handlers and the ignore flag are untouched.
-/// Changing the attached console while subscribed is unsupported. A later handler may consume
+/// Linux/macOS signals and Windows console Ctrl+C are supported. Thread signal masks are unchanged.
+/// Unix handlers stay installed even with no subscriptions; default behavior is not restored.
+/// Existing custom Unix handlers are rejected, not chained. Already installed handlers survive
+/// partial registration failure, but no subscription is published on failure.
+/// Windows installs only its own handler; other handlers and the ignore flag are untouched.
+/// With no active subscription, it forwards Ctrl+C to the next handler by returning FALSE.
+/// Changing the attached console after first registration is unsupported. A later handler may consume
 /// Ctrl+C first. Close, logoff, shutdown and Ctrl+Break events are not intercepted.
 /// A shared dispatcher, its wakeup descriptors/event, and fixed handler state remain
 /// alive until process exit. No subscription or runtime is retained after closure.
-/// Failed restoration retains an inactive handler safely; close() can retry. After a
-/// failed registration rollback, subscribing and closing the same kind retries restoration.
+/// New subscriptions do not replay earlier signals. Applications own their shutdown policy.
 /// \code
 /// auto subscription = rstd::signal::subscribe(rstd::signal::SignalKind::interrupt()).unwrap();
 /// auto event = subscription.recv();
-/// auto restored = subscription.close();
+/// subscription.close().unwrap();
 /// \endcode
 export auto        subscribe(slice<SignalKind> kinds) -> io::Result<Subscription>;
 export inline auto subscribe(SignalKind kind) -> io::Result<Subscription> {

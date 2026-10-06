@@ -95,6 +95,18 @@ auto unix::user1() -> io::Result<SignalKind> {
 auto unix::user2() -> io::Result<SignalKind> {
     return platform_kind(backend::user2_number());
 }
+auto unix::child() -> io::Result<SignalKind> {
+    return platform_kind(backend::child_number());
+}
+auto unix::window_change() -> io::Result<SignalKind> {
+    return platform_kind(backend::window_change_number());
+}
+auto unix::pipe() -> io::Result<SignalKind> {
+    return platform_kind(backend::pipe_number());
+}
+auto unix::quit() -> io::Result<SignalKind> {
+    return platform_kind(backend::quit_number());
+}
 
 auto subscribe(slice<SignalKind> kinds) -> io::Result<Subscription> {
     if (! backend::available() || ! backend::same_process())
@@ -115,20 +127,12 @@ auto subscribe(slice<SignalKind> kinds) -> io::Result<Subscription> {
     if (started.is_err()) return Err(rstd::move(started).unwrap_err_unchecked());
     for (auto& interest : fields->interests) {
         auto installed = backend::install(interest.kind.as_raw().to_primitive());
-        if (installed.is_err()) {
-            auto failure = rstd::move(installed).unwrap_err_unchecked();
-            for (auto& rollback : fields->interests) {
-                auto number = rollback.kind.as_raw().to_primitive();
-                if (entries->references[number] == 0) {
-                    auto restored = backend::restore(number);
-                    if (restored.is_err()) failure = rstd::move(restored).unwrap_err_unchecked();
-                }
-            }
-            return Err(rstd::move(failure));
-        }
+        if (installed.is_err()) return Err(rstd::move(installed).unwrap_err_unchecked());
     }
-    for (auto& interest : fields->interests)
-        ++entries->references[interest.kind.as_raw().to_primitive()];
+    for (auto& interest : fields->interests) {
+        auto number = interest.kind.as_raw().to_primitive();
+        if (++entries->references[number] == 1) backend::set_listening(number, true);
+    }
     entries->subscribers.push(state.clone());
     return Ok(Subscription { rstd::move(state) });
 }
@@ -136,8 +140,7 @@ auto subscribe(slice<SignalKind> kinds) -> io::Result<Subscription> {
 auto Subscription::close() const -> io::Result<empty> {
     if (! m_state) return Ok(empty {});
     if (! backend::same_process()) return Err(error(io::ErrorKind::Unsupported));
-    auto waker   = Option<task::Waker> {};
-    auto failure = Option<io::Error> {};
+    auto waker = Option<task::Waker> {};
     {
         auto entries = registry().lock().unwrap_unchecked();
         auto fields  = m_state->fields.lock().unwrap_unchecked();
@@ -145,7 +148,8 @@ auto Subscription::close() const -> io::Result<empty> {
             fields->closed = true;
             waker          = fields->waker.take();
             for (auto& interest : fields->interests) {
-                --entries->references[interest.kind.as_raw().to_primitive()];
+                auto number = interest.kind.as_raw().to_primitive();
+                if (--entries->references[number] == 0) backend::set_listening(number, false);
                 interest.pending = false;
             }
             for (size_t i = 0; i < entries->subscribers.len().to_primitive(); ++i) {
@@ -155,17 +159,9 @@ auto Subscription::close() const -> io::Result<empty> {
                 }
             }
         }
-        for (auto& interest : fields->interests) {
-            auto number = interest.kind.as_raw().to_primitive();
-            if (entries->references[number] == 0) {
-                auto restored = backend::restore(number);
-                if (restored.is_err()) failure = Some(rstd::move(restored).unwrap_err_unchecked());
-            }
-        }
         m_state->changed.notify_all();
     }
     if (waker.is_some()) rstd::move(*waker).wake();
-    if (failure.is_some()) return Err(*failure);
     return Ok(empty {});
 }
 

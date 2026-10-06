@@ -10,6 +10,11 @@ using namespace rstd::prelude;
 namespace sig = rstd::signal;
 
 static HANDLE      fallback_event;
+static HANDLE      observer_event;
+static BOOL WINAPI observer(DWORD kind) {
+    if (kind == CTRL_C_EVENT) ::SetEvent(observer_event);
+    return FALSE;
+}
 static BOOL WINAPI fallback(DWORD kind) {
     if (kind != CTRL_C_EVENT && kind != CTRL_BREAK_EVENT) return FALSE;
     ::SetEvent(fallback_event);
@@ -54,6 +59,14 @@ static int child(const char* name) {
                     rstd::io::error::ErrorKind::Unsupported);
         rstd_assert(sig::unix::hangup().unwrap_err().kind().code ==
                     rstd::io::error::ErrorKind::Unsupported);
+        rstd_assert(sig::unix::child().unwrap_err().kind().code ==
+                    rstd::io::error::ErrorKind::Unsupported);
+        rstd_assert(sig::unix::window_change().unwrap_err().kind().code ==
+                    rstd::io::error::ErrorKind::Unsupported);
+        rstd_assert(sig::unix::pipe().unwrap_err().kind().code ==
+                    rstd::io::error::ErrorKind::Unsupported);
+        rstd_assert(sig::unix::quit().unwrap_err().kind().code ==
+                    rstd::io::error::ErrorKind::Unsupported);
         rstd_assert(sig::subscribe(slice<sig::SignalKind> {}).is_err());
         return 0;
     }
@@ -75,7 +88,7 @@ static int child(const char* name) {
         }
         return 0;
     }
-    if (std::strcmp(name, "restore") == 0) {
+    if (std::strcmp(name, "forward") == 0) {
         fallback_event = ::CreateEventW(nullptr, FALSE, FALSE, nullptr);
         rstd_assert(fallback_event && ::SetConsoleCtrlHandler(fallback, TRUE));
         auto subscription = sig::subscribe(interrupt).unwrap();
@@ -85,6 +98,17 @@ static int child(const char* name) {
         rstd_assert(::GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, 0));
         rstd_assert(::WaitForSingleObject(fallback_event, 10000) == WAIT_OBJECT_0);
         subscription.close().unwrap();
+        rstd_assert(::GenerateConsoleCtrlEvent(CTRL_C_EVENT, 0));
+        rstd_assert(::WaitForSingleObject(fallback_event, 10000) == WAIT_OBJECT_0);
+        observer_event = ::CreateEventW(nullptr, FALSE, FALSE, nullptr);
+        rstd_assert(observer_event && ::SetConsoleCtrlHandler(observer, TRUE));
+        auto reopened = sig::subscribe(interrupt).unwrap();
+        rstd_assert(::GenerateConsoleCtrlEvent(CTRL_C_EVENT, 0));
+        rstd_assert(reopened.recv().unwrap().unwrap() == interrupt);
+        // Reinstalling our handler would move it ahead of the observer in the console chain.
+        rstd_assert(::WaitForSingleObject(observer_event, 0) == WAIT_OBJECT_0);
+        rstd_assert(::WaitForSingleObject(fallback_event, 0) == WAIT_TIMEOUT);
+        reopened.close().unwrap();
         rstd_assert(::GenerateConsoleCtrlEvent(CTRL_C_EVENT, 0));
         rstd_assert(::WaitForSingleObject(fallback_event, 10000) == WAIT_OBJECT_0);
         return 0;
@@ -130,7 +154,7 @@ int main(int argc, char** argv) {
                                                           L"default",
                                                           L"invalid",
                                                           L"subscriptions",
-                                                          L"restore",
+                                                          L"forward",
                                                           L"close",
                                                           L"async" }) {
         wchar_t command[33000];

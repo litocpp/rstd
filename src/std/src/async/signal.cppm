@@ -52,7 +52,7 @@ export inline auto recv(const rstd::signal::Subscription& subscription) -> io::R
 }
 
 /// Installs the subscription before returning, even before the first poll.
-/// Completion reports restoration errors; cancellation performs best-effort restoration.
+/// Completion and cancellation release this subscription, not the process-wide handler.
 /// \code
 /// auto pending = rstd::async::signal::ctrl_c().unwrap();
 /// auto runtime = rstd::async::RuntimeBuilder::current_thread().build().unwrap();

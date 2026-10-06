@@ -1,6 +1,6 @@
 module;
 #include <rstd/macro.hpp>
-#if RSTD_OS_LINUX
+#if RSTD_OS_LINUX || RSTD_OS_MACOS
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
@@ -14,22 +14,23 @@ module;
 module rstd;
 import :sys.signal;
 import :io;
+#if RSTD_OS_LINUX || RSTD_OS_MACOS
+import :sys.libc;
+#endif
 
 namespace rstd::sys::signal
 {
 
-#if RSTD_OS_LINUX
+#if RSTD_OS_LINUX || RSTD_OS_MACOS
 static_assert(__atomic_always_lock_free(sizeof(unsigned long long), nullptr));
 static_assert(__atomic_always_lock_free(sizeof(int), nullptr));
 
-// In-flight handlers may outlive sigaction restoration. These never change address
-// or close after publication, and contain no subscription or runtime ownership.
+// Published handler state has process lifetime and owns no subscription or runtime.
 static unsigned long long sequences[capacity] {};
 static int                process_id {};
 static int                pipe_read { -1 };
 static int                pipe_write { -1 };
 static bool               installed[capacity] {};
-static struct sigaction   previous[capacity] {};
 static void (*dispatch_events)(int) {};
 
 static auto os_error(int error) -> rstd::io::Error {
@@ -76,7 +77,10 @@ auto same_process() noexcept -> bool {
     return owner == 0 || owner == ::getpid();
 }
 auto supported(int number) noexcept -> bool {
-    if (number <= 0 || number >= capacity || number >= SIGRTMIN) return false;
+    if (number <= 0 || number >= capacity || number >= NSIG) return false;
+#ifdef SIGRTMIN
+    if (number >= SIGRTMIN) return false;
+#endif
     switch (number) {
     case SIGKILL:
     case SIGSTOP:
@@ -108,6 +112,18 @@ auto user1_number() noexcept -> int {
 auto user2_number() noexcept -> int {
     return SIGUSR2;
 }
+auto child_number() noexcept -> int {
+    return SIGCHLD;
+}
+auto window_change_number() noexcept -> int {
+    return SIGWINCH;
+}
+auto pipe_number() noexcept -> int {
+    return SIGPIPE;
+}
+auto quit_number() noexcept -> int {
+    return SIGQUIT;
+}
 auto sequence(int number) noexcept -> unsigned long long {
     return __atomic_load_n(&sequences[number], __ATOMIC_SEQ_CST);
 }
@@ -115,7 +131,7 @@ auto sequence(int number) noexcept -> unsigned long long {
 auto start(void (*dispatch)(int)) -> rstd::io::Result<empty> {
     if (pipe_read >= 0) return Ok(empty {});
     int fds[2];
-    if (::pipe2(fds, O_NONBLOCK | O_CLOEXEC) < 0) return Err(os_error(errno));
+    if (rstd::sys::libc::pipe2(fds, O_NONBLOCK | O_CLOEXEC) < 0) return Err(os_error(errno));
     pthread_attr_t attr;
     auto           error = ::pthread_attr_init(&attr);
     if (error == 0) {
@@ -151,23 +167,19 @@ auto install(int number) -> rstd::io::Result<empty> {
     }
     struct sigaction action {};
     action.sa_handler = handle_signal;
-    ::sigemptyset(&action.sa_mask);
+    (void)sigemptyset(&action.sa_mask);
     action.sa_flags = SA_RESTART;
     if (::sigaction(number, &action, nullptr) < 0) return Err(os_error(errno));
-    previous[number]  = old;
     installed[number] = true;
     return Ok(empty {});
 }
 
-auto restore(int number) -> rstd::io::Result<empty> {
-    if (! installed[number]) return Ok(empty {});
-    if (::sigaction(number, &previous[number], nullptr) < 0) return Err(os_error(errno));
-    installed[number] = false;
-    return Ok(empty {});
+void set_listening(int, bool) noexcept {
 }
 #elif RSTD_OS_WINDOWS
-// Published resources outlive removed handlers that may still be executing.
+// The console handler and its wakeup resources have process lifetime.
 alignas(8) static LONG64 interrupt_sequence {};
+static LONG   listening {};
 static HANDLE wake_event {};
 static bool   installed {};
 static void (*dispatch_events)(int) {};
@@ -178,6 +190,7 @@ static auto os_error(DWORD code) -> rstd::io::Error {
 
 static BOOL WINAPI handle_signal(DWORD kind) {
     if (kind != CTRL_C_EVENT) return FALSE;
+    if (! ::InterlockedCompareExchange(&listening, 0, 0)) return FALSE;
     ::InterlockedIncrement64(&interrupt_sequence);
     ::SetEvent(wake_event);
     return TRUE;
@@ -222,6 +235,18 @@ auto sequence(int) noexcept -> unsigned long long {
     return static_cast<unsigned long long>(
         ::InterlockedCompareExchange64(&interrupt_sequence, 0, 0));
 }
+auto child_number() noexcept -> int {
+    return -1;
+}
+auto window_change_number() noexcept -> int {
+    return -1;
+}
+auto pipe_number() noexcept -> int {
+    return -1;
+}
+auto quit_number() noexcept -> int {
+    return -1;
+}
 
 auto start(void (*dispatch)(int)) -> rstd::io::Result<empty> {
     if (wake_event) return Ok(empty {});
@@ -246,11 +271,8 @@ auto install(int) -> rstd::io::Result<empty> {
     return Ok(empty {});
 }
 
-auto restore(int) -> rstd::io::Result<empty> {
-    if (! installed) return Ok(empty {});
-    if (! ::SetConsoleCtrlHandler(handle_signal, FALSE)) return Err(os_error(::GetLastError()));
-    installed = false;
-    return Ok(empty {});
+void set_listening(int, bool active) noexcept {
+    ::InterlockedExchange(&listening, active ? 1 : 0);
 }
 #else
 auto available() noexcept -> bool {
@@ -280,6 +302,18 @@ auto user2_number() noexcept -> int {
 auto sequence(int) noexcept -> unsigned long long {
     return 0;
 }
+auto child_number() noexcept -> int {
+    return -1;
+}
+auto window_change_number() noexcept -> int {
+    return -1;
+}
+auto pipe_number() noexcept -> int {
+    return -1;
+}
+auto quit_number() noexcept -> int {
+    return -1;
+}
 auto start(void (*)(int)) -> rstd::io::Result<empty> {
     return Err(
         rstd::io::Error::from_kind(rstd::io::ErrorKind { rstd::io::ErrorKind::Unsupported }));
@@ -287,8 +321,7 @@ auto start(void (*)(int)) -> rstd::io::Result<empty> {
 auto install(int) -> rstd::io::Result<empty> {
     return start(nullptr);
 }
-auto restore(int) -> rstd::io::Result<empty> {
-    return start(nullptr);
+void set_listening(int, bool) noexcept {
 }
 #endif
 

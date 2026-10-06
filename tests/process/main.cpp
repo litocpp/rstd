@@ -1,10 +1,13 @@
 #include <rstd/test/gtest.hpp>
+#include <rstd/macro.hpp>
 #include <cerrno>
 #include <fcntl.h>
 #include <poll.h>
 #include <signal.h>
 #include <sys/wait.h>
+#if RSTD_OS_LINUX
 #include <sys/syscall.h>
+#endif
 #include <unistd.h>
 
 import rstd;
@@ -15,6 +18,7 @@ using namespace rstd::literals;
 using rstd::process::Command;
 using rstd::process::Stdio;
 namespace up = rstd::os::unix::process;
+#if RSTD_OS_LINUX
 namespace lp = rstd::os::linux::process;
 
 auto pidfd_supported() -> bool {
@@ -27,6 +31,7 @@ auto pidfd_supported() -> bool {
     return false;
 #endif
 }
+#endif
 
 // Tests clean up explicitly even when an assertion fails.
 struct Reap {
@@ -79,6 +84,7 @@ TEST(Process, UnixExistingGroupAndIndividualSignal) {
     EXPECT_EQ(child.wait().unwrap().signal().unwrap(), i32(SIGTERM));
 }
 
+#if RSTD_OS_LINUX
 TEST(Process, PidFdOptInAndCachedWait) {
     auto command = waiting_command();
     lp::CommandExt::create_pidfd(command, true);
@@ -174,6 +180,8 @@ TEST(Process, PidFdSpawnFailure) {
     lp::CommandExt::create_pidfd(command, true);
     EXPECT_TRUE(command.spawn().is_err());
 }
+
+#endif
 
 int main() {
     ::alarm(20);

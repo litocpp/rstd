@@ -1,6 +1,6 @@
 [package]
 name = "rstd-signal-tests"
-target = { os = "linux" }
+target = { os = ["linux", "macos"] }
 
 [[test]]
 module = "rstd.tests.signal"

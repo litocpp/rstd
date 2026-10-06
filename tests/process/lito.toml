@@ -1,6 +1,6 @@
 [package]
 name = "rstd-process-tests"
-target = { os = "linux" }
+target = { os = ["linux", "macos"] }
 
 [[test]]
 name = "rstd-process-tests"

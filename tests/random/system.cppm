@@ -1,7 +1,7 @@
 module;
 #include <rstd/test/gtest.hpp>
 #include <rstd/macro.hpp>
-#if RSTD_OS_LINUX
+#if RSTD_OS_UNIX
 #include <errno.h>
 #endif
 export module rstd:random_tests;
@@ -59,7 +59,7 @@ TEST(RandomSystem, ZeroProgressAndNativeErrors) {
     auto result = rstd::sys::random::fill_from(&zero, scripted_read, output.as_mut_slice());
     ASSERT_TRUE(result.is_err());
     EXPECT_EQ(result.unwrap_err().kind(), ErrorKind { ErrorKind::UnexpectedEof });
-#if RSTD_OS_LINUX
+#if RSTD_OS_UNIX
     for (int code : array<int, 3> { EAGAIN, ENOSYS, EPERM }) {
         for (usize successful : array<usize, 2> { usize(), usize(1) }) {
             ScriptedRead state { .fail_after = successful, .error = code };

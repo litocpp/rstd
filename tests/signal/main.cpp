@@ -1,4 +1,5 @@
 #include <rstd/test/gtest.hpp>
+#include <rstd/macro.hpp>
 #include <atomic>
 #include <cerrno>
 #include <cstdio>
@@ -18,19 +19,26 @@ import rstd.test;
 using namespace rstd;
 namespace sig = rstd::signal;
 
-static const char*       executable;
-static int               expected_descriptors { -1 };
-static std::atomic<bool> fail_restore {};
+static const char*      executable;
+static int              expected_descriptors { -1 };
+static std::atomic<int> fail_install {};
+static std::atomic<int> native_changes[NSIG] {};
 
-// Interpose the public libc entry point to exercise restoration failures.
-extern "C" int
-sigaction(int number, const struct sigaction* action, struct sigaction* old) noexcept {
+// Interpose the public libc entry point to inject installation failures and count changes.
+extern "C" int sigaction(int number, const struct sigaction* action, struct sigaction* old)
+#if ! RSTD_OS_MACOS
+    noexcept
+#endif
+{
     using Function   = int (*)(int, const struct sigaction*, struct sigaction*);
     static auto real = reinterpret_cast<Function>(::dlsym(RTLD_NEXT, "sigaction"));
     if (! real) ::_exit(122);
-    if (action && action->sa_handler == SIG_IGN && fail_restore.load()) {
-        errno = EIO;
-        return -1;
+    if (action && number > 0 && number < NSIG) {
+        ++native_changes[number];
+        if (number == fail_install.load()) {
+            errno = EIO;
+            return -1;
+        }
     }
     return real(number, action, old);
 }
@@ -49,7 +57,7 @@ static void custom_handler(int) {
 static void disposition(int number, void (*handler)(int)) {
     struct sigaction action {};
     action.sa_handler = handler;
-    ::sigemptyset(&action.sa_mask);
+    (void)sigemptyset(&action.sa_mask);
     if (::sigaction(number, &action, nullptr) != 0) ::_exit(120);
 }
 
@@ -59,7 +67,11 @@ static auto is_disposition(int number, void (*handler)(int)) -> bool {
 }
 
 static auto fd_count() -> int {
+#if RSTD_OS_MACOS
+    auto* dir = ::opendir("/dev/fd");
+#else
     auto* dir = ::opendir("/proc/self/fd");
+#endif
     if (! dir) return -1;
     int count = 0;
     while (::readdir(dir)) ++count;
@@ -111,11 +123,32 @@ static auto child_case(const char* name) -> int {
         ::raise(SIGINT);
         return 1;
     }
+    if (std::strcmp(name, "named") == 0) {
+        sig::SignalKind kinds[] { sig::unix::child().unwrap(),
+                                  sig::unix::window_change().unwrap(),
+                                  sig::unix::pipe().unwrap(),
+                                  sig::unix::quit().unwrap() };
+        int             numbers[] { SIGCHLD, SIGWINCH, SIGPIPE, SIGQUIT };
+        auto            subscription =
+            sig::subscribe(slice<sig::SignalKind>::from_raw_parts(kinds, usize(4))).unwrap();
+        for (int i = 0; i < 4; ++i) {
+            CHECK(kinds[i].as_raw() == i32(numbers[i]));
+            CHECK(kinds[i] == sig::SignalKind::from_raw(i32(numbers[i])).unwrap());
+            CHECK(::raise(numbers[i]) == 0);
+            CHECK(subscription.recv().unwrap().unwrap() == kinds[i]);
+        }
+        CHECK(subscription.try_recv().unwrap_err().kind().code == io::error::ErrorKind::WouldBlock);
+        CHECK(subscription.close().is_ok());
+        return 0;
+    }
     if (std::strcmp(name, "invalid") == 0) {
         CHECK(sig::SignalKind::from_raw(i32(SIGKILL)).is_err());
         CHECK(sig::SignalKind::from_raw(i32(SIGSTOP)).is_err());
         CHECK(sig::SignalKind::from_raw(i32(SIGSEGV)).is_err());
+#ifdef SIGRTMIN
         CHECK(sig::SignalKind::from_raw(i32(SIGRTMIN)).is_err());
+#endif
+        CHECK(sig::SignalKind::from_raw(i32(NSIG)).is_err());
         CHECK(sig::SignalKind::from_raw(i32(-1)).is_err());
         CHECK(sig::subscribe(slice<sig::SignalKind> {}).is_err());
         disposition(SIGINT, custom_handler);
@@ -125,28 +158,45 @@ static auto child_case(const char* name) -> int {
         CHECK(is_disposition(SIGINT, custom_handler));
         return 0;
     }
-    if (std::strcmp(name, "rollback") == 0) {
+    if (std::strcmp(name, "partial_custom") == 0) {
         disposition(SIGINT, SIG_IGN);
         disposition(SIGTERM, custom_handler);
         sig::SignalKind kinds[] { interrupt, sig::unix::terminate().unwrap() };
-        CHECK(sig::subscribe(slice<sig::SignalKind>::from_raw_parts(kinds, usize(2))).is_err());
-        CHECK(is_disposition(SIGINT, SIG_IGN));
+        auto result = sig::subscribe(slice<sig::SignalKind>::from_raw_parts(kinds, usize(2)));
+        CHECK(result.is_err());
+        CHECK(result.unwrap_err().kind().code == io::error::ErrorKind::ResourceBusy);
+        CHECK(! is_disposition(SIGINT, SIG_IGN));
         CHECK(is_disposition(SIGTERM, custom_handler));
+        auto changes = native_changes[SIGINT].load();
+        CHECK(::raise(SIGINT) == 0);
+        auto recovered = sig::subscribe(interrupt).unwrap();
+        CHECK(recovered.try_recv().unwrap_err().kind().code == io::error::ErrorKind::WouldBlock);
+        CHECK(::raise(SIGINT) == 0);
+        CHECK(recovered.recv().unwrap().unwrap() == interrupt);
+        CHECK(recovered.close().is_ok());
+        CHECK(native_changes[SIGINT].load() == changes);
         return 0;
     }
-    if (std::strcmp(name, "rollback_error") == 0) {
+    if (std::strcmp(name, "partial_error") == 0) {
         disposition(SIGINT, SIG_IGN);
-        disposition(SIGTERM, custom_handler);
+        disposition(SIGTERM, SIG_DFL);
         sig::SignalKind kinds[] { interrupt, sig::unix::terminate().unwrap() };
-        fail_restore.store(true);
+        fail_install.store(SIGTERM);
         auto result = sig::subscribe(slice<sig::SignalKind>::from_raw_parts(kinds, usize(2)));
         CHECK(result.is_err());
         CHECK(result.unwrap_err().raw_os_error().unwrap() == i32(EIO));
-        fail_restore.store(false);
-        auto recovered = sig::subscribe(interrupt).unwrap();
+        CHECK(! is_disposition(SIGINT, SIG_IGN));
+        CHECK(is_disposition(SIGTERM, SIG_DFL));
+        auto changes = native_changes[SIGINT].load();
+        fail_install.store(0);
+        auto recovered =
+            sig::subscribe(slice<sig::SignalKind>::from_raw_parts(kinds, usize(2))).unwrap();
+        CHECK(::raise(SIGINT) == 0);
+        CHECK(recovered.recv().unwrap().unwrap() == interrupt);
+        CHECK(::raise(SIGTERM) == 0);
+        CHECK(recovered.recv().unwrap().unwrap() == kinds[1]);
         CHECK(recovered.close().is_ok());
-        CHECK(is_disposition(SIGINT, SIG_IGN));
-        CHECK(is_disposition(SIGTERM, custom_handler));
+        CHECK(native_changes[SIGINT].load() == changes);
         return 0;
     }
     if (std::strcmp(name, "default") == 0) {
@@ -156,9 +206,14 @@ static auto child_case(const char* name) -> int {
             CHECK(::raise(SIGINT) == 0);
             CHECK(subscription.recv().unwrap().unwrap() == interrupt);
         }
-        CHECK(is_disposition(SIGINT, SIG_DFL));
-        ::raise(SIGINT);
-        return 1;
+        CHECK(! is_disposition(SIGINT, SIG_DFL));
+        CHECK(::raise(SIGINT) == 0);
+        auto subscription = sig::subscribe(interrupt).unwrap();
+        CHECK(subscription.try_recv().unwrap_err().kind().code == io::error::ErrorKind::WouldBlock);
+        CHECK(::raise(SIGINT) == 0);
+        CHECK(subscription.recv().unwrap().unwrap() == interrupt);
+        CHECK(native_changes[SIGINT].load() == 2);
+        return 0;
     }
     if (std::strcmp(name, "ignored") == 0) {
         disposition(SIGINT, SIG_IGN);
@@ -169,23 +224,27 @@ static auto child_case(const char* name) -> int {
         CHECK(subscription.recv().unwrap().unwrap() == interrupt);
         CHECK(subscription.close().is_ok());
         CHECK(subscription.close().is_ok());
-        CHECK(is_disposition(SIGINT, SIG_IGN));
+        CHECK(! is_disposition(SIGINT, SIG_IGN));
         CHECK(subscription.try_recv().unwrap().is_none());
         CHECK(::raise(SIGINT) == 0);
         return 0;
     }
-    if (std::strcmp(name, "restore_error") == 0) {
+    if (std::strcmp(name, "close_no_native") == 0) {
         disposition(SIGINT, SIG_IGN);
         auto subscription = sig::subscribe(interrupt).unwrap();
-        fail_restore.store(true);
+        auto changes      = native_changes[SIGINT].load();
+        fail_install.store(SIGINT);
         auto closed = subscription.close();
-        CHECK(closed.is_err());
-        CHECK(closed.unwrap_err().raw_os_error().unwrap() == i32(EIO));
+        CHECK(closed.is_ok());
         CHECK(subscription.recv().unwrap().is_none());
         CHECK(::raise(SIGINT) == 0);
-        fail_restore.store(false);
         CHECK(subscription.close().is_ok());
-        CHECK(is_disposition(SIGINT, SIG_IGN));
+        auto reopened = sig::subscribe(interrupt).unwrap();
+        CHECK(reopened.try_recv().unwrap_err().kind().code == io::error::ErrorKind::WouldBlock);
+        CHECK(::raise(SIGINT) == 0);
+        CHECK(reopened.recv().unwrap().unwrap() == interrupt);
+        CHECK(reopened.close().is_ok());
+        CHECK(native_changes[SIGINT].load() == changes);
         return 0;
     }
     if (std::strcmp(name, "handshake") == 0) {
@@ -276,7 +335,8 @@ static auto child_case(const char* name) -> int {
         running.store(false);
         sender.join();
         CHECK(fd_count() == before);
-        CHECK(is_disposition(SIGINT, SIG_IGN));
+        CHECK(! is_disposition(SIGINT, SIG_IGN));
+        CHECK(native_changes[SIGINT].load() == 2);
         return 0;
     }
     if (std::strcmp(name, "cancel") == 0) {
@@ -306,28 +366,28 @@ static auto child_case(const char* name) -> int {
         CHECK(::raise(SIGINT) == 0);
         auto runtime = async::RuntimeBuilder::current_thread().build().unwrap();
         CHECK(runtime.block_on(rstd::move(future)).unwrap().unwrap() == interrupt);
-        CHECK(is_disposition(SIGINT, SIG_IGN));
+        CHECK(! is_disposition(SIGINT, SIG_IGN));
         {
             auto canceled = async::signal::ctrl_c().unwrap();
             auto cx       = task::Context::from_waker(task::Waker::noop());
             CHECK(future::poll(canceled, cx).is_pending());
         }
-        CHECK(is_disposition(SIGINT, SIG_IGN));
+        CHECK(! is_disposition(SIGINT, SIG_IGN));
+        CHECK(native_changes[SIGINT].load() == 2);
         return 0;
     }
-    if (std::strcmp(name, "ctrl_c_error") == 0) {
+    if (std::strcmp(name, "ctrl_c_install_error") == 0) {
         disposition(SIGINT, SIG_IGN);
-        auto future = async::signal::ctrl_c().unwrap();
-        CHECK(::raise(SIGINT) == 0);
-        fail_restore.store(true);
-        auto runtime = async::RuntimeBuilder::current_thread().build().unwrap();
-        auto result  = runtime.block_on(rstd::move(future));
+        fail_install.store(SIGINT);
+        auto result = async::signal::ctrl_c();
         CHECK(result.is_err());
         CHECK(result.unwrap_err().raw_os_error().unwrap() == i32(EIO));
-        fail_restore.store(false);
-        auto recovered = sig::subscribe(interrupt).unwrap();
-        CHECK(recovered.close().is_ok());
         CHECK(is_disposition(SIGINT, SIG_IGN));
+        fail_install.store(0);
+        auto recovered = async::signal::ctrl_c().unwrap();
+        CHECK(::raise(SIGINT) == 0);
+        auto runtime = async::RuntimeBuilder::current_thread().build().unwrap();
+        CHECK(runtime.block_on(rstd::move(recovered)).unwrap().unwrap() == interrupt);
         return 0;
     }
     if (std::strcmp(name, "runtime") == 0) {
@@ -449,23 +509,26 @@ static auto run_child(const char* name, int expected_signal = 0, int send_signal
 TEST(Signal, ImportPreservesDefault) {
     EXPECT_TRUE(run_child("initial", SIGINT));
 }
+TEST(Signal, NamedUnixSignals) {
+    EXPECT_TRUE(run_child("named"));
+}
 TEST(Signal, RejectsInvalidAndCustomHandlers) {
     EXPECT_TRUE(run_child("invalid"));
 }
-TEST(Signal, RegistrationRollback) {
-    EXPECT_TRUE(run_child("rollback"));
+TEST(Signal, PartialRegistrationPreservesCustomHandler) {
+    EXPECT_TRUE(run_child("partial_custom"));
 }
-TEST(Signal, FailedRollbackReportsRestorationError) {
-    EXPECT_TRUE(run_child("rollback_error"));
+TEST(Signal, PartialInstallationCanBeRetried) {
+    EXPECT_TRUE(run_child("partial_error"));
 }
-TEST(Signal, RestoresDefaultOnDrop) {
-    EXPECT_TRUE(run_child("default", SIGINT));
+TEST(Signal, HandlerSurvivesDropWithoutReplayingEvents) {
+    EXPECT_TRUE(run_child("default"));
 }
-TEST(Signal, RestoresIgnoredAndCloses) {
+TEST(Signal, CloseKeepsHandlerAndDiscardsEvents) {
     EXPECT_TRUE(run_child("ignored"));
 }
-TEST(Signal, RestorationFailureCanBeRetried) {
-    EXPECT_TRUE(run_child("restore_error"));
+TEST(Signal, CloseAndResubscribeDoNotChangeNativeHandler) {
+    EXPECT_TRUE(run_child("close_no_native"));
 }
 TEST(Signal, ExternalTerminationAfterHandshake) {
     EXPECT_TRUE(run_child("handshake", 0, SIGTERM));
@@ -494,11 +557,11 @@ TEST(Signal, ExecResetsHandlerAndClosesDescriptors) {
 TEST(AsyncSignal, CancelDoesNotConsume) {
     EXPECT_TRUE(run_child("cancel"));
 }
-TEST(AsyncSignal, CtrlCRegistersBeforePollAndRestores) {
+TEST(AsyncSignal, CtrlCRegistersBeforePollAndKeepsHandler) {
     EXPECT_TRUE(run_child("ctrl_c"));
 }
-TEST(AsyncSignal, CtrlCReportsRestorationError) {
-    EXPECT_TRUE(run_child("ctrl_c_error"));
+TEST(AsyncSignal, CtrlCReportsInstallationErrorBeforePoll) {
+    EXPECT_TRUE(run_child("ctrl_c_install_error"));
 }
 TEST(AsyncSignal, CurrentThreadWakeup) {
     EXPECT_TRUE(run_child("runtime"));
