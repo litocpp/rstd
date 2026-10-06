@@ -1,3 +1,15 @@
+<release version="0.1.7" date="2026-10-06">
+  <description>
+    <ul>
+      <li>Add fs::Dir directory-relative operations on Unix and Windows.</li>
+      <li>Add macOS signal support and more named Unix signals.</li>
+      <li>Keep installed signal handlers for the process lifetime.</li>
+      <li>Support pidfd_wait with older libc headers.</li>
+      <li>Remove BTreeMap full-tree debug checks from mutations.</li>
+      <li>Fix filesystem I/O namespace lookup on Windows.</li>
+    </ul>
+  </description>
+</release>
 <release version="0.1.6" date="2026-10-05">
   <description>
     <ul>
