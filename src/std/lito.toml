@@ -12,3 +12,8 @@ archive = "rstd"
 [dependencies]
 rstd-core = { workspace = true, pub = true }
 rstd-alloc = { workspace = true, pub = true }
+
+[[when]]
+condition = 'target.os == "windows"'
+[when.usage]
+system-libraries = ["ntdll"]

@@ -1,6 +1,7 @@
 module;
 #include <winsock2.h>
 #include <windows.h>
+#include <winternl.h>
 #include <synchapi.h>
 #include <time.h>
 #include <io.h>
@@ -8,6 +9,10 @@ module;
 #include <process.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+// The user-mode SDK omits this ntdll declaration and the rename information class.
+extern "C" NTSYSAPI NTSTATUS NTAPI
+NtSetInformationFile(HANDLE, PIO_STATUS_BLOCK, PVOID, ULONG, int);
 
 inline constexpr auto _ERROR_FILE_NOT_FOUND             = ERROR_FILE_NOT_FOUND;
 inline constexpr auto _ERROR_PATH_NOT_FOUND             = ERROR_PATH_NOT_FOUND;
@@ -136,46 +141,75 @@ using ::WIN32_FIND_DATAW;
 using ::STARTUPINFOW;
 using ::PROCESS_INFORMATION;
 using ::SECURITY_ATTRIBUTES;
+using ::UNICODE_STRING;
+using ::OBJECT_ATTRIBUTES;
+using ::IO_STATUS_BLOCK;
+using ::FILE_RENAME_INFO;
+using ::FILE_DISPOSITION_INFO;
+using ::FILE_DISPOSITION_INFO_EX;
 
 // ── Constants ────────────────────────────────────────────────────────────
-constexpr auto    M_TRUE                              = TRUE;
-constexpr auto    M_FALSE                             = FALSE;
-constexpr auto    M_INFINITE                          = INFINITE;
-constexpr auto    M_ERROR_TIMEOUT                     = ERROR_TIMEOUT;
-inline const auto M_INVALID_HANDLE_VALUE              = INVALID_HANDLE_VALUE;
-constexpr auto    M_WAIT_FAILED                       = WAIT_FAILED;
-constexpr auto    M_STD_INPUT_HANDLE                  = STD_INPUT_HANDLE;
-constexpr auto    M_STD_OUTPUT_HANDLE                 = STD_OUTPUT_HANDLE;
-constexpr auto    M_STD_ERROR_HANDLE                  = STD_ERROR_HANDLE;
-constexpr auto    M_STACK_SIZE_PARAM_IS_A_RESERVATION = STACK_SIZE_PARAM_IS_A_RESERVATION;
-constexpr auto    M_CP_UTF8                           = CP_UTF8;
-constexpr auto    M_MB_ERR_INVALID_CHARS              = MB_ERR_INVALID_CHARS;
-constexpr auto    M_WC_ERR_INVALID_CHARS              = WC_ERR_INVALID_CHARS;
-constexpr auto    M_GENERIC_READ                      = GENERIC_READ;
-constexpr auto    M_GENERIC_WRITE                     = GENERIC_WRITE;
-constexpr auto    M_FILE_APPEND_DATA                  = FILE_APPEND_DATA;
-constexpr auto    M_FILE_READ_ATTRIBUTES              = FILE_READ_ATTRIBUTES;
-constexpr auto    M_FILE_SHARE_READ                   = FILE_SHARE_READ;
-constexpr auto    M_FILE_SHARE_WRITE                  = FILE_SHARE_WRITE;
-constexpr auto    M_FILE_SHARE_DELETE                 = FILE_SHARE_DELETE;
-constexpr auto    M_CREATE_NEW                        = CREATE_NEW;
-constexpr auto    M_CREATE_ALWAYS                     = CREATE_ALWAYS;
-constexpr auto    M_OPEN_EXISTING                     = OPEN_EXISTING;
-constexpr auto    M_OPEN_ALWAYS                       = OPEN_ALWAYS;
-constexpr auto    M_TRUNCATE_EXISTING                 = TRUNCATE_EXISTING;
-constexpr auto    M_FILE_ATTRIBUTE_READONLY           = FILE_ATTRIBUTE_READONLY;
-constexpr auto    M_FILE_ATTRIBUTE_DIRECTORY          = FILE_ATTRIBUTE_DIRECTORY;
-constexpr auto    M_FILE_ATTRIBUTE_REPARSE_POINT      = FILE_ATTRIBUTE_REPARSE_POINT;
-constexpr auto    M_FILE_ATTRIBUTE_NORMAL             = FILE_ATTRIBUTE_NORMAL;
-constexpr auto    M_INVALID_FILE_ATTRIBUTES           = INVALID_FILE_ATTRIBUTES;
-constexpr auto    M_FILE_FLAG_BACKUP_SEMANTICS        = FILE_FLAG_BACKUP_SEMANTICS;
-constexpr auto    M_FILE_FLAG_OPEN_REPARSE_POINT      = FILE_FLAG_OPEN_REPARSE_POINT;
-constexpr auto    M_FILE_BEGIN                        = FILE_BEGIN;
-constexpr auto    M_FILE_CURRENT                      = FILE_CURRENT;
-constexpr auto    M_FILE_END                          = FILE_END;
-constexpr auto    M_MOVEFILE_REPLACE_EXISTING         = MOVEFILE_REPLACE_EXISTING;
-constexpr auto    M_SYMBOLIC_LINK_FLAG_DIRECTORY      = SYMBOLIC_LINK_FLAG_DIRECTORY;
-constexpr auto    M_SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE =
+constexpr auto    M_TRUE                                  = TRUE;
+constexpr auto    M_FALSE                                 = FALSE;
+constexpr auto    M_INFINITE                              = INFINITE;
+constexpr auto    M_ERROR_TIMEOUT                         = ERROR_TIMEOUT;
+inline const auto M_INVALID_HANDLE_VALUE                  = INVALID_HANDLE_VALUE;
+constexpr auto    M_WAIT_FAILED                           = WAIT_FAILED;
+constexpr auto    M_STD_INPUT_HANDLE                      = STD_INPUT_HANDLE;
+constexpr auto    M_STD_OUTPUT_HANDLE                     = STD_OUTPUT_HANDLE;
+constexpr auto    M_STD_ERROR_HANDLE                      = STD_ERROR_HANDLE;
+constexpr auto    M_STACK_SIZE_PARAM_IS_A_RESERVATION     = STACK_SIZE_PARAM_IS_A_RESERVATION;
+constexpr auto    M_CP_UTF8                               = CP_UTF8;
+constexpr auto    M_MB_ERR_INVALID_CHARS                  = MB_ERR_INVALID_CHARS;
+constexpr auto    M_WC_ERR_INVALID_CHARS                  = WC_ERR_INVALID_CHARS;
+constexpr auto    M_GENERIC_READ                          = GENERIC_READ;
+constexpr auto    M_GENERIC_WRITE                         = GENERIC_WRITE;
+constexpr auto    M_FILE_APPEND_DATA                      = FILE_APPEND_DATA;
+constexpr auto    M_FILE_GENERIC_WRITE                    = FILE_GENERIC_WRITE;
+constexpr auto    M_FILE_WRITE_DATA                       = FILE_WRITE_DATA;
+constexpr auto    M_FILE_TRAVERSE                         = FILE_TRAVERSE;
+constexpr auto    M_DELETE                                = DELETE;
+constexpr auto    M_SYNCHRONIZE                           = SYNCHRONIZE;
+constexpr auto    M_FILE_OPEN                             = FILE_OPEN;
+constexpr auto    M_FILE_CREATE                           = FILE_CREATE;
+constexpr auto    M_FILE_OPEN_IF                          = FILE_OPEN_IF;
+constexpr auto    M_FILE_OVERWRITE                        = FILE_OVERWRITE;
+constexpr auto    M_FILE_OVERWRITE_IF                     = FILE_OVERWRITE_IF;
+constexpr auto    M_FILE_DIRECTORY_FILE                   = FILE_DIRECTORY_FILE;
+constexpr auto    M_FILE_NON_DIRECTORY_FILE               = FILE_NON_DIRECTORY_FILE;
+constexpr auto    M_FILE_SYNCHRONOUS_IO_NONALERT          = FILE_SYNCHRONOUS_IO_NONALERT;
+constexpr auto    M_FILE_OPEN_REPARSE_POINT               = FILE_OPEN_REPARSE_POINT;
+constexpr auto    M_FILE_OPEN_FOR_BACKUP_INTENT           = FILE_OPEN_FOR_BACKUP_INTENT;
+constexpr auto    M_FILE_DISPOSITION_INFO_CLASS           = FileDispositionInfo;
+constexpr auto    M_FILE_DISPOSITION_INFO_EX_CLASS        = FileDispositionInfoEx;
+constexpr auto    M_FILE_DISPOSITION_FLAG_DELETE          = FILE_DISPOSITION_FLAG_DELETE;
+constexpr auto    M_FILE_DISPOSITION_FLAG_POSIX_SEMANTICS = FILE_DISPOSITION_FLAG_POSIX_SEMANTICS;
+constexpr auto    M_FILE_DISPOSITION_FLAG_IGNORE_READONLY_ATTRIBUTE =
+    FILE_DISPOSITION_FLAG_IGNORE_READONLY_ATTRIBUTE;
+constexpr auto M_ERROR_INVALID_FUNCTION       = ERROR_INVALID_FUNCTION;
+constexpr int  M_FILE_RENAME_INFORMATION      = 10;
+constexpr auto M_FILE_READ_ATTRIBUTES         = FILE_READ_ATTRIBUTES;
+constexpr auto M_FILE_SHARE_READ              = FILE_SHARE_READ;
+constexpr auto M_FILE_SHARE_WRITE             = FILE_SHARE_WRITE;
+constexpr auto M_FILE_SHARE_DELETE            = FILE_SHARE_DELETE;
+constexpr auto M_CREATE_NEW                   = CREATE_NEW;
+constexpr auto M_CREATE_ALWAYS                = CREATE_ALWAYS;
+constexpr auto M_OPEN_EXISTING                = OPEN_EXISTING;
+constexpr auto M_OPEN_ALWAYS                  = OPEN_ALWAYS;
+constexpr auto M_TRUNCATE_EXISTING            = TRUNCATE_EXISTING;
+constexpr auto M_FILE_ATTRIBUTE_READONLY      = FILE_ATTRIBUTE_READONLY;
+constexpr auto M_FILE_ATTRIBUTE_DIRECTORY     = FILE_ATTRIBUTE_DIRECTORY;
+constexpr auto M_FILE_ATTRIBUTE_REPARSE_POINT = FILE_ATTRIBUTE_REPARSE_POINT;
+constexpr auto M_FILE_ATTRIBUTE_NORMAL        = FILE_ATTRIBUTE_NORMAL;
+constexpr auto M_INVALID_FILE_ATTRIBUTES      = INVALID_FILE_ATTRIBUTES;
+constexpr auto M_FILE_FLAG_BACKUP_SEMANTICS   = FILE_FLAG_BACKUP_SEMANTICS;
+constexpr auto M_FILE_FLAG_OPEN_REPARSE_POINT = FILE_FLAG_OPEN_REPARSE_POINT;
+constexpr auto M_FILE_BEGIN                   = FILE_BEGIN;
+constexpr auto M_FILE_CURRENT                 = FILE_CURRENT;
+constexpr auto M_FILE_END                     = FILE_END;
+constexpr auto M_MOVEFILE_REPLACE_EXISTING    = MOVEFILE_REPLACE_EXISTING;
+constexpr auto M_SYMBOLIC_LINK_FLAG_DIRECTORY = SYMBOLIC_LINK_FLAG_DIRECTORY;
+constexpr auto M_SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE =
     SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
 constexpr auto M_FILE_NAME_NORMALIZED       = FILE_NAME_NORMALIZED;
 constexpr auto M_VOLUME_NAME_DOS            = VOLUME_NAME_DOS;
@@ -292,6 +326,9 @@ using ::GetStdHandle;
 using ::WriteFile;
 using ::ReadFile;
 using ::CreateFileW;
+using ::NtCreateFile;
+using ::NtSetInformationFile;
+using ::RtlNtStatusToDosError;
 using ::SetFilePointerEx;
 using ::FlushFileBuffers;
 using ::SetEndOfFile;

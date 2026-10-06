@@ -1,3 +1,5 @@
+module;
+#include <rstd/macro.hpp>
 module rstd;
 import :sys.fs.windows;
 import :sys.fs.contract;
@@ -192,7 +194,14 @@ auto path_from_handle(libc::HANDLE handle) -> Result<PathBuf> {
     }
 }
 
-auto open(ref<Path> path, OpenOptionsData const& options) -> Result<OwnedFd> {
+struct NativeOpenOptions {
+    libc::DWORD access;
+    libc::DWORD creation;
+    libc::DWORD disposition;
+    libc::DWORD flags;
+};
+
+auto parse_open_options(OpenOptionsData const& options) -> Result<NativeOpenOptions> {
     if (! options.read && ! options.write && ! options.append) {
         return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
     }
@@ -206,25 +215,190 @@ auto open(ref<Path> path, OpenOptionsData const& options) -> Result<OwnedFd> {
 
     auto access = libc::DWORD {};
     if (options.read) access |= libc::M_GENERIC_READ;
-    if (options.write) access |= libc::M_GENERIC_WRITE;
-    if (options.append) access |= libc::M_FILE_APPEND_DATA;
-
-    auto creation = libc::M_OPEN_EXISTING;
-    if (options.create_new) {
-        creation = libc::M_CREATE_NEW;
-    } else if (options.create && options.truncate) {
-        creation = libc::M_CREATE_ALWAYS;
-    } else if (options.create) {
-        creation = libc::M_OPEN_ALWAYS;
-    } else if (options.truncate) {
-        creation = libc::M_TRUNCATE_EXISTING;
+    if (options.append) {
+        access |= libc::M_FILE_GENERIC_WRITE & ~libc::M_FILE_WRITE_DATA;
+    } else if (options.write) {
+        access |= libc::M_GENERIC_WRITE;
     }
 
-    auto flags  = libc::M_FILE_ATTRIBUTE_NORMAL |
-                  static_cast<libc::DWORD>(options.custom_flags.to_primitive());
-    auto handle = open_native(path, access, creation, flags);
+    libc::DWORD creation    = libc::M_OPEN_EXISTING;
+    libc::DWORD disposition = libc::M_FILE_OPEN;
+    if (options.create_new) {
+        creation    = libc::M_CREATE_NEW;
+        disposition = libc::M_FILE_CREATE;
+    } else if (options.create && options.truncate) {
+        creation    = libc::M_CREATE_ALWAYS;
+        disposition = libc::M_FILE_OVERWRITE_IF;
+    } else if (options.create) {
+        creation    = libc::M_OPEN_ALWAYS;
+        disposition = libc::M_FILE_OPEN_IF;
+    } else if (options.truncate) {
+        creation    = libc::M_TRUNCATE_EXISTING;
+        disposition = libc::M_FILE_OVERWRITE;
+    }
+
+    auto flags = libc::M_FILE_ATTRIBUTE_NORMAL |
+                 static_cast<libc::DWORD>(options.custom_flags.to_primitive());
+    if (options.create_new) flags |= libc::M_FILE_FLAG_OPEN_REPARSE_POINT;
+    return Ok(NativeOpenOptions { access, creation, disposition, flags });
+}
+
+auto open(ref<Path> path, OpenOptionsData const& options) -> Result<OwnedFd> {
+    auto native = rstd_try(parse_open_options(options));
+    auto handle = open_native(path, native.access, native.creation, native.flags);
     if (handle.is_err()) return Err(rstd::move(handle).unwrap_err_unchecked());
     return Ok(OwnedFd::from_raw_fd(static_cast<RawFd>(handle.unwrap_unchecked())));
+}
+
+auto open_directory_native(ref<Path> path, libc::DWORD access, libc::DWORD flags)
+    -> Result<OwnedFd> {
+    auto                             raw    = rstd_try(open_native(
+        path, access, libc::M_OPEN_EXISTING, flags | libc::M_FILE_FLAG_BACKUP_SEMANTICS));
+    auto                             handle = OwnedFd::from_raw_fd(raw);
+    libc::BY_HANDLE_FILE_INFORMATION info {};
+    if (! libc::GetFileInformationByHandle(raw, &info)) return Err(windows_error());
+    if ((info.dwFileAttributes & libc::M_FILE_ATTRIBUTE_DIRECTORY) == 0)
+        return Err(Error::from_kind(ErrorKind { ErrorKind::NotADirectory }));
+    return Ok(rstd::move(handle));
+}
+
+auto open_directory(ref<Path> path, OpenOptionsData const& options) -> Result<OwnedFd> {
+    auto native = rstd_try(parse_open_options(options));
+    // CreateFileW cannot constrain creation/truncation to directories.
+    if (options.create || options.create_new || options.truncate)
+        return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
+    return open_directory_native(path, native.access, native.flags);
+}
+
+auto open_directory_for_traversal(ref<Path> path) -> Result<OwnedFd> {
+    return open_directory_native(path, libc::M_FILE_TRAVERSE, libc::M_FILE_ATTRIBUTE_NORMAL);
+}
+
+auto relative_path_wide(ref<Path> path) -> Result<Vec<wchar_t>> {
+    auto wide = rstd_try(rstd::sys::os_str::windows::to_wide(path.as_os_str(), false));
+    if (wide.is_empty() || wide.len() > usize(0xffff / sizeof(wchar_t)))
+        return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
+    return Ok(rstd::move(wide));
+}
+
+auto nt_error(long status) noexcept -> Error {
+    return Error::from_raw_os_error(i32(libc::RtlNtStatusToDosError(status)));
+}
+
+auto open_relative(RawFd       dir,
+                   ref<Path>   path,
+                   libc::DWORD access,
+                   libc::DWORD disposition,
+                   libc::DWORD create_options) -> Result<OwnedFd> {
+    auto wide   = rstd_try(relative_path_wide(path));
+    auto length = static_cast<unsigned short>(wide.len().to_primitive() * sizeof(wchar_t));
+    libc::UNICODE_STRING    name { length, length, wide.as_mut_ptr() };
+    libc::OBJECT_ATTRIBUTES attributes {};
+    attributes.Length        = sizeof(attributes);
+    attributes.RootDirectory = dir;
+    attributes.ObjectName    = &name;
+    libc::IO_STATUS_BLOCK io_status {};
+    libc::HANDLE          handle {};
+    auto status = libc::NtCreateFile(&handle,
+                                     access | libc::M_SYNCHRONIZE,
+                                     &attributes,
+                                     &io_status,
+                                     nullptr,
+                                     libc::M_FILE_ATTRIBUTE_NORMAL,
+                                     libc::M_FILE_SHARE_READ | libc::M_FILE_SHARE_WRITE |
+                                         libc::M_FILE_SHARE_DELETE,
+                                     disposition,
+                                     create_options | libc::M_FILE_SYNCHRONOUS_IO_NONALERT,
+                                     nullptr,
+                                     0);
+    if (status < 0) return Err(nt_error(status));
+    return Ok(OwnedFd::from_raw_fd(handle));
+}
+
+auto open_at(RawFd dir, ref<Path> path, OpenOptionsData const& options, bool directory)
+    -> Result<OwnedFd> {
+    if (! directory && path.is_absolute()) return open(path, options);
+    auto native    = rstd_try(parse_open_options(options));
+    auto supported = libc::M_FILE_ATTRIBUTE_NORMAL | libc::M_FILE_FLAG_OPEN_REPARSE_POINT |
+                     libc::M_FILE_FLAG_BACKUP_SEMANTICS;
+    if ((native.flags & ~supported) != 0)
+        return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
+    auto flags = directory ? libc::M_FILE_DIRECTORY_FILE : libc::M_FILE_NON_DIRECTORY_FILE;
+    if ((native.flags & libc::M_FILE_FLAG_OPEN_REPARSE_POINT) != 0)
+        flags |= libc::M_FILE_OPEN_REPARSE_POINT;
+    if ((native.flags & libc::M_FILE_FLAG_BACKUP_SEMANTICS) != 0)
+        flags |= libc::M_FILE_OPEN_FOR_BACKUP_INTENT;
+    return open_relative(dir, path, native.access, native.disposition, flags);
+}
+
+auto metadata_at(RawFd dir, ref<Path> path, bool follow) -> Result<MetadataData> {
+    auto handle = rstd_try(open_relative(dir,
+                                         path,
+                                         libc::M_FILE_READ_ATTRIBUTES,
+                                         libc::M_FILE_OPEN,
+                                         follow ? 0 : libc::M_FILE_OPEN_REPARSE_POINT));
+    libc::BY_HANDLE_FILE_INFORMATION info {};
+    if (! libc::GetFileInformationByHandle(handle.as_raw_fd(), &info)) return Err(windows_error());
+    return Ok(metadata_from_file_info(info, ! follow));
+}
+
+auto create_dir_at(RawFd dir, ref<Path> path) -> Result<empty> {
+    auto handle = rstd_try(open_relative(dir,
+                                         path,
+                                         libc::M_GENERIC_READ | libc::M_GENERIC_WRITE,
+                                         libc::M_FILE_CREATE,
+                                         libc::M_FILE_DIRECTORY_FILE));
+    return Ok(empty {});
+}
+
+auto remove_at(RawFd dir, ref<Path> path, bool directory) -> Result<empty> {
+    auto type   = directory ? libc::M_FILE_DIRECTORY_FILE : libc::M_FILE_NON_DIRECTORY_FILE;
+    auto handle = rstd_try(open_relative(
+        dir, path, libc::M_DELETE, libc::M_FILE_OPEN, type | libc::M_FILE_OPEN_REPARSE_POINT));
+    libc::FILE_DISPOSITION_INFO_EX info { libc::M_FILE_DISPOSITION_FLAG_DELETE |
+                                          libc::M_FILE_DISPOSITION_FLAG_POSIX_SEMANTICS |
+                                          libc::M_FILE_DISPOSITION_FLAG_IGNORE_READONLY_ATTRIBUTE };
+    if (libc::SetFileInformationByHandle(
+            handle.as_raw_fd(), libc::M_FILE_DISPOSITION_INFO_EX_CLASS, &info, sizeof(info)))
+        return Ok(empty {});
+    auto error = libc::GetLastError();
+    if (error != libc::ERROR_INVALID_PARAMETER && error != libc::ERROR_NOT_SUPPORTED &&
+        error != libc::M_ERROR_INVALID_FUNCTION)
+        return Err(Error::from_raw_os_error(i32(error)));
+    libc::FILE_DISPOSITION_INFO fallback { libc::M_TRUE };
+    if (! libc::SetFileInformationByHandle(
+            handle.as_raw_fd(), libc::M_FILE_DISPOSITION_INFO_CLASS, &fallback, sizeof(fallback)))
+        return Err(windows_error());
+    return Ok(empty {});
+}
+
+auto rename_at(RawFd from_dir, ref<Path> from, RawFd to_dir, ref<Path> to) -> Result<empty> {
+    auto name   = rstd_try(relative_path_wide(to));
+    auto handle = rstd_try(open_relative(
+        from_dir, from, libc::M_DELETE, libc::M_FILE_OPEN, libc::M_FILE_OPEN_REPARSE_POINT));
+    using Info  = libc::FILE_RENAME_INFO;
+    auto bytes  = name.len().to_primitive() * sizeof(wchar_t);
+    auto size   = sizeof(Info) + bytes;
+    auto layout = rstd::alloc::Layout::from_size_align_unchecked(usize(size), usize(alignof(Info)));
+    auto memory = ::alloc::alloc(layout);
+    if (memory == nullptr) return Err(Error::from_kind(ErrorKind { ErrorKind::OutOfMemory }));
+    auto info             = new (memory) Info {};
+    info->ReplaceIfExists = true;
+    info->RootDirectory   = to_dir;
+    info->FileNameLength  = static_cast<libc::DWORD>(bytes);
+    // Copy the variable-length tail without indexing beyond the SDK's one-element array.
+    rstd::mem::memcpy(reinterpret_cast<byte*>(memory) + __builtin_offsetof(Info, FileName),
+                      name.as_ptr(),
+                      usize(bytes));
+    libc::IO_STATUS_BLOCK io_status {};
+    auto                  status = libc::NtSetInformationFile(handle.as_raw_fd(),
+                                                              &io_status,
+                                                              info,
+                                                              static_cast<libc::DWORD>(size),
+                                                              libc::M_FILE_RENAME_INFORMATION);
+    ::alloc::dealloc(memory, layout);
+    if (status < 0) return Err(nt_error(status));
+    return Ok(empty {});
 }
 
 auto read(RawFd fd, mut_ref<byte[]> buffer) -> Result<usize> {

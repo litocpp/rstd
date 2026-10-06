@@ -2,7 +2,7 @@ add_library(rstd.std STATIC)
 target_compile_features(rstd.std PUBLIC cxx_std_20)
 target_link_libraries(rstd.std PUBLIC rstd.core rstd.alloc)
 if(WIN32)
-  target_link_libraries(rstd.std PRIVATE ws2_32)
+  target_link_libraries(rstd.std PRIVATE ws2_32 ntdll)
 endif()
 set_target_properties(rstd.std PROPERTIES OUTPUT_NAME rstd)
 

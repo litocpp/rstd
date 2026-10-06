@@ -30,7 +30,7 @@ export namespace rstd::sys::fs
 {
 
 using backend::Directory;
-#if RSTD_OS_UNIX
+#if RSTD_OS_UNIX || RSTD_OS_WINDOWS
 using backend::open_directory;
 using backend::open_directory_for_traversal;
 using backend::open_at;

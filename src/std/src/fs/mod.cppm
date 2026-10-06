@@ -268,6 +268,10 @@ public:
 };
 
 // Paths use native resolution relative to this handle, not a confined directory boundary.
+// Windows relative operations use NT paths (backslash separators, no DOS normalization).
+// Only open_file/open_file_with also accept absolute DOS paths on Windows.
+// Windows open_with opens existing directories; use create_dir for creation.
+// Relative Windows opens support reparse/backup flags, rejecting other custom flags.
 export class Dir {
     OwnedFd m_fd;
     explicit Dir(OwnedFd fd) noexcept: m_fd(rstd::move(fd)) {}
