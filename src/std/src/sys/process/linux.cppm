@@ -100,11 +100,13 @@ struct PidFdWait {
 };
 
 inline auto pidfd_wait(int fd, bool nonblocking) -> PidFdWait {
-    siginfo_t info {};
-    int       result;
+    // Linux's P_PIDFD ABI value is absent from older libc headers.
+    constexpr auto pidfd_idtype = static_cast<idtype_t>(3);
+    siginfo_t      info {};
+    int            result;
     do {
-        result =
-            ::waitid(P_PIDFD, static_cast<id_t>(fd), &info, WEXITED | (nonblocking ? WNOHANG : 0));
+        result = ::waitid(
+            pidfd_idtype, static_cast<id_t>(fd), &info, WEXITED | (nonblocking ? WNOHANG : 0));
     } while (result < 0 && errno == EINTR);
     if (result < 0) {
         auto error = errno;
