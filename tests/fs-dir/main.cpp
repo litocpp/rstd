@@ -121,7 +121,12 @@ int main() {
     CHECK(adopted.self_metadata().unwrap().ino() == dir.self_metadata().unwrap().ino());
     puts("fs::Dir paths, options, links, handles and mutations passed");
 #else
-    CHECK(Dir::open("."_str).is_err());
+    auto unsupported = rstd::io::error::ErrorKind { rstd::io::error::ErrorKind::Unsupported };
+    CHECK(Dir::open("."_str).unwrap_err().kind() == unsupported);
+    CHECK(Dir::open_with("."_str, OpenOptions::make().read(true)).unwrap_err().kind() ==
+          unsupported);
+    CHECK(Dir::open_for_traversal("."_str).unwrap_err().kind() == unsupported);
+    puts("fs::Dir unsupported backend checks passed");
 #endif
     return 0;
 }

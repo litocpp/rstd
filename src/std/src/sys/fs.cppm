@@ -40,28 +40,36 @@ using backend::remove_at;
 using backend::rename_at;
 #else
 // Native directory-relative operations are not implemented on these backends yet.
-inline auto open_directory(ref<path::Path>, const OpenOptionsData&) -> io::Result<os::fd::OwnedFd> {
-    return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
+inline auto open_directory(ref<path::Path>, const OpenOptionsData&)
+    -> rstd::io::Result<os::fd::OwnedFd> {
+    return Err(
+        rstd::io::Error::from_kind(rstd::io::ErrorKind { rstd::io::ErrorKind::Unsupported }));
 }
-inline auto open_directory_for_traversal(ref<path::Path>) -> io::Result<os::fd::OwnedFd> {
-    return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
+inline auto open_directory_for_traversal(ref<path::Path>) -> rstd::io::Result<os::fd::OwnedFd> {
+    return Err(
+        rstd::io::Error::from_kind(rstd::io::ErrorKind { rstd::io::ErrorKind::Unsupported }));
 }
 inline auto open_at(os::fd::RawFd, ref<path::Path>, const OpenOptionsData&, bool)
-    -> io::Result<os::fd::OwnedFd> {
-    return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
+    -> rstd::io::Result<os::fd::OwnedFd> {
+    return Err(
+        rstd::io::Error::from_kind(rstd::io::ErrorKind { rstd::io::ErrorKind::Unsupported }));
 }
-inline auto metadata_at(os::fd::RawFd, ref<path::Path>, bool) -> io::Result<MetadataData> {
-    return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
+inline auto metadata_at(os::fd::RawFd, ref<path::Path>, bool) -> rstd::io::Result<MetadataData> {
+    return Err(
+        rstd::io::Error::from_kind(rstd::io::ErrorKind { rstd::io::ErrorKind::Unsupported }));
 }
-inline auto create_dir_at(os::fd::RawFd, ref<path::Path>) -> io::Result<empty> {
-    return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
+inline auto create_dir_at(os::fd::RawFd, ref<path::Path>) -> rstd::io::Result<empty> {
+    return Err(
+        rstd::io::Error::from_kind(rstd::io::ErrorKind { rstd::io::ErrorKind::Unsupported }));
 }
-inline auto remove_at(os::fd::RawFd, ref<path::Path>, bool) -> io::Result<empty> {
-    return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
+inline auto remove_at(os::fd::RawFd, ref<path::Path>, bool) -> rstd::io::Result<empty> {
+    return Err(
+        rstd::io::Error::from_kind(rstd::io::ErrorKind { rstd::io::ErrorKind::Unsupported }));
 }
 inline auto rename_at(os::fd::RawFd, ref<path::Path>, os::fd::RawFd, ref<path::Path>)
-    -> io::Result<empty> {
-    return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
+    -> rstd::io::Result<empty> {
+    return Err(
+        rstd::io::Error::from_kind(rstd::io::ErrorKind { rstd::io::ErrorKind::Unsupported }));
 }
 #endif
 using backend::canonicalize;
