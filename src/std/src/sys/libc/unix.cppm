@@ -106,17 +106,29 @@ inline constexpr auto _ECANCELED    = ECANCELED;
 
 inline constexpr auto _SIGKILL = SIGKILL;
 
-inline constexpr auto _O_CLOEXEC       = O_CLOEXEC;
-inline constexpr auto _O_NONBLOCK      = O_NONBLOCK;
-inline constexpr auto _O_RDONLY        = O_RDONLY;
-inline constexpr auto _O_WRONLY        = O_WRONLY;
-inline constexpr auto _O_RDWR          = O_RDWR;
-inline constexpr auto _O_CREAT         = O_CREAT;
-inline constexpr auto _O_EXCL          = O_EXCL;
-inline constexpr auto _O_TRUNC         = O_TRUNC;
-inline constexpr auto _O_APPEND        = O_APPEND;
-inline constexpr auto _O_NOFOLLOW      = O_NOFOLLOW;
-inline constexpr auto _O_DIRECTORY     = O_DIRECTORY;
+inline constexpr auto _O_CLOEXEC           = O_CLOEXEC;
+inline constexpr auto _O_NONBLOCK          = O_NONBLOCK;
+inline constexpr auto _O_RDONLY            = O_RDONLY;
+inline constexpr auto _O_WRONLY            = O_WRONLY;
+inline constexpr auto _O_RDWR              = O_RDWR;
+inline constexpr auto _O_CREAT             = O_CREAT;
+inline constexpr auto _O_EXCL              = O_EXCL;
+inline constexpr auto _O_TRUNC             = O_TRUNC;
+inline constexpr auto _O_APPEND            = O_APPEND;
+inline constexpr auto _O_NOFOLLOW          = O_NOFOLLOW;
+inline constexpr auto _O_DIRECTORY         = O_DIRECTORY;
+inline constexpr auto _AT_SYMLINK_NOFOLLOW = AT_SYMLINK_NOFOLLOW;
+inline constexpr auto _AT_REMOVEDIR        = AT_REMOVEDIR;
+inline constexpr auto _O_ACCMODE           = O_ACCMODE;
+#if defined(__linux__)
+inline constexpr auto _DIRECTORY_TRAVERSE = O_PATH;
+#elif defined(__FreeBSD__) || defined(_AIX)
+inline constexpr auto _DIRECTORY_TRAVERSE = O_EXEC;
+#elif defined(__illumos__)
+inline constexpr auto _DIRECTORY_TRAVERSE = O_SEARCH;
+#else
+inline constexpr auto _DIRECTORY_TRAVERSE = O_RDONLY;
+#endif
 inline constexpr auto _F_DUPFD_CLOEXEC = F_DUPFD_CLOEXEC;
 inline constexpr auto _F_GETFL         = F_GETFL;
 inline constexpr auto _F_SETFL         = F_SETFL;
@@ -244,6 +256,9 @@ inline auto _rstd_online_processor_count() noexcept -> long {
 #undef O_APPEND
 #undef O_NOFOLLOW
 #undef O_DIRECTORY
+#undef AT_SYMLINK_NOFOLLOW
+#undef AT_REMOVEDIR
+#undef O_ACCMODE
 #undef F_DUPFD_CLOEXEC
 #undef F_GETFL
 #undef F_SETFL
@@ -471,6 +486,10 @@ using ::symlink;
 using ::readlink;
 using ::realpath;
 using ::open;
+using ::openat;
+using ::mkdirat;
+using ::unlinkat;
+using ::renameat;
 using ::fcntl;
 
 using PosixSpawnAddChdir = int (*)(posix_spawn_file_actions_t*, const char*);
@@ -516,6 +535,7 @@ using ::utimensat;
 using ::flock;
 using ::stat;
 using ::fstat;
+using ::fstatat;
 using ::lstat;
 using ::opendir;
 using ::readdir;
@@ -576,24 +596,28 @@ inline constexpr auto O_CLOEXEC  = _O_CLOEXEC;
 inline constexpr auto O_NONBLOCK = _O_NONBLOCK;
 
 // ── Open flags / seek whence ─────────────────────────────────────────────
-inline constexpr auto O_RDONLY        = _O_RDONLY;
-inline constexpr auto O_WRONLY        = _O_WRONLY;
-inline constexpr auto O_RDWR          = _O_RDWR;
-inline constexpr auto O_CREAT         = _O_CREAT;
-inline constexpr auto O_EXCL          = _O_EXCL;
-inline constexpr auto O_TRUNC         = _O_TRUNC;
-inline constexpr auto O_APPEND        = _O_APPEND;
-inline constexpr auto O_NOFOLLOW      = _O_NOFOLLOW;
-inline constexpr auto O_DIRECTORY     = _O_DIRECTORY;
-inline constexpr auto F_DUPFD_CLOEXEC = _F_DUPFD_CLOEXEC;
-inline constexpr auto F_GETFL         = _F_GETFL;
-inline constexpr auto F_SETFL         = _F_SETFL;
-inline constexpr auto F_GETFD         = _F_GETFD;
-inline constexpr auto F_SETFD         = _F_SETFD;
-inline constexpr auto FD_CLOEXEC      = _FD_CLOEXEC;
-inline constexpr auto SEEK_SET        = _SEEK_SET;
-inline constexpr auto SEEK_CUR        = _SEEK_CUR;
-inline constexpr auto SEEK_END        = _SEEK_END;
+inline constexpr auto O_RDONLY            = _O_RDONLY;
+inline constexpr auto O_WRONLY            = _O_WRONLY;
+inline constexpr auto O_RDWR              = _O_RDWR;
+inline constexpr auto O_CREAT             = _O_CREAT;
+inline constexpr auto O_EXCL              = _O_EXCL;
+inline constexpr auto O_TRUNC             = _O_TRUNC;
+inline constexpr auto O_APPEND            = _O_APPEND;
+inline constexpr auto O_NOFOLLOW          = _O_NOFOLLOW;
+inline constexpr auto O_DIRECTORY         = _O_DIRECTORY;
+inline constexpr auto AT_SYMLINK_NOFOLLOW = _AT_SYMLINK_NOFOLLOW;
+inline constexpr auto AT_REMOVEDIR        = _AT_REMOVEDIR;
+inline constexpr auto O_ACCMODE           = _O_ACCMODE;
+inline constexpr auto DIRECTORY_TRAVERSE  = _DIRECTORY_TRAVERSE;
+inline constexpr auto F_DUPFD_CLOEXEC     = _F_DUPFD_CLOEXEC;
+inline constexpr auto F_GETFL             = _F_GETFL;
+inline constexpr auto F_SETFL             = _F_SETFL;
+inline constexpr auto F_GETFD             = _F_GETFD;
+inline constexpr auto F_SETFD             = _F_SETFD;
+inline constexpr auto FD_CLOEXEC          = _FD_CLOEXEC;
+inline constexpr auto SEEK_SET            = _SEEK_SET;
+inline constexpr auto SEEK_CUR            = _SEEK_CUR;
+inline constexpr auto SEEK_END            = _SEEK_END;
 
 // ── Sockets ─────────────────────────────────────────────────────────────
 inline constexpr auto AF_INET       = _AF_INET;

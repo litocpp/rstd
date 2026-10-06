@@ -23,6 +23,15 @@ template<typename T>
 using Result = rstd::io::Result<T>;
 
 export auto open(ref<Path> path, OpenOptionsData const& options) -> Result<OwnedFd>;
+export auto open_directory(ref<Path> path, const OpenOptionsData& options) -> Result<OwnedFd>;
+export auto open_directory_for_traversal(ref<Path> path) -> Result<OwnedFd>;
+export auto open_at(RawFd parent, ref<Path> path, const OpenOptionsData& options, bool directory)
+    -> Result<OwnedFd>;
+export auto metadata_at(RawFd parent, ref<Path> path, bool follow) -> Result<MetadataData>;
+export auto create_dir_at(RawFd parent, ref<Path> path) -> Result<empty>;
+export auto remove_at(RawFd parent, ref<Path> path, bool directory) -> Result<empty>;
+export auto rename_at(RawFd parent, ref<Path> from, RawFd destination, ref<Path> to)
+    -> Result<empty>;
 export auto read(RawFd fd, mut_ref<byte[]> buffer) -> Result<usize>;
 export auto write(RawFd fd, slice<byte> buffer) -> Result<usize>;
 export auto seek(RawFd fd, SeekFrom position) -> Result<u64>;

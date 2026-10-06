@@ -62,3 +62,8 @@ if(PROJECT_IS_TOP_LEVEL)
 endif()
 
 add_subdirectory(src)
+
+if(PROJECT_IS_TOP_LEVEL AND UNIX)
+  add_executable(rstd-fs-dir-check EXCLUDE_FROM_ALL tests/fs-dir/main.cpp)
+  target_link_libraries(rstd-fs-dir-check PRIVATE rstd::nostd)
+endif()

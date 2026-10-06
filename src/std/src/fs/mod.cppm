@@ -183,6 +183,9 @@ export class OpenOptions {
     i32  m_custom_flags {};
     u32  m_mode { rstd::uint32_t(0666) };
 
+    auto data() const -> rstd::sys::fs::OpenOptionsData;
+    friend class Dir;
+
 public:
     static auto make() noexcept -> OpenOptions { return {}; }
 
@@ -262,6 +265,41 @@ public:
     auto into_raw_fd() && noexcept -> RawFd { return rstd::move(m_fd).into_raw_fd(); }
 
     static auto from_raw_fd(RawFd fd) noexcept -> File { return File { OwnedFd::from_raw_fd(fd) }; }
+};
+
+// Paths use native resolution relative to this handle, not a confined directory boundary.
+export class Dir {
+    OwnedFd m_fd;
+    explicit Dir(OwnedFd fd) noexcept: m_fd(rstd::move(fd)) {}
+
+public:
+    Dir(const Dir&)                               = delete;
+    Dir(Dir&&) noexcept                           = default;
+    auto        operator=(Dir&&) noexcept -> Dir& = default;
+    static auto open(ref<Path> path) -> FsResult<Dir>;
+    static auto open_with(ref<Path> path, const OpenOptions& options) -> FsResult<Dir>;
+    static auto open_for_traversal(ref<Path> path) -> FsResult<Dir>;
+    auto        try_clone() const -> FsResult<Dir> {
+        return m_fd.try_clone().map([](OwnedFd fd) {
+            return Dir(rstd::move(fd));
+        });
+    }
+    auto open_dir(ref<Path> path) const -> FsResult<Dir>;
+    auto open_dir_with(ref<Path> path, const OpenOptions& options) const -> FsResult<Dir>;
+    auto open_file(ref<Path> path) const -> FsResult<File>;
+    auto open_file_with(ref<Path> path, const OpenOptions& options) const -> FsResult<File>;
+    auto self_metadata() const -> FsResult<Metadata>;
+    auto metadata(ref<Path> path) const -> FsResult<Metadata>;
+    auto symlink_metadata(ref<Path> path) const -> FsResult<Metadata>;
+    auto create_dir(ref<Path> path) const -> FsResult<empty>;
+    auto remove_file(ref<Path> path) const -> FsResult<empty>;
+    auto remove_dir(ref<Path> path) const -> FsResult<empty>;
+    auto rename(ref<Path> from, const Dir& to_dir, ref<Path> to) const -> FsResult<empty>;
+
+    auto as_raw_fd() const noexcept -> RawFd { return m_fd.as_raw_fd(); }
+    auto as_fd() const noexcept [[clang::lifetimebound]] -> BorrowedFd { return m_fd.as_fd(); }
+    auto into_raw_fd() && noexcept -> RawFd { return rstd::move(m_fd).into_raw_fd(); }
+    static auto from_raw_fd(RawFd fd) noexcept -> Dir { return Dir(OwnedFd::from_raw_fd(fd)); }
 };
 
 export class FileLock {

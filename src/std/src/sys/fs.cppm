@@ -2,6 +2,9 @@ module;
 #include <rstd/macro.hpp>
 export module rstd:sys.fs;
 export import :sys.fs.contract;
+import :io;
+import :os.fd;
+import :path;
 
 #if RSTD_OS_UNIX
 import :sys.fs.unix;
@@ -27,6 +30,40 @@ export namespace rstd::sys::fs
 {
 
 using backend::Directory;
+#if RSTD_OS_UNIX
+using backend::open_directory;
+using backend::open_directory_for_traversal;
+using backend::open_at;
+using backend::metadata_at;
+using backend::create_dir_at;
+using backend::remove_at;
+using backend::rename_at;
+#else
+// Native directory-relative operations are not implemented on these backends yet.
+inline auto open_directory(ref<path::Path>, const OpenOptionsData&) -> io::Result<os::fd::OwnedFd> {
+    return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
+}
+inline auto open_directory_for_traversal(ref<path::Path>) -> io::Result<os::fd::OwnedFd> {
+    return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
+}
+inline auto open_at(os::fd::RawFd, ref<path::Path>, const OpenOptionsData&, bool)
+    -> io::Result<os::fd::OwnedFd> {
+    return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
+}
+inline auto metadata_at(os::fd::RawFd, ref<path::Path>, bool) -> io::Result<MetadataData> {
+    return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
+}
+inline auto create_dir_at(os::fd::RawFd, ref<path::Path>) -> io::Result<empty> {
+    return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
+}
+inline auto remove_at(os::fd::RawFd, ref<path::Path>, bool) -> io::Result<empty> {
+    return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
+}
+inline auto rename_at(os::fd::RawFd, ref<path::Path>, os::fd::RawFd, ref<path::Path>)
+    -> io::Result<empty> {
+    return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
+}
+#endif
 using backend::canonicalize;
 using backend::create_dir;
 using backend::hard_link;

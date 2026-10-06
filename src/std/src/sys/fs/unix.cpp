@@ -142,24 +142,82 @@ auto checked_off_t(u64 value) -> Result<libc::off_t> {
     return Ok(static_cast<libc::off_t>(native));
 }
 
-auto open(ref<Path> path, OpenOptionsData const& options) -> Result<OwnedFd> {
-    auto path_value = path_cstring(path);
-    if (path_value.is_err()) return Err(path_value.unwrap_err_unchecked());
-    auto access = access_mode(options);
-    if (access.is_err()) return Err(access.unwrap_err_unchecked());
-    auto creation = creation_mode(options);
-    if (creation.is_err()) return Err(creation.unwrap_err_unchecked());
+auto open_flags(const OpenOptionsData& options) -> Result<int> {
+    auto access   = rstd_try(access_mode(options));
+    auto creation = rstd_try(creation_mode(options));
+    return Ok(access | creation | (options.custom_flags.to_primitive() & ~libc::O_ACCMODE) |
+              libc::O_CLOEXEC);
+}
 
-    auto flags    = access.unwrap_unchecked() | creation.unwrap_unchecked() |
-                    static_cast<int>(options.custom_flags.to_primitive()) | libc::O_CLOEXEC;
-    auto value    = rstd::move(path_value).unwrap_unchecked();
-    auto raw_path = value.as_ptr();
+auto open(ref<Path> path, const OpenOptionsData& options) -> Result<OwnedFd> {
+    auto value = rstd_try(path_cstring(path));
+    auto flags = rstd_try(open_flags(options));
     while (true) {
-        auto fd =
-            libc::open(raw_path, flags, static_cast<libc::mode_t>(options.mode.to_primitive()));
+        auto fd = libc::open(
+            value.as_ptr(), flags, static_cast<libc::mode_t>(options.mode.to_primitive()));
         if (fd >= 0) return Ok(OwnedFd::from_raw_fd(fd));
         if (libc::get_errno() != libc::EINTR) return Err(last_error());
     }
+}
+
+auto open_directory(ref<Path> path, const OpenOptionsData& options) -> Result<OwnedFd> {
+    auto configured = options;
+    configured.custom_flags |= i32(libc::O_DIRECTORY);
+    return open(path, configured);
+}
+
+auto open_directory_for_traversal(ref<Path> path) -> Result<OwnedFd> {
+    auto value = rstd_try(path_cstring(path));
+    auto flags = libc::O_CLOEXEC | libc::O_DIRECTORY | libc::DIRECTORY_TRAVERSE;
+    while (true) {
+        auto fd = libc::open(value.as_ptr(), flags, 0);
+        if (fd >= 0) return Ok(OwnedFd::from_raw_fd(fd));
+        if (libc::get_errno() != libc::EINTR) return Err(last_error());
+    }
+}
+
+auto open_at(RawFd parent, ref<Path> path, const OpenOptionsData& options, bool directory)
+    -> Result<OwnedFd> {
+    auto value = rstd_try(path_cstring(path));
+    auto flags = rstd_try(open_flags(options));
+    if (directory) flags |= libc::O_DIRECTORY;
+    while (true) {
+        auto fd = libc::openat(
+            parent, value.as_ptr(), flags, static_cast<libc::mode_t>(options.mode.to_primitive()));
+        if (fd >= 0) return Ok(OwnedFd::from_raw_fd(fd));
+        if (libc::get_errno() != libc::EINTR) return Err(last_error());
+    }
+}
+
+auto metadata_at(RawFd parent, ref<Path> path, bool follow) -> Result<MetadataData> {
+    auto         value = rstd_try(path_cstring(path));
+    libc::stat_t info {};
+    while (libc::fstatat(parent, value.as_ptr(), &info, follow ? 0 : libc::AT_SYMLINK_NOFOLLOW) !=
+           0) {
+        if (libc::get_errno() != libc::EINTR) return Err(last_error());
+    }
+    return Ok(metadata_from_stat(info));
+}
+
+auto create_dir_at(RawFd parent, ref<Path> path) -> Result<empty> {
+    auto value = rstd_try(path_cstring(path));
+    if (libc::mkdirat(parent, value.as_ptr(), 0777) != 0) return Err(last_error());
+    return Ok(empty {});
+}
+
+auto remove_at(RawFd parent, ref<Path> path, bool directory) -> Result<empty> {
+    auto value = rstd_try(path_cstring(path));
+    if (libc::unlinkat(parent, value.as_ptr(), directory ? libc::AT_REMOVEDIR : 0) != 0)
+        return Err(last_error());
+    return Ok(empty {});
+}
+
+auto rename_at(RawFd parent, ref<Path> from, RawFd destination, ref<Path> to) -> Result<empty> {
+    auto source = rstd_try(path_cstring(from));
+    auto target = rstd_try(path_cstring(to));
+    if (libc::renameat(parent, source.as_ptr(), destination, target.as_ptr()) != 0)
+        return Err(last_error());
+    return Ok(empty {});
 }
 
 auto read(RawFd fd, mut_ref<byte[]> buffer) -> Result<usize> {

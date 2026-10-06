@@ -103,20 +103,21 @@ auto metadata_result(io::Result<sys_fs::MetadataData> result) -> FsResult<Metada
     return Ok(MetadataFactory::make(rstd::move(result).unwrap_unchecked()));
 }
 
+auto OpenOptions::data() const -> sys_fs::OpenOptionsData {
+    return { .read         = m_read,
+             .write        = m_write,
+             .append       = m_append,
+             .truncate     = m_truncate,
+             .create       = m_create,
+             .create_new   = m_create_new,
+             .custom_flags = m_custom_flags,
+             .mode         = m_mode };
+}
+
 auto OpenOptions::open(ref<Path> path) const -> FsResult<File> {
-    auto result = sys_fs::open(path,
-                               sys_fs::OpenOptionsData {
-                                   .read         = m_read,
-                                   .write        = m_write,
-                                   .append       = m_append,
-                                   .truncate     = m_truncate,
-                                   .create       = m_create,
-                                   .create_new   = m_create_new,
-                                   .custom_flags = m_custom_flags,
-                                   .mode         = m_mode,
-                               });
-    if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
-    return Ok(File { rstd::move(result).unwrap_unchecked() });
+    return sys_fs::open(path, data()).map([](OwnedFd fd) {
+        return File(rstd::move(fd));
+    });
 }
 
 auto File::open(ref<Path> path) -> FsResult<File> {
@@ -540,6 +541,70 @@ auto ReadDir::next() -> Option<FsResult<DirEntry>> {
     auto name = rstd::ffi::OsString::from_encoded_bytes_unchecked(rstd::move(entry.name));
     return Some(FsResult<DirEntry>(
         Ok(DirEntry { rstd::move(parent), rstd::move(name), FileType { entry.file_type } })));
+}
+
+auto Dir::open(ref<Path> path) -> FsResult<Dir> {
+    return open_with(path, OpenOptions::make().read(true));
+}
+
+auto Dir::open_with(ref<Path> path, const OpenOptions& options) -> FsResult<Dir> {
+    return sys_fs::open_directory(path, options.data()).map([](OwnedFd fd) {
+        return Dir(rstd::move(fd));
+    });
+}
+
+auto Dir::open_for_traversal(ref<Path> path) -> FsResult<Dir> {
+    return sys_fs::open_directory_for_traversal(path).map([](OwnedFd fd) {
+        return Dir(rstd::move(fd));
+    });
+}
+
+auto Dir::open_dir(ref<Path> path) const -> FsResult<Dir> {
+    return open_dir_with(path, OpenOptions::make().read(true));
+}
+
+auto Dir::open_dir_with(ref<Path> path, const OpenOptions& options) const -> FsResult<Dir> {
+    return sys_fs::open_at(m_fd.as_raw_fd(), path, options.data(), true).map([](OwnedFd fd) {
+        return Dir(rstd::move(fd));
+    });
+}
+
+auto Dir::open_file(ref<Path> path) const -> FsResult<File> {
+    return open_file_with(path, OpenOptions::make().read(true));
+}
+
+auto Dir::open_file_with(ref<Path> path, const OpenOptions& options) const -> FsResult<File> {
+    return sys_fs::open_at(m_fd.as_raw_fd(), path, options.data(), false).map([](OwnedFd fd) {
+        return File(rstd::move(fd));
+    });
+}
+
+auto Dir::self_metadata() const -> FsResult<Metadata> {
+    return metadata_result(sys_fs::metadata(m_fd.as_raw_fd()));
+}
+
+auto Dir::metadata(ref<Path> path) const -> FsResult<Metadata> {
+    return metadata_result(sys_fs::metadata_at(m_fd.as_raw_fd(), path, true));
+}
+
+auto Dir::symlink_metadata(ref<Path> path) const -> FsResult<Metadata> {
+    return metadata_result(sys_fs::metadata_at(m_fd.as_raw_fd(), path, false));
+}
+
+auto Dir::create_dir(ref<Path> path) const -> FsResult<empty> {
+    return sys_fs::create_dir_at(m_fd.as_raw_fd(), path);
+}
+
+auto Dir::remove_file(ref<Path> path) const -> FsResult<empty> {
+    return sys_fs::remove_at(m_fd.as_raw_fd(), path, false);
+}
+
+auto Dir::remove_dir(ref<Path> path) const -> FsResult<empty> {
+    return sys_fs::remove_at(m_fd.as_raw_fd(), path, true);
+}
+
+auto Dir::rename(ref<Path> from, const Dir& to_dir, ref<Path> to) const -> FsResult<empty> {
+    return sys_fs::rename_at(m_fd.as_raw_fd(), from, to_dir.m_fd.as_raw_fd(), to);
 }
 
 auto read_dir(ref<Path> path) -> FsResult<ReadDir> {
