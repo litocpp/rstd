@@ -13,6 +13,8 @@ auto rstd_bench::make_suite() -> Result<rstd::bench::Suite, String> {
     rstd_try(register_iter(suite));
     rstd_try(register_slice(suite));
     rstd_try(register_random(suite));
+    rstd_try(register_simd(suite));
+    rstd_try(register_simd_operations(suite));
     rstd_try(register_sync(suite));
     rstd_try(register_async_runtime(suite));
     rstd_try(register_async_loopback(suite));

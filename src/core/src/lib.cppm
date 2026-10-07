@@ -48,6 +48,7 @@ export import :time;
 export import :ffi;
 export import :hash;
 export import :random;
+export import :simd;
 export import :memchr;
 export import :char_;
 export import :ascii;

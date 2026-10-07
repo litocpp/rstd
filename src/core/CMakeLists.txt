@@ -35,6 +35,7 @@ target_sources(
          TYPE
          CXX_MODULES
          FILES
+         src/simd/mod.cppm
          src/lib.cppm
          src/prelude.cppm
          src/core.cppm
