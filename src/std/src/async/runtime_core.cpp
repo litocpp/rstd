@@ -53,7 +53,8 @@ auto TaskStateBase::submit_facility(FacilityTicket, FacilityRequest) -> Facility
 auto rstd::async::FacilityJob::operator=(FacilityJob&& other) noexcept -> FacilityJob& {
     if (this != &other) {
         cancel();
-        m_token = rstd::move(other.m_token);
+        m_token = other.m_token.take();
+        m_raw   = rstd::exchange(other.m_raw, {});
     }
     return *this;
 }
@@ -63,17 +64,33 @@ rstd::async::FacilityJob::~FacilityJob() {
 }
 
 void rstd::async::FacilityJob::run() {
-    auto task = m_token.access_task();
+    auto raw = rstd::exchange(m_raw, {});
+    if (raw.vtable) {
+        raw.vtable->run(raw.data);
+        raw.vtable->drop(raw.data);
+        return;
+    }
+    if (m_token.is_none()) return;
+    auto token = m_token.take().unwrap_unchecked();
+    auto task  = token.access_task();
     if (task.is_some()) {
         auto* state = task->get();
-        state->run_facility_execution(rstd::move(m_token), rstd::move(*task));
+        state->run_facility_execution(rstd::move(token), rstd::move(*task));
     }
 }
 
 void rstd::async::FacilityJob::cancel() {
-    auto task = m_token.access_task();
+    auto raw = rstd::exchange(m_raw, {});
+    if (raw.vtable) {
+        raw.vtable->cancel(raw.data);
+        raw.vtable->drop(raw.data);
+        return;
+    }
+    if (m_token.is_none()) return;
+    auto token = m_token.take().unwrap_unchecked();
+    auto task  = token.access_task();
     if (task.is_some()) {
-        (*task)->cancel_facility_handoff(rstd::move(m_token));
+        (*task)->cancel_facility_handoff(rstd::move(token));
     }
 }
 

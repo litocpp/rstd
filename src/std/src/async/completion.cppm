@@ -223,6 +223,16 @@ public:
             m_state->close_receiver();
         }
     }
+
+    auto poll(mut_ref<Completion> self, task::Context& cx) -> task::Poll<Output> {
+        if (! self->m_active || ! self->m_state) {
+            return task::Poll<Output>::Ready(Err(CompletionError<E>::canceled()));
+        }
+        auto out = self->m_state->wait(cx.waker());
+        if (out.is_none()) return task::Poll<Output>::Pending();
+        self->m_active = false;
+        return task::Poll<Output>::Ready(rstd::move(out).unwrap_unchecked());
+    }
 };
 
 template<typename T, typename E>
@@ -255,19 +265,11 @@ public:
         if (cx.execution_domain() == ExecutionDomainKind::ExternalExecutor) {
             return AwaitTransition::return_to_owner();
         }
-        auto& value = completion();
-        if (! value.m_active || ! value.m_state) {
-            m_result.insert(Err(CompletionError<E>::canceled()));
-            return AwaitTransition::continue_();
-        }
-
-        auto out = value.m_state->wait(cx.waker());
-        if (out.is_none()) {
+        auto out = future::poll(completion(), cx.poll_context());
+        if (out.is_pending()) {
             return AwaitTransition::suspend();
         }
-
-        value.m_active = false;
-        m_result.insert(rstd::move(out).unwrap_unchecked());
+        m_result.insert(rstd::move(out).take());
         return AwaitTransition::continue_();
     }
 };

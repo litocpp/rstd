@@ -527,14 +527,19 @@ namespace rstd::async
 {
 
 class FacilityJob {
-    ::FacilityExecutionToken m_token;
+    Option<::FacilityExecutionToken> m_token;
+    RawFacilityJob                   m_raw {};
+
+    explicit FacilityJob(RawFacilityJob job): m_raw(job) {}
 
 public:
-    explicit FacilityJob(::FacilityExecutionToken token): m_token(rstd::move(token)) {}
+    explicit FacilityJob(::FacilityExecutionToken token): m_token(Some(rstd::move(token))) {}
+    static auto from_raw(RawFacilityJob job) -> FacilityJob { return FacilityJob(job); }
 
     FacilityJob(const FacilityJob&)                    = delete;
     auto operator=(const FacilityJob&) -> FacilityJob& = delete;
-    FacilityJob(FacilityJob&&) noexcept                = default;
+    FacilityJob(FacilityJob&& other) noexcept
+        : m_token(other.m_token.take()), m_raw(rstd::exchange(other.m_raw, {})) {}
     auto operator=(FacilityJob&& other) noexcept -> FacilityJob&;
     ~FacilityJob();
 

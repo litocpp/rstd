@@ -1,0 +1,15 @@
+[package]
+name = "rstd-stream-core-tests"
+
+[[test]]
+name = "rstd-stream-core-tests"
+sources = ["main.cpp"]
+link-stdlib = false
+
+[profile.base]
+exceptions = false
+rtti = false
+
+[dependencies]
+rstd-core = { path = "../../../src/core" }
+rstd-nostd = { path = "../../../src/nostd", usage = "link" }

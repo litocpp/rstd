@@ -21,10 +21,12 @@ public:
     auto operator=(RuntimeCoroDriver&&) noexcept -> RuntimeCoroDriver& = default;
     ~RuntimeCoroDriver()                                               = default;
 
-    auto drive(task::Context& cx) { return resume_coro(*m_coro, m_state, cx); }
+    auto drive(task::Context& cx, AwaitMode mode = AwaitMode::Native) {
+        return resume_coro(*m_coro, m_state, cx, mode);
+    }
 
-    auto resume_external_segment(task::Context& cx) {
-        return resume_coro_external_segment(*m_coro, m_state, cx);
+    auto resume_external_segment(task::Context& cx, AwaitMode mode = AwaitMode::Native) {
+        return resume_coro_external_segment(*m_coro, m_state, cx, mode);
     }
 
     auto complete_facility(FacilityEvent& event) -> bool {

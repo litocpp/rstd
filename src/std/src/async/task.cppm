@@ -74,6 +74,8 @@ struct CoroAccess;
 export template<typename T>
 class RSTD_CORO_AWAIT_ELIDABLE coro {
 public:
+    using Future = CoroFuture<T>;
+    auto into_future() -> Future;
     struct promise_type {
         AwaitingOperation awaiting {};
         Option<T>         result;
@@ -145,6 +147,8 @@ public:
 template<>
 class RSTD_CORO_AWAIT_ELIDABLE coro<void> {
 public:
+    using Future = CoroFuture<void>;
+    auto into_future() -> Future;
     struct promise_type {
         AwaitingOperation awaiting {};
 

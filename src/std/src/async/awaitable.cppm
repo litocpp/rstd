@@ -13,21 +13,30 @@ enum class ExecutionDomainKind
     ExternalExecutor,
 };
 
+enum class AwaitMode
+{
+    Native,
+    FuturePoll,
+};
+
 class AwaitContext {
     task::Context*      m_poll_context;
     ExecutionDomainKind m_execution_domain;
+    AwaitMode           m_mode;
 
 public:
     explicit constexpr AwaitContext(
         task::Context&      cx,
-        ExecutionDomainKind execution_domain = ExecutionDomainKind::RuntimeWorker) noexcept
-        : m_poll_context(rstd::addressof(cx)), m_execution_domain(execution_domain) {}
+        ExecutionDomainKind execution_domain = ExecutionDomainKind::RuntimeWorker,
+        AwaitMode           mode             = AwaitMode::Native) noexcept
+        : m_poll_context(rstd::addressof(cx)), m_execution_domain(execution_domain), m_mode(mode) {}
 
     constexpr auto poll_context() const noexcept -> task::Context& { return *m_poll_context; }
     constexpr auto execution_domain() const noexcept -> ExecutionDomainKind {
         return m_execution_domain;
     }
     constexpr auto waker() const noexcept -> const task::Waker& { return m_poll_context->waker(); }
+    constexpr auto mode() const noexcept -> AwaitMode { return m_mode; }
 };
 
 /// Resolves the future type produced by an `IntoFuture` implementation.
@@ -108,8 +117,9 @@ concept FutureInput = requires { typename future::future_output_t<A>; } &&
                       Impled<mtp::rm_cvf<A>, future::Future<future::future_output_t<A>>>;
 
 template<typename A>
-concept IntoFutureInput = (! FutureInput<A>) && requires { typename into_future_t<A>; } &&
-                          Impled<mtp::rm_cvf<A>, IntoFuture> && FutureInput<into_future_t<A>>;
+concept IntoFutureInput = (! InternalAwaitable<A>) && (! FutureInput<A>) && requires {
+    typename into_future_t<A>;
+} && Impled<mtp::rm_cvf<A>, IntoFuture> && FutureInput<into_future_t<A>>;
 
 } // namespace rstd::async
 
@@ -142,6 +152,8 @@ concept AwaitableInput = InternalAwaitable<A> || FutureInput<A> || IntoFutureInp
 template<typename Operation, typename Output = typename mtp::rm_cvf<Operation>::Output>
 class AwaitSuspension {
     Operation m_operation;
+    [[no_unique_address]]
+    mtp::cond<FutureInput<Operation>, Option<Output>, empty> m_polled;
 
 public:
     explicit AwaitSuspension(Operation&& operation)
@@ -154,9 +166,25 @@ public:
         handle.promise().set_awaiting(this);
     }
 
-    auto await_resume() -> Output { return m_operation.take_output(); }
+    auto await_resume() -> Output {
+        if constexpr (FutureInput<Operation>) {
+            if (m_polled.is_some()) return m_polled.take().unwrap_unchecked();
+        }
+        return m_operation.take_output();
+    }
 
-    auto advance(AwaitContext& cx) -> AwaitTransition { return m_operation.advance(cx); }
+    auto advance(AwaitContext& cx) -> AwaitTransition {
+        if constexpr (FutureInput<Operation>) {
+            if (cx.mode() == AwaitMode::FuturePoll &&
+                cx.execution_domain() == ExecutionDomainKind::RuntimeWorker) {
+                auto out = future::poll(m_operation, cx.poll_context());
+                if (out.is_pending()) return AwaitTransition::suspend();
+                m_polled.insert(rstd::move(out).take());
+                return AwaitTransition::continue_();
+            }
+        }
+        return m_operation.advance(cx);
+    }
 
     template<typename Event>
         requires requires(Operation& operation, Event& event) {
@@ -178,6 +206,7 @@ public:
 template<typename Operation>
 class AwaitSuspension<Operation, void> {
     Operation m_operation;
+    bool      m_polled { false };
 
 public:
     explicit AwaitSuspension(Operation&& operation)
@@ -190,9 +219,23 @@ public:
         handle.promise().set_awaiting(this);
     }
 
-    void await_resume() { m_operation.take_output(); }
+    void await_resume() {
+        if (! m_polled) m_operation.take_output();
+    }
 
-    auto advance(AwaitContext& cx) -> AwaitTransition { return m_operation.advance(cx); }
+    auto advance(AwaitContext& cx) -> AwaitTransition {
+        if constexpr (FutureInput<Operation>) {
+            if (cx.mode() == AwaitMode::FuturePoll &&
+                cx.execution_domain() == ExecutionDomainKind::RuntimeWorker) {
+                auto out = future::poll(m_operation, cx.poll_context());
+                if (out.is_pending()) return AwaitTransition::suspend();
+                rstd::move(out).take();
+                m_polled = true;
+                return AwaitTransition::continue_();
+            }
+        }
+        return m_operation.advance(cx);
+    }
 
     template<typename Event>
         requires requires(Operation& operation, Event& event) {

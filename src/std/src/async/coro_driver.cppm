@@ -76,7 +76,10 @@ public:
 };
 
 template<typename T>
-auto resume_coro(coro<T>& task, CoroFrameState& state, task::Context& cx) -> DriveAction {
+auto resume_coro(coro<T>&        task,
+                 CoroFrameState& state,
+                 task::Context&  cx,
+                 AwaitMode       mode = AwaitMode::Native) -> DriveAction {
     auto& handle = CoroAccess<T>::handle(task);
     if (! handle) {
         rstd::panic { "empty async coro resumed" };
@@ -90,7 +93,7 @@ auto resume_coro(coro<T>& task, CoroFrameState& state, task::Context& cx) -> Dri
 
     auto& promise = handle.promise();
     while (true) {
-        auto await_context = async::AwaitContext { cx, current_execution_domain() };
+        auto await_context = async::AwaitContext { cx, current_execution_domain(), mode };
         if (promise.awaiting) {
             auto awaiting   = promise.awaiting;
             auto transition = awaiting.advance(await_context);
@@ -123,8 +126,10 @@ auto resume_coro(coro<T>& task, CoroFrameState& state, task::Context& cx) -> Dri
 }
 
 template<typename T>
-auto resume_coro_external_segment(coro<T>& task, CoroFrameState& state, task::Context& cx)
-    -> DriveAction {
+auto resume_coro_external_segment(coro<T>&        task,
+                                  CoroFrameState& state,
+                                  task::Context&  cx,
+                                  AwaitMode       mode = AwaitMode::Native) -> DriveAction {
     auto& handle = CoroAccess<T>::handle(task);
     if (! handle) {
         rstd::panic { "empty async coro resumed" };
@@ -136,7 +141,7 @@ auto resume_coro_external_segment(coro<T>& task, CoroFrameState& state, task::Co
     auto& promise = handle.promise();
     while (true) {
         if (promise.awaiting) {
-            auto await_context = AwaitContext { cx, ExecutionDomainKind::ExternalExecutor };
+            auto await_context = AwaitContext { cx, ExecutionDomainKind::ExternalExecutor, mode };
             auto awaiting      = promise.awaiting;
             auto transition    = awaiting.advance(await_context);
             if (transition.kind() == AwaitTransitionKind::SubmitFacility) {
@@ -215,9 +220,10 @@ public:
     explicit CoroWaitOperation(coro<T>&& task): m_coro(rstd::move(task)) {}
 
     auto advance(AwaitContext& cx) -> AwaitTransition {
-        auto action = cx.execution_domain() == ExecutionDomainKind::ExternalExecutor
-                          ? resume_coro_external_segment(m_coro, m_state, cx.poll_context())
-                          : resume_coro(m_coro, m_state, cx.poll_context());
+        auto action =
+            cx.execution_domain() == ExecutionDomainKind::ExternalExecutor
+                ? resume_coro_external_segment(m_coro, m_state, cx.poll_context(), cx.mode())
+                : resume_coro(m_coro, m_state, cx.poll_context(), cx.mode());
         if (action.is_suspended()) {
             return AwaitTransition::suspend();
         }
@@ -261,9 +267,10 @@ public:
     explicit CoroWaitOperation(coro<void>&& task): m_coro(rstd::move(task)) {}
 
     auto advance(AwaitContext& cx) -> AwaitTransition {
-        auto action = cx.execution_domain() == ExecutionDomainKind::ExternalExecutor
-                          ? resume_coro_external_segment(m_coro, m_state, cx.poll_context())
-                          : resume_coro(m_coro, m_state, cx.poll_context());
+        auto action =
+            cx.execution_domain() == ExecutionDomainKind::ExternalExecutor
+                ? resume_coro_external_segment(m_coro, m_state, cx.poll_context(), cx.mode())
+                : resume_coro(m_coro, m_state, cx.poll_context(), cx.mode());
         if (action.is_suspended()) {
             return AwaitTransition::suspend();
         }

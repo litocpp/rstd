@@ -44,6 +44,7 @@ struct CompletionSourceFields {
     Option<CompletionSourceBinding> binding {};
     usize                           active_operations {};
     Option<FacilityCompletionToken> release_token {};
+    Option<task::Waker>             release_waker {};
     Option<io::error::Error>        release_error {};
     bool                            release_requested { false };
     bool                            release_submitted { false };
@@ -419,6 +420,7 @@ auto completion_source_owner_clone(voidp data) -> RawPollEventOwner;
 void finish_completion_source_release(const CompletionSourceArc& state,
                                       Option<io::error::Error>   error) {
     auto token  = Option<FacilityCompletionToken> {};
+    auto waker  = Option<task::Waker> {};
     bool failed = error.is_some();
     {
         auto fields = state->fields.lock().unwrap_unchecked();
@@ -428,11 +430,13 @@ void finish_completion_source_release(const CompletionSourceArc& state,
         fields->release_error     = rstd::move(error);
         if (! failed) fields->binding = None<CompletionSourceBinding>();
         token = fields->release_token.take();
+        waker = fields->release_waker.take();
     }
     if (token.is_some()) {
         (void)rstd::move(token).unwrap_unchecked().complete(failed ? FacilityEventKind::Error
                                                                    : FacilityEventKind::Ready);
     }
+    if (waker.is_some()) rstd::move(waker).unwrap_unchecked().wake();
 }
 
 void completion_source_owner_dispatch(voidp data, PollEventData event) {
@@ -599,6 +603,7 @@ auto make_completion_source_release_cancellation(const CompletionSourceArc& stat
 export class CompletionSourceRelease {
     CompletionSourceArc m_state;
     bool                m_completed { false };
+    bool                m_polling { false };
 
     explicit CompletionSourceRelease(CompletionSourceArc state): m_state(rstd::move(state)) {}
 
@@ -607,16 +612,29 @@ export class CompletionSourceRelease {
 public:
     using Output = io::Result<empty>;
 
-    CompletionSourceRelease(const CompletionSourceRelease&)                        = delete;
-    auto operator=(const CompletionSourceRelease&) -> CompletionSourceRelease&     = delete;
-    CompletionSourceRelease(CompletionSourceRelease&&) noexcept                    = default;
-    auto operator=(CompletionSourceRelease&&) noexcept -> CompletionSourceRelease& = default;
+    CompletionSourceRelease(const CompletionSourceRelease&)                    = delete;
+    auto operator=(const CompletionSourceRelease&) -> CompletionSourceRelease& = delete;
+    CompletionSourceRelease(CompletionSourceRelease&& other) noexcept
+        : m_state(rstd::move(other.m_state)),
+          m_completed(rstd::exchange(other.m_completed, true)),
+          m_polling(rstd::exchange(other.m_polling, false)) {}
+    auto operator=(CompletionSourceRelease&& other) noexcept -> CompletionSourceRelease& {
+        if (this != &other) {
+            clear_waker();
+            m_state     = rstd::move(other.m_state);
+            m_completed = rstd::exchange(other.m_completed, true);
+            m_polling   = rstd::exchange(other.m_polling, false);
+        }
+        return *this;
+    }
+    ~CompletionSourceRelease() { clear_waker(); }
 
     auto advance(AwaitContext& cx) -> AwaitTransition {
         if (cx.execution_domain() == ExecutionDomainKind::ExternalExecutor) {
             return AwaitTransition::return_to_owner();
         }
         if (m_completed) rstd::panic { "completion source release advanced after completion" };
+        if (m_polling) rstd::panic { "completion source release cannot mix poll and direct await" };
         {
             auto fields               = m_state->fields.lock().unwrap_unchecked();
             fields->release_requested = true;
@@ -671,6 +689,37 @@ public:
             return Err(fields->release_error.take().unwrap_unchecked());
         }
         return Ok(empty {});
+    }
+
+    auto poll(mut_ref<CompletionSourceRelease> self, task::Context& cx) -> task::Poll<Output> {
+        if (self->m_completed) rstd::panic { "completion source release polled after completion" };
+        self->m_polling = true;
+        {
+            auto fields = self->m_state->fields.lock().unwrap_unchecked();
+            if (fields->release_token.is_some()) {
+                rstd::panic { "completion source release cannot mix direct await and poll" };
+            }
+            fields->release_requested = true;
+            if (! fields->released) fields->release_waker = Some(cx.waker().clone());
+        }
+        try_submit_completion_source_release(self->m_state);
+        {
+            auto fields = self->m_state->fields.lock().unwrap_unchecked();
+            if (! fields->released) return task::Poll<Output>::Pending();
+            self->m_completed = true;
+        }
+        self->clear_waker();
+        return task::Poll<Output>::Ready(self->take_output());
+    }
+
+private:
+    void clear_waker() {
+        if (! m_state || ! m_polling) return;
+        auto waker = Option<task::Waker> {};
+        {
+            auto fields = m_state->fields.lock().unwrap_unchecked();
+            waker       = fields->release_waker.take();
+        }
     }
 };
 

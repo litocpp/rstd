@@ -58,6 +58,12 @@ target_sources(
          src/enum_.cppm
          src/task.cppm
          src/future.cppm
+         src/stream/mod.cppm
+         src/stream/traits.cppm
+         src/stream/sources.cppm
+         src/stream/adapters.cppm
+         src/stream/consumers.cppm
+         src/stream/unfold.cppm
          src/fmt/mod.cppm
          src/fmt/integer.cppm
          src/fmt/floating.cppm

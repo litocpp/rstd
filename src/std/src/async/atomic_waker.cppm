@@ -80,6 +80,8 @@ private:
     }
 
 public:
+    void clear() { (void)take_waker(); }
+
     /// Wakes and removes the currently registered waker, if any.
     void wake() {
         auto waker = take_waker();

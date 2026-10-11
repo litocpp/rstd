@@ -8,6 +8,16 @@ namespace rstd::async
 
 class FacilityJob;
 
+struct RawFacilityJobVTable {
+    void (*run)(voidp);
+    void (*cancel)(voidp);
+    void (*drop)(voidp);
+};
+struct RawFacilityJob {
+    voidp                       data { nullptr };
+    const RawFacilityJobVTable* vtable { nullptr };
+};
+
 enum class FacilityEndpointSubmitResult
 {
     Accepted,

@@ -29,6 +29,9 @@ export template<typename T>
 class coro;
 
 export template<typename T>
+class CoroFuture;
+
+export template<typename T>
 class JoinHandle;
 
 export struct Executor;

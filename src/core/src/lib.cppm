@@ -36,6 +36,7 @@ export import :try_;
 export import :enum_;
 export import :task;
 export import :future;
+export import :stream;
 
 export import :panicking;
 export import :hint;

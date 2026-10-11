@@ -10,6 +10,10 @@ namespace rstd::sync
 {
 
 export class Condvar;
+export template<typename T>
+class Mutex;
+
+export enum class TryLockError { WouldBlock };
 
 /// An RAII guard returned by `Mutex::lock`, providing access to the protected data.
 ///
@@ -21,6 +25,9 @@ class MutexGuard {
     T*           m_data;
 
     friend class Condvar;
+    friend class Mutex<T>;
+    struct AdoptLock {};
+    MutexGuard(sys_mutex_t* lock, T* data, AdoptLock): m_lock(lock), m_data(data) {}
 
     auto raw_lock() noexcept -> sys_mutex_t& { return *m_lock; }
 
@@ -82,6 +89,11 @@ public:
     /// Acquires the mutex (alias for lock_mut; no poisoning support yet).
     auto lock() const [[clang::lifetimebound]] -> Result<MutexGuard<T>, empty> {
         return lock_mut();
+    }
+
+    auto try_lock() const [[clang::lifetimebound]] -> Result<MutexGuard<T>, TryLockError> {
+        if (! m_lock.try_lock()) return Err(TryLockError::WouldBlock);
+        return Ok(MutexGuard<T>(&m_lock, &m_data, typename MutexGuard<T>::AdoptLock {}));
     }
 };
 

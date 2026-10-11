@@ -33,6 +33,7 @@ struct Future {
 };
 
 export template<typename Item>
+    requires(! mtp::is_ref<Item>) && (! mtp::is_void<Item>)
 struct Stream {
     template<class Self, class Delegate = void>
     struct Api {
