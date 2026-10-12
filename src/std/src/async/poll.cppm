@@ -1436,7 +1436,7 @@ export class Poll {
         }
         auto backend       = rstd::move(initialized).unwrap_unchecked();
         auto blocking_file = Option<BlockingFileCompletionDriver> {};
-#if RSTD_OS_LINUX
+#if RSTD_OS_LINUX || RSTD_OS_MACOS
         if (! backend.poller.capabilities().contains(pal_poll::Capability::FileCompletion) &&
             blocking_spawner.is_some()) {
             blocking_file = Some(BlockingFileCompletionDriver {

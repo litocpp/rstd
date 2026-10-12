@@ -1,4 +1,5 @@
 #include <rstd/test/gtest.hpp>
+#include <rstd/macro.hpp>
 #include <atomic>
 #include <cstdlib>
 
@@ -392,7 +393,7 @@ TEST(RstdAsyncIoOperation, RuntimeShutdownDrainsPendingRead) {
     EXPECT_TRUE(rstd::move(result).unwrap_err_unchecked().is_aborted());
 }
 
-#if defined(__linux__)
+#if RSTD_OS_LINUX || RSTD_OS_MACOS
 TEST(RstdAsyncIoOperation, OwnedFileSourceUnpolledOperationRetainsDescriptor) {
     auto temporary = fs::TempDir::make("rstd-owned-source"_str).unwrap();
     auto path   = path::PathBuf::from(temporary.path().as_os_str().to_os_string()).join("file"_str);
@@ -428,18 +429,48 @@ TEST(RstdAsyncIoOperation, OwnedFileReadAtPreservesCursorAndReleaseClosesWithClo
     auto temporary = fs::TempDir::make("rstd-read-at"_str).unwrap();
     auto path = path::PathBuf::from(temporary.path().as_os_str().to_os_string()).join("file"_str);
     fs::write(path.as_path(), "0123456789"_bytes).unwrap();
-    for (bool fallback : array<bool, 2> { false, true }) {
+#if RSTD_OS_LINUX
+    auto modes = array<bool, 2> { false, true };
+#else
+    auto modes = array<bool, 1> { false };
+#endif
+    for (bool fallback : modes) {
+#if RSTD_OS_LINUX
         auto previous = env::var_os("RSTD_ASYNC_DISABLE_IO_URING"_str);
         env::set_var("RSTD_ASYNC_DISABLE_IO_URING"_str, fallback ? "1"_str : "0"_str);
+#else
+        (void)fallback;
+#endif
         auto runtime = async::RuntimeBuilder::current_thread().enable_all().build().unwrap();
+#if RSTD_OS_LINUX
         if (previous.is_some())
             env::set_var("RSTD_ASYNC_DISABLE_IO_URING"_str, previous->as_os_str());
         else
             env::remove_var("RSTD_ASYNC_DISABLE_IO_URING"_str);
+#endif
         auto file = fs::File::open(path.as_path()).unwrap();
         auto raw  = file.as_raw_fd();
         EXPECT_TRUE(runtime.block_on(owned_positional_reads(rstd::move(file), raw)));
     }
+}
+
+auto owned_file_write(fs::File file) -> async::coro<bool> {
+    auto raw = file.as_raw_fd();
+    auto source =
+        async::CompletionSource::file(os::fd::OwnedFd::from_raw_fd(rstd::move(file).into_raw_fd()));
+    auto written =
+        co_await async::IoOperation::write(source, bytes::Bytes::copy_from_slice("output"_bytes));
+    auto released = co_await rstd::move(source).release();
+    co_return written.is_ok() && written->transferred() == usize(6) && released.is_ok() &&
+        fcntl(raw, F_GETFD) < 0;
+}
+TEST(RstdAsyncIoOperation, OwnedFileWriteClosesAfterRelease) {
+    auto temporary = fs::TempDir::make("rstd-owned-write"_str).unwrap();
+    auto path      = path::PathBuf::from(temporary.path()).join("file"_str);
+    auto file      = fs::File::create(path.as_path()).unwrap();
+    auto runtime   = async::RuntimeBuilder::current_thread().enable_all().build().unwrap();
+    EXPECT_TRUE(runtime.block_on(owned_file_write(rstd::move(file))));
+    EXPECT_EQ(fs::read(path.as_path()).unwrap().as_slice(), "output"_bytes);
 }
 
 auto owned_cancelled_read(os::fd::OwnedFd read, os::fd::OwnedFd write) -> async::coro<bool> {
@@ -457,15 +488,19 @@ auto owned_cancelled_read(os::fd::OwnedFd read, os::fd::OwnedFd write) -> async:
 TEST(RstdAsyncIoOperation, OwnedFileCancelledReadWaitsForReleaseBeforeDescriptorClose) {
     int descriptors[2];
     ASSERT_EQ(pipe(descriptors), 0);
-    auto read     = os::fd::OwnedFd::from_raw_fd(descriptors[0]);
-    auto write    = os::fd::OwnedFd::from_raw_fd(descriptors[1]);
+    auto read  = os::fd::OwnedFd::from_raw_fd(descriptors[0]);
+    auto write = os::fd::OwnedFd::from_raw_fd(descriptors[1]);
+#if RSTD_OS_LINUX
     auto previous = env::var_os("RSTD_ASYNC_DISABLE_IO_URING"_str);
     env::set_var("RSTD_ASYNC_DISABLE_IO_URING"_str, "1"_str);
+#endif
     auto runtime = async::RuntimeBuilder::current_thread().enable_all().build().unwrap();
+#if RSTD_OS_LINUX
     if (previous.is_some())
         env::set_var("RSTD_ASYNC_DISABLE_IO_URING"_str, previous->as_os_str());
     else
         env::remove_var("RSTD_ASYNC_DISABLE_IO_URING"_str);
+#endif
     EXPECT_TRUE(runtime.block_on(owned_cancelled_read(rstd::move(read), rstd::move(write))));
 }
 
@@ -509,6 +544,9 @@ auto wait_for_file_submission(std::atomic<bool>& started) -> async::coro<void> {
     co_await async::yield_now();
 }
 
+#endif
+
+#if defined(__linux__)
 void restore_io_uring_environment(Option<ffi::OsString> previous) {
     if (previous.is_some()) {
         env::set_var("RSTD_ASYNC_DISABLE_IO_URING"_str, previous->as_os_str());

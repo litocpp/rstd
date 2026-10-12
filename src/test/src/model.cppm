@@ -17,7 +17,7 @@ protected:
 };
 
 class TestContext;
-thread_local TestContext* active_test_context {};
+inline thread_local TestContext* active_test_context {};
 
 class TestContext {
     ref<str>       suite_;

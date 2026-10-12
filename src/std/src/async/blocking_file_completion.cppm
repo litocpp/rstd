@@ -74,7 +74,7 @@ struct ActiveOperation {
 };
 
 auto execute(BlockingFileOperation operation) -> io::Result<usize> {
-#if RSTD_OS_LINUX
+#if RSTD_OS_LINUX || RSTD_OS_MACOS
     if (operation.kind == BlockingFileOperationKind::Read) {
         auto buffer =
             mut_ref<byte[]>::from_raw_parts(static_cast<byte*>(operation.data), operation.len);
