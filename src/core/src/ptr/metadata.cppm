@@ -29,7 +29,7 @@ concept DST = Impled<T, ptr_::Pointee>;
 
 /// A dynamically-sized array type whose pointer metadata is a `usize` length.
 export template<typename T>
-concept DSTArray = mtp::same<typename Impl<ptr_::Pointee, T>::Metadata, usize>;
+concept DSTArray = mtp::same_as<typename Impl<ptr_::Pointee, T>::Metadata, usize>;
 
 } // namespace mtp
 

@@ -416,15 +416,15 @@ public:
     [[nodiscard]]
     constexpr auto checked_neg() const noexcept -> rstd::Option<Self>;
     template<typename Shift>
-        requires rstd::mtp::same<rstd::mtp::rm_cvf<Shift>, U64>
+        requires rstd::mtp::same_as<rstd::mtp::rm_cvf<Shift>, U64>
     [[nodiscard]]
     constexpr auto checked_shl(Shift rhs) const noexcept -> rstd::Option<Self>;
     template<typename Shift>
-        requires rstd::mtp::same<rstd::mtp::rm_cvf<Shift>, U64>
+        requires rstd::mtp::same_as<rstd::mtp::rm_cvf<Shift>, U64>
     [[nodiscard]]
     constexpr auto checked_shr(Shift rhs) const noexcept -> rstd::Option<Self>;
     template<typename Exponent>
-        requires rstd::mtp::same<rstd::mtp::rm_cvf<Exponent>, U32>
+        requires rstd::mtp::same_as<rstd::mtp::rm_cvf<Exponent>, U32>
     [[nodiscard]]
     constexpr auto checked_pow(Exponent rhs) const noexcept -> rstd::Option<Self>;
     [[nodiscard]]
@@ -488,7 +488,7 @@ public:
     }
 
     template<typename Shift>
-        requires rstd::mtp::same<rstd::mtp::rm_cvf<Shift>, U64>
+        requires rstd::mtp::same_as<rstd::mtp::rm_cvf<Shift>, U64>
     [[nodiscard]]
     constexpr auto overflowing_shl(Shift rhs) const noexcept -> rstd::tuple<Self, bool> {
         auto       amount   = rhs.to_primitive();
@@ -499,7 +499,7 @@ public:
     }
 
     template<typename Shift>
-        requires rstd::mtp::same<rstd::mtp::rm_cvf<Shift>, U64>
+        requires rstd::mtp::same_as<rstd::mtp::rm_cvf<Shift>, U64>
     [[nodiscard]]
     constexpr auto overflowing_shr(Shift rhs) const noexcept -> rstd::tuple<Self, bool> {
         auto       amount   = rhs.to_primitive();
@@ -513,7 +513,7 @@ public:
     }
 
     template<typename Exponent>
-        requires rstd::mtp::same<rstd::mtp::rm_cvf<Exponent>, U32>
+        requires rstd::mtp::same_as<rstd::mtp::rm_cvf<Exponent>, U32>
     [[nodiscard]]
     constexpr auto overflowing_pow(Exponent rhs) const noexcept -> rstd::tuple<Self, bool> {
         auto remaining = rhs.to_primitive();
@@ -618,19 +618,19 @@ public:
         return get<0>(overflowing_neg());
     }
     template<typename Shift>
-        requires rstd::mtp::same<rstd::mtp::rm_cvf<Shift>, U64>
+        requires rstd::mtp::same_as<rstd::mtp::rm_cvf<Shift>, U64>
     [[nodiscard]]
     constexpr auto wrapping_shl(Shift rhs) const noexcept -> Self {
         return get<0>(overflowing_shl(rhs));
     }
     template<typename Shift>
-        requires rstd::mtp::same<rstd::mtp::rm_cvf<Shift>, U64>
+        requires rstd::mtp::same_as<rstd::mtp::rm_cvf<Shift>, U64>
     [[nodiscard]]
     constexpr auto wrapping_shr(Shift rhs) const noexcept -> Self {
         return get<0>(overflowing_shr(rhs));
     }
     template<typename Exponent>
-        requires rstd::mtp::same<rstd::mtp::rm_cvf<Exponent>, U32>
+        requires rstd::mtp::same_as<rstd::mtp::rm_cvf<Exponent>, U32>
     [[nodiscard]]
     constexpr auto wrapping_pow(Exponent rhs) const noexcept -> Self {
         return get<0>(overflowing_pow(rhs));
@@ -661,7 +661,7 @@ public:
     }
 
     template<typename Shift>
-        requires rstd::mtp::same<rstd::mtp::rm_cvf<Shift>, U64>
+        requires rstd::mtp::same_as<rstd::mtp::rm_cvf<Shift>, U64>
     [[nodiscard]]
     constexpr auto rotate_left(Shift rhs) const noexcept -> Self {
         auto amount = rhs.to_primitive() % BIT_WIDTH;
@@ -672,7 +672,7 @@ public:
     }
 
     template<typename Shift>
-        requires rstd::mtp::same<rstd::mtp::rm_cvf<Shift>, U64>
+        requires rstd::mtp::same_as<rstd::mtp::rm_cvf<Shift>, U64>
     [[nodiscard]]
     constexpr auto rotate_right(Shift rhs) const noexcept -> Self {
         auto amount = rhs.to_primitive() % BIT_WIDTH;
@@ -726,7 +726,7 @@ public:
     }
 
     template<typename Exponent>
-        requires rstd::mtp::same<rstd::mtp::rm_cvf<Exponent>, U32>
+        requires rstd::mtp::same_as<rstd::mtp::rm_cvf<Exponent>, U32>
     [[nodiscard]]
     constexpr auto saturating_pow(Exponent rhs) const noexcept -> Self {
         auto [value, overflow] = overflowing_pow(rhs);
@@ -738,7 +738,7 @@ public:
     }
 
     template<typename Exponent>
-        requires rstd::mtp::same<rstd::mtp::rm_cvf<Exponent>, U32>
+        requires rstd::mtp::same_as<rstd::mtp::rm_cvf<Exponent>, U32>
     [[nodiscard]]
     constexpr auto pow(Exponent rhs) const -> Self {
         auto [value, overflow] = overflowing_pow(rhs);
@@ -944,7 +944,7 @@ public:
     }
 
     template<typename Shift>
-        requires rstd::mtp::same<rstd::mtp::rm_cvf<Shift>, U64>
+        requires rstd::mtp::same_as<rstd::mtp::rm_cvf<Shift>, U64>
     friend constexpr auto operator<<(Self lhs, Shift rhs) -> Self {
         auto [value, overflow] = lhs.overflowing_shl(rhs);
         if (overflow && should_check_integer_overflow()) panic_invalid_shift();
@@ -952,7 +952,7 @@ public:
     }
 
     template<typename Shift>
-        requires rstd::mtp::same<rstd::mtp::rm_cvf<Shift>, U64>
+        requires rstd::mtp::same_as<rstd::mtp::rm_cvf<Shift>, U64>
     friend constexpr auto operator>>(Self lhs, Shift rhs) -> Self {
         auto [value, overflow] = lhs.overflowing_shr(rhs);
         if (overflow && should_check_integer_overflow()) panic_invalid_shift();
@@ -1020,13 +1020,13 @@ public:
         return self();
     }
     template<typename Shift>
-        requires rstd::mtp::same<rstd::mtp::rm_cvf<Shift>, U64>
+        requires rstd::mtp::same_as<rstd::mtp::rm_cvf<Shift>, U64>
     constexpr auto operator<<=(Shift rhs) -> Self& {
         self() = self() << rhs;
         return self();
     }
     template<typename Shift>
-        requires rstd::mtp::same<rstd::mtp::rm_cvf<Shift>, U64>
+        requires rstd::mtp::same_as<rstd::mtp::rm_cvf<Shift>, U64>
     constexpr auto operator>>=(Shift rhs) -> Self& {
         self() = self() >> rhs;
         return self();
@@ -1039,7 +1039,7 @@ public:
         constexpr NAME() noexcept = default;                                                   \
         explicit constexpr NAME(PRIMITIVE value) noexcept: Base(value) {}                      \
         template<RawInteger Source>                                                            \
-            requires(! rstd::mtp::same<rstd::mtp::rm_cvf<Source>, bool>)                       \
+            requires(! rstd::mtp::same_as<rstd::mtp::rm_cvf<Source>, bool>)                    \
         explicit constexpr NAME(Source value) noexcept: Base(static_cast<PRIMITIVE>(value)) {} \
         static const NAME MIN;                                                                 \
         static const NAME MAX;                                                                 \
@@ -1052,7 +1052,7 @@ struct U8 final : Integer<U8, rstd::uint8_t, u8_tag> {
     explicit constexpr U8(rstd::uint8_t value) noexcept: Base(value) {}
 
     template<RawInteger Source>
-        requires(! rstd::mtp::same<rstd::mtp::rm_cvf<Source>, bool>)
+        requires(! rstd::mtp::same_as<rstd::mtp::rm_cvf<Source>, bool>)
     explicit constexpr U8(Source value) noexcept: Base(static_cast<rstd::uint8_t>(value)) {}
 
     static constexpr auto from_byte(rstd::byte value) noexcept -> U8 {
@@ -1415,7 +1415,7 @@ public:
     }
 
     template<typename Exponent>
-        requires rstd::mtp::same<rstd::mtp::rm_cvf<Exponent>, I32>
+        requires rstd::mtp::same_as<rstd::mtp::rm_cvf<Exponent>, I32>
     [[nodiscard]]
     constexpr auto powi(Exponent exponent) const noexcept -> Self {
         auto const     raw       = exponent.to_primitive();
@@ -1766,27 +1766,28 @@ template<typename T>
 concept Integer = mtp::is_int<T>;
 
 template<typename T>
-concept UnsignedInteger = mtp::same<mtp::rm_cvf<T>, u8> || mtp::same<mtp::rm_cvf<T>, u16> ||
-                          mtp::same<mtp::rm_cvf<T>, u32> || mtp::same<mtp::rm_cvf<T>, u64> ||
-                          mtp::same<mtp::rm_cvf<T>, u128> || mtp::same<mtp::rm_cvf<T>, usize>;
+concept UnsignedInteger = mtp::same_as<mtp::rm_cvf<T>, u8> || mtp::same_as<mtp::rm_cvf<T>, u16> ||
+                          mtp::same_as<mtp::rm_cvf<T>, u32> || mtp::same_as<mtp::rm_cvf<T>, u64> ||
+                          mtp::same_as<mtp::rm_cvf<T>, u128> || mtp::same_as<mtp::rm_cvf<T>, usize>;
 
 template<typename T>
 concept SignedInteger = Integer<T> && (! UnsignedInteger<T>);
 
 template<typename T>
-concept Float = mtp::same<mtp::rm_cvf<T>, f32> || mtp::same<mtp::rm_cvf<T>, f64>;
+concept Float = mtp::same_as<mtp::rm_cvf<T>, f32> || mtp::same_as<mtp::rm_cvf<T>, f64>;
 
 template<typename T>
 concept Numeric = Integer<T> || Float<T>;
 
 template<typename T>
 concept PrimitiveInteger =
-    rstd::is_raw_int<mtp::rm_cvf<T>> && (! mtp::same<mtp::rm_cvf<T>, bool>) &&
-    (! mtp::same<mtp::rm_cvf<T>, char>) && (! mtp::same<mtp::rm_cvf<T>, wchar_t>) &&
-    (! mtp::same<mtp::rm_cvf<T>, char8_t>) && (! mtp::same<mtp::rm_cvf<T>, char16_t>) &&
-    (! mtp::same<mtp::rm_cvf<T>, char32_t>);
+    rstd::is_raw_int<mtp::rm_cvf<T>> && (! mtp::same_as<mtp::rm_cvf<T>, bool>) &&
+    (! mtp::same_as<mtp::rm_cvf<T>, char>) && (! mtp::same_as<mtp::rm_cvf<T>, wchar_t>) &&
+    (! mtp::same_as<mtp::rm_cvf<T>, char8_t>) && (! mtp::same_as<mtp::rm_cvf<T>, char16_t>) &&
+    (! mtp::same_as<mtp::rm_cvf<T>, char32_t>);
 
 template<typename T>
-concept PrimitiveFloat = mtp::same<mtp::rm_cvf<T>, float> || mtp::same<mtp::rm_cvf<T>, double> ||
-                         mtp::same<mtp::rm_cvf<T>, long double>;
+concept PrimitiveFloat =
+    mtp::same_as<mtp::rm_cvf<T>, float> || mtp::same_as<mtp::rm_cvf<T>, double> ||
+    mtp::same_as<mtp::rm_cvf<T>, long double>;
 } // namespace rstd::num

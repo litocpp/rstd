@@ -11,7 +11,7 @@ template<typename T>
 concept Float = num::flt2dec::Float<T>;
 
 template<typename T>
-concept FormattableFloat = Float<T> || rstd::mtp::same<rstd::mtp::rm_cvf<T>, double>;
+concept FormattableFloat = Float<T> || rstd::mtp::same_as<rstd::mtp::rm_cvf<T>, double>;
 
 template<FormattableFloat T>
 constexpr auto normalize(T value) noexcept {

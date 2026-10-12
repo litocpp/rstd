@@ -370,9 +370,10 @@ constexpr inline bool is_constant_evaluated() noexcept {
 export template<typename T, typename U>
 concept same_as = __is_same(T, U);
 
-/// Satisfied when `T` is the same as all of `Rest...`.
-export template<typename T, typename... Rest>
-concept same = (__is_same(T, Rest) && ...);
+// Disabled while Clang C++26 mishandles substitution failure in fold constraints.
+// Use same_as for pairwise comparisons.
+// export template<typename T, typename... Rest>
+// concept same = (__is_same(T, Rest) && ...);
 /// Satisfied when `T` is the same as any of `Rest...`.
 export template<typename T, typename... Rest>
 concept any = (__is_same(T, Rest) || ...);
@@ -556,7 +557,7 @@ concept user_assign_move = assign<T, T&&> && (! triv_assign_move<T>);
 /// @{
 /// Satisfied when `T` is `void` (ignoring cv/ref qualifiers).
 export template<typename T>
-concept is_void = same<rm_cvf<T>, void>;
+concept is_void = same_as<rm_cvf<T>, void>;
 
 namespace detail
 {
@@ -580,7 +581,7 @@ namespace rstd::mtp
 /// Satisfied when `T` is an rstd integer wrapper.
 export template<typename T>
 concept is_int = requires {
-    requires same<typename rm_cvf<T>::integer_wrapper_tag, detail::integer_wrapper_tag>;
+    requires same_as<typename rm_cvf<T>::integer_wrapper_tag, detail::integer_wrapper_tag>;
 };
 /// Satisfied when `T` is a floating-point type.
 export template<typename T>

@@ -168,7 +168,7 @@ constexpr auto lexicographical_compare_three_way(InputIter1 first1,
             using T1 = mtp::rm_cv<mtp::rm_ptr<InputIter1>>;
             using T2 = mtp::rm_cv<mtp::rm_ptr<InputIter2>>;
 
-            if constexpr (mtp::same<T1, T2> && rstd::is_raw_int<T1> && sizeof(T1) == 1) {
+            if constexpr (mtp::same_as<T1, T2> && rstd::is_raw_int<T1> && sizeof(T1) == 1) {
                 auto len1    = last1 - first1;
                 auto len2    = last2 - first2;
                 auto min_len = rstd::min(len1, len2);

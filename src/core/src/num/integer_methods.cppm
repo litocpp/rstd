@@ -61,7 +61,7 @@ constexpr auto Integer<Derived, Primitive, Tag>::checked_neg() const noexcept
 
 template<typename Derived, typename Primitive, typename Tag>
 template<typename Shift>
-    requires rstd::mtp::same<rstd::mtp::rm_cvf<Shift>, U64>
+    requires rstd::mtp::same_as<rstd::mtp::rm_cvf<Shift>, U64>
 constexpr auto Integer<Derived, Primitive, Tag>::checked_shl(Shift rhs) const noexcept
     -> rstd::Option<Self> {
     if (rhs.to_primitive() >= BIT_WIDTH) return rstd::option::None<Self>();
@@ -70,7 +70,7 @@ constexpr auto Integer<Derived, Primitive, Tag>::checked_shl(Shift rhs) const no
 
 template<typename Derived, typename Primitive, typename Tag>
 template<typename Shift>
-    requires rstd::mtp::same<rstd::mtp::rm_cvf<Shift>, U64>
+    requires rstd::mtp::same_as<rstd::mtp::rm_cvf<Shift>, U64>
 constexpr auto Integer<Derived, Primitive, Tag>::checked_shr(Shift rhs) const noexcept
     -> rstd::Option<Self> {
     if (rhs.to_primitive() >= BIT_WIDTH) return rstd::option::None<Self>();
@@ -79,7 +79,7 @@ constexpr auto Integer<Derived, Primitive, Tag>::checked_shr(Shift rhs) const no
 
 template<typename Derived, typename Primitive, typename Tag>
 template<typename Exponent>
-    requires rstd::mtp::same<rstd::mtp::rm_cvf<Exponent>, U32>
+    requires rstd::mtp::same_as<rstd::mtp::rm_cvf<Exponent>, U32>
 constexpr auto Integer<Derived, Primitive, Tag>::checked_pow(Exponent rhs) const noexcept
     -> rstd::Option<Self> {
     auto [value, overflow] = overflowing_pow(rhs);
