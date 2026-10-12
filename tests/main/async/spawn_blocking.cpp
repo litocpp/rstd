@@ -172,6 +172,37 @@ TEST(RstdAsyncSpawnBlocking, RunningAbortDoesNotOverwriteValue) {
     EXPECT_EQ(rstd::move(result).unwrap_unchecked(), 37);
 }
 
+struct BlockingCapture {
+    std::atomic<bool>* destroying;
+    std::atomic<bool>* release;
+    bool               owned { true };
+    BlockingCapture(std::atomic<bool>& destroying, std::atomic<bool>& release)
+        : destroying(&destroying), release(&release) {}
+    BlockingCapture(const BlockingCapture&) = delete;
+    BlockingCapture(BlockingCapture&& other) noexcept
+        : destroying(other.destroying),
+          release(other.release),
+          owned(rstd::exchange(other.owned, false)) {}
+    ~BlockingCapture() {
+        if (! owned) return;
+        destroying->store(true, std::memory_order_release);
+        while (! release->load(std::memory_order_acquire)) hint::spin_loop();
+    }
+    auto operator()() -> int { return 47; }
+};
+TEST(RstdAsyncSpawnBlocking, JoinWaitsForCapturedInputsToBeDestroyed) {
+    auto runtime =
+        async::RuntimeBuilder::current_thread().max_blocking_threads(usize(1)).build().unwrap();
+    std::atomic<bool> destroying { false }, release { false };
+    auto              submitted = runtime.spawn_blocking(BlockingCapture(destroying, release));
+    ASSERT_TRUE(submitted.is_ok());
+    auto handle = rstd::move(submitted).unwrap();
+    while (! destroying.load(std::memory_order_acquire)) hint::spin_loop();
+    EXPECT_FALSE(handle.is_finished());
+    release.store(true, std::memory_order_release);
+    EXPECT_EQ(runtime.block_on(rstd::move(handle)).unwrap(), 47);
+}
+
 TEST(RstdAsyncSpawnBlocking, IdleWorkerIsReused) {
     auto runtime =
         async::RuntimeBuilder::current_thread().max_blocking_threads(usize(1)).build().unwrap();

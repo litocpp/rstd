@@ -194,6 +194,16 @@ auto spawn_driver_on(RuntimeInner& runtime, rstd::async::RuntimeCoroDriver<T> dr
     -> rstd::async::JoinHandle<T>;
 
 template<typename F>
+auto invoke_blocking_function(F function) -> mtp::void_empty_t<mtp::invoke_result_t<F>> {
+    if constexpr (mtp::is_void<mtp::invoke_result_t<F>>) {
+        function();
+        return empty {};
+    } else {
+        return function();
+    }
+}
+
+template<typename F>
 auto spawn_blocking_on(RuntimeInner& runtime, F&& function)
     -> io::Result<rstd::async::JoinHandle<mtp::invoke_result_t<F>>>;
 
@@ -458,18 +468,14 @@ template<typename F>
 auto spawn_blocking_on(RuntimeInner& runtime, F&& function)
     -> io::Result<rstd::async::JoinHandle<mtp::invoke_result_t<F>>> {
     using Output = mtp::invoke_result_t<F>;
-    using Stored = mtp::void_empty_t<Output>;
 
     auto join = sync::Arc<JoinState<Output>>::make();
     auto job  = rstd::async::BlockingJob::make(
-        [join = join.clone(), function = mtp::rm_cvf<F>(rstd::forward<F>(function))]() mutable {
-            auto waker = Option<task::Waker> {};
-            if constexpr (mtp::is_void<Output>) {
-                function();
-                waker = join->complete_value(Stored {});
-            } else {
-                waker = join->complete_value(function());
-            }
+        [join     = join.clone(),
+         function = Some(mtp::rm_cvf<F>(rstd::forward<F>(function)))]() mutable {
+            // Join completion must follow destruction of the job's captured inputs.
+            auto result = invoke_blocking_function(function.take().unwrap_unchecked());
+            auto waker  = join->complete_value(rstd::move(result));
             if (waker.is_some()) rstd::move(*waker).wake();
         },
         [join = join.clone()]() mutable {

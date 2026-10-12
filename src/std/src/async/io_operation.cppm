@@ -41,6 +41,7 @@ struct CompletionSourceBinding {
 };
 
 struct CompletionSourceFields {
+    Option<os::fd::OwnedFd>         owned_file {};
     Option<CompletionSourceBinding> binding {};
     usize                           active_operations {};
     Option<FacilityCompletionToken> release_token {};
@@ -58,6 +59,11 @@ struct CompletionSourceState {
 
     CompletionSourceState(os::fd::RawFd fd, CompletionSourceKind kind)
         : fd(fd), kind(kind), fields(CompletionSourceFields {}) {}
+
+    explicit CompletionSourceState(os::fd::OwnedFd file)
+        : fd(file.as_raw_fd()),
+          kind(CompletionSourceKind::File),
+          fields(CompletionSourceFields { .owned_file = Some(rstd::move(file)) }) {}
 
     ~CompletionSourceState();
 };
@@ -108,6 +114,11 @@ public:
 
     static auto file(os::fd::BorrowedFd fd) noexcept -> CompletionSource {
         return CompletionSource { fd.as_raw_fd(), CompletionSourceKind::File };
+    }
+
+    // In-flight operations and backend release retain ownership after the caller drops the source.
+    static auto file(os::fd::OwnedFd fd) -> CompletionSource {
+        return CompletionSource { CompletionSourceArc::make(rstd::move(fd)) };
     }
 
 #if RSTD_OS_WINDOWS
@@ -187,6 +198,7 @@ struct IoOperationFields {
 struct IoOperationState {
     struct Read {
         bytes::BytesMut buffer;
+        Option<u64>     offset;
     };
 
     struct Write {
@@ -212,9 +224,9 @@ struct IoOperationState {
     Payload                        payload;
     sync::Mutex<IoOperationFields> fields;
 
-    IoOperationState(CompletionSource source, usize read_len)
+    IoOperationState(CompletionSource source, usize read_len, Option<u64> offset = None())
         : source(rstd::move(source)),
-          payload(Payload::with<PollOperationKind::Read>(Read { bytes::BytesMut::make() })),
+          payload(Payload::with<PollOperationKind::Read>(Read { bytes::BytesMut::make(), offset })),
           fields(IoOperationFields {}) {
         this->source.begin_operation();
         auto buffer = bytes::BytesMut::with_capacity(read_len);
@@ -263,7 +275,10 @@ struct IoOperationState {
             return attach_source(
                 source.kind() == CompletionSourceKind::Socket
                     ? PollOperation::read_socket(source.as_raw_fd(), buffer.data(), buffer.len())
-                    : PollOperation::read(source.as_raw_fd(), buffer.data(), buffer.len()));
+                    : PollOperation::read(source.as_raw_fd(),
+                                          buffer.data(),
+                                          buffer.len(),
+                                          payload.as<PollOperationKind::Read>().offset));
         }
         case PollOperationKind::Write: {
             auto& buffer = payload.as<PollOperationKind::Write>().buffer;
@@ -428,7 +443,10 @@ void finish_completion_source_release(const CompletionSourceArc& state,
         fields->released          = true;
         fields->release_submitted = false;
         fields->release_error     = rstd::move(error);
-        if (! failed) fields->binding = None<CompletionSourceBinding>();
+        if (! failed) {
+            fields->binding    = None<CompletionSourceBinding>();
+            fields->owned_file = None<os::fd::OwnedFd>();
+        }
         token = fields->release_token.take();
         waker = fields->release_waker.take();
     }
@@ -566,11 +584,46 @@ auto make_io_operation_owner(const IoOperationArc& state) -> PollEventOwner {
         rstd::move(owned).into_raw().into_raw(), rstd::addressof(IO_OPERATION_OWNER_VTABLE)));
 }
 
+using OwnedFileReleaseArc = sync::Arc<os::fd::OwnedFd>;
+extern const RawPollEventOwnerVTable OWNED_FILE_RELEASE_VTABLE;
+
+auto owned_file_release_clone(voidp data) -> RawPollEventOwner {
+    auto owner =
+        OwnedFileReleaseArc::from_raw(::alloc::sync::ArcRaw<os::fd::OwnedFd>::from_raw(data));
+    auto cloned = owner.clone();
+    (void)rstd::move(owner).into_raw().into_raw();
+    return RawPollEventOwner::from_raw_parts(rstd::move(cloned).into_raw().into_raw(),
+                                             rstd::addressof(OWNED_FILE_RELEASE_VTABLE));
+}
+void owned_file_release_dispatch(voidp, PollEventData) {
+}
+void owned_file_release_drop(voidp data) {
+    auto owner =
+        OwnedFileReleaseArc::from_raw(::alloc::sync::ArcRaw<os::fd::OwnedFd>::from_raw(data));
+    (void)owner;
+}
+const RawPollEventOwnerVTable OWNED_FILE_RELEASE_VTABLE { &owned_file_release_clone,
+                                                          &owned_file_release_dispatch,
+                                                          &owned_file_release_drop };
+auto                          owned_file_release_owner(os::fd::OwnedFd file) -> PollEventOwner {
+    auto owner = OwnedFileReleaseArc::make(rstd::move(file));
+    return PollEventOwner::from_raw(RawPollEventOwner::from_raw_parts(
+        rstd::move(owner).into_raw().into_raw(), rstd::addressof(OWNED_FILE_RELEASE_VTABLE)));
+}
 CompletionSourceState::~CompletionSourceState() {
-    auto current = fields.lock().unwrap_unchecked()->binding.take();
+    Option<CompletionSourceBinding> current;
+    Option<os::fd::OwnedFd>         file;
+    {
+        auto locked = fields.lock().unwrap_unchecked();
+        current     = locked->binding.take();
+        file        = locked->owned_file.take();
+    }
     if (current.is_none()) return;
     auto bound = rstd::move(current).unwrap_unchecked();
-    (void)bound.worker.submit_poll(PollCommand::release_completion_source(bound.source_key, fd));
+    auto owner = file.is_some() ? owned_file_release_owner(file.take().unwrap_unchecked())
+                                : PollEventOwner {};
+    (void)bound.worker.submit_poll(
+        PollCommand::release_completion_source(bound.source_key, fd, rstd::move(owner)));
 }
 
 void completion_source_release_cancel(voidp data) {
@@ -799,6 +852,14 @@ auto ensure_io_operation_submitted(const IoOperationArc& state) -> IoOperationSu
     if (CURRENT_RUNTIME == nullptr) {
         rstd::panic { "async::IoOperation started without an async runtime" };
     }
+    if (state->source.kind() != CompletionSourceKind::File &&
+        state->payload.is<PollOperationKind::Read>() &&
+        state->payload.as<PollOperationKind::Read>().offset.is_some()) {
+        store_io_operation_error(state,
+                                 io::error::Error::from_kind(
+                                     io::error::ErrorKind { io::error::ErrorKind::InvalidInput }));
+        return IoOperationSubmitStatus::Rejected;
+    }
     if (! CURRENT_RUNTIME->io_enabled()) {
         store_io_operation_error(state,
                                  io::error::Error::from_kind(
@@ -946,6 +1007,10 @@ public:
 
     static auto read(const CompletionSource& source, usize len) -> IoOperation {
         return IoOperation { IoOperationArc::make(source.clone(), len) };
+    }
+
+    static auto read_at(const CompletionSource& source, usize len, u64 offset) -> IoOperation {
+        return IoOperation { IoOperationArc::make(source.clone(), len, Some(offset)) };
     }
 
     static auto write(const CompletionSource& source, bytes::Bytes data) -> IoOperation {

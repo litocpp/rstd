@@ -393,6 +393,106 @@ TEST(RstdAsyncIoOperation, RuntimeShutdownDrainsPendingRead) {
 }
 
 #if defined(__linux__)
+TEST(RstdAsyncIoOperation, OwnedFileSourceUnpolledOperationRetainsDescriptor) {
+    auto temporary = fs::TempDir::make("rstd-owned-source"_str).unwrap();
+    auto path   = path::PathBuf::from(temporary.path().as_os_str().to_os_string()).join("file"_str);
+    auto file   = fs::File::create(path.as_path()).unwrap();
+    auto raw    = file.as_raw_fd();
+    auto source = Some(async::CompletionSource::file(
+        os::fd::OwnedFd::from_raw_fd(rstd::move(file).into_raw_fd())));
+    auto operation = Some(async::IoOperation::read_at(*source, usize(1), u64()));
+    source         = None();
+    EXPECT_GE(fcntl(raw, F_GETFD), 0);
+    operation = None();
+    EXPECT_LT(fcntl(raw, F_GETFD), 0);
+}
+
+auto owned_positional_reads(fs::File file, os::fd::RawFd raw) -> async::coro<bool> {
+    auto source =
+        async::CompletionSource::file(os::fd::OwnedFd::from_raw_fd(rstd::move(file).into_raw_fd()));
+    auto clone = Some(source.clone());
+    auto first = co_await async::IoOperation::read_at(source, usize(3), u64(2));
+    if (first.is_err() || first->data() != "234"_bytes || lseek(raw, 0, SEEK_CUR) != 0)
+        co_return false;
+    auto second = co_await async::IoOperation::read_at(*clone, usize(10), u64(8));
+    if (second.is_err() || second->data() != "89"_bytes) co_return false;
+    auto eof = co_await async::IoOperation::read_at(source, usize(1), u64(20));
+    if (eof.is_err() || eof->transferred() != usize()) co_return false;
+    auto released = co_await rstd::move(source).release();
+    if (released.is_err() || fcntl(raw, F_GETFD) >= 0) co_return false;
+    auto replacement = fs::File::open("/dev/null"_str).unwrap();
+    clone            = None();
+    co_return fcntl(replacement.as_raw_fd(), F_GETFD) >= 0;
+}
+TEST(RstdAsyncIoOperation, OwnedFileReadAtPreservesCursorAndReleaseClosesWithClones) {
+    auto temporary = fs::TempDir::make("rstd-read-at"_str).unwrap();
+    auto path = path::PathBuf::from(temporary.path().as_os_str().to_os_string()).join("file"_str);
+    fs::write(path.as_path(), "0123456789"_bytes).unwrap();
+    for (bool fallback : array<bool, 2> { false, true }) {
+        auto previous = env::var_os("RSTD_ASYNC_DISABLE_IO_URING"_str);
+        env::set_var("RSTD_ASYNC_DISABLE_IO_URING"_str, fallback ? "1"_str : "0"_str);
+        auto runtime = async::RuntimeBuilder::current_thread().enable_all().build().unwrap();
+        if (previous.is_some())
+            env::set_var("RSTD_ASYNC_DISABLE_IO_URING"_str, previous->as_os_str());
+        else
+            env::remove_var("RSTD_ASYNC_DISABLE_IO_URING"_str);
+        auto file = fs::File::open(path.as_path()).unwrap();
+        auto raw  = file.as_raw_fd();
+        EXPECT_TRUE(runtime.block_on(owned_positional_reads(rstd::move(file), raw)));
+    }
+}
+
+auto owned_cancelled_read(os::fd::OwnedFd read, os::fd::OwnedFd write) -> async::coro<bool> {
+    auto raw         = read.as_raw_fd();
+    auto keep_reader = read.try_clone().unwrap();
+    auto source      = async::CompletionSource::file(rstd::move(read));
+    auto timed =
+        co_await async::timeout(async::IoOperation::read(source, usize(1)), time::Duration {});
+    if (timed.is_ok() || fcntl(raw, F_GETFD) < 0) co_return false;
+    char byte = 'x';
+    if (::write(write.as_raw_fd(), &byte, 1) != 1) co_return false;
+    auto released = co_await rstd::move(source).release();
+    co_return released.is_ok() && fcntl(raw, F_GETFD) < 0;
+}
+TEST(RstdAsyncIoOperation, OwnedFileCancelledReadWaitsForReleaseBeforeDescriptorClose) {
+    int descriptors[2];
+    ASSERT_EQ(pipe(descriptors), 0);
+    auto read     = os::fd::OwnedFd::from_raw_fd(descriptors[0]);
+    auto write    = os::fd::OwnedFd::from_raw_fd(descriptors[1]);
+    auto previous = env::var_os("RSTD_ASYNC_DISABLE_IO_URING"_str);
+    env::set_var("RSTD_ASYNC_DISABLE_IO_URING"_str, "1"_str);
+    auto runtime = async::RuntimeBuilder::current_thread().enable_all().build().unwrap();
+    if (previous.is_some())
+        env::set_var("RSTD_ASYNC_DISABLE_IO_URING"_str, previous->as_os_str());
+    else
+        env::remove_var("RSTD_ASYNC_DISABLE_IO_URING"_str);
+    EXPECT_TRUE(runtime.block_on(owned_cancelled_read(rstd::move(read), rstd::move(write))));
+}
+
+auto discard_bound_owned_file(fs::File file) -> async::coro<bool> {
+    auto source =
+        async::CompletionSource::file(os::fd::OwnedFd::from_raw_fd(rstd::move(file).into_raw_fd()));
+    auto read = co_await async::IoOperation::read_at(source, usize(1), u64());
+    co_return read.is_ok();
+}
+auto wait_owned_descriptor_close(int fd) -> async::coro<bool> {
+    while (fcntl(fd, F_GETFD) >= 0) co_await async::yield_now();
+    co_return true;
+}
+TEST(RstdAsyncIoOperation, OwnedFileBoundDropHandsDescriptorToBackendReleaseOwner) {
+    auto temporary = fs::TempDir::make("rstd-owned-bound"_str).unwrap();
+    auto path = path::PathBuf::from(temporary.path().as_os_str().to_os_string()).join("file"_str);
+    fs::write(path.as_path(), "x"_bytes).unwrap();
+    auto file    = fs::File::open(path.as_path()).unwrap();
+    auto raw     = file.as_raw_fd();
+    auto runtime = async::RuntimeBuilder::current_thread().enable_all().build().unwrap();
+    EXPECT_TRUE(runtime.block_on(discard_bound_owned_file(rstd::move(file))));
+    auto released = runtime.block_on(async::timeout(
+        async::into_future(wait_owned_descriptor_close(raw)), time::Duration::from_secs(u64(2))));
+    EXPECT_TRUE(released.is_ok());
+    if (released.is_ok()) EXPECT_TRUE(*released);
+}
+
 auto read_file_one(os::fd::RawFd fd) -> async::coro<io::Result<async::IoCompletion>> {
     auto source = async::CompletionSource::file(os::fd::BorrowedFd::borrow_raw(fd));
     co_return co_await async::IoOperation::read(source, usize(1));
