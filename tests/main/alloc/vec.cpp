@@ -1064,6 +1064,138 @@ TEST(Vec, BoxedSliceDropsEveryElement) {
     EXPECT_EQ(drops, 2);
 }
 
+TEST(Vec, InsertPreservesOrderAtEveryPosition) {
+    for (int returning = 0; returning < 2; ++returning) {
+        for (rstd::size_t length = 0; length <= 3; ++length) {
+            for (rstd::size_t position = 0; position <= length; ++position) {
+                for (rstd::size_t spare = 0; spare <= 1; ++spare) {
+                    VecAllocatorState state {};
+                    {
+                        auto values = Vec<int, VecTestAllocator>::with_capacity_in(
+                            usize(length + spare), VecTestAllocator { &state });
+                        for (rstd::size_t i = 0; i < length; ++i) values.push(static_cast<int>(i));
+                        auto allocations = state.allocations;
+                        if (returning) {
+                            auto inserted = values.insert_mut(usize(position), 41);
+                            static_assert(rstd::mtp::same_as<decltype(inserted), mut_ref<int>>);
+                            EXPECT_EQ(inserted.as_raw_ptr(), values.data() + position);
+                            inserted.get_mut() = 42;
+                        } else {
+                            values.insert(usize(position), 42);
+                        }
+                        ASSERT_EQ(values.len(), usize(length + 1));
+                        if (spare != 0)
+                            EXPECT_EQ(state.allocations, allocations);
+                        else
+                            EXPECT_GT(state.allocations, allocations);
+                        for (rstd::size_t i = 0; i <= length; ++i) {
+                            auto expected =
+                                i == position ? 42 : static_cast<int>(i < position ? i : i - 1);
+                            EXPECT_EQ(values[usize(i)], expected);
+                        }
+                    }
+                    EXPECT_EQ(state.allocations, state.deallocations);
+                }
+            }
+        }
+    }
+}
+
+TEST(Vec, InsertMovesWithoutAssignmentAndPreservesResources) {
+    for (rstd::size_t spare = 0; spare <= 1; ++spare) {
+        int drops = 0;
+        {
+            auto values = Vec<CollectMoveOnly>::with_capacity(usize(2 + spare));
+            values.emplace_back(10, drops);
+            values.emplace_back(30, drops);
+            values.insert(1_usize, CollectMoveOnly(20, drops));
+            values.insert(0_usize, CollectMoveOnly(0, drops));
+            ASSERT_EQ(values.len(), 4_usize);
+            EXPECT_EQ(drops, 0);
+            for (rstd::size_t i = 0; i < 4; ++i) {
+                auto& element = values.data()[i];
+                EXPECT_EQ(element.value, static_cast<int>(i) * 10);
+                EXPECT_EQ(element.value_ptr, &element.value);
+            }
+        }
+        EXPECT_EQ(drops, 4);
+    }
+}
+
+TEST(Vec, InsertOwnsAliasedInputBeforeGrowthOrShifting) {
+    for (rstd::size_t spare = 0; spare <= 1; ++spare) {
+        for (rstd::size_t position = 0; position <= 3; ++position) {
+            for (rstd::size_t source = 0; source < 3; ++source) {
+                int drops = 0;
+                {
+                    auto values = Vec<CollectMoveOnly>::with_capacity(usize(3 + spare));
+                    for (int i = 0; i < 3; ++i) values.emplace_back(i, drops);
+                    auto inserted =
+                        values.insert_mut(usize(position), rstd::move(values.data()[source]));
+                    ASSERT_EQ(values.len(), 4_usize);
+                    EXPECT_EQ(inserted.as_raw_ptr(), values.data() + position);
+                    EXPECT_EQ(inserted.get().value, static_cast<int>(source));
+                    EXPECT_EQ(inserted.get().drops, &drops);
+                    auto moved_from = source < position ? source : source + 1;
+                    for (rstd::size_t i = 0; i < 4; ++i) {
+                        auto& element = values.data()[i];
+                        EXPECT_EQ(element.value_ptr, &element.value);
+                        EXPECT_EQ(element.drops, i == moved_from ? nullptr : &drops);
+                        auto expected = i == position ? source : (i < position ? i : i - 1);
+                        EXPECT_EQ(element.value, static_cast<int>(expected));
+                    }
+                    EXPECT_EQ(drops, 0);
+                }
+                EXPECT_EQ(drops, 3);
+            }
+        }
+    }
+}
+
+TEST(Vec, InsertU8PreservesByteStorageAndReturnsWritableProxy) {
+    for (rstd::size_t spare = 0; spare <= 1; ++spare) {
+        auto values = Vec<u8>::with_capacity(usize(2 + spare));
+        values.push(u8(1));
+        values.push(u8(3));
+        auto inserted = values.insert_mut(1_usize, u8(2));
+        static_assert(rstd::mtp::same_as<decltype(inserted), mut_ref<u8>>);
+        EXPECT_EQ(inserted.as_raw_ptr(), values.data() + 1);
+        inserted = u8(9);
+        values.insert(0_usize, u8(0));
+        values.insert(values.len(), u8(4));
+        ASSERT_EQ(values.len(), 5_usize);
+        const unsigned char expected[] { 0, 1, 9, 3, 4 };
+        for (rstd::size_t i = 0; i < 5; ++i) {
+            EXPECT_EQ(values[usize(i)], u8(expected[i]));
+            EXPECT_EQ(values.data()[i], rstd::byte { expected[i] });
+        }
+    }
+    Vec<u8> empty;
+    empty.insert_mut(0_usize, u8(7)) = u8(8);
+    EXPECT_EQ(empty[0_usize], u8(8));
+}
+
+TEST(Vec, InsertRejectsOutOfBoundsBeforeMovingInput) {
+    struct MoveProbe {
+        MoveProbe() = default;
+        MoveProbe(MoveProbe&&) { rstd::panic { "input moved before bounds check" }; }
+    };
+    Vec<MoveProbe> empty;
+    MoveProbe      input;
+    EXPECT_DEATH(empty.insert(1_usize, rstd::move(input)),
+                 "Vec insertion index 1 exceeds length 0");
+    EXPECT_DEATH((void)empty.insert_mut(1_usize, rstd::move(input)),
+                 "Vec insertion index 1 exceeds length 0");
+
+    VecAllocatorState state {};
+    auto              values =
+        Vec<int, VecTestAllocator>::with_capacity_in(1_usize, VecTestAllocator { &state });
+    values.push(7);
+    state.fail = true;
+    EXPECT_DEATH(values.insert(2_usize, 9), "Vec insertion index 2 exceeds length 1");
+    EXPECT_DEATH((void)values.insert_mut(2_usize, 9), "Vec insertion index 2 exceeds length 1");
+}
+
 TEST(Vec, Remove) {
     Vec<int> v;
     v.push(1);

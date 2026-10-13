@@ -482,6 +482,30 @@ public:
     /// \param value The value to append.
     constexpr void push(T&& value) { (void)emplace_back(rstd::move(value)); }
 
+    /// Inserts before `index`, preserving order. Panics if `index > len()`.
+    /// Takes O(len()) time; reallocation invalidates existing borrows.
+    constexpr void insert(usize index, T&& value) { (void)insert_mut(index, rstd::move(value)); }
+
+    /// Inserts and borrows the new element. Shifted slots no longer hold their original values.
+    constexpr auto insert_mut(usize index, T&& value) [[clang::lifetimebound]] -> mut_ref<T> {
+        if (index > m_len) {
+            rstd::panic { "Vec insertion index {} exceeds length {}", index, m_len };
+        }
+        // The input may refer to an element invalidated by growth or shifting.
+        T owned = rstd::move(value);
+        if (m_len == m_buf.cap) reserve(usize(1));
+        auto pointer = m_buf.ptr.as_mut_ptr();
+        for (auto current = m_len; current > index; --current) {
+            auto source = pointer.add(current - usize(1));
+            rstd::ptr_::construct(pointer.add(current), rstd::ptr_::move_out(source));
+            rstd::ptr_::destroy(source);
+        }
+        auto slot = pointer.add(index);
+        rstd::ptr_::construct(slot, rstd::move(owned));
+        ++m_len;
+        return slot.as_mut_ref();
+    }
+
     /// Removes the last element from the vector and returns it, or `None` if empty.
     /// \return An `Option<T>` containing the removed element.
     constexpr auto pop() -> Option<T> {
