@@ -391,7 +391,18 @@ TEST(IntAsCast, UsesRustModuloSemantics) {
     EXPECT_EQ(as_cast<i8>(u8::MAX), i8(-1));
     EXPECT_EQ(as_cast<u8>(i16(-1)), u8::MAX);
     EXPECT_EQ(as_cast<u16>(u32(0x1'0001)), u16(1));
+    EXPECT_EQ(as_cast<u8>(u16(300)), u8(44));
+    EXPECT_EQ(as_cast<i64>(i8(-1)), i64(-1));
+    EXPECT_EQ(as_cast<u64>(i8(-1)), u64::MAX);
+    EXPECT_EQ(as_cast<i32>(u16::MAX), i32(65535));
+    EXPECT_EQ(as_cast<u128>(i8(-1)), u128::MAX);
+    EXPECT_EQ(as_cast<i128>(u64::MAX), (i128(1) << 64_u64) - i128(1));
+    EXPECT_EQ(as_cast<rstd::uint8_t>(rstd::int16_t(-1)), 255);
+    EXPECT_EQ(as_cast<u64>(u128::MAX), u64::MAX);
 }
+
+static_assert(as_cast<u8>(u16(300)) == u8(44));
+static_assert(as_cast<u64>(i8(-1)) == u64::MAX);
 
 TEST(IntArithmeticDeathTest, InvalidDivisionAndRemainderAlwaysPanic) {
     EXPECT_DEATH((void)(i8::MIN / -1_i8), "integer arithmetic with overflow");

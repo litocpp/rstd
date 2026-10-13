@@ -193,42 +193,91 @@ constexpr auto lossy_integer_cast(From value) noexcept -> To {
     }
 }
 
+template<IntegerLike To>
+inline constexpr double integer_float_limit = [] {
+    double bound = 1.0;
+    for (rstd::uint32_t i = 0; i < integer_digits<To>; ++i) bound *= 2.0;
+    return bound;
+}();
+
 template<IntegerLike To, FloatLike From>
 constexpr auto lossy_float_to_integer(From value) noexcept -> To {
-    using ToPrimitive        = numeric_primitive_t<To>;
-    constexpr int     digits = raw_integer_digits<ToPrimitive>;
-    const long double raw    = static_cast<long double>(floating_value(value));
+    using ToPrimitive    = numeric_primitive_t<To>;
+    const auto     raw   = floating_value(value);
+    constexpr auto upper = integer_float_limit<To>;
+
+#if defined(__wasm__) && defined(__wasm_nontrapping_fptoint__) && \
+    __has_builtin(__builtin_wasm_trunc_saturate_s_i32_f32) &&     \
+    __has_builtin(__builtin_wasm_trunc_saturate_s_i32_f64) &&     \
+    __has_builtin(__builtin_wasm_trunc_saturate_s_i64_f32) &&     \
+    __has_builtin(__builtin_wasm_trunc_saturate_s_i64_f64) &&     \
+    __has_builtin(__builtin_wasm_trunc_saturate_u_i32_f32) &&     \
+    __has_builtin(__builtin_wasm_trunc_saturate_u_i32_f64) &&     \
+    __has_builtin(__builtin_wasm_trunc_saturate_u_i64_f32) &&     \
+    __has_builtin(__builtin_wasm_trunc_saturate_u_i64_f64)
+    if (! mtp::is_constant_evaluated()) {
+        if constexpr (mtp::same_as<numeric_primitive_t<From>, float>) {
+            if constexpr (sizeof(ToPrimitive) == 4 && raw_integer_signed<ToPrimitive>) {
+                return integer_from<To>(
+                    static_cast<ToPrimitive>(__builtin_wasm_trunc_saturate_s_i32_f32(raw)));
+            } else if constexpr (sizeof(ToPrimitive) == 4 && ! raw_integer_signed<ToPrimitive>) {
+                return integer_from<To>(
+                    static_cast<ToPrimitive>(__builtin_wasm_trunc_saturate_u_i32_f32(raw)));
+            } else if constexpr (sizeof(ToPrimitive) == 8 && raw_integer_signed<ToPrimitive>) {
+                return integer_from<To>(
+                    static_cast<ToPrimitive>(__builtin_wasm_trunc_saturate_s_i64_f32(raw)));
+            } else if constexpr (sizeof(ToPrimitive) == 8 && ! raw_integer_signed<ToPrimitive>) {
+                return integer_from<To>(
+                    static_cast<ToPrimitive>(__builtin_wasm_trunc_saturate_u_i64_f32(raw)));
+            }
+        } else if constexpr (mtp::same_as<numeric_primitive_t<From>, double>) {
+            if constexpr (sizeof(ToPrimitive) == 4 && raw_integer_signed<ToPrimitive>) {
+                return integer_from<To>(
+                    static_cast<ToPrimitive>(__builtin_wasm_trunc_saturate_s_i32_f64(raw)));
+            } else if constexpr (sizeof(ToPrimitive) == 4 && ! raw_integer_signed<ToPrimitive>) {
+                return integer_from<To>(
+                    static_cast<ToPrimitive>(__builtin_wasm_trunc_saturate_u_i32_f64(raw)));
+            } else if constexpr (sizeof(ToPrimitive) == 8 && raw_integer_signed<ToPrimitive>) {
+                return integer_from<To>(
+                    static_cast<ToPrimitive>(__builtin_wasm_trunc_saturate_s_i64_f64(raw)));
+            } else if constexpr (sizeof(ToPrimitive) == 8 && ! raw_integer_signed<ToPrimitive>) {
+                return integer_from<To>(
+                    static_cast<ToPrimitive>(__builtin_wasm_trunc_saturate_u_i64_f64(raw)));
+            }
+        }
+    }
+#endif
 
     if (raw != raw) return integer_from<To>(ToPrimitive(0));
-
-    const long double upper = __builtin_ldexpl(1.0L, digits);
     if constexpr (raw_integer_signed<ToPrimitive>) {
         if (raw <= -upper) return integer_from<To>(raw_integer_min<ToPrimitive>());
         if (raw >= upper) return integer_from<To>(raw_integer_max<ToPrimitive>());
     } else {
-        if (raw <= 0.0L) return integer_from<To>(ToPrimitive(0));
+        if (raw <= 0.0) return integer_from<To>(ToPrimitive(0));
         if (raw >= upper) return integer_from<To>(raw_integer_max<ToPrimitive>());
     }
 
-    return integer_from<To>(static_cast<ToPrimitive>(__builtin_truncl(raw)));
+    return integer_from<To>(static_cast<ToPrimitive>(raw));
 }
 
 template<IntegerLike To, FloatLike From>
 constexpr auto exact_float_to_integer(From value) noexcept -> rstd::tuple<To, bool> {
-    using ToPrimitive        = numeric_primitive_t<To>;
-    constexpr int     digits = raw_integer_digits<ToPrimitive>;
-    const long double raw    = static_cast<long double>(floating_value(value));
-    if (raw != raw || __builtin_isinf(raw) || __builtin_truncl(raw) != raw) {
+    using ToPrimitive = numeric_primitive_t<To>;
+    const auto raw    = floating_value(value);
+    if (raw != raw || __builtin_isinf(raw)) {
         return { integer_from<To>(ToPrimitive(0)), false };
     }
 
-    const long double upper = __builtin_ldexpl(1.0L, digits);
+    constexpr auto upper = integer_float_limit<To>;
     if constexpr (raw_integer_signed<ToPrimitive>) {
         if (raw < -upper || raw >= upper) return { integer_from<To>(ToPrimitive(0)), false };
     } else {
-        if (raw < 0.0L || raw >= upper) return { integer_from<To>(ToPrimitive(0)), false };
+        if (raw < 0.0 || raw >= upper) return { integer_from<To>(ToPrimitive(0)), false };
     }
-    return { integer_from<To>(static_cast<ToPrimitive>(raw)), true };
+    const auto converted = static_cast<ToPrimitive>(raw);
+    if (static_cast<numeric_primitive_t<From>>(converted) != raw)
+        return { integer_from<To>(ToPrimitive(0)), false };
+    return { integer_from<To>(converted), true };
 }
 
 template<FloatLike To, IntegerLike From>

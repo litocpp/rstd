@@ -281,6 +281,133 @@ TEST(FloatConversion, CheckedAndLossyBoundaries) {
     EXPECT_TRUE(rstd::try_from<rstd::f32>(0.1_f64).is_err());
 }
 
+TEST(FloatConversion, IntegerLimitsPreserveSourcePrecision) {
+    EXPECT_EQ(rstd::as_cast<rstd::i32>(-0x1p31_f64), rstd::i32::MIN);
+    EXPECT_EQ(rstd::as_cast<rstd::i32>(0x1p31_f64), rstd::i32::MAX);
+    EXPECT_EQ(rstd::try_from<rstd::i32>(-0x1p31_f64).unwrap(), rstd::i32::MIN);
+    EXPECT_TRUE(rstd::try_from<rstd::i32>(0x1p31_f64).is_err());
+    EXPECT_EQ(rstd::as_cast<rstd::u64>(0x1p64_f64), rstd::u64::MAX);
+    EXPECT_TRUE(rstd::try_from<rstd::u64>(0x1p64_f64).is_err());
+    auto below = (0x1p64_f64).next_down();
+    EXPECT_EQ(rstd::try_from<rstd::u64>(below).unwrap(), rstd::u64::MAX - 2047_u64);
+    EXPECT_EQ(rstd::try_from<rstd::u32>((0x1p32_f32).next_down()).unwrap(),
+              rstd::u32::MAX - 255_u32);
+    EXPECT_EQ(rstd::as_cast<rstd::i32>(-42.75_f32), rstd::i32(-42));
+    EXPECT_TRUE(rstd::try_from<rstd::i32>(-42.75_f32).is_err());
+    if constexpr (__LDBL_MANT_DIG__ >= 64)
+        EXPECT_EQ(rstd::try_from<rstd::u64>(0x1p64L - 1.0L).unwrap(), rstd::u64::MAX);
+    EXPECT_EQ(rstd::as_cast<rstd::u64>(0x1p64L), rstd::u64::MAX);
+}
+
+template<typename To, typename From>
+void check_saturating_float_cast(From upper) {
+    using Primitive            = typename From::primitive_type;
+    Primitive const inputs[]   = { 0.0,
+                                   -0.0,
+                                   42.75,
+                                   -42.75,
+                                   -0.75,
+                                   From::NAN_.to_primitive(),
+                                   From::INFINITY_.to_primitive(),
+                                   -From::INFINITY_.to_primitive(),
+                                   upper.to_primitive(),
+                                   -upper.to_primitive(),
+                                   From(0.0).next_up().to_primitive() };
+    To const        negative   = To::MIN < To() ? To(-42) : To();
+    To const        expected[] = { To(),    To(),    To(42),  negative, To(), To(),
+                                   To::MAX, To::MIN, To::MAX, To::MIN,  To() };
+    for (unsigned i = 0; i < sizeof(inputs) / sizeof(inputs[0]); ++i) {
+        volatile Primitive input = inputs[i];
+        auto               raw   = Primitive(input);
+        EXPECT_EQ(rstd::as_cast<To>(From(raw)), expected[i]);
+        EXPECT_EQ(rstd::as_cast<To>(raw), expected[i]);
+        EXPECT_EQ(rstd::as_cast<typename To::primitive_type>(From(raw)),
+                  expected[i].to_primitive());
+    }
+    EXPECT_TRUE(rstd::try_from<To>(upper).is_err());
+    EXPECT_TRUE(rstd::try_from<To>(From(-0.75)).is_err());
+    EXPECT_EQ(rstd::try_from<To>(From(-0.0)).unwrap(), To());
+}
+
+TEST(FloatConversion, SaturatesEveryIntegerWidth) {
+    check_saturating_float_cast<rstd::i8>(0x1p7_f32);
+    check_saturating_float_cast<rstd::u8>(0x1p8_f32);
+    check_saturating_float_cast<rstd::i16>(0x1p15_f32);
+    check_saturating_float_cast<rstd::u16>(0x1p16_f32);
+    check_saturating_float_cast<rstd::i32>(0x1p31_f32);
+    check_saturating_float_cast<rstd::u32>(0x1p32_f32);
+    check_saturating_float_cast<rstd::i64>(0x1p63_f32);
+    check_saturating_float_cast<rstd::u64>(0x1p64_f32);
+    check_saturating_float_cast<rstd::i8>(0x1p7_f64);
+    check_saturating_float_cast<rstd::u8>(0x1p8_f64);
+    check_saturating_float_cast<rstd::i16>(0x1p15_f64);
+    check_saturating_float_cast<rstd::u16>(0x1p16_f64);
+    check_saturating_float_cast<rstd::i32>(0x1p31_f64);
+    check_saturating_float_cast<rstd::u32>(0x1p32_f64);
+    check_saturating_float_cast<rstd::i64>(0x1p63_f64);
+    check_saturating_float_cast<rstd::u64>(0x1p64_f64);
+    check_saturating_float_cast<rstd::i128>(0x1p127_f64);
+    check_saturating_float_cast<rstd::u128>(0x1p128_f64);
+}
+
+TEST(FloatConversion, AdjacentValuesAndFractionalEndpoints) {
+    volatile double inputs[] = { 127.75, -128.75, 255.75, -0.75, 32767.75, -32768.75, 65535.75 };
+    EXPECT_EQ(rstd::as_cast<rstd::i8>(double(inputs[0])), rstd::i8::MAX);
+    EXPECT_EQ(rstd::as_cast<rstd::i8>(double(inputs[1])), rstd::i8::MIN);
+    EXPECT_EQ(rstd::as_cast<rstd::u8>(double(inputs[2])), rstd::u8::MAX);
+    EXPECT_EQ(rstd::as_cast<rstd::u8>(double(inputs[3])), 0_u8);
+    EXPECT_EQ(rstd::as_cast<rstd::i16>(double(inputs[4])), rstd::i16::MAX);
+    EXPECT_EQ(rstd::as_cast<rstd::i16>(double(inputs[5])), rstd::i16::MIN);
+    EXPECT_EQ(rstd::as_cast<rstd::u16>(double(inputs[6])), rstd::u16::MAX);
+    for (auto value : inputs) EXPECT_TRUE(rstd::try_from<rstd::i32>(double(value)).is_err());
+    EXPECT_EQ(rstd::as_cast<rstd::i32>((0x1p31_f32).next_down()), rstd::i32::MAX - 127_i32);
+    EXPECT_EQ(rstd::as_cast<rstd::i32>((-0x1p31_f32).next_up()), rstd::i32::MIN + 128_i32);
+    EXPECT_EQ(rstd::as_cast<rstd::i32>((-0x1p31_f32).next_down()), rstd::i32::MIN);
+    EXPECT_EQ(rstd::as_cast<rstd::i64>((0x1p63_f64).next_down()), rstd::i64::MAX - 1023_i64);
+    EXPECT_EQ(rstd::as_cast<rstd::i64>((-0x1p63_f64).next_up()), rstd::i64::MIN + 1024_i64);
+    EXPECT_EQ(rstd::as_cast<rstd::i64>((-0x1p63_f64).next_down()), rstd::i64::MIN);
+    EXPECT_EQ(rstd::as_cast<rstd::u128>((0x1p128_f64).next_down()),
+              rstd::u128::MAX - ((rstd::u128(1) << 75_u64) - rstd::u128(1)));
+    EXPECT_EQ(rstd::as_cast<rstd::i128>((0x1p127_f64).next_down()),
+              rstd::i128::MAX - ((rstd::i128(1) << 74_u64) - rstd::i128(1)));
+}
+
+TEST(FloatConversion, FloatingResultsRoundToNearestEven) {
+    volatile rstd::uint64_t integers[] = {
+        16777217, 16777219, 9007199254740993ULL, 9007199254740995ULL
+    };
+    EXPECT_EQ(rstd::as_cast<rstd::f32>(rstd::uint64_t(integers[0])), 16777216.0_f32);
+    EXPECT_EQ(rstd::as_cast<rstd::f32>(rstd::uint64_t(integers[1])), 16777220.0_f32);
+    EXPECT_EQ(rstd::as_cast<rstd::f64>(rstd::uint64_t(integers[2])), 9007199254740992.0_f64);
+    EXPECT_EQ(rstd::as_cast<rstd::f64>(rstd::uint64_t(integers[3])), 9007199254740996.0_f64);
+    volatile double floats[] = { 0x1.000001p0,   0x1.000003p0,   -0x1.000001p0,
+                                 0x1.fffffep127, 0x1.ffffffp127, -0x1.ffffffp127,
+                                 0x1p-150,       0x1.8p-149,     -0.0 };
+    EXPECT_EQ(rstd::as_cast<rstd::f32>(double(floats[0])), 1.0_f32);
+    EXPECT_EQ(rstd::as_cast<rstd::f32>(double(floats[1])), 0x1.000004p0_f32);
+    EXPECT_EQ(rstd::as_cast<rstd::f32>(double(floats[2])), -1.0_f32);
+    EXPECT_EQ(rstd::as_cast<rstd::f32>(double(floats[3])), rstd::f32::MAX);
+    EXPECT_EQ(rstd::as_cast<rstd::f32>(double(floats[4])), rstd::f32::INFINITY_);
+    EXPECT_EQ(rstd::as_cast<rstd::f32>(double(floats[5])), -rstd::f32::INFINITY_);
+    EXPECT_EQ(rstd::as_cast<rstd::f32>(double(floats[6])).to_bits(), 0_u32);
+    EXPECT_EQ(rstd::as_cast<rstd::f32>(double(floats[7])).to_bits(), 2_u32);
+    EXPECT_EQ(rstd::as_cast<rstd::f32>(double(floats[8])).to_bits(), 0x80000000_u32);
+    volatile rstd::uint128_t maximum = rstd::u128::MAX.to_primitive();
+    EXPECT_EQ(rstd::as_cast<rstd::f32>(rstd::uint128_t(maximum)), rstd::f32::INFINITY_);
+    EXPECT_EQ(rstd::as_cast<rstd::f64>(rstd::f32::MAX), 0x1.fffffep127_f64);
+    EXPECT_TRUE(rstd::as_cast<rstd::f32>(rstd::f64::NAN_).is_nan());
+    EXPECT_EQ(rstd::as_cast<rstd::f64>(rstd::f32::INFINITY_), rstd::f64::INFINITY_);
+}
+
+static_assert(rstd::as_cast<rstd::u8>(300.75_f64) == 255_u8);
+static_assert(rstd::as_cast<rstd::i32>(-42.75_f32) == -42_i32);
+static_assert(rstd::as_cast<rstd::u32>(rstd::f64::NAN_) == 0_u32);
+static_assert(rstd::as_cast<rstd::i64>(-rstd::f32::INFINITY_) == rstd::i64::MIN);
+static_assert(rstd::as_cast<rstd::u64>(0x1p64_f64) == rstd::u64::MAX);
+static_assert(rstd::as_cast<rstd::u128>(0x1p128_f64) == rstd::u128::MAX);
+static_assert(rstd::as_cast<rstd::f32>(16777217_u32) == 16777216.0_f32);
+static_assert(rstd::as_cast<rstd::f32>(0x1.000001p0_f64) == 1.0_f32);
+
 TEST(FloatMethodsDeathTest, InvalidClampPanics) {
     EXPECT_DEATH((void)(1.0_f32).clamp(2.0_f32, 1.0_f32), "min > max");
     EXPECT_DEATH((void)(1.0_f32).clamp(rstd::f32::NAN_, 1.0_f32), "either was NaN");
