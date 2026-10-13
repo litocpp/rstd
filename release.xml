@@ -1,3 +1,17 @@
+<release version="0.1.8" date="2026-10-13">
+  <description>
+    <ul>
+      <li>Add simd::Simd and simd::Mask with vectorized memchr.</li>
+      <li>Add stream adapters and async::CoroFuture.</li>
+      <li>Add owned CompletionSource and fix spawn_blocking cleanup.</li>
+      <li>Enable BlockingFileCompletionDriver on macOS and fix active_test_context.</li>
+      <li>Disable mtp::same and migrate to mtp::same_as.</li>
+      <li>Split reused blocks in take_free_block.</li>
+      <li>Add Vec::insert and Vec::insert_mut.</li>
+      <li>Fix floating-point to integer conversion boundaries and use WebAssembly saturating builtins.</li>
+    </ul>
+  </description>
+</release>
 <release version="0.1.7" date="2026-10-06">
   <description>
     <ul>
