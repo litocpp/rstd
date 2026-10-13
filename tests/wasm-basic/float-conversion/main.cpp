@@ -1,5 +1,15 @@
 import rstd.core;
 
+extern "C" [[clang::export_name("ldexp_f32")]]
+auto ldexp_f32(float value, int exponent) -> float {
+    return rstd::f32(value).ldexp(rstd::i32(exponent)).to_primitive();
+}
+
+extern "C" [[clang::export_name("ldexp_f64")]]
+auto ldexp_f64(double value, int exponent) -> double {
+    return rstd::f64(value).ldexp(rstd::i32(exponent)).to_primitive();
+}
+
 extern "C" [[clang::export_name("rstd_wasm_float_cast")]]
 auto rstd_wasm_float_cast(double value) -> rstd::uint32_t {
     return rstd::as_cast<rstd::u32>(rstd::f64(value)).to_primitive();

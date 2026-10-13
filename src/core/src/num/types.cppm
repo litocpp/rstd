@@ -1417,6 +1417,16 @@ public:
     template<typename Exponent>
         requires rstd::mtp::same_as<rstd::mtp::rm_cvf<Exponent>, I32>
     [[nodiscard]]
+    constexpr auto ldexp(Exponent exponent) const noexcept -> Self {
+        if constexpr (sizeof(Primitive) == 4)
+            return Self(__builtin_ldexpf(value_, exponent.to_primitive()));
+        else
+            return Self(__builtin_ldexp(value_, exponent.to_primitive()));
+    }
+
+    template<typename Exponent>
+        requires rstd::mtp::same_as<rstd::mtp::rm_cvf<Exponent>, I32>
+    [[nodiscard]]
     constexpr auto powi(Exponent exponent) const noexcept -> Self {
         auto const     raw       = exponent.to_primitive();
         bool const     negative  = raw < 0;

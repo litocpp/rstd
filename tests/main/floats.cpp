@@ -408,6 +408,87 @@ static_assert(rstd::as_cast<rstd::u128>(0x1p128_f64) == rstd::u128::MAX);
 static_assert(rstd::as_cast<rstd::f32>(16777217_u32) == 16777216.0_f32);
 static_assert(rstd::as_cast<rstd::f32>(0x1.000001p0_f64) == 1.0_f32);
 
+template<typename Float>
+void check_ldexp_special_values() {
+    using Primitive       = typename Float::primitive_type;
+    const int exponents[] = { -2147483647 - 1, -10, 0, 10, 2147483647 };
+    for (auto exponent : exponents) {
+        volatile int n = exponent;
+        EXPECT_EQ(Float(0.0).ldexp(rstd::i32(n)).to_bits(), Float(0.0).to_bits());
+        EXPECT_EQ(Float(-0.0).ldexp(rstd::i32(n)).to_bits(), Float(-0.0).to_bits());
+        EXPECT_EQ(Float::INFINITY_.ldexp(rstd::i32(n)), Float::INFINITY_);
+        EXPECT_EQ(Float::NEG_INFINITY.ldexp(rstd::i32(n)), Float::NEG_INFINITY);
+        EXPECT_TRUE(Float::NAN_.ldexp(rstd::i32(n)).is_nan());
+    }
+    volatile Primitive one = 1.0;
+    EXPECT_EQ(Float(one).ldexp(rstd::i32::MAX), Float::INFINITY_);
+    EXPECT_EQ(Float(-one).ldexp(rstd::i32::MAX), Float::NEG_INFINITY);
+    EXPECT_EQ(Float(one).ldexp(rstd::i32::MIN).to_bits(), Float(0.0).to_bits());
+    EXPECT_EQ(Float(-one).ldexp(rstd::i32::MIN).to_bits(), Float(-0.0).to_bits());
+    EXPECT_EQ(Float::MAX.ldexp(0_i32), Float::MAX);
+    EXPECT_EQ(Float::from_bits(typename Float::Bits(1)).ldexp(0_i32).to_bits(),
+              typename Float::Bits(1));
+}
+
+TEST(FloatMethods, LdexpSpecialValues) {
+    check_ldexp_special_values<rstd::f32>();
+    check_ldexp_special_values<rstd::f64>();
+}
+
+TEST(FloatMethods, LdexpScalesAndRounds) {
+    struct F32Case {
+        float input;
+        int   exponent;
+        float expected;
+    };
+    const F32Case singles[] = {
+        { 1.5f, 3, 12.0f },
+        { -1.5f, -2, -0.375f },
+        { 0.5f, 128, 0x1p127f },
+        { 0x1p-149f, 149, 1.0f },
+        { 0x1p-126f, -1, 0x1p-127f },
+        { 0x1p-149f, -1, 0.0f },
+        { -0x1p-149f, -1, -0.0f },
+        { 0x1.8p-148f, -1, 0x1p-148f },
+        { 0x1.4p-147f, -1, 0x1p-148f },
+        { 0x1.000002p0f, -150, 0x1p-149f },
+        { 0x1.fffffep127f, -276, 0x1p-148f },
+        { 0x1.fffffep127f, -278, 0.0f },
+        { 0x1.fffffep-127f, 1, 0x1p-125f },
+    };
+    for (auto item : singles) {
+        volatile float input    = item.input;
+        volatile int   exponent = item.exponent;
+        EXPECT_EQ(rstd::f32(input).ldexp(rstd::i32(exponent)).to_bits(),
+                  rstd::f32(item.expected).to_bits());
+    }
+    struct F64Case {
+        double input;
+        int    exponent;
+        double expected;
+    };
+    const F64Case doubles[] = {
+        { 1.5, 3, 12.0 },
+        { -1.5, -2, -0.375 },
+        { 0.5, 1024, 0x1p1023 },
+        { 0x1p-1074, 1074, 1.0 },
+        { 0x1p-1022, -1, 0x1p-1023 },
+        { 0x1p-1074, -1, 0.0 },
+        { -0x1p-1074, -1, -0.0 },
+        { 0x1.8p-1073, -1, 0x1p-1073 },
+        { 0x1.4p-1072, -1, 0x1p-1073 },
+        { 0x1.0000000000001p0, -1075, 0x1p-1074 },
+        { 0x1.fffffffffffffp1023, -2097, 0x1p-1073 },
+        { 0x1.fffffffffffffp1023, -2099, 0.0 },
+    };
+    for (auto item : doubles) {
+        volatile double input    = item.input;
+        volatile int    exponent = item.exponent;
+        EXPECT_EQ(rstd::f64(input).ldexp(rstd::i32(exponent)).to_bits(),
+                  rstd::f64(item.expected).to_bits());
+    }
+}
+
 TEST(FloatMethodsDeathTest, InvalidClampPanics) {
     EXPECT_DEATH((void)(1.0_f32).clamp(2.0_f32, 1.0_f32), "min > max");
     EXPECT_DEATH((void)(1.0_f32).clamp(rstd::f32::NAN_, 1.0_f32), "either was NaN");

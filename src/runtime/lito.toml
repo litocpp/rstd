@@ -8,6 +8,7 @@ authors.workspace = true
 name = "rstd-runtime"
 module = "rstd.runtime"
 archive = "rstd.runtime"
+sources = ["src/lib.cppm", "src/lib.cpp", "src/math.cpp"]
 
 [dependencies]
 rstd-basic = { workspace = true, pub = true }

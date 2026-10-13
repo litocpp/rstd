@@ -75,4 +75,29 @@ for (const [value, expected] of [
 
 check(wasm.cast_u64_f32(16777217n), 16777216, 'u64 halfway even down');
 check(wasm.cast_u64_f32(16777219n), 16777220, 'u64 halfway even up');
+
+for (const width of [32, 64]) {
+    const fraction = width === 32 ? 23 : 52;
+    const maximum = width === 32 ? 127 : 1023;
+    const minimum = 1 - maximum;
+    const tiny = 2 ** (minimum - fraction);
+    const largest = (2 - 2 ** -fraction) * 2 ** maximum;
+    const scale = wasm[`ldexp_f${width}`];
+    const cases = [
+        [1.5, 3, 12], [-1.5, -2, -0.375], [0.5, maximum + 1, 2 ** maximum],
+        [tiny, fraction - minimum, 1], [2 ** minimum, -1, 2 ** (minimum - 1)],
+        [tiny, -1, 0], [-tiny, -1, -0], [3 * tiny, -1, 2 * tiny],
+        [5 * tiny, -1, 2 * tiny], [1 + 2 ** -fraction, minimum - fraction - 1, tiny],
+        [largest, minimum - fraction - maximum, 2 * tiny],
+        [largest, minimum - fraction - maximum - 2, 0], [largest, 0, largest],
+        [1, 2147483647, Infinity], [-1, 2147483647, -Infinity],
+        [1, -2147483648, 0], [-1, -2147483648, -0],
+    ];
+    for (const [input, exponent, expected] of cases)
+        check(scale(input, exponent), expected, `ldexp_f${width}(${input}, ${exponent})`);
+    for (const exponent of [-2147483648, -10, 0, 10, 2147483647]) {
+        for (const input of [0, -0, Infinity, -Infinity, NaN])
+            check(scale(input, exponent), input, `ldexp_f${width} special ${input}, ${exponent}`);
+    }
+}
 console.log(`${checks} checks passed; imports: none; ${file}`);
