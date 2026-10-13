@@ -8,10 +8,8 @@ using ::alloc::vec::Vec;
 
 extern "C" void* __rstd_alloc(rstd::size_t size, rstd::size_t align);
 extern "C" void  __rstd_dealloc(void* ptr, rstd::size_t size, rstd::size_t align);
-extern "C" void* __rstd_realloc(void*          ptr,
-                                 rstd::size_t old_size,
-                                 rstd::size_t align,
-                                 rstd::size_t new_size);
+extern "C" void*
+__rstd_realloc(void* ptr, rstd::size_t old_size, rstd::size_t align, rstd::size_t new_size);
 
 extern "C" [[clang::export_name("rstd_wasm_basic")]]
 auto rstd_wasm_basic() -> rstd::uint32_t {
@@ -27,10 +25,9 @@ extern "C" [[clang::export_name("rstd_wasm_fs_unsupported")]]
 auto rstd_wasm_fs_unsupported() -> rstd::uint32_t {
     auto path   = rstd::path::PathBuf::from("missing"_str);
     auto opened = rstd::fs::File::open(path.as_path());
-    return rstd::uint32_t(opened.is_err() &&
-                          opened.unwrap_err().kind() ==
-                              rstd::io::error::ErrorKind {
-                              rstd::io::error::ErrorKind::Unsupported });
+    return rstd::uint32_t(opened.is_err() && opened.unwrap_err().kind() ==
+                                                 rstd::io::error::ErrorKind {
+                                                     rstd::io::error::ErrorKind::Unsupported });
 }
 
 extern "C" [[clang::export_name("rstd_wasm_allocator_reuse")]]
@@ -70,25 +67,56 @@ auto rstd_wasm_allocator_contract() -> rstd::uint32_t {
     }
     __rstd_dealloc(aligned, rstd::size_t(17), rstd::size_t(256));
 
-    auto* original = static_cast<rstd::uint8_t*>(
-        __rstd_alloc(rstd::size_t(64), rstd::size_t(16)));
+    auto* original = static_cast<rstd::uint8_t*>(__rstd_alloc(rstd::size_t(64), rstd::size_t(16)));
     if (original == nullptr) return rstd::uint32_t {};
     for (auto index = rstd::size_t {}; index < rstd::size_t(64); ++index) {
         original[index] = static_cast<rstd::uint8_t>(index);
     }
-    auto* resized = static_cast<rstd::uint8_t*>(__rstd_realloc(
-        original, rstd::size_t(64), rstd::size_t(16), rstd::size_t(256)));
+    auto* resized = static_cast<rstd::uint8_t*>(
+        __rstd_realloc(original, rstd::size_t(64), rstd::size_t(16), rstd::size_t(256)));
     if (resized == nullptr) return rstd::uint32_t {};
     for (auto index = rstd::size_t {}; index < rstd::size_t(64); ++index) {
         if (resized[index] != static_cast<rstd::uint8_t>(index)) return rstd::uint32_t {};
     }
     __rstd_dealloc(resized, rstd::size_t(256), rstd::size_t(16));
 
-    auto pages = __builtin_wasm_memory_size(0);
+    auto  pages = __builtin_wasm_memory_size(0);
     auto* grown = __rstd_alloc(rstd::size_t(3 * 65536), rstd::size_t(16));
     if (grown == nullptr || __builtin_wasm_memory_size(0) <= pages) return rstd::uint32_t {};
     __rstd_dealloc(grown, rstd::size_t(3 * 65536), rstd::size_t(16));
 
-    return rstd::uint32_t(
-        __rstd_alloc(static_cast<rstd::size_t>(-1), rstd::size_t(16)) == nullptr);
+    return rstd::uint32_t(__rstd_alloc(static_cast<rstd::size_t>(-1), rstd::size_t(16)) == nullptr);
+}
+
+extern "C" [[clang::export_name("rstd_wasm_allocator_split")]]
+auto rstd_wasm_allocator_split() -> rstd::uint32_t {
+    constexpr auto         block_size   = rstd::size_t(4 * 65536);
+    constexpr rstd::size_t alignments[] = { 8, 64, 256 };
+    auto                   pages        = rstd::size_t {};
+    for (auto iteration = 0; iteration < 8; ++iteration) {
+        rstd::uint8_t* blocks[3] {};
+        for (auto index = 0; index < 3; ++index) {
+            blocks[index] =
+                static_cast<rstd::uint8_t*>(__rstd_alloc(block_size, alignments[index]));
+            if (blocks[index] == nullptr ||
+                reinterpret_cast<rstd::size_t>(blocks[index]) % alignments[index] != 0)
+                return 0;
+            blocks[index][0]              = static_cast<rstd::uint8_t>(index + 1);
+            blocks[index][block_size - 1] = static_cast<rstd::uint8_t>(index + 4);
+        }
+        for (auto index = 0; index < 3; ++index) {
+            if (blocks[index][0] != static_cast<rstd::uint8_t>(index + 1) ||
+                blocks[index][block_size - 1] != static_cast<rstd::uint8_t>(index + 4))
+                return 0;
+        }
+        __rstd_dealloc(blocks[1], block_size, alignments[1]);
+        __rstd_dealloc(blocks[0], block_size, alignments[0]);
+        __rstd_dealloc(blocks[2], block_size, alignments[2]);
+        const auto current = __builtin_wasm_memory_size(0);
+        if (iteration == 0)
+            pages = current;
+        else if (pages != current)
+            return 0;
+    }
+    return 1;
 }

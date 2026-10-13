@@ -96,6 +96,21 @@ auto take_free_block(rstd::size_t size, rstd::size_t alignment) noexcept -> void
             allocation_from(reinterpret_cast<unsigned char*>(block), block_size, size, alignment);
         if (result != nullptr) {
             *link = next;
+            rstd::size_t remainder_address;
+            const auto   payload_end = reinterpret_cast<rstd::size_t>(result) + size;
+            if (align_up(payload_end, alignof(FreeBlock), remainder_address)) {
+                const auto used_size = remainder_address - reinterpret_cast<rstd::size_t>(block);
+                if (used_size <= block_size &&
+                    block_size - used_size >=
+                        sizeof(AllocationHeader) + alignof(AllocationHeader)) {
+                    auto* remainder = reinterpret_cast<FreeBlock*>(remainder_address);
+                    remainder->size = block_size - used_size;
+                    remainder->next = next;
+                    *link           = remainder;
+                    auto* header    = static_cast<AllocationHeader*>(result) - 1;
+                    header->size    = used_size;
+                }
+            }
             return result;
         }
         link = &block->next;
