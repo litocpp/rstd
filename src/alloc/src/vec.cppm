@@ -379,6 +379,7 @@ public:
 
     /// Returns a slice containing the entire vector.
     /// \return An immutable `slice<T>` over all elements.
+    [[clang::exclude_from_explicit_instantiation]]
     constexpr auto as_slice() const noexcept [[clang::lifetimebound]] -> slice<T> {
         if (m_len == usize()) return {};
         return slice<T>::from_raw_parts(m_buf.ptr.as_ptr().as_raw_ptr(), m_len);
@@ -386,6 +387,7 @@ public:
 
     /// Returns a mutable slice containing the entire vector.
     /// \return A mutable pointer to a slice over all elements.
+    [[clang::exclude_from_explicit_instantiation]]
     constexpr auto as_mut_slice() noexcept [[clang::lifetimebound]] -> mut_ptr<T[]> {
         if (m_len == usize()) return {};
         return mut_ptr<T[]>::from_raw_parts(m_buf.ptr.as_mut_ptr().as_raw_ptr(), m_len);
@@ -416,21 +418,25 @@ public:
 
     /// Returns a const pointer to the first element of the vector.
     /// \return A const pointer to the underlying buffer.
+    [[clang::exclude_from_explicit_instantiation]]
     constexpr auto as_ptr() const noexcept [[clang::lifetimebound]] -> ptr<T> {
         return m_buf.ptr.as_ptr();
     }
 
     /// Returns a mutable pointer to the first element of the vector.
+    [[clang::exclude_from_explicit_instantiation]]
     constexpr auto as_mut_ptr() noexcept [[clang::lifetimebound]] -> mut_ptr<T> {
         return m_buf.ptr.as_mut_ptr();
     }
 
     /// Returns the initialized contiguous storage as a raw pointer.
+    [[clang::exclude_from_explicit_instantiation]]
     constexpr auto data() noexcept [[clang::lifetimebound]] {
         return m_buf.ptr.as_mut_ptr().as_raw_ptr();
     }
 
     /// Returns the initialized contiguous storage as a raw pointer.
+    [[clang::exclude_from_explicit_instantiation]]
     constexpr auto data() const noexcept [[clang::lifetimebound]] {
         return m_buf.ptr.as_ptr().as_raw_ptr();
     }
@@ -480,7 +486,10 @@ public:
 
     /// Appends an element to the back of the vector by moving it.
     /// \param value The value to append.
-    constexpr void push(T&& value) { (void)emplace_back(rstd::move(value)); }
+    [[clang::exclude_from_explicit_instantiation]]
+    constexpr void push(T&& value) {
+        (void)emplace_back(rstd::move(value));
+    }
 
     /// Inserts before `index`, preserving order. Panics if `index > len()`.
     /// Takes O(len()) time; reallocation invalidates existing borrows.
@@ -522,6 +531,7 @@ public:
 
     /// Appends a cloned copy of the element to the back of the vector.
     /// \param value The value to clone and append.
+    [[clang::exclude_from_explicit_instantiation]]
     constexpr void push_back(const T& value)
         requires Impled<T, Clone>
     {
@@ -598,6 +608,7 @@ public:
     /// Returns a mutable reference to the element at the given index, panicking if out of bounds.
     /// \param index The index of the element.
     /// \return A mutable reference to the element.
+    [[clang::exclude_from_explicit_instantiation]]
     constexpr decltype(auto) at(usize index) [[clang::lifetimebound]] {
         if (index >= m_len) rstd::panic { "Vec index out of bounds" };
         return m_buf.ptr.as_mut_ptr().add(index).get();
@@ -605,29 +616,43 @@ public:
     /// Returns a const reference to the element at the given index, panicking if out of bounds.
     /// \param index The index of the element.
     /// \return A const reference to the element.
+    [[clang::exclude_from_explicit_instantiation]]
     constexpr decltype(auto) at(usize index) const [[clang::lifetimebound]] {
         if (index >= m_len) rstd::panic { "Vec index out of bounds" };
         return m_buf.ptr.as_ptr().add(index).get();
     }
 
     /// Indexes into the vector, panicking if out of bounds.
-    constexpr decltype(auto) operator[](usize index) [[clang::lifetimebound]] { return at(index); }
+    [[clang::exclude_from_explicit_instantiation]]
+    constexpr decltype(auto) operator[](usize index) [[clang::lifetimebound]] {
+        return at(index);
+    }
     /// Indexes into the vector (const), panicking if out of bounds.
+    [[clang::exclude_from_explicit_instantiation]]
     constexpr decltype(auto) operator[](usize index) const [[clang::lifetimebound]] {
         return at(index);
     }
 
     /// Returns the number of elements in the vector.
     /// \return The length of the vector.
-    constexpr usize len() const { return m_len; }
+    [[clang::exclude_from_explicit_instantiation]]
+    constexpr usize len() const {
+        return m_len;
+    }
     /// Returns the number of elements the vector can hold without reallocating.
     /// \return The current capacity.
-    constexpr usize capacity() const { return m_buf.cap; }
-    constexpr auto  allocator() const noexcept [[clang::lifetimebound]] -> const A& {
+    [[clang::exclude_from_explicit_instantiation]]
+    constexpr usize capacity() const {
+        return m_buf.cap;
+    }
+    constexpr auto allocator() const noexcept [[clang::lifetimebound]] -> const A& {
         return m_buf.allocator;
     }
     /// Returns `true` if the vector contains no elements.
-    constexpr bool is_empty() const { return m_len == usize(); }
+    [[clang::exclude_from_explicit_instantiation]]
+    constexpr bool is_empty() const {
+        return m_len == usize();
+    }
 
     auto clone_in(A allocator) const -> Vec
         requires rstd::Impled<T, rstd::clone::Clone>
@@ -787,6 +812,7 @@ public:
     auto into_iter() && -> VecIntoIter<T, A> { return VecIntoIter<T, A>(rstd::move(*this)); }
 };
 
+// Hot members instantiate at their call sites despite these shared instantiations.
 export extern template class Vec<f64>;
 export extern template class Vec<u8>;
 export extern template class Vec<usize>;
