@@ -1609,3 +1609,322 @@ TEST(Vec, FromIterInUsesSelectedAllocator) {
     }
     EXPECT_EQ(state.allocations, state.deallocations);
 }
+
+TEST(Vec, AppendPreservesSourceAllocationAndAllocatorOwnership) {
+    for (int spare = 0; spare <= 8; spare += 8) {
+        VecAllocatorState left {}, right {};
+        {
+            auto target = Vec<int, VecTestAllocator>::with_capacity_in(usize(1 + spare),
+                                                                       VecTestAllocator { &left });
+            auto source =
+                Vec<int, VecTestAllocator>::with_capacity_in(4_usize, VecTestAllocator { &right });
+            target.push(1);
+            source.push(2);
+            source.push(3);
+            auto* source_data     = source.data();
+            auto  source_capacity = source.capacity();
+            auto  allocations     = left.allocations;
+            target.append(source);
+            ASSERT_EQ(target.len(), 3_usize);
+            EXPECT_EQ(target[0_usize], 1);
+            EXPECT_EQ(target[1_usize], 2);
+            EXPECT_EQ(target[2_usize], 3);
+            EXPECT_TRUE(source.is_empty());
+            EXPECT_EQ(source.data(), source_data);
+            EXPECT_EQ(source.capacity(), source_capacity);
+            EXPECT_EQ(right.allocations, 1);
+            EXPECT_EQ(right.deallocations, 0);
+            if (spare) EXPECT_EQ(left.allocations, allocations);
+            source.push(4);
+            EXPECT_EQ(source[0_usize], 4);
+            target.append(source);
+            EXPECT_EQ(target[3_usize], 4);
+        }
+        EXPECT_EQ(left.allocations, left.deallocations);
+        EXPECT_EQ(right.allocations, right.deallocations);
+    }
+    Vec<u8> target, source;
+    target.append(source);
+    EXPECT_EQ(target.capacity(), 0_usize);
+    source.push(u8(7));
+    target.append(source);
+    EXPECT_EQ(target[0_usize], u8(7));
+    target[0_usize] = u8(9);
+    EXPECT_EQ(target.data()[0], rstd::byte { 9 });
+}
+
+TEST(Vec, AppendMovesNonTrivialElementsWithoutAssignment) {
+    for (int spare = 0; spare <= 8; spare += 8) {
+        int drops = 0;
+        {
+            auto target = Vec<CollectMoveOnly>::with_capacity(usize(1 + spare));
+            target.emplace_back(1, drops);
+            {
+                auto source = Vec<CollectMoveOnly>::with_capacity(2_usize);
+                source.emplace_back(2, drops);
+                source.emplace_back(3, drops);
+                target.append(source);
+                EXPECT_EQ(drops, 0);
+                EXPECT_TRUE(source.is_empty());
+            }
+            EXPECT_EQ(drops, 0);
+            for (usize i; i < target.len(); ++i) {
+                EXPECT_EQ(target[i].value, int(i.to_primitive() + 1));
+                EXPECT_EQ(target[i].value_ptr, &target[i].value);
+            }
+        }
+        EXPECT_EQ(drops, 3);
+    }
+    int  drops  = 0;
+    auto source = Vec<CollectMoveOnly>::with_capacity(1_usize);
+    source.emplace_back(7, drops);
+    {
+        Vec<CollectMoveOnly> target;
+        target.append(source);
+    }
+    EXPECT_EQ(drops, 1);
+    EXPECT_TRUE(source.is_empty());
+}
+
+TEST(Vec, AppendRejectsSelfAndAllocatesBeforeMoving) {
+    struct MoveProbe {
+        MoveProbe() = default;
+        MoveProbe(MoveProbe&&) { rstd::panic { "moved before reservation" }; }
+    };
+    VecAllocatorState state {};
+    auto target = Vec<MoveProbe, VecTestAllocator>::new_in(VecTestAllocator { &state });
+    auto source =
+        Vec<MoveProbe, VecTestAllocator>::with_capacity_in(1_usize, VecTestAllocator { &state });
+    source.emplace_back();
+    state.fail = true;
+    EXPECT_DEATH(source.append(source), "Vec cannot append itself");
+    EXPECT_DEATH(target.append(source), "Vec allocation failed");
+}
+
+TEST(Vec, ResizeWithGeneratesOnlyNewElements) {
+    int drops = 0;
+    int calls = 0;
+    {
+        Vec<CollectMoveOnly> values;
+        auto                 generate = [&] {
+            return CollectMoveOnly(++calls, drops);
+        };
+        values.resize_with(3_usize, generate);
+        EXPECT_EQ(calls, 3);
+        values.resize_with(3_usize, generate);
+        values.resize_with(1_usize, generate);
+        EXPECT_EQ(calls, 3);
+        EXPECT_EQ(drops, 2);
+        values.resize_with(5_usize, generate);
+        EXPECT_EQ(calls, 7);
+        EXPECT_EQ(values[0_usize].value, 1);
+        EXPECT_EQ(values[1_usize].value, 4);
+        for (usize i; i < values.len(); ++i) EXPECT_EQ(values[i].value_ptr, &values[i].value);
+    }
+    EXPECT_EQ(drops, 7);
+    Vec<u8> bytes;
+    bytes.resize_with(5_usize, [next = u8(1)]() mutable {
+        return next++;
+    });
+    EXPECT_EQ(bytes[4_usize], u8(5));
+    auto     owner = Box<int>::make(12);
+    Vec<int> values;
+    values.resize_with(2_usize, [owner = rstd::move(owner)] {
+        return *owner;
+    });
+    EXPECT_EQ(values[1_usize], 12);
+}
+
+TEST(Vec, ExtendFromWithinValidatesAndClonesOriginalRange) {
+    for (int spare = 0; spare <= 8; spare += 8) {
+        for (usize start; start <= 3_usize; ++start) {
+            for (usize end = start; end <= 3_usize; ++end) {
+                auto values = Vec<u8>::with_capacity(usize(3 + spare));
+                values.push(u8(1));
+                values.push(u8(2));
+                values.push(u8(3));
+                auto capacity = values.capacity();
+                values.extend_from_within(start, end);
+                EXPECT_EQ(values.len(), 3_usize + end - start);
+                for (usize i; i < 3_usize; ++i) EXPECT_EQ(values[i], u8(i.to_primitive() + 1));
+                for (usize i = start; i < end; ++i)
+                    EXPECT_EQ(values[3_usize + i - start], u8(i.to_primitive() + 1));
+                if (spare || start == end) EXPECT_EQ(values.capacity(), capacity);
+            }
+        }
+    }
+    int  clones = 0, clone_froms = 0;
+    auto values = Vec<CloneTracked>::with_capacity(2_usize);
+    values.emplace_back(3, clones, clone_froms);
+    values.emplace_back(5, clones, clone_froms);
+    values.extend_from_within(0_usize, 2_usize);
+    EXPECT_EQ(clones, 2);
+    EXPECT_EQ(values[2_usize].value, 3);
+    EXPECT_EQ(values[3_usize].value, 5);
+    VecAllocatorState state {};
+    auto              invalid =
+        Vec<int, VecTestAllocator>::with_capacity_in(1_usize, VecTestAllocator { &state });
+    invalid.push(1);
+    state.fail = true;
+    EXPECT_DEATH(invalid.extend_from_within(1_usize, 0_usize), "Vec extend range out of bounds");
+    EXPECT_DEATH(invalid.extend_from_within(0_usize, 2_usize), "Vec extend range out of bounds");
+}
+
+TEST(Vec, ExtendCopiedAndClonedSlicesSurvivesSelfGrowth) {
+    using Extend = rstd::Impl<rstd::iter::Extend<u8>, Vec<u8>>;
+    for (int mutable_source = 0; mutable_source < 2; ++mutable_source) {
+        auto values = Vec<u8>::with_capacity(4_usize);
+        for (int i = 0; i < 4; ++i) values.push(u8(i));
+        if (mutable_source) {
+            auto source = values.iter_mut().copied();
+            (void)source.next();
+            (void)source.next_back();
+            Extend::extend(values, rstd::move(source));
+        } else {
+            auto source = values.iter().copied();
+            (void)source.next();
+            (void)source.next_back();
+            Extend::extend(values, rstd::move(source));
+        }
+        ASSERT_EQ(values.len(), 6_usize);
+        EXPECT_EQ(values[4_usize], u8(1));
+        EXPECT_EQ(values[5_usize], u8(2));
+    }
+    int  clones = 0, clone_froms = 0;
+    auto values = Vec<CloneTracked>::with_capacity(3_usize);
+    for (int i = 0; i < 3; ++i) values.emplace_back(i, clones, clone_froms);
+    auto source = values.iter().cloned();
+    (void)source.next();
+    rstd::Impl<rstd::iter::Extend<CloneTracked>, Vec<CloneTracked>>::extend(values,
+                                                                            rstd::move(source));
+    EXPECT_EQ(clones, 3);
+    ASSERT_EQ(values.len(), 5_usize);
+    EXPECT_EQ(values[3_usize].value, 1);
+    EXPECT_EQ(values[4_usize].value, 2);
+}
+
+TEST(Vec, ExtendOwningIteratorRetiresOnlyRemainingElements) {
+    VecAllocatorState source_state {}, target_state {};
+    int               drops = 0;
+    using V                 = Vec<CollectMoveOnly, VecTestAllocator>;
+    {
+        auto target = V::with_capacity_in(4_usize, VecTestAllocator { &target_state });
+        target.emplace_back(9, drops);
+        auto source = V::with_capacity_in(4_usize, VecTestAllocator { &source_state });
+        for (int i = 0; i < 4; ++i) source.emplace_back(i, drops);
+        {
+            auto iterator = rstd::move(source).into_iter();
+            (void)iterator.next();
+            (void)iterator.next_back();
+            EXPECT_EQ(drops, 2);
+            rstd::Impl<rstd::iter::Extend<CollectMoveOnly>, V>::extend(target,
+                                                                       rstd::move(iterator));
+        }
+        EXPECT_EQ(source_state.deallocations, 1);
+        EXPECT_EQ(target_state.allocations, 1);
+        EXPECT_EQ(drops, 2);
+        ASSERT_EQ(target.len(), 3_usize);
+        EXPECT_EQ(target[1_usize].value, 1);
+        EXPECT_EQ(target[2_usize].value, 2);
+        for (usize i; i < target.len(); ++i) EXPECT_EQ(target[i].value_ptr, &target[i].value);
+    }
+    EXPECT_EQ(drops, 5);
+    EXPECT_EQ(target_state.allocations, target_state.deallocations);
+    Vec<u8> bytes;
+    auto    source = Vec<u8, VecTestAllocator>::new_in(VecTestAllocator { &source_state });
+    source.push(u8(42));
+    rstd::Impl<rstd::iter::Extend<u8>, Vec<u8>>::extend(bytes, rstd::move(source).into_iter());
+    EXPECT_EQ(bytes[0_usize], u8(42));
+    Vec<u8> empty;
+    rstd::Impl<rstd::iter::Extend<u8>, Vec<u8>>::extend(bytes, rstd::move(empty).into_iter());
+    EXPECT_EQ(bytes.len(), 1_usize);
+}
+
+TEST(Vec, ExtendTrustedPreservesCallbacksAndReservesOnce) {
+    VecAllocatorState state {};
+    using V     = Vec<u8, VecTestAllocator>;
+    auto values = V::new_in(VecTestAllocator { &state });
+    int  calls  = 0;
+    auto source = rstd::iter::range(0_usize, 64_usize).map([&](usize i) {
+        ++calls;
+        return u8(i.to_primitive());
+    });
+    static_assert(rstd::Impled<decltype(source), rstd::iter::TrustedLen>);
+    rstd::Impl<rstd::iter::Extend<u8>, V>::extend(values, rstd::move(source));
+    EXPECT_EQ(calls, 64);
+    EXPECT_EQ(state.allocations, 1);
+    EXPECT_EQ(values.len(), 64_usize);
+    EXPECT_EQ(values[63_usize], u8(63));
+    auto empty = rstd::iter::range(0_usize, 0_usize).map([&](usize) {
+        ++calls;
+        return u8(0);
+    });
+    rstd::Impl<rstd::iter::Extend<u8>, V>::extend(values, rstd::move(empty));
+    EXPECT_EQ(calls, 64);
+    EXPECT_EQ(state.allocations, 1);
+}
+
+TEST(Vec, ExtendOrdinaryIteratorPreservesUnknownHintsAndSideEffects) {
+    int      hints = 0;
+    Vec<int> values;
+    rstd::Impl<rstd::iter::Extend<int>, Vec<int>>::extend(values,
+                                                          HintedCollectIterator(100, hints, false));
+    ASSERT_EQ(values.len(), 100_usize);
+    EXPECT_GT(hints, 1);
+    for (usize i; i < values.len(); ++i) EXPECT_EQ(values[i], int(i.to_primitive()));
+    int      calls  = 0;
+    auto     source = rstd::iter::range(0_i32, 6_i32).filter([&](i32 value) {
+        ++calls;
+        return value % i32(2) == i32(0);
+    });
+    Vec<i32> filtered;
+    rstd::Impl<rstd::iter::Extend<i32>, Vec<i32>>::extend(filtered, rstd::move(source));
+    EXPECT_EQ(calls, 6);
+    EXPECT_EQ(filtered.len(), 3_usize);
+    EXPECT_EQ(filtered[2_usize], i32(4));
+}
+
+struct OverflowExtendIterator : rstd::DefaultInClass<OverflowExtendIterator, rstd::iter::Iterator> {
+    using Item                               = int;
+    static constexpr bool PROVEN_TRUSTED_LEN = true;
+    auto next() -> Option<int> { rstd::panic { "consumed before length validation" }; }
+    auto size_hint() const -> rstd::iter::SizeHint { return { usize::MAX, rstd::None() }; }
+};
+
+TEST(Vec, ExtendRejectsUnrepresentableTrustedLengthBeforeConsumption) {
+    Vec<int> values;
+    EXPECT_DEATH(
+        (rstd::Impl<rstd::iter::Extend<int>, Vec<int>>::extend(values, OverflowExtendIterator {})),
+        "Vec capacity overflow");
+}
+
+TEST(Vec, ExtendGeneratedMoveOnlyValuesTracksInitialization) {
+    int drops = 0;
+    int calls = 0;
+    {
+        Vec<CollectMoveOnly> values;
+        auto                 source = rstd::iter::repeat_with([&] {
+                          return CollectMoveOnly(++calls, drops);
+                                      }).take(4_usize);
+        rstd::Impl<rstd::iter::Extend<CollectMoveOnly>, Vec<CollectMoveOnly>>::extend(
+            values, rstd::move(source));
+        EXPECT_EQ(calls, 4);
+        EXPECT_EQ(drops, 0);
+        auto filtered = rstd::iter::repeat_with([&] {
+                            return CollectMoveOnly(++calls, drops);
+                        })
+                            .take(4_usize)
+                            .filter([](const CollectMoveOnly& value) {
+                                return value.value % 2 == 0;
+                            });
+        rstd::Impl<rstd::iter::Extend<CollectMoveOnly>, Vec<CollectMoveOnly>>::extend(
+            values, rstd::move(filtered));
+        EXPECT_EQ(calls, 8);
+        EXPECT_EQ(drops, 2);
+        EXPECT_EQ(values.len(), 6_usize);
+        for (usize i; i < values.len(); ++i) EXPECT_EQ(values[i].value_ptr, &values[i].value);
+        EXPECT_EQ(values[4_usize].value, 6);
+        EXPECT_EQ(values[5_usize].value, 8);
+    }
+    EXPECT_EQ(drops, 8);
+}

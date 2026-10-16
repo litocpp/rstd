@@ -26,6 +26,12 @@ struct SliceIter : DefaultInClass<SliceIter<T>, Iterator> {
     constexpr SliceIter(ptr<T> begin [[clang::lifetimebound]], ptr<T> end [[clang::lifetimebound]])
         : cur(begin), fin(end) {}
 
+    /// Borrows the remaining elements without advancing the iterator.
+    constexpr auto as_slice() const noexcept [[clang::lifetimebound]] -> slice<T> {
+        if (cur == fin) return {};
+        return slice<T>::from_raw_parts(cur.as_raw_ptr(), len());
+    }
+
     constexpr auto next() -> Option<Item> {
         if (cur == fin) return rstd::None();
         auto p = cur;
@@ -69,6 +75,12 @@ struct SliceIterMut : DefaultInClass<SliceIterMut<T>, Iterator> {
     constexpr SliceIterMut(mut_ptr<T> begin [[clang::lifetimebound]],
                            mut_ptr<T> end [[clang::lifetimebound]])
         : cur(begin), fin(end) {}
+
+    /// Borrows the remaining elements without advancing the iterator.
+    constexpr auto as_slice() const noexcept [[clang::lifetimebound]] -> slice<T> {
+        if (cur == fin) return {};
+        return slice<T>::from_raw_parts(cur.as_raw_ptr(), len());
+    }
 
     constexpr auto next() -> Option<Item> {
         if (cur == fin) return rstd::None();

@@ -444,17 +444,20 @@ struct Chain : DefaultInClass<Chain<A, B>, Iterator> {
 
 template<class I>
 struct Cloned : DefaultInClass<Cloned<I>, Iterator> {
-    using Item                                = details::observed_item_t<typename I::Item>;
+    using Item = mtp::rm_cvf<decltype(mtp::declval<typename I::Item&>().get())>;
     static constexpr bool PROVEN_DOUBLE_ENDED = Impled<I, DoubleEndedIterator>;
     static constexpr bool PROVEN_EXACT_SIZE   = Impled<I, ExactSizeIterator>;
     static constexpr bool PROVEN_FUSED        = Impled<I, FusedIterator>;
     static constexpr bool PROVEN_TRUSTED_LEN  = Impled<I, TrustedLen>;
     I                     i;
     explicit constexpr Cloned(I in): i(rstd::move(in)) {}
+    /// Returns the underlying iterator at its current position.
+    constexpr auto into_inner() && -> I { return rstd::move(i); }
     constexpr auto next() -> Option<Item> {
         auto x = i.next();
         if (x.is_none()) return rstd::None();
-        Item v = as<clone::Clone>(details::observe_item(*x)).clone();
+        decltype(auto) value = x->get();
+        Item           v     = as<clone::Clone>(value).clone();
         return rstd::Some(rstd::move(v));
     }
     constexpr auto size_hint() const -> SizeHint { return i.size_hint(); }
@@ -463,7 +466,8 @@ struct Cloned : DefaultInClass<Cloned<I>, Iterator> {
     {
         auto x = as<DoubleEndedIterator>(i).next_back();
         if (x.is_none()) return rstd::None();
-        return rstd::Some(as<clone::Clone>(details::observe_item(*x)).clone());
+        decltype(auto) value = x->get();
+        return rstd::Some(as<clone::Clone>(value).clone());
     }
     constexpr auto len() const -> usize
         requires Impled<I, ExactSizeIterator>
@@ -474,17 +478,19 @@ struct Cloned : DefaultInClass<Cloned<I>, Iterator> {
 
 template<class I>
 struct Copied : DefaultInClass<Copied<I>, Iterator> {
-    using Item                                = details::observed_item_t<typename I::Item>;
+    using Item = mtp::rm_cvf<decltype(mtp::declval<typename I::Item&>().get())>;
     static constexpr bool PROVEN_DOUBLE_ENDED = Impled<I, DoubleEndedIterator>;
     static constexpr bool PROVEN_EXACT_SIZE   = Impled<I, ExactSizeIterator>;
     static constexpr bool PROVEN_FUSED        = Impled<I, FusedIterator>;
     static constexpr bool PROVEN_TRUSTED_LEN  = Impled<I, TrustedLen>;
     I                     i;
     explicit constexpr Copied(I in): i(rstd::move(in)) {}
+    /// Returns the underlying iterator at its current position.
+    constexpr auto into_inner() && -> I { return rstd::move(i); }
     constexpr auto next() -> Option<Item> {
         auto x = i.next();
         if (x.is_none()) return rstd::None();
-        Item v = details::observe_item(*x);
+        Item v = x->get();
         return rstd::Some(rstd::move(v));
     }
     constexpr auto size_hint() const -> SizeHint { return i.size_hint(); }
@@ -493,7 +499,7 @@ struct Copied : DefaultInClass<Copied<I>, Iterator> {
     {
         auto x = as<DoubleEndedIterator>(i).next_back();
         if (x.is_none()) return rstd::None();
-        return rstd::Some(Item(details::observe_item(*x)));
+        return rstd::Some(Item(x->get()));
     }
     constexpr auto len() const -> usize
         requires Impled<I, ExactSizeIterator>

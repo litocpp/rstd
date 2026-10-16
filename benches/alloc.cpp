@@ -141,7 +141,121 @@ struct BytesSession {
     auto finish() -> Result<empty, String> { return Ok(empty {}); }
 };
 
+enum class VecBulkOperation
+{
+    Push,
+    Slice,
+    Append,
+    Ordinary,
+    Trusted,
+    Copied,
+    Owning
+};
+
+struct VecBulkInput {
+    Vec<u8> source;
+    Vec<u8> destination;
+};
+
+template<VecBulkOperation Operation>
+struct VecBulkSession {
+    usize   length;
+    bool    reserved;
+    Vec<u8> source;
+
+    VecBulkSession(usize n, bool reserve): length(n), reserved(reserve) {
+        source.resize_with(n, [index = rstd::size_t()]() mutable {
+            return u8((index++) % 251);
+        });
+    }
+
+    auto prepare_input() -> VecBulkInput {
+        return { source.clone(), reserved ? Vec<u8>::with_capacity(length) : Vec<u8>() };
+    }
+
+    static void append(VecBulkInput& input) {
+        auto& source      = input.source;
+        auto& destination = input.destination;
+        using Extend      = rstd::Impl<rstd::iter::Extend<u8>, Vec<u8>>;
+        if constexpr (Operation == VecBulkOperation::Push) {
+            for (usize i; i < source.len(); ++i) destination.push(u8(source[i]));
+        } else if constexpr (Operation == VecBulkOperation::Slice) {
+            destination.extend_from_slice(source.as_slice());
+        } else if constexpr (Operation == VecBulkOperation::Append) {
+            destination.append(source);
+        } else if constexpr (Operation == VecBulkOperation::Ordinary) {
+            Extend::extend(destination, source.iter().copied().filter([](u8) {
+                return true;
+            }));
+        } else if constexpr (Operation == VecBulkOperation::Trusted) {
+            Extend::extend(destination, source.iter().copied().map([](u8 value) {
+                return value;
+            }));
+        } else if constexpr (Operation == VecBulkOperation::Copied) {
+            Extend::extend(destination, source.iter().copied());
+        } else {
+            Extend::extend(destination, rstd::move(source).into_iter());
+        }
+        rstd::hint::black_box(destination.as_slice());
+    }
+
+    auto check() -> Result<empty, String> {
+        auto input = prepare_input();
+        append(input);
+        if (input.destination.len() != length) return Err("bulk append length mismatch"_Str);
+        for (usize i; i < length; ++i)
+            if (u8(input.destination[i]) != u8(source[i]))
+                return Err("bulk append content mismatch"_Str);
+        if constexpr (Operation == VecBulkOperation::Append ||
+                      Operation == VecBulkOperation::Owning)
+            if (! input.source.is_empty()) return Err("bulk append source still owns elements"_Str);
+        return Ok(empty {});
+    }
+
+    auto run(bench::Bench& engine, ref<str> name)
+        -> Result<bench::BenchmarkResult, bench::BenchError> {
+        auto workload = bench::batched_ref(
+            [this] {
+                return prepare_input();
+            },
+            [](VecBulkInput& input) {
+                append(input);
+            },
+            { .max_items = usize(4) },
+            { .items_per_iteration = u64(length.to_primitive()),
+              .bytes_per_iteration = u64(length.to_primitive()) });
+        return workload.run(engine, name);
+    }
+    auto finish() -> Result<empty, String> { return Ok(empty {}); }
+};
+
+template<VecBulkOperation Operation>
+auto register_vec_bulk(bench::Suite& suite, ref<str> operation) -> Result<empty, String> {
+    constexpr rstd::size_t lengths[] { 0, 64, 4096, 1048576 };
+    for (auto length : lengths) {
+        for (int reserved = 0; reserved < 2; ++reserved) {
+            auto name = rstd::format(
+                "{}_{}_{}", operation, reserved ? "reserved"_str : "growing"_str, length);
+            rstd_try(suite.add(
+                make_descriptor(
+                    "vec_bulk"_str, name.as_str(), u64(8), parameter("bytes"_str, u64(length))),
+                bench::factory([length, reserved] {
+                    using Session = VecBulkSession<Operation>;
+                    return Result<Session, String>(Ok(Session(usize(length), reserved != 0)));
+                })));
+        }
+    }
+    return Ok(empty {});
+}
+
 auto rstd_bench::register_alloc(bench::Suite& suite) -> Result<empty, String> {
+    rstd_try(register_vec_bulk<VecBulkOperation::Push>(suite, "push"_str));
+    rstd_try(register_vec_bulk<VecBulkOperation::Slice>(suite, "slice"_str));
+    rstd_try(register_vec_bulk<VecBulkOperation::Append>(suite, "append"_str));
+    rstd_try(register_vec_bulk<VecBulkOperation::Ordinary>(suite, "ordinary"_str));
+    rstd_try(register_vec_bulk<VecBulkOperation::Trusted>(suite, "trusted"_str));
+    rstd_try(register_vec_bulk<VecBulkOperation::Copied>(suite, "copied"_str));
+    rstd_try(register_vec_bulk<VecBulkOperation::Owning>(suite, "owning"_str));
     rstd_try(suite.add(make_descriptor("alloc"_str, "string_clone_end_to_end"_str, u64(1000)),
                        bench::factory([] {
                            return Result<StringCloneSession, String>(Ok(StringCloneSession {}));

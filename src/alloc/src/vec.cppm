@@ -238,9 +238,90 @@ class Vec {
     RawVec<T, A> m_buf;
     usize        m_len;
 
+    friend struct rstd::Impl<rstd::iter::Extend<T>, Vec>;
+    template<typename, typename>
+    friend struct VecIntoIter;
+
+    // The caller retires the source range after its elements have been transferred.
+    void append_moved(mut_ptr<T> source, usize count) {
+        if (count == usize()) return;
+        reserve(count);
+        auto destination = m_buf.ptr.as_mut_ptr().add(m_len);
+        if constexpr (Impled<T, rstd::Copy>) {
+            rstd::ptr_::copy_nonoverlapping(source.as_ptr(), destination, count);
+            m_len += count;
+        } else {
+            for (usize index; index < count; ++index) {
+                auto slot = source.add(index);
+                rstd::ptr_::construct(destination.add(index), rstd::ptr_::move_out(slot));
+                ++m_len;
+                rstd::ptr_::destroy(slot);
+            }
+        }
+    }
+
+    template<typename SourceAllocator>
+    void extend_iter(VecIntoIter<T, SourceAllocator> iterator) {
+        iterator.append_to(*this);
+    }
+
+    template<typename I>
+        requires(mtp::same_as<I, rstd::iter::SliceIter<T>> ||
+                 mtp::same_as<I, rstd::iter::SliceIterMut<T>>) &&
+                Impled<T, rstd::Copy>
+    void extend_iter(rstd::iter::Copied<I> iterator) {
+        auto source = rstd::move(iterator).into_inner();
+        extend_from_slice(source.as_slice());
+    }
+
+    template<typename I>
+        requires(mtp::same_as<I, rstd::iter::SliceIter<T>> ||
+                 mtp::same_as<I, rstd::iter::SliceIterMut<T>>) &&
+                Impled<T, Clone>
+    void extend_iter(rstd::iter::Cloned<I> iterator) {
+        auto source = rstd::move(iterator).into_inner();
+        extend_from_slice(source.as_slice());
+    }
+
+    template<rstd::iter::has_next I>
+    void extend_iter(I iterator) {
+        if constexpr (rstd::Impled<I, rstd::iter::TrustedLen>) {
+            auto hint  = rstd::as<rstd::iter::Iterator>(iterator).size_hint();
+            auto upper = hint.template get<1>();
+            if (upper.is_none()) rstd::panic { "Vec capacity overflow" };
+            debug_assert(hint.template get<0>() == *upper);
+            reserve(*upper);
+            struct InitializedLength {
+                usize& target;
+                usize  value;
+                ~InitializedLength() { target = value; }
+            } initialized { m_len, m_len };
+            auto  destination = m_buf.ptr.as_mut_ptr().add(m_len);
+            usize written;
+            for (auto item = iterator.next(); item.is_some(); item = iterator.next()) {
+                debug_assert(written < *upper, "TrustedLen exceeded its length");
+                rstd::ptr_::construct(destination.add(written), rstd::move(*item));
+                ++written;
+                ++initialized.value;
+            }
+            debug_assert(written == *upper, "TrustedLen ended before its length");
+        } else {
+            for (auto item = iterator.next(); item.is_some(); item = iterator.next()) {
+                if (m_len == m_buf.cap) {
+                    auto additional = rstd::as<rstd::iter::Iterator>(iterator)
+                                          .size_hint()
+                                          .template get<0>()
+                                          .saturating_add(usize(1));
+                    reserve(additional);
+                }
+                rstd::ptr_::construct(m_buf.ptr.as_mut_ptr().add(m_len), rstd::move(*item));
+                ++m_len;
+            }
+        }
+    }
+
     constexpr explicit Vec(RawVec<T, A> buf, usize len): m_buf(rstd::move(buf)), m_len(len) {}
 
-    friend struct VecIntoIter<T, A>;
     friend struct details::InPlaceAccess;
     friend auto details::from_iter<T, A>(VecIntoIter<T, A> iterator) -> Vec<T, A>;
 
@@ -544,6 +625,35 @@ public:
 
     /// Removes the last element from the vector, discarding it.
     constexpr void pop_back() { (void)pop(); }
+
+    /// Moves all elements from `other`, preserving its capacity. Self-append panics.
+    void append(Vec& other) {
+        if (this == rstd::addressof(other)) rstd::panic { "Vec cannot append itself" };
+        append_moved(other.m_buf.ptr.as_mut_ptr(), other.m_len);
+        other.m_len = usize();
+    }
+
+    /// Clones the original half-open range `[start, end)` onto the end.
+    void extend_from_within(usize start, usize end)
+        requires Impled<T, Clone>
+    {
+        if (start > end || end > m_len) rstd::panic { "Vec extend range out of bounds" };
+        if (start == end) return;
+        extend_from_slice(
+            slice<T>::from_raw_parts(m_buf.ptr.as_ptr().add(start).as_raw_ptr(), end - start));
+    }
+
+    /// Initializes new elements with `generator`; shrinking never calls it.
+    /// The generator must not structurally modify this vector through another reference.
+    template<typename F>
+        requires mtp::same_as<mtp::invoke_result_t<F&>, T>
+    void resize_with(usize new_len, F generator) {
+        if (new_len <= m_len) {
+            truncate(new_len);
+            return;
+        }
+        extend_iter(rstd::iter::repeat_with(rstd::move(generator)).take(new_len - m_len));
+    }
 
     /// Appends a clone of all elements in `values`.
     void extend_from_slice(slice<T> values)
@@ -902,6 +1012,13 @@ public:
     auto size_hint() const -> rstd::iter::SizeHint {
         auto n = back_ - front_;
         return { n, rstd::Some(n) };
+    }
+
+    /// Moves the remaining elements into `destination`, retaining ownership of the allocation.
+    template<typename DestinationAllocator>
+    void append_to(Vec<T, DestinationAllocator>& destination) {
+        destination.append_moved(buffer_.ptr.as_mut_ptr().add(front_), len());
+        front_ = back_;
     }
 
     auto len() const -> usize { return back_ - front_; }
@@ -1283,10 +1400,7 @@ template<typename E, typename A>
 struct Impl<iter::Extend<E>, ::alloc::vec::Vec<E, A>> : ImplBase<::alloc::vec::Vec<E, A>> {
     template<iter::has_next It>
     static void extend(::alloc::vec::Vec<E, A>& collection, It iterator) {
-        collection.reserve(as<iter::Iterator>(iterator).size_hint().template get<0>());
-        for (auto item = as<iter::Iterator>(iterator).next(); item.is_some();
-             item      = as<iter::Iterator>(iterator).next())
-            collection.push(rstd::move(*item));
+        collection.extend_iter(rstd::move(iterator));
     }
 
     static void extend_one(::alloc::vec::Vec<E, A>& collection, E&& item) {

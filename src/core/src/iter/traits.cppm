@@ -43,9 +43,9 @@ template<class I>
 struct Flatten;
 template<class I, class F>
 struct FlatMap;
-template<class I>
+export template<class I>
 struct Cloned;
-template<class I>
+export template<class I>
 struct Copied;
 template<class I, class F>
 struct Inspect;

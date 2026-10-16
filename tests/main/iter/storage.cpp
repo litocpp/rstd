@@ -192,3 +192,42 @@ TEST(IterStorage, StringBytesAndEmptyBlocks) {
     EXPECT_TRUE(iter::chunks(iter::empty<mut_ref<u8>>(), 2_usize).next().is_none());
     EXPECT_TRUE(byte_iteration());
 }
+
+TEST(IterStorage, SliceRemainingViewTracksBothEnds) {
+    rstd::byte bytes[] { rstd::byte { 1 }, rstd::byte { 2 }, rstd::byte { 3 } };
+    auto       source = iter::from_slice(slice<u8>::from_raw_parts(bytes, 3_usize));
+    (void)source.next();
+    (void)source.next_back();
+    auto remaining = source.as_slice();
+    EXPECT_EQ(remaining.len(), 1_usize);
+    EXPECT_EQ(remaining[0_usize], u8(2));
+    EXPECT_EQ(source.len(), 1_usize);
+    auto copied = rstd::move(source).copied();
+    auto inner  = rstd::move(copied).into_inner();
+    EXPECT_EQ(inner.next()->get(), u8(2));
+    EXPECT_TRUE(inner.as_slice().is_empty());
+    auto mutable_source = iter::into_iter(mut_ref<u8[]>::from_raw_parts(bytes, 3_usize));
+    (void)mutable_source.next();
+    auto cloned = rstd::move(mutable_source).cloned();
+    static_assert(rstd::mtp::same_as<decltype(cloned)::Item, u8>);
+    (void)cloned.next_back();
+    auto mutable_inner = rstd::move(cloned).into_inner();
+    EXPECT_EQ(mutable_inner.as_slice().len(), 1_usize);
+    auto value = mutable_inner.next().unwrap();
+    value      = u8(8);
+    EXPECT_EQ(bytes[1], rstd::byte { 8 });
+    EXPECT_TRUE(mutable_inner.as_slice().is_empty());
+}
+
+TEST(IterStorage, ByteCloneAndCopyYieldOwnedValues) {
+    rstd::byte bytes[] { rstd::byte { 3 }, rstd::byte { 5 } };
+    auto       source = iter::from_slice(slice<u8>::from_raw_parts(bytes, 2_usize)).cloned();
+    EXPECT_EQ(source.next().unwrap(), u8(3));
+    EXPECT_EQ(source.next_back().unwrap(), u8(5));
+    auto copied = iter::into_iter(mut_ref<u8[]>::from_raw_parts(bytes, 2_usize)).copied();
+    static_assert(rstd::mtp::same_as<decltype(copied)::Item, u8>);
+    auto value = copied.next().unwrap();
+    bytes[0]   = rstd::byte { 9 };
+    EXPECT_EQ(value, u8(3));
+    EXPECT_EQ(copied.next_back().unwrap(), u8(5));
+}
