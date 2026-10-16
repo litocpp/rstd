@@ -298,12 +298,12 @@ class Vec {
             } initialized { m_len, m_len };
             auto  destination = m_buf.ptr.as_mut_ptr().add(m_len);
             usize written;
-            for (auto item = iterator.next(); item.is_some(); item = iterator.next()) {
+            rstd::as<rstd::iter::Iterator>(iterator).for_each([&](T item) {
                 debug_assert(written < *upper, "TrustedLen exceeded its length");
-                rstd::ptr_::construct(destination.add(written), rstd::move(*item));
+                rstd::ptr_::construct(destination.add(written), rstd::move(item));
                 ++written;
                 ++initialized.value;
-            }
+            });
             debug_assert(written == *upper, "TrustedLen ended before its length");
         } else {
             for (auto item = iterator.next(); item.is_some(); item = iterator.next()) {
@@ -375,11 +375,7 @@ public:
     template<rstd::iter::has_next I>
     static auto from_iter_in(I iterator, A allocator) -> Self {
         auto result = Self::new_in(rstd::move(allocator));
-        result.reserve(rstd::as<rstd::iter::Iterator>(iterator).size_hint().template get<0>());
-        for (auto item = rstd::as<rstd::iter::Iterator>(iterator).next(); item.is_some();
-             item      = rstd::as<rstd::iter::Iterator>(iterator).next()) {
-            result.push(rstd::move(*item));
-        }
+        result.extend_iter(rstd::move(iterator));
         return result;
     }
 
@@ -1263,12 +1259,8 @@ auto from_trusted_iter(I iterator) -> Vec<T> {
     auto upper = hint.template get<1>();
     if (upper.is_none()) rstd::panic { "Vec capacity overflow" };
     debug_assert(hint.template get<0>() == *upper);
-
     auto result = Vec<T>::with_capacity(*upper);
-    for (auto item = rstd::as<rstd::iter::Iterator>(iterator).next(); item.is_some();
-         item      = rstd::as<rstd::iter::Iterator>(iterator).next()) {
-        result.push(rstd::move(*item));
-    }
+    rstd::iter::extend(result, rstd::move(iterator));
     return result;
 }
 

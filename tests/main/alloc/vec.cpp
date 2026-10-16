@@ -354,6 +354,15 @@ TEST(Vec, CollectUsesTrustedLengthAsExactCapacity) {
 
     EXPECT_EQ(values.len(), usize(10));
     EXPECT_EQ(values.capacity(), usize(10));
+    for (usize n; n < 4_usize; ++n) {
+        auto bytes = rstd::iter::repeat_with([] {
+                         return u8(7);
+                     })
+                         .take(n)
+                         .collect<Vec<u8>>();
+        EXPECT_EQ(bytes.len(), n);
+        EXPECT_EQ(bytes.capacity(), n);
+    }
 }
 
 TEST(Vec, CollectUsesGeneralIteratorLowerBoundAfterFirstItem) {
@@ -1927,4 +1936,52 @@ TEST(Vec, ExtendGeneratedMoveOnlyValuesTracksInitialization) {
         EXPECT_EQ(values[5_usize].value, 8);
     }
     EXPECT_EQ(drops, 8);
+}
+
+TEST(Vec, CollectTrustedPipelinePreservesAllocatorAndMoveOnlyLifetime) {
+    VecAllocatorState state {};
+    int               drops = 0;
+    int               calls = 0;
+    {
+        const i32 data[] = { 1_i32, 2_i32, 3_i32, 4_i32 };
+        auto      source = rstd::iter::from_array(data)
+                               .copied()
+                               .map([&](i32 value) {
+                              ++calls;
+                              return CollectMoveOnly(value.to_primitive(), drops);
+                               })
+                               .take(3_usize);
+        auto      values = Vec<CollectMoveOnly, VecTestAllocator>::from_iter_in(
+            rstd::move(source), VecTestAllocator { &state });
+        EXPECT_EQ(state.allocations, 1);
+        EXPECT_EQ(calls, 3);
+        EXPECT_EQ(drops, 0);
+        ASSERT_EQ(values.len(), 3_usize);
+        for (usize i; i < values.len(); ++i) {
+            EXPECT_EQ(values[i].value, int(i.to_primitive()) + 1);
+            EXPECT_EQ(values[i].value_ptr, &values[i].value);
+        }
+    }
+    EXPECT_EQ(drops, 3);
+    EXPECT_EQ(state.allocations, state.deallocations);
+}
+
+TEST(Vec, CollectTrustedClonePipelineKeepsCloneCount) {
+    int          clones      = 0;
+    int          clone_froms = 0;
+    CloneTracked data[]      = { { 1, clones, clone_froms },
+                                 { 2, clones, clone_froms },
+                                 { 3, clones, clone_froms } };
+    auto         values      = rstd::iter::from_array(data)
+                                   .cloned()
+                                   .map([](CloneTracked value) {
+                          value.value *= 2;
+                          return value;
+                                   })
+                                   .collect<Vec<CloneTracked>>();
+    EXPECT_EQ(clones, 3);
+    EXPECT_EQ(clone_froms, 0);
+    ASSERT_EQ(values.len(), 3_usize);
+    EXPECT_EQ(values[0_usize].value, 2);
+    EXPECT_EQ(values[2_usize].value, 6);
 }

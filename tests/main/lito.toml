@@ -64,6 +64,7 @@ sources = [
   "toml/serialize.cpp",
   "toml/module.cpp",
   "iter/iterator.cpp",
+  "iter/consumption.cpp",
   "iter/try.cpp",
   "iter/slice.cpp",
   "iter/storage.cpp",

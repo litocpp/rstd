@@ -237,9 +237,157 @@ auto count_case(bench::Bench& runner, ref<str> name) -> CaseRunResult {
         });
 }
 
+template<int Operation, bool Pipeline>
+auto consumption_value(slice<i32> input, usize wanted) -> i64 {
+    auto add = [](i64 sum, i32 value) {
+        return sum + i64(value.to_primitive());
+    };
+    if constexpr (Pipeline) {
+        auto source = iter::from_slice(input).copied();
+        if constexpr (Operation == 0) {
+            return rstd::move(source)
+                .map([](i32 v) {
+                    return v * i32(2);
+                })
+                .fold(i64(), add);
+        } else if constexpr (Operation == 1) {
+            return rstd::move(source)
+                .filter_map([](i32 v) -> Option<i32> {
+                    return v % i32(2) == i32() ? Some(v * i32(2)) : None<i32>();
+                })
+                .fold(i64(), add);
+        } else if constexpr (Operation == 2) {
+            return rstd::move(source)
+                .skip(input.len() / usize(4))
+                .take(input.len() / usize(2))
+                .fold(i64(), add);
+        } else if constexpr (Operation == 3) {
+            return rstd::move(source)
+                .zip(iter::from_slice(input).copied())
+                .fold(i64(), [](i64 sum, auto pair) {
+                    return sum + i64(pair.template get<0>().to_primitive()) +
+                           i64(pair.template get<1>().to_primitive());
+                });
+        } else if constexpr (Operation == 4) {
+            return rstd::move(source)
+                .filter_map([](i32 v) {
+                    return Some(v * i32(2));
+                })
+                .rfold(i64(), add);
+        } else if constexpr (Operation == 5) {
+            auto found = source.find([&](i32 v) {
+                return usize(v.to_primitive()) == wanted;
+            });
+            return found.is_some() ? i64(found->to_primitive()) : i64(-1);
+        } else if constexpr (Operation == 6) {
+            auto found = source.find_map([&](i32 v) -> Option<i64> {
+                return usize(v.to_primitive()) == wanted ? Some(i64(v.to_primitive()))
+                                                         : None<i64>();
+            });
+            return found.unwrap_or(i64(-1));
+        } else {
+            auto found = source.position([&](i32 v) {
+                return usize(v.to_primitive()) == wanted;
+            });
+            return found.is_some() ? i64(found->to_primitive()) : i64(-1);
+        }
+    } else {
+        i64 sum;
+        for (usize i; i < input.len(); ++i) {
+            if constexpr (Operation >= 5) {
+                if (usize(input[i].to_primitive()) == wanted) return i64(i.to_primitive());
+            } else if constexpr (Operation == 1) {
+                if (input[i] % i32(2) == i32()) sum += i64(input[i].to_primitive()) * i64(2);
+            } else if constexpr (Operation == 2) {
+                if (i >= input.len() / usize(4) &&
+                    i < input.len() / usize(4) + input.len() / usize(2))
+                    sum += i64(input[i].to_primitive());
+            } else if constexpr (Operation == 4) {
+                sum += i64(input[input.len() - i - usize(1)].to_primitive()) * i64(2);
+            } else {
+                sum += i64(input[i].to_primitive()) * i64(2);
+            }
+        }
+        if constexpr (Operation >= 5)
+            return i64(-1);
+        else
+            return sum;
+    }
+}
+
+template<int Operation, bool Pipeline>
+struct ConsumptionSession {
+    Vec<i32> input;
+    usize    wanted;
+    ConsumptionSession(usize size, usize wanted): input(input_values(size)), wanted(wanted) {}
+    auto check() -> Result<empty, String> {
+        if (consumption_value<Operation, true>(input.as_slice(), wanted) !=
+            consumption_value<Operation, false>(input.as_slice(), wanted))
+            return Err("iterator consumption precheck failed"_Str);
+        return Ok(empty {});
+    }
+    auto run(bench::Bench& engine, ref<str> name)
+        -> Result<bench::BenchmarkResult, bench::BenchError> {
+        auto consumed = input.len();
+        if constexpr (Operation >= 5)
+            if (wanted < consumed) consumed = wanted + usize(1);
+        return engine.run(name,
+                          [&] {
+                              return consumption_value<Operation, Pipeline>(
+                                  rstd::hint::black_box(input.as_slice()),
+                                  rstd::hint::black_box(wanted));
+                          },
+                          { .items_per_iteration = u64(consumed.to_primitive()) });
+    }
+    auto finish() -> Result<empty, String> { return Ok(empty {}); }
+};
+
+template<int Operation, bool Pipeline>
+auto register_consumption(bench::Suite& suite, ref<str> operation) -> Result<empty, String> {
+    const usize sizes[] = { usize(), usize(64), usize(16384) };
+    for (auto size : sizes) {
+        int queries = Operation >= 5 ? 4 : 1;
+        for (int query = 0; query < queries; ++query) {
+            auto wanted =
+                query == 0
+                    ? usize()
+                    : (query == 1 ? size / usize(2)
+                                  : (query == 2 && size != usize() ? size - usize(1) : size));
+            auto name = rstd::format(
+                "{}_{}_{}_{}", operation, Pipeline ? "iter"_str : "loop"_str, size, query);
+            rstd_try(suite.add(make_descriptor("iter_consumption"_str,
+                                               name.as_str(),
+                                               u64(8),
+                                               parameter("n"_str, u64(size.to_primitive()))),
+                               bench::factory([size, wanted] {
+                                   using Session = ConsumptionSession<Operation, Pipeline>;
+                                   return Result<Session, String>(Ok(Session(size, wanted)));
+                               })));
+        }
+    }
+    return Ok(empty {});
+}
+
 auto rstd_bench::register_iter(rstd::bench::Suite& suite) -> Result<empty, String> {
     using namespace rstd_bench;
     using namespace rstd::literals;
+
+    rstd_try((register_consumption<0, true>(suite, "copied_map_fold"_str)));
+    rstd_try((register_consumption<0, false>(suite, "copied_map_fold"_str)));
+    rstd_try((register_consumption<1, true>(suite, "filter_map"_str)));
+    rstd_try((register_consumption<1, false>(suite, "filter_map"_str)));
+    rstd_try((register_consumption<2, true>(suite, "skip_take"_str)));
+    rstd_try((register_consumption<2, false>(suite, "skip_take"_str)));
+    rstd_try((register_consumption<3, true>(suite, "zip"_str)));
+    rstd_try((register_consumption<3, false>(suite, "zip"_str)));
+    rstd_try((register_consumption<4, true>(suite, "reverse"_str)));
+    rstd_try((register_consumption<4, false>(suite, "reverse"_str)));
+    rstd_try((register_consumption<5, true>(suite, "find"_str)));
+    rstd_try((register_consumption<5, false>(suite, "find"_str)));
+    rstd_try((register_consumption<6, true>(suite, "find_map"_str)));
+    rstd_try((register_consumption<6, false>(suite, "find_map"_str)));
+    rstd_try((register_consumption<7, true>(suite, "position"_str)));
+    rstd_try((register_consumption<7, false>(suite, "position"_str)));
 
     rstd_try(suite.add_function(make_descriptor("iter"_str,
                                                 "count_by_8"_str,

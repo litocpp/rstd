@@ -149,7 +149,9 @@ enum class VecBulkOperation
     Ordinary,
     Trusted,
     Copied,
-    Owning
+    Owning,
+    Transform,
+    CollectTransform
 };
 
 struct VecBulkInput {
@@ -191,6 +193,17 @@ struct VecBulkSession {
             Extend::extend(destination, source.iter().copied().map([](u8 value) {
                 return value;
             }));
+        } else if constexpr (Operation == VecBulkOperation::Transform) {
+            Extend::extend(destination, source.iter().copied().map([](u8 value) {
+                return value ^ u8(42);
+            }));
+        } else if constexpr (Operation == VecBulkOperation::CollectTransform) {
+            destination = source.iter()
+                              .copied()
+                              .map([](u8 value) {
+                                  return value ^ u8(42);
+                              })
+                              .template collect<Vec<u8>>();
         } else if constexpr (Operation == VecBulkOperation::Copied) {
             Extend::extend(destination, source.iter().copied());
         } else {
@@ -204,7 +217,10 @@ struct VecBulkSession {
         append(input);
         if (input.destination.len() != length) return Err("bulk append length mismatch"_Str);
         for (usize i; i < length; ++i)
-            if (u8(input.destination[i]) != u8(source[i]))
+            if (u8(input.destination[i]) != ((Operation == VecBulkOperation::Transform ||
+                                              Operation == VecBulkOperation::CollectTransform)
+                                                 ? u8(source[i]) ^ u8(42)
+                                                 : u8(source[i])))
                 return Err("bulk append content mismatch"_Str);
         if constexpr (Operation == VecBulkOperation::Append ||
                       Operation == VecBulkOperation::Owning)
@@ -234,6 +250,8 @@ auto register_vec_bulk(bench::Suite& suite, ref<str> operation) -> Result<empty,
     constexpr rstd::size_t lengths[] { 0, 64, 4096, 1048576 };
     for (auto length : lengths) {
         for (int reserved = 0; reserved < 2; ++reserved) {
+            if constexpr (Operation == VecBulkOperation::CollectTransform)
+                if (reserved != 0) continue;
             auto name = rstd::format(
                 "{}_{}_{}", operation, reserved ? "reserved"_str : "growing"_str, length);
             rstd_try(suite.add(
@@ -256,6 +274,8 @@ auto rstd_bench::register_alloc(bench::Suite& suite) -> Result<empty, String> {
     rstd_try(register_vec_bulk<VecBulkOperation::Trusted>(suite, "trusted"_str));
     rstd_try(register_vec_bulk<VecBulkOperation::Copied>(suite, "copied"_str));
     rstd_try(register_vec_bulk<VecBulkOperation::Owning>(suite, "owning"_str));
+    rstd_try(register_vec_bulk<VecBulkOperation::Transform>(suite, "transform"_str));
+    rstd_try(register_vec_bulk<VecBulkOperation::CollectTransform>(suite, "collect_transform"_str));
     rstd_try(suite.add(make_descriptor("alloc"_str, "string_clone_end_to_end"_str, u64(1000)),
                        bench::factory([] {
                            return Result<StringCloneSession, String>(Ok(StringCloneSession {}));

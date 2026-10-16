@@ -480,22 +480,29 @@ struct ReverseIteratorDriver {
 template<typename I, typename Pred>
     requires Impled<I, DoubleEndedIterator>
 constexpr auto double_ended_find(I& iterator, Pred& predicate) -> Option<typename I::Item> {
-    auto backwards = as<DoubleEndedIterator>(iterator);
-    auto item      = backwards.next_back();
-    for (; item.is_some(); item = backwards.next_back())
-        if (predicate(*item)) break;
-    return item;
+    using Item = typename I::Item;
+    using Flow = ops::ControlFlow<Item>;
+    auto step  = [&predicate](empty, Item item) -> Flow {
+        if (predicate(item)) return Flow::Break(rstd::move(item));
+        return Flow::Continue();
+    };
+    auto result = ReverseIteratorDriver<I>::try_fold(iterator, empty {}, step);
+    if (result.is_break()) return Some<Item>(rstd::move(result).break_value_unchecked());
+    return None();
 }
 
 template<typename I, typename Pred>
     requires Impled<I, DoubleEndedIterator> && Impled<I, ExactSizeIterator>
 constexpr auto double_ended_position(I& iterator, Pred& predicate) -> Option<usize> {
-    usize index     = as<ExactSizeIterator>(iterator).len();
-    auto  backwards = as<DoubleEndedIterator>(iterator);
-    for (auto item = backwards.next_back(); item.is_some(); item = backwards.next_back()) {
+    using Flow = ops::ControlFlow<usize, usize>;
+    auto step  = [&predicate](usize index, typename I::Item item) -> Flow {
         --index;
-        if (predicate(rstd::forward<typename I::Item>(*item))) return Some(index);
-    }
+        if (predicate(rstd::forward<typename I::Item>(item))) return Flow::Break(index);
+        return Flow::Continue(index);
+    };
+    auto result =
+        ReverseIteratorDriver<I>::try_fold(iterator, as<ExactSizeIterator>(iterator).len(), step);
+    if (result.is_break()) return Some(rstd::move(result).break_value_unchecked());
     return None();
 }
 
@@ -591,13 +598,13 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
 
     template<typename F>
     constexpr auto reduce(F f) && {
+        using Item = typename Self::Item;
         auto first = this->self().next();
         if (first.is_none()) return first;
-        auto acc = rstd::move(first);
-        for (auto x = this->self().next(); x.is_some(); x = this->self().next())
-            acc = rstd::Some<typename Self::Item>(f(rstd::forward<typename Self::Item>(*acc),
-                                                    rstd::forward<typename Self::Item>(*x)));
-        return acc;
+        auto step = [&f](Option<Item> accumulator, Item item) {
+            return Some<Item>(f(rstd::forward<Item>(*accumulator), rstd::forward<Item>(item)));
+        };
+        return iter::iterator_fold(this->self(), rstd::move(first), step);
     }
 
     template<typename F>
@@ -657,10 +664,15 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
 
     template<typename Pred>
     constexpr auto find(Pred pred) & {
-        auto x = this->self().next();
-        for (; x.is_some(); x = this->self().next())
-            if (pred(*x)) break;
-        return x;
+        using Item = typename Self::Item;
+        using Flow = ops::ControlFlow<Item>;
+        auto step  = [&pred](empty, Item item) -> Flow {
+            if (pred(item)) return Flow::Break(rstd::move(item));
+            return Flow::Continue();
+        };
+        auto result = iter::iterator_try_fold(this->self(), empty {}, step);
+        if (result.is_break()) return Some<Item>(rstd::move(result).break_value_unchecked());
+        return Option<Item>(None());
     }
 
     template<typename Pred>
@@ -670,13 +682,17 @@ struct Impl<iter::Iterator, Tag> : ImplBase<Tag> {
 
     template<typename F>
     constexpr auto find_map(F f) & {
-        using R = decltype(f(rstd::forward<typename Self::Item>(*this->self().next())));
-        R r;
-        for (auto x = this->self().next(); x.is_some(); x = this->self().next()) {
-            r = f(rstd::forward<typename Self::Item>(*x));
-            if (r.is_some()) return r;
-        }
-        return r;
+        using Item = typename Self::Item;
+        using R    = decltype(f(mtp::declval<Item>()));
+        using Flow = ops::ControlFlow<R>;
+        auto step  = [&f](empty, Item item) -> Flow {
+            auto result = f(rstd::forward<Item>(item));
+            if (result.is_some()) return Flow::Break(rstd::move(result));
+            return Flow::Continue();
+        };
+        auto result = iter::iterator_try_fold(this->self(), empty {}, step);
+        if (result.is_break()) return rstd::move(result).break_value_unchecked();
+        return R {};
     }
 
     template<typename F>

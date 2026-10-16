@@ -788,8 +788,11 @@ struct FlatMap : DefaultInClass<FlatMap<I, F>, Iterator> {
     constexpr auto size_hint() const -> SizeHint { return inner.size_hint(); }
 };
 
-template<class I, class Mapper>
-struct IteratorDriver<Map<I, Mapper>> {
+template<bool Reverse, typename I>
+using DirectionalIteratorDriver = mtp::cond<Reverse, ReverseIteratorDriver<I>, IteratorDriver<I>>;
+
+template<class I, class Mapper, bool Reverse>
+struct MapDriver {
     template<typename B, typename F>
     static constexpr auto fold(Map<I, Mapper>& iterator, B init, F& function) -> B {
         auto step = [&iterator, &function](B accumulator, typename I::Item item) -> B {
@@ -797,7 +800,7 @@ struct IteratorDriver<Map<I, Mapper>> {
             return function(rstd::move(accumulator),
                             rstd::forward<typename Map<I, Mapper>::Item>(mapped));
         };
-        return IteratorDriver<I>::fold(iterator.i, rstd::move(init), step);
+        return DirectionalIteratorDriver<Reverse, I>::fold(iterator.i, rstd::move(init), step);
     }
 
     template<typename B, typename F>
@@ -807,12 +810,18 @@ struct IteratorDriver<Map<I, Mapper>> {
             return function(rstd::move(accumulator),
                             rstd::forward<typename Map<I, Mapper>::Item>(mapped));
         };
-        return IteratorDriver<I>::try_fold(iterator.i, rstd::move(init), step);
+        return DirectionalIteratorDriver<Reverse, I>::try_fold(iterator.i, rstd::move(init), step);
     }
 };
 
-template<class I, class Predicate>
-struct IteratorDriver<Filter<I, Predicate>> {
+template<class I, class Mapper>
+struct IteratorDriver<Map<I, Mapper>> : MapDriver<I, Mapper, false> {};
+
+template<class I, class Mapper>
+struct ReverseIteratorDriver<Map<I, Mapper>> : MapDriver<I, Mapper, true> {};
+
+template<class I, class Predicate, bool Reverse>
+struct FilterDriver {
     template<typename B, typename F>
     static constexpr auto fold(Filter<I, Predicate>& iterator, B init, F& function) -> B {
         auto step = [&iterator, &function](B accumulator, typename I::Item item) -> B {
@@ -821,7 +830,7 @@ struct IteratorDriver<Filter<I, Predicate>> {
             }
             return accumulator;
         };
-        return IteratorDriver<I>::fold(iterator.i, rstd::move(init), step);
+        return DirectionalIteratorDriver<Reverse, I>::fold(iterator.i, rstd::move(init), step);
     }
 
     template<typename B, typename F>
@@ -833,9 +842,15 @@ struct IteratorDriver<Filter<I, Predicate>> {
             }
             return try_::from_output<R>(rstd::move(accumulator));
         };
-        return IteratorDriver<I>::try_fold(iterator.i, rstd::move(init), step);
+        return DirectionalIteratorDriver<Reverse, I>::try_fold(iterator.i, rstd::move(init), step);
     }
 };
+
+template<class I, class Predicate>
+struct IteratorDriver<Filter<I, Predicate>> : FilterDriver<I, Predicate, false> {};
+
+template<class I, class Predicate>
+struct ReverseIteratorDriver<Filter<I, Predicate>> : FilterDriver<I, Predicate, true> {};
 
 template<class A, class B>
 struct IteratorDriver<Chain<A, B>> {
@@ -849,7 +864,6 @@ struct IteratorDriver<Chain<A, B>> {
         }
         if (! iterator.b_done) {
             accumulator = IteratorDriver<B>::fold(iterator.b, rstd::move(accumulator), function);
-            iterator.b_done = true;
         }
         return accumulator;
     }
@@ -869,22 +883,60 @@ struct IteratorDriver<Chain<A, B>> {
             auto result =
                 IteratorDriver<B>::try_fold(iterator.b, rstd::move(accumulator), function);
             if (! try_::is_success(result)) return result;
-            accumulator     = try_::finish(try_::take_output(rstd::move(result)));
-            iterator.b_done = true;
+            accumulator = try_::finish(try_::take_output(rstd::move(result)));
         }
         return try_::from_output<R>(rstd::move(accumulator));
     }
 };
 
-template<class I, class Inspector>
-struct IteratorDriver<Inspect<I, Inspector>> {
+template<class A, class B>
+struct ReverseIteratorDriver<Chain<A, B>> {
+    template<typename Accumulator, typename F>
+    static constexpr auto fold(Chain<A, B>& iterator, Accumulator init, F& function)
+        -> Accumulator {
+        auto accumulator = rstd::move(init);
+        if (! iterator.b_done) {
+            accumulator =
+                ReverseIteratorDriver<B>::fold(iterator.b, rstd::move(accumulator), function);
+            iterator.b_done = true;
+        }
+        if (! iterator.a_done) {
+            accumulator =
+                ReverseIteratorDriver<A>::fold(iterator.a, rstd::move(accumulator), function);
+        }
+        return accumulator;
+    }
+
+    template<typename Accumulator, typename F>
+    static constexpr auto try_fold(Chain<A, B>& iterator, Accumulator init, F& function) {
+        using R          = decltype(function(rstd::move(init), mtp::declval<typename A::Item>()));
+        auto accumulator = rstd::move(init);
+        if (! iterator.b_done) {
+            auto result =
+                ReverseIteratorDriver<B>::try_fold(iterator.b, rstd::move(accumulator), function);
+            if (! try_::is_success(result)) return result;
+            accumulator     = try_::finish(try_::take_output(rstd::move(result)));
+            iterator.b_done = true;
+        }
+        if (! iterator.a_done) {
+            auto result =
+                ReverseIteratorDriver<A>::try_fold(iterator.a, rstd::move(accumulator), function);
+            if (! try_::is_success(result)) return result;
+            accumulator = try_::finish(try_::take_output(rstd::move(result)));
+        }
+        return try_::from_output<R>(rstd::move(accumulator));
+    }
+};
+
+template<class I, class Inspector, bool Reverse>
+struct InspectDriver {
     template<typename B, typename F>
     static constexpr auto fold(Inspect<I, Inspector>& iterator, B init, F& function) -> B {
         auto step = [&iterator, &function](B accumulator, typename I::Item item) -> B {
             iterator.f(item);
             return function(rstd::move(accumulator), rstd::forward<typename I::Item>(item));
         };
-        return IteratorDriver<I>::fold(iterator.i, rstd::move(init), step);
+        return DirectionalIteratorDriver<Reverse, I>::fold(iterator.i, rstd::move(init), step);
     }
 
     template<typename B, typename F>
@@ -893,9 +945,15 @@ struct IteratorDriver<Inspect<I, Inspector>> {
             iterator.f(item);
             return function(rstd::move(accumulator), rstd::forward<typename I::Item>(item));
         };
-        return IteratorDriver<I>::try_fold(iterator.i, rstd::move(init), step);
+        return DirectionalIteratorDriver<Reverse, I>::try_fold(iterator.i, rstd::move(init), step);
     }
 };
+
+template<class I, class Inspector>
+struct IteratorDriver<Inspect<I, Inspector>> : InspectDriver<I, Inspector, false> {};
+
+template<class I, class Inspector>
+struct ReverseIteratorDriver<Inspect<I, Inspector>> : InspectDriver<I, Inspector, true> {};
 
 // Borrows an iterator by pointer so it can be partially consumed without moving.
 template<class I>
@@ -934,6 +992,18 @@ struct IteratorDriver<ByRef<I>> {
 };
 
 template<class I>
+struct ReverseIteratorDriver<ByRef<I>> {
+    template<typename B, typename F>
+    static constexpr auto fold(ByRef<I>& iterator, B init, F& function) -> B {
+        return ReverseIteratorDriver<I>::fold(*iterator.inner, rstd::move(init), function);
+    }
+    template<typename B, typename F>
+    static constexpr auto try_fold(ByRef<I>& iterator, B init, F& function) {
+        return ReverseIteratorDriver<I>::try_fold(*iterator.inner, rstd::move(init), function);
+    }
+};
+
+template<class I>
 struct IteratorTraversal<ByRef<I>> {
     static constexpr auto advance(ByRef<I>& iterator, usize n) {
         return IteratorTraversal<I>::advance(*iterator.inner, n);
@@ -943,28 +1013,6 @@ struct IteratorTraversal<ByRef<I>> {
     }
     static constexpr auto last(ByRef<I>& iterator) -> Option<typename I::Item> {
         return IteratorTraversal<I>::last(*iterator.inner);
-    }
-};
-
-template<class I, class Mapper>
-struct ReverseIteratorDriver<Map<I, Mapper>> {
-    template<typename B, typename F>
-    static constexpr auto fold(Map<I, Mapper>& iterator, B init, F& function) -> B {
-        auto step = [&iterator, &function](B accumulator, typename I::Item item) -> B {
-            decltype(auto) mapped = iterator.f(rstd::forward<typename I::Item>(item));
-            return function(rstd::move(accumulator),
-                            rstd::forward<typename Map<I, Mapper>::Item>(mapped));
-        };
-        return ReverseIteratorDriver<I>::fold(iterator.i, rstd::move(init), step);
-    }
-    template<typename B, typename F>
-    static constexpr auto try_fold(Map<I, Mapper>& iterator, B init, F& function) {
-        auto step = [&iterator, &function](B accumulator, typename I::Item item) {
-            decltype(auto) mapped = iterator.f(rstd::forward<typename I::Item>(item));
-            return function(rstd::move(accumulator),
-                            rstd::forward<typename Map<I, Mapper>::Item>(mapped));
-        };
-        return ReverseIteratorDriver<I>::try_fold(iterator.i, rstd::move(init), step);
     }
 };
 
@@ -991,6 +1039,206 @@ struct ReverseIteratorDriver<Rev<I>> {
         return IteratorDriver<I>::try_fold(iterator.i, rstd::move(init), function);
     }
 };
+
+template<class I, bool Reverse>
+struct CopiedDriver {
+    template<typename B, typename F>
+    static constexpr auto fold(Copied<I>& iterator, B init, F& function) -> B {
+        auto step = [&](B accumulator, typename I::Item item) {
+            return function(rstd::move(accumulator), typename Copied<I>::Item(item.get()));
+        };
+        return DirectionalIteratorDriver<Reverse, I>::fold(iterator.i, rstd::move(init), step);
+    }
+    template<typename B, typename F>
+    static constexpr auto try_fold(Copied<I>& iterator, B init, F& function) {
+        auto step = [&](B accumulator, typename I::Item item) {
+            return function(rstd::move(accumulator), typename Copied<I>::Item(item.get()));
+        };
+        return DirectionalIteratorDriver<Reverse, I>::try_fold(iterator.i, rstd::move(init), step);
+    }
+};
+template<class I>
+struct IteratorDriver<Copied<I>> : CopiedDriver<I, false> {};
+template<class I>
+struct ReverseIteratorDriver<Copied<I>> : CopiedDriver<I, true> {};
+
+template<class I, bool Reverse>
+struct ClonedDriver {
+    template<typename B, typename F>
+    static constexpr auto fold(Cloned<I>& iterator, B init, F& function) -> B {
+        auto step = [&](B accumulator, typename I::Item item) {
+            decltype(auto) value = item.get();
+            return function(rstd::move(accumulator), as<clone::Clone>(value).clone());
+        };
+        return DirectionalIteratorDriver<Reverse, I>::fold(iterator.i, rstd::move(init), step);
+    }
+    template<typename B, typename F>
+    static constexpr auto try_fold(Cloned<I>& iterator, B init, F& function) {
+        auto step = [&](B accumulator, typename I::Item item) {
+            decltype(auto) value = item.get();
+            return function(rstd::move(accumulator), as<clone::Clone>(value).clone());
+        };
+        return DirectionalIteratorDriver<Reverse, I>::try_fold(iterator.i, rstd::move(init), step);
+    }
+};
+template<class I>
+struct IteratorDriver<Cloned<I>> : ClonedDriver<I, false> {};
+template<class I>
+struct ReverseIteratorDriver<Cloned<I>> : ClonedDriver<I, true> {};
+
+template<class I, bool Reverse>
+struct EnumerateDriver {
+    template<typename B, typename F>
+    static constexpr auto fold(Enumerate<I>& iterator, B init, F& function) -> B {
+        auto back_index = usize();
+        if constexpr (Reverse)
+            back_index = iterator.count + as<ExactSizeIterator>(iterator.i).len();
+        auto step = [&](B accumulator, typename I::Item item) {
+            auto index = iterator.count;
+            if constexpr (Reverse)
+                index = --back_index;
+            else
+                ++iterator.count;
+            return function(
+                rstd::move(accumulator),
+                typename Enumerate<I>::Item(index, rstd::forward<typename I::Item>(item)));
+        };
+        return DirectionalIteratorDriver<Reverse, I>::fold(iterator.i, rstd::move(init), step);
+    }
+    template<typename B, typename F>
+    static constexpr auto try_fold(Enumerate<I>& iterator, B init, F& function) {
+        auto back_index = usize();
+        if constexpr (Reverse)
+            back_index = iterator.count + as<ExactSizeIterator>(iterator.i).len();
+        auto step = [&](B accumulator, typename I::Item item) {
+            auto index = iterator.count;
+            if constexpr (Reverse)
+                index = --back_index;
+            else
+                ++iterator.count;
+            return function(
+                rstd::move(accumulator),
+                typename Enumerate<I>::Item(index, rstd::forward<typename I::Item>(item)));
+        };
+        return DirectionalIteratorDriver<Reverse, I>::try_fold(iterator.i, rstd::move(init), step);
+    }
+};
+template<class I>
+struct IteratorDriver<Enumerate<I>> : EnumerateDriver<I, false> {};
+template<class I>
+struct ReverseIteratorDriver<Enumerate<I>> : EnumerateDriver<I, true> {};
+
+template<class I, class Mapper, bool Reverse>
+struct FilterMapDriver {
+    template<typename B, typename F>
+    static constexpr auto fold(FilterMap<I, Mapper>& iterator, B init, F& function) -> B {
+        auto step = [&](B accumulator, typename I::Item item) -> B {
+            auto mapped = iterator.f(rstd::forward<typename I::Item>(item));
+            if (mapped.is_some()) return function(rstd::move(accumulator), rstd::move(*mapped));
+            return accumulator;
+        };
+        return DirectionalIteratorDriver<Reverse, I>::fold(iterator.i, rstd::move(init), step);
+    }
+    template<typename B, typename F>
+    static constexpr auto try_fold(FilterMap<I, Mapper>& iterator, B init, F& function) {
+        using R   = decltype(function(rstd::move(init),
+                                      mtp::declval<typename FilterMap<I, Mapper>::Item>()));
+        auto step = [&](B accumulator, typename I::Item item) -> R {
+            auto mapped = iterator.f(rstd::forward<typename I::Item>(item));
+            if (mapped.is_some()) return function(rstd::move(accumulator), rstd::move(*mapped));
+            return try_::from_output<R>(rstd::move(accumulator));
+        };
+        return DirectionalIteratorDriver<Reverse, I>::try_fold(iterator.i, rstd::move(init), step);
+    }
+};
+template<class I, class F>
+struct IteratorDriver<FilterMap<I, F>> : FilterMapDriver<I, F, false> {};
+template<class I, class F>
+struct ReverseIteratorDriver<FilterMap<I, F>> : FilterMapDriver<I, F, true> {};
+
+template<bool Reverse, typename I, typename B, typename F>
+constexpr auto consume_limit(I& source, usize& remaining, B init, F& function) {
+    using R    = decltype(function(rstd::move(init), mtp::declval<typename I::Item>()));
+    using Flow = ops::ControlFlow<R, B>;
+    if (remaining == usize()) return try_::from_output<R>(rstd::move(init));
+    auto step = [&](B accumulator, typename I::Item item) -> Flow {
+        --remaining;
+        auto result = function(rstd::move(accumulator), rstd::forward<typename I::Item>(item));
+        if (remaining == usize() || ! try_::is_success(result))
+            return Flow::Break(rstd::move(result));
+        return Flow::Continue(try_::finish(try_::take_output(rstd::move(result))));
+    };
+    auto result = DirectionalIteratorDriver<Reverse, I>::try_fold(source, rstd::move(init), step);
+    if (result.is_break()) return rstd::move(result).break_value_unchecked();
+    // A pull consumes one allowance even when the source returns None.
+    if (remaining != usize()) --remaining;
+    return try_::from_output<R>(rstd::move(result).continue_value_unchecked());
+}
+
+template<typename I, bool Reverse>
+struct TakeDriver {
+    template<typename B, typename F>
+    static constexpr auto try_fold(Take<I>& iterator, B init, F& function) {
+        if constexpr (Reverse) {
+            auto length = as<ExactSizeIterator>(iterator.i).len();
+            if (length > iterator.n) (void)double_ended_advance_by(iterator.i, length - iterator.n);
+        }
+        return consume_limit<Reverse>(iterator.i, iterator.n, rstd::move(init), function);
+    }
+    template<typename B, typename F>
+    static constexpr auto fold(Take<I>& iterator, B init, F& function) -> B {
+        auto step = [&](B accumulator, typename I::Item item) {
+            return ops::ControlFlow<empty, B>::Continue(
+                function(rstd::move(accumulator), rstd::forward<typename I::Item>(item)));
+        };
+        return rstd::move(try_fold(iterator, rstd::move(init), step)).continue_value_unchecked();
+    }
+};
+template<class I>
+struct IteratorDriver<Take<I>> : TakeDriver<I, false> {};
+template<class I>
+struct ReverseIteratorDriver<Take<I>> : TakeDriver<I, true> {};
+
+template<typename I, bool Reverse>
+struct SkipDriver {
+    template<typename B, typename F>
+    static constexpr auto try_fold(Skip<I>& iterator, B init, F& function) {
+        using R = decltype(function(rstd::move(init), mtp::declval<typename I::Item>()));
+        if constexpr (Reverse) {
+            auto remaining = iterator.len();
+            return consume_limit<true>(iterator.i, remaining, rstd::move(init), function);
+        } else {
+            while (iterator.n != usize()) {
+                auto item = iterator.i.next();
+                --iterator.n;
+                if (item.is_none()) return try_::from_output<R>(rstd::move(init));
+            }
+            return IteratorDriver<I>::try_fold(iterator.i, rstd::move(init), function);
+        }
+    }
+    template<typename B, typename F>
+    static constexpr auto fold(Skip<I>& iterator, B init, F& function) -> B {
+        if constexpr (! Reverse) {
+            while (iterator.n != usize()) {
+                auto item = iterator.i.next();
+                --iterator.n;
+                if (item.is_none()) return init;
+            }
+            return IteratorDriver<I>::fold(iterator.i, rstd::move(init), function);
+        } else {
+            auto step = [&](B accumulator, typename I::Item item) {
+                return ops::ControlFlow<empty, B>::Continue(
+                    function(rstd::move(accumulator), rstd::forward<typename I::Item>(item)));
+            };
+            return rstd::move(try_fold(iterator, rstd::move(init), step))
+                .continue_value_unchecked();
+        }
+    }
+};
+template<class I>
+struct IteratorDriver<Skip<I>> : SkipDriver<I, false> {};
+template<class I>
+struct ReverseIteratorDriver<Skip<I>> : SkipDriver<I, true> {};
 
 template<class I, class F>
 struct IntersperseWith : DefaultInClass<IntersperseWith<I, F>, Iterator> {

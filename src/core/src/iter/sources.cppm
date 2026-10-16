@@ -105,6 +105,58 @@ struct SliceIterMut : DefaultInClass<SliceIterMut<T>, Iterator> {
     }
 };
 
+template<typename I, bool Reverse>
+struct SliceDriver {
+    static constexpr auto take(I& iterator) -> typename I::Item {
+        auto position = iterator.cur;
+        if constexpr (Reverse) {
+            --iterator.fin;
+            position = iterator.fin;
+        } else {
+            ++iterator.cur;
+        }
+        if constexpr (requires { position.as_mut_ref(); })
+            return position.as_mut_ref();
+        else
+            return position.as_ref();
+    }
+
+    template<typename B, typename F>
+    static constexpr auto fold(I& iterator, B init, F& function) -> B {
+        if (iterator.cur == iterator.fin) return init;
+        auto remaining = iterator.len();
+        while (remaining != usize()) {
+            init = function(rstd::move(init), take(iterator));
+            --remaining;
+        }
+        return init;
+    }
+
+    template<typename B, typename F>
+    static constexpr auto try_fold(I& iterator, B init, F& function) {
+        using R = decltype(function(rstd::move(init), take(iterator)));
+        static_assert(try_::TrySource<R> && mtp::same_as<try_::output_t<R>, B>);
+        if (iterator.cur == iterator.fin) return try_::from_output<R>(rstd::move(init));
+        auto remaining = iterator.len();
+        while (remaining != usize()) {
+            auto result = function(rstd::move(init), take(iterator));
+            if (! try_::is_success(result)) return result;
+            init = try_::finish(try_::take_output(rstd::move(result)));
+            --remaining;
+        }
+        return try_::from_output<R>(rstd::move(init));
+    }
+};
+
+template<typename T>
+struct IteratorDriver<SliceIter<T>> : SliceDriver<SliceIter<T>, false> {};
+template<typename T>
+struct ReverseIteratorDriver<SliceIter<T>> : SliceDriver<SliceIter<T>, true> {};
+template<typename T>
+struct IteratorDriver<SliceIterMut<T>> : SliceDriver<SliceIterMut<T>, false> {};
+template<typename T>
+struct ReverseIteratorDriver<SliceIterMut<T>> : SliceDriver<SliceIterMut<T>, true> {};
+
 template<typename I>
 struct SliceTraversal {
     static constexpr auto advance(I& iterator, usize n)
