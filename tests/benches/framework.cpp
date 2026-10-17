@@ -3,6 +3,7 @@
 import rstd;
 import rstd.test;
 import rstd.bench;
+import rstd.bench.json;
 import rstd_benches;
 
 using namespace rstd::prelude;
@@ -213,7 +214,7 @@ TEST(BenchFramework, MissingCounterEpochDoesNotUseFullIterationDenominator) {
     auto                   summary = result.summary();
     EXPECT_TRUE(summary.instructions_per_unit.is_none());
     ASSERT_TRUE(summary.median_bytes_per_second.is_some());
-    EXPECT_DOUBLE_EQ(summary.median_bytes_per_second->to_primitive(), 120000000.0);
+    EXPECT_DOUBLE_EQ(summary.median_bytes_per_second->to_primitive(), 106666666.66666667);
 }
 
 TEST(BenchFramework, FallibleOperationStopsAndStillEndsCollector) {

@@ -3,6 +3,7 @@
 import rstd;
 import rstd.test;
 import rstd.bench;
+import rstd.bench.json;
 import rstd_benches;
 
 using namespace rstd::prelude;
@@ -211,4 +212,27 @@ TEST(BenchDiagnostic, UnregisteredDiagnosticsAreSkippedAndInvalidMetricsRejected
     EXPECT_TRUE(invalid.validate().is_ok());
     invalid.allocation_unavailable = {};
     EXPECT_TRUE(invalid.validate().is_err());
+}
+
+TEST(BenchDiagnostic, WorkQuantitiesRoundtripAndRepetitionsAgree) {
+    auto make_result = [](u64 repetition, u64 flops) {
+        bench::DiagnosticMeasurement measurement;
+        measurement.iterations = u64(2);
+        measurement.work.quantities.push({ "flops"_Str, bench::WorkUnit::Flops, flops });
+        return bench::RunResult { { "diagnostic"_Str, "test"_Str, "1"_Str, "rstd"_Str },
+                                  bench::CaseOutcome::Diagnosed(rstd::move(measurement)),
+                                  repetition };
+    };
+    bench::RunReport report;
+    report.mode = bench::RunMode::Diagnostic;
+    report.results.push(make_result(u64(), u64(20)));
+    auto encoded = bench::report::encode(report);
+    ASSERT_TRUE(encoded.is_ok());
+    auto decoded = bench::report::decode(encoded->as_str());
+    ASSERT_TRUE(decoded.is_ok());
+    const auto& work = decoded->results[usize()].outcome.as_Diagnosed().measurement.work;
+    ASSERT_EQ(work.quantities.len(), usize(1));
+    EXPECT_EQ(work.quantities[usize()].per_iteration, u64(20));
+    report.results.push(make_result(u64(1), u64(21)));
+    EXPECT_TRUE(report.validate().is_err());
 }

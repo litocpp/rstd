@@ -30,6 +30,7 @@ class BasicBench {
     Collector              counters_;
     Option<time::Duration> resolution_;
     u64                    jitter_state_;
+    String                 boundary_ { "operation_window"_Str };
 
     decltype(auto) clock() const noexcept { return as<MonotonicClock>(clock_); }
 
@@ -125,8 +126,10 @@ class BasicBench {
         while (measurements.len() < config_.epochs) {
             auto measured = driver(iterations, true);
             if (measured.is_err()) return Err(rstd::move(measured).unwrap_err_unchecked());
-            auto epoch      = rstd::move(measured).unwrap_unchecked();
-            auto elapsed    = epoch.elapsed.as_nanos().to_primitive();
+            auto epoch = rstd::move(measured).unwrap_unchecked();
+            if (! epoch.elapsed.is_zero() && ! epoch.elapsed.valid())
+                return Err(BenchError::IterationOverflow());
+            auto elapsed    = epoch.elapsed.nanoseconds().to_primitive();
             auto elapsed_ns = u64(elapsed);
             if (elapsed_ns == u64()) {
                 ++zero_elapsed_count;
@@ -160,15 +163,21 @@ class BasicBench {
             }
         }
 
-        return Ok(BenchmarkResult(String::make(name),
-                                  rstd::move(run_config),
-                                  config_,
-                                  resolution,
-                                  counters_.availability(),
-                                  rstd::move(measurements),
-                                  scope,
-                                  batch_size,
-                                  counters_.identity()));
+        auto result =
+            BenchmarkResult(String::make(name),
+                            rstd::move(run_config),
+                            config_,
+                            TimingDescriptor { "host_monotonic"_Str,
+                                               boundary_.clone(),
+                                               Some(f64(resolution.as_secs_f64() * 1e9)) },
+                            counters_.availability(),
+                            rstd::move(measurements),
+                            scope,
+                            batch_size,
+                            counters_.identity());
+        auto valid = result.validate();
+        if (valid.is_err()) return Err(BenchError::Operation(rstd::move(valid).unwrap_err()));
+        return Ok(rstd::move(result));
     }
     template<typename Op>
     auto measure(u64 iterations, bool timed, Op&& op) -> Result<EpochMeasurement, BenchError> {
@@ -271,11 +280,13 @@ class BasicBench {
                 rstd::hint::black_box(inputs.as_mut_slice());
                 rstd::hint::black_box(outputs.as_mut_slice());
                 if (measured.is_err()) return Err(rstd::move(measured).unwrap_err_unchecked());
-                auto part    = rstd::move(measured).unwrap_unchecked();
-                auto elapsed = u64(total.elapsed.as_nanos().to_primitive())
-                                   .checked_add(u64(part.elapsed.as_nanos().to_primitive()));
-                if (elapsed.is_none()) return Err(BenchError::IterationOverflow());
-                total.elapsed = time::Duration::from_nanos(*elapsed);
+                auto part = rstd::move(measured).unwrap_unchecked();
+                auto ns   = total.elapsed.nanoseconds() + part.elapsed.nanoseconds();
+                if (ns != f64()) {
+                    auto elapsed = ElapsedTime::from_nanoseconds(ns);
+                    if (elapsed.is_err()) return Err(rstd::move(elapsed).unwrap_err());
+                    total.elapsed = *elapsed;
+                }
                 if (first)
                     total.counters = rstd::move(part.counters);
                 else
@@ -298,6 +309,10 @@ class BasicBench {
     }
 
 public:
+    auto boundary(ref<str> name) -> BasicBench& {
+        boundary_ = String::make(name);
+        return *this;
+    }
     explicit BasicBench(Clock clock, BenchConfig config = {})
         requires requires { Collector(config.counter_mode); }
         : clock_(rstd::move(clock)),

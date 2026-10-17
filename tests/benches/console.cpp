@@ -3,6 +3,7 @@
 import rstd;
 import rstd.test;
 import rstd.bench;
+import rstd.bench.json;
 import rstd_benches;
 
 using namespace rstd::prelude;
@@ -25,14 +26,16 @@ TEST(BenchConsole, ScalesUnitsAndLimitsPrecision) {
     EXPECT_EQ(console::exact(bench::DiagnosticValue::Count(u64::MAX)), "18446744073709551615"_str);
 }
 
-auto console_timing(ref<str> id = "test.case"_str, u64 items = u64(), u64 bytes = u64())
-    -> bench::RunResult {
+auto console_timing(ref<str>                 id         = "test.case"_str,
+                    u64                      items      = u64(),
+                    u64                      bytes      = u64(),
+                    Vec<bench::WorkQuantity> quantities = {}) -> bench::RunResult {
     bench::BenchConfig config;
     config.epochs                 = usize(1);
     config.exact_epoch_iterations = Some(u64(10));
     Vec<bench::EpochMeasurement> epochs;
     epochs.push({ rstd::time::Duration::from_nanos(u64(1000)), u64(10), {} });
-    bench::RunConfig       work { "element"_Str, f64(2), items, bytes };
+    bench::RunConfig       work { "element"_Str, f64(2), items, bytes, rstd::move(quantities) };
     bench::BenchmarkResult measurement(String::make(id),
                                        rstd::move(work),
                                        config,
@@ -51,9 +54,14 @@ TEST(BenchConsole, TimingColumnsAreStreamingAndKeepPerOperationMeaning) {
     ConsoleRenderer renderer;
     renderer.include("test.case"_str);
     auto first = renderer.render(console_timing());
-    EXPECT_EQ(
-        first.as_str(),
-        "case             median/op\n--------------------------\ntest.case         100.0 ns\n"_str);
+    EXPECT_TRUE(first.as_str().starts_with("source"_str));
+    EXPECT_TRUE(first.as_str().contains("host_monotonic"_str));
+    EXPECT_TRUE(first.as_str().contains("operation_window"_str));
+    EXPECT_TRUE(first.as_str().contains("2 element"_str));
+    EXPECT_TRUE(first.as_str().contains("median/op"_str));
+    EXPECT_TRUE(first.as_str().contains("samples"_str));
+    EXPECT_TRUE(first.as_str().contains("100.0 ns"_str));
+    EXPECT_FALSE(first.as_str().contains("timing:"_str));
     auto second = renderer.render(console_timing("test.case"_str, u64(2), u64(256)));
     EXPECT_TRUE(second.as_str().starts_with("case"_str));
     EXPECT_TRUE(second.as_str().contains("items/s"_str));
@@ -242,4 +250,28 @@ TEST(BenchConsole, VerboseParsingContextAndJsonAreIndependentOfRendering) {
     ASSERT_TRUE(after.is_ok());
     EXPECT_EQ(before->as_str(), after->as_str());
     EXPECT_TRUE(rstd_bench::report::decode(after->as_str()).is_ok());
+}
+
+TEST(BenchConsole, NamedRatesKeepZeroMissingAndUnitsDistinct) {
+    Vec<bench::WorkQuantity> quantities;
+    quantities.push({ "flops"_Str, bench::WorkUnit::Flops, u64() });
+    quantities.push({ "read_bytes"_Str, bench::WorkUnit::Bytes, u64(64) });
+    ConsoleRenderer renderer;
+    auto            first =
+        renderer.render(console_timing("copy"_str, u64(), u64(128), rstd::move(quantities)));
+    EXPECT_TRUE(first.as_str().contains("flops [FLOP/s]"_str));
+    EXPECT_TRUE(first.as_str().contains("read_bytes [B/s]"_str));
+    EXPECT_TRUE(first.as_str().contains("              0"_str));
+    EXPECT_TRUE(first.as_str().contains("640.0 MB/s"_str));
+    EXPECT_FALSE(first.as_str().contains("read_bytes:"_str));
+    auto missing = renderer.render(console_timing("latency"_str));
+    EXPECT_FALSE(missing.as_str().contains("source"_str));
+    EXPECT_FALSE(missing.as_str().contains("median/op"_str));
+    EXPECT_TRUE(missing.as_str().contains("              -"_str));
+    Vec<bench::WorkQuantity> changed;
+    changed.push({ "flops"_Str, bench::WorkUnit::Count, u64(3) });
+    auto other = renderer.render(console_timing("other"_str, u64(), u64(), rstd::move(changed)));
+    EXPECT_TRUE(other.as_str().contains("flops [FLOP/s]"_str));
+    EXPECT_TRUE(other.as_str().contains("flops [count/s]"_str));
+    EXPECT_TRUE(other.as_str().contains("30.00M"_str));
 }

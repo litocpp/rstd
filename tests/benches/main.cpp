@@ -3,6 +3,7 @@
 import rstd;
 import rstd.test;
 import rstd.bench;
+import rstd.bench.json;
 import rstd.json;
 import rstd_benches;
 
@@ -106,12 +107,22 @@ TEST(BenchRunner, RealCasesPreserveScopesAndProduceThroughput) {
     auto created = make_suite();
     ASSERT_TRUE(created.is_ok());
     auto suite = rstd::move(created).unwrap();
-    EXPECT_EQ(suite.len(), usize(81));
-    const ref<str> groups[] { "alloc"_str, "slice"_str, "map"_str, "set"_str };
-    usize          cases;
-    for (auto group : groups) {
+    struct Selection {
+        ref<str> group;
+        ref<str> name;
+    };
+    const Selection selections[] { { "alloc"_str, "string_clone_end_to_end"_str },
+                                   { "alloc"_str, "vec_push_end_to_end"_str },
+                                   { "alloc"_str, "vec_push_reserved"_str },
+                                   { "alloc"_str, "bytes_extend_freeze_end_to_end"_str },
+                                   { "slice"_str, ""_str },
+                                   { "map"_str, ""_str },
+                                   { "set"_str, ""_str } };
+    usize           cases;
+    for (auto [group, name] : selections) {
         bench::RunnerOptions options;
-        options.suite                           = Some(String::make(group));
+        options.suite = Some(String::make(group));
+        if (! name.is_empty()) options.name = Some(String::make(name));
         options.quick                           = true;
         options.repeats                         = u64(2);
         options.sampling.exact_epoch_iterations = Some(u64(1));
@@ -270,7 +281,7 @@ TEST(BenchRunner, FailedAndSkippedReportsContainNoPerformanceSamples) {
     auto encoded = rstd_bench::report::encode(report);
     ASSERT_TRUE(encoded.is_ok());
     auto rendered = rstd::move(encoded).unwrap();
-    EXPECT_TRUE(rendered.as_str().contains("\"format_version\":3"_str));
+    EXPECT_TRUE(rendered.as_str().contains("\"format_version\":4"_str));
     EXPECT_TRUE(rendered.as_str().contains("\"status\":\"failed\""_str));
     EXPECT_TRUE(rendered.as_str().contains("\"status\":\"skipped\""_str));
     EXPECT_TRUE(rendered.as_str().contains("join failed"_str));

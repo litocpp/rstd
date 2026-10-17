@@ -10,3 +10,5 @@ export import :suite;
 export import :runner;
 export import :compare;
 export import :probe;
+export import :external;
+export import :console;

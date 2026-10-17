@@ -1,7 +1,7 @@
 module;
 #include <rstd/macro.hpp>
 
-module rstd_benches;
+module rstd.bench.json;
 import rstd.bench;
 import rstd.json;
 
@@ -262,25 +262,57 @@ auto read_metrics(const Value& object) -> Result<Vec<MetricSample>, String> {
     return Ok(rstd::move(metrics));
 }
 
+auto quantities_value(slice<WorkQuantity> values) -> Value {
+    auto quantities = rstd::json::Array::make();
+    for (const auto& quantity : values) {
+        Value entry;
+        entry["name"_str]          = json_text(quantity.name.as_str());
+        entry["unit"_str]          = json_text(quantity.unit == WorkUnit::Bytes   ? "bytes"_str
+                                               : quantity.unit == WorkUnit::Flops ? "FLOP"_str
+                                                                                  : "count"_str);
+        entry["per_iteration"_str] = integer(quantity.per_iteration);
+        quantities.push(rstd::move(entry));
+    }
+    return Value::Array(rstd::move(quantities));
+}
+
+auto read_quantities(const Value& object) -> Result<Vec<WorkQuantity>, String> {
+    Vec<WorkQuantity> quantities;
+    for (const auto& entry : *rstd_try(read_array(object, "quantities"_str))) {
+        auto unit = rstd_try(field<String>(entry, "unit"_str));
+        if (unit != "count"_str && unit != "bytes"_str && unit != "FLOP"_str)
+            return Err("invalid work unit"_Str);
+        quantities.push({ rstd_try(field<String>(entry, "name"_str)),
+                          unit == "bytes"_str  ? WorkUnit::Bytes
+                          : unit == "FLOP"_str ? WorkUnit::Flops
+                                               : WorkUnit::Count,
+                          rstd_try(field<u64>(entry, "per_iteration"_str)) });
+    }
+    return Ok(rstd::move(quantities));
+}
+
 auto measurement_value(const BenchmarkResult& measured) -> Value {
     Value object;
     object["name"_str]      = json_text(measured.name());
     object["collector"_str] = json_text(measured.collector_identity());
     object["scope"_str] =
-        json_text(measured.scope() == MeasurementScope::Repeated  ? "repeated"_str
-                  : measured.scope() == MeasurementScope::Batched ? "owned-input"_str
-                                                                  : "borrowed-input"_str);
-    object["batch_max_items"_str] = measured.batch_size().is_some()
-                                        ? integer(u64(measured.batch_size()->to_primitive()))
-                                        : Value::Null();
-    object["config"_str]          = config_value(measured.config());
-    object["clock_resolution_ns"_str] =
-        integer(u64(measured.clock_resolution().as_nanos().to_primitive()));
+        json_text(measured.scope() == MeasurementScope::External   ? "external"_str
+                  : measured.scope() == MeasurementScope::Repeated ? "repeated"_str
+                  : measured.scope() == MeasurementScope::Batched  ? "owned-input"_str
+                                                                   : "borrowed-input"_str);
+    object["batch_max_items"_str]     = measured.batch_size().is_some()
+                                            ? integer(u64(measured.batch_size()->to_primitive()))
+                                            : Value::Null();
+    object["config"_str]              = config_value(measured.config());
+    object["timing_source"_str]       = json_text(measured.timing().source.as_str());
+    object["timing_boundary"_str]     = json_text(measured.timing().boundary.as_str());
+    object["clock_resolution_ns"_str] = optional_real(measured.timing().resolution_ns);
     const auto& work                  = measured.run_config();
     object["unit"_str]                = json_text(work.unit.as_str());
     object["units_per_iteration"_str] = optional_real(Some(f64(work.batch)));
     object["items_per_iteration"_str] = integer(work.items_per_iteration);
     object["bytes_per_iteration"_str] = integer(work.bytes_per_iteration);
+    object["quantities"_str]          = quantities_value(work.quantities.as_slice());
     const auto& availability          = measured.counter_availability();
     object["counter_availability"_str] =
         json_text(availability.is_Disabled()    ? "disabled"_str
@@ -297,7 +329,7 @@ auto measurement_value(const BenchmarkResult& measured) -> Value {
     for (const auto& epoch : measured.measurements()) {
         Value entry;
         entry["iterations"_str] = integer(epoch.iterations);
-        entry["elapsed_ns"_str] = integer(u64(epoch.elapsed.as_nanos().to_primitive()));
+        entry["elapsed_ns"_str] = optional_real(Some(epoch.elapsed.nanoseconds()));
         entry["counters"_str]   = counters_value(epoch.counters);
         entry["metrics"_str]    = metrics_value(epoch.metrics);
         epochs.push(rstd::move(entry));
@@ -310,6 +342,23 @@ auto measurement_value(const BenchmarkResult& measured) -> Value {
     statistics["median_items_per_second"_str] = optional_real(summary.median_items_per_second);
     statistics["median_bytes_per_second"_str] = optional_real(summary.median_bytes_per_second);
     statistics["mdape"_str] = optional_real(Some(f64(summary.median_absolute_percentage_error)));
+    statistics["best_ns_per_op"_str] =
+        optional_real(Some(summary.minimum_ns_per_unit * work.batch));
+    statistics["worst_ns_per_op"_str] =
+        optional_real(Some(summary.maximum_ns_per_unit * work.batch));
+    statistics["total_elapsed_ns"_str] = optional_real(Some(summary.total_elapsed_ns));
+    auto rates                         = rstd::json::Array::make();
+    for (const auto& rate : summary.rates) {
+        Value entry;
+        entry["name"_str]       = json_text(rate.name.as_str());
+        entry["unit"_str]       = json_text(rate.unit == WorkUnit::Bytes   ? "B/s"_str
+                                            : rate.unit == WorkUnit::Flops ? "FLOP/s"_str
+                                                                           : "count/s"_str);
+        entry["total"_str]      = integer(rate.total);
+        entry["per_second"_str] = optional_real(Some(f64(rate.per_second)));
+        rates.push(rstd::move(entry));
+    }
+    statistics["rates"_str] = Value::Array(rstd::move(rates));
     object["summary"_str]   = rstd::move(statistics);
     return object;
 }
@@ -320,7 +369,9 @@ auto read_measurement(const Value& object) -> Result<BenchmarkResult, String> {
     if (collector.is_empty()) return Err("missing collector identity"_Str);
     auto             scope_name = rstd_try(field<String>(object, "scope"_str));
     MeasurementScope scope;
-    if (scope_name == "repeated"_str)
+    if (scope_name == "external"_str)
+        scope = MeasurementScope::External;
+    else if (scope_name == "repeated"_str)
         scope = MeasurementScope::Repeated;
     else if (scope_name == "owned-input"_str)
         scope = MeasurementScope::Batched;
@@ -329,17 +380,21 @@ auto read_measurement(const Value& object) -> Result<BenchmarkResult, String> {
     else
         return Err("invalid measurement scope"_Str);
     auto batch = rstd_try(field<Option<usize>>(object, "batch_max_items"_str));
-    if ((scope == MeasurementScope::Repeated) != batch.is_none() ||
+    if ((scope == MeasurementScope::Repeated || scope == MeasurementScope::External) !=
+            batch.is_none() ||
         (batch.is_some() && *batch == usize()))
         return Err("scope and batch size disagree"_Str);
-    auto config     = rstd_try(read_config(*rstd_try(member(object, "config"_str))));
-    auto resolution = rstd_try(field<u64>(object, "clock_resolution_ns"_str));
-    if (resolution == u64()) return Err("clock resolution must be nonzero"_Str);
+    auto             config = rstd_try(read_config(*rstd_try(member(object, "config"_str))));
+    TimingDescriptor timing { rstd_try(field<String>(object, "timing_source"_str)),
+                              rstd_try(field<String>(object, "timing_boundary"_str)),
+                              rstd_try(field<Option<f64>>(object, "clock_resolution_ns"_str)) };
+    rstd_try(timing.validate());
     RunConfig work { rstd_try(field<String>(object, "unit"_str)),
                      rstd_try(field<f64>(object, "units_per_iteration"_str)),
                      rstd_try(field<u64>(object, "items_per_iteration"_str)),
                      rstd_try(field<u64>(object, "bytes_per_iteration"_str)) };
-    auto      valid = work.validate();
+    work.quantities = rstd_try(read_quantities(object));
+    auto valid      = work.validate();
     if (valid.is_err()) return Err("invalid work amount"_Str);
     auto                state        = rstd_try(field<String>(object, "counter_availability"_str));
     CounterAvailability availability = CounterAvailability::Disabled();
@@ -353,11 +408,11 @@ auto read_measurement(const Value& object) -> Result<BenchmarkResult, String> {
         return Err("invalid counter availability"_Str);
     Vec<EpochMeasurement> epochs;
     for (const auto& entry : *rstd_try(read_array(object, "epochs"_str))) {
-        auto elapsed    = rstd_try(field<u64>(entry, "elapsed_ns"_str));
+        auto elapsed = ElapsedTime::from_nanoseconds(rstd_try(field<f64>(entry, "elapsed_ns"_str)));
         auto iterations = rstd_try(field<u64>(entry, "iterations"_str));
-        if (elapsed == u64() || iterations == u64())
-            return Err("epoch duration and iterations must be nonzero"_Str);
-        epochs.push({ rstd::time::Duration::from_nanos(elapsed),
+        if (elapsed.is_err()) return Err(describe_error(elapsed.unwrap_err()));
+        if (iterations == u64()) return Err("epoch iterations must be nonzero"_Str);
+        epochs.push({ *elapsed,
                       iterations,
                       rstd_try(read_counters(*rstd_try(member(entry, "counters"_str)))),
                       rstd_try(read_metrics(entry)) });
@@ -366,7 +421,7 @@ auto read_measurement(const Value& object) -> Result<BenchmarkResult, String> {
     return Ok(BenchmarkResult(rstd::move(name),
                               rstd::move(work),
                               config,
-                              rstd::time::Duration::from_nanos(resolution),
+                              rstd::move(timing),
                               rstd::move(availability),
                               rstd::move(epochs),
                               scope,
@@ -407,6 +462,7 @@ auto diagnostic_value(const DiagnosticMeasurement& measurement) -> Value {
     object["units_per_iteration"_str] = optional_real(Some(f64(measurement.work.batch)));
     object["items_per_iteration"_str] = integer(measurement.work.items_per_iteration);
     object["bytes_per_iteration"_str] = integer(measurement.work.bytes_per_iteration);
+    object["quantities"_str]          = quantities_value(measurement.work.quantities.as_slice());
     object["scope"_str] =
         json_text(measurement.scope == MeasurementScope::Repeated  ? "repeated"_str
                   : measurement.scope == MeasurementScope::Batched ? "owned-input"_str
@@ -457,12 +513,13 @@ auto diagnostic_value(const DiagnosticMeasurement& measurement) -> Value {
 
 auto read_diagnostic(const Value& object) -> Result<DiagnosticMeasurement, String> {
     DiagnosticMeasurement value;
-    value.iterations = rstd_try(field<u64>(object, "iterations"_str));
-    value.work       = { rstd_try(field<String>(object, "unit"_str)),
-                         rstd_try(field<f64>(object, "units_per_iteration"_str)),
-                         rstd_try(field<u64>(object, "items_per_iteration"_str)),
-                         rstd_try(field<u64>(object, "bytes_per_iteration"_str)) };
-    auto scope       = rstd_try(field<String>(object, "scope"_str));
+    value.iterations      = rstd_try(field<u64>(object, "iterations"_str));
+    value.work            = { rstd_try(field<String>(object, "unit"_str)),
+                              rstd_try(field<f64>(object, "units_per_iteration"_str)),
+                              rstd_try(field<u64>(object, "items_per_iteration"_str)),
+                              rstd_try(field<u64>(object, "bytes_per_iteration"_str)) };
+    value.work.quantities = rstd_try(read_quantities(object));
+    auto scope            = rstd_try(field<String>(object, "scope"_str));
     if (scope == "repeated"_str)
         value.scope = MeasurementScope::Repeated;
     else if (scope == "owned-input"_str)
@@ -525,21 +582,17 @@ auto read_diagnostic(const Value& object) -> Result<DiagnosticMeasurement, Strin
     return Ok(rstd::move(value));
 }
 
-auto rstd_bench::report::to_value(const RunReport& report) -> Result<Value, String> {
+auto rstd::bench::report::to_value(const RunReport& report) -> Result<Value, String> {
     rstd_try(report.validate());
     for (const auto& result : report.results) {
         if (! result.outcome.is_Passed()) continue;
         const auto& measured = result.outcome.as_Passed().measurement;
-        if (measured.clock_resolution().as_nanos() > u128(u64::MAX.to_primitive()) ||
-            measured.config().min_epoch_time.as_nanos() > u128(u64::MAX.to_primitive()) ||
+        if (measured.config().min_epoch_time.as_nanos() > u128(u64::MAX.to_primitive()) ||
             measured.config().max_epoch_time.as_nanos() > u128(u64::MAX.to_primitive()))
             return Err("benchmark duration exceeds JSON report range"_Str);
-        for (const auto& epoch : measured.measurements())
-            if (epoch.elapsed.as_nanos() > u128(u64::MAX.to_primitive()))
-                return Err("epoch duration exceeds JSON report range"_Str);
     }
     Value object;
-    object["format_version"_str] = integer(u64(3));
+    object["format_version"_str] = integer(u64(4));
     object["mode"_str] =
         json_text(report.mode == RunMode::Timing ? "timing"_str : "diagnostic"_str);
     object["quick"_str]      = Value::Bool(report.quick);
@@ -582,8 +635,8 @@ auto rstd_bench::report::to_value(const RunReport& report) -> Result<Value, Stri
     return Ok(rstd::move(object));
 }
 
-auto rstd_bench::report::from_value(const Value& value) -> Result<RunReport, String> {
-    if (rstd_try(field<u64>(value, "format_version"_str)) != u64(3))
+auto rstd::bench::report::from_value(const Value& value) -> Result<RunReport, String> {
+    if (rstd_try(field<u64>(value, "format_version"_str)) != u64(4))
         return Err("unsupported benchmark report version; collect a new baseline"_Str);
     RunReport report;
     auto      mode = rstd_try(field<String>(value, "mode"_str));
@@ -646,11 +699,11 @@ auto rstd_bench::report::from_value(const Value& value) -> Result<RunReport, Str
     return Ok(rstd::move(report));
 }
 
-auto rstd_bench::report::encode(const RunReport& report) -> Result<String, String> {
+auto rstd::bench::report::encode(const RunReport& report) -> Result<String, String> {
     return Ok(rstd::json::to_string(rstd_try(to_value(report))));
 }
 
-auto rstd_bench::report::decode(ref<str> input) -> Result<RunReport, String> {
+auto rstd::bench::report::decode(ref<str> input) -> Result<RunReport, String> {
     auto parsed = rstd::json::from_str(
         input, { .reject_duplicate_keys = true, .reject_integer_overflow = true });
     if (parsed.is_err())
@@ -658,7 +711,7 @@ auto rstd_bench::report::decode(ref<str> input) -> Result<RunReport, String> {
     return from_value(*parsed);
 }
 
-auto rstd_bench::report::read(ref<rstd::path::Path> path) -> Result<RunReport, String> {
+auto rstd::bench::report::read(ref<rstd::path::Path> path) -> Result<RunReport, String> {
     auto content = rstd::fs::read_to_string(path);
     if (content.is_err())
         return Err(rstd::format("cannot read benchmark report: {}", content.unwrap_err()));

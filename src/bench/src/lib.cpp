@@ -196,10 +196,7 @@ auto RunReport::validate() const -> Result<empty, String> {
                 const auto& a = before.outcome.as_Diagnosed().measurement;
                 const auto& b = result.outcome.as_Diagnosed().measurement;
                 if (a.iterations != b.iterations || a.scope != b.scope ||
-                    a.batch_size != b.batch_size || a.work.unit != b.work.unit ||
-                    a.work.batch != b.work.batch ||
-                    a.work.items_per_iteration != b.work.items_per_iteration ||
-                    a.work.bytes_per_iteration != b.work.bytes_per_iteration)
+                    a.batch_size != b.batch_size || ! a.work.same_work(b.work))
                     return Err("diagnostic configuration changed between repetitions"_Str);
             }
         }
@@ -225,9 +222,15 @@ auto RunResult::validate() const -> Result<empty, String> {
     }
     if (result.outcome.is_Diagnosed()) return result.outcome.as_Diagnosed().measurement.validate();
     const auto& measured = result.outcome.as_Passed().measurement;
-    if (measured.collector_identity().is_empty()) return Err("missing collector identity"_Str);
     if (measured.name() != result.descriptor.id.as_str())
         return Err("measurement name differs from case id"_Str);
+    return measured.validate();
+}
+
+auto BenchmarkResult::validate() const -> Result<empty, String> {
+    const auto& measured = *this;
+    if (name().is_empty() || collector_identity().is_empty())
+        return Err("missing measurement or collector identity"_Str);
     auto config = measured.config().validate();
     if (config.is_err())
         return Err(describe_error(BenchError::InvalidConfig(rstd::move(config).unwrap_err())));
@@ -236,12 +239,27 @@ auto RunResult::validate() const -> Result<empty, String> {
         return Err("invalid work amount"_Str);
     if (measured.measurements().len() != measured.config().epochs)
         return Err("epoch count differs from configuration"_Str);
-    if (measured.clock_resolution().is_zero()) return Err("clock resolution must be nonzero"_Str);
-    if ((measured.scope() == MeasurementScope::Repeated) != measured.batch_size().is_none() ||
+    auto timing = measured.timing().validate();
+    if (timing.is_err()) return timing;
+    if (measured.scope() != MeasurementScope::Repeated &&
+        measured.scope() != MeasurementScope::Batched &&
+        measured.scope() != MeasurementScope::BatchedRef &&
+        measured.scope() != MeasurementScope::External)
+        return Err("invalid measurement scope"_Str);
+    if ((measured.scope() == MeasurementScope::Repeated ||
+         measured.scope() == MeasurementScope::External) != measured.batch_size().is_none() ||
         (measured.batch_size().is_some() && *measured.batch_size() == usize()))
         return Err("scope and batch size disagree"_Str);
+    u64 total_iterations;
+    f64 total_ns;
     for (const auto& epoch : measured.measurements()) {
-        if (epoch.elapsed.is_zero() || epoch.iterations == u64()) return Err("invalid epoch"_Str);
+        auto total = total_iterations.checked_add(epoch.iterations);
+        if (total.is_none()) return Err("iteration count overflow"_Str);
+        total_iterations = *total;
+        total_ns += epoch.elapsed.nanoseconds();
+        if (! total_ns.is_finite() || total_ns > f64(9007199254740992.0))
+            return Err("elapsed sum exceeds supported precision"_Str);
+        if (! epoch.elapsed.valid() || epoch.iterations == u64()) return Err("invalid epoch"_Str);
         if (measured.config().exact_epoch_iterations.is_some() &&
             *measured.config().exact_epoch_iterations != epoch.iterations)
             return Err("epoch iterations differ from exact configuration"_Str);
@@ -252,6 +270,20 @@ auto RunResult::validate() const -> Result<empty, String> {
                 if (metric.name == epoch.metrics[j].name) return Err("duplicate metric name"_Str);
         }
     }
+    for (usize i; i < work_.len(); ++i) {
+        const auto& quantity = work_[i];
+        if (quantity.name.is_empty()) return Err("empty work quantity name"_Str);
+        for (usize j; j < i; ++j)
+            if (work_[j].name == quantity.name) return Err("duplicate work quantity"_Str);
+        if (quantity.per_iteration.checked_mul(total_iterations).is_none())
+            return Err("work quantity overflow"_Str);
+    }
+    auto summary = measured.summary();
+    if (summary.minimum_ns_per_unit <= f64() || ! summary.mean_ns_per_unit.is_finite() ||
+        ! summary.units_per_second.is_finite())
+        return Err("invalid normalized benchmark summary"_Str);
+    for (const auto& rate : summary.rates)
+        if (! rate.per_second.is_finite()) return Err("non-finite work rate"_Str);
     return Ok(empty {});
 }
 

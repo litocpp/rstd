@@ -21,8 +21,6 @@ sources = [
   "async/loopback.cpp",
   "async/io_operation.cpp",
   "support/mod.cppm",
-  "support/report.cpp",
-  "support/console.cpp",
   "support/runner.cpp",
   "support/registry.cpp",
   "main.cpp",
@@ -41,6 +39,7 @@ rtti = false
 [dependencies]
 rstd-cppstd = { path = ".." }
 rstd-bench = { path = ".." }
+rstd-bench-json = { path = ".." }
 rstd-argparse = { path = ".." }
 rstd-json = { path = ".." }
 rstd-toml = { path = ".." }

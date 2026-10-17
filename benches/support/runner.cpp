@@ -4,6 +4,7 @@ module;
 module rstd_benches;
 import rstd;
 import rstd.bench;
+import rstd.bench.json;
 import rstd.argparse;
 import rstd.json;
 

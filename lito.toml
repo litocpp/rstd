@@ -10,6 +10,7 @@ members = [
   "src/argparse",
   "src/std",
   "src/bench",
+  "src/bench-json",
   "src/test",
   "src/cppstd",
   "src/json",
@@ -25,6 +26,8 @@ license = "MIT OR Apache-2.0"
 authors = ["hypengw <hypengwip@gmail.com>"]
 
 [workspace.dependencies]
+rstd-bench = { path = "src/bench", version = "0.1.8" }
+rstd-json = { path = "src/json", version = "0.1.8" }
 rstd-basic = { path = "src/basic", version = "0.1.8" }
 rstd-runtime = { path = "src/runtime", version = "0.1.8" }
 rstd-core = { path = "src/core", version = "0.1.8" }

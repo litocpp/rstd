@@ -42,6 +42,16 @@ auto BenchmarkResult::same_measurement_config(const BenchmarkResult& b) const ->
     const auto& y  = b.run_config();
     const auto& ac = a.config();
     const auto& bc = b.config();
+    if (a.timing().source != b.timing().source || a.timing().boundary != b.timing().boundary ||
+        a.work().len() != b.work().len())
+        return false;
+    for (usize i; i < a.work().len(); ++i) {
+        const auto& left  = a.work()[i];
+        const auto& right = b.work()[i];
+        if (left.name != right.name || left.unit != right.unit ||
+            left.per_iteration != right.per_iteration)
+            return false;
+    }
     return ! a.collector_identity().is_empty() &&
            a.collector_identity() == b.collector_identity() && a.scope() == b.scope() &&
            a.batch_size() == b.batch_size() && x.unit == y.unit && x.batch == y.batch &&

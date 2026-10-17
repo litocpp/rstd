@@ -3,8 +3,8 @@ export import :model;
 
 using namespace rstd::prelude;
 
-auto bench_duration_ns(rstd::time::Duration value) noexcept -> f64 {
-    return f64(value.as_secs_f64() * 1'000'000'000.0);
+auto bench_duration_ns(rstd::bench::ElapsedTime value) noexcept -> f64 {
+    return value.nanoseconds();
 }
 
 auto bench_saturating_add(u64 left, u64 right) noexcept -> u64 {
@@ -50,10 +50,8 @@ export auto percentile(Vec<f64> values, f64 percentile_value) noexcept -> f64 {
 
 auto BenchmarkResult::summary() const -> BenchmarkSummary {
     auto per_unit         = Vec<f64>::with_capacity(measurements_.len());
-    auto total_elapsed    = time::Duration_ZERO;
+    auto total_elapsed    = f64();
     auto total_iterations = u64();
-    auto item_rates       = Vec<f64>::with_capacity(measurements_.len());
-    auto byte_rates       = Vec<f64>::with_capacity(measurements_.len());
 
     f64 sum;
     f64 minimum = f64::INFINITY_;
@@ -76,17 +74,8 @@ auto BenchmarkResult::summary() const -> BenchmarkSummary {
         sum += value;
         minimum = minimum.min(value);
         maximum = maximum.max(value);
-        total_elapsed += measurement.elapsed;
+        total_elapsed += measurement.elapsed.nanoseconds();
         total_iterations = bench_saturating_add(total_iterations, measurement.iterations);
-        auto elapsed     = bench_duration_ns(measurement.elapsed);
-        if (elapsed > f64()) {
-            auto rate = f64(measurement.iterations.to_primitive()) * f64(1'000'000'000.0) / elapsed;
-            if (run_config_.items_per_iteration != u64())
-                item_rates.push(rate * f64(run_config_.items_per_iteration.to_primitive()));
-            if (run_config_.bytes_per_iteration != u64())
-                byte_rates.push(rate * f64(run_config_.bytes_per_iteration.to_primitive()));
-        }
-
         if (measurement.counters.instructions.is_some()) {
             instructions +=
                 f64(static_cast<double>(measurement.counters.instructions->to_primitive()));
@@ -130,6 +119,19 @@ auto BenchmarkResult::summary() const -> BenchmarkSummary {
         return Some(value / total_units);
     };
 
+    Vec<WorkRate> rates;
+    Option<f64>   item_rate, byte_rate;
+    for (const auto& quantity : work_) {
+        auto rate = median_value > f64() ? f64(quantity.per_iteration.to_primitive()) * f64(1e9) /
+                                               (median_value * run_config_.batch)
+                                         : f64();
+        if (quantity.name == "items"_str) item_rate = Some(f64(rate));
+        if (quantity.name == "bytes"_str) byte_rate = Some(f64(rate));
+        rates.push({ quantity.name.clone(),
+                     quantity.unit,
+                     bench_saturating_mul(total_iterations, quantity.per_iteration),
+                     rate });
+    }
     return BenchmarkSummary {
         .median_ns_per_unit               = median_value,
         .mean_ns_per_unit                 = mean,
@@ -137,27 +139,22 @@ auto BenchmarkResult::summary() const -> BenchmarkSummary {
         .maximum_ns_per_unit              = maximum,
         .median_absolute_percentage_error = median(rstd::move(errors)),
         .units_per_second = median_value == f64() ? f64() : f64(1'000'000'000.0) / median_value,
-        .total_elapsed    = total_elapsed,
+        .total_elapsed_ns = total_elapsed,
         .total_iterations = total_iterations,
         .total_items      = bench_saturating_mul(total_iterations, run_config_.items_per_iteration),
         .total_bytes      = bench_saturating_mul(total_iterations, run_config_.bytes_per_iteration),
-        .instructions_per_unit  = has_instructions ? per_counter_unit(instructions) : None(),
-        .cycles_per_unit        = has_cycles ? per_counter_unit(cycles) : None(),
-        .instructions_per_cycle = has_instructions && has_cycles && cycles != f64()
-                                      ? Some(instructions / cycles)
-                                      : None(),
-        .branches_per_unit      = has_branches ? per_counter_unit(branches) : None(),
-        .branch_miss_ratio      = has_branches && has_branch_misses && branches != f64()
-                                      ? Some(branch_misses / branches)
-                                      : None(),
-        .median_items_per_second =
-            item_rates.len() == measurements_.len() && ! item_rates.is_empty()
-                ? Some(median(rstd::move(item_rates)))
-                : None(),
-        .median_bytes_per_second =
-            byte_rates.len() == measurements_.len() && ! byte_rates.is_empty()
-                ? Some(median(rstd::move(byte_rates)))
-                : None(),
+        .instructions_per_unit   = has_instructions ? per_counter_unit(instructions) : None(),
+        .cycles_per_unit         = has_cycles ? per_counter_unit(cycles) : None(),
+        .instructions_per_cycle  = has_instructions && has_cycles && cycles != f64()
+                                       ? Some(instructions / cycles)
+                                       : None(),
+        .branches_per_unit       = has_branches ? per_counter_unit(branches) : None(),
+        .branch_miss_ratio       = has_branches && has_branch_misses && branches != f64()
+                                       ? Some(branch_misses / branches)
+                                       : None(),
+        .median_items_per_second = item_rate,
+        .median_bytes_per_second = byte_rate,
+        .rates                   = rstd::move(rates),
     };
 }
 

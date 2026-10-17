@@ -1,5 +1,6 @@
 export module rstd.bench:workload;
 export import :benchmark;
+export import :external;
 
 using namespace rstd::prelude;
 
@@ -26,7 +27,8 @@ public:
                           RunConfig { work_.unit.clone(),
                                       work_.batch,
                                       work_.items_per_iteration,
-                                      work_.bytes_per_iteration });
+                                      work_.bytes_per_iteration,
+                                      work_.quantities.clone() });
     }
 };
 
@@ -50,7 +52,8 @@ public:
                                    RunConfig { work_.unit.clone(),
                                                work_.batch,
                                                work_.items_per_iteration,
-                                               work_.bytes_per_iteration });
+                                               work_.bytes_per_iteration,
+                                               work_.quantities.clone() });
     }
 };
 
@@ -75,9 +78,11 @@ public:
 
     template<typename Engine>
     auto run(Engine& engine, ref<str> name) -> Result<BenchmarkResult, BenchError> {
-        auto work = RunConfig {
-            work_.unit.clone(), work_.batch, work_.items_per_iteration, work_.bytes_per_iteration
-        };
+        auto work = RunConfig { work_.unit.clone(),
+                                work_.batch,
+                                work_.items_per_iteration,
+                                work_.bytes_per_iteration,
+                                work_.quantities.clone() };
         if constexpr (Borrowed)
             return engine.run_batched_ref(name, setup_, operation_, batch_, rstd::move(work));
         else
@@ -95,6 +100,43 @@ template<typename Setup, typename Operation>
 auto batched_ref(Setup setup, Operation operation, BatchConfig batch = {}, RunConfig work = {})
     -> Batched<Setup, Operation, true> {
     return { rstd::move(setup), rstd::move(operation), batch, rstd::move(work) };
+}
+
+template<class Measure>
+class ExternallyTimed {
+    Measure                measure_;
+    ExternalSamplingConfig sampling_;
+    TimingDescriptor       timing_;
+    RunConfig              work_;
+
+public:
+    ExternallyTimed(Measure                measure,
+                    ExternalSamplingConfig sampling,
+                    TimingDescriptor       timing,
+                    RunConfig              work)
+        : measure_(rstd::move(measure)),
+          sampling_(sampling),
+          timing_(rstd::move(timing)),
+          work_(rstd::move(work)) {}
+    auto run(ExternalBench& engine, ref<str> name) -> Result<BenchmarkResult, BenchError> {
+        return engine.run(
+            name,
+            measure_,
+            sampling_,
+            { timing_.source.clone(), timing_.boundary.clone(), timing_.resolution_ns },
+            { work_.unit.clone(),
+              work_.batch,
+              work_.items_per_iteration,
+              work_.bytes_per_iteration,
+              work_.quantities.clone() });
+    }
+};
+template<class Measure>
+auto externally_timed(Measure                measure,
+                      ExternalSamplingConfig sampling,
+                      TimingDescriptor       timing,
+                      RunConfig              work = {}) -> ExternallyTimed<Measure> {
+    return { rstd::move(measure), sampling, rstd::move(timing), rstd::move(work) };
 }
 
 template<typename Workload, typename Validate, typename Finish>

@@ -20,6 +20,8 @@ target_sources(
          src/workload.cppm
          src/diagnostic.cppm
          src/suite.cppm
+         src/external.cppm
+         src/console.cppm
          src/runner.cppm
          src/compare.cppm
          src/probe/mod.cppm
@@ -28,4 +30,4 @@ target_sources(
          src/probe/recorder.cppm
          src/probe/collector.cppm
          src/probe/report.cppm)
-target_sources(rstd.bench PRIVATE src/lib.cpp src/compare.cpp src/diagnostic.cpp)
+target_sources(rstd.bench PRIVATE src/console.cpp src/lib.cpp src/compare.cpp src/diagnostic.cpp)

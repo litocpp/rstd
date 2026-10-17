@@ -79,12 +79,12 @@ TEST(Bench, ExactIterationsExcludeWarmupAndPreserveEpochs) {
     ASSERT_TRUE(result.is_ok());
     auto measured = rstd::move(result).unwrap_unchecked();
     EXPECT_EQ(operations, u64(14));
-    EXPECT_EQ(measured.clock_resolution(), rstd::time::Duration::from_nanos(u64(1)));
+    EXPECT_EQ(*measured.timing().resolution_ns, f64(1));
     ASSERT_EQ(measured.measurements().len(), usize(3));
     for (usize index; index < measured.measurements().len(); ++index) {
         const auto& epoch = measured.measurements()[index];
         EXPECT_EQ(epoch.iterations, u64(4));
-        EXPECT_EQ(epoch.elapsed, rstd::time::Duration::from_nanos(u64(100)));
+        EXPECT_EQ(epoch.elapsed.nanoseconds(), f64(100));
     }
 
     auto summary = measured.summary();
@@ -231,7 +231,7 @@ TEST(Bench, BatchedBorrowKeepsPreparationAndDropsOutsideTiming) {
     EXPECT_EQ(measured.scope(), rstd::bench::MeasurementScope::BatchedRef);
     EXPECT_EQ(*measured.batch_size(), usize(3));
     for (const auto& epoch : measured.measurements()) {
-        EXPECT_EQ(epoch.elapsed.as_nanos(), u128(5));
+        EXPECT_EQ(epoch.elapsed.nanoseconds(), f64(5));
         EXPECT_EQ(epoch.iterations, u64(5));
     }
     EXPECT_EQ(state.setups, usize(12));
@@ -262,7 +262,7 @@ TEST(Bench, ConsumedInputDropsInsideTimingButOutputDropsOutside) {
     ASSERT_TRUE(result.is_ok());
     auto measured = rstd::move(result).unwrap_unchecked();
     for (const auto& epoch : measured.measurements()) {
-        EXPECT_EQ(epoch.elapsed.as_nanos(), u128(505));
+        EXPECT_EQ(epoch.elapsed.nanoseconds(), f64(505));
     }
     EXPECT_EQ(state.input_drops, usize(12));
     EXPECT_EQ(state.output_drops, usize(12));
@@ -281,7 +281,7 @@ TEST(Bench, RepeatedOutputDestructionIsMeasured) {
     ASSERT_TRUE(result.is_ok());
     auto measured = rstd::move(result).unwrap_unchecked();
     for (const auto& epoch : measured.measurements()) {
-        EXPECT_EQ(epoch.elapsed.as_nanos(), u128(5005));
+        EXPECT_EQ(epoch.elapsed.nanoseconds(), f64(5005));
     }
     EXPECT_TRUE(measured.batch_size().is_none());
     EXPECT_EQ(state.output_drops, usize(12));
@@ -305,7 +305,7 @@ TEST(Bench, BatchedVoidAndClockFailureReleaseInputs) {
     EXPECT_EQ(state.input_drops, usize(10));
     EXPECT_EQ(state.output_drops, usize());
     EXPECT_EQ(state.maximum_inputs, usize(2));
-    EXPECT_EQ(result.unwrap_unchecked().measurements()[usize()].elapsed.as_nanos(), u128(5));
+    EXPECT_EQ(result.unwrap_unchecked().measurements()[usize()].elapsed.nanoseconds(), f64(5));
 
     auto failed = runner.run_batched_ref(
         "backwards"_str,
@@ -347,7 +347,7 @@ TEST(Bench, BatchLimitsRejectBeforeSetupAndAdaptiveUsesOperationTime) {
     ASSERT_TRUE(result.is_ok());
     auto measured = rstd::move(result).unwrap_unchecked();
     for (const auto& epoch : measured.measurements()) {
-        EXPECT_EQ(epoch.elapsed.as_nanos(), u128(epoch.iterations.to_primitive()));
+        EXPECT_EQ(epoch.elapsed.nanoseconds(), f64(epoch.iterations.to_primitive()));
         EXPECT_GE(epoch.iterations, u64(7));
     }
     EXPECT_EQ(state.input_drops, state.setups);

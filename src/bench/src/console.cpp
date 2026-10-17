@@ -1,13 +1,13 @@
 module;
 #include <rstd/macro.hpp>
 
-module rstd_benches;
+module rstd.bench;
 import rstd;
-import rstd.bench;
+import :console;
 
 using namespace rstd::prelude;
 using namespace rstd::literals;
-using namespace rstd_bench;
+using namespace rstd::bench;
 namespace bench = rstd::bench;
 
 auto console::number(f64 value) -> String {
@@ -99,7 +99,7 @@ auto diagnostic_value(const bench::DiagnosticValue& value, bench::DiagnosticUnit
     return console::number(result);
 }
 
-auto ascii(ref<str> value) -> bool {
+auto console_ascii(ref<str> value) -> bool {
     for (auto byte : value.as_bytes())
         if (byte >= u8(128)) return false;
     return true;
@@ -120,7 +120,7 @@ void column(String& output, ref<str> value, usize width = usize(15)) {
 }
 void name_cell(String& output, ref<str> raw, usize width) {
     auto name = console::escaped(raw);
-    if (name.len() > width || ! ascii(name.as_str())) {
+    if (name.len() > width || ! console_ascii(name.as_str())) {
         output.push_str(name.as_str());
         output.push_ascii('\n');
         spaces(output, width);
@@ -132,6 +132,7 @@ void divider(String& output, usize width) {
     output.push_ascii('\n');
 }
 auto scope_name(bench::MeasurementScope scope) -> ref<str> {
+    if (scope == bench::MeasurementScope::External) return "external"_str;
     if (scope == bench::MeasurementScope::Batched) return "batched"_str;
     if (scope == bench::MeasurementScope::BatchedRef) return "batched-ref"_str;
     return "repeated"_str;
@@ -139,7 +140,8 @@ auto scope_name(bench::MeasurementScope scope) -> ref<str> {
 
 void ConsoleRenderer::include(ref<str> name) {
     auto display = console::escaped(name);
-    if (ascii(display.as_str())) name_width_ = name_width_.max(display.len().min(usize(48)));
+    if (console_ascii(display.as_str()))
+        name_width_ = name_width_.max(display.len().min(usize(48)));
 }
 
 auto ConsoleRenderer::render(const bench::RunResult& result) -> String {
@@ -166,9 +168,56 @@ auto ConsoleRenderer::render(const bench::RunResult& result) -> String {
     if (header) {
         items_ = false;
         bytes_ = false;
+        rate_columns_.clear();
     }
     if (timing) {
-        const auto& work = result.outcome.as_Passed().measurement.run_config();
+        const auto& measured = result.outcome.as_Passed().measurement;
+        const auto& work     = measured.run_config();
+        auto        source   = console::escaped(measured.timing().source.as_str());
+        auto        boundary = console::escaped(measured.timing().boundary.as_str());
+        auto work_label = rstd::format("{} {}", work.batch, console::escaped(work.unit.as_str()));
+        auto resolution = measured.timing().resolution_ns.is_some()
+                              ? console::time(*measured.timing().resolution_ns)
+                              : "unknown"_Str;
+        if (table_ != 1 || source != timing_source_ || boundary != timing_boundary_ ||
+            work_label != work_label_ || resolution != resolution_label_) {
+            const auto source_width     = source.len().max(usize(6));
+            const auto boundary_width   = boundary.len().max(usize(8));
+            const auto work_width       = work_label.len().max(usize(7));
+            const auto resolution_width = resolution.len().max(usize(10));
+            cell(output, "source"_str, source_width, true);
+            column(output, "boundary"_str, boundary_width);
+            column(output, "resolution"_str, resolution_width);
+            column(output, "work/op"_str, work_width);
+            output.push_ascii('\n');
+            divider(output,
+                    source_width + boundary_width + resolution_width + work_width + usize(6));
+            cell(output, source.as_str(), source_width, true);
+            column(output, boundary.as_str(), boundary_width);
+            column(output, resolution.as_str(), resolution_width);
+            column(output, work_label.as_str(), work_width);
+            output.push_str("\n\n"_str);
+            timing_source_    = rstd::move(source);
+            timing_boundary_  = rstd::move(boundary);
+            work_label_       = rstd::move(work_label);
+            resolution_label_ = rstd::move(resolution);
+            header            = true;
+        }
+        for (const auto& quantity : measured.work()) {
+            if (quantity.name == "items"_str || quantity.name == "bytes"_str) continue;
+            bool found = false;
+            for (const auto& existing : rate_columns_)
+                if (existing.name == quantity.name && existing.unit == quantity.unit) found = true;
+            if (found) continue;
+            auto label = rstd::format("{} [{}]",
+                                      console::escaped(quantity.name.as_str()),
+                                      quantity.unit == WorkUnit::Flops   ? "FLOP/s"_str
+                                      : quantity.unit == WorkUnit::Bytes ? "B/s"_str
+                                                                         : "count/s"_str);
+            auto width = label.len().max(usize(15));
+            rate_columns_.push({ quantity.name.clone(), quantity.unit, rstd::move(label), width });
+            header = true;
+        }
         if (work.items_per_iteration != u64() && ! items_) {
             items_ = true;
             header = true;
@@ -186,6 +235,8 @@ auto ConsoleRenderer::render(const bench::RunResult& result) -> String {
             column(output, "median/op"_str);
             if (items_) column(output, "items/s"_str);
             if (bytes_) column(output, "bytes/s"_str);
+            for (const auto& rate : rate_columns_) column(output, rate.label.as_str(), rate.width);
+            column(output, "samples"_str, usize(7));
         } else {
             column(output, "allocs/op"_str);
             column(output, "allocated/op"_str);
@@ -193,9 +244,13 @@ auto ConsoleRenderer::render(const bench::RunResult& result) -> String {
             column(output, "cleanup live"_str);
         }
         output.push_ascii('\n');
-        divider(output,
-                name_width_ + (options_.repeats > u64(1) ? usize(10) : usize()) +
-                    usize(17) * (timing ? usize(1 + int(items_) + int(bytes_)) : usize(4)));
+        auto width = name_width_ + (options_.repeats > u64(1) ? usize(10) : usize()) +
+                     usize(17) * (timing ? usize(1 + int(items_) + int(bytes_)) : usize(4));
+        if (timing) {
+            width += usize(9);
+            for (const auto& rate : rate_columns_) width += rate.width + usize(2);
+        }
+        divider(output, width);
     }
     name_cell(output, result.descriptor.id.as_str(), name_width_);
     if (options_.repeats > u64(1))
@@ -219,7 +274,28 @@ auto ConsoleRenderer::render(const bench::RunResult& result) -> String {
                    : summary.median_bytes_per_second.is_some()
                        ? console::byte_rate(*summary.median_bytes_per_second)
                        : "unavailable"_Str);
+        for (const auto& rate_column : rate_columns_) {
+            String value = "-"_Str;
+            for (const auto& rate : summary.rates) {
+                if (rate.name != rate_column.name || rate.unit != rate_column.unit) continue;
+                value = rate.unit == WorkUnit::Bytes ? console::byte_rate(rate.per_second)
+                                                     : console::item_rate(rate.per_second);
+                break;
+            }
+            column(output, value.as_str(), rate_column.width);
+        }
+        column(output, rstd::format("{}", measured.measurements().len()).as_str(), usize(7));
         output.push_ascii('\n');
+        if (options_.verbose) {
+            output.push_str("  epoch        elapsed [ns]       iterations\n"_str);
+            usize index;
+            for (const auto& epoch : measured.measurements()) {
+                column(output, rstd::format("{}", ++index).as_str(), usize(5));
+                column(output, rstd::format("{}", epoch.elapsed.nanoseconds()).as_str(), usize(18));
+                column(output, rstd::format("{}", epoch.iterations).as_str());
+                output.push_ascii('\n');
+            }
+        }
         const auto& availability = measured.counter_availability();
         if (availability.is_Unavailable())
             output.push_str(
@@ -373,7 +449,7 @@ auto console::comparison(const bench::ComparisonReport& report, bool verbose) ->
     usize width(4);
     for (const auto& value : report.cases) {
         auto name = escaped(value.id.as_str());
-        if (ascii(name.as_str())) width = width.max(name.len().min(usize(48)));
+        if (console_ascii(name.as_str())) width = width.max(name.len().min(usize(48)));
     }
     output.push_ascii('\n');
     cell(output, "case"_str, width, true);
