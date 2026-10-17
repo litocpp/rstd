@@ -173,8 +173,12 @@ auto ConsoleRenderer::render(const bench::RunResult& result) -> String {
     if (timing) {
         const auto& measured = result.outcome.as_Passed().measurement;
         const auto& work     = measured.run_config();
-        auto        source   = console::escaped(measured.timing().source.as_str());
-        auto        boundary = console::escaped(measured.timing().boundary.as_str());
+        if (statistic_ != work.statistic) {
+            statistic_ = work.statistic;
+            header     = true;
+        }
+        auto source     = console::escaped(measured.timing().source.as_str());
+        auto boundary   = console::escaped(measured.timing().boundary.as_str());
         auto work_label = rstd::format("{} {}", work.batch, console::escaped(work.unit.as_str()));
         auto resolution = measured.timing().resolution_ns.is_some()
                               ? console::time(*measured.timing().resolution_ns)
@@ -232,7 +236,7 @@ auto ConsoleRenderer::render(const bench::RunResult& result) -> String {
         cell(output, "case"_str, name_width_, true);
         if (options_.repeats > u64(1)) column(output, "repeat"_str, usize(8));
         if (timing) {
-            column(output, "median/op"_str);
+            column(output, statistic_ == SummaryStatistic::Best ? "best/op"_str : "median/op"_str);
             if (items_) column(output, "items/s"_str);
             if (bytes_) column(output, "bytes/s"_str);
             for (const auto& rate : rate_columns_) column(output, rate.label.as_str(), rate.width);
@@ -261,18 +265,18 @@ auto ConsoleRenderer::render(const bench::RunResult& result) -> String {
         const auto& measured = result.outcome.as_Passed().measurement;
         auto        summary  = measured.summary();
         const auto& work     = measured.run_config();
-        column(output, console::time(summary.median_ns_per_unit * work.batch).as_str());
+        column(output, console::time(summary.selected_ns_per_unit * work.batch).as_str());
         if (items_)
             column(output,
                    work.items_per_iteration == u64() ? "-"_Str
-                   : summary.median_items_per_second.is_some()
-                       ? console::item_rate(*summary.median_items_per_second)
+                   : summary.rate("items"_str).is_some()
+                       ? console::item_rate(*summary.rate("items"_str))
                        : "unavailable"_Str);
         if (bytes_)
             column(output,
                    work.bytes_per_iteration == u64() ? "-"_Str
-                   : summary.median_bytes_per_second.is_some()
-                       ? console::byte_rate(*summary.median_bytes_per_second)
+                   : summary.rate("bytes"_str).is_some()
+                       ? console::byte_rate(*summary.rate("bytes"_str))
                        : "unavailable"_Str);
         for (const auto& rate_column : rate_columns_) {
             String value = "-"_Str;

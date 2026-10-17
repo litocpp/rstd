@@ -44,6 +44,7 @@ TEST(BenchExternal, PreservesFractionalEpochsAndNormalizesOnce) {
     EXPECT_EQ(result.measurements()[usize()].elapsed.nanoseconds(), f64(2.5));
     auto summary = result.summary();
     EXPECT_EQ(summary.median_ns_per_unit, f64(2.5));
+    EXPECT_EQ(summary.selected_ns_per_unit, f64(2.5));
     EXPECT_EQ(summary.minimum_ns_per_unit, f64(1.25));
     EXPECT_EQ(summary.maximum_ns_per_unit, f64(3.75));
     EXPECT_EQ(summary.total_elapsed_ns, f64(10));
@@ -208,4 +209,53 @@ TEST(BenchExternal, RejectsElapsedSumOverflowAndNormalizationUnderflow) {
     work.batch = f64(1e100);
     EXPECT_TRUE(engine.run("underflow"_str, small, { usize(1), u64(1) }, source(), rstd::move(work))
                     .is_err());
+}
+
+TEST(BenchExternal, BestSelectsNormalizedSampleAndPreservesMedian) {
+    bench::BenchConfig config;
+    config.epochs = usize(2);
+    bench::RunConfig work;
+    work.batch               = f64(2);
+    work.bytes_per_iteration = u64(8);
+    work.statistic           = bench::SummaryStatistic::Best;
+    Vec<bench::EpochMeasurement> epochs;
+    epochs.push({ bench::ElapsedTime::from_nanoseconds(f64(100)).unwrap(), u64(1), {}, {} });
+    epochs.push({ bench::ElapsedTime::from_nanoseconds(f64(200)).unwrap(), u64(4), {}, {} });
+    bench::BenchmarkResult result(
+        "best"_Str,
+        rstd::move(work),
+        config,
+        bench::TimingDescriptor { "device"_Str, "dispatch_batch"_Str, None() },
+        bench::CounterAvailability::Disabled(),
+        rstd::move(epochs),
+        bench::MeasurementScope::External,
+        None(),
+        "none/v1"_Str);
+    ASSERT_TRUE(result.validate().is_ok());
+    auto summary = result.summary();
+    EXPECT_EQ(summary.selected_ns_per_unit, f64(25));
+    EXPECT_EQ(summary.median_ns_per_unit, f64(37.5));
+    EXPECT_EQ(*summary.rate("bytes"_str), f64(160e6));
+    EXPECT_EQ(*summary.median_bytes_per_second, f64(8e9 / 75));
+    EXPECT_EQ(result.measurements().len(), usize(2));
+    bench::RunReport report;
+    report.results.push({ { "best"_Str, "test"_Str, "1"_Str, "rstd"_Str },
+                          bench::CaseOutcome::Passed(rstd::move(result)),
+                          u64() });
+    auto encoded = bench::report::encode(report);
+    ASSERT_TRUE(encoded.is_ok());
+    EXPECT_TRUE(encoded->as_str().contains("\"summary_statistic\":\"best\""_str));
+    auto decoded = bench::report::decode(encoded->as_str());
+    ASSERT_TRUE(decoded.is_ok());
+    const auto& measured = decoded->results[usize()].outcome.as_Passed().measurement;
+    EXPECT_EQ(measured.run_config().statistic, bench::SummaryStatistic::Best);
+    EXPECT_EQ(measured.summary().selected_ns_per_unit, f64(25));
+    EXPECT_EQ(measured.measurements()[usize(1)].iterations, u64(4));
+    bench::ConsoleRenderer renderer;
+    auto                   text = renderer.render(decoded->results[usize()]);
+    EXPECT_TRUE(text.as_str().contains("best/op"_str));
+    bench::RunConfig median_work;
+    median_work.batch               = f64(2);
+    median_work.bytes_per_iteration = u64(8);
+    EXPECT_FALSE(measured.run_config().same_work(median_work));
 }

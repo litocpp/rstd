@@ -156,15 +156,22 @@ struct WorkRate {
     f64      per_second;
 };
 
+enum class SummaryStatistic
+{
+    Median,
+    Best
+};
+
 struct RunConfig {
     String            unit { String::make("op"_str) };
     f64               batch { f64(1.0) };
     u64               items_per_iteration {};
     u64               bytes_per_iteration {};
     Vec<WorkQuantity> quantities;
+    SummaryStatistic  statistic = SummaryStatistic::Median;
 
     auto same_work(const RunConfig& other) const -> bool {
-        if (unit != other.unit || batch != other.batch ||
+        if (unit != other.unit || batch != other.batch || statistic != other.statistic ||
             items_per_iteration != other.items_per_iteration ||
             bytes_per_iteration != other.bytes_per_iteration ||
             quantities.len() != other.quantities.len())
@@ -178,7 +185,8 @@ struct RunConfig {
         return true;
     }
     auto validate() const noexcept -> Result<empty, BenchConfigError> {
-        if (! batch.is_finite() || batch <= f64() || unit.is_empty())
+        if (! batch.is_finite() || batch <= f64() || unit.is_empty() ||
+            (statistic != SummaryStatistic::Median && statistic != SummaryStatistic::Best))
             return Err(BenchConfigError::InvalidBatch());
         for (usize i; i < quantities.len(); ++i) {
             const auto& q = quantities[i];
@@ -223,6 +231,7 @@ struct WindowMeasurement {
 };
 
 struct BenchmarkSummary {
+    f64           selected_ns_per_unit;
     f64           median_ns_per_unit;
     f64           mean_ns_per_unit;
     f64           minimum_ns_per_unit;

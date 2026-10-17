@@ -322,7 +322,7 @@ auto TextReporter::report(const RunResult& result) -> Result<empty, String> {
         const auto& measured = result.outcome.as_Passed().measurement;
         line = rstd::format("{} {} ns/op\n",
                             result.descriptor.id,
-                            measured.summary().median_ns_per_unit * measured.run_config().batch);
+                            measured.summary().selected_ns_per_unit * measured.run_config().batch);
     } else if (result.outcome.is_Diagnosed()) {
         const auto& measured = result.outcome.as_Diagnosed().measurement;
         line                 = rstd::format(

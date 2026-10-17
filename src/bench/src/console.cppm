@@ -35,13 +35,14 @@ class ConsoleRenderer {
         String   label;
         usize    width;
     };
-    Vec<RateColumn> rate_columns_;
-    String          timing_source_, timing_boundary_, work_label_, resolution_label_;
-    ConsoleOptions  options_;
-    usize           name_width_ { usize(4) };
-    int             table_ {};
-    bool            items_ {};
-    bool            bytes_ {};
+    Vec<RateColumn>  rate_columns_;
+    String           timing_source_, timing_boundary_, work_label_, resolution_label_;
+    ConsoleOptions   options_;
+    usize            name_width_ { usize(4) };
+    int              table_ {};
+    bool             items_ {};
+    bool             bytes_ {};
+    SummaryStatistic statistic_ = SummaryStatistic::Median;
 
 public:
     explicit ConsoleRenderer(ConsoleOptions options = {}): options_(options) {}

@@ -55,7 +55,7 @@ auto BenchmarkResult::same_measurement_config(const BenchmarkResult& b) const ->
     return ! a.collector_identity().is_empty() &&
            a.collector_identity() == b.collector_identity() && a.scope() == b.scope() &&
            a.batch_size() == b.batch_size() && x.unit == y.unit && x.batch == y.batch &&
-           x.items_per_iteration == y.items_per_iteration &&
+           x.statistic == y.statistic && x.items_per_iteration == y.items_per_iteration &&
            x.bytes_per_iteration == y.bytes_per_iteration && ac.epochs == bc.epochs &&
            ac.warmup_iterations == bc.warmup_iterations &&
            ac.exact_epoch_iterations == bc.exact_epoch_iterations &&
@@ -121,7 +121,7 @@ auto rstd::bench::compare(const RunReport& baseline,
                     comparison.reasons.push("measurement scope or configuration differs"_Str);
                     continue;
                 }
-                auto ns = measured.summary().median_ns_per_unit * measured.run_config().batch;
+                auto ns = measured.summary().selected_ns_per_unit * measured.run_config().batch;
                 if (! ns.is_finite() || ns <= f64())
                     comparison.reasons.push("invalid timing sample"_Str);
                 else

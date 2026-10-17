@@ -119,6 +119,9 @@ auto BenchmarkResult::summary() const -> BenchmarkSummary {
         return Some(value / total_units);
     };
 
+    auto          selected = run_config_.statistic == SummaryStatistic::Best
+                                 ? (measurements_.is_empty() ? f64() : minimum)
+                                 : median_value;
     Vec<WorkRate> rates;
     Option<f64>   item_rate, byte_rate;
     for (const auto& quantity : work_) {
@@ -127,18 +130,22 @@ auto BenchmarkResult::summary() const -> BenchmarkSummary {
                                          : f64();
         if (quantity.name == "items"_str) item_rate = Some(f64(rate));
         if (quantity.name == "bytes"_str) byte_rate = Some(f64(rate));
+        auto selected_rate = selected > f64() ? f64(quantity.per_iteration.to_primitive()) *
+                                                    f64(1e9) / (selected * run_config_.batch)
+                                              : f64();
         rates.push({ quantity.name.clone(),
                      quantity.unit,
                      bench_saturating_mul(total_iterations, quantity.per_iteration),
-                     rate });
+                     selected_rate });
     }
     return BenchmarkSummary {
+        .selected_ns_per_unit             = selected,
         .median_ns_per_unit               = median_value,
         .mean_ns_per_unit                 = mean,
         .minimum_ns_per_unit              = measurements_.is_empty() ? f64() : minimum,
         .maximum_ns_per_unit              = maximum,
         .median_absolute_percentage_error = median(rstd::move(errors)),
-        .units_per_second = median_value == f64() ? f64() : f64(1'000'000'000.0) / median_value,
+        .units_per_second = selected == f64() ? f64() : f64(1'000'000'000.0) / selected,
         .total_elapsed_ns = total_elapsed,
         .total_iterations = total_iterations,
         .total_items      = bench_saturating_mul(total_iterations, run_config_.items_per_iteration),

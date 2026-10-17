@@ -312,7 +312,9 @@ auto measurement_value(const BenchmarkResult& measured) -> Value {
     object["items_per_iteration"_str] = integer(work.items_per_iteration);
     object["bytes_per_iteration"_str] = integer(work.bytes_per_iteration);
     object["quantities"_str]          = quantities_value(work.quantities.as_slice());
-    const auto& availability          = measured.counter_availability();
+    object["summary_statistic"_str] =
+        json_text(work.statistic == SummaryStatistic::Best ? "best"_str : "median"_str);
+    const auto& availability = measured.counter_availability();
     object["counter_availability"_str] =
         json_text(availability.is_Disabled()    ? "disabled"_str
                   : availability.is_Available() ? "available"_str
@@ -336,6 +338,8 @@ auto measurement_value(const BenchmarkResult& measured) -> Value {
     object["epochs"_str] = Value::Array(rstd::move(epochs));
     auto  summary        = measured.summary();
     Value statistics;
+    statistics["selected_ns_per_op"_str] =
+        optional_real(Some(summary.selected_ns_per_unit * work.batch));
     statistics["median_ns_per_op"_str] =
         optional_real(Some(summary.median_ns_per_unit * work.batch));
     statistics["median_items_per_second"_str] = optional_real(summary.median_items_per_second);
@@ -393,7 +397,14 @@ auto read_measurement(const Value& object) -> Result<BenchmarkResult, String> {
                      rstd_try(field<u64>(object, "items_per_iteration"_str)),
                      rstd_try(field<u64>(object, "bytes_per_iteration"_str)) };
     work.quantities = rstd_try(read_quantities(object));
-    auto valid      = work.validate();
+    if (object.get("summary_statistic"_str).is_some()) {
+        auto statistic = rstd_try(field<String>(object, "summary_statistic"_str));
+        if (statistic == "best"_str)
+            work.statistic = SummaryStatistic::Best;
+        else if (statistic != "median"_str)
+            return Err("invalid summary statistic"_Str);
+    }
+    auto valid = work.validate();
     if (valid.is_err()) return Err("invalid work amount"_Str);
     auto                state        = rstd_try(field<String>(object, "counter_availability"_str));
     CounterAvailability availability = CounterAvailability::Disabled();
