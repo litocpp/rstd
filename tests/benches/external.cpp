@@ -1,7 +1,6 @@
 #include <rstd/test/gtest.hpp>
 import rstd;
 import rstd.bench;
-import rstd.bench.json;
 using namespace rstd::prelude;
 using namespace rstd::literals;
 namespace bench = rstd::bench;

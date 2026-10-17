@@ -3,7 +3,6 @@
 import rstd;
 import rstd.test;
 import rstd.bench;
-import rstd.bench.json;
 import rstd_benches;
 
 using namespace rstd::prelude;

@@ -1,7 +1,8 @@
 add_library(rstd.bench STATIC)
 add_library(rstd::bench ALIAS rstd.bench)
 target_compile_features(rstd.bench PUBLIC cxx_std_20)
-target_link_libraries(rstd.bench PUBLIC rstd.std)
+target_link_libraries(rstd.bench PUBLIC rstd.std rstd.json)
+target_compile_definitions(rstd.bench PRIVATE LITO_FEAT_JSON=1)
 
 target_sources(
   rstd.bench
@@ -11,6 +12,7 @@ target_sources(
          CXX_MODULES
          FILES
          src/lib.cppm
+         src/json.cppm
          src/clock.cppm
          src/model.cppm
          src/statistics.cppm
@@ -30,4 +32,4 @@ target_sources(
          src/probe/recorder.cppm
          src/probe/collector.cppm
          src/probe/report.cppm)
-target_sources(rstd.bench PRIVATE src/console.cpp src/lib.cpp src/compare.cpp src/diagnostic.cpp)
+target_sources(rstd.bench PRIVATE src/json.cpp src/console.cpp src/lib.cpp src/compare.cpp src/diagnostic.cpp)

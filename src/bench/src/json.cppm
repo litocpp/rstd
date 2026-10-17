@@ -1,5 +1,5 @@
-export module rstd.bench.json;
-export import rstd.bench;
+export module rstd.bench:json;
+export import :runner;
 export import rstd.json;
 using namespace rstd::prelude;
 export namespace rstd::bench

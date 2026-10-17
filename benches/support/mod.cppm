@@ -4,7 +4,6 @@ module;
 export module rstd_benches;
 import rstd;
 import rstd.bench;
-import rstd.bench.json;
 import rstd.json;
 
 using namespace rstd::prelude;

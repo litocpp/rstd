@@ -13,7 +13,6 @@ add_subdirectory(toml)
 add_subdirectory(log)
 add_subdirectory(argparse)
 add_subdirectory(bench)
-add_subdirectory(bench-json)
 add_subdirectory(nostd)
 
 add_library(rstd::rstd ALIAS rstd.std)

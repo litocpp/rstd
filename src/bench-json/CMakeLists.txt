@@ -1,6 +1,0 @@
-add_library(rstd.bench.json STATIC)
-add_library(rstd::bench::json ALIAS rstd.bench.json)
-target_compile_features(rstd.bench.json PUBLIC cxx_std_20)
-target_link_libraries(rstd.bench.json PUBLIC rstd.bench rstd.json)
-target_sources(rstd.bench.json PUBLIC FILE_SET modules TYPE CXX_MODULES FILES src/lib.cppm)
-target_sources(rstd.bench.json PRIVATE src/lib.cpp)

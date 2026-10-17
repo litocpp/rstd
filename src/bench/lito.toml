@@ -9,5 +9,9 @@ name = "rstd-bench"
 module = "rstd.bench"
 archive = "rstd.bench"
 
+[features.json]
+default = false
+
 [dependencies]
 rstd-std = { workspace = true, pub = true }
+rstd-json = { workspace = true, pub = true, condition = "feature.json" }

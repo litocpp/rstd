@@ -1,8 +1,7 @@
 module;
 #include <rstd/macro.hpp>
 
-module rstd.bench.json;
-import rstd.bench;
+module rstd.bench;
 import rstd.json;
 
 using namespace rstd::prelude;

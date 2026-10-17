@@ -10,7 +10,6 @@ members = [
   "src/argparse",
   "src/std",
   "src/bench",
-  "src/bench-json",
   "src/test",
   "src/cppstd",
   "src/json",

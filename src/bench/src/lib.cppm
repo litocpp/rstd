@@ -12,3 +12,6 @@ export import :compare;
 export import :probe;
 export import :external;
 export import :console;
+#if LITO_FEAT_JSON
+export import :json;
+#endif

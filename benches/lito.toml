@@ -38,8 +38,7 @@ rtti = false
 
 [dependencies]
 rstd-cppstd = { path = ".." }
-rstd-bench = { path = ".." }
-rstd-bench-json = { path = ".." }
+rstd-bench = { path = "..", features = ["json"] }
 rstd-argparse = { path = ".." }
 rstd-json = { path = ".." }
 rstd-toml = { path = ".." }

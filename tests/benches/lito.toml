@@ -31,8 +31,7 @@ rtti = false
 rstd-cppstd = { path = "../.." }
 rstd-std = { path = "../.." }
 rstd-test = { path = "../.." }
-rstd-bench = { path = "../.." }
-rstd-bench-json = { path = "../.." }
+rstd-bench = { path = "../..", features = ["json"] }
 rstd-argparse = { path = "../.." }
 rstd-json = { path = "../.." }
 rstd-toml = { path = "../.." }
