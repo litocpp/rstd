@@ -50,6 +50,17 @@ TEST(Fmt, IntegerTypes) {
     EXPECT_EQ(s, "Values: -42, 123456789, 0, -1"_str);
 }
 
+TEST(Fmt, IntegerDecimalPadding) {
+    EXPECT_EQ(rstd::format("{:03} {:03} {:+05}", 0u, 1ull, i64(-42)), "000 001 -0042"_str);
+    EXPECT_EQ(rstd::format("{:+05} {:+05} {:05?}", u64(), 42, i32(-42)), "+0000 +0042 -0042"_str);
+    EXPECT_EQ(rstd::format("{:6}|{:<6}|{:_^7}", i32(-42), u64(42), 42ull),
+              "   -42|42    |__42___"_str);
+    EXPECT_EQ(rstd::format("{:0>6}|{:<06}", -42, -42), "000-42|-00042"_str);
+    EXPECT_EQ(rstd::format("{:03} {:03} {:03}", 1000, 1250ull, i8(-1)), "1000 1250 -01"_str);
+    EXPECT_EQ(rstd::format("{:+}", u128::MAX), "+340282366920938463463374607431768211455"_str);
+    EXPECT_EQ(rstd::format("{:042}", i128::MIN), "-00170141183460469231731687303715884105728"_str);
+}
+
 TEST(Fmt, IntegerHex) {
     EXPECT_EQ(rstd::format("{:x} {:X} {:#x} {:#X}", u32(48879), u32(48879), u32(48879), u32(48879)),
               "beef BEEF 0xbeef 0xBEEF"_str);

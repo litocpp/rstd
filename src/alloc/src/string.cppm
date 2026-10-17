@@ -310,10 +310,6 @@ struct Impl<fmt::Display, T> : ImplBase<T> {
             else
                 return this->self();
         }();
-        if (raw == 0) {
-            constexpr rstd::uint8_t ZERO[] = { '0' };
-            return f.write_raw(ZERO, sizeof(ZERO));
-        }
         using Raw = decltype(raw);
         rstd::uint128_t magnitude;
         bool            negative = false;
@@ -328,14 +324,24 @@ struct Impl<fmt::Display, T> : ImplBase<T> {
             magnitude = static_cast<rstd::uint128_t>(raw);
         }
 
-        while (magnitude > 0) {
+        do {
             *--p = char('0' + static_cast<unsigned>(magnitude % 10));
             magnitude /= 10;
-        }
+        } while (magnitude > 0);
 
-        if (negative) *--p = '-';
-        return f.write_raw(reinterpret_cast<const rstd::uint8_t*>(p),
-                           static_cast<rstd::size_t>((buf + 64) - p));
+        rstd::uint8_t sign[1];
+        rstd::size_t  sign_len = 0;
+        if (negative)
+            sign[sign_len++] = '-';
+        else if (f.sign_plus())
+            sign[sign_len++] = '+';
+        return f.pad_numeric(sign,
+                             sign_len,
+                             reinterpret_cast<const rstd::uint8_t*>(p),
+                             static_cast<rstd::size_t>((buf + 64) - p),
+                             0,
+                             nullptr,
+                             0);
     }
 };
 
