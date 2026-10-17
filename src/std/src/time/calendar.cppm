@@ -1,6 +1,6 @@
 export module rstd:time.calendar;
 export import rstd.error;
-import :sys.pal;
+import rstd.sys.pal;
 
 namespace rstd::time::calendar_detail
 {

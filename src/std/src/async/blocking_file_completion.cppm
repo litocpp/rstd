@@ -3,8 +3,8 @@ module;
 
 export module rstd:async.blocking_file_completion;
 import :async.blocking_pool;
-import :io;
-import :os.fd;
+import rstd.io;
+import rstd.os.fd;
 import :sync;
 import :sys.fs;
 import :sys.pal.poll;

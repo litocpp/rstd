@@ -2,14 +2,14 @@ module;
 #include <rstd/macro.hpp>
 
 export module rstd:async.poll;
-export import :io.error;
+export import rstd.io.error;
 export import :async.readiness;
 export import :time;
 export import rstd.core;
 import :async.blocking_file_completion;
 import :async.blocking_pool;
-import :net.socket_addr;
-import :os.fd;
+import rstd.net.socket_addr;
+import rstd.os.fd;
 import :sys.pal.poll;
 import rstd.alloc;
 

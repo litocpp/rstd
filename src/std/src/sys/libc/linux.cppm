@@ -1,12 +1,18 @@
 module;
 #include <linux/futex.h>
 #include <linux/io_uring.h>
+#include <linux/perf_event.h>
 #include <sys/epoll.h>
 #include <sys/eventfd.h>
 #include <sys/mman.h>
 #include <sys/syscall.h>
 #include <sys/timerfd.h>
 #include <unistd.h>
+
+inline constexpr auto _SYS_perf_event_open    = SYS_perf_event_open;
+inline constexpr auto _PERF_EVENT_IOC_ENABLE  = PERF_EVENT_IOC_ENABLE;
+inline constexpr auto _PERF_EVENT_IOC_DISABLE = PERF_EVENT_IOC_DISABLE;
+inline constexpr auto _PERF_EVENT_IOC_RESET   = PERF_EVENT_IOC_RESET;
 
 inline constexpr auto _SYS_futex              = SYS_futex;
 inline constexpr auto _SYS_io_uring_setup     = SYS_io_uring_setup;
@@ -47,6 +53,10 @@ inline constexpr auto _IORING_REGISTER_EVENTFD = IORING_REGISTER_EVENTFD;
 inline constexpr auto _IORING_REGISTER_PROBE   = IORING_REGISTER_PROBE;
 inline constexpr auto _IO_URING_OP_SUPPORTED   = IO_URING_OP_SUPPORTED;
 
+#undef SYS_perf_event_open
+#undef PERF_EVENT_IOC_ENABLE
+#undef PERF_EVENT_IOC_DISABLE
+#undef PERF_EVENT_IOC_RESET
 #undef SYS_futex
 #undef SYS_io_uring_setup
 #undef SYS_io_uring_enter
@@ -78,12 +88,30 @@ inline constexpr auto _IO_URING_OP_SUPPORTED   = IO_URING_OP_SUPPORTED;
 #undef IORING_REGISTER_PROBE
 #undef IO_URING_OP_SUPPORTED
 
-export module rstd:sys.libc.linux;
+export module rstd.sys.libc:linux;
 
 export namespace rstd::sys::libc
 {
 
 using ::syscall;
+
+using perf_event_attr                                   = struct ::perf_event_attr;
+inline constexpr auto SYS_perf_event_open               = _SYS_perf_event_open;
+inline constexpr auto PERF_EVENT_IOC_ENABLE             = _PERF_EVENT_IOC_ENABLE;
+inline constexpr auto PERF_EVENT_IOC_DISABLE            = _PERF_EVENT_IOC_DISABLE;
+inline constexpr auto PERF_EVENT_IOC_RESET              = _PERF_EVENT_IOC_RESET;
+inline constexpr auto PERF_TYPE_HARDWARE                = ::PERF_TYPE_HARDWARE;
+inline constexpr auto PERF_TYPE_SOFTWARE                = ::PERF_TYPE_SOFTWARE;
+inline constexpr auto PERF_COUNT_HW_CPU_CYCLES          = ::PERF_COUNT_HW_CPU_CYCLES;
+inline constexpr auto PERF_COUNT_HW_INSTRUCTIONS        = ::PERF_COUNT_HW_INSTRUCTIONS;
+inline constexpr auto PERF_COUNT_HW_BRANCH_INSTRUCTIONS = ::PERF_COUNT_HW_BRANCH_INSTRUCTIONS;
+inline constexpr auto PERF_COUNT_HW_BRANCH_MISSES       = ::PERF_COUNT_HW_BRANCH_MISSES;
+inline constexpr auto PERF_COUNT_SW_PAGE_FAULTS         = ::PERF_COUNT_SW_PAGE_FAULTS;
+inline constexpr auto PERF_COUNT_SW_CONTEXT_SWITCHES    = ::PERF_COUNT_SW_CONTEXT_SWITCHES;
+inline constexpr auto PERF_FORMAT_GROUP                 = ::PERF_FORMAT_GROUP;
+inline constexpr auto PERF_FORMAT_TOTAL_TIME_ENABLED    = ::PERF_FORMAT_TOTAL_TIME_ENABLED;
+inline constexpr auto PERF_FORMAT_TOTAL_TIME_RUNNING    = ::PERF_FORMAT_TOTAL_TIME_RUNNING;
+inline constexpr auto PERF_IOC_FLAG_GROUP               = ::PERF_IOC_FLAG_GROUP;
 
 inline constexpr auto SYS_futex              = _SYS_futex;
 inline constexpr auto FUTEX_WAIT_BITSET      = _FUTEX_WAIT_BITSET;

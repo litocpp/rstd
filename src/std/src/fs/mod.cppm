@@ -1,9 +1,9 @@
 export module rstd:fs;
 export import :fs.types;
-export import :io;
+export import rstd.io;
 export import :path;
 export import :time;
-import :os.fd;
+import rstd.os.fd;
 import :sys.fs;
 
 using rstd::io::Error;

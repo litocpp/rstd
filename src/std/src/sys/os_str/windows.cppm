@@ -3,7 +3,7 @@ module;
 export module rstd:sys.os_str.windows;
 import :os.windows.ffi;
 import :ffi.os_str;
-import :io.error;
+import rstd.io.error;
 import rstd.alloc;
 
 using namespace rstd::prelude;

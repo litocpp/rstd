@@ -1,11 +1,11 @@
-export module rstd:sys.thread.unix;
+export module rstd.sys.thread:unix;
 
-export import :sys.libc;
-export import :io;
-export import :thread.thread;
+export import rstd.sys.libc;
+export import rstd.io.error;
+export import rstd.thread.thread;
 export import rstd.alloc;
 
-using rstd_alloc::boxed::Box;
+using ::alloc::boxed::Box;
 using rstd::thread::ThreadInit;
 using namespace rstd::sys::libc;
 

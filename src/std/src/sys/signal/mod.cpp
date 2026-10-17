@@ -13,9 +13,9 @@ module;
 
 module rstd;
 import :sys.signal;
-import :io;
+import rstd.io;
 #if RSTD_OS_LINUX || RSTD_OS_MACOS
-import :sys.libc;
+import rstd.sys.libc;
 #endif
 
 namespace rstd::sys::signal

@@ -1,7 +1,7 @@
-export module rstd:sys.sync.mutex.pthread;
+export module rstd.sys.sync.mutex:pthread;
 
-export import :sys.sync.once_box;
-export import :sys.pal;
+export import rstd.sys.sync.once_box;
+export import rstd.sys.pal;
 
 namespace rstd::sys::sync::mutex::pthread
 {

@@ -1,6 +1,6 @@
-export module rstd:sys.sync.thread_parking.pthread;
+export module rstd.sys.sync.thread_parking:pthread;
 
-export import :sys.pal;
+export import rstd.sys.pal;
 export import rstd.core;
 
 using rstd::sync::atomic::Atomic;

@@ -1,5 +1,5 @@
-export module rstd:io.util;
-export import :io.traits;
+export module rstd.io:util;
+export import :traits;
 
 namespace rstd::io
 {

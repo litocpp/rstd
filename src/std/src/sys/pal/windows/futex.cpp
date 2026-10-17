@@ -1,9 +1,9 @@
 module;
 #pragma comment(lib, "synchronization")
-module rstd;
-import :sys.pal.windows.futex;
+module rstd.sys.pal;
+import :windows.futex;
 
-import :sys.libc.windows;
+import rstd.sys.libc;
 using namespace rstd::sys::libc;
 
 namespace rstd::sys::pal::windows::futex

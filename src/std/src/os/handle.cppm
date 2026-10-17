@@ -1,8 +1,8 @@
 module;
 #include <rstd/macro.hpp>
 
-export module rstd:os.handle;
-export import :os.fd;
+export module rstd.os.handle;
+export import rstd.os.fd;
 export import rstd.core;
 
 #if RSTD_OS_WINDOWS

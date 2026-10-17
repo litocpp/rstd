@@ -10,7 +10,7 @@ module;
 #endif
 module rstd;
 import :sys.random;
-import :io.error;
+import rstd.io.error;
 
 using namespace rstd::prelude;
 using rstd::io::error::Error;

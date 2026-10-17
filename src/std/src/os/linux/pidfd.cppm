@@ -1,9 +1,9 @@
 module;
 #include <rstd/macro.hpp>
 export module rstd:os.linux.pidfd;
-export import :os.fd;
+export import rstd.os.fd;
 export import :process.exit_status;
-export import :io.error;
+export import rstd.io.error;
 
 #if RSTD_OS_LINUX
 export namespace rstd::os::linux::process

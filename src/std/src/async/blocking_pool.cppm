@@ -1,5 +1,5 @@
 export module rstd:async.blocking_pool;
-import :io;
+import rstd.io;
 import :sync;
 import :thread;
 import :time;

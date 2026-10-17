@@ -1,7 +1,7 @@
-export module rstd:sys.pal.unix.sync.condvar;
+export module rstd.sys.pal:unix.sync.condvar;
 
-import :sys.libc.pthread;
-import :sys.pal.unix.sync.mutex;
+import rstd.sys.libc;
+import :unix.sync.mutex;
 import rstd.core;
 
 using namespace rstd::sys::libc;

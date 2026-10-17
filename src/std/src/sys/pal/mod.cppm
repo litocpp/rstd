@@ -1,20 +1,16 @@
 module;
 #include <rstd/macro.hpp>
-export module rstd:sys.pal;
+export module rstd.sys.pal;
 import rstd.core;
 
 #if RSTD_OS_UNIX
-import :sys.pal.unix;
-#if RSTD_OS_LINUX
-import :sys.pal.unix.futex;
-#endif
+export import :unix;
 export namespace rstd::sys::pal
 {
 namespace backend = unix;
 }
 #elif RSTD_OS_WINDOWS
-import :sys.pal.windows;
-import :sys.pal.windows.futex;
+export import :windows;
 export namespace rstd::sys::pal
 {
 namespace backend = windows;

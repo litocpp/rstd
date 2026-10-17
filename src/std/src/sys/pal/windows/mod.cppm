@@ -1,7 +1,7 @@
-export module rstd:sys.pal.windows;
-import :sys.pal.windows.futex;
-import :sys.pal.windows.sync;
-import :sys.pal.windows.time;
+export module rstd.sys.pal:windows;
+export import :windows.futex;
+export import :windows.sync;
+export import :windows.time;
 import rstd.core;
 
 export namespace rstd::sys::pal::windows

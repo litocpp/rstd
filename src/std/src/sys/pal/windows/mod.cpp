@@ -1,10 +1,10 @@
 module;
 #include <process.h>
 #include <stdlib.h>
-module rstd;
-import :sys.pal.windows;
+module rstd.sys.pal;
+import :windows;
 
-import :sys.libc.windows;
+import rstd.sys.libc;
 import rstd.core;
 
 namespace rstd::sys::pal::windows

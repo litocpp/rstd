@@ -1,7 +1,7 @@
 module;
 #include <rstd/macro.hpp>
-export module rstd:os.fd;
-import :io.error;
+export module rstd.os.fd;
+import rstd.io.error;
 import rstd.core;
 
 namespace rstd::os::fd

@@ -1,5 +1,5 @@
 export module rstd:thread.thread_pool;
-export import :io;
+export import rstd.io;
 export import :thread.builder;
 export import rstd.alloc;
 export import rstd.core;

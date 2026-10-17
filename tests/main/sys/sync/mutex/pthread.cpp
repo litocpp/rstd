@@ -7,7 +7,7 @@ module;
 
 module rstd;
 #if RSTD_OS_UNIX && ! RSTD_OS_WINDOWS
-import :sys.sync.mutex.pthread;
+import rstd.sys.sync.mutex;
 
 namespace rstd_mutex_pthread_test
 {

@@ -2,8 +2,8 @@ module;
 #include <rstd/macro.hpp>
 export module rstd:sys.fs;
 export import :sys.fs.contract;
-import :io;
-import :os.fd;
+import rstd.io;
+import rstd.os.fd;
 import :path;
 
 #if RSTD_OS_UNIX

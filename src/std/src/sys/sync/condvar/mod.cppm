@@ -1,14 +1,18 @@
 module;
 #include <rstd/macro.hpp>
-export module rstd:sys.sync.condvar;
+export module rstd.sys.sync.condvar;
+
+#if RSTD_OS_UNIX
+export import :pthread;
+#endif
 #if RSTD_OS_LINUX || RSTD_OS_WINDOWS
-import :sys.sync.condvar.futex;
+export import :futex;
 namespace rstd::sys::sync::condvar
 {
 namespace backend = futex;
 }
 #else
-import :sys.sync.condvar.pthread;
+
 namespace rstd::sys::sync::condvar
 {
 namespace backend = pthread;

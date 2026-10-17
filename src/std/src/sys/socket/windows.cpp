@@ -6,12 +6,8 @@ module;
 #include <limits.h>
 #pragma comment(lib, "ws2_32.lib")
 
-export module rstd:sys.pal.windows.socket;
-export import :io.error;
-export import :net.socket_addr;
-export import :os.socket;
-import :sys.pal.poll.types;
-import rstd.core;
+module rstd.sys.socket;
+import :windows;
 
 namespace rstd::sys::pal::windows::socket
 {
@@ -137,14 +133,11 @@ auto load_extension(SOCKET socket, GUID const& id) -> Result<Function> {
     return Ok(function);
 }
 
-export inline constexpr rstd::size_t ACCEPT_ADDRESS_BUFFER_SIZE =
-    2 * (sizeof(sockaddr_storage) + 16);
-
-export auto accept_address_buffer_size() noexcept -> usize {
+auto accept_address_buffer_size() noexcept -> usize {
     return usize(ACCEPT_ADDRESS_BUFFER_SIZE);
 }
 
-export auto start_connect(RawSocket socket, SocketAddress const& address, void* overlapped)
+auto start_connect(RawSocket socket, SocketAddress const& address, void* overlapped)
     -> Result<empty> {
     auto native = operation_addr_to_native(address);
     if (! address.ipv6) {
@@ -183,7 +176,7 @@ export auto start_connect(RawSocket socket, SocketAddress const& address, void* 
     return Ok(empty {});
 }
 
-export auto finish_connect(RawSocket socket) -> Result<empty> {
+auto finish_connect(RawSocket socket) -> Result<empty> {
     if (::setsockopt(native_socket(socket), SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT, nullptr, 0) ==
         SOCKET_ERROR) {
         return Err(last_error());
@@ -191,11 +184,11 @@ export auto finish_connect(RawSocket socket) -> Result<empty> {
     return Ok(empty {});
 }
 
-export auto start_accept(RawSocket listener,
-                         RawSocket accepted,
-                         void*     address_buffer,
-                         usize     address_buffer_len,
-                         void*     overlapped) -> Result<empty> {
+auto start_accept(RawSocket listener,
+                  RawSocket accepted,
+                  void*     address_buffer,
+                  usize     address_buffer_len,
+                  void*     overlapped) -> Result<empty> {
     if (address_buffer_len.to_primitive() < ACCEPT_ADDRESS_BUFFER_SIZE) {
         return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
     }
@@ -217,7 +210,7 @@ export auto start_accept(RawSocket listener,
     return Ok(empty {});
 }
 
-export auto finish_accept(RawSocket listener, RawSocket accepted) -> Result<empty> {
+auto finish_accept(RawSocket listener, RawSocket accepted) -> Result<empty> {
     auto native_listener = native_socket(listener);
     if (::setsockopt(native_socket(accepted),
                      SOL_SOCKET,
@@ -267,7 +260,7 @@ auto addr_from_native(const sockaddr* addr, int len) -> Result<SocketAddr> {
     return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
 }
 
-export auto set_nonblocking(RawSocket socket, bool enabled) -> Result<empty> {
+auto set_nonblocking(RawSocket socket, bool enabled) -> Result<empty> {
     auto started = ensure_started();
     if (started.is_err()) return started;
     u_long value = enabled ? 1 : 0;
@@ -277,7 +270,7 @@ export auto set_nonblocking(RawSocket socket, bool enabled) -> Result<empty> {
     return Ok(empty {});
 }
 
-export auto tcp(SocketAddr const& addr) -> Result<OwnedSocket> {
+auto tcp(SocketAddr const& addr) -> Result<OwnedSocket> {
     auto started = ensure_started();
     if (started.is_err()) return Err(rstd::move(started).unwrap_err_unchecked());
     int  family = addr.is_ipv4() ? AF_INET : AF_INET6;
@@ -286,13 +279,13 @@ export auto tcp(SocketAddr const& addr) -> Result<OwnedSocket> {
     return Ok(OwnedSocket::from_raw_socket(raw_socket(socket)));
 }
 
-export auto prepare_accept(SocketAddr const& addr) -> Result<Option<OwnedSocket>> {
+auto prepare_accept(SocketAddr const& addr) -> Result<Option<OwnedSocket>> {
     auto socket = tcp(addr);
     if (socket.is_err()) return Err(rstd::move(socket).unwrap_err_unchecked());
     return Ok(Some(rstd::move(socket).unwrap_unchecked()));
 }
 
-export auto set_reuseaddr(RawSocket socket, bool enabled) -> Result<empty> {
+auto set_reuseaddr(RawSocket socket, bool enabled) -> Result<empty> {
     BOOL value = enabled ? TRUE : FALSE;
     if (::setsockopt(native_socket(socket),
                      SOL_SOCKET,
@@ -304,7 +297,7 @@ export auto set_reuseaddr(RawSocket socket, bool enabled) -> Result<empty> {
     return Ok(empty {});
 }
 
-export auto set_nodelay(RawSocket socket, bool enabled) -> Result<empty> {
+auto set_nodelay(RawSocket socket, bool enabled) -> Result<empty> {
     BOOL value = enabled ? TRUE : FALSE;
     if (::setsockopt(native_socket(socket),
                      IPPROTO_TCP,
@@ -316,7 +309,7 @@ export auto set_nodelay(RawSocket socket, bool enabled) -> Result<empty> {
     return Ok(empty {});
 }
 
-export auto bind(RawSocket socket, SocketAddr const& addr) -> Result<empty> {
+auto bind(RawSocket socket, SocketAddr const& addr) -> Result<empty> {
     auto native = addr_to_native(addr);
     if (::bind(native_socket(socket),
                reinterpret_cast<const sockaddr*>(&native.storage),
@@ -326,14 +319,14 @@ export auto bind(RawSocket socket, SocketAddr const& addr) -> Result<empty> {
     return Ok(empty {});
 }
 
-export auto listen(RawSocket socket, i32 backlog) -> Result<empty> {
+auto listen(RawSocket socket, i32 backlog) -> Result<empty> {
     if (::listen(native_socket(socket), static_cast<int>(backlog.to_primitive())) == SOCKET_ERROR) {
         return Err(last_error());
     }
     return Ok(empty {});
 }
 
-export auto connect(RawSocket socket, SocketAddr const& addr) -> Result<empty> {
+auto connect(RawSocket socket, SocketAddr const& addr) -> Result<empty> {
     auto native = addr_to_native(addr);
     if (::connect(native_socket(socket),
                   reinterpret_cast<const sockaddr*>(&native.storage),
@@ -343,7 +336,7 @@ export auto connect(RawSocket socket, SocketAddr const& addr) -> Result<empty> {
     return Ok(empty {});
 }
 
-export auto accept(RawSocket socket) -> Result<tuple<OwnedSocket, SocketAddr>> {
+auto accept(RawSocket socket) -> Result<tuple<OwnedSocket, SocketAddr>> {
     auto native = NativeSocketAddr {};
     native.len  = sizeof(native.storage);
     auto accepted =
@@ -357,7 +350,7 @@ export auto accept(RawSocket socket) -> Result<tuple<OwnedSocket, SocketAddr>> {
         tuple<OwnedSocket, SocketAddr> { rstd::move(owned), rstd::move(addr).unwrap_unchecked() });
 }
 
-export auto recv(RawSocket socket, mut_ref<byte[]> buf) -> Result<usize> {
+auto recv(RawSocket socket, mut_ref<byte[]> buf) -> Result<usize> {
     if (buf.len().to_primitive() > static_cast<rstd::size_t>(INT_MAX)) {
         return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
     }
@@ -369,7 +362,7 @@ export auto recv(RawSocket socket, mut_ref<byte[]> buf) -> Result<usize> {
     return Ok(usize(n));
 }
 
-export auto send(RawSocket socket, slice<byte> buf) -> Result<usize> {
+auto send(RawSocket socket, slice<byte> buf) -> Result<usize> {
     if (buf.len().to_primitive() > static_cast<rstd::size_t>(INT_MAX)) {
         return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
     }
@@ -381,12 +374,12 @@ export auto send(RawSocket socket, slice<byte> buf) -> Result<usize> {
     return Ok(usize(n));
 }
 
-export auto shutdown_write(RawSocket socket) -> Result<empty> {
+auto shutdown_write(RawSocket socket) -> Result<empty> {
     if (::shutdown(native_socket(socket), SD_SEND) == SOCKET_ERROR) return Err(last_error());
     return Ok(empty {});
 }
 
-export auto take_error(RawSocket socket) -> Result<Option<Error>> {
+auto take_error(RawSocket socket) -> Result<Option<Error>> {
     int value = 0;
     int len   = sizeof(value);
     if (::getsockopt(
@@ -398,7 +391,7 @@ export auto take_error(RawSocket socket) -> Result<Option<Error>> {
     return Ok(Some(Error::from_raw_os_error(i32(value))));
 }
 
-export auto local_addr(RawSocket socket) -> Result<SocketAddr> {
+auto local_addr(RawSocket socket) -> Result<SocketAddr> {
     auto native = NativeSocketAddr {};
     native.len  = sizeof(native.storage);
     if (::getsockname(native_socket(socket),
@@ -409,7 +402,7 @@ export auto local_addr(RawSocket socket) -> Result<SocketAddr> {
     return addr_from_native(reinterpret_cast<const sockaddr*>(&native.storage), native.len);
 }
 
-export auto peer_addr(RawSocket socket) -> Result<SocketAddr> {
+auto peer_addr(RawSocket socket) -> Result<SocketAddr> {
     auto native = NativeSocketAddr {};
     native.len  = sizeof(native.storage);
     if (::getpeername(native_socket(socket),

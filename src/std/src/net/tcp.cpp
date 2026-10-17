@@ -3,7 +3,7 @@ module;
 
 module rstd;
 import :net.tcp;
-import :sys.socket;
+import rstd.sys.socket;
 
 using namespace rstd::prelude;
 namespace socket = rstd::sys::socket;

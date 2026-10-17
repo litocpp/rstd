@@ -1,11 +1,8 @@
 module;
 #include <rstd/macro.hpp>
-module rstd;
-import :os.fd;
-#if RSTD_OS_UNIX
-import :sys.libc.unix;
-#elif RSTD_OS_WINDOWS
-import :sys.libc.windows;
+module rstd.os.fd;
+#if RSTD_OS_UNIX || RSTD_OS_WINDOWS
+import rstd.sys.libc;
 #endif
 
 namespace rstd::os::fd

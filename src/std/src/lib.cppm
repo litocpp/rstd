@@ -7,7 +7,7 @@ export import rstd.core;
 export import rstd.error;
 export import :time;
 export import :forward;
-export import :io;
+export import rstd.io;
 export import :bytes;
 export import :random;
 export import :path;

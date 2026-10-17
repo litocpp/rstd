@@ -4,8 +4,7 @@ module;
 #include <windows.h>
 #endif
 
-module rstd;
-import :os.handle;
+module rstd.os.handle;
 
 #if RSTD_OS_WINDOWS
 namespace rstd::os::handle

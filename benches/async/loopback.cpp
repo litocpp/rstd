@@ -2,17 +2,14 @@ module;
 
 #include <rstd/macro.hpp>
 
-#if RSTD_OS_LINUX
-#include <cerrno>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <sys/socket.h>
-#endif
-
 module rstd_benches;
 import rstd.bench;
 import rstd;
 import :async.support;
+#if RSTD_OS_LINUX
+import rstd.sys.libc;
+namespace libc = rstd::sys::libc;
+#endif
 
 using namespace rstd;
 using namespace rstd::prelude;
@@ -174,49 +171,50 @@ struct SyncLoopbackStreams {
 
 auto set_sync_nodelay(os::socket::RawSocket socket) -> io::Result<empty> {
     int enabled = 1;
-    if (::setsockopt(socket, IPPROTO_TCP, TCP_NODELAY, &enabled, sizeof(enabled)) != 0) {
+    if (libc::setsockopt(socket, libc::IPPROTO_TCP, libc::TCP_NODELAY, &enabled, sizeof(enabled)) !=
+        0) {
         return Err(io::error::Error::last_os_error());
     }
     return Ok(empty {});
 }
 
 auto open_sync_loopback_streams(rstd::size_t payload_len) -> io::Result<SyncLoopbackStreams> {
-    auto listener_raw = ::socket(AF_INET, SOCK_STREAM, 0);
+    auto listener_raw = libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0);
     if (listener_raw < 0) return Err(io::error::Error::last_os_error());
     auto listener = os::socket::OwnedSocket::from_raw_socket(listener_raw);
 
-    auto address = sockaddr_in {
-        .sin_family = AF_INET,
+    auto address = libc::sockaddr_in {
+        .sin_family = libc::AF_INET,
         .sin_port   = 0,
-        .sin_addr   = { .s_addr = ::htonl(INADDR_LOOPBACK) },
+        .sin_addr   = { .s_addr = libc::htonl(libc::INADDR_LOOPBACK) },
     };
-    if (::bind(listener.as_raw_socket(),
-               reinterpret_cast<const sockaddr*>(rstd::addressof(address)),
-               sizeof(address)) != 0 ||
-        ::listen(listener.as_raw_socket(), 1) != 0) {
+    if (libc::bind(listener.as_raw_socket(),
+                   reinterpret_cast<const libc::sockaddr*>(rstd::addressof(address)),
+                   sizeof(address)) != 0 ||
+        libc::listen(listener.as_raw_socket(), 1) != 0) {
         return Err(io::error::Error::last_os_error());
     }
 
-    auto address_len = static_cast<socklen_t>(sizeof(address));
-    if (::getsockname(listener.as_raw_socket(),
-                      reinterpret_cast<sockaddr*>(rstd::addressof(address)),
-                      &address_len) != 0) {
+    auto address_len = static_cast<libc::socklen_t>(sizeof(address));
+    if (libc::getsockname(listener.as_raw_socket(),
+                          reinterpret_cast<libc::sockaddr*>(rstd::addressof(address)),
+                          &address_len) != 0) {
         return Err(io::error::Error::last_os_error());
     }
 
-    auto client_raw = ::socket(AF_INET, SOCK_STREAM, 0);
+    auto client_raw = libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0);
     if (client_raw < 0) return Err(io::error::Error::last_os_error());
     auto client = os::socket::OwnedSocket::from_raw_socket(client_raw);
-    if (::connect(client.as_raw_socket(),
-                  reinterpret_cast<const sockaddr*>(rstd::addressof(address)),
-                  address_len) != 0) {
+    if (libc::connect(client.as_raw_socket(),
+                      reinterpret_cast<const libc::sockaddr*>(rstd::addressof(address)),
+                      address_len) != 0) {
         return Err(io::error::Error::last_os_error());
     }
 
     int server_raw;
     do {
-        server_raw = ::accept(listener.as_raw_socket(), nullptr, nullptr);
-    } while (server_raw < 0 && errno == EINTR);
+        server_raw = libc::accept(listener.as_raw_socket(), nullptr, nullptr);
+    } while (server_raw < 0 && libc::get_errno() == libc::EINTR);
     if (server_raw < 0) return Err(io::error::Error::last_os_error());
     auto server = os::socket::OwnedSocket::from_raw_socket(server_raw);
 
@@ -230,10 +228,10 @@ auto open_sync_loopback_streams(rstd::size_t payload_len) -> io::Result<SyncLoop
 auto sync_send_exact(os::socket::RawSocket socket, const byte* data, rstd::size_t len) -> bool {
     rstd::size_t sent {};
     while (sent < len) {
-        auto result = ::send(socket, data + sent, len - sent, MSG_NOSIGNAL);
+        auto result = libc::send(socket, data + sent, len - sent, libc::MSG_NOSIGNAL);
         if (result > 0) {
             sent += static_cast<rstd::size_t>(result);
-        } else if (result < 0 && errno == EINTR) {
+        } else if (result < 0 && libc::get_errno() == libc::EINTR) {
             continue;
         } else {
             return false;
@@ -245,10 +243,10 @@ auto sync_send_exact(os::socket::RawSocket socket, const byte* data, rstd::size_
 auto sync_recv_exact(os::socket::RawSocket socket, byte* data, rstd::size_t len) -> bool {
     rstd::size_t received {};
     while (received < len) {
-        auto result = ::recv(socket, data + received, len - received, 0);
+        auto result = libc::recv(socket, data + received, len - received, 0);
         if (result > 0) {
             received += static_cast<rstd::size_t>(result);
-        } else if (result < 0 && errno == EINTR) {
+        } else if (result < 0 && libc::get_errno() == libc::EINTR) {
             continue;
         } else {
             return false;

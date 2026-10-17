@@ -1,7 +1,7 @@
 export module rstd:async.io;
 export import :async.forward;
 import :bytes;
-import :io;
+import rstd.io;
 
 namespace rstd::async::io
 {

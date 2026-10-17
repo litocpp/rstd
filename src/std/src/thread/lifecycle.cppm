@@ -1,11 +1,10 @@
 module;
 #include <rstd/macro.hpp>
 export module rstd:thread.lifecycle;
-export import :thread.thread;
+export import rstd.thread.thread;
 export import :thread.scoped;
-export import :thread.current;
 export import :thread.forward;
-import :sys.thread;
+import rstd.sys.thread;
 export import rstd.core;
 export import rstd.alloc;
 
@@ -54,14 +53,14 @@ struct JoinInner {
 };
 
 template<typename F>
-auto spawn_unchecked(Option<String>         name,
-                     usize                  stack_size,
-                     Option<Arc<ScopeData>> scope_data,
-                     F&&                    f) -> io::Result<JoinInner<mtp::invoke_result_t<F>>>
+auto spawn_unchecked(Option<::alloc::string::String> name,
+                     usize                           stack_size,
+                     Option<Arc<ScopeData>>          scope_data,
+                     F&& f) -> io::Result<JoinInner<mtp::invoke_result_t<F>>>
 // requires Impled<F, FnOnce<void()>> && mtp::spec_of<mtp::rm_cvf<F>,
 // rstd_alloc::boxed::Box>
 {
-    using namespace rstd_alloc::boxed;
+    using namespace ::alloc::boxed;
     using ret_t = mtp::invoke_result_t<F>;
 
     auto id     = ThreadId::make();
@@ -98,16 +97,3 @@ auto spawn_unchecked(Option<String>         name,
 }
 
 } // namespace rstd::thread::lifecycle
-
-namespace rstd::thread
-{
-void ThreadInit::init() const {
-    if (set_current(as<clone::Clone>(handle).clone()).is_err()) {
-        panic { "current thread handle already set during thread spawn" };
-    }
-
-    if (auto name = handle.cname()) {
-        imp::Thread::set_name(*name);
-    }
-}
-} // namespace rstd::thread

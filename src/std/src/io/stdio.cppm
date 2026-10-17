@@ -1,73 +1,19 @@
 module;
 #include <rstd/macro.hpp>
-export module rstd:io.stdio;
-export import :io.traits;
-import :sys.io.stdio;
-import :sys.sync.mutex;
-import rstd.alloc;
+export module rstd.io:stdio;
+export import :traits;
 
 using namespace rstd::prelude;
 
-// Global mutexes — inline avoids local-static guards (__cxa_guard_*) which
-// are unavailable in -nostdlib++ builds.  Mutex is trivially destructible.
-inline rstd::sys::sync::mutex::Mutex g_stdout_mutex = rstd::sys::sync::mutex::Mutex::make();
-inline rstd::sys::sync::mutex::Mutex g_stdin_mutex  = rstd::sys::sync::mutex::Mutex::make();
-
-inline auto& stdout_mutex() noexcept {
-    return g_stdout_mutex;
-}
-inline auto& stdin_mutex() noexcept {
-    return g_stdin_mutex;
-}
-
-// RAII lock guard over sys::sync::mutex::Mutex.
 struct ScopedLock {
-    rstd::sys::sync::mutex::Mutex& m;
-    explicit ScopedLock(rstd::sys::sync::mutex::Mutex& m) noexcept: m(m) { m.lock(); }
-    ~ScopedLock() noexcept { m.unlock(); }
+private:
+    int fd_;
+
+public:
+    explicit ScopedLock(int fd);
+    ~ScopedLock() noexcept;
     ScopedLock(const ScopedLock&) = delete;
 };
-
-// fmt::Write adapter that writes directly to a file descriptor.
-// Used to avoid a String heap allocation inside print_fmt/eprint_fmt.
-struct FdWriter {
-    int                     fd;
-    rstd::io::Result<empty> result { rstd::Ok(empty {}) };
-};
-
-namespace rstd
-{
-template<>
-struct Impl<fmt::Write, FdWriter> : ImplBase<FdWriter> {
-    auto write_str(ref<str> const& value) -> bool {
-        auto& self = this->self();
-        if (self.result.is_err()) return false;
-        auto* p   = value.data();
-        auto  len = value.size().to_primitive();
-        while (len != 0) {
-            auto bytes = slice<byte>::from_raw_parts(p, usize(len));
-            auto res   = sys::io::stdio::write_fd(self.fd, bytes);
-            if (res.is_err()) {
-                self.result = Err(res.unwrap_err_unchecked());
-                return false;
-            }
-            auto const written = res.unwrap_unchecked().to_primitive();
-            if (written == 0) {
-                self.result = Err(io::error::Error_WRITE_ALL_EOF);
-                return false;
-            }
-            if (written > len) {
-                self.result = Err(io::error::Error::from_kind(
-                    io::error::ErrorKind { io::error::ErrorKind::InvalidData }));
-                return false;
-            }
-            p += written;
-            len -= written;
-        }
-        return true;
-    }
-};
-} // namespace rstd
 
 namespace rstd::io
 {
@@ -78,7 +24,7 @@ inline constexpr char NEWLINE[] = { '\n' };
 
 /// A locked reference to the stdout stream, providing exclusive write access.
 export struct StdoutLock {
-    ScopedLock guard { stdout_mutex() };
+    ScopedLock guard { 1 };
 };
 
 /// Handle to the standard output stream.
@@ -100,7 +46,7 @@ export inline auto stdout() noexcept -> Stdout {
 /// Handle to the standard error stream.
 /// Intentionally lock-free so it is usable from panic handlers.
 export struct Stderr {
-    auto is_terminal() const noexcept -> bool { return sys::io::stdio::is_terminal_fd(2); }
+    auto is_terminal() const noexcept -> bool;
 };
 
 /// Constructs a new handle to the standard error of the current process.
@@ -112,7 +58,7 @@ export inline auto stderr() noexcept -> Stderr {
 
 /// A locked reference to the stdin stream, providing exclusive read access.
 export struct StdinLock {
-    ScopedLock guard { stdin_mutex() };
+    ScopedLock guard { 0 };
 };
 
 /// Handle to the standard input stream.
@@ -131,21 +77,10 @@ export inline auto stdin() noexcept -> Stdin {
 // ── Free formatting functions ─────────────────────────────────────────────
 
 /// Format `args` and write to stdout (with lock).
-export inline auto print_fmt(fmt::Arguments args) -> Result<empty> {
-    ScopedLock     guard(stdout_mutex());
-    FdWriter       w { 1 };
-    fmt::Formatter f(w);
-    f.write_fmt(args);
-    return rstd::move(w.result);
-}
+export auto print_fmt(fmt::Arguments args) -> Result<empty>;
 
 /// Format `args` and write to stderr (no lock — panic-safe).
-export inline auto eprint_fmt(fmt::Arguments args) -> Result<empty> {
-    FdWriter       w { 2 };
-    fmt::Formatter f(w);
-    f.write_fmt(args);
-    return rstd::move(w.result);
-}
+export auto eprint_fmt(fmt::Arguments args) -> Result<empty>;
 
 // ── print / println / eprint / eprintln ──────────────────────────────────
 // Rust-style call-syntax structs using CTAD deduction guides.
@@ -237,43 +172,30 @@ namespace rstd
 
 template<>
 struct Impl<io::Write, io::Stdout> : ImplBase<io::Stdout> {
-    auto write(slice<u8> buf) -> io::Result<usize> {
-        ScopedLock guard(stdout_mutex());
-        return sys::io::stdio::write_fd(1, as_bytes(buf));
-    }
+    auto write(slice<u8> buf) -> io::Result<usize>;
     auto flush() -> io::Result<empty> { return Ok(empty {}); }
 };
 
 template<>
 struct Impl<io::Write, io::StdoutLock> : ImplBase<io::StdoutLock> {
-    auto write(slice<u8> buf) -> io::Result<usize> {
-        // Mutex is already held by the StdoutLock.
-        return sys::io::stdio::write_fd(1, as_bytes(buf));
-    }
+    auto write(slice<u8> buf) -> io::Result<usize>;
     auto flush() -> io::Result<empty> { return Ok(empty {}); }
 };
 
 template<>
 struct Impl<io::Write, io::Stderr> : ImplBase<io::Stderr> {
-    auto write(slice<u8> buf) -> io::Result<usize> {
-        return sys::io::stdio::write_fd(2, as_bytes(buf));
-    }
+    auto write(slice<u8> buf) -> io::Result<usize>;
     auto flush() -> io::Result<empty> { return Ok(empty {}); }
 };
 
 template<>
 struct Impl<io::Read, io::Stdin> : ImplBase<io::Stdin> {
-    auto read(mut_ref<u8[]> buf) -> io::Result<usize> {
-        ScopedLock guard(stdin_mutex());
-        return sys::io::stdio::read_fd(0, as_bytes_mut(buf));
-    }
+    auto read(mut_ref<u8[]> buf) -> io::Result<usize>;
 };
 
 template<>
 struct Impl<io::Read, io::StdinLock> : ImplBase<io::StdinLock> {
-    auto read(mut_ref<u8[]> buf) -> io::Result<usize> {
-        return sys::io::stdio::read_fd(0, as_bytes_mut(buf));
-    }
+    auto read(mut_ref<u8[]> buf) -> io::Result<usize>;
 };
 
 } // namespace rstd

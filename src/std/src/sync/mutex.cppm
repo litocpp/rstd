@@ -1,7 +1,7 @@
 module;
 #include <rstd/macro.hpp>
 export module rstd:sync.mutex;
-import :sys.sync.mutex;
+import rstd.sys.sync.mutex;
 export import rstd.core;
 
 using sys_mutex_t = rstd::sys::sync::mutex::Mutex;

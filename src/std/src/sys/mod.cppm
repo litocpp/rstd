@@ -1,11 +1,11 @@
 export module rstd:sys;
-export import :sys.libc;
-export import :sys.sync.thread_parking;
-export import :sys.sync.mutex;
-export import :sys.sync.condvar;
-export import :sys.thread;
-export import :sys.pal;
-export import :sys.socket;
+export import rstd.sys.libc;
+export import rstd.sys.sync.thread_parking;
+export import rstd.sys.sync.mutex;
+export import rstd.sys.sync.condvar;
+export import rstd.sys.thread;
+export import rstd.sys.pal;
+export import rstd.sys.socket;
 
 export namespace rstd::sys
 {

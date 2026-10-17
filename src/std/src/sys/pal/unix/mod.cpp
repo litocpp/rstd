@@ -1,8 +1,8 @@
 module;
 #include <rstd/macro.hpp>
-module rstd;
-import :sys.pal.unix;
-import :sys.libc;
+module rstd.sys.pal;
+import :unix;
+import rstd.sys.libc;
 import rstd.core;
 
 namespace rstd::sys::pal::unix

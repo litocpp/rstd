@@ -1,11 +1,10 @@
 module;
 #include <rstd/macro.hpp>
-export module rstd:io.cursor;
-export import :io.traits;
+export module rstd.io:cursor;
+export import :traits;
 import rstd.alloc;
-import :forward;
 
-using rstd_alloc::vec::Vec;
+using ::alloc::vec::Vec;
 
 namespace rstd::io
 {

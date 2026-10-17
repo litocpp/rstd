@@ -4,7 +4,7 @@ import :async.runtime_core;
 import :async.runtime_driver;
 import :async.spawn;
 import :async.task;
-import :io;
+import rstd.io;
 import rstd.alloc;
 import :sync;
 import :thread;

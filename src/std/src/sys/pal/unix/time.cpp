@@ -1,11 +1,10 @@
 module;
 #include <rstd/macro.hpp>
-module rstd;
+module rstd.sys.pal;
 
-import :sys.pal.unix.time;
+import :unix.time;
 import rstd.core;
-import :sys.libc.std;
-import :sys.libc.unix;
+import rstd.sys.libc;
 
 namespace rstd::sys::pal::unix::time
 {

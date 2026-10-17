@@ -1,5 +1,5 @@
-export module rstd:io.traits;
-export import :io.error;
+export module rstd.io:traits;
+export import rstd.io.error;
 export import rstd.core;
 
 namespace rstd::io
@@ -11,8 +11,8 @@ export inline constexpr usize DEFAULT_BUF_SIZE { rstd::size_t(8192) };
 namespace rstd::io
 {
 
-using error::Error;
-using error::ErrorKind;
+export using error::Error;
+export using error::ErrorKind;
 
 // ── Read ──────────────────────────────────────────────────────────────────
 /// Trait for objects that can be read from.

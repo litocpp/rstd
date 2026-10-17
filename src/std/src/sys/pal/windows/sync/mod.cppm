@@ -1,3 +1,3 @@
-export module rstd:sys.pal.windows.sync;
-export import :sys.pal.windows.sync.mutex;
-export import :sys.pal.windows.sync.condvar;
+export module rstd.sys.pal:windows.sync;
+export import :windows.sync.mutex;
+export import :windows.sync.condvar;

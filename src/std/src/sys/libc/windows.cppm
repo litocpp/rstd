@@ -119,7 +119,7 @@ inline constexpr auto _WSAEOPNOTSUPP                    = WSAEOPNOTSUPP;
 #undef WSAEALREADY
 #undef WSAEINPROGRESS
 #undef WSAEOPNOTSUPP
-export module rstd:sys.libc.windows;
+export module rstd.sys.libc:windows;
 
 export namespace rstd::sys::libc
 {

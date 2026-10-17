@@ -1,6 +1,6 @@
 export module rstd:async.spawn;
 export import :async.awaitable;
-export import :io;
+export import rstd.io;
 import :async.blocking_pool;
 import :async.runtime_core;
 import :async.facility;

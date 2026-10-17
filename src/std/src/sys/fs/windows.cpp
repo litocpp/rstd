@@ -4,11 +4,11 @@ module rstd;
 import :sys.fs.windows;
 import :sys.fs.contract;
 import :fs.types;
-import :io;
-import :os.fd;
+import rstd.io;
+import rstd.os.fd;
 import :path;
 import :sys.os_str.windows;
-import :sys.libc;
+import rstd.sys.libc;
 import :time;
 import rstd.alloc;
 

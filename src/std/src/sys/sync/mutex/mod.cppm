@@ -1,14 +1,18 @@
 module;
 #include <rstd/macro.hpp>
-export module rstd:sys.sync.mutex;
+export module rstd.sys.sync.mutex;
+
+#if RSTD_OS_UNIX
+export import :pthread;
+#endif
 #if RSTD_OS_LINUX || RSTD_OS_WINDOWS
-import :sys.sync.mutex.futex;
+export import :futex;
 namespace rstd::sys::sync::mutex
 {
 namespace backend = futex;
 }
 #else
-import :sys.sync.mutex.pthread;
+
 namespace rstd::sys::sync::mutex
 {
 namespace backend = pthread;

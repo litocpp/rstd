@@ -1,9 +1,9 @@
-module rstd;
+module rstd.sys.sync.mutex;
 
-import :sys.sync.mutex.pthread;
+import :pthread;
 import rstd.alloc;
 
-using rstd_alloc::boxed::Box;
+using ::alloc::boxed::Box;
 
 namespace rstd::sys::sync::mutex::pthread
 {

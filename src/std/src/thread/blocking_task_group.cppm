@@ -1,5 +1,5 @@
 export module rstd:thread.blocking_task_group;
-export import :io;
+export import rstd.io;
 export import :thread.thread_pool;
 export import rstd.alloc;
 export import rstd.core;

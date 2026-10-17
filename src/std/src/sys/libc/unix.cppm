@@ -10,6 +10,7 @@ module;
 #include <sys/file.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
+#include <sys/ioctl.h>
 #include <sys/types.h>
 #if defined(__linux__)
 #include <sys/sysmacros.h>
@@ -34,7 +35,7 @@ extern "C" int posix_spawn_file_actions_addchdir(posix_spawn_file_actions_t*, co
     __attribute__((weak));
 #endif
 
-export module rstd:sys.libc.unix;
+export module rstd.sys.libc:unix;
 
 #if RSTD_VENDOR_APPLE
 inline constexpr auto _RSTD_CLOCK_MONOTONIC = CLOCK_MONOTONIC;
@@ -139,9 +140,11 @@ inline constexpr auto _SEEK_SET        = SEEK_SET;
 inline constexpr auto _SEEK_CUR        = SEEK_CUR;
 inline constexpr auto _SEEK_END        = SEEK_END;
 
-inline constexpr auto _AF_INET     = AF_INET;
-inline constexpr auto _AF_INET6    = AF_INET6;
-inline constexpr auto _SOCK_STREAM = SOCK_STREAM;
+inline constexpr auto _AF_UNIX         = AF_UNIX;
+inline constexpr auto _INADDR_LOOPBACK = INADDR_LOOPBACK;
+inline constexpr auto _AF_INET         = AF_INET;
+inline constexpr auto _AF_INET6        = AF_INET6;
+inline constexpr auto _SOCK_STREAM     = SOCK_STREAM;
 #if RSTD_VENDOR_APPLE
 inline constexpr auto _SOCK_CLOEXEC  = 0;
 inline constexpr auto _SOCK_NONBLOCK = 0;
@@ -161,10 +164,17 @@ inline constexpr auto _MSG_NOSIGNAL = MSG_NOSIGNAL;
 inline constexpr auto _MSG_NOSIGNAL = 0;
 #endif
 
-inline constexpr auto _PROT_READ  = PROT_READ;
-inline constexpr auto _PROT_WRITE = PROT_WRITE;
-inline constexpr auto _MAP_SHARED = MAP_SHARED;
-inline void* const    _MAP_FAILED = MAP_FAILED;
+inline constexpr auto _PROT_READ   = PROT_READ;
+inline constexpr auto _PROT_WRITE  = PROT_WRITE;
+inline constexpr auto _MAP_SHARED  = MAP_SHARED;
+inline constexpr auto _MAP_PRIVATE = MAP_PRIVATE;
+#if defined(MAP_ANONYMOUS)
+inline constexpr auto _MAP_ANONYMOUS = MAP_ANONYMOUS;
+#else
+inline constexpr auto _MAP_ANONYMOUS = MAP_ANON;
+#endif
+inline constexpr auto _RSTD_SC_PAGESIZE = _SC_PAGESIZE;
+inline void* const    _MAP_FAILED       = MAP_FAILED;
 
 inline constexpr auto _S_IFMT   = S_IFMT;
 inline constexpr auto _S_IFREG  = S_IFREG;
@@ -268,6 +278,8 @@ inline auto _rstd_online_processor_count() noexcept -> long {
 #undef SEEK_SET
 #undef SEEK_CUR
 #undef SEEK_END
+#undef AF_UNIX
+#undef INADDR_LOOPBACK
 #undef AF_INET
 #undef AF_INET6
 #undef SOCK_STREAM
@@ -283,6 +295,9 @@ inline auto _rstd_online_processor_count() noexcept -> long {
 #undef PROT_READ
 #undef PROT_WRITE
 #undef MAP_SHARED
+#undef MAP_PRIVATE
+#undef MAP_ANONYMOUS
+#undef _SC_PAGESIZE
 #undef MAP_FAILED
 #undef S_IFMT
 #undef S_IFREG
@@ -479,6 +494,7 @@ using ::fdatasync;
 using ::ftruncate;
 using ::mmap;
 using ::munmap;
+using ::sysconf;
 using ::unlink;
 using ::rmdir;
 using ::link;
@@ -543,6 +559,8 @@ using ::closedir;
 using ::rename;
 using ::free;
 using ::socket;
+using ::socketpair;
+using ::ioctl;
 using ::setsockopt;
 using ::bind;
 using ::listen;
@@ -620,11 +638,13 @@ inline constexpr auto SEEK_CUR            = _SEEK_CUR;
 inline constexpr auto SEEK_END            = _SEEK_END;
 
 // ── Sockets ─────────────────────────────────────────────────────────────
-inline constexpr auto AF_INET       = _AF_INET;
-inline constexpr auto AF_INET6      = _AF_INET6;
-inline constexpr auto SOCK_STREAM   = _SOCK_STREAM;
-inline constexpr auto SOCK_CLOEXEC  = _SOCK_CLOEXEC;
-inline constexpr auto SOCK_NONBLOCK = _SOCK_NONBLOCK;
+inline constexpr auto AF_UNIX         = _AF_UNIX;
+inline constexpr auto INADDR_LOOPBACK = _INADDR_LOOPBACK;
+inline constexpr auto AF_INET         = _AF_INET;
+inline constexpr auto AF_INET6        = _AF_INET6;
+inline constexpr auto SOCK_STREAM     = _SOCK_STREAM;
+inline constexpr auto SOCK_CLOEXEC    = _SOCK_CLOEXEC;
+inline constexpr auto SOCK_NONBLOCK   = _SOCK_NONBLOCK;
 
 #if RSTD_VENDOR_APPLE
 /// macOS has no `pipe2` syscall; emulate it with `pipe` + `fcntl`.
@@ -671,10 +691,13 @@ inline constexpr auto SHUT_WR = _SHUT_WR;
 inline constexpr auto MSG_NOSIGNAL = _MSG_NOSIGNAL;
 
 // ── Memory mapping ──────────────────────────────────────────────────────
-inline constexpr auto PROT_READ  = _PROT_READ;
-inline constexpr auto PROT_WRITE = _PROT_WRITE;
-inline constexpr auto MAP_SHARED = _MAP_SHARED;
-inline void* const    MAP_FAILED = _MAP_FAILED;
+inline constexpr auto PROT_READ     = _PROT_READ;
+inline constexpr auto PROT_WRITE    = _PROT_WRITE;
+inline constexpr auto MAP_SHARED    = _MAP_SHARED;
+inline constexpr auto MAP_PRIVATE   = _MAP_PRIVATE;
+inline constexpr auto MAP_ANONYMOUS = _MAP_ANONYMOUS;
+inline constexpr auto SC_PAGESIZE   = _RSTD_SC_PAGESIZE;
+inline void* const    MAP_FAILED    = _MAP_FAILED;
 
 // ── Stat mode masks ──────────────────────────────────────────────────────
 inline constexpr auto S_IFMT   = _S_IFMT;

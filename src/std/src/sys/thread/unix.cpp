@@ -1,11 +1,11 @@
 module;
 #include <rstd/macro.hpp>
 
-module rstd;
+module rstd.sys.thread;
 
-import :sys.thread.unix;
+import :unix;
 
-using rstd_alloc::boxed::Box;
+using ::alloc::boxed::Box;
 using rstd::thread::ThreadInit;
 using namespace rstd::sys::libc;
 

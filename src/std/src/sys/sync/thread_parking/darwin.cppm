@@ -1,4 +1,4 @@
-export module rstd:sys.sync.thread_parking.darwin;
+export module rstd.sys.sync.thread_parking:darwin;
 export import rstd.core;
 
 namespace rstd::sys::sync::thread_parking::darwin

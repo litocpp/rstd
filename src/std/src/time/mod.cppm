@@ -3,14 +3,9 @@ module;
 export module rstd:time;
 export import rstd.core;
 export import :time.calendar;
-import :sys.pal;
+import rstd.sys.pal;
 #if ! RSTD_OS_UNKNOWN
-import :sys.libc.std;
-#if RSTD_OS_UNIX
-import :sys.libc.unix;
-#elif RSTD_OS_WINDOWS
-import :sys.libc.windows;
-#endif
+import rstd.sys.libc;
 #endif
 
 namespace rstd::time

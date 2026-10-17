@@ -1,5 +1,5 @@
 export module rstd:sys.random;
-import :io.error;
+import rstd.io.error;
 
 namespace rstd::sys::random
 {

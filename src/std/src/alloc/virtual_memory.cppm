@@ -3,12 +3,9 @@ module;
 
 export module rstd:alloc.virtual_memory;
 import rstd.alloc;
+import rstd.sys.mem;
 
-#if RSTD_OS_UNIX
-import :alloc.unix;
-#elif RSTD_OS_WINDOWS
-import :alloc.windows;
-#else
+#if ! RSTD_OS_UNIX && ! RSTD_OS_WINDOWS
 #error "rstd::alloc::VirtualMemoryAllocator is unsupported on this platform"
 #endif
 
@@ -21,12 +18,6 @@ using rstd::result::Result;
 
 namespace rstd::alloc
 {
-
-#if RSTD_OS_UNIX
-namespace virtual_memory_backend = rstd::sys::alloc::unix;
-#elif RSTD_OS_WINDOWS
-namespace virtual_memory_backend = rstd::sys::alloc::windows;
-#endif
 
 export struct VirtualMemoryStatistics {
     usize mapped_bytes;
@@ -50,11 +41,10 @@ export class VirtualMemoryAllocator {
     }
 
 public:
-    VirtualMemoryAllocator() noexcept
-        : VirtualMemoryAllocator(virtual_memory_backend::information()) {}
+    VirtualMemoryAllocator() noexcept: VirtualMemoryAllocator(sys::mem::information()) {}
 
 private:
-    explicit VirtualMemoryAllocator(virtual_memory_backend::Information information) noexcept
+    explicit VirtualMemoryAllocator(sys::mem::Information information) noexcept
         : page_size_(information.page_size),
           mapping_alignment_(information.mapping_alignment),
           statistics_() {}
@@ -78,7 +68,7 @@ public:
 
         auto mapping_size = rounded_size(layout);
         if (mapping_size.is_none()) return Err(AllocError {});
-        auto* pointer = virtual_memory_backend::map(*mapping_size);
+        auto* pointer = sys::mem::map(*mapping_size);
         if (pointer == nullptr) return Err(AllocError {});
 
         statistics_.mapped_bytes += *mapping_size;
@@ -101,7 +91,7 @@ public:
         auto mapping_size = rounded_size(layout);
         debug_assert(mapping_size.is_some());
         if (mapping_size.is_none()) return;
-        auto const released = virtual_memory_backend::unmap(pointer, *mapping_size);
+        auto const released = sys::mem::unmap(pointer, *mapping_size);
         debug_assert(released);
         if (! released) return;
         statistics_.mapped_bytes -= *mapping_size;

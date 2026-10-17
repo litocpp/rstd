@@ -2,12 +2,12 @@ module;
 #include <rstd/macro.hpp>
 
 module rstd;
-import :sys.libc;
-import :sys.io.stdio;
-import :sys.pal;
+import rstd.sys.libc;
+import rstd.sys.io.stdio;
+import rstd.sys.pal;
 import :sys.os_str.windows;
 #if RSTD_OS_LINUX
-import :sys.process.linux;
+import rstd.sys.process.linux;
 #endif
 
 using namespace rstd::prelude;

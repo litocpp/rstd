@@ -1,5 +1,5 @@
-export module rstd:io.range;
-export import :io.traits;
+export module rstd.io:range;
+export import :traits;
 export import rstd.alloc;
 
 using ::alloc::boxed::Box;

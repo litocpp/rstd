@@ -1,6 +1,6 @@
 export module rstd:random;
 export import rstd.core;
-export import :io.error;
+export import rstd.io.error;
 
 namespace rstd::random
 {

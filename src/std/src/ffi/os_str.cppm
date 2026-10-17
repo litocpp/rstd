@@ -1,7 +1,7 @@
 module;
 #include <rstd/macro.hpp>
 export module rstd:ffi.os_str;
-export import :io;
+export import rstd.io;
 export import rstd.alloc;
 import :ffi.os_str.platform;
 import :ffi.os_str.encoding;

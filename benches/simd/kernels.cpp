@@ -1,9 +1,7 @@
-module;
-#include <string.h>
-
 module rstd_benches;
 import :simd.kernels;
 import rstd.core;
+import rstd.sys.libc;
 
 using namespace rstd;
 using simd::Simd;
@@ -27,7 +25,7 @@ auto search_libc(slice<u8> bytes, u8 needle) -> usize {
     if (bytes.is_empty()) return usize();
     const auto* start = bytes.as_raw_ptr();
     const auto* found = static_cast<const byte*>(
-        ::memchr(start, needle.to_primitive(), bytes.len().to_primitive()));
+        rstd::sys::libc::memchr(start, needle.to_primitive(), bytes.len().to_primitive()));
     return found ? usize(found - start) : bytes.len();
 }
 

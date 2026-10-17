@@ -1,4 +1,4 @@
-export module rstd:sys.pal.unix.futex;
+export module rstd.sys.pal:unix.futex;
 
 export import rstd.core;
 using rstd::sync::atomic::Atomic;

@@ -4,9 +4,9 @@ module;
 export module rstd:async.notify;
 export import :async.forward;
 export import :async.reactor;
-export import :io;
-import :os.fd;
-import :sys.libc;
+export import rstd.io;
+import rstd.os.fd;
+import rstd.sys.libc;
 import :sync;
 
 using namespace rstd;

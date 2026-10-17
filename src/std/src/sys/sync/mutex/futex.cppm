@@ -1,5 +1,5 @@
-export module rstd:sys.sync.mutex.futex;
-export import :sys.pal;
+export module rstd.sys.sync.mutex:futex;
+export import rstd.sys.pal;
 
 namespace rstd::sys::sync::mutex::futex
 {

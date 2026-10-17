@@ -1,7 +1,7 @@
 module;
 #include <rstd/macro.hpp>
 #include <pthread.h>
-export module rstd:sys.libc.pthread;
+export module rstd.sys.libc:pthread;
 
 export namespace rstd::sys::libc
 {

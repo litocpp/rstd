@@ -1,10 +1,10 @@
-export module rstd:thread.current;
-export import :thread.thread;
+module rstd.thread.thread;
+import :current;
 
 namespace rstd::thread
 {
 
-inline thread_local voidp CURRENT { nullptr };
+thread_local voidp CURRENT { nullptr };
 
 constexpr voidp    NONE { ptr_::null_mut<void>() };
 static const voidp BUSY { ptr_::without_provenance_mut<void>(usize(1)) };
@@ -32,7 +32,7 @@ struct CurrentGuard {
 };
 
 /// Returns the current thread's handle, or None if unavailable.
-export auto try_current() -> Option<Thread> {
+auto try_current() -> Option<Thread> {
     if (CURRENT == nullptr || CURRENT == BUSY || CURRENT == DESTROYED) {
         return None();
     }
@@ -44,7 +44,7 @@ export auto try_current() -> Option<Thread> {
 
 /// Sets the handle for the current thread, returning Err if already set or the ID mismatches.
 /// \param thread The thread handle to install as the current thread.
-export auto set_current(Thread thread) -> Result<empty, Thread> {
+auto set_current(Thread thread) -> Result<empty, Thread> {
     if (CURRENT) {
         return Err(rstd::move(thread));
     }
@@ -65,7 +65,7 @@ export auto set_current(Thread thread) -> Result<empty, Thread> {
 }
 
 /// Returns a handle to the current thread, lazily initializing if necessary.
-export auto current() -> Thread {
+auto current() -> Thread {
     if (auto t = try_current(); t.is_some()) {
         return t.unwrap_unchecked();
     }
@@ -82,7 +82,7 @@ export auto current() -> Thread {
 }
 
 /// Returns the current thread identifier without cloning its handle after initialization.
-export auto current_id() -> ThreadId {
+auto current_id() -> ThreadId {
     if (auto current = id::get(); current.is_some()) return *current;
     return current().id();
 }
@@ -95,4 +95,11 @@ void drop_current() {
     }
 }
 
+} // namespace rstd::thread
+
+namespace rstd::thread
+{
+auto Thread::set_current() && -> rstd::Result<empty, Thread> {
+    return ::rstd::thread::set_current(rstd::move(*this));
+}
 } // namespace rstd::thread

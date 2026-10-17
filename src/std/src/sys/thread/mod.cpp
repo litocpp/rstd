@@ -1,13 +1,13 @@
 module;
 #include <rstd/macro.hpp>
-module rstd;
-import :sys.libc;
-import :thread.lifecycle;
-import :thread.thread;
+module rstd.sys.thread;
+import rstd.sys.libc;
+import rstd.thread.thread;
 import rstd.alloc;
 
 using rstd::mut_ptr;
-using rstd_alloc::boxed::Box;
+using ::alloc::boxed::Box;
+using rstd::thread::ThreadInit;
 using namespace rstd::sys::libc;
 
 void rstd_thread_start_impl(void* data) {
@@ -29,9 +29,9 @@ extern "C" void* rstd_thread_start(void* data) {
     return {};
 }
 
-namespace rstd::thread
+namespace rstd::sys::thread
 {
-auto Thread::set_current() && -> rstd::Result<empty, Thread> {
-    return ::rstd::thread::set_current(rstd::move(*this));
+auto available_parallelism() -> Option<usize> {
+    return backend::Thread::available_parallelism();
 }
-} // namespace rstd::thread
+} // namespace rstd::sys::thread

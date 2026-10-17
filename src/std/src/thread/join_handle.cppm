@@ -2,7 +2,7 @@ module;
 #include <rstd/macro.hpp>
 export module rstd:thread.join_handle;
 export import :thread.lifecycle;
-export import :thread.thread;
+export import rstd.thread.thread;
 export import rstd.core;
 
 namespace rstd::thread

@@ -1,8 +1,8 @@
-module rstd;
+module rstd.sys.thread;
 
-import :sys.thread.windows;
+import :windows;
 
-using rstd_alloc::boxed::Box;
+using ::alloc::boxed::Box;
 using rstd::thread::ThreadInit;
 using namespace rstd::sys::libc;
 

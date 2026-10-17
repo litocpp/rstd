@@ -1,5 +1,5 @@
 export module rstd:sys.sync.once.queue;
-import :thread.current;
+import rstd.thread.thread;
 export import rstd.core;
 
 namespace rstd::sys::sync::once::queue

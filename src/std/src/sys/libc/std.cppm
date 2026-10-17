@@ -10,7 +10,7 @@ module;
 #include <unistd.h>
 #endif
 
-export module rstd:sys.libc.std;
+export module rstd.sys.libc:std;
 
 export namespace rstd::sys::libc
 {
@@ -31,6 +31,7 @@ using ::realloc;
 using ::calloc;
 
 // Utilities
+using ::memchr;
 using ::memcpy;
 using ::memset;
 

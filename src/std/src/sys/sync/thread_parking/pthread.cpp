@@ -1,5 +1,5 @@
-module rstd;
-import :sys.sync.thread_parking.pthread;
+module rstd.sys.sync.thread_parking;
+import :pthread;
 
 using rstd::sync::atomic::Ordering;
 

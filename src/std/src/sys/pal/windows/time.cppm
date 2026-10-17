@@ -1,4 +1,4 @@
-export module rstd:sys.pal.windows.time;
+export module rstd.sys.pal:windows.time;
 
 import rstd.core;
 

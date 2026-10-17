@@ -1,10 +1,5 @@
-export module rstd:sys.pal.unix.socket;
-export import :io.error;
-export import :net.socket_addr;
-export import :os.socket;
-import :sys.libc;
-import :sys.pal.poll.types;
-import rstd.core;
+module rstd.sys.socket;
+import :unix;
 
 namespace rstd::sys::pal::unix::socket
 {
@@ -19,16 +14,11 @@ using rstd::os::socket::OwnedSocket;
 using rstd::os::socket::RawSocket;
 namespace libc = rstd::sys::libc;
 
-export struct NativeSocketAddr {
-    libc::sockaddr_storage storage {};
-    libc::socklen_t        len {};
-};
-
 auto last_error() noexcept -> Error {
     return Error::last_os_error();
 }
 
-export auto addr_to_native(const rstd::sys::pal::poll::SocketAddress& address) noexcept
+auto addr_to_native(const rstd::sys::pal::poll::SocketAddress& address) noexcept
     -> NativeSocketAddr;
 
 auto addr_to_native(SocketAddr const& addr) noexcept -> NativeSocketAddr {
@@ -44,7 +34,7 @@ auto addr_to_native(SocketAddr const& addr) noexcept -> NativeSocketAddr {
     return addr_to_native(portable);
 }
 
-export auto addr_to_native(const rstd::sys::pal::poll::SocketAddress& address) noexcept
+auto addr_to_native(const rstd::sys::pal::poll::SocketAddress& address) noexcept
     -> NativeSocketAddr {
     auto out = NativeSocketAddr {};
     if (! address.ipv6) {
@@ -117,7 +107,7 @@ auto addr_from_native(const libc::sockaddr* addr, libc::socklen_t len) -> Result
     return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
 }
 
-export auto set_nonblocking(RawSocket socket, bool enabled) -> Result<empty> {
+auto set_nonblocking(RawSocket socket, bool enabled) -> Result<empty> {
     int flags = libc::fcntl(socket, libc::F_GETFL, 0);
     if (flags < 0) return Err(last_error());
     flags = enabled ? flags | libc::O_NONBLOCK : flags & ~libc::O_NONBLOCK;
@@ -134,7 +124,7 @@ auto set_cloexec(RawSocket socket) -> Result<empty> {
     return Ok(empty {});
 }
 
-export auto tcp(SocketAddr const& addr) -> Result<OwnedSocket> {
+auto tcp(SocketAddr const& addr) -> Result<OwnedSocket> {
     int family = addr.is_ipv4() ? libc::AF_INET : libc::AF_INET6;
     int raw    = libc::socket(family, libc::SOCK_STREAM, 0);
     if (raw < 0) return Err(last_error());
@@ -147,15 +137,15 @@ export auto tcp(SocketAddr const& addr) -> Result<OwnedSocket> {
     return Ok(rstd::move(socket));
 }
 
-export auto prepare_accept(SocketAddr const&) -> Result<Option<OwnedSocket>> {
+auto prepare_accept(SocketAddr const&) -> Result<Option<OwnedSocket>> {
     return Ok(None<OwnedSocket>());
 }
 
-export auto accept_address_buffer_size() noexcept -> usize {
+auto accept_address_buffer_size() noexcept -> usize {
     return usize();
 }
 
-export auto set_reuseaddr(RawSocket socket, bool enabled) -> Result<empty> {
+auto set_reuseaddr(RawSocket socket, bool enabled) -> Result<empty> {
     int value = enabled ? 1 : 0;
     if (libc::setsockopt(socket, libc::SOL_SOCKET, libc::SO_REUSEADDR, &value, sizeof(value)) < 0) {
         return Err(last_error());
@@ -163,7 +153,7 @@ export auto set_reuseaddr(RawSocket socket, bool enabled) -> Result<empty> {
     return Ok(empty {});
 }
 
-export auto set_nodelay(RawSocket socket, bool enabled) -> Result<empty> {
+auto set_nodelay(RawSocket socket, bool enabled) -> Result<empty> {
     int value = enabled ? 1 : 0;
     if (libc::setsockopt(socket, libc::IPPROTO_TCP, libc::TCP_NODELAY, &value, sizeof(value)) < 0) {
         return Err(last_error());
@@ -171,7 +161,7 @@ export auto set_nodelay(RawSocket socket, bool enabled) -> Result<empty> {
     return Ok(empty {});
 }
 
-export auto bind(RawSocket socket, SocketAddr const& addr) -> Result<empty> {
+auto bind(RawSocket socket, SocketAddr const& addr) -> Result<empty> {
     auto native = addr_to_native(addr);
     if (libc::bind(socket, reinterpret_cast<const libc::sockaddr*>(&native.storage), native.len) <
         0) {
@@ -180,14 +170,14 @@ export auto bind(RawSocket socket, SocketAddr const& addr) -> Result<empty> {
     return Ok(empty {});
 }
 
-export auto listen(RawSocket socket, i32 backlog) -> Result<empty> {
+auto listen(RawSocket socket, i32 backlog) -> Result<empty> {
     if (libc::listen(socket, static_cast<int>(backlog.to_primitive())) < 0) {
         return Err(last_error());
     }
     return Ok(empty {});
 }
 
-export auto connect(RawSocket socket, SocketAddr const& addr) -> Result<empty> {
+auto connect(RawSocket socket, SocketAddr const& addr) -> Result<empty> {
     auto native = addr_to_native(addr);
     if (libc::connect(
             socket, reinterpret_cast<const libc::sockaddr*>(&native.storage), native.len) < 0) {
@@ -196,7 +186,7 @@ export auto connect(RawSocket socket, SocketAddr const& addr) -> Result<empty> {
     return Ok(empty {});
 }
 
-export auto accept(RawSocket socket) -> Result<tuple<OwnedSocket, SocketAddr>> {
+auto accept(RawSocket socket) -> Result<tuple<OwnedSocket, SocketAddr>> {
     auto native = NativeSocketAddr {};
     native.len  = sizeof(native.storage);
     int raw = libc::accept(socket, reinterpret_cast<libc::sockaddr*>(&native.storage), &native.len);
@@ -214,24 +204,24 @@ export auto accept(RawSocket socket) -> Result<tuple<OwnedSocket, SocketAddr>> {
                                                rstd::move(addr).unwrap_unchecked() });
 }
 
-export auto recv(RawSocket socket, mut_ref<byte[]> buf) -> Result<usize> {
+auto recv(RawSocket socket, mut_ref<byte[]> buf) -> Result<usize> {
     auto n = libc::recv(socket, buf.as_raw_ptr(), buf.len().to_primitive(), 0);
     if (n < 0) return Err(last_error());
     return Ok(usize(n));
 }
 
-export auto send(RawSocket socket, slice<byte> buf) -> Result<usize> {
+auto send(RawSocket socket, slice<byte> buf) -> Result<usize> {
     auto n = libc::send(socket, buf.as_raw_ptr(), buf.len().to_primitive(), libc::MSG_NOSIGNAL);
     if (n < 0) return Err(last_error());
     return Ok(usize(n));
 }
 
-export auto shutdown_write(RawSocket socket) -> Result<empty> {
+auto shutdown_write(RawSocket socket) -> Result<empty> {
     if (libc::shutdown(socket, libc::SHUT_WR) < 0) return Err(last_error());
     return Ok(empty {});
 }
 
-export auto take_error(RawSocket socket) -> Result<Option<Error>> {
+auto take_error(RawSocket socket) -> Result<Option<Error>> {
     int             value = 0;
     libc::socklen_t len   = sizeof(value);
     if (libc::getsockopt(socket, libc::SOL_SOCKET, libc::SO_ERROR, &value, &len) < 0) {
@@ -241,7 +231,7 @@ export auto take_error(RawSocket socket) -> Result<Option<Error>> {
     return Ok(Some(Error::from_raw_os_error(i32(value))));
 }
 
-export auto local_addr(RawSocket socket) -> Result<SocketAddr> {
+auto local_addr(RawSocket socket) -> Result<SocketAddr> {
     auto native = NativeSocketAddr {};
     native.len  = sizeof(native.storage);
     if (libc::getsockname(socket, reinterpret_cast<libc::sockaddr*>(&native.storage), &native.len) <
@@ -251,7 +241,7 @@ export auto local_addr(RawSocket socket) -> Result<SocketAddr> {
     return addr_from_native(reinterpret_cast<const libc::sockaddr*>(&native.storage), native.len);
 }
 
-export auto peer_addr(RawSocket socket) -> Result<SocketAddr> {
+auto peer_addr(RawSocket socket) -> Result<SocketAddr> {
     auto native = NativeSocketAddr {};
     native.len  = sizeof(native.storage);
     if (libc::getpeername(socket, reinterpret_cast<libc::sockaddr*>(&native.storage), &native.len) <

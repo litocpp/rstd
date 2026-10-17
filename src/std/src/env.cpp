@@ -2,8 +2,8 @@ module;
 #include <rstd/macro.hpp>
 module rstd;
 import :env;
-import :sys.pal;
-import :sys.libc;
+import rstd.sys.pal;
+import rstd.sys.libc;
 import :sys.os_str.windows;
 import :sys.args.windows;
 

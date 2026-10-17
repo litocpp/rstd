@@ -1,8 +1,6 @@
-module rstd;
-import :sys.pal.unix.futex;
-import :sys.libc.std;
-import :sys.libc.linux;
-import :sys.libc.unix;
+module rstd.sys.pal;
+import :unix.futex;
+import rstd.sys.libc;
 using namespace rstd::sys::libc;
 
 namespace rstd::sys::pal::unix::futex

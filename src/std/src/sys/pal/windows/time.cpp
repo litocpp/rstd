@@ -1,8 +1,8 @@
-module rstd;
+module rstd.sys.pal;
 
-import :sys.pal.windows.time;
+import :windows.time;
 import rstd.core;
-import :sys.libc.windows;
+import rstd.sys.libc;
 
 using namespace rstd::sys::libc;
 

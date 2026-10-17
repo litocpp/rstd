@@ -1,5 +1,5 @@
 export module rstd:signal;
-export import :io;
+export import rstd.io;
 import :sync;
 import rstd.alloc;
 

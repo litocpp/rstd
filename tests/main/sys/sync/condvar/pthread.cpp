@@ -5,7 +5,7 @@ module;
 
 module rstd;
 #if RSTD_OS_UNIX && ! RSTD_OS_WINDOWS
-import :sys.sync.condvar.pthread;
+import rstd.sys.sync.condvar;
 
 namespace rstd_condvar_pthread_test
 {

@@ -1,6 +1,6 @@
-module rstd;
+module rstd.sys.sync.condvar;
 
-import :sys.sync.condvar.futex;
+import :futex;
 
 namespace rstd::sys::sync::condvar::futex
 {

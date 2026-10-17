@@ -1,8 +1,8 @@
-export module rstd:sys.sync.condvar.pthread;
+export module rstd.sys.sync.condvar:pthread;
 
-export import :sys.pal;
-export import :sys.sync.mutex.pthread;
-export import :sys.sync.once_box;
+export import rstd.sys.pal;
+export import rstd.sys.sync.mutex;
+export import rstd.sys.sync.once_box;
 
 namespace rstd::sys::sync::condvar::pthread
 {

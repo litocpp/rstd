@@ -1,9 +1,9 @@
-module rstd;
+module rstd.sys.sync.condvar;
 
-import :sys.sync.condvar.pthread;
+import :pthread;
 import rstd.alloc;
 
-using rstd::boxed::Box;
+using ::alloc::boxed::Box;
 using rstd::sync::atomic::Ordering;
 
 namespace rstd::sys::sync::condvar::pthread

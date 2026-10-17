@@ -6,7 +6,7 @@ module;
 
 module rstd;
 #if RSTD_OS_LINUX || RSTD_OS_WINDOWS
-import :sys.sync.mutex.futex;
+import rstd.sys.sync.mutex;
 
 namespace rstd_mutex_futex_test
 {

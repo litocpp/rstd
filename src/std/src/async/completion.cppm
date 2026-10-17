@@ -2,7 +2,7 @@ export module rstd:async.completion;
 export import :async.forward;
 import :async.awaitable;
 import :async.terminal;
-import :io;
+import rstd.io;
 import :sync;
 
 using namespace rstd;

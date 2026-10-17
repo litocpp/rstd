@@ -1,4 +1,4 @@
-export module rstd:net.socket_addr;
+export module rstd.net.socket_addr;
 import rstd.core;
 
 namespace rstd::net

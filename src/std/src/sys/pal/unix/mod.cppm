@@ -1,12 +1,12 @@
 module;
 #include <rstd/macro.hpp>
-export module rstd:sys.pal.unix;
-import :sys.pal.unix.sync;
-import :sys.pal.unix.time;
+export module rstd.sys.pal:unix;
+export import :unix.sync;
+export import :unix.time;
 import rstd.core;
 
 #if RSTD_OS_LINUX
-import :sys.pal.unix.futex;
+export import :unix.futex;
 #endif
 
 export namespace rstd::sys::pal::unix

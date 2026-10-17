@@ -4,10 +4,10 @@ module;
 export module rstd:net.tcp;
 export import :async;
 export import :bytes;
-export import :io;
-import :net.socket_addr;
-import :os.fd;
-import :os.socket;
+export import rstd.io;
+import rstd.net.socket_addr;
+import rstd.os.fd;
+import rstd.os.socket;
 
 using namespace rstd::prelude;
 

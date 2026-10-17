@@ -1,8 +1,8 @@
 export module rstd:sys.fs.unsupported;
 import :sys.fs.contract;
 import :fs.types;
-import :io;
-import :os.fd;
+import rstd.io;
+import rstd.os.fd;
 import :path;
 import :time;
 

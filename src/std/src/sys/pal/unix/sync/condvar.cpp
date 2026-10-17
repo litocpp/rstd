@@ -1,12 +1,10 @@
 module;
 #include <rstd/macro.hpp>
-module rstd;
-import :sys.pal.unix.sync.condvar;
+module rstd.sys.pal;
+import :unix.sync.condvar;
 
-import :sys.libc.pthread;
-import :sys.libc.std;
-import :sys.libc.unix;
-import :sys.pal.unix.sync.mutex;
+import rstd.sys.libc;
+import :unix.sync.mutex;
 import rstd.core;
 
 using namespace rstd::sys::libc;

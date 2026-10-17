@@ -1,6 +1,6 @@
 export module rstd:sys.fs.contract;
 import :fs.types;
-import :io;
+import rstd.io;
 import :time;
 import rstd.alloc;
 

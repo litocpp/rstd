@@ -1,5 +1,5 @@
-module rstd;
-import :sys.sync.thread_parking.darwin;
+module rstd.sys.sync.thread_parking;
+import :darwin;
 
 using rstd::sync::atomic::Ordering;
 

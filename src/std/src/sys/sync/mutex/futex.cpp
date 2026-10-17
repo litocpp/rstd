@@ -1,6 +1,6 @@
-module rstd;
+module rstd.sys.sync.mutex;
 
-import :sys.sync.mutex.futex;
+import :futex;
 
 namespace rstd::sys::sync::mutex::futex
 {

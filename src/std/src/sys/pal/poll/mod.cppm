@@ -2,7 +2,7 @@ module;
 #include <rstd/macro.hpp>
 
 export module rstd:sys.pal.poll;
-export import :sys.pal.poll.types;
+export import rstd.sys.pal.poll.types;
 #if RSTD_OS_LINUX
 import :sys.pal.linux.poll;
 #elif RSTD_OS_WINDOWS

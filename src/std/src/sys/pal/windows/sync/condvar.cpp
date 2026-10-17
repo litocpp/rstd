@@ -1,11 +1,11 @@
 module;
 #include <rstd/macro.hpp>
-module rstd;
-import :sys.pal.windows.sync.condvar;
+module rstd.sys.pal;
+import :windows.sync.condvar;
 
-import :sys.pal.windows.sync.mutex;
+import :windows.sync.mutex;
 import rstd.core;
-import :sys.libc.windows;
+import rstd.sys.libc;
 
 using namespace rstd::sys::libc;
 

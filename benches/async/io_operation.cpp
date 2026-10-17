@@ -2,17 +2,14 @@ module;
 
 #include <rstd/macro.hpp>
 
-#if RSTD_OS_LINUX
-#include <cerrno>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <sys/socket.h>
-#endif
-
 module rstd_benches;
 import rstd.bench;
 import rstd;
 import :async.support;
+#if RSTD_OS_LINUX
+import rstd.sys.libc;
+namespace libc = rstd::sys::libc;
+#endif
 
 using namespace rstd;
 using namespace rstd::prelude;
@@ -50,7 +47,10 @@ auto make_operation_read_pairs(rstd::size_t queue_depth) -> io::Result<Vec<Opera
     auto pairs = Vec<OperationReadPair>::with_capacity(usize(queue_depth));
     for (rstd::size_t index = 0; index < queue_depth; ++index) {
         int sockets[2] = { -1, -1 };
-        if (::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0, sockets) != 0) {
+        if (libc::socketpair(libc::AF_UNIX,
+                             libc::SOCK_STREAM | libc::SOCK_NONBLOCK | libc::SOCK_CLOEXEC,
+                             0,
+                             sockets) != 0) {
             return Err(io::error::Error::last_os_error());
         }
         pairs.push(OperationReadPair {
@@ -64,10 +64,10 @@ auto make_operation_read_pairs(rstd::size_t queue_depth) -> io::Result<Vec<Opera
 auto send_operation_read_bytes(Vec<OperationReadPair>& pairs) -> io::Result<empty> {
     constexpr char VALUE = 'q';
     for (usize index {}; index < pairs.len(); ++index) {
-        ::ssize_t sent;
+        libc::ssize_t sent;
         do {
-            sent = ::send(pairs[index].writer.as_raw_socket(), &VALUE, 1, MSG_NOSIGNAL);
-        } while (sent < 0 && errno == EINTR);
+            sent = libc::send(pairs[index].writer.as_raw_socket(), &VALUE, 1, libc::MSG_NOSIGNAL);
+        } while (sent < 0 && libc::get_errno() == libc::EINTR);
         if (sent != 1) return Err(io::error::Error::last_os_error());
     }
     return Ok(empty {});

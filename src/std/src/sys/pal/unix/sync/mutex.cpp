@@ -1,9 +1,9 @@
 module;
 #include <rstd/macro.hpp>
-module rstd;
-import :sys.pal.unix.sync.mutex;
+module rstd.sys.pal;
+import :unix.sync.mutex;
 
-import :sys.libc.pthread;
+import rstd.sys.libc;
 import rstd.core;
 
 using namespace rstd::sys::libc;

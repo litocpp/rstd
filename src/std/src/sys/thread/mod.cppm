@@ -1,15 +1,15 @@
 module;
 #include <rstd/macro.hpp>
-export module rstd:sys.thread;
+export module rstd.sys.thread;
 
 #if RSTD_OS_UNIX
-import :sys.thread.unix;
+export import :unix;
 namespace rstd::sys::thread
 {
 namespace backend = unix;
 }
 #elif RSTD_OS_WINDOWS
-import :sys.thread.windows;
+export import :windows;
 namespace rstd::sys::thread
 {
 namespace backend = windows;
@@ -19,7 +19,5 @@ namespace backend = windows;
 namespace rstd::sys::thread
 {
 export using backend::Thread;
-inline auto available_parallelism() -> Option<usize> {
-    return backend::Thread::available_parallelism();
-}
+export auto available_parallelism() -> Option<usize>;
 } // namespace rstd::sys::thread

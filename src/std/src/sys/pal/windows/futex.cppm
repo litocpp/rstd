@@ -1,4 +1,4 @@
-export module rstd:sys.pal.windows.futex;
+export module rstd.sys.pal:windows.futex;
 export import rstd.core;
 
 using rstd::sync::atomic::Atomic;

@@ -3,11 +3,11 @@ module;
 
 export module rstd:process.command;
 export import :process.exit_status;
-export import :io;
+export import rstd.io;
 export import :path;
-export import :os.fd;
+export import rstd.os.fd;
 export import rstd.alloc;
-import :sys.io.stdio;
+import rstd.sys.io.stdio;
 #if RSTD_OS_LINUX
 export import :os.linux.pidfd;
 #endif

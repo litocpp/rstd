@@ -14,7 +14,7 @@ import :async.io_operation;
 import :async.poll;
 import :async.runtime;
 import :async.spawn;
-import :sys.pal.poll.types;
+import rstd.sys.pal.poll.types;
 import :thread;
 import :time;
 import rstd.alloc;

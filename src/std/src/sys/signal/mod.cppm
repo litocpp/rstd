@@ -1,5 +1,5 @@
 export module rstd:sys.signal;
-import :io;
+import rstd.io;
 
 namespace rstd::sys::signal
 {

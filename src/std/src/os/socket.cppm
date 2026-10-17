@@ -1,9 +1,9 @@
 module;
 #include <rstd/macro.hpp>
 
-export module rstd:os.socket;
-export import :io.error;
-export import :os.fd;
+export module rstd.os.socket;
+export import rstd.io.error;
+export import rstd.os.fd;
 export import rstd.core;
 
 namespace rstd::os::socket

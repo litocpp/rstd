@@ -1,7 +1,7 @@
-export module rstd:sys.pal.windows.sync.condvar;
+export module rstd.sys.pal:windows.sync.condvar;
 
-import :sys.pal.windows.sync.mutex;
-import :sys.libc.windows;
+import :windows.sync.mutex;
+import rstd.sys.libc;
 import rstd.core;
 
 using namespace rstd::sys::libc;

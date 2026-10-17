@@ -1,9 +1,9 @@
 export module rstd:sys.pal.linux.poll;
-export import :sys.pal.poll.types;
+export import rstd.sys.pal.poll.types;
 
-import :sys.libc;
+import rstd.sys.libc;
 import :sys.pal.linux.io_uring;
-import :sys.pal.unix.socket;
+import rstd.sys.socket;
 import rstd.alloc;
 
 namespace libc        = rstd::sys::libc;

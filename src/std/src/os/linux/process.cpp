@@ -2,8 +2,8 @@ module;
 #include <rstd/macro.hpp>
 module rstd;
 #if RSTD_OS_LINUX
-import :sys.process.linux;
-import :sys.libc;
+import rstd.sys.process.linux;
+import rstd.sys.libc;
 
 using namespace rstd::prelude;
 

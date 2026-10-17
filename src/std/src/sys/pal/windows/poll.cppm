@@ -3,9 +3,9 @@ module;
 #include <windows.h>
 
 export module rstd:sys.pal.windows.poll;
-export import :sys.pal.poll.types;
+export import rstd.sys.pal.poll.types;
 
-import :sys.pal.windows.socket;
+import rstd.sys.socket;
 import rstd.alloc;
 
 namespace windows_socket = rstd::sys::pal::windows::socket;

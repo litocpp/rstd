@@ -1,9 +1,8 @@
 export module rstd:thread.functions;
 export import :thread.builder;
-export import :thread.thread;
+export import rstd.thread.thread;
 export import :thread.join_handle;
-export import :thread.current;
-import :sys.thread;
+import rstd.sys.thread;
 export import rstd.core;
 
 namespace rstd::thread
@@ -50,8 +49,8 @@ export inline void unpark(const Thread& thread) {
 export inline auto available_parallelism() -> io::Result<rstd::num::nonzero::NonZero<usize>> {
     auto count = sys::thread::available_parallelism();
     if (count.is_none()) {
-        return Err(io::Error::new_const(io::ErrorKind { io::ErrorKind::Other },
-                                        "available parallelism is unknown"));
+        return Err(io::error::Error::new_const(io::error::ErrorKind { io::error::ErrorKind::Other },
+                                               "available parallelism is unknown"));
     }
     return Ok(rstd::num::nonzero::NonZero<usize>::make_unchecked(*count));
 }

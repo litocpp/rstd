@@ -1,12 +1,12 @@
 export module rstd:async.reactor;
 export import :async.forward;
 export import :async.readiness;
-export import :io.error;
+export import rstd.io.error;
 export import :time;
 import :async.awaitable;
 import :async.poll;
 import :async.runtime_core;
-import :os.fd;
+import rstd.os.fd;
 import :sync;
 import rstd.alloc;
 

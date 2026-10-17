@@ -1,17 +1,9 @@
-module;
-
-#if defined(__linux__)
-#include <cerrno>
-#include <cstddef>
-#include <cstdint>
-#include <linux/perf_event.h>
-#include <sys/ioctl.h>
-#include <sys/syscall.h>
-#include <unistd.h>
-#endif
-
 export module rstd.bench:counters;
 import :model;
+#if defined(__linux__)
+import rstd.sys.libc;
+namespace libc = rstd::sys::libc;
+#endif
 
 using namespace rstd::prelude;
 
@@ -56,23 +48,23 @@ class CounterBackend {
 
     static auto
     open_counter(rstd::uint32_t type, rstd::uint64_t config, int group_descriptor) noexcept -> int {
-        auto attributes           = perf_event_attr {};
+        auto attributes           = libc::perf_event_attr {};
         attributes.type           = type;
         attributes.size           = sizeof(attributes);
         attributes.config         = config;
         attributes.disabled       = group_descriptor == -1;
         attributes.exclude_kernel = 1;
         attributes.exclude_hv     = 1;
-        attributes.read_format =
-            PERF_FORMAT_GROUP | PERF_FORMAT_TOTAL_TIME_ENABLED | PERF_FORMAT_TOTAL_TIME_RUNNING;
+        attributes.read_format    = libc::PERF_FORMAT_GROUP | libc::PERF_FORMAT_TOTAL_TIME_ENABLED |
+                                    libc::PERF_FORMAT_TOTAL_TIME_RUNNING;
         return static_cast<int>(
-            ::syscall(SYS_perf_event_open, &attributes, 0, -1, group_descriptor, 0));
+            libc::syscall(libc::SYS_perf_event_open, &attributes, 0, -1, group_descriptor, 0));
     }
 
     void close_all() noexcept {
         for (rstd::size_t index = 0; index < COUNTER_COUNT; ++index) {
             if (descriptors_[index] >= 0) {
-                ::close(descriptors_[index]);
+                libc::close(descriptors_[index]);
                 descriptors_[index] = -1;
             }
         }
@@ -93,12 +85,12 @@ class CounterBackend {
             rstd::uint64_t config;
         };
         constexpr CounterDescriptor descriptors[COUNTER_COUNT] {
-            { PERF_TYPE_HARDWARE, PERF_COUNT_HW_CPU_CYCLES },
-            { PERF_TYPE_HARDWARE, PERF_COUNT_HW_INSTRUCTIONS },
-            { PERF_TYPE_HARDWARE, PERF_COUNT_HW_BRANCH_INSTRUCTIONS },
-            { PERF_TYPE_HARDWARE, PERF_COUNT_HW_BRANCH_MISSES },
-            { PERF_TYPE_SOFTWARE, PERF_COUNT_SW_PAGE_FAULTS },
-            { PERF_TYPE_SOFTWARE, PERF_COUNT_SW_CONTEXT_SWITCHES },
+            { libc::PERF_TYPE_HARDWARE, libc::PERF_COUNT_HW_CPU_CYCLES },
+            { libc::PERF_TYPE_HARDWARE, libc::PERF_COUNT_HW_INSTRUCTIONS },
+            { libc::PERF_TYPE_HARDWARE, libc::PERF_COUNT_HW_BRANCH_INSTRUCTIONS },
+            { libc::PERF_TYPE_HARDWARE, libc::PERF_COUNT_HW_BRANCH_MISSES },
+            { libc::PERF_TYPE_SOFTWARE, libc::PERF_COUNT_SW_PAGE_FAULTS },
+            { libc::PERF_TYPE_SOFTWARE, libc::PERF_COUNT_SW_CONTEXT_SWITCHES },
         };
 
         for (rstd::size_t index = 0; index < COUNTER_COUNT; ++index) {
@@ -106,7 +98,7 @@ class CounterBackend {
                                                descriptors[index].config,
                                                index == 0 ? -1 : descriptors_[0]);
             if (descriptors_[index] < 0) {
-                fail(errno);
+                fail(libc::get_errno());
                 return;
             }
         }
@@ -116,10 +108,10 @@ class CounterBackend {
 
     auto read_group(u64 (&values)[COUNTER_COUNT]) noexcept -> bool {
         auto       data  = GroupRead {};
-        auto const bytes = ::read(descriptors_[0], &data, sizeof(data));
-        if (bytes != static_cast<ssize_t>(sizeof(data)) || data.count != COUNTER_COUNT ||
+        auto const bytes = libc::read(descriptors_[0], &data, sizeof(data));
+        if (bytes != static_cast<libc::ssize_t>(sizeof(data)) || data.count != COUNTER_COUNT ||
             data.time_running == 0) {
-            fail(bytes < 0 ? errno : EIO);
+            fail(bytes < 0 ? libc::get_errno() : libc::EIO);
             return false;
         }
 
@@ -156,8 +148,9 @@ class CounterBackend {
             if (twice) value = mix(value);
         }
         rstd::hint::black_box(value);
-        if (::ioctl(descriptors_[0], PERF_EVENT_IOC_DISABLE, PERF_IOC_FLAG_GROUP) != 0) {
-            fail(errno);
+        if (libc::ioctl(descriptors_[0], libc::PERF_EVENT_IOC_DISABLE, libc::PERF_IOC_FLAG_GROUP) !=
+            0) {
+            fail(libc::get_errno());
             return false;
         }
         return read_group(values);
@@ -171,8 +164,10 @@ class CounterBackend {
         for (rstd::size_t sample = 0; sample < 100 && available_; ++sample) {
             begin_measure();
             op();
-            if (::ioctl(descriptors_[0], PERF_EVENT_IOC_DISABLE, PERF_IOC_FLAG_GROUP) != 0) {
-                fail(errno);
+            if (libc::ioctl(descriptors_[0],
+                            libc::PERF_EVENT_IOC_DISABLE,
+                            libc::PERF_IOC_FLAG_GROUP) != 0) {
+                fail(libc::get_errno());
                 return;
             }
             u64 values[COUNTER_COUNT] {};
@@ -253,9 +248,11 @@ public:
     void begin_measure() noexcept {
 #if defined(__linux__)
         if (! available_) return;
-        if (::ioctl(descriptors_[0], PERF_EVENT_IOC_RESET, PERF_IOC_FLAG_GROUP) != 0 ||
-            ::ioctl(descriptors_[0], PERF_EVENT_IOC_ENABLE, PERF_IOC_FLAG_GROUP) != 0) {
-            fail(errno);
+        if (libc::ioctl(descriptors_[0], libc::PERF_EVENT_IOC_RESET, libc::PERF_IOC_FLAG_GROUP) !=
+                0 ||
+            libc::ioctl(descriptors_[0], libc::PERF_EVENT_IOC_ENABLE, libc::PERF_IOC_FLAG_GROUP) !=
+                0) {
+            fail(libc::get_errno());
         }
 #endif
     }
@@ -266,8 +263,9 @@ public:
             if (mode_.is_Disabled()) return Ok(CounterSet {});
             return Err(error_code_);
         }
-        if (::ioctl(descriptors_[0], PERF_EVENT_IOC_DISABLE, PERF_IOC_FLAG_GROUP) != 0) {
-            auto code = errno;
+        if (libc::ioctl(descriptors_[0], libc::PERF_EVENT_IOC_DISABLE, libc::PERF_IOC_FLAG_GROUP) !=
+            0) {
+            auto code = libc::get_errno();
             fail(code);
             return Err(i32(code));
         }

@@ -6,11 +6,11 @@ module;
 #include <cstdint>
 
 export module rstd:sys.pal.macos.poll;
-export import :sys.pal.poll.types;
-export import :io.error;
+export import rstd.sys.pal.poll.types;
+export import rstd.io.error;
 
-import :sys.libc;
-import :sys.pal.unix.socket;
+import rstd.sys.libc;
+import rstd.sys.socket;
 import rstd.alloc;
 
 namespace rstd::sys::pal::macos::poll

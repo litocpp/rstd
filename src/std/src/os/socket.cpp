@@ -4,10 +4,9 @@ module;
 #include <winsock2.h>
 #endif
 
-module rstd;
-import :os.socket;
+module rstd.os.socket;
 #if RSTD_OS_UNIX
-import :sys.libc.unix;
+import rstd.sys.libc;
 #endif
 
 namespace rstd::os::socket

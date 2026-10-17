@@ -2,13 +2,6 @@ module;
 
 #include <rstd/macro.hpp>
 
-#if RSTD_OS_LINUX
-#include <cerrno>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <sys/socket.h>
-#endif
-
 module rstd_benches;
 import rstd.bench;
 import rstd;

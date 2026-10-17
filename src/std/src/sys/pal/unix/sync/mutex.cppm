@@ -1,6 +1,6 @@
-export module rstd:sys.pal.unix.sync.mutex;
+export module rstd.sys.pal:unix.sync.mutex;
 
-import :sys.libc.pthread;
+import rstd.sys.libc;
 import rstd.core;
 
 using namespace rstd::sys::libc;

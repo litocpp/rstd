@@ -1,21 +1,21 @@
 module;
 #include <rstd/macro.hpp>
-export module rstd:sys.sync.thread_parking;
+export module rstd.sys.sync.thread_parking;
 
 #if RSTD_VENDOR_APPLE
-import :sys.sync.thread_parking.darwin;
+export import :darwin;
 namespace rstd::sys::sync::thread_parking
 {
 namespace backend = darwin;
 }
 #elif RSTD_OS_LINUX || RSTD_OS_WINDOWS
-import :sys.sync.thread_parking.futex;
+export import :futex;
 namespace rstd::sys::sync::thread_parking
 {
 namespace backend = futex;
 }
 #else
-import :sys.sync.thread_parking.pthread;
+export import :pthread;
 namespace rstd::sys::sync::thread_parking
 {
 namespace backend = pthread;

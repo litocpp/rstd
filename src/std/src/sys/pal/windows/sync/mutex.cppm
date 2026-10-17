@@ -1,7 +1,7 @@
-export module rstd:sys.pal.windows.sync.mutex;
+export module rstd.sys.pal:windows.sync.mutex;
 
 import rstd.core;
-import :sys.libc.windows;
+import rstd.sys.libc;
 
 using namespace rstd::sys::libc;
 

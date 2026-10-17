@@ -12,11 +12,10 @@ if(WIN32)
   list(
     APPEND
     rstd_std_platform_modules
-    src/alloc/windows.cppm
     src/sys/fs/windows.cppm
     src/sys/libc/windows.cppm
     src/sys/pal/windows/mod.cppm
-    src/sys/pal/windows/socket.cppm
+    src/sys/socket/windows.cppm
     src/sys/pal/windows/poll.cppm
     src/sys/pal/windows/futex.cppm
     src/sys/pal/windows/time.cppm
@@ -31,8 +30,8 @@ if(WIN32)
   list(
     APPEND
     rstd_std_platform_sources
-    src/alloc/windows.cpp
     src/sys/fs/windows.cpp
+    src/sys/socket/windows.cpp
     src/sys/pal/windows/futex.cpp
     src/sys/pal/windows/mod.cpp
     src/sys/pal/windows/time.cpp
@@ -47,27 +46,30 @@ elseif(UNIX)
   list(
     APPEND
     rstd_std_platform_modules
-    src/alloc/unix.cppm
     src/sys/fs/unix.cppm
     src/sys/libc/pthread.cppm
     src/sys/libc/unix.cppm
     src/sys/pal/unix/mod.cppm
-    src/sys/pal/unix/socket.cppm
+    src/sys/socket/unix.cppm
     src/sys/pal/unix/time.cppm
     src/sys/pal/unix/sync/mutex.cppm
     src/sys/pal/unix/sync/condvar.cppm
     src/sys/pal/unix/sync/mod.cppm
-    src/sys/thread/unix.cppm)
+    src/sys/thread/unix.cppm
+    src/sys/sync/mutex/pthread.cppm
+    src/sys/sync/condvar/pthread.cppm)
   list(
     APPEND
     rstd_std_platform_sources
-    src/alloc/unix.cpp
     src/sys/fs/unix.cpp
+    src/sys/socket/unix.cpp
     src/sys/pal/unix/mod.cpp
     src/sys/pal/unix/time.cpp
     src/sys/pal/unix/sync/mutex.cpp
     src/sys/pal/unix/sync/condvar.cpp
-    src/sys/thread/unix.cpp)
+    src/sys/thread/unix.cpp
+    src/sys/sync/mutex/pthread.cpp
+    src/sys/sync/condvar/pthread.cpp)
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     list(
       APPEND
@@ -89,16 +91,6 @@ elseif(UNIX)
       src/sys/sync/condvar/futex.cpp
       src/sys/sync/thread_parking/futex.cpp)
   else()
-    list(
-      APPEND
-      rstd_std_platform_modules
-      src/sys/sync/mutex/pthread.cppm
-      src/sys/sync/condvar/pthread.cppm)
-    list(
-      APPEND
-      rstd_std_platform_sources
-      src/sys/sync/mutex/pthread.cpp
-      src/sys/sync/condvar/pthread.cpp)
     if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
       list(APPEND rstd_std_platform_modules src/sys/pal/macos/poll.cppm)
     endif()
@@ -177,11 +169,11 @@ target_sources(
          src/sys/process/linux.cppm
          src/os/windows/ffi.cppm
          src/sys/io/stdio.cppm
+         src/sys/mem/mod.cppm
          src/sys/mod.cppm
-         src/sys/fs.cppm
+         src/sys/fs/mod.cppm
          src/sys/fs/contract.cppm
-         src/sys/socket.cppm
-         src/sys/io/mod.cppm
+         src/sys/socket/mod.cppm
          src/sys/libc/mod.cppm
          src/sys/libc/std.cppm
          src/sys/pal/mod.cppm
@@ -202,9 +194,10 @@ target_sources(
          src/io/util.cppm
          src/io/stdio.cppm
          src/thread/mod.cppm
-         src/thread/id.cppm
+         src/thread/thread/id.cppm
          src/thread/thread.cppm
-         src/thread/main_thread.cppm
+         src/thread/thread/types.cppm
+         src/thread/thread/main_thread.cppm
          src/thread/builder.cppm
          src/thread/functions.cppm
          src/thread/thread_pool.cppm
@@ -214,7 +207,7 @@ target_sources(
          src/thread/lifecycle.cppm
          src/thread/scoped.cppm
          src/thread/forward.cppm
-         src/thread/current.cppm
+         src/thread/thread/current.cppm
          src/sync/mod.cppm
          src/sync/spsc.cppm
          src/sync/once.cppm
@@ -271,11 +264,20 @@ target_sources(
 
 target_sources(
   rstd.std
-  PRIVATE src/io/error.cpp
+  PRIVATE src/sys/mem/mod.cpp
+          src/sys/process/linux.cpp
+          src/io/error.cpp
           src/random/mod.cpp
           src/sys/random/mod.cpp
           src/async/runtime_core.cpp
-          src/thread/mod.cpp
+          src/thread/thread.cpp
+          src/thread/thread/id.cpp
+          src/thread/thread/main_thread.cpp
+          src/thread/thread/current.cpp
+          src/sys/thread/mod.cpp
+          src/sys/socket/mod.cpp
+          src/sys/io/stdio.cpp
+          src/io/stdio.cpp
           src/net/tcp.cpp
           src/net/socket_addr.cpp
           src/lib.cpp

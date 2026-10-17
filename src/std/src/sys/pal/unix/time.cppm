@@ -1,4 +1,4 @@
-export module rstd:sys.pal.unix.time;
+export module rstd.sys.pal:unix.time;
 
 import rstd.core;
 

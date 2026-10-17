@@ -1,7 +1,7 @@
 export module rstd:async.completion_queue;
 export import :async.forward;
 import :async.awaitable;
-import :io;
+import rstd.io;
 import :sync;
 import rstd.alloc;
 

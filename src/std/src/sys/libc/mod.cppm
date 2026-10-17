@@ -1,14 +1,14 @@
 module;
 #include <rstd/macro.hpp>
-export module rstd:sys.libc;
-export import :sys.libc.std;
+export module rstd.sys.libc;
+export import :std;
 
 #if RSTD_OS_UNIX
-export import :sys.libc.pthread;
-export import :sys.libc.unix;
+export import :pthread;
+export import :unix;
 #if RSTD_OS_LINUX
-export import :sys.libc.linux;
+export import :linux;
 #endif
 #elif RSTD_OS_WINDOWS
-export import :sys.libc.windows;
+export import :windows;
 #endif

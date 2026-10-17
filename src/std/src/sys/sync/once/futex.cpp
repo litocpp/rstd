@@ -1,5 +1,5 @@
 module rstd;
-import :sys.pal;
+import rstd.sys.pal;
 import :sys.sync.once.futex;
 
 namespace rstd::sys::sync::once::futex
