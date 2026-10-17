@@ -237,3 +237,25 @@ TEST(String, FromUtf8OwnsValidatedBytes) {
     EXPECT_EQ(overlong_utf8_error.valid_up_to(), usize(1));
     EXPECT_EQ(overlong_utf8_error.error_len(), Some(u8(1)));
 }
+
+TEST(String, ScalarWriteAndCollect) {
+    auto text = String::make();
+    text.push(rstd::Char::from_char32(U'中').unwrap());
+    text.insert(usize(), rstd::Char::from_char32(U'a').unwrap());
+    text.insert(text.len(), rstd::Char::from_char32(U'😀').unwrap());
+    text.insert(usize(1), rstd::Char::MIN);
+    EXPECT_EQ(text.as_str(), "a\0中😀"_str);
+    auto copy = text.as_str().chars().collect<String>();
+    EXPECT_EQ(copy, text.as_str());
+    rstd::iter::extend(copy, "右"_str.chars());
+    EXPECT_EQ(copy, "a\0中😀右"_str);
+    auto empty = ""_str.chars().collect<String>();
+    EXPECT_TRUE(empty.is_empty());
+}
+
+TEST(StringDeathTest, ScalarCompatibilityRejectsInvalidCodePoints) {
+    auto text = String::make("中"_str);
+    EXPECT_DEATH(text.push(char32_t(0xD800)), "value.is_some");
+    EXPECT_DEATH(text.insert(usize(), char32_t(0x110000)), "value.is_some");
+    EXPECT_DEATH(text.insert(usize(1), rstd::Char::MIN), "is_char_boundary");
+}

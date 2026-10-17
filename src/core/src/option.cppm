@@ -15,11 +15,6 @@ export import :cmp;
 namespace rstd::option
 {
 
-/// An optional value: either `Some` containing a value, or `None`.
-/// \tparam T The type of the contained value.
-export template<typename T>
-class Option;
-
 /// A sentinel type representing an untyped `None` value, implicitly convertible to any `Option<T>`.
 export struct Unknown {
     template<typename T>

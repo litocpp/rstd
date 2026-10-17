@@ -274,11 +274,11 @@ TEST(Str, FromUtf8Invalid) {
 TEST(Str, CharsExposesUnconsumedString) {
     auto chars = "é中x"_str.chars();
     EXPECT_EQ(chars.as_str(), "é中x"_str);
-    EXPECT_EQ(chars.next().unwrap(), u32(U'é'));
+    EXPECT_EQ(chars.next().unwrap().to_u32(), u32(U'é'));
     EXPECT_EQ(chars.as_str(), "中x"_str);
-    EXPECT_EQ(chars.next().unwrap(), u32(U'中'));
+    EXPECT_EQ(chars.next().unwrap().to_u32(), u32(U'中'));
     EXPECT_EQ(chars.as_str(), "x"_str);
-    EXPECT_EQ(chars.next().unwrap(), u32(U'x'));
+    EXPECT_EQ(chars.next().unwrap().to_u32(), u32(U'x'));
     EXPECT_TRUE(chars.next().is_none());
     EXPECT_TRUE(chars.next().is_none());
 }
@@ -288,16 +288,16 @@ TEST(Str, CharIndicesUsesUtf8ByteOffsets) {
 
     auto first = indices.next().unwrap();
     EXPECT_EQ(first.template get<0>(), usize());
-    EXPECT_EQ(first.template get<1>(), u32(U'a'));
+    EXPECT_EQ(first.template get<1>().to_u32(), u32(U'a'));
     EXPECT_EQ(indices.as_str(), "右😀"_str);
 
     auto second = indices.next().unwrap();
     EXPECT_EQ(second.template get<0>(), usize(1));
-    EXPECT_EQ(second.template get<1>(), u32(U'右'));
+    EXPECT_EQ(second.template get<1>().to_u32(), u32(U'右'));
 
     auto third = indices.next().unwrap();
     EXPECT_EQ(third.template get<0>(), usize(4));
-    EXPECT_EQ(third.template get<1>(), u32(U'😀'));
+    EXPECT_EQ(third.template get<1>().to_u32(), u32(U'😀'));
     EXPECT_TRUE(indices.next().is_none());
 }
 
@@ -363,4 +363,18 @@ TEST(String, ClearAndIsEmpty) {
     s.clear();
     EXPECT_TRUE(s.is_empty());
     EXPECT_EQ(s.len(), usize());
+}
+
+TEST(Str, ScalarIteratorTypesAndNul) {
+    static_assert(rstd::mtp::same_as<rstd::str_::Chars::Item, rstd::Char>);
+    static_assert(
+        rstd::mtp::same_as<rstd::str_::CharIndices::Item, rstd::tuple<usize, rstd::Char>>);
+    auto chars = "\0中"_str.chars();
+    EXPECT_EQ(chars.next().unwrap(), rstd::Char::MIN);
+    EXPECT_EQ(chars.as_str(), "中"_str);
+    EXPECT_EQ(chars.next().unwrap().to_primitive(), U'中');
+    EXPECT_TRUE(chars.next().is_none());
+    auto empty = ""_str.char_indices();
+    EXPECT_TRUE(empty.next().is_none());
+    EXPECT_TRUE(empty.next().is_none());
 }

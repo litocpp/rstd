@@ -8,7 +8,7 @@ import :convert.base;
 export import :slice;
 export import :fmt;
 export import :marker;
-export import :char_;
+export import :char_.utf8;
 export import :hash;
 
 namespace rstd::str_

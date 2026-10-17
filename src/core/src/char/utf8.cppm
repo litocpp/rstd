@@ -1,42 +1,17 @@
-export module rstd.core:char_;
+export module rstd.core:char_.utf8;
 import :num.types;
 export import rstd.basic;
 
-export namespace rstd::char_
+namespace rstd::char_
 {
-
-/// The highest valid Unicode code point (U+10FFFF).
-inline constexpr char32_t MAX = 0x10FFFF;
-
-/// The Unicode replacement character (U+FFFD), used for invalid sequences.
-inline constexpr char32_t REPLACEMENT = 0xFFFD;
-
-/// Returns `true` if the code point is in the ASCII range (0x00–0x7F).
-constexpr auto is_ascii(char32_t c) noexcept -> bool {
-    return c <= 0x7F;
+constexpr auto is_scalar(char32_t value) noexcept -> bool {
+    return value <= 0x10FFFF && (value < 0xD800 || value > 0xDFFF);
+}
+constexpr auto len_utf8_scalar(char32_t c) noexcept -> usize {
+    return usize(c <= 0x7F ? 1 : c <= 0x7FF ? 2 : c <= 0xFFFF ? 3 : 4);
 }
 
-/// Returns the number of bytes needed to encode this code point in UTF-8 (1–4).
-///
-/// Returns 0 for invalid code points (surrogates, > U+10FFFF).
-constexpr auto len_utf8(char32_t c) noexcept -> usize {
-    if (c <= 0x7F) return usize(1);
-    if (c <= 0x7FF) return usize(2);
-    if (c <= 0xFFFF) {
-        // Surrogates are not valid scalar values.
-        if (c >= 0xD800 && c <= 0xDFFF) return usize();
-        return usize(3);
-    }
-    if (c <= 0x10FFFF) return usize(4);
-    return usize();
-}
-
-/// Encodes a Unicode code point into UTF-8.
-///
-/// \param c    The code point to encode.
-/// \param buf  Output buffer (must have room for at least `len_utf8(c)` bytes).
-/// \return Number of bytes written (1–4), or 0 on invalid code point.
-constexpr auto encode_utf8(char32_t c, byte* buf) noexcept -> usize {
+constexpr auto encode_utf8_scalar(char32_t c, byte* buf) noexcept -> usize {
     if (c <= 0x7F) {
         buf[0] = byte(static_cast<rstd::uint8_t>(c));
         return usize(1);
@@ -47,20 +22,43 @@ constexpr auto encode_utf8(char32_t c, byte* buf) noexcept -> usize {
         return usize(2);
     }
     if (c <= 0xFFFF) {
-        if (c >= 0xD800 && c <= 0xDFFF) return usize();
         buf[0] = byte(static_cast<rstd::uint8_t>(0xE0 | (c >> 12)));
         buf[1] = byte(static_cast<rstd::uint8_t>(0x80 | ((c >> 6) & 0x3F)));
         buf[2] = byte(static_cast<rstd::uint8_t>(0x80 | (c & 0x3F)));
         return usize(3);
     }
-    if (c <= 0x10FFFF) {
-        buf[0] = byte(static_cast<rstd::uint8_t>(0xF0 | (c >> 18)));
-        buf[1] = byte(static_cast<rstd::uint8_t>(0x80 | ((c >> 12) & 0x3F)));
-        buf[2] = byte(static_cast<rstd::uint8_t>(0x80 | ((c >> 6) & 0x3F)));
-        buf[3] = byte(static_cast<rstd::uint8_t>(0x80 | (c & 0x3F)));
-        return usize(4);
-    }
-    return usize();
+    buf[0] = byte(static_cast<rstd::uint8_t>(0xF0 | (c >> 18)));
+    buf[1] = byte(static_cast<rstd::uint8_t>(0x80 | ((c >> 12) & 0x3F)));
+    buf[2] = byte(static_cast<rstd::uint8_t>(0x80 | ((c >> 6) & 0x3F)));
+    buf[3] = byte(static_cast<rstd::uint8_t>(0x80 | (c & 0x3F)));
+    return usize(4);
+}
+} // namespace rstd::char_
+
+export namespace rstd::char_
+{
+/// The highest valid Unicode code point (U+10FFFF).
+inline constexpr char32_t MAX = 0x10FFFF;
+
+/// The Unicode replacement character (U+FFFD), used for invalid sequences.
+inline constexpr char32_t REPLACEMENT = 0xFFFD;
+
+/// Returns the number of bytes needed to encode this code point in UTF-8 (1–4).
+///
+/// Returns 0 for invalid code points (surrogates, > U+10FFFF).
+constexpr auto len_utf8(char32_t c) noexcept -> usize {
+    if (! is_scalar(c)) return usize();
+    return len_utf8_scalar(c);
+}
+
+/// Encodes a Unicode code point into UTF-8.
+///
+/// \param c    The code point to encode.
+/// \param buf  Output buffer (must have room for at least `len_utf8(c)` bytes).
+/// \return Number of bytes written (1–4), or 0 on invalid code point.
+constexpr auto encode_utf8(char32_t c, byte* buf) noexcept -> usize {
+    if (! is_scalar(c)) return usize();
+    return encode_utf8_scalar(c, buf);
 }
 
 /// Decodes one UTF-8 code point from the start of a byte sequence.
@@ -77,7 +75,7 @@ constexpr auto decode_utf8(const byte* ptr, usize len) noexcept -> rstd::tuple<c
 
     // 1-byte (ASCII)
     if (b0 <= 0x7F) {
-        return { static_cast<char32_t>(b0), usize(1) };
+        return { char32_t(b0), usize(1) };
     }
 
     // Determine expected sequence length from leading byte.
@@ -112,8 +110,7 @@ constexpr auto decode_utf8(const byte* ptr, usize len) noexcept -> rstd::tuple<c
     if (seq_len == 4 && cp < 0x10000) return { REPLACEMENT, usize(1) };
 
     // Reject surrogates and out-of-range.
-    if (cp >= 0xD800 && cp <= 0xDFFF) return { REPLACEMENT, usize(1) };
-    if (cp > MAX) return { REPLACEMENT, usize(1) };
+    if (! is_scalar(cp)) return { REPLACEMENT, usize(1) };
 
     return { cp, usize(seq_len) };
 }

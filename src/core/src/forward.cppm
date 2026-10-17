@@ -14,3 +14,9 @@ constexpr auto Ok(T&& val) -> Result<T, TErr>;
 export template<typename TErr, typename T = UnknownOk>
 constexpr auto Err(TErr&& val) -> Result<T, TErr>;
 } // namespace rstd::result
+
+namespace rstd::option
+{
+export template<typename T>
+class Option;
+}

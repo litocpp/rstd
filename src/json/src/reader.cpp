@@ -219,7 +219,7 @@ auto Reader::append_raw(Output& output, rstd::parse::Span span) -> Result<empty,
             output.push_str(text);
         } else {
             for (auto cp : text.chars()) {
-                auto value = u32(static_cast<rstd::uint32_t>(cp.to_primitive()));
+                auto value = cp.to_u32();
                 if (value <= u32(0xffff)) {
                     output.push(rstd::as_cast<u16>(value));
                 } else {

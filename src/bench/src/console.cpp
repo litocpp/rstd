@@ -67,7 +67,7 @@ auto console::escaped(ref<str> value) -> String {
             (ch >= U'\u2066' && ch <= U'\u2069'))
             result.push_str(rstd::format("\\u{{{:x}}}", u32(ch)).as_str());
         else
-            result.push(ch);
+            result.push(code);
     }
     return result;
 }

@@ -1,5 +1,6 @@
 export module rstd.core:str.traits;
 import :num.types;
+export import :char_;
 import :error.trait;
 export import :str.str;
 export import :result;
@@ -67,14 +68,14 @@ private:
 };
 
 export struct Chars : DefaultInClass<Chars, iter::Iterator> {
-    using Item                         = u32;
+    using Item                         = Char;
     static constexpr bool PROVEN_FUSED = true;
 
     constexpr explicit Chars(ref<str> value): remaining_(value) {}
 
     constexpr auto next() -> Option<Item> {
         if (remaining_.is_empty()) return None();
-        auto [code_point, length] = char_::decode_utf8(remaining_.data(), remaining_.len());
+        auto [code_point, length] = char_::decode_char_utf8(remaining_.data(), remaining_.len());
         if (length == remaining_.len()) {
             remaining_ = ref<str>::from_raw_parts_unchecked(
                 remaining_.data() + length.to_primitive(), usize());
@@ -82,7 +83,7 @@ export struct Chars : DefaultInClass<Chars, iter::Iterator> {
             remaining_ = ref<str>::from_raw_parts_unchecked(
                 remaining_.data() + length.to_primitive(), remaining_.len() - length);
         }
-        return Some(u32(code_point));
+        return Some(code_point);
     }
 
     constexpr auto size_hint() const -> iter::SizeHint {
@@ -97,14 +98,14 @@ private:
 };
 
 export struct CharIndices : DefaultInClass<CharIndices, iter::Iterator> {
-    using Item                         = tuple<usize, u32>;
+    using Item                         = tuple<usize, Char>;
     static constexpr bool PROVEN_FUSED = true;
 
     constexpr explicit CharIndices(ref<str> value): remaining_(value) {}
 
     constexpr auto next() -> Option<Item> {
         if (remaining_.is_empty()) return None();
-        auto [code_point, length] = char_::decode_utf8(remaining_.data(), remaining_.len());
+        auto [code_point, length] = char_::decode_char_utf8(remaining_.data(), remaining_.len());
         auto const offset         = byte_offset_;
         byte_offset_ += length;
         if (length == remaining_.len()) {
@@ -114,7 +115,7 @@ export struct CharIndices : DefaultInClass<CharIndices, iter::Iterator> {
             remaining_ = ref<str>::from_raw_parts_unchecked(
                 remaining_.data() + length.to_primitive(), remaining_.len() - length);
         }
-        return Some(Item(offset, u32(code_point)));
+        return Some(Item(offset, code_point));
     }
 
     constexpr auto size_hint() const -> iter::SizeHint {

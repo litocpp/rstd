@@ -55,9 +55,14 @@ void String::push_ascii(char value) {
 }
 
 void String::push(char32_t code_point) {
+    auto value = rstd::Char::from_char32(code_point);
+    rstd_assert(value.is_some());
+    push(value.unwrap_unchecked());
+}
+
+void String::push(rstd::Char value) {
     byte bytes[4] {};
-    auto length = rstd::char_::encode_utf8(code_point, bytes);
-    rstd_assert(length != usize());
+    auto length = value.encode_utf8(bytes);
     vec.extend_from_slice(slice<u8>::from_raw_parts(bytes, length));
 }
 
@@ -98,9 +103,14 @@ void String::insert_str(usize index, ref<str> value) {
 }
 
 void String::insert(usize index, char32_t code_point) {
+    auto value = rstd::Char::from_char32(code_point);
+    rstd_assert(value.is_some());
+    insert(index, value.unwrap_unchecked());
+}
+
+void String::insert(usize index, rstd::Char value) {
     byte bytes[4] {};
-    auto length = rstd::char_::encode_utf8(code_point, bytes);
-    rstd_assert(length != usize());
+    auto length = value.encode_utf8(bytes);
     insert_str(index, rstd::str_::from_utf8_unchecked(slice<u8>::from_raw_parts(bytes, length)));
 }
 

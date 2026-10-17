@@ -116,6 +116,8 @@ sources = [
   "io.cpp",
   "env.cpp",
   "char.cpp",
+  "char_core_module_check.cppm",
+  "char_alloc_module_check.cppm",
   "floats.cpp",
   "ints.cpp",
   "str.cpp",

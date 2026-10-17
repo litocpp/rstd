@@ -75,6 +75,7 @@ public:
     void push_ascii(char value);
 
     /// Appends a Unicode code point, encoding as UTF-8.
+    void push(rstd::Char value);
     void push(char32_t cp);
 
     /// Returns a string slice of the entire `String`.
@@ -107,6 +108,7 @@ public:
     void insert_str(usize index, ref<str> value);
 
     /// Inserts a Unicode code point at a checked byte boundary.
+    void insert(usize index, rstd::Char value);
     void insert(usize index, char32_t code_point);
 
     friend constexpr auto operator<=>(const String& a, const String& b) noexcept {
@@ -173,25 +175,33 @@ struct Impl<convert::From<ref<str>>, String> {
 };
 
 template<>
-struct Impl<iter::Extend<char32_t>, String> : ImplBase<String> {
+struct Impl<iter::Extend<Char>, String> : ImplBase<String> {
     template<iter::has_next It>
     static void extend(String& string, It iterator) {
         for (auto item = iterator.next(); item.is_some(); item = iterator.next())
             string.push(rstd::move(*item));
     }
 
+    static void extend_one(String& string, Char&& item) { string.push(item); }
+};
+
+template<>
+struct Impl<iter::FromIterator<Char>, String> : ImplBase<String> {
+    template<iter::has_next It>
+    static auto from_iter(It iterator) -> String {
+        auto string = String::make();
+        Impl<iter::Extend<Char>, String>::extend(string, rstd::move(iterator));
+        return string;
+    }
+};
+
+template<>
+struct Impl<iter::Extend<char32_t>, String> : Impl<iter::Extend<Char>, String> {
     static void extend_one(String& string, char32_t&& item) { string.push(item); }
 };
 
 template<>
-struct Impl<iter::FromIterator<char32_t>, String> : ImplBase<String> {
-    template<iter::has_next It>
-    static auto from_iter(It iterator) -> String {
-        auto string = String::make();
-        Impl<iter::Extend<char32_t>, String>::extend(string, rstd::move(iterator));
-        return string;
-    }
-};
+struct Impl<iter::FromIterator<char32_t>, String> : Impl<iter::FromIterator<Char>, String> {};
 
 template<>
 struct Impl<ops::Deref, String> : ImplBase<String> {
