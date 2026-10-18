@@ -8,6 +8,14 @@ export import :ops.deref;
 export import :cmp;
 export import :marker;
 
+namespace rstd::mem::maybe_uninit
+{
+export template<typename T>
+class MaybeUninit;
+}
+
+using rstd::mem::maybe_uninit::MaybeUninit;
+
 namespace rstd
 {
 
@@ -36,6 +44,40 @@ struct storage_type<u8> {
 
 template<typename T>
 using storage_type_t = typename storage_type<mtp::rm_ext<T>>::type;
+
+template<typename T>
+inline constexpr bool byte_addressed = false;
+template<typename T>
+inline constexpr bool byte_addressed<MaybeUninit<T>> = true;
+
+template<typename T>
+using address_type_t = mtp::cond<byte_addressed<mtp::rm_ext<T>>, byte, storage_type_t<T>>;
+
+template<typename T, typename P>
+constexpr auto address(P* pointer) noexcept {
+    using Address = mtp::cond<mtp::is_const<P>, const address_type_t<T>, address_type_t<T>>;
+    if constexpr (byte_addressed<mtp::rm_ext<T>>)
+        return reinterpret_cast<Address*>(pointer);
+    else
+        return pointer;
+}
+
+template<typename T, typename P>
+constexpr auto element(P* pointer) noexcept {
+    using Storage = mtp::cond<mtp::is_const<P>, const storage_type_t<T>, storage_type_t<T>>;
+    if constexpr (byte_addressed<mtp::rm_ext<T>>)
+        return reinterpret_cast<Storage*>(pointer);
+    else
+        return pointer;
+}
+
+template<typename T>
+constexpr auto stride() noexcept -> rstd::size_t {
+    if constexpr (byte_addressed<mtp::rm_ext<T>>)
+        return sizeof(storage_type_t<T>);
+    else
+        return 1;
+}
 
 } // namespace ptr_detail
 
@@ -94,7 +136,28 @@ struct ref_base {
     }
 
     constexpr auto as_raw_ptr() const noexcept -> value_type* {
-        return static_cast<Self const*>(this)->p;
+        return ptr_detail::element<T>(static_cast<Self const*>(this)->p);
+    }
+
+    constexpr auto as_byte_ptr() const noexcept -> mtp::cond<Mutable, byte, const byte>* {
+        return reinterpret_cast<mtp::cond<Mutable, byte, const byte>*>(
+            static_cast<Self const*>(this)->p);
+    }
+
+    /// The storage covers count aligned slots; no MaybeUninit array lifetime is required.
+    static constexpr auto from_bytes(mtp::cond<Mutable, byte, const byte>* storage
+                                     [[clang::lifetimebound]],
+                                     usize count) noexcept -> Self
+        requires mtp::DSTArray<T> && ptr_detail::byte_addressed<element_type>
+    {
+        return { .p = storage, .length = count };
+    }
+
+    static constexpr auto from_bytes(mtp::cond<Mutable, byte, const byte>* storage
+                                     [[clang::lifetimebound]]) noexcept -> Self
+        requires(! mtp::DST<T>) && ptr_detail::byte_addressed<element_type>
+    {
+        return { .p = storage };
     }
 
     template<typename U>
@@ -114,7 +177,7 @@ struct ref_base {
     static constexpr auto from_raw_parts(value_type* p [[clang::lifetimebound]]) noexcept -> Self
         requires(! mtp::DST<T>)
     {
-        return { .p = p };
+        return { .p = ptr_detail::address<T>(p) };
     }
     /// @}
 
@@ -152,7 +215,7 @@ struct ref_base {
                                          usize       length) noexcept -> Self
         requires mtp::DSTArray<T> && mtp::is_aggregate<Self>
     {
-        return { .p = p, .length = length };
+        return { .p = ptr_detail::address<T>(p), .length = length };
     }
 
     constexpr auto metadata() const noexcept
@@ -176,7 +239,7 @@ struct ptr_base {
     constexpr value_type* operator->() const noexcept
         requires(! mtp::same_as<element_type, u8>)
     {
-        return static_cast<Self const*>(this)->p;
+        return ptr_detail::element<T>(static_cast<Self const*>(this)->p);
     }
     constexpr decltype(auto) operator*() const noexcept {
         return static_cast<Self const*>(this)->get();
@@ -213,13 +276,15 @@ struct ptr_base {
         return rstd::from_raw_parts<mut_ref<T>>(static_cast<Self const*>(this));
     }
 
-    constexpr operator value_type*() const noexcept { return static_cast<Self const*>(this)->p; }
+    constexpr operator value_type*() const noexcept {
+        return ptr_detail::element<T>(static_cast<Self const*>(this)->p);
+    }
 
     constexpr auto add(usize count) const noexcept -> Self
         requires(! mtp::DST<T>)
     {
         auto result = *static_cast<Self const*>(this);
-        if (count != usize()) result.p += count.to_primitive();
+        if (count != usize()) result.p += count.to_primitive() * ptr_detail::stride<T>();
         return result;
     }
 
@@ -227,7 +292,7 @@ struct ptr_base {
         requires(! mtp::DST<T>)
     {
         auto result = *static_cast<Self const*>(this);
-        if (count != usize()) result.p -= count.to_primitive();
+        if (count != usize()) result.p -= count.to_primitive() * ptr_detail::stride<T>();
         return result;
     }
 
@@ -235,7 +300,8 @@ struct ptr_base {
         requires(! mtp::DST<T>)
     {
         auto result = *static_cast<Self const*>(this);
-        if (count != isize()) result.p += count.to_primitive();
+        if (count != isize())
+            result.p += count.to_primitive() * static_cast<ptrdiff_t>(ptr_detail::stride<T>());
         return result;
     }
 
@@ -254,21 +320,23 @@ struct ptr_base {
     constexpr auto operator++() noexcept -> Self&
         requires(! mtp::DST<T>)
     {
-        ++static_cast<Self*>(this)->p;
+        *static_cast<Self*>(this) = add(usize(1));
         return *static_cast<Self*>(this);
     }
 
     constexpr auto operator--() noexcept -> Self&
         requires(! mtp::DST<T>)
     {
-        --static_cast<Self*>(this)->p;
+        *static_cast<Self*>(this) = sub(usize(1));
         return *static_cast<Self*>(this);
     }
 
     constexpr auto distance_to(Self other) const noexcept -> ptrdiff_t
         requires(! mtp::DST<T>)
     {
-        return other.p - static_cast<Self const*>(this)->p;
+        if (other.p == static_cast<Self const*>(this)->p) return 0;
+        return (other.p - static_cast<Self const*>(this)->p) /
+               static_cast<ptrdiff_t>(ptr_detail::stride<T>());
     }
 
     constexpr auto byte_add(usize bytes) const noexcept -> Self
@@ -278,7 +346,7 @@ struct ptr_base {
         if (bytes != usize()) {
             using RawByte = mtp::cond<Mutable, byte, mtp::add_const<byte>>;
             auto raw      = reinterpret_cast<RawByte*>(result.p) + bytes.to_primitive();
-            result.p      = reinterpret_cast<value_type*>(raw);
+            result.p      = ptr_detail::address<T>(reinterpret_cast<value_type*>(raw));
         }
         return result;
     }
@@ -290,7 +358,7 @@ struct ptr_base {
         if (bytes != usize()) {
             using RawByte = mtp::cond<Mutable, byte, mtp::add_const<byte>>;
             auto raw      = reinterpret_cast<RawByte*>(result.p) - bytes.to_primitive();
-            result.p      = reinterpret_cast<value_type*>(raw);
+            result.p      = ptr_detail::address<T>(reinterpret_cast<value_type*>(raw));
         }
         return result;
     }
@@ -304,7 +372,28 @@ struct ptr_base {
     }
 
     constexpr auto as_raw_ptr() const noexcept -> value_type* {
-        return static_cast<Self const*>(this)->p;
+        return ptr_detail::element<T>(static_cast<Self const*>(this)->p);
+    }
+
+    constexpr auto as_byte_ptr() const noexcept -> mtp::cond<Mutable, byte, const byte>* {
+        return reinterpret_cast<mtp::cond<Mutable, byte, const byte>*>(
+            static_cast<Self const*>(this)->p);
+    }
+
+    /// The storage covers count aligned slots; no MaybeUninit array lifetime is required.
+    static constexpr auto from_bytes(mtp::cond<Mutable, byte, const byte>* storage
+                                     [[clang::lifetimebound]],
+                                     usize count) noexcept -> Self
+        requires mtp::DSTArray<T> && ptr_detail::byte_addressed<element_type>
+    {
+        return { .p = storage, .length = count };
+    }
+
+    static constexpr auto from_bytes(mtp::cond<Mutable, byte, const byte>* storage
+                                     [[clang::lifetimebound]]) noexcept -> Self
+        requires(! mtp::DST<T>) && ptr_detail::byte_addressed<element_type>
+    {
+        return { .p = storage };
     }
 
     template<typename U>
@@ -324,7 +413,7 @@ struct ptr_base {
     static constexpr auto from_raw_parts(value_type* p [[clang::lifetimebound]]) noexcept -> Self
         requires(! mtp::DST<T>) && mtp::is_aggregate<Self>
     {
-        return { .p = p };
+        return { .p = ptr_detail::address<T>(p) };
     }
     /// @}
 
@@ -346,7 +435,7 @@ struct ptr_base {
                                          usize       length) noexcept -> Self
         requires mtp::DSTArray<T> && mtp::is_aggregate<Self>
     {
-        return { .p = p, .length = length };
+        return { .p = ptr_detail::address<T>(p), .length = length };
     }
 
     constexpr auto metadata() const noexcept
@@ -365,13 +454,13 @@ struct ref : ref_base<ref<T>, T, false> {
 
     using storage_type = ptr_detail::storage_type_t<T>;
 
-    storage_type const* p { nullptr };
+    ptr_detail::address_type_t<T> const* p { nullptr };
 
     constexpr decltype(auto) get() const noexcept {
         if constexpr (mtp::same_as<T, u8>) {
             return u8::from_byte(*p);
         } else {
-            return static_cast<T const&>(*p);
+            return static_cast<T const&>(*ptr_detail::element<T>(p));
         }
     }
 
@@ -389,14 +478,15 @@ struct ref<T> : ref_base<ref<T>, T, false> {
     using value_type    = element_type;
     using metadata_type = usize;
 
-    storage_type const* p { nullptr };
-    metadata_type       length;
+    ptr_detail::address_type_t<T> const* p { nullptr };
+    metadata_type                        length;
 
     constexpr decltype(auto) element_at(usize index) const noexcept {
         if constexpr (mtp::same_as<element_type, u8>) {
             return u8::from_byte(p[index.to_primitive()]);
         } else {
-            return static_cast<element_type const&>(p[index.to_primitive()]);
+            return static_cast<element_type const&>(
+                *ptr_detail::element<T>(p + index.to_primitive() * ptr_detail::stride<T>()));
         }
     }
 
@@ -414,7 +504,7 @@ struct ref<T> : ref_base<ref<T>, T, false> {
     constexpr auto deref() const noexcept -> ref<T> { return *this; }
 
     constexpr auto begin() const noexcept [[clang::lifetimebound]] -> ptr<element_type> {
-        return ptr<element_type>::from_raw_parts(p);
+        return ptr<element_type>::from_raw_parts(this->as_raw_ptr());
     }
 
     constexpr auto end() const noexcept [[clang::lifetimebound]] -> ptr<element_type> {
@@ -430,10 +520,10 @@ struct mut_ref : ref_base<mut_ref<T>, T, true> {
 
     using storage_type = ptr_detail::storage_type_t<T>;
 
-    storage_type* p { nullptr };
+    ptr_detail::address_type_t<T>* p { nullptr };
 
-    constexpr auto get() const noexcept -> T const& { return *p; }
-    constexpr auto get_mut() noexcept -> T& { return *p; }
+    constexpr auto get() const noexcept -> T const& { return *ptr_detail::element<T>(p); }
+    constexpr auto get_mut() noexcept -> T& { return *ptr_detail::element<T>(p); }
 
     constexpr auto deref() const noexcept -> ref<T> { return this->as_ref(); }
     constexpr auto deref_mut() noexcept -> mut_ref<T> { return *this; }
@@ -489,14 +579,15 @@ struct mut_ref<T> : ref_base<mut_ref<T>, T, true> {
     using storage_type = ptr_detail::storage_type_t<T>;
     using value_type   = element_type;
 
-    storage_type* p { nullptr };
-    usize         length;
+    ptr_detail::address_type_t<T>* p { nullptr };
+    usize                          length;
 
     constexpr decltype(auto) element_at(usize index) const noexcept {
         if constexpr (mtp::same_as<element_type, u8>) {
             return mut_ref<u8>(p + index.to_primitive());
         } else {
-            return static_cast<element_type&>(p[index.to_primitive()]);
+            return static_cast<element_type&>(
+                *ptr_detail::element<T>(p + index.to_primitive() * ptr_detail::stride<T>()));
         }
     }
 
@@ -504,7 +595,7 @@ struct mut_ref<T> : ref_base<mut_ref<T>, T, true> {
     constexpr auto deref_mut() noexcept -> mut_ref<T> { return *this; }
 
     constexpr auto begin() noexcept [[clang::lifetimebound]] -> mut_ptr<element_type> {
-        return mut_ptr<element_type>::from_raw_parts(p);
+        return mut_ptr<element_type>::from_raw_parts(this->as_raw_ptr());
     }
 
     constexpr auto end() noexcept [[clang::lifetimebound]] -> mut_ptr<element_type> {
@@ -512,7 +603,7 @@ struct mut_ref<T> : ref_base<mut_ref<T>, T, true> {
     }
 
     constexpr auto begin() const noexcept [[clang::lifetimebound]] -> ptr<element_type> {
-        return ptr<element_type>::from_raw_parts(p);
+        return ptr<element_type>::from_raw_parts(this->as_raw_ptr());
     }
 
     constexpr auto end() const noexcept [[clang::lifetimebound]] -> ptr<element_type> {
@@ -548,13 +639,13 @@ struct ptr : ptr_base<ptr<T>, T, false> {
 
     using storage_type = ptr_detail::storage_type_t<T>;
 
-    storage_type const* p { nullptr };
+    ptr_detail::address_type_t<T> const* p { nullptr };
 
     constexpr decltype(auto) get() const noexcept {
         if constexpr (mtp::same_as<T, u8>) {
             return u8::from_byte(*p);
         } else {
-            return static_cast<T const&>(*p);
+            return static_cast<T const&>(*ptr_detail::element<T>(p));
         }
     }
 };
@@ -567,14 +658,15 @@ struct ptr<T> : ptr_base<ptr<T>, T, false> {
     using value_type   = element_type;
     using Self         = ptr;
 
-    storage_type const* p { nullptr };
-    usize               length;
+    ptr_detail::address_type_t<T> const* p { nullptr };
+    usize                                length;
 
     constexpr decltype(auto) element_at(usize index) const noexcept {
         if constexpr (mtp::same_as<element_type, u8>) {
             return u8::from_byte(p[index.to_primitive()]);
         } else {
-            return static_cast<element_type const&>(p[index.to_primitive()]);
+            return static_cast<element_type const&>(
+                *ptr_detail::element<T>(p + index.to_primitive() * ptr_detail::stride<T>()));
         }
     }
 };
@@ -586,13 +678,13 @@ struct mut_ptr : ptr_base<mut_ptr<T>, T, true> {
 
     using storage_type = ptr_detail::storage_type_t<T>;
 
-    storage_type* p { nullptr };
+    ptr_detail::address_type_t<T>* p { nullptr };
 
     constexpr decltype(auto) get() const noexcept {
         if constexpr (mtp::same_as<T, u8>) {
             return mut_ref<u8>(p);
         } else {
-            return static_cast<T&>(*p);
+            return static_cast<T&>(*ptr_detail::element<T>(p));
         }
     }
 };
@@ -606,14 +698,15 @@ struct mut_ptr<T> : ptr_base<mut_ptr<T>, T, true> {
     using value_type   = element_type;
     using Self         = mut_ptr;
 
-    storage_type* p { nullptr };
-    usize         length;
+    ptr_detail::address_type_t<T>* p { nullptr };
+    usize                          length;
 
     constexpr decltype(auto) element_at(usize index) const noexcept {
         if constexpr (mtp::same_as<element_type, u8>) {
             return mut_ref<u8>(p + index.to_primitive());
         } else {
-            return static_cast<element_type&>(p[index.to_primitive()]);
+            return static_cast<element_type&>(
+                *ptr_detail::element<T>(p + index.to_primitive() * ptr_detail::stride<T>()));
         }
     }
 };

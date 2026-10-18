@@ -142,6 +142,25 @@ auto File::read(mut_ref<u8[]> buffer) -> FsResult<usize> {
     return sys_fs::read(m_fd.as_raw_fd(), as_bytes_mut(buffer));
 }
 
+auto File::read_buf(io::BorrowedCursor buffer) -> FsResult<empty> {
+    auto result = sys_fs::read(m_fd.as_raw_fd(), buffer.as_uninit());
+    if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
+    if (! buffer.advance_unchecked(*result))
+        return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidData }));
+    return Ok(empty {});
+}
+
+auto File::read_size_hint() -> Option<usize> {
+    auto info = metadata();
+    if (info.is_err()) return None<usize>();
+    auto position = seek(SeekFrom::from_current(i64()));
+    if (position.is_err()) return None<usize>();
+    auto remaining = info->len().saturating_sub(*position);
+    auto converted = try_from<usize>(remaining);
+    if (converted.is_err()) return None<usize>();
+    return Some(*converted);
+}
+
 auto File::write(slice<u8> buffer) -> FsResult<usize> {
     return sys_fs::write(m_fd.as_raw_fd(), as_bytes(buffer));
 }
@@ -172,6 +191,14 @@ auto File::set_len(u64 size) -> FsResult<empty> {
 
 auto File::read_at(mut_ref<u8[]> buffer, u64 offset) const -> FsResult<usize> {
     return sys_fs::read_at(m_fd.as_raw_fd(), as_bytes_mut(buffer), offset);
+}
+
+auto File::read_buf_at(io::BorrowedCursor buffer, u64 offset) const -> FsResult<empty> {
+    auto result = sys_fs::read_at(m_fd.as_raw_fd(), buffer.as_uninit(), offset);
+    if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
+    if (! buffer.advance_unchecked(*result))
+        return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidData }));
+    return Ok(empty {});
 }
 
 auto File::write_at(slice<u8> buffer, u64 offset) const -> FsResult<usize> {
@@ -253,29 +280,8 @@ auto FileLock::unlock() && -> FsResult<File> {
     return Ok(rstd::move(m_file));
 }
 
-auto read_to_end(File& file, Vec<u8>& output) -> FsResult<usize> {
-    byte  chunk[4096];
-    usize total {};
-    while (true) {
-        auto values = mut_ref<u8[]>::from_raw_parts(chunk, usize(4096));
-        auto result = file.read(values);
-        if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
-        auto count = result.unwrap_unchecked();
-        if (count == usize()) break;
-        output.extend_from_slice(slice<u8>::from_raw_parts(chunk, count));
-        total += count;
-    }
-    return Ok(total);
-}
-
 auto read(ref<Path> path) -> FsResult<Vec<u8>> {
-    auto file_result = File::open(path);
-    if (file_result.is_err()) return Err(rstd::move(file_result).unwrap_err_unchecked());
-    auto file   = rstd::move(file_result).unwrap_unchecked();
-    auto output = Vec<u8>::make();
-    auto result = read_to_end(file, output);
-    if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
-    return Ok(rstd::move(output));
+    return read_in(path, ::alloc::Global {});
 }
 
 auto read_to_string(ref<Path> path) -> FsResult<String> {
@@ -477,20 +483,7 @@ auto copy(ref<Path> from, ref<Path> to) -> FsResult<u64> {
     }
     auto destination = rstd::move(destination_result).unwrap_unchecked();
 
-    byte chunk[8192];
-    u64  total {};
-    while (true) {
-        auto values      = mut_ref<u8[]>::from_raw_parts(chunk, usize(8192));
-        auto read_result = source.read(values);
-        if (read_result.is_err()) return Err(rstd::move(read_result).unwrap_err_unchecked());
-        auto count = read_result.unwrap_unchecked();
-        if (count == usize()) break;
-
-        auto written = io::write_all(destination, slice<u8>::from_raw_parts(chunk, count));
-        if (written.is_err()) return Err(rstd::move(written).unwrap_err_unchecked());
-        total += u64(count.to_primitive());
-    }
-    return Ok(total);
+    return io::copy(source, destination);
 }
 
 auto DirEntry::path() const -> rstd::path::PathBuf {

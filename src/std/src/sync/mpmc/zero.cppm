@@ -78,10 +78,7 @@ struct ZeroChannel {
 
     ZeroChannel(): inner(ZeroInner {}) {}
 
-    static auto make() -> Box<ZeroChannel> {
-        auto* raw = new ZeroChannel();
-        return Box<ZeroChannel>::from_raw(mut_ptr<ZeroChannel>::from_raw_parts(raw));
-    }
+    static auto make() -> Box<ZeroChannel> { return Box<ZeroChannel>::make(); }
 
     auto write(ZeroToken& token, T msg) -> Result<empty, T> {
         if (! token.packet) return Err(rstd::move(msg));
@@ -103,7 +100,7 @@ struct ZeroChannel {
 
         packet->wait_ready();
         T msg = packet->take();
-        delete packet;
+        ::alloc::raw_delete(packet);
         return Ok(rstd::move(msg));
     }
 

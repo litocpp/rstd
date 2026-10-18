@@ -3,6 +3,8 @@ import rstd.alloc;
 
 using namespace rstd::prelude;
 export auto alloc_collections_reserve() -> bool {
+    auto storage = ::alloc::boxed::Box<rstd::byte[]>::make_uninit(usize(4));
+    if (storage.as_ptr().len() != usize(4)) return false;
     using Error = ::alloc::collections::TryReserveError;
     ::alloc::vec::Vec<u64>                  bytes;
     ::alloc::collections::HashMap<i32, i32> map;

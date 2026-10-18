@@ -44,7 +44,7 @@ export struct RecyclingArenaStats {
 };
 
 struct ArenaSlab {
-    void*              pointer;
+    byte*              pointer;
     Layout             layout;
     BumpRangeAllocator ranges;
     bool               large;
@@ -125,14 +125,14 @@ class BumpArena {
         if (stats_.used_bytes > stats_.peak_used_bytes) {
             stats_.peak_used_bytes = stats_.used_bytes;
         }
-        return static_cast<rstd::uint8_t*>(slab.pointer) + range.offset;
+        return slab.pointer + range.offset;
     }
 
     auto allocate_large(Layout layout) -> Result<Allocation, AllocError> {
         auto allocation = allocate_upstream(layout);
         if (allocation.is_err()) return allocation;
         auto value = allocation.unwrap_unchecked();
-        slabs_.emplace_back(ArenaSlab { .pointer = value.pointer,
+        slabs_.emplace_back(ArenaSlab { .pointer = static_cast<byte*>(value.pointer),
                                         .layout  = layout,
                                         .ranges  = BumpRangeAllocator(layout.size.to_primitive()),
                                         .large   = true });
@@ -152,7 +152,7 @@ class BumpArena {
         if (allocation.is_err()) return allocation;
 
         auto value = allocation.unwrap_unchecked();
-        slabs_.emplace_back(ArenaSlab { .pointer = value.pointer,
+        slabs_.emplace_back(ArenaSlab { .pointer = static_cast<byte*>(value.pointer),
                                         .layout  = layout,
                                         .ranges  = BumpRangeAllocator(layout.size.to_primitive()),
                                         .large   = false });
@@ -241,7 +241,7 @@ class RecyclingArena {
     auto try_allocate(ArenaSlab& slab, Layout layout) noexcept -> void* {
         auto result = slab.ranges.allocate(layout.size.to_primitive(), layout.align.to_primitive());
         if (result.is_err()) return nullptr;
-        return static_cast<rstd::uint8_t*>(slab.pointer) + result.unwrap_unchecked().offset;
+        return slab.pointer + result.unwrap_unchecked().offset;
     }
 
     auto record_allocation(Layout layout) noexcept -> void {
@@ -301,7 +301,7 @@ class RecyclingArena {
         auto allocation = allocate_upstream(layout);
         if (allocation.is_err()) return allocation;
         auto value = allocation.unwrap_unchecked();
-        slabs_.emplace_back(ArenaSlab { .pointer = value.pointer,
+        slabs_.emplace_back(ArenaSlab { .pointer = static_cast<byte*>(value.pointer),
                                         .layout  = layout,
                                         .ranges  = BumpRangeAllocator(layout.size.to_primitive()),
                                         .large   = true });
@@ -318,7 +318,7 @@ class RecyclingArena {
         auto       allocation = allocate_upstream(layout);
         if (allocation.is_err()) return allocation;
         auto value = allocation.unwrap_unchecked();
-        slabs_.emplace_back(ArenaSlab { .pointer = value.pointer,
+        slabs_.emplace_back(ArenaSlab { .pointer = static_cast<byte*>(value.pointer),
                                         .layout  = layout,
                                         .ranges  = BumpRangeAllocator(layout.size.to_primitive()),
                                         .large   = false });

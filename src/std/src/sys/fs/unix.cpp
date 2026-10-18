@@ -10,6 +10,8 @@ import :path;
 import rstd.sys.libc;
 import :time;
 import rstd.alloc;
+
+using rstd::mem::MaybeUninit;
 #if RSTD_VENDOR_APPLE
 #define _RSTD_STAT_ATIM st_atimespec
 #define _RSTD_STAT_MTIM st_mtimespec
@@ -17,12 +19,6 @@ import rstd.alloc;
 #define _RSTD_STAT_ATIM st_atim
 #define _RSTD_STAT_MTIM st_mtim
 #endif
-
-namespace rstd::sys::fs::unix
-{
-
-Directory::Directory(libc::DIR* handle) noexcept: m_handle(handle) {
-}
 
 using rstd::io::ErrorKind;
 using rstd::io::SeekFrom;
@@ -38,15 +34,21 @@ using ::alloc::vec::Vec;
 namespace libc = rstd::sys::libc;
 
 template<typename T>
-using Result = rstd::io::Result<T>;
+using IOResult = rstd::io::Result<T>;
 
-auto path_cstring(ref<Path> path) -> Result<CString> {
+using rstd::sys::libc::DIR;
+
+namespace rstd::sys::fs::unix
+{
+
+Directory::Directory(libc::DIR* handle) noexcept: m_handle(handle) {
+}
+
+auto path_cstring(ref<Path> path) -> IOResult<CString> {
     auto result = path.to_cstring();
     if (result.is_err()) return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
     return Ok(rstd::move(result).unwrap_unchecked());
 }
-
-using rstd::sys::libc::DIR;
 
 auto last_error() noexcept -> Error {
     return Error::from_raw_os_error(i32(libc::get_errno()));
@@ -100,7 +102,7 @@ auto metadata_from_stat(libc::stat_t const& stat) -> MetadataData {
     };
 }
 
-auto access_mode(OpenOptionsData const& options) -> Result<int> {
+auto access_mode(OpenOptionsData const& options) -> IOResult<int> {
     if (options.read && ! options.write && ! options.append) return Ok(libc::O_RDONLY);
     if (! options.read && options.write && ! options.append) return Ok(libc::O_WRONLY);
     if (options.read && options.write && ! options.append) return Ok(libc::O_RDWR);
@@ -109,7 +111,7 @@ auto access_mode(OpenOptionsData const& options) -> Result<int> {
     return Err(Error::from_raw_os_error(i32(libc::EINVAL)));
 }
 
-auto creation_mode(OpenOptionsData const& options) -> Result<int> {
+auto creation_mode(OpenOptionsData const& options) -> IOResult<int> {
     if (! options.write && ! options.append &&
         (options.truncate || options.create || options.create_new)) {
         return Err(Error::from_raw_os_error(i32(libc::EINVAL)));
@@ -134,7 +136,7 @@ constexpr auto off_t_max() noexcept -> rstd::uint64_t {
     }
 }
 
-auto checked_off_t(u64 value) -> Result<libc::off_t> {
+auto checked_off_t(u64 value) -> IOResult<libc::off_t> {
     auto native = value.to_primitive();
     if (native > off_t_max()) {
         return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
@@ -142,14 +144,14 @@ auto checked_off_t(u64 value) -> Result<libc::off_t> {
     return Ok(static_cast<libc::off_t>(native));
 }
 
-auto open_flags(const OpenOptionsData& options) -> Result<int> {
+auto open_flags(const OpenOptionsData& options) -> IOResult<int> {
     auto access   = rstd_try(access_mode(options));
     auto creation = rstd_try(creation_mode(options));
     return Ok(access | creation | (options.custom_flags.to_primitive() & ~libc::O_ACCMODE) |
               libc::O_CLOEXEC);
 }
 
-auto open(ref<Path> path, const OpenOptionsData& options) -> Result<OwnedFd> {
+auto open(ref<Path> path, const OpenOptionsData& options) -> IOResult<OwnedFd> {
     auto value = rstd_try(path_cstring(path));
     auto flags = rstd_try(open_flags(options));
     while (true) {
@@ -160,13 +162,13 @@ auto open(ref<Path> path, const OpenOptionsData& options) -> Result<OwnedFd> {
     }
 }
 
-auto open_directory(ref<Path> path, const OpenOptionsData& options) -> Result<OwnedFd> {
+auto open_directory(ref<Path> path, const OpenOptionsData& options) -> IOResult<OwnedFd> {
     auto configured = options;
     configured.custom_flags |= i32(libc::O_DIRECTORY);
     return open(path, configured);
 }
 
-auto open_directory_for_traversal(ref<Path> path) -> Result<OwnedFd> {
+auto open_directory_for_traversal(ref<Path> path) -> IOResult<OwnedFd> {
     auto value = rstd_try(path_cstring(path));
     auto flags = libc::O_CLOEXEC | libc::O_DIRECTORY | libc::DIRECTORY_TRAVERSE;
     while (true) {
@@ -177,7 +179,7 @@ auto open_directory_for_traversal(ref<Path> path) -> Result<OwnedFd> {
 }
 
 auto open_at(RawFd parent, ref<Path> path, const OpenOptionsData& options, bool directory)
-    -> Result<OwnedFd> {
+    -> IOResult<OwnedFd> {
     auto value = rstd_try(path_cstring(path));
     auto flags = rstd_try(open_flags(options));
     if (directory) flags |= libc::O_DIRECTORY;
@@ -189,7 +191,7 @@ auto open_at(RawFd parent, ref<Path> path, const OpenOptionsData& options, bool 
     }
 }
 
-auto metadata_at(RawFd parent, ref<Path> path, bool follow) -> Result<MetadataData> {
+auto metadata_at(RawFd parent, ref<Path> path, bool follow) -> IOResult<MetadataData> {
     auto         value = rstd_try(path_cstring(path));
     libc::stat_t info {};
     while (libc::fstatat(parent, value.as_ptr(), &info, follow ? 0 : libc::AT_SYMLINK_NOFOLLOW) !=
@@ -199,20 +201,20 @@ auto metadata_at(RawFd parent, ref<Path> path, bool follow) -> Result<MetadataDa
     return Ok(metadata_from_stat(info));
 }
 
-auto create_dir_at(RawFd parent, ref<Path> path) -> Result<empty> {
+auto create_dir_at(RawFd parent, ref<Path> path) -> IOResult<empty> {
     auto value = rstd_try(path_cstring(path));
     if (libc::mkdirat(parent, value.as_ptr(), 0777) != 0) return Err(last_error());
     return Ok(empty {});
 }
 
-auto remove_at(RawFd parent, ref<Path> path, bool directory) -> Result<empty> {
+auto remove_at(RawFd parent, ref<Path> path, bool directory) -> IOResult<empty> {
     auto value = rstd_try(path_cstring(path));
     if (libc::unlinkat(parent, value.as_ptr(), directory ? libc::AT_REMOVEDIR : 0) != 0)
         return Err(last_error());
     return Ok(empty {});
 }
 
-auto rename_at(RawFd parent, ref<Path> from, RawFd destination, ref<Path> to) -> Result<empty> {
+auto rename_at(RawFd parent, ref<Path> from, RawFd destination, ref<Path> to) -> IOResult<empty> {
     auto source = rstd_try(path_cstring(from));
     auto target = rstd_try(path_cstring(to));
     if (libc::renameat(parent, source.as_ptr(), destination, target.as_ptr()) != 0)
@@ -220,7 +222,8 @@ auto rename_at(RawFd parent, ref<Path> from, RawFd destination, ref<Path> to) ->
     return Ok(empty {});
 }
 
-auto read(RawFd fd, mut_ref<byte[]> buffer) -> Result<usize> {
+template<typename Byte>
+auto read_impl(RawFd fd, mut_ref<Byte[]> buffer) -> IOResult<usize> {
     while (true) {
         auto count = libc::read(fd, buffer.as_raw_ptr(), buffer.len().to_primitive());
         if (count >= 0) return Ok(usize(count));
@@ -228,7 +231,15 @@ auto read(RawFd fd, mut_ref<byte[]> buffer) -> Result<usize> {
     }
 }
 
-auto write(RawFd fd, slice<byte> buffer) -> Result<usize> {
+auto read(RawFd fd, mut_ref<MaybeUninit<byte>[]> buffer) -> IOResult<usize> {
+    return read_impl(fd, buffer);
+}
+
+auto read(RawFd fd, mut_ref<byte[]> buffer) -> IOResult<usize> {
+    return read_impl(fd, buffer);
+}
+
+auto write(RawFd fd, slice<byte> buffer) -> IOResult<usize> {
     while (true) {
         auto count = libc::write(fd, buffer.as_raw_ptr(), buffer.len().to_primitive());
         if (count >= 0) return Ok(usize(count));
@@ -236,7 +247,7 @@ auto write(RawFd fd, slice<byte> buffer) -> Result<usize> {
     }
 }
 
-auto seek(RawFd fd, SeekFrom position) -> Result<u64> {
+auto seek(RawFd fd, SeekFrom position) -> IOResult<u64> {
     int         whence = libc::SEEK_SET;
     libc::off_t offset = 0;
     switch (position.which) {
@@ -262,17 +273,17 @@ auto seek(RawFd fd, SeekFrom position) -> Result<u64> {
     return Ok(u64(result));
 }
 
-auto sync_all(RawFd fd) -> Result<empty> {
+auto sync_all(RawFd fd) -> IOResult<empty> {
     if (libc::fsync(fd) < 0) return Err(last_error());
     return Ok(empty {});
 }
 
-auto sync_data(RawFd fd) -> Result<empty> {
+auto sync_data(RawFd fd) -> IOResult<empty> {
     if (libc::fdatasync(fd) < 0) return Err(last_error());
     return Ok(empty {});
 }
 
-auto set_len(RawFd fd, u64 size) -> Result<empty> {
+auto set_len(RawFd fd, u64 size) -> IOResult<empty> {
     auto converted = checked_off_t(size);
     if (converted.is_err()) return Err(converted.unwrap_err_unchecked());
     while (libc::ftruncate(fd, converted.unwrap_unchecked()) < 0) {
@@ -281,7 +292,8 @@ auto set_len(RawFd fd, u64 size) -> Result<empty> {
     return Ok(empty {});
 }
 
-auto read_at(RawFd fd, mut_ref<byte[]> buffer, u64 offset) -> Result<usize> {
+template<typename Byte>
+auto read_at_impl(RawFd fd, mut_ref<Byte[]> buffer, u64 offset) -> IOResult<usize> {
     auto converted = checked_off_t(offset);
     if (converted.is_err()) return Err(converted.unwrap_err_unchecked());
     while (true) {
@@ -292,7 +304,15 @@ auto read_at(RawFd fd, mut_ref<byte[]> buffer, u64 offset) -> Result<usize> {
     }
 }
 
-auto write_at(RawFd fd, slice<byte> buffer, u64 offset) -> Result<usize> {
+auto read_at(RawFd fd, mut_ref<MaybeUninit<byte>[]> buffer, u64 offset) -> IOResult<usize> {
+    return read_at_impl(fd, buffer, offset);
+}
+
+auto read_at(RawFd fd, mut_ref<byte[]> buffer, u64 offset) -> IOResult<usize> {
+    return read_at_impl(fd, buffer, offset);
+}
+
+auto write_at(RawFd fd, slice<byte> buffer, u64 offset) -> IOResult<usize> {
     auto converted = checked_off_t(offset);
     if (converted.is_err()) return Err(converted.unwrap_err_unchecked());
     while (true) {
@@ -303,7 +323,7 @@ auto write_at(RawFd fd, slice<byte> buffer, u64 offset) -> Result<usize> {
     }
 }
 
-auto lock(RawFd fd, LockMode mode) -> Result<empty> {
+auto lock(RawFd fd, LockMode mode) -> IOResult<empty> {
     int operation = libc::LOCK_EX;
     switch (mode) {
     case LockMode::Exclusive: operation = libc::LOCK_EX; break;
@@ -326,13 +346,13 @@ auto lock(RawFd fd, LockMode mode) -> Result<empty> {
     return Ok(empty {});
 }
 
-auto metadata(RawFd fd) -> Result<MetadataData> {
+auto metadata(RawFd fd) -> IOResult<MetadataData> {
     libc::stat_t value {};
     if (libc::fstat(fd, &value) < 0) return Err(last_error());
     return Ok(metadata_from_stat(value));
 }
 
-auto metadata(ref<Path> path, bool follow) -> Result<MetadataData> {
+auto metadata(ref<Path> path, bool follow) -> IOResult<MetadataData> {
     auto path_value = path_cstring(path);
     if (path_value.is_err()) return Err(path_value.unwrap_err_unchecked());
     auto         value    = rstd::move(path_value).unwrap_unchecked();
@@ -343,14 +363,14 @@ auto metadata(ref<Path> path, bool follow) -> Result<MetadataData> {
     return Ok(metadata_from_stat(stat));
 }
 
-auto set_permissions(RawFd fd, u32 mode) -> Result<empty> {
+auto set_permissions(RawFd fd, u32 mode) -> IOResult<empty> {
     if (libc::fchmod(fd, static_cast<libc::mode_t>(mode.to_primitive())) < 0) {
         return Err(last_error());
     }
     return Ok(empty {});
 }
 
-auto set_permissions(ref<Path> path, u32 mode) -> Result<empty> {
+auto set_permissions(ref<Path> path, u32 mode) -> IOResult<empty> {
     auto path_value = path_cstring(path);
     if (path_value.is_err()) return Err(path_value.unwrap_err_unchecked());
     auto value    = rstd::move(path_value).unwrap_unchecked();
@@ -361,7 +381,7 @@ auto set_permissions(ref<Path> path, u32 mode) -> Result<empty> {
     return Ok(empty {});
 }
 
-auto set_times(RawFd fd, FileTimesData times) -> Result<empty> {
+auto set_times(RawFd fd, FileTimesData times) -> IOResult<empty> {
     libc::timespec_t values[2];
     auto fill = [](Option<rstd::time::SystemTime> const& source, libc::timespec_t& target) {
         if (source.is_some()) {
@@ -379,7 +399,7 @@ auto set_times(RawFd fd, FileTimesData times) -> Result<empty> {
     return Ok(empty {});
 }
 
-auto run_path(ref<Path> path, int (*operation)(const char*)) -> Result<empty> {
+auto run_path(ref<Path> path, int (*operation)(const char*)) -> IOResult<empty> {
     auto path_value = path_cstring(path);
     if (path_value.is_err()) return Err(path_value.unwrap_err_unchecked());
     auto value = rstd::move(path_value).unwrap_unchecked();
@@ -390,7 +410,7 @@ auto run_path(ref<Path> path, int (*operation)(const char*)) -> Result<empty> {
 }
 
 auto run_paths(ref<Path> first, ref<Path> second, int (*operation)(const char*, const char*))
-    -> Result<empty> {
+    -> IOResult<empty> {
     auto first_value = path_cstring(first);
     if (first_value.is_err()) return Err(first_value.unwrap_err_unchecked());
     auto second_value = path_cstring(second);
@@ -403,27 +423,27 @@ auto run_paths(ref<Path> first, ref<Path> second, int (*operation)(const char*, 
     return Ok(empty {});
 }
 
-auto remove_file(ref<Path> path) -> Result<empty> {
+auto remove_file(ref<Path> path) -> IOResult<empty> {
     return run_path(path, libc::unlink);
 }
 
-auto remove_dir(ref<Path> path) -> Result<empty> {
+auto remove_dir(ref<Path> path) -> IOResult<empty> {
     return run_path(path, libc::rmdir);
 }
 
-auto rename(ref<Path> from, ref<Path> to) -> Result<empty> {
+auto rename(ref<Path> from, ref<Path> to) -> IOResult<empty> {
     return run_paths(from, to, libc::rename);
 }
 
-auto hard_link(ref<Path> original, ref<Path> link) -> Result<empty> {
+auto hard_link(ref<Path> original, ref<Path> link) -> IOResult<empty> {
     return run_paths(original, link, libc::link);
 }
 
-auto soft_link(ref<Path> original, ref<Path> link) -> Result<empty> {
+auto soft_link(ref<Path> original, ref<Path> link) -> IOResult<empty> {
     return run_paths(original, link, libc::symlink);
 }
 
-auto read_link(ref<Path> path) -> Result<PathBuf> {
+auto read_link(ref<Path> path) -> IOResult<PathBuf> {
     auto path_value = path_cstring(path);
     if (path_value.is_err()) return Err(path_value.unwrap_err_unchecked());
     auto value    = rstd::move(path_value).unwrap_unchecked();
@@ -445,7 +465,7 @@ auto read_link(ref<Path> path) -> Result<PathBuf> {
     }
 }
 
-auto canonicalize(ref<Path> path) -> Result<PathBuf> {
+auto canonicalize(ref<Path> path) -> IOResult<PathBuf> {
     auto path_value = path_cstring(path);
     if (path_value.is_err()) return Err(path_value.unwrap_err_unchecked());
     auto value = rstd::move(path_value).unwrap_unchecked();
@@ -456,7 +476,7 @@ auto canonicalize(ref<Path> path) -> Result<PathBuf> {
     return Ok(PathBuf::from(OsString::from_encoded_bytes_unchecked(rstd::move(bytes))));
 }
 
-auto create_dir(ref<Path> path) -> Result<empty> {
+auto create_dir(ref<Path> path) -> IOResult<empty> {
     auto path_value = path_cstring(path);
     if (path_value.is_err()) return Err(path_value.unwrap_err_unchecked());
     auto value = rstd::move(path_value).unwrap_unchecked();
@@ -488,7 +508,7 @@ Directory::~Directory() {
     close();
 }
 
-auto Directory::open(ref<Path> path) -> Result<Directory> {
+auto Directory::open(ref<Path> path) -> IOResult<Directory> {
     auto path_value = path_cstring(path);
     if (path_value.is_err()) return Err(path_value.unwrap_err_unchecked());
     auto value  = rstd::move(path_value).unwrap_unchecked();
@@ -497,20 +517,20 @@ auto Directory::open(ref<Path> path) -> Result<Directory> {
     return Ok(Directory { handle });
 }
 
-auto Directory::next() -> Option<Result<DirectoryEntryData>> {
+auto Directory::next() -> Option<IOResult<DirectoryEntryData>> {
     if (! m_handle) return None();
     while (true) {
         libc::get_errno() = 0;
         auto entry        = libc::readdir(m_handle);
         if (! entry) {
             if (libc::get_errno() == 0) return None();
-            return Some(Result<DirectoryEntryData>(Err(last_error())));
+            return Some(IOResult<DirectoryEntryData>(Err(last_error())));
         }
         auto name = entry->d_name;
         if (name[0] == '.' && (name[1] == 0 || (name[1] == '.' && name[2] == 0))) continue;
 
         auto bytes = Vec<u8>::from(CStr::from_ptr(name).to_bytes());
-        return Some(Result<DirectoryEntryData>(Ok(DirectoryEntryData {
+        return Some(IOResult<DirectoryEntryData>(Ok(DirectoryEntryData {
             .name      = rstd::move(bytes),
             .file_type = file_type_from_dirent(entry->d_type),
         })));

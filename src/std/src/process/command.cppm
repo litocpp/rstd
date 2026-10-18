@@ -123,16 +123,30 @@ struct Impl<io::Write, process::ChildStdin> : ImplBase<process::ChildStdin> {
 };
 
 template<>
-struct Impl<io::Read, process::ChildStdout> : ImplBase<process::ChildStdout> {
+struct Impl<io::Read, process::ChildStdout> : DefaultInImpl<io::Read, process::ChildStdout> {
     auto read(mut_ref<u8[]> buf) -> io::Result<usize> {
         return sys::io::stdio::read_fd(this->self().fd, as_bytes_mut(buf));
+    }
+    auto read_buf(io::BorrowedCursor buf) -> io::Result<empty> {
+        auto result = sys::io::stdio::read_fd(this->self().fd, buf.as_uninit());
+        if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
+        if (! buf.advance_unchecked(*result))
+            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidData }));
+        return Ok(empty {});
     }
 };
 
 template<>
-struct Impl<io::Read, process::ChildStderr> : ImplBase<process::ChildStderr> {
+struct Impl<io::Read, process::ChildStderr> : DefaultInImpl<io::Read, process::ChildStderr> {
     auto read(mut_ref<u8[]> buf) -> io::Result<usize> {
         return sys::io::stdio::read_fd(this->self().fd, as_bytes_mut(buf));
+    }
+    auto read_buf(io::BorrowedCursor buf) -> io::Result<empty> {
+        auto result = sys::io::stdio::read_fd(this->self().fd, buf.as_uninit());
+        if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
+        if (! buf.advance_unchecked(*result))
+            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidData }));
+        return Ok(empty {});
     }
 };
 

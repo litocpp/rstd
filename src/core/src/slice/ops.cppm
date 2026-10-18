@@ -79,8 +79,7 @@ constexpr auto split_at_mut(mut_ref<T[]> values [[clang::lifetimebound]], usize 
     if (mid > values.len()) detail::split_index_out_of_bounds();
 
     auto* data       = values.as_raw_ptr();
-    auto* split_data = data;
-    if (mid != usize()) split_data += mid.to_primitive();
+    auto* split_data = mut_ptr<T>::from_raw_parts(data).add(mid).as_raw_ptr();
 
     return { mut_ref<T[]>::from_raw_parts(data, mid),
              mut_ref<T[]>::from_raw_parts(split_data, values.len() - mid) };

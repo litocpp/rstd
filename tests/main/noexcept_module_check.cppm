@@ -5,6 +5,11 @@ export module rstd.tests.noexcept_module_check;
 
 import rstd.core;
 
+using rstd::mem::MaybeUninit;
+
+static_assert(noexcept(::operator new[](rstd::size_t(4), rstd::declval<void*>())));
+static_assert(noexcept(::operator delete[](rstd::declval<void*>(), rstd::declval<void*>())));
+
 export namespace noexcept_module_check
 {
 
@@ -106,10 +111,8 @@ static_assert(noexcept(rstd::Poll<NoThrowPayload>(rstd::declval<rstd::Poll<NoThr
 static_assert(
     ! noexcept(rstd::Poll<ThrowingPayload>(rstd::declval<rstd::Poll<ThrowingPayload>>())));
 
-static_assert(
-    noexcept(rstd::mem::MaybeUninit<NoThrowPayload>::make(rstd::declval<NoThrowPayload>())));
-static_assert(
-    ! noexcept(rstd::mem::MaybeUninit<ThrowingPayload>::make(rstd::declval<ThrowingPayload>())));
+static_assert(noexcept(MaybeUninit<NoThrowPayload>::make(rstd::declval<NoThrowPayload>())));
+static_assert(! noexcept(MaybeUninit<ThrowingPayload>::make(rstd::declval<ThrowingPayload>())));
 
 static_assert(
     noexcept(rstd::mem::ManuallyDrop<NoThrowPayload>::make(rstd::declval<NoThrowPayload>())));

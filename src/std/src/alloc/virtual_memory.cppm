@@ -79,7 +79,8 @@ public:
         if (statistics_.mappings > statistics_.mappings_peak) {
             statistics_.mappings_peak = statistics_.mappings;
         }
-        return Ok(Allocation { pointer, layout.size });
+        auto* storage = ::new (pointer) byte[mapping_size->to_primitive()];
+        return Ok(Allocation { storage, layout.size });
     }
 
     auto allocate_zeroed(Layout layout) const noexcept -> Result<Allocation, AllocError> {

@@ -22,7 +22,7 @@ struct RegistryFields {
 
 static auto registry() -> sync::Mutex<RegistryFields>& {
     // The detached dispatcher and in-flight OS handlers have process lifetime.
-    static auto* state = new sync::Mutex<RegistryFields>(RegistryFields {});
+    static auto* state = ::alloc::raw_new<sync::Mutex<RegistryFields>>(RegistryFields {});
     return *state;
 }
 

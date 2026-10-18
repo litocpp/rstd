@@ -13,7 +13,12 @@ using namespace rstd::prelude;
 namespace alloc::rc
 {
 
-export enum class StoragePolicy : rstd::uint32_t { Embed = 0, Separate, SeparateWithDeleter };
+export enum class StoragePolicy : rstd::uint32_t
+{
+    Embed = 0,
+    Separate,
+    SeparateWithDeleter
+};
 
 export template<typename T>
 class Rc;
@@ -115,7 +120,7 @@ void rc_release_global_value(RcHeader* header, Layout layout) noexcept {
 }
 
 void rc_release_global_header(RcHeader* header) noexcept {
-    delete header;
+    ::alloc::raw_delete(header);
 }
 
 void rc_retain_embedded_value(RcHeader*, Layout) noexcept {
@@ -131,7 +136,7 @@ struct RcEmbeddedHeader : RcHeader {
     }
 
     static void release_self(RcHeader* header) noexcept {
-        delete static_cast<RcEmbeddedHeader*>(header);
+        ::alloc::raw_delete(static_cast<RcEmbeddedHeader*>(header));
     }
 };
 
@@ -223,7 +228,7 @@ struct RcDeleterHeader : RcHeader {
     }
 
     static void release_self(RcHeader* header) noexcept {
-        delete static_cast<RcDeleterHeader*>(header);
+        ::alloc::raw_delete(static_cast<RcDeleterHeader*>(header));
     }
 };
 
@@ -264,14 +269,14 @@ auto rc_allocate_separate_value(Args&&... args) -> RcAllocation<T> {
     auto layout  = Layout::make<T>();
     auto pointer = rc_allocate(layout).template cast<T>();
     rstd::construct_at(pointer.as_raw_ptr(), rstd::forward<Args>(args)...);
-    auto* header = new RcHeader(
+    auto* header = ::alloc::raw_new<RcHeader>(
         pointer.as_raw_ptr(), false, &rc_release_global_value, &rc_release_global_header);
     return RcAllocation<T> { .header = header, .pointer = pointer };
 }
 
 template<typename T, typename... Args>
 auto rc_allocate_embedded_value(Args&&... args) -> RcAllocation<T> {
-    auto* header  = new RcEmbeddedHeader<T>();
+    auto* header  = ::alloc::raw_new<RcEmbeddedHeader<T>>();
     auto  pointer = mut_ptr<T>::from_raw_parts(static_cast<T*>(header->value));
     rstd::construct_at(pointer.as_raw_ptr(), rstd::forward<Args>(args)...);
     return RcAllocation<T> { .header = header, .pointer = pointer };
@@ -293,9 +298,12 @@ auto rc_allocate_array(usize count, Value const& initial) -> RcAllocation<Elemen
     auto layout  = Layout::array<Element>(count).unwrap();
     auto pointer = rc_allocate(layout).template cast_array<Element>(count);
     for (rstd::size_t index = 0; index < count.to_primitive(); ++index) {
-        rstd::construct_at(pointer.as_raw_ptr() + index, initial);
+        rstd::ptr_::construct(
+            mut_ptr<Element>::from_raw_parts(pointer.as_raw_ptr())
+                .byte_add(usize(index * sizeof(typename mut_ptr<Element>::storage_type))),
+            initial);
     }
-    auto* header = new RcHeader(
+    auto* header = ::alloc::raw_new<RcHeader>(
         pointer.as_raw_ptr(), false, &rc_release_global_value, &rc_release_global_header);
     return RcAllocation<Element[]> { .header = header, .pointer = pointer };
 }
@@ -370,7 +378,9 @@ auto rc_allocate_array_with(AllocatorType allocator, usize count, Value const& i
     auto* value   = header->allocator.allocate(count.to_primitive());
     header->value = value;
     for (rstd::size_t index = 0; index < count.to_primitive(); ++index) {
-        rstd::construct_at(value + index, initial);
+        rstd::ptr_::construct(mut_ptr<Element>::from_raw_parts(value).byte_add(
+                                  usize(index * sizeof(typename mut_ptr<Element>::storage_type))),
+                              initial);
     }
     return RcAllocation<Element[]> {
         .header  = header,
@@ -381,8 +391,9 @@ auto rc_allocate_array_with(AllocatorType allocator, usize count, Value const& i
 template<typename T, typename Deleter>
 auto rc_external_data(T* pointer, Deleter&& deleter) -> RcData<T> {
     using StoredDeleter = mtp::rm_cvf<Deleter>;
-    auto* header = new RcDeleterHeader<T, StoredDeleter>(pointer, rstd::forward<Deleter>(deleter));
-    auto  value_pointer = mut_ptr<RcTarget<T>>::from_raw_parts(const_cast<RcTarget<T>*>(pointer));
+    auto* header        = ::alloc::raw_new<RcDeleterHeader<T, StoredDeleter>>(
+        pointer, rstd::forward<Deleter>(deleter));
+    auto value_pointer = mut_ptr<RcTarget<T>>::from_raw_parts(const_cast<RcTarget<T>*>(pointer));
     return rc_data<T>(header, value_pointer);
 }
 

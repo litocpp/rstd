@@ -414,7 +414,7 @@ struct DriverTaskState : TaskStateBase {
 
 template<typename State>
 class HeapTaskStorage {
-    static void destroy(voidp owner) { delete static_cast<HeapTaskStorage*>(owner); }
+    static void destroy(voidp owner) { ::alloc::raw_delete(static_cast<HeapTaskStorage*>(owner)); }
 
     TaskRefControl control;
     State          state;
@@ -455,7 +455,7 @@ template<typename T>
 auto spawn_driver_on(RuntimeInner& runtime, rstd::async::RuntimeCoroDriver<T> driver)
     -> rstd::async::JoinHandle<T> {
     auto join    = sync::Arc<JoinState<T>>::make();
-    auto storage = new HeapTaskStorage<DriverTaskState<T>>(
+    auto storage = ::alloc::raw_new<HeapTaskStorage<DriverTaskState<T>>>(
         runtime.weak(), rstd::move(driver), JoinStateOwner<T>::owned(join.clone()));
     auto task = storage->into_task();
     join->set_task(task.clone());

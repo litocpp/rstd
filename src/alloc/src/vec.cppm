@@ -7,6 +7,8 @@ export import :collections.error;
 export import :alloc;
 export import rstd.core;
 
+using rstd::mem::MaybeUninit;
+
 using ::alloc::boxed::Box;
 
 using rstd::alloc::Allocator;
@@ -20,7 +22,7 @@ using alloc::collections::TryReserveError;
 /// A low-level utility for managing the backing storage of a `Vec`.
 template<typename T, typename A>
 struct RawVec {
-    NonNull<T>                    ptr;
+    mut_ptr<byte>                 ptr;
     usize                         cap;
     Layout                        allocation_layout;
     RSTD_ATTR_NO_UNIQUE_ADDRESS A allocator;
@@ -33,7 +35,7 @@ struct RawVec {
     constexpr explicit RawVec(A allocator)
         : ptr(), cap(), allocation_layout(), allocator(rstd::move(allocator)) {}
 
-    constexpr RawVec(NonNull<T> ptr, usize cap, Layout layout, A allocator)
+    constexpr RawVec(mut_ptr<byte> ptr, usize cap, Layout layout, A allocator)
         : ptr(ptr), cap(cap), allocation_layout(layout), allocator(rstd::move(allocator)) {}
 
     RawVec(const RawVec&)                    = delete;
@@ -58,14 +60,18 @@ struct RawVec {
         return *this;
     }
 
+    auto ptr_at(usize index = usize()) const noexcept -> mut_ptr<T> {
+        return ptr.add(index * usize(sizeof(typename mut_ptr<T>::storage_type))).template cast<T>();
+    }
+
     static auto with_capacity(usize capacity, A allocator) -> RawVec {
         if (capacity == usize()) return RawVec(rstd::move(allocator));
         auto layout = Layout::array<T>(capacity).unwrap();
         auto res    = as<Allocator>(allocator).allocate(layout);
         if (res.is_err()) handle_alloc_error(layout);
 
-        auto p = res.unwrap_unchecked().template as_mut_ptr<T>();
-        return RawVec(NonNull<T>::make_unchecked(p), capacity, layout, rstd::move(allocator));
+        auto p = res.unwrap_unchecked().template as_mut_ptr<byte>();
+        return RawVec(p, capacity, layout, rstd::move(allocator));
     }
 
     /// Reallocates the storage to a new capacity.
@@ -79,28 +85,31 @@ struct RawVec {
         if (allocation_layout.size == usize()) {
             auto res = as<Allocator>(allocator).allocate(new_layout);
             if (res.is_err()) return Err(TryReserveError::AllocError);
-            ptr = NonNull<T>::make_unchecked(res.unwrap_unchecked().template as_mut_ptr<T>());
+            ptr = res.unwrap_unchecked().template as_mut_ptr<byte>();
         } else if constexpr (mtp::triv_copyable<T>) {
             auto old_layout = allocation_layout;
-            auto old_ptr    = ptr.as_mut_ptr();
+            auto old_ptr    = ptr;
 
             auto res = as<Allocator>(allocator).grow(old_ptr.as_raw_ptr(), old_layout, new_layout);
             if (res.is_err()) return Err(TryReserveError::AllocError);
 
-            ptr = NonNull<T>::make_unchecked(res.unwrap_unchecked().template as_mut_ptr<T>());
+            ptr = res.unwrap_unchecked().template as_mut_ptr<byte>();
         } else {
             auto old_layout = allocation_layout;
-            auto old_ptr    = ptr.as_mut_ptr().as_raw_ptr();
+            auto old_ptr    = ptr.as_raw_ptr();
             auto res        = as<Allocator>(allocator).allocate(new_layout);
             if (res.is_err()) return Err(TryReserveError::AllocError);
 
-            auto new_ptr = res.unwrap_unchecked().template as_mut_ptr<T>().as_raw_ptr();
+            auto new_ptr = res.unwrap_unchecked().template as_mut_ptr<byte>().as_raw_ptr();
             for (rstd::size_t index = 0; index < len.to_primitive(); ++index) {
-                rstd::construct_at(new_ptr + index, rstd::move(old_ptr[index]));
-                rstd::destroy_at(old_ptr + index);
+                auto offset = index * sizeof(typename mut_ptr<T>::storage_type);
+                auto source = mut_ptr<byte>::from_raw_parts(old_ptr + offset).template cast<T>();
+                auto target = mut_ptr<byte>::from_raw_parts(new_ptr + offset).template cast<T>();
+                rstd::construct_at(target.as_raw_ptr(), rstd::move(source.get()));
+                rstd::ptr_::destroy(source);
             }
             as<Allocator>(allocator).deallocate(old_ptr, old_layout);
-            ptr = NonNull<T>::make_unchecked(mut_ptr<T>::from_raw_parts(new_ptr));
+            ptr = mut_ptr<byte>::from_raw_parts(new_ptr);
         }
         cap               = new_cap;
         allocation_layout = new_layout;
@@ -120,7 +129,7 @@ struct RawVec {
         }
         debug_assert(len <= capacity && capacity <= cap);
 
-        auto old_ptr = ptr.as_mut_ptr().as_raw_ptr();
+        auto old_ptr = ptr.as_raw_ptr();
         if (capacity == usize()) {
             if (old_layout.size != usize())
                 as<Allocator>(allocator).deallocate(old_ptr, old_layout);
@@ -131,18 +140,21 @@ struct RawVec {
         if constexpr (mtp::triv_copyable<T>) {
             auto res = as<Allocator>(allocator).shrink(old_ptr, old_layout, new_layout);
             if (res.is_err()) return Err(TryReserveError::AllocError);
-            ptr = NonNull<T>::make_unchecked(res.unwrap_unchecked().template as_mut_ptr<T>());
+            ptr = res.unwrap_unchecked().template as_mut_ptr<byte>();
         } else {
             auto res = as<Allocator>(allocator).allocate(new_layout);
             if (res.is_err()) return Err(TryReserveError::AllocError);
 
-            auto new_ptr = res.unwrap_unchecked().template as_mut_ptr<T>().as_raw_ptr();
+            auto new_ptr = res.unwrap_unchecked().template as_mut_ptr<byte>().as_raw_ptr();
             for (rstd::size_t index = 0; index < len.to_primitive(); ++index) {
-                rstd::construct_at(new_ptr + index, rstd::move(old_ptr[index]));
-                rstd::destroy_at(old_ptr + index);
+                auto offset = index * sizeof(typename mut_ptr<T>::storage_type);
+                auto source = mut_ptr<byte>::from_raw_parts(old_ptr + offset).template cast<T>();
+                auto target = mut_ptr<byte>::from_raw_parts(new_ptr + offset).template cast<T>();
+                rstd::construct_at(target.as_raw_ptr(), rstd::move(source.get()));
+                rstd::ptr_::destroy(source);
             }
             as<Allocator>(allocator).deallocate(old_ptr, old_layout);
-            ptr = NonNull<T>::make_unchecked(mut_ptr<T>::from_raw_parts(new_ptr));
+            ptr = mut_ptr<byte>::from_raw_parts(new_ptr);
         }
         cap               = capacity;
         allocation_layout = new_layout;
@@ -158,13 +170,13 @@ struct RawVec {
     ~RawVec() {}
 
     void reset_ptr() {
-        rstd::mem::fill(ptr, u8());
+        ptr               = {};
         cap               = usize();
         allocation_layout = {};
     }
 
     void drop() {
-        if (! rstd::mem::all(ptr, u8())) {
+        if (ptr != nullptr) {
             debug_assert(allocation_layout.size > usize());
             as<Allocator>(allocator).deallocate(ptr.as_raw_ptr(), allocation_layout);
         }
@@ -191,9 +203,9 @@ auto from_iter(VecIntoIter<T, A> iterator) -> Vec<T, A>;
 
 export template<typename T>
 class SpareSlot {
-    mut_ptr<T> slot_;
+    mut_ptr<byte> slot_;
 
-    constexpr explicit SpareSlot(mut_ptr<T> slot) noexcept: slot_(slot) {}
+    constexpr explicit SpareSlot(mut_ptr<T> slot) noexcept: slot_(slot.template cast<byte>()) {}
 
     template<typename>
     friend class SpareCapacity;
@@ -201,31 +213,41 @@ class SpareSlot {
 public:
     template<typename... Args>
     constexpr decltype(auto) write(Args&&... args) {
-        rstd::ptr_::construct(slot_, rstd::forward<Args>(args)...);
-        return slot_.as_mut_ref().get_mut();
+        auto value = slot_.template cast<T>();
+        rstd::ptr_::construct(value, rstd::forward<Args>(args)...);
+        return value.as_mut_ref().get_mut();
     }
 };
 
 /// A writable view over uninitialized vector capacity.
 export template<typename T>
 class SpareCapacity {
-    mut_ptr<T> pointer_;
-    usize      length_;
+    mut_ptr<byte> pointer_;
+    usize         length_ {};
 
     constexpr SpareCapacity(mut_ptr<T> pointer, usize length) noexcept
-        : pointer_(pointer), length_(length) {}
+        : pointer_(pointer.template cast<byte>()), length_(length) {}
 
     template<typename, typename>
     friend class Vec;
 
 public:
     constexpr SpareCapacity() noexcept = default;
+    /// Borrows byte spare capacity as slots, without reading or clearing its contents.
+    /// Publish only the written prefix with Vec::set_len_unchecked().
+    auto as_uninit() const noexcept -> mut_ref<MaybeUninit<byte>[]>
+        requires(mtp::same_as<T, u8> || mtp::same_as<T, byte>)
+    {
+        return mut_ref<MaybeUninit<byte>[]>::from_bytes(pointer_.as_raw_ptr(), length_);
+    }
+
     constexpr auto len() const noexcept -> usize { return length_; }
     constexpr auto is_empty() const noexcept -> bool { return length_ == usize(); }
 
     constexpr auto operator[](usize index) const -> SpareSlot<T> {
         if (index >= length_) rstd::panic { "Vec spare capacity index out of bounds" };
-        return SpareSlot<T>(pointer_.add(index));
+        return SpareSlot<T>(pointer_.add(index * usize(sizeof(typename mut_ptr<T>::storage_type)))
+                                .template cast<T>());
     }
 };
 
@@ -244,14 +266,17 @@ class Vec {
     void append_moved(mut_ptr<T> source, usize count) {
         if (count == usize()) return;
         reserve(count);
-        auto destination = m_buf.ptr.as_mut_ptr().add(m_len);
+        auto destination = m_buf.ptr_at(m_len);
         if constexpr (Impled<T, rstd::Copy>) {
             rstd::ptr_::copy_nonoverlapping(source.as_ptr(), destination, count);
             m_len += count;
         } else {
             for (usize index; index < count; ++index) {
-                auto slot = source.add(index);
-                rstd::ptr_::construct(destination.add(index), rstd::ptr_::move_out(slot));
+                auto slot =
+                    source.byte_add(index * usize(sizeof(typename mut_ptr<T>::storage_type)));
+                rstd::ptr_::construct(
+                    destination.byte_add(index * usize(sizeof(typename mut_ptr<T>::storage_type))),
+                    rstd::ptr_::move_out(slot));
                 ++m_len;
                 rstd::ptr_::destroy(slot);
             }
@@ -294,11 +319,14 @@ class Vec {
                 usize  value;
                 ~InitializedLength() { target = value; }
             } initialized { m_len, m_len };
-            auto  destination = m_buf.ptr.as_mut_ptr().add(m_len);
+            auto  destination = m_buf.ptr_at(m_len);
             usize written;
             rstd::as<rstd::iter::Iterator>(iterator).for_each([&](T item) {
                 debug_assert(written < *upper, "TrustedLen exceeded its length");
-                rstd::ptr_::construct(destination.add(written), rstd::move(item));
+                rstd::ptr_::construct(
+                    destination.byte_add(written *
+                                         usize(sizeof(typename mut_ptr<T>::storage_type))),
+                    rstd::move(item));
                 ++written;
                 ++initialized.value;
             });
@@ -312,7 +340,7 @@ class Vec {
                                           .saturating_add(usize(1));
                     reserve(additional);
                 }
-                rstd::ptr_::construct(m_buf.ptr.as_mut_ptr().add(m_len), rstd::move(*item));
+                rstd::ptr_::construct(m_buf.ptr_at(m_len), rstd::move(*item));
                 ++m_len;
             }
         }
@@ -320,7 +348,7 @@ class Vec {
 
     auto take_boxed_slice() -> Box<T[], A> {
         auto length = m_len;
-        auto raw = length == usize() ? NonNull<T>::dangling().as_mut_ptr() : m_buf.ptr.as_mut_ptr();
+        auto raw    = length == usize() ? NonNull<T>::dangling().as_mut_ptr() : m_buf.ptr_at();
         m_buf.reset_ptr();
         m_len = usize();
         return Box<T[], A>::from_raw_in(mut_ptr<T[]>::from_raw_parts(raw.as_raw_ptr(), length),
@@ -396,7 +424,7 @@ public:
             return Vec::new_in(rstd::move(allocator));
         }
         auto pointer = mut_ptr<T>::from_raw_parts(raw.as_raw_ptr());
-        return Vec { RawVec<T, A>(NonNull<T>::make_unchecked(pointer),
+        return Vec { RawVec<T, A>(pointer.template cast<byte>(),
                                   length,
                                   Layout::array<T>(length).unwrap(),
                                   rstd::move(allocator)),
@@ -467,7 +495,7 @@ public:
     [[clang::exclude_from_explicit_instantiation]]
     constexpr auto as_slice() const noexcept [[clang::lifetimebound]] -> slice<T> {
         if (m_len == usize()) return {};
-        return slice<T>::from_raw_parts(m_buf.ptr.as_ptr().as_raw_ptr(), m_len);
+        return slice<T>::from_raw_parts(m_buf.ptr_at().as_ptr().as_raw_ptr(), m_len);
     }
 
     /// Returns a mutable slice containing the entire vector.
@@ -475,7 +503,7 @@ public:
     [[clang::exclude_from_explicit_instantiation]]
     constexpr auto as_mut_slice() noexcept [[clang::lifetimebound]] -> mut_ptr<T[]> {
         if (m_len == usize()) return {};
-        return mut_ptr<T[]>::from_raw_parts(m_buf.ptr.as_mut_ptr().as_raw_ptr(), m_len);
+        return mut_ptr<T[]>::from_raw_parts(m_buf.ptr_at().as_raw_ptr(), m_len);
     }
 
     constexpr auto deref() const noexcept [[clang::lifetimebound]] -> ref<T[]> {
@@ -505,25 +533,25 @@ public:
     /// \return A const pointer to the underlying buffer.
     [[clang::exclude_from_explicit_instantiation]]
     constexpr auto as_ptr() const noexcept [[clang::lifetimebound]] -> ptr<T> {
-        return m_buf.ptr.as_ptr();
+        return m_buf.ptr_at().as_ptr();
     }
 
     /// Returns a mutable pointer to the first element of the vector.
     [[clang::exclude_from_explicit_instantiation]]
     constexpr auto as_mut_ptr() noexcept [[clang::lifetimebound]] -> mut_ptr<T> {
-        return m_buf.ptr.as_mut_ptr();
+        return m_buf.ptr_at();
     }
 
     /// Returns the initialized contiguous storage as a raw pointer.
     [[clang::exclude_from_explicit_instantiation]]
     constexpr auto data() noexcept [[clang::lifetimebound]] {
-        return m_buf.ptr.as_mut_ptr().as_raw_ptr();
+        return m_buf.ptr_at().as_raw_ptr();
     }
 
     /// Returns the initialized contiguous storage as a raw pointer.
     [[clang::exclude_from_explicit_instantiation]]
     constexpr auto data() const noexcept [[clang::lifetimebound]] {
-        return m_buf.ptr.as_ptr().as_raw_ptr();
+        return m_buf.ptr_at().as_ptr().as_raw_ptr();
     }
 
     /// Returns writable spare capacity after the initialized range.
@@ -532,7 +560,7 @@ public:
     /// publish the written length with `set_len_unchecked`.
     constexpr auto spare_capacity_mut() noexcept [[clang::lifetimebound]] -> SpareCapacity<T> {
         if (m_buf.cap == m_len) return {};
-        return SpareCapacity<T>(m_buf.ptr.as_mut_ptr().add(m_len), m_buf.cap - m_len);
+        return SpareCapacity<T>(m_buf.ptr_at(m_len), m_buf.cap - m_len);
     }
 
     /// Sets the vector length without initializing or dropping elements.
@@ -560,7 +588,7 @@ public:
     template<typename... Args>
     constexpr decltype(auto) emplace_back(Args&&... args) {
         if (m_len == m_buf.cap) reserve(usize(1));
-        auto slot = m_buf.ptr.as_mut_ptr().add(m_len);
+        auto slot = m_buf.ptr_at(m_len);
         rstd::ptr_::construct(slot, rstd::forward<Args>(args)...);
         ++m_len;
         return slot.as_mut_ref().get_mut();
@@ -585,13 +613,16 @@ public:
         // The input may refer to an element invalidated by growth or shifting.
         T owned = rstd::move(value);
         if (m_len == m_buf.cap) reserve(usize(1));
-        auto pointer = m_buf.ptr.as_mut_ptr();
+        auto pointer = m_buf.ptr_at();
         for (auto current = m_len; current > index; --current) {
-            auto source = pointer.add(current - usize(1));
-            rstd::ptr_::construct(pointer.add(current), rstd::ptr_::move_out(source));
+            auto source = pointer.byte_add((current - usize(1)) *
+                                           usize(sizeof(typename mut_ptr<T>::storage_type)));
+            rstd::ptr_::construct(
+                pointer.byte_add((current)*usize(sizeof(typename mut_ptr<T>::storage_type))),
+                rstd::ptr_::move_out(source));
             rstd::ptr_::destroy(source);
         }
-        auto slot = pointer.add(index);
+        auto slot = pointer.byte_add(index * usize(sizeof(typename mut_ptr<T>::storage_type)));
         rstd::ptr_::construct(slot, rstd::move(owned));
         ++m_len;
         return slot.as_mut_ref();
@@ -604,7 +635,7 @@ public:
             return None();
         } else {
             --m_len;
-            auto p     = m_buf.ptr.as_mut_ptr().add(m_len);
+            auto p     = m_buf.ptr_at(m_len);
             T    value = rstd::ptr_::move_out(p);
             rstd::ptr_::destroy(p);
             return Some(rstd::move(value));
@@ -630,7 +661,7 @@ public:
     /// Moves all elements from `other`, preserving its capacity. Self-append panics.
     void append(Vec& other) {
         if (this == rstd::addressof(other)) rstd::panic { "Vec cannot append itself" };
-        append_moved(other.m_buf.ptr.as_mut_ptr(), other.m_len);
+        append_moved(other.m_buf.ptr_at(), other.m_len);
         other.m_len = usize();
     }
 
@@ -641,7 +672,7 @@ public:
         if (start > end || end > m_len) rstd::panic { "Vec extend range out of bounds" };
         if (start == end) return;
         extend_from_slice(
-            slice<T>::from_raw_parts(m_buf.ptr.as_ptr().add(start).as_raw_ptr(), end - start));
+            slice<T>::from_raw_parts(m_buf.ptr_at(start).as_ptr().as_raw_ptr(), end - start));
     }
 
     /// Initializes new elements with `generator`; shrinking never calls it.
@@ -666,7 +697,7 @@ public:
         rstd::size_t source_offset  = 0;
         if (m_len != usize()) {
             auto const buffer_address =
-                reinterpret_cast<uintptr_t>(m_buf.ptr.as_ptr().as_raw_ptr());
+                reinterpret_cast<uintptr_t>(m_buf.ptr_at().as_ptr().as_raw_ptr());
             auto const source_address = reinterpret_cast<uintptr_t>(values.as_raw_ptr());
             if (source_address >= buffer_address) {
                 auto const offset_bytes = source_address - buffer_address;
@@ -683,19 +714,21 @@ public:
         reserve(values.len());
 
         if (source_is_self) {
-            values = slice<T>::from_raw_parts(m_buf.ptr.as_ptr().as_raw_ptr() + source_offset,
+            values = slice<T>::from_raw_parts(m_buf.ptr_at(usize(source_offset)).as_raw_ptr(),
                                               values.len());
         }
 
-        auto destination = m_buf.ptr.as_mut_ptr().add(m_len);
+        auto destination = m_buf.ptr_at(m_len);
         if constexpr (Impled<T, rstd::Copy>) {
             rstd::ptr_::copy_nonoverlapping(
                 ptr<T>::from_raw_parts(values.as_raw_ptr()), destination, values.len());
             m_len += values.len();
         } else {
             for (rstd::size_t index = 0; index < values.len().to_primitive(); ++index) {
-                rstd::ptr_::construct(destination.add(usize(index)),
-                                      as<Clone>(values[usize(index)]).clone());
+                rstd::ptr_::construct(
+                    destination.byte_add((usize(index)) *
+                                         usize(sizeof(typename mut_ptr<T>::storage_type))),
+                    as<Clone>(values[usize(index)]).clone());
                 ++m_len;
             }
         }
@@ -722,7 +755,7 @@ public:
     [[clang::exclude_from_explicit_instantiation]]
     constexpr decltype(auto) at(usize index) [[clang::lifetimebound]] {
         if (index >= m_len) rstd::panic { "Vec index out of bounds" };
-        return m_buf.ptr.as_mut_ptr().add(index).get();
+        return m_buf.ptr_at(index).get();
     }
     /// Returns a const reference to the element at the given index, panicking if out of bounds.
     /// \param index The index of the element.
@@ -730,7 +763,7 @@ public:
     [[clang::exclude_from_explicit_instantiation]]
     constexpr decltype(auto) at(usize index) const [[clang::lifetimebound]] {
         if (index >= m_len) rstd::panic { "Vec index out of bounds" };
-        return m_buf.ptr.as_ptr().add(index).get();
+        return m_buf.ptr_at(index).as_ptr().get();
     }
 
     /// Indexes into the vector, panicking if out of bounds.
@@ -788,7 +821,7 @@ public:
         truncate(source.len());
         auto const initialized = m_len;
         rstd::slice_::clone_from_slice(
-            mut_ref<T[]>::from_raw_parts(m_buf.ptr.as_mut_ptr().as_raw_ptr(), initialized),
+            mut_ref<T[]>::from_raw_parts(m_buf.ptr_at().as_raw_ptr(), initialized),
             slice<T>::from_raw_parts(source.data(), initialized));
 
         if (initialized < source.len()) {
@@ -807,23 +840,27 @@ public:
     /// Shortens the vector, dropping elements after `new_len`.
     constexpr void truncate(usize new_len) {
         if (new_len >= m_len) return;
-        auto values = mut_ptr<T[]>::from_raw_parts(m_buf.ptr.as_mut_ptr().add(new_len).as_raw_ptr(),
-                                                   m_len - new_len);
-        m_len       = new_len;
+        auto values =
+            mut_ptr<T[]>::from_raw_parts(m_buf.ptr_at(new_len).as_raw_ptr(), m_len - new_len);
+        m_len = new_len;
         rstd::ptr_::drop_in_place(values);
     }
 
     /// Retains only the elements for which `predicate` returns true, preserving their order.
     template<typename F>
     constexpr void retain(F predicate) {
-        auto               values  = m_buf.ptr.as_mut_ptr();
+        auto               values  = m_buf.ptr_at();
         rstd::size_t       write   = 0;
         const rstd::size_t old_len = m_len.to_primitive();
         for (rstd::size_t read = 0; read < old_len; ++read) {
-            auto read_ptr = values.add(usize(read));
+            auto read_ptr =
+                values.byte_add((usize(read)) * usize(sizeof(typename mut_ptr<T>::storage_type)));
             if (predicate(read_ptr.as_ptr().get())) {
                 if (write != read) {
-                    rstd::ptr_::construct(values.add(usize(write)), rstd::ptr_::move_out(read_ptr));
+                    rstd::ptr_::construct(
+                        values.byte_add((usize(write)) *
+                                        usize(sizeof(typename mut_ptr<T>::storage_type))),
+                        rstd::ptr_::move_out(read_ptr));
                     rstd::ptr_::destroy(read_ptr);
                 }
                 ++write;
@@ -848,7 +885,7 @@ public:
             auto source = as<Clone>(value).clone();
             reserve(new_len - m_len);
             auto count = new_len - old_len;
-            rstd::mem::memset(m_buf.ptr.as_mut_ptr().add(old_len).as_raw_ptr(), source, count);
+            rstd::mem::memset(m_buf.ptr_at(old_len).as_raw_ptr(), source, count);
             m_len = new_len;
             return;
         } else {
@@ -856,7 +893,7 @@ public:
             rstd::size_t value_offset  = 0;
             if (m_len != usize()) {
                 auto const buffer_address =
-                    reinterpret_cast<uintptr_t>(m_buf.ptr.as_ptr().as_raw_ptr());
+                    reinterpret_cast<uintptr_t>(m_buf.ptr_at().as_ptr().as_raw_ptr());
                 auto const value_address = reinterpret_cast<uintptr_t>(rstd::addressof(value));
                 if (value_address >= buffer_address) {
                     auto const offset_bytes = value_address - buffer_address;
@@ -868,12 +905,14 @@ public:
             }
 
             reserve(new_len - m_len);
-            auto p = m_buf.ptr.as_mut_ptr();
+            auto p = m_buf.ptr_at();
             for (rstd::size_t index = old_len.to_primitive(); index < new_len.to_primitive();
                  ++index) {
-                auto const* source =
-                    value_is_self ? p.as_raw_ptr() + value_offset : rstd::addressof(value);
-                rstd::ptr_::construct(p.add(usize(index)), as<Clone>(*source).clone());
+                auto const* source = value_is_self ? m_buf.ptr_at(usize(value_offset)).as_raw_ptr()
+                                                   : rstd::addressof(value);
+                rstd::ptr_::construct(
+                    p.byte_add((usize(index)) * usize(sizeof(typename mut_ptr<T>::storage_type))),
+                    as<Clone>(*source).clone());
                 ++m_len;
             }
         }
@@ -884,14 +923,18 @@ public:
     /// \return The removed element.
     constexpr T remove(usize index) {
         if (index >= m_len) rstd::panic { "Vec index out of bounds" };
-        auto p     = m_buf.ptr.as_mut_ptr();
-        T    value = rstd::ptr_::move_out(p.add(index));
+        auto p     = m_buf.ptr_at();
+        T    value = rstd::ptr_::move_out(
+            p.byte_add(index * usize(sizeof(typename mut_ptr<T>::storage_type))));
         for (rstd::size_t current = index.to_primitive(); current + 1 < m_len.to_primitive();
              ++current) {
-            rstd::ptr_::write(p.add(usize(current)),
-                              rstd::ptr_::move_out(p.add(usize(current + 1))));
+            rstd::ptr_::write(
+                p.byte_add((usize(current)) * usize(sizeof(typename mut_ptr<T>::storage_type))),
+                rstd::ptr_::move_out(p.byte_add((usize(current + 1)) *
+                                                usize(sizeof(typename mut_ptr<T>::storage_type)))));
         }
-        rstd::ptr_::destroy(p.add(m_len - usize(1)));
+        rstd::ptr_::destroy(
+            p.byte_add((m_len - usize(1)) * usize(sizeof(typename mut_ptr<T>::storage_type))));
         --m_len;
         return value;
     }
@@ -900,13 +943,13 @@ public:
     constexpr auto begin() noexcept [[clang::lifetimebound]] -> mut_ptr<T> { return as_mut_ptr(); }
     /// Returns a mutable iterator to the end.
     constexpr auto end() noexcept [[clang::lifetimebound]] -> mut_ptr<T> {
-        return as_mut_ptr().add(m_len);
+        return m_buf.ptr_at(m_len);
     }
     /// Returns a const iterator to the beginning.
     constexpr auto begin() const noexcept [[clang::lifetimebound]] -> ptr<T> { return as_ptr(); }
     /// Returns a const iterator to the end.
     constexpr auto end() const noexcept [[clang::lifetimebound]] -> ptr<T> {
-        return as_ptr().add(m_len);
+        return m_buf.ptr_at(m_len).as_ptr();
     }
 
     using IntoIter = VecIntoIter<T, A>;
@@ -937,8 +980,8 @@ private:
     usize        back_;
 
     void drop_remaining() noexcept {
-        auto values = mut_ptr<T[]>::from_raw_parts(
-            buffer_.ptr.as_mut_ptr().add(front_).as_raw_ptr(), back_ - front_);
+        auto values =
+            mut_ptr<T[]>::from_raw_parts(buffer_.ptr_at(front_).as_raw_ptr(), back_ - front_);
         front_ = back_;
         rstd::ptr_::drop_in_place(values);
     }
@@ -994,7 +1037,7 @@ public:
 
     auto next() -> rstd::Option<Item> {
         if (front_ == back_) return rstd::None();
-        auto source = buffer_.ptr.as_mut_ptr().add(front_);
+        auto source = buffer_.ptr_at(front_);
         T    value  = rstd::ptr_::move_out(source);
         rstd::ptr_::destroy(source);
         ++front_;
@@ -1004,7 +1047,7 @@ public:
     auto next_back() -> rstd::Option<Item> {
         if (front_ == back_) return rstd::None();
         --back_;
-        auto source = buffer_.ptr.as_mut_ptr().add(back_);
+        auto source = buffer_.ptr_at(back_);
         T    value  = rstd::ptr_::move_out(source);
         rstd::ptr_::destroy(source);
         return rstd::Some(rstd::move(value));
@@ -1018,7 +1061,7 @@ public:
     /// Moves the remaining elements into `destination`, retaining ownership of the allocation.
     template<typename DestinationAllocator>
     void append_to(Vec<T, DestinationAllocator>& destination) {
-        destination.append_moved(buffer_.ptr.as_mut_ptr().add(front_), len());
+        destination.append_moved(buffer_.ptr_at(front_), len());
         front_ = back_;
     }
 
@@ -1126,7 +1169,7 @@ static_assert(! rstd::iter::details::InPlaceTraits<
 struct InPlaceAccess {
     template<typename T, typename A>
     static auto allocation_base(VecIntoIter<T, A>& source) noexcept {
-        return source.buffer_.ptr.as_mut_ptr().as_raw_ptr();
+        return source.buffer_.ptr_at().as_raw_ptr();
     }
 
     template<typename T, typename A>
@@ -1157,11 +1200,10 @@ struct InPlaceAccess {
         auto capacity = source_buffer.allocation_layout.size / usize(sizeof(DestinationStorage));
         debug_assert(length <= capacity);
 
-        auto destination_buffer =
-            RawVec<Destination, A>(source_buffer.ptr.template cast<Destination>(),
-                                   capacity,
-                                   source_buffer.allocation_layout,
-                                   rstd::move(source_buffer.allocator));
+        auto destination_buffer = RawVec<Destination, A>(source_buffer.ptr,
+                                                         capacity,
+                                                         source_buffer.allocation_layout,
+                                                         rstd::move(source_buffer.allocator));
         source_buffer.reset_ptr();
         return Vec<Destination, A>(rstd::move(destination_buffer), length);
     }
@@ -1311,11 +1353,13 @@ auto from_iter(VecIntoIter<T, A> iterator) -> Vec<T, A> {
     }
 
     const auto compact = [&]() -> Vec<T, A> {
-        auto pointer = iterator.buffer_.ptr.as_mut_ptr();
+        auto pointer = iterator.buffer_.ptr_at();
         for (auto index = usize(); index < remaining; ++index) {
-            auto source      = pointer.add(iterator.front_ + index);
-            auto destination = pointer.add(index);
-            auto value       = rstd::ptr_::move_out(source);
+            auto source = pointer.byte_add((iterator.front_ + index) *
+                                           usize(sizeof(typename mut_ptr<T>::storage_type)));
+            auto destination =
+                pointer.byte_add(index * usize(sizeof(typename mut_ptr<T>::storage_type)));
+            auto value = rstd::ptr_::move_out(source);
             rstd::ptr_::construct(destination, rstd::move(value));
             rstd::ptr_::destroy(source);
         }

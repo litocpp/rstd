@@ -7,6 +7,7 @@ module = "rstd_benches"
 name = "rstd_bench"
 sources = [
   "alloc.cpp",
+  "io.cpp",
   "domains.cpp",
   "collections.cpp",
   "iter.cpp",

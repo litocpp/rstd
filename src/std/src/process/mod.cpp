@@ -10,6 +10,8 @@ import :sys.os_str.windows;
 import rstd.sys.process.linux;
 #endif
 
+using rstd::mem::MaybeUninit;
+
 using namespace rstd::prelude;
 namespace libc = rstd::sys::libc;
 
@@ -251,13 +253,12 @@ auto Child::wait_with_output(OutputObserver observer) -> io::Result<Output> {
         }
 #elif RSTD_OS_WINDOWS
         if (fd >= 0) {
-            byte tmp[4096];
+            rstd::array<MaybeUninit<byte>, 4096> tmp;
+            auto                                 chunk_buffer = tmp.as_mut_slice();
             while (true) {
-                auto chunk_buffer = mut_ref<u8[]>::from_raw_parts(
-                    tmp, usize(static_cast<rstd::size_t>(sizeof(tmp))));
-                auto read = rstd::sys::io::stdio::read_fd(fd, as_bytes_mut(chunk_buffer));
+                auto read = rstd::sys::io::stdio::read_fd(fd, chunk_buffer);
                 if (read.is_err() || *read == usize()) break;
-                auto chunk = slice<u8>::from_raw_parts(tmp, *read);
+                auto chunk = slice<u8>::from_raw_parts(reinterpret_cast<const byte*>(tmp), *read);
                 if (observer.notify != nullptr) observer.notify(observer.context, stream, chunk);
                 buf.extend_from_slice(chunk);
             }

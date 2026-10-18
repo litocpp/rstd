@@ -10,9 +10,6 @@ namespace libc        = rstd::sys::libc;
 namespace uring       = rstd::sys::pal::linux::io_uring;
 namespace unix_socket = rstd::sys::pal::unix::socket;
 
-namespace rstd::sys::pal::linux::poll
-{
-
 using ::alloc::sync::Arc;
 using ::alloc::boxed::Box;
 using ::alloc::vec::Vec;
@@ -30,6 +27,9 @@ using rstd::sys::pal::poll::Ready;
 using rstd::sys::pal::poll::SocketAddress;
 using rstd::sys::pal::poll::SourceKind;
 using rstd::sys::pal::poll::WaitMode;
+
+namespace rstd::sys::pal::linux::poll
+{
 
 inline constexpr rstd::uint64_t WAKE_KEY  = 0;
 inline constexpr rstd::uint64_t TIMER_KEY = rstd::uint64_t(-1);

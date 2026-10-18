@@ -2,6 +2,8 @@
 
 import rstd;
 
+using rstd::mem::MaybeUninit;
+
 using namespace rstd::prelude;
 
 namespace
@@ -183,3 +185,94 @@ TEST(Array, U8UsesByteStorageWithLogicalIteration) {
     EXPECT_EQ(owned.next(), rstd::Some(rstd::u8(9)));
     EXPECT_EQ(owned.next_back(), rstd::Some(rstd::u8(6)));
 }
+
+namespace
+{
+struct alignas(64) ArraySlotValue {
+    int* live;
+    int  value;
+    ArraySlotValue(int& count, int value): live(&count), value(value) { ++*live; }
+    ArraySlotValue(const ArraySlotValue&) = delete;
+    ~ArraySlotValue() { --*live; }
+};
+} // namespace
+
+TEST(Array, UninitSlotsUseAlignedByteOffsetsAndBorrowedIteration) {
+    using Slot  = MaybeUninit<ArraySlotValue>;
+    using Slots = rstd::array<Slot, 3>;
+    static_assert(sizeof(Slots) == 3 * sizeof(ArraySlotValue));
+    static_assert(alignof(Slots) == alignof(ArraySlotValue));
+    int   live = 0;
+    Slots slots {};
+    EXPECT_EQ(live, 0);
+    auto base = slots.as_mut_ptr().as_byte_ptr();
+    for (usize index; index < slots.len(); ++index) {
+        EXPECT_EQ(slots.as_mut_ptr().add(index).as_byte_ptr(),
+                  base + index.to_primitive() * sizeof(ArraySlotValue));
+        rstd::construct_at(slots[index].as_mut_ptr(), live, int(index.to_primitive() + 10));
+    }
+    EXPECT_EQ(live, 3);
+    EXPECT_EQ(slots.get<1>().assume_init_ref().value, 11);
+    const auto& immutable = slots;
+    EXPECT_EQ(immutable.get<2>().assume_init_ref().value, 12);
+    EXPECT_EQ(immutable.each_ref()[usize(1)]->assume_init_ref().value, 11);
+    auto halves = rstd::slice_::split_at_mut(slots.as_mut_slice(), usize(1));
+    EXPECT_EQ(halves.get<1>()[usize()].assume_init_ref().value, 11);
+    auto iter = slots.iter_mut();
+    iter.next_back()->get_mut().assume_init_drop();
+    EXPECT_EQ(live, 2);
+    iter.next()->get_mut().assume_init_drop();
+    iter.next()->get_mut().assume_init_drop();
+    EXPECT_EQ(live, 0);
+    EXPECT_TRUE(iter.next().is_none());
+}
+
+TEST(Array, EmptyUninitSlotsExposeEmptyBorrows) {
+    rstd::array<MaybeUninit<ArraySlotValue>, 0> slots {};
+    EXPECT_EQ(slots.data(), nullptr);
+    EXPECT_EQ(slots.begin(), slots.end());
+    EXPECT_TRUE(slots.as_slice().is_empty());
+    EXPECT_TRUE(slots.get_mut(usize()).is_none());
+    EXPECT_TRUE(slots.iter_mut().next().is_none());
+}
+
+TEST(Array, UninitSlotFactoriesAndCopiesPreserveTrivialPayloads) {
+    using Slot  = MaybeUninit<int>;
+    auto slots  = rstd::array<Slot, 3>::from_fn([](usize index) {
+        return Slot::make(int(index.to_primitive() + 20));
+    });
+    auto copied = slots;
+    auto moved  = rstd::move(copied);
+    EXPECT_EQ(moved.get<0>().assume_init_read(), 20);
+    EXPECT_EQ(moved.get<2>().assume_init_read(), 22);
+    EXPECT_EQ(moved.get<1>().assume_init_read(), 21);
+    for (usize index; index < slots.len(); ++index) {
+        slots[index].assume_init_drop();
+        copied[index].assume_init_drop();
+        moved[index].assume_init_drop();
+    }
+}
+
+#if __has_feature(memory_sanitizer)
+extern "C" rstd::intptr_t __msan_test_shadow(const volatile void*, rstd::size_t);
+
+TEST(Array, UninitSlotsKeepStackAndHeapStoragePoisoned) {
+    using Slots = rstd::array<MaybeUninit<int>, 3>;
+    auto check  = [](Slots& slots) {
+        auto bytes = slots.as_ptr().as_byte_ptr();
+        for (rstd::size_t i = 0; i < sizeof(Slots); ++i)
+            EXPECT_EQ(__msan_test_shadow(bytes + i, 1), rstd::intptr_t(0));
+        slots[usize(1)].write(42);
+        EXPECT_EQ(__msan_test_shadow(slots.get<1>().as_ptr(), sizeof(int)), rstd::intptr_t(-1));
+        EXPECT_EQ(__msan_test_shadow(slots.get<0>().as_ptr(), sizeof(int)), rstd::intptr_t(0));
+        slots[usize(1)].assume_init_drop();
+    };
+    Slots plain;
+    Slots braces {};
+    check(plain);
+    check(braces);
+    auto heap = ::alloc::raw_new<Slots>();
+    check(*heap);
+    ::alloc::raw_delete(heap);
+}
+#endif

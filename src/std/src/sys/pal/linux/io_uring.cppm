@@ -5,11 +5,10 @@ import rstd.sys.libc;
 import rstd.sys.socket;
 import rstd.alloc;
 
+using rstd::mem::MaybeUninit;
+
 namespace libc        = rstd::sys::libc;
 namespace unix_socket = rstd::sys::pal::unix::socket;
-
-namespace rstd::sys::pal::linux::io_uring
-{
 
 using ::alloc::boxed::Box;
 using ::alloc::vec::Vec;
@@ -19,6 +18,9 @@ using rstd::sys::pal::poll::Event;
 using rstd::sys::pal::poll::Operation;
 using rstd::sys::pal::poll::OperationKind;
 using rstd::sys::pal::poll::SourceKind;
+
+namespace rstd::sys::pal::linux::io_uring
+{
 
 inline constexpr rstd::uint32_t RING_ENTRIES = 256;
 inline constexpr rstd::uint64_t CANCEL_KEY {};
@@ -128,9 +130,12 @@ class NativeOperationTable {
     static constexpr rstd::size_t PAGE_CAPACITY = 64;
 
     struct Page {
-        mem::MaybeUninit<InFlightOperation> records[PAGE_CAPACITY];
-        rstd::uint32_t                      generations[PAGE_CAPACITY] {};
-        bool                                occupied[PAGE_CAPACITY] {};
+        // Value-initialization must not clear the payload storage.
+        Page() noexcept {}
+        rstd::array<MaybeUninit<InFlightOperation>, PAGE_CAPACITY> records;
+
+        rstd::uint32_t generations[PAGE_CAPACITY] {};
+        bool           occupied[PAGE_CAPACITY] {};
     };
 
     Vec<Box<Page>> m_pages;
@@ -166,7 +171,7 @@ public:
         auto& page   = page_for(slot);
         auto  offset = static_cast<rstd::size_t>(slot) % PAGE_CAPACITY;
         if (page.occupied[offset]) return nullptr;
-        auto& record             = page.records[offset].write(rstd::move(operation));
+        auto& record             = page.records[usize(offset)].write(rstd::move(operation));
         page.generations[offset] = gen;
         page.occupied[offset]    = true;
         ++m_len;
@@ -180,18 +185,17 @@ public:
         auto& page   = *m_pages[usize(page_index)];
         auto  offset = static_cast<rstd::size_t>(slot) % PAGE_CAPACITY;
         if (! page.occupied[offset] || page.generations[offset] != generation(key)) return nullptr;
-        return page.records[offset].as_mut_ptr();
+        return page.records[usize(offset)].as_mut_ptr();
     }
 
     auto take(u64 key) -> Option<InFlightOperation> {
         auto* record = get(key);
         if (record == nullptr) return None<InFlightOperation>();
-        auto  slot       = slot_index(key);
-        auto  page_index = static_cast<rstd::size_t>(slot) / PAGE_CAPACITY;
-        auto& page       = *m_pages[usize(page_index)];
-        auto  offset     = static_cast<rstd::size_t>(slot) % PAGE_CAPACITY;
-        auto  result     = rstd::move(page.records[offset]).assume_init();
-        page.records[offset].assume_init_drop();
+        auto  slot            = slot_index(key);
+        auto  page_index      = static_cast<rstd::size_t>(slot) / PAGE_CAPACITY;
+        auto& page            = *m_pages[usize(page_index)];
+        auto  offset          = static_cast<rstd::size_t>(slot) % PAGE_CAPACITY;
+        auto  result          = rstd::move(page.records[usize(offset)]).assume_init();
         page.occupied[offset] = false;
         --m_len;
         return Some(rstd::move(result));
@@ -202,7 +206,7 @@ public:
         for (rstd::size_t page_index = 0; page_index < m_pages.len().to_primitive(); ++page_index) {
             auto& page = *m_pages[usize(page_index)];
             for (rstd::size_t offset = 0; offset < PAGE_CAPACITY; ++offset) {
-                if (page.occupied[offset]) function(*page.records[offset].as_mut_ptr());
+                if (page.occupied[offset]) function(*page.records[usize(offset)].as_mut_ptr());
             }
         }
     }

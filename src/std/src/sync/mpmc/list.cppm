@@ -64,7 +64,7 @@ struct Block {
                 return;
             }
         }
-        delete block;
+        ::alloc::raw_delete(block);
     }
 };
 
@@ -88,16 +88,13 @@ struct ListChannel {
     SyncWaker                    receivers;
 
     static auto make() -> Box<ListChannel> {
-        auto* raw = new ListChannel {
-            .head      = {},
-            .tail      = {},
-            .receivers = {},
-        };
+        auto  owner = Box<ListChannel>::make();
+        auto* raw   = owner.get();
         raw->head->index.store(usize(), Ordering::Relaxed);
         raw->head->block.store(nullptr, Ordering::Relaxed);
         raw->tail->index.store(usize(), Ordering::Relaxed);
         raw->tail->block.store(nullptr, Ordering::Relaxed);
-        return Box<ListChannel>::from_raw(mut_ptr<ListChannel>::from_raw_parts(raw));
+        return owner;
     }
 
     auto start_send(ListToken& token) -> bool {
@@ -108,7 +105,7 @@ struct ListChannel {
 
         while (true) {
             if ((tail_idx & LIST_MARK_BIT) != usize()) {
-                delete next_block;
+                ::alloc::raw_delete(next_block);
                 token.block = nullptr;
                 return true;
             }
@@ -122,11 +119,11 @@ struct ListChannel {
             }
 
             if (offset + usize(1) == LIST_BLOCK_CAP && ! next_block) {
-                next_block = new Block<T>();
+                next_block = ::alloc::raw_new<Block<T>>();
             }
 
             if (! block) {
-                auto* new_block = new Block<T>();
+                auto* new_block = ::alloc::raw_new<Block<T>>();
                 auto* expected  = block;
                 if (tail->block.compare_exchange_strong(
                         expected, new_block, Ordering::Release, Ordering::Relaxed)) {
@@ -136,7 +133,7 @@ struct ListChannel {
                     if (! next_block) {
                         next_block = new_block;
                     } else {
-                        delete new_block;
+                        ::alloc::raw_delete(new_block);
                     }
                     tail_idx = tail->index.load(Ordering::Acquire);
                     block    = tail->block.load(Ordering::Acquire);
@@ -156,7 +153,7 @@ struct ListChannel {
 
                 token.block  = block;
                 token.offset = offset;
-                delete next_block;
+                ::alloc::raw_delete(next_block);
                 return true;
             }
 
@@ -347,13 +344,13 @@ struct ListChannel {
                 slot.msg.assume_init_drop();
             } else {
                 auto* next = block->wait_next();
-                delete block;
+                ::alloc::raw_delete(block);
                 block = next;
             }
             head_idx = head_idx.wrapping_add(usize(2));
         }
 
-        delete block;
+        ::alloc::raw_delete(block);
         head_idx &= ~LIST_MARK_BIT;
         head->index.store(head_idx, Ordering::Release);
     }
@@ -408,12 +405,12 @@ struct ListChannel {
                 block->slots[offset.to_primitive()].msg.assume_init_drop();
             } else {
                 auto* next = block->next.load(Ordering::Relaxed);
-                delete block;
+                ::alloc::raw_delete(block);
                 block = next;
             }
             head_idx = head_idx.wrapping_add(usize(2));
         }
-        delete block;
+        ::alloc::raw_delete(block);
     }
 };
 

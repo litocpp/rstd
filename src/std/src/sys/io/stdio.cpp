@@ -3,22 +3,25 @@ module;
 module rstd.sys.io.stdio;
 import rstd.sys.libc;
 
+using rstd::mem::MaybeUninit;
+
 #if RSTD_OS_WINDOWS
 using namespace rstd::sys::libc;
 #endif
 
-namespace rstd::sys::io::stdio
-{
-
-using rstd::io::Result;
+template<typename T>
+using IOResult = rstd::io::Result<T>;
 using rstd::io::error::Error;
 using rstd::io::error::ErrorKind;
 namespace libc = rstd::sys::libc;
 
+namespace rstd::sys::io::stdio
+{
+
 #if RSTD_OS_UNIX
 
 /// Writes bytes to file descriptor `fd`, retrying on EINTR.
-auto write_fd(int fd, slice<byte> buf) noexcept -> Result<usize> {
+auto write_fd(int fd, slice<byte> buf) noexcept -> IOResult<usize> {
     while (true) {
         auto n = libc::write(fd, buf.as_raw_ptr(), buf.len().to_primitive());
         if (n >= 0) return Ok(usize(n));
@@ -30,7 +33,8 @@ auto write_fd(int fd, slice<byte> buf) noexcept -> Result<usize> {
 }
 
 /// Reads bytes from file descriptor `fd`, retrying on EINTR.
-auto read_fd(int fd, mut_ref<byte[]> buf) noexcept -> Result<usize> {
+template<typename Byte>
+auto read_fd_impl(int fd, mut_ref<Byte[]> buf) noexcept -> IOResult<usize> {
     while (true) {
         auto n = libc::read(fd, buf.as_raw_ptr(), buf.len().to_primitive());
         if (n >= 0) return Ok(usize(n));
@@ -43,7 +47,7 @@ auto read_fd(int fd, mut_ref<byte[]> buf) noexcept -> Result<usize> {
 
 #elif RSTD_OS_WINDOWS
 
-auto write_fd(int fd, slice<byte> buf) noexcept -> Result<usize> {
+auto write_fd(int fd, slice<byte> buf) noexcept -> IOResult<usize> {
     auto   raw = _get_osfhandle(fd);
     HANDLE h   = raw == -1 ? M_INVALID_HANDLE_VALUE : reinterpret_cast<HANDLE>(raw);
     if (h == M_INVALID_HANDLE_VALUE || h == nullptr) {
@@ -59,7 +63,8 @@ auto write_fd(int fd, slice<byte> buf) noexcept -> Result<usize> {
     return Ok(usize(written));
 }
 
-auto read_fd(int fd, mut_ref<byte[]> buf) noexcept -> Result<usize> {
+template<typename Byte>
+auto read_fd_impl(int fd, mut_ref<Byte[]> buf) noexcept -> IOResult<usize> {
     auto   raw = _get_osfhandle(fd);
     HANDLE h   = raw == -1 ? M_INVALID_HANDLE_VALUE : reinterpret_cast<HANDLE>(raw);
     if (h == M_INVALID_HANDLE_VALUE || h == nullptr) {
@@ -78,15 +83,23 @@ auto read_fd(int fd, mut_ref<byte[]> buf) noexcept -> Result<usize> {
 
 #else
 
-auto write_fd(int, slice<byte>) noexcept -> Result<usize> {
+auto write_fd(int, slice<byte>) noexcept -> IOResult<usize> {
     return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
 }
 
-auto read_fd(int, mut_ref<byte[]>) noexcept -> Result<usize> {
+template<typename Byte>
+auto read_fd_impl(int, mut_ref<Byte[]>) noexcept -> IOResult<usize> {
     return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
 }
 
 #endif
+
+auto read_fd(int fd, mut_ref<MaybeUninit<byte>[]> buf) noexcept -> IOResult<usize> {
+    return read_fd_impl(fd, buf);
+}
+auto read_fd(int fd, mut_ref<byte[]> buf) noexcept -> IOResult<usize> {
+    return read_fd_impl(fd, buf);
+}
 
 #if RSTD_OS_UNIX
 auto is_terminal_fd(int fd) noexcept -> bool {

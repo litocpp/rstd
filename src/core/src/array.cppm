@@ -13,6 +13,8 @@ export import :panicking;
 export import :slice.ops;
 export import rstd.basic;
 
+using rstd::mem::maybe_uninit::MaybeUninit;
+
 namespace rstd
 {
 
@@ -27,29 +29,75 @@ namespace array_detail
 
 template<typename T, rstd::size_t N>
 struct Storage {
+    static constexpr bool             UNINIT = false;
     typename mut_ptr<T>::storage_type values[N];
 };
 
 template<typename T>
-struct Storage<T, 0> {};
+struct Storage<T, 0> {
+    static constexpr bool UNINIT = false;
+};
+
+template<typename T, rstd::size_t N>
+struct Storage<MaybeUninit<T>, N> {
+    static constexpr bool UNINIT = true;
+    alignas(T) byte values[sizeof(T) * N];
+
+    constexpr Storage() noexcept {}
+
+    template<typename... Us>
+    explicit Storage(const Us&... slots) noexcept {
+        rstd::size_t offset = 0;
+        ((__builtin_memcpy(values + offset, rstd::addressof(slots), sizeof(T)),
+          offset += sizeof(T)),
+         ...);
+    }
+};
+
+template<typename T>
+struct Storage<MaybeUninit<T>, 0> {
+    static constexpr bool UNINIT = true;
+};
 
 } // namespace array_detail
 
 /// An owned fixed-size sequence, analogous to Rust's `[T; N]`.
+/// MaybeUninit slots use aligned byte storage and byte-based indexing. Their construction
+/// does not initialize T; destruction does not drop T. Copy/move copies storage bytes,
+/// and must not be used to relocate live nontrivial T objects. data() addresses only
+/// the first slot; use as_ptr()/as_mut_ptr() for slot arithmetic.
 export template<typename T, rstd::size_t N>
 class array {
     array_detail::Storage<T, N> m_storage;
+    static constexpr bool       UNINIT = array_detail::Storage<T, N>::UNINIT;
+
+    constexpr auto byte_data() noexcept -> byte*
+        requires UNINIT
+    {
+        if constexpr (N == 0)
+            return nullptr;
+        else
+            return m_storage.values;
+    }
+    constexpr auto byte_data() const noexcept -> const byte*
+        requires UNINIT
+    {
+        if constexpr (N == 0)
+            return nullptr;
+        else
+            return m_storage.values;
+    }
 
     template<rstd::size_t I>
     constexpr decltype(auto) element_unchecked() noexcept {
         static_assert(I < N, "array index out of bounds");
-        return mut_ptr<T>::from_raw_parts(data() + I).get();
+        return as_mut_ptr().add(usize(I)).get();
     }
 
     template<rstd::size_t I>
     constexpr decltype(auto) element_unchecked() const noexcept {
         static_assert(I < N, "array index out of bounds");
-        return ptr<T>::from_raw_parts(data() + I).get();
+        return as_ptr().add(usize(I)).get();
     }
 
     template<rstd::size_t... Is>
@@ -91,16 +139,27 @@ public:
 
     static constexpr rstd::size_t LENGTH = N;
 
-    constexpr array() = default;
+    constexpr array()
+        requires(! UNINIT)
+    = default;
+    // Value-initialization must not zero the backing bytes before constructing Storage.
+    constexpr array() noexcept
+        requires UNINIT
+    {}
 
     template<typename... Us>
-        requires(N > 0 && ! mtp::same_as<T, u8> && sizeof...(Us) == N &&
-                 (mtp::init<T, Us &&> && ...))
+        requires(N > 0 && UNINIT && sizeof...(Us) == N && (mtp::init<T, Us&&> && ...))
+    array(Us&&... values) noexcept((mtp::noex_init_v<T, Us&&> && ...))
+        : m_storage(T(rstd::forward<Us>(values))...) {}
+
+    template<typename... Us>
+        requires(N > 0 && ! UNINIT && ! mtp::same_as<T, u8> && sizeof...(Us) == N &&
+                 (mtp::init<T, Us&&> && ...))
     constexpr array(Us&&... values) noexcept((mtp::noex_init_v<T, Us&&> && ...))
         : m_storage { { rstd::forward<Us>(values)... } } {}
 
     template<typename... Us>
-        requires(N > 0 && mtp::same_as<T, u8> && sizeof...(Us) == N && (mtp::init<T, Us &&> && ...))
+        requires(N > 0 && mtp::same_as<T, u8> && sizeof...(Us) == N && (mtp::init<T, Us&&> && ...))
     constexpr array(Us&&... values) noexcept((mtp::noex_init_v<T, Us&&> && ...))
         : m_storage { { u8(rstd::forward<Us>(values)).to_byte()... } } {}
 
@@ -115,6 +174,8 @@ public:
     constexpr auto data() noexcept [[clang::lifetimebound]] -> typename mut_ptr<T>::value_type* {
         if constexpr (N == 0) {
             return nullptr;
+        } else if constexpr (UNINIT) {
+            return reinterpret_cast<typename mut_ptr<T>::value_type*>(byte_data());
         } else {
             return m_storage.values;
         }
@@ -123,6 +184,8 @@ public:
     constexpr auto data() const noexcept [[clang::lifetimebound]] -> typename ptr<T>::value_type* {
         if constexpr (N == 0) {
             return nullptr;
+        } else if constexpr (UNINIT) {
+            return reinterpret_cast<typename ptr<T>::value_type*>(byte_data());
         } else {
             return m_storage.values;
         }
@@ -140,18 +203,30 @@ public:
     }
 
     constexpr auto as_ptr() const noexcept [[clang::lifetimebound]] -> ptr<T> {
-        return ptr<T>::from_raw_parts(data());
+        if constexpr (UNINIT)
+            return ptr<T>::from_bytes(byte_data());
+        else
+            return ptr<T>::from_raw_parts(data());
     }
     constexpr auto as_mut_ptr() noexcept [[clang::lifetimebound]] -> mut_ptr<T> {
-        return mut_ptr<T>::from_raw_parts(data());
+        if constexpr (UNINIT)
+            return mut_ptr<T>::from_bytes(byte_data());
+        else
+            return mut_ptr<T>::from_raw_parts(data());
     }
 
     constexpr auto as_slice() const noexcept [[clang::lifetimebound]] -> slice<T> {
-        return slice<T>::from_raw_parts(data(), usize(N));
+        if constexpr (UNINIT)
+            return slice<T>::from_bytes(byte_data(), usize(N));
+        else
+            return slice<T>::from_raw_parts(data(), usize(N));
     }
 
     constexpr auto as_mut_slice() noexcept [[clang::lifetimebound]] -> mut_ref<T[]> {
-        return mut_ref<T[]>::from_raw_parts(data(), usize(N));
+        if constexpr (UNINIT)
+            return mut_ref<T[]>::from_bytes(byte_data(), usize(N));
+        else
+            return mut_ref<T[]>::from_raw_parts(data(), usize(N));
     }
 
     constexpr auto deref() const noexcept [[clang::lifetimebound]] -> ref<T[]> {

@@ -217,7 +217,7 @@ void* __rstd_alloc(rstd::size_t size, rstd::size_t align) {
     if (size == 0) size = 1;
     if (align < alignof(AllocationHeader)) align = alignof(AllocationHeader);
     auto* reused = take_free_block(size, align);
-    return reused != nullptr ? reused : allocate_fresh(size, align);
+    void* result = reused != nullptr ? reused : allocate_fresh(size, align);
 #else
     void* result;
     if (align > __STDCPP_DEFAULT_NEW_ALIGNMENT__) {
@@ -225,8 +225,9 @@ void* __rstd_alloc(rstd::size_t size, rstd::size_t align) {
     } else {
         result = ::operator new(size, std::nothrow_t {});
     }
-    return result;
 #endif
+    if (result == nullptr) return nullptr;
+    return ::new (result) rstd::byte[size];
 }
 
 RSTD_WASM_EXPORT("__rstd_dealloc")

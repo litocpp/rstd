@@ -36,6 +36,7 @@ target_sources(
          src/iter/group.cppm
          src/iter/join.cppm
          src/collections/mod.cppm
+         src/collections/error.cppm
          src/collections/btree_node.cppm
          src/collections/btree_map.cppm
          src/collections/btree_set.cppm

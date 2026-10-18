@@ -9,10 +9,16 @@ using namespace rstd::prelude;
 namespace rstd::io
 {
 
-export using SharedReadAt        = Arc<dyn<ReadAt>>;
-export using ReadSeekHandle      = Box<dyn<ReadSeek>>;
-export using WriteSeekHandle     = Box<dyn<WriteSeek>>;
-export using ReadWriteSeekHandle = Box<dyn<ReadWriteSeek>>;
+export using SharedReadAt = Arc<dyn<ReadAt>>;
+export template<typename A = ::alloc::Global>
+using BasicReadSeekHandle = Box<dyn<ReadSeek>, A>;
+export template<typename A = ::alloc::Global>
+using BasicWriteSeekHandle = Box<dyn<WriteSeek>, A>;
+export template<typename A = ::alloc::Global>
+using BasicReadWriteSeekHandle   = Box<dyn<ReadWriteSeek>, A>;
+export using ReadSeekHandle      = BasicReadSeekHandle<>;
+export using WriteSeekHandle     = BasicWriteSeekHandle<>;
+export using ReadWriteSeekHandle = BasicReadWriteSeekHandle<>;
 
 export class RangeReader;
 
@@ -72,23 +78,27 @@ public:
         return Ok(RangeReader(rstd::move(source), offset, len));
     }
 
+    auto read_buf(BorrowedCursor buf) -> Result<empty> {
+        if (m_position == m_len || buf.capacity() == usize()) return Ok(empty {});
+        auto requested =
+            usize(rstd::min(u64(buf.capacity().to_primitive()), m_len - m_position).to_primitive());
+        auto destination = buf.limit(requested);
+        auto before      = destination.written();
+        auto result      = m_source->read_buf_at(destination.reborrow(), m_offset + m_position);
+        m_position += u64((destination.written() - before).to_primitive());
+        return result;
+    }
+
     auto read(mut_ref<u8[]> buf) -> Result<usize> {
-        if (m_position == m_len || buf.is_empty()) return Ok(usize {});
-
-        auto       remaining       = m_len - m_position;
-        auto const requested_count = rstd::min(
-            static_cast<rstd::uint64_t>(buf.len().to_primitive()), remaining.to_primitive());
-        usize requested(static_cast<rstd::size_t>(requested_count));
-        auto  destination = mut_ref<u8[]>::from_raw_parts(buf.as_raw_ptr(), requested);
-        auto  result      = m_source->read_at(destination, m_offset + m_position);
-        if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
-
-        auto read = rstd::move(result).unwrap_unchecked();
-        if (read > requested) {
-            return Err(error::Error::from_kind(error::ErrorKind { error::ErrorKind::InvalidData }));
-        }
-        m_position += u64(read.to_primitive());
-        return Ok(read);
+        if (m_position == m_len || buf.is_empty()) return Ok(usize());
+        auto requested =
+            usize(rstd::min(u64(buf.len().to_primitive()), m_len - m_position).to_primitive());
+        auto result = m_source->read_at(mut_ref<u8[]>::from_raw_parts(buf.as_raw_ptr(), requested),
+                                        m_offset + m_position);
+        if (result.is_err()) return result;
+        if (*result > requested) return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidData }));
+        m_position += u64(result->to_primitive());
+        return result;
     }
 
     auto seek(SeekFrom pos) -> Result<u64> {
@@ -156,8 +166,11 @@ namespace rstd
 {
 
 template<>
-struct Impl<io::Read, io::RangeReader> : ImplBase<io::RangeReader> {
+struct Impl<io::Read, io::RangeReader> : DefaultInImpl<io::Read, io::RangeReader> {
     auto read(mut_ref<u8[]> buf) -> io::Result<usize> { return this->self().read(buf); }
+    auto read_buf(io::BorrowedCursor buf) -> io::Result<empty> {
+        return this->self().read_buf(rstd::move(buf));
+    }
 };
 
 template<>

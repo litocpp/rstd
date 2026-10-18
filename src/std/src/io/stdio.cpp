@@ -108,8 +108,24 @@ auto Impl<io::Read, io::Stdin>::read(mut_ref<u8[]> buf) -> io::Result<usize> {
     ScopedLock guard(0);
     return sys::io::stdio::read_fd(0, as_bytes_mut(buf));
 }
-
 auto Impl<io::Read, io::StdinLock>::read(mut_ref<u8[]> buf) -> io::Result<usize> {
     return sys::io::stdio::read_fd(0, as_bytes_mut(buf));
+}
+
+auto Impl<io::Read, io::Stdin>::read_buf(io::BorrowedCursor buf) -> io::Result<empty> {
+    ScopedLock guard(0);
+    auto       result = sys::io::stdio::read_fd(0, buf.as_uninit());
+    if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
+    if (! buf.advance_unchecked(*result))
+        return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidData }));
+    return Ok(empty {});
+}
+
+auto Impl<io::Read, io::StdinLock>::read_buf(io::BorrowedCursor buf) -> io::Result<empty> {
+    auto result = sys::io::stdio::read_fd(0, buf.as_uninit());
+    if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
+    if (! buf.advance_unchecked(*result))
+        return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidData }));
+    return Ok(empty {});
 }
 } // namespace rstd

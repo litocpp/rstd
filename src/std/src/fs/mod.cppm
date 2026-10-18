@@ -50,12 +50,14 @@ public:
     auto        keep() -> rstd::path::PathBuf;
 };
 
-export enum class FileLockMode {
+export enum class FileLockMode
+{
     Shared,
     Exclusive,
 };
 
-export enum class WriteOutcome {
+export enum class WriteOutcome
+{
     Created,
     Replaced,
     Unchanged,
@@ -237,6 +239,8 @@ public:
     static auto create_new(ref<Path> path) -> FsResult<File>;
     static auto options() noexcept -> OpenOptions { return OpenOptions::make(); }
 
+    auto read_buf(io::BorrowedCursor buffer) -> FsResult<empty>;
+    auto read_size_hint() -> Option<usize>;
     auto read(mut_ref<u8[]> buffer) -> FsResult<usize>;
     auto write(slice<u8> buffer) -> FsResult<usize>;
     auto write_all(slice<u8> buffer) -> FsResult<empty>;
@@ -245,6 +249,8 @@ public:
     auto sync_all() -> FsResult<empty>;
     auto sync_data() -> FsResult<empty>;
     auto set_len(u64 size) -> FsResult<empty>;
+    /// Windows reopens the file for positional reads; restrictive sharing modes may reject them.
+    auto read_buf_at(io::BorrowedCursor buffer, u64 offset) const -> FsResult<empty>;
     auto read_at(mut_ref<u8[]> buffer, u64 offset) const -> FsResult<usize>;
     auto write_at(slice<u8> buffer, u64 offset) const -> FsResult<usize>;
     auto read_exact_at(mut_ref<u8[]> buffer, u64 offset) const -> FsResult<empty>;
@@ -330,6 +336,18 @@ public:
     auto unlock() && -> FsResult<File>;
 };
 
+export template<typename A>
+    requires Impled<A, rstd::alloc::Allocator>
+auto read_in(ref<Path> path, A allocator) -> FsResult<Vec<u8, A>> {
+    auto opened = File::open(path);
+    if (opened.is_err()) return Err(opened.unwrap_err_unchecked());
+    auto file   = opened.unwrap_unchecked();
+    auto output = Vec<u8, A>::new_in(rstd::move(allocator));
+    auto result = io::read_to_end(file, output);
+    if (result.is_err()) return Err(result.unwrap_err_unchecked());
+    return Ok(rstd::move(output));
+}
+
 export auto read(ref<Path> path) -> FsResult<Vec<u8>>;
 export auto read_to_string(ref<Path> path) -> FsResult<String>;
 export auto write(ref<Path> path, slice<u8> contents) -> FsResult<empty>;
@@ -408,8 +426,19 @@ struct Impl<os::fd::FromRawFd, fs::File> {
 };
 
 template<>
-struct Impl<io::Read, fs::File> : ImplBase<fs::File> {
+struct Impl<io::Read, fs::File> : DefaultInImpl<io::Read, fs::File> {
     auto read(mut_ref<u8[]> buffer) -> io::Result<usize> { return this->self().read(buffer); }
+    auto read_buf(io::BorrowedCursor buffer) -> io::Result<empty> {
+        return this->self().read_buf(rstd::move(buffer));
+    }
+};
+
+template<typename A>
+    requires Impled<A, alloc::Allocator>
+struct Impl<io::ReadToEnd<A>, fs::File> : ImplBase<fs::File> {
+    auto read_to_end(::alloc::vec::Vec<u8, A>& output) -> io::Result<usize> {
+        return io::default_read_to_end(this->self(), output, this->self().read_size_hint());
+    }
 };
 
 template<>
@@ -424,9 +453,12 @@ struct Impl<io::Seek, fs::File> : ImplBase<fs::File> {
 };
 
 template<>
-struct Impl<io::ReadAt, fs::File> : ImplBase<fs::File> {
+struct Impl<io::ReadAt, fs::File> : DefaultInImpl<io::ReadAt, fs::File> {
     auto read_at(mut_ref<u8[]> buffer, u64 offset) const -> io::Result<usize> {
         return this->self().read_at(buffer, offset);
+    }
+    auto read_buf_at(io::BorrowedCursor buffer, u64 offset) const -> io::Result<empty> {
+        return this->self().read_buf_at(rstd::move(buffer), offset);
     }
 };
 

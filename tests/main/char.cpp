@@ -258,11 +258,12 @@ TEST(Char, CoreAndAllocImports) {
 }
 
 TEST(Char, LetterCategory) {
-    for (auto cp : { U'A', U'z', U'中', U'é', U'ǅ', U'ʰ' }) {
+    for (auto cp : rstd::array<char32_t, 6> { U'A', U'z', U'中', U'é', U'ǅ', U'ʰ' }) {
         EXPECT_TRUE(rstd::char_::is_letter(cp));
         EXPECT_TRUE(rstd::Char::from_char32(cp).unwrap().is_letter());
     }
-    for (auto cp : { U'0', U'²', U'Ⅷ', U'\u0345', U'\u05b0', U' ', U'😀' }) {
+    for (auto cp :
+         rstd::array<char32_t, 7> { U'0', U'²', U'Ⅷ', U'\u0345', U'\u05b0', U' ', U'😀' }) {
         EXPECT_FALSE(rstd::char_::is_letter(cp));
         EXPECT_FALSE(rstd::Char::from_char32(cp).unwrap().is_letter());
     }

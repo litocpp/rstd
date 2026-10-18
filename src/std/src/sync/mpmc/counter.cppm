@@ -2,8 +2,8 @@ export module rstd:sync.mpmc.counter;
 import :forward;
 import :process;
 export import rstd.core;
+import rstd.alloc;
 
-using rstd::boxed::Box;
 using rstd::sync::atomic::Atomic;
 using rstd::sync::atomic::Ordering;
 
@@ -37,7 +37,7 @@ class Receiver;
 /// Wraps a channel into the reference counter.
 export template<typename C>
 auto new_counter(C chan) -> rstd::tuple<Sender<C>, Receiver<C>> {
-    auto* counter = Box<Counter<C>>::make(rstd::move(chan)).into_raw().as_raw_ptr();
+    auto* counter = ::alloc::raw_new<Counter<C>>(rstd::move(chan));
     return { Sender<C> { counter }, Receiver<C> { counter } };
 }
 
@@ -82,7 +82,7 @@ public:
                 disconnect(rstd::addressof(counter()->chan));
 
                 if (counter()->destroy.exchange(true, Ordering::AcqRel)) {
-                    Box<Counter<C>>::from_raw(mut_ptr<Counter<C>>::from_raw_parts(counter_ptr));
+                    ::alloc::raw_delete(counter_ptr);
                 }
             }
             counter_ptr = nullptr;
@@ -139,7 +139,7 @@ public:
                 disconnect(rstd::addressof(counter()->chan));
 
                 if (counter()->destroy.exchange(true, Ordering::AcqRel)) {
-                    Box<Counter<C>>::from_raw(mut_ptr<Counter<C>>::from_raw_parts(counter_ptr));
+                    ::alloc::raw_delete(counter_ptr);
                 }
             }
             counter_ptr = nullptr;

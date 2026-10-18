@@ -951,6 +951,298 @@ TEST(AllocationOwnership, GlobalPointerFailureInjectionLeavesDynInputUntouched) 
 }
 #endif
 
+struct AllocationReader {
+    rstd::slice<u8> input;
+    usize           position;
+    usize           limit { 3 };
+    int             calls {};
+    int             interrupted_call { -1 };
+    int             failure_call { -1 };
+    bool            invalid_count {};
+    bool            check_initialized {};
+    bool            initialized { true };
+    OwnershipState* fail_after_read {};
+};
+
+struct AllocationWriter {
+    Vec<u8> output;
+    int     calls {};
+    bool    fail_second { true };
+    bool    zero_second {};
+    bool    invalid_second {};
+};
+
+struct AllocationDropReader {
+    int* drops;
+    explicit AllocationDropReader(int& count): drops(&count) {}
+    AllocationDropReader(AllocationDropReader&& other) noexcept
+        : drops(rstd::exchange(other.drops, nullptr)) {}
+    ~AllocationDropReader() {
+        if (drops) ++*drops;
+    }
+};
+
+namespace rstd
+{
+template<>
+struct Impl<io::Read, AllocationReader> : DefaultInImpl<io::Read, AllocationReader> {
+    auto read_buf(io::BorrowedCursor buffer) -> io::Result<empty> {
+        auto& reader = this->self();
+        auto  call   = reader.calls++;
+        if (call == reader.interrupted_call)
+            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Interrupted }));
+        if (call == reader.failure_call)
+            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::PermissionDenied }));
+        if (reader.invalid_count) {
+            if (! buffer.advance_unchecked(buffer.capacity() + usize(1)))
+                return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidData }));
+        }
+        if (reader.check_initialized) {
+            auto target = buffer.ensure_init();
+            for (usize i {}; i < target.len(); ++i)
+                reader.initialized = reader.initialized && target[i] == u8();
+        }
+        auto count =
+            min(min(reader.input.len() - reader.position, buffer.capacity()), reader.limit);
+        buffer.append(slice<u8>::from_raw_parts(
+            reader.input.as_raw_ptr() + reader.position.to_primitive(), count));
+        reader.position += count;
+        if (reader.fail_after_read) reader.fail_after_read->fail = true;
+        return Ok(empty {});
+    }
+};
+template<>
+struct Impl<io::Write, AllocationWriter> : ImplBase<AllocationWriter> {
+    auto write(slice<u8> input) -> io::Result<usize> {
+        auto& writer = this->self();
+        if (writer.calls++ == 1) {
+            if (writer.zero_second) return Ok(usize());
+            if (writer.invalid_second) return Ok(input.len() + usize(1));
+            if (writer.fail_second)
+                return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::PermissionDenied }));
+        }
+        auto count = min(input.len(), usize(2));
+        writer.output.extend_from_slice(slice<u8>::from_raw_parts(input.as_raw_ptr(), count));
+        return Ok(count);
+    }
+    auto flush() -> io::Result<empty> { return Ok(empty {}); }
+};
+template<>
+struct Impl<io::Read, AllocationDropReader> : DefaultInImpl<io::Read, AllocationDropReader> {
+    auto read_buf(io::BorrowedCursor) -> io::Result<empty> { return Ok(empty {}); }
+};
+} // namespace rstd
+
+TEST(IoAllocation, CursorWriteFailurePreservesContentAndPosition) {
+    using namespace rstd::literals;
+    OwnershipState state;
+    {
+        auto bytes = Vec<u8, OwnershipAllocator>::new_in(OwnershipAllocator(state));
+        bytes.extend_from_slice("abc"_bytes);
+        auto cursor = rstd::io::Cursor(rstd::move(bytes));
+        cursor.set_position(u64(100));
+        state.fail  = true;
+        auto failed = rstd::as<rstd::io::Write>(cursor).write("z"_bytes);
+        ASSERT_TRUE(failed.is_err());
+        EXPECT_EQ(failed.unwrap_err().kind(),
+                  rstd::io::ErrorKind { rstd::io::ErrorKind::OutOfMemory });
+        EXPECT_EQ(cursor.position(), u64(100));
+        EXPECT_EQ(cursor.get_ref().as_slice(), "abc"_bytes);
+        state.fail = false;
+        ASSERT_TRUE(rstd::as<rstd::io::Write>(cursor).write("z"_bytes).is_ok());
+        EXPECT_EQ(cursor.get_ref().len(), usize(101));
+        EXPECT_EQ(cursor.get_ref()[usize(99)], u8());
+        EXPECT_EQ(cursor.get_ref()[usize(100)], u8('z'));
+        rstd::as<rstd::io::Seek>(cursor).seek(rstd::io::SeekFrom::from_start(u64())).unwrap();
+        EXPECT_EQ(rstd::as<rstd::io::BufRead>(cursor).fill_buf().unwrap().len(), usize(101));
+        rstd::byte out[3] {};
+        rstd::io::read_exact(cursor, rstd::mut_ref<u8[]>::from_raw_parts(out, usize(3))).unwrap();
+        EXPECT_EQ(rstd::slice<u8>::from_raw_parts(out, usize(3)), "abc"_bytes);
+        cursor.set_position(u64::MAX);
+        EXPECT_TRUE(rstd::as<rstd::io::Write>(cursor).write("z"_bytes).is_err());
+        EXPECT_EQ(cursor.position(), u64::MAX);
+    }
+    EXPECT_EQ(state.live, usize());
+    EXPECT_EQ(state.invalid_releases, 0);
+    EXPECT_EQ(state.handles, 0);
+}
+
+TEST(IoAllocation, ReadToEndRetriesAndAppendsOnlyInitializedBytes) {
+    using namespace rstd::literals;
+    OwnershipState state;
+    {
+        auto bytes = Vec<u8, OwnershipAllocator>::new_in(OwnershipAllocator(state));
+        bytes.extend_from_slice("pre"_bytes);
+        AllocationReader reader { .input             = "abcdefghi"_bytes,
+                                  .interrupted_call  = 1,
+                                  .check_initialized = true };
+        EXPECT_EQ(rstd::io::read_to_end(reader, bytes).unwrap(), usize(9));
+        EXPECT_EQ(bytes.as_slice(), "preabcdefghi"_bytes);
+        EXPECT_TRUE(reader.initialized);
+        EXPECT_EQ(rstd::io::read_to_end(reader, bytes).unwrap(), usize());
+        EXPECT_EQ(bytes.allocator().state, &state);
+    }
+    EXPECT_EQ(state.live, usize());
+    EXPECT_EQ(state.invalid_releases, 0);
+}
+
+TEST(IoAllocation, ReadToEndAllocationFailureDoesNotConsumeInput) {
+    using namespace rstd::literals;
+    OwnershipState state;
+    {
+        auto             bytes = Vec<u8, OwnershipAllocator>::new_in(OwnershipAllocator(state));
+        AllocationReader reader { .input = "abcdef"_bytes, .limit = usize(4) };
+        state.fail = true;
+        EXPECT_TRUE(rstd::io::read_to_end(reader, bytes).is_err());
+        EXPECT_EQ(reader.calls, 0);
+        state.fail = false;
+        bytes.try_reserve_exact(usize(4)).unwrap();
+        reader.fail_after_read = &state;
+        auto failed            = rstd::io::read_to_end(reader, bytes);
+        ASSERT_TRUE(failed.is_err());
+        EXPECT_EQ(failed.unwrap_err().kind(),
+                  rstd::io::ErrorKind { rstd::io::ErrorKind::OutOfMemory });
+        EXPECT_EQ(reader.position, usize(4));
+        EXPECT_EQ(reader.calls, 1);
+        EXPECT_EQ(bytes.as_slice(), "abcd"_bytes);
+        state.fail             = false;
+        reader.fail_after_read = nullptr;
+        EXPECT_EQ(rstd::io::read_to_end(reader, bytes).unwrap(), usize(2));
+        EXPECT_EQ(bytes.as_slice(), "abcdef"_bytes);
+    }
+    EXPECT_EQ(state.live, usize());
+    EXPECT_EQ(state.invalid_releases, 0);
+}
+
+TEST(IoAllocation, ReadErrorsPreservePrefixAndRejectInvalidCount) {
+    using namespace rstd::literals;
+    auto             bytes = Vec<u8>::from("pre"_bytes);
+    AllocationReader reader { .input = "abcdef"_bytes, .failure_call = 1 };
+    auto             failed = rstd::io::read_to_end(reader, bytes);
+    ASSERT_TRUE(failed.is_err());
+    EXPECT_EQ(failed.unwrap_err().kind(),
+              rstd::io::ErrorKind { rstd::io::ErrorKind::PermissionDenied });
+    EXPECT_EQ(bytes.len(), usize(3) + reader.position);
+    auto before          = bytes.clone();
+    reader.invalid_count = true;
+    auto invalid         = rstd::io::read_to_end(reader, bytes);
+    ASSERT_TRUE(invalid.is_err());
+    EXPECT_EQ(invalid.unwrap_err().kind(),
+              rstd::io::ErrorKind { rstd::io::ErrorKind::InvalidData });
+    EXPECT_EQ(bytes.as_slice(), before.as_slice());
+}
+
+TEST(IoAllocation, FullBufferRequiresReservationEvenAtEof) {
+    using namespace rstd::literals;
+    OwnershipState state;
+    {
+        auto bytes = Vec<u8, OwnershipAllocator>::new_in(OwnershipAllocator(state));
+        bytes.try_reserve_exact(usize(3)).unwrap();
+        bytes.extend_from_slice("abc"_bytes);
+        state.fail = true;
+        AllocationReader reader { .input = ""_bytes };
+        EXPECT_TRUE(rstd::io::read_to_end(reader, bytes).is_err());
+        EXPECT_EQ(reader.calls, 0);
+        EXPECT_EQ(bytes.as_slice(), "abc"_bytes);
+    }
+    EXPECT_EQ(state.live, usize());
+}
+
+TEST(IoAllocation, BufferedReaderAndDynHandleRetainAllocators) {
+    using namespace rstd::literals;
+    OwnershipState buffer_state, handle_state;
+    {
+        using Cursor      = rstd::io::Cursor<rstd::slice<u8>>;
+        using Buffered    = rstd::io::BufReader<Cursor, OwnershipAllocator>;
+        auto       reader = Buffered::try_make_in(
+                                Cursor("abcdef"_bytes), OwnershipAllocator(buffer_state), usize(4))
+                                .unwrap();
+        rstd::byte value[1] {};
+        auto       target = rstd::mut_ref<u8[]>::from_raw_parts(value, usize(1));
+        rstd::io::read_exact(reader, target).unwrap();
+        EXPECT_EQ(value[0], rstd::byte('a'));
+        EXPECT_EQ(
+            rstd::as<rstd::io::Seek>(reader).seek(rstd::io::SeekFrom::from_current(i64())).unwrap(),
+            u64(1));
+        auto handle = rstd::io::BasicReadSeekHandle<OwnershipAllocator>::make_in(
+            OwnershipAllocator(handle_state), rstd::move(reader));
+        EXPECT_EQ(handle->read(target).unwrap(), usize(1));
+        EXPECT_EQ(value[0], rstd::byte('b'));
+        EXPECT_TRUE(buffer_state.live > usize());
+        EXPECT_TRUE(handle_state.live > usize());
+    }
+    EXPECT_EQ(buffer_state.live + handle_state.live, usize());
+    EXPECT_EQ(buffer_state.invalid_releases + handle_state.invalid_releases, 0);
+}
+
+TEST(IoAllocation, BufferedCreationFailureDropsInnerAndAllocator) {
+    OwnershipState state;
+    int            drops {};
+    state.fail   = true;
+    using Reader = rstd::io::BufReader<AllocationDropReader, OwnershipAllocator>;
+    EXPECT_TRUE(
+        Reader::try_make_in(AllocationDropReader(drops), OwnershipAllocator(state)).is_err());
+    EXPECT_EQ(drops, 1);
+    EXPECT_EQ(state.handles, 0);
+    EXPECT_EQ(state.live, usize());
+    using Writer = rstd::io::BufWriter<rstd::io::Sink, OwnershipAllocator>;
+    EXPECT_TRUE(Writer::try_make_in(rstd::io::sink(), OwnershipAllocator(state)).is_err());
+    EXPECT_EQ(state.handles, 0);
+    auto zero =
+        Reader::try_make_in(AllocationDropReader(drops), OwnershipAllocator(state), usize());
+    EXPECT_TRUE(zero.is_ok());
+}
+
+TEST(IoAllocation, BufferedWriterRetainsUnwrittenBytesOnFailure) {
+    using namespace rstd::literals;
+    OwnershipState state;
+    {
+        using Writer = rstd::io::BufWriter<AllocationWriter, OwnershipAllocator>;
+        auto writer  = Writer::make_in(AllocationWriter {}, OwnershipAllocator(state), usize(8));
+        rstd::as<rstd::io::Write>(writer).write("abcdef"_bytes).unwrap();
+        EXPECT_TRUE(rstd::as<rstd::io::Write>(writer).flush().is_err());
+        EXPECT_EQ(writer.get_ref().output.as_slice(), "ab"_bytes);
+        EXPECT_EQ(writer.buffer(), "cdef"_bytes);
+        writer.get_mut().fail_second = false;
+        rstd::as<rstd::io::Write>(writer).flush().unwrap();
+        EXPECT_EQ(writer.get_ref().output.as_slice(), "abcdef"_bytes);
+        EXPECT_TRUE(writer.buffer().is_empty());
+        auto inner = rstd::move(writer).into_inner();
+        EXPECT_EQ(inner.output.as_slice(), "abcdef"_bytes);
+    }
+    EXPECT_EQ(state.live, usize());
+    EXPECT_EQ(state.invalid_releases, 0);
+}
+
+TEST(IoAllocation, FileReadInKeepsAllocatorAndDefaultUtf8Behavior) {
+    using namespace rstd::literals;
+    auto directory = rstd::fs::TempDir::make("rstd-allocator-io"_str).unwrap();
+    auto root      = rstd::path::PathBuf::from(directory.path().as_os_str().to_os_string());
+    auto path      = root.join("bytes"_str);
+    rstd::fs::write(path.as_path(), "a\0\xff"_bytes).unwrap();
+    OwnershipState state;
+    {
+        auto bytes = rstd::fs::read_in(path.as_path(), OwnershipAllocator(state)).unwrap();
+        EXPECT_EQ(bytes.as_slice(), "a\0\xff"_bytes);
+        EXPECT_EQ(bytes.allocator().state, &state);
+        EXPECT_TRUE(rstd::fs::read_to_string(path.as_path()).is_err());
+    }
+    EXPECT_EQ(state.live, usize());
+    state.fail  = true;
+    auto failed = rstd::fs::read_in(path.as_path(), OwnershipAllocator(state));
+    ASSERT_TRUE(failed.is_err());
+    EXPECT_EQ(failed.unwrap_err().kind(), rstd::io::ErrorKind { rstd::io::ErrorKind::OutOfMemory });
+    EXPECT_EQ(state.handles, 0);
+    auto missing = root.join("missing"_str);
+    auto absent  = rstd::fs::read_in(missing.as_path(), OwnershipAllocator(state));
+    EXPECT_EQ(absent.unwrap_err().kind(), rstd::io::ErrorKind { rstd::io::ErrorKind::NotFound });
+    state.fail = false;
+    rstd::fs::write(path.as_path(), ""_bytes).unwrap();
+    EXPECT_TRUE(rstd::fs::read_in(path.as_path(), OwnershipAllocator(state)).unwrap().is_empty());
+    EXPECT_EQ(state.live, usize());
+    EXPECT_EQ(state.invalid_releases, 0);
+}
+
 struct AllocationCollisionHasher {
     static inline int hashes {};
     void              write(rstd::slice<u8>) noexcept { ++hashes; }
@@ -1094,6 +1386,102 @@ TEST(HashAllocation, HashSetUsesTheSameFallibleStorage) {
     EXPECT_EQ(state.invalid_releases, 0);
 }
 
+TEST(IoAllocation, BufferedWriterRemovesWrittenPrefixOnZeroOrInvalidCount) {
+    using namespace rstd::literals;
+    for (int mode = 0; mode < 2; ++mode) {
+        auto writer = rstd::io::BufWriter(
+            AllocationWriter { .zero_second = mode == 0, .invalid_second = mode == 1 }, usize(8));
+        rstd::io::write_all(writer, "abcdef"_bytes).unwrap();
+        EXPECT_TRUE(rstd::as<rstd::io::Write>(writer).flush().is_err());
+        EXPECT_EQ(writer.buffer(), "cdef"_bytes);
+        rstd::as<rstd::io::Write>(writer).flush().unwrap();
+        EXPECT_EQ(writer.get_ref().output.as_slice(), "abcdef"_bytes);
+    }
+}
+
+TEST(IoAllocation, ZeroCapacityBuffersAndSeekableHandlesKeepOwnership) {
+    using namespace rstd::literals;
+    OwnershipState state;
+    {
+        state.fail   = true;
+        using Cursor = rstd::io::Cursor<rstd::slice<u8>>;
+        auto reader  = rstd::io::BufReader<Cursor, OwnershipAllocator>::make_in(
+            Cursor("abc"_bytes), OwnershipAllocator(state), usize());
+        rstd::byte bytes[3] {};
+        rstd::io::read_exact(reader, rstd::mut_ref<u8[]>::from_raw_parts(bytes, usize(3))).unwrap();
+        EXPECT_EQ(bytes[2], rstd::byte('c'));
+        EXPECT_EQ(
+            rstd::as<rstd::io::Seek>(reader).seek(rstd::io::SeekFrom::from_start(u64())).unwrap(),
+            u64());
+        auto inner = rstd::move(reader).into_inner();
+        EXPECT_EQ(inner.position(), u64());
+        auto zero = rstd::io::BufWriter<rstd::io::Sink, OwnershipAllocator>::make_in(
+            rstd::io::sink(), OwnershipAllocator(state), usize());
+        rstd::io::write_all(zero, "abc"_bytes).unwrap();
+        rstd::as<rstd::io::Write>(zero).flush().unwrap();
+        EXPECT_EQ(state.allocation_attempts, 0);
+        state.fail  = false;
+        using Owned = rstd::io::Cursor<Vec<u8, OwnershipAllocator>>;
+        auto owned  = Owned(Vec<u8, OwnershipAllocator>::new_in(OwnershipAllocator(state)));
+        auto writer = rstd::io::BufWriter<Owned, OwnershipAllocator>::make_in(
+            rstd::move(owned), OwnershipAllocator(state), usize(4));
+        auto handle = rstd::io::BasicWriteSeekHandle<OwnershipAllocator>::make_in(
+            OwnershipAllocator(state), rstd::move(writer));
+        handle->write("abc"_bytes).unwrap();
+        EXPECT_EQ(handle->seek(rstd::io::SeekFrom::from_current(i64())).unwrap(), u64(3));
+        auto both = rstd::io::BasicReadWriteSeekHandle<OwnershipAllocator>::make_in(
+            OwnershipAllocator(state),
+            Owned(Vec<u8, OwnershipAllocator>::new_in(OwnershipAllocator(state))));
+        both->write("xyz"_bytes).unwrap();
+        both->seek(rstd::io::SeekFrom::from_start(u64())).unwrap();
+        both->read(rstd::mut_ref<u8[]>::from_raw_parts(bytes, usize(3))).unwrap();
+        EXPECT_EQ(bytes[2], rstd::byte('z'));
+    }
+    EXPECT_EQ(state.live, usize());
+    EXPECT_EQ(state.handles, 0);
+    EXPECT_EQ(state.invalid_releases, 0);
+}
+
+struct AllocationReadAt {
+    rstd::slice<u8> bytes;
+};
+template<>
+struct rstd::Impl<rstd::io::ReadAt, AllocationReadAt>
+    : rstd::DefaultInImpl<rstd::io::ReadAt, AllocationReadAt> {
+    auto read_buf_at(rstd::io::BorrowedCursor target, u64 offset) const -> rstd::io::Result<empty> {
+        const auto bytes = this->self().bytes;
+        if (offset >= u64(bytes.len().to_primitive())) return Ok(empty {});
+        auto start = usize(offset.to_primitive());
+        auto count = rstd::min(target.capacity(), bytes.len() - start);
+        target.append(
+            rstd::slice<u8>::from_raw_parts(bytes.as_raw_ptr() + start.to_primitive(), count));
+        return Ok(empty {});
+    }
+};
+TEST(IoAllocation, RangeBufferAndDynHandleOwnIndependentAllocationDomains) {
+    using namespace rstd::literals;
+    auto           root = rstd::alloc::SharedTrackingAllocator<>::make();
+    OwnershipState state;
+    {
+        auto source =
+            rstd::io::SharedReadAt::make_in(root.clone(), AllocationReadAt { "abcdef"_bytes });
+        auto range  = rstd::io::ReadRange::make(rstd::move(source), u64(1), u64(4)).unwrap();
+        auto reader = rstd::io::BufReader<rstd::io::RangeReader, OwnershipAllocator>::make_in(
+            rstd::move(range).into_reader(), OwnershipAllocator(state), usize(2));
+        auto handle = rstd::io::BasicReadSeekHandle<OwnershipAllocator>::make_in(
+            OwnershipAllocator(state), rstd::move(reader));
+        rstd::byte bytes[4] {};
+        EXPECT_EQ(handle->read(rstd::mut_ref<u8[]>::from_raw_parts(bytes, usize(4))).unwrap(),
+                  usize(4));
+        EXPECT_EQ(bytes[0], rstd::byte('b'));
+        EXPECT_EQ(bytes[3], rstd::byte('e'));
+    }
+    EXPECT_EQ(root.snapshot().live_bytes, u64());
+    EXPECT_EQ(state.live, usize());
+    EXPECT_EQ(state.handles, 0);
+    EXPECT_EQ(state.invalid_releases, 0);
+}
+
 #if defined(__cpp_exceptions)
 struct HashMoveState {
     int live {};
@@ -1155,3 +1543,116 @@ TEST(HashAllocation, ThrowingMovesReleaseBothStorageAndPartiallyConstructedBucke
     }
 }
 #endif
+
+TEST(AllocationOwnership, UninitBoxPreservesBytesLayoutAndAllocator) {
+    OwnershipState state;
+    {
+        auto box = Box<OwnershipValue[], OwnershipAllocator>::try_make_uninit_in(
+                       usize(3), OwnershipAllocator(state))
+                       .unwrap();
+        EXPECT_EQ(box.as_ptr().len(), usize(3));
+        EXPECT_EQ(reinterpret_cast<rstd::uintptr_t>(box.as_ptr().as_raw_ptr()) % 256, 0u);
+        auto representation = reinterpret_cast<const rstd::byte*>(box.as_ptr().as_raw_ptr());
+        EXPECT_EQ(representation[0], rstd::byte(0xcd));
+        EXPECT_EQ(representation[sizeof(OwnershipValue) * 3 - 1], rstd::byte(0xcd));
+        auto moved = rstd::move(box);
+        EXPECT_EQ(moved.allocator().state, &state);
+        int  drops = 0;
+        auto slots = moved.as_mut_ptr().as_raw_ptr();
+        slots[0].write(OwnershipValue(drops, 7));
+        EXPECT_EQ(slots[0].assume_init_ref().value, 7);
+        slots[0].assume_init_drop();
+        EXPECT_EQ(drops, 1);
+    }
+    EXPECT_EQ(state.allocations, 1);
+    EXPECT_EQ(state.live, usize());
+    EXPECT_EQ(state.handles, 0);
+    EXPECT_EQ(state.invalid_releases, 0);
+}
+
+TEST(AllocationOwnership, UninitBoxEmptyOverflowAndFailureReleaseAllocator) {
+    OwnershipState state;
+    using Bytes = Box<rstd::byte[], OwnershipAllocator>;
+    {
+        auto box = Bytes::make_uninit_in(usize(), OwnershipAllocator(state));
+        EXPECT_EQ(box.as_ptr().len(), usize());
+        EXPECT_EQ(state.allocation_attempts, 0);
+    }
+    EXPECT_EQ(state.handles, 0);
+    auto overflow = Bytes::try_make_uninit_in(usize::MAX, OwnershipAllocator(state));
+    ASSERT_TRUE(overflow.is_err());
+    EXPECT_EQ(overflow.unwrap_err(), alloc::collections::TryReserveError::CapacityOverflow);
+    EXPECT_EQ(state.allocation_attempts, 0);
+    state.fail   = true;
+    auto failure = Bytes::try_make_uninit_in(usize(16), OwnershipAllocator(state));
+    ASSERT_TRUE(failure.is_err());
+    EXPECT_EQ(failure.unwrap_err(), alloc::collections::TryReserveError::AllocError);
+    EXPECT_EQ(state.handles, 0);
+}
+
+TEST(IoAllocation, StaticCursorReservesOnceAndRollsBackOnFailure) {
+    using namespace rstd::literals;
+    OwnershipState state;
+    {
+        auto output = Vec<u8, OwnershipAllocator>::new_in(OwnershipAllocator(state));
+        auto reader = rstd::io::Cursor("abcdef"_bytes);
+        reader.set_position(u64(1));
+        state.fail = true;
+        EXPECT_TRUE(rstd::io::read_to_end(reader, output).is_err());
+        EXPECT_EQ(reader.position(), u64(1));
+        EXPECT_TRUE(output.is_empty());
+        state.fail = false;
+        EXPECT_EQ(rstd::io::read_to_end(reader, output).unwrap(), usize(5));
+        EXPECT_EQ(output.as_slice(), "bcdef"_bytes);
+        EXPECT_EQ(state.allocations, 1);
+        auto attempts = state.allocation_attempts;
+        state.fail    = true;
+        EXPECT_EQ(rstd::io::read_to_end(reader, output).unwrap(), usize());
+        EXPECT_EQ(state.allocation_attempts, attempts);
+    }
+    EXPECT_EQ(state.live, usize());
+    EXPECT_EQ(state.invalid_releases, 0);
+    EXPECT_EQ(state.handles, 0);
+}
+
+TEST(IoAllocation, EmptyCursorDoesNotAllocateAndBufferedDrainDoesNotConsumeOnOom) {
+    using namespace rstd::literals;
+    OwnershipState state;
+    {
+        auto output = Vec<u8, OwnershipAllocator>::new_in(OwnershipAllocator(state));
+        state.fail  = true;
+        auto empty  = rstd::io::Cursor(""_bytes);
+        EXPECT_EQ(rstd::io::read_to_end(empty, output).unwrap(), usize());
+        EXPECT_EQ(state.allocation_attempts, 0);
+        auto reader = rstd::io::BufReader(rstd::io::Cursor("abcdef"_bytes), usize(4));
+        EXPECT_EQ(rstd::as<rstd::io::BufRead>(reader).fill_buf().unwrap(), "abcd"_bytes);
+        EXPECT_TRUE(rstd::io::read_to_end(reader, output).is_err());
+        EXPECT_EQ(reader.buffer(), "abcd"_bytes);
+        EXPECT_EQ(reader.get_ref().position(), u64(4));
+        state.fail = false;
+        EXPECT_EQ(rstd::io::read_to_end(reader, output).unwrap(), usize(6));
+        EXPECT_EQ(output.as_slice(), "abcdef"_bytes);
+    }
+    EXPECT_EQ(state.live, usize());
+}
+
+TEST(IoAllocation, BufReaderStorageStartsUninitializedAndNeverGrows) {
+    using namespace rstd::literals;
+    OwnershipState state;
+    {
+        using Reader = rstd::io::BufReader<rstd::io::Cursor<rstd::slice<u8>>, OwnershipAllocator>;
+        auto reader  = Reader::make_in(
+            rstd::io::Cursor("abcdefgh"_bytes), OwnershipAllocator(state), usize(4));
+        EXPECT_EQ(state.allocations, 1);
+        auto pointer = static_cast<const rstd::byte*>(state.blocks[0].pointer);
+        EXPECT_EQ(pointer[0], rstd::byte(0xcd));
+        EXPECT_EQ(pointer[3], rstd::byte(0xcd));
+        state.fail = true;
+        EXPECT_EQ(rstd::as<rstd::io::BufRead>(reader).fill_buf().unwrap(), "abcd"_bytes);
+        rstd::as<rstd::io::BufRead>(reader).consume(usize(4));
+        EXPECT_EQ(rstd::as<rstd::io::BufRead>(reader).fill_buf().unwrap(), "efgh"_bytes);
+        EXPECT_EQ(state.allocation_attempts, 1);
+    }
+    EXPECT_EQ(state.live, usize());
+    EXPECT_EQ(state.invalid_releases, 0);
+}

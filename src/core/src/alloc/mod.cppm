@@ -16,8 +16,8 @@ namespace rstd::alloc
 /// The error type for fallible allocation operations.
 export struct AllocError {};
 
-/// A non-null raw allocation. The storage does not contain `u8` objects until an owner constructs
-/// them explicitly.
+/// A non-null byte storage range. Owners construct their payload separately.
+/// Copies of this descriptor neither begin lifetimes nor transfer ownership.
 export struct Allocation {
     void* pointer;
     usize size;
@@ -46,7 +46,8 @@ export struct ThreadSafeAllocator {};
 
 /// A high-level trait for CPU-accessible storage. Moving an allocator preserves its domain.
 /// A successful resize invalidates the old pointer; failure leaves its allocation untouched.
-/// Returned storage meets the requested alignment and has at least the requested size.
+/// Returned storage provides a byte array range of at least the requested size and alignment.
+/// Offset within that range before converting to a payload pointer; a cast does not construct T.
 /// Release layouts match the latest successful request alignment and a size within its returned range.
 /// Zero-sized layouts accept a non-null, aligned dangling pointer; no initialized payload is implied.
 /// Allocator methods, moves and allocator destruction must not throw.

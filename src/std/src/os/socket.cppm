@@ -6,11 +6,12 @@ export import rstd.io.error;
 export import rstd.os.fd;
 export import rstd.core;
 
+template<typename T>
+using IOResult = rstd::io::Result<T>;
+using rstd::io::error::Error;
+
 namespace rstd::os::socket
 {
-
-using rstd::io::Result;
-using rstd::io::error::Error;
 
 export using RawSocket                           = fd::RawFd;
 export inline const RawSocket INVALID_RAW_SOCKET = fd::INVALID_RAW_FD;

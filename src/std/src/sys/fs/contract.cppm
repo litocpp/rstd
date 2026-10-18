@@ -47,7 +47,8 @@ export struct DirectoryEntryData {
     rstd::fs::FileTypeKind file_type;
 };
 
-export enum class LockMode {
+export enum class LockMode
+{
     Exclusive,
     Shared,
     TryExclusive,

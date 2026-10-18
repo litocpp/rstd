@@ -31,7 +31,7 @@ class RangeArena {
     RangeAllocator<MetadataRef>  ranges_;
     vec::Vec<Entry, MetadataRef> entries_;
     rstd::alloc::Layout          block_layout_;
-    void*                        base_ {};
+    byte*                        base_ {};
 
 public:
     explicit RangeArena(rstd::alloc::Layout capacity,
@@ -58,12 +58,12 @@ public:
         if (! base_) {
             auto block = rstd::as<rstd::alloc::Allocator>(upstream_).allocate(block_layout_);
             if (block.is_err()) return Err(rstd::alloc::AllocError {});
-            base_ = block.unwrap_unchecked().pointer;
+            base_ = static_cast<byte*>(block.unwrap_unchecked().pointer);
         }
         auto allocation = ranges_.allocate(layout.size.to_primitive(), layout.align.to_primitive());
         if (allocation.is_err()) return Err(rstd::alloc::AllocError {});
         auto range   = allocation.unwrap_unchecked();
-        auto pointer = static_cast<rstd::uint8_t*>(base_) + range.offset;
+        auto pointer = base_ + range.offset;
         entries_.push(Entry { range.id, pointer, layout });
         return Ok(rstd::alloc::Allocation { pointer, layout.size });
     }

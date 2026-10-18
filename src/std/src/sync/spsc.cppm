@@ -5,10 +5,13 @@ export module rstd:sync.spsc;
 export import rstd.core;
 import rstd.alloc;
 
+using rstd::mem::MaybeUninit;
+
+using rstd::sync::atomic::Atomic;
+using rstd::sync::atomic::Ordering;
+
 namespace rstd::sync::spsc
 {
-using atomic::Atomic;
-using atomic::Ordering;
 
 export class CreateError {
     RSTD_ENUM(CreateError, (InvalidCapacity), (AllocationFailed))
@@ -42,14 +45,14 @@ struct Storage {
 
     alignas(64) Atomic<size_t> read {};
     alignas(64) Atomic<size_t> write {};
-    Atomic<bool>         producer_open { true }, consumer_open { true }, released { false };
-    bool                 borrowed {};
-    size_t               capacity;
-    alloc::Layout        layout;
-    mem::MaybeUninit<T>* slots;
-    A                    allocator;
+    Atomic<bool>    producer_open { true }, consumer_open { true }, released { false };
+    bool            borrowed {};
+    size_t          capacity;
+    alloc::Layout   layout;
+    MaybeUninit<T>* slots;
+    A               allocator;
 
-    Storage(size_t cap, alloc::Layout allocation, mem::MaybeUninit<T>* values, A resource)
+    Storage(size_t cap, alloc::Layout allocation, MaybeUninit<T>* values, A resource)
         : capacity(cap), layout(allocation), slots(values), allocator(rstd::move(resource)) {}
 
     void release() noexcept {
@@ -233,7 +236,7 @@ public:
     static auto make(usize capacity, A allocator = A {})
         -> Result<tuple<Producer<T, A>, Consumer<T, A>>, CreateError> {
         using State = Storage<T, A>;
-        using Slot  = mem::MaybeUninit<T>;
+        using Slot  = MaybeUninit<T>;
         auto cap    = capacity.to_primitive();
         if (! cap || cap > usize::MAX.to_primitive() / 2)
             return Err(CreateError::InvalidCapacity());

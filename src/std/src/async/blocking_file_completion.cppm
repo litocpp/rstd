@@ -12,6 +12,7 @@ import rstd.alloc;
 import rstd.core;
 
 using ::alloc::vec::Vec;
+using rstd::mem::MaybeUninit;
 using rstd::sync::Arc;
 namespace pal_poll = rstd::sys::pal::poll;
 
@@ -76,8 +77,8 @@ struct ActiveOperation {
 auto execute(BlockingFileOperation operation) -> io::Result<usize> {
 #if RSTD_OS_LINUX || RSTD_OS_MACOS
     if (operation.kind == BlockingFileOperationKind::Read) {
-        auto buffer =
-            mut_ref<byte[]>::from_raw_parts(static_cast<byte*>(operation.data), operation.len);
+        auto buffer = mut_ref<MaybeUninit<byte>[]>::from_bytes(static_cast<byte*>(operation.data),
+                                                               operation.len);
         return operation.offset.is_some()
                    ? sys::fs::read_at(operation.fd, buffer, *operation.offset)
                    : sys::fs::read(operation.fd, buffer);

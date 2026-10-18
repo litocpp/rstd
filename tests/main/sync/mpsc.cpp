@@ -111,6 +111,30 @@ TEST(MpmcArray, BasicSendRecv) {
     EXPECT_TRUE(sender.is_empty());
 }
 
+#if __has_feature(memory_sanitizer)
+extern "C" rstd::intptr_t __msan_test_shadow(const volatile void*, rstd::size_t);
+
+TEST(MpmcArray, ConstructionDoesNotClearUnwrittenMessageBytes) {
+    struct Message {
+        int  value;
+        byte unwritten[16];
+
+        explicit Message(int value): value(value) {}
+        Message(const Message&) = delete;
+        Message(Message&& other) noexcept: value(other.value) {
+            for (rstd::size_t i = 0; i < sizeof(unwritten); ++i)
+                EXPECT_EQ(__msan_test_shadow(other.unwritten + i, 1), rstd::intptr_t(0));
+        }
+    };
+    auto [sender, receiver] = sync_channel<Message>(usize(3));
+    EXPECT_TRUE(sender.try_send(Message(42)).is_ok());
+    auto received = receiver.try_recv();
+    ASSERT_TRUE(received.is_ok());
+    EXPECT_EQ(received.unwrap_unchecked().value, 42);
+}
+
+#endif
+
 TEST(MpmcArray, FullLengthAndNonPowerOfTwoWrap) {
     auto [sender, receiver] = sync_channel<int>(usize(3));
 

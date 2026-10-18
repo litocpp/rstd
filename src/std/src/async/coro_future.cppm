@@ -7,6 +7,8 @@ import :async.facility;
 import :async.atomic_waker;
 import :sync;
 
+import rstd.alloc;
+
 using namespace rstd;
 
 namespace rstd::async
@@ -50,13 +52,13 @@ class CoroFutureState {
             auto& job = *static_cast<Job*>(data);
             job.state->cancel(job.generation);
         }
-        static void drop(voidp data) { delete static_cast<Job*>(data); }
+        static void drop(voidp data) { ::alloc::raw_delete(static_cast<Job*>(data)); }
     };
 
     static void
     submit(const sync::Arc<CoroFutureState>& state, FacilityEndpoint endpoint, usize generation) {
         static const RawFacilityJobVTable vtable { Job::run, Job::cancel, Job::drop };
-        auto*                             job = new Job { state.clone(), generation };
+        auto*                             job = ::alloc::raw_new<Job>(state.clone(), generation);
         (void)endpoint.submit(FacilityJob::from_raw(RawFacilityJob { job, &vtable }));
     }
 

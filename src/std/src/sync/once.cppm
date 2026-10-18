@@ -4,6 +4,8 @@ export module rstd:sync.once;
 import :sys.sync.once;
 export import rstd.core;
 
+using rstd::mem::MaybeUninit;
+
 namespace rstd::sync
 {
 namespace once_detail
@@ -99,8 +101,8 @@ public:
 
 export template<typename T>
 class OnceLock {
-    mutable Once                m_once;
-    mutable mem::MaybeUninit<T> m_value;
+    mutable Once           m_once;
+    mutable MaybeUninit<T> m_value;
 
     auto value_ref() const noexcept -> ref<T> { return ref<T>::from_raw_parts(m_value.as_ptr()); }
 
@@ -109,7 +111,10 @@ class OnceLock {
     }
 
 public:
-    constexpr OnceLock() noexcept: m_once(), m_value(mem::MaybeUninit<T>::uninit()) {}
+    constexpr OnceLock() noexcept
+        : m_once(),
+          m_value(mtp::is_constant_evaluated() ? MaybeUninit<T>::zeroed()
+                                               : MaybeUninit<T>::uninit()) {}
 
     static constexpr auto make() noexcept -> OnceLock { return {}; }
 

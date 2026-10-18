@@ -4,11 +4,13 @@ export module rstd.os.fd;
 import rstd.io.error;
 import rstd.core;
 
+template<typename T>
+using IOResult = rstd::io::Result<T>;
+using rstd::io::error::Error;
+
 namespace rstd::os::fd
 {
 
-using rstd::io::Result;
-using rstd::io::error::Error;
 #if RSTD_OS_UNIX
 export using RawFd                           = int;
 export inline constexpr RawFd INVALID_RAW_FD = -1;
@@ -54,7 +56,7 @@ public:
     }
 
     /// Duplicates the fd with O_CLOEXEC set on the duplicate.
-    auto try_clone() const -> Result<OwnedFd>;
+    auto try_clone() const -> IOResult<OwnedFd>;
 
     auto is_open() const noexcept -> bool { return fd_ != INVALID_RAW_FD; }
 
@@ -84,14 +86,14 @@ public:
         return BorrowedFd { fd };
     }
 
-    auto try_clone_to_owned() const -> Result<OwnedFd>;
+    auto try_clone_to_owned() const -> IOResult<OwnedFd>;
 };
 
 inline auto OwnedFd::as_fd() const noexcept [[clang::lifetimebound]] -> BorrowedFd {
     return BorrowedFd::borrow_raw(fd_);
 }
 
-inline auto OwnedFd::try_clone() const -> Result<OwnedFd> {
+inline auto OwnedFd::try_clone() const -> IOResult<OwnedFd> {
     return as_fd().try_clone_to_owned();
 }
 

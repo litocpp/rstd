@@ -13,140 +13,124 @@ struct maybe_uninit_traits {
     using value_type = void;
 };
 
-/// A wrapper type to construct uninitialized instances of `T`.
+/// Storage with T's size and alignment, without automatic construction or destruction of T.
+/// Default construction and uninit() leave the bytes uninitialized; zeroed() only clears them.
+/// The caller tracks whether a live, fully initialized T exists. No method checks this state.
+/// Violating the lifetime or initialization preconditions of assume_init* is undefined behavior.
+/// Use write() or placement construction through as_mut_ptr() to create T, then either
+/// consume it with assume_init() or destroy it with assume_init_drop(), exactly once.
 ///
-/// This is useful for constructing uninitialized data that is later
-/// initialized. Unlike direct use of uninitialized memory, `MaybeUninit<T>`
-/// signals to the compiler that the data here might *not* be initialized.
+/// Copying or moving this wrapper copies storage bytes, not T. It does not transfer ownership
+/// or replace T's copy/move constructor; do not use it to relocate a live nontrivial T.
+/// Uninitialized storage must not be read as T. Compiler automatic-initialization options
+/// and language rules still apply; this wrapper does not override them.
 ///
-/// Note that dropping a `MaybeUninit<T>` will never call `T`'s destructor.
-/// It is your responsibility to make sure `T` gets destroyed if it got initialized.
+/// rstd treats the wrapper address as aligned byte storage without accessing its member.
+/// Raw MaybeUninit<T>* pointers address one slot only; do not use them for pointer arithmetic.
+/// Prefer array<MaybeUninit<T>, N> for owned slots and byte-backed mut_ptr/mut_ref views for borrows.
+/// Native slot arrays are discouraged.
+/// This storage convention is an implementation assumption, not a general C++ lifetime rule.
 export template<typename T = void>
 class MaybeUninit {
     alignas(T) rstd::byte storage[sizeof(T)];
 
 public:
-    constexpr MaybeUninit() noexcept = default;
+    // A user-provided constructor prevents value-initialization from zeroing the storage.
+    constexpr MaybeUninit() noexcept {}
 
 private:
+    struct Zeroed {};
+    constexpr explicit MaybeUninit(Zeroed) noexcept: storage {} {}
+
+    constexpr auto storage_ptr() noexcept -> T* {
+        return reinterpret_cast<T*>(reinterpret_cast<byte*>(this));
+    }
+    constexpr auto storage_ptr() const noexcept -> const T* {
+        return reinterpret_cast<const T*>(reinterpret_cast<const byte*>(this));
+    }
+
     constexpr explicit MaybeUninit(T&& val) noexcept(mtp::noex_move_v<T>) {
-        rstd::construct_at(ptr(), rstd::forward<T>(val));
+        rstd::construct_at(storage_ptr(), rstd::forward<T>(val));
     }
 
-    constexpr T* ptr() noexcept {
-        return rstd::launder(reinterpret_cast<T*>(rstd::addressof(storage)));
-    }
+    constexpr T* ptr() noexcept { return rstd::launder(storage_ptr()); }
 
-    constexpr const T* ptr() const noexcept {
-        return rstd::launder(reinterpret_cast<const T*>(rstd::addressof(storage)));
-    }
+    constexpr const T* ptr() const noexcept { return rstd::launder(storage_ptr()); }
 
 public:
-    /// Destructor does nothing - it never calls T's destructor
+    /// Ends the storage lifetime without invoking T's destructor.
     ~MaybeUninit() = default;
 
-    /// Creates a new `MaybeUninit<T>` initialized with the given value.
-    /// It is safe to call `assume_init()` on the return value of this function.
-    ///
-    /// Note that dropping a `MaybeUninit<T>` will never call `T`'s destructor.
-    /// It is your responsibility to make sure `T` gets destroyed if it got initialized.
+    /// Move-constructs T in the storage. The caller remains responsible for destroying it.
     constexpr static auto make(T&& val) noexcept(mtp::noex_move_v<T>) -> MaybeUninit {
         return MaybeUninit(rstd::forward<T>(val));
     }
 
-    /// Creates a new `MaybeUninit<T>` in an uninitialized state.
-    ///
-    /// Note that dropping a `MaybeUninit<T>` will never call `T`'s destructor.
-    /// It is your responsibility to make sure `T` gets destroyed if it got initialized.
-    constexpr static auto uninit() noexcept -> MaybeUninit { return MaybeUninit(); }
-
-    /// Creates a new `MaybeUninit<T>` in an uninitialized state, with the memory being
-    /// filled with `0` bytes.
-    ///
-    /// Note that if `T` has padding bytes, those bytes may not be zeroed.
-    /// It depends on `T` whether that already makes for proper initialization.
-    constexpr static auto zeroed() noexcept -> MaybeUninit {
-        MaybeUninit m;
-        for (rstd::size_t i = 0; i < sizeof(T); ++i) {
-            m.storage[i] = rstd::byte { 0 };
-        }
-        return m;
+    /// Creates storage without constructing T or initializing its bytes.
+    constexpr static auto uninit() noexcept -> MaybeUninit {
+#if __has_cpp_attribute(indeterminate)
+        [[indeterminate]]
+        MaybeUninit value;
+#else
+        MaybeUninit value;
+#endif
+        return value;
     }
 
-    /// Sets the value of the `MaybeUninit<T>`.
-    ///
-    /// This overwrites any previous value without dropping it, so be careful
-    /// not to use this twice unless you want to skip running the destructor.
-    /// For your convenience, this also returns a mutable reference to the
-    /// (now safely initialized) contents.
-    constexpr auto write(T&& val) noexcept(mtp::noex_move_v<T>) -> T& {
-        rstd::construct_at(ptr(), rstd::forward<T>(val));
-        return *ptr();
+    /// Clears the bytes without calling T's constructor. This does not guarantee a live, valid T;
+    /// zero bits need not be a valid representation. Construct T before assuming it.
+    constexpr static auto zeroed() noexcept -> MaybeUninit { return MaybeUninit(Zeroed {}); }
+
+    /// Move-constructs T and returns a borrow tied to this storage.
+    /// Does not destroy an existing T. Destroy an owned previous value first to avoid leaks.
+    /// If construction throws, no new T exists; the slot may be constructed again.
+    constexpr auto write(T&& val) & noexcept(mtp::noex_move_v<T>) [[clang::lifetimebound]] -> T& {
+        return *rstd::construct_at(storage_ptr(), rstd::forward<T>(val));
     }
 
-    /// Gets a const pointer to the contained value.
-    /// Reading from this pointer or dereferencing it is undefined behavior
-    /// unless the `MaybeUninit<T>` is initialized.
-    constexpr auto as_ptr() const noexcept -> const T* { return ptr(); }
+    /// Returns the storage address; accessing T requires its lifetime and initialization.
+    constexpr auto as_ptr() const noexcept -> const T* { return storage_ptr(); }
 
-    /// Gets a mutable pointer to the contained value.
-    /// Reading from this pointer or dereferencing it is undefined behavior
-    /// unless the `MaybeUninit<T>` is initialized.
-    constexpr auto as_mut_ptr() noexcept -> T* { return ptr(); }
+    /// May be used as the destination of placement construction before T exists.
+    constexpr auto as_mut_ptr() noexcept -> T* { return storage_ptr(); }
 
-    /// Extracts the value from the `MaybeUninit<T>` container by move.
-    ///
-    /// # Safety
-    ///
-    /// It is up to the caller to guarantee that the `MaybeUninit<T>` really is in an
-    /// initialized state. Calling this when the content is not yet fully initialized
-    /// causes undefined behavior.
-    constexpr auto assume_init() && noexcept -> T
+    /// Consumes a live, fully initialized T by move-constructing the result and destroying
+    /// the source T. The slot contains no live T afterward, including when the move throws.
+    /// Do not read or drop it again without constructing another T.
+    /// Unlike Rust's move, this runs T's C++ move constructor and source destructor.
+    constexpr auto assume_init() && noexcept(mtp::noex_move_v<T> && mtp::noex_drop_v<T>) -> T
         requires(mtp::move<T>)
     {
-        T result = rstd::move(*ptr());
-        return result;
+        struct Source {
+            T* value;
+            constexpr ~Source() noexcept(mtp::noex_drop_v<T>) { rstd::destroy_at(value); }
+        } source { ptr() };
+        return T(rstd::move(*source.value));
     }
 
-    /// Extracts the value from the `MaybeUninit<T>` container by copy.
-    ///
-    /// # Safety
-    ///
-    /// It is up to the caller to guarantee that the `MaybeUninit<T>` really is in an
-    /// initialized state. Calling this when the content is not yet fully initialized
-    /// causes undefined behavior.
-    constexpr auto assume_init_read() const noexcept -> T
+    /// Copies a live, fully initialized T, leaving the source alive and owned by this slot.
+    /// Uses T's copy constructor, not Rust's unchecked bitwise read. If copying throws, the
+    /// source remains alive and must still be destroyed by the caller.
+    constexpr auto assume_init_read() const noexcept(mtp::noex_copy_v<T>) -> T
         requires(mtp::copy<T>)
     {
         return *ptr();
     }
 
-    /// Gets a const reference to the contained value.
-    ///
-    /// # Safety
-    ///
-    /// Calling this when the content is not yet fully initialized causes undefined
-    /// behavior: it is up to the caller to guarantee that the `MaybeUninit<T>` really
-    /// is in an initialized state.
-    constexpr auto assume_init_ref() const noexcept -> const T& { return *ptr(); }
+    /// Borrows a live, fully initialized T. The borrow ends before T is destroyed or replaced,
+    /// or this storage ceases to exist. This does not initialize T or extend its lifetime.
+    constexpr auto assume_init_ref() const& noexcept [[clang::lifetimebound]] -> const T& {
+        return *ptr();
+    }
+    constexpr auto assume_init_ref() const&& -> const T& = delete;
 
-    /// Gets a mutable reference to the contained value.
-    ///
-    /// # Safety
-    ///
-    /// Calling this when the content is not yet fully initialized causes undefined
-    /// behavior: it is up to the caller to guarantee that the `MaybeUninit<T>` really
-    /// is in an initialized state.
-    constexpr auto assume_init_mut() noexcept -> T& { return *ptr(); }
+    /// Mutably borrows a live, fully initialized T, with the same lifetime rules as assume_init_ref().
+    /// This cannot be used to initialize storage that does not yet contain T.
+    constexpr auto assume_init_mut() & noexcept [[clang::lifetimebound]] -> T& { return *ptr(); }
 
-    /// Drops the contained value in place.
-    ///
-    /// # Safety
-    ///
-    /// It is up to the caller to guarantee that the `MaybeUninit<T>` really is
-    /// in an initialized state. Calling this when the content is not yet fully
-    /// initialized causes undefined behavior.
-    constexpr void assume_init_drop() noexcept { rstd::destroy_at(ptr()); }
+    /// Destroys a live, fully initialized T exactly once, leaving the slot available for reuse.
+    /// No contained T may be accessed again until a new T is constructed.
+    constexpr void assume_init_drop() noexcept(mtp::noex_drop_v<T>) { rstd::destroy_at(ptr()); }
 };
 
 template<typename T>

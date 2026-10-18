@@ -64,6 +64,45 @@ void handle_alloc_error(Layout                layout,
     rstd::panic_message("memory allocation failed", loc);
 }
 
+struct RawAllocationGuard {
+    void*  pointer;
+    Layout layout;
+    ~RawAllocationGuard() {
+        if (pointer != nullptr) ::alloc::dealloc(pointer, layout);
+    }
+};
+
+/// Allocates byte storage globally and constructs one T. The caller owns the returned object.
+/// Construction failure releases the storage; allocation failure invokes handle_alloc_error.
+/// Pair with raw_delete using the exact allocated type, not delete or delete[].
+export template<typename T, typename... Args>
+    requires(! rstd::mtp::is_array<T>) && rstd::mtp::same_as<T, rstd::mtp::rm_cvf<T>> &&
+            requires(T* pointer, Args&&... args) {
+                rstd::construct_at(pointer, rstd::forward<Args>(args)...);
+            }
+auto raw_new(Args&&... args) noexcept(noexcept(rstd::construct_at(static_cast<T*>(nullptr),
+                                                                  rstd::forward<Args>(args)...)))
+    -> T* {
+    auto  layout  = Layout::from_size_align_unchecked(usize(sizeof(T)), usize(alignof(T)));
+    auto* storage = ::alloc::alloc(layout);
+    if (storage == nullptr) handle_alloc_error(layout);
+    RawAllocationGuard guard { storage, layout };
+    auto* value   = rstd::construct_at(static_cast<T*>(storage), rstd::forward<Args>(args)...);
+    guard.pointer = nullptr;
+    return value;
+}
+
+/// Destroys one raw_new object and releases its storage, including when destruction throws.
+/// Null is accepted. The pointer must retain the exact allocated type and allocation address.
+export template<typename T>
+    requires(! rstd::mtp::is_array<T>) && (! rstd::mtp::is_void<T>)
+void raw_delete(T* pointer) noexcept(rstd::mtp::noex_drop_v<T>) {
+    if (pointer == nullptr) return;
+    auto layout = Layout::from_size_align_unchecked(usize(sizeof(T)), usize(alignof(T)));
+    RawAllocationGuard guard { const_cast<rstd::mtp::rm_const<T>*>(pointer), layout };
+    rstd::destroy_at(pointer);
+}
+
 // Forward declaration of the global memory allocator.
 export struct Global;
 

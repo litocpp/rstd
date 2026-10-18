@@ -15,9 +15,9 @@ inline constexpr rstd::size_t EDGE_COUNT = 2 * B;
 
 template<typename K, typename V>
 class Node {
-    MaybeUninit<K>         keys[CAPACITY];
-    MaybeUninit<V>         values[CAPACITY];
-    MaybeUninit<Box<Node>> edges[EDGE_COUNT];
+    rstd::array<MaybeUninit<K>, CAPACITY>           keys;
+    rstd::array<MaybeUninit<V>, CAPACITY>           values;
+    rstd::array<MaybeUninit<Box<Node>>, EDGE_COUNT> edges;
 
 public:
     usize len;
@@ -34,25 +34,17 @@ public:
             destroy_entry(usize(index));
         if (! leaf) {
             for (rstd::size_t index = 0; index <= len.to_primitive(); ++index)
-                edges[index].assume_init_drop();
+                edges[usize(index)].assume_init_drop();
         }
     }
 
-    auto key(usize index) noexcept -> K& { return keys[index.to_primitive()].assume_init_mut(); }
-    auto key(usize index) const noexcept -> const K& {
-        return keys[index.to_primitive()].assume_init_ref();
-    }
-    auto value(usize index) noexcept -> V& {
-        return values[index.to_primitive()].assume_init_mut();
-    }
-    auto value(usize index) const noexcept -> const V& {
-        return values[index.to_primitive()].assume_init_ref();
-    }
-    auto edge(usize index) noexcept -> Box<Node>& {
-        return edges[index.to_primitive()].assume_init_mut();
-    }
+    auto key(usize index) noexcept -> K& { return keys[index].assume_init_mut(); }
+    auto key(usize index) const noexcept -> const K& { return keys[index].assume_init_ref(); }
+    auto value(usize index) noexcept -> V& { return values[index].assume_init_mut(); }
+    auto value(usize index) const noexcept -> const V& { return values[index].assume_init_ref(); }
+    auto edge(usize index) noexcept -> Box<Node>& { return edges[index].assume_init_mut(); }
     auto edge(usize index) const noexcept -> const Box<Node>& {
-        return edges[index.to_primitive()].assume_init_ref();
+        return edges[index].assume_init_ref();
     }
     auto child(usize index) noexcept -> Node* { return edge(index).get(); }
     auto child(usize index) const noexcept -> const Node* {
@@ -60,13 +52,13 @@ public:
     }
 
     void write_entry(usize index, K key, V value) {
-        keys[index.to_primitive()].write(rstd::move(key));
-        values[index.to_primitive()].write(rstd::move(value));
+        keys[index].write(rstd::move(key));
+        values[index].write(rstd::move(value));
     }
 
     void destroy_entry(usize index) noexcept {
-        keys[index.to_primitive()].assume_init_drop();
-        values[index.to_primitive()].assume_init_drop();
+        keys[index].assume_init_drop();
+        values[index].assume_init_drop();
     }
 
     auto take_entry(usize index) -> rstd::tuple<K, V> {
@@ -100,13 +92,11 @@ public:
         return removed;
     }
 
-    void write_edge(usize index, Box<Node> edge) {
-        edges[index.to_primitive()].write(rstd::move(edge));
-    }
+    void write_edge(usize index, Box<Node> edge) { edges[index].write(rstd::move(edge)); }
 
     auto take_edge(usize index) -> Box<Node> {
         Box<Node> out = rstd::move(edge(index));
-        edges[index.to_primitive()].assume_init_drop();
+        edges[index].assume_init_drop();
         return out;
     }
 

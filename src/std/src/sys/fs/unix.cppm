@@ -8,10 +8,8 @@ import rstd.sys.libc;
 import :time;
 import rstd.alloc;
 
-namespace rstd::sys::fs::unix
-{
-
 using rstd::io::SeekFrom;
+using rstd::mem::MaybeUninit;
 using rstd::os::fd::OwnedFd;
 using rstd::os::fd::RawFd;
 using rstd::path::Path;
@@ -20,40 +18,45 @@ using namespace rstd::prelude;
 namespace libc = rstd::sys::libc;
 
 template<typename T>
-using Result = rstd::io::Result<T>;
+using IOResult = rstd::io::Result<T>;
 
-export auto open(ref<Path> path, OpenOptionsData const& options) -> Result<OwnedFd>;
-export auto open_directory(ref<Path> path, const OpenOptionsData& options) -> Result<OwnedFd>;
-export auto open_directory_for_traversal(ref<Path> path) -> Result<OwnedFd>;
+namespace rstd::sys::fs::unix
+{
+
+export auto open(ref<Path> path, OpenOptionsData const& options) -> IOResult<OwnedFd>;
+export auto open_directory(ref<Path> path, const OpenOptionsData& options) -> IOResult<OwnedFd>;
+export auto open_directory_for_traversal(ref<Path> path) -> IOResult<OwnedFd>;
 export auto open_at(RawFd parent, ref<Path> path, const OpenOptionsData& options, bool directory)
-    -> Result<OwnedFd>;
-export auto metadata_at(RawFd parent, ref<Path> path, bool follow) -> Result<MetadataData>;
-export auto create_dir_at(RawFd parent, ref<Path> path) -> Result<empty>;
-export auto remove_at(RawFd parent, ref<Path> path, bool directory) -> Result<empty>;
+    -> IOResult<OwnedFd>;
+export auto metadata_at(RawFd parent, ref<Path> path, bool follow) -> IOResult<MetadataData>;
+export auto create_dir_at(RawFd parent, ref<Path> path) -> IOResult<empty>;
+export auto remove_at(RawFd parent, ref<Path> path, bool directory) -> IOResult<empty>;
 export auto rename_at(RawFd parent, ref<Path> from, RawFd destination, ref<Path> to)
-    -> Result<empty>;
-export auto read(RawFd fd, mut_ref<byte[]> buffer) -> Result<usize>;
-export auto write(RawFd fd, slice<byte> buffer) -> Result<usize>;
-export auto seek(RawFd fd, SeekFrom position) -> Result<u64>;
-export auto sync_all(RawFd fd) -> Result<empty>;
-export auto sync_data(RawFd fd) -> Result<empty>;
-export auto set_len(RawFd fd, u64 size) -> Result<empty>;
-export auto read_at(RawFd fd, mut_ref<byte[]> buffer, u64 offset) -> Result<usize>;
-export auto write_at(RawFd fd, slice<byte> buffer, u64 offset) -> Result<usize>;
-export auto lock(RawFd fd, LockMode mode) -> Result<empty>;
-export auto metadata(RawFd fd) -> Result<MetadataData>;
-export auto metadata(ref<Path> path, bool follow) -> Result<MetadataData>;
-export auto set_permissions(RawFd fd, u32 mode) -> Result<empty>;
-export auto set_permissions(ref<Path> path, u32 mode) -> Result<empty>;
-export auto set_times(RawFd fd, FileTimesData times) -> Result<empty>;
-export auto remove_file(ref<Path> path) -> Result<empty>;
-export auto remove_dir(ref<Path> path) -> Result<empty>;
-export auto rename(ref<Path> from, ref<Path> to) -> Result<empty>;
-export auto hard_link(ref<Path> original, ref<Path> link) -> Result<empty>;
-export auto soft_link(ref<Path> original, ref<Path> link) -> Result<empty>;
-export auto read_link(ref<Path> path) -> Result<PathBuf>;
-export auto canonicalize(ref<Path> path) -> Result<PathBuf>;
-export auto create_dir(ref<Path> path) -> Result<empty>;
+    -> IOResult<empty>;
+export auto read(RawFd fd, mut_ref<MaybeUninit<byte>[]> buffer) -> IOResult<usize>;
+export auto read(RawFd fd, mut_ref<byte[]> buffer) -> IOResult<usize>;
+export auto write(RawFd fd, slice<byte> buffer) -> IOResult<usize>;
+export auto seek(RawFd fd, SeekFrom position) -> IOResult<u64>;
+export auto sync_all(RawFd fd) -> IOResult<empty>;
+export auto sync_data(RawFd fd) -> IOResult<empty>;
+export auto set_len(RawFd fd, u64 size) -> IOResult<empty>;
+export auto read_at(RawFd fd, mut_ref<MaybeUninit<byte>[]> buffer, u64 offset) -> IOResult<usize>;
+export auto read_at(RawFd fd, mut_ref<byte[]> buffer, u64 offset) -> IOResult<usize>;
+export auto write_at(RawFd fd, slice<byte> buffer, u64 offset) -> IOResult<usize>;
+export auto lock(RawFd fd, LockMode mode) -> IOResult<empty>;
+export auto metadata(RawFd fd) -> IOResult<MetadataData>;
+export auto metadata(ref<Path> path, bool follow) -> IOResult<MetadataData>;
+export auto set_permissions(RawFd fd, u32 mode) -> IOResult<empty>;
+export auto set_permissions(ref<Path> path, u32 mode) -> IOResult<empty>;
+export auto set_times(RawFd fd, FileTimesData times) -> IOResult<empty>;
+export auto remove_file(ref<Path> path) -> IOResult<empty>;
+export auto remove_dir(ref<Path> path) -> IOResult<empty>;
+export auto rename(ref<Path> from, ref<Path> to) -> IOResult<empty>;
+export auto hard_link(ref<Path> original, ref<Path> link) -> IOResult<empty>;
+export auto soft_link(ref<Path> original, ref<Path> link) -> IOResult<empty>;
+export auto read_link(ref<Path> path) -> IOResult<PathBuf>;
+export auto canonicalize(ref<Path> path) -> IOResult<PathBuf>;
+export auto create_dir(ref<Path> path) -> IOResult<empty>;
 
 export class Directory {
     libc::DIR* m_handle { nullptr };
@@ -70,8 +73,8 @@ public:
     auto operator=(Directory&& other) noexcept -> Directory&;
     ~Directory();
 
-    static auto open(ref<Path> path) -> Result<Directory>;
-    auto        next() -> Option<Result<DirectoryEntryData>>;
+    static auto open(ref<Path> path) -> IOResult<Directory>;
+    auto        next() -> Option<IOResult<DirectoryEntryData>>;
 };
 
 } // namespace rstd::sys::fs::unix

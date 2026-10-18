@@ -3,6 +3,9 @@ module;
 export module rstd.alloc:boxed;
 export import rstd.core;
 export import :alloc;
+export import :collections.error;
+
+using rstd::mem::MaybeUninit;
 
 using alloc::handle_alloc_error;
 
@@ -105,6 +108,46 @@ public:
             m_ptr      = Some(o.take_ptr());
         }
         return *this;
+    }
+
+    /// Creates an uninitialized array without constructing its eventual element values.
+    static auto try_make_uninit_in(usize length, A allocator)
+        -> Result<Box<MaybeUninit<mtp::rm_ext<T>>[], A>, ::alloc::collections::TryReserveError>
+        requires(mtp::is_array<T>)
+    {
+        using Slot   = MaybeUninit<mtp::rm_ext<T>>;
+        using Output = Box<Slot[], A>;
+        using Error  = ::alloc::collections::TryReserveError;
+        auto checked = Layout::array<Slot>(length);
+        if (checked.is_none() || checked->size > usize(isize::MAX.to_primitive()))
+            return Err(Error::CapacityOverflow);
+        auto layout  = checked.unwrap_unchecked();
+        auto pointer = reinterpret_cast<byte*>(Layout::make<Slot>().dangling());
+        if (length != usize()) {
+            auto allocated = as<Allocator>(allocator).allocate(layout);
+            if (allocated.is_err()) return Err(Error::AllocError);
+            pointer = allocated.unwrap_unchecked().template as_mut_ptr<byte>().as_raw_ptr();
+        }
+        return Ok(Output::from_raw_in(mut_ptr<Slot[]>::from_bytes(pointer, length),
+                                      rstd::move(allocator)));
+    }
+
+    static auto make_uninit_in(usize length, A allocator)
+        requires(mtp::is_array<T>)
+    {
+        auto result = try_make_uninit_in(length, rstd::move(allocator));
+        if (result.is_err()) rstd::panic { "Box array allocation failed" };
+        return result.unwrap_unchecked();
+    }
+    static auto try_make_uninit(usize length)
+        requires mtp::is_array<T> && mtp::same_as<A, ::alloc::Global>
+    {
+        return try_make_uninit_in(length, A {});
+    }
+    static auto make_uninit(usize length)
+        requires mtp::is_array<T> && mtp::same_as<A, ::alloc::Global>
+    {
+        return make_uninit_in(length, A {});
     }
 
     /// Allocates memory on the heap and constructs `T` in place with the given arguments.
@@ -256,25 +299,25 @@ public:
     }
 
     constexpr auto begin() noexcept [[clang::lifetimebound]] -> mut_ptr<mtp::rm_ext<T>>
-        requires mtp::is_array<T>
+        requires(mtp::is_array<T>)
     {
         return mut_ptr<mtp::rm_ext<T>>::from_raw_parts(as_mut_ptr().as_raw_ptr());
     }
 
     constexpr auto end() noexcept [[clang::lifetimebound]] -> mut_ptr<mtp::rm_ext<T>>
-        requires mtp::is_array<T>
+        requires(mtp::is_array<T>)
     {
         return begin().add(as_ptr().len());
     }
 
     constexpr auto begin() const noexcept [[clang::lifetimebound]] -> ptr<mtp::rm_ext<T>>
-        requires mtp::is_array<T>
+        requires(mtp::is_array<T>)
     {
         return ptr<mtp::rm_ext<T>>::from_raw_parts(as_ptr().as_raw_ptr());
     }
 
     constexpr auto end() const noexcept [[clang::lifetimebound]] -> ptr<mtp::rm_ext<T>>
-        requires mtp::is_array<T>
+        requires(mtp::is_array<T>)
     {
         return begin().add(as_ptr().len());
     }
@@ -344,7 +387,9 @@ public:
         } guard { allocator, raw, layout };
         for (usize i; i < length; ++i) {
             auto const& value = old[i];
-            rstd::ptr_::construct(raw.add(i), as<Clone>(value).clone());
+            rstd::ptr_::construct(
+                raw.byte_add(i * usize(sizeof(typename mut_ptr<V>::storage_type))),
+                as<Clone>(value).clone());
             ++guard.initialized;
         }
         auto result  = Box<T, B>::from_raw_in(mut_ptr<T>::from_raw_parts(raw.as_raw_ptr(), length),

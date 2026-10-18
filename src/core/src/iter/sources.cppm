@@ -346,21 +346,22 @@ constexpr auto successors(Option<T> first, F f) -> Successors<T, F> {
 /// Iterator over `&T` of a `slice<T>`.
 export template<class T>
 constexpr auto from_slice(slice<T> s [[clang::lifetimebound]]) -> SliceIter<T> {
-    auto* p = s.as_raw_ptr();
-    if (s.is_empty()) return { p, p };
-    return { p, p + s.len().to_primitive() };
+    auto pointer = ptr<T>::from_raw_parts(s.as_raw_ptr());
+    return { pointer, pointer.add(s.len()) };
 }
 
 /// Iterator over `&T` of a C array.
 export template<class T, rstd::size_t N>
 constexpr auto from_array(const T (&arr [[clang::lifetimebound]])[N]) -> SliceIter<T> {
-    return { arr, arr + N };
+    auto pointer = ptr<T>::from_raw_parts(arr);
+    return { pointer, pointer.add(usize(N)) };
 }
 
 /// Iterator over `&mut T` of a C array.
 export template<class T, rstd::size_t N>
 constexpr auto from_array_mut(T (&arr [[clang::lifetimebound]])[N]) -> SliceIterMut<T> {
-    return { arr, arr + N };
+    auto pointer = mut_ptr<T>::from_raw_parts(arr);
+    return { pointer, pointer.add(usize(N)) };
 }
 
 } // namespace rstd::iter
@@ -380,9 +381,9 @@ struct Impl<iter::IntoIterator, mut_ref<T[]>> : ImplBase<mut_ref<T[]>> {
     using IntoIter = iter::SliceIterMut<T>;
 
     constexpr auto into_iter() -> IntoIter {
-        auto& source = this->self();
-        auto* data   = source.as_raw_ptr();
-        return { data, data + source.len().to_primitive() };
+        auto& source  = this->self();
+        auto  pointer = mut_ptr<T>::from_raw_parts(source.as_raw_ptr());
+        return { pointer, pointer.add(source.len()) };
     }
 };
 

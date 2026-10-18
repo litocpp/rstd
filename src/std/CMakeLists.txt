@@ -138,6 +138,7 @@ target_sources(
          src/alloc/mod.cppm
          src/alloc/budget.cppm
          src/alloc/shared_arena.cppm
+         src/alloc/shared_tracking.cppm
          src/alloc/virtual_memory.cppm
          src/forward.cppm
          src/error.cppm
@@ -188,6 +189,7 @@ target_sources(
          src/io/mod.cppm
          src/io/error.cppm
          src/io/traits.cppm
+         src/io/buffer.cppm
          src/io/buffered.cppm
          src/io/cursor.cppm
          src/io/range.cppm

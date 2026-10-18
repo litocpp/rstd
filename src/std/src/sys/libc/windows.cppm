@@ -325,6 +325,7 @@ using ::GetSystemInfo;
 using ::GetStdHandle;
 using ::WriteFile;
 using ::ReadFile;
+using ::ReOpenFile;
 using ::CreateFileW;
 using ::NtCreateFile;
 using ::NtSetInformationFile;

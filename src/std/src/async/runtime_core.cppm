@@ -77,7 +77,9 @@ private:
     voidp                             m_storage_owner { nullptr };
     DestroyFn                         m_destroy_storage { nullptr };
 
-    static void destroy_scoped_control(voidp owner) { delete static_cast<TaskRefControl*>(owner); }
+    static void destroy_scoped_control(voidp owner) {
+        ::alloc::raw_delete(static_cast<TaskRefControl*>(owner));
+    }
 
 public:
     TaskRefControl(voidp storage_owner, DestroyFn destroy_storage) noexcept
@@ -87,7 +89,7 @@ public:
     auto operator=(const TaskRefControl&) -> TaskRefControl& = delete;
 
     static auto make_scoped() -> TaskRefControl* {
-        auto* control            = new TaskRefControl { nullptr, &destroy_scoped_control };
+        auto* control = ::alloc::raw_new<TaskRefControl>(nullptr, &destroy_scoped_control);
         control->m_storage_owner = control;
         return control;
     }

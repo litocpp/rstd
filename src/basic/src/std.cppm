@@ -19,7 +19,9 @@ module;
 export module rstd.basic:std;
 
 export using ::operator new;
+export using ::operator new[];
 export using ::operator delete;
+export using ::operator delete[];
 
 namespace std
 {

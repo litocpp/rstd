@@ -4,6 +4,7 @@
 #include <rstd/macro.hpp>
 import rstd;
 import rstd.core;
+import rstd.tests.std_io_module;
 #if RSTD_OS_WINDOWS
 extern "C" __declspec(dllimport) void __stdcall SetLastError(unsigned long error);
 #endif
@@ -156,34 +157,30 @@ struct MemReadAt {
     const byte* data;
     usize       len;
 
-    auto read_at(mut_ref<u8[]> buf, u64 offset) const -> io::Result<usize> {
+    auto read_buf_at(io::BorrowedCursor buf, u64 offset) const -> io::Result<empty> {
         auto position = try_from<usize>(offset);
-        if (position.is_err()) return Ok(usize());
-        auto position_value = rstd::move(position).unwrap_unchecked();
-        if (position_value >= len) return Ok(usize());
-        auto count  = rstd::min(buf.len(), len - position_value);
-        auto source = slice<u8>::from_raw_parts(data + position_value.to_primitive(), count);
-        rstd::mem::memcpy(buf.as_raw_ptr(), source.as_raw_ptr(), count);
-        return Ok(count);
+        if (position.is_err() || *position >= len) return Ok(empty {});
+        auto count = rstd::min(buf.capacity(), len - *position);
+        buf.append(slice<u8>::from_raw_parts(data + position->to_primitive(), count));
+        return Ok(empty {});
     }
 };
 
 template<>
-struct rstd::Impl<io::ReadAt, MemReadAt> : rstd::ImplBase<MemReadAt> {
-    auto read_at(mut_ref<u8[]> buf, u64 offset) const -> io::Result<usize> {
-        return this->self().read_at(buf, offset);
+struct rstd::Impl<io::ReadAt, MemReadAt> : rstd::DefaultInImpl<io::ReadAt, MemReadAt> {
+    auto read_buf_at(io::BorrowedCursor buf, u64 offset) const -> io::Result<empty> {
+        return this->self().read_buf_at(rstd::move(buf), offset);
     }
 };
 
 template<>
-struct rstd::Impl<io::Read, MemRead> : ImplBase<MemRead> {
-    auto read(mut_ref<u8[]> buf) -> io::Result<usize> {
-        auto& self   = this->self();
-        usize n      = rstd::min(buf.len(), self.len - self.pos);
-        auto  source = slice<u8>::from_raw_parts(self.data + self.pos.to_primitive(), n);
-        rstd::mem::memcpy(buf.as_raw_ptr(), source.as_raw_ptr(), n);
+struct rstd::Impl<io::Read, MemRead> : rstd::DefaultInImpl<io::Read, MemRead> {
+    auto read_buf(io::BorrowedCursor buf) -> io::Result<empty> {
+        auto& self = this->self();
+        usize n    = rstd::min(buf.capacity(), self.len - self.pos);
+        buf.append(slice<u8>::from_raw_parts(self.data + self.pos.to_primitive(), n));
         self.pos += n;
-        return Ok(n);
+        return Ok(empty {});
     }
 };
 
@@ -520,4 +517,8 @@ TEST(Io, CopyAll) {
     EXPECT_EQ(dst.get_ref().len(), usize(5));
     EXPECT_EQ(dst.get_ref()[usize()], u8(1));
     EXPECT_EQ(dst.get_ref()[usize(4)], u8(5));
+}
+
+TEST(Io, PublicModuleAllocatorInterfaces) {
+    EXPECT_TRUE(std_io_module());
 }

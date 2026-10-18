@@ -6,10 +6,13 @@ export import rstd.io.error;
 export import rstd.os.fd;
 export import rstd.core;
 
+using rstd::mem::MaybeUninit;
+
 namespace rstd::sys::pal::poll
 {
 
-export enum class Capability : rstd::uint8_t {
+export enum class Capability : rstd::uint8_t
+{
     Readiness        = 1,
     SocketCompletion = 2,
     FileCompletion   = 4,
@@ -67,31 +70,36 @@ export struct Ready {
     constexpr auto is_empty() const noexcept -> bool { return bits == 0; }
 };
 
-export enum class EventKind {
+export enum class EventKind
+{
     Wake,
     Readiness,
     Completion,
     SourceError,
 };
 
-export enum class OperationKind {
+export enum class OperationKind
+{
     Read,
     Write,
     Connect,
     Accept,
 };
 
-export enum class SourceKind {
+export enum class SourceKind
+{
     File,
     Socket,
 };
 
-export enum class WaitMode {
+export enum class WaitMode
+{
     Immediate,
     Infinite,
 };
 
-export enum class BackendPreference {
+export enum class BackendPreference
+{
     Auto,
     NativeCompletionRequired,
     ReadinessEmulationRequired,
@@ -370,18 +378,19 @@ public:
 export class Batch {
     static constexpr rstd::size_t CAPACITY = 64;
 
-    mem::MaybeUninit<Event> m_events[CAPACITY];
-    rstd::size_t            m_len {};
+    rstd::array<MaybeUninit<Event>, CAPACITY> events;
+    rstd::size_t                              m_len {};
 
 public:
-    Batch() noexcept                       = default;
+    // Value-initialization must not clear the event storage.
+    Batch() noexcept {}
     Batch(const Batch&)                    = delete;
     auto operator=(const Batch&) -> Batch& = delete;
 
     Batch(Batch&& other) {
         for (rstd::size_t i = 0; i < other.m_len; ++i) {
-            m_events[i].write(rstd::move(other.m_events[i].assume_init_mut()));
-            other.m_events[i].assume_init_drop();
+            events[usize(i)].write(rstd::move(other.events[usize(i)].assume_init_mut()));
+            other.events[usize(i)].assume_init_drop();
         }
         m_len       = other.m_len;
         other.m_len = 0;
@@ -391,8 +400,8 @@ public:
         if (this == rstd::addressof(other)) return *this;
         clear();
         for (rstd::size_t i = 0; i < other.m_len; ++i) {
-            m_events[i].write(rstd::move(other.m_events[i].assume_init_mut()));
-            other.m_events[i].assume_init_drop();
+            events[usize(i)].write(rstd::move(other.events[usize(i)].assume_init_mut()));
+            other.events[usize(i)].assume_init_drop();
         }
         m_len       = other.m_len;
         other.m_len = 0;
@@ -408,20 +417,18 @@ public:
 
     void push(Event event) {
         debug_assert(m_len < CAPACITY);
-        m_events[m_len++].write(rstd::move(event));
+        events[usize(m_len++)].write(rstd::move(event));
     }
 
-    auto operator[](usize index) noexcept -> Event& {
-        return m_events[index.to_primitive()].assume_init_mut();
-    }
+    auto operator[](usize index) noexcept -> Event& { return events[index].assume_init_mut(); }
 
     auto operator[](usize index) const noexcept -> const Event& {
-        return m_events[index.to_primitive()].assume_init_ref();
+        return events[index].assume_init_ref();
     }
 
     void clear() noexcept {
         while (m_len != 0) {
-            m_events[--m_len].assume_init_drop();
+            events[usize(--m_len)].assume_init_drop();
         }
     }
 };

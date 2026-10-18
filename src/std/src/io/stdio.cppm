@@ -189,13 +189,15 @@ struct Impl<io::Write, io::Stderr> : ImplBase<io::Stderr> {
 };
 
 template<>
-struct Impl<io::Read, io::Stdin> : ImplBase<io::Stdin> {
+struct Impl<io::Read, io::Stdin> : DefaultInImpl<io::Read, io::Stdin> {
     auto read(mut_ref<u8[]> buf) -> io::Result<usize>;
+    auto read_buf(io::BorrowedCursor buf) -> io::Result<empty>;
 };
 
 template<>
-struct Impl<io::Read, io::StdinLock> : ImplBase<io::StdinLock> {
+struct Impl<io::Read, io::StdinLock> : DefaultInImpl<io::Read, io::StdinLock> {
     auto read(mut_ref<u8[]> buf) -> io::Result<usize>;
+    auto read_buf(io::BorrowedCursor buf) -> io::Result<empty>;
 };
 
 } // namespace rstd

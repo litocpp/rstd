@@ -81,11 +81,15 @@ public:
 
 template<typename K, typename V, typename A = ::alloc::Global>
 class RawTable {
-    Bucket<K, V>*                 data;
+    byte*                         data;
     usize                         buckets;
     usize                         items;
     usize                         deleted;
     RSTD_ATTR_NO_UNIQUE_ADDRESS A allocator;
+
+    static auto slot(byte* storage, rstd::size_t index) noexcept -> Bucket<K, V>* {
+        return reinterpret_cast<Bucket<K, V>*>(storage + index * sizeof(Bucket<K, V>));
+    }
 
     static auto max_items(usize bucket_count) noexcept -> usize {
         return bucket_count - bucket_count / usize(8);
@@ -105,25 +109,27 @@ class RawTable {
     }
 
     struct Storage {
-        const A&      allocator;
-        Bucket<K, V>* data;
-        usize         buckets;
+        const A& allocator;
+        byte*    data;
+        usize    buckets;
         ~Storage() {
             if (! data) return;
-            for (rstd::size_t i = 0; i < buckets.to_primitive(); ++i) rstd::destroy_at(data + i);
+            for (rstd::size_t i = 0; i < buckets.to_primitive(); ++i)
+                rstd::destroy_at(slot(data, i));
             as<Allocator>(allocator).deallocate(data,
                                                 Layout::array<Bucket<K, V>>(buckets).unwrap());
         }
     };
 
-    auto try_allocate(usize count) -> Result<Bucket<K, V>*, TryReserveError> {
-        if (count == usize()) return Ok(static_cast<Bucket<K, V>*>(nullptr));
+    auto try_allocate(usize count) -> Result<byte*, TryReserveError> {
+        if (count == usize()) return Ok(static_cast<byte*>(nullptr));
         auto layout = Layout::array<Bucket<K, V>>(count);
         if (layout.is_none()) return Err(TryReserveError::CapacityOverflow);
         auto result = as<Allocator>(allocator).allocate(*layout);
         if (result.is_err()) return Err(TryReserveError::AllocError);
-        auto* pointer = result.unwrap_unchecked().template as_mut_ptr<Bucket<K, V>>().as_raw_ptr();
-        for (rstd::size_t i = 0; i < count.to_primitive(); ++i) rstd::construct_at(pointer + i);
+        auto* pointer = result.unwrap_unchecked().template as_mut_ptr<byte>().as_raw_ptr();
+        for (rstd::size_t i = 0; i < count.to_primitive(); ++i)
+            rstd::construct_at(slot(pointer, i));
         return Ok(pointer);
     }
 
@@ -137,7 +143,7 @@ class RawTable {
 
     void release() noexcept {
         if (data == nullptr) return;
-        for (rstd::size_t i = 0; i < buckets.to_primitive(); ++i) rstd::destroy_at(data + i);
+        for (rstd::size_t i = 0; i < buckets.to_primitive(); ++i) rstd::destroy_at(slot(data, i));
         auto layout = Layout::array<Bucket<K, V>>(buckets).unwrap();
         as<Allocator>(allocator).deallocate(data, layout);
         data    = nullptr;
@@ -151,9 +157,9 @@ class RawTable {
         auto         index       = static_cast<rstd::size_t>(hash.to_primitive()) & bucket_mask;
         rstd::size_t stride      = 0;
         for (;;) {
-            if (data[index].state != BucketState::Full) {
-                if (data[index].state == BucketState::Deleted) --deleted;
-                data[index].write(hash, rstd::move(key), rstd::move(value));
+            if ((*slot(data, index)).state != BucketState::Full) {
+                if ((*slot(data, index)).state == BucketState::Deleted) --deleted;
+                (*slot(data, index)).write(hash, rstd::move(key), rstd::move(value));
                 ++items;
                 return;
             }
@@ -176,9 +182,9 @@ class RawTable {
         items   = usize();
         deleted = usize();
         for (rstd::size_t i = 0; i < old.buckets.to_primitive(); ++i) {
-            if (old.data[i].state != BucketState::Full) continue;
-            u64  hash  = old.data[i].hash;
-            auto entry = old.data[i].take();
+            if ((*slot(old.data, i)).state != BucketState::Full) continue;
+            u64  hash  = (*slot(old.data, i)).hash;
+            auto entry = (*slot(old.data, i)).take();
             insert_rehashed(
                 hash, rstd::move(entry.template get<0>()), rstd::move(entry.template get<1>()));
         }
@@ -199,8 +205,8 @@ class RawTable {
         usize full_count    = usize();
         usize deleted_count = usize();
         for (rstd::size_t i = 0; i < buckets.to_primitive(); ++i) {
-            if (data[i].state == BucketState::Full) ++full_count;
-            if (data[i].state == BucketState::Deleted) ++deleted_count;
+            if ((*slot(data, i)).state == BucketState::Full) ++full_count;
+            if ((*slot(data, i)).state == BucketState::Deleted) ++deleted_count;
         }
         return full_count == items && deleted_count == deleted;
     }
@@ -258,11 +264,15 @@ public:
     auto allocator_ref() const noexcept [[clang::lifetimebound]] -> const A& { return allocator; }
     auto bucket_count() const noexcept -> usize { return buckets; }
     auto capacity() const noexcept -> usize { return max_items(buckets); }
-    auto bucket(rstd::size_t index) noexcept -> Bucket<K, V>& { return data[index]; }
-    auto bucket(rstd::size_t index) const noexcept -> const Bucket<K, V>& { return data[index]; }
-    auto bucket(usize index) noexcept -> Bucket<K, V>& { return data[index.to_primitive()]; }
+    auto bucket(rstd::size_t index) noexcept -> Bucket<K, V>& { return (*slot(data, index)); }
+    auto bucket(rstd::size_t index) const noexcept -> const Bucket<K, V>& {
+        return (*slot(data, index));
+    }
+    auto bucket(usize index) noexcept -> Bucket<K, V>& {
+        return (*slot(data, index.to_primitive()));
+    }
     auto bucket(usize index) const noexcept -> const Bucket<K, V>& {
-        return data[index.to_primitive()];
+        return (*slot(data, index.to_primitive()));
     }
 
     template<typename Equal>
@@ -272,7 +282,7 @@ public:
         auto         index       = static_cast<rstd::size_t>(hash.to_primitive()) & bucket_mask;
         rstd::size_t stride      = 0;
         for (rstd::size_t visited = 0; visited < buckets.to_primitive(); ++visited) {
-            const auto& entry = data[index];
+            const auto& entry = (*slot(data, index));
             if (entry.state == BucketState::Empty) return None();
             if (entry.state == BucketState::Full && entry.hash == hash && equal(entry.key())) {
                 return Some(usize(index));
@@ -308,7 +318,7 @@ public:
     }
 
     auto remove(usize index) -> rstd::tuple<K, V> {
-        auto entry = data[index.to_primitive()].take();
+        auto entry = (*slot(data, index.to_primitive())).take();
         --items;
         ++deleted;
         debug_assert(valid());
@@ -316,7 +326,7 @@ public:
     }
 
     void clear() noexcept {
-        for (rstd::size_t i = 0; i < buckets.to_primitive(); ++i) data[i].clear();
+        for (rstd::size_t i = 0; i < buckets.to_primitive(); ++i) (*slot(data, i)).clear();
         items   = usize();
         deleted = usize();
         debug_assert(audit_valid());

@@ -22,7 +22,7 @@ OwnedFd::~OwnedFd() {
     close_();
 }
 
-auto BorrowedFd::try_clone_to_owned() const -> Result<OwnedFd> {
+auto BorrowedFd::try_clone_to_owned() const -> IOResult<OwnedFd> {
 #if RSTD_OS_UNIX
     auto new_fd = rstd::sys::libc::fcntl(fd_, rstd::sys::libc::F_DUPFD_CLOEXEC, 3);
     if (new_fd < 0) {

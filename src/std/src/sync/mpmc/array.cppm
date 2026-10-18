@@ -61,21 +61,19 @@ struct Channel {
         auto slots_storage = as<Allocator>(::alloc::GLOBAL)
                                  .allocate(alloc::Layout::array<Slot<T>>(cap).unwrap())
                                  .unwrap()
-                                 .pointer;
+                                 .template as_mut_ptr<byte>();
 
-        auto* raw_slots = static_cast<Slot<T>*>(slots_storage);
-        for (rstd::size_t i = 0; i < cap.to_primitive(); ++i) {
-            new (raw_slots + i) Slot<T> {};
-            raw_slots[i].stamp.store(usize(i), Ordering::Relaxed);
-        }
-        auto buffer = Box<Slot<T>[]>::from_raw(mut_ptr<Slot<T>[]>::from_raw_parts(raw_slots, cap));
+        // Default-initialize the array so message storage remains uninitialized.
+        auto buffer = Box<Slot<T>[]>::from_raw(mut_ptr<Slot<T>[]>::from_raw_parts(
+            ::new (slots_storage.as_raw_ptr()) Slot<T>[cap.to_primitive()], cap));
+        for (usize i; i < cap; ++i) buffer.as_mut_ptr()[i].stamp.store(i, Ordering::Relaxed);
 
         auto storage = as<Allocator>(::alloc::GLOBAL)
                            .allocate(alloc::Layout::make<Channel>())
                            .unwrap()
-                           .pointer;
+                           .template as_mut_ptr<byte>();
 
-        auto* raw_chan = new (storage) Channel {
+        auto* raw_chan = ::new (storage.as_raw_ptr()) Channel {
             .head      = {},
             .tail      = {},
             .buffer    = rstd::move(buffer),
