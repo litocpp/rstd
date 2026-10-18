@@ -149,3 +149,27 @@ public:
         return allocator()->shrink(ptr, old_layout, new_layout);
     }
 };
+
+// Explicit opt-in: copying Global or a borrowed allocator preserves its domain.
+template<>
+struct rstd::Impl<rstd::alloc::AllocatorClone, ::alloc::Global> {};
+template<>
+struct rstd::Impl<rstd::alloc::ThreadSafeAllocator, ::alloc::Global> {};
+template<>
+struct rstd::Impl<rstd::alloc::AllocatorClone, rstd::ref<rstd::dyn<rstd::alloc::Allocator>>> {};
+
+export namespace rstd::alloc
+{
+template<typename A>
+concept CloneableAllocator = Impled<A, Allocator, AllocatorClone> &&
+                             (Impled<A, clone::Clone> || requires(const A& a) { A(a); });
+
+template<typename A>
+    requires CloneableAllocator<A>
+auto clone_allocator(const A& allocator) -> A {
+    if constexpr (Impled<A, clone::Clone>)
+        return as<clone::Clone>(allocator).clone();
+    else
+        return A(allocator);
+}
+} // namespace rstd::alloc

@@ -57,6 +57,7 @@ sources = [
   "alloc/rc.cpp",
   "alloc/str.cpp",
   "alloc/boxed.cpp",
+  "alloc/ownership.cpp",
   "alloc/vec.cpp",
   "alloc/arena.cpp",
   "alloc/shared_arena.cpp",

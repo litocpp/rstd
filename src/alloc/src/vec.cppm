@@ -21,7 +21,7 @@ enum class TryReserveError
     CapacityOverflow,
     AllocError
 };
-}
+} // namespace alloc::collections
 
 using alloc::collections::TryReserveError;
 
@@ -119,29 +119,30 @@ struct RawVec {
         if (try_grow(new_cap, len).is_err()) rstd::panic { "Vec allocation failed" };
     }
 
-    void shrink_to(usize capacity, usize len) {
+    auto try_shrink_to(usize capacity, usize len) -> Result<empty, TryReserveError> {
         auto old_layout = allocation_layout;
         auto new_layout = Layout::array<T>(capacity).unwrap();
         if (old_layout.size == new_layout.size && old_layout.align == new_layout.align) {
             cap = capacity;
-            return;
+            return Ok(empty {});
         }
         debug_assert(len <= capacity && capacity <= cap);
 
         auto old_ptr = ptr.as_mut_ptr().as_raw_ptr();
         if (capacity == usize()) {
-            as<Allocator>(allocator).deallocate(old_ptr, old_layout);
+            if (old_layout.size != usize())
+                as<Allocator>(allocator).deallocate(old_ptr, old_layout);
             reset_ptr();
-            return;
+            return Ok(empty {});
         }
 
         if constexpr (mtp::triv_copyable<T>) {
             auto res = as<Allocator>(allocator).shrink(old_ptr, old_layout, new_layout);
-            if (res.is_err()) handle_alloc_error(new_layout);
+            if (res.is_err()) return Err(TryReserveError::AllocError);
             ptr = NonNull<T>::make_unchecked(res.unwrap_unchecked().template as_mut_ptr<T>());
         } else {
             auto res = as<Allocator>(allocator).allocate(new_layout);
-            if (res.is_err()) handle_alloc_error(new_layout);
+            if (res.is_err()) return Err(TryReserveError::AllocError);
 
             auto new_ptr = res.unwrap_unchecked().template as_mut_ptr<T>().as_raw_ptr();
             for (rstd::size_t index = 0; index < len.to_primitive(); ++index) {
@@ -153,6 +154,11 @@ struct RawVec {
         }
         cap               = capacity;
         allocation_layout = new_layout;
+        return Ok(empty {});
+    }
+
+    void shrink_to(usize capacity, usize len) {
+        if (try_shrink_to(capacity, len).is_err()) rstd::panic { "Vec allocation failed" };
     }
 
     void shrink_to_fit(usize len) { shrink_to(len, len); }
@@ -320,6 +326,15 @@ class Vec {
         }
     }
 
+    auto take_boxed_slice() -> Box<T[], A> {
+        auto length = m_len;
+        auto raw = length == usize() ? NonNull<T>::dangling().as_mut_ptr() : m_buf.ptr.as_mut_ptr();
+        m_buf.reset_ptr();
+        m_len = usize();
+        return Box<T[], A>::from_raw_in(mut_ptr<T[]>::from_raw_parts(raw.as_raw_ptr(), length),
+                                        rstd::move(m_buf.allocator));
+    }
+
     constexpr explicit Vec(RawVec<T, A> buf, usize len): m_buf(rstd::move(buf)), m_len(len) {}
 
     friend struct details::InPlaceAccess;
@@ -380,18 +395,19 @@ public:
     }
 
     /// Takes ownership of a boxed slice without copying its elements.
-    static auto from_boxed_slice(Box<T[]>&& values) noexcept -> Self
-        requires mtp::same_as<A, ::alloc::Global>
-    {
-        auto raw    = rstd::move(values).into_raw();
-        auto length = raw.len();
-        if (length == usize()) return {};
-
+    static auto from_boxed_slice(Box<T[], A>&& values) -> Self {
+        auto parts     = rstd::move(values).into_raw_with_allocator();
+        auto raw       = parts.template get<0>();
+        auto allocator = rstd::move(parts.template get<1>());
+        auto length    = raw.len();
+        if (length == usize()) {
+            return Vec::new_in(rstd::move(allocator));
+        }
         auto pointer = mut_ptr<T>::from_raw_parts(raw.as_raw_ptr());
         return Vec { RawVec<T, A>(NonNull<T>::make_unchecked(pointer),
                                   length,
                                   Layout::array<T>(length).unwrap(),
-                                  A {}),
+                                  rstd::move(allocator)),
                      length };
     }
 
@@ -537,18 +553,15 @@ public:
         m_len = new_len;
     }
 
-    /// Converts this `Vec` into a `Box<T[]>`, transferring ownership of all elements.
-    /// \return A boxed slice containing the vector's elements.
-    auto into_boxed_slice() noexcept -> Box<T[]>
-        requires mtp::same_as<A, ::alloc::Global>
-    {
-        m_buf.shrink_to_fit(m_len);
+    /// Failure returns the original vector, including its allocator and reserved capacity.
+    auto try_into_boxed_slice() -> Result<Box<T[], A>, Vec> {
+        if (m_buf.try_shrink_to(m_len, m_len).is_err()) return Err(rstd::move(*this));
+        return Ok(take_boxed_slice());
+    }
 
-        auto length = m_len;
-        auto raw = length == usize() ? NonNull<T>::dangling().as_mut_ptr() : m_buf.ptr.as_mut_ptr();
-        m_buf.reset_ptr();
-        m_len = usize();
-        return Box<T[]>::from_raw(mut_ptr<T[]>::from_raw_parts(raw.as_raw_ptr(), length));
+    auto into_boxed_slice() -> Box<T[], A> {
+        m_buf.shrink_to_fit(m_len);
+        return take_boxed_slice();
     }
 
     /// Constructs an element in-place at the back of the vector.
@@ -760,19 +773,19 @@ public:
         return m_len == usize();
     }
 
-    auto clone_in(A allocator) const -> Vec
+    template<typename B>
+    auto clone_in(B allocator) const -> Vec<T, B>
         requires rstd::Impled<T, rstd::clone::Clone>
     {
-        auto result = Vec::with_capacity_in(m_len, rstd::move(allocator));
+        auto result = Vec<T, B>::with_capacity_in(m_len, rstd::move(allocator));
         result.extend_from_slice(as_slice());
         return result;
     }
 
     auto clone() const -> Vec
-        requires rstd::Impled<T, rstd::clone::Clone> &&
-                 requires(const A& allocator) { A(allocator); }
+        requires rstd::Impled<T, rstd::clone::Clone> && rstd::alloc::CloneableAllocator<A>
     {
-        return clone_in(A(m_buf.allocator));
+        return clone_in(rstd::alloc::clone_allocator(m_buf.allocator));
     }
 
     void clone_from(const Vec& source)
@@ -1318,14 +1331,14 @@ auto from_iter(VecIntoIter<T, A> iterator) -> Vec<T, A> {
         return Vec<T, A>(iterator.take_buffer(), remaining);
     };
 
-    if constexpr (! requires(const A& allocator) { A(allocator); }) {
+    if constexpr (! rstd::alloc::CloneableAllocator<A>) {
         return compact();
     } else if (remaining >= iterator.buffer_.cap / usize(2)) {
         return compact();
     }
 
-    if constexpr (requires(const A& allocator) { A(allocator); }) {
-        auto result = Vec<T, A>::new_in(A(iterator.buffer_.allocator));
+    if constexpr (rstd::alloc::CloneableAllocator<A>) {
+        auto result = Vec<T, A>::new_in(rstd::alloc::clone_allocator(iterator.buffer_.allocator));
         result.reserve(remaining);
         for (auto item = iterator.next(); item.is_some(); item = iterator.next()) {
             result.push(rstd::move(*item));
@@ -1365,10 +1378,10 @@ struct Impl<T, ::alloc::vec::Vec<U, A>> : DefaultInImpl<T, ::alloc::vec::Vec<U, 
     }
 };
 
-template<typename A, mtp::same_as<From<::alloc::boxed::Box<A[]>>> T>
-struct Impl<T, ::alloc::vec::Vec<A>> : ImplBase<::alloc::vec::Vec<A>> {
-    static auto from(::alloc::boxed::Box<A[]> b) -> ::alloc::vec::Vec<A> {
-        return ::alloc::vec::Vec<A>::from_boxed_slice(rstd::move(b));
+template<typename E, typename A, mtp::same_as<From<::alloc::boxed::Box<E[], A>>> T>
+struct Impl<T, ::alloc::vec::Vec<E, A>> : ImplBase<::alloc::vec::Vec<E, A>> {
+    static auto from(::alloc::boxed::Box<E[], A> b) -> ::alloc::vec::Vec<E, A> {
+        return ::alloc::vec::Vec<E, A>::from_boxed_slice(rstd::move(b));
     }
 };
 
@@ -1397,6 +1410,14 @@ struct Impl<iter::Extend<E>, ::alloc::vec::Vec<E, A>> : ImplBase<::alloc::vec::V
 
     static void extend_one(::alloc::vec::Vec<E, A>& collection, E&& item) {
         collection.push(rstd::move(item));
+    }
+};
+
+template<typename E, typename A>
+    requires(! mtp::same_as<A, ::alloc::Global>)
+struct Impl<iter::FromIterator<E>, ::alloc::vec::Vec<E, A>> {
+    static auto from_iter(::alloc::vec::VecIntoIter<E, A> iterator) -> ::alloc::vec::Vec<E, A> {
+        return ::alloc::vec::details::from_iter(rstd::move(iterator));
     }
 };
 

@@ -266,7 +266,150 @@ auto register_vec_bulk(bench::Suite& suite, ref<str> operation) -> Result<empty,
     return Ok(empty {});
 }
 
+enum class OwnershipOperation
+{
+    Box,
+    Arc,
+    StrongWeak,
+    RetainedWeak,
+    VecBox,
+    Forward,
+    CrossThread
+};
+struct alignas(256) OwnershipAligned {
+    int value;
+};
+
+template<typename A>
+auto ownership_allocator() -> A {
+    if constexpr (rstd::mtp::same_as<A, ::alloc::Global>)
+        return {};
+    else if constexpr (rstd::mtp::same_as<A, rstd::alloc::SharedAllocator>)
+        return A::make(::alloc::Global {});
+    else
+        return A::make();
+}
+
+template<typename A, OwnershipOperation Operation, typename T = int>
+struct OwnershipSession {
+    A allocator { ownership_allocator<A>() };
+
+    auto operation() {
+        if constexpr (Operation == OwnershipOperation::Box) {
+            auto value = [&] {
+                if constexpr (rstd::mtp::same_as<A, ::alloc::Global>)
+                    return Box<T>::make(T { 7 });
+                else
+                    return Box<T, A>::make_in(rstd::alloc::clone_allocator(allocator), T { 7 });
+            }();
+            rstd::hint::black_box(value.as_ptr());
+        } else if constexpr (Operation == OwnershipOperation::VecBox) {
+            auto values = Vec<int, A>::new_in(rstd::alloc::clone_allocator(allocator));
+            for (int i = 0; i < 64; ++i) values.push(int(i));
+            auto copied = values.clone();
+            auto boxed  = copied.into_boxed_slice();
+            rstd::hint::black_box(boxed.as_ptr());
+        } else if constexpr (Operation == OwnershipOperation::Forward) {
+            auto small = rstd::alloc::Layout::array<u8>(usize(16)).unwrap();
+            auto large = rstd::alloc::Layout::array<u8>(usize(64)).unwrap();
+            auto raw = rstd::as<rstd::alloc::Allocator>(allocator).allocate_zeroed(small).unwrap();
+            raw      = rstd::as<rstd::alloc::Allocator>(allocator)
+                           .grow_zeroed(raw.pointer, small, large)
+                           .unwrap();
+            raw      = rstd::as<rstd::alloc::Allocator>(allocator)
+                           .shrink(raw.pointer, large, small)
+                           .unwrap();
+            rstd::hint::black_box(raw.pointer);
+            rstd::as<rstd::alloc::Allocator>(allocator).deallocate(raw.pointer, small);
+        } else {
+            auto value = [&] {
+                if constexpr (rstd::mtp::same_as<A, ::alloc::Global>)
+                    return rstd::sync::Arc<T>::make(T { 7 });
+                else
+                    return rstd::sync::Arc<T>::make_in(rstd::alloc::clone_allocator(allocator),
+                                                       T { 7 });
+            }();
+            if constexpr (Operation == OwnershipOperation::StrongWeak) {
+                auto copied = value.clone();
+                auto weak   = value.downgrade();
+                rstd::hint::black_box(copied.as_ptr());
+                rstd::hint::black_box(weak.as_ptr());
+            } else if constexpr (Operation == OwnershipOperation::RetainedWeak) {
+                auto weak = value.downgrade();
+                value.reset();
+                rstd::hint::black_box(weak.as_ptr());
+            } else if constexpr (Operation == OwnershipOperation::CrossThread) {
+                auto worker = rstd::thread::spawn([value = rstd::move(value)]() mutable {
+                                  value.reset();
+                              }).unwrap();
+                rstd::move(worker).join().unwrap();
+            } else
+                rstd::hint::black_box(value.as_ptr());
+        }
+    }
+    auto check() -> Result<empty, String> {
+        operation();
+        return finish();
+    }
+    auto run(bench::Bench& engine, ref<str> name)
+        -> Result<bench::BenchmarkResult, bench::BenchError> {
+        auto workload = bench::repeated(
+            [this] {
+                operation();
+            },
+            { .items_per_iteration = u64(1) });
+        return workload.run(engine, name);
+    }
+    auto finish() -> Result<empty, String> {
+        if constexpr (requires { allocator.snapshot(); }) {
+            if (allocator.snapshot().live_bytes != u64())
+                return Err("allocator retained a live allocation"_Str);
+        }
+        return Ok(empty {});
+    }
+};
+
+template<typename A, OwnershipOperation Operation, typename T = int>
+auto add_ownership_case(bench::Suite& suite, ref<str> name) -> Result<empty, String> {
+    return suite.add(make_descriptor("allocator_ownership"_str,
+                                     name,
+                                     u64(10),
+                                     parameter("box_bytes"_str, u64(sizeof(Box<T, A>))),
+                                     parameter("arc_bytes"_str, u64(sizeof(rstd::sync::Arc<T>))),
+                                     parameter("weak_bytes"_str, u64(sizeof(rstd::sync::Weak<T>)))),
+                     bench::factory([] {
+                         using Session = OwnershipSession<A, Operation, T>;
+                         return Result<Session, String>(Ok(Session {}));
+                     }));
+}
+
+template<typename A>
+auto register_ownership_cases(bench::Suite& suite, ref<str> backend) -> Result<empty, String> {
+    rstd_try(
+        (add_ownership_case<A, OwnershipOperation::Box>(suite, rstd::format("{}_box", backend))));
+    rstd_try(
+        (add_ownership_case<A, OwnershipOperation::Arc>(suite, rstd::format("{}_arc", backend))));
+    rstd_try((add_ownership_case<A, OwnershipOperation::Box, OwnershipAligned>(
+        suite, rstd::format("{}_aligned_box", backend))));
+    rstd_try((add_ownership_case<A, OwnershipOperation::Arc, OwnershipAligned>(
+        suite, rstd::format("{}_aligned_arc", backend))));
+    rstd_try((add_ownership_case<A, OwnershipOperation::StrongWeak>(
+        suite, rstd::format("{}_strong_weak", backend))));
+    rstd_try((add_ownership_case<A, OwnershipOperation::RetainedWeak>(
+        suite, rstd::format("{}_retained_weak", backend))));
+    rstd_try((add_ownership_case<A, OwnershipOperation::VecBox>(
+        suite, rstd::format("{}_vec_clone_box", backend))));
+    rstd_try((add_ownership_case<A, OwnershipOperation::Forward>(
+        suite, rstd::format("{}_forward", backend))));
+    return add_ownership_case<A, OwnershipOperation::CrossThread>(
+        suite, rstd::format("{}_thread_create_release", backend));
+}
+
 auto rstd_bench::register_alloc(bench::Suite& suite) -> Result<empty, String> {
+    rstd_try(register_ownership_cases<::alloc::Global>(suite, "global"_str));
+    rstd_try(register_ownership_cases<rstd::alloc::SharedTrackingAllocator<>>(
+        suite, "shared_tracking"_str));
+    rstd_try(register_ownership_cases<rstd::alloc::SharedAllocator>(suite, "shared_dyn"_str));
     rstd_try(register_vec_bulk<VecBulkOperation::Push>(suite, "push"_str));
     rstd_try(register_vec_bulk<VecBulkOperation::Slice>(suite, "slice"_str));
     rstd_try(register_vec_bulk<VecBulkOperation::Append>(suite, "append"_str));

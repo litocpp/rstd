@@ -109,6 +109,12 @@ public:
                       )
         : allocator_(rstd::move(allocator)), tracker_(&tracker) {}
 
+    auto clone() const -> TrackingAllocator
+        requires CloneableAllocator<A>
+    {
+        return TrackingAllocator(clone_allocator(allocator_), *tracker_);
+    }
+
     auto allocate(Layout layout) const -> Result<Allocation, AllocError> {
         tracker_->add(tracker_->stats_.allocations, u64(1));
         tracker_->add(tracker_->stats_.requested_bytes, u64(layout.size.to_primitive()));
@@ -151,3 +157,20 @@ public:
 };
 
 } // namespace rstd::alloc
+
+namespace rstd
+{
+template<typename A>
+    requires alloc::CloneableAllocator<A>
+struct Impl<alloc::AllocatorClone, alloc::TrackingAllocator<A>> {};
+} // namespace rstd
+
+namespace rstd
+{
+template<typename A>
+    requires alloc::CloneableAllocator<A>
+struct Impl<clone::Clone, alloc::TrackingAllocator<A>>
+    : DefaultInImpl<clone::Clone, alloc::TrackingAllocator<A>> {
+    auto clone() const -> alloc::TrackingAllocator<A> { return this->self().clone(); }
+};
+} // namespace rstd

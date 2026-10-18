@@ -436,3 +436,11 @@ struct Impl<alloc::Allocator, ::alloc::RecyclingArenaAllocator<Upstream>>
 };
 
 } // namespace rstd
+
+namespace rstd
+{
+template<typename A>
+struct Impl<alloc::AllocatorClone, ::alloc::ArenaAllocator<A>> {};
+template<typename A>
+struct Impl<alloc::AllocatorClone, ::alloc::RecyclingArenaAllocator<A>> {};
+} // namespace rstd

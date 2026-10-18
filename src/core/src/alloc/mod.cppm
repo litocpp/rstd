@@ -35,7 +35,21 @@ export struct Allocation {
     }
 };
 
-/// A high-level trait for an allocator.
+/// Cloning this allocator preserves the allocation domain and release compatibility.
+export struct AllocatorClone {};
+
+/// Ownership may move between threads when access and final release are externally serialized.
+export struct TransferableAllocator {};
+
+/// Operations and final release may run on arbitrary threads, including concurrently.
+export struct ThreadSafeAllocator {};
+
+/// A high-level trait for CPU-accessible storage. Moving an allocator preserves its domain.
+/// A successful resize invalidates the old pointer; failure leaves its allocation untouched.
+/// Returned storage meets the requested alignment and has at least the requested size.
+/// Release layouts match the latest successful request alignment and a size within its returned range.
+/// Zero-sized layouts accept a non-null, aligned dangling pointer; no initialized payload is implied.
+/// Allocator methods, moves and allocator destruction must not throw.
 export struct Allocator {
     template<typename Self, typename = void>
     struct Api {
@@ -45,6 +59,7 @@ export struct Allocator {
             return trait_call<0>(this, layout);
         }
 
+        /// Initializes the full returned usable size, including excess capacity.
         auto allocate_zeroed(Layout layout) const -> Result<Allocation, AllocError> {
             return trait_call<1>(this, layout);
         }
@@ -117,7 +132,7 @@ public:
         auto res = allocator().allocate(layout);
         if (res.is_ok()) {
             auto allocation = res.unwrap_unchecked();
-            mem::memset(allocation.pointer, u8(), layout.size);
+            mem::memset(allocation.pointer, u8(), allocation.size);
         }
         return res;
     }
@@ -125,14 +140,10 @@ public:
     auto grow(void* ptr, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
         debug_assert(new_layout.size >= old_layout.size);
-        if (old_layout.size == usize()) {
-            return allocator().allocate(new_layout);
-        }
-
         auto new_res = allocator().allocate(new_layout);
         if (new_res.is_ok()) {
             auto new_ptr = new_res.unwrap_unchecked();
-            mem::memcpy(new_ptr.pointer, ptr, old_layout.size);
+            if (old_layout.size != usize()) mem::memcpy(new_ptr.pointer, ptr, old_layout.size);
             allocator().deallocate(ptr, old_layout);
         }
         return new_res;
@@ -143,8 +154,9 @@ public:
         debug_assert(new_layout.size >= old_layout.size,
                      "`new_layout.size` must be greater than or equal to `old_layout.size`");
         auto result = allocator().allocate_zeroed(new_layout);
-        if (result.is_ok() && old_layout.size != usize()) {
-            mem::memcpy(result.unwrap_unchecked().pointer, ptr, old_layout.size);
+        if (result.is_ok()) {
+            if (old_layout.size != usize())
+                mem::memcpy(result.unwrap_unchecked().pointer, ptr, old_layout.size);
             allocator().deallocate(ptr, old_layout);
         }
         return result;
@@ -154,14 +166,14 @@ public:
         -> Result<Allocation, AllocError> {
         debug_assert(new_layout.size <= old_layout.size,
                      "`new_layout.size` must be smaller than or equal to `old_layout.size`");
-        if (new_layout.size == old_layout.size) {
+        if (new_layout.size == old_layout.size && new_layout.align == old_layout.align) {
             return Ok(Allocation { ptr, new_layout.size });
         }
 
         auto new_res = allocator().allocate(new_layout);
         if (new_res.is_ok()) {
             auto new_ptr = new_res.unwrap_unchecked();
-            mem::memcpy(new_ptr.pointer, ptr, new_layout.size);
+            if (new_layout.size != usize()) mem::memcpy(new_ptr.pointer, ptr, new_layout.size);
             allocator().deallocate(ptr, old_layout);
         }
         return new_res;

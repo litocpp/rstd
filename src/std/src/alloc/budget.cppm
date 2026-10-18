@@ -100,3 +100,12 @@ struct Impl<alloc::Allocator, alloc::BudgetAllocator<Upstream>>
     }
 };
 } // namespace rstd
+
+namespace rstd
+{
+template<typename A>
+struct Impl<alloc::AllocatorClone, alloc::BudgetAllocator<A>> {};
+template<typename A>
+    requires(Impled<A, alloc::ThreadSafeAllocator> || Impled<A, alloc::TransferableAllocator>)
+struct Impl<alloc::ThreadSafeAllocator, alloc::BudgetAllocator<A>> {};
+} // namespace rstd

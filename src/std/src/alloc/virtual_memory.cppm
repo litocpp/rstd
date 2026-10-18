@@ -131,3 +131,6 @@ struct Impl<alloc::Allocator, alloc::VirtualMemoryAllocator>
 };
 
 } // namespace rstd
+
+template<>
+struct rstd::Impl<rstd::alloc::TransferableAllocator, rstd::alloc::VirtualMemoryAllocator> {};

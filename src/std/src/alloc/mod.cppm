@@ -3,3 +3,4 @@ export module rstd:alloc;
 export import :alloc.budget;
 export import :alloc.shared_arena;
 export import :alloc.virtual_memory;
+export import :alloc.shared_tracking;

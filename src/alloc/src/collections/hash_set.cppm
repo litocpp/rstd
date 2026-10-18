@@ -12,9 +12,9 @@ namespace alloc::collections
 export template<typename K>
 using HashSetIter = HashMapKeys<K, rstd::empty>;
 
-export template<typename K>
-class HashSetIntoIter : public rstd::DefaultInClass<HashSetIntoIter<K>, rstd::iter::Iterator> {
-    HashMapIntoIter<K, rstd::empty> inner;
+export template<typename K, typename A = ::alloc::Global>
+class HashSetIntoIter : public rstd::DefaultInClass<HashSetIntoIter<K, A>, rstd::iter::Iterator> {
+    HashMapIntoIter<K, rstd::empty, A> inner;
 
 public:
     using Item                               = K;
@@ -22,7 +22,7 @@ public:
     static constexpr bool PROVEN_FUSED       = true;
     static constexpr bool PROVEN_TRUSTED_LEN = true;
 
-    explicit HashSetIntoIter(HashMapIntoIter<K, rstd::empty> iter): inner(rstd::move(iter)) {}
+    explicit HashSetIntoIter(HashMapIntoIter<K, rstd::empty, A> iter): inner(rstd::move(iter)) {}
 
     auto next() -> Option<Item> {
         auto item = inner.next();
@@ -34,18 +34,24 @@ public:
     auto len() const noexcept -> usize { return inner.len(); }
 };
 
-export template<typename K, typename S = rstd::hash::RandomState, typename Eq = DefaultHashEqual<K>>
+export template<typename K,
+                typename S  = rstd::hash::RandomState,
+                typename Eq = DefaultHashEqual<K>,
+                typename A  = ::alloc::Global>
 class HashSet {
-    HashMap<K, rstd::empty, S, Eq> map;
+    template<typename, typename, typename, typename>
+    friend class HashSet;
+    HashMap<K, rstd::empty, S, Eq, A> map;
 
-    explicit HashSet(HashMap<K, rstd::empty, S, Eq> source): map(rstd::move(source)) {}
+    explicit HashSet(HashMap<K, rstd::empty, S, Eq, A> source): map(rstd::move(source)) {}
 
 public:
     USE_TRAIT(HashSet)
-    using IntoIter = HashSetIntoIter<K>;
+    using IntoIter = HashSetIntoIter<K, A>;
 
     HashSet()
-        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<S> && rstd::mtp::init<Eq>
+        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<S> && rstd::mtp::init<Eq> &&
+                     rstd::mtp::init<A>
     = default;
     HashSet(const HashSet&)                = delete;
     HashSet& operator=(const HashSet&)     = delete;
@@ -53,28 +59,48 @@ public:
     HashSet& operator=(HashSet&&) noexcept = default;
 
     static auto make() -> HashSet
-        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<S> && rstd::mtp::init<Eq>
+        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<S> && rstd::mtp::init<Eq> &&
+                 rstd::mtp::init<A>
     {
-        return HashSet(HashMap<K, rstd::empty, S, Eq>::make());
+        return HashSet(HashMap<K, rstd::empty, S, Eq, A>::make());
     }
 
     static auto with_capacity(usize capacity) -> HashSet
-        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<S> && rstd::mtp::init<Eq>
+        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<S> && rstd::mtp::init<Eq> &&
+                 rstd::mtp::init<A>
     {
-        return HashSet(HashMap<K, rstd::empty, S, Eq>::with_capacity(capacity));
+        return HashSet(HashMap<K, rstd::empty, S, Eq, A>::with_capacity(capacity));
     }
 
     static auto with_hasher(S hasher) -> HashSet
-        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<Eq>
+        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<Eq> && rstd::mtp::init<A>
     {
-        return HashSet(HashMap<K, rstd::empty, S, Eq>::with_hasher(rstd::move(hasher)));
+        return HashSet(HashMap<K, rstd::empty, S, Eq, A>::with_hasher(rstd::move(hasher)));
     }
 
     static auto with_hasher_and_equal(S hasher, Eq equal) -> HashSet
-        requires rstd::hash::HashBuilder<S>
+        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<A>
     {
         return HashSet(
-            HashMap<K, rstd::empty, S, Eq>(usize(), rstd::move(hasher), rstd::move(equal)));
+            HashMap<K, rstd::empty, S, Eq, A>(usize(), rstd::move(hasher), rstd::move(equal)));
+    }
+
+    static auto new_in(A allocator) -> HashSet {
+        return HashSet(HashMap<K, rstd::empty, S, Eq, A>::new_in(rstd::move(allocator)));
+    }
+    static auto with_capacity_in(usize capacity, A allocator) -> HashSet {
+        return HashSet(
+            HashMap<K, rstd::empty, S, Eq, A>::with_capacity_in(capacity, rstd::move(allocator)));
+    }
+    auto allocator() const noexcept [[clang::lifetimebound]] -> const A& { return map.allocator(); }
+
+    template<typename B>
+    auto clone_in(B allocator) const -> HashSet<K, S, Eq, B>
+        requires requires(const HashMap<K, rstd::empty, S, Eq, A>& source, B target) {
+            source.clone_in(rstd::move(target));
+        }
+    {
+        return HashSet<K, S, Eq, B>(map.clone_in(rstd::move(allocator)));
     }
 
     auto len() const noexcept -> usize { return map.len(); }
@@ -85,15 +111,15 @@ public:
     void clear() noexcept { map.clear(); }
 
     auto clone() const -> HashSet
-        requires requires(const HashMap<K, rstd::empty, S, Eq>& source) { source.clone(); }
+        requires requires(const HashMap<K, rstd::empty, S, Eq, A>& source) { source.clone(); }
     {
         return HashSet(map.clone());
     }
 
-    void clone_from(HashSet& source)
-        requires requires(const HashMap<K, rstd::empty, S, Eq>& value) { value.clone(); }
+    void clone_from(const HashSet& source)
+        requires requires(const HashMap<K, rstd::empty, S, Eq, A>& value) { value.clone(); }
     {
-        map = source.map.clone();
+        map.clone_from(source.map);
     }
 
     auto insert(K value) -> bool { return map.insert(rstd::move(value), rstd::empty {}).is_none(); }
@@ -150,53 +176,53 @@ public:
 namespace rstd
 {
 
-template<typename K, typename S, typename Eq>
-    requires hash::HashableBy<K, S> && mtp::init<S> && mtp::init<Eq>
-struct Impl<iter::FromIterator<K>, ::alloc::collections::HashSet<K, S, Eq>>
-    : ImplBase<::alloc::collections::HashSet<K, S, Eq>> {
+template<typename K, typename S, typename Eq, typename A>
+    requires hash::HashableBy<K, S> && mtp::init<S> && mtp::init<Eq> && mtp::init<A>
+struct Impl<iter::FromIterator<K>, ::alloc::collections::HashSet<K, S, Eq, A>>
+    : ImplBase<::alloc::collections::HashSet<K, S, Eq, A>> {
     template<typename It>
-    static auto from_iter(It iter) -> ::alloc::collections::HashSet<K, S, Eq> {
-        auto set = ::alloc::collections::HashSet<K, S, Eq>::make();
-        Impl<iter::Extend<K>, ::alloc::collections::HashSet<K, S, Eq>>::extend(set,
-                                                                               rstd::move(iter));
+    static auto from_iter(It iter) -> ::alloc::collections::HashSet<K, S, Eq, A> {
+        auto set = ::alloc::collections::HashSet<K, S, Eq, A>::make();
+        Impl<iter::Extend<K>, ::alloc::collections::HashSet<K, S, Eq, A>>::extend(set,
+                                                                                  rstd::move(iter));
         return set;
     }
 };
 
-template<typename K, typename S, typename Eq>
+template<typename K, typename S, typename Eq, typename A>
     requires hash::HashableBy<K, S> && mtp::init<S> && mtp::init<Eq>
-struct Impl<iter::Extend<K>, ::alloc::collections::HashSet<K, S, Eq>>
-    : ImplBase<::alloc::collections::HashSet<K, S, Eq>> {
+struct Impl<iter::Extend<K>, ::alloc::collections::HashSet<K, S, Eq, A>>
+    : ImplBase<::alloc::collections::HashSet<K, S, Eq, A>> {
     template<iter::has_next It>
-    static void extend(::alloc::collections::HashSet<K, S, Eq>& set, It iterator) {
+    static void extend(::alloc::collections::HashSet<K, S, Eq, A>& set, It iterator) {
         for (auto item = iterator.next(); item.is_some(); item = iterator.next())
             extend_one(set, rstd::move(*item));
     }
 
-    static void extend_one(::alloc::collections::HashSet<K, S, Eq>& set, K&& item) {
+    static void extend_one(::alloc::collections::HashSet<K, S, Eq, A>& set, K&& item) {
         set.insert(rstd::move(item));
     }
 };
 
-template<typename K, typename S, typename Eq>
-struct Impl<iter::IntoIterator, ::alloc::collections::HashSet<K, S, Eq>>
-    : ImplBase<::alloc::collections::HashSet<K, S, Eq>> {
-    using IntoIter = ::alloc::collections::HashSetIntoIter<K>;
+template<typename K, typename S, typename Eq, typename A>
+struct Impl<iter::IntoIterator, ::alloc::collections::HashSet<K, S, Eq, A>>
+    : ImplBase<::alloc::collections::HashSet<K, S, Eq, A>> {
+    using IntoIter = ::alloc::collections::HashSetIntoIter<K, A>;
 
     auto into_iter() -> IntoIter { return rstd::move(this->self()).into_iter(); }
 };
 
-template<typename K, typename S, typename Eq>
-struct Impl<iter::IntoIterator, ref<::alloc::collections::HashSet<K, S, Eq>>>
-    : ImplBase<ref<::alloc::collections::HashSet<K, S, Eq>>> {
+template<typename K, typename S, typename Eq, typename A>
+struct Impl<iter::IntoIterator, ref<::alloc::collections::HashSet<K, S, Eq, A>>>
+    : ImplBase<ref<::alloc::collections::HashSet<K, S, Eq, A>>> {
     using IntoIter = ::alloc::collections::HashSetIter<K>;
 
     auto into_iter() -> IntoIter { return this->self().as_raw_ptr()->iter(); }
 };
 
-template<typename K, typename S, typename Eq>
-struct Impl<iter::IntoIterator, mut_ref<::alloc::collections::HashSet<K, S, Eq>>>
-    : ImplBase<mut_ref<::alloc::collections::HashSet<K, S, Eq>>> {
+template<typename K, typename S, typename Eq, typename A>
+struct Impl<iter::IntoIterator, mut_ref<::alloc::collections::HashSet<K, S, Eq, A>>>
+    : ImplBase<mut_ref<::alloc::collections::HashSet<K, S, Eq, A>>> {
     using IntoIter = ::alloc::collections::HashSetIter<K>;
 
     auto into_iter() -> IntoIter { return this->self().as_raw_ptr()->iter(); }

@@ -18,6 +18,7 @@ constexpr usize ARC_MAX_REFCOUNT = usize::MAX / usize(2);
 struct ArcHeader {
     Atomic<usize> strong { usize(1) };
     Atomic<usize> weak { usize(1) };
+    void (*release)(ArcHeader*) noexcept;
 
     void inc_strong() {
         [[maybe_unused]]
@@ -70,35 +71,63 @@ auto arc_header(mut_ptr<T> pointer) noexcept -> ArcHeader* {
         reinterpret_cast<ArcHeader*>(value - allocation.value_offset.to_primitive()));
 }
 
-template<typename T, typename... Args>
-auto arc_try_allocate_value(Args&&... args) -> Result<mut_ptr<T>, rstd::alloc::AllocError> {
-    auto value_layout = Layout::make<T>();
-    auto allocation   = arc_allocation_layout(value_layout);
-    auto result       = rstd::as<Allocator>(::alloc::GLOBAL).allocate(allocation.layout);
-    if (result.is_err()) return Err(rstd::alloc::AllocError {});
-
-    auto* base   = static_cast<rstd::byte*>(result.unwrap_unchecked().pointer);
-    auto* header = rstd::construct_at(reinterpret_cast<ArcHeader*>(base));
-    (void)header;
-    auto* value = reinterpret_cast<T*>(base + allocation.value_offset.to_primitive());
-    rstd::construct_at(value, rstd::forward<Args>(args)...);
-    return Ok(mut_ptr<T>::from_raw_parts(value));
+template<typename T, typename A>
+void arc_release_allocation(ArcHeader* header) noexcept {
+    auto allocation = arc_allocation_layout(Layout::make<T>());
+    if constexpr (mtp::same_as<A, ::alloc::Global>) {
+        rstd::destroy_at(header);
+        rstd::as<Allocator>(::alloc::GLOBAL).deallocate(header, allocation.layout);
+    } else {
+        usize allocator_offset {};
+        auto  layout =
+            allocation.layout.extend(Layout::make<A>(), allocator_offset).unwrap().pad_to_align();
+        auto* stored    = rstd::launder(reinterpret_cast<A*>(reinterpret_cast<rstd::byte*>(header) +
+                                                             allocator_offset.to_primitive()));
+        auto  allocator = rstd::move(*stored);
+        rstd::destroy_at(stored);
+        rstd::destroy_at(header);
+        rstd::as<Allocator>(allocator).deallocate(header, layout);
+    }
 }
 
-template<typename T, typename... Args>
-auto arc_allocate_value(Args&&... args) -> mut_ptr<T> {
-    auto result = arc_try_allocate_value<T>(rstd::forward<Args>(args)...);
-    if (result.is_err())
-        ::alloc::handle_alloc_error(arc_allocation_layout(Layout::make<T>()).layout);
-    return result.unwrap_unchecked();
+template<typename T, typename A, typename... Args>
+auto arc_try_allocate_value_in(A allocator, Args&&... args)
+    -> Result<mut_ptr<T>, rstd::alloc::AllocError> {
+    static_assert(__is_nothrow_constructible(A, A&&), "allocator moves must not throw");
+    auto  allocation = arc_allocation_layout(Layout::make<T>());
+    usize allocator_offset {};
+    auto  layout = allocation.layout;
+    if constexpr (! mtp::same_as<A, ::alloc::Global>) {
+        auto checked_layout = layout.extend(Layout::make<A>(), allocator_offset);
+        if (checked_layout.is_none()) return Err(rstd::alloc::AllocError {});
+        layout = checked_layout.unwrap_unchecked().pad_to_align();
+    }
+    auto result = rstd::as<Allocator>(allocator).allocate(layout);
+    if (result.is_err()) return Err(rstd::alloc::AllocError {});
+
+    auto* base      = static_cast<rstd::byte*>(result.unwrap_unchecked().pointer);
+    auto* header    = rstd::construct_at(reinterpret_cast<ArcHeader*>(base));
+    header->release = &arc_release_allocation<T, A>;
+    if constexpr (! mtp::same_as<A, ::alloc::Global>) {
+        rstd::construct_at(reinterpret_cast<A*>(base + allocator_offset.to_primitive()),
+                           rstd::move(allocator));
+    }
+    struct Guard {
+        ArcHeader* header;
+        ~Guard() {
+            if (header) header->release(header);
+        }
+    } guard { header };
+    auto* value = reinterpret_cast<T*>(base + allocation.value_offset.to_primitive());
+    rstd::construct_at(value, rstd::forward<Args>(args)...);
+    guard.header = nullptr;
+    return Ok(mut_ptr<T>::from_raw_parts(value));
 }
 
 template<typename T>
 void arc_deallocate(mut_ptr<T> pointer) noexcept {
-    auto  allocation = arc_allocation_layout(pointer);
-    auto* header     = arc_header(pointer);
-    rstd::destroy_at(header);
-    rstd::as<Allocator>(::alloc::GLOBAL).deallocate(header, allocation.layout);
+    auto* header = arc_header(pointer);
+    header->release(header);
 }
 
 template<typename T>
@@ -212,52 +241,73 @@ public:
         }
     }
 
-    /// Returns `AllocError` on allocation failure; constructor exceptions are not converted.
-    template<typename... Args>
-    static auto try_make(Args&&... args) -> Result<Arc, rstd::alloc::AllocError>
-        requires Impled<T, Sized>
+    /// The allocator must support concurrent operations and final release on another thread.
+    template<typename A, typename... Args>
+    static auto try_make_in(A allocator, Args&&... args) -> Result<Arc, rstd::alloc::AllocError>
+        requires Impled<T, Sized> && Impled<A, Allocator, rstd::alloc::ThreadSafeAllocator>
     {
-        auto result = arc_try_allocate_value<T>(rstd::forward<Args>(args)...);
+        auto result =
+            arc_try_allocate_value_in<T>(rstd::move(allocator), rstd::forward<Args>(args)...);
         if (result.is_err()) return Err(rstd::alloc::AllocError {});
         return Ok(Arc { ArcData<T> { .pointer = result.unwrap_unchecked() } });
     }
 
-    template<typename... Args>
-    static auto make(Args&&... args) -> Arc
-        requires Impled<T, Sized>
-    {
-        return Arc { ArcData<T> {
-            .pointer = arc_allocate_value<T>(rstd::forward<Args>(args)...),
-        } };
-    }
-
     /// Allocation failure leaves the input untouched.
-    template<typename U>
-    static auto try_make(U&& value) -> Result<Arc, rstd::alloc::AllocError>
-        requires(! Impled<T, Sized>) && Impled<mtp::rm_cvf<U>, Sized> &&
-                mtp::dyn_traits<T>::template
+    template<typename A, typename U>
+    static auto try_make_in(A allocator, U&& value) -> Result<Arc, rstd::alloc::AllocError>
+        requires Impled<A, Allocator, rstd::alloc::ThreadSafeAllocator> && (! Impled<T, Sized>) &&
+                 Impled<mtp::rm_cvf<U>, Sized> && mtp::dyn_traits<T>::template
     Impled<mtp::rm_cvf<U>> {
         using Concrete = mtp::rm_cvf<U>;
-        auto result    = arc_try_allocate_value<Concrete>(rstd::forward<U>(value));
+        auto result =
+            arc_try_allocate_value_in<Concrete>(rstd::move(allocator), rstd::forward<U>(value));
         if (result.is_err()) return Err(rstd::alloc::AllocError {});
         return Ok(
             Arc { ArcData<T> { .pointer = T::from_ptr(result.unwrap_unchecked().as_raw_ptr()) } });
     }
 
-    template<typename U>
-    static auto make(U&& value) -> Arc
-        requires(! Impled<T, Sized>) && Impled<mtp::rm_cvf<U>, Sized> &&
-                mtp::dyn_traits<T>::template
-    Impled<mtp::rm_cvf<U>> {
-        using Concrete = mtp::rm_cvf<U>;
-        auto pointer   = arc_allocate_value<Concrete>(rstd::forward<U>(value));
-        return Arc { ArcData<T> { .pointer = T::from_ptr(pointer.as_raw_ptr()) } };
+    template<typename A, typename... Args>
+    static auto make_in(A allocator, Args&&... args) -> Arc
+        requires requires { try_make_in(rstd::move(allocator), rstd::forward<Args>(args)...); }
+    {
+        auto result = try_make_in(rstd::move(allocator), rstd::forward<Args>(args)...);
+        if (result.is_err()) rstd::panic { "Arc allocation failed" };
+        return result.unwrap_unchecked();
+    }
+
+    template<typename... Args>
+    static auto try_make(Args&&... args) -> Result<Arc, rstd::alloc::AllocError>
+        requires requires { try_make_in(::alloc::Global {}, rstd::forward<Args>(args)...); }
+    {
+        return try_make_in(::alloc::Global {}, rstd::forward<Args>(args)...);
+    }
+
+    template<typename... Args>
+    static auto make(Args&&... args) -> Arc
+        requires requires { try_make_in(::alloc::Global {}, rstd::forward<Args>(args)...); }
+    {
+        return make_in(::alloc::Global {}, rstd::forward<Args>(args)...);
+    }
+
+    template<typename A>
+    static auto try_make_uninit_in(A allocator)
+        -> Result<Arc<MaybeUninit<T>>, rstd::alloc::AllocError>
+        requires Impled<T, Sized> && Impled<A, Allocator, rstd::alloc::ThreadSafeAllocator>
+    {
+        return Arc<MaybeUninit<T>>::try_make_in(rstd::move(allocator), MaybeUninit<T>::uninit());
+    }
+
+    template<typename A>
+    static auto make_uninit_in(A allocator) -> Arc<MaybeUninit<T>>
+        requires Impled<T, Sized> && Impled<A, Allocator, rstd::alloc::ThreadSafeAllocator>
+    {
+        return Arc<MaybeUninit<T>>::make_in(rstd::move(allocator), MaybeUninit<T>::uninit());
     }
 
     static auto make_uninit() -> Arc<MaybeUninit<T>>
         requires Impled<T, Sized>
     {
-        return Arc<MaybeUninit<T>>::make(MaybeUninit<T>::uninit());
+        return make_uninit_in(::alloc::Global {});
     }
 
     static auto from_raw(ArcRaw<T> raw) noexcept -> Arc {
@@ -440,3 +490,127 @@ struct Impl<ops::DerefMut, ::alloc::sync::Arc<T>> : ImplBase<::alloc::sync::Arc<
 };
 
 } // namespace rstd
+
+namespace rstd
+{
+template<typename A>
+    requires(Impled<A, alloc::Allocator> || mtp::same_as<A, dyn<alloc::Allocator>>)
+struct Impl<alloc::Allocator, ::alloc::sync::Arc<A>> : ImplBase<::alloc::sync::Arc<A>> {
+    auto allocate(alloc::Layout layout) const -> Result<alloc::Allocation, alloc::AllocError> {
+        auto allocator = this->self().deref();
+        if constexpr (Impled<A, Sized>)
+            return as<alloc::Allocator>(*allocator).allocate(layout);
+        else
+            return allocator->allocate(layout);
+    }
+    auto allocate_zeroed(alloc::Layout layout) const
+        -> Result<alloc::Allocation, alloc::AllocError> {
+        auto allocator = this->self().deref();
+        if constexpr (Impled<A, Sized>)
+            return as<alloc::Allocator>(*allocator).allocate_zeroed(layout);
+        else
+            return allocator->allocate_zeroed(layout);
+    }
+    auto deallocate(void* pointer, alloc::Layout layout) const noexcept -> void {
+        auto allocator = this->self().deref();
+        if constexpr (Impled<A, Sized>)
+            return as<alloc::Allocator>(*allocator).deallocate(pointer, layout);
+        else
+            return allocator->deallocate(pointer, layout);
+    }
+    auto grow(void* pointer, alloc::Layout old_layout, alloc::Layout new_layout) const
+        -> Result<alloc::Allocation, alloc::AllocError> {
+        auto allocator = this->self().deref();
+        if constexpr (Impled<A, Sized>)
+            return as<alloc::Allocator>(*allocator).grow(pointer, old_layout, new_layout);
+        else
+            return allocator->grow(pointer, old_layout, new_layout);
+    }
+    auto grow_zeroed(void* pointer, alloc::Layout old_layout, alloc::Layout new_layout) const
+        -> Result<alloc::Allocation, alloc::AllocError> {
+        auto allocator = this->self().deref();
+        if constexpr (Impled<A, Sized>)
+            return as<alloc::Allocator>(*allocator).grow_zeroed(pointer, old_layout, new_layout);
+        else
+            return allocator->grow_zeroed(pointer, old_layout, new_layout);
+    }
+    auto shrink(void* pointer, alloc::Layout old_layout, alloc::Layout new_layout) const
+        -> Result<alloc::Allocation, alloc::AllocError> {
+        auto allocator = this->self().deref();
+        if constexpr (Impled<A, Sized>)
+            return as<alloc::Allocator>(*allocator).shrink(pointer, old_layout, new_layout);
+        else
+            return allocator->shrink(pointer, old_layout, new_layout);
+    }
+};
+template<typename A>
+    requires(Impled<A, alloc::Allocator> || mtp::same_as<A, dyn<alloc::Allocator>>)
+struct Impl<alloc::AllocatorClone, ::alloc::sync::Arc<A>> {};
+template<typename A>
+    requires Impled<A, alloc::ThreadSafeAllocator>
+struct Impl<alloc::ThreadSafeAllocator, ::alloc::sync::Arc<A>> {};
+} // namespace rstd
+
+export namespace alloc::sync
+{
+/// Erases the allocator type only after checking concurrent operation and cross-thread release.
+class SharedAllocator {
+    Arc<rstd::dyn<rstd::alloc::Allocator>> owner_;
+    explicit SharedAllocator(Arc<rstd::dyn<rstd::alloc::Allocator>> owner)
+        : owner_(rstd::move(owner)) {}
+
+public:
+    SharedAllocator(const SharedAllocator&)                        = delete;
+    auto operator=(const SharedAllocator&) -> SharedAllocator&     = delete;
+    SharedAllocator(SharedAllocator&&) noexcept                    = default;
+    auto operator=(SharedAllocator&&) noexcept -> SharedAllocator& = default;
+
+    template<typename A>
+        requires rstd::Impled<A, rstd::alloc::Allocator, rstd::alloc::ThreadSafeAllocator>
+    static auto try_make(A allocator) -> Result<SharedAllocator, rstd::alloc::AllocError> {
+        auto owner = Arc<rstd::dyn<rstd::alloc::Allocator>>::try_make(rstd::move(allocator));
+        if (owner.is_err()) return Err(rstd::alloc::AllocError {});
+        return Ok(SharedAllocator(owner.unwrap_unchecked()));
+    }
+    template<typename A>
+        requires rstd::Impled<A, rstd::alloc::Allocator, rstd::alloc::ThreadSafeAllocator>
+    static auto make(A allocator) -> SharedAllocator {
+        auto result = try_make(rstd::move(allocator));
+        if (result.is_err()) rstd::panic { "shared allocator allocation failed" };
+        return result.unwrap_unchecked();
+    }
+    auto clone() const -> SharedAllocator { return SharedAllocator(owner_.clone()); }
+    auto allocate(Layout layout) const -> Result<rstd::alloc::Allocation, rstd::alloc::AllocError> {
+        return owner_->allocate(layout);
+    }
+    auto allocate_zeroed(Layout layout) const
+        -> Result<rstd::alloc::Allocation, rstd::alloc::AllocError> {
+        return owner_->allocate_zeroed(layout);
+    }
+    auto deallocate(void* pointer, Layout layout) const noexcept -> void {
+        return owner_->deallocate(pointer, layout);
+    }
+    auto grow(void* pointer, Layout old_layout, Layout new_layout) const
+        -> Result<rstd::alloc::Allocation, rstd::alloc::AllocError> {
+        return owner_->grow(pointer, old_layout, new_layout);
+    }
+    auto grow_zeroed(void* pointer, Layout old_layout, Layout new_layout) const
+        -> Result<rstd::alloc::Allocation, rstd::alloc::AllocError> {
+        return owner_->grow_zeroed(pointer, old_layout, new_layout);
+    }
+    auto shrink(void* pointer, Layout old_layout, Layout new_layout) const
+        -> Result<rstd::alloc::Allocation, rstd::alloc::AllocError> {
+        return owner_->shrink(pointer, old_layout, new_layout);
+    }
+};
+} // namespace alloc::sync
+template<>
+struct rstd::Impl<rstd::alloc::AllocatorClone, ::alloc::sync::SharedAllocator> {};
+template<>
+struct rstd::Impl<rstd::alloc::ThreadSafeAllocator, ::alloc::sync::SharedAllocator> {};
+
+template<>
+struct rstd::Impl<rstd::clone::Clone, ::alloc::sync::SharedAllocator>
+    : rstd::DefaultInImpl<rstd::clone::Clone, ::alloc::sync::SharedAllocator> {
+    auto clone() const -> ::alloc::sync::SharedAllocator { return this->self().clone(); }
+};

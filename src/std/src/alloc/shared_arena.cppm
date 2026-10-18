@@ -105,6 +105,13 @@ public:
     SharedBumpArena(SharedBumpArena&&) noexcept                    = default;
     auto operator=(SharedBumpArena&&) noexcept -> SharedBumpArena& = default;
 
+    static auto try_make(usize slab_size = DEFAULT_SLAB_SIZE, Upstream upstream = Upstream {})
+        -> Result<SharedBumpArena, AllocError> {
+        auto state = SharedState::try_make(slab_size, rstd::move(upstream));
+        if (state.is_err()) return Err(AllocError {});
+        return Ok(SharedBumpArena(state.unwrap_unchecked()));
+    }
+
     static auto make(usize slab_size = DEFAULT_SLAB_SIZE, Upstream upstream = Upstream {})
         -> SharedBumpArena {
         return SharedBumpArena(SharedState::make(slab_size, rstd::move(upstream)));
@@ -151,4 +158,22 @@ struct Impl<alloc::Allocator, alloc::SharedArenaAllocator<Upstream>>
     void deallocate(void*, alloc::Layout) const noexcept {}
 };
 
+} // namespace rstd
+
+namespace rstd
+{
+template<typename A>
+struct Impl<alloc::AllocatorClone, alloc::SharedArenaAllocator<A>> {};
+template<typename A>
+    requires(Impled<A, alloc::ThreadSafeAllocator> || Impled<A, alloc::TransferableAllocator>)
+struct Impl<alloc::ThreadSafeAllocator, alloc::SharedArenaAllocator<A>> {};
+} // namespace rstd
+
+namespace rstd
+{
+template<typename A>
+struct Impl<clone::Clone, alloc::SharedArenaAllocator<A>>
+    : DefaultInImpl<clone::Clone, alloc::SharedArenaAllocator<A>> {
+    auto clone() const -> alloc::SharedArenaAllocator<A> { return this->self().clone(); }
+};
 } // namespace rstd

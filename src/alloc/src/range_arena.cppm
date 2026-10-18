@@ -103,3 +103,9 @@ struct Impl<alloc::Allocator, ::alloc::RangeArenaAllocator<Upstream, Metadata>>
     }
 };
 } // namespace rstd
+
+namespace rstd
+{
+template<typename A, typename M>
+struct Impl<alloc::AllocatorClone, ::alloc::RangeArenaAllocator<A, M>> {};
+} // namespace rstd

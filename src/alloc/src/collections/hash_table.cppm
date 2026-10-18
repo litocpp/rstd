@@ -127,16 +127,34 @@ class RawTable {
     }
 
     void rehash(usize count) {
-        RawTable replacement { A(allocator) };
-        replacement.allocate(count);
-        for (rstd::size_t i = 0; i < buckets.to_primitive(); ++i) {
-            if (data[i].state != BucketState::Full) continue;
-            u64  hash  = data[i].hash;
-            auto entry = data[i].take();
-            replacement.insert_rehashed(
+        if (count == usize()) {
+            release();
+            return;
+        }
+        auto* old_data    = data;
+        auto  old_buckets = buckets;
+        allocate(count);
+        items   = usize();
+        deleted = usize();
+        struct OldStorage {
+            const A&      allocator;
+            Bucket<K, V>* data;
+            usize         buckets;
+            ~OldStorage() {
+                if (! data) return;
+                for (rstd::size_t i = 0; i < buckets.to_primitive(); ++i)
+                    rstd::destroy_at(data + i);
+                as<Allocator>(allocator).deallocate(data,
+                                                    Layout::array<Bucket<K, V>>(buckets).unwrap());
+            }
+        } old { allocator, old_data, old_buckets };
+        for (rstd::size_t i = 0; i < old_buckets.to_primitive(); ++i) {
+            if (old_data[i].state != BucketState::Full) continue;
+            u64  hash  = old_data[i].hash;
+            auto entry = old_data[i].take();
+            insert_rehashed(
                 hash, rstd::move(entry.template get<0>()), rstd::move(entry.template get<1>()));
         }
-        *this = rstd::move(replacement);
     }
 
     bool valid() const noexcept {

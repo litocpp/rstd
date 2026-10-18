@@ -286,15 +286,15 @@ public:
         return table.allocator_ref();
     }
 
-    auto clone() const -> HashMap
+    template<typename B>
+    auto clone_in(B allocator) const -> HashMap<K, V, S, Eq, B>
         requires rstd::Impled<K, rstd::clone::Clone> && rstd::Impled<V, rstd::clone::Clone> &&
-                 rstd::Impled<S, rstd::clone::Clone> && rstd::Impled<Eq, rstd::clone::Clone> &&
-                 rstd::mtp::copy<A>
+                 rstd::Impled<S, rstd::clone::Clone> && rstd::Impled<Eq, rstd::clone::Clone>
     {
-        auto result = HashMap(table.len(),
-                              rstd::as<rstd::clone::Clone>(hash_builder).clone(),
-                              rstd::as<rstd::clone::Clone>(equal).clone(),
-                              A(table.allocator_ref()));
+        auto result = HashMap<K, V, S, Eq, B>(table.len(),
+                                              rstd::as<rstd::clone::Clone>(hash_builder).clone(),
+                                              rstd::as<rstd::clone::Clone>(equal).clone(),
+                                              rstd::move(allocator));
         auto source = iter();
         for (auto item = source.next(); item.is_some(); item = source.next()) {
             result.insert(rstd::as<rstd::clone::Clone>(*item->template get<0>()).clone(),
@@ -303,12 +303,20 @@ public:
         return result;
     }
 
-    void clone_from(HashMap& source)
-        requires rstd::Impled<K, rstd::clone::Clone> && rstd::Impled<V, rstd::clone::Clone> &&
-                 rstd::Impled<S, rstd::clone::Clone> && rstd::Impled<Eq, rstd::clone::Clone> &&
-                 rstd::mtp::copy<A>
+    auto clone() const -> HashMap
+        requires rstd::alloc::CloneableAllocator<A> &&
+                 requires(const HashMap& source, A allocator) {
+                     source.clone_in(rstd::move(allocator));
+                 }
     {
-        *this = source.clone();
+        return clone_in(rstd::alloc::clone_allocator(allocator()));
+    }
+
+    void clone_from(const HashMap& source)
+        requires requires(const HashMap& value) { value.clone(); }
+    {
+        if (this == &source) return;
+        *this = source.clone_in(rstd::alloc::clone_allocator(allocator()));
     }
 
     void reserve(usize additional) { table.reserve(additional); }

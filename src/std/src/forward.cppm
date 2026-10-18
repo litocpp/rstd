@@ -19,6 +19,7 @@ using rstd_alloc::ArenaAllocator;
 using rstd_alloc::ArenaStats;
 using rstd_alloc::BumpArena;
 using rstd_alloc::Global;
+using rstd_alloc::sync::SharedAllocator;
 using rstd_alloc::GLOBAL;
 using rstd_alloc::RecyclingArena;
 using rstd_alloc::RecyclingArenaAllocator;
@@ -38,6 +39,7 @@ export namespace rc
 using rstd_alloc::rc::allocate_make_rc;
 using rstd_alloc::rc::make_rc;
 using rstd_alloc::rc::make_rc_in;
+using rstd_alloc::rc::try_make_rc_in;
 using rstd_alloc::rc::RcRaw;
 using rstd_alloc::rc::StoragePolicy;
 using rstd_alloc::rc::Weak;

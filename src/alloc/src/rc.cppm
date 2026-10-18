@@ -327,16 +327,26 @@ auto rc_allocate_embedded_value_with(AllocatorType allocator, Args&&... args) ->
 }
 
 template<typename T, typename AllocatorType, typename... Args>
-auto rc_allocate_embedded_value_in(AllocatorType allocator, Args&&... args) -> RcAllocation<T> {
+auto rc_try_allocate_embedded_value_in(AllocatorType allocator, Args&&... args)
+    -> Result<RcAllocation<T>, rstd::alloc::AllocError> {
+    static_assert(__is_nothrow_constructible(AllocatorType, AllocatorType&&),
+                  "allocator moves must not throw");
     using Header = RcEmbeddedTraitAllocatorHeader<T, AllocatorType>;
     auto layout  = Layout::make<Header>();
     auto result  = rstd::as<Allocator>(allocator).allocate(layout);
-    if (result.is_err()) ::alloc::handle_alloc_error(layout);
+    if (result.is_err()) return Err(rstd::alloc::AllocError {});
     auto* header = result.unwrap_unchecked().template as_mut_ptr<Header>().as_raw_ptr();
     rstd::construct_at(header, rstd::move(allocator));
+    struct Guard {
+        Header* header;
+        ~Guard() {
+            if (header) Header::release_self(header);
+        }
+    } guard { header };
     auto pointer = mut_ptr<T>::from_raw_parts(static_cast<T*>(header->value));
     rstd::construct_at(pointer.as_raw_ptr(), rstd::forward<Args>(args)...);
-    return RcAllocation<T> { .header = header, .pointer = pointer };
+    guard.header = nullptr;
+    return Ok(RcAllocation<T> { .header = header, .pointer = pointer });
 }
 
 template<typename T, alloc::rc::StoragePolicy Policy, typename AllocatorType, typename... Args>
@@ -675,10 +685,37 @@ auto allocate_make_rc(AllocatorType const& allocator, Args&&... args) -> Rc<T> {
 
 export template<typename T, typename AllocatorType, typename... Args>
     requires Impled<T, Sized> && Impled<AllocatorType, Allocator>
+auto try_make_rc_in(AllocatorType allocator, Args&&... args)
+    -> Result<Rc<T>, rstd::alloc::AllocError> {
+    auto result =
+        rc_try_allocate_embedded_value_in<T>(rstd::move(allocator), rstd::forward<Args>(args)...);
+    if (result.is_err()) return Err(rstd::alloc::AllocError {});
+    auto allocation = result.unwrap_unchecked();
+    return Ok(RcMakeHelper::make<T>(rc_data<T>(allocation.header, allocation.pointer)));
+}
+
+export template<typename T, typename AllocatorType, typename U>
+    requires Impled<AllocatorType, Allocator> && mtp::DST<T> && (! mtp::DSTArray<T>) &&
+             Impled<mtp::rm_cvf<U>, Sized> && mtp::dyn_traits<T>::template
+Impled<mtp::rm_cvf<U>> auto try_make_rc_in(AllocatorType allocator, U&& value)
+    -> Result<Rc<T>, rstd::alloc::AllocError> {
+    using Concrete = mtp::rm_cvf<U>;
+    auto result =
+        rc_try_allocate_embedded_value_in<Concrete>(rstd::move(allocator), rstd::forward<U>(value));
+    if (result.is_err()) return Err(rstd::alloc::AllocError {});
+    auto allocation = result.unwrap_unchecked();
+    return Ok(RcMakeHelper::make<T>(
+        rc_data<T>(allocation.header, T::from_ptr(allocation.pointer.as_raw_ptr()))));
+}
+
+export template<typename T, typename AllocatorType, typename... Args>
+    requires requires(AllocatorType allocator, Args&&... args) {
+        try_make_rc_in<T>(rstd::move(allocator), rstd::forward<Args>(args)...);
+    }
 auto make_rc_in(AllocatorType allocator, Args&&... args) -> Rc<T> {
-    auto allocation =
-        rc_allocate_embedded_value_in<T>(rstd::move(allocator), rstd::forward<Args>(args)...);
-    return RcMakeHelper::make<T>(rc_data<T>(allocation.header, allocation.pointer));
+    auto result = try_make_rc_in<T>(rstd::move(allocator), rstd::forward<Args>(args)...);
+    if (result.is_err()) rstd::panic { "Rc allocation failed" };
+    return result.unwrap_unchecked();
 }
 
 export template<typename T, StoragePolicy Policy = StoragePolicy::Separate, typename AllocatorType>
@@ -721,4 +758,61 @@ struct Impl<ops::Deref, ::alloc::rc::Rc<T>> : ImplBase<::alloc::rc::Rc<T>> {
     auto deref() const noexcept -> ref<Target> { return this->self().deref(); }
 };
 
+} // namespace rstd
+
+namespace rstd
+{
+template<typename A>
+    requires(Impled<A, alloc::Allocator> || mtp::same_as<A, dyn<alloc::Allocator>>)
+struct Impl<alloc::Allocator, ::alloc::rc::Rc<A>> : ImplBase<::alloc::rc::Rc<A>> {
+    auto allocate(alloc::Layout layout) const -> Result<alloc::Allocation, alloc::AllocError> {
+        auto allocator = this->self().deref();
+        if constexpr (Impled<A, Sized>)
+            return as<alloc::Allocator>(*allocator).allocate(layout);
+        else
+            return allocator->allocate(layout);
+    }
+    auto allocate_zeroed(alloc::Layout layout) const
+        -> Result<alloc::Allocation, alloc::AllocError> {
+        auto allocator = this->self().deref();
+        if constexpr (Impled<A, Sized>)
+            return as<alloc::Allocator>(*allocator).allocate_zeroed(layout);
+        else
+            return allocator->allocate_zeroed(layout);
+    }
+    auto deallocate(void* pointer, alloc::Layout layout) const noexcept -> void {
+        auto allocator = this->self().deref();
+        if constexpr (Impled<A, Sized>)
+            return as<alloc::Allocator>(*allocator).deallocate(pointer, layout);
+        else
+            return allocator->deallocate(pointer, layout);
+    }
+    auto grow(void* pointer, alloc::Layout old_layout, alloc::Layout new_layout) const
+        -> Result<alloc::Allocation, alloc::AllocError> {
+        auto allocator = this->self().deref();
+        if constexpr (Impled<A, Sized>)
+            return as<alloc::Allocator>(*allocator).grow(pointer, old_layout, new_layout);
+        else
+            return allocator->grow(pointer, old_layout, new_layout);
+    }
+    auto grow_zeroed(void* pointer, alloc::Layout old_layout, alloc::Layout new_layout) const
+        -> Result<alloc::Allocation, alloc::AllocError> {
+        auto allocator = this->self().deref();
+        if constexpr (Impled<A, Sized>)
+            return as<alloc::Allocator>(*allocator).grow_zeroed(pointer, old_layout, new_layout);
+        else
+            return allocator->grow_zeroed(pointer, old_layout, new_layout);
+    }
+    auto shrink(void* pointer, alloc::Layout old_layout, alloc::Layout new_layout) const
+        -> Result<alloc::Allocation, alloc::AllocError> {
+        auto allocator = this->self().deref();
+        if constexpr (Impled<A, Sized>)
+            return as<alloc::Allocator>(*allocator).shrink(pointer, old_layout, new_layout);
+        else
+            return allocator->shrink(pointer, old_layout, new_layout);
+    }
+};
+template<typename A>
+    requires(Impled<A, alloc::Allocator> || mtp::same_as<A, dyn<alloc::Allocator>>)
+struct Impl<alloc::AllocatorClone, ::alloc::rc::Rc<A>> {};
 } // namespace rstd
