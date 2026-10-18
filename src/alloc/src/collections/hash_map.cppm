@@ -319,6 +319,12 @@ public:
         *this = source.clone_in(rstd::alloc::clone_allocator(allocator()));
     }
 
+    /// Reserves for `additional` new entries; capacity/allocation errors leave the table unchanged.
+    /// Without intervening removal or shrink, these inserts need no further table allocation.
+    /// Throwing element moves provide resource safety, not rollback of the original contents.
+    auto try_reserve(usize additional) -> Result<empty, TryReserveError> {
+        return table.try_reserve(additional);
+    }
     void reserve(usize additional) { table.reserve(additional); }
     void shrink_to_fit() { table.shrink_to(usize {}); }
     void shrink_to(usize minimum) { table.shrink_to(minimum); }

@@ -19,6 +19,7 @@ struct OwnershipState {
     int   handles {};
     int   releases {};
     int   allocations {};
+    int   allocation_attempts {};
     int   deallocations {};
     int   invalid_releases {};
     bool  fail {};
@@ -61,6 +62,7 @@ struct Impl<alloc::Allocator, OwnershipAllocator>
     : DefaultInImpl<alloc::Allocator, OwnershipAllocator> {
     auto allocate(Layout layout) const -> Result<Allocation, AllocError> {
         auto& state = *this->self().state;
+        ++state.allocation_attempts;
         if (state.fail) return Err(AllocError {});
         if (layout.size == usize()) return Ok(Allocation { layout.dangling(), usize() });
         auto actual = Layout::from_size_align(layout.size + state.extra, layout.align).unwrap();
@@ -946,5 +948,210 @@ TEST(AllocationOwnership, GlobalPointerFailureInjectionLeavesDynInputUntouched) 
         EXPECT_EQ(drops, 0);
     }
     EXPECT_EQ(drops, 1);
+}
+#endif
+
+struct AllocationCollisionHasher {
+    static inline int hashes {};
+    void              write(rstd::slice<u8>) noexcept { ++hashes; }
+    auto              finish() const noexcept -> u64 { return u64(7); }
+};
+using AllocationHashBuilder = rstd::hash::BuildHasherDefault<AllocationCollisionHasher>;
+template<typename V = i32>
+using AllocationMap = rstd::collections::HashMap<i32,
+                                                 V,
+                                                 AllocationHashBuilder,
+                                                 ::alloc::collections::DefaultHashEqual<i32>,
+                                                 OwnershipAllocator>;
+using AllocationSet = rstd::collections::HashSet<i32,
+                                                 AllocationHashBuilder,
+                                                 ::alloc::collections::DefaultHashEqual<i32>,
+                                                 OwnershipAllocator>;
+
+TEST(HashAllocation, ReserveFailureLeavesOriginalTableAndCanRetry) {
+    OwnershipState state;
+    {
+        auto map   = AllocationMap<>::new_in(OwnershipAllocator(state));
+        state.fail = true;
+        EXPECT_TRUE(map.try_reserve(usize()).is_ok());
+        EXPECT_EQ(state.allocation_attempts, 0);
+        auto failed = map.try_reserve(usize(7));
+        ASSERT_TRUE(failed.is_err());
+        EXPECT_EQ(failed.unwrap_err(), ::alloc::collections::TryReserveError::AllocError);
+        EXPECT_EQ(map.capacity(), usize());
+        state.fail = false;
+        map.try_reserve(usize(7)).unwrap();
+        for (int i = 0; i < 7; ++i) map.insert(i32(i), i32(i * 2));
+        auto capacity = map.capacity();
+        auto live     = state.live;
+        state.fail    = true;
+        failed        = map.try_reserve(usize(100));
+        EXPECT_TRUE(failed.is_err());
+        EXPECT_EQ(map.len(), usize(7));
+        EXPECT_EQ(map.capacity(), capacity);
+        EXPECT_EQ(state.live, live);
+        EXPECT_EQ(map.allocator().state, &state);
+        for (int i = 0; i < 7; ++i) EXPECT_EQ(map.get(i32(i)).unwrap().get(), i32(i * 2));
+        auto attempts = state.allocation_attempts;
+        EXPECT_EQ(map.insert(i32(3), i32(33)).unwrap(), i32(6));
+        EXPECT_EQ(state.allocation_attempts, attempts);
+        state.fail                        = false;
+        AllocationCollisionHasher::hashes = 0;
+        map.try_reserve(usize(100)).unwrap();
+        EXPECT_EQ(AllocationCollisionHasher::hashes, 0);
+        EXPECT_TRUE(map.capacity() >= usize(107));
+        attempts   = state.allocation_attempts;
+        state.fail = true;
+        for (int i = 7; i < 107; ++i) map.insert(i32(i), i32(i));
+        EXPECT_EQ(state.allocation_attempts, attempts);
+    }
+    EXPECT_EQ(state.live, usize());
+    EXPECT_EQ(state.invalid_releases, 0);
+    EXPECT_EQ(state.handles, 0);
+}
+
+TEST(HashAllocation, TombstoneCleanupIsTransactionalAndHonorsReservation) {
+    OwnershipState state;
+    {
+        auto map = AllocationMap<>::new_in(OwnershipAllocator(state));
+        map.try_reserve(usize(7)).unwrap();
+        for (int i = 0; i < 7; ++i) map.insert(i32(i), i32(i));
+        for (int i = 0; i < 6; ++i) map.remove(i32(i));
+        auto capacity = map.capacity();
+        state.fail    = true;
+        auto attempts = state.allocation_attempts;
+        EXPECT_TRUE(map.try_reserve(usize()).is_ok());
+        EXPECT_EQ(state.allocation_attempts, attempts);
+        EXPECT_TRUE(map.try_reserve(usize(6)).is_err());
+        EXPECT_EQ(map.len(), usize(1));
+        EXPECT_EQ(map.capacity(), capacity);
+        EXPECT_EQ(map.get(i32(6)).unwrap().get(), i32(6));
+        for (int i = 0; i < 6; ++i) EXPECT_TRUE(map.get(i32(i)).is_none());
+        state.fail = false;
+        map.try_reserve(usize(6)).unwrap();
+        EXPECT_EQ(map.capacity(), capacity);
+        attempts   = state.allocation_attempts;
+        state.fail = true;
+        for (int i = 10; i < 16; ++i) map.insert(i32(i), i32(i));
+        EXPECT_EQ(map.len(), usize(7));
+        EXPECT_EQ(state.allocation_attempts, attempts);
+    }
+    EXPECT_EQ(state.live, usize());
+    EXPECT_EQ(state.invalid_releases, 0);
+}
+
+TEST(HashAllocation, OverflowNeverCallsAllocatorOrMovesValues) {
+    OwnershipState state;
+    int            drops {};
+    {
+        auto  map      = AllocationMap<OwnershipValue>::new_in(OwnershipAllocator(state));
+        auto  attempts = state.allocation_attempts;
+        usize counts[] { usize::MAX, usize::MAX / usize(2), usize::MAX / usize(32) };
+        for (auto count : counts) {
+            auto failed = map.try_reserve(count);
+            ASSERT_TRUE(failed.is_err());
+            EXPECT_EQ(failed.unwrap_err(), ::alloc::collections::TryReserveError::CapacityOverflow);
+        }
+        EXPECT_EQ(state.allocation_attempts, attempts);
+        map.insert(i32(1), OwnershipValue(drops, 42));
+        attempts = state.allocation_attempts;
+        EXPECT_EQ(map.try_reserve(usize::MAX).unwrap_err(),
+                  ::alloc::collections::TryReserveError::CapacityOverflow);
+        EXPECT_EQ(state.allocation_attempts, attempts);
+        state.fail = true;
+        EXPECT_TRUE(map.try_reserve(usize(100)).is_err());
+        EXPECT_EQ(drops, 0);
+        EXPECT_EQ(map.get(i32(1)).unwrap()->value, 42);
+        state.fail = false;
+        map.try_reserve(usize(100)).unwrap();
+        EXPECT_EQ(drops, 0);
+        EXPECT_EQ(map.get(i32(1)).unwrap()->value, 42);
+    }
+    EXPECT_EQ(drops, 1);
+    EXPECT_EQ(state.live, usize());
+    EXPECT_EQ(state.invalid_releases, 0);
+}
+
+TEST(HashAllocation, HashSetUsesTheSameFallibleStorage) {
+    OwnershipState state;
+    {
+        auto set   = AllocationSet::new_in(OwnershipAllocator(state));
+        state.fail = true;
+        EXPECT_TRUE(set.try_reserve(usize(20)).is_err());
+        EXPECT_TRUE(set.is_empty());
+        state.fail = false;
+        set.try_reserve(usize(20)).unwrap();
+        auto attempts = state.allocation_attempts;
+        state.fail    = true;
+        for (int i = 0; i < 20; ++i) EXPECT_TRUE(set.insert(i32(i)));
+        EXPECT_FALSE(set.insert(i32(1)));
+        EXPECT_EQ(state.allocation_attempts, attempts);
+        EXPECT_TRUE(set.try_reserve(usize(100)).is_err());
+        for (int i = 0; i < 20; ++i) EXPECT_TRUE(set.contains(i32(i)));
+        EXPECT_EQ(set.allocator().state, &state);
+    }
+    EXPECT_EQ(state.live, usize());
+    EXPECT_EQ(state.invalid_releases, 0);
+}
+
+#if defined(__cpp_exceptions)
+struct HashMoveState {
+    int live {};
+    int moves {};
+    int throw_at {};
+};
+struct HashMoveValue {
+    HashMoveState* state;
+    i32            id;
+    HashMoveValue(HashMoveState& state, i32 id): state(&state), id(id) { ++state.live; }
+    HashMoveValue(const HashMoveValue&) = delete;
+    HashMoveValue(HashMoveValue&& other): state(other.state), id(other.id) {
+        if (++state->moves == state->throw_at) throw 41;
+        ++state->live;
+    }
+    ~HashMoveValue() { --state->live; }
+    friend bool operator==(const HashMoveValue& a, const HashMoveValue& b) { return a.id == b.id; }
+};
+template<>
+struct rstd::Impl<rstd::hash::Hash, HashMoveValue> : rstd::ImplBase<HashMoveValue> {
+    template<typename H>
+    void hash(H& state) const noexcept {
+        rstd::hash::write_value(state, this->self().id);
+    }
+};
+TEST(HashAllocation, ThrowingMovesReleaseBothStorageAndPartiallyConstructedBuckets) {
+    // Each attempt throws at a different move, including value construction after the key.
+    for (int throw_at = 1; throw_at <= 32; ++throw_at) {
+        OwnershipState allocator;
+        HashMoveState  keys, values;
+        {
+            using Map =
+                rstd::collections::HashMap<HashMoveValue,
+                                           HashMoveValue,
+                                           AllocationHashBuilder,
+                                           ::alloc::collections::DefaultHashEqual<HashMoveValue>,
+                                           OwnershipAllocator>;
+            auto map = Map::new_in(OwnershipAllocator(allocator));
+            for (int i = 0; i < 3; ++i)
+                map.insert(HashMoveValue(keys, i32(i)), HashMoveValue(values, i32(i)));
+            values.moves    = 0;
+            values.throw_at = throw_at;
+            try {
+                map.try_reserve(usize(100)).unwrap();
+            } catch (int error) {
+                EXPECT_EQ(error, 41);
+            }
+            EXPECT_EQ(keys.live, int(map.len().to_primitive()));
+            EXPECT_EQ(values.live, int(map.len().to_primitive()));
+            values.throw_at = 0;
+            map.clear();
+            map.insert(HashMoveValue(keys, i32(9)), HashMoveValue(values, i32(9)));
+            EXPECT_EQ(map.len(), usize(1));
+        }
+        EXPECT_EQ(keys.live, 0);
+        EXPECT_EQ(values.live, 0);
+        EXPECT_EQ(allocator.live, usize());
+        EXPECT_EQ(allocator.invalid_releases, 0);
+    }
 }
 #endif

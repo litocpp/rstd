@@ -67,6 +67,7 @@ sources = [
   "collections/btree_map.cpp",
   "collections/btree_set.cpp",
   "collections/hash_map.cpp",
+  "collections/alloc_module.cppm",
   "collections/hash_set.cpp",
   "collections/vec_deque.cpp",
   "json/number.cpp",

@@ -106,6 +106,10 @@ public:
     auto len() const noexcept -> usize { return map.len(); }
     auto is_empty() const noexcept -> bool { return map.is_empty(); }
     auto capacity() const noexcept -> usize { return map.capacity(); }
+    /// Reserves for `additional` new keys with the same failure guarantees as HashMap.
+    auto try_reserve(usize additional) -> Result<empty, TryReserveError> {
+        return map.try_reserve(additional);
+    }
     void reserve(usize additional) { map.reserve(additional); }
     void shrink_to_fit() { map.shrink_to_fit(); }
     void clear() noexcept { map.clear(); }

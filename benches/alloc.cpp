@@ -405,7 +405,52 @@ auto register_ownership_cases(bench::Suite& suite, ref<str> backend) -> Result<e
         suite, rstd::format("{}_thread_create_release", backend));
 }
 
+template<bool Reserved>
+struct HashReserveSession {
+    usize count;
+    auto  operation() {
+        auto map = rstd::collections::HashMap<u64, u64>::with_hasher(
+            rstd::hash::RandomState(u64(123), u64(456)));
+        if constexpr (Reserved) map.reserve(count);
+        for (usize i; i < count; ++i) map.insert(u64(i.to_primitive()), u64(i.to_primitive()));
+        return map;
+    }
+    auto check() -> Result<empty, String> {
+        auto map = operation();
+        if (map.len() != count) return Err("map length differs"_Str);
+        for (usize i; i < count; ++i)
+            if (*map.get(u64(i.to_primitive())).unwrap() != u64(i.to_primitive()))
+                return Err("map contents differ"_Str);
+        return Ok(empty {});
+    }
+    auto run(bench::Bench& engine, ref<str> name)
+        -> Result<bench::BenchmarkResult, bench::BenchError> {
+        auto workload = bench::repeated(
+            [this] {
+                return operation();
+            },
+            { .items_per_iteration = u64(count.to_primitive()) });
+        return workload.run(engine, name);
+    }
+    auto finish() -> Result<empty, String> { return Ok(empty {}); }
+};
+template<bool Reserved>
+auto register_hash_reserve(bench::Suite& suite) -> Result<empty, String> {
+    constexpr rstd::size_t counts[] { 64, 4096 };
+    for (auto count : counts) {
+        auto name = rstd::format("{}_{}", Reserved ? "reserved"_str : "growing"_str, count);
+        rstd_try(
+            suite.add(make_descriptor("hash_reserve"_str, name, u64(3)), bench::factory([count] {
+                          using Session = HashReserveSession<Reserved>;
+                          return Result<Session, String>(Ok(Session { usize(count) }));
+                      })));
+    }
+    return Ok(empty {});
+}
+
 auto rstd_bench::register_alloc(bench::Suite& suite) -> Result<empty, String> {
+    rstd_try(register_hash_reserve<false>(suite));
+    rstd_try(register_hash_reserve<true>(suite));
     rstd_try(register_ownership_cases<::alloc::Global>(suite, "global"_str));
     rstd_try(register_ownership_cases<rstd::alloc::SharedTrackingAllocator<>>(
         suite, "shared_tracking"_str));

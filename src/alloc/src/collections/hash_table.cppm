@@ -3,6 +3,7 @@ module;
 
 export module rstd.alloc:collections.hash_table;
 export import :alloc;
+export import :collections.error;
 export import rstd.core;
 
 using rstd::alloc::Allocator;
@@ -10,6 +11,7 @@ using rstd::alloc::Layout;
 using rstd::mem::maybe_uninit::MaybeUninit;
 using rstd::ptr_::non_null::NonNull;
 using namespace rstd::prelude;
+using alloc::collections::TryReserveError;
 
 enum class BucketState : rstd::uint8_t
 {
@@ -48,8 +50,15 @@ public:
     void write(u64 entry_hash, K key, V value) {
         hash = entry_hash;
         key_slot.write(rstd::move(key));
+        struct KeyGuard {
+            Bucket* bucket;
+            ~KeyGuard() {
+                if (bucket) bucket->key_slot.assume_init_drop();
+            }
+        } guard { this };
         value_slot.write(rstd::move(value));
-        state = BucketState::Full;
+        guard.bucket = nullptr;
+        state        = BucketState::Full;
     }
 
     auto take() -> rstd::tuple<K, V> {
@@ -82,21 +91,48 @@ class RawTable {
         return bucket_count - bucket_count / usize(8);
     }
 
-    static auto bucket_count_for(usize capacity) -> usize {
-        if (capacity == usize()) return usize();
+    static auto bucket_count_for(usize capacity) -> Result<usize, TryReserveError> {
+        if (capacity == usize()) return Ok(usize());
         usize count = usize(8);
-        while (max_items(count) < capacity) count *= usize(2);
-        return count;
+        while (max_items(count) < capacity) {
+            auto next = count.checked_mul(usize(2));
+            if (next.is_none()) return Err(TryReserveError::CapacityOverflow);
+            count = next.unwrap_unchecked();
+        }
+        if (Layout::array<Bucket<K, V>>(count).is_none())
+            return Err(TryReserveError::CapacityOverflow);
+        return Ok(count);
     }
 
-    void allocate(usize count) {
-        if (count == usize()) return;
-        auto layout = Layout::array<Bucket<K, V>>(count).unwrap();
-        auto result = as<Allocator>(allocator).allocate(layout);
-        if (result.is_err()) ::alloc::handle_alloc_error(layout);
-        data    = result.unwrap_unchecked().template as_mut_ptr<Bucket<K, V>>().as_raw_ptr();
-        buckets = count;
-        for (rstd::size_t i = 0; i < buckets.to_primitive(); ++i) rstd::construct_at(data + i);
+    struct Storage {
+        const A&      allocator;
+        Bucket<K, V>* data;
+        usize         buckets;
+        ~Storage() {
+            if (! data) return;
+            for (rstd::size_t i = 0; i < buckets.to_primitive(); ++i) rstd::destroy_at(data + i);
+            as<Allocator>(allocator).deallocate(data,
+                                                Layout::array<Bucket<K, V>>(buckets).unwrap());
+        }
+    };
+
+    auto try_allocate(usize count) -> Result<Bucket<K, V>*, TryReserveError> {
+        if (count == usize()) return Ok(static_cast<Bucket<K, V>*>(nullptr));
+        auto layout = Layout::array<Bucket<K, V>>(count);
+        if (layout.is_none()) return Err(TryReserveError::CapacityOverflow);
+        auto result = as<Allocator>(allocator).allocate(*layout);
+        if (result.is_err()) return Err(TryReserveError::AllocError);
+        auto* pointer = result.unwrap_unchecked().template as_mut_ptr<Bucket<K, V>>().as_raw_ptr();
+        for (rstd::size_t i = 0; i < count.to_primitive(); ++i) rstd::construct_at(pointer + i);
+        return Ok(pointer);
+    }
+
+    [[noreturn]]
+    static void allocation_failure(TryReserveError error) {
+        if (error == TryReserveError::CapacityOverflow)
+            rstd::panic { "hash table capacity overflow" };
+        rstd::panic { "memory allocation failed" };
+        __builtin_unreachable();
     }
 
     void release() noexcept {
@@ -126,35 +162,27 @@ class RawTable {
         }
     }
 
-    void rehash(usize count) {
+    auto try_rehash(usize count) -> Result<empty, TryReserveError> {
         if (count == usize()) {
             release();
-            return;
+            return Ok(empty {});
         }
-        auto* old_data    = data;
-        auto  old_buckets = buckets;
-        allocate(count);
+        auto allocated = try_allocate(count);
+        if (allocated.is_err()) return Err(allocated.unwrap_err_unchecked());
+        Storage next { allocator, allocated.unwrap_unchecked(), count };
+        Storage old { allocator, data, buckets };
+        data    = rstd::exchange(next.data, nullptr);
+        buckets = count;
         items   = usize();
         deleted = usize();
-        struct OldStorage {
-            const A&      allocator;
-            Bucket<K, V>* data;
-            usize         buckets;
-            ~OldStorage() {
-                if (! data) return;
-                for (rstd::size_t i = 0; i < buckets.to_primitive(); ++i)
-                    rstd::destroy_at(data + i);
-                as<Allocator>(allocator).deallocate(data,
-                                                    Layout::array<Bucket<K, V>>(buckets).unwrap());
-            }
-        } old { allocator, old_data, old_buckets };
-        for (rstd::size_t i = 0; i < old_buckets.to_primitive(); ++i) {
-            if (old_data[i].state != BucketState::Full) continue;
-            u64  hash  = old_data[i].hash;
-            auto entry = old_data[i].take();
+        for (rstd::size_t i = 0; i < old.buckets.to_primitive(); ++i) {
+            if (old.data[i].state != BucketState::Full) continue;
+            u64  hash  = old.data[i].hash;
+            auto entry = old.data[i].take();
             insert_rehashed(
                 hash, rstd::move(entry.template get<0>()), rstd::move(entry.template get<1>()));
         }
+        return Ok(empty {});
     }
 
     bool valid() const noexcept {
@@ -188,7 +216,10 @@ public:
           deleted(usize()),
           allocator(rstd::move(allocator)) {}
     RawTable(usize capacity, A allocator): RawTable(rstd::move(allocator)) {
-        allocate(bucket_count_for(capacity));
+        auto count = bucket_count_for(capacity);
+        if (count.is_err()) allocation_failure(count.unwrap_err_unchecked());
+        auto result = try_rehash(count.unwrap_unchecked());
+        if (result.is_err()) allocation_failure(result.unwrap_err_unchecked());
     }
     explicit RawTable(usize capacity)
         requires rstd::mtp::init<A>
@@ -252,13 +283,22 @@ public:
         return None();
     }
 
+    auto try_reserve(usize additional) -> Result<empty, TryReserveError> {
+        if (additional == usize()) return Ok(empty {});
+        // Subtract known occupied slots instead of overflowing a three-term sum.
+        if (additional <= capacity() - items - deleted) return Ok(empty {});
+        auto required = items.checked_add(additional);
+        if (required.is_none()) return Err(TryReserveError::CapacityOverflow);
+        auto count = bucket_count_for(required.unwrap_unchecked());
+        if (count.is_err()) return Err(count.unwrap_err_unchecked());
+        auto result = try_rehash(rstd::cmp::max(count.unwrap_unchecked(), buckets));
+        if (result.is_ok()) debug_assert(audit_valid());
+        return result;
+    }
+
     void reserve(usize additional) {
-        usize required = items + additional;
-        if (required <= capacity() && items + deleted + additional <= capacity()) return;
-        usize count = buckets == usize() ? bucket_count_for(required) : buckets;
-        while (max_items(count) < required) count *= usize(2);
-        rehash(count);
-        debug_assert(audit_valid());
+        auto result = try_reserve(additional);
+        if (result.is_err()) allocation_failure(result.unwrap_err_unchecked());
     }
 
     void insert(u64 hash, K key, V value) {
@@ -284,8 +324,13 @@ public:
 
     void shrink_to(usize minimum) {
         usize required = items > minimum ? items : minimum;
-        usize count    = bucket_count_for(required);
-        if (count < buckets || deleted != usize()) rehash(count);
+        auto  checked  = bucket_count_for(required);
+        if (checked.is_err()) allocation_failure(checked.unwrap_err_unchecked());
+        usize count = checked.unwrap_unchecked();
+        if (count < buckets || deleted != usize()) {
+            auto result = try_rehash(count);
+            if (result.is_err()) allocation_failure(result.unwrap_err_unchecked());
+        }
         debug_assert(audit_valid());
     }
 };

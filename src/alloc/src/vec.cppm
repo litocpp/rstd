@@ -3,6 +3,7 @@ module;
 
 export module rstd.alloc:vec;
 export import :boxed;
+export import :collections.error;
 export import :alloc;
 export import rstd.core;
 
@@ -13,15 +14,6 @@ using rstd::alloc::Layout;
 using rstd::ptr_::non_null::NonNull;
 
 using namespace rstd::prelude;
-
-export namespace alloc::collections
-{
-enum class TryReserveError
-{
-    CapacityOverflow,
-    AllocError
-};
-} // namespace alloc::collections
 
 using alloc::collections::TryReserveError;
 
