@@ -17,6 +17,6 @@ jobs:
         run: python3 -m pip install --user clang-format==22.1.5
 
       - name: Check formatting
-        uses: hypengw/lito-action@v0.1.0
+        uses: hypengw/lito-action@v0.1.1
         with:
           command: format-check

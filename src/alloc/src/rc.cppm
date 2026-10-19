@@ -13,12 +13,7 @@ using namespace rstd::prelude;
 namespace alloc::rc
 {
 
-export enum class StoragePolicy : rstd::uint32_t
-{
-    Embed = 0,
-    Separate,
-    SeparateWithDeleter
-};
+export enum class StoragePolicy : rstd::uint32_t { Embed = 0, Separate, SeparateWithDeleter };
 
 export template<typename T>
 class Rc;

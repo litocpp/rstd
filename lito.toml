@@ -20,20 +20,20 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.8"
+version = "0.1.9"
 license = "MIT OR Apache-2.0"
 authors = ["hypengw <hypengwip@gmail.com>"]
 
 [workspace.dependencies]
-rstd-bench = { path = "src/bench", version = "0.1.8" }
-rstd-json = { path = "src/json", version = "0.1.8" }
-rstd-basic = { path = "src/basic", version = "0.1.8" }
-rstd-runtime = { path = "src/runtime", version = "0.1.8" }
-rstd-core = { path = "src/core", version = "0.1.8" }
-rstd-alloc = { path = "src/alloc", version = "0.1.8" }
-rstd-parse = { path = "src/parse", version = "0.1.8" }
-rstd-serde = { path = "src/serde", version = "0.1.8" }
-rstd-std = { path = "src/std", version = "0.1.8" }
+rstd-bench = { path = "src/bench", version = "0.1.9" }
+rstd-json = { path = "src/json", version = "0.1.9" }
+rstd-basic = { path = "src/basic", version = "0.1.9" }
+rstd-runtime = { path = "src/runtime", version = "0.1.9" }
+rstd-core = { path = "src/core", version = "0.1.9" }
+rstd-alloc = { path = "src/alloc", version = "0.1.9" }
+rstd-parse = { path = "src/parse", version = "0.1.9" }
+rstd-serde = { path = "src/serde", version = "0.1.9" }
+rstd-std = { path = "src/std", version = "0.1.9" }
 
 [profile.base]
 exceptions = false

@@ -24,7 +24,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Publish packages
-        uses: hypengw/lito-action@v0.1.0
+        uses: hypengw/lito-action@v0.1.1
         with:
           command: publish
           token: ${{ secrets.LITO_TOKEN }}

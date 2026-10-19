@@ -11,8 +11,7 @@ using rstd::mem::MaybeUninit;
 namespace rstd::sys::pal::poll
 {
 
-export enum class Capability : rstd::uint8_t
-{
+export enum class Capability : rstd::uint8_t {
     Readiness        = 1,
     SocketCompletion = 2,
     FileCompletion   = 4,
@@ -70,36 +69,31 @@ export struct Ready {
     constexpr auto is_empty() const noexcept -> bool { return bits == 0; }
 };
 
-export enum class EventKind
-{
+export enum class EventKind {
     Wake,
     Readiness,
     Completion,
     SourceError,
 };
 
-export enum class OperationKind
-{
+export enum class OperationKind {
     Read,
     Write,
     Connect,
     Accept,
 };
 
-export enum class SourceKind
-{
+export enum class SourceKind {
     File,
     Socket,
 };
 
-export enum class WaitMode
-{
+export enum class WaitMode {
     Immediate,
     Infinite,
 };
 
-export enum class BackendPreference
-{
+export enum class BackendPreference {
     Auto,
     NativeCompletionRequired,
     ReadinessEmulationRequired,

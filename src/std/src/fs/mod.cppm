@@ -50,14 +50,12 @@ public:
     auto        keep() -> rstd::path::PathBuf;
 };
 
-export enum class FileLockMode
-{
+export enum class FileLockMode {
     Shared,
     Exclusive,
 };
 
-export enum class WriteOutcome
-{
+export enum class WriteOutcome {
     Created,
     Replaced,
     Unchanged,
