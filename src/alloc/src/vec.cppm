@@ -65,10 +65,24 @@ struct RawVec {
         return ptr.add(index * usize(sizeof(typename mut_ptr<T>::storage_type))).template cast<T>();
     }
 
-    static auto with_capacity(usize capacity, A allocator) -> RawVec {
-        if (capacity == usize()) return RawVec(rstd::move(allocator));
-        auto layout = Layout::array<T>(capacity).unwrap();
-        auto res    = as<Allocator>(allocator).allocate(layout);
+    auto alignment() const noexcept -> usize {
+        auto natural = Layout::make<T>().align;
+        return allocation_layout.align > natural ? allocation_layout.align : natural;
+    }
+
+    auto layout_for_capacity(usize capacity) const -> Option<Layout> {
+        auto layout = Layout::array<T>(capacity);
+        if (layout.is_none()) return None();
+        return Layout::from_size_align(layout->size, alignment());
+    }
+
+    static auto with_capacity(usize capacity,
+                              A     allocator,
+                              usize alignment = Layout::make<T>().align) -> RawVec {
+        auto layout =
+            Layout::from_size_align(Layout::array<T>(capacity).unwrap().size, alignment).unwrap();
+        if (capacity == usize()) return RawVec({}, capacity, layout, rstd::move(allocator));
+        auto res = as<Allocator>(allocator).allocate(layout);
         if (res.is_err()) handle_alloc_error(layout);
 
         auto p = res.unwrap_unchecked().template as_mut_ptr<byte>();
@@ -79,7 +93,7 @@ struct RawVec {
     auto try_grow(usize new_cap, usize len) -> Result<empty, TryReserveError> {
         if (new_cap <= cap) return Ok(empty {});
 
-        auto checked_layout = Layout::array<T>(new_cap);
+        auto checked_layout = layout_for_capacity(new_cap);
         if (checked_layout.is_none()) return Err(TryReserveError::CapacityOverflow);
         auto new_layout = checked_layout.unwrap_unchecked();
 
@@ -121,9 +135,12 @@ struct RawVec {
         if (try_grow(new_cap, len).is_err()) rstd::panic { "Vec allocation failed" };
     }
 
-    auto try_shrink_to(usize capacity, usize len) -> Result<empty, TryReserveError> {
+    auto try_shrink_to(usize capacity, usize len, bool preserve_alignment = true)
+        -> Result<empty, TryReserveError> {
         auto old_layout = allocation_layout;
-        auto new_layout = Layout::array<T>(capacity).unwrap();
+        auto new_layout =
+            (preserve_alignment ? layout_for_capacity(capacity) : Layout::array<T>(capacity))
+                .unwrap();
         if (old_layout.size == new_layout.size && old_layout.align == new_layout.align) {
             cap = capacity;
             return Ok(empty {});
@@ -135,6 +152,7 @@ struct RawVec {
             if (old_layout.size != usize())
                 as<Allocator>(allocator).deallocate(old_ptr, old_layout);
             reset_ptr();
+            allocation_layout = new_layout;
             return Ok(empty {});
         }
 
@@ -187,6 +205,31 @@ struct RawVec {
 
 namespace alloc::vec
 {
+
+/// Scalars whose initialized native representation can be owned as writable bytes.
+/// Padded aggregates, pointers, bool, and extended-precision floats are excluded.
+export template<typename T>
+concept ByteConvertible =
+    mtp::same_as<T, mtp::rm_cvf<T>> && mtp::triv_copyable<T> &&
+    (mtp::any<T,
+              byte,
+              u8,
+              u16,
+              u32,
+              u64,
+              u128,
+              usize,
+              i8,
+              i16,
+              i32,
+              i64,
+              i128,
+              isize,
+              f32,
+              f64,
+              float,
+              double> ||
+     (rstd::num::PrimitiveInteger<T> && mtp::has_unique_object_representations<T>));
 
 export template<typename T, typename A = ::alloc::Global>
 struct VecIntoIter;
@@ -411,6 +454,31 @@ public:
         return Vec { RawVec<T, A>::with_capacity(capacity, rstd::move(allocator)), usize() };
     }
 
+    /// Allocates byte storage with an alignment retained by growth and shrinking.
+    static auto with_capacity_aligned_in(usize capacity, usize alignment, A allocator) -> Self
+        requires mtp::same_as<T, u8>
+    {
+        return Vec { RawVec<T, A>::with_capacity(capacity, rstd::move(allocator), alignment),
+                     usize() };
+    }
+
+    /// Transfers initialized native representations without copying or changing the allocator.
+    /// Length and capacity become byte counts; the original allocation layout is retained.
+    /// This does not serialize values or provide a typed view of the resulting bytes.
+    auto into_bytes() && -> Vec<u8, A>
+        requires ByteConvertible<T>
+    {
+        constexpr auto width  = usize(sizeof(typename mut_ptr<T>::storage_type));
+        auto           layout = m_buf.allocation_layout;
+        layout.align          = m_buf.alignment();
+        auto result           = Vec<u8, A>(
+            RawVec<u8, A>(m_buf.ptr, m_buf.cap * width, layout, rstd::move(m_buf.allocator)),
+            m_len * width);
+        m_buf.reset_ptr();
+        m_len = usize();
+        return result;
+    }
+
     template<rstd::iter::has_next I>
     static auto from_iter_in(I iterator, A allocator) -> Self {
         auto result = Self::new_in(rstd::move(allocator));
@@ -597,12 +665,14 @@ public:
 
     /// Failure returns the original vector, including its allocator and reserved capacity.
     auto try_into_boxed_slice() -> Result<Box<T[], A>, Vec> {
-        if (m_buf.try_shrink_to(m_len, m_len).is_err()) return Err(rstd::move(*this));
+        // Box reconstructs its layout from T and length, so normalize any retained alignment.
+        if (m_buf.try_shrink_to(m_len, m_len, false).is_err()) return Err(rstd::move(*this));
         return Ok(take_boxed_slice());
     }
 
     auto into_boxed_slice() -> Box<T[], A> {
-        m_buf.shrink_to_fit(m_len);
+        if (m_buf.try_shrink_to(m_len, m_len, false).is_err())
+            rstd::panic { "Vec allocation failed" };
         return take_boxed_slice();
     }
 
@@ -811,6 +881,7 @@ public:
     constexpr usize capacity() const {
         return m_buf.cap;
     }
+    auto           allocation_alignment() const noexcept -> usize { return m_buf.alignment(); }
     constexpr auto allocator() const noexcept [[clang::lifetimebound]] -> const A& {
         return m_buf.allocator;
     }

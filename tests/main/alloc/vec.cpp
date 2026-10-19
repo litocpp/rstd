@@ -1985,3 +1985,54 @@ TEST(Vec, CollectTrustedClonePipelineKeepsCloneCount) {
     EXPECT_EQ(values[0_usize].value, 2);
     EXPECT_EQ(values[2_usize].value, 6);
 }
+
+struct ByteConversionPadded {
+    char tag;
+    int  value;
+};
+struct ByteConversionCopyable {
+    u32 value;
+};
+template<typename T>
+concept CanOwnBytes = requires(Vec<T>&& values) { rstd::move(values).into_bytes(); };
+static_assert(CanOwnBytes<float> && CanOwnBytes<double> && CanOwnBytes<u32> && CanOwnBytes<f32>);
+static_assert(CanOwnBytes<byte> && CanOwnBytes<u8> && CanOwnBytes<int>);
+static_assert(! CanOwnBytes<bool> && ! CanOwnBytes<int*> && ! CanOwnBytes<long double>);
+static_assert(! CanOwnBytes<ByteConversionPadded> && ! CanOwnBytes<ByteConversionCopyable>);
+static_assert(! CanOwnBytes<Box<int>> && ! CanOwnBytes<rstd::mem::MaybeUninit<u32>>);
+
+TEST(Vec, IntoBytesTransfersNativeRepresentationWithoutAllocation) {
+    auto values = Vec<u32>::with_capacity(usize(8));
+    values.push(u32(0x12345678));
+    values.push(u32(0xabcdef01));
+    u32   expected[] { u32(0x12345678), u32(0xabcdef01) };
+    auto* pointer = reinterpret_cast<byte*>(values.data());
+    auto  bytes   = rstd::move(values).into_bytes();
+    EXPECT_TRUE(values.is_empty());
+    EXPECT_EQ(values.capacity(), usize());
+    EXPECT_EQ(bytes.data(), pointer);
+    EXPECT_EQ(bytes.len(), usize(sizeof(expected)));
+    EXPECT_EQ(bytes.capacity(), usize(8 * sizeof(u32)));
+    EXPECT_EQ(bytes.allocation_alignment(), usize(alignof(u32)));
+    EXPECT_EQ(__builtin_memcmp(bytes.data(), expected, sizeof(expected)), 0);
+    bytes.reserve(usize(256));
+    EXPECT_EQ(bytes.allocation_alignment(), usize(alignof(u32)));
+    bytes.shrink_to_fit();
+    EXPECT_EQ(bytes.allocation_alignment(), usize(alignof(u32)));
+    EXPECT_EQ(__builtin_memcmp(bytes.data(), expected, sizeof(expected)), 0);
+}
+
+TEST(Vec, AlignedBytesRetainAlignmentAcrossZeroCapacity) {
+    auto bytes = Vec<u8>::with_capacity_aligned_in(usize(32), usize(256), ::alloc::Global {});
+    bytes.push(u8(7));
+    bytes.shrink_to_fit();
+    EXPECT_EQ(bytes.allocation_alignment(), usize(256));
+    EXPECT_EQ(bytes.capacity(), usize(1));
+    bytes.clear();
+    bytes.shrink_to_fit();
+    EXPECT_EQ(bytes.capacity(), usize());
+    EXPECT_EQ(bytes.allocation_alignment(), usize(256));
+    bytes.push(u8(9));
+    EXPECT_EQ(bytes.allocation_alignment(), usize(256));
+    EXPECT_EQ(reinterpret_cast<rstd::uintptr_t>(bytes.data()) % 256, 0u);
+}

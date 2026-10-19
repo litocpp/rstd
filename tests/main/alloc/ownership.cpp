@@ -1773,3 +1773,54 @@ TEST(AllocationOwnership, ArcAllocatorFactoryBorrowStaysBoundToOwner) {
     EXPECT_EQ(state.invalid_releases, 0);
     EXPECT_EQ(state.releases, 1);
 }
+
+TEST(AllocationOwnership, BytesTypedConversionPreservesOriginalLayoutAndRelease) {
+    OwnershipState state;
+    state.extra = usize(32);
+    {
+        auto allocator = SharedOwner::make(OwnershipAllocator(state));
+        auto values    = Vec<u32, SharedOwner>::with_capacity_in(usize(8), allocator.clone());
+        values.push(u32(0x12345678));
+        auto* pointer = reinterpret_cast<const byte*>(values.data());
+        auto  before  = state.allocations;
+        auto  raw     = rstd::move(values).into_bytes();
+        EXPECT_EQ(state.allocations, before);
+        EXPECT_EQ(raw.capacity(), usize(8 * sizeof(u32)));
+        auto bytes = rstd::bytes::Bytes::from_vec(rstd::move(raw));
+        EXPECT_EQ(bytes.data(), pointer);
+        EXPECT_EQ(state.allocations, before + 1);
+        auto snapshot = bytes.clone();
+        auto writable = rstd::move(bytes).into_mut();
+        EXPECT_EQ(writable.alignment(), usize(alignof(u32)));
+        writable.reserve(usize(128));
+        EXPECT_EQ(writable.alignment(), usize(alignof(u32)));
+        EXPECT_EQ(state.invalid_releases, 0);
+    }
+    EXPECT_EQ(state.allocations, state.deallocations);
+    EXPECT_EQ(state.invalid_releases, 0);
+    EXPECT_EQ(state.live, usize());
+    EXPECT_EQ(state.releases, 1);
+}
+
+TEST(AllocationOwnership, ByteVecNormalizesLayoutWhenTransferredToBox) {
+    OwnershipState state;
+    {
+        auto values =
+            Vec<u32, OwnershipAllocator>::with_capacity_in(usize(4), OwnershipAllocator(state));
+        values.push(u32(0x12345678));
+        auto bytes = rstd::move(values).into_bytes();
+        bytes.shrink_to_fit();
+        EXPECT_EQ(bytes.allocation_alignment(), usize(alignof(u32)));
+        state.fail  = true;
+        auto failed = bytes.try_into_boxed_slice();
+        ASSERT_TRUE(failed.is_err());
+        auto restored = rstd::move(failed).unwrap_err();
+        EXPECT_EQ(restored.allocation_alignment(), usize(alignof(u32)));
+        state.fail = false;
+        auto boxed = restored.try_into_boxed_slice().unwrap();
+        EXPECT_EQ(boxed.as_ptr().len(), usize(sizeof(u32)));
+    }
+    EXPECT_EQ(state.invalid_releases, 0);
+    EXPECT_EQ(state.allocations, state.deallocations);
+    EXPECT_EQ(state.live, usize());
+}

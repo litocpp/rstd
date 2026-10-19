@@ -366,3 +366,206 @@ TEST(BytesAllocator, SplitRetainsAllocatorWithoutRetainingOldBuffers) {
     EXPECT_EQ(tracker.snapshot().live_bytes, u64());
     EXPECT_EQ(tracker.snapshot().allocations, tracker.snapshot().deallocations);
 }
+
+TEST(BytesAllocator, TryIntoMutReusesVisibleRangeWithAllocatorHandleAlive) {
+    auto tracker = SharedTrackingAllocator<>::make();
+    {
+        auto writable = BytesMut::with_capacity_in(usize(16), tracker.clone());
+        writable.put_slice("abcdef"_bytes);
+        auto bytes = writable.freeze();
+        bytes.advance(usize(2));
+        bytes.truncate(usize(2));
+        auto* pointer = bytes.data();
+        auto  owner   = bytes.allocator();
+        auto  before  = tracker.snapshot();
+        auto  result  = rstd::move(bytes).try_into_mut();
+        ASSERT_TRUE(result.is_ok());
+        auto buffer = rstd::move(result).unwrap();
+        EXPECT_TRUE(bytes.is_empty());
+        EXPECT_EQ(buffer.data(), pointer);
+        EXPECT_EQ(buffer.as_slice(), "cd"_bytes);
+        EXPECT_EQ(buffer.capacity(), usize(14));
+        EXPECT_EQ(buffer.remaining_mut(), usize(12));
+        EXPECT_EQ(tracker.snapshot().allocations, before.allocations);
+        EXPECT_EQ(tracker.snapshot().grows, before.grows);
+        buffer.put_slice("!"_bytes);
+        EXPECT_EQ(buffer.as_slice(), "cd!"_bytes);
+        auto chunk = buffer.chunk_mut();
+        EXPECT_EQ(chunk[usize()], u8());
+        EXPECT_EQ(chunk[usize(1)], u8());
+        chunk[usize()] = u8('?');
+        buffer.advance_mut(usize(1));
+        EXPECT_EQ(buffer.as_slice(), "cd!?"_bytes);
+    }
+    EXPECT_EQ(tracker.snapshot().live_bytes, u64());
+}
+
+TEST(BytesAllocator, TryIntoMutReturnsSharedViewUnchanged) {
+    auto tracker  = SharedTrackingAllocator<>::make();
+    auto bytes    = Bytes::copy_from_slice_in("abcdef"_bytes, tracker.clone());
+    auto snapshot = bytes.clone();
+    bytes.advance(usize(1));
+    bytes.truncate(usize(3));
+    auto* pointer = bytes.data();
+    auto  before  = tracker.snapshot();
+    auto  result  = rstd::move(bytes).try_into_mut();
+    ASSERT_TRUE(result.is_err());
+    auto restored = rstd::move(result).unwrap_err();
+    EXPECT_TRUE(bytes.is_empty());
+    EXPECT_EQ(restored.data(), pointer);
+    EXPECT_EQ(restored.as_slice(), "bcd"_bytes);
+    EXPECT_EQ(restored.capacity(), usize(5));
+    EXPECT_EQ(tracker.snapshot().allocations, before.allocations);
+    EXPECT_EQ(tracker.snapshot().grows, before.grows);
+    EXPECT_EQ(snapshot.as_slice(), "abcdef"_bytes);
+    snapshot      = Bytes::make();
+    auto writable = rstd::move(restored).try_into_mut().unwrap();
+    EXPECT_EQ(writable.data(), pointer);
+    EXPECT_EQ(writable.as_slice(), "bcd"_bytes);
+}
+
+TEST(BytesAllocator, IntoMutCopiesOnlyVisibleRangeAndKeepsSnapshot) {
+    auto tracker = SharedTrackingAllocator<>::make();
+    {
+        auto bytes    = Bytes::copy_from_slice_in("abcdef"_bytes, tracker.clone());
+        auto snapshot = bytes.clone();
+        bytes.advance(usize(2));
+        bytes.truncate(usize(2));
+        auto* pointer  = bytes.data();
+        auto  before   = tracker.snapshot();
+        auto  writable = rstd::move(bytes).into_mut();
+        EXPECT_TRUE(bytes.is_empty());
+        EXPECT_NE(writable.data(), pointer);
+        EXPECT_EQ(writable.as_slice(), "cd"_bytes);
+        EXPECT_EQ(writable.capacity(), usize(2));
+        EXPECT_EQ(writable.remaining_mut(), usize());
+        EXPECT_EQ(tracker.snapshot().allocations, before.allocations + u64(2));
+        writable[usize()] = u8('x');
+        writable.resize(usize(5), u8('!'));
+        EXPECT_EQ(writable.as_slice(), "xd!!!"_bytes);
+        EXPECT_EQ(snapshot.as_slice(), "abcdef"_bytes);
+    }
+    EXPECT_EQ(tracker.snapshot().live_bytes, u64());
+    EXPECT_EQ(tracker.snapshot().allocations, tracker.snapshot().deallocations);
+}
+
+TEST(BytesAllocator, IntoMutReusesUniqueStorageWithoutCopying) {
+    auto  tracker  = SharedTrackingAllocator<>::make();
+    auto  bytes    = Bytes::copy_from_slice_in("abc"_bytes, tracker.clone());
+    auto* pointer  = bytes.data();
+    auto  before   = tracker.snapshot();
+    auto  writable = rstd::move(bytes).into_mut();
+    EXPECT_EQ(writable.data(), pointer);
+    EXPECT_EQ(tracker.snapshot().allocations, before.allocations);
+    writable[usize()] = u8('x');
+    EXPECT_EQ(writable.freeze().as_slice(), "xbc"_bytes);
+}
+
+TEST(BytesAllocator, EmptyConversionsRetainConfiguredAllocator) {
+    auto tracker = SharedTrackingAllocator<>::make();
+    {
+        auto bytes  = Bytes::new_in(tracker.clone());
+        auto before = tracker.snapshot();
+        auto unique = rstd::move(bytes).try_into_mut().unwrap();
+        EXPECT_TRUE(unique.is_empty());
+        EXPECT_EQ(tracker.snapshot().allocations, before.allocations);
+        unique.put_slice("a"_bytes);
+        EXPECT_EQ(tracker.snapshot().allocations, before.allocations + u64(1));
+        auto empty    = unique.freeze();
+        auto snapshot = empty.clone();
+        empty.advance(usize(1));
+        auto shared = rstd::move(empty).into_mut();
+        EXPECT_TRUE(shared.is_empty());
+        before = tracker.snapshot();
+        shared.put_slice("b"_bytes);
+        EXPECT_EQ(tracker.snapshot().allocations, before.allocations + u64(1));
+        EXPECT_EQ(snapshot.as_slice(), "a"_bytes);
+    }
+    EXPECT_EQ(tracker.snapshot().live_bytes, u64());
+    auto default_empty = Bytes::make();
+    auto writable      = rstd::move(default_empty).try_into_mut().unwrap();
+    EXPECT_TRUE(writable.is_empty());
+    writable.put_slice("default"_bytes);
+    EXPECT_EQ(writable.as_slice(), "default"_bytes);
+}
+
+TEST(BytesMut, TruncatedTailIsNotExposedByWritableChunk) {
+    auto buffer = BytesMut::with_capacity(usize(8));
+    buffer.put_slice("abcdef"_bytes);
+    buffer.advance(usize(2));
+    EXPECT_EQ(buffer.capacity(), usize(6));
+    EXPECT_EQ(buffer.remaining_mut(), usize(2));
+    buffer.truncate(usize(1));
+    auto chunk = buffer.chunk_mut();
+    ASSERT_EQ(chunk.len(), usize(5));
+    for (usize i; i < chunk.len(); ++i) EXPECT_EQ(chunk[i], u8());
+    chunk[usize()] = u8('!');
+    buffer.advance_mut(usize(1));
+    EXPECT_EQ(buffer.as_slice(), "c!"_bytes);
+    buffer.resize(usize(1), u8());
+    EXPECT_EQ(buffer.chunk_mut()[usize()], u8());
+}
+
+TEST(Bytes, TypedVecTransfersNativeBytesAndAlignment) {
+    auto values = Vec<float>::with_capacity(usize(8));
+    values.push(1.5f);
+    values.push(-2.0f);
+    float expected[] { 1.5f, -2.0f };
+    auto* pointer = reinterpret_cast<const byte*>(values.data());
+    auto  bytes   = Bytes::from_vec(rstd::move(values));
+    EXPECT_TRUE(values.is_empty());
+    EXPECT_EQ(bytes.data(), pointer);
+    EXPECT_EQ(bytes.len(), usize(sizeof(expected)));
+    EXPECT_EQ(bytes.capacity(), usize(8 * sizeof(float)));
+    EXPECT_EQ(bytes.alignment(), usize(alignof(float)));
+    EXPECT_EQ(__builtin_memcmp(bytes.data(), expected, sizeof(expected)), 0);
+    bytes.advance(usize(1));
+    EXPECT_EQ(bytes.alignment(), usize(1));
+    auto snapshot = bytes.clone();
+    auto writable = rstd::move(bytes).into_mut();
+    EXPECT_EQ(writable.alignment(), usize(alignof(float)));
+    EXPECT_EQ(writable.as_slice(), snapshot.as_slice());
+    EXPECT_EQ(reinterpret_cast<rstd::uintptr_t>(writable.data()) % alignof(float), 0u);
+}
+
+TEST(BytesAllocator, DetachGrowAndSplitRetainStorageAlignment) {
+    auto tracker = SharedTrackingAllocator<>::make();
+    {
+        auto values = Vec<u8, SharedTrackingAllocator<>>::with_capacity_aligned_in(
+            usize(32), usize(256), tracker.clone());
+        values.extend_from_slice("abcdefghijkl"_bytes);
+        auto bytes = Bytes::from_vec(rstd::move(values));
+        EXPECT_EQ(bytes.alignment(), usize(256));
+        bytes.advance(usize(4));
+        EXPECT_EQ(bytes.alignment(), usize(4));
+        bytes.truncate(usize(4));
+        auto snapshot = bytes.clone();
+        auto writable = rstd::move(bytes).into_mut();
+        EXPECT_EQ(writable.as_slice(), "efgh"_bytes);
+        EXPECT_EQ(writable.alignment(), usize(256));
+        writable.reserve(usize(1024));
+        EXPECT_EQ(writable.alignment(), usize(256));
+        EXPECT_EQ(reinterpret_cast<rstd::uintptr_t>(writable.data()) % 256, 0u);
+        auto prefix = writable.split_to(usize(2));
+        EXPECT_EQ(prefix.alignment(), usize(256));
+        EXPECT_EQ(prefix.as_slice(), "ef"_bytes);
+        EXPECT_EQ(writable.alignment(), usize(2));
+        writable.resize(usize(32), u8('!'));
+        EXPECT_EQ(writable.alignment(), usize(256));
+        EXPECT_EQ(snapshot.as_slice(), "efgh"_bytes);
+    }
+    EXPECT_EQ(tracker.snapshot().live_bytes, u64());
+    EXPECT_FALSE(tracker.snapshot().overflow);
+}
+
+TEST(Bytes, EmptyTypedVecRetainsAlignmentThroughDetach) {
+    auto bytes = Bytes::from_vec(Vec<u32>::make());
+    EXPECT_TRUE(bytes.is_empty());
+    EXPECT_EQ(bytes.alignment(), usize(alignof(u32)));
+    auto snapshot = bytes.clone();
+    auto writable = rstd::move(bytes).into_mut();
+    EXPECT_EQ(writable.alignment(), usize(alignof(u32)));
+    writable.put_slice("a"_bytes);
+    EXPECT_EQ(writable.alignment(), usize(alignof(u32)));
+    EXPECT_TRUE(snapshot.is_empty());
+}
