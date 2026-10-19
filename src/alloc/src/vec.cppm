@@ -5,6 +5,7 @@ export module rstd.alloc:vec;
 export import :boxed;
 export import :collections.error;
 export import :alloc;
+import :sync;
 export import rstd.core;
 
 using rstd::mem::MaybeUninit;
@@ -357,6 +358,9 @@ class Vec {
 
     constexpr explicit Vec(RawVec<T, A> buf, usize len): m_buf(rstd::move(buf)), m_len(len) {}
 
+    template<typename, typename>
+    friend class Vec;
+
     friend struct details::InPlaceAccess;
     friend auto details::from_iter<T, A>(VecIntoIter<T, A> iterator) -> Vec<T, A>;
 
@@ -412,6 +416,24 @@ public:
         auto result = Self::new_in(rstd::move(allocator));
         result.extend_iter(rstd::move(iterator));
         return result;
+    }
+
+    /// Moves the allocator into the Arc control block; the vector borrows it until destruction.
+    /// The element storage, capacity, and allocation layout are preserved.
+    auto into_arc() && -> ::alloc::sync::Arc<Vec<T, ref<dyn<Allocator>>>>
+        requires Impled<A, Allocator, rstd::alloc::ThreadSafeAllocator>
+    {
+        using Borrowed = ref<dyn<Allocator>>;
+        using Buffer   = Vec<T, Borrowed>;
+        return ::alloc::sync::Arc<Buffer>::make_in_with(
+            rstd::move(m_buf.allocator), [&](Borrowed allocator) noexcept {
+                auto result = Buffer(
+                    RawVec<T, Borrowed>(m_buf.ptr, m_buf.cap, m_buf.allocation_layout, allocator),
+                    m_len);
+                m_buf.reset_ptr();
+                m_len = usize();
+                return result;
+            });
     }
 
     /// Takes ownership of a boxed slice without copying its elements.

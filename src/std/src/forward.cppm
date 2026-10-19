@@ -20,6 +20,7 @@ using rstd_alloc::ArenaStats;
 using rstd_alloc::BumpArena;
 using rstd_alloc::Global;
 using rstd_alloc::sync::SharedAllocator;
+using rstd_alloc::sync::ArcAllocator;
 using rstd_alloc::GLOBAL;
 using rstd_alloc::RecyclingArena;
 using rstd_alloc::RecyclingArenaAllocator;

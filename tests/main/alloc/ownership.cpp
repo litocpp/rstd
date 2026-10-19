@@ -925,6 +925,36 @@ TEST(AllocationOwnership, BootstrapFailureInjectionReleasesConsumedAllocator) {
     EXPECT_EQ(state.allocations, 0);
 }
 
+TEST(AllocationOwnership, BytesGlobalOwnerDoesNotAllocate) {
+    fail_next_runtime_allocation.store(true, rstd::sync::atomic::Ordering::Relaxed);
+    auto bytes  = rstd::bytes::Bytes::make();
+    auto buffer = rstd::bytes::BytesMut::make();
+    auto empty  = rstd::bytes::BytesMut::from_vec(Vec<u8>::make());
+    auto cloned = bytes.allocator().clone();
+    auto untouched =
+        fail_next_runtime_allocation.exchange(false, rstd::sync::atomic::Ordering::Relaxed);
+    EXPECT_TRUE(untouched);
+    EXPECT_TRUE(bytes.is_empty());
+    EXPECT_TRUE(buffer.is_empty());
+    EXPECT_TRUE(empty.is_empty());
+}
+
+TEST(AllocationOwnership, ArcAllocatorFactoryIsNotCalledOnAllocationFailure) {
+    ForwardCounts counts;
+    bool          called = false;
+    fail_next_runtime_allocation.store(true, rstd::sync::atomic::Ordering::Relaxed);
+    auto result =
+        Arc<int>::try_make_in_with(ForwardAllocator(counts), [&](ref<rstd::dyn<Allocator>>) {
+            called = true;
+            return 42;
+        });
+    auto untouched =
+        fail_next_runtime_allocation.exchange(false, rstd::sync::atomic::Ordering::Relaxed);
+    EXPECT_TRUE(result.is_err());
+    EXPECT_FALSE(untouched);
+    EXPECT_FALSE(called);
+}
+
 TEST(AllocationOwnership, GlobalPointerFailureInjectionLeavesDynInputUntouched) {
     int drops = 0;
     {
@@ -1655,4 +1685,91 @@ TEST(IoAllocation, BufReaderStorageStartsUninitializedAndNeverGrows) {
     }
     EXPECT_EQ(state.live, usize());
     EXPECT_EQ(state.invalid_releases, 0);
+}
+
+TEST(AllocationOwnership, BytesRetainSharedAllocatorAndOriginalLayout) {
+    OwnershipState state;
+    state.extra = usize(32);
+    {
+        auto allocator = SharedOwner::make(OwnershipAllocator(state));
+        auto vec       = Vec<u8, SharedOwner>::with_capacity_in(usize(8), allocator.clone());
+        vec.push(u8(1));
+        vec.push(u8(2));
+        auto* storage = vec.data();
+        auto  bytes   = rstd::bytes::Bytes::from_vec(rstd::move(vec));
+        EXPECT_EQ(bytes.data(), storage);
+        EXPECT_EQ(bytes.capacity(), usize(8));
+        auto buffer = rstd::bytes::BytesMut::with_capacity_in(usize(8), bytes.allocator());
+        buffer.put_slice(bytes.as_slice());
+        auto prefix = buffer.split_to(usize(1));
+        auto frozen = buffer.freeze();
+        EXPECT_EQ(prefix[usize()], u8(1));
+        EXPECT_EQ(frozen[usize()], u8(2));
+        EXPECT_EQ(state.handles, 1);
+    }
+    EXPECT_EQ(state.handles, 0);
+    EXPECT_EQ(state.releases, 1);
+    EXPECT_EQ(state.live, usize());
+    EXPECT_EQ(state.allocations, state.deallocations);
+    EXPECT_EQ(state.invalid_releases, 0);
+}
+
+TEST(AllocationOwnership, BytesSplitSharesNonCloneableAllocator) {
+    ForwardCounts counts;
+    static_assert(! rstd::alloc::CloneableAllocator<ForwardAllocator>);
+    {
+        auto vec = Vec<u8, ForwardAllocator>::with_capacity_in(usize(8), ForwardAllocator(counts));
+        vec.push(u8(1));
+        vec.push(u8(2));
+        auto buffer = rstd::bytes::BytesMut::from_vec(rstd::move(vec));
+        auto prefix = buffer.split_to(usize(1));
+        EXPECT_EQ(prefix[usize()], u8(1));
+        auto frozen = buffer.freeze();
+        EXPECT_EQ(frozen[usize()], u8(2));
+        EXPECT_EQ(counts.calls[0].load(rstd::sync::atomic::Ordering::Relaxed), usize(4));
+    }
+    EXPECT_EQ(counts.calls[2].load(rstd::sync::atomic::Ordering::Relaxed), usize(4));
+}
+
+TEST(AllocationOwnership, ArcAllocatorOutlivesValueAndWeakWithoutRetainingValue) {
+    OwnershipState state;
+    int            drops = 0;
+    {
+        auto value =
+            Arc<OwnershipValue>::make_in(SharedOwner::make(OwnershipAllocator(state)), drops, 7);
+        auto weak      = value.downgrade();
+        auto allocator = value.allocator_owner();
+        value.reset();
+        EXPECT_EQ(drops, 1);
+        EXPECT_TRUE(weak.expired());
+        weak.reset();
+        EXPECT_EQ(state.releases, 0);
+        auto box = Box<int, rstd::alloc::ArcAllocator>::make_in(allocator.clone(), 42);
+        EXPECT_EQ(*box, 42);
+    }
+    EXPECT_EQ(drops, 1);
+    EXPECT_EQ(state.releases, 1);
+    EXPECT_EQ(state.live, usize());
+    EXPECT_EQ(state.invalid_releases, 0);
+}
+
+TEST(AllocationOwnership, ArcAllocatorFactoryBorrowStaysBoundToOwner) {
+    OwnershipState state;
+    using Buffer = Vec<u8, ref<rstd::dyn<Allocator>>>;
+    {
+        auto storage = Arc<Buffer>::make_in_with(
+            SharedOwner::make(OwnershipAllocator(state)), [](ref<rstd::dyn<Allocator>> allocator) {
+                auto buffer = Buffer::with_capacity_in(usize(8), allocator);
+                buffer.push(u8(42));
+                return buffer;
+            });
+        auto extracted = storage.try_unwrap();
+        ASSERT_TRUE(extracted.is_err());
+        auto retained = rstd::move(extracted).unwrap_err_unchecked();
+        EXPECT_EQ((*retained)[usize()], u8(42));
+        EXPECT_EQ(state.allocations, 2);
+    }
+    EXPECT_EQ(state.live, usize());
+    EXPECT_EQ(state.invalid_releases, 0);
+    EXPECT_EQ(state.releases, 1);
 }

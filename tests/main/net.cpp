@@ -7,6 +7,8 @@ import rstd;
 
 using namespace rstd;
 using namespace rstd::prelude;
+using namespace rstd::literals;
+using rstd::alloc::SharedTrackingAllocator;
 
 namespace
 {
@@ -84,8 +86,9 @@ async::coro<io::Result<usize>> read_some(net::TcpStream& stream, bytes::BytesMut
     }
 }
 
-async::coro<io::Result<bytes::BytesMut>> tcp_roundtrip(net::TcpListener& listener,
-                                                       net::SocketAddr   addr) {
+template<typename A = ::alloc::Global>
+async::coro<io::Result<bytes::BytesMut>>
+tcp_roundtrip(net::TcpListener& listener, net::SocketAddr addr, A allocator = {}) {
     auto client = co_await net::TcpStream::connect(addr);
     if (client.is_err()) co_return Err(rstd::move(client).unwrap_err_unchecked());
 
@@ -96,12 +99,12 @@ async::coro<io::Result<bytes::BytesMut>> tcp_roundtrip(net::TcpListener& listene
     auto accepted_pair = rstd::move(accepted).unwrap_unchecked();
     auto server_stream = rstd::move(accepted_pair.template get<0>());
 
-    const char payload[] = { 'p', 'i', 'n', 'g' };
-    auto       bytes     = copied_bytes(payload, sizeof(payload));
-    auto       written   = co_await write_some(client_stream, bytes);
+    auto bytes =
+        bytes::Bytes::copy_from_slice_in("ping"_bytes, rstd::alloc::clone_allocator(allocator));
+    auto written = co_await write_some(client_stream, bytes);
     if (written.is_err()) co_return Err(rstd::move(written).unwrap_err_unchecked());
 
-    auto received = bytes::BytesMut::with_capacity(usize(4));
+    auto received = bytes::BytesMut::with_capacity_in(usize(4), rstd::move(allocator));
     auto read     = co_await read_some(server_stream, received);
     if (read.is_err()) co_return Err(rstd::move(read).unwrap_err_unchecked());
 
@@ -297,6 +300,22 @@ TEST(NetTcp, LoopbackRoundTrip) {
     EXPECT_EQ(received[usize(1)], u8('i'));
     EXPECT_EQ(received[usize(2)], u8('n'));
     EXPECT_EQ(received[usize(3)], u8('g'));
+}
+
+TEST(NetTcp, LoopbackRoundTripWithSharedAllocator) {
+    auto tracker  = SharedTrackingAllocator<>::make();
+    auto listener = net::TcpListener::bind(net::SocketAddr::ipv4_loopback(u16())).unwrap();
+    {
+        auto result = async::block_on(
+            tcp_roundtrip(listener, listener.local_addr().unwrap(), tracker.clone()));
+        ASSERT_TRUE(result.is_ok());
+        auto received = rstd::move(result).unwrap_unchecked();
+        EXPECT_EQ(received.as_slice(), "ping"_bytes);
+        EXPECT_EQ(tracker.snapshot().allocations, u64(4));
+        EXPECT_GT(tracker.snapshot().live_bytes, u64(received.capacity().to_primitive()));
+    }
+    EXPECT_EQ(tracker.snapshot().live_bytes, u64());
+    EXPECT_EQ(tracker.snapshot().deallocations, u64(4));
 }
 
 TEST(NetTcp, MultiThreadRuntimeLoopbackRoundTrip) {

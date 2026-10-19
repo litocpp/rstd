@@ -15,10 +15,20 @@ using namespace rstd::prelude;
 
 constexpr usize ARC_MAX_REFCOUNT = usize::MAX / usize(2);
 
-struct ArcHeader {
-    Atomic<usize> strong { usize(1) };
-    Atomic<usize> weak { usize(1) };
+struct ArcHeader;
+struct ArcAllocationOps {
     void (*release)(ArcHeader*) noexcept;
+    ref<dyn<Allocator>> (*allocator)(ArcHeader*) noexcept;
+    ArcHeader* (*allocator_owner)(ArcHeader*) noexcept;
+    bool allocator_bound;
+};
+template<typename T, typename A>
+struct ArcAllocatorAccess;
+
+struct ArcHeader {
+    Atomic<usize>           strong { usize(1) };
+    Atomic<usize>           weak { usize(1) };
+    const ArcAllocationOps* allocation;
 
     void inc_strong() {
         [[maybe_unused]]
@@ -47,6 +57,75 @@ struct ArcHeader {
     }
 };
 
+export namespace alloc::sync
+{
+template<typename T>
+class Arc;
+
+/// Keeps an Arc's allocator alive without keeping its value alive.
+class ArcAllocator {
+    ArcHeader* header_ {};
+
+    template<typename>
+    friend class Arc;
+    template<typename T, typename A>
+    friend struct ::ArcAllocatorAccess;
+
+    explicit ArcAllocator(ArcHeader* header) noexcept: header_(header) {
+        if (header_) header_->inc_weak();
+    }
+    void reset() noexcept {
+        auto* header = rstd::exchange(header_, nullptr);
+        if (header &&
+            header->weak.fetch_sub(usize(1), rstd::sync::atomic::Ordering::AcqRel) == usize(1)) {
+            rstd::sync::atomic::fence(rstd::sync::atomic::Ordering::Acquire);
+            header->allocation->release(header);
+        }
+    }
+
+public:
+    ArcAllocator()                                       = default;
+    ArcAllocator(const ArcAllocator&)                    = delete;
+    auto operator=(const ArcAllocator&) -> ArcAllocator& = delete;
+    ArcAllocator(ArcAllocator&& other) noexcept: header_(rstd::exchange(other.header_, nullptr)) {}
+    auto operator=(ArcAllocator&& other) noexcept -> ArcAllocator& {
+        if (this != &other) {
+            reset();
+            header_ = rstd::exchange(other.header_, nullptr);
+        }
+        return *this;
+    }
+    ~ArcAllocator() { reset(); }
+    auto clone() const noexcept -> ArcAllocator { return ArcAllocator(header_); }
+    auto as_ref() const noexcept [[clang::lifetimebound]] -> ref<dyn<Allocator>> {
+        return header_ ? header_->allocation->allocator(header_)
+                       : ::alloc::allocator_ref(::alloc::GLOBAL);
+    }
+    auto allocate(Layout layout) const -> Result<rstd::alloc::Allocation, rstd::alloc::AllocError> {
+        return as_ref()->allocate(layout);
+    }
+    auto allocate_zeroed(Layout layout) const
+        -> Result<rstd::alloc::Allocation, rstd::alloc::AllocError> {
+        return as_ref()->allocate_zeroed(layout);
+    }
+    void deallocate(void* pointer, Layout layout) const noexcept {
+        as_ref()->deallocate(pointer, layout);
+    }
+    auto grow(void* pointer, Layout old_layout, Layout new_layout) const
+        -> Result<rstd::alloc::Allocation, rstd::alloc::AllocError> {
+        return as_ref()->grow(pointer, old_layout, new_layout);
+    }
+    auto grow_zeroed(void* pointer, Layout old_layout, Layout new_layout) const
+        -> Result<rstd::alloc::Allocation, rstd::alloc::AllocError> {
+        return as_ref()->grow_zeroed(pointer, old_layout, new_layout);
+    }
+    auto shrink(void* pointer, Layout old_layout, Layout new_layout) const
+        -> Result<rstd::alloc::Allocation, rstd::alloc::AllocError> {
+        return as_ref()->shrink(pointer, old_layout, new_layout);
+    }
+};
+} // namespace alloc::sync
+
 struct ArcAllocationLayout {
     Layout layout;
     usize  value_offset;
@@ -72,6 +151,34 @@ auto arc_header(mut_ptr<T> pointer) noexcept -> ArcHeader* {
 }
 
 template<typename T, typename A>
+struct ArcAllocatorAccess {
+    static auto stored(ArcHeader* header) noexcept -> A& {
+        usize offset;
+        (void)arc_allocation_layout(Layout::make<T>())
+            .layout.extend(Layout::make<A>(), offset)
+            .unwrap();
+        return *rstd::launder(
+            reinterpret_cast<A*>(reinterpret_cast<rstd::byte*>(header) + offset.to_primitive()));
+    }
+    static auto allocator(ArcHeader* header) noexcept -> ref<dyn<Allocator>> {
+        if constexpr (mtp::same_as<A, ::alloc::Global>)
+            return ::alloc::allocator_ref(::alloc::GLOBAL);
+        else if constexpr (mtp::same_as<A, ::alloc::sync::ArcAllocator>)
+            return stored(header).as_ref();
+        else
+            return ::alloc::allocator_ref(stored(header));
+    }
+    static auto owner(ArcHeader* header) noexcept -> ArcHeader* {
+        if constexpr (mtp::same_as<A, ::alloc::Global>)
+            return nullptr;
+        else if constexpr (mtp::same_as<A, ::alloc::sync::ArcAllocator>)
+            return stored(header).header_;
+        else
+            return header;
+    }
+};
+
+template<typename T, typename A>
 void arc_release_allocation(ArcHeader* header) noexcept {
     auto allocation = arc_allocation_layout(Layout::make<T>());
     if constexpr (mtp::same_as<A, ::alloc::Global>) {
@@ -90,8 +197,8 @@ void arc_release_allocation(ArcHeader* header) noexcept {
     }
 }
 
-template<typename T, typename A, typename... Args>
-auto arc_try_allocate_value_in(A allocator, Args&&... args)
+template<typename T, bool AllocatorBound = false, typename A, typename F>
+auto arc_try_allocate_value_with(A allocator, F&& initialize)
     -> Result<mut_ptr<T>, rstd::alloc::AllocError> {
     static_assert(__is_nothrow_constructible(A, A&&), "allocator moves must not throw");
     auto  allocation = arc_allocation_layout(Layout::make<T>());
@@ -105,9 +212,13 @@ auto arc_try_allocate_value_in(A allocator, Args&&... args)
     auto result = rstd::as<Allocator>(allocator).allocate(layout);
     if (result.is_err()) return Err(rstd::alloc::AllocError {});
 
-    auto* base      = static_cast<rstd::byte*>(result.unwrap_unchecked().pointer);
-    auto* header    = rstd::construct_at(reinterpret_cast<ArcHeader*>(base));
-    header->release = &arc_release_allocation<T, A>;
+    auto* base   = static_cast<rstd::byte*>(result.unwrap_unchecked().pointer);
+    auto* header = rstd::construct_at(reinterpret_cast<ArcHeader*>(base));
+    static constexpr ArcAllocationOps operations { &arc_release_allocation<T, A>,
+                                                   &ArcAllocatorAccess<T, A>::allocator,
+                                                   &ArcAllocatorAccess<T, A>::owner,
+                                                   AllocatorBound };
+    header->allocation = &operations;
     if constexpr (! mtp::same_as<A, ::alloc::Global>) {
         rstd::construct_at(reinterpret_cast<A*>(base + allocator_offset.to_primitive()),
                            rstd::move(allocator));
@@ -115,19 +226,28 @@ auto arc_try_allocate_value_in(A allocator, Args&&... args)
     struct Guard {
         ArcHeader* header;
         ~Guard() {
-            if (header) header->release(header);
+            if (header) header->allocation->release(header);
         }
     } guard { header };
     auto* value = reinterpret_cast<T*>(base + allocation.value_offset.to_primitive());
-    rstd::construct_at(value, rstd::forward<Args>(args)...);
+    initialize(value, header->allocation->allocator(header));
     guard.header = nullptr;
     return Ok(mut_ptr<T>::from_raw_parts(value));
+}
+
+template<typename T, typename A, typename... Args>
+auto arc_try_allocate_value_in(A allocator, Args&&... args)
+    -> Result<mut_ptr<T>, rstd::alloc::AllocError> {
+    return arc_try_allocate_value_with<T>(
+        rstd::move(allocator), [&](T* value, ref<dyn<Allocator>>) {
+            rstd::construct_at(value, rstd::forward<Args>(args)...);
+        });
 }
 
 template<typename T>
 void arc_deallocate(mut_ptr<T> pointer) noexcept {
     auto* header = arc_header(pointer);
-    header->release(header);
+    header->allocation->release(header);
 }
 
 template<typename T>
@@ -252,6 +372,37 @@ public:
         return Ok(Arc { ArcData<T> { .pointer = result.unwrap_unchecked() } });
     }
 
+    /// The factory borrows the allocator at its final address in the control block.
+    /// The borrow remains valid until the value is destroyed; it must not escape that lifetime.
+    /// Values created this way cannot be extracted with try_unwrap.
+    template<typename A, typename F>
+    static auto try_make_in_with(A allocator, F factory) -> Result<Arc, rstd::alloc::AllocError>
+        requires Impled<T, Sized> && Impled<A, Allocator, rstd::alloc::ThreadSafeAllocator> &&
+                 requires(ref<dyn<Allocator>> borrowed) { T(factory(borrowed)); }
+    {
+        auto result = arc_try_allocate_value_with<T, true>(
+            rstd::move(allocator), [&](T* value, ref<dyn<Allocator>> borrowed) {
+                rstd::construct_at(value, factory(borrowed));
+            });
+        if (result.is_err()) return Err(rstd::alloc::AllocError {});
+        return Ok(Arc { ArcData<T> { .pointer = result.unwrap_unchecked() } });
+    }
+
+    template<typename A, typename F>
+    static auto make_in_with(A allocator, F factory) -> Arc
+        requires requires { try_make_in_with(rstd::move(allocator), rstd::move(factory)); }
+    {
+        auto result = try_make_in_with(rstd::move(allocator), rstd::move(factory));
+        if (result.is_err()) rstd::panic { "Arc allocation failed" };
+        return result.unwrap_unchecked();
+    }
+
+    auto allocator_owner() const noexcept -> ArcAllocator {
+        if (self.pointer == nullptr) return {};
+        auto* header = arc_header(self.pointer);
+        return ArcAllocator(header->allocation->allocator_owner(header));
+    }
+
     /// Allocation failure leaves the input untouched.
     template<typename A, typename U>
     static auto try_make_in(A allocator, U&& value) -> Result<Arc, rstd::alloc::AllocError>
@@ -373,6 +524,7 @@ public:
     {
         if (self.pointer != nullptr) {
             auto* header = arc_header(self.pointer);
+            if (header->allocation->allocator_bound) return Err(rstd::move(*this));
             usize expected(rstd::size_t(1));
             if (header->strong.compare_exchange_strong(expected,
                                                        usize(),
@@ -613,4 +765,14 @@ template<>
 struct rstd::Impl<rstd::clone::Clone, ::alloc::sync::SharedAllocator>
     : rstd::DefaultInImpl<rstd::clone::Clone, ::alloc::sync::SharedAllocator> {
     auto clone() const -> ::alloc::sync::SharedAllocator { return this->self().clone(); }
+};
+
+template<>
+struct rstd::Impl<rstd::alloc::AllocatorClone, ::alloc::sync::ArcAllocator> {};
+template<>
+struct rstd::Impl<rstd::alloc::ThreadSafeAllocator, ::alloc::sync::ArcAllocator> {};
+template<>
+struct rstd::Impl<rstd::clone::Clone, ::alloc::sync::ArcAllocator>
+    : rstd::DefaultInImpl<rstd::clone::Clone, ::alloc::sync::ArcAllocator> {
+    auto clone() const -> ::alloc::sync::ArcAllocator { return this->self().clone(); }
 };
