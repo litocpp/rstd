@@ -258,7 +258,7 @@ auto Child::wait_with_output(OutputObserver observer) -> io::Result<Output> {
             while (true) {
                 auto read = rstd::sys::io::stdio::read_fd(fd, chunk_buffer);
                 if (read.is_err() || *read == usize()) break;
-                auto chunk = slice<u8>::from_raw_parts(reinterpret_cast<const byte*>(tmp), *read);
+                auto chunk = slice<u8>::from_raw_parts(chunk_buffer.as_byte_ptr(), *read);
                 if (observer.notify != nullptr) observer.notify(observer.context, stream, chunk);
                 buf.extend_from_slice(chunk);
             }
@@ -765,10 +765,11 @@ auto child_environment(bool clear, const ::alloc::vec::Vec<rstd::process::EnvAct
 
     for (const auto& action : actions) {
         if (action.key.is_empty()) return Err(invalid_process_input());
-        for (auto byte : action.key.as_os_str().as_encoded_bytes()) {
+        auto key_os = action.key.as_os_str();
+        for (auto byte : key_os.as_encoded_bytes()) {
             if (byte == u8() || byte == u8('=')) return Err(invalid_process_input());
         }
-        auto key = wide_string(action.key.as_os_str());
+        auto key = wide_string(key_os);
         if (key.is_err()) return Err(rstd::move(key).unwrap_err());
         for (auto index = entries.len(); index != usize();) {
             --index;
