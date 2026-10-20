@@ -132,6 +132,23 @@ struct rstd::Impl<rstd::alloc::Allocator, alloc_::Global>
     void deallocate(void* ptr, Layout layout) const noexcept {
         if (layout.size != usize()) ::alloc::dealloc(ptr, layout.cpp_layout());
     }
+
+    // Inherited member pointers in Global's dyn vtable crash Windows Clang with reduced BMIs.
+    auto grow(void* pointer, Layout old_layout, Layout new_layout) const
+        -> Result<Allocation, AllocError> {
+        return DefaultInImpl<Allocator, alloc_::Global>::grow(pointer, old_layout, new_layout);
+    }
+
+    auto grow_zeroed(void* pointer, Layout old_layout, Layout new_layout) const
+        -> Result<Allocation, AllocError> {
+        return DefaultInImpl<Allocator, alloc_::Global>::grow_zeroed(
+            pointer, old_layout, new_layout);
+    }
+
+    auto shrink(void* pointer, Layout old_layout, Layout new_layout) const
+        -> Result<Allocation, AllocError> {
+        return DefaultInImpl<Allocator, alloc_::Global>::shrink(pointer, old_layout, new_layout);
+    }
 };
 
 namespace alloc

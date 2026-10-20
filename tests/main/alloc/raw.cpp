@@ -1,5 +1,6 @@
 #include <rstd/test/gtest.hpp>
 import rstd.alloc;
+import rstd.tests.alloc_module;
 
 namespace
 {
@@ -38,6 +39,14 @@ TEST(RawAlloc, ValueInitializesAndAcceptsNullDelete) {
     const auto* constant = ::alloc::raw_new<int>(17);
     EXPECT_EQ(*constant, 17);
     ::alloc::raw_delete(constant);
+}
+
+TEST(RawAlloc, GlobalDynResizeAcrossModules) {
+    EXPECT_TRUE(global_dyn_resize());
+}
+
+TEST(RawAlloc, GlobalDynZeroedAndEmptyAcrossModules) {
+    EXPECT_TRUE(global_dyn_zeroed_and_empty());
 }
 
 #if defined(__cpp_exceptions)
