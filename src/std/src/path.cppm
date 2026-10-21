@@ -1,7 +1,7 @@
 module;
 #include <rstd/macro.hpp>
 export module rstd:path;
-export import :ffi;
+export import rstd.ffi;
 export import rstd.alloc;
 
 using ::alloc::ffi::CString;

@@ -1,11 +1,11 @@
-export module rstd:ffi.os_str.encoding;
+export module rstd.sys.os_str.encoding;
 import rstd.alloc;
 
 using namespace rstd::prelude;
 using ::alloc::vec::Vec;
 using ::alloc::string::String;
 
-namespace rstd::ffi::os_encoding
+export namespace rstd::sys::os_str::encoding
 {
 
 constexpr auto unit(slice<u8> bytes, usize index) -> unsigned {
@@ -111,4 +111,4 @@ constexpr auto public_boundary(slice<u8> bytes, usize index) -> bool {
     return false;
 }
 
-} // namespace rstd::ffi::os_encoding
+} // namespace rstd::sys::os_str::encoding

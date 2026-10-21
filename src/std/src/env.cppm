@@ -2,7 +2,7 @@ module;
 #include <rstd/macro.hpp>
 export module rstd:env;
 export import :path;
-export import :ffi;
+export import rstd.ffi;
 export import rstd.alloc;
 
 using ::alloc::string::String;

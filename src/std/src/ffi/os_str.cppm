@@ -1,10 +1,10 @@
 module;
 #include <rstd/macro.hpp>
-export module rstd:ffi.os_str;
+export module rstd.ffi:os_str;
 export import rstd.io;
 export import rstd.alloc;
-import :ffi.os_str.platform;
-import :ffi.os_str.encoding;
+import :os_str.platform;
+import rstd.sys.os_str.encoding;
 
 using ::alloc::vec::Vec;
 using ::alloc::string::String;
@@ -78,7 +78,7 @@ struct ref<ffi::OsStr> : ref_base<ref<ffi::OsStr>, byte[], false> {
         auto buf   = String::make();
         auto index = usize();
         while (index < length) {
-            buf.push(ffi::os_encoding::decode_lossy(
+            buf.push(sys::os_str::encoding::decode_lossy(
                 as_encoded_bytes(), index, ffi::os_string_platform::USE_WTF8));
         }
         return buf;
@@ -299,8 +299,8 @@ struct Impl<fmt::Display, ffi::Display> : ImplBase<ffi::Display> {
         auto bytes = this->self().value.as_encoded_bytes();
         auto index = usize();
         while (index < bytes.len()) {
-            auto cp =
-                ffi::os_encoding::decode_lossy(bytes, index, ffi::os_string_platform::USE_WTF8);
+            auto cp = sys::os_str::encoding::decode_lossy(
+                bytes, index, ffi::os_string_platform::USE_WTF8);
             byte buf[4];
             auto wrote = char_::encode_utf8(cp, buf);
             if (! f.write_raw(buf, wrote.to_primitive())) return false;

@@ -1,7 +1,7 @@
 module;
 #include <rstd/macro.hpp>
 export module rstd:os.unix.ffi;
-import :ffi.os_str;
+import rstd.ffi;
 import rstd.alloc;
 
 using namespace rstd::prelude;

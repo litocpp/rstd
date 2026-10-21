@@ -11,6 +11,8 @@ namespace rstd::ffi
 
 export class CStr;
 
+export struct FromBytesUntilNulError {};
+
 export class FromBytesWithNulError {
 public:
     enum class Kind : rstd::uint8_t
@@ -102,6 +104,27 @@ struct Impl<error::Error, ffi::FromBytesWithNulError> : ImplBase<ffi::FromBytesW
 };
 
 template<>
+struct Impl<fmt::Display, ffi::FromBytesUntilNulError> : ImplBase<ffi::FromBytesUntilNulError> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        constexpr char message[] = "data provided does not contain a nul";
+        return formatter.write_raw(message, sizeof(message) - 1);
+    }
+};
+
+template<>
+struct Impl<fmt::Debug, ffi::FromBytesUntilNulError> : ImplBase<ffi::FromBytesUntilNulError> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        constexpr char message[] = "FromBytesUntilNulError";
+        return formatter.write_raw(message, sizeof(message) - 1);
+    }
+};
+
+template<>
+struct Impl<error::Error, ffi::FromBytesUntilNulError> : ImplBase<ffi::FromBytesUntilNulError> {
+    auto source() const noexcept -> Option<error::ErrorRef> { return None(); }
+};
+
+template<>
 struct Impl<Sized, CStr> {
     ~Impl() = delete;
 };
@@ -179,6 +202,19 @@ public:
     static constexpr auto from_ptr_with_nul_unchecked(char const* data [[clang::lifetimebound]],
                                                       usize       length) noexcept -> ref<CStr> {
         return ref<CStr>::from_raw_parts_unchecked(data, length);
+    }
+
+    /// Borrows through the first NUL in an initialized slice, or fails if none is present.
+    /// The source must outlive the returned view and preserve its C string contents.
+    static constexpr auto from_chars_until_nul(slice<char> chars [[clang::lifetimebound]]) noexcept
+        -> Result<ref<CStr>, FromBytesUntilNulError> {
+        auto const len = chars.len().to_primitive();
+        for (rstd::size_t index = 0; index < len; ++index) {
+            if (chars[usize(index)] == '\0') {
+                return Ok(from_ptr_with_nul_unchecked(chars.as_raw_ptr(), usize(index)));
+            }
+        }
+        return Err(FromBytesUntilNulError {});
     }
 
     static constexpr auto from_chars_with_nul(slice<char> chars [[clang::lifetimebound]]) noexcept

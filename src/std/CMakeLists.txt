@@ -157,7 +157,7 @@ target_sources(
          src/fs/mod.cppm
          src/ffi/mod.cppm
          src/ffi/os_str.cppm
-         src/ffi/os_str/encoding.cppm
+         src/sys/os_str/encoding.cppm
          src/ffi/os_str/platform.cppm
          src/sys/os_str/windows.cppm
          src/sys/args/windows.cppm
@@ -263,6 +263,7 @@ target_sources(
          src/bytes.cppm
          src/net/mod.cppm
          src/net/socket_addr.cppm
+         src/net/hostname.cppm
          src/net/datagram.cppm
          src/net/socket_stream.cppm
          src/net/udp.cppm
@@ -291,6 +292,7 @@ target_sources(
           src/sys/socket/datagram.cpp
           src/net/tcp.cpp
           src/net/socket_addr.cpp
+          src/net/hostname.cpp
           src/lib.cpp
           src/process/mod.cpp
           src/signal/mod.cpp

@@ -2,6 +2,9 @@ module;
 #include <winsock2.h>
 #include <windows.h>
 
+// The Win32 alias collides with OperationKind::SendMessage.
+#undef SendMessage
+
 export module rstd:sys.pal.windows.poll;
 export import rstd.sys.pal.poll.types;
 

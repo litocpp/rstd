@@ -2,7 +2,7 @@ module;
 #include <rstd/macro.hpp>
 export module rstd:sys.os_str.windows;
 import :os.windows.ffi;
-import :ffi.os_str;
+import rstd.ffi;
 import rstd.io.error;
 import rstd.alloc;
 

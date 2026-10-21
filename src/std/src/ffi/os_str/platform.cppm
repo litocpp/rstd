@@ -1,8 +1,8 @@
 module;
 #include <rstd/macro.hpp>
-export module rstd:ffi.os_str.platform;
+export module rstd.ffi:os_str.platform;
 import rstd.alloc;
-import :ffi.os_str.encoding;
+import rstd.sys.os_str.encoding;
 
 using namespace rstd::prelude;
 using ::alloc::vec::Vec;
@@ -55,7 +55,7 @@ public:
             length <= inner_.len() &&
             (length == inner_.len() || (inner_.as_slice()[length].to_primitive() & 0xc0) != 0x80);
 #else
-        auto valid = os_encoding::public_boundary(inner_.as_slice(), length);
+        auto valid = sys::os_str::encoding::public_boundary(inner_.as_slice(), length);
 #endif
         if (! valid) rstd::panic { "OsString::truncate invalid encoded boundary" };
         inner_.truncate(length);
@@ -72,7 +72,7 @@ public:
             }
         }
 #if RSTD_OS_WINDOWS
-        os_encoding::append_wtf8(inner_, value);
+        sys::os_str::encoding::append_wtf8(inner_, value);
 #else
         inner_.extend_from_slice(value);
 #endif

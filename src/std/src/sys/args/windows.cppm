@@ -1,5 +1,5 @@
 export module rstd:sys.args.windows;
-import :ffi.os_str.encoding;
+import rstd.sys.os_str.encoding;
 import rstd.alloc;
 
 using namespace rstd::prelude;
@@ -28,7 +28,7 @@ auto parse(slice<u16> line) -> Vec<Vec<u8>> {
             word.emplace_back(value);
         ++index;
     }
-    output.push(rstd::ffi::os_encoding::from_wide(word.as_slice()));
+    output.push(rstd::sys::os_str::encoding::from_wide(word.as_slice()));
     while (index < line.len()) {
         while (index < line.len() && space(line[index])) ++index;
         if (index == line.len() || line[index] == u16()) break;
@@ -63,7 +63,7 @@ auto parse(slice<u16> line) -> Vec<Vec<u8>> {
                 word.emplace_back(line[index++]);
             }
         }
-        output.push(rstd::ffi::os_encoding::from_wide(word.as_slice()));
+        output.push(rstd::sys::os_str::encoding::from_wide(word.as_slice()));
     }
     return output;
 }

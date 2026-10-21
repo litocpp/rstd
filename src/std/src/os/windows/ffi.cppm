@@ -1,8 +1,8 @@
 module;
 #include <rstd/macro.hpp>
 export module rstd:os.windows.ffi;
-import :ffi.os_str;
-import :ffi.os_str.encoding;
+import rstd.ffi;
+import rstd.sys.os_str.encoding;
 import rstd.alloc;
 
 using namespace rstd::prelude;
@@ -29,7 +29,7 @@ public:
             return Some(u16(result));
         }
         if (index_ == bytes_.len()) return None();
-        auto value = rstd::ffi::os_encoding::decode(bytes_, index_);
+        auto value = rstd::sys::os_str::encoding::decode(bytes_, index_);
         if (value <= 0xffff) return Some(u16(value));
         value -= 0x10000;
         pending_ = 0xdc00 | (value & 0x3ff);
@@ -39,7 +39,8 @@ public:
 
 struct OsStringExt {
     static auto from_wide(slice<u16> value) -> OsString {
-        return OsString::from_encoded_bytes_unchecked(rstd::ffi::os_encoding::from_wide(value));
+        return OsString::from_encoded_bytes_unchecked(
+            rstd::sys::os_str::encoding::from_wide(value));
     }
 };
 

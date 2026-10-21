@@ -1,6 +1,7 @@
 #include <rstd/test/gtest.hpp>
 
 import rstd;
+import rstd.tests.ffi_core_check;
 
 using namespace rstd::literals;
 using rstd::ffi::CStr;
@@ -25,6 +26,78 @@ auto bytes(rstd::slice<rstd::u8> value) -> rstd::vec::Vec<rstd::u8> {
 }
 
 } // namespace
+
+TEST(CStr, CoreOnlyImport) {
+    EXPECT_TRUE(ffi_core_check());
+}
+
+TEST(CStr, UntilNulRejectsEmptyAndUnterminatedInput) {
+    EXPECT_TRUE(CStr::from_chars_until_nul(rstd::slice<char> {}).is_err());
+    const char missing[] { 'a', 'b' };
+    EXPECT_TRUE(CStr::from_chars_until_nul(chars(missing)).is_err());
+    const char bounded[] { 'a', 'b', '\0' };
+    EXPECT_TRUE(
+        CStr::from_chars_until_nul(rstd::slice<char>::from_raw_parts(bounded, rstd::usize(2)))
+            .is_err());
+}
+
+TEST(CStr, UntilNulBorrowsEmptyString) {
+    const char*       inputs[] { "", "\0tail" };
+    const rstd::usize lengths[] { rstd::usize(1), rstd::usize(6) };
+    for (int index = 0; index < 2; ++index) {
+        auto result = CStr::from_chars_until_nul(
+            rstd::slice<char>::from_raw_parts(inputs[index], lengths[index]));
+        ASSERT_TRUE(result.is_ok());
+        auto value = result.unwrap();
+        EXPECT_TRUE(value.is_empty());
+        EXPECT_EQ(value.as_ptr(), inputs[index]);
+        EXPECT_EQ(value.to_bytes_with_nul(), "\0"_bytes);
+    }
+}
+
+TEST(CStr, UntilNulKeepsOnlyFirstString) {
+    char input[] { 'a', '\0', 'b', '\0', 'c' };
+    auto result = CStr::from_chars_until_nul(chars(input));
+    ASSERT_TRUE(result.is_ok());
+    auto value = result.unwrap();
+    EXPECT_EQ(value.as_ptr(), input);
+    EXPECT_EQ(value.count_bytes(), rstd::usize(1));
+    EXPECT_EQ(value.to_bytes(), "a"_bytes);
+    EXPECT_EQ(value.to_bytes_with_nul(), "a\0"_bytes);
+    EXPECT_EQ(input[2], 'b');
+    EXPECT_EQ(input[3], '\0');
+    EXPECT_EQ(input[4], 'c');
+    EXPECT_TRUE(CStr::from_chars_with_nul(chars(input)).is_err());
+}
+
+TEST(CStr, UntilNulMatchesStrictBorrowAtEnd) {
+    const char input[] = "hello";
+    auto       bounded = CStr::from_chars_until_nul(chars(input)).unwrap();
+    auto       strict  = CStr::from_chars_with_nul(chars(input)).unwrap();
+    EXPECT_EQ(bounded.as_ptr(), strict.as_ptr());
+    EXPECT_EQ(bounded.count_bytes(), strict.count_bytes());
+    EXPECT_EQ(bounded.to_bytes_with_nul(), strict.to_bytes_with_nul());
+}
+
+TEST(CStr, UntilNulPreservesNonUtf8) {
+    const char input[] = "\xff\0tail";
+    auto       result  = CStr::from_chars_until_nul(chars(input));
+    ASSERT_TRUE(result.is_ok());
+    auto value = result.unwrap();
+    EXPECT_EQ(value.as_ptr(), input);
+    EXPECT_EQ(value.to_bytes(), "\xff"_bytes);
+    EXPECT_TRUE(value.to_str().is_err());
+}
+
+TEST(CStr, UntilNulErrorTraits) {
+    auto result = CStr::from_chars_until_nul(rstd::slice<char> {});
+    ASSERT_TRUE(result.is_err());
+    auto error = result.unwrap_err();
+    auto copy  = error;
+    EXPECT_EQ(rstd::format("{}", copy), "data provided does not contain a nul"_str);
+    EXPECT_EQ(rstd::format("{:?}", copy), "FromBytesUntilNulError"_str);
+    EXPECT_TRUE(rstd::as<rstd::error::Error>(copy).source().is_none());
+}
 
 TEST(CStr, CheckedBorrowRequiresOneTrailingNul) {
     auto value = CStr::from_chars_with_nul(chars("hello"));

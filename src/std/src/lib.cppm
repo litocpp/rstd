@@ -8,6 +8,7 @@ export import rstd.error;
 export import :time;
 export import :forward;
 export import rstd.io;
+export import rstd.ffi;
 export import :bytes;
 export import :random;
 export import :path;
