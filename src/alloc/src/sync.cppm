@@ -465,6 +465,26 @@ public:
         return Arc { ArcData<T> { .pointer = raw.into_ptr() } };
     }
 
+    /// The pointer must come from this Arc type and remain protected by a strong owner.
+    /// Adds one strong ownership token, which must be released or adopted with from_raw.
+    static void increment_strong_count(mut_ptr<T> pointer) noexcept {
+        arc_header(pointer)->inc_strong();
+    }
+
+    /// Consumes one strong ownership token. The value may be destroyed by this call.
+    static void decrement_strong_count(mut_ptr<T> pointer) noexcept { arc_drop_strong(pointer); }
+
+    /// The pointer must remain protected by a strong owner throughout the query.
+    static auto strong_count_from_raw(mut_ptr<T> pointer) noexcept -> usize {
+        return arc_header(pointer)->strong.load(rstd::sync::atomic::Ordering::Acquire);
+    }
+
+    /// Borrows a live Arc pointer and retains its allocator without retaining its value.
+    static auto allocator_owner_from_raw(mut_ptr<T> pointer) noexcept -> ArcAllocator {
+        auto* header = arc_header(pointer);
+        return ArcAllocator(header->allocation->allocator_owner(header));
+    }
+
     auto assume_init()
         requires(! mtp::same_as<typename maybe_uninit_traits<T>::value_type, void>)
     {

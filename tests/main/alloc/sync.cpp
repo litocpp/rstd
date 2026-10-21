@@ -459,3 +459,40 @@ TEST(ArcDyn, EmptyConcreteUsesDynamicLayout) {
     EXPECT_EQ(rstd::alloc::Layout::for_value(arc.as_ptr().as_ptr()).size,
               rstd::usize(sizeof(ArcDynEmptyPayload)));
 }
+
+TEST(ArcRaw, RetainReleaseAndAllocatorOwnerKeepSeparateLifetimes) {
+    using rstd::usize;
+    using rstd::u64;
+    auto tracker   = rstd::alloc::SharedTrackingAllocator<>::make();
+    int  drops     = 0;
+    auto owner     = Arc<ArcDynPayload>::make_in(tracker.clone(), drops, 17);
+    auto pointer   = owner.into_raw().into_ptr();
+    auto allocator = Arc<ArcDynPayload>::allocator_owner_from_raw(pointer);
+    EXPECT_EQ(Arc<ArcDynPayload>::strong_count_from_raw(pointer), usize(1));
+    Arc<ArcDynPayload>::increment_strong_count(pointer);
+    EXPECT_EQ(Arc<ArcDynPayload>::strong_count_from_raw(pointer), usize(2));
+    Arc<ArcDynPayload>::decrement_strong_count(pointer);
+    EXPECT_EQ(drops, 0);
+    auto adopted = Arc<ArcDynPayload>::from_raw(ArcRaw<ArcDynPayload>::from_ptr(pointer));
+    EXPECT_EQ(adopted.strong_count(), usize(1));
+    adopted.reset();
+    EXPECT_EQ(drops, 1);
+    EXPECT_GT(tracker.snapshot().live_bytes, u64());
+    allocator = {};
+    EXPECT_EQ(drops, 1);
+    EXPECT_EQ(tracker.snapshot().live_bytes, u64());
+}
+
+TEST(ArcRaw, DynamicRetainReleasePreservesMetadata) {
+    int  drops   = 0;
+    auto owner   = ArcDyn::make(ArcDynPayload(drops, 29));
+    auto pointer = owner.into_raw().into_ptr();
+    ArcDyn::increment_strong_count(pointer);
+    auto adopted = ArcDyn::from_raw(ArcDynRaw::from_ptr(pointer));
+    EXPECT_EQ(adopted->value(), 29);
+    EXPECT_EQ(ArcDyn::strong_count_from_raw(pointer), rstd::usize(2));
+    adopted.reset();
+    EXPECT_EQ(drops, 0);
+    ArcDyn::decrement_strong_count(pointer);
+    EXPECT_EQ(drops, 1);
+}

@@ -16,6 +16,25 @@ static_assert(! CanEraseBytesAllocator<rstd::alloc::TrackingAllocator<>>);
 static_assert(! CanEraseBytesAllocator<rstd::alloc::VirtualMemoryAllocator>);
 static_assert(CanEraseBytesAllocator<SharedTrackingAllocator<>>);
 
+static constexpr unsigned char static_bytes[] = { 'h', 'e', 'l', 'l', 'o' };
+TEST(Bytes, StaticStorageRemainsBorrowedUntilMutation) {
+    auto bytes = Bytes::from_static<static_bytes>();
+    bytes.advance(usize(1));
+    bytes.truncate(usize(3));
+    auto clone = bytes.clone();
+    EXPECT_EQ(clone.data(), reinterpret_cast<const rstd::byte*>(static_bytes) + 1);
+    auto refused = rstd::move(bytes).try_into_mut();
+    ASSERT_TRUE(refused.is_err());
+    auto writable     = rstd::move(refused).unwrap_err().into_mut();
+    writable[usize()] = u8('E');
+    EXPECT_EQ(writable.as_slice(), "Ell"_bytes);
+    EXPECT_EQ(clone.as_slice(), "ell"_bytes);
+    EXPECT_NE(writable.data(), clone.data());
+    Bytes moved = rstd::move(clone);
+    EXPECT_TRUE(clone.is_empty());
+    EXPECT_EQ(moved.as_slice(), "ell"_bytes);
+}
+
 TEST(BytesMut, PutSliceAndFreeze) {
     auto buf = BytesMut::with_capacity(usize(8));
     buf.put_slice("hello"_bytes);
@@ -568,4 +587,214 @@ TEST(Bytes, EmptyTypedVecRetainsAlignmentThroughDetach) {
     writable.put_slice("a"_bytes);
     EXPECT_EQ(writable.alignment(), usize(alignof(u32)));
     EXPECT_TRUE(snapshot.is_empty());
+}
+
+static unsigned char  mutable_static_bytes[] { 1 };
+static constexpr bool bool_static_bytes[] { true };
+struct SmallByteObject {
+    unsigned char value;
+};
+static constexpr SmallByteObject    object_static_bytes[] { { 1 } };
+static const volatile unsigned char volatile_static_bytes[] { 1 };
+static constexpr char               terminated_static_bytes[] = "hello";
+static constexpr byte               physical_static_bytes[] { byte { 42 } };
+static constexpr u8                 logical_static_bytes[] { u8(42) };
+template<auto& Data>
+concept CanBorrowStaticBytes = requires { Bytes::from_static<Data>(); };
+static_assert(CanBorrowStaticBytes<static_bytes>);
+static_assert(CanBorrowStaticBytes<terminated_static_bytes>);
+static_assert(CanBorrowStaticBytes<physical_static_bytes>);
+static_assert(CanBorrowStaticBytes<logical_static_bytes>);
+static_assert(! CanBorrowStaticBytes<mutable_static_bytes>);
+static_assert(! CanBorrowStaticBytes<bool_static_bytes>);
+static_assert(! CanBorrowStaticBytes<object_static_bytes>);
+static_assert(! CanBorrowStaticBytes<volatile_static_bytes>);
+static_assert(sizeof(Bytes) == sizeof(void*) * 4);
+
+auto make_static_bytes_cross_tu() -> Bytes;
+auto clone_bytes_cross_tu(const Bytes& bytes) -> Bytes;
+
+TEST(Bytes, StaticViewsAndClearKeepTheirOrigin) {
+    auto bytes = Bytes::from_static<terminated_static_bytes>();
+    EXPECT_EQ(bytes.len(), usize(6));
+    EXPECT_EQ(bytes[usize(5)], u8());
+    EXPECT_FALSE(bytes.is_unique());
+    auto middle = bytes.slice(usize(1), usize(4));
+    EXPECT_EQ(middle.as_slice(), "ell"_bytes);
+    EXPECT_EQ(middle.data(), bytes.data() + 1);
+    auto prefix = middle.split_to(usize(1));
+    EXPECT_EQ(prefix.as_slice(), "e"_bytes);
+    EXPECT_EQ(middle.as_slice(), "ll"_bytes);
+    auto suffix = bytes.split_off(usize(5));
+    EXPECT_EQ(suffix.len(), usize(1));
+    EXPECT_EQ(bytes.as_slice(), "hello"_bytes);
+    middle.clear();
+    EXPECT_TRUE(middle.is_empty());
+    EXPECT_EQ(middle.data(), bytes.data());
+    EXPECT_EQ(middle.capacity(), usize());
+    EXPECT_TRUE(rstd::move(middle).try_into_mut().is_err());
+    EXPECT_EQ(Bytes::from_static<physical_static_bytes>()[usize()], u8(42));
+    EXPECT_EQ(Bytes::from_static<logical_static_bytes>()[usize()], u8(42));
+}
+
+TEST(Bytes, StaticAndArcDispatchAcrossTranslationUnits) {
+    auto bytes = make_static_bytes_cross_tu();
+    auto copy  = clone_bytes_cross_tu(bytes);
+    bytes      = Bytes::make();
+    EXPECT_EQ(copy.as_slice(), "cross"_bytes);
+    EXPECT_EQ(rstd::move(copy).into_mut().as_slice(), "cross"_bytes);
+    auto owned   = Bytes::copy_from_slice("owned"_bytes);
+    auto sibling = clone_bytes_cross_tu(owned);
+    EXPECT_FALSE(owned.is_unique());
+    owned = Bytes::make();
+    EXPECT_TRUE(sibling.is_unique());
+    EXPECT_EQ(rstd::move(sibling).try_into_mut().unwrap().as_slice(), "owned"_bytes);
+}
+
+TEST(BytesAllocator, SlicesAndSplitsRetainOneAllocationWithoutCopying) {
+    auto tracker = SharedTrackingAllocator<>::make();
+    {
+        auto  source = Bytes::copy_from_slice_in("abcdef"_bytes, tracker.clone());
+        auto* base   = source.data();
+        auto  before = tracker.snapshot();
+        EXPECT_TRUE(source.is_unique());
+        auto middle = source.slice(usize(1), usize(5));
+        auto suffix = middle.split_off(usize(2));
+        auto prefix = source.split_to(usize(2));
+        EXPECT_EQ(middle.as_slice(), "bc"_bytes);
+        EXPECT_EQ(suffix.as_slice(), "de"_bytes);
+        EXPECT_EQ(prefix.as_slice(), "ab"_bytes);
+        EXPECT_EQ(source.as_slice(), "cdef"_bytes);
+        EXPECT_EQ(middle.data(), base + 1);
+        EXPECT_EQ(suffix.data(), base + 3);
+        EXPECT_EQ(source.data(), base + 2);
+        EXPECT_FALSE(middle.is_unique());
+        source = Bytes::make();
+        suffix = Bytes::make();
+        prefix = Bytes::make();
+        EXPECT_TRUE(middle.is_unique());
+        auto allocator = middle.allocator();
+        EXPECT_TRUE(middle.is_unique());
+        auto buffer = rstd::move(middle).try_into_mut().unwrap();
+        EXPECT_EQ(buffer.as_slice(), "bc"_bytes);
+        EXPECT_EQ(buffer.capacity(), usize(5));
+        EXPECT_EQ(buffer.data(), base + 1);
+        EXPECT_EQ(tracker.snapshot().allocations, before.allocations);
+        EXPECT_EQ(tracker.snapshot().deallocations, before.deallocations);
+        auto tail = buffer.chunk_mut();
+        for (usize i; i < tail.len(); ++i) EXPECT_EQ(tail[i], u8());
+    }
+    EXPECT_EQ(tracker.snapshot().live_bytes, u64());
+    EXPECT_EQ(tracker.snapshot().allocations, tracker.snapshot().deallocations);
+}
+
+TEST(BytesAllocator, EmptySlicesPreserveOffsetCapacityAndAllocator) {
+    auto tracker = SharedTrackingAllocator<>::make();
+    {
+        auto values = Vec<u8, SharedTrackingAllocator<>>::with_capacity_aligned_in(
+            usize(16), usize(64), tracker.clone());
+        values.extend_from_slice("abcd"_bytes);
+        auto  source = Bytes::from_vec(rstd::move(values));
+        auto* base   = source.data();
+        auto  empty  = source.slice(usize(3), usize(3));
+        EXPECT_TRUE(empty.is_empty());
+        EXPECT_EQ(empty.data(), base + 3);
+        EXPECT_EQ(empty.capacity(), usize(13));
+        EXPECT_EQ(empty.alignment(), usize(1));
+        source      = Bytes::make();
+        auto buffer = rstd::move(empty).try_into_mut().unwrap();
+        EXPECT_EQ(buffer.data(), base + 3);
+        EXPECT_EQ(buffer.capacity(), usize(13));
+        buffer.put_slice("!"_bytes);
+        auto frozen = buffer.freeze();
+        frozen.clear();
+        EXPECT_EQ(frozen.data(), base);
+        EXPECT_EQ(frozen.capacity(), usize(16));
+        EXPECT_EQ(frozen.alignment(), usize(64));
+        auto before = tracker.snapshot().allocations;
+        auto reused = rstd::move(frozen).into_mut();
+        EXPECT_TRUE(reused.is_empty());
+        EXPECT_EQ(reused.capacity(), usize(16));
+        EXPECT_EQ(reused.chunk_mut()[usize()], u8());
+        EXPECT_EQ(tracker.snapshot().allocations, before);
+    }
+    EXPECT_EQ(tracker.snapshot().live_bytes, u64());
+}
+
+TEST(Bytes, EmptyAndBoundarySplits) {
+    auto empty = Bytes::make();
+    EXPECT_TRUE(empty.slice(usize(), usize()).is_empty());
+    EXPECT_TRUE(empty.split_to(usize()).is_empty());
+    EXPECT_TRUE(empty.split_off(usize()).is_empty());
+    auto  bytes = Bytes::copy_from_slice("abc"_bytes);
+    auto* base  = bytes.data();
+    auto  zero  = bytes.split_to(usize());
+    EXPECT_TRUE(zero.is_empty());
+    EXPECT_EQ(bytes.data(), base);
+    auto all = bytes.split_to(bytes.len());
+    EXPECT_TRUE(bytes.is_empty());
+    EXPECT_EQ(bytes.data(), base + 3);
+    EXPECT_EQ(bytes.capacity(), usize());
+    EXPECT_EQ(all.as_slice(), "abc"_bytes);
+    zero = Bytes::make();
+    all  = Bytes::make();
+    bytes.clear();
+    EXPECT_EQ(bytes.capacity(), usize(3));
+    EXPECT_EQ(bytes.data(), base);
+}
+
+TEST(Bytes, InvalidSubrangesPanic) {
+    EXPECT_DEATH((void)Bytes::from_static<static_bytes>().slice(usize(4), usize(3)),
+                 "out of bounds");
+    EXPECT_DEATH((void)Bytes::from_static<static_bytes>().slice(usize(), usize(6)),
+                 "out of bounds");
+    EXPECT_DEATH((void)Bytes::from_static<static_bytes>().split_to(usize(6)), "out of bounds");
+    EXPECT_DEATH((void)Bytes::from_static<static_bytes>().split_off(usize(6)), "out of bounds");
+    EXPECT_DEATH((void)Bytes::make().slice(usize::MAX, usize::MAX), "out of bounds");
+}
+
+TEST(BytesAllocator, MixedBackendMovesReleaseExactlyOnce) {
+    auto tracker  = SharedTrackingAllocator<>::make();
+    auto bytes    = Bytes::copy_from_slice_in("heap"_bytes, tracker.clone());
+    auto snapshot = bytes.clone();
+    bytes         = Bytes::from_static<static_bytes>();
+    EXPECT_EQ(snapshot.as_slice(), "heap"_bytes);
+    EXPECT_EQ(bytes.as_slice(), "hello"_bytes);
+    bytes = rstd::move(snapshot);
+    EXPECT_TRUE(snapshot.is_empty());
+    auto& alias = bytes;
+    bytes       = rstd::move(alias);
+    EXPECT_EQ(bytes.as_slice(), "heap"_bytes);
+    EXPECT_TRUE(bytes.is_unique());
+    bytes = Bytes::make();
+    EXPECT_EQ(tracker.snapshot().live_bytes, u64());
+    EXPECT_EQ(tracker.snapshot().allocations, tracker.snapshot().deallocations);
+}
+
+TEST(BytesAllocator, ConcurrentViewsReleaseLastOwnerOnce) {
+    auto tracker = SharedTrackingAllocator<>::make();
+    auto bytes   = Bytes::copy_from_slice_in("abcdef"_bytes, tracker.clone());
+    auto run     = [](Bytes view) {
+        for (int i = 0; i < 2000; ++i) {
+            auto copy   = view.clone();
+            auto middle = copy.slice(usize(1), usize(4));
+            EXPECT_EQ(middle.as_slice(), "bcd"_bytes);
+        }
+    };
+    auto first     = rstd::thread::spawn([view = bytes.clone(), run]() mutable {
+                     run(rstd::move(view));
+                     }).unwrap();
+    auto second    = rstd::thread::spawn([view = bytes.clone(), run]() mutable {
+                      run(rstd::move(view));
+                     }).unwrap();
+    auto allocator = bytes.allocator();
+    bytes          = Bytes::make();
+    EXPECT_TRUE(rstd::move(first).join().is_ok());
+    EXPECT_TRUE(rstd::move(second).join().is_ok());
+    EXPECT_EQ(tracker.snapshot().deallocations, u64(1));
+    auto final = rstd::thread::spawn([owner = rstd::move(allocator)] {
+                 }).unwrap();
+    EXPECT_TRUE(rstd::move(final).join().is_ok());
+    EXPECT_EQ(tracker.snapshot().live_bytes, u64());
+    EXPECT_EQ(tracker.snapshot().deallocations, u64(2));
 }

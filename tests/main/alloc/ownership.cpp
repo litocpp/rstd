@@ -925,6 +925,22 @@ TEST(AllocationOwnership, BootstrapFailureInjectionReleasesConsumedAllocator) {
     EXPECT_EQ(state.allocations, 0);
 }
 
+TEST(AllocationOwnership, StaticBytesViewsDoNotAllocate) {
+    static constexpr unsigned char data[] { 'a', 'b', 'c', 'd' };
+    fail_next_runtime_allocation.store(true, rstd::sync::atomic::Ordering::Relaxed);
+    {
+        auto bytes  = rstd::bytes::Bytes::from_static<data>();
+        auto copy   = bytes.clone();
+        auto middle = copy.slice(usize(1), usize(3));
+        auto prefix = middle.split_to(usize(1));
+        auto suffix = bytes.split_off(usize(2));
+        rstd::hint::black_box(prefix);
+        rstd::hint::black_box(suffix);
+    }
+    EXPECT_TRUE(
+        fail_next_runtime_allocation.exchange(false, rstd::sync::atomic::Ordering::Relaxed));
+}
+
 TEST(AllocationOwnership, BytesGlobalOwnerDoesNotAllocate) {
     fail_next_runtime_allocation.store(true, rstd::sync::atomic::Ordering::Relaxed);
     auto bytes  = rstd::bytes::Bytes::make();

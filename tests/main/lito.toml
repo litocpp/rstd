@@ -108,6 +108,7 @@ sources = [
   "async/spawn_blocking.cpp",
   "net_completion.cpp",
   "bytes.cpp",
+  "bytes_storage.cpp",
   "sync/mutex.cpp",
   "sync/condvar.cpp",
   "sync/once.cpp",

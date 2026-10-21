@@ -141,6 +141,152 @@ struct BytesSession {
     auto finish() -> Result<empty, String> { return Ok(empty {}); }
 };
 
+enum class BytesStorageOperation
+{
+    StaticCreate,
+    StaticClone,
+    SharedClone,
+    Slice,
+    Split,
+    UniqueRoundtrip,
+    SharedCopy
+};
+static constexpr unsigned char storage_payload[64] {};
+
+struct BytesStorageSession {
+    rstd::alloc::SharedTrackingAllocator<> tracker = rstd::alloc::SharedTrackingAllocator<>::make();
+    rstd::bytes::Bytes                     source;
+    BytesStorageOperation                  kind;
+
+    explicit BytesStorageSession(BytesStorageOperation kind): kind(kind) {
+        source = kind == BytesStorageOperation::StaticCreate ||
+                         kind == BytesStorageOperation::StaticClone
+                     ? rstd::bytes::Bytes::from_static<storage_payload>()
+                     : rstd::bytes::Bytes::copy_from_slice_in(
+                           rstd::bytes::Bytes::from_static<storage_payload>().as_slice(),
+                           tracker.clone());
+    }
+    void operation() {
+        using rstd::bytes::Bytes;
+        if (kind == BytesStorageOperation::StaticCreate) {
+            auto value = Bytes::from_static<storage_payload>();
+            rstd::hint::black_box(value);
+        } else if (kind == BytesStorageOperation::Slice) {
+            auto value = source.slice(usize(16), usize(48));
+            rstd::hint::black_box(value);
+        } else if (kind == BytesStorageOperation::Split) {
+            auto value  = source.clone();
+            auto prefix = value.split_to(usize(32));
+            rstd::hint::black_box(prefix);
+            rstd::hint::black_box(value);
+        } else if (kind == BytesStorageOperation::UniqueRoundtrip) {
+            auto value = rstd::move(source).try_into_mut().unwrap();
+            rstd::hint::black_box(value);
+            source = value.freeze();
+        } else if (kind == BytesStorageOperation::SharedCopy) {
+            auto value = source.clone().into_mut();
+            rstd::hint::black_box(value);
+        } else {
+            auto value = source.clone();
+            rstd::hint::black_box(value);
+        }
+    }
+    auto check() -> Result<empty, String> {
+        auto* original = source.data();
+        auto  before   = tracker.snapshot();
+        operation();
+        auto after       = tracker.snapshot();
+        auto allocations = kind == BytesStorageOperation::SharedCopy ? u64(2) : u64();
+        if (after.allocations - before.allocations != allocations ||
+            after.live_bytes != before.live_bytes)
+            return Err("bytes storage allocation counts differ"_Str);
+        if (source.data() != original || source.len() != usize(64))
+            return Err("bytes storage source changed"_Str);
+        for (usize i; i < source.len(); ++i)
+            if (source[i] != u8()) return Err("bytes storage contents differ"_Str);
+        return Ok(empty {});
+    }
+    auto run(bench::Bench& engine, ref<str> name)
+        -> Result<bench::BenchmarkResult, bench::BenchError> {
+        auto workload = bench::repeated(
+            [this] {
+                operation();
+            },
+            { .items_per_iteration = u64(1) });
+        return workload.run(engine, name);
+    }
+    auto run(u64 iterations) -> Result<bench::DiagnosticMeasurement, String> {
+        auto before = tracker.snapshot();
+        for (u64 i; i < iterations; ++i) operation();
+        auto                         after = tracker.snapshot();
+        bench::DiagnosticMeasurement result;
+        result.work = { .items_per_iteration = u64(1) };
+        auto metric = [&](ref<str>              name,
+                          u64                   value,
+                          bench::DiagnosticUnit unit,
+                          ref<str>              provenance) {
+            result.metrics.push(bench::DiagnosticMetric { String::make(name),
+                                                          unit,
+                                                          bench::MetricDirection::Lower,
+                                                          "operation"_Str,
+                                                          String::make(provenance),
+                                                          bench::DiagnosticValue::Count(value) });
+        };
+        metric("allocations"_str,
+               after.allocations - before.allocations,
+               bench::DiagnosticUnit::Count,
+               "allocator snapshot; includes payload and control blocks"_str);
+        metric("control_blocks"_str,
+               (after.allocations - before.allocations) / u64(2),
+               bench::DiagnosticUnit::Count,
+               "two-allocation copy path validated by precheck"_str);
+        metric("copied_bytes"_str,
+               kind == BytesStorageOperation::SharedCopy ? iterations * u64(64) : u64(),
+               bench::DiagnosticUnit::Bytes,
+               "payload bytes required by the selected operation"_str);
+        return Ok(rstd::move(result));
+    }
+    auto finish() -> Result<empty, String> {
+        source = rstd::bytes::Bytes::make();
+        if (tracker.snapshot().live_bytes != u64()) return Err("bytes storage leaked"_Str);
+        return Ok(empty {});
+    }
+};
+struct BytesStorageFactory {
+    BytesStorageOperation kind;
+    auto prepare() -> Result<BytesStorageSession, String> { return Ok(BytesStorageSession(kind)); }
+    auto prepare(bench::DiagnosticContext&) -> Result<BytesStorageSession, String> {
+        return prepare();
+    }
+};
+auto register_bytes_storage(bench::Suite& suite) -> Result<empty, String> {
+    struct Case {
+        BytesStorageOperation kind;
+        ref<str>              name;
+    };
+    const Case cases[] { { BytesStorageOperation::StaticCreate, "static_create"_str },
+                         { BytesStorageOperation::StaticClone, "static_clone"_str },
+                         { BytesStorageOperation::SharedClone, "shared_clone"_str },
+                         { BytesStorageOperation::Slice, "slice"_str },
+                         { BytesStorageOperation::Split, "split"_str },
+                         { BytesStorageOperation::UniqueRoundtrip, "unique_roundtrip"_str },
+                         { BytesStorageOperation::SharedCopy, "shared_copy"_str } };
+    for (auto item : cases) {
+        auto descriptor = make_descriptor(
+            "bytes_storage"_str,
+            item.name,
+            u64(1000),
+            parameter("bytes_handle_size"_str, u64(sizeof(rstd::bytes::Bytes))),
+            parameter("mutable_handle_size"_str, u64(sizeof(rstd::bytes::BytesMut))),
+            parameter("payload_bytes"_str, u64(64)),
+            parameter("timing_allocator"_str, "SharedTrackingAllocator"_str));
+        auto id = descriptor.id.clone();
+        rstd_try(suite.add(rstd::move(descriptor), BytesStorageFactory { item.kind }));
+        rstd_try(suite.add_diagnostic(id, BytesStorageFactory { item.kind }));
+    }
+    return Ok(empty {});
+}
+
 enum class VecBulkOperation
 {
     Push,
@@ -449,6 +595,7 @@ auto register_hash_reserve(bench::Suite& suite) -> Result<empty, String> {
 }
 
 auto rstd_bench::register_alloc(bench::Suite& suite) -> Result<empty, String> {
+    rstd_try(register_bytes_storage(suite));
     rstd_try(register_hash_reserve<false>(suite));
     rstd_try(register_hash_reserve<true>(suite));
     rstd_try(register_ownership_cases<::alloc::Global>(suite, "global"_str));

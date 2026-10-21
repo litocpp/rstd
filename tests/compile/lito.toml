@@ -4,6 +4,12 @@ name = "rstd-compile-tests"
 [compile-test]
 
 [[compile-test.cases]]
+name = "Bytes.StaticBorrowRejectsAutomaticStorage"
+source = "bytes/local_static_borrow.cpp"
+outcome = "failure"
+diagnostic-contains = ["invalid explicitly-specified argument for template parameter 'Data'"]
+
+[[compile-test.cases]]
 name = "Choice.DuplicateTags"
 source = "choice/duplicate_tags.cpp"
 outcome = "failure"
