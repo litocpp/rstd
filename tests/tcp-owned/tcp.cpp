@@ -287,3 +287,116 @@ TEST(TcpOwned, InterruptedHandshakeAndCloseKeepAnOwnerUntilReleaseCompletes) {
         "interrupted TCP connect/close: {}/8, {}/8", interrupted_connect, interrupted_close);
     EXPECT_TRUE(runtime.block_on(rstd::move(listener).close()).is_ok());
 }
+
+#if ! defined(_WIN32)
+TEST(TcpOwned, PreparedFdDetachSurvivesStreamAndListenerDestruction) {
+    auto runtime = async::RuntimeBuilder::current_thread().enable_all().build().unwrap();
+    auto sockets = pair(runtime);
+    auto pending = [&] {
+        auto old = rstd::move(sockets.get<0>());
+        return rstd::move(old).into_owned_fd();
+    }();
+    auto restored =
+        net::TcpStream::from_owned_fd(runtime.block_on(rstd::move(pending)).unwrap()).unwrap();
+    EXPECT_TRUE(runtime.block_on(restored.send(bytes::Bytes::copy_from_slice("fd"_bytes))).is_ok());
+    EXPECT_EQ(runtime.block_on(sockets.get<1>().recv()).unwrap().as_slice(), "fd"_bytes);
+    auto listening = [] {
+        auto old = net::TcpListener::bind(net::SocketAddr::ipv4_loopback(u16())).unwrap();
+        return rstd::move(old).into_owned_fd();
+    }();
+    auto listener =
+        net::TcpListener::from_owned_fd(runtime.block_on(rstd::move(listening)).unwrap()).unwrap();
+    EXPECT_TRUE(listener.local_addr().is_ok());
+    EXPECT_TRUE(runtime.block_on(rstd::move(listener).close()).is_ok());
+    EXPECT_TRUE(runtime.block_on(rstd::move(restored).close()).is_ok());
+    EXPECT_TRUE(runtime.block_on(rstd::move(sockets.get<1>()).close()).is_ok());
+}
+
+struct ReplacePendingWrite {
+    using Output = io::Result<usize>;
+    net::TcpStream* stream;
+    bytes::Bytes    abandoned   = bytes::Bytes::copy_from_slice("abandoned-long"_bytes);
+    bytes::Bytes    replacement = bytes::Bytes::copy_from_slice("new"_bytes);
+    bool            started     = false;
+    auto poll(mut_ref<ReplacePendingWrite> self, task::Context& cx) -> task::Poll<Output> {
+        if (! self->started) {
+            auto old = async::io::write(*self->stream, self->abandoned);
+            EXPECT_TRUE(future::poll(old, cx).is_pending());
+            self->started = true;
+        }
+        return async::io::poll_write(*self->stream, cx, self->replacement);
+    }
+};
+
+struct ReplacePendingRead {
+    using Output = io::Result<usize>;
+    net::TcpStream*  stream;
+    net::TcpStream*  sender;
+    bytes::BytesMut* replacement;
+    bytes::BytesMut  abandoned = bytes::BytesMut::with_capacity(usize(32));
+    bool             started   = false;
+    auto poll(mut_ref<ReplacePendingRead> self, task::Context& cx) -> task::Poll<Output> {
+        if (! self->started) {
+            auto old = async::io::read(*self->stream, self->abandoned);
+            EXPECT_TRUE(future::poll(old, cx).is_pending());
+            EXPECT_TRUE(
+                self->sender->try_write(bytes::Bytes::copy_from_slice("new"_bytes)).is_ok());
+            self->started = true;
+        }
+        EXPECT_TRUE(self->abandoned.is_empty());
+        return async::io::poll_read(*self->stream, cx, *self->replacement);
+    }
+};
+
+TEST(TcpOwned, PendingWriteDoesNotConsumeAbandonedInput) {
+    auto runtime = async::RuntimeBuilder::current_thread().enable_all().build().unwrap();
+    auto sockets = pair(runtime);
+    EXPECT_EQ(runtime.block_on(ReplacePendingWrite { &sockets.get<0>() }).unwrap(), usize(3));
+    EXPECT_EQ(runtime.block_on(sockets.get<1>().recv()).unwrap().as_slice(), "new"_bytes);
+    EXPECT_TRUE(runtime.block_on(rstd::move(sockets.get<0>()).close()).is_ok());
+    EXPECT_TRUE(runtime.block_on(rstd::move(sockets.get<1>()).close()).is_ok());
+}
+
+TEST(TcpOwned, PendingReadUsesReplacementBuffer) {
+    auto runtime = async::RuntimeBuilder::current_thread().enable_all().build().unwrap();
+    auto sockets = pair(runtime);
+    auto buffer  = bytes::BytesMut::make();
+    EXPECT_EQ(runtime.block_on(ReplacePendingRead { &sockets.get<0>(), &sockets.get<1>(), &buffer })
+                  .unwrap(),
+              usize(3));
+    EXPECT_EQ(buffer.as_slice(), "new"_bytes);
+    EXPECT_TRUE(runtime.block_on(async::io::shutdown(sockets.get<1>())).is_ok());
+    auto eof = bytes::BytesMut::make();
+    EXPECT_EQ(runtime.block_on(async::io::read(sockets.get<0>(), eof)).unwrap(), usize());
+    EXPECT_TRUE(runtime.block_on(rstd::move(sockets.get<0>()).close()).is_ok());
+    EXPECT_TRUE(runtime.block_on(rstd::move(sockets.get<1>()).close()).is_ok());
+}
+#endif
+
+TEST(TcpOwned, UnpolledSendAllAfterCloseReturnsNotConnected) {
+    auto runtime = async::RuntimeBuilder::current_thread().enable_all().build().unwrap();
+    auto sockets = pair(runtime);
+    auto sending = sockets.get<0>().send_all(bytes::Bytes::copy_from_slice("late"_bytes));
+    EXPECT_TRUE(runtime.block_on(rstd::move(sockets.get<0>()).close()).is_ok());
+    auto result = runtime.block_on(rstd::move(sending));
+    ASSERT_TRUE(result.is_err());
+    EXPECT_EQ(result.unwrap_err().kind(), io::ErrorKind { io::ErrorKind::NotConnected });
+    EXPECT_TRUE(runtime.block_on(rstd::move(sockets.get<1>()).close()).is_ok());
+}
+
+#if defined(_WIN32)
+TEST(TcpOwned, IocpBorrowedPollReportsUnsupported) {
+    auto runtime = async::RuntimeBuilder::current_thread().enable_all().build().unwrap();
+    auto sockets = pair(runtime);
+    auto buffer  = bytes::BytesMut::with_capacity(usize(4));
+    auto read    = runtime.block_on(async::io::read(sockets.get<0>(), buffer));
+    ASSERT_TRUE(read.is_err());
+    EXPECT_EQ(read.unwrap_err().kind(), io::ErrorKind { io::ErrorKind::Unsupported });
+    auto data  = bytes::Bytes::copy_from_slice("test"_bytes);
+    auto write = runtime.block_on(async::io::write(sockets.get<0>(), data));
+    ASSERT_TRUE(write.is_err());
+    EXPECT_EQ(write.unwrap_err().kind(), io::ErrorKind { io::ErrorKind::Unsupported });
+    EXPECT_TRUE(runtime.block_on(rstd::move(sockets.get<0>()).close()).is_ok());
+    EXPECT_TRUE(runtime.block_on(rstd::move(sockets.get<1>()).close()).is_ok());
+}
+#endif

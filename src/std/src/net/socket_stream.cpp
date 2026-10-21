@@ -53,6 +53,17 @@ auto stream_detach_owned_socket(rstd::async::Registration     registration,
     co_return retained.take_owned_socket();
 }
 
+#if RSTD_OS_UNIX
+auto stream_detach_owned_fd(
+    rstd::async::coro<rstd::io::Result<rstd::os::socket::OwnedSocket>> pending)
+    -> rstd::async::coro<rstd::io::Result<rstd::os::fd::OwnedFd>> {
+    auto detached = co_await rstd::move(pending);
+    if (detached.is_err()) co_return rstd::Err(rstd::move(detached).unwrap_err());
+    co_return rstd::Ok(
+        rstd::os::fd::OwnedFd::from_raw_fd(rstd::move(detached).unwrap().into_raw_socket()));
+}
+#endif
+
 auto stream_receive(rstd::io::Result<rstd::async::IoOperation> operation)
     -> rstd::async::coro<rstd::io::Result<rstd::bytes::Bytes>> {
     if (operation.is_err()) co_return rstd::Err(rstd::move(operation).unwrap_err());
@@ -97,14 +108,14 @@ auto SocketStream::from_owned_socket(os::socket::OwnedSocket owned_socket)
 }
 
 auto SocketStream::into_owned_socket() && -> async::coro<io::Result<os::socket::OwnedSocket>> {
-    m_read_operation  = None();
-    m_write_operation = None();
+    m_read_ready  = None();
+    m_write_ready = None();
     return stream_detach_owned_socket(rstd::move(m_registration), rstd::move(m_completion_source));
 }
 
 auto SocketStream::close() && -> async::coro<io::Result<empty>> {
-    m_read_operation  = None();
-    m_write_operation = None();
+    m_read_ready  = None();
+    m_write_ready = None();
     return stream_close_source(rstd::move(m_registration), rstd::move(m_completion_source));
 }
 
@@ -130,10 +141,7 @@ auto SocketStream::from_owned_fd(os::fd::OwnedFd fd) -> io::Result<SocketStream>
 }
 
 auto SocketStream::into_owned_fd() && -> async::coro<io::Result<os::fd::OwnedFd>> {
-    auto detached = co_await rstd::move(*this).into_owned_socket();
-    if (detached.is_err()) co_return Err(rstd::move(detached).unwrap_err_unchecked());
-    auto owned_socket = rstd::move(detached).unwrap_unchecked();
-    co_return Ok(os::fd::OwnedFd::from_raw_fd(rstd::move(owned_socket).into_raw_socket()));
+    return stream_detach_owned_fd(rstd::move(*this).into_owned_socket());
 }
 #endif
 
@@ -179,44 +187,45 @@ auto SocketStream::try_write(bytes::Bytes const& buf) -> io::Result<usize> {
 auto SocketStream::poll_read(mut_ref<SocketStream> self, task::Context& cx, bytes::BytesMut& buf)
     -> task::Poll<io::Result<usize>> {
     auto& stream = *self;
-    if (stream.m_read_operation.is_none()) {
-        stream.m_read_operation =
-            Some(async::IoOperation::read(stream.m_completion_source, buf.chunk_mut().len()));
+    while (true) {
+        if (stream.m_read_ready.is_none()) stream.m_read_ready = Some(stream.readable());
+        auto ready = future::poll(*stream.m_read_ready, cx);
+        if (ready.is_pending()) return task::Poll<io::Result<usize>>::Pending();
+        stream.m_read_ready = None();
+        auto event          = rstd::move(ready).take();
+        if (event.is_err())
+            return task::Poll<io::Result<usize>>::Ready(Err(rstd::move(event).unwrap_err()));
+        auto chunk  = buf.chunk_mut();
+        auto result = socket::recv(stream.m_completion_source.as_raw_fd(), as_bytes_mut(chunk));
+        if (result.is_ok()) {
+            buf.advance_mut(*result);
+            return task::Poll<io::Result<usize>>::Ready(rstd::move(result));
+        }
+        if (! stream_is_would_block(result.unwrap_err()))
+            return task::Poll<io::Result<usize>>::Ready(rstd::move(result));
+        stream.m_registration.clear_readiness(*event);
     }
-
-    auto polled = future::poll(*stream.m_read_operation, cx);
-    if (polled.is_pending()) return task::Poll<io::Result<usize>>::Pending();
-    stream.m_read_operation = None<async::IoOperation>();
-
-    auto result = rstd::move(polled).take();
-    if (result.is_err()) {
-        return task::Poll<io::Result<usize>>::Ready(Err(rstd::move(result).unwrap_err_unchecked()));
-    }
-    auto completion  = rstd::move(result).unwrap_unchecked();
-    auto transferred = completion.transferred();
-    buf.put_slice(completion.data());
-    return task::Poll<io::Result<usize>>::Ready(Ok(transferred));
 }
 
 auto SocketStream::poll_write(mut_ref<SocketStream> self,
                               task::Context&        cx,
                               bytes::Bytes const&   buf) -> task::Poll<io::Result<usize>> {
+    if (buf.is_empty()) return task::Poll<io::Result<usize>>::Ready(Ok(usize()));
     auto& stream = *self;
-    if (stream.m_write_operation.is_none()) {
-        stream.m_write_operation = Some(async::IoOperation::write(
-            stream.m_completion_source, bytes::Bytes::copy_from_slice(buf.as_slice())));
+    while (true) {
+        if (stream.m_write_ready.is_none()) stream.m_write_ready = Some(stream.writable());
+        auto ready = future::poll(*stream.m_write_ready, cx);
+        if (ready.is_pending()) return task::Poll<io::Result<usize>>::Pending();
+        stream.m_write_ready = None();
+        auto event           = rstd::move(ready).take();
+        if (event.is_err())
+            return task::Poll<io::Result<usize>>::Ready(Err(rstd::move(event).unwrap_err()));
+        auto result =
+            socket::send(stream.m_completion_source.as_raw_fd(), as_bytes(buf.as_slice()));
+        if (result.is_ok() || ! stream_is_would_block(result.unwrap_err()))
+            return task::Poll<io::Result<usize>>::Ready(rstd::move(result));
+        stream.m_registration.clear_readiness(*event);
     }
-
-    auto polled = future::poll(*stream.m_write_operation, cx);
-    if (polled.is_pending()) return task::Poll<io::Result<usize>>::Pending();
-    stream.m_write_operation = None<async::IoOperation>();
-
-    auto result = rstd::move(polled).take();
-    if (result.is_err()) {
-        return task::Poll<io::Result<usize>>::Ready(Err(rstd::move(result).unwrap_err_unchecked()));
-    }
-    return task::Poll<io::Result<usize>>::Ready(
-        Ok(rstd::move(result).unwrap_unchecked().transferred()));
 }
 
 auto SocketStream::poll_flush(mut_ref<SocketStream>, task::Context&)

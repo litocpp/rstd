@@ -3,6 +3,7 @@ export import rstd.core;
 import rstd.alloc;
 
 using ::alloc::vec::Vec;
+using rstd::mem::MaybeUninit;
 using ::alloc::sync::Arc;
 using ::alloc::sync::ArcAllocator;
 using rstd::alloc::Allocator;
@@ -256,6 +257,19 @@ public:
         if (buffer().len() < buffer().capacity()) buffer().resize(buffer().capacity(), u8 {});
         return mut_ref<u8[]>::from_raw_parts(buffer().data() + m_end.to_primitive(),
                                              buffer().len() - m_end);
+    }
+    /// Uninitialized tail without allocation or clearing. Initialize before advancing.
+    auto spare_capacity_mut() noexcept [[clang::lifetimebound]] -> mut_ref<MaybeUninit<byte>[]> {
+        if (m_storage.is_none()) return {};
+        buffer().truncate(m_end);
+        return buffer().spare_capacity_mut().as_uninit();
+    }
+    /// The caller must have initialized count bytes of the writable tail.
+    void advance_mut_unchecked(usize count) {
+        if (count > remaining_mut())
+            rstd::panic { "BytesMut::advance_mut_unchecked out of bounds" };
+        m_end += count;
+        if (m_storage.is_some() && buffer().len() < m_end) buffer().set_len_unchecked(m_end);
     }
     void advance_mut(usize cnt) {
         auto available = m_storage.is_some() ? buffer().len() - m_end : usize();

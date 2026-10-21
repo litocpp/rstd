@@ -267,11 +267,15 @@ auto dual_transport(net::UdpSocket& server, net::UdpSocket& client, net::TcpList
     auto stream  = rstd::move(connected).unwrap();
     auto tuple   = rstd::move(accepted).unwrap();
     auto peer    = rstd::move(tuple.template get<0>());
-    auto written = co_await async::io::write_all(stream, packet->data);
+    auto written = co_await stream.send_all(rstd::move(packet->data));
     if (written.is_err()) co_return false;
     auto buffer = bytes::BytesMut::with_capacity(usize(4));
-    auto read   = co_await async::io::read_exact(peer, buffer, usize(4));
-    co_return read.is_ok() && buffer.as_slice() == "both"_bytes;
+    while (buffer.len() != usize(4)) {
+        auto read = co_await peer.recv(usize(4) - buffer.len());
+        if (read.is_err() || read->is_empty()) co_return false;
+        buffer.extend_from_slice(read->as_slice());
+    }
+    co_return buffer.as_slice() == "both"_bytes;
 }
 
 TEST(Udp, UdpAndTcpSharePortAndCompletionRuntime) {
@@ -368,3 +372,124 @@ TEST(Udp, WildcardReplyUsesActualDestinationAddress) {
     EXPECT_EQ(response->unwrap().info.peer, destination);
 }
 #endif
+
+TEST(Udp, OwnedReceiveReusesAllocationAndPreservesAllocator) {
+    auto runtime    = async::RuntimeBuilder::current_thread().enable_all().build().unwrap();
+    auto receiver   = net::UdpSocket::bind(net::SocketAddr::ipv4_loopback(u16()), true).unwrap();
+    auto sender     = net::UdpSocket::bind(net::SocketAddr::ipv4_loopback(u16())).unwrap();
+    auto allocator  = rstd::alloc::SharedTrackingAllocator<>::make();
+    auto allocation = Vec<u8, decltype(allocator)>::with_capacity_aligned_in(
+        usize(32), usize(64), allocator.clone());
+    auto buffer   = bytes::BytesMut::from_vec(rstd::move(allocation));
+    auto before   = allocator.snapshot();
+    auto pointer  = buffer.data();
+    auto capacity = buffer.capacity();
+    for (unsigned i = 0; i < 8; ++i) {
+        auto message = i % 2 ? "x"_bytes : "longer"_bytes;
+        ASSERT_TRUE(runtime
+                        .block_on(sender.send_to(bytes::Bytes::copy_from_slice(message),
+                                                 receiver.local_addr()))
+                        .is_ok());
+        auto received = runtime.block_on(receiver.recv_into(rstd::move(buffer)));
+        ASSERT_TRUE(received.result.is_ok());
+        EXPECT_EQ(received.buffer.as_slice(), message);
+        EXPECT_EQ(received.buffer.data(), pointer);
+        EXPECT_EQ(received.buffer.capacity(), capacity);
+        EXPECT_EQ(received.buffer.alignment(), usize(64));
+        EXPECT_TRUE(received.result->packet.is_some());
+        buffer = rstd::move(received.buffer);
+    }
+    EXPECT_EQ(allocator.snapshot().allocations, before.allocations);
+    EXPECT_EQ(allocator.snapshot().grows, before.grows);
+    EXPECT_EQ(allocator.snapshot().deallocations, before.deallocations);
+    auto none = receiver.try_recv_into(buffer);
+    ASSERT_TRUE(none.is_err());
+    EXPECT_EQ(none.unwrap_err().kind(), io::ErrorKind { io::ErrorKind::WouldBlock });
+    EXPECT_TRUE(buffer.is_empty());
+    EXPECT_EQ(buffer.capacity(), capacity);
+    ASSERT_TRUE(runtime
+                    .block_on(sender.send_to(bytes::Bytes::copy_from_slice("sync"_bytes),
+                                             receiver.local_addr()))
+                    .is_ok());
+    ASSERT_TRUE(receiver.try_recv_into(buffer).is_ok());
+    EXPECT_EQ(buffer.as_slice(), "sync"_bytes);
+    EXPECT_EQ(allocator.snapshot().allocations, before.allocations);
+    EXPECT_EQ(allocator.snapshot().grows, before.grows);
+    buffer.reserve(capacity + usize(1));
+    EXPECT_TRUE(allocator.snapshot().grows > before.grows);
+}
+
+TEST(Udp, OwnedReceiveErrorReturnsOriginalStorage) {
+    auto runtime   = async::RuntimeBuilder::current_thread().build().unwrap();
+    auto receiver  = net::UdpSocket::bind(net::SocketAddr::ipv4_loopback(u16())).unwrap();
+    auto allocator = rstd::alloc::SharedTrackingAllocator<>::make();
+    auto buffer    = bytes::BytesMut::with_capacity_in(usize(32), allocator.clone());
+    buffer.extend_from_slice("old"_bytes);
+    auto pointer  = buffer.data();
+    auto received = runtime.block_on(receiver.recv_into(rstd::move(buffer)));
+    ASSERT_TRUE(received.result.is_err());
+    EXPECT_EQ(received.result.unwrap_err().kind(), io::ErrorKind { io::ErrorKind::Unsupported });
+    EXPECT_TRUE(received.buffer.is_empty());
+    EXPECT_EQ(received.buffer.data(), pointer);
+    EXPECT_EQ(received.buffer.capacity(), usize(32));
+    auto before = allocator.snapshot();
+    received.buffer.reserve(usize(64));
+    EXPECT_TRUE(allocator.snapshot().grows > before.grows);
+}
+
+TEST(Udp, ReusableBufferTruncationAndZeroCapacity) {
+    auto runtime  = async::RuntimeBuilder::current_thread().enable_all().build().unwrap();
+    auto receiver = net::UdpSocket::bind(net::SocketAddr::ipv4_loopback(u16())).unwrap();
+    auto sender   = net::UdpSocket::bind(net::SocketAddr::ipv4_loopback(u16())).unwrap();
+    ASSERT_TRUE(runtime
+                    .block_on(sender.send_to(bytes::Bytes::copy_from_slice("long"_bytes),
+                                             receiver.local_addr()))
+                    .is_ok());
+    auto short_read =
+        runtime.block_on(receiver.recv_into(bytes::BytesMut::with_capacity(usize(2))));
+    ASSERT_TRUE(short_read.result.is_ok());
+    EXPECT_TRUE(short_read.result->truncated);
+    EXPECT_EQ(short_read.buffer.as_slice(), "lo"_bytes);
+    ASSERT_TRUE(runtime
+                    .block_on(sender.send_to(bytes::Bytes::copy_from_slice("x"_bytes),
+                                             receiver.local_addr()))
+                    .is_ok());
+    auto empty = runtime.block_on(receiver.recv_into(bytes::BytesMut {}));
+    ASSERT_TRUE(empty.result.is_ok());
+    EXPECT_TRUE(empty.result->truncated);
+    EXPECT_TRUE(empty.buffer.is_empty());
+    ASSERT_TRUE(runtime.block_on(sender.send_to(bytes::Bytes {}, receiver.local_addr())).is_ok());
+    auto zero = runtime.block_on(receiver.recv_into(rstd::move(short_read.buffer)));
+    ASSERT_TRUE(zero.result.is_ok());
+    EXPECT_FALSE(zero.result->truncated);
+    EXPECT_TRUE(zero.buffer.is_empty());
+}
+
+TEST(Udp, SpareCapacityDoesNotClearOrExposeHistoricalBytes) {
+    auto buffer = bytes::BytesMut::with_capacity(usize(16));
+    buffer.resize(usize(16), u8(0xa5));
+    buffer.clear();
+    auto spare = buffer.spare_capacity_mut();
+    EXPECT_EQ(spare.len(), usize(16));
+    EXPECT_TRUE(buffer.is_empty());
+    // The allocation was initialized above; observing its sentinel detects unwanted clearing.
+    EXPECT_EQ(static_cast<unsigned char>(spare.as_byte_ptr()[15]), 0xa5);
+    spare.as_byte_ptr()[0] = byte('x');
+    buffer.advance_mut_unchecked(usize(1));
+    EXPECT_EQ(buffer.as_slice(), "x"_bytes);
+}
+
+TEST(Udp, OversizedReusableBufferKeepsCapacity) {
+    auto runtime  = async::RuntimeBuilder::current_thread().enable_all().build().unwrap();
+    auto receiver = net::UdpSocket::bind(net::SocketAddr::ipv4_loopback(u16())).unwrap();
+    auto sender   = net::UdpSocket::bind(net::SocketAddr::ipv4_loopback(u16())).unwrap();
+    ASSERT_TRUE(runtime
+                    .block_on(sender.send_to(bytes::Bytes::copy_from_slice("big"_bytes),
+                                             receiver.local_addr()))
+                    .is_ok());
+    auto result =
+        runtime.block_on(receiver.recv_into(bytes::BytesMut::with_capacity(usize(65536))));
+    ASSERT_TRUE(result.result.is_ok());
+    EXPECT_EQ(result.buffer.as_slice(), "big"_bytes);
+    EXPECT_EQ(result.buffer.capacity(), usize(65536));
+}

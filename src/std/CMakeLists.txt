@@ -50,6 +50,7 @@ elseif(UNIX)
     src/sys/libc/pthread.cppm
     src/sys/libc/unix.cppm
     src/sys/pal/unix/mod.cppm
+    src/net/unix.cppm
     src/sys/socket/unix.cppm
     src/sys/pal/unix/time.cppm
     src/sys/pal/unix/sync/mutex.cppm
@@ -62,6 +63,7 @@ elseif(UNIX)
     APPEND
     rstd_std_platform_sources
     src/sys/fs/unix.cpp
+    src/net/unix.cpp
     src/sys/socket/unix.cpp
     src/sys/pal/unix/mod.cpp
     src/sys/pal/unix/time.cpp
@@ -261,6 +263,10 @@ target_sources(
          src/bytes.cppm
          src/net/mod.cppm
          src/net/socket_addr.cppm
+         src/net/datagram.cppm
+         src/net/socket_stream.cppm
+         src/net/udp.cppm
+         src/sys/socket/datagram.cppm
          src/net/tcp.cppm
          ${rstd_std_platform_modules})
 
@@ -280,6 +286,9 @@ target_sources(
           src/sys/socket/mod.cpp
           src/sys/io/stdio.cpp
           src/io/stdio.cpp
+          src/net/socket_stream.cpp
+          src/net/udp.cpp
+          src/sys/socket/datagram.cpp
           src/net/tcp.cpp
           src/net/socket_addr.cpp
           src/lib.cpp

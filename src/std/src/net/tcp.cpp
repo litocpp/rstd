@@ -22,6 +22,11 @@ auto stream_close_source(rstd::async::Registration, rstd::async::CompletionSourc
 auto stream_detach_owned_socket(rstd::async::Registration, rstd::async::CompletionSource)
     -> rstd::async::coro<rstd::io::Result<rstd::os::socket::OwnedSocket>>;
 
+#if RSTD_OS_UNIX
+auto stream_detach_owned_fd(rstd::async::coro<rstd::io::Result<rstd::os::socket::OwnedSocket>>)
+    -> rstd::async::coro<rstd::io::Result<rstd::os::fd::OwnedFd>>;
+#endif
+
 auto tcp_accept(rstd::io::Result<rstd::async::IoOperation> operation) -> rstd::async::coro<
     rstd::io::Result<rstd::tuple<rstd::net::TcpStream, rstd::net::SocketAddr>>> {
     if (operation.is_err()) co_return rstd::Err(rstd::move(operation).unwrap_err());
@@ -222,10 +227,7 @@ auto TcpListener::from_owned_fd(os::fd::OwnedFd fd) -> io::Result<TcpListener> {
 }
 
 auto TcpListener::into_owned_fd() && -> async::coro<io::Result<os::fd::OwnedFd>> {
-    auto detached = co_await rstd::move(*this).into_owned_socket();
-    if (detached.is_err()) co_return Err(rstd::move(detached).unwrap_err_unchecked());
-    auto owned_socket = rstd::move(detached).unwrap_unchecked();
-    co_return Ok(os::fd::OwnedFd::from_raw_fd(rstd::move(owned_socket).into_raw_socket()));
+    return stream_detach_owned_fd(rstd::move(*this).into_owned_socket());
 }
 #endif
 

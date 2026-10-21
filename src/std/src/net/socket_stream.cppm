@@ -19,10 +19,10 @@ export class UnixStream;
 
 export class SocketStream {
     friend class TcpStream;
-    async::Registration        m_registration;
-    async::CompletionSource    m_completion_source;
-    Option<async::IoOperation> m_read_operation {};
-    Option<async::IoOperation> m_write_operation {};
+    async::Registration            m_registration;
+    async::CompletionSource        m_completion_source;
+    Option<async::ReadinessFuture> m_read_ready {};
+    Option<async::ReadinessFuture> m_write_ready {};
 
     friend class TcpConnect;
     friend class UnixStream;
@@ -38,10 +38,12 @@ public:
     auto operator=(SocketStream&&) noexcept -> SocketStream& = default;
 
     static auto from_owned_socket(os::socket::OwnedSocket socket) -> io::Result<SocketStream>;
-    auto        into_owned_socket() && -> async::coro<io::Result<os::socket::OwnedSocket>>;
-    auto        close() && -> async::coro<io::Result<empty>>;
+    /// Finish or drop outstanding operations before awaiting detach or close.
+    auto into_owned_socket() && -> async::coro<io::Result<os::socket::OwnedSocket>>;
+    auto close() && -> async::coro<io::Result<empty>>;
     /// Operations own their socket and buffers before the first poll. Serialize
-    /// reads and writes separately; one read and one write may run concurrently.
+    /// reads and writes separately, including poll/try calls; one read and one write may run concurrently.
+    /// Cancellation keeps resources alive but may consume or send data.
     auto recv(usize maximum_size = usize(65536)) const -> async::coro<io::Result<bytes::Bytes>>;
     auto send(bytes::Bytes data) const -> async::coro<io::Result<usize>>;
     auto send_all(bytes::Bytes data) const -> async::coro<io::Result<usize>>;
@@ -63,6 +65,7 @@ public:
     auto try_read(bytes::BytesMut& buf) -> io::Result<usize>;
     auto try_write(bytes::Bytes const& buf) -> io::Result<usize>;
 
+    /// Pending performs no I/O. Poll I/O requires readiness support (unavailable on IOCP).
     auto poll_read(mut_ref<SocketStream> self, task::Context& cx, bytes::BytesMut& buf)
         -> task::Poll<io::Result<usize>>;
     auto poll_write(mut_ref<SocketStream> self, task::Context& cx, bytes::Bytes const& buf)

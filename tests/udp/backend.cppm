@@ -7,12 +7,31 @@ import :async;
 import :async.poll;
 import :async.runtime;
 import :net.udp;
+import :alloc.shared_tracking;
 import rstd.alloc;
 import rstd.test;
 
 using namespace rstd;
 using namespace rstd::prelude;
 using namespace rstd::literals;
+
+template<typename F>
+struct CancelDatagramOnPoll {
+    using Output = empty;
+    Option<F>             receive;
+    const net::UdpSocket* sender;
+    net::SocketAddr       target;
+    auto poll(mut_ref<CancelDatagramOnPoll> self, task::Context& cx) -> task::Poll<empty> {
+        auto result = future::poll(*self->receive, cx);
+        EXPECT_TRUE(result.is_pending());
+        EXPECT_TRUE(
+            self->sender
+                ->try_send(bytes::Bytes::copy_from_slice("race"_bytes), { self->target, None() })
+                .is_ok());
+        self->receive = None();
+        return task::Poll<empty>::Ready(empty {});
+    }
+};
 
 void verify_udp_backend(async::IoBackendPreference preference) {
     auto available = async::Poll::init(preference);
@@ -81,6 +100,33 @@ void verify_udp_backend(async::IoBackendPreference preference) {
     ASSERT_TRUE(next.is_ok());
     ASSERT_TRUE(next->is_ok());
     EXPECT_EQ(next->unwrap().data.len(), usize(12));
+    for (unsigned i = 0; i < 4; ++i) {
+        auto cancelled = net::UdpSocket::bind(net::SocketAddr::ipv4_loopback(u16())).unwrap();
+        auto tracker   = rstd::alloc::SharedTrackingAllocator<>::make();
+        auto receive   = async::into_future(
+            cancelled.recv_into(bytes::BytesMut::with_capacity_in(usize(16), tracker.clone())));
+        runtime.block_on(CancelDatagramOnPoll<decltype(receive)> {
+            Some(rstd::move(receive)), &client, cancelled.local_addr() });
+        EXPECT_TRUE(runtime.block_on(rstd::move(cancelled).close()).is_ok());
+        EXPECT_EQ(tracker.snapshot().live_bytes, u64());
+        EXPECT_EQ(tracker.snapshot().allocations, tracker.snapshot().deallocations);
+    }
+    {
+        auto closing = net::UdpSocket::bind(net::SocketAddr::ipv4_loopback(u16())).unwrap();
+        auto owned   = runtime.block_on(rstd::move(closing).into_owned_socket()).unwrap();
+        auto source  = async::CompletionSource::socket(rstd::move(owned));
+        auto read    = async::IoOperation::recv_datagram_into(
+            source, bytes::BytesMut::with_capacity(usize(8)), server.local_addr());
+        auto retained = source.clone();
+        auto outputs =
+            runtime.block_on(async::join(rstd::move(source).release(), rstd::move(read)));
+        EXPECT_TRUE(outputs.get<0>().is_ok());
+        ASSERT_TRUE(outputs.get<1>().is_err());
+        EXPECT_EQ(outputs.get<1>().unwrap_err().kind(),
+                  io::ErrorKind { io::ErrorKind::NotConnected });
+        EXPECT_TRUE(retained.take_owned_socket().is_ok());
+    }
+
 #endif
 }
 

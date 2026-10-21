@@ -22,6 +22,20 @@ auto receive_datagram(io::Result<async::IoOperation> prepared)
     co_return Ok(Datagram { rstd::move(completion).into_data(), rstd::move(info) });
 }
 
+auto receive_datagram_into(async::IoOperation operation) -> async::coro<DatagramReceive> {
+    auto result = co_await future::by_ref(operation);
+    auto buffer = operation.take_datagram_buffer();
+    if (result.is_err())
+        co_return DatagramReceive { Err(rstd::move(result).unwrap_err()), rstd::move(buffer) };
+    if (result->datagram().is_none()) {
+        buffer.clear();
+        co_return DatagramReceive { Err(io::Error::from_kind(
+                                        io::ErrorKind { io::ErrorKind::InvalidData })),
+                                    rstd::move(buffer) };
+    }
+    co_return DatagramReceive { Ok(*result->datagram()), rstd::move(buffer) };
+}
+
 auto send_datagram(io::Result<async::IoOperation> prepared) -> async::coro<io::Result<usize>> {
     if (prepared.is_err()) co_return Err(rstd::move(prepared).unwrap_err());
     auto result = co_await rstd::move(prepared).unwrap();
@@ -106,6 +120,11 @@ auto UdpSocket::peer_addr() const -> io::Result<SocketAddr> {
     return socket::peer_addr(source_.as_raw_fd());
 }
 
+auto UdpSocket::recv_into(bytes::BytesMut buffer) const -> async::coro<DatagramReceive> {
+    return receive_datagram_into(
+        async::IoOperation::recv_datagram_into(source_, rstd::move(buffer), local_));
+}
+
 auto UdpSocket::recv(usize maximum_size) const -> async::coro<io::Result<Datagram>> {
     return receive_datagram(async::IoOperation::recv_datagram(source_, maximum_size, local_));
 }
@@ -125,14 +144,22 @@ auto UdpSocket::try_recv(usize maximum_size) const -> io::Result<Datagram> {
     if (maximum_size > usize(65535))
         return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
     auto buffer = bytes::BytesMut::with_capacity(maximum_size);
-    buffer.resize(maximum_size, u8());
-    socket::DatagramMessage message(buffer.data(), maximum_size, local_);
+    auto info   = try_recv_into(buffer);
+    if (info.is_err()) return Err(rstd::move(info).unwrap_err());
+    return Ok(Datagram { buffer.freeze(), rstd::move(info).unwrap() });
+}
+
+auto UdpSocket::try_recv_into(bytes::BytesMut& buffer) const -> io::Result<DatagramInfo> {
+    buffer.clear();
+    auto                    writable = buffer.spare_capacity_mut();
+    auto                    length   = rstd::min(writable.len(), usize(65535));
+    socket::DatagramMessage message(writable.as_byte_ptr(), length, local_);
     auto                    received = message.try_receive(source_.as_raw_fd());
     if (received.is_err()) return Err(rstd::move(received).unwrap_err());
     auto info = message.result(*received);
     if (info.is_err()) return Err(rstd::move(info).unwrap_err());
-    buffer.truncate(*received);
-    return Ok(Datagram { buffer.freeze(), rstd::move(info).unwrap() });
+    buffer.advance_mut_unchecked(*received);
+    return info;
 }
 
 auto UdpSocket::try_send(bytes::Bytes const& data, DatagramTarget target) const

@@ -86,16 +86,16 @@ export class CompletionSource {
 
     explicit CompletionSource(CompletionSourceArc state): m_state(rstd::move(state)) {}
 
-    auto bind_worker(WorkerHandle current) const -> WorkerHandle {
+    auto bind_worker(WorkerHandle current) const -> io::Result<WorkerHandle> {
         auto fields = m_state->fields.lock().unwrap_unchecked();
         if (fields->released || fields->release_requested) {
-            rstd::panic { "completion source used after release" };
+            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected }));
         }
         if (fields->binding.is_none()) {
             auto source_key = current.allocate_source_key();
             fields->binding.insert(CompletionSourceBinding { current.clone(), source_key });
         }
-        return fields->binding->worker.clone();
+        return Ok(fields->binding->worker.clone());
     }
 
     auto source_key() const -> SourceKey {
@@ -104,12 +104,13 @@ export class CompletionSource {
         return fields->binding->source_key;
     }
 
-    void begin_operation() const {
+    auto begin_operation() const -> bool {
         auto fields = m_state->fields.lock().unwrap_unchecked();
         if (fields->released || fields->release_requested) {
-            rstd::panic { "completion source used after release" };
+            return false;
         }
         ++fields->active_operations;
+        return true;
     }
 
     friend struct IoOperationState;
@@ -242,6 +243,7 @@ struct IoOperationState {
     struct RecvMessage {
         bytes::BytesMut                                   buffer;
         ::alloc::boxed::Box<sys::socket::DatagramMessage> message;
+        bool                                              return_buffer { false };
     };
     struct SendMessage {
         bytes::Bytes                                      buffer;
@@ -263,7 +265,7 @@ struct IoOperationState {
         : source(rstd::move(source)),
           payload(Payload::with<PollOperationKind::Read>(Read { bytes::BytesMut::make(), offset })),
           fields(IoOperationFields {}) {
-        this->source.begin_operation();
+        begin();
         auto buffer = bytes::BytesMut::with_capacity(read_len);
         buffer.resize(read_len, u8 {});
         payload.as<PollOperationKind::Read>().buffer = rstd::move(buffer);
@@ -273,14 +275,14 @@ struct IoOperationState {
         : source(rstd::move(source)),
           payload(Payload::with<PollOperationKind::Write>(Write { rstd::move(data) })),
           fields(IoOperationFields {}) {
-        this->source.begin_operation();
+        begin();
     }
 
     IoOperationState(CompletionSource source, net::SocketAddr address)
         : source(rstd::move(source)),
           payload(Payload::with<PollOperationKind::Connect>(Connect { address })),
           fields(IoOperationFields {}) {
-        this->source.begin_operation();
+        begin();
     }
 
     IoOperationState(CompletionSource                source,
@@ -294,7 +296,7 @@ struct IoOperationState {
               rstd::move(accept_address_buffer),
           })),
           fields(IoOperationFields {}) {
-        this->source.begin_operation();
+        begin();
     }
 
     IoOperationState(CompletionSource                                  source,
@@ -304,7 +306,7 @@ struct IoOperationState {
           payload(Payload::with<PollOperationKind::RecvMessage>(
               RecvMessage { rstd::move(buffer), rstd::move(message) })),
           fields(IoOperationFields {}) {
-        this->source.begin_operation();
+        begin();
     }
     IoOperationState(CompletionSource                                  source,
                      bytes::Bytes                                      buffer,
@@ -313,7 +315,16 @@ struct IoOperationState {
           payload(Payload::with<PollOperationKind::SendMessage>(
               SendMessage { rstd::move(buffer), rstd::move(message) })),
           fields(IoOperationFields {}) {
-        this->source.begin_operation();
+        begin();
+    }
+
+    void begin() {
+        if (source.begin_operation()) return;
+        auto current           = fields.lock().unwrap_unchecked();
+        current->source_active = false;
+        current->lifecycle     = IoOperationLifecycle::Ready;
+        current->result        = Some(io::Result<IoCompletion>(
+            Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected }))));
     }
 
     ~IoOperationState();
@@ -398,10 +409,10 @@ struct IoOperationState {
             auto& read     = payload.as<PollOperationKind::RecvMessage>();
             auto  metadata = read.message->result(transferred);
             if (metadata.is_err()) return Err(rstd::move(metadata).unwrap_err());
-            read.buffer.truncate(transferred);
+            read.buffer.advance_mut_unchecked(transferred);
             return Ok(IoCompletion { transferred,
                                      flags,
-                                     read.buffer.freeze(),
+                                     read.return_buffer ? bytes::Bytes {} : read.buffer.freeze(),
                                      None(),
                                      Some(rstd::move(metadata).unwrap()) });
         }
@@ -442,7 +453,7 @@ struct IoOperationState {
                                                              : PollCapability::FileCompletion;
     }
 
-    auto bind_worker(WorkerHandle current) const -> WorkerHandle {
+    auto bind_worker(WorkerHandle current) const -> io::Result<WorkerHandle> {
         return source.bind_worker(rstd::move(current));
     }
 
@@ -958,7 +969,12 @@ auto ensure_io_operation_submitted(const IoOperationArc& state) -> IoOperationSu
         return IoOperationSubmitStatus::Rejected;
     }
     auto current = rstd::move(current_result).unwrap_unchecked();
-    auto worker  = state->bind_worker(current.clone());
+    auto bound   = state->bind_worker(current.clone());
+    if (bound.is_err()) {
+        store_io_operation_error(state, rstd::move(bound).unwrap_err());
+        return IoOperationSubmitStatus::Rejected;
+    }
+    auto worker = rstd::move(bound).unwrap();
     if (! worker.poll_capabilities().contains(state->required_capability())) {
         store_io_operation_error(state,
                                  io::error::Error::from_kind(
@@ -1096,17 +1112,42 @@ public:
         return IoOperation { IoOperationArc::make(source.clone(), rstd::move(data)) };
     }
 
+    static auto recv_datagram_into(const CompletionSource& source,
+                                   bytes::BytesMut         buffer,
+                                   net::SocketAddr         local) -> IoOperation {
+        buffer.clear();
+        auto writable = buffer.spare_capacity_mut();
+        auto length   = rstd::min(writable.len(), usize(65535));
+        auto message  = ::alloc::boxed::Box<sys::socket::DatagramMessage>::make(
+            writable.as_byte_ptr(), length, local);
+        auto state = IoOperationArc::make(source.clone(), rstd::move(buffer), rstd::move(message));
+        state->payload.as<PollOperationKind::RecvMessage>().return_buffer = true;
+        if (source.kind() != CompletionSourceKind::Socket)
+            store_io_operation_error(
+                state, io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
+        return IoOperation { rstd::move(state) };
+    }
+
+    /// Only after consuming the receive result, including errors; never while the backend owns it.
+    auto take_datagram_buffer() -> bytes::BytesMut {
+        auto fields = m_state->fields.lock().unwrap_unchecked();
+        if (fields->lifecycle != IoOperationLifecycle::Consumed ||
+            ! m_state->payload.is<PollOperationKind::RecvMessage>() ||
+            ! m_state->payload.as<PollOperationKind::RecvMessage>().return_buffer)
+            rstd::panic { "datagram buffer taken before completion or more than once" };
+        auto& receive         = m_state->payload.as<PollOperationKind::RecvMessage>();
+        receive.return_buffer = false;
+        return rstd::move(receive.buffer);
+    }
+
     static auto recv_datagram(const CompletionSource& source, usize length, net::SocketAddr local)
         -> io::Result<IoOperation> {
         if (source.kind() != CompletionSourceKind::Socket || length > usize(65535))
             return Err(io::error::Error::from_kind(
                 io::error::ErrorKind { io::error::ErrorKind::InvalidInput }));
-        auto buffer = bytes::BytesMut::with_capacity(length);
-        buffer.resize(length, u8());
-        auto message =
-            ::alloc::boxed::Box<sys::socket::DatagramMessage>::make(buffer.data(), length, local);
-        return Ok(IoOperation {
-            IoOperationArc::make(source.clone(), rstd::move(buffer), rstd::move(message)) });
+        auto operation = recv_datagram_into(source, bytes::BytesMut::with_capacity(length), local);
+        operation.m_state->payload.as<PollOperationKind::RecvMessage>().return_buffer = false;
+        return Ok(rstd::move(operation));
     }
     static auto send_datagram(const CompletionSource& source,
                               bytes::Bytes            data,
