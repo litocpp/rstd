@@ -2,10 +2,18 @@ module;
 #include <rstd/macro.hpp>
 export module rstd:os.unix.process;
 export import :process.command;
+import rstd.sys.libc;
 
 #if RSTD_OS_UNIX
 export namespace rstd::os::unix::process
 {
+
+inline auto current_uid() -> u32 {
+    return u32(sys::libc::getuid());
+}
+inline auto effective_uid() -> u32 {
+    return u32(sys::libc::geteuid());
+}
 
 struct CommandExt {
     /// Zero makes the child the leader of a new process group.

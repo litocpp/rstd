@@ -1,0 +1,16 @@
+[package]
+name = "rstd-udp-tests"
+
+[[test]]
+name = "rstd-udp-tests"
+sources = ["main.cpp", "udp.cpp"]
+link-stdlib = false
+
+[[test.attach]]
+package = "rstd-std"
+sources = ["backend.cppm"]
+
+[dependencies]
+rstd-std = { path = "../../src/std" }
+rstd-test = { path = "../../src/test" }
+rstd-nostd = { path = "../../src/nostd", usage = "link" }

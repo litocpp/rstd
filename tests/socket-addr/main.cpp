@@ -157,6 +157,22 @@ TEST(SocketAddr, ParseErrorImplementsFormattingAndError) {
     EXPECT_TRUE(rstd::as<rstd::error::Error>(error).source().is_none());
 }
 
+TEST(IpAddr, ParsesWithoutInventedPortsAndPreservesSocketErrors) {
+    EXPECT_EQ(Ipv4Addr::parse("127.0.0.1"_str).unwrap(), Ipv4Addr::loopback());
+    EXPECT_EQ(rstd::from_str<Ipv6Addr>("::1"_str).unwrap(), Ipv6Addr::loopback());
+    EXPECT_EQ(Ipv6Addr::parse("2001:db8::1"_str).unwrap(),
+              Ipv6Addr::make(u16(0x2001), u16(0xdb8), u16(), u16(), u16(), u16(), u16(), u16(1)));
+    EXPECT_TRUE(rstd::from_str<Ipv4Addr>("01.0.0.1"_str).is_err());
+    EXPECT_TRUE(Ipv4Addr::parse("127.0.0.1:53"_str).is_err());
+    EXPECT_TRUE(Ipv4Addr::parse("localhost"_str).is_err());
+    EXPECT_TRUE(Ipv6Addr::parse("[::1]"_str).is_err());
+    EXPECT_TRUE(Ipv6Addr::parse("::1%2"_str).is_err());
+    EXPECT_TRUE(Ipv6Addr::parse("1::2::3"_str).is_err());
+    auto error = Ipv6Addr::parse("invalid"_str).unwrap_err();
+    EXPECT_EQ(rstd::format("{}", error), "invalid IP address syntax"_str);
+    EXPECT_EQ(rstd::format("{:?}", error), "AddrParseError(Ip)"_str);
+}
+
 auto main() -> int {
     return rstd::test::run_registered().to_primitive();
 }

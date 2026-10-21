@@ -27,6 +27,14 @@ using rstd::sys::pal::poll::SocketAddress;
 namespace rstd::sys::pal::windows::socket
 {
 
+export struct NativeSocketAddr {
+    sockaddr_storage storage {};
+    int              len {};
+};
+export auto ensure_started() -> IOResult<empty>;
+export auto addr_to_native(SocketAddr const& address) noexcept -> NativeSocketAddr;
+export auto addr_from_native(const sockaddr* address, int len) -> IOResult<SocketAddr>;
+
 export inline constexpr rstd::size_t ACCEPT_ADDRESS_BUFFER_SIZE =
     2 * (sizeof(sockaddr_storage) + 16);
 
@@ -68,6 +76,7 @@ export auto recv(RawSocket socket, mut_ref<byte[]> buf) -> IOResult<usize>;
 export auto send(RawSocket socket, slice<byte> buf) -> IOResult<usize>;
 
 export auto shutdown_write(RawSocket socket) -> IOResult<empty>;
+export auto shutdown_both(RawSocket socket) -> IOResult<empty>;
 
 export auto take_error(RawSocket socket) -> IOResult<Option<Error>>;
 

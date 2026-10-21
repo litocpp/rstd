@@ -54,11 +54,6 @@ auto last_error() noexcept -> Error {
     return Error::from_raw_os_error(i32(::WSAGetLastError()));
 }
 
-struct NativeSocketAddr {
-    sockaddr_storage storage {};
-    int              len {};
-};
-
 auto addr_to_native(SocketAddr const& addr) noexcept -> NativeSocketAddr {
     auto out = NativeSocketAddr {};
     if (addr.is_ipv4()) {
@@ -377,6 +372,11 @@ auto send(RawSocket socket, slice<byte> buf) -> IOResult<usize> {
 
 auto shutdown_write(RawSocket socket) -> IOResult<empty> {
     if (::shutdown(native_socket(socket), SD_SEND) == SOCKET_ERROR) return Err(last_error());
+    return Ok(empty {});
+}
+
+auto shutdown_both(RawSocket socket) -> IOResult<empty> {
+    if (::shutdown(native_socket(socket), SD_BOTH) == SOCKET_ERROR) return Err(last_error());
     return Ok(empty {});
 }
 

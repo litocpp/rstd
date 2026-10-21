@@ -148,6 +148,8 @@ export enum class PollOperationKind {
     Write,
     Connect,
     Accept,
+    RecvMessage,
+    SendMessage,
 };
 
 export enum class PollSourceKind {
@@ -181,10 +183,16 @@ export class PollOperation {
         usize           address_buffer_len;
     };
 
+    struct NativeMessage {
+        void* message;
+    };
+
     using Storage = Choice<choice_case<PollOperationKind::Read, Read>,
                            choice_case<PollOperationKind::Write, Write>,
                            choice_case<PollOperationKind::Connect, Connect>,
-                           choice_case<PollOperationKind::Accept, Accept>>;
+                           choice_case<PollOperationKind::Accept, Accept>,
+                           choice_case<PollOperationKind::RecvMessage, NativeMessage>,
+                           choice_case<PollOperationKind::SendMessage, NativeMessage>>;
 
     PollSourceKind m_source_kind;
     os::fd::RawFd  m_fd;
@@ -248,6 +256,24 @@ public:
                                    accepted_fd, address, address_buffer, address_buffer_len }) };
     }
 
+    static auto recv_message(os::fd::RawFd fd, void* message) -> PollOperation {
+        return PollOperation { PollSourceKind::Socket,
+                               fd,
+                               Storage::with<PollOperationKind::RecvMessage>(
+                                   NativeMessage { message }) };
+    }
+    static auto send_message(os::fd::RawFd fd, void* message) -> PollOperation {
+        return PollOperation { PollSourceKind::Socket,
+                               fd,
+                               Storage::with<PollOperationKind::SendMessage>(
+                                   NativeMessage { message }) };
+    }
+    auto native_message() const noexcept -> void* {
+        return kind() == PollOperationKind::RecvMessage
+                   ? m_storage.as<PollOperationKind::RecvMessage>().message
+                   : m_storage.as<PollOperationKind::SendMessage>().message;
+    }
+
     auto kind() const noexcept -> PollOperationKind { return m_storage.which(); }
     auto source_kind() const noexcept -> PollSourceKind { return m_source_kind; }
     auto fd() const noexcept -> os::fd::RawFd { return m_fd; }
@@ -268,6 +294,8 @@ public:
         case PollOperationKind::Write: return m_storage.as<PollOperationKind::Write>().len;
         case PollOperationKind::Accept:
             return m_storage.as<PollOperationKind::Accept>().address_buffer_len;
+        case PollOperationKind::RecvMessage:
+        case PollOperationKind::SendMessage:
         case PollOperationKind::Connect: return usize();
         }
         rstd::unreachable();
@@ -281,6 +309,8 @@ public:
         case PollOperationKind::Read: return m_storage.as<PollOperationKind::Read>().flags;
         case PollOperationKind::Write: return m_storage.as<PollOperationKind::Write>().flags;
         case PollOperationKind::Connect:
+        case PollOperationKind::RecvMessage:
+        case PollOperationKind::SendMessage:
         case PollOperationKind::Accept: return u32();
         }
         rstd::unreachable();
@@ -1253,6 +1283,16 @@ export class Poll {
                                               operation.len(),
                                               operation.offset().clone(),
                                               operation.flags());
+        case PollOperationKind::RecvMessage:
+            return pal_poll::Operation::recv_message(operation.fd(),
+                                                     operation.source_key().encode(),
+                                                     key.encode(),
+                                                     operation.native_message());
+        case PollOperationKind::SendMessage:
+            return pal_poll::Operation::send_message(operation.fd(),
+                                                     operation.source_key().encode(),
+                                                     key.encode(),
+                                                     operation.native_message());
         case PollOperationKind::Connect: {
             auto source_address = operation.address();
             auto address        = pal_poll::SocketAddress {

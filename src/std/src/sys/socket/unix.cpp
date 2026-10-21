@@ -1,3 +1,6 @@
+module;
+#include <rstd/macro.hpp>
+#include <cstddef>
 module rstd.sys.socket;
 import :unix;
 
@@ -138,6 +141,41 @@ auto tcp(SocketAddr const& addr) -> IOResult<OwnedSocket> {
     return Ok(rstd::move(socket));
 }
 
+auto unix_stream() -> IOResult<OwnedSocket> {
+    int raw = libc::socket(libc::AF_UNIX, libc::SOCK_STREAM, 0);
+    if (raw < 0) return Err(last_error());
+    auto owned = OwnedSocket::from_raw_socket(raw);
+    auto flags = set_cloexec(raw);
+    if (flags.is_err()) return Err(rstd::move(flags).unwrap_err());
+    flags = set_nonblocking(raw, true);
+    if (flags.is_err()) return Err(rstd::move(flags).unwrap_err());
+    return Ok(rstd::move(owned));
+}
+auto connect_unix(RawSocket socket, slice<byte> name, bool abstract) -> IOResult<empty> {
+    auto addr = libc::sockaddr_un {};
+    if (name.is_empty() || name.len() >= usize(sizeof(addr.sun_path)))
+        return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
+#if ! RSTD_OS_LINUX
+    if (abstract) return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
+#endif
+    addr.sun_family = libc::AF_UNIX;
+    auto offset     = abstract ? 1U : 0U;
+    for (usize i; i < name.len(); ++i) {
+        auto value = static_cast<char>(name[i]);
+        if (! abstract && value == 0)
+            return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
+        addr.sun_path[i.to_primitive() + offset] = value;
+    }
+    auto length = static_cast<libc::socklen_t>(offsetof(libc::sockaddr_un, sun_path) +
+                                               name.len().to_primitive() + 1);
+#if RSTD_VENDOR_APPLE
+    addr.sun_len = length;
+#endif
+    if (libc::connect(socket, reinterpret_cast<const libc::sockaddr*>(&addr), length) < 0)
+        return Err(last_error());
+    return Ok(empty {});
+}
+
 auto prepare_accept(SocketAddr const&) -> IOResult<Option<OwnedSocket>> {
     return Ok(None<OwnedSocket>());
 }
@@ -219,6 +257,11 @@ auto send(RawSocket socket, slice<byte> buf) -> IOResult<usize> {
 
 auto shutdown_write(RawSocket socket) -> IOResult<empty> {
     if (libc::shutdown(socket, libc::SHUT_WR) < 0) return Err(last_error());
+    return Ok(empty {});
+}
+
+auto shutdown_both(RawSocket socket) -> IOResult<empty> {
+    if (libc::shutdown(socket, libc::SHUT_RDWR) < 0) return Err(last_error());
     return Ok(empty {});
 }
 

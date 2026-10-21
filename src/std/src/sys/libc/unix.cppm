@@ -10,6 +10,7 @@ module;
 #include <sys/file.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #if defined(__linux__)
@@ -157,6 +158,7 @@ inline constexpr auto _SO_REUSEADDR = SO_REUSEADDR;
 inline constexpr auto _SO_ERROR     = SO_ERROR;
 inline constexpr auto _IPPROTO_TCP  = IPPROTO_TCP;
 inline constexpr auto _TCP_NODELAY  = TCP_NODELAY;
+inline constexpr auto _SHUT_RDWR    = SHUT_RDWR;
 inline constexpr auto _SHUT_WR      = SHUT_WR;
 #ifdef MSG_NOSIGNAL
 inline constexpr auto _MSG_NOSIGNAL = MSG_NOSIGNAL;
@@ -290,6 +292,7 @@ inline auto _rstd_online_processor_count() noexcept -> long {
 #undef SO_ERROR
 #undef IPPROTO_TCP
 #undef TCP_NODELAY
+#undef SHUT_RDWR
 #undef SHUT_WR
 #undef MSG_NOSIGNAL
 #undef PROT_READ
@@ -558,6 +561,9 @@ using ::readdir;
 using ::closedir;
 using ::rename;
 using ::free;
+using ::getuid;
+using ::geteuid;
+using ::sockaddr_un;
 using ::socket;
 using ::socketpair;
 using ::ioctl;
@@ -566,6 +572,9 @@ using ::bind;
 using ::listen;
 using ::connect;
 using ::accept;
+using ::msghdr;
+using ::recvmsg;
+using ::sendmsg;
 using ::recv;
 using ::send;
 using ::shutdown;
@@ -686,7 +695,8 @@ inline constexpr auto SO_ERROR     = _SO_ERROR;
 inline constexpr auto IPPROTO_TCP = _IPPROTO_TCP;
 inline constexpr auto TCP_NODELAY = _TCP_NODELAY;
 [[maybe_unused]]
-inline constexpr auto SHUT_WR = _SHUT_WR;
+inline constexpr auto SHUT_RDWR = _SHUT_RDWR;
+inline constexpr auto SHUT_WR   = _SHUT_WR;
 [[maybe_unused]]
 inline constexpr auto MSG_NOSIGNAL = _MSG_NOSIGNAL;
 

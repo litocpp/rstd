@@ -54,6 +54,7 @@ struct WindowsOperation {
     SourceKind    source_kind { SourceKind::File };
     OperationKind kind { OperationKind::Read };
     u32           flags {};
+    void*         message {};
 
     explicit WindowsOperation(const Operation& operation)
         : operation_key(operation.operation_key()),
@@ -63,7 +64,11 @@ struct WindowsOperation {
                                                                      : os::fd::INVALID_RAW_FD),
           source_kind(operation.source_kind()),
           kind(operation.kind()),
-          flags(operation.flags()) {
+          flags(operation.flags()),
+          message(operation.kind() == OperationKind::RecvMessage ||
+                          operation.kind() == OperationKind::SendMessage
+                      ? operation.native_message()
+                      : nullptr) {
         if ((operation.kind() == OperationKind::Read || operation.kind() == OperationKind::Write) &&
             operation.offset().is_some()) {
             auto offset           = operation.offset()->to_primitive();
@@ -382,6 +387,28 @@ public:
                         return Err(Error::from_raw_os_error(i32(error)));
                     }
                 }
+            } else if (operation.kind() == OperationKind::RecvMessage ||
+                       operation.kind() == OperationKind::SendMessage) {
+                auto receiving = operation.kind() == OperationKind::RecvMessage;
+                auto started   = rstd::sys::socket::start_datagram(
+                    operation.handle(), operation.native_message(), receiving, &record->overlapped);
+                if (started.is_err()) {
+                    auto error = rstd::move(started).unwrap_err();
+                    if (receiving && error.raw_os_error() == Some(i32(WSAEMSGSIZE))) {
+                        auto count = rstd::sys::socket::finish_truncated_datagram(
+                            operation.native_message(), usize());
+                        if (! PostQueuedCompletionStatus(port(),
+                                                         static_cast<DWORD>(count.to_primitive()),
+                                                         1,
+                                                         &record->overlapped)) {
+                            (void)m_operations.take(operation.operation_key());
+                            return Err(Error::from_raw_os_error(i32(GetLastError())));
+                        }
+                    } else {
+                        (void)m_operations.take(operation.operation_key());
+                        return Err(rstd::move(error));
+                    }
+                }
             } else if (operation.kind() == OperationKind::Connect) {
                 auto started = windows_socket::start_connect(
                     operation.handle(), operation.address(), &record->overlapped);
@@ -484,8 +511,16 @@ public:
                 auto  record    = take_completed(operation->operation_key);
                 if (record.is_none()) continue;
                 auto completed = rstd::move(record).unwrap_unchecked();
-                batch.push(
-                    Event::completion_error(completed.operation_key, i32(error), completed.flags));
+                if (completed.kind == OperationKind::RecvMessage &&
+                    (error == WSAEMSGSIZE || error == ERROR_MORE_DATA)) {
+                    auto count = rstd::sys::socket::finish_truncated_datagram(completed.message,
+                                                                              usize(transferred));
+                    batch.push(Event::completion(
+                        completed.operation_key, isize(count.to_primitive()), completed.flags));
+                } else {
+                    batch.push(Event::completion_error(
+                        completed.operation_key, i32(error), completed.flags));
+                }
                 continue;
             }
 

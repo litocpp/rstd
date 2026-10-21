@@ -12,6 +12,8 @@ import rstd.net.socket_addr;
 import rstd.os.fd;
 import rstd.os.handle;
 import rstd.os.socket;
+import rstd.sys.socket;
+export import rstd.net.datagram;
 import :sync;
 import rstd.alloc;
 
@@ -42,6 +44,7 @@ struct CompletionSourceBinding {
 
 struct CompletionSourceFields {
     Option<os::fd::OwnedFd>         owned_file {};
+    Option<os::socket::OwnedSocket> owned_socket {};
     Option<CompletionSourceBinding> binding {};
     usize                           active_operations {};
     Option<FacilityCompletionToken> release_token {};
@@ -64,6 +67,11 @@ struct CompletionSourceState {
         : fd(file.as_raw_fd()),
           kind(CompletionSourceKind::File),
           fields(CompletionSourceFields { .owned_file = Some(rstd::move(file)) }) {}
+
+    explicit CompletionSourceState(os::socket::OwnedSocket socket)
+        : fd(socket.as_raw_socket()),
+          kind(CompletionSourceKind::Socket),
+          fields(CompletionSourceFields { .owned_socket = Some(rstd::move(socket)) }) {}
 
     ~CompletionSourceState();
 };
@@ -135,6 +143,16 @@ public:
         return CompletionSource { socket.as_raw_socket(), CompletionSourceKind::Socket };
     }
 
+    static auto socket(os::socket::OwnedSocket socket) -> CompletionSource {
+        return CompletionSource { CompletionSourceArc::make(rstd::move(socket)) };
+    }
+    auto take_owned_socket() -> io::Result<os::socket::OwnedSocket> {
+        auto fields = m_state->fields.lock().unwrap_unchecked();
+        if (! fields->released || fields->release_error.is_some() || fields->owned_socket.is_none())
+            return Err(io::error::Error::from_kind(
+                io::error::ErrorKind { io::error::ErrorKind::InvalidInput }));
+        return Ok(fields->owned_socket.take().unwrap());
+    }
     auto clone() const -> CompletionSource { return CompletionSource { m_state.clone() }; }
     auto as_raw_fd() const noexcept -> os::fd::RawFd { return m_state->fd; }
     auto kind() const noexcept -> CompletionSourceKind { return m_state->kind; }
@@ -149,22 +167,28 @@ export class IoCompletion {
     u32                             m_flags {};
     bytes::Bytes                    m_data;
     Option<os::socket::OwnedSocket> m_socket {};
+    Option<net::DatagramInfo>       m_datagram {};
 
 public:
     IoCompletion(usize                           transferred,
                  u32                             flags,
                  bytes::Bytes                    data,
-                 Option<os::socket::OwnedSocket> socket = None())
+                 Option<os::socket::OwnedSocket> socket   = None(),
+                 Option<net::DatagramInfo>       datagram = None())
         : m_transferred(transferred),
           m_flags(flags),
           m_data(rstd::move(data)),
-          m_socket(rstd::move(socket)) {}
+          m_socket(rstd::move(socket)),
+          m_datagram(rstd::move(datagram)) {}
 
     auto transferred() const noexcept -> usize { return m_transferred; }
     auto flags() const noexcept -> u32 { return m_flags; }
     auto data() const noexcept [[clang::lifetimebound]] -> slice<u8> { return m_data.as_slice(); }
     auto into_data() && -> bytes::Bytes { return rstd::move(m_data); }
     auto has_socket() const noexcept -> bool { return m_socket.is_some(); }
+    auto datagram() const noexcept [[clang::lifetimebound]] -> const Option<net::DatagramInfo>& {
+        return m_datagram;
+    }
     auto into_socket() && -> Option<os::socket::OwnedSocket> { return m_socket.take(); }
 };
 
@@ -215,10 +239,21 @@ struct IoOperationState {
         bytes::BytesMut                 address_buffer;
     };
 
+    struct RecvMessage {
+        bytes::BytesMut                                   buffer;
+        ::alloc::boxed::Box<sys::socket::DatagramMessage> message;
+    };
+    struct SendMessage {
+        bytes::Bytes                                      buffer;
+        ::alloc::boxed::Box<sys::socket::DatagramMessage> message;
+    };
+
     using Payload = Choice<choice_case<PollOperationKind::Read, Read>,
                            choice_case<PollOperationKind::Write, Write>,
                            choice_case<PollOperationKind::Connect, Connect>,
-                           choice_case<PollOperationKind::Accept, Accept>>;
+                           choice_case<PollOperationKind::Accept, Accept>,
+                           choice_case<PollOperationKind::RecvMessage, RecvMessage>,
+                           choice_case<PollOperationKind::SendMessage, SendMessage>>;
 
     CompletionSource               source;
     Payload                        payload;
@@ -262,6 +297,25 @@ struct IoOperationState {
         this->source.begin_operation();
     }
 
+    IoOperationState(CompletionSource                                  source,
+                     bytes::BytesMut                                   buffer,
+                     ::alloc::boxed::Box<sys::socket::DatagramMessage> message)
+        : source(rstd::move(source)),
+          payload(Payload::with<PollOperationKind::RecvMessage>(
+              RecvMessage { rstd::move(buffer), rstd::move(message) })),
+          fields(IoOperationFields {}) {
+        this->source.begin_operation();
+    }
+    IoOperationState(CompletionSource                                  source,
+                     bytes::Bytes                                      buffer,
+                     ::alloc::boxed::Box<sys::socket::DatagramMessage> message)
+        : source(rstd::move(source)),
+          payload(Payload::with<PollOperationKind::SendMessage>(
+              SendMessage { rstd::move(buffer), rstd::move(message) })),
+          fields(IoOperationFields {}) {
+        this->source.begin_operation();
+    }
+
     ~IoOperationState();
 
     auto poll_operation() -> PollOperation {
@@ -287,6 +341,14 @@ struct IoOperationState {
                     ? PollOperation::write_socket(source.as_raw_fd(), buffer.data(), buffer.len())
                     : PollOperation::write(source.as_raw_fd(), buffer.data(), buffer.len()));
         }
+        case PollOperationKind::RecvMessage:
+            return attach_source(PollOperation::recv_message(
+                source.as_raw_fd(),
+                payload.as<PollOperationKind::RecvMessage>().message->native_message()));
+        case PollOperationKind::SendMessage:
+            return attach_source(PollOperation::send_message(
+                source.as_raw_fd(),
+                payload.as<PollOperationKind::SendMessage>().message->native_message()));
         case PollOperationKind::Connect:
             return attach_source(PollOperation::connect_socket(
                 source.as_raw_fd(), payload.as<PollOperationKind::Connect>().address));
@@ -332,6 +394,21 @@ struct IoOperationState {
                 io::error::ErrorKind { io::error::ErrorKind::InvalidData }));
         }
         auto transferred = usize(result.to_primitive());
+        if (payload.is<PollOperationKind::RecvMessage>()) {
+            auto& read     = payload.as<PollOperationKind::RecvMessage>();
+            auto  metadata = read.message->result(transferred);
+            if (metadata.is_err()) return Err(rstd::move(metadata).unwrap_err());
+            read.buffer.truncate(transferred);
+            return Ok(IoCompletion { transferred,
+                                     flags,
+                                     read.buffer.freeze(),
+                                     None(),
+                                     Some(rstd::move(metadata).unwrap()) });
+        }
+        if (payload.is<PollOperationKind::SendMessage>() &&
+            transferred != payload.as<PollOperationKind::SendMessage>().buffer.len())
+            return Err(io::error::Error::from_kind(
+                io::error::ErrorKind { io::error::ErrorKind::InvalidData }));
         if (payload.is<PollOperationKind::Read>()) {
             auto buffer = rstd::move(payload.as<PollOperationKind::Read>().buffer);
             if (transferred > buffer.len()) {
@@ -584,44 +661,46 @@ auto make_io_operation_owner(const IoOperationArc& state) -> PollEventOwner {
         rstd::move(owned).into_raw().into_raw(), rstd::addressof(IO_OPERATION_OWNER_VTABLE)));
 }
 
-using OwnedFileReleaseArc = sync::Arc<os::fd::OwnedFd>;
-extern const RawPollEventOwnerVTable OWNED_FILE_RELEASE_VTABLE;
+template<typename T>
+struct OwnedSourceRelease {
+    using Arc = sync::Arc<T>;
+    static auto clone(voidp data) -> RawPollEventOwner {
+        auto owner  = Arc::from_raw(::alloc::sync::ArcRaw<T>::from_raw(data));
+        auto copied = owner.clone();
+        (void)rstd::move(owner).into_raw().into_raw();
+        return RawPollEventOwner::from_raw_parts(rstd::move(copied).into_raw().into_raw(),
+                                                 rstd::addressof(vtable));
+    }
+    static void dispatch(voidp, PollEventData) {}
+    static void drop(voidp data) {
+        auto owner = Arc::from_raw(::alloc::sync::ArcRaw<T>::from_raw(data));
+        (void)owner;
+    }
+    inline static const RawPollEventOwnerVTable vtable { &clone, &dispatch, &drop };
+    static auto                                 make(T value) -> PollEventOwner {
+        auto owner = Arc::make(rstd::move(value));
+        return PollEventOwner::from_raw(RawPollEventOwner::from_raw_parts(
+            rstd::move(owner).into_raw().into_raw(), rstd::addressof(vtable)));
+    }
+};
 
-auto owned_file_release_clone(voidp data) -> RawPollEventOwner {
-    auto owner =
-        OwnedFileReleaseArc::from_raw(::alloc::sync::ArcRaw<os::fd::OwnedFd>::from_raw(data));
-    auto cloned = owner.clone();
-    (void)rstd::move(owner).into_raw().into_raw();
-    return RawPollEventOwner::from_raw_parts(rstd::move(cloned).into_raw().into_raw(),
-                                             rstd::addressof(OWNED_FILE_RELEASE_VTABLE));
-}
-void owned_file_release_dispatch(voidp, PollEventData) {
-}
-void owned_file_release_drop(voidp data) {
-    auto owner =
-        OwnedFileReleaseArc::from_raw(::alloc::sync::ArcRaw<os::fd::OwnedFd>::from_raw(data));
-    (void)owner;
-}
-const RawPollEventOwnerVTable OWNED_FILE_RELEASE_VTABLE { &owned_file_release_clone,
-                                                          &owned_file_release_dispatch,
-                                                          &owned_file_release_drop };
-auto                          owned_file_release_owner(os::fd::OwnedFd file) -> PollEventOwner {
-    auto owner = OwnedFileReleaseArc::make(rstd::move(file));
-    return PollEventOwner::from_raw(RawPollEventOwner::from_raw_parts(
-        rstd::move(owner).into_raw().into_raw(), rstd::addressof(OWNED_FILE_RELEASE_VTABLE)));
-}
 CompletionSourceState::~CompletionSourceState() {
     Option<CompletionSourceBinding> current;
     Option<os::fd::OwnedFd>         file;
+    Option<os::socket::OwnedSocket> socket;
     {
         auto locked = fields.lock().unwrap_unchecked();
         current     = locked->binding.take();
         file        = locked->owned_file.take();
+        socket      = locked->owned_socket.take();
     }
     if (current.is_none()) return;
     auto bound = rstd::move(current).unwrap_unchecked();
-    auto owner = file.is_some() ? owned_file_release_owner(file.take().unwrap_unchecked())
-                                : PollEventOwner {};
+    auto owner =
+        file.is_some() ? OwnedSourceRelease<os::fd::OwnedFd>::make(file.take().unwrap_unchecked())
+        : socket.is_some()
+            ? OwnedSourceRelease<os::socket::OwnedSocket>::make(socket.take().unwrap_unchecked())
+            : PollEventOwner {};
     (void)bound.worker.submit_poll(
         PollCommand::release_completion_source(bound.source_key, fd, rstd::move(owner)));
 }
@@ -1015,6 +1094,33 @@ public:
 
     static auto write(const CompletionSource& source, bytes::Bytes data) -> IoOperation {
         return IoOperation { IoOperationArc::make(source.clone(), rstd::move(data)) };
+    }
+
+    static auto recv_datagram(const CompletionSource& source, usize length, net::SocketAddr local)
+        -> io::Result<IoOperation> {
+        if (source.kind() != CompletionSourceKind::Socket || length > usize(65535))
+            return Err(io::error::Error::from_kind(
+                io::error::ErrorKind { io::error::ErrorKind::InvalidInput }));
+        auto buffer = bytes::BytesMut::with_capacity(length);
+        buffer.resize(length, u8());
+        auto message =
+            ::alloc::boxed::Box<sys::socket::DatagramMessage>::make(buffer.data(), length, local);
+        return Ok(IoOperation {
+            IoOperationArc::make(source.clone(), rstd::move(buffer), rstd::move(message)) });
+    }
+    static auto send_datagram(const CompletionSource& source,
+                              bytes::Bytes            data,
+                              net::DatagramTarget     target,
+                              net::SocketAddr         local) -> io::Result<IoOperation> {
+        if (source.kind() != CompletionSourceKind::Socket || data.len() > usize(65535))
+            return Err(io::error::Error::from_kind(
+                io::error::ErrorKind { io::error::ErrorKind::InvalidInput }));
+        auto message = ::alloc::boxed::Box<sys::socket::DatagramMessage>::make(
+            const_cast<byte*>(data.data()), data.len(), local);
+        auto prepared = message->prepare_send(rstd::move(target));
+        if (prepared.is_err()) return Err(rstd::move(prepared).unwrap_err());
+        return Ok(IoOperation {
+            IoOperationArc::make(source.clone(), rstd::move(data), rstd::move(message)) });
     }
 
     static auto connect(const CompletionSource& source, net::SocketAddr address) -> IoOperation {

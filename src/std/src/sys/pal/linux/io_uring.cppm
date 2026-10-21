@@ -46,7 +46,7 @@ auto probe_required_operations(os::fd::RawFd ring_fd) -> io::Result<empty> {
     constexpr rstd::uint8_t required[] = {
         libc::IORING_OP_READ,         libc::IORING_OP_WRITE,   libc::IORING_OP_RECV,
         libc::IORING_OP_SEND,         libc::IORING_OP_CONNECT, libc::IORING_OP_ACCEPT,
-        libc::IORING_OP_ASYNC_CANCEL,
+        libc::IORING_OP_ASYNC_CANCEL, libc::IORING_OP_RECVMSG, libc::IORING_OP_SENDMSG,
     };
     for (auto opcode : required) {
         bool supported = false;
@@ -421,6 +421,15 @@ public:
             if (operation.source_kind() == SourceKind::Socket) {
                 submission.msg_flags |= libc::MSG_NOSIGNAL;
             }
+        } else if (operation.kind() == OperationKind::RecvMessage ||
+                   operation.kind() == OperationKind::SendMessage) {
+            submission.opcode = operation.kind() == OperationKind::RecvMessage
+                                    ? libc::IORING_OP_RECVMSG
+                                    : libc::IORING_OP_SENDMSG;
+            submission.addr   = reinterpret_cast<rstd::uintptr_t>(operation.native_message());
+            submission.len    = 1;
+            if (operation.kind() == OperationKind::SendMessage)
+                submission.msg_flags = libc::MSG_NOSIGNAL;
         } else if (operation.kind() == OperationKind::Connect) {
             submission.opcode = libc::IORING_OP_CONNECT;
             submission.addr   = reinterpret_cast<rstd::uintptr_t>(&record->address.storage);

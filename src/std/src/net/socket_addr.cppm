@@ -3,12 +3,13 @@ import rstd.core;
 
 namespace rstd::net
 {
-export enum class AddrParseError { Invalid };
+export enum class AddrParseError { Invalid, InvalidIp };
 
 export class Ipv4Addr {
     array<u8, 4> m_octets {};
 
 public:
+    static auto           parse(ref<str> text) -> Result<Ipv4Addr, AddrParseError>;
     static constexpr auto make(u8 a, u8 b, u8 c, u8 d) noexcept -> Ipv4Addr {
         auto out               = Ipv4Addr {};
         out.m_octets[usize()]  = a;
@@ -37,6 +38,7 @@ export class Ipv6Addr {
     array<u8, 16> m_octets {};
 
 public:
+    static auto           parse(ref<str> text) -> Result<Ipv6Addr, AddrParseError>;
     static constexpr auto make(u16 a, u16 b, u16 c, u16 d, u16 e, u16 f, u16 g, u16 h) noexcept
         -> Ipv6Addr {
         auto out      = Ipv6Addr {};
@@ -108,6 +110,12 @@ public:
         return out;
     }
 
+    constexpr auto is_loopback() const noexcept -> bool {
+        if (is_ipv4()) return octet(usize()) == u8(127);
+        for (usize i; i < usize(15); ++i)
+            if (octet(i) != u8()) return false;
+        return octet(usize(15)) == u8(1);
+    }
     constexpr auto is_ipv4() const noexcept -> bool { return m_kind == Kind::V4; }
     constexpr auto is_ipv6() const noexcept -> bool { return m_kind == Kind::V6; }
     constexpr auto octet(usize index) const noexcept -> u8 { return m_octets[index]; }
@@ -128,10 +136,28 @@ public:
     }
 };
 
+export auto format_address(fmt::Formatter& formatter, const SocketAddr& address) -> bool;
+
 } // namespace rstd::net
 
 namespace rstd
 {
+template<>
+struct Impl<str_::FromStr, net::Ipv4Addr> {
+    using Err = net::AddrParseError;
+    static auto from_str(ref<str> input) -> Result<net::Ipv4Addr, Err> {
+        return net::Ipv4Addr::parse(input);
+    }
+};
+
+template<>
+struct Impl<str_::FromStr, net::Ipv6Addr> {
+    using Err = net::AddrParseError;
+    static auto from_str(ref<str> input) -> Result<net::Ipv6Addr, Err> {
+        return net::Ipv6Addr::parse(input);
+    }
+};
+
 template<>
 struct Impl<str_::FromStr, net::SocketAddr> {
     using Err = net::AddrParseError;
@@ -143,6 +169,10 @@ struct Impl<str_::FromStr, net::SocketAddr> {
 template<>
 struct Impl<fmt::Display, net::AddrParseError> : ImplBase<net::AddrParseError> {
     auto fmt(fmt::Formatter& formatter) const -> bool {
+        if (this->self() == net::AddrParseError::InvalidIp) {
+            constexpr char message[] = "invalid IP address syntax";
+            return formatter.write_raw(message, sizeof(message) - 1);
+        }
         constexpr char message[] = "invalid socket address syntax";
         return formatter.write_raw(message, sizeof(message) - 1);
     }
@@ -151,6 +181,10 @@ struct Impl<fmt::Display, net::AddrParseError> : ImplBase<net::AddrParseError> {
 template<>
 struct Impl<fmt::Debug, net::AddrParseError> : ImplBase<net::AddrParseError> {
     auto fmt(fmt::Formatter& formatter) const -> bool {
+        if (this->self() == net::AddrParseError::InvalidIp) {
+            constexpr char message[] = "AddrParseError(Ip)";
+            return formatter.write_raw(message, sizeof(message) - 1);
+        }
         constexpr char message[] = "AddrParseError(Socket)";
         return formatter.write_raw(message, sizeof(message) - 1);
     }
@@ -159,4 +193,14 @@ struct Impl<fmt::Debug, net::AddrParseError> : ImplBase<net::AddrParseError> {
 template<>
 struct Impl<error::Error, net::AddrParseError> : DefaultInImpl<error::Error, net::AddrParseError> {
 };
+} // namespace rstd
+
+namespace rstd
+{
+export template<>
+struct Impl<fmt::Display, net::SocketAddr> : ImplBase<net::SocketAddr> {
+    auto fmt(fmt::Formatter& f) const -> bool { return net::format_address(f, this->self()); }
+};
+export template<>
+struct Impl<fmt::Debug, net::SocketAddr> : Impl<fmt::Display, net::SocketAddr> {};
 } // namespace rstd

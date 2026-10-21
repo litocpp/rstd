@@ -5,6 +5,7 @@ export module rstd.sys.socket;
 export import rstd.io.error;
 export import rstd.net.socket_addr;
 export import rstd.os.socket;
+export import :datagram;
 #if RSTD_OS_UNIX
 export import :unix;
 #elif RSTD_OS_WINDOWS
@@ -32,6 +33,10 @@ namespace platform = rstd::sys::pal::windows::socket;
 export auto set_nonblocking(RawSocket socket, bool enabled) -> IOResult<empty>;
 
 export auto tcp(SocketAddr const& addr) -> IOResult<OwnedSocket>;
+#if RSTD_OS_UNIX
+export auto unix_stream() -> IOResult<OwnedSocket>;
+export auto connect_unix(RawSocket socket, slice<byte> name, bool abstract) -> IOResult<empty>;
+#endif
 
 export auto prepare_accept(SocketAddr const& addr) -> IOResult<Option<OwnedSocket>>;
 
@@ -54,6 +59,7 @@ export auto recv(RawSocket socket, mut_ref<byte[]> buf) -> IOResult<usize>;
 export auto send(RawSocket socket, slice<byte> buf) -> IOResult<usize>;
 
 export auto shutdown_write(RawSocket socket) -> IOResult<empty>;
+export auto shutdown_both(RawSocket socket) -> IOResult<empty>;
 
 export auto take_error(RawSocket socket) -> IOResult<Option<Error>>;
 

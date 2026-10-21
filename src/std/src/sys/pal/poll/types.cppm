@@ -81,6 +81,8 @@ export enum class OperationKind {
     Write,
     Connect,
     Accept,
+    RecvMessage,
+    SendMessage,
 };
 
 export enum class SourceKind {
@@ -132,10 +134,16 @@ export class Operation {
         usize         address_buffer_len;
     };
 
+    struct NativeMessage {
+        void* message;
+    };
+
     using Storage = Choice<choice_case<OperationKind::Read, Read>,
                            choice_case<OperationKind::Write, Write>,
                            choice_case<OperationKind::Connect, Connect>,
-                           choice_case<OperationKind::Accept, Accept>>;
+                           choice_case<OperationKind::Accept, Accept>,
+                           choice_case<OperationKind::RecvMessage, NativeMessage>,
+                           choice_case<OperationKind::SendMessage, NativeMessage>>;
 
     SourceKind    m_source_kind;
     os::fd::RawFd m_handle;
@@ -211,6 +219,28 @@ public:
                                Accept { secondary_handle, address_buffer, address_buffer_len }) };
     }
 
+    static auto recv_message(os::fd::RawFd fd, u64 source, u64 operation, void* message)
+        -> Operation {
+        return Operation { SourceKind::Socket,
+                           fd,
+                           source,
+                           operation,
+                           Storage::with<OperationKind::RecvMessage>(NativeMessage { message }) };
+    }
+    static auto send_message(os::fd::RawFd fd, u64 source, u64 operation, void* message)
+        -> Operation {
+        return Operation { SourceKind::Socket,
+                           fd,
+                           source,
+                           operation,
+                           Storage::with<OperationKind::SendMessage>(NativeMessage { message }) };
+    }
+    auto native_message() const noexcept -> void* {
+        return kind() == OperationKind::RecvMessage
+                   ? m_storage.as<OperationKind::RecvMessage>().message
+                   : m_storage.as<OperationKind::SendMessage>().message;
+    }
+
     auto kind() const noexcept -> OperationKind { return m_storage.which(); }
     auto source_kind() const noexcept -> SourceKind { return m_source_kind; }
     auto handle() const noexcept -> os::fd::RawFd { return m_handle; }
@@ -231,6 +261,8 @@ public:
         case OperationKind::Read: return m_storage.as<OperationKind::Read>().len;
         case OperationKind::Write: return m_storage.as<OperationKind::Write>().len;
         case OperationKind::Accept: return m_storage.as<OperationKind::Accept>().address_buffer_len;
+        case OperationKind::RecvMessage:
+        case OperationKind::SendMessage:
         case OperationKind::Connect: return usize();
         }
         rstd::unreachable();
@@ -244,6 +276,8 @@ public:
         case OperationKind::Read: return m_storage.as<OperationKind::Read>().flags;
         case OperationKind::Write: return m_storage.as<OperationKind::Write>().flags;
         case OperationKind::Connect:
+        case OperationKind::RecvMessage:
+        case OperationKind::SendMessage:
         case OperationKind::Accept: return u32();
         }
         rstd::unreachable();

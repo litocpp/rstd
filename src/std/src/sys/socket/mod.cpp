@@ -1,3 +1,5 @@
+module;
+#include <rstd/macro.hpp>
 module rstd.sys.socket;
 
 namespace rstd::sys::socket
@@ -9,6 +11,15 @@ auto set_nonblocking(RawSocket socket, bool enabled) -> IOResult<empty> {
 auto tcp(SocketAddr const& addr) -> IOResult<OwnedSocket> {
     return platform::tcp(addr);
 }
+
+#if RSTD_OS_UNIX
+auto unix_stream() -> IOResult<OwnedSocket> {
+    return platform::unix_stream();
+}
+auto connect_unix(RawSocket socket, slice<byte> name, bool abstract) -> IOResult<empty> {
+    return platform::connect_unix(socket, name, abstract);
+}
+#endif
 
 auto prepare_accept(SocketAddr const& addr) -> IOResult<Option<OwnedSocket>> {
     return platform::prepare_accept(addr);
@@ -52,6 +63,10 @@ auto send(RawSocket socket, slice<byte> buf) -> IOResult<usize> {
 
 auto shutdown_write(RawSocket socket) -> IOResult<empty> {
     return platform::shutdown_write(socket);
+}
+
+auto shutdown_both(RawSocket socket) -> IOResult<empty> {
+    return platform::shutdown_both(socket);
 }
 
 auto take_error(RawSocket socket) -> IOResult<Option<Error>> {

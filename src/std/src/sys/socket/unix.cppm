@@ -28,9 +28,16 @@ export struct NativeSocketAddr {
 export auto addr_to_native(const rstd::sys::pal::poll::SocketAddress& address) noexcept
     -> NativeSocketAddr;
 
+export auto addr_to_native(SocketAddr const& address) noexcept -> NativeSocketAddr;
+export auto addr_from_native(const libc::sockaddr* address, libc::socklen_t len)
+    -> IOResult<SocketAddr>;
+
 export auto set_nonblocking(RawSocket socket, bool enabled) -> IOResult<empty>;
+export auto set_cloexec(RawSocket socket) -> IOResult<empty>;
 
 export auto tcp(SocketAddr const& addr) -> IOResult<OwnedSocket>;
+export auto unix_stream() -> IOResult<OwnedSocket>;
+export auto connect_unix(RawSocket socket, slice<byte> name, bool abstract) -> IOResult<empty>;
 
 export auto prepare_accept(SocketAddr const&) -> IOResult<Option<OwnedSocket>>;
 
@@ -53,6 +60,7 @@ export auto recv(RawSocket socket, mut_ref<byte[]> buf) -> IOResult<usize>;
 export auto send(RawSocket socket, slice<byte> buf) -> IOResult<usize>;
 
 export auto shutdown_write(RawSocket socket) -> IOResult<empty>;
+export auto shutdown_both(RawSocket socket) -> IOResult<empty>;
 
 export auto take_error(RawSocket socket) -> IOResult<Option<Error>>;
 

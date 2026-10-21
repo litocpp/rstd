@@ -17,174 +17,162 @@ inline auto tcp_is_would_block(rstd::io::Error const& error) noexcept -> bool {
     return tcp_is_error_kind(error, rstd::io::ErrorKind::WouldBlock);
 }
 
-auto tcp_detach_owned_socket(rstd::os::socket::OwnedSocket socket,
-                             rstd::async::Registration     registration,
-                             rstd::async::CompletionSource completion_source)
-    -> rstd::async::coro<rstd::io::Result<rstd::os::socket::OwnedSocket>> {
-    auto deregistered = co_await rstd::move(registration).deregister();
-    if (deregistered.is_err()) {
-        co_return rstd::Err(rstd::move(deregistered).unwrap_err_unchecked());
-    }
-    auto released = co_await rstd::move(completion_source).release();
-    if (released.is_err()) {
-        co_return rstd::Err(rstd::move(released).unwrap_err_unchecked());
-    }
-    co_return rstd::Ok(rstd::move(socket));
+auto stream_close_source(rstd::async::Registration, rstd::async::CompletionSource)
+    -> rstd::async::coro<rstd::io::Result<rstd::empty>>;
+auto stream_detach_owned_socket(rstd::async::Registration, rstd::async::CompletionSource)
+    -> rstd::async::coro<rstd::io::Result<rstd::os::socket::OwnedSocket>>;
+
+auto tcp_accept(rstd::io::Result<rstd::async::IoOperation> operation) -> rstd::async::coro<
+    rstd::io::Result<rstd::tuple<rstd::net::TcpStream, rstd::net::SocketAddr>>> {
+    if (operation.is_err()) co_return rstd::Err(rstd::move(operation).unwrap_err());
+    auto completed = co_await rstd::move(operation).unwrap();
+    if (completed.is_err()) co_return rstd::Err(rstd::move(completed).unwrap_err());
+    auto accepted = rstd::move(completed).unwrap().into_socket();
+    if (accepted.is_none())
+        co_return rstd::Err(
+            rstd::io::Error::from_kind(rstd::io::ErrorKind { rstd::io::ErrorKind::InvalidData }));
+    auto owned = rstd::move(accepted).unwrap();
+    auto peer  = socket::peer_addr(owned.as_raw_socket());
+    if (peer.is_err()) co_return rstd::Err(rstd::move(peer).unwrap_err());
+    auto stream = rstd::net::TcpStream::from_owned_socket(rstd::move(owned));
+    if (stream.is_err()) co_return rstd::Err(rstd::move(stream).unwrap_err());
+    co_return rstd::Ok(rstd::tuple<rstd::net::TcpStream, rstd::net::SocketAddr> {
+        rstd::move(stream).unwrap(), *peer });
 }
 
 namespace rstd::net
 {
 
+enum class TcpConnectPhase
+{
+    Fresh,
+    Running,
+    Connected,
+    Failed,
+    Closing,
+    Consumed
+};
+struct TcpConnectState {
+    sync::Mutex<TcpConnectPhase> phase { TcpConnectPhase::Fresh };
+};
+struct TcpConnectWork {
+    sync::Arc<TcpConnectState> state;
+    async::IoOperation         operation;
+    TcpConnectWork(sync::Arc<TcpConnectState> state, async::IoOperation operation)
+        : state(rstd::move(state)), operation(rstd::move(operation)) {}
+    TcpConnectWork(TcpConnectWork&&) noexcept = default;
+    ~TcpConnectWork() {
+        if (state) {
+            auto phase = state->phase.lock().unwrap();
+            if (*phase == TcpConnectPhase::Running) *phase = TcpConnectPhase::Failed;
+        }
+    }
+};
+
+auto tcp_connect_failure(io::Error error) -> async::coro<io::Result<empty>> {
+    co_return Err(rstd::move(error));
+}
+
+auto tcp_finish_connect(TcpConnectWork work) -> async::coro<io::Result<empty>> {
+    auto connected = co_await rstd::move(work.operation);
+    if (connected.is_err()) co_return Err(rstd::move(connected).unwrap_err());
+    auto phase = work.state->phase.lock().unwrap();
+    if (*phase != TcpConnectPhase::Running)
+        co_return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected }));
+    *phase = TcpConnectPhase::Connected;
+    co_return Ok(empty {});
+}
+
 auto TcpStream::connect(SocketAddr addr) -> async::coro<io::Result<TcpStream>> {
+    auto prepared = prepare_connect(addr);
+    if (prepared.is_err()) co_return Err(rstd::move(prepared).unwrap_err());
+    auto connecting = rstd::move(prepared).unwrap();
+    auto connected  = co_await connecting.finish();
+    if (connected.is_err()) co_return Err(rstd::move(connected).unwrap_err());
+    co_return rstd::move(connecting).into_stream();
+}
+
+auto TcpStream::prepare_connect(SocketAddr addr) -> io::Result<TcpConnect> {
     auto socket_result = socket::tcp(addr);
     if (socket_result.is_err()) {
-        co_return Err(rstd::move(socket_result).unwrap_err_unchecked());
+        return Err(rstd::move(socket_result).unwrap_err_unchecked());
     }
 
     auto owned_socket  = rstd::move(socket_result).unwrap_unchecked();
     auto stream_result = TcpStream::from_owned_socket(rstd::move(owned_socket));
     if (stream_result.is_err()) {
-        co_return Err(rstd::move(stream_result).unwrap_err_unchecked());
+        return Err(rstd::move(stream_result).unwrap_err_unchecked());
     }
 
-    auto stream    = rstd::move(stream_result).unwrap_unchecked();
-    auto connected = co_await async::IoOperation::connect(stream.m_completion_source, addr);
-    if (connected.is_err()) co_return Err(rstd::move(connected).unwrap_err_unchecked());
-
-    co_return Ok(rstd::move(stream));
+    return Ok(TcpConnect(rstd::move(stream_result).unwrap_unchecked(), addr));
 }
 
-auto TcpStream::from_owned_socket(os::socket::OwnedSocket owned_socket) -> io::Result<TcpStream> {
-    auto nonblocking = socket::set_nonblocking(owned_socket.as_raw_socket(), true);
-    if (nonblocking.is_err()) return Err(rstd::move(nonblocking).unwrap_err_unchecked());
-
-    auto registration = async::Registration::register_fd(owned_socket.as_raw_socket());
-    if (registration.is_err()) return Err(rstd::move(registration).unwrap_err_unchecked());
-    return Ok(TcpStream { rstd::move(owned_socket), rstd::move(registration).unwrap_unchecked() });
+TcpConnect::TcpConnect(TcpStream stream, SocketAddr target)
+    : stream_(Some(rstd::move(stream))),
+      target_(target),
+      state_(sync::Arc<TcpConnectState>::make()) {
 }
+TcpConnect::TcpConnect(TcpConnect&&) noexcept                    = default;
+auto TcpConnect::operator=(TcpConnect&&) noexcept -> TcpConnect& = default;
+TcpConnect::~TcpConnect()                                        = default;
 
-auto TcpStream::into_owned_socket() && -> async::coro<io::Result<os::socket::OwnedSocket>> {
-#if RSTD_OS_WINDOWS
-    if (m_completion_source.is_bound()) {
-        co_return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
+auto TcpConnect::finish() const -> async::coro<io::Result<empty>> {
+    {
+        auto phase = state_->phase.lock().unwrap();
+        if (*phase != TcpConnectPhase::Fresh || stream_.is_none())
+            return tcp_connect_failure(
+                io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
+        *phase = TcpConnectPhase::Running;
     }
-#endif
-    m_read_operation  = None<async::IoOperation>();
-    m_write_operation = None<async::IoOperation>();
-    co_return co_await tcp_detach_owned_socket(
-        rstd::move(m_socket), rstd::move(m_registration), rstd::move(m_completion_source));
+    return tcp_finish_connect(
+        TcpConnectWork(state_.clone(),
+                       async::IoOperation::connect(stream_->stream_.m_completion_source, target_)));
 }
 
+auto TcpConnect::into_stream() && -> io::Result<TcpStream> {
+    auto phase = state_->phase.lock().unwrap();
+    if (*phase != TcpConnectPhase::Connected || stream_.is_none())
+        return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected }));
+    *phase = TcpConnectPhase::Consumed;
+    return Ok(stream_.take().unwrap());
+}
+
+auto TcpConnect::close() && -> async::coro<io::Result<empty>> {
+    {
+        auto phase = state_->phase.lock().unwrap();
+        if (stream_.is_none())
+            return tcp_connect_failure(
+                io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected }));
+        *phase = TcpConnectPhase::Closing;
+    }
+    return rstd::move(stream_.take().unwrap()).close();
+}
+
+auto TcpConnect::local_addr() const -> io::Result<SocketAddr> {
+    if (stream_.is_none())
+        return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected }));
+    return stream_->local_addr();
+}
+
+auto TcpStream::from_owned_socket(os::socket::OwnedSocket socket) -> io::Result<TcpStream> {
+    auto stream = SocketStream::from_owned_socket(rstd::move(socket));
+    if (stream.is_err()) return Err(rstd::move(stream).unwrap_err());
+    return Ok(TcpStream(rstd::move(stream).unwrap()));
+}
 #if RSTD_OS_UNIX
 auto TcpStream::from_owned_fd(os::fd::OwnedFd fd) -> io::Result<TcpStream> {
     return from_owned_socket(
         os::socket::OwnedSocket::from_raw_socket(rstd::move(fd).into_raw_fd()));
 }
-
-auto TcpStream::into_owned_fd() && -> async::coro<io::Result<os::fd::OwnedFd>> {
-    auto detached = co_await rstd::move(*this).into_owned_socket();
-    if (detached.is_err()) co_return Err(rstd::move(detached).unwrap_err_unchecked());
-    auto owned_socket = rstd::move(detached).unwrap_unchecked();
-    co_return Ok(os::fd::OwnedFd::from_raw_fd(rstd::move(owned_socket).into_raw_socket()));
-}
 #endif
-
 auto TcpStream::local_addr() const -> io::Result<SocketAddr> {
-    return socket::local_addr(m_socket.as_raw_socket());
+    return socket::local_addr(stream_.m_completion_source.as_raw_fd());
 }
-
 auto TcpStream::peer_addr() const -> io::Result<SocketAddr> {
-    return socket::peer_addr(m_socket.as_raw_socket());
+    return socket::peer_addr(stream_.m_completion_source.as_raw_fd());
 }
-
-auto TcpStream::take_error() -> io::Result<Option<io::Error>> {
-    return socket::take_error(m_socket.as_raw_socket());
-}
-
 auto TcpStream::set_nodelay(bool enabled) -> io::Result<empty> {
-    return socket::set_nodelay(m_socket.as_raw_socket(), enabled);
-}
-
-auto TcpStream::shutdown() -> io::Result<empty> {
-    return socket::shutdown_write(m_socket.as_raw_socket());
-}
-
-auto TcpStream::try_read(bytes::BytesMut& buf) -> io::Result<usize> {
-    auto chunk  = buf.chunk_mut();
-    auto result = socket::recv(m_socket.as_raw_socket(), as_bytes_mut(chunk));
-    if (result.is_ok()) {
-        auto n = rstd::move(result).unwrap_unchecked();
-        buf.advance_mut(n);
-        return Ok(n);
-    }
-
-    auto error = rstd::move(result).unwrap_err_unchecked();
-    if (tcp_is_would_block(error)) {
-        m_registration.clear_readiness(async::Ready::readable());
-    }
-    return Err(rstd::move(error));
-}
-
-auto TcpStream::try_write(bytes::Bytes const& buf) -> io::Result<usize> {
-    auto result = socket::send(m_socket.as_raw_socket(), as_bytes(buf.as_slice()));
-    if (result.is_ok()) return result;
-
-    auto error = rstd::move(result).unwrap_err_unchecked();
-    if (tcp_is_would_block(error)) {
-        m_registration.clear_readiness(async::Ready::writable());
-    }
-    return Err(rstd::move(error));
-}
-
-auto TcpStream::poll_read(mut_ref<TcpStream> self, task::Context& cx, bytes::BytesMut& buf)
-    -> task::Poll<io::Result<usize>> {
-    auto& stream = *self;
-    if (stream.m_read_operation.is_none()) {
-        stream.m_read_operation =
-            Some(async::IoOperation::read(stream.m_completion_source, buf.chunk_mut().len()));
-    }
-
-    auto polled = future::poll(*stream.m_read_operation, cx);
-    if (polled.is_pending()) return task::Poll<io::Result<usize>>::Pending();
-    stream.m_read_operation = None<async::IoOperation>();
-
-    auto result = rstd::move(polled).take();
-    if (result.is_err()) {
-        return task::Poll<io::Result<usize>>::Ready(Err(rstd::move(result).unwrap_err_unchecked()));
-    }
-    auto completion  = rstd::move(result).unwrap_unchecked();
-    auto transferred = completion.transferred();
-    buf.put_slice(completion.data());
-    return task::Poll<io::Result<usize>>::Ready(Ok(transferred));
-}
-
-auto TcpStream::poll_write(mut_ref<TcpStream> self, task::Context& cx, bytes::Bytes const& buf)
-    -> task::Poll<io::Result<usize>> {
-    auto& stream = *self;
-    if (stream.m_write_operation.is_none()) {
-        stream.m_write_operation = Some(async::IoOperation::write(
-            stream.m_completion_source, bytes::Bytes::copy_from_slice(buf.as_slice())));
-    }
-
-    auto polled = future::poll(*stream.m_write_operation, cx);
-    if (polled.is_pending()) return task::Poll<io::Result<usize>>::Pending();
-    stream.m_write_operation = None<async::IoOperation>();
-
-    auto result = rstd::move(polled).take();
-    if (result.is_err()) {
-        return task::Poll<io::Result<usize>>::Ready(Err(rstd::move(result).unwrap_err_unchecked()));
-    }
-    return task::Poll<io::Result<usize>>::Ready(
-        Ok(rstd::move(result).unwrap_unchecked().transferred()));
-}
-
-auto TcpStream::poll_flush(mut_ref<TcpStream>, task::Context&) -> task::Poll<io::Result<empty>> {
-    return task::Poll<io::Result<empty>>::Ready(Ok(empty {}));
-}
-
-auto TcpStream::poll_shutdown(mut_ref<TcpStream> self, task::Context&)
-    -> task::Poll<io::Result<empty>> {
-    return task::Poll<io::Result<empty>>::Ready(self->shutdown());
+    return socket::set_nodelay(stream_.m_completion_source.as_raw_fd(), enabled);
 }
 
 auto TcpListener::bind(SocketAddr addr) -> io::Result<TcpListener> {
@@ -220,13 +208,11 @@ auto TcpListener::from_owned_socket(os::socket::OwnedSocket owned_socket)
 }
 
 auto TcpListener::into_owned_socket() && -> async::coro<io::Result<os::socket::OwnedSocket>> {
-#if RSTD_OS_WINDOWS
-    if (m_completion_source.is_bound()) {
-        co_return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
-    }
-#endif
-    co_return co_await tcp_detach_owned_socket(
-        rstd::move(m_socket), rstd::move(m_registration), rstd::move(m_completion_source));
+    return stream_detach_owned_socket(rstd::move(m_registration), rstd::move(m_completion_source));
+}
+
+auto TcpListener::close() && -> async::coro<io::Result<empty>> {
+    return stream_close_source(rstd::move(m_registration), rstd::move(m_completion_source));
 }
 
 #if RSTD_OS_UNIX
@@ -244,11 +230,11 @@ auto TcpListener::into_owned_fd() && -> async::coro<io::Result<os::fd::OwnedFd>>
 #endif
 
 auto TcpListener::local_addr() const -> io::Result<SocketAddr> {
-    return socket::local_addr(m_socket.as_raw_socket());
+    return socket::local_addr(m_completion_source.as_raw_fd());
 }
 
 auto TcpListener::try_accept() -> io::Result<tuple<TcpStream, SocketAddr>> {
-    auto accepted = socket::accept(m_socket.as_raw_socket());
+    auto accepted = socket::accept(m_completion_source.as_raw_fd());
     if (accepted.is_err()) {
         auto error = rstd::move(accepted).unwrap_err_unchecked();
         if (tcp_is_would_block(error)) {
@@ -271,31 +257,14 @@ auto TcpListener::try_accept() -> io::Result<tuple<TcpStream, SocketAddr>> {
 }
 
 auto TcpListener::accept() -> async::coro<io::Result<tuple<TcpStream, SocketAddr>>> {
-    auto listener_addr = local_addr();
-    if (listener_addr.is_err()) {
-        co_return Err(rstd::move(listener_addr).unwrap_err_unchecked());
-    }
-    auto address  = rstd::move(listener_addr).unwrap_unchecked();
-    auto prepared = socket::prepare_accept(address);
-    if (prepared.is_err()) co_return Err(rstd::move(prepared).unwrap_err_unchecked());
-    auto operation = async::IoOperation::accept(m_completion_source,
-                                                address,
-                                                rstd::move(prepared).unwrap_unchecked(),
-                                                socket::accept_address_buffer_size());
-
-    auto completed = co_await rstd::move(operation);
-    if (completed.is_err()) co_return Err(rstd::move(completed).unwrap_err_unchecked());
-    auto accepted = rstd::move(completed).unwrap_unchecked().into_socket();
-    if (accepted.is_none()) {
-        co_return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidData }));
-    }
-    auto accepted_socket = rstd::move(accepted).unwrap_unchecked();
-    auto peer            = socket::peer_addr(accepted_socket.as_raw_socket());
-    if (peer.is_err()) co_return Err(rstd::move(peer).unwrap_err_unchecked());
-    auto stream = TcpStream::from_owned_socket(rstd::move(accepted_socket));
-    if (stream.is_err()) co_return Err(rstd::move(stream).unwrap_err_unchecked());
-    co_return Ok(tuple<TcpStream, SocketAddr> { rstd::move(stream).unwrap_unchecked(),
-                                                rstd::move(peer).unwrap_unchecked() });
+    auto address = local_addr();
+    if (address.is_err()) return tcp_accept(Err(rstd::move(address).unwrap_err()));
+    auto prepared = socket::prepare_accept(*address);
+    if (prepared.is_err()) return tcp_accept(Err(rstd::move(prepared).unwrap_err()));
+    return tcp_accept(Ok(async::IoOperation::accept(m_completion_source,
+                                                    *address,
+                                                    rstd::move(prepared).unwrap(),
+                                                    socket::accept_address_buffer_size())));
 }
 
 } // namespace rstd::net

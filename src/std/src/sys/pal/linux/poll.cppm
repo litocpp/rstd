@@ -432,6 +432,13 @@ export class Poller {
                                 operation.len().to_primitive(),
                                 static_cast<int>(operation.flags().to_primitive()) |
                                     libc::MSG_NOSIGNAL);
+            } else if (operation.kind() == OperationKind::RecvMessage) {
+                rc = libc::recvmsg(
+                    operation.handle(), static_cast<libc::msghdr*>(operation.native_message()), 0);
+            } else if (operation.kind() == OperationKind::SendMessage) {
+                rc = libc::sendmsg(operation.handle(),
+                                   static_cast<const libc::msghdr*>(operation.native_message()),
+                                   libc::MSG_NOSIGNAL);
             } else if (operation.kind() == OperationKind::Connect) {
                 if (record.started) {
                     int             error = 0;
@@ -611,8 +618,9 @@ public:
         auto source = completion_source_for(operation);
         if (source.is_err()) return Err(rstd::move(source).unwrap_err_unchecked());
         auto* operation_source = rstd::move(source).unwrap_unchecked();
-        auto  read_direction =
-            operation.kind() == OperationKind::Read || operation.kind() == OperationKind::Accept;
+        auto  read_direction   = operation.kind() == OperationKind::Read ||
+                                 operation.kind() == OperationKind::Accept ||
+                                 operation.kind() == OperationKind::RecvMessage;
         auto& queue  = read_direction ? operation_source->reads : operation_source->writes;
         auto  key    = operation.operation_key();
         auto  record = EmulatedOperation { rstd::move(operation), read_direction };
