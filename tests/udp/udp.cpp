@@ -493,3 +493,49 @@ TEST(Udp, OversizedReusableBufferKeepsCapacity) {
     EXPECT_EQ(result.buffer.as_slice(), "big"_bytes);
     EXPECT_EQ(result.buffer.capacity(), usize(65536));
 }
+
+TEST(UdpMulticast, MembershipMetadataAndOwnedCloseBarrier) {
+#if defined(__linux__)
+    auto runtime = async::RuntimeBuilder::current_thread().enable_all().build().unwrap();
+    auto receiver =
+        net::UdpSocket::bind(net::SocketAddr::ipv4(net::Ipv4Addr::any(), u16()), true, true)
+            .unwrap();
+    auto sender = net::UdpSocket::bind(net::SocketAddr::ipv4_loopback(u16()), true).unwrap();
+    auto group  = net::SocketAddr::parse("239.255.66.77:0"_str).unwrap();
+    group       = net::SocketAddr::ipv4(net::Ipv4Addr::make(u8(239), u8(255), u8(66), u8(77)),
+                                        receiver.local_addr().port());
+    ASSERT_TRUE(receiver.join_multicast(group, u32(1)).is_ok());
+    ASSERT_TRUE(sender.set_multicast_ttl(u32(255)).is_ok());
+    ASSERT_TRUE(sender.set_multicast_loop(true).is_ok());
+    auto source = net::PacketInfo { net::SocketAddr::ipv4_loopback(u16()), u32(1) };
+    ASSERT_TRUE(runtime
+                    .block_on(sender.send(bytes::Bytes::copy_from_slice("membership"_bytes),
+                                          { group, Some(source) }))
+                    .is_ok());
+    auto received = receive_with_timeout(runtime, receiver).unwrap().unwrap();
+    ASSERT_TRUE(received.info.packet.is_some());
+    EXPECT_EQ(received.info.packet->interface_index, u32(1));
+    EXPECT_EQ(received.info.packet->local, group);
+    EXPECT_EQ(received.data.as_slice(), "membership"_bytes);
+    EXPECT_TRUE(receiver.leave_multicast(group, u32(1)).is_ok());
+    auto owned    = runtime.block_on(rstd::move(receiver).into_owned_socket()).unwrap();
+    auto raw      = owned.as_raw_socket();
+    auto attached = net::UdpSocket::from_owned_socket(rstd::move(owned), true).unwrap();
+    EXPECT_TRUE(runtime.block_on(rstd::move(attached).close()).is_ok());
+    EXPECT_EQ(::fcntl(raw, F_GETFD), -1);
+    EXPECT_TRUE(runtime.block_on(rstd::move(sender).close()).is_ok());
+#endif
+}
+TEST(UdpMulticast, FamilyAddressAndHopBoundsAreValidated) {
+    auto runtime = async::RuntimeBuilder::current_thread().enable_all().build().unwrap();
+    auto socket  = net::UdpSocket::bind(net::SocketAddr::ipv4_loopback(u16())).unwrap();
+    EXPECT_TRUE(socket.join_multicast(net::SocketAddr::ipv4_loopback(u16()), u32(1)).is_err());
+    EXPECT_TRUE(
+        socket.join_multicast(net::SocketAddr::ipv6(net::Ipv6Addr::loopback(), u16()), u32(1))
+            .is_err());
+    EXPECT_TRUE(socket.set_ttl(u32(256)).is_err());
+    EXPECT_TRUE(socket.set_multicast_ttl(u32(256)).is_err());
+    EXPECT_TRUE(socket.set_ttl(u32(255)).is_ok());
+    EXPECT_TRUE(socket.set_multicast_ttl(u32()).is_ok());
+    EXPECT_TRUE(runtime.block_on(rstd::move(socket).close()).is_ok());
+}

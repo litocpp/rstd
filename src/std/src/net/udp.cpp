@@ -55,10 +55,15 @@ auto detach_datagram(async::CompletionSource source)
     co_return retained.take_owned_socket();
 }
 
-auto UdpSocket::bind(SocketAddr address, bool packet_info) -> io::Result<UdpSocket> {
+auto UdpSocket::bind(SocketAddr address, bool packet_info, bool reuse_address)
+    -> io::Result<UdpSocket> {
     auto created = socket::udp(address);
     if (created.is_err()) return Err(rstd::move(created).unwrap_err());
     auto owned = rstd::move(created).unwrap();
+    if (reuse_address) {
+        auto reuse = socket::set_reuseaddr(owned.as_raw_socket(), true);
+        if (reuse.is_err()) return Err(rstd::move(reuse).unwrap_err());
+    }
     auto bound = socket::bind(owned.as_raw_socket(), address);
     if (bound.is_err()) return Err(rstd::move(bound).unwrap_err());
     return from_owned_socket(rstd::move(owned), packet_info);
@@ -173,5 +178,24 @@ auto UdpSocket::try_send(bytes::Bytes const& data, DatagramTarget target) const
     if (sent.is_ok() && *sent != data.len())
         return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidData }));
     return sent;
+}
+auto UdpSocket::join_multicast(SocketAddr group, u32 index) const -> io::Result<empty> {
+    if (group.is_ipv4() != local_.is_ipv4())
+        return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
+    return socket::multicast_membership(source_.as_raw_fd(), group, index, true);
+}
+auto UdpSocket::leave_multicast(SocketAddr group, u32 index) const -> io::Result<empty> {
+    if (group.is_ipv4() != local_.is_ipv4())
+        return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
+    return socket::multicast_membership(source_.as_raw_fd(), group, index, false);
+}
+auto UdpSocket::set_multicast_ttl(u32 ttl) const -> io::Result<empty> {
+    return socket::datagram_ttl(source_.as_raw_fd(), local_.is_ipv6(), ttl, true);
+}
+auto UdpSocket::set_ttl(u32 ttl) const -> io::Result<empty> {
+    return socket::datagram_ttl(source_.as_raw_fd(), local_.is_ipv6(), ttl, false);
+}
+auto UdpSocket::set_multicast_loop(bool enabled) const -> io::Result<empty> {
+    return socket::multicast_loop(source_.as_raw_fd(), local_.is_ipv6(), enabled);
 }
 } // namespace rstd::net

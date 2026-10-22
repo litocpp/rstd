@@ -33,7 +33,8 @@ public:
     auto operator=(UdpSocket&&) noexcept -> UdpSocket& = default;
 
     /// New IPv6 sockets are IPv6-only. Packet metadata is opt-in.
-    static auto bind(SocketAddr address, bool packet_info = false) -> io::Result<UdpSocket>;
+    static auto bind(SocketAddr address, bool packet_info = false, bool reuse_address = false)
+        -> io::Result<UdpSocket>;
     /// Selects one receive peer and the route's local address without a handshake.
     static auto connect(SocketAddr peer, bool packet_info = false) -> io::Result<UdpSocket>;
     static auto from_owned_socket(os::socket::OwnedSocket socket, bool packet_info = false)
@@ -43,6 +44,11 @@ public:
     auto close() && -> async::coro<io::Result<empty>>;
     auto local_addr() const noexcept -> SocketAddr { return local_; }
     auto peer_addr() const -> io::Result<SocketAddr>;
+    auto join_multicast(SocketAddr group, u32 interface_index) const -> io::Result<empty>;
+    auto leave_multicast(SocketAddr group, u32 interface_index) const -> io::Result<empty>;
+    auto set_multicast_ttl(u32 ttl) const -> io::Result<empty>;
+    auto set_multicast_loop(bool enabled) const -> io::Result<empty>;
+    auto set_ttl(u32 ttl) const -> io::Result<empty>;
     auto capabilities() const noexcept -> DatagramCapabilities;
     /// Cancellation retains resources until safe, but may consume a datagram.
     /// Overwrites the buffer; errors return it empty. Completion always returns its allocator.

@@ -21,6 +21,14 @@ export auto udp(net::SocketAddr address) -> io::Result<os::socket::OwnedSocket>;
 export auto datagram_capabilities(net::SocketAddr address) noexcept -> net::DatagramCapabilities;
 export auto configure_datagram(os::socket::RawSocket socket, bool packet_info) -> io::Result<empty>;
 
+export auto
+multicast_membership(os::socket::RawSocket socket, net::SocketAddr group, u32 index, bool join)
+    -> io::Result<empty>;
+export auto datagram_ttl(os::socket::RawSocket socket, bool ipv6, u32 ttl, bool multicast)
+    -> io::Result<empty>;
+export auto multicast_loop(os::socket::RawSocket socket, bool ipv6, bool enabled)
+    -> io::Result<empty>;
+
 export class DatagramMessage {
 #if RSTD_OS_WINDOWS
     WSAMSG           message_ {};

@@ -59,6 +59,61 @@ auto datagram_option(os::socket::RawSocket socket, int level, int option, int va
     return Ok(empty {});
 }
 
+auto datagram_ttl(os::socket::RawSocket socket, bool ipv6, u32 ttl, bool multicast)
+    -> io::Result<empty> {
+    if (ttl > u32(255))
+        return Err(io::error::Error::from_kind(
+            io::error::ErrorKind { io::error::ErrorKind::InvalidInput }));
+    return datagram_option(socket,
+                           ipv6 ? IPPROTO_IPV6 : IPPROTO_IP,
+                           ipv6 ? (multicast ? IPV6_MULTICAST_HOPS : IPV6_UNICAST_HOPS)
+                                : (multicast ? IP_MULTICAST_TTL : IP_TTL),
+                           static_cast<int>(ttl.to_primitive()));
+}
+auto multicast_loop(os::socket::RawSocket socket, bool ipv6, bool enabled) -> io::Result<empty> {
+    return datagram_option(socket,
+                           ipv6 ? IPPROTO_IPV6 : IPPROTO_IP,
+                           ipv6 ? IPV6_MULTICAST_LOOP : IP_MULTICAST_LOOP,
+                           enabled ? 1 : 0);
+}
+auto multicast_membership(os::socket::RawSocket socket, net::SocketAddr group, u32 index, bool join)
+    -> io::Result<empty> {
+    if (index > u32(0x7fffffff) ||
+        (group.is_ipv4() ? (group.octet(usize()).to_primitive() & 0xf0) != 0xe0
+                         : group.octet(usize()) != u8(0xff)))
+        return Err(io::error::Error::from_kind(
+            io::error::ErrorKind { io::error::ErrorKind::InvalidInput }));
+    if (group.is_ipv6()) {
+        ipv6_mreq request {};
+        for (usize i; i < usize(16); ++i)
+            request.ipv6mr_multiaddr.s6_addr[i.to_primitive()] = group.octet(i).to_primitive();
+        request.ipv6mr_interface = index.to_primitive();
+        if (::setsockopt(native_datagram_socket(socket),
+                         IPPROTO_IPV6,
+                         join ? IPV6_JOIN_GROUP : IPV6_LEAVE_GROUP,
+                         reinterpret_cast<const char*>(&request),
+                         sizeof(request)) != 0)
+            return Err(datagram_error());
+        return Ok(empty {});
+    }
+#if defined(__linux__)
+    ip_mreqn request {};
+    auto*    bytes = reinterpret_cast<unsigned char*>(&request.imr_multiaddr);
+    for (usize i; i < usize(4); ++i) bytes[i.to_primitive()] = group.octet(i).to_primitive();
+    request.imr_ifindex = static_cast<int>(index.to_primitive());
+    if (::setsockopt(native_datagram_socket(socket),
+                     IPPROTO_IP,
+                     join ? IP_ADD_MEMBERSHIP : IP_DROP_MEMBERSHIP,
+                     &request,
+                     sizeof(request)) != 0)
+        return Err(datagram_error());
+    return Ok(empty {});
+#else
+    return Err(
+        io::error::Error::from_kind(io::error::ErrorKind { io::error::ErrorKind::Unsupported }));
+#endif
+}
+
 auto datagram_capabilities(net::SocketAddr address) noexcept -> net::DatagramCapabilities {
     if (address.is_ipv6()) {
 #if defined(IPV6_PKTINFO) && (defined(IPV6_RECVPKTINFO) || RSTD_OS_WINDOWS)
