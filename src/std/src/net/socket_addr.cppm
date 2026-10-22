@@ -122,6 +122,25 @@ public:
     constexpr auto port() const noexcept -> u16 { return m_port; }
     constexpr auto flowinfo() const noexcept -> u32 { return m_flowinfo; }
     constexpr auto scope_id() const noexcept -> u32 { return m_scope_id; }
+    constexpr auto with_port(u16 port) const noexcept -> SocketAddr {
+        auto result   = *this;
+        result.m_port = port;
+        return result;
+    }
+    constexpr auto ipv4_address() const noexcept -> Option<Ipv4Addr> {
+        if (! is_ipv4()) return None();
+        return Some(
+            Ipv4Addr::make(octet(usize()), octet(usize(1)), octet(usize(2)), octet(usize(3))));
+    }
+    constexpr auto ipv6_address() const noexcept -> Option<Ipv6Addr> {
+        if (! is_ipv6()) return None();
+        auto word = [&](unsigned index) {
+            return u16((unsigned(octet(usize(index)).to_primitive()) << 8) |
+                       octet(usize(index + 1)).to_primitive());
+        };
+        return Some(Ipv6Addr::make(
+            word(0), word(2), word(4), word(6), word(8), word(10), word(12), word(14)));
+    }
 
     friend constexpr auto operator==(SocketAddr const& left, SocketAddr const& right) noexcept
         -> bool {
