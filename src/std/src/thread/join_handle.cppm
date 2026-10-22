@@ -8,7 +8,7 @@ export import rstd.core;
 namespace rstd::thread
 {
 
-/// An owned handle to a thread, which joins the thread on drop.
+/// An owned handle to a thread. Call join() explicitly to wait for completion.
 /// \tparam T The return type of the thread's closure.
 export template<typename T>
 class JoinHandle {

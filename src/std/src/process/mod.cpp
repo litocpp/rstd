@@ -15,6 +15,37 @@ using rstd::mem::MaybeUninit;
 using namespace rstd::prelude;
 namespace libc = rstd::sys::libc;
 
+auto rstd::Impl<rstd::io::Write, rstd::process::ChildStdin>::write(slice<u8> buf)
+    -> rstd::io::Result<usize> {
+#if RSTD_OS_UNIX
+    libc::sigset_t blocked {}, previous {}, pending {};
+    libc::sigemptyset(&blocked);
+    libc::sigaddset(&blocked, libc::signal_pipe);
+    auto mask_error = libc::pthread_sigmask(libc::signal_block, &blocked, &previous);
+    if (mask_error) return Err(io::Error::from_raw_os_error(i32(mask_error)));
+    if (libc::sigpending(&pending) < 0) {
+        auto error = libc::get_errno();
+        (void)libc::pthread_sigmask(libc::signal_setmask, &previous, nullptr);
+        return Err(io::Error::from_raw_os_error(i32(error)));
+    }
+    auto already_pending = libc::sigismember(&pending, libc::signal_pipe) == 1;
+    auto result          = sys::io::stdio::write_fd(this->self().fd, as_bytes(buf));
+    if (! already_pending) {
+        // Partial writes can also leave SIGPIPE pending.
+        if (libc::sigpending(&pending) == 0 &&
+            libc::sigismember(&pending, libc::signal_pipe) == 1) {
+            int received = 0;
+            (void)libc::sigwait(&blocked, &received);
+        }
+    }
+    mask_error = libc::pthread_sigmask(libc::signal_setmask, &previous, nullptr);
+    if (mask_error) return Err(io::Error::from_raw_os_error(i32(mask_error)));
+    return result;
+#else
+    return sys::io::stdio::write_fd(this->self().fd, as_bytes(buf));
+#endif
+}
+
 [[gnu::cold]] [[noreturn]]
 void rstd::process::abort() {
     sys::pal::abort_internal();

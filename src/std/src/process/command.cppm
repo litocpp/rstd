@@ -116,9 +116,8 @@ namespace rstd
 
 template<>
 struct Impl<io::Write, process::ChildStdin> : ImplBase<process::ChildStdin> {
-    auto write(slice<u8> buf) -> io::Result<usize> {
-        return sys::io::stdio::write_fd(this->self().fd, as_bytes(buf));
-    }
+    /// Unix writes return BrokenPipe without changing the process's SIGPIPE handler.
+    auto write(slice<u8> buf) -> io::Result<usize>;
     auto flush() -> io::Result<empty> { return Ok(empty {}); }
 };
 

@@ -1,6 +1,12 @@
 [package]
 name = "rstd-process-tests"
+version = "0.1.0"
 target = { os = ["linux", "macos"] }
+
+[[bin]]
+name = "rstd-process-pipe-check"
+sources = ["pipe.cpp"]
+link-stdlib = false
 
 [[test]]
 name = "rstd-process-tests"

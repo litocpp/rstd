@@ -339,6 +339,17 @@ inline auto _rstd_dev_minor(::dev_t d) noexcept -> unsigned int {
 export namespace rstd::sys::libc
 {
 
+using ::sigset_t;
+using ::sigemptyset;
+using ::sigaddset;
+using ::sigismember;
+using ::sigpending;
+using ::sigwait;
+using ::pthread_sigmask;
+inline constexpr int signal_block   = SIG_BLOCK;
+inline constexpr int signal_setmask = SIG_SETMASK;
+inline constexpr int signal_pipe    = SIGPIPE;
+
 using ::sched_yield;
 inline auto online_processor_count() noexcept -> long {
     return _rstd_online_processor_count();
