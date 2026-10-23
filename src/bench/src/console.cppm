@@ -1,10 +1,25 @@
+module;
+#include <rstd/enum.hpp>
+
 export module rstd.bench:console;
 export import :compare;
 using namespace rstd::prelude;
 export namespace rstd::bench
 {
+class SummaryValue {
+    RSTD_ENUM(SummaryValue,
+              (Measured, (f64 value;)),
+              (Skipped, (String reason;)),
+              (Failed, (String reason;)))
+};
+struct SummaryRow {
+    String       name;
+    SummaryValue value;
+    String       unit;
+};
 namespace console
 {
+auto summary(slice<SummaryRow> rows) -> Result<String, String>;
 auto number(f64 value) -> String;
 auto time(f64 ns) -> String;
 auto bytes(f64 value) -> String;

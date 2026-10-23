@@ -131,6 +131,48 @@ void divider(String& output, usize width) {
     spaces(output, width, '-');
     output.push_ascii('\n');
 }
+auto console::summary(slice<SummaryRow> rows) -> Result<String, String> {
+    usize names(4), values(6), units(4);
+    for (const auto& row : rows) {
+        if (row.name.is_empty() || row.unit.is_empty())
+            return Err("summary row requires name and unit"_Str);
+        names = names.max(console::escaped(row.name.as_str()).len().min(usize(48)));
+        units = units.max(console::escaped(row.unit.as_str()).len());
+        if (row.value.is_Measured()) {
+            auto value = row.value.as_Measured().value;
+            if (! value.is_finite()) return Err("summary value must be finite"_Str);
+            values = values.max(console::number(value).len());
+        }
+    }
+    String output;
+    cell(output, "case"_str, names, true);
+    column(output, "result"_str, values);
+    column(output, "unit"_str, units);
+    output.push_str("  status\n"_str);
+    divider(output, names + values + units + usize(14));
+    for (const auto& row : rows) {
+        name_cell(output, row.name.as_str(), names);
+        column(output,
+               row.value.is_Measured() ? console::number(row.value.as_Measured().value).as_str()
+                                       : "-"_str,
+               values);
+        auto unit = console::escaped(row.unit.as_str());
+        column(output, unit.as_str(), units);
+        if (row.value.is_Measured())
+            output.push_str("  ok\n"_str);
+        else {
+            auto reason =
+                console::escaped(row.value.is_Skipped() ? row.value.as_Skipped().reason.as_str()
+                                                        : row.value.as_Failed().reason.as_str());
+            output.push_str(rstd::format("  {}: {}\n",
+                                         row.value.is_Skipped() ? "skipped"_str : "failed"_str,
+                                         reason)
+                                .as_str());
+        }
+    }
+    return Ok(rstd::move(output));
+}
+
 auto scope_name(bench::MeasurementScope scope) -> ref<str> {
     if (scope == bench::MeasurementScope::External) return "external"_str;
     if (scope == bench::MeasurementScope::Batched) return "batched"_str;

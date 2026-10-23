@@ -274,3 +274,25 @@ TEST(BenchConsole, NamedRatesKeepZeroMissingAndUnitsDistinct) {
     EXPECT_TRUE(other.as_str().contains("flops [count/s]"_str));
     EXPECT_TRUE(other.as_str().contains("30.00M"_str));
 }
+
+TEST(BenchConsole, HeterogeneousSummaryPreservesUnitsAndFailures) {
+    Vec<bench::SummaryRow> rows;
+    rows.push({ "f32-fma"_Str, bench::SummaryValue::Measured(f64(1234.56)), "GFLOP/s"_Str });
+    rows.push({ "shader-copy"_Str, bench::SummaryValue::Measured(f64(98.7)), "GB/s"_Str });
+    rows.push({ "roundtrip"_Str, bench::SummaryValue::Measured(f64(12.3)), "us"_Str });
+    rows.push(
+        { "matrix"_Str, bench::SummaryValue::Skipped("missing\ncapability"_Str), "GFLOP/s"_Str });
+    rows.push({ "write"_Str, bench::SummaryValue::Failed("bad\noutput"_Str), "GB/s"_Str });
+    auto result = console::summary(rows.as_slice());
+    ASSERT_TRUE(result.is_ok());
+    auto text = result->as_str();
+    EXPECT_TRUE(text.contains("GFLOP/s"_str));
+    EXPECT_TRUE(text.contains("GB/s"_str));
+    EXPECT_TRUE(text.contains("us"_str));
+    EXPECT_TRUE(text.contains("1235"_str));
+    EXPECT_TRUE(text.contains("skipped: missing\\u{a}capability"_str));
+    EXPECT_TRUE(text.contains("failed: bad\\u{a}output"_str));
+    EXPECT_TRUE(text.starts_with("case"_str));
+    rows[usize(0)].value = bench::SummaryValue::Measured(f64::NAN_);
+    EXPECT_TRUE(console::summary(rows.as_slice()).is_err());
+}
