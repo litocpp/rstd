@@ -79,6 +79,27 @@ TEST(BenchConsole, TimingColumnsAreStreamingAndKeepPerOperationMeaning) {
     EXPECT_TRUE(detail.as_str().contains("operations: 10"_str));
 }
 
+TEST(BenchConsole, CompletedResultsCanDisplayNamesWithoutChangingIdentity) {
+    auto row            = console_timing("candidate.k4"_str);
+    row.descriptor.name = "f32"_Str;
+    ConsoleRenderer renderer({ .use_case_names = true });
+    renderer.include("f32"_str);
+    auto output = renderer.render(row);
+    EXPECT_TRUE(output.as_str().contains("f32"_str));
+    EXPECT_FALSE(output.as_str().contains("candidate.k4"_str));
+    EXPECT_TRUE(output.as_str().contains("100.0 ns"_str));
+    EXPECT_EQ(row.descriptor.id, "candidate.k4"_str);
+    EXPECT_TRUE(row.validate().is_ok());
+    ConsoleRenderer defaults;
+    EXPECT_TRUE(defaults.render(row).as_str().contains("candidate.k4"_str));
+    row.outcome = bench::CaseOutcome::Skipped("unsupported"_Str);
+    EXPECT_TRUE(renderer.render(row).as_str().starts_with("f32"_str));
+    row.outcome = bench::failed("bad output"_Str);
+    EXPECT_TRUE(renderer.render(row).as_str().starts_with("f32"_str));
+    row.descriptor.name = String();
+    EXPECT_TRUE(renderer.render(row).as_str().contains("candidate.k4"_str));
+}
+
 TEST(BenchConsole, NamesAndErrorsCannotBreakRows) {
     EXPECT_EQ(console::escaped("中\n\x1b[31m"_str), "中\\u{a}\\u{1b}[31m"_str);
     auto            long_name = "case.name.that.is.longer.than.the.maximum.console.name.column"_str;

@@ -202,9 +202,12 @@ void ConsoleRenderer::include(ref<str> name) {
 }
 
 auto ConsoleRenderer::render(const bench::RunResult& result) -> String {
-    String output;
+    const auto& name = options_.use_case_names && ! result.descriptor.name.is_empty()
+                           ? result.descriptor.name
+                           : result.descriptor.id;
+    String      output;
     if (result.outcome.is_Failed() || result.outcome.is_Skipped()) {
-        name_cell(output, result.descriptor.id.as_str(), name_width_);
+        name_cell(output, name.as_str(), name_width_);
         if (options_.repeats > u64(1))
             column(output,
                    rstd::format("{}/{}", result.repetition + u64(1), options_.repeats).as_str(),
@@ -313,7 +316,7 @@ auto ConsoleRenderer::render(const bench::RunResult& result) -> String {
         }
         divider(output, width);
     }
-    name_cell(output, result.descriptor.id.as_str(), name_width_);
+    name_cell(output, name.as_str(), name_width_);
     if (options_.repeats > u64(1))
         column(output,
                rstd::format("{}/{}", result.repetition + u64(1), options_.repeats).as_str(),

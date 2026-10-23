@@ -50,6 +50,7 @@ auto write_comparison(const rstd::bench::ComparisonReport& report, bool verbose)
 struct ConsoleOptions {
     bool verbose {};
     u64  repeats { u64(1) };
+    bool use_case_names {};
 };
 
 class ConsoleRenderer {
