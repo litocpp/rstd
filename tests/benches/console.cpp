@@ -296,3 +296,27 @@ TEST(BenchConsole, HeterogeneousSummaryPreservesUnitsAndFailures) {
     rows[usize(0)].value = bench::SummaryValue::Measured(f64::NAN_);
     EXPECT_TRUE(console::summary(rows.as_slice()).is_err());
 }
+
+TEST(BenchConsole, SummaryStreamsCompletedRows) {
+    bench::SummaryRenderer renderer;
+    renderer.include("f32"_str, "GFLOP/s"_str);
+    renderer.include("matrix-f16/f32"_str, "GFLOP/s"_str);
+    auto header = renderer.header();
+    EXPECT_TRUE(header.as_str().starts_with("case"_str));
+    EXPECT_TRUE(renderer.header().is_empty());
+    auto first =
+        renderer.render({ "f32"_Str, bench::SummaryValue::Measured(f64(42)), "GFLOP/s"_Str });
+    ASSERT_TRUE(first.is_ok());
+    EXPECT_TRUE(first->as_str().starts_with("f32"_str));
+    EXPECT_FALSE(first->as_str().contains("status"_str));
+    auto second = renderer.render({ "matrix-f16/f32"_Str,
+                                    bench::SummaryValue::Skipped("missing\ncapability"_Str),
+                                    "GFLOP/s"_Str });
+    ASSERT_TRUE(second.is_ok());
+    EXPECT_TRUE(second->as_str().starts_with("matrix-f16/f32"_str));
+    EXPECT_FALSE(second->as_str().contains("status"_str));
+    EXPECT_TRUE(second->as_str().contains("missing\\u{a}capability"_str));
+    auto invalid =
+        renderer.render({ "bad"_Str, bench::SummaryValue::Measured(f64::NAN_), "us"_Str });
+    EXPECT_TRUE(invalid.is_err());
+}

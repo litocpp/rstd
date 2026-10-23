@@ -17,6 +17,15 @@ struct SummaryRow {
     SummaryValue value;
     String       unit;
 };
+class SummaryRenderer {
+    usize names_ { 4 }, values_ { 12 }, units_ { 4 };
+    bool  started_ {};
+
+public:
+    void include(ref<str> name, ref<str> unit);
+    auto header() -> String;
+    auto render(const SummaryRow&) -> Result<String, String>;
+};
 namespace console
 {
 auto summary(slice<SummaryRow> rows) -> Result<String, String>;

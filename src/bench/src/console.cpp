@@ -131,44 +131,59 @@ void divider(String& output, usize width) {
     spaces(output, width, '-');
     output.push_ascii('\n');
 }
-auto console::summary(slice<SummaryRow> rows) -> Result<String, String> {
-    usize names(4), values(6), units(4);
-    for (const auto& row : rows) {
-        if (row.name.is_empty() || row.unit.is_empty())
-            return Err("summary row requires name and unit"_Str);
-        names = names.max(console::escaped(row.name.as_str()).len().min(usize(48)));
-        units = units.max(console::escaped(row.unit.as_str()).len());
-        if (row.value.is_Measured()) {
-            auto value = row.value.as_Measured().value;
-            if (! value.is_finite()) return Err("summary value must be finite"_Str);
-            values = values.max(console::number(value).len());
-        }
-    }
+void SummaryRenderer::include(ref<str> name, ref<str> unit) {
+    auto names = names_.max(console::escaped(name).len().min(usize(48)));
+    auto units = units_.max(console::escaped(unit).len());
+    if (names != names_ || units != units_) started_ = false;
+    names_ = names;
+    units_ = units;
+}
+auto SummaryRenderer::header() -> String {
+    if (started_) return {};
+    started_ = true;
     String output;
-    cell(output, "case"_str, names, true);
-    column(output, "result"_str, values);
-    column(output, "unit"_str, units);
+    cell(output, "case"_str, names_, true);
+    column(output, "result"_str, values_);
+    column(output, "unit"_str, units_);
     output.push_str("  status\n"_str);
-    divider(output, names + values + units + usize(14));
+    divider(output, names_ + values_ + units_ + usize(14));
+    return output;
+}
+auto SummaryRenderer::render(const SummaryRow& row) -> Result<String, String> {
+    if (row.name.is_empty() || row.unit.is_empty())
+        return Err("summary row requires name and unit"_Str);
+    if (row.value.is_Measured() && ! row.value.as_Measured().value.is_finite())
+        return Err("summary value must be finite"_Str);
+    include(row.name.as_str(), row.unit.as_str());
+    auto output = header();
+    name_cell(output, row.name.as_str(), names_);
+    column(output,
+           row.value.is_Measured() ? console::number(row.value.as_Measured().value).as_str()
+                                   : "-"_str,
+           values_);
+    auto unit = console::escaped(row.unit.as_str());
+    column(output, unit.as_str(), units_);
+    if (row.value.is_Measured())
+        output.push_str("  ok\n"_str);
+    else {
+        auto reason =
+            console::escaped(row.value.is_Skipped() ? row.value.as_Skipped().reason.as_str()
+                                                    : row.value.as_Failed().reason.as_str());
+        output.push_str(rstd::format("  {}: {}\n",
+                                     row.value.is_Skipped() ? "skipped"_str : "failed"_str,
+                                     reason)
+                            .as_str());
+    }
+    return Ok(rstd::move(output));
+}
+auto console::summary(slice<SummaryRow> rows) -> Result<String, String> {
+    SummaryRenderer renderer;
+    for (const auto& row : rows) renderer.include(row.name.as_str(), row.unit.as_str());
+    auto output = renderer.header();
     for (const auto& row : rows) {
-        name_cell(output, row.name.as_str(), names);
-        column(output,
-               row.value.is_Measured() ? console::number(row.value.as_Measured().value).as_str()
-                                       : "-"_str,
-               values);
-        auto unit = console::escaped(row.unit.as_str());
-        column(output, unit.as_str(), units);
-        if (row.value.is_Measured())
-            output.push_str("  ok\n"_str);
-        else {
-            auto reason =
-                console::escaped(row.value.is_Skipped() ? row.value.as_Skipped().reason.as_str()
-                                                        : row.value.as_Failed().reason.as_str());
-            output.push_str(rstd::format("  {}: {}\n",
-                                         row.value.is_Skipped() ? "skipped"_str : "failed"_str,
-                                         reason)
-                                .as_str());
-        }
+        auto text = renderer.render(row);
+        if (text.is_err()) return Err(rstd::move(text).unwrap_err());
+        output.push_str(text->as_str());
     }
     return Ok(rstd::move(output));
 }
