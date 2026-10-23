@@ -195,13 +195,218 @@ auto scope_name(bench::MeasurementScope scope) -> ref<str> {
     return "repeated"_str;
 }
 
+void timing_details(String&                 output,
+                    const BenchmarkResult&  measured,
+                    const BenchmarkSummary& summary,
+                    bool                    verbose) {
+    const auto& work = measured.run_config();
+    if (verbose) {
+        output.push_str("  epoch        elapsed [ns]       iterations\n"_str);
+        usize index;
+        for (const auto& epoch : measured.measurements()) {
+            column(output, rstd::format("{}", ++index).as_str(), usize(5));
+            column(output, rstd::format("{}", epoch.elapsed.nanoseconds()).as_str(), usize(18));
+            column(output, rstd::format("{}", epoch.iterations).as_str());
+            output.push_ascii('\n');
+        }
+    }
+    const auto& availability = measured.counter_availability();
+    if (availability.is_Unavailable())
+        output.push_str(
+            rstd::format("  counters unavailable: {}\n", availability.as_Unavailable().code)
+                .as_str());
+    if (verbose) {
+        output.push_str(
+            rstd::format("  epochs: {}; operations: {}; warmup: {}; scope: {}\n  items/op: {}; "
+                         "bytes/op: {}; units/op: {}; unit: {}\n  collector: {}\n",
+                         measured.measurements().len(),
+                         summary.total_iterations,
+                         measured.config().warmup_iterations,
+                         scope_name(measured.scope()),
+                         work.items_per_iteration,
+                         work.bytes_per_iteration,
+                         work.batch,
+                         console::escaped(work.unit.as_str()),
+                         console::escaped(measured.collector_identity()))
+                .as_str());
+        if (measured.batch_size().is_some())
+            output.push_str(
+                rstd::format("  batch max items: {}\n", *measured.batch_size()).as_str());
+        output.push_str(
+            rstd::format("  median: {} ns/op; mdape: {}%\n",
+                         summary.median_ns_per_unit * work.batch,
+                         console::number(summary.median_absolute_percentage_error * f64(100)))
+                .as_str());
+        auto metric = [&](ref<str> name, Option<f64> value) {
+            output.push_str(
+                rstd::format("  {}: {}\n",
+                             name,
+                             value.is_some() ? console::number(*value) : "unavailable"_Str)
+                    .as_str());
+        };
+        if (! availability.is_Disabled()) {
+            metric("instructions/unit"_str, summary.instructions_per_unit);
+            metric("cycles/unit"_str, summary.cycles_per_unit);
+            metric("instructions/cycle"_str, summary.instructions_per_cycle);
+            metric("branches/unit"_str, summary.branches_per_unit);
+            metric("branch miss ratio"_str, summary.branch_miss_ratio);
+        }
+    }
+}
+
+void diagnostic_details(String&                      output,
+                        const DiagnosticMeasurement& measured,
+                        const AllocationSummary&     summary,
+                        bool                         verbose) {
+    if (summary.allocations.is_Unavailable())
+        output.push_str(
+            rstd::format("  allocations {}\n", console::exact(summary.allocations)).as_str());
+    if (verbose) {
+        output.push_str(
+            rstd::format("  operations: {}; scope: {}; items/op: {}; bytes/op: {}\n  "
+                         "allocations: {}; deallocations: {}; grows: {}; shrinks: {}; "
+                         "failures: {}\n  requested bytes: {}; allocs/op: {}; allocated "
+                         "bytes/op: {}\n  live bytes: {} -> {}; peak: {}; cleanup: {}\n",
+                         measured.iterations,
+                         scope_name(measured.scope),
+                         measured.work.items_per_iteration,
+                         measured.work.bytes_per_iteration,
+                         console::exact(summary.allocations),
+                         console::exact(summary.deallocations),
+                         console::exact(summary.grows),
+                         console::exact(summary.shrinks),
+                         console::exact(summary.failures),
+                         console::exact(summary.requested_bytes),
+                         console::exact(summary.allocations_per_op),
+                         console::exact(summary.bytes_per_op),
+                         console::exact(summary.before_live),
+                         console::exact(summary.after_live),
+                         console::exact(summary.peak_live),
+                         console::exact(summary.cleanup_live))
+                .as_str());
+        if (measured.batch_size.is_some())
+            output.push_str(rstd::format("  batch max items: {}\n", *measured.batch_size).as_str());
+    }
+    for (const auto& metric : measured.metrics) {
+        output.push_str(rstd::format("  {}: {}",
+                                     console::escaped(metric.name.as_str()),
+                                     diagnostic_value(metric.value, metric.unit))
+                            .as_str());
+        if (verbose)
+            output.push_str(rstd::format(" [{}; {}; raw={}]",
+                                         console::escaped(metric.scope.as_str()),
+                                         console::escaped(metric.source.as_str()),
+                                         console::exact(metric.value))
+                                .as_str());
+        else if (metric.value.is_Unavailable())
+            output.push_str(
+                rstd::format(": {}",
+                             console::escaped(metric.value.as_Unavailable().reason.as_str()))
+                    .as_str());
+        output.push_ascii('\n');
+    }
+}
+
 void ConsoleRenderer::include(ref<str> name) {
     auto display = console::escaped(name);
     if (console_ascii(display.as_str()))
         name_width_ = name_width_.max(display.len().min(usize(48)));
 }
 
+auto ConsoleRenderer::render_table(const bench::RunResult& result) -> String {
+    const auto& table      = *fixed_table_;
+    const auto& name       = options_.use_case_names && ! result.descriptor.name.is_empty()
+                                 ? result.descriptor.name
+                                 : result.descriptor.id;
+    auto        rate_width = [](const ConsoleRateColumn& rate) {
+        return console::escaped(rate.label.as_str()).len().max(usize(15));
+    };
+    String output;
+    if (! fixed_started_) {
+        if (! table.title.is_empty())
+            output.push_str(
+                rstd::format("\n{}\n", console::escaped(table.title.as_str())).as_str());
+        cell(output, "case"_str, name_width_, true);
+        if (options_.repeats > u64(1)) column(output, "repeat"_str, usize(8));
+        column(output, "time/op"_str);
+        usize width = name_width_ + usize(17 + 9 + 20 + 10);
+        if (options_.repeats > u64(1)) width += usize(10);
+        for (const auto& rate : table.rates) {
+            column(output, console::escaped(rate.label.as_str()).as_str(), rate_width(rate));
+            width += rate_width(rate) + usize(2);
+        }
+        column(output, "samples"_str, usize(7));
+        column(output, "source"_str, usize(18));
+        column(output, "status"_str, usize(8));
+        output.push_ascii('\n');
+        divider(output, width);
+        fixed_started_ = true;
+    }
+    name_cell(output, name.as_str(), name_width_);
+    if (options_.repeats > u64(1))
+        column(output,
+               rstd::format("{}/{}", result.repetition + u64(1), options_.repeats).as_str(),
+               usize(8));
+    if (result.outcome.is_Passed()) {
+        const auto& measured = result.outcome.as_Passed().measurement;
+        auto        summary  = measured.summary();
+        column(output,
+               console::time(summary.selected_ns_per_unit * measured.run_config().batch).as_str());
+        for (const auto& wanted : table.rates) {
+            String value = "-"_Str;
+            for (const auto& rate : summary.rates) {
+                if (rate.name != wanted.name || rate.unit != wanted.unit) continue;
+                value = rate.unit == WorkUnit::Bytes ? console::byte_rate(rate.per_second)
+                                                     : console::item_rate(rate.per_second);
+                break;
+            }
+            column(output, value.as_str(), rate_width(wanted));
+        }
+        column(output, rstd::format("{}", measured.measurements().len()).as_str(), usize(7));
+        column(output, console::escaped(measured.timing().source.as_str()).as_str(), usize(18));
+        column(output, "ok"_str, usize(8));
+        output.push_ascii('\n');
+        if (options_.verbose) {
+            const auto& timing = measured.timing();
+            output.push_str(rstd::format("  source: {}; boundary: {}; resolution: {}\n",
+                                         console::escaped(timing.source.as_str()),
+                                         console::escaped(timing.boundary.as_str()),
+                                         timing.resolution_ns.is_some()
+                                             ? console::time(*timing.resolution_ns)
+                                             : "unknown"_Str)
+                                .as_str());
+            timing_details(output, measured, summary, true);
+        }
+    } else {
+        column(output, "-"_str);
+        for (const auto& rate : table.rates) column(output, "-"_str, rate_width(rate));
+        column(output, "-"_str, usize(7));
+        column(output, "-"_str, usize(18));
+        column(output,
+               result.outcome.is_Skipped()  ? "skipped"_str
+               : result.outcome.is_Failed() ? "failed"_str
+                                            : "untimed"_str,
+               usize(8));
+        output.push_ascii('\n');
+        if (result.outcome.is_Skipped())
+            output.push_str(
+                rstd::format("  {}\n",
+                             console::escaped(result.outcome.as_Skipped().reason.as_str()))
+                    .as_str());
+        if (result.outcome.is_Failed())
+            for (const auto& error : result.outcome.as_Failed().errors)
+                output.push_str(rstd::format("  {}\n", console::escaped(error.as_str())).as_str());
+    }
+    if (options_.verbose && result.outcome.is_Diagnosed()) {
+        const auto& measured = result.outcome.as_Diagnosed().measurement;
+        auto        summary  = measured.allocation_summary();
+        diagnostic_details(output, measured, summary, true);
+    }
+    return output;
+}
+
 auto ConsoleRenderer::render(const bench::RunResult& result) -> String {
+    if (fixed_table_) return render_table(result);
     const auto& name = options_.use_case_names && ! result.descriptor.name.is_empty()
                            ? result.descriptor.name
                            : result.descriptor.id;
@@ -350,58 +555,7 @@ auto ConsoleRenderer::render(const bench::RunResult& result) -> String {
         }
         column(output, rstd::format("{}", measured.measurements().len()).as_str(), usize(7));
         output.push_ascii('\n');
-        if (options_.verbose) {
-            output.push_str("  epoch        elapsed [ns]       iterations\n"_str);
-            usize index;
-            for (const auto& epoch : measured.measurements()) {
-                column(output, rstd::format("{}", ++index).as_str(), usize(5));
-                column(output, rstd::format("{}", epoch.elapsed.nanoseconds()).as_str(), usize(18));
-                column(output, rstd::format("{}", epoch.iterations).as_str());
-                output.push_ascii('\n');
-            }
-        }
-        const auto& availability = measured.counter_availability();
-        if (availability.is_Unavailable())
-            output.push_str(
-                rstd::format("  counters unavailable: {}\n", availability.as_Unavailable().code)
-                    .as_str());
-        if (options_.verbose) {
-            output.push_str(
-                rstd::format("  epochs: {}; operations: {}; warmup: {}; scope: {}\n  items/op: {}; "
-                             "bytes/op: {}; units/op: {}; unit: {}\n  collector: {}\n",
-                             measured.measurements().len(),
-                             summary.total_iterations,
-                             measured.config().warmup_iterations,
-                             scope_name(measured.scope()),
-                             work.items_per_iteration,
-                             work.bytes_per_iteration,
-                             work.batch,
-                             console::escaped(work.unit.as_str()),
-                             console::escaped(measured.collector_identity()))
-                    .as_str());
-            if (measured.batch_size().is_some())
-                output.push_str(
-                    rstd::format("  batch max items: {}\n", *measured.batch_size()).as_str());
-            output.push_str(
-                rstd::format("  median: {} ns/op; mdape: {}%\n",
-                             summary.median_ns_per_unit * work.batch,
-                             console::number(summary.median_absolute_percentage_error * f64(100)))
-                    .as_str());
-            auto metric = [&](ref<str> name, Option<f64> value) {
-                output.push_str(
-                    rstd::format("  {}: {}\n",
-                                 name,
-                                 value.is_some() ? console::number(*value) : "unavailable"_Str)
-                        .as_str());
-            };
-            if (! availability.is_Disabled()) {
-                metric("instructions/unit"_str, summary.instructions_per_unit);
-                metric("cycles/unit"_str, summary.cycles_per_unit);
-                metric("instructions/cycle"_str, summary.instructions_per_cycle);
-                metric("branches/unit"_str, summary.branches_per_unit);
-                metric("branch miss ratio"_str, summary.branch_miss_ratio);
-            }
-        }
+        timing_details(output, measured, summary, options_.verbose);
     } else {
         const auto& measured = result.outcome.as_Diagnosed().measurement;
         auto        summary  = measured.allocation_summary();
@@ -413,54 +567,7 @@ auto ConsoleRenderer::render(const bench::RunResult& result) -> String {
         column(output,
                diagnostic_value(summary.cleanup_live, bench::DiagnosticUnit::Bytes).as_str());
         output.push_ascii('\n');
-        if (summary.allocations.is_Unavailable())
-            output.push_str(
-                rstd::format("  allocations {}\n", console::exact(summary.allocations)).as_str());
-        if (options_.verbose) {
-            output.push_str(
-                rstd::format("  operations: {}; scope: {}; items/op: {}; bytes/op: {}\n  "
-                             "allocations: {}; deallocations: {}; grows: {}; shrinks: {}; "
-                             "failures: {}\n  requested bytes: {}; allocs/op: {}; allocated "
-                             "bytes/op: {}\n  live bytes: {} -> {}; peak: {}; cleanup: {}\n",
-                             measured.iterations,
-                             scope_name(measured.scope),
-                             measured.work.items_per_iteration,
-                             measured.work.bytes_per_iteration,
-                             console::exact(summary.allocations),
-                             console::exact(summary.deallocations),
-                             console::exact(summary.grows),
-                             console::exact(summary.shrinks),
-                             console::exact(summary.failures),
-                             console::exact(summary.requested_bytes),
-                             console::exact(summary.allocations_per_op),
-                             console::exact(summary.bytes_per_op),
-                             console::exact(summary.before_live),
-                             console::exact(summary.after_live),
-                             console::exact(summary.peak_live),
-                             console::exact(summary.cleanup_live))
-                    .as_str());
-            if (measured.batch_size.is_some())
-                output.push_str(
-                    rstd::format("  batch max items: {}\n", *measured.batch_size).as_str());
-        }
-        for (const auto& metric : measured.metrics) {
-            output.push_str(rstd::format("  {}: {}",
-                                         console::escaped(metric.name.as_str()),
-                                         diagnostic_value(metric.value, metric.unit))
-                                .as_str());
-            if (options_.verbose)
-                output.push_str(rstd::format(" [{}; {}; raw={}]",
-                                             console::escaped(metric.scope.as_str()),
-                                             console::escaped(metric.source.as_str()),
-                                             console::exact(metric.value))
-                                    .as_str());
-            else if (metric.value.is_Unavailable())
-                output.push_str(
-                    rstd::format(": {}",
-                                 console::escaped(metric.value.as_Unavailable().reason.as_str()))
-                        .as_str());
-            output.push_ascii('\n');
-        }
+        diagnostic_details(output, measured, summary, options_.verbose);
     }
     return output;
 }

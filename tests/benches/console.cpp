@@ -28,7 +28,10 @@ TEST(BenchConsole, ScalesUnitsAndLimitsPrecision) {
 auto console_timing(ref<str>                 id         = "test.case"_str,
                     u64                      items      = u64(),
                     u64                      bytes      = u64(),
-                    Vec<bench::WorkQuantity> quantities = {}) -> bench::RunResult {
+                    Vec<bench::WorkQuantity> quantities = {},
+                    bench::TimingDescriptor  timing     = { "host_monotonic"_Str,
+                                                            "operation_window"_Str,
+                                                            Some(f64(1)) }) -> bench::RunResult {
     bench::BenchConfig config;
     config.epochs                 = usize(1);
     config.exact_epoch_iterations = Some(u64(10));
@@ -38,7 +41,7 @@ auto console_timing(ref<str>                 id         = "test.case"_str,
     bench::BenchmarkResult measurement(String::make(id),
                                        rstd::move(work),
                                        config,
-                                       rstd::time::Duration::from_nanos(u64(1)),
+                                       rstd::move(timing),
                                        bench::CounterAvailability::Disabled(),
                                        rstd::move(epochs),
                                        bench::MeasurementScope::Repeated,
@@ -294,6 +297,143 @@ TEST(BenchConsole, NamedRatesKeepZeroMissingAndUnitsDistinct) {
     EXPECT_TRUE(other.as_str().contains("flops [FLOP/s]"_str));
     EXPECT_TRUE(other.as_str().contains("flops [count/s]"_str));
     EXPECT_TRUE(other.as_str().contains("30.00M"_str));
+}
+
+TEST(BenchConsole, FixedTableKeepsColumnsAcrossRatesTimingAndFailures) {
+    bench::ConsoleTable table { "Compute"_Str, {} };
+    table.rates.push({ "flops"_Str, bench::WorkUnit::Flops, "flops [FLOP/s]"_Str });
+    table.rates.push({ "integer_ops"_Str, bench::WorkUnit::Count, "integer_ops [OP/s]"_Str });
+    ConsoleRenderer renderer(rstd::move(table));
+    renderer.include("unsupported"_str);
+    auto skipped    = console_timing("unsupported"_str);
+    skipped.outcome = bench::CaseOutcome::Skipped("no\ncapability"_Str);
+    auto first      = renderer.render(skipped);
+    EXPECT_TRUE(first.as_str().contains("Compute\n"_str));
+    EXPECT_TRUE(first.as_str().contains("flops [FLOP/s]"_str));
+    EXPECT_TRUE(first.as_str().contains("integer_ops [OP/s]"_str));
+    EXPECT_TRUE(first.as_str().contains("skipped"_str));
+    EXPECT_TRUE(first.as_str().contains("no\\u{a}capability"_str));
+    Vec<bench::WorkQuantity> flops;
+    flops.push({ "flops"_Str, bench::WorkUnit::Flops, u64(2) });
+    flops.push({ "read_bytes"_Str, bench::WorkUnit::Bytes, u64(64) });
+    auto measured = console_timing("f32"_str, u64(), u64(64), rstd::move(flops));
+    auto second   = renderer.render(measured);
+    EXPECT_FALSE(second.as_str().contains("Compute"_str));
+    EXPECT_FALSE(second.as_str().contains("time/op"_str));
+    EXPECT_FALSE(second.as_str().contains("read_bytes"_str));
+    EXPECT_FALSE(second.as_str().contains("bytes/s"_str));
+    EXPECT_TRUE(second.as_str().contains("20.00M"_str));
+    EXPECT_TRUE(second.as_str().contains("100.0 ns"_str));
+    EXPECT_TRUE(second.as_str().contains("              -"_str));
+    Vec<bench::WorkQuantity> integer;
+    integer.push({ "integer_ops"_Str, bench::WorkUnit::Count, u64() });
+    integer.push({ "flops"_Str, bench::WorkUnit::Count, u64(3) });
+    auto third = renderer.render(console_timing("u32"_str,
+                                                u64(),
+                                                u64(),
+                                                rstd::move(integer),
+                                                { "device"_Str, "batch"_Str, Some(f64(10)) }));
+    EXPECT_FALSE(third.as_str().contains("time/op"_str));
+    EXPECT_FALSE(third.as_str().contains("30.00M"_str));
+    EXPECT_TRUE(third.as_str().contains("              0"_str));
+    EXPECT_TRUE(third.as_str().contains("device"_str));
+    measured.outcome = bench::failed("bad\nresult"_Str);
+    auto last        = renderer.render(measured);
+    EXPECT_FALSE(last.as_str().contains("time/op"_str));
+    EXPECT_TRUE(last.as_str().contains("failed"_str));
+    EXPECT_TRUE(last.as_str().contains("bad\\u{a}result"_str));
+}
+
+TEST(BenchConsole, FixedTableSelectsBandwidthWithoutAlteringMeasurements) {
+    bench::ConsoleTable table { "Bandwidth"_Str, {} };
+    table.rates.push({ "payload"_Str, bench::WorkUnit::Bytes, "bandwidth [B/s]"_Str });
+    ConsoleRenderer renderer(rstd::move(table));
+    renderer.include("copy"_str);
+    Vec<bench::WorkQuantity> quantities;
+    quantities.push({ "payload"_Str, bench::WorkUnit::Bytes, u64(128) });
+    quantities.push({ "read_bytes"_Str, bench::WorkUnit::Bytes, u64(128) });
+    bench::RunReport report;
+    report.results.push(console_timing("copy"_str, u64(), u64(128), rstd::move(quantities)));
+    auto before = bench::report::encode(report);
+    ASSERT_TRUE(before.is_ok());
+    auto output = renderer.render(report.results[usize()]);
+    EXPECT_TRUE(output.as_str().contains("1.280 GB/s"_str));
+    EXPECT_FALSE(output.as_str().contains("read_bytes"_str));
+    auto after = bench::report::encode(report);
+    ASSERT_TRUE(after.is_ok());
+    EXPECT_EQ(before->as_str(), after->as_str());
+}
+
+auto console_occurrences(ref<str> text, ref<str> needle) -> usize {
+    usize count;
+    while (auto split = text.split_once(needle)) {
+        ++count;
+        text = split->template get<1>();
+    }
+    return count;
+}
+
+TEST(BenchConsole, FixedVerboseKeepsOneRowAndOnlySelectedRateColumns) {
+    bench::ConsoleTable table { "Bandwidth"_Str, {} };
+    table.rates.push({ "payload"_Str, bench::WorkUnit::Bytes, "bandwidth [B/s]"_Str });
+    ConsoleRenderer renderer(rstd::move(table), { .verbose = true, .use_case_names = true });
+    renderer.include("copy"_str);
+    Vec<bench::WorkQuantity> quantities;
+    quantities.push({ "payload"_Str, bench::WorkUnit::Bytes, u64(128) });
+    quantities.push({ "read_bytes"_Str, bench::WorkUnit::Bytes, u64(128) });
+    auto row = console_timing("candidate.copy"_str, u64(), u64(128), rstd::move(quantities));
+    row.descriptor.name = "copy"_Str;
+    auto first          = renderer.render(row);
+    auto second         = renderer.render(row);
+    EXPECT_EQ(console_occurrences(first.as_str(), "copy"_str), usize(1));
+    EXPECT_EQ(console_occurrences(second.as_str(), "copy"_str), usize(1));
+    EXPECT_EQ(console_occurrences(first.as_str(), "time/op"_str), usize(1));
+    EXPECT_FALSE(second.as_str().contains("time/op"_str));
+    EXPECT_FALSE(first.as_str().contains("candidate.copy"_str));
+    EXPECT_FALSE(first.as_str().contains("median/op"_str));
+    EXPECT_FALSE(first.as_str().contains("read_bytes"_str));
+    EXPECT_FALSE(second.as_str().contains("read_bytes"_str));
+    EXPECT_TRUE(first.as_str().contains("1.280 GB/s"_str));
+    EXPECT_TRUE(first.as_str().contains("epoch        elapsed [ns]"_str));
+    EXPECT_TRUE(second.as_str().contains("operations: 10"_str));
+    EXPECT_TRUE(first.as_str().contains("operation_window"_str));
+    EXPECT_TRUE(first.as_str().contains("resolution"_str));
+}
+
+TEST(BenchConsole, FixedVerboseDoesNotRepeatFailureOrSkipReasons) {
+    ConsoleRenderer renderer(bench::ConsoleTable { "Results"_Str, {} }, { .verbose = true });
+    renderer.include("candidate"_str);
+    auto row     = console_timing("candidate"_str);
+    row.outcome  = bench::failed("bad\nresult"_Str);
+    auto failure = renderer.render(row);
+    EXPECT_EQ(console_occurrences(failure.as_str(), "candidate"_str), usize(1));
+    EXPECT_EQ(console_occurrences(failure.as_str(), "failed"_str), usize(1));
+    EXPECT_EQ(console_occurrences(failure.as_str(), "bad\\u{a}result"_str), usize(1));
+    row.outcome = bench::CaseOutcome::Skipped("no\ncapability"_Str);
+    auto skip   = renderer.render(row);
+    EXPECT_EQ(console_occurrences(skip.as_str(), "candidate"_str), usize(1));
+    EXPECT_EQ(console_occurrences(skip.as_str(), "skipped"_str), usize(1));
+    EXPECT_EQ(console_occurrences(skip.as_str(), "no\\u{a}capability"_str), usize(1));
+}
+
+TEST(BenchConsole, FixedVerbosePreservesDiagnosticDetailsWithoutAnotherTable) {
+    ConsoleRenderer renderer(bench::ConsoleTable { "Results"_Str, {} }, { .verbose = true });
+    renderer.include("diagnostic.case"_str);
+    auto row      = console_timing("diagnostic.case"_str);
+    auto measured = allocation_measurement();
+    measured.metrics.push({ "utilization"_Str,
+                            bench::DiagnosticUnit::Ratio,
+                            bench::MetricDirection::Neutral,
+                            "map"_Str,
+                            "len/capacity"_Str,
+                            bench::DiagnosticValue::Ratio(u64(100), u64(112)) });
+    row.outcome = bench::CaseOutcome::Diagnosed(rstd::move(measured));
+    auto output = renderer.render(row);
+    EXPECT_EQ(console_occurrences(output.as_str(), "diagnostic.case"_str), usize(1));
+    EXPECT_TRUE(output.as_str().contains("untimed"_str));
+    EXPECT_FALSE(output.as_str().contains("allocated/op"_str));
+    EXPECT_TRUE(output.as_str().contains("allocs/op: 1/2"_str));
+    EXPECT_TRUE(output.as_str().contains("89.29% [map; len/capacity; raw=100/112]"_str));
 }
 
 TEST(BenchConsole, HeterogeneousSummaryPreservesUnitsAndFailures) {

@@ -53,6 +53,16 @@ struct ConsoleOptions {
     bool use_case_names {};
 };
 
+struct ConsoleRateColumn {
+    String   name;
+    WorkUnit unit;
+    String   label;
+};
+struct ConsoleTable {
+    String                 title;
+    Vec<ConsoleRateColumn> rates;
+};
+
 class ConsoleRenderer {
     struct RateColumn {
         String   name;
@@ -60,17 +70,22 @@ class ConsoleRenderer {
         String   label;
         usize    width;
     };
-    Vec<RateColumn>  rate_columns_;
-    String           timing_source_, timing_boundary_, work_label_, resolution_label_;
-    ConsoleOptions   options_;
-    usize            name_width_ { usize(4) };
-    int              table_ {};
-    bool             items_ {};
-    bool             bytes_ {};
-    SummaryStatistic statistic_ = SummaryStatistic::Median;
+    Vec<RateColumn>      rate_columns_;
+    String               timing_source_, timing_boundary_, work_label_, resolution_label_;
+    ConsoleOptions       options_;
+    Option<ConsoleTable> fixed_table_;
+    bool                 fixed_started_ {};
+    auto                 render_table(const RunResult&) -> String;
+    usize                name_width_ { usize(4) };
+    int                  table_ {};
+    bool                 items_ {};
+    bool                 bytes_ {};
+    SummaryStatistic     statistic_ = SummaryStatistic::Median;
 
 public:
     explicit ConsoleRenderer(ConsoleOptions options = {}): options_(options) {}
+    ConsoleRenderer(ConsoleTable table, ConsoleOptions options = {})
+        : options_(options), fixed_table_(Some(rstd::move(table))) {}
     void include(ref<str> name);
     auto render(const rstd::bench::RunResult& result) -> String;
 };
