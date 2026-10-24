@@ -155,11 +155,24 @@ inline constexpr auto _SOCK_NONBLOCK = SOCK_NONBLOCK;
 #endif
 inline constexpr auto _SOL_SOCKET   = SOL_SOCKET;
 inline constexpr auto _SO_REUSEADDR = SO_REUSEADDR;
+inline constexpr auto _SO_KEEPALIVE = SO_KEEPALIVE;
 inline constexpr auto _SO_ERROR     = SO_ERROR;
 inline constexpr auto _IPPROTO_TCP  = IPPROTO_TCP;
 inline constexpr auto _TCP_NODELAY  = TCP_NODELAY;
-inline constexpr auto _SHUT_RDWR    = SHUT_RDWR;
-inline constexpr auto _SHUT_WR      = SHUT_WR;
+#if defined(TCP_KEEPIDLE)
+inline constexpr auto _TCP_KEEP_IDLE = TCP_KEEPIDLE;
+#elif defined(TCP_KEEPALIVE)
+inline constexpr auto _TCP_KEEP_IDLE = TCP_KEEPALIVE;
+#else
+inline constexpr auto _TCP_KEEP_IDLE = 0;
+#endif
+#ifdef TCP_KEEPINTVL
+inline constexpr auto _TCP_KEEP_INTERVAL = TCP_KEEPINTVL;
+#else
+inline constexpr auto _TCP_KEEP_INTERVAL = 0;
+#endif
+inline constexpr auto _SHUT_RDWR = SHUT_RDWR;
+inline constexpr auto _SHUT_WR   = SHUT_WR;
 #ifdef MSG_NOSIGNAL
 inline constexpr auto _MSG_NOSIGNAL = MSG_NOSIGNAL;
 #else
@@ -289,6 +302,7 @@ inline auto _rstd_online_processor_count() noexcept -> long {
 #undef SOCK_NONBLOCK
 #undef SOL_SOCKET
 #undef SO_REUSEADDR
+#undef SO_KEEPALIVE
 #undef SO_ERROR
 #undef IPPROTO_TCP
 #undef TCP_NODELAY
@@ -699,9 +713,12 @@ inline auto pipe2(int fds[2], int flags) noexcept -> int {
     return 0;
 }
 #endif
-inline constexpr auto SOL_SOCKET   = _SOL_SOCKET;
-inline constexpr auto SO_REUSEADDR = _SO_REUSEADDR;
-inline constexpr auto SO_ERROR     = _SO_ERROR;
+inline constexpr auto SOL_SOCKET        = _SOL_SOCKET;
+inline constexpr auto SO_REUSEADDR      = _SO_REUSEADDR;
+inline constexpr auto SO_KEEPALIVE      = _SO_KEEPALIVE;
+inline constexpr auto TCP_KEEP_IDLE     = _TCP_KEEP_IDLE;
+inline constexpr auto TCP_KEEP_INTERVAL = _TCP_KEEP_INTERVAL;
+inline constexpr auto SO_ERROR          = _SO_ERROR;
 [[maybe_unused]]
 inline constexpr auto IPPROTO_TCP = _IPPROTO_TCP;
 inline constexpr auto TCP_NODELAY = _TCP_NODELAY;

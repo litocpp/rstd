@@ -37,6 +37,18 @@ auto set_nodelay(RawSocket socket, bool enabled) -> IOResult<empty> {
     return platform::set_nodelay(socket, enabled);
 }
 
+auto set_keepalive(RawSocket socket, bool enabled, Option<u32> idle, Option<u32> interval)
+    -> IOResult<empty> {
+    return platform::set_keepalive(socket, enabled, idle, interval);
+}
+auto keepalive(RawSocket socket) -> IOResult<bool> {
+    return platform::keepalive(socket);
+}
+
+auto keepalive_timing_supported() -> bool {
+    return platform::keepalive_timing_supported();
+}
+
 auto bind(RawSocket socket, SocketAddr const& addr) -> IOResult<empty> {
     return platform::bind(socket, addr);
 }

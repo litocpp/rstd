@@ -3,7 +3,7 @@ name = "rstd-tcp-owned-tests"
 
 [[test]]
 name = "rstd-tcp-owned-tests"
-sources = ["main.cpp", "tcp.cpp", "unix.cpp"]
+sources = ["main.cpp", "tcp.cpp", "unix.cpp", "keepalive.cpp"]
 link-stdlib = false
 
 [[test.attach]]

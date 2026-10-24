@@ -1,4 +1,5 @@
 module rstd.net.socket_addr;
+import rstd.alloc;
 
 using namespace rstd::prelude;
 using namespace rstd::literals;

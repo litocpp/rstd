@@ -176,6 +176,34 @@ auto TcpStream::local_addr() const -> io::Result<SocketAddr> {
 auto TcpStream::peer_addr() const -> io::Result<SocketAddr> {
     return socket::peer_addr(stream_.m_completion_source.as_raw_fd());
 }
+auto TcpKeepalive::validate() const -> io::Result<empty> {
+    for (auto duration : array<Option<rstd::time::Duration>, 2> { idle, interval }) {
+        if (duration.is_some() && (duration->is_zero() || duration->subsec_nanos() != u32() ||
+                                   duration->as_secs() > u64(0x7fffffff)))
+            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
+    }
+    if (! enabled && (idle.is_some() || interval.is_some()))
+        return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
+    return Ok(empty {});
+}
+auto TcpStream::set_keepalive(TcpKeepalive options) -> io::Result<empty> {
+    auto valid = options.validate();
+    if (valid.is_err()) return valid;
+    auto seconds = [](Option<rstd::time::Duration> duration) -> Option<u32> {
+        return duration.is_some() ? Some(u32(duration->as_secs().to_primitive())) : None<u32>();
+    };
+    return socket::set_keepalive(stream_.m_completion_source.as_raw_fd(),
+                                 options.enabled,
+                                 seconds(options.idle),
+                                 seconds(options.interval));
+}
+auto TcpStream::keepalive() const -> io::Result<bool> {
+    return socket::keepalive(stream_.m_completion_source.as_raw_fd());
+}
+auto TcpStream::keepalive_timing_supported() -> bool {
+    return socket::keepalive_timing_supported();
+}
+
 auto TcpStream::set_nodelay(bool enabled) -> io::Result<empty> {
     return socket::set_nodelay(stream_.m_completion_source.as_raw_fd(), enabled);
 }

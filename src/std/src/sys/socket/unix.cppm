@@ -46,6 +46,10 @@ export auto accept_address_buffer_size() noexcept -> usize;
 export auto set_reuseaddr(RawSocket socket, bool enabled) -> IOResult<empty>;
 
 export auto set_nodelay(RawSocket socket, bool enabled) -> IOResult<empty>;
+export auto set_keepalive(RawSocket socket, bool enabled, Option<u32> idle, Option<u32> interval)
+    -> IOResult<empty>;
+export auto keepalive(RawSocket socket) -> IOResult<bool>;
+export auto keepalive_timing_supported() -> bool;
 
 export auto bind(RawSocket socket, SocketAddr const& addr) -> IOResult<empty>;
 

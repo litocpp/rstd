@@ -24,6 +24,12 @@ TEST(SocketAddr, ParsesIpv4AndPortBoundaries) {
                   SocketAddr::ipv4(Ipv4Addr::make(u8(255), u8(255), u8(255), u8(255)), u16(65535)));
     check_address("127.0.0.1:00000000000000000080"_str, SocketAddr::ipv4_loopback(u16(80)));
 }
+TEST(SocketAddr, FormatsAddressesWithPortsAndIpv6Scope) {
+    EXPECT_EQ(rstd::format("{}", SocketAddr::ipv4_loopback(u16(80))).as_str(), "127.0.0.1:80"_str);
+    EXPECT_EQ(rstd::format("{}", SocketAddr::ipv6(Ipv6Addr::loopback(), u16(443))).as_str(), "[::1]:443"_str);
+    EXPECT_EQ(rstd::format("{}", SocketAddr::ipv6(Ipv6Addr::loopback(), u16(80), u32(), u32(12))).as_str(), "[::1%12]:80"_str);
+    EXPECT_EQ(rstd::format("{}", SocketAddr::ipv6(Ipv6Addr::any(), u16())).as_str(), "[::]:0"_str);
+}
 
 TEST(SocketAddr, ParsesIpv6AndNumericScope) {
     check_address("[::]:0"_str, SocketAddr::ipv6(Ipv6Addr::any(), u16()));

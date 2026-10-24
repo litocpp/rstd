@@ -15,6 +15,11 @@ using namespace rstd::prelude;
 namespace rstd::net
 {
 
+export struct TcpKeepalive {
+    bool                         enabled { true };
+    Option<rstd::time::Duration> idle, interval;
+    auto                         validate() const -> io::Result<empty>;
+};
 export class TcpConnect;
 struct TcpConnectState;
 
@@ -38,17 +43,20 @@ public:
     static auto from_owned_fd(os::fd::OwnedFd fd) -> io::Result<TcpStream>;
     auto        into_owned_fd() && { return rstd::move(stream_).into_owned_fd(); }
 #endif
-    auto local_addr() const -> io::Result<SocketAddr>;
-    auto peer_addr() const -> io::Result<SocketAddr>;
-    auto take_error() { return stream_.take_error(); }
-    auto set_nodelay(bool enabled) -> io::Result<empty>;
-    auto shutdown() { return stream_.shutdown(); }
-    auto ready(async::Interest interest) { return stream_.ready(interest); }
-    auto readable() { return stream_.readable(); }
-    auto writable() { return stream_.writable(); }
-    auto try_read(bytes::BytesMut& buf) { return stream_.try_read(buf); }
-    auto try_write(const bytes::Bytes& buf) { return stream_.try_write(buf); }
-    auto poll_read(mut_ref<TcpStream> self, task::Context& cx, bytes::BytesMut& buf) {
+    auto        local_addr() const -> io::Result<SocketAddr>;
+    auto        peer_addr() const -> io::Result<SocketAddr>;
+    auto        take_error() { return stream_.take_error(); }
+    auto        set_keepalive(TcpKeepalive options) -> io::Result<empty>;
+    auto        keepalive() const -> io::Result<bool>;
+    static auto keepalive_timing_supported() -> bool;
+    auto        set_nodelay(bool enabled) -> io::Result<empty>;
+    auto        shutdown() { return stream_.shutdown(); }
+    auto        ready(async::Interest interest) { return stream_.ready(interest); }
+    auto        readable() { return stream_.readable(); }
+    auto        writable() { return stream_.writable(); }
+    auto        try_read(bytes::BytesMut& buf) { return stream_.try_read(buf); }
+    auto        try_write(const bytes::Bytes& buf) { return stream_.try_write(buf); }
+    auto        poll_read(mut_ref<TcpStream> self, task::Context& cx, bytes::BytesMut& buf) {
         return stream_.poll_read(mut_ref<SocketStream>::from_raw_parts(&self->stream_), cx, buf);
     }
     auto poll_write(mut_ref<TcpStream> self, task::Context& cx, const bytes::Bytes& buf) {

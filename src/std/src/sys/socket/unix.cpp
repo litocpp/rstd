@@ -200,6 +200,40 @@ auto set_nodelay(RawSocket socket, bool enabled) -> IOResult<empty> {
     return Ok(empty {});
 }
 
+auto set_keepalive(RawSocket socket, bool enabled, Option<u32> idle, Option<u32> interval)
+    -> IOResult<empty> {
+    if ((idle.is_some() && libc::TCP_KEEP_IDLE == 0) ||
+        (interval.is_some() && libc::TCP_KEEP_INTERVAL == 0))
+        return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
+    int value = enabled ? 1 : 0;
+    if (libc::setsockopt(socket, libc::SOL_SOCKET, libc::SO_KEEPALIVE, &value, sizeof(value)) < 0)
+        return Err(last_error());
+    if (idle.is_some()) {
+        value = static_cast<int>(idle->to_primitive());
+        if (libc::setsockopt(
+                socket, libc::IPPROTO_TCP, libc::TCP_KEEP_IDLE, &value, sizeof(value)) < 0)
+            return Err(last_error());
+    }
+    if (interval.is_some()) {
+        value = static_cast<int>(interval->to_primitive());
+        if (libc::setsockopt(
+                socket, libc::IPPROTO_TCP, libc::TCP_KEEP_INTERVAL, &value, sizeof(value)) < 0)
+            return Err(last_error());
+    }
+    return Ok(empty {});
+}
+auto keepalive(RawSocket socket) -> IOResult<bool> {
+    int             value {};
+    libc::socklen_t size = sizeof(value);
+    if (libc::getsockopt(socket, libc::SOL_SOCKET, libc::SO_KEEPALIVE, &value, &size) < 0)
+        return Err(last_error());
+    return Ok(value != 0);
+}
+
+auto keepalive_timing_supported() -> bool {
+    return libc::TCP_KEEP_IDLE != 0 && libc::TCP_KEEP_INTERVAL != 0;
+}
+
 auto bind(RawSocket socket, SocketAddr const& addr) -> IOResult<empty> {
     auto native = addr_to_native(addr);
     if (libc::bind(socket, reinterpret_cast<const libc::sockaddr*>(&native.storage), native.len) <

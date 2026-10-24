@@ -305,6 +305,35 @@ auto set_nodelay(RawSocket socket, bool enabled) -> IOResult<empty> {
     return Ok(empty {});
 }
 
+auto set_keepalive(RawSocket socket, bool enabled, Option<u32> idle, Option<u32> interval)
+    -> IOResult<empty> {
+    if (idle.is_some() || interval.is_some())
+        return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
+    BOOL value = enabled ? TRUE : FALSE;
+    if (::setsockopt(native_socket(socket),
+                     SOL_SOCKET,
+                     SO_KEEPALIVE,
+                     reinterpret_cast<const char*>(&value),
+                     sizeof(value)) == SOCKET_ERROR)
+        return Err(last_error());
+    return Ok(empty {});
+}
+auto keepalive(RawSocket socket) -> IOResult<bool> {
+    BOOL value {};
+    int  size = sizeof(value);
+    if (::getsockopt(native_socket(socket),
+                     SOL_SOCKET,
+                     SO_KEEPALIVE,
+                     reinterpret_cast<char*>(&value),
+                     &size) == SOCKET_ERROR)
+        return Err(last_error());
+    return Ok(value != FALSE);
+}
+
+auto keepalive_timing_supported() -> bool {
+    return false;
+}
+
 auto bind(RawSocket socket, SocketAddr const& addr) -> IOResult<empty> {
     auto native = addr_to_native(addr);
     if (::bind(native_socket(socket),
