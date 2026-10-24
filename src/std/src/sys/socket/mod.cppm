@@ -12,6 +12,8 @@ export import :unix;
 export import :windows;
 #endif
 import rstd.core;
+import rstd.alloc;
+import rstd.net.lookup_host;
 
 template<typename T>
 using IOResult = rstd::io::Result<T>;
@@ -29,6 +31,9 @@ namespace platform = rstd::sys::pal::unix::socket;
 #elif RSTD_OS_WINDOWS
 namespace platform = rstd::sys::pal::windows::socket;
 #endif
+
+export auto lookup_host(ref<ffi::CStr> host, u16 port)
+    -> Result<::alloc::vec::Vec<net::SocketAddr>, net::LookupError>;
 
 export auto set_nonblocking(RawSocket socket, bool enabled) -> IOResult<empty>;
 

@@ -1,6 +1,20 @@
 module;
 #include <rstd/macro.hpp>
+#if RSTD_OS_WINDOWS
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
+#include <netdb.h>
+#include <errno.h>
+#endif
 module rstd.sys.socket;
+
+using namespace rstd::prelude;
+using namespace rstd::literals;
+using ::alloc::string::String;
+using ::alloc::vec::Vec;
+using rstd::ffi::CStr;
+using rstd::net::LookupError;
 
 namespace rstd::sys::socket
 {
@@ -91,5 +105,64 @@ auto local_addr(RawSocket socket) -> IOResult<SocketAddr> {
 
 auto peer_addr(RawSocket socket) -> IOResult<SocketAddr> {
     return platform::peer_addr(socket);
+}
+} // namespace rstd::sys::socket
+
+namespace rstd::sys::socket
+{
+struct LookupAddresses {
+    addrinfo* list {};
+    LookupAddresses()                                          = default;
+    LookupAddresses(const LookupAddresses&)                    = delete;
+    auto operator=(const LookupAddresses&) -> LookupAddresses& = delete;
+    ~LookupAddresses() {
+        if (list) ::freeaddrinfo(list);
+    }
+};
+
+auto lookup_host(ref<CStr> host, u16 port) -> Result<Vec<SocketAddr>, LookupError> {
+#if RSTD_OS_WINDOWS
+    auto started = platform::ensure_started();
+    if (started.is_err())
+        return Err(LookupError {
+            i32(), String::make("Winsock initialization failed"_str), Some(started.unwrap_err()) });
+#endif
+    addrinfo hints {};
+    hints.ai_family   = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = IPPROTO_TCP;
+    addrinfo* list    = nullptr;
+    auto      code    = ::getaddrinfo(host.as_ptr(), nullptr, &hints, &list);
+    if (code != 0) {
+        Option<Error> cause;
+#if RSTD_OS_WINDOWS
+        auto text = ::gai_strerrorA(code);
+#else
+        if (code == EAI_SYSTEM) cause = Some(Error::from_raw_os_error(i32(errno)));
+        auto text = ::gai_strerror(code);
+#endif
+        auto message = text ? CStr::from_ptr(text).to_str().unwrap_or("name lookup failed"_str)
+                            : "name lookup failed"_str;
+        return Err(LookupError { i32(code), String::make(message), cause });
+    }
+    LookupAddresses addresses;
+    addresses.list = list;
+    Vec<SocketAddr> result;
+    for (auto p = addresses.list; p; p = p->ai_next) {
+        auto address = platform::addr_from_native(p->ai_addr, p->ai_addrlen);
+        if (address.is_err()) continue;
+        auto value     = address->with_port(port);
+        bool duplicate = false;
+        for (const auto& previous : result) {
+            if (previous == value) {
+                duplicate = true;
+                break;
+            }
+        }
+        if (! duplicate) result.push(rstd::move(value));
+    }
+    if (result.is_empty())
+        return Err(LookupError { i32(), String::make("no stream addresses"_str), {} });
+    return Ok(rstd::move(result));
 }
 } // namespace rstd::sys::socket

@@ -264,6 +264,7 @@ target_sources(
          src/net/mod.cppm
          src/net/socket_addr.cppm
          src/net/hostname.cppm
+         src/net/lookup_host.cppm
          src/net/datagram.cppm
          src/net/socket_stream.cppm
          src/net/udp.cppm
@@ -293,6 +294,7 @@ target_sources(
           src/net/tcp.cpp
           src/net/socket_addr.cpp
           src/net/hostname.cpp
+          src/net/lookup_host.cpp
           src/lib.cpp
           src/process/mod.cpp
           src/signal/mod.cpp
