@@ -26,6 +26,7 @@ export class SocketStream {
 
     friend class TcpConnect;
     friend class UnixStream;
+    friend class UnixConnect;
 
     SocketStream(os::socket::OwnedSocket socket, async::Registration registration)
         : m_registration(rstd::move(registration)),

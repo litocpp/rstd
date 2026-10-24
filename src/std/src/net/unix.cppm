@@ -3,15 +3,23 @@ module;
 export module rstd:net.unix;
 export import :net.socket_stream;
 #if RSTD_OS_UNIX
+namespace rstd::net
+{
+struct UnixConnectState;
+}
 export namespace rstd::net
 {
+class UnixConnect;
 class UnixStream {
+    friend class UnixConnect;
     SocketStream stream_;
     explicit UnixStream(SocketStream stream): stream_(rstd::move(stream)) {}
 
 public:
     UnixStream(UnixStream&&) noexcept                           = default;
     auto        operator=(UnixStream&&) noexcept -> UnixStream& = default;
+    static auto prepare_connect(bytes::Bytes name, bool abstract = false)
+        -> io::Result<UnixConnect>;
     static auto connect(bytes::Bytes name, bool abstract = false)
         -> async::coro<io::Result<UnixStream>>;
     static auto from_owned_socket(os::socket::OwnedSocket socket) -> io::Result<UnixStream>;
@@ -44,6 +52,23 @@ public:
     auto send_all(bytes::Bytes data) const { return stream_.send_all(rstd::move(data)); }
     auto shutdown() { return stream_.shutdown(); }
     auto shutdown_both() { return stream_.shutdown_both(); }
+};
+class UnixConnect {
+    sync::Arc<UnixConnectState> state_;
+    UnixConnect(UnixStream stream, bytes::Bytes name, bool abstract);
+    friend class UnixStream;
+
+public:
+    UnixConnect(const UnixConnect&)                    = delete;
+    auto operator=(const UnixConnect&) -> UnixConnect& = delete;
+    UnixConnect(UnixConnect&&) noexcept;
+    auto operator=(UnixConnect&&) noexcept -> UnixConnect&;
+    ~UnixConnect();
+    /// Owns the prepared operation before polling. Only one finish is allowed.
+    auto finish() const -> async::coro<io::Result<empty>>;
+    auto into_stream() && -> io::Result<UnixStream>;
+    /// Cancel or drop finish before awaiting close.
+    auto close() && -> async::coro<io::Result<empty>>;
 };
 static_assert(Impled<UnixStream, async::io::AsyncRead>);
 static_assert(Impled<UnixStream, async::io::AsyncWrite>);
