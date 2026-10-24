@@ -118,7 +118,37 @@ void ownership() {
     rstd_assert(*clone == 42);
 }
 
+void erased_allocator() {
+    using rstd::alloc::SharedAllocator;
+    SharedAllocator global;
+    auto            clone = global.clone();
+    auto            small = Layout::array<u8>(usize(16)).unwrap();
+    auto            large = Layout::array<u8>(usize(32)).unwrap();
+    auto            value = global.allocate_zeroed(small).unwrap();
+    rstd_assert(static_cast<unsigned char*>(value.pointer)[0] == 0);
+    static_cast<unsigned char*>(value.pointer)[0] = 42;
+    auto grown = clone.grow_zeroed(value.pointer, small, large).unwrap();
+    rstd_assert(static_cast<unsigned char*>(grown.pointer)[0] == 42);
+    rstd_assert(static_cast<unsigned char*>(grown.pointer)[16] == 0);
+    auto shrunk = global.shrink(grown.pointer, large, small).unwrap();
+    clone.deallocate(shrunk.pointer, small);
+    auto budget   = BudgetAllocator<>::try_make(usize(64)).unwrap();
+    auto owner    = SharedAllocator::make(budget.clone());
+    auto retained = owner.clone();
+    owner         = SharedAllocator {};
+    auto memory   = retained.allocate(small).unwrap();
+    rstd_assert(budget.statistics().live_bytes == usize(16));
+    auto freed = rstd::thread::builder::Builder::make()
+                     .spawn([allocator = rstd::move(retained), memory, small] {
+                         allocator.deallocate(memory.pointer, small);
+                     })
+                     .unwrap();
+    rstd::move(freed).join().unwrap();
+    rstd_assert(budget.statistics().live_bytes == usize());
+}
+
 int main() {
+    erased_allocator();
     resize_and_clone();
     ownership();
     auto shared  = BudgetAllocator<>::try_make(usize(1024)).unwrap();

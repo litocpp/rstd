@@ -727,11 +727,12 @@ export namespace alloc::sync
 {
 /// Erases the allocator type only after checking concurrent operation and cross-thread release.
 class SharedAllocator {
-    Arc<rstd::dyn<rstd::alloc::Allocator>> owner_;
+    Option<Arc<rstd::dyn<rstd::alloc::Allocator>>> owner_;
     explicit SharedAllocator(Arc<rstd::dyn<rstd::alloc::Allocator>> owner)
-        : owner_(rstd::move(owner)) {}
+        : owner_(Some(rstd::move(owner))) {}
 
 public:
+    SharedAllocator()                                              = default;
     SharedAllocator(const SharedAllocator&)                        = delete;
     auto operator=(const SharedAllocator&) -> SharedAllocator&     = delete;
     SharedAllocator(SharedAllocator&&) noexcept                    = default;
@@ -751,28 +752,34 @@ public:
         if (result.is_err()) rstd::panic { "shared allocator allocation failed" };
         return result.unwrap_unchecked();
     }
-    auto clone() const -> SharedAllocator { return SharedAllocator(owner_.clone()); }
+    auto clone() const -> SharedAllocator {
+        return owner_.is_some() ? SharedAllocator(owner_->clone()) : SharedAllocator {};
+    }
+    auto as_ref() const noexcept [[clang::lifetimebound]]
+    -> ref<rstd::dyn<rstd::alloc::Allocator>> {
+        return owner_.is_some() ? owner_->deref() : ::alloc::allocator_ref(::alloc::GLOBAL);
+    }
     auto allocate(Layout layout) const -> Result<rstd::alloc::Allocation, rstd::alloc::AllocError> {
-        return owner_->allocate(layout);
+        return as_ref()->allocate(layout);
     }
     auto allocate_zeroed(Layout layout) const
         -> Result<rstd::alloc::Allocation, rstd::alloc::AllocError> {
-        return owner_->allocate_zeroed(layout);
+        return as_ref()->allocate_zeroed(layout);
     }
     auto deallocate(void* pointer, Layout layout) const noexcept -> void {
-        return owner_->deallocate(pointer, layout);
+        return as_ref()->deallocate(pointer, layout);
     }
     auto grow(void* pointer, Layout old_layout, Layout new_layout) const
         -> Result<rstd::alloc::Allocation, rstd::alloc::AllocError> {
-        return owner_->grow(pointer, old_layout, new_layout);
+        return as_ref()->grow(pointer, old_layout, new_layout);
     }
     auto grow_zeroed(void* pointer, Layout old_layout, Layout new_layout) const
         -> Result<rstd::alloc::Allocation, rstd::alloc::AllocError> {
-        return owner_->grow_zeroed(pointer, old_layout, new_layout);
+        return as_ref()->grow_zeroed(pointer, old_layout, new_layout);
     }
     auto shrink(void* pointer, Layout old_layout, Layout new_layout) const
         -> Result<rstd::alloc::Allocation, rstd::alloc::AllocError> {
-        return owner_->shrink(pointer, old_layout, new_layout);
+        return as_ref()->shrink(pointer, old_layout, new_layout);
     }
 };
 } // namespace alloc::sync
