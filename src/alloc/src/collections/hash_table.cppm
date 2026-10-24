@@ -1,346 +1,497 @@
 module;
-#include <rstd/macro.hpp>
+#include <rstd/enum.hpp>
 
 export module rstd.alloc:collections.hash_table;
 export import :alloc;
 export import :collections.error;
 export import rstd.core;
 
+using namespace rstd::prelude;
 using rstd::alloc::Allocator;
 using rstd::alloc::Layout;
-using rstd::mem::maybe_uninit::MaybeUninit;
-using rstd::ptr_::non_null::NonNull;
-using namespace rstd::prelude;
 using alloc::collections::TryReserveError;
 
-enum class BucketState : rstd::uint8_t
-{
-    Empty,
-    Full,
-    Deleted
-};
+[[noreturn]]
+inline void hash_allocation_failure(TryReserveError error) {
+    if (error == TryReserveError::CapacityOverflow) rstd::panic { "hash table capacity overflow" };
+    rstd::panic { "memory allocation failed" };
+    __builtin_unreachable();
+}
 
-template<typename K, typename V>
-class Bucket {
-    MaybeUninit<K> key_slot;
-    MaybeUninit<V> value_slot;
-
-public:
-    u64         hash;
-    BucketState state;
-
-    Bucket(): hash(0), state(BucketState::Empty) {}
-    Bucket(const Bucket&)            = delete;
-    Bucket& operator=(const Bucket&) = delete;
-
-    ~Bucket() { clear(); }
-
-    auto key() noexcept -> K& { return key_slot.assume_init_mut(); }
-    auto key() const noexcept -> const K& { return key_slot.assume_init_ref(); }
-    auto value() noexcept -> V& { return value_slot.assume_init_mut(); }
-    auto value() const noexcept -> const V& { return value_slot.assume_init_ref(); }
-
-    auto replace_value(V replacement) -> V {
-        V old = rstd::move(value());
-        value_slot.assume_init_drop();
-        value_slot.write(rstd::move(replacement));
-        return old;
-    }
-
-    void write(u64 entry_hash, K key, V value) {
-        hash = entry_hash;
-        key_slot.write(rstd::move(key));
-        struct KeyGuard {
-            Bucket* bucket;
-            ~KeyGuard() {
-                if (bucket) bucket->key_slot.assume_init_drop();
-            }
-        } guard { this };
-        value_slot.write(rstd::move(value));
-        guard.bucket = nullptr;
-        state        = BucketState::Full;
-    }
-
-    auto take() -> rstd::tuple<K, V> {
-        K key   = rstd::move(this->key());
-        V value = rstd::move(this->value());
-        key_slot.assume_init_drop();
-        value_slot.assume_init_drop();
-        state = BucketState::Deleted;
-        return { rstd::move(key), rstd::move(value) };
-    }
-
-    void clear() noexcept {
-        if (state == BucketState::Full) {
-            key_slot.assume_init_drop();
-            value_slot.assume_init_drop();
-        }
-        state = BucketState::Empty;
-    }
-};
-
-template<typename K, typename V, typename A = ::alloc::Global>
+template<typename T, typename A>
 class RawTable {
-    byte*                         data;
-    usize                         buckets;
-    usize                         items;
-    usize                         deleted;
-    RSTD_ATTR_NO_UNIQUE_ADDRESS A allocator;
+public:
+    static constexpr rstd::uint8_t EMPTY   = 128;
+    static constexpr rstd::uint8_t DELETED = 254;
+    byte*                          data_ {};
+    usize                          buckets_ {};
+    usize                          items_ {};
+    usize                          deleted_ {};
+    RSTD_ATTR_NO_UNIQUE_ADDRESS A  allocator_;
 
-    static auto slot(byte* storage, rstd::size_t index) noexcept -> Bucket<K, V>* {
-        return reinterpret_cast<Bucket<K, V>*>(storage + index * sizeof(Bucket<K, V>));
+    static auto layout(usize count) -> Option<Layout> {
+        auto values = Layout::array<T>(count);
+        if (values.is_none()) return None();
+        auto size = values->size.checked_add(count);
+        if (size.is_none()) return None();
+        return Layout::from_size_align(*size, values->align);
     }
-
-    static auto max_items(usize bucket_count) noexcept -> usize {
-        return bucket_count - bucket_count / usize(8);
-    }
-
-    static auto bucket_count_for(usize capacity) -> Result<usize, TryReserveError> {
+    static auto max_items(usize count) noexcept -> usize { return count - count / usize(8); }
+    static auto count_for(usize capacity) -> Result<usize, TryReserveError> {
         if (capacity == usize()) return Ok(usize());
-        usize count = usize(8);
+        usize count(8);
         while (max_items(count) < capacity) {
             auto next = count.checked_mul(usize(2));
             if (next.is_none()) return Err(TryReserveError::CapacityOverflow);
-            count = next.unwrap_unchecked();
+            count = *next;
         }
-        if (Layout::array<Bucket<K, V>>(count).is_none())
-            return Err(TryReserveError::CapacityOverflow);
+        if (layout(count).is_none()) return Err(TryReserveError::CapacityOverflow);
         return Ok(count);
     }
-
-    struct Storage {
-        const A& allocator;
-        byte*    data;
-        usize    buckets;
-        ~Storage() {
-            if (! data) return;
-            for (rstd::size_t i = 0; i < buckets.to_primitive(); ++i)
-                rstd::destroy_at(slot(data, i));
-            as<Allocator>(allocator).deallocate(data,
-                                                Layout::array<Bucket<K, V>>(buckets).unwrap());
-        }
-    };
-
-    auto try_allocate(usize count) -> Result<byte*, TryReserveError> {
-        if (count == usize()) return Ok(static_cast<byte*>(nullptr));
-        auto layout = Layout::array<Bucket<K, V>>(count);
-        if (layout.is_none()) return Err(TryReserveError::CapacityOverflow);
-        auto result = as<Allocator>(allocator).allocate(*layout);
-        if (result.is_err()) return Err(TryReserveError::AllocError);
-        auto* pointer = result.unwrap_unchecked().template as_mut_ptr<byte>().as_raw_ptr();
-        for (rstd::size_t i = 0; i < count.to_primitive(); ++i)
-            rstd::construct_at(slot(pointer, i));
-        return Ok(pointer);
+    auto control() const noexcept -> rstd::uint8_t* {
+        return reinterpret_cast<rstd::uint8_t*>(data_ + buckets_.to_primitive() * sizeof(T));
     }
-
-    [[noreturn]]
-    static void allocation_failure(TryReserveError error) {
-        if (error == TryReserveError::CapacityOverflow)
-            rstd::panic { "hash table capacity overflow" };
-        rstd::panic { "memory allocation failed" };
-        __builtin_unreachable();
+    static auto tag(u64 hash) noexcept -> rstd::uint8_t {
+        return static_cast<rstd::uint8_t>(hash.to_primitive() >> 57);
     }
-
+    auto vacant(u64 hash) const noexcept -> usize {
+        auto         mask   = buckets_.to_primitive() - 1;
+        auto         index  = static_cast<rstd::size_t>(hash.to_primitive()) & mask;
+        rstd::size_t stride = 0;
+        while (full(usize(index))) index = (index + ++stride) & mask;
+        return usize(index);
+    }
     void release() noexcept {
-        if (data == nullptr) return;
-        for (rstd::size_t i = 0; i < buckets.to_primitive(); ++i) rstd::destroy_at(slot(data, i));
-        auto layout = Layout::array<Bucket<K, V>>(buckets).unwrap();
-        as<Allocator>(allocator).deallocate(data, layout);
-        data    = nullptr;
-        buckets = usize();
-        items   = usize();
-        deleted = usize();
+        if (! data_) return;
+        clear();
+        as<Allocator>(allocator_).deallocate(data_, layout(buckets_).unwrap());
+        data_    = nullptr;
+        buckets_ = usize();
     }
-
-    void insert_rehashed(u64 hash, K key, V value) {
-        auto         bucket_mask = buckets.to_primitive() - 1;
-        auto         index       = static_cast<rstd::size_t>(hash.to_primitive()) & bucket_mask;
-        rstd::size_t stride      = 0;
-        for (;;) {
-            if ((*slot(data, index)).state != BucketState::Full) {
-                if ((*slot(data, index)).state == BucketState::Deleted) --deleted;
-                (*slot(data, index)).write(hash, rstd::move(key), rstd::move(value));
-                ++items;
-                return;
-            }
-            ++stride;
-            index = (index + stride) & bucket_mask;
-        }
-    }
-
-    auto try_rehash(usize count) -> Result<empty, TryReserveError> {
-        if (count == usize()) {
-            release();
-            return Ok(empty {});
-        }
-        auto allocated = try_allocate(count);
-        if (allocated.is_err()) return Err(allocated.unwrap_err_unchecked());
-        Storage next { allocator, allocated.unwrap_unchecked(), count };
-        Storage old { allocator, data, buckets };
-        data    = rstd::exchange(next.data, nullptr);
-        buckets = count;
-        items   = usize();
-        deleted = usize();
-        for (rstd::size_t i = 0; i < old.buckets.to_primitive(); ++i) {
-            if ((*slot(old.data, i)).state != BucketState::Full) continue;
-            u64  hash  = (*slot(old.data, i)).hash;
-            auto entry = (*slot(old.data, i)).take();
-            insert_rehashed(
-                hash, rstd::move(entry.template get<0>()), rstd::move(entry.template get<1>()));
-        }
+    auto allocate(usize count) -> Result<empty, TryReserveError> {
+        auto checked = layout(count);
+        if (checked.is_none()) return Err(TryReserveError::CapacityOverflow);
+        auto allocated = as<Allocator>(allocator_).allocate(*checked);
+        if (allocated.is_err()) return Err(TryReserveError::AllocError);
+        data_    = allocated.unwrap_unchecked().template as_mut_ptr<byte>().as_raw_ptr();
+        buckets_ = count;
+        for (usize i; i < count; ++i) control()[i.to_primitive()] = EMPTY;
         return Ok(empty {});
     }
-
-    bool valid() const noexcept {
-        if (buckets == usize()) {
-            return data == nullptr && items == usize() && deleted == usize();
+    template<typename H>
+    auto rehash(usize count, H&& hash) -> Result<empty, TryReserveError> {
+        if (count == usize()) {
+            release();
+            ++generation;
+            return Ok(empty {});
         }
-        return data != nullptr && (buckets & (buckets - usize(1))) == usize() &&
-               items + deleted <= capacity();
-    }
-
-    // A full audit is linear in bucket count and must not run after every mutation.
-    bool audit_valid() const noexcept {
-        if (! valid()) return false;
-        usize full_count    = usize();
-        usize deleted_count = usize();
-        for (rstd::size_t i = 0; i < buckets.to_primitive(); ++i) {
-            if ((*slot(data, i)).state == BucketState::Full) ++full_count;
-            if ((*slot(data, i)).state == BucketState::Deleted) ++deleted_count;
+        // Allocate every fallible resource before moving any original element.
+        RawTable<T, const A&> next(allocator_);
+        auto                  allocated = next.allocate(count);
+        if (allocated.is_err()) return allocated;
+        struct Hashes {
+            const A& allocator;
+            u64*     data {};
+            Layout   layout {};
+            ~Hashes() {
+                if (data) as<Allocator>(allocator).deallocate(data, layout);
+            }
+        } hashes { allocator_ };
+        if constexpr (! noexcept(hash(rstd::declval<const T&>()))) {
+            if (items_ != usize()) {
+                auto checked = Layout::array<u64>(items_);
+                if (checked.is_none()) return Err(TryReserveError::CapacityOverflow);
+                auto allocated_hashes = as<Allocator>(allocator_).allocate(*checked);
+                if (allocated_hashes.is_err()) return Err(TryReserveError::AllocError);
+                hashes.layout = *checked;
+                hashes.data =
+                    allocated_hashes.unwrap_unchecked().template as_mut_ptr<u64>().as_raw_ptr();
+                usize h;
+                for (usize i; i < buckets_; ++i)
+                    if (full(i))
+                        rstd::construct_at(hashes.data + (h++).to_primitive(), hash(value(i)));
+            }
         }
-        return full_count == items && deleted_count == deleted;
+        usize h;
+        // A throwing move may leave moved-from elements, but both storages remain owned.
+        ++generation;
+        for (usize i; i < buckets_; ++i)
+            if (full(i)) {
+                auto entry_hash = hashes.data ? hashes.data[(h++).to_primitive()] : hash(value(i));
+                next.insert_at(next.vacant(entry_hash), entry_hash, rstd::move(value(i)));
+            }
+        release();
+        data_    = rstd::exchange(next.data_, nullptr);
+        buckets_ = rstd::exchange(next.buckets_, usize());
+        items_   = rstd::exchange(next.items_, usize());
+        deleted_ = usize();
+        return Ok(empty {});
     }
+    template<typename, typename>
+    friend class RawTable;
 
 public:
-    RawTable()
-        requires rstd::mtp::init<A>
-        : RawTable(A {}) {}
-    explicit RawTable(A allocator)
-        : data(nullptr),
-          buckets(usize()),
-          items(usize()),
-          deleted(usize()),
-          allocator(rstd::move(allocator)) {}
-    RawTable(usize capacity, A allocator): RawTable(rstd::move(allocator)) {
-        auto count = bucket_count_for(capacity);
-        if (count.is_err()) allocation_failure(count.unwrap_err_unchecked());
-        auto result = try_rehash(count.unwrap_unchecked());
-        if (result.is_err()) allocation_failure(result.unwrap_err_unchecked());
-    }
-    explicit RawTable(usize capacity)
-        requires rstd::mtp::init<A>
-        : RawTable(capacity, A {}) {}
+    rstd::uint64_t generation {};
+    explicit RawTable(A allocator): allocator_(rstd::forward<A>(allocator)) {}
     RawTable(const RawTable&)            = delete;
     RawTable& operator=(const RawTable&) = delete;
     RawTable(RawTable&& other) noexcept
-        : data(other.data),
-          buckets(other.buckets),
-          items(other.items),
-          deleted(other.deleted),
-          allocator(rstd::move(other.allocator)) {
-        other.data    = nullptr;
-        other.buckets = usize();
-        other.items   = usize();
-        other.deleted = usize();
+        : data_(rstd::exchange(other.data_, nullptr)),
+          buckets_(rstd::exchange(other.buckets_, usize())),
+          items_(rstd::exchange(other.items_, usize())),
+          deleted_(rstd::exchange(other.deleted_, usize())),
+          allocator_(rstd::move(other.allocator_)) {
+        ++other.generation;
     }
-    RawTable& operator=(RawTable&& other) noexcept {
-        if (this != rstd::addressof(other)) {
+    auto operator=(RawTable&& other) noexcept -> RawTable& {
+        if (this != &other) {
             release();
-            data          = other.data;
-            buckets       = other.buckets;
-            items         = other.items;
-            deleted       = other.deleted;
-            allocator     = rstd::move(other.allocator);
-            other.data    = nullptr;
-            other.buckets = usize();
-            other.items   = usize();
-            other.deleted = usize();
+            allocator_ = rstd::move(other.allocator_);
+            data_      = rstd::exchange(other.data_, nullptr);
+            buckets_   = rstd::exchange(other.buckets_, usize());
+            items_     = rstd::exchange(other.items_, usize());
+            deleted_   = rstd::exchange(other.deleted_, usize());
+            ++generation;
+            ++other.generation;
         }
         return *this;
     }
     ~RawTable() { release(); }
-
-    auto len() const noexcept -> usize { return items; }
-    auto allocator_ref() const noexcept [[clang::lifetimebound]] -> const A& { return allocator; }
-    auto bucket_count() const noexcept -> usize { return buckets; }
-    auto capacity() const noexcept -> usize { return max_items(buckets); }
-    auto bucket(rstd::size_t index) noexcept -> Bucket<K, V>& { return (*slot(data, index)); }
-    auto bucket(rstd::size_t index) const noexcept -> const Bucket<K, V>& {
-        return (*slot(data, index));
+    auto allocator() const noexcept -> const A& { return allocator_; }
+    auto len() const noexcept -> usize { return items_; }
+    auto capacity() const noexcept -> usize { return max_items(buckets_); }
+    auto bucket_count() const noexcept -> usize { return buckets_; }
+    auto allocation_size() const noexcept -> usize {
+        return data_ ? layout(buckets_).unwrap().size : usize();
     }
-    auto bucket(usize index) noexcept -> Bucket<K, V>& {
-        return (*slot(data, index.to_primitive()));
+    auto full(usize index) const noexcept -> bool {
+        return control()[index.to_primitive()] < EMPTY;
     }
-    auto bucket(usize index) const noexcept -> const Bucket<K, V>& {
-        return (*slot(data, index.to_primitive()));
+    auto value(usize index) noexcept -> T& {
+        return *reinterpret_cast<T*>(data_ + index.to_primitive() * sizeof(T));
     }
-
-    template<typename Equal>
-    auto find(u64 hash, Equal equal) const -> Option<usize> {
-        if (buckets == usize()) return None();
-        auto         bucket_mask = buckets.to_primitive() - 1;
-        auto         index       = static_cast<rstd::size_t>(hash.to_primitive()) & bucket_mask;
-        rstd::size_t stride      = 0;
-        for (rstd::size_t visited = 0; visited < buckets.to_primitive(); ++visited) {
-            const auto& entry = (*slot(data, index));
-            if (entry.state == BucketState::Empty) return None();
-            if (entry.state == BucketState::Full && entry.hash == hash && equal(entry.key())) {
-                return Some(usize(index));
-            }
-            ++stride;
-            index = (index + stride) & bucket_mask;
+    auto value(usize index) const noexcept -> const T& {
+        return *reinterpret_cast<const T*>(data_ + index.to_primitive() * sizeof(T));
+    }
+    // Full semantic equality is required even when fingerprints collide.
+    template<typename E>
+    auto find(u64 hash, E&& equal) const -> Option<usize> {
+        if (! data_) return None();
+        auto         mask   = buckets_.to_primitive() - 1;
+        auto         index  = static_cast<rstd::size_t>(hash.to_primitive()) & mask;
+        rstd::size_t stride = 0;
+        for (usize visited; visited < buckets_; ++visited) {
+            auto state = control()[index];
+            if (state == EMPTY) return None();
+            if (state == tag(hash) && equal(value(usize(index)))) return Some(usize(index));
+            index = (index + ++stride) & mask;
         }
         return None();
     }
-
-    auto try_reserve(usize additional) -> Result<empty, TryReserveError> {
-        if (additional == usize()) return Ok(empty {});
-        // Subtract known occupied slots instead of overflowing a three-term sum.
-        if (additional <= capacity() - items - deleted) return Ok(empty {});
-        auto required = items.checked_add(additional);
+    template<typename H>
+    auto try_reserve(usize additional, H&& hash) -> Result<empty, TryReserveError> {
+        if (additional == usize() || additional <= capacity() - items_ - deleted_)
+            return Ok(empty {});
+        auto required = items_.checked_add(additional);
         if (required.is_none()) return Err(TryReserveError::CapacityOverflow);
-        auto count = bucket_count_for(required.unwrap_unchecked());
+        auto count = count_for(*required);
         if (count.is_err()) return Err(count.unwrap_err_unchecked());
-        auto result = try_rehash(rstd::cmp::max(count.unwrap_unchecked(), buckets));
-        if (result.is_ok()) debug_assert(audit_valid());
+        return rehash(rstd::cmp::max(*count, buckets_), hash);
+    }
+    template<typename H>
+    auto try_shrink_to(usize minimum, H&& hash) -> Result<empty, TryReserveError> {
+        auto count = count_for(rstd::cmp::max(minimum, items_));
+        if (count.is_err()) return Err(count.unwrap_err_unchecked());
+        if (*count < buckets_ || deleted_ != usize())
+            return rehash(rstd::cmp::min(*count, buckets_), hash);
+        return Ok(empty {});
+    }
+    auto insertion_slot(u64 hash) const noexcept -> usize { return vacant(hash); }
+    void insert_at(usize index, u64 hash, T value) {
+        auto state = control()[index.to_primitive()];
+        debug_assert(state >= EMPTY);
+        rstd::construct_at(reinterpret_cast<T*>(data_ + index.to_primitive() * sizeof(T)),
+                           rstd::move(value));
+        if (state == DELETED) --deleted_;
+        control()[index.to_primitive()] = tag(hash);
+        ++items_;
+        ++generation;
+    }
+    auto remove(usize index) -> T {
+        debug_assert(full(index));
+        T result = rstd::move(value(index));
+        erase(index);
         return result;
     }
-
-    void reserve(usize additional) {
-        auto result = try_reserve(additional);
-        if (result.is_err()) allocation_failure(result.unwrap_err_unchecked());
+    void erase(usize index) noexcept {
+        debug_assert(full(index));
+        rstd::destroy_at(rstd::addressof(value(index)));
+        control()[index.to_primitive()] = DELETED;
+        --items_;
+        ++deleted_;
+        ++generation;
     }
-
-    void insert(u64 hash, K key, V value) {
-        reserve(usize(1));
-        insert_rehashed(hash, rstd::move(key), rstd::move(value));
-        debug_assert(valid());
-    }
-
-    auto remove(usize index) -> rstd::tuple<K, V> {
-        auto entry = (*slot(data, index.to_primitive())).take();
-        --items;
-        ++deleted;
-        debug_assert(valid());
-        return entry;
-    }
-
     void clear() noexcept {
-        for (rstd::size_t i = 0; i < buckets.to_primitive(); ++i) (*slot(data, i)).clear();
-        items   = usize();
-        deleted = usize();
-        debug_assert(audit_valid());
-    }
-
-    void shrink_to(usize minimum) {
-        usize required = items > minimum ? items : minimum;
-        auto  checked  = bucket_count_for(required);
-        if (checked.is_err()) allocation_failure(checked.unwrap_err_unchecked());
-        usize count = checked.unwrap_unchecked();
-        if (count < buckets || deleted != usize()) {
-            auto result = try_rehash(count);
-            if (result.is_err()) allocation_failure(result.unwrap_err_unchecked());
+        for (usize i; i < buckets_; ++i) {
+            if (full(i)) rstd::destroy_at(rstd::addressof(value(i)));
+            control()[i.to_primitive()] = EMPTY;
         }
-        debug_assert(audit_valid());
+        items_   = usize();
+        deleted_ = usize();
+        ++generation;
     }
 };
+
+export namespace alloc::collections
+{
+// Hash/equality callbacks borrow external state only for the call. Rehash must reproduce
+// insertion hashes; mutable access must preserve identity. Structural changes invalidate
+// borrowed references, iterators and entry handles. Callbacks must not mutate this table.
+template<typename T, typename A = ::alloc::Global>
+class HashTable {
+    RawTable<T, A> table_;
+
+public:
+    class OccupiedEntry {
+        RawTable<T, A>* table_;
+        usize           index_;
+        rstd::uint64_t  generation_;
+        friend class HashTable;
+        OccupiedEntry(RawTable<T, A>* table, usize index)
+            : table_(table), index_(index), generation_(table->generation) {}
+        void check() const { debug_assert(table_ && generation_ == table_->generation); }
+
+    public:
+        OccupiedEntry(const OccupiedEntry&)                    = delete;
+        auto operator=(const OccupiedEntry&) -> OccupiedEntry& = delete;
+        OccupiedEntry(OccupiedEntry&& other) noexcept
+            : table_(rstd::exchange(other.table_, nullptr)),
+              index_(other.index_),
+              generation_(other.generation_) {}
+        auto operator=(OccupiedEntry&& other) noexcept -> OccupiedEntry& {
+            table_      = rstd::exchange(other.table_, nullptr);
+            index_      = other.index_;
+            generation_ = other.generation_;
+            return *this;
+        }
+        auto get() const [[clang::lifetimebound]] -> const T& {
+            check();
+            return table_->value(index_);
+        }
+        auto get_mut() [[clang::lifetimebound]] -> T& {
+            check();
+            return table_->value(index_);
+        }
+        auto remove() && -> T {
+            check();
+            auto* table = rstd::exchange(table_, nullptr);
+            return table->remove(index_);
+        }
+        void erase() && noexcept {
+            check();
+            auto* table = rstd::exchange(table_, nullptr);
+            table->erase(index_);
+        }
+    };
+    class VacantEntry {
+        RawTable<T, A>* table_;
+        usize           index_;
+        u64             hash_;
+        rstd::uint64_t  generation_;
+        friend class HashTable;
+        VacantEntry(RawTable<T, A>* table, usize index, u64 hash)
+            : table_(table), index_(index), hash_(hash), generation_(table->generation) {}
+
+    public:
+        VacantEntry(const VacantEntry&)                    = delete;
+        auto operator=(const VacantEntry&) -> VacantEntry& = delete;
+        VacantEntry(VacantEntry&& other) noexcept
+            : table_(rstd::exchange(other.table_, nullptr)),
+              index_(other.index_),
+              hash_(other.hash_),
+              generation_(other.generation_) {}
+        auto operator=(VacantEntry&& other) noexcept -> VacantEntry& {
+            table_      = rstd::exchange(other.table_, nullptr);
+            index_      = other.index_;
+            hash_       = other.hash_;
+            generation_ = other.generation_;
+            return *this;
+        }
+        auto insert(T value) && -> OccupiedEntry {
+            debug_assert(table_ && generation_ == table_->generation);
+            auto* table = rstd::exchange(table_, nullptr);
+            table->insert_at(index_, hash_, rstd::move(value));
+            return OccupiedEntry(table, index_);
+        }
+    };
+    class Entry {
+        RSTD_ENUM(Entry, (Occupied, (OccupiedEntry value;)), (Vacant, (VacantEntry value;)))
+    };
+    class Iter : public rstd::DefaultInClass<Iter, rstd::iter::Iterator> {
+        const RawTable<T, A>* table_;
+        usize                 index_ {};
+        usize                 remaining_;
+        rstd::uint64_t        generation_;
+
+    public:
+        using Item                               = rstd::ref<T>;
+        static constexpr bool PROVEN_EXACT_SIZE  = true;
+        static constexpr bool PROVEN_FUSED       = true;
+        static constexpr bool PROVEN_TRUSTED_LEN = true;
+        explicit Iter(const RawTable<T, A>* table [[clang::lifetimebound]])
+            : table_(table), remaining_(table->len()), generation_(table->generation) {}
+        auto next() -> Option<Item> {
+            debug_assert(generation_ == table_->generation);
+            while (remaining_ != usize() && index_ < table_->bucket_count()) {
+                auto index = index_++;
+                if (! table_->full(index)) continue;
+                --remaining_;
+                return Some(Item::from_raw_parts(rstd::addressof(table_->value(index))));
+            }
+            return None();
+        }
+        auto len() const noexcept -> usize { return remaining_; }
+        auto size_hint() const -> rstd::iter::SizeHint {
+            return { remaining_, Some(usize(remaining_)) };
+        }
+    };
+    class IterMut : public rstd::DefaultInClass<IterMut, rstd::iter::Iterator> {
+        RawTable<T, A>* table_;
+        usize           index_ {};
+        usize           remaining_;
+        rstd::uint64_t  generation_;
+
+    public:
+        using Item                               = rstd::mut_ref<T>;
+        static constexpr bool PROVEN_EXACT_SIZE  = true;
+        static constexpr bool PROVEN_FUSED       = true;
+        static constexpr bool PROVEN_TRUSTED_LEN = true;
+        explicit IterMut(RawTable<T, A>* table [[clang::lifetimebound]])
+            : table_(table), remaining_(table->len()), generation_(table->generation) {}
+        auto next() -> Option<Item> {
+            debug_assert(generation_ == table_->generation);
+            while (remaining_ != usize() && index_ < table_->bucket_count()) {
+                auto index = index_++;
+                if (! table_->full(index)) continue;
+                --remaining_;
+                return Some(Item::from_raw_parts(rstd::addressof(table_->value(index))));
+            }
+            return None();
+        }
+        auto len() const noexcept -> usize { return remaining_; }
+        auto size_hint() const -> rstd::iter::SizeHint {
+            return { remaining_, Some(usize(remaining_)) };
+        }
+    };
+    class IntoIter : public rstd::DefaultInClass<IntoIter, rstd::iter::Iterator> {
+        RawTable<T, A> table_;
+        usize          index_ {};
+
+    public:
+        using Item                               = T;
+        static constexpr bool PROVEN_EXACT_SIZE  = true;
+        static constexpr bool PROVEN_FUSED       = true;
+        static constexpr bool PROVEN_TRUSTED_LEN = true;
+        explicit IntoIter(RawTable<T, A> table): table_(rstd::move(table)) {}
+        auto next() -> Option<T> {
+            while (index_ < table_.bucket_count()) {
+                auto index = index_++;
+                if (table_.full(index)) return Some(table_.remove(index));
+            }
+            return None();
+        }
+        auto len() const noexcept -> usize { return table_.len(); }
+        auto size_hint() const -> rstd::iter::SizeHint { return { len(), Some(len()) }; }
+    };
+    HashTable()
+        requires rstd::mtp::init<A>
+        : table_(A {}) {}
+    explicit HashTable(A allocator): table_(rstd::move(allocator)) {}
+    HashTable(const HashTable&)                               = delete;
+    auto operator=(const HashTable&) -> HashTable&            = delete;
+    HashTable(HashTable&&) noexcept                           = default;
+    auto        operator=(HashTable&&) noexcept -> HashTable& = default;
+    static auto new_in(A allocator) -> HashTable { return HashTable(rstd::move(allocator)); }
+    static auto with_capacity_in(usize capacity, A allocator) -> HashTable {
+        HashTable result(rstd::move(allocator));
+        result.reserve(capacity, [](const T&) noexcept -> u64 {
+            return u64();
+        });
+        return result;
+    }
+    static auto with_capacity(usize capacity) -> HashTable
+        requires rstd::mtp::init<A>
+    {
+        return with_capacity_in(capacity, A {});
+    }
+    auto allocator() const noexcept [[clang::lifetimebound]] -> const A& {
+        return table_.allocator();
+    }
+    auto len() const noexcept -> usize { return table_.len(); }
+    auto is_empty() const noexcept -> bool { return len() == usize(); }
+    auto capacity() const noexcept -> usize { return table_.capacity(); }
+    // Requested table storage only; excludes indirect allocations owned by T.
+    auto allocation_size() const noexcept -> usize { return table_.allocation_size(); }
+    // Full semantic equality is required even when fingerprints collide.
+    template<typename E>
+    auto find(u64 hash, E&& equal) const [[clang::lifetimebound]] -> Option<ref<T>> {
+        auto index = table_.find(hash, equal);
+        if (index.is_none()) return None();
+        return Some(ref<T>::from_raw_parts(rstd::addressof(table_.value(*index))));
+    }
+    template<typename E>
+    auto find_mut(u64 hash, E&& equal) [[clang::lifetimebound]] -> Option<mut_ref<T>> {
+        auto index = table_.find(hash, equal);
+        if (index.is_none()) return None();
+        return Some(mut_ref<T>::from_raw_parts(rstd::addressof(table_.value(*index))));
+    }
+    template<typename E>
+    auto find_entry(u64 hash, E&& equal) [[clang::lifetimebound]] -> Option<OccupiedEntry> {
+        auto index = table_.find(hash, equal);
+        if (index.is_none()) return None();
+        return Some(OccupiedEntry(&table_, *index));
+    }
+    template<typename E, typename H>
+    auto try_entry(u64 hash, E&& equal, H&& rehash) [[clang::lifetimebound]]
+    -> Result<Entry, TryReserveError> {
+        auto found = table_.find(hash, equal);
+        if (found.is_some()) return Ok(Entry::Occupied(OccupiedEntry(&table_, *found)));
+        auto reserved = try_reserve(usize(1), rehash);
+        if (reserved.is_err()) return Err(reserved.unwrap_err_unchecked());
+        return Ok(Entry::Vacant(VacantEntry(&table_, table_.insertion_slot(hash), hash)));
+    }
+    template<typename E, typename H>
+    auto entry(u64 hash, E&& equal, H&& rehash) [[clang::lifetimebound]] -> Entry {
+        auto result = try_entry(hash, equal, rehash);
+        if (result.is_err()) hash_allocation_failure(result.unwrap_err_unchecked());
+        return rstd::move(result).unwrap_unchecked();
+    }
+    template<typename H>
+    auto try_reserve(usize additional, H&& hash) -> Result<empty, TryReserveError> {
+        return table_.try_reserve(additional, hash);
+    }
+    template<typename H>
+    void reserve(usize additional, H&& hash) {
+        auto result = try_reserve(additional, hash);
+        if (result.is_err()) hash_allocation_failure(result.unwrap_err_unchecked());
+    }
+    template<typename H>
+    auto try_shrink_to(usize minimum, H&& hash) -> Result<empty, TryReserveError> {
+        return table_.try_shrink_to(minimum, hash);
+    }
+    template<typename H>
+    void shrink_to(usize minimum, H&& hash) {
+        auto result = try_shrink_to(minimum, hash);
+        if (result.is_err()) hash_allocation_failure(result.unwrap_err_unchecked());
+    }
+    void clear() noexcept { table_.clear(); }
+    template<typename F>
+    void retain(F predicate) {
+        for (usize i; i < table_.bucket_count(); ++i)
+            if (table_.full(i) && ! predicate(table_.value(i))) table_.erase(i);
+    }
+    auto iter() const [[clang::lifetimebound]] -> Iter { return Iter(&table_); }
+    auto iter_mut() [[clang::lifetimebound]] -> IterMut { return IterMut(&table_); }
+    auto into_iter() && -> IntoIter { return IntoIter(rstd::move(table_)); }
+};
+} // namespace alloc::collections

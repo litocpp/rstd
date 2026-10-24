@@ -13,6 +13,26 @@ using namespace rstd::prelude;
 namespace alloc::collections
 {
 
+template<typename K, typename V>
+struct MapEntry {
+    u64       hash;
+    K         key_;
+    Option<V> value_;
+    MapEntry(u64 hash, K key, V value)
+        : hash(hash), key_(rstd::move(key)), value_(Some(rstd::move(value))) {}
+    auto key() const noexcept -> const K& { return key_; }
+    auto value() -> V& { return *value_; }
+    auto value() const -> const V& { return *value_; }
+    auto replace_value(V replacement) -> V {
+        auto old = value_.take();
+        value_.insert(rstd::move(replacement));
+        return rstd::move(old).unwrap();
+    }
+    auto into_pair() && -> rstd::tuple<K, V> {
+        return { rstd::move(key_), rstd::move(value_).unwrap() };
+    }
+};
+
 export template<typename K>
 struct DefaultHashEqual {
     template<typename Left, typename Right>
@@ -42,62 +62,46 @@ class HashMapValuesMut;
 
 export template<typename K, typename V, typename A>
 class HashMapIter : public rstd::DefaultInClass<HashMapIter<K, V, A>, rstd::iter::Iterator> {
-    const RawTable<K, V, A>* table;
-    rstd::size_t             index;
-    usize                    remaining;
+    typename HashTable<MapEntry<K, V>, A>::Iter inner;
 
 public:
     using Item                               = rstd::tuple<rstd::ref<K>, rstd::ref<V>>;
     static constexpr bool PROVEN_EXACT_SIZE  = true;
     static constexpr bool PROVEN_FUSED       = true;
     static constexpr bool PROVEN_TRUSTED_LEN = true;
-    HashMapIter(const RawTable<K, V, A>* source [[clang::lifetimebound]]
-                ,
-                usize len)
-        : table(source), index(0), remaining(len) {}
-
+    explicit HashMapIter(typename HashTable<MapEntry<K, V>, A>::Iter source
+                         [[clang::lifetimebound]])
+        : inner(rstd::move(source)) {}
     auto next() -> Option<Item> {
-        while (remaining != usize {} && index < table->bucket_count().to_primitive()) {
-            const auto& bucket = table->bucket(index++);
-            if (bucket.state != BucketState::Full) continue;
-            --remaining;
-            return Some(Item(rstd::ref<K>::from_raw_parts(rstd::addressof(bucket.key())),
-                             rstd::ref<V>::from_raw_parts(rstd::addressof(bucket.value()))));
-        }
-        return None();
+        auto entry = inner.next();
+        if (entry.is_none()) return None();
+        return Some(Item(rstd::ref<K>::from_raw_parts(rstd::addressof((**entry).key())),
+                         rstd::ref<V>::from_raw_parts(rstd::addressof((**entry).value()))));
     }
-    auto size_hint() const -> rstd::iter::SizeHint { return { remaining, Some(usize(remaining)) }; }
-    auto len() const noexcept -> usize { return remaining; }
+    auto size_hint() const -> rstd::iter::SizeHint { return inner.size_hint(); }
+    auto len() const noexcept -> usize { return inner.len(); }
 };
 
 export template<typename K, typename V, typename A>
 class HashMapIterMut : public rstd::DefaultInClass<HashMapIterMut<K, V, A>, rstd::iter::Iterator> {
-    RawTable<K, V, A>* table;
-    rstd::size_t       index;
-    usize              remaining;
+    typename HashTable<MapEntry<K, V>, A>::IterMut inner;
 
 public:
     using Item                               = rstd::tuple<rstd::ref<K>, rstd::mut_ref<V>>;
     static constexpr bool PROVEN_EXACT_SIZE  = true;
     static constexpr bool PROVEN_FUSED       = true;
     static constexpr bool PROVEN_TRUSTED_LEN = true;
-    HashMapIterMut(RawTable<K, V, A>* source [[clang::lifetimebound]]
-                   ,
-                   usize len)
-        : table(source), index(0), remaining(len) {}
-
+    explicit HashMapIterMut(typename HashTable<MapEntry<K, V>, A>::IterMut source
+                            [[clang::lifetimebound]])
+        : inner(rstd::move(source)) {}
     auto next() -> Option<Item> {
-        while (remaining != usize {} && index < table->bucket_count().to_primitive()) {
-            auto& bucket = table->bucket(index++);
-            if (bucket.state != BucketState::Full) continue;
-            --remaining;
-            return Some(Item(rstd::ref<K>::from_raw_parts(rstd::addressof(bucket.key())),
-                             rstd::mut_ref<V>::from_raw_parts(rstd::addressof(bucket.value()))));
-        }
-        return None();
+        auto entry = inner.next();
+        if (entry.is_none()) return None();
+        return Some(Item(rstd::ref<K>::from_raw_parts(rstd::addressof((**entry).key())),
+                         rstd::mut_ref<V>::from_raw_parts(rstd::addressof((**entry).value()))));
     }
-    auto size_hint() const -> rstd::iter::SizeHint { return { remaining, Some(usize(remaining)) }; }
-    auto len() const noexcept -> usize { return remaining; }
+    auto size_hint() const -> rstd::iter::SizeHint { return inner.size_hint(); }
+    auto len() const noexcept -> usize { return inner.len(); }
 };
 
 export template<typename K, typename V, typename A>
@@ -161,35 +165,33 @@ public:
 export template<typename K, typename V, typename A>
 class HashMapIntoIter
     : public rstd::DefaultInClass<HashMapIntoIter<K, V, A>, rstd::iter::Iterator> {
-    RawTable<K, V, A> table;
-    rstd::size_t      index;
+    typename HashTable<MapEntry<K, V>, A>::IntoIter inner;
 
 public:
     using Item                               = rstd::tuple<K, V>;
     static constexpr bool PROVEN_EXACT_SIZE  = true;
     static constexpr bool PROVEN_FUSED       = true;
     static constexpr bool PROVEN_TRUSTED_LEN = true;
-    explicit HashMapIntoIter(RawTable<K, V, A> source): table(rstd::move(source)), index(0) {}
+    explicit HashMapIntoIter(typename HashTable<MapEntry<K, V>, A>::IntoIter source)
+        : inner(rstd::move(source)) {}
     auto next() -> Option<Item> {
-        while (index < table.bucket_count().to_primitive()) {
-            rstd::size_t current = index++;
-            if (table.bucket(current).state == BucketState::Full) {
-                return Some(table.remove(usize(current)));
-            }
-        }
-        return None();
+        auto entry = inner.next();
+        if (entry.is_none()) return None();
+        return Some(rstd::move(*entry).into_pair());
     }
-    auto size_hint() const -> rstd::iter::SizeHint { return { table.len(), Some(table.len()) }; }
-    auto len() const noexcept -> usize { return table.len(); }
+    auto size_hint() const -> rstd::iter::SizeHint { return inner.size_hint(); }
+    auto len() const noexcept -> usize { return inner.len(); }
 };
 
 export template<typename K, typename V, typename S, typename Eq, typename A>
 class HashMap {
     using Entry = rstd::tuple<K, V>;
 
-    RawTable<K, V, A> table;
-    S                 hash_builder;
-    Eq                equal;
+    using Stored = MapEntry<K, V>;
+    HashTable<Stored, A> table;
+    static auto          stored_hash(const Stored& entry) noexcept -> u64 { return entry.hash; }
+    S                    hash_builder;
+    Eq                   equal;
 
     auto hash_key(const K& key) const noexcept -> u64
         requires rstd::hash::HashableBy<K, S>
@@ -197,25 +199,26 @@ class HashMap {
         return rstd::hash::hash_one(hash_builder, key);
     }
 
-    auto find_index(const K& key) const -> Option<usize>
+    auto find_index(const K& key) const -> Option<ref<Stored>>
         requires rstd::hash::HashableBy<K, S>
     {
         u64 hash = hash_key(key);
-        return table.find(hash, [&](const K& stored) {
-            return equal(stored, key);
+        return table.find(hash, [&](const Stored& stored) {
+            return stored.hash == hash && equal(stored.key(), key);
         });
     }
 
     template<typename Q>
-    auto find_borrowed_index(ref<Q> key) const -> Option<usize>
+    auto find_borrowed_index(ref<Q> key) const -> Option<ref<Stored>>
         requires rstd::Impled<K, rstd::borrow::Borrow<Q>> && rstd::hash::HashableBy<ref<Q>, S> &&
                  requires(const Eq& equality, ref<Q> left, ref<Q> right) {
                      { equality(left, right) } -> rstd::mtp::same_as<bool>;
                  }
     {
         u64 hash = rstd::hash::hash_one(hash_builder, key);
-        return table.find(hash, [&](const K& stored) {
-            auto borrowed = rstd::as<rstd::borrow::Borrow<Q>>(stored).borrow();
+        return table.find(hash, [&](const Stored& stored) {
+            if (stored.hash != hash) return false;
+            auto borrowed = rstd::as<rstd::borrow::Borrow<Q>>(stored.key()).borrow();
             return equal(borrowed, key);
         });
     }
@@ -274,7 +277,7 @@ public:
 
     HashMap(usize capacity, S hasher, Eq equality, A allocator)
         requires rstd::hash::HashBuilder<S>
-        : table(capacity, rstd::move(allocator)),
+        : table(HashTable<Stored, A>::with_capacity_in(capacity, rstd::move(allocator))),
           hash_builder(rstd::move(hasher)),
           equal(rstd::move(equality)) {}
 
@@ -283,7 +286,7 @@ public:
     auto capacity() const noexcept -> usize { return table.capacity(); }
     auto hasher() const noexcept [[clang::lifetimebound]] -> const S& { return hash_builder; }
     auto allocator() const noexcept [[clang::lifetimebound]] -> const A& {
-        return table.allocator_ref();
+        return table.allocator();
     }
 
     template<typename B>
@@ -323,24 +326,37 @@ public:
     /// Without intervening removal or shrink, these inserts need no further table allocation.
     /// Throwing element moves provide resource safety, not rollback of the original contents.
     auto try_reserve(usize additional) -> Result<empty, TryReserveError> {
-        return table.try_reserve(additional);
+        return table.try_reserve(additional, stored_hash);
     }
-    void reserve(usize additional) { table.reserve(additional); }
-    void shrink_to_fit() { table.shrink_to(usize {}); }
-    void shrink_to(usize minimum) { table.shrink_to(minimum); }
+    void reserve(usize additional) { table.reserve(additional, stored_hash); }
+    void shrink_to_fit() { table.shrink_to(usize {}, stored_hash); }
+    void shrink_to(usize minimum) { table.shrink_to(minimum, stored_hash); }
     void clear() noexcept { table.clear(); }
 
     auto insert(K key, V value) -> Option<V>
         requires rstd::hash::HashableBy<K, S>
     {
         u64  hash  = hash_key(key);
-        auto found = table.find(hash, [&](const K& stored) {
-            return equal(stored, key);
-        });
-        if (found.is_some()) {
-            return Some(table.bucket(*found).replace_value(rstd::move(value)));
+        auto entry = table.entry(
+            hash,
+            [&](const Stored& stored) {
+                return stored.hash == hash && equal(stored.key(), key);
+            },
+            stored_hash);
+        if (entry.is_Occupied()) {
+            auto& occupied = entry.as_Occupied().value;
+            struct ReplaceGuard {
+                typename HashTable<Stored, A>::OccupiedEntry* entry;
+                ~ReplaceGuard() {
+                    if (entry) rstd::move(*entry).erase();
+                }
+            } guard { &occupied };
+            auto old    = occupied.get_mut().replace_value(rstd::move(value));
+            guard.entry = nullptr;
+            return Some(rstd::move(old));
         }
-        table.insert(hash, rstd::move(key), rstd::move(value));
+        rstd::move(entry.as_Vacant().value)
+            .insert(Stored(hash, rstd::move(key), rstd::move(value)));
         return None();
     }
 
@@ -349,7 +365,7 @@ public:
     {
         auto found = find_index(key);
         if (found.is_none()) return None();
-        return Some(rstd::ref<V>::from_raw_parts(rstd::addressof(table.bucket(*found).value())));
+        return Some(rstd::ref<V>::from_raw_parts(rstd::addressof((**found).value())));
     }
 
     template<typename Q>
@@ -362,7 +378,7 @@ public:
     {
         auto found = find_borrowed_index(key);
         if (found.is_none()) return None();
-        return Some(rstd::ref<V>::from_raw_parts(rstd::addressof(table.bucket(*found).value())));
+        return Some(rstd::ref<V>::from_raw_parts(rstd::addressof((**found).value())));
     }
 
     auto get_mut(const K& key) [[clang::lifetimebound]] -> Option<rstd::mut_ref<V>>
@@ -370,8 +386,8 @@ public:
     {
         auto found = find_index(key);
         if (found.is_none()) return None();
-        return Some(
-            rstd::mut_ref<V>::from_raw_parts(rstd::addressof(table.bucket(*found).value())));
+        return Some(rstd::mut_ref<V>::from_raw_parts(
+            rstd::addressof(const_cast<Stored&>(**found).value())));
     }
 
     template<typename Q>
@@ -384,8 +400,8 @@ public:
     {
         auto found = find_borrowed_index(key);
         if (found.is_none()) return None();
-        return Some(
-            rstd::mut_ref<V>::from_raw_parts(rstd::addressof(table.bucket(*found).value())));
+        return Some(rstd::mut_ref<V>::from_raw_parts(
+            rstd::addressof(const_cast<Stored&>(**found).value())));
     }
 
     auto get_key_value(const K& key) const [[clang::lifetimebound]]
@@ -394,7 +410,7 @@ public:
     {
         auto found = find_index(key);
         if (found.is_none()) return None();
-        const auto& bucket = table.bucket(*found);
+        const auto& bucket = **found;
         return Some(rstd::tuple<rstd::ref<K>, rstd::ref<V>>(
             rstd::ref<K>::from_raw_parts(rstd::addressof(bucket.key())),
             rstd::ref<V>::from_raw_parts(rstd::addressof(bucket.value()))));
@@ -411,7 +427,7 @@ public:
     {
         auto found = find_borrowed_index(key);
         if (found.is_none()) return None();
-        const auto& bucket = table.bucket(*found);
+        const auto& bucket = **found;
         return Some(rstd::tuple<rstd::ref<K>, rstd::ref<V>>(
             rstd::ref<K>::from_raw_parts(rstd::addressof(bucket.key())),
             rstd::ref<V>::from_raw_parts(rstd::addressof(bucket.value()))));
@@ -438,7 +454,11 @@ public:
         requires rstd::hash::HashableBy<K, S>
     {
         auto found = find_index(key);
-        return found.is_some() ? Some(table.remove(*found)) : None();
+        if (found.is_none()) return None();
+        auto entry = table.find_entry((**found).hash, [&](const Stored& stored) {
+            return &stored == (*found).as_raw_ptr();
+        });
+        return Some(rstd::move(rstd::move(*entry).remove()).into_pair());
     }
 
     template<typename Q>
@@ -450,7 +470,11 @@ public:
                 }
     {
         auto found = find_borrowed_index(key);
-        return found.is_some() ? Some(table.remove(*found)) : None();
+        if (found.is_none()) return None();
+        auto entry = table.find_entry((**found).hash, [&](const Stored& stored) {
+            return &stored == (*found).as_raw_ptr();
+        });
+        return Some(rstd::move(rstd::move(*entry).remove()).into_pair());
     }
 
     auto remove(const K& key) -> Option<V>
@@ -474,19 +498,16 @@ public:
 
     template<typename F>
     void retain(F predicate) {
-        for (rstd::size_t i = 0; i < table.bucket_count().to_primitive(); ++i) {
-            auto& bucket = table.bucket(i);
-            if (bucket.state == BucketState::Full && ! predicate(bucket.key(), bucket.value())) {
-                (void)table.remove(usize(i));
-            }
-        }
+        table.retain([&](Stored& stored) {
+            return predicate(stored.key(), stored.value());
+        });
     }
 
     auto iter() const [[clang::lifetimebound]] -> HashMapIter<K, V, A> {
-        return { rstd::addressof(table), table.len() };
+        return HashMapIter<K, V, A>(table.iter());
     }
     auto iter_mut() [[clang::lifetimebound]] -> HashMapIterMut<K, V, A> {
-        return { rstd::addressof(table), table.len() };
+        return HashMapIterMut<K, V, A>(table.iter_mut());
     }
     auto keys() const [[clang::lifetimebound]] -> HashMapKeys<K, V, A> {
         return HashMapKeys<K, V, A>(iter());
@@ -497,7 +518,7 @@ public:
     auto values_mut() [[clang::lifetimebound]] -> HashMapValuesMut<K, V, A> {
         return HashMapValuesMut<K, V, A>(iter_mut());
     }
-    auto into_iter() && -> IntoIter { return IntoIter(rstd::move(table)); }
+    auto into_iter() && -> IntoIter { return IntoIter(rstd::move(table).into_iter()); }
 };
 
 } // namespace alloc::collections

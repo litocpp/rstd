@@ -414,3 +414,23 @@ TEST(HashMap, CustomHashKeepsTheStoredEquivalentKey) {
 TEST(HashMap, PublicAllocatorErrorImport) {
     EXPECT_TRUE(alloc_collections_reserve());
 }
+
+struct CountingMapEqual {
+    int* calls;
+    auto operator()(i32 left, i32 right) const -> bool {
+        ++*calls;
+        return left == right;
+    }
+};
+TEST(HashMap, CachedFullHashesPreserveEqualityAndReserveCallbacks) {
+    int calls = 0;
+    using Map = HashMap<i32, i32, SeededBuilder, CountingMapEqual>;
+    Map map(usize(7), SeededBuilder { u64() }, CountingMapEqual { &calls });
+    map.insert(i32(), i32(1));
+    map.insert(i32(8), i32(2));
+    EXPECT_EQ(calls, 0);
+    map.reserve(usize(100));
+    EXPECT_EQ(calls, 0);
+    EXPECT_EQ(map.get(i32(8)).unwrap().get(), i32(2));
+    EXPECT_EQ(calls, 1);
+}

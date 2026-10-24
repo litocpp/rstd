@@ -83,6 +83,7 @@ using rstd_alloc::collections::BTreeMap;
 using rstd_alloc::collections::BTreeSet;
 /// A hash map using open addressing.
 using rstd_alloc::collections::HashMap;
+using rstd_alloc::collections::HashTable;
 /// A hash set using open addressing.
 using rstd_alloc::collections::HashSet;
 } // namespace collections

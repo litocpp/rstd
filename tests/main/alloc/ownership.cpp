@@ -23,6 +23,7 @@ struct OwnershipState {
     int   deallocations {};
     int   invalid_releases {};
     bool  fail {};
+    int   fail_at {};
     usize extra;
     usize live;
 };
@@ -63,7 +64,7 @@ struct Impl<alloc::Allocator, OwnershipAllocator>
     auto allocate(Layout layout) const -> Result<Allocation, AllocError> {
         auto& state = *this->self().state;
         ++state.allocation_attempts;
-        if (state.fail) return Err(AllocError {});
+        if (state.fail || state.allocation_attempts == state.fail_at) return Err(AllocError {});
         if (layout.size == usize()) return Ok(Allocation { layout.dangling(), usize() });
         auto actual = Layout::from_size_align(layout.size + state.extra, layout.align).unwrap();
         auto result = as<Allocator>(::alloc::GLOBAL).allocate(actual);
@@ -1840,3 +1841,166 @@ TEST(AllocationOwnership, ByteVecNormalizesLayoutWhenTransferredToBox) {
     EXPECT_EQ(state.allocations, state.deallocations);
     EXPECT_EQ(state.live, usize());
 }
+
+TEST(HashAllocation, HashTableFailurePreservesExternalIdsAndReservedSlots) {
+    OwnershipState owner;
+    using Table = rstd::collections::HashTable<u32, OwnershipAllocator>;
+    auto hash   = [](u32 id) noexcept {
+        return u64(id.to_primitive());
+    };
+    {
+        auto table = Table::new_in(OwnershipAllocator(owner));
+        owner.fail = true;
+        EXPECT_TRUE(table.try_reserve(usize(), hash).is_ok());
+        EXPECT_EQ(table.try_reserve(usize::MAX, hash).unwrap_err(),
+                  ::alloc::collections::TryReserveError::CapacityOverflow);
+        EXPECT_EQ(owner.allocation_attempts, 0);
+        EXPECT_TRUE(table.try_reserve(usize(7), hash).is_err());
+        owner.fail = false;
+        table.try_reserve(usize(7), hash).unwrap();
+        auto attempts = owner.allocation_attempts;
+        owner.fail    = true;
+        for (int i = 0; i < 7; ++i) {
+            auto entry = table
+                             .try_entry(
+                                 u64(i),
+                                 [=](u32 v) {
+                                     return v == u32(i);
+                                 },
+                                 hash)
+                             .unwrap();
+            rstd::move(entry.as_Vacant().value).insert(u32(i));
+        }
+        EXPECT_EQ(owner.allocation_attempts, attempts);
+        EXPECT_TRUE(table
+                        .try_entry(
+                            u64(3),
+                            [](u32 v) {
+                                return v == u32(3);
+                            },
+                            hash)
+                        .is_ok());
+        auto capacity = table.capacity();
+        EXPECT_TRUE(table.try_reserve(usize(10), hash).is_err());
+        EXPECT_EQ(table.capacity(), capacity);
+        for (int i = 0; i < 6; ++i) {
+            auto entry = table.find_entry(u64(i), [=](u32 v) {
+                return v == u32(i);
+            });
+            rstd::move(*entry).remove();
+        }
+        auto live = owner.live;
+        EXPECT_TRUE(table.try_reserve(usize(6), hash).is_err());
+        EXPECT_EQ(owner.live, live);
+        EXPECT_EQ(table.len(), usize(1));
+        EXPECT_EQ(**table.find(u64(6),
+                               [](u32 v) {
+                                   return v == u32(6);
+                               }),
+                  u32(6));
+        owner.fail = false;
+        table.try_reserve(usize(6), hash).unwrap();
+        attempts   = owner.allocation_attempts;
+        owner.fail = true;
+        for (int i = 10; i < 16; ++i) {
+            auto entry = table.entry(
+                u64(i),
+                [=](u32 v) {
+                    return v == u32(i);
+                },
+                hash);
+            rstd::move(entry.as_Vacant().value).insert(u32(i));
+        }
+        EXPECT_EQ(owner.allocation_attempts, attempts);
+        EXPECT_EQ(table.allocator().state, &owner);
+        owner.fail           = false;
+        auto retained_bytes  = owner.live;
+        owner.fail_at        = owner.allocation_attempts + 2;
+        auto scratch_failure = table.try_reserve(usize(100), [](u32 value) {
+            return u64(value.to_primitive());
+        });
+        EXPECT_TRUE(scratch_failure.is_err());
+        EXPECT_EQ(owner.live, retained_bytes);
+        EXPECT_EQ(table.len(), usize(7));
+        EXPECT_TRUE(table
+                        .find(u64(6),
+                              [](u32 value) {
+                                  return value == u32(6);
+                              })
+                        .is_some());
+        owner.fail_at = 0;
+    }
+    EXPECT_EQ(owner.live, usize());
+    EXPECT_EQ(owner.handles, 0);
+    EXPECT_EQ(owner.invalid_releases, 0);
+}
+#if defined(__cpp_exceptions)
+TEST(HashAllocation, HashTableThrowingRehashPreservesOriginalAndReleasesScratch) {
+    OwnershipState owner;
+    {
+        auto table = rstd::collections::HashTable<u32, OwnershipAllocator>::new_in(
+            OwnershipAllocator(owner));
+        for (int i = 0; i < 7; ++i) {
+            auto entry = table.entry(
+                u64(i),
+                [=](u32 v) {
+                    return v == u32(i);
+                },
+                [](u32 v) noexcept {
+                    return u64(v.to_primitive());
+                });
+            rstd::move(entry.as_Vacant().value).insert(u32(i));
+        }
+        auto live     = owner.live;
+        auto capacity = table.capacity();
+        int  calls    = 0;
+        try {
+            table.try_reserve(usize(100), [&](u32 v) -> u64 {
+                if (++calls == 3) throw 17;
+                return u64(v.to_primitive());
+            });
+        } catch (int error) {
+            EXPECT_EQ(error, 17);
+        }
+        EXPECT_EQ(owner.live, live);
+        EXPECT_EQ(table.capacity(), capacity);
+        for (int i = 0; i < 7; ++i)
+            EXPECT_EQ(**table.find(u64(i),
+                                   [=](u32 v) {
+                                       return v == u32(i);
+                                   }),
+                      u32(i));
+    }
+    EXPECT_EQ(owner.live, usize());
+    EXPECT_EQ(owner.invalid_releases, 0);
+}
+#endif
+
+#if defined(__cpp_exceptions)
+TEST(HashAllocation, ThrowingReplacementLeavesOnlyCompleteEntries) {
+    for (int at = 1; at < 8; ++at) {
+        OwnershipState owner;
+        HashMoveState  values;
+        {
+            auto map = AllocationMap<HashMoveValue>::new_in(OwnershipAllocator(owner));
+            map.insert(i32(1), HashMoveValue(values, i32(11)));
+            values.moves    = 0;
+            values.throw_at = at;
+            try {
+                map.insert(i32(1), HashMoveValue(values, i32(22)));
+            } catch (int error) {
+                EXPECT_EQ(error, 41);
+            }
+            values.throw_at = 0;
+            if (! map.is_empty()) EXPECT_TRUE(map.get(i32(1)).is_some());
+            EXPECT_EQ(values.live, int(map.len().to_primitive()));
+            map.clear();
+            map.insert(i32(2), HashMoveValue(values, i32(33)));
+            EXPECT_EQ(map.get(i32(2)).unwrap()->id, i32(33));
+        }
+        EXPECT_EQ(values.live, 0);
+        EXPECT_EQ(owner.live, usize());
+        EXPECT_EQ(owner.invalid_releases, 0);
+    }
+}
+#endif
