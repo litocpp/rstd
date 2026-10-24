@@ -114,14 +114,13 @@ auto rstd::net::SocketAddr::parse(ref<str> text) -> Result<SocketAddr, AddrParse
     return Ok(ipv6(*address, u16(port->to_primitive()), u32(), scope));
 }
 
-auto rstd::net::format_address(fmt::Formatter& f, const SocketAddr& a) -> bool {
+auto rstd::net::format_ip(fmt::Formatter& f, const SocketAddr& a) -> bool {
     if (a.is_ipv4())
-        return f.write_fmt(fmt::Arguments::make("{}.{}.{}.{}:{}",
+        return f.write_fmt(fmt::Arguments::make("{}.{}.{}.{}",
                                                 a.octet(usize()),
                                                 a.octet(usize(1)),
                                                 a.octet(usize(2)),
-                                                a.octet(usize(3)),
-                                                a.port()));
+                                                a.octet(usize(3))));
     array<u16, 8> groups {};
     for (usize i; i < usize(8); ++i)
         groups[i] = u16(a.octet(i * usize(2)).to_primitive()) * u16(256) +
@@ -139,7 +138,6 @@ auto rstd::net::format_address(fmt::Formatter& f, const SocketAddr& a) -> bool {
             length = i - start;
         }
     }
-    if (! f.write_str("["_str)) return false;
     for (usize i; i < usize(8);) {
         if (i == best) {
             if (! f.write_str("::"_str)) return false;
@@ -152,5 +150,11 @@ auto rstd::net::format_address(fmt::Formatter& f, const SocketAddr& a) -> bool {
     }
     if (a.scope_id() != u32() && ! f.write_fmt(fmt::Arguments::make("%{}", a.scope_id())))
         return false;
-    return f.write_fmt(fmt::Arguments::make("]:{}", a.port()));
+    return true;
+}
+auto rstd::net::format_address(fmt::Formatter& f, const SocketAddr& a) -> bool {
+    if (a.is_ipv6() && ! f.write_str("["_str)) return false;
+    if (! format_ip(f, a)) return false;
+    return a.is_ipv6() ? f.write_fmt(fmt::Arguments::make("]:{}", a.port()))
+                       : f.write_fmt(fmt::Arguments::make(":{}", a.port()));
 }

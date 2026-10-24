@@ -26,9 +26,23 @@ TEST(SocketAddr, ParsesIpv4AndPortBoundaries) {
 }
 TEST(SocketAddr, FormatsAddressesWithPortsAndIpv6Scope) {
     EXPECT_EQ(rstd::format("{}", SocketAddr::ipv4_loopback(u16(80))).as_str(), "127.0.0.1:80"_str);
-    EXPECT_EQ(rstd::format("{}", SocketAddr::ipv6(Ipv6Addr::loopback(), u16(443))).as_str(), "[::1]:443"_str);
-    EXPECT_EQ(rstd::format("{}", SocketAddr::ipv6(Ipv6Addr::loopback(), u16(80), u32(), u32(12))).as_str(), "[::1%12]:80"_str);
+    EXPECT_EQ(rstd::format("{}", SocketAddr::ipv6(Ipv6Addr::loopback(), u16(443))).as_str(),
+              "[::1]:443"_str);
+    EXPECT_EQ(rstd::format("{}", SocketAddr::ipv6(Ipv6Addr::loopback(), u16(80), u32(), u32(12)))
+                  .as_str(),
+              "[::1%12]:80"_str);
     EXPECT_EQ(rstd::format("{}", SocketAddr::ipv6(Ipv6Addr::any(), u16())).as_str(), "[::]:0"_str);
+}
+
+TEST(IpAddr, FormatsWithoutPortsAndUsesCanonicalCompression) {
+    EXPECT_EQ(rstd::format("{}", Ipv4Addr::loopback()), "127.0.0.1"_str);
+    EXPECT_EQ(rstd::format("{:?}", Ipv4Addr::any()), "0.0.0.0"_str);
+    EXPECT_EQ(rstd::format("{}", Ipv6Addr::loopback()), "::1"_str);
+    EXPECT_EQ(rstd::format("{:?}", Ipv6Addr::any()), "::"_str);
+    auto ip = Ipv6Addr::parse("2001:db8:0:0:1:0:0:2"_str).unwrap();
+    EXPECT_EQ(rstd::format("{}", ip), "2001:db8::1:0:0:2"_str);
+    EXPECT_EQ(rstd::format("{}", SocketAddr::ipv6(ip, u16(53), u32(), u32(7))),
+              "[2001:db8::1:0:0:2%7]:53"_str);
 }
 
 TEST(SocketAddr, ParsesIpv6AndNumericScope) {

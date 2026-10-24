@@ -156,6 +156,7 @@ public:
 };
 
 export auto format_address(fmt::Formatter& formatter, const SocketAddr& address) -> bool;
+export auto format_ip(fmt::Formatter& formatter, const SocketAddr& address) -> bool;
 
 } // namespace rstd::net
 
@@ -222,4 +223,20 @@ struct Impl<fmt::Display, net::SocketAddr> : ImplBase<net::SocketAddr> {
 };
 export template<>
 struct Impl<fmt::Debug, net::SocketAddr> : Impl<fmt::Display, net::SocketAddr> {};
+export template<>
+struct Impl<fmt::Display, net::Ipv4Addr> : ImplBase<net::Ipv4Addr> {
+    auto fmt(fmt::Formatter& f) const -> bool {
+        return net::format_ip(f, net::SocketAddr::ipv4(this->self(), u16()));
+    }
+};
+export template<>
+struct Impl<fmt::Debug, net::Ipv4Addr> : Impl<fmt::Display, net::Ipv4Addr> {};
+export template<>
+struct Impl<fmt::Display, net::Ipv6Addr> : ImplBase<net::Ipv6Addr> {
+    auto fmt(fmt::Formatter& f) const -> bool {
+        return net::format_ip(f, net::SocketAddr::ipv6(this->self(), u16()));
+    }
+};
+export template<>
+struct Impl<fmt::Debug, net::Ipv6Addr> : Impl<fmt::Display, net::Ipv6Addr> {};
 } // namespace rstd
