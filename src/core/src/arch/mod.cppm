@@ -4,6 +4,15 @@ export import :arch.arm;
 
 namespace rstd::arch
 {
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+using x86::spin_loop;
+#elif defined(__aarch64__) || defined(_M_ARM64)
+using arm::spin_loop;
+#else
+inline void spin_loop() {
+}
+#endif
+
 // Select from the module's compilation target, not the caller's target attribute.
 #if defined(__SSE__)
 using x86::reciprocal_estimate_width;

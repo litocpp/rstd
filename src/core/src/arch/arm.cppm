@@ -5,10 +5,16 @@ module;
 
 export module rstd.core:arch.arm;
 
-#if defined(__ARM_NEON)
-// NEON types and functions shared by ARM and AArch64.
 namespace rstd::arch::arm
 {
+#if defined(__aarch64__) || defined(_M_ARM64)
+inline void spin_loop() {
+    __builtin_arm_isb(15);
+}
+#endif
+
+#if defined(__ARM_NEON)
+// NEON types and functions shared by ARM and AArch64.
 using ::float32x2_t;
 using ::float32x4_t;
 using ::int8x8_t;
@@ -40,5 +46,5 @@ auto reciprocal_estimate(Vector input) noexcept -> Vector {
             return __builtin_bit_cast(Vector, __builtin_neon_vrecpe_v(packed, 9));
     }
 }
-} // namespace rstd::arch::arm
 #endif
+} // namespace rstd::arch::arm

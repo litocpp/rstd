@@ -1,14 +1,18 @@
 module;
-#if defined(__i386__) || defined(__x86_64__)
+#if defined(__i386__) || defined(__x86_64__) || defined(_M_IX86) || defined(_M_X64)
 #include <immintrin.h>
 #endif
 
 export module rstd.core:arch.x86;
 
-#if defined(__i386__) || defined(__x86_64__)
+#if defined(__i386__) || defined(__x86_64__) || defined(_M_IX86) || defined(_M_X64)
 // Header-local functions are only imported within rstd.core, never re-exported.
 namespace rstd::arch::x86
 {
+inline void spin_loop() {
+    __builtin_ia32_pause();
+}
+
 using ::__m128;
 using ::__m256;
 using ::_mm_rcp_ps;
