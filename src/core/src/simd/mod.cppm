@@ -1,6 +1,7 @@
 export module rstd.core:simd;
 export import :array;
 import :num.convert;
+export import :arch;
 
 export namespace rstd::simd
 {
@@ -114,15 +115,7 @@ class Simd {
     auto reciprocal_estimate() const noexcept -> Simd
         requires mtp::same_as<T, f32>
     {
-#if defined(__SSE__) || defined(__ARM_NEON)
-        // Select from the module's compilation target, not the caller's target attribute.
-#if defined(__AVX__)
-        constexpr size_t width = N >= 8 ? 8 : 4;
-#elif defined(__ARM_NEON)
-        constexpr size_t width = N >= 4 ? 4 : 2;
-#else
-        constexpr size_t width = 4;
-#endif
+        constexpr size_t width = arch::reciprocal_estimate_width<N>;
         if constexpr (N < width) {
             auto padded = Simd<T, width>::splat(T(1));
             for (size_t i = 0; i < N; ++i) padded.values_[i] = values_[i];
@@ -135,50 +128,8 @@ class Simd {
             return low.template reciprocal_estimate<SquareRoot>().concat(
                 high.template reciprocal_estimate<SquareRoot>());
         } else {
-#if defined(__SSE__)
-            using Packed = float __attribute__((vector_size(sizeof(float) * width)));
-            auto input   = __builtin_bit_cast(Packed, values_);
-#if defined(__AVX__)
-            if constexpr (width == 8) {
-                if constexpr (SquareRoot)
-                    return Simd(__builtin_bit_cast(Raw, __builtin_ia32_rsqrtps256(input)));
-                else
-                    return Simd(__builtin_bit_cast(Raw, __builtin_ia32_rcpps256(input)));
-            } else
-#endif
-            {
-                if constexpr (SquareRoot)
-                    return Simd(__builtin_bit_cast(Raw, __builtin_ia32_rsqrtps(input)));
-                else
-                    return Simd(__builtin_bit_cast(Raw, __builtin_ia32_rcpps(input)));
-            }
-#else
-            using Packed = signed char __attribute__((vector_size(sizeof(float) * width)));
-            auto input   = __builtin_bit_cast(Packed, values_);
-            // Clang NEON overload codes: float32x4_t = 41, float32x2_t = 9.
-            if constexpr (width == 4) {
-                if constexpr (SquareRoot)
-                    return Simd(__builtin_bit_cast(Raw, __builtin_neon_vrsqrteq_v(input, 41)));
-                else
-                    return Simd(__builtin_bit_cast(Raw, __builtin_neon_vrecpeq_v(input, 41)));
-            } else {
-                if constexpr (SquareRoot)
-                    return Simd(__builtin_bit_cast(Raw, __builtin_neon_vrsqrte_v(input, 9)));
-                else
-                    return Simd(__builtin_bit_cast(Raw, __builtin_neon_vrecpe_v(input, 9)));
-            }
-#endif
+            return Simd(arch::reciprocal_estimate<SquareRoot>(values_));
         }
-#else
-        Simd result;
-        for (size_t i = 0; i < N; ++i) {
-            if constexpr (SquareRoot)
-                result.values_[i] = (T(1) / T(values_[i]).sqrt()).to_primitive();
-            else
-                result.values_[i] = (T(1) / T(values_[i])).to_primitive();
-        }
-        return result;
-#endif
     }
 
 public:

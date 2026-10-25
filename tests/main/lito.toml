@@ -171,10 +171,15 @@ package = "rstd-std"
 sources = ["async/io_backend.cppm", "ffi/os_encoding.cppm"]
 
 [[test.attach]]
+package = "rstd-core"
+sources = ["simd/arch.cppm"]
+
+[[test.attach]]
 package = "rstd-alloc"
 sources = ["collections/btree.cppm"]
 
 [dependencies]
+rstd-core = { path = "../../src/core" }
 rstd-alloc = { path = "../../src/alloc" }
 rstd-std = { path = "../../src/std" }
 rstd-test = { path = "../../src/test" }

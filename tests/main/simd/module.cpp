@@ -10,6 +10,17 @@ TEST(Simd, CoreAndStdImports) {
     EXPECT_TRUE((simd::Simd<i32, 4>::splat(i32(3)).reduce_sum() == i32(12)));
 }
 
+TEST(Simd, ReciprocalEstimatesAcrossModules) {
+    EXPECT_TRUE(simd_estimates_core_check());
+    using V    = simd::Simd<f32, 4>;
+    auto input = V::splat(f32(4));
+    hint::black_box(input);
+    EXPECT_TRUE(
+        (input.recip_estimate() - V::splat(f32(0.25))).abs().simd_lt(V::splat(f32(0.002))).all());
+    EXPECT_TRUE(
+        (input.rsqrt_estimate() - V::splat(f32(0.5))).abs().simd_lt(V::splat(f32(0.002))).all());
+}
+
 TEST(Simd, Avx2TargetBoundary) {
 #if defined(__x86_64__)
     __builtin_cpu_init();

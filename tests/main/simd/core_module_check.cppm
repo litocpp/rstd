@@ -5,6 +5,25 @@ export auto simd_core_check() -> bool {
     return rstd::simd::Simd<rstd::i32, 4>::splat(rstd::i32(2)).reduce_sum() == rstd::i32(8);
 }
 
+template<rstd::size_t N>
+auto estimates_core_check() -> bool {
+    using namespace rstd;
+    auto input = simd::Simd<f32, N>::splat(f32(4));
+    hint::black_box(input);
+    return ((input.recip_estimate() * input - simd::Simd<f32, N>::splat(f32(1)))
+                .abs()
+                .simd_lt(simd::Simd<f32, N>::splat(f32(0.002))))
+               .all() &&
+           ((input.rsqrt_estimate() - simd::Simd<f32, N>::splat(f32(0.5)))
+                .abs()
+                .simd_lt(simd::Simd<f32, N>::splat(f32(0.002))))
+               .all();
+}
+
+export auto simd_estimates_core_check() -> bool {
+    return estimates_core_check<1>() && estimates_core_check<8>() && estimates_core_check<64>();
+}
+
 #if defined(__x86_64__)
 export [[gnu::target("avx2")]]
 void simd_avx_transform(const rstd::f32* input, rstd::f32* output) {
