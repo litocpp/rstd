@@ -12,6 +12,7 @@ export module rstd:async.io_backend_tests;
 #if RSTD_OS_LINUX
 import :async.io_operation;
 import :async.poll;
+import :async.reactor;
 import :async.runtime;
 import :async.spawn;
 import rstd.sys.pal.poll.types;
@@ -23,6 +24,109 @@ using namespace rstd;
 
 namespace
 {
+
+extern const task::RawWakerVTable READINESS_WAKER_VTABLE;
+
+auto readiness_waker_clone(voidp data) -> task::RawWaker {
+    return task::RawWaker::from_raw_parts(data, rstd::addressof(READINESS_WAKER_VTABLE));
+}
+
+void readiness_waker_wake(voidp data) {
+    ++*static_cast<int*>(data);
+}
+
+void readiness_waker_drop(voidp) {
+}
+
+const task::RawWakerVTable READINESS_WAKER_VTABLE {
+    &readiness_waker_clone,
+    &readiness_waker_wake,
+    &readiness_waker_wake,
+    &readiness_waker_drop,
+};
+
+auto readiness_waker(int& wakes) -> task::Waker {
+    return task::Waker::from_raw(readiness_waker_clone(rstd::addressof(wakes)));
+}
+
+TEST(RstdAsyncReactor, ReadinessTakesOnlyMatchingWaitersBeforeNotifying) {
+    auto state = async::RegistrationArc::make(os::fd::INVALID_RAW_FD);
+    int  read_wakes {}, write_wakes {};
+    {
+        auto fields             = state->fields.lock().unwrap();
+        fields->read_waker      = Some(readiness_waker(read_wakes));
+        fields->write_waker     = Some(readiness_waker(write_wakes));
+        fields->read_waiter_id  = usize(1);
+        fields->write_waiter_id = usize(2);
+    }
+    auto key = async::RegistrationKey { u32(), u32(1) };
+    async::handle_registration_event(
+        state, async::PollEventData::readiness(key, async::Ready::readable()));
+    EXPECT_EQ(read_wakes, 1);
+    EXPECT_EQ(write_wakes, 0);
+    {
+        auto fields = state->fields.lock().unwrap();
+        EXPECT_TRUE(fields->read_waker.is_none());
+        EXPECT_EQ(fields->read_waiter_id, usize());
+        EXPECT_TRUE(fields->write_waker.is_some());
+        EXPECT_EQ(fields->write_waiter_id, usize(2));
+        EXPECT_FALSE(async::registration_interest(*fields).is_readable());
+        EXPECT_TRUE(async::registration_interest(*fields).is_writable());
+        EXPECT_TRUE(fields->ready.is_readable());
+    }
+    async::handle_registration_event(
+        state, async::PollEventData::readiness(key, async::Ready::writable()));
+    EXPECT_EQ(read_wakes, 1);
+    EXPECT_EQ(write_wakes, 1);
+    {
+        auto fields = state->fields.lock().unwrap();
+        EXPECT_TRUE(fields->write_waker.is_none());
+        EXPECT_EQ(fields->write_waiter_id, usize());
+        EXPECT_TRUE(async::registration_interest(*fields).is_empty());
+    }
+    async::handle_registration_event(
+        state, async::PollEventData::readiness(key, async::Ready::writable()));
+    EXPECT_EQ(write_wakes, 1);
+}
+
+void verify_readiness_close(bool failure) {
+    auto state = async::RegistrationArc::make(os::fd::INVALID_RAW_FD);
+    int  read_wakes {}, write_wakes {};
+    {
+        auto fields             = state->fields.lock().unwrap();
+        fields->read_waker      = Some(readiness_waker(read_wakes));
+        fields->write_waker     = Some(readiness_waker(write_wakes));
+        fields->read_waiter_id  = usize(1);
+        fields->write_waiter_id = usize(2);
+    }
+    if (failure)
+        async::fail_registration(state,
+                                 io::Error::from_kind(io::ErrorKind { io::ErrorKind::BrokenPipe }));
+    else
+        async::begin_registration_deregister(state);
+    EXPECT_EQ(read_wakes, 1);
+    EXPECT_EQ(write_wakes, 1);
+    {
+        auto fields = state->fields.lock().unwrap();
+        EXPECT_TRUE(fields->closed);
+        EXPECT_TRUE(fields->read_waker.is_none());
+        EXPECT_TRUE(fields->write_waker.is_none());
+        EXPECT_EQ(fields->read_waiter_id, usize());
+        EXPECT_EQ(fields->write_waiter_id, usize());
+        EXPECT_TRUE(async::registration_interest(*fields).is_empty());
+    }
+    async::begin_registration_deregister(state);
+    EXPECT_EQ(read_wakes, 1);
+    EXPECT_EQ(write_wakes, 1);
+}
+
+TEST(RstdAsyncReactor, FailureTakesWaitersBeforeNotifying) {
+    verify_readiness_close(true);
+}
+
+TEST(RstdAsyncReactor, DeregisterTakesWaitersBeforeNotifying) {
+    verify_readiness_close(false);
+}
 
 struct CapturedEvent {
     Option<async::PollEventData> value {};

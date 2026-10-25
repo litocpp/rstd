@@ -120,10 +120,10 @@ void fail_registration(const RegistrationArc& state, io::Error error) {
         fields->closed = true;
         fields->error  = Some(rstd::move(error));
         if (fields->read_waker.is_some()) {
-            wakers.push(rstd::move(fields->read_waker).unwrap_unchecked());
+            wakers.push(fields->read_waker.take().unwrap_unchecked());
         }
         if (fields->write_waker.is_some()) {
-            wakers.push(rstd::move(fields->write_waker).unwrap_unchecked());
+            wakers.push(fields->write_waker.take().unwrap_unchecked());
         }
         fields->read_waiter_id  = usize();
         fields->write_waiter_id = usize();
@@ -167,10 +167,10 @@ void begin_registration_deregister(const RegistrationArc& state) {
         if (! fields->closed) {
             fields->closed = true;
             if (fields->read_waker.is_some()) {
-                wakers.push(rstd::move(fields->read_waker).unwrap_unchecked());
+                wakers.push(fields->read_waker.take().unwrap_unchecked());
             }
             if (fields->write_waker.is_some()) {
-                wakers.push(rstd::move(fields->write_waker).unwrap_unchecked());
+                wakers.push(fields->write_waker.take().unwrap_unchecked());
             }
             fields->read_waiter_id  = usize();
             fields->write_waiter_id = usize();
@@ -322,12 +322,12 @@ void handle_registration_event(const RegistrationArc& state, PollEventData data)
         ++fields->tick;
         if ((ready.is_readable() || ready.is_read_closed() || ready.is_error()) &&
             fields->read_waker.is_some()) {
-            wakers.push(rstd::move(fields->read_waker).unwrap_unchecked());
+            wakers.push(fields->read_waker.take().unwrap_unchecked());
             fields->read_waiter_id = usize();
         }
         if ((ready.is_writable() || ready.is_write_closed() || ready.is_error()) &&
             fields->write_waker.is_some()) {
-            wakers.push(rstd::move(fields->write_waker).unwrap_unchecked());
+            wakers.push(fields->write_waker.take().unwrap_unchecked());
             fields->write_waiter_id = usize();
         }
         for (rstd::size_t i = 0; i < fields->facility_waiters.len().to_primitive();) {
