@@ -26,3 +26,15 @@ TEST(Simd, Avx2TargetBoundary) {
     GTEST_SKIP() << "AVX2 requires x86_64";
 #endif
 }
+
+TEST(Simd, SeparateRoundingAndSignedZero) {
+#if defined(__x86_64__)
+    __builtin_cpu_init();
+    if (! __builtin_cpu_supports("avx2") || ! __builtin_cpu_supports("fma")) {
+        GTEST_SKIP() << "AVX2/FMA unavailable";
+    }
+    EXPECT_TRUE(simd_separate_rounding());
+#else
+    GTEST_SKIP() << "AVX2/FMA requires x86_64";
+#endif
+}

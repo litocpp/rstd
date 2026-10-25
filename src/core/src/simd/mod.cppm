@@ -110,6 +110,77 @@ class Simd {
         return Mask<N>(__builtin_convertvector(result, typename Mask<N>::Bits));
     }
 
+    template<bool SquareRoot>
+    auto reciprocal_estimate() const noexcept -> Simd
+        requires mtp::same_as<T, f32>
+    {
+#if defined(__SSE__) || defined(__ARM_NEON)
+        // Select from the module's compilation target, not the caller's target attribute.
+#if defined(__AVX__)
+        constexpr size_t width = N >= 8 ? 8 : 4;
+#elif defined(__ARM_NEON)
+        constexpr size_t width = N >= 4 ? 4 : 2;
+#else
+        constexpr size_t width = 4;
+#endif
+        if constexpr (N < width) {
+            auto padded = Simd<T, width>::splat(T(1));
+            for (size_t i = 0; i < N; ++i) padded.values_[i] = values_[i];
+            auto estimate = padded.template reciprocal_estimate<SquareRoot>();
+            Simd result;
+            for (size_t i = 0; i < N; ++i) result.values_[i] = estimate.values_[i];
+            return result;
+        } else if constexpr (N > width) {
+            auto [low, high] = split();
+            return low.template reciprocal_estimate<SquareRoot>().concat(
+                high.template reciprocal_estimate<SquareRoot>());
+        } else {
+#if defined(__SSE__)
+            using Packed = float __attribute__((vector_size(sizeof(float) * width)));
+            auto input   = __builtin_bit_cast(Packed, values_);
+#if defined(__AVX__)
+            if constexpr (width == 8) {
+                if constexpr (SquareRoot)
+                    return Simd(__builtin_bit_cast(Raw, __builtin_ia32_rsqrtps256(input)));
+                else
+                    return Simd(__builtin_bit_cast(Raw, __builtin_ia32_rcpps256(input)));
+            } else
+#endif
+            {
+                if constexpr (SquareRoot)
+                    return Simd(__builtin_bit_cast(Raw, __builtin_ia32_rsqrtps(input)));
+                else
+                    return Simd(__builtin_bit_cast(Raw, __builtin_ia32_rcpps(input)));
+            }
+#else
+            using Packed = signed char __attribute__((vector_size(sizeof(float) * width)));
+            auto input   = __builtin_bit_cast(Packed, values_);
+            // Clang NEON overload codes: float32x4_t = 41, float32x2_t = 9.
+            if constexpr (width == 4) {
+                if constexpr (SquareRoot)
+                    return Simd(__builtin_bit_cast(Raw, __builtin_neon_vrsqrteq_v(input, 41)));
+                else
+                    return Simd(__builtin_bit_cast(Raw, __builtin_neon_vrecpeq_v(input, 41)));
+            } else {
+                if constexpr (SquareRoot)
+                    return Simd(__builtin_bit_cast(Raw, __builtin_neon_vrsqrte_v(input, 9)));
+                else
+                    return Simd(__builtin_bit_cast(Raw, __builtin_neon_vrecpe_v(input, 9)));
+            }
+#endif
+        }
+#else
+        Simd result;
+        for (size_t i = 0; i < N; ++i) {
+            if constexpr (SquareRoot)
+                result.values_[i] = (T(1) / T(values_[i]).sqrt()).to_primitive();
+            else
+                result.values_[i] = (T(1) / T(values_[i])).to_primitive();
+        }
+        return result;
+#endif
+    }
+
 public:
     using value_type = T;
     using bits_type  = mtp::cond<sizeof(Primitive) == 4, u32, u64>;
@@ -253,6 +324,24 @@ public:
         requires FloatElement<T>
     {
         return Simd(__builtin_elementwise_copysign(values_, sign.values_));
+    }
+
+    /// Unrefined reciprocal estimate using SSE/AVX or NEON; other targets use division.
+    /// Accuracy, subnormal handling and floating-point exceptions are target-dependent.
+    /// SSE/AVX treats subnormal inputs as zero; NEON follows the target FP control state.
+    auto recip_estimate() const noexcept -> Simd
+        requires mtp::same_as<T, f32>
+    {
+        return reciprocal_estimate<false>();
+    }
+
+    /// Unrefined reciprocal square root using SSE/AVX or NEON; other targets use sqrt and division.
+    /// Accuracy, subnormal handling and floating-point exceptions are target-dependent.
+    /// SSE/AVX treats subnormal inputs as zero; NEON follows the target FP control state.
+    auto rsqrt_estimate() const noexcept -> Simd
+        requires mtp::same_as<T, f32>
+    {
+        return reciprocal_estimate<true>();
     }
 
     /// Fused multiplication and addition with a single rounding.
