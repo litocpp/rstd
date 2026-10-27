@@ -6,6 +6,8 @@ target_include_directories(rstd.runtime PUBLIC
 
 if(CMAKE_C_COMPILER_TARGET STREQUAL "wasm32-unknown-unknown")
   target_compile_options(rstd.runtime PRIVATE -ffreestanding -fno-builtin)
+  target_sources(rstd.runtime PRIVATE src/alloc_wasm.c)
+  source_group("dlmalloc" FILES src/alloc_wasm.c)
   set(RSTD_WASM_BUILTINS
     compiler-rt/builtins/multi3.c
     compiler-rt/builtins/udivti3.c

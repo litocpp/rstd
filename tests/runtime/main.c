@@ -4,7 +4,7 @@ static bool aligned(const void* pointer, size_t alignment) {
     return pointer != NULL && (uintptr_t)pointer % alignment == 0;
 }
 
-int main(void) {
+static int check_allocations(void) {
     const size_t alignments[] = { 1, 2, 4, 8, 16, 64, 4096 };
     const size_t sizes[]      = { 0, 1, 264, 4097 };
     for (size_t a = 0; a < sizeof(alignments) / sizeof(*alignments); ++a) {
@@ -47,3 +47,13 @@ int main(void) {
     }
     return 0;
 }
+
+#if defined(__wasm__)
+__attribute__((export_name("rstd_runtime_contract"))) int rstd_runtime_contract(void) {
+    return check_allocations();
+}
+#else
+int main(void) {
+    return check_allocations();
+}
+#endif

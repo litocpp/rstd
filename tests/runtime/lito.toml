@@ -5,7 +5,13 @@ standard = "c17"
 [[test]]
 name = "rstd-runtime-tests"
 sources = ["main.c"]
+when = [
+  { condition = 'target.triple == "wasm32-unknown-unknown"', source-groups = ["wasm"] },
+]
 link-stdlib = false
+
+[source-groups.wasm]
+sources = ["wasm.c"]
 
 [dependencies]
 rstd-runtime = { path = "../../src/runtime" }

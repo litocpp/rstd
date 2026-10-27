@@ -1,7 +1,7 @@
 [package]
 name = "rstd-runtime"
 version.workspace = true
-license = "(MIT OR Apache-2.0) AND (Apache-2.0 WITH LLVM-exception)"
+license = "(MIT OR Apache-2.0) AND (Apache-2.0 WITH LLVM-exception) AND MIT-0"
 authors.workspace = true
 standard = "c17"
 
@@ -10,8 +10,11 @@ name = "rstd-runtime"
 archive = "rstd.runtime"
 sources = ["src/alloc.c", "src/panic.c", "src/math.c", "src/memory.c"]
 when = [
-  { condition = 'target.triple == "wasm32-unknown-unknown"', source-groups = ["compiler-rt"] },
+  { condition = 'target.triple == "wasm32-unknown-unknown"', source-groups = ["dlmalloc", "compiler-rt"] },
 ]
+
+[source-groups.dlmalloc]
+sources = ["src/alloc_wasm.c"]
 
 [source-groups.compiler-rt]
 sources = [
