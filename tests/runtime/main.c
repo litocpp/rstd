@@ -45,6 +45,14 @@ static int check_allocations(void) {
     for (size_t index = 0; index < sizeof(invalid) / sizeof(*invalid); ++index) {
         if (__rstd_alloc(16, invalid[index]) != NULL) return 11;
     }
+    unsigned char* original = __rstd_alloc(16, 8);
+    if (original == NULL) return 12;
+    original[0] = 42;
+    for (size_t index = 0; index < sizeof(invalid) / sizeof(*invalid); ++index) {
+        if (__rstd_realloc(original, 16, invalid[index], 32) != NULL) return 13;
+        if (original[0] != 42) return 14;
+    }
+    __rstd_dealloc(original, 16, 8);
     return 0;
 }
 

@@ -15,10 +15,13 @@
 void* __rstd_alloc(size_t size, size_t align) {
     if (align == 0 || (align & (align - 1)) != 0) return NULL;
     if (size == 0) size = 1;
-    if (align <= _Alignof(max_align_t)) return malloc(size);
 #if defined(_WIN32)
+    if (align <= _Alignof(max_align_t)) return malloc(size);
     return _aligned_malloc(size, align);
 #else
+    // Small allocations may provide less than max_align_t alignment.
+    if (align <= _Alignof(max_align_t) && align <= size) return malloc(size);
+    if (align < sizeof(void*)) align = sizeof(void*);
     void* result = NULL;
     return posix_memalign(&result, align, size) == 0 ? result : NULL;
 #endif
@@ -38,7 +41,10 @@ void __rstd_dealloc(void* pointer, size_t size, size_t align) {
 }
 
 void* __rstd_realloc(void* pointer, size_t old_size, size_t align, size_t new_size) {
+    if (align == 0 || (align & (align - 1)) != 0) return NULL;
     if (pointer == NULL) return __rstd_alloc(new_size, align);
+    if (new_size == 0) new_size = 1;
+    if (align <= _Alignof(max_align_t) && align <= new_size) return realloc(pointer, new_size);
     void* replacement = __rstd_alloc(new_size, align);
     if (replacement != NULL) {
         __builtin_memcpy(replacement, pointer, old_size < new_size ? old_size : new_size);
@@ -48,6 +54,9 @@ void* __rstd_realloc(void* pointer, size_t old_size, size_t align, size_t new_si
 }
 
 void* __rstd_alloc_zeroed(size_t size, size_t align) {
+    if (align == 0 || (align & (align - 1)) != 0) return NULL;
+    if (size == 0) size = 1;
+    if (align <= _Alignof(max_align_t) && align <= size) return calloc(1, size);
     void* pointer = __rstd_alloc(size, align);
     if (pointer != NULL) __builtin_memset(pointer, 0, size);
     return pointer;

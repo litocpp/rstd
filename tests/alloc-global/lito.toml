@@ -1,0 +1,14 @@
+[package]
+name = "rstd-alloc-global-tests"
+
+[profile.base]
+exceptions = false
+rtti = false
+
+[[test]]
+name = "rstd-alloc-global-tests"
+sources = ["main.cpp"]
+link-stdlib = false
+
+[dependencies]
+rstd-alloc = { path = "../../src/alloc" }

@@ -1,4 +1,5 @@
 module;
+#include <rstd/macro.hpp>
 #include <rstd/runtime.h>
 
 export module rstd.alloc:alloc;
@@ -20,7 +21,6 @@ namespace alloc
 /// \param layout The memory layout describing size and alignment requirements.
 /// \return A mutable pointer to the allocated memory.
 export auto alloc(Layout layout) noexcept -> void* {
-    layout = layout.cpp_layout();
     return __rstd_alloc(layout.size.to_primitive(), layout.align.to_primitive());
 }
 
@@ -28,7 +28,6 @@ export auto alloc(Layout layout) noexcept -> void* {
 /// \param ptr The pointer to the memory to deallocate.
 /// \param layout The layout that was used to allocate the memory.
 export void dealloc(void* ptr, Layout layout) noexcept {
-    layout = layout.cpp_layout();
     __rstd_dealloc(ptr, layout.size.to_primitive(), layout.align.to_primitive());
 }
 
@@ -38,7 +37,6 @@ export void dealloc(void* ptr, Layout layout) noexcept {
 /// \param new_size The desired new size in bytes.
 /// \return A mutable pointer to the reallocated memory.
 export auto realloc(void* ptr, Layout layout, usize new_size) noexcept -> void* {
-    layout = layout.cpp_layout();
     return __rstd_realloc(
         ptr, layout.size.to_primitive(), layout.align.to_primitive(), new_size.to_primitive());
 }
@@ -47,7 +45,6 @@ export auto realloc(void* ptr, Layout layout, usize new_size) noexcept -> void* 
 /// \param layout The memory layout describing size and alignment requirements.
 /// \return A mutable pointer to the zero-initialized allocated memory.
 export auto alloc_zeroed(Layout layout) noexcept -> void* {
-    layout = layout.cpp_layout();
     return __rstd_alloc_zeroed(layout.size.to_primitive(), layout.align.to_primitive());
 }
 
@@ -125,24 +122,52 @@ struct rstd::Impl<rstd::alloc::Allocator, alloc_::Global>
     }
 
     void deallocate(void* ptr, Layout layout) const noexcept {
-        if (layout.size != usize()) ::alloc::dealloc(ptr, layout.cpp_layout());
+        if (layout.size != usize()) ::alloc::dealloc(ptr, layout);
     }
 
+private:
+    auto resize(void* pointer, Layout old_layout, Layout new_layout) const
+        -> Result<Allocation, AllocError> {
+        if (old_layout.size == usize()) return allocate(new_layout);
+        if (new_layout.size == usize()) {
+            deallocate(pointer, old_layout);
+            return Ok(Allocation { new_layout.dangling(), new_layout.size });
+        }
+        if (old_layout.align != new_layout.align) {
+            if (new_layout.size >= old_layout.size)
+                return DefaultInImpl<Allocator, alloc_::Global>::grow(
+                    pointer, old_layout, new_layout);
+            return DefaultInImpl<Allocator, alloc_::Global>::shrink(
+                pointer, old_layout, new_layout);
+        }
+        if (old_layout.size == new_layout.size) return Ok(Allocation { pointer, new_layout.size });
+        auto replacement = ::alloc::realloc(pointer, old_layout, new_layout.size);
+        if (replacement == nullptr) return Err(AllocError {});
+        return Ok(Allocation { replacement, new_layout.size });
+    }
+
+public:
     // Inherited member pointers in Global's dyn vtable crash Windows Clang with reduced BMIs.
     auto grow(void* pointer, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
-        return DefaultInImpl<Allocator, alloc_::Global>::grow(pointer, old_layout, new_layout);
+        debug_assert(new_layout.size >= old_layout.size);
+        return resize(pointer, old_layout, new_layout);
     }
 
     auto grow_zeroed(void* pointer, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
-        return DefaultInImpl<Allocator, alloc_::Global>::grow_zeroed(
-            pointer, old_layout, new_layout);
+        auto result = grow(pointer, old_layout, new_layout);
+        if (result.is_ok() && new_layout.size > old_layout.size) {
+            auto tail = static_cast<rstd::byte*>(result->pointer) + old_layout.size.to_primitive();
+            rstd::mem::memset(tail, u8(), new_layout.size - old_layout.size);
+        }
+        return result;
     }
 
     auto shrink(void* pointer, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
-        return DefaultInImpl<Allocator, alloc_::Global>::shrink(pointer, old_layout, new_layout);
+        debug_assert(new_layout.size <= old_layout.size);
+        return resize(pointer, old_layout, new_layout);
     }
 };
 

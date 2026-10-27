@@ -7,7 +7,12 @@ name = "alloc-failure"
 sources = ["main.cpp"]
 
 [usage]
-linker-options = ["-Wl,--wrap=__rstd_alloc"]
+linker-options = [
+  "-Wl,--wrap=__rstd_alloc",
+  "-Wl,--wrap=__rstd_alloc_zeroed",
+  "-Wl,--wrap=__rstd_realloc",
+  "-Wl,--wrap=__rstd_dealloc",
+]
 
 [dependencies]
 rstd-std = { path = "../../src/std" }
