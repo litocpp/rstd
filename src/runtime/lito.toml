@@ -1,14 +1,36 @@
 [package]
 name = "rstd-runtime"
 version.workspace = true
-license.workspace = true
+license = "(MIT OR Apache-2.0) AND (Apache-2.0 WITH LLVM-exception)"
 authors.workspace = true
+standard = "c17"
 
 [lib]
 name = "rstd-runtime"
-module = "rstd.runtime"
 archive = "rstd.runtime"
-sources = ["src/lib.cppm", "src/lib.cpp", "src/math.cpp"]
+sources = ["src/alloc.c", "src/panic.c", "src/math.c", "src/memory.c"]
+when = [
+  { condition = 'target.triple == "wasm32-unknown-unknown"', source-groups = ["compiler-rt"] },
+]
 
-[dependencies]
-rstd-basic = { workspace = true, pub = true }
+[source-groups.compiler-rt]
+sources = [
+  "compiler-rt/builtins/multi3.c",
+  "compiler-rt/builtins/udivti3.c",
+  "compiler-rt/builtins/udivmodti4.c",
+  "compiler-rt/builtins/divti3.c",
+  "compiler-rt/builtins/modti3.c",
+  "compiler-rt/builtins/umodti3.c",
+  "compiler-rt/builtins/ashlti3.c",
+  "compiler-rt/builtins/ashrti3.c",
+  "compiler-rt/builtins/lshrti3.c",
+]
+
+[usage]
+public-include-directories = ["include"]
+
+[[when]]
+condition = 'target.triple == "wasm32-unknown-unknown"'
+
+[when.usage]
+options = ["-ffreestanding", "-fno-builtin"]

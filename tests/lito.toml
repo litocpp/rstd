@@ -4,6 +4,8 @@ members = [
   "budget",
   "alloc-failure",
   "main",
+  "format",
+  "runtime",
   "udp",
   "tcp-owned",
   "range",

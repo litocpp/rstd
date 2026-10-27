@@ -308,59 +308,6 @@ namespace rstd
 /// Re-exports `fmt::format` into the `rstd` namespace.
 export using fmt::format;
 
-template<typename T>
-    requires(num::Integer<T> || rstd::is_raw_int<T>)
-struct Impl<fmt::Display, T> : ImplBase<T> {
-    auto fmt(fmt::Formatter& f) const -> bool {
-        char  buf[64];
-        char* p   = buf + 64;
-        auto  raw = [&]() {
-            if constexpr (num::Integer<T>)
-                return this->self().to_primitive();
-            else
-                return this->self();
-        }();
-        using Raw = decltype(raw);
-        rstd::uint128_t magnitude;
-        bool            negative = false;
-        if constexpr (Raw(-1) < Raw(0)) {
-            if (raw < 0) {
-                negative  = true;
-                magnitude = static_cast<rstd::uint128_t>(0) - static_cast<rstd::uint128_t>(raw);
-            } else {
-                magnitude = static_cast<rstd::uint128_t>(raw);
-            }
-        } else {
-            magnitude = static_cast<rstd::uint128_t>(raw);
-        }
-
-        do {
-            *--p = char('0' + static_cast<unsigned>(magnitude % 10));
-            magnitude /= 10;
-        } while (magnitude > 0);
-
-        rstd::uint8_t sign[1];
-        rstd::size_t  sign_len = 0;
-        if (negative)
-            sign[sign_len++] = '-';
-        else if (f.sign_plus())
-            sign[sign_len++] = '+';
-        return f.pad_numeric(sign,
-                             sign_len,
-                             reinterpret_cast<const rstd::uint8_t*>(p),
-                             static_cast<rstd::size_t>((buf + 64) - p),
-                             0,
-                             nullptr,
-                             0);
-    }
-};
-
-template<typename T>
-    requires(num::Integer<T> || rstd::is_raw_int<T>)
-struct Impl<fmt::Debug, T> : ImplBase<T> {
-    auto fmt(fmt::Formatter& f) const -> bool { return as<fmt::Display>(this->self()).fmt(f); }
-};
-
 template<>
 struct Impl<fmt::Display, char const*> : ImplBase<char const*> {
     auto fmt(fmt::Formatter& formatter) const -> bool;

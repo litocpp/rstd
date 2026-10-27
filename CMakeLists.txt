@@ -3,7 +3,7 @@ project(
   rstd
   VERSION 0.1.9
   DESCRIPTION "Rust-like std for C++"
-  LANGUAGES CXX)
+  LANGUAGES C CXX)
 
 if(WIN32
    AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang"

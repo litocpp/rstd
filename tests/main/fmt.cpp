@@ -61,6 +61,50 @@ TEST(Fmt, IntegerDecimalPadding) {
     EXPECT_EQ(rstd::format("{:042}", i128::MIN), "-00170141183460469231731687303715884105728"_str);
 }
 
+TEST(Fmt, IntegerDecimalWidthsAndChunks) {
+    EXPECT_EQ(rstd::format("{} {} {} {}", i8::MIN, i16::MIN, i32::MIN, i64::MIN),
+              "-128 -32768 -2147483648 -9223372036854775808"_str);
+    EXPECT_EQ(rstd::format("{} {} {} {}", u8::MAX, u16::MAX, u32::MAX, u64::MAX),
+              "255 65535 4294967295 18446744073709551615"_str);
+    EXPECT_EQ(rstd::format("{} {} {} {}", i8::MAX, i16::MAX, i32::MAX, i64::MAX),
+              "127 32767 2147483647 9223372036854775807"_str);
+    constexpr uint64_t values[] = {
+        0,    9,     10,    99,       100,       999,       1000,
+        9999, 10000, 10001, 99999999, 100000000, 100000001, 1000000000000000000
+    };
+    constexpr ref<str> expected[] = { "0"_str,         "9"_str,
+                                      "10"_str,        "99"_str,
+                                      "100"_str,       "999"_str,
+                                      "1000"_str,      "9999"_str,
+                                      "10000"_str,     "10001"_str,
+                                      "99999999"_str,  "100000000"_str,
+                                      "100000001"_str, "1000000000000000000"_str };
+    usize              index {};
+    for (auto value : values) {
+        auto text = expected[index.to_primitive()];
+        EXPECT_EQ(rstd::format("{}", value), text);
+        EXPECT_EQ(rstd::format("{}", u128(value)), text);
+        if (value <= 0xffffffffu)
+            EXPECT_EQ(rstd::format("{}", u32(static_cast<uint32_t>(value))), text);
+        ++index;
+    }
+    EXPECT_EQ(rstd::format("{}", u128(u64::MAX.to_primitive()) + u128(1)),
+              "18446744073709551616"_str);
+    auto block  = u128(10000000000000000ull);
+    auto square = block * block;
+    EXPECT_EQ(
+        rstd::format("{} {} {}", square - u128(1), square, square + u128(1)),
+        "99999999999999999999999999999999 100000000000000000000000000000000 100000000000000000000000000000001"_str);
+    EXPECT_EQ(
+        rstd::format("{:?} {:?}", i128::MIN, i128::MAX),
+        "-170141183460469231731687303715884105728 170141183460469231731687303715884105727"_str);
+    auto reject = [](void*, const uint8_t*, size_t) -> bool {
+        return false;
+    };
+    fmt::Formatter formatter(nullptr, reject);
+    EXPECT_FALSE(as<fmt::Display>(u128::MAX).fmt(formatter));
+}
+
 TEST(Fmt, IntegerHex) {
     EXPECT_EQ(rstd::format("{:x} {:X} {:#x} {:#X}", u32(48879), u32(48879), u32(48879), u32(48879)),
               "beef BEEF 0xbeef 0xBEEF"_str);

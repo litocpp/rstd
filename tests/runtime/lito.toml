@@ -1,0 +1,11 @@
+[package]
+name = "rstd-runtime-tests"
+standard = "c17"
+
+[[test]]
+name = "rstd-runtime-tests"
+sources = ["main.c"]
+link-stdlib = false
+
+[dependencies]
+rstd-runtime = { path = "../../src/runtime" }

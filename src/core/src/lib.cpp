@@ -1,3 +1,6 @@
+module;
+#include <rstd/runtime.h>
+
 module rstd.core;
 import :core;
 import :fmt;
@@ -8,11 +11,23 @@ import :str.str;
 
 using rstd::panic_::PanicInfo;
 
-extern "C" [[noreturn]]
-void rstd_panic_impl(PanicInfo const& info);
-
 namespace
 {
+[[noreturn]]
+void runtime_panic(PanicInfo const& info) {
+    const auto runtime_info = rstd_panic_info {
+        .data               = info.data,
+        .format             = info.fmt,
+        .file               = info.location.file_name(),
+        .function           = info.location.function_name(),
+        .line               = info.location.line(),
+        .column             = info.location.column(),
+        .can_unwind         = info.can_unwind,
+        .force_no_backtrace = info.force_no_backtrace,
+    };
+    rstd_panic_impl(&runtime_info);
+}
+
 bool panic_write_fmt(void const* data, void* ctx, rstd::panic_::WriteFn write) {
     auto const&          args = *static_cast<rstd::fmt::Arguments const*>(data);
     rstd::fmt::Formatter f(ctx, write);
@@ -29,7 +44,7 @@ void panic_fmt(fmt::Arguments args, source_location loc) {
         .fmt      = panic_write_fmt,
         .location = panic_::Location::from(loc),
     };
-    rstd_panic_impl(info);
+    runtime_panic(info);
 }
 
 void panic_fmt_nounwind(fmt::Arguments args, source_location loc) {
@@ -39,7 +54,7 @@ void panic_fmt_nounwind(fmt::Arguments args, source_location loc) {
         .location   = panic_::Location::from(loc),
         .can_unwind = false,
     };
-    rstd_panic_impl(info);
+    runtime_panic(info);
 }
 
 void panic_message(ref<str> message, source_location loc) {
@@ -68,32 +83,6 @@ void panic_invalid_shift(rstd::source_location loc) {
 [[noreturn]]
 void panic_invalid_float_clamp(rstd::source_location loc) {
     rstd::panic_message("min > max, or either was NaN", loc);
-}
-
-auto write_integer_radix(rstd::fmt::Formatter&   formatter,
-                         rstd::uint128_t         value,
-                         rstd::fmt::Presentation presentation) -> bool {
-    const bool     octal = presentation == rstd::fmt::Presentation::Octal;
-    const unsigned shift = octal ? 3 : 4;
-    const unsigned mask  = (1u << shift) - 1;
-    const char*    digits =
-        presentation == rstd::fmt::Presentation::UpperHex ? "0123456789ABCDEF" : "0123456789abcdef";
-    rstd::uint8_t buffer[(128 + 2) / 3];
-    auto          offset = sizeof(buffer);
-    do {
-        buffer[--offset] = static_cast<rstd::uint8_t>(digits[static_cast<unsigned>(value & mask)]);
-        value >>= shift;
-    } while (value != 0);
-
-    rstd::uint8_t prefix[3];
-    rstd::size_t  length = 0;
-    if (formatter.sign_plus()) prefix[length++] = '+';
-    if (formatter.alternate()) {
-        prefix[length++] = '0';
-        prefix[length++] = octal ? 'o' : 'x';
-    }
-    return formatter.pad_numeric(
-        prefix, length, buffer + offset, sizeof(buffer) - offset, 0, nullptr, 0);
 }
 
 namespace rstd::fmt

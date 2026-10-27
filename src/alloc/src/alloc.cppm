@@ -1,3 +1,6 @@
+module;
+#include <rstd/runtime.h>
+
 export module rstd.alloc:alloc;
 export import rstd.core;
 
@@ -9,14 +12,6 @@ using rstd::alloc::Allocation;
 using rstd::alloc::Layout;
 using rstd::ptr_::non_null::NonNull;
 using rstd::result::Result;
-
-// External symbols to be implemented by the runtime
-extern "C" {
-void* __rstd_alloc(rstd::size_t size, rstd::size_t align);
-void  __rstd_dealloc(void* ptr, rstd::size_t size, rstd::size_t align);
-void* __rstd_realloc(void* ptr, rstd::size_t old_size, rstd::size_t align, rstd::size_t new_size);
-void* __rstd_alloc_zeroed(rstd::size_t size, rstd::size_t align);
-}
 
 namespace alloc
 {
