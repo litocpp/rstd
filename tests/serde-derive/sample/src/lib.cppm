@@ -1,3 +1,5 @@
+module;
+#include <rstd/enum.hpp>
 export module serde.sample;
 import rstd;
 import rstd.serde;
@@ -34,5 +36,26 @@ struct [[pmacro::derive("serde::derive"), pmacro::helper("serde::derive", ignore
 struct [[pmacro::derive("serde::derive")]] Special {
     [[pmacro::helper("serde::derive", rename("__proto__"))]]
     String value;
+};
+struct [[pmacro::derive("serde::derive")]] ErrorFields {
+    String message;
+    u32    code;
+};
+class [[pmacro::derive("serde::derive"), pmacro::helper("serde::derive", variants)]] DomainError {
+    RSTD_ENUM_TYPES(DomainError, (Missing), (Code, (u32)), (Fields, (ErrorFields)))
+};
+class [[pmacro::derive("serde::derive"), pmacro::helper("serde::derive", variants)]] LegacyError {
+    RSTD_ENUM(LegacyError, (Missing), (Code, (u32 value;)))
+};
+constexpr auto rstd_serde_definition(LegacyError::Code_payload*) {
+    return rstd::serde::RecordDefinition<
+        LegacyError::Code_payload,
+        "sample::LegacyError::Code",
+        rstd::serde::Direction::Both,
+        rstd::serde::UnknownFieldPolicy::Reject,
+        rstd::serde::Member<&LegacyError::Code_payload::value, "value">> {};
+}
+struct [[pmacro::derive("serde::derive")]] DomainEnvelope {
+    Result<Vec<u32>, DomainError> result = Ok(Vec<u32>::make());
 };
 } // namespace sample

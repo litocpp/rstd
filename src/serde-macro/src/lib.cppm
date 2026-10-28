@@ -26,7 +26,7 @@ auto quote(std::string_view text) -> std::string {
 struct Options {
     std::optional<std::string> rename;
     std::vector<std::string>   aliases;
-    bool defaulted {}, skip {}, ignore_unknown {}, encode_only {}, decode_only {};
+    bool defaulted {}, skip {}, ignore_unknown {}, encode_only {}, decode_only {}, variants {};
 };
 
 auto options(pmacro::Context& context, const std::vector<pmacro::HelperInfo>& helpers)
@@ -74,6 +74,8 @@ auto options(pmacro::Context& context, const std::vector<pmacro::HelperInfo>& he
                 result.encode_only = true;
             else if (name == "decode_only")
                 result.decode_only = true;
+            else if (name == "variants")
+                result.variants = true;
             else
                 return std::unexpected("unknown serde option: " + std::string(name));
         }
@@ -102,6 +104,18 @@ auto derive(pmacro::DeriveInput input, pmacro::Context& context) noexcept -> Out
     auto source     = std::string {};
     auto definition = std::string {};
     std::set<std::string> names;
+    if (config->variants) {
+        const auto* record = std::get_if<pmacro::RecordInfo>(&declaration.data);
+        if (! record || record->dependent || record->kind == pmacro::RecordKind::Union ||
+            config->ignore_unknown)
+            return failure(context,
+                           declaration.source,
+                           input.item_span,
+                           "serde variants requires a record with VariantDescription");
+        return context.parse("constexpr auto rstd_serde_definition(" + qualified +
+                             "*) { return rstd::serde::VariantDefinition<" + qualified + ',' +
+                             quote(type_name) + ",rstd::serde::Direction::" + mode + ">{}; }");
+    }
     if (const auto* record = std::get_if<pmacro::RecordInfo>(&declaration.data)) {
         if (record->dependent || record->has_bases || record->kind == pmacro::RecordKind::Union)
             return failure(context,
@@ -124,8 +138,8 @@ auto derive(pmacro::DeriveInput input, pmacro::Context& context) noexcept -> Out
             auto settings = options(context, field.helpers);
             if (! settings)
                 return failure(context, field.source, input.item_span, settings.error());
-            if (settings->encode_only || settings->decode_only || settings->ignore_unknown ||
-                (settings->skip && settings->defaulted))
+            if (settings->variants || settings->encode_only || settings->decode_only ||
+                settings->ignore_unknown || (settings->skip && settings->defaulted))
                 return failure(
                     context, field.source, input.item_span, "invalid serde field options");
             auto name = settings->rename.value_or(*field.name);
@@ -161,8 +175,9 @@ auto derive(pmacro::DeriveInput input, pmacro::Context& context) noexcept -> Out
         for (const auto& item : enumeration->enumerators) {
             auto settings = options(context, item.helpers);
             if (! settings) return failure(context, item.source, input.item_span, settings.error());
-            if (! settings->aliases.empty() || settings->defaulted || settings->skip ||
-                settings->ignore_unknown || settings->encode_only || settings->decode_only)
+            if (settings->variants || ! settings->aliases.empty() || settings->defaulted ||
+                settings->skip || settings->ignore_unknown || settings->encode_only ||
+                settings->decode_only)
                 return failure(
                     context, item.source, input.item_span, "enum items support only serde rename");
             auto name = settings->rename.value_or(item.name);

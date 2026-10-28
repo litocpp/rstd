@@ -26,5 +26,25 @@ int main() {
             R"({"label":"x","name":"y","mode":"Fast","values":[],"note":null})"_str)
             .is_ok())
         return 6;
+    auto domain = rstd::json::decode<sample::DomainEnvelope>(
+        R"({"result":{"Err":{"Fields":{"message":"broken","code":7}}}})"_str);
+    if (domain.is_err() || domain->result.is_ok() ||
+        ! domain->result.unwrap_err_unchecked().is_Fields())
+        return 7;
+    auto domain_toml = rstd::toml::encode(*domain);
+    if (domain_toml.is_err()) return 8;
+    auto domain_again = rstd::toml::decode<sample::DomainEnvelope>(domain_toml->as_str());
+    if (domain_again.is_err() ||
+        domain_again->result.unwrap_err_unchecked().as_Fields().code != u32(7))
+        return 9;
+    auto legacy = rstd::json::decode<sample::LegacyError>(R"({"Code":{"value":17}})"_str);
+    if (legacy.is_err() || legacy->as_Code().value != u32(17)) return 10;
+    auto scalar = rstd::json::decode<sample::DomainError>(R"({"Code":23})"_str);
+    if (scalar.is_err() || scalar->as_Code() != u32(23)) return 11;
+    auto unit = rstd::json::decode<sample::DomainError>(R"("Missing")"_str);
+    if (unit.is_err() || ! unit->is_Missing()) return 12;
+    auto option =
+        rstd::json::decode<rstd::serde::TaggedOption<Option<u32>>>(R"({"Some":null})"_str);
+    if (option.is_err() || option->value.is_none() || option->value->is_some()) return 13;
     return 0;
 }

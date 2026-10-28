@@ -222,6 +222,62 @@ struct EnumDefinition {
     }
 };
 
+template<typename T, Text Name, Direction Mode>
+struct VariantDefinition {
+    static_assert(mtp::complete<Impl<VariantDescription, T>>,
+                  "serde variants requires an explicit VariantDescription");
+    static constexpr auto name           = Name;
+    static constexpr bool serializable   = Mode != Direction::Deserialize;
+    static constexpr bool deserializable = Mode != Direction::Serialize;
+    template<typename F>
+    static constexpr void variants(F function) {
+        Impl<VariantDescription, T>::variants(function);
+    }
+    template<typename S>
+    static auto serialize(S& sink, const T& value) -> typename S::result_type {
+        auto result = typename S::result_type(Err(sink.invalid_value("Unknown variant"_str)));
+        variants([&]<typename V>() {
+            if (V::matches(value)) {
+                if constexpr (__is_void(typename V::payload_type))
+                    result = sink.serialize_unit_variant(Text(V::name).view());
+                else
+                    result = sink.serialize_newtype_variant(Text(V::name).view(), V::get(value));
+            }
+        });
+        return result;
+    }
+    template<typename D>
+    static auto deserialize(D& source) -> Result<T, typename D::error_type> {
+        auto started = source.begin_enum();
+        if (started.is_err()) return Err(rstd::move(started).unwrap_err_unchecked());
+        auto input = rstd::move(started).unwrap_unchecked();
+        auto result =
+            Result<T, typename D::error_type>(Err(source.unknown_variant(input.variant())));
+        variants([&]<typename V>() {
+            if (input.variant() == Text(V::name).view()) {
+                if constexpr (__is_void(typename V::payload_type)) {
+                    auto checked = input.unit();
+                    if (checked.is_err())
+                        result = Err(rstd::move(checked).unwrap_err_unchecked());
+                    else
+                        result = Ok(V::make());
+                } else {
+                    auto value = input.template value<typename V::payload_type>();
+                    if (value.is_err())
+                        result = Err(rstd::move(value).unwrap_err_unchecked());
+                    else
+                        result = Ok(V::make(rstd::move(value).unwrap_unchecked()));
+                }
+            }
+        });
+        return result;
+    }
+    template<typename Sink>
+    static constexpr void describe(Sink& sink) {
+        sink.template variants<VariantDefinition>();
+    }
+};
+
 template<typename T>
 concept Derived = requires { rstd_serde_definition(static_cast<T*>(nullptr)); };
 
@@ -325,6 +381,22 @@ struct Impl<serde::Describe, ::alloc::collections::BTreeMap<K, V>> {
     template<typename Sink>
     static constexpr void describe(Sink& sink) {
         sink.template map<K, V>();
+    }
+};
+template<typename T, typename E>
+    requires serde::Describable<T> && serde::Describable<E>
+struct Impl<serde::Describe, Result<T, E>> {
+    template<typename Sink>
+    static constexpr void describe(Sink& sink) {
+        sink.template result<T, E>();
+    }
+};
+template<typename T>
+    requires serde::Describable<T>
+struct Impl<serde::Describe, serde::TaggedOption<T>> {
+    template<typename Sink>
+    static constexpr void describe(Sink& sink) {
+        sink.template tagged_option<T>();
     }
 };
 } // namespace rstd

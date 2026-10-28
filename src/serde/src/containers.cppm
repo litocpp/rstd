@@ -5,8 +5,77 @@ using namespace rstd::prelude;
 using ::alloc::collections::BTreeMap;
 using ::alloc::vec::Vec;
 
+export namespace rstd::serde
+{
+template<typename T>
+struct TaggedOption {
+    Option<T> value;
+};
+} // namespace rstd::serde
+
 namespace rstd
 {
+
+template<typename T, typename E>
+    requires serde::Serializable<T> && serde::Serializable<E>
+struct Impl<serde::Serialize, Result<T, E>> {
+    template<typename S>
+    static auto serialize(S& sink, const Result<T, E>& value) -> typename S::result_type {
+        if (value.is_ok()) return sink.serialize_newtype_variant("Ok"_str, *value);
+        return sink.serialize_newtype_variant("Err"_str, value.as_ref().unwrap_err_unchecked());
+    }
+};
+template<typename T, typename E>
+    requires serde::Deserializable<T> && serde::Deserializable<E>
+struct Impl<serde::Deserialize, Result<T, E>> {
+    template<typename D>
+    static auto deserialize(D& source) -> Result<Result<T, E>, typename D::error_type> {
+        auto started = source.begin_enum();
+        if (started.is_err()) return Err(rstd::move(started).unwrap_err_unchecked());
+        auto input = rstd::move(started).unwrap_unchecked();
+        if (input.variant() == "Ok"_str) {
+            auto value = input.template value<T>();
+            if (value.is_err()) return Err(rstd::move(value).unwrap_err_unchecked());
+            return Ok(Result<T, E>(Ok(rstd::move(value).unwrap_unchecked())));
+        }
+        if (input.variant() == "Err"_str) {
+            auto value = input.template value<E>();
+            if (value.is_err()) return Err(rstd::move(value).unwrap_err_unchecked());
+            return Ok(Result<T, E>(Err(rstd::move(value).unwrap_unchecked())));
+        }
+        return Err(source.unknown_variant(input.variant()));
+    }
+};
+template<typename T>
+    requires serde::Serializable<T>
+struct Impl<serde::Serialize, serde::TaggedOption<T>> {
+    template<typename S>
+    static auto serialize(S& sink, const serde::TaggedOption<T>& value) -> typename S::result_type {
+        if (value.value.is_none()) return sink.serialize_unit_variant("None"_str);
+        return sink.serialize_newtype_variant("Some"_str, *value.value);
+    }
+};
+template<typename T>
+    requires serde::Deserializable<T>
+struct Impl<serde::Deserialize, serde::TaggedOption<T>> {
+    template<typename D>
+    static auto deserialize(D& source) -> Result<serde::TaggedOption<T>, typename D::error_type> {
+        auto started = source.begin_enum();
+        if (started.is_err()) return Err(rstd::move(started).unwrap_err_unchecked());
+        auto input = rstd::move(started).unwrap_unchecked();
+        if (input.variant() == "None"_str) {
+            auto checked = input.unit();
+            if (checked.is_err()) return Err(rstd::move(checked).unwrap_err_unchecked());
+            return Ok(serde::TaggedOption<T> { None<T>() });
+        }
+        if (input.variant() == "Some"_str) {
+            auto value = input.template value<T>();
+            if (value.is_err()) return Err(rstd::move(value).unwrap_err_unchecked());
+            return Ok(serde::TaggedOption<T> { Some(rstd::move(value).unwrap_unchecked()) });
+        }
+        return Err(source.unknown_variant(input.variant()));
+    }
+};
 
 template<typename T>
     requires serde::Serializable<T>

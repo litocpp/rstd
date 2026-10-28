@@ -15,6 +15,28 @@
 #define RSTD_ENUM_DETAIL_PAYLOAD(Name, ...) \
     __VA_OPT__(struct Name##_payload { RSTD_DETAIL_UNPAREN __VA_ARGS__ };)
 
+#define RSTD_ENUM_DETAIL_TYPED_ENTRY(entry) RSTD_DETAIL_APPLY(RSTD_ENUM_DETAIL_TYPED, entry)
+#define RSTD_ENUM_DETAIL_TYPED(Name, ...) \
+    __VA_OPT__(using Name##_payload = RSTD_DETAIL_UNPAREN __VA_ARGS__;)
+
+#define RSTD_ENUM_DETAIL_DESCRIPTOR_ENTRY(entry) \
+    RSTD_DETAIL_APPLY(RSTD_ENUM_DETAIL_DESCRIPTOR, entry)
+#define RSTD_ENUM_DETAIL_DESCRIPTOR(Name, ...) \
+    struct Name##_variant { \
+        using payload_type = RSTD_DETAIL_IF_ARGS(__VA_ARGS__)(Name##_payload, void); \
+        static constexpr char name[] = #Name; \
+        static constexpr bool matches(const Self& value) noexcept { return value.is_##Name(); } \
+        template<typename... Args> \
+        static constexpr auto make(Args&&... args) -> Self { \
+            return Self::Name(::rstd::forward<Args>(args)...); \
+        } \
+        __VA_OPT__(static constexpr auto get(const Self& value) -> const payload_type& { \
+            return value.as_##Name(); \
+        }) \
+    };
+#define RSTD_ENUM_DETAIL_VARIANT_ENTRY(entry) RSTD_DETAIL_APPLY(RSTD_ENUM_DETAIL_VARIANT, entry)
+#define RSTD_ENUM_DETAIL_VARIANT(Name, ...) Name##_variant
+
 #define RSTD_ENUM_DETAIL_TAG_ENTRY(entry) RSTD_DETAIL_APPLY(RSTD_ENUM_DETAIL_TAG, entry)
 #define RSTD_ENUM_DETAIL_TAG(Name, ...)   Name,
 
@@ -159,13 +181,13 @@
             .visit_mut(::rstd::forward<rstd_enum_detail_Visitor>(visitor));                      \
     }
 
-#define RSTD_ENUM_DETAIL_MEMBERS(ClassName, ...)                                               \
+#define RSTD_ENUM_DETAIL_MEMBERS(ClassName, PayloadEntry, ...)                                 \
 public:                                                                                        \
     using Self                                              = ClassName;                       \
     static constexpr ::rstd::size_t rstd_enum_variant_count = 0 RSTD_DETAIL_FOR_EACH(          \
         RSTD_ENUM_DETAIL_COUNT_ENTRY, RSTD_DETAIL_FOR_EACH_SEPARATOR_NONE, __VA_ARGS__);       \
     RSTD_DETAIL_FOR_EACH(                                                                      \
-        RSTD_ENUM_DETAIL_PAYLOAD_ENTRY, RSTD_DETAIL_FOR_EACH_SEPARATOR_NONE, __VA_ARGS__)      \
+        PayloadEntry, RSTD_DETAIL_FOR_EACH_SEPARATOR_NONE, __VA_ARGS__)                         \
     enum class Tag : ::rstd::mtp::cond<(rstd_enum_variant_count <= 0xff),                      \
                                        ::rstd::uint8_t,                                        \
                                        ::rstd::mtp::cond<(rstd_enum_variant_count <= 0xffff),  \
@@ -205,6 +227,10 @@ public:                                                                         
     RSTD_DETAIL_FOR_EACH(                                                                      \
         RSTD_ENUM_DETAIL_ACCESSOR_ENTRY, RSTD_DETAIL_FOR_EACH_SEPARATOR_NONE, __VA_ARGS__)     \
     RSTD_ENUM_DETAIL_VISIT                                                                     \
+    RSTD_DETAIL_FOR_EACH(                                                                      \
+        RSTD_ENUM_DETAIL_DESCRIPTOR_ENTRY, RSTD_DETAIL_FOR_EACH_SEPARATOR_NONE, __VA_ARGS__)   \
+    using Variants = ::rstd::VariantList<RSTD_DETAIL_FOR_EACH(                                  \
+        RSTD_ENUM_DETAIL_VARIANT_ENTRY, RSTD_DETAIL_FOR_EACH_SEPARATOR_COMMA, __VA_ARGS__)>;    \
     [[nodiscard]]                                                                              \
     constexpr auto index() const noexcept -> ::rstd::size_t {                                  \
         return rstd_enum_choice_.index();                                                      \
@@ -214,7 +240,10 @@ public:                                                                         
         return rstd_enum_choice_.which();                                                      \
     }
 
-#define RSTD_ENUM(ClassName, ...) RSTD_ENUM_DETAIL_MEMBERS(ClassName, __VA_ARGS__)
+#define RSTD_ENUM(ClassName, ...) \
+    RSTD_ENUM_DETAIL_MEMBERS(ClassName, RSTD_ENUM_DETAIL_PAYLOAD_ENTRY, __VA_ARGS__)
+#define RSTD_ENUM_TYPES(ClassName, ...) \
+    RSTD_ENUM_DETAIL_MEMBERS(ClassName, RSTD_ENUM_DETAIL_TYPED_ENTRY, __VA_ARGS__)
 
 #define RSTD_ENUM_DETAIL_DEFAULT_CTOR(ClassName, Name, ...)                                 \
     constexpr ClassName() noexcept(                                                         \
@@ -223,7 +252,7 @@ public:                                                                         
     }
 
 #define RSTD_ENUM_DEFAULT(ClassName, DefaultEntry, ...) \
-    RSTD_ENUM_DETAIL_MEMBERS(ClassName, __VA_ARGS__)    \
+    RSTD_ENUM_DETAIL_MEMBERS(ClassName, RSTD_ENUM_DETAIL_PAYLOAD_ENTRY, __VA_ARGS__) \
     RSTD_ENUM_DETAIL_DEFAULT_CTOR_APPLY(ClassName, DefaultEntry)
 
 #define RSTD_ENUM_DETAIL_DEFAULT_CTOR_APPLY(ClassName, DefaultEntry) \
