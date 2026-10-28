@@ -1,0 +1,12 @@
+[package]
+name = "serde-sample"
+version = "0.1.0"
+standard = "c++23"
+[lib]
+name = "serde-sample"
+module = "serde.sample"
+archive = "serde.sample"
+[dependencies]
+rstd-std = { path = "../../../src/std" }
+rstd-serde = { path = "../../../src/serde" }
+rstd-serde-macro = { path = "../../../src/serde-macro" }

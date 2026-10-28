@@ -19,4 +19,5 @@ target_sources(
          src/containers.cppm
          src/tuple.cppm
          src/record.cppm
+         src/derive.cppm
          src/token.cppm)

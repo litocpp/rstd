@@ -5,3 +5,4 @@ export import :primitives;
 export import :containers;
 export import :tuple;
 export import :record;
+export import :derive;

@@ -1,0 +1,9 @@
+[package]
+name = "rstd-serde-macro"
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+standard = "c++23"
+
+[pmacro]
+module = "rstd.serde.macro"
