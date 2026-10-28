@@ -410,13 +410,20 @@ auto to_string(const Value& value, FormatOptions options) -> ::alloc::string::St
 
 export template<typename T>
     requires rstd::serde::Serializable<T>
+auto encode_into(fmt::Formatter& formatter, const T& value, FormatOptions options = {})
+    -> Result<empty, rstd::serde::Error> {
+    Emitter emitter(formatter, options);
+    auto    serializer = DirectSerializer(emitter);
+    return rstd::serde::serialize(serializer, value);
+}
+
+export template<typename T>
+    requires rstd::serde::Serializable<T>
 auto encode_direct(const T& value, FormatOptions options = {})
     -> Result<::alloc::string::String, rstd::serde::Error> {
     auto           output = ::alloc::string::String::make();
     fmt::Formatter formatter(output);
-    Emitter        emitter(formatter, options);
-    auto           serializer = DirectSerializer(emitter);
-    auto           result     = rstd::serde::serialize(serializer, value);
+    auto           result = encode_into(formatter, value, options);
     if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
     return Ok(rstd::move(output));
 }

@@ -46,5 +46,20 @@ int main() {
     auto option =
         rstd::json::decode<rstd::serde::TaggedOption<Option<u32>>>(R"({"Some":null})"_str);
     if (option.is_err() || option->value.is_none() || option->value->is_some()) return 13;
+    auto                 direct = rstd::json::encode_direct(*decoded);
+    String               streamed;
+    rstd::fmt::Formatter writer(streamed);
+    if (rstd::json::encode_into(writer, *decoded).is_err() || direct.is_err() ||
+        streamed != *direct)
+        return 14;
+    usize                written {};
+    rstd::fmt::Formatter limited(
+        &written, [](void* context, const rstd::uint8_t*, rstd::size_t size) -> bool {
+            auto& count = *static_cast<usize*>(context);
+            if (usize(size) > usize(8) - count) return false;
+            count += usize(size);
+            return true;
+        });
+    if (rstd::json::encode_into(limited, *decoded).is_ok() || written > usize(8)) return 15;
     return 0;
 }
