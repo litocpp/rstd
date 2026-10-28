@@ -312,4 +312,19 @@ struct Impl<serde::Describe, ::alloc::vec::Vec<T>> {
     }
 };
 
+template<>
+struct Impl<serde::Describe, empty> {
+    template<typename Sink>
+    static constexpr void describe(Sink& sink) {
+        sink.unit();
+    }
+};
+template<typename K, typename V>
+    requires serde::Describable<V>
+struct Impl<serde::Describe, ::alloc::collections::BTreeMap<K, V>> {
+    template<typename Sink>
+    static constexpr void describe(Sink& sink) {
+        sink.template map<K, V>();
+    }
+};
 } // namespace rstd
