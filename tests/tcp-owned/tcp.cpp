@@ -32,6 +32,106 @@ TEST(TcpOwned, ReceiveAndSendOwnSocketsBeforeFirstPollAndAfterCallerDrop) {
     EXPECT_EQ(result.get<1>().unwrap(), usize(4));
 }
 
+TEST(TcpOwned, ReceiveIntoReusesAlignedStorageThroughEofAndHalfClose) {
+    auto runtime   = async::RuntimeBuilder::current_thread().enable_all().build().unwrap();
+    auto sockets   = pair(runtime);
+    auto allocator = rstd::alloc::SharedTrackingAllocator<>::make();
+    auto storage   = Vec<u8, decltype(allocator)>::with_capacity_aligned_in(
+        usize(32), usize(64), allocator.clone());
+    auto buffer   = bytes::BytesMut::from_vec(rstd::move(storage));
+    auto pointer  = buffer.data();
+    auto capacity = buffer.capacity();
+    auto before   = allocator.snapshot();
+    for (unsigned i = 0; i < 4; ++i) {
+        buffer.extend_from_slice("stale"_bytes);
+        EXPECT_TRUE(
+            runtime.block_on(sockets.get<1>().send_all(bytes::Bytes::copy_from_slice("new"_bytes)))
+                .is_ok());
+        auto received = runtime.block_on(sockets.get<0>().recv_into(rstd::move(buffer)));
+        ASSERT_TRUE(received.result.is_ok());
+        EXPECT_EQ(*received.result, usize(3));
+        EXPECT_EQ(received.buffer.as_slice(), "new"_bytes);
+        EXPECT_EQ(received.buffer.data(), pointer);
+        EXPECT_EQ(received.buffer.capacity(), capacity);
+        EXPECT_EQ(received.buffer.alignment(), usize(64));
+        buffer = rstd::move(received.buffer);
+    }
+    EXPECT_TRUE(sockets.get<1>().shutdown().is_ok());
+    auto eof = runtime.block_on(sockets.get<0>().recv_into(rstd::move(buffer)));
+    ASSERT_TRUE(eof.result.is_ok());
+    EXPECT_EQ(*eof.result, usize());
+    EXPECT_TRUE(eof.buffer.is_empty());
+    EXPECT_EQ(eof.buffer.data(), pointer);
+    EXPECT_EQ(eof.buffer.capacity(), capacity);
+    EXPECT_EQ(eof.buffer.alignment(), usize(64));
+    EXPECT_EQ(allocator.snapshot().allocations, before.allocations);
+    EXPECT_EQ(allocator.snapshot().grows, before.grows);
+    EXPECT_TRUE(
+        runtime.block_on(sockets.get<0>().send_all(bytes::Bytes::copy_from_slice("reply"_bytes)))
+            .is_ok());
+    EXPECT_EQ(runtime.block_on(sockets.get<1>().recv()).unwrap().as_slice(), "reply"_bytes);
+    EXPECT_TRUE(runtime.block_on(rstd::move(sockets.get<0>()).close()).is_ok());
+    EXPECT_TRUE(runtime.block_on(rstd::move(sockets.get<1>()).close()).is_ok());
+}
+
+TEST(TcpOwned, ReceiveIntoRetainsSocketBeforeFirstPoll) {
+    auto runtime   = async::RuntimeBuilder::current_thread().enable_all().build().unwrap();
+    auto sockets   = pair(runtime);
+    auto receiving = sockets.get<0>().recv_into(bytes::BytesMut::with_capacity(usize(16)));
+    auto sending   = sockets.get<1>().send_all(bytes::Bytes::copy_from_slice("owned"_bytes));
+    {
+        auto old = rstd::move(sockets);
+    }
+    auto results = runtime.block_on(async::join(async::into_future(rstd::move(receiving)),
+                                                async::into_future(rstd::move(sending))));
+    EXPECT_TRUE(results.get<0>().result.is_ok());
+    EXPECT_EQ(results.get<0>().buffer.as_slice(), "owned"_bytes);
+    EXPECT_TRUE(results.get<1>().is_ok());
+}
+
+TEST(TcpOwned, ReceiveIntoErrorAndEmptyInputReturnStorage) {
+    auto runtime = async::RuntimeBuilder::current_thread().build().unwrap();
+    auto socket  = net::TcpSocket::make_v4().unwrap();
+    auto stream =
+        net::TcpStream::from_owned_socket(rstd::move(socket).into_owned_socket()).unwrap();
+    auto allocator = rstd::alloc::SharedTrackingAllocator<>::make();
+    auto buffer    = bytes::BytesMut::with_capacity_in(usize(32), allocator.clone());
+    buffer.extend_from_slice("stale"_bytes);
+    auto pointer  = buffer.data();
+    auto received = runtime.block_on(stream.recv_into(rstd::move(buffer)));
+    ASSERT_TRUE(received.result.is_err());
+    EXPECT_TRUE(received.buffer.is_empty());
+    EXPECT_EQ(received.buffer.data(), pointer);
+    EXPECT_EQ(received.buffer.capacity(), usize(32));
+    auto before = allocator.snapshot();
+    received.buffer.reserve(usize(64));
+    EXPECT_TRUE(allocator.snapshot().grows > before.grows);
+    auto empty = runtime.block_on(stream.recv_into(bytes::BytesMut {}));
+    ASSERT_TRUE(empty.result.is_err());
+    EXPECT_EQ(empty.result.unwrap_err().kind(), io::ErrorKind { io::ErrorKind::InvalidInput });
+    EXPECT_EQ(empty.buffer.capacity(), usize());
+    EXPECT_TRUE(runtime.block_on(rstd::move(stream).close()).is_ok());
+}
+
+TEST(TcpOwned, CancelledReceiveIntoReleasesStorageAfterClose) {
+    auto runtime   = async::RuntimeBuilder::current_thread().enable_all().build().unwrap();
+    auto sockets   = pair(runtime);
+    auto allocator = rstd::alloc::SharedTrackingAllocator<>::make();
+    auto before    = allocator.snapshot();
+    auto receiving = runtime.spawn(sockets.get<0>().recv_into(
+        bytes::BytesMut::with_capacity_in(usize(32), allocator.clone())));
+    EXPECT_TRUE(runtime
+                    .block_on(async::timeout(future::by_ref(receiving),
+                                             time::Duration::from_millis(u64(2))))
+                    .is_err());
+    receiving.abort();
+    EXPECT_TRUE(runtime.block_on(rstd::move(receiving)).is_err());
+    EXPECT_TRUE(runtime.block_on(rstd::move(sockets.get<0>()).close()).is_ok());
+    auto after = allocator.snapshot();
+    EXPECT_EQ(after.allocations - before.allocations, after.deallocations - before.deallocations);
+    EXPECT_TRUE(runtime.block_on(rstd::move(sockets.get<1>()).close()).is_ok());
+}
+
 TEST(TcpOwned, PreparedAcceptSurvivesListenerDrop) {
     auto            runtime = async::RuntimeBuilder::current_thread().enable_all().build().unwrap();
     net::SocketAddr address;

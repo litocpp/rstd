@@ -17,6 +17,11 @@ export class TcpStream;
 export class TcpConnect;
 export class UnixStream;
 
+export struct StreamReceive {
+    io::Result<usize> result;
+    bytes::BytesMut   buffer;
+};
+
 export class SocketStream {
     friend class TcpStream;
     async::Registration            m_registration;
@@ -46,6 +51,8 @@ public:
     /// reads and writes separately, including poll/try calls; one read and one write may run concurrently.
     /// Cancellation keeps resources alive but may consume or send data.
     auto recv(usize maximum_size = usize(65536)) const -> async::coro<io::Result<bytes::Bytes>>;
+    /// Overwrites the buffer; completion returns the same storage even on error or EOF.
+    auto recv_into(bytes::BytesMut buffer) const -> async::coro<StreamReceive>;
     auto send(bytes::Bytes data) const -> async::coro<io::Result<usize>>;
     auto send_all(bytes::Bytes data) const -> async::coro<io::Result<usize>>;
 #if RSTD_OS_UNIX

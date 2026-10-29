@@ -165,6 +165,7 @@ target_sources(
          src/os/fd.cppm
          src/os/handle.cppm
          src/os/socket.cppm
+         src/os/linux/net.cppm
          src/os/unix/ffi.cppm
          src/os/unix/process.cppm
          src/os/linux/process.cppm
@@ -305,4 +306,5 @@ target_sources(
           src/os/linux/process.cpp
           src/os/handle.cpp
           src/os/socket.cpp
+          src/os/linux/net.cpp
           ${rstd_std_platform_sources})

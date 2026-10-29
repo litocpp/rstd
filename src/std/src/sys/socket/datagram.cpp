@@ -24,6 +24,8 @@ import :unix;
 #endif
 
 using namespace rstd::prelude;
+using rstd::io::error::Error;
+using rstd::io::error::ErrorKind;
 #if RSTD_OS_WINDOWS
 namespace native_socket = rstd::sys::pal::windows::socket;
 #else
@@ -115,15 +117,20 @@ auto multicast_membership(os::socket::RawSocket socket, net::SocketAddr group, u
 }
 
 auto datagram_capabilities(net::SocketAddr address) noexcept -> net::DatagramCapabilities {
+#if RSTD_OS_LINUX
+    constexpr bool original_destination = true;
+#else
+    constexpr bool original_destination = false;
+#endif
     if (address.is_ipv6()) {
 #if defined(IPV6_PKTINFO) && (defined(IPV6_RECVPKTINFO) || RSTD_OS_WINDOWS)
-        return { true, true, true };
+        return { true, true, true, original_destination };
 #else
         return {};
 #endif
     }
 #if defined(IP_PKTINFO)
-    return { true, true, true };
+    return { true, true, true, original_destination };
 #elif defined(IP_RECVDSTADDR) && defined(IP_RECVIF)
     return { true, true, false };
 #else
@@ -322,11 +329,44 @@ auto DatagramMessage::result(usize transferred) -> io::Result<net::DatagramInfo>
 #define RSTD_CMSG_LEN     CMSG_LEN
 #endif
     if (peer.is_err()) return Err(rstd::move(peer).unwrap_err());
+    auto control_length =
+#if RSTD_OS_WINDOWS
+        message_.Control.len;
+#else
+        message_.msg_controllen;
+#endif
+    if (control_length > sizeof(control_))
+        return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidData }));
     net::DatagramInfo out {
         rstd::move(peer).unwrap(), None(), (flags & MSG_TRUNC) != 0, (flags & MSG_CTRUNC) != 0
     };
     for (auto* header = RSTD_FIRST_HEADER(&message_); header != nullptr;
          header       = RSTD_NEXT_HEADER(&message_, header)) {
+        auto offset = reinterpret_cast<const char*>(header) - control_;
+        if (offset < 0 || static_cast<rstd::size_t>(offset) > control_length ||
+            header->cmsg_len < RSTD_CMSG_LEN(0) ||
+            header->cmsg_len > control_length - static_cast<rstd::size_t>(offset))
+            return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidData }));
+#if RSTD_OS_LINUX
+        if ((header->cmsg_level == IPPROTO_IP && header->cmsg_type == IP_ORIGDSTADDR) ||
+            (header->cmsg_level == IPPROTO_IPV6 && header->cmsg_type == IPV6_ORIGDSTADDR)) {
+            auto ipv4 = header->cmsg_level == IPPROTO_IP;
+            auto size = ipv4 ? sizeof(sockaddr_in) : sizeof(sockaddr_in6);
+            if (header->cmsg_len != RSTD_CMSG_LEN(size))
+                return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidData }));
+            sockaddr_storage address {};
+            __builtin_memcpy(&address, RSTD_CMSG_DATA(header), size);
+            if (address.ss_family != (ipv4 ? AF_INET : AF_INET6))
+                return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidData }));
+            auto decoded = native_socket::addr_from_native(
+                reinterpret_cast<const sockaddr*>(&address), static_cast<socklen_t>(size));
+            if (decoded.is_err())
+                return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidData }));
+            if (out.original_destination.is_some() && *out.original_destination != *decoded)
+                return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidData }));
+            out.original_destination = Some(rstd::move(decoded).unwrap());
+        }
+#endif
         if (header->cmsg_level == IPPROTO_IP) {
 #if defined(IP_PKTINFO)
             if (header->cmsg_type == IP_PKTINFO &&

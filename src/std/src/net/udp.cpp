@@ -57,27 +57,45 @@ auto detach_datagram(async::CompletionSource source)
 
 auto UdpSocket::bind(SocketAddr address, bool packet_info, bool reuse_address)
     -> io::Result<UdpSocket> {
-    auto created = socket::udp(address);
-    if (created.is_err()) return Err(rstd::move(created).unwrap_err());
-    auto owned = rstd::move(created).unwrap();
-    if (reuse_address) {
-        auto reuse = socket::set_reuseaddr(owned.as_raw_socket(), true);
-        if (reuse.is_err()) return Err(rstd::move(reuse).unwrap_err());
-    }
-    auto bound = socket::bind(owned.as_raw_socket(), address);
-    if (bound.is_err()) return Err(rstd::move(bound).unwrap_err());
-    return from_owned_socket(rstd::move(owned), packet_info);
+    return bind_with(address, { reuse_address, packet_info });
 }
 
 auto UdpSocket::connect(SocketAddr peer, bool packet_info) -> io::Result<UdpSocket> {
+    return connect_with(peer, { false, packet_info });
+}
+
+auto UdpSocket::bind_with(SocketAddr address, UdpSocketOptions options) -> io::Result<UdpSocket> {
+    auto builder =
+        rstd_try(address.is_ipv4() ? UdpSocketBuilder::make_v4() : UdpSocketBuilder::make_v6());
+    return rstd::move(builder).bind(address, options);
+}
+auto UdpSocket::connect_with(SocketAddr peer, UdpSocketOptions options) -> io::Result<UdpSocket> {
+    auto builder =
+        rstd_try(peer.is_ipv4() ? UdpSocketBuilder::make_v4() : UdpSocketBuilder::make_v6());
+    return rstd::move(builder).connect(peer, options);
+}
+auto UdpSocketBuilder::make_v4() -> io::Result<UdpSocketBuilder> {
+    return Ok(UdpSocketBuilder(rstd_try(socket::udp(SocketAddr::ipv4_loopback(u16())))));
+}
+auto UdpSocketBuilder::make_v6() -> io::Result<UdpSocketBuilder> {
+    return Ok(
+        UdpSocketBuilder(rstd_try(socket::udp(SocketAddr::ipv6(Ipv6Addr::loopback(), u16())))));
+}
+auto UdpSocketBuilder::bind(SocketAddr       address,
+                            UdpSocketOptions options) && -> io::Result<UdpSocket> {
+    auto owned = rstd::move(socket_);
+    if (options.reuse_address) rstd_try(socket::set_reuseaddr(owned.as_raw_socket(), true));
+    rstd_try(socket::bind(owned.as_raw_socket(), address));
+    return UdpSocket::from_owned_socket(rstd::move(owned), options.packet_info);
+}
+auto UdpSocketBuilder::connect(SocketAddr       peer,
+                               UdpSocketOptions options) && -> io::Result<UdpSocket> {
+    auto owned = rstd::move(socket_);
     if (peer.port() == u16())
         return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
-    auto created = socket::udp(peer);
-    if (created.is_err()) return Err(rstd::move(created).unwrap_err());
-    auto owned     = rstd::move(created).unwrap();
-    auto connected = socket::connect(owned.as_raw_socket(), peer);
-    if (connected.is_err()) return Err(rstd::move(connected).unwrap_err());
-    return from_owned_socket(rstd::move(owned), packet_info);
+    if (options.reuse_address) rstd_try(socket::set_reuseaddr(owned.as_raw_socket(), true));
+    rstd_try(socket::connect(owned.as_raw_socket(), peer));
+    return UdpSocket::from_owned_socket(rstd::move(owned), options.packet_info);
 }
 
 auto UdpSocket::from_owned_socket(os::socket::OwnedSocket owned, bool packet_info)

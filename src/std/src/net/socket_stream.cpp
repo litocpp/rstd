@@ -79,6 +79,16 @@ auto stream_send(rstd::async::IoOperation operation)
     co_return rstd::Ok(result->transferred());
 }
 
+auto stream_receive_into(rstd::async::IoOperation operation)
+    -> rstd::async::coro<rstd::net::StreamReceive> {
+    auto result = co_await rstd::future::by_ref(operation);
+    auto buffer = operation.take_read_buffer();
+    if (result.is_err())
+        co_return rstd::net::StreamReceive { rstd::Err(rstd::move(result).unwrap_err()),
+                                             rstd::move(buffer) };
+    co_return rstd::net::StreamReceive { rstd::Ok(result->transferred()), rstd::move(buffer) };
+}
+
 auto stream_send_all(rstd::async::CompletionSource source, rstd::bytes::Bytes data)
     -> rstd::async::coro<rstd::io::Result<rstd::usize>> {
     auto length = data.len();
@@ -124,6 +134,11 @@ auto SocketStream::recv(usize maximum_size) const -> async::coro<io::Result<byte
         return stream_receive(
             Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput })));
     return stream_receive(Ok(async::IoOperation::read(m_completion_source, maximum_size)));
+}
+
+auto SocketStream::recv_into(bytes::BytesMut buffer) const -> async::coro<StreamReceive> {
+    return stream_receive_into(
+        async::IoOperation::read_into(m_completion_source, rstd::move(buffer)));
 }
 
 auto SocketStream::send(bytes::Bytes data) const -> async::coro<io::Result<usize>> {

@@ -14,6 +14,7 @@ export struct DatagramInfo {
     Option<PacketInfo> packet;
     bool               truncated {};
     bool               control_truncated {};
+    Option<SocketAddr> original_destination;
 };
 
 export struct DatagramTarget {
@@ -25,5 +26,6 @@ export struct DatagramCapabilities {
     bool destination_address {};
     bool interface_index {};
     bool source_selection {};
+    bool original_destination {};
 };
 } // namespace rstd::net

@@ -224,6 +224,7 @@ struct IoOperationState {
     struct Read {
         bytes::BytesMut buffer;
         Option<u64>     offset;
+        bool            return_buffer { false };
     };
 
     struct Write {
@@ -274,6 +275,14 @@ struct IoOperationState {
     IoOperationState(CompletionSource source, bytes::Bytes data)
         : source(rstd::move(source)),
           payload(Payload::with<PollOperationKind::Write>(Write { rstd::move(data) })),
+          fields(IoOperationFields {}) {
+        begin();
+    }
+
+    IoOperationState(CompletionSource source, bytes::BytesMut buffer)
+        : source(rstd::move(source)),
+          payload(
+              Payload::with<PollOperationKind::Read>(Read { rstd::move(buffer), None(), true })),
           fields(IoOperationFields {}) {
         begin();
     }
@@ -336,14 +345,14 @@ struct IoOperationState {
         };
         switch (payload.which()) {
         case PollOperationKind::Read: {
-            auto& buffer = payload.as<PollOperationKind::Read>().buffer;
+            auto& read     = payload.as<PollOperationKind::Read>();
+            auto  writable = read.buffer.spare_capacity_mut();
+            auto  data     = read.return_buffer ? writable.as_byte_ptr() : read.buffer.data();
+            auto  length   = read.return_buffer ? writable.len() : read.buffer.len();
             return attach_source(
                 source.kind() == CompletionSourceKind::Socket
-                    ? PollOperation::read_socket(source.as_raw_fd(), buffer.data(), buffer.len())
-                    : PollOperation::read(source.as_raw_fd(),
-                                          buffer.data(),
-                                          buffer.len(),
-                                          payload.as<PollOperationKind::Read>().offset));
+                    ? PollOperation::read_socket(source.as_raw_fd(), data, length)
+                    : PollOperation::read(source.as_raw_fd(), data, length, read.offset));
         }
         case PollOperationKind::Write: {
             auto& buffer = payload.as<PollOperationKind::Write>().buffer;
@@ -421,7 +430,14 @@ struct IoOperationState {
             return Err(io::error::Error::from_kind(
                 io::error::ErrorKind { io::error::ErrorKind::InvalidData }));
         if (payload.is<PollOperationKind::Read>()) {
-            auto buffer = rstd::move(payload.as<PollOperationKind::Read>().buffer);
+            auto& read = payload.as<PollOperationKind::Read>();
+            if (read.return_buffer) {
+                if (transferred > read.buffer.spare_capacity_mut().len())
+                    return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidData }));
+                read.buffer.advance_mut_unchecked(transferred);
+                return Ok(IoCompletion { transferred, flags, bytes::Bytes {} });
+            }
+            auto buffer = rstd::move(read.buffer);
             if (transferred > buffer.len()) {
                 return Err(io::error::Error::from_kind(
                     io::error::ErrorKind { io::error::ErrorKind::InvalidData }));
@@ -1106,6 +1122,28 @@ public:
 
     static auto read_at(const CompletionSource& source, usize len, u64 offset) -> IoOperation {
         return IoOperation { IoOperationArc::make(source.clone(), len, Some(offset)) };
+    }
+
+    static auto read_into(const CompletionSource& source, bytes::BytesMut buffer) -> IoOperation {
+        buffer.clear();
+        auto empty = buffer.capacity() == usize();
+        auto state = IoOperationArc::make(source.clone(), rstd::move(buffer));
+        if (empty)
+            store_io_operation_error(
+                state, io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
+        return IoOperation { rstd::move(state) };
+    }
+
+    /// Consuming a completion, including an error, is required before reclaiming its storage.
+    auto take_read_buffer() -> bytes::BytesMut {
+        auto fields = m_state->fields.lock().unwrap_unchecked();
+        if (fields->lifecycle != IoOperationLifecycle::Consumed ||
+            ! m_state->payload.is<PollOperationKind::Read>() ||
+            ! m_state->payload.as<PollOperationKind::Read>().return_buffer)
+            rstd::panic { "read buffer taken before completion or more than once" };
+        auto& read         = m_state->payload.as<PollOperationKind::Read>();
+        read.return_buffer = false;
+        return rstd::move(read.buffer);
     }
 
     static auto write(const CompletionSource& source, bytes::Bytes data) -> IoOperation {

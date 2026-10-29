@@ -8,6 +8,7 @@ import :async.poll;
 import :async.runtime;
 import :net.tcp;
 import :net.udp;
+import :alloc.shared_tracking;
 import rstd.test;
 
 using namespace rstd;
@@ -39,12 +40,16 @@ void verify_owned_tcp_backend(async::IoBackendPreference preference) {
         runtime.block_on(net::TcpStream::connect(listener.local_addr().unwrap())).unwrap();
     auto accepted  = runtime.block_on(listener.accept()).unwrap();
     auto server    = rstd::move(accepted.get<0>());
-    auto receiving = server.recv(usize(4));
+    auto receiving = server.recv_into(bytes::BytesMut::with_capacity(usize(4)));
     EXPECT_EQ(
         runtime.block_on(client.send_all(bytes::Bytes::copy_from_slice("kept"_bytes))).unwrap(),
         usize(4));
-    EXPECT_EQ(runtime.block_on(rstd::move(receiving)).unwrap().as_slice(), "kept"_bytes);
-    auto waiting = runtime.spawn(server.recv());
+    auto received = runtime.block_on(rstd::move(receiving));
+    EXPECT_TRUE(received.result.is_ok());
+    EXPECT_EQ(received.buffer.as_slice(), "kept"_bytes);
+    auto tracker = rstd::alloc::SharedTrackingAllocator<>::make();
+    auto waiting = runtime.spawn(
+        server.recv_into(bytes::BytesMut::with_capacity_in(usize(32), tracker.clone())));
     EXPECT_TRUE(
         runtime
             .block_on(async::timeout(future::by_ref(waiting), time::Duration::from_millis(u64(2))))
@@ -52,6 +57,7 @@ void verify_owned_tcp_backend(async::IoBackendPreference preference) {
     waiting.abort();
     EXPECT_TRUE(runtime.block_on(rstd::move(waiting)).is_err());
     EXPECT_TRUE(runtime.block_on(rstd::move(server).close()).is_ok());
+    EXPECT_EQ(tracker.snapshot().live_bytes, u64());
     EXPECT_TRUE(runtime.block_on(client.recv()).unwrap().is_empty());
     EXPECT_TRUE(runtime.block_on(rstd::move(client).close()).is_ok());
     {

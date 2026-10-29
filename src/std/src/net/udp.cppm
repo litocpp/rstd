@@ -19,6 +19,32 @@ export struct DatagramReceive {
     bytes::BytesMut          buffer;
 };
 
+export struct UdpSocketOptions {
+    bool reuse_address {};
+    bool packet_info {};
+};
+
+export class UdpSocket;
+export class UdpSocketBuilder {
+    os::socket::OwnedSocket socket_;
+    explicit UdpSocketBuilder(os::socket::OwnedSocket socket): socket_(rstd::move(socket)) {}
+
+public:
+    UdpSocketBuilder(UdpSocketBuilder&&) noexcept                           = default;
+    auto        operator=(UdpSocketBuilder&&) noexcept -> UdpSocketBuilder& = default;
+    static auto make_v4() -> io::Result<UdpSocketBuilder>;
+    static auto make_v6() -> io::Result<UdpSocketBuilder>;
+    static auto from_owned_socket(os::socket::OwnedSocket socket) -> UdpSocketBuilder {
+        return UdpSocketBuilder(rstd::move(socket));
+    }
+    auto as_socket() const noexcept [[clang::lifetimebound]] -> os::socket::BorrowedSocket {
+        return socket_.as_socket();
+    }
+    auto into_owned_socket() && -> os::socket::OwnedSocket { return rstd::move(socket_); }
+    auto bind(SocketAddr address, UdpSocketOptions options = {}) && -> io::Result<UdpSocket>;
+    auto connect(SocketAddr peer, UdpSocketOptions options = {}) && -> io::Result<UdpSocket>;
+};
+
 export class UdpSocket {
     async::CompletionSource source_;
     SocketAddr              local_;
@@ -37,6 +63,8 @@ public:
         -> io::Result<UdpSocket>;
     /// Selects one receive peer and the route's local address without a handshake.
     static auto connect(SocketAddr peer, bool packet_info = false) -> io::Result<UdpSocket>;
+    static auto bind_with(SocketAddr address, UdpSocketOptions options) -> io::Result<UdpSocket>;
+    static auto connect_with(SocketAddr peer, UdpSocketOptions options) -> io::Result<UdpSocket>;
     static auto from_owned_socket(os::socket::OwnedSocket socket, bool packet_info = false)
         -> io::Result<UdpSocket>;
     /// Finish or drop outstanding operations before awaiting detach or close.

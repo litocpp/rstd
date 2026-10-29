@@ -98,18 +98,36 @@ auto TcpStream::connect(SocketAddr addr) -> async::coro<io::Result<TcpStream>> {
 }
 
 auto TcpStream::prepare_connect(SocketAddr addr) -> io::Result<TcpConnect> {
-    auto socket_result = socket::tcp(addr);
-    if (socket_result.is_err()) {
-        return Err(rstd::move(socket_result).unwrap_err_unchecked());
-    }
+    auto socket = rstd_try(addr.is_ipv4() ? TcpSocket::make_v4() : TcpSocket::make_v6());
+    return rstd::move(socket).prepare_connect(addr);
+}
 
-    auto owned_socket  = rstd::move(socket_result).unwrap_unchecked();
-    auto stream_result = TcpStream::from_owned_socket(rstd::move(owned_socket));
-    if (stream_result.is_err()) {
-        return Err(rstd::move(stream_result).unwrap_err_unchecked());
-    }
-
-    return Ok(TcpConnect(rstd::move(stream_result).unwrap_unchecked(), addr));
+auto TcpSocket::make_v4() -> io::Result<TcpSocket> {
+    return Ok(TcpSocket(rstd_try(socket::tcp(SocketAddr::ipv4_loopback(u16())))));
+}
+auto TcpSocket::make_v6() -> io::Result<TcpSocket> {
+    return Ok(TcpSocket(rstd_try(socket::tcp(SocketAddr::ipv6(Ipv6Addr::loopback(), u16())))));
+}
+auto TcpSocket::set_reuseaddr(bool enabled) -> io::Result<empty> {
+    return socket::set_reuseaddr(socket_.as_raw_socket(), enabled);
+}
+auto TcpSocket::bind(SocketAddr address) -> io::Result<empty> {
+    return socket::bind(socket_.as_raw_socket(), address);
+}
+auto TcpSocket::local_addr() const -> io::Result<SocketAddr> {
+    return socket::local_addr(socket_.as_raw_socket());
+}
+auto TcpSocket::prepare_connect(SocketAddr destination) && -> io::Result<TcpConnect> {
+    auto owned  = rstd::move(socket_);
+    auto stream = rstd_try(TcpStream::from_owned_socket(rstd::move(owned)));
+    return Ok(TcpConnect(rstd::move(stream), destination));
+}
+auto TcpSocket::listen(i32 backlog) && -> io::Result<TcpListener> {
+    auto owned = rstd::move(socket_);
+    if (backlog < i32())
+        return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
+    rstd_try(socket::listen(owned.as_raw_socket(), backlog));
+    return TcpListener::from_owned_socket(rstd::move(owned));
 }
 
 TcpConnect::TcpConnect(TcpStream stream, SocketAddr target)
@@ -209,24 +227,10 @@ auto TcpStream::set_nodelay(bool enabled) -> io::Result<empty> {
 }
 
 auto TcpListener::bind(SocketAddr addr) -> io::Result<TcpListener> {
-    auto socket_result = socket::tcp(addr);
-    if (socket_result.is_err()) return Err(rstd::move(socket_result).unwrap_err_unchecked());
-
-    auto owned_socket = rstd::move(socket_result).unwrap_unchecked();
-    auto reuse        = socket::set_reuseaddr(owned_socket.as_raw_socket(), true);
-    if (reuse.is_err()) return Err(rstd::move(reuse).unwrap_err_unchecked());
-
-    auto bound = socket::bind(owned_socket.as_raw_socket(), addr);
-    if (bound.is_err()) return Err(rstd::move(bound).unwrap_err_unchecked());
-
-    auto listening = socket::listen(owned_socket.as_raw_socket());
-    if (listening.is_err()) return Err(rstd::move(listening).unwrap_err_unchecked());
-
-    auto registration = async::Registration::register_fd(owned_socket.as_raw_socket());
-    if (registration.is_err()) return Err(rstd::move(registration).unwrap_err_unchecked());
-
-    return Ok(
-        TcpListener { rstd::move(owned_socket), rstd::move(registration).unwrap_unchecked() });
+    auto socket = rstd_try(addr.is_ipv4() ? TcpSocket::make_v4() : TcpSocket::make_v6());
+    rstd_try(socket.set_reuseaddr(true));
+    rstd_try(socket.bind(addr));
+    return rstd::move(socket).listen();
 }
 
 auto TcpListener::from_owned_socket(os::socket::OwnedSocket owned_socket)

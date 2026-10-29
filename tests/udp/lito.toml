@@ -3,7 +3,7 @@ name = "rstd-udp-tests"
 
 [[test]]
 name = "rstd-udp-tests"
-sources = ["main.cpp", "udp.cpp"]
+sources = ["main.cpp", "udp.cpp", "socket.cpp"]
 link-stdlib = false
 
 [[test.attach]]

@@ -1,6 +1,10 @@
 module;
 #include <rstd/macro.hpp>
 #include <rstd/test/gtest.hpp>
+#if RSTD_OS_LINUX
+#include <sys/socket.h>
+#include <netinet/in.h>
+#endif
 
 export module rstd:udp_backend_tests;
 import :async;
@@ -10,10 +14,90 @@ import :net.udp;
 import :alloc.shared_tracking;
 import rstd.alloc;
 import rstd.test;
+import rstd.sys.socket;
 
 using namespace rstd;
 using namespace rstd::prelude;
 using namespace rstd::literals;
+
+#if RSTD_OS_LINUX
+TEST(UdpMetadata, OriginalDestinationChecksNativeStructureAndConflicts) {
+    byte                         payload[8] {};
+    auto                         local = net::SocketAddr::ipv4_loopback(u16(8000));
+    sys::socket::DatagramMessage message(payload, usize(8), local);
+    auto                         native = static_cast<msghdr*>(message.native_message());
+    sockaddr_in                  address {};
+    address.sin_family      = AF_INET;
+    address.sin_port        = htons(9000);
+    address.sin_addr.s_addr = htonl(0x7f000001);
+    __builtin_memcpy(native->msg_name, &address, sizeof(address));
+    native->msg_namelen = sizeof(address);
+    auto first          = CMSG_FIRSTHDR(native);
+    first->cmsg_level   = IPPROTO_IP;
+    first->cmsg_type    = IP_ORIGDSTADDR;
+    first->cmsg_len     = CMSG_LEN(sizeof(address));
+    __builtin_memcpy(CMSG_DATA(first), &address, sizeof(address));
+    native->msg_controllen = CMSG_SPACE(sizeof(address));
+    auto result            = message.result(usize());
+    ASSERT_TRUE(result.is_ok());
+    ASSERT_TRUE(result->original_destination.is_some());
+    EXPECT_EQ(*result->original_destination, net::SocketAddr::ipv4_loopback(u16(9000)));
+    native->msg_flags = MSG_CTRUNC | MSG_TRUNC;
+    auto truncated    = message.result(usize());
+    ASSERT_TRUE(truncated.is_ok());
+    EXPECT_TRUE(truncated->control_truncated);
+    EXPECT_TRUE(truncated->truncated);
+    native->msg_flags = 0;
+    first->cmsg_len   = CMSG_LEN(sizeof(address)) - 1;
+    EXPECT_TRUE(message.result(usize()).is_err());
+    first->cmsg_len    = CMSG_LEN(sizeof(address));
+    address.sin_family = AF_INET6;
+    __builtin_memcpy(CMSG_DATA(first), &address, sizeof(address));
+    EXPECT_TRUE(message.result(usize()).is_err());
+    address.sin_family = AF_INET;
+    __builtin_memcpy(CMSG_DATA(first), &address, sizeof(address));
+    native->msg_controllen = 2 * CMSG_SPACE(sizeof(address));
+    auto second            = CMSG_NXTHDR(native, first);
+    ASSERT_NE(second, nullptr);
+    second->cmsg_level = IPPROTO_IP;
+    second->cmsg_type  = IP_ORIGDSTADDR;
+    second->cmsg_len   = CMSG_LEN(sizeof(address));
+    __builtin_memcpy(CMSG_DATA(second), &address, sizeof(address));
+    EXPECT_TRUE(message.result(usize()).is_ok());
+    address.sin_port = htons(9001);
+    __builtin_memcpy(CMSG_DATA(second), &address, sizeof(address));
+    EXPECT_TRUE(message.result(usize()).is_err());
+    second->cmsg_len = 1024;
+    EXPECT_TRUE(message.result(usize()).is_err());
+}
+
+TEST(UdpMetadata, OriginalDestinationRetainsIpv6ScopeAndPort) {
+    byte                         payload[8] {};
+    sys::socket::DatagramMessage message(
+        payload, usize(8), net::SocketAddr::ipv6(net::Ipv6Addr::loopback(), u16(8000)));
+    auto         native = static_cast<msghdr*>(message.native_message());
+    sockaddr_in6 address {};
+    address.sin6_family           = AF_INET6;
+    address.sin6_port             = htons(9000);
+    address.sin6_addr.s6_addr[0]  = 0xfe;
+    address.sin6_addr.s6_addr[1]  = 0x80;
+    address.sin6_addr.s6_addr[15] = 1;
+    address.sin6_scope_id         = 7;
+    __builtin_memcpy(native->msg_name, &address, sizeof(address));
+    native->msg_namelen = sizeof(address);
+    auto first          = CMSG_FIRSTHDR(native);
+    first->cmsg_level   = IPPROTO_IPV6;
+    first->cmsg_type    = IPV6_ORIGDSTADDR;
+    first->cmsg_len     = CMSG_LEN(sizeof(address));
+    __builtin_memcpy(CMSG_DATA(first), &address, sizeof(address));
+    native->msg_controllen = CMSG_SPACE(sizeof(address));
+    auto result            = message.result(usize());
+    ASSERT_TRUE(result.is_ok());
+    ASSERT_TRUE(result->original_destination.is_some());
+    EXPECT_EQ(result->original_destination->port(), u16(9000));
+    EXPECT_EQ(result->original_destination->scope_id(), u32(7));
+}
+#endif
 
 template<typename F>
 struct CancelDatagramOnPoll {

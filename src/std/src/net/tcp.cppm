@@ -21,6 +21,8 @@ export struct TcpKeepalive {
     auto                         validate() const -> io::Result<empty>;
 };
 export class TcpConnect;
+export class TcpListener;
+export class TcpSocket;
 struct TcpConnectState;
 
 export class TcpStream {
@@ -37,8 +39,9 @@ public:
     auto        into_owned_socket() && { return rstd::move(stream_).into_owned_socket(); }
     auto        close() && { return rstd::move(stream_).close(); }
     auto        recv(usize maximum_size = usize(65536)) const { return stream_.recv(maximum_size); }
-    auto        send(bytes::Bytes data) const { return stream_.send(rstd::move(data)); }
-    auto        send_all(bytes::Bytes data) const { return stream_.send_all(rstd::move(data)); }
+    auto recv_into(bytes::BytesMut buffer) const { return stream_.recv_into(rstd::move(buffer)); }
+    auto send(bytes::Bytes data) const { return stream_.send(rstd::move(data)); }
+    auto send_all(bytes::Bytes data) const { return stream_.send_all(rstd::move(data)); }
 #if RSTD_OS_UNIX
     static auto from_owned_fd(os::fd::OwnedFd fd) -> io::Result<TcpStream>;
     auto        into_owned_fd() && { return rstd::move(stream_).into_owned_fd(); }
@@ -77,6 +80,7 @@ export class TcpConnect {
 
     TcpConnect(TcpStream stream, SocketAddr target);
     friend class TcpStream;
+    friend class TcpSocket;
 
 public:
     TcpConnect(const TcpConnect&)                    = delete;
@@ -91,6 +95,30 @@ public:
     /// Cancel or drop finish before awaiting close to drain its native operation.
     auto close() && -> async::coro<io::Result<empty>>;
     auto local_addr() const -> io::Result<SocketAddr>;
+};
+
+export class TcpSocket {
+    os::socket::OwnedSocket socket_;
+    explicit TcpSocket(os::socket::OwnedSocket socket): socket_(rstd::move(socket)) {}
+
+public:
+    TcpSocket(TcpSocket&&) noexcept                           = default;
+    auto        operator=(TcpSocket&&) noexcept -> TcpSocket& = default;
+    static auto make_v4() -> io::Result<TcpSocket>;
+    static auto make_v6() -> io::Result<TcpSocket>;
+    /// The imported socket must be an unconnected TCP socket.
+    static auto from_owned_socket(os::socket::OwnedSocket socket) -> TcpSocket {
+        return TcpSocket(rstd::move(socket));
+    }
+    auto as_socket() const noexcept [[clang::lifetimebound]] -> os::socket::BorrowedSocket {
+        return socket_.as_socket();
+    }
+    auto into_owned_socket() && -> os::socket::OwnedSocket { return rstd::move(socket_); }
+    auto set_reuseaddr(bool enabled) -> io::Result<empty>;
+    auto bind(SocketAddr address) -> io::Result<empty>;
+    auto local_addr() const -> io::Result<SocketAddr>;
+    auto listen(i32 backlog = i32(128)) && -> io::Result<TcpListener>;
+    auto prepare_connect(SocketAddr destination) && -> io::Result<TcpConnect>;
 };
 
 export class TcpListener {
