@@ -1,8 +1,13 @@
 export module rstd:async.awaitable;
 export import :async.forward;
 import :async.facility;
+#if LITO_FEAT_ASYNC_DEBUG
+import :async.debug;
+#endif
 
 using namespace rstd;
+
+using namespace rstd::literals;
 
 namespace rstd::async
 {
@@ -149,15 +154,55 @@ using await_output_t = typename AwaitOutput<A>::type;
 export template<typename A>
 concept AwaitableInput = InternalAwaitable<A> || FutureInput<A> || IntoFutureInput<A>;
 
+template<typename T>
+struct AwaitPollResult {
+    Option<T> value;
+
+    template<typename Poll>
+    void store(Poll ready) {
+        value.insert(rstd::move(ready).take());
+    }
+
+    template<typename Operation>
+    auto take(Operation& operation) -> T {
+        if (value.is_some()) return value.take().unwrap_unchecked();
+        return operation.take_output();
+    }
+};
+
+template<>
+struct AwaitPollResult<void> {
+    bool ready { false };
+
+    template<typename Poll>
+    void store(Poll value) {
+        rstd::move(value).take();
+        ready = true;
+    }
+
+    template<typename Operation>
+    void take(Operation& operation) {
+        if (! ready) operation.take_output();
+    }
+};
+
 template<typename Operation, typename Output = typename mtp::rm_cvf<Operation>::Output>
 class AwaitSuspension {
     Operation m_operation;
+#if LITO_FEAT_ASYNC_DEBUG
+    debug::WaitGuard debug_wait_;
+    source_location  debug_location_;
+#endif
     [[no_unique_address]]
-    mtp::cond<FutureInput<Operation>, Option<Output>, empty> m_polled;
+    mtp::cond<FutureInput<Operation>, AwaitPollResult<Output>, empty> m_polled;
 
 public:
     explicit AwaitSuspension(Operation&& operation)
         : m_operation(rstd::forward<Operation>(operation)) {}
+
+#if LITO_FEAT_ASYNC_DEBUG
+    void debug_location(source_location location) { debug_location_ = location; }
+#endif
 
     constexpr auto await_ready() const noexcept -> bool { return false; }
 
@@ -167,70 +212,26 @@ public:
     }
 
     auto await_resume() -> Output {
+#if LITO_FEAT_ASYNC_DEBUG
+        debug_wait_.reset();
+#endif
         if constexpr (FutureInput<Operation>) {
-            if (m_polled.is_some()) return m_polled.take().unwrap_unchecked();
+            return m_polled.take(m_operation);
+        } else {
+            return m_operation.take_output();
         }
-        return m_operation.take_output();
     }
 
     auto advance(AwaitContext& cx) -> AwaitTransition {
+#if LITO_FEAT_ASYNC_DEBUG
+        debug_wait_.begin("await"_str, 0, debug_location_);
+#endif
         if constexpr (FutureInput<Operation>) {
             if (cx.mode() == AwaitMode::FuturePoll &&
                 cx.execution_domain() == ExecutionDomainKind::RuntimeWorker) {
                 auto out = future::poll(m_operation, cx.poll_context());
                 if (out.is_pending()) return AwaitTransition::suspend();
-                m_polled.insert(rstd::move(out).take());
-                return AwaitTransition::continue_();
-            }
-        }
-        return m_operation.advance(cx);
-    }
-
-    template<typename Event>
-        requires requires(Operation& operation, Event& event) {
-            { operation.complete_facility(event) } -> mtp::same_as<bool>;
-        }
-    auto complete_facility(Event& event) -> bool {
-        return m_operation.complete_facility(event);
-    }
-
-    template<typename Token>
-        requires requires(Operation& operation, Token token) {
-            { operation.submit_completion(rstd::move(token)) };
-        }
-    auto submit_completion(Token token) {
-        return m_operation.submit_completion(rstd::move(token));
-    }
-};
-
-template<typename Operation>
-class AwaitSuspension<Operation, void> {
-    Operation m_operation;
-    bool      m_polled { false };
-
-public:
-    explicit AwaitSuspension(Operation&& operation)
-        : m_operation(rstd::forward<Operation>(operation)) {}
-
-    constexpr auto await_ready() const noexcept -> bool { return false; }
-
-    template<typename Promise>
-    void await_suspend(std::coroutine_handle<Promise> handle) noexcept {
-        handle.promise().set_awaiting(this);
-    }
-
-    void await_resume() {
-        if (! m_polled) m_operation.take_output();
-    }
-
-    auto advance(AwaitContext& cx) -> AwaitTransition {
-        if constexpr (FutureInput<Operation>) {
-            if (cx.mode() == AwaitMode::FuturePoll &&
-                cx.execution_domain() == ExecutionDomainKind::RuntimeWorker) {
-                auto out = future::poll(m_operation, cx.poll_context());
-                if (out.is_pending()) return AwaitTransition::suspend();
-                rstd::move(out).take();
-                m_polled = true;
+                m_polled.store(rstd::move(out));
                 return AwaitTransition::continue_();
             }
         }

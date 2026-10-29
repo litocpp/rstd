@@ -13,6 +13,10 @@ import :time;
 using ::alloc::vec::Vec;
 using ::alloc::string::String;
 using ::alloc::boxed::Box;
+#if LITO_FEAT_ASYNC_DEBUG
+
+using namespace rstd::literals;
+#endif
 
 namespace rstd::async
 {
@@ -37,22 +41,43 @@ public:
     auto clone() const -> RuntimeHandle { return RuntimeHandle { m_inner.clone() }; }
 
     template<AwaitableInput A>
-    auto spawn(A awaitable) const -> JoinHandle<await_output_t<A>> {
+    auto spawn(A awaitable
+#if LITO_FEAT_ASYNC_DEBUG
+               ,
+               debug::TaskInfo info     = {},
+               source_location location = source_location::current()
+#endif
+    ) const -> JoinHandle<await_output_t<A>> {
         auto inner = m_inner.upgrade();
         if (! inner) {
             rstd::panic { "RuntimeHandle::spawn called after runtime shutdown" };
         }
+        auto creation = TaskCreationInfo {};
+#if LITO_FEAT_ASYNC_DEBUG
+        creation = TaskCreationInfo { info, location };
+#endif
         auto driver = make_runtime_driver(into_coro(rstd::move(awaitable)));
-        return ::spawn_driver_on(*inner.as_ptr().as_raw_ptr(), rstd::move(driver));
+        return ::spawn_driver_on(*inner.as_ptr().as_raw_ptr(), rstd::move(driver), creation);
     }
 
     template<typename F>
-    auto spawn_blocking(F&& function) const -> io::Result<JoinHandle<mtp::invoke_result_t<F>>> {
+    auto spawn_blocking(F&& function
+#if LITO_FEAT_ASYNC_DEBUG
+                        ,
+                        debug::TaskInfo info     = {},
+                        source_location location = source_location::current()
+#endif
+    ) const -> io::Result<JoinHandle<mtp::invoke_result_t<F>>> {
         auto inner = m_inner.upgrade();
         if (! inner) {
             return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected }));
         }
-        return ::spawn_blocking_on(*inner.as_ptr().as_raw_ptr(), rstd::forward<F>(function));
+        auto creation = TaskCreationInfo {};
+#if LITO_FEAT_ASYNC_DEBUG
+        creation = TaskCreationInfo { info, location };
+#endif
+        return ::spawn_blocking_on(
+            *inner.as_ptr().as_raw_ptr(), rstd::forward<F>(function), creation);
     }
 };
 
@@ -75,15 +100,31 @@ export class Runtime {
         m_inner->init_self(m_inner.downgrade());
     }
 
+    static auto
+    make(RuntimeKind kind, RuntimeConfig config, usize worker_count, Option<String> thread_name)
+        -> io::Result<Runtime> {
+        auto runtime = Runtime { kind, config, worker_count, rstd::move(thread_name) };
+#if LITO_FEAT_ASYNC_DEBUG
+        if (runtime.m_inner->diagnostic.enabled()) {
+            auto session = debug::CollectionSession::start(runtime.m_inner->diagnostic);
+            if (session.is_err()) return Err(rstd::move(session).unwrap_err_unchecked());
+            runtime.m_inner->diagnostic_session = Some(rstd::move(session).unwrap_unchecked());
+        }
+#endif
+        return Ok(rstd::move(runtime));
+    }
+
     static auto make_thread_pool(usize                 worker_threads,
                                  Option<String> const& thread_name,
                                  RuntimeConfig         config) -> io::Result<Runtime> {
-        auto runtime = Runtime { RuntimeKind::ThreadPool,
-                                 config,
-                                 worker_threads,
-                                 thread_name.is_some()
-                                     ? Some(rstd::as<rstd::clone::Clone>(*thread_name).clone())
-                                     : None<String>() };
+        auto created =
+            make(RuntimeKind::ThreadPool,
+                 config,
+                 worker_threads,
+                 thread_name.is_some() ? Some(rstd::as<rstd::clone::Clone>(*thread_name).clone())
+                                       : None<String>());
+        if (created.is_err()) return Err(rstd::move(created).unwrap_err_unchecked());
+        auto runtime = rstd::move(created).unwrap_unchecked();
 
         for (rstd::size_t i = 0; i < worker_threads.to_primitive(); ++i) {
             auto inner     = runtime.m_inner.clone();
@@ -128,6 +169,7 @@ export class Runtime {
             auto worker = rstd::move(m_workers.pop()).unwrap_unchecked();
             (void)rstd::move(worker).join();
         }
+        m_current_worker = None<Box<RuntimeWorker>>();
         m_inner->finish_shutdown();
     }
 
@@ -148,6 +190,12 @@ public:
     }
     ~Runtime() { shutdown(); }
 
+#if LITO_FEAT_ASYNC_DEBUG
+    auto debug_handle() const -> Option<debug::Handle> {
+        if (m_inner->diagnostic_session.is_none()) return None();
+        return Some(m_inner->diagnostic_session->handle());
+    }
+#endif
     auto handle() const -> RuntimeHandle { return RuntimeHandle { m_inner.downgrade() }; }
 
     auto io_enabled() const -> bool { return m_inner->io_enabled(); }
@@ -155,29 +203,68 @@ public:
     auto time_enabled() const -> bool { return m_inner->time_enabled(); }
 
     template<AwaitableInput A>
-    auto spawn(A awaitable) -> JoinHandle<await_output_t<A>> {
+    auto spawn(A awaitable
+#if LITO_FEAT_ASYNC_DEBUG
+               ,
+               debug::TaskInfo info     = {},
+               source_location location = source_location::current()
+#endif
+                   ) -> JoinHandle<await_output_t<A>> {
+        auto creation = TaskCreationInfo {};
+#if LITO_FEAT_ASYNC_DEBUG
+        creation = TaskCreationInfo { info, location };
+#endif
         auto driver = make_runtime_driver(into_coro(rstd::move(awaitable)));
-        return ::spawn_driver_on(*m_inner.as_ptr().as_raw_ptr(), rstd::move(driver));
+        return ::spawn_driver_on(*m_inner.as_ptr().as_raw_ptr(), rstd::move(driver), creation);
     }
 
     template<AwaitableInput A>
-    auto spawn_local(A awaitable) -> JoinHandle<await_output_t<A>> {
+    auto spawn_local(A awaitable
+#if LITO_FEAT_ASYNC_DEBUG
+                     ,
+                     debug::TaskInfo info     = {},
+                     source_location location = source_location::current()
+#endif
+                         ) -> JoinHandle<await_output_t<A>> {
         if (m_inner->is_thread_pool()) {
             rstd::panic { "spawn_local is only supported by current-thread runtime" };
         }
+        auto creation = TaskCreationInfo {};
+#if LITO_FEAT_ASYNC_DEBUG
+        creation = TaskCreationInfo { info, location };
+#endif
         auto driver = make_runtime_driver(into_coro(rstd::move(awaitable)));
-        return ::spawn_driver_on(*m_inner.as_ptr().as_raw_ptr(), rstd::move(driver));
+        return ::spawn_driver_on(*m_inner.as_ptr().as_raw_ptr(), rstd::move(driver), creation);
     }
 
     template<typename F>
-    auto spawn_blocking(F&& function) -> io::Result<JoinHandle<mtp::invoke_result_t<F>>> {
-        return ::spawn_blocking_on(*m_inner.as_ptr().as_raw_ptr(), rstd::forward<F>(function));
+    auto spawn_blocking(F&& function
+#if LITO_FEAT_ASYNC_DEBUG
+                        ,
+                        debug::TaskInfo info     = {},
+                        source_location location = source_location::current()
+#endif
+                            ) -> io::Result<JoinHandle<mtp::invoke_result_t<F>>> {
+        auto creation = TaskCreationInfo {};
+#if LITO_FEAT_ASYNC_DEBUG
+        creation = TaskCreationInfo { info, location };
+#endif
+        return ::spawn_blocking_on(
+            *m_inner.as_ptr().as_raw_ptr(), rstd::forward<F>(function), creation);
     }
 
     template<AwaitableInput A>
-    auto block_on(A awaitable) -> await_output_t<A> {
-        auto driver = make_runtime_driver(into_coro(rstd::move(awaitable)));
-
+    auto block_on(A awaitable
+#if LITO_FEAT_ASYNC_DEBUG
+                  ,
+                  source_location location = source_location::current()
+#endif
+                      ) -> await_output_t<A> {
+        auto driver   = make_runtime_driver(into_coro(rstd::move(awaitable)));
+        auto creation = TaskCreationInfo {};
+#if LITO_FEAT_ASYNC_DEBUG
+        creation = TaskCreationInfo { debug::TaskInfo { "block_on"_str, location }, location };
+#endif
         using Output  = await_output_t<A>;
         auto* runtime = m_inner.as_ptr().as_raw_ptr();
         if (m_inner->is_thread_pool()) {
@@ -188,7 +275,10 @@ public:
 
             auto joined = JoinState<Output> {};
             auto root   = ScopedTaskStorage<DriverTaskState<Output>> {
-                runtime->weak(), rstd::move(driver), JoinStateOwner<Output>::borrowed(joined)
+                runtime->weak(),
+                rstd::move(driver),
+                JoinStateOwner<Output>::borrowed(joined),
+                creation
             };
             joined.set_task(root.task());
             root.spawn(*runtime);
@@ -219,7 +309,7 @@ public:
         }
         auto joined = JoinState<Output> {};
         auto root   = ScopedTaskStorage<DriverTaskState<Output>> {
-            runtime->weak(), rstd::move(driver), JoinStateOwner<Output>::borrowed(joined)
+            runtime->weak(), rstd::move(driver), JoinStateOwner<Output>::borrowed(joined), creation
         };
         joined.set_task(root.task());
         root.spawn(*runtime);
@@ -281,6 +371,14 @@ public:
         return *this;
     }
 
+#if LITO_FEAT_ASYNC_DEBUG
+    auto enable_debug(debug::Options options = {}) -> RuntimeBuilder& {
+        m_config.enable_debug  = true;
+        m_config.debug_options = options;
+        return *this;
+    }
+
+#endif
     auto enable_io() -> RuntimeBuilder& {
         m_config.enable_io = true;
         return *this;
@@ -298,17 +396,17 @@ public:
     }
 
     auto build() -> io::Result<Runtime> {
-        if (m_config.max_blocking_threads == usize()) {
+        if (! m_config.valid()) {
             return Err(io::error::Error::from_kind(
                 io::error::ErrorKind { io::error::ErrorKind::InvalidInput }));
         }
         if (m_kind == RuntimeKind::CurrentThread) {
-            return Ok(Runtime { RuntimeKind::CurrentThread,
-                                m_config,
-                                usize(),
-                                m_thread_name.is_some()
-                                    ? Some(rstd::as<rstd::clone::Clone>(*m_thread_name).clone())
-                                    : None<String>() });
+            return Runtime::make(RuntimeKind::CurrentThread,
+                                 m_config,
+                                 usize(),
+                                 m_thread_name.is_some()
+                                     ? Some(rstd::as<rstd::clone::Clone>(*m_thread_name).clone())
+                                     : None<String>());
         }
 
         if (m_worker_threads == usize()) {
@@ -339,9 +437,18 @@ struct RuntimeBuilderConfigAccess {
 };
 
 export template<AwaitableInput A>
+#if LITO_FEAT_ASYNC_DEBUG
+auto block_on(A awaitable, source_location location = source_location::current())
+    -> await_output_t<A> {
+#else
 auto block_on(A awaitable) -> await_output_t<A> {
+#endif
     auto runtime = Runtime {};
+#if LITO_FEAT_ASYNC_DEBUG
+    return runtime.block_on(rstd::move(awaitable), location);
+#else
     return runtime.block_on(rstd::move(awaitable));
+#endif
 }
 
 } // namespace rstd::async

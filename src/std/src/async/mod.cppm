@@ -1,5 +1,8 @@
 export module rstd:async;
 export import :async.forward;
+#if LITO_FEAT_ASYNC_DEBUG
+export import :async.debug;
+#endif
 export import :async.atomic_waker;
 export import :async.executor;
 export import :async.thread_pool_executor;

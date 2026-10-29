@@ -3,6 +3,9 @@ module;
 
 export module rstd:async.runtime_core;
 import :async.awaitable;
+#if LITO_FEAT_ASYNC_DEBUG
+import :async.debug;
+#endif
 import :async.blocking_pool;
 import :async.facility;
 import :async.forward;
@@ -247,6 +250,10 @@ auto default_io_backend_preference() -> IoBackendPreference {
 }
 
 struct RuntimeConfig {
+#if LITO_FEAT_ASYNC_DEBUG
+    bool                  enable_debug { false };
+    async::debug::Options debug_options {};
+#endif
     static constexpr usize DEFAULT_MAX_BLOCKING_THREADS { rstd::size_t(512) };
 
     bool                enable_io;
@@ -254,17 +261,38 @@ struct RuntimeConfig {
     IoBackendPreference io_backend;
     usize               max_blocking_threads;
 
+    auto valid() const noexcept -> bool {
+        if (max_blocking_threads == usize()) return false;
+#if LITO_FEAT_ASYNC_DEBUG
+        if (enable_debug && ! debug_options.valid()) return false;
+#endif
+        return true;
+    }
+
     static auto disabled() -> RuntimeConfig {
-        return RuntimeConfig {
-            false, false, default_io_backend_preference(), DEFAULT_MAX_BLOCKING_THREADS
-        };
+        return RuntimeConfig { .enable_io            = false,
+                               .enable_time          = false,
+                               .io_backend           = default_io_backend_preference(),
+                               .max_blocking_threads = DEFAULT_MAX_BLOCKING_THREADS };
     }
 
     static auto all() -> RuntimeConfig {
-        return RuntimeConfig {
-            true, true, default_io_backend_preference(), DEFAULT_MAX_BLOCKING_THREADS
-        };
+        return RuntimeConfig { .enable_io            = true,
+                               .enable_time          = true,
+                               .io_backend           = default_io_backend_preference(),
+                               .max_blocking_threads = DEFAULT_MAX_BLOCKING_THREADS };
     }
+};
+
+struct TaskCreationInfo {
+#if LITO_FEAT_ASYNC_DEBUG
+    async::debug::TaskInfo diagnostic {};
+
+    TaskCreationInfo() = default;
+    TaskCreationInfo(async::debug::TaskInfo info, source_location location): diagnostic(info) {
+        if (! diagnostic.location.line()) diagnostic.location = location;
+    }
+#endif
 };
 
 auto blocking_thread_name(Option<String> name) -> Option<String> {
@@ -1331,6 +1359,9 @@ public:
 class RuntimeWorker {
     static constexpr usize DEFAULT_COOPERATIVE_BUDGET { rstd::size_t(64) };
 
+#if LITO_FEAT_ASYNC_DEBUG
+    async::debug::Recorder diagnostic;
+#endif
     RuntimeInner*     m_runtime;
     WorkerHandle      m_handle;
     ReadyQueue        m_ready;
@@ -1365,6 +1396,10 @@ public:
 };
 
 struct RuntimeInner {
+#if LITO_FEAT_ASYNC_DEBUG
+    async::debug::Recorder                  diagnostic;
+    Option<async::debug::CollectionSession> diagnostic_session;
+#endif
     RuntimeKind                m_kind;
     RuntimeConfig              m_config;
     async::RuntimeBlockingPool m_blocking_pool;
@@ -1375,12 +1410,26 @@ struct RuntimeInner {
                           RuntimeConfig  config,
                           usize          worker_count,
                           Option<String> thread_name)
-        : m_kind(kind),
+        :
+#if LITO_FEAT_ASYNC_DEBUG
+          diagnostic(
+              config.enable_debug
+                  ? async::debug::Recorder::make(
+                        config.debug_options,
+                        { kind == RuntimeKind::ThreadPool,
+                          config.enable_io,
+                          config.enable_time,
+                          kind == RuntimeKind::CurrentThread ? 1 : worker_count.to_primitive(),
+                          config.max_blocking_threads.to_primitive() })
+                  : async::debug::Recorder {}),
+#endif
+          m_kind(kind),
           m_config(config),
           m_blocking_pool(config.max_blocking_threads,
                           blocking_thread_name(rstd::move(thread_name))),
           m_shared(kind == RuntimeKind::CurrentThread ? usize(1) : worker_count, kind),
-          self(sync::Weak<RuntimeInner>::make()) {}
+          self(sync::Weak<RuntimeInner>::make()) {
+    }
 
     void init_self(sync::Weak<RuntimeInner> weak) { self = rstd::move(weak); }
 
@@ -1428,19 +1477,68 @@ struct RuntimeInner {
     void abort_all_tasks();
 };
 
+#if LITO_FEAT_ASYNC_DEBUG
+struct ObservedTaskControl {
+    sync::MutexGuard<TaskControl> guard;
+    const async::debug::Recorder& diagnostic;
+    auto                          operator->() -> TaskControl* { return rstd::addressof(*guard); }
+    auto                          operator*() -> TaskControl& { return *guard; }
+    ~ObservedTaskControl() {
+        using State = async::debug::State;
+        auto status = State::Created;
+        switch (guard->lifecycle) {
+        case TaskLifecycle::Created: status = State::Created; break;
+        case TaskLifecycle::Queued: status = State::Queued; break;
+        case TaskLifecycle::RunningRuntime: status = State::Running; break;
+        case TaskLifecycle::Waiting: status = State::Waiting; break;
+        case TaskLifecycle::FacilityQueued: status = State::FacilityQueued; break;
+        case TaskLifecycle::FacilityRunning: status = State::FacilityRunning; break;
+        case TaskLifecycle::Completed: status = State::Terminal; break;
+        }
+        if (guard->cancel_requested) diagnostic.cancel();
+        diagnostic.state(status,
+                         false,
+                         guard->owner_worker.as_usize().to_primitive(),
+                         guard->lifecycle == TaskLifecycle::FacilityRunning);
+    }
+};
+
+#endif
 struct TaskStateBase {
+#if LITO_FEAT_ASYNC_DEBUG
+    async::debug::Recorder diagnostic;
+#endif
+
+    auto lock_control() {
+#if LITO_FEAT_ASYNC_DEBUG
+        return ObservedTaskControl { control.lock().unwrap_unchecked(), diagnostic };
+#else
+        return control.lock().unwrap_unchecked();
+#endif
+    }
     TaskRefControl*                           ref_control;
     sync::Weak<RuntimeInner>                  runtime;
     sync::Mutex<TaskControl>                  control;
     sync::Mutex<Option<FacilityEvent>>        completion_event;
     sync::Mutex<Option<FacilityCancellation>> completion_cancellation;
 
-    TaskStateBase(TaskRefControl& ref_control, sync::Weak<RuntimeInner> runtime)
+    TaskStateBase(TaskRefControl&          ref_control,
+                  sync::Weak<RuntimeInner> runtime,
+                  [[maybe_unused]]
+                  TaskCreationInfo creation = {})
         : ref_control(rstd::addressof(ref_control)),
           runtime(rstd::move(runtime)),
           control(TaskControl {}),
           completion_event(Option<FacilityEvent> {}),
           completion_cancellation(Option<FacilityCancellation> {}) {
+#if LITO_FEAT_ASYNC_DEBUG
+        if (auto rt = this->runtime.upgrade()) {
+            auto parent = async::debug::current();
+            diagnostic =
+                (parent.same_store(rt->diagnostic) ? parent : rt->diagnostic.without_parent())
+                    .child(async::debug::Kind::Task, creation.diagnostic);
+        }
+#endif
         ref_control.attach(this);
     }
     virtual ~TaskStateBase() = default;

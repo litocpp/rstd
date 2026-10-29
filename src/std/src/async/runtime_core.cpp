@@ -330,7 +330,7 @@ auto TaskStateBase::make_schedule_action(TaskControl& state, TaskRef task) -> Ta
 }
 
 auto TaskStateBase::activate(TaskRef self, RuntimeWorkerId owner) -> TaskAction {
-    auto state = control.lock().unwrap_unchecked();
+    auto state = lock_control();
     if (state->lifecycle != TaskLifecycle::Created || state->cancel_requested) {
         return TaskAction::none();
     }
@@ -340,7 +340,7 @@ auto TaskStateBase::activate(TaskRef self, RuntimeWorkerId owner) -> TaskAction 
 
 auto TaskStateBase::try_begin_runtime(ScheduleTicket ticket, TaskAccess access)
     -> Option<RuntimeExecutionLease> {
-    auto state = control.lock().unwrap_unchecked();
+    auto state = lock_control();
     if (state->lifecycle != TaskLifecycle::Queued || state->cancel_requested ||
         state->owner_worker != ticket.owner() ||
         state->schedule_generation != ticket.generation()) {
@@ -429,7 +429,7 @@ void TaskStateBase::schedule(TaskRef self) {
     bool stopping = ! rt || rt->is_stopping();
     auto action   = TaskAction::none();
     {
-        auto state = control.lock().unwrap_unchecked();
+        auto state = lock_control();
         switch (state->lifecycle) {
         case TaskLifecycle::Completed:
         case TaskLifecycle::Queued: return;
@@ -470,7 +470,7 @@ void TaskStateBase::schedule(TaskRef self) {
 void TaskStateBase::abort(TaskRef self) {
     auto action = TaskAction::none();
     {
-        auto state = control.lock().unwrap_unchecked();
+        auto state = lock_control();
         if (state->lifecycle == TaskLifecycle::Completed) {
             return;
         }
@@ -492,7 +492,7 @@ void TaskStateBase::install_completion_cancellation(FacilityCancellation cancell
     auto identity  = cancellation.token();
     bool installed = false;
     {
-        auto state = control.lock().unwrap_unchecked();
+        auto state = lock_control();
         if (identity.effect == FacilityEffect::CompletionOnly &&
             state->lifecycle == TaskLifecycle::Waiting &&
             state->owner_worker == identity.owner_worker &&
@@ -532,7 +532,7 @@ auto TaskStateBase::end_runtime_execution(RuntimeExecutionLease lease, TaskPollA
     auto completion_id =
         outcome.is_submit_completion() ? Some(outcome.completion_id()) : Option<FacilityId> {};
     {
-        auto state = control.lock().unwrap_unchecked();
+        auto state = lock_control();
         if (state->schedule_generation != generation ||
             state->lifecycle != TaskLifecycle::RunningRuntime) {
             return TaskAction::none();
@@ -596,7 +596,7 @@ void TaskStateBase::complete_facility(FacilityEvent event) {
     auto cancellation = Option<FacilityCancellation> {};
     bool deliver      = false;
     {
-        auto state = control.lock().unwrap_unchecked();
+        auto state = lock_control();
         if (metadata.effect != FacilityEffect::CompletionOnly ||
             state->lifecycle != TaskLifecycle::Waiting ||
             state->owner_worker != metadata.owner_worker ||
@@ -636,7 +636,7 @@ auto TaskStateBase::begin_facility_execution(FacilityExecutionToken token, TaskA
     auto lease    = Option<FacilityExecutionLease> {};
     auto action   = TaskAction::none();
     {
-        auto state = control.lock().unwrap_unchecked();
+        auto state = lock_control();
         if (state->lifecycle != TaskLifecycle::FacilityQueued ||
             state->owner_worker != metadata.owner_worker ||
             state->facility_id != metadata.facility_id ||
@@ -666,7 +666,7 @@ void TaskStateBase::cancel_facility_handoff(FacilityExecutionToken token) {
     auto self     = token.take_task();
     auto action   = TaskAction::none();
     {
-        auto state = control.lock().unwrap_unchecked();
+        auto state = lock_control();
         if (state->lifecycle != TaskLifecycle::FacilityQueued ||
             state->owner_worker != metadata.owner_worker ||
             state->facility_id != metadata.facility_id ||
@@ -696,7 +696,7 @@ auto TaskStateBase::end_facility_execution(FacilityExecutionLease lease, TaskPol
     auto request =
         outcome.is_submit_facility() ? Some(outcome.take_request()) : Option<FacilityRequest> {};
     {
-        auto state = control.lock().unwrap_unchecked();
+        auto state = lock_control();
         if (state->lifecycle != TaskLifecycle::FacilityRunning ||
             state->owner_worker != metadata.owner_worker ||
             state->facility_id != metadata.facility_id ||
@@ -783,13 +783,20 @@ void poll_runtime_task(RuntimeExecutionLease lease) {
     auto* task_state = rstd::addressof(lease.state());
     auto  waker      = make_task_waker(task_ref);
     auto  cx         = task::Context { waker };
-    auto  outcome    = task_state->poll(task_ref, cx);
-    auto  action     = task_state->end_runtime_execution(rstd::move(lease), rstd::move(outcome));
+#if LITO_FEAT_ASYNC_DEBUG
+    auto debug_scope = async::debug::Scope { task_state->diagnostic };
+#endif
+    auto outcome = task_state->poll(task_ref, cx);
+    auto action  = task_state->end_runtime_execution(rstd::move(lease), rstd::move(outcome));
     task_state->apply(rstd::move(action));
 }
 
 RuntimeWorker::RuntimeWorker(RuntimeInner& runtime, WorkerHandle handle)
-    : m_runtime(rstd::addressof(runtime)),
+    :
+#if LITO_FEAT_ASYNC_DEBUG
+      diagnostic(runtime.diagnostic.child(async::debug::Kind::Worker, { "worker"_str })),
+#endif
+      m_runtime(rstd::addressof(runtime)),
       m_handle(rstd::move(handle)),
       m_ready(),
       m_local_poll_commands(Vec<PollCommand>::make()),
@@ -854,11 +861,17 @@ void RuntimeWorker::abandon_operation(OperationKey key) {
 }
 
 RuntimeWorker::~RuntimeWorker() {
+#if LITO_FEAT_ASYNC_DEBUG
+    diagnostic.state(async::debug::State::Stopping);
+#endif
     drain_local_poll();
     m_handle.clear_poll();
     if (m_poll_state.is_some()) {
         dispatch_poll_batch(AsyncPoll::shutdown(*m_poll_state));
     }
+#if LITO_FEAT_ASYNC_DEBUG
+    diagnostic.state(async::debug::State::Closed, true);
+#endif
 }
 
 void RuntimeWorker::drain_inbox() {
@@ -932,6 +945,9 @@ void RuntimeWorker::apply_poll(PollCommand command) {
 }
 
 void RuntimeWorker::drain_ready() {
+#if LITO_FEAT_ASYNC_DEBUG
+    diagnostic.state(async::debug::State::Running, false, m_handle.id().as_usize().to_primitive());
+#endif
     drain_inbox();
     if (m_stop_requested) {
         m_ready.clear();
@@ -971,7 +987,13 @@ void RuntimeWorker::poll_backend(PollTimeout timeout) {
         rstd::panic { "async runtime worker Poll initialization failed" };
     }
 
+#if LITO_FEAT_ASYNC_DEBUG
+    diagnostic.state(async::debug::State::Parked, false, m_handle.id().as_usize().to_primitive());
+#endif
     auto polled = AsyncPoll::poll(*m_poll_state, timeout);
+#if LITO_FEAT_ASYNC_DEBUG
+    diagnostic.state(async::debug::State::Running, false, m_handle.id().as_usize().to_primitive());
+#endif
     if (polled.is_err()) {
         rstd::panic { "async runtime worker Poll failed" };
     }
@@ -1065,6 +1087,9 @@ auto RuntimeInner::begin_shutdown() -> bool {
         return false;
     }
     state->m_lifecycle = RuntimeLifecycle::Stopping;
+#if LITO_FEAT_ASYNC_DEBUG
+    diagnostic.state(async::debug::State::Stopping);
+#endif
     m_shared.worker_cvar.notify_all();
     return true;
 }
@@ -1082,6 +1107,12 @@ void RuntimeInner::finish_shutdown() {
         auto state         = m_shared.state.lock().unwrap_unchecked();
         state->m_lifecycle = RuntimeLifecycle::Stopped;
     }
+#if LITO_FEAT_ASYNC_DEBUG
+    if (diagnostic_session.is_some())
+        diagnostic_session->close();
+    else
+        diagnostic.close();
+#endif
     m_shared.task_cvar.notify_all();
     m_shared.worker_cvar.notify_all();
 }

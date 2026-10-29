@@ -19,6 +19,9 @@ export import :sync;
 export import :thread;
 export import :async;
 export import :net;
+#if LITO_FEAT_ASYNC_DEBUG
+export import :async.debug.server;
+#endif
 export import :os;
 export import :process;
 export import :signal;

@@ -1,5 +1,6 @@
 add_library(rstd.std STATIC)
 target_compile_features(rstd.std PUBLIC cxx_std_20)
+target_compile_definitions(rstd.std PRIVATE LITO_FEAT_ASYNC_DEBUG=0)
 target_link_libraries(rstd.std PUBLIC rstd.core rstd.alloc)
 if(WIN32)
   target_link_libraries(rstd.std PRIVATE ws2_32 ntdll)

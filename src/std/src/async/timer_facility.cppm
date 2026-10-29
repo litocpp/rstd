@@ -1,11 +1,15 @@
 export module rstd:async.timer_facility;
 import :async.poll;
+#if LITO_FEAT_ASYNC_DEBUG
+import :async.debug.timer;
+#endif
 import :async.runtime_core;
 import :sync;
 import :time;
 import rstd.alloc;
 
 using namespace rstd;
+using namespace rstd::literals;
 
 namespace rstd::async
 {
@@ -13,6 +17,9 @@ namespace rstd::async
 inline constexpr rstd::uintptr_t TIMER_FACILITY_ID { ~rstd::uintptr_t(0) };
 
 struct TimerFacilityFields {
+#if LITO_FEAT_ASYNC_DEBUG
+    debug::TimerObservation observation;
+#endif
     WorkerHandle                    worker;
     TimerKey                        key;
     Option<FacilityCompletionToken> token;
@@ -20,13 +27,15 @@ struct TimerFacilityFields {
 
     TimerFacilityFields(WorkerHandle worker, TimerKey key, FacilityCompletionToken token)
         : worker(rstd::move(worker)), key(key), token(Some(rstd::move(token))) {}
+
+    ~TimerFacilityFields() { token = None<FacilityCompletionToken>(); }
 };
 
 struct TimerFacilityState {
     sync::Mutex<TimerFacilityFields> fields;
 
     TimerFacilityState(WorkerHandle worker, TimerKey key, FacilityCompletionToken token)
-        : fields(TimerFacilityFields { rstd::move(worker), key, rstd::move(token) }) {}
+        : fields(rstd::move(worker), key, rstd::move(token)) {}
 };
 
 using TimerFacilityArc = sync::Arc<TimerFacilityState>;
@@ -41,6 +50,9 @@ void timer_facility_owner_dispatch(voidp data, PollEventData event) {
         auto fields = state->fields.lock().unwrap_unchecked();
         if (fields->active &&
             (event.kind() == PollEventKind::Timer || event.kind() == PollEventKind::BackendError)) {
+#if LITO_FEAT_ASYNC_DEBUG
+            fields->observation.ready(event.kind() != PollEventKind::Timer);
+#endif
             fields->active = false;
             token          = fields->token.take();
         }
@@ -87,6 +99,9 @@ void cancel_timer_facility(const TimerFacilityArc& state) {
         if (! fields->active) {
             return;
         }
+#if LITO_FEAT_ASYNC_DEBUG
+        fields->observation.cancel();
+#endif
         fields->active = false;
         token          = fields->token.take();
         worker         = Some(fields->worker.clone());
@@ -166,12 +181,21 @@ public:
         auto command  = PollCommand::arm_timer(key, deadline, make_timer_facility_owner(state));
         auto result   = worker.submit_poll(rstd::move(command));
         if (result.is_err()) {
-            auto fields    = state->fields.lock().unwrap_unchecked();
+            auto fields = state->fields.lock().unwrap_unchecked();
+#if LITO_FEAT_ASYNC_DEBUG
+            fields->observation.ready(true);
+#endif
             fields->active = false;
             return Err(fields->token.take().unwrap_unchecked());
         }
         return Ok(TimerFacilityRegistration { rstd::move(state), identity });
     }
+
+#if LITO_FEAT_ASYNC_DEBUG
+    auto debug_id() const -> debug::Id {
+        return m_state->fields.lock().unwrap_unchecked()->observation.target_id();
+    }
+#endif
 
     auto cancellation() const -> FacilityCancellation {
         return make_timer_facility_cancellation(m_state, m_token);

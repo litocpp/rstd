@@ -59,6 +59,8 @@ struct AwaitingOperation {
     }
 };
 
+using namespace rstd::literals;
+
 namespace rstd::async
 {
 
@@ -100,8 +102,18 @@ public:
         }
 
         template<AwaitableInput A>
-        auto await_transform(A&& awaitable) {
-            return make_suspension(rstd::forward<A>(awaitable));
+        auto await_transform(A&& awaitable
+#if LITO_FEAT_ASYNC_DEBUG
+                             ,
+                             source_location location = source_location::current()
+#endif
+        ) {
+            auto suspension = make_suspension(rstd::forward<A>(awaitable));
+#if LITO_FEAT_ASYNC_DEBUG
+            if constexpr (requires { suspension.debug_location(location); })
+                suspension.debug_location(location);
+#endif
+            return suspension;
         }
 
         auto take_result() -> T {
@@ -169,8 +181,18 @@ public:
         }
 
         template<AwaitableInput A>
-        auto await_transform(A&& awaitable) {
-            return make_suspension(rstd::forward<A>(awaitable));
+        auto await_transform(A&& awaitable
+#if LITO_FEAT_ASYNC_DEBUG
+                             ,
+                             source_location location = source_location::current()
+#endif
+        ) {
+            auto suspension = make_suspension(rstd::forward<A>(awaitable));
+#if LITO_FEAT_ASYNC_DEBUG
+            if constexpr (requires { suspension.debug_location(location); })
+                suspension.debug_location(location);
+#endif
+            return suspension;
         }
     };
 

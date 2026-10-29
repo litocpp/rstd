@@ -19,6 +19,8 @@ import rstd.alloc;
 
 using namespace rstd;
 
+using namespace rstd::literals;
+
 namespace rstd::async
 {
 
@@ -43,6 +45,9 @@ struct CompletionSourceBinding {
 };
 
 struct CompletionSourceFields {
+#if LITO_FEAT_ASYNC_DEBUG
+    debug::Recorder diagnostic;
+#endif
     Option<os::fd::OwnedFd>         owned_file {};
     Option<os::socket::OwnedSocket> owned_socket {};
     Option<CompletionSourceBinding> binding {};
@@ -215,6 +220,9 @@ enum class IoOperationConsumer
 };
 
 struct IoOperationFields {
+#if LITO_FEAT_ASYNC_DEBUG
+    debug::Recorder diagnostic;
+#endif
     Option<WorkerHandle>             worker {};
     Option<OperationKey>             key {};
     Option<FacilityCompletionToken>  token {};
@@ -224,6 +232,22 @@ struct IoOperationFields {
     IoOperationConsumer              consumer { IoOperationConsumer::None };
     bool                             cancel_requested { false };
     bool                             source_active { true };
+
+    void set_ready(io::Result<IoCompletion> output) {
+        result    = Some(rstd::move(output));
+        lifecycle = IoOperationLifecycle::Ready;
+#if LITO_FEAT_ASYNC_DEBUG
+        publish_ready();
+#endif
+    }
+
+#if LITO_FEAT_ASYNC_DEBUG
+    void publish_ready() const {
+        if (lifecycle != IoOperationLifecycle::Ready) return;
+        diagnostic.outcome(result->is_ok() ? debug::Outcome::Success : debug::Outcome::Error);
+        diagnostic.state(debug::State::Ready);
+    }
+#endif
 };
 
 struct IoOperationState {
@@ -264,7 +288,16 @@ struct IoOperationState {
                            choice_case<PollOperationKind::RecvMessage, RecvMessage>,
                            choice_case<PollOperationKind::SendMessage, SendMessage>>;
 
-    CompletionSource               source;
+#if LITO_FEAT_ASYNC_DEBUG
+    struct ReleaseObservation {
+        debug::Recorder record;
+        ~ReleaseObservation() { record.state(debug::State::Released, true); }
+    };
+#endif
+    CompletionSource source;
+#if LITO_FEAT_ASYNC_DEBUG
+    ReleaseObservation release_observation;
+#endif
     Payload                        payload;
     sync::Mutex<IoOperationFields> fields;
 
@@ -334,11 +367,19 @@ struct IoOperationState {
     }
 
     void begin() {
-        if (source.begin_operation()) return;
-        auto current           = fields.lock().unwrap_unchecked();
+        auto active = source.begin_operation();
+#if LITO_FEAT_ASYNC_DEBUG
+        if (active && (! debug::CURRENT || ! debug::CURRENT->enabled())) return;
+#else
+        if (active) return;
+#endif
+        auto current = fields.lock().unwrap_unchecked();
+#if LITO_FEAT_ASYNC_DEBUG
+        observe(*current);
+#endif
+        if (active) return;
         current->source_active = false;
-        current->lifecycle     = IoOperationLifecycle::Ready;
-        current->result        = Some(io::Result<IoCompletion>(
+        current->set_ready(io::Result<IoCompletion>(
             Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected }))));
     }
 
@@ -479,6 +520,32 @@ struct IoOperationState {
         return source.bind_worker(rstd::move(current));
     }
 
+#if LITO_FEAT_ASYNC_DEBUG
+    void observe(IoOperationFields& fields) {
+        if (fields.diagnostic.enabled() || ! debug::CURRENT || ! debug::CURRENT->enabled()) return;
+        auto source_fields = source.m_state->fields.lock().unwrap_unchecked();
+        if (! source_fields->diagnostic.enabled())
+            source_fields->diagnostic = debug::current().child(
+                debug::Kind::Resource,
+                { source.kind() == CompletionSourceKind::File ? "file_source"_str
+                                                              : "socket_source"_str });
+        ref<str> name = "io"_str;
+        switch (payload.which()) {
+        case PollOperationKind::Read: name = "read"_str; break;
+        case PollOperationKind::Write: name = "write"_str; break;
+        case PollOperationKind::Connect: name = "connect"_str; break;
+        case PollOperationKind::Accept: name = "accept"_str; break;
+        case PollOperationKind::RecvMessage: name = "recv_message"_str; break;
+        case PollOperationKind::SendMessage: name = "send_message"_str; break;
+        }
+        fields.diagnostic = debug::current().child(
+            debug::Kind::Operation, { name }, source_fields->diagnostic.target_id());
+        release_observation.record = fields.diagnostic;
+        fields.publish_ready();
+    }
+
+#endif
+
     auto source_state() const -> CompletionSourceArc { return source.m_state.clone(); }
 };
 
@@ -510,10 +577,9 @@ void publish_io_operation_event(const IoOperationArc& state, PollEventData event
             fields->lifecycle == IoOperationLifecycle::Consumed) {
             return;
         }
-        fields->result    = Some(state->finish(rstd::move(event)));
-        fields->lifecycle = IoOperationLifecycle::Ready;
-        token             = fields->token.take();
-        waker             = fields->waker.take();
+        fields->set_ready(state->finish(rstd::move(event)));
+        token = fields->token.take();
+        waker = fields->waker.take();
         if (fields->source_active) {
             fields->source_active = false;
             source                = Some(state->source_state());
@@ -553,6 +619,10 @@ void finish_completion_source_release(const CompletionSourceArc& state,
         fields->released          = true;
         fields->release_submitted = false;
         fields->release_error     = rstd::move(error);
+#if LITO_FEAT_ASYNC_DEBUG
+        fields->diagnostic.outcome(failed ? debug::Outcome::Error : debug::Outcome::Success);
+        fields->diagnostic.state(debug::State::Released);
+#endif
         if (! failed) {
             fields->binding    = None<CompletionSourceBinding>();
             fields->owned_file = None<os::fd::OwnedFd>();
@@ -649,8 +719,7 @@ void store_io_operation_error(const IoOperationArc& state, io::error::Error erro
             fields->lifecycle == IoOperationLifecycle::Consumed) {
             return;
         }
-        fields->result    = Some(io::Result<IoCompletion>(Err(rstd::move(error))));
-        fields->lifecycle = IoOperationLifecycle::Ready;
+        fields->set_ready(io::Result<IoCompletion>(Err(rstd::move(error))));
         if (fields->source_active) {
             fields->source_active = false;
             source                = Some(state->source_state());
@@ -694,48 +763,114 @@ auto make_io_operation_owner(const IoOperationArc& state) -> PollEventOwner {
         rstd::move(owned).into_raw().into_raw(), rstd::addressof(IO_OPERATION_OWNER_VTABLE)));
 }
 
+struct SourceReleaseState {
+#if LITO_FEAT_ASYNC_DEBUG
+    debug::Recorder diagnostic;
+#endif
+    Option<CompletionSourceBinding> binding;
+    Option<os::fd::OwnedFd>         file;
+    Option<os::socket::OwnedSocket> socket;
+
+    explicit SourceReleaseState(CompletionSourceFields& fields) {
+#if LITO_FEAT_ASYNC_DEBUG
+        diagnostic = fields.diagnostic;
+        if (! fields.released) diagnostic.state(debug::State::ReleaseRequested);
+#endif
+        binding = fields.binding.take();
+        file    = fields.owned_file.take();
+        socket  = fields.owned_socket.take();
+    }
+
+    auto make_owner() -> PollEventOwner;
+
+    void submit(os::fd::RawFd fd) {
+        if (binding.is_none()) {
+            file   = None<os::fd::OwnedFd>();
+            socket = None<os::socket::OwnedSocket>();
+#if LITO_FEAT_ASYNC_DEBUG
+            diagnostic.state(debug::State::Closed, true);
+#endif
+            return;
+        }
+        auto bound = binding.take().unwrap_unchecked();
+        auto owner = make_owner();
+        (void)bound.worker.submit_poll(
+            PollCommand::release_completion_source(bound.source_key, fd, rstd::move(owner)));
+    }
+};
+
 template<typename T>
 struct OwnedSourceRelease {
-    using Arc = sync::Arc<T>;
+#if LITO_FEAT_ASYNC_DEBUG
+    struct Holder {
+        Option<T>       value;
+        debug::Recorder diagnostic;
+        Holder(T value, debug::Recorder diagnostic)
+            : value(Some(rstd::move(value))), diagnostic(rstd::move(diagnostic)) {}
+        ~Holder() {
+            value = None<T>();
+            diagnostic.state(debug::State::Closed, true);
+        }
+    };
+    using Value = Holder;
+#else
+    using Value = T;
+#endif
+    using Arc = sync::Arc<Value>;
     static auto clone(voidp data) -> RawPollEventOwner {
-        auto owner  = Arc::from_raw(::alloc::sync::ArcRaw<T>::from_raw(data));
+        auto owner  = Arc::from_raw(::alloc::sync::ArcRaw<Value>::from_raw(data));
         auto copied = owner.clone();
         (void)rstd::move(owner).into_raw().into_raw();
         return RawPollEventOwner::from_raw_parts(rstd::move(copied).into_raw().into_raw(),
                                                  rstd::addressof(vtable));
     }
-    static void dispatch(voidp, PollEventData) {}
+    static void dispatch(voidp data, PollEventData event) {
+#if LITO_FEAT_ASYNC_DEBUG
+        auto owner  = Arc::from_raw(::alloc::sync::ArcRaw<Value>::from_raw(data));
+        auto failed = event.has_backend_error() || event.kind() != PollEventKind::SourceReleased;
+        owner->diagnostic.outcome(failed ? debug::Outcome::Error : debug::Outcome::Success);
+        owner->diagnostic.state(debug::State::Released);
+        (void)rstd::move(owner).into_raw().into_raw();
+#else
+        (void)data;
+        (void)event;
+#endif
+    }
     static void drop(voidp data) {
-        auto owner = Arc::from_raw(::alloc::sync::ArcRaw<T>::from_raw(data));
+        auto owner = Arc::from_raw(::alloc::sync::ArcRaw<Value>::from_raw(data));
         (void)owner;
     }
     inline static const RawPollEventOwnerVTable vtable { &clone, &dispatch, &drop };
-    static auto                                 make(T value) -> PollEventOwner {
+    static auto make(T value, const SourceReleaseState& release) -> PollEventOwner {
+#if LITO_FEAT_ASYNC_DEBUG
+        auto owner = Arc::make(rstd::move(value), release.diagnostic);
+#else
+        (void)release;
         auto owner = Arc::make(rstd::move(value));
+#endif
         return PollEventOwner::from_raw(RawPollEventOwner::from_raw_parts(
             rstd::move(owner).into_raw().into_raw(), rstd::addressof(vtable)));
     }
 };
 
+auto SourceReleaseState::make_owner() -> PollEventOwner {
+    if (file.is_some())
+        return OwnedSourceRelease<os::fd::OwnedFd>::make(file.take().unwrap_unchecked(), *this);
+    if (socket.is_some())
+        return OwnedSourceRelease<os::socket::OwnedSocket>::make(socket.take().unwrap_unchecked(),
+                                                                 *this);
+#if LITO_FEAT_ASYNC_DEBUG
+    if (diagnostic.enabled()) return OwnedSourceRelease<empty>::make(empty {}, *this);
+#endif
+    return {};
+}
+
 CompletionSourceState::~CompletionSourceState() {
-    Option<CompletionSourceBinding> current;
-    Option<os::fd::OwnedFd>         file;
-    Option<os::socket::OwnedSocket> socket;
-    {
+    auto release = [&] {
         auto locked = fields.lock().unwrap_unchecked();
-        current     = locked->binding.take();
-        file        = locked->owned_file.take();
-        socket      = locked->owned_socket.take();
-    }
-    if (current.is_none()) return;
-    auto bound = rstd::move(current).unwrap_unchecked();
-    auto owner =
-        file.is_some() ? OwnedSourceRelease<os::fd::OwnedFd>::make(file.take().unwrap_unchecked())
-        : socket.is_some()
-            ? OwnedSourceRelease<os::socket::OwnedSocket>::make(socket.take().unwrap_unchecked())
-            : PollEventOwner {};
-    (void)bound.worker.submit_poll(
-        PollCommand::release_completion_source(bound.source_key, fd, rstd::move(owner)));
+        return SourceReleaseState { *locked };
+    }();
+    release.submit(fd);
 }
 
 void completion_source_release_cancel(voidp data) {
@@ -766,6 +901,16 @@ auto make_completion_source_release_cancellation(const CompletionSourceArc& stat
 }
 
 export class CompletionSourceRelease {
+#if LITO_FEAT_ASYNC_DEBUG
+    debug::WaitGuard debug_wait_;
+    void             observe(CompletionSourceFields& fields) {
+        if (! fields.diagnostic.enabled())
+            fields.diagnostic =
+                debug::current().child(debug::Kind::Resource, { "completion_source"_str });
+        if (! fields.released) fields.diagnostic.state(debug::State::ReleaseRequested);
+        debug_wait_.begin("source_release"_str, fields.diagnostic.target_id(), {});
+    }
+#endif
     CompletionSourceArc m_state;
     bool                m_completed { false };
     bool                m_polling { false };
@@ -780,12 +925,20 @@ public:
     CompletionSourceRelease(const CompletionSourceRelease&)                    = delete;
     auto operator=(const CompletionSourceRelease&) -> CompletionSourceRelease& = delete;
     CompletionSourceRelease(CompletionSourceRelease&& other) noexcept
-        : m_state(rstd::move(other.m_state)),
+        :
+#if LITO_FEAT_ASYNC_DEBUG
+          debug_wait_(rstd::move(other.debug_wait_)),
+#endif
+          m_state(rstd::move(other.m_state)),
           m_completed(rstd::exchange(other.m_completed, true)),
-          m_polling(rstd::exchange(other.m_polling, false)) {}
+          m_polling(rstd::exchange(other.m_polling, false)) {
+    }
     auto operator=(CompletionSourceRelease&& other) noexcept -> CompletionSourceRelease& {
         if (this != &other) {
             clear_waker();
+#if LITO_FEAT_ASYNC_DEBUG
+            debug_wait_ = rstd::move(other.debug_wait_);
+#endif
             m_state     = rstd::move(other.m_state);
             m_completed = rstd::exchange(other.m_completed, true);
             m_polling   = rstd::exchange(other.m_polling, false);
@@ -801,12 +954,19 @@ public:
         if (m_completed) rstd::panic { "completion source release advanced after completion" };
         if (m_polling) rstd::panic { "completion source release cannot mix poll and direct await" };
         {
-            auto fields               = m_state->fields.lock().unwrap_unchecked();
+            auto fields = m_state->fields.lock().unwrap_unchecked();
+#if LITO_FEAT_ASYNC_DEBUG
+            observe(*fields);
+#endif
             fields->release_requested = true;
             if (fields->released ||
                 (fields->active_operations == usize() && fields->binding.is_none())) {
                 fields->released = true;
-                m_completed      = true;
+#if LITO_FEAT_ASYNC_DEBUG
+                fields->diagnostic.state(debug::State::Released);
+                debug_wait_.reset();
+#endif
+                m_completed = true;
                 return AwaitTransition::continue_();
             }
         }
@@ -849,6 +1009,9 @@ public:
         if (! m_completed) {
             rstd::panic { "completion source release output taken before completion" };
         }
+#if LITO_FEAT_ASYNC_DEBUG
+        debug_wait_.reset();
+#endif
         auto fields = m_state->fields.lock().unwrap_unchecked();
         if (fields->release_error.is_some()) {
             return Err(fields->release_error.take().unwrap_unchecked());
@@ -864,6 +1027,9 @@ public:
             if (fields->release_token.is_some()) {
                 rstd::panic { "completion source release cannot mix direct await and poll" };
             }
+#if LITO_FEAT_ASYNC_DEBUG
+            self->observe(*fields);
+#endif
             fields->release_requested = true;
             if (! fields->released) fields->release_waker = Some(cx.waker().clone());
         }
@@ -902,6 +1068,9 @@ void request_io_operation_cancel(const IoOperationArc& state) {
             return;
         }
         fields->cancel_requested = true;
+#if LITO_FEAT_ASYNC_DEBUG
+        fields->diagnostic.cancel();
+#endif
         if (fields->worker.is_some() && fields->key.is_some()) {
             worker = Some(fields->worker->clone());
             key    = fields->key;
@@ -1028,6 +1197,10 @@ auto ensure_io_operation_submitted(const IoOperationArc& state) -> IoOperationSu
         fields->worker    = Some(worker.clone());
         fields->key       = Some(key);
         fields->lifecycle = IoOperationLifecycle::Submitted;
+#if LITO_FEAT_ASYNC_DEBUG
+        fields->diagnostic.state(
+            debug::State::Submitted, false, worker.id().as_usize().to_primitive());
+#endif
         auto result =
             local ? CURRENT_RUNTIME->defer_current_poll(rstd::move(command).unwrap_unchecked())
                   : worker.submit_poll(rstd::move(command).unwrap_unchecked());
@@ -1069,13 +1242,20 @@ public:
 
 private:
     IoOperationArc m_state;
-    bool           m_completed { false };
+#if LITO_FEAT_ASYNC_DEBUG
+    debug::WaitGuard debug_wait_;
+#endif
+    bool m_completed { false };
 
     explicit IoOperation(IoOperationArc state): m_state(rstd::move(state)) {}
 
     auto attach_consumer(IoOperationConsumer consumer, Option<task::Waker> waker = None())
         -> IoOperationLifecycle {
         auto fields = m_state->fields.lock().unwrap_unchecked();
+#if LITO_FEAT_ASYNC_DEBUG
+        m_state->observe(*fields);
+        debug_wait_.begin("io"_str, fields->diagnostic.target_id(), {});
+#endif
         if (fields->consumer == IoOperationConsumer::None) {
             fields->consumer = consumer;
         } else if (fields->consumer != consumer) {
@@ -1095,6 +1275,10 @@ private:
             rstd::panic { "async::IoOperation output taken before completion" };
         }
         fields->lifecycle = IoOperationLifecycle::Consumed;
+#if LITO_FEAT_ASYNC_DEBUG
+        fields->diagnostic.state(debug::State::Consumed);
+        debug_wait_.reset();
+#endif
         return fields->result.take().unwrap_unchecked();
     }
 
@@ -1114,6 +1298,9 @@ public:
     auto operator=(IoOperation&& other) noexcept -> IoOperation& {
         if (this != &other) {
             cancel();
+#if LITO_FEAT_ASYNC_DEBUG
+            debug_wait_ = rstd::move(other.debug_wait_);
+#endif
             m_state     = rstd::move(other.m_state);
             m_completed = rstd::exchange(other.m_completed, false);
         }

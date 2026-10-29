@@ -5,12 +5,16 @@ export import rstd.io.error;
 export import :time;
 import :async.awaitable;
 import :async.poll;
+#if LITO_FEAT_ASYNC_DEBUG
+import :async.debug.timer;
+#endif
 import :async.runtime_core;
 import rstd.os.fd;
 import :sync;
 import rstd.alloc;
 
 using namespace rstd;
+using namespace rstd::literals;
 using ::alloc::vec::Vec;
 
 namespace rstd::async
@@ -75,6 +79,9 @@ struct RegistrationState {
 };
 
 struct TimerFields {
+#if LITO_FEAT_ASYNC_DEBUG
+    debug::TimerObservation observation;
+#endif
     WorkerHandle        worker;
     TimerKey            key;
     Option<task::Waker> waker;
@@ -83,13 +90,15 @@ struct TimerFields {
 
     TimerFields(WorkerHandle worker, TimerKey key, task::Waker waker)
         : worker(rstd::move(worker)), key(key), waker(Some(rstd::move(waker))) {}
+
+    ~TimerFields() { waker = None<task::Waker>(); }
 };
 
 struct TimerState {
     sync::Mutex<TimerFields> fields;
 
     TimerState(WorkerHandle worker, TimerKey key, task::Waker waker)
-        : fields(TimerFields { rstd::move(worker), key, rstd::move(waker) }) {}
+        : fields(rstd::move(worker), key, rstd::move(waker)) {}
 };
 
 using RegistrationArc = sync::Arc<RegistrationState>;
@@ -416,6 +425,9 @@ void handle_timer_event(const TimerArc& state, PollEventData data) {
         } else if (data.kind() != PollEventKind::Timer) {
             return;
         }
+#if LITO_FEAT_ASYNC_DEBUG
+        fields->observation.ready(fields->error.is_some());
+#endif
         fields->active = false;
         waker          = fields->waker.take();
     }
@@ -839,6 +851,12 @@ public:
         return Ok(TimerRegistration { rstd::move(state) });
     }
 
+#if LITO_FEAT_ASYNC_DEBUG
+    auto debug_id() const -> debug::Id {
+        return m_state->fields.lock().unwrap_unchecked()->observation.target_id();
+    }
+#endif
+
     auto update_waker(task::Waker waker) -> io::Result<empty> {
         return update_timer_waker(m_state, rstd::move(waker));
     }
@@ -851,6 +869,9 @@ public:
         {
             auto fields = m_state->fields.lock().unwrap_unchecked();
             if (fields->active) {
+#if LITO_FEAT_ASYNC_DEBUG
+                fields->observation.cancel();
+#endif
                 fields->active = false;
                 fields->waker  = None();
                 worker         = Some(fields->worker.clone());

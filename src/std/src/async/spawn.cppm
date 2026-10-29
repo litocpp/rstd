@@ -45,12 +45,12 @@ public:
         return blocking(m_storage.as<Tag::Blocking>().clone());
     }
 
-    void abort() const {
+    auto abort() const -> bool {
         if (m_storage.is<Tag::Task>()) {
             m_storage.as<Tag::Task>().abort();
-        } else {
-            (void)m_storage.as<Tag::Blocking>().cancel();
+            return true;
         }
+        return m_storage.as<Tag::Blocking>().cancel();
     }
 };
 
@@ -65,6 +65,9 @@ struct JoinState {
         Option<JoinCancellation> cancellation;
     };
 
+#if LITO_FEAT_ASYNC_DEBUG
+    rstd::async::debug::Recorder diagnostic;
+#endif
     sync::Mutex<Fields> fields;
     sync::Condvar       ready_cvar;
 
@@ -90,6 +93,10 @@ struct JoinState {
             if (! f->terminal.publish(Output { Ok(rstd::move(in)) })) {
                 return None();
             }
+#if LITO_FEAT_ASYNC_DEBUG
+            diagnostic.outcome(rstd::async::debug::Outcome::Success);
+            diagnostic.state(rstd::async::debug::State::Published, true);
+#endif
             f->cancellation = None<JoinCancellation>();
             waker           = f->waker.take();
         }
@@ -104,6 +111,10 @@ struct JoinState {
             if (! f->terminal.publish(Output { Err(JoinError {}) })) {
                 return None();
             }
+#if LITO_FEAT_ASYNC_DEBUG
+            diagnostic.outcome(rstd::async::debug::Outcome::Aborted);
+            diagnostic.state(rstd::async::debug::State::Published, true);
+#endif
             f->cancellation = None<JoinCancellation>();
             waker           = f->waker.take();
         }
@@ -150,6 +161,9 @@ struct JoinState {
     }
 
     void abort_task() {
+#if LITO_FEAT_ASYNC_DEBUG
+        diagnostic.cancel();
+#endif
         auto cancellation = Option<JoinCancellation> {};
         {
             auto f = fields.lock().unwrap_unchecked();
@@ -158,7 +172,11 @@ struct JoinState {
             }
         }
         if (cancellation.is_some()) {
-            cancellation->abort();
+            [[maybe_unused]]
+            auto accepted = cancellation->abort();
+#if LITO_FEAT_ASYNC_DEBUG
+            if (! accepted) diagnostic.cancel_rejected();
+#endif
         }
     }
 };
@@ -190,8 +208,9 @@ public:
 };
 
 template<typename T>
-auto spawn_driver_on(RuntimeInner& runtime, rstd::async::RuntimeCoroDriver<T> driver)
-    -> rstd::async::JoinHandle<T>;
+auto spawn_driver_on(RuntimeInner&                     runtime,
+                     rstd::async::RuntimeCoroDriver<T> driver,
+                     TaskCreationInfo                  creation) -> rstd::async::JoinHandle<T>;
 
 template<typename F>
 auto invoke_blocking_function(F function) -> mtp::void_empty_t<mtp::invoke_result_t<F>> {
@@ -204,8 +223,12 @@ auto invoke_blocking_function(F function) -> mtp::void_empty_t<mtp::invoke_resul
 }
 
 template<typename F>
-auto spawn_blocking_on(RuntimeInner& runtime, F&& function)
+auto spawn_blocking_on(RuntimeInner& runtime, F&& function, TaskCreationInfo creation)
     -> io::Result<rstd::async::JoinHandle<mtp::invoke_result_t<F>>>;
+#if LITO_FEAT_ASYNC_DEBUG
+
+using namespace rstd::literals;
+#endif
 
 namespace rstd::async
 {
@@ -213,6 +236,9 @@ namespace rstd::async
 export template<typename T>
 class JoinHandle {
     sync::Arc<JoinState<T>> state;
+#if LITO_FEAT_ASYNC_DEBUG
+    debug::WaitGuard debug_wait_;
+#endif
 
     explicit JoinHandle(sync::Arc<JoinState<T>> state): state(rstd::move(state)) {}
 
@@ -230,12 +256,25 @@ public:
     auto operator=(JoinHandle&&) noexcept -> JoinHandle& = default;
     ~JoinHandle()                                        = default;
 
+#if LITO_FEAT_ASYNC_DEBUG
+    auto debug_id() const -> Option<debug::Id> {
+        return state->diagnostic.id() ? Some(state->diagnostic.id()) : None();
+    }
+
+#endif
     void abort() const { state->abort_task(); }
 
     auto is_finished() const -> bool { return state->is_ready(); }
 
     auto poll(mut_ref<JoinHandle> self, task::Context& cx) -> task::Poll<Output> {
-        return self->state->poll(cx);
+        auto out = self->state->poll(cx);
+#if LITO_FEAT_ASYNC_DEBUG
+        if (out.is_pending())
+            self->debug_wait_.begin("join"_str, self->state->diagnostic.target_id(), {});
+        else
+            self->debug_wait_.reset();
+#endif
+        return out;
     }
 };
 
@@ -297,10 +336,15 @@ struct DriverTaskState : TaskStateBase {
     DriverTaskState(TaskRefControl&                   ref_control,
                     sync::Weak<RuntimeInner>          runtime,
                     rstd::async::RuntimeCoroDriver<T> driver,
-                    JoinStateOwner<T>                 join)
-        : TaskStateBase(ref_control, rstd::move(runtime)),
+                    JoinStateOwner<T>                 join,
+                    TaskCreationInfo                  creation = {})
+        : TaskStateBase(ref_control, rstd::move(runtime), creation),
           driver(rstd::move(driver)),
-          join(rstd::move(join)) {}
+          join(rstd::move(join)) {
+#if LITO_FEAT_ASYNC_DEBUG
+        this->join->diagnostic = diagnostic;
+#endif
+    }
 
     auto poll(TaskRef&, task::Context& cx) -> TaskPollAction override {
         if (auto event = take_completion_event(); event.is_some()) {
@@ -340,6 +384,9 @@ struct DriverTaskState : TaskStateBase {
             rstd::panic { "async coroutine task completed without a value" };
         }
         driver.release_frame();
+#if LITO_FEAT_ASYNC_DEBUG
+        diagnostic.state(rstd::async::debug::State::Cleaned);
+#endif
         auto join_waker = join->complete_value(rstd::move(ready).unwrap_unchecked());
         if (join_waker.is_some()) {
             rstd::move(*join_waker).wake();
@@ -348,6 +395,9 @@ struct DriverTaskState : TaskStateBase {
 
     void complete_abort() override {
         driver.release_frame();
+#if LITO_FEAT_ASYNC_DEBUG
+        diagnostic.state(rstd::async::debug::State::Cleaned);
+#endif
         auto join_waker = join->complete_abort();
         if (join_waker.is_some()) {
             rstd::move(*join_waker).wake();
@@ -400,7 +450,10 @@ struct DriverTaskState : TaskStateBase {
         auto domain = ExecutionDomainScope { rstd::async::ExecutionDomainKind::ExternalExecutor };
         auto waker  = make_task_waker(self);
         auto cx     = task::Context { waker };
-        auto out    = driver.resume_external_segment(cx);
+#if LITO_FEAT_ASYNC_DEBUG
+        auto debug_scope = rstd::async::debug::Scope { diagnostic };
+#endif
+        auto out = driver.resume_external_segment(cx);
         if (out.is_submit_facility()) {
             auto outcome = TaskPollAction::submit_facility(out.take_endpoint());
             auto action  = end_facility_execution(rstd::move(lease), rstd::move(outcome));
@@ -452,11 +505,12 @@ public:
 };
 
 template<typename T>
-auto spawn_driver_on(RuntimeInner& runtime, rstd::async::RuntimeCoroDriver<T> driver)
-    -> rstd::async::JoinHandle<T> {
+auto spawn_driver_on(RuntimeInner&                     runtime,
+                     rstd::async::RuntimeCoroDriver<T> driver,
+                     TaskCreationInfo                  creation) -> rstd::async::JoinHandle<T> {
     auto join    = sync::Arc<JoinState<T>>::make();
     auto storage = ::alloc::raw_new<HeapTaskStorage<DriverTaskState<T>>>(
-        runtime.weak(), rstd::move(driver), JoinStateOwner<T>::owned(join.clone()));
+        runtime.weak(), rstd::move(driver), JoinStateOwner<T>::owned(join.clone()), creation);
     auto task = storage->into_task();
     join->set_task(task.clone());
     runtime.spawn(rstd::move(task));
@@ -465,25 +519,50 @@ auto spawn_driver_on(RuntimeInner& runtime, rstd::async::RuntimeCoroDriver<T> dr
 }
 
 template<typename F>
-auto spawn_blocking_on(RuntimeInner& runtime, F&& function)
+auto spawn_blocking_on(RuntimeInner&                     runtime,
+                       F&&                               function,
+                       [[maybe_unused]] TaskCreationInfo creation)
     -> io::Result<rstd::async::JoinHandle<mtp::invoke_result_t<F>>> {
     using Output = mtp::invoke_result_t<F>;
 
     auto join = sync::Arc<JoinState<Output>>::make();
-    auto job  = rstd::async::BlockingJob::make(
+#if LITO_FEAT_ASYNC_DEBUG
+    auto parent = rstd::async::debug::current();
+    join->diagnostic =
+        (parent.same_store(runtime.diagnostic) ? parent : runtime.diagnostic.without_parent())
+            .child(rstd::async::debug::Kind::BlockingJob, creation.diagnostic);
+    join->diagnostic.state(rstd::async::debug::State::Queued);
+#endif
+    auto job = rstd::async::BlockingJob::make(
         [join     = join.clone(),
          function = Some(mtp::rm_cvf<F>(rstd::forward<F>(function)))]() mutable {
+#if LITO_FEAT_ASYNC_DEBUG
+            auto debug_scope = rstd::async::debug::Scope { join->diagnostic };
+            join->diagnostic.state(rstd::async::debug::State::Running);
+#endif
             // Join completion must follow destruction of the job's captured inputs.
             auto result = invoke_blocking_function(function.take().unwrap_unchecked());
-            auto waker  = join->complete_value(rstd::move(result));
+#if LITO_FEAT_ASYNC_DEBUG
+            join->diagnostic.state(rstd::async::debug::State::Terminal);
+            join->diagnostic.state(rstd::async::debug::State::Cleaned);
+#endif
+            auto waker = join->complete_value(rstd::move(result));
             if (waker.is_some()) rstd::move(*waker).wake();
         },
         [join = join.clone()]() mutable {
+#if LITO_FEAT_ASYNC_DEBUG
+            join->diagnostic.cancel();
+            join->diagnostic.state(rstd::async::debug::State::Terminal);
+            join->diagnostic.state(rstd::async::debug::State::Cleaned);
+#endif
             auto waker = join->complete_abort();
             if (waker.is_some()) rstd::move(*waker).wake();
         });
     auto submitted = runtime.submit_blocking(rstd::move(job));
     if (submitted.is_err()) {
+#if LITO_FEAT_ASYNC_DEBUG
+        join->diagnostic.state(rstd::async::debug::State::Cancelled, true);
+#endif
         return Err(rstd::move(submitted).unwrap_err_unchecked());
     }
     join->set_blocking(rstd::move(submitted).unwrap_unchecked());
@@ -494,17 +573,33 @@ namespace rstd::async
 {
 
 export template<AwaitableInput A>
-auto spawn(A awaitable) -> JoinHandle<await_output_t<A>> {
+auto spawn(A awaitable
+#if LITO_FEAT_ASYNC_DEBUG
+           ,
+           debug::TaskInfo info     = {},
+           source_location location = source_location::current()
+#endif
+               ) -> JoinHandle<await_output_t<A>> {
     auto* runtime = CURRENT_RUNTIME;
     if (runtime == nullptr) {
         rstd::panic { "spawn called without an async runtime" };
     }
+    auto creation = TaskCreationInfo {};
+#if LITO_FEAT_ASYNC_DEBUG
+    creation = TaskCreationInfo { info, location };
+#endif
     auto driver = make_runtime_driver(into_coro(rstd::move(awaitable)));
-    return spawn_driver_on(*runtime, rstd::move(driver));
+    return spawn_driver_on(*runtime, rstd::move(driver), creation);
 }
 
 export template<AwaitableInput A>
-auto spawn_local(A awaitable) -> JoinHandle<await_output_t<A>> {
+auto spawn_local(A awaitable
+#if LITO_FEAT_ASYNC_DEBUG
+                 ,
+                 debug::TaskInfo info     = {},
+                 source_location location = source_location::current()
+#endif
+                     ) -> JoinHandle<await_output_t<A>> {
     auto* runtime = CURRENT_RUNTIME;
     if (runtime == nullptr) {
         rstd::panic { "spawn_local called without an async runtime" };
@@ -512,17 +607,31 @@ auto spawn_local(A awaitable) -> JoinHandle<await_output_t<A>> {
     if (runtime->is_thread_pool()) {
         rstd::panic { "spawn_local is only supported by current-thread runtime" };
     }
+    auto creation = TaskCreationInfo {};
+#if LITO_FEAT_ASYNC_DEBUG
+    creation = TaskCreationInfo { info, location };
+#endif
     auto driver = make_runtime_driver(into_coro(rstd::move(awaitable)));
-    return spawn_driver_on(*runtime, rstd::move(driver));
+    return spawn_driver_on(*runtime, rstd::move(driver), creation);
 }
 
 export template<typename F>
-auto spawn_blocking(F&& function) -> io::Result<JoinHandle<mtp::invoke_result_t<F>>> {
+auto spawn_blocking(F&& function
+#if LITO_FEAT_ASYNC_DEBUG
+                    ,
+                    debug::TaskInfo info     = {},
+                    source_location location = source_location::current()
+#endif
+                        ) -> io::Result<JoinHandle<mtp::invoke_result_t<F>>> {
     auto* runtime = CURRENT_RUNTIME;
     if (runtime == nullptr) {
         rstd::panic { "spawn_blocking called without an async runtime" };
     }
-    return ::spawn_blocking_on(*runtime, rstd::forward<F>(function));
+    auto creation = TaskCreationInfo {};
+#if LITO_FEAT_ASYNC_DEBUG
+    creation = TaskCreationInfo { info, location };
+#endif
+    return ::spawn_blocking_on(*runtime, rstd::forward<F>(function), creation);
 }
 
 } // namespace rstd::async

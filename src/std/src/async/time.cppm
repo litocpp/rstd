@@ -6,6 +6,8 @@ import :async.runtime_core;
 import :async.timer_facility;
 import :time;
 
+using namespace rstd::literals;
+
 namespace rstd::async
 {
 
@@ -30,6 +32,9 @@ export struct YieldNow {
 };
 
 export class Sleep {
+#if LITO_FEAT_ASYNC_DEBUG
+    debug::WaitGuard debug_wait_;
+#endif
     time::Instant                     deadline;
     Option<TimerRegistration>         timer;
     Option<TimerFacilityRegistration> facility_timer;
@@ -38,8 +43,19 @@ export class Sleep {
     bool                              completed { false };
 
     void cancel() {
+#if LITO_FEAT_ASYNC_DEBUG
+        debug_wait_.reset();
+#endif
         timer          = None();
         facility_timer = None();
+    }
+
+    auto finish() -> AwaitTransition {
+#if LITO_FEAT_ASYNC_DEBUG
+        debug_wait_.reset();
+#endif
+        completed = true;
+        return AwaitTransition::continue_();
     }
 
 public:
@@ -55,16 +71,24 @@ public:
     Sleep& operator=(const Sleep&) = delete;
 
     Sleep(Sleep&& other) noexcept
-        : deadline(other.deadline),
+        :
+#if LITO_FEAT_ASYNC_DEBUG
+          debug_wait_(rstd::move(other.debug_wait_)),
+#endif
+          deadline(other.deadline),
           timer(other.timer.take()),
           facility_timer(other.facility_timer.take()),
           facility_result(other.facility_result.take()),
           facility_submitted(rstd::exchange(other.facility_submitted, false)),
-          completed(rstd::exchange(other.completed, false)) {}
+          completed(rstd::exchange(other.completed, false)) {
+    }
 
     auto operator=(Sleep&& other) noexcept -> Sleep& {
         if (this != &other) {
             cancel();
+#if LITO_FEAT_ASYNC_DEBUG
+            debug_wait_ = rstd::move(other.debug_wait_);
+#endif
             deadline           = other.deadline;
             timer              = other.timer.take();
             facility_timer     = other.facility_timer.take();
@@ -95,12 +119,10 @@ public:
             if (result != FacilityEventKind::Ready) {
                 rstd::panic { "async::sleep timer facility failed" };
             }
-            completed = true;
-            return AwaitTransition::continue_();
+            return finish();
         }
         if (time::Instant::now() >= deadline) {
-            completed = true;
-            return AwaitTransition::continue_();
+            return finish();
         }
         if (facility_submitted) {
             return AwaitTransition::suspend();
@@ -120,7 +142,10 @@ public:
         }
         auto registration = rstd::move(submitted).unwrap_unchecked();
         auto cancellation = registration.cancellation();
-        facility_timer    = Some(rstd::move(registration));
+#if LITO_FEAT_ASYNC_DEBUG
+        debug_wait_.begin("timer"_str, registration.debug_id(), {});
+#endif
+        facility_timer = Some(rstd::move(registration));
         return FacilityCompletionSubmitResult::accepted(rstd::move(cancellation));
     }
 
@@ -177,6 +202,9 @@ public:
             }
         }
 
+#if LITO_FEAT_ASYNC_DEBUG
+        sleep.debug_wait_.begin("timer"_str, sleep.timer->debug_id(), {});
+#endif
         return task::Poll<void>::Pending();
     }
 };

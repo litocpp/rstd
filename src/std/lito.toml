@@ -17,3 +17,6 @@ rstd-alloc = { workspace = true, pub = true }
 condition = 'target.os == "windows"'
 [when.usage]
 system-libraries = ["ntdll"]
+
+[features.async-debug]
+default = false
