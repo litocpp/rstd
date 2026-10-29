@@ -105,11 +105,25 @@ public:
     SharedBumpArena(SharedBumpArena&&) noexcept                    = default;
     auto operator=(SharedBumpArena&&) noexcept -> SharedBumpArena& = default;
 
-    static auto try_make(usize slab_size = DEFAULT_SLAB_SIZE, Upstream upstream = Upstream {})
-        -> Result<SharedBumpArena, AllocError> {
-        auto state = SharedState::try_make(slab_size, rstd::move(upstream));
+    template<typename C>
+    static auto try_make_in(C        control,
+                            usize    slab_size = DEFAULT_SLAB_SIZE,
+                            Upstream upstream  = Upstream {}) -> Result<SharedBumpArena, AllocError>
+        requires Impled<C, Allocator, ThreadSafeAllocator>
+    {
+        auto state = SharedState::try_make_in(rstd::move(control), slab_size, rstd::move(upstream));
         if (state.is_err()) return Err(AllocError {});
         return Ok(SharedBumpArena(state.unwrap_unchecked()));
+    }
+
+    static auto try_make(usize slab_size = DEFAULT_SLAB_SIZE, Upstream upstream = Upstream {})
+        -> Result<SharedBumpArena, AllocError> {
+        return try_make_in(::alloc::Global {}, slab_size, rstd::move(upstream));
+    }
+
+    template<typename C>
+    static auto control_layout() -> Option<Layout> {
+        return SharedState::template allocation_layout_in<C>();
     }
 
     static auto make(usize slab_size = DEFAULT_SLAB_SIZE, Upstream upstream = Upstream {})

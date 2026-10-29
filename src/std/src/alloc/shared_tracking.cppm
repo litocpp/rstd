@@ -8,7 +8,7 @@ export namespace rstd::alloc
 {
 
 /// Serializes upstream operations and logical accounting. Callbacks must not reenter this owner.
-/// State uses Global independently of the managed allocations. Borrowed upstreams stay borrowed.
+/// Shared state uses its own control allocator. Borrowed upstreams stay borrowed.
 template<typename A = ::alloc::Global>
 class SharedTrackingAllocator {
     static_assert(Impled<A, Allocator>);
@@ -44,10 +44,21 @@ public:
     SharedTrackingAllocator(SharedTrackingAllocator&&) noexcept                    = default;
     auto operator=(SharedTrackingAllocator&&) noexcept -> SharedTrackingAllocator& = default;
 
-    static auto try_make(A upstream = A {}) -> Result<SharedTrackingAllocator, AllocError> {
-        auto state = Shared::try_make(rstd::move(upstream));
+    template<typename C>
+    static auto try_make_in(C control, A upstream = A {})
+        -> Result<SharedTrackingAllocator, AllocError>
+        requires Impled<C, Allocator, ThreadSafeAllocator>
+    {
+        auto state = Shared::try_make_in(rstd::move(control), rstd::move(upstream));
         if (state.is_err()) return Err(AllocError {});
         return Ok(SharedTrackingAllocator(state.unwrap_unchecked()));
+    }
+    static auto try_make(A upstream = A {}) -> Result<SharedTrackingAllocator, AllocError> {
+        return try_make_in(::alloc::Global {}, rstd::move(upstream));
+    }
+    template<typename C>
+    static auto control_layout() -> Option<Layout> {
+        return Shared::template allocation_layout_in<C>();
     }
     static auto make(A upstream = A {}) -> SharedTrackingAllocator {
         auto result = try_make(rstd::move(upstream));

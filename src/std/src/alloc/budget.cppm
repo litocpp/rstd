@@ -40,11 +40,24 @@ public:
     BudgetAllocator(BudgetAllocator&&) noexcept                    = default;
     auto operator=(BudgetAllocator&&) noexcept -> BudgetAllocator& = default;
 
-    static auto try_make(usize limit, Upstream upstream = Upstream {})
-        -> Result<BudgetAllocator, AllocError> {
-        auto state = Shared::try_make(limit, rstd::move(upstream));
+    template<typename C>
+    static auto try_make_in(C control, usize limit, Upstream upstream = Upstream {})
+        -> Result<BudgetAllocator, AllocError>
+        requires Impled<C, Allocator, ThreadSafeAllocator>
+    {
+        auto state = Shared::try_make_in(rstd::move(control), limit, rstd::move(upstream));
         if (state.is_err()) return Err(AllocError {});
         return Ok(BudgetAllocator(state.unwrap_unchecked()));
+    }
+
+    static auto try_make(usize limit, Upstream upstream = Upstream {})
+        -> Result<BudgetAllocator, AllocError> {
+        return try_make_in(::alloc::Global {}, limit, rstd::move(upstream));
+    }
+
+    template<typename C>
+    static auto control_layout() -> Option<Layout> {
+        return Shared::template allocation_layout_in<C>();
     }
 
     auto clone() const -> BudgetAllocator { return BudgetAllocator(state_.clone()); }
