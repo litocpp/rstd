@@ -12,7 +12,9 @@ struct PoolOptions {
 struct PoolStatistics {
     usize live_bytes {}, live_block_bytes {}, peak_live_bytes {}, reserved_bytes {};
     usize retained_bytes {}, metadata_bytes {}, slabs {}, allocations {}, reuses {}, failures {};
-    usize grows {}, trims {}, released_bytes {};
+    // Resize requests include failures; copied_bytes counts successful moving resize payloads.
+    usize grows {}, shrinks {}, in_place_resizes {}, copied_bytes {};
+    usize trims {}, released_bytes {};
 };
 struct PoolTrimReport {
     usize bytes {}, slabs {};
@@ -112,6 +114,32 @@ class PoolAllocator {
         }
         return slab;
     }
+    auto resize(void* pointer, Layout old_layout, Layout new_layout, bool zeroed) const
+        -> Result<Allocation, AllocError> {
+        if (old_layout.size != usize() && new_layout.size != usize()) {
+            auto* block    = reinterpret_cast<Block*>(static_cast<byte*>(pointer) - sizeof(Block));
+            auto  capacity = block->slab->stride - usize(sizeof(Block));
+            if (new_layout.size <= capacity &&
+                reinterpret_cast<rstd::uintptr_t>(pointer) % new_layout.align.to_primitive() == 0) {
+                if (zeroed && new_layout.size > old_layout.size)
+                    rstd::mem::memset(static_cast<byte*>(pointer) + old_layout.size.to_primitive(),
+                                      u8(),
+                                      new_layout.size - old_layout.size);
+                stats_.live_bytes -= old_layout.size;
+                stats_.live_bytes += new_layout.size;
+                stats_.peak_live_bytes = stats_.peak_live_bytes.max(stats_.live_bytes);
+                ++stats_.in_place_resizes;
+                return Ok(Allocation { pointer, new_layout.size });
+            }
+        }
+        auto result = zeroed ? allocate_zeroed(new_layout) : allocate(new_layout);
+        if (result.is_err()) return result;
+        auto copied = old_layout.size.min(new_layout.size);
+        if (copied != usize()) rstd::mem::memcpy(result->pointer, pointer, copied);
+        stats_.copied_bytes += copied;
+        deallocate(pointer, old_layout);
+        return result;
+    }
 
 public:
     explicit PoolAllocator(PoolOptions options = {}, Upstream upstream = {})
@@ -157,12 +185,19 @@ public:
         -> Result<Allocation, AllocError> {
         debug_assert(new_layout.size >= old_layout.size);
         ++stats_.grows;
-        auto result = allocate(new_layout);
-        if (result.is_err()) return result;
-        if (old_layout.size != usize())
-            rstd::mem::memcpy(result->pointer, pointer, old_layout.size);
-        deallocate(pointer, old_layout);
-        return result;
+        return resize(pointer, old_layout, new_layout, false);
+    }
+    auto grow_zeroed(void* pointer, Layout old_layout, Layout new_layout) const
+        -> Result<Allocation, AllocError> {
+        debug_assert(new_layout.size >= old_layout.size);
+        ++stats_.grows;
+        return resize(pointer, old_layout, new_layout, true);
+    }
+    auto shrink(void* pointer, Layout old_layout, Layout new_layout) const
+        -> Result<Allocation, AllocError> {
+        debug_assert(new_layout.size <= old_layout.size);
+        ++stats_.shrinks;
+        return resize(pointer, old_layout, new_layout, false);
     }
     auto allocate_zeroed(Layout layout) const -> Result<Allocation, AllocError> {
         auto result = allocate(layout);
@@ -220,6 +255,12 @@ struct Impl<alloc::Allocator, alloc::PoolAllocator<A>>
     auto allocate(alloc::Layout l) const { return this->self().allocate(l); }
     auto grow(void* p, alloc::Layout old_layout, alloc::Layout new_layout) const {
         return this->self().grow(p, old_layout, new_layout);
+    }
+    auto grow_zeroed(void* p, alloc::Layout old_layout, alloc::Layout new_layout) const {
+        return this->self().grow_zeroed(p, old_layout, new_layout);
+    }
+    auto shrink(void* p, alloc::Layout old_layout, alloc::Layout new_layout) const {
+        return this->self().shrink(p, old_layout, new_layout);
     }
     auto allocate_zeroed(alloc::Layout l) const { return this->self().allocate_zeroed(l); }
     void deallocate(void* p, alloc::Layout l) const noexcept { this->self().deallocate(p, l); }

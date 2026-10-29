@@ -43,6 +43,14 @@ public:
         -> Result<Allocation, AllocError> {
         return state_->lock().unwrap_unchecked()->grow(p, old_layout, new_layout);
     }
+    auto grow_zeroed(void* p, Layout old_layout, Layout new_layout) const
+        -> Result<Allocation, AllocError> {
+        return state_->lock().unwrap_unchecked()->grow_zeroed(p, old_layout, new_layout);
+    }
+    auto shrink(void* p, Layout old_layout, Layout new_layout) const
+        -> Result<Allocation, AllocError> {
+        return state_->lock().unwrap_unchecked()->shrink(p, old_layout, new_layout);
+    }
     auto allocate_zeroed(Layout layout) const -> Result<Allocation, AllocError> {
         return state_->lock().unwrap_unchecked()->allocate_zeroed(layout);
     }
@@ -78,6 +86,12 @@ struct Impl<alloc::Allocator, alloc::SharedPoolAllocator<A>>
     auto allocate(alloc::Layout l) const { return this->self().allocate(l); }
     auto grow(void* p, alloc::Layout old_layout, alloc::Layout new_layout) const {
         return this->self().grow(p, old_layout, new_layout);
+    }
+    auto grow_zeroed(void* p, alloc::Layout old_layout, alloc::Layout new_layout) const {
+        return this->self().grow_zeroed(p, old_layout, new_layout);
+    }
+    auto shrink(void* p, alloc::Layout old_layout, alloc::Layout new_layout) const {
+        return this->self().shrink(p, old_layout, new_layout);
     }
     auto allocate_zeroed(alloc::Layout l) const { return this->self().allocate_zeroed(l); }
     void deallocate(void* p, alloc::Layout l) const noexcept { this->self().deallocate(p, l); }
