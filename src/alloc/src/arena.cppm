@@ -17,6 +17,7 @@ using rstd::result::Result;
 namespace alloc
 {
 
+/// Reserved bytes include slab metadata; used bytes count requests since the last reset.
 export struct ArenaStats {
     usize used_bytes;
     usize reserved_bytes;
@@ -24,8 +25,10 @@ export struct ArenaStats {
     usize ordinary_slabs;
     usize large_slabs;
     usize peak_used_bytes;
+    usize metadata_bytes;
 };
 
+/// Data reserved bytes include slab_metadata_bytes; metadata_reserved_bytes are separate.
 export struct RecyclingArenaStats {
     usize live_bytes;
     usize peak_live_bytes;
@@ -41,14 +44,45 @@ export struct RecyclingArenaStats {
     usize metadata_used_bytes;
     usize metadata_reserved_bytes;
     usize metadata_blocks;
+    usize slab_metadata_bytes;
 };
 
 struct ArenaSlab {
+    ArenaSlab*         next;
+    ArenaSlab*         available_next;
     byte*              pointer;
     Layout             layout;
+    Layout             allocation_layout;
     BumpRangeAllocator ranges;
     bool               large;
 };
+
+template<typename Upstream>
+auto AllocateArenaSlab(Upstream& upstream, Layout layout, bool large)
+    -> Result<ArenaSlab*, AllocError> {
+    usize offset;
+    auto  allocation_layout = Layout::make<ArenaSlab>().extend(layout, offset);
+    if (allocation_layout.is_none()) return Err(AllocError {});
+    auto allocation = as<Allocator>(upstream).allocate(*allocation_layout);
+    if (allocation.is_err()) return Err(AllocError {});
+    auto* base = static_cast<byte*>(allocation->pointer);
+    return Ok(
+        rstd::construct_at(reinterpret_cast<ArenaSlab*>(base),
+                           ArenaSlab { .next              = nullptr,
+                                       .available_next    = nullptr,
+                                       .pointer           = base + offset.to_primitive(),
+                                       .layout            = layout,
+                                       .allocation_layout = *allocation_layout,
+                                       .ranges = BumpRangeAllocator(layout.size.to_primitive()),
+                                       .large  = large }));
+}
+
+template<typename Upstream>
+void ReleaseArenaSlab(Upstream& upstream, ArenaSlab* slab) noexcept {
+    auto layout = slab->allocation_layout;
+    rstd::destroy_at(slab);
+    as<Allocator>(upstream).deallocate(slab, layout);
+}
 
 template<typename A>
 struct RecycledLayoutClass {
@@ -62,6 +96,24 @@ class BumpArena;
 
 export template<typename Upstream>
 class RecyclingArena;
+
+export class ArenaReset {
+    usize retain_limit_;
+
+    constexpr explicit ArenaReset(usize retain_limit) noexcept: retain_limit_(retain_limit) {}
+
+    template<typename>
+    friend class BumpArena;
+
+public:
+    static constexpr auto free_all() noexcept -> ArenaReset { return ArenaReset(usize()); }
+    static constexpr auto retain_capacity() noexcept -> ArenaReset {
+        return ArenaReset(usize::MAX);
+    }
+    static constexpr auto retain_with_limit(usize bytes) noexcept -> ArenaReset {
+        return ArenaReset(bytes);
+    }
+};
 
 export template<typename Upstream = Global>
 class ArenaAllocator {
@@ -102,17 +154,13 @@ public:
 export template<typename Upstream = Global>
 class BumpArena {
     static constexpr usize DEFAULT_SLAB_SIZE = usize(64 * 1024);
-    static constexpr usize NO_SLAB           = usize::MAX;
 
     RSTD_ATTR_NO_UNIQUE_ADDRESS Upstream upstream_;
-    alloc::vec::Vec<ArenaSlab>           slabs_;
+    ArenaSlab*                           slabs_ {};
+    ArenaSlab*                           current_slab_ {};
+    ArenaSlab*                           available_ {};
     usize                                slab_size_;
-    usize                                current_slab_;
-    ArenaStats                           stats_;
-
-    auto allocate_upstream(Layout layout) -> Result<Allocation, AllocError> {
-        return as<Allocator>(upstream_).allocate(layout);
-    }
+    ArenaStats                           stats_ {};
 
     auto try_allocate(ArenaSlab& slab, Layout layout) noexcept -> void* {
         const auto before = slab.ranges.statistics().occupied_bytes;
@@ -129,37 +177,35 @@ class BumpArena {
     }
 
     auto allocate_large(Layout layout) -> Result<Allocation, AllocError> {
-        auto allocation = allocate_upstream(layout);
-        if (allocation.is_err()) return allocation;
-        auto value = allocation.unwrap_unchecked();
-        slabs_.emplace_back(ArenaSlab { .pointer = static_cast<byte*>(value.pointer),
-                                        .layout  = layout,
-                                        .ranges  = BumpRangeAllocator(layout.size.to_primitive()),
-                                        .large   = true });
+        auto allocation = AllocateArenaSlab(upstream_, layout, true);
+        if (allocation.is_err()) return Err(AllocError {});
+        auto* slab = *allocation;
+        slab->next = slabs_;
+        slabs_     = slab;
         stats_.used_bytes += layout.size;
-        stats_.reserved_bytes += layout.size;
+        stats_.reserved_bytes += slab->allocation_layout.size;
+        stats_.metadata_bytes += slab->allocation_layout.size - layout.size;
         ++stats_.large_slabs;
         if (stats_.used_bytes > stats_.peak_used_bytes) {
             stats_.peak_used_bytes = stats_.used_bytes;
         }
-        return Ok(value);
+        return Ok(Allocation { slab->pointer, layout.size });
     }
 
     auto add_ordinary_slab(Layout request) -> Result<Allocation, AllocError> {
-        auto const alignment  = request.align > usize(16) ? request.align : usize(16);
-        auto const layout     = Layout::from_size_align(slab_size_, alignment).unwrap_unchecked();
-        auto       allocation = allocate_upstream(layout);
-        if (allocation.is_err()) return allocation;
-
-        auto value = allocation.unwrap_unchecked();
-        slabs_.emplace_back(ArenaSlab { .pointer = static_cast<byte*>(value.pointer),
-                                        .layout  = layout,
-                                        .ranges  = BumpRangeAllocator(layout.size.to_primitive()),
-                                        .large   = false });
-        current_slab_ = slabs_.len() - usize(1);
-        stats_.reserved_bytes += layout.size;
+        auto const alignment = request.align > usize(16) ? request.align : usize(16);
+        auto const candidate = Layout::from_size_align(slab_size_, alignment);
+        if (candidate.is_none()) return Err(AllocError {});
+        auto const layout     = *candidate;
+        auto       allocation = AllocateArenaSlab(upstream_, layout, false);
+        if (allocation.is_err()) return Err(AllocError {});
+        auto* slab = *allocation;
+        slab->next = slabs_;
+        slabs_ = current_slab_ = slab;
+        stats_.reserved_bytes += slab->allocation_layout.size;
+        stats_.metadata_bytes += slab->allocation_layout.size - layout.size;
         ++stats_.ordinary_slabs;
-        auto pointer = try_allocate(slabs_[current_slab_], request);
+        auto pointer = try_allocate(*slab, request);
         debug_assert(pointer != nullptr);
         return Ok(Allocation { pointer, request.size });
     }
@@ -167,21 +213,14 @@ class BumpArena {
 public:
     explicit BumpArena(usize slab_size = DEFAULT_SLAB_SIZE, Upstream upstream = Upstream {})
         : upstream_(rstd::move(upstream)),
-          slabs_(),
-          slab_size_(slab_size < usize(1024) ? usize(1024) : slab_size),
-          current_slab_(NO_SLAB),
-          stats_() {}
+          slab_size_(slab_size < usize(1024) ? usize(1024) : slab_size) {}
 
     BumpArena(const BumpArena&)                    = delete;
     auto operator=(const BumpArena&) -> BumpArena& = delete;
     BumpArena(BumpArena&&)                         = delete;
     auto operator=(BumpArena&&) -> BumpArena&      = delete;
 
-    ~BumpArena() {
-        for (auto& slab : slabs_) {
-            as<Allocator>(upstream_).deallocate(slab.pointer, slab.layout);
-        }
-    }
+    ~BumpArena() { reset(); }
 
     auto allocate(Layout layout) -> Result<Allocation, AllocError> {
         if (layout.size == usize()) {
@@ -192,15 +231,58 @@ public:
             return allocate_large(layout);
         }
 
-        if (current_slab_ != NO_SLAB) {
-            auto& slab = slabs_[current_slab_];
+        if (current_slab_) {
+            auto& slab = *current_slab_;
             if (layout.align <= slab.layout.align) {
                 if (auto* pointer = try_allocate(slab, layout); pointer != nullptr) {
                     return Ok(Allocation { pointer, layout.size });
                 }
             }
         }
+        auto** available = &available_;
+        while (*available) {
+            auto* slab = *available;
+            if (layout.align <= slab->layout.align) {
+                if (auto* pointer = try_allocate(*slab, layout); pointer != nullptr) {
+                    *available           = slab->available_next;
+                    slab->available_next = nullptr;
+                    current_slab_        = slab;
+                    return Ok(Allocation { pointer, layout.size });
+                }
+            }
+            available = &slab->available_next;
+        }
         return add_ordinary_slab(layout);
+    }
+
+    /// All objects and borrows from previous allocations must have ended before reset.
+    /// Retention counts complete upstream requests; dedicated slabs are always released.
+    /// Peak usage is preserved across resets.
+    void reset(ArenaReset policy = ArenaReset::free_all()) noexcept {
+        auto* previous = slabs_;
+        slabs_ = current_slab_ = available_ = nullptr;
+        auto peak                           = stats_.peak_used_bytes;
+        stats_                              = ArenaStats {};
+        stats_.peak_used_bytes              = peak;
+        auto** retained                     = &slabs_;
+        while (previous) {
+            auto* slab = previous;
+            previous   = previous->next;
+            if (slab->large ||
+                slab->allocation_layout.size > policy.retain_limit_ - stats_.reserved_bytes) {
+                ReleaseArenaSlab(upstream_, slab);
+                continue;
+            }
+            slab->ranges         = BumpRangeAllocator(slab->layout.size.to_primitive());
+            slab->next           = nullptr;
+            *retained            = slab;
+            retained             = &slab->next;
+            slab->available_next = available_;
+            available_           = slab;
+            stats_.reserved_bytes += slab->allocation_layout.size;
+            stats_.metadata_bytes += slab->allocation_layout.size - slab->layout.size;
+            ++stats_.ordinary_slabs;
+        }
     }
 
     constexpr auto allocator() noexcept [[clang::lifetimebound]] -> ArenaAllocator<Upstream> {
@@ -218,7 +300,6 @@ public:
 
 export template<typename Upstream = Global>
 class RecyclingArena {
-    static constexpr usize NO_SLAB            = usize::MAX;
     static constexpr usize METADATA_SLAB_SIZE = usize(64 * 1024);
 
     using MetadataUpstream  = rstd::ref<rstd::dyn<Allocator>>;
@@ -228,15 +309,11 @@ class RecyclingArena {
 
     RSTD_ATTR_NO_UNIQUE_ADDRESS Upstream            upstream_;
     MetadataArena                                   metadata_;
-    alloc::vec::Vec<ArenaSlab>                      slabs_;
+    ArenaSlab*                                      slabs_ {};
     alloc::vec::Vec<LayoutClass, MetadataAllocator> recycled_;
     usize                                           slab_size_;
-    usize                                           current_slab_;
-    RecyclingArenaStats                             stats_;
-
-    auto allocate_upstream(Layout layout) -> Result<Allocation, AllocError> {
-        return as<Allocator>(upstream_).allocate(layout);
-    }
+    ArenaSlab*                                      current_slab_ {};
+    RecyclingArenaStats                             stats_ {};
 
     auto try_allocate(ArenaSlab& slab, Layout layout) noexcept -> void* {
         auto result = slab.ranges.allocate(layout.size.to_primitive(), layout.align.to_primitive());
@@ -262,26 +339,33 @@ class RecyclingArena {
         return None();
     }
 
-    auto prepare_fresh_allocation(Layout layout) -> void {
+    auto prepare_fresh_allocation(Layout layout) -> Result<usize, AllocError> {
         auto found = recycled_class(layout);
         if (found.is_none()) {
-            recycled_.push(LayoutClass {
+            auto value = LayoutClass {
                 .layout = layout,
                 .pointers =
                     alloc::vec::Vec<void*, MetadataAllocator>::make_in(metadata_.allocator()),
                 .physical_allocations = usize {},
-            });
+            };
+            if (value.pointers.try_reserve(usize(1)).is_err()) return Err(AllocError {});
+            if (recycled_.try_reserve(usize(1)).is_err()) return Err(AllocError {});
+            stats_.recycled_capacity += value.pointers.capacity();
+            recycled_.push(rstd::move(value));
             found                 = Some(recycled_.len() - usize(1));
             stats_.layout_classes = recycled_.len();
+            return Ok(*found);
         }
         auto& recycled = recycled_[*found];
-        auto  required = recycled.physical_allocations + usize(1);
-        if (recycled.pointers.capacity() < required) {
+        auto  required = recycled.physical_allocations.checked_add(usize(1));
+        if (required.is_none()) return Err(AllocError {});
+        if (recycled.pointers.capacity() < *required) {
             auto previous = recycled.pointers.capacity();
-            recycled.pointers.reserve(required - recycled.pointers.len());
+            if (recycled.pointers.try_reserve(*required - recycled.pointers.len()).is_err())
+                return Err(AllocError {});
             stats_.recycled_capacity += recycled.pointers.capacity() - previous;
         }
-        recycled.physical_allocations = required;
+        return Ok(*found);
     }
 
     auto reuse(Layout layout) -> Option<Allocation> {
@@ -297,50 +381,12 @@ class RecyclingArena {
         return Some(Allocation { pointer, layout.size });
     }
 
-    auto allocate_large(Layout layout) -> Result<Allocation, AllocError> {
-        auto allocation = allocate_upstream(layout);
-        if (allocation.is_err()) return allocation;
-        auto value = allocation.unwrap_unchecked();
-        slabs_.emplace_back(ArenaSlab { .pointer = static_cast<byte*>(value.pointer),
-                                        .layout  = layout,
-                                        .ranges  = BumpRangeAllocator(layout.size.to_primitive()),
-                                        .large   = true });
-        prepare_fresh_allocation(layout);
-        stats_.reserved_bytes += layout.size;
-        ++stats_.large_slabs;
-        record_allocation(layout);
-        return Ok(value);
-    }
-
-    auto add_ordinary_slab(Layout request) -> Result<Allocation, AllocError> {
-        auto const alignment  = request.align > usize(16) ? request.align : usize(16);
-        auto const layout     = Layout::from_size_align(slab_size_, alignment).unwrap_unchecked();
-        auto       allocation = allocate_upstream(layout);
-        if (allocation.is_err()) return allocation;
-        auto value = allocation.unwrap_unchecked();
-        slabs_.emplace_back(ArenaSlab { .pointer = static_cast<byte*>(value.pointer),
-                                        .layout  = layout,
-                                        .ranges  = BumpRangeAllocator(layout.size.to_primitive()),
-                                        .large   = false });
-        current_slab_ = slabs_.len() - usize(1);
-        stats_.reserved_bytes += layout.size;
-        ++stats_.ordinary_slabs;
-        auto* pointer = try_allocate(slabs_[current_slab_], request);
-        debug_assert(pointer != nullptr);
-        prepare_fresh_allocation(request);
-        record_allocation(request);
-        return Ok(Allocation { pointer, request.size });
-    }
-
 public:
     explicit RecyclingArena(usize slab_size = usize(64 * 1024), Upstream upstream = Upstream {})
         : upstream_(rstd::move(upstream)),
           metadata_(METADATA_SLAB_SIZE, allocator_ref(upstream_)),
-          slabs_(),
           recycled_(metadata_.allocator()),
-          slab_size_(slab_size < usize(1024) ? usize(1024) : slab_size),
-          current_slab_(NO_SLAB),
-          stats_() {}
+          slab_size_(slab_size < usize(1024) ? usize(1024) : slab_size) {}
 
     RecyclingArena(const RecyclingArena&)                    = delete;
     auto operator=(const RecyclingArena&) -> RecyclingArena& = delete;
@@ -348,8 +394,10 @@ public:
     auto operator=(RecyclingArena&&) -> RecyclingArena&      = delete;
 
     ~RecyclingArena() {
-        for (auto& slab : slabs_) {
-            as<Allocator>(upstream_).deallocate(slab.pointer, slab.layout);
+        while (slabs_) {
+            auto* slab = slabs_;
+            slabs_     = slab->next;
+            ReleaseArenaSlab(upstream_, slab);
         }
     }
 
@@ -359,20 +407,51 @@ public:
         }
         auto recycled = reuse(layout);
         if (recycled.is_some()) return Ok(rstd::move(recycled).unwrap());
-        if (layout.size > slab_size_ / usize(2) || layout.align > slab_size_ / usize(2)) {
-            return allocate_large(layout);
-        }
-        if (current_slab_ != NO_SLAB) {
-            auto& slab = slabs_[current_slab_];
-            if (layout.align <= slab.layout.align) {
-                if (auto* pointer = try_allocate(slab, layout); pointer != nullptr) {
-                    prepare_fresh_allocation(layout);
-                    record_allocation(layout);
-                    return Ok(Allocation { pointer, layout.size });
-                }
+        auto  large = layout.size > slab_size_ / usize(2) || layout.align > slab_size_ / usize(2);
+        auto* slab  = large ? nullptr : current_slab_;
+        if (slab) {
+            auto preview = slab->ranges;
+            if (layout.align > slab->layout.align ||
+                preview.allocate(layout.size.to_primitive(), layout.align.to_primitive())
+                    .is_err()) {
+                slab = nullptr;
             }
         }
-        return add_ordinary_slab(layout);
+        auto fresh = slab == nullptr;
+        if (fresh) {
+            auto payload_layout = layout;
+            if (! large) {
+                auto alignment = layout.align.max(usize(16));
+                auto ordinary  = Layout::from_size_align(slab_size_, alignment);
+                if (ordinary.is_none()) return Err(AllocError {});
+                payload_layout = *ordinary;
+            }
+            auto allocation = AllocateArenaSlab(upstream_, payload_layout, large);
+            if (allocation.is_err()) return Err(AllocError {});
+            slab = *allocation;
+        }
+        auto prepared = prepare_fresh_allocation(layout);
+        if (prepared.is_err()) {
+            if (fresh) ReleaseArenaSlab(upstream_, slab);
+            return Err(AllocError {});
+        }
+        if (fresh) {
+            slab->next = slabs_;
+            slabs_     = slab;
+            stats_.reserved_bytes += slab->allocation_layout.size;
+            stats_.slab_metadata_bytes += slab->allocation_layout.size - slab->layout.size;
+            if (large) {
+                ++stats_.large_slabs;
+            } else {
+                ++stats_.ordinary_slabs;
+                current_slab_ = slab;
+            }
+        }
+        auto* pointer = large ? slab->pointer : try_allocate(*slab, layout);
+        debug_assert(pointer != nullptr);
+        ++recycled_[*prepared].physical_allocations;
+        record_allocation(layout);
+        return Ok(Allocation { pointer, layout.size });
     }
 
     void deallocate(void* pointer, Layout layout) noexcept {

@@ -59,7 +59,8 @@ TEST(SharedArena, LastStrongHandleReleasesAllSlabs) {
         auto statistics = root.statistics();
         EXPECT_EQ(statistics.arena.ordinary_slabs, usize(2));
         EXPECT_EQ(statistics.upstream.allocations, usize(2));
-        EXPECT_EQ(statistics.upstream.bytes, usize(2048));
+        EXPECT_EQ(statistics.upstream.bytes, statistics.arena.reserved_bytes);
+        EXPECT_EQ(statistics.arena.reserved_bytes - statistics.arena.metadata_bytes, usize(2048));
         allocator = Some(rstd::move(second));
         weak      = Some(root.downgrade());
     }

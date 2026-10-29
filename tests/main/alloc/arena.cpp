@@ -5,8 +5,18 @@ import rstd;
 using namespace rstd::prelude;
 
 struct ArenaUpstreamState {
-    int allocations;
-    int deallocations;
+    struct Record {
+        void*               pointer {};
+        rstd::alloc::Layout requested {};
+        rstd::alloc::Layout physical {};
+    } records[128];
+    int   allocations {};
+    int   deallocations {};
+    int   attempts {};
+    int   fail_at {};
+    usize live_bytes {};
+    usize extra_bytes {};
+    bool  release_layout_mismatch {};
 };
 
 struct ArenaTestUpstream {
@@ -29,13 +39,38 @@ template<>
 struct Impl<alloc::Allocator, ::ArenaTestUpstream>
     : DefaultInImpl<alloc::Allocator, ::ArenaTestUpstream> {
     auto allocate(alloc::Layout layout) const -> Result<alloc::Allocation, alloc::AllocError> {
-        ++this->self().state->allocations;
-        return as<alloc::Allocator>(::alloc::GLOBAL).allocate(layout);
+        auto& state = *this->self().state;
+        if (++state.attempts == state.fail_at) return Err(alloc::AllocError {});
+        auto physical =
+            alloc::Layout::from_size_align(layout.size + state.extra_bytes, layout.align).unwrap();
+        auto allocation = as<alloc::Allocator>(::alloc::GLOBAL).allocate(physical);
+        if (allocation.is_err()) return allocation;
+        for (auto& record : state.records) {
+            if (! record.pointer) {
+                record = { allocation->pointer, layout, physical };
+                ++state.allocations;
+                state.live_bytes += layout.size;
+                return allocation;
+            }
+        }
+        as<alloc::Allocator>(::alloc::GLOBAL).deallocate(allocation->pointer, physical);
+        return Err(alloc::AllocError {});
     }
 
     void deallocate(void* pointer, alloc::Layout layout) const noexcept {
-        ++this->self().state->deallocations;
-        as<alloc::Allocator>(::alloc::GLOBAL).deallocate(pointer, layout);
+        auto& state = *this->self().state;
+        for (auto& record : state.records) {
+            if (record.pointer == pointer) {
+                state.release_layout_mismatch |=
+                    record.requested.size != layout.size || record.requested.align != layout.align;
+                ++state.deallocations;
+                state.live_bytes -= record.requested.size;
+                as<alloc::Allocator>(::alloc::GLOBAL).deallocate(pointer, record.physical);
+                record.pointer = nullptr;
+                return;
+            }
+        }
+        state.release_layout_mismatch = true;
     }
 };
 
@@ -76,11 +111,14 @@ TEST(Arena, UsesOrdinaryAndDedicatedSlabs) {
         EXPECT_EQ(stats.used_bytes, usize(611));
         EXPECT_EQ(stats.ordinary_slabs, usize(2));
         EXPECT_EQ(stats.large_slabs, usize(1));
-        EXPECT_EQ(stats.reserved_bytes, usize(2648));
+        EXPECT_EQ(stats.reserved_bytes, usize(2648) + stats.metadata_bytes);
+        EXPECT_EQ(stats.reserved_bytes, upstream.live_bytes);
+        EXPECT_GT(stats.metadata_bytes, usize());
         EXPECT_EQ(stats.peak_used_bytes, stats.used_bytes);
     }
     EXPECT_EQ(upstream.allocations, 3);
     EXPECT_EQ(upstream.deallocations, 3);
+    EXPECT_FALSE(upstream.release_layout_mismatch);
 }
 
 TEST(Arena, ReportsUpstreamAllocationFailure) {
@@ -107,6 +145,99 @@ TEST(Arena, VecGrowthRetainsPreviousBuffersUntilArenaDrop) {
         EXPECT_EQ(upstream.deallocations, 0);
     }
     EXPECT_EQ(upstream.allocations, upstream.deallocations);
+}
+
+TEST(Arena, ResetRetainsAllOrdinarySlabsWithoutAllocating) {
+    ArenaUpstreamState upstream {};
+    {
+        alloc::BumpArena arena(usize(1024), ArenaTestUpstream { &upstream });
+        auto layout = rstd::alloc::Layout::from_size_align(usize(400), usize(16)).unwrap();
+        auto large  = rstd::alloc::Layout::from_size_align(usize(700), usize(16)).unwrap();
+        for (auto index = 0; index < 6; ++index) ASSERT_TRUE(arena.allocate(layout).is_ok());
+        ASSERT_TRUE(arena.allocate(large).is_ok());
+        auto peak        = arena.stats().peak_used_bytes;
+        auto attempts    = upstream.attempts;
+        upstream.fail_at = attempts + 1;
+
+        arena.reset(alloc::ArenaReset::retain_capacity());
+        EXPECT_EQ(upstream.attempts, attempts);
+        EXPECT_EQ(upstream.deallocations, 1);
+        EXPECT_EQ(arena.stats().ordinary_slabs, usize(3));
+        EXPECT_EQ(arena.stats().large_slabs, usize());
+        EXPECT_EQ(arena.stats().used_bytes, usize());
+        EXPECT_EQ(arena.stats().padding_bytes, usize());
+        EXPECT_EQ(arena.stats().peak_used_bytes, peak);
+        for (auto index = 0; index < 6; ++index) ASSERT_TRUE(arena.allocate(layout).is_ok());
+        EXPECT_EQ(upstream.attempts, attempts);
+        EXPECT_EQ(arena.stats().reserved_bytes, upstream.live_bytes);
+    }
+    EXPECT_EQ(upstream.allocations, upstream.deallocations);
+    EXPECT_FALSE(upstream.release_layout_mismatch);
+}
+
+TEST(Arena, ResetLimitCountsCompleteSlabsAndNeverAllocates) {
+    ArenaUpstreamState upstream {};
+    alloc::BumpArena   arena(usize(1024), ArenaTestUpstream { &upstream });
+    auto layout = rstd::alloc::Layout::from_size_align(usize(512), usize(16)).unwrap();
+    for (auto index = 0; index < 6; ++index) ASSERT_TRUE(arena.allocate(layout).is_ok());
+    auto one_slab    = arena.stats().reserved_bytes / usize(3);
+    auto attempts    = upstream.attempts;
+    upstream.fail_at = attempts + 1;
+    arena.reset(alloc::ArenaReset::retain_with_limit(one_slab));
+    EXPECT_EQ(arena.stats().reserved_bytes, one_slab);
+    EXPECT_EQ(arena.stats().ordinary_slabs, usize(1));
+    EXPECT_EQ(upstream.live_bytes, one_slab);
+    EXPECT_EQ(upstream.attempts, attempts);
+    ASSERT_TRUE(arena.allocate(layout).is_ok());
+    arena.reset(alloc::ArenaReset::retain_with_limit(usize(1024)));
+    EXPECT_EQ(arena.stats().reserved_bytes, usize());
+    EXPECT_EQ(upstream.live_bytes, usize());
+    EXPECT_EQ(upstream.attempts, attempts);
+    EXPECT_FALSE(upstream.release_layout_mismatch);
+}
+
+TEST(Arena, FreeAllRunsAfterContainersDropAndAllowsReuse) {
+    ArenaUpstreamState upstream {};
+    alloc::BumpArena   arena(usize(1024), ArenaTestUpstream { &upstream });
+    {
+        auto values = alloc::vec::Vec<int, decltype(arena.allocator())>::make_in(arena.allocator());
+        values.push(42);
+        EXPECT_EQ(values[usize()], 42);
+    }
+    arena.reset();
+    EXPECT_EQ(upstream.live_bytes, usize());
+    EXPECT_EQ(arena.stats().metadata_bytes, usize());
+    ASSERT_TRUE(arena.allocate(rstd::alloc::Layout::make<int>()).is_ok());
+    EXPECT_EQ(arena.stats().used_bytes, usize(sizeof(int)));
+}
+
+TEST(Arena, ZeroAndOveralignedRequestsPreserveReleaseLayouts) {
+    ArenaUpstreamState upstream {};
+    upstream.extra_bytes = usize(128);
+    {
+        alloc::BumpArena arena(usize(1024), ArenaTestUpstream { &upstream });
+        auto             zero = rstd::alloc::Layout::from_size_align(usize(), usize(4096)).unwrap();
+        auto             empty = arena.allocate(zero).unwrap();
+        EXPECT_EQ(reinterpret_cast<uintptr_t>(empty.pointer) % 4096, 0u);
+        EXPECT_EQ(upstream.attempts, 0);
+        auto aligned = rstd::alloc::Layout::from_size_align(usize(17), usize(4096)).unwrap();
+        auto value   = arena.allocate(aligned).unwrap();
+        EXPECT_EQ(reinterpret_cast<uintptr_t>(value.pointer) % 4096, 0u);
+        EXPECT_EQ(value.size, aligned.size);
+        EXPECT_EQ(arena.stats().reserved_bytes, upstream.live_bytes);
+        arena.reset(alloc::ArenaReset::retain_capacity());
+        EXPECT_EQ(upstream.live_bytes, usize());
+    }
+    EXPECT_FALSE(upstream.release_layout_mismatch);
+}
+
+TEST(Arena, RejectsOverflowBeforeCallingUpstream) {
+    ArenaUpstreamState upstream {};
+    alloc::BumpArena   arena(usize(1024), ArenaTestUpstream { &upstream });
+    auto               layout = rstd::alloc::Layout::from_size_align(usize::MAX, usize(1)).unwrap();
+    EXPECT_TRUE(arena.allocate(layout).is_err());
+    EXPECT_EQ(upstream.attempts, 0);
+    EXPECT_EQ(arena.stats().reserved_bytes, usize());
 }
 
 TEST(RecyclingArena, ReusesReleasedLayoutsAndDropsAllSlabs) {
@@ -215,6 +346,116 @@ TEST(RecyclingArena, DeallocationDoesNotGrowMetadata) {
     EXPECT_EQ(arena.stats().layout_classes, usize(1));
     EXPECT_EQ(arena.stats().recycled_capacity, capacity);
     EXPECT_EQ(arena.stats().metadata_reserved_bytes, metadata_reserved);
+}
+
+TEST(RecyclingArena, UnpublishedSlabsAreReleasedWhenMetadataFails) {
+    const int sizes[] { 32, 700 };
+    for (auto fail_at = 1; fail_at <= 2; ++fail_at) {
+        for (auto size : sizes) {
+            ArenaUpstreamState upstream {};
+            upstream.fail_at = fail_at;
+            {
+                alloc::RecyclingArena arena(usize(1024), ArenaTestUpstream { &upstream });
+                auto layout = rstd::alloc::Layout::from_size_align(usize(size), usize(16)).unwrap();
+                EXPECT_TRUE(arena.allocate(layout).is_err());
+                EXPECT_EQ(arena.stats().live_bytes, usize());
+                EXPECT_EQ(arena.stats().allocations, usize());
+                EXPECT_EQ(arena.stats().layout_classes, usize());
+                EXPECT_EQ(arena.stats().reserved_bytes, usize());
+                EXPECT_EQ(upstream.live_bytes, arena.stats().metadata_reserved_bytes);
+                upstream.fail_at = 0;
+                auto allocation  = arena.allocate(layout).unwrap();
+                EXPECT_EQ(arena.stats().reserved_bytes + arena.stats().metadata_reserved_bytes,
+                          upstream.live_bytes);
+                auto attempts    = upstream.attempts;
+                upstream.fail_at = attempts + 1;
+                arena.deallocate(allocation.pointer, layout);
+                EXPECT_EQ(upstream.attempts, attempts);
+                EXPECT_EQ(arena.allocate(layout).unwrap().pointer, allocation.pointer);
+                EXPECT_EQ(upstream.attempts, attempts);
+                arena.deallocate(allocation.pointer, layout);
+            }
+            EXPECT_EQ(upstream.live_bytes, usize());
+            EXPECT_EQ(upstream.allocations, upstream.deallocations);
+            EXPECT_FALSE(upstream.release_layout_mismatch);
+        }
+    }
+}
+
+TEST(RecyclingArena, PointerCapacityFailureDoesNotConsumePayloadCursor) {
+    ArenaUpstreamState upstream {};
+    {
+        alloc::RecyclingArena arena(usize(64 * 1024), ArenaTestUpstream { &upstream });
+        auto  layout = rstd::alloc::Layout::from_size_align(usize(1), usize(1)).unwrap();
+        void* pointers[8192] {};
+        pointers[0]      = arena.allocate(layout).unwrap().pointer;
+        auto count       = usize(1);
+        upstream.fail_at = upstream.attempts + 1;
+        bool failed      = false;
+        for (; count < usize(8192); ++count) {
+            auto before     = arena.stats();
+            auto allocation = arena.allocate(layout);
+            if (allocation.is_err()) {
+                auto after = arena.stats();
+                EXPECT_EQ(after.live_bytes, before.live_bytes);
+                EXPECT_EQ(after.allocations, before.allocations);
+                EXPECT_EQ(after.free_bytes, before.free_bytes);
+                EXPECT_EQ(after.recycled_capacity, before.recycled_capacity);
+                EXPECT_EQ(after.reserved_bytes, before.reserved_bytes);
+                EXPECT_GE(after.metadata_reserved_bytes, before.metadata_reserved_bytes);
+                failed = true;
+                break;
+            }
+            pointers[count.to_primitive()] = allocation->pointer;
+        }
+        ASSERT_TRUE(failed);
+        auto next = arena.allocate(layout).unwrap();
+        EXPECT_EQ(next.pointer, static_cast<rstd::byte*>(pointers[0]) + count.to_primitive());
+        arena.deallocate(next.pointer, layout);
+        for (auto index = usize(); index < count; ++index)
+            arena.deallocate(pointers[index.to_primitive()], layout);
+        EXPECT_EQ(arena.stats().live_bytes, usize());
+        EXPECT_EQ(arena.stats().reserved_bytes + arena.stats().metadata_reserved_bytes,
+                  upstream.live_bytes);
+    }
+    EXPECT_EQ(upstream.live_bytes, usize());
+    EXPECT_FALSE(upstream.release_layout_mismatch);
+}
+
+TEST(RecyclingArena, LayoutClassFailureDoesNotPublishClassOrAllocation) {
+    ArenaUpstreamState upstream {};
+    {
+        alloc::RecyclingArena arena(usize(1024 * 1024), ArenaTestUpstream { &upstream });
+        auto  first_layout = rstd::alloc::Layout::from_size_align(usize(1), usize(1)).unwrap();
+        auto* first = static_cast<rstd::byte*>(arena.allocate(first_layout).unwrap().pointer);
+        usize used(1);
+        upstream.fail_at = upstream.attempts + 1;
+        bool failed      = false;
+        for (auto size = usize(2); size < usize(1024); ++size) {
+            auto layout     = rstd::alloc::Layout::from_size_align(size, usize(1)).unwrap();
+            auto before     = arena.stats();
+            auto allocation = arena.allocate(layout);
+            if (allocation.is_err()) {
+                auto after = arena.stats();
+                EXPECT_EQ(after.layout_classes, before.layout_classes);
+                EXPECT_EQ(after.live_bytes, before.live_bytes);
+                EXPECT_EQ(after.allocations, before.allocations);
+                EXPECT_EQ(after.recycled_capacity, before.recycled_capacity);
+                EXPECT_EQ(after.reserved_bytes, before.reserved_bytes);
+                EXPECT_GE(after.metadata_used_bytes, before.metadata_used_bytes);
+                auto retry = arena.allocate(layout).unwrap();
+                EXPECT_EQ(retry.pointer, first + used.to_primitive());
+                failed = true;
+                break;
+            }
+            used += size;
+        }
+        EXPECT_TRUE(failed);
+        EXPECT_EQ(arena.stats().reserved_bytes + arena.stats().metadata_reserved_bytes,
+                  upstream.live_bytes);
+    }
+    EXPECT_EQ(upstream.live_bytes, usize());
+    EXPECT_FALSE(upstream.release_layout_mismatch);
 }
 
 TEST(RecyclingArena, OwnsRcControlBlocksThroughRstdAllocator) {
