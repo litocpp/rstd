@@ -77,6 +77,9 @@ auto measure_case(ref<str>               name,
 
 auto register_io(rstd::bench::Suite& suite) -> Result<empty, String>;
 auto register_alloc(rstd::bench::Suite& suite) -> Result<empty, String>;
+auto register_allocator_policy(rstd::bench::Suite& suite) -> Result<empty, String>;
+auto register_allocator_parallel(rstd::bench::Suite& suite) -> Result<empty, String>;
+auto register_range(rstd::bench::Suite& suite) -> Result<empty, String>;
 auto register_iter(rstd::bench::Suite& suite) -> Result<empty, String>;
 auto register_slice(rstd::bench::Suite& suite) -> Result<empty, String>;
 auto register_simd_operations(rstd::bench::Suite& suite) -> Result<empty, String>;

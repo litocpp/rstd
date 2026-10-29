@@ -1,5 +1,4 @@
 #include <rstd/test/gtest.hpp>
-#include <cstdio>
 import rstd;
 using namespace rstd::prelude;
 
@@ -58,9 +57,8 @@ struct Event {
     unsigned slot, size, alignment;
 };
 struct Metrics {
-    unsigned           failures {};
-    alloc::RangeSize   searches {}, metadata {}, largest {}, free {};
-    unsigned long long nanos {};
+    unsigned         failures {};
+    alloc::RangeSize searches {}, metadata {}, largest {}, free {};
 };
 } // namespace
 TEST(Range, DeterministicTraceComparison) {
@@ -81,9 +79,10 @@ TEST(Range, DeterministicTraceComparison) {
             alloc::RangeAllocator  ranges(capacity);
             alloc::RangeAllocation live[128] {};
             bool                   occupied[128] {};
-            auto                   start = rstd::time::Instant::now();
             for (auto e : events) {
-                if (occupied[e.slot]) ASSERT_TRUE(ranges.deallocate(live[e.slot].id).is_ok());
+                if (occupied[e.slot]) {
+                    ASSERT_TRUE(ranges.deallocate(live[e.slot].id).is_ok());
+                }
                 auto result      = ranges.allocate(e.size, e.alignment);
                 occupied[e.slot] = result.is_ok();
                 if (occupied[e.slot])
@@ -91,22 +90,21 @@ TEST(Range, DeterministicTraceComparison) {
                 else
                     ++segregated.failures;
             }
-            segregated.nanos =
-                static_cast<unsigned long long>(start.elapsed().as_nanos().to_primitive());
             auto stats          = ranges.statistics();
             segregated.searches = stats.search_steps;
             segregated.metadata = stats.metadata_bytes;
             segregated.largest  = stats.largest_free_range;
             segregated.free     = stats.free_bytes;
             for (unsigned i = 0; i < 128; ++i)
-                if (occupied[i]) ASSERT_TRUE(ranges.deallocate(live[i].id).is_ok());
+                if (occupied[i]) {
+                    ASSERT_TRUE(ranges.deallocate(live[i].id).is_ok());
+                }
             EXPECT_EQ(ranges.statistics().largest_free_range, capacity);
         }
         {
             FirstFit ranges(capacity);
             Span     live[128] {};
             bool     occupied[128] {};
-            auto     start = rstd::time::Instant::now();
             for (auto e : events) {
                 if (occupied[e.slot]) ranges.deallocate(live[e.slot]);
                 auto result      = ranges.allocate(e.size, e.alignment);
@@ -116,8 +114,6 @@ TEST(Range, DeterministicTraceComparison) {
                 else
                     ++linear.failures;
             }
-            linear.nanos =
-                static_cast<unsigned long long>(start.elapsed().as_nanos().to_primitive());
             linear.searches = ranges.searches;
             linear.metadata = sizeof(ranges);
             linear.largest  = ranges.largest();
@@ -127,21 +123,13 @@ TEST(Range, DeterministicTraceComparison) {
             EXPECT_EQ(ranges.largest(), capacity);
             EXPECT_EQ(ranges.count, 1u);
         }
-        std::printf("trace capacity=%llu events=20000 slots=128 seed=0x7a9135\n",
-                    static_cast<unsigned long long>(capacity));
-        auto print = [](const char* name, const Metrics& m) {
-            std::printf("%s: failures=%u search_steps=%llu metadata_reserved=%llu final_free=%llu "
-                        "largest_gap=%llu elapsed_ns=%llu\n",
-                        name,
-                        m.failures,
-                        static_cast<unsigned long long>(m.searches),
-                        static_cast<unsigned long long>(m.metadata),
-                        static_cast<unsigned long long>(m.free),
-                        static_cast<unsigned long long>(m.largest),
-                        m.nanos);
-        };
-        print("segregated", segregated);
-        print("first_fit", linear);
+        const Metrics summaries[] { segregated, linear };
+        for (auto metrics : summaries) {
+            EXPECT_GT(metrics.searches, 0u);
+            EXPECT_GT(metrics.metadata, 0u);
+            EXPECT_LE(metrics.largest, metrics.free);
+            EXPECT_LE(metrics.free, capacity);
+        }
         if (capacity == 1048576) {
             EXPECT_EQ(segregated.failures, 0u);
             EXPECT_EQ(linear.failures, 0u);

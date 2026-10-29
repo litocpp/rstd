@@ -10,6 +10,9 @@ using namespace rstd::prelude;
 auto rstd_bench::make_suite() -> Result<rstd::bench::Suite, String> {
     rstd::bench::Suite suite;
     rstd_try(register_alloc(suite));
+    rstd_try(register_allocator_policy(suite));
+    rstd_try(register_allocator_parallel(suite));
+    rstd_try(register_range(suite));
     rstd_try(register_io(suite));
     rstd_try(register_iter(suite));
     rstd_try(register_slice(suite));
