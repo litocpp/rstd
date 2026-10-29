@@ -10,6 +10,7 @@ export import :slice;
 export import :iter;
 export import :arena;
 export import :pool;
+export import :fixed_buffer;
 export import :ffi;
 export import :string;
 export import :sync;

@@ -15,6 +15,7 @@ target_sources(
          src/tracking.cppm
          src/arena.cppm
          src/pool.cppm
+         src/fixed_buffer.cppm
          src/range.cppm
          src/range_stack.cppm
          src/range_ring.cppm
