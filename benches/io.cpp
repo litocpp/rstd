@@ -77,7 +77,7 @@ struct ReadToEndSession {
     }
     auto operation() {
         auto reader = rstd::io::Cursor(rstd::hint::black_box(source.as_slice()));
-        auto output = Vec<u8, A>::new_in(rstd::alloc::clone_allocator(allocator));
+        auto output = Vec<u8, A>::make_in(rstd::alloc::clone_allocator(allocator));
         if (reserved) output.try_reserve_exact(source.len()).unwrap();
         if (kind == IoCase::Cursor) {
             rstd::io::read_to_end(reader, output).unwrap();

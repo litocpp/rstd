@@ -176,8 +176,8 @@ public:
 
     static auto make(ThreadPoolHandle pool, usize max_in_flight) -> io::Result<BlockingTaskSet> {
         if (max_in_flight == usize() || pool.worker_count() == usize()) {
-            return Err(io::Error::new_const(io::ErrorKind { io::ErrorKind::InvalidInput },
-                                            "blocking task set requires non-zero capacity"));
+            return Err(io::Error::make_const(io::ErrorKind { io::ErrorKind::InvalidInput },
+                                             "blocking task set requires non-zero capacity"));
         }
         return Ok(BlockingTaskSet(Arc<Shared>::make(rstd::move(pool), max_in_flight)));
     }

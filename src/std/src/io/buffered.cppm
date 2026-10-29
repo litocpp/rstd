@@ -147,7 +147,7 @@ public:
     /// Takes ownership of inner and allocator, including on allocation failure.
     static auto try_make_in(W inner, A allocator, usize capacity = DEFAULT_BUF_SIZE)
         -> rstd::Result<BufWriter, ::alloc::collections::TryReserveError> {
-        auto buffer   = Vec<u8, A>::new_in(rstd::move(allocator));
+        auto buffer   = Vec<u8, A>::make_in(rstd::move(allocator));
         auto reserved = buffer.try_reserve_exact(capacity);
         if (reserved.is_err()) return Err(reserved.unwrap_err_unchecked());
         return Ok(BufWriter(rstd::move(inner), rstd::move(buffer)));

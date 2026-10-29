@@ -40,7 +40,7 @@ public:
         : upstream_(rstd::move(upstream)),
           metadata_(rstd::move(metadata)),
           ranges_(capacity.size.to_primitive(), allocator_ref(metadata_)),
-          entries_(vec::Vec<Entry, MetadataRef>::new_in(allocator_ref(metadata_))),
+          entries_(vec::Vec<Entry, MetadataRef>::make_in(allocator_ref(metadata_))),
           block_layout_(capacity) {}
     RangeArena(const RangeArena&)            = delete;
     RangeArena& operator=(const RangeArena&) = delete;

@@ -93,6 +93,39 @@ struct Impl<alloc::Allocator, ::VecTestAllocator>
 
 static_assert(sizeof(Vec<int>) == sizeof(void*) * 5);
 
+TEST(Vec, FallibleCapacityPreservesAllocatorAndClassifiesErrors) {
+    using Error  = ::alloc::collections::TryReserveError;
+    using Values = Vec<int, VecTestAllocator>;
+    VecAllocatorState state {};
+    auto empty = Values::try_with_capacity_in(usize(), VecTestAllocator { &state }).unwrap();
+    EXPECT_TRUE(empty.is_empty());
+    EXPECT_EQ(state.allocations, 0);
+    auto overflow = Values::try_with_capacity_in(usize::MAX, VecTestAllocator { &state });
+    ASSERT_TRUE(overflow.is_err());
+    EXPECT_EQ(overflow.unwrap_err(), Error::CapacityOverflow);
+    EXPECT_EQ(state.allocations, 0);
+    state.fail  = true;
+    auto failed = Values::try_with_capacity_in(usize(4), VecTestAllocator { &state });
+    ASSERT_TRUE(failed.is_err());
+    EXPECT_EQ(failed.unwrap_err(), Error::AllocError);
+    state.fail = false;
+    {
+        auto values = Values::try_with_capacity_in(usize(4), VecTestAllocator { &state }).unwrap();
+        EXPECT_TRUE(values.is_empty());
+        EXPECT_GE(values.capacity(), usize(4));
+        values.push(42);
+        EXPECT_EQ(values[usize()], 42);
+    }
+    EXPECT_EQ(state.allocations, 1);
+    EXPECT_EQ(state.deallocations, 1);
+    auto aligned =
+        Vec<u8>::try_with_capacity_aligned_in(usize(16), usize(64), ::alloc::Global {}).unwrap();
+    EXPECT_EQ(aligned.allocation_alignment(), usize(64));
+    EXPECT_EQ(reinterpret_cast<rstd::uintptr_t>(aligned.data()) % 64, 0);
+    EXPECT_TRUE(aligned.try_reserve_exact(usize(128)).is_ok());
+    EXPECT_EQ(aligned.allocation_alignment(), usize(64));
+}
+
 TEST(Vec, FailedReservationPreservesAllocationAndElements) {
     VecAllocatorState state {};
     auto              value =
@@ -1701,7 +1734,7 @@ TEST(Vec, AppendRejectsSelfAndAllocatesBeforeMoving) {
         MoveProbe(MoveProbe&&) { rstd::panic { "moved before reservation" }; }
     };
     VecAllocatorState state {};
-    auto target = Vec<MoveProbe, VecTestAllocator>::new_in(VecTestAllocator { &state });
+    auto target = Vec<MoveProbe, VecTestAllocator>::make_in(VecTestAllocator { &state });
     auto source =
         Vec<MoveProbe, VecTestAllocator>::with_capacity_in(1_usize, VecTestAllocator { &state });
     source.emplace_back();
@@ -1840,7 +1873,7 @@ TEST(Vec, ExtendOwningIteratorRetiresOnlyRemainingElements) {
     EXPECT_EQ(drops, 5);
     EXPECT_EQ(target_state.allocations, target_state.deallocations);
     Vec<u8> bytes;
-    auto    source = Vec<u8, VecTestAllocator>::new_in(VecTestAllocator { &source_state });
+    auto    source = Vec<u8, VecTestAllocator>::make_in(VecTestAllocator { &source_state });
     source.push(u8(42));
     rstd::Impl<rstd::iter::Extend<u8>, Vec<u8>>::extend(bytes, rstd::move(source).into_iter());
     EXPECT_EQ(bytes[0_usize], u8(42));
@@ -1852,7 +1885,7 @@ TEST(Vec, ExtendOwningIteratorRetiresOnlyRemainingElements) {
 TEST(Vec, ExtendTrustedPreservesCallbacksAndReservesOnce) {
     VecAllocatorState state {};
     using V     = Vec<u8, VecTestAllocator>;
-    auto values = V::new_in(VecTestAllocator { &state });
+    auto values = V::make_in(VecTestAllocator { &state });
     int  calls  = 0;
     auto source = rstd::iter::range(0_usize, 64_usize).map([&](usize i) {
         ++calls;

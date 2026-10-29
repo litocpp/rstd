@@ -4,6 +4,7 @@ module;
 export module rstd:alloc.virtual_memory;
 import rstd.alloc;
 import rstd.sys.mem;
+import :sync.mutex;
 
 #if ! RSTD_OS_UNIX && ! RSTD_OS_WINDOWS
 #error "rstd::alloc::VirtualMemoryAllocator is unsupported on this platform"
@@ -26,12 +27,14 @@ export struct VirtualMemoryStatistics {
     usize mappings_peak;
     usize allocation_calls;
     usize deallocation_calls;
+    usize allocated_bytes;
+    usize released_bytes;
 };
 
 export class VirtualMemoryAllocator {
-    usize                           page_size_;
-    usize                           mapping_alignment_;
-    mutable VirtualMemoryStatistics statistics_;
+    usize                                              page_size_;
+    usize                                              mapping_alignment_;
+    mutable rstd::sync::Mutex<VirtualMemoryStatistics> statistics_;
 
     auto rounded_size(Layout layout) const noexcept -> Option<usize> {
         if (layout.align > mapping_alignment_) return None();
@@ -56,14 +59,16 @@ public:
     VirtualMemoryAllocator(VirtualMemoryAllocator&& other) noexcept
         : page_size_(other.page_size_),
           mapping_alignment_(other.mapping_alignment_),
-          statistics_(other.statistics_) {
-        other.statistics_ = {};
+          statistics_(other.statistics()) {
+        *other.statistics_.lock().unwrap_unchecked() = {};
     }
 
     auto operator=(VirtualMemoryAllocator&&) -> VirtualMemoryAllocator& = delete;
 
     auto allocate(Layout layout) const noexcept -> Result<Allocation, AllocError> {
-        ++statistics_.allocation_calls;
+        auto  guard      = statistics_.lock().unwrap_unchecked();
+        auto& statistics = *guard;
+        ++statistics.allocation_calls;
         if (layout.size == usize()) return Ok(Allocation { layout.dangling(), usize() });
 
         auto mapping_size = rounded_size(layout);
@@ -71,13 +76,14 @@ public:
         auto* pointer = sys::mem::map(*mapping_size);
         if (pointer == nullptr) return Err(AllocError {});
 
-        statistics_.mapped_bytes += *mapping_size;
-        ++statistics_.mappings;
-        if (statistics_.mapped_bytes > statistics_.mapped_bytes_peak) {
-            statistics_.mapped_bytes_peak = statistics_.mapped_bytes;
+        statistics.mapped_bytes += *mapping_size;
+        statistics.allocated_bytes += *mapping_size;
+        ++statistics.mappings;
+        if (statistics.mapped_bytes > statistics.mapped_bytes_peak) {
+            statistics.mapped_bytes_peak = statistics.mapped_bytes;
         }
-        if (statistics_.mappings > statistics_.mappings_peak) {
-            statistics_.mappings_peak = statistics_.mappings;
+        if (statistics.mappings > statistics.mappings_peak) {
+            statistics.mappings_peak = statistics.mappings;
         }
         auto* storage = ::new (pointer) byte[mapping_size->to_primitive()];
         return Ok(Allocation { storage, layout.size });
@@ -89,22 +95,30 @@ public:
 
     void deallocate(void* pointer, Layout layout) const noexcept {
         if (layout.size == usize()) return;
-        auto mapping_size = rounded_size(layout);
+        auto  guard        = statistics_.lock().unwrap_unchecked();
+        auto& statistics   = *guard;
+        auto  mapping_size = rounded_size(layout);
         debug_assert(mapping_size.is_some());
         if (mapping_size.is_none()) return;
         auto const released = sys::mem::unmap(pointer, *mapping_size);
         debug_assert(released);
         if (! released) return;
-        statistics_.mapped_bytes -= *mapping_size;
-        --statistics_.mappings;
-        ++statistics_.deallocation_calls;
+        statistics.mapped_bytes -= *mapping_size;
+        statistics.released_bytes += *mapping_size;
+        --statistics.mappings;
+        ++statistics.deallocation_calls;
     }
 
+    auto allocation_size(Layout layout) const noexcept -> Option<usize> {
+        return rounded_size(layout);
+    }
     constexpr auto page_size() const noexcept -> usize { return page_size_; }
 
     constexpr auto mapping_alignment() const noexcept -> usize { return mapping_alignment_; }
 
-    constexpr auto statistics() const noexcept -> VirtualMemoryStatistics { return statistics_; }
+    auto statistics() const noexcept -> VirtualMemoryStatistics {
+        return *statistics_.lock().unwrap_unchecked();
+    }
 };
 
 export using VirtualMemoryArena = ::alloc::BumpArena<VirtualMemoryAllocator>;
@@ -135,3 +149,6 @@ struct Impl<alloc::Allocator, alloc::VirtualMemoryAllocator>
 
 template<>
 struct rstd::Impl<rstd::alloc::TransferableAllocator, rstd::alloc::VirtualMemoryAllocator> {};
+
+template<>
+struct rstd::Impl<rstd::alloc::ThreadSafeAllocator, rstd::alloc::VirtualMemoryAllocator> {};

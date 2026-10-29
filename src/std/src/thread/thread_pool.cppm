@@ -241,8 +241,8 @@ public:
 
     auto build() -> io::Result<ThreadPool> {
         if (m_worker_count == usize()) {
-            return Err(io::Error::new_const(io::ErrorKind { io::ErrorKind::InvalidInput },
-                                            "thread pool requires at least one worker"));
+            return Err(io::Error::make_const(io::ErrorKind { io::ErrorKind::InvalidInput },
+                                             "thread pool requires at least one worker"));
         }
 
         auto pool = ThreadPool(Arc<thread_pool::State>::make(m_worker_count));

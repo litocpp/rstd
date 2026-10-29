@@ -13,7 +13,7 @@ static_assert(rstd::bytes::BufMut<BytesMut>);
 template<typename A>
 concept CanEraseBytesAllocator = requires(Vec<u8, A>&& vec) { Bytes::from_vec(rstd::move(vec)); };
 static_assert(! CanEraseBytesAllocator<rstd::alloc::TrackingAllocator<>>);
-static_assert(! CanEraseBytesAllocator<rstd::alloc::VirtualMemoryAllocator>);
+static_assert(CanEraseBytesAllocator<rstd::alloc::VirtualMemoryAllocator>);
 static_assert(CanEraseBytesAllocator<SharedTrackingAllocator<>>);
 
 static constexpr unsigned char static_bytes[] = { 'h', 'e', 'l', 'l', 'o' };
@@ -46,6 +46,52 @@ TEST(BytesMut, PutSliceAndFreeze) {
     auto frozen = buf.freeze();
     EXPECT_EQ(frozen.len(), usize(5));
     EXPECT_EQ(frozen[usize(4)], u8('o'));
+}
+
+TEST(BytesMut, FallibleCapacityDistinguishesOverflowAndAllocationFailure) {
+    using Error  = ::alloc::collections::TryReserveError;
+    using Budget = rstd::alloc::BudgetAllocator<>;
+    auto control = Budget::try_make(usize(1)).unwrap();
+    EXPECT_EQ(BytesMut::try_with_capacity_in(usize(16), control.clone()).unwrap_err(),
+              Error::AllocError);
+    EXPECT_TRUE(Bytes::try_make_in(control.clone()).is_err());
+    EXPECT_TRUE(BytesMut::try_make_in(control.clone()).is_err());
+    EXPECT_EQ(control.statistics().live_bytes, usize());
+    auto data = Budget::try_make(usize(4096)).unwrap();
+    EXPECT_EQ(BytesMut::try_with_capacity_in(usize(65536), data.clone()).unwrap_err(),
+              Error::AllocError);
+    EXPECT_EQ(data.statistics().live_bytes, usize());
+    EXPECT_EQ(data.statistics().allocations, usize(1));
+    EXPECT_EQ(BytesMut::try_with_capacity_in(usize::MAX, data.clone()).unwrap_err(),
+              Error::CapacityOverflow);
+    EXPECT_EQ(data.statistics().live_bytes, usize());
+    EXPECT_TRUE(BytesMut::try_with_capacity(usize()).unwrap().is_empty());
+}
+
+TEST(BytesMut, FallibleReservePreservesVisibleRangeAndAllocatorOnFailure) {
+    using Error = ::alloc::collections::TryReserveError;
+    auto budget = rstd::alloc::BudgetAllocator<>::try_make(usize(4096)).unwrap();
+    {
+        auto buffer = BytesMut::try_with_capacity_in(usize(8), budget.clone()).unwrap();
+        buffer.put_slice("abcdef"_bytes);
+        buffer.advance(usize(2));
+        auto pointer  = buffer.data();
+        auto capacity = buffer.capacity();
+        auto live     = budget.statistics().live_bytes;
+        EXPECT_EQ(buffer.try_reserve(usize(65536)).unwrap_err(), Error::AllocError);
+        EXPECT_EQ(buffer.try_reserve_exact(usize::MAX).unwrap_err(), Error::CapacityOverflow);
+        EXPECT_EQ(buffer.data(), pointer);
+        EXPECT_EQ(buffer.capacity(), capacity);
+        EXPECT_EQ(buffer.as_slice(), "cdef"_bytes);
+        EXPECT_EQ(budget.statistics().live_bytes, live);
+        EXPECT_TRUE(buffer.try_reserve_exact(usize(64)).is_ok());
+        EXPECT_EQ(buffer.as_slice(), "cdef"_bytes);
+        buffer.reserve_exact(usize(128));
+        auto frozen    = buffer.freeze();
+        auto recovered = rstd::move(frozen).try_into_mut().unwrap();
+        EXPECT_EQ(recovered.as_slice(), "cdef"_bytes);
+    }
+    EXPECT_EQ(budget.statistics().live_bytes, usize());
 }
 
 TEST(BytesMut, ChunkMutAndAdvanceMut) {
@@ -214,8 +260,8 @@ TEST(Hash, ValueUsesItsRawObjectRepresentation) {
 TEST(BytesAllocator, EmptyConstructionAndCopyUseConfiguredAllocator) {
     auto tracker = SharedTrackingAllocator<>::make();
     {
-        auto empty    = Bytes::new_in(tracker.clone());
-        auto writable = BytesMut::new_in(tracker.clone());
+        auto empty    = Bytes::make_in(tracker.clone());
+        auto writable = BytesMut::make_in(tracker.clone());
         EXPECT_TRUE(empty.is_empty());
         EXPECT_TRUE(writable.is_empty());
         EXPECT_EQ(tracker.snapshot().allocations, u64(2));
@@ -483,7 +529,7 @@ TEST(BytesAllocator, IntoMutReusesUniqueStorageWithoutCopying) {
 TEST(BytesAllocator, EmptyConversionsRetainConfiguredAllocator) {
     auto tracker = SharedTrackingAllocator<>::make();
     {
-        auto bytes  = Bytes::new_in(tracker.clone());
+        auto bytes  = Bytes::make_in(tracker.clone());
         auto before = tracker.snapshot();
         auto unique = rstd::move(bytes).try_into_mut().unwrap();
         EXPECT_TRUE(unique.is_empty());

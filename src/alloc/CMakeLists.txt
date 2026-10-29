@@ -14,6 +14,7 @@ target_sources(
          src/alloc.cppm
          src/tracking.cppm
          src/arena.cppm
+         src/pool.cppm
          src/range.cppm
          src/range_stack.cppm
          src/range_ring.cppm

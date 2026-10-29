@@ -41,7 +41,7 @@ template<bool Reserved, typename A>
 struct VecPushSession {
     A           allocator;
     Vec<i32, A> checked;
-    explicit VecPushSession(A alloc): allocator(alloc), checked(Vec<i32, A>::new_in(alloc)) {}
+    explicit VecPushSession(A alloc): allocator(alloc), checked(Vec<i32, A>::make_in(alloc)) {}
     auto check() -> Result<empty, String> {
         checked      = Vec<i32, A>::with_capacity_in(usize(64), allocator);
         auto& values = checked;
@@ -450,7 +450,7 @@ struct OwnershipSession {
             }();
             rstd::hint::black_box(value.as_ptr());
         } else if constexpr (Operation == OwnershipOperation::VecBox) {
-            auto values = Vec<int, A>::new_in(rstd::alloc::clone_allocator(allocator));
+            auto values = Vec<int, A>::make_in(rstd::alloc::clone_allocator(allocator));
             for (int i = 0; i < 64; ++i) values.push(int(i));
             auto copied = values.clone();
             auto boxed  = copied.into_boxed_slice();

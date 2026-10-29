@@ -361,6 +361,20 @@ public:
         }
     }
 
+    template<typename A>
+    static auto allocation_layout_in() -> Option<Layout>
+        requires Impled<T, Sized>
+    {
+        auto layout = arc_allocation_layout(Layout::make<T>()).layout;
+        if constexpr (! mtp::same_as<A, ::alloc::Global>) {
+            usize offset;
+            auto  extended = layout.extend(Layout::make<A>(), offset);
+            if (extended.is_none()) return None();
+            layout = extended->pad_to_align();
+        }
+        return Some(layout);
+    }
+
     /// The allocator must support concurrent operations and final release on another thread.
     template<typename A, typename... Args>
     static auto try_make_in(A allocator, Args&&... args) -> Result<Arc, rstd::alloc::AllocError>
@@ -741,7 +755,15 @@ public:
     template<typename A>
         requires rstd::Impled<A, rstd::alloc::Allocator, rstd::alloc::ThreadSafeAllocator>
     static auto try_make(A allocator) -> Result<SharedAllocator, rstd::alloc::AllocError> {
-        auto owner = Arc<rstd::dyn<rstd::alloc::Allocator>>::try_make(rstd::move(allocator));
+        return try_make_in(::alloc::Global {}, rstd::move(allocator));
+    }
+    template<typename C, typename A>
+        requires rstd::Impled<C, Allocator, rstd::alloc::ThreadSafeAllocator> &&
+                 rstd::Impled<A, Allocator, rstd::alloc::ThreadSafeAllocator>
+    static auto try_make_in(C control_allocator, A allocator)
+        -> Result<SharedAllocator, rstd::alloc::AllocError> {
+        auto owner = Arc<rstd::dyn<Allocator>>::try_make_in(rstd::move(control_allocator),
+                                                            rstd::move(allocator));
         if (owner.is_err()) return Err(rstd::alloc::AllocError {});
         return Ok(SharedAllocator(owner.unwrap_unchecked()));
     }

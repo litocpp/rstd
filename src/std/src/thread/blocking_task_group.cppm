@@ -271,8 +271,8 @@ public:
 
     static auto make(usize worker_count, usize queue_capacity) -> io::Result<BlockingTaskGroup> {
         if (worker_count == usize() || queue_capacity == usize()) {
-            return Err(io::Error::new_const(io::ErrorKind { io::ErrorKind::InvalidInput },
-                                            "blocking task group requires non-zero capacity"));
+            return Err(io::Error::make_const(io::ErrorKind { io::ErrorKind::InvalidInput },
+                                             "blocking task group requires non-zero capacity"));
         }
         auto pool = ThreadPoolBuilder::make().worker_count(worker_count).build();
         if (pool.is_err()) return Err(rstd::move(pool).unwrap_err_unchecked());
@@ -287,8 +287,8 @@ public:
     static auto on(ThreadPoolHandle pool, usize parallelism, usize queue_capacity)
         -> io::Result<BlockingTaskGroup> {
         if (parallelism == usize() || queue_capacity == usize() || pool.worker_count() == usize()) {
-            return Err(io::Error::new_const(io::ErrorKind { io::ErrorKind::InvalidInput },
-                                            "blocking task group requires non-zero capacity"));
+            return Err(io::Error::make_const(io::ErrorKind { io::ErrorKind::InvalidInput },
+                                             "blocking task group requires non-zero capacity"));
         }
         return Ok(BlockingTaskGroup(
             Arc<Shared>::make(rstd::move(pool), parallelism, queue_capacity), None()));

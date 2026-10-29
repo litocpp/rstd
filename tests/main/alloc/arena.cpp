@@ -239,7 +239,7 @@ TEST(RecyclingArena, OwnsHashMapBucketsThroughRstdAllocator) {
                                                  ::alloc::collections::DefaultHashEqual<int>,
                                                  Allocator>;
     {
-        auto values = Map::new_in(arena.allocator());
+        auto values = Map::make_in(arena.allocator());
         for (auto value = 0; value < 32; ++value) values.insert(value, value * 2);
         EXPECT_EQ(values.len(), usize(32));
         EXPECT_EQ(**values.get(17), 34);

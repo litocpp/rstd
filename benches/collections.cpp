@@ -120,7 +120,7 @@ struct CollectionSession {
           hit_percent(hit),
           allocator(alloc),
           map(collection_input<Backend>(n, alloc)),
-          queries(Vec<u64, A>::new_in(alloc)) {
+          queries(Vec<u64, A>::make_in(alloc)) {
         if constexpr (! Build) {
             for (usize i; i < count; ++i) {
                 auto present = (i.to_primitive() % 100) < hit_percent;

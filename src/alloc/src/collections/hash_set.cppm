@@ -72,6 +72,13 @@ public:
         return HashSet(HashMap<K, rstd::empty, S, Eq, A>::with_capacity(capacity));
     }
 
+    static auto try_with_capacity(usize capacity) -> Result<HashSet, TryReserveError>
+        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<S> && rstd::mtp::init<Eq> &&
+                 rstd::mtp::init<A>
+    {
+        return try_with_capacity_in(capacity, A {});
+    }
+
     static auto with_hasher(S hasher) -> HashSet
         requires rstd::hash::HashBuilder<S> && rstd::mtp::init<Eq> && rstd::mtp::init<A>
     {
@@ -85,12 +92,25 @@ public:
             HashMap<K, rstd::empty, S, Eq, A>(usize(), rstd::move(hasher), rstd::move(equal)));
     }
 
+    static auto make_in(A allocator) -> HashSet {
+        return HashSet(HashMap<K, rstd::empty, S, Eq, A>::make_in(rstd::move(allocator)));
+    }
+    [[deprecated("use make_in instead")]]
     static auto new_in(A allocator) -> HashSet {
-        return HashSet(HashMap<K, rstd::empty, S, Eq, A>::new_in(rstd::move(allocator)));
+        return make_in(rstd::move(allocator));
     }
     static auto with_capacity_in(usize capacity, A allocator) -> HashSet {
         return HashSet(
             HashMap<K, rstd::empty, S, Eq, A>::with_capacity_in(capacity, rstd::move(allocator)));
+    }
+    static auto try_with_capacity_in(usize capacity, A allocator)
+        -> Result<HashSet, TryReserveError>
+        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<S> && rstd::mtp::init<Eq>
+    {
+        auto result = HashMap<K, rstd::empty, S, Eq, A>::try_with_capacity_in(
+            capacity, rstd::move(allocator));
+        if (result.is_err()) return Err(result.unwrap_err_unchecked());
+        return Ok(HashSet(result.unwrap_unchecked()));
     }
     auto allocator() const noexcept [[clang::lifetimebound]] -> const A& { return map.allocator(); }
 

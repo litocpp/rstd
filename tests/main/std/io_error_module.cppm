@@ -31,7 +31,7 @@ auto error_text_matches(T const& value, ref<str> expected) -> bool {
 export auto std_io_error_module() -> bool {
     using io::error::Error;
     using io::error::ErrorKind;
-    constexpr auto  message = Error::new_const(ErrorKind { ErrorKind::InvalidData }, "bad data");
+    constexpr auto  message = Error::make_const(ErrorKind { ErrorKind::InvalidData }, "bad data");
     auto            kind    = ErrorKind { ErrorKind::NotFound };
     auto            error   = Error::from_kind(kind);
     io::Result<int> result  = Err(error);

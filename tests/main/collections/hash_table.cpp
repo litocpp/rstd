@@ -56,7 +56,7 @@ TEST(HashTable, BorrowedEntryPreparationDoesNotAllocateForAnExistingIdentity) {
     auto tracker = rstd::alloc::SharedTrackingAllocator<>::make();
     using Table  = HashTable<u32, decltype(tracker)>;
     {
-        auto table = Table::new_in(tracker.clone());
+        auto table = Table::make_in(tracker.clone());
         auto hash  = [](u32 value) noexcept {
             return u64(value.to_primitive());
         };

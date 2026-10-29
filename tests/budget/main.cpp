@@ -118,6 +118,58 @@ void ownership() {
     rstd_assert(*clone == 42);
 }
 
+template<typename C>
+void capacity_storage(BudgetAllocator<> budget) {
+    using Error = ::alloc::collections::TryReserveError;
+    auto empty  = C::try_with_capacity_in(usize(), budget.clone()).unwrap();
+    rstd_assert(empty.is_empty() && empty.capacity() == usize());
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    auto legacy = C::new_in(budget.clone());
+#pragma clang diagnostic pop
+    rstd_assert(legacy.is_empty() && legacy.capacity() == usize());
+    auto before   = budget.statistics().allocations;
+    auto overflow = C::try_with_capacity_in(usize::MAX, budget.clone());
+    rstd_assert(overflow.is_err() && overflow.unwrap_err() == Error::CapacityOverflow);
+    rstd_assert(budget.statistics().allocations == before);
+    auto failed = C::try_with_capacity_in(usize(65536), budget.clone());
+    rstd_assert(failed.is_err() && failed.unwrap_err() == Error::AllocError);
+    rstd_assert(budget.statistics().live_bytes == usize());
+    {
+        auto values = C::try_with_capacity_in(usize(8), budget.clone()).unwrap();
+        rstd_assert(values.is_empty() && values.capacity() >= usize(8));
+        rstd_assert(budget.statistics().live_bytes != usize());
+    }
+    rstd_assert(budget.statistics().live_bytes == usize());
+}
+
+void capacity_construction() {
+    using A     = BudgetAllocator<>;
+    using S     = rstd::hash::RandomState;
+    using E     = ::alloc::collections::DefaultHashEqual<u32>;
+    auto budget = A::try_make(usize(4096)).unwrap();
+    capacity_storage<Vec<u8, A>>(budget.clone());
+    capacity_storage<rstd::collections::HashTable<u32, A>>(budget.clone());
+    capacity_storage<rstd::collections::HashMap<u32, u32, S, E, A>>(budget.clone());
+    capacity_storage<rstd::collections::HashSet<u32, S, E, A>>(budget.clone());
+    auto attempts  = budget.statistics().allocations;
+    auto oversized = rstd::collections::HashTable<u8, A>::try_with_capacity_in(
+        usize(isize::MAX.to_primitive()) / usize(4), budget.clone());
+    rstd_assert(oversized.is_err());
+    rstd_assert(oversized.unwrap_err() == ::alloc::collections::TryReserveError::CapacityOverflow);
+    rstd_assert(budget.statistics().allocations == attempts);
+    {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        auto readonly = rstd::bytes::Bytes::new_in(budget.clone());
+        auto writable = rstd::bytes::BytesMut::new_in(budget.clone());
+#pragma clang diagnostic pop
+        rstd_assert(readonly.is_empty() && writable.is_empty());
+        rstd_assert(budget.statistics().live_bytes != usize());
+    }
+    rstd_assert(budget.statistics().live_bytes == usize());
+}
+
 void erased_allocator() {
     using rstd::alloc::SharedAllocator;
     SharedAllocator global;
@@ -147,10 +199,16 @@ void erased_allocator() {
     rstd_assert(budget.statistics().live_bytes == usize());
 }
 
+#include "pool.hpp"
+
 int main() {
+    pool_lifetime();
+    pool_failures();
+    pool_threads();
     erased_allocator();
     resize_and_clone();
     ownership();
+    capacity_construction();
     auto shared  = BudgetAllocator<>::try_make(usize(1024)).unwrap();
     auto workers = Vec<rstd::thread::JoinHandle<void>>::make();
     for (int thread = 0; thread < 8; ++thread) {

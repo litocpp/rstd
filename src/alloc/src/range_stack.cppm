@@ -38,7 +38,7 @@ class StackRangeAllocator {
 
 public:
     explicit StackRangeAllocator(RangeSize capacity, Metadata metadata = Metadata {})
-        : entries_(vec::Vec<Entry, Metadata>::new_in(rstd::move(metadata))), capacity_(capacity) {}
+        : entries_(vec::Vec<Entry, Metadata>::make_in(rstd::move(metadata))), capacity_(capacity) {}
     StackRangeAllocator(const StackRangeAllocator&)            = delete;
     StackRangeAllocator& operator=(const StackRangeAllocator&) = delete;
     StackRangeAllocator(StackRangeAllocator&&)                 = delete;

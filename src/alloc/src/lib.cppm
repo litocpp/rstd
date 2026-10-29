@@ -9,6 +9,7 @@ export import :vec;
 export import :slice;
 export import :iter;
 export import :arena;
+export import :pool;
 export import :ffi;
 export import :string;
 export import :sync;

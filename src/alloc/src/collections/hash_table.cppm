@@ -33,7 +33,7 @@ public:
         auto values = Layout::array<T>(count);
         if (values.is_none()) return None();
         auto size = values->size.checked_add(count);
-        if (size.is_none()) return None();
+        if (size.is_none() || *size > usize(isize::MAX.to_primitive())) return None();
         return Layout::from_size_align(*size, values->align);
     }
     static auto max_items(usize count) noexcept -> usize { return count - count / usize(8); }
@@ -411,18 +411,34 @@ public:
     auto operator=(const HashTable&) -> HashTable&            = delete;
     HashTable(HashTable&&) noexcept                           = default;
     auto        operator=(HashTable&&) noexcept -> HashTable& = default;
-    static auto new_in(A allocator) -> HashTable { return HashTable(rstd::move(allocator)); }
+    static auto make_in(A allocator) -> HashTable { return HashTable(rstd::move(allocator)); }
+    [[deprecated("use make_in instead")]]
+    static auto new_in(A allocator) -> HashTable {
+        return make_in(rstd::move(allocator));
+    }
     static auto with_capacity_in(usize capacity, A allocator) -> HashTable {
+        auto result = try_with_capacity_in(capacity, rstd::move(allocator));
+        if (result.is_err()) hash_allocation_failure(result.unwrap_err_unchecked());
+        return result.unwrap_unchecked();
+    }
+    static auto try_with_capacity_in(usize capacity, A allocator)
+        -> Result<HashTable, TryReserveError> {
         HashTable result(rstd::move(allocator));
-        result.reserve(capacity, [](const T&) noexcept -> u64 {
+        auto      reserved = result.try_reserve(capacity, [](const T&) noexcept -> u64 {
             return u64();
         });
-        return result;
+        if (reserved.is_err()) return Err(reserved.unwrap_err_unchecked());
+        return Ok(rstd::move(result));
     }
     static auto with_capacity(usize capacity) -> HashTable
         requires rstd::mtp::init<A>
     {
         return with_capacity_in(capacity, A {});
+    }
+    static auto try_with_capacity(usize capacity) -> Result<HashTable, TryReserveError>
+        requires rstd::mtp::init<A>
+    {
+        return try_with_capacity_in(capacity, A {});
     }
     auto allocator() const noexcept [[clang::lifetimebound]] -> const A& {
         return table_.allocator();

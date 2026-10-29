@@ -113,7 +113,7 @@ concept HasClone = requires(const B& box) { box.clone(); };
 static_assert(! HasPointerOnlyRaw<OwnedBox>);
 static_assert(HasPointerOnlyRaw<Box<int>>);
 static_assert(! CanAllocateArc<OwnershipAllocator>);
-static_assert(! CanAllocateArc<rstd::alloc::VirtualMemoryAllocator>);
+static_assert(CanAllocateArc<rstd::alloc::VirtualMemoryAllocator>);
 static_assert(CanAllocateArc<SharedOwner>);
 static_assert(! HasClone<Box<int, rstd::alloc::VirtualMemoryAllocator>>);
 static_assert(sizeof(Box<int>) == sizeof(int*));
@@ -369,7 +369,7 @@ TEST(AllocationOwnership, SharedCloneWorksForVecMapSetAndErasedAllocator) {
     auto           left  = SharedOwner::make(OwnershipAllocator(first));
     auto           right = SharedOwner::make(OwnershipAllocator(second));
     {
-        auto vector = alloc::vec::Vec<int, SharedOwner>::new_in(left.clone());
+        auto vector = alloc::vec::Vec<int, SharedOwner>::make_in(left.clone());
         vector.push(1);
         auto copy  = vector.clone();
         auto cross = vector.clone_in(alloc::Global {});
@@ -379,10 +379,10 @@ TEST(AllocationOwnership, SharedCloneWorksForVecMapSetAndErasedAllocator) {
                                                 rstd::hash::RandomState,
                                                 alloc::collections::DefaultHashEqual<int>,
                                                 SharedOwner>;
-        auto map  = Map::new_in(left.clone());
+        auto map  = Map::make_in(left.clone());
         map.insert(3, 9);
         auto copied = map.clone();
-        auto target = Map::new_in(right.clone());
+        auto target = Map::make_in(right.clone());
         target.clone_from(map);
         EXPECT_GT(right.snapshot().live_bytes, u64());
         EXPECT_EQ(*target.get(3).unwrap(), 9);
@@ -390,7 +390,7 @@ TEST(AllocationOwnership, SharedCloneWorksForVecMapSetAndErasedAllocator) {
                                                 rstd::hash::RandomState,
                                                 alloc::collections::DefaultHashEqual<int>,
                                                 SharedOwner>;
-        auto set  = Set::new_in(left.clone());
+        auto set  = Set::make_in(left.clone());
         set.insert(4);
         auto cross_set = set.clone_in(alloc::Global {});
         EXPECT_TRUE(cross_set.contains(4));
@@ -554,7 +554,7 @@ TEST(AllocationOwnership, SharedArenaRootCanDieBeforeBoxVecAndArc) {
         auto root = Root::try_make(usize(4096)).unwrap();
         observer  = Some(root.downgrade());
         box       = Some(Box<int, A>::make_in(root.allocator(), 4));
-        vector    = Some(alloc::vec::Vec<int, A>::new_in(root.allocator()));
+        vector    = Some(alloc::vec::Vec<int, A>::make_in(root.allocator()));
         vector->push(5);
         auto copy      = vector->clone();
         auto iterator  = rstd::move(copy).into_iter();
@@ -825,7 +825,7 @@ TEST(AllocationOwnership, InPlaceShrinkAndEmptyBoxNeedNoExtraAllocation) {
     EXPECT_EQ(state.live, usize());
     auto tracking = rstd::alloc::SharedTrackingAllocator<>::make();
     {
-        auto empty  = alloc::vec::Vec<int, decltype(tracking)>::new_in(tracking.clone());
+        auto empty  = alloc::vec::Vec<int, decltype(tracking)>::make_in(tracking.clone());
         auto boxed  = empty.into_boxed_slice();
         auto copied = boxed.clone();
         auto restored =
@@ -1084,7 +1084,7 @@ TEST(IoAllocation, CursorWriteFailurePreservesContentAndPosition) {
     using namespace rstd::literals;
     OwnershipState state;
     {
-        auto bytes = Vec<u8, OwnershipAllocator>::new_in(OwnershipAllocator(state));
+        auto bytes = Vec<u8, OwnershipAllocator>::make_in(OwnershipAllocator(state));
         bytes.extend_from_slice("abc"_bytes);
         auto cursor = rstd::io::Cursor(rstd::move(bytes));
         cursor.set_position(u64(100));
@@ -1118,7 +1118,7 @@ TEST(IoAllocation, ReadToEndRetriesAndAppendsOnlyInitializedBytes) {
     using namespace rstd::literals;
     OwnershipState state;
     {
-        auto bytes = Vec<u8, OwnershipAllocator>::new_in(OwnershipAllocator(state));
+        auto bytes = Vec<u8, OwnershipAllocator>::make_in(OwnershipAllocator(state));
         bytes.extend_from_slice("pre"_bytes);
         AllocationReader reader { .input             = "abcdefghi"_bytes,
                                   .interrupted_call  = 1,
@@ -1137,7 +1137,7 @@ TEST(IoAllocation, ReadToEndAllocationFailureDoesNotConsumeInput) {
     using namespace rstd::literals;
     OwnershipState state;
     {
-        auto             bytes = Vec<u8, OwnershipAllocator>::new_in(OwnershipAllocator(state));
+        auto             bytes = Vec<u8, OwnershipAllocator>::make_in(OwnershipAllocator(state));
         AllocationReader reader { .input = "abcdef"_bytes, .limit = usize(4) };
         state.fail = true;
         EXPECT_TRUE(rstd::io::read_to_end(reader, bytes).is_err());
@@ -1183,7 +1183,7 @@ TEST(IoAllocation, FullBufferRequiresReservationEvenAtEof) {
     using namespace rstd::literals;
     OwnershipState state;
     {
-        auto bytes = Vec<u8, OwnershipAllocator>::new_in(OwnershipAllocator(state));
+        auto bytes = Vec<u8, OwnershipAllocator>::make_in(OwnershipAllocator(state));
         bytes.try_reserve_exact(usize(3)).unwrap();
         bytes.extend_from_slice("abc"_bytes);
         state.fail = true;
@@ -1310,7 +1310,7 @@ using AllocationSet = rstd::collections::HashSet<i32,
 TEST(HashAllocation, ReserveFailureLeavesOriginalTableAndCanRetry) {
     OwnershipState state;
     {
-        auto map   = AllocationMap<>::new_in(OwnershipAllocator(state));
+        auto map   = AllocationMap<>::make_in(OwnershipAllocator(state));
         state.fail = true;
         EXPECT_TRUE(map.try_reserve(usize()).is_ok());
         EXPECT_EQ(state.allocation_attempts, 0);
@@ -1352,7 +1352,7 @@ TEST(HashAllocation, ReserveFailureLeavesOriginalTableAndCanRetry) {
 TEST(HashAllocation, TombstoneCleanupIsTransactionalAndHonorsReservation) {
     OwnershipState state;
     {
-        auto map = AllocationMap<>::new_in(OwnershipAllocator(state));
+        auto map = AllocationMap<>::make_in(OwnershipAllocator(state));
         map.try_reserve(usize(7)).unwrap();
         for (int i = 0; i < 7; ++i) map.insert(i32(i), i32(i));
         for (int i = 0; i < 6; ++i) map.remove(i32(i));
@@ -1383,7 +1383,7 @@ TEST(HashAllocation, OverflowNeverCallsAllocatorOrMovesValues) {
     OwnershipState state;
     int            drops {};
     {
-        auto  map      = AllocationMap<OwnershipValue>::new_in(OwnershipAllocator(state));
+        auto  map      = AllocationMap<OwnershipValue>::make_in(OwnershipAllocator(state));
         auto  attempts = state.allocation_attempts;
         usize counts[] { usize::MAX, usize::MAX / usize(2), usize::MAX / usize(32) };
         for (auto count : counts) {
@@ -1414,7 +1414,7 @@ TEST(HashAllocation, OverflowNeverCallsAllocatorOrMovesValues) {
 TEST(HashAllocation, HashSetUsesTheSameFallibleStorage) {
     OwnershipState state;
     {
-        auto set   = AllocationSet::new_in(OwnershipAllocator(state));
+        auto set   = AllocationSet::make_in(OwnershipAllocator(state));
         state.fail = true;
         EXPECT_TRUE(set.try_reserve(usize(20)).is_err());
         EXPECT_TRUE(set.is_empty());
@@ -1469,7 +1469,7 @@ TEST(IoAllocation, ZeroCapacityBuffersAndSeekableHandlesKeepOwnership) {
         EXPECT_EQ(state.allocation_attempts, 0);
         state.fail  = false;
         using Owned = rstd::io::Cursor<Vec<u8, OwnershipAllocator>>;
-        auto owned  = Owned(Vec<u8, OwnershipAllocator>::new_in(OwnershipAllocator(state)));
+        auto owned  = Owned(Vec<u8, OwnershipAllocator>::make_in(OwnershipAllocator(state)));
         auto writer = rstd::io::BufWriter<Owned, OwnershipAllocator>::make_in(
             rstd::move(owned), OwnershipAllocator(state), usize(4));
         auto handle = rstd::io::BasicWriteSeekHandle<OwnershipAllocator>::make_in(
@@ -1478,7 +1478,7 @@ TEST(IoAllocation, ZeroCapacityBuffersAndSeekableHandlesKeepOwnership) {
         EXPECT_EQ(handle->seek(rstd::io::SeekFrom::from_current(i64())).unwrap(), u64(3));
         auto both = rstd::io::BasicReadWriteSeekHandle<OwnershipAllocator>::make_in(
             OwnershipAllocator(state),
-            Owned(Vec<u8, OwnershipAllocator>::new_in(OwnershipAllocator(state))));
+            Owned(Vec<u8, OwnershipAllocator>::make_in(OwnershipAllocator(state))));
         both->write("xyz"_bytes).unwrap();
         both->seek(rstd::io::SeekFrom::from_start(u64())).unwrap();
         both->read(rstd::mut_ref<u8[]>::from_raw_parts(bytes, usize(3))).unwrap();
@@ -1566,7 +1566,7 @@ TEST(HashAllocation, ThrowingMovesReleaseBothStorageAndPartiallyConstructedBucke
                                            AllocationHashBuilder,
                                            ::alloc::collections::DefaultHashEqual<HashMoveValue>,
                                            OwnershipAllocator>;
-            auto map = Map::new_in(OwnershipAllocator(allocator));
+            auto map = Map::make_in(OwnershipAllocator(allocator));
             for (int i = 0; i < 3; ++i)
                 map.insert(HashMoveValue(keys, i32(i)), HashMoveValue(values, i32(i)));
             values.moves    = 0;
@@ -1641,7 +1641,7 @@ TEST(IoAllocation, StaticCursorReservesOnceAndRollsBackOnFailure) {
     using namespace rstd::literals;
     OwnershipState state;
     {
-        auto output = Vec<u8, OwnershipAllocator>::new_in(OwnershipAllocator(state));
+        auto output = Vec<u8, OwnershipAllocator>::make_in(OwnershipAllocator(state));
         auto reader = rstd::io::Cursor("abcdef"_bytes);
         reader.set_position(u64(1));
         state.fail = true;
@@ -1666,7 +1666,7 @@ TEST(IoAllocation, EmptyCursorDoesNotAllocateAndBufferedDrainDoesNotConsumeOnOom
     using namespace rstd::literals;
     OwnershipState state;
     {
-        auto output = Vec<u8, OwnershipAllocator>::new_in(OwnershipAllocator(state));
+        auto output = Vec<u8, OwnershipAllocator>::make_in(OwnershipAllocator(state));
         state.fail  = true;
         auto empty  = rstd::io::Cursor(""_bytes);
         EXPECT_EQ(rstd::io::read_to_end(empty, output).unwrap(), usize());
@@ -1849,7 +1849,7 @@ TEST(HashAllocation, HashTableFailurePreservesExternalIdsAndReservedSlots) {
         return u64(id.to_primitive());
     };
     {
-        auto table = Table::new_in(OwnershipAllocator(owner));
+        auto table = Table::make_in(OwnershipAllocator(owner));
         owner.fail = true;
         EXPECT_TRUE(table.try_reserve(usize(), hash).is_ok());
         EXPECT_EQ(table.try_reserve(usize::MAX, hash).unwrap_err(),
@@ -1938,7 +1938,7 @@ TEST(HashAllocation, HashTableFailurePreservesExternalIdsAndReservedSlots) {
 TEST(HashAllocation, HashTableThrowingRehashPreservesOriginalAndReleasesScratch) {
     OwnershipState owner;
     {
-        auto table = rstd::collections::HashTable<u32, OwnershipAllocator>::new_in(
+        auto table = rstd::collections::HashTable<u32, OwnershipAllocator>::make_in(
             OwnershipAllocator(owner));
         for (int i = 0; i < 7; ++i) {
             auto entry = table.entry(
@@ -1982,7 +1982,7 @@ TEST(HashAllocation, ThrowingReplacementLeavesOnlyCompleteEntries) {
         OwnershipState owner;
         HashMoveState  values;
         {
-            auto map = AllocationMap<HashMoveValue>::new_in(OwnershipAllocator(owner));
+            auto map = AllocationMap<HashMoveValue>::make_in(OwnershipAllocator(owner));
             map.insert(i32(1), HashMoveValue(values, i32(11)));
             values.moves    = 0;
             values.throw_at = at;

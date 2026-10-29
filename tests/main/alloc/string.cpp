@@ -58,6 +58,26 @@ TEST(String, CollectAndExtendChars) {
     EXPECT_EQ(value.as_str(), "aß界"_str);
 }
 
+TEST(String, FallibleCapacityAndReservePreserveUtf8Contents) {
+    using Error = ::alloc::collections::TryReserveError;
+    auto text   = String::try_with_capacity(usize(8)).unwrap();
+    EXPECT_TRUE(text.is_empty());
+    EXPECT_GE(text.capacity(), usize(8));
+    text.push_str("a右"_str);
+    EXPECT_TRUE(text.try_reserve(usize(32)).is_ok());
+    EXPECT_TRUE(text.try_reserve_exact(usize(64)).is_ok());
+    text.reserve_exact(usize(128));
+    auto pointer  = text.data();
+    auto capacity = text.capacity();
+    auto overflow = text.try_reserve(usize::MAX);
+    ASSERT_TRUE(overflow.is_err());
+    EXPECT_EQ(overflow.unwrap_err(), Error::CapacityOverflow);
+    EXPECT_EQ(text.data(), pointer);
+    EXPECT_EQ(text.capacity(), capacity);
+    EXPECT_EQ(text, "a右"_str);
+    EXPECT_EQ(String::try_with_capacity(usize::MAX).unwrap_err(), Error::CapacityOverflow);
+}
+
 TEST(String, ToString) {
     int a = 10;
 

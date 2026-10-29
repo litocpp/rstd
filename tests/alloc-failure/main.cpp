@@ -177,7 +177,81 @@ void dyn_failure() {
     rstd_assert(counts.dropped == 1);
 }
 
+#include "../budget/pool.hpp"
+
+template<typename F>
+void capacity_failure(F factory) {
+    fail_next   = true;
+    auto result = factory();
+    rstd_assert(result.is_err());
+    rstd_assert(result.unwrap_err() == ::alloc::collections::TryReserveError::AllocError);
+    rstd_assert(! fail_next);
+}
+
+void capacity_failures() {
+    using Error = ::alloc::collections::TryReserveError;
+    using rstd::bytes::Bytes;
+    using rstd::bytes::BytesMut;
+    capacity_failure([] {
+        return Vec<u8>::try_with_capacity(usize(16));
+    });
+    capacity_failure([] {
+        return String::try_with_capacity(usize(16));
+    });
+    capacity_failure([] {
+        return BytesMut::try_with_capacity(usize(16));
+    });
+    capacity_failure([] {
+        return rstd::collections::HashTable<u32>::try_with_capacity(usize(8));
+    });
+    capacity_failure([] {
+        return rstd::collections::HashMap<u32, u32>::try_with_capacity(usize(8));
+    });
+    capacity_failure([] {
+        return rstd::collections::HashMap<u32, u32>::try_with_capacity_and_hasher(
+            usize(8), rstd::hash::RandomState {});
+    });
+    capacity_failure([] {
+        return rstd::collections::HashSet<u32>::try_with_capacity(usize(8));
+    });
+    fail_next = true;
+    rstd_assert(Bytes::try_make_in(::alloc::Global {}).is_err());
+    rstd_assert(! fail_next);
+    fail_next = true;
+    rstd_assert(BytesMut::try_make_in(::alloc::Global {}).is_err());
+    rstd_assert(! fail_next);
+    fail_next = true;
+    rstd_assert(Vec<u8>::try_with_capacity(usize::MAX).unwrap_err() == Error::CapacityOverflow);
+    rstd_assert(String::try_with_capacity(usize::MAX).unwrap_err() == Error::CapacityOverflow);
+    rstd_assert(BytesMut::try_with_capacity(usize()).unwrap().is_empty());
+    rstd_assert(fail_next);
+    fail_next = false;
+    auto text = String::with_capacity(usize(8));
+    text.push_ascii('x');
+    auto pointer  = text.data();
+    auto capacity = text.capacity();
+    fail_resize   = true;
+    rstd_assert(text.try_reserve_exact(usize(64)).unwrap_err() == Error::AllocError);
+    rstd_assert(! fail_resize);
+    rstd_assert(text.len() == usize(1) && text.data() == pointer && text.capacity() == capacity);
+    rstd_assert(text.as_str().as_bytes()[usize()] == u8('x'));
+    BytesMut empty;
+    fail_next = true;
+    rstd_assert(empty.try_reserve(usize(64)).unwrap_err() == Error::AllocError);
+    rstd_assert(! fail_next && empty.data() == nullptr && empty.capacity() == usize());
+    auto buffer = BytesMut::with_capacity(usize(8));
+    fail_resize = true;
+    rstd_assert(buffer.try_reserve_exact(usize(64)).unwrap_err() == Error::AllocError);
+    rstd_assert(! fail_resize && buffer.capacity() == usize(8) && buffer.is_empty());
+}
+
 int main() {
+    auto before_pool = allocations + zeroed_allocations + reallocations;
+    fail_next        = true;
+    pool_lifetime();
+    rstd_assert(fail_next);
+    fail_next = false;
+    rstd_assert(allocations + zeroed_allocations + reallocations == before_pool);
     sized_failure<Box<Tracked>>();
     sized_failure<rstd::sync::Arc<Tracked>>();
     dyn_failure<Box<dyn<rstd::any::Any>>>();
@@ -198,4 +272,5 @@ int main() {
     as<rstd::alloc::Allocator>(budget).deallocate(memory.pointer, layout);
     rstd_assert(budget.statistics().live_bytes == usize());
     global_resize_dispatch();
+    capacity_failures();
 }

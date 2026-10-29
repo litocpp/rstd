@@ -50,6 +50,9 @@ public:
     /// Creates a new empty `String`.
     static auto make() -> String { return {}; }
 
+    static auto with_capacity(usize capacity) -> String;
+    static auto try_with_capacity(usize capacity) -> Result<String, collections::TryReserveError>;
+
     /// Creates a `String` from a string slice (copies the bytes).
     static auto make(ref<str> s) -> String;
 
@@ -93,6 +96,9 @@ public:
     constexpr auto capacity() const noexcept -> usize { return vec.capacity(); }
     /// Ensures that at least `additional` more bytes can be inserted without reallocating.
     void reserve(usize additional);
+    void reserve_exact(usize additional);
+    auto try_reserve(usize additional) -> Result<empty, collections::TryReserveError>;
+    auto try_reserve_exact(usize additional) -> Result<empty, collections::TryReserveError>;
     /// Clears the string, removing all bytes.
     constexpr void clear() { vec.clear(); }
 

@@ -57,8 +57,8 @@ auto TempDir::make(ref<str> prefix) -> FsResult<TempDir> {
             return Err(rstd::move(error));
         }
     }
-    return Err(Error::new_const(ErrorKind { ErrorKind::AlreadyExists },
-                                "cannot create a unique temporary directory"));
+    return Err(Error::make_const(ErrorKind { ErrorKind::AlreadyExists },
+                                 "cannot create a unique temporary directory"));
 #endif
 }
 
@@ -328,8 +328,8 @@ auto write_atomic(ref<Path> path, slice<u8> contents) -> FsResult<empty> {
         }
     }
     if (temp_file.is_none()) {
-        return Err(Error::new_const(ErrorKind { ErrorKind::AlreadyExists },
-                                    "cannot allocate a sibling temporary file"));
+        return Err(Error::make_const(ErrorKind { ErrorKind::AlreadyExists },
+                                     "cannot allocate a sibling temporary file"));
     }
 
     auto written = io::write_all(*temp_file, contents);

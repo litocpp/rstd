@@ -140,6 +140,7 @@ target_sources(
          src/alloc/mod.cppm
          src/alloc/budget.cppm
          src/alloc/shared_arena.cppm
+         src/alloc/shared_pool.cppm
          src/alloc/shared_tracking.cppm
          src/alloc/virtual_memory.cppm
          src/forward.cppm

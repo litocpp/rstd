@@ -49,8 +49,9 @@ export inline void unpark(const Thread& thread) {
 export inline auto available_parallelism() -> io::Result<rstd::num::nonzero::NonZero<usize>> {
     auto count = sys::thread::available_parallelism();
     if (count.is_none()) {
-        return Err(io::error::Error::new_const(io::error::ErrorKind { io::error::ErrorKind::Other },
-                                               "available parallelism is unknown"));
+        return Err(
+            io::error::Error::make_const(io::error::ErrorKind { io::error::ErrorKind::Other },
+                                         "available parallelism is unknown"));
     }
     return Ok(rstd::num::nonzero::NonZero<usize>::make_unchecked(*count));
 }

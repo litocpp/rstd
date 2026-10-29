@@ -268,7 +268,7 @@ class RecyclingArena {
             recycled_.push(LayoutClass {
                 .layout = layout,
                 .pointers =
-                    alloc::vec::Vec<void*, MetadataAllocator>::new_in(metadata_.allocator()),
+                    alloc::vec::Vec<void*, MetadataAllocator>::make_in(metadata_.allocator()),
                 .physical_allocations = usize {},
             });
             found                 = Some(recycled_.len() - usize(1));

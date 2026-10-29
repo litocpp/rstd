@@ -246,7 +246,13 @@ public:
         requires rstd::hash::HashBuilder<S> && rstd::mtp::init<S> && rstd::mtp::init<Eq> &&
                  rstd::mtp::init<A>
     {
-        return HashMap(capacity, S {}, Eq {}, A {});
+        return with_capacity_in(capacity, A {});
+    }
+    static auto try_with_capacity(usize capacity) -> Result<HashMap, TryReserveError>
+        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<S> && rstd::mtp::init<Eq> &&
+                 rstd::mtp::init<A>
+    {
+        return try_with_capacity_in(capacity, A {});
     }
     static auto with_hasher(S hasher) -> HashMap
         requires rstd::hash::HashBuilder<S> && rstd::mtp::init<Eq> && rstd::mtp::init<A>
@@ -256,19 +262,48 @@ public:
     static auto with_capacity_and_hasher(usize capacity, S hasher) -> HashMap
         requires rstd::hash::HashBuilder<S> && rstd::mtp::init<Eq> && rstd::mtp::init<A>
     {
-        return HashMap(capacity, rstd::move(hasher), Eq {}, A {});
+        auto result = try_with_capacity_and_hasher(capacity, rstd::move(hasher));
+        if (result.is_err()) rstd::panic { "HashMap allocation failed" };
+        return result.unwrap_unchecked();
+    }
+    static auto try_with_capacity_and_hasher(usize capacity, S hasher)
+        -> Result<HashMap, TryReserveError>
+        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<Eq> && rstd::mtp::init<A>
+    {
+        auto result   = HashMap(usize(), rstd::move(hasher), Eq {}, A {});
+        auto reserved = result.try_reserve(capacity);
+        if (reserved.is_err()) return Err(reserved.unwrap_err_unchecked());
+        return Ok(rstd::move(result));
     }
 
-    static auto new_in(A allocator) -> HashMap
+    static auto make_in(A allocator) -> HashMap
         requires rstd::hash::HashBuilder<S> && rstd::mtp::init<S> && rstd::mtp::init<Eq>
     {
         return HashMap(usize {}, S {}, Eq {}, rstd::move(allocator));
     }
 
+    [[deprecated("use make_in instead")]]
+    static auto new_in(A allocator) -> HashMap
+        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<S> && rstd::mtp::init<Eq>
+    {
+        return make_in(rstd::move(allocator));
+    }
+
     static auto with_capacity_in(usize capacity, A allocator) -> HashMap
         requires rstd::hash::HashBuilder<S> && rstd::mtp::init<S> && rstd::mtp::init<Eq>
     {
-        return HashMap(capacity, S {}, Eq {}, rstd::move(allocator));
+        auto result = try_with_capacity_in(capacity, rstd::move(allocator));
+        if (result.is_err()) rstd::panic { "HashMap allocation failed" };
+        return result.unwrap_unchecked();
+    }
+    static auto try_with_capacity_in(usize capacity, A allocator)
+        -> Result<HashMap, TryReserveError>
+        requires rstd::hash::HashBuilder<S> && rstd::mtp::init<S> && rstd::mtp::init<Eq>
+    {
+        auto result   = make_in(rstd::move(allocator));
+        auto reserved = result.try_reserve(capacity);
+        if (reserved.is_err()) return Err(reserved.unwrap_err_unchecked());
+        return Ok(rstd::move(result));
     }
 
     HashMap(usize capacity, S hasher, Eq equality)

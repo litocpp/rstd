@@ -70,23 +70,26 @@ struct RawVec {
         return allocation_layout.align > natural ? allocation_layout.align : natural;
     }
 
-    auto layout_for_capacity(usize capacity) const -> Option<Layout> {
+    static auto layout_for_capacity(usize capacity, usize alignment) -> Option<Layout> {
         auto layout = Layout::array<T>(capacity);
-        if (layout.is_none()) return None();
-        return Layout::from_size_align(layout->size, alignment());
+        if (layout.is_none() || layout->size > usize(isize::MAX.to_primitive())) return None();
+        return Layout::from_size_align(layout->size, alignment);
     }
 
-    static auto with_capacity(usize capacity,
-                              A     allocator,
-                              usize alignment = Layout::make<T>().align) -> RawVec {
-        auto layout =
-            Layout::from_size_align(Layout::array<T>(capacity).unwrap().size, alignment).unwrap();
-        if (capacity == usize()) return RawVec({}, capacity, layout, rstd::move(allocator));
-        auto res = as<Allocator>(allocator).allocate(layout);
-        if (res.is_err()) handle_alloc_error(layout);
+    auto layout_for_capacity(usize capacity) const -> Option<Layout> {
+        return layout_for_capacity(capacity, alignment());
+    }
 
-        auto p = res.unwrap_unchecked().template as_mut_ptr<byte>();
-        return RawVec(p, capacity, layout, rstd::move(allocator));
+    static auto
+    try_with_capacity(usize capacity, A allocator, usize alignment = Layout::make<T>().align)
+        -> Result<RawVec, TryReserveError> {
+        auto layout = layout_for_capacity(capacity, alignment);
+        if (layout.is_none()) return Err(TryReserveError::CapacityOverflow);
+        if (capacity == usize()) return Ok(RawVec({}, capacity, *layout, rstd::move(allocator)));
+        auto result = as<Allocator>(allocator).allocate(*layout);
+        if (result.is_err()) return Err(TryReserveError::AllocError);
+        return Ok(
+            RawVec(result->template as_mut_ptr<byte>(), capacity, *layout, rstd::move(allocator)));
     }
 
     /// Reallocates the storage to a new capacity.
@@ -129,10 +132,6 @@ struct RawVec {
         cap               = new_cap;
         allocation_layout = new_layout;
         return Ok(empty {});
-    }
-
-    void grow(usize new_cap, usize len) {
-        if (try_grow(new_cap, len).is_err()) rstd::panic { "Vec allocation failed" };
     }
 
     auto try_shrink_to(usize capacity, usize len, bool preserve_alignment = true)
@@ -444,22 +443,48 @@ public:
     /// Creates a new empty `Vec`.
     /// \return An empty `Vec`.
     static constexpr auto make() -> Self { return {}; }
-    static constexpr auto new_in(A allocator) -> Self { return Self(rstd::move(allocator)); }
+    static constexpr auto make_in(A allocator) -> Self { return Self(rstd::move(allocator)); }
+    [[deprecated("use make_in instead")]]
+    static constexpr auto new_in(A allocator) -> Self {
+        return make_in(rstd::move(allocator));
+    }
     /// Creates a new empty `Vec` with at least the specified capacity.
     /// \param capacity The minimum number of elements the `Vec` can hold without reallocating.
     /// \return A `Vec` with preallocated capacity.
     static auto with_capacity(usize capacity) -> Self { return with_capacity_in(capacity, A {}); }
 
     static auto with_capacity_in(usize capacity, A allocator) -> Self {
-        return Vec { RawVec<T, A>::with_capacity(capacity, rstd::move(allocator)), usize() };
+        auto result = try_with_capacity_in(capacity, rstd::move(allocator));
+        if (result.is_err()) rstd::panic { "Vec allocation failed" };
+        return result.unwrap_unchecked();
+    }
+
+    static auto try_with_capacity(usize capacity) -> Result<Self, TryReserveError> {
+        return try_with_capacity_in(capacity, A {});
+    }
+
+    static auto try_with_capacity_in(usize capacity, A allocator) -> Result<Self, TryReserveError> {
+        auto buffer = RawVec<T, A>::try_with_capacity(capacity, rstd::move(allocator));
+        if (buffer.is_err()) return Err(buffer.unwrap_err_unchecked());
+        return Ok(Vec(buffer.unwrap_unchecked(), usize()));
     }
 
     /// Allocates byte storage with an alignment retained by growth and shrinking.
     static auto with_capacity_aligned_in(usize capacity, usize alignment, A allocator) -> Self
         requires mtp::same_as<T, u8>
     {
-        return Vec { RawVec<T, A>::with_capacity(capacity, rstd::move(allocator), alignment),
-                     usize() };
+        auto result = try_with_capacity_aligned_in(capacity, alignment, rstd::move(allocator));
+        if (result.is_err()) rstd::panic { "Vec allocation failed" };
+        return result.unwrap_unchecked();
+    }
+
+    static auto try_with_capacity_aligned_in(usize capacity, usize alignment, A allocator)
+        -> Result<Self, TryReserveError>
+        requires mtp::same_as<T, u8>
+    {
+        auto buffer = RawVec<T, A>::try_with_capacity(capacity, rstd::move(allocator), alignment);
+        if (buffer.is_err()) return Err(buffer.unwrap_err_unchecked());
+        return Ok(Vec(buffer.unwrap_unchecked(), usize()));
     }
 
     /// Transfers initialized native representations without copying or changing the allocator.
@@ -481,7 +506,7 @@ public:
 
     template<rstd::iter::has_next I>
     static auto from_iter_in(I iterator, A allocator) -> Self {
-        auto result = Self::new_in(rstd::move(allocator));
+        auto result = Self::make_in(rstd::move(allocator));
         result.extend_iter(rstd::move(iterator));
         return result;
     }
@@ -511,7 +536,7 @@ public:
         auto allocator = rstd::move(parts.template get<1>());
         auto length    = raw.len();
         if (length == usize()) {
-            return Vec::new_in(rstd::move(allocator));
+            return Vec::make_in(rstd::move(allocator));
         }
         auto pointer = mut_ptr<T>::from_raw_parts(raw.as_raw_ptr());
         return Vec { RawVec<T, A>(pointer.template cast<byte>(),
@@ -541,15 +566,7 @@ public:
 
     /// Ensures that at least `additional` more elements can be inserted without reallocating.
     void reserve(usize additional) {
-        auto required_value = m_len.checked_add(additional);
-        if (required_value.is_none()) rstd::panic { "Vec capacity overflow" };
-        auto required = *required_value;
-        if (required <= m_buf.cap) return;
-
-        auto new_cap = m_buf.cap.saturating_mul(usize(2));
-        if (new_cap < required) new_cap = required;
-        if (new_cap < RawVec<T, A>::MIN_NON_ZERO_CAP) new_cap = RawVec<T, A>::MIN_NON_ZERO_CAP;
-        m_buf.grow(new_cap, m_len);
+        if (try_reserve(additional).is_err()) rstd::panic { "Vec allocation failed" };
     }
 
     auto try_reserve_exact(usize additional) -> Result<empty, TryReserveError> {
@@ -1286,7 +1303,7 @@ struct InPlaceAccess {
         auto source_buffer = source.take_buffer();
         if (source_buffer.allocation_layout.size == usize()) {
             debug_assert(length == usize());
-            return Vec<Destination, A>::new_in(rstd::move(source_buffer.allocator));
+            return Vec<Destination, A>::make_in(rstd::move(source_buffer.allocator));
         }
 
         using DestinationStorage = typename mut_ptr<Destination>::storage_type;
@@ -1467,7 +1484,7 @@ auto from_iter(VecIntoIter<T, A> iterator) -> Vec<T, A> {
     }
 
     if constexpr (rstd::alloc::CloneableAllocator<A>) {
-        auto result = Vec<T, A>::new_in(rstd::alloc::clone_allocator(iterator.buffer_.allocator));
+        auto result = Vec<T, A>::make_in(rstd::alloc::clone_allocator(iterator.buffer_.allocator));
         result.reserve(remaining);
         for (auto item = iterator.next(); item.is_some(); item = iterator.next()) {
             result.push(rstd::move(*item));

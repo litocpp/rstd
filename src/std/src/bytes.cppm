@@ -8,6 +8,7 @@ using ::alloc::sync::Arc;
 using ::alloc::sync::ArcAllocator;
 using rstd::alloc::Allocator;
 using rstd::alloc::ThreadSafeAllocator;
+using ::alloc::collections::TryReserveError;
 using namespace rstd::prelude;
 
 namespace rstd::bytes
@@ -33,11 +34,23 @@ using ByteStorage = Arc<ByteBuffer>;
 
 template<typename A>
     requires Impled<A, Allocator, ThreadSafeAllocator>
-auto make_storage(usize capacity, A allocator, usize alignment = usize(1)) -> ByteStorage {
-    return ByteStorage::make_in_with(
-        rstd::move(allocator), [capacity, alignment](ref<dyn<Allocator>> borrowed) {
-            return ByteBuffer::with_capacity_aligned_in(capacity, alignment, borrowed);
+auto try_make_storage(usize capacity, A allocator, usize alignment = usize(1))
+    -> Result<ByteStorage, TryReserveError> {
+    auto storage = ByteStorage::try_make_in_with(
+        rstd::move(allocator), [alignment](ref<dyn<Allocator>> borrowed) {
+            return ByteBuffer::with_capacity_aligned_in(usize(), alignment, borrowed);
         });
+    if (storage.is_err()) return Err(TryReserveError::AllocError);
+    auto reserved = storage->deref_mut().get_mut().try_reserve_exact(capacity);
+    if (reserved.is_err()) return Err(reserved.unwrap_err_unchecked());
+    return Ok(storage.unwrap_unchecked());
+}
+template<typename A>
+    requires Impled<A, Allocator, ThreadSafeAllocator>
+auto make_storage(usize capacity, A allocator, usize alignment = usize(1)) -> ByteStorage {
+    auto storage = try_make_storage(capacity, rstd::move(allocator), alignment);
+    if (storage.is_err()) rstd::panic { "Bytes allocation failed" };
+    return storage.unwrap_unchecked();
 }
 
 export class BytesMut;
@@ -192,8 +205,23 @@ public:
     }
     template<typename A>
         requires Impled<A, Allocator, ThreadSafeAllocator>
+    static auto make_in(A allocator) -> Bytes {
+        auto result = try_make_in(rstd::move(allocator));
+        if (result.is_err()) rstd::panic { "Bytes allocation failed" };
+        return result.unwrap_unchecked();
+    }
+    template<typename A>
+        requires Impled<A, Allocator, ThreadSafeAllocator>
+    [[deprecated("use make_in instead")]]
     static auto new_in(A allocator) -> Bytes {
-        return Bytes(make_storage(usize(), rstd::move(allocator)), usize(), usize());
+        return make_in(rstd::move(allocator));
+    }
+    template<typename A>
+        requires Impled<A, Allocator, ThreadSafeAllocator>
+    static auto try_make_in(A allocator) -> Result<Bytes, rstd::alloc::AllocError> {
+        auto storage = try_make_storage(usize(), rstd::move(allocator));
+        if (storage.is_err()) return Err(rstd::alloc::AllocError {});
+        return Ok(Bytes(storage.unwrap_unchecked(), usize(), usize()));
     }
     template<typename T, typename A>
         requires ::alloc::vec::ByteConvertible<T> && Impled<A, Allocator, ThreadSafeAllocator>
@@ -308,6 +336,23 @@ export class BytesMut {
         m_end = length;
     }
 
+    auto try_reserve_inner(usize additional, bool exact) -> Result<empty, TryReserveError> {
+        if (additional <= remaining_mut()) return Ok(empty {});
+        auto required = m_end.checked_add(additional);
+        if (required.is_none()) return Err(TryReserveError::CapacityOverflow);
+        if (m_storage.is_some()) {
+            auto growth = *required - buffer().len();
+            return exact ? buffer().try_reserve_exact(growth) : buffer().try_reserve(growth);
+        }
+        auto storage = try_make_storage(usize(), ::alloc::Global {});
+        if (storage.is_err()) return Err(storage.unwrap_err_unchecked());
+        auto& value  = storage->deref_mut().get_mut();
+        auto  result = exact ? value.try_reserve_exact(additional) : value.try_reserve(additional);
+        if (result.is_err()) return result;
+        m_storage = Some(storage.unwrap_unchecked());
+        return Ok(empty {});
+    }
+
 public:
     BytesMut()                                   = default;
     BytesMut(const BytesMut&)                    = delete;
@@ -327,17 +372,47 @@ public:
     static auto make() -> BytesMut { return {}; }
     template<typename A>
         requires Impled<A, Allocator, ThreadSafeAllocator>
+    static auto make_in(A allocator) -> BytesMut {
+        auto result = try_make_in(rstd::move(allocator));
+        if (result.is_err()) rstd::panic { "Bytes allocation failed" };
+        return result.unwrap_unchecked();
+    }
+    template<typename A>
+        requires Impled<A, Allocator, ThreadSafeAllocator>
+    [[deprecated("use make_in instead")]]
     static auto new_in(A allocator) -> BytesMut {
-        return BytesMut(make_storage(usize(), rstd::move(allocator)));
+        return make_in(rstd::move(allocator));
+    }
+    template<typename A>
+        requires Impled<A, Allocator, ThreadSafeAllocator>
+    static auto try_make_in(A allocator) -> Result<BytesMut, rstd::alloc::AllocError> {
+        auto storage = try_make_storage(usize(), rstd::move(allocator));
+        if (storage.is_err()) return Err(rstd::alloc::AllocError {});
+        return Ok(BytesMut(storage.unwrap_unchecked()));
     }
     static auto with_capacity(usize capacity) -> BytesMut {
-        if (capacity == usize()) return {};
-        return with_capacity_in(capacity, ::alloc::Global {});
+        auto result = try_with_capacity(capacity);
+        if (result.is_err()) rstd::panic { "Bytes allocation failed" };
+        return result.unwrap_unchecked();
+    }
+    static auto try_with_capacity(usize capacity) -> Result<BytesMut, TryReserveError> {
+        if (capacity == usize()) return Ok(BytesMut {});
+        return try_with_capacity_in(capacity, ::alloc::Global {});
     }
     template<typename A>
         requires Impled<A, Allocator, ThreadSafeAllocator>
     static auto with_capacity_in(usize capacity, A allocator) -> BytesMut {
-        return BytesMut(make_storage(capacity, rstd::move(allocator)));
+        auto result = try_with_capacity_in(capacity, rstd::move(allocator));
+        if (result.is_err()) rstd::panic { "Bytes allocation failed" };
+        return result.unwrap_unchecked();
+    }
+    template<typename A>
+        requires Impled<A, Allocator, ThreadSafeAllocator>
+    static auto try_with_capacity_in(usize capacity, A allocator)
+        -> Result<BytesMut, TryReserveError> {
+        auto storage = try_make_storage(capacity, rstd::move(allocator));
+        if (storage.is_err()) return Err(storage.unwrap_err_unchecked());
+        return Ok(BytesMut(storage.unwrap_unchecked()));
     }
     template<typename T, typename A>
         requires ::alloc::vec::ByteConvertible<T> && Impled<A, Allocator, ThreadSafeAllocator>
@@ -413,9 +488,16 @@ public:
         m_end += cnt;
     }
     void reserve(usize additional) {
-        if (additional <= remaining_mut()) return;
-        ensure_storage();
-        buffer().reserve(m_end + additional - buffer().len());
+        if (try_reserve(additional).is_err()) rstd::panic { "Bytes allocation failed" };
+    }
+    void reserve_exact(usize additional) {
+        if (try_reserve_exact(additional).is_err()) rstd::panic { "Bytes allocation failed" };
+    }
+    auto try_reserve(usize additional) -> Result<empty, TryReserveError> {
+        return try_reserve_inner(additional, false);
+    }
+    auto try_reserve_exact(usize additional) -> Result<empty, TryReserveError> {
+        return try_reserve_inner(additional, true);
     }
     void put_slice(slice<u8> src) {
         if (src.is_empty()) return;

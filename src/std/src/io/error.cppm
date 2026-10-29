@@ -93,7 +93,7 @@ export struct Error {
     static auto from_kind(ErrorKind k) noexcept -> Error { return Error::Kind(k); }
 
     /// Construct a static-message error (no allocation).
-    static constexpr auto new_const(ErrorKind k, const char* msg) noexcept -> Error {
+    static constexpr auto make_const(ErrorKind k, const char* msg) noexcept -> Error {
         return Error::Message(k, msg);
     }
 
@@ -117,15 +117,15 @@ export struct Error {
 
 /// Constant error for invalid UTF-8 data in a stream.
 export inline constexpr Error Error_INVALID_UTF8 =
-    Error::new_const(ErrorKind { ErrorKind::InvalidData }, "stream did not contain valid UTF-8");
+    Error::make_const(ErrorKind { ErrorKind::InvalidData }, "stream did not contain valid UTF-8");
 
 /// Constant error returned when `read_exact` encounters an unexpected EOF.
 export inline constexpr Error Error_READ_EXACT_EOF =
-    Error::new_const(ErrorKind { ErrorKind::UnexpectedEof }, "failed to fill whole buffer");
+    Error::make_const(ErrorKind { ErrorKind::UnexpectedEof }, "failed to fill whole buffer");
 
 /// Constant error returned when `write_all` fails to write all bytes.
 export inline constexpr Error Error_WRITE_ALL_EOF =
-    Error::new_const(ErrorKind { ErrorKind::WriteZero }, "failed to write whole buffer");
+    Error::make_const(ErrorKind { ErrorKind::WriteZero }, "failed to write whole buffer");
 
 } // namespace rstd::io::error
 

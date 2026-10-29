@@ -12,6 +12,18 @@ using namespace rstd::prelude;
 namespace alloc::string
 {
 
+auto String::with_capacity(usize capacity) -> String {
+    auto result = try_with_capacity(capacity);
+    if (result.is_err()) rstd::panic { "String allocation failed" };
+    return result.unwrap_unchecked();
+}
+
+auto String::try_with_capacity(usize capacity) -> Result<String, collections::TryReserveError> {
+    auto buffer = Vec<u8>::try_with_capacity(capacity);
+    if (buffer.is_err()) return Err(buffer.unwrap_err_unchecked());
+    return Ok(String(buffer.unwrap_unchecked()));
+}
+
 auto String::make(ref<str> value) -> String {
     return String { Vec<u8>::from(value.as_bytes()) };
 }
@@ -72,6 +84,18 @@ auto String::as_str() const noexcept -> ref<str> {
 
 void String::reserve(usize additional) {
     vec.reserve(additional);
+}
+
+void String::reserve_exact(usize additional) {
+    vec.reserve_exact(additional);
+}
+
+auto String::try_reserve(usize additional) -> Result<empty, collections::TryReserveError> {
+    return vec.try_reserve(additional);
+}
+
+auto String::try_reserve_exact(usize additional) -> Result<empty, collections::TryReserveError> {
+    return vec.try_reserve_exact(additional);
 }
 
 void String::truncate(usize new_len) {

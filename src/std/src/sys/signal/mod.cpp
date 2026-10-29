@@ -162,8 +162,8 @@ auto install(int number) -> rstd::io::Result<empty> {
     if (::sigaction(number, nullptr, &old) < 0) return Err(os_error(errno));
     if (old.sa_handler != SIG_DFL && old.sa_handler != SIG_IGN) {
         return Err(
-            rstd::io::Error::new_const(rstd::io::ErrorKind { rstd::io::ErrorKind::ResourceBusy },
-                                       "signal already has a custom handler"));
+            rstd::io::Error::make_const(rstd::io::ErrorKind { rstd::io::ErrorKind::ResourceBusy },
+                                        "signal already has a custom handler"));
     }
     struct sigaction action {};
     action.sa_handler = handle_signal;

@@ -137,7 +137,7 @@ TEST(Range, CpuArenaAndContainers) {
         rstd::alloc::Layout::from_size_align(usize(65536), usize(256)).unwrap());
     {
         auto allocator = arena.allocator();
-        auto vec       = alloc::vec::Vec<int, decltype(allocator)>::new_in(allocator);
+        auto vec       = alloc::vec::Vec<int, decltype(allocator)>::make_in(allocator);
         for (int i = 0; i < 1000; ++i) vec.push(int(i));
         for (int i = 0; i < 1000; ++i) EXPECT_EQ(vec[usize(i)], i);
         auto layout = rstd::alloc::Layout::from_size_align(usize(64), usize(256)).unwrap();

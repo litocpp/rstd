@@ -213,7 +213,7 @@ class RangeAllocator {
 
 public:
     explicit RangeAllocator(RangeSize capacity, Metadata metadata = Metadata {})
-        : nodes_(vec::Vec<Node, Metadata>::new_in(rstd::move(metadata))), capacity_(capacity) {
+        : nodes_(vec::Vec<Node, Metadata>::make_in(rstd::move(metadata))), capacity_(capacity) {
         clear_lists();
     }
     RangeAllocator(const RangeAllocator&)            = delete;

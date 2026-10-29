@@ -430,7 +430,7 @@ auto Receiver<T>::into_iter() && -> IntoIter<T> {
 export template<typename T>
 auto channel() -> rstd::tuple<Sender<T>, Receiver<T>> {
     auto channel        = detail::ListChannel<T>::make();
-    auto [sender, recv] = detail::new_counter(rstd::move(channel));
+    auto [sender, recv] = detail::make_counter(rstd::move(channel));
     return { Sender<T>(rstd::move(sender)), Receiver<T>(rstd::move(recv)) };
 }
 
@@ -438,12 +438,12 @@ export template<typename T>
 auto sync_channel(usize capacity) -> rstd::tuple<Sender<T>, Receiver<T>> {
     if (capacity == usize()) {
         auto channel        = detail::ZeroChannel<T>::make();
-        auto [sender, recv] = detail::new_counter(rstd::move(channel));
+        auto [sender, recv] = detail::make_counter(rstd::move(channel));
         return { Sender<T>(rstd::move(sender)), Receiver<T>(rstd::move(recv)) };
     }
 
     auto channel        = detail::Channel<T>::with_capacity(capacity);
-    auto [sender, recv] = detail::new_counter(rstd::move(channel));
+    auto [sender, recv] = detail::make_counter(rstd::move(channel));
     return { Sender<T>(rstd::move(sender)), Receiver<T>(rstd::move(recv)) };
 }
 

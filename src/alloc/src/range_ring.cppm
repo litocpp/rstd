@@ -46,7 +46,7 @@ class RingRangeAllocator {
 
 public:
     explicit RingRangeAllocator(RangeSize capacity, Metadata metadata = Metadata {})
-        : entries_(vec::Vec<Entry, Metadata>::new_in(rstd::move(metadata))), capacity_(capacity) {}
+        : entries_(vec::Vec<Entry, Metadata>::make_in(rstd::move(metadata))), capacity_(capacity) {}
     RingRangeAllocator(const RingRangeAllocator&)            = delete;
     RingRangeAllocator& operator=(const RingRangeAllocator&) = delete;
     RingRangeAllocator(RingRangeAllocator&&)                 = delete;

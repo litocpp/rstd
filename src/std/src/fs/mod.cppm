@@ -340,7 +340,7 @@ auto read_in(ref<Path> path, A allocator) -> FsResult<Vec<u8, A>> {
     auto opened = File::open(path);
     if (opened.is_err()) return Err(opened.unwrap_err_unchecked());
     auto file   = opened.unwrap_unchecked();
-    auto output = Vec<u8, A>::new_in(rstd::move(allocator));
+    auto output = Vec<u8, A>::make_in(rstd::move(allocator));
     auto result = io::read_to_end(file, output);
     if (result.is_err()) return Err(result.unwrap_err_unchecked());
     return Ok(rstd::move(output));

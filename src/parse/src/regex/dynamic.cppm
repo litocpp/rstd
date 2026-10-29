@@ -14,17 +14,17 @@ class RegexScratch {
 
 public:
     explicit RegexScratch(SharedAllocator allocator = {})
-        : current_(decltype(current_)::new_in(allocator.clone())),
-          next_(decltype(next_)::new_in(allocator.clone())),
-          pending_(decltype(pending_)::new_in(allocator.clone())),
-          seen_(decltype(seen_)::new_in(rstd::move(allocator))) {}
+        : current_(decltype(current_)::make_in(allocator.clone())),
+          next_(decltype(next_)::make_in(allocator.clone())),
+          pending_(decltype(pending_)::make_in(allocator.clone())),
+          seen_(decltype(seen_)::make_in(rstd::move(allocator))) {}
 };
 class DynamicRegex {
     Vec<Instruction, SharedAllocator> instructions_;
     Vec<ClassTerm, SharedAllocator>   terms_;
     explicit DynamicRegex(SharedAllocator allocator)
-        : instructions_(decltype(instructions_)::new_in(allocator.clone())),
-          terms_(decltype(terms_)::new_in(rstd::move(allocator))) {}
+        : instructions_(decltype(instructions_)::make_in(allocator.clone())),
+          terms_(decltype(terms_)::make_in(rstd::move(allocator))) {}
     usize start_;
     void  expand(RegexScratch& scratch, usize pc, ref<str> text, usize offset) const {
         scratch.pending_.clear();
