@@ -130,42 +130,38 @@ struct EscapeResult {
     NodeKind   assertion { NodeKind::Empty };
 };
 
-template<str_::fixed_string Pattern, Options OptionsValue>
-class PatternParser {
-    static constexpr auto& BYTES = str_::BYTE_LITERAL_STORAGE<Pattern>;
-    using SyntaxType             = Syntax<Pattern.size()>;
+template<rstd::size_t Capacity, Options OptionsValue>
+class SyntaxParser {
+    using SyntaxType = Syntax<Capacity>;
+    ref<str> text_;
 
     TextCursor cursor_;
     SyntaxType syntax_ {};
 
-    static consteval auto pattern_text() noexcept -> ref<str> {
-        return ref<str>::from_raw_parts_unchecked(BYTES.data(), usize(Pattern.size()));
-    }
-
-    consteval auto position() const noexcept -> rstd::size_t {
+    constexpr auto position() const noexcept -> rstd::size_t {
         return cursor_.position().to_primitive();
     }
 
-    consteval auto at_end() const noexcept -> bool { return cursor_.is_eof(); }
+    constexpr auto at_end() const noexcept -> bool { return cursor_.is_eof(); }
 
-    consteval auto byte_at(rstd::size_t index) const noexcept -> rstd::uint8_t {
-        return u8::from_byte(BYTES[index]).to_primitive();
+    constexpr auto byte_at(rstd::size_t index) const noexcept -> rstd::uint8_t {
+        return text_[usize(index)].to_primitive();
     }
 
-    consteval auto peek_ascii(char expected) const noexcept -> bool {
+    constexpr auto peek_ascii(char expected) const noexcept -> bool {
         auto value = cursor_.peek();
         return value.is_some() && value->get() == u8(static_cast<rstd::uint8_t>(expected));
     }
 
-    consteval auto consume_ascii(char expected) noexcept -> bool {
+    constexpr auto consume_ascii(char expected) noexcept -> bool {
         return consume_if(cursor_, equal_to(u8(static_cast<rstd::uint8_t>(expected)))).is_some();
     }
 
-    consteval void fail(RegexErrorKind kind, rstd::size_t offset) noexcept {
+    constexpr void fail(RegexErrorKind kind, rstd::size_t offset) noexcept {
         if (! syntax_.error) syntax_.error = RegexSyntaxError { kind, offset };
     }
 
-    consteval auto add_node(Node node) noexcept -> rstd::size_t {
+    constexpr auto add_node(Node node) noexcept -> rstd::size_t {
         if (syntax_.node_count >= SyntaxType::NODE_CAPACITY) {
             fail(RegexErrorKind::ProgramTooLarge, position());
             return INVALID_INDEX;
@@ -175,7 +171,7 @@ class PatternParser {
         return index;
     }
 
-    consteval auto add_term(ClassTerm term) noexcept -> bool {
+    constexpr auto add_term(ClassTerm term) noexcept -> bool {
         if (syntax_.term_count >= SyntaxType::TERM_CAPACITY) {
             fail(RegexErrorKind::ProgramTooLarge, position());
             return false;
@@ -184,7 +180,7 @@ class PatternParser {
         return true;
     }
 
-    consteval auto read_codepoint() noexcept -> char32_t {
+    constexpr auto read_codepoint() noexcept -> char32_t {
         if (at_end()) {
             fail(RegexErrorKind::UnexpectedEnd, position());
             return char32_t();
@@ -202,7 +198,7 @@ class PatternParser {
         return static_cast<char32_t>(code_point.to_primitive());
     }
 
-    consteval auto read_hex_digit() noexcept -> Option<rstd::uint8_t> {
+    constexpr auto read_hex_digit() noexcept -> Option<rstd::uint8_t> {
         if (at_end()) return None();
         auto const value = rstd::ascii::digit_value(cursor_.peek()->get(), u8(16));
         if (value.is_none()) return None();
@@ -210,7 +206,7 @@ class PatternParser {
         return Some(value->to_primitive());
     }
 
-    consteval auto read_hex_escape() noexcept -> char32_t {
+    constexpr auto read_hex_escape() noexcept -> char32_t {
         auto const     offset = position();
         rstd::uint32_t value {};
         for (rstd::size_t count = 0; count < 2; ++count) {
@@ -224,7 +220,7 @@ class PatternParser {
         return static_cast<char32_t>(value);
     }
 
-    consteval auto read_unicode_escape() noexcept -> char32_t {
+    constexpr auto read_unicode_escape() noexcept -> char32_t {
         auto const offset = position();
         if (! consume_ascii('{')) {
             fail(RegexErrorKind::InvalidEscape, offset);
@@ -249,7 +245,7 @@ class PatternParser {
         return static_cast<char32_t>(value);
     }
 
-    consteval auto parse_escape(bool in_class) noexcept -> EscapeResult {
+    constexpr auto parse_escape(bool in_class) noexcept -> EscapeResult {
         auto const offset = position();
         if (at_end()) {
             fail(RegexErrorKind::InvalidEscape, offset);
@@ -316,7 +312,7 @@ class PatternParser {
         return {};
     }
 
-    consteval auto capture_name_equal(rstd::size_t capture,
+    constexpr auto capture_name_equal(rstd::size_t capture,
                                       rstd::size_t begin,
                                       rstd::size_t length) const noexcept -> bool {
         auto const info = syntax_.captures[capture];
@@ -327,7 +323,7 @@ class PatternParser {
         return true;
     }
 
-    consteval auto create_capture(rstd::size_t name_begin, rstd::size_t name_length) noexcept
+    constexpr auto create_capture(rstd::size_t name_begin, rstd::size_t name_length) noexcept
         -> rstd::size_t {
         if (name_length != 0) {
             for (rstd::size_t index = 1; index < syntax_.capture_count; ++index) {
@@ -346,7 +342,7 @@ class PatternParser {
         return capture;
     }
 
-    consteval auto parse_class_atom() noexcept -> ClassTerm {
+    constexpr auto parse_class_atom() noexcept -> ClassTerm {
         if (consume_ascii('\\')) {
             auto escaped = parse_escape(true);
             if (escaped.kind == EscapeKind::Class) return escaped.term;
@@ -362,7 +358,7 @@ class PatternParser {
         return ClassTerm { .kind = ClassTermKind::Range, .low = value, .high = value };
     }
 
-    consteval auto parse_class() noexcept -> rstd::size_t {
+    constexpr auto parse_class() noexcept -> rstd::size_t {
         auto const class_offset = position() - 1;
         auto const begin        = syntax_.term_count;
         auto const negated      = consume_ascii('^');
@@ -370,7 +366,7 @@ class PatternParser {
             auto term = parse_class_atom();
             if (syntax_.error) return INVALID_INDEX;
             if (term.kind == ClassTermKind::Range && peek_ascii('-') &&
-                position() + 1 < Pattern.size() && byte_at(position() + 1) != ']') {
+                position() + 1 < text_.len().to_primitive() && byte_at(position() + 1) != ']') {
                 (void)cursor_.take();
                 auto high = parse_class_atom();
                 if (high.kind != ClassTermKind::Range || high.low < term.low) {
@@ -395,7 +391,7 @@ class PatternParser {
                                .negated     = negated });
     }
 
-    consteval auto parse_group() noexcept -> rstd::size_t {
+    constexpr auto parse_group() noexcept -> rstd::size_t {
         auto const   group_offset = position() - 1;
         bool         capturing    = true;
         rstd::size_t name_begin {};
@@ -437,7 +433,7 @@ class PatternParser {
         return add_node(Node { .kind = NodeKind::Group, .left = child, .capture = capture });
     }
 
-    consteval auto parse_atom() noexcept -> rstd::size_t {
+    constexpr auto parse_atom() noexcept -> rstd::size_t {
         if (at_end()) {
             fail(RegexErrorKind::UnexpectedEnd, position());
             return INVALID_INDEX;
@@ -477,7 +473,7 @@ class PatternParser {
         return add_node(Node { .kind = NodeKind::Literal, .value = read_codepoint() });
     }
 
-    consteval auto read_decimal() noexcept -> rstd::size_t {
+    constexpr auto read_decimal() noexcept -> rstd::size_t {
         rstd::size_t value {};
         while (! at_end() && rstd::ascii::is_digit(cursor_.peek()->get())) {
             value = value * 10 +
@@ -490,7 +486,7 @@ class PatternParser {
         return value;
     }
 
-    consteval auto parse_repetition() noexcept -> rstd::size_t {
+    constexpr auto parse_repetition() noexcept -> rstd::size_t {
         auto child = parse_atom();
         if (syntax_.error) return INVALID_INDEX;
 
@@ -538,7 +534,7 @@ class PatternParser {
                                .greedy  = greedy });
     }
 
-    consteval auto parse_concatenation() noexcept -> rstd::size_t {
+    constexpr auto parse_concatenation() noexcept -> rstd::size_t {
         auto result = INVALID_INDEX;
         while (! syntax_.error && ! at_end() && ! peek_ascii(')') && ! peek_ascii('|')) {
             auto const next = parse_repetition();
@@ -554,7 +550,7 @@ class PatternParser {
         return result;
     }
 
-    consteval auto parse_alternation() noexcept -> rstd::size_t {
+    constexpr auto parse_alternation() noexcept -> rstd::size_t {
         auto result = parse_concatenation();
         while (! syntax_.error && consume_ascii('|')) {
             auto const right = parse_concatenation();
@@ -564,16 +560,34 @@ class PatternParser {
     }
 
 public:
-    consteval PatternParser() noexcept: cursor_(text_input(pattern_text())) {}
+    constexpr explicit SyntaxParser(ref<str> text) noexcept
+        : text_(text), cursor_(text_input(text)) {}
 
-    consteval auto parse() noexcept -> SyntaxType {
-        if (! str_::VALID_UTF8_LITERAL<Pattern>) {
-            fail(RegexErrorKind::InvalidUtf8, 0);
+    constexpr auto parse() noexcept -> SyntaxType {
+        if (text_.len() > usize(Capacity)) {
+            fail(RegexErrorKind::ProgramTooLarge, 0);
             return syntax_;
         }
         syntax_.root = parse_alternation();
         if (! syntax_.error && ! at_end()) fail(RegexErrorKind::UnexpectedToken, position());
         return syntax_;
+    }
+};
+
+template<str_::fixed_string Pattern, Options OptionsValue>
+class PatternParser : public SyntaxParser<Pattern.size(), OptionsValue> {
+public:
+    consteval PatternParser() noexcept
+        : SyntaxParser<Pattern.size(), OptionsValue>(
+              ref<str>::from_raw_parts_unchecked(str_::BYTE_LITERAL_STORAGE<Pattern>.data(),
+                                                 usize(Pattern.size()))) {}
+    consteval auto parse() noexcept -> Syntax<Pattern.size()> {
+        if constexpr (! str_::VALID_UTF8_LITERAL<Pattern>) {
+            Syntax<Pattern.size()> result;
+            result.error = { RegexErrorKind::InvalidUtf8, 0 };
+            return result;
+        }
+        return SyntaxParser<Pattern.size(), OptionsValue>::parse();
     }
 };
 

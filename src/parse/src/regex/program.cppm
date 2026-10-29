@@ -205,11 +205,11 @@ template<rstd::size_t PatternSize>
 class ProgramCompiler {
     CompiledPattern<PatternSize>& compiled_;
 
-    consteval void fail(RegexErrorKind kind) noexcept {
+    constexpr void fail(RegexErrorKind kind) noexcept {
         if (! compiled_.error) compiled_.error = RegexSyntaxError { kind, PatternSize };
     }
 
-    consteval auto emit(Instruction instruction) noexcept -> rstd::size_t {
+    constexpr auto emit(Instruction instruction) noexcept -> rstd::size_t {
         auto& program = compiled_.program;
         if (program.count >= Program<PatternSize>::CAPACITY) {
             fail(RegexErrorKind::ProgramTooLarge);
@@ -220,7 +220,7 @@ class ProgramCompiler {
         return index;
     }
 
-    consteval auto compile_repeat(const Node& node, rstd::size_t next) noexcept -> rstd::size_t {
+    constexpr auto compile_repeat(const Node& node, rstd::size_t next) noexcept -> rstd::size_t {
         auto result = next;
         if (node.maximum == INVALID_INDEX) {
             auto const split = emit(Instruction { .op = Op::Split });
@@ -250,7 +250,7 @@ class ProgramCompiler {
         return result;
     }
 
-    consteval auto compile_node(rstd::size_t index, rstd::size_t next) noexcept -> rstd::size_t {
+    constexpr auto compile_node(rstd::size_t index, rstd::size_t next) noexcept -> rstd::size_t {
         if (compiled_.error) return INVALID_INDEX;
         auto const& node = compiled_.syntax.nodes[index];
         switch (node.kind) {
@@ -294,10 +294,10 @@ class ProgramCompiler {
     }
 
 public:
-    consteval explicit ProgramCompiler(CompiledPattern<PatternSize>& compiled) noexcept
+    constexpr explicit ProgramCompiler(CompiledPattern<PatternSize>& compiled) noexcept
         : compiled_(compiled) {}
 
-    consteval void compile() noexcept {
+    constexpr void compile() noexcept {
         auto const accept = emit(Instruction { .op = Op::Accept });
         auto const end    = emit(Instruction { .op = Op::SaveEnd, .out = accept, .capture = 0 });
         auto const body   = compile_node(compiled_.syntax.root, end);

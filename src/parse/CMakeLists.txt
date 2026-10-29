@@ -25,4 +25,5 @@ target_sources(
          src/alloc/rule.cppm
          src/regex/syntax.cppm
          src/regex/program.cppm
+         src/regex/dynamic.cppm
          src/regex/mod.cppm)

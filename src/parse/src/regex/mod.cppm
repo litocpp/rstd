@@ -1,5 +1,6 @@
 export module rstd.parse.regex;
 export import :syntax;
+export import :dynamic;
 import :program;
 
 using namespace rstd::prelude;
