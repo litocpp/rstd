@@ -87,6 +87,7 @@ inline constexpr auto _EDQUOT     = -2;
 inline constexpr bool _HAS_EDQUOT = false;
 #endif
 inline constexpr auto _EFBIG        = EFBIG;
+inline constexpr auto _EMSGSIZE     = EMSGSIZE;
 inline constexpr auto _EBUSY        = EBUSY;
 inline constexpr auto _ETXTBSY      = ETXTBSY;
 inline constexpr auto _EDEADLK      = EDEADLK;
@@ -250,6 +251,7 @@ inline auto _rstd_online_processor_count() noexcept -> long {
 #undef ENOSPC
 #undef ESPIPE
 #undef EFBIG
+#undef EMSGSIZE
 #undef EBUSY
 #undef ETXTBSY
 #undef EDEADLK
@@ -437,6 +439,7 @@ inline constexpr auto ESPIPE        = _ESPIPE;
 inline constexpr auto EDQUOT        = _EDQUOT;
 inline constexpr auto HAS_EDQUOT    = _HAS_EDQUOT;
 inline constexpr auto EFBIG         = _EFBIG;
+inline constexpr auto EMSGSIZE      = _EMSGSIZE;
 inline constexpr auto EBUSY         = _EBUSY;
 inline constexpr auto ETXTBSY       = _ETXTBSY;
 inline constexpr auto EDEADLK       = _EDEADLK;

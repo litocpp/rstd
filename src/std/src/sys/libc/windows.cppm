@@ -62,6 +62,7 @@ inline constexpr auto _WSAENETDOWN                      = WSAENETDOWN;
 inline constexpr auto _WSAEWOULDBLOCK                   = WSAEWOULDBLOCK;
 inline constexpr auto _WSAETIMEDOUT                     = WSAETIMEDOUT;
 inline constexpr auto _WSAEINVAL                        = WSAEINVAL;
+inline constexpr auto _WSAEMSGSIZE                      = WSAEMSGSIZE;
 inline constexpr auto _WSAENOBUFS                       = WSAENOBUFS;
 inline constexpr auto _WSAEALREADY                      = WSAEALREADY;
 inline constexpr auto _WSAEINPROGRESS                   = WSAEINPROGRESS;
@@ -115,6 +116,7 @@ inline constexpr auto _WSAEOPNOTSUPP                    = WSAEOPNOTSUPP;
 #undef WSAEWOULDBLOCK
 #undef WSAETIMEDOUT
 #undef WSAEINVAL
+#undef WSAEMSGSIZE
 #undef WSAENOBUFS
 #undef WSAEALREADY
 #undef WSAEINPROGRESS
@@ -274,6 +276,7 @@ inline constexpr auto WSAENETDOWN                      = _WSAENETDOWN;
 inline constexpr auto WSAEWOULDBLOCK                   = _WSAEWOULDBLOCK;
 inline constexpr auto WSAETIMEDOUT                     = _WSAETIMEDOUT;
 inline constexpr auto WSAEINVAL                        = _WSAEINVAL;
+inline constexpr auto WSAEMSGSIZE                      = _WSAEMSGSIZE;
 inline constexpr auto WSAENOBUFS                       = _WSAENOBUFS;
 inline constexpr auto WSAEALREADY                      = _WSAEALREADY;
 inline constexpr auto WSAEINPROGRESS                   = _WSAEINPROGRESS;

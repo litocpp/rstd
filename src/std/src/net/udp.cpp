@@ -143,6 +143,10 @@ auto UdpSocket::peer_addr() const -> io::Result<SocketAddr> {
     return socket::peer_addr(source_.as_raw_fd());
 }
 
+auto UdpSocket::path_mtu() const -> io::Result<u32> {
+    return socket::datagram_path_mtu(source_.as_raw_fd());
+}
+
 auto UdpSocket::recv_into(bytes::BytesMut buffer) const -> async::coro<DatagramReceive> {
     return receive_datagram_into(
         async::IoOperation::recv_datagram_into(source_, rstd::move(buffer), local_));

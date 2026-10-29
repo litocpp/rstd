@@ -72,6 +72,9 @@ public:
     auto close() && -> async::coro<io::Result<empty>>;
     auto local_addr() const noexcept -> SocketAddr { return local_; }
     auto peer_addr() const -> io::Result<SocketAddr>;
+    /// Returns the kernel's current IP path MTU in bytes, including IP headers.
+    /// Requires a connected peer and does not probe or change discovery policy.
+    auto path_mtu() const -> io::Result<u32>;
     auto join_multicast(SocketAddr group, u32 interface_index) const -> io::Result<empty>;
     auto leave_multicast(SocketAddr group, u32 interface_index) const -> io::Result<empty>;
     auto set_multicast_ttl(u32 ttl) const -> io::Result<empty>;

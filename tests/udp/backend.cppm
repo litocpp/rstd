@@ -215,6 +215,47 @@ void verify_udp_backend(async::IoBackendPreference preference) {
 }
 
 #if RSTD_OS_LINUX
+void verify_oversized_udp_backend(async::IoBackendPreference preference) {
+    auto available = async::Poll::init(preference);
+    if (available.is_err() && preference == async::IoBackendPreference::NativeCompletionRequired)
+        GTEST_SKIP() << "native completion backend is unavailable";
+    ASSERT_TRUE(available.is_ok());
+    auto probe   = rstd::move(available).unwrap();
+    auto cleanup = async::Poll::shutdown(probe.state);
+    while (! cleanup.is_empty()) cleanup.pop_front().unwrap().dispatch();
+    auto builder = async::RuntimeBuilder::current_thread();
+    builder.enable_all();
+    async::RuntimeBuilderConfigAccess::set_io_backend(builder, preference);
+    auto runtime = builder.build().unwrap();
+    auto server  = net::UdpSocket::bind(net::SocketAddr::ipv4_loopback(u16())).unwrap();
+    auto client  = net::UdpSocket::connect(server.local_addr()).unwrap();
+    auto buffer  = bytes::BytesMut::with_capacity(usize(65535));
+    buffer.resize(usize(65535), u8());
+    auto sent = runtime.block_on(client.send_to(buffer.freeze(), server.local_addr()));
+    ASSERT_TRUE(sent.is_err());
+    EXPECT_EQ(sent.unwrap_err().kind(), io::ErrorKind { io::ErrorKind::MessageTooLong });
+    EXPECT_TRUE(sent.unwrap_err().raw_os_error().is_some());
+    ASSERT_TRUE(runtime
+                    .block_on(client.send_to(bytes::Bytes::copy_from_slice("next"_bytes),
+                                             server.local_addr()))
+                    .is_ok());
+    auto next = runtime.block_on(
+        async::timeout(async::into_future(server.recv()), time::Duration::from_secs(u64(1))));
+    ASSERT_TRUE(next.is_ok());
+    ASSERT_TRUE(next->is_ok());
+    EXPECT_EQ(next->unwrap().data.as_slice(), "next"_bytes);
+    EXPECT_EQ(next->unwrap().info.peer, client.local_addr());
+    EXPECT_TRUE(runtime.block_on(rstd::move(client).close()).is_ok());
+    EXPECT_TRUE(runtime.block_on(rstd::move(server).close()).is_ok());
+}
+
+TEST(UdpBackend, ReadinessMessageTooLongPreservesSocket) {
+    verify_oversized_udp_backend(async::IoBackendPreference::ReadinessEmulationRequired);
+}
+TEST(UdpBackend, NativeMessageTooLongPreservesSocket) {
+    verify_oversized_udp_backend(async::IoBackendPreference::NativeCompletionRequired);
+}
+
 TEST(UdpBackend, ReadinessEmulation) {
     verify_udp_backend(async::IoBackendPreference::ReadinessEmulationRequired);
 }

@@ -43,6 +43,7 @@ export struct ErrorKind {
         NotSeekable,
         QuotaExceeded,
         FileTooLarge,
+        MessageTooLong,
         ResourceBusy,
         ExecutableFileBusy,
         Deadlock,

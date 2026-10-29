@@ -1,5 +1,8 @@
 #include <rstd/test/gtest.hpp>
-#if ! defined(_WIN32)
+#if defined(_WIN32)
+#include <winsock2.h>
+#else
+#include <errno.h>
 #include <fcntl.h>
 #endif
 
@@ -100,6 +103,67 @@ TEST(Udp, ConnectedIpv4SelectsSourceAndFiltersReceivePeer) {
 
 TEST(Udp, ConnectedIpv6SelectsSourceAndFiltersReceivePeer) {
     verify_connected_datagram(net::SocketAddr::ipv6(net::Ipv6Addr::loopback(), u16()));
+}
+
+void verify_path_mtu(net::SocketAddr address) {
+    auto server = net::UdpSocket::bind(address).unwrap();
+    auto client = net::UdpSocket::connect(server.local_addr()).unwrap();
+    auto mtu    = client.path_mtu();
+#if defined(__linux__)
+    ASSERT_TRUE(mtu.is_ok());
+    EXPECT_GT(*mtu, u32());
+    EXPECT_EQ(client.peer_addr().unwrap(), server.local_addr());
+    auto unconnected = server.path_mtu();
+    ASSERT_TRUE(unconnected.is_err());
+    EXPECT_EQ(unconnected.unwrap_err().kind(), io::ErrorKind { io::ErrorKind::NotConnected });
+    EXPECT_TRUE(unconnected.unwrap_err().raw_os_error().is_some());
+#else
+    ASSERT_TRUE(mtu.is_err());
+    EXPECT_EQ(mtu.unwrap_err().kind(), io::ErrorKind { io::ErrorKind::Unsupported });
+#endif
+}
+
+TEST(Udp, ConnectedIpv4PathMtu) {
+    verify_path_mtu(net::SocketAddr::ipv4_loopback(u16()));
+}
+
+TEST(Udp, ConnectedIpv6PathMtu) {
+    verify_path_mtu(net::SocketAddr::ipv6(net::Ipv6Addr::loopback(), u16()));
+}
+
+TEST(Udp, MessageTooLongRetainsNativeError) {
+#if defined(_WIN32)
+    auto code = i32(WSAEMSGSIZE);
+#else
+    auto code = i32(EMSGSIZE);
+#endif
+    auto error = io::Error::from_raw_os_error(code);
+    EXPECT_EQ(error.kind(), io::ErrorKind { io::ErrorKind::MessageTooLong });
+    ASSERT_TRUE(error.raw_os_error().is_some());
+    EXPECT_EQ(*error.raw_os_error(), code);
+    EXPECT_EQ(error.kind().as_str(), "message too long"_str);
+}
+
+TEST(Udp, OversizedTrySendPreservesSocket) {
+    auto runtime = async::RuntimeBuilder::current_thread().enable_all().build().unwrap();
+    auto server  = net::UdpSocket::bind(net::SocketAddr::ipv4_loopback(u16())).unwrap();
+    auto client  = net::UdpSocket::connect(server.local_addr()).unwrap();
+    auto buffer  = bytes::BytesMut::with_capacity(usize(65535));
+    buffer.resize(usize(65535), u8());
+    auto large = buffer.freeze();
+    auto sent  = client.try_send(large, { server.local_addr(), None() });
+    ASSERT_TRUE(sent.is_err());
+    EXPECT_EQ(sent.unwrap_err().kind(), io::ErrorKind { io::ErrorKind::MessageTooLong });
+    EXPECT_TRUE(sent.unwrap_err().raw_os_error().is_some());
+    ASSERT_TRUE(
+        client
+            .try_send(bytes::Bytes::copy_from_slice("next"_bytes), { server.local_addr(), None() })
+            .is_ok());
+    auto next = receive_with_timeout(runtime, server).unwrap().unwrap();
+    EXPECT_EQ(next.data.as_slice(), "next"_bytes);
+    EXPECT_EQ(next.info.peer, client.local_addr());
+    EXPECT_TRUE(runtime.block_on(rstd::move(client).close()).is_ok());
+    EXPECT_TRUE(runtime.block_on(rstd::move(server).close()).is_ok());
 }
 
 #if defined(__linux__)

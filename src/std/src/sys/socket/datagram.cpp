@@ -61,6 +61,26 @@ auto datagram_option(os::socket::RawSocket socket, int level, int option, int va
     return Ok(empty {});
 }
 
+auto datagram_path_mtu(os::socket::RawSocket socket) -> io::Result<u32> {
+#if RSTD_OS_LINUX
+    auto peer = native_socket::peer_addr(socket);
+    if (peer.is_err()) return Err(rstd::move(peer).unwrap_err());
+    int       mtu {};
+    socklen_t length = sizeof(mtu);
+    if (::getsockopt(socket,
+                     peer->is_ipv6() ? IPPROTO_IPV6 : IPPROTO_IP,
+                     peer->is_ipv6() ? IPV6_MTU : IP_MTU,
+                     &mtu,
+                     &length) != 0)
+        return Err(datagram_error());
+    if (length != sizeof(mtu) || mtu <= 0)
+        return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidData }));
+    return Ok(u32(static_cast<unsigned>(mtu)));
+#else
+    return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
+#endif
+}
+
 auto datagram_ttl(os::socket::RawSocket socket, bool ipv6, u32 ttl, bool multicast)
     -> io::Result<empty> {
     if (ttl > u32(255))

@@ -52,6 +52,7 @@ auto decode_error_kind(RawOsError error) noexcept -> rstd::io::error::ErrorKind 
     case libc::ENOSPC: return Kind { Kind::StorageFull };
     case libc::ESPIPE: return Kind { Kind::NotSeekable };
     case libc::EFBIG: return Kind { Kind::FileTooLarge };
+    case libc::EMSGSIZE: return Kind { Kind::MessageTooLong };
     case libc::EBUSY: return Kind { Kind::ResourceBusy };
     case libc::ETXTBSY: return Kind { Kind::ExecutableFileBusy };
     case libc::EDEADLK: return Kind { Kind::Deadlock };
@@ -120,6 +121,7 @@ auto decode_error_kind(RawOsError error) noexcept -> rstd::io::error::ErrorKind 
     case libc::WSAEWOULDBLOCK: return Kind { Kind::WouldBlock };
     case libc::WSAETIMEDOUT: return Kind { Kind::TimedOut };
     case libc::WSAEINVAL: return Kind { Kind::InvalidInput };
+    case libc::WSAEMSGSIZE: return Kind { Kind::MessageTooLong };
     case libc::WSAENOBUFS: return Kind { Kind::OutOfMemory };
     case libc::WSAEALREADY:
     case libc::WSAEINPROGRESS: return Kind { Kind::InProgress };
@@ -153,6 +155,7 @@ auto ErrorKind::as_str() const noexcept -> ref<str> {
     case InvalidFilename: return "invalid filename"_str;
     case InvalidInput: return "invalid input parameter"_str;
     case IsADirectory: return "is a directory"_str;
+    case MessageTooLong: return "message too long"_str;
     case NetworkDown: return "network down"_str;
     case NetworkUnreachable: return "network unreachable"_str;
     case NotADirectory: return "not a directory"_str;
