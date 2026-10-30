@@ -1,3 +1,14 @@
+<release version="0.1.10" date="2026-10-30">
+  <description>
+    <ul>
+      <li>Add UDP and Unix sockets, socket builders and synchronous hostname lookup.</li>
+      <li>Add PoolAllocator, FixedBufferAllocator and fallible shared allocator construction.</li>
+      <li>Add serde::derive, DynamicRegex and json::encode_into.</li>
+      <li>Extend Simd math and WebAssembly runtime support.</li>
+      <li>Improve Bytes storage, HashMap and benchmark reports.</li>
+    </ul>
+  </description>
+</release>
 <release version="0.1.9" date="2026-10-19">
   <description>
     <ul>

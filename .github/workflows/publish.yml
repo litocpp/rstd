@@ -36,6 +36,7 @@ jobs:
             rstd-alloc
             rstd-parse
             rstd-serde
+            rstd-serde-macro
             rstd-std
             rstd-argparse
             rstd-bench
