@@ -277,6 +277,12 @@ public:
         return Simd(__builtin_elementwise_copysign(values_, sign.values_));
     }
 
+    auto sqrt() const noexcept -> Simd
+        requires FloatElement<T>
+    {
+        return Simd(__builtin_elementwise_sqrt(values_));
+    }
+
     /// Unrefined reciprocal estimate using SSE/AVX or NEON; other targets use division.
     /// Accuracy, subnormal handling and floating-point exceptions are target-dependent.
     /// SSE/AVX treats subnormal inputs as zero; NEON follows the target FP control state.
