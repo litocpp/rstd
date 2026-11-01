@@ -1259,6 +1259,14 @@ public:
     }
 
     [[nodiscard]]
+    constexpr auto round_ties_even() const noexcept -> Self {
+        if constexpr (sizeof(Primitive) == 4)
+            return Self(__builtin_roundevenf(value_));
+        else
+            return Self(__builtin_roundeven(value_));
+    }
+
+    [[nodiscard]]
     constexpr auto trunc() const noexcept -> Self {
         return Self(__builtin_trunc(value_));
     }

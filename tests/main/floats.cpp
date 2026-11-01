@@ -83,6 +83,22 @@ TEST(FloatMethods, RoundingMathAndClamp) {
     EXPECT_EQ((3.0_f64).clamp(1.0_f64, 2.0_f64), 2.0_f64);
 }
 
+TEST(FloatMethods, RoundTiesEvenKeepsParityAndSignedZero) {
+    const double values[] { -3.5, -2.5, -1.5, -.5, .5, 1.5, 2.5, 3.5 };
+    const double expected[] { -4, -2, -2, -0., 0, 2, 2, 4 };
+    for (unsigned i = 0; i < 8; ++i) {
+        EXPECT_EQ(rstd::f64(values[i]).round_ties_even().to_bits(),
+                  rstd::f64(expected[i]).to_bits());
+        EXPECT_EQ(rstd::f32(float(values[i])).round_ties_even().to_bits(),
+                  rstd::f32(float(expected[i])).to_bits());
+    }
+    EXPECT_EQ(rstd::f32::INFINITY_.round_ties_even(), rstd::f32::INFINITY_);
+    EXPECT_EQ(rstd::f64::NEG_INFINITY.round_ties_even(), rstd::f64::NEG_INFINITY);
+    EXPECT_TRUE(rstd::f32::NAN_.round_ties_even().is_nan());
+    EXPECT_TRUE(rstd::f64::NAN_.round_ties_even().is_nan());
+    EXPECT_EQ((2.5_f32).round(), 3.0_f32);
+}
+
 TEST(FloatMethods, TrigonometryRemainderAndAdjacentValues) {
     EXPECT_NEAR(rstd::f32::consts::FRAC_PI_2.sin().to_primitive(), 1.0f, 1e-6f);
     EXPECT_NEAR(rstd::f64::consts::PI.cos().to_primitive(), -1.0, 1e-15);
