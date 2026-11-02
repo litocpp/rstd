@@ -13,6 +13,21 @@ name = "rstd-process-tests"
 sources = ["main.cpp"]
 link-stdlib = false
 
+[[bin]]
+name = "rstd-async-process-check"
+sources = ["async.cpp"]
+link-stdlib = false
+
+[[test]]
+name = "rstd-async-process-lifecycle"
+sources = ["async_lifecycle.cpp"]
+link-stdlib = false
+
+[[test]]
+name = "rstd-async-process-command"
+sources = ["async_command.cpp"]
+link-stdlib = false
+
 [profile.base]
 exceptions = false
 rtti = false

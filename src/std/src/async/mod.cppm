@@ -20,3 +20,5 @@ export import :async.completion_queue;
 export import :async.spawn;
 export import :async.runtime;
 export import :async.time;
+export import :async.pipe;
+export import :async.process;

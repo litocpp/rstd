@@ -18,6 +18,33 @@ namespace libc = rstd::sys::libc;
 namespace rstd::sys::io::stdio
 {
 
+auto write_pipe_fd(int fd, slice<byte> buf) noexcept -> IOResult<usize> {
+#if RSTD_OS_UNIX
+    libc::sigset_t blocked {}, previous {}, pending {};
+    libc::sigemptyset(&blocked);
+    libc::sigaddset(&blocked, libc::signal_pipe);
+    auto mask_error = libc::pthread_sigmask(libc::signal_block, &blocked, &previous);
+    if (mask_error) return Err(Error::from_raw_os_error(i32(mask_error)));
+    if (libc::sigpending(&pending) < 0) {
+        auto error = libc::get_errno();
+        (void)libc::pthread_sigmask(libc::signal_setmask, &previous, nullptr);
+        return Err(Error::from_raw_os_error(i32(error)));
+    }
+    auto already_pending = libc::sigismember(&pending, libc::signal_pipe) == 1;
+    auto result          = write_fd(fd, buf);
+    if (! already_pending && libc::sigpending(&pending) == 0 &&
+        libc::sigismember(&pending, libc::signal_pipe) == 1) {
+        int received = 0;
+        (void)libc::sigwait(&blocked, &received);
+    }
+    mask_error = libc::pthread_sigmask(libc::signal_setmask, &previous, nullptr);
+    if (mask_error) return Err(Error::from_raw_os_error(i32(mask_error)));
+    return result;
+#else
+    return write_fd(fd, buf);
+#endif
+}
+
 #if RSTD_OS_UNIX
 
 /// Writes bytes to file descriptor `fd`, retrying on EINTR.

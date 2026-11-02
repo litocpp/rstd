@@ -3,6 +3,7 @@
 #include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <rstd/macro.hpp>
 import rstd;
 
 using namespace rstd::prelude;
@@ -16,13 +17,14 @@ static void                  observe_pipe(int) {
 auto broken_pipe(int mode) -> int {
     struct sigaction action {};
     action.sa_handler = mode == 1 ? SIG_IGN : mode == 2 ? observe_pipe : SIG_DFL;
-    ::sigemptyset(&action.sa_mask);
+    // Darwin also defines these signal-set functions as function-like macros.
+    (::sigemptyset)(&action.sa_mask);
     if (::sigaction(SIGPIPE, &action, nullptr) != 0) return 10;
     sigset_t mask, previous, pending;
-    ::sigemptyset(&mask);
-    ::sigaddset(&mask, SIGUSR1);
+    (::sigemptyset)(&mask);
+    (::sigaddset)(&mask, SIGUSR1);
     auto blocked = mode == 3 || mode == 4;
-    if (blocked) ::sigaddset(&mask, SIGPIPE);
+    if (blocked) (::sigaddset)(&mask, SIGPIPE);
     if (::pthread_sigmask(SIG_SETMASK, &mask, nullptr) != 0) return 11;
     if (mode == 4 && ::raise(SIGPIPE) != 0) return 12;
     int descriptors[2];
@@ -42,9 +44,15 @@ auto broken_pipe(int mode) -> int {
         int                      status;
         while (::waitpid(reader, &status, 0) < 0)
             if (errno != EINTR) return 19;
-        if (! WIFEXITED(status) || WEXITSTATUS(status) || result.is_err() ||
-            result.unwrap() == usize() || result.unwrap() >= usize(1048576))
-            return 20;
+        if (! WIFEXITED(status) || WEXITSTATUS(status)) return 20;
+        bool partial =
+            result.is_ok() && result.unwrap() > usize() && result.unwrap() < usize(1048576);
+#if RSTD_OS_MACOS
+        // Darwin may report EPIPE after the reader consumes data and closes during write.
+        partial =
+            partial || (result.is_err() && result.unwrap_err().raw_os_error() == Some(i32(EPIPE)));
+#endif
+        if (! partial) return 20;
         auto closed = rstd::as<rstd::io::Write>(input).write("x"_bytes);
         return closed.is_err() && closed.unwrap_err().raw_os_error() == Some(i32(EPIPE)) ? 0 : 21;
     }
@@ -57,9 +65,9 @@ auto broken_pipe(int mode) -> int {
         pipe_signals)
         return 15;
     if (::pthread_sigmask(SIG_SETMASK, nullptr, &previous) != 0 ||
-        ::sigismember(&previous, SIGUSR1) != 1 || ::sigismember(&previous, SIGPIPE) != blocked)
+        (::sigismember)(&previous, SIGUSR1) != 1 || (::sigismember)(&previous, SIGPIPE) != blocked)
         return 16;
-    if (::sigpending(&pending) != 0 || ::sigismember(&pending, SIGPIPE) != (mode == 4)) return 17;
+    if (::sigpending(&pending) != 0 || (::sigismember)(&pending, SIGPIPE) != (mode == 4)) return 17;
     return 0;
 }
 

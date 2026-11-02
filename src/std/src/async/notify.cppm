@@ -19,12 +19,12 @@ export class NotifyHandle;
 export class NotifyFuture;
 
 struct NotifyState {
-    os::fd::OwnedFd read_fd;
+    os::fd::RawFd   read_fd;
     os::fd::OwnedFd write_fd;
     Registration    registration;
 
-    NotifyState(os::fd::OwnedFd read_fd, os::fd::OwnedFd write_fd, Registration registration)
-        : read_fd(rstd::move(read_fd)),
+    NotifyState(os::fd::RawFd read_fd, os::fd::OwnedFd write_fd, Registration registration)
+        : read_fd(read_fd),
           write_fd(rstd::move(write_fd)),
           registration(rstd::move(registration)) {}
 
@@ -34,7 +34,7 @@ struct NotifyState {
     auto operator=(NotifyState&&) noexcept -> NotifyState& = default;
 
     static auto last_os_error() noexcept -> io::Error {
-#if RSTD_OS_LINUX
+#if RSTD_OS_LINUX || RSTD_OS_MACOS
         return io::Error::from_raw_os_error(i32(libc::get_errno()));
 #else
         return io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported });
@@ -42,11 +42,11 @@ struct NotifyState {
     }
 
     auto drain() -> io::Result<bool> {
-#if RSTD_OS_LINUX
+#if RSTD_OS_LINUX || RSTD_OS_MACOS
         bool any = false;
         byte buf[64] {};
         for (;;) {
-            auto n = libc::read(read_fd.as_raw_fd(), buf, sizeof(buf));
+            auto n = libc::read(read_fd, buf, sizeof(buf));
             if (n > 0) {
                 any = true;
                 continue;
@@ -70,7 +70,7 @@ struct NotifyState {
     }
 
     auto notify() -> io::Result<empty> {
-#if RSTD_OS_LINUX
+#if RSTD_OS_LINUX || RSTD_OS_MACOS
         byte value { 1 };
         for (;;) {
             auto n = libc::write(write_fd.as_raw_fd(), &value, 1);
@@ -108,7 +108,7 @@ public:
     auto clone() const -> Notify { return Notify { m_state.clone() }; }
 
     static auto make() -> io::Result<Notify> {
-#if RSTD_OS_LINUX
+#if RSTD_OS_LINUX || RSTD_OS_MACOS
         int fds[2] {};
         if (libc::pipe2(fds, libc::O_NONBLOCK | libc::O_CLOEXEC) < 0) {
             return Err(NotifyState::last_os_error());
@@ -117,13 +117,14 @@ public:
         auto read_fd  = os::fd::OwnedFd::from_raw_fd(fds[0]);
         auto write_fd = os::fd::OwnedFd::from_raw_fd(fds[1]);
 
-        auto registration = Registration::register_fd(read_fd.as_raw_fd());
+        // Keep the read end alive until the backend finishes deregistering it.
+        auto registration = Registration::register_owned_fd(rstd::move(read_fd));
         if (registration.is_err()) {
             return Err(rstd::move(registration).unwrap_err_unchecked());
         }
 
         auto state = sync::Arc<NotifyState>::make(
-            rstd::move(read_fd), rstd::move(write_fd), rstd::move(registration).unwrap_unchecked());
+            fds[0], rstd::move(write_fd), rstd::move(registration).unwrap_unchecked());
         return Ok(Notify { rstd::move(state) });
 #else
         return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));

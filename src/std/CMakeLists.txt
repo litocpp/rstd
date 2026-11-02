@@ -150,6 +150,8 @@ target_sources(
          src/signal/mod.cppm
          src/sys/signal/mod.cppm
          src/async/signal.cppm
+         src/async/pipe.cppm
+         src/async/process.cppm
          src/process/exit_status.cppm
          src/process/command.cppm
          src/env.cppm

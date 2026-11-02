@@ -25,6 +25,14 @@ struct CommandExt {
 };
 
 struct ChildExt {
+    // The caller transfers exclusive wait/reap ownership of this child process.
+    static auto from_raw_pid(i32 pid) -> io::Result<rstd::process::Child> {
+        if (pid <= i32())
+            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
+        rstd::process::Child child;
+        child.pid = pid.to_primitive();
+        return Ok(rstd::move(child));
+    }
     static auto send_signal(const rstd::process::Child& child, i32 signal) -> io::Result<empty> {
         return child.send_signal(signal, false);
     }

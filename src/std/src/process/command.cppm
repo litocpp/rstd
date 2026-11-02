@@ -63,6 +63,9 @@ struct ChildStdin {
     auto as_fd() const noexcept [[clang::lifetimebound]] -> os::fd::BorrowedFd {
         return os::fd::BorrowedFd::borrow_raw(fd);
     }
+    auto into_owned_fd() && noexcept -> os::fd::OwnedFd {
+        return os::fd::OwnedFd::from_raw_fd(rstd::exchange(fd, -1));
+    }
 #endif
 };
 
@@ -79,6 +82,9 @@ struct ChildStdout {
     auto as_fd() const noexcept [[clang::lifetimebound]] -> os::fd::BorrowedFd {
         return os::fd::BorrowedFd::borrow_raw(fd);
     }
+    auto into_owned_fd() && noexcept -> os::fd::OwnedFd {
+        return os::fd::OwnedFd::from_raw_fd(rstd::exchange(fd, -1));
+    }
 #endif
 };
 
@@ -94,6 +100,9 @@ struct ChildStderr {
     auto as_raw_fd() const noexcept -> os::fd::RawFd { return fd; }
     auto as_fd() const noexcept [[clang::lifetimebound]] -> os::fd::BorrowedFd {
         return os::fd::BorrowedFd::borrow_raw(fd);
+    }
+    auto into_owned_fd() && noexcept -> os::fd::OwnedFd {
+        return os::fd::OwnedFd::from_raw_fd(rstd::exchange(fd, -1));
     }
 #endif
 };

@@ -64,9 +64,14 @@ struct RegistrationFields {
 
 struct RegistrationState {
     os::fd::RawFd                   fd;
+    Option<os::fd::OwnedFd>         owned_fd;
     sync::Mutex<RegistrationFields> fields;
 
     explicit RegistrationState(os::fd::RawFd fd): fd(fd), fields(RegistrationFields {}) {}
+    explicit RegistrationState(os::fd::OwnedFd descriptor)
+        : fd(descriptor.as_raw_fd()),
+          owned_fd(Some(rstd::move(descriptor))),
+          fields(RegistrationFields {}) {}
 };
 
 struct TimerFields {
@@ -669,6 +674,13 @@ public:
             return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
         }
         return Ok(Registration { RegistrationArc::make(fd) });
+    }
+
+    // Backend cancellation and pending readiness futures retain the descriptor.
+    static auto register_owned_fd(os::fd::OwnedFd fd) -> io::Result<Registration> {
+        if (fd.as_raw_fd() == os::fd::INVALID_RAW_FD)
+            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
+        return Ok(Registration { RegistrationArc::make(rstd::move(fd)) });
     }
 
     void reset() {

@@ -96,6 +96,8 @@ inline constexpr auto _EMLINK       = EMLINK;
 inline constexpr auto _ENAMETOOLONG = ENAMETOOLONG;
 inline constexpr auto _E2BIG        = E2BIG;
 inline constexpr auto _EINTR        = EINTR;
+inline constexpr auto _ESRCH        = ESRCH;
+inline constexpr auto _ECHILD       = ECHILD;
 inline constexpr auto _ENOSYS       = ENOSYS;
 inline constexpr auto _EOPNOTSUPP   = EOPNOTSUPP;
 inline constexpr auto _EAFNOSUPPORT = EAFNOSUPPORT;
@@ -260,6 +262,8 @@ inline auto _rstd_online_processor_count() noexcept -> long {
 #undef ENAMETOOLONG
 #undef E2BIG
 #undef EINTR
+#undef ESRCH
+#undef ECHILD
 #undef ENOSYS
 #undef EOPNOTSUPP
 #undef EAFNOSUPPORT
@@ -448,6 +452,8 @@ inline constexpr auto EMLINK        = _EMLINK;
 inline constexpr auto ENAMETOOLONG  = _ENAMETOOLONG;
 inline constexpr auto E2BIG         = _E2BIG;
 inline constexpr auto EINTR         = _EINTR;
+inline constexpr auto ESRCH         = _ESRCH;
+inline constexpr auto ECHILD        = _ECHILD;
 inline constexpr auto ENOSYS        = _ENOSYS;
 inline constexpr auto EOPNOTSUPP    = _EOPNOTSUPP;
 inline constexpr auto EAFNOSUPPORT  = _EAFNOSUPPORT;
