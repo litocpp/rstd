@@ -6,6 +6,7 @@ export import rstd.net.hostname;
 export import rstd.net.lookup_host;
 export import :net.socket_stream;
 export import :net.tcp;
+export import :net.completion_stream;
 #if RSTD_OS_UNIX
 export import :net.unix;
 #endif

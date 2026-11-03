@@ -54,6 +54,7 @@ public:
     static auto keepalive_timing_supported() -> bool;
     auto        set_nodelay(bool enabled) -> io::Result<empty>;
     auto        shutdown() { return stream_.shutdown(); }
+    auto        shutdown_both() { return stream_.shutdown_both(); }
     auto        ready(async::Interest interest) { return stream_.ready(interest); }
     auto        readable() { return stream_.readable(); }
     auto        writable() { return stream_.writable(); }

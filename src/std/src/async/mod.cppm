@@ -11,6 +11,7 @@ export import :async.select;
 export import :async.oneshot;
 export import :async.mutex;
 export import :async.io;
+export import :async.stream;
 export import :async.io_operation;
 export import :async.reactor;
 export import :async.notify;

@@ -17,10 +17,7 @@ export class TcpStream;
 export class TcpConnect;
 export class UnixStream;
 
-export struct StreamReceive {
-    io::Result<usize> result;
-    bytes::BytesMut   buffer;
-};
+export using StreamReceive = async::io::StreamReceive;
 
 export class SocketStream {
     friend class TcpStream;
