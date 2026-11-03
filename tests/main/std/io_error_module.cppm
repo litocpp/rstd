@@ -34,7 +34,7 @@ export auto std_io_error_module() -> bool {
     constexpr auto  message = Error::make_const(ErrorKind { ErrorKind::InvalidData }, "bad data");
     auto            kind    = ErrorKind { ErrorKind::NotFound };
     auto            error   = Error::from_kind(kind);
-    io::Result<int> result  = Err(error);
+    io::Result<int> result  = Err(Error::from_kind(kind));
     auto            native  = Error::from_raw_os_error(i32::MIN);
     return result.is_err() && result.unwrap_err().kind() == kind &&
            as<error::Error>(error).source().is_none() &&

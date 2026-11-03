@@ -57,6 +57,7 @@ public:
     auto        into_owned_fd() && -> async::coro<io::Result<os::fd::OwnedFd>>;
 #endif
     auto take_error() -> io::Result<Option<io::Error>>;
+    auto take_backend_error() -> Option<io::Error> { return m_registration.take_error(); }
     auto shutdown() -> io::Result<empty>;
     auto shutdown_both() -> io::Result<empty>;
 

@@ -39,11 +39,11 @@ struct Interest {
 };
 
 struct SubscriptionFields {
-    vec::Vec<Interest>  interests = vec::Vec<Interest>::make();
-    Option<task::Waker> waker;
-    Option<io::Error>   error;
-    bool                closed {};
-    bool                receiving {};
+    vec::Vec<Interest>            interests = vec::Vec<Interest>::make();
+    Option<task::Waker>           waker;
+    Option<io::error::RawOsError> error;
+    bool                          closed {};
+    bool                          receiving {};
 };
 
 struct SubscriptionState {

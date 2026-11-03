@@ -30,7 +30,11 @@ struct CompletionStream {
             return trait_call<3>(this);
         }
         void request_stop() const { trait_call<4>(this); }
-        auto close() const -> coro<::rstd::io::Result<empty>> { return trait_call<5>(this); }
+        // Wait errors describe the barrier itself, not the stored release result.
+        auto wait_closed() const -> coro<::rstd::io::Result<empty>> { return trait_call<5>(this); }
+        auto take_close_result() const -> Option<::rstd::io::Result<empty>> {
+            return trait_call<6>(this);
+        }
     };
     template<class T>
     using Funcs = TraitFuncs<&T::recv_into,
@@ -38,7 +42,8 @@ struct CompletionStream {
                              &T::flush,
                              &T::shutdown_write,
                              &T::request_stop,
-                             &T::close>;
+                             &T::wait_closed,
+                             &T::take_close_result>;
 };
 
 // Operations retain their backend and buffers. One read and one write may run concurrently.
@@ -61,6 +66,9 @@ public:
     auto flush() const -> coro<::rstd::io::Result<empty>>;
     auto shutdown_write() const -> coro<::rstd::io::Result<empty>>;
     void request_stop() const;
+    auto wait_closed() const -> coro<::rstd::io::Result<empty>>;
+    auto take_close_result() const -> Option<::rstd::io::Result<empty>>;
+    // Waits for release and takes its result once. Other observers use wait_closed().
     auto close() const -> coro<::rstd::io::Result<empty>>;
 };
 } // namespace rstd::async::io

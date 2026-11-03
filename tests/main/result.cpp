@@ -153,6 +153,35 @@ TEST(Result, MapWithMove) {
               Ok(103));
 }
 
+TEST(Result, CombinatorsPreserveMoveOnlyErrors) {
+    int drops = 0;
+    {
+        Result<int&, DropCounter> borrowed = Err(DropCounter { drops });
+        auto                      copied   = borrowed.copied();
+        auto                      mapped   = copied.map([](int value) {
+            return long(value);
+        });
+        auto                      remapped = mapped.map_err([](DropCounter error) {
+            return rstd::move(error);
+        });
+        Result<Result<long, DropCounter>, DropCounter> nested    = Ok(rstd::move(remapped));
+        auto                                           flattened = nested.flatten();
+        ASSERT_TRUE(flattened.is_err());
+        Result<Result<long, DropCounter>, DropCounter> outer = Err(flattened.unwrap_err());
+        auto                                           final = outer.flatten();
+        ASSERT_TRUE(final.is_err());
+        auto error = final.unwrap_err();
+        EXPECT_EQ(error.drops, &drops);
+        EXPECT_EQ(drops, 0);
+    }
+    EXPECT_EQ(drops, 1);
+
+    auto fallback = Result<int, int>(Err(1)).map_or(std::make_unique<int>(7), [](int value) {
+        return std::make_unique<int>(value);
+    });
+    EXPECT_EQ(*fallback, 7);
+}
+
 TEST(Result, ErrorCase) {
     Result<int, std::string> err = Err("error message");
     EXPECT_TRUE(err.is_err());

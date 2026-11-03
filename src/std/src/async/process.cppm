@@ -26,8 +26,8 @@ namespace rstd::async
 {
 using ChildResult = io::Result<rstd::process::ExitStatus>;
 struct ChildWaiter {
-    usize                        id;
-    oneshot::Sender<ChildResult> result;
+    usize                  id;
+    oneshot::Sender<empty> result;
 };
 struct ChildFields {
     rstd::process::Child              child;
@@ -35,6 +35,7 @@ struct ChildFields {
     Option<pipe::Receiver>            stdout_pipe, stderr_pipe;
     Option<rstd::process::ExitStatus> status;
     Option<io::Error>                 error;
+    bool                              finished {}, waiting {};
     usize                             next_waiter { 1 };
     Vec<ChildWaiter>                  waiters;
     explicit ChildFields(rstd::process::Child child): child(rstd::move(child)) {}
@@ -61,21 +62,20 @@ struct ChildState {
 #endif
     auto terminate() const -> io::Result<empty> {
         auto state = fields.lock().unwrap();
-        if (state->status.is_some() || state->error.is_some()) return Ok(empty {});
+        if (state->finished) return Ok(empty {});
         auto result = state->child.kill();
 #if RSTD_OS_UNIX
-        if (result.is_err() && result.unwrap_err().raw_os_error() == Some(i32(libc::ESRCH)))
+        if (result.is_err() &&
+            result.as_ref().unwrap_err().raw_os_error() == Some(i32(libc::ESRCH)))
             return Ok(empty {});
 #endif
         return result;
     }
     auto poll_exit() const -> bool {
-        Vec<ChildWaiter>                  waiters;
-        Option<rstd::process::ExitStatus> status;
-        Option<io::Error>                 error;
+        Vec<ChildWaiter> waiters;
         {
             auto state = fields.lock().unwrap();
-            if (state->status.is_none() && state->error.is_none()) {
+            if (! state->finished) {
                 auto result = state->child.try_wait();
                 if (result.is_err())
                     state->error = Some(rstd::move(result).unwrap_err());
@@ -83,27 +83,24 @@ struct ChildState {
                     return false;
                 else
                     state->status = *result;
+                state->finished = true;
             }
             waiters        = rstd::move(state->waiters);
             state->waiters = Vec<ChildWaiter>::make();
-            status         = state->status;
-            if (state->error.is_some()) error = Some(io::Error { *state->error });
         }
         for (auto& waiter : waiters) {
-            auto result =
-                error.is_some() ? ChildResult(Err(io::Error { *error })) : ChildResult(Ok(*status));
-            (void)waiter.result.send(rstd::move(result));
+            (void)waiter.result.send(empty {});
         }
         return true;
     }
 };
 struct ProcessWaiter {
-    usize                              id;
-    oneshot::Sender<io::Result<empty>> result;
+    usize                  id;
+    oneshot::Sender<empty> result;
 };
 struct ProcessFields {
     bool                       accepting { true }, stopping {}, finished {};
-    Option<io::Error>          error;
+    Option<io::Result<empty>>  result;
     usize                      next_waiter { 1 };
     Vec<ProcessWaiter>         waiters;
     usize                      reservations {};
@@ -139,14 +136,13 @@ struct ProcessState {
             if (state->finished) return;
             state->accepting = false;
             state->finished  = true;
-            if (error.is_some()) state->error = Some(io::Error { *error });
-            waiters        = rstd::move(state->waiters);
-            state->waiters = Vec<ProcessWaiter>::make();
+            state->result    = Some(error ? io::Result<empty>(Err(error.take().unwrap()))
+                                          : io::Result<empty>(Ok(empty {})));
+            waiters          = rstd::move(state->waiters);
+            state->waiters   = Vec<ProcessWaiter>::make();
         }
         for (auto& waiter : waiters) {
-            auto result = error.is_some() ? io::Result<empty>(Err(io::Error { *error }))
-                                          : io::Result<empty>(Ok(empty {}));
-            (void)waiter.result.send(rstd::move(result));
+            (void)waiter.result.send(empty {});
         }
     }
 };
@@ -186,20 +182,23 @@ struct ChildWaitRegistration {
     }
 };
 
+struct ChildResultGuard {
+    sync::Arc<ChildState> child;
+    ~ChildResultGuard() { child->fields.lock().unwrap()->waiting = false; }
+};
+
 export class ProcessHandle;
 export class Child {
     sync::Arc<ChildState> state_;
     explicit Child(sync::Arc<ChildState> state): state_(rstd::move(state)) {}
     friend class ProcessHandle;
     friend class SpawnReservation;
-    static auto wait_owned(sync::Arc<ChildState> child) -> coro<ChildResult> {
-        auto  pair = oneshot::channel<ChildResult>();
+    static auto wait_finished_owned(sync::Arc<ChildState> child) -> coro<io::Result<empty>> {
+        auto  pair = oneshot::channel<empty>();
         usize id {};
         {
-            auto state        = child->fields.lock().unwrap();
-            state->stdin_pipe = None();
-            if (state->status.is_some()) co_return Ok(*state->status);
-            if (state->error.is_some()) co_return Err(io::Error { *state->error });
+            auto state = child->fields.lock().unwrap();
+            if (state->finished) co_return Ok(empty {});
             id = state->next_waiter++;
             state->waiters.push(ChildWaiter { id, rstd::move(pair.template get<0>()) });
         }
@@ -207,7 +206,26 @@ export class Child {
         auto                  result = co_await rstd::move(pair.template get<1>());
         if (result.is_err())
             co_return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Interrupted }));
-        co_return rstd::move(result).unwrap();
+        co_return Ok(empty {});
+    }
+    static auto wait_owned(sync::Arc<ChildState> child) -> coro<ChildResult> {
+        {
+            auto state = child->fields.lock().unwrap();
+            if (state->waiting)
+                co_return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::ResourceBusy }));
+            state->waiting    = true;
+            state->stdin_pipe = None();
+        }
+        ChildResultGuard guard { child.clone() };
+        auto             waited = co_await wait_finished_owned(child.clone());
+        if (waited.is_err()) co_return Err(rstd::move(waited).unwrap_err());
+        auto state = child->fields.lock().unwrap();
+        if (state->error) co_return Err(state->error.take().unwrap());
+        if (state->status) co_return Ok(*state->status);
+        auto retried = state->child.try_wait();
+        if (retried.is_err()) co_return Err(rstd::move(retried).unwrap_err());
+        if (*retried) co_return Ok(**retried);
+        co_return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected }));
     }
     static auto cleanup_owned(sync::Arc<ChildState> child) -> coro<ChildResult> {
         auto killed = child->terminate();
@@ -240,11 +258,19 @@ public:
     // Closes stdin unless taken by the caller. try_wait() leaves stdin open.
     // Canceling a wait does not release the supervisor's reap ownership.
     auto wait() const -> coro<ChildResult> { return wait_owned(state_.clone()); }
+    // Observes the end of supervision, not successful exit; does not consume wait errors.
+    auto wait_finished() const -> coro<io::Result<empty>> {
+        return wait_finished_owned(state_.clone());
+    }
     auto try_wait() const -> io::Result<Option<rstd::process::ExitStatus>> {
         (void)state_->poll_exit();
         auto state = state_->fields.lock().unwrap();
-        if (state->error.is_some()) return Err(io::Error { *state->error });
-        return Ok(state->status);
+        if (state->waiting)
+            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::ResourceBusy }));
+        if (state->error) return Err(state->error.take().unwrap());
+        if (state->status) return Ok(state->status);
+        if (! state->finished) return Ok(None());
+        return state->child.try_wait();
     }
     // Requests termination; kill() also waits for the child to be reaped.
     auto start_kill() const -> io::Result<empty> { return state_->terminate(); }
@@ -273,9 +299,7 @@ export class SpawnReservation {
         {
             auto state = state_->fields.lock().unwrap();
             if (state->finished)
-                return Err(state->error.is_some() ? io::Error { *state->error }
-                                                  : io::Error::from_kind(io::ErrorKind {
-                                                        io::ErrorKind::NotConnected }));
+                return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected }));
             for (usize index {}; index < state->children.len();) {
                 auto owned = state->children[index].clone();
                 if (owned->pid != pid) {
@@ -283,7 +307,7 @@ export class SpawnReservation {
                     continue;
                 }
                 auto old = owned->fields.lock().unwrap();
-                if (old->status.is_none() && old->error.is_none())
+                if (! old->finished)
                     return Err(
                         io::Error::from_kind(io::ErrorKind { io::ErrorKind::AlreadyExists }));
                 state->children.remove(index);
@@ -492,14 +516,13 @@ export class ProcessSupervisor {
     explicit ProcessSupervisor(sync::Arc<ProcessState> state): state_(rstd::move(state)) {
         (void)async::spawn(supervise_processes(ProcessTask { state_.clone() }));
     }
-    static auto shutdown_owned(sync::Arc<ProcessState> state) -> coro<io::Result<empty>> {
+    static auto wait_shutdown_owned(sync::Arc<ProcessState> state) -> coro<io::Result<empty>> {
         state->stop();
-        auto  pair = oneshot::channel<io::Result<empty>>();
+        auto  pair = oneshot::channel<empty>();
         usize id;
         {
             auto fields = state->fields.lock().unwrap();
             if (fields->finished) {
-                if (fields->error.is_some()) co_return Err(io::Error { *fields->error });
                 co_return Ok(empty {});
             }
             id = fields->next_waiter++;
@@ -509,7 +532,15 @@ export class ProcessSupervisor {
         auto                    result = co_await rstd::move(pair.template get<1>());
         if (result.is_err())
             co_return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Interrupted }));
-        co_return rstd::move(result).unwrap();
+        co_return Ok(empty {});
+    }
+    static auto shutdown_owned(sync::Arc<ProcessState> state) -> coro<io::Result<empty>> {
+        auto waited = co_await wait_shutdown_owned(state.clone());
+        if (waited.is_err()) co_return Err(rstd::move(waited).unwrap_err());
+        auto result = state->fields.lock().unwrap()->result.take();
+        if (! result)
+            co_return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
+        co_return result.take().unwrap();
     }
 
 public:
@@ -553,5 +584,11 @@ public:
     void start_shutdown() const { state_->stop(); }
     // Requires the owning runtime to keep running. Each wait owns its state and may be canceled.
     auto shutdown() const -> coro<io::Result<empty>> { return shutdown_owned(state_.clone()); }
+    auto wait_shutdown() const -> coro<io::Result<empty>> {
+        return wait_shutdown_owned(state_.clone());
+    }
+    auto take_shutdown_result() -> Option<io::Result<empty>> {
+        return state_->fields.lock().unwrap()->result.take();
+    }
 };
 } // namespace rstd::async

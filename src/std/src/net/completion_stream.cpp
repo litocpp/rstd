@@ -14,7 +14,7 @@ struct CompletionTcpState {
     struct Fields {
         Option<TcpStream>                        stream;
         Vec<CloseSender, alloc::SharedAllocator> waiters;
-        Option<io::Error>                        error;
+        Option<io::Result<empty>>                result;
         bool started {}, stopping {}, closed {}, reading {}, writing {}, write_closed {};
         Fields(TcpStream stream, alloc::SharedAllocator allocator)
             : stream(Some(rstd::move(stream))),
@@ -40,16 +40,14 @@ struct CompletionTcpState {
             if (state->closed) return;
             state->stopping = true;
             state->closed   = true;
-            if (error) state->error = Some(io::Error(*error));
-            abandoned = state->stream.take();
-            waiters   = rstd::move(state->waiters);
+            state->result   = Some(error ? io::Result<empty>(Err(error.take().unwrap()))
+                                         : io::Result<empty>(Ok(empty {})));
+            abandoned       = state->stream.take();
+            waiters         = rstd::move(state->waiters);
         }
         abandoned = None();
         for (auto& waiter : waiters) {
-            if (error)
-                (void)rstd::move(waiter).send(Err(io::Error(*error)));
-            else
-                (void)rstd::move(waiter).send(Ok(empty {}));
+            (void)rstd::move(waiter).send(Ok(empty {}));
         }
     }
 };
@@ -218,7 +216,7 @@ struct rstd::Impl<rstd::async::io::CompletionStream, rstd::net::CompletionTcp>
         return rstd::net::completion_tcp_ready<rstd::empty>(rstd::move(result));
     }
     void request_stop() const { self().request_stop(); }
-    auto close() const -> rstd::async::coro<rstd::io::Result<rstd::empty>> {
+    auto wait_closed() const -> rstd::async::coro<rstd::io::Result<rstd::empty>> {
         auto start = self().start();
         if (start.is_err())
             return rstd::net::completion_tcp_ready<rstd::empty>(
@@ -227,14 +225,14 @@ struct rstd::Impl<rstd::async::io::CompletionStream, rstd::net::CompletionTcp>
         {
             auto fields = self().state->fields.lock().unwrap();
             if (fields->closed)
-                return rstd::net::completion_tcp_ready<rstd::empty>(
-                    fields->error
-                        ? rstd::io::Result<rstd::empty>(rstd::Err(rstd::io::Error(*fields->error)))
-                        : rstd::io::Result<rstd::empty>(rstd::Ok(rstd::empty {})));
+                return rstd::net::completion_tcp_ready<rstd::empty>(rstd::Ok(rstd::empty {}));
             fields->waiters.push(rstd::move(pair.template get<0>()));
         }
         self().request_stop();
         return rstd::net::wait_tcp_closed(self().state.clone(), rstd::move(pair.template get<1>()));
+    }
+    auto take_close_result() const -> rstd::Option<rstd::io::Result<rstd::empty>> {
+        return self().state->fields.lock().unwrap()->result.take();
     }
 };
 

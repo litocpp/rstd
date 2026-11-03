@@ -9,7 +9,6 @@ struct LookupError {
     i32                      code;
     ::alloc::string::String  message;
     Option<io::error::Error> cause;
-    auto clone() const -> LookupError { return { code, message.clone(), cause }; }
 };
 // Numeric IPs are parsed directly; other names use the operating system name service.
 // Blocks the calling thread and provides no timeout or cancellation.

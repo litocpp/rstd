@@ -58,20 +58,21 @@ auto unix_finish_connect(UnixConnectWork work) -> async::coro<io::Result<empty>>
         auto connected = sys::socket::connect_unix(
             work.source.as_raw_fd(), as_bytes(work.state->name.as_slice()), work.state->abstract);
         pending = connected.is_err();
-        if (pending && connected.unwrap_err().kind() != io::ErrorKind { io::ErrorKind::InProgress })
-            co_return Err(connected.unwrap_err());
+        if (pending &&
+            connected.as_ref().unwrap_err().kind() != io::ErrorKind { io::ErrorKind::InProgress })
+            co_return Err(rstd::move(connected).unwrap_err());
     }
     if (pending) {
         auto ready = co_await rstd::move(work.ready);
-        if (ready.is_err()) co_return Err(ready.unwrap_err());
+        if (ready.is_err()) co_return Err(rstd::move(ready).unwrap_err());
     }
     auto phase = work.state->phase.lock().unwrap();
     if (*phase != UnixConnectPhase::Running)
         co_return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected }));
     if (pending) {
         auto failure = sys::socket::take_error(work.source.as_raw_fd());
-        if (failure.is_err()) co_return Err(failure.unwrap_err());
-        if (failure->is_some()) co_return Err(**failure);
+        if (failure.is_err()) co_return Err(rstd::move(failure).unwrap_err());
+        if (failure->is_some()) co_return Err(rstd::move(**failure));
     }
     *phase = UnixConnectPhase::Connected;
     co_return Ok(empty {});
@@ -122,13 +123,13 @@ auto UnixConnect::close() && -> async::coro<io::Result<empty>> {
 }
 auto UnixStream::connect(bytes::Bytes name, bool abstract) -> async::coro<io::Result<UnixStream>> {
     auto prepared = prepare_connect(rstd::move(name), abstract);
-    if (prepared.is_err()) co_return Err(prepared.unwrap_err());
+    if (prepared.is_err()) co_return Err(rstd::move(prepared).unwrap_err());
     auto connecting = rstd::move(prepared).unwrap();
     auto connected  = co_await connecting.finish();
     if (connected.is_err()) {
-        auto error = connected.unwrap_err();
+        auto error = rstd::move(connected).unwrap_err();
         (void)co_await rstd::move(connecting).close();
-        co_return Err(error);
+        co_return Err(rstd::move(error));
     }
     co_return rstd::move(connecting).into_stream();
 }

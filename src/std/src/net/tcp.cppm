@@ -49,6 +49,7 @@ public:
     auto        local_addr() const -> io::Result<SocketAddr>;
     auto        peer_addr() const -> io::Result<SocketAddr>;
     auto        take_error() { return stream_.take_error(); }
+    auto        take_backend_error() { return stream_.take_backend_error(); }
     auto        set_keepalive(TcpKeepalive options) -> io::Result<empty>;
     auto        keepalive() const -> io::Result<bool>;
     static auto keepalive_timing_supported() -> bool;

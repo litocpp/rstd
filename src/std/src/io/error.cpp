@@ -12,6 +12,22 @@ using namespace rstd::literals;
 namespace rstd::io::error
 {
 
+OwnedCause::OwnedCause(::alloc::boxed::Box<dyn<rstd::error::Error>> value) noexcept
+    : value_(rstd::move(value)) {
+}
+OwnedCause::OwnedCause(OwnedCause&&) noexcept                    = default;
+auto OwnedCause::operator=(OwnedCause&&) noexcept -> OwnedCause& = default;
+OwnedCause::~OwnedCause()                                        = default;
+auto OwnedCause::get_ref() const noexcept -> rstd::error::ErrorRef {
+    return value_.as_ref();
+}
+auto OwnedCause::get_mut() noexcept -> mut_ref<dyn<rstd::error::Error>> {
+    return value_.deref_mut();
+}
+auto OwnedCause::into_inner() && noexcept -> ::alloc::boxed::Box<dyn<rstd::error::Error>> {
+    return rstd::move(value_);
+}
+
 auto native_error_code() noexcept -> RawOsError {
 #if RSTD_OS_UNIX
     return RawOsError(static_cast<rstd::int32_t>(libc::get_errno()));
@@ -185,11 +201,34 @@ auto Error::last_os_error() noexcept -> Error {
     return from_raw_os_error(native_error_code());
 }
 
+auto Error::with_source(ErrorKind kind, ::alloc::boxed::Box<dyn<rstd::error::Error>> cause) noexcept
+    -> Error {
+    return Error::Custom(kind, OwnedCause(rstd::move(cause)));
+}
+
+auto Error::get_ref() const noexcept -> Option<rstd::error::ErrorRef> {
+    if (! is_Custom()) return None();
+    return Some(as_Custom().cause.get_ref());
+}
+
+auto Error::get_mut() noexcept -> Option<mut_ref<dyn<rstd::error::Error>>> {
+    if (! is_Custom()) return None();
+    return Some(as_Custom().cause.get_mut());
+}
+
+auto Error::into_inner() && noexcept -> Option<::alloc::boxed::Box<dyn<rstd::error::Error>>> {
+    if (! is_Custom()) return None();
+    auto value = rstd::move(as_Custom().cause).into_inner();
+    *this      = Error::from_kind(ErrorKind { ErrorKind::Uncategorized });
+    return Some(rstd::move(value));
+}
+
 auto Error::kind() const noexcept -> ErrorKind {
     switch (tag()) {
     case Tag::Os: return decode_error_kind(as_Os().code);
     case Tag::Kind: return as_Kind().kind;
     case Tag::Message: return as_Message().kind;
+    case Tag::Custom: return as_Custom().kind;
     }
     return ErrorKind { ErrorKind::Uncategorized };
 }
@@ -252,6 +291,9 @@ auto Impl<fmt::Display, io::error::Error>::fmt(fmt::Formatter& f) const -> bool 
         auto msg = e.static_message();
         return f.write_raw(msg, rstd::strlen(msg));
     }
+    case Tag::Custom: {
+        return as<fmt::Display>(*e.get_ref()).fmt(f);
+    }
     }
     return false;
 }
@@ -284,8 +326,23 @@ auto Impl<fmt::Debug, io::error::Error>::fmt(fmt::Formatter& f) const -> bool {
         f.write_raw(msg, rstd::strlen(msg));
         return f.write_raw("\" }", 3);
     }
+    case Tag::Custom: {
+        auto kind = e.kind();
+        if (! f.write_str("Custom { kind: "_str) || ! as<fmt::Display>(kind).fmt(f) ||
+            ! f.write_str(", error: "_str))
+            return false;
+        auto inner = e.get_ref().unwrap_unchecked();
+        if (! as<fmt::Debug>(inner).fmt(f)) return false;
+        return f.write_str(" }"_str);
+    }
     }
     return false;
+}
+
+auto Impl<error::Error, io::error::Error>::source() const noexcept -> Option<error::ErrorRef> {
+    auto inner = this->self().get_ref();
+    if (inner.is_none()) return None();
+    return inner.unwrap_unchecked()->source();
 }
 
 } // namespace rstd

@@ -121,7 +121,7 @@ class BufWriter {
             auto res     = as<Write>(inner_).write(pending);
             if (res.is_err()) return Err(res.unwrap_err_unchecked());
             auto const written = res.unwrap_unchecked().to_primitive();
-            if (written == 0) return Err(error::Error_WRITE_ALL_EOF);
+            if (written == 0) return Err(Error::from_static_message(error::Error_WRITE_ALL_EOF));
             if (written > remaining) {
                 return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidData }));
             }

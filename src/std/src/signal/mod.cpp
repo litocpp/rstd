@@ -16,8 +16,8 @@ static auto error(io::ErrorKind::Entity kind) -> io::Error {
 struct RegistryFields {
     vec::Vec<sync::Arc<SubscriptionState>> subscribers =
         vec::Vec<sync::Arc<SubscriptionState>>::make();
-    size_t            references[backend::capacity] {};
-    Option<io::Error> failure;
+    size_t                        references[backend::capacity] {};
+    Option<io::error::RawOsError> failure;
 };
 
 static auto registry() -> sync::Mutex<RegistryFields>& {
@@ -41,7 +41,7 @@ static auto refresh(SubscriptionFields& fields) -> bool {
 
 static auto take_event(SubscriptionFields& fields) -> io::Result<Option<SignalKind>> {
     if (fields.closed) return Ok(None<SignalKind>());
-    if (fields.error.is_some()) return Err(*fields.error);
+    if (fields.error.is_some()) return Err(io::Error::from_raw_os_error(*fields.error));
     (void)refresh(fields);
     for (auto& interest : fields.interests) {
         if (interest.pending) {
@@ -57,7 +57,7 @@ static void dispatch(int native_error) {
     {
         auto entries = registry().lock().unwrap_unchecked();
         if (native_error != 0) {
-            entries->failure = Some(io::Error::from_raw_os_error(i32(native_error)));
+            entries->failure = Some(i32(native_error));
         }
         for (auto& state : entries->subscribers) {
             auto fields = state->fields.lock().unwrap_unchecked();
@@ -114,7 +114,7 @@ auto subscribe(slice<SignalKind> kinds) -> io::Result<Subscription> {
     if (kinds.is_empty()) return Err(error(io::ErrorKind::InvalidInput));
     auto state   = sync::Arc<SubscriptionState>::make();
     auto entries = registry().lock().unwrap_unchecked();
-    if (entries->failure.is_some()) return Err(*entries->failure);
+    if (entries->failure.is_some()) return Err(io::Error::from_raw_os_error(*entries->failure));
     auto fields = state->fields.lock().unwrap_unchecked();
     for (auto kind : kinds) {
         auto number = kind.as_raw().to_primitive();

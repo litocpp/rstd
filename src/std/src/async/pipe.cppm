@@ -228,7 +228,7 @@ struct PipeState {
                 buffer.truncate(*result);
                 co_return Ok(bytes::Bytes::from_vec(rstd::move(buffer)));
             }
-            if (result.unwrap_err().kind() != io::ErrorKind { io::ErrorKind::WouldBlock })
+            if (result.as_ref().unwrap_err().kind() != io::ErrorKind { io::ErrorKind::WouldBlock })
                 co_return Err(rstd::move(result).unwrap_err());
             if (ready.is_some()) state->registration.clear_readiness(ready.take().unwrap());
             auto event = co_await ReadinessFuture { state->registration, Interest::readable() };
@@ -256,7 +256,7 @@ struct PipeState {
                 if (! all) co_return Ok(offset);
                 continue;
             }
-            if (result.unwrap_err().kind() != io::ErrorKind { io::ErrorKind::WouldBlock })
+            if (result.as_ref().unwrap_err().kind() != io::ErrorKind { io::ErrorKind::WouldBlock })
                 co_return Err(rstd::move(result).unwrap_err());
             if (ready.is_some()) state->registration.clear_readiness(ready.take().unwrap());
             auto event = co_await ReadinessFuture { state->registration, Interest::writable() };

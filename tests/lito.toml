@@ -8,6 +8,7 @@ members = [
   "runtime",
   "udp",
   "tcp-owned",
+  "io-error",
   "range",
   "dlopn-runtime",
   "compile",

@@ -37,8 +37,9 @@ TEST(LookupHost, RejectsEmptyAndInteriorNul) {
         EXPECT_EQ(error.cause->kind(),
                   rstd::io::error::ErrorKind { rstd::io::error::ErrorKind::InvalidInput });
         EXPECT_TRUE(rstd::as<rstd::error::Error>(error).source().is_some());
-        auto copy = error.clone();
-        EXPECT_EQ(rstd::format("{}", copy), rstd::format("{:?}", error));
+        auto text = rstd::format("{:?}", error);
+        auto owned = rstd::move(error);
+        EXPECT_EQ(rstd::format("{}", owned), text);
     }
 }
 

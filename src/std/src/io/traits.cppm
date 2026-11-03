@@ -228,7 +228,7 @@ auto write_all(W& w, slice<u8> buf) -> Result<empty> {
         if (res.is_err()) return Err(res.unwrap_err_unchecked());
         auto const written = res.unwrap_unchecked().to_primitive();
         if (written == 0) {
-            return Err(error::Error_WRITE_ALL_EOF);
+            return Err(Error::from_static_message(error::Error_WRITE_ALL_EOF));
         }
         if (written > buf.len().to_primitive()) {
             return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidData }));
@@ -251,7 +251,8 @@ auto read_buf_exact(R& reader, BorrowedCursor cursor) -> Result<empty> {
             if (error.kind() == ErrorKind { ErrorKind::Interrupted }) continue;
             return Err(rstd::move(error));
         }
-        if (cursor.written() == before) return Err(error::Error_READ_EXACT_EOF);
+        if (cursor.written() == before)
+            return Err(Error::from_static_message(error::Error_READ_EXACT_EOF));
     }
     return Ok(empty {});
 }
@@ -267,7 +268,7 @@ auto read_exact(R& reader, mut_ref<u8[]> bytes) -> Result<empty> {
             return Err(rstd::move(error));
         }
         auto count = result.unwrap_unchecked();
-        if (count == usize()) return Err(error::Error_READ_EXACT_EOF);
+        if (count == usize()) return Err(Error::from_static_message(error::Error_READ_EXACT_EOF));
         if (count > bytes.len()) return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidData }));
         bytes = mut_ref<u8[]>::from_raw_parts(bytes.as_raw_ptr() + count.to_primitive(),
                                               bytes.len() - count);
@@ -303,7 +304,7 @@ auto read_exact_at(const R& reader, mut_ref<u8[]> bytes, u64 offset) -> Result<e
             return Err(rstd::move(error));
         }
         auto count = result.unwrap_unchecked();
-        if (count == usize()) return Err(error::Error_READ_EXACT_EOF);
+        if (count == usize()) return Err(Error::from_static_message(error::Error_READ_EXACT_EOF));
         if (count > bytes.len()) return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidData }));
         auto next = offset.checked_add(u64(count.to_primitive()));
         if (next.is_none()) return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidData }));
@@ -326,7 +327,7 @@ auto write_all_at(const W& w, slice<u8> buf, u64 offset) -> Result<empty> {
             return Err(rstd::move(error));
         }
         auto const written = res.unwrap_unchecked().to_primitive();
-        if (written == 0) return Err(error::Error_WRITE_ALL_EOF);
+        if (written == 0) return Err(Error::from_static_message(error::Error_WRITE_ALL_EOF));
         if (written > buf.len().to_primitive()) {
             return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidData }));
         }

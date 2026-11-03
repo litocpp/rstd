@@ -189,7 +189,8 @@ public:
             }
             if (rstd::move(result).unwrap_unchecked() == usize()) {
                 future.completed = true;
-                return task::Poll<Output>::Ready(Err(::rstd::io::error::Error_READ_EXACT_EOF));
+                return task::Poll<Output>::Ready(Err(::rstd::io::error::Error::from_static_message(
+                    ::rstd::io::error::Error_READ_EXACT_EOF)));
             }
         }
 
@@ -241,7 +242,8 @@ public:
             auto n = rstd::move(result).unwrap_unchecked();
             if (n == usize()) {
                 future.completed = true;
-                return task::Poll<Output>::Ready(Err(::rstd::io::error::Error_WRITE_ALL_EOF));
+                return task::Poll<Output>::Ready(Err(::rstd::io::error::Error::from_static_message(
+                    ::rstd::io::error::Error_WRITE_ALL_EOF)));
             }
             future.written += n;
         }

@@ -216,7 +216,7 @@ auto SocketStream::poll_read(mut_ref<SocketStream> self, task::Context& cx, byte
             buf.advance_mut(*result);
             return task::Poll<io::Result<usize>>::Ready(rstd::move(result));
         }
-        if (! stream_is_would_block(result.unwrap_err()))
+        if (! stream_is_would_block(result.as_ref().unwrap_err()))
             return task::Poll<io::Result<usize>>::Ready(rstd::move(result));
         stream.m_registration.clear_readiness(*event);
     }
@@ -237,7 +237,7 @@ auto SocketStream::poll_write(mut_ref<SocketStream> self,
             return task::Poll<io::Result<usize>>::Ready(Err(rstd::move(event).unwrap_err()));
         auto result =
             socket::send(stream.m_completion_source.as_raw_fd(), as_bytes(buf.as_slice()));
-        if (result.is_ok() || ! stream_is_would_block(result.unwrap_err()))
+        if (result.is_ok() || ! stream_is_would_block(result.as_ref().unwrap_err()))
             return task::Poll<io::Result<usize>>::Ready(rstd::move(result));
         stream.m_registration.clear_readiness(*event);
     }

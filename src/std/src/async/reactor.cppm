@@ -95,6 +95,11 @@ struct TimerState {
 using RegistrationArc = sync::Arc<RegistrationState>;
 using TimerArc        = sync::Arc<TimerState>;
 
+auto take_registration_error(const RegistrationArc& state) -> Option<io::Error> {
+    if (! state) return None();
+    return state->fields.lock().unwrap_unchecked()->error.take();
+}
+
 auto make_registration_owner(const RegistrationArc& state) -> PollEventOwner;
 auto make_timer_owner(const TimerArc& state) -> PollEventOwner;
 
@@ -115,10 +120,9 @@ void wake_all(Vec<task::Waker>& wakers) {
 }
 
 void fail_registration(const RegistrationArc& state, io::Error error) {
-    auto wakers           = Vec<task::Waker>::make();
-    auto tokens           = Vec<FacilityCompletionToken>::make();
-    auto key              = RegistrationKey {};
-    auto completion_error = io::Error { error };
+    auto wakers = Vec<task::Waker>::make();
+    auto tokens = Vec<FacilityCompletionToken>::make();
+    auto key    = RegistrationKey {};
     {
         auto fields = state->fields.lock().unwrap_unchecked();
         if (fields->closed) return;
@@ -142,8 +146,8 @@ void fail_registration(const RegistrationArc& state, io::Error error) {
     wake_all(wakers);
     while (! tokens.is_empty()) {
         auto token = rstd::move(tokens.pop()).unwrap_unchecked();
-        (void)token.complete_poll(
-            PollEventData::backend_error(key, io::Error { completion_error }));
+        (void)token.complete_poll(PollEventData::backend_error(
+            key, io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected })));
     }
 }
 
@@ -405,10 +409,10 @@ void handle_timer_event(const TimerArc& state, PollEventData data) {
         auto fields = state->fields.lock().unwrap_unchecked();
         if (! fields->active) return;
         if (data.kind() == PollEventKind::BackendError) {
-            fields->error =
-                data.has_backend_error()
-                    ? Some(data.take_backend_error())
-                    : Some(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Other }));
+            auto error    = data.has_backend_error()
+                                ? data.take_backend_error()
+                                : io::Error::from_kind(io::ErrorKind { io::ErrorKind::Other });
+            fields->error = Some(rstd::move(error));
         } else if (data.kind() != PollEventKind::Timer) {
             return;
         }
@@ -457,9 +461,7 @@ auto try_registration_readiness(const RegistrationArc& state, Interest interest)
     -> Option<io::Result<ReadyEvent>> {
     auto fields = state->fields.lock().unwrap_unchecked();
     if (fields->closed) {
-        auto error = fields->error.is_some()
-                         ? io::Error { *fields->error }
-                         : io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected });
+        auto error = io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected });
         return Some(io::Result<ReadyEvent>(Err(rstd::move(error))));
     }
     auto ready = fields->ready.for_interest(interest);
@@ -558,9 +560,7 @@ auto poll_registration_readiness(const RegistrationArc& state,
     {
         auto fields = state->fields.lock().unwrap_unchecked();
         if (fields->closed) {
-            auto error = fields->error.is_some()
-                             ? io::Error { *fields->error }
-                             : io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected });
+            auto error = io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected });
             return task::Poll<io::Result<ReadyEvent>>::Ready(Err(rstd::move(error)));
         }
         auto ready = fields->ready.for_interest(interest);
@@ -691,6 +691,9 @@ public:
 
     auto deregister() && -> RegistrationDeregisterFuture;
 
+    // Readiness observers see closure; only the owner takes the backend failure.
+    auto take_error() -> Option<io::Error> { return take_registration_error(m_state); }
+
     auto poll_readiness(task::Context& cx, Interest interest, usize& waiter_id)
         -> task::Poll<io::Result<ReadyEvent>> {
         return poll_registration_readiness(m_state, cx, interest, waiter_id);
@@ -744,6 +747,8 @@ public:
 
     ~RegistrationDeregisterFuture() { clear_waker(); }
 
+    auto take_error() -> Option<io::Error> { return take_registration_error(m_state); }
+
     auto poll(mut_ref<RegistrationDeregisterFuture> self, task::Context& cx) -> task::Poll<Output> {
         auto& future = *self;
         if (future.m_completed) {
@@ -757,9 +762,8 @@ public:
                 fields->deregister_waker = Some(cx.waker().clone());
                 return task::Poll<Output>::Pending();
             }
-            if (fields->deregister_error.is_some()) {
-                error = Some(io::Error { *fields->deregister_error });
-            }
+            error = fields->deregister_error.take();
+            if (! error) error = fields->error.take();
         }
 
         future.m_completed = true;
@@ -784,6 +788,16 @@ inline auto Registration::deregister() && -> RegistrationDeregisterFuture {
     auto state = rstd::move(m_state);
     begin_registration_deregister(state);
     return RegistrationDeregisterFuture { rstd::move(state) };
+}
+
+auto update_timer_waker(const TimerArc& state, task::Waker waker) -> io::Result<empty> {
+    if (! state) return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
+    auto fields = state->fields.lock().unwrap_unchecked();
+    if (fields->error.is_some()) return Err(fields->error.take().unwrap_unchecked());
+    if (! fields->active)
+        return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected }));
+    fields->waker = Some(rstd::move(waker));
+    return Ok(empty {});
 }
 
 export class TimerRegistration {
@@ -826,16 +840,7 @@ public:
     }
 
     auto update_waker(task::Waker waker) -> io::Result<empty> {
-        if (! m_state) {
-            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
-        }
-        auto fields = m_state->fields.lock().unwrap_unchecked();
-        if (fields->error.is_some()) return Err(io::Error { *fields->error });
-        if (! fields->active) {
-            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected }));
-        }
-        fields->waker = Some(rstd::move(waker));
-        return Ok(empty {});
+        return update_timer_waker(m_state, rstd::move(waker));
     }
 
     void reset() {

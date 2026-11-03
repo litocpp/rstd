@@ -102,7 +102,7 @@ auto run() -> rstd::async::coro<bool> {
     if (early == 0) ::_exit(17);
     if (early < 0) co_return false;
     auto early_child = handle.adopt(i32(early)).unwrap();
-    auto first       = async::spawn(early_child.wait());
+    auto first       = async::spawn(early_child.wait_finished());
     auto second      = co_await early_child.wait();
     auto joined      = co_await first;
     if (! check(second.is_ok() && second->code() == Some(i32(17)) && joined.is_ok() &&

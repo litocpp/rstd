@@ -124,8 +124,9 @@ auto lookup_host(ref<CStr> host, u16 port) -> Result<Vec<SocketAddr>, LookupErro
 #if RSTD_OS_WINDOWS
     auto started = platform::ensure_started();
     if (started.is_err())
-        return Err(LookupError {
-            i32(), String::make("Winsock initialization failed"_str), Some(started.unwrap_err()) });
+        return Err(LookupError { i32(),
+                                 String::make("Winsock initialization failed"_str),
+                                 Some(rstd::move(started).unwrap_err()) });
 #endif
     addrinfo hints {};
     hints.ai_family   = AF_UNSPEC;
@@ -143,7 +144,7 @@ auto lookup_host(ref<CStr> host, u16 port) -> Result<Vec<SocketAddr>, LookupErro
 #endif
         auto message = text ? CStr::from_ptr(text).to_str().unwrap_or("name lookup failed"_str)
                             : "name lookup failed"_str;
-        return Err(LookupError { i32(code), String::make(message), cause });
+        return Err(LookupError { i32(code), String::make(message), rstd::move(cause) });
     }
     LookupAddresses addresses;
     addresses.list = list;

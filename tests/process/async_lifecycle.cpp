@@ -124,15 +124,16 @@ auto shutdown_waiters() -> async::coro<bool> {
                                                   time::Duration::from_millis(u64(5)));
             if (result.is_ok()) co_return false;
         }
-        first  = Some(async::spawn(supervisor.shutdown()));
-        second = Some(async::spawn(supervisor.shutdown()));
+        first  = Some(async::spawn(supervisor.wait_shutdown()));
+        second = Some(async::spawn(supervisor.wait_shutdown()));
         co_await async::sleep(time::Duration::from_millis(u64(5)));
         if (first->is_finished() || second->is_finished() || handle.accepting()) co_return false;
     }
     auto a      = co_await first.take().unwrap();
     auto b      = co_await second.take().unwrap();
     auto repeat = co_await supervisor.shutdown();
-    co_return a.is_ok() && a->is_ok() && b.is_ok() && b->is_ok() && repeat.is_ok();
+    co_return a.is_ok() && a->is_ok() && b.is_ok() && b->is_ok() && repeat.is_ok() &&
+              supervisor.take_shutdown_result().is_none();
 }
 
 auto shutdown_after_move() -> async::coro<bool> {
@@ -140,7 +141,7 @@ auto shutdown_after_move() -> async::coro<bool> {
     auto pending    = supervisor.shutdown();
     auto moved      = rstd::move(supervisor);
     auto first      = co_await rstd::move(pending);
-    auto second     = co_await moved.shutdown();
+    auto second     = co_await moved.wait_shutdown();
     co_return first.is_ok() && second.is_ok();
 }
 
@@ -196,7 +197,7 @@ TEST(AsyncProcess, MissingRuntimeAndIoAreErrors) {
     EXPECT_TRUE(runtime.block_on(reject_without_io()));
 }
 
-TEST(AsyncProcess, RuntimeAbortPublishesRepeatableShutdownError) {
+TEST(AsyncProcess, RuntimeAbortPreservesShutdownErrorForSingleOwner) {
     Option<async::ProcessSupervisor> owner;
     Option<async::SpawnReservation>  reservation;
     {
@@ -205,10 +206,13 @@ TEST(AsyncProcess, RuntimeAbortPublishesRepeatableShutdownError) {
     }
     auto runtime = async::RuntimeBuilder::current_thread().enable_all().build().unwrap();
     for (int attempt = 0; attempt < 2; ++attempt) {
-        auto result = runtime.block_on(owner->shutdown());
-        ASSERT_TRUE(result.is_err());
-        EXPECT_EQ(result.unwrap_err().kind(), io::ErrorKind { io::ErrorKind::Interrupted });
+        EXPECT_TRUE(runtime.block_on(owner->wait_shutdown()).is_ok());
     }
+    auto result = owner->take_shutdown_result();
+    ASSERT_TRUE(result.is_some());
+    ASSERT_TRUE(result->is_err());
+    EXPECT_EQ(result->unwrap_err().kind(), io::ErrorKind { io::ErrorKind::Interrupted });
+    EXPECT_TRUE(owner->take_shutdown_result().is_none());
     EXPECT_FALSE(owner->handle().accepting());
     reservation = None();
 }

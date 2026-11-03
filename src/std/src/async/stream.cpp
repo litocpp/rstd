@@ -48,13 +48,21 @@ enum class StreamAction
 {
     Flush,
     ShutdownWrite,
+    WaitClosed,
     Close
 };
 auto stream_action(Backend backend, StreamAction action) -> coro<::rstd::io::Result<empty>> {
     if (! backend) co_return Err(closed_stream());
     if (action == StreamAction::Flush) co_return co_await backend->flush();
     if (action == StreamAction::ShutdownWrite) co_return co_await backend->shutdown_write();
-    co_return co_await backend->close();
+    auto waited = co_await backend->wait_closed();
+    if (waited.is_err()) co_return Err(rstd::move(waited).unwrap_err());
+    if (action == StreamAction::WaitClosed) co_return Ok(empty {});
+    auto result = backend->take_close_result();
+    if (! result)
+        co_return Err(::rstd::io::Error::from_kind(
+            ::rstd::io::ErrorKind { ::rstd::io::ErrorKind::InvalidInput }));
+    co_return result.take().unwrap();
 }
 Stream::Stream(Backend backend): backend_(rstd::move(backend)) {
 }
@@ -93,5 +101,12 @@ void Stream::request_stop() const {
 }
 auto Stream::close() const -> coro<::rstd::io::Result<empty>> {
     return stream_action(backend_.clone(), StreamAction::Close);
+}
+auto Stream::wait_closed() const -> coro<::rstd::io::Result<empty>> {
+    return stream_action(backend_.clone(), StreamAction::WaitClosed);
+}
+auto Stream::take_close_result() const -> Option<::rstd::io::Result<empty>> {
+    if (! backend_) return None();
+    return backend_->take_close_result();
 }
 } // namespace rstd::async::io

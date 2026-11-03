@@ -50,7 +50,7 @@ struct Impl<fmt::Write, FdWriter> : ImplBase<FdWriter> {
             }
             auto const written = res.unwrap_unchecked().to_primitive();
             if (written == 0) {
-                self.result = Err(io::error::Error_WRITE_ALL_EOF);
+                self.result = Err(io::Error::from_static_message(io::error::Error_WRITE_ALL_EOF));
                 return false;
             }
             if (written > len) {

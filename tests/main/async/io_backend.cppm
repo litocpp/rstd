@@ -21,6 +21,55 @@ import :time;
 import rstd.alloc;
 
 using namespace rstd;
+using ::alloc::boxed::Box;
+
+struct ReactorFailureLeaf {
+    int* drops;
+    int  value;
+
+    ReactorFailureLeaf(int& drops, int value): drops(&drops), value(value) {}
+    ReactorFailureLeaf(const ReactorFailureLeaf&) = delete;
+    ReactorFailureLeaf(ReactorFailureLeaf&& other) noexcept
+        : drops(rstd::exchange(other.drops, nullptr)), value(other.value) {}
+    ~ReactorFailureLeaf() {
+        if (drops) ++*drops;
+    }
+};
+
+struct ReactorFailureContext {
+    Box<dyn<error::Error>> inner;
+};
+
+namespace rstd
+{
+template<>
+struct Impl<fmt::Display, ReactorFailureLeaf> : ImplBase<ReactorFailureLeaf> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        constexpr char message[] = "reactor leaf";
+        return formatter.write_raw(message, sizeof(message) - 1);
+    }
+};
+template<>
+struct Impl<fmt::Debug, ReactorFailureLeaf> : Impl<fmt::Display, ReactorFailureLeaf> {};
+template<>
+struct Impl<error::Error, ReactorFailureLeaf> : DefaultInImpl<error::Error, ReactorFailureLeaf> {};
+
+template<>
+struct Impl<fmt::Display, ReactorFailureContext> : ImplBase<ReactorFailureContext> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        constexpr char message[] = "reactor context";
+        return formatter.write_raw(message, sizeof(message) - 1);
+    }
+};
+template<>
+struct Impl<fmt::Debug, ReactorFailureContext> : Impl<fmt::Display, ReactorFailureContext> {};
+template<>
+struct Impl<error::Error, ReactorFailureContext> : ImplBase<ReactorFailureContext> {
+    auto source() const noexcept [[clang::lifetimebound]] -> Option<error::ErrorRef> {
+        return Some(self().inner.as_ref());
+    }
+};
+} // namespace rstd
 
 namespace
 {
@@ -126,6 +175,139 @@ TEST(RstdAsyncReactor, FailureTakesWaitersBeforeNotifying) {
 
 TEST(RstdAsyncReactor, DeregisterTakesWaitersBeforeNotifying) {
     verify_readiness_close(false);
+}
+
+void expect_reactor_custom_failure(const io::Error& failure, int& drops) {
+    EXPECT_EQ(failure.kind(), io::ErrorKind { io::ErrorKind::BrokenPipe });
+    auto context = error::downcast_ref<ReactorFailureContext>(failure.get_ref().unwrap());
+    ASSERT_TRUE(context.is_some());
+    auto source = dyn<error::Error>::from_ref(failure)->source();
+    ASSERT_TRUE(source.is_some());
+    auto leaf = error::downcast_ref<ReactorFailureLeaf>(source.unwrap());
+    ASSERT_TRUE(leaf.is_some());
+    EXPECT_EQ((*leaf)->value, 41);
+    EXPECT_EQ((*leaf)->drops, &drops);
+    EXPECT_EQ(context.unwrap()->inner.as_ref().as_raw_ptr(), leaf.unwrap().as_raw_ptr());
+    EXPECT_EQ(drops, 0);
+}
+
+TEST(RstdAsyncReactor, ReadinessObserversLeaveCustomFailureForOwner) {
+    int               drops {};
+    Option<io::Error> owned;
+    {
+        auto state = async::RegistrationArc::make(os::fd::INVALID_RAW_FD);
+        async::fail_registration(
+            state,
+            io::Error::with_source(
+                io::ErrorKind { io::ErrorKind::BrokenPipe },
+                Box<dyn<error::Error>>::make(ReactorFailureContext {
+                    Box<dyn<error::Error>>::make(ReactorFailureLeaf(drops, 41)) })));
+        auto first_ready = async::try_registration_readiness(state, async::Interest::readable());
+        ASSERT_TRUE(first_ready.is_some());
+        auto first_result = first_ready.unwrap();
+        ASSERT_TRUE(first_result.is_err());
+        EXPECT_EQ(first_result.as_ref().unwrap_err().kind(),
+                  io::ErrorKind { io::ErrorKind::NotConnected });
+        auto second_ready = async::try_registration_readiness(state, async::Interest::writable());
+        ASSERT_TRUE(second_ready.is_some());
+        auto second_result = second_ready.unwrap();
+        ASSERT_TRUE(second_result.is_err());
+        EXPECT_EQ(second_result.as_ref().unwrap_err().kind(),
+                  io::ErrorKind { io::ErrorKind::NotConnected });
+        auto& waker = task::Waker::noop();
+        auto  cx    = task::Context { waker };
+        usize waiter;
+        auto  readiness =
+            async::poll_registration_readiness(state, cx, async::Interest::readable(), waiter);
+        ASSERT_TRUE(readiness.is_ready());
+        auto result = rstd::move(readiness).take();
+        ASSERT_TRUE(result.is_err());
+        EXPECT_EQ(result.as_ref().unwrap_err().kind(),
+                  io::ErrorKind { io::ErrorKind::NotConnected });
+        async::begin_registration_deregister(state);
+        owned = async::take_registration_error(state);
+        ASSERT_TRUE(owned.is_some());
+        EXPECT_TRUE(async::take_registration_error(state).is_none());
+        expect_reactor_custom_failure(*owned, drops);
+    }
+    expect_reactor_custom_failure(*owned, drops);
+    owned = None();
+    EXPECT_EQ(drops, 1);
+}
+
+void verify_reactor_simple_failure(io::Error failure) {
+    auto kind    = failure.kind();
+    auto code    = failure.raw_os_error();
+    auto message = failure.static_message();
+    auto state   = async::RegistrationArc::make(os::fd::INVALID_RAW_FD);
+    async::fail_registration(state, rstd::move(failure));
+    auto expect_failure = [&](const io::Error& reported) {
+        EXPECT_EQ(reported.kind(), kind);
+        auto reported_code = reported.raw_os_error();
+        EXPECT_EQ(reported_code.is_some(), code.is_some());
+        if (code.is_some() && reported_code.is_some()) EXPECT_EQ(*reported_code, *code);
+        EXPECT_EQ(reported.static_message(), message);
+        EXPECT_TRUE(reported.get_ref().is_none());
+        EXPECT_TRUE(dyn<error::Error>::from_ref(reported)->source().is_none());
+    };
+    for (auto index = 0; index < 2; ++index) {
+        auto ready = async::try_registration_readiness(state, async::Interest::readable());
+        ASSERT_TRUE(ready.is_some());
+        auto result = ready.unwrap();
+        ASSERT_TRUE(result.is_err());
+        EXPECT_EQ(result.as_ref().unwrap_err().kind(),
+                  io::ErrorKind { io::ErrorKind::NotConnected });
+    }
+    auto& waker = task::Waker::noop();
+    auto  cx    = task::Context { waker };
+    usize waiter;
+    auto ready = async::poll_registration_readiness(state, cx, async::Interest::writable(), waiter);
+    ASSERT_TRUE(ready.is_ready());
+    auto result = rstd::move(ready).take();
+    ASSERT_TRUE(result.is_err());
+    EXPECT_EQ(result.as_ref().unwrap_err().kind(), io::ErrorKind { io::ErrorKind::NotConnected });
+    auto owned = async::take_registration_error(state);
+    ASSERT_TRUE(owned.is_some());
+    expect_failure(*owned);
+    EXPECT_TRUE(async::take_registration_error(state).is_none());
+}
+
+TEST(RstdAsyncReactor, OwnerTakesOriginalFailureRepresentationOnce) {
+    static constexpr char message[] = "reactor message";
+    io::Error             failures[] {
+        io::Error::from_raw_os_error(i32(32)),
+        io::Error::make_const(io::ErrorKind { io::ErrorKind::BrokenPipe }, message),
+        io::Error::from_kind(io::ErrorKind { io::ErrorKind::TimedOut }),
+    };
+    for (auto& failure : failures) verify_reactor_simple_failure(rstd::move(failure));
+}
+
+TEST(RstdAsyncReactor, TimerFailureMovesOnceAndLateEventsCannotReplaceIt) {
+    int  drops {};
+    auto state = async::TimerArc::make(
+        WorkerHandle::make(RuntimeWorkerId {}), async::TimerKey {}, task::Waker::noop().clone());
+    async::handle_timer_event(
+        state,
+        async::PollEventData::backend_error(
+            async::TimerKey {},
+            io::Error::with_source(
+                io::ErrorKind { io::ErrorKind::BrokenPipe },
+                Box<dyn<error::Error>>::make(ReactorFailureContext {
+                    Box<dyn<error::Error>>::make(ReactorFailureLeaf(drops, 41)) }))));
+    async::handle_timer_event(
+        state,
+        async::PollEventData::backend_error(
+            async::TimerKey {}, io::Error::from_kind(io::ErrorKind { io::ErrorKind::Other })));
+    {
+        auto owned = async::update_timer_waker(state, task::Waker::noop().clone());
+        ASSERT_TRUE(owned.is_err());
+        expect_reactor_custom_failure(owned.as_ref().unwrap_err(), drops);
+        auto again = async::update_timer_waker(state, task::Waker::noop().clone());
+        ASSERT_TRUE(again.is_err());
+        EXPECT_EQ(again.as_ref().unwrap_err().kind(),
+                  io::ErrorKind { io::ErrorKind::NotConnected });
+    }
+    EXPECT_EQ(drops, 1);
 }
 
 struct CapturedEvent {

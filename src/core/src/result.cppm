@@ -225,7 +225,7 @@ public:
         if (is_ok()) {
             return Ok(rstd::move(op)(_get_move<0>()));
         } else {
-            return Err(_get<1>());
+            return Err(_get_move<1>());
         }
     }
 
@@ -239,7 +239,7 @@ public:
         if (is_ok()) {
             return rstd::move(op)(_get_move<0>());
         } else {
-            return def;
+            return rstd::forward<U>(def);
         }
     }
 
@@ -510,9 +510,9 @@ struct result_impl<const T&, E> : result_base<const T&, E> {
     /// \return A new `Result` with a copied `Ok` value.
     constexpr auto copied() -> Result<T, E> {
         if (this->is_ok()) {
-            return Ok(T(this->template _self_get<0>()));
+            return Ok(T(this->template _get<0>()));
         } else {
-            return Err(E(this->template _self_get<1>()));
+            return Err(this->template _get_move<1>());
         }
     }
 
@@ -533,9 +533,9 @@ struct result_impl<T&, E> : result_base<T&, E> {
     /// \return A new `Result` with a copied `Ok` value.
     constexpr auto copied() -> Result<T, E> {
         if (this->is_ok()) {
-            return Ok(T(this->template _self_get<0>()));
+            return Ok(T(this->template _get<0>()));
         } else {
-            return Err(E(this->template _self_get<1>()));
+            return Err(this->template _get_move<1>());
         }
     }
 
@@ -556,9 +556,9 @@ struct result_impl<Result<T, E>, E> : result_base<Result<T, E>, E> {
     /// \return The inner `Result` if `Ok`, otherwise the outer `Err`.
     constexpr auto flatten() -> Result<T, E> {
         if (this->is_ok()) {
-            return this->template _self_get<0>();
+            return this->template _get_move<0>();
         } else {
-            return Err(this->template _self_get<1>());
+            return Err(this->template _get_move<1>());
         }
     }
 };

@@ -56,7 +56,8 @@ TEST(CompletionStream, OwnedReceiveReturnsStorageAndHalfCloseKeepsInputOpen) {
     EXPECT_EQ(runtime.block_on(streams.get<0>().recv()).unwrap().as_slice(), "reply"_bytes);
     EXPECT_TRUE(runtime.block_on(streams.get<1>().flush()).is_ok());
     close_completed(runtime, streams);
-    EXPECT_TRUE(runtime.block_on(streams.get<0>().close()).is_ok());
+    EXPECT_TRUE(runtime.block_on(streams.get<0>().wait_closed()).is_ok());
+    EXPECT_TRUE(streams.get<0>().take_close_result().is_none());
 }
 
 TEST(CompletionStream, CloseStopsPendingReceiveAndRepeatedWaitsAreValid) {
@@ -74,7 +75,7 @@ TEST(CompletionStream, CloseStopsPendingReceiveAndRepeatedWaitsAreValid) {
     auto received = runtime.block_on(rstd::move(receiving)).unwrap();
     EXPECT_EQ(received.buffer.data(), storage);
     EXPECT_TRUE(received.result.is_err() || *received.result == usize());
-    EXPECT_TRUE(runtime.block_on(streams.get<0>().close()).is_ok());
+    EXPECT_TRUE(runtime.block_on(streams.get<0>().wait_closed()).is_ok());
     EXPECT_TRUE(runtime.block_on(streams.get<1>().close()).is_ok());
 }
 
@@ -96,7 +97,7 @@ TEST(CompletionStream, UnpolledOperationRetainsBufferAfterOwnerMovesAndDrops) {
     EXPECT_TRUE(runtime.block_on(streams.get<1>().close()).is_ok());
 }
 
-TEST(CompletionStream, CloseAfterRuntimeDestructionReturnsCachedInterrupted) {
+TEST(CompletionStream, RuntimeAbortErrorIsOwnedAndTakenOnce) {
     Option<tuple<async::io::Stream, async::io::Stream>> retained;
     {
         auto runtime = async::RuntimeBuilder::current_thread().enable_all().build().unwrap();
@@ -109,14 +110,18 @@ TEST(CompletionStream, CloseAfterRuntimeDestructionReturnsCachedInterrupted) {
         retained.insert(rstd::move(streams));
     }
     auto runtime      = async::RuntimeBuilder::current_thread().enable_all().build().unwrap();
-    auto check_closed = [&](const async::io::Stream& stream) {
+    auto check_closed = [&](async::io::Stream& stream) {
         for (int attempt = 0; attempt < 2; ++attempt) {
-            auto closed = runtime.block_on(async::timeout(async::into_future(stream.close()),
+            auto closed = runtime.block_on(async::timeout(async::into_future(stream.wait_closed()),
                                                           time::Duration::from_secs(u64(2))));
             ASSERT_TRUE(closed.is_ok());
-            ASSERT_TRUE(closed->is_err());
-            EXPECT_EQ(closed->unwrap_err().kind(), io::ErrorKind { io::ErrorKind::Interrupted });
+            ASSERT_TRUE(closed->is_ok());
         }
+        auto result = stream.take_close_result();
+        ASSERT_TRUE(result.is_some());
+        ASSERT_TRUE(result->is_err());
+        EXPECT_EQ(result->unwrap_err().kind(), io::ErrorKind { io::ErrorKind::Interrupted });
+        EXPECT_TRUE(stream.take_close_result().is_none());
     };
     check_closed(retained->get<0>());
     check_closed(retained->get<1>());
@@ -132,8 +137,8 @@ TEST(CompletionStream, SuccessfulCloseStaysSuccessfulAfterRuntimeDestruction) {
     }
     auto runtime      = async::RuntimeBuilder::current_thread().enable_all().build().unwrap();
     auto check_closed = [&](const async::io::Stream& stream) {
-        auto closed = runtime.block_on(
-            async::timeout(async::into_future(stream.close()), time::Duration::from_secs(u64(2))));
+        auto closed = runtime.block_on(async::timeout(async::into_future(stream.wait_closed()),
+                                                      time::Duration::from_secs(u64(2))));
         ASSERT_TRUE(closed.is_ok());
         EXPECT_TRUE(closed->is_ok());
     };

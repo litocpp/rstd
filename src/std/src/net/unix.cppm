@@ -30,6 +30,7 @@ public:
     auto into_owned_fd() && { return rstd::move(stream_).into_owned_fd(); }
     auto ready(async::Interest interest) { return stream_.ready(interest); }
     auto readable() { return stream_.readable(); }
+    auto take_backend_error() { return stream_.take_backend_error(); }
     auto writable() { return stream_.writable(); }
     auto try_read(bytes::BytesMut& buf) { return stream_.try_read(buf); }
     auto try_write(const bytes::Bytes& buf) { return stream_.try_write(buf); }
