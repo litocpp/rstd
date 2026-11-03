@@ -32,11 +32,45 @@ struct CompletionTcpState {
         }
         (void)notice.notifier().notify();
     }
+    void finish(Option<io::Error> error = None()) const {
+        Option<TcpStream>                        abandoned;
+        Vec<CloseSender, alloc::SharedAllocator> waiters;
+        {
+            auto state = fields.lock().unwrap();
+            if (state->closed) return;
+            state->stopping = true;
+            state->closed   = true;
+            if (error) state->error = Some(io::Error(*error));
+            abandoned = state->stream.take();
+            waiters   = rstd::move(state->waiters);
+        }
+        abandoned = None();
+        for (auto& waiter : waiters) {
+            if (error)
+                (void)rstd::move(waiter).send(Err(io::Error(*error)));
+            else
+                (void)rstd::move(waiter).send(Ok(empty {}));
+        }
+    }
 };
 auto tcp_completion_error(io::ErrorKind::Entity kind = io::ErrorKind::NotConnected) -> io::Error {
     return io::Error::from_kind(io::ErrorKind { kind });
 }
-auto close_completion_tcp(sync::Arc<CompletionTcpState> state) -> async::coro<empty> {
+struct CompletionTcpCloseTask {
+    sync::Arc<CompletionTcpState> state;
+    bool                          finished {};
+    explicit CompletionTcpCloseTask(sync::Arc<CompletionTcpState> state)
+        : state(rstd::move(state)) {}
+    CompletionTcpCloseTask(const CompletionTcpCloseTask&)     = delete;
+    CompletionTcpCloseTask(CompletionTcpCloseTask&&) noexcept = default;
+    ~CompletionTcpCloseTask() {
+        if (! state || finished) return;
+        state->stop();
+        state->finish(Some(tcp_completion_error(io::ErrorKind::Interrupted)));
+    }
+};
+auto close_completion_tcp(CompletionTcpCloseTask task) -> async::coro<empty> {
+    auto&             state = task.state;
     Option<TcpStream> stream;
     while (true) {
         auto wake = state->notice.notified();
@@ -54,29 +88,21 @@ auto close_completion_tcp(sync::Arc<CompletionTcpState> state) -> async::coro<em
         auto result = co_await rstd::move(*stream).close();
         if (result.is_err()) error = Some(rstd::move(result).unwrap_err());
     }
-    auto waiters = [&] {
-        auto fields    = state->fields.lock().unwrap();
-        fields->closed = true;
-        if (error) fields->error = Some(io::Error(*error));
-        return rstd::move(fields->waiters);
-    }();
-    for (auto& waiter : waiters) {
-        if (error)
-            (void)rstd::move(waiter).send(Err(io::Error(*error)));
-        else
-            (void)rstd::move(waiter).send(Ok(empty {}));
-    }
+    state->finish(rstd::move(error));
+    task.finished = true;
     co_return empty {};
 }
 struct CompletionTcp {
     sync::Arc<CompletionTcpState> state;
     auto                          start() const -> io::Result<empty> {
-        auto fields = state->fields.lock().unwrap();
-        if (fields->started) return Ok(empty {});
-        if (! ::CURRENT_RUNTIME || ! ::CURRENT_RUNTIME->io_enabled())
-            return Err(tcp_completion_error(io::ErrorKind::Unsupported));
-        fields->started = true;
-        (void)async::spawn(close_completion_tcp(state.clone()));
+        {
+            auto fields = state->fields.lock().unwrap();
+            if (fields->started) return Ok(empty {});
+            if (! ::CURRENT_RUNTIME || ! ::CURRENT_RUNTIME->io_enabled())
+                return Err(tcp_completion_error(io::ErrorKind::Unsupported));
+            fields->started = true;
+        }
+        (void)async::spawn(close_completion_tcp(CompletionTcpCloseTask { state.clone() }));
         return Ok(empty {});
     }
     void request_stop() const { state->stop(); }

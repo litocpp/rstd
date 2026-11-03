@@ -260,6 +260,7 @@ target_sources(
          src/async/completion.cppm
          src/async/completion_queue.cppm
          src/async/io.cppm
+         src/async/stream.cppm
          src/async/io_operation.cppm
          src/async/readiness.cppm
          src/async/poll.cppm
@@ -273,6 +274,7 @@ target_sources(
          src/net/lookup_host.cppm
          src/net/datagram.cppm
          src/net/socket_stream.cppm
+         src/net/completion_stream.cppm
          src/net/udp.cppm
          src/sys/socket/datagram.cppm
          src/net/tcp.cppm
@@ -286,6 +288,7 @@ target_sources(
           src/random/mod.cpp
           src/sys/random/mod.cpp
           src/async/runtime_core.cpp
+          src/async/stream.cpp
           src/thread/thread.cpp
           src/thread/thread/id.cpp
           src/thread/thread/main_thread.cpp
@@ -295,6 +298,7 @@ target_sources(
           src/sys/io/stdio.cpp
           src/io/stdio.cpp
           src/net/socket_stream.cpp
+          src/net/completion_stream.cpp
           src/net/udp.cpp
           src/sys/socket/datagram.cpp
           src/net/tcp.cpp

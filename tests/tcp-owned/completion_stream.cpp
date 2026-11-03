@@ -95,3 +95,48 @@ TEST(CompletionStream, UnpolledOperationRetainsBufferAfterOwnerMovesAndDrops) {
     EXPECT_TRUE(peer.is_err() || peer->is_empty());
     EXPECT_TRUE(runtime.block_on(streams.get<1>().close()).is_ok());
 }
+
+TEST(CompletionStream, CloseAfterRuntimeDestructionReturnsCachedInterrupted) {
+    Option<tuple<async::io::Stream, async::io::Stream>> retained;
+    {
+        auto runtime = async::RuntimeBuilder::current_thread().enable_all().build().unwrap();
+        auto streams = completed_pair(runtime);
+        EXPECT_EQ(
+            runtime.block_on(streams.get<0>().send_all(bytes::Bytes::copy_from_slice("x"_bytes)))
+                .unwrap(),
+            usize(1));
+        EXPECT_EQ(runtime.block_on(streams.get<1>().recv()).unwrap().as_slice(), "x"_bytes);
+        retained.insert(rstd::move(streams));
+    }
+    auto runtime      = async::RuntimeBuilder::current_thread().enable_all().build().unwrap();
+    auto check_closed = [&](const async::io::Stream& stream) {
+        for (int attempt = 0; attempt < 2; ++attempt) {
+            auto closed = runtime.block_on(async::timeout(async::into_future(stream.close()),
+                                                          time::Duration::from_secs(u64(2))));
+            ASSERT_TRUE(closed.is_ok());
+            ASSERT_TRUE(closed->is_err());
+            EXPECT_EQ(closed->unwrap_err().kind(), io::ErrorKind { io::ErrorKind::Interrupted });
+        }
+    };
+    check_closed(retained->get<0>());
+    check_closed(retained->get<1>());
+}
+
+TEST(CompletionStream, SuccessfulCloseStaysSuccessfulAfterRuntimeDestruction) {
+    Option<tuple<async::io::Stream, async::io::Stream>> retained;
+    {
+        auto runtime = async::RuntimeBuilder::current_thread().enable_all().build().unwrap();
+        auto streams = completed_pair(runtime);
+        close_completed(runtime, streams);
+        retained.insert(rstd::move(streams));
+    }
+    auto runtime      = async::RuntimeBuilder::current_thread().enable_all().build().unwrap();
+    auto check_closed = [&](const async::io::Stream& stream) {
+        auto closed = runtime.block_on(
+            async::timeout(async::into_future(stream.close()), time::Duration::from_secs(u64(2))));
+        ASSERT_TRUE(closed.is_ok());
+        EXPECT_TRUE(closed->is_ok());
+    };
+    check_closed(retained->get<0>());
+    check_closed(retained->get<1>());
+}
