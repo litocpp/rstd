@@ -1,5 +1,9 @@
 module;
 #include <rstd/macro.hpp>
+#if RSTD_OS_WINDOWS
+#include <windows.h>
+#include <winternl.h>
+#endif
 module rstd.sys.io.stdio;
 import rstd.sys.libc;
 
@@ -17,6 +21,40 @@ namespace libc = rstd::sys::libc;
 
 namespace rstd::sys::io::stdio
 {
+
+#if RSTD_OS_WINDOWS
+auto validate_async_pipe(os::handle::BorrowedHandle handle, bool writing) noexcept
+    -> IOResult<empty> {
+    auto  native = static_cast<HANDLE>(handle.as_raw_handle());
+    DWORD flags {};
+    if (GetFileType(native) != FILE_TYPE_PIPE ||
+        ! GetNamedPipeInfo(native, &flags, nullptr, nullptr, nullptr) ||
+        (flags & PIPE_TYPE_MESSAGE) != 0)
+        return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
+    IO_STATUS_BLOCK status {};
+    struct Access {
+        ACCESS_MASK value;
+    } access {};
+    struct Mode {
+        ULONG value;
+    } mode {};
+    auto query = [&](void* out, ULONG length, int kind) {
+        return NtQueryInformationFile(native, &status, out, length, kind);
+    };
+    // The user-mode SDK omits these FILE_INFORMATION_CLASS names.
+    constexpr int file_access_information = 8;
+    constexpr int file_mode_information   = 16;
+    auto          result                  = query(&access, sizeof(access), file_access_information);
+    if (result >= 0) result = query(&mode, sizeof(mode), file_mode_information);
+    if (result < 0) return Err(Error::from_raw_os_error(i32(RtlNtStatusToDosError(result))));
+    // FileModeInformation reports the synchronous flags even for unnamed pipes.
+    constexpr ULONG synchronous_io = 0x10 | 0x20;
+    if ((access.value & (writing ? FILE_WRITE_DATA : FILE_READ_DATA)) == 0 ||
+        (mode.value & synchronous_io) != 0)
+        return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
+    return Ok(empty {});
+}
+#endif
 
 auto write_pipe_fd(int fd, slice<byte> buf) noexcept -> IOResult<usize> {
 #if RSTD_OS_UNIX

@@ -13,6 +13,7 @@ if(WIN32)
     APPEND
     rstd_std_platform_modules
     src/sys/fs/windows.cppm
+    src/sys/process/windows.cppm
     src/sys/libc/windows.cppm
     src/sys/pal/windows/mod.cppm
     src/sys/socket/windows.cppm
@@ -31,6 +32,7 @@ if(WIN32)
     APPEND
     rstd_std_platform_sources
     src/sys/fs/windows.cpp
+    src/sys/process/windows.cpp
     src/sys/socket/windows.cpp
     src/sys/pal/windows/futex.cpp
     src/sys/pal/windows/mod.cpp

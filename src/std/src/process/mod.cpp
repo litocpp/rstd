@@ -6,6 +6,9 @@ import rstd.sys.libc;
 import rstd.sys.io.stdio;
 import rstd.sys.pal;
 import :sys.os_str.windows;
+#if RSTD_OS_WINDOWS
+import rstd.sys.process.windows;
+#endif
 #if RSTD_OS_LINUX
 import rstd.sys.process.linux;
 #endif
@@ -17,6 +20,10 @@ namespace libc = rstd::sys::libc;
 
 auto rstd::Impl<rstd::io::Write, rstd::process::ChildStdin>::write(slice<u8> buf)
     -> rstd::io::Result<usize> {
+#if RSTD_OS_WINDOWS
+    if (this->self().async_handle.is_some())
+        return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
+#endif
     return sys::io::stdio::write_pipe_fd(this->self().fd, as_bytes(buf));
 }
 
@@ -179,11 +186,14 @@ auto Child::try_wait() -> io::Result<Option<ExitStatus>> {
             io::error::ErrorKind { io::error::ErrorKind::InvalidInput }));
     }
     auto handle = static_cast<libc::HANDLE>(process_handle);
-    auto code   = libc::DWORD {};
+    auto waited = libc::WaitForSingleObject(handle, 0);
+    if (waited == libc::WAIT_TIMEOUT) return Ok(None());
+    if (waited != libc::M_WAIT_OBJECT_0)
+        return Err(io::error::Error::from_raw_os_error(i32(libc::GetLastError())));
+    auto code = libc::DWORD {};
     if (! libc::GetExitCodeProcess(handle, &code)) {
         return Err(io::error::Error::from_raw_os_error(i32(libc::GetLastError())));
     }
-    if (code == libc::M_STILL_ACTIVE) return Ok(None());
     (void)libc::CloseHandle(handle);
     process_handle = nullptr;
     pid            = -1;
@@ -802,8 +812,9 @@ auto child_environment(bool clear, const ::alloc::vec::Vec<rstd::process::EnvAct
 }
 
 struct WindowsPipe {
-    libc::HANDLE child { libc::M_INVALID_HANDLE_VALUE };
-    int          parent { -1 };
+    libc::HANDLE                    child { libc::M_INVALID_HANDLE_VALUE };
+    int                             parent { -1 };
+    Option<os::handle::OwnedHandle> async_parent;
 };
 
 void close_windows_pipe(WindowsPipe& pipe) {
@@ -813,8 +824,16 @@ void close_windows_pipe(WindowsPipe& pipe) {
     pipe.parent = -1;
 }
 
-auto windows_pipe(bool child_reads, libc::SECURITY_ATTRIBUTES& security)
+auto windows_pipe(bool child_reads, libc::SECURITY_ATTRIBUTES& security, bool asynchronous)
     -> rstd::result::Result<WindowsPipe, rstd::io::error::Error> {
+    if (asynchronous) {
+        auto pipe = sys::process::child_pipe(child_reads);
+        if (pipe.is_err()) return Err(rstd::move(pipe).unwrap_err());
+        auto result         = WindowsPipe {};
+        result.child        = rstd::move(pipe->child).into_raw_handle();
+        result.async_parent = Some(rstd::move(pipe->parent));
+        return Ok(rstd::move(result));
+    }
     auto read_handle  = libc::M_INVALID_HANDLE_VALUE;
     auto write_handle = libc::M_INVALID_HANDLE_VALUE;
     if (! libc::CreatePipe(&read_handle, &write_handle, &security, 0)) {
@@ -853,9 +872,10 @@ auto null_handle(bool input, libc::SECURITY_ATTRIBUTES& security)
 }
 #endif
 
-auto Spawn::spawn(rstd::process::Command& cmd)
+auto Spawn::spawn(rstd::process::Command& cmd, bool async_pipes)
     -> rstd::result::Result<rstd::process::Child, rstd::io::error::Error> {
 #if RSTD_OS_UNIX
+    (void)async_pipes;
     using namespace rstd::process;
 
     const auto cstring = [](ref<ffi::OsStr> value) -> rstd::io::Result<::alloc::ffi::CString> {
@@ -1047,12 +1067,12 @@ auto Spawn::spawn(rstd::process::Command& cmd)
     };
 
     if (cmd.cfg_stdin_.kind == Stdio::Piped_) {
-        auto created = windows_pipe(true, security);
+        auto created = windows_pipe(true, security, async_pipes);
         if (created.is_err()) return Err(rstd::move(created).unwrap_err());
         stdin_pipe = rstd::move(created).unwrap();
     }
     if (cmd.cfg_stdout_.kind == Stdio::Piped_) {
-        auto created = windows_pipe(false, security);
+        auto created = windows_pipe(false, security, async_pipes);
         if (created.is_err()) {
             auto error = rstd::move(created).unwrap_err();
             cleanup();
@@ -1061,7 +1081,7 @@ auto Spawn::spawn(rstd::process::Command& cmd)
         stdout_pipe = rstd::move(created).unwrap();
     }
     if (cmd.cfg_stderr_.kind == Stdio::Piped_) {
-        auto created = windows_pipe(false, security);
+        auto created = windows_pipe(false, security, async_pipes);
         if (created.is_err()) {
             auto error = rstd::move(created).unwrap_err();
             cleanup();
@@ -1148,22 +1168,18 @@ auto Spawn::spawn(rstd::process::Command& cmd)
         directory = Some(rstd::move(converted).unwrap());
     }
 
-    auto process_info        = libc::PROCESS_INFORMATION {};
     auto environment_pointer = environment.is_some()
                                    ? static_cast<void*>(environment->as_mut_ptr().as_raw_ptr())
                                    : nullptr;
     auto directory_pointer   = directory.is_some() ? directory->as_ptr().as_raw_ptr() : nullptr;
-    if (! libc::CreateProcessW(nullptr,
-                               line->as_mut_ptr(),
-                               nullptr,
-                               nullptr,
-                               libc::M_TRUE,
-                               libc::M_CREATE_UNICODE_ENVIRONMENT,
-                               environment_pointer,
-                               directory_pointer,
-                               &startup,
-                               &process_info)) {
-        auto error = windows_process_error();
+    auto process_info        = sys::process::spawn_process(line->as_mut_ptr().as_raw_ptr(),
+                                                           environment_pointer,
+                                                           directory_pointer,
+                                                           startup.hStdInput,
+                                                           startup.hStdOutput,
+                                                           startup.hStdError);
+    if (process_info.is_err()) {
+        auto error = rstd::move(process_info).unwrap_err();
         cleanup();
         return Err(rstd::move(error));
     }
@@ -1186,11 +1202,16 @@ auto Spawn::spawn(rstd::process::Command& cmd)
     null_stdin  = libc::M_INVALID_HANDLE_VALUE;
     null_stdout = libc::M_INVALID_HANDLE_VALUE;
     null_stderr = libc::M_INVALID_HANDLE_VALUE;
-    (void)libc::CloseHandle(process_info.hThread);
 
     auto child           = Child {};
-    child.pid            = static_cast<int>(process_info.dwProcessId);
-    child.process_handle = process_info.hProcess;
+    child.pid            = static_cast<int>(process_info->id.to_primitive());
+    child.process_handle = rstd::move(process_info->handle).into_raw_handle();
+    if (stdin_pipe.async_parent.is_some())
+        child.stdin_pipe = Some(ChildStdin(stdin_pipe.async_parent.take().unwrap()));
+    if (stdout_pipe.async_parent.is_some())
+        child.stdout_pipe = Some(ChildStdout(stdout_pipe.async_parent.take().unwrap()));
+    if (stderr_pipe.async_parent.is_some())
+        child.stderr_pipe = Some(ChildStderr(stderr_pipe.async_parent.take().unwrap()));
     if (stdin_pipe.parent >= 0) {
         child.stdin_pipe  = Some(ChildStdin(stdin_pipe.parent));
         stdin_pipe.parent = -1;

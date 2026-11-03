@@ -6,6 +6,9 @@ export import :process.exit_status;
 export import rstd.io;
 export import :path;
 export import rstd.os.fd;
+#if RSTD_OS_WINDOWS
+export import rstd.os.handle;
+#endif
 export import rstd.alloc;
 import rstd.sys.io.stdio;
 #if RSTD_OS_LINUX
@@ -53,11 +56,31 @@ struct Child;
 /// Dropping this closes the pipe, causing the child to see EOF on its stdin.
 struct ChildStdin {
     int fd { -1 };
+#if RSTD_OS_WINDOWS
+    Option<os::handle::OwnedHandle> async_handle;
+#endif
     ~ChildStdin();
-    ChildStdin(ChildStdin&& o) noexcept: fd(o.fd) { o.fd = -1; }
+    ChildStdin(ChildStdin&& o) noexcept
+        : fd(o.fd)
+#if RSTD_OS_WINDOWS
+          ,
+          async_handle(o.async_handle.take())
+#endif
+    {
+        o.fd = -1;
+    }
     ChildStdin& operator=(ChildStdin&&) = delete;
     ChildStdin()                        = default;
     explicit ChildStdin(int f): fd(f) {}
+#if RSTD_OS_WINDOWS
+    explicit ChildStdin(os::handle::OwnedHandle handle): async_handle(Some(rstd::move(handle))) {}
+    // Only stdio created by spawn_with_async_pipes() has an asynchronous native handle.
+    auto into_owned_handle() && -> io::Result<os::handle::OwnedHandle> {
+        if (async_handle.is_none())
+            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
+        return Ok(async_handle.take().unwrap());
+    }
+#endif
 #if RSTD_OS_UNIX
     auto as_raw_fd() const noexcept -> os::fd::RawFd { return fd; }
     auto as_fd() const noexcept [[clang::lifetimebound]] -> os::fd::BorrowedFd {
@@ -72,11 +95,31 @@ struct ChildStdin {
 /// A handle to a child process's standard output (read end of pipe).
 struct ChildStdout {
     int fd { -1 };
+#if RSTD_OS_WINDOWS
+    Option<os::handle::OwnedHandle> async_handle;
+#endif
     ~ChildStdout();
-    ChildStdout(ChildStdout&& o) noexcept: fd(o.fd) { o.fd = -1; }
+    ChildStdout(ChildStdout&& o) noexcept
+        : fd(o.fd)
+#if RSTD_OS_WINDOWS
+          ,
+          async_handle(o.async_handle.take())
+#endif
+    {
+        o.fd = -1;
+    }
     ChildStdout& operator=(ChildStdout&&) = delete;
     ChildStdout()                         = default;
     explicit ChildStdout(int f): fd(f) {}
+#if RSTD_OS_WINDOWS
+    explicit ChildStdout(os::handle::OwnedHandle handle): async_handle(Some(rstd::move(handle))) {}
+    // Only stdio created by spawn_with_async_pipes() has an asynchronous native handle.
+    auto into_owned_handle() && -> io::Result<os::handle::OwnedHandle> {
+        if (async_handle.is_none())
+            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
+        return Ok(async_handle.take().unwrap());
+    }
+#endif
 #if RSTD_OS_UNIX
     auto as_raw_fd() const noexcept -> os::fd::RawFd { return fd; }
     auto as_fd() const noexcept [[clang::lifetimebound]] -> os::fd::BorrowedFd {
@@ -91,11 +134,31 @@ struct ChildStdout {
 /// A handle to a child process's standard error (read end of pipe).
 struct ChildStderr {
     int fd { -1 };
+#if RSTD_OS_WINDOWS
+    Option<os::handle::OwnedHandle> async_handle;
+#endif
     ~ChildStderr();
-    ChildStderr(ChildStderr&& o) noexcept: fd(o.fd) { o.fd = -1; }
+    ChildStderr(ChildStderr&& o) noexcept
+        : fd(o.fd)
+#if RSTD_OS_WINDOWS
+          ,
+          async_handle(o.async_handle.take())
+#endif
+    {
+        o.fd = -1;
+    }
     ChildStderr& operator=(ChildStderr&&) = delete;
     ChildStderr()                         = default;
     explicit ChildStderr(int f): fd(f) {}
+#if RSTD_OS_WINDOWS
+    explicit ChildStderr(os::handle::OwnedHandle handle): async_handle(Some(rstd::move(handle))) {}
+    // Only stdio created by spawn_with_async_pipes() has an asynchronous native handle.
+    auto into_owned_handle() && -> io::Result<os::handle::OwnedHandle> {
+        if (async_handle.is_none())
+            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
+        return Ok(async_handle.take().unwrap());
+    }
+#endif
 #if RSTD_OS_UNIX
     auto as_raw_fd() const noexcept -> os::fd::RawFd { return fd; }
     auto as_fd() const noexcept [[clang::lifetimebound]] -> os::fd::BorrowedFd {
@@ -114,7 +177,7 @@ namespace rstd::sys::process_impl
 auto environment_keys_equal(ref<ffi::OsStr> left, ref<ffi::OsStr> right) -> bool;
 
 struct Spawn {
-    static auto spawn(rstd::process::Command& cmd)
+    static auto spawn(rstd::process::Command& cmd, bool async_pipes = false)
         -> rstd::result::Result<rstd::process::Child, rstd::io::error::Error>;
 };
 } // namespace rstd::sys::process_impl
@@ -133,9 +196,17 @@ struct Impl<io::Write, process::ChildStdin> : ImplBase<process::ChildStdin> {
 template<>
 struct Impl<io::Read, process::ChildStdout> : DefaultInImpl<io::Read, process::ChildStdout> {
     auto read(mut_ref<u8[]> buf) -> io::Result<usize> {
+#if RSTD_OS_WINDOWS
+        if (this->self().async_handle.is_some())
+            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
+#endif
         return sys::io::stdio::read_fd(this->self().fd, as_bytes_mut(buf));
     }
     auto read_buf(io::BorrowedCursor buf) -> io::Result<empty> {
+#if RSTD_OS_WINDOWS
+        if (this->self().async_handle.is_some())
+            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
+#endif
         auto result = sys::io::stdio::read_fd(this->self().fd, buf.as_uninit());
         if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
         if (! buf.advance_unchecked(*result))
@@ -147,9 +218,17 @@ struct Impl<io::Read, process::ChildStdout> : DefaultInImpl<io::Read, process::C
 template<>
 struct Impl<io::Read, process::ChildStderr> : DefaultInImpl<io::Read, process::ChildStderr> {
     auto read(mut_ref<u8[]> buf) -> io::Result<usize> {
+#if RSTD_OS_WINDOWS
+        if (this->self().async_handle.is_some())
+            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
+#endif
         return sys::io::stdio::read_fd(this->self().fd, as_bytes_mut(buf));
     }
     auto read_buf(io::BorrowedCursor buf) -> io::Result<empty> {
+#if RSTD_OS_WINDOWS
+        if (this->self().async_handle.is_some())
+            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
+#endif
         auto result = sys::io::stdio::read_fd(this->self().fd, buf.as_uninit());
         if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
         if (! buf.advance_unchecked(*result))
@@ -182,6 +261,9 @@ public:
     int pid { -1 };
 #if RSTD_OS_WINDOWS
     void* process_handle { nullptr };
+    auto  as_handle() const noexcept [[clang::lifetimebound]] -> os::handle::BorrowedHandle {
+        return os::handle::BorrowedHandle::borrow_raw(process_handle);
+    }
 #endif
     Option<ChildStdin>  stdin_pipe;
     Option<ChildStdout> stdout_pipe;
@@ -357,6 +439,13 @@ public:
 
     /// Spawns the child process.
     auto spawn() -> io::Result<Child> { return sys::process_impl::Spawn::spawn(*this); }
+
+#if RSTD_OS_WINDOWS
+    // Piped parent endpoints are overlapped handles for transfer to an asynchronous I/O owner.
+    auto spawn_with_async_pipes() -> io::Result<Child> {
+        return sys::process_impl::Spawn::spawn(*this, true);
+    }
+#endif
 
     /// Executes the command and waits for it to finish, returning the exit status.
     auto status() -> io::Result<ExitStatus> {

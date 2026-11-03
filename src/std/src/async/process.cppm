@@ -12,6 +12,9 @@ import :async.spawn;
 import :async.runtime_core;
 import rstd.sys.libc;
 import :sync;
+#if RSTD_OS_WINDOWS
+import rstd.sys.process.windows;
+#endif
 #if RSTD_OS_UNIX
 import :os.unix.process;
 #endif
@@ -39,8 +42,23 @@ struct ChildFields {
 struct ChildState {
     i32                      pid;
     sync::Mutex<ChildFields> fields;
+#if RSTD_OS_WINDOWS
+    ::alloc::boxed::Box<NotifyHandle> exit_notice;
+    Option<sys::process::ProcessWait> exit_wait;
+    ChildState(rstd::process::Child              child,
+               ::alloc::boxed::Box<NotifyHandle> notice,
+               sys::process::ProcessWait         wait)
+        : pid(i32(child.id().to_primitive())),
+          fields(ChildFields { rstd::move(child) }),
+          exit_notice(rstd::move(notice)),
+          exit_wait(Some(rstd::move(wait))) {}
+    static void notify_exit(void* context) noexcept {
+        (void)static_cast<NotifyHandle*>(context)->notify();
+    }
+#else
     explicit ChildState(rstd::process::Child child)
         : pid(i32(child.id().to_primitive())), fields(ChildFields { rstd::move(child) }) {}
+#endif
     auto terminate() const -> io::Result<empty> {
         auto state = fields.lock().unwrap();
         if (state->status.is_some() || state->error.is_some()) return Ok(empty {});
@@ -94,9 +112,13 @@ struct ProcessFields {
 struct ProcessState {
     sync::Mutex<ProcessFields> fields { ProcessFields {} };
     Notify                     changed;
+#if RSTD_OS_UNIX
     rstd::signal::Subscription signals;
     ProcessState(Notify changed, rstd::signal::Subscription signals)
         : changed(rstd::move(changed)), signals(rstd::move(signals)) {}
+#else
+    explicit ProcessState(Notify changed): changed(rstd::move(changed)) {}
+#endif
     void wake() const { (void)changed.notifier().notify(); }
     void stop() const {
         Vec<sync::Arc<ChildState>> children;
@@ -240,6 +262,12 @@ export class SpawnReservation {
         auto pid = i32(native.id().to_primitive());
         if (! active_ || pid <= i32())
             return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
+#if RSTD_OS_WINDOWS
+        auto notice = ::alloc::boxed::Box<NotifyHandle>::make(state_->changed.notifier());
+        auto watch  = sys::process::ProcessWait::make(
+            native.as_handle(), ChildState::notify_exit, notice.as_mut_ptr().as_raw_ptr());
+        if (watch.is_err()) return Err(rstd::move(watch).unwrap_err());
+#endif
         Option<sync::Arc<ChildState>> child;
         bool                          stopping;
         {
@@ -261,7 +289,12 @@ export class SpawnReservation {
                 state->children.remove(index);
             }
             stopping = state->stopping;
-            child    = Some(sync::Arc<ChildState>::make(rstd::move(native)));
+#if RSTD_OS_WINDOWS
+            child = Some(sync::Arc<ChildState>::make(
+                rstd::move(native), rstd::move(notice), rstd::move(watch).unwrap()));
+#else
+            child = Some(sync::Arc<ChildState>::make(rstd::move(native)));
+#endif
             state->children.push(child->clone());
             --state->reservations;
             active_ = false;
@@ -327,26 +360,48 @@ public:
     }
     // Reuses Command configuration; reservation and reap ownership stay inside this entry point.
     auto spawn(rstd::process::Command& command) const -> io::Result<Child> {
-#if RSTD_OS_UNIX
+#if RSTD_OS_UNIX || RSTD_OS_WINDOWS
         auto prepared = prepare();
         if (prepared.is_err()) return Err(rstd::move(prepared).unwrap_err());
+#if RSTD_OS_WINDOWS
+        auto native = command.spawn_with_async_pipes();
+#else
         auto native = command.spawn();
+#endif
         if (native.is_err()) return Err(rstd::move(native).unwrap_err());
         SpawnRollback          rollback { *native };
         Option<pipe::Sender>   input;
         Option<pipe::Receiver> output, error;
         if (auto descriptor = native->take_stdin(); descriptor.is_some()) {
+#if RSTD_OS_WINDOWS
+            auto handle = rstd::move(*descriptor).into_owned_handle();
+            if (handle.is_err()) return Err(rstd::move(handle).unwrap_err());
+            auto endpoint = pipe::Sender::from_owned_handle(rstd::move(handle).unwrap());
+#else
             auto endpoint = pipe::Sender::from_owned_fd(rstd::move(*descriptor).into_owned_fd());
+#endif
             if (endpoint.is_err()) return Err(rstd::move(endpoint).unwrap_err());
             input = Some(rstd::move(endpoint).unwrap());
         }
         if (auto descriptor = native->take_stdout(); descriptor.is_some()) {
+#if RSTD_OS_WINDOWS
+            auto handle = rstd::move(*descriptor).into_owned_handle();
+            if (handle.is_err()) return Err(rstd::move(handle).unwrap_err());
+            auto endpoint = pipe::Receiver::from_owned_handle(rstd::move(handle).unwrap());
+#else
             auto endpoint = pipe::Receiver::from_owned_fd(rstd::move(*descriptor).into_owned_fd());
+#endif
             if (endpoint.is_err()) return Err(rstd::move(endpoint).unwrap_err());
             output = Some(rstd::move(endpoint).unwrap());
         }
         if (auto descriptor = native->take_stderr(); descriptor.is_some()) {
+#if RSTD_OS_WINDOWS
+            auto handle = rstd::move(*descriptor).into_owned_handle();
+            if (handle.is_err()) return Err(rstd::move(handle).unwrap_err());
+            auto endpoint = pipe::Receiver::from_owned_handle(rstd::move(handle).unwrap());
+#else
             auto endpoint = pipe::Receiver::from_owned_fd(rstd::move(*descriptor).into_owned_fd());
+#endif
             if (endpoint.is_err()) return Err(rstd::move(endpoint).unwrap_err());
             error = Some(rstd::move(endpoint).unwrap());
         }
@@ -400,6 +455,7 @@ auto supervise_processes(ProcessTask task) -> coro<void> {
             state->finish();
             co_return;
         }
+#if RSTD_OS_UNIX
         auto signal = async::signal::recv(state->signals);
         if (signal.is_err()) {
             state->stop();
@@ -418,6 +474,11 @@ auto supervise_processes(ProcessTask task) -> coro<void> {
             auto result = rstd::move(selected).unwrap_right();
             if (result.is_err()) error = Some(rstd::move(result).unwrap_err());
         }
+#else
+        auto              result = co_await rstd::move(notice);
+        Option<io::Error> error;
+        if (result.is_err()) error = Some(rstd::move(result).unwrap_err());
+#endif
         if (error.is_some()) {
             state->stop();
             state->finish(rstd::move(error));
@@ -458,7 +519,7 @@ public:
     ~ProcessSupervisor() {
         if (state_) state_->stop();
     }
-    // Requires a runtime worker with I/O readiness. Create before forking to subscribe before exit.
+    // Requires an I/O-enabled runtime. Unix subscribes to child signals before spawning.
     static auto make() -> io::Result<ProcessSupervisor> {
         if (CURRENT_RUNTIME == nullptr || ! has_current_runtime_worker())
             return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::NotConnected }));
@@ -466,6 +527,7 @@ public:
             return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
         auto worker = CURRENT_RUNTIME->current_poll_worker();
         if (worker.is_err()) return Err(rstd::move(worker).unwrap_err());
+#if RSTD_OS_UNIX
         if (! worker->poll_capabilities().contains(PollCapability::Readiness))
             return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
         auto kind = rstd::signal::unix::child();
@@ -476,6 +538,15 @@ public:
         if (notice.is_err()) return Err(rstd::move(notice).unwrap_err());
         return Ok(ProcessSupervisor { sync::Arc<ProcessState>::make(
             rstd::move(notice).unwrap(), rstd::move(signals).unwrap()) });
+#elif RSTD_OS_WINDOWS
+        if (! worker->poll_capabilities().contains(PollCapability::FileCompletion))
+            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
+        auto notice = Notify::make();
+        if (notice.is_err()) return Err(rstd::move(notice).unwrap_err());
+        return Ok(ProcessSupervisor { sync::Arc<ProcessState>::make(rstd::move(notice).unwrap()) });
+#else
+        return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
+#endif
     }
     auto handle() const -> ProcessHandle { return ProcessHandle { state_.clone() }; }
     void stop_accepting() const { state_->fields.lock().unwrap()->accepting = false; }

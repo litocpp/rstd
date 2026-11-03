@@ -10,9 +10,11 @@ module;
 #include <stdio.h>
 #include <stdlib.h>
 
-// The user-mode SDK omits this ntdll declaration and the rename information class.
+// The user-mode SDK omits these ntdll declarations.
 extern "C" NTSYSAPI NTSTATUS NTAPI
 NtSetInformationFile(HANDLE, PIO_STATUS_BLOCK, PVOID, ULONG, int);
+extern "C" NTSYSAPI NTSTATUS NTAPI
+NtQueryInformationFile(HANDLE, PIO_STATUS_BLOCK, PVOID, ULONG, int);
 
 inline constexpr auto _ERROR_FILE_NOT_FOUND             = ERROR_FILE_NOT_FOUND;
 inline constexpr auto _ERROR_PATH_NOT_FOUND             = ERROR_PATH_NOT_FOUND;
@@ -332,6 +334,7 @@ using ::ReOpenFile;
 using ::CreateFileW;
 using ::NtCreateFile;
 using ::NtSetInformationFile;
+using ::NtQueryInformationFile;
 using ::RtlNtStatusToDosError;
 using ::SetFilePointerEx;
 using ::FlushFileBuffers;

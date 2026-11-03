@@ -3,14 +3,11 @@ module;
 
 export module rstd:async.notify;
 export import :async.forward;
-export import :async.reactor;
 export import rstd.io;
-import rstd.os.fd;
-import rstd.sys.libc;
+import rstd.alloc;
 import :sync;
 
 using namespace rstd;
-namespace libc = rstd::sys::libc;
 
 namespace rstd::async
 {
@@ -18,78 +15,98 @@ namespace rstd::async
 export class NotifyHandle;
 export class NotifyFuture;
 
+struct NotifyWaiter {
+    NotifyWaiter*       previous {};
+    NotifyWaiter*       next {};
+    Option<task::Waker> waker;
+    bool                queued {};
+    bool                granted {};
+};
+
 struct NotifyState {
-    os::fd::RawFd   read_fd;
-    os::fd::OwnedFd write_fd;
-    Registration    registration;
+    struct Queue {
+        NotifyWaiter* head {};
+        NotifyWaiter* tail {};
+        bool          permit {};
 
-    NotifyState(os::fd::RawFd read_fd, os::fd::OwnedFd write_fd, Registration registration)
-        : read_fd(read_fd),
-          write_fd(rstd::move(write_fd)),
-          registration(rstd::move(registration)) {}
-
-    NotifyState(const NotifyState&)                        = delete;
-    auto operator=(const NotifyState&) -> NotifyState&     = delete;
-    NotifyState(NotifyState&&) noexcept                    = default;
-    auto operator=(NotifyState&&) noexcept -> NotifyState& = default;
-
-    static auto last_os_error() noexcept -> io::Error {
-#if RSTD_OS_LINUX || RSTD_OS_MACOS
-        return io::Error::from_raw_os_error(i32(libc::get_errno()));
-#else
-        return io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported });
-#endif
-    }
-
-    auto drain() -> io::Result<bool> {
-#if RSTD_OS_LINUX || RSTD_OS_MACOS
-        bool any = false;
-        byte buf[64] {};
-        for (;;) {
-            auto n = libc::read(read_fd, buf, sizeof(buf));
-            if (n > 0) {
-                any = true;
-                continue;
-            }
-            if (n == 0) {
-                return Ok(any);
-            }
-
-            auto err = libc::get_errno();
-            if (err == libc::EINTR) {
-                continue;
-            }
-            if (err == libc::EAGAIN || err == libc::EWOULDBLOCK) {
-                return Ok(any);
-            }
-            return Err(io::Error::from_raw_os_error(i32(err)));
+        void unlink(NotifyWaiter& waiter) {
+            if (waiter.previous)
+                waiter.previous->next = waiter.next;
+            else
+                head = waiter.next;
+            if (waiter.next)
+                waiter.next->previous = waiter.previous;
+            else
+                tail = waiter.previous;
+            waiter.previous = nullptr;
+            waiter.next     = nullptr;
+            waiter.queued   = false;
         }
-#else
-        return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
-#endif
-    }
+
+        auto notify() -> Option<task::Waker> {
+            if (! head) {
+                permit = true;
+                return None();
+            }
+            auto& next = *head;
+            unlink(next);
+            next.granted = true;
+            return next.waker.take();
+        }
+    };
+
+    sync::Mutex<Queue> queue { Queue {} };
 
     auto notify() -> io::Result<empty> {
-#if RSTD_OS_LINUX || RSTD_OS_MACOS
-        byte value { 1 };
-        for (;;) {
-            auto n = libc::write(write_fd.as_raw_fd(), &value, 1);
-            if (n == 1) {
-                return Ok(empty {});
-            }
-
-            auto err = libc::get_errno();
-            if (err == libc::EINTR) {
-                continue;
-            }
-            if (err == libc::EAGAIN || err == libc::EWOULDBLOCK) {
-                return Ok(empty {});
-            }
-            return Err(io::Error::from_raw_os_error(i32(err)));
+        Option<task::Waker> wake;
+        {
+            auto state = queue.lock().unwrap_unchecked();
+            wake       = state->notify();
         }
-#else
-        return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
-#endif
+        if (wake.is_some()) rstd::move(*wake).wake();
+        return Ok(empty {});
+    }
+
+    auto poll(NotifyWaiter& waiter, task::Context& cx) -> bool {
+        Option<task::Waker> discarded;
+        auto                state = queue.lock().unwrap_unchecked();
+        if (waiter.granted) {
+            waiter.granted = false;
+            return true;
+        }
+        if (state->permit) {
+            state->permit = false;
+            return true;
+        }
+        if (waiter.waker.is_none() || ! waiter.waker->will_wake(cx.waker())) {
+            discarded    = waiter.waker.take();
+            waiter.waker = Some(cx.waker().clone());
+        }
+        if (! waiter.queued) {
+            waiter.previous = state->tail;
+            if (state->tail)
+                state->tail->next = &waiter;
+            else
+                state->head = &waiter;
+            state->tail   = &waiter;
+            waiter.queued = true;
+        }
+        return false;
+    }
+
+    void cancel(NotifyWaiter& waiter) {
+        Option<task::Waker> wake;
+        Option<task::Waker> discarded;
+        {
+            auto state = queue.lock().unwrap_unchecked();
+            if (waiter.queued) state->unlink(waiter);
+            if (waiter.granted) {
+                waiter.granted = false;
+                wake           = state->notify();
+            }
+            discarded = waiter.waker.take();
+        }
+        if (wake.is_some()) rstd::move(*wake).wake();
     }
 };
 
@@ -108,27 +125,7 @@ public:
     auto clone() const -> Notify { return Notify { m_state.clone() }; }
 
     static auto make() -> io::Result<Notify> {
-#if RSTD_OS_LINUX || RSTD_OS_MACOS
-        int fds[2] {};
-        if (libc::pipe2(fds, libc::O_NONBLOCK | libc::O_CLOEXEC) < 0) {
-            return Err(NotifyState::last_os_error());
-        }
-
-        auto read_fd  = os::fd::OwnedFd::from_raw_fd(fds[0]);
-        auto write_fd = os::fd::OwnedFd::from_raw_fd(fds[1]);
-
-        // Keep the read end alive until the backend finishes deregistering it.
-        auto registration = Registration::register_owned_fd(rstd::move(read_fd));
-        if (registration.is_err()) {
-            return Err(rstd::move(registration).unwrap_err_unchecked());
-        }
-
-        auto state = sync::Arc<NotifyState>::make(
-            fds[0], rstd::move(write_fd), rstd::move(registration).unwrap_unchecked());
-        return Ok(Notify { rstd::move(state) });
-#else
-        return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
-#endif
+        return Ok(Notify { sync::Arc<NotifyState>::make() });
     }
 
     auto notifier() const -> NotifyHandle;
@@ -160,67 +157,41 @@ public:
 };
 
 export class NotifyFuture {
-    sync::Arc<NotifyState> m_state;
-    ReadinessFuture        m_readiness;
-    Option<ReadyEvent>     m_event;
-    bool                   m_completed { false };
+    sync::Arc<NotifyState>  m_state;
+    sync::Arc<NotifyWaiter> m_waiter;
+    bool                    m_completed { false };
 
     explicit NotifyFuture(sync::Arc<NotifyState> state)
-        : m_state(rstd::move(state)),
-          m_readiness(m_state->registration, Interest::readable()),
-          m_event(None()) {}
+        : m_state(rstd::move(state)), m_waiter(sync::Arc<NotifyWaiter>::make()) {}
 
     friend class Notify;
+
+    void cancel() {
+        if (m_state && ! m_completed) m_state->cancel(*m_waiter);
+    }
 
 public:
     using Output = io::Result<empty>;
 
-    NotifyFuture(const NotifyFuture&)                        = delete;
-    auto operator=(const NotifyFuture&) -> NotifyFuture&     = delete;
-    NotifyFuture(NotifyFuture&&) noexcept                    = default;
-    auto operator=(NotifyFuture&&) noexcept -> NotifyFuture& = default;
-    ~NotifyFuture()                                          = default;
+    NotifyFuture(const NotifyFuture&)                    = delete;
+    auto operator=(const NotifyFuture&) -> NotifyFuture& = delete;
+    NotifyFuture(NotifyFuture&&) noexcept                = default;
+    auto operator=(NotifyFuture&& other) noexcept -> NotifyFuture& {
+        if (this != &other) {
+            cancel();
+            m_state     = rstd::move(other.m_state);
+            m_waiter    = rstd::move(other.m_waiter);
+            m_completed = other.m_completed;
+        }
+        return *this;
+    }
+    ~NotifyFuture() { cancel(); }
 
     auto poll(mut_ref<NotifyFuture> self, task::Context& cx) -> task::Poll<Output> {
-        auto& future = *self;
-        if (future.m_completed) {
-            rstd::panic { "async::NotifyFuture polled after completion" };
-        }
-
-        for (;;) {
-            auto drained = future.m_state->drain();
-            if (drained.is_err()) {
-                future.m_completed = true;
-                return task::Poll<Output>::Ready(Err(rstd::move(drained).unwrap_err_unchecked()));
-            }
-            if (rstd::move(drained).unwrap_unchecked()) {
-                if (future.m_event.is_some()) {
-                    future.m_state->registration.clear_readiness(
-                        future.m_event.take().unwrap_unchecked());
-                }
-                future.m_completed = true;
-                return task::Poll<Output>::Ready(Ok(empty {}));
-            }
-
-            if (future.m_event.is_some()) {
-                future.m_state->registration.clear_readiness(
-                    future.m_event.take().unwrap_unchecked());
-            }
-
-            auto ready = future.m_readiness.poll(future::as_mut_ref(future.m_readiness), cx);
-            if (ready.is_pending()) {
-                return task::Poll<Output>::Pending();
-            }
-
-            auto ready_result = rstd::move(ready).take();
-            if (ready_result.is_err()) {
-                future.m_completed = true;
-                return task::Poll<Output>::Ready(
-                    Err(rstd::move(ready_result).unwrap_err_unchecked()));
-            }
-
-            future.m_event.insert(rstd::move(ready_result).unwrap_unchecked());
-        }
+        if (self->m_completed) rstd::panic { "async::NotifyFuture polled after completion" };
+        if (! self->m_state->poll(*self->m_waiter, cx)) return task::Poll<Output>::Pending();
+        self->m_completed = true;
+        return task::Poll<Output>::Ready(Ok(empty {}));
     }
 };
 

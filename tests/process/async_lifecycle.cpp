@@ -7,7 +7,7 @@ import rstd.test;
 using namespace rstd::prelude;
 using namespace rstd;
 
-#if RSTD_OS_LINUX || RSTD_OS_MACOS
+#if RSTD_OS_LINUX || RSTD_OS_MACOS || RSTD_OS_WINDOWS
 auto notify_cancel_and_rearm() -> async::coro<bool> {
     auto notify   = async::Notify::make().unwrap();
     auto notifier = notify.notifier();
@@ -39,7 +39,7 @@ auto external_notify(async::Runtime& runtime) -> bool {
     return result.is_ok() && result->is_ok() && sent.is_ok();
 }
 
-TEST(AsyncNotify, CoalescesFullPipeAndCanRearmAfterCanceledWait) {
+TEST(AsyncNotify, CoalescesNotificationsAndCanRearmAfterCanceledWait) {
     auto runtime = async::RuntimeBuilder::current_thread().enable_all().build().unwrap();
     EXPECT_TRUE(runtime.block_on(notify_cancel_and_rearm()));
 }
@@ -56,6 +56,61 @@ TEST(AsyncNotify, WakesAcrossRuntimeWorkers) {
                        .build()
                        .unwrap();
     EXPECT_TRUE(external_notify(runtime));
+}
+
+TEST(AsyncNotify, TransfersCanceledGrantAndRemovesQueuedWaiters) {
+    auto notify = async::Notify::make().unwrap();
+    auto sender = notify.notifier();
+    auto cx     = task::Context { task::Waker::noop() };
+    auto first  = Some(notify.notified());
+    auto middle = Some(notify.notified());
+    auto last   = notify.notified();
+    EXPECT_TRUE(future::poll(*first, cx).is_pending());
+    EXPECT_TRUE(future::poll(*middle, cx).is_pending());
+    EXPECT_TRUE(future::poll(last, cx).is_pending());
+    middle = None();
+    EXPECT_TRUE(sender.notify().is_ok());
+    first = None();
+    EXPECT_TRUE(future::poll(last, cx).is_ready());
+    auto next = notify.notified();
+    EXPECT_TRUE(future::poll(next, cx).is_pending());
+    EXPECT_TRUE(sender.notify().is_ok());
+    EXPECT_TRUE(future::poll(next, cx).is_ready());
+}
+
+TEST(AsyncNotify, MovesKeepWaiterIdentityAndReturnUnusedPermit) {
+    auto notify = async::Notify::make().unwrap();
+    auto sender = notify.notifier();
+    auto cx     = task::Context { task::Waker::noop() };
+    auto first  = notify.notified();
+    auto second = notify.notified();
+    EXPECT_TRUE(future::poll(first, cx).is_pending());
+    EXPECT_TRUE(future::poll(second, cx).is_pending());
+    first      = rstd::move(second);
+    auto moved = Some(rstd::move(first));
+    EXPECT_TRUE(sender.notify().is_ok());
+    moved     = None();
+    auto next = notify.notified();
+    EXPECT_TRUE(future::poll(next, cx).is_ready());
+    auto pending = notify.notified();
+    EXPECT_TRUE(future::poll(pending, cx).is_pending());
+}
+
+TEST(AsyncNotify, CancelRacesWithCrossThreadNotification) {
+    for (int iteration = 0; iteration < 100; ++iteration) {
+        auto notify   = async::Notify::make().unwrap();
+        auto canceled = Some(notify.notified());
+        auto next     = notify.notified();
+        auto cx       = task::Context { task::Waker::noop() };
+        EXPECT_TRUE(future::poll(*canceled, cx).is_pending());
+        EXPECT_TRUE(future::poll(next, cx).is_pending());
+        auto sender = thread::spawn([handle = notify.notifier()] {
+                          return handle.notify();
+                      }).unwrap();
+        canceled    = None();
+        EXPECT_TRUE(rstd::move(sender).join().unwrap().is_ok());
+        EXPECT_TRUE(future::poll(next, cx).is_ready());
+    }
 }
 
 auto shutdown_waiters() -> async::coro<bool> {

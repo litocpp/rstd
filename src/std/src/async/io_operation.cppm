@@ -136,6 +136,12 @@ public:
     }
 #endif
 
+#if RSTD_OS_WINDOWS
+    static auto file(os::handle::OwnedHandle handle) -> CompletionSource {
+        return file(os::fd::OwnedFd::from_raw_fd(rstd::move(handle).into_raw_handle()));
+    }
+#endif
+
     static auto socket(os::fd::BorrowedFd fd) noexcept -> CompletionSource {
         return CompletionSource { fd.as_raw_fd(), CompletionSourceKind::Socket };
     }
@@ -1115,6 +1121,12 @@ public:
     }
 
     ~IoOperation() { cancel(); }
+
+    // A persistent owner can retain an operation after its current polling waiter is dropped.
+    auto take_poll_waker() -> Option<task::Waker> {
+        auto fields = m_state->fields.lock().unwrap_unchecked();
+        return fields->waker.take();
+    }
 
     static auto read(const CompletionSource& source, usize len) -> IoOperation {
         return IoOperation { IoOperationArc::make(source.clone(), len) };
