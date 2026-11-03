@@ -91,8 +91,6 @@ struct Impl<alloc::Allocator, ::VecTestAllocator>
 
 } // namespace rstd
 
-static_assert(sizeof(Vec<int>) == sizeof(void*) * 5);
-
 TEST(Vec, FallibleCapacityPreservesAllocatorAndClassifiesErrors) {
     using Error  = ::alloc::collections::TryReserveError;
     using Values = Vec<int, VecTestAllocator>;

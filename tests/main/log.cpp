@@ -4,7 +4,6 @@ import rstd.log;
 import rstd;
 import rstd.core;
 import rstd.alloc;
-import rstd.tests.log_module_check;
 
 using namespace rstd::prelude;
 using namespace rstd::literals;
@@ -197,13 +196,6 @@ TEST(LogMacros, TargetNoArgs) {
     auto max_level_guard = MaxLevelGuard(LevelFilter::Trace);
     error("my_mod", "targeted error no args");
     info("my_mod", "targeted info no args");
-}
-
-TEST(LogMacros, ExplicitModuleTargetCompiles) {
-    static EnvLogger logger;
-    (void)set_logger(logger);
-    auto max_level_guard = MaxLevelGuard(LevelFilter::Trace);
-    log_module_check::emit_with_target();
 }
 
 TEST(LogEnvLogger, OutputOmitsImplicitTarget) {

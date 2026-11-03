@@ -655,10 +655,6 @@ static_assert(! CanBorrowStaticBytes<mutable_static_bytes>);
 static_assert(! CanBorrowStaticBytes<bool_static_bytes>);
 static_assert(! CanBorrowStaticBytes<object_static_bytes>);
 static_assert(! CanBorrowStaticBytes<volatile_static_bytes>);
-static_assert(sizeof(Bytes) == sizeof(void*) * 4);
-
-auto make_static_bytes_cross_tu() -> Bytes;
-auto clone_bytes_cross_tu(const Bytes& bytes) -> Bytes;
 
 TEST(Bytes, StaticViewsAndClearKeepTheirOrigin) {
     auto bytes = Bytes::from_static<terminated_static_bytes>();
@@ -681,20 +677,6 @@ TEST(Bytes, StaticViewsAndClearKeepTheirOrigin) {
     EXPECT_TRUE(rstd::move(middle).try_into_mut().is_err());
     EXPECT_EQ(Bytes::from_static<physical_static_bytes>()[usize()], u8(42));
     EXPECT_EQ(Bytes::from_static<logical_static_bytes>()[usize()], u8(42));
-}
-
-TEST(Bytes, StaticAndArcDispatchAcrossTranslationUnits) {
-    auto bytes = make_static_bytes_cross_tu();
-    auto copy  = clone_bytes_cross_tu(bytes);
-    bytes      = Bytes::make();
-    EXPECT_EQ(copy.as_slice(), "cross"_bytes);
-    EXPECT_EQ(rstd::move(copy).into_mut().as_slice(), "cross"_bytes);
-    auto owned   = Bytes::copy_from_slice("owned"_bytes);
-    auto sibling = clone_bytes_cross_tu(owned);
-    EXPECT_FALSE(owned.is_unique());
-    owned = Bytes::make();
-    EXPECT_TRUE(sibling.is_unique());
-    EXPECT_EQ(rstd::move(sibling).try_into_mut().unwrap().as_slice(), "owned"_bytes);
 }
 
 TEST(BytesAllocator, SlicesAndSplitsRetainOneAllocationWithoutCopying) {

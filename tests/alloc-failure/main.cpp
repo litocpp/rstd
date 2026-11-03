@@ -1,9 +1,29 @@
 #include <rstd/macro.hpp>
-#include "../budget/objects.hpp"
 
 import rstd;
 
 using namespace rstd::prelude;
+
+struct Counts {
+    int constructed = 0;
+    int moved       = 0;
+    int dropped     = 0;
+};
+
+struct alignas(64) Tracked {
+    Counts* counts;
+    int     value;
+
+    Tracked(Counts& counts, int value): counts(&counts), value(value) { ++counts.constructed; }
+    Tracked(const Tracked&) = delete;
+    Tracked(Tracked&& other) noexcept: counts(other.counts), value(other.value) {
+        ++counts->moved;
+        other.counts = nullptr;
+    }
+    ~Tracked() {
+        if (counts) ++counts->dropped;
+    }
+};
 
 static bool     fail_next   = false;
 static bool     fail_resize = false;
@@ -177,7 +197,27 @@ void dyn_failure() {
     rstd_assert(counts.dropped == 1);
 }
 
-#include "../budget/pool.hpp"
+static void pool_avoids_global_allocator() {
+    using namespace rstd::alloc;
+    using namespace rstd::literals;
+    auto pool   = SharedPoolAllocator<VirtualMemoryAllocator>::try_make_in(
+                      VirtualMemoryAllocator {},
+                      PoolOptions { .retained_bytes = usize(262144) },
+                      VirtualMemoryAllocator {})
+                      .unwrap();
+    auto erased = SharedAllocator::try_make_in(VirtualMemoryAllocator {}, pool.clone()).unwrap();
+    {
+        auto buffer =
+            rstd::bytes::BytesMut::try_with_capacity_in(usize(16384), erased.clone()).unwrap();
+        buffer.extend_from_slice("hello"_str.as_bytes());
+        auto frozen   = buffer.freeze();
+        auto retained = frozen.clone();
+        rstd_assert(retained.len() == usize(5));
+    }
+    rstd_assert(pool.statistics().live_bytes == usize());
+    pool.trim();
+    rstd_assert(pool.upstream_statistics().mapped_bytes == usize());
+}
 
 template<typename F>
 void capacity_failure(F factory) {
@@ -248,7 +288,7 @@ void capacity_failures() {
 int main() {
     auto before_pool = allocations + zeroed_allocations + reallocations;
     fail_next        = true;
-    pool_lifetime();
+    pool_avoids_global_allocator();
     rstd_assert(fail_next);
     fail_next = false;
     rstd_assert(allocations + zeroed_allocations + reallocations == before_pool);

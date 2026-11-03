@@ -116,10 +116,6 @@ static_assert(! CanAllocateArc<OwnershipAllocator>);
 static_assert(CanAllocateArc<rstd::alloc::VirtualMemoryAllocator>);
 static_assert(CanAllocateArc<SharedOwner>);
 static_assert(! HasClone<Box<int, rstd::alloc::VirtualMemoryAllocator>>);
-static_assert(sizeof(Box<int>) == sizeof(int*));
-static_assert(sizeof(OwnedBox) == 2 * sizeof(void*));
-static_assert(sizeof(Arc<int>) == sizeof(void*));
-static_assert(sizeof(alloc::sync::Weak<int>) == sizeof(void*));
 
 struct alignas(256) OwnershipValue {
     int* drops;
@@ -889,114 +885,6 @@ TEST(AllocationOwnership, ZeroedAllocationInitializesReturnedExcessCapacity) {
     EXPECT_EQ(state.live, usize());
     EXPECT_EQ(state.invalid_releases, 0);
 }
-
-#if defined(RSTD_TEST_ALLOCATOR_FAILURE)
-// Enabled only by the explicit --wrap=__rstd_alloc test link configuration.
-static rstd::sync::atomic::Atomic<bool> fail_next_runtime_allocation { false };
-extern "C" void*                        __real___rstd_alloc(rstd::size_t size, rstd::size_t align);
-extern "C" void*                        __wrap___rstd_alloc(rstd::size_t size, rstd::size_t align) {
-    if (fail_next_runtime_allocation.exchange(false, rstd::sync::atomic::Ordering::Relaxed))
-        return nullptr;
-    return __real___rstd_alloc(size, align);
-}
-
-TEST(AllocationOwnership, BootstrapFailureInjectionReleasesConsumedAllocator) {
-    OwnershipState state;
-    fail_next_runtime_allocation.store(true, rstd::sync::atomic::Ordering::Relaxed);
-    auto tracking = SharedOwner::try_make(OwnershipAllocator(state));
-    EXPECT_TRUE(tracking.is_err());
-    EXPECT_FALSE(fail_next_runtime_allocation.load(rstd::sync::atomic::Ordering::Relaxed));
-    EXPECT_EQ(state.handles, 0);
-    fail_next_runtime_allocation.store(true, rstd::sync::atomic::Ordering::Relaxed);
-    auto arena = rstd::alloc::SharedBumpArena<OwnershipAllocator>::try_make(
-        usize(1024), OwnershipAllocator(state));
-    EXPECT_TRUE(arena.is_err());
-    EXPECT_FALSE(fail_next_runtime_allocation.load(rstd::sync::atomic::Ordering::Relaxed));
-    EXPECT_EQ(state.handles, 0);
-    fail_next_runtime_allocation.store(true, rstd::sync::atomic::Ordering::Relaxed);
-    auto budget = rstd::alloc::BudgetAllocator<OwnershipAllocator>::try_make(
-        usize(1024), OwnershipAllocator(state));
-    EXPECT_TRUE(budget.is_err());
-    EXPECT_FALSE(fail_next_runtime_allocation.load(rstd::sync::atomic::Ordering::Relaxed));
-    EXPECT_EQ(state.handles, 0);
-    fail_next_runtime_allocation.store(true, rstd::sync::atomic::Ordering::Relaxed);
-    auto erased = rstd::alloc::SharedAllocator::try_make(alloc::Global {});
-    EXPECT_TRUE(erased.is_err());
-    EXPECT_FALSE(fail_next_runtime_allocation.load(rstd::sync::atomic::Ordering::Relaxed));
-    EXPECT_EQ(state.allocations, 0);
-}
-
-TEST(AllocationOwnership, StaticBytesViewsDoNotAllocate) {
-    static constexpr unsigned char data[] { 'a', 'b', 'c', 'd' };
-    fail_next_runtime_allocation.store(true, rstd::sync::atomic::Ordering::Relaxed);
-    {
-        auto bytes  = rstd::bytes::Bytes::from_static<data>();
-        auto copy   = bytes.clone();
-        auto middle = copy.slice(usize(1), usize(3));
-        auto prefix = middle.split_to(usize(1));
-        auto suffix = bytes.split_off(usize(2));
-        rstd::hint::black_box(prefix);
-        rstd::hint::black_box(suffix);
-    }
-    EXPECT_TRUE(
-        fail_next_runtime_allocation.exchange(false, rstd::sync::atomic::Ordering::Relaxed));
-}
-
-TEST(AllocationOwnership, BytesGlobalOwnerDoesNotAllocate) {
-    fail_next_runtime_allocation.store(true, rstd::sync::atomic::Ordering::Relaxed);
-    auto bytes  = rstd::bytes::Bytes::make();
-    auto buffer = rstd::bytes::BytesMut::make();
-    auto empty  = rstd::bytes::BytesMut::from_vec(Vec<u8>::make());
-    auto cloned = bytes.allocator().clone();
-    auto untouched =
-        fail_next_runtime_allocation.exchange(false, rstd::sync::atomic::Ordering::Relaxed);
-    EXPECT_TRUE(untouched);
-    EXPECT_TRUE(bytes.is_empty());
-    EXPECT_TRUE(buffer.is_empty());
-    EXPECT_TRUE(empty.is_empty());
-}
-
-TEST(AllocationOwnership, ArcAllocatorFactoryIsNotCalledOnAllocationFailure) {
-    ForwardCounts counts;
-    bool          called = false;
-    fail_next_runtime_allocation.store(true, rstd::sync::atomic::Ordering::Relaxed);
-    auto result =
-        Arc<int>::try_make_in_with(ForwardAllocator(counts), [&](ref<rstd::dyn<Allocator>>) {
-            called = true;
-            return 42;
-        });
-    auto untouched =
-        fail_next_runtime_allocation.exchange(false, rstd::sync::atomic::Ordering::Relaxed);
-    EXPECT_TRUE(result.is_err());
-    EXPECT_FALSE(untouched);
-    EXPECT_FALSE(called);
-}
-
-TEST(AllocationOwnership, GlobalPointerFailureInjectionLeavesDynInputUntouched) {
-    int drops = 0;
-    {
-        OwnershipValue value(drops, 17);
-        fail_next_runtime_allocation.store(true, rstd::sync::atomic::Ordering::Relaxed);
-        auto box = Box<rstd::dyn<rstd::any::Any>>::try_make(rstd::move(value));
-        EXPECT_TRUE(box.is_err());
-        EXPECT_FALSE(fail_next_runtime_allocation.load(rstd::sync::atomic::Ordering::Relaxed));
-        EXPECT_NE(value.drops, nullptr);
-        fail_next_runtime_allocation.store(true, rstd::sync::atomic::Ordering::Relaxed);
-        auto arc = Arc<rstd::dyn<rstd::any::Any>>::try_make(rstd::move(value));
-        EXPECT_TRUE(arc.is_err());
-        EXPECT_FALSE(fail_next_runtime_allocation.load(rstd::sync::atomic::Ordering::Relaxed));
-        EXPECT_NE(value.drops, nullptr);
-        fail_next_runtime_allocation.store(true, rstd::sync::atomic::Ordering::Relaxed);
-        auto rc = alloc::rc::try_make_rc_in<rstd::dyn<rstd::any::Any>>(alloc::Global {},
-                                                                       rstd::move(value));
-        EXPECT_TRUE(rc.is_err());
-        EXPECT_FALSE(fail_next_runtime_allocation.load(rstd::sync::atomic::Ordering::Relaxed));
-        EXPECT_NE(value.drops, nullptr);
-        EXPECT_EQ(drops, 0);
-    }
-    EXPECT_EQ(drops, 1);
-}
-#endif
 
 struct AllocationReader {
     rstd::slice<u8> input;

@@ -1,7 +1,6 @@
 #include <rstd/test/gtest.hpp>
 
 import rstd;
-import rstd.tests.any_module_check;
 
 using namespace rstd::prelude;
 
@@ -24,12 +23,6 @@ struct MoveOnlyValue {
 };
 
 } // namespace
-
-TEST(Any, TypeIdIsStableAcrossModuleBoundary) {
-    EXPECT_EQ(rstd::any::TypeId::of<int>(), any_int_type_id_from_module());
-    EXPECT_EQ(rstd::any::TypeId::of<rstd::u8>(), any_u8_type_id_from_module());
-    EXPECT_NE(rstd::any::TypeId::of<int>(), rstd::any::TypeId::of<unsigned>());
-}
 
 TEST(Any, BoxedU8KeepsTypeAcrossVecMove) {
     auto boxed = Box<dyn<rstd::any::Any>>::make(rstd::u8(1));

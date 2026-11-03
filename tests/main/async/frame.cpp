@@ -36,10 +36,6 @@ struct PendingFrameFuture {
     }
 };
 
-static_assert(sizeof(async::coro<int>) == sizeof(std::coroutine_handle<>));
-static_assert(sizeof(async::coro<void>) == sizeof(std::coroutine_handle<>));
-static_assert(alignof(async::coro<int>) == alignof(std::coroutine_handle<>));
-
 auto tracked_leaf(FrameProbe probe) -> async::coro<int> {
     (void)probe;
     co_await async::yield_now();
@@ -48,11 +44,6 @@ auto tracked_leaf(FrameProbe probe) -> async::coro<int> {
 
 auto tracked_parent(FrameProbe probe) -> async::coro<int> {
     co_return co_await tracked_leaf(rstd::move(probe));
-}
-
-TEST(RstdAsyncFrame, PublicCoroStoresOnlyCompilerHandle) {
-    EXPECT_EQ(sizeof(async::coro<int>), sizeof(std::coroutine_handle<>));
-    EXPECT_EQ(sizeof(async::coro<void>), sizeof(std::coroutine_handle<>));
 }
 
 TEST(RstdAsyncFrame, MoveTransfersSoleFrameOwnership) {

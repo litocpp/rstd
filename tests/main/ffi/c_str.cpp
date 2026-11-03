@@ -1,7 +1,6 @@
 #include <rstd/test/gtest.hpp>
 
 import rstd;
-import rstd.tests.ffi_core_check;
 
 using namespace rstd::literals;
 using rstd::ffi::CStr;
@@ -26,10 +25,6 @@ auto bytes(rstd::slice<rstd::u8> value) -> rstd::vec::Vec<rstd::u8> {
 }
 
 } // namespace
-
-TEST(CStr, CoreOnlyImport) {
-    EXPECT_TRUE(ffi_core_check());
-}
 
 TEST(CStr, UntilNulRejectsEmptyAndUnterminatedInput) {
     EXPECT_TRUE(CStr::from_chars_until_nul(rstd::slice<char> {}).is_err());

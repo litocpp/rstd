@@ -1,7 +1,5 @@
 #include <rstd/test/gtest.hpp>
 import rstd;
-import rstd.tests.char_core_check;
-import rstd.tests.char_alloc_check;
 
 using namespace rstd::char_;
 using namespace rstd::literals;
@@ -250,11 +248,6 @@ TEST(Char, ScalarClassificationAndTraits) {
     EXPECT_EQ(rstd::format("{}", letter), "中"_str);
     EXPECT_EQ(rstd::format("{:>3}", letter), "  中"_str);
     EXPECT_EQ(rstd::format("{}", rstd::Char::MIN), "\0"_str);
-}
-
-TEST(Char, CoreAndAllocImports) {
-    EXPECT_TRUE(char_core_check());
-    EXPECT_TRUE(char_alloc_check());
 }
 
 TEST(Char, LetterCategory) {

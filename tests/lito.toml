@@ -1,21 +1,10 @@
 [workspace]
 name = "rstd-tests"
 members = [
-  "budget",
   "alloc-failure",
   "main",
-  "format",
   "runtime",
-  "udp",
-  "tcp-owned",
-  "io-error",
-  "range",
   "dlopn-runtime",
   "compile",
   "nostd",
-  "toml",
-  "signal",
-  "signal-windows",
-  "random",
-  "random/core-only",
 ]

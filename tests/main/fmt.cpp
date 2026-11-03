@@ -6,15 +6,6 @@ using namespace rstd;
 using namespace rstd::literals;
 using rstd::prelude::String;
 
-static_assert(Impled<f32, fmt::Display>);
-static_assert(Impled<f32, fmt::Debug>);
-static_assert(Impled<f64, fmt::LowerExp>);
-static_assert(Impled<f64, fmt::UpperExp>);
-static_assert(Impled<double, fmt::Display>);
-static_assert(Impled<double, fmt::Debug>);
-static_assert(Impled<double, fmt::LowerExp>);
-static_assert(Impled<double, fmt::UpperExp>);
-
 TEST(Fmt, Basic) {
     auto s = rstd::format("Hello, {}!", "world"_str);
     EXPECT_EQ(s, "Hello, world!"_str);

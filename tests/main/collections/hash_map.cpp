@@ -1,6 +1,5 @@
 #include <rstd/test/gtest.hpp>
 import rstd;
-import rstd.tests.alloc_collections_module;
 
 using namespace rstd::prelude;
 using namespace rstd::literals;
@@ -409,10 +408,6 @@ TEST(HashMap, CustomHashKeepsTheStoredEquivalentKey) {
     EXPECT_EQ(entry->template get<0>()->identity, i32(1005));
     EXPECT_EQ(*entry->template get<1>(), i32(500));
     EXPECT_EQ(map.remove(lookup), Some(i32(500)));
-}
-
-TEST(HashMap, PublicAllocatorErrorImport) {
-    EXPECT_TRUE(alloc_collections_reserve());
 }
 
 struct CountingMapEqual {

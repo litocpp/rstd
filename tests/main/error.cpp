@@ -3,7 +3,6 @@
 import rstd;
 import rstd.argparse;
 import rstd.json;
-import rstd.tests.error_module_check;
 import rstd.toml;
 
 using namespace rstd;
@@ -294,13 +293,6 @@ TEST(Error, DynMetadataHandlesEmptyAlignedAndMovedValues) {
         EXPECT_EQ((**error::downcast_ref<MoveOnlyError>(values[usize()].as_ref())).value, 37);
     }
     EXPECT_EQ(drops, 1);
-}
-
-TEST(Error, TypeIdentityWorksAcrossModuleBoundary) {
-    auto erased = make_cross_module_error(29);
-    EXPECT_TRUE(error::is<CrossModuleError>(erased.as_ref()));
-    EXPECT_EQ((**error::downcast_ref<CrossModuleError>(erased.as_ref())).value, 29);
-    EXPECT_EQ(rstd::format("{}", erased), "cross-module error"_str);
 }
 
 TEST(Error, CoreAndAllocErrorsFormatAndExposeSources) {

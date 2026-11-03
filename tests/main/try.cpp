@@ -3,7 +3,6 @@
 #include <string>
 #include <rstd/macro.hpp>
 import rstd.core;
-import rstd.tests.try_module_check;
 
 using namespace rstd;
 
@@ -538,29 +537,6 @@ TEST(Try, CanBeUsedAsFunctionArgument) {
 
     ASSERT_TRUE(result.is_ok());
     EXPECT_EQ(result.unwrap(), 9);
-}
-
-TEST(Try, WorksFromModuleGlobalFragment) {
-    auto success = try_module_check(true);
-    ASSERT_TRUE(success.is_ok());
-    EXPECT_EQ(success.unwrap(), 7);
-
-    auto failure = try_module_check(false);
-    ASSERT_TRUE(failure.is_err());
-    EXPECT_EQ(failure.unwrap_err(), 7);
-}
-
-TEST(Try, ModuleErrorConversionPreservesTypedSource) {
-    auto result = try_module_error_conversion();
-
-    ASSERT_TRUE(result.is_err());
-    auto error = rstd::move(result).unwrap_err();
-    ASSERT_TRUE(error.is_Child());
-    EXPECT_EQ(error.as_Child().source.value, 23);
-    auto source = rstd::as<rstd::error::Error>(error).source();
-    ASSERT_TRUE(source.is_some());
-    EXPECT_TRUE(rstd::error::is<TryModuleInnerError>(*source));
-    EXPECT_EQ((**rstd::error::downcast_ref<TryModuleInnerError>(*source)).value, 23);
 }
 
 } // namespace

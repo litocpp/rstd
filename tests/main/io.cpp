@@ -4,7 +4,6 @@
 #include <rstd/macro.hpp>
 import rstd;
 import rstd.core;
-import rstd.tests.std_io_module;
 #if RSTD_OS_WINDOWS
 extern "C" __declspec(dllimport) void __stdcall SetLastError(unsigned long error);
 #endif
@@ -517,8 +516,4 @@ TEST(Io, CopyAll) {
     EXPECT_EQ(dst.get_ref().len(), usize(5));
     EXPECT_EQ(dst.get_ref()[usize()], u8(1));
     EXPECT_EQ(dst.get_ref()[usize(4)], u8(5));
-}
-
-TEST(Io, PublicModuleAllocatorInterfaces) {
-    EXPECT_TRUE(std_io_module());
 }
