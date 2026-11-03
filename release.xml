@@ -1,3 +1,15 @@
+<release version="0.1.11" date="2026-11-04">
+  <description>
+    <ul>
+      <li>Add the async-debug feature and debug::Server.</li>
+      <li>Add async::pipe and ProcessSupervisor.</li>
+      <li>Add async::io::CompletionStream and net::as_stream.</li>
+      <li>Make I/O errors move-only.</li>
+      <li>Add Floating::round_ties_even.</li>
+      <li>Cleanup tests.</li>
+    </ul>
+  </description>
+</release>
 <release version="0.1.10" date="2026-10-30">
   <description>
     <ul>
