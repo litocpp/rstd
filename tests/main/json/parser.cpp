@@ -305,6 +305,124 @@ TEST(JsonReader, FloatOverflowIsExplicitAndGrammarRemainsStrict) {
     EXPECT_EQ(rstd::bit_cast<u64>(subnormal.parse_f64().unwrap()), u64(1));
 }
 
+TEST(JsonReader, UnsignedNumbersConvertWithoutFloatingPointRounding) {
+    struct Sample {
+        ref<str> text;
+        u64      value;
+    };
+    Sample samples[] {
+        { "0"_str, u64() },
+        { "-0"_str, u64() },
+        { "-0.0e999999999999999999"_str, u64() },
+        { "0e-999999999999999999"_str, u64() },
+        { "64"_str, u64(64) },
+        { "64.0"_str, u64(64) },
+        { "6.4e1"_str, u64(64) },
+        { "0.64E+2"_str, u64(64) },
+        { "6400e-2"_str, u64(64) },
+        { "9007199254740993.0"_str, u64(9007199254740993ULL) },
+        { "90071992547409930e-1"_str, u64(9007199254740993ULL) },
+        { "1e19"_str, u64(10000000000000000000ULL) },
+        { "18446744073709551615"_str, u64::MAX },
+        { "18446744073709551615.0"_str, u64::MAX },
+        { "184467440737095516150e-1"_str, u64::MAX },
+        { "0.18446744073709551615e20"_str, u64::MAX },
+    };
+    for (const auto& sample : samples) {
+        auto result = [&] {
+            auto               source = ::alloc::string::String::make(sample.text);
+            rstd::json::Reader reader(source.as_str());
+            auto               converted = reader.parse_unsigned_number().unwrap();
+            EXPECT_TRUE(reader.finish().is_ok());
+            return converted;
+        }();
+        EXPECT_EQ(result.as_u64(), Some(sample.value));
+        EXPECT_TRUE(result.error().is_none());
+    }
+    rstd::json::Reader original("64.0"_str);
+    EXPECT_TRUE(original.parse_number().unwrap().is_f64());
+}
+
+TEST(JsonReader, UnsignedConversionErrorsDoNotBecomeSyntaxErrors) {
+    using rstd::json::UnsignedNumberError;
+    struct Sample {
+        ref<str>            text;
+        UnsignedNumberError error;
+    };
+    Sample samples[] {
+        { "-1"_str, UnsignedNumberError::Negative },
+        { "-0.001"_str, UnsignedNumberError::Negative },
+        { "0.1"_str, UnsignedNumberError::Fractional },
+        { "1.0000000000000000000001"_str, UnsignedNumberError::Fractional },
+        { "1e-999999999999999999"_str, UnsignedNumberError::Fractional },
+        { "18446744073709551615.0000000001"_str, UnsignedNumberError::Fractional },
+        { "18446744073709551616"_str, UnsignedNumberError::OutOfRange },
+        { "1e20"_str, UnsignedNumberError::OutOfRange },
+        { "1e999999999999999999"_str, UnsignedNumberError::OutOfRange },
+    };
+    for (const auto& sample : samples) {
+        rstd::json::Reader reader(sample.text);
+        auto               parsed = reader.parse_unsigned_number();
+        ASSERT_TRUE(parsed.is_ok());
+        EXPECT_TRUE(parsed->as_u64().is_none());
+        EXPECT_EQ(parsed->error(), Some(sample.error));
+        EXPECT_TRUE(reader.finish().is_ok());
+    }
+    ref<str> invalid[] { ""_str,    "-"_str,  "01"_str, "1."_str,  "1e"_str,
+                         "1e+"_str, "+1"_str, ".1"_str, "null"_str };
+    for (auto input : invalid) {
+        rstd::json::Reader reader(input);
+        EXPECT_TRUE(reader.parse_unsigned_number().is_err());
+    }
+}
+
+TEST(JsonReader, UnsignedConversionAllowsReadingFollowingMembers) {
+    rstd::json::Reader reader(R"({"n":1e-9999,"n":6.4e1})"_str);
+    ASSERT_TRUE(reader.begin_object().is_ok());
+    bool first = true;
+    EXPECT_EQ(reader.next_object_key(first).unwrap().unwrap().as_str(), "n"_str);
+    auto invalid = reader.parse_unsigned_number().unwrap();
+    EXPECT_EQ(invalid.error(), Some(rstd::json::UnsignedNumberError::Fractional));
+    EXPECT_EQ(reader.next_object_key(first).unwrap().unwrap().as_str(), "n"_str);
+    EXPECT_EQ(reader.parse_unsigned_number().unwrap().as_u64(), Some(u64(64)));
+    EXPECT_TRUE(reader.next_object_key(first).unwrap().is_none());
+    EXPECT_TRUE(reader.finish().is_ok());
+}
+
+TEST(JsonReader, UnsignedNumbersHandleLongSignificandsAndUtf16) {
+    auto input = ::alloc::string::String::make("1"_str);
+    for (usize index {}; index < usize(10001); ++index) input.push(U'0');
+    input.push_str("e-10001"_str);
+    rstd::json::Reader reader(input.as_str());
+    EXPECT_EQ(reader.parse_unsigned_number().unwrap().as_u64(), Some(u64(1)));
+    EXPECT_TRUE(reader.finish().is_ok());
+    auto fraction = ::alloc::string::String::make("0."_str);
+    for (usize index {}; index < usize(10001); ++index) fraction.push(U'0');
+    fraction.push_str("1e10002"_str);
+    rstd::json::Reader shifted(fraction.as_str());
+    EXPECT_EQ(shifted.parse_unsigned_number().unwrap().as_u64(), Some(u64(1)));
+    EXPECT_TRUE(shifted.finish().is_ok());
+    rstd::array<u16, 5> units { u16('6'), u16('.'), u16('4'), u16('e'), u16('1') };
+    rstd::json::Reader  utf16(units.as_slice());
+    EXPECT_EQ(utf16.parse_unsigned_number().unwrap().as_u64(), Some(u64(64)));
+    EXPECT_TRUE(utf16.finish().is_ok());
+}
+
+TEST(JsonReader, SyntaxOnlySkippingChecksGrammarWithoutNumericConversion) {
+    using rstd::json::NumberValidation;
+    rstd::json::Reader range("1e99999999999999999"_str);
+    EXPECT_EQ(range.skip_value().unwrap_err().code(), rstd::json::ErrorCode::NumberOutOfRange);
+    rstd::json::Reader reader(
+        R"([1e99999999999999999,{"n":18446744073709551616,"v":1e-9999}])"_str);
+    EXPECT_TRUE(reader.skip_value(NumberValidation::SyntaxOnly).is_ok());
+    EXPECT_TRUE(reader.finish().is_ok());
+    ref<str> invalid[] { "[1e9999,01]"_str, "{\"n\":1e+}"_str, "[1e9999,]"_str };
+    for (auto text : invalid) {
+        rstd::json::Reader bad(text);
+        EXPECT_TRUE(bad.skip_value(NumberValidation::SyntaxOnly).is_err());
+    }
+}
+
 TEST(JsonReader, ReportsOffsetsAndConfigurableRecursionBudget) {
     rstd::array<u16, 6> input { u16('['), u16('\n'), u16(' '), u16('1'), u16(','), u16(']') };
     rstd::json::Reader  reader(input.as_slice());

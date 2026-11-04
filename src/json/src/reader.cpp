@@ -342,6 +342,8 @@ auto Reader::scan_number() -> Result<NumberToken, Error> {
         }
         if (eof()) return Err(error(ErrorCode::EofWhileParsingValue));
         if (! digit()) return Err(error(ErrorCode::InvalidNumber));
+        token.exponent_digits.begin = position();
+        token.exponent_negative     = negative;
         while (digit()) {
             auto       value          = take() - u16('0');
             const auto exponent_digit = rstd::as_cast<i32>(value);
@@ -350,6 +352,7 @@ auto Reader::scan_number() -> Result<NumberToken, Error> {
             else
                 token.exponent = token.exponent * i32(10) + exponent_digit;
         }
+        token.exponent_digits.end = position();
         if (negative) token.exponent = -token.exponent;
     }
     return Ok(token);
@@ -420,6 +423,61 @@ auto Reader::parse_number() -> Result<Number, Error> {
     }
     return Ok(
         Number::from_i64(magnitude == min_magnitude ? i64::MIN : -rstd::as_cast<i64>(magnitude)));
+}
+
+auto Reader::parse_unsigned_number() -> Result<UnsignedNumber, Error> {
+    auto scanned = scan_number();
+    if (scanned.is_err()) return Err(rstd::move(scanned).unwrap_err_unchecked());
+    const auto token           = *scanned;
+    const auto integer_digits  = token.integer.end - token.integer.begin;
+    const auto fraction_digits = token.fraction.end - token.fraction.begin;
+    const auto total_digits    = integer_digits + fraction_digits;
+    auto       digit           = [&](usize index) -> u64 {
+        const auto offset = index < integer_digits ? token.integer.begin + index
+                                                   : token.fraction.begin + index - integer_digits;
+        return rstd::as_cast<u64>(unit_at(offset) - u16('0'));
+    };
+    usize first {}, last {};
+    bool  nonzero = false;
+    for (usize index {}; index < total_digits; ++index) {
+        if (digit(index) == u64()) continue;
+        if (! nonzero) first = index;
+        last    = index;
+        nonzero = true;
+    }
+    if (! nonzero) return Ok(UnsignedNumber(u64()));
+    if (token.negative) return Ok(UnsignedNumber(UnsignedNumberError::Negative));
+
+    // Only exponents near the significand length can produce a bounded nonzero integer.
+    const auto exponent_limit =
+        total_digits > usize::MAX - usize(21) ? usize::MAX : total_digits + usize(21);
+    usize exponent {};
+    for (auto index = token.exponent_digits.begin; index < token.exponent_digits.end; ++index) {
+        const auto value = rstd::as_cast<usize>(unit_at(index) - u16('0'));
+        if (exponent > (exponent_limit - value) / usize(10))
+            return Ok(UnsignedNumber(token.exponent_negative ? UnsignedNumberError::Fractional
+                                                             : UnsignedNumberError::OutOfRange));
+        exponent = exponent * usize(10) + value;
+    }
+    usize point;
+    if (token.exponent_negative) {
+        if (exponent >= integer_digits) return Ok(UnsignedNumber(UnsignedNumberError::Fractional));
+        point = integer_digits - exponent;
+    } else {
+        if (exponent > usize::MAX - integer_digits)
+            return Ok(UnsignedNumber(UnsignedNumberError::OutOfRange));
+        point = integer_digits + exponent;
+    }
+    if (point <= last) return Ok(UnsignedNumber(UnsignedNumberError::Fractional));
+    if (point - first > usize(20)) return Ok(UnsignedNumber(UnsignedNumberError::OutOfRange));
+    u64 value {};
+    for (auto index = first; index < point; ++index) {
+        const auto next = index < total_digits ? digit(index) : u64();
+        if (value > (u64::MAX - next) / u64(10))
+            return Ok(UnsignedNumber(UnsignedNumberError::OutOfRange));
+        value = value * u64(10) + next;
+    }
+    return Ok(UnsignedNumber(value));
 }
 
 auto Reader::begin_array() -> Result<empty, Error> {
@@ -507,7 +565,7 @@ auto Reader::next_object_key_units(bool& first) -> Result<Option<Vec<u16>>, Erro
     return read_object_key<Vec<u16>>(first);
 }
 
-auto Reader::skip_value() -> Result<empty, Error> {
+auto Reader::skip_value(NumberValidation numbers) -> Result<empty, Error> {
     auto kind = value_kind();
     if (kind.is_err()) return Err(rstd::move(kind).unwrap_err_unchecked());
     switch (*kind) {
@@ -518,6 +576,11 @@ auto Reader::skip_value() -> Result<empty, Error> {
         return Ok(empty {});
     }
     case ValueKind::Number: {
+        if (numbers == NumberValidation::SyntaxOnly) {
+            auto value = scan_number();
+            if (value.is_err()) return Err(rstd::move(value).unwrap_err_unchecked());
+            return Ok(empty {});
+        }
         auto value = parse_number();
         if (value.is_err()) return Err(rstd::move(value).unwrap_err_unchecked());
         return Ok(empty {});
@@ -535,7 +598,7 @@ auto Reader::skip_value() -> Result<empty, Error> {
             auto next = next_array(first);
             if (next.is_err()) return Err(rstd::move(next).unwrap_err_unchecked());
             if (! *next) return Ok(empty {});
-            auto skipped = skip_value();
+            auto skipped = skip_value(numbers);
             if (skipped.is_err()) return skipped;
         }
     }
@@ -547,7 +610,7 @@ auto Reader::skip_value() -> Result<empty, Error> {
             auto key = next_object_key(first);
             if (key.is_err()) return Err(rstd::move(key).unwrap_err_unchecked());
             if (key->is_none()) return Ok(empty {});
-            auto skipped = skip_value();
+            auto skipped = skip_value(numbers);
             if (skipped.is_err()) return skipped;
         }
     }

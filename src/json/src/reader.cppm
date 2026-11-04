@@ -27,6 +27,35 @@ enum class FloatOverflow : rstd::uint8_t
     Infinity
 };
 
+enum class NumberValidation : rstd::uint8_t
+{
+    Representable,
+    SyntaxOnly
+};
+
+enum class UnsignedNumberError : rstd::uint8_t
+{
+    Negative,
+    Fractional,
+    OutOfRange
+};
+
+/// The exact unsigned-integer conversion of a consumed JSON number.
+class UnsignedNumber {
+    u64                         value_ {};
+    Option<UnsignedNumberError> error_;
+
+    explicit UnsignedNumber(u64 value) noexcept: value_(value) {}
+    explicit UnsignedNumber(UnsignedNumberError error) noexcept: error_(Some(error)) {}
+    friend class Reader;
+
+public:
+    auto as_u64() const noexcept -> Option<u64> {
+        return error_.is_none() ? Some(u64(value_)) : None();
+    }
+    auto error() const noexcept -> Option<UnsignedNumberError> { return error_; }
+};
+
 /// Reads borrowed UTF-8 text or UTF-16 code units without imposing a DOM representation.
 class Reader {
     rstd::parse::TextCursor  cursor_;
@@ -38,8 +67,10 @@ class Reader {
     struct NumberToken {
         rstd::parse::Span integer;
         rstd::parse::Span fraction;
+        rstd::parse::Span exponent_digits;
         i32               exponent {};
         bool              negative {};
+        bool              exponent_negative {};
         bool              floating {};
     };
 
@@ -79,13 +110,16 @@ public:
     /// Decodes code units, preserving unpaired surrogates.
     auto parse_string_units() -> Result<Vec<u16>, Error>;
     auto parse_number() -> Result<Number, Error>;
+    /// Syntax failures are errors; a valid number's conversion failure is returned as a value.
+    auto parse_unsigned_number() -> Result<UnsignedNumber, Error>;
     auto parse_f64(FloatOverflow overflow = FloatOverflow::Reject) -> Result<f64, Error>;
     auto begin_array() -> Result<empty, Error>;
     auto next_array(bool& first) -> Result<bool, Error>;
     auto begin_object() -> Result<empty, Error>;
     auto next_object_key(bool& first) -> Result<Option<String>, Error>;
     auto next_object_key_units(bool& first) -> Result<Option<Vec<u16>>, Error>;
-    auto skip_value() -> Result<empty, Error>;
+    auto skip_value(NumberValidation numbers = NumberValidation::Representable)
+        -> Result<empty, Error>;
     auto finish() -> Result<empty, Error>;
     auto duplicate_key_error() const noexcept -> Error {
         return error(ErrorCode::DuplicateObjectKey);
