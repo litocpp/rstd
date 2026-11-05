@@ -261,6 +261,46 @@ export constexpr auto validate_utf8(slice<u8> bytes) noexcept -> Result<empty, U
     return Ok(empty {});
 }
 
+export struct Utf8LossyScalar {
+    Char  value;
+    usize begin {}, end {};
+    bool  replacement {};
+};
+
+// Each replacement covers the exact invalid byte subsequence consumed.
+export class Utf8LossyIndices : public DefaultInClass<Utf8LossyIndices, iter::Iterator> {
+    slice<u8> remaining_;
+    usize     offset_ {};
+
+public:
+    using Item                         = Utf8LossyScalar;
+    static constexpr bool PROVEN_FUSED = true;
+
+    constexpr explicit Utf8LossyIndices(slice<u8> bytes): remaining_(bytes) {}
+    constexpr auto next() noexcept -> Option<Item> {
+        if (remaining_.is_empty()) return None();
+        auto [value, length] = char_::decode_char_utf8(remaining_.as_raw_ptr(), remaining_.len());
+        bool replacement     = value.to_primitive() == char_::REPLACEMENT && length == usize(1) &&
+                               remaining_[usize()].to_primitive() >= 0x80;
+        if (replacement) {
+            auto size    = remaining_.len() < usize(4) ? remaining_.len() : usize(4);
+            auto prefix  = slice<u8>::from_raw_parts(remaining_.as_raw_ptr(), size);
+            auto error   = validate_utf8(prefix).unwrap_err_unchecked();
+            auto invalid = error.error_len();
+            length       = invalid.is_some() ? usize(invalid->to_primitive()) : size;
+        }
+        auto begin = offset_;
+        offset_ += length;
+        remaining_ = slice<u8>::from_raw_parts(remaining_.as_raw_ptr() + length.to_primitive(),
+                                               remaining_.len() - length);
+        return Some(Item { value, begin, offset_, replacement });
+    }
+};
+
+export constexpr auto utf8_lossy_indices(slice<u8> bytes) noexcept -> Utf8LossyIndices {
+    return Utf8LossyIndices(bytes);
+}
+
 /// Validates a byte slice as UTF-8 and returns a string slice on success.
 export constexpr auto from_utf8(slice<u8> bytes) noexcept -> Result<ref<str>, Utf8Error> {
     auto validation = validate_utf8(bytes);

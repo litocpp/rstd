@@ -301,6 +301,82 @@ TEST(Str, CharIndicesUsesUtf8ByteOffsets) {
     EXPECT_TRUE(indices.next().is_none());
 }
 
+TEST(Str, Utf8LossyIndicesUsesOriginalByteRanges) {
+    auto scalars = rstd::str_::utf8_lossy_indices("A\0\xef\xbf\xbd\xe4\xb8\xad"_bytes);
+    auto a       = scalars.next().unwrap();
+    EXPECT_EQ(a.value.to_primitive(), U'A');
+    EXPECT_EQ(a.begin, usize());
+    EXPECT_EQ(a.end, usize(1));
+    EXPECT_FALSE(a.replacement);
+    auto nul = scalars.next().unwrap();
+    EXPECT_EQ(nul.value.to_primitive(), U'\0');
+    EXPECT_EQ(nul.begin, usize(1));
+    EXPECT_EQ(nul.end, usize(2));
+    auto actual_replacement = scalars.next().unwrap();
+    EXPECT_EQ(actual_replacement.value.to_primitive(), char32_t(0xfffd));
+    EXPECT_EQ(actual_replacement.begin, usize(2));
+    EXPECT_EQ(actual_replacement.end, usize(5));
+    EXPECT_FALSE(actual_replacement.replacement);
+    auto chinese = scalars.next().unwrap();
+    EXPECT_EQ(chinese.value.to_primitive(), U'中');
+    EXPECT_EQ(chinese.begin, usize(5));
+    EXPECT_EQ(chinese.end, usize(8));
+    EXPECT_FALSE(chinese.replacement);
+    EXPECT_TRUE(scalars.next().is_none());
+    EXPECT_TRUE(scalars.next().is_none());
+}
+
+TEST(Str, Utf8LossyIndicesGroupsInvalidBytesLikeRust) {
+    auto check = [](slice<u8>       bytes,
+                    const unsigned* values,
+                    const unsigned* ends,
+                    const bool*     replaced,
+                    unsigned        count) {
+        auto  it = rstd::str_::utf8_lossy_indices(bytes);
+        usize start;
+        for (unsigned i {}; i < count; ++i) {
+            auto item = it.next();
+            ASSERT_TRUE(item.is_some());
+            EXPECT_EQ(item->value.to_primitive(), char32_t(values[i]));
+            EXPECT_EQ(item->begin, start);
+            EXPECT_EQ(item->end, usize(ends[i]));
+            EXPECT_EQ(item->replacement, replaced[i]);
+            start = item->end;
+        }
+        EXPECT_EQ(start, bytes.len());
+        EXPECT_TRUE(it.next().is_none());
+    };
+    const unsigned replacement[] { 0xfffd };
+    const bool     yes[] { true };
+    const unsigned two[] { 2 }, three[] { 3 };
+    check("\xe2\x82"_bytes, replacement, two, yes, 1);
+    check("\xf0\x9f\x92"_bytes, replacement, three, yes, 1);
+    const unsigned mixed[] { 0xfffd, 'A' };
+    const bool     mixed_flags[] { true, false };
+    const unsigned ends2[] { 2, 3 }, ends3[] { 3, 4 };
+    check("\xe2\x82"
+          "A"_bytes,
+          mixed,
+          ends2,
+          mixed_flags,
+          2);
+    check("\xf0\x90\x80"
+          "A"_bytes,
+          mixed,
+          ends3,
+          mixed_flags,
+          2);
+    const unsigned doubles[] { 0xfffd, 0xfffd };
+    const bool     double_flags[] { true, true };
+    const unsigned byte_ends[] { 1, 2 };
+    check("\xc0\xaf"_bytes, doubles, byte_ends, double_flags, 2);
+    const unsigned triples[] { 0xfffd, 0xfffd, 0xfffd };
+    const bool     triple_flags[] { true, true, true };
+    const unsigned byte_ends3[] { 1, 2, 3 };
+    check("\xed\xa0\x80"_bytes, triples, byte_ends3, triple_flags, 3);
+    EXPECT_TRUE(rstd::str_::utf8_lossy_indices(""_bytes).next().is_none());
+}
+
 TEST(String, MakeFromStr) {
     auto s = rstd::string::String::make("hello"_str);
     EXPECT_EQ(s.len(), usize(5));

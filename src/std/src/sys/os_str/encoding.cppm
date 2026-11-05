@@ -30,16 +30,9 @@ constexpr auto decode_lossy(slice<u8> bytes, usize& index, bool wtf8) -> char32_
     }
     auto remaining =
         slice<u8>::from_raw_parts(bytes.as_raw_ptr() + index.to_primitive(), bytes.len() - index);
-    auto [value, length] = char_::decode_utf8(remaining.as_raw_ptr(), remaining.len());
-    if (value == char_::REPLACEMENT && length == usize(1) && unit(remaining, usize()) >= 0x80) {
-        auto prefix = slice<u8>::from_raw_parts(
-            remaining.as_raw_ptr(), remaining.len() < usize(4) ? remaining.len() : usize(4));
-        auto error   = str_::validate_utf8(prefix).unwrap_err_unchecked();
-        auto invalid = error.error_len();
-        length       = invalid.is_some() ? usize(invalid->to_primitive()) : prefix.len();
-    }
-    index += length;
-    return value;
+    auto scalar = str_::utf8_lossy_indices(remaining).next().unwrap_unchecked();
+    index += scalar.end;
+    return scalar.value.to_primitive();
 }
 
 void encode(Vec<u8>& bytes, unsigned value) {
