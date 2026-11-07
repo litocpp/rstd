@@ -98,6 +98,55 @@ auto readiness_waker(int& wakes) -> task::Waker {
     return task::Waker::from_raw(readiness_waker_clone(rstd::addressof(wakes)));
 }
 
+struct OrderedWake {
+    async::RegistrationState* state;
+    int*                      count;
+    int*                      order;
+    bool*                     unlocked;
+    int                       value;
+};
+
+extern const task::RawWakerVTable ORDERED_WAKER_VTABLE;
+
+auto ordered_waker_clone(voidp data) -> task::RawWaker {
+    return task::RawWaker::from_raw_parts(data, rstd::addressof(ORDERED_WAKER_VTABLE));
+}
+
+void ordered_waker_wake(voidp data) {
+    auto& record                    = *static_cast<OrderedWake*>(data);
+    auto  fields                    = record.state->fields.try_lock();
+    *record.unlocked                = *record.unlocked && fields.is_ok();
+    record.order[(*record.count)++] = record.value;
+}
+
+const task::RawWakerVTable ORDERED_WAKER_VTABLE {
+    &ordered_waker_clone,
+    &ordered_waker_wake,
+    &ordered_waker_wake,
+    &readiness_waker_drop,
+};
+
+TEST(RstdAsyncReactor, ConcurrentReadinessWakesWriteThenReadOutsideLock) {
+    auto        state = async::RegistrationArc::make(os::fd::INVALID_RAW_FD);
+    int         count {}, order[2] {};
+    bool        unlocked = true;
+    OrderedWake read { state.deref_mut().as_raw_ptr(), &count, order, &unlocked, 1 };
+    OrderedWake write { state.deref_mut().as_raw_ptr(), &count, order, &unlocked, 2 };
+    {
+        auto fields         = state->fields.lock().unwrap();
+        fields->read_waker  = Some(task::Waker::from_raw(ordered_waker_clone(&read)));
+        fields->write_waker = Some(task::Waker::from_raw(ordered_waker_clone(&write)));
+    }
+    auto key = async::RegistrationKey { u32(), u32(1) };
+    async::handle_registration_event(
+        state,
+        async::PollEventData::readiness(key, async::Ready::readable() | async::Ready::writable()));
+    ASSERT_EQ(count, 2);
+    EXPECT_EQ(order[0], 2);
+    EXPECT_EQ(order[1], 1);
+    EXPECT_TRUE(unlocked);
+}
+
 TEST(RstdAsyncReactor, ReadinessTakesOnlyMatchingWaitersBeforeNotifying) {
     auto state = async::RegistrationArc::make(os::fd::INVALID_RAW_FD);
     int  read_wakes {}, write_wakes {};
@@ -336,6 +385,44 @@ const async::RawPollEventOwnerVTable CAPTURE_OWNER_VTABLE {
 auto capture_owner(CapturedEvent& capture) -> async::PollEventOwner {
     return async::PollEventOwner::from_raw(async::RawPollEventOwner::from_raw_parts(
         rstd::addressof(capture), rstd::addressof(CAPTURE_OWNER_VTABLE)));
+}
+
+void dispatch_all(async::PollBatch batch);
+
+TEST(RstdAsyncIoBackend, HeldPollBatchSurvivesLargeShutdownBatch) {
+    auto initialized = async::Poll::init(async::IoBackendPreference::ReadinessEmulationRequired);
+    ASSERT_TRUE(initialized.is_ok());
+    auto          poll = rstd::move(initialized).unwrap_unchecked();
+    CapturedEvent captures[260] {};
+    for (rstd::uint32_t i = 0; i < 130; ++i) {
+        auto key    = async::TimerKey { u32(i), u32(1) };
+        auto result = async::Poll::apply(
+            poll.state,
+            async::PollCommand::arm_timer(key, time::Instant::now(), capture_owner(captures[i])));
+        ASSERT_EQ(result.status(), async::PollApplyStatus::Accepted);
+    }
+    auto held = async::Poll::poll(poll.state, async::PollTimeout::Immediate);
+    ASSERT_TRUE(held.is_ok());
+    ASSERT_EQ(held->len(), usize(130));
+    for (rstd::uint32_t i = 130; i < 260; ++i) {
+        auto key    = async::TimerKey { u32(i), u32(1) };
+        auto result = async::Poll::apply(
+            poll.state,
+            async::PollCommand::arm_timer(key,
+                                          time::Instant::now() + time::Duration::from_secs(u64(60)),
+                                          capture_owner(captures[i])));
+        ASSERT_EQ(result.status(), async::PollApplyStatus::Accepted);
+    }
+    auto closing = async::Poll::shutdown(poll.state);
+    ASSERT_EQ(closing.len(), usize(130));
+    dispatch_all(rstd::move(closing));
+    dispatch_all(rstd::move(held).unwrap_unchecked());
+    for (rstd::uint32_t i = 0; i < 260; ++i) {
+        ASSERT_TRUE(captures[i].value.is_some());
+        EXPECT_EQ(captures[i].value->timer_key(), (async::TimerKey { u32(i), u32(1) }));
+        EXPECT_EQ(captures[i].value->kind(),
+                  i < 130 ? async::PollEventKind::Timer : async::PollEventKind::BackendError);
+    }
 }
 
 auto reserve_operation(async::PollState& state, async::PollEventOwner owner, u32 fresh_slot = u32())
@@ -875,6 +962,14 @@ TEST(RstdAsyncIoBackend, ReadinessEmulationRejectsFileOperations) {
     ASSERT_TRUE(capture.value.is_some());
     EXPECT_EQ(capture.value->kind(), async::PollEventKind::BackendError);
     dispatch_all(async::Poll::shutdown(poll.state));
+}
+
+TEST(RstdAsyncIoBackend, ReadCompletionRejectsMoreThanRequested) {
+    auto source = async::CompletionSource::file(os::fd::BorrowedFd::borrow_raw(0));
+    auto state  = async::IoOperationState(rstd::move(source), usize(3));
+    auto result = state.finish(async::PollCompletion::success(isize(4)));
+    EXPECT_TRUE(result.is_err());
+    EXPECT_EQ(state.payload.as<async::PollOperationKind::Read>().buffer.len(), usize());
 }
 
 } // namespace

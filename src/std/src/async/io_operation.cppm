@@ -254,6 +254,7 @@ struct IoOperationState {
     struct Read {
         bytes::BytesMut buffer;
         Option<u64>     offset;
+        usize           requested;
         bool            return_buffer { false };
     };
 
@@ -303,12 +304,11 @@ struct IoOperationState {
 
     IoOperationState(CompletionSource source, usize read_len, Option<u64> offset = None())
         : source(rstd::move(source)),
-          payload(Payload::with<PollOperationKind::Read>(Read { bytes::BytesMut::make(), offset })),
+          payload(Payload::with<PollOperationKind::Read>(
+              Read { bytes::BytesMut::make(), offset, read_len })),
           fields(IoOperationFields {}) {
         begin();
-        auto buffer = bytes::BytesMut::with_capacity(read_len);
-        buffer.resize(read_len, u8 {});
-        payload.as<PollOperationKind::Read>().buffer = rstd::move(buffer);
+        payload.as<PollOperationKind::Read>().buffer = bytes::BytesMut::with_capacity(read_len);
     }
 
     IoOperationState(CompletionSource source, bytes::Bytes data)
@@ -320,9 +320,11 @@ struct IoOperationState {
 
     IoOperationState(CompletionSource source, bytes::BytesMut buffer)
         : source(rstd::move(source)),
-          payload(
-              Payload::with<PollOperationKind::Read>(Read { rstd::move(buffer), None(), true })),
+          payload(Payload::with<PollOperationKind::Read>(
+              Read { rstd::move(buffer), None(), usize(), true })),
           fields(IoOperationFields {}) {
+        auto& read     = payload.as<PollOperationKind::Read>();
+        read.requested = read.buffer.remaining_mut();
         begin();
     }
 
@@ -394,8 +396,8 @@ struct IoOperationState {
         case PollOperationKind::Read: {
             auto& read     = payload.as<PollOperationKind::Read>();
             auto  writable = read.buffer.spare_capacity_mut();
-            auto  data     = read.return_buffer ? writable.as_byte_ptr() : read.buffer.data();
-            auto  length   = read.return_buffer ? writable.len() : read.buffer.len();
+            auto  data     = writable.as_byte_ptr();
+            auto  length   = read.requested;
             return attach_source(
                 source.kind() == CompletionSourceKind::Socket
                     ? PollOperation::read_socket(source.as_raw_fd(), data, length)
@@ -478,18 +480,13 @@ struct IoOperationState {
                 io::error::ErrorKind { io::error::ErrorKind::InvalidData }));
         if (payload.is<PollOperationKind::Read>()) {
             auto& read = payload.as<PollOperationKind::Read>();
+            if (transferred > read.requested)
+                return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidData }));
+            read.buffer.advance_mut_unchecked(transferred);
             if (read.return_buffer) {
-                if (transferred > read.buffer.spare_capacity_mut().len())
-                    return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidData }));
-                read.buffer.advance_mut_unchecked(transferred);
                 return Ok(IoCompletion { transferred, flags, bytes::Bytes {} });
             }
             auto buffer = rstd::move(read.buffer);
-            if (transferred > buffer.len()) {
-                return Err(io::error::Error::from_kind(
-                    io::error::ErrorKind { io::error::ErrorKind::InvalidData }));
-            }
-            buffer.truncate(transferred);
             return Ok(IoCompletion { transferred, flags, buffer.freeze() });
         }
         return Ok(IoCompletion { transferred, flags, bytes::Bytes::make() });

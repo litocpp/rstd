@@ -86,6 +86,7 @@ sources = [
   "async/concurrency.cpp",
   "async/facility.cpp",
   "async/io_operation.cpp",
+  "async/write_all.cpp",
   "async/frame.cpp",
   "async/lifecycle.cpp",
   "async/runtime.cpp",

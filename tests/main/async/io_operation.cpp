@@ -253,6 +253,43 @@ TEST(RstdAsyncIoOperation, SocketReadWriteCompletesThroughBackend) {
     EXPECT_EQ(data[usize(3)], u8('p'));
 }
 
+auto read_respects_requested_length(os::fd::RawFd writer, os::fd::RawFd reader)
+    -> async::coro<bool> {
+    auto write_source = async::CompletionSource::socket(os::fd::BorrowedFd::borrow_raw(writer));
+    auto read_source  = async::CompletionSource::socket(os::fd::BorrowedFd::borrow_raw(reader));
+    auto payload      = bytes::Bytes::copy_from_slice("abcdefgh"_bytes);
+    while (! payload.is_empty()) {
+        auto written = co_await async::IoOperation::write(write_source, payload.clone());
+        if (written.is_err() || written->transferred() == usize() ||
+            written->transferred() > payload.len())
+            co_return false;
+        payload.advance(written->transferred());
+    }
+    auto  expected = "abcdefgh"_bytes;
+    usize offset {};
+    while (offset < expected.len()) {
+        auto limit  = offset == usize() ? usize(3) : expected.len() - offset;
+        auto result = co_await async::IoOperation::read(read_source, limit);
+        if (result.is_err() || result->transferred() == usize() || result->transferred() > limit)
+            co_return false;
+        auto data = result->data();
+        if (data.len() != result->transferred()) co_return false;
+        for (usize index {}; index < data.len(); ++index) {
+            if (data[index] != expected[offset + index]) co_return false;
+        }
+        offset += data.len();
+    }
+    co_return true;
+}
+
+TEST(RstdAsyncIoOperation, ReadReturnsOnlyRequestedBytes) {
+    auto pair = make_socket_pair();
+    ASSERT_TRUE(pair.is_some());
+    auto sockets = rstd::move(pair).unwrap_unchecked();
+    auto runtime = async::RuntimeBuilder::current_thread().enable_io().build().unwrap();
+    EXPECT_TRUE(runtime.block_on(read_respects_requested_length(sockets.first, sockets.second)));
+}
+
 TEST(RstdAsyncIoOperation, FuturePollUsesOneSubmissionAndLatestWaker) {
     auto pair = make_socket_pair();
     ASSERT_TRUE(pair.is_some());

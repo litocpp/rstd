@@ -122,14 +122,18 @@ auto registration_interest(const RegistrationFields& fields) noexcept -> Interes
     return interest;
 }
 
-void wake_all(Vec<task::Waker>& wakers) {
-    while (! wakers.is_empty()) {
-        rstd::move(wakers.pop().unwrap_unchecked()).wake();
+struct RegistrationWakers {
+    task::Waker read;
+    task::Waker write;
+
+    void wake() {
+        rstd::move(write).wake();
+        rstd::move(read).wake();
     }
-}
+};
 
 void fail_registration(const RegistrationArc& state, io::Error error) {
-    auto wakers = Vec<task::Waker>::make();
+    auto wakers = RegistrationWakers {};
     auto tokens = Vec<FacilityCompletionToken>::make();
     auto key    = RegistrationKey {};
     {
@@ -138,10 +142,10 @@ void fail_registration(const RegistrationArc& state, io::Error error) {
         fields->closed = true;
         fields->error  = Some(rstd::move(error));
         if (fields->read_waker.is_some()) {
-            wakers.push(fields->read_waker.take().unwrap_unchecked());
+            wakers.read = fields->read_waker.take().unwrap_unchecked();
         }
         if (fields->write_waker.is_some()) {
-            wakers.push(fields->write_waker.take().unwrap_unchecked());
+            wakers.write = fields->write_waker.take().unwrap_unchecked();
         }
         fields->read_waiter_id  = usize();
         fields->write_waiter_id = usize();
@@ -152,7 +156,7 @@ void fail_registration(const RegistrationArc& state, io::Error error) {
             tokens.push(rstd::move(fields->facility_waiters.pop()).unwrap_unchecked().token);
         }
     }
-    wake_all(wakers);
+    wakers.wake();
     while (! tokens.is_empty()) {
         auto token = rstd::move(tokens.pop()).unwrap_unchecked();
         (void)token.complete_poll(PollEventData::backend_error(
@@ -175,7 +179,7 @@ void finish_registration_deregister(const RegistrationArc& state, Option<io::Err
 }
 
 void begin_registration_deregister(const RegistrationArc& state) {
-    auto wakers               = Vec<task::Waker>::make();
+    auto wakers               = RegistrationWakers {};
     auto tokens               = Vec<FacilityCompletionToken>::make();
     auto worker               = Option<WorkerHandle> {};
     auto command              = Option<PollCommand> {};
@@ -185,10 +189,10 @@ void begin_registration_deregister(const RegistrationArc& state) {
         if (! fields->closed) {
             fields->closed = true;
             if (fields->read_waker.is_some()) {
-                wakers.push(fields->read_waker.take().unwrap_unchecked());
+                wakers.read = fields->read_waker.take().unwrap_unchecked();
             }
             if (fields->write_waker.is_some()) {
-                wakers.push(fields->write_waker.take().unwrap_unchecked());
+                wakers.write = fields->write_waker.take().unwrap_unchecked();
             }
             fields->read_waiter_id  = usize();
             fields->write_waiter_id = usize();
@@ -221,7 +225,7 @@ void begin_registration_deregister(const RegistrationArc& state) {
         finish_registration_deregister(state, None());
     }
 
-    wake_all(wakers);
+    wakers.wake();
     while (! tokens.is_empty()) {
         auto token = rstd::move(tokens.pop()).unwrap_unchecked();
         (void)token.complete(FacilityEventKind::Canceled);
@@ -328,7 +332,7 @@ void handle_registration_event(const RegistrationArc& state, PollEventData data)
     auto ready = data.readiness();
     auto key   = data.registration_key();
 
-    auto wakers  = Vec<task::Waker>::make();
+    auto wakers  = RegistrationWakers {};
     auto tokens  = Vec<FacilityCompletionToken>::make();
     auto worker  = Option<WorkerHandle> {};
     auto command = Option<PollCommand> {};
@@ -340,12 +344,12 @@ void handle_registration_event(const RegistrationArc& state, PollEventData data)
         ++fields->tick;
         if ((ready.is_readable() || ready.is_read_closed() || ready.is_error()) &&
             fields->read_waker.is_some()) {
-            wakers.push(fields->read_waker.take().unwrap_unchecked());
+            wakers.read            = fields->read_waker.take().unwrap_unchecked();
             fields->read_waiter_id = usize();
         }
         if ((ready.is_writable() || ready.is_write_closed() || ready.is_error()) &&
             fields->write_waker.is_some()) {
-            wakers.push(fields->write_waker.take().unwrap_unchecked());
+            wakers.write            = fields->write_waker.take().unwrap_unchecked();
             fields->write_waiter_id = usize();
         }
         for (rstd::size_t i = 0; i < fields->facility_waiters.len().to_primitive();) {
@@ -367,7 +371,7 @@ void handle_registration_event(const RegistrationArc& state, PollEventData data)
     if (command.is_some()) {
         (void)submit_registration_command(state, *worker, rstd::move(command).unwrap_unchecked());
     }
-    wake_all(wakers);
+    wakers.wake();
     while (! tokens.is_empty()) {
         auto token = rstd::move(tokens.pop()).unwrap_unchecked();
         (void)token.complete_poll(PollEventData::readiness(key, ready));

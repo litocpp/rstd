@@ -225,10 +225,8 @@ public:
         }
 
         while (future.written < future.buf->len()) {
-            auto remaining = bytes::Bytes::copy_from_slice(
-                slice<u8>::from_raw_parts(future.buf->data() + future.written.to_primitive(),
-                                          future.buf->len() - future.written));
-            auto out = poll_write(*future.writer, cx, remaining);
+            auto remaining = future.buf->slice(future.written, future.buf->len());
+            auto out       = poll_write(*future.writer, cx, remaining);
             if (out.is_pending()) {
                 return task::Poll<Output>::Pending();
             }
