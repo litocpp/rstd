@@ -71,12 +71,17 @@ public:
     using DestroyFn = void (*)(voidp);
 
 private:
+    friend struct TaskRegistry;
+
     static constexpr usize DETACHED { rstd::size_t(1) };
     static constexpr usize ACCESS { rstd::size_t(2) };
+    static constexpr usize UNREGISTERED { usize::MAX };
+    static constexpr usize RETIRED { usize::MAX - usize(1) };
 
     rstd::sync::atomic::Atomic<usize> m_strong { usize(1) };
     rstd::sync::atomic::Atomic<usize> m_access_state { usize() };
     TaskStateBase*                    m_task { nullptr };
+    rstd::sync::atomic::Atomic<usize> m_registry_slot { UNREGISTERED };
     voidp                             m_storage_owner { nullptr };
     DestroyFn                         m_destroy_storage { nullptr };
 
@@ -1010,30 +1015,62 @@ struct WorkerInbox {
 };
 
 struct TaskRegistry {
-    Vec<TaskRef> m_tasks;
+    Vec<Option<TaskRef>> m_tasks;
+    usize                m_live {};
 
-    TaskRegistry(): m_tasks(Vec<TaskRef>::make()) {}
+    TaskRegistry(): m_tasks(Vec<Option<TaskRef>>::make()) {}
 
-    void insert(TaskRef task) { m_tasks.push(rstd::move(task)); }
+    void insert(TaskRef task) {
+        auto* control = task.identity();
+        auto  slot    = m_tasks.len();
+        if (control == nullptr || slot >= TaskRefControl::RETIRED) {
+            rstd::panic { "invalid TaskRegistry insertion" };
+        }
+        // Each control belongs to one task and may be registered only once, even across runtimes.
+        auto expected = TaskRefControl::UNREGISTERED;
+        if (! control->m_registry_slot.compare_exchange_strong(
+                expected, slot, sync::atomic::Ordering::Relaxed, sync::atomic::Ordering::Relaxed)) {
+            rstd::panic { "TaskRefControl already registered" };
+        }
+        m_tasks.push(Some(rstd::move(task)));
+        ++m_live;
+    }
 
-    auto is_empty() const -> bool { return m_tasks.is_empty(); }
+    auto is_empty() const noexcept -> bool { return m_live == usize(); }
 
     auto clone_all() const -> Vec<TaskRef> {
         auto tasks = Vec<TaskRef>::make();
         for (rstd::size_t i = 0; i < m_tasks.len().to_primitive(); ++i) {
-            tasks.push(m_tasks[usize(i)].clone());
+            auto& task = m_tasks[usize(i)];
+            if (task.is_some()) tasks.push(task->clone());
         }
         return tasks;
     }
 
     void remove(TaskRefControl* task) {
-        for (rstd::size_t i = 0; i < m_tasks.len().to_primitive(); ++i) {
-            auto index = usize(i);
-            if (m_tasks[index].identity() == task) {
-                m_tasks.remove(index);
-                return;
-            }
+        if (task == nullptr) return;
+        auto slot = task->m_registry_slot.load(sync::atomic::Ordering::Relaxed);
+        if (slot >= m_tasks.len() || m_tasks[slot].is_none() || m_tasks[slot]->identity() != task) {
+            return;
         }
+        task->m_registry_slot.store(TaskRefControl::RETIRED, sync::atomic::Ordering::Relaxed);
+        (void)m_tasks[slot].take();
+        --m_live;
+        if (m_live == usize()) {
+            m_tasks.clear();
+            return;
+        }
+        auto holes = m_tasks.len() - m_live;
+        if (holes < usize(64) || holes < m_live) return;
+        usize write {};
+        for (usize read {}; read < m_tasks.len(); ++read) {
+            if (m_tasks[read].is_none()) continue;
+            if (write != read) m_tasks[write] = m_tasks[read].take();
+            m_tasks[write]->identity()->m_registry_slot.store(write,
+                                                              sync::atomic::Ordering::Relaxed);
+            ++write;
+        }
+        m_tasks.truncate(write);
     }
 };
 
