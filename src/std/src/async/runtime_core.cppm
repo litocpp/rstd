@@ -877,21 +877,46 @@ public:
     auto completion_id() const noexcept -> FacilityId { return m_completion_id; }
 };
 
-struct ReadyQueue {
-    Vec<ScheduleTicket> m_tickets;
+template<typename T>
+class WorkerFifo {
+    Vec<Option<T>> m_values;
+    usize          m_head {};
 
-    ReadyQueue(): m_tickets(Vec<ScheduleTicket>::make()) {}
+public:
+    auto is_empty() const noexcept -> bool { return m_head == m_values.len(); }
+
+    void push(T value) { m_values.push(Some(rstd::move(value))); }
+
+    auto pop_front() -> Option<T> {
+        if (is_empty()) return None();
+        auto result = m_values[m_head++].take();
+        if (m_head == m_values.len()) {
+            clear();
+        } else if (m_head >= usize(64) && m_head >= m_values.len() - m_head) {
+            m_values.retain([](const Option<T>& value) {
+                return value.is_some();
+            });
+            m_head = usize();
+        }
+        return result;
+    }
+
+    void clear() {
+        m_values.clear();
+        m_head = usize();
+    }
+};
+
+struct ReadyQueue {
+    WorkerFifo<ScheduleTicket> m_tickets;
+
+    ReadyQueue() = default;
 
     auto is_empty() const -> bool { return m_tickets.is_empty(); }
 
     void push(ScheduleTicket ticket) { m_tickets.push(rstd::move(ticket)); }
 
-    auto pop_front() -> Option<ScheduleTicket> {
-        if (m_tickets.is_empty()) {
-            return None();
-        }
-        return Some(m_tickets.remove(usize()));
-    }
+    auto pop_front() -> Option<ScheduleTicket> { return m_tickets.pop_front(); }
 
     void clear() { m_tickets.clear(); }
 };
@@ -971,20 +996,15 @@ public:
 };
 
 struct WorkerInbox {
-    Vec<WorkerCommand> m_commands;
+    WorkerFifo<WorkerCommand> m_commands;
 
-    WorkerInbox(): m_commands(Vec<WorkerCommand>::make()) {}
+    WorkerInbox() = default;
 
     auto is_empty() const -> bool { return m_commands.is_empty(); }
 
     void push(WorkerCommand command) { m_commands.push(rstd::move(command)); }
 
-    auto pop_front() -> Option<WorkerCommand> {
-        if (m_commands.is_empty()) {
-            return None();
-        }
-        return Some(m_commands.remove(usize()));
-    }
+    auto pop_front() -> Option<WorkerCommand> { return m_commands.pop_front(); }
 
     void clear() { m_commands.clear(); }
 };

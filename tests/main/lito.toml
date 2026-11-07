@@ -163,6 +163,7 @@ sources = [
 package = "rstd-std"
 sources = [
   "async/io_backend.cppm",
+  "async/scheduler.cppm",
   "ffi/os_encoding.cppm",
   "net/tcp/backend.cppm",
   "net/udp/backend.cppm",

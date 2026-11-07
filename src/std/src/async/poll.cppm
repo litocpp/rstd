@@ -1390,17 +1390,20 @@ export class Poll {
     }
 
     static auto collect_expired_timers(PollState& state, PollBatch& batch) -> io::Result<empty> {
-        auto now = time::Instant::now();
-        for (rstd::size_t i = 0; i < state.m_timers.len().to_primitive();) {
-            auto index = usize(i);
-            if (state.m_timers[index].deadline <= now) {
-                auto timer = state.m_timers.remove(index);
+        auto  now   = time::Instant::now();
+        auto  count = state.m_timers.len();
+        usize write {};
+        for (usize read {}; read < count; ++read) {
+            auto& timer = state.m_timers[read];
+            if (timer.deadline <= now) {
                 batch.push(
                     PollEvent::owned(PollEventData::timer(timer.key), rstd::move(timer.owner)));
             } else {
-                ++i;
+                if (write != read) state.m_timers[write] = rstd::move(timer);
+                ++write;
             }
         }
+        state.m_timers.truncate(write);
         return Ok(empty {});
     }
 

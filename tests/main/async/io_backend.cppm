@@ -389,6 +389,93 @@ auto capture_owner(CapturedEvent& capture) -> async::PollEventOwner {
 
 void dispatch_all(async::PollBatch batch);
 
+struct TimerCompactOwner {
+    int live {};
+    int clones {};
+    int drops {};
+    int rank {};
+};
+int                                         timer_compact_rank {};
+extern const async::RawPollEventOwnerVTable TIMER_COMPACT_VTABLE;
+auto timer_compact_clone(voidp data) -> async::RawPollEventOwner {
+    auto& state = *static_cast<TimerCompactOwner*>(data);
+    ++state.live;
+    ++state.clones;
+    return async::RawPollEventOwner::from_raw_parts(data, &TIMER_COMPACT_VTABLE);
+}
+void timer_compact_dispatch(voidp data, async::PollEventData) {
+    static_cast<TimerCompactOwner*>(data)->rank = ++timer_compact_rank;
+}
+void timer_compact_drop(voidp data) {
+    auto& state = *static_cast<TimerCompactOwner*>(data);
+    --state.live;
+    ++state.drops;
+}
+const async::RawPollEventOwnerVTable TIMER_COMPACT_VTABLE { &timer_compact_clone,
+                                                            &timer_compact_dispatch,
+                                                            &timer_compact_drop };
+auto timer_compact_owner(TimerCompactOwner& state) -> async::PollEventOwner {
+    ++state.live;
+    return async::PollEventOwner::from_raw(
+        async::RawPollEventOwner::from_raw_parts(&state, &TIMER_COMPACT_VTABLE));
+}
+TEST(RstdAsyncIoBackend, MixedExpiredTimersPreserveOrderAndOwnerLifetime) {
+    auto init = async::Poll::init(async::IoBackendPreference::ReadinessEmulationRequired);
+    ASSERT_TRUE(init.is_ok());
+    auto              poll  = rstd::move(init).unwrap_unchecked();
+    auto              due   = time::Instant::now();
+    auto              later = due + time::Duration::from_secs(u64(60));
+    TimerCompactOwner states[6] {};
+    timer_compact_rank = 0;
+    async::TimerKey keys[] { { u32(1), u32(1) },
+                             { u32(2), u32(1) },
+                             { u32(3), u32(1) },
+                             { u32(4), u32(1) },
+                             { u32(2), u32(2) } };
+    for (int i = 0; i < 5; ++i) {
+        auto result = async::Poll::apply(
+            poll.state,
+            async::PollCommand::arm_timer(
+                keys[i], i == 0 || i == 2 ? due : later, timer_compact_owner(states[i])));
+        ASSERT_EQ(result.status(), async::PollApplyStatus::Accepted);
+    }
+    {
+        auto duplicate = async::Poll::apply(
+            poll.state,
+            async::PollCommand::arm_timer(keys[1], later, timer_compact_owner(states[5])));
+        ASSERT_EQ(duplicate.status(), async::PollApplyStatus::Rejected);
+    }
+    EXPECT_EQ(states[5].live, 0);
+    auto got = async::Poll::poll(poll.state, async::PollTimeout::Immediate);
+    ASSERT_TRUE(got.is_ok());
+    auto batch = rstd::move(got).unwrap_unchecked();
+    ASSERT_EQ(batch.len(), usize(2));
+    {
+        auto a = batch.pop_front();
+        auto b = batch.pop_front();
+        ASSERT_TRUE(a.is_some());
+        ASSERT_TRUE(b.is_some());
+        EXPECT_EQ(a->kind(), async::PollEventKind::Timer);
+        EXPECT_EQ(b->kind(), async::PollEventKind::Timer);
+        a->dispatch();
+        b->dispatch();
+    }
+    EXPECT_EQ(states[0].live, 0);
+    EXPECT_EQ(states[2].live, 0);
+    EXPECT_EQ(states[0].rank, 1);
+    EXPECT_EQ(states[2].rank, 2);
+    {
+        auto cancel = async::Poll::apply(
+            poll.state, async::PollCommand::cancel_timer(keys[1], timer_compact_owner(states[1])));
+        ASSERT_EQ(cancel.status(), async::PollApplyStatus::Accepted);
+    }
+    EXPECT_EQ(states[1].live, 0);
+    auto shutdown = async::Poll::shutdown(poll.state);
+    ASSERT_EQ(shutdown.len(), usize(2));
+    while (auto event = shutdown.pop_front()) event->dispatch();
+    for (auto& state : states) EXPECT_EQ(state.live, 0);
+}
+
 TEST(RstdAsyncIoBackend, HeldPollBatchSurvivesLargeShutdownBatch) {
     auto initialized = async::Poll::init(async::IoBackendPreference::ReadinessEmulationRequired);
     ASSERT_TRUE(initialized.is_ok());
