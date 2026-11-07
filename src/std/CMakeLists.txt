@@ -53,6 +53,7 @@ elseif(UNIX)
     src/sys/libc/pthread.cppm
     src/sys/libc/unix.cppm
     src/sys/pal/unix/mod.cppm
+    src/sys/pal/unix/readiness.cppm
     src/net/unix.cppm
     src/sys/socket/unix.cppm
     src/sys/pal/unix/time.cppm

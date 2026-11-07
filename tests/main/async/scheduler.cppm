@@ -3,6 +3,7 @@ module;
 
 export module rstd:async.scheduler_tests;
 import :async.runtime_core;
+import :async.poll;
 
 using namespace rstd;
 
@@ -139,4 +140,33 @@ TEST(RstdAsyncScheduler, InboxPreservesStopAndScheduleOrder) {
     ASSERT_TRUE(last.is_some());
     EXPECT_EQ(last->take_ticket().generation(), u64(129));
     EXPECT_TRUE(inbox.is_empty());
+}
+
+TEST(RstdAsyncScheduler, PendingAndInstalledPollReceiveInboxWake) {
+    auto worker = WorkerHandle::make(RuntimeWorkerId {});
+    worker.start_current();
+    auto submit = [&worker](u64 generation) {
+        return worker.schedule(ScheduleTicket(TaskRef {}, RuntimeWorkerId {}, generation));
+    };
+    ASSERT_TRUE(submit(u64(1)).is_ok());
+
+    auto initialized = async::Poll::init();
+    ASSERT_TRUE(initialized.is_ok());
+    auto poll = rstd::move(initialized).unwrap_unchecked();
+    ASSERT_TRUE(worker.install_poll(rstd::move(poll.wake), async::Poll::capabilities(poll.state)));
+    for (u64 generation(1); generation <= u64(2); ++generation) {
+        auto events = async::Poll::poll(poll.state, async::PollTimeout::Immediate);
+        ASSERT_TRUE(events.is_ok());
+        bool notified = false;
+        while (auto event = events->pop_front())
+            notified = notified || event->kind() == async::PollEventKind::Wake;
+        EXPECT_TRUE(notified);
+        auto command = worker.pop_command();
+        ASSERT_TRUE(command.is_some());
+        EXPECT_EQ(command->take_ticket().generation(), generation);
+        EXPECT_TRUE(worker.pop_command().is_none());
+        if (generation == u64(1)) ASSERT_TRUE(submit(u64(2)).is_ok());
+    }
+    worker.clear_poll();
+    (void)async::Poll::shutdown(poll.state);
 }
