@@ -32,14 +32,13 @@ template<typename T>
 class CoroFutureState {
     using Stored = mtp::void_empty_t<T>;
     struct Fields {
-        Option<RuntimeCoroDriver<T>>           driver;
-        Option<Stored>                         result;
-        Option<::alloc::sync::SharedAllocator> frame_allocator;
-        usize                                  generation {};
-        bool                                   queued {};
-        bool                                   closed {};
-        explicit Fields(RuntimeCoroDriver<T>                   value,
-                        Option<::alloc::sync::SharedAllocator> allocator)
+        Option<RuntimeCoroDriver<T>> driver;
+        Option<Stored>               result;
+        Option<FrameAllocatorRef>    frame_allocator;
+        usize                        generation {};
+        bool                         queued {};
+        bool                         closed {};
+        explicit Fields(RuntimeCoroDriver<T> value, Option<FrameAllocatorRef> allocator)
             : driver(Some(rstd::move(value))), frame_allocator(rstd::move(allocator)) {}
     };
     sync::Mutex<Fields> fields_;
@@ -77,35 +76,30 @@ class CoroFutureState {
     }
 
     void run(const sync::Arc<CoroFutureState>& self, usize generation) {
-        Option<FacilityEndpoint>               endpoint;
-        Option<::alloc::sync::SharedAllocator> submit_allocator;
-        bool                                   wake = false;
-        usize                                  next_generation {};
+        Option<FacilityEndpoint>  endpoint;
+        Option<FrameAllocatorRef> submit_allocator;
+        bool                      wake = false;
+        usize                     next_generation {};
         {
             auto fields = fields_.lock().unwrap_unchecked();
             if (fields->closed || ! fields->queued || fields->generation != generation) return;
-            fields->queued = false;
-            auto allocator_scope =
-                FrameAllocatorScope { fields->frame_allocator.is_some()
-                                          ? rstd::addressof(*fields->frame_allocator)
-                                          : nullptr };
-            auto scope  = ExecutionDomainScope { ExecutionDomainKind::ExternalExecutor };
-            auto cx     = task::Context { task::Waker::noop() };
+            fields->queued       = false;
+            auto allocator_scope = FrameAllocatorScope { fields->frame_allocator };
+            auto scope           = ExecutionDomainScope { ExecutionDomainKind::ExternalExecutor };
+            auto cx              = task::Context { task::Waker::noop() };
             auto action = fields->driver->resume_external_segment(cx, AwaitMode::FuturePoll);
             if (action.is_submit_facility()) {
                 fields->queued   = true;
                 next_generation  = ++fields->generation;
                 endpoint         = Some(action.take_endpoint());
-                submit_allocator = clone_current_frame_allocator();
+                submit_allocator = current_frame_allocator();
             } else {
                 if (action.is_final_suspended()) finish(*fields);
                 wake = true;
             }
         }
         if (endpoint.is_some()) {
-            auto allocator_scope = FrameAllocatorScope { submit_allocator.is_some()
-                                                             ? rstd::addressof(*submit_allocator)
-                                                             : nullptr };
+            auto allocator_scope = FrameAllocatorScope { submit_allocator };
             submit(self, endpoint.take().unwrap_unchecked(), next_generation);
         }
         if (wake) waker_.wake();
@@ -121,8 +115,7 @@ class CoroFutureState {
     }
 
 public:
-    explicit CoroFutureState(RuntimeCoroDriver<T>                   driver,
-                             Option<::alloc::sync::SharedAllocator> frame_allocator)
+    explicit CoroFutureState(RuntimeCoroDriver<T> driver, Option<FrameAllocatorRef> frame_allocator)
         : fields_(Fields { rstd::move(driver), rstd::move(frame_allocator) }) {}
 
     void handoff(const sync::Arc<CoroFutureState>& self,
@@ -151,12 +144,8 @@ public:
             if (fields->queued) {
                 return task::Poll<T>::Pending();
             }
-            if (has_frame_allocator_scope())
-                fields->frame_allocator = clone_current_frame_allocator();
-            auto allocator_scope =
-                FrameAllocatorScope { fields->frame_allocator.is_some()
-                                          ? rstd::addressof(*fields->frame_allocator)
-                                          : nullptr };
+            if (has_frame_allocator_scope()) fields->frame_allocator = current_frame_allocator();
+            auto allocator_scope = FrameAllocatorScope { fields->frame_allocator };
             if (fields->result.is_none()) {
                 auto action = fields->driver->drive(cx, AwaitMode::FuturePoll);
                 if (action.is_final_suspended())
@@ -201,9 +190,9 @@ public:
 /// Adapts a coroutine to Future while preserving operation ownership across polls.
 export template<typename T>
 class CoroFuture {
-    Option<RuntimeCoroDriver<T>>           driver_;
-    Option<sync::Arc<CoroFutureState<T>>>  external_;
-    Option<::alloc::sync::SharedAllocator> frame_allocator_;
+    Option<RuntimeCoroDriver<T>>          driver_;
+    Option<sync::Arc<CoroFutureState<T>>> external_;
+    Option<FrameAllocatorRef>             frame_allocator_;
 
     void close() {
         if (external_.is_some()) (*external_)->close();
@@ -215,7 +204,7 @@ public:
     using Output = T;
     explicit CoroFuture(coro<T> value)
         : driver_(Some(make_runtime_driver(rstd::move(value)))),
-          frame_allocator_(clone_current_frame_allocator()) {}
+          frame_allocator_(current_frame_allocator()) {}
     CoroFuture(const CoroFuture&)                    = delete;
     auto operator=(const CoroFuture&) -> CoroFuture& = delete;
     CoroFuture(CoroFuture&& other) noexcept
@@ -234,10 +223,8 @@ public:
     ~CoroFuture() { close(); }
 
     auto poll(mut_ref<CoroFuture> self, task::Context& cx) -> task::Poll<T> {
-        if (has_frame_allocator_scope()) self->frame_allocator_ = clone_current_frame_allocator();
-        auto allocator_scope = FrameAllocatorScope { self->frame_allocator_.is_some()
-                                                         ? rstd::addressof(*self->frame_allocator_)
-                                                         : nullptr };
+        if (has_frame_allocator_scope()) self->frame_allocator_ = current_frame_allocator();
+        auto allocator_scope = FrameAllocatorScope { self->frame_allocator_ };
         if (self->external_.is_some()) return (*self->external_)->poll(*self->external_, cx);
         if (self->driver_.is_none()) rstd::panic { "CoroFuture polled after completion or move" };
         auto action = self->driver_->drive(cx, AwaitMode::FuturePoll);
@@ -248,7 +235,7 @@ public:
         }
         if (action.is_submit_facility()) {
             self->external_ = Some(sync::Arc<CoroFutureState<T>>::make(
-                self->driver_.take().unwrap_unchecked(), clone_current_frame_allocator()));
+                self->driver_.take().unwrap_unchecked(), current_frame_allocator()));
             (*self->external_)->handoff(*self->external_, action.take_endpoint(), cx.waker());
         } else if (! action.is_suspended()) {
             rstd::panic { "CoroFuture await operation has no poll path" };

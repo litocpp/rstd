@@ -8,13 +8,13 @@ import :async.frame_allocator;
 import rstd.alloc;
 
 using namespace rstd;
-using ::alloc::sync::SharedAllocator;
 using rstd::alloc::Layout;
+using rstd::async::FrameAllocatorRef;
 
 namespace
 {
-thread_local const SharedAllocator* current_allocator {};
-thread_local bool                   scope_active {};
+thread_local Option<FrameAllocatorRef> current_allocator {};
+thread_local bool                      scope_active {};
 
 constexpr auto FRAME_TAG_SIZE      = usize(2);
 constexpr auto FRAME_CUSTOM        = 1u;
@@ -43,8 +43,10 @@ void frame_allocation_failed(Layout layout) {
 #endif
 }
 
-auto frame_allocation_layout(rstd::size_t size, usize alignment, bool custom, usize& owner_offset)
-    -> Option<Layout> {
+auto frame_allocation_layout(rstd::size_t size,
+                             usize        alignment,
+                             bool         custom,
+                             usize&       allocator_offset) -> Option<Layout> {
     if (! alignment.is_power_of_two()) return None();
     if (alignment < usize(MIN_FRAME_ALIGNMENT)) alignment = usize(MIN_FRAME_ALIGNMENT);
     auto frame_layout = Layout::from_size_align(usize(size), alignment);
@@ -54,24 +56,24 @@ auto frame_allocation_layout(rstd::size_t size, usize alignment, bool custom, us
     auto  layout     = frame_layout->extend(tag_layout, tag_offset);
     if (layout.is_none()) return None();
     if (custom) {
-        auto owner_layout = Layout::from_size_align_unchecked(usize(sizeof(SharedAllocator)),
-                                                              usize(alignof(SharedAllocator)));
-        layout            = layout->extend(owner_layout, owner_offset);
+        auto allocator_layout = Layout::from_size_align_unchecked(
+            usize(sizeof(FrameAllocatorRef)), usize(alignof(FrameAllocatorRef)));
+        layout = layout->extend(allocator_layout, allocator_offset);
     }
     return layout;
 }
 
 auto allocate_frame(rstd::size_t size, rstd::size_t alignment, bool aligned_global) -> void* {
-    bool  custom = current_allocator != nullptr;
-    usize owner_offset {};
-    auto  allocation_layout = frame_allocation_layout(size, usize(alignment), custom, owner_offset);
+    auto  allocator = current_allocator;
+    bool  custom    = allocator.is_some();
+    usize allocator_offset {};
+    auto  allocation_layout =
+        frame_allocation_layout(size, usize(alignment), custom, allocator_offset);
     if (allocation_layout.is_none()) invalid_frame_layout();
-    auto                    layout = allocation_layout.unwrap_unchecked();
-    Option<SharedAllocator> owner {};
-    if (custom) owner = Some(current_allocator->clone());
+    auto  layout = allocation_layout.unwrap_unchecked();
     void* base {};
     if (custom) {
-        auto allocation = owner->allocate(layout);
+        auto allocation = (*allocator)->allocate(layout);
         if (allocation.is_err()) frame_allocation_failed(layout);
         base = allocation.unwrap_unchecked().pointer;
     } else if (aligned_global) {
@@ -92,15 +94,16 @@ auto allocate_frame(rstd::size_t size, rstd::size_t alignment, bool aligned_glob
     }
     bytes[size + 1] = static_cast<byte>(exponent);
     if (custom) {
-        auto* allocator = reinterpret_cast<SharedAllocator*>(bytes + owner_offset.to_primitive());
-        rstd::construct_at(allocator, rstd::move(*owner));
+        auto* stored_allocator =
+            reinterpret_cast<FrameAllocatorRef*>(bytes + allocator_offset.to_primitive());
+        rstd::construct_at(stored_allocator, *allocator);
     }
     return base;
 }
 } // namespace
 namespace rstd::async
 {
-FrameAllocatorScope::FrameAllocatorScope(const SharedAllocator* allocator) noexcept
+FrameAllocatorScope::FrameAllocatorScope(Option<FrameAllocatorRef> allocator) noexcept
     : m_previous(current_allocator), m_previous_active(scope_active) {
     current_allocator = allocator;
     scope_active      = true;
@@ -112,12 +115,8 @@ FrameAllocatorScope::~FrameAllocatorScope() {
 auto has_frame_allocator_scope() noexcept -> bool {
     return scope_active;
 }
-auto current_frame_allocator() noexcept -> const SharedAllocator* {
+auto current_frame_allocator() noexcept -> Option<FrameAllocatorRef> {
     return current_allocator;
-}
-auto clone_current_frame_allocator() -> Option<SharedAllocator> {
-    return current_allocator == nullptr ? None<SharedAllocator>()
-                                        : Some(current_allocator->clone());
 }
 auto allocate_coro_frame(rstd::size_t size) -> void* {
     return allocate_frame(size, __STDCPP_DEFAULT_NEW_ALIGNMENT__, false);
@@ -143,16 +142,16 @@ void deallocate_coro_frame(void* frame, rstd::size_t size) noexcept {
     if (exponent >= SIZE_T_BIT_WIDTH) rstd::panic { "invalid coroutine frame alignment" };
     auto  alignment = usize(static_cast<rstd::size_t>(1) << exponent);
     bool  custom    = (flags & FRAME_CUSTOM) != 0;
-    usize owner_offset {};
-    auto  reconstructed = frame_allocation_layout(size, alignment, custom, owner_offset);
+    usize allocator_offset {};
+    auto  reconstructed = frame_allocation_layout(size, alignment, custom, allocator_offset);
     if (reconstructed.is_none()) rstd::panic { "invalid coroutine frame layout" };
     auto layout = reconstructed.unwrap_unchecked();
     if (custom) {
-        auto* allocator =
-            rstd::launder(reinterpret_cast<SharedAllocator*>(bytes + owner_offset.to_primitive()));
-        auto owner = rstd::move(*allocator);
+        auto* allocator = rstd::launder(
+            reinterpret_cast<FrameAllocatorRef*>(bytes + allocator_offset.to_primitive()));
+        auto allocator_ref = *allocator;
         rstd::destroy_at(allocator);
-        owner.deallocate(frame, layout);
+        allocator_ref->deallocate(frame, layout);
     } else {
         if ((flags & FRAME_ALIGNED) != 0) {
 #if defined(__cpp_sized_deallocation)

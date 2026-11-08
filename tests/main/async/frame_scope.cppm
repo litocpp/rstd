@@ -80,7 +80,7 @@ TEST(RstdAsyncFrameAllocator, DeallocatesFrameWithOriginalAddressAndLayout) {
         FrameLayoutAllocator { &record });
     auto owner = rstd::alloc::SharedAllocator::make(rstd::move(tracker));
     {
-        auto scope = async::FrameAllocatorScope(&owner);
+        auto scope = async::FrameAllocatorScope(Some(owner.as_ref()));
         auto frame = frame_for_layout_contract();
         ASSERT_EQ(record.allocations, 1);
         ASSERT_NE(record.pointer, nullptr);
@@ -97,7 +97,7 @@ TEST(RstdAsyncFrameAllocator, RejectsOverflowBeforeCallingAllocator) {
     auto tracker             = rstd::alloc::SharedTrackingAllocator<FrameLayoutAllocator>::make(
         FrameLayoutAllocator { &record });
     auto owner = rstd::alloc::SharedAllocator::make(rstd::move(tracker));
-    auto scope = async::FrameAllocatorScope(&owner);
+    auto scope = async::FrameAllocatorScope(Some(owner.as_ref()));
     EXPECT_DEATH((void)async::allocate_coro_frame(static_cast<rstd::size_t>(-1)),
                  "invalid coroutine frame layout");
 }
@@ -108,7 +108,7 @@ TEST(RstdAsyncFrameAllocator, ZeroSizedAllocationPreservesLayoutForSmallAlignmen
         auto tracker = rstd::alloc::SharedTrackingAllocator<FrameLayoutAllocator>::make(
             FrameLayoutAllocator { &record });
         auto owner   = rstd::alloc::SharedAllocator::make(rstd::move(tracker));
-        auto scope   = async::FrameAllocatorScope(&owner);
+        auto scope   = async::FrameAllocatorScope(Some(owner.as_ref()));
         auto pointer = async::allocate_coro_frame(0, static_cast<rstd::align_val_t>(alignment));
         ASSERT_NE(pointer, nullptr);
         EXPECT_EQ(record.allocations, 1);
@@ -141,17 +141,17 @@ TEST(RstdAsyncFrameAllocator, NestedScopesRestoreAllocatorAndGlobalFallback) {
     auto allocator_b = rstd::alloc::SharedAllocator::make(tracker_b.clone());
     EXPECT_FALSE(async::has_frame_allocator_scope());
     {
-        auto scope_a = async::FrameAllocatorScope(&allocator_a);
+        auto scope_a = async::FrameAllocatorScope(Some(allocator_a.as_ref()));
         auto a       = unstarted_frame();
         EXPECT_EQ(tracker_a.snapshot().allocations, u64(1));
         EXPECT_EQ(tracker_b.snapshot().allocations, u64());
         {
-            auto scope_b = async::FrameAllocatorScope(&allocator_b);
+            auto scope_b = async::FrameAllocatorScope(Some(allocator_b.as_ref()));
             auto b       = unstarted_frame();
             EXPECT_EQ(tracker_a.snapshot().allocations, u64(1));
             EXPECT_EQ(tracker_b.snapshot().allocations, u64(1));
             {
-                auto scope_global = async::FrameAllocatorScope(nullptr);
+                auto scope_global = async::FrameAllocatorScope(None());
                 auto global       = unstarted_frame();
                 EXPECT_EQ(tracker_a.snapshot().allocations, u64(1));
                 EXPECT_EQ(tracker_b.snapshot().allocations, u64(1));
@@ -166,28 +166,29 @@ TEST(RstdAsyncFrameAllocator, NestedScopesRestoreAllocatorAndGlobalFallback) {
     EXPECT_EQ(tracker_b.snapshot().live_bytes, u64());
 }
 
-TEST(RstdAsyncFrameAllocator, UnstartedFrameOwnsAllocatorAcrossThreads) {
-    using Tracker = rstd::alloc::SharedTrackingAllocator<>;
-    struct Escaped {
-        async::coro<int>  frame;
-        Tracker::Observer observer;
-    };
-    auto escaped = []() -> Escaped {
-        auto tracker   = Tracker::make();
-        auto observer  = tracker.downgrade();
-        auto allocator = rstd::alloc::SharedAllocator::make(rstd::move(tracker));
-        auto scope     = async::FrameAllocatorScope(&allocator);
-        return Escaped { unstarted_frame(), rstd::move(observer) };
+TEST(RstdAsyncFrameAllocator, FrameUsesOriginalAllocatorAfterScopeAndAcrossThreads) {
+    auto tracker_a = rstd::alloc::SharedTrackingAllocator<>::make();
+    auto tracker_b = rstd::alloc::SharedTrackingAllocator<>::make();
+    auto allocator_a =
+        ::alloc::sync::Arc<rstd::alloc::SharedTrackingAllocator<>>::make(tracker_a.clone());
+    auto allocator_b = rstd::alloc::SharedAllocator::make(tracker_b.clone());
+    auto frame       = [&] {
+        auto scope = async::FrameAllocatorScope(Some(::alloc::allocator_ref(allocator_a)));
+        return unstarted_frame();
     }();
 
-    ASSERT_FALSE(escaped.observer.expired());
-    ASSERT_TRUE(escaped.observer.snapshot().is_some());
-    EXPECT_EQ(escaped.observer.snapshot()->allocations, u64(1));
-    auto worker = thread::spawn([frame = rstd::move(escaped.frame)]() mutable {
+    EXPECT_EQ(allocator_a.strong_count(), usize(1));
+    EXPECT_EQ(tracker_a.snapshot().allocations, u64(1));
+    EXPECT_GT(tracker_a.snapshot().live_bytes, u64());
+    auto worker = thread::spawn([frame = rstd::move(frame), &allocator_b]() mutable {
+                      auto scope = async::FrameAllocatorScope(Some(allocator_b.as_ref()));
                       auto local = rstd::move(frame);
                   }).unwrap();
     rstd::move(worker).join().unwrap();
-    EXPECT_TRUE(escaped.observer.expired());
+    EXPECT_EQ(allocator_a.strong_count(), usize(1));
+    EXPECT_EQ(tracker_a.snapshot().live_bytes, u64());
+    EXPECT_EQ(tracker_b.snapshot().allocations, u64());
+    EXPECT_EQ(tracker_b.snapshot().live_bytes, u64());
 }
 
 TEST(RstdAsyncFrameAllocator, ExternalFutureRestoresCapturedAllocator) {
@@ -198,13 +199,13 @@ TEST(RstdAsyncFrameAllocator, ExternalFutureRestoresCapturedAllocator) {
     auto context     = async::LocalExecutorContext::make();
     auto executor    = async::AnyExecutor::from_executor(context.executor());
     auto adapted     = [&] {
-        auto scope = async::FrameAllocatorScope(&allocator_a);
+        auto scope = async::FrameAllocatorScope(Some(allocator_a.as_ref()));
         return external_then_create(executor.clone(), tracker_a).into_future();
     }();
     auto cx = task::Context { task::Waker::noop() };
     ASSERT_TRUE(future::poll(adapted, cx).is_pending());
     {
-        auto scope_b = async::FrameAllocatorScope(&allocator_b);
+        auto scope_b = async::FrameAllocatorScope(Some(allocator_b.as_ref()));
         EXPECT_EQ(context.run_ready(), usize(1));
         auto after_a = tracker_a.snapshot().allocations;
         auto b_frame = unstarted_frame();

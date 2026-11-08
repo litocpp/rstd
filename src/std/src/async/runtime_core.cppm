@@ -1494,8 +1494,9 @@ struct RuntimeInner {
 
     void init_self(sync::Weak<RuntimeInner> weak) { self = rstd::move(weak); }
 
-    auto frame_allocator() const noexcept -> const ::alloc::sync::SharedAllocator* {
-        return m_frame_allocator.is_some() ? rstd::addressof(*m_frame_allocator) : nullptr;
+    auto frame_allocator() const noexcept -> Option<async::FrameAllocatorRef> {
+        return m_frame_allocator.is_some() ? Some(m_frame_allocator->as_ref())
+                                           : None<async::FrameAllocatorRef>();
     }
 
     auto weak() -> sync::Weak<RuntimeInner> { return self.clone(); }

@@ -467,6 +467,9 @@ public:
 
     /// Selects the allocator for coroutine frames created in this runtime's execution scope.
     /// Previously created frames keep their allocator; elided frames do not call it.
+    /// This allocator must outlive every frame and pending operation that uses it, including
+    /// work transferred to another runtime or external executor. If the runtime is its last
+    /// owner, all such work and frames must finish before the runtime is destroyed.
     /// Without aligned coroutine allocation support, only default new alignment is guaranteed.
     auto frame_allocator(SharedAllocator allocator) -> RuntimeBuilder& {
         m_frame_allocator = Some(rstd::move(allocator));

@@ -461,33 +461,22 @@ TEST(RstdAsyncFrame, FreeSpawnFactoriesKeepCapturesAndUseCurrentRuntime) {
     EXPECT_EQ(tracker.snapshot().live_bytes, u64());
 }
 
-TEST(RstdAsyncFrame, FrameRetainsAllocatorAfterRuntimeAndReleasesOnAnotherThread) {
-    struct EscapedFrame {
-        async::coro<int>       frame;
-        FrameTracker::Observer observer;
-    };
+TEST(RstdAsyncFrame, BorrowedFrameAllocatorSupportsCrossThreadRelease) {
+    auto tracker   = FrameTracker::make();
+    auto allocator = rstd::alloc::SharedAllocator::make(tracker.clone());
+    auto builder   = async::RuntimeBuilder::current_thread();
+    builder.frame_allocator(rstd::move(allocator));
+    auto runtime = builder.build().unwrap();
+    auto frame   = runtime.block_on_with([] {
+        return return_unstarted_frame();
+    });
 
-    auto escaped = []() -> EscapedFrame {
-        auto tracker   = FrameTracker::make();
-        auto observer  = tracker.downgrade();
-        auto allocator = rstd::alloc::SharedAllocator::make(rstd::move(tracker));
-        auto builder   = async::RuntimeBuilder::current_thread();
-        builder.frame_allocator(rstd::move(allocator));
-        auto runtime = builder.build().unwrap();
-        auto frame   = runtime.block_on_with([] {
-            return return_unstarted_frame();
-        });
-        return EscapedFrame { rstd::move(frame), rstd::move(observer) };
-    }();
-
-    ASSERT_FALSE(escaped.observer.expired());
-    ASSERT_TRUE(escaped.observer.snapshot().is_some());
-    EXPECT_GT(escaped.observer.snapshot()->live_bytes, u64());
-    auto worker = thread::spawn([frame = rstd::move(escaped.frame)]() mutable {
+    EXPECT_GT(tracker.snapshot().live_bytes, u64());
+    auto worker = thread::spawn([frame = rstd::move(frame)]() mutable {
                       auto local = rstd::move(frame);
                   }).unwrap();
     rstd::move(worker).join().unwrap();
-    EXPECT_TRUE(escaped.observer.expired());
+    EXPECT_EQ(tracker.snapshot().live_bytes, u64());
 }
 
 TEST(RstdAsyncFrame, MoveTransfersSoleFrameOwnership) {
