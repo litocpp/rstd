@@ -79,20 +79,9 @@ class RSTD_CORO_AWAIT_ELIDABLE coro {
 public:
     using Future = CoroFuture<T>;
     auto into_future() -> Future;
-    struct promise_type {
+    struct promise_type : CoroFrameAllocation {
         AwaitingOperation awaiting {};
         Option<T>         result;
-
-        static auto operator new(rstd::size_t size) -> void* { return allocate_coro_frame(size); }
-        static auto operator new(rstd::size_t size, rstd::align_val_t alignment) -> void* {
-            return allocate_coro_frame(size, alignment);
-        }
-        static void operator delete(void* frame, rstd::size_t) noexcept {
-            deallocate_coro_frame(frame);
-        }
-        static void operator delete(void* frame, rstd::size_t, rstd::align_val_t) noexcept {
-            deallocate_coro_frame(frame);
-        }
 
         auto get_return_object() noexcept -> coro {
             return coro { std::coroutine_handle<promise_type>::from_promise(*this) };
@@ -173,19 +162,8 @@ class RSTD_CORO_AWAIT_ELIDABLE coro<void> {
 public:
     using Future = CoroFuture<void>;
     auto into_future() -> Future;
-    struct promise_type {
+    struct promise_type : CoroFrameAllocation {
         AwaitingOperation awaiting {};
-
-        static auto operator new(rstd::size_t size) -> void* { return allocate_coro_frame(size); }
-        static auto operator new(rstd::size_t size, rstd::align_val_t alignment) -> void* {
-            return allocate_coro_frame(size, alignment);
-        }
-        static void operator delete(void* frame, rstd::size_t) noexcept {
-            deallocate_coro_frame(frame);
-        }
-        static void operator delete(void* frame, rstd::size_t, rstd::align_val_t) noexcept {
-            deallocate_coro_frame(frame);
-        }
 
         auto get_return_object() noexcept -> coro {
             return coro { std::coroutine_handle<promise_type>::from_promise(*this) };

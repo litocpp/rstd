@@ -21,6 +21,23 @@ auto clone_current_frame_allocator() -> Option<::alloc::sync::SharedAllocator>;
 
 auto allocate_coro_frame(rstd::size_t size) -> void*;
 auto allocate_coro_frame(rstd::size_t size, rstd::align_val_t alignment) -> void*;
-void deallocate_coro_frame(void* frame) noexcept;
+void deallocate_coro_frame(void* frame, rstd::size_t size) noexcept;
+
+class CoroFrameAllocation {
+public:
+    static auto operator new(rstd::size_t size) -> void* { return allocate_coro_frame(size); }
+
+    static auto operator new(rstd::size_t size, rstd::align_val_t alignment) -> void* {
+        return allocate_coro_frame(size, alignment);
+    }
+
+    static void operator delete(void* frame, rstd::size_t size) noexcept {
+        deallocate_coro_frame(frame, size);
+    }
+
+    static void operator delete(void* frame, rstd::size_t size, rstd::align_val_t) noexcept {
+        deallocate_coro_frame(frame, size);
+    }
+};
 
 } // namespace rstd::async

@@ -16,18 +16,13 @@ namespace
 thread_local const SharedAllocator* current_allocator {};
 thread_local bool                   scope_active {};
 
-struct FrameMarker {
-    void*  base;
-    Layout layout;
-    bool   custom;
-    bool   aligned_global;
-};
-// Keep the marker adjacent to the frame and the optional owner in a separate aligned slot.
-constexpr rstd::size_t OWNER_ALIGNMENT = alignof(SharedAllocator);
-constexpr rstd::size_t MARKER_PADDED =
-    (sizeof(FrameMarker) + OWNER_ALIGNMENT - 1) & ~(OWNER_ALIGNMENT - 1);
-constexpr rstd::size_t OWNER_OFFSET = MARKER_PADDED + sizeof(SharedAllocator);
-static_assert(alignof(FrameMarker) <= __STDCPP_DEFAULT_NEW_ALIGNMENT__);
+constexpr auto FRAME_TAG_SIZE      = usize(2);
+constexpr auto FRAME_CUSTOM        = 1u;
+constexpr auto FRAME_ALIGNED       = 2u;
+constexpr auto SIZE_T_BIT_WIDTH    = sizeof(rstd::size_t) * __CHAR_BIT__;
+constexpr auto MIN_FRAME_ALIGNMENT = alignof(void*) > alignof(Layout) ? alignof(void*)
+                                                                      : alignof(Layout);
+static_assert(SIZE_T_BIT_WIDTH <= 256);
 
 [[noreturn]]
 void invalid_frame_layout() {
@@ -48,24 +43,28 @@ void frame_allocation_failed(Layout layout) {
 #endif
 }
 
-auto frame_allocation_layout(rstd::size_t size, usize alignment, bool custom, usize& offset)
+auto frame_allocation_layout(rstd::size_t size, usize alignment, bool custom, usize& owner_offset)
     -> Option<Layout> {
     if (! alignment.is_power_of_two()) return None();
-    auto metadata_alignment = usize(alignof(FrameMarker));
-    if (custom && metadata_alignment < usize(OWNER_ALIGNMENT))
-        metadata_alignment = usize(OWNER_ALIGNMENT);
-    if (alignment < metadata_alignment) alignment = metadata_alignment;
-    auto metadata_size   = usize(custom ? OWNER_OFFSET : sizeof(FrameMarker));
-    auto metadata_layout = Layout::from_size_align(metadata_size, metadata_alignment);
-    auto frame_layout    = Layout::from_size_align(usize(size), alignment);
-    if (metadata_layout.is_none() || frame_layout.is_none()) return None();
-    return metadata_layout->extend(*frame_layout, offset);
+    if (alignment < usize(MIN_FRAME_ALIGNMENT)) alignment = usize(MIN_FRAME_ALIGNMENT);
+    auto frame_layout = Layout::from_size_align(usize(size), alignment);
+    if (frame_layout.is_none()) return None();
+    usize tag_offset {};
+    auto  tag_layout = Layout::from_size_align_unchecked(FRAME_TAG_SIZE, usize(1));
+    auto  layout     = frame_layout->extend(tag_layout, tag_offset);
+    if (layout.is_none()) return None();
+    if (custom) {
+        auto owner_layout = Layout::from_size_align_unchecked(usize(sizeof(SharedAllocator)),
+                                                              usize(alignof(SharedAllocator)));
+        layout            = layout->extend(owner_layout, owner_offset);
+    }
+    return layout;
 }
 
 auto allocate_frame(rstd::size_t size, rstd::size_t alignment, bool aligned_global) -> void* {
     bool  custom = current_allocator != nullptr;
-    usize frame_offset {};
-    auto  allocation_layout = frame_allocation_layout(size, usize(alignment), custom, frame_offset);
+    usize owner_offset {};
+    auto  allocation_layout = frame_allocation_layout(size, usize(alignment), custom, owner_offset);
     if (allocation_layout.is_none()) invalid_frame_layout();
     auto                    layout = allocation_layout.unwrap_unchecked();
     Option<SharedAllocator> owner {};
@@ -81,15 +80,22 @@ auto allocate_frame(rstd::size_t size, rstd::size_t alignment, bool aligned_glob
     } else {
         base = ::operator new(layout.size.to_primitive());
     }
-    auto* frame = static_cast<byte*>(base) + frame_offset.to_primitive();
-    auto  info  = FrameMarker { base, layout, custom, aligned_global };
+    // Allocator storage is a byte array whose tail outlives the coroutine frame.
+    auto* bytes = static_cast<byte*>(base);
+    bytes[size] =
+        static_cast<byte>((custom ? FRAME_CUSTOM : 0u) | (aligned_global ? FRAME_ALIGNED : 0u));
+    auto          remaining_alignment = alignment;
+    unsigned char exponent {};
+    while (remaining_alignment > 1) {
+        remaining_alignment >>= 1;
+        ++exponent;
+    }
+    bytes[size + 1] = static_cast<byte>(exponent);
     if (custom) {
-        auto* allocator = reinterpret_cast<SharedAllocator*>(frame - OWNER_OFFSET);
+        auto* allocator = reinterpret_cast<SharedAllocator*>(bytes + owner_offset.to_primitive());
         rstd::construct_at(allocator, rstd::move(*owner));
     }
-    auto* marker = reinterpret_cast<FrameMarker*>(frame - sizeof(FrameMarker));
-    rstd::construct_at(marker, info);
-    return frame;
+    return base;
 }
 } // namespace
 namespace rstd::async
@@ -119,34 +125,48 @@ auto allocate_coro_frame(rstd::size_t size) -> void* {
 auto allocate_coro_frame(rstd::size_t size, rstd::align_val_t alignment) -> void* {
     return allocate_frame(size, static_cast<rstd::size_t>(alignment), true);
 }
-void deallocate_coro_frame(void* frame) noexcept {
+void deallocate_coro_frame(void* frame, rstd::size_t size) noexcept {
     if (frame == nullptr) return;
-    auto* bytes  = static_cast<byte*>(frame);
-    auto* marker = rstd::launder(reinterpret_cast<FrameMarker*>(bytes - sizeof(FrameMarker)));
-    auto  info   = *marker;
-    auto  layout = info.layout;
-    auto* base   = info.base;
-    if (info.custom) {
-        auto* allocator = rstd::launder(reinterpret_cast<SharedAllocator*>(bytes - OWNER_OFFSET));
-        auto  owner     = rstd::move(*allocator);
-        rstd::destroy_at(allocator);
-        rstd::destroy_at(marker);
-        owner.deallocate(base, layout);
-    } else {
-        rstd::destroy_at(marker);
-        if (info.aligned_global) {
+    auto* bytes = static_cast<byte*>(frame);
+    auto  flags = static_cast<unsigned char>(bytes[size]);
+    if (flags == 0) {
 #if defined(__cpp_sized_deallocation)
-            ::operator delete(base,
+        auto allocation_size = usize(size).checked_add(FRAME_TAG_SIZE);
+        if (allocation_size.is_none()) rstd::panic { "invalid coroutine frame layout" };
+        ::operator delete(frame, allocation_size->to_primitive());
+#else
+        ::operator delete(frame);
+#endif
+        return;
+    }
+    auto exponent = static_cast<unsigned char>(bytes[size + 1]);
+    if (exponent >= SIZE_T_BIT_WIDTH) rstd::panic { "invalid coroutine frame alignment" };
+    auto  alignment = usize(static_cast<rstd::size_t>(1) << exponent);
+    bool  custom    = (flags & FRAME_CUSTOM) != 0;
+    usize owner_offset {};
+    auto  reconstructed = frame_allocation_layout(size, alignment, custom, owner_offset);
+    if (reconstructed.is_none()) rstd::panic { "invalid coroutine frame layout" };
+    auto layout = reconstructed.unwrap_unchecked();
+    if (custom) {
+        auto* allocator =
+            rstd::launder(reinterpret_cast<SharedAllocator*>(bytes + owner_offset.to_primitive()));
+        auto owner = rstd::move(*allocator);
+        rstd::destroy_at(allocator);
+        owner.deallocate(frame, layout);
+    } else {
+        if ((flags & FRAME_ALIGNED) != 0) {
+#if defined(__cpp_sized_deallocation)
+            ::operator delete(frame,
                               layout.size.to_primitive(),
                               static_cast<rstd::align_val_t>(layout.align.to_primitive()));
 #else
-            ::operator delete(base, static_cast<rstd::align_val_t>(layout.align.to_primitive()));
+            ::operator delete(frame, static_cast<rstd::align_val_t>(layout.align.to_primitive()));
 #endif
         } else {
 #if defined(__cpp_sized_deallocation)
-            ::operator delete(base, layout.size.to_primitive());
+            ::operator delete(frame, layout.size.to_primitive());
 #else
-            ::operator delete(base);
+            ::operator delete(frame);
 #endif
         }
     }
