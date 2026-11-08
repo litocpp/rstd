@@ -4,6 +4,7 @@ export import rstd.io;
 import :async.blocking_pool;
 import :async.runtime_core;
 import :async.facility;
+import :async.frame_allocator;
 import :async.runtime_driver;
 import :async.task;
 import :async.terminal;
@@ -325,10 +326,26 @@ struct JoinHandleFactory {
     }
 };
 
-template<typename T>
+struct EmptyTaskFactory {
+    void release() noexcept {}
+};
+
+template<typename F>
+class TaskFactory {
+    Option<F> m_function;
+
+public:
+    explicit TaskFactory(F function): m_function(Some(rstd::move(function))) {}
+    auto make() -> decltype(auto) { return (*m_function)(); }
+    void release() { m_function = None(); }
+};
+
+template<typename T, typename Factory = EmptyTaskFactory>
 struct DriverTaskState : TaskStateBase {
     using Stored = mtp::void_empty_t<T>;
 
+    [[no_unique_address]]
+    Factory                           factory;
     rstd::async::RuntimeCoroDriver<T> driver;
     JoinStateOwner<T>                 join;
     Option<Stored>                    ready;
@@ -339,7 +356,22 @@ struct DriverTaskState : TaskStateBase {
                     JoinStateOwner<T>                 join,
                     TaskCreationInfo                  creation = {})
         : TaskStateBase(ref_control, rstd::move(runtime), creation),
+          factory(),
           driver(rstd::move(driver)),
+          join(rstd::move(join)) {
+#if LITO_FEAT_ASYNC_DEBUG
+        this->join->diagnostic = diagnostic;
+#endif
+    }
+
+    DriverTaskState(TaskRefControl&          ref_control,
+                    sync::Weak<RuntimeInner> runtime,
+                    Factory                  task_factory,
+                    JoinStateOwner<T>        join,
+                    TaskCreationInfo         creation = {})
+        : TaskStateBase(ref_control, rstd::move(runtime), creation),
+          factory(rstd::move(task_factory)),
+          driver(rstd::async::make_runtime_driver(rstd::async::into_coro(this->factory.make()))),
           join(rstd::move(join)) {
 #if LITO_FEAT_ASYNC_DEBUG
         this->join->diagnostic = diagnostic;
@@ -384,6 +416,7 @@ struct DriverTaskState : TaskStateBase {
             rstd::panic { "async coroutine task completed without a value" };
         }
         driver.release_frame();
+        factory.release();
 #if LITO_FEAT_ASYNC_DEBUG
         diagnostic.state(rstd::async::debug::State::Cleaned);
 #endif
@@ -395,6 +428,7 @@ struct DriverTaskState : TaskStateBase {
 
     void complete_abort() override {
         driver.release_frame();
+        factory.release();
 #if LITO_FEAT_ASYNC_DEBUG
         diagnostic.state(rstd::async::debug::State::Cleaned);
 #endif
@@ -519,6 +553,25 @@ auto spawn_driver_on(RuntimeInner&                     runtime,
 }
 
 template<typename F>
+    requires rstd::async::AwaitableInput<mtp::invoke_result_t<mtp::rm_cvf<F>&>>
+auto spawn_factory_on(RuntimeInner& runtime, F&& function, TaskCreationInfo creation)
+    -> rstd::async::JoinHandle<rstd::async::await_output_t<mtp::invoke_result_t<mtp::rm_cvf<F>&>>> {
+    using Output  = rstd::async::await_output_t<mtp::invoke_result_t<mtp::rm_cvf<F>&>>;
+    using Factory = TaskFactory<mtp::rm_cvf<F>>;
+    auto join     = sync::Arc<JoinState<Output>>::make();
+    auto scope    = rstd::async::FrameAllocatorScope { runtime.frame_allocator() };
+    auto storage  = ::alloc::raw_new<HeapTaskStorage<DriverTaskState<Output, Factory>>>(
+        runtime.weak(),
+        Factory { rstd::forward<F>(function) },
+        JoinStateOwner<Output>::owned(join.clone()),
+        creation);
+    auto task = storage->into_task();
+    join->set_task(task.clone());
+    runtime.spawn(rstd::move(task));
+    return JoinHandleFactory::make<Output>(rstd::move(join));
+}
+
+template<typename F>
 auto spawn_blocking_on(RuntimeInner&                     runtime,
                        F&&                               function,
                        [[maybe_unused]] TaskCreationInfo creation)
@@ -613,6 +666,49 @@ auto spawn_local(A awaitable
 #endif
     auto driver = make_runtime_driver(into_coro(rstd::move(awaitable)));
     return spawn_driver_on(*runtime, rstd::move(driver), creation);
+}
+
+/// Keeps the callable at a stable address until its coroutine frame is destroyed.
+/// Returned values and detached work must not outlive references to the callable.
+export template<typename F>
+    requires AwaitableInput<mtp::invoke_result_t<mtp::rm_cvf<F>&>>
+auto spawn_with(F&& function
+#if LITO_FEAT_ASYNC_DEBUG
+                ,
+                debug::TaskInfo info     = {},
+                source_location location = source_location::current()
+#endif
+                    ) -> JoinHandle<await_output_t<mtp::invoke_result_t<mtp::rm_cvf<F>&>>> {
+    auto* runtime = CURRENT_RUNTIME;
+    if (runtime == nullptr) rstd::panic { "spawn_with called without an async runtime" };
+    auto creation = TaskCreationInfo {};
+#if LITO_FEAT_ASYNC_DEBUG
+    creation = TaskCreationInfo { info, location };
+#endif
+    return ::spawn_factory_on(*runtime, rstd::forward<F>(function), creation);
+}
+
+/// Keeps the callable at a stable address until its coroutine frame is destroyed.
+/// Returned values and detached work must not outlive references to the callable.
+export template<typename F>
+    requires AwaitableInput<mtp::invoke_result_t<mtp::rm_cvf<F>&>>
+auto spawn_local_with(F&& function
+#if LITO_FEAT_ASYNC_DEBUG
+                      ,
+                      debug::TaskInfo info     = {},
+                      source_location location = source_location::current()
+#endif
+                          ) -> JoinHandle<await_output_t<mtp::invoke_result_t<mtp::rm_cvf<F>&>>> {
+    auto* runtime = CURRENT_RUNTIME;
+    if (runtime == nullptr) rstd::panic { "spawn_local_with called without an async runtime" };
+    if (runtime->is_thread_pool()) {
+        rstd::panic { "spawn_local_with is only supported by current-thread runtime" };
+    }
+    auto creation = TaskCreationInfo {};
+#if LITO_FEAT_ASYNC_DEBUG
+    creation = TaskCreationInfo { info, location };
+#endif
+    return ::spawn_factory_on(*runtime, rstd::forward<F>(function), creation);
 }
 
 export template<typename F>

@@ -1,6 +1,7 @@
 export module rstd:async.runtime;
 export import :async.awaitable;
 import :async.runtime_core;
+import :async.frame_allocator;
 import :async.runtime_driver;
 import :async.spawn;
 import :async.task;
@@ -13,6 +14,7 @@ import :time;
 using ::alloc::vec::Vec;
 using ::alloc::string::String;
 using ::alloc::boxed::Box;
+using ::alloc::sync::SharedAllocator;
 #if LITO_FEAT_ASYNC_DEBUG
 
 using namespace rstd::literals;
@@ -56,8 +58,32 @@ public:
 #if LITO_FEAT_ASYNC_DEBUG
         creation = TaskCreationInfo { info, location };
 #endif
+        auto scope  = FrameAllocatorScope { inner->frame_allocator() };
         auto driver = make_runtime_driver(into_coro(rstd::move(awaitable)));
         return ::spawn_driver_on(*inner.as_ptr().as_raw_ptr(), rstd::move(driver), creation);
+    }
+
+    /// Invokes the callable on the calling thread with this runtime's frame allocator.
+    /// The callable remains at a stable address until its coroutine frame is destroyed.
+    /// The calling thread's current runtime is not changed.
+    /// Returned values and detached work must not outlive references to the callable.
+    template<typename F>
+        requires AwaitableInput<mtp::invoke_result_t<mtp::rm_cvf<F>&>>
+    auto spawn_with(F&& function
+#if LITO_FEAT_ASYNC_DEBUG
+                    ,
+                    debug::TaskInfo info     = {},
+                    source_location location = source_location::current()
+#endif
+    ) const -> JoinHandle<await_output_t<mtp::invoke_result_t<mtp::rm_cvf<F>&>>> {
+        auto inner = m_inner.upgrade();
+        if (! inner) rstd::panic { "RuntimeHandle::spawn_with called after runtime shutdown" };
+        auto creation = TaskCreationInfo {};
+#if LITO_FEAT_ASYNC_DEBUG
+        creation = TaskCreationInfo { info, location };
+#endif
+        return ::spawn_factory_on(
+            *inner.as_ptr().as_raw_ptr(), rstd::forward<F>(function), creation);
     }
 
     template<typename F>
@@ -89,21 +115,29 @@ export class Runtime {
     friend class RuntimeBuilder;
     friend struct RuntimeBuilderConfigAccess;
 
-    explicit Runtime(RuntimeKind    kind,
-                     RuntimeConfig  config,
-                     usize          worker_count = usize(),
-                     Option<String> thread_name  = None())
-        : m_inner(
-              sync::Arc<RuntimeInner>::make(kind, config, worker_count, rstd::move(thread_name))),
+    explicit Runtime(RuntimeKind             kind,
+                     RuntimeConfig           config,
+                     usize                   worker_count    = usize(),
+                     Option<String>          thread_name     = None(),
+                     Option<SharedAllocator> frame_allocator = None())
+        : m_inner(sync::Arc<RuntimeInner>::make(kind,
+                                                config,
+                                                worker_count,
+                                                rstd::move(thread_name),
+                                                rstd::move(frame_allocator))),
           m_workers(Vec<thread::JoinHandle<void>>::make()),
           m_current_worker(None()) {
         m_inner->init_self(m_inner.downgrade());
     }
 
-    static auto
-    make(RuntimeKind kind, RuntimeConfig config, usize worker_count, Option<String> thread_name)
-        -> io::Result<Runtime> {
-        auto runtime = Runtime { kind, config, worker_count, rstd::move(thread_name) };
+    static auto make(RuntimeKind             kind,
+                     RuntimeConfig           config,
+                     usize                   worker_count,
+                     Option<String>          thread_name,
+                     Option<SharedAllocator> frame_allocator = None()) -> io::Result<Runtime> {
+        auto runtime = Runtime {
+            kind, config, worker_count, rstd::move(thread_name), rstd::move(frame_allocator)
+        };
 #if LITO_FEAT_ASYNC_DEBUG
         if (runtime.m_inner->diagnostic.enabled()) {
             auto session = debug::CollectionSession::start(runtime.m_inner->diagnostic);
@@ -114,15 +148,17 @@ export class Runtime {
         return Ok(rstd::move(runtime));
     }
 
-    static auto make_thread_pool(usize                 worker_threads,
-                                 Option<String> const& thread_name,
-                                 RuntimeConfig         config) -> io::Result<Runtime> {
+    static auto make_thread_pool(usize                   worker_threads,
+                                 Option<String> const&   thread_name,
+                                 RuntimeConfig           config,
+                                 Option<SharedAllocator> frame_allocator) -> io::Result<Runtime> {
         auto created =
             make(RuntimeKind::ThreadPool,
                  config,
                  worker_threads,
                  thread_name.is_some() ? Some(rstd::as<rstd::clone::Clone>(*thread_name).clone())
-                                       : None<String>());
+                                       : None<String>(),
+                 rstd::move(frame_allocator));
         if (created.is_err()) return Err(rstd::move(created).unwrap_err_unchecked());
         auto runtime = rstd::move(created).unwrap_unchecked();
 
@@ -214,6 +250,7 @@ public:
 #if LITO_FEAT_ASYNC_DEBUG
         creation = TaskCreationInfo { info, location };
 #endif
+        auto scope  = FrameAllocatorScope { m_inner->frame_allocator() };
         auto driver = make_runtime_driver(into_coro(rstd::move(awaitable)));
         return ::spawn_driver_on(*m_inner.as_ptr().as_raw_ptr(), rstd::move(driver), creation);
     }
@@ -233,8 +270,49 @@ public:
 #if LITO_FEAT_ASYNC_DEBUG
         creation = TaskCreationInfo { info, location };
 #endif
+        auto scope  = FrameAllocatorScope { m_inner->frame_allocator() };
         auto driver = make_runtime_driver(into_coro(rstd::move(awaitable)));
         return ::spawn_driver_on(*m_inner.as_ptr().as_raw_ptr(), rstd::move(driver), creation);
+    }
+
+    /// Invokes the callable on the calling thread with this runtime's frame allocator.
+    /// The callable remains at a stable address until its coroutine frame is destroyed.
+    /// The calling thread's current runtime is not changed.
+    /// Returned values and detached work must not outlive references to the callable.
+    template<typename F>
+        requires AwaitableInput<mtp::invoke_result_t<mtp::rm_cvf<F>&>>
+    auto spawn_with(F&& function
+#if LITO_FEAT_ASYNC_DEBUG
+                    ,
+                    debug::TaskInfo info     = {},
+                    source_location location = source_location::current()
+#endif
+                        ) -> JoinHandle<await_output_t<mtp::invoke_result_t<mtp::rm_cvf<F>&>>> {
+        auto creation = TaskCreationInfo {};
+#if LITO_FEAT_ASYNC_DEBUG
+        creation = TaskCreationInfo { info, location };
+#endif
+        return ::spawn_factory_on(
+            *m_inner.as_ptr().as_raw_ptr(), rstd::forward<F>(function), creation);
+    }
+
+    template<typename F>
+        requires AwaitableInput<mtp::invoke_result_t<mtp::rm_cvf<F>&>>
+    auto spawn_local_with(F&& function
+#if LITO_FEAT_ASYNC_DEBUG
+                          ,
+                          debug::TaskInfo info     = {},
+                          source_location location = source_location::current()
+#endif
+                              )
+        -> JoinHandle<await_output_t<mtp::invoke_result_t<mtp::rm_cvf<F>&>>> {
+        if (m_inner->is_thread_pool())
+            rstd::panic { "spawn_local_with is only supported by current-thread runtime" };
+#if LITO_FEAT_ASYNC_DEBUG
+        return spawn_with(rstd::forward<F>(function), info, location);
+#else
+        return spawn_with(rstd::forward<F>(function));
+#endif
     }
 
     template<typename F>
@@ -260,8 +338,9 @@ public:
                   source_location location = source_location::current()
 #endif
                       ) -> await_output_t<A> {
-        auto driver   = make_runtime_driver(into_coro(rstd::move(awaitable)));
-        auto creation = TaskCreationInfo {};
+        auto frame_scope = FrameAllocatorScope { m_inner->frame_allocator() };
+        auto driver      = make_runtime_driver(into_coro(rstd::move(awaitable)));
+        auto creation    = TaskCreationInfo {};
 #if LITO_FEAT_ASYNC_DEBUG
         creation = TaskCreationInfo { debug::TaskInfo { "block_on"_str, location }, location };
 #endif
@@ -331,19 +410,39 @@ public:
             return rstd::move(result).unwrap_unchecked();
         }
     }
+
+    /// Invokes the callable on the calling thread and keeps it alive until the frame is destroyed.
+    /// Returned values and detached work must not outlive references to the callable.
+    template<typename F>
+        requires AwaitableInput<mtp::invoke_result_t<mtp::rm_cvf<F>&>>
+    auto block_on_with(F&& function
+#if LITO_FEAT_ASYNC_DEBUG
+                       ,
+                       source_location location = source_location::current()
+#endif
+                           ) -> await_output_t<mtp::invoke_result_t<mtp::rm_cvf<F>&>> {
+        auto scope = FrameAllocatorScope { m_inner->frame_allocator() };
+#if LITO_FEAT_ASYNC_DEBUG
+        return block_on(function(), location);
+#else
+        return block_on(function());
+#endif
+    }
 };
 
 export class RuntimeBuilder {
-    RuntimeKind    m_kind;
-    usize          m_worker_threads;
-    Option<String> m_thread_name;
-    RuntimeConfig  m_config;
+    RuntimeKind             m_kind;
+    usize                   m_worker_threads;
+    Option<String>          m_thread_name;
+    RuntimeConfig           m_config;
+    Option<SharedAllocator> m_frame_allocator;
 
     RuntimeBuilder(RuntimeKind kind, usize worker_threads)
         : m_kind(kind),
           m_worker_threads(worker_threads),
           m_thread_name(None()),
-          m_config(RuntimeConfig::disabled()) {}
+          m_config(RuntimeConfig::disabled()),
+          m_frame_allocator(None()) {}
 
     friend struct RuntimeBuilderConfigAccess;
 
@@ -363,6 +462,14 @@ public:
 
     auto max_blocking_threads(usize n) -> RuntimeBuilder& {
         m_config.max_blocking_threads = n;
+        return *this;
+    }
+
+    /// Selects the allocator for coroutine frames created in this runtime's execution scope.
+    /// Previously created frames keep their allocator; elided frames do not call it.
+    /// Without aligned coroutine allocation support, only default new alignment is guaranteed.
+    auto frame_allocator(SharedAllocator allocator) -> RuntimeBuilder& {
+        m_frame_allocator = Some(rstd::move(allocator));
         return *this;
     }
 
@@ -400,13 +507,16 @@ public:
             return Err(io::error::Error::from_kind(
                 io::error::ErrorKind { io::error::ErrorKind::InvalidInput }));
         }
+        auto frame_allocator = m_frame_allocator.is_some() ? Some(m_frame_allocator->clone())
+                                                           : None<SharedAllocator>();
         if (m_kind == RuntimeKind::CurrentThread) {
             return Runtime::make(RuntimeKind::CurrentThread,
                                  m_config,
                                  usize(),
                                  m_thread_name.is_some()
                                      ? Some(rstd::as<rstd::clone::Clone>(*m_thread_name).clone())
-                                     : None<String>());
+                                     : None<String>(),
+                                 rstd::move(frame_allocator));
         }
 
         if (m_worker_threads == usize()) {
@@ -414,7 +524,8 @@ public:
                 io::error::ErrorKind { io::error::ErrorKind::InvalidInput }));
         }
 
-        return Runtime::make_thread_pool(m_worker_threads, m_thread_name, m_config);
+        return Runtime::make_thread_pool(
+            m_worker_threads, m_thread_name, m_config, rstd::move(frame_allocator));
     }
 };
 

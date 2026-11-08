@@ -243,6 +243,7 @@ target_sources(
          src/async/atomic_waker.cppm
          src/async/facility.cppm
          src/async/awaitable.cppm
+         src/async/frame_allocator.cppm
          src/async/task.cppm
          src/async/executor.cppm
          src/async/thread_pool_executor.cppm
@@ -290,6 +291,7 @@ target_sources(
           src/random/mod.cpp
           src/sys/random/mod.cpp
           src/async/runtime_core.cpp
+          src/async/frame_allocator.cpp
           src/async/stream.cpp
           src/thread/thread.cpp
           src/thread/thread/id.cpp

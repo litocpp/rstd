@@ -8,6 +8,7 @@ import :async.debug;
 #endif
 import :async.blocking_pool;
 import :async.facility;
+import :async.frame_allocator;
 import :async.forward;
 import :async.poll;
 import :env;
@@ -1457,16 +1458,18 @@ struct RuntimeInner {
     async::debug::Recorder                  diagnostic;
     Option<async::debug::CollectionSession> diagnostic_session;
 #endif
-    RuntimeKind                m_kind;
-    RuntimeConfig              m_config;
-    async::RuntimeBlockingPool m_blocking_pool;
-    RuntimeShared              m_shared;
-    sync::Weak<RuntimeInner>   self;
+    RuntimeKind                            m_kind;
+    RuntimeConfig                          m_config;
+    Option<::alloc::sync::SharedAllocator> m_frame_allocator;
+    async::RuntimeBlockingPool             m_blocking_pool;
+    RuntimeShared                          m_shared;
+    sync::Weak<RuntimeInner>               self;
 
-    explicit RuntimeInner(RuntimeKind    kind,
-                          RuntimeConfig  config,
-                          usize          worker_count,
-                          Option<String> thread_name)
+    explicit RuntimeInner(RuntimeKind                            kind,
+                          RuntimeConfig                          config,
+                          usize                                  worker_count,
+                          Option<String>                         thread_name,
+                          Option<::alloc::sync::SharedAllocator> frame_allocator)
         :
 #if LITO_FEAT_ASYNC_DEBUG
           diagnostic(
@@ -1482,6 +1485,7 @@ struct RuntimeInner {
 #endif
           m_kind(kind),
           m_config(config),
+          m_frame_allocator(rstd::move(frame_allocator)),
           m_blocking_pool(config.max_blocking_threads,
                           blocking_thread_name(rstd::move(thread_name))),
           m_shared(kind == RuntimeKind::CurrentThread ? usize(1) : worker_count, kind),
@@ -1489,6 +1493,10 @@ struct RuntimeInner {
     }
 
     void init_self(sync::Weak<RuntimeInner> weak) { self = rstd::move(weak); }
+
+    auto frame_allocator() const noexcept -> const ::alloc::sync::SharedAllocator* {
+        return m_frame_allocator.is_some() ? rstd::addressof(*m_frame_allocator) : nullptr;
+    }
 
     auto weak() -> sync::Weak<RuntimeInner> { return self.clone(); }
 
@@ -1632,9 +1640,11 @@ struct TaskStateBase {
 auto make_task_waker(const TaskRef& task) -> task::Waker;
 
 struct RuntimeScope {
-    RuntimeInner* previous;
+    RuntimeInner*              previous;
+    async::FrameAllocatorScope frame_scope;
 
-    explicit RuntimeScope(RuntimeInner& runtime): previous(CURRENT_RUNTIME) {
+    explicit RuntimeScope(RuntimeInner& runtime)
+        : previous(CURRENT_RUNTIME), frame_scope(runtime.frame_allocator()) {
         CURRENT_RUNTIME = rstd::addressof(runtime);
     }
 

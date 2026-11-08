@@ -138,9 +138,8 @@ auto thread_pool_spawn_join(bench::Bench& runner, ref<str> name) -> rstd_bench::
         });
 }
 
-auto thread_pool_join_many(bench::Bench& runner, ref<str> name) -> rstd_bench::CaseRunResult {
-    auto runtime = async::RuntimeBuilder::multi_thread().worker_threads(usize(4)).build();
-    if (runtime.is_err()) return runtime_failure(runtime.unwrap_err());
+auto measure_thread_pool_join_many(bench::Bench& runner, ref<str> name, async::Runtime& runtime)
+    -> rstd_bench::CaseRunResult {
     auto sum        = rstd::uint64_t {};
     auto calls      = rstd::uint64_t {};
     auto valid      = true;
@@ -151,7 +150,7 @@ auto thread_pool_join_many(bench::Bench& runner, ref<str> name) -> rstd_bench::C
         rstd::move(run_config),
         [&] {
             if (! valid) return;
-            auto result = runtime->block_on(join_many_spawned_children());
+            auto result = runtime.block_on(join_many_spawned_children());
             if (result.is_err()) {
                 valid = false;
                 return;
@@ -166,6 +165,39 @@ auto thread_pool_join_many(bench::Bench& runner, ref<str> name) -> rstd_bench::C
                 return Err(String::make(rstd_bench::text("task sum differs")));
             return Ok(empty {});
         });
+}
+
+auto thread_pool_join_many(bench::Bench& runner, ref<str> name) -> rstd_bench::CaseRunResult {
+    auto runtime = async::RuntimeBuilder::multi_thread().worker_threads(usize(4)).build();
+    if (runtime.is_err()) return runtime_failure(runtime.unwrap_err());
+    return measure_thread_pool_join_many(runner, name, *runtime);
+}
+
+auto thread_pool_join_many_with_frame_allocator(bench::Bench& runner, ref<str> name, bool use_pool)
+    -> rstd_bench::CaseRunResult {
+    auto builder = async::RuntimeBuilder::multi_thread();
+    builder.worker_threads(usize(4));
+    if (use_pool) {
+        auto pool = rstd::alloc::SharedPoolAllocator<>::try_make();
+        if (pool.is_err()) return rstd_bench::failed("frame pool allocation failed"_Str);
+        builder.frame_allocator(
+            rstd::alloc::SharedAllocator::make(rstd::move(pool).unwrap_unchecked()));
+    } else {
+        builder.frame_allocator(rstd::alloc::SharedAllocator::make(::alloc::Global {}));
+    }
+    auto runtime = builder.build();
+    if (runtime.is_err()) return runtime_failure(runtime.unwrap_err());
+    return measure_thread_pool_join_many(runner, name, *runtime);
+}
+
+auto thread_pool_join_many_frame_global(bench::Bench& runner, ref<str> name)
+    -> rstd_bench::CaseRunResult {
+    return thread_pool_join_many_with_frame_allocator(runner, name, false);
+}
+
+auto thread_pool_join_many_frame_pool(bench::Bench& runner, ref<str> name)
+    -> rstd_bench::CaseRunResult {
+    return thread_pool_join_many_with_frame_allocator(runner, name, true);
 }
 
 auto timer_sleep_zero(bench::Bench& runner, ref<str> name) -> rstd_bench::CaseRunResult {
@@ -203,6 +235,12 @@ auto rstd_bench::register_async_runtime(rstd::bench::Suite& suite) -> Result<emp
     rstd_try(
         suite.add_function(make_descriptor("async"_str, "thread_pool_join_many_4x32"_str, u64(20)),
                            &thread_pool_join_many));
+    rstd_try(suite.add_function(
+        make_descriptor("async"_str, "thread_pool_join_many_frame_global_4x32"_str, u64(20)),
+        &thread_pool_join_many_frame_global));
+    rstd_try(suite.add_function(
+        make_descriptor("async"_str, "thread_pool_join_many_frame_pool_4x32"_str, u64(20)),
+        &thread_pool_join_many_frame_pool));
     rstd_try(suite.add_function(make_descriptor("async"_str, "timer_sleep_zero"_str, u64(500)),
                                 &timer_sleep_zero));
     return Ok(empty {});
