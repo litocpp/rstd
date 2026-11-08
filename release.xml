@@ -1,3 +1,14 @@
+<release version="0.1.12" date="2026-11-08">
+  <description>
+    <ul>
+      <li>Add coroutine frame allocators.</li>
+      <li>Optimize async runtime queues, timers, I/O buffers and reactor wakeups.</li>
+      <li>Share Unix readiness state across Linux and macOS.</li>
+      <li>Add utf8_lossy_indices and JSON unsigned number parsing.</li>
+      <li>Add syntax-only JSON value skipping.</li>
+    </ul>
+  </description>
+</release>
 <release version="0.1.11" date="2026-11-04">
   <description>
     <ul>
