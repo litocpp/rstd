@@ -321,21 +321,18 @@ auto Formatter::write_fmt(Arguments args) -> bool {
             p++;
             last = p;
 
-            // Skip optional arg-id (digits), then optional ':'.
-            const char* spec_b = inner;
-            while (spec_b < inner_end && (unsigned char)(*spec_b - '0') < 10u) ++spec_b;
-            if (spec_b < inner_end && *spec_b == ':') ++spec_b;
+            auto argument = parse_format_argument(inner, inner_end, arg_idx, args.args_len);
+            if (! argument.valid) return false;
+            const char* spec_b = argument.spec;
             const char* spec_e = inner_end;
-
-            if (arg_idx >= args.args_len) return false;
 
             // Parse spec, set options, dispatch, then restore options
             // (so nested write_fmt calls don't see stale options).
             auto saved = Formatter_set_options(*this, parse_spec(spec_b, spec_e));
-            bool ok    = args.args_ptr[arg_idx].fmt(*this);
+            bool ok    = args.args_ptr[argument.index].fmt(*this);
             Formatter_restore_options(*this, saved);
             if (! ok) return false;
-            arg_idx++;
+            if (argument.automatic) ++arg_idx;
 
         } else if (*p == '}') {
             if (p + 1 < end && *(p + 1) == '}') {

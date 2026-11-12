@@ -486,17 +486,54 @@ inline void fmt_too_few_args() {
     rstd::unreachable();
 }
 
+[[noreturn]]
+inline void fmt_invalid_argument() {
+    rstd::unreachable();
+}
+
+struct FormatArgument {
+    const char*  spec;
+    rstd::size_t index;
+    bool         automatic;
+    bool         valid;
+};
+
+constexpr auto parse_format_argument(const char*  begin,
+                                     const char*  end,
+                                     rstd::size_t automatic,
+                                     rstd::size_t count) -> FormatArgument {
+    auto         position = begin;
+    rstd::size_t index    = 0;
+    while (position < end && *position >= '0' && *position <= '9') {
+        auto digit = static_cast<rstd::size_t>(*position - '0');
+        if (index > count / 10 || (index == count / 10 && digit > count % 10))
+            return { end, 0, false, false };
+        index = index * 10 + digit;
+        ++position;
+    }
+    bool implicit = position == begin;
+    if (implicit) index = automatic;
+    if (position != end) {
+        if (*position != ':') return { end, 0, implicit, false };
+        ++position;
+    }
+    return { position, index, implicit, index < count };
+}
+
 consteval void check_format_string(const char* s, rstd::size_t n, rstd::size_t n_args) {
-    rstd::size_t count = 0;
+    rstd::size_t automatic = 0;
     for (rstd::size_t i = 0; i < n; ++i) {
         if (s[i] == '{') {
             if (i + 1 < n && s[i + 1] == '{') {
                 ++i; // skip {{
             } else {
                 ++i;
+                const auto begin = i;
                 while (i < n && s[i] != '}') ++i;
                 if (i >= n) fmt_unmatched_left_brace();
-                ++count;
+                auto argument = parse_format_argument(s + begin, s + i, automatic, n_args);
+                if (! argument.valid) fmt_invalid_argument();
+                if (argument.automatic) ++automatic;
             }
         } else if (s[i] == '}') {
             if (i + 1 < n && s[i + 1] == '}') {
@@ -506,7 +543,6 @@ consteval void check_format_string(const char* s, rstd::size_t n, rstd::size_t n
             }
         }
     }
-    if (count > n_args) fmt_too_few_args();
 }
 
 namespace rstd::fmt

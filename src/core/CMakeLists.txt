@@ -59,6 +59,7 @@ target_sources(
          src/result.cppm
          src/try_.cppm
          src/enum_.cppm
+         src/derive.cppm
          src/task.cppm
          src/future.cppm
          src/stream/mod.cppm
@@ -68,6 +69,7 @@ target_sources(
          src/stream/consumers.cppm
          src/stream/unfold.cppm
          src/fmt/mod.cppm
+         src/fmt/debug.cppm
          src/fmt/integer.cppm
          src/fmt/floating.cppm
          src/panic.cppm

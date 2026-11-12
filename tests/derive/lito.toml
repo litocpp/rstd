@@ -1,0 +1,96 @@
+[package]
+name = "rstd-derive-tests"
+
+[[test]]
+module = "rstd.tests.derive"
+name = "rstd-derive-tests"
+sources = [
+  "main.cpp",
+  "enum.cpp",
+  "record.cpp",
+  "fmt_arguments.cpp",
+  "fixture.cppm",
+  "consumer.cpp",
+  "consumer_peer.cpp",
+]
+
+[dependencies]
+rstd-core = { path = "../../src/core" }
+rstd-alloc = { path = "../../src/alloc" }
+rstd-std = { path = "../../src/std" }
+rstd-test = { path = "../../src/test" }
+rstd-macro = { path = "../../src/macro" }
+
+[compile-test]
+
+[[compile-test.cases]]
+name = "Derive.PrivateField"
+source = "compile/private_field.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd::Debug: non-skipped fields must be public"]
+
+[[compile-test.cases]]
+name = "Derive.Bases"
+source = "compile/bases.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd::Debug: records with bases are not supported"]
+
+[[compile-test.cases]]
+name = "Derive.DependentRecord"
+source = "compile/dependent.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd::Debug: dependent records are not supported"]
+
+[[compile-test.cases]]
+name = "Derive.RawUnion"
+source = "compile/raw_union.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd::Debug: unions are not supported"]
+
+[[compile-test.cases]]
+name = "Derive.Bitfield"
+source = "compile/bitfield.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd::Debug: bitfields are not supported"]
+
+[[compile-test.cases]]
+name = "Derive.DisplayMissingFormat"
+source = "compile/display_missing_format.cpp"
+outcome = "failure"
+diagnostic-contains = ['rstd::Display: record requires format("...") or transparent']
+
+[[compile-test.cases]]
+name = "Derive.FromStrMissingTransparent"
+source = "compile/from_str_missing_transparent.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd::FromStr: record requires explicit transparent"]
+
+[[compile-test.cases]]
+name = "Derive.AliasCaseCollision"
+source = "compile/alias_case_collision.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd::FromStr: enum name or alias collision for 'SHARED' after ASCII case folding"]
+
+[[compile-test.cases]]
+name = "Derive.UnknownHelper"
+source = "compile/unknown_helper.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd::Debug: unknown or invalid option 'unknownhelper' on record types"]
+
+[[compile-test.cases]]
+name = "Derive.FieldWithoutDebug"
+source = "compile/field_without_debug.cpp"
+outcome = "failure"
+diagnostic-contains = ["Debug fields must implement rstd::fmt::Debug"]
+
+[[compile-test.cases]]
+name = "FmtArguments.OutOfRange"
+source = "compile/format_index.cpp"
+outcome = "failure"
+diagnostic-contains = ["fmt_invalid_argument"]
+
+[[compile-test.cases]]
+name = "FmtArguments.Overflow"
+source = "compile/format_index_overflow.cpp"
+outcome = "failure"
+diagnostic-contains = ["fmt_invalid_argument"]

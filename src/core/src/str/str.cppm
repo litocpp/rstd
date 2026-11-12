@@ -333,10 +333,40 @@ struct Impl<fmt::Display, ref<str>> : ImplBase<ref<str>> {
 template<>
 struct Impl<fmt::Debug, ref<str>> : ImplBase<ref<str>> {
     auto fmt(fmt::Formatter& f) const -> bool {
-        auto const* quote = reinterpret_cast<rstd::uint8_t const*>("\"");
-        if (! f.write_raw(quote, rstd::size_t(1))) return false;
-        if (! f.write_raw(this->self().data(), this->self().size().to_primitive())) return false;
-        return f.write_raw(quote, rstd::size_t(1));
+        if (! f.write_raw("\"", 1)) return false;
+        auto         value = this->self();
+        rstd::size_t begin = 0;
+        for (rstd::size_t index = 0; index < value.size().to_primitive(); ++index) {
+            auto        byte   = value[usize(index)].to_primitive();
+            const char* escape = nullptr;
+            switch (byte) {
+            case '"': escape = "\\\""; break;
+            case '\\': escape = "\\\\"; break;
+            case '\n': escape = "\\n"; break;
+            case '\r': escape = "\\r"; break;
+            case '\t': escape = "\\t"; break;
+            case 0: escape = "\\0"; break;
+            default: break;
+            }
+            if (! escape && byte >= 32 && byte != 127) continue;
+            if (index > begin && ! f.write_raw(value.data() + begin, index - begin)) return false;
+            if (escape) {
+                if (! f.write_raw(escape, 2)) return false;
+            } else {
+                constexpr char digits[] = "0123456789abcdef";
+                char encoded[] = { '\\', 'u', '{', digits[byte >> 4], digits[byte & 15], '}' };
+                if (byte < 16) {
+                    encoded[3] = encoded[4];
+                    encoded[4] = '}';
+                }
+                if (! f.write_raw(encoded, byte < 16 ? 5 : 6)) return false;
+            }
+            begin = index + 1;
+        }
+        if (value.size().to_primitive() > begin &&
+            ! f.write_raw(value.data() + begin, value.size().to_primitive() - begin))
+            return false;
+        return f.write_raw("\"", 1);
     }
 };
 

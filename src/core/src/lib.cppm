@@ -16,6 +16,7 @@ export import :cmp;
 export import :fmt;
 export import :fmt.integer;
 export import :fmt.floating;
+export import :derive;
 export import :num.dec2flt;
 export import :num.flt2dec;
 export import :num.floating_parse;

@@ -8,6 +8,7 @@ members = [
   "src/parse",
   "src/serde",
   "src/serde-macro",
+  "src/macro",
   "src/argparse",
   "src/std",
   "src/bench",
