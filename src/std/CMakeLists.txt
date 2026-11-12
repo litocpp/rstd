@@ -225,6 +225,7 @@ target_sources(
          src/sync/once.cppm
          src/sync/mutex.cppm
          src/sync/condvar.cppm
+         src/sync/rwlock.cppm
          src/sync/poison.cppm
          src/sync/mpmc/mod.cppm
          src/sync/mpmc/detail.cppm
