@@ -1,5 +1,8 @@
+module;
+#include <rstd/macro.hpp>
 module rstd.dlopn;
 
+#if ! RSTD_OS_WINDOWS
 namespace rstd::dlopn
 {
 namespace
@@ -53,3 +56,4 @@ void Library::close() noexcept {
 }
 
 } // namespace rstd::dlopn
+#endif

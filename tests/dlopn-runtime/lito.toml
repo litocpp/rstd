@@ -1,6 +1,6 @@
 [package]
 name = "rstd-dlopn-tests"
-target = { os = "linux" }
+target = { os = ["linux", "windows"] }
 
 [[test]]
 module = "rstd.tests.dlopn"
