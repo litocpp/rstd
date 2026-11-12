@@ -31,6 +31,7 @@ export using std::get;
 export using std::strong_ordering;
 export using std::compare_three_way;
 export using std::nullptr_t;
+export using std::initializer_list;
 export using std::construct_at;
 } // namespace std
 

@@ -4,6 +4,11 @@ name = "rstd-compile-tests"
 [compile-test]
 
 [[compile-test.cases]]
+name = "Basic.InitializerList"
+source = "basic/initializer_list.cpp"
+outcome = "success"
+
+[[compile-test.cases]]
 name = "Bytes.StaticBorrowRejectsAutomaticStorage"
 source = "bytes/local_static_borrow.cpp"
 outcome = "failure"
