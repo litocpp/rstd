@@ -135,6 +135,28 @@ private:
 namespace rstd
 {
 
+constexpr auto ref<str>::trim() const noexcept -> ref<str> {
+    usize begin_index;
+    auto  end_index = len();
+    while (begin_index < end_index) {
+        auto [value, count] =
+            char_::decode_char_utf8(data() + begin_index.to_primitive(), end_index - begin_index);
+        if (! value.is_whitespace()) break;
+        begin_index += count;
+    }
+    while (end_index > begin_index) {
+        auto start = end_index - usize(1);
+        while (start > begin_index && ! is_char_boundary(start)) --start;
+        auto [value, count] =
+            char_::decode_char_utf8(data() + start.to_primitive(), end_index - start);
+        if (! value.is_whitespace()) break;
+        end_index = start;
+    }
+    auto* first = data();
+    if (begin_index != usize()) first += begin_index.to_primitive();
+    return ref<str>::from_raw_parts_unchecked(first, end_index - begin_index);
+}
+
 constexpr auto ref<str>::bytes() const noexcept -> str_::Bytes {
     return str_::Bytes(*this);
 }

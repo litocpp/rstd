@@ -12,6 +12,7 @@ export import :async.coro_future;
 export import :async.join;
 export import :async.select;
 export import :async.oneshot;
+export import :async.mpsc;
 export import :async.mutex;
 export import :async.semaphore;
 export import :async.watch;

@@ -95,6 +95,7 @@ public:
     constexpr auto bytes() const noexcept -> str_::Bytes;
     constexpr auto chars() const noexcept -> str_::Chars;
     constexpr auto char_indices() const noexcept -> str_::CharIndices;
+    constexpr auto trim() const noexcept -> ref<str>;
 
     constexpr auto contains(ref<str> pattern) const noexcept -> bool {
         if (pattern.is_empty()) return true;
@@ -245,6 +246,7 @@ public:
         return as_ref().split_at(index);
     }
     constexpr auto trim_ascii() const noexcept -> ref<str> { return as_ref().trim_ascii(); }
+    constexpr auto trim() const noexcept -> ref<str> { return as_ref().trim(); }
 
     constexpr void make_ascii_lowercase() noexcept {
         for (rstd::size_t index = 0; index < length_.to_primitive(); ++index) {

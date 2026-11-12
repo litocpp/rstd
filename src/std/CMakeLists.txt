@@ -259,6 +259,7 @@ target_sources(
          src/async/join.cppm
          src/async/select.cppm
          src/async/oneshot.cppm
+         src/async/mpsc.cppm
          src/async/mutex.cppm
          src/async/semaphore.cppm
          src/async/watch.cppm

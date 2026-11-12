@@ -15,6 +15,8 @@ export struct AcquireError {
     bool operator==(const AcquireError&) const = default;
 };
 
+export enum class TryAcquireError { Closed, NoPermits };
+
 struct SemaphoreWaiter {
     SemaphoreWaiter*    previous {};
     SemaphoreWaiter*    next {};
@@ -118,6 +120,15 @@ struct SemaphoreState {
         return Ok(false);
     }
 
+    auto try_acquire(usize permits) -> Result<empty, TryAcquireError> {
+        auto q = queue.lock().unwrap_unchecked();
+        if (q->closed) return Err(TryAcquireError::Closed);
+        if ((permits != usize() && q->head) || q->available < permits)
+            return Err(TryAcquireError::NoPermits);
+        q->available -= permits;
+        return Ok(empty {});
+    }
+
     void release(usize permits) {
         // Keep the unassigned remainder out of available while waiters remain.
         while (permits != usize()) {
@@ -186,6 +197,7 @@ export class OwnedSemaphorePermit {
     OwnedSemaphorePermit(Arc<SemaphoreState> state, usize permits)
         : state_(rstd::move(state)), permits_(permits) {}
     friend class SemaphoreAcquire;
+    friend class Semaphore;
 
     void release() {
         auto state   = rstd::move(state_);
@@ -271,6 +283,15 @@ public:
     auto acquire_many_owned(usize permits) const -> SemaphoreAcquire {
         return SemaphoreAcquire { state_.clone(), permits };
     }
+    auto try_acquire_owned() const -> Result<OwnedSemaphorePermit, TryAcquireError> {
+        return try_acquire_many_owned(usize(1));
+    }
+    auto try_acquire_many_owned(usize permits) const
+        -> Result<OwnedSemaphorePermit, TryAcquireError> {
+        auto acquired = state_->try_acquire(permits);
+        if (acquired.is_err()) return Err(rstd::move(acquired).unwrap_err());
+        return Ok(OwnedSemaphorePermit { state_.clone(), permits });
+    }
     auto available_permits() const -> usize { return state_->available_permits(); }
     void close() const { state_->close(); }
     auto is_closed() const -> bool { return state_->is_closed(); }
@@ -300,5 +321,33 @@ struct Impl<fmt::Debug, async::AcquireError> : ImplBase<async::AcquireError> {
 template<>
 struct Impl<error::Error, async::AcquireError> : DefaultInImpl<error::Error, async::AcquireError> {
 };
+
+template<>
+struct Impl<fmt::Display, async::TryAcquireError> : ImplBase<async::TryAcquireError> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        if (this->self() == async::TryAcquireError::Closed) {
+            constexpr char message[] = "semaphore closed";
+            return formatter.write_raw(message, sizeof(message) - 1);
+        }
+        constexpr char message[] = "no permits available";
+        return formatter.write_raw(message, sizeof(message) - 1);
+    }
+};
+
+template<>
+struct Impl<fmt::Debug, async::TryAcquireError> : ImplBase<async::TryAcquireError> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        if (this->self() == async::TryAcquireError::Closed) {
+            constexpr char message[] = "Closed";
+            return formatter.write_raw(message, sizeof(message) - 1);
+        }
+        constexpr char message[] = "NoPermits";
+        return formatter.write_raw(message, sizeof(message) - 1);
+    }
+};
+
+template<>
+struct Impl<error::Error, async::TryAcquireError>
+    : DefaultInImpl<error::Error, async::TryAcquireError> {};
 
 } // namespace rstd
