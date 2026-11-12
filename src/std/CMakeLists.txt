@@ -260,6 +260,8 @@ target_sources(
          src/async/select.cppm
          src/async/oneshot.cppm
          src/async/mutex.cppm
+         src/async/semaphore.cppm
+         src/async/watch.cppm
          src/async/notify.cppm
          src/async/completion.cppm
          src/async/completion_queue.cppm

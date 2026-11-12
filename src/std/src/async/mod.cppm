@@ -13,6 +13,8 @@ export import :async.join;
 export import :async.select;
 export import :async.oneshot;
 export import :async.mutex;
+export import :async.semaphore;
+export import :async.watch;
 export import :async.io;
 export import :async.stream;
 export import :async.io_operation;
