@@ -662,6 +662,34 @@ namespace rstd
 {
 
 template<typename T>
+    requires Impled<T, fmt::Display, Sized>
+struct Impl<fmt::Display, ::alloc::sync::Arc<T>> : ImplBase<::alloc::sync::Arc<T>> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        const T& value = *this->self();
+        return as<fmt::Display>(value).fmt(formatter);
+    }
+};
+
+template<typename T>
+    requires Impled<T, fmt::Debug, Sized>
+struct Impl<fmt::Debug, ::alloc::sync::Arc<T>> : ImplBase<::alloc::sync::Arc<T>> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        const T& value = *this->self();
+        return as<fmt::Debug>(value).fmt(formatter);
+    }
+};
+
+template<typename T>
+    requires Impled<T, error::Error, Sized>
+struct Impl<error::Error, ::alloc::sync::Arc<T>>
+    : DefaultInImpl<error::Error, ::alloc::sync::Arc<T>> {
+    auto source() const noexcept -> Option<error::ErrorRef> {
+        const T& value = *this->self();
+        return as<error::Error>(value).source();
+    }
+};
+
+template<typename T>
 struct Impl<ops::Deref, ::alloc::sync::Arc<T>> : ImplBase<::alloc::sync::Arc<T>> {
     using Target = T;
 
