@@ -233,9 +233,54 @@ class ValueDeserializer;
 class ValueSequenceAccess;
 class ValueMapAccess;
 
+class ValueTaggedPayload {
+    Option<ref<Value>> value_;
+    serde::DataPath    path_;
+    Option<String>     tag_;
+    Option<String>     content_;
+
+    ValueTaggedPayload(Option<ref<Value>> value,
+                       serde::DataPath    path,
+                       Option<String>     tag,
+                       Option<String>     content)
+        : value_(value),
+          path_(rstd::move(path)),
+          tag_(rstd::move(tag)),
+          content_(rstd::move(content)) {}
+    friend class ValueDeserializer;
+
+public:
+    using error_type = serde::Error;
+
+    auto is_internal() const noexcept -> bool { return tag_.is_some(); }
+    auto is_present() const noexcept -> bool { return value_.is_some(); }
+    auto deserializer(serde::UnknownFieldPolicy unknown) -> ValueDeserializer;
+    auto unit(ValueDeserializer& source) -> Result<empty, serde::Error>;
+    auto end(const ValueDeserializer&) const -> Result<empty, serde::Error> { return Ok(empty {}); }
+    auto missing_value() const -> serde::Error {
+        return serde::Error::missing_field(path_.clone(), content_->as_str());
+    }
+    auto invariant(ref<str> message) const -> serde::Error {
+        return serde::Error::invariant(path_.clone(), message);
+    }
+};
+
+using ValueTaggedEnumAccess = serde::TaggedEnumAccess<ValueTaggedPayload>;
+
 class ValueDeserializer {
-    ref<Value>      value_;
-    serde::DataPath path_;
+    ref<Value>       value_;
+    serde::DataPath  path_;
+    Option<ref<str>> excluded_tag_;
+    bool             reject_unknown_fields_ {};
+
+    ValueDeserializer(const Value&     value,
+                      serde::DataPath  path,
+                      Option<ref<str>> excluded_tag,
+                      bool             reject_unknown_fields)
+        : value_(ref<Value>::from_raw_parts(rstd::addressof(value))),
+          path_(rstd::move(path)),
+          excluded_tag_(excluded_tag),
+          reject_unknown_fields_(reject_unknown_fields) {}
 
     static auto actual_kind(const Value& value) noexcept -> serde::ValueKind {
         if (value.is_null()) return serde::ValueKind::Null;
@@ -255,6 +300,7 @@ class ValueDeserializer {
     friend class ValueSequenceAccess;
     friend class ValueMapAccess;
     friend class ValueEnumAccess;
+    friend class ValueTaggedPayload;
 
 public:
     using error_type    = serde::Error;
@@ -267,7 +313,18 @@ public:
     ValueDeserializer(const Value& value, serde::DataPath path)
         : value_(ref<Value>::from_raw_parts(rstd::addressof(value))), path_(rstd::move(path)) {}
 
-    auto deserialize_json_value() -> Result<Value, serde::Error> { return Ok(value_->clone()); }
+    auto deserialize_json_value() -> Result<Value, serde::Error> {
+        auto value = value_->clone();
+        if (excluded_tag_.is_some()) {
+            auto values = value.as_object_mut();
+            if (values.is_some()) (void)(*values)->remove(*excluded_tag_);
+        }
+        return Ok(rstd::move(value));
+    }
+    auto record_unknown_fields(serde::UnknownFieldPolicy declared) const noexcept
+        -> serde::UnknownFieldPolicy {
+        return reject_unknown_fields_ ? serde::UnknownFieldPolicy::Reject : declared;
+    }
 
     auto deserialize_bool() -> Result<bool, serde::Error> {
         auto value = value_->as_bool();
@@ -328,6 +385,10 @@ public:
     auto begin_sequence() -> Result<ValueSequenceAccess, serde::Error>;
     auto begin_map() -> Result<ValueMapAccess, serde::Error>;
     auto begin_enum() -> Result<ValueEnumAccess, serde::Error>;
+    auto begin_internal_enum(ref<str> tag, serde::UnknownFieldPolicy unknown)
+        -> Result<ValueTaggedEnumAccess, serde::Error>;
+    auto begin_adjacent_enum(ref<str> tag, ref<str> content, serde::UnknownFieldPolicy unknown)
+        -> Result<ValueTaggedEnumAccess, serde::Error>;
     auto ignore_value() -> Result<empty, serde::Error> { return Ok(empty {}); }
     auto invalid_value(ref<str> message) const -> serde::Error {
         return serde::Error::invalid_value(path_.clone(), message);
@@ -406,12 +467,25 @@ class ValueMapAccess {
     Option<ref<Value>>          pending_value_;
     bool                        finished_ {};
     bool                        ended_ {};
+    Option<ref<str>>            excluded_tag_;
+
+    auto next_entry() -> Option<BTreeMapIter<String, Value>::Item> {
+        for (;;) {
+            auto entry = entries_.next();
+            if (entry.is_none()) return entry;
+            auto [key, value] = *entry;
+            if (excluded_tag_.is_none() || key->as_str() != *excluded_tag_) return entry;
+        }
+    }
 
 public:
     using error_type = serde::Error;
 
-    ValueMapAccess(const Map& values, serde::DataPath path)
-        : entries_(values.iter()), path_(path.clone()), value_path_(rstd::move(path)) {}
+    ValueMapAccess(const Map& values, serde::DataPath path, Option<ref<str>> excluded_tag = None())
+        : entries_(values.iter()),
+          path_(path.clone()),
+          value_path_(rstd::move(path)),
+          excluded_tag_(excluded_tag) {}
 
     template<typename T>
     auto next_key() -> Result<Option<T>, serde::Error> {
@@ -419,7 +493,7 @@ public:
         if (pending_value_.is_some()) {
             return Err(serde::Error::invariant(path_.clone(), "map value is missing"_str));
         }
-        auto entry = entries_.next();
+        auto entry = next_entry();
         if (entry.is_none()) {
             finished_ = true;
             return Ok(None<T>());
@@ -461,7 +535,7 @@ public:
         if (pending_value_.is_some()) {
             return Err(serde::Error::invariant(path_.clone(), "map value is missing"_str));
         }
-        if (! finished_ && entries_.next().is_some()) {
+        if (! finished_ && next_entry().is_some()) {
             return Err(serde::Error::invariant(path_.clone(), "map has unread entries"_str));
         }
         ended_ = true;
@@ -519,7 +593,7 @@ inline auto ValueDeserializer::begin_sequence() -> Result<ValueSequenceAccess, s
 inline auto ValueDeserializer::begin_map() -> Result<ValueMapAccess, serde::Error> {
     auto values = value_->as_object();
     if (values.is_none()) return Err(mismatch(serde::ValueKind::Map));
-    return Ok(ValueMapAccess(values->get(), path_.clone()));
+    return Ok(ValueMapAccess(values->get(), path_.clone(), excluded_tag_));
 }
 
 inline auto ValueDeserializer::begin_enum() -> Result<ValueEnumAccess, serde::Error> {
@@ -538,8 +612,63 @@ inline auto ValueDeserializer::begin_enum() -> Result<ValueEnumAccess, serde::Er
     return Ok(ValueEnumAccess(variant->clone(), Some<ref<Value>>(payload), path_.clone()));
 }
 
+inline auto ValueTaggedPayload::deserializer(serde::UnknownFieldPolicy unknown)
+    -> ValueDeserializer {
+    auto path     = content_.is_some() ? path_.with_field(content_->as_str()) : path_.clone();
+    auto excluded = tag_.is_some() ? Some(tag_->as_str()) : None<ref<str>>();
+    return ValueDeserializer(**value_,
+                             rstd::move(path),
+                             excluded,
+                             is_internal() && unknown == serde::UnknownFieldPolicy::Reject);
+}
+
+inline auto ValueTaggedPayload::unit(ValueDeserializer& source) -> Result<empty, serde::Error> {
+    return source.deserialize_unit();
+}
+
+inline auto ValueDeserializer::begin_internal_enum(ref<str> tag, serde::UnknownFieldPolicy unknown)
+    -> Result<ValueTaggedEnumAccess, serde::Error> {
+    if (! value_->is_object()) return Err(mismatch(serde::ValueKind::Map));
+    auto value = value_->get(tag);
+    if (value.is_none()) return Err(missing_field(tag));
+    auto source  = ValueDeserializer(**value, path_.with_field(tag));
+    auto variant = source.deserialize_string();
+    if (variant.is_err()) return Err(rstd::move(variant).unwrap_err_unchecked());
+    return Ok(ValueTaggedEnumAccess(
+        rstd::move(*variant),
+        ValueTaggedPayload(Some(value_), path_.clone(), Some(String::make(tag)), None()),
+        unknown));
+}
+
+inline auto ValueDeserializer::begin_adjacent_enum(ref<str>                  tag,
+                                                   ref<str>                  content,
+                                                   serde::UnknownFieldPolicy unknown)
+    -> Result<ValueTaggedEnumAccess, serde::Error> {
+    if (tag == content) return Err(invariant("adjacent tag and content must differ"_str));
+    auto values = value_->as_object();
+    if (values.is_none()) return Err(mismatch(serde::ValueKind::Map));
+    auto value = value_->get(tag);
+    if (value.is_none()) return Err(missing_field(tag));
+    auto source  = ValueDeserializer(**value, path_.with_field(tag));
+    auto variant = source.deserialize_string();
+    if (variant.is_err()) return Err(rstd::move(variant).unwrap_err_unchecked());
+    if (unknown == serde::UnknownFieldPolicy::Reject) {
+        for (auto [key, payload] : values->get().iter()) {
+            if (key->as_str() != tag && key->as_str() != content)
+                return Err(unknown_field(key->as_str()));
+        }
+    }
+    return Ok(ValueTaggedEnumAccess(
+        rstd::move(*variant),
+        ValueTaggedPayload(
+            value_->get(content), path_.clone(), None(), Some(String::make(content))),
+        unknown));
+}
+
 static_assert(serde::Serializer<ValueSerializer>);
 static_assert(serde::Deserializer<ValueDeserializer>);
+static_assert(serde::InternalVariantDeserializer<ValueDeserializer>);
+static_assert(serde::AdjacentVariantDeserializer<ValueDeserializer>);
 
 export class DecodeError {
     Option<Error>        syntax_;
@@ -624,7 +753,12 @@ struct Impl<serde::Serialize, json::Value> {
     template<typename Serializer>
     static auto serialize(Serializer& output, const json::Value& value) ->
         typename Serializer::result_type {
-        if (value.is_null()) return output.serialize_unit();
+        if (value.is_null()) {
+            if constexpr (requires { output.serialize_json_null(); })
+                return output.serialize_json_null();
+            else
+                return output.serialize_unit();
+        }
         if (value.is_boolean()) return output.serialize_bool(*value.as_bool());
         if (value.is_string()) return output.serialize_string(*value.as_str());
         if (value.is_number()) {

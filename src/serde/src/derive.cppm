@@ -114,7 +114,8 @@ struct RecordDefinition {
                 return deserialize_record(deserializer,
                                           [&](ref<str> name, auto& map)
                                               -> Result<empty, typename Deserializer::error_type> {
-                                              if constexpr (Unknown == UnknownFieldPolicy::Reject)
+                                              if (record_unknown_fields(deserializer, Unknown) ==
+                                                  UnknownFieldPolicy::Reject)
                                                   return Err(deserializer.unknown_field(name));
                                               else
                                                   return map.ignore_value();
@@ -279,8 +280,12 @@ struct VariantDefinition {
         auto started = source.begin_enum();
         if (started.is_err()) return Err(rstd::move(started).unwrap_err_unchecked());
         auto input = rstd::move(started).unwrap_unchecked();
-        auto result =
-            Result<T, typename D::error_type>(Err(source.unknown_variant(input.variant())));
+        return deserialize_variant(source, input, source.unknown_variant(input.variant()));
+    }
+    template<typename D, EnumAccess Input>
+    static auto deserialize_variant(D&, Input& input, typename D::error_type unknown)
+        -> Result<T, typename D::error_type> {
+        auto result = Result<T, typename D::error_type>(Err(rstd::move(unknown)));
         variants([&]<typename V>() {
             if (input.variant() == Text(V::name).view()) {
                 if constexpr (__is_void(typename V::payload_type)) {
@@ -329,6 +334,148 @@ struct NewtypeDefinition {
     }
 };
 
+template<typename S>
+class InternalTagMap {
+    typename S::map_type map_;
+    S*                   sink_;
+    ref<str>             tag_;
+
+public:
+    using error_type = typename S::error_type;
+
+    InternalTagMap(typename S::map_type map, S& sink, ref<str> tag)
+        : map_(rstd::move(map)), sink_(&sink), tag_(tag) {}
+
+    template<typename T>
+    auto key(const T& value) -> Result<empty, error_type> {
+        if constexpr (mtp::same_as<T, ref<str>>) {
+            if (value == tag_)
+                return Err(sink_->invalid_value("internal tag conflicts with a payload field"_str));
+        } else if constexpr (mtp::same_as<T, ::alloc::string::String>) {
+            if (value.as_str() == tag_)
+                return Err(sink_->invalid_value("internal tag conflicts with a payload field"_str));
+        }
+        return map_.key(value);
+    }
+    template<typename T>
+    auto value(const T& value) -> Result<empty, error_type> {
+        return map_.value(value);
+    }
+    auto end() -> typename S::result_type { return map_.end(); }
+};
+
+template<typename S>
+class InternalTagSerializer {
+    S*       sink_;
+    ref<str> tag_;
+    ref<str> variant_;
+
+    auto unsupported_payload() -> typename S::result_type {
+        return Err(sink_->unsupported("internally tagged payload must serialize as a map"_str));
+    }
+
+public:
+    using value_type    = typename S::value_type;
+    using error_type    = typename S::error_type;
+    using result_type   = typename S::result_type;
+    using sequence_type = typename S::sequence_type;
+    using map_type      = InternalTagMap<S>;
+
+    InternalTagSerializer(S& sink, ref<str> tag, ref<str> variant)
+        : sink_(&sink), tag_(tag), variant_(variant) {}
+
+    auto serialize_none() -> result_type { return unsupported_payload(); }
+    auto serialize_unit() -> result_type { return unsupported_payload(); }
+    auto serialize_bool(bool) -> result_type { return unsupported_payload(); }
+    auto serialize_i64(i64) -> result_type { return unsupported_payload(); }
+    auto serialize_u64(u64) -> result_type { return unsupported_payload(); }
+    auto serialize_f64(f64) -> result_type { return unsupported_payload(); }
+    auto serialize_string(ref<str>) -> result_type { return unsupported_payload(); }
+    auto serialize_bytes(slice<u8>) -> result_type { return unsupported_payload(); }
+    auto serialize_unit_variant(ref<str>) -> result_type { return unsupported_payload(); }
+    template<typename T>
+    auto serialize_some(const T&) -> result_type {
+        return unsupported_payload();
+    }
+    template<typename T>
+    auto serialize_newtype(ref<str>, const T& value) -> result_type {
+        return serde::serialize(*this, value);
+    }
+    template<typename T>
+    auto serialize_newtype_variant(ref<str>, const T&) -> result_type {
+        return unsupported_payload();
+    }
+    template<typename T>
+    auto serialize_extension(ref<str>, const T&) -> result_type {
+        return unsupported_payload();
+    }
+    auto begin_sequence(usize) -> Result<sequence_type, error_type> {
+        return Err(sink_->unsupported("internally tagged payload must serialize as a map"_str));
+    }
+    auto begin_map(usize len) -> Result<map_type, error_type> {
+        auto started = sink_->begin_map(len + usize(1));
+        if (started.is_err()) return Err(rstd::move(started).unwrap_err_unchecked());
+        auto map = rstd::move(started).unwrap_unchecked();
+        auto tag = field(map, tag_, variant_);
+        if (tag.is_err()) return Err(rstd::move(tag).unwrap_err_unchecked());
+        return Ok(map_type(rstd::move(map), *sink_, tag_));
+    }
+    auto invalid_value(ref<str> message) const -> error_type {
+        return sink_->invalid_value(message);
+    }
+    auto unsupported(ref<str> message) const -> error_type { return sink_->unsupported(message); }
+};
+
+template<typename T,
+         Text               Name,
+         Direction          Mode,
+         Text               Tag,
+         UnknownFieldPolicy Unknown = UnknownFieldPolicy::Reject>
+struct InternalVariantDefinition : VariantDefinition<T, Name, Mode> {
+    static constexpr auto tag            = Tag;
+    static constexpr auto unknown_fields = Unknown;
+
+    template<typename S>
+    static auto serialize(S& sink, const T& value) -> typename S::result_type {
+        auto result = typename S::result_type(Err(sink.invalid_value("unknown variant"_str)));
+        InternalVariantDefinition::variants([&]<typename V>() {
+            if (! V::matches(value)) return;
+            if constexpr (__is_void(typename V::payload_type)) {
+                auto started = sink.begin_map(usize(1));
+                if (started.is_err()) {
+                    result = Err(rstd::move(started).unwrap_err_unchecked());
+                    return;
+                }
+                auto map = rstd::move(started).unwrap_unchecked();
+                auto tag = field(map, Tag.view(), Text(V::name).view());
+                if (tag.is_err()) {
+                    result = Err(rstd::move(tag).unwrap_err_unchecked());
+                    return;
+                }
+                result = map.end();
+            } else {
+                constexpr auto variant = Text(V::name);
+                auto           tagged  = InternalTagSerializer(sink, Tag.view(), variant.view());
+                result                 = serde::serialize(tagged, V::get(value));
+            }
+        });
+        return result;
+    }
+    template<InternalVariantDeserializer D>
+    static auto deserialize(D& source) -> Result<T, typename D::error_type> {
+        auto started = source.begin_internal_enum(Tag.view(), Unknown);
+        if (started.is_err()) return Err(rstd::move(started).unwrap_err_unchecked());
+        auto input = rstd::move(started).unwrap_unchecked();
+        // Tags are untrusted and may contain credentials.
+        return InternalVariantDefinition::deserialize_variant(
+            source, input, source.unknown_variant("unrecognized"_str));
+    }
+    template<typename Sink>
+    static constexpr void describe(Sink& sink) {
+        sink.template variants<InternalVariantDefinition>();
+    }
+};
+
 template<typename T,
          Text               Name,
          Direction          Mode,
@@ -367,30 +514,17 @@ struct AdjacentVariantDefinition : VariantDefinition<T, Name, Mode> {
         });
         return result;
     }
-    template<typename D>
+    template<AdjacentVariantDeserializer D>
     static auto deserialize(D& source) -> Result<T, typename D::error_type> {
         auto started = source.begin_adjacent_enum(Tag.view(), Content.view(), Unknown);
         if (started.is_err()) return Err(rstd::move(started).unwrap_err_unchecked());
         auto input = rstd::move(started).unwrap_unchecked();
-        auto result =
-            Result<T, typename D::error_type>(Err(source.unknown_variant(input.variant())));
-        AdjacentVariantDefinition::variants([&]<typename V>() {
-            if (input.variant() != Text(V::name).view()) return;
-            if constexpr (__is_void(typename V::payload_type)) {
-                auto checked = input.unit();
-                if (checked.is_err())
-                    result = Err(rstd::move(checked).unwrap_err_unchecked());
-                else
-                    result = Ok(V::make());
-            } else {
-                auto value = input.template value<typename V::payload_type>();
-                if (value.is_err())
-                    result = Err(rstd::move(value).unwrap_err_unchecked());
-                else
-                    result = Ok(V::make(rstd::move(value).unwrap_unchecked()));
-            }
-        });
-        return result;
+        return AdjacentVariantDefinition::deserialize_variant(
+            source, input, source.unknown_variant("unrecognized"_str));
+    }
+    template<typename Sink>
+    static constexpr void describe(Sink& sink) {
+        sink.template variants<AdjacentVariantDefinition>();
     }
 };
 

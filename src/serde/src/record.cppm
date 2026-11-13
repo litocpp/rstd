@@ -15,6 +15,44 @@ enum class UnknownFieldPolicy : rstd::uint8_t
     Ignore,
 };
 
+template<typename D>
+concept InternalVariantDeserializer = Deserializer<D> && requires(D& source, ref<str> tag) {
+    typename decltype(source.begin_internal_enum(tag, UnknownFieldPolicy::Ignore))::value_type;
+    requires EnumAccess<typename decltype(source.begin_internal_enum(
+        tag, UnknownFieldPolicy::Ignore))::value_type>;
+    {
+        source.begin_internal_enum(tag, UnknownFieldPolicy::Ignore)
+    } -> mtp::same_as<Result<typename decltype(source.begin_internal_enum(
+                                 tag, UnknownFieldPolicy::Ignore))::value_type,
+                             typename D::error_type>>;
+};
+
+template<typename D>
+concept AdjacentVariantDeserializer =
+    Deserializer<D> && requires(D& source, ref<str> tag, ref<str> content) {
+        typename decltype(source.begin_adjacent_enum(
+            tag, content, UnknownFieldPolicy::Ignore))::value_type;
+        requires EnumAccess<typename decltype(source.begin_adjacent_enum(
+            tag, content, UnknownFieldPolicy::Ignore))::value_type>;
+        {
+            source.begin_adjacent_enum(tag, content, UnknownFieldPolicy::Ignore)
+        } -> mtp::same_as<Result<typename decltype(source.begin_adjacent_enum(
+                                     tag, content, UnknownFieldPolicy::Ignore))::value_type,
+                                 typename D::error_type>>;
+    };
+
+template<typename D>
+auto record_unknown_fields(D& source, UnknownFieldPolicy declared) -> UnknownFieldPolicy {
+    if constexpr (requires {
+                      {
+                          source.record_unknown_fields(declared)
+                      } -> mtp::same_as<UnknownFieldPolicy>;
+                  })
+        return source.record_unknown_fields(declared);
+    else
+        return declared;
+}
+
 class FieldNames {
     String      canonical_;
     Vec<String> aliases_;
@@ -204,6 +242,7 @@ template<typename Deserializer, typename... Fields>
             (RecordField<Fields, Deserializer, typename Deserializer::map_type> && ...)
 auto deserialize_record(Deserializer& deserializer, UnknownFieldPolicy policy, Fields&... fields)
     -> Result<empty, typename Deserializer::error_type> {
+    policy     = record_unknown_fields(deserializer, policy);
     auto valid = validate_record_fields(deserializer, fields...);
     if (valid.is_err()) return Err(rstd::move(valid).unwrap_err_unchecked());
     auto map = deserializer.begin_map();
@@ -226,5 +265,52 @@ auto deserialize_record(Deserializer& deserializer, UnknownFieldPolicy policy, F
     }
     return input.end();
 }
+
+template<typename Payload>
+class TaggedEnumAccess {
+    String             variant_;
+    Payload            payload_;
+    UnknownFieldPolicy unknown_;
+    bool               consumed_ {};
+
+public:
+    using error_type = typename Payload::error_type;
+
+    TaggedEnumAccess(String variant, Payload payload, UnknownFieldPolicy unknown)
+        : variant_(rstd::move(variant)), payload_(rstd::move(payload)), unknown_(unknown) {}
+
+    auto variant() const noexcept [[clang::lifetimebound]] -> ref<str> { return variant_.as_str(); }
+
+    auto unit() -> Result<empty, error_type> {
+        if (consumed_) return Err(payload_.invariant("enum already consumed"_str));
+        consumed_ = true;
+        if (! payload_.is_present()) return Ok(empty {});
+        auto source = payload_.deserializer(unknown_);
+        auto result = [&]() -> Result<empty, error_type> {
+            if (! payload_.is_internal()) return payload_.unit(source);
+            return deserialize_record(source,
+                                      [&](ref<str> name, auto& map) -> Result<empty, error_type> {
+                                          if (unknown_ == UnknownFieldPolicy::Reject)
+                                              return Err(source.unknown_field(name));
+                                          return map.ignore_value();
+                                      });
+        }();
+        if (result.is_err()) return result;
+        return payload_.end(source);
+    }
+
+    template<typename T>
+    auto value() -> Result<T, error_type> {
+        if (consumed_) return Err(payload_.invariant("enum already consumed"_str));
+        consumed_ = true;
+        if (! payload_.is_present()) return Err(payload_.missing_value());
+        auto source = payload_.deserializer(unknown_);
+        auto result = serde::deserialize<T>(source);
+        if (result.is_err()) return result;
+        auto ended = payload_.end(source);
+        if (ended.is_err()) return Err(rstd::move(ended).unwrap_err_unchecked());
+        return result;
+    }
+};
 
 } // namespace rstd::serde

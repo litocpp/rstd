@@ -135,6 +135,7 @@ sources = [
   "net/lookup_host.cpp",
   "net/socket_addr.cpp",
   "async/mutex.cpp",
+  "async/mpsc.cpp",
   "async/join_borrow.cpp",
   "stream/mod.cpp",
   "stream/runtime.cpp",

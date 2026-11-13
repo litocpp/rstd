@@ -59,6 +59,15 @@ struct State {
         capacity.close();
         (void)readable.notifier().notify();
     }
+    auto push(T value, OwnedSemaphorePermit permit) -> Result<empty, sync::mpmc::SendError<T>> {
+        {
+            auto data = fields.lock().unwrap_unchecked();
+            if (data->closed) return Err(sync::mpmc::SendError<T> { rstd::move(value) });
+            data->queue.push_back(Entry { rstd::move(value), rstd::move(permit) });
+        }
+        (void)readable.notifier().notify();
+        return Ok(empty {});
+    }
 };
 
 export template<class T>
@@ -82,14 +91,7 @@ class Sender {
         -> coro<Result<empty, sync::mpmc::SendError<T>>> {
         auto permit = co_await sender.state_->capacity.acquire_owned();
         if (permit.is_err()) co_return Err(sync::mpmc::SendError<T> { rstd::move(value) });
-        {
-            auto data = sender.state_->fields.lock().unwrap_unchecked();
-            if (data->closed) co_return Err(sync::mpmc::SendError<T> { rstd::move(value) });
-            data->queue.push_back(
-                typename State<T>::Entry { rstd::move(value), rstd::move(*permit) });
-        }
-        (void)sender.state_->readable.notifier().notify();
-        co_return Ok(empty {});
+        co_return sender.state_->push(rstd::move(value), rstd::move(*permit));
     }
 
 public:
@@ -110,6 +112,19 @@ public:
     }
     auto send(T value) const -> coro<Result<empty, sync::mpmc::SendError<T>>> {
         return send_owned(clone(), rstd::move(value));
+    }
+    auto try_send(T value) const -> Result<empty, sync::mpmc::TrySendError<T>> {
+        using Error = sync::mpmc::TrySendError<T>;
+        auto permit = state_->capacity.try_acquire_owned();
+        if (permit.is_err()) {
+            if (permit.as_ref().unwrap_err() == TryAcquireError::Closed)
+                return Err(Error::Disconnected(rstd::move(value)));
+            return Err(Error::Full(rstd::move(value)));
+        }
+        auto pushed = state_->push(rstd::move(value), rstd::move(*permit));
+        if (pushed.is_err())
+            return Err(Error::Disconnected(rstd::move(pushed).unwrap_err().into_inner()));
+        return Ok(empty {});
     }
     auto is_closed() const -> bool { return state_->capacity.is_closed(); }
 };

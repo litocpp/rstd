@@ -58,6 +58,13 @@ struct FlexibleRecord {
 };
 
 struct InvalidRecordSchema {};
+struct EmptyTaggedRecord {};
+constexpr auto rstd_serde_definition(EmptyTaggedRecord*) {
+    return rstd::serde::RecordDefinition<EmptyTaggedRecord,
+                                         "EmptyTaggedRecord",
+                                         rstd::serde::Direction::Both,
+                                         rstd::serde::UnknownFieldPolicy::Ignore> {};
+}
 
 enum class Mode : rstd::uint8_t
 {
@@ -106,6 +113,261 @@ struct SeededRecordDefinition
 constexpr auto rstd_serde_definition(SeededRecord*) {
     return SeededRecordDefinition {};
 }
+
+class InternalEvent final {
+    RSTD_ENUM(InternalEvent,
+              (Idle),
+              (Record, (String secret; rstd::u64 count; rstd::Option<String> note; bool enabled;)),
+              (Map, (::alloc::collections::BTreeMap<String, rstd::u64> values;)),
+              (Nested, (Blob data; Vec<DerivedIdentifier> items; Event event;)),
+              (Scalar, (String value;)),
+              (Conflict, (String type;)))
+};
+constexpr auto rstd_serde_definition(InternalEvent::Record_payload*) {
+    using T = InternalEvent::Record_payload;
+    using namespace rstd::serde;
+    return RecordDefinition<T,
+                            "Record",
+                            Direction::Both,
+                            UnknownFieldPolicy::Ignore,
+                            Member<&T::secret, "secret", FieldPolicy::Required, "password">,
+                            Member<&T::count, "count">,
+                            Member<&T::note, "note", FieldPolicy::Defaulted>,
+                            Member<&T::enabled, "enabled", FieldPolicy::Defaulted>> {};
+}
+constexpr auto rstd_serde_definition(InternalEvent::Map_payload*) {
+    using T = InternalEvent::Map_payload;
+    return rstd::serde::NewtypeDefinition<T, "Map", rstd::serde::Direction::Both, &T::values> {};
+}
+struct NestedEventDefinition
+    : rstd::serde::RecordDefinition<
+          InternalEvent::Nested_payload,
+          "Nested",
+          rstd::serde::Direction::Both,
+          rstd::serde::UnknownFieldPolicy::Reject,
+          rstd::serde::Member<&InternalEvent::Nested_payload::data, "data">,
+          rstd::serde::Member<&InternalEvent::Nested_payload::items, "items">,
+          rstd::serde::Member<&InternalEvent::Nested_payload::event, "event">> {
+    using T = InternalEvent::Nested_payload;
+    template<class D>
+    static auto deserialize(D& source) -> rstd::Result<T, typename D::error_type> {
+        return deserialize_with_defaults(source, T { {}, {}, Event::Idle() });
+    }
+};
+constexpr auto rstd_serde_definition(InternalEvent::Nested_payload*) {
+    return NestedEventDefinition {};
+}
+constexpr auto rstd_serde_definition(InternalEvent::Scalar_payload*) {
+    using T = InternalEvent::Scalar_payload;
+    return rstd::serde::NewtypeDefinition<T, "Scalar", rstd::serde::Direction::Both, &T::value> {};
+}
+constexpr auto rstd_serde_definition(InternalEvent::Conflict_payload*) {
+    using T = InternalEvent::Conflict_payload;
+    using namespace rstd::serde;
+    return RecordDefinition<T,
+                            "Conflict",
+                            Direction::Both,
+                            UnknownFieldPolicy::Reject,
+                            Member<&T::type, "type">> {};
+}
+constexpr auto rstd_serde_definition(InternalEvent*) {
+    return rstd::serde::InternalVariantDefinition<InternalEvent,
+                                                  "InternalEvent",
+                                                  rstd::serde::Direction::Both,
+                                                  "type",
+                                                  rstd::serde::UnknownFieldPolicy::Ignore> {};
+}
+
+class AdjacentEvent final {
+    RSTD_ENUM(AdjacentEvent, (Idle), (Record, (String secret;)))
+};
+constexpr auto rstd_serde_definition(AdjacentEvent::Record_payload*) {
+    using T = AdjacentEvent::Record_payload;
+    using namespace rstd::serde;
+    return RecordDefinition<T,
+                            "Record",
+                            Direction::Both,
+                            UnknownFieldPolicy::Ignore,
+                            Member<&T::secret, "secret">> {};
+}
+constexpr auto rstd_serde_definition(AdjacentEvent*) {
+    return rstd::serde::AdjacentVariantDefinition<AdjacentEvent,
+                                                  "AdjacentEvent",
+                                                  rstd::serde::Direction::Both,
+                                                  "type",
+                                                  "message",
+                                                  rstd::serde::UnknownFieldPolicy::Ignore> {};
+}
+
+class JsonAuthMethod final {
+    RSTD_ENUM(JsonAuthMethod,
+              (Username, (String username; String pw;)),
+              (Phone, (String phone; String pw;)),
+              (Email, (String email; String pw;)),
+              (Qr, (String key;)))
+};
+constexpr auto rstd_serde_definition(JsonAuthMethod::Username_payload*) {
+    using T = JsonAuthMethod::Username_payload;
+    using namespace rstd::serde;
+    return RecordDefinition<T,
+                            "Username",
+                            Direction::Both,
+                            UnknownFieldPolicy::Ignore,
+                            Member<&T::username, "username">,
+                            Member<&T::pw, "pw">> {};
+}
+constexpr auto rstd_serde_definition(JsonAuthMethod::Phone_payload*) {
+    using T = JsonAuthMethod::Phone_payload;
+    using namespace rstd::serde;
+    return RecordDefinition<T,
+                            "Phone",
+                            Direction::Both,
+                            UnknownFieldPolicy::Ignore,
+                            Member<&T::phone, "phone">,
+                            Member<&T::pw, "pw">> {};
+}
+constexpr auto rstd_serde_definition(JsonAuthMethod::Email_payload*) {
+    using T = JsonAuthMethod::Email_payload;
+    using namespace rstd::serde;
+    return RecordDefinition<T,
+                            "Email",
+                            Direction::Both,
+                            UnknownFieldPolicy::Ignore,
+                            Member<&T::email, "email">,
+                            Member<&T::pw, "pw">> {};
+}
+constexpr auto rstd_serde_definition(JsonAuthMethod::Qr_payload*) {
+    using T = JsonAuthMethod::Qr_payload;
+    using namespace rstd::serde;
+    return RecordDefinition<T,
+                            "Qr",
+                            Direction::Both,
+                            UnknownFieldPolicy::Ignore,
+                            Member<&T::key, "key">> {};
+}
+constexpr auto rstd_serde_definition(JsonAuthMethod*) {
+    return rstd::serde::InternalVariantDefinition<JsonAuthMethod,
+                                                  "AuthMethod",
+                                                  rstd::serde::Direction::Both,
+                                                  "type",
+                                                  rstd::serde::UnknownFieldPolicy::Ignore> {};
+}
+
+class JsonAuthOutcome final {
+    RSTD_ENUM(JsonAuthOutcome,
+              (Ok),
+              (Failed, (String message;)),
+              (WrongPassword),
+              (NoSuchUsername),
+              (NoSuchEmail),
+              (NoSuchPhone),
+              (QrExpired),
+              (QrWaitScan),
+              (QrWaitComform, (String name; String avatar_url; String message;)))
+};
+constexpr auto rstd_serde_definition(JsonAuthOutcome::Failed_payload*) {
+    using T = JsonAuthOutcome::Failed_payload;
+    using namespace rstd::serde;
+    return RecordDefinition<T,
+                            "Failed",
+                            Direction::Both,
+                            UnknownFieldPolicy::Ignore,
+                            Member<&T::message, "message">> {};
+}
+constexpr auto rstd_serde_definition(JsonAuthOutcome::QrWaitComform_payload*) {
+    using T = JsonAuthOutcome::QrWaitComform_payload;
+    using namespace rstd::serde;
+    return RecordDefinition<T,
+                            "QrWaitComform",
+                            Direction::Both,
+                            UnknownFieldPolicy::Ignore,
+                            Member<&T::name, "name">,
+                            Member<&T::avatar_url, "avatar_url">,
+                            Member<&T::message, "message">> {};
+}
+constexpr auto rstd_serde_definition(JsonAuthOutcome*) {
+    return rstd::serde::AdjacentVariantDefinition<JsonAuthOutcome,
+                                                  "AuthOutcome",
+                                                  rstd::serde::Direction::Both,
+                                                  "type",
+                                                  "message",
+                                                  rstd::serde::UnknownFieldPolicy::Ignore> {};
+}
+struct JsonAuthInput {
+    String                       server_url;
+    rstd::Option<JsonAuthMethod> method;
+};
+constexpr auto rstd_serde_definition(JsonAuthInput*) {
+    using namespace rstd::serde;
+    return RecordDefinition<JsonAuthInput,
+                            "AuthInfo",
+                            Direction::Both,
+                            UnknownFieldPolicy::Ignore,
+                            Member<&JsonAuthInput::server_url, "server_url">,
+                            Member<&JsonAuthInput::method, "method", FieldPolicy::Defaulted>> {};
+}
+
+class StrictJsonEvent final {
+    RSTD_ENUM(StrictJsonEvent, (Idle), (Qr, (String key;)))
+};
+constexpr auto rstd_serde_definition(StrictJsonEvent::Qr_payload*) {
+    using T = StrictJsonEvent::Qr_payload;
+    using namespace rstd::serde;
+    return RecordDefinition<T,
+                            "Qr",
+                            Direction::Both,
+                            UnknownFieldPolicy::Ignore,
+                            Member<&T::key, "key">> {};
+}
+constexpr auto rstd_serde_definition(StrictJsonEvent*) {
+    return rstd::serde::InternalVariantDefinition<StrictJsonEvent,
+                                                  "StrictJsonEvent",
+                                                  rstd::serde::Direction::Both,
+                                                  "type"> {};
+}
+class StrictJsonAdjacent final {
+    RSTD_ENUM(StrictJsonAdjacent, (Ok))
+};
+constexpr auto rstd_serde_definition(StrictJsonAdjacent*) {
+    return rstd::serde::AdjacentVariantDefinition<StrictJsonAdjacent,
+                                                  "StrictJsonAdjacent",
+                                                  rstd::serde::Direction::Both,
+                                                  "type",
+                                                  "message"> {};
+}
+class JsonObjectEvent final {
+    RSTD_ENUM(JsonObjectEvent, (Object, (rstd::json::Value value;)))
+};
+constexpr auto rstd_serde_definition(JsonObjectEvent::Object_payload*) {
+    using T = JsonObjectEvent::Object_payload;
+    return rstd::serde::NewtypeDefinition<T, "Object", rstd::serde::Direction::Both, &T::value> {};
+}
+constexpr auto rstd_serde_definition(JsonObjectEvent*) {
+    return rstd::serde::InternalVariantDefinition<JsonObjectEvent,
+                                                  "JsonObjectEvent",
+                                                  rstd::serde::Direction::Both,
+                                                  "type"> {};
+}
+
+struct TaggedDescription {
+    bool internal {};
+    bool adjacent {};
+    int  count {};
+
+    template<typename D>
+    void variants() {
+        if constexpr (requires { D::tag; }) {
+            internal = D::tag.view() == "type"_str;
+            if constexpr (requires { D::content; }) {
+                internal = false;
+                adjacent = D::content.view() == "message"_str;
+            }
+        }
+        D::variants([&]<typename>() {
+            ++count;
+        });
+    }
+};
 
 } // namespace
 
@@ -697,4 +959,541 @@ TEST(Serde, RecordDefaultsDoNotTreatNullAsMissing) {
     EXPECT_TRUE(rstd::json::decode<SeededRecord>("{}"_str).unwrap().enabled);
     EXPECT_FALSE(rstd::json::decode<SeededRecord>("{\"enabled\":false}"_str).unwrap().enabled);
     EXPECT_TRUE(rstd::json::decode<SeededRecord>("{\"enabled\":null}"_str).is_err());
+}
+
+TEST(Serde, InternalVariantUsesRecordAndVariantMetadata) {
+    auto original =
+        InternalEvent::Record(String::make("sensitive"_str), rstd::u64::MAX, rstd::None(), true);
+    auto tokens = rstd::serde::to_tokens(original).unwrap();
+    EXPECT_EQ(tokens[rstd::usize()].kind(), rstd::serde::TokenKind::MapStart);
+    EXPECT_EQ(tokens[rstd::usize()].len(), rstd::usize(5));
+    EXPECT_EQ(tokens[rstd::usize(1)].as_str(), "type"_str);
+    EXPECT_EQ(tokens[rstd::usize(2)].as_str(), "Record"_str);
+    auto result = rstd::serde::from_tokens<InternalEvent>(tokens.as_slice());
+    ASSERT_TRUE(result.is_ok());
+    ASSERT_TRUE(result->is_Record());
+    EXPECT_EQ(result->as_Record().secret.as_str(), "sensitive"_str);
+    EXPECT_EQ(result->as_Record().count, rstd::u64::MAX);
+    EXPECT_TRUE(result->as_Record().note.is_none());
+    EXPECT_TRUE(result->as_Record().enabled);
+
+    auto json = rstd::json::to_value(original).unwrap();
+    EXPECT_EQ((*json.get("type"_str))->as_str().unwrap(), "Record"_str);
+    EXPECT_EQ((*json.get("count"_str))->as_u64().unwrap(), rstd::u64::MAX);
+}
+
+TEST(Serde, InternalVariantAcceptsTagLastAndReusesRecordDefaults) {
+    using rstd::serde::Token;
+    using rstd::serde::TokenKind;
+    auto tokens = Vec<Token>::make();
+    tokens.push(Token::container(TokenKind::MapStart, rstd::usize(5)));
+    tokens.push(Token::string("password"_str));
+    tokens.push(Token::string("sensitive"_str));
+    tokens.push(Token::string("count"_str));
+    tokens.push(Token::unsigned_integer(rstd::u64::MAX));
+    tokens.push(Token::string("ignored"_str));
+    tokens.push(Token::container(TokenKind::SequenceStart, rstd::usize(1)));
+    tokens.push(Token::container(TokenKind::MapStart, rstd::usize(1)));
+    tokens.push(Token::string("nested"_str));
+    tokens.push(Token::bytes(rstd::slice<rstd::u8>()));
+    tokens.push(Token::marker(TokenKind::MapEnd));
+    tokens.push(Token::marker(TokenKind::SequenceEnd));
+    tokens.push(Token::string("note"_str));
+    tokens.push(Token::null());
+    tokens.push(Token::string("type"_str));
+    tokens.push(Token::string("Record"_str));
+    tokens.push(Token::marker(TokenKind::MapEnd));
+    auto decoded = rstd::serde::from_tokens<InternalEvent>(tokens.as_slice()).unwrap();
+    ASSERT_TRUE(decoded.is_Record());
+    EXPECT_EQ(decoded.as_Record().secret.as_str(), "sensitive"_str);
+    EXPECT_EQ(decoded.as_Record().count, rstd::u64::MAX);
+    EXPECT_TRUE(decoded.as_Record().note.is_none());
+    EXPECT_FALSE(decoded.as_Record().enabled);
+}
+
+TEST(Serde, InternalVariantSupportsMapNewtypesAndRejectsInvalidPayloadShapes) {
+    auto map = ::alloc::collections::BTreeMap<String, rstd::u64>::make();
+    map.insert(String::make("count"_str), rstd::u64::MAX);
+    auto original = InternalEvent::Map(rstd::move(map));
+    auto tokens   = rstd::serde::to_tokens(original).unwrap();
+    auto decoded  = rstd::serde::from_tokens<InternalEvent>(tokens.as_slice()).unwrap();
+    ASSERT_TRUE(decoded.is_Map());
+    EXPECT_EQ(*decoded.as_Map().values.get("count"_str).unwrap(), rstd::u64::MAX);
+    auto scalar = rstd::serde::to_tokens(InternalEvent::Scalar(String::make("sensitive"_str)));
+    ASSERT_TRUE(scalar.is_err());
+    EXPECT_EQ(scalar.as_ref().unwrap_err().kind(), rstd::serde::ErrorKind::Unsupported);
+    EXPECT_TRUE(
+        rstd::serde::to_tokens(InternalEvent::Conflict(String::make("sensitive"_str))).is_err());
+}
+
+TEST(Serde, InternalVariantRejectsMissingNullDuplicateAndUnknownTags) {
+    using rstd::serde::Token;
+    using rstd::serde::TokenKind;
+    auto missing = Vec<Token>::make();
+    missing.push(Token::container(TokenKind::MapStart, rstd::usize()));
+    missing.push(Token::marker(TokenKind::MapEnd));
+    auto result = rstd::serde::from_tokens<InternalEvent>(missing.as_slice());
+    ASSERT_TRUE(result.is_err());
+    EXPECT_EQ(result.as_ref().unwrap_err().kind(), rstd::serde::ErrorKind::MissingField);
+
+    const bool flags[] = { false, true };
+    for (auto null : flags) {
+        auto tokens = Vec<Token>::make();
+        tokens.push(Token::container(TokenKind::MapStart, rstd::usize(1)));
+        tokens.push(Token::string("type"_str));
+        tokens.push(null ? Token::null() : Token::string("credential-in-tag"_str));
+        tokens.push(Token::marker(TokenKind::MapEnd));
+        auto decoded = rstd::serde::from_tokens<InternalEvent>(tokens.as_slice());
+        ASSERT_TRUE(decoded.is_err());
+        EXPECT_EQ(decoded.as_ref().unwrap_err().kind(),
+                  null ? rstd::serde::ErrorKind::TypeMismatch
+                       : rstd::serde::ErrorKind::UnknownVariant);
+        EXPECT_TRUE(rstd::format("{}", decoded.as_ref().unwrap_err())
+                        .as_str()
+                        .find("credential-in-tag"_str)
+                        .is_none());
+    }
+    auto duplicate = Vec<Token>::make();
+    duplicate.push(Token::container(TokenKind::MapStart, rstd::usize(2)));
+    for (int index = 0; index < 2; ++index) {
+        duplicate.push(Token::string("type"_str));
+        duplicate.push(Token::string("Idle"_str));
+    }
+    duplicate.push(Token::marker(TokenKind::MapEnd));
+    auto duplicated = rstd::serde::from_tokens<InternalEvent>(duplicate.as_slice());
+    ASSERT_TRUE(duplicated.is_err());
+    EXPECT_EQ(duplicated.as_ref().unwrap_err().kind(), rstd::serde::ErrorKind::DuplicateField);
+}
+
+TEST(Serde, InternalVariantUnitHonorsUnknownFieldPolicyAndSingleConsumption) {
+    using rstd::serde::Token;
+    using rstd::serde::TokenKind;
+    auto tokens = Vec<Token>::make();
+    tokens.push(Token::container(TokenKind::MapStart, rstd::usize(2)));
+    tokens.push(Token::string("extra"_str));
+    tokens.push(Token::null());
+    tokens.push(Token::string("type"_str));
+    tokens.push(Token::string("Idle"_str));
+    tokens.push(Token::marker(TokenKind::MapEnd));
+    EXPECT_TRUE(rstd::serde::from_tokens<InternalEvent>(tokens.as_slice()).unwrap().is_Idle());
+    auto strict   = rstd::serde::TokenDeserializer(tokens.as_slice());
+    auto rejected = strict.begin_internal_enum("type"_str, rstd::serde::UnknownFieldPolicy::Reject)
+                        .unwrap()
+                        .unit();
+    ASSERT_TRUE(rejected.is_err());
+    EXPECT_EQ(rejected.as_ref().unwrap_err().kind(), rstd::serde::ErrorKind::UnknownField);
+    auto source = rstd::serde::TokenDeserializer(tokens.as_slice());
+    auto access =
+        source.begin_internal_enum("type"_str, rstd::serde::UnknownFieldPolicy::Ignore).unwrap();
+    EXPECT_TRUE(access.unit().is_ok());
+    EXPECT_TRUE(access.unit().is_err());
+}
+
+TEST(Serde, AdjacentVariantRoundtripsAndAcceptsContentBeforeTag) {
+    auto value   = AdjacentEvent::Record(String::make("sensitive"_str));
+    auto tokens  = rstd::serde::to_tokens(value).unwrap();
+    auto decoded = rstd::serde::from_tokens<AdjacentEvent>(tokens.as_slice()).unwrap();
+    ASSERT_TRUE(decoded.is_Record());
+    EXPECT_EQ(decoded.as_Record().secret.as_str(), "sensitive"_str);
+
+    using rstd::serde::Token;
+    using rstd::serde::TokenKind;
+    auto reversed = Vec<Token>::make();
+    reversed.push(Token::container(TokenKind::MapStart, rstd::usize(3)));
+    reversed.push(Token::string("message"_str));
+    reversed.push(Token::container(TokenKind::MapStart, rstd::usize(1)));
+    reversed.push(Token::string("secret"_str));
+    reversed.push(Token::string("sensitive"_str));
+    reversed.push(Token::marker(TokenKind::MapEnd));
+    reversed.push(Token::string("unknown"_str));
+    reversed.push(Token::null());
+    reversed.push(Token::string("type"_str));
+    reversed.push(Token::string("Record"_str));
+    reversed.push(Token::marker(TokenKind::MapEnd));
+    EXPECT_TRUE(rstd::serde::from_tokens<AdjacentEvent>(reversed.as_slice()).is_ok());
+    auto source = rstd::serde::TokenDeserializer(reversed.as_slice());
+    auto strict = source.begin_adjacent_enum(
+        "type"_str, "message"_str, rstd::serde::UnknownFieldPolicy::Reject);
+    ASSERT_TRUE(strict.is_err());
+    EXPECT_EQ(strict.as_ref().unwrap_err().kind(), rstd::serde::ErrorKind::UnknownField);
+}
+
+TEST(Serde, AdjacentVariantUnitAcceptsMissingOrNullButNotMapContent) {
+    using rstd::serde::Token;
+    using rstd::serde::TokenKind;
+    auto absent = rstd::serde::to_tokens(AdjacentEvent::Idle()).unwrap();
+    EXPECT_TRUE(rstd::serde::from_tokens<AdjacentEvent>(absent.as_slice()).unwrap().is_Idle());
+    auto source = rstd::serde::TokenDeserializer(absent.as_slice());
+    auto access =
+        source
+            .begin_adjacent_enum("type"_str, "message"_str, rstd::serde::UnknownFieldPolicy::Ignore)
+            .unwrap();
+    EXPECT_TRUE(access.unit().is_ok());
+    EXPECT_TRUE(access.value<bool>().is_err());
+    const bool flags[] = { false, true };
+    for (auto valid : flags) {
+        auto tokens = Vec<Token>::make();
+        tokens.push(Token::container(TokenKind::MapStart, rstd::usize(2)));
+        tokens.push(Token::string("type"_str));
+        tokens.push(Token::string("Idle"_str));
+        tokens.push(Token::string("message"_str));
+        if (valid)
+            tokens.push(Token::null());
+        else {
+            tokens.push(Token::container(TokenKind::MapStart, rstd::usize()));
+            tokens.push(Token::marker(TokenKind::MapEnd));
+        }
+        tokens.push(Token::marker(TokenKind::MapEnd));
+        EXPECT_EQ(rstd::serde::from_tokens<AdjacentEvent>(tokens.as_slice()).is_ok(), valid);
+    }
+}
+
+TEST(Serde, InternalVariantPreservesNestedBytesSequencesAndEnums) {
+    auto bytes = Vec<rstd::u8>::make();
+    bytes.push(rstd::u8());
+    bytes.push(rstd::u8(255));
+    auto items = Vec<DerivedIdentifier>::make();
+    items.push(DerivedIdentifier { rstd::u64::MAX });
+    auto original = InternalEvent::Nested(
+        Blob { rstd::move(bytes) }, rstd::move(items), Event::Count(rstd::u64(42)));
+    auto tokens = rstd::serde::to_tokens(original).unwrap();
+    auto result = rstd::serde::from_tokens<InternalEvent>(tokens.as_slice()).unwrap();
+    ASSERT_TRUE(result.is_Nested());
+    EXPECT_EQ(result.as_Nested().data.bytes.len(), rstd::usize(2));
+    EXPECT_EQ(result.as_Nested().data.bytes[rstd::usize(1)], rstd::u8(255));
+    EXPECT_EQ(result.as_Nested().items[rstd::usize()].value, rstd::u64::MAX);
+    ASSERT_TRUE(result.as_Nested().event.is_Count());
+    EXPECT_EQ(result.as_Nested().event.as_Count().value, rstd::u64(42));
+}
+
+TEST(Serde, InternalVariantUsesPayloadMissingNullDuplicateAndUnknownFieldRules) {
+    struct Case {
+        rstd::ref<rstd::str>   input;
+        rstd::serde::ErrorKind error;
+    };
+    using rstd::serde::ErrorKind;
+    const Case cases[] = {
+        { R"({"type":"Record","secret":"credential-marker"})"_str, ErrorKind::MissingField },
+        { R"({"type":"Record","secret":null,"count":1})"_str, ErrorKind::TypeMismatch },
+        { R"({"type":"Record","secret":"credential-marker","count":1,"enabled":null})"_str,
+          ErrorKind::TypeMismatch },
+        { R"({"type":"Nested","secret":"credential-marker"})"_str, ErrorKind::UnknownField },
+    };
+    for (const auto& test : cases) {
+        auto tokens = rstd::serde::to_tokens(rstd::json::from_str(test.input).unwrap()).unwrap();
+        auto result = rstd::serde::from_tokens<InternalEvent>(tokens.as_slice());
+        ASSERT_TRUE(result.is_err());
+        EXPECT_EQ(result.as_ref().unwrap_err().kind(), test.error);
+        EXPECT_FALSE(rstd::format("{}", result.as_ref().unwrap_err())
+                         .as_str()
+                         .contains("credential-marker"_str));
+    }
+    using rstd::serde::Token;
+    using rstd::serde::TokenKind;
+    auto tokens = Vec<Token>::make();
+    tokens.push(Token::container(TokenKind::MapStart, rstd::usize(4)));
+    tokens.push(Token::string("type"_str));
+    tokens.push(Token::string("Record"_str));
+    tokens.push(Token::string("secret"_str));
+    tokens.push(Token::string("credential-marker"_str));
+    tokens.push(Token::string("password"_str));
+    tokens.push(Token::string("credential-marker"_str));
+    tokens.push(Token::string("count"_str));
+    tokens.push(Token::unsigned_integer(rstd::u64(1)));
+    tokens.push(Token::marker(TokenKind::MapEnd));
+    auto duplicate = rstd::serde::from_tokens<InternalEvent>(tokens.as_slice());
+    ASSERT_TRUE(duplicate.is_err());
+    EXPECT_EQ(duplicate.as_ref().unwrap_err().kind(), ErrorKind::DuplicateField);
+}
+
+TEST(Serde, AdjacentVariantRejectsMissingNullAndDuplicateContentWithoutLeakingValues) {
+    using rstd::serde::ErrorKind;
+    struct Case {
+        rstd::ref<rstd::str> input;
+        ErrorKind            error;
+    };
+    const Case cases[] = {
+        { R"({})"_str, ErrorKind::MissingField },
+        { R"({"type":"credential-marker"})"_str, ErrorKind::UnknownVariant },
+        { R"({"type":"Record"})"_str, ErrorKind::MissingField },
+        { R"({"type":"Record","message":null})"_str, ErrorKind::TypeMismatch },
+        { R"({"type":"Record","message":{"secret":null}})"_str, ErrorKind::TypeMismatch },
+        { R"({"type":"Record","message":{}})"_str, ErrorKind::MissingField },
+    };
+    for (const auto& test : cases) {
+        auto tokens = rstd::serde::to_tokens(rstd::json::from_str(test.input).unwrap()).unwrap();
+        auto result = rstd::serde::from_tokens<AdjacentEvent>(tokens.as_slice());
+        ASSERT_TRUE(result.is_err());
+        EXPECT_EQ(result.as_ref().unwrap_err().kind(), test.error);
+        EXPECT_FALSE(rstd::format("{}", result.as_ref().unwrap_err())
+                         .as_str()
+                         .contains("credential-marker"_str));
+    }
+    auto tokens = rstd::serde::to_tokens(AdjacentEvent::Idle()).unwrap();
+    (void)tokens.pop();
+    for (int index = 0; index < 2; ++index) {
+        tokens.push(rstd::serde::Token::string("message"_str));
+        tokens.push(rstd::serde::Token::null());
+    }
+    tokens.push(rstd::serde::Token::marker(rstd::serde::TokenKind::MapEnd));
+    auto result = rstd::serde::from_tokens<AdjacentEvent>(tokens.as_slice());
+    ASSERT_TRUE(result.is_err());
+    EXPECT_EQ(result.as_ref().unwrap_err().kind(), ErrorKind::DuplicateField);
+}
+
+TEST(Serde, TaggedVariantDescriptionsRetainRepresentationMetadata) {
+    auto internal = TaggedDescription {};
+    rstd::serde::describe<InternalEvent>(internal);
+    EXPECT_TRUE(internal.internal);
+    EXPECT_FALSE(internal.adjacent);
+    EXPECT_EQ(internal.count, 6);
+    auto adjacent = TaggedDescription {};
+    rstd::serde::describe<AdjacentEvent>(adjacent);
+    EXPECT_FALSE(adjacent.internal);
+    EXPECT_TRUE(adjacent.adjacent);
+    EXPECT_EQ(adjacent.count, 2);
+}
+
+TEST(Serde, AdjacentVariantKeepsContentAndNestedFieldPaths) {
+    const rstd::ref<rstd::str> inputs[] = {
+        R"({"type":"Record"})"_str,
+        R"({"type":"Record","message":{"secret":null}})"_str,
+    };
+    for (rstd::usize index; index < rstd::usize(2); ++index) {
+        auto tokens =
+            rstd::serde::to_tokens(rstd::json::from_str(inputs[index.to_primitive()]).unwrap())
+                .unwrap();
+        auto result = rstd::serde::from_tokens<AdjacentEvent>(tokens.as_slice());
+        ASSERT_TRUE(result.is_err());
+        auto path = result.as_ref().unwrap_err().path().segments();
+        ASSERT_EQ(path.len(), index + rstd::usize(1));
+        EXPECT_EQ(path[rstd::usize()].name().unwrap(), "message"_str);
+        if (index != rstd::usize()) EXPECT_EQ(path[rstd::usize(1)].name().unwrap(), "secret"_str);
+    }
+}
+
+TEST(Serde, TaggedVariantSharesExternalVariantDispatch) {
+    using Definition = rstd::serde::
+        VariantDefinition<InternalEvent, "ExternalEvent", rstd::serde::Direction::Both>;
+    auto tokens   = Vec<rstd::serde::Token>::make();
+    auto sink     = rstd::serde::TokenSerializer(tokens);
+    auto original = InternalEvent::Record(
+        String::make("credential-marker"_str), rstd::u64::MAX, rstd::None(), false);
+    ASSERT_TRUE(Definition::serialize(sink, original).is_ok());
+    auto source  = rstd::serde::TokenDeserializer(tokens.as_slice());
+    auto decoded = Definition::deserialize(source).unwrap();
+    ASSERT_TRUE(decoded.is_Record());
+    EXPECT_EQ(decoded.as_Record().secret.as_str(), "credential-marker"_str);
+    EXPECT_EQ(decoded.as_Record().count, rstd::u64::MAX);
+    EXPECT_EQ(source.position(), tokens.len());
+}
+
+TEST(Serde, InternalVariantRejectPolicyReachesPayloadRecords) {
+    using Definition =
+        rstd::serde::InternalVariantDefinition<InternalEvent,
+                                               "StrictEvent",
+                                               rstd::serde::Direction::Both,
+                                               "type",
+                                               rstd::serde::UnknownFieldPolicy::Reject>;
+    auto tokens =
+        rstd::serde::to_tokens(
+            rstd::json::from_str(R"({"type":"Record","secret":"credential-marker","count":1})"_str)
+                .unwrap())
+            .unwrap();
+    auto source  = rstd::serde::TokenDeserializer(tokens.as_slice());
+    auto decoded = Definition::deserialize(source).unwrap();
+    ASSERT_TRUE(decoded.is_Record());
+    EXPECT_TRUE(decoded.as_Record().note.is_none());
+    EXPECT_FALSE(decoded.as_Record().enabled);
+
+    auto extra =
+        rstd::serde::to_tokens(
+            rstd::json::from_str(
+                R"({"type":"Record","secret":"credential-marker","count":1,"extra":null})"_str)
+                .unwrap())
+            .unwrap();
+    auto strict   = rstd::serde::TokenDeserializer(extra.as_slice());
+    auto rejected = Definition::deserialize(strict);
+    ASSERT_TRUE(rejected.is_err());
+    EXPECT_EQ(rejected.as_ref().unwrap_err().kind(), rstd::serde::ErrorKind::UnknownField);
+
+    auto empty = rstd::serde::TokenDeserializer(extra.as_slice());
+    auto access =
+        empty.begin_internal_enum("type"_str, rstd::serde::UnknownFieldPolicy::Reject).unwrap();
+    auto empty_record = access.value<EmptyTaggedRecord>();
+    ASSERT_TRUE(empty_record.is_err());
+    EXPECT_EQ(empty_record.as_ref().unwrap_err().kind(), rstd::serde::ErrorKind::UnknownField);
+}
+
+TEST(SerdeJsonTagged, AuthMethodsDecodeThroughThePublicJsonEntryPoints) {
+    const rstd::ref<rstd::str> inputs[] = {
+        R"({"type":"Username","username":"alice","pw":"credential-marker"})"_str,
+        R"({"pw":"credential-marker","phone":"123","type":"Phone"})"_str,
+        R"({"email":"a@example.com","type":"Email","pw":"credential-marker"})"_str,
+        R"({"key":"qr-key","type":"Qr"})"_str,
+    };
+    for (auto input : inputs) {
+        auto decoded = rstd::json::decode<JsonAuthMethod>(input);
+        ASSERT_TRUE(decoded.is_ok());
+        auto encoded  = rstd::json::to_value(*decoded).unwrap();
+        auto original = rstd::json::from_str(input).unwrap();
+        EXPECT_EQ(rstd::json::to_string(encoded), rstd::json::to_string(original));
+        EXPECT_TRUE(rstd::json::decode_value<JsonAuthMethod>(original).is_ok());
+    }
+    auto extra =
+        rstd::json::decode<JsonAuthMethod>(
+            R"({"type":"Username","username":"alice","pw":"credential-marker","extra":{"nested":[null,1]}})"_str)
+            .unwrap();
+    EXPECT_EQ(extra.as_Username().username.as_str(), "alice"_str);
+    EXPECT_EQ(extra.as_Username().pw.as_str(), "credential-marker"_str);
+    EXPECT_TRUE(
+        rstd::json::decode<JsonAuthMethod>(R"({"type":"Username","username":"","pw":""})"_str)
+            .is_ok());
+}
+
+TEST(SerdeJsonTagged, AuthInputReusesTheNestedMethodAndOptionalDefaults) {
+    auto decoded =
+        rstd::json::decode<JsonAuthInput>(
+            R"({"server_url":"https://server","method":{"type":"Username","username":"alice","pw":"credential-marker"}})"_str)
+            .unwrap();
+    ASSERT_TRUE(decoded.method.is_some());
+    EXPECT_EQ(decoded.method->as_Username().username.as_str(), "alice"_str);
+    auto encoded = rstd::json::to_value(decoded).unwrap();
+    EXPECT_EQ((*encoded.get("server_url"_str))->as_str().unwrap(), "https://server"_str);
+    const rstd::ref<rstd::str> optional[] = {
+        R"({"server_url":"https://server"})"_str,
+        R"({"server_url":"https://server","method":null})"_str,
+    };
+    for (auto input : optional)
+        EXPECT_TRUE(rstd::json::decode<JsonAuthInput>(input).unwrap().method.is_none());
+    EXPECT_TRUE(rstd::json::decode<JsonAuthInput>(R"({"method":null})"_str).is_err());
+    EXPECT_TRUE(rstd::json::decode<JsonAuthInput>(R"({"server_url":null})"_str).is_err());
+}
+
+TEST(SerdeJsonTagged, AuthOutcomesDecodeThroughThePublicJsonEntryPoints) {
+    const rstd::ref<rstd::str> inputs[] = {
+        R"({"type":"Ok"})"_str,
+        R"({"message":{"message":"denied"},"type":"Failed"})"_str,
+        R"({"type":"WrongPassword"})"_str,
+        R"({"type":"NoSuchUsername"})"_str,
+        R"({"type":"NoSuchEmail"})"_str,
+        R"({"type":"NoSuchPhone"})"_str,
+        R"({"type":"QrExpired"})"_str,
+        R"({"type":"QrWaitScan"})"_str,
+        R"({"type":"QrWaitComform","message":{"name":"alice","avatar_url":"avatar","message":"confirm"}})"_str,
+    };
+    for (auto input : inputs) {
+        auto decoded = rstd::json::decode<JsonAuthOutcome>(input);
+        ASSERT_TRUE(decoded.is_ok());
+        auto encoded  = rstd::json::to_value(*decoded).unwrap();
+        auto original = rstd::json::from_str(input).unwrap();
+        EXPECT_EQ(rstd::json::to_string(encoded), rstd::json::to_string(original));
+        EXPECT_TRUE(rstd::json::decode_value<JsonAuthOutcome>(original).is_ok());
+    }
+    EXPECT_TRUE(rstd::json::decode<JsonAuthOutcome>(
+                    R"({"type":"Ok","message":null,"extra":{"nested":[null]}})"_str)
+                    .unwrap()
+                    .is_Ok());
+    auto extra =
+        rstd::json::decode<JsonAuthOutcome>(
+            R"({"type":"Failed","message":{"message":"denied","extra":true},"extra":null})"_str)
+            .unwrap();
+    EXPECT_EQ(extra.as_Failed().message.as_str(), "denied"_str);
+}
+
+TEST(SerdeJsonTagged, InvalidAuthFieldsDoNotDefaultNullOrLeakCredentials) {
+    const rstd::ref<rstd::str> methods[] = {
+        R"({"Username":{"username":"alice","pw":"credential-marker"}})"_str,
+        R"({"type":"credential-marker"})"_str,
+        R"({"type":null})"_str,
+        R"({"type":2})"_str,
+        R"({"type":"Username","username":"alice"})"_str,
+        R"({"type":"Username","username":null,"pw":"credential-marker"})"_str,
+        R"({"type":"Phone","phone":"123","pw":null})"_str,
+        R"({"type":"Email","pw":"credential-marker"})"_str,
+        R"({"type":"Qr","key":null})"_str,
+        R"(null)"_str,
+    };
+    for (auto input : methods) {
+        auto result = rstd::json::decode<JsonAuthMethod>(input);
+        ASSERT_TRUE(result.is_err());
+        EXPECT_FALSE(rstd::format("{}", result.as_ref().unwrap_err())
+                         .as_str()
+                         .contains("credential-marker"_str));
+    }
+    const rstd::ref<rstd::str> outcomes[] = {
+        R"({})"_str,
+        R"({"type":"credential-marker"})"_str,
+        R"({"type":null})"_str,
+        R"({"type":"Failed"})"_str,
+        R"({"type":"Failed","message":null})"_str,
+        R"({"type":"Failed","message":"credential-marker"})"_str,
+        R"({"type":"Failed","message":{}})"_str,
+        R"({"type":"Failed","message":{"message":null}})"_str,
+        R"({"type":"QrWaitComform","message":{"name":"alice","message":"credential-marker"}})"_str,
+        R"({"type":"Ok","message":{}})"_str,
+        R"(null)"_str,
+    };
+    for (auto input : outcomes) {
+        auto result = rstd::json::decode<JsonAuthOutcome>(input);
+        ASSERT_TRUE(result.is_err());
+        EXPECT_FALSE(rstd::format("{}", result.as_ref().unwrap_err())
+                         .as_str()
+                         .contains("credential-marker"_str));
+    }
+}
+
+TEST(SerdeJsonTagged, InternalPayloadViewsPreserveOriginalDataAndPrecision) {
+    auto input =
+        rstd::json::from_str(R"({"type":"Map","count":18446744073709551615})"_str).unwrap();
+    auto decoded = rstd::json::decode_value<InternalEvent>(input).unwrap();
+    ASSERT_TRUE(decoded.is_Map());
+    EXPECT_EQ(decoded.as_Map().values.len(), rstd::usize(1));
+    EXPECT_EQ(*decoded.as_Map().values.get("count"_str).unwrap(), rstd::u64::MAX);
+    EXPECT_TRUE(input.get("type"_str).is_some());
+    EXPECT_TRUE(rstd::json::decode_value<InternalEvent>(input).is_ok());
+
+    auto object =
+        rstd::json::from_str(
+            R"({"type":"Object","count":18446744073709551615,"nested":{"type":"Qr"}})"_str)
+            .unwrap();
+    auto raw = rstd::json::decode_value<JsonObjectEvent>(object).unwrap();
+    EXPECT_TRUE(raw.as_Object().value.get("type"_str).is_none());
+    EXPECT_EQ((*raw.as_Object().value.get("count"_str))->as_u64().unwrap(), rstd::u64::MAX);
+    EXPECT_TRUE((*raw.as_Object().value.get("nested"_str))->get("type"_str).is_some());
+    EXPECT_TRUE(object.get("type"_str).is_some());
+}
+
+TEST(SerdeJsonTagged, StrictPoliciesRejectOnlyUnknownFields) {
+    EXPECT_TRUE(rstd::json::decode<StrictJsonEvent>(R"({"type":"Idle"})"_str).is_ok());
+    EXPECT_TRUE(rstd::json::decode<StrictJsonEvent>(R"({"type":"Qr","key":"key"})"_str).is_ok());
+    EXPECT_TRUE(
+        rstd::json::decode<StrictJsonEvent>(R"({"type":"Idle","extra":null})"_str).is_err());
+    auto rejected = rstd::json::decode<StrictJsonEvent>(
+        R"({"type":"Qr","key":"credential-marker","extra":null})"_str);
+    ASSERT_TRUE(rejected.is_err());
+    EXPECT_EQ(rejected.as_ref().unwrap_err().data_error()->get().kind(),
+              rstd::serde::ErrorKind::UnknownField);
+    EXPECT_TRUE(
+        rstd::json::decode<StrictJsonAdjacent>(R"({"type":"Ok","message":null})"_str).is_ok());
+    EXPECT_TRUE(
+        rstd::json::decode<StrictJsonAdjacent>(R"({"type":"Ok","extra":null})"_str).is_err());
+    EXPECT_TRUE(rstd::json::decode<InternalEvent>(R"({"type":"Idle","extra":null})"_str).is_ok());
+}
+
+TEST(SerdeJsonTagged, AuthFieldErrorsPreserveNestedPaths) {
+    auto internal = rstd::json::decode<JsonAuthInput>(
+        R"({"server_url":"server","method":{"type":"Username","username":"alice","pw":null}})"_str);
+    ASSERT_TRUE(internal.is_err());
+    auto method_path = internal.as_ref().unwrap_err().data_error()->get().path().segments();
+    ASSERT_EQ(method_path.len(), rstd::usize(2));
+    EXPECT_EQ(method_path[rstd::usize()].name().unwrap(), "method"_str);
+    EXPECT_EQ(method_path[rstd::usize(1)].name().unwrap(), "pw"_str);
+    auto adjacent =
+        rstd::json::decode<JsonAuthOutcome>(R"({"type":"Failed","message":{"message":null}})"_str);
+    ASSERT_TRUE(adjacent.is_err());
+    auto message_path = adjacent.as_ref().unwrap_err().data_error()->get().path().segments();
+    ASSERT_EQ(message_path.len(), rstd::usize(2));
+    EXPECT_EQ(message_path[rstd::usize()].name().unwrap(), "message"_str);
+    EXPECT_EQ(message_path[rstd::usize(1)].name().unwrap(), "message"_str);
 }

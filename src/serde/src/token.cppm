@@ -56,6 +56,7 @@ public:
     static auto bytes(slice<u8> value) -> Token;
     static auto marker(TokenKind kind) -> Token;
     static auto container(TokenKind kind, usize len) -> Token;
+    auto        clone() const -> Token;
 
     constexpr auto kind() const noexcept -> TokenKind { return kind_; }
     constexpr auto as_bool() const noexcept -> bool { return bool_value_; }
@@ -221,13 +222,40 @@ class TokenDeserializer;
 class TokenSequenceAccess;
 class TokenMapAccess;
 
+class TokenTaggedPayload {
+    Option<Vec<Token>> payload_;
+    DataPath           path_;
+    Option<String>     content_;
+
+    TokenTaggedPayload(Option<Vec<Token>> payload, DataPath path, Option<String> content);
+    friend class TokenDeserializer;
+
+public:
+    using error_type = Error;
+
+    auto is_internal() const noexcept -> bool { return content_.is_none(); }
+    auto is_present() const noexcept -> bool { return payload_.is_some(); }
+    auto deserializer(UnknownFieldPolicy unknown) -> TokenDeserializer;
+    auto unit(TokenDeserializer& source) -> Result<empty, Error>;
+    auto end(const TokenDeserializer& source) const -> Result<empty, Error>;
+    auto missing_value() const -> Error;
+    auto invariant(ref<str> message) const -> Error;
+};
+
+using TokenTaggedEnumAccess = TaggedEnumAccess<TokenTaggedPayload>;
+
 class TokenDeserializer {
     slice<Token> tokens_;
     usize        owned_position_ {};
     usize*       position_ { &owned_position_ };
     DataPath     path_;
+    bool         reject_unknown_fields_ {};
 
-    TokenDeserializer(slice<Token> tokens, usize& position, DataPath path);
+    TokenDeserializer(slice<Token> tokens,
+                      usize&       position,
+                      DataPath     path,
+                      bool         reject_unknown_fields = false);
+    TokenDeserializer(slice<Token> tokens, DataPath path, bool reject_unknown_fields);
 
     auto        peek() const noexcept -> Option<ref<Token>>;
     auto        take(TokenKind expected, ValueKind expected_kind) -> Result<ref<Token>, Error>;
@@ -236,6 +264,7 @@ class TokenDeserializer {
     friend class TokenSequenceAccess;
     friend class TokenMapAccess;
     friend class TokenEnumAccess;
+    friend class TokenTaggedPayload;
 
 public:
     using error_type    = Error;
@@ -251,6 +280,9 @@ public:
 
     auto position() const noexcept -> usize;
     auto path() const noexcept [[clang::lifetimebound]] -> const DataPath&;
+    auto record_unknown_fields(UnknownFieldPolicy declared) const noexcept -> UnknownFieldPolicy {
+        return reject_unknown_fields_ ? UnknownFieldPolicy::Reject : declared;
+    }
     auto invalid_value(ref<str> message) const -> Error;
     template<typename Source>
     auto invalid_value_with_source(ref<str> message, Source source) const -> Error {
@@ -305,6 +337,10 @@ public:
     auto begin_sequence() -> Result<TokenSequenceAccess, Error>;
     auto begin_map() -> Result<TokenMapAccess, Error>;
     auto begin_enum() -> Result<TokenEnumAccess, Error>;
+    auto begin_internal_enum(ref<str> tag, UnknownFieldPolicy unknown)
+        -> Result<TokenTaggedEnumAccess, Error>;
+    auto begin_adjacent_enum(ref<str> tag, ref<str> content, UnknownFieldPolicy unknown)
+        -> Result<TokenTaggedEnumAccess, Error>;
     auto ignore_value() -> Result<empty, Error>;
 };
 

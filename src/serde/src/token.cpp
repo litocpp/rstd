@@ -69,6 +69,18 @@ auto Token::as_bytes() const noexcept -> slice<u8> {
     return bytes_value_.as_slice();
 }
 
+auto Token::clone() const -> Token {
+    auto token          = Token(kind_);
+    token.bool_value_   = bool_value_;
+    token.i64_value_    = i64_value_;
+    token.u64_value_    = u64_value_;
+    token.f64_value_    = f64_value_;
+    token.len_          = len_;
+    token.string_value_ = string_value_.clone();
+    token.bytes_value_  = bytes_value_.clone();
+    return token;
+}
+
 TokenSerializer::TokenSerializer(Vec<Token>& tokens): tokens_(&tokens) {
 }
 
@@ -196,8 +208,18 @@ auto TokenMap::end() -> Result<empty, Error> {
     return Ok(empty {});
 }
 
-TokenDeserializer::TokenDeserializer(slice<Token> tokens, usize& position, DataPath path)
-    : tokens_(tokens), position_(&position), path_(rstd::move(path)) {
+TokenDeserializer::TokenDeserializer(slice<Token> tokens,
+                                     usize&       position,
+                                     DataPath     path,
+                                     bool         reject_unknown_fields)
+    : tokens_(tokens),
+      position_(&position),
+      path_(rstd::move(path)),
+      reject_unknown_fields_(reject_unknown_fields) {
+}
+
+TokenDeserializer::TokenDeserializer(slice<Token> tokens, DataPath path, bool reject_unknown_fields)
+    : tokens_(tokens), path_(rstd::move(path)), reject_unknown_fields_(reject_unknown_fields) {
 }
 
 auto TokenDeserializer::peek() const noexcept -> Option<ref<Token>> {
@@ -412,6 +434,123 @@ auto TokenDeserializer::begin_enum() -> Result<TokenEnumAccess, Error> {
         TokenEnumAccess(tokens_, *position_, path_.clone(), String::make(variant->get().as_str())));
 }
 
+auto TokenDeserializer::begin_internal_enum(ref<str> tag, UnknownFieldPolicy unknown)
+    -> Result<TokenTaggedEnumAccess, Error> {
+    auto started = begin_map();
+    if (started.is_err()) return Err(rstd::move(started).unwrap_err_unchecked());
+    auto map     = rstd::move(started).unwrap_unchecked();
+    auto payload = Vec<Token>::make();
+    payload.push(Token::container(TokenKind::MapStart, usize()));
+    auto           fields = usize();
+    Option<String> variant;
+    for (;;) {
+        auto key = map.next_key<String>();
+        if (key.is_err()) return Err(rstd::move(key).unwrap_err_unchecked());
+        if (key->is_none()) break;
+        auto name = rstd::move(*key).unwrap_unchecked();
+        if (name.as_str() == tag) {
+            if (variant.is_some()) return Err(duplicate_field(tag));
+            auto value = map.next_value<String>();
+            if (value.is_err()) return Err(rstd::move(value).unwrap_err_unchecked());
+            variant = Some(rstd::move(value).unwrap_unchecked());
+        } else {
+            ++fields;
+            auto first   = *position_;
+            auto ignored = map.ignore_value();
+            if (ignored.is_err()) return Err(rstd::move(ignored).unwrap_err_unchecked());
+            payload.push(Token::string(name.as_str()));
+            for (auto index = first; index < *position_; ++index)
+                payload.push(tokens_[index].clone());
+        }
+    }
+    auto ended = map.end();
+    if (ended.is_err()) return Err(rstd::move(ended).unwrap_err_unchecked());
+    if (variant.is_none()) return Err(missing_field(tag));
+    payload[usize()] = Token::container(TokenKind::MapStart, fields);
+    payload.push(Token::marker(TokenKind::MapEnd));
+    return Ok(
+        TokenTaggedEnumAccess(rstd::move(*variant),
+                              TokenTaggedPayload(Some(rstd::move(payload)), path_.clone(), None()),
+                              unknown));
+}
+
+auto TokenDeserializer::begin_adjacent_enum(ref<str>           tag,
+                                            ref<str>           content,
+                                            UnknownFieldPolicy unknown)
+    -> Result<TokenTaggedEnumAccess, Error> {
+    if (tag == content) return Err(invariant("adjacent tag and content must differ"_str));
+    auto started = begin_map();
+    if (started.is_err()) return Err(rstd::move(started).unwrap_err_unchecked());
+    auto               map = rstd::move(started).unwrap_unchecked();
+    Option<String>     variant;
+    Option<Vec<Token>> payload;
+    for (;;) {
+        auto key = map.next_key<String>();
+        if (key.is_err()) return Err(rstd::move(key).unwrap_err_unchecked());
+        if (key->is_none()) break;
+        auto name = rstd::move(*key).unwrap_unchecked();
+        if (name.as_str() == tag) {
+            if (variant.is_some()) return Err(duplicate_field(tag));
+            auto value = map.next_value<String>();
+            if (value.is_err()) return Err(rstd::move(value).unwrap_err_unchecked());
+            variant = Some(rstd::move(value).unwrap_unchecked());
+        } else if (name.as_str() == content) {
+            if (payload.is_some()) return Err(duplicate_field(content));
+            auto first   = *position_;
+            auto ignored = map.ignore_value();
+            if (ignored.is_err()) return Err(rstd::move(ignored).unwrap_err_unchecked());
+            auto tokens = Vec<Token>::with_capacity(*position_ - first);
+            for (auto index = first; index < *position_; ++index)
+                tokens.push(tokens_[index].clone());
+            payload = Some(rstd::move(tokens));
+        } else {
+            if (unknown == UnknownFieldPolicy::Reject) return Err(unknown_field(name.as_str()));
+            auto ignored = map.ignore_value();
+            if (ignored.is_err()) return Err(rstd::move(ignored).unwrap_err_unchecked());
+        }
+    }
+    auto ended = map.end();
+    if (ended.is_err()) return Err(rstd::move(ended).unwrap_err_unchecked());
+    if (variant.is_none()) return Err(missing_field(tag));
+    return Ok(TokenTaggedEnumAccess(
+        rstd::move(*variant),
+        TokenTaggedPayload(rstd::move(payload), path_.clone(), Some(String::make(content))),
+        unknown));
+}
+
+TokenTaggedPayload::TokenTaggedPayload(Option<Vec<Token>> payload,
+                                       DataPath           path,
+                                       Option<String>     content)
+    : payload_(rstd::move(payload)), path_(rstd::move(path)), content_(rstd::move(content)) {
+}
+
+auto TokenTaggedPayload::deserializer(UnknownFieldPolicy unknown) -> TokenDeserializer {
+    auto path = content_.is_some() ? path_.with_field(content_->as_str()) : path_.clone();
+    return TokenDeserializer(payload_->as_slice(),
+                             rstd::move(path),
+                             is_internal() && unknown == UnknownFieldPolicy::Reject);
+}
+
+auto TokenTaggedPayload::unit(TokenDeserializer& source) -> Result<empty, Error> {
+    if (payload_->len() == usize(1) && (*payload_)[usize()].kind() == TokenKind::Null)
+        return source.ignore_value();
+    return source.deserialize_unit();
+}
+
+auto TokenTaggedPayload::end(const TokenDeserializer& source) const -> Result<empty, Error> {
+    if (source.position() != payload_->len())
+        return Err(source.invariant("trailing enum payload tokens"_str));
+    return Ok(empty {});
+}
+
+auto TokenTaggedPayload::missing_value() const -> Error {
+    return Error::missing_field(path_.clone(), content_->as_str());
+}
+
+auto TokenTaggedPayload::invariant(ref<str> message) const -> Error {
+    return Error::invariant(path_.clone(), message);
+}
+
 auto TokenDeserializer::ignore_value() -> Result<empty, Error> {
     auto token = peek();
     if (token.is_none()) return Err(Error::unexpected_end(path_.clone()));
@@ -475,5 +614,9 @@ auto TokenDeserializer::ignore_value() -> Result<empty, Error> {
 
 static_assert(Serializer<TokenSerializer>);
 static_assert(Deserializer<TokenDeserializer>);
+static_assert(EnumAccess<TokenTaggedEnumAccess>);
+static_assert(InternalVariantDeserializer<TokenDeserializer>);
+static_assert(AdjacentVariantDeserializer<TokenDeserializer>);
+static_assert(Serializer<InternalTagSerializer<TokenSerializer>>);
 
 } // namespace rstd::serde
