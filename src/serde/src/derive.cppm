@@ -142,13 +142,18 @@ struct RecordDefinition {
     }
 
     template<typename Deserializer>
-    static auto deserialize(Deserializer& deserializer)
+    static auto deserialize_with_defaults(Deserializer& deserializer, T value)
         -> Result<T, typename Deserializer::error_type> {
-        static_assert(__is_aggregate(T), "serde derive requires an aggregate");
-        auto value  = T {};
         auto result = read<0>(deserializer, value);
         if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
         return Ok(rstd::move(value));
+    }
+
+    template<typename Deserializer>
+    static auto deserialize(Deserializer& deserializer)
+        -> Result<T, typename Deserializer::error_type> {
+        static_assert(__is_aggregate(T), "serde derive requires an aggregate");
+        return deserialize_with_defaults(deserializer, T {});
     }
 
     template<typename Sink>
@@ -222,6 +227,29 @@ struct EnumDefinition {
     }
 };
 
+template<typename T, Text Name, Direction Mode, typename... Variants>
+struct StringEnumDefinition : EnumDefinition<T, Name, Mode, Variants...> {
+    template<typename S>
+    static auto serialize(S& sink, T value) -> typename S::result_type {
+        auto result = typename S::result_type(Err(sink.invalid_value("unknown enum value"_str)));
+        StringEnumDefinition::variants([&]<typename V>() {
+            if (value == V::value) result = sink.serialize_string(V::name.view());
+        });
+        return result;
+    }
+    template<typename D>
+    static auto deserialize(D& source) -> Result<T, typename D::error_type> {
+        auto name = source.deserialize_string();
+        if (name.is_err()) return Err(rstd::move(name).unwrap_err_unchecked());
+        auto result =
+            Result<T, typename D::error_type>(Err(source.unknown_variant(name->as_str())));
+        StringEnumDefinition::variants([&]<typename V>() {
+            if (name->as_str() == V::name.view()) result = Ok(V::value);
+        });
+        return result;
+    }
+};
+
 template<typename T, Text Name, Direction Mode>
 struct VariantDefinition {
     static_assert(mtp::complete<Impl<VariantDescription, T>>,
@@ -275,6 +303,94 @@ struct VariantDefinition {
     template<typename Sink>
     static constexpr void describe(Sink& sink) {
         sink.template variants<VariantDefinition>();
+    }
+};
+
+template<typename T, Text Name, Direction Mode, auto Pointer>
+struct NewtypeDefinition {
+    static constexpr auto name           = Name;
+    static constexpr bool serializable   = Mode != Direction::Deserialize;
+    static constexpr bool deserializable = Mode != Direction::Serialize;
+    using type                           = typename MemberValue<decltype(Pointer)>::type;
+
+    template<typename S>
+    static auto serialize(S& sink, const T& value) -> typename S::result_type {
+        return sink.serialize_newtype(Name.view(), value.*Pointer);
+    }
+    template<typename D>
+    static auto deserialize(D& source) -> Result<T, typename D::error_type> {
+        auto value = source.template deserialize_newtype<type>(Name.view());
+        if (value.is_err()) return Err(rstd::move(value).unwrap_err_unchecked());
+        return Ok(T { rstd::move(value).unwrap_unchecked() });
+    }
+    template<typename Sink>
+    static constexpr void describe(Sink& sink) {
+        rstd::serde::describe<type>(sink);
+    }
+};
+
+template<typename T,
+         Text               Name,
+         Direction          Mode,
+         Text               Tag,
+         Text               Content,
+         UnknownFieldPolicy Unknown = UnknownFieldPolicy::Reject>
+struct AdjacentVariantDefinition : VariantDefinition<T, Name, Mode> {
+    static constexpr auto tag            = Tag;
+    static constexpr auto content        = Content;
+    static constexpr auto unknown_fields = Unknown;
+    template<typename S>
+    static auto serialize(S& sink, const T& value) -> typename S::result_type {
+        auto result = typename S::result_type(Err(sink.invalid_value("unknown variant"_str)));
+        AdjacentVariantDefinition::variants([&]<typename V>() {
+            if (! V::matches(value)) return;
+            constexpr bool unit    = __is_void(typename V::payload_type);
+            auto           started = sink.begin_map(usize(unit ? 1 : 2));
+            if (started.is_err()) {
+                result = Err(rstd::move(started).unwrap_err_unchecked());
+                return;
+            }
+            auto map = rstd::move(started).unwrap_unchecked();
+            auto tag = field(map, Tag.view(), Text(V::name).view());
+            if (tag.is_err()) {
+                result = Err(rstd::move(tag).unwrap_err_unchecked());
+                return;
+            }
+            if constexpr (! unit) {
+                auto content = field(map, Content.view(), V::get(value));
+                if (content.is_err()) {
+                    result = Err(rstd::move(content).unwrap_err_unchecked());
+                    return;
+                }
+            }
+            result = map.end();
+        });
+        return result;
+    }
+    template<typename D>
+    static auto deserialize(D& source) -> Result<T, typename D::error_type> {
+        auto started = source.begin_adjacent_enum(Tag.view(), Content.view(), Unknown);
+        if (started.is_err()) return Err(rstd::move(started).unwrap_err_unchecked());
+        auto input = rstd::move(started).unwrap_unchecked();
+        auto result =
+            Result<T, typename D::error_type>(Err(source.unknown_variant(input.variant())));
+        AdjacentVariantDefinition::variants([&]<typename V>() {
+            if (input.variant() != Text(V::name).view()) return;
+            if constexpr (__is_void(typename V::payload_type)) {
+                auto checked = input.unit();
+                if (checked.is_err())
+                    result = Err(rstd::move(checked).unwrap_err_unchecked());
+                else
+                    result = Ok(V::make());
+            } else {
+                auto value = input.template value<typename V::payload_type>();
+                if (value.is_err())
+                    result = Err(rstd::move(value).unwrap_err_unchecked());
+                else
+                    result = Ok(V::make(rstd::move(value).unwrap_unchecked()));
+            }
+        });
+        return result;
     }
 };
 

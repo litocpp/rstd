@@ -65,6 +65,48 @@ enum class Mode : rstd::uint8_t
     Release,
 };
 
+struct DerivedIdentifier {
+    rstd::u64 value;
+};
+constexpr auto rstd_serde_definition(DerivedIdentifier*) {
+    return rstd::serde::NewtypeDefinition<DerivedIdentifier,
+                                          "DerivedIdentifier",
+                                          rstd::serde::Direction::Both,
+                                          &DerivedIdentifier::value> {};
+}
+enum class StrictMode
+{
+    Enabled,
+    Disabled
+};
+constexpr auto rstd_serde_definition(StrictMode*) {
+    using namespace rstd::serde;
+    return StringEnumDefinition<StrictMode,
+                                "StrictMode",
+                                Direction::Both,
+                                Variant<StrictMode::Enabled, "Enabled">,
+                                Variant<StrictMode::Disabled, "Disabled">> {};
+}
+struct SeededRecord {
+    bool enabled;
+};
+struct SeededRecordDefinition
+    : rstd::serde::RecordDefinition<SeededRecord,
+                                    "SeededRecord",
+                                    rstd::serde::Direction::Deserialize,
+                                    rstd::serde::UnknownFieldPolicy::Reject,
+                                    rstd::serde::Member<&SeededRecord::enabled,
+                                                        "enabled",
+                                                        rstd::serde::FieldPolicy::Defaulted>> {
+    template<class D>
+    static auto deserialize(D& source) -> rstd::Result<SeededRecord, typename D::error_type> {
+        return deserialize_with_defaults(source, SeededRecord { true });
+    }
+};
+constexpr auto rstd_serde_definition(SeededRecord*) {
+    return SeededRecordDefinition {};
+}
+
 } // namespace
 
 template<>
@@ -635,4 +677,24 @@ TEST(Serde, NestedTypeErrorCarriesFieldPath) {
     EXPECT_EQ(error.path().segments()[rstd::usize()].kind(), rstd::serde::PathSegmentKind::MapKey);
     ASSERT_TRUE(error.path().segments()[rstd::usize()].name().is_some());
     EXPECT_EQ(*error.path().segments()[rstd::usize()].name(), "age"_str);
+}
+
+TEST(Serde, DerivedNewtypesRemainTransparent) {
+    auto value = rstd::json::decode<DerivedIdentifier>("42"_str).unwrap();
+    EXPECT_EQ(value.value, rstd::u64(42));
+    EXPECT_EQ(rstd::json::to_value(value).unwrap().as_u64().unwrap(), rstd::u64(42));
+}
+
+TEST(Serde, StringEnumsRejectExternallyTaggedObjects) {
+    EXPECT_EQ(rstd::json::decode<StrictMode>(R"("Enabled")"_str).unwrap(), StrictMode::Enabled);
+    EXPECT_TRUE(rstd::json::decode<StrictMode>(R"({"Enabled":null})"_str).is_err());
+    EXPECT_TRUE(rstd::json::decode<StrictMode>(R"("enabled")"_str).is_err());
+    EXPECT_EQ(rstd::json::to_value(StrictMode::Disabled).unwrap().as_str().unwrap(),
+              "Disabled"_str);
+}
+
+TEST(Serde, RecordDefaultsDoNotTreatNullAsMissing) {
+    EXPECT_TRUE(rstd::json::decode<SeededRecord>("{}"_str).unwrap().enabled);
+    EXPECT_FALSE(rstd::json::decode<SeededRecord>("{\"enabled\":false}"_str).unwrap().enabled);
+    EXPECT_TRUE(rstd::json::decode<SeededRecord>("{\"enabled\":null}"_str).is_err());
 }

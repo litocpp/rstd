@@ -163,7 +163,12 @@ struct Impl<serde::Deserialize, BTreeMap<K, V>> {
     template<typename Deserializer>
     static auto deserialize(Deserializer& deserializer)
         -> Result<BTreeMap<K, V>, typename Deserializer::error_type> {
-        auto map = deserializer.begin_map();
+        auto map = [&] {
+            if constexpr (requires { deserializer.begin_dictionary(); })
+                return deserializer.begin_dictionary();
+            else
+                return deserializer.begin_map();
+        }();
         if (map.is_err()) return Err(rstd::move(map).unwrap_err_unchecked());
         auto input  = rstd::move(map).unwrap_unchecked();
         auto values = BTreeMap<K, V>::make();
