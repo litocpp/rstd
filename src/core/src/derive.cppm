@@ -3,6 +3,9 @@ export import :fmt.debug;
 export import :str.traits;
 import :error;
 import :fmt.integer;
+export import :enum_;
+import :array;
+import :num.convert;
 using namespace rstd::literals;
 
 export namespace rstd::derive
@@ -95,6 +98,18 @@ struct EnumFormat {
 
 struct ParseEnumError {};
 
+template<typename T, str_::fixed_string Name, T... Values>
+struct EnumValues {
+    static constexpr array<T, sizeof...(Values)> values { Values... };
+    static constexpr auto                        name() -> ref<str> { return text<Name>(); }
+    static auto iter() { return array<T, sizeof...(Values)> { Values... }.into_iter(); }
+};
+
+template<typename T, typename I>
+struct TryFromEnumError {
+    I value;
+};
+
 template<typename T, bool Insensitive, typename... Entries>
 struct EnumFromStr {
     using Err = ParseEnumError;
@@ -127,6 +142,9 @@ template<typename T>
 concept DerivedDisplay = requires { rstd_display_definition(static_cast<T*>(nullptr)); };
 template<typename T>
 concept DerivedFromStr = requires { rstd_from_str_definition(static_cast<T*>(nullptr)); };
+template<typename T>
+concept DerivedEnumIter =
+    __is_enum(T) && requires { rstd_enum_iter_definition(static_cast<T*>(nullptr)); };
 
 template<DerivedDebug T>
 using DebugDefinition = decltype(rstd_debug_definition(static_cast<T*>(nullptr)));
@@ -134,6 +152,10 @@ template<DerivedDisplay T>
 using DisplayDefinition = decltype(rstd_display_definition(static_cast<T*>(nullptr)));
 template<DerivedFromStr T>
 using FromStrDefinition = decltype(rstd_from_str_definition(static_cast<T*>(nullptr)));
+template<DerivedEnumIter T>
+using EnumIterDefinition = decltype(rstd_enum_iter_definition(static_cast<T*>(nullptr)));
+template<convert::DerivedEnumTryFrom T>
+using EnumTryFromDefinition = decltype(rstd_enum_try_from_definition(static_cast<T*>(nullptr)));
 
 template<DerivedFromStr T>
     requires(__is_enum(T))
@@ -144,6 +166,39 @@ constexpr auto parse_enum(ref<str> input, Case matching) -> Result<T, ParseEnumE
 
 export namespace rstd
 {
+template<derive::DerivedEnumIter T>
+struct Impl<EnumIter, T> {
+    static auto iter() { return derive::EnumIterDefinition<T>::iter(); }
+};
+
+template<typename I, convert::DerivedEnumTryFrom T>
+    requires(num::Integer<I> || num::PrimitiveInteger<I>)
+struct Impl<convert::TryFrom<I>, T> {
+    using Error = derive::TryFromEnumError<T, I>;
+    static auto try_from(I value) -> Result<T, Error> {
+        auto integer = rstd::try_into<__underlying_type(T)>(value);
+        if (integer.is_err()) return Err(Error { value });
+        for (auto candidate : derive::EnumTryFromDefinition<T>::values)
+            if (static_cast<__underlying_type(T)>(candidate) == *integer) return Ok(candidate);
+        return Err(Error { value });
+    }
+};
+
+template<typename T, typename I>
+struct Impl<fmt::Display, derive::TryFromEnumError<T, I>>
+    : ImplBase<derive::TryFromEnumError<T, I>> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        return formatter.write_fmt(fmt::Arguments::make(
+            "Invalid {}: {}", derive::EnumTryFromDefinition<T>::name(), this->self().value));
+    }
+};
+template<typename T, typename I>
+struct Impl<fmt::Debug, derive::TryFromEnumError<T, I>>
+    : Impl<fmt::Display, derive::TryFromEnumError<T, I>> {};
+template<typename T, typename I>
+struct Impl<error::Error, derive::TryFromEnumError<T, I>>
+    : DefaultInImpl<error::Error, derive::TryFromEnumError<T, I>> {};
+
 template<derive::DerivedDebug T>
 struct Impl<fmt::Debug, T> : ImplBase<T> {
     auto fmt(fmt::Formatter& formatter) const -> bool {

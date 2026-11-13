@@ -84,6 +84,18 @@ outcome = "failure"
 diagnostic-contains = ["Debug fields must implement rstd::fmt::Debug"]
 
 [[compile-test.cases]]
+name = "Derive.EnumIterRequiresEnum"
+source = "compile/enum_iter_record.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd::EnumIter: derive requires an enum"]
+
+[[compile-test.cases]]
+name = "Derive.EnumTryFromRequiresEnum"
+source = "compile/enum_try_from_record.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd::TryFrom: derive requires an enum"]
+
+[[compile-test.cases]]
 name = "FmtArguments.OutOfRange"
 source = "compile/format_index.cpp"
 outcome = "failure"

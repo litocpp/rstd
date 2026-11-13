@@ -8,7 +8,11 @@ using namespace rstd::literals;
 namespace derive_tests::enums
 {
 
-enum class [[pmacro::derive("rstd::Debug", "rstd::Display", "rstd::FromStr")]] StrictState : int
+enum class [[pmacro::derive("rstd::Debug",
+                            "rstd::Display",
+                            "rstd::FromStr",
+                            "rstd::EnumIter",
+                            "rstd::TryFrom")]] StrictState : int
 {
     Idle = 0,
     Active [[pmacro::helper("rstd::Debug",
@@ -18,9 +22,13 @@ enum class [[pmacro::derive("rstd::Debug", "rstd::Display", "rstd::FromStr")]] S
     Stopped                                                                              = 19,
 };
 
-enum class [[pmacro::derive("rstd::Debug", "rstd::Display", "rstd::FromStr")]] [[pmacro::helper(
+enum class [[pmacro::derive(
+    "rstd::Debug",
+    "rstd::Display",
     "rstd::FromStr",
-    ascii_case_insensitive)]] InsensitiveState : unsigned
+    "rstd::EnumIter",
+    "rstd::TryFrom")]] [[pmacro::helper("rstd::FromStr",
+                                        ascii_case_insensitive)]] InsensitiveState : unsigned
 {
     Idle = 2,
     Active [[pmacro::helper("rstd::Display", rename("in-progress"))]]
@@ -30,11 +38,140 @@ enum class [[pmacro::derive("rstd::Debug", "rstd::Display", "rstd::FromStr")]] [
 
 enum class [[pmacro::derive("rstd::Debug",
                             "rstd::Display",
-                            "rstd::FromStr")]] UnsignedCode : rstd::uint64_t
+                            "rstd::FromStr",
+                            "rstd::EnumIter",
+                            "rstd::TryFrom")]] UnsignedCode : rstd::uint64_t
 {
     Low  = 1,
     High = 0x8000000000000000ull,
 };
+
+enum class [[pmacro::derive("rstd::EnumIter")]] EmptyState
+{
+};
+enum class [[pmacro::derive("rstd::EnumIter")]] IterOnly
+{
+    Value = 3
+};
+enum class [[pmacro::derive("rstd::TryFrom")]] ConversionOnly
+{
+    Value = 5
+};
+enum class PlainCode : int
+{
+    Value = 2
+};
+enum class [[pmacro::derive("rstd::EnumIter", "rstd::TryFrom")]] SignedCode : signed char
+{
+    Low    = -128,
+    Middle = -3,
+    High   = 127
+};
+enum class [[pmacro::derive("rstd::EnumIter", "rstd::TryFrom")]] AliasCode : int
+{
+    Value = 4,
+    Alias = Value,
+    Last  = 99
+};
+
+static_assert(rstd::Impled<StrictState, rstd::EnumIter>);
+static_assert(! rstd::Impled<StrictState, rstd::convert::From<rstd::i8>>);
+static_assert(! rstd::Impled<StrictState, rstd::convert::From<int>>);
+static_assert(! rstd::derive::DerivedEnumIter<ConversionOnly>);
+static_assert(! rstd::convert::DerivedEnumTryFrom<IterOnly>);
+static_assert(
+    rstd::mtp::same_as<typename decltype(rstd::enum_iter<StrictState>())::Item, StrictState>);
+static_assert(rstd::mtp::same_as<rstd::Impl<rstd::convert::TryFrom<rstd::i64>, StrictState>::Error,
+                                 rstd::derive::TryFromEnumError<StrictState, rstd::i64>>);
+
+TEST(DeriveEnum, IterationOwnsSparseValuesInDeclarationOrder) {
+    auto values = rstd::enum_iter<StrictState>();
+    EXPECT_EQ(values.next().unwrap(), StrictState::Idle);
+    EXPECT_EQ(values.next().unwrap(), StrictState::Active);
+    EXPECT_EQ(values.next().unwrap(), StrictState::Stopped);
+    EXPECT_TRUE(values.next().is_none());
+    EXPECT_TRUE(values.next().is_none());
+    auto independent = rstd::enum_iter<StrictState>();
+    EXPECT_EQ(independent.next().unwrap(), StrictState::Idle);
+
+    auto empty = rstd::enum_iter<EmptyState>();
+    EXPECT_TRUE(empty.next().is_none());
+    auto aliases = rstd::enum_iter<AliasCode>();
+    EXPECT_EQ(aliases.next().unwrap(), AliasCode::Value);
+    EXPECT_EQ(aliases.next().unwrap(), AliasCode::Alias);
+    EXPECT_EQ(aliases.next().unwrap(), AliasCode::Last);
+    EXPECT_TRUE(aliases.next().is_none());
+    EXPECT_EQ(rstd::try_into<AliasCode>(rstd::i32(4)).unwrap(), AliasCode::Value);
+    EXPECT_EQ(rstd::try_into<ConversionOnly>(5).unwrap(), ConversionOnly::Value);
+}
+
+template<typename I>
+void integer_conversions() {
+    auto zero = I(0), active = I(7), stopped = I(19), gap = I(1);
+    EXPECT_EQ(rstd::try_from<StrictState>(zero).unwrap(), StrictState::Idle);
+    EXPECT_EQ(rstd::try_into<StrictState>(active).unwrap(), StrictState::Active);
+    EXPECT_EQ(rstd::try_into<StrictState>(stopped).unwrap(), StrictState::Stopped);
+    auto unknown = rstd::try_into<StrictState>(gap);
+    ASSERT_TRUE(unknown.is_err());
+    EXPECT_EQ(unknown.unwrap_err().value, gap);
+}
+
+TEST(DeriveEnum, CheckedConversionAcceptsOnlyDeclaredValuesForEveryIntegerWidth) {
+    integer_conversions<rstd::i8>();
+    integer_conversions<rstd::i16>();
+    integer_conversions<rstd::i32>();
+    integer_conversions<rstd::i64>();
+    integer_conversions<rstd::i128>();
+    integer_conversions<rstd::isize>();
+    integer_conversions<rstd::u8>();
+    integer_conversions<rstd::u16>();
+    integer_conversions<rstd::u32>();
+    integer_conversions<rstd::u64>();
+    integer_conversions<rstd::u128>();
+    integer_conversions<rstd::usize>();
+    integer_conversions<int>();
+    integer_conversions<unsigned>();
+    integer_conversions<long long>();
+    integer_conversions<unsigned long long>();
+}
+
+TEST(DeriveEnum, CheckedConversionRetainsOriginalValuesWithoutWrapping) {
+    EXPECT_EQ(rstd::try_into<StrictState>(rstd::i64(-1)).unwrap_err().value, rstd::i64(-1));
+    EXPECT_EQ(rstd::try_into<StrictState>(rstd::u64(4294967303ULL)).unwrap_err().value,
+              rstd::u64(4294967303ULL));
+    EXPECT_EQ(rstd::try_into<StrictState>(rstd::i128::MIN).unwrap_err().value, rstd::i128::MIN);
+    EXPECT_EQ(rstd::try_into<StrictState>(rstd::u128::MAX).unwrap_err().value, rstd::u128::MAX);
+    EXPECT_EQ(rstd::try_into<SignedCode>(-128).unwrap(), SignedCode::Low);
+    EXPECT_EQ(rstd::try_into<SignedCode>(-3).unwrap(), SignedCode::Middle);
+    EXPECT_EQ(rstd::try_into<SignedCode>(127u).unwrap(), SignedCode::High);
+    EXPECT_EQ(rstd::try_into<SignedCode>(128u).unwrap_err().value, 128u);
+    EXPECT_EQ(rstd::try_into<SignedCode>(-129).unwrap_err().value, -129);
+    EXPECT_EQ(rstd::try_into<UnsignedCode>(rstd::u64(0x8000000000000000ULL)).unwrap(),
+              UnsignedCode::High);
+    EXPECT_EQ(rstd::try_into<UnsignedCode>(rstd::i64(-1)).unwrap_err().value, rstd::i64(-1));
+    EXPECT_EQ(rstd::try_into<UnsignedCode>(rstd::u128::MAX).unwrap_err().value, rstd::u128::MAX);
+    EXPECT_EQ(rstd::try_into<rstd::i32>(StrictState::Active).unwrap(), rstd::i32(7));
+    EXPECT_EQ(rstd::try_into<StrictState>(StrictState::Active).unwrap(), StrictState::Active);
+}
+
+TEST(DeriveEnum, IntegerConversionErrorsImplementDisplayDebugAndError) {
+    auto error = rstd::try_into<StrictState>(rstd::i64(3)).unwrap_err();
+    EXPECT_EQ(rstd::format("{} {:?}", error, error),
+              "Invalid StrictState: 3 Invalid StrictState: 3"_str);
+    EXPECT_TRUE(rstd::as<rstd::error::Error>(error).source().is_none());
+    EXPECT_EQ(rstd::from_str<StrictState>("running"_str).unwrap(), StrictState::Active);
+    EXPECT_TRUE(rstd::from_str<StrictState>("7"_str).is_err());
+}
+
+TEST(DeriveEnum, CheckedConversionIsOptInAndLeavesNumericConversionsUnchanged) {
+    EXPECT_EQ(rstd::into<PlainCode>(rstd::i8(2)), PlainCode::Value);
+    EXPECT_EQ(static_cast<int>(rstd::try_into<PlainCode>(rstd::i8(3)).unwrap()), 3);
+    EXPECT_TRUE(rstd::try_into<StrictState>(rstd::i8(3)).is_err());
+    EXPECT_EQ(rstd::try_into<rstd::i8>(rstd::i64(127)).unwrap(), rstd::i8(127));
+    EXPECT_TRUE(rstd::try_into<rstd::i8>(rstd::i64(128)).is_err());
+    EXPECT_EQ(rstd::try_into<rstd::i32>(rstd::f64(7)).unwrap(), rstd::i32(7));
+    EXPECT_TRUE(rstd::try_into<rstd::i32>(rstd::f64(7.5)).is_err());
+}
 
 static_assert(rstd::Impled<StrictState, rstd::fmt::Debug, rstd::fmt::Display, rstd::str_::FromStr>);
 static_assert(

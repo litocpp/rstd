@@ -100,8 +100,9 @@ inline constexpr int float_max_exponent = raw_float_traits<numeric_primitive_t<T
 
 template<IntegerLike From, IntegerLike To>
 inline constexpr bool lossless_integer_conversion =
-    (integer_signed<From> == integer_signed<To> && integer_digits<To> >= integer_digits<From>) ||
-    (! integer_signed<From> && integer_signed<To> && integer_digits<To> >= integer_digits<From>);
+    (! convert::DerivedEnumTryFrom<To> || mtp::same_as<From, To>) &&
+    ((integer_signed<From> == integer_signed<To> && integer_digits<To> >= integer_digits<From>) ||
+     (! integer_signed<From> && integer_signed<To> && integer_digits<To> >= integer_digits<From>));
 
 template<FloatLike From, FloatLike To>
 inline constexpr bool lossless_float_conversion =
@@ -334,7 +335,8 @@ struct Impl<convert::TryFrom<From>, To> {
 };
 
 template<num::detail::IntegerLike From, num::detail::IntegerLike To>
-    requires(! num::detail::lossless_integer_conversion<From, To>)
+    requires(! num::detail::lossless_integer_conversion<From, To> &&
+             ! convert::DerivedEnumTryFrom<To>)
 struct Impl<convert::TryFrom<From>, To> {
     using Error = num::TryFromIntError;
 
@@ -412,6 +414,7 @@ struct Impl<convert::TryFrom<From>, To> {
 };
 
 template<num::detail::FloatLike From, num::detail::IntegerLike To>
+    requires(! convert::DerivedEnumTryFrom<To>)
 struct Impl<convert::TryFrom<From>, To> {
     using Error = num::TryFromIntError;
 

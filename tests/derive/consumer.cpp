@@ -31,6 +31,12 @@ TEST(DeriveModule, SeparateExportClassMakesAllTraitsReachable) {
 }
 
 TEST(DeriveModule, ExportBlockInNestedNamespaceMakesEnumTraitsReachable) {
+    auto iterator = rstd::enum_iter<State>();
+    EXPECT_EQ(iterator.next().unwrap(), State::Idle);
+    EXPECT_EQ(iterator.next().unwrap(), State::Ready);
+    EXPECT_TRUE(iterator.next().is_none());
+    EXPECT_EQ(rstd::try_into<State>(rstd::i32(1)).unwrap(), State::Ready);
+    EXPECT_TRUE(rstd::try_into<State>(rstd::i32(2)).is_err());
     EXPECT_EQ(rstd::format("{} {:?}", State::Ready, State::Ready), "ready Ready"_str);
     EXPECT_EQ(rstd::from_str<State>("ReAdY"_str).unwrap(), State::Ready);
     EXPECT_EQ(rstd::from_str<State>("OK"_str).unwrap(), State::Ready);

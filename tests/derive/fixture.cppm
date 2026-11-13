@@ -16,9 +16,12 @@ namespace nested
 {
 
 export {
-    enum class [[pmacro::derive("rstd::Debug", "rstd::Display", "rstd::FromStr")]] [[pmacro::helper(
+    enum class [[pmacro::derive(
+        "rstd::Debug",
+        "rstd::Display",
         "rstd::FromStr",
-        ascii_case_insensitive)]] ExportedState
+        "rstd::EnumIter",
+        "rstd::TryFrom")]] [[pmacro::helper("rstd::FromStr", ascii_case_insensitive)]] ExportedState
     {
         Idle,
         Ready [[pmacro::helper("rstd::Display", rename("ready"))]] [[pmacro::helper("rstd::FromStr",

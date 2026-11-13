@@ -48,7 +48,9 @@ enum class Trait
 {
     Debug,
     Display,
-    FromStr
+    FromStr,
+    EnumIter,
+    TryFrom
 };
 
 enum class Target
@@ -65,6 +67,8 @@ auto owner(Trait trait) -> std::string_view {
     case Trait::Debug: return "rstd::Debug";
     case Trait::Display: return "rstd::Display";
     case Trait::FromStr: return "rstd::FromStr";
+    case Trait::EnumIter: return "rstd::EnumIter";
+    case Trait::TryFrom: return "rstd::TryFrom";
     }
     std::unreachable();
 }
@@ -94,6 +98,8 @@ auto allowed(Trait trait, Target target, std::string_view option) -> bool {
         return (target == Target::Record && option == "transparent") ||
                (target == Target::Enum && option == "ascii_case_insensitive") ||
                (target == Target::Enumerator && (option == "rename" || option == "alias"));
+    case Trait::EnumIter:
+    case Trait::TryFrom: return false;
     }
     std::unreachable();
 }
@@ -316,7 +322,11 @@ auto enum_description(pmacro::Context&           context,
             Error { declaration.source,
                     std::string(owner(trait)) + ": dependent enums are not supported" });
     Description result;
-    if (trait == Trait::FromStr)
+    const auto  values = trait == Trait::EnumIter || trait == Trait::TryFrom;
+    if (values)
+        result.definition =
+            "::rstd::derive::EnumValues<" + qualified + ',' + quote(*declaration.name);
+    else if (trait == Trait::FromStr)
         result.definition = "::rstd::derive::EnumFromStr<" + qualified + ',' +
                             (config.ascii_case_insensitive ? "true" : "false");
     else
@@ -326,6 +336,10 @@ auto enum_description(pmacro::Context&           context,
     for (const auto& item : enumeration.enumerators) {
         auto settings = options(context, item.helpers, trait, Target::Enumerator);
         if (! settings) return std::unexpected(settings.error());
+        if (values) {
+            result.definition += ',' + qualified + "::" + item.name;
+            continue;
+        }
         const auto name     = settings->rename.value_or(item.name);
         const auto add_name = [&](const std::string& text) -> Checked<void> {
             if (! names.insert(normalized(text, config.ascii_case_insensitive)).second)
@@ -368,6 +382,8 @@ auto derive(pmacro::DeriveInput input, pmacro::Context& context, Trait trait) ->
     const auto* enumeration = std::get_if<pmacro::EnumInfo>(&declaration.data);
     if (! record && ! enumeration)
         return fail(declaration.source, "derive requires a record or enum");
+    if (record && (trait == Trait::EnumIter || trait == Trait::TryFrom))
+        return fail(declaration.source, "derive requires an enum");
     auto config =
         options(context, declaration.helpers, trait, record ? Target::Record : Target::Enum);
     if (! config) return failure(context, input.item_span, config.error());
@@ -376,9 +392,16 @@ auto derive(pmacro::DeriveInput input, pmacro::Context& context, Trait trait) ->
         record ? record_description(context, declaration, *record, trait, *config, qualified)
                : enum_description(context, declaration, *enumeration, trait, *config, qualified);
     if (! description) return failure(context, input.item_span, description.error());
-    const auto  function = trait == Trait::Debug     ? "rstd_debug_definition"
-                           : trait == Trait::Display ? "rstd_display_definition"
-                                                     : "rstd_from_str_definition";
+    const auto function = [&] {
+        switch (trait) {
+        case Trait::Debug: return "rstd_debug_definition";
+        case Trait::Display: return "rstd_display_definition";
+        case Trait::FromStr: return "rstd_from_str_definition";
+        case Trait::EnumIter: return "rstd_enum_iter_definition";
+        case Trait::TryFrom: return "rstd_enum_try_from_definition";
+        }
+        std::unreachable();
+    }();
     std::string source;
     if (declaration.after_item_export == pmacro::AfterItemExport::Required) source += "export ";
     source += "extern \"C++\" { constexpr auto ";
@@ -401,4 +424,14 @@ auto Display(pmacro::DeriveInput input, pmacro::Context& context) noexcept -> Ou
 [[pmacro::define("rstd")]]
 auto FromStr(pmacro::DeriveInput input, pmacro::Context& context) noexcept -> Output {
     return derive(input, context, Trait::FromStr);
+}
+
+[[pmacro::define("rstd")]]
+auto EnumIter(pmacro::DeriveInput input, pmacro::Context& context) noexcept -> Output {
+    return derive(input, context, Trait::EnumIter);
+}
+
+[[pmacro::define("rstd")]]
+auto TryFrom(pmacro::DeriveInput input, pmacro::Context& context) noexcept -> Output {
+    return derive(input, context, Trait::TryFrom);
 }

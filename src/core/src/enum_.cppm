@@ -3,6 +3,23 @@ export import :choice;
 
 export namespace rstd
 {
+struct EnumIter {
+    template<typename Self, typename = void>
+    struct Api {
+        using Trait = EnumIter;
+        static auto iter() { return Impl<EnumIter, Self>::iter(); }
+    };
+
+    template<typename T>
+    using Funcs = TraitFuncs<&T::iter>;
+};
+
+template<typename T>
+    requires Impled<T, EnumIter>
+auto enum_iter() {
+    return EnumIter::Api<T>::iter();
+}
+
 struct VariantDescription final {};
 
 template<typename... Entries>

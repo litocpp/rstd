@@ -7,6 +7,10 @@ export import :result;
 namespace rstd::convert
 {
 
+export template<typename T>
+concept DerivedEnumTryFrom =
+    __is_enum(T) && requires { rstd_enum_try_from_definition(static_cast<T*>(nullptr)); };
+
 /// Error type for conversions that cannot fail.
 export class Infallible final {
 public:
@@ -148,7 +152,8 @@ struct Impl<T, Self> : ImplBase<Self> {
 template<typename T, typename Self>
     requires mtp::same_as<T, convert::TryFrom<typename T::from_t>> &&
              (mtp::same_as<typename T::from_t, Self> ||
-              Impled<typename T::from_t, convert::Into<Self>>)
+              (! convert::DerivedEnumTryFrom<Self> &&
+               Impled<typename T::from_t, convert::Into<Self>>))
 struct Impl<T, Self> {
     using from_t = typename T::from_t;
     using Error  = convert::Infallible;
