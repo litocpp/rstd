@@ -74,8 +74,21 @@ struct Member {
     }
 };
 
+template<auto Pointer, Text Name, auto Factory, Text... Aliases>
+struct DefaultedMember : Member<Pointer, Name, FieldPolicy::Defaulted, Aliases...> {
+    using type = typename MemberValue<decltype(Pointer)>::type;
+
+    template<typename T>
+    static auto slot(T&) {
+        const ref<str> names[] = { Aliases.view()..., ref<str> {} };
+        auto           aliases = slice<ref<str>>::from_raw_parts(names, usize(sizeof...(Aliases)));
+        return DefaultFactoryField<type, Factory>(Name.view(), aliases);
+    }
+};
+
 template<typename T, Text Name, Direction Mode, UnknownFieldPolicy Unknown, typename... Members>
 struct RecordDefinition {
+    using model_type                     = T;
     static constexpr auto name           = Name;
     static constexpr bool serializable   = Mode != Direction::Deserialize;
     static constexpr bool deserializable = Mode != Direction::Serialize;
@@ -104,27 +117,54 @@ struct RecordDefinition {
         return map.end();
     }
 
+    template<size_t I, typename D>
+    static auto take_fields(D&, T&) -> Result<empty, typename D::error_type> {
+        return Ok(empty {});
+    }
+
+    template<size_t I, typename D, typename First, typename... Rest>
+    static auto take_fields(D& source, T& value, First& first, Rest&... rest)
+        -> Result<empty, typename D::error_type> {
+        using Field = mtp::tuple_element<I, tuple<Members...>>;
+        if constexpr (Field::policy == FieldPolicy::Skip) {
+            return take_fields<I + 1>(source, value, first, rest...);
+        } else {
+            if constexpr (Field::policy == FieldPolicy::Defaulted) {
+                value.*Field::pointer = first.take();
+            } else {
+                auto decoded = first.take(source);
+                if (decoded.is_err()) return Err(rstd::move(decoded).unwrap_err_unchecked());
+                value.*Field::pointer = rstd::move(decoded).unwrap_unchecked();
+            }
+            return take_fields<I + 1>(source, value, rest...);
+        }
+    }
+
     template<size_t I, bool Inherit, typename Deserializer, typename... Slots>
     static auto read_with_policy(Deserializer& deserializer, T& value, Slots&... slots)
         -> Result<empty, typename Deserializer::error_type> {
         if constexpr (I == sizeof...(Members)) {
-            if constexpr (sizeof...(Slots) != 0) {
-                if constexpr (Inherit)
-                    return deserialize_record(deserializer, Unknown, slots...);
-                else
+            auto result = [&]() -> Result<empty, typename Deserializer::error_type> {
+                if constexpr (sizeof...(Slots) != 0) {
+                    if constexpr (Inherit)
+                        return deserialize_record(deserializer, Unknown, slots...);
+                    else
+                        return deserialize_record(
+                            deserializer, DeclaredRecordPolicy { Unknown }, slots...);
+                } else
                     return deserialize_record(
-                        deserializer, DeclaredRecordPolicy { Unknown }, slots...);
-            } else
-                return deserialize_record(
-                    deserializer,
-                    [&](ref<str> name,
-                        auto&    map) -> Result<empty, typename Deserializer::error_type> {
-                        if ((Inherit ? record_unknown_fields(deserializer, Unknown) : Unknown) ==
-                            UnknownFieldPolicy::Reject)
-                            return Err(deserializer.unknown_field(name));
-                        else
-                            return map.ignore_value();
-                    });
+                        deserializer,
+                        [&](ref<str> name,
+                            auto&    map) -> Result<empty, typename Deserializer::error_type> {
+                            if ((Inherit ? record_unknown_fields(deserializer, Unknown)
+                                         : Unknown) == UnknownFieldPolicy::Reject)
+                                return Err(deserializer.unknown_field(name));
+                            else
+                                return map.ignore_value();
+                        });
+            }();
+            if (result.is_err()) return result;
+            return take_fields<0>(deserializer, value, slots...);
         } else {
             using Field = mtp::tuple_element<I, tuple<Members...>>;
             if constexpr (Field::policy == FieldPolicy::Skip) {
@@ -132,17 +172,8 @@ struct RecordDefinition {
             } else {
                 static_assert(__is_assignable(typename Field::type&, typename Field::type&&),
                               "serde derived fields must be move assignable");
-                auto slot   = Field::slot(value);
-                auto result = read_with_policy<I + 1, Inherit>(deserializer, value, slots..., slot);
-                if (result.is_err()) return result;
-                if constexpr (Field::policy == FieldPolicy::Defaulted) {
-                    value.*Field::pointer = slot.take();
-                } else {
-                    auto decoded = slot.take(deserializer);
-                    if (decoded.is_err()) return Err(rstd::move(decoded).unwrap_err_unchecked());
-                    value.*Field::pointer = rstd::move(decoded).unwrap_unchecked();
-                }
-                return Ok(empty {});
+                auto slot = Field::slot(value);
+                return read_with_policy<I + 1, Inherit>(deserializer, value, slots..., slot);
             }
         }
     }
@@ -181,6 +212,42 @@ struct RecordDefinition {
     template<typename Sink>
     static constexpr void describe(Sink& sink) {
         sink.template record<RecordDefinition>();
+    }
+};
+
+template<typename Base, auto Validate>
+struct ValidatedRecordDefinition : Base {
+    using model_type = typename Base::model_type;
+    static_assert(
+        requires(const model_type& value) {
+            { Validate(value) } -> mtp::same_as<Result<empty, ref<str>>>;
+        },
+        "serde record validator must return Result<empty, ref<str>> for const model_type&");
+
+    template<typename D>
+    static auto finish(D& source, Result<model_type, typename D::error_type> decoded)
+        -> Result<model_type, typename D::error_type> {
+        if (decoded.is_err()) return Err(rstd::move(decoded).unwrap_err_unchecked());
+        auto value   = rstd::move(decoded).unwrap_unchecked();
+        auto checked = Validate(static_cast<const model_type&>(value));
+        if (checked.is_err()) return Err(source.invalid_value(checked.unwrap_err_unchecked()));
+        return Ok(rstd::move(value));
+    }
+
+    template<typename D>
+    static auto deserialize(D& source) -> Result<model_type, typename D::error_type> {
+        return finish(source, Base::deserialize(source));
+    }
+
+    template<typename D>
+    static auto deserialize_declared(D& source) -> Result<model_type, typename D::error_type> {
+        return finish(source, Base::deserialize_declared(source));
+    }
+
+    template<typename D>
+    static auto deserialize_with_defaults(D& source, model_type value)
+        -> Result<model_type, typename D::error_type> {
+        return finish(source, Base::deserialize_with_defaults(source, rstd::move(value)));
     }
 };
 

@@ -5,6 +5,7 @@ import rstd.serde;
 import rstd;
 
 using namespace rstd::prelude;
+using namespace rstd::literals;
 
 export namespace serde_derive::nested
 {
@@ -21,6 +22,49 @@ struct [[pmacro::derive("serde::derive"), pmacro::helper("serde::derive", ignore
     String name;
     [[pmacro::helper("serde::derive", default)]]
     Option<String> note;
+};
+
+struct FactoryState {
+    static inline unsigned calls {};
+    static inline unsigned validations {};
+    static auto            next() -> u64 { return u64(++calls); }
+    static auto            note() -> Option<String>;
+};
+auto FactoryState::note() -> Option<String> {
+    return Some(String::make("fallback"_str));
+}
+
+struct [[pmacro::derive("serde::derive"),
+         pmacro::helper("serde::derive", validate([](const auto& value) -> Result<empty, ref<str>> {
+                            ++FactoryState::validations;
+                            if (value.count == u64(99)) return Err("count must not be 99"_str);
+                            return Ok(empty {});
+                        }))]]
+FactoryRecord {
+    String name;
+    [[pmacro::helper(
+        "serde::derive", rename("wire"), alias("legacy"), default(FactoryState::next))]]
+    u64 count;
+    [[pmacro::helper("serde::derive", default(FactoryState::note))]]
+    Option<String> note;
+    [[pmacro::helper("serde::derive", default)]]
+    bool enabled { true };
+};
+
+struct [[pmacro::derive("serde::derive")]] FactoryOrder {
+    [[pmacro::helper("serde::derive", default(FactoryState::next))]]
+    u64 first;
+    [[pmacro::helper("serde::derive", default(FactoryState::next))]]
+    u64 second;
+    [[pmacro::helper("serde::derive", default([] {
+                         return u64(17);
+                     }))]]
+    u64 expression;
+};
+
+class [[pmacro::derive("serde::derive"),
+        pmacro::helper("serde::derive", variants, internal, tag("kind"))]] ValidatedInternal {
+    RSTD_ENUM_TYPES(ValidatedInternal, (Record, (::serde_derive::nested::FactoryRecord)))
 };
 class [[pmacro::derive("serde::derive"), pmacro::helper("serde::derive", variants)]] External {
     RSTD_ENUM_TYPES(External,

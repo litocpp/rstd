@@ -11,7 +11,8 @@ using namespace serde_derive::nested;
 namespace serde_derive::nested
 {
 auto decode_in_peer(ref<str> input) -> Result<Adjacent, rstd::json::DecodeError>;
-}
+auto decode_factory_in_peer(ref<str> input) -> Result<FactoryRecord, rstd::json::DecodeError>;
+} // namespace serde_derive::nested
 
 static_assert(rstd::serde::Serializable<EncodeOnly> && ! rstd::serde::Deserializable<EncodeOnly>);
 static_assert(! rstd::serde::Serializable<DecodeOnly> && rstd::serde::Deserializable<DecodeOnly>);
@@ -109,6 +110,78 @@ TEST(SerdeDerive, RecordPathStillUsesExistingDerive) {
     EXPECT_TRUE(value.note.is_none());
     auto roundtrip = rstd::json::encode(value).unwrap();
     EXPECT_EQ(rstd::json::decode<Record>(roundtrip.as_str()).unwrap().name.as_str(), "wire"_str);
+}
+
+TEST(SerdeDerive, DefaultFactoriesRunOnlyForMissingFields) {
+    FactoryState::calls       = 0;
+    FactoryState::validations = 0;
+    auto first = rstd::json::decode<FactoryRecord>(R"({"name":"first"})"_str).unwrap();
+    EXPECT_EQ(first.count, u64(1));
+    ASSERT_TRUE(first.note.is_some());
+    EXPECT_TRUE(first.note->as_str() == "fallback"_str);
+    EXPECT_TRUE(first.enabled);
+    auto second = rstd::json::decode<FactoryRecord>(R"({"name":"second"})"_str).unwrap();
+    EXPECT_EQ(second.count, u64(2));
+    auto present = rstd::json::decode<FactoryRecord>(
+                       R"({"name":"present","legacy":0,"note":null,"enabled":false})"_str)
+                       .unwrap();
+    EXPECT_EQ(present.count, u64());
+    EXPECT_TRUE(present.note.is_none());
+    EXPECT_FALSE(present.enabled);
+    EXPECT_EQ(FactoryState::calls, 2u);
+    EXPECT_EQ(FactoryState::validations, 3u);
+
+    EXPECT_TRUE(rstd::json::decode<FactoryRecord>(R"({"name":"bad","wire":null})"_str).is_err());
+    EXPECT_EQ(FactoryState::calls, 2u);
+    EXPECT_EQ(FactoryState::validations, 3u);
+    EXPECT_TRUE(
+        rstd::json::decode<FactoryRecord>(R"({"name":"bad","wire":1,"legacy":2})"_str).is_err());
+    EXPECT_EQ(FactoryState::calls, 2u);
+}
+
+TEST(SerdeDerive, ValidationRunsAfterDecodedValuesAndDefaultsAcrossFormats) {
+    FactoryState::calls       = 0;
+    FactoryState::validations = 0;
+    auto rejected = rstd::json::decode<FactoryRecord>(R"({"name":"bad","wire":99})"_str);
+    ASSERT_TRUE(rejected.is_err());
+    EXPECT_EQ(FactoryState::calls, 0u);
+    EXPECT_EQ(FactoryState::validations, 1u);
+    EXPECT_TRUE(rstd::json::decode<FactoryRecord>(R"({"wire":1})"_str).is_err());
+    EXPECT_EQ(FactoryState::validations, 1u);
+
+    using rstd::serde::Token;
+    using rstd::serde::TokenKind;
+    Vec<Token> tokens;
+    tokens.push(Token::container(TokenKind::MapStart, usize(1)));
+    tokens.push(Token::string("name"_str));
+    tokens.push(Token::string("token"_str));
+    tokens.push(Token::marker(TokenKind::MapEnd));
+    auto value = rstd::serde::from_tokens<FactoryRecord>(tokens.as_slice()).unwrap();
+    EXPECT_EQ(value.count, u64(1));
+    EXPECT_EQ(FactoryState::validations, 2u);
+
+    value.count  = u64(99);
+    auto encoded = rstd::serde::to_tokens(value).unwrap();
+    EXPECT_TRUE(rstd::serde::from_tokens<FactoryRecord>(encoded.as_slice()).is_err());
+    EXPECT_EQ(FactoryState::validations, 3u);
+
+    EXPECT_TRUE(
+        rstd::json::decode<ValidatedInternal>(R"({"kind":"Record","name":"bad","wire":99})"_str)
+            .is_err());
+    EXPECT_EQ(FactoryState::validations, 4u);
+    EXPECT_TRUE(decode_factory_in_peer(R"({"name":"peer","wire":99})"_str).is_err());
+    EXPECT_EQ(FactoryState::validations, 5u);
+}
+
+TEST(SerdeDerive, FactoryResolutionFollowsDeclarationOrder) {
+    FactoryState::calls = 0;
+    auto first          = rstd::json::decode<FactoryOrder>("{}"_str).unwrap();
+    EXPECT_EQ(first.first, u64(1));
+    EXPECT_EQ(first.second, u64(2));
+    EXPECT_EQ(first.expression, u64(17));
+    auto explicit_first = rstd::json::decode<FactoryOrder>(R"({"first":0})"_str).unwrap();
+    EXPECT_EQ(explicit_first.first, u64());
+    EXPECT_EQ(explicit_first.second, u64(3));
 }
 
 TEST(SerdeDerive, TokenInputPreservesDuplicateFieldDiagnostics) {

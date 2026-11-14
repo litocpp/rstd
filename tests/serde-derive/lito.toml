@@ -133,3 +133,51 @@ name = "SerdeDerive.DirectionConflict"
 source = "compile/direction_conflict.cpp"
 outcome = "failure"
 diagnostic-contains = ["invalid serde type options"]
+
+[[compile-test.cases]]
+name = "SerdeDerive.DefaultFactoryEmpty"
+source = "compile/default_factory_empty.cpp"
+outcome = "failure"
+diagnostic-contains = ["serde default factory requires an expression"]
+
+[[compile-test.cases]]
+name = "SerdeDerive.DefaultFactoryArgument"
+source = "compile/default_factory_argument.cpp"
+outcome = "failure"
+diagnostic-contains = ["serde default factory must construct its field type without arguments"]
+
+[[compile-test.cases]]
+name = "SerdeDerive.DefaultFactoryType"
+source = "compile/default_factory_type.cpp"
+outcome = "failure"
+diagnostic-contains = ["serde default factory must construct its field type without arguments"]
+
+[[compile-test.cases]]
+name = "SerdeDerive.DefaultFactoryConflict"
+source = "compile/default_factory_conflict.cpp"
+outcome = "failure"
+diagnostic-contains = ["invalid serde field options"]
+
+[[compile-test.cases]]
+name = "SerdeDerive.DefaultFactoryDuplicate"
+source = "compile/default_factory_duplicate.cpp"
+outcome = "failure"
+diagnostic-contains = ["duplicate serde default"]
+
+[[compile-test.cases]]
+name = "SerdeDerive.ValidatorType"
+source = "compile/validator_type.cpp"
+outcome = "failure"
+diagnostic-contains = ["serde record validator must return Result<empty, ref<str>> for const model_type&"]
+
+[[compile-test.cases]]
+name = "SerdeDerive.ValidatorField"
+source = "compile/validator_field.cpp"
+outcome = "failure"
+diagnostic-contains = ["invalid serde field options"]
+
+[[compile-test.cases]]
+name = "SerdeDerive.ValidatorNewtype"
+source = "compile/validator_newtype.cpp"
+outcome = "failure"
+diagnostic-contains = ["serde validation requires a deserializable aggregate record"]

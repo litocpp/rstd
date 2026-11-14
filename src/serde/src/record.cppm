@@ -199,6 +199,22 @@ public:
     }
 };
 
+template<typename T, auto Factory>
+class DefaultFactoryField : public OptionalField<T> {
+    static_assert(
+        requires { T(Factory()); },
+        "serde default factory must construct its field type without arguments");
+
+public:
+    using OptionalField<T>::OptionalField;
+
+    auto take() -> T {
+        auto value = OptionalField<T>::take();
+        if (value.is_some()) return rstd::move(value).unwrap_unchecked();
+        return T(Factory());
+    }
+};
+
 template<typename Field, typename Deserializer, typename Map>
 concept RecordField = requires(Field&        field,
                                const Field&  const_field,

@@ -29,6 +29,7 @@ struct Options {
     std::vector<std::string>                                      aliases;
     std::shared_ptr<Options>                                      parent, variant;
     std::vector<std::pair<std::string, std::shared_ptr<Options>>> cases;
+    std::optional<pmacro::TokenTree>                              default_factory, validator;
     bool defaulted {}, skip {}, ignore_unknown {}, encode_only {}, decode_only {}, variants {},
         newtype {}, string_enum {}, internal {}, adjacent {}, reject_unknown {},
         described_payload {}, described_enum {};
@@ -102,9 +103,24 @@ auto parse_options(pmacro::TokenStream stream, Options& result, std::size_t begi
                 if (target) return std::unexpected("duplicate serde " + std::string(name));
                 target = text;
             }
-        } else if (name == "default")
+        } else if (name == "default") {
+            if (result.defaulted) return std::unexpected("duplicate serde default");
             result.defaulted = true;
-        else if (name == "skip")
+            if (i + 1 < stream.size() && stream[i + 1].kind() == pmacro::TokenKind::Group &&
+                stream[i + 1].delimiter() == pmacro::Delimiter::Parenthesis) {
+                auto expression = stream[++i];
+                if (expression.children().size() == 0)
+                    return std::unexpected("serde default factory requires an expression");
+                result.default_factory = expression;
+            }
+        } else if (name == "validate") {
+            if (result.validator) return std::unexpected("duplicate serde validate");
+            if (++i == stream.size() || stream[i].kind() != pmacro::TokenKind::Group ||
+                stream[i].delimiter() != pmacro::Delimiter::Parenthesis ||
+                stream[i].children().size() == 0)
+                return std::unexpected("serde validate requires a callable expression");
+            result.validator = stream[i];
+        } else if (name == "skip")
             result.skip = true;
         else if (name == "ignore_unknown")
             result.ignore_unknown = true;
@@ -148,6 +164,40 @@ auto options(pmacro::Context& context, const std::vector<pmacro::HelperInfo>& he
     return result;
 }
 
+auto splice_expressions(pmacro::Context&                      context,
+                        const pmacro::TokenStream&            input,
+                        const std::vector<pmacro::TokenTree>& expressions,
+                        pmacro::Span                          anchor) -> Output {
+    auto output = context.stream();
+    if (! output) return output;
+    for (const auto& token : input) {
+        bool replaced = false;
+        if (token.kind() == pmacro::TokenKind::Ident) {
+            for (std::size_t i = 0; i < expressions.size(); ++i) {
+                if (token.spelling() != "__rstd_serde_expression_" + std::to_string(i)) continue;
+                if (! output->append(expressions[i]))
+                    return std::unexpected(pmacro::Error::Failure);
+                replaced = true;
+                break;
+            }
+        }
+        if (replaced) continue;
+        if (token.kind() == pmacro::TokenKind::Group) {
+            auto children = splice_expressions(context, token.children(), expressions, anchor);
+            if (! children) return children;
+            auto group = context.group(token.delimiter(), *children, anchor);
+            if (! group)
+                return failure(
+                    context, {}, anchor, "serde could not group generated expression output");
+            if (! output->append(*group))
+                return failure(
+                    context, {}, anchor, "serde could not append generated expression output");
+        } else if (! output->append(token))
+            return std::unexpected(pmacro::Error::Failure);
+    }
+    return output;
+}
+
 auto valid_variant_options(const Options& settings) -> bool {
     return ! settings.representation() ||
            (settings.name && ! settings.parent && ! settings.variant && settings.cases.empty() &&
@@ -158,7 +208,8 @@ auto valid_variant_options(const Options& settings) -> bool {
 
 auto valid_payload_options(const Options& settings) -> bool {
     return valid_variant_options(settings) && ! settings.defaulted && ! settings.skip &&
-           settings.aliases.empty() && ! (settings.encode_only && settings.decode_only) &&
+           ! settings.validator && settings.aliases.empty() &&
+           ! (settings.encode_only && settings.decode_only) &&
            ! (settings.ignore_unknown && settings.reject_unknown) &&
            ! (settings.name && settings.rename);
 }
@@ -191,7 +242,7 @@ auto derive_payload(pmacro::DeriveInput        input,
                        "serde described_payload templates are not supported yet");
     if (config.variants || config.described_enum || config.newtype || config.string_enum ||
         config.tag || config.content || config.internal || config.adjacent || config.rename ||
-        ! config.cases.empty())
+        config.validator || ! config.cases.empty())
         return failure(context,
                        declaration.source,
                        input.item_span,
@@ -200,7 +251,8 @@ auto derive_payload(pmacro::DeriveInput        input,
     if (config.parent) {
         if ((config.parent->encode_only && config.parent->decode_only) ||
             (config.parent->ignore_unknown && config.parent->reject_unknown) ||
-            config.parent->parent || config.parent->variant || ! config.parent->cases.empty())
+            config.parent->parent || config.parent->variant || config.parent->validator ||
+            config.parent->defaulted || ! config.parent->cases.empty())
             return failure(context,
                            declaration.source,
                            input.item_span,
@@ -235,8 +287,8 @@ auto derive_payload(pmacro::DeriveInput        input,
         auto settings = options(context, field.helpers);
         if (! settings) return failure(context, field.source, input.item_span, settings.error());
         if (settings->representation() || settings->encode_only || settings->decode_only ||
-            settings->ignore_unknown || settings->reject_unknown ||
-            (settings->skip && settings->defaulted))
+            settings->ignore_unknown || settings->reject_unknown || settings->validator ||
+            settings->default_factory || (settings->skip && settings->defaulted))
             return failure(context, field.source, input.item_span, "invalid serde field options");
         if (! settings->rename && ! settings->defaulted && ! settings->skip &&
             settings->aliases.empty())
@@ -285,11 +337,24 @@ auto derive(pmacro::DeriveInput input, pmacro::Context& context) noexcept -> Out
         (config->tag && config->content && config->tag == config->content))
         return failure(
             context, declaration.source, input.item_span, "invalid serde representation options");
+    if (config->validator &&
+        (config->variants || config->newtype || config->string_enum || config->encode_only ||
+         ! std::holds_alternative<pmacro::RecordInfo>(declaration.data)))
+        return failure(context,
+                       declaration.source,
+                       input.item_span,
+                       "serde validation requires a deserializable aggregate record");
     auto qualified = "::" + *declaration.qualified_name;
     auto mode = config->encode_only ? "Serialize" : config->decode_only ? "Deserialize" : "Both";
     auto type_name  = config->rename.value_or(*declaration.qualified_name);
     auto source     = std::string {};
     auto definition = std::string {};
+    std::vector<pmacro::TokenTree> expressions;
+    auto                           expression = [&](pmacro::TokenTree value) {
+        auto name = "__rstd_serde_expression_" + std::to_string(expressions.size());
+        expressions.push_back(value);
+        return name;
+    };
     std::set<std::string> names;
     if (config->variants) {
         const auto* record = std::get_if<pmacro::RecordInfo>(&declaration.data);
@@ -358,7 +423,7 @@ auto derive(pmacro::DeriveInput input, pmacro::Context& context) noexcept -> Out
             if (! settings)
                 return failure(context, field.source, input.item_span, settings.error());
             if (settings->representation() || settings->encode_only || settings->decode_only ||
-                settings->ignore_unknown || settings->reject_unknown ||
+                settings->ignore_unknown || settings->reject_unknown || settings->validator ||
                 (settings->skip && settings->defaulted))
                 return failure(
                     context, field.source, input.item_span, "invalid serde field options");
@@ -388,11 +453,16 @@ auto derive(pmacro::DeriveInput input, pmacro::Context& context) noexcept -> Out
                              qualified + "::" + *field.name;
                 continue;
             }
-            definition += ",rstd::serde::Member<&" + qualified + "::" + *field.name + ',' +
-                          quote(name) + ",rstd::serde::FieldPolicy::" +
-                          (settings->skip        ? "Skip"
-                           : settings->defaulted ? "Defaulted"
-                                                 : "Required");
+            definition += std::string(settings->default_factory ? ",rstd::serde::DefaultedMember<&"
+                                                                : ",rstd::serde::Member<&") +
+                          qualified + "::" + *field.name + ',' + quote(name) + ',';
+            if (settings->default_factory)
+                definition += expression(*settings->default_factory);
+            else
+                definition += std::string("rstd::serde::FieldPolicy::") + (settings->skip ? "Skip"
+                                                                           : settings->defaulted
+                                                                               ? "Defaulted"
+                                                                               : "Required");
             for (const auto& alias : settings->aliases) definition += ',' + quote(alias);
             definition += '>';
         }
@@ -408,7 +478,7 @@ auto derive(pmacro::DeriveInput input, pmacro::Context& context) noexcept -> Out
             if (! settings) return failure(context, item.source, input.item_span, settings.error());
             if (settings->representation() || ! settings->aliases.empty() || settings->defaulted ||
                 settings->skip || settings->ignore_unknown || settings->reject_unknown ||
-                settings->encode_only || settings->decode_only)
+                settings->encode_only || settings->decode_only || settings->validator)
                 return failure(
                     context, item.source, input.item_span, "enum items support only serde rename");
             auto name = settings->rename.value_or(item.name);
@@ -420,7 +490,14 @@ auto derive(pmacro::DeriveInput input, pmacro::Context& context) noexcept -> Out
     } else
         return failure(
             context, declaration.source, input.item_span, "serde derive requires a record or enum");
-    source += "constexpr auto rstd_serde_definition(" + qualified + "*) { return " + definition +
-              ">{}; }";
-    return context.parse(source);
+    definition += '>';
+    if (config->validator)
+        definition = "rstd::serde::ValidatedRecordDefinition<" + definition + ',' +
+                     expression(*config->validator) + '>';
+    if (declaration.after_item_export == pmacro::AfterItemExport::Required) source += "export ";
+    source +=
+        "constexpr auto rstd_serde_definition(" + qualified + "*) { return " + definition + "{}; }";
+    auto output = context.parse(source);
+    if (! output || expressions.empty()) return output;
+    return splice_expressions(context, *output, expressions, input.item_span);
 }
