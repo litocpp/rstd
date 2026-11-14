@@ -21,6 +21,8 @@ static_assert(UtcOffset::UTC.is_utc());
 static_assert(Impled<OffsetDateTime, convert::TryFrom<SystemTime>>);
 static_assert(Impled<ComponentRange, error::Error>);
 static_assert(Impled<IndeterminateOffset, error::Error>);
+static_assert(*days_from_calendar_date(i32(1970), Month::January, u8(1)) == i64());
+static_assert(calendar_date_from_days(i64())->year == i32(1970));
 
 TEST(Time, Duration) {
     auto d1 = Duration::from_secs(u64(1));
@@ -181,6 +183,107 @@ TEST(Time, DateComponentRangesAndLeapYears) {
     ASSERT_TRUE(invalid_day.is_err());
     EXPECT_EQ(invalid_day.unwrap_err().name(), "day"_str);
     EXPECT_TRUE(invalid_day.unwrap_err().is_conditional());
+}
+
+TEST(Time, CalendarDateWideYears) {
+    struct Case {
+        int       year;
+        int       month;
+        int       day;
+        long long days;
+    };
+    constexpr Case cases[] {
+        { 1970, 1, 1, 0 },           { 1969, 12, 31, -1 },          { 0, 1, 1, -719'528 },
+        { 0, 2, 29, -719'469 },      { 0, 3, 1, -719'468 },         { -1, 1, 1, -719'893 },
+        { 10'000, 1, 1, 2'932'897 }, { 100'000, 1, 1, 35'804'722 }, { -100'000, 1, 1, -37'243'778 },
+    };
+    for (auto value : cases) {
+        auto month = Month::from_number(u8(value.month)).unwrap();
+        auto days  = days_from_calendar_date(i32(value.year), month, u8(value.day));
+        ASSERT_TRUE(days.is_ok());
+        EXPECT_EQ(*days, i64(value.days));
+        auto date = calendar_date_from_days(*days);
+        ASSERT_TRUE(date.is_ok());
+        EXPECT_EQ(date->year, i32(value.year));
+        EXPECT_EQ(date->month, month);
+        EXPECT_EQ(date->day, u8(value.day));
+    }
+}
+
+TEST(Time, CalendarDateLeapYearsAndInvalidComponents) {
+    for (auto year : { 0, -400, 400, -100'000, 100'000 }) {
+        EXPECT_TRUE(days_from_calendar_date(i32(year), Month::February, u8(29)).is_ok());
+    }
+    for (auto year : { -100, 100, 1900, 100'001 }) {
+        auto day = days_from_calendar_date(i32(year), Month::February, u8(29));
+        ASSERT_TRUE(day.is_err());
+        auto error = day.unwrap_err();
+        EXPECT_EQ(error.name(), "day"_str);
+        EXPECT_TRUE(error.is_conditional());
+    }
+    EXPECT_TRUE(days_from_calendar_date(i32(2000), Month::January, u8()).is_err());
+    EXPECT_TRUE(days_from_calendar_date(i32(2000), Month::April, u8(31)).is_err());
+    for (auto number : { 0, 13, 255 }) {
+        auto month = Month(static_cast<Month::Value>(number));
+        auto days  = days_from_calendar_date(i32(2000), month, u8(1));
+        ASSERT_TRUE(days.is_err());
+        auto error = days.unwrap_err();
+        EXPECT_EQ(error.name(), "month"_str);
+        EXPECT_FALSE(error.is_conditional());
+    }
+}
+
+TEST(Time, CalendarDateCoversI32YearRange) {
+    for (auto year : { i32::MIN, i32::MAX }) {
+        for (auto month : { Month(Month::January), Month(Month::December) }) {
+            auto day  = month == Month::January ? u8(1) : u8(31);
+            auto days = days_from_calendar_date(year, month, day);
+            ASSERT_TRUE(days.is_ok());
+            EXPECT_TRUE(days->checked_mul(i64(86'400)).is_some());
+            auto date = calendar_date_from_days(*days);
+            ASSERT_TRUE(date.is_ok());
+            EXPECT_EQ(date->year, year);
+            EXPECT_EQ(date->month, month);
+            EXPECT_EQ(date->day, day);
+        }
+    }
+    EXPECT_TRUE(days_from_calendar_date(i32::MIN, Month::February, u8(29)).is_ok());
+    EXPECT_TRUE(days_from_calendar_date(i32::MAX, Month::February, u8(29)).is_err());
+}
+
+TEST(Time, CalendarDateRejectsUnrepresentableDays) {
+    auto minimum = days_from_calendar_date(i32::MIN, Month::January, u8(1)).unwrap();
+    auto maximum = days_from_calendar_date(i32::MAX, Month::December, u8(31)).unwrap();
+    for (auto days : { i64::MIN, i64::MAX, minimum - i64(1), maximum + i64(1) }) {
+        auto date = calendar_date_from_days(days);
+        ASSERT_TRUE(date.is_err());
+        auto error = date.unwrap_err();
+        EXPECT_EQ(error.name(), "days"_str);
+        EXPECT_FALSE(error.is_conditional());
+    }
+}
+
+TEST(Time, DateYearRangeRemainsBounded) {
+    for (auto year : { Date::MIN_YEAR, Date::MAX_YEAR }) {
+        for (auto ordinal : { u16(1), u16(365) }) {
+            auto date = Date::from_ordinal_date(year, ordinal);
+            ASSERT_TRUE(date.is_ok());
+            EXPECT_EQ(date->year(), year);
+            EXPECT_EQ(date->ordinal(), ordinal);
+            auto days = days_from_calendar_date(year, date->month(), date->day());
+            ASSERT_TRUE(days.is_ok());
+            auto instant = OffsetDateTime::from_unix_time(*days * i64(86'400), u32());
+            ASSERT_TRUE(instant.is_ok());
+            EXPECT_EQ(instant->date(), *date);
+        }
+    }
+    for (auto year : { i32(-10'000), i32(10'000), i32::MIN, i32::MAX }) {
+        auto days = days_from_calendar_date(year, Month::January, u8(1));
+        ASSERT_TRUE(days.is_ok());
+        EXPECT_TRUE(Date::from_calendar_date(year, Month::January, u8(1)).is_err());
+        EXPECT_TRUE(Date::from_ordinal_date(year, u16(1)).is_err());
+        EXPECT_TRUE(OffsetDateTime::from_unix_time(*days * i64(86'400), u32()).is_err());
+    }
 }
 
 TEST(Time, TimeComponentRanges) {

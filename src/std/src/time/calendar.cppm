@@ -17,6 +17,17 @@ constexpr auto rem_euclid(rstd::int64_t value, rstd::int64_t divisor) noexcept -
     return remainder < 0 ? remainder + divisor : remainder;
 }
 
+constexpr auto days_in_month(rstd::int32_t year, rstd::uint8_t month) noexcept -> rstd::uint8_t {
+    switch (month) {
+    case 2: return year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) ? 29 : 28;
+    case 4:
+    case 6:
+    case 9:
+    case 11: return 30;
+    default: return 31;
+    }
+}
+
 constexpr auto days_from_civil(rstd::int64_t year, rstd::uint8_t month, rstd::uint8_t day) noexcept
     -> rstd::int64_t {
     year -= month <= 2;
@@ -126,6 +137,37 @@ private:
     Value value_;
 };
 
+struct CalendarDate {
+    i32   year;
+    Month month;
+    u8    day;
+};
+
+constexpr auto days_from_calendar_date(i32 year, Month month, u8 day) noexcept
+    -> Result<i64, ComponentRange> {
+    auto const month_number = month.number().to_primitive();
+    if (month_number < 1 || month_number > 12) {
+        return Err(ComponentRange::unconditional("month"_str));
+    }
+    auto const maximum = calendar_detail::days_in_month(year.to_primitive(), month_number);
+    if (day == u8() || day > u8(maximum)) {
+        return Err(ComponentRange::conditional("day"_str));
+    }
+    return Ok(i64(
+        calendar_detail::days_from_civil(year.to_primitive(), month_number, day.to_primitive())));
+}
+
+constexpr auto calendar_date_from_days(i64 days) noexcept -> Result<CalendarDate, ComponentRange> {
+    constexpr auto minimum = calendar_detail::days_from_civil(i32::MIN.to_primitive(), 1, 1);
+    constexpr auto maximum = calendar_detail::days_from_civil(i32::MAX.to_primitive(), 12, 31);
+    if (days < i64(minimum) || days > i64(maximum)) {
+        return Err(ComponentRange::unconditional("days"_str));
+    }
+    auto const civil = calendar_detail::civil_from_days(days.to_primitive());
+    return Ok(CalendarDate {
+        i32(civil.year), Month(static_cast<Month::Value>(civil.month)), u8(civil.day) });
+}
+
 class OffsetDateTime;
 class UtcOffset;
 
@@ -140,50 +182,23 @@ class Date {
 
     constexpr Date(i32 year, u16 ordinal) noexcept: year_(year), ordinal_(ordinal) {}
 
-    static constexpr auto is_leap_year(i32 year) noexcept -> bool {
-        auto const raw = year.to_primitive();
-        return raw % 4 == 0 && (raw % 25 != 0 || raw % 16 == 0);
-    }
-
-    static constexpr auto days_in_month(i32 year, Month month) noexcept -> u8 {
-        switch (month.number().to_primitive()) {
-        case 2: return u8(is_leap_year(year) ? 29 : 28);
-        case 4:
-        case 6:
-        case 9:
-        case 11: return u8(30);
-        default: return u8(31);
-        }
-    }
-
     constexpr auto month_day() const noexcept -> MonthDay {
-        auto remaining = ordinal_;
-        for (u8 number(1); number <= u8(12); ++number) {
-            auto       month = Month::from_number(number);
-            auto const count = u16(days_in_month(year_, *month).to_primitive());
-            if (remaining <= count) {
-                return { *month, u8(static_cast<rstd::uint8_t>(remaining.to_primitive())) };
-            }
-            remaining -= count;
-        }
-        rstd::unreachable();
+        auto const date = calendar_date_from_days(days_since_unix_epoch());
+        return { date->month, date->day };
     }
 
     constexpr auto days_since_unix_epoch() const noexcept -> i64 {
-        auto const parts = month_day();
-        return i64(calendar_detail::days_from_civil(
-            year_.to_primitive(), parts.month.number().to_primitive(), parts.day.to_primitive()));
+        return *days_from_calendar_date(year_, Month::January, u8(1)) +
+               i64(ordinal_.to_primitive()) - i64(1);
     }
 
     static constexpr auto from_days_since_unix_epoch(i64 days) noexcept
         -> Result<Date, ComponentRange> {
-        auto const civil = calendar_detail::civil_from_days(days.to_primitive());
-        if (civil.year < MIN_YEAR.to_primitive() || civil.year > MAX_YEAR.to_primitive()) {
+        auto const civil = calendar_date_from_days(days);
+        if (civil.is_err() || civil->year < MIN_YEAR || civil->year > MAX_YEAR) {
             return Err(ComponentRange::unconditional("timestamp"_str));
         }
-        auto month = Month::from_number(u8(civil.month));
-        if (month.is_err()) return Err(ComponentRange::unconditional("timestamp"_str));
-        return from_calendar_date(i32(civil.year), *month, u8(civil.day));
+        return from_calendar_date(civil->year, civil->month, civil->day);
     }
 
     friend class OffsetDateTime;
@@ -197,20 +212,11 @@ public:
         if (year < MIN_YEAR || year > MAX_YEAR) {
             return Err(ComponentRange::unconditional("year"_str));
         }
-        if (month.number() < u8(1) || month.number() > u8(12)) {
-            return Err(ComponentRange::unconditional("month"_str));
-        }
-        auto const month_days = days_in_month(year, month);
-        if (day == u8() || day > month_days) {
-            return Err(ComponentRange::conditional("day"_str));
-        }
-
-        u16 ordinal(static_cast<rstd::uint16_t>(day.to_primitive()));
-        for (u8 number(1); number < month.number(); ++number) {
-            auto previous = Month::from_number(number);
-            ordinal += u16(days_in_month(year, *previous).to_primitive());
-        }
-        return Ok(Date(year, ordinal));
+        auto days = days_from_calendar_date(year, month, day);
+        if (days.is_err()) return Err(days.unwrap_err());
+        auto const first = days_from_calendar_date(year, Month::January, u8(1));
+        return Ok(
+            Date(year, u16(static_cast<rstd::uint16_t>((*days - *first + i64(1)).to_primitive()))));
     }
 
     static constexpr auto from_ordinal_date(i32 year, u16 ordinal) noexcept
@@ -218,7 +224,10 @@ public:
         if (year < MIN_YEAR || year > MAX_YEAR) {
             return Err(ComponentRange::unconditional("year"_str));
         }
-        auto const maximum = u16(is_leap_year(year) ? 366 : 365);
+        auto const first = days_from_calendar_date(year, Month::January, u8(1));
+        auto const last  = days_from_calendar_date(year, Month::December, u8(31));
+        auto const maximum =
+            u16(static_cast<rstd::uint16_t>((*last - *first + i64(1)).to_primitive()));
         if (ordinal == u16() || ordinal > maximum) {
             return Err(ComponentRange::conditional("ordinal"_str));
         }

@@ -101,6 +101,7 @@ sources = [
   "sync/mpsc.cpp",
   "sync/spsc.cpp",
   "time.cpp",
+  "time_parse.cpp",
   "fmt.cpp",
   "io.cpp",
   "io_borrowed.cpp",

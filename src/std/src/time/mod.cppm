@@ -3,6 +3,7 @@ module;
 export module rstd:time;
 export import rstd.core;
 export import :time.calendar;
+export import :time.parse;
 import rstd.sys.pal;
 #if ! RSTD_OS_UNKNOWN
 import rstd.sys.libc;

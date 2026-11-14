@@ -12,6 +12,7 @@ archive = "rstd"
 [dependencies]
 rstd-core = { workspace = true, pub = true }
 rstd-alloc = { workspace = true, pub = true }
+rstd-parse = { workspace = true }
 
 [[when]]
 condition = 'target.os == "windows"'
