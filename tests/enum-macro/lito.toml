@@ -1,0 +1,336 @@
+[package]
+name = "rstd-enum-macro-tests"
+
+[[test]]
+name = "rstd-enum-macro-tests"
+sources = [
+  "main.cpp",
+  "fixture.cppm",
+  "declarations.cpp",
+  "lifecycle.cpp",
+  "match.cpp",
+  "templates.cpp",
+  "errors.cpp",
+  "metadata.cpp",
+  "serde.cpp",
+  "consumer.cpp",
+  "consumer_peer.cpp",
+  "options.cpp",
+]
+
+[dependencies]
+rstd-core = { path = "../../src/core" }
+rstd-alloc = { path = "../../src/alloc" }
+rstd-std = { path = "../../src/std" }
+rstd-test = { path = "../../src/test" }
+rstd-macro = { path = "../../src/macro" }
+rstd-serde = { path = "../../src/serde" }
+rstd-json = { path = "../../src/json" }
+rstd-serde-macro = { path = "../../src/serde-macro" }
+
+[compile-test]
+
+[[compile-test.cases]]
+name = "EnumMacro.DuplicateVariant"
+source = "compile/duplicate_variant.cpp"
+outcome = "failure"
+diagnostic-contains = ["duplicate variant"]
+
+[[compile-test.cases]]
+name = "EnumMacro.DuplicateRecordField"
+source = "compile/duplicate_record_field.cpp"
+outcome = "failure"
+diagnostic-contains = ["duplicate field"]
+
+[[compile-test.cases]]
+name = "EnumMacro.DuplicateTupleField"
+source = "compile/duplicate_tuple_field.cpp"
+outcome = "failure"
+diagnostic-contains = ["duplicate field"]
+
+[[compile-test.cases]]
+name = "EnumMacro.GeneratedFieldCollision"
+source = "compile/generated_field_collision.cpp"
+outcome = "failure"
+diagnostic-contains = ["duplicate field"]
+
+[[compile-test.cases]]
+name = "EnumMacro.MultipleDefaults"
+source = "compile/multiple_defaults.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["multiple default", "duplicate default", "one default"]
+
+[[compile-test.cases]]
+name = "EnumMacro.UnknownEnumAttribute"
+source = "compile/unknown_enum_attribute.cpp"
+outcome = "failure"
+diagnostic-contains = ["unknown", "attribute"]
+
+[[compile-test.cases]]
+name = "EnumMacro.UnknownVariantAttribute"
+source = "compile/unknown_variant_attribute.cpp"
+outcome = "failure"
+diagnostic-contains = ["unknown", "attribute"]
+
+[[compile-test.cases]]
+name = "EnumMacro.UnknownFieldAttribute"
+source = "compile/unknown_field_attribute.cpp"
+outcome = "failure"
+diagnostic-contains = ["unknown", "attribute"]
+
+[[compile-test.cases]]
+name = "EnumMacro.MissingRecordFieldColon"
+source = "compile/missing_field_colon.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["expected ':'", "name: Type", "named field"]
+
+[[compile-test.cases]]
+name = "EnumMacro.MissingFieldType"
+source = "compile/missing_field_type.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["field type", "expected type", "type-id"]
+
+[[compile-test.cases]]
+name = "EnumMacro.InvalidFieldDelimiter"
+source = "compile/invalid_field_delimiter.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["field", "type", "delimiter", "expected"]
+
+[[compile-test.cases]]
+name = "EnumMacro.MissingExternalType"
+source = "compile/missing_external_type.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["external", "payload type", "type-id"]
+
+[[compile-test.cases]]
+name = "EnumMacro.InvalidCppType"
+source = "compile/invalid_cpp_type.cpp"
+outcome = "failure"
+diagnostic-contains = ["MissingCppType"]
+
+[[compile-test.cases]]
+name = "EnumMacro.NonTypeTemplate"
+source = "compile/non_type_template.cpp"
+outcome = "failure"
+diagnostic-contains = ["template"]
+
+[[compile-test.cases]]
+name = "EnumMacro.TemplateTemplateParameter"
+source = "compile/template_template_parameter.cpp"
+outcome = "failure"
+diagnostic-contains = ["template"]
+
+[[compile-test.cases]]
+name = "EnumMacro.TemplatePack"
+source = "compile/template_pack.cpp"
+outcome = "failure"
+diagnostic-contains = ["template"]
+
+[[compile-test.cases]]
+name = "EnumMacro.UnnamedTemplateParameter"
+source = "compile/unnamed_template_parameter.cpp"
+outcome = "failure"
+diagnostic-contains = ["template"]
+
+[[compile-test.cases]]
+name = "EnumMacro.ConstrainedTemplate"
+source = "compile/constrained_template.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["template", "requires", "expected an enum declaration"]
+
+[[compile-test.cases]]
+name = "EnumMacro.ClassScope"
+source = "compile/class_scope.cpp"
+outcome = "failure"
+diagnostic-contains = ["namespace"]
+
+[[compile-test.cases]]
+name = "EnumMacro.ExtraInstanceState"
+source = "compile/instance_state.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["instance", "data member", "member declarations"]
+
+[[compile-test.cases]]
+name = "EnumMacro.EmptyEnum"
+source = "compile/empty_enum.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["at least one", "empty enum", "no variants"]
+
+[[compile-test.cases]]
+name = "EnumMacro.ErrorUnitNeedsFormat"
+source = "compile/error_unit_format.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["error(", "unit format", "requires", "missing error"]
+
+[[compile-test.cases]]
+name = "EnumMacro.ErrorPayloadNeedsFormat"
+source = "compile/error_payload_format.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["error(", "format", "transparent"]
+
+[[compile-test.cases]]
+name = "EnumMacro.ErrorMultipleSources"
+source = "compile/error_sources.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["multiple source", "one source"]
+
+[[compile-test.cases]]
+name = "EnumMacro.ErrorFromAdditionalFields"
+source = "compile/error_from_fields.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["from requires exactly one field", "from", "single field"]
+
+[[compile-test.cases]]
+name = "EnumMacro.ErrorDuplicateFrom"
+source = "compile/error_duplicate_from.cpp"
+outcome = "failure"
+diagnostic-contains = ["duplicate From source types"]
+
+[[compile-test.cases]]
+name = "EnumMacro.ErrorFormatTransparentConflict"
+source = "compile/error_format_transparent.cpp"
+outcome = "failure"
+diagnostic-contains = ["transparent"]
+
+[[compile-test.cases]]
+name = "EnumMacro.ErrorTransparentAdditionalFields"
+source = "compile/error_transparent_fields.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["transparent requires exactly one field", "transparent", "single field"]
+
+[[compile-test.cases]]
+name = "EnumMacro.ErrorTransparentSourceConflict"
+source = "compile/error_transparent_source.cpp"
+outcome = "failure"
+diagnostic-contains = ["transparent", "source"]
+
+[[compile-test.cases]]
+name = "EnumMacro.ErrorUnknownFormatField"
+source = "compile/error_unknown_format_field.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["missing", "unknown field", "format"]
+
+[[compile-test.cases]]
+name = "EnumMacro.MatchMissingCase"
+source = "compile/match_missing.cpp"
+outcome = "failure"
+diagnostic-contains = ["not handled in switch", "-Wswitch"]
+
+[[compile-test.cases]]
+name = "EnumMacro.MatchMissingTemplateCase"
+source = "compile/match_missing_template.cpp"
+outcome = "failure"
+diagnostic-contains = ["not handled in switch", "-Wswitch"]
+
+[[compile-test.cases]]
+name = "EnumMacro.MatchRestoresDiagnostics"
+source = "compile/match_restores_diagnostics.cpp"
+outcome = "failure"
+options = ["-Werror=switch-enum"]
+diagnostic-contains = ["not explicitly handled in switch", "switch (raw)"]
+
+[[compile-test.cases]]
+name = "EnumMacro.MatchExplicitDefault"
+source = "compile/match_default.cpp"
+outcome = "success"
+options = ["-Werror=switch-enum"]
+
+[[compile-test.cases]]
+name = "EnumMacro.ConditionalDeclarations"
+source = "compile/conditional.cpp"
+outcome = "success"
+
+[[compile-test.cases]]
+name = "EnumMacro.TupleFieldNamedI"
+source = "compile/tuple_field_named_i.cpp"
+outcome = "success"
+
+[[compile-test.cases]]
+name = "EnumMacro.PayloadNamesDoNotCollideAcrossEnums"
+source = "compile/payload_name_collision.cpp"
+outcome = "success"
+
+[[compile-test.cases]]
+name = "EnumMacro.GeneratedTemplateParametersAreHygienic"
+source = "compile/generated_template_parameters.cpp"
+outcome = "success"
+
+[[compile-test.cases]]
+name = "EnumMacro.PublicPayloadAliasCollision"
+source = "compile/public_payload_alias_collision.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["collision", "reserved"]
+
+[[compile-test.cases]]
+name = "EnumMacro.DisplayFieldHelperIsNotIgnored"
+source = "compile/display_field_helper.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["field helper", "unknown", "field options"]
+
+[[compile-test.cases]]
+name = "EnumMacro.TransparentRejectsArguments"
+source = "compile/transparent_arguments.cpp"
+outcome = "failure"
+diagnostic-contains = ["transparent", "arguments"]
+
+[[compile-test.cases]]
+name = "EnumMacro.TypeDebugHelperIsRejected"
+source = "compile/type_debug_helper.cpp"
+outcome = "failure"
+diagnostic-contains = ["type helper options"]
+
+[[compile-test.cases]]
+name = "EnumMacro.TypeDebugAttributeIsRejected"
+source = "compile/type_debug_attribute.cpp"
+outcome = "failure"
+diagnostic-contains = ["type attribute"]
+
+[[compile-test.cases]]
+name = "EnumMacro.CloneVariantHelperIsRejected"
+source = "compile/clone_variant_helper.cpp"
+outcome = "failure"
+diagnostic-contains = ["variant helper options"]
+
+[[compile-test.cases]]
+name = "EnumMacro.CloneFieldHelperIsRejected"
+source = "compile/clone_field_helper.cpp"
+outcome = "failure"
+diagnostic-contains = ["field helper options"]
+
+[[compile-test.cases]]
+name = "EnumMacro.VariantBuiltinVariantsOptionIsRejected"
+source = "compile/variant_variants_helper.cpp"
+outcome = "failure"
+diagnostic-contains = ["enum body"]
+
+[[compile-test.cases]]
+name = "EnumMacro.VariantBuiltinUnitOptionIsRejected"
+source = "compile/variant_unit_helper.cpp"
+outcome = "failure"
+diagnostic-contains-any = [
+  "enum body",
+  "variants cannot be combined with transparent, format or tuple",
+]
+
+[[compile-test.cases]]
+name = "EnumMacro.ParenthesizedFieldInitializers"
+source = "compile/parenthesized_initializers.cpp"
+outcome = "success"
+
+[[compile-test.cases]]
+name = "EnumMacro.TemplatePublicAliasCollision"
+source = "compile/template_public_alias_collision.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["collision", "reserved"]
+
+[[compile-test.cases]]
+name = "EnumMacro.TemplateVariantNameCollision"
+source = "compile/template_variant_name_collision.cpp"
+outcome = "failure"
+diagnostic-contains-any = ["collision", "reserved"]
+
+[[compile-test.cases]]
+name = "EnumMacro.TemplateDeriveFunctionNameCollision"
+source = "compile/template_derive_function_name_collision.cpp"
+outcome = "failure"
+diagnostic-contains = ["reserved template parameter"]

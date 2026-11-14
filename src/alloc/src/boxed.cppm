@@ -508,6 +508,23 @@ struct Impl<fmt::Display, ::alloc::boxed::Box<dyn<error::Error>, A>>
     }
 };
 
+template<typename T, typename A>
+    requires Impled<T, fmt::Display, Sized>
+struct Impl<fmt::Display, ::alloc::boxed::Box<T, A>> : ImplBase<::alloc::boxed::Box<T, A>> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        const T& value = *this->self();
+        return as<fmt::Display>(value).fmt(formatter);
+    }
+};
+template<typename T, typename A>
+    requires Impled<T, fmt::Debug, Sized>
+struct Impl<fmt::Debug, ::alloc::boxed::Box<T, A>> : ImplBase<::alloc::boxed::Box<T, A>> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        const T& value = *this->self();
+        return as<fmt::Debug>(value).fmt(formatter);
+    }
+};
+
 template<typename A>
 struct Impl<fmt::Debug, ::alloc::boxed::Box<dyn<error::Error>, A>>
     : ImplBase<::alloc::boxed::Box<dyn<error::Error>, A>> {

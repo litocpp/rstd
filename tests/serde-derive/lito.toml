@@ -1,0 +1,135 @@
+[package]
+name = "rstd-serde-derive-tests"
+
+[[test]]
+name = "rstd-serde-derive-tests"
+sources = ["main.cpp", "fixture.cppm", "consumer.cpp", "consumer_peer.cpp", "payload.cppm", "payload_consumer.cpp"]
+
+[dependencies]
+rstd-std = { path = "../../src/std" }
+rstd-test = { path = "../../src/test" }
+rstd-serde = { path = "../../src/serde" }
+rstd-json = { path = "../../src/json" }
+rstd-serde-macro = { path = "../../src/serde-macro" }
+
+[compile-test]
+
+[[compile-test.cases]]
+name = "SerdeDerive.DescribedVariantPolicyCase"
+source = "compile/described_policy_case.cpp"
+outcome = "failure"
+diagnostic-contains = ["serde variant case does not exist"]
+
+[[compile-test.cases]]
+name = "SerdeDerive.LegacyExternalUnknownPolicy"
+source = "compile/legacy_external_policy.cpp"
+outcome = "failure"
+diagnostic-contains = ["serde variants requires a record with VariantDescription"]
+
+[[compile-test.cases]]
+name = "SerdeDerive.DescribedPayloadTemplate"
+source = "compile/described_template.cpp"
+outcome = "failure"
+diagnostic-contains = ["serde described_payload templates are not supported yet"]
+
+[[compile-test.cases]]
+name = "SerdeDerive.DescribedVariantCase"
+source = "compile/described_case.cpp"
+outcome = "failure"
+diagnostic-contains = ["serde variant names must be known and unique"]
+
+[[compile-test.cases]]
+name = "SerdeDerive.DescribedVariantOptions"
+source = "compile/described_variant_options.cpp"
+outcome = "failure"
+diagnostic-contains = ["invalid serde enum variant options"]
+
+[[compile-test.cases]]
+name = "SerdeDerive.DescribedTupleOptions"
+source = "compile/described_tuple_options.cpp"
+outcome = "failure"
+diagnostic-contains = ["serde tuple and unit payload fields do not accept record options"]
+
+[[compile-test.cases]]
+name = "SerdeDerive.NewtypeArity"
+source = "compile/newtype_arity.cpp"
+outcome = "failure"
+diagnostic-contains = ["serde newtype requires exactly one field"]
+
+[[compile-test.cases]]
+name = "SerdeDerive.NewtypeFieldOptions"
+source = "compile/newtype_field.cpp"
+outcome = "failure"
+diagnostic-contains = ["serde newtype field does not accept record options"]
+
+[[compile-test.cases]]
+name = "SerdeDerive.TagRequiresVariants"
+source = "compile/tag_without_variants.cpp"
+outcome = "failure"
+diagnostic-contains = ["invalid serde representation options"]
+
+[[compile-test.cases]]
+name = "SerdeDerive.ContentRequiresTag"
+source = "compile/content_without_tag.cpp"
+outcome = "failure"
+diagnostic-contains = ["invalid serde representation options"]
+
+[[compile-test.cases]]
+name = "SerdeDerive.DuplicateTag"
+source = "compile/duplicate_tag.cpp"
+outcome = "failure"
+diagnostic-contains = ["duplicate serde tag"]
+
+[[compile-test.cases]]
+name = "SerdeDerive.TagContentConflict"
+source = "compile/tag_content_conflict.cpp"
+outcome = "failure"
+diagnostic-contains = ["invalid serde representation options"]
+
+[[compile-test.cases]]
+name = "SerdeDerive.InternalContent"
+source = "compile/internal_content.cpp"
+outcome = "failure"
+diagnostic-contains = ["invalid serde representation options"]
+
+[[compile-test.cases]]
+name = "SerdeDerive.AdjacentRequiresContent"
+source = "compile/adjacent_without_content.cpp"
+outcome = "failure"
+diagnostic-contains = ["invalid serde representation options"]
+
+[[compile-test.cases]]
+name = "SerdeDerive.RepresentationConflict"
+source = "compile/representation_conflict.cpp"
+outcome = "failure"
+diagnostic-contains = ["invalid serde representation options"]
+
+[[compile-test.cases]]
+name = "SerdeDerive.EnumDuplicateName"
+source = "compile/enum_duplicate_name.cpp"
+outcome = "failure"
+diagnostic-contains = ["duplicate serde enum name"]
+
+[[compile-test.cases]]
+name = "SerdeDerive.RecordStringEnum"
+source = "compile/record_string_enum.cpp"
+outcome = "failure"
+diagnostic-contains = ["string_enum requires an enum"]
+
+[[compile-test.cases]]
+name = "SerdeDerive.EnumNewtype"
+source = "compile/enum_newtype.cpp"
+outcome = "failure"
+diagnostic-contains = ["invalid serde enum representation"]
+
+[[compile-test.cases]]
+name = "SerdeDerive.VariantsRequireDescription"
+source = "compile/variants_without_description.cpp"
+outcome = "failure"
+diagnostic-contains = ["serde variants requires an explicit VariantDescription"]
+
+[[compile-test.cases]]
+name = "SerdeDerive.DirectionConflict"
+source = "compile/direction_conflict.cpp"
+outcome = "failure"
+diagnostic-contains = ["invalid serde type options"]

@@ -661,6 +661,31 @@ auto Arc<T>::downgrade() const noexcept -> Weak<T> {
 namespace rstd
 {
 
+template<>
+struct Impl<fmt::Display, ::alloc::sync::Arc<dyn<error::Error>>>
+    : ImplBase<::alloc::sync::Arc<dyn<error::Error>>> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        auto value = this->self().deref();
+        return as<fmt::Display>(value).fmt(formatter);
+    }
+};
+template<>
+struct Impl<fmt::Debug, ::alloc::sync::Arc<dyn<error::Error>>>
+    : ImplBase<::alloc::sync::Arc<dyn<error::Error>>> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        auto value = this->self().deref();
+        return as<fmt::Debug>(value).fmt(formatter);
+    }
+};
+template<>
+struct Impl<error::Error, ::alloc::sync::Arc<dyn<error::Error>>>
+    : ImplBase<::alloc::sync::Arc<dyn<error::Error>>> {
+    auto source() const noexcept -> Option<error::ErrorRef> {
+        auto value = this->self().deref();
+        return value->source();
+    }
+};
+
 template<typename T>
     requires Impled<T, fmt::Display, Sized>
 struct Impl<fmt::Display, ::alloc::sync::Arc<T>> : ImplBase<::alloc::sync::Arc<T>> {

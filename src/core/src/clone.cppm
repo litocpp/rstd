@@ -4,7 +4,8 @@ export import :trait;
 export namespace rstd::derive
 {
 template<typename T>
-concept DerivedClone = requires { rstd_clone_definition(static_cast<T*>(nullptr)); };
+concept DerivedClone =
+    (! mtp::trait_default_tag<T>) && requires { rstd_clone_definition(static_cast<T*>(nullptr)); };
 } // namespace rstd::derive
 
 namespace rstd::clone

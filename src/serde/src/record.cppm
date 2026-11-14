@@ -15,6 +15,10 @@ enum class UnknownFieldPolicy : rstd::uint8_t
     Ignore,
 };
 
+struct DeclaredRecordPolicy {
+    UnknownFieldPolicy value;
+};
+
 template<typename D>
 concept InternalVariantDeserializer = Deserializer<D> && requires(D& source, ref<str> tag) {
     typename decltype(source.begin_internal_enum(tag, UnknownFieldPolicy::Ignore))::value_type;
@@ -240,10 +244,11 @@ auto assign_record_field(Deserializer& deserializer,
 template<typename Deserializer, typename... Fields>
     requires(sizeof...(Fields) > 0) &&
             (RecordField<Fields, Deserializer, typename Deserializer::map_type> && ...)
-auto deserialize_record(Deserializer& deserializer, UnknownFieldPolicy policy, Fields&... fields)
-    -> Result<empty, typename Deserializer::error_type> {
-    policy     = record_unknown_fields(deserializer, policy);
-    auto valid = validate_record_fields(deserializer, fields...);
+auto deserialize_record(Deserializer&        deserializer,
+                        DeclaredRecordPolicy declared,
+                        Fields&... fields) -> Result<empty, typename Deserializer::error_type> {
+    auto policy = declared.value;
+    auto valid  = validate_record_fields(deserializer, fields...);
     if (valid.is_err()) return Err(rstd::move(valid).unwrap_err_unchecked());
     auto map = deserializer.begin_map();
     if (map.is_err()) return Err(rstd::move(map).unwrap_err_unchecked());
@@ -264,6 +269,16 @@ auto deserialize_record(Deserializer& deserializer, UnknownFieldPolicy policy, F
         if (ignored.is_err()) return Err(rstd::move(ignored).unwrap_err_unchecked());
     }
     return input.end();
+}
+
+template<typename Deserializer, typename... Fields>
+    requires(sizeof...(Fields) > 0) &&
+            (RecordField<Fields, Deserializer, typename Deserializer::map_type> && ...)
+auto deserialize_record(Deserializer& deserializer, UnknownFieldPolicy policy, Fields&... fields)
+    -> Result<empty, typename Deserializer::error_type> {
+    return deserialize_record(deserializer,
+                              DeclaredRecordPolicy { record_unknown_fields(deserializer, policy) },
+                              fields...);
 }
 
 template<typename Payload>

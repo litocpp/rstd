@@ -104,31 +104,36 @@ struct RecordDefinition {
         return map.end();
     }
 
-    template<size_t I, typename Deserializer, typename... Slots>
-    static auto read(Deserializer& deserializer, T& value, Slots&... slots)
+    template<size_t I, bool Inherit, typename Deserializer, typename... Slots>
+    static auto read_with_policy(Deserializer& deserializer, T& value, Slots&... slots)
         -> Result<empty, typename Deserializer::error_type> {
         if constexpr (I == sizeof...(Members)) {
-            if constexpr (sizeof...(Slots) != 0)
-                return deserialize_record(deserializer, Unknown, slots...);
-            else
-                return deserialize_record(deserializer,
-                                          [&](ref<str> name, auto& map)
-                                              -> Result<empty, typename Deserializer::error_type> {
-                                              if (record_unknown_fields(deserializer, Unknown) ==
-                                                  UnknownFieldPolicy::Reject)
-                                                  return Err(deserializer.unknown_field(name));
-                                              else
-                                                  return map.ignore_value();
-                                          });
+            if constexpr (sizeof...(Slots) != 0) {
+                if constexpr (Inherit)
+                    return deserialize_record(deserializer, Unknown, slots...);
+                else
+                    return deserialize_record(
+                        deserializer, DeclaredRecordPolicy { Unknown }, slots...);
+            } else
+                return deserialize_record(
+                    deserializer,
+                    [&](ref<str> name,
+                        auto&    map) -> Result<empty, typename Deserializer::error_type> {
+                        if ((Inherit ? record_unknown_fields(deserializer, Unknown) : Unknown) ==
+                            UnknownFieldPolicy::Reject)
+                            return Err(deserializer.unknown_field(name));
+                        else
+                            return map.ignore_value();
+                    });
         } else {
             using Field = mtp::tuple_element<I, tuple<Members...>>;
             if constexpr (Field::policy == FieldPolicy::Skip) {
-                return read<I + 1>(deserializer, value, slots...);
+                return read_with_policy<I + 1, Inherit>(deserializer, value, slots...);
             } else {
                 static_assert(__is_assignable(typename Field::type&, typename Field::type&&),
                               "serde derived fields must be move assignable");
                 auto slot   = Field::slot(value);
-                auto result = read<I + 1>(deserializer, value, slots..., slot);
+                auto result = read_with_policy<I + 1, Inherit>(deserializer, value, slots..., slot);
                 if (result.is_err()) return result;
                 if constexpr (Field::policy == FieldPolicy::Defaulted) {
                     value.*Field::pointer = slot.take();
@@ -140,6 +145,12 @@ struct RecordDefinition {
                 return Ok(empty {});
             }
         }
+    }
+
+    template<size_t I, typename Deserializer, typename... Slots>
+    static auto read(Deserializer& deserializer, T& value, Slots&... slots)
+        -> Result<empty, typename Deserializer::error_type> {
+        return read_with_policy<I, true>(deserializer, value, slots...);
     }
 
     template<typename Deserializer>
@@ -157,6 +168,16 @@ struct RecordDefinition {
         return deserialize_with_defaults(deserializer, T {});
     }
 
+    template<typename Deserializer>
+    static auto deserialize_declared(Deserializer& deserializer)
+        -> Result<T, typename Deserializer::error_type> {
+        static_assert(__is_aggregate(T), "serde derive requires an aggregate");
+        T    value {};
+        auto result = read_with_policy<0, false>(deserializer, value);
+        if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
+        return Ok(rstd::move(value));
+    }
+
     template<typename Sink>
     static constexpr void describe(Sink& sink) {
         sink.template record<RecordDefinition>();
@@ -167,6 +188,40 @@ template<auto Value, Text Name>
 struct Variant {
     static constexpr auto value = Value;
     static constexpr auto name  = Name;
+};
+
+template<Text Case, Text Name>
+struct VariantName {
+    static constexpr auto case_name = Case;
+    static constexpr auto name      = Name;
+};
+
+template<typename L, typename R>
+constexpr auto same_text(L left, R right) -> bool {
+    if (left.size() != right.size()) return false;
+    for (size_t i = 0; i < left.size(); ++i)
+        if (left.data()[i] != right.data()[i]) return false;
+    return true;
+}
+
+template<typename Entry, typename... Names>
+struct NamedVariant : Entry {
+    static consteval auto wire_name() {
+        if constexpr (sizeof...(Names) == 0)
+            return Text(Entry::name);
+        else
+            return select_name<Names...>();
+    }
+    template<typename First, typename... Rest>
+    static consteval auto select_name() {
+        if constexpr (same_text(Text(Entry::name), First::case_name))
+            return First::name;
+        else if constexpr (sizeof...(Rest) > 0)
+            return select_name<Rest...>();
+        else
+            return Text(Entry::name);
+    }
+    static constexpr auto name = wire_name();
 };
 
 template<typename T, Text Name, Direction Mode, typename... Variants>
@@ -251,16 +306,48 @@ struct StringEnumDefinition : EnumDefinition<T, Name, Mode, Variants...> {
     }
 };
 
-template<typename T, Text Name, Direction Mode>
+template<typename T, Text Name, Direction Mode, typename... Names>
 struct VariantDefinition {
     static_assert(mtp::complete<Impl<VariantDescription, T>>,
                   "serde variants requires an explicit VariantDescription");
     static constexpr auto name           = Name;
     static constexpr bool serializable   = Mode != Direction::Deserialize;
     static constexpr bool deserializable = Mode != Direction::Serialize;
+    template<Text Case>
+    static consteval auto contains_case() -> bool {
+        size_t count = 0;
+        Impl<VariantDescription, T>::variants([&]<typename Entry>() {
+            if (same_text(Text(Entry::name), Case)) ++count;
+        });
+        return count == 1;
+    }
+    static consteval auto valid_names() -> bool {
+        bool       valid = true;
+        const auto known = []<typename Mapping>() {
+            return contains_case<Mapping::case_name>();
+        };
+        const auto unique = []<typename Mapping>() {
+            return (size_t(0) + ... + size_t(same_text(Mapping::case_name, Names::case_name))) == 1;
+        };
+        valid =
+            ((known.template operator()<Names>() && unique.template operator()<Names>()) && ...);
+        Impl<VariantDescription, T>::variants([&]<typename First>() {
+            size_t count = 0;
+            Impl<VariantDescription, T>::variants([&]<typename Second>() {
+                if (same_text(NamedVariant<First, Names...>::name,
+                              NamedVariant<Second, Names...>::name))
+                    ++count;
+            });
+            valid = valid && count == 1;
+        });
+        return valid;
+    }
+    static_assert(valid_names(), "serde variant names must be known and unique");
     template<typename F>
     static constexpr void variants(F function) {
-        Impl<VariantDescription, T>::variants(function);
+        Impl<VariantDescription, T>::variants([&]<typename Entry>() {
+            function.template operator()<NamedVariant<Entry, Names...>>();
+        });
     }
     template<typename S>
     static auto serialize(S& sink, const T& value) -> typename S::result_type {
@@ -331,6 +418,212 @@ struct NewtypeDefinition {
     template<typename Sink>
     static constexpr void describe(Sink& sink) {
         rstd::serde::describe<type>(sink);
+    }
+};
+
+template<auto Pointer, Text Name, FieldPolicy Policy = FieldPolicy::Required, Text... Aliases>
+struct PayloadMemberOptions : Member<Pointer, Name, Policy, Aliases...> {};
+
+template<typename Field, typename... Options>
+struct DescribedMember : Member<Field::pointer, Text(Field::name_literal.data)> {};
+template<typename Field, typename First, typename... Rest>
+struct DescribedMember<Field, First, Rest...> : mtp::cond<[] {
+    if constexpr (mtp::same_as<decltype(Field::pointer), decltype(First::pointer)>)
+        return Field::pointer == First::pointer;
+    else
+        return false;
+}(),
+                                                          First,
+                                                          DescribedMember<Field, Rest...>> {};
+
+template<typename T, Text Name, Direction Mode, UnknownFieldPolicy Unknown, typename... Options>
+struct DescribedPayloadDefinition {
+    static constexpr auto name           = Name;
+    static constexpr bool serializable   = Mode != Direction::Deserialize;
+    static constexpr bool deserializable = Mode != Direction::Serialize;
+
+    template<typename Left, typename Right>
+    static constexpr auto same_pointer() -> bool {
+        if constexpr (mtp::same_as<decltype(Left::pointer), decltype(Right::pointer)>)
+            return Left::pointer == Right::pointer;
+        else
+            return false;
+    }
+    static consteval auto valid_options() -> bool {
+        using Definition = PayloadDefinition<T>;
+        bool       valid = true;
+        const auto known = [&]<typename Setting>() {
+            size_t found = 0;
+            Definition::fields([&]<typename Field>() {
+                if (same_pointer<Setting, Field>()) ++found;
+            });
+            return found == 1;
+        };
+        valid = (known.template operator()<Options>() && ...);
+        Definition::fields([&]<typename Field>() {
+            size_t selected = (size_t(0) + ... + size_t(same_pointer<Field, Options>()));
+            valid           = valid && selected <= 1;
+        });
+        return valid;
+    }
+    static consteval auto valid_record_names() -> bool {
+        using Definition = PayloadDefinition<T>;
+        bool   valid     = true;
+        size_t outer     = 0;
+        Definition::fields([&]<typename Left>() {
+            using A      = DescribedMember<Left, Options...>;
+            size_t inner = 0;
+            if constexpr (A::policy != FieldPolicy::Skip) {
+                A::aliases([&](auto alias) {
+                    if (same_text(A::name, alias)) valid = false;
+                    size_t matches = 0;
+                    A::aliases([&](auto other) {
+                        if (same_text(alias, other)) ++matches;
+                    });
+                    if (matches != 1) valid = false;
+                });
+                Definition::fields([&]<typename Right>() {
+                    using B = DescribedMember<Right, Options...>;
+                    if constexpr (B::policy != FieldPolicy::Skip) {
+                        if (inner > outer) {
+                            if (same_text(A::name, B::name)) valid = false;
+                            A::aliases([&](auto alias) {
+                                if (same_text(alias, B::name)) valid = false;
+                                B::aliases([&](auto other) {
+                                    if (same_text(alias, other)) valid = false;
+                                });
+                            });
+                            B::aliases([&](auto alias) {
+                                if (same_text(A::name, alias)) valid = false;
+                            });
+                        }
+                    }
+                    ++inner;
+                });
+            }
+            ++outer;
+        });
+        return valid;
+    }
+
+    template<size_t... I>
+    static auto record_type(mtp::index_sequence<I...>) -> RecordDefinition<
+        T,
+        Name,
+        Mode,
+        Unknown,
+        DescribedMember<typename PayloadDefinition<T>::template field_at<I>, Options...>...>;
+    template<typename D, typename Sequence, size_t I, typename... Values>
+    static auto read_sequence(D& source, Sequence& input, Values&&... values)
+        -> Result<T, typename D::error_type> {
+        using Definition = PayloadDefinition<T>;
+        if constexpr (I == Definition::field_count) {
+            auto ended = input.end();
+            if (ended.is_err()) return Err(rstd::move(ended).unwrap_err_unchecked());
+            return Ok(Definition::make(rstd::forward<Values>(values)...));
+        } else {
+            using Field = typename Definition::template field_at<I>;
+            auto next   = input.template next<typename Field::type>();
+            if (next.is_err()) return Err(rstd::move(next).unwrap_err_unchecked());
+            auto optional = rstd::move(next).unwrap_unchecked();
+            if (optional.is_none())
+                return Err(source.invalid_value("tuple element is missing"_str));
+            return read_sequence<D, Sequence, I + 1>(source,
+                                                     input,
+                                                     rstd::forward<Values>(values)...,
+                                                     rstd::move(optional).unwrap_unchecked());
+        }
+    }
+    template<typename S>
+    static auto serialize(S& sink, const T& value) -> typename S::result_type {
+        static_assert(DescribedPayload<T>, "serde described_payload requires typed metadata");
+        static_assert(valid_options(), "serde payload field options must be known and unique");
+        using Definition = PayloadDefinition<T>;
+        if constexpr (Definition::kind == VariantKind::Record) {
+            static_assert(valid_record_names(), "serde payload field names overlap");
+            using Record =
+                decltype(record_type(mtp::make_index_sequence<Definition::field_count> {}));
+            return Record::serialize(sink, value);
+        } else {
+            static_assert(sizeof...(Options) == 0,
+                          "serde tuple and unit payload fields do not accept record options");
+            if constexpr (Definition::kind == VariantKind::Unit)
+                return sink.serialize_unit();
+            else {
+                static_assert(Definition::kind == VariantKind::Tuple,
+                              "serde described_payload requires unit, tuple or record metadata");
+                if constexpr (Definition::field_count == 1) {
+                    using Field = typename Definition::template field_at<0>;
+                    return sink.serialize_newtype(Name.view(), Field::get(value));
+                } else {
+                    auto started = sink.begin_sequence(usize(Definition::field_count));
+                    if (started.is_err()) return Err(rstd::move(started).unwrap_err_unchecked());
+                    auto output = rstd::move(started).unwrap_unchecked();
+                    auto result = Result<empty, typename S::error_type>(Ok(empty {}));
+                    Definition::fields([&]<typename Field>() {
+                        if (result.is_ok()) result = output.element(Field::get(value));
+                    });
+                    if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
+                    return output.end();
+                }
+            }
+        }
+    }
+    template<typename D>
+    static auto deserialize(D& source) -> Result<T, typename D::error_type> {
+        static_assert(DescribedPayload<T>, "serde described_payload requires typed metadata");
+        static_assert(valid_options(), "serde payload field options must be known and unique");
+        using Definition = PayloadDefinition<T>;
+        if constexpr (Definition::kind == VariantKind::Record) {
+            static_assert(valid_record_names(), "serde payload field names overlap");
+            using Record =
+                decltype(record_type(mtp::make_index_sequence<Definition::field_count> {}));
+            return Record::deserialize_declared(source);
+        } else {
+            static_assert(sizeof...(Options) == 0,
+                          "serde tuple and unit payload fields do not accept record options");
+            if constexpr (Definition::kind == VariantKind::Unit) {
+                auto checked = source.deserialize_unit();
+                if (checked.is_err()) return Err(rstd::move(checked).unwrap_err_unchecked());
+                return Ok(Definition::make());
+            } else {
+                static_assert(Definition::kind == VariantKind::Tuple,
+                              "serde described_payload requires unit, tuple or record metadata");
+                if constexpr (Definition::field_count == 1) {
+                    using Field = typename Definition::template field_at<0>;
+                    auto decoded =
+                        source.template deserialize_newtype<typename Field::type>(Name.view());
+                    if (decoded.is_err()) return Err(rstd::move(decoded).unwrap_err_unchecked());
+                    return Ok(Definition::make(rstd::move(decoded).unwrap_unchecked()));
+                } else {
+                    auto started = source.begin_sequence();
+                    if (started.is_err()) return Err(rstd::move(started).unwrap_err_unchecked());
+                    auto input = rstd::move(started).unwrap_unchecked();
+                    return read_sequence<D, decltype(input), 0>(source, input);
+                }
+            }
+        }
+    }
+    template<typename Sink, size_t... I>
+    static constexpr void describe_tuple(Sink& sink, mtp::index_sequence<I...>) {
+        sink.template tuple<typename PayloadDefinition<T>::template field_at<I>::type...>();
+    }
+    template<typename Sink>
+    static constexpr void describe(Sink& sink) {
+        using Definition = PayloadDefinition<T>;
+        if constexpr (Definition::kind == VariantKind::Record) {
+            using Record =
+                decltype(record_type(mtp::make_index_sequence<Definition::field_count> {}));
+            Record::describe(sink);
+        } else if constexpr (Definition::kind == VariantKind::Tuple && Definition::field_count == 1)
+            serde::describe<typename Definition::template field_at<0>::type>(sink);
+        else if constexpr (Definition::kind == VariantKind::Unit)
+            sink.unit();
+        else {
+            static_assert(Definition::kind == VariantKind::Tuple,
+                          "serde described_payload requires unit, tuple or record metadata");
+            describe_tuple(sink, mtp::make_index_sequence<Definition::field_count> {});
+        }
     }
 };
 
@@ -430,8 +723,9 @@ template<typename T,
          Text               Name,
          Direction          Mode,
          Text               Tag,
-         UnknownFieldPolicy Unknown = UnknownFieldPolicy::Reject>
-struct InternalVariantDefinition : VariantDefinition<T, Name, Mode> {
+         UnknownFieldPolicy Unknown = UnknownFieldPolicy::Reject,
+         typename... Names>
+struct InternalVariantDefinition : VariantDefinition<T, Name, Mode, Names...> {
     static constexpr auto tag            = Tag;
     static constexpr auto unknown_fields = Unknown;
 
@@ -481,8 +775,9 @@ template<typename T,
          Direction          Mode,
          Text               Tag,
          Text               Content,
-         UnknownFieldPolicy Unknown = UnknownFieldPolicy::Reject>
-struct AdjacentVariantDefinition : VariantDefinition<T, Name, Mode> {
+         UnknownFieldPolicy Unknown = UnknownFieldPolicy::Reject,
+         typename... Names>
+struct AdjacentVariantDefinition : VariantDefinition<T, Name, Mode, Names...> {
     static constexpr auto tag            = Tag;
     static constexpr auto content        = Content;
     static constexpr auto unknown_fields = Unknown;

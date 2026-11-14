@@ -7,5 +7,7 @@ members = [
   "dlopn-runtime",
   "compile",
   "derive",
+  "enum-macro",
+  "serde-derive",
   "nostd",
 ]

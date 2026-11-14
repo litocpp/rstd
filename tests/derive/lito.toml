@@ -9,6 +9,10 @@ sources = [
   "enum.cpp",
   "record.cpp",
   "clone.cpp",
+  "payload.cpp",
+  "errors.cpp",
+  "error_fixture.cppm",
+  "error_consumer.cpp",
   "fmt_arguments.cpp",
   "fixture.cppm",
   "consumer.cpp",
@@ -23,6 +27,48 @@ rstd-test = { path = "../../src/test" }
 rstd-macro = { path = "../../src/macro" }
 
 [compile-test]
+
+[[compile-test.cases]]
+name = "Derive.ErrorInvalidOptions"
+source = "compile/error_options.cpp"
+outcome = "failure"
+diagnostic-contains = ["variants cannot be combined"]
+
+[[compile-test.cases]]
+name = "Derive.ErrorFromAdditionalFields"
+source = "compile/error_from_fields.cpp"
+outcome = "failure"
+diagnostic-contains = ["from requires exactly one field"]
+
+[[compile-test.cases]]
+name = "Derive.ErrorMultipleSources"
+source = "compile/error_sources.cpp"
+outcome = "failure"
+diagnostic-contains = ["multiple source fields"]
+
+[[compile-test.cases]]
+name = "Derive.ErrorTransparentExplicitSource"
+source = "compile/error_transparent_source.cpp"
+outcome = "failure"
+diagnostic-contains = ["transparent cannot contain an explicit source"]
+
+[[compile-test.cases]]
+name = "Derive.ErrorDuplicateFrom"
+source = "compile/error_duplicate_from.cpp"
+outcome = "failure"
+diagnostic-contains = ["Error variants have duplicate From source types"]
+
+[[compile-test.cases]]
+name = "Derive.ErrorMissingUnitFormat"
+source = "compile/error_missing_unit.cpp"
+outcome = "failure"
+diagnostic-contains = ["Display variants require exactly one unit format"]
+
+[[compile-test.cases]]
+name = "Derive.ErrorUnsupportedFormatEscape"
+source = "compile/error_format_escape.cpp"
+outcome = "failure"
+diagnostic-contains = ["unsupported escape in format string"]
 
 [[compile-test.cases]]
 name = "Derive.CloneFieldWithoutClone"

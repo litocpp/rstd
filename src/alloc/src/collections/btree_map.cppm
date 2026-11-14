@@ -832,6 +832,19 @@ namespace rstd
 {
 
 template<typename K, typename V>
+    requires Impled<K, fmt::Debug> && Impled<V, fmt::Debug>
+struct Impl<fmt::Debug, ::alloc::collections::BTreeMap<K, V>>
+    : ImplBase<::alloc::collections::BTreeMap<K, V>> {
+    auto fmt(fmt::Formatter& formatter) const -> bool {
+        fmt::DebugMap output(formatter);
+        auto          iter = this->self().iter();
+        for (auto entry = iter.next(); entry.is_some(); entry = iter.next())
+            output.entry(*entry->template get<0>(), *entry->template get<1>());
+        return output.finish();
+    }
+};
+
+template<typename K, typename V>
     requires requires(const K& left_key,
                       const K& right_key,
                       const V& left_value,
