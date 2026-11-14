@@ -4,6 +4,7 @@ export import :str.traits;
 import :error;
 import :fmt.integer;
 export import :enum_;
+export import :clone;
 import :array;
 import :num.convert;
 using namespace rstd::literals;
@@ -22,6 +23,43 @@ struct Field {
     static constexpr auto get(const T& value) -> decltype(auto) {
         return Getter(value);
     }
+};
+
+template<typename T, auto Construct, typename... Fields>
+struct CloneRecord {
+    static_assert((Impled<mtp::rm_cvf<decltype(Fields::get(declval<const T&>()))>, clone::Clone> &&
+                   ...),
+                  "Clone fields must implement rstd::clone::Clone");
+
+    static constexpr auto clone(const T& value) -> T {
+        return Construct(as<clone::Clone>(Fields::get(value)).clone()...);
+    }
+};
+
+template<typename T>
+struct CloneVariants {
+    static_assert(Impled<T, VariantDescription>, "Clone variants require rstd::VariantDescription");
+
+    static constexpr auto clone(const T& value) -> T {
+        Option<T> output;
+        Impl<VariantDescription, T>::variants([&]<typename Entry>() {
+            if constexpr (mtp::same_as<typename Entry::payload_type, void>) {
+                if (Entry::matches(value)) output = Some(Entry::make());
+            } else {
+                static_assert(Impled<typename Entry::payload_type, clone::Clone>,
+                              "Clone variant payloads must implement rstd::clone::Clone");
+                if (Entry::matches(value))
+                    output = Some(Entry::make(as<clone::Clone>(Entry::get(value)).clone()));
+            }
+        });
+        return rstd::move(output).unwrap();
+    }
+};
+
+template<typename T>
+struct CloneEnum {
+    static_assert(__is_enum(T));
+    static constexpr auto clone(T value) -> T { return value; }
 };
 
 template<typename T, str_::fixed_string Name, typename... Fields>
@@ -148,6 +186,8 @@ concept DerivedEnumIter =
 
 template<DerivedDebug T>
 using DebugDefinition = decltype(rstd_debug_definition(static_cast<T*>(nullptr)));
+template<DerivedClone T>
+using CloneDefinition = decltype(rstd_clone_definition(static_cast<T*>(nullptr)));
 template<DerivedDisplay T>
 using DisplayDefinition = decltype(rstd_display_definition(static_cast<T*>(nullptr)));
 template<DerivedFromStr T>
@@ -166,6 +206,11 @@ constexpr auto parse_enum(ref<str> input, Case matching) -> Result<T, ParseEnumE
 
 export namespace rstd
 {
+template<derive::DerivedClone T>
+struct Impl<clone::Clone, T> : DefaultInImpl<clone::Clone, T> {
+    constexpr auto clone() const -> T { return derive::CloneDefinition<T>::clone(this->self()); }
+};
+
 template<derive::DerivedEnumIter T>
 struct Impl<EnumIter, T> {
     static auto iter() { return derive::EnumIterDefinition<T>::iter(); }

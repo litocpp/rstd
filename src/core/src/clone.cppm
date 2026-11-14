@@ -1,6 +1,12 @@
 export module rstd.core:clone;
 export import :trait;
 
+export namespace rstd::derive
+{
+template<typename T>
+concept DerivedClone = requires { rstd_clone_definition(static_cast<T*>(nullptr)); };
+} // namespace rstd::derive
+
 namespace rstd::clone
 {
 
@@ -38,14 +44,15 @@ struct Impl<clone::Clone, Tag> : ImplBase<Tag> {
 };
 
 template<typename Self>
-    requires(! mtp::trait_default_tag<Self>) &&
+    requires(! mtp::trait_default_tag<Self>) && (! derive::DerivedClone<Self>) &&
             (mtp::is_arithmetic<Self> || mtp::is_ptr<Self> || mtp::copy<Self>)
 struct Impl<clone::Clone, Self> : DefaultInImpl<clone::Clone, Self> {
     constexpr auto clone() const -> Self { return this->self(); }
 };
 
 template<typename Self>
-    requires(! mtp::trait_default_tag<Self>) && mtp::is_tuple<Self> && (! mtp::copy<Self>)
+    requires(! mtp::trait_default_tag<Self>) && (! derive::DerivedClone<Self>) &&
+            mtp::is_tuple<Self> && (! mtp::copy<Self>)
 struct Impl<clone::Clone, Self> : DefaultInImpl<clone::Clone, Self> {
     constexpr auto clone() const -> Self {
         auto& self = this->self();

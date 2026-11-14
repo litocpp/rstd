@@ -46,6 +46,7 @@ auto string_literal(std::string_view spelling) -> std::expected<std::string, std
 
 enum class Trait
 {
+    Clone,
     Debug,
     Display,
     FromStr,
@@ -64,6 +65,7 @@ enum class Target
 
 auto owner(Trait trait) -> std::string_view {
     switch (trait) {
+    case Trait::Clone: return "rstd::Clone";
     case Trait::Debug: return "rstd::Debug";
     case Trait::Display: return "rstd::Display";
     case Trait::FromStr: return "rstd::FromStr";
@@ -86,6 +88,7 @@ auto target_name(Target target) -> std::string_view {
 
 auto allowed(Trait trait, Target target, std::string_view option) -> bool {
     switch (trait) {
+    case Trait::Clone: return target == Target::Record && option == "variants";
     case Trait::Debug:
         return ((target == Target::Record || target == Target::Enum || target == Target::Field ||
                  target == Target::Enumerator) &&
@@ -108,7 +111,7 @@ struct Options {
     std::optional<std::string> rename;
     std::optional<std::string> format;
     std::vector<std::string>   aliases;
-    bool                       skip {}, transparent {}, ascii_case_insensitive {};
+    bool                       skip {}, transparent {}, ascii_case_insensitive {}, variants {};
 };
 
 auto options(pmacro::Context&                       context,
@@ -160,6 +163,8 @@ auto options(pmacro::Context&                       context,
                 result.skip = true;
             else if (name == "transparent")
                 result.transparent = true;
+            else if (name == "variants")
+                result.variants = true;
             else
                 result.ascii_case_insensitive = true;
             if (i == stream->size()) break;
@@ -244,6 +249,8 @@ auto record_description(pmacro::Context&           context,
         return fail(declaration.source, "unions are not supported");
     if (record.dependent) return fail(declaration.source, "dependent records are not supported");
     if (record.has_bases) return fail(declaration.source, "records with bases are not supported");
+    if (trait == Trait::Clone && config.variants)
+        return Description { "::rstd::derive::CloneVariants<" + qualified + '>', {} };
     if (trait == Trait::Display && ! config.format && ! config.transparent)
         return fail(declaration.source, "record requires format(\"...\") or transparent");
     if (trait == Trait::FromStr && ! config.transparent)
@@ -263,7 +270,7 @@ auto record_description(pmacro::Context&           context,
             return fail(field.source, "bitfields are not supported");
         if (field.type.dependent) return fail(field.source, "dependent fields are not supported");
         if (settings->skip) continue;
-        if (field.access != pmacro::Access::Public)
+        if (trait != Trait::Clone && field.access != pmacro::Access::Public)
             return fail(field.source, "non-skipped fields must be public");
         const auto name = settings->rename.value_or(*field.name);
         if (! names.insert(name).second)
@@ -278,7 +285,17 @@ auto record_description(pmacro::Context&           context,
     }
 
     Description result;
-    if (trait == Trait::Debug) {
+    if (trait == Trait::Clone) {
+        result.definition = "::rstd::derive::CloneRecord<" + qualified + ",[](auto&&... fields)->" +
+                            qualified + "{return " + qualified +
+                            "{::rstd::forward<decltype(fields)>(fields)...};}";
+        for (const auto& field : fields) {
+            const auto type = "decltype(" + qualified + "::" + *field.info->name + ")";
+            result.assertions += "static_assert(!__is_reference(" + type + ")&&!__is_const(" +
+                                 type +
+                                 "),\"rstd::Clone fields must not be const or references\");";
+        }
+    } else if (trait == Trait::Debug) {
         result.definition = "::rstd::derive::DebugRecord<" + qualified + ',' +
                             quote(config.rename.value_or(*declaration.name));
     } else if (config.transparent) {
@@ -322,7 +339,9 @@ auto enum_description(pmacro::Context&           context,
             Error { declaration.source,
                     std::string(owner(trait)) + ": dependent enums are not supported" });
     Description result;
-    const auto  values = trait == Trait::EnumIter || trait == Trait::TryFrom;
+    if (trait == Trait::Clone)
+        return Description { "::rstd::derive::CloneEnum<" + qualified + '>', {} };
+    const auto values = trait == Trait::EnumIter || trait == Trait::TryFrom;
     if (values)
         result.definition =
             "::rstd::derive::EnumValues<" + qualified + ',' + quote(*declaration.name);
@@ -394,6 +413,7 @@ auto derive(pmacro::DeriveInput input, pmacro::Context& context, Trait trait) ->
     if (! description) return failure(context, input.item_span, description.error());
     const auto function = [&] {
         switch (trait) {
+        case Trait::Clone: return "rstd_clone_definition";
         case Trait::Debug: return "rstd_debug_definition";
         case Trait::Display: return "rstd_display_definition";
         case Trait::FromStr: return "rstd_from_str_definition";
@@ -404,11 +424,19 @@ auto derive(pmacro::DeriveInput input, pmacro::Context& context, Trait trait) ->
     }();
     std::string source;
     if (declaration.after_item_export == pmacro::AfterItemExport::Required) source += "export ";
-    source += "extern \"C++\" { constexpr auto ";
+    // Clone definitions must share the enclosing module with their friend declarations.
+    if (trait != Trait::Clone) source += "extern \"C++\" { ";
+    source += "constexpr auto ";
     source += function;
     source += '(' + qualified + "*) {" + description->assertions + "return " +
-              description->definition + "{}; } }";
+              description->definition + "{}; }";
+    if (trait != Trait::Clone) source += " }";
     return context.parse(source);
+}
+
+[[pmacro::define("rstd")]]
+auto Clone(pmacro::DeriveInput input, pmacro::Context& context) noexcept -> Output {
+    return derive(input, context, Trait::Clone);
 }
 
 [[pmacro::define("rstd")]]

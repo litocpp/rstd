@@ -8,6 +8,7 @@ sources = [
   "main.cpp",
   "enum.cpp",
   "record.cpp",
+  "clone.cpp",
   "fmt_arguments.cpp",
   "fixture.cppm",
   "consumer.cpp",
@@ -22,6 +23,42 @@ rstd-test = { path = "../../src/test" }
 rstd-macro = { path = "../../src/macro" }
 
 [compile-test]
+
+[[compile-test.cases]]
+name = "Derive.CloneFieldWithoutClone"
+source = "compile/field_without_clone.cpp"
+outcome = "failure"
+diagnostic-contains = ["Clone fields must implement rstd::clone::Clone"]
+
+[[compile-test.cases]]
+name = "Derive.ClonePrivateFieldRequiresFriend"
+source = "compile/clone_private_field.cpp"
+outcome = "failure"
+diagnostic-contains = ["private member"]
+
+[[compile-test.cases]]
+name = "Derive.CloneReference"
+source = "compile/clone_reference.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd::Clone fields must not be const or references"]
+
+[[compile-test.cases]]
+name = "Derive.CloneBases"
+source = "compile/clone_bases.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd::Clone: records with bases are not supported"]
+
+[[compile-test.cases]]
+name = "Derive.CloneDependentRecord"
+source = "compile/clone_dependent.cpp"
+outcome = "failure"
+diagnostic-contains = ["rstd::Clone: dependent records are not supported"]
+
+[[compile-test.cases]]
+name = "Derive.CloneVariantPayload"
+source = "compile/clone_variant_payload.cpp"
+outcome = "failure"
+diagnostic-contains = ["Clone variant payloads must implement rstd::clone::Clone"]
 
 [[compile-test.cases]]
 name = "Derive.PrivateField"

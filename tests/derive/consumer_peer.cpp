@@ -8,6 +8,15 @@ using namespace rstd::literals;
 
 namespace derive_consumer
 {
+auto clone_from_peer(const derive_fixture::ExportedPrivateClone& value)
+    -> derive_fixture::ExportedPrivateClone {
+    return rstd::as<rstd::clone::Clone>(value).clone();
+}
+
+auto clone_from_peer(const derive_fixture::nested::ExportedClone& value)
+    -> derive_fixture::nested::ExportedClone {
+    return rstd::as<rstd::clone::Clone>(value).clone();
+}
 
 auto number_from_peer(rstd::ref<rstd::str> text)
     -> rstd::Result<derive_fixture::ExportedNumber, rstd::num::ParseIntError> {

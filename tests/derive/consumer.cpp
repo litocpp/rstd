@@ -9,9 +9,40 @@ using namespace rstd::literals;
 namespace derive_consumer
 {
 
-using Number  = derive_fixture::ExportedNumber;
-using State   = derive_fixture::nested::ExportedState;
-using Summary = derive_fixture::nested::ExportedSummary;
+using Number        = derive_fixture::ExportedNumber;
+using State         = derive_fixture::nested::ExportedState;
+using Summary       = derive_fixture::nested::ExportedSummary;
+using Cloned        = derive_fixture::nested::ExportedClone;
+using PrivateCloned = derive_fixture::ExportedPrivateClone;
+
+auto clone_from_peer(const Cloned& value) -> Cloned;
+auto clone_from_peer(const PrivateCloned& value) -> PrivateCloned;
+
+TEST(DeriveCloneModule, SeparateExportPrivateRecordReachesBothTranslationUnits) {
+    auto source = PrivateCloned::make("private module"_str);
+    auto copy   = rstd::as<rstd::clone::Clone>(source).clone();
+    EXPECT_EQ(copy.text(), "private module"_str);
+    auto peer = clone_from_peer(copy);
+    EXPECT_EQ(peer.text(), source.text());
+    auto other = PrivateCloned::make("other"_str);
+    rstd::as<rstd::clone::Clone>(peer).clone_from(other);
+    EXPECT_EQ(peer.text(), "other"_str);
+    EXPECT_EQ(source.text(), "private module"_str);
+}
+
+TEST(DeriveCloneModule, PrivateRecordDefinitionReachesBothTranslationUnits) {
+    const auto number = Number { rstd::i32(42) };
+    EXPECT_EQ(rstd::as<rstd::clone::Clone>(number).clone().value, rstd::i32(42));
+    auto source = Cloned::make("module"_str);
+    auto copy   = rstd::as<rstd::clone::Clone>(source).clone();
+    EXPECT_EQ(copy.text(), "module"_str);
+    auto peer = clone_from_peer(copy);
+    EXPECT_EQ(peer.text(), source.text());
+    auto other = Cloned::make("other"_str);
+    rstd::as<rstd::clone::Clone>(peer).clone_from(other);
+    EXPECT_EQ(peer.text(), "other"_str);
+    EXPECT_EQ(source.text(), "module"_str);
+}
 
 auto number_from_peer(rstd::ref<rstd::str> text) -> rstd::Result<Number, rstd::num::ParseIntError>;
 auto state_from_peer(rstd::ref<rstd::str> text)
