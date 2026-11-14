@@ -260,7 +260,11 @@ public:                                                                         
 #define RSTD_ENUM_DETAIL_DEFAULT_CTOR_APPLY_I(ClassName, ...) \
     RSTD_ENUM_DETAIL_DEFAULT_CTOR(ClassName, __VA_ARGS__)
 
-#define RSTD_MATCH(value) switch (auto&& matched = (value); matched.tag())
+// Clang checks coverage at the switch condition, so restore diagnostics before the body.
+#define RSTD_MATCH(value)                                                                  \
+    _Pragma("clang diagnostic push") _Pragma("clang diagnostic ignored \"-Wswitch-enum\"") \
+        _Pragma("clang diagnostic error \"-Wswitch\"") switch (                            \
+            auto&& matched = (value); matched.tag()) _Pragma("clang diagnostic pop")
 #define RSTD_CASE(Name, ...)                                                             \
     break;                                                                               \
     case ::rstd::mtp::rm_cvf<decltype(matched)>::Tag::Name:                              \
@@ -274,3 +278,7 @@ public:                                                                         
         if (auto&& var =                                                                   \
                 ::rstd::enum_detail::forward_like<decltype(matched)>(matched).as_##Name(); \
             true)
+
+#define RSTD_CASE_DEFAULT \
+    break;                \
+    default:

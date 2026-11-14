@@ -4,6 +4,49 @@ name = "rstd-compile-tests"
 [compile-test]
 
 [[compile-test.cases]]
+name = "EnumMatch.Exhaustive"
+source = "enum/exhaustive.cpp"
+outcome = "success"
+
+[[compile-test.cases]]
+name = "EnumMatch.MissingCase"
+source = "enum/missing_case.cpp"
+outcome = "failure"
+options = ["-Wno-switch"]
+diagnostic-contains = ["not handled in switch", "-Wswitch"]
+
+[[compile-test.cases]]
+name = "EnumMatch.MissingTemplateCase"
+source = "enum/missing_template_case.cpp"
+outcome = "failure"
+options = ["-Wno-switch"]
+diagnostic-contains = ["not handled in switch", "-Wswitch"]
+
+[[compile-test.cases]]
+name = "EnumMatch.Default"
+source = "enum/default.cpp"
+outcome = "success"
+options = ["-Werror=switch-enum"]
+
+[[compile-test.cases]]
+name = "EnumMatch.CoveredDefault"
+source = "enum/covered_default.cpp"
+outcome = "success"
+
+[[compile-test.cases]]
+name = "EnumMatch.RestoreSwitch"
+source = "enum/restore_switch.cpp"
+outcome = "success"
+options = ["-Wno-switch"]
+
+[[compile-test.cases]]
+name = "EnumMatch.RestoreSwitchEnum"
+source = "enum/restore_switch_enum.cpp"
+outcome = "failure"
+options = ["-Werror=switch-enum"]
+diagnostic-contains = ["not explicitly handled in switch", "switch (raw)"]
+
+[[compile-test.cases]]
 name = "Basic.InitializerList"
 source = "basic/initializer_list.cpp"
 outcome = "success"

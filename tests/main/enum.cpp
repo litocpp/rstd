@@ -555,6 +555,75 @@ TEST(Enum, MatchesByReference) {
     EXPECT_EQ(score(Message::Write("hello")), 5);
 }
 
+TEST(Enum, DefaultDoesNotRunAfterAnExplicitCase) {
+    int  defaults = 0;
+    auto score    = [&](const Color& color) {
+        int result = -1;
+        RSTD_MATCH(color) {
+            RSTD_CASE(Red) {
+                result = 1;
+            }
+            RSTD_CASE_DEFAULT {
+                ++defaults;
+                result = 9;
+            }
+        }
+        return result;
+    };
+    EXPECT_EQ(score(Color::Red()), 1);
+    EXPECT_EQ(defaults, 0);
+    EXPECT_EQ(score(Color::Green()), 9);
+    EXPECT_EQ(score(Color::Blue()), 9);
+    EXPECT_EQ(defaults, 2);
+}
+
+TEST(Enum, DefaultPreservesNestedMatchesAndLoopControl) {
+    int  evaluated = 0;
+    int  completed = 0;
+    int  defaults  = 0;
+    auto next      = [&](int index) {
+        ++evaluated;
+        return index == 0 ? Color::Red() : Color::Blue();
+    };
+    for (int index = 0; index < 3; ++index) {
+        RSTD_MATCH(next(index)) {
+            RSTD_CASE(Red) {
+                continue;
+            }
+            RSTD_CASE_DEFAULT {
+                RSTD_MATCH(Message::Move(index, 4)) {
+                    RSTD_CASE_PAYLOAD(Move, payload) {
+                        defaults += payload.x;
+                    }
+                    RSTD_CASE_DEFAULT {
+                        defaults = -100;
+                    }
+                }
+                break;
+            }
+        }
+        ++completed;
+    }
+    EXPECT_EQ(evaluated, 3);
+    EXPECT_EQ(completed, 2);
+    EXPECT_EQ(defaults, 3);
+}
+
+TEST(Enum, DefaultPreservesMoveOnlyPayloadAndMatchLifetime) {
+    auto                 box = Box::Value(std::make_unique<int>(42));
+    std::unique_ptr<int> taken;
+    RSTD_MATCH(std::move(box)) {
+        RSTD_CASE(Value, value) {
+            taken = std::move(value);
+        }
+        RSTD_CASE_DEFAULT {
+            taken = nullptr;
+        }
+    }
+    ASSERT_NE(taken, nullptr);
+    EXPECT_EQ(*taken, 42);
+}
+
 TEST(Enum, MatchesWholePayload) {
     auto message = Message::Write("payload");
     int  result  = 0;
