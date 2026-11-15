@@ -1,0 +1,28 @@
+[package]
+name = "rstd-dirs"
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+name = "rstd-dirs"
+module = "rstd.dirs"
+archive = "rstd.dirs"
+sources = ["src/lib.cppm", "src/types.cppm", "src/roots.cppm", "src/api.cppm", "src/native.cpp"]
+when = [{ condition = 'target.os == "macos"', source-groups = ["apple"] }]
+
+[source-groups.apple]
+sources = ["src/native_apple.mm"]
+
+[dependencies]
+rstd-std = { workspace = true, pub = true }
+
+[[when]]
+condition = 'target.os == "windows"'
+[when.usage]
+system-libraries = ["shell32", "ole32", "uuid"]
+
+[[when]]
+condition = 'target.os == "macos"'
+[when.usage]
+frameworks = ["Foundation"]

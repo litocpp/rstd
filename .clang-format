@@ -38,7 +38,6 @@ IndentPPDirectives: None
 IndentWidth: 4
 IndentWrappedFunctionNames: false
 KeepEmptyLinesAtTheStartOfBlocks: false
-Language: Cpp
 PointerAlignment: Left
 ReflowComments: false
 SortIncludes: Never
@@ -63,3 +62,9 @@ UseTab: Never
 ColumnLimit: 100
 
 BreakAfterAttributes: Always
+
+---
+Language: Cpp
+
+---
+Language: ObjC
