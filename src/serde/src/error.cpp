@@ -30,40 +30,40 @@ auto PathSegment::clone() const -> PathSegment {
         kind_, name_.is_some() ? Some(name_->clone()) : Option<String>(None()), index_);
 }
 
-DataPath::DataPath(): segments_(Vec<PathSegment>::make()) {
-}
+DataPath::DataPath() = default;
 
-DataPath::DataPath(Vec<PathSegment> segments): segments_(rstd::move(segments)) {
+DataPath::DataPath(Vec<PathSegment> segments) {
+    if (! segments.is_empty()) segments_ = Some(Arc<Vec<PathSegment>>::make(rstd::move(segments)));
 }
 
 auto DataPath::clone() const -> DataPath {
-    auto segments = Vec<PathSegment>::with_capacity(segments_.len());
-    for (const auto& segment : segments_) segments.push(segment.clone());
-    return DataPath(rstd::move(segments));
+    auto path = DataPath();
+    if (segments_.is_some()) path.segments_ = Some(segments_->clone());
+    return path;
+}
+
+auto DataPath::with_segment(PathSegment segment) const -> DataPath {
+    auto current = segments();
+    auto values  = Vec<PathSegment>::with_capacity(current.len() + usize(1));
+    for (const auto& value : current) values.push(value.clone());
+    values.push(rstd::move(segment));
+    return DataPath(rstd::move(values));
 }
 
 auto DataPath::with_field(ref<str> name) const -> DataPath {
-    auto path = clone();
-    path.segments_.push(PathSegment::field(name));
-    return path;
+    return with_segment(PathSegment::field(name));
 }
 
 auto DataPath::with_index(usize index) const -> DataPath {
-    auto path = clone();
-    path.segments_.push(PathSegment::index(index));
-    return path;
+    return with_segment(PathSegment::index(index));
 }
 
 auto DataPath::with_map_key(ref<str> name) const -> DataPath {
-    auto path = clone();
-    path.segments_.push(PathSegment::map_key(name));
-    return path;
+    return with_segment(PathSegment::map_key(name));
 }
 
 auto DataPath::with_variant(ref<str> name) const -> DataPath {
-    auto path = clone();
-    path.segments_.push(PathSegment::variant(name));
-    return path;
+    return with_segment(PathSegment::variant(name));
 }
 
 Error::Error(ErrorKind                      kind,

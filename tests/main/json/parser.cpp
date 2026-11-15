@@ -7,6 +7,8 @@ using namespace rstd::prelude;
 using namespace rstd::literals;
 using rstd::json::Category;
 using rstd::json::Value;
+using ::alloc::string::String;
+using ::alloc::vec::Vec;
 
 namespace
 {
@@ -100,6 +102,47 @@ TEST(JsonParser, AcceptsJsonWhitespaceRawUtf8AndAllSimpleEscapes) {
     auto empty_string = parse("\"\""_str).unwrap();
     ASSERT_TRUE(empty_string.as_str().is_some());
     EXPECT_EQ((*empty_string.as_str()).size(), usize());
+}
+
+TEST(JsonParser, LongRawChunksPreserveEscapesAndErrorOffsets) {
+    auto raw = String::make();
+    for (usize index {}; index < usize(2048); ++index) raw.push_ascii('x');
+    raw.push_str("你好"_str);
+    auto input = String::make("\""_str);
+    input.push_str(raw.as_str());
+    input.push_str(R"(\n\"tail")"_str);
+    auto expected = raw.clone();
+    expected.push(U'\n');
+    expected.push_str("\"tail"_str);
+    EXPECT_EQ(*parse(input.as_str()).unwrap().as_str(), expected.as_str());
+
+    input = String::make("\n\""_str);
+    input.push_str(raw.as_str());
+    auto truncated = parse(input.as_str()).unwrap_err();
+    EXPECT_TRUE(truncated.is_eof());
+    EXPECT_EQ(truncated.offset(), raw.len() + usize(2));
+    input.push_ascii('\t');
+    auto control = parse(input.as_str()).unwrap_err();
+    EXPECT_EQ(control.code(), rstd::json::ErrorCode::ControlCharacterWhileParsingString);
+    EXPECT_EQ(control.offset(), raw.len() + usize(2));
+    EXPECT_EQ(control.line(), usize(2));
+    EXPECT_EQ(control.column(), raw.len() + usize(2));
+}
+
+TEST(JsonReader, LongUtf16ChunksPreserveSplitSurrogatePairs) {
+    Vec<u16> input;
+    input.push(u16('"'));
+    auto expected = String::make();
+    for (usize index {}; index < usize(2048); ++index) {
+        input.push(u16('x'));
+        expected.push_ascii('x');
+    }
+    input.push(u16(0xd83d));
+    for (auto value : "\\ude00\""_str.as_bytes()) input.push(rstd::as_cast<u16>(value));
+    expected.push(U'😀');
+    rstd::json::Reader reader(input.as_slice());
+    EXPECT_EQ(reader.parse_string().unwrap().as_str(), expected.as_str());
+    EXPECT_TRUE(reader.finish().is_ok());
 }
 
 TEST(JsonParser, RejectsInvalidGrammar) {

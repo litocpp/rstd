@@ -5,6 +5,7 @@ using namespace rstd::prelude;
 using ::alloc::boxed::Box;
 using ::alloc::string::String;
 using ::alloc::vec::Vec;
+using ::alloc::sync::Arc;
 
 export namespace rstd::serde
 {
@@ -58,14 +59,16 @@ public:
 };
 
 class DataPath {
-    Vec<PathSegment> segments_;
+    Option<Arc<Vec<PathSegment>>> segments_;
+
+    auto with_segment(PathSegment segment) const -> DataPath;
 
 public:
     DataPath();
     explicit DataPath(Vec<PathSegment> segments);
 
     auto segments() const noexcept [[clang::lifetimebound]] -> slice<PathSegment> {
-        return segments_.as_slice();
+        return segments_.is_some() ? (*segments_)->as_slice() : slice<PathSegment> {};
     }
     auto clone() const -> DataPath;
     auto with_field(ref<str> name) const -> DataPath;

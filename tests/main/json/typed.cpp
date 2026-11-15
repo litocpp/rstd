@@ -108,6 +108,26 @@ TEST(JsonTyped, ValueAndTextUseTheSameExplicitImpl) {
     EXPECT_EQ(decoded_text->ports[rstd::usize(1)], rstd::u64(443));
 }
 
+TEST(JsonTyped, SharedPathsKeepOwnedNamesAndIndependentBranches) {
+    auto name    = String::make("tracks"_str);
+    auto path    = rstd::serde::DataPath().with_field(name.as_str());
+    auto shared  = path.clone();
+    auto indexed = path.with_index(rstd::usize(3));
+    auto keyed   = shared.with_map_key("title"_str);
+    auto variant = shared.with_variant("Song"_str);
+    name.clear();
+    path = rstd::serde::DataPath();
+    EXPECT_TRUE(path.segments().is_empty());
+    ASSERT_EQ(shared.segments().len(), rstd::usize(1));
+    EXPECT_EQ(shared.segments()[rstd::usize()].name().unwrap(), "tracks"_str);
+    ASSERT_EQ(indexed.segments().len(), rstd::usize(2));
+    EXPECT_EQ(indexed.segments()[rstd::usize(1)].index(), rstd::usize(3));
+    ASSERT_EQ(keyed.segments().len(), rstd::usize(2));
+    EXPECT_EQ(keyed.segments()[rstd::usize(1)].name().unwrap(), "title"_str);
+    ASSERT_EQ(variant.segments().len(), rstd::usize(2));
+    EXPECT_EQ(variant.segments()[rstd::usize(1)].name().unwrap(), "Song"_str);
+}
+
 TEST(JsonTyped, SeparatesSyntaxAndDataErrors) {
     auto syntax = rstd::json::decode<JsonConfig>("{"_str);
     ASSERT_TRUE(syntax.is_err());

@@ -250,9 +250,28 @@ auto Reader::read_string() -> Result<Output, Error> {
         else
             output.push(u16(static_cast<rstd::uint16_t>(value)));
     };
+    auto scan_chunk = [](auto& cursor) {
+        auto input           = cursor.remaining_input();
+        auto units           = input.as_raw_ptr();
+        auto length          = input.len().to_primitive();
+        using Unit           = rstd::mtp::rm_cvf<decltype(*units)>;
+        const auto   quote   = static_cast<Unit>('"');
+        const auto   escape  = static_cast<Unit>('\\');
+        const auto   control = static_cast<Unit>(0x20);
+        rstd::size_t count {};
+        while (count < length) {
+            auto value = units[count];
+            if (value == quote || value == escape || value < control) break;
+            ++count;
+        }
+        (void)cursor.advance(usize(count));
+    };
     while (! eof()) {
         auto chunk_start = position();
-        while (! eof() && peek() != u16('"') && peek() != u16('\\') && peek() >= u16(0x20)) take();
+        if (utf16_)
+            scan_chunk(units_);
+        else
+            scan_chunk(cursor_);
         auto raw = append_raw(output, { chunk_start, position() });
         if (raw.is_err()) return Err(rstd::move(raw).unwrap_err_unchecked());
         if (eof()) break;
