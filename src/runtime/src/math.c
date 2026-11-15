@@ -36,3 +36,37 @@ RSTD_LDEXP(ldexp, double, uint64_t, 52, 1023)
 #undef RSTD_LDEXP
 
 #endif
+
+#if defined(_WIN32)
+
+// Windows CRT lacks the roundeven entry points emitted by Clang.
+#define RSTD_ROUNDEVEN(name, Float, Bits, fraction, bias)                                   \
+    Float name(Float value) {                                                               \
+        Bits           bits      = __builtin_bit_cast(Bits, value);                         \
+        const Bits     sign_mask = (Bits)1 << (sizeof(Bits) * 8 - 1);                       \
+        const Bits     sign      = bits & sign_mask;                                        \
+        const Bits     magnitude = bits & ~sign_mask;                                       \
+        const unsigned exponent  = (unsigned)(magnitude >> fraction);                       \
+        if (exponent >= bias + fraction) {                                                  \
+            return exponent == 2 * bias + 1 ? value + value : value;                        \
+        }                                                                                   \
+        if (exponent < bias) {                                                              \
+            bits = sign;                                                                    \
+            if (magnitude > ((Bits)(bias - 1) << fraction)) bits |= (Bits)bias << fraction; \
+            return __builtin_bit_cast(Float, bits);                                         \
+        }                                                                                   \
+        const unsigned shift = bias + fraction - exponent;                                  \
+        const Bits     unit  = (Bits)1 << shift;                                            \
+        const Bits     mask  = unit - 1;                                                    \
+        const Bits     tail  = bits & mask;                                                 \
+        bits &= ~mask;                                                                      \
+        if (tail > (unit >> 1) || (tail == (unit >> 1) && (bits & unit))) bits += unit;     \
+        return __builtin_bit_cast(Float, bits);                                             \
+    }
+
+RSTD_ROUNDEVEN(roundevenf, float, uint32_t, 23, 127)
+RSTD_ROUNDEVEN(roundeven, double, uint64_t, 52, 1023)
+
+#undef RSTD_ROUNDEVEN
+
+#endif
