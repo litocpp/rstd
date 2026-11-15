@@ -1,8 +1,8 @@
 module;
 #include <rstd/macro.hpp>
-export module rstd.dirs:api;
-export import :types;
-import :roots;
+export module rstd:dirs.api;
+export import :dirs.types;
+import :dirs.roots;
 
 using rstd::path::Path;
 using rstd::path::PathBuf;

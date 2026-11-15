@@ -4,6 +4,10 @@ target_compile_definitions(rstd.std PRIVATE LITO_FEAT_ASYNC_DEBUG=0)
 target_link_libraries(rstd.std PUBLIC rstd.core rstd.alloc PRIVATE rstd.parse)
 if(WIN32)
   target_link_libraries(rstd.std PRIVATE ws2_32 ntdll)
+elseif(APPLE)
+  enable_language(OBJCXX)
+  set_target_properties(rstd.std PROPERTIES OBJCXX_STANDARD 20 OBJCXX_STANDARD_REQUIRED ON)
+  target_sources(rstd.std PRIVATE src/dirs/native_apple.mm)
 endif()
 set_target_properties(rstd.std PROPERTIES OUTPUT_NAME rstd)
 
@@ -160,6 +164,10 @@ target_sources(
          src/process/exit_status.cppm
          src/process/command.cppm
          src/env.cppm
+         src/dirs/mod.cppm
+         src/dirs/types.cppm
+         src/dirs/roots.cppm
+         src/dirs/api.cppm
          src/path.cppm
          src/fs/types.cppm
          src/fs/mod.cppm
@@ -320,6 +328,7 @@ target_sources(
           src/sys/signal/mod.cpp
           src/fs/mod.cpp
           src/env.cpp
+          src/dirs/mod.cpp
           src/os/fd.cpp
           src/os/linux/process.cpp
           src/os/handle.cpp

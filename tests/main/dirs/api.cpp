@@ -2,7 +2,6 @@
 #include <rstd/macro.hpp>
 
 import rstd;
-import rstd.dirs;
 
 #include "support.hpp"
 

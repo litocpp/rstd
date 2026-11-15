@@ -1,5 +1,6 @@
-export module rstd.dirs:roots;
-export import :types;
+export module rstd:dirs.roots;
+export import :dirs.types;
+import :env;
 
 using rstd::ffi::OsString;
 using rstd::path::Path;

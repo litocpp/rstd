@@ -1,6 +1,8 @@
 #include "native_apple.hpp"
 #include <Foundation/Foundation.h>
 
+asm(".linker_option \"-framework\", \"Foundation\"");
+
 namespace rstd::dirs::sys
 {
 

@@ -2,10 +2,12 @@ module;
 #include <rstd/test/gtest.hpp>
 #include <rstd/macro.hpp>
 
-export module rstd.dirs:dirs_tests;
-import rstd;
-import :roots;
-import :api;
+export module rstd:dirs_tests;
+import :dirs;
+import :dirs.roots;
+import :env;
+import :fs;
+import :process;
 
 #include "support.hpp"
 

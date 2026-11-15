@@ -7,6 +7,9 @@ module;
 #include <windows.h>
 #include <knownfolders.h>
 #include <shlobj.h>
+#pragma comment(lib, "shell32.lib")
+#pragma comment(lib, "ole32.lib")
+#pragma comment(lib, "uuid.lib")
 #elif (RSTD_OS_LINUX || RSTD_OS_MACOS) && ! defined(__ANDROID__)
 #include <errno.h>
 #include <pwd.h>
@@ -15,9 +18,11 @@ module;
 #if RSTD_OS_MACOS
 #include "native_apple.hpp"
 #endif
-module rstd.dirs;
-import :roots;
-import rstd;
+module rstd;
+import :dirs.roots;
+import :env;
+import :os.unix.ffi;
+import :os.windows.ffi;
 
 using namespace rstd::prelude;
 using namespace rstd::literals;

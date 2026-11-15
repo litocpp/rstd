@@ -3,7 +3,6 @@ name = "rstd-tests"
 members = [
   "alloc-failure",
   "main",
-  "dirs",
   "runtime",
   "dlopn-runtime",
   "compile",

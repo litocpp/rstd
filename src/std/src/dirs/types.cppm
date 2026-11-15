@@ -1,7 +1,8 @@
 module;
 #include <rstd/enum.hpp>
-export module rstd.dirs:types;
-export import rstd;
+export module rstd:dirs.types;
+export import :path;
+export import rstd.io.error;
 
 using rstd::path::Path;
 using rstd::path::PathBuf;

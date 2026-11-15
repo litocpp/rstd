@@ -26,5 +26,6 @@ export import :os;
 export import :process;
 export import :signal;
 export import :env;
+export import :dirs;
 export import :alloc;
 #endif

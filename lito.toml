@@ -10,7 +10,6 @@ members = [
   "src/serde-macro",
   "src/macro",
   "src/argparse",
-  "src/dirs",
   "src/std",
   "src/bench",
   "src/test",
@@ -35,7 +34,6 @@ rstd-runtime = { path = "src/runtime", version = "0.1.12" }
 rstd-core = { path = "src/core", version = "0.1.12" }
 rstd-alloc = { path = "src/alloc", version = "0.1.12" }
 rstd-parse = { path = "src/parse", version = "0.1.12" }
-rstd-dirs = { path = "src/dirs", version = "0.1.12" }
 rstd-serde = { path = "src/serde", version = "0.1.12" }
 rstd-std = { path = "src/std", version = "0.1.12" }
 

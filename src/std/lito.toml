@@ -8,6 +8,10 @@ authors.workspace = true
 name = "rstd-std"
 module = "rstd"
 archive = "rstd"
+when = [{ condition = 'target.os == "macos"', source-groups = ["dirs-apple"] }]
+
+[source-groups.dirs-apple]
+sources = ["src/dirs/native_apple.mm"]
 
 [dependencies]
 rstd-core = { workspace = true, pub = true }
