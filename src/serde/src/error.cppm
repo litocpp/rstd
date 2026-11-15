@@ -77,6 +77,52 @@ public:
     auto with_variant(ref<str> name) const -> DataPath;
 };
 
+// Ancestors and names must outlive synchronous child calls. Snapshot before escape.
+class PathTrace {
+    DataPath         root_;
+    const PathTrace* parent_ {};
+    PathSegmentKind  kind_ { PathSegmentKind::Index };
+    Option<ref<str>> name_;
+    usize            index_ {};
+
+    PathTrace(const PathTrace& parent, PathSegmentKind kind, Option<ref<str>> name, usize index)
+        : parent_(rstd::addressof(parent)), kind_(kind), name_(name), index_(index) {}
+
+public:
+    PathTrace() = default;
+    PathTrace(DataPath root): root_(rstd::move(root)) {}
+
+    auto clone() const -> PathTrace {
+        auto trace    = PathTrace(root_.clone());
+        trace.parent_ = parent_;
+        trace.kind_   = kind_;
+        trace.name_   = name_;
+        trace.index_  = index_;
+        return trace;
+    }
+    auto with_field(ref<str> name [[clang::lifetimebound]]) const& [[clang::lifetimebound]]
+    -> PathTrace {
+        return PathTrace(*this, PathSegmentKind::Field, Some(name), usize());
+    }
+    auto with_index(usize index) const& [[clang::lifetimebound]] -> PathTrace {
+        return PathTrace(*this, PathSegmentKind::Index, None(), index);
+    }
+    auto with_map_key(ref<str> name [[clang::lifetimebound]]) const& [[clang::lifetimebound]]
+    -> PathTrace {
+        return PathTrace(*this, PathSegmentKind::MapKey, Some(name), usize());
+    }
+    auto with_variant(ref<str> name [[clang::lifetimebound]]) const& [[clang::lifetimebound]]
+    -> PathTrace {
+        return PathTrace(*this, PathSegmentKind::Variant, Some(name), usize());
+    }
+    auto with_field(ref<str>) const&& -> PathTrace   = delete;
+    auto with_index(usize) const&& -> PathTrace      = delete;
+    auto with_map_key(ref<str>) const&& -> PathTrace = delete;
+    auto with_variant(ref<str>) const&& -> PathTrace = delete;
+
+    auto snapshot() const -> DataPath;
+};
+
 enum class ErrorKind : rstd::uint8_t
 {
     TypeMismatch,

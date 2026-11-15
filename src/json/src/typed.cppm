@@ -250,12 +250,12 @@ public:
 
 class ValueTaggedPayload {
     Option<ref<Value>> value_;
-    serde::DataPath    path_;
+    serde::PathTrace   path_;
     Option<String>     tag_;
     Option<String>     content_;
 
     ValueTaggedPayload(Option<ref<Value>> value,
-                       serde::DataPath    path,
+                       serde::PathTrace   path,
                        Option<String>     tag,
                        Option<String>     content)
         : value_(value),
@@ -273,10 +273,10 @@ public:
     auto unit(ValueDeserializer& source) -> Result<empty, serde::Error>;
     auto end(const ValueDeserializer&) const -> Result<empty, serde::Error> { return Ok(empty {}); }
     auto missing_value() const -> serde::Error {
-        return serde::Error::missing_field(path_.clone(), content_->as_str());
+        return serde::Error::missing_field(path_.snapshot(), content_->as_str());
     }
     auto invariant(ref<str> message) const -> serde::Error {
-        return serde::Error::invariant(path_.clone(), message);
+        return serde::Error::invariant(path_.snapshot(), message);
     }
 };
 
@@ -284,12 +284,12 @@ using ValueTaggedEnumAccess = serde::TaggedEnumAccess<ValueTaggedPayload>;
 
 class ValueDeserializer {
     ref<Value>       value_;
-    serde::DataPath  path_;
+    serde::PathTrace path_;
     Option<ref<str>> excluded_tag_;
     bool             reject_unknown_fields_ {};
 
     ValueDeserializer(const Value&     value,
-                      serde::DataPath  path,
+                      serde::PathTrace path,
                       Option<ref<str>> excluded_tag,
                       bool             reject_unknown_fields)
         : value_(ref<Value>::from_raw_parts(rstd::addressof(value))),
@@ -309,7 +309,7 @@ class ValueDeserializer {
     }
 
     auto mismatch(serde::ValueKind expected) const -> serde::Error {
-        return serde::Error::type_mismatch(path_.clone(), expected, actual_kind(*value_));
+        return serde::Error::type_mismatch(path_.snapshot(), expected, actual_kind(*value_));
     }
 
     friend class ValueSequenceAccess;
@@ -326,7 +326,7 @@ public:
 
     explicit ValueDeserializer(const Value& value)
         : value_(ref<Value>::from_raw_parts(rstd::addressof(value))) {}
-    ValueDeserializer(const Value& value, serde::DataPath path)
+    ValueDeserializer(const Value& value, serde::PathTrace path)
         : value_(ref<Value>::from_raw_parts(rstd::addressof(value))), path_(rstd::move(path)) {}
 
     auto deserialize_json_value() -> Result<Value, serde::Error> {
@@ -340,7 +340,7 @@ public:
     auto capture_value() -> Result<CapturedValue, serde::Error> {
         auto value = deserialize_json_value();
         return Ok(CapturedValue(
-            rstd::move(value).unwrap_unchecked(), path_.clone(), reject_unknown_fields_));
+            rstd::move(value).unwrap_unchecked(), path_.snapshot(), reject_unknown_fields_));
     }
     auto record_unknown_fields(serde::UnknownFieldPolicy declared) const noexcept
         -> serde::UnknownFieldPolicy {
@@ -413,29 +413,30 @@ public:
         -> Result<ValueTaggedEnumAccess, serde::Error>;
     auto ignore_value() -> Result<empty, serde::Error> { return Ok(empty {}); }
     auto invalid_value(ref<str> message) const -> serde::Error {
-        return serde::Error::invalid_value(path_.clone(), message);
+        return serde::Error::invalid_value(path_.snapshot(), message);
     }
     template<typename Source>
     auto invalid_value_with_source(ref<str> message, Source source) const -> serde::Error {
-        return serde::Error::invalid_value_with_source(path_.clone(), message, rstd::move(source));
+        return serde::Error::invalid_value_with_source(
+            path_.snapshot(), message, rstd::move(source));
     }
     auto missing_field(ref<str> field) const -> serde::Error {
-        return serde::Error::missing_field(path_.clone(), field);
+        return serde::Error::missing_field(path_.snapshot(), field);
     }
     auto unknown_field(ref<str> field) const -> serde::Error {
-        return serde::Error::unknown_field(path_.clone(), field);
+        return serde::Error::unknown_field(path_.snapshot(), field);
     }
     auto unknown_variant(ref<str> variant) const -> serde::Error {
-        return serde::Error::unknown_variant(path_.clone(), variant);
+        return serde::Error::unknown_variant(path_.snapshot(), variant);
     }
     auto duplicate_field(ref<str> field) const -> serde::Error {
-        return serde::Error::duplicate_field(path_.clone(), field);
+        return serde::Error::duplicate_field(path_.snapshot(), field);
     }
     auto invariant(ref<str> message) const -> serde::Error {
-        return serde::Error::invariant(path_.clone(), message);
+        return serde::Error::invariant(path_.snapshot(), message);
     }
     auto unsupported(ref<str> message) const -> serde::Error {
-        return serde::Error::unsupported(path_.clone(), message);
+        return serde::Error::unsupported(path_.snapshot(), message);
     }
 
     template<typename T>
@@ -445,21 +446,21 @@ public:
 };
 
 class ValueSequenceAccess {
-    slice<Value>    values_;
-    serde::DataPath path_;
-    usize           index_ {};
-    bool            ended_ {};
+    slice<Value>     values_;
+    serde::PathTrace path_;
+    usize            index_ {};
+    bool             ended_ {};
 
 public:
     using error_type = serde::Error;
 
-    ValueSequenceAccess(slice<Value> values, serde::DataPath path)
+    ValueSequenceAccess(slice<Value> values, serde::PathTrace path)
         : values_(values), path_(rstd::move(path)) {}
 
     template<typename T>
     auto next() -> Result<Option<T>, serde::Error> {
         if (ended_) {
-            return Err(serde::Error::invariant(path_.clone(), "sequence already ended"_str));
+            return Err(serde::Error::invariant(path_.snapshot(), "sequence already ended"_str));
         }
         if (index_ == values_.len()) return Ok(None<T>());
         auto child = ValueDeserializer(values_[index_], path_.with_index(index_));
@@ -471,10 +472,11 @@ public:
 
     auto end() -> Result<empty, serde::Error> {
         if (ended_) {
-            return Err(serde::Error::invariant(path_.clone(), "sequence already ended"_str));
+            return Err(serde::Error::invariant(path_.snapshot(), "sequence already ended"_str));
         }
         if (index_ != values_.len()) {
-            return Err(serde::Error::invariant(path_.clone(), "sequence has unread elements"_str));
+            return Err(
+                serde::Error::invariant(path_.snapshot(), "sequence has unread elements"_str));
         }
         ended_ = true;
         return Ok(empty {});
@@ -483,8 +485,8 @@ public:
 
 class ValueMapAccess {
     BTreeMapIter<String, Value> entries_;
-    serde::DataPath             path_;
-    serde::DataPath             value_path_;
+    serde::PathTrace            path_;
+    Option<ref<str>>            pending_key_;
     Value                       key_value_;
     Option<ref<Value>>          pending_value_;
     bool                        finished_ {};
@@ -503,17 +505,14 @@ class ValueMapAccess {
 public:
     using error_type = serde::Error;
 
-    ValueMapAccess(const Map& values, serde::DataPath path, Option<ref<str>> excluded_tag = None())
-        : entries_(values.iter()),
-          path_(path.clone()),
-          value_path_(rstd::move(path)),
-          excluded_tag_(excluded_tag) {}
+    ValueMapAccess(const Map& values, serde::PathTrace path, Option<ref<str>> excluded_tag = None())
+        : entries_(values.iter()), path_(rstd::move(path)), excluded_tag_(excluded_tag) {}
 
     template<typename T>
     auto next_key() -> Result<Option<T>, serde::Error> {
-        if (ended_) return Err(serde::Error::invariant(path_.clone(), "map already ended"_str));
+        if (ended_) return Err(serde::Error::invariant(path_.snapshot(), "map already ended"_str));
         if (pending_value_.is_some()) {
-            return Err(serde::Error::invariant(path_.clone(), "map value is missing"_str));
+            return Err(serde::Error::invariant(path_.snapshot(), "map value is missing"_str));
         }
         auto entry = next_entry();
         if (entry.is_none()) {
@@ -522,9 +521,9 @@ public:
         }
         auto [key, value] = *entry;
         key_value_        = Value::String(key->clone());
-        value_path_       = path_.with_map_key(key->as_str());
+        pending_key_      = Some(key->as_str());
         pending_value_    = Some<ref<Value>>(value);
-        auto child        = ValueDeserializer(key_value_, value_path_.clone());
+        auto child        = ValueDeserializer(key_value_, path_.with_map_key(*pending_key_));
         auto decoded      = serde::deserialize<T>(child);
         if (decoded.is_err()) return Err(rstd::move(decoded).unwrap_err_unchecked());
         return Ok(Some(rstd::move(decoded).unwrap_unchecked()));
@@ -532,11 +531,11 @@ public:
 
     template<typename T>
     auto next_value() -> Result<T, serde::Error> {
-        if (ended_) return Err(serde::Error::invariant(path_.clone(), "map already ended"_str));
+        if (ended_) return Err(serde::Error::invariant(path_.snapshot(), "map already ended"_str));
         if (pending_value_.is_none()) {
-            return Err(serde::Error::invariant(path_.clone(), "map key is missing"_str));
+            return Err(serde::Error::invariant(path_.snapshot(), "map key is missing"_str));
         }
-        auto child   = ValueDeserializer(**pending_value_, value_path_.clone());
+        auto child   = ValueDeserializer(**pending_value_, path_.with_map_key(*pending_key_));
         auto decoded = serde::deserialize<T>(child);
         if (decoded.is_err()) return Err(rstd::move(decoded).unwrap_err_unchecked());
         pending_value_ = None();
@@ -544,21 +543,21 @@ public:
     }
 
     auto ignore_value() -> Result<empty, serde::Error> {
-        if (ended_) return Err(serde::Error::invariant(path_.clone(), "map already ended"_str));
+        if (ended_) return Err(serde::Error::invariant(path_.snapshot(), "map already ended"_str));
         if (pending_value_.is_none()) {
-            return Err(serde::Error::invariant(path_.clone(), "map key is missing"_str));
+            return Err(serde::Error::invariant(path_.snapshot(), "map key is missing"_str));
         }
         pending_value_ = None();
         return Ok(empty {});
     }
 
     auto end() -> Result<empty, serde::Error> {
-        if (ended_) return Err(serde::Error::invariant(path_.clone(), "map already ended"_str));
+        if (ended_) return Err(serde::Error::invariant(path_.snapshot(), "map already ended"_str));
         if (pending_value_.is_some()) {
-            return Err(serde::Error::invariant(path_.clone(), "map value is missing"_str));
+            return Err(serde::Error::invariant(path_.snapshot(), "map value is missing"_str));
         }
         if (! finished_ && next_entry().is_some()) {
-            return Err(serde::Error::invariant(path_.clone(), "map has unread entries"_str));
+            return Err(serde::Error::invariant(path_.snapshot(), "map has unread entries"_str));
         }
         ended_ = true;
         return Ok(empty {});
@@ -568,23 +567,23 @@ public:
 class ValueEnumAccess {
     String             variant_;
     Option<ref<Value>> value_;
-    serde::DataPath    path_;
+    serde::PathTrace   path_;
     bool               consumed_ {};
 
 public:
     using error_type = serde::Error;
 
-    ValueEnumAccess(String variant, Option<ref<Value>> value, serde::DataPath path)
+    ValueEnumAccess(String variant, Option<ref<Value>> value, serde::PathTrace path)
         : variant_(rstd::move(variant)), value_(value), path_(rstd::move(path)) {}
 
     auto variant() const noexcept [[clang::lifetimebound]] -> ref<str> { return variant_.as_str(); }
 
     auto unit() -> Result<empty, serde::Error> {
         if (consumed_) {
-            return Err(serde::Error::invariant(path_.clone(), "enum already consumed"_str));
+            return Err(serde::Error::invariant(path_.snapshot(), "enum already consumed"_str));
         }
         if (value_.is_some()) {
-            return Err(serde::Error::invalid_value(path_.with_variant(variant_.as_str()),
+            return Err(serde::Error::invalid_value(path_.with_variant(variant_.as_str()).snapshot(),
                                                    "enum variant has an unexpected payload"_str));
         }
         consumed_ = true;
@@ -594,10 +593,10 @@ public:
     template<typename T>
     auto value() -> Result<T, serde::Error> {
         if (consumed_) {
-            return Err(serde::Error::invariant(path_.clone(), "enum already consumed"_str));
+            return Err(serde::Error::invariant(path_.snapshot(), "enum already consumed"_str));
         }
         if (value_.is_none()) {
-            return Err(serde::Error::invalid_value(path_.with_variant(variant_.as_str()),
+            return Err(serde::Error::invalid_value(path_.with_variant(variant_.as_str()).snapshot(),
                                                    "enum variant payload is missing"_str));
         }
         consumed_  = true;

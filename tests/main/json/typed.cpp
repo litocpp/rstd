@@ -16,6 +16,14 @@ struct JsonConfig {
     rstd::Option<String> note;
 };
 
+struct DeferredJson {
+    rstd::json::CapturedValue value;
+};
+
+struct MovedJsonMap {
+    Vec<rstd::u64> values;
+};
+
 auto text(const String& value) -> std::string {
     return { reinterpret_cast<const char*>(value.as_raw_ptr()), value.len().to_primitive() };
 }
@@ -87,6 +95,40 @@ struct rstd::Impl<rstd::serde::Deserialize, JsonConfig> {
     }
 };
 
+template<>
+struct rstd::Impl<rstd::serde::Deserialize, DeferredJson> {
+    template<typename Deserializer>
+    static auto deserialize(Deserializer& source)
+        -> rstd::Result<DeferredJson, typename Deserializer::error_type> {
+        auto value = source.capture_value();
+        if (value.is_err()) return rstd::Err(rstd::move(value).unwrap_err_unchecked());
+        return rstd::Ok(DeferredJson { rstd::move(value).unwrap_unchecked() });
+    }
+};
+
+template<>
+struct rstd::Impl<rstd::serde::Deserialize, MovedJsonMap> {
+    template<typename Deserializer>
+    static auto deserialize(Deserializer& source)
+        -> rstd::Result<MovedJsonMap, typename Deserializer::error_type> {
+        auto begun = source.begin_map();
+        if (begun.is_err()) return rstd::Err(rstd::move(begun).unwrap_err_unchecked());
+        auto original = rstd::move(begun).unwrap_unchecked();
+        auto key      = original.template next_key<String>();
+        if (key.is_err()) return rstd::Err(rstd::move(key).unwrap_err_unchecked());
+        if (key->is_none()) return rstd::Err(source.missing_field("values"_str));
+        auto moved  = rstd::move(original);
+        auto values = moved.template next_value<Vec<rstd::u64>>();
+        if (values.is_err()) return rstd::Err(rstd::move(values).unwrap_err_unchecked());
+        auto next = moved.template next_key<String>();
+        if (next.is_err()) return rstd::Err(rstd::move(next).unwrap_err_unchecked());
+        if (next->is_some()) return rstd::Err(source.unknown_field((**next).as_str()));
+        auto ended = moved.end();
+        if (ended.is_err()) return rstd::Err(rstd::move(ended).unwrap_err_unchecked());
+        return rstd::Ok(MovedJsonMap { rstd::move(values).unwrap_unchecked() });
+    }
+};
+
 TEST(JsonTyped, ValueAndTextUseTheSameExplicitImpl) {
     auto ports = Vec<rstd::u64>::make();
     ports.push(rstd::u64(80));
@@ -126,6 +168,86 @@ TEST(JsonTyped, SharedPathsKeepOwnedNamesAndIndependentBranches) {
     EXPECT_EQ(keyed.segments()[rstd::usize(1)].name().unwrap(), "title"_str);
     ASSERT_EQ(variant.segments().len(), rstd::usize(2));
     EXPECT_EQ(variant.segments()[rstd::usize(1)].name().unwrap(), "Song"_str);
+}
+
+TEST(JsonTyped, PathTraceSnapshotsOwnNamesAndPreserveRootAndSegmentKinds) {
+    auto saved = [] {
+        auto name    = String::make("headers"_str);
+        auto root    = rstd::serde::PathTrace(rstd::serde::DataPath().with_field("cache"_str));
+        auto field   = root.with_field(name.as_str());
+        auto indexed = field.with_index(rstd::usize(3));
+        auto variant = indexed.with_variant("Ready"_str);
+        auto branch  = variant.clone();
+        auto keyed   = branch.with_map_key("value"_str);
+        return keyed.snapshot();
+    }();
+    auto path = saved.segments();
+    ASSERT_EQ(path.len(), rstd::usize(5));
+    EXPECT_EQ(path[rstd::usize()].name().unwrap(), "cache"_str);
+    EXPECT_EQ(path[rstd::usize(1)].kind(), rstd::serde::PathSegmentKind::Field);
+    EXPECT_EQ(path[rstd::usize(1)].name().unwrap(), "headers"_str);
+    EXPECT_EQ(path[rstd::usize(2)].index(), rstd::usize(3));
+    EXPECT_EQ(path[rstd::usize(3)].kind(), rstd::serde::PathSegmentKind::Variant);
+    EXPECT_EQ(path[rstd::usize(3)].name().unwrap(), "Ready"_str);
+    EXPECT_EQ(path[rstd::usize(4)].kind(), rstd::serde::PathSegmentKind::MapKey);
+    EXPECT_EQ(path[rstd::usize(4)].name().unwrap(), "value"_str);
+}
+
+TEST(JsonTyped, NestedErrorsRetainCallerRootAfterInputDestruction) {
+    auto result = [] {
+        auto input = String::make(R"({"name":"server","ports":[80,"https"],"note":null})"_str);
+        auto dom   = rstd::json::from_str(input.as_str()).unwrap();
+        return rstd::json::decode_value<JsonConfig>(
+            dom, rstd::serde::DataPath().with_field("cache"_str));
+    }();
+    ASSERT_TRUE(result.is_err());
+    auto error = rstd::move(result).unwrap_err_unchecked();
+    auto path  = error.path().segments();
+    ASSERT_EQ(path.len(), rstd::usize(3));
+    EXPECT_EQ(path[rstd::usize()].name().unwrap(), "cache"_str);
+    EXPECT_EQ(path[rstd::usize(1)].name().unwrap(), "ports"_str);
+    EXPECT_EQ(path[rstd::usize(2)].index(), rstd::usize(1));
+}
+
+TEST(JsonTyped, CapturedValuesSnapshotPathsAndReplayAfterSourceDestruction) {
+    auto check = [](Vec<DeferredJson> captures) {
+        auto error = [&] {
+            auto rejected = captures[rstd::usize()].value.replay();
+            EXPECT_TRUE(rstd::serde::deserialize<String>(rejected).is_err());
+            auto replay = captures[rstd::usize()].value.replay();
+            return rstd::serde::deserialize<JsonConfig>(replay).unwrap_err();
+        }();
+        captures.clear();
+        auto path = error.path().segments();
+        ASSERT_EQ(path.len(), rstd::usize(3));
+        EXPECT_EQ(path[rstd::usize()].index(), rstd::usize());
+        EXPECT_EQ(path[rstd::usize(1)].name().unwrap(), "ports"_str);
+        EXPECT_EQ(path[rstd::usize(2)].index(), rstd::usize(1));
+    };
+    auto input = R"([{"name":"server","ports":[80,"https"],"note":null}])"_str;
+    auto dom   = rstd::json::decode<Vec<DeferredJson>>(input);
+    ASSERT_TRUE(dom.is_ok());
+    check(rstd::move(dom).unwrap_unchecked());
+    auto direct = rstd::json::decode_direct<Vec<DeferredJson>>(input);
+    ASSERT_TRUE(direct.is_ok());
+    check(rstd::move(direct).unwrap_unchecked());
+}
+
+TEST(JsonTyped, MovingMapAccessAfterKeyKeepsValuePath) {
+    auto check = [](const rstd::serde::Error& error) {
+        auto path = error.path().segments();
+        ASSERT_EQ(path.len(), rstd::usize(3));
+        EXPECT_EQ(path[rstd::usize()].index(), rstd::usize());
+        EXPECT_EQ(path[rstd::usize(1)].name().unwrap(), "values"_str);
+        EXPECT_EQ(path[rstd::usize(2)].index(), rstd::usize(1));
+    };
+    auto input = R"([{"values":[80,"https"]}])"_str;
+    auto dom   = rstd::json::decode<Vec<MovedJsonMap>>(input);
+    ASSERT_TRUE(dom.is_err());
+    check(dom.unwrap_err().data_error()->get());
+    auto direct = rstd::json::decode_direct<Vec<MovedJsonMap>>(input);
+    ASSERT_TRUE(direct.is_err());
+    check(direct.unwrap_err());
 }
 
 TEST(JsonTyped, SeparatesSyntaxAndDataErrors) {

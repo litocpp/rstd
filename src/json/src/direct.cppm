@@ -17,9 +17,9 @@ class DirectSequenceAccess;
 class DirectMapAccess;
 class DirectEnumAccess;
 
-auto direct_syntax_error(serde::DataPath path, Error source) -> serde::Error {
+auto direct_syntax_error(const serde::PathTrace& path, Error source) -> serde::Error {
     return serde::Error::invalid_value_with_source(
-        rstd::move(path), "invalid JSON syntax"_str, rstd::move(source));
+        path.snapshot(), "invalid JSON syntax"_str, rstd::move(source));
 }
 
 auto direct_value_kind(JsonValueKind kind) noexcept -> serde::ValueKind {
@@ -35,15 +35,15 @@ auto direct_value_kind(JsonValueKind kind) noexcept -> serde::ValueKind {
 }
 
 class DirectDeserializer {
-    JsonReader*     reader_ {};
-    serde::DataPath path_;
+    JsonReader*      reader_ {};
+    serde::PathTrace path_;
 
     auto mismatch(serde::ValueKind expected) -> serde::Error {
         auto actual = reader_->value_kind();
         if (actual.is_err()) {
             return direct_syntax_error(path_.clone(), rstd::move(actual).unwrap_err_unchecked());
         }
-        return serde::Error::type_mismatch(path_.clone(), expected, direct_value_kind(*actual));
+        return serde::Error::type_mismatch(path_.snapshot(), expected, direct_value_kind(*actual));
     }
 
     template<typename T>
@@ -66,7 +66,7 @@ public:
     using enum_type     = DirectEnumAccess;
 
     explicit DirectDeserializer(JsonReader& reader): reader_(rstd::addressof(reader)) {}
-    DirectDeserializer(JsonReader& reader, serde::DataPath path)
+    DirectDeserializer(JsonReader& reader, serde::PathTrace path)
         : reader_(rstd::addressof(reader)), path_(rstd::move(path)) {}
 
     auto deserialize_json_value() -> Result<Value, serde::Error> {
@@ -76,7 +76,7 @@ public:
     auto capture_value() -> Result<CapturedValue, serde::Error> {
         auto value = syntax(read_value(*reader_, true));
         if (value.is_err()) return Err(rstd::move(value).unwrap_err_unchecked());
-        return Ok(CapturedValue(rstd::move(value).unwrap_unchecked(), path_.clone()));
+        return Ok(CapturedValue(rstd::move(value).unwrap_unchecked(), path_.snapshot()));
     }
 
     auto deserialize_unit() -> Result<empty, serde::Error> {
@@ -108,7 +108,7 @@ public:
         auto value = number->as_i64();
         if (value.is_none()) {
             return Err(serde::Error::type_mismatch(
-                path_.clone(),
+                path_.snapshot(),
                 serde::ValueKind::SignedInteger,
                 number->is_f64() ? serde::ValueKind::Float : serde::ValueKind::UnsignedInteger));
         }
@@ -126,7 +126,7 @@ public:
         auto value = number->as_u64();
         if (value.is_none()) {
             return Err(serde::Error::type_mismatch(
-                path_.clone(),
+                path_.snapshot(),
                 serde::ValueKind::UnsignedInteger,
                 number->is_f64() ? serde::ValueKind::Float : serde::ValueKind::SignedInteger));
         }
@@ -182,29 +182,30 @@ public:
     auto begin_enum() -> Result<DirectEnumAccess, serde::Error>;
 
     auto invalid_value(ref<str> message) const -> serde::Error {
-        return serde::Error::invalid_value(path_.clone(), message);
+        return serde::Error::invalid_value(path_.snapshot(), message);
     }
     template<typename Source>
     auto invalid_value_with_source(ref<str> message, Source source) const -> serde::Error {
-        return serde::Error::invalid_value_with_source(path_.clone(), message, rstd::move(source));
+        return serde::Error::invalid_value_with_source(
+            path_.snapshot(), message, rstd::move(source));
     }
     auto missing_field(ref<str> field) const -> serde::Error {
-        return serde::Error::missing_field(path_.clone(), field);
+        return serde::Error::missing_field(path_.snapshot(), field);
     }
     auto unknown_field(ref<str> field) const -> serde::Error {
-        return serde::Error::unknown_field(path_.clone(), field);
+        return serde::Error::unknown_field(path_.snapshot(), field);
     }
     auto unknown_variant(ref<str> variant) const -> serde::Error {
-        return serde::Error::unknown_variant(path_.clone(), variant);
+        return serde::Error::unknown_variant(path_.snapshot(), variant);
     }
     auto duplicate_field(ref<str> field) const -> serde::Error {
-        return serde::Error::duplicate_field(path_.clone(), field);
+        return serde::Error::duplicate_field(path_.snapshot(), field);
     }
     auto invariant(ref<str> message) const -> serde::Error {
-        return serde::Error::invariant(path_.clone(), message);
+        return serde::Error::invariant(path_.snapshot(), message);
     }
     auto unsupported(ref<str> message) const -> serde::Error {
-        return serde::Error::unsupported(path_.clone(), message);
+        return serde::Error::unsupported(path_.snapshot(), message);
     }
     auto ignore_value() -> Result<empty, serde::Error> { return syntax(reader_->skip_value()); }
 
@@ -215,23 +216,23 @@ public:
 };
 
 class DirectSequenceAccess {
-    JsonReader*     reader_ {};
-    serde::DataPath path_;
-    usize           index_ {};
-    bool            first_ { true };
-    bool            finished_ {};
-    bool            ended_ {};
+    JsonReader*      reader_ {};
+    serde::PathTrace path_;
+    usize            index_ {};
+    bool             first_ { true };
+    bool             finished_ {};
+    bool             ended_ {};
 
 public:
     using error_type = serde::Error;
 
-    DirectSequenceAccess(JsonReader& reader, serde::DataPath path)
+    DirectSequenceAccess(JsonReader& reader, serde::PathTrace path)
         : reader_(rstd::addressof(reader)), path_(rstd::move(path)) {}
 
     template<typename T>
     auto next() -> Result<Option<T>, serde::Error> {
         if (ended_)
-            return Err(serde::Error::invariant(path_.clone(), "sequence already ended"_str));
+            return Err(serde::Error::invariant(path_.snapshot(), "sequence already ended"_str));
         auto next = reader_->next_array(first_);
         if (next.is_err()) {
             return Err(direct_syntax_error(path_.clone(), rstd::move(next).unwrap_err_unchecked()));
@@ -249,9 +250,10 @@ public:
 
     auto end() -> Result<empty, serde::Error> {
         if (ended_)
-            return Err(serde::Error::invariant(path_.clone(), "sequence already ended"_str));
+            return Err(serde::Error::invariant(path_.snapshot(), "sequence already ended"_str));
         if (! finished_) {
-            return Err(serde::Error::invariant(path_.clone(), "sequence has unread elements"_str));
+            return Err(
+                serde::Error::invariant(path_.snapshot(), "sequence has unread elements"_str));
         }
         ended_ = true;
         return Ok(empty {});
@@ -259,20 +261,20 @@ public:
 };
 
 class MapKeyDeserializer {
-    String          value_;
-    serde::DataPath path_;
+    ref<str>         value_;
+    serde::PathTrace path_;
 
     auto mismatch(serde::ValueKind expected) const -> serde::Error {
-        return serde::Error::type_mismatch(path_.clone(), expected, serde::ValueKind::String);
+        return serde::Error::type_mismatch(path_.snapshot(), expected, serde::ValueKind::String);
     }
 
 public:
     using error_type = serde::Error;
 
-    MapKeyDeserializer(String value, serde::DataPath path)
-        : value_(rstd::move(value)), path_(rstd::move(path)) {}
+    MapKeyDeserializer(ref<str> value, serde::PathTrace path)
+        : value_(value), path_(rstd::move(path)) {}
 
-    auto deserialize_string() -> Result<String, serde::Error> { return Ok(rstd::move(value_)); }
+    auto deserialize_string() -> Result<String, serde::Error> { return Ok(String::make(value_)); }
     auto deserialize_bool() -> Result<bool, serde::Error> {
         return Err(mismatch(serde::ValueKind::Boolean));
     }
@@ -289,8 +291,8 @@ public:
 
 class DirectMapAccess {
     JsonReader*             reader_ {};
-    serde::DataPath         path_;
-    serde::DataPath         value_path_;
+    serde::PathTrace        path_;
+    String                  key_;
     BTreeMap<String, empty> seen_;
     bool                    first_ { true };
     bool                    pending_ {};
@@ -300,17 +302,16 @@ class DirectMapAccess {
 public:
     using error_type = serde::Error;
 
-    DirectMapAccess(JsonReader& reader, serde::DataPath path)
+    DirectMapAccess(JsonReader& reader, serde::PathTrace path)
         : reader_(rstd::addressof(reader)),
-          path_(path.clone()),
-          value_path_(rstd::move(path)),
+          path_(rstd::move(path)),
           seen_(BTreeMap<String, empty>::make()) {}
 
     template<typename T>
     auto next_key() -> Result<Option<T>, serde::Error> {
-        if (ended_) return Err(serde::Error::invariant(path_.clone(), "map already ended"_str));
+        if (ended_) return Err(serde::Error::invariant(path_.snapshot(), "map already ended"_str));
         if (pending_)
-            return Err(serde::Error::invariant(path_.clone(), "map value is missing"_str));
+            return Err(serde::Error::invariant(path_.snapshot(), "map value is missing"_str));
         auto key = reader_->next_object_key(first_);
         if (key.is_err()) {
             return Err(direct_syntax_error(path_.clone(), rstd::move(key).unwrap_err_unchecked()));
@@ -323,24 +324,24 @@ public:
         auto name = rstd::move(optional).unwrap_unchecked();
         if (reader_->reject_duplicate_keys()) {
             if (seen_.contains_key(name.as_str())) {
-                return Err(serde::Error::duplicate_field(path_.clone(), name.as_str()));
+                return Err(serde::Error::duplicate_field(path_.snapshot(), name.as_str()));
             }
             seen_.insert(name.clone(), empty {});
         }
-        value_path_ = path_.with_map_key(name.as_str());
-        pending_    = true;
-        auto child  = MapKeyDeserializer(rstd::move(name), value_path_.clone());
-        auto value  = serde::deserialize<T>(child);
+        key_       = rstd::move(name);
+        pending_   = true;
+        auto child = MapKeyDeserializer(key_.as_str(), path_.with_map_key(key_.as_str()));
+        auto value = serde::deserialize<T>(child);
         if (value.is_err()) return Err(rstd::move(value).unwrap_err_unchecked());
         return Ok(Some(rstd::move(value).unwrap_unchecked()));
     }
 
     template<typename T>
     auto next_value() -> Result<T, serde::Error> {
-        if (ended_) return Err(serde::Error::invariant(path_.clone(), "map already ended"_str));
+        if (ended_) return Err(serde::Error::invariant(path_.snapshot(), "map already ended"_str));
         if (! pending_)
-            return Err(serde::Error::invariant(path_.clone(), "map key is missing"_str));
-        auto child = DirectDeserializer(*reader_, value_path_.clone());
+            return Err(serde::Error::invariant(path_.snapshot(), "map key is missing"_str));
+        auto child = DirectDeserializer(*reader_, path_.with_map_key(key_.as_str()));
         auto value = serde::deserialize<T>(child);
         if (value.is_err()) return Err(rstd::move(value).unwrap_err_unchecked());
         pending_ = false;
@@ -348,12 +349,12 @@ public:
     }
 
     auto ignore_value() -> Result<empty, serde::Error> {
-        if (ended_) return Err(serde::Error::invariant(path_.clone(), "map already ended"_str));
+        if (ended_) return Err(serde::Error::invariant(path_.snapshot(), "map already ended"_str));
         if (! pending_)
-            return Err(serde::Error::invariant(path_.clone(), "map key is missing"_str));
+            return Err(serde::Error::invariant(path_.snapshot(), "map key is missing"_str));
         auto skipped = reader_->skip_value();
         if (skipped.is_err()) {
-            return Err(direct_syntax_error(value_path_.clone(),
+            return Err(direct_syntax_error(path_.with_map_key(key_.as_str()),
                                            rstd::move(skipped).unwrap_err_unchecked()));
         }
         pending_ = false;
@@ -361,32 +362,32 @@ public:
     }
 
     auto end() -> Result<empty, serde::Error> {
-        if (ended_) return Err(serde::Error::invariant(path_.clone(), "map already ended"_str));
+        if (ended_) return Err(serde::Error::invariant(path_.snapshot(), "map already ended"_str));
         if (pending_)
-            return Err(serde::Error::invariant(path_.clone(), "map value is missing"_str));
+            return Err(serde::Error::invariant(path_.snapshot(), "map value is missing"_str));
         if (! finished_)
-            return Err(serde::Error::invariant(path_.clone(), "map has unread entries"_str));
+            return Err(serde::Error::invariant(path_.snapshot(), "map has unread entries"_str));
         ended_ = true;
         return Ok(empty {});
     }
 };
 
 class DirectEnumAccess {
-    JsonReader*     reader_ {};
-    String          variant_;
-    serde::DataPath path_;
-    bool            has_value_ {};
-    bool            object_first_ {};
-    bool            consumed_ {};
+    JsonReader*      reader_ {};
+    String           variant_;
+    serde::PathTrace path_;
+    bool             has_value_ {};
+    bool             object_first_ {};
+    bool             consumed_ {};
 
 public:
     using error_type = serde::Error;
 
-    DirectEnumAccess(JsonReader&     reader,
-                     String          variant,
-                     serde::DataPath path,
-                     bool            has_value,
-                     bool            object_first)
+    DirectEnumAccess(JsonReader&      reader,
+                     String           variant,
+                     serde::PathTrace path,
+                     bool             has_value,
+                     bool             object_first)
         : reader_(rstd::addressof(reader)),
           variant_(rstd::move(variant)),
           path_(rstd::move(path)),
@@ -397,9 +398,9 @@ public:
 
     auto unit() -> Result<empty, serde::Error> {
         if (consumed_)
-            return Err(serde::Error::invariant(path_.clone(), "enum already consumed"_str));
+            return Err(serde::Error::invariant(path_.snapshot(), "enum already consumed"_str));
         if (has_value_) {
-            return Err(serde::Error::invalid_value(path_.with_variant(variant_.as_str()),
+            return Err(serde::Error::invalid_value(path_.with_variant(variant_.as_str()).snapshot(),
                                                    "enum variant has an unexpected payload"_str));
         }
         consumed_ = true;
@@ -409,9 +410,9 @@ public:
     template<typename T>
     auto value() -> Result<T, serde::Error> {
         if (consumed_)
-            return Err(serde::Error::invariant(path_.clone(), "enum already consumed"_str));
+            return Err(serde::Error::invariant(path_.snapshot(), "enum already consumed"_str));
         if (! has_value_) {
-            return Err(serde::Error::invalid_value(path_.with_variant(variant_.as_str()),
+            return Err(serde::Error::invalid_value(path_.with_variant(variant_.as_str()).snapshot(),
                                                    "enum variant payload is missing"_str));
         }
         auto child = DirectDeserializer(*reader_, path_.with_variant(variant_.as_str()));
@@ -423,7 +424,7 @@ public:
         }
         if (next->is_some()) {
             return Err(serde::Error::invalid_value(
-                path_.clone(), "externally tagged enum must contain exactly one variant"_str));
+                path_.snapshot(), "externally tagged enum must contain exactly one variant"_str));
         }
         consumed_ = true;
         return value;

@@ -458,19 +458,20 @@ struct EnumDefinition {
         -> Result<T, typename Deserializer::error_type> {
         auto started = deserializer.begin_enum();
         if (started.is_err()) return Err(rstd::move(started).unwrap_err_unchecked());
-        auto input  = rstd::move(started).unwrap_unchecked();
-        auto result = Result<T, typename Deserializer::error_type>(
-            Err(deserializer.unknown_variant(input.variant())));
+        using Decoded = Result<T, typename Deserializer::error_type>;
+        auto input    = rstd::move(started).unwrap_unchecked();
+        auto result   = Option<Decoded>();
         variants([&]<typename V>() {
             if (input.variant() == V::name.view()) {
                 auto checked = input.unit();
                 if (checked.is_err())
-                    result = Err(rstd::move(checked).unwrap_err_unchecked());
+                    result = Some(Decoded(Err(rstd::move(checked).unwrap_err_unchecked())));
                 else
-                    result = Ok(V::value);
+                    result = Some(Decoded(Ok(V::value)));
             }
         });
-        return result;
+        if (result.is_some()) return rstd::move(result).unwrap_unchecked();
+        return Err(deserializer.unknown_variant(input.variant()));
     }
 
     template<typename Sink>
@@ -493,12 +494,12 @@ struct StringEnumDefinition : EnumDefinition<T, Name, Mode, Variants...> {
     static auto deserialize(D& source) -> Result<T, typename D::error_type> {
         auto name = source.deserialize_string();
         if (name.is_err()) return Err(rstd::move(name).unwrap_err_unchecked());
-        auto result =
-            Result<T, typename D::error_type>(Err(source.unknown_variant(name->as_str())));
+        auto result = Option<T>();
         StringEnumDefinition::variants([&]<typename V>() {
-            if (name->as_str() == V::name.view()) result = Ok(V::value);
+            if (name->as_str() == V::name.view()) result = Some(T(V::value));
         });
-        return result;
+        if (result.is_some()) return Ok(rstd::move(result).unwrap_unchecked());
+        return Err(source.unknown_variant(name->as_str()));
     }
 };
 
@@ -564,30 +565,44 @@ struct VariantDefinition {
         auto started = source.begin_enum();
         if (started.is_err()) return Err(rstd::move(started).unwrap_err_unchecked());
         auto input = rstd::move(started).unwrap_unchecked();
-        return deserialize_variant(source, input, source.unknown_variant(input.variant()));
+        return deserialize_variant(source, input, [&] {
+            return source.unknown_variant(input.variant());
+        });
     }
-    template<typename D, EnumAccess Input>
-    static auto deserialize_variant(D&, Input& input, typename D::error_type unknown)
+    template<typename D, EnumAccess Input, typename Unknown>
+        requires requires(Unknown& unknown) {
+            { unknown() } -> mtp::same_as<typename D::error_type>;
+        }
+    static auto deserialize_variant(D&, Input& input, Unknown unknown)
         -> Result<T, typename D::error_type> {
-        auto result = Result<T, typename D::error_type>(Err(rstd::move(unknown)));
+        using Decoded = Result<T, typename D::error_type>;
+        auto result   = Option<Decoded>();
         variants([&]<typename V>() {
             if (input.variant() == Text(V::name).view()) {
                 if constexpr (__is_void(typename V::payload_type)) {
                     auto checked = input.unit();
                     if (checked.is_err())
-                        result = Err(rstd::move(checked).unwrap_err_unchecked());
+                        result = Some(Decoded(Err(rstd::move(checked).unwrap_err_unchecked())));
                     else
-                        result = Ok(V::make());
+                        result = Some(Decoded(Ok(V::make())));
                 } else {
                     auto value = input.template value<typename V::payload_type>();
                     if (value.is_err())
-                        result = Err(rstd::move(value).unwrap_err_unchecked());
+                        result = Some(Decoded(Err(rstd::move(value).unwrap_err_unchecked())));
                     else
-                        result = Ok(V::make(rstd::move(value).unwrap_unchecked()));
+                        result = Some(Decoded(Ok(V::make(rstd::move(value).unwrap_unchecked()))));
                 }
             }
         });
-        return result;
+        if (result.is_some()) return rstd::move(result).unwrap_unchecked();
+        return Err(unknown());
+    }
+    template<typename D, EnumAccess Input>
+    static auto deserialize_variant(D& source, Input& input, typename D::error_type unknown)
+        -> Result<T, typename D::error_type> {
+        return deserialize_variant(source, input, [&] {
+            return rstd::move(unknown);
+        });
     }
     template<typename Sink>
     static constexpr void describe(Sink& sink) {
@@ -1048,8 +1063,9 @@ struct InternalVariantDefinition : VariantDefinition<T, Name, Mode, Names...> {
         if (started.is_err()) return Err(rstd::move(started).unwrap_err_unchecked());
         auto input = rstd::move(started).unwrap_unchecked();
         // Tags are untrusted and may contain credentials.
-        return InternalVariantDefinition::deserialize_variant(
-            source, input, source.unknown_variant("unrecognized"_str));
+        return InternalVariantDefinition::deserialize_variant(source, input, [&] {
+            return source.unknown_variant("unrecognized"_str);
+        });
     }
     template<typename Sink>
     static constexpr void describe(Sink& sink) {
@@ -1101,8 +1117,9 @@ struct AdjacentVariantDefinition : VariantDefinition<T, Name, Mode, Names...> {
         auto started = source.begin_adjacent_enum(Tag.view(), Content.view(), Unknown);
         if (started.is_err()) return Err(rstd::move(started).unwrap_err_unchecked());
         auto input = rstd::move(started).unwrap_unchecked();
-        return AdjacentVariantDefinition::deserialize_variant(
-            source, input, source.unknown_variant("unrecognized"_str));
+        return AdjacentVariantDefinition::deserialize_variant(source, input, [&] {
+            return source.unknown_variant("unrecognized"_str);
+        });
     }
     template<typename Sink>
     static constexpr void describe(Sink& sink) {

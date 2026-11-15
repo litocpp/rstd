@@ -27,6 +27,18 @@ struct HelperOnly {
     rstd::serde::RequiredField<String> value { "value"_str };
 };
 
+template<typename Source>
+struct ObservedUnknownVariant : Source {
+    int* count;
+
+    ObservedUnknownVariant(Source source, int& value): Source(rstd::move(source)), count(&value) {}
+
+    auto unknown_variant(rstd::ref<rstd::str> name) const -> typename Source::error_type {
+        ++*count;
+        return Source::unknown_variant(name);
+    }
+};
+
 struct EncodeOnly {
     rstd::u64 value {};
 };
@@ -869,6 +881,38 @@ TEST(Serde, JsonSupportsUnitWhileTomlRejectsItExplicitly) {
     auto toml_unit = rstd::toml::to_value(rstd::empty {});
     ASSERT_TRUE(toml_unit.is_err());
     EXPECT_EQ(toml_unit.unwrap_err().kind(), rstd::serde::ErrorKind::Unsupported);
+}
+
+TEST(Serde, KnownVariantsDoNotConstructFallbackErrors) {
+    using namespace rstd::serde;
+    auto check = []<typename Definition>(rstd::ref<rstd::str> text, bool valid, int errors) {
+        auto captured = rstd::json::CapturedValue(rstd::json::from_str(text).unwrap(), DataPath());
+        auto count    = 0;
+        auto source   = ObservedUnknownVariant(captured.replay(), count);
+        auto decoded  = Definition::deserialize(source);
+        EXPECT_EQ(decoded.is_ok(), valid);
+        EXPECT_EQ(count, errors);
+    };
+    using Enum       = EnumDefinition<StrictMode,
+                                      "StrictMode",
+                                      Direction::Both,
+                                      Variant<StrictMode::Enabled, "Enabled">,
+                                      Variant<StrictMode::Disabled, "Disabled">>;
+    using StringEnum = decltype(rstd_serde_definition(static_cast<StrictMode*>(nullptr)));
+    using External   = VariantDefinition<InternalEvent, "External", Direction::Both>;
+    using Internal   = decltype(rstd_serde_definition(static_cast<InternalEvent*>(nullptr)));
+    using Adjacent   = decltype(rstd_serde_definition(static_cast<AdjacentEvent*>(nullptr)));
+    check.template operator()<Enum>(R"("Enabled")"_str, true, 0);
+    check.template operator()<Enum>(R"("Other")"_str, false, 1);
+    check.template operator()<StringEnum>(R"("Enabled")"_str, true, 0);
+    check.template operator()<StringEnum>(R"("Other")"_str, false, 1);
+    check.template operator()<External>(R"("Idle")"_str, true, 0);
+    check.template operator()<External>(R"("Other")"_str, false, 1);
+    check.template operator()<External>(R"({"Record":{"secret":"x","count":"bad"}})"_str, false, 0);
+    check.template operator()<Internal>(R"({"type":"Idle"})"_str, true, 0);
+    check.template operator()<Internal>(R"({"type":"Other"})"_str, false, 1);
+    check.template operator()<Adjacent>(R"({"type":"Idle"})"_str, true, 0);
+    check.template operator()<Adjacent>(R"({"type":"Other"})"_str, false, 1);
 }
 
 TEST(Serde, EnumErrorsCarryVariantPaths) {
