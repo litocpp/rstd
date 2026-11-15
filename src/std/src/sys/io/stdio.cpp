@@ -23,6 +23,23 @@ namespace rstd::sys::io::stdio
 {
 
 #if RSTD_OS_WINDOWS
+auto clone_standard_handle(DWORD stream) noexcept -> IOResult<os::handle::OwnedHandle> {
+    auto handle = GetStdHandle(stream);
+    if (handle == M_INVALID_HANDLE_VALUE || handle == nullptr)
+        return Err(Error::from_kind(ErrorKind { ErrorKind::NotConnected }));
+    auto owned = os::fd::BorrowedFd::borrow_raw(handle).try_clone_to_owned();
+    if (owned.is_err()) return Err(rstd::move(owned).unwrap_err());
+    return Ok(os::handle::OwnedHandle::from_raw_handle(rstd::move(*owned).into_raw_fd()));
+}
+
+auto clone_stdin_handle() noexcept -> IOResult<os::handle::OwnedHandle> {
+    return clone_standard_handle(M_STD_INPUT_HANDLE);
+}
+
+auto clone_stdout_handle() noexcept -> IOResult<os::handle::OwnedHandle> {
+    return clone_standard_handle(M_STD_OUTPUT_HANDLE);
+}
+
 auto validate_async_pipe(os::handle::BorrowedHandle handle, bool writing) noexcept
     -> IOResult<empty> {
     auto  native = static_cast<HANDLE>(handle.as_raw_handle());
@@ -49,9 +66,10 @@ auto validate_async_pipe(os::handle::BorrowedHandle handle, bool writing) noexce
     if (result < 0) return Err(Error::from_raw_os_error(i32(RtlNtStatusToDosError(result))));
     // FileModeInformation reports the synchronous flags even for unnamed pipes.
     constexpr ULONG synchronous_io = 0x10 | 0x20;
-    if ((access.value & (writing ? FILE_WRITE_DATA : FILE_READ_DATA)) == 0 ||
-        (mode.value & synchronous_io) != 0)
+    if ((access.value & (writing ? FILE_WRITE_DATA : FILE_READ_DATA)) == 0)
         return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
+    if ((mode.value & synchronous_io) != 0)
+        return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
     return Ok(empty {});
 }
 #endif

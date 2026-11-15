@@ -297,6 +297,21 @@ public:
         return Ok(Receiver { rstd::move(state).unwrap() });
     }
 #endif
+    // Duplicates inherited stdin; close releases only the duplicate.
+    // Unix O_NONBLOCK is shared with fd 0: do not mix synchronous stdin reads.
+    static auto stdin() -> io::Result<Receiver> {
+#if RSTD_OS_UNIX
+        auto descriptor = os::fd::BorrowedFd::borrow_raw(0).try_clone_to_owned();
+        if (descriptor.is_err()) return Err(rstd::move(descriptor).unwrap_err());
+        return from_owned_fd(rstd::move(descriptor).unwrap());
+#elif RSTD_OS_WINDOWS
+        auto handle = sys::io::stdio::clone_stdin_handle();
+        if (handle.is_err()) return Err(rstd::move(handle).unwrap_err());
+        return from_owned_handle(rstd::move(handle).unwrap());
+#else
+        return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
+#endif
+    }
     // Serialize reads. Canceling a pending read preserves its data for the next read.
     auto read(usize maximum = usize(65536)) const {
         return PipeState::read_owned(state_.clone(), maximum);
@@ -326,6 +341,21 @@ public:
         return Ok(Sender { rstd::move(state).unwrap() });
     }
 #endif
+    // Duplicates inherited stdout; close releases only the duplicate.
+    // Unix O_NONBLOCK is shared with fd 1: do not mix synchronous stdout writes.
+    static auto stdout() -> io::Result<Sender> {
+#if RSTD_OS_UNIX
+        auto descriptor = os::fd::BorrowedFd::borrow_raw(1).try_clone_to_owned();
+        if (descriptor.is_err()) return Err(rstd::move(descriptor).unwrap_err());
+        return from_owned_fd(rstd::move(descriptor).unwrap());
+#elif RSTD_OS_WINDOWS
+        auto handle = sys::io::stdio::clone_stdout_handle();
+        if (handle.is_err()) return Err(rstd::move(handle).unwrap_err());
+        return from_owned_handle(rstd::move(handle).unwrap());
+#else
+        return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
+#endif
+    }
     // Serialize writes. Canceled writes can be partial.
     auto write(bytes::Bytes bytes) const {
         return PipeState::write_owned(state_.clone(), rstd::move(bytes), false);

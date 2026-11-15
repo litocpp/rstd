@@ -237,3 +237,203 @@ TEST(AsyncCommand, DroppedChildRemainsOwnedUntilShutdownReapsIt) {
 #endif
 } // namespace
 #endif
+
+#if RSTD_OS_LINUX || RSTD_OS_MACOS || RSTD_OS_WINDOWS
+namespace
+{
+using namespace rstd::prelude;
+using namespace rstd::literals;
+namespace stdio_async = rstd::async;
+namespace stdio_libc  = rstd::sys::libc;
+
+auto stdio_echo_child() -> stdio_async::coro<bool> {
+    auto input  = stdio_async::pipe::Receiver::stdin();
+    auto output = stdio_async::pipe::Sender::stdout();
+    if (input.is_err() || output.is_err()) co_return false;
+    auto canceled = co_await stdio_async::timeout(input->read(rstd::usize(3)).into_future(),
+                                                  rstd::time::Duration::from_millis(rstd::u64(5)));
+    if (canceled.is_ok()) co_return false;
+    if ((co_await rstd::move(*input).close()).is_err()) co_return false;
+    auto reopened = stdio_async::pipe::Receiver::stdin();
+    if (reopened.is_err()) co_return false;
+    auto notice =
+        co_await output->write_all(rstd::bytes::Bytes::copy_from_slice("stdio-ready\n"_bytes));
+    if (notice.is_err()) co_return false;
+    Vec<rstd::u8> received;
+    for (;;) {
+        auto chunk = co_await reopened->read(rstd::usize(3));
+        if (chunk.is_err()) co_return false;
+        if (chunk->is_empty()) break;
+        received.extend_from_slice(chunk->as_slice());
+    }
+    if (received.as_slice() != "stdio-payload\n"_bytes) co_return false;
+    if ((co_await rstd::move(*reopened).close()).is_err()) co_return false;
+    if ((co_await output->write_all(rstd::bytes::Bytes::from_vec(rstd::move(received)))).is_err())
+        co_return false;
+    if ((co_await rstd::move(*output).close()).is_err()) co_return false;
+    auto reopened_output = stdio_async::pipe::Sender::stdout();
+    if (reopened_output.is_err()) co_return false;
+    auto finished = co_await reopened_output->write_all(
+        rstd::bytes::Bytes::copy_from_slice("stdio-finished\n"_bytes));
+    auto closed = co_await rstd::move(*reopened_output).close();
+    co_return finished.is_ok() && closed.is_ok();
+}
+
+auto stdio_rejected_child(ref<str> mode) -> bool {
+#if RSTD_OS_UNIX
+    Option<rstd::fs::TempDir> directory;
+    Option<rstd::fs::File>    file;
+    if (mode == "regular"_str) {
+        directory = Some(rstd::fs::TempDir::make("rstd-stdio"_str).unwrap());
+        auto path = rstd::path::PathBuf::from(directory->path()).join("stdio"_str);
+        file      = Some(rstd::fs::File::create(path.as_path()).unwrap());
+        if (stdio_libc::dup2(file->as_raw_fd(), 0) < 0 ||
+            stdio_libc::dup2(file->as_raw_fd(), 1) < 0)
+            return false;
+    } else if (mode == "direction"_str) {
+        int descriptors[2];
+        if (stdio_libc::pipe(descriptors) < 0) return false;
+        auto read  = rstd::os::fd::OwnedFd::from_raw_fd(descriptors[0]);
+        auto write = rstd::os::fd::OwnedFd::from_raw_fd(descriptors[1]);
+        if (stdio_libc::dup2(descriptors[1], 0) < 0 || stdio_libc::dup2(descriptors[0], 1) < 0)
+            return false;
+    } else if (mode == "closed"_str) {
+        (void)stdio_libc::close(0);
+        (void)stdio_libc::close(1);
+    } else
+        return false;
+    for (unsigned attempt = 0; attempt < 2; ++attempt) {
+        auto input  = stdio_async::pipe::Receiver::stdin();
+        auto output = stdio_async::pipe::Sender::stdout();
+        if (input.is_ok() || output.is_ok()) return false;
+        if (mode == "closed"_str) {
+            if (input.unwrap_err().raw_os_error() != Some(rstd::i32(stdio_libc::EBADF)) ||
+                output.unwrap_err().raw_os_error() != Some(rstd::i32(stdio_libc::EBADF)))
+                return false;
+        } else {
+            if (input.unwrap_err().kind() !=
+                    rstd::io::ErrorKind { rstd::io::ErrorKind::InvalidInput } ||
+                output.unwrap_err().kind() !=
+                    rstd::io::ErrorKind { rstd::io::ErrorKind::InvalidInput })
+                return false;
+            if (stdio_libc::fcntl(0, stdio_libc::F_GETFL) < 0 ||
+                stdio_libc::fcntl(1, stdio_libc::F_GETFL) < 0 ||
+                (stdio_libc::fcntl(0, stdio_libc::F_GETFL) & stdio_libc::O_NONBLOCK) != 0 ||
+                (stdio_libc::fcntl(1, stdio_libc::F_GETFL) & stdio_libc::O_NONBLOCK) != 0)
+                return false;
+        }
+    }
+    return true;
+#else
+    if (mode != "synchronous"_str) return false;
+    for (unsigned attempt = 0; attempt < 2; ++attempt) {
+        auto input  = stdio_async::pipe::Receiver::stdin();
+        auto output = stdio_async::pipe::Sender::stdout();
+        if (input.is_ok() || output.is_ok()) return false;
+        if (input.unwrap_err().kind() != rstd::io::ErrorKind { rstd::io::ErrorKind::Unsupported } ||
+            output.unwrap_err().kind() != rstd::io::ErrorKind { rstd::io::ErrorKind::Unsupported })
+            return false;
+    }
+    return true;
+#endif
+}
+
+TEST(AsyncPipe, InheritedStdioChild) {
+    auto mode = rstd::env::var("RSTD_ASYNC_STDIO_TEST"_str);
+    if (mode.is_err()) return;
+    auto runtime = stdio_async::RuntimeBuilder::current_thread().enable_all().build().unwrap();
+    if (*mode == "echo"_str)
+        EXPECT_TRUE(runtime.block_on(stdio_echo_child()));
+    else
+        EXPECT_TRUE(stdio_rejected_child(mode->as_str()));
+}
+
+auto stdio_child_command(ref<str> mode) -> rstd::process::Command {
+    auto executable = rstd::env::args_os().next().unwrap();
+    auto command    = rstd::process::Command::make(executable.as_os_str());
+    command.arg("--gtest_filter=AsyncPipe.InheritedStdioChild"_str)
+        .env("RSTD_ASYNC_STDIO_TEST"_str, mode)
+        .set_stdin(rstd::process::Stdio::piped())
+        .set_stdout(rstd::process::Stdio::piped());
+    return command;
+}
+
+auto stdio_child_process(ref<str> mode) -> stdio_async::coro<bool> {
+    auto supervisor = stdio_async::ProcessSupervisor::make().unwrap();
+    auto command    = stdio_child_command(mode);
+    auto spawned    = supervisor.handle().spawn(command);
+    if (spawned.is_err()) {
+        (void)co_await supervisor.shutdown();
+        co_return false;
+    }
+    auto          child   = rstd::move(spawned).unwrap();
+    auto          input   = child.take_stdin().unwrap();
+    auto          output  = child.take_stdout().unwrap();
+    bool          success = true;
+    Vec<rstd::u8> captured;
+    if (mode == "echo"_str) {
+        for (;;) {
+            auto chunk = co_await output.read(rstd::usize(1024));
+            if (chunk.is_err() || chunk->is_empty()) {
+                success = false;
+                break;
+            }
+            captured.extend_from_slice(chunk->as_slice());
+            auto text = rstd::str_::from_utf8(captured.as_slice());
+            if (text.is_ok() && text->contains("stdio-ready\n"_str)) break;
+        }
+        if (success) {
+            auto written = co_await input.write_all(
+                rstd::bytes::Bytes::copy_from_slice("stdio-payload\n"_bytes));
+            success = written.is_ok();
+        }
+    }
+    if ((co_await rstd::move(input).close()).is_err()) success = false;
+    if (! success) (void)child.start_kill();
+    for (;;) {
+        auto chunk = co_await output.read(rstd::usize(1024));
+        if (chunk.is_err()) {
+            success = false;
+            (void)child.start_kill();
+            break;
+        }
+        if (chunk->is_empty()) break;
+        captured.extend_from_slice(chunk->as_slice());
+    }
+    auto closed  = co_await rstd::move(output).close();
+    auto status  = co_await child.wait();
+    auto stopped = co_await supervisor.shutdown();
+    if (mode == "echo"_str) {
+        auto text = rstd::str_::from_utf8(captured.as_slice());
+        success = success && text.is_ok() && text->contains("stdio-payload\nstdio-finished\n"_str);
+    }
+    co_return success&& closed.is_ok() && status.is_ok() && status->success() && stopped.is_ok();
+}
+
+auto stdio_run_child(ref<str> mode) -> bool {
+    auto runtime = stdio_async::RuntimeBuilder::current_thread().enable_all().build().unwrap();
+    auto result  = runtime.block_on(stdio_async::timeout(
+        stdio_child_process(mode).into_future(), rstd::time::Duration::from_secs(rstd::u64(5))));
+    return result.is_ok() && *result;
+}
+
+#if RSTD_OS_UNIX
+TEST(AsyncPipe, InheritedStdioDuplicatesCancelCloseAndReopenWithoutTakingGlobals) {
+    EXPECT_TRUE(stdio_run_child("echo"_str));
+}
+TEST(AsyncPipe, InheritedRegularFilesAreRejectedWithoutBlockingFallback) {
+    EXPECT_TRUE(stdio_run_child("regular"_str));
+}
+TEST(AsyncPipe, InheritedWrongDirectionsAreRejectedWithoutChangingFlags) {
+    EXPECT_TRUE(stdio_run_child("direction"_str));
+}
+TEST(AsyncPipe, MissingInheritedDescriptorsReturnErrors) {
+    EXPECT_TRUE(stdio_run_child("closed"_str));
+}
+#else
+TEST(AsyncPipe, InheritedSynchronousWindowsPipesAreUnsupportedAndRetainStandardHandles) {
+    EXPECT_TRUE(stdio_run_child("synchronous"_str));
+}
+#endif
+} // namespace
+#endif

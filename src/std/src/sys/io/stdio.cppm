@@ -15,6 +15,8 @@ export auto write_pipe_fd(int fd, slice<byte> buf) noexcept -> rstd::io::Result<
 export auto read_fd(int fd, mut_ref<MaybeUninit<byte>[]> buf) noexcept -> rstd::io::Result<usize>;
 export auto read_fd(int fd, mut_ref<byte[]> buf) noexcept -> rstd::io::Result<usize>;
 #if RSTD_OS_WINDOWS
+export auto clone_stdin_handle() noexcept -> rstd::io::Result<os::handle::OwnedHandle>;
+export auto clone_stdout_handle() noexcept -> rstd::io::Result<os::handle::OwnedHandle>;
 export auto validate_async_pipe(os::handle::BorrowedHandle handle, bool writing) noexcept
     -> rstd::io::Result<empty>;
 #endif
