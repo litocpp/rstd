@@ -6,25 +6,25 @@ import :array;
 template<typename Derived, typename Primitive, typename Tag>
 constexpr auto Integer<Derived, Primitive, Tag>::checked_add(Self rhs) const noexcept
     -> rstd::Option<Self> {
-    auto [value, overflow] = overflowing_add(rhs);
+    auto [value, overflow] = add_with_overflow(value_, rhs.value_);
     if (overflow) return rstd::option::None<Self>();
-    return rstd::option::Some(value);
+    return rstd::option::Some(Self(value));
 }
 
 template<typename Derived, typename Primitive, typename Tag>
 constexpr auto Integer<Derived, Primitive, Tag>::checked_sub(Self rhs) const noexcept
     -> rstd::Option<Self> {
-    auto [value, overflow] = overflowing_sub(rhs);
+    auto [value, overflow] = sub_with_overflow(value_, rhs.value_);
     if (overflow) return rstd::option::None<Self>();
-    return rstd::option::Some(value);
+    return rstd::option::Some(Self(value));
 }
 
 template<typename Derived, typename Primitive, typename Tag>
 constexpr auto Integer<Derived, Primitive, Tag>::checked_mul(Self rhs) const noexcept
     -> rstd::Option<Self> {
-    auto [value, overflow] = overflowing_mul(rhs);
+    auto [value, overflow] = mul_with_overflow(value_, rhs.value_);
     if (overflow) return rstd::option::None<Self>();
-    return rstd::option::Some(value);
+    return rstd::option::Some(Self(value));
 }
 
 template<typename Derived, typename Primitive, typename Tag>
@@ -54,9 +54,9 @@ constexpr auto Integer<Derived, Primitive, Tag>::checked_rem(Self rhs) const noe
 template<typename Derived, typename Primitive, typename Tag>
 constexpr auto Integer<Derived, Primitive, Tag>::checked_neg() const noexcept
     -> rstd::Option<Self> {
-    auto [value, overflow] = overflowing_neg();
+    auto [value, overflow] = sub_with_overflow(Primitive(0), value_);
     if (overflow) return rstd::option::None<Self>();
-    return rstd::option::Some(value);
+    return rstd::option::Some(Self(value));
 }
 
 template<typename Derived, typename Primitive, typename Tag>

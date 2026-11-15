@@ -279,6 +279,75 @@ static_assert(i32::MAX == 2147483647_i32);
 static_assert(u128::BITS == 128_u32);
 static_assert(i128::MIN + 1_i128 == -i128::MAX);
 
+template<typename T>
+constexpr auto arithmetic_result_boundaries() -> bool {
+    using Primitive = typename T::primitive_type;
+    static_assert(mtp::same_as<decltype(T().overflowing_add(T())), tuple<T, bool>>);
+    const auto one                  = T(Primitive(1));
+    const auto two                  = T(Primitive(2));
+    const auto six                  = T(Primitive(6));
+    const auto three                = T(Primitive(3));
+    auto [sum, add_overflow]        = T::MAX.overflowing_add(one);
+    auto [difference, sub_overflow] = T::MIN.overflowing_sub(one);
+    auto [product, mul_overflow]    = T::MAX.overflowing_mul(two);
+    if (sum != T::MIN || ! add_overflow || difference != T::MAX || ! sub_overflow ||
+        product != T(Primitive(-2)) || ! mul_overflow)
+        return false;
+    if (T::MAX.wrapping_add(one) != T::MIN || T::MIN.wrapping_sub(one) != T::MAX ||
+        T::MAX.wrapping_mul(two) != T(Primitive(-2)))
+        return false;
+    if (T::MAX.saturating_add(one) != T::MAX || T::MIN.saturating_sub(one) != T::MIN ||
+        T::MAX.saturating_mul(two) != T::MAX)
+        return false;
+    if (T::MAX.checked_add(one).is_some() || T::MIN.checked_sub(one).is_some() ||
+        T::MAX.checked_mul(two).is_some())
+        return false;
+    if (six + three != T(Primitive(9)) || six - three != three || six * three != T(Primitive(18)) ||
+        -T() != T())
+        return false;
+    if (six.checked_add(three).unwrap() != T(Primitive(9)) ||
+        six.checked_sub(three).unwrap() != three ||
+        six.checked_mul(three).unwrap() != T(Primitive(18)))
+        return false;
+    auto [negative, neg_overflow] = T::MIN.overflowing_neg();
+    if constexpr (T::IS_SIGNED) {
+        return negative == T::MIN && neg_overflow && T::MIN.checked_neg().is_none() &&
+               T::MIN.wrapping_neg() == T::MIN && T::MIN.saturating_neg() == T::MAX &&
+               -three == T(Primitive(-3));
+    } else {
+        return negative == T() && ! neg_overflow && T::MIN.checked_neg().unwrap() == T() &&
+               T::MIN.wrapping_neg() == T() && T::MIN.saturating_neg() == T();
+    }
+}
+
+static_assert(arithmetic_result_boundaries<u8>());
+static_assert(arithmetic_result_boundaries<u16>());
+static_assert(arithmetic_result_boundaries<u32>());
+static_assert(arithmetic_result_boundaries<u64>());
+static_assert(arithmetic_result_boundaries<u128>());
+static_assert(arithmetic_result_boundaries<usize>());
+static_assert(arithmetic_result_boundaries<i8>());
+static_assert(arithmetic_result_boundaries<i16>());
+static_assert(arithmetic_result_boundaries<i32>());
+static_assert(arithmetic_result_boundaries<i64>());
+static_assert(arithmetic_result_boundaries<i128>());
+static_assert(arithmetic_result_boundaries<isize>());
+
+TEST(IntArithmetic, ResultBoundariesMatchConstantEvaluation) {
+    EXPECT_TRUE(arithmetic_result_boundaries<u8>());
+    EXPECT_TRUE(arithmetic_result_boundaries<u16>());
+    EXPECT_TRUE(arithmetic_result_boundaries<u32>());
+    EXPECT_TRUE(arithmetic_result_boundaries<u64>());
+    EXPECT_TRUE(arithmetic_result_boundaries<u128>());
+    EXPECT_TRUE(arithmetic_result_boundaries<usize>());
+    EXPECT_TRUE(arithmetic_result_boundaries<i8>());
+    EXPECT_TRUE(arithmetic_result_boundaries<i16>());
+    EXPECT_TRUE(arithmetic_result_boundaries<i32>());
+    EXPECT_TRUE(arithmetic_result_boundaries<i64>());
+    EXPECT_TRUE(arithmetic_result_boundaries<i128>());
+    EXPECT_TRUE(arithmetic_result_boundaries<isize>());
+}
+
 TEST(IntFromStr, ParsesPrimitiveIntegerBoundaries) {
     EXPECT_EQ(from_str<i8>("-128"_str).unwrap(), i8::MIN);
     EXPECT_EQ(from_str<i8>("+127"_str).unwrap(), i8::MAX);

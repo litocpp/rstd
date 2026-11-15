@@ -312,8 +312,14 @@ void panic_invalid_shift(rstd::source_location loc = rstd::source_location::curr
 void panic_invalid_float_clamp(rstd::source_location loc = rstd::source_location::current());
 
 template<typename Primitive>
+struct IntegerOverflowResult {
+    Primitive value;
+    bool      overflow;
+};
+
+template<typename Primitive>
 constexpr auto add_with_overflow(Primitive lhs, Primitive rhs) noexcept
-    -> rstd::tuple<Primitive, bool> {
+    -> IntegerOverflowResult<Primitive> {
     Primitive  value {};
     bool const overflow = __builtin_add_overflow(lhs, rhs, &value);
     return { value, overflow };
@@ -321,7 +327,7 @@ constexpr auto add_with_overflow(Primitive lhs, Primitive rhs) noexcept
 
 template<typename Primitive>
 constexpr auto sub_with_overflow(Primitive lhs, Primitive rhs) noexcept
-    -> rstd::tuple<Primitive, bool> {
+    -> IntegerOverflowResult<Primitive> {
     Primitive  value {};
     bool const overflow = __builtin_sub_overflow(lhs, rhs, &value);
     return { value, overflow };
@@ -329,7 +335,7 @@ constexpr auto sub_with_overflow(Primitive lhs, Primitive rhs) noexcept
 
 template<typename Primitive>
 constexpr auto mul_with_overflow(Primitive lhs, Primitive rhs) noexcept
-    -> rstd::tuple<Primitive, bool> {
+    -> IntegerOverflowResult<Primitive> {
     Primitive  value {};
     bool const overflow = __builtin_mul_overflow(lhs, rhs, &value);
     return { value, overflow };
@@ -595,15 +601,15 @@ public:
 
     [[nodiscard]]
     constexpr auto wrapping_add(Self rhs) const noexcept -> Self {
-        return get<0>(overflowing_add(rhs));
+        return Self(add_with_overflow(value_, rhs.value_).value);
     }
     [[nodiscard]]
     constexpr auto wrapping_sub(Self rhs) const noexcept -> Self {
-        return get<0>(overflowing_sub(rhs));
+        return Self(sub_with_overflow(value_, rhs.value_).value);
     }
     [[nodiscard]]
     constexpr auto wrapping_mul(Self rhs) const noexcept -> Self {
-        return get<0>(overflowing_mul(rhs));
+        return Self(mul_with_overflow(value_, rhs.value_).value);
     }
     [[nodiscard]]
     constexpr auto wrapping_div(Self rhs) const -> Self {
@@ -615,7 +621,7 @@ public:
     }
     [[nodiscard]]
     constexpr auto wrapping_neg() const noexcept -> Self {
-        return get<0>(overflowing_neg());
+        return Self(sub_with_overflow(Primitive(0), value_).value);
     }
     template<typename Shift>
         requires rstd::mtp::same_as<rstd::mtp::rm_cvf<Shift>, U64>
@@ -684,24 +690,24 @@ public:
 
     [[nodiscard]]
     constexpr auto saturating_add(Self rhs) const noexcept -> Self {
-        auto [value, overflow] = overflowing_add(rhs);
-        if (! overflow) return value;
+        auto [value, overflow] = add_with_overflow(value_, rhs.value_);
+        if (! overflow) return Self(value);
         if constexpr (IS_SIGNED) return rhs.value_ < 0 ? Self::MIN : Self::MAX;
         return Self::MAX;
     }
 
     [[nodiscard]]
     constexpr auto saturating_sub(Self rhs) const noexcept -> Self {
-        auto [value, overflow] = overflowing_sub(rhs);
-        if (! overflow) return value;
+        auto [value, overflow] = sub_with_overflow(value_, rhs.value_);
+        if (! overflow) return Self(value);
         if constexpr (IS_SIGNED) return rhs.value_ < 0 ? Self::MAX : Self::MIN;
         return Self::MIN;
     }
 
     [[nodiscard]]
     constexpr auto saturating_mul(Self rhs) const noexcept -> Self {
-        auto [value, overflow] = overflowing_mul(rhs);
-        if (! overflow) return value;
+        auto [value, overflow] = mul_with_overflow(value_, rhs.value_);
+        if (! overflow) return Self(value);
         if constexpr (IS_SIGNED) {
             return (value_ < 0) != (rhs.value_ < 0) ? Self::MIN : Self::MAX;
         }
@@ -719,8 +725,8 @@ public:
 
     [[nodiscard]]
     constexpr auto saturating_neg() const noexcept -> Self {
-        auto [value, overflow] = overflowing_neg();
-        if (! overflow) return value;
+        auto [value, overflow] = sub_with_overflow(Primitive(0), value_);
+        if (! overflow) return Self(value);
         if constexpr (IS_SIGNED) return Self::MAX;
         return Self::MIN;
     }
@@ -889,21 +895,21 @@ public:
     }
 
     friend constexpr auto operator+(Self lhs, Self rhs) -> Self {
-        auto [value, overflow] = lhs.overflowing_add(rhs);
+        auto [value, overflow] = add_with_overflow(lhs.value_, rhs.value_);
         if (overflow && should_check_integer_overflow()) panic_overflow();
-        return value;
+        return Self(value);
     }
 
     friend constexpr auto operator-(Self lhs, Self rhs) -> Self {
-        auto [value, overflow] = lhs.overflowing_sub(rhs);
+        auto [value, overflow] = sub_with_overflow(lhs.value_, rhs.value_);
         if (overflow && should_check_integer_overflow()) panic_overflow();
-        return value;
+        return Self(value);
     }
 
     friend constexpr auto operator*(Self lhs, Self rhs) -> Self {
-        auto [value, overflow] = lhs.overflowing_mul(rhs);
+        auto [value, overflow] = mul_with_overflow(lhs.value_, rhs.value_);
         if (overflow && should_check_integer_overflow()) panic_overflow();
-        return value;
+        return Self(value);
     }
 
     friend constexpr auto operator/(Self lhs, Self rhs) -> Self {
@@ -919,9 +925,9 @@ public:
     }
 
     friend constexpr auto operator-(Self value) -> Self {
-        auto [result, overflow] = value.overflowing_neg();
+        auto [result, overflow] = sub_with_overflow(Primitive(0), value.value_);
         if (overflow && should_check_integer_overflow()) panic_overflow();
-        return result;
+        return Self(result);
     }
 
     friend constexpr auto operator~(Self value) noexcept -> Self {

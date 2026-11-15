@@ -424,7 +424,6 @@ public:
         if (this != &o) {
             // clean
             clear();
-            m_buf.drop();
 
             // assign
             m_buf = rstd::move(o.m_buf);
@@ -942,9 +941,13 @@ public:
 
     /// Clears the vector, destroying all elements but not deallocating memory.
     constexpr void clear() {
-        auto values = as_mut_slice();
-        m_len       = usize();
-        rstd::ptr_::drop_in_place(values);
+        if constexpr (mtp::triv_drop<T>) {
+            m_len = usize();
+        } else {
+            auto values = as_mut_slice();
+            m_len       = usize();
+            rstd::ptr_::drop_in_place(values);
+        }
     }
 
     /// Shortens the vector, dropping elements after `new_len`.

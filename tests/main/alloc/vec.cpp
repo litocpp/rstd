@@ -1307,6 +1307,30 @@ TEST(Vec, ClearAndTruncateDropOnlyRemovedNonTrivialElements) {
     EXPECT_EQ(drops, 5);
 }
 
+TEST(Vec, TrivialClearRetainsAllocationAndAllocator) {
+    VecAllocatorState state {};
+    {
+        auto values =
+            Vec<u8, VecTestAllocator>::with_capacity_in(usize(8), VecTestAllocator { &state });
+        values.push(u8(7));
+        values.push(u8(9));
+        auto* pointer  = values.data();
+        auto  capacity = values.capacity();
+        values.clear();
+        values.clear();
+        EXPECT_TRUE(values.is_empty());
+        EXPECT_EQ(values.data(), pointer);
+        EXPECT_EQ(values.capacity(), capacity);
+        EXPECT_EQ(values.allocator().state, &state);
+        EXPECT_EQ(state.allocations, 1);
+        EXPECT_EQ(state.deallocations, 0);
+        values.push(u8(11));
+        EXPECT_EQ(values[usize()], u8(11));
+        EXPECT_EQ(values.data(), pointer);
+    }
+    EXPECT_EQ(state.allocations, state.deallocations);
+}
+
 TEST(Vec, ReserveAndExtendFromSlice) {
     Vec<rstd::u8> v;
     v.reserve(usize(8));
@@ -1615,6 +1639,42 @@ TEST(Vec, StatefulAllocatorOwnsBufferAcrossMoveAndIteration) {
     EXPECT_EQ(first.allocations, first.deallocations);
     EXPECT_EQ(second.allocations, second.deallocations);
     EXPECT_GT(first.allocations, 1);
+}
+
+TEST(Vec, MoveAssignmentDropsOldElementsAndPreservesBufferOwnership) {
+    VecAllocatorState first {}, second {};
+    int               drops = 0;
+    {
+        auto source = Vec<CollectMoveOnly, VecTestAllocator>::with_capacity_in(
+            usize(2), VecTestAllocator { &first });
+        source.emplace_back(1, drops);
+        source.emplace_back(2, drops);
+        auto destination = Vec<CollectMoveOnly, VecTestAllocator>::with_capacity_in(
+            usize(1), VecTestAllocator { &second });
+        destination.emplace_back(9, drops);
+        auto* pointer  = source.data();
+        auto  capacity = source.capacity();
+        destination    = rstd::move(source);
+        EXPECT_EQ(drops, 1);
+        EXPECT_EQ(second.deallocations, 1);
+        EXPECT_EQ(destination.data(), pointer);
+        EXPECT_EQ(destination.capacity(), capacity);
+        EXPECT_EQ(destination.allocator().state, &first);
+        EXPECT_TRUE(source.is_empty());
+        EXPECT_EQ(source.capacity(), usize());
+        source.emplace_back(3, drops);
+        auto& same  = destination;
+        destination = rstd::move(same);
+        EXPECT_EQ(drops, 1);
+        EXPECT_EQ(destination.len(), usize(2));
+        EXPECT_EQ(destination[usize()].value, 1);
+        EXPECT_EQ(destination[usize(1)].value, 2);
+        destination.clear();
+        EXPECT_EQ(drops, 3);
+    }
+    EXPECT_EQ(drops, 4);
+    EXPECT_EQ(first.allocations, first.deallocations);
+    EXPECT_EQ(second.allocations, second.deallocations);
 }
 
 TEST(Vec, CloneInSelectsDestinationAllocator) {
