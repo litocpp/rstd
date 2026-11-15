@@ -59,7 +59,8 @@ class Box {
         auto mptr   = checked_ptr().as_mut_ptr();
         auto layout = Layout::for_value(mptr.as_ptr());
         rstd::ptr_::drop_in_place(mptr);
-        if (layout.size != usize()) as<Allocator>(allocator_).deallocate(mptr.as_raw_ptr(), layout);
+        if (layout.size() != usize())
+            as<Allocator>(allocator_).deallocate(mptr.as_raw_ptr(), layout);
         m_ptr = Option<NonNull<T>> {};
     }
 
@@ -119,8 +120,7 @@ public:
         using Output = Box<Slot[], A>;
         using Error  = ::alloc::collections::TryReserveError;
         auto checked = Layout::array<Slot>(length);
-        if (checked.is_none() || checked->size > usize(isize::MAX.to_primitive()))
-            return Err(Error::CapacityOverflow);
+        if (checked.is_none()) return Err(Error::CapacityOverflow);
         auto layout  = checked.unwrap_unchecked();
         auto pointer = reinterpret_cast<byte*>(Layout::make<Slot>().dangling());
         if (length != usize()) {

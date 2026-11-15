@@ -169,8 +169,8 @@ TEST(BoxTest, DynDropUsesConcreteDropAndLayout) {
         auto callback = Box<rstd::dyn<rstd::FnMut<void()>>>::make(CallbackDropProbe { drops });
 
         auto layout = rstd::alloc::Layout::for_value(callback.as_ptr());
-        EXPECT_EQ(layout.size, rstd::usize(sizeof(CallbackDropProbe)));
-        EXPECT_EQ(layout.align, rstd::usize(alignof(CallbackDropProbe)));
+        EXPECT_EQ(layout.size(), rstd::usize(sizeof(CallbackDropProbe)));
+        EXPECT_EQ(layout.align(), rstd::usize(alignof(CallbackDropProbe)));
 
         EXPECT_EQ(drops, 0);
     }

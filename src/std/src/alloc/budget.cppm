@@ -70,7 +70,7 @@ public:
     auto allocate(Layout layout) const -> Result<Allocation, AllocError> {
         auto  state = state_->lock().unwrap_unchecked();
         auto& stats = state->statistics;
-        if (layout.size > stats.limit - stats.live_bytes) {
+        if (layout.size() > stats.limit - stats.live_bytes) {
             ++stats.failures;
             return Err(AllocError {});
         }
@@ -79,7 +79,7 @@ public:
             ++stats.failures;
             return result;
         }
-        stats.live_bytes += layout.size;
+        stats.live_bytes += layout.size();
         stats.peak_bytes = stats.peak_bytes.max(stats.live_bytes);
         ++stats.allocations;
         return result;
@@ -88,7 +88,7 @@ public:
     void deallocate(void* pointer, Layout layout) const noexcept {
         auto state = state_->lock().unwrap_unchecked();
         as<Allocator>(state->upstream).deallocate(pointer, layout);
-        state->statistics.live_bytes -= layout.size;
+        state->statistics.live_bytes -= layout.size();
     }
 };
 

@@ -37,10 +37,10 @@ export class VirtualMemoryAllocator {
     mutable rstd::sync::Mutex<VirtualMemoryStatistics> statistics_;
 
     auto rounded_size(Layout layout) const noexcept -> Option<usize> {
-        if (layout.align > mapping_alignment_) return None();
-        auto const remainder = layout.size % page_size_;
-        if (remainder == usize()) return Some(layout.size);
-        return layout.size.checked_add(page_size_ - remainder);
+        if (layout.align() > mapping_alignment_) return None();
+        auto pages = Layout::from_size_align(layout.size(), page_size_);
+        if (pages.is_none()) return None();
+        return Some(pages->pad_to_align().size());
     }
 
 public:
@@ -69,7 +69,7 @@ public:
         auto  guard      = statistics_.lock().unwrap_unchecked();
         auto& statistics = *guard;
         ++statistics.allocation_calls;
-        if (layout.size == usize()) return Ok(Allocation { layout.dangling(), usize() });
+        if (layout.size() == usize()) return Ok(Allocation { layout.dangling(), usize() });
 
         auto mapping_size = rounded_size(layout);
         if (mapping_size.is_none()) return Err(AllocError {});
@@ -86,7 +86,7 @@ public:
             statistics.mappings_peak = statistics.mappings;
         }
         auto* storage = ::new (pointer) byte[mapping_size->to_primitive()];
-        return Ok(Allocation { storage, layout.size });
+        return Ok(Allocation { storage, layout.size() });
     }
 
     auto allocate_zeroed(Layout layout) const noexcept -> Result<Allocation, AllocError> {
@@ -94,7 +94,7 @@ public:
     }
 
     void deallocate(void* pointer, Layout layout) const noexcept {
-        if (layout.size == usize()) return;
+        if (layout.size() == usize()) return;
         auto  guard        = statistics_.lock().unwrap_unchecked();
         auto& statistics   = *guard;
         auto  mapping_size = rounded_size(layout);

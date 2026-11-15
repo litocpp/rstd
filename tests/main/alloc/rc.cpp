@@ -359,7 +359,7 @@ TEST(Rc, ArrayMetadataDrivesLayoutAndDrop) {
         {
             auto rc = make_rc<RcArrayDropProbe[]>(usize(3), initial);
             EXPECT_EQ(rc.as_ptr().len(), usize(3));
-            EXPECT_EQ(rstd::alloc::Layout::for_value(rc.as_ptr().as_ptr()).size,
+            EXPECT_EQ(rstd::alloc::Layout::for_value(rc.as_ptr().as_ptr()).size(),
                       usize(3 * sizeof(RcArrayDropProbe)));
         }
         EXPECT_EQ(drops, 3);

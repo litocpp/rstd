@@ -66,14 +66,12 @@ struct RawVec {
     }
 
     auto alignment() const noexcept -> usize {
-        auto natural = Layout::make<T>().align;
-        return allocation_layout.align > natural ? allocation_layout.align : natural;
+        auto natural = Layout::make<T>().align();
+        return allocation_layout.align() > natural ? allocation_layout.align() : natural;
     }
 
     static auto layout_for_capacity(usize capacity, usize alignment) -> Option<Layout> {
-        auto layout = Layout::array<T>(capacity);
-        if (layout.is_none() || layout->size > usize(isize::MAX.to_primitive())) return None();
-        return Layout::from_size_align(layout->size, alignment);
+        return Layout::array<T>(capacity, alignment);
     }
 
     auto layout_for_capacity(usize capacity) const -> Option<Layout> {
@@ -81,7 +79,7 @@ struct RawVec {
     }
 
     static auto
-    try_with_capacity(usize capacity, A allocator, usize alignment = Layout::make<T>().align)
+    try_with_capacity(usize capacity, A allocator, usize alignment = Layout::make<T>().align())
         -> Result<RawVec, TryReserveError> {
         auto layout = layout_for_capacity(capacity, alignment);
         if (layout.is_none()) return Err(TryReserveError::CapacityOverflow);
@@ -100,7 +98,7 @@ struct RawVec {
         if (checked_layout.is_none()) return Err(TryReserveError::CapacityOverflow);
         auto new_layout = checked_layout.unwrap_unchecked();
 
-        if (allocation_layout.size == usize()) {
+        if (allocation_layout.size() == usize()) {
             auto res = as<Allocator>(allocator).allocate(new_layout);
             if (res.is_err()) return Err(TryReserveError::AllocError);
             ptr = res.unwrap_unchecked().template as_mut_ptr<byte>();
@@ -140,7 +138,7 @@ struct RawVec {
         auto new_layout =
             (preserve_alignment ? layout_for_capacity(capacity) : Layout::array<T>(capacity))
                 .unwrap();
-        if (old_layout.size == new_layout.size && old_layout.align == new_layout.align) {
+        if (old_layout.size() == new_layout.size() && old_layout.align() == new_layout.align()) {
             cap = capacity;
             return Ok(empty {});
         }
@@ -148,7 +146,7 @@ struct RawVec {
 
         auto old_ptr = ptr.as_raw_ptr();
         if (capacity == usize()) {
-            if (old_layout.size != usize())
+            if (old_layout.size() != usize())
                 as<Allocator>(allocator).deallocate(old_ptr, old_layout);
             reset_ptr();
             allocation_layout = new_layout;
@@ -196,7 +194,7 @@ struct RawVec {
 
     void drop() {
         if (ptr != nullptr) {
-            debug_assert(allocation_layout.size > usize());
+            debug_assert(allocation_layout.size() > usize());
             as<Allocator>(allocator).deallocate(ptr.as_raw_ptr(), allocation_layout);
         }
         reset_ptr();
@@ -494,9 +492,8 @@ public:
         requires ByteConvertible<T>
     {
         constexpr auto width  = usize(sizeof(typename mut_ptr<T>::storage_type));
-        auto           layout = m_buf.allocation_layout;
-        layout.align          = m_buf.alignment();
-        auto result           = Vec<u8, A>(
+        auto           layout = m_buf.allocation_layout.align_to(m_buf.alignment()).unwrap();
+        auto           result = Vec<u8, A>(
             RawVec<u8, A>(m_buf.ptr, m_buf.cap * width, layout, rstd::move(m_buf.allocator)),
             m_len * width);
         m_buf.reset_ptr();
@@ -1306,13 +1303,13 @@ struct InPlaceAccess {
     static auto finish(VecIntoIter<Source, A>& source, usize length) -> Vec<Destination, A> {
         source.drop_remaining();
         auto source_buffer = source.take_buffer();
-        if (source_buffer.allocation_layout.size == usize()) {
+        if (source_buffer.allocation_layout.size() == usize()) {
             debug_assert(length == usize());
             return Vec<Destination, A>::make_in(rstd::move(source_buffer.allocator));
         }
 
         using DestinationStorage = typename mut_ptr<Destination>::storage_type;
-        auto capacity = source_buffer.allocation_layout.size / usize(sizeof(DestinationStorage));
+        auto capacity = source_buffer.allocation_layout.size() / usize(sizeof(DestinationStorage));
         debug_assert(length <= capacity);
 
         auto destination_buffer = RawVec<Destination, A>(source_buffer.ptr,
@@ -1392,7 +1389,7 @@ auto from_iter_in_place(I iterator) {
     auto* source_base = InPlaceAccess::allocation_base(source);
     auto  layout      = InPlaceAccess::allocation_layout(source);
     auto* destination = InPlaceAccess::allocation_bytes(source);
-    auto  capacity    = layout.size / usize(sizeof(DestStorage));
+    auto  capacity    = layout.size() / usize(sizeof(DestStorage));
 
     InPlaceDestinationGuard<T> guard(destination);
     for (;;) {

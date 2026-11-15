@@ -18,7 +18,7 @@ TEST(VirtualMemoryAllocator, MapsAlignedZeroedPagesAndReleasesThem) {
               0u);
     auto* bytes = static_cast<unsigned char*>(allocation.pointer);
     EXPECT_EQ(bytes[0], 0u);
-    EXPECT_EQ(bytes[layout.size.to_primitive() - 1], 0u);
+    EXPECT_EQ(bytes[layout.size().to_primitive() - 1], 0u);
 
     auto statistics = allocator.statistics();
     EXPECT_EQ(statistics.mapped_bytes, allocator.page_size() * usize(2));
@@ -49,15 +49,18 @@ TEST(VirtualMemoryAllocator, RejectsUnsupportedAlignmentAndOverflow) {
     auto const             over_aligned = Layout::from_size_align(usize(64), alignment).unwrap();
     EXPECT_TRUE(rstd::as<Allocator>(allocator).allocate(over_aligned).is_err());
 
-    auto const overflowing = Layout::from_size_align_unchecked(usize::MAX, usize(1));
+    auto const overflowing =
+        Layout::from_size_align(usize(isize::MAX.to_primitive()), usize(1)).unwrap();
     EXPECT_TRUE(rstd::as<Allocator>(allocator).allocate(overflowing).is_err());
     EXPECT_EQ(allocator.statistics().mappings, usize());
 }
 
 TEST(VirtualMemoryAllocator, ReportsOperatingSystemAllocationFailure) {
+    if constexpr (sizeof(rstd::size_t) < 8) GTEST_SKIP() << "requires a 64-bit address space";
     VirtualMemoryAllocator allocator;
-    auto const             size   = usize::MAX - (usize::MAX % allocator.page_size());
-    auto const             layout = Layout::from_size_align(size, usize(1)).unwrap();
+    auto const             maximum = usize(isize::MAX.to_primitive());
+    auto const             size    = maximum - (maximum % allocator.page_size());
+    auto const             layout  = Layout::from_size_align(size, usize(1)).unwrap();
 
     EXPECT_TRUE(rstd::as<Allocator>(allocator).allocate(layout).is_err());
     EXPECT_EQ(allocator.statistics().mappings, usize());

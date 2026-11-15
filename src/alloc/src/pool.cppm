@@ -59,7 +59,7 @@ class PoolAllocator {
         auto layout = slab->layout;
         if (slab->index != usize::MAX) {
             remove_available(slab);
-            stats_.retained_bytes -= layout.size;
+            stats_.retained_bytes -= layout.size();
         }
         if (slab->previous)
             slab->previous->next = slab->next;
@@ -67,8 +67,8 @@ class PoolAllocator {
             slabs_ = slab->next;
         if (slab->next) slab->next->previous = slab->previous;
         stats_.metadata_bytes -= usize(sizeof(Slab)) + slab->slots * usize(sizeof(Block));
-        stats_.reserved_bytes -= layout.size;
-        stats_.released_bytes += layout.size;
+        stats_.reserved_bytes -= layout.size();
+        stats_.released_bytes += layout.size();
         --stats_.slabs;
         rstd::destroy_at(slab);
         as<Allocator>(upstream_).deallocate(slab, layout);
@@ -116,25 +116,27 @@ class PoolAllocator {
     }
     auto resize(void* pointer, Layout old_layout, Layout new_layout, bool zeroed) const
         -> Result<Allocation, AllocError> {
-        if (old_layout.size != usize() && new_layout.size != usize()) {
+        if (old_layout.size() != usize() && new_layout.size() != usize()) {
             auto* block    = reinterpret_cast<Block*>(static_cast<byte*>(pointer) - sizeof(Block));
             auto  capacity = block->slab->stride - usize(sizeof(Block));
-            if (new_layout.size <= capacity &&
-                reinterpret_cast<rstd::uintptr_t>(pointer) % new_layout.align.to_primitive() == 0) {
-                if (zeroed && new_layout.size > old_layout.size)
-                    rstd::mem::memset(static_cast<byte*>(pointer) + old_layout.size.to_primitive(),
+            if (new_layout.size() <= capacity &&
+                reinterpret_cast<rstd::uintptr_t>(pointer) % new_layout.align().to_primitive() ==
+                    0) {
+                if (zeroed && new_layout.size() > old_layout.size())
+                    rstd::mem::memset(static_cast<byte*>(pointer) +
+                                          old_layout.size().to_primitive(),
                                       u8(),
-                                      new_layout.size - old_layout.size);
-                stats_.live_bytes -= old_layout.size;
-                stats_.live_bytes += new_layout.size;
+                                      new_layout.size() - old_layout.size());
+                stats_.live_bytes -= old_layout.size();
+                stats_.live_bytes += new_layout.size();
                 stats_.peak_live_bytes = stats_.peak_live_bytes.max(stats_.live_bytes);
                 ++stats_.in_place_resizes;
-                return Ok(Allocation { pointer, new_layout.size });
+                return Ok(Allocation { pointer, new_layout.size() });
             }
         }
         auto result = zeroed ? allocate_zeroed(new_layout) : allocate(new_layout);
         if (result.is_err()) return result;
-        auto copied = old_layout.size.min(new_layout.size);
+        auto copied = old_layout.size().min(new_layout.size());
         if (copied != usize()) rstd::mem::memcpy(result->pointer, pointer, copied);
         stats_.copied_bytes += copied;
         deallocate(pointer, old_layout);
@@ -151,65 +153,65 @@ public:
         while (slabs_) release(slabs_);
     }
     auto allocate(Layout layout) const -> Result<Allocation, AllocError> {
-        if (layout.size == usize()) return Ok(Allocation { layout.dangling(), usize() });
+        if (layout.size() == usize()) return Ok(Allocation { layout.dangling(), usize() });
         usize payload(16), index;
-        while (payload < layout.size && index < usize(classes - 1)) {
+        while (payload < layout.size() && index < usize(classes - 1)) {
             payload *= usize(2);
             ++index;
         }
-        bool  pooled = layout.align <= usize(16) && layout.size <= payload &&
+        bool  pooled = layout.align() <= usize(16) && layout.size() <= payload &&
                        payload <= options_.max_pooled_block_bytes;
         auto* slab   = pooled ? available_[index.to_primitive()] : nullptr;
         bool  reused = slab != nullptr;
         if (! slab)
             slab = new_slab(pooled ? index : usize::MAX,
-                            pooled ? payload : layout.size,
-                            layout.align.max(usize(16)));
+                            pooled ? payload : layout.size(),
+                            layout.align().max(usize(16)));
         if (! slab) {
             ++stats_.failures;
             return Err(AllocError {});
         }
-        if (pooled && slab->live == usize()) stats_.retained_bytes -= slab->layout.size;
+        if (pooled && slab->live == usize()) stats_.retained_bytes -= slab->layout.size();
         auto* block = slab->free;
         slab->free  = block->next;
         ++slab->live;
         if (pooled && ! slab->free) remove_available(slab);
-        stats_.live_bytes += layout.size;
+        stats_.live_bytes += layout.size();
         stats_.live_block_bytes += slab->stride;
         stats_.peak_live_bytes = stats_.peak_live_bytes.max(stats_.live_bytes);
         ++stats_.allocations;
         if (reused) ++stats_.reuses;
-        return Ok(Allocation { reinterpret_cast<byte*>(block) + sizeof(Block), layout.size });
+        return Ok(Allocation { reinterpret_cast<byte*>(block) + sizeof(Block), layout.size() });
     }
     auto grow(void* pointer, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
-        debug_assert(new_layout.size >= old_layout.size);
+        debug_assert(new_layout.size() >= old_layout.size());
         ++stats_.grows;
         return resize(pointer, old_layout, new_layout, false);
     }
     auto grow_zeroed(void* pointer, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
-        debug_assert(new_layout.size >= old_layout.size);
+        debug_assert(new_layout.size() >= old_layout.size());
         ++stats_.grows;
         return resize(pointer, old_layout, new_layout, true);
     }
     auto shrink(void* pointer, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
-        debug_assert(new_layout.size <= old_layout.size);
+        debug_assert(new_layout.size() <= old_layout.size());
         ++stats_.shrinks;
         return resize(pointer, old_layout, new_layout, false);
     }
     auto allocate_zeroed(Layout layout) const -> Result<Allocation, AllocError> {
         auto result = allocate(layout);
-        if (result.is_ok() && layout.size != usize())
-            rstd::mem::memset(result->pointer, u8(), layout.size);
+        if (result.is_ok() && layout.size() != usize())
+            rstd::mem::memset(result->pointer, u8(), layout.size());
         return result;
     }
     void deallocate(void* pointer, Layout layout) const noexcept {
-        if (layout.size == usize()) return;
+        if (layout.size() == usize()) return;
         auto* block = reinterpret_cast<Block*>(static_cast<byte*>(pointer) - sizeof(Block));
         auto* slab  = block->slab;
-        stats_.live_bytes -= layout.size;
+        stats_.live_bytes -= layout.size();
         stats_.live_block_bytes -= slab->stride;
         --slab->live;
         if (slab->index == usize::MAX) {
@@ -220,7 +222,7 @@ public:
         block->next = slab->free;
         slab->free  = block;
         if (slab->live == usize()) {
-            stats_.retained_bytes += slab->layout.size;
+            stats_.retained_bytes += slab->layout.size();
             if (stats_.retained_bytes > options_.retained_bytes) release(slab);
         }
     }
@@ -230,7 +232,7 @@ public:
         while (slab && stats_.retained_bytes > retain_bytes) {
             auto* next = slab->next;
             if (slab->live == usize()) {
-                report.bytes += slab->layout.size;
+                report.bytes += slab->layout.size();
                 ++report.slabs;
                 release(slab);
             }

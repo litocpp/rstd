@@ -33,7 +33,8 @@ TEST(FixedBufferAllocator, ExhaustionAndOverflowPreserveState) {
     auto oversized = rstd::alloc::Layout::from_size_align(usize(33), usize(16)).unwrap();
     EXPECT_TRUE(allocator.allocate(oversized).is_err());
     EXPECT_TRUE(allocator.grow(first.pointer, layout, oversized).is_err());
-    auto overflow = rstd::alloc::Layout::from_size_align(usize::MAX, usize(1)).unwrap();
+    auto overflow =
+        rstd::alloc::Layout::from_size_align(usize(isize::MAX.to_primitive()), usize(1)).unwrap();
     EXPECT_TRUE(allocator.allocate(overflow).is_err());
     EXPECT_EQ(allocator.statistics().used_bytes, before.used_bytes);
     EXPECT_EQ(allocator.statistics().padding_bytes, before.padding_bytes);
@@ -81,7 +82,7 @@ TEST(FixedBufferAllocator, EarlierBlockGrowthUsesRemainingBufferAndCopiesData) {
                               rstd::alloc::Layout::from_size_align(usize(4), usize(8)).unwrap())
                       .unwrap();
     EXPECT_EQ(shrunk.pointer, first.pointer);
-    EXPECT_EQ(shrunk.size, layout.size);
+    EXPECT_EQ(shrunk.size, layout.size());
     EXPECT_EQ(allocator.statistics().used_bytes, usize(16));
     auto grown = allocator.grow(first.pointer, layout, larger).unwrap();
     EXPECT_EQ(grown.pointer, storage + 16);

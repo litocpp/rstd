@@ -7,6 +7,8 @@ using rstd::alloc::Allocation;
 using rstd::alloc::Allocator;
 using rstd::alloc::AllocError;
 using rstd::alloc::Layout;
+using rstd::sync::Arc;
+using rstd::sync::Weak;
 
 struct ControlCounts {
     usize  attempts;
@@ -63,7 +65,7 @@ struct Impl<Allocator, ControlSource> : DefaultInImpl<Allocator, ControlSource> 
             if (! block.pointer) {
                 block = { result->pointer, layout };
                 ++state->counts.allocations;
-                state->counts.live_bytes += layout.size;
+                state->counts.live_bytes += layout.size();
                 state->counts.last_layout = layout;
                 return result;
             }
@@ -75,10 +77,10 @@ struct Impl<Allocator, ControlSource> : DefaultInImpl<Allocator, ControlSource> 
         auto state = this->self().domain->data.lock().unwrap();
         for (auto& block : state->blocks) {
             if (block.pointer == pointer) {
-                if (layout.size != block.layout.size || layout.align != block.layout.align)
+                if (layout.size() != block.layout.size() || layout.align() != block.layout.align())
                     ++state->counts.invalid_releases;
                 ++state->counts.deallocations;
-                state->counts.live_bytes -= block.layout.size;
+                state->counts.live_bytes -= block.layout.size();
                 as<Allocator>(::alloc::GLOBAL).deallocate(pointer, block.layout);
                 block.pointer = nullptr;
                 return;
@@ -92,6 +94,41 @@ struct Impl<Allocator, ControlSource> : DefaultInImpl<Allocator, ControlSource> 
 using ControlledArena    = rstd::alloc::SharedBumpArena<ControlSource>;
 using ControlledTracking = rstd::alloc::SharedTrackingAllocator<ControlSource>;
 using ControlledBudget   = rstd::alloc::BudgetAllocator<ControlSource>;
+
+struct alignas(256) ControlPayload {
+    int* drops;
+    explicit ControlPayload(int& drops): drops(&drops) {}
+    ~ControlPayload() { ++*drops; }
+};
+constexpr auto control_payload_layout = Arc<ControlPayload>::allocation_layout_in<ControlSource>();
+static_assert(control_payload_layout.is_some());
+static_assert(control_payload_layout->align() == usize(256));
+
+TEST(AllocatorControl, ConstantArcLayoutMatchesAllocationAndLastWeakRelease) {
+    ControlDomain                control;
+    int                          drops = 0;
+    Option<Weak<ControlPayload>> weak;
+    {
+        auto value = Arc<ControlPayload>::try_make_in(ControlSource(control), drops).unwrap();
+        EXPECT_EQ(reinterpret_cast<rstd::uintptr_t>(value.as_ptr().as_raw_ptr()) % 256, 0u);
+        weak        = Some(value.downgrade());
+        auto actual = control.snapshot().last_layout;
+        EXPECT_EQ(actual.size(), control_payload_layout->size());
+        EXPECT_EQ(actual.align(), control_payload_layout->align());
+        EXPECT_EQ(control.snapshot().allocations, usize(1));
+    }
+    EXPECT_EQ(drops, 1);
+    EXPECT_TRUE(weak->expired());
+    EXPECT_EQ(control.snapshot().deallocations, usize());
+    EXPECT_EQ(control.snapshot().handles, usize(1));
+    weak          = None();
+    auto released = control.snapshot();
+    EXPECT_EQ(released.deallocations, usize(1));
+    EXPECT_EQ(released.invalid_releases, usize());
+    EXPECT_EQ(released.handles, usize());
+    EXPECT_EQ(released.live_bytes, usize());
+    EXPECT_EQ(drops, 1);
+}
 
 template<typename Create>
 void expect_control_failure(Create create) {
@@ -109,9 +146,9 @@ template<typename Owner>
 void expect_control_layout(const ControlDomain& control) {
     auto expected = Owner::template control_layout<ControlSource>().unwrap();
     auto actual   = control.snapshot().last_layout;
-    EXPECT_EQ(actual.size, expected.size);
-    EXPECT_EQ(actual.align, expected.align);
-    EXPECT_GE(actual.align, usize(alignof(ControlSource)));
+    EXPECT_EQ(actual.size(), expected.size());
+    EXPECT_EQ(actual.align(), expected.align());
+    EXPECT_GE(actual.align(), usize(alignof(ControlSource)));
     EXPECT_EQ(control.snapshot().allocations, usize(1));
 }
 

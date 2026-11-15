@@ -87,8 +87,8 @@ TEST(RstdAsyncFrameAllocator, DeallocatesFrameWithOriginalAddressAndLayout) {
     }
     EXPECT_EQ(record.deallocations, 1);
     EXPECT_TRUE(record.matched_pointer);
-    EXPECT_EQ(record.returned.size, record.requested.size);
-    EXPECT_EQ(record.returned.align, record.requested.align);
+    EXPECT_EQ(record.returned.size(), record.requested.size());
+    EXPECT_EQ(record.returned.align(), record.requested.align());
 }
 
 TEST(RstdAsyncFrameAllocator, RejectsOverflowBeforeCallingAllocator) {
@@ -112,14 +112,14 @@ TEST(RstdAsyncFrameAllocator, ZeroSizedAllocationPreservesLayoutForSmallAlignmen
         auto pointer = async::allocate_coro_frame(0, static_cast<rstd::align_val_t>(alignment));
         ASSERT_NE(pointer, nullptr);
         EXPECT_EQ(record.allocations, 1);
-        EXPECT_GE(record.requested.align, usize(alignment));
-        EXPECT_GE(record.requested.align, usize(alignof(void*)));
-        EXPECT_GE(record.requested.align, usize(alignof(Layout)));
+        EXPECT_GE(record.requested.align(), usize(alignment));
+        EXPECT_GE(record.requested.align(), usize(alignof(void*)));
+        EXPECT_GE(record.requested.align(), usize(alignof(Layout)));
         async::deallocate_coro_frame(pointer, 0);
         EXPECT_EQ(record.deallocations, 1);
         EXPECT_TRUE(record.matched_pointer);
-        EXPECT_EQ(record.returned.size, record.requested.size);
-        EXPECT_EQ(record.returned.align, record.requested.align);
+        EXPECT_EQ(record.returned.size(), record.requested.size());
+        EXPECT_EQ(record.returned.align(), record.requested.align());
     }
 }
 

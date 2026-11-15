@@ -1049,7 +1049,7 @@ TEST(Vec, IntoBoxedSlice) {
     EXPECT_EQ(b.as_ptr().len(), usize(2));
     EXPECT_EQ(b.as_ptr()[usize()], 1);
     EXPECT_EQ(b.as_ptr()[usize(1)], 2);
-    EXPECT_EQ(rstd::alloc::Layout::for_value(b.as_ptr()).size, usize(2 * sizeof(int)));
+    EXPECT_EQ(rstd::alloc::Layout::for_value(b.as_ptr()).size(), usize(2 * sizeof(int)));
 }
 
 TEST(Vec, BoxedSliceRoundTripTransfersExactAllocation) {

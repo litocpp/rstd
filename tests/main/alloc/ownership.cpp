@@ -65,8 +65,8 @@ struct Impl<alloc::Allocator, OwnershipAllocator>
         auto& state = *this->self().state;
         ++state.allocation_attempts;
         if (state.fail || state.allocation_attempts == state.fail_at) return Err(AllocError {});
-        if (layout.size == usize()) return Ok(Allocation { layout.dangling(), usize() });
-        auto actual = Layout::from_size_align(layout.size + state.extra, layout.align).unwrap();
+        if (layout.size() == usize()) return Ok(Allocation { layout.dangling(), usize() });
+        auto actual = Layout::from_size_align(layout.size() + state.extra, layout.align()).unwrap();
         auto result = as<Allocator>(::alloc::GLOBAL).allocate(actual);
         if (result.is_err()) return result;
         auto allocation = result.unwrap_unchecked();
@@ -75,21 +75,21 @@ struct Impl<alloc::Allocator, OwnershipAllocator>
             if (! block.pointer) {
                 block = { allocation.pointer, layout, actual };
                 ++state.allocations;
-                state.live += layout.size;
+                state.live += layout.size();
                 return Ok(allocation);
             }
         }
         rstd::panic { "test block capacity exceeded" };
     }
     void deallocate(void* pointer, Layout layout) const noexcept {
-        if (layout.size == usize()) return;
+        if (layout.size() == usize()) return;
         auto& state = *this->self().state;
         for (auto& block : state.blocks) {
             if (block.pointer == pointer) {
-                if (layout.align != block.requested.align || layout.size < block.requested.size ||
-                    layout.size > block.actual.size)
+                if (layout.align() != block.requested.align() ||
+                    layout.size() < block.requested.size() || layout.size() > block.actual.size())
                     ++state.invalid_releases;
-                state.live -= block.requested.size;
+                state.live -= block.requested.size();
                 ++state.deallocations;
                 as<Allocator>(::alloc::GLOBAL).deallocate(pointer, block.actual);
                 block.pointer = nullptr;
@@ -775,10 +775,10 @@ struct rstd::Impl<Allocator, InPlaceAllocator> : rstd::DefaultInImpl<Allocator, 
         -> Result<Allocation, AllocError> {
         auto& state = *this->self().owner.state;
         for (auto& block : state.blocks) {
-            if (block.pointer == pointer && old_layout.align == new_layout.align) {
-                state.live -= old_layout.size - new_layout.size;
+            if (block.pointer == pointer && old_layout.align() == new_layout.align()) {
+                state.live -= old_layout.size() - new_layout.size();
                 block.requested = new_layout;
-                return Ok(Allocation { pointer, block.actual.size });
+                return Ok(Allocation { pointer, block.actual.size() });
             }
         }
         return Err(AllocError {});
@@ -793,14 +793,16 @@ struct rstd::Impl<Allocator, ZeroStorageAllocator>
     : rstd::DefaultInImpl<Allocator, ZeroStorageAllocator> {
     auto allocate(Layout layout) const -> Result<Allocation, AllocError> {
         auto physical = layout;
-        if (physical.size == usize()) physical.size = usize(1);
+        if (physical.size() == usize())
+            physical = Layout::from_size_align(usize(1), physical.align()).unwrap();
         auto result = rstd::as<Allocator>(alloc::GLOBAL).allocate(physical);
         if (result.is_err()) return result;
         ++*this->self().live;
-        return Ok(Allocation { result.unwrap_unchecked().pointer, layout.size });
+        return Ok(Allocation { result.unwrap_unchecked().pointer, layout.size() });
     }
     void deallocate(void* pointer, Layout layout) const noexcept {
-        if (layout.size == usize()) layout.size = usize(1);
+        if (layout.size() == usize())
+            layout = Layout::from_size_align(usize(1), layout.align()).unwrap();
         --*this->self().live;
         rstd::as<Allocator>(alloc::GLOBAL).deallocate(pointer, layout);
     }
@@ -879,7 +881,7 @@ TEST(AllocationOwnership, ZeroedAllocationInitializesReturnedExcessCapacity) {
     static_cast<unsigned char*>(raw.pointer)[0] = 42;
     raw = rstd::as<Allocator>(allocator).grow_zeroed(raw.pointer, small, large).unwrap();
     EXPECT_EQ(static_cast<unsigned char*>(raw.pointer)[0], 42);
-    for (rstd::size_t i = small.size.to_primitive(); i < raw.size.to_primitive(); ++i)
+    for (rstd::size_t i = small.size().to_primitive(); i < raw.size.to_primitive(); ++i)
         EXPECT_EQ(static_cast<unsigned char*>(raw.pointer)[i], 0);
     rstd::as<Allocator>(allocator).deallocate(raw.pointer, large);
     EXPECT_EQ(state.live, usize());

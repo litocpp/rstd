@@ -77,10 +77,10 @@ auto allocate_frame(rstd::size_t size, rstd::size_t alignment, bool aligned_glob
         if (allocation.is_err()) frame_allocation_failed(layout);
         base = allocation.unwrap_unchecked().pointer;
     } else if (aligned_global) {
-        base = ::operator new(layout.size.to_primitive(),
-                              static_cast<rstd::align_val_t>(layout.align.to_primitive()));
+        base = ::operator new(layout.size().to_primitive(),
+                              static_cast<rstd::align_val_t>(layout.align().to_primitive()));
     } else {
-        base = ::operator new(layout.size.to_primitive());
+        base = ::operator new(layout.size().to_primitive());
     }
     // Allocator storage is a byte array whose tail outlives the coroutine frame.
     auto* bytes = static_cast<byte*>(base);
@@ -156,14 +156,14 @@ void deallocate_coro_frame(void* frame, rstd::size_t size) noexcept {
         if ((flags & FRAME_ALIGNED) != 0) {
 #if defined(__cpp_sized_deallocation)
             ::operator delete(frame,
-                              layout.size.to_primitive(),
-                              static_cast<rstd::align_val_t>(layout.align.to_primitive()));
+                              layout.size().to_primitive(),
+                              static_cast<rstd::align_val_t>(layout.align().to_primitive()));
 #else
-            ::operator delete(frame, static_cast<rstd::align_val_t>(layout.align.to_primitive()));
+            ::operator delete(frame, static_cast<rstd::align_val_t>(layout.align().to_primitive()));
 #endif
         } else {
 #if defined(__cpp_sized_deallocation)
-            ::operator delete(frame, layout.size.to_primitive());
+            ::operator delete(frame, layout.size().to_primitive());
 #else
             ::operator delete(frame);
 #endif

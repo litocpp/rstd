@@ -140,11 +140,11 @@ public:
 
     auto grow(void* ptr, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
-        debug_assert(new_layout.size >= old_layout.size);
+        debug_assert(new_layout.size() >= old_layout.size());
         auto new_res = allocator().allocate(new_layout);
         if (new_res.is_ok()) {
             auto new_ptr = new_res.unwrap_unchecked();
-            if (old_layout.size != usize()) mem::memcpy(new_ptr.pointer, ptr, old_layout.size);
+            if (old_layout.size() != usize()) mem::memcpy(new_ptr.pointer, ptr, old_layout.size());
             allocator().deallocate(ptr, old_layout);
         }
         return new_res;
@@ -152,12 +152,12 @@ public:
 
     auto grow_zeroed(void* ptr, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
-        debug_assert(new_layout.size >= old_layout.size,
-                     "`new_layout.size` must be greater than or equal to `old_layout.size`");
+        debug_assert(new_layout.size() >= old_layout.size(),
+                     "`new_layout.size()` must be greater than or equal to `old_layout.size()`");
         auto result = allocator().allocate_zeroed(new_layout);
         if (result.is_ok()) {
-            if (old_layout.size != usize())
-                mem::memcpy(result.unwrap_unchecked().pointer, ptr, old_layout.size);
+            if (old_layout.size() != usize())
+                mem::memcpy(result.unwrap_unchecked().pointer, ptr, old_layout.size());
             allocator().deallocate(ptr, old_layout);
         }
         return result;
@@ -165,16 +165,16 @@ public:
 
     auto shrink(void* ptr, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
-        debug_assert(new_layout.size <= old_layout.size,
-                     "`new_layout.size` must be smaller than or equal to `old_layout.size`");
-        if (new_layout.size == old_layout.size && new_layout.align == old_layout.align) {
-            return Ok(Allocation { ptr, new_layout.size });
+        debug_assert(new_layout.size() <= old_layout.size(),
+                     "`new_layout.size()` must be smaller than or equal to `old_layout.size()`");
+        if (new_layout.size() == old_layout.size() && new_layout.align() == old_layout.align()) {
+            return Ok(Allocation { ptr, new_layout.size() });
         }
 
         auto new_res = allocator().allocate(new_layout);
         if (new_res.is_ok()) {
             auto new_ptr = new_res.unwrap_unchecked();
-            if (new_layout.size != usize()) mem::memcpy(new_ptr.pointer, ptr, new_layout.size);
+            if (new_layout.size() != usize()) mem::memcpy(new_ptr.pointer, ptr, new_layout.size());
             allocator().deallocate(ptr, old_layout);
         }
         return new_res;

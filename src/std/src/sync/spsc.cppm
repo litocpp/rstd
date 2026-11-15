@@ -244,7 +244,7 @@ public:
         if (slots_layout.is_none()) return Err(CreateError::InvalidCapacity());
         usize offset;
         auto  combined = alloc::Layout::make<State>().extend(*slots_layout, offset);
-        if (combined.is_none() || combined->size > usize(isize::MAX.to_primitive()))
+        if (combined.is_none() || combined->size() > usize(isize::MAX.to_primitive()))
             return Err(CreateError::InvalidCapacity());
         auto layout     = *combined;
         auto allocation = as<alloc::Allocator>(allocator).allocate(layout);

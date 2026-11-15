@@ -129,34 +129,54 @@ public:
 struct ArcAllocationLayout {
     Layout layout;
     usize  value_offset;
+    usize  allocator_offset;
 };
 
-constexpr auto arc_allocation_layout(Layout value_layout) -> ArcAllocationLayout {
+template<typename T, typename A>
+consteval auto arc_allocation_layout() -> Option<ArcAllocationLayout> {
     usize value_offset {};
-    auto  layout = Layout::make<ArcHeader>().extend(value_layout, value_offset).unwrap();
-    return ArcAllocationLayout { .layout = layout.pad_to_align(), .value_offset = value_offset };
+    auto  checked = Layout::make<ArcHeader>().extend(Layout::make<T>(), value_offset);
+    if (checked.is_none()) return None();
+    auto  layout = checked->pad_to_align();
+    usize allocator_offset {};
+    if constexpr (! mtp::same_as<A, ::alloc::Global>) {
+        auto extended = layout.extend(Layout::make<A>(), allocator_offset);
+        if (extended.is_none()) return None();
+        layout = extended->pad_to_align();
+    }
+    return Some(ArcAllocationLayout { layout, value_offset, allocator_offset });
 }
 
-template<typename T>
-auto arc_allocation_layout(mut_ptr<T> pointer) -> ArcAllocationLayout {
-    return arc_allocation_layout(Layout::for_value(pointer.as_ptr()));
+template<typename T, typename A>
+inline constexpr auto ARC_ALLOCATION_LAYOUT = arc_allocation_layout<T, A>();
+
+constexpr auto arc_value_offset(usize alignment) noexcept -> usize {
+    constexpr auto prefix = Layout::make<ArcHeader>().size().to_primitive();
+    auto           mask   = alignment.to_primitive() - 1;
+    return usize((prefix + mask) & ~mask);
 }
 
 template<typename T>
 auto arc_header(mut_ptr<T> pointer) noexcept -> ArcHeader* {
-    auto  allocation = arc_allocation_layout(pointer);
-    auto* value      = reinterpret_cast<rstd::byte*>(pointer.as_raw_ptr());
-    return rstd::launder(
-        reinterpret_cast<ArcHeader*>(value - allocation.value_offset.to_primitive()));
+    auto offset = [&] {
+        if constexpr (mtp::DSTArray<T>) {
+            constexpr auto offset = arc_value_offset(Layout::make<mtp::rm_ext<T>>().align());
+            return offset;
+        } else if constexpr (mtp::DST<T>) {
+            return arc_value_offset(pointer.metadata()->align);
+        } else {
+            constexpr auto offset = arc_value_offset(Layout::make<T>().align());
+            return offset;
+        }
+    }();
+    auto* value = reinterpret_cast<rstd::byte*>(pointer.as_raw_ptr());
+    return rstd::launder(reinterpret_cast<ArcHeader*>(value - offset.to_primitive()));
 }
 
 template<typename T, typename A>
 struct ArcAllocatorAccess {
     static auto stored(ArcHeader* header) noexcept -> A& {
-        usize offset;
-        (void)arc_allocation_layout(Layout::make<T>())
-            .layout.extend(Layout::make<A>(), offset)
-            .unwrap();
+        constexpr auto offset = ARC_ALLOCATION_LAYOUT<T, A>->allocator_offset;
         return *rstd::launder(
             reinterpret_cast<A*>(reinterpret_cast<rstd::byte*>(header) + offset.to_primitive()));
     }
@@ -180,20 +200,17 @@ struct ArcAllocatorAccess {
 
 template<typename T, typename A>
 void arc_release_allocation(ArcHeader* header) noexcept {
-    auto allocation = arc_allocation_layout(Layout::make<T>());
+    constexpr auto allocation = *ARC_ALLOCATION_LAYOUT<T, A>;
     if constexpr (mtp::same_as<A, ::alloc::Global>) {
         rstd::destroy_at(header);
         rstd::as<Allocator>(::alloc::GLOBAL).deallocate(header, allocation.layout);
     } else {
-        usize allocator_offset {};
-        auto  layout =
-            allocation.layout.extend(Layout::make<A>(), allocator_offset).unwrap().pad_to_align();
-        auto* stored    = rstd::launder(reinterpret_cast<A*>(reinterpret_cast<rstd::byte*>(header) +
-                                                             allocator_offset.to_primitive()));
+        auto* stored    = rstd::launder(reinterpret_cast<A*>(
+            reinterpret_cast<rstd::byte*>(header) + allocation.allocator_offset.to_primitive()));
         auto  allocator = rstd::move(*stored);
         rstd::destroy_at(stored);
         rstd::destroy_at(header);
-        rstd::as<Allocator>(allocator).deallocate(header, layout);
+        rstd::as<Allocator>(allocator).deallocate(header, allocation.layout);
     }
 }
 
@@ -201,38 +218,36 @@ template<typename T, bool AllocatorBound = false, typename A, typename F>
 auto arc_try_allocate_value_with(A allocator, F&& initialize)
     -> Result<mut_ptr<T>, rstd::alloc::AllocError> {
     static_assert(__is_nothrow_constructible(A, A&&), "allocator moves must not throw");
-    auto  allocation = arc_allocation_layout(Layout::make<T>());
-    usize allocator_offset {};
-    auto  layout = allocation.layout;
-    if constexpr (! mtp::same_as<A, ::alloc::Global>) {
-        auto checked_layout = layout.extend(Layout::make<A>(), allocator_offset);
-        if (checked_layout.is_none()) return Err(rstd::alloc::AllocError {});
-        layout = checked_layout.unwrap_unchecked().pad_to_align();
-    }
-    auto result = rstd::as<Allocator>(allocator).allocate(layout);
-    if (result.is_err()) return Err(rstd::alloc::AllocError {});
+    if constexpr (ARC_ALLOCATION_LAYOUT<T, A>.is_none()) {
+        return Err(rstd::alloc::AllocError {});
+    } else {
+        constexpr auto allocation = *ARC_ALLOCATION_LAYOUT<T, A>;
+        auto           result     = rstd::as<Allocator>(allocator).allocate(allocation.layout);
+        if (result.is_err()) return Err(rstd::alloc::AllocError {});
 
-    auto* base   = static_cast<rstd::byte*>(result.unwrap_unchecked().pointer);
-    auto* header = rstd::construct_at(reinterpret_cast<ArcHeader*>(base));
-    static constexpr ArcAllocationOps operations { &arc_release_allocation<T, A>,
-                                                   &ArcAllocatorAccess<T, A>::allocator,
-                                                   &ArcAllocatorAccess<T, A>::owner,
-                                                   AllocatorBound };
-    header->allocation = &operations;
-    if constexpr (! mtp::same_as<A, ::alloc::Global>) {
-        rstd::construct_at(reinterpret_cast<A*>(base + allocator_offset.to_primitive()),
-                           rstd::move(allocator));
-    }
-    struct Guard {
-        ArcHeader* header;
-        ~Guard() {
-            if (header) header->allocation->release(header);
+        auto* base   = static_cast<rstd::byte*>(result.unwrap_unchecked().pointer);
+        auto* header = rstd::construct_at(reinterpret_cast<ArcHeader*>(base));
+        static constexpr ArcAllocationOps operations { &arc_release_allocation<T, A>,
+                                                       &ArcAllocatorAccess<T, A>::allocator,
+                                                       &ArcAllocatorAccess<T, A>::owner,
+                                                       AllocatorBound };
+        header->allocation = &operations;
+        if constexpr (! mtp::same_as<A, ::alloc::Global>) {
+            rstd::construct_at(
+                reinterpret_cast<A*>(base + allocation.allocator_offset.to_primitive()),
+                rstd::move(allocator));
         }
-    } guard { header };
-    auto* value = reinterpret_cast<T*>(base + allocation.value_offset.to_primitive());
-    initialize(value, header->allocation->allocator(header));
-    guard.header = nullptr;
-    return Ok(mut_ptr<T>::from_raw_parts(value));
+        struct Guard {
+            ArcHeader* header;
+            ~Guard() {
+                if (header) header->allocation->release(header);
+            }
+        } guard { header };
+        auto* value = reinterpret_cast<T*>(base + allocation.value_offset.to_primitive());
+        initialize(value, header->allocation->allocator(header));
+        guard.header = nullptr;
+        return Ok(mut_ptr<T>::from_raw_parts(value));
+    }
 }
 
 template<typename T, typename A, typename... Args>
@@ -362,17 +377,15 @@ public:
     }
 
     template<typename A>
-    static auto allocation_layout_in() -> Option<Layout>
+    static constexpr auto allocation_layout_in() -> Option<Layout>
         requires Impled<T, Sized>
     {
-        auto layout = arc_allocation_layout(Layout::make<T>()).layout;
-        if constexpr (! mtp::same_as<A, ::alloc::Global>) {
-            usize offset;
-            auto  extended = layout.extend(Layout::make<A>(), offset);
-            if (extended.is_none()) return None();
-            layout = extended->pad_to_align();
+        if constexpr (ARC_ALLOCATION_LAYOUT<T, A>.is_none())
+            return None();
+        else {
+            constexpr auto layout = ARC_ALLOCATION_LAYOUT<T, A>->layout;
+            return Some(Layout(layout));
         }
-        return Some(layout);
     }
 
     /// The allocator must support concurrent operations and final release on another thread.

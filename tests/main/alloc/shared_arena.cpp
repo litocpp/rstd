@@ -26,13 +26,13 @@ struct Impl<alloc::Allocator, ::SharedArenaTestUpstream>
     : DefaultInImpl<alloc::Allocator, ::SharedArenaTestUpstream> {
     auto allocate(alloc::Layout layout) const -> Result<alloc::Allocation, alloc::AllocError> {
         ++this->self().state->allocations;
-        this->self().state->bytes += layout.size;
+        this->self().state->bytes += layout.size();
         return as<alloc::Allocator>(::alloc::GLOBAL).allocate(layout);
     }
 
     void deallocate(void* pointer, alloc::Layout layout) const noexcept {
         ++this->self().state->deallocations;
-        this->self().state->bytes -= layout.size;
+        this->self().state->bytes -= layout.size();
         as<alloc::Allocator>(::alloc::GLOBAL).deallocate(pointer, layout);
     }
 };

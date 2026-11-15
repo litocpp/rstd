@@ -117,42 +117,42 @@ public:
 
     auto allocate(Layout layout) const -> Result<Allocation, AllocError> {
         tracker_->add(tracker_->stats_.allocations, u64(1));
-        tracker_->add(tracker_->stats_.requested_bytes, u64(layout.size.to_primitive()));
-        return record(as<Allocator>(allocator_).allocate(layout), usize(), layout.size);
+        tracker_->add(tracker_->stats_.requested_bytes, u64(layout.size().to_primitive()));
+        return record(as<Allocator>(allocator_).allocate(layout), usize(), layout.size());
     }
     auto allocate_zeroed(Layout layout) const -> Result<Allocation, AllocError> {
         tracker_->add(tracker_->stats_.allocations, u64(1));
-        tracker_->add(tracker_->stats_.requested_bytes, u64(layout.size.to_primitive()));
-        return record(as<Allocator>(allocator_).allocate_zeroed(layout), usize(), layout.size);
+        tracker_->add(tracker_->stats_.requested_bytes, u64(layout.size().to_primitive()));
+        return record(as<Allocator>(allocator_).allocate_zeroed(layout), usize(), layout.size());
     }
     void deallocate(void* pointer, Layout layout) const noexcept {
         as<Allocator>(allocator_).deallocate(pointer, layout);
         tracker_->add(tracker_->stats_.deallocations, u64(1));
-        tracker_->release(layout.size);
+        tracker_->release(layout.size());
     }
     auto grow(void* pointer, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
         tracker_->add(tracker_->stats_.grows, u64(1));
-        tracker_->add(tracker_->stats_.requested_bytes, u64(new_layout.size.to_primitive()));
+        tracker_->add(tracker_->stats_.requested_bytes, u64(new_layout.size().to_primitive()));
         return record(as<Allocator>(allocator_).grow(pointer, old_layout, new_layout),
-                      old_layout.size,
-                      new_layout.size);
+                      old_layout.size(),
+                      new_layout.size());
     }
     auto grow_zeroed(void* pointer, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
         tracker_->add(tracker_->stats_.grows, u64(1));
-        tracker_->add(tracker_->stats_.requested_bytes, u64(new_layout.size.to_primitive()));
+        tracker_->add(tracker_->stats_.requested_bytes, u64(new_layout.size().to_primitive()));
         return record(as<Allocator>(allocator_).grow_zeroed(pointer, old_layout, new_layout),
-                      old_layout.size,
-                      new_layout.size);
+                      old_layout.size(),
+                      new_layout.size());
     }
     auto shrink(void* pointer, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
         tracker_->add(tracker_->stats_.shrinks, u64(1));
-        tracker_->add(tracker_->stats_.requested_bytes, u64(new_layout.size.to_primitive()));
+        tracker_->add(tracker_->stats_.requested_bytes, u64(new_layout.size().to_primitive()));
         return record(as<Allocator>(allocator_).shrink(pointer, old_layout, new_layout),
-                      old_layout.size,
-                      new_layout.size);
+                      old_layout.size(),
+                      new_layout.size());
     }
 };
 

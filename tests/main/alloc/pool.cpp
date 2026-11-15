@@ -18,15 +18,15 @@ void exercise_pool_in_place(const A& pool) {
     auto grown_layout = Layout::from_size_align(usize(31), usize(16)).unwrap();
     auto tiny         = Layout::from_size_align(usize(7), usize(8)).unwrap();
     auto initial      = api.allocate(full).unwrap();
-    rstd::mem::memset(initial.pointer, u8(0xab), full.size);
+    rstd::mem::memset(initial.pointer, u8(0xab), full.size());
     auto baseline = pool.statistics();
     auto shrunk   = api.shrink(initial.pointer, full, small).unwrap();
     EXPECT_EQ(shrunk.pointer, initial.pointer);
-    EXPECT_EQ(shrunk.size, small.size);
-    EXPECT_EQ(pool.statistics().live_bytes, small.size);
+    EXPECT_EQ(shrunk.size, small.size());
+    EXPECT_EQ(pool.statistics().live_bytes, small.size());
     auto grown = api.grow(shrunk.pointer, small, grown_layout).unwrap();
     EXPECT_EQ(grown.pointer, initial.pointer);
-    EXPECT_EQ(grown.size, grown_layout.size);
+    EXPECT_EQ(grown.size, grown_layout.size());
     for (unsigned i = 0; i < 31; ++i)
         EXPECT_EQ(static_cast<unsigned char*>(grown.pointer)[i], 0xab);
     shrunk      = api.shrink(grown.pointer, grown_layout, tiny).unwrap();
@@ -35,8 +35,8 @@ void exercise_pool_in_place(const A& pool) {
     for (unsigned i = 0; i < 32; ++i)
         EXPECT_EQ(static_cast<unsigned char*>(zeroed.pointer)[i], i < 7 ? 0xab : 0);
     auto stats = pool.statistics();
-    EXPECT_EQ(stats.live_bytes, full.size);
-    EXPECT_EQ(stats.peak_live_bytes, full.size);
+    EXPECT_EQ(stats.live_bytes, full.size());
+    EXPECT_EQ(stats.peak_live_bytes, full.size());
     EXPECT_EQ(stats.live_block_bytes, baseline.live_block_bytes);
     EXPECT_EQ(stats.reserved_bytes, baseline.reserved_bytes);
     EXPECT_EQ(stats.metadata_bytes, baseline.metadata_bytes);
@@ -72,7 +72,7 @@ TEST(PoolAllocator, DedicatedBlockKeepsItsCapacityAcrossShrinkAndRegrow) {
     auto small                            = Layout::from_size_align(usize(8), usize(8)).unwrap();
     auto grown_layout                     = Layout::from_size_align(usize(384), usize(64)).unwrap();
     auto initial                          = api.allocate(original).unwrap();
-    rstd::mem::memset(initial.pointer, u8(57), original.size);
+    rstd::mem::memset(initial.pointer, u8(57), original.size());
     auto reserved = upstream.statistics().live_bytes;
     auto shrunk   = api.shrink(initial.pointer, original, small).unwrap();
     auto grown    = api.grow_zeroed(shrunk.pointer, small, grown_layout).unwrap();
@@ -106,7 +106,7 @@ TEST(PoolAllocator, FailedMovingResizesPreservePayloadAndAccounting) {
     auto larger                           = Layout::from_size_align(usize(65), usize(16)).unwrap();
     auto huge    = Layout::from_size_align(usize(2048), usize(64)).unwrap();
     auto initial = api.allocate(original).unwrap();
-    rstd::mem::memset(initial.pointer, u8(111), original.size);
+    rstd::mem::memset(initial.pointer, u8(111), original.size());
     auto grown = api.grow(initial.pointer, original, same_slot).unwrap();
     EXPECT_EQ(grown.pointer, initial.pointer);
     auto before = pool.statistics();
@@ -139,7 +139,7 @@ TEST(PoolAllocator, MovingResizeCopiesOnlyPreservedPrefixAndHonorsNewAlignment) 
     auto            original = Layout::from_size_align(usize(17), usize(16)).unwrap();
     auto            larger   = Layout::from_size_align(usize(65), usize(16)).unwrap();
     auto            initial  = api.allocate(original).unwrap();
-    rstd::mem::memset(initial.pointer, u8(63), original.size);
+    rstd::mem::memset(initial.pointer, u8(63), original.size());
     auto grown = api.grow_zeroed(initial.pointer, original, larger).unwrap();
     EXPECT_NE(grown.pointer, initial.pointer);
     for (unsigned i = 0; i < 65; ++i)
@@ -148,7 +148,7 @@ TEST(PoolAllocator, MovingResizeCopiesOnlyPreservedPrefixAndHonorsNewAlignment) 
         Layout::from_size_align(usize(8), incompatible_pool_alignment(grown.pointer)).unwrap();
     auto shrunk = api.shrink(grown.pointer, larger, aligned).unwrap();
     EXPECT_NE(shrunk.pointer, grown.pointer);
-    EXPECT_EQ(reinterpret_cast<uintptr_t>(shrunk.pointer) % aligned.align.to_primitive(), 0u);
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(shrunk.pointer) % aligned.align().to_primitive(), 0u);
     for (unsigned i = 0; i < 8; ++i) EXPECT_EQ(static_cast<unsigned char*>(shrunk.pointer)[i], 63);
     EXPECT_EQ(pool.statistics().copied_bytes, usize(25));
     EXPECT_EQ(pool.statistics().in_place_resizes, usize());

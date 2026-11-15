@@ -260,7 +260,7 @@ static void pool_lifetime() {
     auto layout = Layout::from_size_align(usize(33), usize(16)).unwrap();
     auto api    = rstd::as<Allocator>(pool);
     auto block  = api.allocate(layout).unwrap();
-    rstd::mem::memset(block.pointer, u8(0xff), layout.size);
+    rstd::mem::memset(block.pointer, u8(0xff), layout.size());
     auto address = block.pointer;
     api.deallocate(block.pointer, layout);
     block = api.allocate_zeroed(layout).unwrap();
@@ -272,7 +272,7 @@ static void pool_lifetime() {
     auto small        = Layout::from_size_align(usize(64), usize(16)).unwrap();
     auto grown_layout = Layout::from_size_align(usize(128), usize(16)).unwrap();
     auto original     = api.allocate(small).unwrap();
-    rstd::mem::memset(original.pointer, u8(42), small.size);
+    rstd::mem::memset(original.pointer, u8(42), small.size());
     auto grown = api.grow_zeroed(original.pointer, small, grown_layout).unwrap();
     for (unsigned i = 0; i < 128; ++i)
         rstd_assert(static_cast<unsigned char*>(grown.pointer)[i] == (i < 64 ? 42 : 0));
@@ -283,7 +283,9 @@ static void pool_lifetime() {
     rstd_assert(reinterpret_cast<rstd::uintptr_t>(allocation.pointer) % 64 == 0);
     api.deallocate(allocation.pointer, large);
     rstd_assert(pool.upstream_statistics().mapped_bytes == usize());
-    rstd_assert(api.allocate(Layout::from_size_align_unchecked(usize::MAX, usize(16))).is_err());
+    auto oversized =
+        Layout::from_size_align(usize(isize::MAX.to_primitive()) - usize(15), usize(16)).unwrap();
+    rstd_assert(api.allocate(oversized).is_err());
     auto typed =
         ::alloc::vec::Vec<u64, SharedPoolAllocator<VirtualMemoryAllocator>>::make_in(pool.clone());
     typed.reserve_exact(usize(4));

@@ -32,9 +32,9 @@ public:
     static auto layout(usize count) -> Option<Layout> {
         auto values = Layout::array<T>(count);
         if (values.is_none()) return None();
-        auto size = values->size.checked_add(count);
+        auto size = values->size().checked_add(count);
         if (size.is_none() || *size > usize(isize::MAX.to_primitive())) return None();
-        return Layout::from_size_align(*size, values->align);
+        return Layout::from_size_align(*size, values->align());
     }
     static auto max_items(usize count) noexcept -> usize { return count - count / usize(8); }
     static auto count_for(usize capacity) -> Result<usize, TryReserveError> {
@@ -162,7 +162,7 @@ public:
     auto capacity() const noexcept -> usize { return max_items(buckets_); }
     auto bucket_count() const noexcept -> usize { return buckets_; }
     auto allocation_size() const noexcept -> usize {
-        return data_ ? layout(buckets_).unwrap().size : usize();
+        return data_ ? layout(buckets_).unwrap().size() : usize();
     }
     auto full(usize index) const noexcept -> bool {
         return control()[index.to_primitive()] < EMPTY;

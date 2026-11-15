@@ -456,7 +456,7 @@ TEST(ArcDyn, EmptyConcreteUsesDynamicLayout) {
     auto arc = ArcDyn::make(ArcDynEmptyPayload {});
 
     EXPECT_EQ(arc->value(), 7);
-    EXPECT_EQ(rstd::alloc::Layout::for_value(arc.as_ptr().as_ptr()).size,
+    EXPECT_EQ(rstd::alloc::Layout::for_value(arc.as_ptr().as_ptr()).size(),
               rstd::usize(sizeof(ArcDynEmptyPayload)));
 }
 

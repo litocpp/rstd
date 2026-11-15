@@ -42,14 +42,15 @@ struct Impl<alloc::Allocator, ::ArenaTestUpstream>
         auto& state = *this->self().state;
         if (++state.attempts == state.fail_at) return Err(alloc::AllocError {});
         auto physical =
-            alloc::Layout::from_size_align(layout.size + state.extra_bytes, layout.align).unwrap();
+            alloc::Layout::from_size_align(layout.size() + state.extra_bytes, layout.align())
+                .unwrap();
         auto allocation = as<alloc::Allocator>(::alloc::GLOBAL).allocate(physical);
         if (allocation.is_err()) return allocation;
         for (auto& record : state.records) {
             if (! record.pointer) {
                 record = { allocation->pointer, layout, physical };
                 ++state.allocations;
-                state.live_bytes += layout.size;
+                state.live_bytes += layout.size();
                 return allocation;
             }
         }
@@ -61,10 +62,10 @@ struct Impl<alloc::Allocator, ::ArenaTestUpstream>
         auto& state = *this->self().state;
         for (auto& record : state.records) {
             if (record.pointer == pointer) {
-                state.release_layout_mismatch |=
-                    record.requested.size != layout.size || record.requested.align != layout.align;
+                state.release_layout_mismatch |= record.requested.size() != layout.size() ||
+                                                 record.requested.align() != layout.align();
                 ++state.deallocations;
-                state.live_bytes -= record.requested.size;
+                state.live_bytes -= record.requested.size();
                 as<alloc::Allocator>(::alloc::GLOBAL).deallocate(pointer, record.physical);
                 record.pointer = nullptr;
                 return;
@@ -223,7 +224,7 @@ TEST(Arena, ZeroAndOveralignedRequestsPreserveReleaseLayouts) {
         auto aligned = rstd::alloc::Layout::from_size_align(usize(17), usize(4096)).unwrap();
         auto value   = arena.allocate(aligned).unwrap();
         EXPECT_EQ(reinterpret_cast<uintptr_t>(value.pointer) % 4096, 0u);
-        EXPECT_EQ(value.size, aligned.size);
+        EXPECT_EQ(value.size, aligned.size());
         EXPECT_EQ(arena.stats().reserved_bytes, upstream.live_bytes);
         arena.reset(alloc::ArenaReset::retain_capacity());
         EXPECT_EQ(upstream.live_bytes, usize());
@@ -234,7 +235,8 @@ TEST(Arena, ZeroAndOveralignedRequestsPreserveReleaseLayouts) {
 TEST(Arena, RejectsOverflowBeforeCallingUpstream) {
     ArenaUpstreamState upstream {};
     alloc::BumpArena   arena(usize(1024), ArenaTestUpstream { &upstream });
-    auto               layout = rstd::alloc::Layout::from_size_align(usize::MAX, usize(1)).unwrap();
+    auto               layout =
+        rstd::alloc::Layout::from_size_align(usize(isize::MAX.to_primitive()), usize(1)).unwrap();
     EXPECT_TRUE(arena.allocate(layout).is_err());
     EXPECT_EQ(upstream.attempts, 0);
     EXPECT_EQ(arena.stats().reserved_bytes, usize());

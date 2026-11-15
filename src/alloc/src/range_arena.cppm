@@ -39,7 +39,7 @@ public:
                         Metadata            metadata = Metadata {})
         : upstream_(rstd::move(upstream)),
           metadata_(rstd::move(metadata)),
-          ranges_(capacity.size.to_primitive(), allocator_ref(metadata_)),
+          ranges_(capacity.size().to_primitive(), allocator_ref(metadata_)),
           entries_(vec::Vec<Entry, MetadataRef>::make_in(allocator_ref(metadata_))),
           block_layout_(capacity) {}
     RangeArena(const RangeArena&)            = delete;
@@ -49,10 +49,10 @@ public:
     }
     auto allocate(rstd::alloc::Layout layout)
         -> Result<rstd::alloc::Allocation, rstd::alloc::AllocError> {
-        if (layout.size == usize())
+        if (layout.size() == usize())
             return Ok(rstd::alloc::Allocation { layout.dangling(), usize() });
-        if (layout.align > block_layout_.align ||
-            ! ValidRangeLayout(layout.size.to_primitive(), layout.align.to_primitive()))
+        if (layout.align() > block_layout_.align() ||
+            ! ValidRangeLayout(layout.size().to_primitive(), layout.align().to_primitive()))
             return Err(rstd::alloc::AllocError {});
         if (entries_.try_reserve(usize(1)).is_err()) return Err(rstd::alloc::AllocError {});
         if (! base_) {
@@ -60,15 +60,16 @@ public:
             if (block.is_err()) return Err(rstd::alloc::AllocError {});
             base_ = static_cast<byte*>(block.unwrap_unchecked().pointer);
         }
-        auto allocation = ranges_.allocate(layout.size.to_primitive(), layout.align.to_primitive());
+        auto allocation =
+            ranges_.allocate(layout.size().to_primitive(), layout.align().to_primitive());
         if (allocation.is_err()) return Err(rstd::alloc::AllocError {});
         auto range   = allocation.unwrap_unchecked();
         auto pointer = base_ + range.offset;
         entries_.push(Entry { range.id, pointer, layout });
-        return Ok(rstd::alloc::Allocation { pointer, layout.size });
+        return Ok(rstd::alloc::Allocation { pointer, layout.size() });
     }
     void deallocate(void* pointer, rstd::alloc::Layout layout) noexcept {
-        if (layout.size == usize()) return;
+        if (layout.size() == usize()) return;
         for (usize i {}; i < entries_.len(); ++i) {
             if (entries_[i].pointer != pointer) continue;
             auto result = ranges_.deallocate(entries_[i].id);

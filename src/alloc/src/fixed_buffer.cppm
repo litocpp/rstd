@@ -23,12 +23,12 @@ class FixedBufferAllocator {
     mutable usize padding_ {};
 
     auto offset_of(void* pointer, Layout layout) const noexcept -> Option<usize> {
-        if (layout.size == usize()) return None();
+        if (layout.size() == usize()) return None();
         auto address = usize(reinterpret_cast<uintptr_t>(pointer));
         auto base    = usize(reinterpret_cast<uintptr_t>(base_));
         if (address < base) return None();
         auto offset = address - base;
-        if (offset > cursor_ || layout.size > cursor_ - offset) return None();
+        if (offset > cursor_ || layout.size() > cursor_ - offset) return None();
         return Some(offset);
     }
 
@@ -48,64 +48,65 @@ public:
     auto operator=(FixedBufferAllocator&&) -> FixedBufferAllocator&      = delete;
 
     auto allocate(Layout layout) const -> Result<Allocation, AllocError> {
-        if (layout.size == usize()) return Ok(Allocation { layout.dangling(), usize() });
+        if (layout.size() == usize()) return Ok(Allocation { layout.dangling(), usize() });
         auto base    = usize(reinterpret_cast<uintptr_t>(base_));
         auto address = base.checked_add(cursor_);
         if (address.is_none()) return Err(AllocError {});
-        auto mask   = layout.align - usize(1);
+        auto mask   = layout.align() - usize(1);
         auto padded = address->checked_add(mask);
         if (padded.is_none()) return Err(AllocError {});
         auto offset = (*padded & ~mask) - base;
-        auto end    = offset.checked_add(layout.size);
+        auto end    = offset.checked_add(layout.size());
         if (end.is_none() || *end > capacity_) return Err(AllocError {});
         padding_ += offset - cursor_;
         cursor_ = *end;
-        return Ok(Allocation { base_ + offset.to_primitive(), layout.size });
+        return Ok(Allocation { base_ + offset.to_primitive(), layout.size() });
     }
 
     auto grow(void* pointer, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
-        debug_assert(new_layout.size >= old_layout.size);
+        debug_assert(new_layout.size() >= old_layout.size());
         auto offset = offset_of(pointer, old_layout);
-        if (offset.is_some() && *offset + old_layout.size == cursor_ &&
-            aligned(pointer, new_layout.align)) {
-            auto end = offset->checked_add(new_layout.size);
+        if (offset.is_some() && *offset + old_layout.size() == cursor_ &&
+            aligned(pointer, new_layout.align())) {
+            auto end = offset->checked_add(new_layout.size());
             if (end.is_none() || *end > capacity_) return Err(AllocError {});
             cursor_ = *end;
-            return Ok(Allocation { pointer, new_layout.size });
+            return Ok(Allocation { pointer, new_layout.size() });
         }
         auto allocation = allocate(new_layout);
         if (allocation.is_err()) return allocation;
-        if (old_layout.size != usize()) mem::memcpy(allocation->pointer, pointer, old_layout.size);
+        if (old_layout.size() != usize())
+            mem::memcpy(allocation->pointer, pointer, old_layout.size());
         return allocation;
     }
 
     auto grow_zeroed(void* pointer, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
         auto allocation = grow(pointer, old_layout, new_layout);
-        if (allocation.is_ok() && allocation->size > old_layout.size)
-            mem::memset(static_cast<byte*>(allocation->pointer) + old_layout.size.to_primitive(),
+        if (allocation.is_ok() && allocation->size > old_layout.size())
+            mem::memset(static_cast<byte*>(allocation->pointer) + old_layout.size().to_primitive(),
                         u8(),
-                        allocation->size - old_layout.size);
+                        allocation->size - old_layout.size());
         return allocation;
     }
 
     auto shrink(void* pointer, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
-        debug_assert(new_layout.size <= old_layout.size);
+        debug_assert(new_layout.size() <= old_layout.size());
         auto offset = offset_of(pointer, old_layout);
-        auto last   = offset.is_some() && *offset + old_layout.size == cursor_;
-        if (new_layout.size == usize()) {
+        auto last   = offset.is_some() && *offset + old_layout.size() == cursor_;
+        if (new_layout.size() == usize()) {
             if (last) cursor_ = *offset;
             return Ok(Allocation { new_layout.dangling(), usize() });
         }
-        if (aligned(pointer, new_layout.align)) {
-            if (last) cursor_ = *offset + new_layout.size;
-            return Ok(Allocation { pointer, last ? new_layout.size : old_layout.size });
+        if (aligned(pointer, new_layout.align())) {
+            if (last) cursor_ = *offset + new_layout.size();
+            return Ok(Allocation { pointer, last ? new_layout.size() : old_layout.size() });
         }
         auto allocation = allocate(new_layout);
         if (allocation.is_err()) return allocation;
-        mem::memcpy(allocation->pointer, pointer, new_layout.size);
+        mem::memcpy(allocation->pointer, pointer, new_layout.size());
         return allocation;
     }
 
