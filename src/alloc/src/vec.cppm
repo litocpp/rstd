@@ -187,6 +187,7 @@ struct RawVec {
 
     ~RawVec() {}
 
+    [[gnu::always_inline]]
     void reset_ptr() {
         ptr               = {};
         cap               = usize();
@@ -940,6 +941,7 @@ public:
     }
 
     /// Clears the vector, destroying all elements but not deallocating memory.
+    [[gnu::always_inline]]
     constexpr void clear() {
         if constexpr (mtp::triv_drop<T>) {
             m_len = usize();

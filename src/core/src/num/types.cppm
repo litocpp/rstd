@@ -318,6 +318,7 @@ struct IntegerOverflowResult {
 };
 
 template<typename Primitive>
+[[gnu::always_inline]]
 constexpr auto add_with_overflow(Primitive lhs, Primitive rhs) noexcept
     -> IntegerOverflowResult<Primitive> {
     Primitive  value {};
@@ -326,6 +327,7 @@ constexpr auto add_with_overflow(Primitive lhs, Primitive rhs) noexcept
 }
 
 template<typename Primitive>
+[[gnu::always_inline]]
 constexpr auto sub_with_overflow(Primitive lhs, Primitive rhs) noexcept
     -> IntegerOverflowResult<Primitive> {
     Primitive  value {};
@@ -334,6 +336,7 @@ constexpr auto sub_with_overflow(Primitive lhs, Primitive rhs) noexcept
 }
 
 template<typename Primitive>
+[[gnu::always_inline]]
 constexpr auto mul_with_overflow(Primitive lhs, Primitive rhs) noexcept
     -> IntegerOverflowResult<Primitive> {
     Primitive  value {};
@@ -377,11 +380,14 @@ public:
     static constexpr rstd::uint32_t BIT_WIDTH = sizeof(Primitive) * 8;
 
 protected:
+    [[gnu::always_inline]]
     constexpr Integer() noexcept = default;
-    explicit constexpr Integer(Primitive value) noexcept: value_(value) {}
+    [[gnu::always_inline]]
+    explicit constexpr Integer(Primitive value) noexcept
+        : value_(value) {}
 
 public:
-    [[nodiscard]]
+    [[nodiscard, gnu::always_inline]]
     constexpr auto to_primitive() const noexcept -> Primitive {
         return value_;
     }
@@ -886,10 +892,12 @@ public:
     [[nodiscard]]
     static constexpr auto from_ne_bytes(ByteArray bytes) noexcept -> Self;
 
+    [[gnu::always_inline]]
     friend constexpr auto operator==(Self lhs, Self rhs) noexcept -> bool {
         return lhs.value_ == rhs.value_;
     }
 
+    [[gnu::always_inline]]
     friend constexpr auto operator<=>(Self lhs, Self rhs) noexcept -> std::strong_ordering {
         return lhs.value_ <=> rhs.value_;
     }
@@ -1039,27 +1047,37 @@ public:
     }
 };
 
-#define RSTD_INTEGER_TYPE(NAME, PRIMITIVE, TAG)                                                \
-    struct NAME final : Integer<NAME, PRIMITIVE, TAG> {                                        \
-        using Base                = Integer<NAME, PRIMITIVE, TAG>;                             \
-        constexpr NAME() noexcept = default;                                                   \
-        explicit constexpr NAME(PRIMITIVE value) noexcept: Base(value) {}                      \
-        template<RawInteger Source>                                                            \
-            requires(! rstd::mtp::same_as<rstd::mtp::rm_cvf<Source>, bool>)                    \
-        explicit constexpr NAME(Source value) noexcept: Base(static_cast<PRIMITIVE>(value)) {} \
-        static const NAME MIN;                                                                 \
-        static const NAME MAX;                                                                 \
-        static const U32  BITS;                                                                \
+#define RSTD_INTEGER_TYPE(NAME, PRIMITIVE, TAG)                             \
+    struct NAME final : Integer<NAME, PRIMITIVE, TAG> {                     \
+        using Base = Integer<NAME, PRIMITIVE, TAG>;                         \
+        [[gnu::always_inline]]                                              \
+        constexpr NAME() noexcept = default;                                \
+        [[gnu::always_inline]]                                              \
+        explicit constexpr NAME(PRIMITIVE value) noexcept                   \
+            : Base(value) {}                                                \
+        template<RawInteger Source>                                         \
+            requires(! rstd::mtp::same_as<rstd::mtp::rm_cvf<Source>, bool>) \
+        [[gnu::always_inline]]                                              \
+        explicit constexpr NAME(Source value) noexcept                      \
+            : Base(static_cast<PRIMITIVE>(value)) {}                        \
+        static const NAME MIN;                                              \
+        static const NAME MAX;                                              \
+        static const U32  BITS;                                             \
     }
 
 struct U8 final : Integer<U8, rstd::uint8_t, u8_tag> {
-    using Base              = Integer<U8, rstd::uint8_t, u8_tag>;
+    using Base = Integer<U8, rstd::uint8_t, u8_tag>;
+    [[gnu::always_inline]]
     constexpr U8() noexcept = default;
-    explicit constexpr U8(rstd::uint8_t value) noexcept: Base(value) {}
+    [[gnu::always_inline]]
+    explicit constexpr U8(rstd::uint8_t value) noexcept
+        : Base(value) {}
 
     template<RawInteger Source>
         requires(! rstd::mtp::same_as<rstd::mtp::rm_cvf<Source>, bool>)
-    explicit constexpr U8(Source value) noexcept: Base(static_cast<rstd::uint8_t>(value)) {}
+    [[gnu::always_inline]]
+    explicit constexpr U8(Source value) noexcept
+        : Base(static_cast<rstd::uint8_t>(value)) {}
 
     static constexpr auto from_byte(rstd::byte value) noexcept -> U8 {
         return U8(static_cast<rstd::uint8_t>(value));
