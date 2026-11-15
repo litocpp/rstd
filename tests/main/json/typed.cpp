@@ -289,6 +289,30 @@ TEST(JsonTyped, DirectDecodeBuildsOnlyTheRequestedType) {
     EXPECT_EQ(path[rstd::usize(1)].index(), rstd::usize(1));
 }
 
+TEST(JsonTyped, DirectTuplesConsumeClosingDelimitersWithoutSentinelReads) {
+    using Pair = rstd::tuple<String, String>;
+    auto pairs = rstd::json::decode_direct<Vec<Pair>>(R"([["first","one"],["second","two"]])"_str);
+    ASSERT_TRUE(pairs.is_ok());
+    ASSERT_EQ(pairs->len(), rstd::usize(2));
+    EXPECT_EQ(rstd::get<0>((*pairs)[rstd::usize()]), "first"_str);
+    EXPECT_EQ(rstd::get<1>((*pairs)[rstd::usize(1)]), "two"_str);
+
+    using Nested = rstd::tuple<rstd::tuple<>, rstd::tuple<rstd::u64>>;
+    auto nested  = rstd::json::decode_direct<Nested>("[[],[7]]"_str);
+    ASSERT_TRUE(nested.is_ok());
+    EXPECT_EQ(rstd::get<0>(rstd::get<1>(*nested)), rstd::u64(7));
+    EXPECT_TRUE(rstd::json::decode_direct<rstd::tuple<>>("[]"_str).is_ok());
+    EXPECT_TRUE(rstd::json::decode_direct<rstd::tuple<>>("[null]"_str).is_err());
+    for (auto input : { "[]"_str,
+                        R"(["one"])"_str,
+                        R"(["one","two","extra"])"_str,
+                        R"(["one","two",])"_str,
+                        R"(["one","two")"_str,
+                        R"(["one","two"})"_str,
+                        R"(["one","two"] null)"_str })
+        EXPECT_TRUE(rstd::json::decode_direct<Pair>(input).is_err());
+}
+
 TEST(JsonTyped, DirectEncodeStreamsExplicitFields) {
     auto ports = Vec<rstd::u64>::make();
     ports.push(rstd::u64(80));

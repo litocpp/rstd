@@ -252,8 +252,16 @@ public:
         if (ended_)
             return Err(serde::Error::invariant(path_.snapshot(), "sequence already ended"_str));
         if (! finished_) {
-            return Err(
-                serde::Error::invariant(path_.snapshot(), "sequence has unread elements"_str));
+            auto next = reader_->next_array(first_);
+            if (next.is_err()) {
+                return Err(
+                    direct_syntax_error(path_.clone(), rstd::move(next).unwrap_err_unchecked()));
+            }
+            if (*next) {
+                return Err(
+                    serde::Error::invariant(path_.snapshot(), "sequence has unread elements"_str));
+            }
+            finished_ = true;
         }
         ended_ = true;
         return Ok(empty {});
