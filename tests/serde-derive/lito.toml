@@ -15,6 +15,24 @@ rstd-serde-macro = { path = "../../src/serde-macro" }
 [compile-test]
 
 [[compile-test.cases]]
+name = "SerdeDerive.UntaggedTagConflict"
+source = "compile/untagged_tag.cpp"
+outcome = "failure"
+diagnostic-contains = ["invalid serde representation options"]
+
+[[compile-test.cases]]
+name = "SerdeDerive.UntaggedStringEnumConflict"
+source = "compile/untagged_string_enum.cpp"
+outcome = "failure"
+diagnostic-contains = ["invalid serde representation options"]
+
+[[compile-test.cases]]
+name = "SerdeDerive.UntaggedField"
+source = "compile/untagged_field.cpp"
+outcome = "failure"
+diagnostic-contains = ["invalid serde field options"]
+
+[[compile-test.cases]]
 name = "SerdeDerive.DescribedVariantPolicyCase"
 source = "compile/described_policy_case.cpp"
 outcome = "failure"
@@ -168,7 +186,7 @@ diagnostic-contains = ["duplicate serde default"]
 name = "SerdeDerive.ValidatorType"
 source = "compile/validator_type.cpp"
 outcome = "failure"
-diagnostic-contains = ["serde record validator must return Result<empty, ref<str>> for const model_type&"]
+diagnostic-contains = ["serde validator must return Result<empty, ref<str>> for const model_type&"]
 
 [[compile-test.cases]]
 name = "SerdeDerive.ValidatorField"

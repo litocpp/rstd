@@ -32,11 +32,12 @@ struct Options {
     std::optional<pmacro::TokenTree>                              default_factory, validator;
     bool defaulted {}, skip {}, ignore_unknown {}, encode_only {}, decode_only {}, variants {},
         newtype {}, string_enum {}, internal {}, adjacent {}, reject_unknown {},
-        described_payload {}, described_enum {};
+        described_payload {}, described_enum {}, untagged {};
 
     auto representation() const -> bool {
-        return variants || newtype || string_enum || internal || adjacent || tag || content ||
-               described_payload || described_enum || parent || variant || ! cases.empty() || name;
+        return variants || newtype || string_enum || internal || adjacent || untagged || tag ||
+               content || described_payload || described_enum || parent || variant ||
+               ! cases.empty() || name;
     }
 };
 
@@ -144,6 +145,8 @@ auto parse_options(pmacro::TokenStream stream, Options& result, std::size_t begi
             result.described_payload = true;
         else if (name == "described_enum")
             result.described_enum = true;
+        else if (name == "untagged")
+            result.untagged = true;
         else
             return std::unexpected("unknown serde option: " + std::string(name));
     }
@@ -202,8 +205,8 @@ auto valid_variant_options(const Options& settings) -> bool {
     return ! settings.representation() ||
            (settings.name && ! settings.parent && ! settings.variant && settings.cases.empty() &&
             ! settings.variants && ! settings.newtype && ! settings.string_enum &&
-            ! settings.internal && ! settings.adjacent && ! settings.tag && ! settings.content &&
-            ! settings.described_payload && ! settings.described_enum);
+            ! settings.internal && ! settings.adjacent && ! settings.untagged && ! settings.tag &&
+            ! settings.content && ! settings.described_payload && ! settings.described_enum);
 }
 
 auto valid_payload_options(const Options& settings) -> bool {
@@ -241,8 +244,8 @@ auto derive_payload(pmacro::DeriveInput        input,
                        input.item_span,
                        "serde described_payload templates are not supported yet");
     if (config.variants || config.described_enum || config.newtype || config.string_enum ||
-        config.tag || config.content || config.internal || config.adjacent || config.rename ||
-        config.validator || ! config.cases.empty())
+        config.tag || config.content || config.internal || config.adjacent || config.untagged ||
+        config.rename || config.validator || ! config.cases.empty())
         return failure(context,
                        declaration.source,
                        input.item_span,
@@ -251,8 +254,8 @@ auto derive_payload(pmacro::DeriveInput        input,
     if (config.parent) {
         if ((config.parent->encode_only && config.parent->decode_only) ||
             (config.parent->ignore_unknown && config.parent->reject_unknown) ||
-            config.parent->parent || config.parent->variant || config.parent->validator ||
-            config.parent->defaulted || ! config.parent->cases.empty())
+            config.parent->parent || config.parent->variant || config.parent->defaulted ||
+            ! config.parent->cases.empty())
             return failure(context,
                            declaration.source,
                            input.item_span,
@@ -270,13 +273,14 @@ auto derive_payload(pmacro::DeriveInput        input,
         inherit_payload_options(*config.variant, effective);
         name = config.variant->rename.value_or(config.variant->name.value_or(name));
     }
-    auto qualified  = "::" + *declaration.qualified_name;
-    auto mode       = effective.encode_only   ? "Serialize"
-                      : effective.decode_only ? "Deserialize"
-                                              : "Both";
-    auto definition = "rstd::serde::DescribedPayloadDefinition<" + qualified + ',' + quote(name) +
-                      ",rstd::serde::Direction::" + mode + ",rstd::serde::UnknownFieldPolicy::" +
-                      (effective.ignore_unknown ? "Ignore" : "Reject");
+    auto qualified   = "::" + *declaration.qualified_name;
+    auto mode        = effective.encode_only   ? "Serialize"
+                       : effective.decode_only ? "Deserialize"
+                                               : "Both";
+    auto definition  = "rstd::serde::DescribedPayloadDefinition<" + qualified + ',' + quote(name) +
+                       ",rstd::serde::Direction::" + mode + ",rstd::serde::UnknownFieldPolicy::" +
+                       (effective.ignore_unknown ? "Ignore" : "Reject");
+    auto constructor = "[](auto& fields)->" + qualified + "{return " + qualified + '{';
     for (const auto& field : record->fields) {
         if (! field.name || field.kind != pmacro::FieldKind::Named ||
             field.access != pmacro::Access::Public || field.bit_width)
@@ -290,6 +294,9 @@ auto derive_payload(pmacro::DeriveInput        input,
             settings->ignore_unknown || settings->reject_unknown || settings->validator ||
             settings->default_factory || (settings->skip && settings->defaulted))
             return failure(context, field.source, input.item_span, "invalid serde field options");
+        if (! settings->defaulted && ! settings->skip)
+            constructor += '.' + *field.name + "=fields.template take<&" + qualified +
+                           "::" + *field.name + ">(),";
         if (! settings->rename && ! settings->defaulted && ! settings->skip &&
             settings->aliases.empty())
             continue;
@@ -303,7 +310,8 @@ auto derive_payload(pmacro::DeriveInput        input,
         definition += '>';
     }
     return context.parse("constexpr auto rstd_serde_definition(" + qualified + "*) { return " +
-                         definition + ">{}; }");
+                         "rstd::serde::ConstructedRecordDefinition<" + definition + ">," +
+                         constructor + "};}>{}; }");
 }
 
 [[pmacro::define("serde")]]
@@ -326,7 +334,7 @@ auto derive(pmacro::DeriveInput input, pmacro::Context& context) noexcept -> Out
     if (config->parent || config->variant || config->name ||
         (! config->described_enum && ! config->cases.empty()))
         return failure(context, declaration.source, input.item_span, "invalid serde type options");
-    if (config->described_enum) config->variants = true;
+    if (config->described_enum || config->untagged) config->variants = true;
     if ((config->content && ! config->tag) ||
         ((config->tag || config->content || config->internal || config->adjacent) &&
          ! config->variants) ||
@@ -334,21 +342,24 @@ auto derive(pmacro::DeriveInput input, pmacro::Context& context) noexcept -> Out
         (config->newtype && config->string_enum) ||
         (config->internal && (config->adjacent || config->content || ! config->tag)) ||
         (config->adjacent && (! config->tag || ! config->content)) ||
-        (config->tag && config->content && config->tag == config->content))
+        (config->tag && config->content && config->tag == config->content) ||
+        (config->untagged &&
+         (config->tag || config->content || config->internal || config->adjacent ||
+          config->newtype || config->string_enum || ! config->cases.empty())))
         return failure(
             context, declaration.source, input.item_span, "invalid serde representation options");
-    if (config->validator &&
-        (config->variants || config->newtype || config->string_enum || config->encode_only ||
-         ! std::holds_alternative<pmacro::RecordInfo>(declaration.data)))
+    if (config->validator && (config->newtype || config->string_enum || config->encode_only ||
+                              ! std::holds_alternative<pmacro::RecordInfo>(declaration.data)))
         return failure(context,
                        declaration.source,
                        input.item_span,
                        "serde validation requires a deserializable aggregate record");
     auto qualified = "::" + *declaration.qualified_name;
     auto mode = config->encode_only ? "Serialize" : config->decode_only ? "Deserialize" : "Both";
-    auto type_name  = config->rename.value_or(*declaration.qualified_name);
-    auto source     = std::string {};
-    auto definition = std::string {};
+    auto type_name   = config->rename.value_or(*declaration.qualified_name);
+    auto source      = std::string {};
+    auto definition  = std::string {};
+    auto constructor = std::string {};
     std::vector<pmacro::TokenTree> expressions;
     auto                           expression = [&](pmacro::TokenTree value) {
         auto name = "__rstd_serde_expression_" + std::to_string(expressions.size());
@@ -365,9 +376,10 @@ auto derive(pmacro::DeriveInput input, pmacro::Context& context) noexcept -> Out
                            input.item_span,
                            "serde variants requires a record with VariantDescription");
         definition = "rstd::serde::" +
-                     std::string(config->content ? "AdjacentVariantDefinition"
-                                 : config->tag   ? "InternalVariantDefinition"
-                                                 : "VariantDefinition") +
+                     std::string(config->untagged  ? "UntaggedDefinition"
+                                 : config->content ? "AdjacentVariantDefinition"
+                                 : config->tag     ? "InternalVariantDefinition"
+                                                   : "VariantDefinition") +
                      '<' + qualified + ',' + quote(type_name) + ",rstd::serde::Direction::" + mode;
         if (config->tag) definition += ',' + quote(*config->tag);
         if (config->content) definition += ',' + quote(*config->content);
@@ -389,8 +401,15 @@ auto derive(pmacro::DeriveInput input, pmacro::Context& context) noexcept -> Out
         for (const auto& entry : config->cases)
             source += "static_assert(" + definition + ">::template contains_case<" +
                       quote(entry.first) + ">(),\"serde variant case does not exist\");";
-        return context.parse(source + "constexpr auto rstd_serde_definition(" + qualified +
-                             "*) { return " + definition + ">{}; }");
+        definition += '>';
+        if (config->validator)
+            definition = "rstd::serde::ValidatedDefinition<" + definition + ',' +
+                         expression(*config->validator) + '>';
+        if (declaration.after_item_export == pmacro::AfterItemExport::Required) source += "export ";
+        auto output = context.parse(source + "constexpr auto rstd_serde_definition(" + qualified +
+                                    "*) { return " + definition + "{}; }");
+        if (! output || expressions.empty()) return output;
+        return splice_expressions(context, *output, expressions, input.item_span);
     }
     if (const auto* record = std::get_if<pmacro::RecordInfo>(&declaration.data)) {
         if (config->string_enum)
@@ -411,6 +430,8 @@ auto derive(pmacro::DeriveInput input, pmacro::Context& context) noexcept -> Out
         definition = "rstd::serde::RecordDefinition<" + qualified + ',' + quote(type_name) +
                      ",rstd::serde::Direction::" + mode + ",rstd::serde::UnknownFieldPolicy::" +
                      (config->ignore_unknown ? "Ignore" : "Reject");
+        if (! config->newtype)
+            constructor = "[](auto& fields)->" + qualified + "{return " + qualified + '{';
         for (const auto& field : record->fields) {
             if (! field.name || field.kind != pmacro::FieldKind::Named ||
                 field.access != pmacro::Access::Public || field.bit_width || field.type.dependent ||
@@ -465,6 +486,9 @@ auto derive(pmacro::DeriveInput input, pmacro::Context& context) noexcept -> Out
                                                                                : "Required");
             for (const auto& alias : settings->aliases) definition += ',' + quote(alias);
             definition += '>';
+            if ((! settings->defaulted && ! settings->skip) || settings->default_factory)
+                constructor += '.' + *field.name + "=fields.template take<&" + qualified +
+                               "::" + *field.name + ">(),";
         }
     } else if (const auto* enumeration = std::get_if<pmacro::EnumInfo>(&declaration.data)) {
         if (config->ignore_unknown || config->newtype)
@@ -491,6 +515,9 @@ auto derive(pmacro::DeriveInput input, pmacro::Context& context) noexcept -> Out
         return failure(
             context, declaration.source, input.item_span, "serde derive requires a record or enum");
     definition += '>';
+    if (! constructor.empty())
+        definition =
+            "rstd::serde::ConstructedRecordDefinition<" + definition + ',' + constructor + "};}>";
     if (config->validator)
         definition = "rstd::serde::ValidatedRecordDefinition<" + definition + ',' +
                      expression(*config->validator) + '>';

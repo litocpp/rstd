@@ -244,6 +244,18 @@ public:
 
 using TokenTaggedEnumAccess = TaggedEnumAccess<TokenTaggedPayload>;
 
+class CapturedTokens {
+    Vec<Token> tokens_;
+    DataPath   path_;
+    bool       reject_unknown_fields_ {};
+
+public:
+    CapturedTokens(Vec<Token> tokens, DataPath path, bool reject_unknown_fields);
+    auto replay() const& [[clang::lifetimebound]] -> TokenDeserializer;
+    auto replay() const&& -> TokenDeserializer = delete;
+    auto finish(const TokenDeserializer& replay) const -> Result<empty, Error>;
+};
+
 class TokenDeserializer {
     slice<Token> tokens_;
     usize        owned_position_ {};
@@ -265,6 +277,7 @@ class TokenDeserializer {
     friend class TokenMapAccess;
     friend class TokenEnumAccess;
     friend class TokenTaggedPayload;
+    friend class CapturedTokens;
 
 public:
     using error_type    = Error;
@@ -321,7 +334,7 @@ public:
                 path_.clone(), ValueKind::Enum, actual_kind(token->get().kind())));
         }
         ++*position_;
-        auto child = TokenDeserializer(tokens_, *position_, path_.clone());
+        auto child = TokenDeserializer(tokens_, *position_, path_.clone(), reject_unknown_fields_);
         auto value = serde::deserialize<T>(child);
         if (value.is_err()) return Err(rstd::move(value).unwrap_err_unchecked());
         auto end = take(TokenKind::SomeEnd, ValueKind::Enum);
@@ -342,6 +355,7 @@ public:
     auto begin_adjacent_enum(ref<str> tag, ref<str> content, UnknownFieldPolicy unknown)
         -> Result<TokenTaggedEnumAccess, Error>;
     auto ignore_value() -> Result<empty, Error>;
+    auto capture_value() -> Result<CapturedTokens, Error>;
 };
 
 class TokenSequenceAccess {

@@ -129,6 +129,8 @@ public:
 
 /// Consumes one DOM value from an existing reader without finishing its enclosing document.
 auto read_value(Reader& reader) -> ParseResult;
+/// Can additionally reject duplicates before a captured DOM would lose them.
+auto read_value(Reader& reader, bool reject_duplicate_keys) -> ParseResult;
 
 } // namespace rstd::json
 

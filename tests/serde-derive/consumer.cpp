@@ -31,6 +31,38 @@ TEST(SerdeDerive, NewtypeIsScalarAndPreservesNull) {
     EXPECT_EQ(rstd::serde::from_tokens<Identifier>(tokens.as_slice()).unwrap().value, u64(7));
 }
 
+TEST(SerdeDerive, UntaggedLegacyPayloadRetainsValidationErrorAsSource) {
+    FactoryState::validations = 0;
+    auto value = rstd::json::decode_direct<Untagged>(R"({"name":"ok","wire":1})"_str).unwrap();
+    EXPECT_TRUE(value.is_Record());
+    EXPECT_EQ(FactoryState::validations, 1u);
+    auto failure =
+        rstd::json::decode_direct<Untagged>(R"({"name":"bad","wire":99})"_str).unwrap_err();
+    EXPECT_EQ(failure.kind(), rstd::serde::ErrorKind::InvalidValue);
+    ASSERT_TRUE(failure.source().is_some());
+    auto cause = rstd::error::downcast_ref<rstd::serde::Error>(*failure.source());
+    ASSERT_TRUE(cause.is_some());
+    EXPECT_EQ(cause->get().kind(), rstd::serde::ErrorKind::InvalidValue);
+    EXPECT_EQ(cause->get().message().unwrap(), "count must not be 99"_str);
+    EXPECT_EQ(FactoryState::validations, 2u);
+}
+
+TEST(SerdeDerive, UntaggedCaptureRetainsFilteredTagsAndStrictRecordPolicy) {
+    auto valid = rstd::json::decode<StrictUntagged>(R"({"kind":"Value","name":"ok"})"_str).unwrap();
+    EXPECT_TRUE(valid.is_Value());
+    EXPECT_TRUE(rstd::json::decode<StrictUntagged>(R"({"kind":"Value","name":"ok","extra":0})"_str)
+                    .is_err());
+    EXPECT_TRUE(
+        rstd::json::decode<FlexibleUntagged>(R"({"kind":"Value","name":"ok","extra":0})"_str)
+            .is_ok());
+    auto tokens = rstd::serde::to_tokens(valid).unwrap();
+    EXPECT_TRUE(rstd::serde::from_tokens<StrictUntagged>(tokens.as_slice()).is_ok());
+    auto extra = rstd::json::from_str(R"({"kind":"Value","name":"ok","extra":0})"_str).unwrap();
+    auto extra_tokens = rstd::serde::to_tokens(extra).unwrap();
+    EXPECT_TRUE(rstd::serde::from_tokens<StrictUntagged>(extra_tokens.as_slice()).is_err());
+    EXPECT_TRUE(rstd::serde::from_tokens<FlexibleUntagged>(extra_tokens.as_slice()).is_ok());
+}
+
 TEST(SerdeDerive, StringEnumRemainsDistinctFromUnitEnum) {
     auto string      = rstd::serde::to_tokens(StringState::Ready).unwrap();
     auto enumeration = rstd::serde::to_tokens(EnumState::Ready).unwrap();

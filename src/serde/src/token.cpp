@@ -612,6 +612,31 @@ auto TokenDeserializer::ignore_value() -> Result<empty, Error> {
     rstd::unreachable();
 }
 
+CapturedTokens::CapturedTokens(Vec<Token> tokens, DataPath path, bool reject_unknown_fields)
+    : tokens_(rstd::move(tokens)),
+      path_(rstd::move(path)),
+      reject_unknown_fields_(reject_unknown_fields) {
+}
+
+auto CapturedTokens::replay() const& -> TokenDeserializer {
+    return TokenDeserializer(tokens_.as_slice(), path_.clone(), reject_unknown_fields_);
+}
+
+auto CapturedTokens::finish(const TokenDeserializer& replay) const -> Result<empty, Error> {
+    if (replay.position() != tokens_.len())
+        return Err(replay.invariant("untagged branch did not consume its captured value"_str));
+    return Ok(empty {});
+}
+
+auto TokenDeserializer::capture_value() -> Result<CapturedTokens, Error> {
+    auto start   = *position_;
+    auto ignored = ignore_value();
+    if (ignored.is_err()) return Err(rstd::move(ignored).unwrap_err_unchecked());
+    auto tokens = Vec<Token>::with_capacity(*position_ - start);
+    for (auto index = start; index < *position_; ++index) tokens.push(tokens_[index].clone());
+    return Ok(CapturedTokens(rstd::move(tokens), path_.clone(), reject_unknown_fields_));
+}
+
 static_assert(Serializer<TokenSerializer>);
 static_assert(Deserializer<TokenDeserializer>);
 static_assert(EnumAccess<TokenTaggedEnumAccess>);

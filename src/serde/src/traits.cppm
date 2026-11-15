@@ -145,6 +145,19 @@ concept Deserializer = requires(T& deserializer, ref<str> name) {
 template<typename T>
 concept Serializable = mtp::complete<Impl<Serialize, mtp::rm_cvf<T>>>;
 
+// Optional format capability: replays borrow the capture and have independent traversal state.
+template<typename D>
+concept CapturingDeserializer = requires(D& source) {
+    typename decltype(source.capture_value())::value_type;
+    requires mtp::same_as<typename decltype(source.capture_value())::error_type,
+                          typename D::error_type>;
+    requires requires(typename decltype(source.capture_value())::value_type& captured) {
+        requires Deserializer<decltype(captured.replay())>;
+        requires mtp::same_as<typename decltype(captured.replay())::error_type,
+                              typename D::error_type>;
+    };
+};
+
 template<typename T>
 concept Deserializable = mtp::complete<Impl<Deserialize, mtp::rm_cvf<T>>>;
 

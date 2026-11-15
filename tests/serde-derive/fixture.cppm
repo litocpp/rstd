@@ -66,6 +66,25 @@ class [[pmacro::derive("serde::derive"),
         pmacro::helper("serde::derive", variants, internal, tag("kind"))]] ValidatedInternal {
     RSTD_ENUM_TYPES(ValidatedInternal, (Record, (::serde_derive::nested::FactoryRecord)))
 };
+class [[pmacro::derive("serde::derive"), pmacro::helper("serde::derive", untagged)]] Untagged {
+    RSTD_ENUM_TYPES(Untagged,
+                    (Id, (::serde_derive::nested::Identifier)),
+                    (Record, (::serde_derive::nested::FactoryRecord)))
+};
+
+class [[pmacro::derive("serde::derive"), pmacro::helper("serde::derive", untagged)]]
+UntaggedRecord {
+    RSTD_ENUM_TYPES(UntaggedRecord, (Record, (::serde_derive::nested::Record)))
+};
+class [[pmacro::derive("serde::derive"),
+        pmacro::helper("serde::derive", variants, internal, tag("kind"))]] StrictUntagged {
+    RSTD_ENUM_TYPES(StrictUntagged, (Value, (::serde_derive::nested::UntaggedRecord)))
+};
+class [[pmacro::derive("serde::derive"),
+        pmacro::helper("serde::derive", variants, internal, tag("kind"), ignore_unknown)]]
+FlexibleUntagged {
+    RSTD_ENUM_TYPES(FlexibleUntagged, (Value, (::serde_derive::nested::UntaggedRecord)))
+};
 class [[pmacro::derive("serde::derive"), pmacro::helper("serde::derive", variants)]] External {
     RSTD_ENUM_TYPES(External,
                     (Idle),

@@ -233,6 +233,21 @@ class ValueDeserializer;
 class ValueSequenceAccess;
 class ValueMapAccess;
 
+export class CapturedValue {
+    Value           value_;
+    serde::DataPath path_;
+    bool            reject_unknown_fields_ {};
+
+public:
+    CapturedValue(Value value, serde::DataPath path, bool reject_unknown_fields = false)
+        : value_(rstd::move(value)),
+          path_(rstd::move(path)),
+          reject_unknown_fields_(reject_unknown_fields) {}
+
+    auto replay() const& [[clang::lifetimebound]] -> ValueDeserializer;
+    auto replay() const&& -> ValueDeserializer = delete;
+};
+
 class ValueTaggedPayload {
     Option<ref<Value>> value_;
     serde::DataPath    path_;
@@ -301,6 +316,7 @@ class ValueDeserializer {
     friend class ValueMapAccess;
     friend class ValueEnumAccess;
     friend class ValueTaggedPayload;
+    friend class CapturedValue;
 
 public:
     using error_type    = serde::Error;
@@ -320,6 +336,11 @@ public:
             if (values.is_some()) (void)(*values)->remove(*excluded_tag_);
         }
         return Ok(rstd::move(value));
+    }
+    auto capture_value() -> Result<CapturedValue, serde::Error> {
+        auto value = deserialize_json_value();
+        return Ok(CapturedValue(
+            rstd::move(value).unwrap_unchecked(), path_.clone(), reject_unknown_fields_));
     }
     auto record_unknown_fields(serde::UnknownFieldPolicy declared) const noexcept
         -> serde::UnknownFieldPolicy {
@@ -371,7 +392,8 @@ public:
     template<typename T>
     auto deserialize_option() -> Result<Option<T>, serde::Error> {
         if (value_->is_null()) return Ok(None<T>());
-        auto child = ValueDeserializer(*value_, path_.clone());
+        auto child =
+            ValueDeserializer(*value_, path_.clone(), excluded_tag_, reject_unknown_fields_);
         auto value = serde::deserialize<T>(child);
         if (value.is_err()) return Err(rstd::move(value).unwrap_err_unchecked());
         return Ok(Some(rstd::move(value).unwrap_unchecked()));
@@ -583,6 +605,10 @@ public:
         return serde::deserialize<T>(child);
     }
 };
+
+inline auto CapturedValue::replay() const& -> ValueDeserializer {
+    return ValueDeserializer(value_, path_.clone(), None(), reject_unknown_fields_);
+}
 
 inline auto ValueDeserializer::begin_sequence() -> Result<ValueSequenceAccess, serde::Error> {
     auto values = value_->as_array();

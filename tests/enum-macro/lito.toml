@@ -13,6 +13,7 @@ sources = [
   "errors.cpp",
   "metadata.cpp",
   "serde.cpp",
+  "untagged.cpp",
   "consumer.cpp",
   "consumer_peer.cpp",
   "options.cpp",

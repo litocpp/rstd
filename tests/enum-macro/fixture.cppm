@@ -152,6 +152,91 @@ export namespace enum_macro::fixture
                      Optional(Option<String>),
                  })]];
 
+[[pmacro::invoke("rstd::Enum",
+                 [[derive("serde::derive")]] [[helper("serde::derive", untagged)]] enum ItemRef {
+                     Id(i64),
+                     Object { id: i64, name: String },
+                 })]];
+
+[[pmacro::invoke("rstd::Enum",
+                 [[derive("serde::derive")]] [[helper("serde::derive", untagged)]] enum Number {
+                     Integer(i64),
+                     Floating(f64),
+                 })]];
+
+[[pmacro::invoke(
+    "rstd::Enum",
+    [[derive("serde::derive")]] [[helper("serde::derive", untagged)]] enum ObjectChoice {
+        First { shared: i64, first: String },
+        Second { shared: i64, second: String },
+    })]];
+
+struct [[pmacro::derive("serde::derive"),
+         pmacro::helper("serde::derive", validate([](const auto& value) -> Result<empty, ref<str>> {
+                            if (value.count == u64(99)) return Err("invalid count"_str);
+                            return Ok(empty {});
+                        }))]]
+RequiredReference {
+    [[pmacro::helper("serde::derive", alias("legacy"))]]
+    ItemRef item;
+    [[pmacro::helper("serde::derive", default)]]
+    bool enabled { true };
+    [[pmacro::helper("serde::derive", default)]]
+    Option<String> note { Some("fallback"_Str) };
+    [[pmacro::helper("serde::derive", default([] {
+                         return u64(7);
+                     }))]]
+    u64 count;
+    [[pmacro::helper("serde::derive", default([] {
+                         return ItemRef::Id(i64(13));
+                     }))]]
+    ItemRef fallback;
+    [[pmacro::helper("serde::derive", skip)]]
+    i64 local { item.is_Id() ? i64(12) : i64(24) };
+};
+
+struct [[pmacro::derive("serde::derive")]] RequiredOrder {
+    ItemRef first;
+    ItemRef second;
+};
+
+[[pmacro::invoke("rstd::Enum",
+                 [[derive("serde::derive")]] enum NestedReference {
+                     Object { item: ItemRef },
+                 })]];
+
+struct ReferenceValidation {
+    static inline unsigned calls {};
+};
+
+[[pmacro::invoke(
+    "rstd::Enum",
+    [[derive("serde::derive")]] [[helper("serde::derive",
+                                         untagged,
+                                         decode_only,
+                                         validate(ValidatedRef::validate))]] enum ValidatedRef {
+        Id(i64),
+        Key { type: i64 },
+        Fallback { type: i64 },
+    } members {
+    public:
+        static auto validate(const ValidatedRef& value) -> Result<empty, ref<str>>;
+    })]];
+
+inline auto ValidatedRef::validate(const ValidatedRef& value) -> Result<empty, ref<str>> {
+    ++ReferenceValidation::calls;
+    if (value.is_Key() && value.as_Key().type != i64(1)) return Err("invalid key type"_str);
+    return Ok(empty {});
+}
+
+[[pmacro::invoke("rstd::Enum",
+                 [[derive("serde::derive")]] [[helper("serde::derive", untagged)]] enum Shapes {
+                     Unit,
+                     Tuple(i64, String),
+                     Array(::alloc::vec::Vec<i64>),
+                     Record {},
+                 })]];
+
 [[pmacro::invoke(
     "rstd::Enum",
     [[derive("serde::derive")]] [[helper("serde::derive", internal, tag("kind"))]] enum Internal {

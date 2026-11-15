@@ -72,17 +72,56 @@ struct Member {
         else
             return RequiredField<type>(Name.view(), aliases);
     }
+
+    static auto unseeded_slot() {
+        const ref<str> names[] = { Aliases.view()..., ref<str> {} };
+        return OptionalField<type>(
+            Name.view(), slice<ref<str>>::from_raw_parts(names, usize(sizeof...(Aliases))));
+    }
 };
 
 template<auto Pointer, Text Name, auto Factory, Text... Aliases>
 struct DefaultedMember : Member<Pointer, Name, FieldPolicy::Defaulted, Aliases...> {
     using type = typename MemberValue<decltype(Pointer)>::type;
 
+    static auto default_value() -> type { return type(Factory()); }
+
     template<typename T>
     static auto slot(T&) {
         const ref<str> names[] = { Aliases.view()..., ref<str> {} };
         auto           aliases = slice<ref<str>>::from_raw_parts(names, usize(sizeof...(Aliases)));
         return DefaultFactoryField<type, Factory>(Name.view(), aliases);
+    }
+};
+
+template<typename Field>
+struct DecodedMember {
+    Option<typename Field::type> value;
+};
+
+template<typename... Members>
+struct RecordValues : DecodedMember<Members>... {
+    template<typename Field>
+    auto field() -> Option<typename Field::type>& {
+        return static_cast<DecodedMember<Field>&>(*this).value;
+    }
+
+    template<auto Pointer, typename First, typename... Rest>
+    auto take_member() {
+        if constexpr (mtp::same_as<mtp::rm_cvf<decltype(Pointer)>,
+                                   mtp::rm_cvf<decltype(First::pointer)>>) {
+            if constexpr (Pointer == First::pointer)
+                return field<First>().take().unwrap_unchecked();
+            else
+                return take_member<Pointer, Rest...>();
+        } else {
+            return take_member<Pointer, Rest...>();
+        }
+    }
+
+    template<auto Pointer>
+    auto take() {
+        return take_member<Pointer, Members...>();
     }
 };
 
@@ -93,6 +132,8 @@ struct RecordDefinition {
     static constexpr bool serializable   = Mode != Direction::Deserialize;
     static constexpr bool deserializable = Mode != Direction::Serialize;
     static constexpr auto unknown_fields = Unknown;
+
+    using values_type = RecordValues<Members...>;
 
     template<typename Function>
     static constexpr void fields(Function function) {
@@ -122,6 +163,87 @@ struct RecordDefinition {
         return Ok(empty {});
     }
 
+    template<bool Inherit, typename D, typename... Slots>
+    static auto parse_slots(D& source, Slots&... slots) -> Result<empty, typename D::error_type> {
+        if constexpr (sizeof...(Slots) != 0) {
+            if constexpr (Inherit)
+                return deserialize_record(source, Unknown, slots...);
+            else
+                return deserialize_record(source, DeclaredRecordPolicy { Unknown }, slots...);
+        } else {
+            return deserialize_record(
+                source, [&](ref<str> name, auto& map) -> Result<empty, typename D::error_type> {
+                    if ((Inherit ? record_unknown_fields(source, Unknown) : Unknown) ==
+                        UnknownFieldPolicy::Reject)
+                        return Err(source.unknown_field(name));
+                    else
+                        return map.ignore_value();
+                });
+        }
+    }
+
+    template<size_t I, typename D, typename... Slots>
+    static auto collect(D& source, values_type& values, Slots&... slots)
+        -> Result<empty, typename D::error_type> {
+        if constexpr (I == sizeof...(Members)) {
+            return Ok(empty {});
+        } else {
+            using Field = mtp::tuple_element<I, tuple<Members...>>;
+            if constexpr (Field::policy == FieldPolicy::Skip) {
+                return collect<I + 1>(source, values, slots...);
+            } else {
+                auto consume = [&]<typename First, typename... Rest>(
+                                   First& first,
+                                   Rest&... rest) -> Result<empty, typename D::error_type> {
+                    auto& value = values.template field<Field>();
+                    value       = first.take();
+                    if constexpr (Field::policy == FieldPolicy::Required) {
+                        if (value.is_none()) return Err(source.missing_field(Field::name.view()));
+                    } else if constexpr (requires { Field::default_value(); }) {
+                        if (value.is_none()) value = Some(Field::default_value());
+                    }
+                    return collect<I + 1>(source, values, rest...);
+                };
+                return consume(slots...);
+            }
+        }
+    }
+
+    template<size_t I, bool Inherit, typename D, typename... Slots>
+    static auto read_constructed(D& source, values_type& values, Slots&... slots)
+        -> Result<empty, typename D::error_type> {
+        if constexpr (I == sizeof...(Members)) {
+            auto parsed = parse_slots<Inherit>(source, slots...);
+            if (parsed.is_err()) return parsed;
+            return collect<0>(source, values, slots...);
+        } else {
+            using Field = mtp::tuple_element<I, tuple<Members...>>;
+            if constexpr (Field::policy == FieldPolicy::Skip)
+                return read_constructed<I + 1, Inherit>(source, values, slots...);
+            else {
+                auto slot = Field::unseeded_slot();
+                return read_constructed<I + 1, Inherit>(source, values, slots..., slot);
+            }
+        }
+    }
+
+    template<bool Inherit, typename D, typename Construct>
+    static auto deserialize_constructed(D& source, Construct construct)
+        -> Result<T, typename D::error_type> {
+        values_type values;
+        auto        parsed = read_constructed<0, Inherit>(source, values);
+        if (parsed.is_err()) return Err(rstd::move(parsed).unwrap_err_unchecked());
+        auto value = construct(values);
+        fields([&]<typename Field>() {
+            if constexpr (Field::policy == FieldPolicy::Defaulted) {
+                auto& decoded = values.template field<Field>();
+                if (decoded.is_some())
+                    value.*Field::pointer = rstd::move(decoded).unwrap_unchecked();
+            }
+        });
+        return Ok(rstd::move(value));
+    }
+
     template<size_t I, typename D, typename First, typename... Rest>
     static auto take_fields(D& source, T& value, First& first, Rest&... rest)
         -> Result<empty, typename D::error_type> {
@@ -144,25 +266,7 @@ struct RecordDefinition {
     static auto read_with_policy(Deserializer& deserializer, T& value, Slots&... slots)
         -> Result<empty, typename Deserializer::error_type> {
         if constexpr (I == sizeof...(Members)) {
-            auto result = [&]() -> Result<empty, typename Deserializer::error_type> {
-                if constexpr (sizeof...(Slots) != 0) {
-                    if constexpr (Inherit)
-                        return deserialize_record(deserializer, Unknown, slots...);
-                    else
-                        return deserialize_record(
-                            deserializer, DeclaredRecordPolicy { Unknown }, slots...);
-                } else
-                    return deserialize_record(
-                        deserializer,
-                        [&](ref<str> name,
-                            auto&    map) -> Result<empty, typename Deserializer::error_type> {
-                            if ((Inherit ? record_unknown_fields(deserializer, Unknown)
-                                         : Unknown) == UnknownFieldPolicy::Reject)
-                                return Err(deserializer.unknown_field(name));
-                            else
-                                return map.ignore_value();
-                        });
-            }();
+            auto result = parse_slots<Inherit>(deserializer, slots...);
             if (result.is_err()) return result;
             return take_fields<0>(deserializer, value, slots...);
         } else {
@@ -215,14 +319,36 @@ struct RecordDefinition {
     }
 };
 
+template<typename Base, auto Construct>
+struct ConstructedRecordDefinition : Base {
+    using model_type = typename Base::model_type;
+
+    template<typename D>
+    static auto deserialize(D& source) -> Result<model_type, typename D::error_type> {
+        // Preserve existing initializer timing whenever a seed can be constructed.
+        if constexpr (__is_constructible(model_type))
+            return Base::deserialize(source);
+        else
+            return Base::template deserialize_constructed<true>(source, Construct);
+    }
+
+    template<typename D>
+    static auto deserialize_declared(D& source) -> Result<model_type, typename D::error_type> {
+        if constexpr (__is_constructible(model_type))
+            return Base::deserialize_declared(source);
+        else
+            return Base::template deserialize_constructed<false>(source, Construct);
+    }
+};
+
 template<typename Base, auto Validate>
-struct ValidatedRecordDefinition : Base {
+struct ValidatedDefinition : Base {
     using model_type = typename Base::model_type;
     static_assert(
         requires(const model_type& value) {
             { Validate(value) } -> mtp::same_as<Result<empty, ref<str>>>;
         },
-        "serde record validator must return Result<empty, ref<str>> for const model_type&");
+        "serde validator must return Result<empty, ref<str>> for const model_type&");
 
     template<typename D>
     static auto finish(D& source, Result<model_type, typename D::error_type> decoded)
@@ -250,6 +376,9 @@ struct ValidatedRecordDefinition : Base {
         return finish(source, Base::deserialize_with_defaults(source, rstd::move(value)));
     }
 };
+
+template<typename Base, auto Validate>
+using ValidatedRecordDefinition = ValidatedDefinition<Base, Validate>;
 
 template<auto Value, Text Name>
 struct Variant {
@@ -375,6 +504,7 @@ struct StringEnumDefinition : EnumDefinition<T, Name, Mode, Variants...> {
 
 template<typename T, Text Name, Direction Mode, typename... Names>
 struct VariantDefinition {
+    using model_type = T;
     static_assert(mtp::complete<Impl<VariantDescription, T>>,
                   "serde variants requires an explicit VariantDescription");
     static constexpr auto name           = Name;
@@ -465,6 +595,77 @@ struct VariantDefinition {
     }
 };
 
+template<typename T, Text Name, Direction Mode>
+struct UntaggedDefinition : VariantDefinition<T, Name, Mode> {
+    template<typename S>
+    static auto serialize(S& sink, const T& value) -> typename S::result_type {
+        auto result = typename S::result_type(Err(sink.invalid_value("Unknown variant"_str)));
+        UntaggedDefinition::variants([&]<typename V>() {
+            if (! V::matches(value)) return;
+            if constexpr (__is_void(typename V::payload_type))
+                result = sink.serialize_unit();
+            else
+                result = serde::serialize(sink, V::get(value));
+        });
+        return result;
+    }
+
+    template<typename D>
+    static auto deserialize(D& source) -> Result<T, typename D::error_type> {
+        if constexpr (! CapturingDeserializer<D>) {
+            return Err(
+                source.unsupported("untagged decoding requires semantic capture and replay"_str));
+        } else {
+            auto captured = source.capture_value();
+            if (captured.is_err()) return Err(rstd::move(captured).unwrap_err_unchecked());
+            Option<T>                      decoded;
+            Option<typename D::error_type> failure;
+            UntaggedDefinition::variants([&]<typename V>() {
+                if (decoded.is_some()) return;
+                auto replay   = captured->replay();
+                auto complete = [&]() -> bool {
+                    if constexpr (requires { captured->finish(replay); }) {
+                        auto ended = captured->finish(replay);
+                        if (ended.is_err()) {
+                            failure = Some(rstd::move(ended).unwrap_err_unchecked());
+                            return false;
+                        }
+                    }
+                    return true;
+                };
+                if constexpr (__is_void(typename V::payload_type)) {
+                    auto result = replay.deserialize_unit();
+                    if (result.is_ok()) {
+                        if (complete()) decoded = Some(V::make());
+                    } else
+                        failure = Some(rstd::move(result).unwrap_err_unchecked());
+                } else {
+                    auto result = serde::deserialize<typename V::payload_type>(replay);
+                    if (result.is_ok()) {
+                        if (complete())
+                            decoded = Some(V::make(rstd::move(result).unwrap_unchecked()));
+                    } else
+                        failure = Some(rstd::move(result).unwrap_err_unchecked());
+                }
+            });
+            if (decoded.is_some()) return Ok(rstd::move(decoded).unwrap_unchecked());
+            if (failure.is_some()) {
+                if constexpr (requires {
+                                  source.invalid_value_with_source(
+                                      "input did not match any untagged variant"_str,
+                                      rstd::move(failure).unwrap_unchecked());
+                              })
+                    return Err(source.invalid_value_with_source(
+                        "input did not match any untagged variant"_str,
+                        rstd::move(failure).unwrap_unchecked()));
+                else
+                    return Err(rstd::move(failure).unwrap_unchecked());
+            }
+            return Err(source.invalid_value("input did not match any untagged variant"_str));
+        }
+    }
+};
+
 template<typename T, Text Name, Direction Mode, auto Pointer>
 struct NewtypeDefinition {
     static constexpr auto name           = Name;
@@ -505,6 +706,7 @@ struct DescribedMember<Field, First, Rest...> : mtp::cond<[] {
 
 template<typename T, Text Name, Direction Mode, UnknownFieldPolicy Unknown, typename... Options>
 struct DescribedPayloadDefinition {
+    using model_type                     = T;
     static constexpr auto name           = Name;
     static constexpr bool serializable   = Mode != Direction::Deserialize;
     static constexpr bool deserializable = Mode != Direction::Serialize;
@@ -669,6 +871,24 @@ struct DescribedPayloadDefinition {
                     return read_sequence<D, decltype(input), 0>(source, input);
                 }
             }
+        }
+    }
+    template<typename D>
+    static auto deserialize_declared(D& source) -> Result<T, typename D::error_type> {
+        return deserialize(source);
+    }
+    template<bool Inherit, typename D, typename Construct>
+    static auto deserialize_constructed(D& source, Construct construct)
+        -> Result<T, typename D::error_type> {
+        using Definition = PayloadDefinition<T>;
+        if constexpr (Definition::kind == VariantKind::Record) {
+            static_assert(valid_options(), "serde payload field options must be known and unique");
+            static_assert(valid_record_names(), "serde payload field names overlap");
+            using Record =
+                decltype(record_type(mtp::make_index_sequence<Definition::field_count> {}));
+            return Record::template deserialize_constructed<false>(source, construct);
+        } else {
+            return deserialize(source);
         }
     }
     template<typename Sink, size_t... I>

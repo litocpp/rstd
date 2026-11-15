@@ -9,6 +9,7 @@ using namespace rstd::literals;
 
 class Parser {
     JsonReader& reader_;
+    bool        reject_duplicate_keys_ {};
 
     auto parse_array() -> ParseResult {
         auto begun = reader_.begin_array();
@@ -38,7 +39,7 @@ class Parser {
             if (value.is_err()) return value;
             auto replaced = values.insert(rstd::move(key).unwrap_unchecked().unwrap_unchecked(),
                                           rstd::move(value).unwrap_unchecked());
-            if (reader_.reject_duplicate_keys() && replaced.is_some()) {
+            if ((reject_duplicate_keys_ || reader_.reject_duplicate_keys()) && replaced.is_some()) {
                 return Err(reader_.duplicate_key_error());
             }
         }
@@ -46,6 +47,8 @@ class Parser {
 
 public:
     explicit Parser(JsonReader& reader) noexcept: reader_(reader) {}
+    Parser(JsonReader& reader, bool reject_duplicate_keys) noexcept
+        : reader_(reader), reject_duplicate_keys_(reject_duplicate_keys) {}
 
     static auto invalid_unicode_error(slice<u8> input, usize offset) noexcept -> Error {
         rstd::parse::TextCursor cursor { rstd::parse::Input<u8>(input) };
@@ -106,6 +109,10 @@ auto from_str(ref<str> input, ParseOptions options) -> ParseResult {
 
 auto read_value(Reader& reader) -> ParseResult {
     return Parser(reader).parse_value();
+}
+
+auto read_value(Reader& reader, bool reject_duplicate_keys) -> ParseResult {
+    return Parser(reader, reject_duplicate_keys).parse_value();
 }
 
 auto from_slice(slice<u8> input) -> ParseResult {

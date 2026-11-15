@@ -1,5 +1,6 @@
 export module rstd.json:direct;
 import :reader;
+import :typed;
 export import rstd.serde;
 
 using namespace rstd::prelude;
@@ -70,6 +71,12 @@ public:
 
     auto deserialize_json_value() -> Result<Value, serde::Error> {
         return syntax(read_value(*reader_));
+    }
+
+    auto capture_value() -> Result<CapturedValue, serde::Error> {
+        auto value = syntax(read_value(*reader_, true));
+        if (value.is_err()) return Err(rstd::move(value).unwrap_err_unchecked());
+        return Ok(CapturedValue(rstd::move(value).unwrap_unchecked(), path_.clone()));
     }
 
     auto deserialize_unit() -> Result<empty, serde::Error> {
