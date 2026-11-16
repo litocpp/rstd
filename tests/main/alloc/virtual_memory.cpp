@@ -78,3 +78,63 @@ TEST(VirtualMemoryAllocator, MoveTransfersLiveMappingStatistics) {
     rstd::as<Allocator>(destination).deallocate(allocation.pointer, layout);
     EXPECT_EQ(destination.statistics().mappings, usize());
 }
+
+TEST(VirtualMemoryAllocator, DynResizePreservesDataAndReleasesMappings) {
+    VirtualMemoryAllocator concrete;
+    auto                   allocator = rstd::alloc::allocator_ref(concrete);
+    {
+        auto layout    = Layout::from_size_align(usize(64), usize(16)).unwrap();
+        auto allocated = allocator->allocate(layout);
+        ASSERT_TRUE(allocated.is_ok());
+        struct LiveAllocation {
+            ref<dyn<Allocator>>     allocator;
+            rstd::alloc::Allocation allocation;
+            Layout                  layout;
+
+            ~LiveAllocation() { allocator->deallocate(allocation.pointer, layout); }
+        } live { allocator, allocated.unwrap(), layout };
+        auto* bytes = static_cast<unsigned char*>(live.allocation.pointer);
+        for (rstd::size_t index = 0; index < 64; ++index) bytes[index] = 0x5a;
+
+        auto grown_layout = Layout::from_size_align(usize(256), usize(32)).unwrap();
+        auto grown        = allocator->grow(live.allocation.pointer, live.layout, grown_layout);
+        ASSERT_TRUE(grown.is_ok());
+        live.allocation = grown.unwrap();
+        live.layout     = grown_layout;
+        bytes           = static_cast<unsigned char*>(live.allocation.pointer);
+        for (rstd::size_t index = 0; index < 64; ++index) EXPECT_EQ(bytes[index], 0x5a);
+        for (rstd::size_t index = 64; index < 256; ++index) bytes[index] = 0x5a;
+
+        auto zeroed_layout = Layout::from_size_align(usize(512), usize(64)).unwrap();
+        auto zeroed = allocator->grow_zeroed(live.allocation.pointer, live.layout, zeroed_layout);
+        ASSERT_TRUE(zeroed.is_ok());
+        live.allocation = zeroed.unwrap();
+        live.layout     = zeroed_layout;
+        bytes           = static_cast<unsigned char*>(live.allocation.pointer);
+        for (rstd::size_t index = 0; index < 256; ++index) EXPECT_EQ(bytes[index], 0x5a);
+        for (rstd::size_t index = 256; index < 512; ++index) EXPECT_EQ(bytes[index], 0);
+
+        auto shrunk_layout = Layout::from_size_align(usize(48), usize(16)).unwrap();
+        auto shrunk        = allocator->shrink(live.allocation.pointer, live.layout, shrunk_layout);
+        ASSERT_TRUE(shrunk.is_ok());
+        live.allocation = shrunk.unwrap();
+        live.layout     = shrunk_layout;
+        bytes           = static_cast<unsigned char*>(live.allocation.pointer);
+        for (rstd::size_t index = 0; index < 48; ++index) EXPECT_EQ(bytes[index], 0x5a);
+
+        auto unsupported =
+            Layout::from_size_align(usize(128), concrete.mapping_alignment() * usize(2)).unwrap();
+        EXPECT_TRUE(allocator->grow(live.allocation.pointer, live.layout, unsupported).is_err());
+        for (rstd::size_t index = 0; index < 48; ++index) EXPECT_EQ(bytes[index], 0x5a);
+        EXPECT_EQ(concrete.statistics().mappings, usize(1));
+    }
+    EXPECT_EQ(concrete.statistics().mappings, usize());
+    EXPECT_EQ(concrete.statistics().mapped_bytes, usize());
+
+    auto empty_layout = Layout::from_size_align(usize(), usize(16)).unwrap();
+    auto empty        = allocator->allocate_zeroed(empty_layout);
+    ASSERT_TRUE(empty.is_ok());
+    EXPECT_EQ(empty->pointer, empty_layout.dangling());
+    allocator->deallocate(empty->pointer, empty_layout);
+    EXPECT_EQ(concrete.statistics().mappings, usize());
+}

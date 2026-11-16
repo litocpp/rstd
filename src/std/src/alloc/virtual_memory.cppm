@@ -143,6 +143,25 @@ struct Impl<alloc::Allocator, alloc::VirtualMemoryAllocator>
     void deallocate(void* pointer, alloc::Layout layout) const noexcept {
         this->self().deallocate(pointer, layout);
     }
+
+    // Keep imported dyn entries on this Impl to avoid Windows Clang IRGen crashes.
+    auto grow(void* pointer, alloc::Layout old_layout, alloc::Layout new_layout) const
+        -> Result<alloc::Allocation, alloc::AllocError> {
+        return DefaultInImpl<alloc::Allocator, alloc::VirtualMemoryAllocator>::grow(
+            pointer, old_layout, new_layout);
+    }
+
+    auto grow_zeroed(void* pointer, alloc::Layout old_layout, alloc::Layout new_layout) const
+        -> Result<alloc::Allocation, alloc::AllocError> {
+        return DefaultInImpl<alloc::Allocator, alloc::VirtualMemoryAllocator>::grow_zeroed(
+            pointer, old_layout, new_layout);
+    }
+
+    auto shrink(void* pointer, alloc::Layout old_layout, alloc::Layout new_layout) const
+        -> Result<alloc::Allocation, alloc::AllocError> {
+        return DefaultInImpl<alloc::Allocator, alloc::VirtualMemoryAllocator>::shrink(
+            pointer, old_layout, new_layout);
+    }
 };
 
 } // namespace rstd
