@@ -166,6 +166,8 @@ public:
         auto control = VirtualMemoryAllocator {};
         if (! options.pool.slab_granularity.is_power_of_two()) return Err(AllocError {});
         options.pool.slab_granularity = options.pool.slab_granularity.max(control.page_size());
+        // Keep the existing diagnostic class indices and dedicated bucket.
+        options.pool.max_pooled_block_bytes = options.pool.max_pooled_block_bytes.min(usize(65536));
         auto layout = Arc<State>::template allocation_layout_in<VirtualMemoryAllocator>();
         if (layout.is_none()) return Err(AllocError {});
         auto bytes = control.allocation_size(*layout);

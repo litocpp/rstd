@@ -198,6 +198,22 @@ TEST(FrameAllocator, RejectsInvalidSlabGranularityAtCreation) {
     EXPECT_TRUE(FrameAllocator::try_make(options).is_err());
 }
 
+TEST(FrameAllocator, ExtendedPoolOptionsKeepExistingDiagnosticBuckets) {
+    FrameAllocatorOptions options { .record_allocations = true };
+    options.pool.max_pooled_block_bytes = usize(131072);
+    auto allocator                      = FrameAllocator::try_make(options).unwrap();
+    auto layout                         = Layout::from_size_align(usize(87360), usize(16)).unwrap();
+    auto block                          = allocator.allocate(layout).unwrap();
+    auto snapshot                       = allocator.snapshot();
+    EXPECT_EQ(snapshot.classes.len(), usize(65));
+    EXPECT_EQ(snapshot.classes[usize(64)].allocations, usize(1));
+    EXPECT_EQ(snapshot.classes[usize(64)].capacity, usize());
+    expect_record_totals(snapshot);
+    allocator.deallocate(block.pointer, layout);
+    EXPECT_EQ(allocator.snapshot().upstream.mapped_bytes, usize());
+    expect_reclaimed(allocator);
+}
+
 TEST(FrameAllocator, ClonesKeepControlOwnerAndLiveAllocationsInEitherDropOrder) {
     const bool orders[] { false, true };
     for (bool drop_original : orders) {

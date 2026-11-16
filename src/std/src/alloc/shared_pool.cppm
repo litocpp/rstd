@@ -36,6 +36,16 @@ public:
         return Shared::template allocation_layout_in<C>();
     }
     auto clone() const -> SharedPoolAllocator { return SharedPoolAllocator(state_.clone()); }
+    auto good_size(Layout layout) const -> usize {
+        return state_->lock().unwrap_unchecked()->good_size(layout);
+    }
+    // Pointer queries require a live, nonzero allocation from this pool.
+    auto allocation_size(const void* pointer) const -> usize {
+        return state_->lock().unwrap_unchecked()->allocation_size(pointer);
+    }
+    auto usable_size(const void* pointer) const -> usize {
+        return state_->lock().unwrap_unchecked()->usable_size(pointer);
+    }
     auto allocate(Layout layout) const -> Result<Allocation, AllocError> {
         return state_->lock().unwrap_unchecked()->allocate(layout);
     }
