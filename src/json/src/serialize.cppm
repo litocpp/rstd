@@ -52,8 +52,7 @@ class Emitter {
     }
 
     auto write_string(ref<str> value) -> bool {
-        auto quoted = rstd::json::quote_string(value);
-        return write(quoted.as_str());
+        return rstd::json::write_quoted_string(formatter_, value);
     }
 
     template<typename T>
