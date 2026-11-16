@@ -89,6 +89,7 @@ sources = [
   "async/io_operation.cpp",
   "async/write_all.cpp",
   "async/frame.cpp",
+  "async/frame_allocator.cpp",
   "async/lifecycle.cpp",
   "async/runtime.cpp",
   "async/spawn_blocking.cpp",

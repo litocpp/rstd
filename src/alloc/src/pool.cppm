@@ -6,8 +6,17 @@ using namespace rstd::prelude;
 
 export namespace rstd::alloc
 {
+enum class PoolSizeClasses
+{
+    PowersOfTwo,
+    Fine
+};
 struct PoolOptions {
     usize slab_bytes { 262144 }, max_pooled_block_bytes { 65536 }, retained_bytes { 1048576 };
+    PoolSizeClasses size_classes { PoolSizeClasses::PowersOfTwo };
+};
+struct PoolSizeClass {
+    usize index, capacity;
 };
 struct PoolStatistics {
     usize live_bytes {}, live_block_bytes {}, peak_live_bytes {}, reserved_bytes {};
@@ -22,6 +31,10 @@ struct PoolTrimReport {
 
 template<typename Upstream = ::alloc::Global>
 class PoolAllocator {
+public:
+    static constexpr unsigned MAX_CLASSES = 64;
+
+private:
     struct Slab;
     struct alignas(16) Block {
         Slab*  slab;
@@ -33,24 +46,23 @@ class PoolAllocator {
         Layout layout;
         usize  index, stride, live {}, slots;
     };
-    static constexpr unsigned classes = 13;
-    Upstream                  upstream_;
-    PoolOptions               options_;
-    mutable PoolStatistics    stats_;
-    mutable Slab*             slabs_ {};
-    mutable Slab*             available_[classes] {};
+    Upstream               upstream_;
+    PoolOptions            options_;
+    mutable PoolStatistics stats_;
+    mutable Slab*          slabs_ {};
+    mutable Slab*          partial_[MAX_CLASSES] {};
+    mutable Slab*          empty_[MAX_CLASSES] {};
 
-    void make_available(Slab* slab) const {
-        auto i               = slab->index.to_primitive();
-        slab->available_next = available_[i];
-        if (available_[i]) available_[i]->available_previous = slab;
-        available_[i] = slab;
+    void make_available(Slab* slab, Slab*& head) const {
+        slab->available_next = head;
+        if (head) head->available_previous = slab;
+        head = slab;
     }
-    void remove_available(Slab* slab) const {
+    void remove_available(Slab* slab, Slab*& head) const {
         if (slab->available_previous)
             slab->available_previous->available_next = slab->available_next;
         else
-            available_[slab->index.to_primitive()] = slab->available_next;
+            head = slab->available_next;
         if (slab->available_next)
             slab->available_next->available_previous = slab->available_previous;
         slab->available_next = slab->available_previous = nullptr;
@@ -58,7 +70,8 @@ class PoolAllocator {
     void release(Slab* slab) const noexcept {
         auto layout = slab->layout;
         if (slab->index != usize::MAX) {
-            remove_available(slab);
+            debug_assert(slab->live == usize());
+            remove_available(slab, empty_[slab->index.to_primitive()]);
             stats_.retained_bytes -= layout.size();
         }
         if (slab->previous)
@@ -110,7 +123,7 @@ class PoolAllocator {
         ++stats_.slabs;
         if (pooled) {
             stats_.retained_bytes += *size;
-            make_available(slab);
+            make_available(slab, empty_[index.to_primitive()]);
         }
         return slab;
     }
@@ -152,30 +165,74 @@ public:
         debug_assert(stats_.live_bytes == usize());
         while (slabs_) release(slabs_);
     }
+    auto class_count() const -> usize {
+        return usize(options_.size_classes == PoolSizeClasses::Fine ? MAX_CLASSES : 13);
+    }
+    auto classify(Layout layout) const -> Option<PoolSizeClass> {
+        if (layout.size() == usize() || layout.size() > usize(65536) || layout.align() > usize(16))
+            return None();
+        usize capacity(16), index;
+        if (options_.size_classes == PoolSizeClasses::Fine) {
+            usize base, step(16);
+            if (layout.size() > usize(16384)) {
+                base  = usize(16384);
+                step  = usize(4096);
+                index = usize(52);
+            } else if (layout.size() > usize(4096)) {
+                base  = usize(4096);
+                step  = usize(1024);
+                index = usize(40);
+            } else if (layout.size() > usize(1024)) {
+                base  = usize(1024);
+                step  = usize(256);
+                index = usize(28);
+            } else if (layout.size() > usize(256)) {
+                base  = usize(256);
+                step  = usize(64);
+                index = usize(16);
+            }
+            auto offset = (layout.size() - base - usize(1)) / step;
+            index += offset;
+            capacity = base + (offset + usize(1)) * step;
+        } else {
+            while (capacity < layout.size()) {
+                capacity *= usize(2);
+                ++index;
+            }
+        }
+        if (capacity > options_.max_pooled_block_bytes) return None();
+        return Some(PoolSizeClass { index, capacity });
+    }
     auto allocate(Layout layout) const -> Result<Allocation, AllocError> {
         if (layout.size() == usize()) return Ok(Allocation { layout.dangling(), usize() });
-        usize payload(16), index;
-        while (payload < layout.size() && index < usize(classes - 1)) {
-            payload *= usize(2);
-            ++index;
-        }
-        bool  pooled = layout.align() <= usize(16) && layout.size() <= payload &&
-                       payload <= options_.max_pooled_block_bytes;
-        auto* slab   = pooled ? available_[index.to_primitive()] : nullptr;
-        bool  reused = slab != nullptr;
+        auto  size_class = classify(layout);
+        auto  index      = size_class.is_some() ? size_class->index : usize::MAX;
+        bool  pooled     = size_class.is_some();
+        auto* slab       = pooled ? partial_[index.to_primitive()] : nullptr;
+        if (pooled && ! slab) slab = empty_[index.to_primitive()];
+        bool reused = slab != nullptr;
         if (! slab)
-            slab = new_slab(pooled ? index : usize::MAX,
-                            pooled ? payload : layout.size(),
+            slab = new_slab(index,
+                            pooled ? size_class->capacity : layout.size(),
                             layout.align().max(usize(16)));
         if (! slab) {
             ++stats_.failures;
             return Err(AllocError {});
         }
-        if (pooled && slab->live == usize()) stats_.retained_bytes -= slab->layout.size();
+        bool was_empty = slab->live == usize();
+        if (pooled && was_empty) {
+            remove_available(slab, empty_[index.to_primitive()]);
+            stats_.retained_bytes -= slab->layout.size();
+        }
         auto* block = slab->free;
         slab->free  = block->next;
         ++slab->live;
-        if (pooled && ! slab->free) remove_available(slab);
+        if (pooled) {
+            if (was_empty && slab->free)
+                make_available(slab, partial_[index.to_primitive()]);
+            else if (! was_empty && ! slab->free)
+                remove_available(slab, partial_[index.to_primitive()]);
+        }
         stats_.live_bytes += layout.size();
         stats_.live_block_bytes += slab->stride;
         stats_.peak_live_bytes = stats_.peak_live_bytes.max(stats_.live_bytes);
@@ -218,13 +275,17 @@ public:
             release(slab);
             return;
         }
-        if (! slab->free) make_available(slab);
-        block->next = slab->free;
-        slab->free  = block;
+        bool was_full = slab->free == nullptr;
+        block->next   = slab->free;
+        slab->free    = block;
+        auto index    = slab->index.to_primitive();
         if (slab->live == usize()) {
+            if (! was_full) remove_available(slab, partial_[index]);
+            make_available(slab, empty_[index]);
             stats_.retained_bytes += slab->layout.size();
             if (stats_.retained_bytes > options_.retained_bytes) release(slab);
-        }
+        } else if (was_full)
+            make_available(slab, partial_[index]);
     }
     auto trim(usize retain_bytes = {}) const -> PoolTrimReport {
         PoolTrimReport report;

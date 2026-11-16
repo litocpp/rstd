@@ -8,6 +8,7 @@ export import :async.executor;
 export import :async.thread_pool_executor;
 export import :async.awaitable;
 export import :async.task;
+export import :async.frame_pool;
 export import :async.coro_future;
 export import :async.join;
 export import :async.select;

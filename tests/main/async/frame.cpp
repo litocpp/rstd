@@ -408,10 +408,15 @@ TEST(RstdAsyncFrame, ConfiguredAllocatorFailureUsesAllocationFailurePolicy) {
     auto builder = async::RuntimeBuilder::current_thread();
     builder.frame_allocator(rstd::alloc::SharedAllocator::make(rstd::move(budget)));
     auto runtime = builder.build().unwrap();
+#if defined(__cpp_exceptions)
+    constexpr auto failure = "bad_alloc";
+#else
+    constexpr auto failure = "memory allocation failed";
+#endif
     EXPECT_DEATH((void)runtime.spawn_with([] {
         return allocated_frame();
     }),
-                 "memory allocation failed");
+                 failure);
 }
 
 TEST(RstdAsyncFrame, AbortDestroysPendingFactoryFrameFirst) {
