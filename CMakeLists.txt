@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.28)
 project(
   rstd
-  VERSION 0.1.12
+  VERSION 0.1.13
   DESCRIPTION "Rust-like std for C++"
   LANGUAGES C CXX)
 

@@ -1,3 +1,21 @@
+<release version="0.1.13" date="2026-11-17">
+  <description>
+    <ul>
+      <li>Add FrameAllocator.</li>
+      <li>Extend PoolAllocator size classes and slab retention.</li>
+      <li>Add RwLock.</li>
+      <li>Add async watch.</li>
+      <li>Add async Semaphore.</li>
+      <li>Add Receiver::stdin and Sender::stdout.</li>
+      <li>Extend derive macros.</li>
+      <li>Extend serde construction and error diagnostics.</li>
+      <li>Add BaseDirs and ProjectDirs.</li>
+      <li>Add unaligned SIMD memory access.</li>
+      <li>Improve JSON formatting.</li>
+      <li>Optimize container allocation layouts.</li>
+    </ul>
+  </description>
+</release>
 <release version="0.1.12" date="2026-11-08">
   <description>
     <ul>
