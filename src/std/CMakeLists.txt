@@ -254,6 +254,7 @@ target_sources(
          src/async/facility.cppm
          src/async/awaitable.cppm
          src/async/frame_allocator.cppm
+         src/async/frame_pool.cppm
          src/async/task.cppm
          src/async/executor.cppm
          src/async/thread_pool_executor.cppm

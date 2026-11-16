@@ -28,7 +28,7 @@ namespace rstd::async
 {
 
 export struct FrameAllocatorOptions {
-    PoolOptions pool { .size_classes = PoolSizeClasses::Fine };
+    PoolOptions pool { .size_classes = PoolSizeClasses::Fine, .target_blocks_per_slab = usize(64) };
     // Fixed for the allocation domain; enabling records adds per-block storage and clock reads.
     bool record_allocations {};
 };
@@ -164,7 +164,9 @@ public:
 
     static auto try_make(FrameAllocatorOptions options = {}) -> Result<FrameAllocator, AllocError> {
         auto control = VirtualMemoryAllocator {};
-        auto layout  = Arc<State>::template allocation_layout_in<VirtualMemoryAllocator>();
+        if (! options.pool.slab_granularity.is_power_of_two()) return Err(AllocError {});
+        options.pool.slab_granularity = options.pool.slab_granularity.max(control.page_size());
+        auto layout = Arc<State>::template allocation_layout_in<VirtualMemoryAllocator>();
         if (layout.is_none()) return Err(AllocError {});
         auto bytes = control.allocation_size(*layout);
         if (bytes.is_none()) return Err(AllocError {});

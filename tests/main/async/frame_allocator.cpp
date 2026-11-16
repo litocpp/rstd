@@ -155,6 +155,49 @@ TEST(FrameAllocator, DefaultFineClassesAvoidPowerOfTwoRounding) {
     expect_reclaimed(allocator);
 }
 
+TEST(FrameAllocator, DefaultSmallClassesStartWithSmallPageRoundedSlabs) {
+    const bool records[] { false, true };
+    for (bool recording : records) {
+        auto allocator = FrameAllocator::try_make({ .record_allocations = recording }).unwrap();
+        auto layout    = Layout::from_size_align(usize(176), usize(16)).unwrap();
+        auto block     = allocator.allocate(layout).unwrap();
+        auto snapshot  = allocator.snapshot();
+        EXPECT_EQ(FrameAllocatorOptions {}.pool.target_blocks_per_slab, usize(64));
+        EXPECT_LT(snapshot.pool.reserved_bytes, FrameAllocatorOptions {}.pool.slab_bytes);
+        EXPECT_EQ(snapshot.pool.reserved_bytes, snapshot.upstream.mapped_bytes);
+        EXPECT_EQ(snapshot.pool.slabs, usize(1));
+        EXPECT_EQ(snapshot.upstream.allocation_calls, usize(1));
+        if (recording) expect_record_totals(snapshot);
+        allocator.deallocate(block.pointer, layout);
+        expect_reclaimed(allocator);
+    }
+}
+
+TEST(FrameAllocator, LargeClassesKeepBatchingWithoutUnusedSlabTail) {
+    const bool records[] { false, true };
+    for (bool recording : records) {
+        auto  allocator = FrameAllocator::try_make({ .record_allocations = recording }).unwrap();
+        auto  layout    = Layout::from_size_align(usize(50 * 1024), usize(16)).unwrap();
+        void* blocks[4] {};
+        for (auto& block : blocks) block = allocator.allocate(layout).unwrap().pointer;
+        auto snapshot = allocator.snapshot();
+        EXPECT_EQ(snapshot.pool.slabs, usize(1));
+        EXPECT_LT(snapshot.pool.reserved_bytes, FrameAllocatorOptions {}.pool.slab_bytes);
+        EXPECT_EQ(snapshot.pool.reserved_bytes, snapshot.upstream.mapped_bytes);
+        EXPECT_EQ(snapshot.pool.live_bytes,
+                  recording ? snapshot.records.live_bytes + snapshot.records.record_bytes
+                            : layout.size() * usize(4));
+        for (auto block : blocks) allocator.deallocate(block, layout);
+        expect_reclaimed(allocator);
+    }
+}
+
+TEST(FrameAllocator, RejectsInvalidSlabGranularityAtCreation) {
+    FrameAllocatorOptions options;
+    options.pool.slab_granularity = usize(3);
+    EXPECT_TRUE(FrameAllocator::try_make(options).is_err());
+}
+
 TEST(FrameAllocator, ClonesKeepControlOwnerAndLiveAllocationsInEitherDropOrder) {
     const bool orders[] { false, true };
     for (bool drop_original : orders) {

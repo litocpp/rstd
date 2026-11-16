@@ -14,6 +14,8 @@ enum class PoolSizeClasses
 struct PoolOptions {
     usize slab_bytes { 262144 }, max_pooled_block_bytes { 65536 }, retained_bytes { 1048576 };
     PoolSizeClasses size_classes { PoolSizeClasses::PowersOfTwo };
+    // Zero keeps fixed slabs; otherwise slab_bytes caps their size before rounding.
+    usize target_blocks_per_slab {}, min_slab_bytes { 16384 }, slab_granularity { 1 };
 };
 struct PoolSizeClass {
     usize index, capacity;
@@ -95,20 +97,31 @@ private:
         auto size = offset->checked_add(payload);
         if (size.is_none()) return nullptr;
         bool pooled = index != usize::MAX;
-        if (pooled) *size = size->max(options_.slab_bytes);
+        auto stride = payload + usize(sizeof(Block));
+        if (pooled) {
+            auto budget = size->max(options_.slab_bytes);
+            if (options_.target_blocks_per_slab != usize()) {
+                auto overhead = *offset - usize(sizeof(Block));
+                auto count    = options_.target_blocks_per_slab.min((budget - overhead) / stride);
+                *size = (overhead + count * stride).max(options_.min_slab_bytes.min(budget));
+            } else
+                *size = budget;
+        }
+        auto rounded = Layout::from_size_align(*size, options_.slab_granularity);
+        if (rounded.is_none()) return nullptr;
+        *size       = rounded->pad_to_align().size();
         auto layout = Layout::from_size_align(*size, alignment);
         if (layout.is_none()) return nullptr;
         auto memory = as<Allocator>(upstream_).allocate(*layout);
         if (memory.is_err()) return nullptr;
-        auto* base   = static_cast<byte*>(memory->pointer);
-        auto  stride = payload + usize(sizeof(Block));
-        auto  slots  = pooled ? (*size - *offset + usize(sizeof(Block))) / stride : usize(1);
-        auto* slab   = rstd::construct_at(reinterpret_cast<Slab*>(base),
-                                          Slab { .next   = slabs_,
-                                                 .layout = *layout,
-                                                 .index  = index,
-                                                 .stride = stride,
-                                                 .slots  = slots });
+        auto* base  = static_cast<byte*>(memory->pointer);
+        auto  slots = pooled ? (*size - *offset + usize(sizeof(Block))) / stride : usize(1);
+        auto* slab  = rstd::construct_at(reinterpret_cast<Slab*>(base),
+                                         Slab { .next   = slabs_,
+                                                .layout = *layout,
+                                                .index  = index,
+                                                .stride = stride,
+                                                .slots  = slots });
         if (slabs_) slabs_->previous = slab;
         slabs_ = slab;
         for (usize i; i < slots; ++i) {

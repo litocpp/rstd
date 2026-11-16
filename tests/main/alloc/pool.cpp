@@ -34,6 +34,84 @@ TEST(PoolAllocator, DefaultSizeClassesRemainPowersOfTwo) {
     EXPECT_EQ(pool.statistics().slabs, usize());
 }
 
+TEST(PoolAllocator, SizeBasedSlabsScaleWithBucketCapacity) {
+    PoolOptions     options { .size_classes           = PoolSizeClasses::Fine,
+                              .target_blocks_per_slab = usize(64),
+                              .slab_granularity       = usize(4096) };
+    PoolAllocator<> pool(options);
+    auto            small       = Layout::from_size_align(usize(176), usize(16)).unwrap();
+    auto            first       = pool.allocate(small).unwrap();
+    auto            small_stats = pool.statistics();
+    EXPECT_EQ(small_stats.reserved_bytes, options.min_slab_bytes);
+    auto medium       = Layout::from_size_align(usize(1024), usize(16)).unwrap();
+    auto second       = pool.allocate(medium).unwrap();
+    auto medium_bytes = pool.statistics().reserved_bytes - small_stats.reserved_bytes;
+    EXPECT_GT(medium_bytes, options.min_slab_bytes);
+    EXPECT_LT(medium_bytes, options.slab_bytes);
+    EXPECT_EQ(medium_bytes % options.slab_granularity, usize());
+    auto  large        = Layout::from_size_align(usize(50 * 1024), usize(16)).unwrap();
+    auto  before_large = pool.statistics();
+    void* blocks[4] {};
+    for (auto& block : blocks) block = pool.allocate(large).unwrap().pointer;
+    auto large_bytes = pool.statistics().reserved_bytes - before_large.reserved_bytes;
+    EXPECT_GT(large_bytes, medium_bytes);
+    EXPECT_LT(large_bytes, options.slab_bytes);
+    EXPECT_EQ(large_bytes % options.slab_granularity, usize());
+    EXPECT_EQ(pool.statistics().slabs, before_large.slabs + usize(1));
+    auto extra = pool.allocate(large).unwrap();
+    EXPECT_EQ(pool.statistics().slabs, before_large.slabs + usize(2));
+    for (auto block : blocks) pool.deallocate(block, large);
+    pool.deallocate(extra.pointer, large);
+    pool.deallocate(second.pointer, medium);
+    pool.deallocate(first.pointer, small);
+    pool.trim();
+    EXPECT_EQ(pool.statistics().reserved_bytes, usize());
+}
+
+TEST(PoolAllocator, FixedSlabDefaultsAndExplicitOptOutKeepTheirSize) {
+    const usize targets[] { usize(), usize(64) };
+    for (auto target : targets) {
+        PoolOptions     options { .slab_bytes             = usize(4096),
+                                  .target_blocks_per_slab = target,
+                                  .min_slab_bytes         = usize(16384),
+                                  .slab_granularity       = usize(4096) };
+        PoolAllocator<> pool(options);
+        auto            layout = Layout::from_size_align(usize(64), usize(16)).unwrap();
+        auto            block  = pool.allocate(layout).unwrap();
+        EXPECT_EQ(pool.statistics().reserved_bytes, options.slab_bytes);
+        pool.deallocate(block.pointer, layout);
+    }
+    PoolAllocator<> pool;
+    auto            layout = Layout::from_size_align(usize(64), usize(16)).unwrap();
+    auto            block  = pool.allocate(layout).unwrap();
+    EXPECT_EQ(pool.statistics().reserved_bytes, PoolOptions {}.slab_bytes);
+    pool.deallocate(block.pointer, layout);
+}
+
+TEST(PoolAllocator, SizeBasedSlotTargetIsCappedWithoutOverflow) {
+    PoolOptions     options { .slab_bytes             = usize(4096),
+                              .target_blocks_per_slab = usize::MAX,
+                              .slab_granularity       = usize(4096) };
+    PoolAllocator<> pool(options);
+    auto            layout = Layout::from_size_align(usize(512), usize(16)).unwrap();
+    auto            block  = pool.allocate(layout).unwrap();
+    EXPECT_EQ(pool.statistics().reserved_bytes, options.slab_bytes);
+    EXPECT_EQ(pool.statistics().failures, usize());
+    pool.deallocate(block.pointer, layout);
+}
+
+TEST(PoolAllocator, InvalidSlabGranularityDoesNotAllocate) {
+    const usize granularities[] { usize(), usize(3) };
+    for (auto granularity : granularities) {
+        PoolAllocator<> pool(PoolOptions { .slab_granularity = granularity });
+        auto            layout = Layout::from_size_align(usize(64), usize(16)).unwrap();
+        EXPECT_TRUE(pool.allocate(layout).is_err());
+        EXPECT_EQ(pool.statistics().reserved_bytes, usize());
+        EXPECT_EQ(pool.statistics().allocations, usize());
+        EXPECT_EQ(pool.statistics().failures, usize(1));
+    }
+}
+
 TEST(PoolAllocator, FineSizeClassesCoverEveryBoundary) {
     PoolAllocator<> pool(
         PoolOptions { .slab_bytes = usize(1024), .size_classes = PoolSizeClasses::Fine });
