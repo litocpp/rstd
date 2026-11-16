@@ -95,6 +95,9 @@ class Simd {
                                             uint16_t,
                                             mtp::cond<sizeof(Primitive) == 4, uint32_t, uint64_t>>>;
     using UnsignedRaw = Unsigned __attribute__((ext_vector_type(N)));
+    // Element is a closed set of transparent numeric wrappers.
+    static_assert(mtp::transparent<T, Primitive> && mtp::triv_copyable<T>);
+    static_assert(sizeof(Raw) == N * sizeof(Primitive));
     Raw values_ {};
 
     explicit Simd(const Raw& values) noexcept: values_(values) {}
@@ -149,12 +152,24 @@ public:
         return result;
     }
 
+    /// Reads N initialized elements; the caller guarantees readable storage.
+    /// Element alignment is sufficient; SIMD alignment is not required.
+    static auto load_unaligned(const typename slice<T>::storage_type* source) noexcept -> Simd {
+        Raw values;
+        __builtin_memcpy(&values, source, N * sizeof(Primitive));
+        return Simd(values);
+    }
+
+    /// Writes N elements; the caller guarantees writable initialized storage.
+    /// Element alignment is sufficient; SIMD alignment is not required.
+    void store_unaligned(typename slice<T>::storage_type* destination) const noexcept {
+        __builtin_memcpy(destination, &values_, N * sizeof(Primitive));
+    }
+
     /// Loads N elements, panicking if the slice is too short.
     static auto from_slice(slice<T> values) noexcept -> Simd {
         if (values.len().to_primitive() < N) panic { "SIMD input slice too short" };
-        Simd result;
-        for (size_t i = 0; i < N; ++i) result.values_[i] = values[usize(i)].to_primitive();
-        return result;
+        return load_unaligned(values.as_raw_ptr());
     }
 
     /// Missing lanes retain the corresponding fallback value.
@@ -168,7 +183,7 @@ public:
     /// Writes N elements, panicking before writing if the slice is too short.
     void copy_to_slice(mut_ref<T[]> output) const noexcept {
         if (output.len().to_primitive() < N) panic { "SIMD output slice too short" };
-        for (size_t i = 0; i < N; ++i) output[usize(i)] = T(values_[i]);
+        store_unaligned(output.as_raw_ptr());
     }
 
     /// Writes only min(output.len(), N) elements.

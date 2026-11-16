@@ -3,6 +3,10 @@ name = "rstd-benchmark"
 version = "0.1.0"
 
 [[bench]]
+name = "simd-memory-bench"
+sources = ["simd/memory.cpp"]
+
+[[bench]]
 module = "rstd_benches"
 name = "rstd_bench"
 sources = [

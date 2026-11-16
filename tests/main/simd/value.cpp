@@ -17,6 +17,72 @@ static_assert(! simd::LaneCount<0> && ! simd::LaneCount<3> && ! simd::LaneCount<
 static_assert(Simd<u8, 16>::LANES == usize(16));
 
 template<typename T, size_t N>
+void unaligned_memory() {
+    SCOPED_TRACE(__PRETTY_FUNCTION__);
+    alignas(64) array<T, N + 2> input {}, output {};
+    auto*                       source      = input.as_mut_slice().as_raw_ptr() + 1;
+    auto*                       destination = output.as_mut_slice().as_raw_ptr() + 1;
+    for (size_t i = 0; i < N + 2; ++i) output[usize(i)] = T(55);
+    for (size_t i = 0; i < N; ++i) {
+        if constexpr (simd::FloatElement<T>) {
+            using Bits = typename T::Bits;
+            if constexpr (sizeof(T) == 4) {
+                const uint32_t bits[] { 0x80000000, 0x7f800000, 0x7fc01234, 0x00000001 };
+                input[usize(i + 1)] = T::from_bits(Bits(bits[i % 4]));
+            } else {
+                const uint64_t bits[] {
+                    0x8000000000000000ULL, 0x7ff0000000000000ULL, 0x7ff8000000001234ULL, 1
+                };
+                input[usize(i + 1)] = T::from_bits(Bits(bits[i % 4]));
+            }
+        } else {
+            input[usize(i + 1)] = i % 2 == 0 ? T::MIN : T::MAX;
+        }
+    }
+    auto loaded = Simd<T, N>::load_unaligned(source);
+    loaded.store_unaligned(destination);
+    auto checked = Simd<T, N>::from_slice(slice<T>::from_raw_parts(source, usize(N + 1)));
+    for (size_t i = 0; i < N; ++i) {
+        if constexpr (simd::FloatElement<T>) {
+            EXPECT_EQ(output[usize(i + 1)].to_bits(), input[usize(i + 1)].to_bits());
+            EXPECT_EQ(checked[usize(i)].to_bits(), input[usize(i + 1)].to_bits());
+        } else {
+            T expected = input[usize(i + 1)];
+            EXPECT_EQ(output[usize(i + 1)], expected);
+            EXPECT_EQ(checked[usize(i)], expected);
+        }
+    }
+    EXPECT_EQ(output[usize()], T(55));
+    EXPECT_EQ(output[usize(N + 1)], T(55));
+}
+
+template<typename T>
+void unaligned_lanes() {
+    unaligned_memory<T, 1>();
+    unaligned_memory<T, 2>();
+    unaligned_memory<T, 4>();
+    unaligned_memory<T, 8>();
+    unaligned_memory<T, 16>();
+    unaligned_memory<T, 32>();
+    unaligned_memory<T, 64>();
+}
+
+TEST(Simd, UnalignedMemoryPreservesBitsAndSentinels) {
+    unaligned_lanes<u8>();
+    unaligned_lanes<i8>();
+    unaligned_lanes<u16>();
+    unaligned_lanes<i16>();
+    unaligned_lanes<u32>();
+    unaligned_lanes<i32>();
+    unaligned_lanes<u64>();
+    unaligned_lanes<i64>();
+    unaligned_lanes<usize>();
+    unaligned_lanes<isize>();
+    unaligned_lanes<f32>();
+    unaligned_lanes<f64>();
+}
+
+template<typename T, size_t N>
 void memory_and_masks() {
     using V = Simd<T, N>;
     array<T, N + 2> input {};
@@ -135,7 +201,19 @@ void guard_pages() {
         ~Mapping() { EXPECT_EQ(munmap(address, length), 0); }
     } mapping { raw, page * 2 };
     ASSERT_EQ(mprotect(raw + page, page, PROT_NONE), 0);
-    auto* bytes = reinterpret_cast<byte*>(raw);
+    auto full_vector = [&]<typename T, size_t N>() {
+        auto* data = reinterpret_cast<T*>(raw + page - N * sizeof(T));
+        for (size_t i = 0; i < N; ++i) rstd::construct_at(data + i, T(i));
+        auto value = Simd<T, N>::load_unaligned(data);
+        value.store_unaligned(data);
+        EXPECT_EQ(data[N - 1], T(N - 1));
+    };
+    full_vector.template operator()<f32, 1>();
+    full_vector.template operator()<f32, 4>();
+    full_vector.template operator()<f32, 64>();
+    full_vector.template operator()<f64, 2>();
+    full_vector.template operator()<f64, 64>();
+    auto*                bytes = reinterpret_cast<byte*>(raw);
     for (size_t n = 0; n <= 64; ++n) {
         for (size_t i = 0; i < n; ++i) raw[page - n + i] = 7;
         auto s = slice<u8>::from_raw_parts(bytes + page - n, usize(n));
