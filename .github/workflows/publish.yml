@@ -38,6 +38,7 @@ jobs:
             rstd-serde
             rstd-serde-macro
             rstd-std
+            rstd-macro
             rstd-argparse
             rstd-bench
             rstd-test
