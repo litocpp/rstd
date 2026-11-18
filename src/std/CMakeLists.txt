@@ -305,6 +305,7 @@ target_sources(
           src/random/mod.cpp
           src/sys/random/mod.cpp
           src/async/runtime_core.cpp
+          src/async/process.cpp
           src/async/frame_allocator.cpp
           src/async/stream.cpp
           src/thread/thread.cpp
