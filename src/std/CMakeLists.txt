@@ -308,6 +308,7 @@ target_sources(
           src/async/process.cpp
           src/async/frame_allocator.cpp
           src/async/stream.cpp
+          src/async/io_operation.cpp
           src/thread/thread.cpp
           src/thread/thread/id.cpp
           src/thread/thread/main_thread.cpp
