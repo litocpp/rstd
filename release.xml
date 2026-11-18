@@ -1,3 +1,12 @@
+<release version="0.1.14" date="2026-11-18">
+  <description>
+    <ul>
+      <li>Move argparse, async process and I/O implementations out of module interfaces.</li>
+      <li>Fix VirtualMemoryAllocator trait dispatch on Windows.</li>
+      <li>Publish rstd-macro.</li>
+    </ul>
+  </description>
+</release>
 <release version="0.1.13" date="2026-11-17">
   <description>
     <ul>
