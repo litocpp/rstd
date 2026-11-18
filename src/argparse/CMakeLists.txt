@@ -5,6 +5,7 @@ target_link_libraries(rstd.argparse PUBLIC rstd.std)
 
 target_sources(
   rstd.argparse
+  PRIVATE src/command.cpp src/parser.cpp
   PUBLIC FILE_SET
          modules
          TYPE
