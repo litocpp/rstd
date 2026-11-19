@@ -3,7 +3,30 @@ export import :probe.recorder;
 import :statistics;
 
 using namespace rstd::prelude;
+using rstd::collections::HashMap;
 using rstd::sync::Arc;
+
+struct ProbeScopedId {
+    u64 scope;
+    u64 id;
+
+    friend auto operator==(ProbeScopedId, ProbeScopedId) noexcept -> bool = default;
+};
+
+namespace rstd
+{
+
+template<>
+struct Impl<hash::Hash, ProbeScopedId> : ImplBase<ProbeScopedId> {
+    template<typename H>
+        requires Impled<H, hash::Hasher>
+    void hash(H& state) const noexcept {
+        hash::write_value(state, this->self().scope);
+        hash::write_value(state, this->self().id);
+    }
+};
+
+} // namespace rstd
 
 auto probe_elapsed_ns(rstd::time::Duration elapsed) noexcept -> u64 {
     auto const nanos = elapsed.as_nanos();
@@ -100,22 +123,16 @@ class ProbeCollector {
     usize                dropped_samples_ {};
     Vec<ProbeDiagnostic> diagnostics_;
 
-    auto exclusive_ns(const SpanSample& sample) const noexcept -> u64 {
-        auto children = u64();
-        for (const auto& candidate : samples_) {
-            if (candidate.recorder_id == sample.recorder_id &&
-                candidate.parent_sequence == Some(sample.sequence)) {
-                children = probe_saturating_add(children, probe_elapsed_ns(candidate.elapsed));
-            }
+    template<typename Key, typename Builder, typename MakeBuilder>
+    static auto group(HashMap<Key, usize>& indices,
+                      Vec<Builder>&        builders,
+                      Key                  key,
+                      MakeBuilder          make) -> Builder& {
+        if (auto index = indices.get(key); index.is_some()) {
+            return builders[**index];
         }
-        return probe_elapsed_ns(sample.elapsed).saturating_sub(children);
-    }
-
-    static auto builder(Vec<ProbeSummaryBuilder>& builders, ProbeId id) -> ProbeSummaryBuilder& {
-        for (auto& current : builders) {
-            if (current.probe == id) return current;
-        }
-        return builders.emplace_back(id);
+        indices.insert(key, builders.len());
+        return builders.emplace_back(make());
     }
 
     static auto finish_builder(ProbeSummaryBuilder&& builder) -> ProbeSummary {
@@ -177,6 +194,18 @@ public:
     }
 
     auto finish() && -> ProbeReport {
+        // Batches can arrive in any order, and span sequences are recorder-local.
+        auto child_times = HashMap<ProbeScopedId, u64>::make();
+        for (const auto& sample : samples_) {
+            if (sample.parent_sequence.is_none()) continue;
+            auto key     = ProbeScopedId { sample.recorder_id, *sample.parent_sequence };
+            auto elapsed = probe_elapsed_ns(sample.elapsed);
+            if (auto total = child_times.get_mut(key); total.is_some()) {
+                **total = probe_saturating_add(**total, elapsed);
+            } else {
+                child_times.insert(key, elapsed);
+            }
+        }
         auto overall_builders = Vec<ProbeSummaryBuilder>::make();
         struct ThreadBuilder {
             thread::ThreadId    thread_id;
@@ -188,39 +217,29 @@ public:
         };
         auto thread_builders = Vec<ThreadBuilder>::make();
         auto frame_builders  = Vec<FrameBuilder>::make();
+        auto overall_indices = HashMap<u32, usize>::make();
+        auto thread_indices  = HashMap<ProbeScopedId, usize>::make();
+        auto frame_indices   = HashMap<ProbeScopedId, usize>::make();
 
         for (const auto& sample : samples_) {
             auto const inclusive = probe_elapsed_ns(sample.elapsed);
-            auto const exclusive = exclusive_ns(sample);
-            builder(overall_builders, sample.probe).push(inclusive, exclusive);
+            auto const children  = child_times.get({ sample.recorder_id, sample.sequence });
+            auto const exclusive = inclusive.saturating_sub(children.is_some() ? **children : u64 {});
+            auto const probe     = u64(sample.probe.value.to_primitive());
+            auto make_summary    = [&] { return ProbeSummaryBuilder(sample.probe); };
+            group(overall_indices, overall_builders, sample.probe.value, make_summary)
+                .push(inclusive, exclusive);
 
-            ThreadBuilder* thread_builder = nullptr;
-            for (auto& current : thread_builders) {
-                if (current.thread_id == sample.thread_id &&
-                    current.builder.probe == sample.probe) {
-                    thread_builder = &current;
-                    break;
-                }
-            }
-            if (thread_builder == nullptr) {
-                thread_builder = &thread_builders.emplace_back(
-                    ThreadBuilder { sample.thread_id, ProbeSummaryBuilder(sample.probe) });
-            }
-            thread_builder->builder.push(inclusive, exclusive);
+            auto thread_key = ProbeScopedId { sample.thread_id.as_u64().get(), probe };
+            group(thread_indices, thread_builders, thread_key, [&] {
+                return ThreadBuilder { sample.thread_id, make_summary() };
+            }).builder.push(inclusive, exclusive);
 
             if (sample.frame.is_some()) {
-                FrameBuilder* frame_builder = nullptr;
-                for (auto& current : frame_builders) {
-                    if (current.frame == *sample.frame && current.builder.probe == sample.probe) {
-                        frame_builder = &current;
-                        break;
-                    }
-                }
-                if (frame_builder == nullptr) {
-                    frame_builder = &frame_builders.emplace_back(
-                        FrameBuilder { *sample.frame, ProbeSummaryBuilder(sample.probe) });
-                }
-                frame_builder->builder.push(inclusive, exclusive);
+                auto frame_key = ProbeScopedId { *sample.frame, probe };
+                group(frame_indices, frame_builders, frame_key, [&] {
+                    return FrameBuilder { *sample.frame, make_summary() };
+                }).builder.push(inclusive, exclusive);
             }
         }
 
