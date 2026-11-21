@@ -41,7 +41,9 @@ using ::max_align_t;
 #undef errno
 [[gnu::always_inline]]
 inline auto errno() noexcept -> int {
-#if defined(RSTD_OS_LINUX)
+#if __is_target_environment(android)
+    return *__errno();
+#elif defined(RSTD_OS_LINUX)
     return *__errno_location();
 #elif defined(RSTD_OS_WINDOWS)
     return *_errno();

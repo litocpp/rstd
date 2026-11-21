@@ -5,6 +5,7 @@ module;
 #include <ws2tcpip.h>
 #else
 #include <netdb.h>
+#include <netinet/in.h>
 #include <errno.h>
 #endif
 module rstd.sys.socket;
