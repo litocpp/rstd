@@ -27,6 +27,27 @@ constexpr auto Integer<Derived, Primitive, Tag>::checked_mul(Self rhs) const noe
     return rstd::option::Some(Self(value));
 }
 
+export namespace rstd::num
+{
+/// Multiplies factors in order and returns None on the first overflow.
+/// An empty slice has product one.
+template<Integer T>
+[[nodiscard]]
+constexpr auto checked_product(slice<T> factors) -> Option<T> {
+    return iter::from_slice(factors).copied().try_fold(T(1), [](T product, T factor) {
+        return product.checked_mul(factor);
+    });
+}
+
+template<Integer T, typename... Factors>
+    requires(mtp::same_as<T, Factors> && ...)
+[[nodiscard]]
+constexpr auto checked_product(T first, Factors... rest) -> Option<T> {
+    const array<T, 1 + sizeof...(rest)> factors { first, rest... };
+    return checked_product(factors.as_slice());
+}
+} // namespace rstd::num
+
 template<typename Derived, typename Primitive, typename Tag>
 constexpr auto Integer<Derived, Primitive, Tag>::checked_div(Self rhs) const noexcept
     -> rstd::Option<Self> {

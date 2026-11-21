@@ -461,6 +461,27 @@ TEST(IntArithmetic, UnsignedRoundingAndMultiples) {
     EXPECT_TRUE(unsigned_rounding_boundaries<usize>());
 }
 
+template<typename... Factors>
+concept HasCheckedProduct = requires(Factors... factors) { num::checked_product(factors...); };
+
+static_assert(HasCheckedProduct<u32, u32>);
+static_assert(! HasCheckedProduct<u32, u64>);
+static_assert(! HasCheckedProduct<u32, unsigned>);
+static_assert(! HasCheckedProduct<f32, f32>);
+static_assert(num::checked_product(slice<u64> {}).unwrap() == 1_u64);
+static_assert(num::checked_product(2_u8, 3_u8, 4_u8).unwrap() == 24_u8);
+static_assert(num::checked_product(i64(-2), 3_i64, 4_i64).unwrap() == i64(-24));
+
+TEST(IntArithmetic, CheckedProduct) {
+    const array<u64, 3> shape { 2_u64, 3_u64, 4_u64 };
+    const array<u64, 3> overflow_before_zero { u64::MAX, 2_u64, 0_u64 };
+    EXPECT_EQ(num::checked_product(shape.as_slice()), Some(24_u64));
+    EXPECT_EQ(num::checked_product(u64::MAX), Some(u64::MAX));
+    EXPECT_EQ(num::checked_product(0_u64, u64::MAX, 2_u64), Some(0_u64));
+    EXPECT_TRUE(num::checked_product(overflow_before_zero.as_slice()).is_none());
+    EXPECT_TRUE(num::checked_product(i64::MIN, i64(-1), i64(0)).is_none());
+}
+
 TEST(IntArithmetic, SignedUnsignedMethodsCoverBoundaries) {
     EXPECT_TRUE(i8::MAX.checked_add_unsigned(1_u8).is_none());
     EXPECT_EQ(i8(-1).checked_add_unsigned(1_u8), Some(i8()));
