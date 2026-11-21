@@ -252,6 +252,72 @@ TEST(FloatMethods, MathDomainsAndSpecialValues) {
     check_float_math_boundaries<rstd::f64>();
 }
 
+template<typename T>
+void check_float_mul_add() {
+    using rstd::num::mul_add;
+    using Primitive = typename T::primitive_type;
+
+    constexpr auto epsilon  = T::EPSILON;
+    constexpr auto residual = -(epsilon * epsilon);
+#if __has_constexpr_builtin(__builtin_elementwise_fma)
+    static_assert(mul_add(T(1) + epsilon, T(1) - epsilon, T(-1)) == residual);
+#endif
+
+    volatile Primitive input = 1;
+    auto const         one   = T(input);
+    EXPECT_EQ(mul_add(one + epsilon, one - epsilon, -one), residual);
+
+    input          = 2;
+    auto const two = T(input);
+    EXPECT_EQ(mul_add(T::MAX, two, -T::MAX), T::MAX);
+    EXPECT_TRUE(mul_add(T(-0.0), two, T(-0.0)).is_sign_negative());
+    EXPECT_EQ(mul_add(two, T::INFINITY_, one), T::INFINITY_);
+
+    input = 0;
+    EXPECT_TRUE(mul_add(T(input), T::INFINITY_, one).is_nan());
+}
+
+TEST(FloatFreeFunctions, MulAdd) {
+    check_float_mul_add<rstd::f32>();
+    check_float_mul_add<rstd::f64>();
+}
+
+static_assert(rstd::num::is_close(2.0_f32, 2.5_f32, 0.25_f32, 0.0_f32));
+static_assert(rstd::num::is_close(0.0_f64, -0.25_f64, 0.0_f64, 0.25_f64));
+static_assert(! rstd::num::is_close(0.0_f64, -0.25_f64, 0.0_f64, 0.125_f64));
+
+template<typename T>
+void check_float_is_close() {
+    using rstd::num::is_close;
+
+    auto const zero = T(0);
+    EXPECT_TRUE(is_close(T(3), T(4), T(0.25), zero));
+    EXPECT_TRUE(is_close(T(4), T(3), T(0.25), zero));
+    EXPECT_FALSE(is_close(T(3), T(4), T(0.125), zero));
+    EXPECT_TRUE(is_close(zero, T(-0.25), zero, T(0.25)));
+    EXPECT_FALSE(is_close(zero, T(-0.25), T(0.5), zero));
+    EXPECT_FALSE(is_close(T::MAX, -T::MAX, T(0.5), T::MAX));
+
+    EXPECT_TRUE(is_close(zero, T(-0.0), zero, zero));
+    EXPECT_TRUE(is_close(T::INFINITY_, T::INFINITY_, zero, zero));
+    EXPECT_TRUE(is_close(T::NEG_INFINITY, T::NEG_INFINITY, zero, zero));
+    EXPECT_FALSE(is_close(T::INFINITY_, T::NEG_INFINITY, T(0.5), T::MAX));
+    EXPECT_FALSE(is_close(T::INFINITY_, T::MAX, T(0.5), T::MAX));
+    EXPECT_FALSE(is_close(T::NAN_, T::NAN_, zero, zero));
+    EXPECT_FALSE(is_close(zero, T::NAN_, zero, zero));
+
+    EXPECT_FALSE(is_close(zero, zero, T(-0.25), zero));
+    EXPECT_FALSE(is_close(zero, zero, T(1), zero));
+    EXPECT_FALSE(is_close(zero, zero, zero, T(-1)));
+    EXPECT_FALSE(is_close(zero, zero, T::NAN_, zero));
+    EXPECT_FALSE(is_close(zero, zero, zero, T::INFINITY_));
+}
+
+TEST(FloatFreeFunctions, IsClose) {
+    check_float_is_close<rstd::f32>();
+    check_float_is_close<rstd::f64>();
+}
+
 TEST(FloatFromStr, ParsesDecimalSpecialAndBoundaryValues) {
     EXPECT_EQ(rstd::from_str<rstd::f32>("1.25"_str).unwrap(), 1.25_f32);
     EXPECT_EQ(rstd::from_str<rstd::f64>("-.5e2"_str).unwrap(), -50.0_f64);

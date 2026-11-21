@@ -517,6 +517,27 @@ TEST(IntBits, CountsRotatesPowersAndByteOrder) {
     EXPECT_EQ(i128::from_ne_bytes(i128::MIN.to_ne_bytes()), i128::MIN);
 }
 
+template<typename T>
+concept HasBitWidth = requires(T value) { num::bit_width(value); };
+
+static_assert(! HasBitWidth<i32>);
+static_assert(! HasBitWidth<unsigned>);
+static_assert(mtp::same_as<decltype(num::bit_width(0_u8)), u32>);
+static_assert(num::bit_width(0_u8) == 0_u32);
+static_assert(num::bit_width(1_u128 << 64_u64) == 65_u32);
+
+TEST(IntBits, BitWidth) {
+    EXPECT_EQ(num::bit_width(1_u8), 1_u32);
+    EXPECT_EQ(num::bit_width(127_u8), 7_u32);
+    EXPECT_EQ(num::bit_width(128_u8), 8_u32);
+    EXPECT_EQ(num::bit_width(u16::MAX), 16_u32);
+    EXPECT_EQ(num::bit_width(u32::MAX), 32_u32);
+    EXPECT_EQ(num::bit_width(u64::MAX), 64_u32);
+    EXPECT_EQ(num::bit_width((1_u128 << 127_u64) - 1_u128), 127_u32);
+    EXPECT_EQ(num::bit_width(1_u128 << 127_u64), 128_u32);
+    EXPECT_EQ(num::bit_width(usize::MAX), usize::BITS);
+}
+
 TEST(IntAsCast, UsesRustModuloSemantics) {
     EXPECT_EQ(as_cast<i8>(u8::MAX), i8(-1));
     EXPECT_EQ(as_cast<u8>(i16(-1)), u8::MAX);

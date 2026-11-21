@@ -1909,4 +1909,36 @@ template<typename T>
 concept PrimitiveFloat =
     mtp::same_as<mtp::rm_cvf<T>, float> || mtp::same_as<mtp::rm_cvf<T>, double> ||
     mtp::same_as<mtp::rm_cvf<T>, long double>;
+
+/// Computes a * b + c with a single rounding.
+template<Float T>
+[[nodiscard]]
+#if __has_constexpr_builtin(__builtin_elementwise_fma)
+constexpr
+#endif
+    auto mul_add(T a, T b, T c) noexcept -> mtp::rm_cvf<T> {
+    using Value = mtp::rm_cvf<T>;
+    return Value(__builtin_elementwise_fma(a.to_primitive(), b.to_primitive(), c.to_primitive()));
+}
+
+/// Compares two values with symmetric relative and absolute tolerances.
+/// Invalid tolerances (non-finite, negative, or relative >= 1) return false.
+template<Float T>
+[[nodiscard]]
+constexpr auto is_close(T a, T b, T rel_tol, T abs_tol) noexcept -> bool {
+    using Value = mtp::rm_cvf<T>;
+    if (! rel_tol.is_finite() || ! abs_tol.is_finite() || rel_tol < Value(0) ||
+        rel_tol >= Value(1) || abs_tol < Value(0)) {
+        return false;
+    }
+
+    if (a == b) return true;
+    if (! a.is_finite() || ! b.is_finite()) return false;
+
+    auto const magnitude_a = a.abs();
+    auto const magnitude_b = b.abs();
+    auto const scale       = magnitude_a < magnitude_b ? magnitude_b : magnitude_a;
+    auto const difference  = (a - b).abs();
+    return difference <= abs_tol || difference <= rel_tol * scale;
+}
 } // namespace rstd::num

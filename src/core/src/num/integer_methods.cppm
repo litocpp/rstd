@@ -29,6 +29,13 @@ constexpr auto Integer<Derived, Primitive, Tag>::checked_mul(Self rhs) const noe
 
 export namespace rstd::num
 {
+/// Returns the minimum number of bits needed to represent value, or zero for zero.
+template<UnsignedInteger T>
+[[nodiscard]]
+constexpr auto bit_width(T value) noexcept -> u32 {
+    return mtp::rm_cvf<T>::BITS - value.leading_zeros();
+}
+
 /// Multiplies factors in order and returns None on the first overflow.
 /// An empty slice has product one.
 template<Integer T>
