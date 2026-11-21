@@ -421,6 +421,46 @@ TEST(IntArithmetic, CheckedOverflowingSaturatingAndWrapping) {
     EXPECT_EQ((3_u16).pow(4_u32), 81_u16);
 }
 
+template<typename T>
+constexpr auto unsigned_rounding_boundaries() -> bool {
+    using Primitive  = typename T::primitive_type;
+    const auto zero  = T();
+    const auto one   = T(Primitive(1));
+    const auto two   = T(Primitive(2));
+    const auto three = T(Primitive(3));
+    const auto six   = T(Primitive(6));
+    const auto max   = T::MAX;
+
+    return zero.div_ceil(three) == zero && six.div_ceil(three) == two && max.div_ceil(one) == max &&
+           max.div_ceil(two) == max / two + one && max.checked_div_ceil(max).unwrap() == one &&
+           max.checked_div_ceil(zero).is_none() &&
+           zero.checked_next_multiple_of(three).unwrap() == zero &&
+           six.checked_next_multiple_of(three).unwrap() == six &&
+           (six - one).checked_next_multiple_of(three).unwrap() == six &&
+           (max - one).checked_next_multiple_of(max).unwrap() == max &&
+           max.checked_next_multiple_of(one).unwrap() == max &&
+           max.checked_next_multiple_of(two).is_none() &&
+           zero.checked_next_multiple_of(zero).is_none() && six.is_multiple_of(three) &&
+           ! (six - one).is_multiple_of(three) && zero.is_multiple_of(three) &&
+           zero.is_multiple_of(zero) && ! one.is_multiple_of(zero);
+}
+
+static_assert(unsigned_rounding_boundaries<u8>());
+static_assert(unsigned_rounding_boundaries<u16>());
+static_assert(unsigned_rounding_boundaries<u32>());
+static_assert(unsigned_rounding_boundaries<u64>());
+static_assert(unsigned_rounding_boundaries<u128>());
+static_assert(unsigned_rounding_boundaries<usize>());
+
+TEST(IntArithmetic, UnsignedRoundingAndMultiples) {
+    EXPECT_TRUE(unsigned_rounding_boundaries<u8>());
+    EXPECT_TRUE(unsigned_rounding_boundaries<u16>());
+    EXPECT_TRUE(unsigned_rounding_boundaries<u32>());
+    EXPECT_TRUE(unsigned_rounding_boundaries<u64>());
+    EXPECT_TRUE(unsigned_rounding_boundaries<u128>());
+    EXPECT_TRUE(unsigned_rounding_boundaries<usize>());
+}
+
 TEST(IntArithmetic, SignedUnsignedMethodsCoverBoundaries) {
     EXPECT_TRUE(i8::MAX.checked_add_unsigned(1_u8).is_none());
     EXPECT_EQ(i8(-1).checked_add_unsigned(1_u8), Some(i8()));
@@ -477,6 +517,7 @@ TEST(IntArithmeticDeathTest, InvalidDivisionAndRemainderAlwaysPanic) {
     EXPECT_DEATH((void)(i8::MIN / -1_i8), "integer arithmetic with overflow");
     EXPECT_DEATH((void)(i8::MIN % -1_i8), "integer arithmetic with overflow");
     EXPECT_DEATH((void)(1_u8 / u8()), "divide by zero");
+    EXPECT_DEATH((void)(1_u8).div_ceil(u8()), "divide by zero");
 }
 
 #if RSTD_TEST_CHECK_INTEGER_OVERFLOW

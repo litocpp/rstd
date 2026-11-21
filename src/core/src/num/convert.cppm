@@ -486,3 +486,31 @@ struct Impl<error::Error, num::TryFromFloatError> : ImplBase<num::TryFromFloatEr
     auto source() const noexcept -> Option<error::ErrorRef> { return None(); }
 };
 } // namespace rstd
+
+namespace rstd::num::detail
+{
+template<typename Source, typename Destination>
+struct NumericConversion {
+    using Target  = rstd::mtp::rm_cvf<Destination>;
+    using From    = rstd::Impl<rstd::convert::From<Source>, Target>;
+    using TryFrom = rstd::Impl<rstd::convert::TryFrom<Source>, Target>;
+
+    static constexpr auto into(Source value) -> Target
+        requires requires { From::from(value); }
+    {
+        return From::from(value);
+    }
+
+    static constexpr auto try_into(Source value)
+        requires requires { TryFrom::try_from(value); }
+    {
+        return TryFrom::try_from(value);
+    }
+
+    static constexpr auto as_cast(Source value) noexcept -> Target
+        requires(rstd::num::detail::IntegerLike<Target> || rstd::num::detail::FloatLike<Target>)
+    {
+        return rstd::as_cast<Target>(value);
+    }
+};
+} // namespace rstd::num::detail

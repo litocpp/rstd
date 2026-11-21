@@ -83,6 +83,35 @@ static_assert(rstd::Impled<int, rstd::convert::TryInto<Checked>>);
 static_assert(rstd::Impled<TryIntoOnly, rstd::convert::TryInto<Checked>>);
 static_assert(! rstd::Impled<Checked, rstd::convert::TryFrom<TryIntoOnly>>);
 
+template<typename Source, typename Target>
+concept NumericInto = requires(Source value) { value.template into<Target>(); };
+
+template<typename Source, typename Target>
+concept NumericTryInto = requires(Source value) { value.template try_into<Target>(); };
+
+template<typename Source, typename Target>
+concept NumericAsCast = requires(Source value) { value.template as_cast<Target>(); };
+
+static_assert(NumericInto<rstd::u32, rstd::u64>);
+static_assert(! NumericInto<rstd::u64, rstd::u32>);
+static_assert(! NumericInto<rstd::i32, rstd::u64>);
+static_assert(! NumericTryInto<rstd::u32, A>);
+static_assert(! NumericAsCast<rstd::u32, A>);
+static_assert(rstd::u32(42).into<rstd::u64>() == rstd::u64(42));
+static_assert(rstd::u32(42).into<rstd::uint64_t>() == rstd::uint64_t(42));
+static_assert(rstd::u64(42).try_into<rstd::u32>().unwrap() == rstd::u32(42));
+static_assert(rstd::i32(-1).as_cast<rstd::u32>() == rstd::u32::MAX);
+static_assert(rstd::mtp::same_as<decltype(rstd::u64(42).try_into<rstd::u32>()),
+                                 decltype(rstd::try_into<rstd::u32>(rstd::u64(42)))>);
+
+TEST(Convert, NumericMembersKeepRangeChecksAndModuloCasts) {
+    const auto wide = rstd::u64::MAX;
+    EXPECT_TRUE(wide.try_into<rstd::u32>().is_err());
+    EXPECT_TRUE(rstd::i32(-1).try_into<rstd::u64>().is_err());
+    EXPECT_EQ(wide.as_cast<rstd::u32>(), rstd::u32::MAX);
+    EXPECT_EQ(rstd::u32::MAX.into<rstd::u128>(), rstd::into<rstd::u128>(rstd::u32::MAX));
+}
+
 TEST(Convert, Basic) {
     B    b { 100 };
     auto a = rstd::Impl<rstd::convert::From<B>, A>::from(b);

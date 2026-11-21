@@ -94,6 +94,16 @@ export struct Duration {
                    static_cast<double>(NANOS_PER_SEC.to_primitive());
     }
 
+    /// Returns the duration in milliseconds, including the fractional part.
+    constexpr auto as_millis_f64() const noexcept -> f64 {
+        return f64(as_secs_f64()) * f64(static_cast<double>(MILLIS_PER_SEC.to_primitive()));
+    }
+
+    /// Returns the duration in nanoseconds using the floating-point seconds conversion.
+    constexpr auto as_nanos_f64() const noexcept -> f64 {
+        return f64(as_secs_f64()) * f64(static_cast<double>(NANOS_PER_SEC.to_primitive()));
+    }
+
     // ── Comparison ────────────────────────────────────────────────────────
     friend constexpr auto operator==(Duration a, Duration b) noexcept -> bool {
         return a._secs == b._secs && a._nanos == b._nanos;

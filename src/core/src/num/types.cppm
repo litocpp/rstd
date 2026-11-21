@@ -354,6 +354,12 @@ constexpr auto to_unsigned_bits(Primitive value) noexcept -> unsigned_primitive_
     return __builtin_bit_cast(unsigned_primitive_t<Primitive>, value);
 }
 
+export namespace rstd::num::detail
+{
+template<typename Source, typename Destination>
+struct NumericConversion;
+}
+
 template<typename Derived, typename Primitive, typename Tag>
 class Integer {
     static_assert(RawInteger<Primitive>);
@@ -362,6 +368,9 @@ class Integer {
 
     template<typename, typename, typename>
     friend class Integer;
+
+    template<typename To>
+    using Conversion = rstd::num::detail::NumericConversion<Derived, To>;
 
     constexpr auto self() noexcept -> Derived& { return static_cast<Derived&>(*this); }
     constexpr auto self() const noexcept -> Derived const& {
@@ -390,6 +399,27 @@ public:
     [[nodiscard, gnu::always_inline]]
     constexpr auto to_primitive() const noexcept -> Primitive {
         return value_;
+    }
+
+    template<typename To>
+        requires requires(Self value) { Conversion<To>::into(value); }
+    [[nodiscard]]
+    constexpr auto into() const {
+        return Conversion<To>::into(self());
+    }
+
+    template<typename To>
+        requires requires(Self value) { Conversion<To>::try_into(value); }
+    [[nodiscard]]
+    constexpr auto try_into() const {
+        return Conversion<To>::try_into(self());
+    }
+
+    template<typename To>
+        requires requires(Self value) { Conversion<To>::as_cast(value); }
+    [[nodiscard]]
+    constexpr auto as_cast() const noexcept {
+        return Conversion<To>::as_cast(self());
     }
 
     [[nodiscard]]
@@ -441,6 +471,29 @@ public:
     constexpr auto checked_pow(Exponent rhs) const noexcept -> rstd::Option<Self>;
     [[nodiscard]]
     constexpr auto checked_next_power_of_two() const noexcept -> rstd::Option<Self>;
+
+    [[nodiscard]]
+    constexpr auto div_ceil(Self rhs) const -> Self
+        requires(! IS_SIGNED)
+    {
+        if (rhs.value_ == 0) panic_divide_by_zero();
+        return Self(Primitive(value_ / rhs.value_ + (value_ % rhs.value_ != 0)));
+    }
+
+    [[nodiscard]]
+    constexpr auto checked_div_ceil(Self rhs) const noexcept -> rstd::Option<Self>
+        requires(! IS_SIGNED);
+
+    [[nodiscard]]
+    constexpr auto checked_next_multiple_of(Self rhs) const noexcept -> rstd::Option<Self>
+        requires(! IS_SIGNED);
+
+    [[nodiscard]]
+    constexpr auto is_multiple_of(Self rhs) const noexcept -> bool
+        requires(! IS_SIGNED)
+    {
+        return rhs.value_ == 0 ? value_ == 0 : value_ % rhs.value_ == 0;
+    }
 
     [[nodiscard]]
     constexpr auto checked_add_unsigned(Unsigned rhs) const noexcept -> rstd::Option<Self>
@@ -1147,6 +1200,9 @@ class Floating {
 
     Primitive value_ {};
 
+    template<typename To>
+    using Conversion = rstd::num::detail::NumericConversion<Derived, To>;
+
     constexpr auto self() noexcept -> Derived& { return static_cast<Derived&>(*this); }
     constexpr auto self() const noexcept -> Derived const& {
         return static_cast<Derived const&>(*this);
@@ -1166,6 +1222,27 @@ public:
     [[nodiscard]]
     constexpr auto to_primitive() const noexcept -> Primitive {
         return value_;
+    }
+
+    template<typename To>
+        requires requires(Self value) { Conversion<To>::into(value); }
+    [[nodiscard]]
+    constexpr auto into() const {
+        return Conversion<To>::into(self());
+    }
+
+    template<typename To>
+        requires requires(Self value) { Conversion<To>::try_into(value); }
+    [[nodiscard]]
+    constexpr auto try_into() const {
+        return Conversion<To>::try_into(self());
+    }
+
+    template<typename To>
+        requires requires(Self value) { Conversion<To>::as_cast(value); }
+    [[nodiscard]]
+    constexpr auto as_cast() const noexcept {
+        return Conversion<To>::as_cast(self());
     }
 
     [[nodiscard]]

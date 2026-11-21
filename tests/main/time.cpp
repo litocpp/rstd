@@ -23,6 +23,11 @@ static_assert(Impled<ComponentRange, error::Error>);
 static_assert(Impled<IndeterminateOffset, error::Error>);
 static_assert(*days_from_calendar_date(i32(1970), Month::January, u8(1)) == i64());
 static_assert(calendar_date_from_days(i64())->year == i32(1970));
+static_assert(mtp::same_as<decltype(Duration_ZERO.as_secs_f64()), double>);
+static_assert(mtp::same_as<decltype(Duration_ZERO.as_millis_f64()), f64>);
+static_assert(mtp::same_as<decltype(Duration_ZERO.as_nanos_f64()), f64>);
+static_assert(Duration_ZERO.as_millis_f64() == f64());
+static_assert(Duration_ZERO.as_nanos_f64() == f64());
 
 TEST(Time, Duration) {
     auto d1 = Duration::from_secs(u64(1));
@@ -38,6 +43,19 @@ TEST(Time, Duration) {
 
     auto d5 = d4 - d1;
     EXPECT_EQ(d5, Duration::from_nanos(u64(5)));
+}
+
+TEST(Time, DurationFloatingUnits) {
+    auto const partial = Duration::from_nanos(u64(125'000));
+    EXPECT_EQ(partial.as_millis_f64(), f64(0.125));
+    EXPECT_EQ(partial.as_nanos_f64(), f64(125'000.0));
+
+    auto const mixed = Duration::new_(u64(1), u32(500'000));
+    EXPECT_EQ(mixed.as_millis_f64(), f64(1'000.5));
+    EXPECT_EQ(mixed.as_nanos_f64(), f64(1'000'500'000.0));
+
+    EXPECT_EQ(Duration_MAX.as_millis_f64(), f64(0x1p64 * 1'000.0));
+    EXPECT_EQ(Duration_MAX.as_nanos_f64(), f64(0x1p64 * 1'000'000'000.0));
 }
 
 TEST(Time, Instant) {

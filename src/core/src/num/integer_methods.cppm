@@ -52,6 +52,26 @@ constexpr auto Integer<Derived, Primitive, Tag>::checked_rem(Self rhs) const noe
 }
 
 template<typename Derived, typename Primitive, typename Tag>
+constexpr auto Integer<Derived, Primitive, Tag>::checked_div_ceil(Self rhs) const noexcept
+    -> rstd::Option<Self>
+    requires(! IS_SIGNED)
+{
+    if (rhs.value_ == 0) return rstd::option::None<Self>();
+    return rstd::option::Some(div_ceil(rhs));
+}
+
+template<typename Derived, typename Primitive, typename Tag>
+constexpr auto Integer<Derived, Primitive, Tag>::checked_next_multiple_of(Self rhs) const noexcept
+    -> rstd::Option<Self>
+    requires(! IS_SIGNED)
+{
+    if (rhs.value_ == 0) return rstd::option::None<Self>();
+    auto const remainder = value_ % rhs.value_;
+    if (remainder == 0) return rstd::option::Some(Self(value_));
+    return checked_add(Self(Primitive(rhs.value_ - remainder)));
+}
+
+template<typename Derived, typename Primitive, typename Tag>
 constexpr auto Integer<Derived, Primitive, Tag>::checked_neg() const noexcept
     -> rstd::Option<Self> {
     auto [value, overflow] = sub_with_overflow(Primitive(0), value_);

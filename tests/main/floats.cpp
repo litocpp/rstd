@@ -297,6 +297,21 @@ TEST(FloatConversion, CheckedAndLossyBoundaries) {
     EXPECT_TRUE(rstd::try_from<rstd::f32>(0.1_f64).is_err());
 }
 
+static_assert((1.5_f32).into<rstd::f64>() == 1.5_f64);
+static_assert(rstd::u32(42).into<rstd::f64>() == 42.0_f64);
+static_assert((1.5_f64).try_into<rstd::f32>().unwrap() == 1.5_f32);
+static_assert((0.1_f64).try_into<rstd::f32>().is_err());
+static_assert((1e-6_f64).as_cast<rstd::f32>() == 1e-6_f32);
+
+TEST(FloatConversion, NumericMembersKeepPrecisionPolicy) {
+    const auto epsilon = 1e-6_f64;
+    EXPECT_TRUE(epsilon.try_into<rstd::f32>().is_err());
+    EXPECT_EQ(epsilon.as_cast<rstd::f32>(), rstd::as_cast<rstd::f32>(epsilon));
+    EXPECT_TRUE((42.75_f64).try_into<rstd::u8>().is_err());
+    EXPECT_EQ((42.75_f64).as_cast<rstd::u8>(), 42_u8);
+    EXPECT_EQ(rstd::f64::INFINITY_.as_cast<rstd::u8>(), rstd::u8::MAX);
+}
+
 TEST(FloatConversion, IntegerLimitsPreserveSourcePrecision) {
     EXPECT_EQ(rstd::as_cast<rstd::i32>(-0x1p31_f64), rstd::i32::MIN);
     EXPECT_EQ(rstd::as_cast<rstd::i32>(0x1p31_f64), rstd::i32::MAX);
