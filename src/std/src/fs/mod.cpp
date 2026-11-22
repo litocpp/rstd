@@ -394,6 +394,10 @@ auto metadata(ref<Path> path) -> FsResult<Metadata> {
     return metadata_result(sys_fs::metadata(path, true));
 }
 
+auto metadata(BorrowedFd fd) -> FsResult<Metadata> {
+    return metadata_result(sys_fs::metadata(fd.as_raw_fd()));
+}
+
 auto symlink_metadata(ref<Path> path) -> FsResult<Metadata> {
     return metadata_result(sys_fs::metadata(path, false));
 }

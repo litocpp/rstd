@@ -352,6 +352,7 @@ export auto write(ref<Path> path, slice<u8> contents) -> FsResult<empty>;
 export auto write_atomic(ref<Path> path, slice<u8> contents) -> FsResult<empty>;
 export auto write_atomic_if_changed(ref<Path> path, slice<u8> contents) -> FsResult<WriteOutcome>;
 export auto metadata(ref<Path> path) -> FsResult<Metadata>;
+export auto metadata(BorrowedFd fd) -> FsResult<Metadata>;
 export auto symlink_metadata(ref<Path> path) -> FsResult<Metadata>;
 export auto exists(ref<Path> path) -> FsResult<bool>;
 export auto remove_file(ref<Path> path) -> FsResult<empty>;
