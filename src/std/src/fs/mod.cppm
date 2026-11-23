@@ -45,6 +45,7 @@ public:
     ~TempDir() noexcept;
 
     static auto make(ref<str> prefix) -> FsResult<TempDir>;
+    static auto make_in(ref<Path> parent, ref<str> prefix) -> FsResult<TempDir>;
     auto        path() const noexcept -> ref<Path> { return m_path->as_path(); }
     auto        close() -> FsResult<empty>;
     auto        keep() -> rstd::path::PathBuf;

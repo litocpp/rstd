@@ -140,6 +140,22 @@ TEST(TempDir, FilesystemTemporaryDirectoryOwnsCleanup) {
     EXPECT_FALSE(rstd::fs::exists(path.as_path()).unwrap());
 }
 
+TEST(TempDir, FilesystemTemporaryDirectoryCanChooseParent) {
+    auto parent = rstd::fs::TempDir::make("rstd-fs-parent"_str).unwrap();
+    auto first  = rstd::fs::TempDir::make_in(parent.path(), "child"_str);
+    auto second = rstd::fs::TempDir::make_in(parent.path(), "child"_str);
+    ASSERT_TRUE(first.is_ok());
+    ASSERT_TRUE(second.is_ok());
+    EXPECT_EQ(first->path().parent().unwrap(), parent.path());
+    EXPECT_NE(first->path(), second->path());
+    auto path = rstd::path::PathBuf::from(first->path());
+    ASSERT_TRUE(first->close().is_ok());
+    EXPECT_FALSE(rstd::fs::exists(path.as_path()).unwrap());
+    EXPECT_TRUE(rstd::fs::TempDir::make_in(parent.path(), "../escape"_str).is_err());
+    EXPECT_TRUE(rstd::fs::TempDir::make_in(parent.path(), "..\\escape"_str).is_err());
+    EXPECT_TRUE(rstd::fs::TempDir::make_in(parent.path(), "bad\0prefix"_str).is_err());
+}
+
 TEST(Macro, AllPassing) {
     auto value = 1;
     EXPECT_TRUE(value == 1);

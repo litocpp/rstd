@@ -43,13 +43,29 @@ auto TempDir::make(ref<str> prefix) -> FsResult<TempDir> {
     (void)prefix;
     return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
 #else
+    auto base = rstd::env::temp_dir();
+    return make_in(base.as_path(), prefix);
+#endif
+}
+
+auto TempDir::make_in(ref<Path> parent, ref<str> prefix) -> FsResult<TempDir> {
+#if RSTD_OS_UNKNOWN
+    (void)parent;
+    (void)prefix;
+    return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
+#else
+    using namespace rstd::literals;
+    if (prefix.contains("/"_str) || prefix.contains("\\"_str) || prefix.contains("\0"_str))
+        return Err(Error::make_const(ErrorKind { ErrorKind::InvalidInput },
+                                     "temporary directory prefix must be a file name"));
+    auto base = canonicalize(parent);
+    if (base.is_err()) return Err(rstd::move(base).unwrap_err());
     constexpr auto attempt_limit = usize(1024);
-    auto           base          = rstd::env::temp_dir();
     for (auto attempt = usize {}; attempt < attempt_limit; ++attempt) {
         auto sequence =
             temp_directory_sequence.fetch_add(usize(1), rstd::sync::atomic::Ordering::Relaxed);
         auto name    = rstd::format("{}-{}-{}", prefix, rstd::process::id(), sequence);
-        auto path    = base.join(rstd::path::PathBuf::from(name.as_str()).as_path());
+        auto path    = base->join(rstd::path::PathBuf::from(name.as_str()).as_path());
         auto created = create_dir(path.as_path());
         if (created.is_ok()) return Ok(TempDir(rstd::move(path)));
         auto error = rstd::move(created).unwrap_err();
