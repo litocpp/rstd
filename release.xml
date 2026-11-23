@@ -1,3 +1,16 @@
+<release version="0.1.15" date="2026-11-23">
+  <description>
+    <ul>
+      <li>Extend numeric operations.</li>
+      <li>Extend Duration methods.</li>
+      <li>Support Android dlopn.</li>
+      <li>Support bionic errno.</li>
+      <li>Add fs::metadata for BorrowedFd.</li>
+      <li>Add fs::TempDir::make_in.</li>
+      <li>Index probe collector data.</li>
+    </ul>
+  </description>
+</release>
 <release version="0.1.14" date="2026-11-18">
   <description>
     <ul>

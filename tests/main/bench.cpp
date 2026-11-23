@@ -588,24 +588,52 @@ TEST(BenchProbe, CollectorKeepsParentsRecorderLocalAcrossBatches) {
     auto second   = rstd::thread::ThreadId::make();
 
     auto children = Vec<SpanSample>::make();
-    children.push({ child, u64(0), Duration::from_nanos(u64(10)), u64(1), first,
-                    Some(u64(7)), u64(2), Some(u64(1)) });
-    children.push({ child, u64(0), Duration::from_nanos(u64(20)), u64(1), first,
-                    Some(u64(7)), u64(3), Some(u64(1)) });
+    children.push({ child,
+                    u64(0),
+                    Duration::from_nanos(u64(10)),
+                    u64(1),
+                    first,
+                    Some(u64(7)),
+                    u64(2),
+                    Some(u64(1)) });
+    children.push({ child,
+                    u64(0),
+                    Duration::from_nanos(u64(20)),
+                    u64(1),
+                    first,
+                    Some(u64(7)),
+                    u64(3),
+                    Some(u64(1)) });
     auto parents = Vec<SpanSample>::make();
-    parents.push({ parent, u64(0), Duration::from_nanos(u64(100)), u64(1), first,
-                   Some(u64(7)), u64(1), None() });
+    parents.push({ parent,
+                   u64(0),
+                   Duration::from_nanos(u64(100)),
+                   u64(1),
+                   first,
+                   Some(u64(7)),
+                   u64(1),
+                   None() });
     auto other_recorder = Vec<SpanSample>::make();
-    other_recorder.push({ parent, u64(0), Duration::from_nanos(u64(100)), u64(2), second,
-                          Some(u64(8)), u64(1), None() });
+    other_recorder.push({ parent,
+                          u64(0),
+                          Duration::from_nanos(u64(100)),
+                          u64(2),
+                          second,
+                          Some(u64(8)),
+                          u64(1),
+                          None() });
 
     auto collector = rstd::bench::probe::ProbeCollector::new_(schema.clone());
-    ASSERT_TRUE(collector.ingest(ProbeBatch(schema.clone(), rstd::move(children), u64(1), first,
-                                               usize(0))).is_ok());
-    ASSERT_TRUE(collector.ingest(ProbeBatch(schema.clone(), rstd::move(other_recorder), u64(2),
-                                               second, usize(0))).is_ok());
-    ASSERT_TRUE(collector.ingest(ProbeBatch(schema.clone(), rstd::move(parents), u64(1), first,
-                                               usize(0))).is_ok());
+    ASSERT_TRUE(
+        collector.ingest(ProbeBatch(schema.clone(), rstd::move(children), u64(1), first, usize(0)))
+            .is_ok());
+    ASSERT_TRUE(collector
+                    .ingest(ProbeBatch(
+                        schema.clone(), rstd::move(other_recorder), u64(2), second, usize(0)))
+                    .is_ok());
+    ASSERT_TRUE(
+        collector.ingest(ProbeBatch(schema.clone(), rstd::move(parents), u64(1), first, usize(0)))
+            .is_ok());
     auto report = rstd::move(collector).finish();
 
     ASSERT_EQ(report.overall().len(), usize(2));
@@ -614,11 +642,9 @@ TEST(BenchProbe, CollectorKeepsParentsRecorderLocalAcrossBatches) {
     EXPECT_EQ(report.overall()[usize(1)].exclusive_total, Duration::from_nanos(u64(170)));
     ASSERT_EQ(report.by_thread().len(), usize(3));
     EXPECT_EQ(report.by_thread()[usize(1)].thread_id, second);
-    EXPECT_EQ(report.by_thread()[usize(1)].summary.exclusive_total,
-              Duration::from_nanos(u64(100)));
+    EXPECT_EQ(report.by_thread()[usize(1)].summary.exclusive_total, Duration::from_nanos(u64(100)));
     EXPECT_EQ(report.by_thread()[usize(2)].thread_id, first);
-    EXPECT_EQ(report.by_thread()[usize(2)].summary.exclusive_total,
-              Duration::from_nanos(u64(70)));
+    EXPECT_EQ(report.by_thread()[usize(2)].summary.exclusive_total, Duration::from_nanos(u64(70)));
     ASSERT_EQ(report.by_frame().len(), usize(3));
     EXPECT_EQ(report.by_frame()[usize(1)].frame, u64(8));
     EXPECT_EQ(report.by_frame()[usize(2)].frame, u64(7));

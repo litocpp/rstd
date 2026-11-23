@@ -108,12 +108,12 @@ public:
     static auto socket(os::socket::BorrowedSocket socket) noexcept -> CompletionSource;
 
     static auto socket(os::socket::OwnedSocket socket) -> CompletionSource;
-    auto take_owned_socket() -> io::Result<os::socket::OwnedSocket>;
-    auto clone() const -> CompletionSource { return CompletionSource { m_state.clone() }; }
-    auto as_raw_fd() const noexcept -> os::fd::RawFd { return m_state->fd; }
-    auto kind() const noexcept -> CompletionSourceKind { return m_state->kind; }
-    auto is_bound() const -> bool;
-    auto release() && -> CompletionSourceRelease;
+    auto        take_owned_socket() -> io::Result<os::socket::OwnedSocket>;
+    auto        clone() const -> CompletionSource { return CompletionSource { m_state.clone() }; }
+    auto        as_raw_fd() const noexcept -> os::fd::RawFd { return m_state->fd; }
+    auto        kind() const noexcept -> CompletionSourceKind { return m_state->kind; }
+    auto        is_bound() const -> bool;
+    auto        release() && -> CompletionSourceRelease;
 };
 
 export class IoCompletion {
@@ -275,7 +275,7 @@ using IoOperationArc = sync::Arc<IoOperationState>;
 export class CompletionSourceRelease {
 #if LITO_FEAT_ASYNC_DEBUG
     debug::WaitGuard debug_wait_;
-    void observe(CompletionSourceFields& fields);
+    void             observe(CompletionSourceFields& fields);
 #endif
     CompletionSourceArc m_state;
     bool                m_completed { false };

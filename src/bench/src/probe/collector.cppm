@@ -124,10 +124,9 @@ class ProbeCollector {
     Vec<ProbeDiagnostic> diagnostics_;
 
     template<typename Key, typename Builder, typename MakeBuilder>
-    static auto group(HashMap<Key, usize>& indices,
-                      Vec<Builder>&        builders,
-                      Key                  key,
-                      MakeBuilder          make) -> Builder& {
+    static auto
+    group(HashMap<Key, usize>& indices, Vec<Builder>& builders, Key key, MakeBuilder make)
+        -> Builder& {
         if (auto index = indices.get(key); index.is_some()) {
             return builders[**index];
         }
@@ -224,9 +223,12 @@ public:
         for (const auto& sample : samples_) {
             auto const inclusive = probe_elapsed_ns(sample.elapsed);
             auto const children  = child_times.get({ sample.recorder_id, sample.sequence });
-            auto const exclusive = inclusive.saturating_sub(children.is_some() ? **children : u64 {});
-            auto const probe     = u64(sample.probe.value.to_primitive());
-            auto make_summary    = [&] { return ProbeSummaryBuilder(sample.probe); };
+            auto const exclusive =
+                inclusive.saturating_sub(children.is_some() ? **children : u64 {});
+            auto const probe        = u64(sample.probe.value.to_primitive());
+            auto       make_summary = [&] {
+                return ProbeSummaryBuilder(sample.probe);
+            };
             group(overall_indices, overall_builders, sample.probe.value, make_summary)
                 .push(inclusive, exclusive);
 
