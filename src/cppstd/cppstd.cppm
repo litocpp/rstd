@@ -1,11 +1,25 @@
 module;
+
+#if ! defined(RSTD_CPPSTD_IMPORT_STD) && defined(LITO_PKG_VERSION) && __cplusplus >= 202302L
+#include <version>
+#if defined(__cpp_lib_modules) && __cpp_lib_modules >= 202207L
+#define RSTD_CPPSTD_IMPORT_STD 1
+#endif
+#endif
+
+#ifndef RSTD_CPPSTD_IMPORT_STD
+#define RSTD_CPPSTD_IMPORT_STD 0
+#endif
+
+#include <cerrno>
+#include <cstdio>
+
+#if ! RSTD_CPPSTD_IMPORT_STD
 // c
 #include <cassert>
 #include <cctype>
-#include <cerrno>
 #include <cmath>
 #include <cstdarg>
-#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
@@ -65,10 +79,31 @@ module;
 #include <ranges>
 #include <source_location>
 #include <span>
-
-#define ALWAYS_INLINE [[gnu::always_inline]] inline
+#endif
 
 export module cppstd;
+
+#if RSTD_CPPSTD_IMPORT_STD
+export import std;
+
+// Preserve the global C types provided by cppstd.
+export using std::int8_t;
+export using std::int16_t;
+export using std::int32_t;
+export using std::int64_t;
+export using std::uint8_t;
+export using std::uint16_t;
+export using std::uint32_t;
+export using std::uint64_t;
+export using std::intptr_t;
+export using std::uintptr_t;
+export using std::size_t;
+export using std::ptrdiff_t;
+export using std::FILE;
+export using std::va_list;
+export using std::time_t;
+export using std::clock_t;
+#else
 import rstd.basic;
 
 export using ::operator new;
@@ -101,6 +136,7 @@ export using ::FILE;
 export using ::va_list;
 export using ::time_t;
 export using ::clock_t;
+#endif
 
 export namespace cppstd
 {
@@ -112,6 +148,7 @@ inline constexpr int SEEK_FROM_END     = SEEK_END;
 
 } // namespace cppstd
 
+#if ! RSTD_CPPSTD_IMPORT_STD
 namespace std
 {
 
@@ -1028,3 +1065,4 @@ export using std::operator&=;
 export using std::operator^=;
 
 } // namespace std
+#endif
