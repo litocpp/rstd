@@ -61,17 +61,7 @@ auto enum_source(pmacro::Span span) -> pmacro::SourceInfo {
 auto enum_fail(pmacro::Span span, std::string message) -> std::unexpected<Error> {
     return std::unexpected(Error { enum_source(span), "rstd::Enum: " + std::move(message) });
 }
-auto enum_slice(pmacro::Context&    context,
-                pmacro::TokenStream tokens,
-                std::size_t         begin,
-                std::size_t         end) -> pmacro::TokenStream {
-    auto result = context.stream();
-    if (! result) return {};
-    for (auto index = begin; index < end; ++index)
-        if (! result->append(tokens[index])) return {};
-    return *result;
-}
-auto enum_attributes(pmacro::Context& context, pmacro::TokenStream tokens, std::size_t& index)
+auto enum_attributes(pmacro::TokenStream tokens, std::size_t& index)
     -> Checked<std::vector<EnumAttribute>> {
     std::vector<EnumAttribute> result;
     while (index < tokens.size() && enum_group(tokens[index], pmacro::Delimiter::Bracket)) {
@@ -124,13 +114,12 @@ auto enum_qualified(pmacro::TokenStream tokens, std::size_t& index) -> Checked<s
     if (result.find("::") == std::string::npos) result = "rstd::" + result;
     return result;
 }
-auto enum_fields(pmacro::Context& context, pmacro::TokenTree body, EnumShape shape)
-    -> Checked<std::vector<EnumField>> {
+auto enum_fields(pmacro::TokenTree body, EnumShape shape) -> Checked<std::vector<EnumField>> {
     const auto             tokens = body.children();
     std::vector<EnumField> result;
     std::set<std::string>  names;
     for (std::size_t index = 0; index < tokens.size();) {
-        auto attributes = enum_attributes(context, tokens, index);
+        auto attributes = enum_attributes(tokens, index);
         if (! attributes) return std::unexpected(attributes.error());
         if (index == tokens.size())
             return enum_fail(body.span(), "expected a field after attributes");
@@ -173,7 +162,9 @@ auto enum_fields(pmacro::Context& context, pmacro::TokenTree body, EnumShape sha
         if (angle != 0) return enum_fail(field.span, "unbalanced template arguments in field type");
         const auto type_end = initializer.value_or(index);
         if (begin == type_end) return enum_fail(field.span, "expected a field type");
-        field.type = enum_slice(context, tokens, begin, type_end);
+        auto type = tokens.slice(begin, type_end);
+        if (! type) return enum_fail(field.span, "cannot retain the field type");
+        field.type = *type;
         if (initializer) {
             const auto start = index;
             while (index < tokens.size() && ! enum_punct(tokens[index], ",")) {
@@ -183,14 +174,16 @@ auto enum_fields(pmacro::Context& context, pmacro::TokenTree body, EnumShape sha
                 ++index;
             }
             if (index == start) return enum_fail(field.span, "expected a field initializer");
-            field.initializer = enum_slice(context, tokens, start, index);
+            auto value = tokens.slice(start, index);
+            if (! value) return enum_fail(field.span, "cannot retain the field initializer");
+            field.initializer = *value;
         }
         result.push_back(std::move(field));
         if (index < tokens.size()) ++index;
     }
     return result;
 }
-auto parse_enum(pmacro::FunctionInput input, pmacro::Context& context) -> Checked<EnumDeclaration> {
+auto parse_enum(pmacro::FunctionInput input) -> Checked<EnumDeclaration> {
     if (input.scope != pmacro::DeclarationScope::Namespace)
         return enum_fail(input.invocation_span, "enum declarations require namespace scope");
     const auto      tokens = input.arguments;
@@ -222,7 +215,7 @@ auto parse_enum(pmacro::FunctionInput input, pmacro::Context& context) -> Checke
             return enum_fail(at, "expected named type template parameters");
         ++index;
     }
-    auto attributes = enum_attributes(context, tokens, index);
+    auto attributes = enum_attributes(tokens, index);
     if (! attributes) return std::unexpected(attributes.error());
     std::set<std::string> derives;
     for (auto& attribute : *attributes) {
@@ -261,7 +254,7 @@ auto parse_enum(pmacro::FunctionInput input, pmacro::Context& context) -> Checke
                                            "index",     "tag",  "visit", "visit_mut" };
     std::set<std::string>       names;
     for (std::size_t i = 0; i < body.size();) {
-        auto variant_attributes = enum_attributes(context, body, i);
+        auto variant_attributes = enum_attributes(body, i);
         if (! variant_attributes) return std::unexpected(variant_attributes.error());
         if (i == body.size() || body[i].kind() != pmacro::TokenKind::Ident)
             return enum_fail(input.invocation_span, "expected a variant name");
@@ -277,7 +270,7 @@ auto parse_enum(pmacro::FunctionInput input, pmacro::Context& context) -> Checke
                                 enum_group(body[i], pmacro::Delimiter::Brace))) {
             variant.shape = enum_group(body[i], pmacro::Delimiter::Parenthesis) ? EnumShape::Tuple
                                                                                 : EnumShape::Record;
-            auto fields   = enum_fields(context, body[i++], variant.shape);
+            auto fields   = enum_fields(body[i++], variant.shape);
             if (! fields) return std::unexpected(fields.error());
             variant.fields = std::move(*fields);
         } else if (i < body.size() && enum_punct(body[i], "=")) {
@@ -297,7 +290,10 @@ auto parse_enum(pmacro::FunctionInput input, pmacro::Context& context) -> Checke
             }
             if (start == i || angle != 0)
                 return enum_fail(variant.span, "expected an external payload type");
-            variant.external = enum_slice(context, body, start, i);
+            auto external = body.slice(start, i);
+            if (! external)
+                return enum_fail(variant.span, "cannot retain the external payload type");
+            variant.external = *external;
             variant.shape    = EnumShape::External;
         }
         result.variants.push_back(std::move(variant));

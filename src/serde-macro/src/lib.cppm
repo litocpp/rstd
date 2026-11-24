@@ -167,40 +167,6 @@ auto options(pmacro::Context& context, const std::vector<pmacro::HelperInfo>& he
     return result;
 }
 
-auto splice_expressions(pmacro::Context&                      context,
-                        const pmacro::TokenStream&            input,
-                        const std::vector<pmacro::TokenTree>& expressions,
-                        pmacro::Span                          anchor) -> Output {
-    auto output = context.stream();
-    if (! output) return output;
-    for (const auto& token : input) {
-        bool replaced = false;
-        if (token.kind() == pmacro::TokenKind::Ident) {
-            for (std::size_t i = 0; i < expressions.size(); ++i) {
-                if (token.spelling() != "__rstd_serde_expression_" + std::to_string(i)) continue;
-                if (! output->append(expressions[i]))
-                    return std::unexpected(pmacro::Error::Failure);
-                replaced = true;
-                break;
-            }
-        }
-        if (replaced) continue;
-        if (token.kind() == pmacro::TokenKind::Group) {
-            auto children = splice_expressions(context, token.children(), expressions, anchor);
-            if (! children) return children;
-            auto group = context.group(token.delimiter(), *children, anchor);
-            if (! group)
-                return failure(
-                    context, {}, anchor, "serde could not group generated expression output");
-            if (! output->append(*group))
-                return failure(
-                    context, {}, anchor, "serde could not append generated expression output");
-        } else if (! output->append(token))
-            return std::unexpected(pmacro::Error::Failure);
-    }
-    return output;
-}
-
 auto valid_variant_options(const Options& settings) -> bool {
     return ! settings.representation() ||
            (settings.name && ! settings.parent && ! settings.variant && settings.cases.empty() &&
@@ -360,10 +326,10 @@ auto derive(pmacro::DeriveInput input, pmacro::Context& context) noexcept -> Out
     auto source      = std::string {};
     auto definition  = std::string {};
     auto constructor = std::string {};
-    std::vector<pmacro::TokenTree> expressions;
-    auto                           expression = [&](pmacro::TokenTree value) {
+    std::vector<pmacro::TokenSplice> expressions;
+    auto                             expression = [&](pmacro::TokenTree value) {
         auto name = "__rstd_serde_expression_" + std::to_string(expressions.size());
-        expressions.push_back(value);
+        expressions.push_back({ name, value });
         return name;
     };
     std::set<std::string> names;
@@ -407,9 +373,10 @@ auto derive(pmacro::DeriveInput input, pmacro::Context& context) noexcept -> Out
                          expression(*config->validator) + '>';
         if (declaration.after_item_export == pmacro::AfterItemExport::Required) source += "export ";
         auto output = context.parse(source + "constexpr auto rstd_serde_definition(" + qualified +
-                                    "*) { return " + definition + "{}; }");
+                                        "*) { return " + definition + "{}; }",
+                                    input.item_span);
         if (! output || expressions.empty()) return output;
-        return splice_expressions(context, *output, expressions, input.item_span);
+        return context.splice(*output, expressions);
     }
     if (const auto* record = std::get_if<pmacro::RecordInfo>(&declaration.data)) {
         if (config->string_enum)
@@ -524,7 +491,7 @@ auto derive(pmacro::DeriveInput input, pmacro::Context& context) noexcept -> Out
     if (declaration.after_item_export == pmacro::AfterItemExport::Required) source += "export ";
     source +=
         "constexpr auto rstd_serde_definition(" + qualified + "*) { return " + definition + "{}; }";
-    auto output = context.parse(source);
+    auto output = context.parse(source, input.item_span);
     if (! output || expressions.empty()) return output;
-    return splice_expressions(context, *output, expressions, input.item_span);
+    return context.splice(*output, expressions);
 }

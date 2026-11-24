@@ -8,35 +8,12 @@ import :enum_syntax;
 export namespace rstd::macro
 {
 struct EnumOutput {
-    std::map<std::string, pmacro::TokenStream> splices;
+    std::vector<pmacro::TokenSplice> splices;
 
     auto insert(pmacro::TokenStream tokens) -> std::string {
         auto name = "rstd_enum_splice_" + std::to_string(splices.size());
-        splices.emplace(name, tokens);
+        splices.push_back({ name, tokens });
         return name;
-    }
-    auto compose(pmacro::TokenStream tokens, pmacro::Context& context) const -> Output {
-        auto output = context.stream();
-        if (! output) return std::unexpected(output.error());
-        for (auto token : tokens) {
-            if (token.kind() == pmacro::TokenKind::Ident) {
-                auto found = splices.find(std::string(token.spelling()));
-                if (found != splices.end()) {
-                    if (! output->append(found->second))
-                        return std::unexpected(pmacro::Error::Failure);
-                    continue;
-                }
-            }
-            if (token.kind() == pmacro::TokenKind::Group) {
-                auto children = compose(token.children(), context);
-                if (! children) return std::unexpected(children.error());
-                auto group = context.group(token.delimiter(), *children, token.span());
-                if (! group) return std::unexpected(group.error());
-                if (! output->append(*group)) return std::unexpected(pmacro::Error::Failure);
-            } else if (! output->append(token))
-                return std::unexpected(pmacro::Error::Failure);
-        }
-        return *output;
     }
 };
 struct EnumHelper {
@@ -44,21 +21,23 @@ struct EnumHelper {
     pmacro::TokenStream arguments;
     pmacro::Span        span;
 };
-auto enum_helper(const EnumAttribute& attribute, pmacro::Context& context) -> Checked<EnumHelper> {
+auto enum_helper(const EnumAttribute& attribute) -> Checked<EnumHelper> {
     auto args = attribute.arguments;
     if (! args.valid() || args.size() < 3 || args[0].kind() != pmacro::TokenKind::Literal ||
         ! enum_punct(args[1], ","))
         return enum_fail(attribute.span, "helper requires an owner and options");
     auto name = string_literal(args[0].spelling());
     if (! name || name->empty()) return enum_fail(attribute.span, "helper requires an owner name");
-    return EnumHelper { *name, enum_slice(context, args, 2, args.size()), attribute.span };
+    auto options = args.slice(2, args.size());
+    if (! options) return enum_fail(attribute.span, "cannot retain the helper options");
+    return EnumHelper { *name, *options, attribute.span };
 }
-auto enum_helpers(const std::vector<EnumAttribute>& attributes, pmacro::Context& context)
+auto enum_helpers(const std::vector<EnumAttribute>& attributes)
     -> Checked<std::vector<EnumHelper>> {
     std::vector<EnumHelper> result;
     for (const auto& attribute : attributes) {
         if (attribute.name != "helper") continue;
-        auto parsed = enum_helper(attribute, context);
+        auto parsed = enum_helper(attribute);
         if (! parsed) return std::unexpected(parsed.error());
         result.push_back(std::move(*parsed));
     }
@@ -118,7 +97,7 @@ auto enum_owner_options(const std::vector<EnumAttribute>& attributes,
                         Trait                             trait,
                         Target                            target,
                         pmacro::Context&                  context) -> Checked<Options> {
-    auto helpers = enum_helpers(attributes, context);
+    auto helpers = enum_helpers(attributes);
     if (! helpers) return std::unexpected(helpers.error());
     std::vector<HelperTokens> inputs;
     for (const auto& helper : *helpers)
@@ -166,11 +145,10 @@ auto enum_owner_options(const std::vector<EnumAttribute>& attributes,
 }
 auto enum_validate_attributes(const EnumDeclaration&            declaration,
                               const std::vector<EnumAttribute>& attributes,
-                              std::string_view                  scope,
-                              pmacro::Context&                  context) -> Checked<bool> {
+                              std::string_view                  scope) -> Checked<bool> {
     for (const auto& attribute : attributes) {
         if (attribute.name == "helper") {
-            auto helper = enum_helper(attribute, context);
+            auto helper = enum_helper(attribute);
             if (! helper) return std::unexpected(helper.error());
             if (! enum_has_derive(declaration, helper->owner))
                 return enum_fail(attribute.span,
@@ -265,12 +243,11 @@ auto enum_getters(const EnumVariant& variant) -> std::string {
 auto enum_emit_payload(const EnumDeclaration&         declaration,
                        const EnumVariant&             variant,
                        const std::vector<EnumHelper>& root_helpers,
-                       EnumOutput&                    output,
-                       pmacro::Context&               context) -> Checked<std::string> {
+                       EnumOutput&                    output) -> Checked<std::string> {
     if (variant.shape == EnumShape::Unit || variant.shape == EnumShape::External)
         return std::string();
     const auto foreign = enum_foreign(declaration);
-    auto       helpers = enum_helpers(variant.attributes, context);
+    auto       helpers = enum_helpers(variant.attributes);
     if (! helpers) return std::unexpected(helpers.error());
     std::string result = enum_template(declaration) + "struct ";
     for (const auto& derive : foreign) {
@@ -286,7 +263,7 @@ auto enum_emit_payload(const EnumDeclaration&         declaration,
     result += name + "{using Self=" + enum_type(declaration) + ';';
     for (std::size_t i = 0; i < variant.fields.size(); ++i) {
         const auto& field         = variant.fields[i];
-        auto        field_helpers = enum_helpers(field.attributes, context);
+        auto        field_helpers = enum_helpers(field.attributes);
         if (! field_helpers) return std::unexpected(field_helpers.error());
         const auto type = "rstd_enum_field_" + std::to_string(i) + "_type";
         result += "using " + type + '=' + output.insert(field.type) + ';';
@@ -397,8 +374,7 @@ auto enum_descriptor(const EnumDeclaration& declaration, const EnumVariant& vari
 }
 auto enum_foreign_root(const EnumDeclaration&         declaration,
                        const std::vector<EnumHelper>& helpers,
-                       EnumOutput&                    output,
-                       pmacro::Context&               context) -> Checked<std::string> {
+                       EnumOutput&                    output) -> Checked<std::string> {
     std::string result;
     for (const auto& derive : enum_foreign(declaration)) {
         result += "[[pmacro::derive(" + quote(derive) + "),pmacro::helper(" + quote(derive) +
@@ -406,7 +382,7 @@ auto enum_foreign_root(const EnumDeclaration&         declaration,
         auto root = enum_helper_arguments(helpers, derive, output);
         if (! root.empty()) result += ',' + root;
         for (const auto& variant : declaration.variants) {
-            auto attrs = enum_helpers(variant.attributes, context);
+            auto attrs = enum_helpers(variant.attributes);
             if (! attrs) return std::unexpected(attrs.error());
             auto options = enum_helper_arguments(*attrs, derive, output);
             if (! options.empty())
@@ -418,9 +394,8 @@ auto enum_foreign_root(const EnumDeclaration&         declaration,
 }
 auto enum_emit_class(const EnumDeclaration&         declaration,
                      const std::vector<EnumHelper>& helpers,
-                     EnumOutput&                    output,
-                     pmacro::Context&               context) -> Checked<std::string> {
-    auto attrs = enum_foreign_root(declaration, helpers, output, context);
+                     EnumOutput&                    output) -> Checked<std::string> {
+    auto attrs = enum_foreign_root(declaration, helpers, output);
     if (! attrs) return std::unexpected(attrs.error());
     std::string result = enum_template(declaration) +
                          "class [[pmacro::derive(\"rstd::EnumCheck\")]]" + *attrs +
@@ -520,11 +495,10 @@ auto enum_emit_derives(const EnumDeclaration& declaration, pmacro::Context& cont
     std::string units;
     std::string debug_names;
     for (const auto& variant : declaration.variants) {
-        auto checked =
-            enum_validate_attributes(declaration, variant.attributes, "variant", context);
+        auto checked = enum_validate_attributes(declaration, variant.attributes, "variant");
         if (! checked) return std::unexpected(checked.error());
         for (const auto& field : variant.fields) {
-            checked = enum_validate_attributes(declaration, field.attributes, "field", context);
+            checked = enum_validate_attributes(declaration, field.attributes, "field");
             if (! checked) return std::unexpected(checked.error());
         }
         if (debug) {
@@ -672,7 +646,7 @@ auto enum_emit_derives(const EnumDeclaration& declaration, pmacro::Context& cont
     return result;
 }
 auto enum_declaration(pmacro::FunctionInput input, pmacro::Context& context) -> Output {
-    auto declaration = parse_enum(input, context);
+    auto declaration = parse_enum(input);
     if (! declaration) return failure(context, input.invocation_span, declaration.error());
     for (const auto& trait : declaration->derives)
         if (trait.starts_with("rstd::") && trait != "rstd::Debug" && trait != "rstd::Clone" &&
@@ -681,7 +655,7 @@ auto enum_declaration(pmacro::FunctionInput input, pmacro::Context& context) -> 
                            input.invocation_span,
                            Error { enum_source(declaration->span),
                                    "rstd::Enum: unsupported derive '" + trait + "'" });
-    auto attrs = enum_validate_attributes(*declaration, declaration->attributes, "type", context);
+    auto attrs = enum_validate_attributes(*declaration, declaration->attributes, "type");
     if (! attrs) return failure(context, input.invocation_span, attrs.error());
     if (! declaration->parameters.empty() && ! enum_foreign(*declaration).empty())
         return failure(
@@ -689,16 +663,16 @@ auto enum_declaration(pmacro::FunctionInput input, pmacro::Context& context) -> 
             input.invocation_span,
             Error { enum_source(declaration->span),
                     "rstd::Enum: external derives on template enums are not supported yet" });
-    auto helpers = enum_helpers(declaration->attributes, context);
+    auto helpers = enum_helpers(declaration->attributes);
     if (! helpers) return failure(context, input.invocation_span, helpers.error());
     EnumOutput  output;
     std::string source = enum_template(*declaration) + "class " + declaration->name + ';';
     for (const auto& variant : declaration->variants) {
-        auto generated = enum_emit_payload(*declaration, variant, *helpers, output, context);
+        auto generated = enum_emit_payload(*declaration, variant, *helpers, output);
         if (! generated) return failure(context, input.invocation_span, generated.error());
         source += *generated;
     }
-    auto body = enum_emit_class(*declaration, *helpers, output, context);
+    auto body = enum_emit_class(*declaration, *helpers, output);
     if (! body) return failure(context, input.invocation_span, body.error());
     source += *body;
     auto derives = enum_emit_derives(*declaration, context);
@@ -708,7 +682,7 @@ auto enum_declaration(pmacro::FunctionInput input, pmacro::Context& context) -> 
         source = "export {" + source + '}';
     auto scaffold = context.parse(source, declaration->span);
     if (! scaffold) return std::unexpected(scaffold.error());
-    return output.compose(*scaffold, context);
+    return context.splice(*scaffold, output.splices);
 }
 auto enum_check(pmacro::DeriveInput input, pmacro::Context& context) -> Output {
     auto snapshot = context.declaration();
