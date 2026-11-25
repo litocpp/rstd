@@ -33,8 +33,10 @@ auto scaled(f64 value, f64 base, const ref<str> (&units)[N], bool space = true) 
         value /= base;
         ++index;
     }
-    return rstd::format(
-        "{}{}{}", console::number(value), space ? " "_str : ""_str, units[index.to_primitive()]);
+    static_assert(N > 0);
+    ref<str> unit;
+    [[unsafe]] { unit = units[index.to_primitive()]; }
+    return rstd::format("{}{}{}", console::number(value), space ? " "_str : ""_str, unit);
 }
 
 auto console::time(f64 ns) -> String {
@@ -202,8 +204,7 @@ void timing_details(String&                 output,
     const auto& work = measured.run_config();
     if (verbose) {
         output.push_str("  epoch        elapsed [ns]       iterations\n"_str);
-        usize index;
-        for (const auto& epoch : measured.measurements()) {
+        for (usize index {}; const auto& epoch : measured.measurements()) {
             column(output, rstd::format("{}", ++index).as_str(), usize(5));
             column(output, rstd::format("{}", epoch.elapsed.nanoseconds()).as_str(), usize(18));
             column(output, rstd::format("{}", epoch.iterations).as_str());
@@ -646,8 +647,10 @@ auto console::comparison(const bench::ComparisonReport& report, bool verbose) ->
             after /= f64(1000);
             ++index;
         }
-        column(output, rstd::format("{} {}", number(before), units[index.to_primitive()]).as_str());
-        column(output, rstd::format("{} {}", number(after), units[index.to_primitive()]).as_str());
+        ref<str> unit;
+        [[unsafe]] { unit = units[index.to_primitive()]; }
+        column(output, rstd::format("{} {}", number(before), unit).as_str());
+        column(output, rstd::format("{} {}", number(after), unit).as_str());
         auto change = (*value.candidate_over_baseline - f64(1)) * f64(100);
         column(output,
                rstd::format("{}{}%", change > f64() ? "+"_str : ""_str, number(change)).as_str());

@@ -501,7 +501,9 @@ struct DriverTaskState : TaskStateBase {
 
 template<typename State>
 class HeapTaskStorage {
-    static void destroy(voidp owner) { ::alloc::raw_delete(static_cast<HeapTaskStorage*>(owner)); }
+    static void destroy(voidp owner) {
+        [[unsafe]] { ::alloc::raw_delete(static_cast<HeapTaskStorage*>(owner)); }
+    }
 
     TaskRefControl control;
     State          state;
@@ -520,19 +522,23 @@ class ScopedTaskStorage {
     TaskRef         owner;
     State           state;
 
+    auto task_control() noexcept -> TaskRefControl& {
+        [[unsafe]] { return *control; }
+    }
+
 public:
     template<typename... Args>
     explicit ScopedTaskStorage(Args&&... args)
         : control(TaskRefControl::make_scoped()),
           owner(TaskRef::adopt(control)),
-          state(*control, rstd::forward<Args>(args)...) {}
+          state(task_control(), rstd::forward<Args>(args)...) {}
 
     ScopedTaskStorage(const ScopedTaskStorage&)                    = delete;
     auto operator=(const ScopedTaskStorage&) -> ScopedTaskStorage& = delete;
     ScopedTaskStorage(ScopedTaskStorage&&)                         = delete;
     auto operator=(ScopedTaskStorage&&) -> ScopedTaskStorage&      = delete;
 
-    ~ScopedTaskStorage() { control->detach(); }
+    ~ScopedTaskStorage() { task_control().detach(); }
 
     auto task() const -> TaskRef { return owner.clone(); }
     void spawn(RuntimeInner& runtime) { runtime.spawn(owner.clone()); }

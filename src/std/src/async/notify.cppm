@@ -30,14 +30,16 @@ struct NotifyState {
         bool          permit {};
 
         void unlink(NotifyWaiter& waiter) {
-            if (waiter.previous)
-                waiter.previous->next = waiter.next;
-            else
-                head = waiter.next;
-            if (waiter.next)
-                waiter.next->previous = waiter.previous;
-            else
-                tail = waiter.previous;
+            [[unsafe]] {
+                if (waiter.previous)
+                    waiter.previous->next = waiter.next;
+                else
+                    head = waiter.next;
+                if (waiter.next)
+                    waiter.next->previous = waiter.previous;
+                else
+                    tail = waiter.previous;
+            }
             waiter.previous = nullptr;
             waiter.next     = nullptr;
             waiter.queued   = false;
@@ -48,10 +50,12 @@ struct NotifyState {
                 permit = true;
                 return None();
             }
-            auto& next = *head;
-            unlink(next);
-            next.granted = true;
-            return next.waker.take();
+            [[unsafe]] {
+                auto& next = *head;
+                unlink(next);
+                next.granted = true;
+                return next.waker.take();
+            }
         }
     };
 
@@ -84,10 +88,11 @@ struct NotifyState {
         }
         if (! waiter.queued) {
             waiter.previous = state->tail;
-            if (state->tail)
-                state->tail->next = &waiter;
-            else
+            if (state->tail) {
+                [[unsafe]] { state->tail->next = &waiter; }
+            } else {
                 state->head = &waiter;
+            }
             state->tail   = &waiter;
             waiter.queued = true;
         }

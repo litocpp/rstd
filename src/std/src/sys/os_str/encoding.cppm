@@ -28,11 +28,14 @@ constexpr auto decode_lossy(slice<u8> bytes, usize& index, bool wtf8) -> char32_
         return value >= 0xd800 && value <= 0xdfff ? char_::REPLACEMENT
                                                   : static_cast<char32_t>(value);
     }
-    auto remaining =
-        slice<u8>::from_raw_parts(bytes.as_raw_ptr() + index.to_primitive(), bytes.len() - index);
-    auto scalar = str_::utf8_lossy_indices(remaining).next().unwrap_unchecked();
-    index += scalar.end;
-    return scalar.value.to_primitive();
+    if (index >= bytes.len()) rstd::intrinsics::abort();
+    [[unsafe]] {
+        auto remaining = slice<u8>::from_raw_parts(bytes.as_raw_ptr() + index.to_primitive(),
+                                                   bytes.len() - index);
+        auto scalar    = str_::utf8_lossy_indices(remaining).next().unwrap_unchecked();
+        index += scalar.end;
+        return scalar.value.to_primitive();
+    }
 }
 
 void encode(Vec<u8>& bytes, unsigned value) {
@@ -92,14 +95,18 @@ constexpr auto public_boundary(slice<u8> bytes, usize index) -> bool {
     if (index > bytes.len()) return false;
     if (unit(bytes, index - usize(1)) < 0x80 || unit(bytes, index) < 0x80) return true;
     auto remaining = bytes.len() - index;
-    auto after     = slice<u8>::from_raw_parts(bytes.as_raw_ptr() + index.to_primitive(),
-                                               remaining < usize(4) ? remaining : usize(4));
-    auto decoded   = char_::decode_utf8(after.as_raw_ptr(), after.len());
-    if (decoded.template get<1>() > usize(1)) return true;
+    [[unsafe]] {
+        auto after   = slice<u8>::from_raw_parts(bytes.as_raw_ptr() + index.to_primitive(),
+                                                 remaining < usize(4) ? remaining : usize(4));
+        auto decoded = char_::decode_utf8(after.as_raw_ptr(), after.len());
+        if (decoded.template get<1>() > usize(1)) return true;
+    }
     for (auto length = usize(2); length <= usize(4) && length <= index; ++length) {
-        auto before =
-            slice<u8>::from_raw_parts(bytes.as_raw_ptr() + (index - length).to_primitive(), length);
-        if (str_::validate_utf8(before).is_ok()) return true;
+        [[unsafe]] {
+            auto before = slice<u8>::from_raw_parts(
+                bytes.as_raw_ptr() + (index - length).to_primitive(), length);
+            if (str_::validate_utf8(before).is_ok()) return true;
+        }
     }
     return false;
 }

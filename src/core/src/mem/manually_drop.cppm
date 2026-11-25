@@ -7,9 +7,11 @@ template<typename T = void>
 struct ManuallyDropData {
     alignas(T) rstd::byte storage[sizeof(T)] {};
 
-    constexpr auto storage_loc() noexcept { return reinterpret_cast<T*>(rstd::addressof(storage)); }
+    constexpr auto storage_loc() noexcept {
+        [[unsafe]] { return reinterpret_cast<T*>(rstd::addressof(storage)); }
+    }
     constexpr auto storage_loc() const noexcept {
-        return reinterpret_cast<T const*>(rstd::addressof(storage));
+        [[unsafe]] { return reinterpret_cast<T const*>(rstd::addressof(storage)); }
     }
 };
 
@@ -24,7 +26,7 @@ class ManuallyDrop {
     ManuallyDropData<T> d;
 
     constexpr ManuallyDrop(T&& v) noexcept {
-        rstd::construct_at(d.storage_loc(), rstd::forward<T>(v));
+        [[unsafe]] { rstd::construct_at(d.storage_loc(), rstd::forward<T>(v)); }
     }
 
 public:
@@ -40,8 +42,12 @@ public:
 
     constexpr T*       operator->() noexcept { return d.storage_loc(); }
     constexpr const T* operator->() const noexcept { return d.storage_loc(); }
-    constexpr T&       operator*() noexcept { return *d.storage_loc(); }
-    constexpr const T& operator*() const noexcept { return *d.storage_loc(); }
+    constexpr T&       operator*() noexcept {
+        [[unsafe]] { return *d.storage_loc(); }
+    }
+    constexpr const T& operator*() const noexcept {
+        [[unsafe]] { return *d.storage_loc(); }
+    }
 
     /// Returns a const pointer to the contained value.
     constexpr auto as_ptr() const -> T const* { return d.storage_loc(); }
@@ -60,7 +66,7 @@ class ManuallyDrop<T> {
     ManuallyDropData<T> d;
 
     constexpr ManuallyDrop(T&& v) noexcept(mtp::noex_move_v<T>) {
-        rstd::construct_at(d.storage_loc(), rstd::forward<T>(v));
+        [[unsafe]] { rstd::construct_at(d.storage_loc(), rstd::forward<T>(v)); }
     }
 
 public:
@@ -68,25 +74,33 @@ public:
         return { rstd::forward<T>(v) };
     }
     constexpr ManuallyDrop(const ManuallyDrop& o) noexcept(mtp::noex_copy_v<T>) {
-        rstd::construct_at(d.storage_loc(), *o);
+        [[unsafe]] { rstd::construct_at(d.storage_loc(), *o); }
     }
     constexpr ManuallyDrop(ManuallyDrop&& o) noexcept(mtp::noex_move_v<T>) {
-        rstd::construct_at(d.storage_loc(), rstd::move(*o));
+        [[unsafe]] { rstd::construct_at(d.storage_loc(), rstd::move(*o)); }
     }
     constexpr ManuallyDrop& operator=(const ManuallyDrop& o) noexcept(mtp::noex_assign_copy_v<T>) {
-        rstd::destroy_at(d.storage_loc());
-        rstd::construct_at(d.storage_loc(), rstd::move(*o));
+        [[unsafe]] {
+            rstd::destroy_at(d.storage_loc());
+            rstd::construct_at(d.storage_loc(), rstd::move(*o));
+        }
     }
     constexpr ManuallyDrop& operator=(ManuallyDrop&& o) noexcept(mtp::noex_assign_move_v<T>) {
-        rstd::destroy_at(d.storage_loc());
-        rstd::construct_at(d.storage_loc(), rstd::move(*o));
+        [[unsafe]] {
+            rstd::destroy_at(d.storage_loc());
+            rstd::construct_at(d.storage_loc(), rstd::move(*o));
+        }
     }
     ~ManuallyDrop() = default;
 
     constexpr T*       operator->() noexcept { return d.storage_loc(); }
     constexpr const T* operator->() const noexcept { return d.storage_loc(); }
-    constexpr T&       operator*() noexcept { return *d.storage_loc(); }
-    constexpr const T& operator*() const noexcept { return *d.storage_loc(); }
+    constexpr T&       operator*() noexcept {
+        [[unsafe]] { return *d.storage_loc(); }
+    }
+    constexpr const T& operator*() const noexcept {
+        [[unsafe]] { return *d.storage_loc(); }
+    }
 
     constexpr auto as_ptr() const -> T const* { return d.storage_loc(); }
     constexpr auto as_mut_ptr() -> T* { return d.storage_loc(); }
@@ -102,9 +116,11 @@ public:
         return ManuallyDrop<T>::make(rstd::forward<T>(d));
     }
 
+    /// Destroys the live value exactly once. It must not be accessed afterward.
     template<typename T>
+    [[unsafe]]
     static void drop(ManuallyDrop<T>&& d) {
-        rstd::destroy_at(rstd::addressof(*d));
+        [[unsafe]] { rstd::destroy_at(rstd::addressof(*d)); }
     }
 };
 

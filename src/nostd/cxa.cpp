@@ -7,11 +7,11 @@ namespace
 using Guard = uint64_t;
 
 auto initialized(Guard* guard) noexcept -> unsigned char* {
-    return reinterpret_cast<unsigned char*>(guard);
+    [[unsafe]] { return reinterpret_cast<unsigned char*>(guard); }
 }
 
 auto lock(Guard* guard) noexcept -> unsigned char* {
-    return initialized(guard) + 1;
+    [[unsafe]] { return initialized(guard) + 1; }
 }
 
 } // namespace
@@ -36,12 +36,15 @@ static pthread_key_t  g_tsd_key;
 static pthread_once_t g_tsd_once = PTHREAD_ONCE_INIT;
 
 extern "C" void rstd_tsd_run(void* raw) {
-    auto* record = static_cast<TsdRecord*>(raw);
+    TsdRecord* record;
+    [[unsafe]] { record = static_cast<TsdRecord*>(raw); }
     while (record != nullptr) {
-        auto* next = record->next;
-        record->dtor(record->obj);
-        free(record);
-        record = next;
+        [[unsafe]] {
+            auto* next = record->next;
+            record->dtor(record->obj);
+            free(record);
+            record = next;
+        }
     }
 }
 
@@ -51,12 +54,18 @@ extern "C" void rstd_tsd_make_key() {
 
 extern "C" int __cxa_thread_atexit_impl(Dtor dtor, void* obj, void*) {
     pthread_once(&g_tsd_once, &rstd_tsd_make_key);
-    auto* head   = static_cast<TsdRecord*>(pthread_getspecific(g_tsd_key));
-    auto* record = static_cast<TsdRecord*>(malloc(sizeof(TsdRecord)));
+    TsdRecord* head;
+    TsdRecord* record;
+    [[unsafe]] {
+        head   = static_cast<TsdRecord*>(pthread_getspecific(g_tsd_key));
+        record = static_cast<TsdRecord*>(malloc(sizeof(TsdRecord)));
+    }
     if (record == nullptr) return -1;
-    record->dtor = dtor;
-    record->obj  = obj;
-    record->next = head;
+    [[unsafe]] {
+        record->dtor = dtor;
+        record->obj  = obj;
+        record->next = head;
+    }
     (void)pthread_setspecific(g_tsd_key, record);
     return 0;
 }

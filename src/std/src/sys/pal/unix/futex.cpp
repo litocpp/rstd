@@ -22,16 +22,19 @@ bool futex_wait(Futex* futex, Primitive expected, Option<Duration> timeout) {
     auto pts = ts ? &*ts : nullptr;
 
     for (;;) {
-        if (futex->load(rstd::sync::atomic::Ordering::Relaxed) != expected) {
-            return true;
+        long r;
+        [[unsafe]] {
+            if (futex->load(rstd::sync::atomic::Ordering::Relaxed) != expected) {
+                return true;
+            }
+            r = syscall(SYS_futex,
+                        futex->as_native_ptr(),
+                        FUTEX_WAIT_BITSET | FUTEX_PRIVATE_FLAG,
+                        expected.to_primitive(),
+                        pts,
+                        nullptr,
+                        FUTEX_BITSET_MATCH_ANY);
         }
-        auto r = syscall(SYS_futex,
-                         futex->as_native_ptr(),
-                         FUTEX_WAIT_BITSET | FUTEX_PRIVATE_FLAG,
-                         expected.to_primitive(),
-                         pts,
-                         nullptr,
-                         FUTEX_BITSET_MATCH_ANY);
 
         if (r < 0) {
             switch (libc::errno()) {
@@ -46,14 +49,18 @@ bool futex_wait(Futex* futex, Primitive expected, Option<Duration> timeout) {
 }
 
 bool futex_wake(Futex* futex) {
-    return syscall(SYS_futex, futex->as_native_ptr(), FUTEX_WAKE | FUTEX_PRIVATE_FLAG, 1) > 0;
+    [[unsafe]] {
+        return syscall(SYS_futex, futex->as_native_ptr(), FUTEX_WAKE | FUTEX_PRIVATE_FLAG, 1) > 0;
+    }
 }
 
 void futex_wake_all(Futex* futex) {
-    syscall(SYS_futex,
-            futex->as_native_ptr(),
-            FUTEX_WAKE | FUTEX_PRIVATE_FLAG,
-            i32::MAX.to_primitive());
+    [[unsafe]] {
+        syscall(SYS_futex,
+                futex->as_native_ptr(),
+                FUTEX_WAKE | FUTEX_PRIVATE_FLAG,
+                i32::MAX.to_primitive());
+    }
 }
 
 } // namespace rstd::sys::pal::unix::futex

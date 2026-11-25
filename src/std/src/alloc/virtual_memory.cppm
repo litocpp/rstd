@@ -85,14 +85,18 @@ public:
         if (statistics.mappings > statistics.mappings_peak) {
             statistics.mappings_peak = statistics.mappings;
         }
-        auto* storage = ::new (pointer) byte[mapping_size->to_primitive()];
-        return Ok(Allocation { storage, layout.size() });
+        [[unsafe]] {
+            auto* storage = ::new (pointer) byte[mapping_size->to_primitive()];
+            return Ok(Allocation { storage, layout.size() });
+        }
     }
 
     auto allocate_zeroed(Layout layout) const noexcept -> Result<Allocation, AllocError> {
         return allocate(layout);
     }
 
+    /// `pointer` and `layout` must describe a live allocation from this allocator.
+    [[unsafe]]
     void deallocate(void* pointer, Layout layout) const noexcept {
         if (layout.size() == usize()) return;
         auto  guard        = statistics_.lock().unwrap_unchecked();
@@ -140,27 +144,37 @@ struct Impl<alloc::Allocator, alloc::VirtualMemoryAllocator>
         return this->self().allocate_zeroed(layout);
     }
 
+    [[unsafe]]
     void deallocate(void* pointer, alloc::Layout layout) const noexcept {
-        this->self().deallocate(pointer, layout);
+        [[unsafe]] { this->self().deallocate(pointer, layout); }
     }
 
     // Keep imported dyn entries on this Impl to avoid Windows Clang IRGen crashes.
+    [[unsafe]]
     auto grow(void* pointer, alloc::Layout old_layout, alloc::Layout new_layout) const
         -> Result<alloc::Allocation, alloc::AllocError> {
-        return DefaultInImpl<alloc::Allocator, alloc::VirtualMemoryAllocator>::grow(
-            pointer, old_layout, new_layout);
+        [[unsafe]] {
+            return DefaultInImpl<alloc::Allocator, alloc::VirtualMemoryAllocator>::grow(
+                pointer, old_layout, new_layout);
+        }
     }
 
+    [[unsafe]]
     auto grow_zeroed(void* pointer, alloc::Layout old_layout, alloc::Layout new_layout) const
         -> Result<alloc::Allocation, alloc::AllocError> {
-        return DefaultInImpl<alloc::Allocator, alloc::VirtualMemoryAllocator>::grow_zeroed(
-            pointer, old_layout, new_layout);
+        [[unsafe]] {
+            return DefaultInImpl<alloc::Allocator, alloc::VirtualMemoryAllocator>::grow_zeroed(
+                pointer, old_layout, new_layout);
+        }
     }
 
+    [[unsafe]]
     auto shrink(void* pointer, alloc::Layout old_layout, alloc::Layout new_layout) const
         -> Result<alloc::Allocation, alloc::AllocError> {
-        return DefaultInImpl<alloc::Allocator, alloc::VirtualMemoryAllocator>::shrink(
-            pointer, old_layout, new_layout);
+        [[unsafe]] {
+            return DefaultInImpl<alloc::Allocator, alloc::VirtualMemoryAllocator>::shrink(
+                pointer, old_layout, new_layout);
+        }
     }
 };
 

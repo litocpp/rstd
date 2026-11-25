@@ -12,8 +12,17 @@ extern "C" {
 // Alignment must be a nonzero power of two and be preserved when releasing storage.
 // Zero-byte allocations are releasable; failed reallocation leaves the old storage valid.
 void* __rstd_alloc(size_t size, size_t align);
-void  __rstd_dealloc(void* pointer, size_t size, size_t align);
+
+// Non-null storage must belong to this allocator and match its original size and alignment.
+#ifdef __cplusplus
+[[unsafe]]
+#endif
+void __rstd_dealloc(void* pointer, size_t size, size_t align);
+#ifdef __cplusplus
+[[unsafe]]
+#endif
 void* __rstd_realloc(void* pointer, size_t old_size, size_t align, size_t new_size);
+
 void* __rstd_alloc_zeroed(size_t size, size_t align);
 
 typedef bool (*rstd_panic_write_fn)(void* context, const uint8_t* data, size_t size);
@@ -30,6 +39,10 @@ struct rstd_panic_info {
     bool                 force_no_backtrace;
 };
 
+// The record and its file string must be readable, and format must accept its data payload.
+#ifdef __cplusplus
+[[unsafe]]
+#endif
 __attribute__((noreturn)) void rstd_panic_impl(const struct rstd_panic_info* info);
 
 #ifdef __cplusplus

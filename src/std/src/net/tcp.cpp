@@ -184,8 +184,10 @@ auto TcpStream::from_owned_socket(os::socket::OwnedSocket socket) -> io::Result<
 }
 #if RSTD_OS_UNIX
 auto TcpStream::from_owned_fd(os::fd::OwnedFd fd) -> io::Result<TcpStream> {
-    return from_owned_socket(
-        os::socket::OwnedSocket::from_raw_socket(rstd::move(fd).into_raw_fd()));
+    [[unsafe]] {
+        return from_owned_socket(
+            os::socket::OwnedSocket::from_raw_socket(rstd::move(fd).into_raw_fd()));
+    }
 }
 #endif
 auto TcpStream::local_addr() const -> io::Result<SocketAddr> {
@@ -195,7 +197,8 @@ auto TcpStream::peer_addr() const -> io::Result<SocketAddr> {
     return socket::peer_addr(stream_.m_completion_source.as_raw_fd());
 }
 auto TcpKeepalive::validate() const -> io::Result<empty> {
-    for (auto duration : array<Option<rstd::time::Duration>, 2> { idle, interval }) {
+    const array<Option<rstd::time::Duration>, 2> durations { idle, interval };
+    for (const auto& duration : durations) {
         if (duration.is_some() && (duration->is_zero() || duration->subsec_nanos() != u32() ||
                                    duration->as_secs() > u64(0x7fffffff)))
             return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
@@ -254,8 +257,10 @@ auto TcpListener::close() && -> async::coro<io::Result<empty>> {
 
 #if RSTD_OS_UNIX
 auto TcpListener::from_owned_fd(os::fd::OwnedFd fd) -> io::Result<TcpListener> {
-    return from_owned_socket(
-        os::socket::OwnedSocket::from_raw_socket(rstd::move(fd).into_raw_fd()));
+    [[unsafe]] {
+        return from_owned_socket(
+            os::socket::OwnedSocket::from_raw_socket(rstd::move(fd).into_raw_fd()));
+    }
 }
 
 auto TcpListener::into_owned_fd() && -> async::coro<io::Result<os::fd::OwnedFd>> {

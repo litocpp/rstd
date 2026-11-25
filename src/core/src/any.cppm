@@ -41,8 +41,9 @@ template<typename T>
 auto downcast_ref(ref<dyn<Any>> value [[clang::lifetimebound]]) noexcept -> Option<ref<T>> {
     if (! is<T>(value)) return None();
     using Storage = typename ref<T>::storage_type;
-    auto result   = ref<T>::from_raw_parts(static_cast<const Storage*>(value.as_raw_ptr()));
-    return Some(rstd::move(result));
+    [[unsafe]] {
+        return Some(ref<T>::from_raw_parts(static_cast<const Storage*>(value.as_raw_ptr())));
+    }
 }
 
 /// Mutably borrows the stored value as `T`, or returns `None` when the type differs.
@@ -50,8 +51,9 @@ template<typename T>
 auto downcast_mut(mut_ref<dyn<Any>> value [[clang::lifetimebound]]) noexcept -> Option<mut_ref<T>> {
     if (! is<T>(value)) return None();
     using Storage = typename mut_ref<T>::storage_type;
-    auto result   = mut_ref<T>::from_raw_parts(static_cast<Storage*>(value.as_raw_ptr()));
-    return Some(rstd::move(result));
+    [[unsafe]] {
+        return Some(mut_ref<T>::from_raw_parts(static_cast<Storage*>(value.as_raw_ptr())));
+    }
 }
 
 } // namespace rstd::any

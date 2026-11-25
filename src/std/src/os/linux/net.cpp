@@ -14,8 +14,11 @@ using rstd::io::error::ErrorKind;
 auto linux_socket_family(rstd::os::socket::BorrowedSocket socket) -> rstd::io::Result<int> {
     sockaddr_storage address {};
     socklen_t        size = sizeof(address);
-    if (::getsockname(socket.as_raw_socket(), reinterpret_cast<sockaddr*>(&address), &size) != 0)
-        return Err(Error::last_os_error());
+    [[unsafe]] {
+        if (::getsockname(socket.as_raw_socket(), reinterpret_cast<sockaddr*>(&address), &size) !=
+            0)
+            return Err(Error::last_os_error());
+    }
     if (size < sizeof(sa_family_t) ||
         (address.ss_family != AF_INET && address.ss_family != AF_INET6))
         return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));

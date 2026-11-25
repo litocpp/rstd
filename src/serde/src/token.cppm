@@ -75,9 +75,17 @@ class TokenEnumAccess;
 
 class TokenSerializer {
     Vec<Token>* tokens_;
-    usize       owned_open_compounds_ {};
-    usize*      open_compounds_ { &owned_open_compounds_ };
-    DataPath    path_;
+
+    auto tokens() const noexcept -> Vec<Token>& {
+        [[unsafe]] { return *tokens_; }
+    }
+    usize  owned_open_compounds_ {};
+    usize* open_compounds_ { &owned_open_compounds_ };
+
+    auto open_compounds() const noexcept -> usize& {
+        [[unsafe]] { return *open_compounds_; }
+    }
+    DataPath path_;
 
 public:
     using value_type    = empty;
@@ -102,11 +110,11 @@ public:
 
     template<typename T>
     auto serialize_some(const T& value) -> result_type {
-        tokens_->push(Token::marker(TokenKind::SomeStart));
-        auto child  = TokenSerializer(*tokens_, *open_compounds_, path_.clone());
+        tokens().push(Token::marker(TokenKind::SomeStart));
+        auto child  = TokenSerializer(tokens(), open_compounds(), path_.clone());
         auto result = serde::serialize(child, value);
         if (result.is_err()) return result;
-        tokens_->push(Token::marker(TokenKind::SomeEnd));
+        tokens().push(Token::marker(TokenKind::SomeEnd));
         return Ok(empty {});
     }
 
@@ -119,12 +127,12 @@ public:
 
     template<typename T>
     auto serialize_newtype_variant(ref<str> variant, const T& value) -> result_type {
-        tokens_->push(Token::marker(TokenKind::EnumStart));
-        tokens_->push(Token::string(variant));
-        auto child  = TokenSerializer(*tokens_, *open_compounds_, path_.with_variant(variant));
+        tokens().push(Token::marker(TokenKind::EnumStart));
+        tokens().push(Token::string(variant));
+        auto child  = TokenSerializer(tokens(), open_compounds(), path_.with_variant(variant));
         auto result = serde::serialize(child, value);
         if (result.is_err()) return result;
-        tokens_->push(Token::marker(TokenKind::EnumEnd));
+        tokens().push(Token::marker(TokenKind::EnumEnd));
         return Ok(empty {});
     }
 
@@ -150,10 +158,18 @@ public:
 
 class TokenSequence {
     Vec<Token>* tokens_;
-    usize*      open_compounds_;
-    DataPath    path_;
-    usize       index_ {};
-    bool        ended_ {};
+
+    auto tokens() const noexcept -> Vec<Token>& {
+        [[unsafe]] { return *tokens_; }
+    }
+    usize* open_compounds_;
+
+    auto open_compounds() const noexcept -> usize& {
+        [[unsafe]] { return *open_compounds_; }
+    }
+    DataPath path_;
+    usize    index_ {};
+    bool     ended_ {};
 
 public:
     using error_type = Error;
@@ -163,7 +179,7 @@ public:
     template<typename T>
     auto element(const T& value) -> Result<empty, Error> {
         if (ended_) return Err(Error::invariant(path_.clone(), "sequence already ended"_str));
-        auto serializer = TokenSerializer(*tokens_, *open_compounds_, path_.with_index(index_));
+        auto serializer = TokenSerializer(tokens(), open_compounds(), path_.with_index(index_));
         auto result     = serde::serialize(serializer, value);
         if (result.is_err()) return result;
         ++index_;
@@ -175,11 +191,19 @@ public:
 
 class TokenMap {
     Vec<Token>* tokens_;
-    usize*      open_compounds_;
-    DataPath    path_;
-    DataPath    value_path_;
-    bool        pending_ {};
-    bool        ended_ {};
+
+    auto tokens() const noexcept -> Vec<Token>& {
+        [[unsafe]] { return *tokens_; }
+    }
+    usize* open_compounds_;
+
+    auto open_compounds() const noexcept -> usize& {
+        [[unsafe]] { return *open_compounds_; }
+    }
+    DataPath path_;
+    DataPath value_path_;
+    bool     pending_ {};
+    bool     ended_ {};
 
 public:
     using error_type = Error;
@@ -197,7 +221,7 @@ public:
         } else {
             value_path_ = path_.clone();
         }
-        auto serializer = TokenSerializer(*tokens_, *open_compounds_, path_.clone());
+        auto serializer = TokenSerializer(tokens(), open_compounds(), path_.clone());
         auto result     = serde::serialize(serializer, value);
         if (result.is_err()) return result;
         pending_ = true;
@@ -208,7 +232,7 @@ public:
     auto value(const T& value) -> Result<empty, Error> {
         if (ended_) return Err(Error::invariant(path_.clone(), "map already ended"_str));
         if (! pending_) return Err(Error::invariant(path_.clone(), "map key is missing"_str));
-        auto serializer = TokenSerializer(*tokens_, *open_compounds_, value_path_.clone());
+        auto serializer = TokenSerializer(tokens(), open_compounds(), value_path_.clone());
         auto result     = serde::serialize(serializer, value);
         if (result.is_err()) return result;
         pending_ = false;
@@ -260,8 +284,12 @@ class TokenDeserializer {
     slice<Token> tokens_;
     usize        owned_position_ {};
     usize*       position_ { &owned_position_ };
-    DataPath     path_;
-    bool         reject_unknown_fields_ {};
+
+    auto cursor() const noexcept -> usize& {
+        [[unsafe]] { return *position_; }
+    }
+    DataPath path_;
+    bool     reject_unknown_fields_ {};
 
     TokenDeserializer(slice<Token> tokens,
                       usize&       position,
@@ -326,15 +354,15 @@ public:
         auto token = peek();
         if (token.is_none()) return Err(Error::unexpected_end(path_.clone()));
         if (token->get().kind() == TokenKind::Null) {
-            ++*position_;
+            ++cursor();
             return Ok(None<T>());
         }
         if (token->get().kind() != TokenKind::SomeStart) {
             return Err(Error::type_mismatch(
                 path_.clone(), ValueKind::Enum, actual_kind(token->get().kind())));
         }
-        ++*position_;
-        auto child = TokenDeserializer(tokens_, *position_, path_.clone(), reject_unknown_fields_);
+        ++cursor();
+        auto child = TokenDeserializer(tokens_, cursor(), path_.clone(), reject_unknown_fields_);
         auto value = serde::deserialize<T>(child);
         if (value.is_err()) return Err(rstd::move(value).unwrap_err_unchecked());
         auto end = take(TokenKind::SomeEnd, ValueKind::Enum);
@@ -361,9 +389,13 @@ public:
 class TokenSequenceAccess {
     slice<Token> tokens_;
     usize*       position_;
-    DataPath     path_;
-    usize        index_ {};
-    bool         ended_ {};
+
+    auto cursor() const noexcept -> usize& {
+        [[unsafe]] { return *position_; }
+    }
+    DataPath path_;
+    usize    index_ {};
+    bool     ended_ {};
 
 public:
     using error_type = Error;
@@ -373,9 +405,9 @@ public:
     template<typename T>
     auto next() -> Result<Option<T>, Error> {
         if (ended_) return Err(Error::invariant(path_.clone(), "sequence already ended"_str));
-        if (*position_ >= tokens_.len()) return Err(Error::unexpected_end(path_.clone()));
-        if (tokens_[*position_].kind() == TokenKind::SequenceEnd) return Ok(None<T>());
-        auto child = TokenDeserializer(tokens_, *position_, path_.with_index(index_));
+        if (cursor() >= tokens_.len()) return Err(Error::unexpected_end(path_.clone()));
+        if (tokens_[cursor()].kind() == TokenKind::SequenceEnd) return Ok(None<T>());
+        auto child = TokenDeserializer(tokens_, cursor(), path_.with_index(index_));
         auto value = serde::deserialize<T>(child);
         if (value.is_err()) return Err(rstd::move(value).unwrap_err_unchecked());
         ++index_;
@@ -388,10 +420,14 @@ public:
 class TokenMapAccess {
     slice<Token> tokens_;
     usize*       position_;
-    DataPath     path_;
-    DataPath     value_path_;
-    bool         pending_ {};
-    bool         ended_ {};
+
+    auto cursor() const noexcept -> usize& {
+        [[unsafe]] { return *position_; }
+    }
+    DataPath path_;
+    DataPath value_path_;
+    bool     pending_ {};
+    bool     ended_ {};
 
 public:
     using error_type = Error;
@@ -402,9 +438,9 @@ public:
     auto next_key() -> Result<Option<T>, Error> {
         if (ended_) return Err(Error::invariant(path_.clone(), "map already ended"_str));
         if (pending_) return Err(Error::invariant(path_.clone(), "map value is missing"_str));
-        if (*position_ >= tokens_.len()) return Err(Error::unexpected_end(path_.clone()));
-        if (tokens_[*position_].kind() == TokenKind::MapEnd) return Ok(None<T>());
-        auto child = TokenDeserializer(tokens_, *position_, path_.clone());
+        if (cursor() >= tokens_.len()) return Err(Error::unexpected_end(path_.clone()));
+        if (tokens_[cursor()].kind() == TokenKind::MapEnd) return Ok(None<T>());
+        auto child = TokenDeserializer(tokens_, cursor(), path_.clone());
         auto key   = serde::deserialize<T>(child);
         if (key.is_err()) return Err(rstd::move(key).unwrap_err_unchecked());
         if constexpr (mtp::same_as<T, String>) {
@@ -420,7 +456,7 @@ public:
     auto next_value() -> Result<T, Error> {
         if (ended_) return Err(Error::invariant(path_.clone(), "map already ended"_str));
         if (! pending_) return Err(Error::invariant(path_.clone(), "map key is missing"_str));
-        auto child = TokenDeserializer(tokens_, *position_, value_path_.clone());
+        auto child = TokenDeserializer(tokens_, cursor(), value_path_.clone());
         auto value = serde::deserialize<T>(child);
         if (value.is_err()) return Err(rstd::move(value).unwrap_err_unchecked());
         pending_ = false;
@@ -434,9 +470,13 @@ public:
 class TokenEnumAccess {
     slice<Token> tokens_;
     usize*       position_;
-    DataPath     path_;
-    String       variant_;
-    bool         consumed_ {};
+
+    auto cursor() const noexcept -> usize& {
+        [[unsafe]] { return *position_; }
+    }
+    DataPath path_;
+    String   variant_;
+    bool     consumed_ {};
 
     auto finish() -> Result<empty, Error>;
 
@@ -452,7 +492,7 @@ public:
     template<typename T>
     auto value() -> Result<T, Error> {
         if (consumed_) return Err(Error::invariant(path_.clone(), "enum already consumed"_str));
-        auto child  = TokenDeserializer(tokens_, *position_, path_.with_variant(variant_.as_str()));
+        auto child  = TokenDeserializer(tokens_, cursor(), path_.with_variant(variant_.as_str()));
         auto result = serde::deserialize<T>(child);
         if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
         auto end = finish();

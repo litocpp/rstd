@@ -67,24 +67,31 @@ class Emitter {
         } buffer;
         rstd::fmt::Formatter local(
             &buffer, [](void* context, const rstd::uint8_t* bytes, rstd::size_t len) -> bool {
-                auto& output = *static_cast<Buffer*>(context);
-                if (output.len + len > sizeof(output.bytes)) return false;
-                for (rstd::size_t i = 0; i < len; ++i) output.bytes[output.len++] = bytes[i];
-                return true;
+                [[unsafe]] {
+                    auto& output = *static_cast<Buffer*>(context);
+                    if (len > sizeof(output.bytes) - output.len) return false;
+                    for (rstd::size_t i = 0; i < len; ++i) output.bytes[output.len++] = bytes[i];
+                    return true;
+                }
             });
         if (! local.write_fmt(rstd::fmt::Arguments::make("{:?}", value))) return false;
 
         rstd::size_t exponent = buffer.len;
         for (rstd::size_t i = 0; i < buffer.len; ++i) {
-            if (buffer.bytes[i] == 'e') {
-                exponent = i;
-                break;
+            [[unsafe]] {
+                if (buffer.bytes[i] == 'e') {
+                    exponent = i;
+                    break;
+                }
             }
         }
         if (exponent == buffer.len) return formatter_.write_raw(buffer.bytes, buffer.len);
         if (! formatter_.write_raw(buffer.bytes, exponent + 1)) return false;
-        if (buffer.bytes[exponent + 1] != '-' && ! write_byte(u8('+'))) return false;
-        return formatter_.write_raw(buffer.bytes + exponent + 1, buffer.len - exponent - 1);
+        if (exponent + 1 == buffer.len) return false;
+        [[unsafe]] {
+            if (buffer.bytes[exponent + 1] != '-' && ! write_byte(u8('+'))) return false;
+            return formatter_.write_raw(buffer.bytes + exponent + 1, buffer.len - exponent - 1);
+        }
     }
 
     auto write_number(const Number& number) -> bool {
@@ -161,7 +168,11 @@ public:
 
 class DirectSerializer {
     Emitter* emitter_ {};
-    usize    depth_ {};
+
+    auto emitter() const noexcept -> Emitter& {
+        [[unsafe]] { return *emitter_; }
+    }
+    usize depth_ {};
 
     auto written(bool success) const -> Result<empty, rstd::serde::Error> {
         if (success) return Ok(empty {});
@@ -181,16 +192,16 @@ public:
     explicit DirectSerializer(Emitter& emitter, usize depth = {})
         : emitter_(rstd::addressof(emitter)), depth_(depth) {}
 
-    auto serialize_none() -> result_type { return written(emitter_->write("null"_str)); }
+    auto serialize_none() -> result_type { return written(emitter().write("null"_str)); }
     auto serialize_unit() -> result_type { return serialize_none(); }
     auto serialize_bool(bool value) -> result_type {
-        return written(emitter_->write(value ? "true"_str : "false"_str));
+        return written(emitter().write(value ? "true"_str : "false"_str));
     }
-    auto serialize_i64(i64 value) -> result_type { return written(emitter_->write_integer(value)); }
-    auto serialize_u64(u64 value) -> result_type { return written(emitter_->write_integer(value)); }
-    auto serialize_f64(f64 value) -> result_type { return written(emitter_->write_float(value)); }
+    auto serialize_i64(i64 value) -> result_type { return written(emitter().write_integer(value)); }
+    auto serialize_u64(u64 value) -> result_type { return written(emitter().write_integer(value)); }
+    auto serialize_f64(f64 value) -> result_type { return written(emitter().write_float(value)); }
     auto serialize_string(ref<str> value) -> result_type {
-        return written(emitter_->write_string(value));
+        return written(emitter().write_string(value));
     }
     auto serialize_bytes(slice<u8> value) -> result_type;
 
@@ -210,21 +221,21 @@ public:
 
     template<typename T>
     auto serialize_newtype_variant(ref<str> variant, const T& value) -> result_type {
-        if (! emitter_->write_byte(u8('{')) ||
-            (emitter_->options_.pretty &&
-             (! emitter_->write_byte(u8('\n')) || ! emitter_->write_indent(depth_ + usize(1)))) ||
-            ! emitter_->write_string(variant) ||
-            ! emitter_->write(emitter_->options_.pretty ? ": "_str : ":"_str)) {
+        if (! emitter().write_byte(u8('{')) ||
+            (emitter().options_.pretty &&
+             (! emitter().write_byte(u8('\n')) || ! emitter().write_indent(depth_ + usize(1)))) ||
+            ! emitter().write_string(variant) ||
+            ! emitter().write(emitter().options_.pretty ? ": "_str : ":"_str)) {
             return written(false);
         }
-        auto child  = DirectSerializer(*emitter_, depth_ + usize(1));
+        auto child  = DirectSerializer(emitter(), depth_ + usize(1));
         auto result = rstd::serde::serialize(child, value);
         if (result.is_err()) return result;
-        if (emitter_->options_.pretty &&
-            (! emitter_->write_byte(u8('\n')) || ! emitter_->write_indent(depth_))) {
+        if (emitter().options_.pretty &&
+            (! emitter().write_byte(u8('\n')) || ! emitter().write_indent(depth_))) {
             return written(false);
         }
-        return written(emitter_->write_byte(u8('}')));
+        return written(emitter().write_byte(u8('}')));
     }
 
     auto begin_sequence(usize len) -> Result<DirectSequenceSerializer, error_type>;
@@ -245,10 +256,14 @@ public:
 
 class DirectSequenceSerializer {
     Emitter* emitter_ {};
-    usize    depth_ {};
-    usize    expected_ {};
-    usize    written_ {};
-    bool     ended_ {};
+
+    auto emitter() const noexcept -> Emitter& {
+        [[unsafe]] { return *emitter_; }
+    }
+    usize depth_ {};
+    usize expected_ {};
+    usize written_ {};
+    bool  ended_ {};
 
 public:
     using error_type = rstd::serde::Error;
@@ -259,15 +274,15 @@ public:
     template<typename T>
     auto element(const T& value) -> Result<empty, error_type> {
         if (ended_) return Err(error_type::invariant({}, "sequence already ended"_str));
-        if (written_ != usize {} && ! emitter_->write_byte(u8(','))) {
+        if (written_ != usize {} && ! emitter().write_byte(u8(','))) {
             return Err(error_type::invariant({}, "failed to write JSON output"_str));
         }
-        if (emitter_->options_.pretty &&
-            ((written_ != usize {} && ! emitter_->write_byte(u8('\n'))) ||
-             ! emitter_->write_indent(depth_ + usize(1)))) {
+        if (emitter().options_.pretty &&
+            ((written_ != usize {} && ! emitter().write_byte(u8('\n'))) ||
+             ! emitter().write_indent(depth_ + usize(1)))) {
             return Err(error_type::invariant({}, "failed to write JSON output"_str));
         }
-        auto serializer = DirectSerializer(*emitter_, depth_ + usize(1));
+        auto serializer = DirectSerializer(emitter(), depth_ + usize(1));
         auto result     = rstd::serde::serialize(serializer, value);
         if (result.is_err()) return result;
         ++written_;
@@ -280,11 +295,11 @@ public:
             return Err(error_type::invariant({}, "sequence length does not match"_str));
         }
         ended_ = true;
-        if (emitter_->options_.pretty && written_ != usize {} &&
-            (! emitter_->write_byte(u8('\n')) || ! emitter_->write_indent(depth_))) {
+        if (emitter().options_.pretty && written_ != usize {} &&
+            (! emitter().write_byte(u8('\n')) || ! emitter().write_indent(depth_))) {
             return Err(error_type::invariant({}, "failed to write JSON output"_str));
         }
-        if (! emitter_->write_byte(u8(']'))) {
+        if (! emitter().write_byte(u8(']'))) {
             return Err(error_type::invariant({}, "failed to write JSON output"_str));
         }
         return Ok(empty {});
@@ -293,11 +308,15 @@ public:
 
 class DirectMapSerializer {
     Emitter* emitter_ {};
-    usize    depth_ {};
-    usize    expected_ {};
-    usize    written_ {};
-    bool     pending_ {};
-    bool     ended_ {};
+
+    auto emitter() const noexcept -> Emitter& {
+        [[unsafe]] { return *emitter_; }
+    }
+    usize depth_ {};
+    usize expected_ {};
+    usize written_ {};
+    bool  pending_ {};
+    bool  ended_ {};
 
 public:
     using error_type = rstd::serde::Error;
@@ -309,23 +328,23 @@ public:
     auto key(const T& value) -> Result<empty, error_type> {
         if (ended_) return Err(error_type::invariant({}, "map already ended"_str));
         if (pending_) return Err(error_type::invariant({}, "map value is missing"_str));
-        if (written_ != usize {} && ! emitter_->write_byte(u8(','))) {
+        if (written_ != usize {} && ! emitter().write_byte(u8(','))) {
             return Err(error_type::invariant({}, "failed to write JSON output"_str));
         }
-        if (emitter_->options_.pretty &&
-            ((written_ != usize {} && ! emitter_->write_byte(u8('\n'))) ||
-             ! emitter_->write_indent(depth_ + usize(1)))) {
+        if (emitter().options_.pretty &&
+            ((written_ != usize {} && ! emitter().write_byte(u8('\n'))) ||
+             ! emitter().write_indent(depth_ + usize(1)))) {
             return Err(error_type::invariant({}, "failed to write JSON output"_str));
         }
         bool success = false;
         if constexpr (rstd::mtp::same_as<rstd::mtp::rm_cvf<T>, ::alloc::string::String>) {
-            success = emitter_->write_string(value.as_str());
+            success = emitter().write_string(value.as_str());
         } else if constexpr (rstd::mtp::same_as<rstd::mtp::rm_cvf<T>, ref<str>>) {
-            success = emitter_->write_string(value);
+            success = emitter().write_string(value);
         } else {
             return Err(error_type::unsupported({}, "JSON object key must be a string"_str));
         }
-        if (! success || ! emitter_->write(emitter_->options_.pretty ? ": "_str : ":"_str)) {
+        if (! success || ! emitter().write(emitter().options_.pretty ? ": "_str : ":"_str)) {
             return Err(error_type::invariant({}, "failed to write JSON output"_str));
         }
         pending_ = true;
@@ -336,7 +355,7 @@ public:
     auto value(const T& value) -> Result<empty, error_type> {
         if (ended_) return Err(error_type::invariant({}, "map already ended"_str));
         if (! pending_) return Err(error_type::invariant({}, "map key is missing"_str));
-        auto serializer = DirectSerializer(*emitter_, depth_ + usize(1));
+        auto serializer = DirectSerializer(emitter(), depth_ + usize(1));
         auto result     = rstd::serde::serialize(serializer, value);
         if (result.is_err()) return result;
         pending_ = false;
@@ -351,11 +370,11 @@ public:
             return Err(error_type::invariant({}, "map length does not match"_str));
         }
         ended_ = true;
-        if (emitter_->options_.pretty && written_ != usize {} &&
-            (! emitter_->write_byte(u8('\n')) || ! emitter_->write_indent(depth_))) {
+        if (emitter().options_.pretty && written_ != usize {} &&
+            (! emitter().write_byte(u8('\n')) || ! emitter().write_indent(depth_))) {
             return Err(error_type::invariant({}, "failed to write JSON output"_str));
         }
-        if (! emitter_->write_byte(u8('}'))) {
+        if (! emitter().write_byte(u8('}'))) {
             return Err(error_type::invariant({}, "failed to write JSON output"_str));
         }
         return Ok(empty {});
@@ -364,19 +383,19 @@ public:
 
 inline auto DirectSerializer::begin_sequence(usize len)
     -> Result<DirectSequenceSerializer, error_type> {
-    if (! emitter_->write_byte(u8('[')) ||
-        (emitter_->options_.pretty && len != usize {} && ! emitter_->write_byte(u8('\n')))) {
+    if (! emitter().write_byte(u8('[')) ||
+        (emitter().options_.pretty && len != usize {} && ! emitter().write_byte(u8('\n')))) {
         return Err(error_type::invariant({}, "failed to write JSON output"_str));
     }
-    return Ok(DirectSequenceSerializer(*emitter_, len, depth_));
+    return Ok(DirectSequenceSerializer(emitter(), len, depth_));
 }
 
 inline auto DirectSerializer::begin_map(usize len) -> Result<DirectMapSerializer, error_type> {
-    if (! emitter_->write_byte(u8('{')) ||
-        (emitter_->options_.pretty && len != usize {} && ! emitter_->write_byte(u8('\n')))) {
+    if (! emitter().write_byte(u8('{')) ||
+        (emitter().options_.pretty && len != usize {} && ! emitter().write_byte(u8('\n')))) {
         return Err(error_type::invariant({}, "failed to write JSON output"_str));
     }
-    return Ok(DirectMapSerializer(*emitter_, len, depth_));
+    return Ok(DirectMapSerializer(emitter(), len, depth_));
 }
 
 inline auto DirectSerializer::serialize_bytes(slice<u8> value) -> result_type {

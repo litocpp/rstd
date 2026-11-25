@@ -6,8 +6,10 @@ import :panicking;
 template<typename T>
 constexpr auto slice_part(rstd::slice<T> source, rstd::usize start, rstd::usize length)
     -> rstd::slice<T> {
-    auto pointer = rstd::ptr<T>::from_raw_parts(source.as_raw_ptr()).add(start);
-    return rstd::slice<T>::from_raw_parts(pointer.as_raw_ptr(), length);
+    [[unsafe]] {
+        auto pointer = rstd::ptr<T>::from_raw_parts(source.as_raw_ptr()).add(start);
+        return rstd::slice<T>::from_raw_parts(pointer.as_raw_ptr(), length);
+    }
 }
 
 export namespace rstd::slice_

@@ -276,10 +276,9 @@ public:
     using map_type      = ValueMapAccess;
     using enum_type     = ValueEnumAccess;
 
-    explicit ValueDeserializer(const Value& value)
-        : value_(ref<Value>::from_raw_parts(rstd::addressof(value))) {}
+    explicit ValueDeserializer(const Value& value): value_(ref<Value>::from_ref(value)) {}
     ValueDeserializer(const Value& value, serde::DataPath path)
-        : value_(ref<Value>::from_raw_parts(rstd::addressof(value))), path_(rstd::move(path)) {}
+        : value_(ref<Value>::from_ref(value)), path_(rstd::move(path)) {}
 
     auto kind() const noexcept -> serde::ValueKind { return actual_kind(*value_); }
 
@@ -603,11 +602,11 @@ public:
     auto is_data() const noexcept -> bool { return data_.is_some(); }
     auto syntax_error() const noexcept [[clang::lifetimebound]] -> Option<ref<Error>> {
         if (syntax_.is_none()) return None();
-        return Some(ref<Error>::from_raw_parts(rstd::addressof(*syntax_)));
+        return Some(ref<Error>::from_ref(*syntax_));
     }
     auto data_error() const noexcept [[clang::lifetimebound]] -> Option<ref<serde::Error>> {
         if (data_.is_none()) return None();
-        return Some(ref<serde::Error>::from_raw_parts(rstd::addressof(*data_)));
+        return Some(ref<serde::Error>::from_ref(*data_));
     }
 };
 
@@ -628,11 +627,11 @@ public:
 
     auto data_error() const noexcept [[clang::lifetimebound]] -> Option<ref<serde::Error>> {
         if (data_.is_none()) return None();
-        return Some(ref<serde::Error>::from_raw_parts(rstd::addressof(*data_)));
+        return Some(ref<serde::Error>::from_ref(*data_));
     }
     auto format_error() const noexcept [[clang::lifetimebound]] -> Option<ref<SerializeError>> {
         if (format_.is_none()) return None();
-        return Some(ref<SerializeError>::from_raw_parts(rstd::addressof(*format_)));
+        return Some(ref<SerializeError>::from_ref(*format_));
     }
 };
 

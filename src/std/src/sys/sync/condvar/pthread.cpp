@@ -45,7 +45,8 @@ auto Condvar::get() -> pal::Condvar& {
 }
 
 void Condvar::verify(pal::Mutex& mutex) {
-    auto  address = usize(reinterpret_cast<rstd::uintptr_t>(&mutex));
+    usize address;
+    [[unsafe]] { address = usize(reinterpret_cast<rstd::uintptr_t>(&mutex)); }
     usize expected {};
     if (m_mutex.compare_exchange_strong(expected, address, Ordering::Relaxed, Ordering::Relaxed)) {
         return;

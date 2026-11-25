@@ -108,9 +108,12 @@ public:
                                   &roots.data_local,
                                   &roots.cache,
                                   &roots.state,
-                                  &roots.runtime })
-            if (path->is_some() && ! sys::valid_absolute((*path)->as_path()))
-                return Err(Error::InvalidPath((*path)->clone()));
+                                  &roots.runtime }) {
+            [[unsafe]] {
+                if (path->is_some() && ! sys::valid_absolute((*path)->as_path()))
+                    return Err(Error::InvalidPath((*path)->clone()));
+            }
+        }
         return Ok(ProjectDirs(rstd::move(roots)));
     }
 

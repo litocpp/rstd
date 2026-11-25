@@ -302,9 +302,11 @@ auto map_format(std::string_view format, const std::vector<Field>& fields, bool 
         if (positional && ! name.empty() && std::ranges::all_of(name, [](char c) {
                 return c >= '0' && c <= '9';
             })) {
-            const auto parsed = std::from_chars(name.data(), name.data() + name.size(), index);
-            if (parsed.ec != std::errc() || index >= fields.size())
-                return std::unexpected("field index is out of range in Display format");
+            [[unsafe]] {
+                const auto parsed = std::from_chars(name.data(), name.data() + name.size(), index);
+                if (parsed.ec != std::errc() || index >= fields.size())
+                    return std::unexpected("field index is out of range in Display format");
+            }
         } else {
             while (index < fields.size() && fields[index].name != name) ++index;
         }
@@ -551,8 +553,8 @@ auto derive(pmacro::DeriveInput input, pmacro::Context& context, Trait trait) ->
         return fail(declaration.source, "nested declarations in record scope are not supported");
     if (declaration.scope != pmacro::DeclarationScope::Namespace)
         return fail(declaration.source, "derive requires namespace scope");
-    const auto* record      = std::get_if<pmacro::RecordInfo>(&declaration.data);
-    const auto* enumeration = std::get_if<pmacro::EnumInfo>(&declaration.data);
+    const auto record      = std::holds_alternative<pmacro::RecordInfo>(declaration.data);
+    const auto enumeration = std::holds_alternative<pmacro::EnumInfo>(declaration.data);
     if (! record && ! enumeration)
         return fail(declaration.source, "derive requires a record or enum");
     if (record && (trait == Trait::EnumIter || trait == Trait::TryFrom))
@@ -563,9 +565,18 @@ auto derive(pmacro::DeriveInput input, pmacro::Context& context, Trait trait) ->
         options(context, declaration.helpers, trait, record ? Target::Record : Target::Enum);
     if (! config) return failure(context, input.item_span, config.error());
     const auto qualified = "::" + *declaration.qualified_name;
-    auto       description =
-        record ? record_description(context, declaration, *record, trait, *config, qualified)
-               : enum_description(context, declaration, *enumeration, trait, *config, qualified);
+    auto description = record ? record_description(context,
+                                                   declaration,
+                                                   std::get<pmacro::RecordInfo>(declaration.data),
+                                                   trait,
+                                                   *config,
+                                                   qualified)
+                              : enum_description(context,
+                                                 declaration,
+                                                 std::get<pmacro::EnumInfo>(declaration.data),
+                                                 trait,
+                                                 *config,
+                                                 qualified);
     if (! description) return failure(context, input.item_span, description.error());
     const auto function = [&] {
         switch (trait) {

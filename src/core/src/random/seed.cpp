@@ -11,7 +11,7 @@ auto seed_mix(u32 value) -> u32 {
 void rstd::random::generate_seed_sequence(ref<u32[]> input, mut_ref<u32[]> output) {
     auto n = output.len();
     if (n == usize()) return;
-    for (auto& value : output) value = u32(0x8b8b8b8b);
+    for (usize index {}; index < n; ++index) output[index] = u32(0x8b8b8b8b);
     auto t = n >= usize(623)  ? usize(11)
              : n >= usize(68) ? usize(7)
              : n >= usize(39) ? usize(5)

@@ -16,7 +16,9 @@ export using RawFd                           = int;
 export inline constexpr RawFd INVALID_RAW_FD = -1;
 #else
 export using RawFd                       = void*;
-export inline RawFd const INVALID_RAW_FD = (void*)(-1);
+export inline RawFd const INVALID_RAW_FD = [] {
+    [[unsafe]] { return (void*)(-1); }
+}();
 #endif
 
 /// Non-owning view of a file descriptor.
@@ -50,6 +52,7 @@ public:
     }
 
     /// Adopts an open fd whose ownership is transferred exclusively to the result.
+    [[unsafe]]
     static auto from_raw_fd(RawFd fd) noexcept -> OwnedFd {
         if (fd == INVALID_RAW_FD) panic { "invalid raw fd" };
         return OwnedFd { fd };
@@ -81,6 +84,7 @@ public:
     auto as_fd() const noexcept [[clang::lifetimebound]] -> BorrowedFd { return *this; }
 
     /// Borrows an fd that remains open for the complete lifetime of the returned value.
+    [[unsafe]]
     static auto borrow_raw(RawFd fd) noexcept -> BorrowedFd {
         if (fd == INVALID_RAW_FD) panic { "invalid raw fd" };
         return BorrowedFd { fd };
@@ -90,7 +94,7 @@ public:
 };
 
 inline auto OwnedFd::as_fd() const noexcept [[clang::lifetimebound]] -> BorrowedFd {
-    return BorrowedFd::borrow_raw(fd_);
+    [[unsafe]] { return BorrowedFd::borrow_raw(fd_); }
 }
 
 inline auto OwnedFd::try_clone() const -> IOResult<OwnedFd> {
@@ -136,7 +140,11 @@ export struct FromRawFd {
     template<typename Self, typename = void>
     struct Api {
         using Trait = FromRawFd;
-        static auto from_raw_fd(RawFd fd) noexcept -> Self { return trait_static_call<0, Api>(fd); }
+        /// The descriptor must be open and transferred exclusively to the result.
+        [[unsafe]]
+        static auto from_raw_fd(RawFd fd) noexcept -> Self {
+            [[unsafe]] { return trait_static_call<0, Api>(fd); }
+        }
     };
 
     template<typename T>
@@ -155,8 +163,9 @@ struct Impl<os::fd::IntoRawFd, os::fd::OwnedFd> : ImplBase<os::fd::OwnedFd> {
 
 template<>
 struct Impl<os::fd::FromRawFd, os::fd::OwnedFd> {
+    [[unsafe]]
     static auto from_raw_fd(os::fd::RawFd fd) noexcept -> os::fd::OwnedFd {
-        return os::fd::OwnedFd::from_raw_fd(fd);
+        [[unsafe]] { return os::fd::OwnedFd::from_raw_fd(fd); }
     }
 };
 

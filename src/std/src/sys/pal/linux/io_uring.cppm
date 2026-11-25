@@ -51,7 +51,9 @@ auto probe_required_operations(os::fd::RawFd ring_fd) -> io::Result<empty> {
     for (auto opcode : required) {
         bool supported = false;
         for (rstd::size_t i = 0; i < probe.ops_len; ++i) {
-            auto const& operation = probe.operations[i];
+            auto const& operation = [&]() -> const auto& {
+                [[unsafe]] { return probe.operations[i]; }
+            }();
             if (operation.op == opcode && (operation.flags & libc::IO_URING_OP_SUPPORTED) != 0) {
                 supported = true;
                 break;
@@ -134,8 +136,8 @@ class NativeOperationTable {
         Page() noexcept {}
         rstd::array<MaybeUninit<InFlightOperation>, PAGE_CAPACITY> records;
 
-        rstd::uint32_t generations[PAGE_CAPACITY] {};
-        bool           occupied[PAGE_CAPACITY] {};
+        rstd::array<rstd::uint32_t, PAGE_CAPACITY> generations {};
+        rstd::array<bool, PAGE_CAPACITY>           occupied {};
     };
 
     Vec<Box<Page>> m_pages;
@@ -169,9 +171,9 @@ public:
         auto gen  = generation(key);
         if (gen == 0) return nullptr;
         auto& page   = page_for(slot);
-        auto  offset = static_cast<rstd::size_t>(slot) % PAGE_CAPACITY;
+        auto  offset = usize(static_cast<rstd::size_t>(slot) % PAGE_CAPACITY);
         if (page.occupied[offset]) return nullptr;
-        auto& record             = page.records[usize(offset)].write(rstd::move(operation));
+        auto& record             = page.records[offset].write(rstd::move(operation));
         page.generations[offset] = gen;
         page.occupied[offset]    = true;
         ++m_len;
@@ -183,30 +185,34 @@ public:
         auto page_index = static_cast<rstd::size_t>(slot) / PAGE_CAPACITY;
         if (page_index >= m_pages.len().to_primitive()) return nullptr;
         auto& page   = *m_pages[usize(page_index)];
-        auto  offset = static_cast<rstd::size_t>(slot) % PAGE_CAPACITY;
+        auto  offset = usize(static_cast<rstd::size_t>(slot) % PAGE_CAPACITY);
         if (! page.occupied[offset] || page.generations[offset] != generation(key)) return nullptr;
-        return page.records[usize(offset)].as_mut_ptr();
+        return page.records[offset].as_mut_ptr();
     }
 
     auto take(u64 key) -> Option<InFlightOperation> {
         auto* record = get(key);
         if (record == nullptr) return None<InFlightOperation>();
-        auto  slot            = slot_index(key);
-        auto  page_index      = static_cast<rstd::size_t>(slot) / PAGE_CAPACITY;
-        auto& page            = *m_pages[usize(page_index)];
-        auto  offset          = static_cast<rstd::size_t>(slot) % PAGE_CAPACITY;
-        auto  result          = rstd::move(page.records[usize(offset)]).assume_init();
-        page.occupied[offset] = false;
-        --m_len;
-        return Some(rstd::move(result));
+        auto  slot       = slot_index(key);
+        auto  page_index = static_cast<rstd::size_t>(slot) / PAGE_CAPACITY;
+        auto& page       = *m_pages[usize(page_index)];
+        auto  offset     = usize(static_cast<rstd::size_t>(slot) % PAGE_CAPACITY);
+        [[unsafe]] {
+            auto result           = rstd::move(page.records[offset]).assume_init();
+            page.occupied[offset] = false;
+            --m_len;
+            return Some(rstd::move(result));
+        }
     }
 
     template<typename F>
     void for_each(F&& function) {
         for (rstd::size_t page_index = 0; page_index < m_pages.len().to_primitive(); ++page_index) {
             auto& page = *m_pages[usize(page_index)];
-            for (rstd::size_t offset = 0; offset < PAGE_CAPACITY; ++offset) {
-                if (page.occupied[offset]) function(*page.records[usize(offset)].as_mut_ptr());
+            for (usize offset; offset < usize(PAGE_CAPACITY); ++offset) {
+                if (page.occupied[offset]) {
+                    [[unsafe]] { function(page.records[offset].assume_init_mut()); }
+                }
             }
         }
     }
@@ -262,21 +268,25 @@ export class Driver {
     }
 
     auto push(libc::io_uring_sqe submission) -> io::Result<empty> {
-        auto head = load_acquire(m_sq_head);
-        auto tail = load_relaxed(m_sq_tail);
-        if (tail - head >= *m_sq_entries) {
+        auto           head = load_acquire(m_sq_head);
+        auto           tail = load_relaxed(m_sq_tail);
+        rstd::uint32_t entries;
+        [[unsafe]] { entries = *m_sq_entries; }
+        if (tail - head >= entries) {
             auto submitted = submit_pending();
             if (submitted.is_err()) return submitted;
             head = load_acquire(m_sq_head);
             tail = load_relaxed(m_sq_tail);
-            if (tail - head >= *m_sq_entries) {
+            if (tail - head >= entries) {
                 return Err(Error::from_kind(ErrorKind { ErrorKind::ResourceBusy }));
             }
         }
 
-        auto index        = tail & *m_sq_mask;
-        m_sqes[index]     = submission;
-        m_sq_array[index] = index;
+        [[unsafe]] {
+            auto index        = tail & *m_sq_mask;
+            m_sqes[index]     = submission;
+            m_sq_array[index] = index;
+        }
         store_release(m_sq_tail, tail + 1);
         ++m_pending_submissions;
         return Ok(empty {});
@@ -308,20 +318,22 @@ public:
           m_cq_ring(rstd::move(cq_ring)),
           m_sqes_mapping(rstd::move(sqes_mapping)),
           m_operations() {
-        auto* sq_base = static_cast<char*>(m_sq_ring.data());
-        auto* cq_base = params.features & libc::IORING_FEAT_SINGLE_MMAP
-                            ? sq_base
-                            : static_cast<char*>(m_cq_ring.data());
-        m_sq_head     = reinterpret_cast<rstd::uint32_t*>(sq_base + params.sq_off.head);
-        m_sq_tail     = reinterpret_cast<rstd::uint32_t*>(sq_base + params.sq_off.tail);
-        m_sq_mask     = reinterpret_cast<rstd::uint32_t*>(sq_base + params.sq_off.ring_mask);
-        m_sq_entries  = reinterpret_cast<rstd::uint32_t*>(sq_base + params.sq_off.ring_entries);
-        m_sq_array    = reinterpret_cast<rstd::uint32_t*>(sq_base + params.sq_off.array);
-        m_sqes        = static_cast<libc::io_uring_sqe*>(m_sqes_mapping.data());
-        m_cq_head     = reinterpret_cast<rstd::uint32_t*>(cq_base + params.cq_off.head);
-        m_cq_tail     = reinterpret_cast<rstd::uint32_t*>(cq_base + params.cq_off.tail);
-        m_cq_mask     = reinterpret_cast<rstd::uint32_t*>(cq_base + params.cq_off.ring_mask);
-        m_cqes        = reinterpret_cast<libc::io_uring_cqe*>(cq_base + params.cq_off.cqes);
+        [[unsafe]] {
+            auto* sq_base = static_cast<char*>(m_sq_ring.data());
+            auto* cq_base = params.features & libc::IORING_FEAT_SINGLE_MMAP
+                                ? sq_base
+                                : static_cast<char*>(m_cq_ring.data());
+            m_sq_head     = reinterpret_cast<rstd::uint32_t*>(sq_base + params.sq_off.head);
+            m_sq_tail     = reinterpret_cast<rstd::uint32_t*>(sq_base + params.sq_off.tail);
+            m_sq_mask     = reinterpret_cast<rstd::uint32_t*>(sq_base + params.sq_off.ring_mask);
+            m_sq_entries  = reinterpret_cast<rstd::uint32_t*>(sq_base + params.sq_off.ring_entries);
+            m_sq_array    = reinterpret_cast<rstd::uint32_t*>(sq_base + params.sq_off.array);
+            m_sqes        = static_cast<libc::io_uring_sqe*>(m_sqes_mapping.data());
+            m_cq_head     = reinterpret_cast<rstd::uint32_t*>(cq_base + params.cq_off.head);
+            m_cq_tail     = reinterpret_cast<rstd::uint32_t*>(cq_base + params.cq_off.tail);
+            m_cq_mask     = reinterpret_cast<rstd::uint32_t*>(cq_base + params.cq_off.ring_mask);
+            m_cqes        = reinterpret_cast<libc::io_uring_cqe*>(cq_base + params.cq_off.cqes);
+        }
     }
 
     Driver(const Driver&)                    = delete;
@@ -335,7 +347,8 @@ public:
         auto params = libc::io_uring_params {};
         auto raw_fd = libc::io_uring_setup(RING_ENTRIES, &params);
         if (raw_fd < 0) return Err(Error::last_os_error());
-        auto ring_fd = os::fd::OwnedFd::from_raw_fd(static_cast<os::fd::RawFd>(raw_fd));
+        os::fd::OwnedFd ring_fd;
+        [[unsafe]] { ring_fd = os::fd::OwnedFd::from_raw_fd(static_cast<os::fd::RawFd>(raw_fd)); }
 
         auto probed = probe_required_operations(ring_fd.as_raw_fd());
         if (probed.is_err()) return Err(rstd::move(probed).unwrap_err_unchecked());
@@ -364,7 +377,8 @@ public:
 
         auto event_raw = libc::eventfd(0, libc::EFD_NONBLOCK | libc::EFD_CLOEXEC);
         if (event_raw < 0) return Err(Error::last_os_error());
-        auto event_fd   = os::fd::OwnedFd::from_raw_fd(event_raw);
+        os::fd::OwnedFd event_fd;
+        [[unsafe]] { event_fd = os::fd::OwnedFd::from_raw_fd(event_raw); }
         auto registered = libc::io_uring_register(
             ring_fd.as_raw_fd(), libc::IORING_REGISTER_EVENTFD, &event_raw, 1);
         if (registered < 0) return Err(Error::last_os_error());
@@ -404,19 +418,23 @@ public:
             submission.opcode = operation.source_kind() == SourceKind::Socket
                                     ? libc::IORING_OP_RECV
                                     : libc::IORING_OP_READ;
-            submission.addr   = reinterpret_cast<rstd::uintptr_t>(operation.mutable_data());
-            submission.off    = operation.source_kind() == SourceKind::Socket ? rstd::uint64_t()
-                                : operation.offset().is_some() ? operation.offset()->to_primitive()
-                                                               : rstd::uint64_t(-1);
+            [[unsafe]] {
+                submission.addr = reinterpret_cast<rstd::uintptr_t>(operation.mutable_data());
+            }
+            submission.off = operation.source_kind() == SourceKind::Socket ? rstd::uint64_t()
+                             : operation.offset().is_some() ? operation.offset()->to_primitive()
+                                                            : rstd::uint64_t(-1);
             submission.rw_flags = operation.flags().to_primitive();
         } else if (operation.kind() == OperationKind::Write) {
             submission.opcode = operation.source_kind() == SourceKind::Socket
                                     ? libc::IORING_OP_SEND
                                     : libc::IORING_OP_WRITE;
-            submission.addr   = reinterpret_cast<rstd::uintptr_t>(operation.const_data());
-            submission.off    = operation.source_kind() == SourceKind::Socket ? rstd::uint64_t()
-                                : operation.offset().is_some() ? operation.offset()->to_primitive()
-                                                               : rstd::uint64_t(-1);
+            [[unsafe]] {
+                submission.addr = reinterpret_cast<rstd::uintptr_t>(operation.const_data());
+            }
+            submission.off = operation.source_kind() == SourceKind::Socket ? rstd::uint64_t()
+                             : operation.offset().is_some() ? operation.offset()->to_primitive()
+                                                            : rstd::uint64_t(-1);
             submission.rw_flags = operation.flags().to_primitive();
             if (operation.source_kind() == SourceKind::Socket) {
                 submission.msg_flags |= libc::MSG_NOSIGNAL;
@@ -426,14 +444,18 @@ public:
             submission.opcode = operation.kind() == OperationKind::RecvMessage
                                     ? libc::IORING_OP_RECVMSG
                                     : libc::IORING_OP_SENDMSG;
-            submission.addr   = reinterpret_cast<rstd::uintptr_t>(operation.native_message());
-            submission.len    = 1;
+            [[unsafe]] {
+                submission.addr = reinterpret_cast<rstd::uintptr_t>(operation.native_message());
+            }
+            submission.len = 1;
             if (operation.kind() == OperationKind::SendMessage)
                 submission.msg_flags = libc::MSG_NOSIGNAL;
         } else if (operation.kind() == OperationKind::Connect) {
             submission.opcode = libc::IORING_OP_CONNECT;
-            submission.addr   = reinterpret_cast<rstd::uintptr_t>(&record->address.storage);
-            submission.off    = record->address.len;
+            [[unsafe]] {
+                submission.addr = reinterpret_cast<rstd::uintptr_t>(&record->address.storage);
+                submission.off  = record->address.len;
+            }
         } else {
             submission.opcode       = libc::IORING_OP_ACCEPT;
             submission.addr         = 0;
@@ -452,7 +474,7 @@ public:
     auto cancel_operation(u64 operation_key) -> io::Result<empty> {
         auto* operation = m_operations.get(operation_key);
         if (operation == nullptr) return Ok(empty {});
-        return cancel(*operation);
+        [[unsafe]] { return cancel(*operation); }
     }
 
     auto begin_shutdown() noexcept -> empty {
@@ -470,8 +492,10 @@ public:
         auto tail  = load_acquire(m_cq_tail);
         auto ready = head != tail;
         while (head != tail) {
-            auto& completion = m_cqes[head & *m_cq_mask];
-            auto  key        = u64(completion.user_data);
+            auto completion = [&] {
+                [[unsafe]] { return m_cqes[head & *m_cq_mask]; }
+            }();
+            auto key = u64(completion.user_data);
             if (key != u64(CANCEL_KEY)) {
                 auto operation = m_operations.take(key);
                 if (operation.is_some()) {

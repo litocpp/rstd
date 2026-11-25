@@ -104,10 +104,12 @@ class OnceLock {
     mutable Once           m_once;
     mutable MaybeUninit<T> m_value;
 
-    auto value_ref() const noexcept -> ref<T> { return ref<T>::from_raw_parts(m_value.as_ptr()); }
+    auto value_ref() const noexcept -> ref<T> {
+        [[unsafe]] { return ref<T>::from_ref(m_value.assume_init_ref()); }
+    }
 
     auto value_mut() noexcept -> mut_ref<T> {
-        return mut_ref<T>::from_raw_parts(m_value.as_mut_ptr());
+        [[unsafe]] { return mut_ref<T>::from_ref(m_value.assume_init_mut()); }
     }
 
 public:
@@ -228,13 +230,9 @@ class LazyLock {
         rstd::construct_at(rstd::addressof(m_storage.value), rstd::move(value));
     }
 
-    auto value_ref() const noexcept -> ref<T> {
-        return ref<T>::from_raw_parts(rstd::addressof(m_storage.value));
-    }
+    auto value_ref() const noexcept -> ref<T> { return ref<T>::from_ref(m_storage.value); }
 
-    auto value_mut() noexcept -> mut_ref<T> {
-        return mut_ref<T>::from_raw_parts(rstd::addressof(m_storage.value));
-    }
+    auto value_mut() noexcept -> mut_ref<T> { return mut_ref<T>::from_ref(m_storage.value); }
 
 public:
     USE_TRAIT(LazyLock)

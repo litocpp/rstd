@@ -85,9 +85,11 @@ public:
         return result;
     }
 
+    /// The live allocation must belong to this allocator and match `layout`.
+    [[unsafe]]
     void deallocate(void* pointer, Layout layout) const noexcept {
         auto state = state_->lock().unwrap_unchecked();
-        as<Allocator>(state->upstream).deallocate(pointer, layout);
+        [[unsafe]] { as<Allocator>(state->upstream).deallocate(pointer, layout); }
         state->statistics.live_bytes -= layout.size();
     }
 };
@@ -108,8 +110,9 @@ struct Impl<alloc::Allocator, alloc::BudgetAllocator<Upstream>>
     auto allocate(alloc::Layout layout) const -> Result<alloc::Allocation, alloc::AllocError> {
         return this->self().allocate(layout);
     }
+    [[unsafe]]
     void deallocate(void* pointer, alloc::Layout layout) const noexcept {
-        this->self().deallocate(pointer, layout);
+        [[unsafe]] { this->self().deallocate(pointer, layout); }
     }
 };
 } // namespace rstd

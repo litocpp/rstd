@@ -44,16 +44,21 @@ template<>
 struct ref<ffi::OsStr> : ref_base<ref<ffi::OsStr>, byte[], false> {
     USE_TRAIT(ref)
 
+private:
+    friend ref_base<ref<ffi::OsStr>, byte[], false>;
     byte const* p { nullptr };
     usize       length {};
 
+public:
     constexpr ref() noexcept = default;
     constexpr ref(ffi::os_string_platform::Slice value [[clang::lifetimebound]]) noexcept
-        : p(value.data), length(value.length) {}
+        : p(value.as_encoded_bytes().as_raw_ptr()), length(value.as_encoded_bytes().len()) {}
 
     /// Construct from a `ref<str>` (UTF-8 is always valid OS bytes).
     constexpr ref(ref<str> s [[clang::lifetimebound]]) noexcept: p(s.data()), length(s.size()) {}
 
+    /// The bytes must use the platform encoding and remain valid for the borrow.
+    [[unsafe]]
     static constexpr auto from_encoded_bytes_unchecked(slice<u8> bytes
                                                        [[clang::lifetimebound]]) noexcept -> Self {
         return { ffi::os_string_platform::Slice::from_encoded_bytes_unchecked(bytes) };
@@ -61,7 +66,7 @@ struct ref<ffi::OsStr> : ref_base<ref<ffi::OsStr>, byte[], false> {
 
     /// Returns the encoded bytes of this OS string.
     constexpr auto as_encoded_bytes() const noexcept [[clang::lifetimebound]] -> slice<u8> {
-        return slice<u8>::from_raw_parts(p, length);
+        [[unsafe]] { return slice<u8>::from_raw_parts(p, length); }
     }
 
     /// Attempts to convert to a UTF-8 string slice.
@@ -119,25 +124,33 @@ struct ref<ffi::OsStr> : ref_base<ref<ffi::OsStr>, byte[], false> {
     constexpr auto is_empty() const noexcept -> bool { return length == usize {}; }
     constexpr auto starts_with(ref<ffi::OsStr> prefix) const noexcept -> bool {
         if (prefix.len() > length) return false;
-        for (rstd::size_t i = 0; i < prefix.len().to_primitive(); ++i) {
-            if (p[i] != prefix.p[i]) return false;
+        auto bytes   = as_encoded_bytes();
+        auto leading = prefix.as_encoded_bytes();
+        for (usize i {}; i < leading.len(); ++i) {
+            if (bytes[i] != leading[i]) return false;
         }
         return true;
     }
 
     constexpr auto strip_prefix(ref<ffi::OsStr> prefix) const noexcept -> Option<ref<ffi::OsStr>> {
+        if (prefix.is_empty()) return Some(deref());
         if (! starts_with(prefix)) return None();
-        return Some(ref<ffi::OsStr>(p + prefix.len().to_primitive(), length - prefix.len()));
+        [[unsafe]] {
+            return Some(ref<ffi::OsStr>(p + prefix.len().to_primitive(), length - prefix.len()));
+        }
     }
 
     constexpr auto split_once(u8 delimiter) const noexcept
         -> Option<tuple<ref<ffi::OsStr>, ref<ffi::OsStr>>> {
         if (delimiter > u8(127)) rstd::panic { "OsStr::split_once requires an ASCII delimiter" };
-        for (rstd::size_t i = 0; i < length.to_primitive(); ++i) {
-            if (u8::from_byte(p[i]) == delimiter) {
-                return Some(tuple<ref<ffi::OsStr>, ref<ffi::OsStr>>(
-                    ref<ffi::OsStr>(p, usize(i)),
-                    ref<ffi::OsStr>(p + i + 1, usize(length.to_primitive() - i - 1))));
+        auto bytes = as_encoded_bytes();
+        for (usize i {}; i < length; ++i) {
+            if (bytes[i] == delimiter) {
+                [[unsafe]] {
+                    return Some(tuple<ref<ffi::OsStr>, ref<ffi::OsStr>>(
+                        ref<ffi::OsStr>(p, i),
+                        ref<ffi::OsStr>(p + i.to_primitive() + 1, length - i - usize(1))));
+                }
             }
         }
         return None();
@@ -180,13 +193,13 @@ public:
     /// Creates an empty `OsString`.
     static auto make() -> OsString { return {}; }
     static auto with_capacity(usize capacity) -> OsString {
-        return from_encoded_bytes_unchecked(Vec<u8>::with_capacity(capacity));
+        return OsString { os_string_platform::Buf(Vec<u8>::with_capacity(capacity)) };
     }
 
     /// Creates an `OsString` from a `String` (zero-cost move on Unix).
     static auto from(String&& s) -> OsString {
         auto bytes = rstd::as<Into<Vec<u8>>>(s).into();
-        return from_encoded_bytes_unchecked(rstd::move(bytes));
+        [[unsafe]] { return from_encoded_bytes_unchecked(rstd::move(bytes)); }
     }
 
     /// Creates an `OsString` by copying a `ref<str>`.
@@ -202,6 +215,7 @@ public:
     void clone_from(const OsString& source) { *this = source.clone(); }
 
     /// Bytes must use this platform's encoding; Windows requires valid WTF-8.
+    [[unsafe]]
     static auto from_encoded_bytes_unchecked(Vec<u8>&& bytes) -> OsString {
         return OsString { os_string_platform::Buf::from_encoded_bytes_unchecked(
             rstd::move(bytes)) };
@@ -217,10 +231,12 @@ public:
     /// Returns `Err(self)` if the bytes are not valid UTF-8.
     auto into_string() -> result::Result<String, OsString> {
         auto bytes = rstd::move(inner).into_inner();
-        if (str_::validate_utf8(bytes.as_slice()).is_ok()) {
-            return Ok(String::from_utf8_unchecked(rstd::move(bytes)));
+        [[unsafe]] {
+            if (str_::validate_utf8(bytes.as_slice()).is_ok()) {
+                return Ok(String::from_utf8_unchecked(rstd::move(bytes)));
+            }
+            return Err(from_encoded_bytes_unchecked(rstd::move(bytes)));
         }
-        return Err(from_encoded_bytes_unchecked(rstd::move(bytes)));
     }
 
     auto into_encoded_bytes() && -> Vec<u8> { return rstd::move(inner).into_inner(); }
@@ -301,8 +317,9 @@ struct Impl<fmt::Display, ffi::Display> : ImplBase<ffi::Display> {
         while (index < bytes.len()) {
             auto cp = sys::os_str::encoding::decode_lossy(
                 bytes, index, ffi::os_string_platform::USE_WTF8);
-            byte buf[4];
-            auto wrote = char_::encode_utf8(cp, buf);
+            byte  buf[4];
+            usize wrote;
+            [[unsafe]] { wrote = char_::encode_utf8(cp, buf); }
             if (! f.write_raw(buf, wrote.to_primitive())) return false;
         }
         return true;

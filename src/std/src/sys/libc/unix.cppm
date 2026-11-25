@@ -192,7 +192,9 @@ inline constexpr auto _MAP_ANONYMOUS = MAP_ANONYMOUS;
 inline constexpr auto _MAP_ANONYMOUS = MAP_ANON;
 #endif
 inline constexpr auto _RSTD_SC_PAGESIZE = _SC_PAGESIZE;
-inline void* const    _MAP_FAILED       = MAP_FAILED;
+inline void* const    _MAP_FAILED       = [] {
+    [[unsafe]] { return MAP_FAILED; }
+}();
 
 inline constexpr auto _S_IFMT   = S_IFMT;
 inline constexpr auto _S_IFREG  = S_IFREG;
@@ -564,15 +566,17 @@ inline auto posix_spawn_reports_exec_error() noexcept -> bool {
     const auto* version = ::gnu_get_libc_version();
     auto        major   = 0U;
     auto        minor   = 0U;
-    while (*version >= '0' && *version <= '9') {
-        major = major * 10U + static_cast<unsigned>(*version - '0');
-        ++version;
-    }
-    if (*version == '.') {
-        ++version;
+    [[unsafe]] {
         while (*version >= '0' && *version <= '9') {
-            minor = minor * 10U + static_cast<unsigned>(*version - '0');
+            major = major * 10U + static_cast<unsigned>(*version - '0');
             ++version;
+        }
+        if (*version == '.') {
+            ++version;
+            while (*version >= '0' && *version <= '9') {
+                minor = minor * 10U + static_cast<unsigned>(*version - '0');
+                ++version;
+            }
         }
     }
     return major > 2U || (major == 2U && minor >= 24U);
@@ -631,11 +635,13 @@ using ::sockaddr_in6;
 using ::socklen_t;
 
 inline auto in6_addr_octet(::in6_addr const& addr, unsigned int index) noexcept -> unsigned char {
-    return addr.s6_addr[index];
+    if (index >= sizeof(addr.s6_addr)) ::abort();
+    [[unsafe]] { return addr.s6_addr[index]; }
 }
 
 inline void set_in6_addr_octet(::in6_addr& addr, unsigned int index, unsigned char value) noexcept {
-    addr.s6_addr[index] = value;
+    if (index >= sizeof(addr.s6_addr)) ::abort();
+    [[unsafe]] { addr.s6_addr[index] = value; }
 }
 
 /// `struct stat` aliased to avoid clash with the `::stat()` function.
@@ -694,30 +700,38 @@ inline constexpr auto SOCK_NONBLOCK   = _SOCK_NONBLOCK;
 inline auto pipe2(int fds[2], int flags) noexcept -> int {
     constexpr int supported_flags = O_CLOEXEC | O_NONBLOCK;
     if ((flags & ~supported_flags) != 0) {
-        errno = EINVAL;
+        [[unsafe]] { errno = EINVAL; }
         return -1;
     }
     if (::pipe(fds) != 0) return -1;
 
     auto fail = [&]() noexcept -> int {
-        const int error = errno;
-        ::close(fds[0]);
-        ::close(fds[1]);
-        errno = error;
+        [[unsafe]] {
+            const int error = errno;
+            ::close(fds[0]);
+            ::close(fds[1]);
+            errno = error;
+        }
         return -1;
     };
 
-    if (flags & O_CLOEXEC) {
-        const int fd0_flags = ::fcntl(fds[0], F_GETFD, 0);
-        if (fd0_flags < 0 || ::fcntl(fds[0], F_SETFD, fd0_flags | FD_CLOEXEC) < 0) return fail();
-        const int fd1_flags = ::fcntl(fds[1], F_GETFD, 0);
-        if (fd1_flags < 0 || ::fcntl(fds[1], F_SETFD, fd1_flags | FD_CLOEXEC) < 0) return fail();
-    }
-    if (flags & O_NONBLOCK) {
-        const int fd0_flags = ::fcntl(fds[0], F_GETFL, 0);
-        if (fd0_flags < 0 || ::fcntl(fds[0], F_SETFL, fd0_flags | O_NONBLOCK) < 0) return fail();
-        const int fd1_flags = ::fcntl(fds[1], F_GETFL, 0);
-        if (fd1_flags < 0 || ::fcntl(fds[1], F_SETFL, fd1_flags | O_NONBLOCK) < 0) return fail();
+    [[unsafe]] {
+        if (flags & O_CLOEXEC) {
+            const int fd0_flags = ::fcntl(fds[0], F_GETFD, 0);
+            if (fd0_flags < 0 || ::fcntl(fds[0], F_SETFD, fd0_flags | FD_CLOEXEC) < 0)
+                return fail();
+            const int fd1_flags = ::fcntl(fds[1], F_GETFD, 0);
+            if (fd1_flags < 0 || ::fcntl(fds[1], F_SETFD, fd1_flags | FD_CLOEXEC) < 0)
+                return fail();
+        }
+        if (flags & O_NONBLOCK) {
+            const int fd0_flags = ::fcntl(fds[0], F_GETFL, 0);
+            if (fd0_flags < 0 || ::fcntl(fds[0], F_SETFL, fd0_flags | O_NONBLOCK) < 0)
+                return fail();
+            const int fd1_flags = ::fcntl(fds[1], F_GETFL, 0);
+            if (fd1_flags < 0 || ::fcntl(fds[1], F_SETFL, fd1_flags | O_NONBLOCK) < 0)
+                return fail();
+        }
     }
     return 0;
 }
@@ -783,7 +797,7 @@ inline constexpr auto UTIME_OMIT = _UTIME_OMIT;
 
 /// Returns an lvalue reference to the platform `errno`. Use to read and write.
 inline auto get_errno() noexcept -> int& {
-    return errno;
+    [[unsafe]] { return errno; }
 }
 
 inline auto makedev(unsigned int ma, unsigned int mi) noexcept -> ::dev_t {

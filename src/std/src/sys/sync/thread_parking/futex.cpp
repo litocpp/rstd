@@ -18,7 +18,7 @@ void Parker::park() {
     }
 
     while (true) {
-        pal::futex::futex_wait(&state, PARKED, {});
+        [[unsafe]] { pal::futex::futex_wait(&state, PARKED, {}); }
 
         // Try to change NOTIFIED=>EMPTY and return if successful
         auto expected = NOTIFIED;
@@ -36,7 +36,7 @@ void Parker::park_timeout(rstd::time::Duration timeout) {
     }
 
     // Wait with timeout
-    pal::futex::futex_wait(&state, PARKED, rstd::Some(timeout));
+    [[unsafe]] { pal::futex::futex_wait(&state, PARKED, rstd::Some(timeout)); }
 
     // Try to detect if we were notified or just timed out
     [[maybe_unused]]
@@ -48,7 +48,7 @@ void Parker::park_timeout(rstd::time::Duration timeout) {
 void Parker::unpark() {
     // Change PARKED=>NOTIFIED, EMPTY=>NOTIFIED, or NOTIFIED=>NOTIFIED
     if (state.exchange(NOTIFIED, Ordering::Release) == PARKED) {
-        pal::futex::futex_wake(&state);
+        [[unsafe]] { pal::futex::futex_wake(&state); }
     }
 }
 

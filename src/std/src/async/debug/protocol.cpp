@@ -23,8 +23,8 @@ auto parse_request(slice<u8> line) -> Result<Request, RequestError> {
         return Err(RequestError { message, id });
     };
     if (line.is_empty()) return fail("invalid_request"_str);
-    slice<u8> tokens[5] { line, line, line, line, line };
-    size_t    count {}, begin {};
+    array<slice<u8>, 5> tokens { line, line, line, line, line };
+    size_t              count {}, begin {};
     for (size_t offset = 0; offset <= line.len().to_primitive(); ++offset) {
         if (offset < line.len().to_primitive() && line[usize(offset)] != u8(' ')) {
             auto character = line[usize(offset)].to_primitive();
@@ -32,11 +32,13 @@ auto parse_request(slice<u8> line) -> Result<Request, RequestError> {
             continue;
         }
         if (offset == begin || count == 5) return fail("invalid_request"_str);
-        tokens[count++] =
-            slice<u8>::from_raw_parts(line.as_raw_ptr() + begin, usize(offset - begin));
+        [[unsafe]] {
+            tokens[usize(count++)] =
+                slice<u8>::from_raw_parts(line.as_raw_ptr() + begin, usize(offset - begin));
+        }
         begin = offset + 1;
         if (count == 2) {
-            id = number(tokens[1]);
+            id = number(tokens[usize(1)]);
             if (id.is_none() || *id == 0) {
                 id = None();
                 return fail("invalid_request"_str);
@@ -44,18 +46,18 @@ auto parse_request(slice<u8> line) -> Result<Request, RequestError> {
         }
     }
     if (count < 3) return fail("invalid_request"_str);
-    auto version = number(tokens[0]);
+    auto version = number(tokens[usize(0)]);
     if (version.is_none()) return fail("invalid_request"_str);
     if (*version != VERSION) return fail("unsupported_version"_str);
     Request request { *id };
-    auto    command = str_::from_utf8(tokens[2]).unwrap();
+    auto    command = str_::from_utf8(tokens[usize(2)]).unwrap();
     if (command == "hello"_str || command == "snapshot"_str) {
         if (count != 3) return fail("invalid_request"_str);
         request.command = command == "hello"_str ? Command::Hello : Command::Snapshot;
     } else if (command == "snapshot_page"_str || command == "task"_str || command == "events"_str) {
         if (count < 4 || (command != "events"_str && count != 4))
             return fail("invalid_request"_str);
-        auto argument = number(tokens[3]);
+        auto argument = number(tokens[usize(3)]);
         if (argument.is_none())
             return fail(command == "events"_str ? "invalid_cursor"_str : "invalid_request"_str);
         request.argument = *argument;
@@ -63,7 +65,7 @@ auto parse_request(slice<u8> line) -> Result<Request, RequestError> {
                            : command == "task"_str        ? Command::Task
                                                           : Command::Events;
         if (count == 5) {
-            request.limit = number(tokens[4]);
+            request.limit = number(tokens[usize(4)]);
             if (request.limit.is_none() || *request.limit == 0) return fail("invalid_request"_str);
         }
     } else
@@ -103,7 +105,7 @@ public:
         for (size_t offset = 0; offset < bytes.len().to_primitive(); ++offset) {
             auto character = bytes[usize(offset)].to_primitive();
             if (character >= 0x20 && character != '"' && character != '\\') continue;
-            raw(ref<str>::from_raw_parts_unchecked(value.data() + begin, usize(offset - begin)));
+            raw(value.get(usize(begin), usize(offset)).unwrap());
             if (character == '"')
                 raw("\\\""_str);
             else if (character == '\\')
@@ -111,12 +113,14 @@ public:
             else {
                 constexpr char digits[] = "0123456789abcdef";
                 raw("\\u00"_str);
-                ascii(digits[character >> 4]);
-                ascii(digits[character & 15]);
+                [[unsafe]] {
+                    ascii(digits[character >> 4]);
+                    ascii(digits[character & 15]);
+                }
             }
             begin = offset + 1;
         }
-        raw(ref<str>::from_raw_parts_unchecked(value.data() + begin, value.len() - usize(begin)));
+        raw(value.get(usize(begin), value.len()).unwrap());
         raw("\""_str);
     }
     void key(ref<str> key) {

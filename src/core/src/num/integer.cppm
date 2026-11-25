@@ -30,7 +30,7 @@ class ParseIntError {
 public:
     [[nodiscard]]
     constexpr auto kind() const noexcept -> ref<IntErrorKind> {
-        return ref<IntErrorKind>::from_raw_parts(&kind_);
+        return ref<IntErrorKind>::from_ref(kind_);
     }
 };
 
@@ -98,49 +98,50 @@ struct Impl<str_::FromStr, T> {
 template<>
 struct Impl<fmt::Display, num::ParseIntError> : ImplBase<num::ParseIntError> {
     auto fmt(fmt::Formatter& formatter) const -> bool {
-        const char* message = "number would be zero for non-zero type";
+        using namespace literals;
+        auto message = "number would be zero for non-zero type"_str;
         switch (this->self().kind()->tag()) {
         case num::IntErrorKind::Tag::Empty:
-            message = "cannot parse integer from empty string";
+            message = "cannot parse integer from empty string"_str;
             break;
-        case num::IntErrorKind::Tag::InvalidDigit: message = "invalid digit found in string"; break;
+        case num::IntErrorKind::Tag::InvalidDigit:
+            message = "invalid digit found in string"_str;
+            break;
         case num::IntErrorKind::Tag::PosOverflow:
-            message = "number too large to fit in target type";
+            message = "number too large to fit in target type"_str;
             break;
         case num::IntErrorKind::Tag::NegOverflow:
-            message = "number too small to fit in target type";
+            message = "number too small to fit in target type"_str;
             break;
         case num::IntErrorKind::Tag::Zero: break;
         }
-        return formatter.write_raw(message, rstd::strlen(message));
+        return formatter.write_str(message);
     }
 };
 
 template<>
 struct Impl<fmt::Debug, num::IntErrorKind> : ImplBase<num::IntErrorKind> {
     auto fmt(fmt::Formatter& formatter) const -> bool {
-        const char* name = "Zero";
+        using namespace literals;
+        auto name = "Zero"_str;
         switch (this->self().tag()) {
-        case num::IntErrorKind::Tag::Empty: name = "Empty"; break;
-        case num::IntErrorKind::Tag::InvalidDigit: name = "InvalidDigit"; break;
-        case num::IntErrorKind::Tag::PosOverflow: name = "PosOverflow"; break;
-        case num::IntErrorKind::Tag::NegOverflow: name = "NegOverflow"; break;
+        case num::IntErrorKind::Tag::Empty: name = "Empty"_str; break;
+        case num::IntErrorKind::Tag::InvalidDigit: name = "InvalidDigit"_str; break;
+        case num::IntErrorKind::Tag::PosOverflow: name = "PosOverflow"_str; break;
+        case num::IntErrorKind::Tag::NegOverflow: name = "NegOverflow"_str; break;
         case num::IntErrorKind::Tag::Zero: break;
         }
-        return formatter.write_raw(reinterpret_cast<rstd::uint8_t const*>(name),
-                                   rstd::strlen(name));
+        return formatter.write_str(name);
     }
 };
 
 template<>
 struct Impl<fmt::Debug, num::ParseIntError> : ImplBase<num::ParseIntError> {
     auto fmt(fmt::Formatter& formatter) const -> bool {
-        if (! formatter.write_raw(reinterpret_cast<rstd::uint8_t const*>("ParseIntError { kind: "),
-                                  rstd::size_t(22))) {
-            return false;
-        }
+        using namespace literals;
+        if (! formatter.write_str("ParseIntError { kind: "_str)) return false;
         if (! as<fmt::Debug>(*this->self().kind()).fmt(formatter)) return false;
-        return formatter.write_raw(reinterpret_cast<rstd::uint8_t const*>(" }"), rstd::size_t(2));
+        return formatter.write_str(" }"_str);
     }
 };
 

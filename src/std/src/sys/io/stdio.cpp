@@ -27,9 +27,11 @@ auto clone_standard_handle(DWORD stream) noexcept -> IOResult<os::handle::OwnedH
     auto handle = GetStdHandle(stream);
     if (handle == M_INVALID_HANDLE_VALUE || handle == nullptr)
         return Err(Error::from_kind(ErrorKind { ErrorKind::NotConnected }));
-    auto owned = os::fd::BorrowedFd::borrow_raw(handle).try_clone_to_owned();
-    if (owned.is_err()) return Err(rstd::move(owned).unwrap_err());
-    return Ok(os::handle::OwnedHandle::from_raw_handle(rstd::move(*owned).into_raw_fd()));
+    [[unsafe]] {
+        auto owned = os::fd::BorrowedFd::borrow_raw(handle).try_clone_to_owned();
+        if (owned.is_err()) return Err(rstd::move(owned).unwrap_err());
+        return Ok(os::handle::OwnedHandle::from_raw_handle(rstd::move(*owned).into_raw_fd()));
+    }
 }
 
 auto clone_stdin_handle() noexcept -> IOResult<os::handle::OwnedHandle> {

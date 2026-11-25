@@ -56,14 +56,16 @@ auto write_usize(fmt::Formatter& formatter, usize value) -> bool {
     char buffer[32];
     auto size = rstd::size_t();
     auto raw  = value.to_primitive();
-    do {
-        buffer[size++] = static_cast<char>('0' + raw % 10);
-        raw /= 10;
-    } while (raw != 0);
-    for (rstd::size_t left = 0, right = size - 1; left < right; ++left, --right) {
-        auto value    = buffer[left];
-        buffer[left]  = buffer[right];
-        buffer[right] = value;
+    [[unsafe]] {
+        do {
+            buffer[size++] = static_cast<char>('0' + raw % 10);
+            raw /= 10;
+        } while (raw != 0);
+        for (rstd::size_t left = 0, right = size - 1; left < right; ++left, --right) {
+            auto digit    = buffer[left];
+            buffer[left]  = buffer[right];
+            buffer[right] = digit;
+        }
     }
     return formatter.write_raw(buffer, size);
 }
@@ -148,11 +150,13 @@ struct ref<CStr> {
     constexpr auto metadata() const noexcept -> usize { return length; }
 
     auto to_bytes() const noexcept [[clang::lifetimebound]] -> slice<u8> {
-        return slice<u8>::from_raw_parts(reinterpret_cast<byte const*>(p), length);
+        [[unsafe]] { return slice<u8>::from_raw_parts(reinterpret_cast<byte const*>(p), length); }
     }
 
     auto to_bytes_with_nul() const noexcept [[clang::lifetimebound]] -> slice<u8> {
-        return slice<u8>::from_raw_parts(reinterpret_cast<byte const*>(p), length + usize(1));
+        [[unsafe]] {
+            return slice<u8>::from_raw_parts(reinterpret_cast<byte const*>(p), length + usize(1));
+        }
     }
 
     auto to_str() const noexcept -> Result<ref<str>, str_::Utf8Error> {
@@ -161,6 +165,8 @@ struct ref<CStr> {
 
     constexpr auto deref() const noexcept -> ref<CStr> { return *this; }
 
+    /// The bytes through `data[len]` must be readable, with the first NUL at `len`.
+    [[unsafe]]
     static constexpr auto from_raw_parts_unchecked(char const* data [[clang::lifetimebound]],
                                                    usize       len) noexcept -> ref<CStr> {
         return { .p = data, .length = len };
@@ -182,7 +188,7 @@ struct mut_ref<CStr> {
     constexpr auto metadata() const noexcept -> usize { return length; }
 
     constexpr auto deref() const noexcept -> ref<CStr> {
-        return ref<CStr>::from_raw_parts_unchecked(p, length);
+        [[unsafe]] { return ref<CStr>::from_raw_parts_unchecked(p, length); }
     }
     constexpr auto deref_mut() noexcept -> mut_ref<CStr> { return *this; }
 };
@@ -195,13 +201,17 @@ public:
     CStr()  = delete;
     ~CStr() = delete;
 
+    /// `data` must point to a readable NUL-terminated string for the lifetime of the view.
+    [[unsafe]]
     static auto from_ptr(char const* data [[clang::lifetimebound]]) noexcept -> ref<CStr> {
-        return from_ptr_with_nul_unchecked(data, usize(rstd::strlen(data)));
+        [[unsafe]] { return from_ptr_with_nul_unchecked(data, usize(rstd::strlen(data))); }
     }
 
+    /// `data` must stay readable through `length` bytes and a trailing NUL, with no interior NUL.
+    [[unsafe]]
     static constexpr auto from_ptr_with_nul_unchecked(char const* data [[clang::lifetimebound]],
                                                       usize       length) noexcept -> ref<CStr> {
-        return ref<CStr>::from_raw_parts_unchecked(data, length);
+        [[unsafe]] { return ref<CStr>::from_raw_parts_unchecked(data, length); }
     }
 
     /// Borrows through the first NUL in an initialized slice, or fails if none is present.
@@ -211,7 +221,9 @@ public:
         auto const len = chars.len().to_primitive();
         for (rstd::size_t index = 0; index < len; ++index) {
             if (chars[usize(index)] == '\0') {
-                return Ok(from_ptr_with_nul_unchecked(chars.as_raw_ptr(), usize(index)));
+                [[unsafe]] {
+                    return Ok(from_ptr_with_nul_unchecked(chars.as_raw_ptr(), usize(index)));
+                }
             }
         }
         return Err(FromBytesUntilNulError {});
@@ -228,7 +240,7 @@ public:
                 return Err(FromBytesWithNulError::interior_nul(usize(index)));
             }
         }
-        return Ok(from_ptr_with_nul_unchecked(chars.as_raw_ptr(), usize(len - 1)));
+        [[unsafe]] { return Ok(from_ptr_with_nul_unchecked(chars.as_raw_ptr(), usize(len - 1))); }
     }
 };
 

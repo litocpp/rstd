@@ -32,12 +32,17 @@ auto rstd::net::hostname() -> io::Result<String> {
                                        nullptr);
     if (count == 0) return Err(io::error::Error::from_raw_os_error(i32(::GetLastError())));
     auto bytes = Vec<u8>::make();
-    for (int i = 0; i < count; ++i) bytes.push(u8(static_cast<unsigned char>(buffer[i])));
+    [[unsafe]] {
+        for (int i = 0; i < count; ++i) bytes.push(u8(static_cast<unsigned char>(buffer[i])));
+    }
 #elif RSTD_OS_UNIX
     char buffer[256] {};
-    if (::gethostname(buffer, sizeof(buffer)) != 0)
-        return Err(io::error::Error::from_raw_os_error(i32(errno)));
-    if (buffer[sizeof(buffer) - 1] != 0) return Err(invalid());
+    if (::gethostname(buffer, sizeof(buffer)) != 0) {
+        [[unsafe]] { return Err(io::error::Error::from_raw_os_error(i32(errno))); }
+    }
+    [[unsafe]] {
+        if (buffer[sizeof(buffer) - 1] != 0) return Err(invalid());
+    }
     auto bytes = Vec<u8>::make();
     for (char c : buffer) {
         if (c == 0) break;

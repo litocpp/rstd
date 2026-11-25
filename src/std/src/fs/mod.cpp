@@ -161,8 +161,10 @@ auto File::read(mut_ref<u8[]> buffer) -> FsResult<usize> {
 auto File::read_buf(io::BorrowedCursor buffer) -> FsResult<empty> {
     auto result = sys_fs::read(m_fd.as_raw_fd(), buffer.as_uninit());
     if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
-    if (! buffer.advance_unchecked(*result))
-        return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidData }));
+    [[unsafe]] {
+        if (! buffer.advance_unchecked(*result))
+            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidData }));
+    }
     return Ok(empty {});
 }
 
@@ -212,8 +214,10 @@ auto File::read_at(mut_ref<u8[]> buffer, u64 offset) const -> FsResult<usize> {
 auto File::read_buf_at(io::BorrowedCursor buffer, u64 offset) const -> FsResult<empty> {
     auto result = sys_fs::read_at(m_fd.as_raw_fd(), buffer.as_uninit(), offset);
     if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
-    if (! buffer.advance_unchecked(*result))
-        return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidData }));
+    [[unsafe]] {
+        if (! buffer.advance_unchecked(*result))
+            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidData }));
+    }
     return Ok(empty {});
 }
 
@@ -307,7 +311,7 @@ auto read_to_string(ref<Path> path) -> FsResult<String> {
     if (rstd::str_::validate_utf8(bytes.as_slice()).is_err()) {
         return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidData }));
     }
-    return Ok(String::from_utf8_unchecked(rstd::move(bytes)));
+    [[unsafe]] { return Ok(String::from_utf8_unchecked(rstd::move(bytes))); }
 }
 
 auto write(ref<Path> path, slice<u8> contents) -> FsResult<empty> {
@@ -551,9 +555,11 @@ auto ReadDir::next() -> Option<FsResult<DirEntry>> {
     auto entry = rstd::move(entry_result).unwrap_unchecked();
     auto parent =
         rstd::path::PathBuf::from(rstd::ffi::OsString::from(m_parent.as_path().as_os_str()));
-    auto name = rstd::ffi::OsString::from_encoded_bytes_unchecked(rstd::move(entry.name));
-    return Some(FsResult<DirEntry>(
-        Ok(DirEntry { rstd::move(parent), rstd::move(name), FileType { entry.file_type } })));
+    [[unsafe]] {
+        auto name = rstd::ffi::OsString::from_encoded_bytes_unchecked(rstd::move(entry.name));
+        return Some(FsResult<DirEntry>(
+            Ok(DirEntry { rstd::move(parent), rstd::move(name), FileType { entry.file_type } })));
+    }
 }
 
 auto Dir::open(ref<Path> path) -> FsResult<Dir> {

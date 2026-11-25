@@ -28,7 +28,7 @@ auto BorrowedFd::try_clone_to_owned() const -> IOResult<OwnedFd> {
     if (new_fd < 0) {
         return Err(Error::from_raw_os_error(i32(rstd::sys::libc::get_errno())));
     }
-    return Ok(OwnedFd::from_raw_fd(new_fd));
+    [[unsafe]] { return Ok(OwnedFd::from_raw_fd(new_fd)); }
 #elif RSTD_OS_WINDOWS
     auto duplicate = rstd::sys::libc::M_INVALID_HANDLE_VALUE;
     auto process   = rstd::sys::libc::GetCurrentProcess();
@@ -41,7 +41,7 @@ auto BorrowedFd::try_clone_to_owned() const -> IOResult<OwnedFd> {
                                            rstd::sys::libc::DUPLICATE_SAME_ACCESS)) {
         return Err(Error::from_raw_os_error(i32(rstd::sys::libc::GetLastError())));
     }
-    return Ok(OwnedFd::from_raw_fd(static_cast<RawFd>(duplicate)));
+    [[unsafe]] { return Ok(OwnedFd::from_raw_fd(static_cast<RawFd>(duplicate))); }
 #else
     return Err(
         Error::from_kind(rstd::io::error::ErrorKind { rstd::io::error::ErrorKind::Unsupported }));

@@ -41,14 +41,17 @@ auto var_os(ref<OsStr> key) -> Option<OsString> {
             if (sys::libc::GetLastError() != 0) return None();
             return Some(OsString::make());
         }
-        if (count < buffer.len().to_primitive())
-            return Some(sys::os_str::windows::from_wide(buffer.as_ptr(), usize(count)));
+        if (count < buffer.len().to_primitive()) {
+            [[unsafe]] {
+                return Some(sys::os_str::windows::from_wide(buffer.as_ptr(), usize(count)));
+            }
+        }
         buffer.resize(usize(count), wchar_t {});
     }
 #else
     auto  name  = CString::make(Vec<u8>::from(key.as_encoded_bytes())).unwrap();
     auto* value = sys::pal::getenv_internal(name.as_ptr());
-    return value == nullptr ? None() : Some(os_string_from_cstr(value));
+    [[unsafe]] { return value == nullptr ? None() : Some(os_string_from_cstr(value)); }
 #endif
 }
 
@@ -85,26 +88,30 @@ auto vars_os() -> VarsOs {
 #if RSTD_OS_WINDOWS
     auto block = sys::libc::GetEnvironmentStringsW();
     if (block == nullptr) rstd::panic { "cannot read environment" };
-    for (auto cursor = block; *cursor != L'\0';) {
-        auto length = rstd::size_t {};
-        while (cursor[length] != L'\0') ++length;
-        auto separator = rstd::size_t(1);
-        while (separator < length && cursor[separator] != L'=') ++separator;
-        if (separator < length)
-            values.push(tuple<OsString, OsString>(
-                sys::os_str::windows::from_wide(cursor, usize(separator)),
-                sys::os_str::windows::from_wide(cursor + separator + 1,
-                                                usize(length - separator - 1))));
-        cursor += length + 1;
+    [[unsafe]] {
+        for (auto cursor = block; *cursor != L'\0';) {
+            auto length = rstd::size_t {};
+            while (cursor[length] != L'\0') ++length;
+            auto separator = rstd::size_t(1);
+            while (separator < length && cursor[separator] != L'=') ++separator;
+            if (separator < length)
+                values.push(tuple<OsString, OsString>(
+                    sys::os_str::windows::from_wide(cursor, usize(separator)),
+                    sys::os_str::windows::from_wide(cursor + separator + 1,
+                                                    usize(length - separator - 1))));
+            cursor += length + 1;
+        }
     }
     (void)sys::libc::FreeEnvironmentStringsW(block);
 #else
-    for (auto cursor = sys::libc::environ; cursor != nullptr && *cursor != nullptr; ++cursor) {
-        auto item  = os_string_from_cstr(*cursor);
-        auto split = item.as_os_str().split_once(u8('='));
-        if (split.is_some() && ! split->template get<0>().is_empty())
-            values.push(tuple<OsString, OsString>(split->template get<0>().to_os_string(),
-                                                  split->template get<1>().to_os_string()));
+    [[unsafe]] {
+        for (auto cursor = sys::libc::environ; cursor != nullptr && *cursor != nullptr; ++cursor) {
+            auto item  = os_string_from_cstr(*cursor);
+            auto split = item.as_os_str().split_once(u8('='));
+            if (split.is_some() && ! split->template get<0>().is_empty())
+                values.push(tuple<OsString, OsString>(split->template get<0>().to_os_string(),
+                                                      split->template get<1>().to_os_string()));
+        }
     }
 #endif
     return rstd::move(values).into_iter();
@@ -114,12 +121,17 @@ auto args_os() -> ArgsOs {
 #if RSTD_OS_WINDOWS
     auto raw   = sys::libc::GetCommandLineW();
     auto units = Vec<u16>::make();
-    if (raw != nullptr)
-        for (auto cursor = raw; *cursor != L'\0'; ++cursor)
-            units.push(u16(static_cast<unsigned>(*cursor)));
+    if (raw != nullptr) {
+        [[unsafe]] {
+            for (auto cursor = raw; *cursor != L'\0'; ++cursor)
+                units.push(u16(static_cast<unsigned>(*cursor)));
+        }
+    }
     auto parsed = sys::args::windows::parse(units.as_slice());
     auto values = Vec<OsString>::with_capacity(parsed.len());
-    for (auto& item : parsed) values.push(OsString::from_encoded_bytes_unchecked(rstd::move(item)));
+    for (auto& item : parsed) {
+        [[unsafe]] { values.push(OsString::from_encoded_bytes_unchecked(rstd::move(item))); }
+    }
     if (values.is_empty()) {
         auto buffer = Vec<wchar_t>::with_capacity(usize(256));
         buffer.resize(usize(256), wchar_t {});
@@ -133,7 +145,9 @@ auto args_os() -> ArgsOs {
                 break;
             }
             if (count < buffer.len().to_primitive()) {
-                values.push(sys::os_str::windows::from_wide(buffer.as_ptr(), usize(count)));
+                [[unsafe]] {
+                    values.push(sys::os_str::windows::from_wide(buffer.as_ptr(), usize(count)));
+                }
                 break;
             }
             buffer.resize(buffer.len() * usize(2), wchar_t {});
@@ -144,8 +158,10 @@ auto args_os() -> ArgsOs {
     auto length = raw.argc < 0 ? rstd::size_t(0) : static_cast<rstd::size_t>(raw.argc);
     auto values = Vec<OsString>::with_capacity(usize(length));
     for (rstd::size_t index = 0; index < length; ++index) {
-        if (raw.argv[index] == nullptr) break;
-        values.push(os_string_from_cstr(raw.argv[index]));
+        [[unsafe]] {
+            if (raw.argv[index] == nullptr) break;
+            values.push(os_string_from_cstr(raw.argv[index]));
+        }
     }
 #endif
     return rstd::move(values).into_iter();
@@ -160,7 +176,7 @@ void args_init(int argc, char const* const* argv) {
     (void)argc;
     (void)argv;
 #else
-    sys::pal::args_capture(argc, argv);
+    [[unsafe]] { sys::pal::args_capture(argc, argv); }
 #endif
 }
 

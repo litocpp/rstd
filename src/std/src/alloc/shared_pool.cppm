@@ -49,23 +49,33 @@ public:
     auto allocate(Layout layout) const -> Result<Allocation, AllocError> {
         return state_->lock().unwrap_unchecked()->allocate(layout);
     }
+    /// The live allocation must belong to this pool and match `old_layout`; the new size may not shrink.
+    [[unsafe]]
     auto grow(void* p, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
-        return state_->lock().unwrap_unchecked()->grow(p, old_layout, new_layout);
+        [[unsafe]] { return state_->lock().unwrap_unchecked()->grow(p, old_layout, new_layout); }
     }
+    /// Has the same ownership and layout requirements as `grow`.
+    [[unsafe]]
     auto grow_zeroed(void* p, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
-        return state_->lock().unwrap_unchecked()->grow_zeroed(p, old_layout, new_layout);
+        [[unsafe]] {
+            return state_->lock().unwrap_unchecked()->grow_zeroed(p, old_layout, new_layout);
+        }
     }
+    /// The live allocation must belong to this pool and match `old_layout`; the new size may not grow.
+    [[unsafe]]
     auto shrink(void* p, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
-        return state_->lock().unwrap_unchecked()->shrink(p, old_layout, new_layout);
+        [[unsafe]] { return state_->lock().unwrap_unchecked()->shrink(p, old_layout, new_layout); }
     }
     auto allocate_zeroed(Layout layout) const -> Result<Allocation, AllocError> {
         return state_->lock().unwrap_unchecked()->allocate_zeroed(layout);
     }
+    /// The live allocation must belong to this pool and match `layout`.
+    [[unsafe]]
     void deallocate(void* pointer, Layout layout) const noexcept {
-        state_->lock().unwrap_unchecked()->deallocate(pointer, layout);
+        [[unsafe]] { state_->lock().unwrap_unchecked()->deallocate(pointer, layout); }
     }
     auto trim(usize retain = {}) const -> PoolTrimReport {
         return state_->lock().unwrap_unchecked()->trim(retain);
@@ -94,17 +104,23 @@ template<typename A>
 struct Impl<alloc::Allocator, alloc::SharedPoolAllocator<A>>
     : DefaultInImpl<alloc::Allocator, alloc::SharedPoolAllocator<A>> {
     auto allocate(alloc::Layout l) const { return this->self().allocate(l); }
+    [[unsafe]]
     auto grow(void* p, alloc::Layout old_layout, alloc::Layout new_layout) const {
-        return this->self().grow(p, old_layout, new_layout);
+        [[unsafe]] { return this->self().grow(p, old_layout, new_layout); }
     }
+    [[unsafe]]
     auto grow_zeroed(void* p, alloc::Layout old_layout, alloc::Layout new_layout) const {
-        return this->self().grow_zeroed(p, old_layout, new_layout);
+        [[unsafe]] { return this->self().grow_zeroed(p, old_layout, new_layout); }
     }
+    [[unsafe]]
     auto shrink(void* p, alloc::Layout old_layout, alloc::Layout new_layout) const {
-        return this->self().shrink(p, old_layout, new_layout);
+        [[unsafe]] { return this->self().shrink(p, old_layout, new_layout); }
     }
     auto allocate_zeroed(alloc::Layout l) const { return this->self().allocate_zeroed(l); }
-    void deallocate(void* p, alloc::Layout l) const noexcept { this->self().deallocate(p, l); }
+    [[unsafe]]
+    void deallocate(void* p, alloc::Layout l) const noexcept {
+        [[unsafe]] { this->self().deallocate(p, l); }
+    }
 };
 template<typename A>
 struct Impl<alloc::AllocatorClone, alloc::SharedPoolAllocator<A>> {};

@@ -75,8 +75,8 @@ public:
     auto next() -> Option<Item> {
         auto entry = inner.next();
         if (entry.is_none()) return None();
-        return Some(Item(rstd::ref<K>::from_raw_parts(rstd::addressof((**entry).key())),
-                         rstd::ref<V>::from_raw_parts(rstd::addressof((**entry).value()))));
+        return Some(Item(rstd::ref<K>::from_ref((**entry).key()),
+                         rstd::ref<V>::from_ref((**entry).value())));
     }
     auto size_hint() const -> rstd::iter::SizeHint { return inner.size_hint(); }
     auto len() const noexcept -> usize { return inner.len(); }
@@ -97,8 +97,8 @@ public:
     auto next() -> Option<Item> {
         auto entry = inner.next();
         if (entry.is_none()) return None();
-        return Some(Item(rstd::ref<K>::from_raw_parts(rstd::addressof((**entry).key())),
-                         rstd::mut_ref<V>::from_raw_parts(rstd::addressof((**entry).value()))));
+        return Some(Item(rstd::ref<K>::from_ref((**entry).key()),
+                         rstd::mut_ref<V>::from_ref((**entry).value())));
     }
     auto size_hint() const -> rstd::iter::SizeHint { return inner.size_hint(); }
     auto len() const noexcept -> usize { return inner.len(); }
@@ -400,7 +400,7 @@ public:
     {
         auto found = find_index(key);
         if (found.is_none()) return None();
-        return Some(rstd::ref<V>::from_raw_parts(rstd::addressof((**found).value())));
+        return Some(rstd::ref<V>::from_ref((**found).value()));
     }
 
     template<typename Q>
@@ -413,7 +413,7 @@ public:
     {
         auto found = find_borrowed_index(key);
         if (found.is_none()) return None();
-        return Some(rstd::ref<V>::from_raw_parts(rstd::addressof((**found).value())));
+        return Some(rstd::ref<V>::from_ref((**found).value()));
     }
 
     auto get_mut(const K& key) [[clang::lifetimebound]] -> Option<rstd::mut_ref<V>>
@@ -421,8 +421,7 @@ public:
     {
         auto found = find_index(key);
         if (found.is_none()) return None();
-        return Some(rstd::mut_ref<V>::from_raw_parts(
-            rstd::addressof(const_cast<Stored&>(**found).value())));
+        return Some(rstd::mut_ref<V>::from_ref(const_cast<Stored&>(**found).value()));
     }
 
     template<typename Q>
@@ -435,8 +434,7 @@ public:
     {
         auto found = find_borrowed_index(key);
         if (found.is_none()) return None();
-        return Some(rstd::mut_ref<V>::from_raw_parts(
-            rstd::addressof(const_cast<Stored&>(**found).value())));
+        return Some(rstd::mut_ref<V>::from_ref(const_cast<Stored&>(**found).value()));
     }
 
     auto get_key_value(const K& key) const [[clang::lifetimebound]]
@@ -447,8 +445,7 @@ public:
         if (found.is_none()) return None();
         const auto& bucket = **found;
         return Some(rstd::tuple<rstd::ref<K>, rstd::ref<V>>(
-            rstd::ref<K>::from_raw_parts(rstd::addressof(bucket.key())),
-            rstd::ref<V>::from_raw_parts(rstd::addressof(bucket.value()))));
+            rstd::ref<K>::from_ref(bucket.key()), rstd::ref<V>::from_ref(bucket.value())));
     }
 
     template<typename Q>
@@ -464,8 +461,7 @@ public:
         if (found.is_none()) return None();
         const auto& bucket = **found;
         return Some(rstd::tuple<rstd::ref<K>, rstd::ref<V>>(
-            rstd::ref<K>::from_raw_parts(rstd::addressof(bucket.key())),
-            rstd::ref<V>::from_raw_parts(rstd::addressof(bucket.value()))));
+            rstd::ref<K>::from_ref(bucket.key()), rstd::ref<V>::from_ref(bucket.value())));
     }
 
     auto contains_key(const K& key) const -> bool

@@ -203,6 +203,8 @@ export class PollOperation {
         : m_source_kind(source_kind), m_fd(fd), m_storage(rstd::move(storage)) {}
 
 public:
+    /// The writable buffer must remain valid until the read completes or is cancelled.
+    [[unsafe]]
     static auto
     read(os::fd::RawFd fd, void* data, usize len, Option<u64> offset = None(), u32 flags = u32())
         -> PollOperation {
@@ -212,6 +214,8 @@ public:
                                    Read { data, len, rstd::move(offset), flags }) };
     }
 
+    /// The writable buffer must remain valid until the read completes or is cancelled.
+    [[unsafe]]
     static auto read_socket(os::fd::RawFd fd, void* data, usize len, u32 flags = u32())
         -> PollOperation {
         return PollOperation { PollSourceKind::Socket,
@@ -220,6 +224,8 @@ public:
                                    Read { data, len, None<u64>(), flags }) };
     }
 
+    /// The initialized buffer must remain readable until the write completes or is cancelled.
+    [[unsafe]]
     static auto write(os::fd::RawFd fd,
                       const void*   data,
                       usize         len,
@@ -231,6 +237,8 @@ public:
                                    Write { data, len, rstd::move(offset), flags }) };
     }
 
+    /// The initialized buffer must remain readable until the write completes or is cancelled.
+    [[unsafe]]
     static auto write_socket(os::fd::RawFd fd, const void* data, usize len, u32 flags = u32())
         -> PollOperation {
         return PollOperation { PollSourceKind::Socket,
@@ -245,6 +253,8 @@ public:
                                Storage::with<PollOperationKind::Connect>(Connect { address }) };
     }
 
+    /// The writable address buffer must remain valid until the accept completes or is cancelled.
+    [[unsafe]]
     static auto accept_socket(os::fd::RawFd   fd,
                               os::fd::RawFd   accepted_fd,
                               net::SocketAddr address,
@@ -256,12 +266,16 @@ public:
                                    accepted_fd, address, address_buffer, address_buffer_len }) };
     }
 
+    /// The native message and all referenced writable buffers must survive completion or cancel.
+    [[unsafe]]
     static auto recv_message(os::fd::RawFd fd, void* message) -> PollOperation {
         return PollOperation { PollSourceKind::Socket,
                                fd,
                                Storage::with<PollOperationKind::RecvMessage>(
                                    NativeMessage { message }) };
     }
+    /// The native message and all referenced readable buffers must survive completion or cancel.
+    [[unsafe]]
     static auto send_message(os::fd::RawFd fd, void* message) -> PollOperation {
         return PollOperation { PollSourceKind::Socket,
                                fd,
@@ -567,23 +581,28 @@ public:
 
     ~PollEventOwner() { reset(); }
 
-    static auto from_raw(RawPollEventOwner raw) -> PollEventOwner { return PollEventOwner { raw }; }
+    /// Adopts one callback-owned handle. Its table and data must remain valid for dispatch and
+    /// cloning, until drop consumes that handle. Clone must return another owned handle.
+    [[unsafe]]
+    static auto from_raw(RawPollEventOwner raw) -> PollEventOwner {
+        return PollEventOwner { raw };
+    }
 
     void reset() noexcept {
         if (m_raw.vtable != nullptr) {
             auto current = rstd::exchange(m_raw, {});
-            current.vtable->drop(current.data);
+            [[unsafe]] { current.vtable->drop(current.data); }
         }
     }
 
     auto clone() const -> PollEventOwner {
         if (m_raw.vtable == nullptr) return PollEventOwner {};
-        return PollEventOwner::from_raw(m_raw.vtable->clone(m_raw.data));
+        [[unsafe]] { return PollEventOwner::from_raw(m_raw.vtable->clone(m_raw.data)); }
     }
 
     void dispatch(PollEventData data) const {
         if (m_raw.vtable != nullptr) {
-            m_raw.vtable->dispatch(m_raw.data, rstd::move(data));
+            [[unsafe]] { m_raw.vtable->dispatch(m_raw.data, rstd::move(data)); }
         }
     }
 
@@ -1160,36 +1179,43 @@ public:
 
     auto mark_submitted(OperationKey key, bool blocking_file = false) -> bool {
         auto* occupied = slot(key);
-        if (occupied == nullptr || occupied->submitted) return false;
-        occupied->submitted     = true;
-        occupied->blocking_file = blocking_file;
+        if (occupied == nullptr) return false;
+        [[unsafe]] {
+            if (occupied->submitted) return false;
+            occupied->submitted     = true;
+            occupied->blocking_file = blocking_file;
+        }
         return true;
     }
 
     void request_cancel(OperationKey key) {
         auto* occupied = slot(key);
-        if (occupied != nullptr) occupied->cancel_requested = true;
+        if (occupied != nullptr) {
+            [[unsafe]] { occupied->cancel_requested = true; }
+        }
     }
 
     auto begin_cancel(OperationKey key) -> Option<bool> {
         auto* occupied = slot(key);
-        if (occupied == nullptr || ! occupied->submitted || ! occupied->cancel_requested ||
-            occupied->cancel_issued) {
-            return None<bool>();
+        if (occupied == nullptr) return None<bool>();
+        [[unsafe]] {
+            if (! occupied->submitted || ! occupied->cancel_requested || occupied->cancel_issued)
+                return None<bool>();
+            occupied->cancel_issued = true;
+            return Some(occupied->blocking_file);
         }
-        occupied->cancel_issued = true;
-        return Some(occupied->blocking_file);
     }
 
     auto is_submitted(OperationKey key) -> bool {
         auto* occupied = slot(key);
-        return occupied != nullptr && occupied->submitted;
+        [[unsafe]] { return occupied != nullptr && occupied->submitted; }
     }
 
     auto take_owner(OperationKey key) -> Option<PollEventOwner> {
         auto* occupied = slot(key);
         if (occupied == nullptr) return None<PollEventOwner>();
-        auto owner = rstd::move(occupied->owner);
+        PollEventOwner owner;
+        [[unsafe]] { owner = rstd::move(occupied->owner); }
         release(key);
         return Some(rstd::move(owner));
     }
@@ -1266,33 +1292,41 @@ export class Poll {
                                : pal_poll::SourceKind::File;
         switch (operation.kind()) {
         case PollOperationKind::Read:
-            return pal_poll::Operation::read(source_kind,
-                                             operation.fd(),
-                                             operation.source_key().encode(),
-                                             key.encode(),
-                                             operation.mutable_data(),
-                                             operation.len(),
-                                             operation.offset().clone(),
-                                             operation.flags());
+            [[unsafe]] {
+                return pal_poll::Operation::read(source_kind,
+                                                 operation.fd(),
+                                                 operation.source_key().encode(),
+                                                 key.encode(),
+                                                 operation.mutable_data(),
+                                                 operation.len(),
+                                                 operation.offset().clone(),
+                                                 operation.flags());
+            }
         case PollOperationKind::Write:
-            return pal_poll::Operation::write(source_kind,
-                                              operation.fd(),
-                                              operation.source_key().encode(),
-                                              key.encode(),
-                                              operation.const_data(),
-                                              operation.len(),
-                                              operation.offset().clone(),
-                                              operation.flags());
+            [[unsafe]] {
+                return pal_poll::Operation::write(source_kind,
+                                                  operation.fd(),
+                                                  operation.source_key().encode(),
+                                                  key.encode(),
+                                                  operation.const_data(),
+                                                  operation.len(),
+                                                  operation.offset().clone(),
+                                                  operation.flags());
+            }
         case PollOperationKind::RecvMessage:
-            return pal_poll::Operation::recv_message(operation.fd(),
-                                                     operation.source_key().encode(),
-                                                     key.encode(),
-                                                     operation.native_message());
+            [[unsafe]] {
+                return pal_poll::Operation::recv_message(operation.fd(),
+                                                         operation.source_key().encode(),
+                                                         key.encode(),
+                                                         operation.native_message());
+            }
         case PollOperationKind::SendMessage:
-            return pal_poll::Operation::send_message(operation.fd(),
-                                                     operation.source_key().encode(),
-                                                     key.encode(),
-                                                     operation.native_message());
+            [[unsafe]] {
+                return pal_poll::Operation::send_message(operation.fd(),
+                                                         operation.source_key().encode(),
+                                                         key.encode(),
+                                                         operation.native_message());
+            }
         case PollOperationKind::Connect: {
             auto source_address = operation.address();
             auto address        = pal_poll::SocketAddress {
@@ -1301,37 +1335,44 @@ export class Poll {
                 .flowinfo = source_address.flowinfo(),
                 .scope_id = source_address.scope_id(),
             };
-            for (rstd::size_t i = 0; i < 16; ++i) {
-                address.octets[i] = source_address.octet(usize(i));
+            [[unsafe]] {
+                for (rstd::size_t i = 0; i < 16; ++i) {
+                    address.octets[i] = source_address.octet(usize(i));
+                }
             }
             return pal_poll::Operation::connect(
                 operation.fd(), operation.source_key().encode(), key.encode(), address);
         }
         case PollOperationKind::Accept:
-            return pal_poll::Operation::accept(operation.fd(),
-                                               operation.source_key().encode(),
-                                               key.encode(),
-                                               operation.secondary_fd(),
-                                               operation.mutable_data(),
-                                               operation.len());
+            [[unsafe]] {
+                return pal_poll::Operation::accept(operation.fd(),
+                                                   operation.source_key().encode(),
+                                                   key.encode(),
+                                                   operation.secondary_fd(),
+                                                   operation.mutable_data(),
+                                                   operation.len());
+            }
         }
         rstd::unreachable();
     }
 
     static auto blocking_file_operation(OperationKey key, const PollOperation& operation)
         -> BlockingFileOperation {
-        return BlockingFileOperation {
-            operation.kind() == PollOperationKind::Read ? BlockingFileOperationKind::Read
-                                                        : BlockingFileOperationKind::Write,
-            operation.fd(),
-            operation.source_key().encode(),
-            key.encode(),
-            operation.kind() == PollOperationKind::Read ? operation.mutable_data()
-                                                        : const_cast<void*>(operation.const_data()),
-            operation.len(),
-            operation.offset().clone(),
-            operation.flags(),
-        };
+        [[unsafe]] {
+            return BlockingFileOperation {
+                operation.kind() == PollOperationKind::Read ? BlockingFileOperationKind::Read
+                                                            : BlockingFileOperationKind::Write,
+                operation.fd(),
+                operation.source_key().encode(),
+                key.encode(),
+                operation.kind() == PollOperationKind::Read
+                    ? operation.mutable_data()
+                    : const_cast<void*>(operation.const_data()),
+                operation.len(),
+                operation.offset().clone(),
+                operation.flags(),
+            };
+        }
     }
 
     static auto find_registration(PollState& state, RegistrationKey key) -> PollRegistration* {
@@ -1421,8 +1462,10 @@ export class Poll {
                 if (registration != nullptr) {
                     auto ready = backend_ready(event.readiness());
                     if (! ready.is_empty()) {
-                        batch.push(PollEvent::owned(PollEventData::readiness(key, ready),
-                                                    registration->owner.clone()));
+                        [[unsafe]] {
+                            batch.push(PollEvent::owned(PollEventData::readiness(key, ready),
+                                                        registration->owner.clone()));
+                        }
                     }
                 }
                 continue;
@@ -1583,7 +1626,9 @@ public:
                 return PollApplyResult::rejected(
                     rstd::move(command), IoError::from_kind(IoErrorKind { IoErrorKind::NotFound }));
             }
-            auto updated = update_registration(state, *registration, command.interest());
+            auto updated = [&] {
+                [[unsafe]] { return update_registration(state, *registration, command.interest()); }
+            }();
             if (updated.is_err()) {
                 return PollApplyResult::rejected(rstd::move(command),
                                                  rstd::move(updated).unwrap_err_unchecked());
@@ -1598,7 +1643,9 @@ public:
             }
             auto* registration = state.m_registrations.get(command.registration_key());
             if (registration != nullptr) {
-                auto updated = update_registration(state, *registration, Interest {});
+                auto updated = [&] {
+                    [[unsafe]] { return update_registration(state, *registration, Interest {}); }
+                }();
                 if (updated.is_err()) {
                     return PollApplyResult::rejected(rstd::move(command),
                                                      rstd::move(updated).unwrap_err_unchecked());
@@ -1628,11 +1675,15 @@ public:
             }
             auto use_blocking_file = command.operation().source_kind() == PollSourceKind::File &&
                                      state.m_blocking_file.is_some();
-            auto submitted =
-                use_blocking_file
-                    ? state.m_blocking_file->submit(
-                          blocking_file_operation(key, command.operation()))
-                    : state.m_backend.submit_operation(backend_operation(key, command.operation()));
+            auto submitted         = [&] {
+                [[unsafe]] {
+                    return use_blocking_file
+                               ? state.m_blocking_file->submit(
+                                     blocking_file_operation(key, command.operation()))
+                               : state.m_backend.submit_operation(
+                                     backend_operation(key, command.operation()));
+                }
+            }();
             if (submitted.is_err()) {
                 auto error = rstd::move(submitted).unwrap_err_unchecked();
                 auto owner = state.m_operations.take_owner(key);

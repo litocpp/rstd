@@ -163,6 +163,8 @@ export class Operation {
           m_storage(rstd::move(storage)) {}
 
 public:
+    /// The writable buffer must remain valid until the submitted operation completes.
+    [[unsafe]]
     static auto read(SourceKind    source_kind,
                      os::fd::RawFd handle,
                      u64           source_key,
@@ -179,6 +181,8 @@ public:
                                Read { data, len, rstd::move(offset), flags }) };
     }
 
+    /// The readable buffer must remain valid until the submitted operation completes.
+    [[unsafe]]
     static auto write(SourceKind    source_kind,
                       os::fd::RawFd handle,
                       u64           source_key,
@@ -205,6 +209,8 @@ public:
                            Storage::with<OperationKind::Connect>(Connect { address }) };
     }
 
+    /// Any address buffer must remain writable through completion.
+    [[unsafe]]
     static auto accept(os::fd::RawFd handle,
                        u64           source_key,
                        u64           operation_key,
@@ -219,6 +225,8 @@ public:
                                Accept { secondary_handle, address_buffer, address_buffer_len }) };
     }
 
+    /// The native message and its writable buffers must remain valid through completion.
+    [[unsafe]]
     static auto recv_message(os::fd::RawFd fd, u64 source, u64 operation, void* message)
         -> Operation {
         return Operation { SourceKind::Socket,
@@ -227,6 +235,8 @@ public:
                            operation,
                            Storage::with<OperationKind::RecvMessage>(NativeMessage { message }) };
     }
+    /// The native message and its readable buffers must remain valid through completion.
+    [[unsafe]]
     static auto send_message(os::fd::RawFd fd, u64 source, u64 operation, void* message)
         -> Operation {
         return Operation { SourceKind::Socket,
@@ -417,8 +427,10 @@ public:
 
     Batch(Batch&& other) {
         for (rstd::size_t i = 0; i < other.m_len; ++i) {
-            events[usize(i)].write(rstd::move(other.events[usize(i)].assume_init_mut()));
-            other.events[usize(i)].assume_init_drop();
+            [[unsafe]] {
+                events[usize(i)].write(rstd::move(other.events[usize(i)].assume_init_mut()));
+                other.events[usize(i)].assume_init_drop();
+            }
         }
         m_len       = other.m_len;
         other.m_len = 0;
@@ -428,8 +440,10 @@ public:
         if (this == rstd::addressof(other)) return *this;
         clear();
         for (rstd::size_t i = 0; i < other.m_len; ++i) {
-            events[usize(i)].write(rstd::move(other.events[usize(i)].assume_init_mut()));
-            other.events[usize(i)].assume_init_drop();
+            [[unsafe]] {
+                events[usize(i)].write(rstd::move(other.events[usize(i)].assume_init_mut()));
+                other.events[usize(i)].assume_init_drop();
+            }
         }
         m_len       = other.m_len;
         other.m_len = 0;
@@ -448,15 +462,19 @@ public:
         events[usize(m_len++)].write(rstd::move(event));
     }
 
-    auto operator[](usize index) noexcept -> Event& { return events[index].assume_init_mut(); }
+    auto operator[](usize index) noexcept -> Event& {
+        if (index >= len()) rstd::intrinsics::abort();
+        [[unsafe]] { return events[index].assume_init_mut(); }
+    }
 
     auto operator[](usize index) const noexcept -> const Event& {
-        return events[index].assume_init_ref();
+        if (index >= len()) rstd::intrinsics::abort();
+        [[unsafe]] { return events[index].assume_init_ref(); }
     }
 
     void clear() noexcept {
         while (m_len != 0) {
-            events[usize(--m_len)].assume_init_drop();
+            [[unsafe]] { events[usize(--m_len)].assume_init_drop(); }
         }
     }
 };

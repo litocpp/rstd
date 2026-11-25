@@ -35,11 +35,15 @@ auto direct_value_kind(JsonValueKind kind) noexcept -> serde::ValueKind {
 }
 
 class DirectDeserializer {
-    JsonReader*      reader_ {};
+    JsonReader* reader_ {};
+
+    auto reader() const noexcept -> JsonReader& {
+        [[unsafe]] { return *reader_; }
+    }
     serde::PathTrace path_;
 
     auto mismatch(serde::ValueKind expected) -> serde::Error {
-        auto actual = reader_->value_kind();
+        auto actual = reader().value_kind();
         if (actual.is_err()) {
             return direct_syntax_error(path_.clone(), rstd::move(actual).unwrap_err_unchecked());
         }
@@ -70,40 +74,40 @@ public:
         : reader_(rstd::addressof(reader)), path_(rstd::move(path)) {}
 
     auto deserialize_json_value() -> Result<Value, serde::Error> {
-        return syntax(read_value(*reader_));
+        return syntax(read_value(reader()));
     }
 
     auto capture_value() -> Result<CapturedValue, serde::Error> {
-        auto value = syntax(read_value(*reader_, true));
+        auto value = syntax(read_value(reader(), true));
         if (value.is_err()) return Err(rstd::move(value).unwrap_err_unchecked());
         return Ok(CapturedValue(rstd::move(value).unwrap_unchecked(), path_.snapshot()));
     }
 
     auto deserialize_unit() -> Result<empty, serde::Error> {
-        auto kind = reader_->value_kind();
+        auto kind = reader().value_kind();
         if (kind.is_err()) {
             return Err(direct_syntax_error(path_.clone(), rstd::move(kind).unwrap_err_unchecked()));
         }
         if (*kind != JsonValueKind::Null) return Err(mismatch(serde::ValueKind::Unit));
-        return syntax(reader_->parse_null());
+        return syntax(reader().parse_null());
     }
 
     auto deserialize_bool() -> Result<bool, serde::Error> {
-        auto kind = reader_->value_kind();
+        auto kind = reader().value_kind();
         if (kind.is_err()) {
             return Err(direct_syntax_error(path_.clone(), rstd::move(kind).unwrap_err_unchecked()));
         }
         if (*kind != JsonValueKind::Boolean) return Err(mismatch(serde::ValueKind::Boolean));
-        return syntax(reader_->parse_bool());
+        return syntax(reader().parse_bool());
     }
 
     auto deserialize_i64() -> Result<i64, serde::Error> {
-        auto kind = reader_->value_kind();
+        auto kind = reader().value_kind();
         if (kind.is_err()) {
             return Err(direct_syntax_error(path_.clone(), rstd::move(kind).unwrap_err_unchecked()));
         }
         if (*kind != JsonValueKind::Number) return Err(mismatch(serde::ValueKind::SignedInteger));
-        auto number = syntax(reader_->parse_number());
+        auto number = syntax(reader().parse_number());
         if (number.is_err()) return Err(rstd::move(number).unwrap_err_unchecked());
         auto value = number->as_i64();
         if (value.is_none()) {
@@ -116,12 +120,12 @@ public:
     }
 
     auto deserialize_u64() -> Result<u64, serde::Error> {
-        auto kind = reader_->value_kind();
+        auto kind = reader().value_kind();
         if (kind.is_err()) {
             return Err(direct_syntax_error(path_.clone(), rstd::move(kind).unwrap_err_unchecked()));
         }
         if (*kind != JsonValueKind::Number) return Err(mismatch(serde::ValueKind::UnsignedInteger));
-        auto number = syntax(reader_->parse_number());
+        auto number = syntax(reader().parse_number());
         if (number.is_err()) return Err(rstd::move(number).unwrap_err_unchecked());
         auto value = number->as_u64();
         if (value.is_none()) {
@@ -134,39 +138,39 @@ public:
     }
 
     auto deserialize_f64() -> Result<f64, serde::Error> {
-        auto kind = reader_->value_kind();
+        auto kind = reader().value_kind();
         if (kind.is_err()) {
             return Err(direct_syntax_error(path_.clone(), rstd::move(kind).unwrap_err_unchecked()));
         }
         if (*kind != JsonValueKind::Number) return Err(mismatch(serde::ValueKind::Float));
-        auto number = syntax(reader_->parse_number());
+        auto number = syntax(reader().parse_number());
         if (number.is_err()) return Err(rstd::move(number).unwrap_err_unchecked());
         return Ok(*number->as_f64());
     }
 
     auto deserialize_string() -> Result<String, serde::Error> {
-        auto kind = reader_->value_kind();
+        auto kind = reader().value_kind();
         if (kind.is_err()) {
             return Err(direct_syntax_error(path_.clone(), rstd::move(kind).unwrap_err_unchecked()));
         }
         if (*kind != JsonValueKind::String) return Err(mismatch(serde::ValueKind::String));
-        return syntax(reader_->parse_string());
+        return syntax(reader().parse_string());
     }
 
     auto deserialize_bytes() -> Result<Vec<u8>, serde::Error>;
 
     template<typename T>
     auto deserialize_option() -> Result<Option<T>, serde::Error> {
-        auto kind = reader_->value_kind();
+        auto kind = reader().value_kind();
         if (kind.is_err()) {
             return Err(direct_syntax_error(path_.clone(), rstd::move(kind).unwrap_err_unchecked()));
         }
         if (*kind == JsonValueKind::Null) {
-            auto parsed = syntax(reader_->parse_null());
+            auto parsed = syntax(reader().parse_null());
             if (parsed.is_err()) return Err(rstd::move(parsed).unwrap_err_unchecked());
             return Ok(None<T>());
         }
-        auto child = DirectDeserializer(*reader_, path_.clone());
+        auto child = DirectDeserializer(reader(), path_.clone());
         auto value = serde::deserialize<T>(child);
         if (value.is_err()) return Err(rstd::move(value).unwrap_err_unchecked());
         return Ok(Some(rstd::move(value).unwrap_unchecked()));
@@ -207,7 +211,7 @@ public:
     auto unsupported(ref<str> message) const -> serde::Error {
         return serde::Error::unsupported(path_.snapshot(), message);
     }
-    auto ignore_value() -> Result<empty, serde::Error> { return syntax(reader_->skip_value()); }
+    auto ignore_value() -> Result<empty, serde::Error> { return syntax(reader().skip_value()); }
 
     template<typename T>
     auto deserialize_extension(ref<str>) -> Result<T, serde::Error> {
@@ -216,7 +220,11 @@ public:
 };
 
 class DirectSequenceAccess {
-    JsonReader*      reader_ {};
+    JsonReader* reader_ {};
+
+    auto reader() const noexcept -> JsonReader& {
+        [[unsafe]] { return *reader_; }
+    }
     serde::PathTrace path_;
     usize            index_ {};
     bool             first_ { true };
@@ -233,7 +241,7 @@ public:
     auto next() -> Result<Option<T>, serde::Error> {
         if (ended_)
             return Err(serde::Error::invariant(path_.snapshot(), "sequence already ended"_str));
-        auto next = reader_->next_array(first_);
+        auto next = reader().next_array(first_);
         if (next.is_err()) {
             return Err(direct_syntax_error(path_.clone(), rstd::move(next).unwrap_err_unchecked()));
         }
@@ -241,7 +249,7 @@ public:
             finished_ = true;
             return Ok(None<T>());
         }
-        auto child = DirectDeserializer(*reader_, path_.with_index(index_));
+        auto child = DirectDeserializer(reader(), path_.with_index(index_));
         auto value = serde::deserialize<T>(child);
         if (value.is_err()) return Err(rstd::move(value).unwrap_err_unchecked());
         ++index_;
@@ -252,7 +260,7 @@ public:
         if (ended_)
             return Err(serde::Error::invariant(path_.snapshot(), "sequence already ended"_str));
         if (! finished_) {
-            auto next = reader_->next_array(first_);
+            auto next = reader().next_array(first_);
             if (next.is_err()) {
                 return Err(
                     direct_syntax_error(path_.clone(), rstd::move(next).unwrap_err_unchecked()));
@@ -298,7 +306,11 @@ public:
 };
 
 class DirectMapAccess {
-    JsonReader*             reader_ {};
+    JsonReader* reader_ {};
+
+    auto reader() const noexcept -> JsonReader& {
+        [[unsafe]] { return *reader_; }
+    }
     serde::PathTrace        path_;
     String                  key_;
     BTreeMap<String, empty> seen_;
@@ -320,7 +332,7 @@ public:
         if (ended_) return Err(serde::Error::invariant(path_.snapshot(), "map already ended"_str));
         if (pending_)
             return Err(serde::Error::invariant(path_.snapshot(), "map value is missing"_str));
-        auto key = reader_->next_object_key(first_);
+        auto key = reader().next_object_key(first_);
         if (key.is_err()) {
             return Err(direct_syntax_error(path_.clone(), rstd::move(key).unwrap_err_unchecked()));
         }
@@ -330,7 +342,7 @@ public:
             return Ok(None<T>());
         }
         auto name = rstd::move(optional).unwrap_unchecked();
-        if (reader_->reject_duplicate_keys()) {
+        if (reader().reject_duplicate_keys()) {
             if (seen_.contains_key(name.as_str())) {
                 return Err(serde::Error::duplicate_field(path_.snapshot(), name.as_str()));
             }
@@ -349,7 +361,7 @@ public:
         if (ended_) return Err(serde::Error::invariant(path_.snapshot(), "map already ended"_str));
         if (! pending_)
             return Err(serde::Error::invariant(path_.snapshot(), "map key is missing"_str));
-        auto child = DirectDeserializer(*reader_, path_.with_map_key(key_.as_str()));
+        auto child = DirectDeserializer(reader(), path_.with_map_key(key_.as_str()));
         auto value = serde::deserialize<T>(child);
         if (value.is_err()) return Err(rstd::move(value).unwrap_err_unchecked());
         pending_ = false;
@@ -360,7 +372,7 @@ public:
         if (ended_) return Err(serde::Error::invariant(path_.snapshot(), "map already ended"_str));
         if (! pending_)
             return Err(serde::Error::invariant(path_.snapshot(), "map key is missing"_str));
-        auto skipped = reader_->skip_value();
+        auto skipped = reader().skip_value();
         if (skipped.is_err()) {
             return Err(direct_syntax_error(path_.with_map_key(key_.as_str()),
                                            rstd::move(skipped).unwrap_err_unchecked()));
@@ -381,7 +393,11 @@ public:
 };
 
 class DirectEnumAccess {
-    JsonReader*      reader_ {};
+    JsonReader* reader_ {};
+
+    auto reader() const noexcept -> JsonReader& {
+        [[unsafe]] { return *reader_; }
+    }
     String           variant_;
     serde::PathTrace path_;
     bool             has_value_ {};
@@ -423,10 +439,10 @@ public:
             return Err(serde::Error::invalid_value(path_.with_variant(variant_.as_str()).snapshot(),
                                                    "enum variant payload is missing"_str));
         }
-        auto child = DirectDeserializer(*reader_, path_.with_variant(variant_.as_str()));
+        auto child = DirectDeserializer(reader(), path_.with_variant(variant_.as_str()));
         auto value = serde::deserialize<T>(child);
         if (value.is_err()) return Err(rstd::move(value).unwrap_err_unchecked());
-        auto next = reader_->next_object_key(object_first_);
+        auto next = reader().next_object_key(object_first_);
         if (next.is_err()) {
             return Err(direct_syntax_error(path_.clone(), rstd::move(next).unwrap_err_unchecked()));
         }
@@ -440,59 +456,59 @@ public:
 };
 
 inline auto DirectDeserializer::begin_sequence() -> Result<DirectSequenceAccess, serde::Error> {
-    auto kind = reader_->value_kind();
+    auto kind = reader().value_kind();
     if (kind.is_err()) {
         return Err(direct_syntax_error(path_.clone(), rstd::move(kind).unwrap_err_unchecked()));
     }
     if (*kind != JsonValueKind::Array) return Err(mismatch(serde::ValueKind::Sequence));
-    auto begun = reader_->begin_array();
+    auto begun = reader().begin_array();
     if (begun.is_err()) {
         return Err(direct_syntax_error(path_.clone(), rstd::move(begun).unwrap_err_unchecked()));
     }
-    return Ok(DirectSequenceAccess(*reader_, path_.clone()));
+    return Ok(DirectSequenceAccess(reader(), path_.clone()));
 }
 
 inline auto DirectDeserializer::begin_map() -> Result<DirectMapAccess, serde::Error> {
-    auto kind = reader_->value_kind();
+    auto kind = reader().value_kind();
     if (kind.is_err()) {
         return Err(direct_syntax_error(path_.clone(), rstd::move(kind).unwrap_err_unchecked()));
     }
     if (*kind != JsonValueKind::Object) return Err(mismatch(serde::ValueKind::Map));
-    auto begun = reader_->begin_object();
+    auto begun = reader().begin_object();
     if (begun.is_err()) {
         return Err(direct_syntax_error(path_.clone(), rstd::move(begun).unwrap_err_unchecked()));
     }
-    return Ok(DirectMapAccess(*reader_, path_.clone()));
+    return Ok(DirectMapAccess(reader(), path_.clone()));
 }
 
 inline auto DirectDeserializer::begin_enum() -> Result<DirectEnumAccess, serde::Error> {
-    auto kind = reader_->value_kind();
+    auto kind = reader().value_kind();
     if (kind.is_err()) {
         return Err(direct_syntax_error(path_.clone(), rstd::move(kind).unwrap_err_unchecked()));
     }
     if (*kind == JsonValueKind::String) {
-        auto variant = reader_->parse_string();
+        auto variant = reader().parse_string();
         if (variant.is_err()) {
             return Err(
                 direct_syntax_error(path_.clone(), rstd::move(variant).unwrap_err_unchecked()));
         }
         return Ok(DirectEnumAccess(
-            *reader_, rstd::move(variant).unwrap_unchecked(), path_.clone(), false, false));
+            reader(), rstd::move(variant).unwrap_unchecked(), path_.clone(), false, false));
     }
     if (*kind != JsonValueKind::Object) return Err(mismatch(serde::ValueKind::Enum));
-    auto begun = reader_->begin_object();
+    auto begun = reader().begin_object();
     if (begun.is_err()) {
         return Err(direct_syntax_error(path_.clone(), rstd::move(begun).unwrap_err_unchecked()));
     }
     bool first = true;
-    auto key   = reader_->next_object_key(first);
+    auto key   = reader().next_object_key(first);
     if (key.is_err()) {
         return Err(direct_syntax_error(path_.clone(), rstd::move(key).unwrap_err_unchecked()));
     }
     if (key->is_none()) {
         return Err(invalid_value("externally tagged enum must contain exactly one variant"_str));
     }
-    return Ok(DirectEnumAccess(*reader_,
+    return Ok(DirectEnumAccess(reader(),
                                rstd::move(key).unwrap_unchecked().unwrap_unchecked(),
                                path_.clone(),
                                true,

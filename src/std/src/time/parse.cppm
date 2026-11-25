@@ -182,12 +182,16 @@ auto write_datetime_number(String& text, u64 value, usize width) -> void {
     char32_t digits[20];
     usize    size;
     do {
-        digits[size.to_primitive()] = char32_t('0' + (value % u64(10)).to_primitive());
+        [[unsafe]] {
+            digits[size.to_primitive()] = char32_t('0' + (value % u64(10)).to_primitive());
+        }
         ++size;
         value /= u64(10);
     } while (value != u64());
     for (auto i = size; i < width; ++i) text.push(U'0');
-    while (size != usize()) text.push(digits[(--size).to_primitive()]);
+    [[unsafe]] {
+        while (size != usize()) text.push(digits[(--size).to_primitive()]);
+    }
 }
 } // namespace rstd::time
 

@@ -142,11 +142,13 @@ void mul_if(FloatBig&    value,
 
 void mul_pow10(FloatBig& value, rstd::size_t exponent) {
     if (exponent < 8) {
-        value.mul_small(POW10[exponent]);
+        [[unsafe]] { value.mul_small(POW10[exponent]); }
         return;
     }
-    if ((exponent & 7) != 0) value.mul_small(POW10[exponent & 7] >> (exponent & 7));
-    if ((exponent & 8) != 0) value.mul_small(POW10[8] >> 8);
+    [[unsafe]] {
+        if ((exponent & 7) != 0) value.mul_small(POW10[exponent & 7] >> (exponent & 7));
+        if ((exponent & 8) != 0) value.mul_small(POW10[8] >> 8);
+    }
     mul_if(value, exponent, 16, POW5_TO_16);
     mul_if(value, exponent, 32, POW5_TO_32);
     mul_if(value, exponent, 64, POW5_TO_64);
@@ -158,10 +160,10 @@ void mul_pow10(FloatBig& value, rstd::size_t exponent) {
 void div_2pow10(FloatBig& value, rstd::size_t exponent) {
     constexpr rstd::size_t LARGEST = sizeof(POW10) / sizeof(POW10[0]) - 1;
     while (exponent > LARGEST) {
-        value.div_rem_small(POW10[LARGEST]);
+        [[unsafe]] { value.div_rem_small(POW10[LARGEST]); }
         exponent -= LARGEST;
     }
-    value.div_rem_small(POW10[exponent] << 1);
+    [[unsafe]] { value.div_rem_small(POW10[exponent] << 1); }
 }
 
 auto estimate_scaling_factor(rstd::uint64_t mant, rstd::int16_t exponent) noexcept
@@ -170,17 +172,24 @@ auto estimate_scaling_factor(rstd::uint64_t mant, rstd::int16_t exponent) noexce
     return static_cast<rstd::int16_t>(((nbits + exponent) * 1292913986) >> 32);
 }
 
-auto round_up(rstd::uint8_t* digits, rstd::size_t len) noexcept -> rstd::uint8_t {
+template<rstd::size_t Capacity>
+auto round_up(rstd::array<rstd::uint8_t, Capacity>& buffer, rstd::size_t len) noexcept
+    -> rstd::uint8_t {
+    auto* digits = buffer.data();
     for (rstd::size_t i = len; i != 0; --i) {
-        if (digits[i - 1] != '9') {
-            ++digits[i - 1];
-            for (rstd::size_t j = i; j < len; ++j) digits[j] = '0';
-            return 0;
+        [[unsafe]] {
+            if (digits[i - 1] != '9') {
+                ++digits[i - 1];
+                for (rstd::size_t j = i; j < len; ++j) digits[j] = '0';
+                return 0;
+            }
         }
     }
     if (len != 0) {
-        digits[0] = '1';
-        for (rstd::size_t i = 1; i < len; ++i) digits[i] = '0';
+        [[unsafe]] {
+            digits[0] = '1';
+            for (rstd::size_t i = 1; i < len; ++i) digits[i] = '0';
+        }
     }
     return len == 0 ? '1' : '0';
 }
@@ -215,8 +224,11 @@ struct Digits {
     rstd::int16_t exponent;
 };
 
-auto format_shortest(Decoded const& decoded, rstd::uint8_t* buffer, TieBreaking ties) -> Digits {
-    rstd::int16_t k = estimate_scaling_factor(decoded.mant + decoded.plus, decoded.exponent);
+auto format_shortest(Decoded const&                              decoded,
+                     rstd::array<rstd::uint8_t, MAX_SIG_DIGITS>& output,
+                     TieBreaking                                 ties) -> Digits {
+    auto*         buffer = output.data();
+    rstd::int16_t k      = estimate_scaling_factor(decoded.mant + decoded.plus, decoded.exponent);
 
     FloatBig mant  = FloatBig::from_u64(decoded.mant);
     FloatBig minus = FloatBig::from_u64(decoded.minus);
@@ -261,8 +273,9 @@ auto format_shortest(Decoded const& decoded, rstd::uint8_t* buffer, TieBreaking 
     bool         down;
     bool         up;
     for (;;) {
-        buffer[len++] =
-            static_cast<rstd::uint8_t>('0' + digit(mant, scale, scale2, scale4, scale8));
+        // The round-trip interval is reached within MAX_SIG_DIGITS for both float types.
+        const auto next = digit(mant, scale, scale2, scale4, scale8);
+        [[unsafe]] { buffer[len++] = static_cast<rstd::uint8_t>('0' + next); }
 
         down  = decoded.inclusive ? mant.compare(minus) <= 0 : mant.compare(minus) < 0;
         upper = mant;
@@ -278,21 +291,23 @@ auto format_shortest(Decoded const& decoded, rstd::uint8_t* buffer, TieBreaking 
     FloatBig twice_mant = mant;
     twice_mant.mul_pow2(1);
     const auto comparison = twice_mant.compare(scale);
-    const bool round_tie  = ties == TieBreaking::AwayFromZero || (buffer[len - 1] & 1) != 0;
+    bool       round_tie;
+    [[unsafe]] { round_tie = ties == TieBreaking::AwayFromZero || (buffer[len - 1] & 1) != 0; }
     if (up && (! down || comparison > 0 || (comparison == 0 && round_tie))) {
-        if (const rstd::uint8_t carry = round_up(buffer, len); carry != 0) {
-            buffer[len++] = carry;
+        if (const rstd::uint8_t carry = round_up(output, len); carry != 0) {
+            [[unsafe]] { buffer[len++] = carry; }
             ++k;
         }
     }
     return { len, k };
 }
 
-auto format_exact(Decoded const& decoded,
-                  rstd::uint8_t* buffer,
-                  rstd::size_t   capacity,
-                  rstd::int16_t  limit) -> Digits {
-    rstd::int16_t k = estimate_scaling_factor(decoded.mant, decoded.exponent);
+auto format_exact(Decoded const&                              decoded,
+                  rstd::array<rstd::uint8_t, DIGIT_CAPACITY>& output,
+                  rstd::size_t                                capacity,
+                  rstd::int16_t                               limit) -> Digits {
+    auto*         buffer = output.data();
+    rstd::int16_t k      = estimate_scaling_factor(decoded.mant, decoded.exponent);
 
     FloatBig mant  = FloatBig::from_u64(decoded.mant);
     FloatBig scale = FloatBig::from_small(1);
@@ -336,11 +351,13 @@ auto format_exact(Decoded const& decoded,
 
         for (rstd::size_t i = 0; i < len; ++i) {
             if (mant.is_zero()) {
-                for (; i < len; ++i) buffer[i] = '0';
+                [[unsafe]] {
+                    for (; i < len; ++i) buffer[i] = '0';
+                }
                 return { len, k };
             }
-            buffer[i] =
-                static_cast<rstd::uint8_t>('0' + digit(mant, scale, scale2, scale4, scale8));
+            const auto next = digit(mant, scale, scale2, scale4, scale8);
+            [[unsafe]] { buffer[i] = static_cast<rstd::uint8_t>('0' + next); }
             mant.mul_small(10);
         }
     }
@@ -348,10 +365,16 @@ auto format_exact(Decoded const& decoded,
     FloatBig five_scale = scale;
     five_scale.mul_small(5);
     const rstd::int8_t order = mant.compare(five_scale);
-    if (order > 0 || (order == 0 && len != 0 && (buffer[len - 1] & 1) != 0)) {
-        if (const rstd::uint8_t carry = round_up(buffer, len); carry != 0) {
+    bool               should_round;
+    [[unsafe]] {
+        should_round = order > 0 || (order == 0 && len != 0 && (buffer[len - 1] & 1) != 0);
+    }
+    if (should_round) {
+        if (const rstd::uint8_t carry = round_up(output, len); carry != 0) {
             ++k;
-            if (k > limit && len < capacity) buffer[len++] = carry;
+            if (k > limit && len < capacity) {
+                [[unsafe]] { buffer[len++] = carry; }
+            }
         }
     }
     return { len, k };
@@ -378,7 +401,7 @@ auto shortest(T value, TieBreaking ties = TieBreaking::AwayFromZero) -> Shortest
     const auto decoded = decode(value);
     auto       result  = make_decimal<MAX_SIG_DIGITS>(decoded);
     if (decoded.category == Category::Finite) {
-        const auto digits = format_shortest(decoded.finite, result.digits.data(), ties);
+        const auto digits = format_shortest(decoded.finite, result.digits, ties);
         result.len        = digits.len;
         result.exponent   = digits.exponent;
     }
@@ -395,7 +418,7 @@ auto exact_fixed(T value, rstd::size_t fractional_digits) -> ExactDecimal {
             fractional_digits < 0x8000
                 ? static_cast<rstd::int16_t>(-static_cast<rstd::int16_t>(fractional_digits))
                 : ::raw_integer_min<rstd::int16_t>();
-        const auto digits = format_exact(decoded.finite, result.digits.data(), capacity, limit);
+        const auto digits = format_exact(decoded.finite, result.digits, capacity, limit);
         result.len        = digits.len;
         result.exponent   = digits.exponent;
     }
@@ -410,7 +433,7 @@ auto exact_significant(T value, rstd::size_t significant_digits) -> ExactDecimal
         const rstd::size_t max_len  = max_buffer_len(decoded.finite.exponent);
         const rstd::size_t capacity = significant_digits < max_len ? significant_digits : max_len;
         const auto         digits   = format_exact(
-            decoded.finite, result.digits.data(), capacity, ::raw_integer_min<rstd::int16_t>());
+            decoded.finite, result.digits, capacity, ::raw_integer_min<rstd::int16_t>());
         result.len      = digits.len;
         result.exponent = digits.exponent;
     }

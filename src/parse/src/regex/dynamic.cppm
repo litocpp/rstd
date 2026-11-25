@@ -97,9 +97,9 @@ public:
         out.instructions_.reserve_exact(usize(compiled->program.count));
         out.terms_.reserve_exact(usize(compiled->syntax.term_count));
         for (rstd::size_t i = 0; i < compiled->program.count; ++i)
-            out.instructions_.push(Instruction(compiled->program.instructions[i]));
+            out.instructions_.push(Instruction(regex_array_at(compiled->program.instructions, i)));
         for (rstd::size_t i = 0; i < compiled->syntax.term_count; ++i)
-            out.terms_.push(ClassTerm(compiled->syntax.terms[i]));
+            out.terms_.push(ClassTerm(regex_array_at(compiled->syntax.terms, i)));
         return Ok(rstd::move(out));
     }
     auto allocation_size() const -> usize {
@@ -114,8 +114,9 @@ public:
         TextCursor cursor(text_input(input));
         for (;;) {
             expand(scratch, start_, input, cursor.position());
-            for (auto pc : scratch.next_)
+            for (auto pc : scratch.next_) {
                 if (instructions_[pc].op == Op::Accept) return true;
+            }
             if (cursor.is_eof()) return false;
             auto remaining = cursor.remaining_text();
             if (remaining.is_err()) return false;

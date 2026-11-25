@@ -97,9 +97,12 @@ public:
             ++records.failures;
             return Err(AllocError {});
         }
-        auto* base = static_cast<byte*>(allocation->pointer);
-        rstd::construct_at(reinterpret_cast<FrameAllocationRecord*>(base),
-                           FrameAllocationRecord { Instant::now(), thread::current_id() });
+        byte* base;
+        [[unsafe]] {
+            base = static_cast<byte*>(allocation->pointer);
+            rstd::construct_at(reinterpret_cast<FrameAllocationRecord*>(base),
+                               FrameAllocationRecord { Instant::now(), thread::current_id() });
+        }
         ++records.allocations;
         ++records.live_allocations;
         records.peak_live_allocations = records.peak_live_allocations.max(records.live_allocations);
@@ -116,25 +119,30 @@ public:
         bucket.peak_live_allocations = bucket.peak_live_allocations.max(bucket.live_allocations);
         bucket.live_bytes += input.size();
         bucket.peak_live_bytes = bucket.peak_live_bytes.max(bucket.live_bytes);
-        return Ok(Allocation { base + offset.to_primitive(), input.size() });
+        [[unsafe]] { return Ok(Allocation { base + offset.to_primitive(), input.size() }); }
     }
 
+    [[unsafe]]
     void deallocate(void* pointer, Layout input) noexcept {
         if (input.size() == usize()) return;
         if (! records.enabled) {
-            pool.deallocate(pointer, input);
+            [[unsafe]] { pool.deallocate(pointer, input); }
             return;
         }
-        usize offset {};
-        auto  layout = recorded_layout(input, offset).unwrap_unchecked();
-        auto* base   = static_cast<byte*>(pointer) - offset.to_primitive();
-        auto* record = reinterpret_cast<FrameAllocationRecord*>(base);
-        auto  age    = record->created.elapsed();
-        if (record->thread != thread::current_id()) ++records.remote_deallocations;
-        constexpr unsigned limits[] { 1, 10, 100, 1000, 10000, 60000, 600000 };
-        usize              lifetime;
-        while (lifetime < usize(7) &&
-               age >= Duration::from_millis(u64(limits[lifetime.to_primitive()])))
+        usize                  offset {};
+        auto                   layout = recorded_layout(input, offset).unwrap_unchecked();
+        byte*                  base;
+        FrameAllocationRecord* record;
+        Duration               age;
+        [[unsafe]] {
+            base   = static_cast<byte*>(pointer) - offset.to_primitive();
+            record = reinterpret_cast<FrameAllocationRecord*>(base);
+            age    = record->created.elapsed();
+            if (record->thread != thread::current_id()) ++records.remote_deallocations;
+        }
+        constexpr array<unsigned, 7> limits { 1u, 10u, 100u, 1000u, 10000u, 60000u, 600000u };
+        usize                        lifetime;
+        while (lifetime < usize(7) && age >= Duration::from_millis(u64(limits[lifetime])))
             ++lifetime;
         ++records.lifetime_counts[lifetime];
         ++records.deallocations;
@@ -145,8 +153,10 @@ public:
         ++bucket.deallocations;
         --bucket.live_allocations;
         bucket.live_bytes -= input.size();
-        rstd::destroy_at(record);
-        pool.deallocate(base, layout);
+        [[unsafe]] {
+            rstd::destroy_at(record);
+            pool.deallocate(base, layout);
+        }
     }
 };
 
@@ -190,8 +200,10 @@ public:
         return result;
     }
 
+    /// The live allocation must belong to this pool and match `layout`.
+    [[unsafe]]
     void deallocate(void* pointer, Layout layout) const noexcept {
-        state_->lock().unwrap_unchecked()->deallocate(pointer, layout);
+        [[unsafe]] { state_->lock().unwrap_unchecked()->deallocate(pointer, layout); }
     }
 
     auto trim(usize retain_bytes = {}) const -> PoolTrimReport {
@@ -219,8 +231,9 @@ struct Impl<alloc::Allocator, async::FrameAllocator>
     auto allocate_zeroed(alloc::Layout layout) const {
         return this->self().allocate_zeroed(layout);
     }
+    [[unsafe]]
     void deallocate(void* pointer, alloc::Layout layout) const noexcept {
-        this->self().deallocate(pointer, layout);
+        [[unsafe]] { this->self().deallocate(pointer, layout); }
     }
 };
 template<>

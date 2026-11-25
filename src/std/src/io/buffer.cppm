@@ -24,9 +24,11 @@ public:
     BorrowedBuf(BorrowedBuf&&)                           = delete;
     auto        operator=(BorrowedBuf&&) -> BorrowedBuf& = delete;
     static auto from_initialized(mut_ref<u8[]> bytes) -> BorrowedBuf {
-        return BorrowedBuf(
-            mut_ref<MaybeUninit<byte>[]>::from_bytes(bytes.as_byte_ptr(), bytes.len()),
-            bytes.len());
+        [[unsafe]] {
+            return BorrowedBuf(
+                mut_ref<MaybeUninit<byte>[]>::from_bytes(bytes.as_byte_ptr(), bytes.len()),
+                bytes.len());
+        }
     }
     /// Borrows byte slots without reading or initializing their contents.
     static auto from_uninit(mut_ref<MaybeUninit<byte>[]> storage) -> BorrowedBuf {
@@ -36,10 +38,13 @@ public:
     auto len() const noexcept -> usize { return filled_; }
     auto initialized_len() const noexcept -> usize { return initialized_; }
     auto filled() const noexcept [[clang::lifetimebound]] -> slice<u8> {
-        return slice<u8>::from_raw_parts(reinterpret_cast<const byte*>(storage_.as_raw_ptr()),
-                                         filled_);
+        [[unsafe]] {
+            return slice<u8>::from_raw_parts(reinterpret_cast<const byte*>(storage_.as_raw_ptr()),
+                                             filled_);
+        }
     }
     /// The first count bytes must already be initialized, even if not filled with input data.
+    [[unsafe]]
     void set_init_unchecked(usize count) {
         if (count > capacity()) rstd::panic { "initialized byte count exceeds capacity" };
         if (count > initialized_) initialized_ = count;
@@ -56,58 +61,76 @@ class BorrowedCursor {
     BorrowedCursor(BorrowedBuf& buffer, usize end): buffer_(&buffer), end_(end) {}
     friend class BorrowedBuf;
 
+    auto buffer() const noexcept -> BorrowedBuf& {
+        if (buffer_ == nullptr) rstd::panic { "borrowed cursor was moved from" };
+        [[unsafe]] { return *buffer_; }
+    }
+
 public:
     BorrowedCursor(const BorrowedCursor&)                    = delete;
     auto operator=(const BorrowedCursor&) -> BorrowedCursor& = delete;
     BorrowedCursor(BorrowedCursor&& other) noexcept
         : buffer_(rstd::exchange(other.buffer_, nullptr)), end_(other.end_) {}
     auto operator=(BorrowedCursor&&) -> BorrowedCursor& = delete;
-    auto capacity() const noexcept -> usize { return end_ - buffer_->filled_; }
+    auto capacity() const noexcept -> usize { return end_ - buffer().filled_; }
     auto initialized_len() const noexcept -> usize {
-        return rstd::min(buffer_->initialized_, end_) - buffer_->filled_;
+        return rstd::min(buffer().initialized_, end_) - buffer().filled_;
     }
-    auto written() const noexcept -> usize { return buffer_->filled_; }
+    auto written() const noexcept -> usize { return buffer().filled_; }
     auto reborrow() & noexcept [[clang::lifetimebound]] -> BorrowedCursor {
-        return BorrowedCursor(*buffer_, end_);
+        return BorrowedCursor(buffer(), end_);
     }
     auto limit(usize count) & noexcept [[clang::lifetimebound]] -> BorrowedCursor {
-        return BorrowedCursor(*buffer_, buffer_->filled_ + rstd::min(count, capacity()));
+        return BorrowedCursor(buffer(), buffer().filled_ + rstd::min(count, capacity()));
     }
     /// Borrows the unfilled slots. Initialize them before reading or advancing the cursor.
     /// Native backends may write through as_raw_ptr() and report progress with advance_unchecked().
     auto as_uninit() const noexcept [[clang::lifetimebound]] -> mut_ref<MaybeUninit<byte>[]> {
-        auto pointer = buffer_->storage_.as_byte_ptr();
-        if (buffer_->filled_ != usize()) pointer += buffer_->filled_.to_primitive();
-        return mut_ref<MaybeUninit<byte>[]>::from_bytes(pointer, capacity());
+        auto& buf = buffer();
+        [[unsafe]] {
+            auto pointer = buf.storage_.as_byte_ptr();
+            if (buf.filled_ != usize()) pointer += buf.filled_.to_primitive();
+            return mut_ref<MaybeUninit<byte>[]>::from_bytes(pointer, capacity());
+        }
     }
     auto ensure_init() [[clang::lifetimebound]] -> mut_ref<u8[]> {
-        if (buffer_->initialized_ < end_) {
-            auto pointer = buffer_->storage_.as_byte_ptr() + buffer_->initialized_.to_primitive();
-            mem::memset(pointer, u8(), end_ - buffer_->initialized_);
-            buffer_->initialized_ = end_;
+        auto& buf = buffer();
+        if (buf.initialized_ < end_) {
+            [[unsafe]] {
+                auto pointer = buf.storage_.as_byte_ptr() + buf.initialized_.to_primitive();
+                mem::memset(pointer, u8(), end_ - buf.initialized_);
+            }
+            buf.initialized_ = end_;
         }
         auto bytes = as_uninit();
-        return mut_ref<u8[]>::from_raw_parts(reinterpret_cast<byte*>(bytes.as_raw_ptr()),
-                                             bytes.len());
+        [[unsafe]] {
+            return mut_ref<u8[]>::from_raw_parts(reinterpret_cast<byte*>(bytes.as_raw_ptr()),
+                                                 bytes.len());
+        }
     }
     /// Advances over initialized bytes; returns false without changing progress on overflow.
     auto advance(usize count) noexcept -> bool {
-        if (count > capacity() || count > buffer_->initialized_ - buffer_->filled_) return false;
-        buffer_->filled_ += count;
+        auto& buf = buffer();
+        if (count > capacity() || count > buf.initialized_ - buf.filled_) return false;
+        buf.filled_ += count;
         return true;
     }
     /// The backend must have initialized count bytes. Only the bounds are checked here.
+    [[unsafe]]
     auto advance_unchecked(usize count) noexcept -> bool {
         if (count > capacity()) return false;
-        buffer_->filled_ += count;
-        if (buffer_->filled_ > buffer_->initialized_) buffer_->initialized_ = buffer_->filled_;
+        auto& buf = buffer();
+        buf.filled_ += count;
+        if (buf.filled_ > buf.initialized_) buf.initialized_ = buf.filled_;
         return true;
     }
     void append(slice<u8> bytes) {
         if (bytes.len() > capacity()) rstd::panic { "borrowed buffer capacity exceeded" };
-        if (! bytes.is_empty())
-            mem::memcpy(as_uninit().as_raw_ptr(), bytes.as_raw_ptr(), bytes.len());
-        (void)advance_unchecked(bytes.len());
+        [[unsafe]] {
+            if (! bytes.is_empty())
+                mem::memcpy(as_uninit().as_raw_ptr(), bytes.as_raw_ptr(), bytes.len());
+            (void)advance_unchecked(bytes.len());
+        }
     }
 };
 inline auto BorrowedBuf::unfilled() & noexcept -> BorrowedCursor {

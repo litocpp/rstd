@@ -36,7 +36,7 @@ auto Thread::make(usize stack, Box<ThreadInit>&& init) -> rstd::io::Result<Threa
         return Ok(Thread { .id = native });
     }
 
-    Box<ThreadInit>::from_raw(raw);
+    [[unsafe]] { Box<ThreadInit>::from_raw(raw); }
     libc::pthread_attr_destroy(&attr);
     return Err(os_error(result));
 }

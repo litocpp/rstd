@@ -278,15 +278,18 @@ void cancel_readiness_waiter(const ReadinessCancellationArc& cancellation) {
 }
 
 void readiness_cancellation_cancel(voidp data) {
-    auto cancellation = ReadinessCancellationArc::from_raw(
-        ::alloc::sync::ArcRaw<ReadinessCancellationState>::from_raw(data));
-    cancel_readiness_waiter(cancellation);
+    [[unsafe]] {
+        auto cancellation = ReadinessCancellationArc::from_raw(
+            ::alloc::sync::ArcRaw<ReadinessCancellationState>::from_raw(data));
+        cancel_readiness_waiter(cancellation);
+    }
 }
 
 void readiness_cancellation_drop(voidp data) {
-    auto cancellation = ReadinessCancellationArc::from_raw(
-        ::alloc::sync::ArcRaw<ReadinessCancellationState>::from_raw(data));
-    (void)cancellation;
+    [[unsafe]] {
+        (void)ReadinessCancellationArc::from_raw(
+            ::alloc::sync::ArcRaw<ReadinessCancellationState>::from_raw(data));
+    }
 }
 
 const RawFacilityCancellationVTable READINESS_CANCELLATION_VTABLE {
@@ -297,10 +300,12 @@ const RawFacilityCancellationVTable READINESS_CANCELLATION_VTABLE {
 auto make_readiness_cancellation(const RegistrationArc& state, usize waiter_id, FacilityToken token)
     -> FacilityCancellation {
     auto cancellation = ReadinessCancellationArc::make(state.clone(), waiter_id);
-    return FacilityCancellation::from_raw(
-        token,
-        RawFacilityCancellation::from_raw_parts(rstd::move(cancellation).into_raw().into_raw(),
-                                                rstd::addressof(READINESS_CANCELLATION_VTABLE)));
+    [[unsafe]] {
+        return FacilityCancellation::from_raw(token,
+                                              RawFacilityCancellation::from_raw_parts(
+                                                  rstd::move(cancellation).into_raw().into_raw(),
+                                                  rstd::addressof(READINESS_CANCELLATION_VTABLE)));
+    }
 }
 
 void handle_registration_event(const RegistrationArc& state, PollEventData data) {
@@ -381,16 +386,20 @@ void handle_registration_event(const RegistrationArc& state, PollEventData data)
 auto registration_owner_clone(voidp data) -> RawPollEventOwner;
 
 void registration_owner_dispatch(voidp data, PollEventData event) {
-    auto state =
-        RegistrationArc::from_raw(::alloc::sync::ArcRaw<RegistrationState>::from_raw(data));
+    auto state = [data] {
+        [[unsafe]] {
+            return RegistrationArc::from_raw(
+                ::alloc::sync::ArcRaw<RegistrationState>::from_raw(data));
+        }
+    }();
     handle_registration_event(state, rstd::move(event));
     (void)rstd::move(state).into_raw().into_raw();
 }
 
 void registration_owner_drop(voidp data) {
-    auto state =
-        RegistrationArc::from_raw(::alloc::sync::ArcRaw<RegistrationState>::from_raw(data));
-    (void)state;
+    [[unsafe]] {
+        (void)RegistrationArc::from_raw(::alloc::sync::ArcRaw<RegistrationState>::from_raw(data));
+    }
 }
 
 extern const RawPollEventOwnerVTable REGISTRATION_OWNER_VTABLE;
@@ -403,13 +412,19 @@ const RawPollEventOwnerVTable REGISTRATION_OWNER_VTABLE {
 
 auto make_registration_owner(const RegistrationArc& state) -> PollEventOwner {
     auto owned = state.clone();
-    return PollEventOwner::from_raw(RawPollEventOwner::from_raw_parts(
-        rstd::move(owned).into_raw().into_raw(), rstd::addressof(REGISTRATION_OWNER_VTABLE)));
+    [[unsafe]] {
+        return PollEventOwner::from_raw(RawPollEventOwner::from_raw_parts(
+            rstd::move(owned).into_raw().into_raw(), rstd::addressof(REGISTRATION_OWNER_VTABLE)));
+    }
 }
 
 auto registration_owner_clone(voidp data) -> RawPollEventOwner {
-    auto state =
-        RegistrationArc::from_raw(::alloc::sync::ArcRaw<RegistrationState>::from_raw(data));
+    auto state = [data] {
+        [[unsafe]] {
+            return RegistrationArc::from_raw(
+                ::alloc::sync::ArcRaw<RegistrationState>::from_raw(data));
+        }
+    }();
     auto cloned = state.clone();
     (void)rstd::move(state).into_raw().into_raw();
     return RawPollEventOwner::from_raw_parts(rstd::move(cloned).into_raw().into_raw(),
@@ -443,14 +458,15 @@ void handle_timer_event(const TimerArc& state, PollEventData data) {
 auto timer_owner_clone(voidp data) -> RawPollEventOwner;
 
 void timer_owner_dispatch(voidp data, PollEventData event) {
-    auto state = TimerArc::from_raw(::alloc::sync::ArcRaw<TimerState>::from_raw(data));
+    auto state = [data] {
+        [[unsafe]] { return TimerArc::from_raw(::alloc::sync::ArcRaw<TimerState>::from_raw(data)); }
+    }();
     handle_timer_event(state, rstd::move(event));
     (void)rstd::move(state).into_raw().into_raw();
 }
 
 void timer_owner_drop(voidp data) {
-    auto state = TimerArc::from_raw(::alloc::sync::ArcRaw<TimerState>::from_raw(data));
-    (void)state;
+    [[unsafe]] { (void)TimerArc::from_raw(::alloc::sync::ArcRaw<TimerState>::from_raw(data)); }
 }
 
 const RawPollEventOwnerVTable TIMER_OWNER_VTABLE {
@@ -460,7 +476,9 @@ const RawPollEventOwnerVTable TIMER_OWNER_VTABLE {
 };
 
 auto timer_owner_clone(voidp data) -> RawPollEventOwner {
-    auto state  = TimerArc::from_raw(::alloc::sync::ArcRaw<TimerState>::from_raw(data));
+    auto state = [data] {
+        [[unsafe]] { return TimerArc::from_raw(::alloc::sync::ArcRaw<TimerState>::from_raw(data)); }
+    }();
     auto cloned = state.clone();
     (void)rstd::move(state).into_raw().into_raw();
     return RawPollEventOwner::from_raw_parts(rstd::move(cloned).into_raw().into_raw(),
@@ -469,8 +487,10 @@ auto timer_owner_clone(voidp data) -> RawPollEventOwner {
 
 auto make_timer_owner(const TimerArc& state) -> PollEventOwner {
     auto owned = state.clone();
-    return PollEventOwner::from_raw(RawPollEventOwner::from_raw_parts(
-        rstd::move(owned).into_raw().into_raw(), rstd::addressof(TIMER_OWNER_VTABLE)));
+    [[unsafe]] {
+        return PollEventOwner::from_raw(RawPollEventOwner::from_raw_parts(
+            rstd::move(owned).into_raw().into_raw(), rstd::addressof(TIMER_OWNER_VTABLE)));
+    }
 }
 
 auto try_registration_readiness(const RegistrationArc& state, Interest interest)
@@ -522,7 +542,9 @@ auto submit_registration_readiness(const RegistrationArc&  state,
                 return FacilityCompletionSubmitResult::unsupported(rstd::move(token));
             }
         } else if (CURRENT_RUNTIME != nullptr && has_current_runtime_worker()) {
-            auto current = CURRENT_RUNTIME->current_poll_worker();
+            auto current = [] {
+                [[unsafe]] { return CURRENT_RUNTIME->current_poll_worker(); }
+            }();
             if (current.is_err()) {
                 return FacilityCompletionSubmitResult::rejected(rstd::move(token));
             }
@@ -563,7 +585,9 @@ auto poll_registration_readiness(const RegistrationArc& state,
                                  task::Context&         cx,
                                  Interest               interest,
                                  usize& waiter_id) -> task::Poll<io::Result<ReadyEvent>> {
-    if (CURRENT_RUNTIME != nullptr && ! CURRENT_RUNTIME->io_enabled()) {
+    bool io_disabled;
+    [[unsafe]] { io_disabled = CURRENT_RUNTIME != nullptr && ! CURRENT_RUNTIME->io_enabled(); }
+    if (io_disabled) {
         return task::Poll<io::Result<ReadyEvent>>::Ready(
             Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported })));
     }
@@ -607,7 +631,9 @@ auto poll_registration_readiness(const RegistrationArc& state,
             command = Some(PollCommand::update_interest(
                 *fields->key, registration_interest(*fields), make_registration_owner(state)));
         } else if (CURRENT_RUNTIME != nullptr && has_current_runtime_worker()) {
-            auto current = CURRENT_RUNTIME->current_poll_worker();
+            auto current = [] {
+                [[unsafe]] { return CURRENT_RUNTIME->current_poll_worker(); }
+            }();
             if (current.is_err()) {
                 return task::Poll<io::Result<ReadyEvent>>::Ready(
                     Err(rstd::move(current).unwrap_err_unchecked()));
@@ -838,10 +864,16 @@ public:
 
     static auto register_deadline(time::Instant deadline, task::Waker waker)
         -> io::Result<TimerRegistration> {
-        if (CURRENT_RUNTIME == nullptr || ! CURRENT_RUNTIME->time_enabled()) {
+        bool time_available;
+        [[unsafe]] {
+            time_available = CURRENT_RUNTIME != nullptr && CURRENT_RUNTIME->time_enabled();
+        }
+        if (! time_available) {
             return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
         }
-        auto current = CURRENT_RUNTIME->current_poll_worker();
+        auto current = [] {
+            [[unsafe]] { return CURRENT_RUNTIME->current_poll_worker(); }
+        }();
         if (current.is_err()) return Err(rstd::move(current).unwrap_err_unchecked());
 
         auto worker    = rstd::move(current).unwrap_unchecked();
@@ -963,7 +995,9 @@ public:
             m_completed          = true;
             return AwaitTransition::continue_();
         }
-        if (! runtime->io_enabled()) {
+        bool io_enabled;
+        [[unsafe]] { io_enabled = runtime->io_enabled(); }
+        if (! io_enabled) {
             m_facility_result.insert(
                 Output(Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }))));
             m_completed = true;
@@ -975,7 +1009,9 @@ public:
             m_completed = true;
             return AwaitTransition::continue_();
         }
-        auto worker = runtime->current_poll_worker();
+        auto worker = [runtime] {
+            [[unsafe]] { return runtime->current_poll_worker(); }
+        }();
         if (worker.is_err()) {
             m_facility_result.insert(Output(Err(rstd::move(worker).unwrap_err_unchecked())));
             m_completed = true;

@@ -36,10 +36,12 @@ auto try_current() -> Option<Thread> {
     if (CURRENT == nullptr || CURRENT == BUSY || CURRENT == DESTROYED) {
         return None();
     }
-    auto thread = Thread::from_raw(CURRENT);
-    auto res    = thread.clone();
-    thread.into_raw(); // Don't drop it.
-    return rstd::Some<Thread>(rstd::move(res));
+    [[unsafe]] {
+        auto thread = Thread::from_raw(CURRENT);
+        auto res    = thread.clone();
+        thread.into_raw(); // Don't drop it.
+        return rstd::Some<Thread>(rstd::move(res));
+    }
 }
 
 /// Sets the handle for the current thread, returning Err if already set or the ID mismatches.
@@ -91,7 +93,7 @@ void drop_current() {
     auto current = CURRENT;
     if (current > DESTROYED) {
         CURRENT = DESTROYED;
-        Thread::from_raw(current);
+        [[unsafe]] { Thread::from_raw(current); }
     }
 }
 

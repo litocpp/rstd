@@ -41,10 +41,10 @@ public:
     static auto           parse(ref<str> text) -> Result<Ipv6Addr, AddrParseError>;
     static constexpr auto make(u16 a, u16 b, u16 c, u16 d, u16 e, u16 f, u16 g, u16 h) noexcept
         -> Ipv6Addr {
-        auto out      = Ipv6Addr {};
-        u16  parts[8] = { a, b, c, d, e, f, g, h };
+        auto                out = Ipv6Addr {};
+        const array<u16, 8> parts { a, b, c, d, e, f, g, h };
         for (rstd::size_t i = 0; i < 8; ++i) {
-            auto part                      = parts[i].to_primitive();
+            auto part                      = parts[usize(i)].to_primitive();
             out.m_octets[usize(i * 2)]     = u8(part >> 8);
             out.m_octets[usize(i * 2 + 1)] = u8(part);
         }

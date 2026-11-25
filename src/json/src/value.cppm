@@ -88,7 +88,7 @@ private:
             }
             decoded.push(token[i]);
         }
-        return ::alloc::string::String::from_utf8_unchecked(rstd::move(decoded));
+        [[unsafe]] { return ::alloc::string::String::from_utf8_unchecked(rstd::move(decoded)); }
     }
 
 public:
@@ -142,22 +142,22 @@ public:
     [[nodiscard]]
     auto as_object() const noexcept [[clang::lifetimebound]] -> Option<ref<Map>> {
         if (! is_Object()) return None();
-        return Some(ref<Map>::from_raw_parts(rstd::addressof(as_Object().value)));
+        return Some(ref<Map>::from_ref(as_Object().value));
     }
     [[nodiscard]]
     auto as_object_mut() noexcept [[clang::lifetimebound]] -> Option<mut_ref<Map>> {
         if (! is_Object()) return None();
-        return Some(mut_ref<Map>::from_raw_parts(rstd::addressof(as_Object().value)));
+        return Some(mut_ref<Map>::from_ref(as_Object().value));
     }
     [[nodiscard]]
     auto as_array() const noexcept [[clang::lifetimebound]] -> Option<ref<json::Array>> {
         if (! is_Array()) return None();
-        return Some(ref<json::Array>::from_raw_parts(rstd::addressof(as_Array().value)));
+        return Some(ref<json::Array>::from_ref(as_Array().value));
     }
     [[nodiscard]]
     auto as_array_mut() noexcept [[clang::lifetimebound]] -> Option<mut_ref<json::Array>> {
         if (! is_Array()) return None();
-        return Some(mut_ref<json::Array>::from_raw_parts(rstd::addressof(as_Array().value)));
+        return Some(mut_ref<json::Array>::from_ref(as_Array().value));
     }
     [[nodiscard]]
     auto as_str() const noexcept [[clang::lifetimebound]] -> Option<ref<str>> {
@@ -167,7 +167,7 @@ public:
     [[nodiscard]]
     auto as_number() const noexcept [[clang::lifetimebound]] -> Option<ref<json::Number>> {
         if (! is_Number()) return None();
-        return Some(ref<json::Number>::from_raw_parts(rstd::addressof(as_Number().value)));
+        return Some(ref<json::Number>::from_ref(as_Number().value));
     }
     [[nodiscard]]
     auto as_i64() const noexcept -> Option<i64> {
@@ -198,12 +198,12 @@ public:
     [[nodiscard]]
     auto get(usize index) const noexcept [[clang::lifetimebound]] -> Option<ref<Value>> {
         if (! is_Array() || index >= as_Array().value.len()) return None();
-        return Some(ref<Value>::from_raw_parts(rstd::addressof(as_Array().value[index])));
+        return Some(ref<Value>::from_ref(as_Array().value[index]));
     }
     [[nodiscard]]
     auto get_mut(usize index) noexcept [[clang::lifetimebound]] -> Option<mut_ref<Value>> {
         if (! is_Array() || index >= as_Array().value.len()) return None();
-        return Some(mut_ref<Value>::from_raw_parts(rstd::addressof(as_Array().value[index])));
+        return Some(mut_ref<Value>::from_ref(as_Array().value[index]));
     }
     [[nodiscard]]
     auto get(ref<str> key) const noexcept [[clang::lifetimebound]] -> Option<ref<Value>> {
@@ -274,35 +274,34 @@ public:
     [[nodiscard]]
     auto pointer(ref<str> path) const [[clang::lifetimebound]] -> Option<ref<Value>> {
         if (path.size() == usize()) {
-            return Some(ref<Value>::from_raw_parts(rstd::addressof(*this)));
+            return Some(ref<Value>::from_ref(*this));
         }
         if (path[usize()] != u8('/') || ! valid_pointer_escapes(path)) return None();
 
-        const Value* current = this;
-        usize        start   = usize(1);
+        auto  current = ref<Value>::from_ref(*this);
+        usize start   = usize(1);
         while (start <= path.size()) {
             usize end = start;
             while (end < path.size() && path[end] != u8('/')) ++end;
-            auto token =
-                ref<str>::from_raw_parts_unchecked(path.data() + start.to_primitive(), end - start);
+            auto token = path.get(start, end).unwrap();
 
-            if (current->is_Object()) {
+            if (current.get().is_Object()) {
                 if (token.contains("~"_str)) {
                     auto decoded = decode_pointer_token(token);
-                    auto next    = current->get(decoded.as_str());
+                    auto next    = current.get().get(decoded.as_str());
                     if (next.is_none()) return None();
-                    current = &**next;
+                    current = *next;
                 } else {
-                    auto next = current->get(token);
+                    auto next = current.get().get(token);
                     if (next.is_none()) return None();
-                    current = &**next;
+                    current = *next;
                 }
-            } else if (current->is_Array()) {
+            } else if (current.get().is_Array()) {
                 auto index = parse_array_index(token);
                 if (index.is_none()) return None();
-                auto next = current->get(*index);
+                auto next = current.get().get(*index);
                 if (next.is_none()) return None();
-                current = &**next;
+                current = *next;
             } else {
                 return None();
             }
@@ -310,41 +309,40 @@ public:
             if (end == path.size()) break;
             start = end + usize(1);
         }
-        return Some(ref<Value>::from_raw_parts(current));
+        return Some(current);
     }
 
     [[nodiscard]]
     auto pointer_mut(ref<str> path) [[clang::lifetimebound]] -> Option<mut_ref<Value>> {
         if (path.size() == usize()) {
-            return Some(mut_ref<Value>::from_raw_parts(rstd::addressof(*this)));
+            return Some(mut_ref<Value>::from_ref(*this));
         }
         if (path[usize()] != u8('/') || ! valid_pointer_escapes(path)) return None();
 
-        Value* current = this;
-        usize  start   = usize(1);
+        auto  current = mut_ref<Value>::from_ref(*this);
+        usize start   = usize(1);
         while (start <= path.size()) {
             usize end = start;
             while (end < path.size() && path[end] != u8('/')) ++end;
-            auto token =
-                ref<str>::from_raw_parts_unchecked(path.data() + start.to_primitive(), end - start);
+            auto token = path.get(start, end).unwrap();
 
-            if (current->is_Object()) {
+            if (current.get().is_Object()) {
                 if (token.contains("~"_str)) {
                     auto decoded = decode_pointer_token(token);
-                    auto next    = current->get_mut(decoded.as_str());
+                    auto next    = current.get_mut().get_mut(decoded.as_str());
                     if (next.is_none()) return None();
-                    current = &**next;
+                    current = *next;
                 } else {
-                    auto next = current->get_mut(token);
+                    auto next = current.get_mut().get_mut(token);
                     if (next.is_none()) return None();
-                    current = &**next;
+                    current = *next;
                 }
-            } else if (current->is_Array()) {
+            } else if (current.get().is_Array()) {
                 auto index = parse_array_index(token);
                 if (index.is_none()) return None();
-                auto next = current->get_mut(*index);
+                auto next = current.get_mut().get_mut(*index);
                 if (next.is_none()) return None();
-                current = &**next;
+                current = *next;
             } else {
                 return None();
             }
@@ -352,7 +350,7 @@ public:
             if (end == path.size()) break;
             start = end + usize(1);
         }
-        return Some(mut_ref<Value>::from_raw_parts(current));
+        return Some(current);
     }
 };
 

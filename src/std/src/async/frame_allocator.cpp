@@ -82,21 +82,23 @@ auto allocate_frame(rstd::size_t size, rstd::size_t alignment, bool aligned_glob
     } else {
         base = ::operator new(layout.size().to_primitive());
     }
-    // Allocator storage is a byte array whose tail outlives the coroutine frame.
-    auto* bytes = static_cast<byte*>(base);
-    bytes[size] =
-        static_cast<byte>((custom ? FRAME_CUSTOM : 0u) | (aligned_global ? FRAME_ALIGNED : 0u));
     auto          remaining_alignment = alignment;
     unsigned char exponent {};
     while (remaining_alignment > 1) {
         remaining_alignment >>= 1;
         ++exponent;
     }
-    bytes[size + 1] = static_cast<byte>(exponent);
-    if (custom) {
-        auto* stored_allocator =
-            reinterpret_cast<FrameAllocatorRef*>(bytes + allocator_offset.to_primitive());
-        rstd::construct_at(stored_allocator, *allocator);
+    // Allocator storage is a byte array whose tail outlives the coroutine frame.
+    [[unsafe]] {
+        auto* bytes = static_cast<byte*>(base);
+        bytes[size] =
+            static_cast<byte>((custom ? FRAME_CUSTOM : 0u) | (aligned_global ? FRAME_ALIGNED : 0u));
+        bytes[size + 1] = static_cast<byte>(exponent);
+        if (custom) {
+            auto* stored_allocator =
+                reinterpret_cast<FrameAllocatorRef*>(bytes + allocator_offset.to_primitive());
+            rstd::construct_at(stored_allocator, *allocator);
+        }
     }
     return base;
 }
@@ -126,8 +128,12 @@ auto allocate_coro_frame(rstd::size_t size, rstd::align_val_t alignment) -> void
 }
 void deallocate_coro_frame(void* frame, rstd::size_t size) noexcept {
     if (frame == nullptr) return;
-    auto* bytes = static_cast<byte*>(frame);
-    auto  flags = static_cast<unsigned char>(bytes[size]);
+    byte*         bytes;
+    unsigned char flags;
+    [[unsafe]] {
+        bytes = static_cast<byte*>(frame);
+        flags = static_cast<unsigned char>(bytes[size]);
+    }
     if (flags == 0) {
 #if defined(__cpp_sized_deallocation)
         auto allocation_size = usize(size).checked_add(FRAME_TAG_SIZE);
@@ -138,7 +144,8 @@ void deallocate_coro_frame(void* frame, rstd::size_t size) noexcept {
 #endif
         return;
     }
-    auto exponent = static_cast<unsigned char>(bytes[size + 1]);
+    unsigned char exponent;
+    [[unsafe]] { exponent = static_cast<unsigned char>(bytes[size + 1]); }
     if (exponent >= SIZE_T_BIT_WIDTH) rstd::panic { "invalid coroutine frame alignment" };
     auto  alignment = usize(static_cast<rstd::size_t>(1) << exponent);
     bool  custom    = (flags & FRAME_CUSTOM) != 0;
@@ -147,11 +154,13 @@ void deallocate_coro_frame(void* frame, rstd::size_t size) noexcept {
     if (reconstructed.is_none()) rstd::panic { "invalid coroutine frame layout" };
     auto layout = reconstructed.unwrap_unchecked();
     if (custom) {
-        auto* allocator = rstd::launder(
-            reinterpret_cast<FrameAllocatorRef*>(bytes + allocator_offset.to_primitive()));
-        auto allocator_ref = *allocator;
-        rstd::destroy_at(allocator);
-        allocator_ref->deallocate(frame, layout);
+        [[unsafe]] {
+            auto* allocator = rstd::launder(
+                reinterpret_cast<FrameAllocatorRef*>(bytes + allocator_offset.to_primitive()));
+            auto allocator_ref = *allocator;
+            rstd::destroy_at(allocator);
+            allocator_ref->deallocate(frame, layout);
+        }
     } else {
         if ((flags & FRAME_ALIGNED) != 0) {
 #if defined(__cpp_sized_deallocation)

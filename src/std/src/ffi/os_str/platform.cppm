@@ -17,14 +17,11 @@ inline constexpr bool USE_WTF8 = false;
 #endif
 
 struct Slice {
-    byte const*           data {};
-    usize                 length {};
+    slice<u8>             bytes;
     static constexpr auto from_encoded_bytes_unchecked(slice<u8> bytes) noexcept -> Slice {
-        return { bytes.as_raw_ptr(), bytes.len() };
+        return { bytes };
     }
-    constexpr auto as_encoded_bytes() const noexcept -> slice<u8> {
-        return slice<u8>::from_raw_parts(data, length);
-    }
+    constexpr auto as_encoded_bytes() const noexcept -> slice<u8> { return bytes; }
 };
 
 class Buf {
@@ -63,9 +60,13 @@ public:
     void push(slice<u8> value) {
         // A borrowed view may alias this buffer across a reserve or surrogate join.
         if (! inner_.is_empty() && ! value.is_empty()) {
-            auto start   = reinterpret_cast<rstd::uintptr_t>(inner_.data());
-            auto address = reinterpret_cast<rstd::uintptr_t>(value.as_raw_ptr());
-            if (address >= start && address - start < inner_.len().to_primitive()) {
+            bool aliases;
+            [[unsafe]] {
+                auto start   = reinterpret_cast<rstd::uintptr_t>(inner_.data());
+                auto address = reinterpret_cast<rstd::uintptr_t>(value.as_raw_ptr());
+                aliases      = address >= start && address - start < inner_.len().to_primitive();
+            }
+            if (aliases) {
                 auto copy = Vec<u8>::from(value);
                 push(copy.as_slice());
                 return;

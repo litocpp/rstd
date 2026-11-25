@@ -16,14 +16,14 @@ static auto error(io::ErrorKind::Entity kind) -> io::Error {
 struct RegistryFields {
     vec::Vec<sync::Arc<SubscriptionState>> subscribers =
         vec::Vec<sync::Arc<SubscriptionState>>::make();
-    size_t                        references[backend::capacity] {};
-    Option<io::error::RawOsError> failure;
+    array<size_t, backend::capacity> references {};
+    Option<io::error::RawOsError>    failure;
 };
 
 static auto registry() -> sync::Mutex<RegistryFields>& {
     // The detached dispatcher and in-flight OS handlers have process lifetime.
     static auto* state = ::alloc::raw_new<sync::Mutex<RegistryFields>>(RegistryFields {});
-    return *state;
+    [[unsafe]] { return *state; }
 }
 
 static auto refresh(SubscriptionFields& fields) -> bool {
@@ -120,18 +120,18 @@ auto subscribe(slice<SignalKind> kinds) -> io::Result<Subscription> {
         auto number = kind.as_raw().to_primitive();
         if (! backend::supported(number)) return Err(error(io::ErrorKind::InvalidInput));
         bool duplicate = false;
-        for (auto& interest : fields->interests) duplicate |= interest.kind == kind;
+        for (const auto& interest : fields->interests) duplicate |= interest.kind == kind;
         if (! duplicate) fields->interests.push(Interest { kind, backend::sequence(number) });
     }
     auto started = backend::start(dispatch);
     if (started.is_err()) return Err(rstd::move(started).unwrap_err_unchecked());
-    for (auto& interest : fields->interests) {
+    for (const auto& interest : fields->interests) {
         auto installed = backend::install(interest.kind.as_raw().to_primitive());
         if (installed.is_err()) return Err(rstd::move(installed).unwrap_err_unchecked());
     }
-    for (auto& interest : fields->interests) {
+    for (const auto& interest : fields->interests) {
         auto number = interest.kind.as_raw().to_primitive();
-        if (++entries->references[number] == 1) backend::set_listening(number, true);
+        if (++entries->references[usize(number)] == 1) backend::set_listening(number, true);
     }
     entries->subscribers.push(state.clone());
     return Ok(Subscription { rstd::move(state) });
@@ -149,7 +149,8 @@ auto Subscription::close() const -> io::Result<empty> {
             waker          = fields->waker.take();
             for (auto& interest : fields->interests) {
                 auto number = interest.kind.as_raw().to_primitive();
-                if (--entries->references[number] == 0) backend::set_listening(number, false);
+                if (--entries->references[usize(number)] == 0)
+                    backend::set_listening(number, false);
                 interest.pending = false;
             }
             for (size_t i = 0; i < entries->subscribers.len().to_primitive(); ++i) {

@@ -16,9 +16,12 @@ using rstd::ffi::OsString;
 using namespace rstd::prelude;
 using namespace rstd::literals;
 
+[[unsafe]]
 auto os_string_from_cstr(const char* s) -> OsString {
-    auto vec = Vec<u8>::from(CStr::from_ptr(s).to_bytes());
-    return OsString::from_encoded_bytes_unchecked(rstd::move(vec));
+    [[unsafe]] {
+        auto vec = Vec<u8>::from(CStr::from_ptr(s).to_bytes());
+        return OsString::from_encoded_bytes_unchecked(rstd::move(vec));
+    }
 }
 
 auto string_from_os_string(OsString value) -> String {
@@ -77,16 +80,21 @@ using SplitPaths = ::alloc::vec::VecIntoIter<PathBuf>;
 
 /// Parses a platform-native path list using the host `PATH` conventions.
 auto split_paths(ref<OsStr> unparsed) -> SplitPaths {
-    auto result = Vec<PathBuf>::make();
-    auto bytes  = unparsed.as_encoded_bytes();
-    auto part   = Vec<u8>::make();
+    auto       result    = Vec<PathBuf>::make();
+    auto       bytes     = unparsed.as_encoded_bytes();
+    auto       part      = Vec<u8>::make();
+    const auto push_part = [&] {
+        [[unsafe]] {
+            result.push(PathBuf::from(OsString::from_encoded_bytes_unchecked(rstd::move(part))));
+        }
+    };
 #if RSTD_OS_WINDOWS
     auto quoted = false;
     for (auto value : bytes) {
         if (value == u8('"')) {
             quoted = ! quoted;
         } else if (value == u8(';') && ! quoted) {
-            result.push(PathBuf::from(OsString::from_encoded_bytes_unchecked(rstd::move(part))));
+            push_part();
             part = Vec<u8>::make();
         } else {
             part.emplace_back(value);
@@ -95,14 +103,14 @@ auto split_paths(ref<OsStr> unparsed) -> SplitPaths {
 #else
     for (auto value : bytes) {
         if (value == u8(':')) {
-            result.push(PathBuf::from(OsString::from_encoded_bytes_unchecked(rstd::move(part))));
+            push_part();
             part = Vec<u8>::make();
         } else {
             part.emplace_back(value);
         }
     }
 #endif
-    result.push(PathBuf::from(OsString::from_encoded_bytes_unchecked(rstd::move(part))));
+    push_part();
     return rstd::move(result).into_iter();
 }
 
@@ -127,13 +135,13 @@ auto join_paths(slice<PathBuf> paths) -> Result<OsString, JoinPathsError> {
             if (value == u8(';')) quote = true;
         }
         if (quote) result.push("\""_str);
-        result.push(ref<OsStr>::from_encoded_bytes_unchecked(bytes));
+        result.push(os);
         if (quote) result.push("\""_str);
 #else
         for (auto value : bytes) {
             if (value == u8(':')) return Err(JoinPathsError {});
         }
-        result.push(ref<OsStr>::from_encoded_bytes_unchecked(bytes));
+        result.push(os);
 #endif
     }
     return Ok(rstd::move(result));
@@ -245,6 +253,8 @@ auto args() -> Args;
 /// Manually provides `argc`/`argv` (e.g. from `main`) for platforms where automatic
 /// startup capture is unavailable. Safe to call before `args()`.
 /// Windows always reads the native wide command line and ignores this fallback.
+/// Each argument and the argument array must stay readable for subsequent `args()` calls.
+[[unsafe]]
 void args_init(int argc, char const* const* argv);
 
 } // namespace rstd::env

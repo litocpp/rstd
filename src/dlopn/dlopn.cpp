@@ -9,11 +9,13 @@ namespace
 {
 
 auto error_message(const char* message, const char* fallback) -> Error {
-    if (message) {
-        auto text = ffi::CStr::from_ptr(message).to_str();
-        if (text.is_ok()) return Error(String::make(text.unwrap_unchecked()));
+    [[unsafe]] {
+        if (message) {
+            auto text = ffi::CStr::from_ptr(message).to_str();
+            if (text.is_ok()) return Error(String::make(text.unwrap_unchecked()));
+        }
+        return Error(String::make(ffi::CStr::from_ptr(fallback).to_str().unwrap_unchecked()));
     }
-    return Error(String::make(ffi::CStr::from_ptr(fallback).to_str().unwrap_unchecked()));
 }
 
 } // namespace

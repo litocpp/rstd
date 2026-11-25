@@ -17,7 +17,7 @@ void OwnedSocket::close_() noexcept {
 #if RSTD_OS_UNIX
     rstd::sys::libc::close(socket_);
 #elif RSTD_OS_WINDOWS
-    ::closesocket(reinterpret_cast<SOCKET>(socket_));
+    [[unsafe]] { ::closesocket(reinterpret_cast<SOCKET>(socket_)); }
 #endif
     socket_ = INVALID_RAW_SOCKET;
 }

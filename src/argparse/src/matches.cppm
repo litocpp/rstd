@@ -98,7 +98,7 @@ class Matches {
         if (! visible) return None();
         for (const auto& argument : (*global_matches_)->args) {
             if (argument.schema->command_token == command && argument.slot == slot) {
-                return Some(ref<GlobalMatchedArg>::from_raw_parts(rstd::addressof(argument)));
+                return Some(ref<GlobalMatchedArg>::from_ref(argument));
             }
         }
         return None();
@@ -123,14 +123,13 @@ public:
         ref<MatchedArg> matched;
         if (key.command_ == schema_->command_token && key.slot_ < schema_->args.len() &&
             ! schema_->args[key.slot_].global) {
-            spec    = ref<ArgSpec>::from_raw_parts(rstd::addressof(schema_->args[key.slot_]));
-            matched = ref<MatchedArg>::from_raw_parts(rstd::addressof(args_[key.slot_]));
+            spec    = ref<ArgSpec>::from_ref(schema_->args[key.slot_]);
+            matched = ref<MatchedArg>::from_ref(args_[key.slot_]);
         } else {
             auto global = global_match(key.command_, key.slot_);
             if (global.is_none()) return Err(MatchAccessError::ForeignKey());
-            spec = ref<ArgSpec>::from_raw_parts(
-                rstd::addressof((*global)->schema->args[(*global)->slot]));
-            matched = ref<MatchedArg>::from_raw_parts(rstd::addressof((*global)->matched));
+            spec    = ref<ArgSpec>::from_ref((*global)->schema->args[(*global)->slot]);
+            matched = ref<MatchedArg>::from_ref((*global)->matched);
         }
         if (spec->type_id != any::TypeId::of<T>()) {
             return Err(MatchAccessError::WrongType());
@@ -151,14 +150,13 @@ public:
         ref<MatchedArg> matched;
         if (key.command_ == schema_->command_token && key.slot_ < schema_->args.len() &&
             ! schema_->args[key.slot_].global) {
-            spec    = ref<ArgSpec>::from_raw_parts(rstd::addressof(schema_->args[key.slot_]));
-            matched = ref<MatchedArg>::from_raw_parts(rstd::addressof(args_[key.slot_]));
+            spec    = ref<ArgSpec>::from_ref(schema_->args[key.slot_]);
+            matched = ref<MatchedArg>::from_ref(args_[key.slot_]);
         } else {
             auto global = global_match(key.command_, key.slot_);
             if (global.is_none()) return Err(MatchAccessError::ForeignKey());
-            spec = ref<ArgSpec>::from_raw_parts(
-                rstd::addressof((*global)->schema->args[(*global)->slot]));
-            matched = ref<MatchedArg>::from_raw_parts(rstd::addressof((*global)->matched));
+            spec    = ref<ArgSpec>::from_ref((*global)->schema->args[(*global)->slot]);
+            matched = ref<MatchedArg>::from_ref((*global)->matched);
         }
         if (spec->type_id != any::TypeId::of<T>()) {
             return Err(MatchAccessError::WrongType());
@@ -190,11 +188,11 @@ public:
         auto            slot = schema_->id_index.get(id);
         ref<MatchedArg> matched;
         if (slot.is_some() && ! schema_->args[**slot].global) {
-            matched = ref<MatchedArg>::from_raw_parts(rstd::addressof(args_[**slot]));
+            matched = ref<MatchedArg>::from_ref(args_[**slot]);
         } else {
             auto global = global_match(id);
             if (global.is_none()) return None();
-            matched = ref<MatchedArg>::from_raw_parts(rstd::addressof((*global)->matched));
+            matched = ref<MatchedArg>::from_ref((*global)->matched);
         }
         if (matched->occurrences == usize()) return None();
         return matched->from_default ? Some(ValueSource::DefaultValue())
@@ -282,7 +280,7 @@ public:
 
     [[nodiscard]]
     auto matches() const noexcept -> ref<Matches> {
-        return ref<Matches>::from_raw_parts(rstd::addressof(matches_));
+        return ref<Matches>::from_ref(matches_);
     }
     [[nodiscard]]
     auto unknown() const noexcept -> slice<OsString> {

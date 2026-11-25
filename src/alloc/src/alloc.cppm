@@ -25,20 +25,26 @@ export auto alloc(Layout layout) noexcept -> void* {
 }
 
 /// Deallocates memory previously allocated with the given layout.
-/// \param ptr The pointer to the memory to deallocate.
+/// \param ptr A live allocation from this allocator, or null.
 /// \param layout The layout that was used to allocate the memory.
-export void dealloc(void* ptr, Layout layout) noexcept {
-    __rstd_dealloc(ptr, layout.size().to_primitive(), layout.align().to_primitive());
+export [[unsafe]]
+void dealloc(void* ptr, Layout layout) noexcept {
+    [[unsafe]] { __rstd_dealloc(ptr, layout.size().to_primitive(), layout.align().to_primitive()); }
 }
 
 /// Reallocates memory to a new size, preserving existing data up to the minimum of old and new sizes.
-/// \param ptr The pointer to the previously allocated memory.
+/// \param ptr A live allocation from this allocator, or null.
 /// \param layout The layout that was used for the original allocation.
 /// \param new_size The desired new size in bytes.
 /// \return A mutable pointer to the reallocated memory.
-export auto realloc(void* ptr, Layout layout, usize new_size) noexcept -> void* {
-    return __rstd_realloc(
-        ptr, layout.size().to_primitive(), layout.align().to_primitive(), new_size.to_primitive());
+export [[unsafe]]
+auto realloc(void* ptr, Layout layout, usize new_size) noexcept -> void* {
+    [[unsafe]] {
+        return __rstd_realloc(ptr,
+                              layout.size().to_primitive(),
+                              layout.align().to_primitive(),
+                              new_size.to_primitive());
+    }
 }
 
 /// Allocates zero-initialized memory with the given layout.
@@ -60,7 +66,9 @@ struct RawAllocationGuard {
     void*  pointer;
     Layout layout;
     ~RawAllocationGuard() {
-        if (pointer != nullptr) ::alloc::dealloc(pointer, layout);
+        if (pointer != nullptr) {
+            [[unsafe]] { ::alloc::dealloc(pointer, layout); }
+        }
     }
 };
 
@@ -79,20 +87,25 @@ auto raw_new(Args&&... args) noexcept(noexcept(rstd::construct_at(static_cast<T*
     auto* storage = ::alloc::alloc(layout);
     if (storage == nullptr) handle_alloc_error(layout);
     RawAllocationGuard guard { storage, layout };
-    auto* value   = rstd::construct_at(static_cast<T*>(storage), rstd::forward<Args>(args)...);
-    guard.pointer = nullptr;
-    return value;
+    [[unsafe]] {
+        auto* value   = rstd::construct_at(static_cast<T*>(storage), rstd::forward<Args>(args)...);
+        guard.pointer = nullptr;
+        return value;
+    }
 }
 
 /// Destroys one raw_new object and releases its storage, including when destruction throws.
 /// Null is accepted. The pointer must retain the exact allocated type and allocation address.
 export template<typename T>
     requires(! rstd::mtp::is_array<T>) && (! rstd::mtp::is_void<T>)
+[[unsafe]]
 void raw_delete(T* pointer) noexcept(rstd::mtp::noex_drop_v<T>) {
     if (pointer == nullptr) return;
     auto layout = Layout::from_size_align_unchecked(usize(sizeof(T)), usize(alignof(T)));
-    RawAllocationGuard guard { const_cast<rstd::mtp::rm_const<T>*>(pointer), layout };
-    rstd::destroy_at(pointer);
+    [[unsafe]] {
+        RawAllocationGuard guard { const_cast<rstd::mtp::rm_const<T>*>(pointer), layout };
+        rstd::destroy_at(pointer);
+    }
 }
 
 // Forward declaration of the global memory allocator.
@@ -121,55 +134,67 @@ struct rstd::Impl<rstd::alloc::Allocator, alloc_::Global>
         return Ok(Allocation { p, layout.size() });
     }
 
+    [[unsafe]]
     void deallocate(void* ptr, Layout layout) const noexcept {
-        if (layout.size() != usize()) ::alloc::dealloc(ptr, layout);
+        if (layout.size() != usize()) {
+            [[unsafe]] { ::alloc::dealloc(ptr, layout); }
+        }
     }
 
 private:
+    [[unsafe]]
     auto resize(void* pointer, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
         if (old_layout.size() == usize()) return allocate(new_layout);
         if (new_layout.size() == usize()) {
-            deallocate(pointer, old_layout);
+            [[unsafe]] { deallocate(pointer, old_layout); }
             return Ok(Allocation { new_layout.dangling(), new_layout.size() });
         }
         if (old_layout.align() != new_layout.align()) {
-            if (new_layout.size() >= old_layout.size())
-                return DefaultInImpl<Allocator, alloc_::Global>::grow(
+            [[unsafe]] {
+                if (new_layout.size() >= old_layout.size())
+                    return DefaultInImpl<Allocator, alloc_::Global>::grow(
+                        pointer, old_layout, new_layout);
+                return DefaultInImpl<Allocator, alloc_::Global>::shrink(
                     pointer, old_layout, new_layout);
-            return DefaultInImpl<Allocator, alloc_::Global>::shrink(
-                pointer, old_layout, new_layout);
+            }
         }
         if (old_layout.size() == new_layout.size())
             return Ok(Allocation { pointer, new_layout.size() });
-        auto replacement = ::alloc::realloc(pointer, old_layout, new_layout.size());
+        void* replacement;
+        [[unsafe]] { replacement = ::alloc::realloc(pointer, old_layout, new_layout.size()); }
         if (replacement == nullptr) return Err(AllocError {});
         return Ok(Allocation { replacement, new_layout.size() });
     }
 
 public:
     // Inherited member pointers in Global's dyn vtable crash Windows Clang with reduced BMIs.
+    [[unsafe]]
     auto grow(void* pointer, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
         debug_assert(new_layout.size() >= old_layout.size());
-        return resize(pointer, old_layout, new_layout);
+        [[unsafe]] { return resize(pointer, old_layout, new_layout); }
     }
 
+    [[unsafe]]
     auto grow_zeroed(void* pointer, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
-        auto result = grow(pointer, old_layout, new_layout);
-        if (result.is_ok() && new_layout.size() > old_layout.size()) {
-            auto tail =
-                static_cast<rstd::byte*>(result->pointer) + old_layout.size().to_primitive();
-            rstd::mem::memset(tail, u8(), new_layout.size() - old_layout.size());
+        [[unsafe]] {
+            auto result = grow(pointer, old_layout, new_layout);
+            if (result.is_ok() && new_layout.size() > old_layout.size()) {
+                auto tail =
+                    static_cast<rstd::byte*>(result->pointer) + old_layout.size().to_primitive();
+                rstd::mem::memset(tail, u8(), new_layout.size() - old_layout.size());
+            }
+            return result;
         }
-        return result;
     }
 
+    [[unsafe]]
     auto shrink(void* pointer, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
         debug_assert(new_layout.size() <= old_layout.size());
-        return resize(pointer, old_layout, new_layout);
+        [[unsafe]] { return resize(pointer, old_layout, new_layout); }
     }
 };
 
@@ -208,23 +233,27 @@ public:
         return allocator()->allocate_zeroed(layout);
     }
 
+    [[unsafe]]
     void deallocate(void* ptr, Layout layout) const noexcept {
-        allocator()->deallocate(ptr, layout);
+        [[unsafe]] { allocator()->deallocate(ptr, layout); }
     }
 
+    [[unsafe]]
     auto grow(void* ptr, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
-        return allocator()->grow(ptr, old_layout, new_layout);
+        [[unsafe]] { return allocator()->grow(ptr, old_layout, new_layout); }
     }
 
+    [[unsafe]]
     auto grow_zeroed(void* ptr, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
-        return allocator()->grow_zeroed(ptr, old_layout, new_layout);
+        [[unsafe]] { return allocator()->grow_zeroed(ptr, old_layout, new_layout); }
     }
 
+    [[unsafe]]
     auto shrink(void* ptr, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
-        return allocator()->shrink(ptr, old_layout, new_layout);
+        [[unsafe]] { return allocator()->shrink(ptr, old_layout, new_layout); }
     }
 };
 

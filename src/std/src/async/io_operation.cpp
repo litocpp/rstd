@@ -90,7 +90,7 @@ auto CompletionSource::file(os::handle::BorrowedHandle handle) noexcept -> Compl
 }
 
 auto CompletionSource::file(os::handle::OwnedHandle handle) -> CompletionSource {
-    return file(os::fd::OwnedFd::from_raw_fd(rstd::move(handle).into_raw_handle()));
+    [[unsafe]] { return file(os::fd::OwnedFd::from_raw_fd(rstd::move(handle).into_raw_handle())); }
 }
 #endif
 
@@ -222,7 +222,9 @@ IoOperationState::IoOperationState(CompletionSource                             
 void IoOperationState::begin() {
     auto active = source.begin_operation();
 #if LITO_FEAT_ASYNC_DEBUG
-    if (active && (! debug::CURRENT || ! debug::CURRENT->enabled())) return;
+    [[unsafe]] {
+        if (active && (! debug::CURRENT || ! debug::CURRENT->enabled())) return;
+    }
 #else
     if (active) return;
 #endif
@@ -247,26 +249,34 @@ auto IoOperationState::poll_operation() -> PollOperation {
         auto  writable = read.buffer.spare_capacity_mut();
         auto  data     = writable.as_byte_ptr();
         auto  length   = read.requested;
-        return attach_source(
-            source.kind() == CompletionSourceKind::Socket
-                ? PollOperation::read_socket(source.as_raw_fd(), data, length)
-                : PollOperation::read(source.as_raw_fd(), data, length, read.offset));
+        [[unsafe]] {
+            return attach_source(
+                source.kind() == CompletionSourceKind::Socket
+                    ? PollOperation::read_socket(source.as_raw_fd(), data, length)
+                    : PollOperation::read(source.as_raw_fd(), data, length, read.offset));
+        }
     }
     case PollOperationKind::Write: {
         auto& buffer = payload.as<PollOperationKind::Write>().buffer;
-        return attach_source(
-            source.kind() == CompletionSourceKind::Socket
-                ? PollOperation::write_socket(source.as_raw_fd(), buffer.data(), buffer.len())
-                : PollOperation::write(source.as_raw_fd(), buffer.data(), buffer.len()));
+        [[unsafe]] {
+            return attach_source(
+                source.kind() == CompletionSourceKind::Socket
+                    ? PollOperation::write_socket(source.as_raw_fd(), buffer.data(), buffer.len())
+                    : PollOperation::write(source.as_raw_fd(), buffer.data(), buffer.len()));
+        }
     }
     case PollOperationKind::RecvMessage:
-        return attach_source(PollOperation::recv_message(
-            source.as_raw_fd(),
-            payload.as<PollOperationKind::RecvMessage>().message->native_message()));
+        [[unsafe]] {
+            return attach_source(PollOperation::recv_message(
+                source.as_raw_fd(),
+                payload.as<PollOperationKind::RecvMessage>().message->native_message()));
+        }
     case PollOperationKind::SendMessage:
-        return attach_source(PollOperation::send_message(
-            source.as_raw_fd(),
-            payload.as<PollOperationKind::SendMessage>().message->native_message()));
+        [[unsafe]] {
+            return attach_source(PollOperation::send_message(
+                source.as_raw_fd(),
+                payload.as<PollOperationKind::SendMessage>().message->native_message()));
+        }
     case PollOperationKind::Connect:
         return attach_source(PollOperation::connect_socket(
             source.as_raw_fd(), payload.as<PollOperationKind::Connect>().address));
@@ -274,11 +284,13 @@ auto IoOperationState::poll_operation() -> PollOperation {
         auto& accept = payload.as<PollOperationKind::Accept>();
         auto  accepted =
             accept.socket.is_some() ? accept.socket->as_raw_socket() : os::fd::INVALID_RAW_FD;
-        return attach_source(PollOperation::accept_socket(source.as_raw_fd(),
-                                                          accepted,
-                                                          accept.address,
-                                                          accept.address_buffer.data(),
-                                                          accept.address_buffer.len()));
+        [[unsafe]] {
+            return attach_source(PollOperation::accept_socket(source.as_raw_fd(),
+                                                              accepted,
+                                                              accept.address,
+                                                              accept.address_buffer.data(),
+                                                              accept.address_buffer.len()));
+        }
     }
     }
     rstd::unreachable();
@@ -296,13 +308,13 @@ auto IoOperationState::finish(PollCompletion completion) -> rstd::io::Result<IoC
         auto  accepted     = Option<os::socket::OwnedSocket> {};
         if (accept_state.socket.is_some()) {
             if (accept_state.socket->as_raw_socket() != resource) {
-                auto unexpected = os::socket::OwnedSocket::from_raw_socket(resource);
+                [[unsafe]] { (void)os::socket::OwnedSocket::from_raw_socket(resource); }
                 return Err(rstd::io::error::Error::from_kind(
                     rstd::io::error::ErrorKind { rstd::io::error::ErrorKind::InvalidData }));
             }
             accepted = Some(accept_state.socket.take().unwrap_unchecked());
         } else {
-            accepted = Some(os::socket::OwnedSocket::from_raw_socket(resource));
+            [[unsafe]] { accepted = Some(os::socket::OwnedSocket::from_raw_socket(resource)); }
         }
         return Ok(IoCompletion { usize(), flags, bytes::Bytes::make(), rstd::move(accepted) });
     }
@@ -316,7 +328,7 @@ auto IoOperationState::finish(PollCompletion completion) -> rstd::io::Result<IoC
         auto& read     = payload.as<PollOperationKind::RecvMessage>();
         auto  metadata = read.message->result(transferred);
         if (metadata.is_err()) return Err(rstd::move(metadata).unwrap_err());
-        read.buffer.advance_mut_unchecked(transferred);
+        [[unsafe]] { read.buffer.advance_mut_unchecked(transferred); }
         return Ok(IoCompletion { transferred,
                                  flags,
                                  read.return_buffer ? bytes::Bytes {} : read.buffer.freeze(),
@@ -332,7 +344,7 @@ auto IoOperationState::finish(PollCompletion completion) -> rstd::io::Result<IoC
         if (transferred > read.requested)
             return Err(rstd::io::Error::from_kind(
                 rstd::io::ErrorKind { rstd::io::ErrorKind::InvalidData }));
-        read.buffer.advance_mut_unchecked(transferred);
+        [[unsafe]] { read.buffer.advance_mut_unchecked(transferred); }
         if (read.return_buffer) {
             return Ok(IoCompletion { transferred, flags, bytes::Bytes {} });
         }
@@ -369,7 +381,9 @@ auto IoOperationState::bind_worker(WorkerHandle current) const -> rstd::io::Resu
 
 #if LITO_FEAT_ASYNC_DEBUG
 void IoOperationState::observe(IoOperationFields& fields) {
-    if (fields.diagnostic.enabled() || ! debug::CURRENT || ! debug::CURRENT->enabled()) return;
+    [[unsafe]] {
+        if (fields.diagnostic.enabled() || ! debug::CURRENT || ! debug::CURRENT->enabled()) return;
+    }
     auto source_fields = source.m_state->fields.lock().unwrap_unchecked();
     if (! source_fields->diagnostic.enabled())
         source_fields->diagnostic = debug::current().child(
@@ -482,8 +496,12 @@ void finish_completion_source_release(const CompletionSourceArc&     state,
 }
 
 void completion_source_owner_dispatch(voidp data, PollEventData event) {
-    auto state =
-        CompletionSourceArc::from_raw(::alloc::sync::ArcRaw<CompletionSourceState>::from_raw(data));
+    auto state = [data] {
+        [[unsafe]] {
+            return CompletionSourceArc::from_raw(
+                ::alloc::sync::ArcRaw<CompletionSourceState>::from_raw(data));
+        }
+    }();
     auto error = Option<rstd::io::error::Error> {};
     if (event.has_backend_error()) {
         error = Some(event.take_backend_error());
@@ -496,9 +514,10 @@ void completion_source_owner_dispatch(voidp data, PollEventData event) {
 }
 
 void completion_source_owner_drop(voidp data) {
-    auto state =
-        CompletionSourceArc::from_raw(::alloc::sync::ArcRaw<CompletionSourceState>::from_raw(data));
-    (void)state;
+    [[unsafe]] {
+        (void)CompletionSourceArc::from_raw(
+            ::alloc::sync::ArcRaw<CompletionSourceState>::from_raw(data));
+    }
 }
 
 const RawPollEventOwnerVTable COMPLETION_SOURCE_OWNER_VTABLE {
@@ -508,8 +527,12 @@ const RawPollEventOwnerVTable COMPLETION_SOURCE_OWNER_VTABLE {
 };
 
 auto completion_source_owner_clone(voidp data) -> RawPollEventOwner {
-    auto state =
-        CompletionSourceArc::from_raw(::alloc::sync::ArcRaw<CompletionSourceState>::from_raw(data));
+    auto state = [data] {
+        [[unsafe]] {
+            return CompletionSourceArc::from_raw(
+                ::alloc::sync::ArcRaw<CompletionSourceState>::from_raw(data));
+        }
+    }();
     auto cloned = state.clone();
     (void)rstd::move(state).into_raw().into_raw();
     return RawPollEventOwner::from_raw_parts(rstd::move(cloned).into_raw().into_raw(),
@@ -518,8 +541,11 @@ auto completion_source_owner_clone(voidp data) -> RawPollEventOwner {
 
 auto make_completion_source_owner(const CompletionSourceArc& state) -> PollEventOwner {
     auto owned = state.clone();
-    return PollEventOwner::from_raw(RawPollEventOwner::from_raw_parts(
-        rstd::move(owned).into_raw().into_raw(), rstd::addressof(COMPLETION_SOURCE_OWNER_VTABLE)));
+    [[unsafe]] {
+        return PollEventOwner::from_raw(
+            RawPollEventOwner::from_raw_parts(rstd::move(owned).into_raw().into_raw(),
+                                              rstd::addressof(COMPLETION_SOURCE_OWNER_VTABLE)));
+    }
 }
 
 void try_submit_completion_source_release(const CompletionSourceArc& state) {
@@ -578,14 +604,20 @@ void store_io_operation_error(const IoOperationArc& state, rstd::io::error::Erro
 auto io_operation_owner_clone(voidp data) -> RawPollEventOwner;
 
 void io_operation_owner_dispatch(voidp data, PollEventData event) {
-    auto state = IoOperationArc::from_raw(::alloc::sync::ArcRaw<IoOperationState>::from_raw(data));
+    auto state = [data] {
+        [[unsafe]] {
+            return IoOperationArc::from_raw(
+                ::alloc::sync::ArcRaw<IoOperationState>::from_raw(data));
+        }
+    }();
     publish_io_operation_event(state, rstd::move(event));
     (void)rstd::move(state).into_raw().into_raw();
 }
 
 void io_operation_owner_drop(voidp data) {
-    auto state = IoOperationArc::from_raw(::alloc::sync::ArcRaw<IoOperationState>::from_raw(data));
-    (void)state;
+    [[unsafe]] {
+        (void)IoOperationArc::from_raw(::alloc::sync::ArcRaw<IoOperationState>::from_raw(data));
+    }
 }
 
 const RawPollEventOwnerVTable IO_OPERATION_OWNER_VTABLE {
@@ -595,7 +627,12 @@ const RawPollEventOwnerVTable IO_OPERATION_OWNER_VTABLE {
 };
 
 auto io_operation_owner_clone(voidp data) -> RawPollEventOwner {
-    auto state  = IoOperationArc::from_raw(::alloc::sync::ArcRaw<IoOperationState>::from_raw(data));
+    auto state = [data] {
+        [[unsafe]] {
+            return IoOperationArc::from_raw(
+                ::alloc::sync::ArcRaw<IoOperationState>::from_raw(data));
+        }
+    }();
     auto cloned = state.clone();
     (void)rstd::move(state).into_raw().into_raw();
     return RawPollEventOwner::from_raw_parts(rstd::move(cloned).into_raw().into_raw(),
@@ -604,8 +641,10 @@ auto io_operation_owner_clone(voidp data) -> RawPollEventOwner {
 
 auto make_io_operation_owner(const IoOperationArc& state) -> PollEventOwner {
     auto owned = state.clone();
-    return PollEventOwner::from_raw(RawPollEventOwner::from_raw_parts(
-        rstd::move(owned).into_raw().into_raw(), rstd::addressof(IO_OPERATION_OWNER_VTABLE)));
+    [[unsafe]] {
+        return PollEventOwner::from_raw(RawPollEventOwner::from_raw_parts(
+            rstd::move(owned).into_raw().into_raw(), rstd::addressof(IO_OPERATION_OWNER_VTABLE)));
+    }
 }
 
 struct SourceReleaseState {
@@ -663,7 +702,9 @@ struct OwnedSourceRelease {
 #endif
     using Arc = sync::Arc<Value>;
     static auto clone(voidp data) -> RawPollEventOwner {
-        auto owner  = Arc::from_raw(::alloc::sync::ArcRaw<Value>::from_raw(data));
+        auto owner = [data] {
+            [[unsafe]] { return Arc::from_raw(::alloc::sync::ArcRaw<Value>::from_raw(data)); }
+        }();
         auto copied = owner.clone();
         (void)rstd::move(owner).into_raw().into_raw();
         return RawPollEventOwner::from_raw_parts(rstd::move(copied).into_raw().into_raw(),
@@ -671,7 +712,9 @@ struct OwnedSourceRelease {
     }
     static void dispatch(voidp data, PollEventData event) {
 #if LITO_FEAT_ASYNC_DEBUG
-        auto owner  = Arc::from_raw(::alloc::sync::ArcRaw<Value>::from_raw(data));
+        auto owner = [data] {
+            [[unsafe]] { return Arc::from_raw(::alloc::sync::ArcRaw<Value>::from_raw(data)); }
+        }();
         auto failed = event.has_backend_error() || event.kind() != PollEventKind::SourceReleased;
         owner->diagnostic.outcome(failed ? debug::Outcome::Error : debug::Outcome::Success);
         owner->diagnostic.state(debug::State::Released);
@@ -682,8 +725,7 @@ struct OwnedSourceRelease {
 #endif
     }
     static void drop(voidp data) {
-        auto owner = Arc::from_raw(::alloc::sync::ArcRaw<Value>::from_raw(data));
-        (void)owner;
+        [[unsafe]] { (void)Arc::from_raw(::alloc::sync::ArcRaw<Value>::from_raw(data)); }
     }
     inline static const RawPollEventOwnerVTable vtable { &clone, &dispatch, &drop };
     static auto make(T value, const SourceReleaseState& release) -> PollEventOwner {
@@ -693,8 +735,10 @@ struct OwnedSourceRelease {
         (void)release;
         auto owner = Arc::make(rstd::move(value));
 #endif
-        return PollEventOwner::from_raw(RawPollEventOwner::from_raw_parts(
-            rstd::move(owner).into_raw().into_raw(), rstd::addressof(vtable)));
+        [[unsafe]] {
+            return PollEventOwner::from_raw(RawPollEventOwner::from_raw_parts(
+                rstd::move(owner).into_raw().into_raw(), rstd::addressof(vtable)));
+        }
     }
 };
 
@@ -719,15 +763,18 @@ CompletionSourceState::~CompletionSourceState() {
 }
 
 void completion_source_release_cancel(voidp data) {
-    auto state =
-        CompletionSourceArc::from_raw(::alloc::sync::ArcRaw<CompletionSourceState>::from_raw(data));
-    state->fields.lock().unwrap_unchecked()->release_token = None<FacilityCompletionToken>();
+    [[unsafe]] {
+        auto state = CompletionSourceArc::from_raw(
+            ::alloc::sync::ArcRaw<CompletionSourceState>::from_raw(data));
+        state->fields.lock().unwrap_unchecked()->release_token = None<FacilityCompletionToken>();
+    }
 }
 
 void completion_source_release_drop(voidp data) {
-    auto state =
-        CompletionSourceArc::from_raw(::alloc::sync::ArcRaw<CompletionSourceState>::from_raw(data));
-    (void)state;
+    [[unsafe]] {
+        (void)CompletionSourceArc::from_raw(
+            ::alloc::sync::ArcRaw<CompletionSourceState>::from_raw(data));
+    }
 }
 
 const RawFacilityCancellationVTable COMPLETION_SOURCE_RELEASE_CANCELLATION_VTABLE {
@@ -738,11 +785,13 @@ const RawFacilityCancellationVTable COMPLETION_SOURCE_RELEASE_CANCELLATION_VTABL
 auto make_completion_source_release_cancellation(const CompletionSourceArc& state,
                                                  FacilityToken token) -> FacilityCancellation {
     auto owned = state.clone();
-    return FacilityCancellation::from_raw(
-        token,
-        RawFacilityCancellation::from_raw_parts(
-            rstd::move(owned).into_raw().into_raw(),
-            rstd::addressof(COMPLETION_SOURCE_RELEASE_CANCELLATION_VTABLE)));
+    [[unsafe]] {
+        return FacilityCancellation::from_raw(
+            token,
+            RawFacilityCancellation::from_raw_parts(
+                rstd::move(owned).into_raw().into_raw(),
+                rstd::addressof(COMPLETION_SOURCE_RELEASE_CANCELLATION_VTABLE)));
+    }
 }
 
 #if LITO_FEAT_ASYNC_DEBUG
@@ -919,10 +968,12 @@ void request_io_operation_cancel(const IoOperationArc& state) {
     if (worker.is_some() && key.is_some()) {
         auto command = PollCommand::cancel_operation(*key);
         if (CURRENT_RUNTIME != nullptr && CURRENT_RUNTIME_WORKER_CONTEXT != nullptr) {
-            auto current = CURRENT_RUNTIME->current_poll_worker();
-            if (current.is_ok() && worker->is_same(*current)) {
-                (void)CURRENT_RUNTIME->defer_current_poll(rstd::move(command));
-                return;
+            [[unsafe]] {
+                auto current = CURRENT_RUNTIME->current_poll_worker();
+                if (current.is_ok() && worker->is_same(*current)) {
+                    (void)CURRENT_RUNTIME->defer_current_poll(rstd::move(command));
+                    return;
+                }
             }
         }
         (void)worker->submit_poll(rstd::move(command));
@@ -930,13 +981,16 @@ void request_io_operation_cancel(const IoOperationArc& state) {
 }
 
 void io_operation_cancellation_cancel(voidp data) {
-    auto state = IoOperationArc::from_raw(::alloc::sync::ArcRaw<IoOperationState>::from_raw(data));
-    request_io_operation_cancel(state);
+    [[unsafe]] {
+        request_io_operation_cancel(
+            IoOperationArc::from_raw(::alloc::sync::ArcRaw<IoOperationState>::from_raw(data)));
+    }
 }
 
 void io_operation_cancellation_drop(voidp data) {
-    auto state = IoOperationArc::from_raw(::alloc::sync::ArcRaw<IoOperationState>::from_raw(data));
-    (void)state;
+    [[unsafe]] {
+        (void)IoOperationArc::from_raw(::alloc::sync::ArcRaw<IoOperationState>::from_raw(data));
+    }
 }
 
 const RawFacilityCancellationVTable IO_OPERATION_CANCELLATION_VTABLE {
@@ -947,10 +1001,13 @@ const RawFacilityCancellationVTable IO_OPERATION_CANCELLATION_VTABLE {
 auto make_io_operation_cancellation(const IoOperationArc& state, FacilityToken token)
     -> FacilityCancellation {
     auto owned = state.clone();
-    return FacilityCancellation::from_raw(
-        token,
-        RawFacilityCancellation::from_raw_parts(rstd::move(owned).into_raw().into_raw(),
-                                                rstd::addressof(IO_OPERATION_CANCELLATION_VTABLE)));
+    [[unsafe]] {
+        return FacilityCancellation::from_raw(
+            token,
+            RawFacilityCancellation::from_raw_parts(
+                rstd::move(owned).into_raw().into_raw(),
+                rstd::addressof(IO_OPERATION_CANCELLATION_VTABLE)));
+    }
 }
 
 enum class IoOperationSubmitStatus
@@ -981,7 +1038,9 @@ auto ensure_io_operation_submitted(const IoOperationArc& state) -> IoOperationSu
                                      rstd::io::error::ErrorKind::InvalidInput }));
         return IoOperationSubmitStatus::Rejected;
     }
-    if (! CURRENT_RUNTIME->io_enabled()) {
+    bool io_enabled;
+    [[unsafe]] { io_enabled = CURRENT_RUNTIME->io_enabled(); }
+    if (! io_enabled) {
         store_io_operation_error(state,
                                  rstd::io::error::Error::from_kind(rstd::io::error::ErrorKind {
                                      rstd::io::error::ErrorKind::Unsupported }));
@@ -994,7 +1053,9 @@ auto ensure_io_operation_submitted(const IoOperationArc& state) -> IoOperationSu
         return IoOperationSubmitStatus::Rejected;
     }
 
-    auto current_result = CURRENT_RUNTIME->current_poll_worker();
+    auto current_result = [] {
+        [[unsafe]] { return CURRENT_RUNTIME->current_poll_worker(); }
+    }();
     if (current_result.is_err()) {
         store_io_operation_error(state, rstd::move(current_result).unwrap_err_unchecked());
         return IoOperationSubmitStatus::Rejected;
@@ -1017,7 +1078,11 @@ auto ensure_io_operation_submitted(const IoOperationArc& state) -> IoOperationSu
     auto key     = OperationKey {};
     auto command = Option<PollCommand> {};
     if (local) {
-        auto reserved = CURRENT_RUNTIME->reserve_current_operation(make_io_operation_owner(state));
+        auto reserved = [&] {
+            [[unsafe]] {
+                return CURRENT_RUNTIME->reserve_current_operation(make_io_operation_owner(state));
+            }
+        }();
         if (reserved.is_err()) {
             store_io_operation_error(state, rstd::move(reserved).unwrap_err_unchecked());
             return IoOperationSubmitStatus::Rejected;
@@ -1041,16 +1106,19 @@ auto ensure_io_operation_submitted(const IoOperationArc& state) -> IoOperationSu
         fields->diagnostic.state(
             debug::State::Submitted, false, worker.id().as_usize().to_primitive());
 #endif
-        auto result =
-            local ? CURRENT_RUNTIME->defer_current_poll(rstd::move(command).unwrap_unchecked())
-                  : worker.submit_poll(rstd::move(command).unwrap_unchecked());
+        auto result = [&] {
+            if (! local) return worker.submit_poll(rstd::move(command).unwrap_unchecked());
+            [[unsafe]] {
+                return CURRENT_RUNTIME->defer_current_poll(rstd::move(command).unwrap_unchecked());
+            }
+        }();
         if (result.is_err()) {
             fields->worker = None<WorkerHandle>();
             fields->key    = None<OperationKey>();
         } else if (fields->cancel_requested) {
             auto cancel = PollCommand::cancel_operation(key);
             if (local) {
-                (void)CURRENT_RUNTIME->defer_current_poll(rstd::move(cancel));
+                [[unsafe]] { (void)CURRENT_RUNTIME->defer_current_poll(rstd::move(cancel)); }
             } else {
                 (void)worker.submit_poll(rstd::move(cancel));
             }
@@ -1059,7 +1127,7 @@ auto ensure_io_operation_submitted(const IoOperationArc& state) -> IoOperationSu
     }();
     if (submitted.is_err()) {
         if (local) {
-            CURRENT_RUNTIME->abandon_current_operation(key);
+            [[unsafe]] { CURRENT_RUNTIME->abandon_current_operation(key); }
         } else {
             auto rejected = rstd::move(submitted).unwrap_err_unchecked();
             auto event    = rstd::move(rejected).into_error_event(rstd::io::error::Error::from_kind(
@@ -1181,8 +1249,12 @@ auto IoOperation::recv_datagram_into(const CompletionSource& source,
     buffer.clear();
     auto writable = buffer.spare_capacity_mut();
     auto length   = rstd::min(writable.len(), usize(65535));
-    auto message  = ::alloc::boxed::Box<sys::socket::DatagramMessage>::make(
-        writable.as_byte_ptr(), length, local);
+    auto message  = [&] {
+        [[unsafe]] {
+            return ::alloc::boxed::Box<sys::socket::DatagramMessage>::make(
+                writable.as_byte_ptr(), length, local);
+        }
+    }();
     auto state = IoOperationArc::make(source.clone(), rstd::move(buffer), rstd::move(message));
     state->payload.as<PollOperationKind::RecvMessage>().return_buffer = true;
     if (source.kind() != CompletionSourceKind::Socket)
@@ -1220,8 +1292,12 @@ auto IoOperation::send_datagram(const CompletionSource& source,
     if (source.kind() != CompletionSourceKind::Socket || data.len() > usize(65535))
         return Err(rstd::io::error::Error::from_kind(
             rstd::io::error::ErrorKind { rstd::io::error::ErrorKind::InvalidInput }));
-    auto message = ::alloc::boxed::Box<sys::socket::DatagramMessage>::make(
-        const_cast<byte*>(data.data()), data.len(), local);
+    auto message = [&] {
+        [[unsafe]] {
+            return ::alloc::boxed::Box<sys::socket::DatagramMessage>::make(
+                const_cast<byte*>(data.data()), data.len(), local);
+        }
+    }();
     auto prepared = message->prepare_send(rstd::move(target));
     if (prepared.is_err()) return Err(rstd::move(prepared).unwrap_err());
     return Ok(IoOperation {

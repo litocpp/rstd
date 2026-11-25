@@ -65,8 +65,8 @@ struct Member {
 
     template<typename T>
     static auto slot(T& value) {
-        const ref<str> names[] = { Aliases.view()..., ref<str> {} };
-        auto           aliases = slice<ref<str>>::from_raw_parts(names, usize(sizeof...(Aliases)));
+        const array<ref<str>, sizeof...(Aliases)> names { Aliases.view()... };
+        auto                                      aliases = names.as_slice();
         if constexpr (Policy == FieldPolicy::Defaulted)
             return DefaultedField<type>(Name.view(), aliases, rstd::move(value.*Pointer));
         else
@@ -74,9 +74,8 @@ struct Member {
     }
 
     static auto unseeded_slot() {
-        const ref<str> names[] = { Aliases.view()..., ref<str> {} };
-        return OptionalField<type>(
-            Name.view(), slice<ref<str>>::from_raw_parts(names, usize(sizeof...(Aliases))));
+        const array<ref<str>, sizeof...(Aliases)> names { Aliases.view()... };
+        return OptionalField<type>(Name.view(), names.as_slice());
     }
 };
 
@@ -88,9 +87,8 @@ struct DefaultedMember : Member<Pointer, Name, FieldPolicy::Defaulted, Aliases..
 
     template<typename T>
     static auto slot(T&) {
-        const ref<str> names[] = { Aliases.view()..., ref<str> {} };
-        auto           aliases = slice<ref<str>>::from_raw_parts(names, usize(sizeof...(Aliases)));
-        return DefaultFactoryField<type, Factory>(Name.view(), aliases);
+        const array<ref<str>, sizeof...(Aliases)> names { Aliases.view()... };
+        return DefaultFactoryField<type, Factory>(Name.view(), names.as_slice());
     }
 };
 

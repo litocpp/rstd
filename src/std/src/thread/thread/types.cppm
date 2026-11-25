@@ -41,7 +41,7 @@ public:
     auto as_cstr() const noexcept { return inner.as_ref(); }
 
     auto as_str() const noexcept -> ref<str> {
-        return rstd::str_::from_utf8_unchecked(inner.to_bytes());
+        [[unsafe]] { return rstd::str_::from_utf8_unchecked(inner.to_bytes()); }
     }
 };
 
@@ -133,6 +133,8 @@ public:
 
     auto into_raw() -> voidp;
 
+    /// Adopts a handle transferred by `into_raw`. Recover that handle only once.
+    [[unsafe]]
     static auto from_raw(voidp p) -> Thread;
 
     auto set_current() && -> Result<empty, Thread>;

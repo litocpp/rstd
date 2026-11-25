@@ -48,21 +48,29 @@ class CoroFutureState {
         sync::Arc<CoroFutureState> state;
         usize                      generation;
         static void                run(voidp data) {
-            auto& job = *static_cast<Job*>(data);
-            job.state->run(job.state, job.generation);
+            [[unsafe]] {
+                auto& job = *static_cast<Job*>(data);
+                job.state->run(job.state, job.generation);
+            }
         }
         static void cancel(voidp data) {
-            auto& job = *static_cast<Job*>(data);
-            job.state->cancel(job.generation);
+            [[unsafe]] {
+                auto& job = *static_cast<Job*>(data);
+                job.state->cancel(job.generation);
+            }
         }
-        static void drop(voidp data) { ::alloc::raw_delete(static_cast<Job*>(data)); }
+        static void drop(voidp data) {
+            [[unsafe]] { ::alloc::raw_delete(static_cast<Job*>(data)); }
+        }
     };
 
     static void
     submit(const sync::Arc<CoroFutureState>& state, FacilityEndpoint endpoint, usize generation) {
         static const RawFacilityJobVTable vtable { Job::run, Job::cancel, Job::drop };
         auto*                             job = ::alloc::raw_new<Job>(state.clone(), generation);
-        (void)endpoint.submit(FacilityJob::from_raw(RawFacilityJob { job, &vtable }));
+        [[unsafe]] {
+            (void)endpoint.submit(FacilityJob::from_raw(RawFacilityJob { job, &vtable }));
+        }
     }
 
     void finish(Fields& fields) {

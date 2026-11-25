@@ -90,28 +90,36 @@ public:
         auto tracking = TrackingAllocator(::alloc::allocator_ref(state->upstream), state->tracker);
         return tracking.allocate_zeroed(layout);
     }
+    /// The live allocation must belong to this allocator and match `layout`.
+    [[unsafe]]
     auto deallocate(void* pointer, Layout layout) const noexcept -> void {
         auto state    = state_->lock().unwrap_unchecked();
         auto tracking = TrackingAllocator(::alloc::allocator_ref(state->upstream), state->tracker);
-        return tracking.deallocate(pointer, layout);
+        [[unsafe]] { tracking.deallocate(pointer, layout); }
     }
+    /// Match the allocation's original layout and use a new size at least as large.
+    [[unsafe]]
     auto grow(void* pointer, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
         auto state    = state_->lock().unwrap_unchecked();
         auto tracking = TrackingAllocator(::alloc::allocator_ref(state->upstream), state->tracker);
-        return tracking.grow(pointer, old_layout, new_layout);
+        [[unsafe]] { return tracking.grow(pointer, old_layout, new_layout); }
     }
+    /// Has the same ownership and layout requirements as `grow`.
+    [[unsafe]]
     auto grow_zeroed(void* pointer, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
         auto state    = state_->lock().unwrap_unchecked();
         auto tracking = TrackingAllocator(::alloc::allocator_ref(state->upstream), state->tracker);
-        return tracking.grow_zeroed(pointer, old_layout, new_layout);
+        [[unsafe]] { return tracking.grow_zeroed(pointer, old_layout, new_layout); }
     }
+    /// Match the allocation's original layout and use a new size no larger than the old one.
+    [[unsafe]]
     auto shrink(void* pointer, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
         auto state    = state_->lock().unwrap_unchecked();
         auto tracking = TrackingAllocator(::alloc::allocator_ref(state->upstream), state->tracker);
-        return tracking.shrink(pointer, old_layout, new_layout);
+        [[unsafe]] { return tracking.shrink(pointer, old_layout, new_layout); }
     }
 };
 } // namespace rstd::alloc

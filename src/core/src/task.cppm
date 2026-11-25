@@ -10,15 +10,29 @@ class Poll {
     alignas(T) rstd::byte storage[sizeof(T)];
     bool m_ready { false };
 
-    constexpr auto ptr() noexcept -> T* { return rstd::launder(reinterpret_cast<T*>(storage)); }
+    constexpr auto storage_ptr() noexcept -> T* {
+        [[unsafe]] { return reinterpret_cast<T*>(storage); }
+    }
+
+    constexpr auto ptr() noexcept -> T* {
+        [[unsafe]] { return rstd::launder(storage_ptr()); }
+    }
 
     constexpr auto ptr() const noexcept -> const T* {
-        return rstd::launder(reinterpret_cast<const T*>(storage));
+        [[unsafe]] { return rstd::launder(reinterpret_cast<const T*>(storage)); }
+    }
+
+    constexpr auto ready_value() noexcept -> T& {
+        [[unsafe]] { return *ptr(); }
+    }
+
+    constexpr auto ready_value() const noexcept -> const T& {
+        [[unsafe]] { return *ptr(); }
     }
 
     constexpr void drop_value() noexcept {
         if (m_ready) {
-            rstd::destroy_at(ptr());
+            [[unsafe]] { rstd::destroy_at(ptr()); }
             m_ready = false;
         }
     }
@@ -29,9 +43,10 @@ public:
     Poll(const Poll&)            = delete;
     Poll& operator=(const Poll&) = delete;
 
-    constexpr Poll(Poll&& other) noexcept(mtp::noex_move_v<T>): m_ready(other.m_ready) {
-        if (m_ready) {
-            rstd::construct_at(ptr(), rstd::move(*other.ptr()));
+    constexpr Poll(Poll&& other) noexcept(mtp::noex_move_v<T>) {
+        if (other.m_ready) {
+            [[unsafe]] { rstd::construct_at(storage_ptr(), rstd::move(other.ready_value())); }
+            m_ready = true;
             other.drop_value();
         }
     }
@@ -39,9 +54,9 @@ public:
     constexpr auto operator=(Poll&& other) noexcept(mtp::noex_move_v<T>) -> Poll& {
         if (this != &other) {
             drop_value();
-            m_ready = other.m_ready;
-            if (m_ready) {
-                rstd::construct_at(ptr(), rstd::move(*other.ptr()));
+            if (other.m_ready) {
+                [[unsafe]] { rstd::construct_at(storage_ptr(), rstd::move(other.ready_value())); }
+                m_ready = true;
                 other.drop_value();
             }
         }
@@ -53,7 +68,7 @@ public:
     template<typename U = T>
     static constexpr auto Ready(U&& value) -> Poll {
         Poll out;
-        rstd::construct_at(out.ptr(), rstd::forward<U>(value));
+        [[unsafe]] { rstd::construct_at(out.storage_ptr(), rstd::forward<U>(value)); }
         out.m_ready = true;
         return out;
     }
@@ -67,21 +82,21 @@ public:
         if (! m_ready) {
             rstd::panic { "Poll::value called on Pending" };
         }
-        return *ptr();
+        return ready_value();
     }
 
     constexpr auto value() const& -> const T& {
         if (! m_ready) {
             rstd::panic { "Poll::value called on Pending" };
         }
-        return *ptr();
+        return ready_value();
     }
 
     constexpr auto take() && -> T {
         if (! m_ready) {
             rstd::panic { "Poll::take called on Pending" };
         }
-        T out = rstd::move(*ptr());
+        T out = rstd::move(ready_value());
         drop_value();
         return out;
     }
@@ -109,14 +124,14 @@ public:
         if (m_value == nullptr) {
             rstd::panic { "Poll::value called on Pending" };
         }
-        return *m_value;
+        [[unsafe]] { return *m_value; }
     }
 
     constexpr auto take() && -> T& {
         if (m_value == nullptr) {
             rstd::panic { "Poll::take called on Pending" };
         }
-        return *m_value;
+        [[unsafe]] { return *m_value; }
     }
 };
 
@@ -208,22 +223,32 @@ public:
 
     ~Waker() { reset(); }
 
-    static auto from_raw(RawWaker raw) noexcept -> Waker { return Waker { raw }; }
+    /// Adopts one wake handle. A non-null vtable must remain valid for the handle and its clones.
+    /// Callbacks must accept the associated data: clone returns a new owned handle, wake and drop
+    /// each consume one handle, and wake_by_ref leaves it owned by the caller. Callbacks shared
+    /// across threads must synchronize their access to the data.
+    [[unsafe]]
+    static auto from_raw(RawWaker raw) noexcept -> Waker {
+        return Waker { raw };
+    }
 
+    /// Adopts one wake handle using the same callback and lifetime requirements as from_raw().
+    [[unsafe]]
     static auto from_raw_parts(voidp data, const RawWakerVTable* vtable) noexcept -> Waker {
-        return Waker { RawWaker::from_raw_parts(data, vtable) };
+        [[unsafe]] { return from_raw(RawWaker::from_raw_parts(data, vtable)); }
     }
 
     static auto noop() noexcept -> const Waker& {
-        static const auto waker =
-            Waker::from_raw(RawWaker::from_raw_parts(nullptr, rstd::addressof(NOOP_WAKER_VTABLE)));
-        return waker;
+        [[unsafe]] {
+            static const auto waker = from_raw_parts(nullptr, rstd::addressof(NOOP_WAKER_VTABLE));
+            return waker;
+        }
     }
 
     void reset() noexcept {
         if (raw.vtable != nullptr) {
             auto current = rstd::exchange(raw, {});
-            current.vtable->drop(current.data);
+            [[unsafe]] { current.vtable->drop(current.data); }
         }
     }
 
@@ -231,7 +256,7 @@ public:
         if (raw.vtable == nullptr) {
             return Waker {};
         }
-        return Waker::from_raw(raw.vtable->clone(raw.data));
+        [[unsafe]] { return Waker::from_raw(raw.vtable->clone(raw.data)); }
     }
 
     void clone_from(const Waker& source) {
@@ -244,13 +269,13 @@ public:
     void wake() && {
         if (raw.vtable != nullptr) {
             auto current = rstd::exchange(raw, {});
-            current.vtable->wake(current.data);
+            [[unsafe]] { current.vtable->wake(current.data); }
         }
     }
 
     void wake_by_ref() const {
         if (raw.vtable != nullptr) {
-            raw.vtable->wake_by_ref(raw.data);
+            [[unsafe]] { raw.vtable->wake_by_ref(raw.data); }
         }
     }
 
@@ -274,7 +299,9 @@ public:
         return Context { waker };
     }
 
-    constexpr auto waker() const noexcept -> const Waker& { return *m_waker; }
+    constexpr auto waker() const noexcept -> const Waker& {
+        [[unsafe]] { return *m_waker; }
+    }
 };
 
 export template<typename T>

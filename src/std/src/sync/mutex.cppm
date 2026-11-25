@@ -34,7 +34,12 @@ class MutexGuard {
 public:
     USE_TRAIT(MutexGuard)
 
-    MutexGuard(sys_mutex_t* l, T* d): m_lock(l), m_data(d) { m_lock->lock(); }
+    /// The lock and its protected data must both remain alive for the guard's lifetime.
+    [[unsafe]]
+    MutexGuard(sys_mutex_t* l, T* d)
+        : m_lock(l), m_data(d) {
+        m_lock->lock();
+    }
 
     ~MutexGuard() {
         if (m_lock) m_lock->unlock();
@@ -57,9 +62,15 @@ public:
         return *this;
     }
 
-    auto deref() const noexcept -> ref<T> { return ref<T>::from_raw_parts(m_data); }
+    auto deref() const noexcept -> ref<T> {
+        if (m_lock == nullptr) rstd::panic { "mutex guard was moved from" };
+        [[unsafe]] { return ref<T>::from_raw_parts(m_data); }
+    }
 
-    auto deref_mut() noexcept -> mut_ref<T> { return mut_ref<T>::from_raw_parts(m_data); }
+    auto deref_mut() noexcept -> mut_ref<T> {
+        if (m_lock == nullptr) rstd::panic { "mutex guard was moved from" };
+        [[unsafe]] { return mut_ref<T>::from_raw_parts(m_data); }
+    }
 };
 
 /// A mutual exclusion primitive useful for protecting shared data.
@@ -83,7 +94,7 @@ public:
     /// Acquires the mutex, blocking the current thread until it is able to do so.
     /// \return A MutexGuard providing mutable access to the protected data.
     auto lock_mut() const [[clang::lifetimebound]] -> Result<MutexGuard<T>, empty> {
-        return Ok<MutexGuard<T>, empty>(MutexGuard<T>(&m_lock, &m_data));
+        [[unsafe]] { return Ok<MutexGuard<T>, empty>(MutexGuard<T>(&m_lock, &m_data)); }
     }
 
     /// Acquires the mutex (alias for lock_mut; no poisoning support yet).

@@ -15,7 +15,7 @@ export namespace rstd::os::unix::ffi
 
 struct OsStringExt {
     static auto from_vec(Vec<u8> bytes) -> OsString {
-        return OsString::from_encoded_bytes_unchecked(rstd::move(bytes));
+        [[unsafe]] { return OsString::from_encoded_bytes_unchecked(rstd::move(bytes)); }
     }
     static auto into_vec(OsString value) -> Vec<u8> {
         return rstd::move(value).into_encoded_bytes();
@@ -24,7 +24,7 @@ struct OsStringExt {
 
 struct OsStrExt {
     static constexpr auto from_bytes(slice<u8> bytes [[clang::lifetimebound]]) -> ref<OsStr> {
-        return ref<OsStr>::from_encoded_bytes_unchecked(bytes);
+        [[unsafe]] { return ref<OsStr>::from_encoded_bytes_unchecked(bytes); }
     }
     static constexpr auto as_bytes(ref<OsStr> value [[clang::lifetimebound]]) -> slice<u8> {
         return value.as_encoded_bytes();

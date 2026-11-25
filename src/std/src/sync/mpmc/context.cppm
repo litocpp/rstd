@@ -19,7 +19,7 @@ using thread::Thread;
 
 export inline auto current_thread_id() -> usize {
     thread_local byte marker {};
-    return usize(reinterpret_cast<rstd::uintptr_t>(&marker));
+    [[unsafe]] { return usize(reinterpret_cast<rstd::uintptr_t>(&marker)); }
 }
 
 struct Inner {

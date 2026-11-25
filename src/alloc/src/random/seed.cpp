@@ -6,7 +6,7 @@ using namespace rstd::prelude;
 auto rstd::random::SeedSeq::make(ref<u32[]> input) -> SeedSeq {
     SeedSeq result;
     result.words = ::alloc::vec::Vec<u32>::with_capacity(input.len());
-    for (auto word : input) result.words.push(rstd::move(word));
+    result.words.extend_from_slice(input);
     return result;
 }
 

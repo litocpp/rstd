@@ -13,6 +13,7 @@ import rstd.alloc;
 
 using namespace rstd::prelude;
 using ::alloc::boxed::Box;
+using rstd::os::handle::INVALID_RAW_HANDLE;
 using rstd::os::handle::OwnedHandle;
 
 namespace rstd::sys::process
@@ -34,11 +35,13 @@ auto child_pipe(bool child_reads) -> io::Result<ChildPipe> {
         static_cast<unsigned long long>(::InterlockedIncrement64(&counter)),
     };
     constexpr wchar_t digits[] = L"0123456789abcdef";
-    for (unsigned part = 0; part < 3; ++part)
-        for (unsigned index = 0; index < 16; ++index) {
-            name[14 + part * 17 + 15 - index] = digits[identity[part] & 15];
-            identity[part] >>= 4;
-        }
+    [[unsafe]] {
+        for (unsigned part = 0; part < 3; ++part)
+            for (unsigned index = 0; index < 16; ++index) {
+                name[14 + part * 17 + 15 - index] = digits[identity[part] & 15];
+                identity[part] >>= 4;
+            }
+    }
     auto parent_raw = ::CreateNamedPipeW(
         name,
         PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE,
@@ -48,8 +51,9 @@ auto child_pipe(bool child_reads) -> io::Result<ChildPipe> {
         65536,
         0,
         nullptr);
-    if (parent_raw == INVALID_HANDLE_VALUE) return Err(last_error());
-    auto parent = OwnedHandle::from_raw_handle(parent_raw);
+    if (parent_raw == INVALID_RAW_HANDLE) return Err(last_error());
+    OwnedHandle parent;
+    [[unsafe]] { parent = OwnedHandle::from_raw_handle(parent_raw); }
     auto child_raw =
         ::CreateFileW(name,
                       (child_reads ? GENERIC_READ : GENERIC_WRITE) | FILE_READ_ATTRIBUTES,
@@ -58,8 +62,9 @@ auto child_pipe(bool child_reads) -> io::Result<ChildPipe> {
                       OPEN_EXISTING,
                       0,
                       nullptr);
-    if (child_raw == INVALID_HANDLE_VALUE) return Err(last_error());
-    auto       child = OwnedHandle::from_raw_handle(child_raw);
+    if (child_raw == INVALID_RAW_HANDLE) return Err(last_error());
+    OwnedHandle child;
+    [[unsafe]] { child = OwnedHandle::from_raw_handle(child_raw); }
     OVERLAPPED connect {};
     if (! ::ConnectNamedPipe(parent_raw, &connect) && ::GetLastError() != ERROR_PIPE_CONNECTED)
         return Err(last_error());
@@ -74,14 +79,17 @@ auto child_pipe(bool child_reads) -> io::Result<ChildPipe> {
                             FALSE,
                             0))
         return Err(last_error());
-    return Ok(ChildPipe { OwnedHandle::from_raw_handle(limited_raw), rstd::move(child) });
+    [[unsafe]] {
+        return Ok(ChildPipe { OwnedHandle::from_raw_handle(limited_raw), rstd::move(child) });
+    }
 }
 
 struct InheritedHandles {
-    HANDLE values[3] {};
+    rstd::array<HANDLE, 3> values {};
     ~InheritedHandles() {
-        for (auto handle : values)
+        for (auto handle : values) {
             if (handle) ::CloseHandle(handle);
+        }
     }
 };
 
@@ -101,13 +109,13 @@ auto spawn_process(wchar_t*              command,
                    os::handle::RawHandle input,
                    os::handle::RawHandle output,
                    os::handle::RawHandle error) -> io::Result<SpawnedProcess> {
-    InheritedHandles inherited;
-    HANDLE           originals[] { input, output, error };
-    HANDLE           handles[3] {};
-    unsigned         count = 0;
-    for (unsigned index = 0; index < 3; ++index) {
+    InheritedHandles       inherited;
+    rstd::array<HANDLE, 3> originals { input, output, error };
+    rstd::array<HANDLE, 3> handles {};
+    usize                  count;
+    for (usize index; index < usize(3); ++index) {
         auto original = originals[index];
-        if (! original || original == INVALID_HANDLE_VALUE) continue;
+        if (! original || original == INVALID_RAW_HANDLE) continue;
         if (! ::DuplicateHandle(::GetCurrentProcess(),
                                 original,
                                 ::GetCurrentProcess(),
@@ -121,15 +129,18 @@ auto spawn_process(wchar_t*              command,
     STARTUPINFOEXW startup {};
     startup.StartupInfo.cb         = sizeof(startup);
     startup.StartupInfo.dwFlags    = STARTF_USESTDHANDLES;
-    startup.StartupInfo.hStdInput  = inherited.values[0];
-    startup.StartupInfo.hStdOutput = inherited.values[1];
-    startup.StartupInfo.hStdError  = inherited.values[2];
+    startup.StartupInfo.hStdInput  = inherited.values[usize(0)];
+    startup.StartupInfo.hStdOutput = inherited.values[usize(1)];
+    startup.StartupInfo.hStdError  = inherited.values[usize(2)];
     ProcessAttributes attributes;
-    if (count) {
+    if (count != usize()) {
         SIZE_T bytes {};
         (void)::InitializeProcThreadAttributeList(nullptr, 1, 0, &bytes);
-        auto list =
-            static_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(::HeapAlloc(::GetProcessHeap(), 0, bytes));
+        LPPROC_THREAD_ATTRIBUTE_LIST list;
+        [[unsafe]] {
+            list = static_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(
+                ::HeapAlloc(::GetProcessHeap(), 0, bytes));
+        }
         if (! list)
             return Err(io::error::Error::from_kind(
                 io::error::ErrorKind { io::error::ErrorKind::OutOfMemory }));
@@ -142,8 +153,8 @@ auto spawn_process(wchar_t*              command,
         if (! ::UpdateProcThreadAttribute(list,
                                           0,
                                           PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
-                                          handles,
-                                          sizeof(HANDLE) * count,
+                                          handles.data(),
+                                          sizeof(HANDLE) * count.to_primitive(),
                                           nullptr,
                                           nullptr))
             return Err(last_error());
@@ -154,7 +165,7 @@ auto spawn_process(wchar_t*              command,
                            command,
                            nullptr,
                            nullptr,
-                           count ? TRUE : FALSE,
+                           count != usize() ? TRUE : FALSE,
                            CREATE_UNICODE_ENVIRONMENT | EXTENDED_STARTUPINFO_PRESENT,
                            environment,
                            directory,
@@ -162,8 +173,10 @@ auto spawn_process(wchar_t*              command,
                            &information))
         return Err(last_error());
     ::CloseHandle(information.hThread);
-    return Ok(SpawnedProcess { OwnedHandle::from_raw_handle(information.hProcess),
-                               u32(information.dwProcessId) });
+    [[unsafe]] {
+        return Ok(SpawnedProcess { OwnedHandle::from_raw_handle(information.hProcess),
+                                   u32(information.dwProcessId) });
+    }
 }
 
 struct WaitState {
@@ -177,8 +190,10 @@ struct WaitState {
 
 void CALLBACK process_exited(void* context, BOOLEAN timeout) {
     if (! timeout) {
-        auto* state = static_cast<WaitState*>(context);
-        state->callback(state->context);
+        [[unsafe]] {
+            auto* state = static_cast<WaitState*>(context);
+            state->callback(state->context);
+        }
     }
 }
 
@@ -193,7 +208,9 @@ auto ProcessWait::make(os::handle::BorrowedHandle process, Callback callback, vo
                             FALSE,
                             DUPLICATE_SAME_ACCESS))
         return Err(last_error());
-    auto state = Box<WaitState>::make(OwnedHandle::from_raw_handle(duplicate), callback, context);
+    OwnedHandle owner;
+    [[unsafe]] { owner = OwnedHandle::from_raw_handle(duplicate); }
+    auto state = Box<WaitState>::make(rstd::move(owner), callback, context);
     if (! ::RegisterWaitForSingleObject(&state->registration,
                                         duplicate,
                                         process_exited,
@@ -206,12 +223,14 @@ auto ProcessWait::make(os::handle::BorrowedHandle process, Callback callback, vo
 
 void ProcessWait::reset() noexcept {
     if (! state_) return;
-    auto* state = static_cast<WaitState*>(state_);
     // No callback may access its context or process handle after this barrier.
-    if (! ::UnregisterWaitEx(state->registration, INVALID_HANDLE_VALUE))
-        rstd::panic { "process wait unregister failed" };
-    auto owner = Box<WaitState>::from_raw(mut_ptr<WaitState>::from_raw_parts(state));
-    state_     = nullptr;
+    [[unsafe]] {
+        auto* state = static_cast<WaitState*>(state_);
+        if (! ::UnregisterWaitEx(state->registration, INVALID_RAW_HANDLE))
+            rstd::panic { "process wait unregister failed" };
+        auto owner = Box<WaitState>::from_raw(mut_ptr<WaitState>::from_raw_parts(state));
+    }
+    state_ = nullptr;
 }
 ProcessWait::~ProcessWait() {
     reset();

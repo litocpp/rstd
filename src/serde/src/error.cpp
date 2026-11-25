@@ -67,25 +67,29 @@ auto DataPath::with_variant(ref<str> name) const -> DataPath {
 }
 
 auto PathTrace::snapshot() const -> DataPath {
-    auto root  = this;
+    auto root  = ref<PathTrace>::from_ref(*this);
     auto depth = usize();
-    while (root->parent_ != nullptr) {
+    while (root.get().parent_ != nullptr) {
         ++depth;
-        root = root->parent_;
+        [[unsafe]] { root = ref<PathTrace>::from_raw_parts(root.get().parent_); }
     }
-    if (depth == usize()) return root->root_.clone();
-    auto prefix   = root->root_.segments();
+    if (depth == usize()) return root.get().root_.clone();
+    auto prefix   = root.get().root_.segments();
     auto segments = Vec<PathSegment>::with_capacity(prefix.len() + depth);
     for (const auto& segment : prefix) segments.push(segment.clone());
-    auto trace = this;
-    while (trace->parent_ != nullptr) {
-        switch (trace->kind_) {
-        case PathSegmentKind::Field: segments.push(PathSegment::field(*trace->name_)); break;
-        case PathSegmentKind::Index: segments.push(PathSegment::index(trace->index_)); break;
-        case PathSegmentKind::MapKey: segments.push(PathSegment::map_key(*trace->name_)); break;
-        case PathSegmentKind::Variant: segments.push(PathSegment::variant(*trace->name_)); break;
+    auto trace = ref<PathTrace>::from_ref(*this);
+    while (trace.get().parent_ != nullptr) {
+        switch (trace.get().kind_) {
+        case PathSegmentKind::Field: segments.push(PathSegment::field(*trace.get().name_)); break;
+        case PathSegmentKind::Index: segments.push(PathSegment::index(trace.get().index_)); break;
+        case PathSegmentKind::MapKey:
+            segments.push(PathSegment::map_key(*trace.get().name_));
+            break;
+        case PathSegmentKind::Variant:
+            segments.push(PathSegment::variant(*trace.get().name_));
+            break;
         }
-        trace = trace->parent_;
+        [[unsafe]] { trace = ref<PathTrace>::from_raw_parts(trace.get().parent_); }
     }
     for (usize index {}; index < depth / usize(2); ++index) {
         rstd::mem::swap(segments[prefix.len() + index],

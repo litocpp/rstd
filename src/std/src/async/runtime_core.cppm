@@ -62,7 +62,11 @@ public:
     auto operator=(TaskAccess&& other) noexcept -> TaskAccess&;
     ~TaskAccess();
 
-    auto     get() const noexcept -> TaskStateBase* { return m_task; }
+    auto get() const noexcept -> TaskStateBase* { return m_task; }
+    auto state() const noexcept -> TaskStateBase& {
+        if (m_task == nullptr) rstd::panic { "empty async task access" };
+        [[unsafe]] { return *m_task; }
+    }
     auto     operator->() const noexcept -> TaskStateBase* { return m_task; }
     explicit operator bool() const noexcept { return m_task != nullptr; }
 };
@@ -87,7 +91,7 @@ private:
     DestroyFn                         m_destroy_storage { nullptr };
 
     static void destroy_scoped_control(voidp owner) {
-        ::alloc::raw_delete(static_cast<TaskRefControl*>(owner));
+        [[unsafe]] { ::alloc::raw_delete(static_cast<TaskRefControl*>(owner)); }
     }
 
 public:
@@ -99,7 +103,7 @@ public:
 
     static auto make_scoped() -> TaskRefControl* {
         auto* control = ::alloc::raw_new<TaskRefControl>(nullptr, &destroy_scoped_control);
-        control->m_storage_owner = control;
+        [[unsafe]] { control->m_storage_owner = control; }
         return control;
     }
 
@@ -120,7 +124,7 @@ public:
     void dec_ref() noexcept {
         if (m_strong.fetch_sub(usize(1), rstd::sync::atomic::Ordering::AcqRel) == usize(1)) {
             rstd::sync::atomic::fence(rstd::sync::atomic::Ordering::Acquire);
-            m_destroy_storage(m_storage_owner);
+            [[unsafe]] { m_destroy_storage(m_storage_owner); }
         }
     }
 
@@ -376,7 +380,7 @@ public:
 
     auto generation() const noexcept -> u64 { return m_generation; }
     auto task() noexcept -> TaskRef& { return m_task; }
-    auto state() noexcept -> TaskStateBase& { return *m_access.get(); }
+    auto state() noexcept -> TaskStateBase& { return m_access.state(); }
     auto take_task() -> TaskRef { return rstd::move(m_task); }
 };
 
@@ -441,6 +445,8 @@ public:
 
     ~FacilityCancellation() { cancel(); }
 
+    /// Adopts a handle consumed once by either its cancellation or its drop callback.
+    [[unsafe]]
     static auto from_raw(FacilityToken token, RawFacilityCancellation raw) -> FacilityCancellation {
         auto cancellation    = FacilityCancellation {};
         cancellation.m_token = token;
@@ -453,14 +459,14 @@ public:
     void cancel() {
         auto raw = rstd::exchange(m_raw, {});
         if (raw.vtable != nullptr) {
-            raw.vtable->cancel(raw.data);
+            [[unsafe]] { raw.vtable->cancel(raw.data); }
         }
     }
 
     void disarm() {
         auto raw = rstd::exchange(m_raw, {});
         if (raw.vtable != nullptr) {
-            raw.vtable->drop(raw.data);
+            [[unsafe]] { raw.vtable->drop(raw.data); }
         }
     }
 };
@@ -531,7 +537,7 @@ public:
 
     auto token() const noexcept -> FacilityToken { return m_token; }
     auto task() noexcept -> TaskRef& { return m_task; }
-    auto state() noexcept -> TaskStateBase& { return *m_access.get(); }
+    auto state() noexcept -> TaskStateBase& { return m_access.state(); }
     auto take_task() -> TaskRef { return rstd::move(m_task); }
 };
 
@@ -570,7 +576,11 @@ class FacilityJob {
 
 public:
     explicit FacilityJob(::FacilityExecutionToken token): m_token(Some(rstd::move(token))) {}
-    static auto from_raw(RawFacilityJob job) -> FacilityJob { return FacilityJob(job); }
+    /// Adopts a handle whose run or cancel callback is followed by one drop.
+    [[unsafe]]
+    static auto from_raw(RawFacilityJob job) -> FacilityJob {
+        return FacilityJob(job);
+    }
 
     FacilityJob(const FacilityJob&)                    = delete;
     auto operator=(const FacilityJob&) -> FacilityJob& = delete;
@@ -589,9 +599,11 @@ inline auto FacilityEndpoint::submit(FacilityJob job) -> FacilityEndpointSubmitR
         job.cancel();
         return FacilityEndpointSubmitResult::Unsupported;
     }
-    auto result = raw.vtable->submit(raw.data, rstd::move(job));
-    raw.vtable->drop(raw.data);
-    return result;
+    [[unsafe]] {
+        auto result = raw.vtable->submit(raw.data, rstd::move(job));
+        raw.vtable->drop(raw.data);
+        return result;
+    }
 }
 
 } // namespace rstd::async
@@ -1029,9 +1041,14 @@ struct TaskRegistry {
         }
         // Each control belongs to one task and may be registered only once, even across runtimes.
         auto expected = TaskRefControl::UNREGISTERED;
-        if (! control->m_registry_slot.compare_exchange_strong(
-                expected, slot, sync::atomic::Ordering::Relaxed, sync::atomic::Ordering::Relaxed)) {
-            rstd::panic { "TaskRefControl already registered" };
+        [[unsafe]] {
+            if (! control->m_registry_slot.compare_exchange_strong(
+                    expected,
+                    slot,
+                    sync::atomic::Ordering::Relaxed,
+                    sync::atomic::Ordering::Relaxed)) {
+                rstd::panic { "TaskRefControl already registered" };
+            }
         }
         m_tasks.push(Some(rstd::move(task)));
         ++m_live;
@@ -1050,11 +1067,14 @@ struct TaskRegistry {
 
     void remove(TaskRefControl* task) {
         if (task == nullptr) return;
-        auto slot = task->m_registry_slot.load(sync::atomic::Ordering::Relaxed);
+        usize slot;
+        [[unsafe]] { slot = task->m_registry_slot.load(sync::atomic::Ordering::Relaxed); }
         if (slot >= m_tasks.len() || m_tasks[slot].is_none() || m_tasks[slot]->identity() != task) {
             return;
         }
-        task->m_registry_slot.store(TaskRefControl::RETIRED, sync::atomic::Ordering::Relaxed);
+        [[unsafe]] {
+            task->m_registry_slot.store(TaskRefControl::RETIRED, sync::atomic::Ordering::Relaxed);
+        }
         (void)m_tasks[slot].take();
         --m_live;
         if (m_live == usize()) {
@@ -1067,8 +1087,10 @@ struct TaskRegistry {
         for (usize read {}; read < m_tasks.len(); ++read) {
             if (m_tasks[read].is_none()) continue;
             if (write != read) m_tasks[write] = m_tasks[read].take();
-            m_tasks[write]->identity()->m_registry_slot.store(write,
-                                                              sync::atomic::Ordering::Relaxed);
+            [[unsafe]] {
+                m_tasks[write]->identity()->m_registry_slot.store(write,
+                                                                  sync::atomic::Ordering::Relaxed);
+            }
             ++write;
         }
         m_tasks.truncate(write);

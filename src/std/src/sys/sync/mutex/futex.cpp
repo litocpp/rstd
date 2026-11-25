@@ -60,7 +60,7 @@ void Mutex::lock_contended() noexcept {
             return;
         }
 
-        pal::futex::futex_wait(&m_futex, CONTENDED, {});
+        [[unsafe]] { pal::futex::futex_wait(&m_futex, CONTENDED, {}); }
         state = spin();
     }
 }
@@ -77,7 +77,7 @@ auto Mutex::spin() noexcept -> State {
 }
 
 void Mutex::wake() noexcept {
-    pal::futex::futex_wake(&m_futex);
+    [[unsafe]] { pal::futex::futex_wake(&m_futex); }
 }
 
 } // namespace rstd::sys::sync::mutex::futex

@@ -40,13 +40,17 @@ namespace rstd::log
 /// Returns the uppercase string name for a Level.
 export [[nodiscard]]
 inline auto as_str(Level l) noexcept -> ref<str> {
-    return LEVEL_NAMES[static_cast<rstd::uint32_t>(l)];
+    const auto index = static_cast<rstd::uint32_t>(l);
+    if (index >= sizeof(LEVEL_NAMES) / sizeof(ref<str>)) return "UNKNOWN"_str;
+    [[unsafe]] { return LEVEL_NAMES[index]; }
 }
 
 /// Returns the uppercase string name for a LevelFilter.
 export [[nodiscard]]
 inline auto as_str(LevelFilter f) noexcept -> ref<str> {
-    return LEVEL_NAMES[static_cast<rstd::uint32_t>(f)];
+    const auto index = static_cast<rstd::uint32_t>(f);
+    if (index >= sizeof(LEVEL_NAMES) / sizeof(ref<str>)) return "UNKNOWN"_str;
+    [[unsafe]] { return LEVEL_NAMES[index]; }
 }
 
 // ── comparisons ───────────────────────────────────────────────────────────

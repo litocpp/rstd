@@ -1,5 +1,6 @@
 module;
 #include <rstd/runtime.h>
+#include <string_view>
 
 module rstd.core;
 import :core;
@@ -25,13 +26,12 @@ void runtime_panic(PanicInfo const& info) {
         .can_unwind         = info.can_unwind,
         .force_no_backtrace = info.force_no_backtrace,
     };
-    rstd_panic_impl(&runtime_info);
+    [[unsafe]] { rstd_panic_impl(&runtime_info); }
 }
 
 bool panic_write_fmt(void const* data, void* ctx, rstd::panic_::WriteFn write) {
-    auto const&          args = *static_cast<rstd::fmt::Arguments const*>(data);
     rstd::fmt::Formatter f(ctx, write);
-    return f.write_fmt(args);
+    [[unsafe]] { return f.write_fmt(*static_cast<rstd::fmt::Arguments const*>(data)); }
 }
 } // namespace
 
@@ -65,6 +65,21 @@ void panic_message(ref<str> message, source_location loc) {
 
 } // namespace rstd
 
+namespace rstd::ptr_detail
+{
+
+void panic_empty_ref(source_location loc) noexcept {
+    constexpr char message[] = "dereference of an empty reference";
+    panic_fmt_nounwind({ message, sizeof(message) - 1, nullptr, 0 }, loc);
+}
+
+void panic_slice_index(source_location loc) noexcept {
+    constexpr char message[] = "slice index out of bounds";
+    panic_fmt_nounwind({ message, sizeof(message) - 1, nullptr, 0 }, loc);
+}
+
+} // namespace rstd::ptr_detail
+
 [[noreturn]]
 void panic_overflow(rstd::source_location loc) {
     rstd::panic_message("attempt to perform integer arithmetic with overflow", loc);
@@ -89,23 +104,28 @@ namespace rstd::fmt
 {
 
 auto Formatter::write_str(ref<str> const& value) -> bool {
-    if (_write_func != nullptr) return _write_func(_writer, value);
-    return _raw_write_func(
-        _writer, reinterpret_cast<rstd::uint8_t const*>(value.data()), value.size().to_primitive());
+    [[unsafe]] {
+        if (_write_func != nullptr) return _write_func(_writer, value);
+        return _raw_write_func(_writer,
+                               reinterpret_cast<rstd::uint8_t const*>(value.data()),
+                               value.size().to_primitive());
+    }
 }
 
 auto Formatter::write_raw(const rstd::byte* data, rstd::size_t length) -> bool {
-    auto bytes = slice<u8>::from_raw_parts(data, usize(length));
-    if (! char_::is_valid_utf8(data, usize(length))) return false;
-    return write_str(rstd::str_::from_utf8_unchecked(bytes));
+    [[unsafe]] {
+        if (! char_::is_valid_utf8(data, usize(length))) return false;
+        auto bytes = slice<u8>::from_raw_parts(data, usize(length));
+        return write_str(rstd::str_::from_utf8_unchecked(bytes));
+    }
 }
 
 auto Formatter::write_raw(const rstd::uint8_t* data, rstd::size_t length) -> bool {
-    return write_raw(reinterpret_cast<rstd::byte const*>(data), length);
+    [[unsafe]] { return write_raw(reinterpret_cast<rstd::byte const*>(data), length); }
 }
 
 auto Formatter::write_raw(const char* data, rstd::size_t length) -> bool {
-    return write_raw(reinterpret_cast<rstd::byte const*>(data), length);
+    [[unsafe]] { return write_raw(reinterpret_cast<rstd::byte const*>(data), length); }
 }
 
 // ── Spec parser ───────────────────────────────────────────────────────────
@@ -121,10 +141,16 @@ auto Formatter::write_raw(const char* data, rstd::size_t length) -> bool {
 //   type      = '?' | 'b' | 'd' | 'o' | 'x' | 'X' | 'e' | 'E' | 'p' | 's'
 namespace
 {
-auto parse_spec(const char* b, const char* e) -> FormattingOptions {
+auto format_part(std::string_view text, rstd::size_t start, rstd::size_t count)
+    -> std::string_view {
+    if (count == 0) return {};
+    [[unsafe]] { return { text.data() + start, count }; }
+}
+
+auto parse_spec(std::string_view spec) -> FormattingOptions {
     using Opts = FormattingOptions;
     Opts opts {};
-    if (b >= e) return opts;
+    if (spec.empty()) return opts;
 
     auto align_of = [](char c) -> Align {
         if (c == '<') return Align::Left;
@@ -134,59 +160,59 @@ auto parse_spec(const char* b, const char* e) -> FormattingOptions {
     };
 
     // [[fill]align]
-    if (b + 1 < e && align_of(b[1]) != Align::None) {
-        opts.set_fill(b[0]).set_align(align_of(b[1]));
-        b += 2;
-    } else if (b < e && align_of(b[0]) != Align::None) {
-        opts.set_align(align_of(b[0]));
-        b++;
+    if (spec.size() >= 2 && align_of(spec[1]) != Align::None) {
+        opts.set_fill(spec[0]).set_align(align_of(spec[1]));
+        spec.remove_prefix(2);
+    } else if (align_of(spec[0]) != Align::None) {
+        opts.set_align(align_of(spec[0]));
+        spec.remove_prefix(1);
     }
 
     // sign
-    if (b < e && b[0] == '+') {
+    if (! spec.empty() && spec[0] == '+') {
         opts.set_flag(Opts::SIGN_PLUS);
-        b++;
-    } else if (b < e && b[0] == '-') {
+        spec.remove_prefix(1);
+    } else if (! spec.empty() && spec[0] == '-') {
         opts.set_flag(Opts::SIGN_MINUS);
-        b++;
+        spec.remove_prefix(1);
     }
 
     // alternate
-    if (b < e && b[0] == '#') {
+    if (! spec.empty() && spec[0] == '#') {
         opts.set_flag(Opts::ALTERNATE);
-        b++;
+        spec.remove_prefix(1);
     }
 
     // zero-pad
-    if (b < e && b[0] == '0') {
+    if (! spec.empty() && spec[0] == '0') {
         opts.set_flag(Opts::ZERO_PAD);
-        b++;
+        spec.remove_prefix(1);
     }
 
     // width: [1-9][0-9]*
-    if (b < e && b[0] >= '1' && b[0] <= '9') {
+    if (! spec.empty() && spec[0] >= '1' && spec[0] <= '9') {
         rstd::uint16_t w = 0;
-        while (b < e && (unsigned char)(b[0] - '0') < 10u) {
-            w = static_cast<rstd::uint16_t>(w * 10 + (b[0] - '0'));
-            b++;
+        while (! spec.empty() && static_cast<unsigned char>(spec[0] - '0') < 10u) {
+            w = static_cast<rstd::uint16_t>(w * 10 + (spec[0] - '0'));
+            spec.remove_prefix(1);
         }
         opts.set_width(w);
     }
 
     // .precision
-    if (b < e && b[0] == '.') {
-        b++;
+    if (! spec.empty() && spec[0] == '.') {
+        spec.remove_prefix(1);
         rstd::uint16_t p = 0;
-        while (b < e && (unsigned char)(b[0] - '0') < 10u) {
-            p = static_cast<rstd::uint16_t>(p * 10 + (b[0] - '0'));
-            b++;
+        while (! spec.empty() && static_cast<unsigned char>(spec[0] - '0') < 10u) {
+            p = static_cast<rstd::uint16_t>(p * 10 + (spec[0] - '0'));
+            spec.remove_prefix(1);
         }
         opts.set_precision(p);
     }
 
     // type char
-    if (b < e) {
-        switch (b[0]) {
+    if (! spec.empty()) {
+        switch (spec[0]) {
         case '?': opts.set_presentation(Presentation::Debug); break;
         case 'e': opts.set_presentation(Presentation::LowerExp); break;
         case 'E': opts.set_presentation(Presentation::UpperExp); break;
@@ -210,7 +236,7 @@ auto Formatter::pad_numeric(const rstd::uint8_t* sign,
                             rstd::size_t         exponent_len) -> bool {
     auto write_repeat = [this](rstd::uint8_t value, rstd::size_t count) -> bool {
         rstd::uint8_t buffer[64];
-        for (rstd::size_t i = 0; i < sizeof(buffer); ++i) buffer[i] = value;
+        for (auto& item : buffer) item = value;
         while (count != 0) {
             auto chunk = count < sizeof(buffer) ? count : sizeof(buffer);
             if (! write_raw(buffer, chunk)) return false;
@@ -276,8 +302,7 @@ auto Formatter::pad(ref<str> value) -> bool {
 
     auto write_fill = [this](rstd::size_t count) -> bool {
         rstd::uint8_t buffer[64];
-        for (rstd::size_t i = 0; i < sizeof(buffer); ++i)
-            buffer[i] = static_cast<rstd::uint8_t>(fill());
+        for (auto& item : buffer) item = static_cast<rstd::uint8_t>(fill());
         while (count != 0) {
             const rstd::size_t chunk = count < sizeof(buffer) ? count : sizeof(buffer);
             if (! write_raw(buffer, chunk)) return false;
@@ -293,65 +318,69 @@ auto Formatter::pad(ref<str> value) -> bool {
 
 // ── Formatter::write_fmt ──────────────────────────────────────────────────
 auto Formatter::write_fmt(Arguments args) -> bool {
-    rstd::size_t arg_idx = 0;
-    const char*  p       = args.fmt_ptr;
-    const char*  end     = args.fmt_ptr + args.fmt_len;
-    const char*  last    = p;
+    const std::string_view text(args.fmt_ptr, args.fmt_len);
+    rstd::size_t           arg_idx       = 0;
+    rstd::size_t           pos           = 0;
+    rstd::size_t           last          = 0;
+    auto                   write_literal = [&](rstd::size_t end) {
+        auto literal = format_part(text, last, end - last);
+        return literal.empty() || write_raw(literal.data(), literal.size());
+    };
 
-    while (p < end) {
-        if (*p == '{') {
-            if (p + 1 < end && *(p + 1) == '{') {
+    while (pos < text.size()) {
+        if (text[pos] == '{') {
+            if (pos + 1 < text.size() && text[pos + 1] == '{') {
                 // Escaped {{
-                if (p > last && ! write_raw(last, p - last)) return false;
+                if (! write_literal(pos)) return false;
                 constexpr char LEFT_BRACE[] = { '{' };
                 if (! write_raw(LEFT_BRACE, sizeof(LEFT_BRACE))) return false;
-                p += 2;
-                last = p;
+                pos += 2;
+                last = pos;
                 continue;
             }
             // Flush literal text before placeholder.
-            if (p > last && ! write_raw(last, p - last)) return false;
-            p++; // skip '{'
+            if (! write_literal(pos)) return false;
+            ++pos; // skip '{'
 
             // Scan to matching '}'.
-            const char* inner = p;
-            while (p < end && *p != '}') p++;
-            if (p >= end) return false; // unmatched '{'
-            const char* inner_end = p;
-            p++;
-            last = p;
+            auto begin = pos;
+            auto end   = begin;
+            while (end < text.size() && text[end] != '}') ++end;
+            if (end == text.size()) return false; // unmatched '{'
+            auto field = format_part(text, begin, end - begin);
+            pos        = end + 1;
+            last       = pos;
 
-            auto argument = parse_format_argument(inner, inner_end, arg_idx, args.args_len);
+            auto argument = parse_format_argument(field, arg_idx, args.args_len);
             if (! argument.valid) return false;
-            const char* spec_b = argument.spec;
-            const char* spec_e = inner_end;
 
             // Parse spec, set options, dispatch, then restore options
             // (so nested write_fmt calls don't see stale options).
-            auto saved = Formatter_set_options(*this, parse_spec(spec_b, spec_e));
-            bool ok    = args.args_ptr[argument.index].fmt(*this);
+            auto saved = Formatter_set_options(
+                *this, parse_spec(format_part(field, argument.spec, field.size() - argument.spec)));
+            bool ok;
+            [[unsafe]] { ok = args.args_ptr[argument.index].fmt(*this); }
             Formatter_restore_options(*this, saved);
             if (! ok) return false;
             if (argument.automatic) ++arg_idx;
 
-        } else if (*p == '}') {
-            if (p + 1 < end && *(p + 1) == '}') {
+        } else if (text[pos] == '}') {
+            if (pos + 1 < text.size() && text[pos + 1] == '}') {
                 // Escaped }}
-                if (p > last && ! write_raw(last, p - last)) return false;
+                if (! write_literal(pos)) return false;
                 constexpr char RIGHT_BRACE[] = { '}' };
                 if (! write_raw(RIGHT_BRACE, sizeof(RIGHT_BRACE))) return false;
-                p += 2;
-                last = p;
+                pos += 2;
+                last = pos;
                 continue;
             }
             return false; // unmatched '}'
         } else {
-            p++;
+            ++pos;
         }
     }
 
-    if (p > last && ! write_raw(last, p - last)) return false;
-    return true;
+    return write_literal(text.size());
 }
 
 } // namespace rstd::fmt

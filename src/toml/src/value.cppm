@@ -121,22 +121,22 @@ public:
     [[nodiscard]]
     auto as_array() const noexcept [[clang::lifetimebound]] -> Option<ref<rstd::toml::Array>> {
         if (! is_Array()) return None();
-        return Some(ref<rstd::toml::Array>::from_raw_parts(rstd::addressof(as_Array().value)));
+        return Some(ref<rstd::toml::Array>::from_ref(as_Array().value));
     }
     [[nodiscard]]
     auto as_array_mut() noexcept [[clang::lifetimebound]] -> Option<mut_ref<rstd::toml::Array>> {
         if (! is_Array()) return None();
-        return Some(mut_ref<rstd::toml::Array>::from_raw_parts(rstd::addressof(as_Array().value)));
+        return Some(mut_ref<rstd::toml::Array>::from_ref(as_Array().value));
     }
     [[nodiscard]]
     auto as_table() const noexcept [[clang::lifetimebound]] -> Option<ref<rstd::toml::Table>> {
         if (! is_Table()) return None();
-        return Some(ref<rstd::toml::Table>::from_raw_parts(rstd::addressof(as_Table().value)));
+        return Some(ref<rstd::toml::Table>::from_ref(as_Table().value));
     }
     [[nodiscard]]
     auto as_table_mut() noexcept [[clang::lifetimebound]] -> Option<mut_ref<rstd::toml::Table>> {
         if (! is_Table()) return None();
-        return Some(mut_ref<rstd::toml::Table>::from_raw_parts(rstd::addressof(as_Table().value)));
+        return Some(mut_ref<rstd::toml::Table>::from_ref(as_Table().value));
     }
     [[nodiscard]]
     auto get(ref<str> key) const noexcept [[clang::lifetimebound]] -> Option<ref<Value>> {
@@ -149,12 +149,12 @@ public:
     [[nodiscard]]
     auto get(usize index) const noexcept [[clang::lifetimebound]] -> Option<ref<Value>> {
         if (! is_Array() || index >= as_Array().value.len()) return None();
-        return Some(ref<Value>::from_raw_parts(rstd::addressof(as_Array().value[index])));
+        return Some(ref<Value>::from_ref(as_Array().value[index]));
     }
     [[nodiscard]]
     auto get_mut(usize index) noexcept [[clang::lifetimebound]] -> Option<mut_ref<Value>> {
         if (! is_Array() || index >= as_Array().value.len()) return None();
-        return Some(mut_ref<Value>::from_raw_parts(rstd::addressof(as_Array().value[index])));
+        return Some(mut_ref<Value>::from_ref(as_Array().value[index]));
     }
 };
 

@@ -29,7 +29,9 @@ void Once::wait() const {
             state_and_queued = desired;
         }
 
-        pal::futex::futex_wait(&this->state_and_queued, state_and_queued, rstd::None());
+        [[unsafe]] {
+            pal::futex::futex_wait(&this->state_and_queued, state_and_queued, rstd::None());
+        }
         state_and_queued = this->state_and_queued.load(rstd::sync::atomic::Ordering::Acquire);
     }
 }
@@ -50,11 +52,11 @@ void Once::call(void* context, Callback callback) const {
                     next,
                     rstd::sync::atomic::Ordering::Acquire,
                     rstd::sync::atomic::Ordering::Acquire)) {
-                callback(context);
+                [[unsafe]] { callback(context); }
                 if ((this->state_and_queued.exchange(COMPLETE,
                                                      rstd::sync::atomic::Ordering::Release) &
                      QUEUED) != Primitive {}) {
-                    pal::futex::futex_wake_all(&this->state_and_queued);
+                    [[unsafe]] { pal::futex::futex_wake_all(&this->state_and_queued); }
                 }
                 return;
             }
@@ -76,7 +78,9 @@ void Once::call(void* context, Callback callback) const {
             state_and_queued = desired;
         }
 
-        pal::futex::futex_wait(&this->state_and_queued, state_and_queued, rstd::None());
+        [[unsafe]] {
+            pal::futex::futex_wait(&this->state_and_queued, state_and_queued, rstd::None());
+        }
         state_and_queued = this->state_and_queued.load(rstd::sync::atomic::Ordering::Acquire);
     }
 }

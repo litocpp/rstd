@@ -109,8 +109,10 @@ public:
         if (rt == nullptr) {
             rstd::panic { "async::sleep advanced without an async runtime" };
         }
-        if (! rt->time_enabled()) {
-            rstd::panic { "async::sleep requires a runtime with time enabled" };
+        [[unsafe]] {
+            if (! rt->time_enabled()) {
+                rstd::panic { "async::sleep requires a runtime with time enabled" };
+            }
         }
         if (facility_result.is_some()) {
             auto result        = facility_result.take().unwrap_unchecked();
@@ -180,8 +182,10 @@ public:
         if (rt == nullptr) {
             rstd::panic { "async::sleep polled without an async runtime" };
         }
-        if (! rt->time_enabled()) {
-            rstd::panic { "async::sleep requires a runtime with time enabled" };
+        [[unsafe]] {
+            if (! rt->time_enabled()) {
+                rstd::panic { "async::sleep requires a runtime with time enabled" };
+            }
         }
 
         if (time::Instant::now() >= sleep.deadline) {

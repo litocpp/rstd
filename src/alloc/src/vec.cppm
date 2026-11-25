@@ -62,7 +62,10 @@ struct RawVec {
     }
 
     auto ptr_at(usize index = usize()) const noexcept -> mut_ptr<T> {
-        return ptr.add(index * usize(sizeof(typename mut_ptr<T>::storage_type))).template cast<T>();
+        [[unsafe]] {
+            return ptr.add(index * usize(sizeof(typename mut_ptr<T>::storage_type)))
+                .template cast<T>();
+        }
     }
 
     auto alignment() const noexcept -> usize {
@@ -106,10 +109,12 @@ struct RawVec {
             auto old_layout = allocation_layout;
             auto old_ptr    = ptr;
 
-            auto res = as<Allocator>(allocator).grow(old_ptr.as_raw_ptr(), old_layout, new_layout);
-            if (res.is_err()) return Err(TryReserveError::AllocError);
-
-            ptr = res.unwrap_unchecked().template as_mut_ptr<byte>();
+            [[unsafe]] {
+                auto res =
+                    as<Allocator>(allocator).grow(old_ptr.as_raw_ptr(), old_layout, new_layout);
+                if (res.is_err()) return Err(TryReserveError::AllocError);
+                ptr = res.unwrap_unchecked().template as_mut_ptr<byte>();
+            }
         } else {
             auto old_layout = allocation_layout;
             auto old_ptr    = ptr.as_raw_ptr();
@@ -119,12 +124,16 @@ struct RawVec {
             auto new_ptr = res.unwrap_unchecked().template as_mut_ptr<byte>().as_raw_ptr();
             for (rstd::size_t index = 0; index < len.to_primitive(); ++index) {
                 auto offset = index * sizeof(typename mut_ptr<T>::storage_type);
-                auto source = mut_ptr<byte>::from_raw_parts(old_ptr + offset).template cast<T>();
-                auto target = mut_ptr<byte>::from_raw_parts(new_ptr + offset).template cast<T>();
-                rstd::construct_at(target.as_raw_ptr(), rstd::move(source.get()));
-                rstd::ptr_::destroy(source);
+                [[unsafe]] {
+                    auto source =
+                        mut_ptr<byte>::from_raw_parts(old_ptr + offset).template cast<T>();
+                    auto target =
+                        mut_ptr<byte>::from_raw_parts(new_ptr + offset).template cast<T>();
+                    rstd::construct_at(target.as_raw_ptr(), rstd::move(source.get()));
+                    rstd::ptr_::destroy(source);
+                }
             }
-            as<Allocator>(allocator).deallocate(old_ptr, old_layout);
+            [[unsafe]] { as<Allocator>(allocator).deallocate(old_ptr, old_layout); }
             ptr = mut_ptr<byte>::from_raw_parts(new_ptr);
         }
         cap               = new_cap;
@@ -146,17 +155,20 @@ struct RawVec {
 
         auto old_ptr = ptr.as_raw_ptr();
         if (capacity == usize()) {
-            if (old_layout.size() != usize())
-                as<Allocator>(allocator).deallocate(old_ptr, old_layout);
+            if (old_layout.size() != usize()) {
+                [[unsafe]] { as<Allocator>(allocator).deallocate(old_ptr, old_layout); }
+            }
             reset_ptr();
             allocation_layout = new_layout;
             return Ok(empty {});
         }
 
         if constexpr (mtp::triv_copyable<T>) {
-            auto res = as<Allocator>(allocator).shrink(old_ptr, old_layout, new_layout);
-            if (res.is_err()) return Err(TryReserveError::AllocError);
-            ptr = res.unwrap_unchecked().template as_mut_ptr<byte>();
+            [[unsafe]] {
+                auto res = as<Allocator>(allocator).shrink(old_ptr, old_layout, new_layout);
+                if (res.is_err()) return Err(TryReserveError::AllocError);
+                ptr = res.unwrap_unchecked().template as_mut_ptr<byte>();
+            }
         } else {
             auto res = as<Allocator>(allocator).allocate(new_layout);
             if (res.is_err()) return Err(TryReserveError::AllocError);
@@ -164,12 +176,16 @@ struct RawVec {
             auto new_ptr = res.unwrap_unchecked().template as_mut_ptr<byte>().as_raw_ptr();
             for (rstd::size_t index = 0; index < len.to_primitive(); ++index) {
                 auto offset = index * sizeof(typename mut_ptr<T>::storage_type);
-                auto source = mut_ptr<byte>::from_raw_parts(old_ptr + offset).template cast<T>();
-                auto target = mut_ptr<byte>::from_raw_parts(new_ptr + offset).template cast<T>();
-                rstd::construct_at(target.as_raw_ptr(), rstd::move(source.get()));
-                rstd::ptr_::destroy(source);
+                [[unsafe]] {
+                    auto source =
+                        mut_ptr<byte>::from_raw_parts(old_ptr + offset).template cast<T>();
+                    auto target =
+                        mut_ptr<byte>::from_raw_parts(new_ptr + offset).template cast<T>();
+                    rstd::construct_at(target.as_raw_ptr(), rstd::move(source.get()));
+                    rstd::ptr_::destroy(source);
+                }
             }
-            as<Allocator>(allocator).deallocate(old_ptr, old_layout);
+            [[unsafe]] { as<Allocator>(allocator).deallocate(old_ptr, old_layout); }
             ptr = mut_ptr<byte>::from_raw_parts(new_ptr);
         }
         cap               = capacity;
@@ -195,7 +211,7 @@ struct RawVec {
     void drop() {
         if (ptr != nullptr) {
             debug_assert(allocation_layout.size() > usize());
-            as<Allocator>(allocator).deallocate(ptr.as_raw_ptr(), allocation_layout);
+            [[unsafe]] { as<Allocator>(allocator).deallocate(ptr.as_raw_ptr(), allocation_layout); }
         }
         reset_ptr();
     }
@@ -280,7 +296,9 @@ public:
     auto as_uninit() const noexcept -> mut_ref<MaybeUninit<byte>[]>
         requires(mtp::same_as<T, u8> || mtp::same_as<T, byte>)
     {
-        return mut_ref<MaybeUninit<byte>[]>::from_bytes(pointer_.as_raw_ptr(), length_);
+        [[unsafe]] {
+            return mut_ref<MaybeUninit<byte>[]>::from_bytes(pointer_.as_raw_ptr(), length_);
+        }
     }
 
     constexpr auto len() const noexcept -> usize { return length_; }
@@ -393,8 +411,10 @@ class Vec {
         auto raw    = length == usize() ? NonNull<T>::dangling().as_mut_ptr() : m_buf.ptr_at();
         m_buf.reset_ptr();
         m_len = usize();
-        return Box<T[], A>::from_raw_in(mut_ptr<T[]>::from_raw_parts(raw.as_raw_ptr(), length),
-                                        rstd::move(m_buf.allocator));
+        [[unsafe]] {
+            return Box<T[], A>::from_raw_in(mut_ptr<T[]>::from_raw_parts(raw.as_raw_ptr(), length),
+                                            rstd::move(m_buf.allocator));
+        }
     }
 
     constexpr explicit Vec(RawVec<T, A> buf, usize len): m_buf(rstd::move(buf)), m_len(len) {}
@@ -599,7 +619,7 @@ public:
     [[clang::exclude_from_explicit_instantiation]]
     constexpr auto as_slice() const noexcept [[clang::lifetimebound]] -> slice<T> {
         if (m_len == usize()) return {};
-        return slice<T>::from_raw_parts(m_buf.ptr_at().as_ptr().as_raw_ptr(), m_len);
+        [[unsafe]] { return slice<T>::from_raw_parts(m_buf.ptr_at().as_ptr().as_raw_ptr(), m_len); }
     }
 
     /// Returns a mutable slice containing the entire vector.
@@ -615,7 +635,7 @@ public:
     }
 
     constexpr auto deref_mut() noexcept [[clang::lifetimebound]] -> mut_ref<T[]> {
-        return as_mut_slice().as_mut_ref();
+        [[unsafe]] { return as_mut_slice().as_mut_ref(); }
     }
 
     /// Borrows an endpoint without removing it; empty vectors return None.
@@ -627,10 +647,10 @@ public:
         return as_slice().last();
     }
     constexpr auto first_mut() noexcept [[clang::lifetimebound]] -> Option<mut_ref<T>> {
-        return as_mut_slice().as_mut_ref().first_mut();
+        return deref_mut().first_mut();
     }
     constexpr auto last_mut() noexcept [[clang::lifetimebound]] -> Option<mut_ref<T>> {
-        return as_mut_slice().as_mut_ref().last_mut();
+        return deref_mut().last_mut();
     }
 
     /// Returns a const pointer to the first element of the vector.
@@ -670,6 +690,7 @@ public:
     /// Sets the vector length without initializing or dropping elements.
     ///
     /// Callers must ensure that all elements in the new initialized range are valid.
+    [[unsafe]]
     constexpr void set_len_unchecked(usize new_len) {
         if (new_len > m_buf.cap) {
             rstd::panic { "Vec::set_len_unchecked out of capacity" };
@@ -757,7 +778,9 @@ public:
         if constexpr (mtp::same_as<T, u8>) {
             emplace_back(as<Clone>(value).clone());
         } else {
-            extend_from_slice(slice<T>::from_raw_parts(rstd::addressof(value), usize(1)));
+            auto one = slice<T>();
+            [[unsafe]] { one = slice<T>::from_raw_parts(rstd::addressof(value), usize(1)); }
+            extend_from_slice(one);
         }
     }
 
@@ -777,8 +800,7 @@ public:
     {
         if (start > end || end > m_len) rstd::panic { "Vec extend range out of bounds" };
         if (start == end) return;
-        extend_from_slice(
-            slice<T>::from_raw_parts(m_buf.ptr_at(start).as_ptr().as_raw_ptr(), end - start));
+        extend_from_slice(as_slice().subslice(start, end - start));
     }
 
     /// Initializes new elements with `generator`; shrinking never calls it.
@@ -820,8 +842,7 @@ public:
         reserve(values.len());
 
         if (source_is_self) {
-            values = slice<T>::from_raw_parts(m_buf.ptr_at(usize(source_offset)).as_raw_ptr(),
-                                              values.len());
+            values = as_slice().subslice(usize(source_offset), values.len());
         }
 
         auto destination = m_buf.ptr_at(m_len);
@@ -830,22 +851,21 @@ public:
                 ptr<T>::from_raw_parts(values.as_raw_ptr()), destination, values.len());
             m_len += values.len();
         } else {
-            for (rstd::size_t index = 0; index < values.len().to_primitive(); ++index) {
-                rstd::ptr_::construct(
-                    destination.byte_add((usize(index)) *
-                                         usize(sizeof(typename mut_ptr<T>::storage_type))),
-                    as<Clone>(values[usize(index)]).clone());
+            for (auto const& value : values) {
+                rstd::ptr_::construct(m_buf.ptr_at(m_len), as<Clone>(value).clone());
                 ++m_len;
             }
         }
     }
 
     /// Appends a copy of `count` elements starting at `values`.
+    /// The pointer must refer to `count` live, readable elements when `count` is nonzero.
+    [[unsafe]]
     void extend_from_slice(const T* values, usize count)
         requires Impled<T, Clone> && (! mtp::same_as<T, u8>)
     {
         if (count == usize()) return;
-        extend_from_slice(slice<T>::from_raw_parts(values, count));
+        [[unsafe]] { extend_from_slice(slice<T>::from_raw_parts(values, count)); }
     }
 
     /// Appends raw bytes as owned `u8` objects.
@@ -927,13 +947,11 @@ public:
 
         truncate(source.len());
         auto const initialized = m_len;
-        rstd::slice_::clone_from_slice(
-            mut_ref<T[]>::from_raw_parts(m_buf.ptr_at().as_raw_ptr(), initialized),
-            slice<T>::from_raw_parts(source.data(), initialized));
+        auto const values      = source.as_slice();
+        rstd::slice_::clone_from_slice(deref_mut(), values.subslice(usize(), initialized));
 
         if (initialized < source.len()) {
-            extend_from_slice(slice<T>::from_raw_parts(source.data() + initialized.to_primitive(),
-                                                       source.len() - initialized));
+            extend_from_slice(values.subslice(initialized, source.len() - initialized));
         }
     }
 
@@ -1052,27 +1070,23 @@ public:
     }
 
     /// Returns a mutable iterator to the beginning.
-    constexpr auto begin() noexcept [[clang::lifetimebound]] -> mut_ptr<T> { return as_mut_ptr(); }
+    constexpr auto begin() noexcept [[clang::lifetimebound]] { return deref_mut().begin(); }
     /// Returns a mutable iterator to the end.
-    constexpr auto end() noexcept [[clang::lifetimebound]] -> mut_ptr<T> {
-        return m_buf.ptr_at(m_len);
-    }
+    constexpr auto end() noexcept [[clang::lifetimebound]] { return deref_mut().end(); }
     /// Returns a const iterator to the beginning.
-    constexpr auto begin() const noexcept [[clang::lifetimebound]] -> ptr<T> { return as_ptr(); }
+    constexpr auto begin() const noexcept [[clang::lifetimebound]] { return as_slice().begin(); }
     /// Returns a const iterator to the end.
-    constexpr auto end() const noexcept [[clang::lifetimebound]] -> ptr<T> {
-        return m_buf.ptr_at(m_len).as_ptr();
-    }
+    constexpr auto end() const noexcept [[clang::lifetimebound]] { return as_slice().end(); }
 
     using IntoIter = VecIntoIter<T, A>;
 
     /// Returns an iterator over `&T`.
     auto iter() const [[clang::lifetimebound]] -> rstd::iter::SliceIter<T> {
-        return { begin(), end() };
+        return rstd::iter::from_slice(as_slice());
     }
     /// Returns an iterator over `&mut T`.
     auto iter_mut() [[clang::lifetimebound]] -> rstd::iter::SliceIterMut<T> {
-        return { begin(), end() };
+        return rstd::iter::from_slice_mut(deref_mut());
     }
     /// Consumes the vector, returning an iterator over owned `T`.
     auto into_iter() && -> VecIntoIter<T, A> { return VecIntoIter<T, A>(rstd::move(*this)); }
@@ -1150,19 +1164,23 @@ public:
     auto next() -> rstd::Option<Item> {
         if (front_ == back_) return rstd::None();
         auto source = buffer_.ptr_at(front_);
-        T    value  = rstd::ptr_::move_out(source);
-        rstd::ptr_::destroy(source);
-        ++front_;
-        return rstd::Some(rstd::move(value));
+        [[unsafe]] {
+            T value = rstd::ptr_::move_out(source);
+            rstd::ptr_::destroy(source);
+            ++front_;
+            return rstd::Some(rstd::move(value));
+        }
     }
 
     auto next_back() -> rstd::Option<Item> {
         if (front_ == back_) return rstd::None();
         --back_;
         auto source = buffer_.ptr_at(back_);
-        T    value  = rstd::ptr_::move_out(source);
-        rstd::ptr_::destroy(source);
-        return rstd::Some(rstd::move(value));
+        [[unsafe]] {
+            T value = rstd::ptr_::move_out(source);
+            rstd::ptr_::destroy(source);
+            return rstd::Some(rstd::move(value));
+        }
     }
 
     auto size_hint() const -> rstd::iter::SizeHint {

@@ -60,7 +60,8 @@ public:
 
     void clone_from(const String& source);
 
-    /// Creates a new `String` from a byte vector without checking UTF-8 validity.
+    /// Creates a new `String` from a byte vector that must already contain valid UTF-8.
+    [[unsafe]]
     static auto from_utf8_unchecked(Vec<u8>&& bytes) -> String;
 
     /// Creates a new `String` from owned bytes after validating UTF-8.
@@ -85,7 +86,7 @@ public:
     auto as_str() const noexcept [[clang::lifetimebound]] -> ref<str>;
 
     constexpr auto as_mut_str() & noexcept [[clang::lifetimebound]] -> mut_ref<str> {
-        return rstd::str_::from_utf8_unchecked_mut(vec.as_mut_slice().as_mut_ref());
+        [[unsafe]] { return rstd::str_::from_utf8_unchecked_mut(vec.as_mut_slice().as_mut_ref()); }
     }
 
     /// Returns the byte length of this string.
@@ -118,22 +119,30 @@ public:
     void insert(usize index, char32_t code_point);
 
     friend constexpr auto operator<=>(const String& a, const String& b) noexcept {
-        return rstd::lexicographical_compare_three_way(
-            a.vec.begin(), a.vec.end(), b.vec.begin(), b.vec.end());
+        [[unsafe]] {
+            return rstd::lexicographical_compare_three_way(
+                a.vec.begin(), a.vec.end(), b.vec.begin(), b.vec.end());
+        }
     }
     friend constexpr auto operator<=>(const String& a, slice<u8> b) noexcept {
-        return rstd::lexicographical_compare_three_way(
-            a.vec.begin(), a.vec.end(), b.begin(), b.end());
+        [[unsafe]] {
+            return rstd::lexicographical_compare_three_way(
+                a.vec.begin(), a.vec.end(), b.begin(), b.end());
+        }
     }
     friend auto operator<=>(const String& a, ref<str> b) noexcept {
         auto a_str = a.as_str();
-        return rstd::lexicographical_compare_three_way(
-            a_str.begin(), a_str.end(), b.begin(), b.end());
+        [[unsafe]] {
+            return rstd::lexicographical_compare_three_way(
+                a_str.begin(), a_str.end(), b.begin(), b.end());
+        }
     }
     friend auto operator<=>(ref<str> a, const String& b) noexcept {
         auto b_str = b.as_str();
-        return rstd::lexicographical_compare_three_way(
-            a.begin(), a.end(), b_str.begin(), b_str.end());
+        [[unsafe]] {
+            return rstd::lexicographical_compare_three_way(
+                a.begin(), a.end(), b_str.begin(), b_str.end());
+        }
     }
     friend bool operator==(const String& a, ref<str> b) noexcept { return a.as_str() == b; }
     friend bool operator==(ref<str> a, const String& b) noexcept { return b == a; }

@@ -75,11 +75,11 @@ void String::push(char32_t code_point) {
 void String::push(rstd::Char value) {
     byte bytes[4] {};
     auto length = value.encode_utf8(bytes);
-    vec.extend_from_slice(slice<u8>::from_raw_parts(bytes, length));
+    [[unsafe]] { vec.extend_from_slice(slice<u8>::from_raw_parts(bytes, length)); }
 }
 
 auto String::as_str() const noexcept -> ref<str> {
-    return rstd::str_::from_utf8_unchecked(vec.as_slice());
+    [[unsafe]] { return rstd::str_::from_utf8_unchecked(vec.as_slice()); }
 }
 
 void String::reserve(usize additional) {
@@ -112,12 +112,14 @@ void String::replace_range(usize start, usize end, ref<str> replacement) {
 
     auto result = Vec<u8>::with_capacity(start + replacement.size() + vec.len() - end);
     if (start != usize()) {
-        result.extend_from_slice(slice<u8>::from_raw_parts(current.data(), start));
+        [[unsafe]] { result.extend_from_slice(slice<u8>::from_raw_parts(current.data(), start)); }
     }
     result.extend_from_slice(replacement.as_bytes());
     if (end != vec.len()) {
-        result.extend_from_slice(
-            slice<u8>::from_raw_parts(current.data() + end.to_primitive(), vec.len() - end));
+        [[unsafe]] {
+            result.extend_from_slice(
+                slice<u8>::from_raw_parts(current.data() + end.to_primitive(), vec.len() - end));
+        }
     }
     vec = rstd::move(result);
 }
@@ -135,15 +137,18 @@ void String::insert(usize index, char32_t code_point) {
 void String::insert(usize index, rstd::Char value) {
     byte bytes[4] {};
     auto length = value.encode_utf8(bytes);
-    insert_str(index, rstd::str_::from_utf8_unchecked(slice<u8>::from_raw_parts(bytes, length)));
+    [[unsafe]] {
+        insert_str(index,
+                   rstd::str_::from_utf8_unchecked(slice<u8>::from_raw_parts(bytes, length)));
+    }
 }
 
 auto String::begin() const noexcept -> ptr<u8> {
-    return vec.begin();
+    return vec.as_ptr();
 }
 
 auto String::end() const noexcept -> ptr<u8> {
-    return vec.end();
+    [[unsafe]] { return vec.as_ptr().add(vec.len()); }
 }
 
 auto String::data() const noexcept -> const byte* {
@@ -200,7 +205,9 @@ auto Impl<fmt::Debug, FromUtf8Error>::fmt(fmt::Formatter& formatter) const -> bo
 
 auto Impl<fmt::Display, char const*>::fmt(fmt::Formatter& formatter) const -> bool {
     auto value = this->self();
-    return formatter.write_raw(reinterpret_cast<const uint8_t*>(value), rstd::strlen(value));
+    [[unsafe]] {
+        return formatter.write_raw(reinterpret_cast<const uint8_t*>(value), rstd::strlen(value));
+    }
 }
 
 auto Impl<fmt::Debug, char const*>::fmt(fmt::Formatter& formatter) const -> bool {
@@ -214,6 +221,19 @@ auto Impl<fmt::Debug, time::Duration>::fmt(fmt::Formatter& formatter) const -> b
     auto write_ascii = [&formatter](auto const* value, size_t length) {
         return formatter.write_raw(value, length);
     };
+    auto write_fraction = [&write_ascii]<size_t Size>(char (&fraction)[Size], uint32_t remaining) {
+        size_t length = Size - 1;
+        [[unsafe]] {
+            for (auto index = length; index > 0; --index) {
+                fraction[index - 1] = char('0' + remaining % 10);
+                remaining /= 10;
+            }
+            fraction[length] = '\0';
+            while (length > 1 && fraction[length - 1] == '0') --length;
+        }
+        write_ascii(".", 1);
+        write_ascii(fraction, length);
+    };
     auto&          duration = this->self();
     const uint64_t secs     = duration.as_secs().to_primitive();
     const uint32_t nanos    = duration.subsec_nanos().to_primitive();
@@ -221,17 +241,8 @@ auto Impl<fmt::Debug, time::Duration>::fmt(fmt::Formatter& formatter) const -> b
         auto value = rstd::format("{}", secs);
         write_ascii(value.data(), value.size().to_primitive());
         if (nanos != 0) {
-            char     fraction[10];
-            uint32_t remaining = nanos;
-            for (int index = 8; index >= 0; --index) {
-                fraction[index] = char('0' + remaining % 10);
-                remaining /= 10;
-            }
-            fraction[9] = '\0';
-            int length  = 9;
-            while (length > 1 && fraction[length - 1] == '0') --length;
-            write_ascii(".", 1);
-            write_ascii(fraction, static_cast<size_t>(length));
+            char fraction[10];
+            write_fraction(fraction, nanos);
         }
         return write_ascii("s", 1);
     }
@@ -242,15 +253,7 @@ auto Impl<fmt::Debug, time::Duration>::fmt(fmt::Formatter& formatter) const -> b
         write_ascii(value.data(), value.size().to_primitive());
         if (remaining != 0) {
             char fraction[7];
-            for (int index = 5; index >= 0; --index) {
-                fraction[index] = char('0' + remaining % 10);
-                remaining /= 10;
-            }
-            fraction[6] = '\0';
-            int length  = 6;
-            while (length > 1 && fraction[length - 1] == '0') --length;
-            write_ascii(".", 1);
-            write_ascii(fraction, static_cast<size_t>(length));
+            write_fraction(fraction, remaining);
         }
         return write_ascii("ms", 2);
     }
@@ -261,15 +264,7 @@ auto Impl<fmt::Debug, time::Duration>::fmt(fmt::Formatter& formatter) const -> b
         write_ascii(value.data(), value.size().to_primitive());
         if (remaining != 0) {
             char fraction[4];
-            for (int index = 2; index >= 0; --index) {
-                fraction[index] = char('0' + remaining % 10);
-                remaining /= 10;
-            }
-            fraction[3] = '\0';
-            int length  = 3;
-            while (length > 1 && fraction[length - 1] == '0') --length;
-            write_ascii(".", 1);
-            write_ascii(fraction, static_cast<size_t>(length));
+            write_fraction(fraction, remaining);
         }
         return write_ascii("us", 2);
     }

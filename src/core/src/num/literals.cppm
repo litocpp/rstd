@@ -19,22 +19,25 @@ consteval auto integer_literal() -> T {
     rstd::size_t   index   = 0;
     unsigned       base    = 10;
     if constexpr (sizeof...(Characters) >= 2) {
-        if (text[0] == '0' && (text[1] == 'x' || text[1] == 'X')) {
-            index = 2;
-            base  = 16;
-        } else if (text[0] == '0' && (text[1] == 'b' || text[1] == 'B')) {
-            index = 2;
-            base  = 2;
-        } else if (text[0] == '0') {
-            index = 1;
-            base  = 8;
+        [[unsafe]] {
+            if (text[0] == '0' && (text[1] == 'x' || text[1] == 'X')) {
+                index = 2;
+                base  = 16;
+            } else if (text[0] == '0' && (text[1] == 'b' || text[1] == 'B')) {
+                index = 2;
+                base  = 2;
+            } else if (text[0] == '0') {
+                index = 1;
+                base  = 8;
+            }
         }
     }
 
     rstd::uint128_t value     = 0;
     bool            has_digit = false;
     for (; index < sizeof...(Characters); ++index) {
-        const char character = text[index];
+        char character;
+        [[unsafe]] { character = text[index]; }
         if (character == '\'') continue;
         unsigned digit;
         if (character >= '0' && character <= '9') {

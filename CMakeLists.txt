@@ -47,8 +47,13 @@ set(GNU_OPTS
 set(CLANG_OPTS
   -Wno-gnu-statement-expression
   -Wno-deprecated-declarations
-  -Wunknown-attributes
   -fsized-deallocation
+)
+
+# CMake builds rstd without Lito's safety plugin.
+add_compile_options(
+  "$<$<COMPILE_LANG_AND_ID:CXX,Clang,AppleClang>:-Wno-unknown-attributes>"
+  "$<$<COMPILE_LANG_AND_ID:OBJCXX,Clang,AppleClang>:-Wno-unknown-attributes>"
 )
 
 if(PROJECT_IS_TOP_LEVEL)

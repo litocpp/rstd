@@ -98,7 +98,7 @@ public:
 
     constexpr void operator++() & { item_ = iterator_->next(); }
 
-    constexpr auto operator*() & -> Item { return item_.take().unwrap_unchecked(); }
+    constexpr auto operator*() & -> Item { return item_.take().unwrap(); }
 };
 
 /// A type is iterable when it exposes the complete `Iterator` required API.

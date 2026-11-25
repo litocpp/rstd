@@ -16,6 +16,7 @@ import :sys.signal;
 import rstd.io;
 #if RSTD_OS_LINUX || RSTD_OS_MACOS
 import rstd.sys.libc;
+import rstd.core;
 #endif
 
 namespace rstd::sys::signal
@@ -26,11 +27,11 @@ static_assert(__atomic_always_lock_free(sizeof(unsigned long long), nullptr));
 static_assert(__atomic_always_lock_free(sizeof(int), nullptr));
 
 // Published handler state has process lifetime and owns no subscription or runtime.
-static unsigned long long sequences[capacity] {};
-static int                process_id {};
-static int                pipe_read { -1 };
-static int                pipe_write { -1 };
-static bool               installed[capacity] {};
+static unsigned long long          sequences[capacity] {};
+static int                         process_id {};
+static int                         pipe_read { -1 };
+static int                         pipe_write { -1 };
+static rstd::array<bool, capacity> installed {};
 static void (*dispatch_events)(int) {};
 
 static auto os_error(int error) -> rstd::io::Error {
@@ -38,13 +39,15 @@ static auto os_error(int error) -> rstd::io::Error {
 }
 
 static void handle_signal(int number) {
-    int saved_errno = errno;
-    __atomic_fetch_add(&sequences[number], 1ULL, __ATOMIC_SEQ_CST);
+    if (number <= 0 || number >= capacity) return;
+    auto& error       = libc::get_errno();
+    int   saved_errno = error;
+    [[unsafe]] { __atomic_fetch_add(&sequences[number], 1ULL, __ATOMIC_SEQ_CST); }
     unsigned char byte = 1;
     while (::write(__atomic_load_n(&pipe_write, __ATOMIC_RELAXED), &byte, 1) < 0 &&
-           errno == EINTR) {
+           error == EINTR) {
     }
-    errno = saved_errno;
+    error = saved_errno;
 }
 
 static auto dispatch_loop(void*) -> void* {
@@ -53,19 +56,19 @@ static auto dispatch_loop(void*) -> void* {
         int           result;
         do {
             result = ::poll(&fd, 1, -1);
-        } while (result < 0 && errno == EINTR);
+        } while (result < 0 && libc::get_errno() == EINTR);
         if (result < 0 || (fd.revents & (POLLERR | POLLHUP | POLLNVAL))) {
-            dispatch_events(result < 0 ? errno : EIO);
+            [[unsafe]] { dispatch_events(result < 0 ? libc::get_errno() : EIO); }
             return nullptr;
         }
         unsigned char buffer[256];
         // A bounded drain lets delivery progress even under a continuous signal load.
         auto count = ::read(pipe_read, buffer, sizeof(buffer));
-        if (count < 0 && errno != EAGAIN && errno != EINTR) {
-            dispatch_events(errno);
+        if (count < 0 && libc::get_errno() != EAGAIN && libc::get_errno() != EINTR) {
+            [[unsafe]] { dispatch_events(libc::get_errno()); }
             return nullptr;
         }
-        dispatch_events(0);
+        [[unsafe]] { dispatch_events(0); }
     }
 }
 
@@ -125,20 +128,23 @@ auto quit_number() noexcept -> int {
     return SIGQUIT;
 }
 auto sequence(int number) noexcept -> unsigned long long {
-    return __atomic_load_n(&sequences[number], __ATOMIC_SEQ_CST);
+    if (number <= 0 || number >= capacity) return 0;
+    [[unsafe]] { return __atomic_load_n(&sequences[number], __ATOMIC_SEQ_CST); }
 }
 
 auto start(void (*dispatch)(int)) -> rstd::io::Result<empty> {
     if (pipe_read >= 0) return Ok(empty {});
-    int fds[2];
-    if (rstd::sys::libc::pipe2(fds, O_NONBLOCK | O_CLOEXEC) < 0) return Err(os_error(errno));
+    if (! dispatch) return Err(os_error(EINVAL));
+    rstd::array<int, 2> fds;
+    if (libc::pipe2(fds.data(), O_NONBLOCK | O_CLOEXEC) < 0)
+        return Err(os_error(libc::get_errno()));
     pthread_attr_t attr;
     auto           error = ::pthread_attr_init(&attr);
     if (error == 0) {
         error = ::pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
         if (error == 0) {
-            pipe_read = fds[0];
-            __atomic_store_n(&pipe_write, fds[1], __ATOMIC_RELAXED);
+            pipe_read = fds[rstd::usize(0)];
+            __atomic_store_n(&pipe_write, fds[rstd::usize(1)], __ATOMIC_RELAXED);
             dispatch_events = dispatch;
             pthread_t thread;
             error = ::pthread_create(&thread, &attr, dispatch_loop, nullptr);
@@ -148,8 +154,8 @@ auto start(void (*dispatch)(int)) -> rstd::io::Result<empty> {
     if (error != 0) {
         pipe_read = -1;
         __atomic_store_n(&pipe_write, -1, __ATOMIC_RELAXED);
-        ::close(fds[0]);
-        ::close(fds[1]);
+        ::close(fds[rstd::usize(0)]);
+        ::close(fds[rstd::usize(1)]);
         return Err(os_error(error));
     }
     __atomic_store_n(&process_id, static_cast<int>(::getpid()), __ATOMIC_RELEASE);
@@ -157,20 +163,24 @@ auto start(void (*dispatch)(int)) -> rstd::io::Result<empty> {
 }
 
 auto install(int number) -> rstd::io::Result<empty> {
-    if (installed[number]) return Ok(empty {});
+    if (number <= 0 || number >= capacity) return Err(os_error(EINVAL));
+    auto index = rstd::usize(number);
+    if (installed[index]) return Ok(empty {});
     struct sigaction old {};
-    if (::sigaction(number, nullptr, &old) < 0) return Err(os_error(errno));
-    if (old.sa_handler != SIG_DFL && old.sa_handler != SIG_IGN) {
-        return Err(
-            rstd::io::Error::make_const(rstd::io::ErrorKind { rstd::io::ErrorKind::ResourceBusy },
-                                        "signal already has a custom handler"));
+    if (::sigaction(number, nullptr, &old) < 0) return Err(os_error(libc::get_errno()));
+    [[unsafe]] {
+        if (old.sa_handler != SIG_DFL && old.sa_handler != SIG_IGN) {
+            return Err(rstd::io::Error::make_const(
+                rstd::io::ErrorKind { rstd::io::ErrorKind::ResourceBusy },
+                "signal already has a custom handler"));
+        }
     }
     struct sigaction action {};
-    action.sa_handler = handle_signal;
+    [[unsafe]] { action.sa_handler = handle_signal; }
     (void)sigemptyset(&action.sa_mask);
     action.sa_flags = SA_RESTART;
-    if (::sigaction(number, &action, nullptr) < 0) return Err(os_error(errno));
-    installed[number] = true;
+    if (::sigaction(number, &action, nullptr) < 0) return Err(os_error(libc::get_errno()));
+    installed[index] = true;
     return Ok(empty {});
 }
 
@@ -200,10 +210,10 @@ static DWORD WINAPI dispatch_loop(void*) {
     for (;;) {
         auto result = ::WaitForSingleObject(wake_event, INFINITE);
         if (result != WAIT_OBJECT_0) {
-            dispatch_events(static_cast<int>(::GetLastError()));
+            [[unsafe]] { dispatch_events(static_cast<int>(::GetLastError())); }
             return 0;
         }
-        dispatch_events(0);
+        [[unsafe]] { dispatch_events(0); }
     }
 }
 
@@ -250,6 +260,7 @@ auto quit_number() noexcept -> int {
 
 auto start(void (*dispatch)(int)) -> rstd::io::Result<empty> {
     if (wake_event) return Ok(empty {});
+    if (! dispatch) return Err(os_error(ERROR_INVALID_PARAMETER));
     wake_event = ::CreateEventW(nullptr, FALSE, FALSE, nullptr);
     if (! wake_event) return Err(os_error(::GetLastError()));
     dispatch_events = dispatch;

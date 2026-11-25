@@ -13,7 +13,9 @@ slice_sift_down(rstd::mut_ref<T[]> data, rstd::size_t root, rstd::size_t end, Co
         if (! compare(data[rstd::usize(root)], data[rstd::usize(child)])) return;
 
         auto pointer = rstd::mut_ptr<T>::from_raw_parts(data.as_raw_ptr());
-        rstd::ptr_::swap(pointer.add(rstd::usize(root)), pointer.add(rstd::usize(child)));
+        [[unsafe]] {
+            rstd::ptr_::swap(pointer.add(rstd::usize(root)), pointer.add(rstd::usize(child)));
+        }
         root = child;
     }
 }
@@ -23,25 +25,25 @@ namespace rstd
 
 export constexpr auto as_bytes(slice<u8> values [[clang::lifetimebound]]) noexcept -> slice<byte> {
     if (values.is_empty()) return {};
-    return slice<byte>::from_raw_parts(values.as_raw_ptr(), values.len());
+    [[unsafe]] { return slice<byte>::from_raw_parts(values.as_raw_ptr(), values.len()); }
 }
 
 export constexpr auto as_bytes_mut(mut_ref<u8[]> values [[clang::lifetimebound]]) noexcept
     -> mut_ref<byte[]> {
     if (values.is_empty()) return {};
-    return mut_ref<byte[]>::from_raw_parts(values.as_raw_ptr(), values.len());
+    [[unsafe]] { return mut_ref<byte[]>::from_raw_parts(values.as_raw_ptr(), values.len()); }
 }
 
 export constexpr auto as_u8_slice(slice<byte> values [[clang::lifetimebound]]) noexcept
     -> slice<u8> {
     if (values.is_empty()) return {};
-    return slice<u8>::from_raw_parts(values.as_raw_ptr(), values.len());
+    [[unsafe]] { return slice<u8>::from_raw_parts(values.as_raw_ptr(), values.len()); }
 }
 
 export constexpr auto as_u8_slice_mut(mut_ref<byte[]> values [[clang::lifetimebound]]) noexcept
     -> mut_ref<u8[]> {
     if (values.is_empty()) return {};
-    return mut_ref<u8[]>::from_raw_parts(values.as_raw_ptr(), values.len());
+    [[unsafe]] { return mut_ref<u8[]>::from_raw_parts(values.as_raw_ptr(), values.len()); }
 }
 
 } // namespace rstd
@@ -59,7 +61,7 @@ constexpr void sort_unstable_by(mut_ref<T[]> values, Compare compare) {
     }
     for (auto end = length; end > 1; --end) {
         auto pointer = mut_ptr<T>::from_raw_parts(values.as_raw_ptr());
-        ptr_::swap(pointer, pointer.add(usize(end - 1)));
+        [[unsafe]] { ptr_::swap(pointer, pointer.add(usize(end - 1))); }
         slice_sift_down(values, 0, end - 1, compare);
     }
 }

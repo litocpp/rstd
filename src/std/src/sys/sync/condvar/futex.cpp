@@ -15,13 +15,13 @@ auto Condvar::make() noexcept -> Condvar {
 void Condvar::notify_one() noexcept {
     m_futex.fetch_add(pal::futex::Primitive(static_cast<pal::futex::Primitive::primitive_type>(1)),
                       rstd::sync::atomic::Ordering::Relaxed);
-    pal::futex::futex_wake(&m_futex);
+    [[unsafe]] { pal::futex::futex_wake(&m_futex); }
 }
 
 void Condvar::notify_all() noexcept {
     m_futex.fetch_add(pal::futex::Primitive(static_cast<pal::futex::Primitive::primitive_type>(1)),
                       rstd::sync::atomic::Ordering::Relaxed);
-    pal::futex::futex_wake_all(&m_futex);
+    [[unsafe]] { pal::futex::futex_wake_all(&m_futex); }
 }
 
 void Condvar::wait(Mutex& mutex) noexcept {
@@ -37,7 +37,8 @@ auto Condvar::wait_optional_timeout(Mutex& mutex, Option<rstd::time::Duration> t
     auto value = m_futex.load(rstd::sync::atomic::Ordering::Relaxed);
 
     mutex.unlock();
-    auto notified = pal::futex::futex_wait(&m_futex, value, timeout);
+    bool notified;
+    [[unsafe]] { notified = pal::futex::futex_wait(&m_futex, value, timeout); }
     mutex.lock();
 
     return notified;

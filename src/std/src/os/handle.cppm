@@ -41,6 +41,8 @@ public:
         return handle;
     }
 
+    /// The open handle must be transferred exclusively to the result.
+    [[unsafe]]
     static auto from_raw_handle(RawHandle handle) noexcept -> OwnedHandle {
         if (handle == INVALID_RAW_HANDLE) panic { "invalid raw handle" };
         return OwnedHandle { handle };
@@ -67,6 +69,8 @@ public:
     auto as_raw_handle() const noexcept -> RawHandle { return handle_; }
     auto as_handle() const noexcept [[clang::lifetimebound]] -> BorrowedHandle { return *this; }
 
+    /// The handle must remain open for the complete lifetime of the returned view.
+    [[unsafe]]
     static auto borrow_raw(RawHandle handle) noexcept -> BorrowedHandle {
         if (handle == INVALID_RAW_HANDLE) panic { "invalid raw handle" };
         return BorrowedHandle { handle };
@@ -74,7 +78,7 @@ public:
 };
 
 inline auto OwnedHandle::as_handle() const noexcept [[clang::lifetimebound]] -> BorrowedHandle {
-    return BorrowedHandle::borrow_raw(handle_);
+    [[unsafe]] { return BorrowedHandle::borrow_raw(handle_); }
 }
 
 } // namespace rstd::os::handle

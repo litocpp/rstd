@@ -72,14 +72,20 @@ class ArcAllocator {
     friend struct ::ArcAllocatorAccess;
 
     explicit ArcAllocator(ArcHeader* header) noexcept: header_(header) {
-        if (header_) header_->inc_weak();
+        if (header_) {
+            [[unsafe]] { header_->inc_weak(); }
+        }
     }
     void reset() noexcept {
         auto* header = rstd::exchange(header_, nullptr);
-        if (header &&
-            header->weak.fetch_sub(usize(1), rstd::sync::atomic::Ordering::AcqRel) == usize(1)) {
-            rstd::sync::atomic::fence(rstd::sync::atomic::Ordering::Acquire);
-            header->allocation->release(header);
+        if (header) {
+            [[unsafe]] {
+                if (header->weak.fetch_sub(usize(1), rstd::sync::atomic::Ordering::AcqRel) ==
+                    usize(1)) {
+                    rstd::sync::atomic::fence(rstd::sync::atomic::Ordering::Acquire);
+                    header->allocation->release(header);
+                }
+            }
         }
     }
 
@@ -98,8 +104,8 @@ public:
     ~ArcAllocator() { reset(); }
     auto clone() const noexcept -> ArcAllocator { return ArcAllocator(header_); }
     auto as_ref() const noexcept [[clang::lifetimebound]] -> ref<dyn<Allocator>> {
-        return header_ ? header_->allocation->allocator(header_)
-                       : ::alloc::allocator_ref(::alloc::GLOBAL);
+        if (! header_) return ::alloc::allocator_ref(::alloc::GLOBAL);
+        [[unsafe]] { return header_->allocation->allocator(header_); }
     }
     auto allocate(Layout layout) const -> Result<rstd::alloc::Allocation, rstd::alloc::AllocError> {
         return as_ref()->allocate(layout);
@@ -108,20 +114,24 @@ public:
         -> Result<rstd::alloc::Allocation, rstd::alloc::AllocError> {
         return as_ref()->allocate_zeroed(layout);
     }
+    [[unsafe]]
     void deallocate(void* pointer, Layout layout) const noexcept {
-        as_ref()->deallocate(pointer, layout);
+        [[unsafe]] { as_ref()->deallocate(pointer, layout); }
     }
+    [[unsafe]]
     auto grow(void* pointer, Layout old_layout, Layout new_layout) const
         -> Result<rstd::alloc::Allocation, rstd::alloc::AllocError> {
-        return as_ref()->grow(pointer, old_layout, new_layout);
+        [[unsafe]] { return as_ref()->grow(pointer, old_layout, new_layout); }
     }
+    [[unsafe]]
     auto grow_zeroed(void* pointer, Layout old_layout, Layout new_layout) const
         -> Result<rstd::alloc::Allocation, rstd::alloc::AllocError> {
-        return as_ref()->grow_zeroed(pointer, old_layout, new_layout);
+        [[unsafe]] { return as_ref()->grow_zeroed(pointer, old_layout, new_layout); }
     }
+    [[unsafe]]
     auto shrink(void* pointer, Layout old_layout, Layout new_layout) const
         -> Result<rstd::alloc::Allocation, rstd::alloc::AllocError> {
-        return as_ref()->shrink(pointer, old_layout, new_layout);
+        [[unsafe]] { return as_ref()->shrink(pointer, old_layout, new_layout); }
     }
 };
 } // namespace alloc::sync
@@ -163,14 +173,16 @@ auto arc_header(mut_ptr<T> pointer) noexcept -> ArcHeader* {
             constexpr auto offset = arc_value_offset(Layout::make<mtp::rm_ext<T>>().align());
             return offset;
         } else if constexpr (mtp::DST<T>) {
-            return arc_value_offset(pointer.metadata()->align);
+            [[unsafe]] { return arc_value_offset(pointer.metadata()->align); }
         } else {
             constexpr auto offset = arc_value_offset(Layout::make<T>().align());
             return offset;
         }
     }();
-    auto* value = reinterpret_cast<rstd::byte*>(pointer.as_raw_ptr());
-    return rstd::launder(reinterpret_cast<ArcHeader*>(value - offset.to_primitive()));
+    [[unsafe]] {
+        auto* value = reinterpret_cast<rstd::byte*>(pointer.as_raw_ptr());
+        return rstd::launder(reinterpret_cast<ArcHeader*>(value - offset.to_primitive()));
+    }
 }
 
 template<typename T, typename A>
@@ -262,25 +274,29 @@ auto arc_try_allocate_value_in(A allocator, Args&&... args)
 template<typename T>
 void arc_deallocate(mut_ptr<T> pointer) noexcept {
     auto* header = arc_header(pointer);
-    header->allocation->release(header);
+    [[unsafe]] { header->allocation->release(header); }
 }
 
 template<typename T>
 void arc_drop_weak(mut_ptr<T> pointer) noexcept {
     auto* header = arc_header(pointer);
-    if (header->weak.fetch_sub(usize(1), rstd::sync::atomic::Ordering::AcqRel) == usize(1)) {
-        rstd::sync::atomic::fence(rstd::sync::atomic::Ordering::Acquire);
-        arc_deallocate(pointer);
+    [[unsafe]] {
+        if (header->weak.fetch_sub(usize(1), rstd::sync::atomic::Ordering::AcqRel) == usize(1)) {
+            rstd::sync::atomic::fence(rstd::sync::atomic::Ordering::Acquire);
+            arc_deallocate(pointer);
+        }
     }
 }
 
 template<typename T>
 void arc_drop_strong(mut_ptr<T> pointer) noexcept {
     auto* header = arc_header(pointer);
-    if (header->strong.fetch_sub(usize(1), rstd::sync::atomic::Ordering::AcqRel) == usize(1)) {
-        rstd::sync::atomic::fence(rstd::sync::atomic::Ordering::Acquire);
-        rstd::ptr_::drop_in_place(pointer);
-        arc_drop_weak(pointer);
+    [[unsafe]] {
+        if (header->strong.fetch_sub(usize(1), rstd::sync::atomic::Ordering::AcqRel) == usize(1)) {
+            rstd::sync::atomic::fence(rstd::sync::atomic::Ordering::Acquire);
+            rstd::ptr_::drop_in_place(pointer);
+            arc_drop_weak(pointer);
+        }
     }
 }
 
@@ -317,7 +333,11 @@ public:
         return result;
     }
 
-    static auto from_ptr(mut_ptr<T> pointer) noexcept -> ArcRaw { return ArcRaw { pointer }; }
+    /// A non-null pointer must represent an unclaimed strong token for an Arc of this type.
+    [[unsafe]]
+    static auto from_ptr(mut_ptr<T> pointer) noexcept -> ArcRaw {
+        return ArcRaw { pointer };
+    }
 
     auto into_raw() noexcept -> voidp
         requires Impled<T, Sized>
@@ -325,10 +345,12 @@ public:
         return static_cast<voidp>(into_ptr().as_raw_ptr());
     }
 
+    /// A non-null pointer must come from into_raw and still represent an unclaimed strong token.
+    [[unsafe]]
     static auto from_raw(voidp pointer) noexcept -> ArcRaw
         requires Impled<T, Sized>
     {
-        return from_ptr(mut_ptr<T>::from_raw_parts(static_cast<T*>(pointer)));
+        [[unsafe]] { return from_ptr(mut_ptr<T>::from_raw_parts(static_cast<T*>(pointer))); }
     }
 };
 
@@ -365,7 +387,9 @@ public:
     ~Arc() { reset(); }
 
     auto clone() const -> Arc {
-        if (self.pointer != nullptr) arc_header(self.pointer)->inc_strong();
+        if (self.pointer != nullptr) {
+            [[unsafe]] { arc_header(self.pointer)->inc_strong(); }
+        }
         return Arc { self };
     }
 
@@ -488,30 +512,42 @@ public:
         return make_uninit_in(::alloc::Global {});
     }
 
+    /// `raw` must hold an unclaimed strong token, or a null pointer.
+    [[unsafe]]
     static auto from_raw(ArcRaw<T> raw) noexcept -> Arc {
         return Arc { ArcData<T> { .pointer = raw.into_ptr() } };
     }
 
     /// The pointer must come from this Arc type and remain protected by a strong owner.
     /// Adds one strong ownership token, which must be released or adopted with from_raw.
+    [[unsafe]]
     static void increment_strong_count(mut_ptr<T> pointer) noexcept {
-        arc_header(pointer)->inc_strong();
+        [[unsafe]] { arc_header(pointer)->inc_strong(); }
     }
 
     /// Consumes one strong ownership token. The value may be destroyed by this call.
-    static void decrement_strong_count(mut_ptr<T> pointer) noexcept { arc_drop_strong(pointer); }
+    [[unsafe]]
+    static void decrement_strong_count(mut_ptr<T> pointer) noexcept {
+        arc_drop_strong(pointer);
+    }
 
     /// The pointer must remain protected by a strong owner throughout the query.
+    [[unsafe]]
     static auto strong_count_from_raw(mut_ptr<T> pointer) noexcept -> usize {
-        return arc_header(pointer)->strong.load(rstd::sync::atomic::Ordering::Acquire);
+        [[unsafe]] {
+            return arc_header(pointer)->strong.load(rstd::sync::atomic::Ordering::Acquire);
+        }
     }
 
     /// Borrows a live Arc pointer and retains its allocator without retaining its value.
+    [[unsafe]]
     static auto allocator_owner_from_raw(mut_ptr<T> pointer) noexcept -> ArcAllocator {
         auto* header = arc_header(pointer);
-        return ArcAllocator(header->allocation->allocator_owner(header));
+        [[unsafe]] { return ArcAllocator(header->allocation->allocator_owner(header)); }
     }
 
+    /// The payload must be initialized and all shared owners must honor its new type.
+    [[unsafe]]
     auto assume_init()
         requires(! mtp::same_as<typename maybe_uninit_traits<T>::value_type, void>)
     {
@@ -592,7 +628,7 @@ public:
     auto into_raw() noexcept -> ArcRaw<T> {
         auto pointer = self.pointer;
         self.pointer.reset();
-        return ArcRaw<T>::from_ptr(pointer);
+        return ArcRaw<T> { pointer };
     }
 };
 
@@ -763,36 +799,49 @@ struct Impl<alloc::Allocator, ::alloc::sync::Arc<A>> : ImplBase<::alloc::sync::A
         else
             return allocator->allocate_zeroed(layout);
     }
+    [[unsafe]]
     auto deallocate(void* pointer, alloc::Layout layout) const noexcept -> void {
         auto allocator = this->self().deref();
-        if constexpr (Impled<A, Sized>)
-            return as<alloc::Allocator>(*allocator).deallocate(pointer, layout);
-        else
-            return allocator->deallocate(pointer, layout);
+        [[unsafe]] {
+            if constexpr (Impled<A, Sized>)
+                return as<alloc::Allocator>(*allocator).deallocate(pointer, layout);
+            else
+                return allocator->deallocate(pointer, layout);
+        }
     }
+    [[unsafe]]
     auto grow(void* pointer, alloc::Layout old_layout, alloc::Layout new_layout) const
         -> Result<alloc::Allocation, alloc::AllocError> {
         auto allocator = this->self().deref();
-        if constexpr (Impled<A, Sized>)
-            return as<alloc::Allocator>(*allocator).grow(pointer, old_layout, new_layout);
-        else
-            return allocator->grow(pointer, old_layout, new_layout);
+        [[unsafe]] {
+            if constexpr (Impled<A, Sized>)
+                return as<alloc::Allocator>(*allocator).grow(pointer, old_layout, new_layout);
+            else
+                return allocator->grow(pointer, old_layout, new_layout);
+        }
     }
+    [[unsafe]]
     auto grow_zeroed(void* pointer, alloc::Layout old_layout, alloc::Layout new_layout) const
         -> Result<alloc::Allocation, alloc::AllocError> {
         auto allocator = this->self().deref();
-        if constexpr (Impled<A, Sized>)
-            return as<alloc::Allocator>(*allocator).grow_zeroed(pointer, old_layout, new_layout);
-        else
-            return allocator->grow_zeroed(pointer, old_layout, new_layout);
+        [[unsafe]] {
+            if constexpr (Impled<A, Sized>)
+                return as<alloc::Allocator>(*allocator)
+                    .grow_zeroed(pointer, old_layout, new_layout);
+            else
+                return allocator->grow_zeroed(pointer, old_layout, new_layout);
+        }
     }
+    [[unsafe]]
     auto shrink(void* pointer, alloc::Layout old_layout, alloc::Layout new_layout) const
         -> Result<alloc::Allocation, alloc::AllocError> {
         auto allocator = this->self().deref();
-        if constexpr (Impled<A, Sized>)
-            return as<alloc::Allocator>(*allocator).shrink(pointer, old_layout, new_layout);
-        else
-            return allocator->shrink(pointer, old_layout, new_layout);
+        [[unsafe]] {
+            if constexpr (Impled<A, Sized>)
+                return as<alloc::Allocator>(*allocator).shrink(pointer, old_layout, new_layout);
+            else
+                return allocator->shrink(pointer, old_layout, new_layout);
+        }
     }
 };
 template<typename A>
@@ -854,20 +903,24 @@ public:
         -> Result<rstd::alloc::Allocation, rstd::alloc::AllocError> {
         return as_ref()->allocate_zeroed(layout);
     }
+    [[unsafe]]
     auto deallocate(void* pointer, Layout layout) const noexcept -> void {
-        return as_ref()->deallocate(pointer, layout);
+        [[unsafe]] { return as_ref()->deallocate(pointer, layout); }
     }
+    [[unsafe]]
     auto grow(void* pointer, Layout old_layout, Layout new_layout) const
         -> Result<rstd::alloc::Allocation, rstd::alloc::AllocError> {
-        return as_ref()->grow(pointer, old_layout, new_layout);
+        [[unsafe]] { return as_ref()->grow(pointer, old_layout, new_layout); }
     }
+    [[unsafe]]
     auto grow_zeroed(void* pointer, Layout old_layout, Layout new_layout) const
         -> Result<rstd::alloc::Allocation, rstd::alloc::AllocError> {
-        return as_ref()->grow_zeroed(pointer, old_layout, new_layout);
+        [[unsafe]] { return as_ref()->grow_zeroed(pointer, old_layout, new_layout); }
     }
+    [[unsafe]]
     auto shrink(void* pointer, Layout old_layout, Layout new_layout) const
         -> Result<rstd::alloc::Allocation, rstd::alloc::AllocError> {
-        return as_ref()->shrink(pointer, old_layout, new_layout);
+        [[unsafe]] { return as_ref()->shrink(pointer, old_layout, new_layout); }
     }
 };
 } // namespace alloc::sync

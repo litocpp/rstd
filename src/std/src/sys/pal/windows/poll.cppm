@@ -84,7 +84,7 @@ struct WindowsOperation {
 static_assert(__builtin_offsetof(WindowsOperation, overlapped) == 0);
 
 struct AssociatedSource {
-    HANDLE handle { INVALID_HANDLE_VALUE };
+    HANDLE handle { os::fd::INVALID_RAW_FD };
     u32    generation {};
     usize  active_operations {};
     bool   occupied { false };
@@ -98,8 +98,8 @@ class NativeOperationTable {
         Page() noexcept {}
         rstd::array<MaybeUninit<WindowsOperation>, PAGE_CAPACITY> records;
 
-        rstd::uint32_t generations[PAGE_CAPACITY] {};
-        bool           occupied[PAGE_CAPACITY] {};
+        rstd::array<rstd::uint32_t, PAGE_CAPACITY> generations {};
+        rstd::array<bool, PAGE_CAPACITY>           occupied {};
     };
 
     Vec<Box<Page>> m_pages;
@@ -150,9 +150,9 @@ public:
         auto gen        = generation(key);
         if (gen == 0) return nullptr;
         auto& page   = page_for(slot_index);
-        auto  offset = static_cast<rstd::size_t>(slot_index) % PAGE_CAPACITY;
+        auto  offset = usize(static_cast<rstd::size_t>(slot_index) % PAGE_CAPACITY);
         if (page.occupied[offset]) return nullptr;
-        auto& record             = page.records[usize(offset)].write(rstd::move(operation));
+        auto& record             = page.records[offset].write(rstd::move(operation));
         page.generations[offset] = gen;
         page.occupied[offset]    = true;
         ++m_len;
@@ -164,30 +164,34 @@ public:
         auto page_index = static_cast<rstd::size_t>(slot_index) / PAGE_CAPACITY;
         if (page_index >= m_pages.len().to_primitive()) return nullptr;
         auto& page   = *m_pages[usize(page_index)];
-        auto  offset = static_cast<rstd::size_t>(slot_index) % PAGE_CAPACITY;
+        auto  offset = usize(static_cast<rstd::size_t>(slot_index) % PAGE_CAPACITY);
         if (! page.occupied[offset] || page.generations[offset] != generation(key)) return nullptr;
-        return page.records[usize(offset)].as_mut_ptr();
+        return page.records[offset].as_mut_ptr();
     }
 
     auto take(u64 key) -> Option<WindowsOperation> {
         auto* record = get(key);
         if (record == nullptr) return None<WindowsOperation>();
-        auto  slot_index      = slot(key);
-        auto  page_index      = static_cast<rstd::size_t>(slot_index) / PAGE_CAPACITY;
-        auto& page            = *m_pages[usize(page_index)];
-        auto  offset          = static_cast<rstd::size_t>(slot_index) % PAGE_CAPACITY;
-        auto  result          = rstd::move(page.records[usize(offset)]).assume_init();
-        page.occupied[offset] = false;
-        --m_len;
-        return Some(rstd::move(result));
+        auto  slot_index = slot(key);
+        auto  page_index = static_cast<rstd::size_t>(slot_index) / PAGE_CAPACITY;
+        auto& page       = *m_pages[usize(page_index)];
+        auto  offset     = usize(static_cast<rstd::size_t>(slot_index) % PAGE_CAPACITY);
+        [[unsafe]] {
+            auto result           = rstd::move(page.records[offset]).assume_init();
+            page.occupied[offset] = false;
+            --m_len;
+            return Some(rstd::move(result));
+        }
     }
 
     template<typename F>
     void for_each(F&& function) {
         for (rstd::size_t page_index = 0; page_index < m_pages.len().to_primitive(); ++page_index) {
             auto& page = *m_pages[usize(page_index)];
-            for (rstd::size_t offset = 0; offset < PAGE_CAPACITY; ++offset) {
-                if (page.occupied[offset]) function(*page.records[usize(offset)].as_mut_ptr());
+            for (usize offset; offset < usize(PAGE_CAPACITY); ++offset) {
+                if (page.occupied[offset]) {
+                    [[unsafe]] { function(page.records[offset].assume_init_mut()); }
+                }
             }
         }
     }
@@ -296,7 +300,9 @@ export class Poller {
         auto record = m_operations.take(operation_key);
         if (record.is_none()) return record;
         auto* associated = source(record->source_key);
-        if (associated != nullptr) --associated->active_operations;
+        if (associated != nullptr) {
+            [[unsafe]] { --associated->active_operations; }
+        }
         return record;
     }
 
@@ -357,19 +363,20 @@ public:
         if (record == nullptr) {
             return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
         }
-        if (operation.source_kind() == SourceKind::Socket) {
-            auto socket = reinterpret_cast<SOCKET>(operation.handle());
-            if (operation.kind() == OperationKind::Read ||
-                operation.kind() == OperationKind::Write) {
-                auto buffer = WSABUF {
-                    .len = static_cast<ULONG>(operation.len().to_primitive()),
-                    .buf = static_cast<char*>(operation.kind() == OperationKind::Read
-                                                  ? operation.mutable_data()
-                                                  : const_cast<void*>(operation.const_data())),
-                };
-                DWORD transferred {};
-                DWORD flags = operation.flags().to_primitive();
-                auto  rc    = operation.kind() == OperationKind::Read ? WSARecv(socket,
+        [[unsafe]] {
+            if (operation.source_kind() == SourceKind::Socket) {
+                auto socket = reinterpret_cast<SOCKET>(operation.handle());
+                if (operation.kind() == OperationKind::Read ||
+                    operation.kind() == OperationKind::Write) {
+                    auto buffer = WSABUF {
+                        .len = static_cast<ULONG>(operation.len().to_primitive()),
+                        .buf = static_cast<char*>(operation.kind() == OperationKind::Read
+                                                      ? operation.mutable_data()
+                                                      : const_cast<void*>(operation.const_data())),
+                    };
+                    DWORD transferred {};
+                    DWORD flags = operation.flags().to_primitive();
+                    auto rc = operation.kind() == OperationKind::Read ? WSARecv(socket,
                                                                                 &buffer,
                                                                                 1,
                                                                                 &transferred,
@@ -383,87 +390,93 @@ public:
                                                                                 flags,
                                                                                 &record->overlapped,
                                                                                 nullptr);
-                if (rc != 0) {
-                    auto error = WSAGetLastError();
-                    if (error != WSA_IO_PENDING) {
+                    if (rc != 0) {
+                        auto error = WSAGetLastError();
+                        if (error != WSA_IO_PENDING) {
+                            (void)m_operations.take(operation.operation_key());
+                            return Err(Error::from_raw_os_error(i32(error)));
+                        }
+                    }
+                } else if (operation.kind() == OperationKind::RecvMessage ||
+                           operation.kind() == OperationKind::SendMessage) {
+                    auto receiving = operation.kind() == OperationKind::RecvMessage;
+                    auto started   = rstd::sys::socket::start_datagram(operation.handle(),
+                                                                       operation.native_message(),
+                                                                       receiving,
+                                                                       &record->overlapped);
+                    if (started.is_err()) {
+                        auto error = rstd::move(started).unwrap_err();
+                        if (receiving && error.raw_os_error() == Some(i32(WSAEMSGSIZE))) {
+                            auto count = rstd::sys::socket::finish_truncated_datagram(
+                                operation.native_message(), usize());
+                            if (! PostQueuedCompletionStatus(
+                                    port(),
+                                    static_cast<DWORD>(count.to_primitive()),
+                                    1,
+                                    &record->overlapped)) {
+                                (void)m_operations.take(operation.operation_key());
+                                return Err(Error::from_raw_os_error(i32(GetLastError())));
+                            }
+                        } else {
+                            (void)m_operations.take(operation.operation_key());
+                            return Err(rstd::move(error));
+                        }
+                    }
+                } else if (operation.kind() == OperationKind::Connect) {
+                    auto started = windows_socket::start_connect(
+                        operation.handle(), operation.address(), &record->overlapped);
+                    if (started.is_err()) {
+                        (void)m_operations.take(operation.operation_key());
+                        return Err(rstd::move(started).unwrap_err_unchecked());
+                    }
+                } else {
+                    if (operation.secondary_handle() == os::fd::INVALID_RAW_FD) {
+                        (void)m_operations.take(operation.operation_key());
+                        return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
+                    }
+                    auto started = windows_socket::start_accept(operation.handle(),
+                                                                operation.secondary_handle(),
+                                                                operation.mutable_data(),
+                                                                operation.len(),
+                                                                &record->overlapped);
+                    if (started.is_err()) {
+                        (void)m_operations.take(operation.operation_key());
+                        return Err(rstd::move(started).unwrap_err_unchecked());
+                    }
+                }
+            } else {
+                DWORD transferred {};
+                auto  ok = operation.kind() == OperationKind::Read
+                               ? ReadFile(operation.handle(),
+                                          operation.mutable_data(),
+                                          static_cast<DWORD>(operation.len().to_primitive()),
+                                          &transferred,
+                                          &record->overlapped)
+                               : WriteFile(operation.handle(),
+                                           operation.const_data(),
+                                           static_cast<DWORD>(operation.len().to_primitive()),
+                                           &transferred,
+                                           &record->overlapped);
+                if (! ok) {
+                    auto error = GetLastError();
+                    if (error != ERROR_IO_PENDING) {
                         (void)m_operations.take(operation.operation_key());
                         return Err(Error::from_raw_os_error(i32(error)));
                     }
                 }
-            } else if (operation.kind() == OperationKind::RecvMessage ||
-                       operation.kind() == OperationKind::SendMessage) {
-                auto receiving = operation.kind() == OperationKind::RecvMessage;
-                auto started   = rstd::sys::socket::start_datagram(
-                    operation.handle(), operation.native_message(), receiving, &record->overlapped);
-                if (started.is_err()) {
-                    auto error = rstd::move(started).unwrap_err();
-                    if (receiving && error.raw_os_error() == Some(i32(WSAEMSGSIZE))) {
-                        auto count = rstd::sys::socket::finish_truncated_datagram(
-                            operation.native_message(), usize());
-                        if (! PostQueuedCompletionStatus(port(),
-                                                         static_cast<DWORD>(count.to_primitive()),
-                                                         1,
-                                                         &record->overlapped)) {
-                            (void)m_operations.take(operation.operation_key());
-                            return Err(Error::from_raw_os_error(i32(GetLastError())));
-                        }
-                    } else {
-                        (void)m_operations.take(operation.operation_key());
-                        return Err(rstd::move(error));
-                    }
-                }
-            } else if (operation.kind() == OperationKind::Connect) {
-                auto started = windows_socket::start_connect(
-                    operation.handle(), operation.address(), &record->overlapped);
-                if (started.is_err()) {
-                    (void)m_operations.take(operation.operation_key());
-                    return Err(rstd::move(started).unwrap_err_unchecked());
-                }
-            } else {
-                if (operation.secondary_handle() == os::fd::INVALID_RAW_FD) {
-                    (void)m_operations.take(operation.operation_key());
-                    return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
-                }
-                auto started = windows_socket::start_accept(operation.handle(),
-                                                            operation.secondary_handle(),
-                                                            operation.mutable_data(),
-                                                            operation.len(),
-                                                            &record->overlapped);
-                if (started.is_err()) {
-                    (void)m_operations.take(operation.operation_key());
-                    return Err(rstd::move(started).unwrap_err_unchecked());
-                }
             }
-        } else {
-            DWORD transferred {};
-            auto  ok = operation.kind() == OperationKind::Read
-                           ? ReadFile(operation.handle(),
-                                      operation.mutable_data(),
-                                      static_cast<DWORD>(operation.len().to_primitive()),
-                                      &transferred,
-                                      &record->overlapped)
-                           : WriteFile(operation.handle(),
-                                       operation.const_data(),
-                                       static_cast<DWORD>(operation.len().to_primitive()),
-                                       &transferred,
-                                       &record->overlapped);
-            if (! ok) {
-                auto error = GetLastError();
-                if (error != ERROR_IO_PENDING) {
-                    (void)m_operations.take(operation.operation_key());
-                    return Err(Error::from_raw_os_error(i32(error)));
-                }
-            }
-        }
 
-        ++rstd::move(source).unwrap_unchecked()->active_operations;
+            ++rstd::move(source).unwrap_unchecked()->active_operations;
+        }
         return Ok(empty {});
     }
 
     auto cancel_operation(u64 operation_key) -> io::Result<empty> {
         auto* operation = m_operations.get(operation_key);
         if (operation == nullptr) return Ok(empty {});
-        if (CancelIoEx(operation->handle, &operation->overlapped)) return Ok(empty {});
+        [[unsafe]] {
+            if (CancelIoEx(operation->handle, &operation->overlapped)) return Ok(empty {});
+        }
         auto error = GetLastError();
         if (error == ERROR_NOT_FOUND) return Ok(empty {});
         return Err(Error::from_raw_os_error(i32(error)));
@@ -472,14 +485,16 @@ public:
     auto release_completion_source(u64 source_key, os::fd::RawFd fd) -> io::Result<empty> {
         auto* associated = source(source_key);
         if (associated == nullptr) return Ok(empty {});
-        if (associated->handle != fd) {
-            return Err(Error::from_kind(ErrorKind { ErrorKind::NotFound }));
+        [[unsafe]] {
+            if (associated->handle != fd) {
+                return Err(Error::from_kind(ErrorKind { ErrorKind::NotFound }));
+            }
+            if (associated->active_operations != usize()) {
+                return Err(Error::from_kind(ErrorKind { ErrorKind::ResourceBusy }));
+            }
+            associated->handle   = os::fd::INVALID_RAW_FD;
+            associated->occupied = false;
         }
-        if (associated->active_operations != usize()) {
-            return Err(Error::from_kind(ErrorKind { ErrorKind::ResourceBusy }));
-        }
-        associated->handle   = INVALID_HANDLE_VALUE;
-        associated->occupied = false;
         return Ok(empty {});
     }
 
@@ -510,16 +525,22 @@ public:
                 if (overlapped == nullptr) {
                     return Err(Error::from_raw_os_error(i32(error)));
                 }
-                auto* operation = reinterpret_cast<WindowsOperation*>(overlapped);
-                auto  record    = take_completed(operation->operation_key);
+                auto record = [&] {
+                    [[unsafe]] {
+                        auto* operation = reinterpret_cast<WindowsOperation*>(overlapped);
+                        return take_completed(operation->operation_key);
+                    }
+                }();
                 if (record.is_none()) continue;
                 auto completed = rstd::move(record).unwrap_unchecked();
                 if (completed.kind == OperationKind::RecvMessage &&
                     (error == WSAEMSGSIZE || error == ERROR_MORE_DATA)) {
-                    auto count = rstd::sys::socket::finish_truncated_datagram(completed.message,
-                                                                              usize(transferred));
-                    batch.push(Event::completion(
-                        completed.operation_key, isize(count.to_primitive()), completed.flags));
+                    [[unsafe]] {
+                        auto count = rstd::sys::socket::finish_truncated_datagram(
+                            completed.message, usize(transferred));
+                        batch.push(Event::completion(
+                            completed.operation_key, isize(count.to_primitive()), completed.flags));
+                    }
                 } else {
                     batch.push(Event::completion_error(
                         completed.operation_key, i32(error), completed.flags));
@@ -532,68 +553,73 @@ public:
                 continue;
             }
 
-            auto* operation = reinterpret_cast<WindowsOperation*>(overlapped);
-            if (operation->source_kind == SourceKind::Socket &&
-                (operation->kind == OperationKind::Read ||
-                 operation->kind == OperationKind::Write)) {
-                DWORD socket_transferred = transferred;
-                DWORD socket_flags       = operation->flags.to_primitive();
-                if (! WSAGetOverlappedResult(reinterpret_cast<SOCKET>(operation->handle),
-                                             &operation->overlapped,
-                                             &socket_transferred,
-                                             FALSE,
-                                             &socket_flags)) {
-                    auto error  = WSAGetLastError();
-                    auto record = take_completed(operation->operation_key);
-                    if (record.is_none()) continue;
-                    auto completed = rstd::move(record).unwrap_unchecked();
-                    batch.push(Event::completion_error(
-                        completed.operation_key, i32(error), u32(socket_flags)));
-                    continue;
-                }
-                transferred      = socket_transferred;
-                operation->flags = u32(socket_flags);
+            if (overlapped == nullptr) {
+                return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidData }));
             }
-            if (operation->kind == OperationKind::Connect) {
-                auto finished = windows_socket::finish_connect(operation->handle);
-                if (finished.is_err()) {
-                    auto error  = rstd::move(finished).unwrap_err_unchecked();
-                    auto record = take_completed(operation->operation_key);
-                    if (record.is_none()) continue;
-                    auto completed = rstd::move(record).unwrap_unchecked();
-                    batch.push(Event::completion_error(
-                        completed.operation_key,
-                        error.raw_os_error().unwrap_or(i32(ERROR_INVALID_DATA)),
-                        completed.flags));
-                    continue;
+            [[unsafe]] {
+                auto* operation = reinterpret_cast<WindowsOperation*>(overlapped);
+                if (operation->source_kind == SourceKind::Socket &&
+                    (operation->kind == OperationKind::Read ||
+                     operation->kind == OperationKind::Write)) {
+                    DWORD socket_transferred = transferred;
+                    DWORD socket_flags       = operation->flags.to_primitive();
+                    if (! WSAGetOverlappedResult(reinterpret_cast<SOCKET>(operation->handle),
+                                                 &operation->overlapped,
+                                                 &socket_transferred,
+                                                 FALSE,
+                                                 &socket_flags)) {
+                        auto error  = WSAGetLastError();
+                        auto record = take_completed(operation->operation_key);
+                        if (record.is_none()) continue;
+                        auto completed = rstd::move(record).unwrap_unchecked();
+                        batch.push(Event::completion_error(
+                            completed.operation_key, i32(error), u32(socket_flags)));
+                        continue;
+                    }
+                    transferred      = socket_transferred;
+                    operation->flags = u32(socket_flags);
                 }
-            }
-            if (operation->kind == OperationKind::Accept) {
-                auto finished =
-                    windows_socket::finish_accept(operation->handle, operation->secondary_handle);
-                if (finished.is_err()) {
-                    auto error  = rstd::move(finished).unwrap_err_unchecked();
+                if (operation->kind == OperationKind::Connect) {
+                    auto finished = windows_socket::finish_connect(operation->handle);
+                    if (finished.is_err()) {
+                        auto error  = rstd::move(finished).unwrap_err_unchecked();
+                        auto record = take_completed(operation->operation_key);
+                        if (record.is_none()) continue;
+                        auto completed = rstd::move(record).unwrap_unchecked();
+                        batch.push(Event::completion_error(
+                            completed.operation_key,
+                            error.raw_os_error().unwrap_or(i32(ERROR_INVALID_DATA)),
+                            completed.flags));
+                        continue;
+                    }
+                }
+                if (operation->kind == OperationKind::Accept) {
+                    auto finished = windows_socket::finish_accept(operation->handle,
+                                                                  operation->secondary_handle);
+                    if (finished.is_err()) {
+                        auto error  = rstd::move(finished).unwrap_err_unchecked();
+                        auto record = take_completed(operation->operation_key);
+                        if (record.is_none()) continue;
+                        auto completed = rstd::move(record).unwrap_unchecked();
+                        batch.push(Event::completion_error(
+                            completed.operation_key,
+                            error.raw_os_error().unwrap_or(i32(ERROR_INVALID_DATA)),
+                            completed.flags));
+                        continue;
+                    }
                     auto record = take_completed(operation->operation_key);
                     if (record.is_none()) continue;
                     auto completed = rstd::move(record).unwrap_unchecked();
-                    batch.push(Event::completion_error(
-                        completed.operation_key,
-                        error.raw_os_error().unwrap_or(i32(ERROR_INVALID_DATA)),
-                        completed.flags));
+                    batch.push(Event::completion_resource(
+                        completed.operation_key, completed.secondary_handle, completed.flags));
                     continue;
                 }
                 auto record = take_completed(operation->operation_key);
                 if (record.is_none()) continue;
                 auto completed = rstd::move(record).unwrap_unchecked();
-                batch.push(Event::completion_resource(
-                    completed.operation_key, completed.secondary_handle, completed.flags));
-                continue;
+                batch.push(Event::completion(
+                    completed.operation_key, isize(transferred), completed.flags));
             }
-            auto record = take_completed(operation->operation_key);
-            if (record.is_none()) continue;
-            auto completed = rstd::move(record).unwrap_unchecked();
-            batch.push(
-                Event::completion(completed.operation_key, isize(transferred), completed.flags));
         }
         return Ok(rstd::move(batch));
     }
@@ -610,7 +636,7 @@ inline auto Poller::init(BackendPreference preference) -> io::Result<PollInit> {
     if (preference == BackendPreference::ReadinessEmulationRequired) {
         return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
     }
-    auto port = CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 1);
+    auto port = CreateIoCompletionPort(os::fd::INVALID_RAW_FD, nullptr, 0, 1);
     if (port == nullptr) return Err(Error::last_os_error());
 
     auto state = ::alloc::sync::Arc<PortState>::make(port);

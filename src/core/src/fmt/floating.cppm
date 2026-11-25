@@ -24,53 +24,65 @@ constexpr auto normalize(T value) noexcept {
 
 constexpr rstd::size_t BUFFER_SIZE = 1536;
 
+using TextBuffer     = rstd::uint8_t[BUFFER_SIZE];
+using ExponentBuffer = rstd::uint8_t[8];
+
 struct Rendered {
     rstd::size_t len;
     rstd::size_t zero_count;
     rstd::size_t exponent_len;
 };
 
-void append(rstd::uint8_t*       buffer,
+void append(TextBuffer&          buffer,
             rstd::size_t&        len,
             const rstd::uint8_t* source,
             rstd::size_t         source_len) noexcept {
     if (len + source_len > BUFFER_SIZE) rstd::intrinsics::abort();
-    for (rstd::size_t i = 0; i < source_len; ++i) buffer[len++] = source[i];
+    [[unsafe]] {
+        for (rstd::size_t i = 0; i < source_len; ++i) buffer[len++] = source[i];
+    }
 }
 
-void append(rstd::uint8_t* buffer, rstd::size_t& len, rstd::uint8_t value) noexcept {
+void append(TextBuffer& buffer, rstd::size_t& len, rstd::uint8_t value) noexcept {
     if (len == BUFFER_SIZE) rstd::intrinsics::abort();
-    buffer[len++] = value;
+    [[unsafe]] { buffer[len++] = value; }
 }
 
-void append_zeros(rstd::uint8_t* buffer, rstd::size_t& len, rstd::size_t count) noexcept {
+void append_zeros(TextBuffer& buffer, rstd::size_t& len, rstd::size_t count) noexcept {
     if (len + count > BUFFER_SIZE) rstd::intrinsics::abort();
-    for (rstd::size_t i = 0; i < count; ++i) buffer[len++] = '0';
+    [[unsafe]] {
+        for (rstd::size_t i = 0; i < count; ++i) buffer[len++] = '0';
+    }
 }
 
-auto write_exponent(rstd::uint8_t* output, rstd::int32_t exponent, bool upper) noexcept
+auto write_exponent(ExponentBuffer& output, rstd::int32_t exponent, bool upper) noexcept
     -> rstd::size_t {
     rstd::size_t len = 0;
-    output[len++]    = upper ? 'E' : 'e';
-    if (exponent < 0) {
-        output[len++] = '-';
-        exponent      = -exponent;
+    [[unsafe]] {
+        output[len++] = upper ? 'E' : 'e';
+        if (exponent < 0) {
+            output[len++] = '-';
+            exponent      = -exponent;
+        }
     }
 
+    // The decimal exponent of either float type fits in four digits.
     rstd::uint8_t reversed[4];
     rstd::size_t  digits = 0;
     do {
-        reversed[digits++] = static_cast<rstd::uint8_t>('0' + exponent % 10);
+        [[unsafe]] { reversed[digits++] = static_cast<rstd::uint8_t>('0' + exponent % 10); }
         exponent /= 10;
     } while (exponent != 0);
-    while (digits != 0) output[len++] = reversed[--digits];
+    [[unsafe]] {
+        while (digits != 0) output[len++] = reversed[--digits];
+    }
     return len;
 }
 
 template<rstd::size_t Capacity>
 auto render_fixed(num::flt2dec::Decimal<Capacity> const& decimal,
                   rstd::size_t                           fractional_digits,
-                  rstd::uint8_t*                         output) noexcept -> Rendered {
+                  TextBuffer&                            output) noexcept -> Rendered {
     if (decimal.len == 0) {
         rstd::size_t len = 0;
         append(output, len, '0');
@@ -96,7 +108,9 @@ auto render_fixed(num::flt2dec::Decimal<Capacity> const& decimal,
     if (exponent < decimal.len) {
         append(output, len, decimal.digits.data(), exponent);
         append(output, len, '.');
-        append(output, len, decimal.digits.data() + exponent, decimal.len - exponent);
+        [[unsafe]] {
+            append(output, len, decimal.digits.data() + exponent, decimal.len - exponent);
+        }
         const rstd::size_t rendered_fraction = decimal.len - exponent;
         return { len,
                  fractional_digits > rendered_fraction ? fractional_digits - rendered_fraction : 0,
@@ -113,14 +127,19 @@ template<rstd::size_t Capacity>
 auto render_scientific(num::flt2dec::Decimal<Capacity> const& decimal,
                        rstd::size_t                           significant_digits,
                        bool                                   upper,
-                       rstd::uint8_t*                         output,
-                       rstd::uint8_t* exponent_output) noexcept -> Rendered {
+                       TextBuffer&                            output,
+                       ExponentBuffer& exponent_output) noexcept -> Rendered {
     rstd::size_t len = 0;
-    append(
-        output, len, decimal.len == 0 ? static_cast<rstd::uint8_t>('0') : decimal.digits.data()[0]);
+    [[unsafe]] {
+        append(output,
+               len,
+               decimal.len == 0 ? static_cast<rstd::uint8_t>('0') : decimal.digits.data()[0]);
+    }
     if (decimal.len > 1 || significant_digits > 1) {
         append(output, len, '.');
-        if (decimal.len > 1) append(output, len, decimal.digits.data() + 1, decimal.len - 1);
+        if (decimal.len > 1) {
+            [[unsafe]] { append(output, len, decimal.digits.data() + 1, decimal.len - 1); }
+        }
     }
 
     const rstd::size_t rendered_digits = decimal.len == 0 ? 1 : decimal.len;
@@ -161,9 +180,9 @@ auto write_decimal(Formatter&                             formatter,
                             magnitude >= T(Primitive(1e16));
     }
 
-    rstd::uint8_t buffer[BUFFER_SIZE];
-    rstd::uint8_t exponent[8];
-    Rendered      rendered;
+    TextBuffer     buffer;
+    ExponentBuffer exponent;
+    Rendered       rendered;
     if (scientific) {
         const rstd::size_t significant_digits =
             exact ? static_cast<rstd::size_t>(formatter.precision()) + 1 : 0;

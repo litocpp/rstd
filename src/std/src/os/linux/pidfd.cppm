@@ -22,8 +22,10 @@ public:
         return descriptor_.as_fd();
     }
     auto into_raw_fd() && noexcept -> fd::RawFd { return rstd::move(descriptor_).into_raw_fd(); }
+    /// A live pidfd must be transferred exclusively to the result.
+    [[unsafe]]
     static auto from_raw_fd(fd::RawFd descriptor) -> PidFd {
-        return PidFd(fd::OwnedFd::from_raw_fd(descriptor));
+        [[unsafe]] { return PidFd(fd::OwnedFd::from_raw_fd(descriptor)); }
     }
     static auto from_owned_fd(fd::OwnedFd descriptor) -> PidFd {
         return PidFd(rstd::move(descriptor));
@@ -47,8 +49,9 @@ struct Impl<os::fd::IntoRawFd, os::linux::process::PidFd> : ImplBase<os::linux::
 
 template<>
 struct Impl<os::fd::FromRawFd, os::linux::process::PidFd> {
+    [[unsafe]]
     static auto from_raw_fd(os::fd::RawFd fd) -> os::linux::process::PidFd {
-        return os::linux::process::PidFd::from_raw_fd(fd);
+        [[unsafe]] { return os::linux::process::PidFd::from_raw_fd(fd); }
     }
 };
 

@@ -15,8 +15,12 @@ export using SmallPrimitive = u32;
 /// An atomic for use as a futex that is at least 8-bits but may be larger.
 export using SmallFutex = Atomic<SmallPrimitive>;
 
-export bool futex_wait(Futex* futex, Primitive expected, Option<Duration> timeout);
-export bool futex_wake(Futex* futex);
-export void futex_wake_all(Futex* futex);
+/// The futex must remain alive and at a stable address for the duration of the call.
+export [[unsafe]]
+bool futex_wait(Futex* futex, Primitive expected, Option<Duration> timeout);
+export [[unsafe]]
+bool futex_wake(Futex* futex);
+export [[unsafe]]
+void futex_wake_all(Futex* futex);
 
 } // namespace rstd::sys::pal::unix::futex

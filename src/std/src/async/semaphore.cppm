@@ -54,15 +54,21 @@ struct SemaphoreState {
 
         explicit Queue(usize permits): available(permits) {}
 
+        auto first() const noexcept -> SemaphoreWaiter& {
+            [[unsafe]] { return *head; }
+        }
+
         void unlink(SemaphoreWaiter& waiter) {
-            if (waiter.previous)
-                waiter.previous->next = waiter.next;
-            else
-                head = waiter.next;
-            if (waiter.next)
-                waiter.next->previous = waiter.previous;
-            else
-                tail = waiter.previous;
+            [[unsafe]] {
+                if (waiter.previous)
+                    waiter.previous->next = waiter.next;
+                else
+                    head = waiter.next;
+                if (waiter.next)
+                    waiter.next->previous = waiter.previous;
+                else
+                    tail = waiter.previous;
+            }
             waiter.previous = nullptr;
             waiter.next     = nullptr;
             waiter.queued   = false;
@@ -70,17 +76,18 @@ struct SemaphoreState {
 
         void push(SemaphoreWaiter& waiter) {
             waiter.previous = tail;
-            if (tail)
-                tail->next = &waiter;
-            else
+            if (tail) {
+                [[unsafe]] { tail->next = &waiter; }
+            } else {
                 head = &waiter;
+            }
             tail          = &waiter;
             waiter.queued = true;
         }
 
         void release(usize& permits, SemaphoreWakes& wakes) {
             while (! closed && head && permits != usize() && ! wakes.full()) {
-                auto& waiter   = *head;
+                auto& waiter   = first();
                 auto  assigned = rstd::cmp::min(waiter.remaining, permits);
                 waiter.remaining -= assigned;
                 permits -= assigned;
@@ -163,7 +170,7 @@ struct SemaphoreState {
                 auto q    = queue.lock().unwrap_unchecked();
                 q->closed = true;
                 while (q->head && ! wakes.full()) {
-                    auto& waiter = *q->head;
+                    auto& waiter = q->first();
                     q->unlink(waiter);
                     auto waker = waiter.waker.take();
                     if (waker.is_some()) wakes.push(rstd::move(*waker));

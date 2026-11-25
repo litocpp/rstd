@@ -66,10 +66,7 @@ public:
         requires mtp::same_as<T, u8>
     {
         if (span.begin > span.end || span.end > len()) rstd::panic("invalid parse span");
-        auto bytes = span.is_empty()
-                         ? slice<u8> {}
-                         : slice<u8>::from_raw_parts(
-                               values_.as_raw_ptr() + span.begin.to_primitive(), span.len());
+        auto bytes = values_.subslice(span.begin, span.len());
         if (text_.validated) {
             auto text     = str_::from_utf8_unchecked(values_);
             auto selected = text.get(span.begin, span.end);
@@ -165,9 +162,7 @@ public:
     constexpr auto is_eof() const noexcept -> bool { return position_ == input_.values().len(); }
 
     constexpr auto remaining_input() const noexcept [[clang::lifetimebound]] -> slice<T> {
-        if (is_eof()) return {};
-        return slice<T>::from_raw_parts(input_.values().as_raw_ptr() + position_.to_primitive(),
-                                        remaining());
+        return input_.values().subslice(position_, remaining());
     }
 
     constexpr auto checkpoint() const noexcept -> checkpoint_type {
@@ -192,9 +187,7 @@ public:
 
     constexpr auto view(Span span) const noexcept [[clang::lifetimebound]] -> slice<T> {
         if (span.begin > span.end || span.end > len()) rstd::panic("invalid parse span");
-        if (span.is_empty()) return {};
-        return slice<T>::from_raw_parts(input_.values().as_raw_ptr() + span.begin.to_primitive(),
-                                        span.len());
+        return input_.values().subslice(span.begin, span.len());
     }
 
     constexpr auto consumed(checkpoint_type checkpoint) const noexcept [[clang::lifetimebound]]
@@ -204,8 +197,7 @@ public:
 
     constexpr auto peek(usize ahead = usize()) const noexcept -> Option<ref<T>> {
         if (ahead >= remaining()) return None();
-        return Some(ref<T>::from_raw_parts(input_.values().as_raw_ptr() + position_.to_primitive() +
-                                           ahead.to_primitive()));
+        return input_.values().get(position_ + ahead);
     }
 
     constexpr auto take() noexcept -> Option<ref<T>> {
@@ -220,9 +212,7 @@ public:
         if (count > remaining()) return false;
         if (count == usize()) return true;
         if constexpr (! mtp::same_as<Position, UntrackedPosition>) {
-            tracking_.advance(slice<T>::from_raw_parts(
-                                  input_.values().as_raw_ptr() + position_.to_primitive(), count),
-                              position_);
+            tracking_.advance(input_.values().subslice(position_, count), position_);
         }
         position_ += count;
         return true;

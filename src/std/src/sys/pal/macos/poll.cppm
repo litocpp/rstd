@@ -109,17 +109,24 @@ export class Poller : private ReadinessState<MacosSource, Poller> {
     auto arm_timer(Option<time::Duration> timeout) -> io::Result<empty> {
         if (timeout.is_none() && m_armed_timer.is_none()) return Ok(empty {});
         struct kevent change;
-        if (timeout.is_some()) {
-            EV_SET(&change,
-                   static_cast<uintptr_t>(TIMER_KEY),
-                   EVFILT_TIMER,
-                   EV_ADD | EV_ONESHOT,
-                   0,
-                   static_cast<intptr_t>(duration_to_ms(*timeout)),
-                   reinterpret_cast<void*>(static_cast<uintptr_t>(TIMER_KEY)));
-        } else {
-            EV_SET(
-                &change, static_cast<uintptr_t>(TIMER_KEY), EVFILT_TIMER, EV_DELETE, 0, 0, nullptr);
+        [[unsafe]] {
+            if (timeout.is_some()) {
+                EV_SET(&change,
+                       static_cast<uintptr_t>(TIMER_KEY),
+                       EVFILT_TIMER,
+                       EV_ADD | EV_ONESHOT,
+                       0,
+                       static_cast<intptr_t>(duration_to_ms(*timeout)),
+                       reinterpret_cast<void*>(static_cast<uintptr_t>(TIMER_KEY)));
+            } else {
+                EV_SET(&change,
+                       static_cast<uintptr_t>(TIMER_KEY),
+                       EVFILT_TIMER,
+                       EV_DELETE,
+                       0,
+                       0,
+                       nullptr);
+            }
         }
         if (::kevent(m_poll_fd.as_raw_fd(), &change, 1, nullptr, 0, nullptr) < 0) {
             return Err(Error::last_os_error());
@@ -133,48 +140,30 @@ export class Poller : private ReadinessState<MacosSource, Poller> {
         auto want_read  = interest.is_readable();
         auto want_write = interest.is_writable();
 
-        struct kevent changes[4];
-        int           n            = 0;
-        const bool    change_read  = want_read != source.registered_read;
-        const bool    change_write = want_write != source.registered_write;
+        rstd::array<struct kevent, 2> changes;
+        int                           n            = 0;
+        const bool                    change_read  = want_read != source.registered_read;
+        const bool                    change_write = want_write != source.registered_write;
 
-        if (want_read && change_read) {
-            EV_SET(&changes[n++],
-                   static_cast<uintptr_t>(source.fd),
-                   EVFILT_READ,
-                   EV_ADD | EV_CLEAR,
-                   0,
-                   0,
-                   reinterpret_cast<void*>(static_cast<uintptr_t>(source.native_key)));
-        } else if (! want_read && change_read) {
-            EV_SET(&changes[n++],
-                   static_cast<uintptr_t>(source.fd),
-                   EVFILT_READ,
-                   EV_DELETE,
-                   0,
-                   0,
-                   nullptr);
-        }
+        auto set_change = [&](short filter, bool enable) {
+            auto& change = changes[usize(n++)];
+            [[unsafe]] {
+                auto data = enable
+                                ? reinterpret_cast<void*>(static_cast<uintptr_t>(source.native_key))
+                                : nullptr;
+                EV_SET(&change,
+                       static_cast<uintptr_t>(source.fd),
+                       filter,
+                       enable ? EV_ADD | EV_CLEAR : EV_DELETE,
+                       0,
+                       0,
+                       data);
+            }
+        };
+        if (change_read) set_change(EVFILT_READ, want_read);
+        if (change_write) set_change(EVFILT_WRITE, want_write);
 
-        if (want_write && change_write) {
-            EV_SET(&changes[n++],
-                   static_cast<uintptr_t>(source.fd),
-                   EVFILT_WRITE,
-                   EV_ADD | EV_CLEAR,
-                   0,
-                   0,
-                   reinterpret_cast<void*>(static_cast<uintptr_t>(source.native_key)));
-        } else if (! want_write && change_write) {
-            EV_SET(&changes[n++],
-                   static_cast<uintptr_t>(source.fd),
-                   EVFILT_WRITE,
-                   EV_DELETE,
-                   0,
-                   0,
-                   nullptr);
-        }
-
-        if (n > 0 && ::kevent(m_poll_fd.as_raw_fd(), changes, n, nullptr, 0, nullptr) < 0) {
+        if (n > 0 && ::kevent(m_poll_fd.as_raw_fd(), changes.data(), n, nullptr, 0, nullptr) < 0) {
             return Err(Error::last_os_error());
         }
         if (n > 0) {
@@ -220,24 +209,25 @@ public:
         auto armed = arm_timer(next_timer);
         if (armed.is_err()) return Err(rstd::move(armed).unwrap_err_unchecked());
 
-        struct kevent   events[Batch::capacity()];
-        struct timespec zero {};
-        const auto*     timeout = mode == WaitMode::Immediate ? &zero : nullptr;
+        rstd::array<struct kevent, Batch::capacity()> events;
+        struct timespec                               zero {};
+        auto* timeout = mode == WaitMode::Immediate ? &zero : nullptr;
 
         int count {};
         do {
             count = ::kevent(m_poll_fd.as_raw_fd(),
                              nullptr,
                              0,
-                             events,
+                             events.data(),
                              static_cast<int>(Batch::capacity()),
-                             const_cast<struct timespec*>(timeout));
+                             timeout);
         } while (count < 0 && libc::get_errno() == libc::EINTR);
         if (count < 0) return Err(Error::last_os_error());
 
         for (int i = 0; i < count; ++i) {
-            auto& event      = events[i];
-            auto  native_key = rstd::uint64_t(reinterpret_cast<uintptr_t>(event.udata));
+            auto&          event = events[usize(i)];
+            rstd::uint64_t native_key;
+            [[unsafe]] { native_key = rstd::uint64_t(reinterpret_cast<uintptr_t>(event.udata)); }
 
             if (event.filter == EVFILT_TIMER && native_key == TIMER_KEY) {
                 m_armed_timer = None<time::Duration>();
@@ -277,24 +267,30 @@ inline auto Poller::init(BackendPreference preference) -> io::Result<PollInit> {
         libc::close(kq);
         return Err(rstd::move(error));
     }
-    auto owned_kq = os::fd::OwnedFd::from_raw_fd(kq);
+    os::fd::OwnedFd owned_kq;
+    [[unsafe]] { owned_kq = os::fd::OwnedFd::from_raw_fd(kq); }
 
     int pipe_fds[2];
     if (libc::pipe2(pipe_fds, libc::O_NONBLOCK | libc::O_CLOEXEC) != 0) {
         return Err(Error::last_os_error());
     }
-    auto owned_read  = os::fd::OwnedFd::from_raw_fd(pipe_fds[0]);
-    auto owned_write = os::fd::OwnedFd::from_raw_fd(pipe_fds[1]);
+    os::fd::OwnedFd owned_read, owned_write;
+    [[unsafe]] {
+        owned_read  = os::fd::OwnedFd::from_raw_fd(pipe_fds[0]);
+        owned_write = os::fd::OwnedFd::from_raw_fd(pipe_fds[1]);
+    }
 
     // Register the wake pipe's read end on the kqueue.
     struct kevent wake_ev;
-    EV_SET(&wake_ev,
-           static_cast<uintptr_t>(pipe_fds[0]),
-           EVFILT_READ,
-           EV_ADD | EV_CLEAR,
-           0,
-           0,
-           reinterpret_cast<void*>(WAKE_KEY));
+    [[unsafe]] {
+        EV_SET(&wake_ev,
+               static_cast<uintptr_t>(pipe_fds[0]),
+               EVFILT_READ,
+               EV_ADD | EV_CLEAR,
+               0,
+               0,
+               reinterpret_cast<void*>(WAKE_KEY));
+    }
     if (::kevent(kq, &wake_ev, 1, nullptr, 0, nullptr) < 0) {
         return Err(Error::last_os_error());
     }

@@ -88,9 +88,8 @@ public:
                 }
                 usize index = frame.index++;
                 --remaining;
-                return Some(
-                    Item(rstd::ref<K>::from_raw_parts(rstd::addressof(node->key(index))),
-                         rstd::ref<V>::from_raw_parts(rstd::addressof(node->value(index)))));
+                return Some(Item(rstd::ref<K>::from_ref(node->key(index)),
+                                 rstd::ref<V>::from_ref(node->value(index))));
             }
             if (frame.index == node->len) {
                 front.pop();
@@ -99,8 +98,8 @@ public:
             usize index = frame.index++;
             push_left(node->child(index + usize(1)));
             --remaining;
-            return Some(Item(rstd::ref<K>::from_raw_parts(rstd::addressof(node->key(index))),
-                             rstd::ref<V>::from_raw_parts(rstd::addressof(node->value(index)))));
+            return Some(Item(rstd::ref<K>::from_ref(node->key(index)),
+                             rstd::ref<V>::from_ref(node->value(index))));
         }
     }
 
@@ -116,9 +115,8 @@ public:
                 }
                 usize index = --frame.index;
                 --remaining;
-                return Some(
-                    Item(rstd::ref<K>::from_raw_parts(rstd::addressof(node->key(index))),
-                         rstd::ref<V>::from_raw_parts(rstd::addressof(node->value(index)))));
+                return Some(Item(rstd::ref<K>::from_ref(node->key(index)),
+                                 rstd::ref<V>::from_ref(node->value(index))));
             }
             if (frame.index == usize()) {
                 back.pop();
@@ -127,8 +125,8 @@ public:
             usize index = --frame.index;
             push_right(node->child(index));
             --remaining;
-            return Some(Item(rstd::ref<K>::from_raw_parts(rstd::addressof(node->key(index))),
-                             rstd::ref<V>::from_raw_parts(rstd::addressof(node->value(index)))));
+            return Some(Item(rstd::ref<K>::from_ref(node->key(index)),
+                             rstd::ref<V>::from_ref(node->value(index))));
         }
     }
 
@@ -188,9 +186,8 @@ public:
                 }
                 usize index = frame.index++;
                 --remaining;
-                return Some(
-                    Item(rstd::ref<K>::from_raw_parts(rstd::addressof(node->key(index))),
-                         rstd::mut_ref<V>::from_raw_parts(rstd::addressof(node->value(index)))));
+                return Some(Item(rstd::ref<K>::from_ref(node->key(index)),
+                                 rstd::mut_ref<V>::from_ref(node->value(index))));
             }
             if (frame.index == node->len) {
                 front.pop();
@@ -199,9 +196,8 @@ public:
             usize index = frame.index++;
             push_left(node->child(index + usize(1)));
             --remaining;
-            return Some(
-                Item(rstd::ref<K>::from_raw_parts(rstd::addressof(node->key(index))),
-                     rstd::mut_ref<V>::from_raw_parts(rstd::addressof(node->value(index)))));
+            return Some(Item(rstd::ref<K>::from_ref(node->key(index)),
+                             rstd::mut_ref<V>::from_ref(node->value(index))));
         }
     }
 
@@ -217,9 +213,8 @@ public:
                 }
                 usize index = --frame.index;
                 --remaining;
-                return Some(
-                    Item(rstd::ref<K>::from_raw_parts(rstd::addressof(node->key(index))),
-                         rstd::mut_ref<V>::from_raw_parts(rstd::addressof(node->value(index)))));
+                return Some(Item(rstd::ref<K>::from_ref(node->key(index)),
+                                 rstd::mut_ref<V>::from_ref(node->value(index))));
             }
             if (frame.index == usize()) {
                 back.pop();
@@ -228,9 +223,8 @@ public:
             usize index = --frame.index;
             push_right(node->child(index));
             --remaining;
-            return Some(
-                Item(rstd::ref<K>::from_raw_parts(rstd::addressof(node->key(index))),
-                     rstd::mut_ref<V>::from_raw_parts(rstd::addressof(node->value(index)))));
+            return Some(Item(rstd::ref<K>::from_ref(node->key(index)),
+                             rstd::mut_ref<V>::from_ref(node->value(index))));
         }
     }
 
@@ -679,7 +673,7 @@ public:
         while (node != nullptr) {
             usize index = lower_bound(*node, key);
             if (index < node->len && equivalent(node->key(index), key)) {
-                return Some(rstd::ref<V>::from_raw_parts(rstd::addressof(node->value(index))));
+                return Some(rstd::ref<V>::from_ref(node->value(index)));
             }
             if (node->leaf) break;
             node = node->child(index);
@@ -698,7 +692,7 @@ public:
         while (node != nullptr) {
             usize index = lower_bound(*node, key);
             if (index < node->len && equivalent(node->key(index), key)) {
-                return Some(rstd::mut_ref<V>::from_raw_parts(rstd::addressof(node->value(index))));
+                return Some(rstd::mut_ref<V>::from_ref(node->value(index)));
             }
             if (node->leaf) break;
             node = node->child(index);
@@ -719,8 +713,8 @@ public:
             usize index = lower_bound(*node, key);
             if (index < node->len && equivalent(node->key(index), key)) {
                 return Some(rstd::tuple<rstd::ref<K>, rstd::ref<V>>(
-                    rstd::ref<K>::from_raw_parts(rstd::addressof(node->key(index))),
-                    rstd::ref<V>::from_raw_parts(rstd::addressof(node->value(index)))));
+                    rstd::ref<K>::from_ref(node->key(index)),
+                    rstd::ref<V>::from_ref(node->value(index))));
             }
             if (node->leaf) break;
             node = node->child(index);
@@ -769,9 +763,9 @@ public:
         auto* node = root_node();
         if (node == nullptr || length == usize()) return None();
         while (! node->leaf) node = node->child(usize());
-        return Some(rstd::tuple<rstd::ref<K>, rstd::ref<V>>(
-            rstd::ref<K>::from_raw_parts(rstd::addressof(node->key(usize()))),
-            rstd::ref<V>::from_raw_parts(rstd::addressof(node->value(usize())))));
+        return Some(
+            rstd::tuple<rstd::ref<K>, rstd::ref<V>>(rstd::ref<K>::from_ref(node->key(usize())),
+                                                    rstd::ref<V>::from_ref(node->value(usize()))));
     }
 
     auto last_key_value() const [[clang::lifetimebound]]
@@ -781,8 +775,7 @@ public:
         while (! node->leaf) node = node->child(node->len);
         usize index = node->len - usize(1);
         return Some(rstd::tuple<rstd::ref<K>, rstd::ref<V>>(
-            rstd::ref<K>::from_raw_parts(rstd::addressof(node->key(index))),
-            rstd::ref<V>::from_raw_parts(rstd::addressof(node->value(index)))));
+            rstd::ref<K>::from_ref(node->key(index)), rstd::ref<V>::from_ref(node->value(index))));
     }
 
     auto pop_first() -> Option<Entry> {

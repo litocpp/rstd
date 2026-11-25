@@ -44,6 +44,24 @@ TEST(Ptr, CopyNonoverlappingAcceptsEmptyNullRange) {
                                     usize());
 }
 
+TEST(Ptr, RefBorrowsAbstractBaseSubobject) {
+    struct Base {
+        virtual auto get() const -> int = 0;
+        virtual void set(int value)     = 0;
+    };
+    struct Value : Base {
+        int value = 0;
+
+        auto get() const -> int override { return value; }
+        void set(int new_value) override { value = new_value; }
+    } value;
+
+    auto read  = ref<Base>::from_ref(value);
+    auto write = mut_ref<Base>::from_ref(value);
+    write->set(42);
+    EXPECT_EQ(read->get(), 42);
+}
+
 struct alignas(64) ByteStorageValue {
     int* drops;
     int  value;
@@ -58,7 +76,7 @@ TEST(Ptr, MaybeUninitByteStorageUsesElementStride) {
     static_assert(sizeof(Slot) == sizeof(ByteStorageValue));
     static_assert(alignof(Slot) == alignof(ByteStorageValue));
     static_assert(rstd::mtp::same_as<decltype(mut_ptr<Slot> {}.p), rstd::byte*>);
-    static_assert(rstd::mtp::same_as<decltype(mut_ref<Slot[]> {}.p), rstd::byte*>);
+    static_assert(rstd::mtp::same_as<decltype(mut_ref<Slot[]> {}.as_byte_ptr()), rstd::byte*>);
     alignas(ByteStorageValue) rstd::byte storage[sizeof(ByteStorageValue) * 3];
     auto                                 pointer = mut_ptr<Slot>::from_bytes(storage);
     EXPECT_EQ(pointer.add(2_usize).as_byte_ptr(), storage + sizeof(ByteStorageValue) * 2);
@@ -71,8 +89,7 @@ TEST(Ptr, MaybeUninitByteStorageUsesElementStride) {
     --next;
     EXPECT_EQ(next.as_byte_ptr(), storage);
     auto slots = mut_ref<Slot[]>::from_bytes(storage, 3_usize);
-    EXPECT_EQ(slots.end().as_byte_ptr(), storage + sizeof(storage));
-    int drops = 0;
+    int  drops = 0;
     for (usize index; index < slots.len(); ++index) {
         rstd::construct_at(slots[index].as_mut_ptr(), drops, int(index.to_primitive()));
     }
@@ -89,6 +106,12 @@ TEST(Ptr, MaybeUninitByteStorageUsesElementStride) {
     EXPECT_EQ(mutable_iterator.next().unwrap().get_mut().assume_init_ref().value, 0);
     EXPECT_EQ(read[2_usize].assume_init_ref().value, 2);
     EXPECT_EQ(slots.last_mut().unwrap().get_mut().assume_init_mut().value, 2);
+    auto const* expected = storage;
+    for (auto const& slot : read) {
+        EXPECT_EQ(static_cast<const void*>(slot.as_ptr()), static_cast<const void*>(expected));
+        expected += sizeof(ByteStorageValue);
+    }
+    EXPECT_EQ(expected, storage + sizeof(storage));
     for (usize index; index < slots.len(); ++index) slots[index].assume_init_drop();
     EXPECT_EQ(drops, 3);
     rstd::construct_at(pointer->as_mut_ptr(), drops, 42);
@@ -106,7 +129,7 @@ TEST(Ptr, MaybeUninitEmptyByteStorageAndSingleStackSlot) {
     EXPECT_EQ(pointer.offset(rstd::isize()).as_byte_ptr(), nullptr);
     auto slots = mut_ref<Slot[]>::from_bytes(nullptr, 0_usize);
     EXPECT_TRUE(slots.is_empty());
-    EXPECT_EQ(slots.begin().as_byte_ptr(), slots.end().as_byte_ptr());
+    EXPECT_TRUE(slots.begin() == slots.end());
     Slot stack;
     auto bytes = reinterpret_cast<rstd::byte*>(&stack);
     EXPECT_EQ(reinterpret_cast<rstd::byte*>(stack.as_mut_ptr()), bytes);

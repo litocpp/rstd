@@ -35,16 +35,14 @@ export struct Bytes : DefaultInClass<Bytes, iter::Iterator> {
     static constexpr bool PROVEN_FUSED        = true;
     static constexpr bool PROVEN_TRUSTED_LEN  = true;
 
-    constexpr explicit Bytes(ref<str> value): remaining_(value) {}
+    constexpr explicit Bytes(ref<str> value): remaining_(value.as_bytes()) {}
 
     constexpr auto next() -> Option<Item> {
         if (remaining_.is_empty()) return None();
         auto value = remaining_[usize()];
-        if (remaining_.len() == usize(1)) {
-            remaining_ = ref<str>::from_raw_parts_unchecked(remaining_.data() + 1, usize());
-        } else {
-            remaining_ = ref<str>::from_raw_parts_unchecked(remaining_.data() + 1,
-                                                            remaining_.len() - usize(1));
+        [[unsafe]] {
+            remaining_ =
+                slice<u8>::from_raw_parts(remaining_.as_raw_ptr() + 1, remaining_.len() - usize(1));
         }
         return Some(value);
     }
@@ -53,7 +51,7 @@ export struct Bytes : DefaultInClass<Bytes, iter::Iterator> {
         if (remaining_.is_empty()) return None();
         auto const index = remaining_.len() - usize(1);
         auto       value = remaining_[index];
-        remaining_       = ref<str>::from_raw_parts_unchecked(remaining_.data(), index);
+        [[unsafe]] { remaining_ = slice<u8>::from_raw_parts(remaining_.as_raw_ptr(), index); }
         return Some(value);
     }
 
@@ -64,7 +62,7 @@ export struct Bytes : DefaultInClass<Bytes, iter::Iterator> {
     constexpr auto len() const -> usize { return remaining_.len(); }
 
 private:
-    ref<str> remaining_;
+    slice<u8> remaining_;
 };
 
 export struct Chars : DefaultInClass<Chars, iter::Iterator> {
@@ -75,15 +73,13 @@ export struct Chars : DefaultInClass<Chars, iter::Iterator> {
 
     constexpr auto next() -> Option<Item> {
         if (remaining_.is_empty()) return None();
-        auto [code_point, length] = char_::decode_char_utf8(remaining_.data(), remaining_.len());
-        if (length == remaining_.len()) {
-            remaining_ = ref<str>::from_raw_parts_unchecked(
-                remaining_.data() + length.to_primitive(), usize());
-        } else {
+        [[unsafe]] {
+            auto [code_point, length] =
+                char_::decode_char_utf8(remaining_.data(), remaining_.len());
             remaining_ = ref<str>::from_raw_parts_unchecked(
                 remaining_.data() + length.to_primitive(), remaining_.len() - length);
+            return Some(code_point);
         }
-        return Some(code_point);
     }
 
     constexpr auto size_hint() const -> iter::SizeHint {
@@ -105,17 +101,15 @@ export struct CharIndices : DefaultInClass<CharIndices, iter::Iterator> {
 
     constexpr auto next() -> Option<Item> {
         if (remaining_.is_empty()) return None();
-        auto [code_point, length] = char_::decode_char_utf8(remaining_.data(), remaining_.len());
-        auto const offset         = byte_offset_;
-        byte_offset_ += length;
-        if (length == remaining_.len()) {
-            remaining_ = ref<str>::from_raw_parts_unchecked(
-                remaining_.data() + length.to_primitive(), usize());
-        } else {
+        auto const offset = byte_offset_;
+        [[unsafe]] {
+            auto [code_point, length] =
+                char_::decode_char_utf8(remaining_.data(), remaining_.len());
+            byte_offset_ += length;
             remaining_ = ref<str>::from_raw_parts_unchecked(
                 remaining_.data() + length.to_primitive(), remaining_.len() - length);
+            return Some(Item(offset, code_point));
         }
-        return Some(Item(offset, code_point));
     }
 
     constexpr auto size_hint() const -> iter::SizeHint {
@@ -139,22 +133,28 @@ constexpr auto ref<str>::trim() const noexcept -> ref<str> {
     usize begin_index;
     auto  end_index = len();
     while (begin_index < end_index) {
-        auto [value, count] =
-            char_::decode_char_utf8(data() + begin_index.to_primitive(), end_index - begin_index);
-        if (! value.is_whitespace()) break;
-        begin_index += count;
+        [[unsafe]] {
+            auto [value, count] = char_::decode_char_utf8(data() + begin_index.to_primitive(),
+                                                          end_index - begin_index);
+            if (! value.is_whitespace()) break;
+            begin_index += count;
+        }
     }
     while (end_index > begin_index) {
         auto start = end_index - usize(1);
         while (start > begin_index && ! is_char_boundary(start)) --start;
-        auto [value, count] =
-            char_::decode_char_utf8(data() + start.to_primitive(), end_index - start);
-        if (! value.is_whitespace()) break;
+        [[unsafe]] {
+            auto [value, count] =
+                char_::decode_char_utf8(data() + start.to_primitive(), end_index - start);
+            if (! value.is_whitespace()) break;
+        }
         end_index = start;
     }
-    auto* first = data();
-    if (begin_index != usize()) first += begin_index.to_primitive();
-    return ref<str>::from_raw_parts_unchecked(first, end_index - begin_index);
+    [[unsafe]] {
+        auto* first = data();
+        if (begin_index != usize()) first += begin_index.to_primitive();
+        return ref<str>::from_raw_parts_unchecked(first, end_index - begin_index);
+    }
 }
 
 constexpr auto ref<str>::bytes() const noexcept -> str_::Bytes {
@@ -301,20 +301,28 @@ public:
     constexpr explicit Utf8LossyIndices(slice<u8> bytes): remaining_(bytes) {}
     constexpr auto next() noexcept -> Option<Item> {
         if (remaining_.is_empty()) return None();
-        auto [value, length] = char_::decode_char_utf8(remaining_.as_raw_ptr(), remaining_.len());
+        auto decode = [&] {
+            [[unsafe]] {
+                return char_::decode_char_utf8(remaining_.as_raw_ptr(), remaining_.len());
+            }
+        };
+        auto [value, length] = decode();
         bool replacement     = value.to_primitive() == char_::REPLACEMENT && length == usize(1) &&
                                remaining_[usize()].to_primitive() >= 0x80;
         if (replacement) {
-            auto size    = remaining_.len() < usize(4) ? remaining_.len() : usize(4);
-            auto prefix  = slice<u8>::from_raw_parts(remaining_.as_raw_ptr(), size);
+            auto      size = remaining_.len() < usize(4) ? remaining_.len() : usize(4);
+            slice<u8> prefix;
+            [[unsafe]] { prefix = slice<u8>::from_raw_parts(remaining_.as_raw_ptr(), size); }
             auto error   = validate_utf8(prefix).unwrap_err_unchecked();
             auto invalid = error.error_len();
             length       = invalid.is_some() ? usize(invalid->to_primitive()) : size;
         }
         auto begin = offset_;
         offset_ += length;
-        remaining_ = slice<u8>::from_raw_parts(remaining_.as_raw_ptr() + length.to_primitive(),
-                                               remaining_.len() - length);
+        [[unsafe]] {
+            remaining_ = slice<u8>::from_raw_parts(remaining_.as_raw_ptr() + length.to_primitive(),
+                                                   remaining_.len() - length);
+        }
         return Some(Item { value, begin, offset_, replacement });
     }
 };
@@ -327,7 +335,7 @@ export constexpr auto utf8_lossy_indices(slice<u8> bytes) noexcept -> Utf8LossyI
 export constexpr auto from_utf8(slice<u8> bytes) noexcept -> Result<ref<str>, Utf8Error> {
     auto validation = validate_utf8(bytes);
     if (validation.is_err()) return Err(rstd::move(validation).unwrap_err_unchecked());
-    return Ok(str_::from_utf8_unchecked(bytes));
+    [[unsafe]] { return Ok(str_::from_utf8_unchecked(bytes)); }
 }
 
 } // namespace rstd::str_
@@ -343,8 +351,8 @@ constexpr auto ref<str>::find(ref<str> pattern) const noexcept -> Option<usize> 
     if (pattern.len() > length) return None();
     auto const limit = (length - pattern.len()).to_primitive();
     for (rstd::size_t index = 0; index <= limit; ++index) {
-        auto candidate = ref<str>::from_raw_parts_unchecked(p + index, length - usize(index));
-        if (candidate.starts_with(pattern)) {
+        auto candidate = get(usize(index), length);
+        if (candidate.is_some() && (*candidate).starts_with(pattern)) {
             usize r(index);
             return Some(rstd::move(r));
         }
@@ -357,8 +365,8 @@ constexpr auto ref<str>::rfind(ref<str> pattern) const noexcept -> Option<usize>
     if (pattern.len() > length) return None();
     auto offset = (length - pattern.len()).to_primitive();
     for (;;) {
-        auto candidate = ref<str>::from_raw_parts_unchecked(p + offset, length - usize(offset));
-        if (candidate.starts_with(pattern)) {
+        auto candidate = get(usize(offset), length);
+        if (candidate.is_some() && (*candidate).starts_with(pattern)) {
             return Some(usize(offset));
         }
         if (offset == 0) break;
@@ -370,9 +378,11 @@ constexpr auto ref<str>::rfind(ref<str> pattern) const noexcept -> Option<usize>
 constexpr auto ref<str>::get(usize start, usize end) const noexcept -> Option<ref<str>> {
     if (start > end || end > length) return None();
     if (! is_char_boundary(start) || ! is_char_boundary(end)) return None();
-    auto* data = p;
-    if (start != usize()) data += start.to_primitive();
-    return Some(ref<str>::from_raw_parts_unchecked(data, end - start));
+    [[unsafe]] {
+        auto* data = p;
+        if (start != usize()) data += start.to_primitive();
+        return Some(ref<str>::from_raw_parts_unchecked(data, end - start));
+    }
 }
 
 constexpr auto ref<str>::strip_prefix(ref<str> pattern) const noexcept -> Option<ref<str>> {
@@ -445,13 +455,15 @@ auto write_usize(fmt::Formatter& formatter, usize value) -> bool {
     auto size = rstd::size_t();
     auto raw  = value.to_primitive();
     do {
-        buffer[size++] = static_cast<char>('0' + raw % 10);
+        [[unsafe]] { buffer[size++] = static_cast<char>('0' + raw % 10); }
         raw /= 10;
     } while (raw != 0);
     for (rstd::size_t left = 0, right = size - 1; left < right; ++left, --right) {
-        auto value    = buffer[left];
-        buffer[left]  = buffer[right];
-        buffer[right] = value;
+        [[unsafe]] {
+            auto digit    = buffer[left];
+            buffer[left]  = buffer[right];
+            buffer[right] = digit;
+        }
     }
     return formatter.write_raw(buffer, size);
 }

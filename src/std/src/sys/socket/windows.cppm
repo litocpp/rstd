@@ -33,23 +33,29 @@ export struct NativeSocketAddr {
 };
 export auto ensure_started() -> IOResult<empty>;
 export auto addr_to_native(SocketAddr const& address) noexcept -> NativeSocketAddr;
-export auto addr_from_native(const sockaddr* address, int len) -> IOResult<SocketAddr>;
+/// Unless null, the address must be readable for the supplied native address length.
+export [[unsafe]]
+auto addr_from_native(const sockaddr* address, int len) -> IOResult<SocketAddr>;
 
 export inline constexpr rstd::size_t ACCEPT_ADDRESS_BUFFER_SIZE =
     2 * (sizeof(sockaddr_storage) + 16);
 
 export auto accept_address_buffer_size() noexcept -> usize;
 
-export auto start_connect(RawSocket socket, SocketAddress const& address, void* overlapped)
+/// The overlapped state must stay valid until completion.
+export [[unsafe]]
+auto start_connect(RawSocket socket, SocketAddress const& address, void* overlapped)
     -> IOResult<empty>;
 
 export auto finish_connect(RawSocket socket) -> IOResult<empty>;
 
-export auto start_accept(RawSocket listener,
-                         RawSocket accepted,
-                         void*     address_buffer,
-                         usize     address_buffer_len,
-                         void*     overlapped) -> IOResult<empty>;
+/// The writable address buffer and overlapped state must stay valid until completion.
+export [[unsafe]]
+auto start_accept(RawSocket listener,
+                  RawSocket accepted,
+                  void*     address_buffer,
+                  usize     address_buffer_len,
+                  void*     overlapped) -> IOResult<empty>;
 
 export auto finish_accept(RawSocket listener, RawSocket accepted) -> IOResult<empty>;
 

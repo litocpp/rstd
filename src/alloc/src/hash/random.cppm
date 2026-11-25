@@ -21,7 +21,8 @@ inline auto next_seed() noexcept -> u64 {
     auto entropy = u64();
 #endif
     auto sequence = counter.fetch_add(increment, sync::atomic::Ordering::Relaxed);
-    auto address  = as_cast<u64>(reinterpret_cast<rstd::uintptr_t>(&counter));
+    u64  address;
+    [[unsafe]] { address = as_cast<u64>(reinterpret_cast<rstd::uintptr_t>(&counter)); }
     return mix_seed(entropy ^ sequence ^ address);
 }
 

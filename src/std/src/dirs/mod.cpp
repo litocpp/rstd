@@ -34,9 +34,12 @@ namespace rstd::dirs::sys
 {
 
 #if (RSTD_OS_LINUX || RSTD_OS_MACOS) && ! defined(__ANDROID__)
+[[unsafe]]
 auto path_from_native(const char* value) -> PathBuf {
-    return PathBuf::from(
-        os::unix::ffi::OsStringExt::from_vec(Vec<u8>::from(ffi::CStr::from_ptr(value).to_bytes())));
+    [[unsafe]] {
+        return PathBuf::from(os::unix::ffi::OsStringExt::from_vec(
+            Vec<u8>::from(ffi::CStr::from_ptr(value).to_bytes())));
+    }
 }
 
 auto detect_xdg_home() -> Result<Option<PathBuf>, Error> {
@@ -59,10 +62,12 @@ auto detect_xdg_home() -> Result<Option<PathBuf>, Error> {
             continue;
         }
         if (status != 0) return Err(Error::system(io::Error::from_raw_os_error(i32(status))));
-        if (result == nullptr || result->pw_dir == nullptr) return Ok(None());
-        auto path = path_from_native(result->pw_dir);
-        if (! valid_absolute(path.as_path())) return Ok(None());
-        return Ok(Some(rstd::move(path)));
+        if (result == nullptr || entry.pw_dir == nullptr) return Ok(None());
+        [[unsafe]] {
+            auto path = path_from_native(entry.pw_dir);
+            if (! valid_absolute(path.as_path())) return Ok(None());
+            return Ok(Some(rstd::move(path)));
+        }
     }
 }
 #endif
@@ -97,10 +102,13 @@ auto known_folder(REFKNOWNFOLDERID id) -> Result<Option<PathBuf>, Error> {
     auto status = ::SHGetKnownFolderPath(id, KF_FLAG_DONT_VERIFY, nullptr, &path.value);
     if (FAILED(status))
         return Err(Error::platform(String::make("SHGetKnownFolderPath failed"_str), i64(status)));
-    if (path.value == nullptr || *path.value == L'\0') return Ok(None());
     auto units = Vec<u16>::make();
-    for (auto cursor = path.value; *cursor != L'\0'; ++cursor)
-        units.push(u16(static_cast<unsigned short>(*cursor)));
+    if (path.value == nullptr) return Ok(None());
+    [[unsafe]] {
+        for (auto cursor = path.value; *cursor != L'\0'; ++cursor)
+            units.push(u16(static_cast<unsigned short>(*cursor)));
+    }
+    if (units.is_empty()) return Ok(None());
     auto result = PathBuf::from(os::windows::ffi::OsStringExt::from_wide(units.as_slice()));
     if (! valid_absolute(result.as_path()))
         return Err(Error::platform(String::make("Known Folder path is not absolute"_str), i64()));
@@ -115,33 +123,35 @@ struct AppleRoots {
 };
 
 auto receive_apple_root(void* context, AppleDirectory directory, const char* value) -> bool {
-    auto& detected = *static_cast<AppleRoots*>(context);
-    if (value == nullptr) {
-        detected.error = Some(Error::platform(
-            String::make("Foundation directory has no file system representation"_str), i64()));
-        return false;
+    [[unsafe]] {
+        auto& detected = *static_cast<AppleRoots*>(context);
+        if (value == nullptr) {
+            detected.error = Some(Error::platform(
+                String::make("Foundation directory has no file system representation"_str), i64()));
+            return false;
+        }
+        auto path = path_from_native(value);
+        if (! valid_absolute(path.as_path())) {
+            detected.error = Some(
+                Error::platform(String::make("Foundation directory is not absolute"_str), i64()));
+            return false;
+        }
+        switch (directory) {
+        case AppleDirectory::Home: detected.roots.home = Some(rstd::move(path)); break;
+        case AppleDirectory::ApplicationSupport:
+            detected.roots.config     = Some(path.clone());
+            detected.roots.data       = Some(path.clone());
+            detected.roots.data_local = Some(path.clone());
+            detected.roots.state      = Some(rstd::move(path));
+            break;
+        case AppleDirectory::Cache: detected.roots.cache = Some(rstd::move(path)); break;
+        case AppleDirectory::LocalApplicationSupport:
+            push_unique(detected.roots.config_dirs, path.clone());
+            push_unique(detected.roots.data_dirs, rstd::move(path));
+            break;
+        }
+        return true;
     }
-    auto path = path_from_native(value);
-    if (! valid_absolute(path.as_path())) {
-        detected.error =
-            Some(Error::platform(String::make("Foundation directory is not absolute"_str), i64()));
-        return false;
-    }
-    switch (directory) {
-    case AppleDirectory::Home: detected.roots.home = Some(rstd::move(path)); break;
-    case AppleDirectory::ApplicationSupport:
-        detected.roots.config     = Some(path.clone());
-        detected.roots.data       = Some(path.clone());
-        detected.roots.data_local = Some(path.clone());
-        detected.roots.state      = Some(rstd::move(path));
-        break;
-    case AppleDirectory::Cache: detected.roots.cache = Some(rstd::move(path)); break;
-    case AppleDirectory::LocalApplicationSupport:
-        push_unique(detected.roots.config_dirs, path.clone());
-        push_unique(detected.roots.data_dirs, rstd::move(path));
-        break;
-    }
-    return true;
 }
 #endif
 
@@ -172,8 +182,10 @@ auto detect_native_roots() -> Result<ResolvedRoots, Error> {
     return Ok(ResolvedRoots { Layout::Windows, rstd::move(roots) });
 #elif RSTD_OS_MACOS
     AppleRoots detected {};
-    if (! query_apple_roots(&detected, receive_apple_root))
-        return Err(rstd::move(detected.error).unwrap());
+    [[unsafe]] {
+        if (! query_apple_roots(&detected, receive_apple_root))
+            return Err(rstd::move(detected.error).unwrap());
+    }
     return Ok(ResolvedRoots { Layout::Apple, rstd::move(detected.roots) });
 #elif RSTD_OS_LINUX
     auto roots = detect_xdg_roots();

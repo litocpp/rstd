@@ -42,7 +42,7 @@ constexpr auto days_in_month_for_serialization(uint16_t year, uint8_t month) noe
     constexpr uint8_t DAYS[] = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
     if (month < uint8_t(1) || month > uint8_t(12)) return uint8_t();
     if (month == uint8_t(2) && is_leap_year_for_serialization(year)) return uint8_t(29);
-    return DAYS[month - 1];
+    [[unsafe]] { return DAYS[month - 1]; }
 }
 
 constexpr auto valid_date(LocalDate value) noexcept -> bool {
@@ -70,14 +70,14 @@ class TomlEmitter {
     void write_ascii(char value) { output_.push_ascii(u8(value)); }
 
     void write_fixed(uint32_t value, usize width) {
-        char digits[10];
+        rstd::array<u8, 10> digits {};
+        if (width > digits.len()) rstd::unreachable();
         auto remaining = value;
         for (usize index = width; index != usize(); --index) {
-            digits[index.to_primitive() - 1] = static_cast<char>('0' + remaining % 10);
+            digits[index - usize(1)] = u8('0' + remaining % 10);
             remaining /= 10;
         }
-        output_.push_str(
-            ref<str>::from_raw_parts_unchecked(reinterpret_cast<const byte*>(digits), width));
+        for (usize index {}; index < width; ++index) output_.push_ascii(digits[index]);
     }
 
     void write_string(ref<str> value) {
@@ -152,16 +152,16 @@ class TomlEmitter {
         write_fixed(uint32_t(value.second), usize(2));
         if (value.nanosecond == uint32_t()) return true;
 
-        char fraction[9];
-        auto remaining = value.nanosecond;
+        rstd::array<u8, 9> fraction {};
+        auto               remaining = value.nanosecond;
         for (usize index = usize(9); index != usize(); --index) {
-            fraction[index.to_primitive() - 1] = static_cast<char>('0' + remaining % 10);
+            fraction[index - usize(1)] = u8('0' + remaining % 10);
             remaining /= 10;
         }
         usize length { 9 };
-        while (length != usize() && fraction[length.to_primitive() - 1] == '0') --length;
+        while (length != usize() && fraction[length - usize(1)] == u8('0')) --length;
         write_ascii('.');
-        write(ref<str>::from_raw_parts_unchecked(reinterpret_cast<const byte*>(fraction), length));
+        for (usize index {}; index < length; ++index) output_.push_ascii(fraction[index]);
         return true;
     }
 

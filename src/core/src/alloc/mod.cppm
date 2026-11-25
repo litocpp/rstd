@@ -65,23 +65,31 @@ export struct Allocator {
             return trait_call<1>(this, layout);
         }
 
+        /// `ptr` must still belong to this allocator and match the release layout.
+        [[unsafe]]
         void deallocate(void* ptr, Layout layout) const noexcept {
-            trait_call<2>(this, ptr, layout);
+            [[unsafe]] { trait_call<2>(this, ptr, layout); }
         }
 
+        /// `ptr` and `old_layout` must describe an owned allocation. The new size may not shrink.
+        [[unsafe]]
         auto grow(void* ptr, Layout old_layout, Layout new_layout) const
             -> Result<Allocation, AllocError> {
-            return trait_call<3>(this, ptr, old_layout, new_layout);
+            [[unsafe]] { return trait_call<3>(this, ptr, old_layout, new_layout); }
         }
 
+        /// Accepts the same allocation and layout as `grow` and zeroes the added bytes.
+        [[unsafe]]
         auto grow_zeroed(void* ptr, Layout old_layout, Layout new_layout) const
             -> Result<Allocation, AllocError> {
-            return trait_call<4>(this, ptr, old_layout, new_layout);
+            [[unsafe]] { return trait_call<4>(this, ptr, old_layout, new_layout); }
         }
 
+        /// `ptr` and `old_layout` must describe an owned allocation. The new size may not grow.
+        [[unsafe]]
         auto shrink(void* ptr, Layout old_layout, Layout new_layout) const
             -> Result<Allocation, AllocError> {
-            return trait_call<5>(this, ptr, old_layout, new_layout);
+            [[unsafe]] { return trait_call<5>(this, ptr, old_layout, new_layout); }
         }
     };
 
@@ -133,36 +141,44 @@ public:
         auto res = allocator().allocate(layout);
         if (res.is_ok()) {
             auto allocation = res.unwrap_unchecked();
-            mem::memset(allocation.pointer, u8(), allocation.size);
+            [[unsafe]] { mem::memset(allocation.pointer, u8(), allocation.size); }
         }
         return res;
     }
 
+    [[unsafe]]
     auto grow(void* ptr, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
         debug_assert(new_layout.size() >= old_layout.size());
         auto new_res = allocator().allocate(new_layout);
         if (new_res.is_ok()) {
             auto new_ptr = new_res.unwrap_unchecked();
-            if (old_layout.size() != usize()) mem::memcpy(new_ptr.pointer, ptr, old_layout.size());
-            allocator().deallocate(ptr, old_layout);
+            [[unsafe]] {
+                if (old_layout.size() != usize())
+                    mem::memcpy(new_ptr.pointer, ptr, old_layout.size());
+                allocator().deallocate(ptr, old_layout);
+            }
         }
         return new_res;
     }
 
+    [[unsafe]]
     auto grow_zeroed(void* ptr, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
         debug_assert(new_layout.size() >= old_layout.size(),
                      "`new_layout.size()` must be greater than or equal to `old_layout.size()`");
         auto result = allocator().allocate_zeroed(new_layout);
         if (result.is_ok()) {
-            if (old_layout.size() != usize())
-                mem::memcpy(result.unwrap_unchecked().pointer, ptr, old_layout.size());
-            allocator().deallocate(ptr, old_layout);
+            [[unsafe]] {
+                if (old_layout.size() != usize())
+                    mem::memcpy(result.unwrap_unchecked().pointer, ptr, old_layout.size());
+                allocator().deallocate(ptr, old_layout);
+            }
         }
         return result;
     }
 
+    [[unsafe]]
     auto shrink(void* ptr, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
         debug_assert(new_layout.size() <= old_layout.size(),
@@ -174,8 +190,11 @@ public:
         auto new_res = allocator().allocate(new_layout);
         if (new_res.is_ok()) {
             auto new_ptr = new_res.unwrap_unchecked();
-            if (new_layout.size() != usize()) mem::memcpy(new_ptr.pointer, ptr, new_layout.size());
-            allocator().deallocate(ptr, old_layout);
+            [[unsafe]] {
+                if (new_layout.size() != usize())
+                    mem::memcpy(new_ptr.pointer, ptr, new_layout.size());
+                allocator().deallocate(ptr, old_layout);
+            }
         }
         return new_res;
     }

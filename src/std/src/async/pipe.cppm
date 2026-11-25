@@ -45,8 +45,11 @@ struct PipeState {
     static auto make(os::fd::OwnedFd descriptor, bool writing) -> io::Result<sync::Arc<PipeState>> {
         if (! descriptor.is_open())
             return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
-        return make(os::handle::OwnedHandle::from_raw_handle(rstd::move(descriptor).into_raw_fd()),
-                    writing);
+        [[unsafe]] {
+            return make(
+                os::handle::OwnedHandle::from_raw_handle(rstd::move(descriptor).into_raw_fd()),
+                writing);
+        }
     }
     static auto read_owned(sync::Arc<PipeState> state, usize maximum)
         -> coro<io::Result<bytes::Bytes>>;
@@ -221,8 +224,12 @@ struct PipeState {
         Option<ReadyEvent> ready;
         for (;;) {
             if (state->closing.load()) co_return Err(closed());
-            auto writable =
-                mut_ref<u8[]>::from_raw_parts(buffer.as_mut_slice().as_raw_ptr(), buffer.len());
+            auto writable = [&] {
+                [[unsafe]] {
+                    return mut_ref<u8[]>::from_raw_parts(buffer.as_mut_slice().as_raw_ptr(),
+                                                         buffer.len());
+                }
+            }();
             auto result = sys::io::stdio::read_fd(state->fd, as_bytes_mut(writable));
             if (result.is_ok()) {
                 buffer.truncate(*result);
@@ -246,8 +253,13 @@ struct PipeState {
         Option<ReadyEvent> ready;
         while (offset < bytes.len()) {
             if (state->closing.load()) co_return Err(closed());
-            auto remaining = slice<u8>::from_raw_parts(
-                bytes.as_slice().as_raw_ptr() + offset.to_primitive(), bytes.len() - offset);
+            auto remaining = [&] {
+                [[unsafe]] {
+                    return slice<u8>::from_raw_parts(bytes.as_slice().as_raw_ptr() +
+                                                         offset.to_primitive(),
+                                                     bytes.len() - offset);
+                }
+            }();
             auto result = sys::io::stdio::write_pipe_fd(state->fd, as_bytes(remaining));
             if (result.is_ok()) {
                 if (*result == usize())
@@ -301,7 +313,9 @@ public:
     // Unix O_NONBLOCK is shared with fd 0: do not mix synchronous stdin reads.
     static auto stdin() -> io::Result<Receiver> {
 #if RSTD_OS_UNIX
-        auto descriptor = os::fd::BorrowedFd::borrow_raw(0).try_clone_to_owned();
+        auto descriptor = [] {
+            [[unsafe]] { return os::fd::BorrowedFd::borrow_raw(0).try_clone_to_owned(); }
+        }();
         if (descriptor.is_err()) return Err(rstd::move(descriptor).unwrap_err());
         return from_owned_fd(rstd::move(descriptor).unwrap());
 #elif RSTD_OS_WINDOWS
@@ -345,7 +359,9 @@ public:
     // Unix O_NONBLOCK is shared with fd 1: do not mix synchronous stdout writes.
     static auto stdout() -> io::Result<Sender> {
 #if RSTD_OS_UNIX
-        auto descriptor = os::fd::BorrowedFd::borrow_raw(1).try_clone_to_owned();
+        auto descriptor = [] {
+            [[unsafe]] { return os::fd::BorrowedFd::borrow_raw(1).try_clone_to_owned(); }
+        }();
         if (descriptor.is_err()) return Err(rstd::move(descriptor).unwrap_err());
         return from_owned_fd(rstd::move(descriptor).unwrap());
 #elif RSTD_OS_WINDOWS

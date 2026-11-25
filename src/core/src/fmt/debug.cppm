@@ -11,18 +11,21 @@ struct DebugIndented {
     bool        pretty;
     bool        line_start = false;
     static auto write(void* pointer, const uint8_t* bytes, size_t length) -> bool {
-        auto& state = *static_cast<DebugIndented*>(pointer);
-        for (size_t offset = 0; offset < length;) {
-            if (state.pretty && state.line_start && ! state.target.write_str("    "_str))
-                return false;
-            auto end = offset;
-            while (end < length && bytes[end] != '\n') ++end;
-            state.line_start = end < length;
-            if (state.line_start) ++end;
-            if (! state.target.write_raw(bytes + offset, end - offset)) return false;
-            offset = end;
+        // The nested formatter supplies its paired state and a readable byte range.
+        [[unsafe]] {
+            auto& state = *static_cast<DebugIndented*>(pointer);
+            for (size_t offset = 0; offset < length;) {
+                if (state.pretty && state.line_start && ! state.target.write_str("    "_str))
+                    return false;
+                auto end = offset;
+                while (end < length && bytes[end] != '\n') ++end;
+                state.line_start = end < length;
+                if (state.line_start) ++end;
+                if (! state.target.write_raw(bytes + offset, end - offset)) return false;
+                offset = end;
+            }
+            return true;
         }
-        return true;
     }
 };
 } // namespace rstd::fmt

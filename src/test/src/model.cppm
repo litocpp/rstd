@@ -45,9 +45,14 @@ public:
 
     auto fail_at(ref<str> message, const char* file, int line, bool fatal) -> void {
         ++failures_;
-        fatal_         = fatal_ || fatal;
-        auto file_text = ref<str>::from_raw_parts_unchecked(reinterpret_cast<const byte*>(file),
-                                                            usize(__builtin_strlen(file)));
+        fatal_ = fatal_ || fatal;
+        ref<str> file_text;
+        [[unsafe]] {
+            file_text =
+                str_::from_utf8(slice<u8>::from_raw_parts(reinterpret_cast<const byte*>(file),
+                                                          usize(__builtin_strlen(file))))
+                    .unwrap_or({});
+        }
         if (report_) {
             io::eprintln("[failure] {}.{} {}:{}: {}", suite_, case_, file_text, line, message);
             for (const auto& trace : traces_) io::eprintln("  trace: {}", trace.as_str());
@@ -56,10 +61,15 @@ public:
 
     auto skip_at(ref<str> message, const char* file, int line) -> void {
         if (failures_ != usize {}) return;
-        skipped_       = true;
-        skip_message_  = Some(String::make(message));
-        auto file_text = ref<str>::from_raw_parts_unchecked(reinterpret_cast<const byte*>(file),
-                                                            usize(__builtin_strlen(file)));
+        skipped_      = true;
+        skip_message_ = Some(String::make(message));
+        ref<str> file_text;
+        [[unsafe]] {
+            file_text =
+                str_::from_utf8(slice<u8>::from_raw_parts(reinterpret_cast<const byte*>(file),
+                                                          usize(__builtin_strlen(file))))
+                    .unwrap_or({});
+        }
         if (report_)
             io::println("[skipped] {}.{} {}:{}: {}", suite_, case_, file_text, line, message);
     }
@@ -119,7 +129,7 @@ auto rstd::test::fail_current(ref<str> message, const char* file, int line, bool
         io::eprintln("[failure] no active test: {}", message);
         return;
     }
-    context->fail_at(message, file, line, fatal);
+    [[unsafe]] { context->fail_at(message, file, line, fatal); }
 }
 
 auto rstd::test::skip_current(ref<str> message, const char* file, int line) noexcept -> void {
@@ -128,5 +138,5 @@ auto rstd::test::skip_current(ref<str> message, const char* file, int line) noex
         io::eprintln("[failure] no active test: {}", message);
         return;
     }
-    context->skip_at(message, file, line);
+    [[unsafe]] { context->skip_at(message, file, line); }
 }

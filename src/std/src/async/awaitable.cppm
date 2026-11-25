@@ -36,11 +36,13 @@ public:
         AwaitMode           mode             = AwaitMode::Native) noexcept
         : m_poll_context(rstd::addressof(cx)), m_execution_domain(execution_domain), m_mode(mode) {}
 
-    constexpr auto poll_context() const noexcept -> task::Context& { return *m_poll_context; }
+    constexpr auto poll_context() const noexcept -> task::Context& {
+        [[unsafe]] { return *m_poll_context; }
+    }
     constexpr auto execution_domain() const noexcept -> ExecutionDomainKind {
         return m_execution_domain;
     }
-    constexpr auto waker() const noexcept -> const task::Waker& { return m_poll_context->waker(); }
+    constexpr auto waker() const noexcept -> const task::Waker& { return poll_context().waker(); }
     constexpr auto mode() const noexcept -> AwaitMode { return m_mode; }
 };
 

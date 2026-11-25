@@ -142,9 +142,13 @@ constexpr auto Char::encode_utf8(byte (&buffer)[4]) const noexcept -> usize {
 
 export namespace rstd::char_
 {
+/// Decodes the next code point from a live, readable byte range.
+[[unsafe]]
 constexpr auto decode_char_utf8(const byte* ptr, usize len) noexcept -> rstd::tuple<Char, usize> {
-    auto [value, consumed] = decode_utf8(ptr, len);
-    return { Char::from_u32_unchecked(u32(value)), consumed };
+    [[unsafe]] {
+        auto [value, consumed] = decode_utf8(ptr, len);
+        return { Char::from_u32_unchecked(u32(value)), consumed };
+    }
 }
 } // namespace rstd::char_
 
@@ -164,7 +168,7 @@ struct Impl<fmt::Display, Char> : ImplBase<Char> {
     auto fmt(fmt::Formatter& formatter) const -> bool {
         byte buffer[4] {};
         auto length = this->self().encode_utf8(buffer);
-        return formatter.pad(ref<str>::from_raw_parts_unchecked(buffer, length));
+        [[unsafe]] { return formatter.pad(ref<str>::from_raw_parts_unchecked(buffer, length)); }
     }
 };
 } // namespace rstd

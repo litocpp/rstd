@@ -24,8 +24,12 @@ class FixedBufferAllocator {
 
     auto offset_of(void* pointer, Layout layout) const noexcept -> Option<usize> {
         if (layout.size() == usize()) return None();
-        auto address = usize(reinterpret_cast<uintptr_t>(pointer));
-        auto base    = usize(reinterpret_cast<uintptr_t>(base_));
+        usize address;
+        usize base;
+        [[unsafe]] {
+            address = usize(reinterpret_cast<uintptr_t>(pointer));
+            base    = usize(reinterpret_cast<uintptr_t>(base_));
+        }
         if (address < base) return None();
         auto offset = address - base;
         if (offset > cursor_ || layout.size() > cursor_ - offset) return None();
@@ -33,10 +37,15 @@ class FixedBufferAllocator {
     }
 
     static auto aligned(void* pointer, usize alignment) noexcept -> bool {
-        return (usize(reinterpret_cast<uintptr_t>(pointer)) & (alignment - usize(1))) == usize();
+        [[unsafe]] {
+            return (usize(reinterpret_cast<uintptr_t>(pointer)) & (alignment - usize(1))) ==
+                   usize();
+        }
     }
 
 public:
+    /// The buffer must be valid, writable storage for all allocations made from it.
+    [[unsafe]]
     explicit FixedBufferAllocator(mut_ptr<u8[]> buffer [[clang::lifetimebound]]) noexcept
         : base_(buffer.as_raw_ptr()), capacity_(buffer.len()) {
         debug_assert(base_ != nullptr || capacity_ == usize());
@@ -49,7 +58,8 @@ public:
 
     auto allocate(Layout layout) const -> Result<Allocation, AllocError> {
         if (layout.size() == usize()) return Ok(Allocation { layout.dangling(), usize() });
-        auto base    = usize(reinterpret_cast<uintptr_t>(base_));
+        usize base;
+        [[unsafe]] { base = usize(reinterpret_cast<uintptr_t>(base_)); }
         auto address = base.checked_add(cursor_);
         if (address.is_none()) return Err(AllocError {});
         auto mask   = layout.align() - usize(1);
@@ -60,9 +70,11 @@ public:
         if (end.is_none() || *end > capacity_) return Err(AllocError {});
         padding_ += offset - cursor_;
         cursor_ = *end;
-        return Ok(Allocation { base_ + offset.to_primitive(), layout.size() });
+        [[unsafe]] { return Ok(Allocation { base_ + offset.to_primitive(), layout.size() }); }
     }
 
+    /// The allocation and layouts must satisfy the Allocator growth contract.
+    [[unsafe]]
     auto grow(void* pointer, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
         debug_assert(new_layout.size() >= old_layout.size());
@@ -76,21 +88,29 @@ public:
         }
         auto allocation = allocate(new_layout);
         if (allocation.is_err()) return allocation;
-        if (old_layout.size() != usize())
-            mem::memcpy(allocation->pointer, pointer, old_layout.size());
+        if (old_layout.size() != usize()) {
+            [[unsafe]] { mem::memcpy(allocation->pointer, pointer, old_layout.size()); }
+        }
         return allocation;
     }
 
+    /// The allocation and layouts must satisfy the Allocator growth contract.
+    [[unsafe]]
     auto grow_zeroed(void* pointer, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
-        auto allocation = grow(pointer, old_layout, new_layout);
-        if (allocation.is_ok() && allocation->size > old_layout.size())
-            mem::memset(static_cast<byte*>(allocation->pointer) + old_layout.size().to_primitive(),
-                        u8(),
-                        allocation->size - old_layout.size());
-        return allocation;
+        [[unsafe]] {
+            auto allocation = grow(pointer, old_layout, new_layout);
+            if (allocation.is_ok() && allocation->size > old_layout.size())
+                mem::memset(static_cast<byte*>(allocation->pointer) +
+                                old_layout.size().to_primitive(),
+                            u8(),
+                            allocation->size - old_layout.size());
+            return allocation;
+        }
     }
 
+    /// The allocation and layouts must satisfy the Allocator shrink contract.
+    [[unsafe]]
     auto shrink(void* pointer, Layout old_layout, Layout new_layout) const
         -> Result<Allocation, AllocError> {
         debug_assert(new_layout.size() <= old_layout.size());
@@ -106,14 +126,17 @@ public:
         }
         auto allocation = allocate(new_layout);
         if (allocation.is_err()) return allocation;
-        mem::memcpy(allocation->pointer, pointer, new_layout.size());
+        [[unsafe]] { mem::memcpy(allocation->pointer, pointer, new_layout.size()); }
         return allocation;
     }
 
     void deallocate(void*, Layout) const noexcept {}
 
     /// All objects and borrows from previous allocations must have ended before reset.
-    void reset() noexcept { cursor_ = padding_ = usize(); }
+    [[unsafe]]
+    void reset() noexcept {
+        cursor_ = padding_ = usize();
+    }
 
     auto statistics() const noexcept -> FixedBufferStatistics {
         return { capacity_, cursor_, padding_ };
@@ -127,14 +150,17 @@ template<>
 struct Impl<alloc::Allocator, alloc::FixedBufferAllocator>
     : DefaultInImpl<alloc::Allocator, alloc::FixedBufferAllocator> {
     auto allocate(alloc::Layout layout) const { return this->self().allocate(layout); }
+    [[unsafe]]
     auto grow(void* pointer, alloc::Layout old_layout, alloc::Layout new_layout) const {
-        return this->self().grow(pointer, old_layout, new_layout);
+        [[unsafe]] { return this->self().grow(pointer, old_layout, new_layout); }
     }
+    [[unsafe]]
     auto grow_zeroed(void* pointer, alloc::Layout old_layout, alloc::Layout new_layout) const {
-        return this->self().grow_zeroed(pointer, old_layout, new_layout);
+        [[unsafe]] { return this->self().grow_zeroed(pointer, old_layout, new_layout); }
     }
+    [[unsafe]]
     auto shrink(void* pointer, alloc::Layout old_layout, alloc::Layout new_layout) const {
-        return this->self().shrink(pointer, old_layout, new_layout);
+        [[unsafe]] { return this->self().shrink(pointer, old_layout, new_layout); }
     }
     void deallocate(void* pointer, alloc::Layout layout) const noexcept {
         this->self().deallocate(pointer, layout);

@@ -16,14 +16,17 @@ using Path  = KeyPath;
 using Bytes = Vec<u8>;
 
 void push_scalar(Bytes& output, char32_t value) {
-    byte bytes[4] {};
-    auto length = rstd::char_::encode_utf8(value, bytes);
+    byte  bytes[4] {};
+    usize length;
+    [[unsafe]] { length = rstd::char_::encode_utf8(value, bytes); }
     if (length == usize()) rstd::panic("invalid Unicode scalar");
-    output.extend_from_slice(slice<u8>::from_raw_parts(bytes, length));
+    slice<u8> encoded;
+    [[unsafe]] { encoded = slice<u8>::from_raw_parts(bytes, length); }
+    output.extend_from_slice(encoded);
 }
 
 auto finish_string(Bytes&& output) -> String {
-    return String::from_utf8_unchecked(rstd::move(output));
+    [[unsafe]] { return String::from_utf8_unchecked(rstd::move(output)); }
 }
 
 constexpr auto is_horizontal(u8 byte) noexcept -> bool {
@@ -47,7 +50,7 @@ constexpr auto days_in_month(uint16_t year, uint8_t month) noexcept -> uint8_t {
     constexpr rstd::uint8_t DAYS[] = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
     if (month < uint8_t(1) || month > uint8_t(12)) return uint8_t();
     if (month == uint8_t(2) && is_leap_year(year)) return uint8_t(29);
-    return uint8_t(DAYS[month - 1]);
+    [[unsafe]] { return uint8_t(DAYS[month - 1]); }
 }
 
 enum class DefinitionKind : rstd::uint8_t
@@ -374,26 +377,27 @@ private:
     }
 
     [[nodiscard]]
-    auto resolve_table(Table& start, const Path& path, usize count) -> Result<Table*, Error> {
-        Table* table = &start;
+    auto resolve_table(Table& start, const Path& path, usize count)
+        -> Result<mut_ref<Table>, Error> {
+        auto table = mut_ref<Table>::from_ref(start);
         for (usize index {}; index < count; ++index) {
-            auto value = table->get_mut(path[index].as_str());
+            auto value = table.get_mut().get_mut(path[index].as_str());
             if (value.is_none()) {
-                table->insert(path[index].clone(), Value::Table(Table::make()));
-                value = table->get_mut(path[index].as_str());
+                table.get_mut().insert(path[index].clone(), Value::Table(Table::make()));
+                value = table.get_mut().get_mut(path[index].as_str());
             }
-            auto* item = rstd::addressof(**value);
-            if (item->is_Table()) {
-                table = rstd::addressof(item->as_Table().value);
+            auto& item = **value;
+            if (item.is_Table()) {
+                table = mut_ref<Table>::from_ref(item.as_Table().value);
                 continue;
             }
-            if (item->is_Array()) {
-                auto& array = item->as_Array().value;
+            if (item.is_Array()) {
+                auto& array = item.as_Array().value;
                 auto  last  = array.last_mut();
                 if (last.is_none() || ! last->get().is_Table()) {
                     return Err(error(TomlErrorCode::TableRedefinition));
                 }
-                table = rstd::addressof(last->get_mut().as_Table().value);
+                table = mut_ref<Table>::from_ref(last->get_mut().as_Table().value);
                 continue;
             }
             return Err(error(TomlErrorCode::TableRedefinition));
@@ -402,7 +406,7 @@ private:
     }
 
     [[nodiscard]]
-    auto resolve_current_table() -> Result<Table*, Error> {
+    auto resolve_current_table() -> Result<mut_ref<Table>, Error> {
         return resolve_table(root_, current_path_, current_path_.len());
     }
 
@@ -411,33 +415,33 @@ private:
                             const Path&     path,
                             usize           count,
                             DefinitionKind  missing_kind,
-                            bool create_missing = true) -> Result<DefinitionNode*, Error> {
-        DefinitionNode* table = rstd::addressof(start);
+                            bool create_missing = true) -> Result<mut_ref<DefinitionNode>, Error> {
+        auto table = mut_ref<DefinitionNode>::from_ref(start);
         for (usize index {}; index < count; ++index) {
-            auto child = table->children.get_mut(path[index].as_str());
+            auto child = table.get_mut().children.get_mut(path[index].as_str());
             if (child.is_none()) {
                 if (! create_missing) {
                     return Err(error(TomlErrorCode::TableRedefinition));
                 }
-                table->children.insert(path[index].clone(),
-                                       Box<DefinitionNode>::make(missing_kind));
-                child = table->children.get_mut(path[index].as_str());
+                table.get_mut().children.insert(path[index].clone(),
+                                                Box<DefinitionNode>::make(missing_kind));
+                child = table.get_mut().children.get_mut(path[index].as_str());
             }
-            auto* node = (**child).get();
+            auto node = (**child).deref_mut();
             if (missing_kind == DefinitionKind::DottedTable &&
-                node->kind != DefinitionKind::DottedTable) {
+                node.get_mut().kind != DefinitionKind::DottedTable) {
                 return Err(error(TomlErrorCode::TableRedefinition));
             }
-            if (node->kind == DefinitionKind::ArrayOfTables) {
-                if (node->array_items.is_empty()) {
+            if (node.get_mut().kind == DefinitionKind::ArrayOfTables) {
+                if (node.get_mut().array_items.is_empty()) {
                     return Err(error(TomlErrorCode::TableRedefinition));
                 }
-                table = node->array_items.last_mut().unwrap().get_mut().get();
+                table = node.get_mut().array_items.last_mut().unwrap().get_mut().deref_mut();
                 continue;
             }
-            if (node->kind != DefinitionKind::ImplicitTable &&
-                node->kind != DefinitionKind::ExplicitTable &&
-                node->kind != DefinitionKind::DottedTable) {
+            if (node.get_mut().kind != DefinitionKind::ImplicitTable &&
+                node.get_mut().kind != DefinitionKind::ExplicitTable &&
+                node.get_mut().kind != DefinitionKind::DottedTable) {
                 return Err(error(TomlErrorCode::TableRedefinition));
             }
             table = node;
@@ -446,7 +450,7 @@ private:
     }
 
     [[nodiscard]]
-    auto resolve_current_definition() -> Result<DefinitionNode*, Error> {
+    auto resolve_current_definition() -> Result<mut_ref<DefinitionNode>, Error> {
         return resolve_definition(
             definitions_, current_path_, current_path_.len(), DefinitionKind::ImplicitTable, false);
     }
@@ -457,7 +461,9 @@ private:
         for (usize index {}; index < token.size(); ++index) {
             if (token[index] != u8('_')) normalized.push(token[index]);
         }
-        auto  text = rstd::str_::from_utf8_unchecked(normalized.as_slice());
+        if (normalized.is_empty()) return Err(error(TomlErrorCode::InvalidNumber));
+        ref<str> text;
+        [[unsafe]] { text = rstd::str_::from_utf8_unchecked(normalized.as_slice()); }
         usize index {};
         bool  negative {};
         bool  signed_value {};
@@ -518,7 +524,9 @@ private:
         for (usize index {}; index < token.size(); ++index) {
             if (token[index] != u8('_')) normalized.push(token[index]);
         }
-        auto  text = rstd::str_::from_utf8_unchecked(normalized.as_slice());
+        if (normalized.is_empty()) return Err(error(TomlErrorCode::InvalidNumber));
+        ref<str> text;
+        [[unsafe]] { text = rstd::str_::from_utf8_unchecked(normalized.as_slice()); }
         usize cursor {};
         bool  negative {};
         if (text[cursor] == u8('+') || text[cursor] == u8('-')) {
@@ -571,10 +579,8 @@ private:
         }
 
         auto result = rstd::num::dec2flt::to_f64({
-            .integer  = slice<u8>::from_raw_parts(text.data() + integer_begin.to_primitive(),
-                                                  integer_end - integer_begin),
-            .fraction = slice<u8>::from_raw_parts(text.data() + fraction_begin.to_primitive(),
-                                                  fraction_end - fraction_begin),
+            .integer  = text.get(integer_begin, integer_end).unwrap().as_bytes(),
+            .fraction = text.get(fraction_begin, fraction_end).unwrap().as_bytes(),
             .exponent = exponent,
             .negative = negative,
         });
@@ -825,13 +831,14 @@ private:
         auto parent = resolve_table(table, path, path.len() - usize(1));
         if (parent.is_err()) return Some(parent.unwrap_err());
         const auto& key = path.last().unwrap().get();
-        if (definition_parent.unwrap()->children.get(key.as_str()).is_some() ||
-            parent.unwrap()->get(key.as_str()).is_some()) {
+        if (definition_parent.unwrap().get_mut().children.get(key.as_str()).is_some() ||
+            parent.unwrap().get_mut().get(key.as_str()).is_some()) {
             return Some(error(TomlErrorCode::DuplicateKey));
         }
         const auto kind = value.is_Table() ? DefinitionKind::InlineTable : DefinitionKind::Value;
-        definition_parent.unwrap()->children.insert(key.clone(), Box<DefinitionNode>::make(kind));
-        parent.unwrap()->insert(key.clone(), rstd::move(value));
+        definition_parent.unwrap().get_mut().children.insert(key.clone(),
+                                                             Box<DefinitionNode>::make(kind));
+        parent.unwrap().get_mut().insert(key.clone(), rstd::move(value));
         return None();
     }
 
@@ -921,8 +928,10 @@ private:
         auto current_definition = resolve_current_definition();
         if (current_definition.is_err()) return Some(current_definition.unwrap_err());
         auto owned_path = path.unwrap();
-        if (auto failure = insert_path(
-                *current.unwrap(), *current_definition.unwrap(), owned_path, value.unwrap());
+        if (auto failure = insert_path(current.unwrap().get_mut(),
+                                       current_definition.unwrap().get_mut(),
+                                       owned_path,
+                                       value.unwrap());
             failure.is_some()) {
             return failure;
         }
@@ -953,36 +962,42 @@ private:
         if (definition_parent.is_err()) return Some(definition_parent.unwrap_err());
         auto parent = resolve_table(root_, owned_path, owned_path.len() - usize(1));
         if (parent.is_err()) return Some(parent.unwrap_err());
-        const auto& key          = owned_path.last().unwrap().get();
-        auto        existing     = parent.unwrap()->get_mut(key.as_str());
-        auto definition_existing = definition_parent.unwrap()->children.get_mut(key.as_str());
+        const auto& key      = owned_path.last().unwrap().get();
+        auto        existing = parent.unwrap().get_mut().get_mut(key.as_str());
+        auto        definition_existing =
+            definition_parent.unwrap().get_mut().children.get_mut(key.as_str());
         if (array) {
             if (definition_existing.is_none()) {
                 auto definition = Box<DefinitionNode>::make(DefinitionKind::ArrayOfTables);
                 definition->array_items.push(
                     Box<DefinitionNode>::make(DefinitionKind::ExplicitTable));
-                definition_parent.unwrap()->children.insert(key.clone(), rstd::move(definition));
+                definition_parent.unwrap().get_mut().children.insert(key.clone(),
+                                                                     rstd::move(definition));
                 auto items = Array::make();
                 items.push(Value::Table(Table::make()));
-                parent.unwrap()->insert(key.clone(), Value::Array(rstd::move(items)));
-            } else if ((**definition_existing).get()->kind == DefinitionKind::ArrayOfTables &&
+                parent.unwrap().get_mut().insert(key.clone(), Value::Array(rstd::move(items)));
+            } else if ((**definition_existing).deref_mut().get_mut().kind ==
+                           DefinitionKind::ArrayOfTables &&
                        existing.is_some() && (**existing).is_Array()) {
                 (**definition_existing)
-                    .get()
-                    ->array_items.push(Box<DefinitionNode>::make(DefinitionKind::ExplicitTable));
+                    .deref_mut()
+                    .get_mut()
+                    .array_items.push(Box<DefinitionNode>::make(DefinitionKind::ExplicitTable));
                 (**existing).as_Array().value.push(Value::Table(Table::make()));
             } else {
                 return Some(error(TomlErrorCode::TableRedefinition));
             }
         } else {
             if (definition_existing.is_none()) {
-                definition_parent.unwrap()->children.insert(
+                definition_parent.unwrap().get_mut().children.insert(
                     key.clone(), Box<DefinitionNode>::make(DefinitionKind::ExplicitTable));
-                parent.unwrap()->insert(key.clone(), Value::Table(Table::make()));
-            } else if ((**definition_existing).get()->kind == DefinitionKind::ImplicitTable &&
+                parent.unwrap().get_mut().insert(key.clone(), Value::Table(Table::make()));
+            } else if ((**definition_existing).deref_mut().get_mut().kind ==
+                           DefinitionKind::ImplicitTable &&
                        existing.is_some() && (**existing).is_Table()) {
-                (**definition_existing).get()->kind = DefinitionKind::ExplicitTable;
-            } else if ((**definition_existing).get()->kind == DefinitionKind::ExplicitTable) {
+                (**definition_existing).deref_mut().get_mut().kind = DefinitionKind::ExplicitTable;
+            } else if ((**definition_existing).deref_mut().get_mut().kind ==
+                       DefinitionKind::ExplicitTable) {
                 return Some(error(TomlErrorCode::DuplicateTable));
             } else {
                 return Some(error(TomlErrorCode::TableRedefinition));

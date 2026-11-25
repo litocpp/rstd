@@ -6,6 +6,11 @@ export import :ptr;
 namespace rstd::iter
 {
 
+template<typename I, bool Reverse>
+struct SliceDriver;
+template<typename I>
+struct SliceTraversal;
+
 /// Iterator over `&T` of a contiguous range, yielding `ref<T>`.
 export template<class T>
 struct SliceIter : DefaultInClass<SliceIter<T>, Iterator> {
@@ -16,42 +21,57 @@ struct SliceIter : DefaultInClass<SliceIter<T>, Iterator> {
     static constexpr bool PROVEN_FUSED        = true;
     static constexpr bool PROVEN_TRUSTED_LEN  = true;
 
+private:
+    template<typename, bool>
+    friend struct SliceDriver;
+    template<typename>
+    friend struct SliceTraversal;
+
     ptr<T> cur;
     ptr<T> fin;
 
+public:
+    /// The pointers must bound one initialized range that remains live for the iterator.
+    [[unsafe]]
     constexpr SliceIter(raw_pointer begin [[clang::lifetimebound]],
                         raw_pointer end [[clang::lifetimebound]])
         : cur(ptr<T>::from_raw_parts(begin)), fin(ptr<T>::from_raw_parts(end)) {}
 
+    /// The pointers must bound one initialized range that remains live for the iterator.
+    [[unsafe]]
     constexpr SliceIter(ptr<T> begin [[clang::lifetimebound]], ptr<T> end [[clang::lifetimebound]])
         : cur(begin), fin(end) {}
 
     /// Borrows the remaining elements without advancing the iterator.
     constexpr auto as_slice() const noexcept [[clang::lifetimebound]] -> slice<T> {
         if (cur == fin) return {};
-        return slice<T>::from_raw_parts(cur.as_raw_ptr(), len());
+        [[unsafe]] { return slice<T>::from_raw_parts(cur.as_raw_ptr(), len()); }
     }
 
     constexpr auto next() -> Option<Item> {
         if (cur == fin) return rstd::None();
         auto p = cur;
-        ++cur;
-        return rstd::Some(p.as_ref());
+        [[unsafe]] {
+            ++cur;
+            return rstd::Some(p.as_ref());
+        }
     }
 
     constexpr auto next_back() -> Option<Item> {
         if (cur == fin) return rstd::None();
-        --fin;
-        return rstd::Some(fin.as_ref());
+        [[unsafe]] {
+            --fin;
+            return rstd::Some(fin.as_ref());
+        }
     }
 
     constexpr auto size_hint() const -> SizeHint {
-        usize n(static_cast<rstd::size_t>(cur.distance_to(fin)));
+        auto n = len();
         return { n, rstd::Some(n) };
     }
 
     constexpr auto len() const -> usize {
-        return usize(static_cast<rstd::size_t>(cur.distance_to(fin)));
+        [[unsafe]] { return usize(static_cast<rstd::size_t>(cur.distance_to(fin))); }
     }
 };
 
@@ -65,13 +85,24 @@ struct SliceIterMut : DefaultInClass<SliceIterMut<T>, Iterator> {
     static constexpr bool PROVEN_FUSED        = true;
     static constexpr bool PROVEN_TRUSTED_LEN  = true;
 
+private:
+    template<typename, bool>
+    friend struct SliceDriver;
+    template<typename>
+    friend struct SliceTraversal;
+
     mut_ptr<T> cur;
     mut_ptr<T> fin;
 
+public:
+    /// The pointers must bound a live initialized range exclusively borrowed by the iterator.
+    [[unsafe]]
     constexpr SliceIterMut(raw_pointer begin [[clang::lifetimebound]],
                            raw_pointer end [[clang::lifetimebound]])
         : cur(mut_ptr<T>::from_raw_parts(begin)), fin(mut_ptr<T>::from_raw_parts(end)) {}
 
+    /// The pointers must bound a live initialized range exclusively borrowed by the iterator.
+    [[unsafe]]
     constexpr SliceIterMut(mut_ptr<T> begin [[clang::lifetimebound]],
                            mut_ptr<T> end [[clang::lifetimebound]])
         : cur(begin), fin(end) {}
@@ -79,29 +110,33 @@ struct SliceIterMut : DefaultInClass<SliceIterMut<T>, Iterator> {
     /// Borrows the remaining elements without advancing the iterator.
     constexpr auto as_slice() const noexcept [[clang::lifetimebound]] -> slice<T> {
         if (cur == fin) return {};
-        return slice<T>::from_raw_parts(cur.as_raw_ptr(), len());
+        [[unsafe]] { return slice<T>::from_raw_parts(cur.as_raw_ptr(), len()); }
     }
 
     constexpr auto next() -> Option<Item> {
         if (cur == fin) return rstd::None();
         auto p = cur;
-        ++cur;
-        return rstd::Some(p.as_mut_ref());
+        [[unsafe]] {
+            ++cur;
+            return rstd::Some(p.as_mut_ref());
+        }
     }
 
     constexpr auto next_back() -> Option<Item> {
         if (cur == fin) return rstd::None();
-        --fin;
-        return rstd::Some(fin.as_mut_ref());
+        [[unsafe]] {
+            --fin;
+            return rstd::Some(fin.as_mut_ref());
+        }
     }
 
     constexpr auto size_hint() const -> SizeHint {
-        usize n(static_cast<rstd::size_t>(cur.distance_to(fin)));
+        auto n = len();
         return { n, rstd::Some(n) };
     }
 
     constexpr auto len() const -> usize {
-        return usize(static_cast<rstd::size_t>(cur.distance_to(fin)));
+        [[unsafe]] { return usize(static_cast<rstd::size_t>(cur.distance_to(fin))); }
     }
 };
 
@@ -109,16 +144,18 @@ template<typename I, bool Reverse>
 struct SliceDriver {
     static constexpr auto take(I& iterator) -> typename I::Item {
         auto position = iterator.cur;
-        if constexpr (Reverse) {
-            --iterator.fin;
-            position = iterator.fin;
-        } else {
-            ++iterator.cur;
+        [[unsafe]] {
+            if constexpr (Reverse) {
+                --iterator.fin;
+                position = iterator.fin;
+            } else {
+                ++iterator.cur;
+            }
+            if constexpr (requires { position.as_mut_ref(); })
+                return position.as_mut_ref();
+            else
+                return position.as_ref();
         }
-        if constexpr (requires { position.as_mut_ref(); })
-            return position.as_mut_ref();
-        else
-            return position.as_ref();
     }
 
     template<typename B, typename F>
@@ -166,7 +203,9 @@ struct SliceTraversal {
             iterator.cur = iterator.fin;
             return Err(num::nonzero::NonZero<usize>::make_unchecked(n - length));
         }
-        if (n != usize()) iterator.cur = iterator.cur.add(n);
+        if (n != usize()) {
+            [[unsafe]] { iterator.cur = iterator.cur.add(n); }
+        }
         return Ok(empty {});
     }
     static constexpr auto count(I& iterator) -> usize {
@@ -347,21 +386,28 @@ constexpr auto successors(Option<T> first, F f) -> Successors<T, F> {
 export template<class T>
 constexpr auto from_slice(slice<T> s [[clang::lifetimebound]]) -> SliceIter<T> {
     auto pointer = ptr<T>::from_raw_parts(s.as_raw_ptr());
-    return { pointer, pointer.add(s.len()) };
+    [[unsafe]] { return { pointer, pointer.add(s.len()) }; }
+}
+
+/// Iterator over `&mut T` of a mutable slice.
+export template<class T>
+constexpr auto from_slice_mut(mut_ref<T[]> s [[clang::lifetimebound]]) -> SliceIterMut<T> {
+    auto pointer = mut_ptr<T>::from_raw_parts(s.as_raw_ptr());
+    [[unsafe]] { return { pointer, pointer.add(s.len()) }; }
 }
 
 /// Iterator over `&T` of a C array.
 export template<class T, rstd::size_t N>
 constexpr auto from_array(const T (&arr [[clang::lifetimebound]])[N]) -> SliceIter<T> {
     auto pointer = ptr<T>::from_raw_parts(arr);
-    return { pointer, pointer.add(usize(N)) };
+    [[unsafe]] { return { pointer, pointer.add(usize(N)) }; }
 }
 
 /// Iterator over `&mut T` of a C array.
 export template<class T, rstd::size_t N>
 constexpr auto from_array_mut(T (&arr [[clang::lifetimebound]])[N]) -> SliceIterMut<T> {
     auto pointer = mut_ptr<T>::from_raw_parts(arr);
-    return { pointer, pointer.add(usize(N)) };
+    [[unsafe]] { return { pointer, pointer.add(usize(N)) }; }
 }
 
 } // namespace rstd::iter
@@ -380,11 +426,7 @@ template<typename T>
 struct Impl<iter::IntoIterator, mut_ref<T[]>> : ImplBase<mut_ref<T[]>> {
     using IntoIter = iter::SliceIterMut<T>;
 
-    constexpr auto into_iter() -> IntoIter {
-        auto& source  = this->self();
-        auto  pointer = mut_ptr<T>::from_raw_parts(source.as_raw_ptr());
-        return { pointer, pointer.add(source.len()) };
-    }
+    constexpr auto into_iter() -> IntoIter { return iter::from_slice_mut(this->self()); }
 };
 
 } // namespace rstd

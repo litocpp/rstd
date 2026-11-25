@@ -141,39 +141,49 @@ auto validate_suites(slice<TestSuite> suites) -> Result<empty, String> {
 }
 
 auto raw_str(const char* value) noexcept -> ref<str> {
-    return ref<str>::from_raw_parts_unchecked(reinterpret_cast<const byte*>(value),
-                                              usize(__builtin_strlen(value)));
+    if (value == nullptr) return {};
+    [[unsafe]] {
+        return str_::from_utf8(slice<u8>::from_raw_parts(reinterpret_cast<const byte*>(value),
+                                                         usize(__builtin_strlen(value))))
+            .unwrap_or({});
+    }
 }
 
 auto descriptor_name(const gtest::Descriptor& descriptor) -> String {
     return full_name(raw_str(descriptor.suite), raw_str(descriptor.name));
 }
 
-auto collect_registered() -> Result<Vec<gtest::Descriptor*>, String> {
-    auto result = Vec<gtest::Descriptor*>::make();
-    for (auto* descriptor = gtest::registered_head(); descriptor != nullptr;
-         descriptor       = descriptor->next) {
-        if (descriptor->suite == nullptr || descriptor->suite[0] == '\0') {
-            return Err(String::make("registered test suite name must not be empty"_str));
+auto collect_registered() -> Result<Vec<ref<gtest::Descriptor>>, String> {
+    auto  result     = Vec<ref<gtest::Descriptor>>::make();
+    auto* descriptor = gtest::registered_head();
+    while (descriptor != nullptr) {
+        // The registry only contains descriptors installed by test registration.
+        ref<gtest::Descriptor> entry;
+        [[unsafe]] { entry = ref<gtest::Descriptor>::from_raw_parts(descriptor); }
+        const auto& value = entry.get();
+        [[unsafe]] {
+            if (value.suite == nullptr || value.suite[0] == '\0') {
+                return Err(String::make("registered test suite name must not be empty"_str));
+            }
+            if (value.name == nullptr || value.name[0] == '\0') {
+                return Err(String::make("registered test case name must not be empty"_str));
+            }
         }
-        if (descriptor->name == nullptr || descriptor->name[0] == '\0') {
-            return Err(String::make("registered test case name must not be empty"_str));
-        }
-        if (descriptor->function == nullptr) {
+        if (value.function == nullptr) {
             return Err(String::make("registered test case has no function"_str));
         }
-        result.push(rstd::move(descriptor));
+        result.push(rstd::move(entry));
+        descriptor = value.next;
     }
-    rstd::slice_::sort_unstable_by(
-        result.as_mut_slice().as_mut_ref(),
-        [](const gtest::Descriptor* left, const gtest::Descriptor* right) {
-            auto left_name  = descriptor_name(*left);
-            auto right_name = descriptor_name(*right);
-            return left_name < right_name;
-        });
+    rstd::slice_::sort_unstable_by(result.deref_mut(),
+                                   [](ref<gtest::Descriptor> left, ref<gtest::Descriptor> right) {
+                                       auto left_name  = descriptor_name(left.get());
+                                       auto right_name = descriptor_name(right.get());
+                                       return left_name < right_name;
+                                   });
     for (usize index = usize(1); index < result.len(); ++index) {
-        auto previous = descriptor_name(*result[index - usize(1)]);
-        auto current  = descriptor_name(*result[index]);
+        auto previous = descriptor_name(result[index - usize(1)].get());
+        auto current  = descriptor_name(result[index].get());
         if (previous == current.as_str()) {
             return Err(rstd::format("duplicate test case '{}'", current.as_str()));
         }
@@ -279,12 +289,14 @@ auto prepare_run() -> Result<RunOptions, String> {
     auto options     = rstd::move(parsed).unwrap();
     auto case_name   = options.death_case.is_some() ? options.death_case->as_str() : ref<str> {};
     auto death_index = options.death_index.is_some() ? *options.death_index : usize {};
-    gtest::configure_death(reinterpret_cast<const char*>(options.program.as_str().data()),
-                           options.program.as_str().len().to_primitive(),
-                           reinterpret_cast<const char*>(case_name.data()),
-                           case_name.len().to_primitive(),
-                           options.death_case.is_some(),
-                           death_index.to_primitive());
+    [[unsafe]] {
+        gtest::configure_death(reinterpret_cast<const char*>(options.program.as_str().data()),
+                               options.program.as_str().len().to_primitive(),
+                               reinterpret_cast<const char*>(case_name.data()),
+                               case_name.len().to_primitive(),
+                               options.death_case.is_some(),
+                               death_index.to_primitive());
+    }
     return Ok(rstd::move(options));
 }
 
@@ -319,7 +331,7 @@ auto run(slice<TestSuite> suites) -> i32 {
             io::println("[run] {}", name.as_str());
             auto context  = TestContext(suite.name, test_case.name);
             auto previous = replace_test_context(rstd::addressof(context));
-            test_case.function(context);
+            [[unsafe]] { test_case.function(context); }
             (void)replace_test_context(previous);
             record_result(name.as_str(), context, counts);
         }
@@ -341,8 +353,9 @@ auto run_registered() -> i32 {
     auto descriptors = rstd::move(collected).unwrap();
     auto options     = rstd::move(prepared).unwrap();
     auto counts      = RunCounts {};
-    for (const auto* descriptor : descriptors) {
-        auto name = descriptor_name(*descriptor);
+    for (auto entry : descriptors) {
+        const auto& descriptor = entry.get();
+        auto        name       = descriptor_name(descriptor);
         if (! selected(options, name.as_str())) continue;
         ++counts.executed;
         if (options.list) {
@@ -351,9 +364,9 @@ auto run_registered() -> i32 {
         }
 
         io::println("[run] {}", name.as_str());
-        auto context  = TestContext(raw_str(descriptor->suite), raw_str(descriptor->name));
+        auto context  = TestContext(raw_str(descriptor.suite), raw_str(descriptor.name));
         auto previous = replace_test_context(rstd::addressof(context));
-        descriptor->function();
+        [[unsafe]] { descriptor.function(); }
         (void)replace_test_context(previous);
         record_result(name.as_str(), context, counts);
     }

@@ -24,8 +24,10 @@ public:
         -> async::coro<io::Result<UnixStream>>;
     static auto from_owned_socket(os::socket::OwnedSocket socket) -> io::Result<UnixStream>;
     static auto from_owned_fd(os::fd::OwnedFd fd) -> io::Result<UnixStream> {
-        return from_owned_socket(
-            os::socket::OwnedSocket::from_raw_socket(rstd::move(fd).into_raw_fd()));
+        [[unsafe]] {
+            return from_owned_socket(
+                os::socket::OwnedSocket::from_raw_socket(rstd::move(fd).into_raw_fd()));
+        }
     }
     auto into_owned_fd() && { return rstd::move(stream_).into_owned_fd(); }
     auto ready(async::Interest interest) { return stream_.ready(interest); }
@@ -35,16 +37,16 @@ public:
     auto try_read(bytes::BytesMut& buf) { return stream_.try_read(buf); }
     auto try_write(const bytes::Bytes& buf) { return stream_.try_write(buf); }
     auto poll_read(mut_ref<UnixStream> self, task::Context& cx, bytes::BytesMut& buf) {
-        return stream_.poll_read(mut_ref<SocketStream>::from_raw_parts(&self->stream_), cx, buf);
+        return stream_.poll_read(mut_ref<SocketStream>::from_ref(self->stream_), cx, buf);
     }
     auto poll_write(mut_ref<UnixStream> self, task::Context& cx, const bytes::Bytes& buf) {
-        return stream_.poll_write(mut_ref<SocketStream>::from_raw_parts(&self->stream_), cx, buf);
+        return stream_.poll_write(mut_ref<SocketStream>::from_ref(self->stream_), cx, buf);
     }
     auto poll_flush(mut_ref<UnixStream> self, task::Context& cx) {
-        return stream_.poll_flush(mut_ref<SocketStream>::from_raw_parts(&self->stream_), cx);
+        return stream_.poll_flush(mut_ref<SocketStream>::from_ref(self->stream_), cx);
     }
     auto poll_shutdown(mut_ref<UnixStream> self, task::Context& cx) {
-        return stream_.poll_shutdown(mut_ref<SocketStream>::from_raw_parts(&self->stream_), cx);
+        return stream_.poll_shutdown(mut_ref<SocketStream>::from_ref(self->stream_), cx);
     }
     auto into_owned_socket() && { return rstd::move(stream_).into_owned_socket(); }
     auto close() && { return rstd::move(stream_).close(); }

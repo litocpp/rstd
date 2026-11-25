@@ -11,16 +11,18 @@ namespace rstd::sys::pal::windows::futex
 using rstd::sync::atomic::Atomic;
 
 bool wait_on_address(const void* address, const void* compare, rstd::size_t size, DWORD timeout) {
-    return WaitOnAddress(const_cast<void*>(address), const_cast<void*>(compare), size, timeout) ==
-           M_TRUE;
+    [[unsafe]] {
+        return WaitOnAddress(
+                   const_cast<void*>(address), const_cast<void*>(compare), size, timeout) == M_TRUE;
+    }
 }
 
 void wake_by_address_single(const void* address) {
-    WakeByAddressSingle(const_cast<void*>(address));
+    [[unsafe]] { WakeByAddressSingle(const_cast<void*>(address)); }
 }
 
 void wake_by_address_all(const void* address) {
-    WakeByAddressAll(const_cast<void*>(address));
+    [[unsafe]] { WakeByAddressAll(const_cast<void*>(address)); }
 }
 
 template<typename T>

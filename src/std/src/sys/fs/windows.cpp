@@ -180,8 +180,12 @@ auto path_from_handle(libc::HANDLE handle) -> IOResult<PathBuf> {
                        wide[usize(2)] == L'?' && wide[usize(3)] == L'\\') {
                 start = 4;
             }
-            auto native =
-                rstd::sys::os_str::windows::from_wide(wide.as_ptr() + start, usize(length - start));
+            auto native = [&] {
+                [[unsafe]] {
+                    return rstd::sys::os_str::windows::from_wide(wide.as_ptr() + start,
+                                                                 usize(length - start));
+                }
+            }();
             auto encoded = rstd::move(native).into_encoded_bytes();
             if (unc) {
                 auto prefixed = Vec<u8>::with_capacity(encoded.len() + usize(2));
@@ -190,7 +194,10 @@ auto path_from_handle(libc::HANDLE handle) -> IOResult<PathBuf> {
                 prefixed.extend_from_slice(encoded.as_slice());
                 encoded = rstd::move(prefixed);
             }
-            return Ok(PathBuf::from(OsString::from_encoded_bytes_unchecked(rstd::move(encoded))));
+            [[unsafe]] {
+                return Ok(
+                    PathBuf::from(OsString::from_encoded_bytes_unchecked(rstd::move(encoded))));
+            }
         }
         wide.resize(usize(static_cast<rstd::size_t>(count) + 1), wchar_t {});
     }
@@ -249,14 +256,15 @@ auto open(ref<Path> path, OpenOptionsData const& options) -> IOResult<OwnedFd> {
     auto native = rstd_try(parse_open_options(options));
     auto handle = open_native(path, native.access, native.creation, native.flags);
     if (handle.is_err()) return Err(rstd::move(handle).unwrap_err_unchecked());
-    return Ok(OwnedFd::from_raw_fd(static_cast<RawFd>(handle.unwrap_unchecked())));
+    [[unsafe]] { return Ok(OwnedFd::from_raw_fd(static_cast<RawFd>(handle.unwrap_unchecked()))); }
 }
 
 auto open_directory_native(ref<Path> path, libc::DWORD access, libc::DWORD flags)
     -> IOResult<OwnedFd> {
-    auto                             raw    = rstd_try(open_native(
+    auto    raw = rstd_try(open_native(
         path, access, libc::M_OPEN_EXISTING, flags | libc::M_FILE_FLAG_BACKUP_SEMANTICS));
-    auto                             handle = OwnedFd::from_raw_fd(raw);
+    OwnedFd handle;
+    [[unsafe]] { handle = OwnedFd::from_raw_fd(raw); }
     libc::BY_HANDLE_FILE_INFORMATION info {};
     if (! libc::GetFileInformationByHandle(raw, &info)) return Err(windows_error());
     if ((info.dwFileAttributes & libc::M_FILE_ATTRIBUTE_DIRECTORY) == 0)
@@ -314,7 +322,7 @@ auto open_relative(RawFd       dir,
                                      nullptr,
                                      0);
     if (status < 0) return Err(nt_error(status));
-    return Ok(OwnedFd::from_raw_fd(handle));
+    [[unsafe]] { return Ok(OwnedFd::from_raw_fd(handle)); }
 }
 
 auto open_at(RawFd dir, ref<Path> path, OpenOptionsData const& options, bool directory)
@@ -384,22 +392,24 @@ auto rename_at(RawFd from_dir, ref<Path> from, RawFd to_dir, ref<Path> to) -> IO
     auto layout = rstd::alloc::Layout::from_size_align_unchecked(usize(size), usize(alignof(Info)));
     auto memory = ::alloc::alloc(layout);
     if (memory == nullptr) return Err(Error::from_kind(ErrorKind { ErrorKind::OutOfMemory }));
-    auto info             = new (memory) Info {};
-    info->ReplaceIfExists = true;
-    info->RootDirectory   = to_dir;
-    info->FileNameLength  = static_cast<libc::DWORD>(bytes);
-    // Copy the variable-length tail without indexing beyond the SDK's one-element array.
-    rstd::mem::memcpy(reinterpret_cast<byte*>(memory) + __builtin_offsetof(Info, FileName),
-                      name.as_ptr(),
-                      usize(bytes));
     libc::IO_STATUS_BLOCK io_status {};
-    auto                  status = libc::NtSetInformationFile(handle.as_raw_fd(),
-                                                              &io_status,
-                                                              info,
-                                                              static_cast<libc::DWORD>(size),
-                                                              libc::M_FILE_RENAME_INFORMATION);
-    ::alloc::dealloc(memory, layout);
-    if (status < 0) return Err(nt_error(status));
+    [[unsafe]] {
+        auto info             = new (memory) Info {};
+        info->ReplaceIfExists = true;
+        info->RootDirectory   = to_dir;
+        info->FileNameLength  = static_cast<libc::DWORD>(bytes);
+        // Copy the variable-length tail without indexing beyond the SDK's one-element array.
+        rstd::mem::memcpy(reinterpret_cast<byte*>(memory) + __builtin_offsetof(Info, FileName),
+                          name.as_ptr(),
+                          usize(bytes));
+        auto status = libc::NtSetInformationFile(handle.as_raw_fd(),
+                                                 &io_status,
+                                                 info,
+                                                 static_cast<libc::DWORD>(size),
+                                                 libc::M_FILE_RENAME_INFORMATION);
+        ::alloc::dealloc(memory, layout);
+        if (status < 0) return Err(nt_error(status));
+    }
     return Ok(empty {});
 }
 
@@ -520,7 +530,8 @@ auto read_at_impl(RawFd fd, mut_ref<Byte[]> buffer, u64 offset) -> IOResult<usiz
                                          libc::M_FILE_SHARE_DELETE,
                                      0);
     if (reopened == libc::M_INVALID_HANDLE_VALUE) return Err(windows_error());
-    auto owner  = OwnedFd::from_raw_fd(reopened);
+    OwnedFd owner;
+    [[unsafe]] { owner = OwnedFd::from_raw_fd(reopened); }
     auto handle = static_cast<libc::HANDLE>(owner.as_raw_fd());
     if (! libc::ReadFile(
             handle, buffer.as_raw_ptr(), static_cast<libc::DWORD>(length), &count, &overlapped)) {
@@ -813,17 +824,19 @@ auto Directory::next() -> Option<IOResult<DirectoryEntryData>> {
             return Some(IOResult<DirectoryEntryData>(Err(Error::from_raw_os_error(i32(error)))));
         }
 
-        auto* name = m_entry.cFileName;
-        if (name[0] == L'.' && (name[1] == L'\0' || (name[1] == L'.' && name[2] == L'\0'))) {
-            continue;
+        [[unsafe]] {
+            auto* name = m_entry.cFileName;
+            if (name[0] == L'.' && (name[1] == L'\0' || (name[1] == L'.' && name[2] == L'\0')))
+                continue;
+            auto length = rstd::size_t {};
+            while (length < sizeof(m_entry.cFileName) / sizeof(wchar_t) && name[length] != L'\0')
+                ++length;
+            auto converted = rstd::sys::os_str::windows::from_wide(name, usize(length));
+            return Some(IOResult<DirectoryEntryData>(Ok(DirectoryEntryData {
+                .name      = rstd::move(converted).into_encoded_bytes(),
+                .file_type = file_type_from_attributes(m_entry.dwFileAttributes),
+            })));
         }
-        auto length = rstd::size_t {};
-        while (name[length] != L'\0') ++length;
-        auto converted = rstd::sys::os_str::windows::from_wide(name, usize(length));
-        return Some(IOResult<DirectoryEntryData>(Ok(DirectoryEntryData {
-            .name      = rstd::move(converted).into_encoded_bytes(),
-            .file_type = file_type_from_attributes(m_entry.dwFileAttributes),
-        })));
     }
 }
 

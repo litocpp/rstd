@@ -240,9 +240,6 @@ namespace rstd
 
 // Write a decimal integer directly — avoids needing alloc for int Display.
 void write_decimal(rstd::fmt::Formatter& f, i32 n) noexcept {
-    char           buf[12];
-    char*          end = buf + sizeof(buf);
-    char*          p   = end;
     auto const     raw = n.to_primitive();
     rstd::uint32_t v   = raw < 0 ? static_cast<rstd::uint32_t>(-static_cast<rstd::int64_t>(raw))
                                  : static_cast<rstd::uint32_t>(raw);
@@ -250,12 +247,17 @@ void write_decimal(rstd::fmt::Formatter& f, i32 n) noexcept {
         f.write_raw("0", 1);
         return;
     }
-    while (v > 0) {
-        *--p = char('0' + v % 10);
-        v /= 10;
+    char buf[12];
+    [[unsafe]] {
+        auto* end = buf + sizeof(buf);
+        auto* p   = end;
+        while (v > 0) {
+            *--p = char('0' + v % 10);
+            v /= 10;
+        }
+        if (raw < 0) *--p = '-';
+        f.write_raw(p, static_cast<rstd::size_t>(end - p));
     }
-    if (raw < 0) *--p = '-';
-    f.write_raw(p, static_cast<rstd::size_t>(end - p));
 }
 
 auto Impl<fmt::Display, io::error::ErrorKind>::fmt(fmt::Formatter& f) const -> bool {
@@ -289,7 +291,7 @@ auto Impl<fmt::Display, io::error::Error>::fmt(fmt::Formatter& f) const -> bool 
     }
     case Tag::Message: {
         auto msg = e.static_message();
-        return f.write_raw(msg, rstd::strlen(msg));
+        [[unsafe]] { return f.write_raw(msg, rstd::strlen(msg)); }
     }
     case Tag::Custom: {
         return as<fmt::Display>(*e.get_ref()).fmt(f);
@@ -323,7 +325,7 @@ auto Impl<fmt::Debug, io::error::Error>::fmt(fmt::Formatter& f) const -> bool {
         const char sep[] = ", message: \"";
         f.write_raw(sep, sizeof(sep) - 1);
         auto msg = e.static_message();
-        f.write_raw(msg, rstd::strlen(msg));
+        [[unsafe]] { f.write_raw(msg, rstd::strlen(msg)); }
         return f.write_raw("\" }", 3);
     }
     case Tag::Custom: {

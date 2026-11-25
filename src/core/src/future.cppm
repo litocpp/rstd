@@ -8,7 +8,7 @@ namespace rstd::future
 
 export template<typename T>
 constexpr auto as_mut_ref(T& value) noexcept -> mut_ref<T> {
-    return mut_ref<T>::from_raw_parts(rstd::addressof(value));
+    return mut_ref<T>::from_ref(value);
 }
 
 export template<typename F>

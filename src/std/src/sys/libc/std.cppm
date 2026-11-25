@@ -42,17 +42,22 @@ using ::max_align_t;
 [[gnu::always_inline]]
 inline auto errno() noexcept -> int {
 #if __is_target_environment(android)
-    return *__errno();
+    [[unsafe]] { return *__errno();
+}
 #elif defined(RSTD_OS_LINUX)
-    return *__errno_location();
+    [[unsafe]] { return *__errno_location();
+}
 #elif defined(RSTD_OS_WINDOWS)
-    return *_errno();
+    [[unsafe]] { return *_errno();
+}
 #elif defined(RSTD_VENDOR_APPLE)
-    return *__error();
+    [[unsafe]] { return *__error();
+}
 #else
 #error "rstd: unsupported platform for errno()"
 #endif
-};
+}
+;
 
 // Environment
 using ::getenv;

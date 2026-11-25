@@ -28,16 +28,16 @@ void merge_counters(CounterSet& total, const CounterSet& part) noexcept {
 class CounterBackend {
     static constexpr rstd::size_t COUNTER_COUNT = 6;
 
-    CounterMode mode_;
-    bool        available_ {};
-    bool        calibrated_ {};
-    i32         error_code_ {};
-    u32         mask_ {};
-    u64         overhead_[COUNTER_COUNT] {};
-    u64         instruction_loop_overhead_ {};
+    CounterMode                     mode_;
+    bool                            available_ {};
+    bool                            calibrated_ {};
+    i32                             error_code_ {};
+    u32                             mask_ {};
+    rstd::array<u64, COUNTER_COUNT> overhead_ {};
+    u64                             instruction_loop_overhead_ {};
 
 #if defined(__linux__)
-    int descriptors_[COUNTER_COUNT] { -1, -1, -1, -1, -1, -1 };
+    rstd::array<int, COUNTER_COUNT> descriptors_ { -1, -1, -1, -1, -1, -1 };
 
     struct GroupRead {
         rstd::uint64_t count;
@@ -63,9 +63,9 @@ class CounterBackend {
 
     void close_all() noexcept {
         for (rstd::size_t index = 0; index < COUNTER_COUNT; ++index) {
-            if (descriptors_[index] >= 0) {
-                libc::close(descriptors_[index]);
-                descriptors_[index] = -1;
+            if (descriptors_[usize(index)] >= 0) {
+                libc::close(descriptors_[usize(index)]);
+                descriptors_[usize(index)] = -1;
             }
         }
     }
@@ -84,20 +84,20 @@ class CounterBackend {
             rstd::uint32_t type;
             rstd::uint64_t config;
         };
-        constexpr CounterDescriptor descriptors[COUNTER_COUNT] {
-            { libc::PERF_TYPE_HARDWARE, libc::PERF_COUNT_HW_CPU_CYCLES },
-            { libc::PERF_TYPE_HARDWARE, libc::PERF_COUNT_HW_INSTRUCTIONS },
-            { libc::PERF_TYPE_HARDWARE, libc::PERF_COUNT_HW_BRANCH_INSTRUCTIONS },
-            { libc::PERF_TYPE_HARDWARE, libc::PERF_COUNT_HW_BRANCH_MISSES },
-            { libc::PERF_TYPE_SOFTWARE, libc::PERF_COUNT_SW_PAGE_FAULTS },
-            { libc::PERF_TYPE_SOFTWARE, libc::PERF_COUNT_SW_CONTEXT_SWITCHES },
+        constexpr rstd::array<CounterDescriptor, COUNTER_COUNT> descriptors {
+            CounterDescriptor { libc::PERF_TYPE_HARDWARE, libc::PERF_COUNT_HW_CPU_CYCLES },
+            CounterDescriptor { libc::PERF_TYPE_HARDWARE, libc::PERF_COUNT_HW_INSTRUCTIONS },
+            CounterDescriptor { libc::PERF_TYPE_HARDWARE, libc::PERF_COUNT_HW_BRANCH_INSTRUCTIONS },
+            CounterDescriptor { libc::PERF_TYPE_HARDWARE, libc::PERF_COUNT_HW_BRANCH_MISSES },
+            CounterDescriptor { libc::PERF_TYPE_SOFTWARE, libc::PERF_COUNT_SW_PAGE_FAULTS },
+            CounterDescriptor { libc::PERF_TYPE_SOFTWARE, libc::PERF_COUNT_SW_CONTEXT_SWITCHES },
         };
 
         for (rstd::size_t index = 0; index < COUNTER_COUNT; ++index) {
-            descriptors_[index] = open_counter(descriptors[index].type,
-                                               descriptors[index].config,
-                                               index == 0 ? -1 : descriptors_[0]);
-            if (descriptors_[index] < 0) {
+            descriptors_[usize(index)] = open_counter(descriptors[usize(index)].type,
+                                                      descriptors[usize(index)].config,
+                                                      index == 0 ? -1 : descriptors_[usize(0)]);
+            if (descriptors_[usize(index)] < 0) {
                 fail(libc::get_errno());
                 return;
             }
@@ -106,9 +106,9 @@ class CounterBackend {
         mask_      = u32((1u << COUNTER_COUNT) - 1u);
     }
 
-    auto read_group(u64 (&values)[COUNTER_COUNT]) noexcept -> bool {
+    auto read_group(rstd::array<u64, COUNTER_COUNT>& values) noexcept -> bool {
         auto       data  = GroupRead {};
-        auto const bytes = libc::read(descriptors_[0], &data, sizeof(data));
+        auto const bytes = libc::read(descriptors_[usize(0)], &data, sizeof(data));
         if (bytes != static_cast<libc::ssize_t>(sizeof(data)) || data.count != COUNTER_COUNT ||
             data.time_running == 0) {
             fail(bytes < 0 ? libc::get_errno() : libc::EIO);
@@ -116,7 +116,8 @@ class CounterBackend {
         }
 
         for (rstd::size_t index = 0; index < COUNTER_COUNT; ++index) {
-            auto value = data.values[index];
+            rstd::uint64_t value;
+            [[unsafe]] { value = data.values[index]; }
             if (data.time_running != data.time_enabled) {
                 auto scaled = static_cast<long double>(value) *
                               static_cast<long double>(data.time_enabled) /
@@ -125,7 +126,7 @@ class CounterBackend {
                                   ? u64::MAX.to_primitive()
                                   : static_cast<rstd::uint64_t>(scaled);
             }
-            values[index] = u64(value);
+            values[usize(index)] = u64(value);
         }
         return true;
     }
@@ -137,7 +138,7 @@ class CounterBackend {
         return value;
     }
 
-    auto measure_loop(bool twice, u64 (&values)[COUNTER_COUNT]) noexcept -> bool {
+    auto measure_loop(bool twice, rstd::array<u64, COUNTER_COUNT>& values) noexcept -> bool {
         constexpr rstd::uint64_t ITERATIONS = 100'003;
         auto                     remaining  = ITERATIONS;
         auto                     value      = rstd::uint32_t(1'234'567);
@@ -148,8 +149,9 @@ class CounterBackend {
             if (twice) value = mix(value);
         }
         rstd::hint::black_box(value);
-        if (libc::ioctl(descriptors_[0], libc::PERF_EVENT_IOC_DISABLE, libc::PERF_IOC_FLAG_GROUP) !=
-            0) {
+        if (libc::ioctl(descriptors_[usize(0)],
+                        libc::PERF_EVENT_IOC_DISABLE,
+                        libc::PERF_IOC_FLAG_GROUP) != 0) {
             fail(libc::get_errno());
             return false;
         }
@@ -159,30 +161,31 @@ class CounterBackend {
     template<typename Op>
     void calibrate(Op&& op) noexcept {
         for (rstd::size_t index = 0; index < COUNTER_COUNT; ++index) {
-            overhead_[index] = u64::MAX;
+            overhead_[usize(index)] = u64::MAX;
         }
         for (rstd::size_t sample = 0; sample < 100 && available_; ++sample) {
             begin_measure();
             op();
-            if (libc::ioctl(descriptors_[0],
+            if (libc::ioctl(descriptors_[usize(0)],
                             libc::PERF_EVENT_IOC_DISABLE,
                             libc::PERF_IOC_FLAG_GROUP) != 0) {
                 fail(libc::get_errno());
                 return;
             }
-            u64 values[COUNTER_COUNT] {};
+            rstd::array<u64, COUNTER_COUNT> values {};
             if (! read_group(values)) return;
             for (rstd::size_t index = 0; index < COUNTER_COUNT; ++index) {
-                if (values[index] < overhead_[index]) overhead_[index] = values[index];
+                if (values[usize(index)] < overhead_[usize(index)])
+                    overhead_[usize(index)] = values[usize(index)];
             }
         }
         if (! available_) return;
 
-        u64 once[COUNTER_COUNT] {};
-        u64 twice[COUNTER_COUNT] {};
+        rstd::array<u64, COUNTER_COUNT> once {};
+        rstd::array<u64, COUNTER_COUNT> twice {};
         if (! measure_loop(false, once) || ! measure_loop(true, twice)) return;
-        auto const once_instructions  = adjusted(once[1], 1);
-        auto const twice_instructions = adjusted(twice[1], 1);
+        auto const once_instructions  = adjusted(once[usize(1)], 1);
+        auto const twice_instructions = adjusted(twice[usize(1)], 1);
         auto       doubled            = u128(once_instructions.to_primitive()) * u128(2);
         auto       overhead           = doubled > u128(twice_instructions.to_primitive())
                                             ? doubled - u128(twice_instructions.to_primitive())
@@ -198,7 +201,7 @@ class CounterBackend {
 #endif
 
     auto adjusted(u64 value, rstd::size_t index) const noexcept -> u64 {
-        return value.saturating_sub(overhead_[index]);
+        return value.saturating_sub(overhead_[usize(index)]);
     }
 
 public:
@@ -215,10 +218,10 @@ public:
           mask_(other.mask_),
           instruction_loop_overhead_(other.instruction_loop_overhead_) {
         for (rstd::size_t index = 0; index < COUNTER_COUNT; ++index) {
-            overhead_[index] = other.overhead_[index];
+            overhead_[usize(index)] = other.overhead_[usize(index)];
 #if defined(__linux__)
-            descriptors_[index]       = other.descriptors_[index];
-            other.descriptors_[index] = -1;
+            descriptors_[usize(index)]       = other.descriptors_[usize(index)];
+            other.descriptors_[usize(index)] = -1;
 #endif
         }
         other.available_ = false;
@@ -248,10 +251,12 @@ public:
     void begin_measure() noexcept {
 #if defined(__linux__)
         if (! available_) return;
-        if (libc::ioctl(descriptors_[0], libc::PERF_EVENT_IOC_RESET, libc::PERF_IOC_FLAG_GROUP) !=
-                0 ||
-            libc::ioctl(descriptors_[0], libc::PERF_EVENT_IOC_ENABLE, libc::PERF_IOC_FLAG_GROUP) !=
-                0) {
+        if (libc::ioctl(descriptors_[usize(0)],
+                        libc::PERF_EVENT_IOC_RESET,
+                        libc::PERF_IOC_FLAG_GROUP) != 0 ||
+            libc::ioctl(descriptors_[usize(0)],
+                        libc::PERF_EVENT_IOC_ENABLE,
+                        libc::PERF_IOC_FLAG_GROUP) != 0) {
             fail(libc::get_errno());
         }
 #endif
@@ -263,24 +268,25 @@ public:
             if (mode_.is_Disabled()) return Ok(CounterSet {});
             return Err(error_code_);
         }
-        if (libc::ioctl(descriptors_[0], libc::PERF_EVENT_IOC_DISABLE, libc::PERF_IOC_FLAG_GROUP) !=
-            0) {
+        if (libc::ioctl(descriptors_[usize(0)],
+                        libc::PERF_EVENT_IOC_DISABLE,
+                        libc::PERF_IOC_FLAG_GROUP) != 0) {
             auto code = libc::get_errno();
             fail(code);
             return Err(i32(code));
         }
-        u64 values[COUNTER_COUNT] {};
+        rstd::array<u64, COUNTER_COUNT> values {};
         if (! read_group(values)) return Err(error_code_);
         auto instructions =
-            adjusted(values[1], 1)
+            adjusted(values[usize(1)], 1)
                 .saturating_sub(instruction_loop_overhead_.saturating_mul(iterations));
         return Ok(CounterSet {
-            .page_faults         = Some(adjusted(values[4], 4)),
-            .cpu_cycles          = Some(adjusted(values[0], 0)),
-            .context_switches    = Some(adjusted(values[5], 5)),
+            .page_faults         = Some(adjusted(values[usize(4)], 4)),
+            .cpu_cycles          = Some(adjusted(values[usize(0)], 0)),
+            .context_switches    = Some(adjusted(values[usize(5)], 5)),
             .instructions        = Some(instructions),
-            .branch_instructions = Some(adjusted(values[2], 2)),
-            .branch_misses       = Some(adjusted(values[3], 3)),
+            .branch_instructions = Some(adjusted(values[usize(2)], 2)),
+            .branch_misses       = Some(adjusted(values[usize(3)], 3)),
         });
 #else
         if (mode_.is_Disabled()) return Ok(CounterSet {});

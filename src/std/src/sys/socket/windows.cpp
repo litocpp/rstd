@@ -4,6 +4,7 @@ module;
 #include <mswsock.h>
 #include <windows.h>
 #include <limits.h>
+#include <cstddef>
 #pragma comment(lib, "ws2_32.lib")
 
 module rstd.sys.socket;
@@ -43,11 +44,16 @@ auto ensure_started() -> IOResult<empty> {
 }
 
 auto native_socket(RawSocket socket) noexcept -> SOCKET {
-    return reinterpret_cast<SOCKET>(socket);
+    [[unsafe]] { return reinterpret_cast<SOCKET>(socket); }
 }
 
 auto raw_socket(SOCKET socket) noexcept -> RawSocket {
-    return reinterpret_cast<RawSocket>(socket);
+    [[unsafe]] { return reinterpret_cast<RawSocket>(socket); }
+}
+
+template<typename T>
+auto sockaddr_ptr(T& storage) noexcept -> sockaddr* {
+    [[unsafe]] { return reinterpret_cast<sockaddr*>(rstd::addressof(storage)); }
 }
 
 auto last_error() noexcept -> Error {
@@ -65,8 +71,8 @@ auto addr_to_native(SocketAddr const& addr) noexcept -> NativeSocketAddr {
                                  (rstd::uint32_t(addr.octet(usize(2)).to_primitive()) << 8) |
                                  rstd::uint32_t(addr.octet(usize(3)).to_primitive());
         native.sin_addr.s_addr = ::htonl(address);
-        *reinterpret_cast<sockaddr_in*>(&out.storage) = native;
-        out.len                                       = sizeof(native);
+        __builtin_memcpy(&out.storage, &native, sizeof(native));
+        out.len = sizeof(native);
         return out;
     }
 
@@ -76,26 +82,28 @@ auto addr_to_native(SocketAddr const& addr) noexcept -> NativeSocketAddr {
     native.sin6_flowinfo = ::htonl(addr.flowinfo().to_primitive());
     native.sin6_scope_id = addr.scope_id().to_primitive();
     for (rstd::size_t i = 0; i < 16; ++i) {
-        native.sin6_addr.u.Byte[i] = addr.octet(usize(i)).to_primitive();
+        [[unsafe]] { native.sin6_addr.u.Byte[i] = addr.octet(usize(i)).to_primitive(); }
     }
-    *reinterpret_cast<sockaddr_in6*>(&out.storage) = native;
-    out.len                                        = sizeof(native);
+    __builtin_memcpy(&out.storage, &native, sizeof(native));
+    out.len = sizeof(native);
     return out;
 }
 
 auto operation_addr_to_native(SocketAddress const& addr) noexcept -> NativeSocketAddr {
     auto out = NativeSocketAddr {};
     if (! addr.ipv6) {
-        auto native            = sockaddr_in {};
-        native.sin_family      = AF_INET;
-        native.sin_port        = ::htons(addr.port.to_primitive());
-        auto address           = (rstd::uint32_t(addr.octets[0].to_primitive()) << 24) |
-                                 (rstd::uint32_t(addr.octets[1].to_primitive()) << 16) |
-                                 (rstd::uint32_t(addr.octets[2].to_primitive()) << 8) |
-                                 rstd::uint32_t(addr.octets[3].to_primitive());
-        native.sin_addr.s_addr = ::htonl(address);
-        *reinterpret_cast<sockaddr_in*>(&out.storage) = native;
-        out.len                                       = sizeof(native);
+        auto native       = sockaddr_in {};
+        native.sin_family = AF_INET;
+        native.sin_port   = ::htons(addr.port.to_primitive());
+        [[unsafe]] {
+            auto address           = (rstd::uint32_t(addr.octets[0].to_primitive()) << 24) |
+                                     (rstd::uint32_t(addr.octets[1].to_primitive()) << 16) |
+                                     (rstd::uint32_t(addr.octets[2].to_primitive()) << 8) |
+                                     rstd::uint32_t(addr.octets[3].to_primitive());
+            native.sin_addr.s_addr = ::htonl(address);
+        }
+        __builtin_memcpy(&out.storage, &native, sizeof(native));
+        out.len = sizeof(native);
         return out;
     }
     auto native          = sockaddr_in6 {};
@@ -104,10 +112,10 @@ auto operation_addr_to_native(SocketAddress const& addr) noexcept -> NativeSocke
     native.sin6_flowinfo = ::htonl(addr.flowinfo.to_primitive());
     native.sin6_scope_id = addr.scope_id.to_primitive();
     for (rstd::size_t i = 0; i < 16; ++i) {
-        native.sin6_addr.u.Byte[i] = addr.octets[i].to_primitive();
+        [[unsafe]] { native.sin6_addr.u.Byte[i] = addr.octets[i].to_primitive(); }
     }
-    *reinterpret_cast<sockaddr_in6*>(&out.storage) = native;
-    out.len                                        = sizeof(native);
+    __builtin_memcpy(&out.storage, &native, sizeof(native));
+    out.len = sizeof(native);
     return out;
 }
 
@@ -115,9 +123,10 @@ template<typename Function>
 auto load_extension(SOCKET socket, GUID const& id) -> IOResult<Function> {
     Function function {};
     DWORD    bytes {};
+    auto     copy = id;
     if (::WSAIoctl(socket,
                    SIO_GET_EXTENSION_FUNCTION_POINTER,
-                   const_cast<GUID*>(rstd::addressof(id)),
+                   &copy,
                    sizeof(id),
                    &function,
                    sizeof(function),
@@ -139,18 +148,14 @@ auto start_connect(RawSocket socket, SocketAddress const& address, void* overlap
     if (! address.ipv6) {
         auto local       = sockaddr_in {};
         local.sin_family = AF_INET;
-        if (::bind(native_socket(socket),
-                   reinterpret_cast<const sockaddr*>(&local),
-                   sizeof(local)) == SOCKET_ERROR) {
+        if (::bind(native_socket(socket), sockaddr_ptr(local), sizeof(local)) == SOCKET_ERROR) {
             auto error = ::WSAGetLastError();
             if (error != WSAEINVAL) return Err(Error::from_raw_os_error(i32(error)));
         }
     } else {
         auto local        = sockaddr_in6 {};
         local.sin6_family = AF_INET6;
-        if (::bind(native_socket(socket),
-                   reinterpret_cast<const sockaddr*>(&local),
-                   sizeof(local)) == SOCKET_ERROR) {
+        if (::bind(native_socket(socket), sockaddr_ptr(local), sizeof(local)) == SOCKET_ERROR) {
             auto error = ::WSAGetLastError();
             if (error != WSAEINVAL) return Err(Error::from_raw_os_error(i32(error)));
         }
@@ -159,15 +164,17 @@ auto start_connect(RawSocket socket, SocketAddress const& address, void* overlap
     auto loaded = load_extension<LPFN_CONNECTEX>(native_socket(socket), WSAID_CONNECTEX);
     if (loaded.is_err()) return Err(rstd::move(loaded).unwrap_err_unchecked());
     DWORD sent {};
-    if (! rstd::move(loaded).unwrap_unchecked()(native_socket(socket),
-                                                reinterpret_cast<const sockaddr*>(&native.storage),
-                                                native.len,
-                                                nullptr,
-                                                0,
-                                                &sent,
-                                                static_cast<OVERLAPPED*>(overlapped))) {
-        auto error = ::WSAGetLastError();
-        if (error != WSA_IO_PENDING) return Err(Error::from_raw_os_error(i32(error)));
+    [[unsafe]] {
+        if (! rstd::move(loaded).unwrap_unchecked()(native_socket(socket),
+                                                    sockaddr_ptr(native.storage),
+                                                    native.len,
+                                                    nullptr,
+                                                    0,
+                                                    &sent,
+                                                    static_cast<OVERLAPPED*>(overlapped))) {
+            auto error = ::WSAGetLastError();
+            if (error != WSA_IO_PENDING) return Err(Error::from_raw_os_error(i32(error)));
+        }
     }
     return Ok(empty {});
 }
@@ -192,53 +199,64 @@ auto start_accept(RawSocket listener,
     if (loaded.is_err()) return Err(rstd::move(loaded).unwrap_err_unchecked());
     DWORD received {};
     auto  address_len = static_cast<DWORD>(sizeof(sockaddr_storage) + 16);
-    if (! rstd::move(loaded).unwrap_unchecked()(native_socket(listener),
-                                                native_socket(accepted),
-                                                address_buffer,
-                                                0,
-                                                address_len,
-                                                address_len,
-                                                &received,
-                                                static_cast<OVERLAPPED*>(overlapped))) {
-        auto error = ::WSAGetLastError();
-        if (error != WSA_IO_PENDING) return Err(Error::from_raw_os_error(i32(error)));
+    [[unsafe]] {
+        if (! rstd::move(loaded).unwrap_unchecked()(native_socket(listener),
+                                                    native_socket(accepted),
+                                                    address_buffer,
+                                                    0,
+                                                    address_len,
+                                                    address_len,
+                                                    &received,
+                                                    static_cast<OVERLAPPED*>(overlapped))) {
+            auto error = ::WSAGetLastError();
+            if (error != WSA_IO_PENDING) return Err(Error::from_raw_os_error(i32(error)));
+        }
     }
     return Ok(empty {});
 }
 
 auto finish_accept(RawSocket listener, RawSocket accepted) -> IOResult<empty> {
     auto native_listener = native_socket(listener);
-    if (::setsockopt(native_socket(accepted),
-                     SOL_SOCKET,
-                     SO_UPDATE_ACCEPT_CONTEXT,
-                     reinterpret_cast<const char*>(&native_listener),
-                     sizeof(native_listener)) == SOCKET_ERROR) {
-        return Err(last_error());
+    [[unsafe]] {
+        if (::setsockopt(native_socket(accepted),
+                         SOL_SOCKET,
+                         SO_UPDATE_ACCEPT_CONTEXT,
+                         reinterpret_cast<const char*>(&native_listener),
+                         sizeof(native_listener)) == SOCKET_ERROR) {
+            return Err(last_error());
+        }
     }
     return Ok(empty {});
 }
 
 auto addr_from_native(const sockaddr* addr, int len) -> IOResult<SocketAddr> {
-    if (addr == nullptr) return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
-    if (addr->sa_family == AF_INET) {
+    if (addr == nullptr || len < static_cast<int>(offsetof(sockaddr, sa_data)))
+        return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
+    decltype(sockaddr::sa_family) family;
+    [[unsafe]] { family = addr->sa_family; }
+    if (family == AF_INET) {
         if (len < sizeof(sockaddr_in)) {
             return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
         }
-        auto const& native = *reinterpret_cast<const sockaddr_in*>(addr);
-        auto        bits   = ::ntohl(native.sin_addr.s_addr);
+        sockaddr_in native;
+        __builtin_memcpy(&native, addr, sizeof(native));
+        auto bits = ::ntohl(native.sin_addr.s_addr);
         return Ok(SocketAddr::ipv4(
             Ipv4Addr::make(u8(bits >> 24), u8(bits >> 16), u8(bits >> 8), u8(bits)),
             u16(::ntohs(native.sin_port))));
     }
-    if (addr->sa_family == AF_INET6) {
+    if (family == AF_INET6) {
         if (len < sizeof(sockaddr_in6)) {
             return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
         }
-        auto const& native  = *reinterpret_cast<const sockaddr_in6*>(addr);
-        auto        segment = [&](rstd::size_t index) {
-            auto high = native.sin6_addr.u.Byte[index * 2];
-            auto low  = native.sin6_addr.u.Byte[index * 2 + 1];
-            return u16((rstd::uint16_t(high) << 8) | low);
+        sockaddr_in6 native;
+        __builtin_memcpy(&native, addr, sizeof(native));
+        auto segment = [&](rstd::size_t index) {
+            [[unsafe]] {
+                auto high = native.sin6_addr.u.Byte[index * 2];
+                auto low  = native.sin6_addr.u.Byte[index * 2 + 1];
+                return u16((rstd::uint16_t(high) << 8) | low);
+            }
         };
         auto ip = Ipv6Addr::make(segment(0),
                                  segment(1),
@@ -272,7 +290,7 @@ auto tcp(SocketAddr const& addr) -> IOResult<OwnedSocket> {
     int  family = addr.is_ipv4() ? AF_INET : AF_INET6;
     auto socket = ::WSASocketW(family, SOCK_STREAM, IPPROTO_TCP, nullptr, 0, WSA_FLAG_OVERLAPPED);
     if (socket == INVALID_SOCKET) return Err(last_error());
-    return Ok(OwnedSocket::from_raw_socket(raw_socket(socket)));
+    [[unsafe]] { return Ok(OwnedSocket::from_raw_socket(raw_socket(socket))); }
 }
 
 auto prepare_accept(SocketAddr const& addr) -> IOResult<Option<OwnedSocket>> {
@@ -283,24 +301,28 @@ auto prepare_accept(SocketAddr const& addr) -> IOResult<Option<OwnedSocket>> {
 
 auto set_reuseaddr(RawSocket socket, bool enabled) -> IOResult<empty> {
     BOOL value = enabled ? TRUE : FALSE;
-    if (::setsockopt(native_socket(socket),
-                     SOL_SOCKET,
-                     SO_REUSEADDR,
-                     reinterpret_cast<const char*>(&value),
-                     sizeof(value)) == SOCKET_ERROR) {
-        return Err(last_error());
+    [[unsafe]] {
+        if (::setsockopt(native_socket(socket),
+                         SOL_SOCKET,
+                         SO_REUSEADDR,
+                         reinterpret_cast<const char*>(&value),
+                         sizeof(value)) == SOCKET_ERROR) {
+            return Err(last_error());
+        }
     }
     return Ok(empty {});
 }
 
 auto set_nodelay(RawSocket socket, bool enabled) -> IOResult<empty> {
     BOOL value = enabled ? TRUE : FALSE;
-    if (::setsockopt(native_socket(socket),
-                     IPPROTO_TCP,
-                     TCP_NODELAY,
-                     reinterpret_cast<const char*>(&value),
-                     sizeof(value)) == SOCKET_ERROR) {
-        return Err(last_error());
+    [[unsafe]] {
+        if (::setsockopt(native_socket(socket),
+                         IPPROTO_TCP,
+                         TCP_NODELAY,
+                         reinterpret_cast<const char*>(&value),
+                         sizeof(value)) == SOCKET_ERROR) {
+            return Err(last_error());
+        }
     }
     return Ok(empty {});
 }
@@ -310,23 +332,27 @@ auto set_keepalive(RawSocket socket, bool enabled, Option<u32> idle, Option<u32>
     if (idle.is_some() || interval.is_some())
         return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
     BOOL value = enabled ? TRUE : FALSE;
-    if (::setsockopt(native_socket(socket),
-                     SOL_SOCKET,
-                     SO_KEEPALIVE,
-                     reinterpret_cast<const char*>(&value),
-                     sizeof(value)) == SOCKET_ERROR)
-        return Err(last_error());
+    [[unsafe]] {
+        if (::setsockopt(native_socket(socket),
+                         SOL_SOCKET,
+                         SO_KEEPALIVE,
+                         reinterpret_cast<const char*>(&value),
+                         sizeof(value)) == SOCKET_ERROR)
+            return Err(last_error());
+    }
     return Ok(empty {});
 }
 auto keepalive(RawSocket socket) -> IOResult<bool> {
     BOOL value {};
     int  size = sizeof(value);
-    if (::getsockopt(native_socket(socket),
-                     SOL_SOCKET,
-                     SO_KEEPALIVE,
-                     reinterpret_cast<char*>(&value),
-                     &size) == SOCKET_ERROR)
-        return Err(last_error());
+    [[unsafe]] {
+        if (::getsockopt(native_socket(socket),
+                         SOL_SOCKET,
+                         SO_KEEPALIVE,
+                         reinterpret_cast<char*>(&value),
+                         &size) == SOCKET_ERROR)
+            return Err(last_error());
+    }
     return Ok(value != FALSE);
 }
 
@@ -336,9 +362,7 @@ auto keepalive_timing_supported() -> bool {
 
 auto bind(RawSocket socket, SocketAddr const& addr) -> IOResult<empty> {
     auto native = addr_to_native(addr);
-    if (::bind(native_socket(socket),
-               reinterpret_cast<const sockaddr*>(&native.storage),
-               native.len) == SOCKET_ERROR) {
+    if (::bind(native_socket(socket), sockaddr_ptr(native.storage), native.len) == SOCKET_ERROR) {
         return Err(last_error());
     }
     return Ok(empty {});
@@ -353,23 +377,24 @@ auto listen(RawSocket socket, i32 backlog) -> IOResult<empty> {
 
 auto connect(RawSocket socket, SocketAddr const& addr) -> IOResult<empty> {
     auto native = addr_to_native(addr);
-    if (::connect(native_socket(socket),
-                  reinterpret_cast<const sockaddr*>(&native.storage),
-                  native.len) == SOCKET_ERROR) {
+    if (::connect(native_socket(socket), sockaddr_ptr(native.storage), native.len) ==
+        SOCKET_ERROR) {
         return Err(last_error());
     }
     return Ok(empty {});
 }
 
 auto accept(RawSocket socket) -> IOResult<tuple<OwnedSocket, SocketAddr>> {
-    auto native = NativeSocketAddr {};
-    native.len  = sizeof(native.storage);
-    auto accepted =
-        ::accept(native_socket(socket), reinterpret_cast<sockaddr*>(&native.storage), &native.len);
+    auto native   = NativeSocketAddr {};
+    native.len    = sizeof(native.storage);
+    auto accepted = ::accept(native_socket(socket), sockaddr_ptr(native.storage), &native.len);
     if (accepted == INVALID_SOCKET) return Err(last_error());
 
-    auto owned = OwnedSocket::from_raw_socket(raw_socket(accepted));
-    auto addr  = addr_from_native(reinterpret_cast<const sockaddr*>(&native.storage), native.len);
+    OwnedSocket owned;
+    [[unsafe]] { owned = OwnedSocket::from_raw_socket(raw_socket(accepted)); }
+    auto addr = [&] {
+        [[unsafe]] { return addr_from_native(sockaddr_ptr(native.storage), native.len); }
+    }();
     if (addr.is_err()) return Err(rstd::move(addr).unwrap_err_unchecked());
     return Ok(
         tuple<OwnedSocket, SocketAddr> { rstd::move(owned), rstd::move(addr).unwrap_unchecked() });
@@ -379,24 +404,28 @@ auto recv(RawSocket socket, mut_ref<byte[]> buf) -> IOResult<usize> {
     if (buf.len().to_primitive() > static_cast<rstd::size_t>(INT_MAX)) {
         return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
     }
-    auto n = ::recv(native_socket(socket),
-                    reinterpret_cast<char*>(buf.as_raw_ptr()),
-                    static_cast<int>(buf.len().to_primitive()),
-                    0);
-    if (n == SOCKET_ERROR) return Err(last_error());
-    return Ok(usize(n));
+    [[unsafe]] {
+        auto n = ::recv(native_socket(socket),
+                        reinterpret_cast<char*>(buf.as_raw_ptr()),
+                        static_cast<int>(buf.len().to_primitive()),
+                        0);
+        if (n == SOCKET_ERROR) return Err(last_error());
+        return Ok(usize(n));
+    }
 }
 
 auto send(RawSocket socket, slice<byte> buf) -> IOResult<usize> {
     if (buf.len().to_primitive() > static_cast<rstd::size_t>(INT_MAX)) {
         return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidInput }));
     }
-    auto n = ::send(native_socket(socket),
-                    reinterpret_cast<const char*>(buf.as_raw_ptr()),
-                    static_cast<int>(buf.len().to_primitive()),
-                    0);
-    if (n == SOCKET_ERROR) return Err(last_error());
-    return Ok(usize(n));
+    [[unsafe]] {
+        auto n = ::send(native_socket(socket),
+                        reinterpret_cast<const char*>(buf.as_raw_ptr()),
+                        static_cast<int>(buf.len().to_primitive()),
+                        0);
+        if (n == SOCKET_ERROR) return Err(last_error());
+        return Ok(usize(n));
+    }
 }
 
 auto shutdown_write(RawSocket socket) -> IOResult<empty> {
@@ -412,10 +441,14 @@ auto shutdown_both(RawSocket socket) -> IOResult<empty> {
 auto take_error(RawSocket socket) -> IOResult<Option<Error>> {
     int value = 0;
     int len   = sizeof(value);
-    if (::getsockopt(
-            native_socket(socket), SOL_SOCKET, SO_ERROR, reinterpret_cast<char*>(&value), &len) ==
-        SOCKET_ERROR) {
-        return Err(last_error());
+    [[unsafe]] {
+        if (::getsockopt(native_socket(socket),
+                         SOL_SOCKET,
+                         SO_ERROR,
+                         reinterpret_cast<char*>(&value),
+                         &len) == SOCKET_ERROR) {
+            return Err(last_error());
+        }
     }
     if (value == 0) return Ok(Option<Error> {});
     return Ok(Some(Error::from_raw_os_error(i32(value))));
@@ -424,22 +457,20 @@ auto take_error(RawSocket socket) -> IOResult<Option<Error>> {
 auto local_addr(RawSocket socket) -> IOResult<SocketAddr> {
     auto native = NativeSocketAddr {};
     native.len  = sizeof(native.storage);
-    if (::getsockname(native_socket(socket),
-                      reinterpret_cast<sockaddr*>(&native.storage),
-                      &native.len) == SOCKET_ERROR) {
+    if (::getsockname(native_socket(socket), sockaddr_ptr(native.storage), &native.len) ==
+        SOCKET_ERROR) {
         return Err(last_error());
     }
-    return addr_from_native(reinterpret_cast<const sockaddr*>(&native.storage), native.len);
+    [[unsafe]] { return addr_from_native(sockaddr_ptr(native.storage), native.len); }
 }
 
 auto peer_addr(RawSocket socket) -> IOResult<SocketAddr> {
     auto native = NativeSocketAddr {};
     native.len  = sizeof(native.storage);
-    if (::getpeername(native_socket(socket),
-                      reinterpret_cast<sockaddr*>(&native.storage),
-                      &native.len) == SOCKET_ERROR) {
+    if (::getpeername(native_socket(socket), sockaddr_ptr(native.storage), &native.len) ==
+        SOCKET_ERROR) {
         return Err(last_error());
     }
-    return addr_from_native(reinterpret_cast<const sockaddr*>(&native.storage), native.len);
+    [[unsafe]] { return addr_from_native(sockaddr_ptr(native.storage), native.len); }
 }
 } // namespace rstd::sys::pal::windows::socket

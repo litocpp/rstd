@@ -23,6 +23,8 @@ auto current_frame_allocator() noexcept -> Option<FrameAllocatorRef>;
 
 auto allocate_coro_frame(rstd::size_t size) -> void*;
 auto allocate_coro_frame(rstd::size_t size, rstd::align_val_t alignment) -> void*;
+/// `frame` must be null or an unreleased block returned by `allocate_coro_frame` for this size.
+[[unsafe]]
 void deallocate_coro_frame(void* frame, rstd::size_t size) noexcept;
 
 class CoroFrameAllocation {
@@ -34,11 +36,11 @@ public:
     }
 
     static void operator delete(void* frame, rstd::size_t size) noexcept {
-        deallocate_coro_frame(frame, size);
+        [[unsafe]] { deallocate_coro_frame(frame, size); }
     }
 
     static void operator delete(void* frame, rstd::size_t size, rstd::align_val_t) noexcept {
-        deallocate_coro_frame(frame, size);
+        [[unsafe]] { deallocate_coro_frame(frame, size); }
     }
 };
 

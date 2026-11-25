@@ -29,8 +29,9 @@ export auto addr_to_native(const rstd::sys::pal::poll::SocketAddress& address) n
     -> NativeSocketAddr;
 
 export auto addr_to_native(SocketAddr const& address) noexcept -> NativeSocketAddr;
-export auto addr_from_native(const libc::sockaddr* address, libc::socklen_t len)
-    -> IOResult<SocketAddr>;
+/// Unless null, the address must be readable for the supplied native address length.
+export [[unsafe]]
+auto addr_from_native(const libc::sockaddr* address, libc::socklen_t len) -> IOResult<SocketAddr>;
 
 export auto set_nonblocking(RawSocket socket, bool enabled) -> IOResult<empty>;
 export auto set_cloexec(RawSocket socket) -> IOResult<empty>;

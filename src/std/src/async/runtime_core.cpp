@@ -66,24 +66,28 @@ rstd::async::FacilityJob::~FacilityJob() {
 void rstd::async::FacilityJob::run() {
     auto raw = rstd::exchange(m_raw, {});
     if (raw.vtable) {
-        raw.vtable->run(raw.data);
-        raw.vtable->drop(raw.data);
+        [[unsafe]] {
+            raw.vtable->run(raw.data);
+            raw.vtable->drop(raw.data);
+        }
         return;
     }
     if (m_token.is_none()) return;
     auto token = m_token.take().unwrap_unchecked();
     auto task  = token.access_task();
     if (task.is_some()) {
-        auto* state = task->get();
-        state->run_facility_execution(rstd::move(token), rstd::move(*task));
+        auto& state = task->state();
+        state.run_facility_execution(rstd::move(token), rstd::move(*task));
     }
 }
 
 void rstd::async::FacilityJob::cancel() {
     auto raw = rstd::exchange(m_raw, {});
     if (raw.vtable) {
-        raw.vtable->cancel(raw.data);
-        raw.vtable->drop(raw.data);
+        [[unsafe]] {
+            raw.vtable->cancel(raw.data);
+            raw.vtable->drop(raw.data);
+        }
         return;
     }
     if (m_token.is_none()) return;
@@ -108,7 +112,7 @@ TaskRef::~TaskRef() {
 
 auto TaskRef::clone() const noexcept -> TaskRef {
     if (control != nullptr) {
-        control->inc_ref();
+        [[unsafe]] { control->inc_ref(); }
     }
     return TaskRef { control };
 }
@@ -116,7 +120,7 @@ auto TaskRef::clone() const noexcept -> TaskRef {
 void TaskRef::reset() noexcept {
     if (control != nullptr) {
         auto* current = rstd::exchange(control, nullptr);
-        current->dec_ref();
+        [[unsafe]] { current->dec_ref(); }
     }
 }
 
@@ -135,14 +139,17 @@ void TaskRef::abort() const {
 }
 
 auto TaskRef::access() const -> Option<TaskAccess> {
-    return control == nullptr ? None() : control->acquire();
+    if (control == nullptr) return None();
+    [[unsafe]] { return control->acquire(); }
 }
 
 auto TaskAccess::operator=(TaskAccess&& other) noexcept -> TaskAccess& {
     if (this != &other) {
         if (m_control != nullptr) {
-            m_control->release_access();
-            m_control->dec_ref();
+            [[unsafe]] {
+                m_control->release_access();
+                m_control->dec_ref();
+            }
         }
         m_control = rstd::exchange(other.m_control, nullptr);
         m_task    = rstd::exchange(other.m_task, nullptr);
@@ -152,8 +159,10 @@ auto TaskAccess::operator=(TaskAccess&& other) noexcept -> TaskAccess& {
 
 TaskAccess::~TaskAccess() {
     if (m_control != nullptr) {
-        m_control->release_access();
-        m_control->dec_ref();
+        [[unsafe]] {
+            m_control->release_access();
+            m_control->dec_ref();
+        }
     }
 }
 
@@ -201,7 +210,7 @@ auto RuntimeInner::schedule(ScheduleTicket ticket) -> Result<empty, ScheduleTick
     if (CURRENT_RUNTIME == this && CURRENT_RUNTIME_WORKER_CONTEXT != nullptr &&
         current_execution_domain() == async::ExecutionDomainKind::RuntimeWorker &&
         current_runtime_worker_id() == owner) {
-        return CURRENT_RUNTIME_WORKER_CONTEXT->enqueue_ready(rstd::move(ticket));
+        [[unsafe]] { return CURRENT_RUNTIME_WORKER_CONTEXT->enqueue_ready(rstd::move(ticket)); }
     }
     return m_shared.worker(owner).schedule(rstd::move(ticket));
 }
@@ -219,14 +228,14 @@ auto RuntimeInner::reserve_current_operation(PollEventOwner owner) -> io::Result
         current_execution_domain() != async::ExecutionDomainKind::RuntimeWorker) {
         return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
     }
-    return CURRENT_RUNTIME_WORKER_CONTEXT->reserve_operation(rstd::move(owner));
+    [[unsafe]] { return CURRENT_RUNTIME_WORKER_CONTEXT->reserve_operation(rstd::move(owner)); }
 }
 
 void RuntimeInner::abandon_current_operation(OperationKey key) {
     if (CURRENT_RUNTIME != this || CURRENT_RUNTIME_WORKER_CONTEXT == nullptr) {
         rstd::panic { "operation abandoned outside its runtime worker" };
     }
-    CURRENT_RUNTIME_WORKER_CONTEXT->abandon_operation(key);
+    [[unsafe]] { CURRENT_RUNTIME_WORKER_CONTEXT->abandon_operation(key); }
 }
 
 auto RuntimeInner::defer_current_poll(PollCommand command) -> Result<empty, PollCommand> {
@@ -234,7 +243,7 @@ auto RuntimeInner::defer_current_poll(PollCommand command) -> Result<empty, Poll
         current_execution_domain() != async::ExecutionDomainKind::RuntimeWorker) {
         return Err(rstd::move(command));
     }
-    return CURRENT_RUNTIME_WORKER_CONTEXT->defer_poll(rstd::move(command));
+    [[unsafe]] { return CURRENT_RUNTIME_WORKER_CONTEXT->defer_poll(rstd::move(command)); }
 }
 
 auto RuntimeInner::lifecycle() -> RuntimeLifecycle {
@@ -264,7 +273,7 @@ auto RuntimeInner::complete_facility(FacilityEvent event) -> Result<empty, Facil
     if (CURRENT_RUNTIME == this && CURRENT_RUNTIME_WORKER_CONTEXT != nullptr &&
         current_execution_domain() == async::ExecutionDomainKind::RuntimeWorker &&
         current_runtime_worker_id() == owner) {
-        return CURRENT_RUNTIME_WORKER_CONTEXT->complete_facility(rstd::move(event));
+        [[unsafe]] { return CURRENT_RUNTIME_WORKER_CONTEXT->complete_facility(rstd::move(event)); }
     }
     return m_shared.worker(owner).complete_facility(rstd::move(event));
 }
@@ -752,43 +761,49 @@ const task::RawWakerVTable TASK_WAKER_VTABLE {
 };
 
 auto task_waker_clone(voidp data) -> task::RawWaker {
-    auto* control = static_cast<TaskRefControl*>(data);
-    control->inc_ref();
-    return task::RawWaker::from_raw_parts(control, rstd::addressof(TASK_WAKER_VTABLE));
+    [[unsafe]] {
+        auto* control = static_cast<TaskRefControl*>(data);
+        control->inc_ref();
+        return task::RawWaker::from_raw_parts(control, rstd::addressof(TASK_WAKER_VTABLE));
+    }
 }
 
 void task_waker_wake(voidp data) {
-    TaskRef::adopt(static_cast<TaskRefControl*>(data)).schedule();
+    [[unsafe]] { TaskRef::adopt(static_cast<TaskRefControl*>(data)).schedule(); }
 }
 
 void task_waker_wake_by_ref(voidp data) {
-    auto* control = static_cast<TaskRefControl*>(data);
-    control->inc_ref();
-    TaskRef::adopt(control).schedule();
+    [[unsafe]] {
+        auto* control = static_cast<TaskRefControl*>(data);
+        control->inc_ref();
+        TaskRef::adopt(control).schedule();
+    }
 }
 
 void task_waker_drop(voidp data) {
-    static_cast<TaskRefControl*>(data)->dec_ref();
+    [[unsafe]] { static_cast<TaskRefControl*>(data)->dec_ref(); }
 }
 
 auto make_task_waker(const TaskRef& task) -> task::Waker {
-    auto* control = task.identity();
-    control->inc_ref();
-    return task::Waker::from_raw(
-        task::RawWaker::from_raw_parts(control, rstd::addressof(TASK_WAKER_VTABLE)));
+    [[unsafe]] {
+        auto* control = task.identity();
+        control->inc_ref();
+        return task::Waker::from_raw(
+            task::RawWaker::from_raw_parts(control, rstd::addressof(TASK_WAKER_VTABLE)));
+    }
 }
 
 void poll_runtime_task(RuntimeExecutionLease lease) {
     auto& task_ref   = lease.task();
-    auto* task_state = rstd::addressof(lease.state());
+    auto& task_state = lease.state();
     auto  waker      = make_task_waker(task_ref);
     auto  cx         = task::Context { waker };
 #if LITO_FEAT_ASYNC_DEBUG
-    auto debug_scope = async::debug::Scope { task_state->diagnostic };
+    auto debug_scope = async::debug::Scope { task_state.diagnostic };
 #endif
-    auto outcome = task_state->poll(task_ref, cx);
-    auto action  = task_state->end_runtime_execution(rstd::move(lease), rstd::move(outcome));
-    task_state->apply(rstd::move(action));
+    auto outcome = task_state.poll(task_ref, cx);
+    auto action  = task_state.end_runtime_execution(rstd::move(lease), rstd::move(outcome));
+    task_state.apply(rstd::move(action));
 }
 
 RuntimeWorker::RuntimeWorker(RuntimeInner& runtime, WorkerHandle handle)
@@ -966,8 +981,8 @@ void RuntimeWorker::drain_ready() {
         if (task.is_none()) {
             continue;
         }
-        auto* task_state = task->get();
-        auto  lease      = task_state->try_begin_runtime(rstd::move(ticket), rstd::move(*task));
+        auto& task_state = task->state();
+        auto  lease      = task_state.try_begin_runtime(rstd::move(ticket), rstd::move(*task));
         if (lease.is_none()) {
             continue;
         }
@@ -1015,7 +1030,9 @@ void RuntimeInner::worker_loop(RuntimeWorkerId worker) {
 }
 
 void RuntimeWorker::run() {
-    auto scope        = RuntimeScope { *m_runtime };
+    auto scope = [this] {
+        [[unsafe]] { return RuntimeScope { *m_runtime }; }
+    }();
     auto worker_scope = RuntimeWorkerScope { m_handle.id(), this };
 
     if (! m_handle.begin_start()) {
@@ -1025,14 +1042,14 @@ void RuntimeWorker::run() {
     if (m_poll_init_error.is_some()) {
         auto error = rstd::move(m_poll_init_error).unwrap_unchecked();
         m_handle.finish_stop();
-        m_runtime->worker_start_failed(rstd::move(error));
+        [[unsafe]] { m_runtime->worker_start_failed(rstd::move(error)); }
         return;
     }
     if (! m_handle.finish_start()) {
         m_handle.finish_stop();
         return;
     }
-    m_runtime->worker_started();
+    [[unsafe]] { m_runtime->worker_started(); }
 
     for (;;) {
         drain_ready();

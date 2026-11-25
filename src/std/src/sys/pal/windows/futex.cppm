@@ -12,13 +12,17 @@ export {
     using SmallPrimitive = u8;
     using SmallFutex     = Atomic<SmallPrimitive>;
 
+    /// The futex must remain alive and at a stable address for the duration of the call.
     template<typename T>
+    [[unsafe]]
     bool futex_wait(const Atomic<T>* futex, T expected, Option<Duration> timeout);
 
     template<typename T>
+    [[unsafe]]
     bool futex_wake(const Atomic<T>* futex);
 
     template<typename T>
+    [[unsafe]]
     void futex_wake_all(const Atomic<T>* futex);
 }
 } // namespace rstd::sys::pal::windows::futex

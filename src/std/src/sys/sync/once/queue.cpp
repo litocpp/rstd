@@ -24,7 +24,7 @@ auto state_of(rstd::uintptr_t value) noexcept -> rstd::uintptr_t {
 }
 
 auto queue_of(rstd::uintptr_t value) noexcept -> Waiter* {
-    return reinterpret_cast<Waiter*>(value & QUEUE_MASK);
+    [[unsafe]] { return reinterpret_cast<Waiter*>(value & QUEUE_MASK); }
 }
 
 auto wait(rstd::sync::atomic::Atomic<rstd::uintptr_t>& state_and_queue, rstd::uintptr_t current)
@@ -35,8 +35,9 @@ auto wait(rstd::sync::atomic::Atomic<rstd::uintptr_t>& state_and_queue, rstd::ui
         auto const state = state_of(current);
         if (state == COMPLETE) return current;
 
-        waiter.next        = queue_of(current);
-        auto const desired = reinterpret_cast<rstd::uintptr_t>(&waiter) | state;
+        waiter.next = queue_of(current);
+        rstd::uintptr_t desired;
+        [[unsafe]] { desired = reinterpret_cast<rstd::uintptr_t>(&waiter) | state; }
         if (! state_and_queue.compare_exchange_weak(
                 current, desired, Ordering::Release, Ordering::Acquire)) {
             continue;
@@ -69,15 +70,17 @@ void Once::call(void* context, Callback callback) const {
                 continue;
             }
 
-            callback(context);
+            [[unsafe]] { callback(context); }
 
             auto queue = queue_of(state_and_queue.exchange(COMPLETE, Ordering::AcqRel));
             while (queue != nullptr) {
-                auto* next   = queue->next;
-                auto  thread = queue->thread.clone();
-                queue->signaled.store(true, Ordering::Release);
-                thread.unpark();
-                queue = next;
+                [[unsafe]] {
+                    auto* next   = queue->next;
+                    auto  thread = queue->thread.clone();
+                    queue->signaled.store(true, Ordering::Release);
+                    thread.unpark();
+                    queue = next;
+                }
             }
             return;
         }

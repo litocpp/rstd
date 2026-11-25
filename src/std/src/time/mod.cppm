@@ -140,8 +140,9 @@ inline auto OffsetDateTime::now_utc() noexcept -> OffsetDateTime {
     return OffsetDateTime::from_unix_time(timestamp.seconds, timestamp.nanoseconds).unwrap();
 }
 
-/// Writes the current UTC time as RFC3339 (`YYYY-MM-DDTHH:MM:SSZ`) into `out` (exactly 20 bytes, no terminator).
-export inline auto format_rfc3339_utc_now(char out[20]) noexcept -> void {
+/// `out` must hold 20 writable bytes for `YYYY-MM-DDTHH:MM:SSZ`, without a terminator.
+export [[unsafe]]
+inline auto format_rfc3339_utc_now(char out[20]) noexcept -> void {
 #if RSTD_OS_UNKNOWN
     (void)out;
     rstd::panic { "system time is unsupported" };
@@ -150,25 +151,29 @@ export inline auto format_rfc3339_utc_now(char out[20]) noexcept -> void {
     auto tmv  = sys::libc::gmtime_utc(secs);
 
     auto w2 = [](char* p, int v) noexcept {
-        p[0] = char('0' + (v / 10) % 10);
-        p[1] = char('0' + v % 10);
+        [[unsafe]] {
+            p[0] = char('0' + (v / 10) % 10);
+            p[1] = char('0' + v % 10);
+        }
     };
     int year = tmv.tm_year + 1900;
-    out[0]   = char('0' + (year / 1000) % 10);
-    out[1]   = char('0' + (year / 100) % 10);
-    out[2]   = char('0' + (year / 10) % 10);
-    out[3]   = char('0' + year % 10);
-    out[4]   = '-';
-    w2(out + 5, tmv.tm_mon + 1);
-    out[7] = '-';
-    w2(out + 8, tmv.tm_mday);
-    out[10] = 'T';
-    w2(out + 11, tmv.tm_hour);
-    out[13] = ':';
-    w2(out + 14, tmv.tm_min);
-    out[16] = ':';
-    w2(out + 17, tmv.tm_sec);
-    out[19] = 'Z';
+    [[unsafe]] {
+        out[0] = char('0' + (year / 1000) % 10);
+        out[1] = char('0' + (year / 100) % 10);
+        out[2] = char('0' + (year / 10) % 10);
+        out[3] = char('0' + year % 10);
+        out[4] = '-';
+        w2(out + 5, tmv.tm_mon + 1);
+        out[7] = '-';
+        w2(out + 8, tmv.tm_mday);
+        out[10] = 'T';
+        w2(out + 11, tmv.tm_hour);
+        out[13] = ':';
+        w2(out + 14, tmv.tm_min);
+        out[16] = ':';
+        w2(out + 17, tmv.tm_sec);
+        out[19] = 'Z';
+    }
 #endif
 }
 

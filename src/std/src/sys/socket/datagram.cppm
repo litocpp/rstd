@@ -46,6 +46,8 @@ export class DatagramMessage {
     usize           capacity_;
 
 public:
+    /// The data must stay live and valid for the message's I/O direction through completion.
+    [[unsafe]]
     DatagramMessage(void* data, usize capacity, net::SocketAddr local);
     DatagramMessage(const DatagramMessage&)                    = delete;
     auto operator=(const DatagramMessage&) -> DatagramMessage& = delete;
@@ -57,9 +59,12 @@ public:
 };
 
 #if RSTD_OS_WINDOWS
-export auto
-start_datagram(os::socket::RawSocket socket, void* message, bool receiving, void* overlapped)
+/// The message, its buffers, and the overlapped state must remain valid through completion.
+export [[unsafe]]
+auto start_datagram(os::socket::RawSocket socket, void* message, bool receiving, void* overlapped)
     -> io::Result<empty>;
-export auto finish_truncated_datagram(void* message, usize transferred) noexcept -> usize;
+/// The message must be a live WSAMSG with its first buffer descriptor intact.
+export [[unsafe]]
+auto finish_truncated_datagram(void* message, usize transferred) noexcept -> usize;
 #endif
 } // namespace rstd::sys::socket

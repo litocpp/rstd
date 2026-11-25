@@ -93,7 +93,7 @@ public:
         if (m_position == m_len || buf.is_empty()) return Ok(usize());
         auto requested =
             usize(rstd::min(u64(buf.len().to_primitive()), m_len - m_position).to_primitive());
-        auto result = m_source->read_at(mut_ref<u8[]>::from_raw_parts(buf.as_raw_ptr(), requested),
+        auto result = m_source->read_at(slice_::split_at_mut(buf, requested).template get<0>(),
                                         m_offset + m_position);
         if (result.is_err()) return result;
         if (*result > requested) return Err(Error::from_kind(ErrorKind { ErrorKind::InvalidData }));

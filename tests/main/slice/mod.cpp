@@ -144,10 +144,11 @@ static_assert(! U8SliceRawParts<rstd::u8*>);
 static_assert(! U8SliceRawParts<rstd::uint8_t*>);
 static_assert(! U8MutSliceRawParts<rstd::u8*>);
 static_assert(! U8MutSliceRawParts<rstd::uint8_t*>);
-static_assert(rstd::mtp::same_as<decltype(rstd::mtp::declval<rstd::slice<rstd::u8>>().begin()),
-                                 rstd::ptr<rstd::u8>>);
-static_assert(rstd::mtp::same_as<decltype(rstd::mtp::declval<rstd::mut_ref<rstd::u8[]>&>().begin()),
-                                 rstd::mut_ptr<rstd::u8>>);
+static_assert(
+    rstd::mtp::same_as<decltype(*rstd::mtp::declval<rstd::slice<rstd::u8>>().begin()), rstd::u8>);
+static_assert(
+    rstd::mtp::same_as<decltype(*rstd::mtp::declval<rstd::mut_ref<rstd::u8[]>&>().begin()),
+                       rstd::mut_ref<rstd::u8>>);
 
 } // namespace
 
@@ -194,6 +195,66 @@ TEST(Slice, CopyFromSliceCopiesTypedElements) {
 
 TEST(Slice, CopyFromSliceAcceptsEmptySlices) {
     rstd::slice_::copy_from_slice(rstd::mut_ref<int[]>(), rstd::slice<int>());
+}
+
+TEST(Slice, CopiesOverlappingRangesUsingCheckedSubslice) {
+    int  storage[] { 1, 2, 3, 4 };
+    auto values = rstd::mut_ref<int[]>::from_array(storage);
+
+    auto source      = values.as_ref().subslice(usize(), usize(3));
+    auto destination = values.subslice(usize(1), usize(3));
+    rstd::slice_::copy_from_slice(destination, source);
+
+    EXPECT_EQ(storage[1], 1);
+    EXPECT_EQ(storage[2], 2);
+    EXPECT_EQ(storage[3], 3);
+    EXPECT_TRUE(values.get(values.len()).is_none());
+    EXPECT_TRUE(values.get_mut(values.len()).is_none());
+    EXPECT_TRUE(values.subslice(values.len(), usize()).is_empty());
+}
+
+TEST(Slice, CheckedElementAndRangeAccess) {
+    int  storage[] { 1, 2, 3, 4 };
+    auto values = mut_ref<int[]>::from_array(storage);
+    static_assert(rstd::mtp::same_as<decltype(values.get(0_usize, 0_usize)), Option<slice<int>>>);
+
+    EXPECT_EQ(values.get(1_usize)->get(), 2);
+    values.get_mut(1_usize)->get_mut() = 7;
+    auto middle                        = values.get_mut(1_usize, 2_usize).unwrap();
+    middle[1_usize]                    = 8;
+    auto read                          = values.as_ref().get(1_usize, 2_usize).unwrap();
+    ASSERT_EQ(read.len(), 2_usize);
+    EXPECT_EQ(read[0_usize], 7);
+    EXPECT_EQ(read[1_usize], 8);
+
+    EXPECT_TRUE(values.get(values.len()).is_none());
+    EXPECT_TRUE(values.get_mut(values.len()).is_none());
+    EXPECT_TRUE(values.get(values.len(), 0_usize).unwrap().is_empty());
+    EXPECT_TRUE(values.get_mut(values.len(), 0_usize).unwrap().is_empty());
+    EXPECT_TRUE(slice<int> {}.get(0_usize, 0_usize).unwrap().is_empty());
+    EXPECT_TRUE(values.get(5_usize, 0_usize).is_none());
+    EXPECT_TRUE(values.get_mut(3_usize, 2_usize).is_none());
+    EXPECT_TRUE(values.get(1_usize, usize::MAX).is_none());
+    EXPECT_TRUE(values.get_mut(usize::MAX, 1_usize).is_none());
+}
+
+TEST(Slice, UncheckedAccessPreservesByteStorage) {
+    rstd::byte storage[] { rstd::byte { 1 }, rstd::byte { 2 }, rstd::byte { 3 } };
+    [[unsafe]] {
+        auto bytes    = mut_ref<u8[]>::from_raw_parts(storage, 3_usize);
+        auto first    = bytes.get_unchecked_mut(0_usize);
+        first         = u8(4);
+        auto tail     = bytes.get_unchecked_mut(1_usize, 2_usize);
+        tail[0_usize] = u8(5);
+        EXPECT_EQ(bytes.get_unchecked(0_usize).get(), u8(4));
+        auto readonly = bytes.as_ref().get_unchecked(1_usize, 2_usize);
+        ASSERT_EQ(readonly.len(), 2_usize);
+        EXPECT_EQ(readonly[0_usize], u8(5));
+        EXPECT_EQ(readonly[1_usize], u8(3));
+        EXPECT_TRUE(bytes.get_unchecked(3_usize, 0_usize).is_empty());
+    }
+    EXPECT_EQ(storage[0], rstd::byte { 4 });
+    EXPECT_EQ(storage[1], rstd::byte { 5 });
 }
 
 TEST(Slice, U8ViewReadsAndWritesByteStorageByValue) {

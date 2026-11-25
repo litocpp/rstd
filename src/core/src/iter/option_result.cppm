@@ -86,30 +86,30 @@ using MutableOptionItem = mut_ref<T>;
 
 template<typename T>
 constexpr auto borrow_option(ref<Option<T>> source) -> Option<ImmutableOptionItem<T>> {
-    auto const* option = source.as_raw_ptr();
-    if (option->is_none()) return None();
-    return Some(ref<T>::from_raw_parts(rstd::addressof(**option)));
+    auto const& option = source.get();
+    if (option.is_none()) return None();
+    return Some(ref<T>::from_ref(*option));
 }
 
 template<typename T>
 constexpr auto borrow_option_mut(mut_ref<Option<T>> source) -> Option<MutableOptionItem<T>> {
-    auto* option = source.as_raw_ptr();
-    if (option->is_none()) return None();
-    return Some(mut_ref<T>::from_raw_parts(rstd::addressof(**option)));
+    auto& option = source.get_mut();
+    if (option.is_none()) return None();
+    return Some(mut_ref<T>::from_ref(*option));
 }
 
 template<typename T, typename E>
 constexpr auto borrow_result(ref<Result<T, E>> source) -> Option<ImmutableOptionItem<T>> {
-    auto const* result = source.as_raw_ptr();
-    if (result->is_err()) return None();
-    return Some(ref<T>::from_raw_parts(rstd::addressof(**result)));
+    auto const& result = source.get();
+    if (result.is_err()) return None();
+    return Some(ref<T>::from_ref(*result));
 }
 
 template<typename T, typename E>
 constexpr auto borrow_result_mut(mut_ref<Result<T, E>> source) -> Option<MutableOptionItem<T>> {
-    auto* result = source.as_raw_ptr();
-    if (result->is_err()) return None();
-    return Some(mut_ref<T>::from_raw_parts(rstd::addressof(**result)));
+    auto& result = source.get_mut();
+    if (result.is_err()) return None();
+    return Some(mut_ref<T>::from_ref(*result));
 }
 
 } // namespace detail

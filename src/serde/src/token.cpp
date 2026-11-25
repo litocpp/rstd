@@ -89,67 +89,67 @@ TokenSerializer::TokenSerializer(Vec<Token>& tokens, usize& open_compounds, Data
 }
 
 auto TokenSerializer::is_complete() const noexcept -> bool {
-    return *open_compounds_ == usize();
+    return open_compounds() == usize();
 }
 
 auto TokenSerializer::serialize_none() -> result_type {
-    tokens_->push(Token::null());
+    tokens().push(Token::null());
     return Ok(empty {});
 }
 
 auto TokenSerializer::serialize_unit() -> result_type {
-    tokens_->push(Token::marker(TokenKind::Unit));
+    tokens().push(Token::marker(TokenKind::Unit));
     return Ok(empty {});
 }
 
 auto TokenSerializer::serialize_bool(bool value) -> result_type {
-    tokens_->push(Token::boolean(value));
+    tokens().push(Token::boolean(value));
     return Ok(empty {});
 }
 
 auto TokenSerializer::serialize_i64(i64 value) -> result_type {
-    tokens_->push(Token::signed_integer(value));
+    tokens().push(Token::signed_integer(value));
     return Ok(empty {});
 }
 
 auto TokenSerializer::serialize_u64(u64 value) -> result_type {
-    tokens_->push(Token::unsigned_integer(value));
+    tokens().push(Token::unsigned_integer(value));
     return Ok(empty {});
 }
 
 auto TokenSerializer::serialize_f64(f64 value) -> result_type {
-    tokens_->push(Token::floating(value));
+    tokens().push(Token::floating(value));
     return Ok(empty {});
 }
 
 auto TokenSerializer::serialize_string(ref<str> value) -> result_type {
-    tokens_->push(Token::string(value));
+    tokens().push(Token::string(value));
     return Ok(empty {});
 }
 
 auto TokenSerializer::serialize_bytes(slice<u8> value) -> result_type {
-    tokens_->push(Token::bytes(value));
+    tokens().push(Token::bytes(value));
     return Ok(empty {});
 }
 
 auto TokenSerializer::serialize_unit_variant(ref<str> variant) -> result_type {
-    tokens_->push(Token::marker(TokenKind::EnumStart));
-    tokens_->push(Token::string(variant));
-    tokens_->push(Token::marker(TokenKind::Unit));
-    tokens_->push(Token::marker(TokenKind::EnumEnd));
+    tokens().push(Token::marker(TokenKind::EnumStart));
+    tokens().push(Token::string(variant));
+    tokens().push(Token::marker(TokenKind::Unit));
+    tokens().push(Token::marker(TokenKind::EnumEnd));
     return Ok(empty {});
 }
 
 auto TokenSerializer::begin_sequence(usize len) -> Result<TokenSequence, Error> {
-    tokens_->push(Token::container(TokenKind::SequenceStart, len));
-    ++*open_compounds_;
-    return Ok(TokenSequence(*tokens_, *open_compounds_, path_.clone()));
+    tokens().push(Token::container(TokenKind::SequenceStart, len));
+    ++open_compounds();
+    return Ok(TokenSequence(tokens(), open_compounds(), path_.clone()));
 }
 
 auto TokenSerializer::begin_map(usize len) -> Result<TokenMap, Error> {
-    tokens_->push(Token::container(TokenKind::MapStart, len));
-    ++*open_compounds_;
-    return Ok(TokenMap(*tokens_, *open_compounds_, path_.clone()));
+    tokens().push(Token::container(TokenKind::MapStart, len));
+    ++open_compounds();
+    return Ok(TokenMap(tokens(), open_compounds(), path_.clone()));
 }
 
 auto TokenSerializer::invalid_value(ref<str> message) const -> Error {
@@ -187,8 +187,8 @@ TokenSequence::TokenSequence(Vec<Token>& tokens, usize& open_compounds, DataPath
 auto TokenSequence::end() -> Result<empty, Error> {
     if (ended_) return Err(Error::invariant(path_.clone(), "sequence already ended"_str));
     ended_ = true;
-    --*open_compounds_;
-    tokens_->push(Token::marker(TokenKind::SequenceEnd));
+    --open_compounds();
+    tokens().push(Token::marker(TokenKind::SequenceEnd));
     return Ok(empty {});
 }
 
@@ -203,8 +203,8 @@ auto TokenMap::end() -> Result<empty, Error> {
     if (ended_) return Err(Error::invariant(path_.clone(), "map already ended"_str));
     if (pending_) return Err(Error::invariant(path_.clone(), "map value is missing"_str));
     ended_ = true;
-    --*open_compounds_;
-    tokens_->push(Token::marker(TokenKind::MapEnd));
+    --open_compounds();
+    tokens().push(Token::marker(TokenKind::MapEnd));
     return Ok(empty {});
 }
 
@@ -223,8 +223,8 @@ TokenDeserializer::TokenDeserializer(slice<Token> tokens, DataPath path, bool re
 }
 
 auto TokenDeserializer::peek() const noexcept -> Option<ref<Token>> {
-    if (*position_ >= tokens_.len()) return None();
-    return Some(ref<Token>::from_raw_parts(tokens_.as_raw_ptr() + position_->to_primitive()));
+    if (cursor() >= tokens_.len()) return None();
+    return Some(ref<Token>::from_ref(tokens_[cursor()]));
 }
 
 auto TokenDeserializer::take(TokenKind expected, ValueKind expected_kind)
@@ -235,7 +235,7 @@ auto TokenDeserializer::take(TokenKind expected, ValueKind expected_kind)
         return Err(
             Error::type_mismatch(path_.clone(), expected_kind, actual_kind(token->get().kind())));
     }
-    ++*position_;
+    ++cursor();
     return Ok(*token);
 }
 
@@ -265,7 +265,7 @@ TokenDeserializer::TokenDeserializer(slice<Token> tokens): tokens_(tokens) {
 }
 
 auto TokenDeserializer::position() const noexcept -> usize {
-    return *position_;
+    return cursor();
 }
 
 auto TokenDeserializer::path() const noexcept -> const DataPath& {
@@ -348,11 +348,11 @@ TokenSequenceAccess::TokenSequenceAccess(slice<Token> tokens, usize& position, D
 
 auto TokenSequenceAccess::end() -> Result<empty, Error> {
     if (ended_) return Err(Error::invariant(path_.clone(), "sequence already ended"_str));
-    if (*position_ >= tokens_.len()) return Err(Error::unexpected_end(path_.clone()));
-    if (tokens_[*position_].kind() != TokenKind::SequenceEnd) {
+    if (cursor() >= tokens_.len()) return Err(Error::unexpected_end(path_.clone()));
+    if (tokens_[cursor()].kind() != TokenKind::SequenceEnd) {
         return Err(Error::invariant(path_.clone(), "sequence has unread elements"_str));
     }
-    ++*position_;
+    ++cursor();
     ended_ = true;
     return Ok(empty {});
 }
@@ -364,7 +364,7 @@ TokenMapAccess::TokenMapAccess(slice<Token> tokens, usize& position, DataPath pa
 auto TokenMapAccess::ignore_value() -> Result<empty, Error> {
     if (ended_) return Err(Error::invariant(path_.clone(), "map already ended"_str));
     if (! pending_) return Err(Error::invariant(path_.clone(), "map key is missing"_str));
-    auto child  = TokenDeserializer(tokens_, *position_, value_path_.clone());
+    auto child  = TokenDeserializer(tokens_, cursor(), value_path_.clone());
     auto result = child.ignore_value();
     if (result.is_err()) return result;
     pending_ = false;
@@ -374,11 +374,11 @@ auto TokenMapAccess::ignore_value() -> Result<empty, Error> {
 auto TokenMapAccess::end() -> Result<empty, Error> {
     if (ended_) return Err(Error::invariant(path_.clone(), "map already ended"_str));
     if (pending_) return Err(Error::invariant(path_.clone(), "map value is missing"_str));
-    if (*position_ >= tokens_.len()) return Err(Error::unexpected_end(path_.clone()));
-    if (tokens_[*position_].kind() != TokenKind::MapEnd) {
+    if (cursor() >= tokens_.len()) return Err(Error::unexpected_end(path_.clone()));
+    if (tokens_[cursor()].kind() != TokenKind::MapEnd) {
         return Err(Error::invariant(path_.clone(), "map has unread entries"_str));
     }
-    ++*position_;
+    ++cursor();
     ended_ = true;
     return Ok(empty {});
 }
@@ -394,7 +394,7 @@ TokenEnumAccess::TokenEnumAccess(slice<Token> tokens,
 }
 
 auto TokenEnumAccess::finish() -> Result<empty, Error> {
-    auto child = TokenDeserializer(tokens_, *position_, path_.with_variant(variant_.as_str()));
+    auto child = TokenDeserializer(tokens_, cursor(), path_.with_variant(variant_.as_str()));
     auto end   = child.take(TokenKind::EnumEnd, ValueKind::Enum);
     if (end.is_err()) return Err(rstd::move(end).unwrap_err_unchecked());
     consumed_ = true;
@@ -407,7 +407,7 @@ auto TokenEnumAccess::variant() const noexcept -> ref<str> {
 
 auto TokenEnumAccess::unit() -> Result<empty, Error> {
     if (consumed_) return Err(Error::invariant(path_.clone(), "enum already consumed"_str));
-    auto child  = TokenDeserializer(tokens_, *position_, path_.with_variant(variant_.as_str()));
+    auto child  = TokenDeserializer(tokens_, cursor(), path_.with_variant(variant_.as_str()));
     auto result = child.deserialize_unit();
     if (result.is_err()) return result;
     return finish();
@@ -416,13 +416,13 @@ auto TokenEnumAccess::unit() -> Result<empty, Error> {
 auto TokenDeserializer::begin_sequence() -> Result<TokenSequenceAccess, Error> {
     auto start = take(TokenKind::SequenceStart, ValueKind::Sequence);
     if (start.is_err()) return Err(rstd::move(start).unwrap_err_unchecked());
-    return Ok(TokenSequenceAccess(tokens_, *position_, path_.clone()));
+    return Ok(TokenSequenceAccess(tokens_, cursor(), path_.clone()));
 }
 
 auto TokenDeserializer::begin_map() -> Result<TokenMapAccess, Error> {
     auto start = take(TokenKind::MapStart, ValueKind::Map);
     if (start.is_err()) return Err(rstd::move(start).unwrap_err_unchecked());
-    return Ok(TokenMapAccess(tokens_, *position_, path_.clone()));
+    return Ok(TokenMapAccess(tokens_, cursor(), path_.clone()));
 }
 
 auto TokenDeserializer::begin_enum() -> Result<TokenEnumAccess, Error> {
@@ -431,7 +431,7 @@ auto TokenDeserializer::begin_enum() -> Result<TokenEnumAccess, Error> {
     auto variant = take(TokenKind::String, ValueKind::String);
     if (variant.is_err()) return Err(rstd::move(variant).unwrap_err_unchecked());
     return Ok(
-        TokenEnumAccess(tokens_, *position_, path_.clone(), String::make(variant->get().as_str())));
+        TokenEnumAccess(tokens_, cursor(), path_.clone(), String::make(variant->get().as_str())));
 }
 
 auto TokenDeserializer::begin_internal_enum(ref<str> tag, UnknownFieldPolicy unknown)
@@ -455,11 +455,11 @@ auto TokenDeserializer::begin_internal_enum(ref<str> tag, UnknownFieldPolicy unk
             variant = Some(rstd::move(value).unwrap_unchecked());
         } else {
             ++fields;
-            auto first   = *position_;
+            auto first   = cursor();
             auto ignored = map.ignore_value();
             if (ignored.is_err()) return Err(rstd::move(ignored).unwrap_err_unchecked());
             payload.push(Token::string(name.as_str()));
-            for (auto index = first; index < *position_; ++index)
+            for (auto index = first; index < cursor(); ++index)
                 payload.push(tokens_[index].clone());
         }
     }
@@ -496,12 +496,11 @@ auto TokenDeserializer::begin_adjacent_enum(ref<str>           tag,
             variant = Some(rstd::move(value).unwrap_unchecked());
         } else if (name.as_str() == content) {
             if (payload.is_some()) return Err(duplicate_field(content));
-            auto first   = *position_;
+            auto first   = cursor();
             auto ignored = map.ignore_value();
             if (ignored.is_err()) return Err(rstd::move(ignored).unwrap_err_unchecked());
-            auto tokens = Vec<Token>::with_capacity(*position_ - first);
-            for (auto index = first; index < *position_; ++index)
-                tokens.push(tokens_[index].clone());
+            auto tokens = Vec<Token>::with_capacity(cursor() - first);
+            for (auto index = first; index < cursor(); ++index) tokens.push(tokens_[index].clone());
             payload = Some(rstd::move(tokens));
         } else {
             if (unknown == UnknownFieldPolicy::Reject) return Err(unknown_field(name.as_str()));
@@ -562,9 +561,9 @@ auto TokenDeserializer::ignore_value() -> Result<empty, Error> {
     case TokenKind::U64:
     case TokenKind::F64:
     case TokenKind::String:
-    case TokenKind::Bytes: ++*position_; return Ok(empty {});
+    case TokenKind::Bytes: ++cursor(); return Ok(empty {});
     case TokenKind::SomeStart: {
-        ++*position_;
+        ++cursor();
         auto value = ignore_value();
         if (value.is_err()) return value;
         auto end = take(TokenKind::SomeEnd, ValueKind::Enum);
@@ -572,8 +571,8 @@ auto TokenDeserializer::ignore_value() -> Result<empty, Error> {
         return Ok(empty {});
     }
     case TokenKind::SequenceStart: {
-        ++*position_;
-        while (*position_ < tokens_.len() && tokens_[*position_].kind() != TokenKind::SequenceEnd) {
+        ++cursor();
+        while (cursor() < tokens_.len() && tokens_[cursor()].kind() != TokenKind::SequenceEnd) {
             auto value = ignore_value();
             if (value.is_err()) return value;
         }
@@ -582,8 +581,8 @@ auto TokenDeserializer::ignore_value() -> Result<empty, Error> {
         return Ok(empty {});
     }
     case TokenKind::MapStart: {
-        ++*position_;
-        while (*position_ < tokens_.len() && tokens_[*position_].kind() != TokenKind::MapEnd) {
+        ++cursor();
+        while (cursor() < tokens_.len() && tokens_[cursor()].kind() != TokenKind::MapEnd) {
             auto key = ignore_value();
             if (key.is_err()) return key;
             auto value = ignore_value();
@@ -594,7 +593,7 @@ auto TokenDeserializer::ignore_value() -> Result<empty, Error> {
         return Ok(empty {});
     }
     case TokenKind::EnumStart: {
-        ++*position_;
+        ++cursor();
         auto variant = take(TokenKind::String, ValueKind::String);
         if (variant.is_err()) return Err(rstd::move(variant).unwrap_err_unchecked());
         auto value = ignore_value();
@@ -629,11 +628,11 @@ auto CapturedTokens::finish(const TokenDeserializer& replay) const -> Result<emp
 }
 
 auto TokenDeserializer::capture_value() -> Result<CapturedTokens, Error> {
-    auto start   = *position_;
+    auto start   = cursor();
     auto ignored = ignore_value();
     if (ignored.is_err()) return Err(rstd::move(ignored).unwrap_err_unchecked());
-    auto tokens = Vec<Token>::with_capacity(*position_ - start);
-    for (auto index = start; index < *position_; ++index) tokens.push(tokens_[index].clone());
+    auto tokens = Vec<Token>::with_capacity(cursor() - start);
+    for (auto index = start; index < cursor(); ++index) tokens.push(tokens_[index].clone());
     return Ok(CapturedTokens(rstd::move(tokens), path_.clone(), reject_unknown_fields_));
 }
 

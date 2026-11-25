@@ -20,8 +20,7 @@ struct CommandExt {
 struct ChildExt {
     static auto pidfd(const rstd::process::Child& child [[clang::lifetimebound]])
         -> io::Result<ref<PidFd>> {
-        if (child.pidfd_.is_some())
-            return Ok(ref<PidFd>::from_raw_parts(rstd::addressof(*child.pidfd_)));
+        if (child.pidfd_.is_some()) return Ok(ref<PidFd>::from_ref(*child.pidfd_));
         return Err(
             io::error::Error::from_kind(io::error::ErrorKind { io::error::ErrorKind::Other }));
     }

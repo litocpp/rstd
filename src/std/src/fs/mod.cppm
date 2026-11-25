@@ -269,7 +269,11 @@ public:
     auto as_fd() const noexcept [[clang::lifetimebound]] -> BorrowedFd { return m_fd.as_fd(); }
     auto into_raw_fd() && noexcept -> RawFd { return rstd::move(m_fd).into_raw_fd(); }
 
-    static auto from_raw_fd(RawFd fd) noexcept -> File { return File { OwnedFd::from_raw_fd(fd) }; }
+    /// Takes ownership of an open file descriptor.
+    [[unsafe]]
+    static auto from_raw_fd(RawFd fd) noexcept -> File {
+        [[unsafe]] { return File { OwnedFd::from_raw_fd(fd) }; }
+    }
 };
 
 // Paths use native resolution relative to this handle, not a confined directory boundary.
@@ -308,7 +312,11 @@ public:
     auto as_raw_fd() const noexcept -> RawFd { return m_fd.as_raw_fd(); }
     auto as_fd() const noexcept [[clang::lifetimebound]] -> BorrowedFd { return m_fd.as_fd(); }
     auto into_raw_fd() && noexcept -> RawFd { return rstd::move(m_fd).into_raw_fd(); }
-    static auto from_raw_fd(RawFd fd) noexcept -> Dir { return Dir(OwnedFd::from_raw_fd(fd)); }
+    /// Takes ownership of an open directory descriptor.
+    [[unsafe]]
+    static auto from_raw_fd(RawFd fd) noexcept -> Dir {
+        [[unsafe]] { return Dir(OwnedFd::from_raw_fd(fd)); }
+    }
 };
 
 export class FileLock {
@@ -326,12 +334,8 @@ public:
     static auto acquire(File file, FileLockMode mode) -> FsResult<FileLock>;
     static auto try_acquire(File file, FileLockMode mode) -> FsResult<Option<FileLock>>;
 
-    auto file() const noexcept -> ref<File> {
-        return ref<File>::from_raw_parts(rstd::addressof(m_file));
-    }
-    auto file_mut() noexcept -> mut_ref<File> {
-        return mut_ref<File>::from_raw_parts(rstd::addressof(m_file));
-    }
+    auto file() const noexcept -> ref<File> { return ref<File>::from_ref(m_file); }
+    auto file_mut() noexcept -> mut_ref<File> { return mut_ref<File>::from_ref(m_file); }
     auto unlock() && -> FsResult<File>;
 };
 
@@ -420,8 +424,9 @@ struct Impl<os::fd::IntoRawFd, fs::File> : ImplBase<fs::File> {
 
 template<>
 struct Impl<os::fd::FromRawFd, fs::File> {
+    [[unsafe]]
     static auto from_raw_fd(os::fd::RawFd fd) noexcept -> fs::File {
-        return fs::File::from_raw_fd(fd);
+        [[unsafe]] { return fs::File::from_raw_fd(fd); }
     }
 };
 

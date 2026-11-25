@@ -95,7 +95,7 @@ struct StaticBytesStorage {
     }
     auto allocator() const noexcept -> ArcAllocator { return {}; }
     auto empty_view() const noexcept -> slice<u8> {
-        return slice<u8>::from_raw_parts(base, usize());
+        [[unsafe]] { return slice<u8>::from_raw_parts(base, usize()); }
     }
     auto try_into_mut(slice<u8>) const -> Option<BytesMut>;
 };
@@ -113,18 +113,25 @@ struct rstd::Impl<rstd::bytes::BytesStorage, rstd::bytes::ByteBuffer>
     using Buffer  = rstd::bytes::ByteBuffer;
     using Storage = rstd::bytes::ByteStorage;
     auto pointer() const noexcept -> mut_ptr<Buffer> {
-        return mut_ptr<Buffer>::from_raw_parts(const_cast<Buffer*>(rstd::addressof(this->self())));
+        [[unsafe]] {
+            return mut_ptr<Buffer>::from_raw_parts(
+                const_cast<Buffer*>(rstd::addressof(this->self())));
+        }
     }
     auto offset(slice<u8> view) const noexcept -> usize {
         auto* base  = this->self().data();
         auto* start = view.as_raw_ptr();
-        return base == start ? usize() : usize(start - base);
+        [[unsafe]] { return base == start ? usize() : usize(start - base); }
     }
-    void retain() const noexcept { Storage::increment_strong_count(pointer()); }
-    void release() const noexcept { Storage::decrement_strong_count(pointer()); }
+    void retain() const noexcept {
+        [[unsafe]] { Storage::increment_strong_count(pointer()); }
+    }
+    void release() const noexcept {
+        [[unsafe]] { Storage::decrement_strong_count(pointer()); }
+    }
     // Bytes never exposes an upgradeable Weak; allocator-only owners cannot access the value.
     auto is_unique() const noexcept -> bool {
-        return Storage::strong_count_from_raw(pointer()) == usize(1);
+        [[unsafe]] { return Storage::strong_count_from_raw(pointer()) == usize(1); }
     }
     auto properties(slice<u8> view) const noexcept -> rstd::bytes::BytesProperties {
         auto pos                  = offset(view);
@@ -134,10 +141,10 @@ struct rstd::Impl<rstd::bytes::BytesStorage, rstd::bytes::ByteBuffer>
         return { this->self().capacity() - pos, alignment, allocation_alignment };
     }
     auto allocator() const noexcept -> ArcAllocator {
-        return Storage::allocator_owner_from_raw(pointer());
+        [[unsafe]] { return Storage::allocator_owner_from_raw(pointer()); }
     }
     auto empty_view() const noexcept -> slice<u8> {
-        return slice<u8>::from_raw_parts(this->self().data(), usize());
+        [[unsafe]] { return slice<u8>::from_raw_parts(this->self().data(), usize()); }
     }
     auto try_into_mut(slice<u8> view) const -> Option<rstd::bytes::BytesMut>;
 };
@@ -152,8 +159,10 @@ export class Bytes {
     friend class BytesMut;
     Bytes(ByteStorage storage, usize pos, usize end) {
         auto* base = storage->data();
-        view_ = rstd::slice<u8>::from_raw_parts(pos == usize() ? base : base + pos.to_primitive(),
-                                                end - pos);
+        [[unsafe]] {
+            view_ = rstd::slice<u8>::from_raw_parts(
+                pos == usize() ? base : base + pos.to_primitive(), end - pos);
+        }
         auto pointer = storage.into_raw().into_ptr();
         storage_     = dyn<BytesStorage>::from_ptr(pointer).as_ptr();
     }
@@ -163,8 +172,10 @@ export class Bytes {
     }
     auto subview(usize start, usize end) const noexcept -> rstd::slice<u8> {
         auto* p = data();
-        return rstd::slice<u8>::from_raw_parts(start == usize() ? p : p + start.to_primitive(),
-                                               end - start);
+        [[unsafe]] {
+            return rstd::slice<u8>::from_raw_parts(start == usize() ? p : p + start.to_primitive(),
+                                                   end - start);
+        }
     }
 
 public:
@@ -199,7 +210,9 @@ public:
     static auto from_static() -> Bytes {
         static const StaticBytesStorage storage { reinterpret_cast<const byte*>(Data) };
         Bytes                           result;
-        result.view_    = rstd::slice<u8>::from_raw_parts(storage.base, usize(sizeof(Data)));
+        [[unsafe]] {
+            result.view_ = rstd::slice<u8>::from_raw_parts(storage.base, usize(sizeof(Data)));
+        }
         result.storage_ = dyn<BytesStorage>::from_ptr(&storage);
         return result;
     }
@@ -440,19 +453,19 @@ public:
     auto is_empty() const noexcept -> bool { return len() == usize(); }
     auto data() noexcept -> byte* {
         auto* p = m_storage.is_some() ? buffer().data() : nullptr;
-        return p == nullptr ? nullptr : p + m_pos.to_primitive();
+        [[unsafe]] { return p == nullptr ? nullptr : p + m_pos.to_primitive(); }
     }
     auto data() const noexcept -> const byte* {
         auto* p = m_storage.is_some() ? buffer().data() : nullptr;
-        return p == nullptr ? nullptr : p + m_pos.to_primitive();
+        [[unsafe]] { return p == nullptr ? nullptr : p + m_pos.to_primitive(); }
     }
     auto as_slice() const noexcept [[clang::lifetimebound]] -> slice<u8> {
         if (is_empty()) return {};
-        return slice<u8>::from_raw_parts(data(), len());
+        [[unsafe]] { return slice<u8>::from_raw_parts(data(), len()); }
     }
     auto as_mut_slice() noexcept [[clang::lifetimebound]] -> mut_ref<u8[]> {
         if (is_empty()) return {};
-        return mut_ref<u8[]>::from_raw_parts(data(), len());
+        [[unsafe]] { return mut_ref<u8[]>::from_raw_parts(data(), len()); }
     }
     auto remaining() const noexcept -> usize { return len(); }
     auto chunk() const noexcept [[clang::lifetimebound]] -> slice<u8> { return as_slice(); }
@@ -466,8 +479,10 @@ public:
     auto chunk_mut() [[clang::lifetimebound]] -> mut_ref<u8[]> {
         if (remaining_mut() == usize()) reserve(DEFAULT_CHUNK_CAPACITY);
         if (buffer().len() < buffer().capacity()) buffer().resize(buffer().capacity(), u8 {});
-        return mut_ref<u8[]>::from_raw_parts(buffer().data() + m_end.to_primitive(),
-                                             buffer().len() - m_end);
+        [[unsafe]] {
+            return mut_ref<u8[]>::from_raw_parts(buffer().data() + m_end.to_primitive(),
+                                                 buffer().len() - m_end);
+        }
     }
     /// Uninitialized tail without allocation or clearing. Initialize before advancing.
     auto spare_capacity_mut() noexcept [[clang::lifetimebound]] -> mut_ref<MaybeUninit<byte>[]> {
@@ -476,11 +491,14 @@ public:
         return buffer().spare_capacity_mut().as_uninit();
     }
     /// The caller must have initialized count bytes of the writable tail.
+    [[unsafe]]
     void advance_mut_unchecked(usize count) {
         if (count > remaining_mut())
             rstd::panic { "BytesMut::advance_mut_unchecked out of bounds" };
         m_end += count;
-        if (m_storage.is_some() && buffer().len() < m_end) buffer().set_len_unchecked(m_end);
+        if (m_storage.is_some() && buffer().len() < m_end) {
+            [[unsafe]] { buffer().set_len_unchecked(m_end); }
+        }
     }
     void advance_mut(usize cnt) {
         auto available = m_storage.is_some() ? buffer().len() - m_end : usize();
@@ -503,8 +521,10 @@ public:
         if (src.is_empty()) return;
         reserve(src.len());
         auto target = m_end + src.len();
-        rstd::mem::memcpy(buffer().data() + m_end.to_primitive(), src.as_raw_ptr(), src.len());
-        if (buffer().len() < target) buffer().set_len_unchecked(target);
+        [[unsafe]] {
+            rstd::mem::memcpy(buffer().data() + m_end.to_primitive(), src.as_raw_ptr(), src.len());
+            if (buffer().len() < target) buffer().set_len_unchecked(target);
+        }
         m_end = target;
     }
     void extend_from_slice(slice<u8> src) { put_slice(src); }
@@ -519,8 +539,12 @@ public:
         auto new_end = m_pos + new_len;
         if (new_end > buffer().len())
             buffer().resize(new_end, value);
-        else if (new_end > old_end)
-            rstd::mem::memset(buffer().data() + old_end.to_primitive(), value, new_end - old_end);
+        else if (new_end > old_end) {
+            [[unsafe]] {
+                rstd::mem::memset(
+                    buffer().data() + old_end.to_primitive(), value, new_end - old_end);
+            }
+        }
         m_end = new_end;
         if (new_end < old_end) buffer().truncate(new_end);
     }
@@ -537,9 +561,11 @@ public:
     }
     auto split_to(usize at) -> BytesMut {
         if (at > len()) rstd::panic { "BytesMut::split_to out of bounds" };
-        auto out = BytesMut(make_storage(
+        auto      out = BytesMut(make_storage(
             at, allocator(), m_storage.is_some() ? buffer().allocation_alignment() : usize(1)));
-        out.extend_from_slice(slice<u8>::from_raw_parts(data(), at));
+        slice<u8> prefix;
+        [[unsafe]] { prefix = slice<u8>::from_raw_parts(data(), at); }
+        out.extend_from_slice(prefix);
         advance(at);
         return out;
     }
@@ -553,11 +579,11 @@ public:
     }
     auto operator[](usize index) -> mut_ref<u8> {
         if (index >= len()) rstd::panic { "BytesMut index out of bounds" };
-        return mut_ref<u8>::from_raw_parts(data() + index.to_primitive());
+        [[unsafe]] { return mut_ref<u8>::from_raw_parts(data() + index.to_primitive()); }
     }
     auto operator[](usize index) const -> u8 {
         if (index >= len()) rstd::panic { "BytesMut index out of bounds" };
-        return u8::from_byte(data()[index.to_primitive()]);
+        [[unsafe]] { return u8::from_byte(data()[index.to_primitive()]); }
     }
 };
 template<typename Self, typename Ignored>
@@ -595,13 +621,15 @@ inline auto
 rstd::Impl<rstd::bytes::BytesStorage, rstd::bytes::ByteBuffer>::try_into_mut(slice<u8> view) const
     -> Option<rstd::bytes::BytesMut> {
     if (! is_unique()) return None();
-    auto pos     = offset(view);
-    auto storage = Storage::from_raw(::alloc::sync::ArcRaw<Buffer>::from_ptr(pointer()));
-    rstd::bytes::BytesMut result(rstd::move(storage));
-    result.m_pos = pos;
-    result.m_end = pos + view.len();
-    result.buffer().truncate(result.m_end);
-    return Some(rstd::move(result));
+    auto pos = offset(view);
+    [[unsafe]] {
+        auto storage = Storage::from_raw(::alloc::sync::ArcRaw<Buffer>::from_ptr(pointer()));
+        rstd::bytes::BytesMut result(rstd::move(storage));
+        result.m_pos = pos;
+        result.m_end = pos + view.len();
+        result.buffer().truncate(result.m_end);
+        return Some(rstd::move(result));
+    }
 }
 
 template<>

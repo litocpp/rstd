@@ -39,8 +39,8 @@ public:
 
 struct OsStringExt {
     static auto from_wide(slice<u16> value) -> OsString {
-        return OsString::from_encoded_bytes_unchecked(
-            rstd::sys::os_str::encoding::from_wide(value));
+        auto bytes = rstd::sys::os_str::encoding::from_wide(value);
+        [[unsafe]] { return OsString::from_encoded_bytes_unchecked(rstd::move(bytes)); }
     }
 };
 

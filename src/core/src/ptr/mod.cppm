@@ -12,6 +12,7 @@ namespace rstd::ptr_
 /// Both ranges must be valid and suitably aligned for `T`.
 export template<typename T>
     requires(! mtp::DST<T>)
+[[unsafe]]
 void copy_nonoverlapping(ptr<T> source, mut_ptr<T> destination, usize count) {
     if (count == usize()) return;
     using Storage    = typename ptr<T>::storage_type;
@@ -19,44 +20,66 @@ void copy_nonoverlapping(ptr<T> source, mut_ptr<T> destination, usize count) {
     __builtin_memcpy(destination.as_raw_ptr(), source.as_raw_ptr(), bytes.to_primitive());
 }
 
-/// Constructs one logical element in uninitialized storage.
+/// Copies `count` elements, allowing overlapping ranges.
+/// Both ranges must be valid and suitably aligned for `T`.
+export template<typename T>
+    requires(! mtp::DST<T>)
+[[unsafe]]
+void copy(ptr<T> source, mut_ptr<T> destination, usize count) {
+    if (count == usize()) return;
+    using Storage    = typename ptr<T>::storage_type;
+    auto const bytes = count * usize(sizeof(Storage));
+    __builtin_memmove(destination.as_raw_ptr(), source.as_raw_ptr(), bytes.to_primitive());
+}
+
+/// Constructs one logical element in live, suitably aligned uninitialized storage.
 export template<typename T, typename... Args>
     requires(! mtp::DST<T>)
+[[unsafe]]
 constexpr void construct(mut_ptr<T> destination, Args&&... args) {
     if constexpr (mtp::same_as<T, u8>) {
-        auto value                = u8(rstd::forward<Args>(args)...);
-        *destination.as_raw_ptr() = value.to_byte();
+        auto value = u8(rstd::forward<Args>(args)...);
+        [[unsafe]] { *destination.as_raw_ptr() = value.to_byte(); }
     } else {
-        rstd::construct_at(destination.as_raw_ptr(), rstd::forward<Args>(args)...);
+        [[unsafe]] { rstd::construct_at(destination.as_raw_ptr(), rstd::forward<Args>(args)...); }
     }
 }
 
-/// Destroys one logical element without deallocating its storage.
+/// Destroys one live logical element without deallocating its storage.
 export template<typename T>
     requires(! mtp::DST<T>)
+[[unsafe]]
 constexpr void destroy(mut_ptr<T> destination) noexcept {
-    if constexpr (! mtp::triv_drop<T>) rstd::destroy_at(destination.as_raw_ptr());
+    if constexpr (! mtp::triv_drop<T>) {
+        [[unsafe]] { rstd::destroy_at(destination.as_raw_ptr()); }
+    }
 }
 
-/// Moves one logical element out of initialized storage.
+/// Move-constructs from a live logical element, leaving the moved-from source alive.
 export template<typename T>
     requires(! mtp::DST<T>)
+[[unsafe]]
 constexpr auto move_out(mut_ptr<T> source) -> T {
-    if constexpr (mtp::same_as<T, u8>) {
-        return u8::from_byte(*source.as_raw_ptr());
-    } else {
-        return rstd::move(*source.as_raw_ptr());
+    [[unsafe]] {
+        if constexpr (mtp::same_as<T, u8>) {
+            return u8::from_byte(*source.as_raw_ptr());
+        } else {
+            return rstd::move(*source.as_raw_ptr());
+        }
     }
 }
 
 /// Assigns one logical element in initialized storage.
 export template<typename T, typename U>
     requires(! mtp::DST<T>)
+[[unsafe]]
 constexpr void write(mut_ptr<T> destination, U&& value) {
-    if constexpr (mtp::same_as<T, u8>) {
-        *destination.as_raw_ptr() = u8(rstd::forward<U>(value)).to_byte();
-    } else {
-        *destination.as_raw_ptr() = rstd::forward<U>(value);
+    [[unsafe]] {
+        if constexpr (mtp::same_as<T, u8>) {
+            *destination.as_raw_ptr() = u8(rstd::forward<U>(value)).to_byte();
+        } else {
+            *destination.as_raw_ptr() = rstd::forward<U>(value);
+        }
     }
 }
 

@@ -143,8 +143,12 @@ struct ExecutorAwaitShared {
 
 template<typename E>
 auto executor_endpoint_submit(voidp data, FacilityJob job) -> FacilityEndpointSubmitResult {
-    using Shared    = ExecutorAwaitShared<E>;
-    auto shared     = sync::Arc<Shared>::from_raw(::alloc::sync::ArcRaw<Shared>::from_raw(data));
+    using Shared = ExecutorAwaitShared<E>;
+    auto shared  = [data] {
+        [[unsafe]] {
+            return sync::Arc<Shared>::from_raw(::alloc::sync::ArcRaw<Shared>::from_raw(data));
+        }
+    }();
     auto job_shared = shared.clone();
     auto accepted   = shared->post_job(ExecutorJob::dispatch(
         [shared = rstd::move(job_shared), job = rstd::move(job)](ExecutorJobAction action) mutable {
@@ -163,8 +167,7 @@ auto executor_endpoint_submit(voidp data, FacilityJob job) -> FacilityEndpointSu
 template<typename E>
 void executor_endpoint_drop(voidp data) {
     using Shared = ExecutorAwaitShared<E>;
-    auto shared  = sync::Arc<Shared>::from_raw(::alloc::sync::ArcRaw<Shared>::from_raw(data));
-    (void)shared;
+    [[unsafe]] { (void)sync::Arc<Shared>::from_raw(::alloc::sync::ArcRaw<Shared>::from_raw(data)); }
 }
 
 template<typename E>
@@ -178,12 +181,14 @@ auto executor_endpoint_vtable() -> const RawFacilityEndpointVTable* {
 
 template<typename E>
 auto make_executor_endpoint(const sync::Arc<ExecutorAwaitShared<E>>& shared) -> FacilityEndpoint {
-    auto id    = reinterpret_cast<rstd::uintptr_t>(shared.as_ptr().as_raw_ptr());
     auto owned = shared.clone();
-    return FacilityEndpoint::from_raw(
-        id,
-        RawFacilityEndpoint::from_raw_parts(rstd::move(owned).into_raw().into_raw(),
-                                            executor_endpoint_vtable<E>()));
+    [[unsafe]] {
+        auto id = reinterpret_cast<rstd::uintptr_t>(shared.as_ptr().as_raw_ptr());
+        return FacilityEndpoint::from_raw(
+            id,
+            RawFacilityEndpoint::from_raw_parts(rstd::move(owned).into_raw().into_raw(),
+                                                executor_endpoint_vtable<E>()));
+    }
 }
 
 template<typename E>

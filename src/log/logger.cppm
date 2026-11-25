@@ -77,21 +77,22 @@ export inline void set_max_level(LevelFilter level) noexcept {
 
 /// Attempts to set the global logger. Returns false if already initialized.
 ///
-/// This is a one-shot operation; subsequent calls return false.
+/// This is a one-shot operation; the logger must live for the rest of the process.
 export template<typename T>
     requires Impled<T, Log>
+[[unsafe]]
 inline bool set_logger(T const& logger) noexcept {
     using ImplT = Impl<Log, T>;
 
     constexpr LoggerVTable vtable {
         [](void const* p, Metadata const& m) -> bool {
-            return ImplT { const_cast<T*>(static_cast<T const*>(p)) }.enabled(m);
+            [[unsafe]] { return ImplT { const_cast<T*>(static_cast<T const*>(p)) }.enabled(m); }
         },
         [](void const* p, Record const& r) -> void {
-            ImplT { const_cast<T*>(static_cast<T const*>(p)) }.log(r);
+            [[unsafe]] { ImplT { const_cast<T*>(static_cast<T const*>(p)) }.log(r); }
         },
         [](void const* p) -> void {
-            ImplT { const_cast<T*>(static_cast<T const*>(p)) }.flush();
+            [[unsafe]] { ImplT { const_cast<T*>(static_cast<T const*>(p)) }.flush(); }
         }
     };
 
@@ -112,7 +113,7 @@ export [[nodiscard]]
 inline auto log_enabled(Level level, ref<str> target) noexcept -> bool {
     if (level > max_level()) return false;
     if (g_state.load(sync::atomic::Ordering::Acquire) != usize(2)) return false;
-    return g_vtable.enabled(g_logger_ptr, Metadata { level, target });
+    [[unsafe]] { return g_vtable.enabled(g_logger_ptr, Metadata { level, target }); }
 }
 
 /// Logs a Record through the global logger (no-op if no logger set).
@@ -120,7 +121,7 @@ export inline void log(Record const& record) noexcept {
     if (record.lvl() <= max_level()) {
         // Acquire ensures we see the fully initialized vtable from set_logger().
         if (g_state.load(sync::atomic::Ordering::Acquire) == usize(2)) {
-            g_vtable.log(g_logger_ptr, record);
+            [[unsafe]] { g_vtable.log(g_logger_ptr, record); }
         }
     }
 }
@@ -128,7 +129,7 @@ export inline void log(Record const& record) noexcept {
 /// Flushes any buffered records through the global logger.
 export inline void flush() noexcept {
     if (g_state.load(sync::atomic::Ordering::Acquire) == usize(2)) {
-        g_vtable.flush(g_logger_ptr);
+        [[unsafe]] { g_vtable.flush(g_logger_ptr); }
     }
 }
 

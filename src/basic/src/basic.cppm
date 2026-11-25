@@ -13,9 +13,11 @@ struct default_delete {
         requires mtp::convertible_to<U*, T*>
     constexpr default_delete(const default_delete<U>&) noexcept {}
 
+    /// A non-null pointer must be valid for scalar delete and surrendered by its owner.
+    [[unsafe]]
     constexpr void operator()(T* pointer) const noexcept {
         static_assert(sizeof(T) > 0, "cannot delete an incomplete type");
-        delete pointer;
+        [[unsafe]] { delete pointer; }
     }
 };
 
@@ -27,11 +29,13 @@ struct default_delete<T[]> {
         requires mtp::convertible_to<U (*)[], T (*)[]>
     constexpr default_delete(const default_delete<U[]>&) noexcept {}
 
+    /// A non-null pointer must be valid for array delete and surrendered by its owner.
     template<typename U>
         requires mtp::convertible_to<U (*)[], T (*)[]>
+    [[unsafe]]
     constexpr void operator()(U* pointer) const noexcept {
         static_assert(sizeof(T) > 0, "cannot delete an incomplete type");
-        delete[] pointer;
+        [[unsafe]] { delete[] pointer; }
     }
 };
 
@@ -58,12 +62,13 @@ constexpr inline T exchange(T&  obj,
 }
 
 /// Constructs an object of type `T` at the given memory location.
-/// \param location Pointer to uninitialized storage.
+/// \param location Pointer to writable uninitialized storage large and aligned enough for `T`.
 /// \param args Arguments forwarded to the constructor.
 /// \return Pointer to the constructed object.
 export template<typename T, typename... Args>
     requires(! mtp::is_array_dst<T>) &&
             requires { ::new (static_cast<void*>(nullptr)) T(mtp::declval<Args>()...); }
+[[unsafe]]
 constexpr T* construct_at(T* location,
                           Args&&... args) noexcept(noexcept(::new (static_cast<void*>(nullptr))
                                                                 T(mtp::declval<Args>()...))) {
@@ -73,27 +78,31 @@ constexpr T* construct_at(T* location,
                       "rstd::construct_at for array "
                       "types must not use any arguments to initialize the "
                       "array");
-        return new (loc) T[1]();
+        [[unsafe]] { return new (loc) T[1](); }
     } else {
         return std::construct_at(location, rstd::forward<Args>(args)...);
     }
 }
 /// Destroys the object at the given location by calling its destructor.
-/// \param location Pointer to the object to destroy.
+/// \param location Pointer to a live object whose lifetime the caller may end.
 export template<typename T>
-[[gnu::always_inline]]
+[[gnu::always_inline, unsafe]]
 constexpr inline void destroy_at(T* location) {
     if constexpr (__cplusplus > 201703L && mtp::is_array<T>) {
-        for (auto& x : *location) rstd::destroy_at(rstd::addressof(x));
-    } else
-        location->~T();
+        [[unsafe]] {
+            for (auto& x : *location) rstd::destroy_at(rstd::addressof(x));
+        }
+    } else {
+        [[unsafe]] { location->~T(); }
+    }
 }
 
 /// Obtains a pointer to an object created in storage occupied by another object of the same type.
-/// \param __p Pointer to launder.
+/// \param __p Address of a live `T`; all bytes reachable through the result must already be
+/// reachable through `__p`.
 /// \return A pointer to the same memory with the correct type provenance.
 export template<typename T>
-[[nodiscard]]
+[[nodiscard, unsafe]]
 constexpr T* launder(T* __p) noexcept {
     if constexpr (__is_same(const volatile T, const volatile void))
         static_assert(! __is_same(const volatile T, const volatile void),
@@ -106,12 +115,15 @@ constexpr T* launder(T* __p) noexcept {
 }
 
 /// Returns the length of a null-terminated byte string.
-/// \param s Pointer to a null-terminated string.
+/// \param s Non-null pointer to a readable byte string, including its terminating null byte.
 /// \return The number of characters before the null terminator.
-export constexpr auto strlen(char const* s) noexcept -> size_t {
+export [[unsafe]]
+constexpr auto strlen(char const* s) noexcept -> size_t {
     if (mtp::is_constant_evaluated()) {
         size_t i = 0;
-        while (s[i] != '\0') ++i;
+        [[unsafe]] {
+            while (s[i] != '\0') ++i;
+        }
         return i;
     } else {
         return __builtin_strlen(s);
@@ -171,17 +183,19 @@ constexpr auto lexicographical_compare_three_way(InputIter1 first1,
             using T2 = mtp::rm_cv<mtp::rm_ptr<InputIter2>>;
 
             if constexpr (mtp::same_as<T1, T2> && rstd::is_raw_int<T1> && sizeof(T1) == 1) {
-                auto len1    = last1 - first1;
-                auto len2    = last2 - first2;
-                auto min_len = rstd::min(len1, len2);
+                [[unsafe]] {
+                    auto len1    = last1 - first1;
+                    auto len2    = last2 - first2;
+                    auto min_len = rstd::min(len1, len2);
 
-                if (min_len > 0) {
-                    int result = __builtin_memcmp(first1, first2, min_len);
-                    if (result != 0) {
-                        return result <=> 0;
+                    if (min_len > 0) {
+                        int result = __builtin_memcmp(first1, first2, min_len);
+                        if (result != 0) {
+                            return result <=> 0;
+                        }
                     }
+                    return len1 <=> len2;
                 }
-                return len1 <=> len2;
             }
         }
     }
@@ -191,20 +205,24 @@ constexpr auto lexicographical_compare_three_way(InputIter1 first1,
             return std::strong_ordering::greater;
         }
 
-        if (auto cmp = comp(*first1, *first2); cmp != 0) {
-            return cmp;
-        }
+        [[unsafe]] {
+            if (auto cmp = comp(*first1, *first2); cmp != 0) {
+                return cmp;
+            }
 
-        ++first1;
-        ++first2;
+            ++first1;
+            ++first2;
+        }
     }
 
     return (first1 != last1) <=> (first2 != last2);
 }
 
 /// Performs lexicographic three-way comparison of two ranges using `<=>`.
+/// Both iterator pairs must denote valid readable ranges; each end must be reachable from its start.
 /// \return The ordering result of the first differing element pair, or a length comparison.
 export template<typename InputIter1, typename InputIter2>
+[[unsafe]]
 constexpr auto lexicographical_compare_three_way(InputIter1 first1,
                                                  InputIter1 last1,
                                                  InputIter2 first2,

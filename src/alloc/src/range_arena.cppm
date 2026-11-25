@@ -14,7 +14,9 @@ class RangeArenaAllocator {
 
 public:
     explicit RangeArenaAllocator(RangeArena<Upstream, Metadata>& arena): arena_(&arena) {}
-    auto arena() const noexcept -> RangeArena<Upstream, Metadata>& { return *arena_; }
+    auto arena() const noexcept -> RangeArena<Upstream, Metadata>& {
+        [[unsafe]] { return *arena_; }
+    }
 };
 
 /// Owns a fixed-capacity CPU block. Borrowed allocators must not outlive the arena.
@@ -45,7 +47,11 @@ public:
     RangeArena(const RangeArena&)            = delete;
     RangeArena& operator=(const RangeArena&) = delete;
     ~RangeArena() {
-        if (base_) rstd::as<rstd::alloc::Allocator>(upstream_).deallocate(base_, block_layout_);
+        if (base_) {
+            [[unsafe]] {
+                rstd::as<rstd::alloc::Allocator>(upstream_).deallocate(base_, block_layout_);
+            }
+        }
     }
     auto allocate(rstd::alloc::Layout layout)
         -> Result<rstd::alloc::Allocation, rstd::alloc::AllocError> {
@@ -58,16 +64,20 @@ public:
         if (! base_) {
             auto block = rstd::as<rstd::alloc::Allocator>(upstream_).allocate(block_layout_);
             if (block.is_err()) return Err(rstd::alloc::AllocError {});
-            base_ = static_cast<byte*>(block.unwrap_unchecked().pointer);
+            [[unsafe]] { base_ = static_cast<byte*>(block.unwrap_unchecked().pointer); }
         }
         auto allocation =
             ranges_.allocate(layout.size().to_primitive(), layout.align().to_primitive());
         if (allocation.is_err()) return Err(rstd::alloc::AllocError {});
-        auto range   = allocation.unwrap_unchecked();
-        auto pointer = base_ + range.offset;
-        entries_.push(Entry { range.id, pointer, layout });
-        return Ok(rstd::alloc::Allocation { pointer, layout.size() });
+        auto range = allocation.unwrap_unchecked();
+        [[unsafe]] {
+            auto pointer = base_ + range.offset;
+            entries_.push(Entry { range.id, pointer, layout });
+            return Ok(rstd::alloc::Allocation { pointer, layout.size() });
+        }
     }
+    /// The pointer must be a live allocation from this arena with the matching layout.
+    [[unsafe]]
     void deallocate(void* pointer, rstd::alloc::Layout layout) noexcept {
         if (layout.size() == usize()) return;
         for (usize i {}; i < entries_.len(); ++i) {
@@ -99,8 +109,9 @@ struct Impl<alloc::Allocator, ::alloc::RangeArenaAllocator<Upstream, Metadata>>
     auto allocate(alloc::Layout layout) const -> Result<alloc::Allocation, alloc::AllocError> {
         return this->self().arena().allocate(layout);
     }
+    [[unsafe]]
     void deallocate(void* pointer, alloc::Layout layout) const noexcept {
-        this->self().arena().deallocate(pointer, layout);
+        [[unsafe]] { this->self().arena().deallocate(pointer, layout); }
     }
 };
 } // namespace rstd

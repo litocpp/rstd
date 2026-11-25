@@ -31,7 +31,9 @@ template<typename T>
 auto downcast_ref(ErrorRef value [[clang::lifetimebound]]) noexcept -> Option<ref<T>> {
     if (! is<T>(value)) return None();
     using Storage = typename ref<T>::storage_type;
-    return Some(ref<T>::from_raw_parts(static_cast<const Storage*>(value.as_raw_ptr())));
+    [[unsafe]] {
+        return Some(ref<T>::from_raw_parts(static_cast<const Storage*>(value.as_raw_ptr())));
+    }
 }
 
 template<typename T>
@@ -40,7 +42,9 @@ auto downcast_mut(mut_ref<dyn<Error>> value [[clang::lifetimebound]]) noexcept
     -> Option<mut_ref<T>> {
     if (! is<T>(value)) return None();
     using Storage = typename mut_ref<T>::storage_type;
-    return Some(mut_ref<T>::from_raw_parts(static_cast<Storage*>(value.as_raw_ptr())));
+    [[unsafe]] {
+        return Some(mut_ref<T>::from_raw_parts(static_cast<Storage*>(value.as_raw_ptr())));
+    }
 }
 
 } // namespace rstd::error

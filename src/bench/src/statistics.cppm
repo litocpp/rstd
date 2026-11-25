@@ -29,7 +29,7 @@ namespace rstd::bench
 {
 
 export auto median(Vec<f64> values) noexcept -> f64 {
-    slice_::sort_unstable_by(values.as_mut_slice().as_mut_ref(), [](f64 left, f64 right) {
+    slice_::sort_unstable_by(values.deref_mut(), [](f64 left, f64 right) {
         return left.total_cmp(right) < 0;
     });
     return bench_sorted_median(values.as_slice());
@@ -37,7 +37,7 @@ export auto median(Vec<f64> values) noexcept -> f64 {
 
 export auto percentile(Vec<f64> values, f64 percentile_value) noexcept -> f64 {
     if (values.is_empty()) return f64();
-    slice_::sort_unstable_by(values.as_mut_slice().as_mut_ref(), [](f64 left, f64 right) {
+    slice_::sort_unstable_by(values.deref_mut(), [](f64 left, f64 right) {
         return left.total_cmp(right) < 0;
     });
     auto clamped = percentile_value.clamp(f64(), f64(1.0));

@@ -39,17 +39,23 @@ auto send_current_pidfd(int socket) -> int {
     if (fd >= 0) {
         message.msg_control    = control;
         message.msg_controllen = sizeof(control);
-        auto* header           = CMSG_FIRSTHDR(&message);
-        header->cmsg_level     = SOL_SOCKET;
-        header->cmsg_type      = SCM_RIGHTS;
-        header->cmsg_len       = CMSG_LEN(sizeof(int));
-        __builtin_memcpy(CMSG_DATA(header), &fd, sizeof(fd));
+        [[unsafe]] {
+            auto* header       = CMSG_FIRSTHDR(&message);
+            header->cmsg_level = SOL_SOCKET;
+            header->cmsg_type  = SCM_RIGHTS;
+            header->cmsg_len   = CMSG_LEN(sizeof(int));
+            __builtin_memcpy(CMSG_DATA(header), &fd, sizeof(fd));
+        }
     }
-    ssize_t sent;
-    do {
-        sent = ::sendmsg(socket, &message, MSG_NOSIGNAL);
-    } while (sent < 0 && errno == EINTR);
-    auto error = sent == 1 ? 0 : (sent < 0 ? errno : EIO);
+    auto error = [&] {
+        [[unsafe]] {
+            ssize_t sent;
+            do {
+                sent = ::sendmsg(socket, &message, MSG_NOSIGNAL);
+            } while (sent < 0 && errno == EINTR);
+            return sent == 1 ? 0 : (sent < 0 ? errno : EIO);
+        }
+    }();
     if (fd >= 0) ::close(fd);
     return error;
 }
@@ -65,14 +71,16 @@ auto receive_pidfd(int socket, int& fd) -> int {
     message.msg_control    = control;
     message.msg_controllen = sizeof(control);
     ssize_t received;
-    do {
-        received = ::recvmsg(socket, &message, MSG_CMSG_CLOEXEC);
-    } while (received < 0 && errno == EINTR);
-    if (received < 0) return errno;
-    if (auto* header = CMSG_FIRSTHDR(&message); header && header->cmsg_level == SOL_SOCKET &&
-                                                header->cmsg_type == SCM_RIGHTS &&
-                                                header->cmsg_len == CMSG_LEN(sizeof(int)))
-        __builtin_memcpy(&fd, CMSG_DATA(header), sizeof(fd));
+    [[unsafe]] {
+        do {
+            received = ::recvmsg(socket, &message, MSG_CMSG_CLOEXEC);
+        } while (received < 0 && errno == EINTR);
+        if (received < 0) return errno;
+        if (auto* header = CMSG_FIRSTHDR(&message); header && header->cmsg_level == SOL_SOCKET &&
+                                                    header->cmsg_type == SCM_RIGHTS &&
+                                                    header->cmsg_len == CMSG_LEN(sizeof(int)))
+            __builtin_memcpy(&fd, CMSG_DATA(header), sizeof(fd));
+    }
     if (received != 1 || (message.msg_flags & (MSG_CTRUNC | MSG_TRUNC))) {
         if (fd >= 0) ::close(fd);
         fd = -1;
@@ -86,7 +94,7 @@ auto pidfd_send_signal(int fd, int signal, bool group) -> int {
     // PIDFD_SIGNAL_PROCESS_GROUP is available since Linux 6.9.
     auto flags = group ? 4U : 0U;
     if (::syscall(SYS_pidfd_send_signal, fd, signal, nullptr, flags) == 0) return 0;
-    return errno;
+    [[unsafe]] { return errno; }
 #else
     return ENOSYS;
 #endif
@@ -97,12 +105,15 @@ auto pidfd_wait(int fd, bool nonblocking) -> PidFdWait {
     constexpr auto pidfd_idtype = static_cast<idtype_t>(3);
     siginfo_t      info {};
     int            result;
-    do {
-        result = ::waitid(
-            pidfd_idtype, static_cast<id_t>(fd), &info, WEXITED | (nonblocking ? WNOHANG : 0));
-    } while (result < 0 && errno == EINTR);
+    int            error = 0;
+    [[unsafe]] {
+        do {
+            result = ::waitid(
+                pidfd_idtype, static_cast<id_t>(fd), &info, WEXITED | (nonblocking ? WNOHANG : 0));
+        } while (result < 0 && errno == EINTR);
+        if (result < 0) error = errno;
+    }
     if (result < 0) {
-        auto error = errno;
 #if defined(PIDFD_GET_INFO) && defined(PIDFD_INFO_EXIT)
         if (error == ECHILD) {
             struct pidfd_info saved {};

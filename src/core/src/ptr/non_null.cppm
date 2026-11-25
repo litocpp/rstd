@@ -50,8 +50,10 @@ struct NonNull {
         requires Impled<T, Sized>
     {
         using Storage = typename pointer_t::storage_type;
-        Storage* t    = reinterpret_cast<Storage*>(addr.get().to_primitive());
-        return { mut_ptr<T>::from_raw_parts(t) };
+        [[unsafe]] {
+            auto* t = reinterpret_cast<Storage*>(addr.get().to_primitive());
+            return { mut_ptr<T>::from_raw_parts(t) };
+        }
     }
 
     /// Creates a dangling but well-aligned `NonNull` pointer.
@@ -60,7 +62,9 @@ struct NonNull {
         requires Impled<T, Sized>
     {
         using Storage = typename pointer_t::storage_type;
-        return { mut_ptr<T>::from_raw_parts(reinterpret_cast<Storage*>(alignof(Storage))) };
+        [[unsafe]] {
+            return { mut_ptr<T>::from_raw_parts(reinterpret_cast<Storage*>(alignof(Storage))) };
+        }
     }
     /// @}
 
@@ -80,6 +84,7 @@ struct NonNull {
     /// Creates a `NonNull` without checking that the pointer is non-null.
     /// \param p The pointer to wrap; must not be null.
     /// \return A `NonNull` wrapping `p`.
+    [[unsafe]]
     static constexpr auto make_unchecked(pointer_t p [[clang::lifetimebound]]) noexcept -> NonNull {
         static_assert(mtp::triv_copy<NonNull>);
         return { .pointer = p };
@@ -94,11 +99,17 @@ struct NonNull {
     /// Returns `true` if the pointer is non-null.
     constexpr explicit operator bool() const noexcept { return pointer != nullptr; }
 
-    /// Dereferences the pointer, returning an immutable reference.
-    constexpr auto as_ref() const noexcept { return pointer.as_ref(); }
+    /// Borrows the pointee; it must be live, initialized and suitably aligned.
+    [[unsafe]]
+    constexpr auto as_ref() const noexcept {
+        [[unsafe]] { return pointer.as_ref(); }
+    }
 
-    /// Dereferences the pointer, returning a mutable reference.
-    constexpr auto as_mut() const noexcept { return pointer.as_mut_ref(); }
+    /// Mutably borrows a live, initialized and suitably aligned pointee with exclusive access.
+    [[unsafe]]
+    constexpr auto as_mut() const noexcept {
+        [[unsafe]] { return pointer.as_mut_ref(); }
+    }
 
     /// Returns the underlying raw pointer.
     constexpr auto as_raw_ptr() const noexcept { return pointer.as_raw_ptr(); }
@@ -108,42 +119,47 @@ struct NonNull {
     /// \tparam U The target pointee type.
     template<class U>
     constexpr auto cast() const noexcept {
-        return NonNull<U>::make_unchecked(pointer.template cast<U>());
+        [[unsafe]] { return NonNull<U>::make_unchecked(pointer.template cast<U>()); }
     }
 
     /// Calculates the pointer offset by `count` elements forward.
-    /// \param count Number of elements to advance.
+    /// \param count Offset within the same allocation or to its one-past-the-end position.
     /// \return The offset `NonNull` pointer.
+    [[unsafe]]
     constexpr NonNull add(usize count) const noexcept {
-        return NonNull::make_unchecked(pointer + count);
+        [[unsafe]] { return NonNull::make_unchecked(pointer + count); }
     }
 
     /// Calculates the pointer offset by `count` elements backward.
-    /// \param count Number of elements to subtract.
+    /// \param count Offset within the same allocation or to its one-past-the-end position.
     /// \return The offset `NonNull` pointer.
+    [[unsafe]]
     constexpr NonNull sub(usize count) const noexcept {
-        return NonNull::make_unchecked(pointer - count);
+        [[unsafe]] { return NonNull::make_unchecked(pointer - count); }
     }
 
     /// Calculates the pointer offset by a signed `count` of elements.
-    /// \param count Signed element offset (positive = forward, negative = backward).
+    /// \param count Signed offset within the same allocation or to its one-past-the-end position.
     /// \return The offset `NonNull` pointer.
+    [[unsafe]]
     constexpr NonNull offset(isize count) const noexcept {
-        return NonNull::make_unchecked(pointer + count);
+        [[unsafe]] { return NonNull::make_unchecked(pointer.offset(count)); }
     }
 
     /// Calculates the pointer offset by `bytes` bytes forward.
-    /// \param bytes Number of bytes to advance.
+    /// \param bytes Byte offset within the same allocation or to its one-past-the-end position.
     /// \return The offset `NonNull` pointer.
+    [[unsafe]]
     constexpr NonNull byte_add(usize bytes) const noexcept {
-        return NonNull::make_unchecked(pointer.byte_add(bytes));
+        [[unsafe]] { return NonNull::make_unchecked(pointer.byte_add(bytes)); }
     }
 
     /// Calculates the pointer offset by `bytes` bytes backward.
-    /// \param bytes Number of bytes to subtract.
+    /// \param bytes Byte offset within the same allocation or to its one-past-the-end position.
     /// \return The offset `NonNull` pointer.
+    [[unsafe]]
     constexpr NonNull byte_sub(usize bytes) const noexcept {
-        return NonNull::make_unchecked(pointer.byte_sub(bytes));
+        [[unsafe]] { return NonNull::make_unchecked(pointer.byte_sub(bytes)); }
     }
 
     friend constexpr bool operator<=>(NonNull a, NonNull b) noexcept {

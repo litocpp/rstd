@@ -40,11 +40,20 @@ struct TimerFacilityState {
 
 using TimerFacilityArc = sync::Arc<TimerFacilityState>;
 
+[[unsafe]]
+auto recover_timer_facility(voidp data) -> TimerFacilityArc {
+    [[unsafe]] {
+        return TimerFacilityArc::from_raw(
+            ::alloc::sync::ArcRaw<TimerFacilityState>::from_raw(data));
+    }
+}
+
 auto timer_facility_owner_clone(voidp data) -> RawPollEventOwner;
 
 void timer_facility_owner_dispatch(voidp data, PollEventData event) {
-    auto state =
-        TimerFacilityArc::from_raw(::alloc::sync::ArcRaw<TimerFacilityState>::from_raw(data));
+    auto state = [data] {
+        [[unsafe]] { return recover_timer_facility(data); }
+    }();
     auto token = Option<FacilityCompletionToken> {};
     {
         auto fields = state->fields.lock().unwrap_unchecked();
@@ -64,9 +73,7 @@ void timer_facility_owner_dispatch(voidp data, PollEventData event) {
 }
 
 void timer_facility_owner_drop(voidp data) {
-    auto state =
-        TimerFacilityArc::from_raw(::alloc::sync::ArcRaw<TimerFacilityState>::from_raw(data));
-    (void)state;
+    [[unsafe]] { (void)recover_timer_facility(data); }
 }
 
 const RawPollEventOwnerVTable TIMER_FACILITY_OWNER_VTABLE {
@@ -76,8 +83,9 @@ const RawPollEventOwnerVTable TIMER_FACILITY_OWNER_VTABLE {
 };
 
 auto timer_facility_owner_clone(voidp data) -> RawPollEventOwner {
-    auto state =
-        TimerFacilityArc::from_raw(::alloc::sync::ArcRaw<TimerFacilityState>::from_raw(data));
+    auto state = [data] {
+        [[unsafe]] { return recover_timer_facility(data); }
+    }();
     auto cloned = state.clone();
     (void)rstd::move(state).into_raw().into_raw();
     return RawPollEventOwner::from_raw_parts(rstd::move(cloned).into_raw().into_raw(),
@@ -86,8 +94,10 @@ auto timer_facility_owner_clone(voidp data) -> RawPollEventOwner {
 
 auto make_timer_facility_owner(const TimerFacilityArc& state) -> PollEventOwner {
     auto owned = state.clone();
-    return PollEventOwner::from_raw(RawPollEventOwner::from_raw_parts(
-        rstd::move(owned).into_raw().into_raw(), rstd::addressof(TIMER_FACILITY_OWNER_VTABLE)));
+    [[unsafe]] {
+        return PollEventOwner::from_raw(RawPollEventOwner::from_raw_parts(
+            rstd::move(owned).into_raw().into_raw(), rstd::addressof(TIMER_FACILITY_OWNER_VTABLE)));
+    }
 }
 
 void cancel_timer_facility(const TimerFacilityArc& state) {
@@ -113,15 +123,11 @@ void cancel_timer_facility(const TimerFacilityArc& state) {
 }
 
 void timer_facility_cancel(voidp data) {
-    auto state =
-        TimerFacilityArc::from_raw(::alloc::sync::ArcRaw<TimerFacilityState>::from_raw(data));
-    cancel_timer_facility(state);
+    [[unsafe]] { cancel_timer_facility(recover_timer_facility(data)); }
 }
 
 void timer_facility_cancel_drop(voidp data) {
-    auto state =
-        TimerFacilityArc::from_raw(::alloc::sync::ArcRaw<TimerFacilityState>::from_raw(data));
-    (void)state;
+    [[unsafe]] { (void)recover_timer_facility(data); }
 }
 
 const RawFacilityCancellationVTable TIMER_FACILITY_CANCELLATION_VTABLE {
@@ -132,10 +138,13 @@ const RawFacilityCancellationVTable TIMER_FACILITY_CANCELLATION_VTABLE {
 auto make_timer_facility_cancellation(const TimerFacilityArc& state, FacilityToken token)
     -> FacilityCancellation {
     auto owned = state.clone();
-    return FacilityCancellation::from_raw(token,
-                                          RawFacilityCancellation::from_raw_parts(
-                                              rstd::move(owned).into_raw().into_raw(),
-                                              rstd::addressof(TIMER_FACILITY_CANCELLATION_VTABLE)));
+    [[unsafe]] {
+        return FacilityCancellation::from_raw(
+            token,
+            RawFacilityCancellation::from_raw_parts(
+                rstd::move(owned).into_raw().into_raw(),
+                rstd::addressof(TIMER_FACILITY_CANCELLATION_VTABLE)));
+    }
 }
 
 class TimerFacilityRegistration {
@@ -169,7 +178,9 @@ public:
         if (runtime == nullptr) {
             return Err(rstd::move(token));
         }
-        auto current = runtime->current_poll_worker();
+        auto current = [runtime] {
+            [[unsafe]] { return runtime->current_poll_worker(); }
+        }();
         if (current.is_err()) {
             return Err(rstd::move(token));
         }

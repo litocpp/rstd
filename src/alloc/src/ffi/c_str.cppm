@@ -66,12 +66,18 @@ export class CString {
 public:
     USE_TRAIT(CString)
 
-    explicit CString(Box<char[]>&& value) noexcept: inner(rstd::move(value)) {}
+    /// The boxed bytes must be nul-terminated with no interior nul.
+    [[unsafe]]
+    explicit CString(Box<char[]>&& value) noexcept
+        : inner(rstd::move(value)) {}
     CString(CString&&) noexcept            = default;
     CString& operator=(CString&&) noexcept = default;
 
+    /// The input must contain no nul bytes; appends the terminator.
+    [[unsafe]]
     static auto from_vec_unchecked(Vec<u8>&& bytes) -> CString {
-        return CString(copy_with_trailing_nul(bytes.as_slice()));
+        auto chars = copy_with_trailing_nul(bytes.as_slice());
+        [[unsafe]] { return CString(rstd::move(chars)); }
     }
 
     static auto make(Vec<u8>&& bytes) -> Result<CString, NulError> {
@@ -80,7 +86,7 @@ public:
                 return Err(NulError(usize(index), rstd::move(bytes)));
             }
         }
-        return Ok(from_vec_unchecked(rstd::move(bytes)));
+        [[unsafe]] { return Ok(from_vec_unchecked(rstd::move(bytes))); }
     }
 
     template<Impled<Into<Vec<u8>>> T>
@@ -106,21 +112,28 @@ public:
             u8 value = bytes[usize(index)];
             chars.push(std::bit_cast<char>(value.to_primitive()));
         }
-        return Ok(CString(chars.into_boxed_slice()));
+        [[unsafe]] { return Ok(CString(chars.into_boxed_slice())); }
     }
 
+    /// The pointer must be non-null and readable through the first nul byte.
+    [[unsafe]]
     static auto from_raw_parts(char const* value) -> CString {
-        auto const length = rstd::strlen(value);
-        auto       chars  = Vec<char>::with_capacity(usize(length + 1));
-        for (rstd::size_t index = 0; index <= length; ++index) {
-            chars.emplace_back(value[index]);
+        [[unsafe]] {
+            auto const length = rstd::strlen(value);
+            auto       chars  = Vec<char>::with_capacity(usize(length + 1));
+            for (rstd::size_t index = 0; index <= length; ++index) {
+                chars.emplace_back(value[index]);
+            }
+            return CString(chars.into_boxed_slice());
         }
-        return CString(chars.into_boxed_slice());
     }
 
     auto as_ref() const noexcept [[clang::lifetimebound]] -> ref<CStr> {
-        return CStr::from_ptr_with_nul_unchecked(inner.as_ptr().as_raw_ptr(),
-                                                 inner.as_ptr().len() - usize(1));
+        auto pointer = inner.as_ptr();
+        [[unsafe]] {
+            return CStr::from_ptr_with_nul_unchecked(pointer.as_raw_ptr(),
+                                                     pointer.len() - usize(1));
+        }
     }
 
     auto as_ptr() const noexcept [[clang::lifetimebound]] -> char const* {
@@ -129,14 +142,18 @@ public:
 
     auto to_bytes() const noexcept [[clang::lifetimebound]] -> slice<u8> {
         auto pointer = inner.as_ptr();
-        return slice<u8>::from_raw_parts(reinterpret_cast<byte const*>(pointer.as_raw_ptr()),
-                                         pointer.len() - usize(1));
+        [[unsafe]] {
+            return slice<u8>::from_raw_parts(reinterpret_cast<byte const*>(pointer.as_raw_ptr()),
+                                             pointer.len() - usize(1));
+        }
     }
 
     auto to_bytes_with_nul() const noexcept [[clang::lifetimebound]] -> slice<u8> {
         auto pointer = inner.as_ptr();
-        return slice<u8>::from_raw_parts(reinterpret_cast<byte const*>(pointer.as_raw_ptr()),
-                                         pointer.len());
+        [[unsafe]] {
+            return slice<u8>::from_raw_parts(reinterpret_cast<byte const*>(pointer.as_raw_ptr()),
+                                             pointer.len());
+        }
     }
 
     auto into_bytes() && -> Vec<u8> {
@@ -144,7 +161,7 @@ public:
         auto        result  = Vec<u8>::with_capacity(pointer.len() - usize(1));
         auto const* chars   = pointer.as_raw_ptr();
         for (rstd::size_t index = 0; index + 1 < pointer.len().to_primitive(); ++index) {
-            result.push(u8(std::bit_cast<rstd::uint8_t>(chars[index])));
+            [[unsafe]] { result.push(u8(std::bit_cast<rstd::uint8_t>(chars[index]))); }
         }
         return result;
     }
@@ -153,9 +170,11 @@ public:
 
     auto clone() const -> CString {
         auto pointer = inner.as_ptr();
-        auto chars =
-            Vec<char>::from(slice<char>::from_raw_parts(pointer.as_raw_ptr(), pointer.len()));
-        return CString(chars.into_boxed_slice());
+        [[unsafe]] {
+            auto chars =
+                Vec<char>::from(slice<char>::from_raw_parts(pointer.as_raw_ptr(), pointer.len()));
+            return CString(chars.into_boxed_slice());
+        }
     }
 };
 
@@ -181,7 +200,8 @@ auto CString::into_string() && -> Result<String, IntoStringError> {
         return Err(
             IntoStringError(rstd::move(*this), rstd::move(validation).unwrap_err_unchecked()));
     }
-    return Ok(String::from_utf8_unchecked(rstd::move(*this).into_bytes()));
+    auto bytes = rstd::move(*this).into_bytes();
+    [[unsafe]] { return Ok(String::from_utf8_unchecked(rstd::move(bytes))); }
 }
 
 } // namespace alloc::ffi

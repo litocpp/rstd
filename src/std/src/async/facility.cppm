@@ -67,6 +67,8 @@ public:
 
     ~FacilityEndpoint() { reset(); }
 
+    /// Adopts a handle whose callbacks and data remain valid until drop consumes it.
+    [[unsafe]]
     static auto from_raw(rstd::uintptr_t id, RawFacilityEndpoint raw) -> FacilityEndpoint {
         auto endpoint  = FacilityEndpoint {};
         endpoint.m_id  = id;
@@ -81,7 +83,7 @@ public:
     void reset() {
         auto raw = rstd::exchange(m_raw, {});
         if (raw.vtable != nullptr) {
-            raw.vtable->drop(raw.data);
+            [[unsafe]] { raw.vtable->drop(raw.data); }
         }
     }
 };

@@ -23,8 +23,10 @@ public:
     auto capacity() const noexcept -> usize { return storage_.as_ptr().len(); }
     auto buffer() const noexcept -> slice<u8> {
         if (pos_ == filled_) return {};
-        auto pointer = reinterpret_cast<const byte*>(storage_.as_ptr().as_raw_ptr());
-        return slice<u8>::from_raw_parts(pointer + pos_.to_primitive(), filled_ - pos_);
+        [[unsafe]] {
+            auto pointer = reinterpret_cast<const byte*>(storage_.as_ptr().as_raw_ptr());
+            return slice<u8>::from_raw_parts(pointer + pos_.to_primitive(), filled_ - pos_);
+        }
     }
     void consume(usize amount) noexcept { pos_ += rstd::min(amount, filled_ - pos_); }
     void discard() noexcept { pos_ = filled_ = usize(); }
@@ -32,7 +34,7 @@ public:
     auto fill(R& reader) -> Result<empty> {
         if (pos_ != filled_) return Ok(empty {});
         auto target = BorrowedBuf::from_uninit(storage_.deref_mut());
-        target.set_init_unchecked(initialized_);
+        [[unsafe]] { target.set_init_unchecked(initialized_); }
         auto result  = as<Read>(reader).read_buf(target.unfilled());
         pos_         = usize();
         filled_      = target.len();
@@ -117,8 +119,11 @@ class BufWriter {
         } prefix { buf_, offset };
         auto bytes = buf_.as_slice();
         while (remaining != 0) {
-            auto pending = slice<u8>::from_raw_parts(bytes.as_raw_ptr() + offset, usize(remaining));
-            auto res     = as<Write>(inner_).write(pending);
+            slice<u8> pending;
+            [[unsafe]] {
+                pending = slice<u8>::from_raw_parts(bytes.as_raw_ptr() + offset, usize(remaining));
+            }
+            auto res = as<Write>(inner_).write(pending);
             if (res.is_err()) return Err(res.unwrap_err_unchecked());
             auto const written = res.unwrap_unchecked().to_primitive();
             if (written == 0) return Err(Error::from_static_message(error::Error_WRITE_ALL_EOF));
@@ -198,10 +203,12 @@ struct Impl<io::Read, io::BufReader<R, A>> : DefaultInImpl<io::Read, io::BufRead
         if (buf.capacity() == usize()) return Ok(empty {});
         if (self.buf_.buffer().is_empty() && buf.capacity() >= self.buf_.capacity())
             return as<io::Read>(self.inner_).read_buf(rstd::move(buf));
-        auto result    = self.buf_.fill(self.inner_);
-        auto available = self.buf_.buffer();
-        auto count     = rstd::min(available.len(), buf.capacity());
-        buf.append(slice<u8>::from_raw_parts(available.as_raw_ptr(), count));
+        auto      result    = self.buf_.fill(self.inner_);
+        auto      available = self.buf_.buffer();
+        auto      count     = rstd::min(available.len(), buf.capacity());
+        slice<u8> prefix;
+        [[unsafe]] { prefix = slice<u8>::from_raw_parts(available.as_raw_ptr(), count); }
+        buf.append(prefix);
         self.buf_.consume(count);
         return result;
     }

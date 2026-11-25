@@ -178,28 +178,32 @@ auto UdpSocket::try_recv(usize maximum_size) const -> io::Result<Datagram> {
 
 auto UdpSocket::try_recv_into(bytes::BytesMut& buffer) const -> io::Result<DatagramInfo> {
     buffer.clear();
-    auto                    writable = buffer.spare_capacity_mut();
-    auto                    length   = rstd::min(writable.len(), usize(65535));
-    socket::DatagramMessage message(writable.as_byte_ptr(), length, local_);
-    auto                    received = message.try_receive(source_.as_raw_fd());
-    if (received.is_err()) return Err(rstd::move(received).unwrap_err());
-    auto info = message.result(*received);
-    if (info.is_err()) return Err(rstd::move(info).unwrap_err());
-    buffer.advance_mut_unchecked(*received);
-    return info;
+    auto writable = buffer.spare_capacity_mut();
+    auto length   = rstd::min(writable.len(), usize(65535));
+    [[unsafe]] {
+        socket::DatagramMessage message(writable.as_byte_ptr(), length, local_);
+        auto                    received = message.try_receive(source_.as_raw_fd());
+        if (received.is_err()) return Err(rstd::move(received).unwrap_err());
+        auto info = message.result(*received);
+        if (info.is_err()) return Err(rstd::move(info).unwrap_err());
+        buffer.advance_mut_unchecked(*received);
+        return info;
+    }
 }
 
 auto UdpSocket::try_send(bytes::Bytes const& data, DatagramTarget target) const
     -> io::Result<usize> {
     if (data.len() > usize(65535))
         return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
-    socket::DatagramMessage message(const_cast<byte*>(data.data()), data.len(), local_);
-    auto                    prepared = message.prepare_send(rstd::move(target));
-    if (prepared.is_err()) return Err(rstd::move(prepared).unwrap_err());
-    auto sent = message.try_send(source_.as_raw_fd());
-    if (sent.is_ok() && *sent != data.len())
-        return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidData }));
-    return sent;
+    [[unsafe]] {
+        socket::DatagramMessage message(const_cast<byte*>(data.data()), data.len(), local_);
+        auto                    prepared = message.prepare_send(rstd::move(target));
+        if (prepared.is_err()) return Err(rstd::move(prepared).unwrap_err());
+        auto sent = message.try_send(source_.as_raw_fd());
+        if (sent.is_ok() && *sent != data.len())
+            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidData }));
+        return sent;
+    }
 }
 auto UdpSocket::join_multicast(SocketAddr group, u32 index) const -> io::Result<empty> {
     if (group.is_ipv4() != local_.is_ipv4())

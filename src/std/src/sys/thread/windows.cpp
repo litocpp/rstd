@@ -23,7 +23,7 @@ auto Thread::make(usize stack, Box<ThreadInit>&& init) -> rstd::io::Result<Threa
 
     if (handle != nullptr) return Ok(Thread { .handle = handle });
 
-    Box<ThreadInit>::from_raw(raw);
+    [[unsafe]] { Box<ThreadInit>::from_raw(raw); }
     return Err(rstd::io::error::Error::from_raw_os_error((i32)GetLastError()));
 }
 

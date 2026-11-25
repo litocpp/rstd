@@ -96,8 +96,10 @@ struct CompletionTcp {
         {
             auto fields = state->fields.lock().unwrap();
             if (fields->started) return Ok(empty {});
-            if (! ::CURRENT_RUNTIME || ! ::CURRENT_RUNTIME->io_enabled())
-                return Err(tcp_completion_error(io::ErrorKind::Unsupported));
+            [[unsafe]] {
+                if (! ::CURRENT_RUNTIME || ! ::CURRENT_RUNTIME->io_enabled())
+                    return Err(tcp_completion_error(io::ErrorKind::Unsupported));
+            }
             fields->started = true;
         }
         (void)async::spawn(close_completion_tcp(CompletionTcpCloseTask { state.clone() }));

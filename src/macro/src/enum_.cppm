@@ -447,21 +447,22 @@ auto enum_emit_class(const EnumDeclaration&         declaration,
         ">;[[nodiscard]]constexpr auto index()const noexcept->::rstd::size_t{return "
         "rstd_enum_choice_.index();}"
         "[[nodiscard]]constexpr auto tag()const noexcept->Tag{return rstd_enum_choice_.which();}";
-    const EnumVariant* default_variant = nullptr;
+    std::optional<std::reference_wrapper<const EnumVariant>> default_variant;
     for (const auto& variant : declaration.variants)
         for (const auto& attribute : variant.attributes)
             if (attribute.name == "default") {
                 if (default_variant) return enum_fail(attribute.span, "multiple default variants");
-                default_variant = &variant;
+                default_variant = std::cref(variant);
             }
-    if (default_variant)
+    if (default_variant) {
+        const auto& name = default_variant->get().name;
         result += "template<class rstd_enum_default_choice=rstd_enum_choice_type>requires "
                   "requires{rstd_enum_default_choice::template with<Tag::" +
-                  default_variant->name + ">();}constexpr " + declaration.name +
-                  "()noexcept(noexcept(rstd_enum_default_choice::template with<Tag::" +
-                  default_variant->name +
-                  ">())):rstd_enum_choice_(rstd_enum_default_choice::template with<Tag::" +
-                  default_variant->name + ">()){}";
+                  name + ">();}constexpr " + declaration.name +
+                  "()noexcept(noexcept(rstd_enum_default_choice::template with<Tag::" + name +
+                  ">())):rstd_enum_choice_(rstd_enum_default_choice::template with<Tag::" + name +
+                  ">()){}";
+    }
     if (declaration.members.valid()) result += output.insert(declaration.members);
     return result + "};";
 }
@@ -689,12 +690,13 @@ auto enum_check(pmacro::DeriveInput input, pmacro::Context& context) -> Output {
     if (! snapshot)
         return failure(
             context, input.item_span, Error { {}, "rstd::Enum: declaration is unavailable" });
-    const auto* record = std::get_if<pmacro::RecordInfo>(&(*snapshot)->data);
-    if (! record || record->has_bases)
+    const auto& data = (*snapshot)->data;
+    if (! std::holds_alternative<pmacro::RecordInfo>(data) ||
+        std::get<pmacro::RecordInfo>(data).has_bases)
         return failure(context,
                        input.item_span,
                        Error { (*snapshot)->source, "rstd::Enum: inheritance is not supported" });
-    for (const auto& field : record->fields)
+    for (const auto& field : std::get<pmacro::RecordInfo>(data).fields)
         if (! field.name || *field.name != "rstd_enum_choice_")
             return failure(
                 context,

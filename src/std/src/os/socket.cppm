@@ -45,6 +45,8 @@ public:
         return socket;
     }
 
+    /// The open socket must be transferred exclusively to the result.
+    [[unsafe]]
     static auto from_raw_socket(RawSocket socket) noexcept -> OwnedSocket {
         if (socket == INVALID_RAW_SOCKET) panic { "invalid raw socket" };
         return OwnedSocket { socket };
@@ -71,6 +73,8 @@ public:
     auto as_raw_socket() const noexcept -> RawSocket { return socket_; }
     auto as_socket() const noexcept [[clang::lifetimebound]] -> BorrowedSocket { return *this; }
 
+    /// The socket must remain open for the complete lifetime of the returned view.
+    [[unsafe]]
     static auto borrow_raw(RawSocket socket) noexcept -> BorrowedSocket {
         if (socket == INVALID_RAW_SOCKET) panic { "invalid raw socket" };
         return BorrowedSocket { socket };
@@ -78,7 +82,7 @@ public:
 };
 
 inline auto OwnedSocket::as_socket() const noexcept [[clang::lifetimebound]] -> BorrowedSocket {
-    return BorrowedSocket::borrow_raw(socket_);
+    [[unsafe]] { return BorrowedSocket::borrow_raw(socket_); }
 }
 
 } // namespace rstd::os::socket

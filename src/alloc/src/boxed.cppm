@@ -31,7 +31,9 @@ class Box {
         void*    pointer;
         Layout   layout;
         ~StorageGuard() {
-            if (pointer) as<Allocator>(allocator).deallocate(pointer, layout);
+            if (pointer) {
+                [[unsafe]] { as<Allocator>(allocator).deallocate(pointer, layout); }
+            }
         }
     };
 
@@ -58,9 +60,11 @@ class Box {
 
         auto mptr   = checked_ptr().as_mut_ptr();
         auto layout = Layout::for_value(mptr.as_ptr());
-        rstd::ptr_::drop_in_place(mptr);
-        if (layout.size() != usize())
-            as<Allocator>(allocator_).deallocate(mptr.as_raw_ptr(), layout);
+        [[unsafe]] {
+            rstd::ptr_::drop_in_place(mptr);
+            if (layout.size() != usize())
+                as<Allocator>(allocator_).deallocate(mptr.as_raw_ptr(), layout);
+        }
         m_ptr = Option<NonNull<T>> {};
     }
 
@@ -128,8 +132,10 @@ public:
             if (allocated.is_err()) return Err(Error::AllocError);
             pointer = allocated.unwrap_unchecked().template as_mut_ptr<byte>().as_raw_ptr();
         }
-        return Ok(Output::from_raw_in(mut_ptr<Slot[]>::from_bytes(pointer, length),
-                                      rstd::move(allocator)));
+        [[unsafe]] {
+            return Ok(Output::from_raw_in(mut_ptr<Slot[]>::from_bytes(pointer, length),
+                                          rstd::move(allocator)));
+        }
     }
 
     static auto make_uninit_in(usize length, A allocator)
@@ -162,10 +168,12 @@ public:
         if (res.is_err()) return Err(rstd::alloc::AllocError {});
         auto         p = res.unwrap_unchecked().template as_mut_ptr<T>();
         StorageGuard guard { allocator, p.as_raw_ptr(), Layout::make<T>() };
-        rstd::ptr_::construct(p, rstd::forward<Args>(args)...);
-        auto result   = from_raw_in(p, rstd::move(allocator));
-        guard.pointer = nullptr;
-        return Ok(rstd::move(result));
+        [[unsafe]] {
+            rstd::ptr_::construct(p, rstd::forward<Args>(args)...);
+            auto result   = from_raw_in(p, rstd::move(allocator));
+            guard.pointer = nullptr;
+            return Ok(rstd::move(result));
+        }
     }
 
     template<typename... Args>
@@ -193,10 +201,12 @@ public:
 
         auto         p = res.unwrap_unchecked().template as_mut_ptr<Concrete>();
         StorageGuard guard { allocator, p.as_raw_ptr(), layout };
-        new (p.as_raw_ptr()) Concrete(rstd::forward<U>(in));
-        auto result   = from_raw_in(T::from_ptr(p), rstd::move(allocator));
-        guard.pointer = nullptr;
-        return Ok(rstd::move(result));
+        [[unsafe]] {
+            new (p.as_raw_ptr()) Concrete(rstd::forward<U>(in));
+            auto result   = from_raw_in(T::from_ptr(p), rstd::move(allocator));
+            guard.pointer = nullptr;
+            return Ok(rstd::move(result));
+        }
     }
 
     template<typename U>
@@ -244,16 +254,19 @@ public:
     }
 
     /// Constructs a `Box` from a raw mutable pointer.
-    /// \param raw A non-null pointer that was previously obtained from `into_raw`.
+    /// \param raw A non-null pointer from `into_raw` whose ownership has not been reclaimed.
     /// \return A `Box` that takes ownership of the pointed-to value.
+    [[unsafe]]
     constexpr static Box from_raw(mut_ptr<T> raw) noexcept
         requires mtp::same_as<A, ::alloc::Global>
     {
-        return from_raw_in(raw, A {});
+        [[unsafe]] { return from_raw_in(raw, A {}); }
     }
-    /// The pointer must belong to this allocator, with a layout fitting T and its metadata.
+    /// The pointer must uniquely own a live value with valid metadata and the matching allocator.
+    /// For an empty slice, the pointer may be aligned, non-null, dangling storage.
+    [[unsafe]]
     constexpr static auto from_raw_in(mut_ptr<T> raw, A allocator) -> Box {
-        return Box { NonNull<T>::make_unchecked(raw), rstd::move(allocator) };
+        [[unsafe]] { return Box { NonNull<T>::make_unchecked(raw), rstd::move(allocator) }; }
     }
     /// Transfers the allocation and its allocator. The pair does not destroy the payload.
     auto into_raw_with_allocator() && -> rstd::tuple<mut_ptr<T>, A> {
@@ -328,7 +341,7 @@ public:
         requires Impled<T, Sized> && (! Impled<D, Sized>) && mtp::dyn_traits<D>::template
     Impled<T> {
         auto pointer = take_ptr().as_mut_ptr();
-        return Box<D, A>::from_raw_in(D::from_ptr(pointer), rstd::move(allocator_));
+        [[unsafe]] { return Box<D, A>::from_raw_in(D::from_ptr(pointer), rstd::move(allocator_)); }
     }
 
     /// Downcasts a boxed `Any` value to its concrete type.
@@ -340,8 +353,10 @@ public:
 
         auto raw      = take_ptr().as_mut_ptr();
         using Storage = typename mut_ptr<U>::storage_type;
-        auto concrete = mut_ptr<U>::from_raw_parts(static_cast<Storage*>(raw.as_raw_ptr()));
-        return Ok(Box<U, A>::from_raw_in(concrete, rstd::move(allocator_)));
+        [[unsafe]] {
+            auto concrete = mut_ptr<U>::from_raw_parts(static_cast<Storage*>(raw.as_raw_ptr()));
+            return Ok(Box<U, A>::from_raw_in(concrete, rstd::move(allocator_)));
+        }
     }
 
     /// Downcasts a boxed `Error` value to its concrete error type.
@@ -353,8 +368,10 @@ public:
 
         auto raw      = take_ptr().as_mut_ptr();
         using Storage = typename mut_ptr<U>::storage_type;
-        auto concrete = mut_ptr<U>::from_raw_parts(static_cast<Storage*>(raw.as_raw_ptr()));
-        return Ok(Box<U, A>::from_raw_in(concrete, rstd::move(allocator_)));
+        [[unsafe]] {
+            auto concrete = mut_ptr<U>::from_raw_parts(static_cast<Storage*>(raw.as_raw_ptr()));
+            return Ok(Box<U, A>::from_raw_in(concrete, rstd::move(allocator_)));
+        }
     }
 
     template<typename B>
@@ -367,8 +384,10 @@ public:
         auto layout = Layout::array<V>(length).unwrap();
         if (length == usize()) {
             auto raw = NonNull<V>::dangling().as_mut_ptr();
-            return Ok(Box<T, B>::from_raw_in(mut_ptr<T>::from_raw_parts(raw.as_raw_ptr(), length),
-                                             rstd::move(allocator)));
+            [[unsafe]] {
+                return Ok(Box<T, B>::from_raw_in(
+                    mut_ptr<T>::from_raw_parts(raw.as_raw_ptr(), length), rstd::move(allocator)));
+            }
         }
         auto res = as<Allocator>(allocator).allocate(layout);
         if (res.is_err()) return Err(rstd::alloc::AllocError {});
@@ -392,10 +411,12 @@ public:
                 as<Clone>(value).clone());
             ++guard.initialized;
         }
-        auto result  = Box<T, B>::from_raw_in(mut_ptr<T>::from_raw_parts(raw.as_raw_ptr(), length),
-                                              rstd::move(allocator));
-        guard.active = false;
-        return Ok(rstd::move(result));
+        [[unsafe]] {
+            auto result = Box<T, B>::from_raw_in(
+                mut_ptr<T>::from_raw_parts(raw.as_raw_ptr(), length), rstd::move(allocator));
+            guard.active = false;
+            return Ok(rstd::move(result));
+        }
     }
     template<typename B>
     auto clone_in(B allocator) const -> Box<T, B>

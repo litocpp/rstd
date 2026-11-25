@@ -27,7 +27,7 @@ public:
     auto get(const K& key) const [[clang::lifetimebound]] -> Option<rstd::ref<V>> {
         auto index = indices_.get(key);
         if (index.is_none()) return None();
-        return Some(rstd::ref<V>::from_raw_parts(rstd::addressof(values_[**index])));
+        return Some(rstd::ref<V>::from_ref(values_[**index]));
     }
 
     auto into_values() && -> Vec<rstd::tuple<K, V>> {

@@ -59,8 +59,10 @@ auto stream_detach_owned_fd(
     -> rstd::async::coro<rstd::io::Result<rstd::os::fd::OwnedFd>> {
     auto detached = co_await rstd::move(pending);
     if (detached.is_err()) co_return rstd::Err(rstd::move(detached).unwrap_err());
-    co_return rstd::Ok(
-        rstd::os::fd::OwnedFd::from_raw_fd(rstd::move(detached).unwrap().into_raw_socket()));
+    [[unsafe]] {
+        co_return rstd::Ok(
+            rstd::os::fd::OwnedFd::from_raw_fd(rstd::move(detached).unwrap().into_raw_socket()));
+    }
 }
 #endif
 
@@ -151,8 +153,10 @@ auto SocketStream::send_all(bytes::Bytes data) const -> async::coro<io::Result<u
 
 #if RSTD_OS_UNIX
 auto SocketStream::from_owned_fd(os::fd::OwnedFd fd) -> io::Result<SocketStream> {
-    return from_owned_socket(
-        os::socket::OwnedSocket::from_raw_socket(rstd::move(fd).into_raw_fd()));
+    [[unsafe]] {
+        return from_owned_socket(
+            os::socket::OwnedSocket::from_raw_socket(rstd::move(fd).into_raw_fd()));
+    }
 }
 
 auto SocketStream::into_owned_fd() && -> async::coro<io::Result<os::fd::OwnedFd>> {

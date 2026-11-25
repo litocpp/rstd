@@ -646,12 +646,15 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString>      argv,
                     Option<IndexedValue> attached = None();
                     if ((spec.action.is_Set() || spec.action.is_Append()) &&
                         offset + usize(1) < token.len()) {
-                        auto remaining = slice<u8>::from_raw_parts(
-                            bytes.as_raw_ptr() + (offset + usize(1)).to_primitive(),
-                            token.len() - offset - usize(1));
-                        attached = Some(IndexedValue {
-                            clone_os(ref<OsStr>::from_encoded_bytes_unchecked(remaining)),
-                            absolute(index) });
+                        [[unsafe]] {
+                            // A recognized ASCII short option leaves the encoded value at a valid boundary.
+                            auto remaining = slice<u8>::from_raw_parts(
+                                bytes.as_raw_ptr() + (offset + usize(1)).to_primitive(),
+                                token.len() - offset - usize(1));
+                            attached = Some(IndexedValue {
+                                clone_os(ref<OsStr>::from_encoded_bytes_unchecked(remaining)),
+                                absolute(index) });
+                        }
                     }
                     auto result = consume_option(**slot, rstd::move(attached));
                     if (result.is_err()) return Err(rstd::move(result).unwrap_err());
@@ -764,12 +767,12 @@ auto rstd::argparse::Parser::run_impl(Vec<OsString>      argv,
     auto relation_value = [&](usize slot) -> ref<MatchedArg> {
         const auto& spec = schema_->args[slot];
         if (! spec.global) {
-            return ref<MatchedArg>::from_raw_parts(rstd::addressof(matched[slot]));
+            return ref<MatchedArg>::from_ref(matched[slot]);
         }
         for (const auto& global : global_matches->args) {
             if (global.schema->command_token == spec.owner_command &&
                 global.slot == spec.owner_slot) {
-                return ref<MatchedArg>::from_raw_parts(rstd::addressof(global.matched));
+                return ref<MatchedArg>::from_ref(global.matched);
             }
         }
         rstd::unreachable();

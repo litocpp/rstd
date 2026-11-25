@@ -120,7 +120,8 @@ public:
 /// \endcode
 export auto        subscribe(slice<SignalKind> kinds) -> io::Result<Subscription>;
 export inline auto subscribe(SignalKind kind) -> io::Result<Subscription> {
-    return subscribe(slice<SignalKind>::from_raw_parts(&kind, usize(1)));
+    const SignalKind kinds[] { kind };
+    return subscribe(slice<SignalKind>::from_array(kinds));
 }
 
 } // namespace rstd::signal

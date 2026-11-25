@@ -581,10 +581,15 @@ auto ProcessSupervisor::make() -> rstd::io::Result<ProcessSupervisor> {
     if (CURRENT_RUNTIME == nullptr || ! has_current_runtime_worker())
         return Err(
             rstd::io::Error::from_kind(rstd::io::ErrorKind { rstd::io::ErrorKind::NotConnected }));
-    if (! CURRENT_RUNTIME->io_enabled())
-        return Err(
-            rstd::io::Error::from_kind(rstd::io::ErrorKind { rstd::io::ErrorKind::Unsupported }));
-    auto worker = CURRENT_RUNTIME->current_poll_worker();
+    const auto worker_lookup = [] -> rstd::io::Result<WorkerHandle> {
+        [[unsafe]] {
+            if (! CURRENT_RUNTIME->io_enabled())
+                return Err(rstd::io::Error::from_kind(
+                    rstd::io::ErrorKind { rstd::io::ErrorKind::Unsupported }));
+            return CURRENT_RUNTIME->current_poll_worker();
+        }
+    };
+    auto worker = worker_lookup();
     if (worker.is_err()) return Err(rstd::move(worker).unwrap_err());
 #if RSTD_OS_UNIX
     if (! worker->poll_capabilities().contains(PollCapability::Readiness))

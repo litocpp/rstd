@@ -8,11 +8,11 @@ static_assert(rstd::mtp::same_as<decltype(rstd::mtp::declval<rstd::vec::Vec<rstd
 static_assert(
     rstd::mtp::same_as<decltype(rstd::mtp::declval<rstd::vec::Vec<rstd::u8> const&>().data()),
                        rstd::byte const*>);
-static_assert(rstd::mtp::same_as<decltype(rstd::mtp::declval<rstd::vec::Vec<rstd::u8>&>().begin()),
-                                 rstd::mut_ptr<rstd::u8>>);
+static_assert(rstd::mtp::same_as<decltype(*rstd::mtp::declval<rstd::vec::Vec<rstd::u8>&>().begin()),
+                                 rstd::mut_ref<rstd::u8>>);
 static_assert(
-    rstd::mtp::same_as<decltype(rstd::mtp::declval<rstd::vec::Vec<rstd::u8> const&>().begin()),
-                       rstd::ptr<rstd::u8>>);
+    rstd::mtp::same_as<decltype(*rstd::mtp::declval<rstd::vec::Vec<rstd::u8> const&>().begin()),
+                       rstd::u8>);
 static_assert(! rstd::mtp::convertible_to<rstd::vec::SpareSlot<rstd::u8>, rstd::u8>);
 
 using namespace rstd::prelude;

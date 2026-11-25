@@ -91,13 +91,13 @@ class array {
     template<rstd::size_t I>
     constexpr decltype(auto) element_unchecked() noexcept {
         static_assert(I < N, "array index out of bounds");
-        return as_mut_ptr().add(usize(I)).get();
+        [[unsafe]] { return as_mut_ptr().add(usize(I)).get(); }
     }
 
     template<rstd::size_t I>
     constexpr decltype(auto) element_unchecked() const noexcept {
         static_assert(I < N, "array index out of bounds");
-        return as_ptr().add(usize(I)).get();
+        [[unsafe]] { return as_ptr().add(usize(I)).get(); }
     }
 
     template<rstd::size_t... Is>
@@ -107,12 +107,12 @@ class array {
 
     template<rstd::size_t... Is>
     constexpr auto each_ref_impl(mtp::index_sequence<Is...>) const -> array<ref<T>, N> {
-        return array<ref<T>, N> { as_ptr().add(usize(Is)).as_ref()... };
+        [[unsafe]] { return array<ref<T>, N> { as_ptr().add(usize(Is)).as_ref()... }; }
     }
 
     template<rstd::size_t... Is>
     constexpr auto each_mut_impl(mtp::index_sequence<Is...>) -> array<mut_ref<T>, N> {
-        return array<mut_ref<T>, N> { as_mut_ptr().add(usize(Is)).as_mut_ref()... };
+        [[unsafe]] { return array<mut_ref<T>, N> { as_mut_ptr().add(usize(Is)).as_mut_ref()... }; }
     }
 
     template<typename F, rstd::size_t... Is>
@@ -191,16 +191,10 @@ public:
         }
     }
 
-    constexpr auto begin() noexcept [[clang::lifetimebound]] -> mut_ptr<T> { return as_mut_ptr(); }
-    constexpr auto begin() const noexcept [[clang::lifetimebound]] -> ptr<T> { return as_ptr(); }
-
-    constexpr auto end() noexcept [[clang::lifetimebound]] -> mut_ptr<T> {
-        return as_mut_ptr().add(usize(N));
-    }
-
-    constexpr auto end() const noexcept [[clang::lifetimebound]] -> ptr<T> {
-        return as_ptr().add(usize(N));
-    }
+    constexpr auto begin() noexcept [[clang::lifetimebound]] { return as_mut_slice().begin(); }
+    constexpr auto end() noexcept [[clang::lifetimebound]] { return as_mut_slice().end(); }
+    constexpr auto begin() const noexcept [[clang::lifetimebound]] { return as_slice().begin(); }
+    constexpr auto end() const noexcept [[clang::lifetimebound]] { return as_slice().end(); }
 
     constexpr auto as_ptr() const noexcept [[clang::lifetimebound]] -> ptr<T> {
         if constexpr (UNINIT)
@@ -216,17 +210,21 @@ public:
     }
 
     constexpr auto as_slice() const noexcept [[clang::lifetimebound]] -> slice<T> {
-        if constexpr (UNINIT)
-            return slice<T>::from_bytes(byte_data(), usize(N));
-        else
-            return slice<T>::from_raw_parts(data(), usize(N));
+        [[unsafe]] {
+            if constexpr (UNINIT)
+                return slice<T>::from_bytes(byte_data(), usize(N));
+            else
+                return slice<T>::from_raw_parts(data(), usize(N));
+        }
     }
 
     constexpr auto as_mut_slice() noexcept [[clang::lifetimebound]] -> mut_ref<T[]> {
-        if constexpr (UNINIT)
-            return mut_ref<T[]>::from_bytes(byte_data(), usize(N));
-        else
-            return mut_ref<T[]>::from_raw_parts(data(), usize(N));
+        [[unsafe]] {
+            if constexpr (UNINIT)
+                return mut_ref<T[]>::from_bytes(byte_data(), usize(N));
+            else
+                return mut_ref<T[]>::from_raw_parts(data(), usize(N));
+        }
     }
 
     constexpr auto deref() const noexcept [[clang::lifetimebound]] -> ref<T[]> {
@@ -238,12 +236,12 @@ public:
 
     constexpr decltype(auto) at(usize index) [[clang::lifetimebound]] {
         if (index.to_primitive() >= N) rstd::panic { "array index out of bounds" };
-        return as_mut_ptr().add(index).get();
+        [[unsafe]] { return as_mut_ptr().add(index).get(); }
     }
 
     constexpr decltype(auto) at(usize index) const [[clang::lifetimebound]] {
         if (index.to_primitive() >= N) rstd::panic { "array index out of bounds" };
-        return as_ptr().add(index).get();
+        [[unsafe]] { return as_ptr().add(index).get(); }
     }
 
     constexpr decltype(auto) operator[](usize index) [[clang::lifetimebound]] { return at(index); }
@@ -253,12 +251,12 @@ public:
 
     constexpr auto get(usize index) const noexcept [[clang::lifetimebound]] -> Option<ref<T>> {
         if (index.to_primitive() >= N) return None();
-        return Some(as_ptr().add(index).as_ref());
+        [[unsafe]] { return Some(as_ptr().add(index).as_ref()); }
     }
 
     constexpr auto get_mut(usize index) noexcept [[clang::lifetimebound]] -> Option<mut_ref<T>> {
         if (index.to_primitive() >= N) return None();
-        return Some(as_mut_ptr().add(index).as_mut_ref());
+        [[unsafe]] { return Some(as_mut_ptr().add(index).as_mut_ref()); }
     }
 
     constexpr auto first() const noexcept [[clang::lifetimebound]] -> Option<ref<T>> {
@@ -296,10 +294,10 @@ public:
     }
 
     constexpr auto iter() const [[clang::lifetimebound]] -> iter::SliceIter<T> {
-        return { as_ptr(), as_ptr().add(usize(N)) };
+        return iter::from_slice(as_slice());
     }
     constexpr auto iter_mut() [[clang::lifetimebound]] -> iter::SliceIterMut<T> {
-        return { as_mut_ptr(), as_mut_ptr().add(usize(N)) };
+        return iter::from_slice_mut(as_mut_slice());
     }
 
     auto into_iter() && -> IntoIter;

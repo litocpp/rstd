@@ -73,12 +73,12 @@ export struct PollInit;
 
 export class Poller : private ReadinessState<LinuxSource, Poller> {
     friend class ReadinessState<LinuxSource, Poller>;
-    os::fd::OwnedFd            m_poll_fd;
-    os::fd::OwnedFd            m_wake_fd;
-    os::fd::OwnedFd            m_timer_fd;
-    Option<time::Duration>     m_armed_timer;
-    libc::epoll_event          m_events[Batch::capacity()] {};
-    Option<Box<uring::Driver>> m_ring {};
+    os::fd::OwnedFd                                   m_poll_fd;
+    os::fd::OwnedFd                                   m_wake_fd;
+    os::fd::OwnedFd                                   m_timer_fd;
+    Option<time::Duration>                            m_armed_timer;
+    rstd::array<libc::epoll_event, Batch::capacity()> m_events {};
+    Option<Box<uring::Driver>>                        m_ring {};
 
     static auto native_interest(Interest interest) noexcept -> rstd::uint32_t {
         rstd::uint32_t events {};
@@ -229,13 +229,15 @@ public:
         auto wait_ms = mode == WaitMode::Immediate ? 0 : -1;
         int  count {};
         do {
-            count = libc::epoll_wait(
-                m_poll_fd.as_raw_fd(), m_events, static_cast<int>(Batch::capacity()), wait_ms);
+            count = libc::epoll_wait(m_poll_fd.as_raw_fd(),
+                                     m_events.data(),
+                                     static_cast<int>(Batch::capacity()),
+                                     wait_ms);
         } while (count < 0 && libc::get_errno() == libc::EINTR);
         if (count < 0) return Err(Error::last_os_error());
 
         for (int i = 0; i < count; ++i) {
-            auto& event = m_events[i];
+            auto& event = m_events[usize(i)];
             if (event.data.u64 == WAKE_KEY) {
                 drain_counter(m_wake_fd.as_raw_fd());
                 m_ready_events.push(Event::wake());
@@ -270,18 +272,21 @@ export struct PollInit {
 inline auto Poller::init(BackendPreference preference) -> io::Result<PollInit> {
     auto poll_fd = libc::epoll_create1(libc::EPOLL_CLOEXEC);
     if (poll_fd < 0) return Err(Error::last_os_error());
-    auto owned_poll = os::fd::OwnedFd::from_raw_fd(poll_fd);
+    os::fd::OwnedFd owned_poll;
+    [[unsafe]] { owned_poll = os::fd::OwnedFd::from_raw_fd(poll_fd); }
 
     auto wake_fd = libc::eventfd(0, libc::EFD_NONBLOCK | libc::EFD_CLOEXEC);
     if (wake_fd < 0) return Err(Error::last_os_error());
-    auto owned_wake = os::fd::OwnedFd::from_raw_fd(wake_fd);
-    auto wake_send  = owned_wake.try_clone();
+    os::fd::OwnedFd owned_wake;
+    [[unsafe]] { owned_wake = os::fd::OwnedFd::from_raw_fd(wake_fd); }
+    auto wake_send = owned_wake.try_clone();
     if (wake_send.is_err()) return Err(rstd::move(wake_send).unwrap_err_unchecked());
 
     auto timer_fd =
         libc::timerfd_create(libc::CLOCK_MONOTONIC, libc::TFD_NONBLOCK | libc::TFD_CLOEXEC);
     if (timer_fd < 0) return Err(Error::last_os_error());
-    auto owned_timer = os::fd::OwnedFd::from_raw_fd(timer_fd);
+    os::fd::OwnedFd owned_timer;
+    [[unsafe]] { owned_timer = os::fd::OwnedFd::from_raw_fd(timer_fd); }
 
     auto event     = libc::epoll_event {};
     event.events   = libc::EPOLLIN;

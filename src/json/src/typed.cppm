@@ -292,7 +292,7 @@ class ValueDeserializer {
                       serde::PathTrace path,
                       Option<ref<str>> excluded_tag,
                       bool             reject_unknown_fields)
-        : value_(ref<Value>::from_raw_parts(rstd::addressof(value))),
+        : value_(ref<Value>::from_ref(value)),
           path_(rstd::move(path)),
           excluded_tag_(excluded_tag),
           reject_unknown_fields_(reject_unknown_fields) {}
@@ -324,10 +324,9 @@ public:
     using map_type      = ValueMapAccess;
     using enum_type     = ValueEnumAccess;
 
-    explicit ValueDeserializer(const Value& value)
-        : value_(ref<Value>::from_raw_parts(rstd::addressof(value))) {}
+    explicit ValueDeserializer(const Value& value): value_(ref<Value>::from_ref(value)) {}
     ValueDeserializer(const Value& value, serde::PathTrace path)
-        : value_(ref<Value>::from_raw_parts(rstd::addressof(value))), path_(rstd::move(path)) {}
+        : value_(ref<Value>::from_ref(value)), path_(rstd::move(path)) {}
 
     auto deserialize_json_value() -> Result<Value, serde::Error> {
         auto value = value_->clone();
@@ -714,11 +713,11 @@ public:
     auto is_data() const noexcept -> bool { return data_.is_some(); }
     auto syntax_error() const noexcept [[clang::lifetimebound]] -> Option<ref<Error>> {
         if (syntax_.is_none()) return None();
-        return Some(ref<Error>::from_raw_parts(rstd::addressof(*syntax_)));
+        return Some(ref<Error>::from_ref(*syntax_));
     }
     auto data_error() const noexcept [[clang::lifetimebound]] -> Option<ref<serde::Error>> {
         if (data_.is_none()) return None();
-        return Some(ref<serde::Error>::from_raw_parts(rstd::addressof(*data_)));
+        return Some(ref<serde::Error>::from_ref(*data_));
     }
 };
 

@@ -42,10 +42,10 @@ auto default_read_to_end(R&                        reader,
         auto       buffer = BorrowedBuf::from_uninit(
             rstd::slice_::split_at_mut(output.spare_capacity_mut().as_uninit(), count)
                 .template get<0>());
-        buffer.set_init_unchecked(rstd::min(initialized, count));
+        [[unsafe]] { buffer.set_init_unchecked(rstd::min(initialized, count)); }
         auto result       = as<Read>(reader).read_buf(buffer.unfilled());
         initialized_until = rstd::cmp::max(initialized_until, length + buffer.initialized_len());
-        output.set_len_unchecked(length + buffer.len());
+        [[unsafe]] { output.set_len_unchecked(length + buffer.len()); }
         if (result.is_err()) {
             auto error = result.unwrap_err_unchecked();
             if (error.kind() == ErrorKind { ErrorKind::Interrupted }) continue;
@@ -164,9 +164,7 @@ struct Impl<io::Read, io::Empty> : DefaultInImpl<io::Read, io::Empty> {
 
 template<>
 struct Impl<io::BufRead, io::Empty> : ImplBase<io::Empty> {
-    auto fill_buf() -> io::Result<slice<u8>> {
-        return Ok(slice<u8>::from_raw_parts(nullptr, usize {}));
-    }
+    auto fill_buf() -> io::Result<slice<u8>> { return Ok(slice<u8> {}); }
     auto consume(usize) -> void {}
 };
 
@@ -191,7 +189,7 @@ struct Impl<io::Read, io::Repeat> : DefaultInImpl<io::Read, io::Repeat> {
         auto count = buf.capacity();
         if (count != usize())
             rstd::mem::memset(buf.as_uninit().as_raw_ptr(), this->self().byte, count);
-        (void)buf.advance_unchecked(count);
+        [[unsafe]] { (void)buf.advance_unchecked(count); }
         return Ok(empty {});
     }
 };

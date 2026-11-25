@@ -69,7 +69,7 @@ public:
     template<typename T>
     void write_value(const T& value) noexcept {
         auto const* source = reinterpret_cast<byte const*>(rstd::addressof(value));
-        write(as_u8_slice(slice<byte>::from_raw_parts(source, usize(sizeof(T)))));
+        [[unsafe]] { write(as_u8_slice(slice<byte>::from_raw_parts(source, usize(sizeof(T))))); }
     }
 
     auto finish() const noexcept -> u64 {
@@ -132,7 +132,7 @@ export template<typename H, typename T>
              (num::Integer<mtp::rm_cvf<T>> || num::PrimitiveInteger<mtp::rm_cvf<T>>)
 void write_value(H& state, const T& value) noexcept {
     auto const* source = reinterpret_cast<byte const*>(rstd::addressof(value));
-    write_bytes(state, slice<byte>::from_raw_parts(source, usize(sizeof(T))));
+    [[unsafe]] { write_bytes(state, slice<byte>::from_raw_parts(source, usize(sizeof(T)))); }
 }
 
 export struct BuildHasher {
@@ -189,8 +189,8 @@ struct Impl<hash::Hash, bool> : ImplBase<bool> {
     template<typename H>
         requires Impled<H, hash::Hasher>
     void hash(H& state) const noexcept {
-        byte const value { static_cast<uint8_t>(this->self() ? 1 : 0) };
-        hash::write_bytes(state, slice<byte>::from_raw_parts(rstd::addressof(value), usize(1)));
+        byte const values[] = { byte { static_cast<uint8_t>(this->self() ? 1 : 0) } };
+        hash::write_bytes(state, slice<byte>::from_array(values));
     }
 };
 

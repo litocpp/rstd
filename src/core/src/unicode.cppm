@@ -13,10 +13,12 @@ template<size_t N>
 constexpr auto contains(const Range (&ranges)[N], char32_t value) noexcept -> bool {
     size_t lo = 0, hi = N;
     while (lo < hi) {
-        auto mid = lo + (hi - lo) / 2;
-        if (value < ranges[mid].first)
+        auto  mid = lo + (hi - lo) / 2;
+        Range range;
+        [[unsafe]] { range = ranges[mid]; }
+        if (value < range.first)
             hi = mid;
-        else if (value > ranges[mid].last)
+        else if (value > range.last)
             lo = mid + 1;
         else
             return true;

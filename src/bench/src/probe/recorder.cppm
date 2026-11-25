@@ -196,7 +196,9 @@ public:
 
     auto finish() noexcept -> Result<empty, ProbeError> {
         if (state_ == nullptr) return Ok(empty {});
-        auto status = state_->end_span(sequence_);
+        auto status = [&] {
+            [[unsafe]] { return state_->end_span(sequence_); }
+        }();
         if (status.ended) state_ = nullptr;
         if (status.diagnostic.is_some()) {
             return Err(ProbeError::Diagnostic(rstd::move(status.diagnostic).unwrap_unchecked()));

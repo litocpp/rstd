@@ -17,7 +17,7 @@ struct AwaitingOperation {
         auto operation = AwaitingOperation {
             suspension,
             [](void* ptr, async::AwaitContext& cx) -> async::AwaitTransition {
-                return static_cast<Suspension*>(ptr)->advance(cx);
+                [[unsafe]] { return static_cast<Suspension*>(ptr)->advance(cx); }
             },
             nullptr,
             nullptr,
@@ -26,7 +26,7 @@ struct AwaitingOperation {
                           { value.complete_facility(event) } -> mtp::same_as<bool>;
                       }) {
             operation.complete_facility_fn = [](void* ptr, FacilityEvent& event) -> bool {
-                return static_cast<Suspension*>(ptr)->complete_facility(event);
+                [[unsafe]] { return static_cast<Suspension*>(ptr)->complete_facility(event); }
             };
         }
         if constexpr (requires(Suspension& value, FacilityCompletionToken token) {
@@ -36,7 +36,9 @@ struct AwaitingOperation {
                       }) {
             operation.submit_completion_fn =
                 [](void* ptr, FacilityCompletionToken token) -> FacilityCompletionSubmitResult {
-                return static_cast<Suspension*>(ptr)->submit_completion(rstd::move(token));
+                [[unsafe]] {
+                    return static_cast<Suspension*>(ptr)->submit_completion(rstd::move(token));
+                }
             };
         }
         return operation;
@@ -45,18 +47,19 @@ struct AwaitingOperation {
     constexpr explicit operator bool() const noexcept { return ptr != nullptr; }
 
     auto advance(async::AwaitContext& cx) const -> async::AwaitTransition {
-        return advance_fn(ptr, cx);
+        [[unsafe]] { return advance_fn(ptr, cx); }
     }
 
     auto complete_facility(FacilityEvent& event) const -> bool {
-        return complete_facility_fn != nullptr && complete_facility_fn(ptr, event);
+        if (complete_facility_fn == nullptr) return false;
+        [[unsafe]] { return complete_facility_fn(ptr, event); }
     }
 
     auto submit_completion(FacilityCompletionToken token) const -> FacilityCompletionSubmitResult {
         if (submit_completion_fn == nullptr) {
             return FacilityCompletionSubmitResult::unsupported(rstd::move(token));
         }
-        return submit_completion_fn(ptr, rstd::move(token));
+        [[unsafe]] { return submit_completion_fn(ptr, rstd::move(token)); }
     }
 };
 

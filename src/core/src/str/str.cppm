@@ -54,6 +54,8 @@ public:
 
     auto into() const { return convert::into(Self(*this)); }
 
+    /// The borrowed bytes must remain live and contain valid UTF-8 for the view's lifetime.
+    [[unsafe]]
     static constexpr auto from_raw_parts_unchecked(value_type* p [[clang::lifetimebound]],
                                                    usize       length) noexcept -> Self {
         Self result;
@@ -67,29 +69,28 @@ public:
     constexpr auto is_empty() const noexcept -> bool { return length == usize(); }
     constexpr auto data() const { return p; }
     constexpr auto operator[](usize index) const noexcept -> u8 {
-        return u8::from_byte(p[index.to_primitive()]);
+        [[unsafe]] { return u8::from_byte(p[index.to_primitive()]); }
     }
 
     constexpr auto begin() const -> ptr<u8> { return ptr<u8>::from_raw_parts(p); }
     constexpr auto end() const -> ptr<u8> {
         if (is_empty()) return begin();
-        return begin().add(length);
+        [[unsafe]] { return begin().add(length); }
     }
 
     constexpr auto is_ascii() const noexcept -> bool {
-        for (rstd::size_t index = 0; index < length.to_primitive(); ++index) {
-            if (u8::from_byte(p[index]).to_primitive() > 0x7f) return false;
-        }
+        for (rstd::size_t index = 0; index < length.to_primitive(); ++index)
+            if ((*this)[usize(index)].to_primitive() > 0x7f) return false;
         return true;
     }
 
     constexpr auto is_char_boundary(usize index) const noexcept -> bool {
-        return char_::is_char_boundary(p, length, index);
+        [[unsafe]] { return char_::is_char_boundary(p, length, index); }
     }
 
     constexpr auto as_bytes() const noexcept -> slice<u8> {
         if (is_empty()) return {};
-        return slice<u8>::from_raw_parts(p, length);
+        [[unsafe]] { return slice<u8>::from_raw_parts(p, length); }
     }
 
     constexpr auto bytes() const noexcept -> str_::Bytes;
@@ -105,7 +106,7 @@ public:
             auto matches = true;
             for (rstd::size_t pattern_index = 0; pattern_index < pattern.len().to_primitive();
                  ++pattern_index) {
-                if (p[index + pattern_index] != pattern.data()[pattern_index]) {
+                if ((*this)[usize(index + pattern_index)] != pattern[usize(pattern_index)]) {
                     matches = false;
                     break;
                 }
@@ -119,7 +120,7 @@ public:
         if (pattern.is_empty()) return true;
         if (pattern.len() > length) return false;
         for (rstd::size_t index = 0; index < pattern.len().to_primitive(); ++index) {
-            if (p[index] != pattern.data()[index]) return false;
+            if ((*this)[usize(index)] != pattern[usize(index)]) return false;
         }
         return true;
     }
@@ -129,7 +130,7 @@ public:
         if (pattern.len() > length) return false;
         auto const offset = (length - pattern.len()).to_primitive();
         for (rstd::size_t index = 0; index < pattern.len().to_primitive(); ++index) {
-            if (p[offset + index] != pattern.data()[index]) return false;
+            if ((*this)[usize(offset + index)] != pattern[usize(index)]) return false;
         }
         return true;
     }
@@ -145,24 +146,28 @@ public:
 
     constexpr auto split_at(usize index) const noexcept -> tuple<ref<str>, ref<str>> {
         if (! is_char_boundary(index)) rstd::intrinsics::abort();
-        auto* right = p;
-        if (index != usize()) right += index.to_primitive();
-        return { ref<str>::from_raw_parts_unchecked(p, index),
-                 ref<str>::from_raw_parts_unchecked(right, length - index) };
+        [[unsafe]] {
+            auto* right = p;
+            if (index != usize()) right += index.to_primitive();
+            return { ref<str>::from_raw_parts_unchecked(p, index),
+                     ref<str>::from_raw_parts_unchecked(right, length - index) };
+        }
     }
 
     constexpr auto trim_ascii() const noexcept -> ref<str> {
-        auto is_whitespace = [](byte value) constexpr {
-            auto const raw = u8::from_byte(value).to_primitive();
+        auto is_whitespace = [](u8 value) constexpr {
+            auto const raw = value.to_primitive();
             return raw == 0x09 || raw == 0x0a || raw == 0x0c || raw == 0x0d || raw == 0x20;
         };
         rstd::size_t begin_index = 0;
         auto         end_index   = length.to_primitive();
-        while (begin_index < end_index && is_whitespace(p[begin_index])) ++begin_index;
-        while (end_index > begin_index && is_whitespace(p[end_index - 1])) --end_index;
-        auto* begin_ptr = p;
-        if (begin_index != 0) begin_ptr += begin_index;
-        return ref<str>::from_raw_parts_unchecked(begin_ptr, usize(end_index - begin_index));
+        while (begin_index < end_index && is_whitespace((*this)[usize(begin_index)])) ++begin_index;
+        while (end_index > begin_index && is_whitespace((*this)[usize(end_index - 1)])) --end_index;
+        [[unsafe]] {
+            auto* begin_ptr = p;
+            if (begin_index != 0) begin_ptr += begin_index;
+            return ref<str>::from_raw_parts_unchecked(begin_ptr, usize(end_index - begin_index));
+        }
     }
 
     constexpr auto     metadata() const noexcept -> usize { return length; }
@@ -180,6 +185,8 @@ public:
 
     constexpr mut_ref() noexcept = default;
 
+    /// The borrowed bytes must remain live, exclusive, and valid UTF-8 for the view's lifetime.
+    [[unsafe]]
     static constexpr auto from_raw_parts_unchecked(byte* p [[clang::lifetimebound]],
                                                    usize length) noexcept -> Self {
         Self result;
@@ -192,21 +199,19 @@ public:
     constexpr auto len() const noexcept -> usize { return length_; }
     constexpr auto is_empty() const noexcept -> bool { return length_ == usize(); }
     constexpr auto data() const noexcept -> byte const* { return p_; }
-    constexpr auto operator[](usize index) const noexcept -> u8 {
-        return u8::from_byte(p_[index.to_primitive()]);
-    }
+    constexpr auto operator[](usize index) const noexcept -> u8 { return as_ref()[index]; }
 
     constexpr auto begin() const noexcept -> ptr<u8> { return ptr<u8>::from_raw_parts(p_); }
     constexpr auto end() const noexcept -> ptr<u8> {
         if (is_empty()) return begin();
-        return begin().add(length_);
+        [[unsafe]] { return begin().add(length_); }
     }
 
     constexpr auto     metadata() const noexcept -> usize { return length_; }
     constexpr explicit operator bool() const noexcept { return p_ != nullptr; }
 
     constexpr auto as_ref() const noexcept -> ref<str_::Str> {
-        return ref<str_::Str>::from_raw_parts_unchecked(p_, length_);
+        [[unsafe]] { return ref<str_::Str>::from_raw_parts_unchecked(p_, length_); }
     }
 
     constexpr auto get() const noexcept -> ref<str_::Str> { return as_ref(); }
@@ -250,9 +255,9 @@ public:
 
     constexpr void make_ascii_lowercase() noexcept {
         for (rstd::size_t index = 0; index < length_.to_primitive(); ++index) {
-            auto const value = u8::from_byte(p_[index]).to_primitive();
+            auto const value = (*this)[usize(index)].to_primitive();
             if (value >= 'A' && value <= 'Z') {
-                p_[index] = byte { static_cast<rstd::uint8_t>(value + ('a' - 'A')) };
+                [[unsafe]] { p_[index] = byte { static_cast<rstd::uint8_t>(value + ('a' - 'A')) }; }
             }
         }
     }
@@ -267,7 +272,7 @@ export [[nodiscard]]
 constexpr bool operator==(ref<str> a, ref<str> b) noexcept {
     if (a.size() != b.size()) return false;
     for (rstd::size_t index = 0; index < a.size().to_primitive(); ++index) {
-        if (a.data()[index] != b.data()[index]) return false;
+        if (a[usize(index)] != b[usize(index)]) return false;
     }
     return true;
 }
@@ -292,13 +297,15 @@ public:
 
     constexpr auto size() const { return length; }
     constexpr auto data() const { return p; }
+    /// The pointer must address a live range containing the indicated byte.
+    [[unsafe]]
     constexpr auto operator[](usize index) const noexcept -> u8 {
-        return u8::from_byte(p[index.to_primitive()]);
+        [[unsafe]] { return u8::from_byte(p[index.to_primitive()]); }
     }
     constexpr auto begin() const -> ptr<u8> { return ptr<u8>::from_raw_parts(p); }
     constexpr auto end() const -> ptr<u8> {
         if (length == usize()) return begin();
-        return begin().add(length);
+        [[unsafe]] { return begin().add(length); }
     }
 
     constexpr explicit operator bool() const { return p != nullptr; }
@@ -309,15 +316,17 @@ public:
 namespace rstd::str_
 {
 
-/// Creates a string slice from a byte slice without UTF-8 validation.
-export constexpr auto from_utf8_unchecked(slice<u8> bytes [[clang::lifetimebound]]) noexcept
-    -> ref<str> {
-    return ref<str>::from_raw_parts_unchecked(bytes.as_raw_ptr(), bytes.len());
+/// Creates a string slice without validation; the input must already be valid UTF-8.
+export [[unsafe]]
+constexpr auto from_utf8_unchecked(slice<u8> bytes [[clang::lifetimebound]]) noexcept -> ref<str> {
+    [[unsafe]] { return ref<str>::from_raw_parts_unchecked(bytes.as_raw_ptr(), bytes.len()); }
 }
 
-export constexpr auto from_utf8_unchecked_mut(mut_ref<u8[]> bytes [[clang::lifetimebound]]) noexcept
+/// Creates an exclusive string slice; its input must already be valid UTF-8.
+export [[unsafe]]
+constexpr auto from_utf8_unchecked_mut(mut_ref<u8[]> bytes [[clang::lifetimebound]]) noexcept
     -> mut_ref<str> {
-    return mut_ref<str>::from_raw_parts_unchecked(bytes.as_raw_ptr(), bytes.len());
+    [[unsafe]] { return mut_ref<str>::from_raw_parts_unchecked(bytes.as_raw_ptr(), bytes.len()); }
 }
 
 } // namespace rstd::str_
@@ -334,8 +343,12 @@ template<>
 struct Impl<fmt::Debug, ref<str>> : ImplBase<ref<str>> {
     auto fmt(fmt::Formatter& f) const -> bool {
         if (! f.write_raw("\"", 1)) return false;
-        auto         value = this->self();
-        rstd::size_t begin = 0;
+        auto         value      = this->self();
+        rstd::size_t begin      = 0;
+        auto         write_part = [&](rstd::size_t end) {
+            if (end == begin) return true;
+            [[unsafe]] { return f.write_raw(value.data() + begin, end - begin); }
+        };
         for (rstd::size_t index = 0; index < value.size().to_primitive(); ++index) {
             auto        byte   = value[usize(index)].to_primitive();
             const char* escape = nullptr;
@@ -349,23 +362,22 @@ struct Impl<fmt::Debug, ref<str>> : ImplBase<ref<str>> {
             default: break;
             }
             if (! escape && byte >= 32 && byte != 127) continue;
-            if (index > begin && ! f.write_raw(value.data() + begin, index - begin)) return false;
+            if (! write_part(index)) return false;
             if (escape) {
                 if (! f.write_raw(escape, 2)) return false;
             } else {
-                constexpr char digits[] = "0123456789abcdef";
-                char encoded[] = { '\\', 'u', '{', digits[byte >> 4], digits[byte & 15], '}' };
+                constexpr std::array digits = { '0', '1', '2', '3', '4', '5', '6', '7',
+                                                '8', '9', 'a', 'b', 'c', 'd', 'e', 'f' };
+                std::array encoded = { '\\', 'u', '{', digits[byte >> 4], digits[byte & 15], '}' };
                 if (byte < 16) {
                     encoded[3] = encoded[4];
                     encoded[4] = '}';
                 }
-                if (! f.write_raw(encoded, byte < 16 ? 5 : 6)) return false;
+                if (! f.write_raw(encoded.data(), byte < 16 ? 5 : 6)) return false;
             }
             begin = index + 1;
         }
-        if (value.size().to_primitive() > begin &&
-            ! f.write_raw(value.data() + begin, value.size().to_primitive() - begin))
-            return false;
+        if (! write_part(value.size().to_primitive())) return false;
         return f.write_raw("\"", 1);
     }
 };
@@ -376,9 +388,8 @@ struct Impl<hash::Hash, ref<str>> : ImplBase<ref<str>> {
         requires Impled<H, hash::Hasher>
     void hash(H& state) const noexcept {
         rstd::as<hash::Hasher>(state).write(this->self().as_bytes());
-        byte const separator { 0xff };
-        rstd::as<hash::Hasher>(state).write(
-            slice<u8>::from_raw_parts(rstd::addressof(separator), usize(1)));
+        byte const separator[] = { byte { 0xff } };
+        rstd::as<hash::Hasher>(state).write(slice<u8>::from_array(separator));
     }
 };
 
@@ -411,8 +422,10 @@ template<fixed_string Str>
 inline constexpr auto BYTE_LITERAL_STORAGE = make_byte_literal<Str>();
 
 template<fixed_string Str>
-inline constexpr bool VALID_UTF8_LITERAL =
-    char_::is_valid_utf8(BYTE_LITERAL_STORAGE<Str>.data(), usize(BYTE_LITERAL_STORAGE<Str>.size()));
+inline constexpr bool VALID_UTF8_LITERAL = [] {
+    constexpr auto& storage = BYTE_LITERAL_STORAGE<Str>;
+    [[unsafe]] { return char_::is_valid_utf8(storage.data(), usize(storage.size())); }
+}();
 
 } // namespace rstd::str_
 
@@ -427,14 +440,14 @@ consteval auto operator""_b() {
 template<str_::fixed_string Str>
 consteval auto operator""_bytes() -> slice<u8> {
     constexpr auto& storage = str_::BYTE_LITERAL_STORAGE<Str>;
-    return slice<u8>::from_raw_parts(storage.data(), usize(storage.size()));
+    [[unsafe]] { return slice<u8>::from_raw_parts(storage.data(), usize(storage.size())); }
 }
 
 template<str_::fixed_string Str>
 consteval auto operator""_str() -> ref<str> {
     static_assert(str_::VALID_UTF8_LITERAL<Str>, "rstd string literal must be valid UTF-8");
     constexpr auto& storage = str_::BYTE_LITERAL_STORAGE<Str>;
-    return ref<str>::from_raw_parts_unchecked(storage.data(), usize(storage.size()));
+    [[unsafe]] { return ref<str>::from_raw_parts_unchecked(storage.data(), usize(storage.size())); }
 }
 
 } // namespace rstd::literals

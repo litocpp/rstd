@@ -16,7 +16,8 @@ export inline auto memchr(u8 needle, slice<u8> haystack) noexcept -> Option<usiz
     rstd::size_t i      = 0;
     auto         target = V::splat(needle);
     for (; length - i >= 16; i += 16) {
-        auto block = slice<u8>::from_raw_parts(haystack.as_raw_ptr() + i, usize(16));
+        slice<u8> block;
+        [[unsafe]] { block = slice<u8>::from_raw_parts(haystack.as_raw_ptr() + i, usize(16)); }
         auto first = V::from_slice(block).simd_eq(target).first_set();
         if (first.is_some()) return Some(usize(i) + first.unwrap_unchecked());
     }

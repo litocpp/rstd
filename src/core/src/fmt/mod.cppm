@@ -1,3 +1,6 @@
+module;
+#include <string_view>
+
 export module rstd.core:fmt;
 import :num.types;
 export import :trait;
@@ -283,7 +286,7 @@ public:
     constexpr Formatter(W& writer) noexcept
         : _writer(rstd::addressof(writer)),
           _write_func([](void* w, ref<str_::Str> const& value) {
-              return as<Write>(*static_cast<W*>(w)).write_str(value);
+              [[unsafe]] { return as<Write>(*static_cast<W*>(w)).write_str(value); }
           }),
           _raw_write_func(nullptr) {}
 
@@ -349,7 +352,9 @@ public:
                  Impled<T, Octal>)
     static auto make(const T& val) -> Argument {
         return { rstd::addressof(val), [](const void* p, Formatter& f) -> bool {
-                    const T& self = *static_cast<const T*>(p);
+                    const T& self = [p]() -> const T& {
+                        [[unsafe]] { return *static_cast<const T*>(p); }
+                    }();
                     switch (f.options().presentation()) {
                     case Presentation::Debug:
                         if constexpr (Impled<T, Debug>) {
@@ -404,7 +409,9 @@ public:
         return make(val);
     }
 
-    auto fmt(Formatter& f) const -> bool { return _fmt_func(_ptr, f); }
+    auto fmt(Formatter& f) const -> bool {
+        [[unsafe]] { return _fmt_func(_ptr, f); }
+    }
 
 private:
     constexpr Argument(const void* p, auto (*func)(const void*, Formatter&)->bool)
@@ -492,51 +499,52 @@ inline void fmt_invalid_argument() {
 }
 
 struct FormatArgument {
-    const char*  spec;
+    rstd::size_t spec;
     rstd::size_t index;
     bool         automatic;
     bool         valid;
 };
 
-constexpr auto parse_format_argument(const char*  begin,
-                                     const char*  end,
-                                     rstd::size_t automatic,
-                                     rstd::size_t count) -> FormatArgument {
-    auto         position = begin;
+constexpr auto parse_format_argument(std::string_view field,
+                                     rstd::size_t     automatic,
+                                     rstd::size_t     count) -> FormatArgument {
+    rstd::size_t position = 0;
     rstd::size_t index    = 0;
-    while (position < end && *position >= '0' && *position <= '9') {
-        auto digit = static_cast<rstd::size_t>(*position - '0');
+    while (position < field.size() && field[position] >= '0' && field[position] <= '9') {
+        auto digit = static_cast<rstd::size_t>(field[position] - '0');
         if (index > count / 10 || (index == count / 10 && digit > count % 10))
-            return { end, 0, false, false };
+            return { field.size(), 0, false, false };
         index = index * 10 + digit;
         ++position;
     }
-    bool implicit = position == begin;
+    bool implicit = position == 0;
     if (implicit) index = automatic;
-    if (position != end) {
-        if (*position != ':') return { end, 0, implicit, false };
+    if (position != field.size()) {
+        if (field[position] != ':') return { field.size(), 0, implicit, false };
         ++position;
     }
     return { position, index, implicit, index < count };
 }
 
-consteval void check_format_string(const char* s, rstd::size_t n, rstd::size_t n_args) {
+consteval void check_format_string(std::string_view text, rstd::size_t n_args) {
+    const auto   n         = text.size();
     rstd::size_t automatic = 0;
     for (rstd::size_t i = 0; i < n; ++i) {
-        if (s[i] == '{') {
-            if (i + 1 < n && s[i + 1] == '{') {
+        if (text[i] == '{') {
+            if (i + 1 < n && text[i + 1] == '{') {
                 ++i; // skip {{
             } else {
                 ++i;
                 const auto begin = i;
-                while (i < n && s[i] != '}') ++i;
+                while (i < n && text[i] != '}') ++i;
                 if (i >= n) fmt_unmatched_left_brace();
-                auto argument = parse_format_argument(s + begin, s + i, automatic, n_args);
+                auto argument =
+                    parse_format_argument(text.substr(begin, i - begin), automatic, n_args);
                 if (! argument.valid) fmt_invalid_argument();
                 if (argument.automatic) ++automatic;
             }
-        } else if (s[i] == '}') {
-            if (i + 1 < n && s[i + 1] == '}') {
+        } else if (text[i] == '}') {
+            if (i + 1 < n && text[i + 1] == '}') {
                 ++i; // skip }}
             } else {
                 fmt_unmatched_right_brace();
@@ -557,7 +565,7 @@ struct FormatString {
 
     template<rstd::size_t N>
     consteval FormatString(const char (&s)[N]) noexcept: _ptr(s), _len(N - 1) {
-        check_format_string(s, N - 1, sizeof...(Args));
+        check_format_string(std::string_view(s, N - 1), sizeof...(Args));
     }
 
     auto data() const noexcept -> const char* { return _ptr; }

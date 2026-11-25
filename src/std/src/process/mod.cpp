@@ -21,10 +21,10 @@ namespace libc = rstd::sys::libc;
 auto rstd::Impl<rstd::io::Write, rstd::process::ChildStdin>::write(slice<u8> buf)
     -> rstd::io::Result<usize> {
 #if RSTD_OS_WINDOWS
-    if (this->self().async_handle.is_some())
+    if (this->self().has_async_handle())
         return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
 #endif
-    return sys::io::stdio::write_pipe_fd(this->self().fd, as_bytes(buf));
+    return sys::io::stdio::write_pipe_fd(this->self().sync_fd(), as_bytes(buf));
 }
 
 [[gnu::cold]] [[noreturn]]
@@ -56,30 +56,18 @@ auto rstd::process::ExitStatus::from_raw(i32 raw) noexcept -> ExitStatus {
 #endif
 
 // ── Pipe handle destructors ─────────────────────────────────────────────
+rstd::sys::process_impl::ChildPipe::~ChildPipe() {
+#if RSTD_OS_WINDOWS
+    if (fd_ >= 0) libc::_close(fd_);
+#endif
+}
+
 namespace rstd::process
 {
 
-ChildStdin::~ChildStdin() {
-#if RSTD_OS_UNIX
-    if (fd >= 0) libc::close(fd);
-#elif RSTD_OS_WINDOWS
-    if (fd >= 0) libc::_close(fd);
-#endif
-}
-ChildStdout::~ChildStdout() {
-#if RSTD_OS_UNIX
-    if (fd >= 0) libc::close(fd);
-#elif RSTD_OS_WINDOWS
-    if (fd >= 0) libc::_close(fd);
-#endif
-}
-ChildStderr::~ChildStderr() {
-#if RSTD_OS_UNIX
-    if (fd >= 0) libc::close(fd);
-#elif RSTD_OS_WINDOWS
-    if (fd >= 0) libc::_close(fd);
-#endif
-}
+ChildStdin::~ChildStdin()   = default;
+ChildStdout::~ChildStdout() = default;
+ChildStderr::~ChildStderr() = default;
 
 // ── Child ────────────────────────────────────────────────────────────────
 
@@ -246,7 +234,7 @@ auto Child::kill() -> io::Result<rstd::empty> {
 }
 
 auto Child::wait_with_output() -> io::Result<Output> {
-    return wait_with_output(OutputObserver {});
+    [[unsafe]] { return wait_with_output(OutputObserver {}); }
 }
 
 auto Child::wait_with_output(OutputObserver observer) -> io::Result<Output> {
@@ -261,8 +249,13 @@ auto Child::wait_with_output(OutputObserver observer) -> io::Result<Output> {
             while (true) {
                 auto n = libc::read(fd, tmp, sizeof(tmp));
                 if (n <= 0) break;
-                auto chunk = slice<u8>::from_raw_parts(tmp, usize(static_cast<rstd::size_t>(n)));
-                if (observer.notify != nullptr) observer.notify(observer.context, stream, chunk);
+                slice<u8> chunk;
+                [[unsafe]] {
+                    chunk = slice<u8>::from_raw_parts(tmp, usize(static_cast<rstd::size_t>(n)));
+                }
+                if (observer.notify != nullptr) {
+                    [[unsafe]] { observer.notify(observer.context, stream, chunk); }
+                }
                 buf.extend_from_slice(chunk);
             }
         }
@@ -273,8 +266,11 @@ auto Child::wait_with_output(OutputObserver observer) -> io::Result<Output> {
             while (true) {
                 auto read = rstd::sys::io::stdio::read_fd(fd, chunk_buffer);
                 if (read.is_err() || *read == usize()) break;
-                auto chunk = slice<u8>::from_raw_parts(chunk_buffer.as_byte_ptr(), *read);
-                if (observer.notify != nullptr) observer.notify(observer.context, stream, chunk);
+                slice<u8> chunk;
+                [[unsafe]] { chunk = slice<u8>::from_raw_parts(chunk_buffer.as_byte_ptr(), *read); }
+                if (observer.notify != nullptr) {
+                    [[unsafe]] { observer.notify(observer.context, stream, chunk); }
+                }
                 buf.extend_from_slice(chunk);
             }
         }
@@ -282,8 +278,8 @@ auto Child::wait_with_output(OutputObserver observer) -> io::Result<Output> {
         return buf;
     };
 
-    int out_fd = stdout_pipe.is_some() ? (*stdout_pipe).fd : -1;
-    int err_fd = stderr_pipe.is_some() ? (*stderr_pipe).fd : -1;
+    int out_fd = stdout_pipe.is_some() ? (*stdout_pipe).sync_fd() : -1;
+    int err_fd = stderr_pipe.is_some() ? (*stderr_pipe).sync_fd() : -1;
 
     auto stderr_reader = rstd::thread::spawn([err_fd, &read_all]() {
         return read_all(err_fd, OutputStream::Stderr);
@@ -391,8 +387,11 @@ auto child_environment(bool clear, const ::alloc::vec::Vec<rstd::process::EnvAct
     -> rstd::result::Result<::alloc::vec::Vec<::alloc::ffi::CString>, rstd::io::error::Error> {
     auto result = ::alloc::vec::Vec<::alloc::ffi::CString>::make();
     if (! clear) {
-        for (auto current = libc::environ; current != nullptr && *current != nullptr; ++current) {
-            result.push(::alloc::ffi::CString::from_raw_parts(*current));
+        [[unsafe]] {
+            for (auto current = libc::environ; current != nullptr && *current != nullptr;
+                 ++current) {
+                result.push(::alloc::ffi::CString::from_raw_parts(*current));
+            }
         }
     }
 
@@ -419,6 +418,8 @@ auto child_environment(bool clear, const ::alloc::vec::Vec<rstd::process::EnvAct
     return Ok(rstd::move(result));
 }
 
+using PipeDescriptors = rstd::array<int, 2>;
+
 struct SpawnContext {
     const char*          program {};
     char* const*         arguments {};
@@ -427,9 +428,9 @@ struct SpawnContext {
     rstd::process::Stdio stdin_config {};
     rstd::process::Stdio stdout_config {};
     rstd::process::Stdio stderr_config {};
-    int*                 stdin_pipe {};
-    int*                 stdout_pipe {};
-    int*                 stderr_pipe {};
+    PipeDescriptors&     stdin_pipe;
+    PipeDescriptors&     stdout_pipe;
+    PipeDescriptors&     stderr_pipe;
     bool                 requires_fork {};
     Option<i32>          process_group;
 #if RSTD_OS_LINUX
@@ -445,11 +446,11 @@ struct ChildSpawnError {
 inline constexpr unsigned int CHILD_SPAWN_ERROR_FOOTER = 0x4e4f4558U;
 static_assert(sizeof(ChildSpawnError) == 8);
 
-auto close_pipe(int pipe[2]) -> void {
-    if (pipe[0] >= 0) libc::close(pipe[0]);
-    if (pipe[1] >= 0) libc::close(pipe[1]);
-    pipe[0] = -1;
-    pipe[1] = -1;
+auto close_pipe(PipeDescriptors& pipe) -> void {
+    if (pipe[usize(0)] >= 0) libc::close(pipe[usize(0)]);
+    if (pipe[usize(1)] >= 0) libc::close(pipe[usize(1)]);
+    pipe[usize(0)] = -1;
+    pipe[usize(1)] = -1;
 }
 
 auto close_spawn_pipes(const SpawnContext& context) -> void {
@@ -496,21 +497,26 @@ auto try_posix_spawn(const SpawnContext& context)
     }
 
     if (context.stdin_config.kind == rstd::process::Stdio::Piped_) {
-        error = add_pipe_actions(&actions, context.stdin_pipe[0], context.stdin_pipe[1], 0);
+        error = add_pipe_actions(
+            &actions, context.stdin_pipe[usize(0)], context.stdin_pipe[usize(1)], 0);
     } else if (context.stdin_config.kind == rstd::process::Stdio::Null_) {
         error = add_null_action(&actions, 0, libc::O_RDONLY);
     }
     if (error == 0 && context.stdout_config.kind == rstd::process::Stdio::Piped_) {
-        error = add_pipe_actions(&actions, context.stdout_pipe[1], context.stdout_pipe[0], 1);
+        error = add_pipe_actions(
+            &actions, context.stdout_pipe[usize(1)], context.stdout_pipe[usize(0)], 1);
     } else if (error == 0 && context.stdout_config.kind == rstd::process::Stdio::Null_) {
         error = add_null_action(&actions, 1, libc::O_WRONLY);
     }
     if (error == 0 && context.stderr_config.kind == rstd::process::Stdio::Piped_) {
-        error = add_pipe_actions(&actions, context.stderr_pipe[1], context.stderr_pipe[0], 2);
+        error = add_pipe_actions(
+            &actions, context.stderr_pipe[usize(1)], context.stderr_pipe[usize(0)], 2);
     } else if (error == 0 && context.stderr_config.kind == rstd::process::Stdio::Null_) {
         error = add_null_action(&actions, 2, libc::O_WRONLY);
     }
-    if (error == 0 && addchdir != nullptr) error = addchdir(&actions, context.directory);
+    if (error == 0 && addchdir != nullptr) {
+        [[unsafe]] { error = addchdir(&actions, context.directory); }
+    }
 
     auto                    child_pid = libc::pid_t(-1);
     libc::posix_spawnattr_t attributes;
@@ -575,13 +581,14 @@ auto wait_after_spawn_failure(libc::pid_t child_pid) -> void {
 
 auto fork_exec(const SpawnContext& context)
     -> rstd::result::Result<libc::pid_t, rstd::io::error::Error> {
-    int error_pipe[2] = { -1, -1 };
-    if (libc::pipe2(error_pipe, libc::O_CLOEXEC) == -1) {
+    auto error_pipe = PipeDescriptors { -1, -1 };
+    if (libc::pipe2(error_pipe.as_mut_slice().as_raw_ptr(), libc::O_CLOEXEC) == -1) {
         return Err(rstd::io::error::Error::from_raw_os_error(i32(libc::get_errno())));
     }
 #if RSTD_OS_LINUX
-    int pidfd_channel[2] = { -1, -1 };
-    if (context.pidfd && rstd::sys::process::pidfd_channel(pidfd_channel) < 0) {
+    auto pidfd_channel = PipeDescriptors { -1, -1 };
+    if (context.pidfd &&
+        rstd::sys::process::pidfd_channel(pidfd_channel.as_mut_slice().as_raw_ptr()) < 0) {
         auto error = libc::get_errno();
         close_pipe(error_pipe);
         return Err(rstd::io::error::Error::from_raw_os_error(i32(error)));
@@ -594,68 +601,79 @@ auto fork_exec(const SpawnContext& context)
 #if RSTD_OS_LINUX
         close_pipe(pidfd_channel);
 #endif
-        libc::close(error_pipe[0]);
-        libc::close(error_pipe[1]);
+        libc::close(error_pipe[usize(0)]);
+        libc::close(error_pipe[usize(1)]);
         return Err(rstd::io::error::Error::from_raw_os_error(i32(error)));
     }
 
     if (child_pid == 0) {
-        libc::close(error_pipe[0]);
+        libc::close(error_pipe[usize(0)]);
 #if RSTD_OS_LINUX
         if (context.pidfd) {
-            libc::close(pidfd_channel[0]);
-            auto error = rstd::sys::process::send_current_pidfd(pidfd_channel[1]);
-            libc::close(pidfd_channel[1]);
+            libc::close(pidfd_channel[usize(0)]);
+            auto error = rstd::sys::process::send_current_pidfd(pidfd_channel[usize(1)]);
+            libc::close(pidfd_channel[usize(1)]);
             if (error) {
                 libc::get_errno() = error;
-                child_spawn_failure(error_pipe[1]);
+                child_spawn_failure(error_pipe[usize(1)]);
             }
         }
 #endif
         if (context.process_group.is_some() &&
             libc::setpgid(0, context.process_group->to_primitive()) != 0)
-            child_spawn_failure(error_pipe[1]);
+            child_spawn_failure(error_pipe[usize(1)]);
         if (context.directory != nullptr && libc::chdir(context.directory) == -1) {
-            child_spawn_failure(error_pipe[1]);
+            child_spawn_failure(error_pipe[usize(1)]);
         }
 
         if (context.stdin_config.kind == rstd::process::Stdio::Piped_) {
-            redirect_child_pipe(context.stdin_pipe[0], context.stdin_pipe[1], 0, error_pipe[1]);
+            redirect_child_pipe(context.stdin_pipe[usize(0)],
+                                context.stdin_pipe[usize(1)],
+                                0,
+                                error_pipe[usize(1)]);
         } else if (context.stdin_config.kind == rstd::process::Stdio::Null_) {
-            redirect_child_null(0, libc::O_RDONLY, error_pipe[1]);
+            redirect_child_null(0, libc::O_RDONLY, error_pipe[usize(1)]);
         }
         if (context.stdout_config.kind == rstd::process::Stdio::Piped_) {
-            redirect_child_pipe(context.stdout_pipe[1], context.stdout_pipe[0], 1, error_pipe[1]);
+            redirect_child_pipe(context.stdout_pipe[usize(1)],
+                                context.stdout_pipe[usize(0)],
+                                1,
+                                error_pipe[usize(1)]);
         } else if (context.stdout_config.kind == rstd::process::Stdio::Null_) {
-            redirect_child_null(1, libc::O_WRONLY, error_pipe[1]);
+            redirect_child_null(1, libc::O_WRONLY, error_pipe[usize(1)]);
         }
         if (context.stderr_config.kind == rstd::process::Stdio::Piped_) {
-            redirect_child_pipe(context.stderr_pipe[1], context.stderr_pipe[0], 2, error_pipe[1]);
+            redirect_child_pipe(context.stderr_pipe[usize(1)],
+                                context.stderr_pipe[usize(0)],
+                                2,
+                                error_pipe[usize(1)]);
         } else if (context.stderr_config.kind == rstd::process::Stdio::Null_) {
-            redirect_child_null(2, libc::O_WRONLY, error_pipe[1]);
+            redirect_child_null(2, libc::O_WRONLY, error_pipe[usize(1)]);
         }
 
         libc::environ = context.environment;
         libc::execvp(context.program, context.arguments);
-        child_spawn_failure(error_pipe[1]);
+        child_spawn_failure(error_pipe[usize(1)]);
     }
 
-    libc::close(error_pipe[1]);
+    libc::close(error_pipe[usize(1)]);
 #if RSTD_OS_LINUX
     if (context.pidfd) {
-        libc::close(pidfd_channel[1]);
+        libc::close(pidfd_channel[usize(1)]);
         int fd = -1;
-        (void)rstd::sys::process::receive_pidfd(pidfd_channel[0], fd);
-        libc::close(pidfd_channel[0]);
-        if (fd >= 0) context.pidfd->insert(rstd::os::linux::process::PidFd::from_raw_fd(fd));
+        (void)rstd::sys::process::receive_pidfd(pidfd_channel[usize(0)], fd);
+        libc::close(pidfd_channel[usize(0)]);
+        if (fd >= 0) {
+            [[unsafe]] { context.pidfd->insert(rstd::os::linux::process::PidFd::from_raw_fd(fd)); }
+        }
     }
 #endif
     auto message  = ChildSpawnError {};
-    auto received = decltype(libc::read(error_pipe[0], &message, sizeof(message))) {};
+    auto received = decltype(libc::read(error_pipe[usize(0)], &message, sizeof(message))) {};
     do {
-        received = libc::read(error_pipe[0], &message, sizeof(message));
+        received = libc::read(error_pipe[usize(0)], &message, sizeof(message));
     } while (received == -1 && libc::get_errno() == libc::EINTR);
-    libc::close(error_pipe[0]);
+    libc::close(error_pipe[usize(0)]);
 
     if (received == 0) return Ok(child_pid);
     if (received == -1) {
@@ -765,15 +783,17 @@ auto child_environment(bool clear, const ::alloc::vec::Vec<rstd::process::EnvAct
     if (! clear) {
         auto block = libc::GetEnvironmentStringsW();
         if (block == nullptr) return Err(windows_process_error());
-        auto current = block;
-        while (*current != L'\0') {
-            auto length = rstd::size_t {};
-            while (current[length] != L'\0') ++length;
-            auto value = ::alloc::vec::Vec<wchar_t>::from(
-                slice<wchar_t>::from_raw_parts(current, usize(length)));
-            auto key_length = environment_key_length(value.as_slice());
-            entries.push(WideEnvironmentEntry { rstd::move(value), key_length });
-            current += length + 1;
+        [[unsafe]] {
+            auto current = block;
+            while (*current != L'\0') {
+                auto length = rstd::size_t {};
+                while (current[length] != L'\0') ++length;
+                auto value = ::alloc::vec::Vec<wchar_t>::from(
+                    slice<wchar_t>::from_raw_parts(current, usize(length)));
+                auto key_length = environment_key_length(value.as_slice());
+                entries.push(WideEnvironmentEntry { rstd::move(value), key_length });
+                current += length + 1;
+            }
         }
         (void)libc::FreeEnvironmentStringsW(block);
     }
@@ -848,7 +868,8 @@ auto windows_pipe(bool child_reads, libc::SECURITY_ATTRIBUTES& security, bool as
         return Err(rstd::move(error));
     }
     auto flags = (child_reads ? libc::M_O_WRONLY : libc::M_O_RDONLY) | libc::M_O_BINARY;
-    auto fd    = libc::_open_osfhandle(reinterpret_cast<rstd::intptr_t>(parent), flags);
+    int  fd;
+    [[unsafe]] { fd = libc::_open_osfhandle(reinterpret_cast<rstd::intptr_t>(parent), flags); }
     if (fd < 0) {
         auto error = invalid_process_input();
         (void)libc::CloseHandle(parent);
@@ -903,19 +924,19 @@ auto Spawn::spawn(rstd::process::Command& cmd, bool async_pipes)
     // argv: [program, args..., nullptr]
     auto argc     = cmd.args_.len() + usize(2);
     auto argv_buf = ::alloc::vec::Vec<char*>::with_capacity(argc);
-    argv_buf.push(const_cast<char*>(prog_ptr));
+    [[unsafe]] { argv_buf.push(const_cast<char*>(prog_ptr)); }
     for (rstd::size_t i = 0; i < cmd.args_.len().to_primitive(); ++i) {
         auto ptr = arguments.at(usize(i)).as_ptr();
-        argv_buf.push(const_cast<char*>(ptr));
+        [[unsafe]] { argv_buf.push(const_cast<char*>(ptr)); }
     }
     argv_buf.push(nullptr);
 
-    int stdin_pipe[2]  = { -1, -1 };
-    int stdout_pipe[2] = { -1, -1 };
-    int stderr_pipe[2] = { -1, -1 };
+    auto stdin_pipe  = PipeDescriptors { -1, -1 };
+    auto stdout_pipe = PipeDescriptors { -1, -1 };
+    auto stderr_pipe = PipeDescriptors { -1, -1 };
 
-    auto make_pipe = [](int fds[2]) -> bool {
-        return libc::pipe2(fds, libc::O_CLOEXEC) == 0;
+    auto make_pipe = [](PipeDescriptors& fds) -> bool {
+        return libc::pipe2(fds.as_mut_slice().as_raw_ptr(), libc::O_CLOEXEC) == 0;
     };
 
     // stdin
@@ -965,7 +986,7 @@ auto Spawn::spawn(rstd::process::Command& cmd, bool async_pipes)
     auto environment_pointers =
         ::alloc::vec::Vec<char*>::with_capacity(environment_values.len() + usize(1));
     for (const auto& value : environment_values) {
-        environment_pointers.push(const_cast<char*>(value.as_ptr()));
+        [[unsafe]] { environment_pointers.push(const_cast<char*>(value.as_ptr())); }
     }
     environment_pointers.push(nullptr);
 
@@ -993,8 +1014,8 @@ auto Spawn::spawn(rstd::process::Command& cmd, bool async_pipes)
 #endif
     auto context = SpawnContext {
         .program       = prog_ptr,
-        .arguments     = argv_buf.begin(),
-        .environment   = environment_pointers.begin(),
+        .arguments     = argv_buf.as_mut_ptr(),
+        .environment   = environment_pointers.as_mut_ptr(),
         .directory     = directory.is_some() ? directory->as_ptr() : nullptr,
         .stdin_config  = cmd.cfg_stdin_,
         .stdout_config = cmd.cfg_stdout_,
@@ -1026,18 +1047,22 @@ auto Spawn::spawn(rstd::process::Command& cmd, bool async_pipes)
         child_pid = forked.unwrap();
     }
 
-    if (stdin_pipe[0] >= 0) libc::close(stdin_pipe[0]);
-    if (stdout_pipe[1] >= 0) libc::close(stdout_pipe[1]);
-    if (stderr_pipe[1] >= 0) libc::close(stderr_pipe[1]);
+    if (stdin_pipe[usize(0)] >= 0) libc::close(stdin_pipe[usize(0)]);
+    if (stdout_pipe[usize(1)] >= 0) libc::close(stdout_pipe[usize(1)]);
+    if (stderr_pipe[usize(1)] >= 0) libc::close(stderr_pipe[usize(1)]);
 
     Child child;
     child.pid = child_pid;
 #if RSTD_OS_LINUX
     child.pidfd_ = rstd::move(pidfd);
 #endif
-    if (stdin_pipe[1] >= 0) child.stdin_pipe = Some(ChildStdin(stdin_pipe[1]));
-    if (stdout_pipe[0] >= 0) child.stdout_pipe = Some(ChildStdout(stdout_pipe[0]));
-    if (stderr_pipe[0] >= 0) child.stderr_pipe = Some(ChildStderr(stderr_pipe[0]));
+    [[unsafe]] {
+        if (stdin_pipe[usize(1)] >= 0) child.stdin_pipe = Some(ChildStdin(stdin_pipe[usize(1)]));
+        if (stdout_pipe[usize(0)] >= 0)
+            child.stdout_pipe = Some(ChildStdout(stdout_pipe[usize(0)]));
+        if (stderr_pipe[usize(0)] >= 0)
+            child.stderr_pipe = Some(ChildStderr(stderr_pipe[usize(0)]));
+    }
     return Ok(rstd::move(child));
 #elif RSTD_OS_WINDOWS
     using namespace rstd::process;
@@ -1213,16 +1238,17 @@ auto Spawn::spawn(rstd::process::Command& cmd, bool async_pipes)
     if (stderr_pipe.async_parent.is_some())
         child.stderr_pipe = Some(ChildStderr(stderr_pipe.async_parent.take().unwrap()));
     if (stdin_pipe.parent >= 0) {
-        child.stdin_pipe  = Some(ChildStdin(stdin_pipe.parent));
-        stdin_pipe.parent = -1;
+        [[unsafe]] { child.stdin_pipe = Some(ChildStdin(rstd::exchange(stdin_pipe.parent, -1))); }
     }
     if (stdout_pipe.parent >= 0) {
-        child.stdout_pipe  = Some(ChildStdout(stdout_pipe.parent));
-        stdout_pipe.parent = -1;
+        [[unsafe]] {
+            child.stdout_pipe = Some(ChildStdout(rstd::exchange(stdout_pipe.parent, -1)));
+        }
     }
     if (stderr_pipe.parent >= 0) {
-        child.stderr_pipe  = Some(ChildStderr(stderr_pipe.parent));
-        stderr_pipe.parent = -1;
+        [[unsafe]] {
+            child.stderr_pipe = Some(ChildStderr(rstd::exchange(stderr_pipe.parent, -1)));
+        }
     }
     cleanup();
     return Ok(rstd::move(child));

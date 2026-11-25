@@ -74,17 +74,24 @@ struct ActiveOperation {
     BlockingJobCancellation cancellation;
 };
 
+[[unsafe]]
 auto execute(BlockingFileOperation operation) -> io::Result<usize> {
 #if RSTD_OS_LINUX || RSTD_OS_MACOS
     if (operation.kind == BlockingFileOperationKind::Read) {
-        auto buffer = mut_ref<MaybeUninit<byte>[]>::from_bytes(static_cast<byte*>(operation.data),
-                                                               operation.len);
+        mut_ref<MaybeUninit<byte>[]> buffer;
+        [[unsafe]] {
+            buffer = mut_ref<MaybeUninit<byte>[]>::from_bytes(static_cast<byte*>(operation.data),
+                                                              operation.len);
+        }
         return operation.offset.is_some()
                    ? sys::fs::read_at(operation.fd, buffer, *operation.offset)
                    : sys::fs::read(operation.fd, buffer);
     }
-    auto buffer =
-        slice<byte>::from_raw_parts(static_cast<const byte*>(operation.data), operation.len);
+    slice<byte> buffer;
+    [[unsafe]] {
+        buffer =
+            slice<byte>::from_raw_parts(static_cast<const byte*>(operation.data), operation.len);
+    }
     return operation.offset.is_some() ? sys::fs::write_at(operation.fd, buffer, *operation.offset)
                                       : sys::fs::write(operation.fd, buffer);
 #else
@@ -119,6 +126,8 @@ public:
     auto operator=(BlockingFileCompletionDriver&&) noexcept
         -> BlockingFileCompletionDriver& = default;
 
+    /// The operation's buffer must be accessible to the worker until completion is published.
+    [[unsafe]]
     auto submit(BlockingFileOperation operation) -> io::Result<empty> {
         auto operation_key = operation.operation_key;
         auto source_key    = operation.source_key;
@@ -126,10 +135,12 @@ public:
         auto completions   = m_completions.clone();
         auto job           = BlockingJob::make(
             [operation = rstd::move(operation), completions = completions.clone()]() mutable {
-                auto key    = operation.operation_key;
-                auto flags  = operation.flags;
-                auto result = blocking_file_completion::execute(rstd::move(operation));
-                completions->publish(BlockingFileCompletion { key, rstd::move(result), flags });
+                auto key   = operation.operation_key;
+                auto flags = operation.flags;
+                [[unsafe]] {
+                    auto result = blocking_file_completion::execute(rstd::move(operation));
+                    completions->publish(BlockingFileCompletion { key, rstd::move(result), flags });
+                }
             },
             [operation_key, flags, completions = rstd::move(completions)]() mutable {
                 completions->publish(BlockingFileCompletion {

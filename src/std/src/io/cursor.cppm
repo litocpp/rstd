@@ -42,7 +42,7 @@ using namespace rstd::prelude;
 
 template<typename A>
 inline auto cursor_data(const Vec<u8, A>& v) noexcept -> const byte* {
-    return v.begin();
+    return v.as_ptr().as_raw_ptr();
 }
 template<typename A>
 inline auto cursor_len(const Vec<u8, A>& v) noexcept -> usize {
@@ -86,10 +86,14 @@ struct Impl<io::Read, io::Cursor<T>> : DefaultInImpl<io::Read, io::Cursor<T>> {
         auto  total        = cursor_len(self.inner_);
         auto  raw_position = self.pos_.to_primitive();
         if (raw_position >= total.to_primitive()) return Ok(empty {});
-        auto position = usize(static_cast<rstd::size_t>(raw_position));
-        auto count    = rstd::min(buf.capacity(), total - position);
-        buf.append(
-            slice<u8>::from_raw_parts(cursor_data(self.inner_) + position.to_primitive(), count));
+        auto      position = usize(static_cast<rstd::size_t>(raw_position));
+        auto      count    = rstd::min(buf.capacity(), total - position);
+        slice<u8> source;
+        [[unsafe]] {
+            source = slice<u8>::from_raw_parts(cursor_data(self.inner_) + position.to_primitive(),
+                                               count);
+        }
+        buf.append(source);
         self.pos_ += u64(count.to_primitive());
         return Ok(empty {});
     }
@@ -125,8 +129,10 @@ struct Impl<io::BufRead, io::Cursor<T>> : ImplBase<io::Cursor<T>> {
         auto const position =
             raw_position >= total ? total : static_cast<rstd::size_t>(raw_position);
         if (position == total) return Ok(slice<u8> {});
-        return Ok(slice<u8>::from_raw_parts(cursor_data(self.inner_) + position,
-                                            usize(total - position)));
+        [[unsafe]] {
+            return Ok(slice<u8>::from_raw_parts(cursor_data(self.inner_) + position,
+                                                usize(total - position)));
+        }
     }
     auto consume(usize amt) -> void {
         auto&      self         = this->self();
@@ -193,9 +199,10 @@ struct Impl<io::Write, io::Cursor<Vec<u8, A>>> : ImplBase<io::Cursor<Vec<u8, A>>
             self.inner_.resize(usize(end), u8 {});
         }
         if (count != 0) {
-            auto destination =
-                mut_ref<u8[]>::from_raw_parts(self.inner_.begin() + position, usize(count));
-            rstd::mem::memcpy(destination.as_raw_ptr(), buf.as_raw_ptr(), buf.len());
+            [[unsafe]] {
+                auto destination = self.inner_.as_mut_ptr().add(usize(position));
+                rstd::mem::memcpy(destination.as_raw_ptr(), buf.as_raw_ptr(), buf.len());
+            }
         }
         self.pos_ = u64(end);
         return Ok(buf.len());

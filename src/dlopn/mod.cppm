@@ -22,7 +22,9 @@ inline constexpr int rtld_now     = RTLD_NOW;
 inline constexpr int rtld_global  = RTLD_GLOBAL;
 inline constexpr int rtld_local   = RTLD_LOCAL;
 inline void* const   rtld_default = RTLD_DEFAULT;
-inline void* const   rtld_next    = RTLD_NEXT;
+inline void* const   rtld_next    = [] {
+    [[unsafe]] { return RTLD_NEXT; }
+}();
 
 class Error {
 public:
@@ -45,7 +47,9 @@ public:
     static auto open(ref<ffi::CStr> filename, int flags = rtld_now | rtld_local)
         -> Result<Library, Error>;
 
+    /// The caller must match the symbol's actual type and keep the library loaded while using it.
     template<mtp::is_ptr T>
+    [[unsafe]]
     auto symbol(ref<ffi::CStr> name) const -> Result<T, Error> {
         static_assert(sizeof(T) == sizeof(void*));
         auto result = symbol_raw(name);
@@ -93,7 +97,9 @@ public:
     static auto open_native(ref<ffi::OsStr> filename, rstd::uint32_t flags = 0)
         -> Result<WindowsLibrary, WindowsError>;
 
+    /// The caller must match the symbol's actual type and keep the library loaded while using it.
     template<mtp::is_ptr T>
+    [[unsafe]]
     auto symbol(ref<ffi::CStr> name) const -> Result<T, WindowsError> {
         static_assert(sizeof(T) == sizeof(void*));
         auto result = symbol_raw(name);

@@ -11,8 +11,12 @@ using rstd::thread::ThreadInit;
 using namespace rstd::sys::libc;
 
 void rstd_thread_start_impl(void* data) {
-    auto init = Box<ThreadInit>::from_raw(
-        mut_ptr<ThreadInit>::from_raw_parts(static_cast<ThreadInit*>(data)));
+    auto init = [data] {
+        [[unsafe]] {
+            return Box<ThreadInit>::from_raw(
+                mut_ptr<ThreadInit>::from_raw_parts(static_cast<ThreadInit*>(data)));
+        }
+    }();
 
     init->init();
 

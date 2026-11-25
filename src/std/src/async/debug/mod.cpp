@@ -287,12 +287,14 @@ auto bounded_text(ref<str> s, size_t maximum, bool& truncated) -> String {
     }
     auto bytes = Vec<u8>::with_capacity(usize(n));
     for (size_t i = 0; i < n; ++i) bytes.push(u8(s[usize(i)].to_primitive()));
-    return String::from_utf8_unchecked(rstd::move(bytes));
+    [[unsafe]] { return String::from_utf8_unchecked(rstd::move(bytes)); }
 }
+[[unsafe]]
 auto c_text(const char* p) -> ref<str> {
-    size_t n = 0;
-    while (p[n]) ++n;
-    return ref<str>::from_raw_parts_unchecked(reinterpret_cast<const byte*>(p), usize(n));
+    [[unsafe]] {
+        return ref<str>::from_raw_parts_unchecked(reinterpret_cast<const byte*>(p),
+                                                  usize(rstd::strlen(p)));
+    }
 }
 auto find_index(const QueryFields& f, Id id) -> size_t {
     size_t first = 0, last = f.index.len().to_primitive();
@@ -362,7 +364,8 @@ auto QueryState::refresh(QueryFields& f, bool nonblocking) -> bool {
         if (! registration) return false;
         f.next_id = (*registration)->next_id;
         f.scan.clear();
-        for (auto slot : (*registration)->occupied) f.scan.push(rstd::move(slot));
+        const auto& occupied = (*registration)->occupied;
+        for (auto slot : occupied) f.scan.push(rstd::move(slot));
     }
     auto batch = c.options.max_pending_events + (f.pending.is_some() ? 1 : 0);
     for (size_t i = 0; i < batch; ++i) {
@@ -497,7 +500,9 @@ auto Recorder::child_initial(Kind kind, TaskInfo info, Id target, bool waiting) 
         c.omit();
         return {};
     }
-    auto file       = c_text(info.location.file_name());
+    auto file = [&] {
+        [[unsafe]] { return c_text(info.location.file_name()); }
+    }();
     auto name_bytes = rstd::min(info.name.len().to_primitive(), c.options.max_text_bytes);
     auto file_bytes = rstd::min(file.len().to_primitive(), c.options.max_text_bytes);
     auto reserved   = (name_bytes + file_bytes) * 2;
@@ -599,10 +604,11 @@ void Recorder::close() const {
     if (capture_) atomic_write((**capture_).closed, true);
 }
 auto current() -> Recorder {
-    return CURRENT ? Recorder(*CURRENT) : Recorder {};
+    if (! CURRENT) return Recorder {};
+    [[unsafe]] { return Recorder(*CURRENT); }
 }
 auto Recorder::target_id() const -> Id {
-    return CURRENT && same_store(*CURRENT) ? id_ : 0;
+    [[unsafe]] { return CURRENT && same_store(*CURRENT) ? id_ : 0; }
 }
 Handle::Handle(Arc<QueryState> query): query_(rstd::move(query)) {
 }
@@ -625,11 +631,11 @@ auto status_from(const CaptureShared& c, const QueryFields& f) -> Status {
     status.limits         = c.options;
     return status;
 }
-auto query_lock(const QueryState& query) -> Result<sync::MutexGuard<QueryFields>, Error> {
+auto query_lock(QueryState& query) -> Result<sync::MutexGuard<QueryFields>, Error> {
     auto locked = query.fields.try_lock();
     if (locked.is_err()) return Err(Error::Busy);
     auto fields = rstd::move(locked).unwrap_unchecked();
-    if (! const_cast<QueryState&>(query).refresh(*fields, true)) return Err(Error::Busy);
+    if (! query.refresh(*fields, true)) return Err(Error::Busy);
     return Ok(rstd::move(fields));
 }
 auto Handle::status() const -> Result<Status, Error> {
@@ -676,8 +682,10 @@ auto Handle::task(Id id) const -> Result<Record, Error> {
     auto  f = rstd::move(result).unwrap_unchecked();
     auto* r = get_task(*f, id);
     if (! r) return Err(id && id < f->next_id ? Error::Evicted : Error::NotFound);
-    if (r->kind != Kind::Task && r->kind != Kind::BlockingJob) return Err(Error::NotFound);
-    return Ok(Record(*r));
+    [[unsafe]] {
+        if (r->kind != Kind::Task && r->kind != Kind::BlockingJob) return Err(Error::NotFound);
+        return Ok(Record(*r));
+    }
 }
 auto Handle::task_snapshot(Id id, size_t max_bytes) const -> Result<Snapshot, Error> {
     auto result = query_lock(*query_);
@@ -685,7 +693,9 @@ auto Handle::task_snapshot(Id id, size_t max_bytes) const -> Result<Snapshot, Er
     auto  f = rstd::move(result).unwrap_unchecked();
     auto* r = get_task(*f, id);
     if (! r) return Err(id && id < f->next_id ? Error::Evicted : Error::NotFound);
-    if (r->kind != Kind::Task && r->kind != Kind::BlockingJob) return Err(Error::NotFound);
+    [[unsafe]] {
+        if (r->kind != Kind::Task && r->kind != Kind::BlockingJob) return Err(Error::NotFound);
+    }
     return make_snapshot(*query_, *f, max_bytes, [id](const Record& r) {
         return r.id == id || r.parent == id || (r.kind == Kind::Wait && r.target == id);
     });
@@ -792,8 +802,11 @@ WaitGuard::~WaitGuard() {
     reset();
 }
 void WaitGuard::begin(ref<str> name, Id target, source_location location) {
-    if (record_.id() || ! CURRENT || ! CURRENT->enabled()) return;
-    record_ = CURRENT->child_initial(Kind::Wait, TaskInfo { name, location }, target, true);
+    if (record_.id() || ! CURRENT) return;
+    [[unsafe]] {
+        if (! CURRENT->enabled()) return;
+        record_ = CURRENT->child_initial(Kind::Wait, TaskInfo { name, location }, target, true);
+    }
 }
 void WaitGuard::reset() {
     record_.state(State::Removed, true);

@@ -19,8 +19,9 @@ void ServerState::stop() {
     {
         auto f     = fields.lock().unwrap_unchecked();
         f->stopped = true;
-        for (auto& w : f->waiters)
+        for (auto& w : f->waiters) {
             if (w) wake.push(w.take().unwrap());
+        }
     }
     for (auto& w : wake) rstd::move(w).wake();
 }
@@ -162,8 +163,9 @@ auto serve(sync::Arc<ServerState> state) -> coro<rstd::io::Result<empty>> {
     state->stop();
     auto closed = co_await rstd::move(listener).close();
     if (closed.is_err() && ! error) error = Some(rstd::move(closed).unwrap_err());
-    for (auto& c : clients)
+    for (auto& c : clients) {
         if (c) client_error(error, co_await c.take().unwrap());
+    }
     if (error) co_return Err(error.take().unwrap());
     co_return Ok(empty {});
 }

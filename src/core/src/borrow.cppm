@@ -29,9 +29,7 @@ namespace rstd
 
 template<typename T>
 struct Impl<borrow::Borrow<T>, T> : ImplBase<T> {
-    auto borrow() const noexcept -> ref<T> {
-        return ref<T>::from_raw_parts(rstd::addressof(this->self()));
-    }
+    auto borrow() const noexcept -> ref<T> { return ref<T>::from_ref(this->self()); }
 };
 
 } // namespace rstd

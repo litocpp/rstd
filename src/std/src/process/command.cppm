@@ -39,6 +39,84 @@ using rstd::path::Path;
 using rstd::path::PathBuf;
 using namespace rstd::prelude;
 
+namespace rstd::sys::process_impl
+{
+
+class ChildPipe {
+#if RSTD_OS_UNIX
+    os::fd::OwnedFd fd_;
+#else
+    int fd_ { -1 };
+#endif
+#if RSTD_OS_WINDOWS
+    Option<os::handle::OwnedHandle> async_handle_;
+#endif
+
+protected:
+    ChildPipe() = default;
+    ~ChildPipe();
+    ChildPipe(ChildPipe&& other) noexcept
+#if RSTD_OS_UNIX
+        : fd_(rstd::move(other.fd_))
+#else
+        : fd_(rstd::exchange(other.fd_, -1))
+#endif
+#if RSTD_OS_WINDOWS
+          ,
+          async_handle_(other.async_handle_.take())
+#endif
+    {
+    }
+
+    // An open descriptor must be transferred exclusively to this pipe.
+    [[unsafe]]
+    void adopt_raw_fd(int fd) noexcept {
+#if RSTD_OS_UNIX
+        if (fd >= 0) {
+            [[unsafe]] { fd_ = os::fd::OwnedFd::from_raw_fd(fd); }
+        }
+#else
+        fd_ = fd;
+#endif
+    }
+
+#if RSTD_OS_UNIX
+    explicit ChildPipe(os::fd::OwnedFd fd) noexcept: fd_(rstd::move(fd)) {}
+
+    auto as_raw_fd() const noexcept -> os::fd::RawFd { return fd_.as_raw_fd(); }
+    auto as_fd() const noexcept [[clang::lifetimebound]] -> os::fd::BorrowedFd {
+        return fd_.as_fd();
+    }
+    auto into_owned_fd() && noexcept -> os::fd::OwnedFd {
+        if (! fd_.is_open()) panic { "invalid raw fd" };
+        return rstd::move(fd_);
+    }
+#endif
+
+    auto sync_fd() const noexcept -> int {
+#if RSTD_OS_UNIX
+        return fd_.as_raw_fd();
+#else
+        return fd_;
+#endif
+    }
+
+#if RSTD_OS_WINDOWS
+    explicit ChildPipe(os::handle::OwnedHandle handle): async_handle_(Some(rstd::move(handle))) {}
+
+    auto has_async_handle() const noexcept -> bool { return async_handle_.is_some(); }
+
+    // Only stdio created by spawn_with_async_pipes() has an asynchronous native handle.
+    auto into_owned_handle() && -> io::Result<os::handle::OwnedHandle> {
+        if (async_handle_.is_none())
+            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
+        return Ok(async_handle_.take().unwrap());
+    }
+#endif
+};
+
+} // namespace rstd::sys::process_impl
+
 export namespace rstd::process
 {
 
@@ -54,119 +132,85 @@ struct Child;
 /// A handle to a child process's standard input (write end of pipe).
 ///
 /// Dropping this closes the pipe, causing the child to see EOF on its stdin.
-struct ChildStdin {
-    int fd { -1 };
-#if RSTD_OS_WINDOWS
-    Option<os::handle::OwnedHandle> async_handle;
-#endif
+class ChildStdin : private sys::process_impl::ChildPipe {
+    friend struct rstd::Impl<io::Write, ChildStdin>;
+
+public:
     ~ChildStdin();
-    ChildStdin(ChildStdin&& o) noexcept
-        : fd(o.fd)
-#if RSTD_OS_WINDOWS
-          ,
-          async_handle(o.async_handle.take())
-#endif
-    {
-        o.fd = -1;
-    }
+    ChildStdin(ChildStdin&&) noexcept   = default;
     ChildStdin& operator=(ChildStdin&&) = delete;
     ChildStdin()                        = default;
-    explicit ChildStdin(int f): fd(f) {}
-#if RSTD_OS_WINDOWS
-    explicit ChildStdin(os::handle::OwnedHandle handle): async_handle(Some(rstd::move(handle))) {}
-    // Only stdio created by spawn_with_async_pipes() has an asynchronous native handle.
-    auto into_owned_handle() && -> io::Result<os::handle::OwnedHandle> {
-        if (async_handle.is_none())
-            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
-        return Ok(async_handle.take().unwrap());
+
+    /// Takes exclusive ownership of an open descriptor, or creates an empty pipe for -1.
+    [[unsafe]]
+    explicit ChildStdin(int fd) noexcept {
+        [[unsafe]] { adopt_raw_fd(fd); }
     }
-#endif
 #if RSTD_OS_UNIX
-    auto as_raw_fd() const noexcept -> os::fd::RawFd { return fd; }
-    auto as_fd() const noexcept [[clang::lifetimebound]] -> os::fd::BorrowedFd {
-        return os::fd::BorrowedFd::borrow_raw(fd);
-    }
-    auto into_owned_fd() && noexcept -> os::fd::OwnedFd {
-        return os::fd::OwnedFd::from_raw_fd(rstd::exchange(fd, -1));
-    }
+    explicit ChildStdin(os::fd::OwnedFd fd) noexcept: ChildPipe(rstd::move(fd)) {}
+    using ChildPipe::as_fd;
+    using ChildPipe::as_raw_fd;
+    using ChildPipe::into_owned_fd;
+#endif
+#if RSTD_OS_WINDOWS
+    explicit ChildStdin(os::handle::OwnedHandle handle): ChildPipe(rstd::move(handle)) {}
+    using ChildPipe::into_owned_handle;
 #endif
 };
 
 /// A handle to a child process's standard output (read end of pipe).
-struct ChildStdout {
-    int fd { -1 };
-#if RSTD_OS_WINDOWS
-    Option<os::handle::OwnedHandle> async_handle;
-#endif
+class ChildStdout : private sys::process_impl::ChildPipe {
+    friend struct Child;
+    friend struct rstd::Impl<io::Read, ChildStdout>;
+
+public:
     ~ChildStdout();
-    ChildStdout(ChildStdout&& o) noexcept
-        : fd(o.fd)
-#if RSTD_OS_WINDOWS
-          ,
-          async_handle(o.async_handle.take())
-#endif
-    {
-        o.fd = -1;
-    }
+    ChildStdout(ChildStdout&&) noexcept   = default;
     ChildStdout& operator=(ChildStdout&&) = delete;
     ChildStdout()                         = default;
-    explicit ChildStdout(int f): fd(f) {}
-#if RSTD_OS_WINDOWS
-    explicit ChildStdout(os::handle::OwnedHandle handle): async_handle(Some(rstd::move(handle))) {}
-    // Only stdio created by spawn_with_async_pipes() has an asynchronous native handle.
-    auto into_owned_handle() && -> io::Result<os::handle::OwnedHandle> {
-        if (async_handle.is_none())
-            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
-        return Ok(async_handle.take().unwrap());
+
+    /// Takes exclusive ownership of an open descriptor, or creates an empty pipe for -1.
+    [[unsafe]]
+    explicit ChildStdout(int fd) noexcept {
+        [[unsafe]] { adopt_raw_fd(fd); }
     }
-#endif
 #if RSTD_OS_UNIX
-    auto as_raw_fd() const noexcept -> os::fd::RawFd { return fd; }
-    auto as_fd() const noexcept [[clang::lifetimebound]] -> os::fd::BorrowedFd {
-        return os::fd::BorrowedFd::borrow_raw(fd);
-    }
-    auto into_owned_fd() && noexcept -> os::fd::OwnedFd {
-        return os::fd::OwnedFd::from_raw_fd(rstd::exchange(fd, -1));
-    }
+    explicit ChildStdout(os::fd::OwnedFd fd) noexcept: ChildPipe(rstd::move(fd)) {}
+    using ChildPipe::as_fd;
+    using ChildPipe::as_raw_fd;
+    using ChildPipe::into_owned_fd;
+#endif
+#if RSTD_OS_WINDOWS
+    explicit ChildStdout(os::handle::OwnedHandle handle): ChildPipe(rstd::move(handle)) {}
+    using ChildPipe::into_owned_handle;
 #endif
 };
 
 /// A handle to a child process's standard error (read end of pipe).
-struct ChildStderr {
-    int fd { -1 };
-#if RSTD_OS_WINDOWS
-    Option<os::handle::OwnedHandle> async_handle;
-#endif
+class ChildStderr : private sys::process_impl::ChildPipe {
+    friend struct Child;
+    friend struct rstd::Impl<io::Read, ChildStderr>;
+
+public:
     ~ChildStderr();
-    ChildStderr(ChildStderr&& o) noexcept
-        : fd(o.fd)
-#if RSTD_OS_WINDOWS
-          ,
-          async_handle(o.async_handle.take())
-#endif
-    {
-        o.fd = -1;
-    }
+    ChildStderr(ChildStderr&&) noexcept   = default;
     ChildStderr& operator=(ChildStderr&&) = delete;
     ChildStderr()                         = default;
-    explicit ChildStderr(int f): fd(f) {}
-#if RSTD_OS_WINDOWS
-    explicit ChildStderr(os::handle::OwnedHandle handle): async_handle(Some(rstd::move(handle))) {}
-    // Only stdio created by spawn_with_async_pipes() has an asynchronous native handle.
-    auto into_owned_handle() && -> io::Result<os::handle::OwnedHandle> {
-        if (async_handle.is_none())
-            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
-        return Ok(async_handle.take().unwrap());
+
+    /// Takes exclusive ownership of an open descriptor, or creates an empty pipe for -1.
+    [[unsafe]]
+    explicit ChildStderr(int fd) noexcept {
+        [[unsafe]] { adopt_raw_fd(fd); }
     }
-#endif
 #if RSTD_OS_UNIX
-    auto as_raw_fd() const noexcept -> os::fd::RawFd { return fd; }
-    auto as_fd() const noexcept [[clang::lifetimebound]] -> os::fd::BorrowedFd {
-        return os::fd::BorrowedFd::borrow_raw(fd);
-    }
-    auto into_owned_fd() && noexcept -> os::fd::OwnedFd {
-        return os::fd::OwnedFd::from_raw_fd(rstd::exchange(fd, -1));
-    }
+    explicit ChildStderr(os::fd::OwnedFd fd) noexcept: ChildPipe(rstd::move(fd)) {}
+    using ChildPipe::as_fd;
+    using ChildPipe::as_raw_fd;
+    using ChildPipe::into_owned_fd;
+#endif
+#if RSTD_OS_WINDOWS
+    explicit ChildStderr(os::handle::OwnedHandle handle): ChildPipe(rstd::move(handle)) {}
+    using ChildPipe::into_owned_handle;
 #endif
 };
 
@@ -197,20 +241,22 @@ template<>
 struct Impl<io::Read, process::ChildStdout> : DefaultInImpl<io::Read, process::ChildStdout> {
     auto read(mut_ref<u8[]> buf) -> io::Result<usize> {
 #if RSTD_OS_WINDOWS
-        if (this->self().async_handle.is_some())
+        if (this->self().has_async_handle())
             return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
 #endif
-        return sys::io::stdio::read_fd(this->self().fd, as_bytes_mut(buf));
+        return sys::io::stdio::read_fd(this->self().sync_fd(), as_bytes_mut(buf));
     }
     auto read_buf(io::BorrowedCursor buf) -> io::Result<empty> {
 #if RSTD_OS_WINDOWS
-        if (this->self().async_handle.is_some())
+        if (this->self().has_async_handle())
             return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
 #endif
-        auto result = sys::io::stdio::read_fd(this->self().fd, buf.as_uninit());
+        auto result = sys::io::stdio::read_fd(this->self().sync_fd(), buf.as_uninit());
         if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
-        if (! buf.advance_unchecked(*result))
-            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidData }));
+        [[unsafe]] {
+            if (! buf.advance_unchecked(*result))
+                return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidData }));
+        }
         return Ok(empty {});
     }
 };
@@ -219,20 +265,22 @@ template<>
 struct Impl<io::Read, process::ChildStderr> : DefaultInImpl<io::Read, process::ChildStderr> {
     auto read(mut_ref<u8[]> buf) -> io::Result<usize> {
 #if RSTD_OS_WINDOWS
-        if (this->self().async_handle.is_some())
+        if (this->self().has_async_handle())
             return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
 #endif
-        return sys::io::stdio::read_fd(this->self().fd, as_bytes_mut(buf));
+        return sys::io::stdio::read_fd(this->self().sync_fd(), as_bytes_mut(buf));
     }
     auto read_buf(io::BorrowedCursor buf) -> io::Result<empty> {
 #if RSTD_OS_WINDOWS
-        if (this->self().async_handle.is_some())
+        if (this->self().has_async_handle())
             return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::Unsupported }));
 #endif
-        auto result = sys::io::stdio::read_fd(this->self().fd, buf.as_uninit());
+        auto result = sys::io::stdio::read_fd(this->self().sync_fd(), buf.as_uninit());
         if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
-        if (! buf.advance_unchecked(*result))
-            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidData }));
+        [[unsafe]] {
+            if (! buf.advance_unchecked(*result))
+                return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidData }));
+        }
         return Ok(empty {});
     }
 };
@@ -262,7 +310,7 @@ public:
 #if RSTD_OS_WINDOWS
     void* process_handle { nullptr };
     auto  as_handle() const noexcept [[clang::lifetimebound]] -> os::handle::BorrowedHandle {
-        return os::handle::BorrowedHandle::borrow_raw(process_handle);
+        [[unsafe]] { return os::handle::BorrowedHandle::borrow_raw(process_handle); }
     }
 #endif
     Option<ChildStdin>  stdin_pipe;
@@ -293,7 +341,8 @@ public:
     auto wait_with_output() -> io::Result<Output>;
 
     /// Waits for the child, collects stdout/stderr, and forwards chunks while they arrive.
-    /// Stdout and stderr notifications may run concurrently.
+    /// The observer's context must stay valid for the call and support concurrent notifications.
+    [[unsafe]]
     auto wait_with_output(OutputObserver observer) -> io::Result<Output>;
 
     ~Child();
@@ -416,8 +465,9 @@ public:
         return *this;
     }
     auto envs(slice<tuple<OsString, OsString>> values) -> Command& {
-        for (const auto& value : values)
+        for (const auto& value : values) {
             env(value.template get<0>().as_os_str(), value.template get<1>().as_os_str());
+        }
         return *this;
     }
 
@@ -464,13 +514,14 @@ public:
     }
 
     /// Executes the command, collecting output while forwarding chunks to an observer.
-    /// Stdout and stderr notifications may run concurrently.
+    /// The observer's context must stay valid for the call and support concurrent notifications.
+    [[unsafe]]
     auto output(OutputObserver observer) -> io::Result<Output> {
         cfg_stdout_ = Stdio::piped();
         cfg_stderr_ = Stdio::piped();
         auto child  = spawn();
         if (child.is_err()) return Err(child.unwrap_err());
-        return child.unwrap().wait_with_output(observer);
+        [[unsafe]] { return child.unwrap().wait_with_output(observer); }
     }
 };
 

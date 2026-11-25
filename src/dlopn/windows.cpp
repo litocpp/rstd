@@ -55,7 +55,8 @@ auto WindowsLibrary::open_native(ref<ffi::OsStr> filename, rstd::uint32_t flags)
 }
 
 auto WindowsLibrary::symbol_raw(ref<ffi::CStr> name) const -> Result<void*, WindowsError> {
-    auto address = ::GetProcAddress(static_cast<HMODULE>(handle_), name.as_ptr());
+    FARPROC address;
+    [[unsafe]] { address = ::GetProcAddress(static_cast<HMODULE>(handle_), name.as_ptr()); }
     if (! address) return Err(windows_error("GetProcAddress"));
     static_assert(sizeof(address) == sizeof(void*));
     void* result {};
@@ -64,7 +65,9 @@ auto WindowsLibrary::symbol_raw(ref<ffi::CStr> name) const -> Result<void*, Wind
 }
 
 void WindowsLibrary::close() noexcept {
-    if (handle_) ::FreeLibrary(static_cast<HMODULE>(handle_));
+    if (handle_) {
+        [[unsafe]] { ::FreeLibrary(static_cast<HMODULE>(handle_)); }
+    }
     handle_ = nullptr;
 }
 } // namespace rstd::dlopn

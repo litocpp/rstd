@@ -157,7 +157,9 @@ auto open(ref<Path> path, const OpenOptionsData& options) -> IOResult<OwnedFd> {
     while (true) {
         auto fd = libc::open(
             value.as_ptr(), flags, static_cast<libc::mode_t>(options.mode.to_primitive()));
-        if (fd >= 0) return Ok(OwnedFd::from_raw_fd(fd));
+        if (fd >= 0) {
+            [[unsafe]] { return Ok(OwnedFd::from_raw_fd(fd)); }
+        }
         if (libc::get_errno() != libc::EINTR) return Err(last_error());
     }
 }
@@ -173,7 +175,9 @@ auto open_directory_for_traversal(ref<Path> path) -> IOResult<OwnedFd> {
     auto flags = libc::O_CLOEXEC | libc::O_DIRECTORY | libc::DIRECTORY_TRAVERSE;
     while (true) {
         auto fd = libc::open(value.as_ptr(), flags, 0);
-        if (fd >= 0) return Ok(OwnedFd::from_raw_fd(fd));
+        if (fd >= 0) {
+            [[unsafe]] { return Ok(OwnedFd::from_raw_fd(fd)); }
+        }
         if (libc::get_errno() != libc::EINTR) return Err(last_error());
     }
 }
@@ -186,7 +190,9 @@ auto open_at(RawFd parent, ref<Path> path, const OpenOptionsData& options, bool 
     while (true) {
         auto fd = libc::openat(
             parent, value.as_ptr(), flags, static_cast<libc::mode_t>(options.mode.to_primitive()));
-        if (fd >= 0) return Ok(OwnedFd::from_raw_fd(fd));
+        if (fd >= 0) {
+            [[unsafe]] { return Ok(OwnedFd::from_raw_fd(fd)); }
+        }
         if (libc::get_errno() != libc::EINTR) return Err(last_error());
     }
 }
@@ -393,8 +399,10 @@ auto set_times(RawFd fd, FileTimesData times) -> IOResult<empty> {
             target.tv_nsec = libc::UTIME_OMIT;
         }
     };
-    fill(times.accessed, values[0]);
-    fill(times.modified, values[1]);
+    [[unsafe]] {
+        fill(times.accessed, values[0]);
+        fill(times.modified, values[1]);
+    }
     if (libc::futimens(fd, values) < 0) return Err(last_error());
     return Ok(empty {});
 }
@@ -403,8 +411,8 @@ auto run_path(ref<Path> path, int (*operation)(const char*)) -> IOResult<empty> 
     auto path_value = path_cstring(path);
     if (path_value.is_err()) return Err(path_value.unwrap_err_unchecked());
     auto value = rstd::move(path_value).unwrap_unchecked();
-    if (operation(value.as_ptr()) < 0) {
-        return Err(last_error());
+    [[unsafe]] {
+        if (operation(value.as_ptr()) < 0) return Err(last_error());
     }
     return Ok(empty {});
 }
@@ -417,8 +425,8 @@ auto run_paths(ref<Path> first, ref<Path> second, int (*operation)(const char*, 
     if (second_value.is_err()) return Err(second_value.unwrap_err_unchecked());
     auto first_path  = rstd::move(first_value).unwrap_unchecked();
     auto second_path = rstd::move(second_value).unwrap_unchecked();
-    if (operation(first_path.as_ptr(), second_path.as_ptr()) < 0) {
-        return Err(last_error());
+    [[unsafe]] {
+        if (operation(first_path.as_ptr(), second_path.as_ptr()) < 0) return Err(last_error());
     }
     return Ok(empty {});
 }
@@ -453,13 +461,20 @@ auto read_link(ref<Path> path) -> IOResult<PathBuf> {
     while (true) {
         auto bytes = Vec<u8>::with_capacity(usize(capacity));
         bytes.resize(usize(capacity), u8 {});
-        auto raw   = as_bytes_mut(bytes.as_mut_slice().as_mut_ref());
-        auto count = libc::readlink(raw_path, reinterpret_cast<char*>(raw.as_raw_ptr()), capacity);
+        auto count = [&] {
+            [[unsafe]] {
+                auto raw = as_bytes_mut(bytes.as_mut_slice().as_mut_ref());
+                return libc::readlink(
+                    raw_path, reinterpret_cast<char*>(raw.as_raw_ptr()), capacity);
+            }
+        }();
         if (count < 0) return Err(last_error());
         auto length = static_cast<rstd::size_t>(count);
         if (length < capacity) {
             while (bytes.len().to_primitive() > length) (void)bytes.pop();
-            return Ok(PathBuf::from(OsString::from_encoded_bytes_unchecked(rstd::move(bytes))));
+            [[unsafe]] {
+                return Ok(PathBuf::from(OsString::from_encoded_bytes_unchecked(rstd::move(bytes))));
+            }
         }
         capacity *= 2;
     }
@@ -471,9 +486,11 @@ auto canonicalize(ref<Path> path) -> IOResult<PathBuf> {
     auto value = rstd::move(path_value).unwrap_unchecked();
     auto raw   = libc::realpath(value.as_ptr(), nullptr);
     if (! raw) return Err(last_error());
-    auto bytes = Vec<u8>::from(CStr::from_ptr(raw).to_bytes());
-    libc::free(raw);
-    return Ok(PathBuf::from(OsString::from_encoded_bytes_unchecked(rstd::move(bytes))));
+    [[unsafe]] {
+        auto bytes = Vec<u8>::from(CStr::from_ptr(raw).to_bytes());
+        libc::free(raw);
+        return Ok(PathBuf::from(OsString::from_encoded_bytes_unchecked(rstd::move(bytes))));
+    }
 }
 
 auto create_dir(ref<Path> path) -> IOResult<empty> {
@@ -526,14 +543,15 @@ auto Directory::next() -> Option<IOResult<DirectoryEntryData>> {
             if (libc::get_errno() == 0) return None();
             return Some(IOResult<DirectoryEntryData>(Err(last_error())));
         }
-        auto name = entry->d_name;
-        if (name[0] == '.' && (name[1] == 0 || (name[1] == '.' && name[2] == 0))) continue;
-
-        auto bytes = Vec<u8>::from(CStr::from_ptr(name).to_bytes());
-        return Some(IOResult<DirectoryEntryData>(Ok(DirectoryEntryData {
-            .name      = rstd::move(bytes),
-            .file_type = file_type_from_dirent(entry->d_type),
-        })));
+        [[unsafe]] {
+            auto name = entry->d_name;
+            if (name[0] == '.' && (name[1] == 0 || (name[1] == '.' && name[2] == 0))) continue;
+            auto bytes = Vec<u8>::from(CStr::from_ptr(name).to_bytes());
+            return Some(IOResult<DirectoryEntryData>(Ok(DirectoryEntryData {
+                .name      = rstd::move(bytes),
+                .file_type = file_type_from_dirent(entry->d_type),
+            })));
+        }
     }
 }
 

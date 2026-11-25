@@ -101,6 +101,8 @@ public:
     using Item = Component;
 
     constexpr Components() noexcept = default;
+    /// The encoded path bytes must stay readable for the lifetime of the iterator.
+    [[unsafe]]
     constexpr Components(byte const* p [[clang::lifetimebound]], usize len) noexcept;
 
     constexpr auto next() noexcept -> Option<Component>;
@@ -109,8 +111,7 @@ public:
 private:
     constexpr auto remaining_start() const noexcept -> rstd::size_t;
 
-    byte const*  m_path { nullptr };
-    rstd::size_t m_len {};
+    slice<u8>    m_path;
     rstd::size_t m_pos {};
     bool         m_root_pending { false };
     bool         m_cur_pending { false };
@@ -149,52 +150,24 @@ constexpr bool is_sep(u8 c) {
     return path::is_separator(static_cast<char32_t>(c.to_primitive()));
 }
 
-constexpr auto value(byte source) -> u8 {
-    return u8::from_byte(source);
-}
-
-constexpr auto root_len(byte const* p, rstd::size_t len) -> rstd::size_t {
-    if (len == 0) return 0;
+constexpr auto root_len(slice<u8> bytes) -> rstd::size_t {
+    if (bytes.is_empty()) return 0;
 #if defined(RSTD_OS_WINDOWS)
-    if (len >= 3 && value(p[1]) == u8(':') && is_sep(value(p[2]))) return 3;
-    if (is_sep(value(p[0]))) return 1;
-    return 0;
+    if (bytes.len() >= usize(3) && bytes[usize(1)] == u8(':') && is_sep(bytes[usize(2)])) return 3;
+    return is_sep(bytes[usize()]) ? 1 : 0;
 #else
-    return value(p[0]) == u8('/') ? 1 : 0;
+    return bytes[usize()] == u8('/') ? 1 : 0;
 #endif
 }
 
-constexpr auto skip_seps(byte const* p, rstd::size_t len, rstd::size_t pos) -> rstd::size_t {
-    while (pos < len && is_sep(value(p[pos]))) ++pos;
+constexpr auto skip_seps(slice<u8> bytes, rstd::size_t pos) -> rstd::size_t {
+    while (usize(pos) < bytes.len() && is_sep(bytes[usize(pos)])) ++pos;
     return pos;
 }
 
-constexpr auto eq_bytes(byte const* p, rstd::size_t len, const char* s) -> bool {
-    rstd::size_t i = 0;
-    while (i < len && s[i] != '\0') {
-        if (value(p[i]) != u8(static_cast<rstd::uint8_t>(s[i]))) return false;
-        ++i;
-    }
-    return i == len && s[i] == '\0';
-}
-
-constexpr auto include_cur_dir(byte const* p, rstd::size_t len) -> bool {
-    if (root_len(p, len) != 0) return false;
-    if (len == 1) return value(p[0]) == u8('.');
-    return len > 1 && value(p[0]) == u8('.') && is_sep(value(p[1]));
-}
-
-/// Find the start of the file name component (after the last separator).
-constexpr auto file_name_start(byte const* p, rstd::size_t len) -> rstd::size_t {
-    if (len == 0) return 0;
-    rstd::size_t i = len;
-    // Skip trailing separators
-    while (i > 0 && is_sep(value(p[i - 1]))) --i;
-    if (i == 0) return len; // all separators → no file name
-    rstd::size_t end = i;
-    while (i > 0 && ! is_sep(value(p[i - 1]))) --i;
-    (void)end;
-    return i;
+constexpr auto include_cur_dir(slice<u8> bytes) -> bool {
+    if (root_len(bytes) != 0 || bytes.is_empty() || bytes[usize()] != u8('.')) return false;
+    return bytes.len() == usize(1) || is_sep(bytes[usize(1)]);
 }
 
 } // namespace path_detail
@@ -202,13 +175,13 @@ constexpr auto file_name_start(byte const* p, rstd::size_t len) -> rstd::size_t 
 namespace path
 {
 
-constexpr Components::Components(byte const* p, usize len) noexcept
-    : m_path(p), m_len(len.to_primitive()) {
-    auto root = path_detail::root_len(p, m_len);
+constexpr Components::Components(byte const* p, usize len) noexcept {
+    [[unsafe]] { m_path = slice<u8>::from_raw_parts(p, len); }
+    auto root = path_detail::root_len(m_path);
     if (root != 0) {
         m_root_pending = true;
         m_pos          = root;
-    } else if (path_detail::include_cur_dir(p, m_len)) {
+    } else if (path_detail::include_cur_dir(m_path)) {
         m_cur_pending = true;
         m_pos         = 1;
     }
@@ -224,27 +197,31 @@ constexpr auto Components::next() noexcept -> Option<Component> {
         return Some(Component::cur_dir());
     }
 
+    auto length = m_path.len().to_primitive();
     while (true) {
-        m_pos = path_detail::skip_seps(m_path, m_len, m_pos);
-        if (m_pos >= m_len) return None();
+        m_pos = path_detail::skip_seps(m_path, m_pos);
+        if (m_pos >= length) return None();
 
         auto start = m_pos;
-        while (m_pos < m_len && ! path_detail::is_sep(path_detail::value(m_path[m_pos]))) ++m_pos;
+        while (m_pos < length && ! path_detail::is_sep(m_path[usize(m_pos)])) ++m_pos;
         auto len = m_pos - start;
-
-        if (path_detail::eq_bytes(m_path + start, len, ".")) continue;
-        if (path_detail::eq_bytes(m_path + start, len, "..")) {
-            return Some(Component::parent_dir());
+        if (m_path[usize(start)] == u8('.')) {
+            if (len == 1) continue;
+            if (len == 2 && m_path[usize(start + 1)] == u8('.'))
+                return Some(Component::parent_dir());
         }
-        auto bytes = slice<u8>::from_raw_parts(m_path + start, usize(len));
-        return Some(Component::normal(ref<OsStr>::from_encoded_bytes_unchecked(bytes)));
+
+        [[unsafe]] {
+            return Some(Component::normal(ref<OsStr>::from_encoded_bytes_unchecked(
+                slice<u8>::from_raw_parts(m_path.as_raw_ptr() + start, usize(len)))));
+        }
     }
 }
 
 constexpr auto Components::remaining_start() const noexcept -> rstd::size_t {
     if (m_root_pending) return 0;
     if (m_cur_pending) return 0;
-    return path_detail::skip_seps(m_path, m_len, m_pos);
+    return path_detail::skip_seps(m_path, m_pos);
 }
 
 } // namespace path
@@ -254,9 +231,12 @@ template<>
 struct ref<path::Path> : ref_base<ref<path::Path>, byte[], false> {
     USE_TRAIT(ref)
 
+private:
+    friend ref_base<ref<path::Path>, byte[], false>;
     byte const* p { nullptr };
     usize       length {};
 
+public:
     constexpr ref() noexcept = default;
 
     /// Construct from a `ref<OsStr>`.
@@ -268,7 +248,9 @@ struct ref<path::Path> : ref_base<ref<path::Path>, byte[], false> {
 
     /// Returns the underlying `OsStr`.
     constexpr auto as_os_str() const noexcept -> ref<OsStr> {
-        return ref<OsStr>::from_encoded_bytes_unchecked(slice<u8>::from_raw_parts(p, length));
+        [[unsafe]] {
+            return ref<OsStr>::from_encoded_bytes_unchecked(slice<u8>::from_raw_parts(p, length));
+        }
     }
 
     /// Attempts to yield a `ref<str>` if the path is valid UTF-8.
@@ -279,19 +261,16 @@ struct ref<path::Path> : ref_base<ref<path::Path>, byte[], false> {
 
     /// Returns `true` if the path starts with a root separator.
     constexpr auto is_absolute() const noexcept -> bool {
-        if (length == usize {}) return false;
+        auto bytes = as_os_str().as_encoded_bytes();
+        if (bytes.is_empty()) return false;
 #if defined(RSTD_OS_WINDOWS)
-        auto const len = length.to_primitive();
-        // UNC or drive-letter absolute: \\... or C:\...
-        if (len >= 2 && path_detail::is_sep(path_detail::value(p[0])) &&
-            path_detail::is_sep(path_detail::value(p[1])))
+        if (bytes.len() >= usize(2) && path_detail::is_sep(bytes[usize()]) &&
+            path_detail::is_sep(bytes[usize(1)]))
             return true;
-        if (len >= 3 && path_detail::value(p[1]) == u8(':') &&
-            path_detail::is_sep(path_detail::value(p[2])))
-            return true;
-        return false;
+        return bytes.len() >= usize(3) && bytes[usize(1)] == u8(':') &&
+               path_detail::is_sep(bytes[usize(2)]);
 #else
-        return path_detail::value(p[0]) == u8('/');
+        return bytes[usize()] == u8('/');
 #endif
     }
 
@@ -300,7 +279,7 @@ struct ref<path::Path> : ref_base<ref<path::Path>, byte[], false> {
 
     /// Returns `true` if the path has a root component.
     constexpr auto has_root() const noexcept -> bool {
-        return path_detail::root_len(p, length.to_primitive()) != 0;
+        return path_detail::root_len(as_os_str().as_encoded_bytes()) != 0;
     }
 
     /// Returns `true` if the path is relative and cannot escape its joining directory.
@@ -314,7 +293,7 @@ struct ref<path::Path> : ref_base<ref<path::Path>, byte[], false> {
 
     /// Produces an iterator over the path components.
     constexpr auto components() const noexcept -> path::Components {
-        return path::Components(p, length);
+        [[unsafe]] { return path::Components(p, length); }
     }
 
     /// Normalizes components without filesystem access; errors on escaping the lexical root.
@@ -356,15 +335,16 @@ struct ref<path::Path> : ref_base<ref<path::Path>, byte[], false> {
         Option<ref<path::Path>> parent;
         while (auto component = values.next()) {
             if (component->is_root_dir()) {
-                end = usize(path_detail::root_len(p, length.to_primitive()));
+                end = usize(path_detail::root_len(as_os_str().as_encoded_bytes()));
                 continue;
             }
-            parent = Some(ref<path::Path>(
-                ref<OsStr>::from_encoded_bytes_unchecked(slice<u8>::from_raw_parts(p, end))));
-            end    = length - values.as_path().len();
-            while (end > usize {} &&
-                   path_detail::is_sep(path_detail::value(p[end.to_primitive() - 1])))
-                --end;
+            [[unsafe]] {
+                parent = Some(ref<path::Path>(
+                    ref<OsStr>::from_encoded_bytes_unchecked(slice<u8>::from_raw_parts(p, end))));
+            }
+            end        = length - values.as_path().len();
+            auto bytes = as_os_str().as_encoded_bytes();
+            while (end > usize {} && path_detail::is_sep(bytes[end - usize(1)])) --end;
         }
         return parent;
     }
@@ -390,8 +370,10 @@ struct ref<path::Path> : ref_base<ref<path::Path>, byte[], false> {
                 break;
             }
         }
-        return Some(ref<OsStr>::from_encoded_bytes_unchecked(
-            slice<u8>::from_raw_parts(bytes.as_raw_ptr(), end)));
+        [[unsafe]] {
+            return Some(ref<OsStr>::from_encoded_bytes_unchecked(
+                slice<u8>::from_raw_parts(bytes.as_raw_ptr(), end)));
+        }
     }
 
     /// Returns the extension of the file name (after the last `.`).
@@ -409,10 +391,11 @@ struct ref<path::Path> : ref_base<ref<path::Path>, byte[], false> {
             }
         }
         if (dot == name_len || dot == 0) return None();
-        auto       bytes = name.as_encoded_bytes();
-        ref<OsStr> r     = ref<OsStr>::from_encoded_bytes_unchecked(
-            slice<u8>::from_raw_parts(bytes.as_raw_ptr() + dot + 1, usize(name_len - dot - 1)));
-        return Some(rstd::move(r));
+        auto bytes = name.as_encoded_bytes();
+        [[unsafe]] {
+            return Some(ref<OsStr>::from_encoded_bytes_unchecked(slice<u8>::from_raw_parts(
+                bytes.as_raw_ptr() + dot + 1, usize(name_len - dot - 1))));
+        }
     }
 
     constexpr auto len() const noexcept -> usize { return length; }
@@ -420,8 +403,7 @@ struct ref<path::Path> : ref_base<ref<path::Path>, byte[], false> {
     /// Copies the path bytes into a NUL-terminated `CString` suitable for libc calls.
     /// Returns `Err(NulError)` if the path contains an interior NUL byte.
     auto to_cstring() const -> Result<CString, NulError> {
-        auto bytes = slice<u8>::from_raw_parts(p, length);
-        return CString::make(Vec<u8>::from(bytes));
+        return CString::make(Vec<u8>::from(as_os_str().as_encoded_bytes()));
     }
 
     constexpr operator bool() const { return length != usize {} && p != nullptr; }
@@ -436,8 +418,12 @@ export namespace rstd::path
 
 constexpr auto Components::as_path() const noexcept -> ref<Path> {
     auto start = remaining_start();
-    auto bytes = slice<u8>::from_raw_parts(m_path + start, usize(m_len - start));
-    return ref<Path>(ref<OsStr>::from_encoded_bytes_unchecked(bytes));
+    [[unsafe]] {
+        const auto* data = m_path.as_raw_ptr();
+        if (start != 0) data += start;
+        auto bytes = slice<u8>::from_raw_parts(data, m_path.len() - usize(start));
+        return ref<Path>(ref<OsStr>::from_encoded_bytes_unchecked(bytes));
+    }
 }
 
 /// An owned, mutable filesystem path, analogous to Rust's `PathBuf`.
@@ -497,7 +483,9 @@ public:
             auto bytes  = os_str.as_encoded_bytes();
             if (! path_detail::is_sep(bytes.last().unwrap().get())) {
                 array<u8, 1> separator(PATH_SEP);
-                inner.push(ref<OsStr>::from_encoded_bytes_unchecked(separator.as_slice()));
+                [[unsafe]] {
+                    inner.push(ref<OsStr>::from_encoded_bytes_unchecked(separator.as_slice()));
+                }
             }
         }
         inner.push(comp);
@@ -522,17 +510,22 @@ public:
     /// Replaces the final component's extension, without a leading dot.
     /// Returns false without a file stem; panics if the extension contains a separator.
     auto set_extension(ref<OsStr> extension) -> bool {
-        for (auto byte : extension.as_encoded_bytes())
+        auto extension_bytes = extension.as_encoded_bytes();
+        for (auto byte : extension_bytes)
             if (path_detail::is_sep(byte))
                 rstd::panic { "extension cannot contain path separators" };
         auto stem = as_path().file_stem();
         if (stem.is_none()) return false;
-        auto stem_bytes = stem->as_encoded_bytes();
-        auto path_os    = inner.as_os_str();
-        auto bytes      = path_os.as_encoded_bytes();
-        auto end        = usize(stem_bytes.as_raw_ptr() - bytes.as_raw_ptr()) + stem_bytes.len();
-        auto start      = reinterpret_cast<rstd::uintptr_t>(bytes.as_raw_ptr());
-        auto source = reinterpret_cast<rstd::uintptr_t>(extension.as_encoded_bytes().as_raw_ptr());
+        auto            stem_bytes = stem->as_encoded_bytes();
+        auto            path_os    = inner.as_os_str();
+        auto            bytes      = path_os.as_encoded_bytes();
+        usize           end;
+        rstd::uintptr_t start, source;
+        [[unsafe]] {
+            end    = usize(stem_bytes.as_raw_ptr() - bytes.as_raw_ptr()) + stem_bytes.len();
+            start  = reinterpret_cast<rstd::uintptr_t>(bytes.as_raw_ptr());
+            source = reinterpret_cast<rstd::uintptr_t>(extension_bytes.as_raw_ptr());
+        }
         // C++ permits an extension borrowed from this path; truncation would invalidate it.
         if (! extension.is_empty() && source >= start &&
             source - start < bytes.len().to_primitive()) {
@@ -601,10 +594,13 @@ auto ref<path::Path>::normalize_lexically() const -> Result<path::PathBuf, path:
     bool first   = true;
     while (auto component = values.next()) {
         if (first && component->is_root_dir()) {
-            auto length = path_detail::root_len(p, len().to_primitive());
-            lexical = path::PathBuf::from(ref<path::Path>(ref<OsStr>::from_encoded_bytes_unchecked(
-                slice<u8>::from_raw_parts(p, usize(length)))));
-            root    = lexical.len();
+            auto length = path_detail::root_len(as_os_str().as_encoded_bytes());
+            [[unsafe]] {
+                lexical =
+                    path::PathBuf::from(ref<path::Path>(ref<OsStr>::from_encoded_bytes_unchecked(
+                        slice<u8>::from_raw_parts(p, usize(length)))));
+            }
+            root = lexical.len();
         } else if (first && component->is_cur_dir()) {
             lexical.push(ref<path::Path>(component->as_os_str()));
             root = lexical.len();

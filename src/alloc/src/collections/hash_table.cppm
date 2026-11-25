@@ -346,7 +346,7 @@ public:
                 auto index = index_++;
                 if (! table_->full(index)) continue;
                 --remaining_;
-                return Some(Item::from_raw_parts(rstd::addressof(table_->value(index))));
+                return Some(Item::from_ref(table_->value(index)));
             }
             return None();
         }
@@ -374,7 +374,7 @@ public:
                 auto index = index_++;
                 if (! table_->full(index)) continue;
                 --remaining_;
-                return Some(Item::from_raw_parts(rstd::addressof(table_->value(index))));
+                return Some(Item::from_ref(table_->value(index)));
             }
             return None();
         }
@@ -453,13 +453,13 @@ public:
     auto find(u64 hash, E&& equal) const [[clang::lifetimebound]] -> Option<ref<T>> {
         auto index = table_.find(hash, equal);
         if (index.is_none()) return None();
-        return Some(ref<T>::from_raw_parts(rstd::addressof(table_.value(*index))));
+        return Some(ref<T>::from_ref(table_.value(*index)));
     }
     template<typename E>
     auto find_mut(u64 hash, E&& equal) [[clang::lifetimebound]] -> Option<mut_ref<T>> {
         auto index = table_.find(hash, equal);
         if (index.is_none()) return None();
-        return Some(mut_ref<T>::from_raw_parts(rstd::addressof(table_.value(*index))));
+        return Some(mut_ref<T>::from_ref(table_.value(*index)));
     }
     template<typename E>
     auto find_entry(u64 hash, E&& equal) [[clang::lifetimebound]] -> Option<OccupiedEntry> {

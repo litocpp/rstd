@@ -30,7 +30,10 @@ public:
     ~RwLockReadGuard() {
         if (lock_) lock_->release_read();
     }
-    auto deref() const noexcept -> ref<T> { return ref<T>::from_raw_parts(&lock_->data_); }
+    auto deref() const noexcept -> ref<T> {
+        if (lock_ == nullptr) rstd::panic { "read guard was moved from" };
+        [[unsafe]] { return ref<T>::from_ref(lock_->data_); }
+    }
 };
 
 export template<typename T>
@@ -55,8 +58,14 @@ public:
     ~RwLockWriteGuard() {
         if (lock_) lock_->release_write();
     }
-    auto deref() const noexcept -> ref<T> { return ref<T>::from_raw_parts(&lock_->data_); }
-    auto deref_mut() noexcept -> mut_ref<T> { return mut_ref<T>::from_raw_parts(&lock_->data_); }
+    auto deref() const noexcept -> ref<T> {
+        if (lock_ == nullptr) rstd::panic { "write guard was moved from" };
+        [[unsafe]] { return ref<T>::from_ref(lock_->data_); }
+    }
+    auto deref_mut() noexcept -> mut_ref<T> {
+        if (lock_ == nullptr) rstd::panic { "write guard was moved from" };
+        [[unsafe]] { return mut_ref<T>::from_ref(lock_->data_); }
+    }
 };
 
 /// A reader-preferred lock. Readers may nest while a writer is waiting; writers may starve.

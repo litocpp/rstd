@@ -3,6 +3,17 @@ export import :syntax;
 
 using namespace rstd::prelude;
 
+namespace rstd::parse::regex
+{
+
+template<typename T, rstd::size_t N>
+constexpr auto regex_array_at(T (&values)[N], rstd::size_t index) noexcept -> T& {
+    if (index >= N) rstd::panic("regex array index out of range");
+    [[unsafe]] { return values[index]; }
+}
+
+} // namespace rstd::parse::regex
+
 export namespace rstd::parse::regex
 {
 
@@ -70,7 +81,7 @@ struct CompiledPattern {
 template<rstd::size_t PatternSize>
 constexpr auto node_nullable(const Syntax<PatternSize>& syntax, rstd::size_t index) noexcept
     -> bool {
-    auto const& node = syntax.nodes[index];
+    auto const& node = regex_array_at(syntax.nodes, index);
     switch (node.kind) {
     case NodeKind::Empty:
     case NodeKind::AssertSubjectStart:
@@ -95,7 +106,7 @@ constexpr auto node_nullable(const Syntax<PatternSize>& syntax, rstd::size_t ind
 template<rstd::size_t PatternSize>
 constexpr auto node_subject_anchored(const Syntax<PatternSize>& syntax, rstd::size_t index) noexcept
     -> bool {
-    auto const& node = syntax.nodes[index];
+    auto const& node = regex_array_at(syntax.nodes, index);
     switch (node.kind) {
     case NodeKind::AssertSubjectStart: return true;
     case NodeKind::Concat: return node_subject_anchored(syntax, node.left);
@@ -111,11 +122,11 @@ template<rstd::size_t PatternSize>
 constexpr void collect_first_set(const Syntax<PatternSize>& syntax,
                                  rstd::size_t               index,
                                  FirstSet<PatternSize>&     result) noexcept {
-    auto const& node = syntax.nodes[index];
+    auto const& node = regex_array_at(syntax.nodes, index);
     switch (node.kind) {
     case NodeKind::Literal:
     case NodeKind::Any:
-    case NodeKind::CharacterClass: result.nodes[index] = true; break;
+    case NodeKind::CharacterClass: regex_array_at(result.nodes, index) = true; break;
     case NodeKind::Concat:
         collect_first_set(syntax, node.left, result);
         if (node_nullable(syntax, node.left)) collect_first_set(syntax, node.right, result);
@@ -144,7 +155,7 @@ constexpr void append_literal_prefix(LiteralPrefix<PatternSize>&       target,
             target.truncated = true;
             break;
         }
-        target.values[target.length++] = source.values[index];
+        regex_array_at(target.values, target.length++) = regex_array_at(source.values, index);
     }
     target.truncated = target.truncated || source.truncated;
 }
@@ -152,7 +163,7 @@ constexpr void append_literal_prefix(LiteralPrefix<PatternSize>&       target,
 template<rstd::size_t PatternSize>
 constexpr auto node_literal_prefix(const Syntax<PatternSize>& syntax, rstd::size_t index) noexcept
     -> LiteralPrefix<PatternSize> {
-    auto const& node = syntax.nodes[index];
+    auto const& node = regex_array_at(syntax.nodes, index);
     switch (node.kind) {
     case NodeKind::Empty:
     case NodeKind::AssertSubjectStart:
@@ -179,8 +190,10 @@ constexpr auto node_literal_prefix(const Syntax<PatternSize>& syntax, rstd::size
         auto right  = node_literal_prefix(syntax, node.right);
         auto result = LiteralPrefix<PatternSize> {};
         while (result.length < left.length && result.length < right.length &&
-               left.values[result.length] == right.values[result.length]) {
-            result.values[result.length] = left.values[result.length];
+               regex_array_at(left.values, result.length) ==
+                   regex_array_at(right.values, result.length)) {
+            regex_array_at(result.values, result.length) =
+                regex_array_at(left.values, result.length);
             ++result.length;
         }
         result.exact = left.exact && right.exact && left.length == right.length &&
@@ -215,8 +228,8 @@ class ProgramCompiler {
             fail(RegexErrorKind::ProgramTooLarge);
             return INVALID_INDEX;
         }
-        auto const index            = program.count++;
-        program.instructions[index] = instruction;
+        auto const index                            = program.count++;
+        regex_array_at(program.instructions, index) = instruction;
         return index;
     }
 
@@ -228,11 +241,11 @@ class ProgramCompiler {
             auto const child = compile_node(node.left, split);
             if (compiled_.error) return INVALID_INDEX;
             if (node.greedy) {
-                compiled_.program.instructions[split].out       = child;
-                compiled_.program.instructions[split].secondary = next;
+                regex_array_at(compiled_.program.instructions, split).out       = child;
+                regex_array_at(compiled_.program.instructions, split).secondary = next;
             } else {
-                compiled_.program.instructions[split].out       = next;
-                compiled_.program.instructions[split].secondary = child;
+                regex_array_at(compiled_.program.instructions, split).out       = next;
+                regex_array_at(compiled_.program.instructions, split).secondary = child;
             }
             result = split;
         } else {
@@ -252,7 +265,7 @@ class ProgramCompiler {
 
     constexpr auto compile_node(rstd::size_t index, rstd::size_t next) noexcept -> rstd::size_t {
         if (compiled_.error) return INVALID_INDEX;
-        auto const& node = compiled_.syntax.nodes[index];
+        auto const& node = regex_array_at(compiled_.syntax.nodes, index);
         switch (node.kind) {
         case NodeKind::Empty: return next;
         case NodeKind::Literal:
@@ -398,7 +411,7 @@ constexpr auto matches_class(const CompiledPattern<PatternSize>& compiled,
                              char32_t                            value) noexcept -> bool {
     auto matched = false;
     for (rstd::size_t index = 0; index < instruction.class_count; ++index) {
-        auto const& term       = compiled.syntax.terms[instruction.class_begin + index];
+        auto const& term = regex_array_at(compiled.syntax.terms, instruction.class_begin + index);
         auto        term_match = false;
         switch (term.kind) {
         case ClassTermKind::Range:
@@ -442,73 +455,84 @@ constexpr void add_epsilon(ThreadList<Pattern.size(), TrackCaptures>& list,
     constexpr auto PENDING_CAPACITY = Program<Pattern.size()>::CAPACITY * 2;
     Pending        pending[PENDING_CAPACITY] {};
     rstd::size_t   pending_count {};
-    pending[pending_count++] = Pending { thread, pc };
+    regex_array_at(pending, pending_count++) = Pending { thread, pc };
 
     auto const& compiled = COMPILED_PATTERN<Pattern, OptionsValue>;
     while (pending_count != 0) {
-        auto current = pending[--pending_count];
+        auto current = regex_array_at(pending, --pending_count);
         if (current.pc == INVALID_INDEX || current.pc >= compiled.program.count ||
-            list.seen[current.pc]) {
+            regex_array_at(list.seen, current.pc)) {
             continue;
         }
-        if (metrics != nullptr) ++metrics->instruction_visits;
-        list.seen[current.pc]   = true;
-        auto const& instruction = compiled.program.instructions[current.pc];
+        if (metrics != nullptr) {
+            [[unsafe]] { ++metrics->instruction_visits; }
+        }
+        regex_array_at(list.seen, current.pc) = true;
+        auto const& instruction = regex_array_at(compiled.program.instructions, current.pc);
         switch (instruction.op) {
         case Op::Split:
-            pending[pending_count++] = Pending { current.thread, instruction.secondary };
-            pending[pending_count++] = Pending { current.thread, instruction.out };
+            regex_array_at(pending, pending_count++) =
+                Pending { current.thread, instruction.secondary };
+            regex_array_at(pending, pending_count++) = Pending { current.thread, instruction.out };
             break;
         case Op::SaveStart:
             if constexpr (TrackCaptures) {
-                current.thread.slots[instruction.capture * 2] = position;
+                regex_array_at(current.thread.slots, instruction.capture * 2) = position;
             }
-            pending[pending_count++] = Pending { current.thread, instruction.out };
+            regex_array_at(pending, pending_count++) = Pending { current.thread, instruction.out };
             break;
         case Op::SaveEnd:
             if constexpr (TrackCaptures) {
-                current.thread.slots[instruction.capture * 2 + 1] = position;
+                regex_array_at(current.thread.slots, instruction.capture * 2 + 1) = position;
             }
-            pending[pending_count++] = Pending { current.thread, instruction.out };
+            regex_array_at(pending, pending_count++) = Pending { current.thread, instruction.out };
             break;
         case Op::AssertSubjectStart:
             if (position == 0) {
-                pending[pending_count++] = Pending { current.thread, instruction.out };
+                regex_array_at(pending, pending_count++) =
+                    Pending { current.thread, instruction.out };
             }
             break;
         case Op::AssertSubjectEnd:
             if (position == input.len().to_primitive()) {
-                pending[pending_count++] = Pending { current.thread, instruction.out };
+                regex_array_at(pending, pending_count++) =
+                    Pending { current.thread, instruction.out };
             }
             break;
         case Op::AssertLineStart:
             if (position == 0 || input[usize(position - 1)] == u8('\n')) {
-                pending[pending_count++] = Pending { current.thread, instruction.out };
+                regex_array_at(pending, pending_count++) =
+                    Pending { current.thread, instruction.out };
             }
             break;
         case Op::AssertLineEnd:
             if (position == input.len().to_primitive() || input[usize(position)] == u8('\n')) {
-                pending[pending_count++] = Pending { current.thread, instruction.out };
+                regex_array_at(pending, pending_count++) =
+                    Pending { current.thread, instruction.out };
             }
             break;
         case Op::AssertWordBoundary:
             if (assertion_word_before(input, position) != assertion_word_at(input, position)) {
-                pending[pending_count++] = Pending { current.thread, instruction.out };
+                regex_array_at(pending, pending_count++) =
+                    Pending { current.thread, instruction.out };
             }
             break;
         case Op::AssertNotWordBoundary:
             if (assertion_word_before(input, position) == assertion_word_at(input, position)) {
-                pending[pending_count++] = Pending { current.thread, instruction.out };
+                regex_array_at(pending, pending_count++) =
+                    Pending { current.thread, instruction.out };
             }
             break;
         default:
-            current.thread.pc          = current.pc;
-            list.threads[list.count++] = current.thread;
+            current.thread.pc                          = current.pc;
+            regex_array_at(list.threads, list.count++) = current.thread;
             break;
         }
     }
-    if (metrics != nullptr && list.count > metrics->maximum_threads) {
-        metrics->maximum_threads = list.count;
+    if (metrics != nullptr) {
+        [[unsafe]] {
+            if (list.count > metrics->maximum_threads) metrics->maximum_threads = list.count;
+        }
     }
 }
 
@@ -528,9 +552,9 @@ constexpr auto raw_result(const Thread<PatternSize, TrackCaptures>& thread,
     if constexpr (TrackCaptures) {
         auto const slots = Syntax<PatternSize>::CAPTURE_CAPACITY * 2;
         for (rstd::size_t index = 0; index < slots; ++index) {
-            result.slots[index] = thread.slots[index];
+            regex_array_at(result.slots, index) = regex_array_at(thread.slots, index);
         }
-        result.begin = result.slots[0];
+        result.begin = regex_array_at(result.slots, 0);
     } else {
         result.begin = thread.start;
     }
@@ -563,16 +587,20 @@ run(ref<str> input, rstd::size_t from, RunMode mode, ExecutionMetrics* metrics =
         if (mode == RunMode::Full) {
             if (position == input.len().to_primitive()) {
                 for (rstd::size_t index = 0; index < current.count; ++index) {
-                    if (compiled.program.instructions[current.threads[index].pc].op == Op::Accept) {
-                        return raw_result(current.threads[index], position);
+                    if (regex_array_at(compiled.program.instructions,
+                                       regex_array_at(current.threads, index).pc)
+                            .op == Op::Accept) {
+                        return raw_result(regex_array_at(current.threads, index), position);
                     }
                 }
                 return {};
             }
         } else {
             for (rstd::size_t index = 0; index < current.count; ++index) {
-                if (compiled.program.instructions[current.threads[index].pc].op == Op::Accept) {
-                    candidate     = raw_result(current.threads[index], position);
+                if (regex_array_at(compiled.program.instructions,
+                                   regex_array_at(current.threads, index).pc)
+                        .op == Op::Accept) {
+                    candidate     = raw_result(regex_array_at(current.threads, index), position);
                     current.count = index;
                     break;
                 }
@@ -589,9 +617,11 @@ run(ref<str> input, rstd::size_t from, RunMode mode, ExecutionMetrics* metrics =
             input.len().to_primitive() - indices.as_str().len().to_primitive();
         auto next = List {};
         for (rstd::size_t index = 0; index < current.count; ++index) {
-            auto const thread      = current.threads[index];
-            auto const instruction = compiled.program.instructions[thread.pc];
-            if (metrics != nullptr) ++metrics->instruction_visits;
+            auto const thread      = regex_array_at(current.threads, index);
+            auto const instruction = regex_array_at(compiled.program.instructions, thread.pc);
+            if (metrics != nullptr) {
+                [[unsafe]] { ++metrics->instruction_visits; }
+            }
             auto matched = false;
             switch (instruction.op) {
             case Op::Character:
@@ -627,8 +657,7 @@ namespace rstd::parse::regex
 
 template<str_::fixed_string Input>
 consteval auto ambiguous_repeat_audit() noexcept {
-    constexpr auto& storage = str_::BYTE_LITERAL_STORAGE<Input>;
-    auto input   = ref<str>::from_raw_parts_unchecked(storage.data(), usize(storage.size()));
+    auto input   = rstd::literals::operator""_str < Input>();
     auto metrics = ExecutionMetrics {};
     auto result  = run<"(a|aa)*b", Options {}, false>(input, 0, RunMode::Full, &metrics);
     return tuple(metrics, result.matched);

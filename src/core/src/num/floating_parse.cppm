@@ -76,8 +76,7 @@ struct Impl<str_::FromStr, T> {
             return error(num::FloatErrorKind::Invalid);
         }
 
-        auto body = ref<str>::from_raw_parts_unchecked(input.data() + index,
-                                                       usize(input.size().to_primitive() - index));
+        auto body = input.get(usize(index), input.len()).unwrap_unchecked();
         if (body == "inf"_str || body == "infinity"_str) {
             return Ok(negative ? -Self::INFINITY_ : Self::INFINITY_);
         }
@@ -130,12 +129,14 @@ struct Impl<str_::FromStr, T> {
         }
 
         static constexpr byte ZERO[] = { byte { '0' } };
-        auto integer  = integer_begin == integer_end
-                            ? slice<u8>::from_raw_parts(ZERO, usize(1))
-                            : slice<u8>::from_raw_parts(input.data() + integer_begin,
-                                                        usize(integer_end - integer_begin));
-        auto fraction = slice<u8>::from_raw_parts(input.data() + fraction_begin,
-                                                  usize(fraction_end - fraction_begin));
+        auto                  digits = [&](rstd::size_t begin, rstd::size_t end) {
+            [[unsafe]] {
+                return slice<u8>::from_raw_parts(input.data() + begin, usize(end - begin));
+            }
+        };
+        auto integer  = integer_begin == integer_end ? slice<u8>::from_array(ZERO)
+                                                     : digits(integer_begin, integer_end);
+        auto fraction = digits(fraction_begin, fraction_end);
         auto parsed   = num::dec2flt::to_f64({
             .integer  = integer,
             .fraction = fraction,
@@ -153,30 +154,32 @@ struct Impl<str_::FromStr, T> {
 template<>
 struct Impl<fmt::Display, num::ParseFloatError> : ImplBase<num::ParseFloatError> {
     auto fmt(fmt::Formatter& formatter) const -> bool {
-        const char* message = "invalid float literal";
+        auto message = "invalid float literal"_str;
         switch (this->self().kind()) {
-        case num::FloatErrorKind::Empty: message = "cannot parse float from empty string"; break;
+        case num::FloatErrorKind::Empty:
+            message = "cannot parse float from empty string"_str;
+            break;
         case num::FloatErrorKind::Invalid: break;
-        case num::FloatErrorKind::PosOverflow: message = "float literal is too large"; break;
-        case num::FloatErrorKind::NegOverflow: message = "float literal is too small"; break;
+        case num::FloatErrorKind::PosOverflow: message = "float literal is too large"_str; break;
+        case num::FloatErrorKind::NegOverflow: message = "float literal is too small"_str; break;
         }
-        return formatter.write_raw(message, rstd::strlen(message));
+        return formatter.write_str(message);
     }
 };
 
 template<>
 struct Impl<fmt::Debug, num::ParseFloatError> : ImplBase<num::ParseFloatError> {
     auto fmt(fmt::Formatter& formatter) const -> bool {
-        const char* kind = "Invalid";
+        auto kind = "Invalid"_str;
         switch (this->self().kind()) {
-        case num::FloatErrorKind::Empty: kind = "Empty"; break;
+        case num::FloatErrorKind::Empty: kind = "Empty"_str; break;
         case num::FloatErrorKind::Invalid: break;
-        case num::FloatErrorKind::PosOverflow: kind = "PosOverflow"; break;
-        case num::FloatErrorKind::NegOverflow: kind = "NegOverflow"; break;
+        case num::FloatErrorKind::PosOverflow: kind = "PosOverflow"_str; break;
+        case num::FloatErrorKind::NegOverflow: kind = "NegOverflow"_str; break;
         }
         constexpr char prefix[] = "ParseFloatError { kind: ";
         if (! formatter.write_raw(prefix, sizeof(prefix) - 1)) return false;
-        if (! formatter.write_raw(kind, rstd::strlen(kind))) return false;
+        if (! formatter.write_str(kind)) return false;
         return formatter.write_raw(" }", 2);
     }
 };

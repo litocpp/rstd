@@ -26,10 +26,13 @@ auto to_wide(ref<ffi::OsStr> value, bool terminate = true) -> rstd::io::Result<V
     return Ok(rstd::move(output));
 }
 
+/// The pointer must be readable for length UTF-16 code units.
+[[unsafe]]
 auto from_wide(const wchar_t* value, usize length) -> ffi::OsString {
     auto units = Vec<u16>::with_capacity(length);
-    for (auto index = usize(); index < length; ++index)
-        units.push(u16(static_cast<unsigned>(value[index.to_primitive()])));
+    for (auto index = usize(); index < length; ++index) {
+        [[unsafe]] { units.push(u16(static_cast<unsigned>(value[index.to_primitive()]))); }
+    }
     return os::windows::ffi::OsStringExt::from_wide(units.as_slice());
 }
 

@@ -42,8 +42,9 @@ struct Impl<fmt::Write, FdWriter> : ImplBase<FdWriter> {
         auto* p   = value.data();
         auto  len = value.size().to_primitive();
         while (len != 0) {
-            auto bytes = slice<byte>::from_raw_parts(p, usize(len));
-            auto res   = sys::io::stdio::write_fd(self.fd, bytes);
+            slice<byte> bytes;
+            [[unsafe]] { bytes = slice<byte>::from_raw_parts(p, usize(len)); }
+            auto res = sys::io::stdio::write_fd(self.fd, bytes);
             if (res.is_err()) {
                 self.result = Err(res.unwrap_err_unchecked());
                 return false;
@@ -58,7 +59,7 @@ struct Impl<fmt::Write, FdWriter> : ImplBase<FdWriter> {
                     io::error::ErrorKind { io::error::ErrorKind::InvalidData }));
                 return false;
             }
-            p += written;
+            [[unsafe]] { p += written; }
             len -= written;
         }
         return true;
@@ -116,16 +117,20 @@ auto Impl<io::Read, io::Stdin>::read_buf(io::BorrowedCursor buf) -> io::Result<e
     ScopedLock guard(0);
     auto       result = sys::io::stdio::read_fd(0, buf.as_uninit());
     if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
-    if (! buf.advance_unchecked(*result))
-        return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidData }));
+    [[unsafe]] {
+        if (! buf.advance_unchecked(*result))
+            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidData }));
+    }
     return Ok(empty {});
 }
 
 auto Impl<io::Read, io::StdinLock>::read_buf(io::BorrowedCursor buf) -> io::Result<empty> {
     auto result = sys::io::stdio::read_fd(0, buf.as_uninit());
     if (result.is_err()) return Err(rstd::move(result).unwrap_err_unchecked());
-    if (! buf.advance_unchecked(*result))
-        return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidData }));
+    [[unsafe]] {
+        if (! buf.advance_unchecked(*result))
+            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidData }));
+    }
     return Ok(empty {});
 }
 } // namespace rstd

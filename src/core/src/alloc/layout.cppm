@@ -124,8 +124,9 @@ public:
         return align_to(usize(__STDCPP_DEFAULT_NEW_ALIGNMENT__));
     }
 
+    /// Returns an aligned sentinel without referring to allocated storage.
     auto dangling() const noexcept -> void* {
-        return reinterpret_cast<void*>(align_.to_primitive());
+        [[unsafe]] { return reinterpret_cast<void*>(align_.to_primitive()); }
     }
 };
 

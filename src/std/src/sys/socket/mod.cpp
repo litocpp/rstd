@@ -140,18 +140,30 @@ auto lookup_host(ref<CStr> host, u16 port) -> Result<Vec<SocketAddr>, LookupErro
 #if RSTD_OS_WINDOWS
         auto text = ::gai_strerrorA(code);
 #else
-        if (code == EAI_SYSTEM) cause = Some(Error::from_raw_os_error(i32(errno)));
+        if (code == EAI_SYSTEM) {
+            [[unsafe]] { cause = Some(Error::from_raw_os_error(i32(errno))); }
+        }
         auto text = ::gai_strerror(code);
 #endif
-        auto message = text ? CStr::from_ptr(text).to_str().unwrap_or("name lookup failed"_str)
-                            : "name lookup failed"_str;
+        auto message = "name lookup failed"_str;
+        if (text) {
+            [[unsafe]] {
+                message = CStr::from_ptr(text).to_str().unwrap_or("name lookup failed"_str);
+            }
+        }
         return Err(LookupError { i32(code), String::make(message), rstd::move(cause) });
     }
     LookupAddresses addresses;
     addresses.list = list;
     Vec<SocketAddr> result;
-    for (auto p = addresses.list; p; p = p->ai_next) {
-        auto address = platform::addr_from_native(p->ai_addr, p->ai_addrlen);
+    for (auto p = addresses.list; p;) {
+        auto address = [&] {
+            [[unsafe]] {
+                auto current = p;
+                p            = p->ai_next;
+                return platform::addr_from_native(current->ai_addr, current->ai_addrlen);
+            }
+        }();
         if (address.is_err()) continue;
         auto value     = address->with_port(port);
         bool duplicate = false;

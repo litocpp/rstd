@@ -112,10 +112,14 @@ export struct EnvLogger {
 
     auto enabled(Metadata const& m) const noexcept -> bool {
         LevelFilter target_level = default_level;
-        for (rstd::size_t i = 0; i < rule_count; ++i) {
-            if (match_prefix(m.target, rules[i].target, rules[i].target_len)) {
-                target_level = rules[i].level;
-                break;
+        for (rstd::size_t i = 0; i < rule_count && i < MAX_RULES; ++i) {
+            [[unsafe]] {
+                const auto& rule = rules[i];
+                if (rule.target_len < sizeof(rule.target) &&
+                    match_prefix(m.target, rule.target, rule.target_len)) {
+                    target_level = rule.level;
+                    break;
+                }
             }
         }
         return m.level <= target_level;
@@ -132,8 +136,10 @@ export struct EnvLogger {
 
     auto filter() const noexcept -> LevelFilter {
         LevelFilter max = default_level;
-        for (rstd::size_t i = 0; i < rule_count; ++i) {
-            if (rules[i].level > max) max = rules[i].level;
+        for (rstd::size_t i = 0; i < rule_count && i < MAX_RULES; ++i) {
+            [[unsafe]] {
+                if (rules[i].level > max) max = rules[i].level;
+            }
         }
         return max;
     }
@@ -154,61 +160,48 @@ private:
     }
 
     void parse_filters(ref<str> input) noexcept {
-        const byte* p     = input.data();
-        const byte* end   = p + input.size().to_primitive();
-        const byte* token = p;
-
-        while (p <= end) {
-            if (p == end || u8::from_byte(*p) == u8(',')) {
-                parse_one_rule(ref<str>::from_raw_parts_unchecked(token, usize(p - token)));
-                token = p + 1;
-            }
-            ++p;
+        usize begin {};
+        for (usize index {}; index < input.len(); ++index) {
+            if (input[index] != u8(',')) continue;
+            parse_one_rule(input.get(begin, index).unwrap());
+            begin = index + usize(1);
         }
+        parse_one_rule(input.get(begin, input.len()).unwrap());
     }
 
     void parse_one_rule(ref<str> raw) noexcept {
-        // trim spaces
-        const byte* p   = raw.data();
-        const byte* end = p + raw.size().to_primitive();
-        while (p < end && (u8::from_byte(*p) == u8(' ') || u8::from_byte(*p) == u8('\t'))) ++p;
-        while (end > p &&
-               (u8::from_byte(*(end - 1)) == u8(' ') || u8::from_byte(*(end - 1)) == u8('\t')))
-            --end;
-        if (p >= end) return;
+        auto space = [](u8 value) {
+            return value == u8(' ') || value == u8('\t');
+        };
+        usize begin {};
+        auto  end = raw.len();
+        while (begin < end && space(raw[begin])) ++begin;
+        while (begin < end && space(raw[end - usize(1)])) --end;
+        if (begin == end) return;
 
-        // find '='
-        const byte* eq = p;
-        while (eq < end && u8::from_byte(*eq) != u8('=')) ++eq;
+        auto equal = begin;
+        while (equal < end && raw[equal] != u8('=')) ++equal;
+        if (equal == end) {
+            auto level = parse_level_filter(raw.get(begin, end).unwrap());
+            if (level.is_some()) default_level = level.unwrap();
+            return;
+        }
+        if (rule_count >= MAX_RULES) return;
 
-        if (eq < end) {
-            // target=level
-            const byte* t_end = eq;
-            while (t_end > p && (u8::from_byte(*(t_end - 1)) == u8(' ') ||
-                                 u8::from_byte(*(t_end - 1)) == u8('\t')))
-                --t_end;
-            const byte* l_beg = eq + 1;
-            while (l_beg < end &&
-                   (u8::from_byte(*l_beg) == u8(' ') || u8::from_byte(*l_beg) == u8('\t')))
-                ++l_beg;
-
-            if (rule_count < MAX_RULES) {
-                auto& rule = rules[rule_count++];
-                auto  tlen = static_cast<rstd::size_t>(t_end - p);
-                if (tlen >= sizeof(rule.target)) tlen = sizeof(rule.target) - 1;
-                __builtin_memcpy(rule.target, p, tlen);
-                rule.target[tlen] = byte {};
-                rule.target_len   = tlen;
-                rule.level        = parse_level_filter(
-                                        ref<str>::from_raw_parts_unchecked(l_beg, usize(end - l_beg)))
-                                        .unwrap_or(LevelFilter::Trace);
-            }
-        } else {
-            // global level directive
-            auto lf = parse_level_filter(ref<str>::from_raw_parts_unchecked(p, usize(end - p)));
-            if (lf.is_some()) {
-                default_level = lf.unwrap_unchecked();
-            }
+        auto target_end = equal;
+        while (begin < target_end && space(raw[target_end - usize(1)])) --target_end;
+        auto level_begin = equal + usize(1);
+        while (level_begin < end && space(raw[level_begin])) ++level_begin;
+        auto target = raw.get(begin, target_end).unwrap();
+        auto level  = parse_level_filter(raw.get(level_begin, end).unwrap());
+        [[unsafe]] {
+            auto& rule   = rules[rule_count++];
+            auto  length = target.len().to_primitive();
+            if (length >= sizeof(rule.target)) length = sizeof(rule.target) - 1;
+            if (length != 0) __builtin_memcpy(rule.target, target.data(), length);
+            rule.target[length] = byte {};
+            rule.target_len     = length;
+            rule.level          = level.unwrap_or(LevelFilter::Trace);
         }
     }
 
@@ -224,23 +217,26 @@ private:
     void write_record(Record const& r) const noexcept {
         StderrWriter   w;
         fmt::Formatter f(&w, [](void* ctx, const rstd::uint8_t* p, rstd::size_t len) -> bool {
-            auto* self  = static_cast<StderrWriter*>(ctx);
-            auto  bytes = slice<u8>::from_raw_parts(reinterpret_cast<byte const*>(p), usize(len));
-            while (! bytes.is_empty()) {
-                auto res = rstd::as<rstd::io::Write>(self->stderr).write(bytes);
-                if (res.is_err()) return false;
-                auto count = res.unwrap_unchecked().to_primitive();
-                if (count == 0 || count > bytes.len().to_primitive()) return false;
-                bytes = slice<u8>::from_raw_parts(bytes.as_raw_ptr() + count,
-                                                  usize(bytes.len().to_primitive() - count));
+            [[unsafe]] {
+                auto* self = static_cast<StderrWriter*>(ctx);
+                auto  bytes =
+                    slice<u8>::from_raw_parts(reinterpret_cast<byte const*>(p), usize(len));
+                while (! bytes.is_empty()) {
+                    auto res = rstd::as<rstd::io::Write>(self->stderr).write(bytes);
+                    if (res.is_err()) return false;
+                    auto count = res.unwrap_unchecked().to_primitive();
+                    if (count == 0 || count > bytes.len().to_primitive()) return false;
+                    bytes = slice<u8>::from_raw_parts(bytes.as_raw_ptr() + count,
+                                                      usize(bytes.len().to_primitive() - count));
+                }
+                return true;
             }
-            return true;
         });
 
         f.write_str("["_str);
 
         char ts[20];
-        rstd::time::format_rfc3339_utc_now(ts);
+        [[unsafe]] { rstd::time::format_rfc3339_utc_now(ts); }
         f.write_raw(ts, rstd::size_t(20));
         f.write_str(" "_str);
 

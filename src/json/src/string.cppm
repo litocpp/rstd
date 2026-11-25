@@ -12,8 +12,17 @@ template<typename T, typename Writer>
 auto write_quoted_units(slice<T> input, Writer write) -> bool {
     const rstd::array<T, 1> quote { T('"') };
     if (! write(quote.as_slice())) return false;
-    constexpr const char* hex = "0123456789abcdef";
-    usize                 begin {};
+    auto hex = [](auto digit) {
+        return T(digit < 10 ? '0' + digit : 'a' + digit - 10);
+    };
+    auto write_part = [&](usize begin, usize end) {
+        if (begin == end) return true;
+        [[unsafe]] {
+            return write(
+                slice<T>::from_raw_parts(input.as_raw_ptr() + begin.to_primitive(), end - begin));
+        }
+    };
+    usize begin {};
     for (usize index {}; index < input.len(); ++index) {
         const auto value = input[index];
         char       escape {};
@@ -36,9 +45,7 @@ auto write_quoted_units(slice<T> input, Writer write) -> bool {
             surrogate = value >= u16(0xd800) && value <= u16(0xdfff);
         }
         if (escape == 0 && value >= T(0x20) && ! surrogate) continue;
-        if (index > begin && ! write(slice<T>::from_raw_parts(
-                                 input.as_raw_ptr() + begin.to_primitive(), index - begin)))
-            return false;
+        if (! write_part(begin, index)) return false;
         rstd::array<T, 6> encoded {};
         encoded[usize()] = T('\\');
         usize length(2);
@@ -47,19 +54,18 @@ auto write_quoted_units(slice<T> input, Writer write) -> bool {
         } else {
             const auto cp     = value.to_primitive();
             encoded[usize(1)] = T('u');
-            encoded[usize(2)] = T(hex[(cp >> 12) & 15]);
-            encoded[usize(3)] = T(hex[(cp >> 8) & 15]);
-            encoded[usize(4)] = T(hex[(cp >> 4) & 15]);
-            encoded[usize(5)] = T(hex[cp & 15]);
+            encoded[usize(2)] = hex((cp >> 12) & 15);
+            encoded[usize(3)] = hex((cp >> 8) & 15);
+            encoded[usize(4)] = hex((cp >> 4) & 15);
+            encoded[usize(5)] = hex(cp & 15);
             length            = usize(6);
         }
-        if (! write(slice<T>::from_raw_parts(encoded.as_slice().as_raw_ptr(), length)))
-            return false;
+        slice<T> prefix;
+        [[unsafe]] { prefix = slice<T>::from_raw_parts(encoded.data(), length); }
+        if (! write(prefix)) return false;
         begin = index + usize(1);
     }
-    if (begin < input.len() && ! write(slice<T>::from_raw_parts(
-                                   input.as_raw_ptr() + begin.to_primitive(), input.len() - begin)))
-        return false;
+    if (! write_part(begin, input.len())) return false;
     return write(quote.as_slice());
 }
 
@@ -87,7 +93,7 @@ inline auto write_quoted_string(fmt::Formatter& formatter, ref<str> input) -> bo
 
 /// Quotes valid UTF-8 text as a JSON string.
 inline auto quote_string(ref<str> input) -> String {
-    return String::from_utf8_unchecked(quote_units(input.as_bytes()));
+    [[unsafe]] { return String::from_utf8_unchecked(quote_units(input.as_bytes())); }
 }
 
 /// Quotes UTF-16 code units, escaping unpaired surrogates.

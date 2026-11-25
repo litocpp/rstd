@@ -41,7 +41,9 @@ struct AsCast<mut_ptr<T>, ptr<T>> {
     static constexpr auto cast(auto&& from) noexcept -> mut_ptr<T> {
         auto raw    = from.as_raw_ptr();
         using val_t = mtp::rm_const<mtp::rm_ext<mtp::rm_ptr<decltype(raw)>>>;
-        return rstd::from_raw_parts_override<mut_ptr<T>>(&from, const_cast<val_t*>(raw));
+        [[unsafe]] {
+            return rstd::from_raw_parts_override<mut_ptr<T>>(from, const_cast<val_t*>(raw));
+        }
     }
 };
 

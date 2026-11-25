@@ -107,15 +107,15 @@ auto rc_allocate(Layout layout) -> mut_ptr<u8> {
 }
 
 void rc_deallocate(voidp pointer, Layout layout) noexcept {
-    rstd::as<Allocator>(::alloc::GLOBAL).deallocate(pointer, layout);
+    [[unsafe]] { rstd::as<Allocator>(::alloc::GLOBAL).deallocate(pointer, layout); }
 }
 
 void rc_release_global_value(RcHeader* header, Layout layout) noexcept {
-    rc_deallocate(header->value, layout);
+    [[unsafe]] { rc_deallocate(header->value, layout); }
 }
 
 void rc_release_global_header(RcHeader* header) noexcept {
-    ::alloc::raw_delete(header);
+    [[unsafe]] { ::alloc::raw_delete(header); }
 }
 
 void rc_retain_embedded_value(RcHeader*, Layout) noexcept {
@@ -565,16 +565,22 @@ public:
         if (self.header != nullptr) self.header->inc_strong();
     }
 
+    /// The pointer must refer to a uniquely owned live object released by `delete`.
+    [[unsafe]]
     explicit Rc(T* pointer)
         requires Impled<Pointee, Sized>
-        : Rc(pointer, rstd::default_delete<T>()) {}
+        : self(rc_external_data(pointer, rstd::default_delete<T>())) {}
 
+    /// The pointer must refer to a uniquely owned live object released by this deleter.
     template<typename Deleter>
+    [[unsafe]]
     Rc(T* pointer, Deleter&& deleter)
         requires Impled<Pointee, Sized>
         : self(rc_external_data(pointer, rstd::forward<Deleter>(deleter))) {}
 
+    /// The pointer must refer to a uniquely owned live object released by this deleter.
     template<typename Deleter, typename AllocatorType>
+    [[unsafe]]
     Rc(T* pointer, Deleter&& deleter, AllocatorType allocator)
         requires Impled<Pointee, Sized>
         : self(rc_external_data(pointer, rstd::forward<Deleter>(deleter), rstd::move(allocator))) {}
@@ -786,36 +792,49 @@ struct Impl<alloc::Allocator, ::alloc::rc::Rc<A>> : ImplBase<::alloc::rc::Rc<A>>
         else
             return allocator->allocate_zeroed(layout);
     }
+    [[unsafe]]
     auto deallocate(void* pointer, alloc::Layout layout) const noexcept -> void {
         auto allocator = this->self().deref();
-        if constexpr (Impled<A, Sized>)
-            return as<alloc::Allocator>(*allocator).deallocate(pointer, layout);
-        else
-            return allocator->deallocate(pointer, layout);
+        [[unsafe]] {
+            if constexpr (Impled<A, Sized>)
+                return as<alloc::Allocator>(*allocator).deallocate(pointer, layout);
+            else
+                return allocator->deallocate(pointer, layout);
+        }
     }
+    [[unsafe]]
     auto grow(void* pointer, alloc::Layout old_layout, alloc::Layout new_layout) const
         -> Result<alloc::Allocation, alloc::AllocError> {
         auto allocator = this->self().deref();
-        if constexpr (Impled<A, Sized>)
-            return as<alloc::Allocator>(*allocator).grow(pointer, old_layout, new_layout);
-        else
-            return allocator->grow(pointer, old_layout, new_layout);
+        [[unsafe]] {
+            if constexpr (Impled<A, Sized>)
+                return as<alloc::Allocator>(*allocator).grow(pointer, old_layout, new_layout);
+            else
+                return allocator->grow(pointer, old_layout, new_layout);
+        }
     }
+    [[unsafe]]
     auto grow_zeroed(void* pointer, alloc::Layout old_layout, alloc::Layout new_layout) const
         -> Result<alloc::Allocation, alloc::AllocError> {
         auto allocator = this->self().deref();
-        if constexpr (Impled<A, Sized>)
-            return as<alloc::Allocator>(*allocator).grow_zeroed(pointer, old_layout, new_layout);
-        else
-            return allocator->grow_zeroed(pointer, old_layout, new_layout);
+        [[unsafe]] {
+            if constexpr (Impled<A, Sized>)
+                return as<alloc::Allocator>(*allocator)
+                    .grow_zeroed(pointer, old_layout, new_layout);
+            else
+                return allocator->grow_zeroed(pointer, old_layout, new_layout);
+        }
     }
+    [[unsafe]]
     auto shrink(void* pointer, alloc::Layout old_layout, alloc::Layout new_layout) const
         -> Result<alloc::Allocation, alloc::AllocError> {
         auto allocator = this->self().deref();
-        if constexpr (Impled<A, Sized>)
-            return as<alloc::Allocator>(*allocator).shrink(pointer, old_layout, new_layout);
-        else
-            return allocator->shrink(pointer, old_layout, new_layout);
+        [[unsafe]] {
+            if constexpr (Impled<A, Sized>)
+                return as<alloc::Allocator>(*allocator).shrink(pointer, old_layout, new_layout);
+            else
+                return allocator->shrink(pointer, old_layout, new_layout);
+        }
     }
 };
 template<typename A>

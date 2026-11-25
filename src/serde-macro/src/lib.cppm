@@ -198,13 +198,15 @@ auto derive_payload(pmacro::DeriveInput        input,
                     pmacro::Context&           context,
                     const pmacro::Declaration& declaration,
                     const Options&             config) -> Output {
-    const auto* record = std::get_if<pmacro::RecordInfo>(&declaration.data);
-    if (! record || record->has_bases || record->kind == pmacro::RecordKind::Union)
+    if (! std::holds_alternative<pmacro::RecordInfo>(declaration.data) ||
+        std::get<pmacro::RecordInfo>(declaration.data).has_bases ||
+        std::get<pmacro::RecordInfo>(declaration.data).kind == pmacro::RecordKind::Union)
         return failure(context,
                        declaration.source,
                        input.item_span,
                        "serde described_payload requires a record without bases");
-    if (record->dependent)
+    const auto& record = std::get<pmacro::RecordInfo>(declaration.data);
+    if (record.dependent)
         return failure(context,
                        declaration.source,
                        input.item_span,
@@ -247,7 +249,7 @@ auto derive_payload(pmacro::DeriveInput        input,
                        ",rstd::serde::Direction::" + mode + ",rstd::serde::UnknownFieldPolicy::" +
                        (effective.ignore_unknown ? "Ignore" : "Reject");
     auto constructor = "[](auto& fields)->" + qualified + "{return " + qualified + '{';
-    for (const auto& field : record->fields) {
+    for (const auto& field : record.fields) {
         if (! field.name || field.kind != pmacro::FieldKind::Named ||
             field.access != pmacro::Access::Public || field.bit_width)
             return failure(context,
@@ -334,8 +336,9 @@ auto derive(pmacro::DeriveInput input, pmacro::Context& context) noexcept -> Out
     };
     std::set<std::string> names;
     if (config->variants) {
-        const auto* record = std::get_if<pmacro::RecordInfo>(&declaration.data);
-        if (! record || record->dependent || record->kind == pmacro::RecordKind::Union ||
+        if (! std::holds_alternative<pmacro::RecordInfo>(declaration.data) ||
+            std::get<pmacro::RecordInfo>(declaration.data).dependent ||
+            std::get<pmacro::RecordInfo>(declaration.data).kind == pmacro::RecordKind::Union ||
             (config->ignore_unknown && ! config->tag && ! config->described_enum))
             return failure(context,
                            declaration.source,
@@ -378,16 +381,17 @@ auto derive(pmacro::DeriveInput input, pmacro::Context& context) noexcept -> Out
         if (! output || expressions.empty()) return output;
         return context.splice(*output, expressions);
     }
-    if (const auto* record = std::get_if<pmacro::RecordInfo>(&declaration.data)) {
+    if (std::holds_alternative<pmacro::RecordInfo>(declaration.data)) {
+        const auto& record = std::get<pmacro::RecordInfo>(declaration.data);
         if (config->string_enum)
             return failure(
                 context, declaration.source, input.item_span, "serde string_enum requires an enum");
-        if (config->newtype && (record->fields.size() != 1 || config->ignore_unknown))
+        if (config->newtype && (record.fields.size() != 1 || config->ignore_unknown))
             return failure(context,
                            declaration.source,
                            input.item_span,
                            "serde newtype requires exactly one field and no record options");
-        if (record->dependent || record->has_bases || record->kind == pmacro::RecordKind::Union)
+        if (record.dependent || record.has_bases || record.kind == pmacro::RecordKind::Union)
             return failure(context,
                            declaration.source,
                            input.item_span,
@@ -399,7 +403,7 @@ auto derive(pmacro::DeriveInput input, pmacro::Context& context) noexcept -> Out
                      (config->ignore_unknown ? "Ignore" : "Reject");
         if (! config->newtype)
             constructor = "[](auto& fields)->" + qualified + "{return " + qualified + '{';
-        for (const auto& field : record->fields) {
+        for (const auto& field : record.fields) {
             if (! field.name || field.kind != pmacro::FieldKind::Named ||
                 field.access != pmacro::Access::Public || field.bit_width || field.type.dependent ||
                 ! field.type.type_id)
@@ -457,14 +461,15 @@ auto derive(pmacro::DeriveInput input, pmacro::Context& context) noexcept -> Out
                 constructor += '.' + *field.name + "=fields.template take<&" + qualified +
                                "::" + *field.name + ">(),";
         }
-    } else if (const auto* enumeration = std::get_if<pmacro::EnumInfo>(&declaration.data)) {
+    } else if (std::holds_alternative<pmacro::EnumInfo>(declaration.data)) {
+        const auto& enumeration = std::get<pmacro::EnumInfo>(declaration.data);
         if (config->ignore_unknown || config->newtype)
             return failure(
                 context, declaration.source, input.item_span, "invalid serde enum representation");
         definition = std::string("rstd::serde::") +
                      (config->string_enum ? "StringEnumDefinition<" : "EnumDefinition<") +
                      qualified + ',' + quote(type_name) + ",rstd::serde::Direction::" + mode;
-        for (const auto& item : enumeration->enumerators) {
+        for (const auto& item : enumeration.enumerators) {
             auto settings = options(context, item.helpers);
             if (! settings) return failure(context, item.source, input.item_span, settings.error());
             if (settings->representation() || ! settings->aliases.empty() || settings->defaulted ||

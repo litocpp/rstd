@@ -16,11 +16,11 @@ auto Thread::make(ThreadId id, Option<String> name) -> Thread {
     });
 
     auto arc = Arc<Inner>::make_uninit();
-    auto ptr = (void*)arc->as_ptr();
-
-    ::new (ptr) Inner { .name { rstd::move(thread_name) }, .id { id }, .parker {} };
-
-    return Thread { arc.assume_init() };
+    [[unsafe]] {
+        auto* ptr = const_cast<Inner*>(arc->as_ptr());
+        ::new (ptr) Inner { .name { rstd::move(thread_name) }, .id { id }, .parker {} };
+        return Thread { arc.assume_init() };
+    }
 }
 
 auto Thread::id() const noexcept -> ThreadId {
@@ -34,7 +34,7 @@ auto Thread::name() const -> Option<ThreadNameString> {
     if (auto& name = inner->name; name) {
         return name.clone();
     } else if (main_thread::get() == Some(id())) {
-        return Some(ThreadNameString { ::alloc::ffi::CString::from_raw_parts("main") });
+        return Some(ThreadNameString::from(String::make("main"_str)));
     } else {
         return None();
     }
@@ -57,7 +57,7 @@ auto Thread::cname() const noexcept -> Option<ref<ffi::CStr>> {
         return Some(inner->name.as_ref().unwrap().as_cstr());
     }
     if (main_thread::get() == Some(id())) {
-        return Some(ffi::CStr::from_ptr("main"));
+        [[unsafe]] { return Some(ffi::CStr::from_ptr("main")); }
     }
     return None();
 }
@@ -67,7 +67,7 @@ auto Thread::into_raw() -> voidp {
 }
 
 auto Thread::from_raw(voidp p) -> Thread {
-    return Thread { Arc<Inner>::from_raw(ArcRaw<Inner>::from_raw(p)) };
+    [[unsafe]] { return Thread { Arc<Inner>::from_raw(ArcRaw<Inner>::from_raw(p)) }; }
 }
 } // namespace rstd::thread
 

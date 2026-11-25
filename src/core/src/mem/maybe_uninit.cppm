@@ -43,14 +43,14 @@ private:
     constexpr explicit MaybeUninit(Zeroed) noexcept: storage {} {}
 
     constexpr auto storage_ptr() noexcept -> T* {
-        return reinterpret_cast<T*>(reinterpret_cast<byte*>(this));
+        [[unsafe]] { return reinterpret_cast<T*>(reinterpret_cast<byte*>(this)); }
     }
     constexpr auto storage_ptr() const noexcept -> const T* {
-        return reinterpret_cast<const T*>(reinterpret_cast<const byte*>(this));
+        [[unsafe]] { return reinterpret_cast<const T*>(reinterpret_cast<const byte*>(this)); }
     }
 
     constexpr explicit MaybeUninit(T&& val) noexcept(mtp::noex_move_v<T>) {
-        rstd::construct_at(storage_ptr(), rstd::forward<T>(val));
+        [[unsafe]] { rstd::construct_at(storage_ptr(), rstd::forward<T>(val)); }
     }
 
     constexpr T* ptr() noexcept { return rstd::launder(storage_ptr()); }
@@ -85,7 +85,7 @@ public:
     /// Does not destroy an existing T. Destroy an owned previous value first to avoid leaks.
     /// If construction throws, no new T exists; the slot may be constructed again.
     constexpr auto write(T&& val) & noexcept(mtp::noex_move_v<T>) [[clang::lifetimebound]] -> T& {
-        return *rstd::construct_at(storage_ptr(), rstd::forward<T>(val));
+        [[unsafe]] { return *rstd::construct_at(storage_ptr(), rstd::forward<T>(val)); }
     }
 
     /// Returns the storage address; accessing T requires its lifetime and initialization.
@@ -98,39 +98,50 @@ public:
     /// the source T. The slot contains no live T afterward, including when the move throws.
     /// Do not read or drop it again without constructing another T.
     /// Unlike Rust's move, this runs T's C++ move constructor and source destructor.
+    [[unsafe]]
     constexpr auto assume_init() && noexcept(mtp::noex_move_v<T> && mtp::noex_drop_v<T>) -> T
         requires(mtp::move<T>)
     {
         struct Source {
             T* value;
-            constexpr ~Source() noexcept(mtp::noex_drop_v<T>) { rstd::destroy_at(value); }
+            constexpr ~Source() noexcept(mtp::noex_drop_v<T>) {
+                [[unsafe]] { rstd::destroy_at(value); }
+            }
         } source { ptr() };
-        return T(rstd::move(*source.value));
+        [[unsafe]] { return T(rstd::move(*source.value)); }
     }
 
     /// Copies a live, fully initialized T, leaving the source alive and owned by this slot.
     /// Uses T's copy constructor, not Rust's unchecked bitwise read. If copying throws, the
     /// source remains alive and must still be destroyed by the caller.
+    [[unsafe]]
     constexpr auto assume_init_read() const noexcept(mtp::noex_copy_v<T>) -> T
         requires(mtp::copy<T>)
     {
-        return *ptr();
+        [[unsafe]] { return *ptr(); }
     }
 
     /// Borrows a live, fully initialized T. The borrow ends before T is destroyed or replaced,
     /// or this storage ceases to exist. This does not initialize T or extend its lifetime.
+    [[unsafe]]
     constexpr auto assume_init_ref() const& noexcept [[clang::lifetimebound]] -> const T& {
-        return *ptr();
+        [[unsafe]] { return *ptr(); }
     }
     constexpr auto assume_init_ref() const&& -> const T& = delete;
 
     /// Mutably borrows a live, fully initialized T, with the same lifetime rules as assume_init_ref().
     /// This cannot be used to initialize storage that does not yet contain T.
-    constexpr auto assume_init_mut() & noexcept [[clang::lifetimebound]] -> T& { return *ptr(); }
+    [[unsafe]]
+    constexpr auto assume_init_mut() & noexcept [[clang::lifetimebound]] -> T& {
+        [[unsafe]] { return *ptr(); }
+    }
 
     /// Destroys a live, fully initialized T exactly once, leaving the slot available for reuse.
     /// No contained T may be accessed again until a new T is constructed.
-    constexpr void assume_init_drop() noexcept(mtp::noex_drop_v<T>) { rstd::destroy_at(ptr()); }
+    [[unsafe]]
+    constexpr void assume_init_drop() noexcept(mtp::noex_drop_v<T>) {
+        [[unsafe]] { rstd::destroy_at(ptr()); }
+    }
 };
 
 template<typename T>

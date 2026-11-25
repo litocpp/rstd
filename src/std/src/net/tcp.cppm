@@ -62,16 +62,16 @@ public:
     auto        try_read(bytes::BytesMut& buf) { return stream_.try_read(buf); }
     auto        try_write(const bytes::Bytes& buf) { return stream_.try_write(buf); }
     auto        poll_read(mut_ref<TcpStream> self, task::Context& cx, bytes::BytesMut& buf) {
-        return stream_.poll_read(mut_ref<SocketStream>::from_raw_parts(&self->stream_), cx, buf);
+        return stream_.poll_read(mut_ref<SocketStream>::from_ref(self->stream_), cx, buf);
     }
     auto poll_write(mut_ref<TcpStream> self, task::Context& cx, const bytes::Bytes& buf) {
-        return stream_.poll_write(mut_ref<SocketStream>::from_raw_parts(&self->stream_), cx, buf);
+        return stream_.poll_write(mut_ref<SocketStream>::from_ref(self->stream_), cx, buf);
     }
     auto poll_flush(mut_ref<TcpStream> self, task::Context& cx) {
-        return stream_.poll_flush(mut_ref<SocketStream>::from_raw_parts(&self->stream_), cx);
+        return stream_.poll_flush(mut_ref<SocketStream>::from_ref(self->stream_), cx);
     }
     auto poll_shutdown(mut_ref<TcpStream> self, task::Context& cx) {
-        return stream_.poll_shutdown(mut_ref<SocketStream>::from_raw_parts(&self->stream_), cx);
+        return stream_.poll_shutdown(mut_ref<SocketStream>::from_ref(self->stream_), cx);
     }
 };
 

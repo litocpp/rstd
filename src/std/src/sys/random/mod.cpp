@@ -22,9 +22,13 @@ auto rstd::sys::random::fill_from(void* state, Read read, mut_ref<u8[]> output)
     while (offset < output.len()) {
         auto count = output.len() - offset;
         if (count > usize(256)) count = usize(256);
-        auto chunk =
-            mut_ref<u8[]>::from_raw_parts(output.as_raw_ptr() + offset.to_primitive(), count);
-        auto result = read(state, chunk);
+        auto result = [&] {
+            [[unsafe]] {
+                auto chunk = mut_ref<u8[]>::from_raw_parts(
+                    output.as_raw_ptr() + offset.to_primitive(), count);
+                return read(state, chunk);
+            }
+        }();
         if (result.is_err()) {
             auto error = rstd::move(result).unwrap_err();
             if (error.kind() == ErrorKind { ErrorKind::Interrupted }) continue;
@@ -42,7 +46,9 @@ auto rstd::sys::random::fill_from(void* state, Read read, mut_ref<u8[]> output)
 #if RSTD_OS_LINUX && (! defined(__ANDROID__) || __ANDROID_API__ >= 28)
 auto read_os_random(void*, mut_ref<u8[]> output) -> rstd::io::Result<usize> {
     auto count = ::getrandom(output.as_raw_ptr(), output.len().to_primitive(), GRND_NONBLOCK);
-    if (count < 0) return Err(Error::from_raw_os_error(i32(errno)));
+    if (count < 0) {
+        [[unsafe]] { return Err(Error::from_raw_os_error(i32(errno))); }
+    }
     return Ok(usize(count));
 }
 #endif
@@ -50,7 +56,7 @@ auto read_os_random(void*, mut_ref<u8[]> output) -> rstd::io::Result<usize> {
 auto rstd::sys::random::fill_bytes(mut_ref<u8[]> output) -> rstd::io::Result<empty> {
     if (output.is_empty()) return Ok(empty {});
 #if RSTD_OS_LINUX && (! defined(__ANDROID__) || __ANDROID_API__ >= 28)
-    return fill_from(nullptr, read_os_random, output);
+    [[unsafe]] { return fill_from(nullptr, read_os_random, output); }
 #elif RSTD_VENDOR_APPLE
     auto status = ::CCRandomGenerateBytes(output.as_raw_ptr(), output.len().to_primitive());
     if (status != kCCSuccess) return Err(Error::from_kind(ErrorKind { ErrorKind::Other }));
@@ -60,13 +66,19 @@ auto rstd::sys::random::fill_bytes(mut_ref<u8[]> output) -> rstd::io::Result<emp
     auto library = ::LoadLibraryExW(L"bcryptprimitives.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
     if (! library) return Err(Error::from_raw_os_error(i32(::GetLastError())));
     using ProcessPrng = BOOL(WINAPI*)(PBYTE, SIZE_T);
-    auto generate     = reinterpret_cast<ProcessPrng>(::GetProcAddress(library, "ProcessPrng"));
+    ProcessPrng generate;
+    [[unsafe]] {
+        generate = reinterpret_cast<ProcessPrng>(::GetProcAddress(library, "ProcessPrng"));
+    }
     if (! generate) {
         ::FreeLibrary(library);
         return Err(Error::from_kind(ErrorKind { ErrorKind::Unsupported }));
     }
-    auto success =
-        generate(reinterpret_cast<PBYTE>(output.as_raw_ptr()), output.len().to_primitive());
+    BOOL success;
+    [[unsafe]] {
+        success =
+            generate(reinterpret_cast<PBYTE>(output.as_raw_ptr()), output.len().to_primitive());
+    }
     ::FreeLibrary(library);
     if (! success) return Err(Error::from_kind(ErrorKind { ErrorKind::Other }));
     return Ok(empty {});

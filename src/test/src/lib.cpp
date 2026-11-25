@@ -25,7 +25,12 @@ struct DeathState {
 DeathState death_state;
 
 auto raw_str(const char* value, unsigned long length) noexcept -> ref<str> {
-    return ref<str>::from_raw_parts_unchecked(reinterpret_cast<const byte*>(value), usize(length));
+    if (length == 0) return {};
+    [[unsafe]] {
+        return str_::from_utf8(
+                   slice<u8>::from_raw_parts(reinterpret_cast<const byte*>(value), usize(length)))
+            .unwrap_or({});
+    }
 }
 
 auto raw_str(const char* value) noexcept -> ref<str> {
@@ -40,8 +45,10 @@ auto message_text(const Message& message, const char* fallback) -> String {
 template<typename T>
 auto append_formatted(Message& message, T value) -> void {
     auto rendered = rstd::format("{}", value);
-    message.append(reinterpret_cast<const char*>(rendered.as_str().data()),
-                   rendered.as_str().size().to_primitive());
+    [[unsafe]] {
+        message.append(reinterpret_cast<const char*>(rendered.as_str().data()),
+                       rendered.as_str().size().to_primitive());
+    }
 }
 
 auto output_contains(const Vec<u8>& output, ref<str> pattern) noexcept -> bool {
@@ -66,7 +73,7 @@ auto output_contains(const Vec<u8>& output, ref<str> pattern) noexcept -> bool {
 rstd::test::gtest::Registrar::Registrar(Descriptor* descriptor) noexcept {
     auto* head = __atomic_load_n(&registry_head, __ATOMIC_RELAXED);
     do {
-        descriptor->next = head;
+        [[unsafe]] { descriptor->next = head; }
     } while (! __atomic_compare_exchange_n(
         &registry_head, &head, descriptor, false, __ATOMIC_RELEASE, __ATOMIC_RELAXED));
 }
@@ -77,16 +84,19 @@ auto rstd::test::gtest::registered_head() noexcept -> Descriptor* {
 
 auto rstd::test::gtest::fixture_body_allowed() noexcept -> bool {
     auto* context = current_test_context();
-    return context == nullptr || (! context->fatal() && ! context->skipped());
+    [[unsafe]] { return context == nullptr || (! context->fatal() && ! context->skipped()); }
 }
 
 auto rstd::test::gtest::Message::append(const char* value, unsigned long length) noexcept -> void {
     if (value == nullptr || length == 0 || length_ == sizeof(bytes_) - 1) return;
     auto available = sizeof(bytes_) - 1 - length_;
     if (length > available) length = available;
-    for (unsigned long index = 0; index < length; ++index) bytes_[length_ + index] = value[index];
-    length_ += length;
-    bytes_[length_] = '\0';
+    [[unsafe]] {
+        for (unsigned long index = 0; index < length; ++index)
+            bytes_[length_ + index] = value[index];
+        length_ += length;
+        bytes_[length_] = '\0';
+    }
 }
 
 auto rstd::test::gtest::Message::operator<<(const char* value) noexcept -> Message& {
@@ -163,12 +173,14 @@ rstd::test::gtest::Expectation::~Expectation() noexcept {
 rstd::test::gtest::ScopedTrace::ScopedTrace(const Message& message) noexcept {
     auto* context = current_test_context();
     if (context == nullptr) return;
-    context->push_trace(message_text(message, "trace").as_str());
+    [[unsafe]] { context->push_trace(message_text(message, "trace").as_str()); }
 }
 
 rstd::test::gtest::ScopedTrace::~ScopedTrace() noexcept {
     auto* context = current_test_context();
-    if (context != nullptr) context->pop_trace();
+    if (context != nullptr) {
+        [[unsafe]] { context->pop_trace(); }
+    }
 }
 
 auto rstd::test::gtest::record_assertion(bool        success,
@@ -240,16 +252,19 @@ auto rstd::test::gtest::death_begin(const char* pattern, const char* file, int l
         return DeathDecision::Skip;
     }
 
-    auto ordinal = context->next_death_index();
+    auto& active = [&]() -> TestContext& {
+        [[unsafe]] { return *context; }
+    }();
+    auto ordinal = active.next_death_index();
     if (death_child_active()) {
-        auto current_name = context->full_name();
+        auto current_name = active.full_name();
         if (current_name != death_state.case_name->as_str()) return DeathDecision::Skip;
         if (ordinal == *death_state.index) return DeathDecision::Execute;
         return DeathDecision::Skip;
     }
 
     auto command = process::Command::make(death_state.program.as_str());
-    auto name    = context->full_name();
+    auto name    = active.full_name();
     command.arg("--rstd-test-death-case"_str)
         .arg(name.as_str())
         .arg("--rstd-test-death-index"_str)
