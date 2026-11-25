@@ -107,9 +107,10 @@ protected:
     auto has_async_handle() const noexcept -> bool { return async_handle_.is_some(); }
 
     // Only stdio created by spawn_with_async_pipes() has an asynchronous native handle.
-    auto into_owned_handle() && -> io::Result<os::handle::OwnedHandle> {
+    auto into_owned_handle() && -> rstd::io::Result<os::handle::OwnedHandle> {
         if (async_handle_.is_none())
-            return Err(io::Error::from_kind(io::ErrorKind { io::ErrorKind::InvalidInput }));
+            return Err(rstd::io::Error::from_kind(
+                rstd::io::ErrorKind { rstd::io::ErrorKind::InvalidInput }));
         return Ok(async_handle_.take().unwrap());
     }
 #endif

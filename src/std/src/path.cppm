@@ -261,7 +261,8 @@ public:
 
     /// Returns `true` if the path starts with a root separator.
     constexpr auto is_absolute() const noexcept -> bool {
-        auto bytes = as_os_str().as_encoded_bytes();
+        auto os_str = as_os_str();
+        auto bytes  = os_str.as_encoded_bytes();
         if (bytes.is_empty()) return false;
 #if defined(RSTD_OS_WINDOWS)
         if (bytes.len() >= usize(2) && path_detail::is_sep(bytes[usize()]) &&
@@ -332,18 +333,19 @@ public:
     constexpr auto parent() const noexcept -> Option<ref<path::Path>> {
         auto                    values = components();
         auto                    end    = usize {};
+        auto                    os_str = as_os_str();
+        auto                    bytes  = os_str.as_encoded_bytes();
         Option<ref<path::Path>> parent;
         while (auto component = values.next()) {
             if (component->is_root_dir()) {
-                end = usize(path_detail::root_len(as_os_str().as_encoded_bytes()));
+                end = usize(path_detail::root_len(bytes));
                 continue;
             }
             [[unsafe]] {
                 parent = Some(ref<path::Path>(
                     ref<OsStr>::from_encoded_bytes_unchecked(slice<u8>::from_raw_parts(p, end))));
             }
-            end        = length - values.as_path().len();
-            auto bytes = as_os_str().as_encoded_bytes();
+            end = length - values.as_path().len();
             while (end > usize {} && path_detail::is_sep(bytes[end - usize(1)])) --end;
         }
         return parent;
@@ -634,7 +636,8 @@ struct Impl<error::Error, path::NormalizeError>
 template<>
 struct Impl<fmt::Display, ref<path::Path>> : ImplBase<ref<path::Path>> {
     auto fmt(fmt::Formatter& f) const -> bool {
-        auto display = this->self().as_os_str().display();
+        auto os_str  = this->self().as_os_str();
+        auto display = os_str.display();
         return as<fmt::Display>(display).fmt(f);
     }
 };

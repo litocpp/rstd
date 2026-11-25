@@ -14,22 +14,21 @@ export namespace rstd::os::windows::ffi
 {
 
 class EncodeWide : public DefaultInClass<EncodeWide, iter::Iterator> {
-    slice<u8> bytes_;
-    usize     index_ {};
-    unsigned  pending_ {};
+    ref<OsStr> value_;
+    usize      index_ {};
+    unsigned   pending_ {};
 
 public:
     using Item = u16;
-    explicit EncodeWide(ref<OsStr> value [[clang::lifetimebound]])
-        : bytes_(value.as_encoded_bytes()) {}
+    explicit EncodeWide(ref<OsStr> value [[clang::lifetimebound]]): value_(value) {}
     auto next() -> Option<u16> {
         if (pending_ != 0) {
             auto result = pending_;
             pending_    = 0;
             return Some(u16(result));
         }
-        if (index_ == bytes_.len()) return None();
-        auto value = rstd::sys::os_str::encoding::decode(bytes_, index_);
+        if (index_ == value_.len()) return None();
+        auto value = rstd::sys::os_str::encoding::decode(value_.as_encoded_bytes(), index_);
         if (value <= 0xffff) return Some(u16(value));
         value -= 0x10000;
         pending_ = 0xdc00 | (value & 0x3ff);
